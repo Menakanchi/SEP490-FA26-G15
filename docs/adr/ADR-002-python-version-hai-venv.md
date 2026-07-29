@@ -56,5 +56,5 @@ Không thể có một venv duy nhất vừa chạy được template 3.11 vừa
 
 - Hai file requirements, hai lệnh cài đặt, hai lần dựng môi trường. Ghi rõ trong `worker/README.md`.
 - Không thể share helper Python giữa `src/` và `worker/`. Nếu có logic dùng chung, chép lại — chép 20 dòng rẻ hơn dựng package chung cho hai runtime.
-- `converter.py` **phải** nằm ở `src/` (Python 3.11) chứ không phải `worker/`, vì nó thuần `xml.etree` và không cần CARLA. Xem `BATTLE_PLAN.md` §2 mục Converter.
+- `converter.py` **phải** nằm ở `src/` (Python 3.11) chứ không phải `worker/`, vì nó thuần `xml.etree` và không cần CARLA. Xem `plan.md` §2 mục Converter.
 - CI chỉ chạy test cho `src/`. Test của `worker/` chạy tay trên máy có CARLA và ghi kết quả vào `eval/results/`.

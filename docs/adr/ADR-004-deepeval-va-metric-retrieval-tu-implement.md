@@ -45,5 +45,5 @@ Guidebook chương 8 dạy **RAGAS**. Đề bài RAV-03 nêu **DeepEval**.
 
 - Cần `intent_calibration.jsonl` (30 cặp người chấm) trước khi số GEval có ý nghĩa. Nếu agreement < 0.8 thì sửa rubric của GEval, không sửa số.
 - Cần `retrieval_golden.jsonl` (query → scenario_id liên quan) **xong ở W2**, vì baseline phải chạy ở W3.
-- **Baseline phải chạy trước improved**, không được improve rồi mới nghĩ đến baseline. Đây là rủi ro có tên trong `BATTLE_PLAN.md` §11.
+- **Baseline phải chạy trước improved**, không được improve rồi mới nghĩ đến baseline. Đây là rủi ro có tên trong `plan.md` §10.
 - Guidebook chương 8 vẫn là tài liệu đọc, nhưng phần RAGAS đọc để hiểu khái niệm, không để copy code.

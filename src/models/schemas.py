@@ -96,16 +96,46 @@ class ActorType(StrEnum):
     TRUCK = "truck"
 
 
-class ODDCell(ForgeModel):
-    """Một ô trong ma trận ODD. 5 x 4 x 3 x 4 = 240 ô.
+class ManeuverType(StrEnum):
+    """Hành vi mà chủ thể thực hiện khi trigger bắn.
 
-    ``coverage`` = tỉ lệ ô đã có ít nhất một scenario hợp lệ. Ngưỡng đạt: >= 0.75.
+    Danh sách này **đóng** có chủ đích: mỗi giá trị tương ứng một template
+    ``.xosc`` mà converter biết dựng. LLM chỉ được chọn trong đây, không được
+    tự bịa hành vi — đó là cách ta giữ tỉ lệ hợp lệ cao.
+
+    Đồng thời là **trục thứ 4 của ma trận ODD** (xem ``ODDCell``): đề bài đo
+    *"độ đa dạng của các tình huống"*, nên tình huống phải là một trục đo phủ,
+    không chỉ là một trường mô tả.
+    """
+
+    CUT_IN = "cut_in"  # tạt đầu
+    SUDDEN_BRAKE = "sudden_brake"  # phanh gấp
+    RUN_RED_LIGHT = "run_red_light"  # vượt đèn đỏ
+    JAYWALK = "jaywalk"  # băng qua đường bất ngờ
+    WRONG_WAY = "wrong_way"  # đi ngược chiều
+    LANE_DRIFT = "lane_drift"  # lấn làn từ từ
+    STOP_IN_LANE = "stop_in_lane"  # dừng chết giữa làn
+
+
+class ODDCell(ForgeModel):
+    """Một ô trong ma trận ODD. 5 x 4 x 4 x 7 = 560 ô.
+
+    ``coverage`` = tỉ lệ ô đã có ít nhất một scenario hợp lệ.
+
+    **Trục thứ 4 là `maneuver`, không phải `time_of_day`.** Đề bài đo *"độ đa
+    dạng của các tình huống"* — phủ 75% ma trận mà chưa từng sinh một kịch bản
+    người đi bộ băng ngang thì không đạt yêu cầu đó. ``TimeOfDay`` vẫn còn trong
+    ``ScenarioSpec`` để dựng cảnh, chỉ thôi làm trục đo phủ.
+
+    Dùng **trọn** ``ManeuverType`` chứ không phải một tập con: một danh sách con
+    riêng cho ODD sẽ thành nguồn sự thật thứ hai, và sẽ lệch khỏi enum ngay lần
+    đầu ai đó thêm hành vi mới.
     """
 
     road_type: RoadType
     weather: Weather
-    time_of_day: TimeOfDay
     actor_type: ActorType
+    maneuver: ManeuverType
 
     @property
     def key(self) -> str:
@@ -123,8 +153,8 @@ class ODDCell(ForgeModel):
             (
                 self.road_type.value,
                 self.weather.value,
-                self.time_of_day.value,
                 self.actor_type.value,
+                self.maneuver.value,
             )
         )
 
@@ -144,16 +174,16 @@ class ODDQuery(ForgeModel):
 
     road_type: RoadType | None = None
     weather: Weather | None = None
-    time_of_day: TimeOfDay | None = None
     actor_type: ActorType | None = None
+    maneuver: ManeuverType | None = None
 
     def as_filter(self) -> dict[str, str]:
         """Payload filter cho Qdrant — **chỉ gồm trục thật sự được nói ra**."""
         pairs = (
             ("road_type", self.road_type),
             ("weather", self.weather),
-            ("time_of_day", self.time_of_day),
             ("actor_type", self.actor_type),
+            ("maneuver", self.maneuver),
         )
         return {k: v.value for k, v in pairs if v is not None}
 
@@ -210,23 +240,6 @@ class ActorSpec(ForgeModel):
     is_ego: bool = Field(False, description="Đúng một actor được đặt True")
 
 
-class ManeuverType(StrEnum):
-    """Hành vi mà chủ thể thực hiện khi trigger bắn.
-
-    Danh sách này **đóng** có chủ đích: mỗi giá trị tương ứng một template
-    ``.xosc`` mà converter biết dựng. LLM chỉ được chọn trong đây, không được
-    tự bịa hành vi — đó là cách ta giữ tỉ lệ hợp lệ cao.
-    """
-
-    CUT_IN = "cut_in"  # tạt đầu
-    SUDDEN_BRAKE = "sudden_brake"  # phanh gấp
-    RUN_RED_LIGHT = "run_red_light"  # vượt đèn đỏ
-    JAYWALK = "jaywalk"  # băng qua đường bất ngờ
-    WRONG_WAY = "wrong_way"  # đi ngược chiều
-    LANE_DRIFT = "lane_drift"  # lấn làn từ từ
-    STOP_IN_LANE = "stop_in_lane"  # dừng chết giữa làn
-
-
 class TriggerCondition(ForgeModel):
     """Điều kiện kích hoạt. Chỉ hỗ trợ khoảng cách và thời gian.
 
@@ -262,6 +275,13 @@ class ScenarioSpec(ForgeModel):
     description_vi: str = Field(..., min_length=1, description="Câu tiếng Việt gốc của người dùng")
 
     odd: ODDCell
+    time_of_day: TimeOfDay = Field(
+        TimeOfDay.DAY,
+        description=(
+            "Dùng để dựng cảnh (góc mặt trời, đèn xe) — **không** phải trục đo phủ ODD. "
+            "Xem ODDCell: đề bài đo đa dạng tình huống, không đo đa dạng giờ trong ngày."
+        ),
+    )
     actors: list[ActorSpec] = Field(..., min_length=2, description="Ít nhất ego + 1 chủ thể")
     maneuvers: list[ManeuverSpec] = Field(..., min_length=1)
 
@@ -303,6 +323,16 @@ class ScenarioSpec(ForgeModel):
             raise ValueError(
                 f"odd.actor_type={self.odd.actor_type.value!r} nhưng không chủ thể nào "
                 f"thuộc loại đó (đang có: {sorted(non_ego)})"
+            )
+
+        # Cùng lý do, cho trục tình huống. Gắn nhãn "jaywalk" cho một kịch bản chỉ
+        # có hành vi tạt đầu sẽ báo đã phủ ô jaywalk trong khi ô đó vẫn trống —
+        # tức là tự khai khống đúng con số mà đề bài dùng để chấm độ đa dạng.
+        done = {m.maneuver.value for m in self.maneuvers}
+        if self.odd.maneuver.value not in done:
+            raise ValueError(
+                f"odd.maneuver={self.odd.maneuver.value!r} nhưng không maneuver nào "
+                f"thực hiện hành vi đó (đang có: {sorted(done)})"
             )
         return self
 

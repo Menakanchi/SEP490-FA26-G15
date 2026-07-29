@@ -7,7 +7,7 @@
 
 Đề bài RAV-03 ghi tech stack là "CARLA/Isaac", có thể hiểu là hỗ trợ một trong hai hoặc cả hai.
 
-Phần cứng khả dụng của nhóm: **một** laptop RTX 4060 **8GB VRAM**. Thời gian: 6 tuần cho 4 người, trong đó một người còn non về AI và chưa từng cài simulator.
+Phần cứng khả dụng của nhóm: **một** laptop RTX 4060 **8GB VRAM**. Thời gian: 6 tuần cho 4 người, chưa ai trong nhóm từng cài và vận hành simulator.
 
 ## Các lựa chọn
 

@@ -44,4 +44,4 @@ Thêm trường `validation_mode: static | sim` vào request: `static` không c�
 - Kết quả sim là **bất đồng bộ**: `POST /generate` trả `request_id` ngay, client poll `GET /status/{id}`.
 - Worker cần secret riêng (`WORKER_TOKEN`); không dùng chung khoá với người dùng.
 - Tài liệu vận hành worker (cài đặt, chạy, troubleshooting) là trách nhiệm của `worker/README.md`.
-- Rủi ro "một máy GPU = single point of failure" **không** bị ADR này loại bỏ, chỉ bị giảm: bất kỳ ai cài được CARLA đều chạy worker được. Xem §11 của `BATTLE_PLAN.md`.
+- Rủi ro "một máy GPU = single point of failure" **không** bị ADR này loại bỏ, chỉ bị giảm: bất kỳ ai cài được CARLA đều chạy worker được. Xem §10 của `plan.md`.

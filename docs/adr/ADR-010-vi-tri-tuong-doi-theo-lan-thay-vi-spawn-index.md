@@ -2,7 +2,7 @@
 
 **Ngày:** 2026-07-29
 **Trạng thái:** Accepted
-**Thay thế:** thiết kế `spawn_index` mô tả ở `docs/overview.html` bước 3–5 và ở `BATTLE_PLAN.md` §9 (bản trước 29/7)
+**Thay thế:** thiết kế `spawn_index` mô tả ở `docs/overview.html` bước 3–5 và ở `plan.md` §8 (bản trước 29/7)
 
 ## Bối cảnh
 
@@ -78,6 +78,6 @@ sách để LLM đánh số vào.
 - Static validator chuyển từ "kiểm chỉ số có thật" sang **kiểm quan hệ hình học**:
   chủ thể có bắt kịp ego không, trigger có bắn trước khi hết giờ không, sau khi
   tạt có thể va chạm không.
-- `docs/overview.html` bước 3–5 và `BATTLE_PLAN.md` §9 phải viết lại theo ADR này.
+- `docs/overview.html` bước 3–5 và `plan.md` §8 phải viết lại theo ADR này.
 - Câu trả lời mentor cho "hallucination xử lý sao?" đổi thành: **biểu diễn không
   có chỗ để bịa** — mạnh hơn "chúng em kiểm tra sau khi nó bịa".

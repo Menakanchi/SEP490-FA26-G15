@@ -15,13 +15,13 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | [ADR-004](ADR-004-deepeval-va-metric-retrieval-tu-implement.md) | DeepEval cho scenario; Recall/MRR/nDCG tự implement | Accepted |
 | [ADR-005](ADR-005-bo-isaac-sim-khoi-pham-vi.md) | Chỉ CARLA/ScenarioRunner; Isaac Sim ngoài phạm vi | Accepted |
 | [ADR-006](ADR-006-embeddings-openai-thay-vi-sentence-transformers.md) | OpenAI embeddings; không đưa torch vào image backend | Accepted |
-| ADR-007 | Vì sao workflow, không agent, không multi-agent | ⏳ W2 — khung lập luận ở `BATTLE_PLAN.md` §3 |
+| ADR-007 | Vì sao workflow, không agent, không multi-agent | ⏳ W2 — khung lập luận ở `plan.md` §3 |
 | ADR-008 | Model routing + lớp trừu tượng provider (LiteLLM) | ⏳ W4 |
 | ADR-009 | Chọn index Qdrant (HNSW vs exact) | ⏳ W3 — sau khi có số đo |
 | [ADR-010](ADR-010-vi-tri-tuong-doi-theo-lan-thay-vi-spawn-index.md) | Vị trí tương đối theo làn, không dùng `spawn_index` | Accepted — *thay thế thiết kế cũ ở overview.html* |
 
 ## Luật
 
-- **Quyết định không được chỉ tồn tại trong `BATTLE_PLAN.md`.** Bảng §2 ở đó chỉ giữ trạng thái + link về đây.
+- **Quyết định không được chỉ tồn tại trong `plan.md`.** Bảng §2 ở đó chỉ giữ trạng thái + link về đây.
 - ADR **không sửa** sau khi Accepted. Đổi ý thì viết ADR mới và đánh dấu cái cũ `Superseded by ADR-XXX`.
 - Chỗ nào quyết định phụ thuộc số đo chưa có, ghi rõ ô trống và ai đo — **không điền bằng phỏng đoán** (xem ADR-002).

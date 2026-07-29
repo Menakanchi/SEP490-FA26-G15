@@ -16,12 +16,12 @@ from src.models.schemas import (
     CriterionStatus,
     ExecutionResult,
     LibraryEntry,
+    ManeuverType,
     ODDCell,
     ODDQuery,
     ReviewDecision,
     RoadType,
     ScenarioSpec,
-    TimeOfDay,
     Weather,
 )
 
@@ -48,19 +48,24 @@ def test_execution_result_fixtures_valid(path: Path) -> None:
     ExecutionResult.model_validate(_load(path))
 
 
-def test_odd_matrix_is_240_cells() -> None:
-    """4 trục, 5 x 4 x 3 x 4. Đổi số này là đổi mẫu số của ODD coverage."""
-    assert len(RoadType) * len(Weather) * len(TimeOfDay) * len(ActorType) == 240
+def test_odd_matrix_is_560_cells() -> None:
+    """4 trục, 5 x 4 x 4 x 7. Đổi số này là đổi mẫu số của ODD coverage.
+
+    Trục thứ 4 là *tình huống*, không phải *thời điểm trong ngày* — đề bài đo
+    "độ đa dạng của các tình huống". Test này canh để không ai lặng lẽ đổi lại.
+    """
+    assert len(RoadType) * len(Weather) * len(ActorType) * len(ManeuverType) == 560
+    assert set(ODDCell.model_fields) == {"road_type", "weather", "actor_type", "maneuver"}
 
 
 def test_odd_key_is_stable() -> None:
     cell = ODDCell(
         road_type=RoadType.HIGHWAY,
         weather=Weather.CLEAR,
-        time_of_day=TimeOfDay.DAY,
         actor_type=ActorType.MOTORCYCLE,
+        maneuver=ManeuverType.CUT_IN,
     )
-    assert cell.key == "highway|clear|day|motorcycle"
+    assert cell.key == "highway|clear|motorcycle|cut_in"
 
 
 def test_ego_cannot_carry_maneuver() -> None:
@@ -269,7 +274,7 @@ def test_odd_query_filter_keys_match_cell_axes() -> None:
     full = ODDQuery(
         road_type=RoadType.HIGHWAY,
         weather=Weather.CLEAR,
-        time_of_day=TimeOfDay.DAY,
         actor_type=ActorType.MOTORCYCLE,
+        maneuver=ManeuverType.CUT_IN,
     )
     assert set(full.as_filter()) == set(ODDCell.model_fields)
