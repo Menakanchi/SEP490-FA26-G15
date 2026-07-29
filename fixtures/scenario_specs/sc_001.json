@@ -1,0 +1,36 @@
+{
+  "scenario_id": "sc_001",
+  "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
+  "description_vi": "Xe máy chạy 80 km/h ở làn bên trái, vượt lên từ phía sau ô tô đang chạy 60 km/h, tạt đầu rồi phanh gấp còn 40 km/h. Trời quang, ban ngày, cao tốc.",
+  "odd": {
+    "road_type": "highway",
+    "weather": "clear",
+    "time_of_day": "day",
+    "actor_type": "motorcycle"
+  },
+  "actors": [
+    {
+      "name": "hero",
+      "category": "car",
+      "position": { "lane_offset": 0, "s_offset_m": 0.0 },
+      "initial_speed_kmh": 60.0,
+      "is_ego": true
+    },
+    {
+      "name": "adversary",
+      "category": "motorcycle",
+      "position": { "lane_offset": -1, "s_offset_m": -25.0 },
+      "initial_speed_kmh": 80.0,
+      "is_ego": false
+    }
+  ],
+  "maneuvers": [
+    {
+      "actor_name": "adversary",
+      "maneuver": "cut_in",
+      "trigger": { "type": "simulation_time", "value": 7.0 },
+      "target_speed_kmh": 40.0
+    }
+  ],
+  "duration_s": 30.0
+}

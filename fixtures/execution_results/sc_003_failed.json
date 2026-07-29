@@ -1,0 +1,9 @@
+{
+  "_comment": "HỎNG THẬT. success=false là trường hợp DUY NHẤT bị trừ vào validity rate. Kịch bản không chạy nổi — sai XML, spawn point không hợp lệ, hoặc timeout. criteria_results rỗng vì ScenarioRunner chưa kịp chấm gì. Khi debug: đọc error, không đọc criteria.",
+  "scenario_id": "sc_003",
+  "xosc_path": "outputs/sc_003.xosc",
+  "success": false,
+  "criteria_results": [],
+  "metrics": {},
+  "error": "RuntimeError: Spawn failed because of collision at spawn position (adversary)"
+}

@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  sample_001_cut_in.xosc  —  VIẾT TAY, không do converter sinh ra.
+
+  Mục đích: cho Tuấn Anh chạy ScenarioRunner NGAY HÔM NAY, không cần chờ
+  LLM, converter hay backend. Nó trả lời câu hỏi rủi ro dài nhất của dự án
+  ("CARLA có chạy trên máy đó không?") bằng một file thay vì bằng 3 tuần.
+
+  Nó cũng là ĐÍCH của converter.py: bài test đầu tiên là
+      convert(fixtures/scenario_specs/sc_001.json) == file này (sau khi chuẩn hoá).
+
+  Kịch bản: xe máy 80 km/h ở làn bên trái, VƯỢT LÊN TỪ PHÍA SAU ô tô ego
+            (60 km/h), rồi TẠT ĐẦU. Tình huống phổ biến nhất ở Việt Nam.
+
+  Hình học phải đúng chiều, đây là chỗ dễ sai nhất:
+
+      t=0     [xe máy]                          xe máy ở làn trái, SAU ego 25m
+                  ...  [ego] ->
+      t=7s              [ego] ->    [xe máy]    đã vượt lên trước ~14m
+                                       |
+                                       v        tạt sang làn ego
+      t=9s              [ego] ->  [xe máy]      PHANH về 40 km/h
+      t~12s                  [ego][xe máy]      VA CHẠM
+
+  Hai lỗi hình học đã từng mắc ở chính file này, đừng lặp lại:
+
+    1. Đặt xe máy ở PHÍA TRƯỚC mà cho chạy nhanh hơn -> nó chạy xa dần,
+       trigger không bao giờ bắn.
+    2. Tạt đầu xong vẫn giữ tốc độ cao hơn ego -> khoảng cách nới rộng,
+       không thể có va chạm.
+
+  Cả hai đều cho ra success=true mà KHÔNG CÓ GÌ XẢY RA — loại hỏng tệ nhất
+  vì nó trông y hệt thành công. Xem fixtures/execution_results/sc_002.
+
+  Vì sao trigger dùng THỜI GIAN chứ không dùng khoảng cách: RelativeDistance
+  là độ lớn không dấu, nên "cách 15m" đúng cả khi xe máy còn ở phía sau —
+  nó sẽ tạt vào làn ego khi vẫn còn sau lưng, thành ra nhập làn chứ không
+  phải tạt đầu. Thời gian thì xác định, không nhập nhằng.
+
+  ============================ CẦN VERIFY ============================
+  Toạ độ trong <WorldPosition> của hero là GIÁ TRỊ TẠM. Nếu xe spawn trên
+  không hoặc ngoài đường, lấy toạ độ thật bằng:
+
+      python -c "
+      import carla
+      w = carla.Client('localhost', 2000).get_world()
+      for i, sp in enumerate(w.get_map().get_spawn_points()[:10]):
+          print(i, sp.location, sp.rotation)"
+
+  Chọn một điểm nằm trên đoạn cao tốc nhiều làn của Town04 rồi thay 4 số
+  x/y/z/h bên dưới. KHÔNG cần sửa gì khác — xe máy đặt theo vị trí TƯƠNG ĐỐI
+  so với hero (RelativeLanePosition) nên nó tự đi theo.
+  ====================================================================
+-->
+<OpenSCENARIO>
+
+  <FileHeader revMajor="1" revMinor="0"
+              date="2026-07-29T00:00:00"
+              description="RAV-03 Scenario Forge — fixture: xe máy tạt đầu"
+              author="Cong (viet tay lam fixture)"/>
+
+  <ParameterDeclarations>
+    <ParameterDeclaration name="EgoSpeed"        parameterType="double" value="16.7"/>
+    <ParameterDeclaration name="AdversarySpeed"  parameterType="double" value="22.2"/>
+    <ParameterDeclaration name="CutInTime"       parameterType="double" value="7.0"/>
+    <ParameterDeclaration name="BrakeTime"       parameterType="double" value="9.0"/>
+    <ParameterDeclaration name="AdversarySpeedAfter" parameterType="double" value="11.1"/>
+    <ParameterDeclaration name="Duration"        parameterType="double" value="30.0"/>
+  </ParameterDeclarations>
+
+  <CatalogLocations/>
+
+  <RoadNetwork>
+    <LogicFile filepath="Town04"/>
+    <SceneGraphFile filepath=""/>
+  </RoadNetwork>
+
+  <Entities>
+
+    <!-- Ego. ScenarioRunner nhận diện ego qua tên "hero" + Property type=ego_vehicle. -->
+    <ScenarioObject name="hero">
+      <Vehicle name="vehicle.tesla.model3" vehicleCategory="car">
+        <ParameterDeclarations/>
+        <Performance maxSpeed="69.444" maxAcceleration="200.0" maxDeceleration="10.0"/>
+        <BoundingBox>
+          <Center x="1.5" y="0.0" z="0.9"/>
+          <Dimensions width="2.1" length="4.5" height="1.8"/>
+        </BoundingBox>
+        <Axles>
+          <FrontAxle maxSteering="0.5" wheelDiameter="0.6" trackWidth="1.8" positionX="3.1" positionZ="0.3"/>
+          <RearAxle  maxSteering="0.0" wheelDiameter="0.6" trackWidth="1.8" positionX="0.0" positionZ="0.3"/>
+        </Axles>
+        <Properties>
+          <Property name="type" value="ego_vehicle"/>
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+
+    <!-- Chủ thể gây tình huống. -->
+    <ScenarioObject name="adversary">
+      <Vehicle name="vehicle.yamaha.yzf" vehicleCategory="motorbike">
+        <ParameterDeclarations/>
+        <Performance maxSpeed="69.444" maxAcceleration="200.0" maxDeceleration="10.0"/>
+        <BoundingBox>
+          <Center x="0.5" y="0.0" z="0.6"/>
+          <Dimensions width="0.8" length="2.2" height="1.3"/>
+        </BoundingBox>
+        <Axles>
+          <FrontAxle maxSteering="0.7" wheelDiameter="0.6" trackWidth="0.4" positionX="1.4" positionZ="0.3"/>
+          <RearAxle  maxSteering="0.0" wheelDiameter="0.6" trackWidth="0.4" positionX="0.0" positionZ="0.3"/>
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation"/>
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+
+  </Entities>
+
+  <Storyboard>
+
+    <Init>
+      <Actions>
+
+        <GlobalAction>
+          <EnvironmentAction>
+            <Environment name="clear_day">
+              <TimeOfDay animation="false" dateTime="2026-07-29T12:00:00"/>
+              <Weather cloudState="free">
+                <Sun intensity="0.85" azimuth="0.0" elevation="1.31"/>
+                <Fog visualRange="100000.0"/>
+                <Precipitation precipitationType="dry" intensity="0.0"/>
+              </Weather>
+              <RoadCondition frictionScaleFactor="1.0"/>
+            </Environment>
+          </EnvironmentAction>
+        </GlobalAction>
+
+        <!-- ===== ego ===== -->
+        <Private entityRef="hero">
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <!-- CẦN VERIFY: 4 số dưới đây. Xem khối chú thích đầu file. -->
+                <WorldPosition x="-14.5" y="-230.0" z="0.3" h="1.5708"/>
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="$EgoSpeed"/>
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+
+        <!-- ===== xe máy: làn bên trái, PHÍA SAU ego 25m ===== -->
+        <Private entityRef="adversary">
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <RelativeLanePosition entityRef="hero" dLane="-1" ds="-25.0" offset="0.0"/>
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="$AdversarySpeed"/>
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+
+      </Actions>
+    </Init>
+
+    <Story name="story_cut_in">
+      <Act name="act_cut_in">
+
+        <ManeuverGroup maximumExecutionCount="1" name="mg_adversary">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="adversary"/>
+          </Actors>
+
+          <Maneuver name="maneuver_cut_in">
+            <Event name="event_cut_in" priority="overwrite">
+
+              <Action name="action_lane_change">
+                <PrivateAction>
+                  <LateralAction>
+                    <LaneChangeAction>
+                      <LaneChangeActionDynamics dynamicsShape="sinusoidal"
+                                                value="1.5"
+                                                dynamicsDimension="time"/>
+                      <LaneChangeTarget>
+                        <!-- tạt sang đúng làn của ego -->
+                        <RelativeTargetLane entityRef="hero" value="0"/>
+                      </LaneChangeTarget>
+                    </LaneChangeAction>
+                  </LateralAction>
+                </PrivateAction>
+              </Action>
+
+              <!-- Bắn ở giây thứ 7: lúc đó xe máy đã vượt lên trước ego ~14m.
+                   (chênh tốc 20 km/h = 5.56 m/s; 7s x 5.56 = 38.9m; 38.9 - 25 = 13.9m) -->
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="cond_overtaken" delay="0" conditionEdge="rising">
+                    <ByValueCondition>
+                      <SimulationTimeCondition value="$CutInTime" rule="greaterThan"/>
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+
+            </Event>
+
+            <!-- ============================================================
+                 Tạt đầu xong PHẢI GIẢM TỐC, nếu không thì không có va chạm.
+
+                 Xe máy đang nhanh hơn ego 20 km/h. Tạt vào làn rồi cứ giữ tốc
+                 độ đó thì nó chạy xa dần — kịch bản "thành công" mà không có
+                 gì nguy hiểm xảy ra. Đúng cái bẫy sc_002 mô tả.
+
+                 Phanh về 40 km/h ở giây thứ 9 (lúc đó cách ego ~17m): ego 60
+                 đuổi xe máy 40, khép 5.56 m/s, va chạm quanh giây 12.
+                 ============================================================ -->
+            <Event name="event_brake_after_cut_in" priority="overwrite">
+
+              <Action name="action_slow_down">
+                <PrivateAction>
+                  <LongitudinalAction>
+                    <SpeedAction>
+                      <SpeedActionDynamics dynamicsShape="linear" value="4.0" dynamicsDimension="rate"/>
+                      <SpeedActionTarget>
+                        <AbsoluteTargetSpeed value="$AdversarySpeedAfter"/>
+                      </SpeedActionTarget>
+                    </SpeedAction>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="cond_after_cut_in" delay="0" conditionEdge="rising">
+                    <ByValueCondition>
+                      <SimulationTimeCondition value="$BrakeTime" rule="greaterThan"/>
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+
+        <StartTrigger>
+          <ConditionGroup>
+            <Condition name="act_start" delay="0" conditionEdge="rising">
+              <ByValueCondition>
+                <SimulationTimeCondition value="0.0" rule="greaterThan"/>
+              </ByValueCondition>
+            </Condition>
+          </ConditionGroup>
+        </StartTrigger>
+
+        <!-- Hết giờ thì dừng Act. Không có điều kiện dừng thì chạy mãi. -->
+        <StopTrigger>
+          <ConditionGroup>
+            <Condition name="cond_timeout" delay="0" conditionEdge="rising">
+              <ByValueCondition>
+                <SimulationTimeCondition value="$Duration" rule="greaterThan"/>
+              </ByValueCondition>
+            </Condition>
+          </ConditionGroup>
+        </StopTrigger>
+
+      </Act>
+    </Story>
+
+    <!-- ================================================================
+         TIÊU CHÍ CHẤM — đây là chỗ ScenarioRunner đọc để sinh criteria.
+
+         ScenarioRunner CHỈ tạo test criterion từ các Condition trong
+         StopTrigger của Storyboard mà TÊN BẮT ĐẦU BẰNG "criteria_".
+         Thiếu khối này thì file vẫn chạy, vẫn ra JSON, nhưng phần
+         criteria RỖNG — không bao giờ có CollisionTest, và
+         ExecutionResult.had_collision luôn False.
+
+         Nói cách khác: thiếu chỗ này thì cả hạng mục "Săn lỗi xe tự hành"
+         không đo được gì, dù mọi thứ trông như chạy đúng.
+
+         Tên sau "criteria_" phải khớp tên lớp criterion của ScenarioRunner.
+         Nếu lần chạy đầu báo lỗi không nhận ra tên, đối chiếu với các file
+         mẫu trong srunner/examples/ rồi sửa cho khớp.
+         ================================================================ -->
+    <StopTrigger>
+      <ConditionGroup>
+
+        <Condition name="criteria_CollisionTest" delay="0" conditionEdge="rising">
+          <ByValueCondition>
+            <ParameterCondition parameterRef="" value="" rule="lessThan"/>
+          </ByValueCondition>
+        </Condition>
+
+        <Condition name="criteria_DrivenDistanceTest" delay="0" conditionEdge="rising">
+          <ByValueCondition>
+            <ParameterCondition parameterRef="distance_success" value="50" rule="lessThan"/>
+          </ByValueCondition>
+        </Condition>
+
+        <Condition name="criteria_MaxVelocityTest" delay="0" conditionEdge="rising">
+          <ByValueCondition>
+            <ParameterCondition parameterRef="max_velocity_allowed" value="30" rule="lessThan"/>
+          </ByValueCondition>
+        </Condition>
+
+      </ConditionGroup>
+    </StopTrigger>
+
+  </Storyboard>
+
+</OpenSCENARIO>

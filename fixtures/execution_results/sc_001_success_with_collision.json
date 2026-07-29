@@ -1,0 +1,13 @@
+{
+  "_comment": "KẾT QUẢ LÝ TƯỞNG của Forge: chạy trót lọt VÀ dựng được va chạm. success=true nghĩa là ScenarioRunner chạy hết không crash. CollisionTest=FAILURE nghĩa là ego đã va chạm — đó là ĐIỀU TA MUỐN, vì Forge sinh kịch bản nguy hiểm. Đây là entry được tính vào adversarial_found.",
+  "scenario_id": "sc_001",
+  "xosc_path": "outputs/sc_001.xosc",
+  "success": true,
+  "criteria_results": [
+    { "name": "CollisionTest", "result": "FAILURE", "actual": "collision with adversary at tick 245" },
+    { "name": "DrivenDistanceTest", "result": "SUCCESS", "actual": "148.3m" },
+    { "name": "MaxVelocityTest", "result": "SUCCESS", "actual": "61.2 km/h" }
+  ],
+  "metrics": { "total_ticks": 600.0, "duration_s": 30.0 },
+  "error": null
+}

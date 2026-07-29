@@ -1,0 +1,60 @@
+# ADR-002: Hai môi trường Python tách rời — `src/` 3.11, `worker/` theo ràng buộc của wheel CARLA
+
+**Ngày:** 2026-07-28
+**Trạng thái:** Accepted — *con số version chờ đo, xem mục "Số liệu cần điền"*
+
+## Bối cảnh
+
+Template của chương trình dựng trên **Python 3.11** (Dockerfile, CI, `scripts/setup.sh`). Đổi template sang version cũ hơn nghĩa là mất tương thích với CI có sẵn và với phần lớn thư viện hiện đại (LangGraph, pydantic v2).
+
+Gói `carla` phân phối dưới dạng **pre-built wheel** biên dịch cho một số version Python cố định — bản 0.9.15 nhắm 3.7/3.8. ScenarioRunner tự nó chỉ cần ≥3.8, nhưng nó `import carla`, nên **nút thắt thật sự là wheel CARLA**, không phải ScenarioRunner.
+
+Không thể có một venv duy nhất vừa chạy được template 3.11 vừa `import carla`.
+
+## Các lựa chọn
+
+### Lựa chọn 1: Hạ toàn bộ dự án xuống version của wheel CARLA
+- Ưu: một venv duy nhất, không có ranh giới nào phải quản lý.
+- Nhược: phải sửa Dockerfile/CI của template; nhiều thư viện AI hiện đại không hỗ trợ; kéo cả 3 người không liên quan tới CARLA vào ràng buộc của CARLA.
+
+### Lựa chọn 2: Tự build `carla` từ nguồn cho Python 3.11
+- Ưu: giữ được một venv.
+- Nhược: build CARLA từ nguồn mất nhiều giờ đến nhiều ngày, dễ hỏng, và người thực hiện là thành viên yếu nhất về kỹ thuật. Rủi ro không tương xứng.
+
+### Lựa chọn 3: Hai venv tách rời, giao tiếp qua HTTP
+- Ưu: `src/` giữ nguyên 3.11 theo template; ràng buộc CARLA bị nhốt trong `worker/`; ranh giới trùng luôn với ranh giới GPU của ADR-001.
+- Nhược: hai file requirements; không share code Python trực tiếp giữa hai bên.
+
+## Quyết định
+
+**Lựa chọn 3.**
+
+- `src/` = **Python 3.11**, `requirements.txt`.
+- `worker/` = **venv riêng**, version theo đúng ràng buộc của wheel CARLA được chọn, `requirements-worker.txt`.
+- Một venv duy nhất dùng chung cho cả CARLA và ScenarioRunner (chúng cùng ràng buộc).
+- `src/` **không bao giờ** `import carla`. `worker/` **không bao giờ** được `src/` import.
+- Giao tiếp duy nhất là HTTP job queue của ADR-001, payload là `xosc_content` (chuỗi XML) — worker không cần biết `ScenarioSpec`.
+
+## Lý do
+
+1. Ràng buộc version là **đặc tính của CARLA**, không phải của dự án. Nhốt nó vào đúng module cần nó là cách cô lập rẻ nhất.
+2. Ba trong bốn thành viên không đụng CARLA. Không có lý do gì bắt họ chịu ràng buộc đó.
+3. Quyết định này **không phụ thuộc vào con số thật là 3.7 hay 3.8** — kiến trúc đúng ở cả hai trường hợp. Nên chốt được ngay, không phải chờ đo.
+4. Payload là XML string chứ không phải object Python ⇒ không cần chia sẻ schema giữa hai venv ⇒ không có nguy cơ lệch version pydantic giữa hai bên.
+
+## Số liệu cần điền
+
+| Cần đo | Ai | Khi nào | Kết quả |
+|---|---|---|---|
+| Version thật của wheel `carla` được chọn | Tuấn Anh | T3 28/7 | *(chưa đo)* |
+| Version Python của venv `worker/` | Tuấn Anh | T3 28/7 | *(chưa đo)* |
+| VRAM tiêu thụ khi chạy Town01, quality Low, 720p | Tuấn Anh | T3 28/7 | *(chưa đo)* |
+
+**Không điền bằng phỏng đoán.** Nếu con số khác dự kiến, quyết định kiến trúc ở trên vẫn giữ nguyên — chỉ đổi số trong `requirements-worker.txt`.
+
+## Hệ quả
+
+- Hai file requirements, hai lệnh cài đặt, hai lần dựng môi trường. Ghi rõ trong `worker/README.md`.
+- Không thể share helper Python giữa `src/` và `worker/`. Nếu có logic dùng chung, chép lại — chép 20 dòng rẻ hơn dựng package chung cho hai runtime.
+- `converter.py` **phải** nằm ở `src/` (Python 3.11) chứ không phải `worker/`, vì nó thuần `xml.etree` và không cần CARLA. Xem `BATTLE_PLAN.md` §2 mục Converter.
+- CI chỉ chạy test cho `src/`. Test của `worker/` chạy tay trên máy có CARLA và ghi kết quả vào `eval/results/`.
