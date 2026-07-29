@@ -1,0 +1,13 @@
+{
+  "_comment": "CHẠY ĐƯỢC NHƯNG VÔ DỤNG. success=true nên nó VẪN tính vào validity rate. Nhưng không có va chạm nghĩa là kịch bản không dựng lại được tình huống nguy hiểm mà câu tiếng Việt mô tả — có thể trigger bắn quá sớm, hoặc khoảng cách quá xa. Đây KHÔNG tính vào adversarial_found.",
+  "scenario_id": "sc_002",
+  "xosc_path": "outputs/sc_002.xosc",
+  "success": true,
+  "criteria_results": [
+    { "name": "CollisionTest", "result": "SUCCESS", "actual": "no collision" },
+    { "name": "DrivenDistanceTest", "result": "SUCCESS", "actual": "152.0m" },
+    { "name": "MaxVelocityTest", "result": "SUCCESS", "actual": "60.4 km/h" }
+  ],
+  "metrics": { "total_ticks": 600.0, "duration_s": 30.0 },
+  "error": null
+}
