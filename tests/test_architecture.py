@@ -1,0 +1,100 @@
+"""Bất biến kiến trúc, ép bằng CI thay vì bằng luật trong tài liệu.
+
+Đây là chỗ để **luật không phụ thuộc vào việc ai nhớ nó**. Một dòng trong
+`plan.md` viết *"không được import cái này"* chỉ có tác dụng tới lúc người đọc nó
+đi ngủ; một test đỏ thì chặn merge.
+
+Phân biệt rõ với `docs/plan.md` §6: §6 nói **ai đang làm gì** — mềm, đổi được
+bất cứ lúc nào. File này nói **cái gì không được phép xảy ra** — cứng, và mỗi
+dòng đều trỏ về một ADR. Đổi luật ở đây thì phải đổi ADR trước.
+"""
+
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+import pytest
+
+SRC = Path(__file__).parent.parent / "src"
+
+
+def _imports(path: Path) -> set[str]:
+    """Tên module được import trong một file. Dùng AST, không grep.
+
+    Grep sẽ dính cả chữ ``carla`` trong comment và trong docstring — mà file
+    ``schemas.py`` nói về CARLA suốt. Chỉ ``import`` thật mới tính.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(a.name for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names.add(node.module)
+    return names
+
+
+def _py_files(*parts: str) -> list[Path]:
+    root = SRC.joinpath(*parts)
+    return sorted(p for p in root.rglob("*.py") if "__pycache__" not in p.parts) if root.exists() else []
+
+
+@pytest.mark.parametrize("path", _py_files(), ids=lambda p: str(p.relative_to(SRC)))
+def test_src_never_imports_carla(path: Path) -> None:
+    """ADR-001. Vi phạm = backend không deploy được = mất Deliverable #5.
+
+    Hỏng theo kiểu tệ nhất: máy dev có CARLA nên chạy ngon, chỉ chết trên Render
+    — nơi không ai nhìn cho tới lúc demo.
+    """
+    offenders = {m for m in _imports(path) if m == "carla" or m.startswith("carla.")}
+    assert not offenders, f"{path.relative_to(SRC)} import {offenders} — ADR-001 cấm, CARLA chỉ ở worker/"
+
+
+@pytest.mark.parametrize("path", _py_files("api"), ids=lambda p: str(p.relative_to(SRC)))
+def test_http_layer_does_not_talk_to_the_vector_store(path: Path) -> None:
+    """Router là **lớp HTTP**, logic tìm kiếm nằm ở ``services/library/``.
+
+    Hai thứ cùng tên "library" rất dễ lẫn. Nếu router tự gọi Qdrant thì cách tìm
+    kiếm bị nhân đôi ở hai chỗ, và người đổi thuật toán retrieval sẽ sửa một chỗ
+    rồi tưởng xong.
+    """
+    offenders = {m for m in _imports(path) if m.startswith("qdrant")}
+    assert not offenders, (
+        f"{path.relative_to(SRC)} import {offenders} — gọi hàm trong services/library/ thay vì tự query"
+    )
+
+
+def test_only_three_nodes_are_allowed_to_call_an_llm() -> None:
+    """`plan.md` §3 + ADR-007: đúng 3 node gọi LLM, phần còn lại là code thuần.
+
+    Đây là bằng chứng PLO1/PLO2 **kiểm được bằng máy**, không phải một câu
+    khẳng định trong slide. Node thứ tư lặng lẽ gọi LLM là trần chi phí và trần
+    p95 latency mất hiệu lực mà không ai thấy.
+
+    Hôm nay `nodes/` mới có node mẫu của template nên test chạy rỗng — nó bắt
+    đầu canh từ lúc node thật đầu tiên xuất hiện.
+    """
+    allowed = {"parse_intent", "generate_draft", "repair_draft"}
+    guilty = {
+        p.stem
+        for p in _py_files("agents", "nodes")
+        if p.stem not in {"__init__", "example_node"} and any(m.endswith("services.llm") for m in _imports(p))
+    }
+    assert guilty <= allowed, f"node không được gọi LLM: {sorted(guilty - allowed)} — xem plan.md §3"
+
+
+def test_nothing_imports_the_llm_provider_directly() -> None:
+    """`plan.md` §4: mọi lệnh gọi LLM đi qua ``src/services/llm.py``.
+
+    Đó là thứ làm *"đổi provider = đổi một biến môi trường"* thành câu nói thật
+    — và là plan B khi hết quota giữa tuần demo (`plan.md` §10).
+    """
+    banned = ("openai", "anthropic", "litellm", "google.generativeai")
+    offenders = {
+        str(p.relative_to(SRC)): sorted(m for m in _imports(p) if m.split(".")[0] in {b.split(".")[0] for b in banned})
+        for p in _py_files()
+        if p != SRC / "services" / "llm.py"
+    }
+    offenders = {k: v for k, v in offenders.items() if v}
+    assert not offenders, f"gọi provider thẳng: {offenders} — phải đi qua services/llm.py"
