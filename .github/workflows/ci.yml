@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: ['**']   # stacked PR cũng phải qua CI, không chỉ PR nhắm vào main
 
 jobs:
   lint-and-test:
@@ -25,8 +25,13 @@ jobs:
       - name: Lint with ruff
         run: ruff check src/ tests/
 
+      - name: Check formatting
+        run: ruff format --check src/ tests/
+
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        run: >-
+          pytest tests/ -v --tb=short
+          --cov=src --cov-report=term-missing --cov-fail-under=60
         env:
           APP_ENV: test
           OPENAI_API_KEY: test-key
