@@ -6,12 +6,14 @@ Bốn người làm bốn nhánh khác nhau đều đọc file này thay vì đo
 Luồng:
 
     câu tiếng Việt
-        -> ScenarioSpec      (LLM sinh, Pydantic ép kiểu)
+        -> ODDQuery          (parse_intent, LLM — chỉ nhãn người dùng nói ra)
+        -> ScenarioDraft     (generate_draft, LLM sinh — KHÔNG có scenario_id)
+        -> ScenarioSpec      (backend promote: cấp id + copy câu gốc)
         -> .xosc             (converter.py, code thuần, KHÔNG có LLM)
         -> ExecutionResult   (worker GPU chạy ScenarioRunner)
         -> LibraryEntry      (vào Qdrant, quay lại làm few-shot)
 
-Hai ranh giới cứng, đọc kỹ trước khi thêm trường:
+Ba ranh giới cứng, đọc kỹ trước khi thêm trường:
 
 1. ``ScenarioSpec`` phải **độc lập simulator** (ADR-005). Không được có
    blueprint CARLA, không được có tên map CARLA, không được có toạ độ theo
@@ -22,15 +24,21 @@ Hai ranh giới cứng, đọc kỹ trước khi thêm trường:
 2. ``src/`` **không bao giờ** ``import carla`` (ADR-001). Thứ đi qua ranh giới
    máy là chuỗi XML trong ``ScenarioJob.xosc_content``, không phải object Python.
    Hai venv khác version không chia sẻ object được.
+
+3. **LLM sinh ``ScenarioDraft``, không sinh ``ScenarioSpec``.** ``scenario_id``
+   và ``description_vi`` là của backend: id để tránh trùng giữa các request,
+   câu gốc để retrieval eval và DeepEval còn so lại được với thứ người dùng
+   thật sự gõ. Đưa hai trường đó vào output của LLM là mời nó đặt trùng id
+   (few-shot có ``sc_001`` thì nó trả ``sc_001``) và paraphrase câu gốc.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import ClassVar, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 
 class ForgeModel(BaseModel):
@@ -52,7 +60,7 @@ class ForgeModel(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Trục ODD — 5 x 4 x 3 x 4 = 240 ô (hạng mục nâng cao "Phủ ODD")
+# Trục ODD — 5 x 4 x 4 x 7 = 560 ô (hạng mục nâng cao "Phủ ODD")
 # ---------------------------------------------------------------------------
 
 
@@ -130,6 +138,9 @@ class ODDCell(ForgeModel):
     Dùng **trọn** ``ManeuverType`` chứ không phải một tập con: một danh sách con
     riêng cho ODD sẽ thành nguồn sự thật thứ hai, và sẽ lệch khỏi enum ngay lần
     đầu ai đó thêm hành vi mới.
+
+    Đếm coverage thì gom theo ``key`` (chuỗi, hashable) chứ đừng gom theo chính
+    object — đó là lý do ``key`` tồn tại.
     """
 
     road_type: RoadType
@@ -159,8 +170,103 @@ class ODDCell(ForgeModel):
         )
 
 
+class SupportPolicy(ForgeModel):
+    """Tổ hợp ODD nào converter dựng được. **Mẫu số của ODD coverage.**
+
+    560 là số tổ hợp enum, **không** phải số ô có thể phủ. Nếu catalog template
+    không dựng được ``(roundabout, pedestrian, run_red_light)`` thì ô đó không
+    phải "chưa phủ" mà là "không bao giờ phủ được" — báo cáo ``x/560`` lúc đó
+    trông như thất bại trong khi thực chất là quyết định thu hẹp phạm vi có
+    chủ đích (`plan.md` §10: *"ODD matrix đóng khung đúng bằng danh sách đó"*).
+
+    Nên báo cáo **hai** số, không phải một::
+
+        Phạm vi hỗ trợ: 240 / 560 tổ hợp enum
+        Đã phủ:         168 / 240 ô hỗ trợ = 70%
+
+    ``unsupported`` là tập **loại trừ** chứ không phải tập cho phép: mặc định
+    mọi thứ được hỗ trợ, ai thu hẹp thì phải viết ra. Ngược lại (whitelist) thì
+    thêm một ``ManeuverType`` mới sẽ **im lặng** rơi khỏi phạm vi.
+
+    ⚠ Nội dung thật của mask do Tuấn Anh chốt **cuối W3**, sau khi viết
+    ``converter.py`` — `plan.md` §10. Tới lúc đó ``DEFAULT_SUPPORT_POLICY``
+    để rỗng, nghĩa là mẫu số vẫn bằng 560 và không có gì đổi hành vi hôm nay.
+    """
+
+    unsupported: frozenset[tuple[RoadType, ActorType, ManeuverType]] = frozenset()
+
+    def supports(self, road_type: RoadType, actor_type: ActorType, maneuver: ManeuverType) -> bool:
+        return (road_type, actor_type, maneuver) not in self.unsupported
+
+    def supported_cells(self) -> list[ODDCell]:
+        """**Liệt kê** ô khả thi, không tính bằng công thức đóng.
+
+        Công thức kiểu ``5 * 4 * 4 * |maneuver|`` chỉ đúng khi mọi ``road_type``
+        hỗ trợ đúng cùng một số maneuver. Ngay lần đầu ai đó loại
+        ``(roundabout, *, run_red_light)`` mà không loại nó ở ``highway`` thì
+        công thức sai và **không ai biết** — mẫu số lệch âm thầm. Liệt kê thì
+        không vỡ, kể cả khi mask sau này phụ thuộc cả ``actor_type``
+        (``pedestrian`` + ``cut_in`` chẳng hạn).
+        """
+        return [
+            ODDCell(road_type=road, weather=weather, actor_type=actor, maneuver=maneuver)
+            for road in RoadType
+            for weather in Weather
+            for actor in ActorType
+            for maneuver in ManeuverType
+            if self.supports(road, actor, maneuver)
+        ]
+
+    def denominator(self) -> int:
+        """Mẫu số của ``ODD coverage``. Dùng cái này, đừng hard-code 560."""
+        return len(self.supported_cells())
+
+
+DEFAULT_SUPPORT_POLICY = SupportPolicy()
+"""Chưa thu hẹp gì — mẫu số = 560. Tuấn Anh điền ``unsupported`` cuối W3."""
+
+
+class AssumptionSource(StrEnum):
+    """Vì sao một trục ODD có giá trị mà người dùng không gõ ra.
+
+    Hai nguồn, độ tin cậy khác hẳn nhau — reviewer ở cổng 1 cần biết cái nào
+    đáng nghi hơn:
+
+    - ``inferred`` — ``parse_intent`` đọc câu mà suy ra. *"người băng qua đường"*
+      -> ``pedestrian`` + ``jaywalk``. Thường đúng, nhưng vẫn là suy luận.
+    - ``default`` — code điền theo quy ước, câu không hề nhắc tới.
+
+    **Không** có ``explicit``: trục người dùng nói thẳng thì *không sinh
+    Assumption nào*. Vắng mặt chính là dấu hiệu, và một trạng thái không ai sinh
+    ra sẽ chỉ làm nhánh xử lý chết trong UI.
+    """
+
+    INFERRED = "inferred"
+    DEFAULT = "default"
+
+
+class Assumption(ForgeModel):
+    """Một giá trị hệ thống tự điền thay người dùng.
+
+    **Không** nằm trong ``ScenarioSpec``: đây là metadata của *lần sinh này*,
+    không phải thuộc tính của kịch bản. Spec đi vào ``LibraryEntry`` rồi quay
+    lại làm few-shot — nhét assumption vào đó là dạy LLM rằng "trời quang" là
+    một phần của câu hỏi. Chỗ ở đúng: ``ForgeState`` và một cột JSONB trong DB,
+    hiển thị cho reviewer ở cổng 1.
+    """
+
+    field: str = Field(..., examples=["weather"])
+    value: str = Field(..., examples=["clear"])
+    source: AssumptionSource
+    reason_vi: str = Field("", max_length=200)
+
+
+ODDAxis = Literal["road_type", "weather", "actor_type", "maneuver"]
+"""Tên bốn trục ODD. Là ``Literal`` để lọt được vào strict structured output."""
+
+
 class ODDQuery(ForgeModel):
-    """Nhãn ODD rút ra từ câu tiếng Việt. **Đầu ra của node `plan`.**
+    """Nhãn ODD rút ra từ câu tiếng Việt. **Đầu ra của node `parse_intent`.**
 
     Khác ``ODDCell`` ở chỗ **mọi trục đều có thể để trống**: câu *"xe máy tạt đầu
     lúc mưa"* chỉ nói được 2/4 trục. Lọc theo trục người dùng không hề nhắc tới là
@@ -170,22 +276,141 @@ class ODDQuery(ForgeModel):
     nhãn để lọc, mà nhãn chính là thứ node này sinh ra. Đây cũng là lý do ADR-003
     chọn Qdrant — *vector search kết hợp payload filter*. Bỏ bước này thì phần
     "kết hợp" biến mất và ADR-003 mất một nửa lý do tồn tại.
+
+    **Đây là output DUY NHẤT của ``parse_intent``.** Generation cần đủ 4 trục
+    (``ODDCell`` không cho trục nào rỗng) nhưng phần thiếu được điền bằng
+    ``with_defaults()`` — một hàm thuần, test được bằng bảng tham số. Để LLM trả
+    về hai phiên bản sự thật (một cho filter, một cho generation) là tự tạo ra
+    một lớp bug không debug được: cùng một câu, retrieval hiểu một kiểu,
+    generation hiểu kiểu khác, và không có gì trong log nói cho biết vì sao.
+
+    ``inferred`` là **provenance từng trục**, không phải một giá trị thứ hai:
+    nó chỉ nói *trục nào là suy luận chứ không phải người dùng gõ ra*. Thiếu nó
+    thì một suy luận sai vừa lọc hẹp retrieval vừa **không hiện ra ở cổng 1** —
+    reviewer không có cách nào biết "trời mưa" là do họ nói hay do máy đoán.
     """
+
+    AXES: ClassVar[tuple[ODDAxis, ...]] = get_args(ODDAxis)
 
     road_type: RoadType | None = None
     weather: Weather | None = None
     actor_type: ActorType | None = None
     maneuver: ManeuverType | None = None
 
+    inferred: list[ODDAxis] = Field(
+        default_factory=list,
+        description="Trục do parse_intent SUY RA, không phải người dùng gõ ra",
+    )
+    """``list[Literal]`` chứ **không** phải ``set[str]``, dù ngữ nghĩa là tập hợp chuỗi.
+
+    ``Literal`` vì đây là schema gửi cho model: bốn tên trục thành enum trong JSON
+    Schema, nên model **không sinh nổi** ``"time_of_day"``. Chặn ngay lúc sinh rẻ
+    hơn hẳn bắt lúc validate — bắt lúc validate nghĩa là request đã tốn tiền rồi
+    mới hỏng, và hỏng ở dạng khó sửa bằng repair vì nó là lỗi tên trường.
+
+    ``list`` chứ không phải ``set``: Pydantic sinh ``uniqueItems: true`` cho set,
+    mà strict structured output không hỗ trợ từ khoá đó — request bị từ chối
+    **trước khi model chạy**, tức `parse_intent` chết ngay dòng đầu tiên. Tính duy
+    nhất ép ở validator, chỗ nó không phải chui vào JSON Schema.
+    """
+
+    @model_validator(mode="after")
+    def _inferred_must_point_at_filled_axes(self) -> ODDQuery:
+        """Đánh dấu suy luận cho một trục rỗng là nói dối về nguồn gốc dữ liệu.
+
+        Không cần kiểm "tên trục có tồn tại không" — ``ODDAxis`` là ``Literal``
+        nên Pydantic đã chặn từ trước, và chặn ngay trong JSON Schema gửi cho model.
+        """
+        if empty := sorted(a for a in self.inferred if getattr(self, a) is None):
+            raise ValueError(f"inferred đánh dấu trục đang rỗng: {empty}")
+        # Khử trùng + thứ tự ổn định: log và snapshot test không được đổi theo
+        # thứ tự model tình cờ liệt kê ra.
+        object.__setattr__(self, "inferred", [a for a in self.AXES if a in set(self.inferred)])
+        return self
+
     def as_filter(self) -> dict[str, str]:
-        """Payload filter cho Qdrant — **chỉ gồm trục thật sự được nói ra**."""
-        pairs = (
-            ("road_type", self.road_type),
-            ("weather", self.weather),
-            ("actor_type", self.actor_type),
-            ("maneuver", self.maneuver),
+        """Payload filter cho Qdrant — **chỉ gồm trục có giá trị**.
+
+        Trục ``inferred`` **vẫn được lọc**. *"người băng qua đường"* suy ra
+        ``pedestrian`` là gần như chắc chắn, và bỏ nó khỏi filter thì mất đúng
+        cái lợi mà ADR-003 mua Qdrant về để có. Cái giá phải trả — suy luận sai
+        thì lọc hẹp sai — được xử ở tầng retrieval: kết quả sau filter ít hơn
+        ``k`` thì tìm lại lần nữa **bỏ các trục ``inferred``**. Đó là việc của
+        ``services/library/search.py``, không phải của hợp đồng này.
+        """
+        return {a: v.value for a in self.AXES if (v := getattr(self, a)) is not None}
+
+    def missing_required_axes(self) -> list[str]:
+        """Trục **không được phép** điền default. Rỗng thì mới sinh được.
+
+        ``actor_type`` và ``maneuver`` **là nội dung** của kịch bản, không phải
+        bối cảnh. Điền đại ``maneuver=cut_in`` cho câu *"tình huống nguy hiểm ở
+        ngã tư"* là tự bịa ra yêu cầu của người dùng — và nó làm hỏng đúng
+        ``Danger trigger rate`` (`plan.md` §9), thước đo hỏi *"gõ 'xe máy tạt
+        đầu' thì trigger tạt đầu có bắn không"*. Nếu maneuver do code chọn thì
+        metric đó đang đo code chứ không đo hệ thống.
+
+        Thiếu thì trả ``422 NEED_MORE_DETAIL`` kèm gợi ý tương thích — rẻ hơn
+        một vòng hội thoại, và không im lặng bịa.
+        """
+        return [name for name in ("actor_type", "maneuver") if getattr(self, name) is None]
+
+    def with_defaults(self, policy: SupportPolicy | None = None) -> tuple[ODDCell, list[Assumption]]:
+        """Điền nốt các trục **bối cảnh** bằng code thuần. Không gọi LLM.
+
+        Chỉ ``road_type`` và ``weather`` — đoán sai bối cảnh cho ra kịch bản
+        *vẫn dùng được, chỉ không đúng ý*, reviewer sửa được ở cổng 1 nên giá
+        của sai lầm thấp. (``time_of_day`` không phải trục ODD; nó có default
+        riêng ngay trong ``ScenarioSpec``.)
+
+        Default **phải hỏi ``policy``**, không được chọn cứng. Câu *"xe máy tạt
+        đầu"* không nói loại đường; điền cứng ``urban_straight`` trong khi
+        catalog chỉ dựng được ``cut_in`` trên ``highway`` sẽ cho ra ``422
+        UNSUPPORTED_COMBINATION`` — từ chối một yêu cầu vốn có lời giải hợp lệ,
+        chỉ vì code tự chọn sai chỗ trống. Ưu tiên ``urban_straight``, không
+        được thì lấy loại đường đầu tiên mà policy chấp nhận.
+
+        Gọi ``missing_required_axes()`` trước; hàm này không tự quyết thay bạn.
+        Không tổ hợp nào hợp lệ thì hàm vẫn trả về ô ưu tiên — việc từ chối là
+        của precheck, để chỉ có **một** chỗ trong hệ thống nói câu "không hỗ trợ".
+        """
+        if missing := self.missing_required_axes():
+            raise ValueError(f"không được điền default cho trục nội dung: {missing}")
+        assert self.actor_type is not None and self.maneuver is not None  # missing_required_axes()
+
+        policy = policy or DEFAULT_SUPPORT_POLICY
+        assumptions: list[Assumption] = []
+
+        def _note(field: str, value: StrEnum, source: AssumptionSource, reason: str) -> None:
+            assumptions.append(Assumption(field=field, value=value.value, source=source, reason_vi=reason))
+
+        # Trục do parse_intent suy ra: giá trị đã có sẵn, nhưng reviewer phải
+        # thấy được rằng nó là suy luận chứ không phải lời người dùng.
+        for axis in self.AXES:
+            if axis in self.inferred:
+                _note(axis, getattr(self, axis), AssumptionSource.INFERRED, "suy ra từ ngữ cảnh câu")
+
+        road_type = self.road_type
+        if road_type is None:
+            preferred = (RoadType.URBAN_STRAIGHT, *RoadType)
+            road_type = next(
+                (r for r in preferred if policy.supports(r, self.actor_type, self.maneuver)),
+                RoadType.URBAN_STRAIGHT,
+            )
+            _note("road_type", road_type, AssumptionSource.DEFAULT, "câu không nhắc tới, dùng mặc định")
+
+        weather = self.weather
+        if weather is None:
+            weather = Weather.CLEAR
+            _note("weather", weather, AssumptionSource.DEFAULT, "câu không nhắc tới, dùng mặc định")
+
+        cell = ODDCell(
+            road_type=road_type,
+            weather=weather,
+            actor_type=self.actor_type,
+            maneuver=self.maneuver,
         )
-        return {k: v.value for k, v in pairs if v is not None}
+        return cell, assumptions
 
 
 # ---------------------------------------------------------------------------
@@ -261,18 +486,22 @@ class ManeuverSpec(ForgeModel):
     target_speed_kmh: float | None = Field(None, ge=0.0, le=150.0, description="Tốc độ sau khi thực hiện, nếu có")
 
 
-class ScenarioSpec(ForgeModel):
-    """Kịch bản ở dạng ngữ nghĩa. **Đầu ra của LLM, đầu vào của converter.**
+class ScenarioCore(ForgeModel):
+    """Phần kịch bản mà **LLM chịu trách nhiệm**. Không có id, không có câu gốc.
 
     LLM chịu trách nhiệm ngữ nghĩa (ai, ở đâu, làm gì, khi nào).
     Converter chịu trách nhiệm cú pháp (tên element, hệ toạ độ, XML).
     Tách hai lớp để mỗi lỗi định vị được: lỗi cú pháp là bug của code (sửa một
     lần là hết), lỗi ngữ nghĩa là bug của prompt (đo được bằng eval).
+
+    Lý do class này tồn tại thay vì viết hai model song song: ``ScenarioDraft``
+    và ``ScenarioSpec`` phải kiểm **cùng một bộ ràng buộc**. Hai model song song
+    sẽ lệch nhau ngay lần thứ hai ai đó thêm validator, và lệch về phía nguy
+    hiểm — draft lỏng hơn spec nghĩa là repair không bắt được lỗi mà spec sẽ
+    chặn sau đó. Kế thừa làm việc lệch trở thành bất khả.
     """
 
-    scenario_id: str = Field(..., pattern=r"^sc_[0-9]{3,6}$", examples=["sc_001"])
     title: str = Field(..., min_length=1, max_length=120)
-    description_vi: str = Field(..., min_length=1, description="Câu tiếng Việt gốc của người dùng")
 
     odd: ODDCell
     time_of_day: TimeOfDay = Field(
@@ -288,7 +517,7 @@ class ScenarioSpec(ForgeModel):
     duration_s: float = Field(30.0, gt=0.0, le=120.0, description="Trần thời gian mô phỏng")
 
     @model_validator(mode="after")
-    def _check_refs(self) -> ScenarioSpec:
+    def _check_refs(self) -> ScenarioCore:
         egos = [a for a in self.actors if a.is_ego]
         if len(egos) != 1:
             raise ValueError(f"phải có đúng 1 ego, đang có {len(egos)}")
@@ -335,6 +564,192 @@ class ScenarioSpec(ForgeModel):
                 f"thực hiện hành vi đó (đang có: {sorted(done)})"
             )
         return self
+
+
+class ScenarioDraft(ScenarioCore):
+    """**Đầu ra của node `generate_draft`.** Đúng bằng ``ScenarioCore``, không hơn.
+
+    Cố ý không thêm trường nào. Class này tồn tại để nói một điều duy nhất:
+    *đây là thứ LLM được phép sinh*. Structured output schema gửi cho model
+    chính là schema của class này — ngắn hơn ``ScenarioSpec`` hai trường, trong
+    đó có một trường regex mà model hay vi phạm.
+    """
+
+
+class ScenarioSpec(ScenarioCore):
+    """Kịch bản hoàn chỉnh. **Đầu vào của converter, đầu ra của backend.**
+
+    Hai trường thêm so với ``ScenarioDraft`` đều **không** do LLM cấp:
+
+    - ``scenario_id`` — backend cấp. Few-shot prompt chứa ``sc_001`` thì model
+      sẽ trả ``sc_001``, mỗi lần, cho mọi người dùng. Đó là trùng khoá chính,
+      không phải lỗi thẩm mỹ.
+    - ``description_vi`` — copy **nguyên văn** câu người dùng gõ. Retrieval eval
+      và DeepEval intent match đều so lại với câu gốc; để model paraphrase là
+      hỏng cả hai phép đo mà không có gì báo.
+    """
+
+    scenario_id: str = Field(..., pattern=r"^sc_[0-9]{3,6}$", examples=["sc_001"])
+    description_vi: str = Field(..., min_length=1, description="Câu tiếng Việt gốc của người dùng")
+
+    @classmethod
+    def promote(cls, draft: ScenarioDraft, *, scenario_id: str, description_vi: str) -> ScenarioSpec:
+        """``ScenarioDraft`` -> ``ScenarioSpec``. Code thuần, không phải một node.
+
+        Đây là chỗ **duy nhất** được cấp ``scenario_id``. Ai gọi
+        ``ScenarioSpec(...)`` thẳng từ output LLM là đã bỏ qua ranh giới này.
+        """
+        return cls(**draft.model_dump(), scenario_id=scenario_id, description_vi=description_vi)
+
+
+# ---------------------------------------------------------------------------
+# Lỗi validate — thứ đi vào vòng repair, hoặc dừng hẳn
+# ---------------------------------------------------------------------------
+
+
+class IssueSeverity(StrEnum):
+    """``error`` chặn luồng. ``warning`` chỉ hiện cho reviewer.
+
+    Có ``warning`` vì một số phép kiểm là **suy đoán**, không phải sự thật —
+    ví dụ "``lane_offset=-3`` chắc là quá số làn của đường này". Heuristic mà
+    chặn luồng thì mỗi lần nó đoán sai là ba vòng repair đốt vào việc sửa một
+    kịch bản vốn đã đúng: mất tiền, mất latency, và kéo tụt ``Repair success``.
+    Cho nó cảnh báo, log lại, đối chiếu với ``ExecutionResult.success`` thật ở
+    W3; **có số rồi** mới quyết có nâng lên chặn hay không.
+    """
+
+    ERROR = "error"
+    WARNING = "warning"
+
+
+class IssueCode(StrEnum):
+    """Danh sách đóng. Là khoá để phân loại lỗi trong failure analysis (W5).
+
+    Chuỗi tự do thì mỗi chỗ viết một kiểu và tới W5 không nhóm lại được — mà
+    W5 là lúc phải phân tích 20 case để ra prompt v2.
+    """
+
+    # -- LLM sinh sai nội dung: SỬA ĐƯỢC bằng repair -------------------------
+    SCHEMA_INVALID = "SCHEMA_INVALID"  # Pydantic từ chối: thiếu trường, sai kiểu, ngoài range
+    SCHEMA_EXTRA_FIELD = "SCHEMA_EXTRA_FIELD"  # model bịa thêm trường (extra="forbid")
+    EGO_COUNT = "EGO_COUNT"
+    DUP_ACTOR_NAME = "DUP_ACTOR_NAME"
+    DANGLING_ACTOR_REF = "DANGLING_ACTOR_REF"
+    EGO_HAS_MANEUVER = "EGO_HAS_MANEUVER"
+    TRIGGER_AFTER_END = "TRIGGER_AFTER_END"
+    ODD_ACTOR_MISMATCH = "ODD_ACTOR_MISMATCH"
+    ODD_MANEUVER_MISMATCH = "ODD_MANEUVER_MISMATCH"
+    ODD_LABEL_DRIFT = "ODD_LABEL_DRIFT"  # đổi nhãn người dùng đã nói rõ
+    GEOM_NO_CATCHUP = "GEOM_NO_CATCHUP"  # chủ thể không bao giờ bắt kịp ego
+    GEOM_NO_COLLISION_AFTER_CUTIN = "GEOM_NO_COLLISION_AFTER_CUTIN"
+    TRIGGER_DISTANCE_UNSIGNED = "TRIGGER_DISTANCE_UNSIGNED"
+
+    # -- Suy đoán, chỉ cảnh báo ---------------------------------------------
+    LANE_OFFSET_IMPLAUSIBLE = "LANE_OFFSET_IMPLAUSIBLE"
+
+    # -- Lỗi hệ thống / chính sách: KHÔNG gửi cho LLM sửa --------------------
+    GUARDRAIL_VIOLATION = "GUARDRAIL_VIOLATION"
+    NEED_MORE_DETAIL = "NEED_MORE_DETAIL"
+    UNSUPPORTED_COMBINATION = "UNSUPPORTED_COMBINATION"
+    TEMPLATE_CATALOG_INCONSISTENT = "TEMPLATE_CATALOG_INCONSISTENT"
+    LLM_OUTPUT_NOT_JSON = "LLM_OUTPUT_NOT_JSON"
+    LLM_PROVIDER_ERROR = "LLM_PROVIDER_ERROR"
+    CONVERTER_ERROR = "CONVERTER_ERROR"
+    PERSISTENCE_ERROR = "PERSISTENCE_ERROR"
+    BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
+
+
+REPAIRABLE_CODES: frozenset[IssueCode] = frozenset(
+    {
+        IssueCode.SCHEMA_INVALID,
+        IssueCode.SCHEMA_EXTRA_FIELD,
+        IssueCode.EGO_COUNT,
+        IssueCode.DUP_ACTOR_NAME,
+        IssueCode.DANGLING_ACTOR_REF,
+        IssueCode.EGO_HAS_MANEUVER,
+        IssueCode.TRIGGER_AFTER_END,
+        IssueCode.ODD_ACTOR_MISMATCH,
+        IssueCode.ODD_MANEUVER_MISMATCH,
+        IssueCode.ODD_LABEL_DRIFT,
+        IssueCode.GEOM_NO_CATCHUP,
+        IssueCode.GEOM_NO_COLLISION_AFTER_CUTIN,
+        IssueCode.TRIGGER_DISTANCE_UNSIGNED,
+    }
+)
+"""Một câu hỏi quyết định tất cả: *sửa nội dung LLM sinh ra có làm lỗi này biến mất không?*
+
+Nếu không thì gửi cho LLM là đốt ba vòng để nhận về đúng lỗi cũ. Rate limit,
+lỗi DB, bug template converter — LLM không sửa được cái nào.
+
+``GUARDRAIL_VIOLATION`` nằm ngoài danh sách này vì lý do **an toàn**, không phải
+vì hiệu quả: đưa một prompt injection vào vòng repair là tặng cho người tấn công
+lượt thử thứ hai và thứ ba.
+"""
+
+WARNING_ONLY_CODES: frozenset[IssueCode] = frozenset({IssueCode.LANE_OFFSET_IMPLAUSIBLE})
+"""Code chỉ được phép là ``warning``. Ép ở validator để không ai vô tình làm nó chặn luồng."""
+
+
+class ValidationIssue(ForgeModel):
+    """Một lỗi/cảnh báo có cấu trúc. Đầu vào của repair prompt và của failure analysis.
+
+    ``suggestion`` không phải trang trí: nó là thứ làm repair prompt hiệu quả.
+    *"s_offset_m sai"* thì model đoán; *"muốn vượt lên rồi tạt thì phải xuất
+    phát PHÍA SAU, s_offset_m âm"* thì model sửa được ngay.
+
+    ⚠ Chỉ bốn trường đầu được đưa vào repair prompt. Không stack trace, không
+    tên file, không câu SQL — vừa là an toàn, vừa giữ prompt ngắn.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_derived(cls, data: object) -> object:
+        """Bỏ ``severity``/``repairable_by_llm`` nếu chúng có trong input.
+
+        ``computed_field`` khiến hai trường này **có** trong ``model_dump()`` —
+        đúng như ta muốn, vì reviewer và DB cần thấy chúng. Nhưng ``extra="forbid"``
+        thì lại làm vòng ``dump -> validate`` vỡ, mà đó chính là đường đi của
+        ``issue_history``: ghi JSONB xuống PostgreSQL rồi đọc lên lại ở W5 để
+        làm failure analysis.
+
+        Bỏ đi thay vì nhận: giá trị đúng luôn được suy ra từ ``code``. Một dòng
+        DB cũ ghi ``severity="warning"`` cho ``GUARDRAIL_VIOLATION`` **không**
+        được phép thắng code — đó đúng là lỗ hổng mà severity-dẫn-xuất sinh ra để bịt.
+        """
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if k not in {"severity", "repairable_by_llm"}}
+        return data
+
+    code: IssueCode
+    path: str = Field(default="", examples=["/actors/1/position/s_offset_m"], description="JSON pointer")
+    message_vi: str = Field(..., min_length=1)
+    suggestion: str = Field(default="", description="Sửa thế nào, viết cho model đọc")
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        """Dẫn xuất từ ``code``. **Không** phải trường ai cũng set được.
+
+        Nếu để set tự do thì một chỗ nào đó gán
+        ``ValidationIssue(code=GUARDRAIL_VIOLATION, severity=WARNING)`` là
+        ``route_after_validate`` bỏ qua nó và trả ``promote`` — prompt injection
+        đi thẳng qua cổng. Cùng lỗ hổng đó áp cho ``SCHEMA_INVALID`` và
+        ``UNSUPPORTED_COMBINATION``: draft hỏng vẫn được promote.
+
+        Một cờ mà set sai thì mất cả chốt chặn an toàn lẫn chốt chặn tính đúng
+        đắn thì không nên tồn tại. Severity đi theo code, không đi theo người gọi.
+        """
+        return IssueSeverity.WARNING if self.code in WARNING_ONLY_CODES else IssueSeverity.ERROR
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def repairable_by_llm(self) -> bool:
+        """Dẫn xuất từ ``code``, **không** phải một trường ai cũng tự set được.
+
+        Nếu để mỗi chỗ sinh issue tự quyết boolean này thì sẽ có chỗ set sai, và
+        cái giá của việc set sai là gửi stack trace cho LLM sửa.
+        """
+        return self.code in REPAIRABLE_CODES
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,38 @@
+{
+  "_comment": "Xe tải phanh gấp ngay trước ego trong sương mù. Khác sc_001 ở chỗ chủ thể đứng PHÍA TRƯỚC (s_offset_m dương) — với sudden_brake thì đó mới đúng, còn với cut_in thì đó là lỗi GEOM_NO_CATCHUP. Hai maneuver có ràng buộc hình học NGƯỢC nhau, static_check phải phân biệt được.",
+  "scenario_id": "sc_003",
+  "title": "Xe tải phanh gấp trong sương mù trên đường đô thị",
+  "description_vi": "Xe tải chạy trước phanh gấp đột ngột khi trời sương mù, ego chạy 50 km/h phía sau.",
+  "odd": {
+    "road_type": "urban_straight",
+    "weather": "fog",
+    "actor_type": "truck",
+    "maneuver": "sudden_brake"
+  },
+  "time_of_day": "dusk",
+  "actors": [
+    {
+      "name": "hero",
+      "category": "car",
+      "position": { "lane_offset": 0, "s_offset_m": 0.0 },
+      "initial_speed_kmh": 50.0,
+      "is_ego": true
+    },
+    {
+      "name": "truck_ahead",
+      "category": "truck",
+      "position": { "lane_offset": 0, "s_offset_m": 30.0 },
+      "initial_speed_kmh": 50.0,
+      "is_ego": false
+    }
+  ],
+  "maneuvers": [
+    {
+      "actor_name": "truck_ahead",
+      "maneuver": "sudden_brake",
+      "trigger": { "type": "simulation_time", "value": 5.0 },
+      "target_speed_kmh": 0.0
+    }
+  ],
+  "duration_s": 25.0
+}

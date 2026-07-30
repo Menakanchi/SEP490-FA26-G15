@@ -1,0 +1,51 @@
+{
+  "_comment": "Tạt đầu xong vẫn chạy nhanh hơn ego (target 90 vs ego 60). Xe máy chạy xa dần, không thể va chạm — kịch bản 'thành công' mà vô hại.",
+  "caught_by": "static_check",
+  "expected_codes": [
+    "GEOM_NO_COLLISION_AFTER_CUTIN"
+  ],
+  "draft": {
+    "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
+    "odd": {
+      "road_type": "highway",
+      "weather": "clear",
+      "actor_type": "motorcycle",
+      "maneuver": "cut_in"
+    },
+    "time_of_day": "day",
+    "actors": [
+      {
+        "name": "hero",
+        "category": "car",
+        "position": {
+          "lane_offset": 0,
+          "s_offset_m": 0.0
+        },
+        "initial_speed_kmh": 60.0,
+        "is_ego": true
+      },
+      {
+        "name": "adversary",
+        "category": "motorcycle",
+        "position": {
+          "lane_offset": -1,
+          "s_offset_m": -25.0
+        },
+        "initial_speed_kmh": 80.0,
+        "is_ego": false
+      }
+    ],
+    "maneuvers": [
+      {
+        "actor_name": "adversary",
+        "maneuver": "cut_in",
+        "trigger": {
+          "type": "simulation_time",
+          "value": 7.0
+        },
+        "target_speed_kmh": 90.0
+      }
+    ],
+    "duration_s": 30.0
+  }
+}

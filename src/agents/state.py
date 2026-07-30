@@ -2,12 +2,78 @@ from __future__ import annotations
 
 from typing import TypedDict
 
+from src.models.schemas import (
+    Assumption,
+    ODDCell,
+    ODDQuery,
+    ScenarioDraft,
+    ScenarioSpec,
+    ValidationIssue,
+)
+
+
+class ForgeState(TypedDict, total=False):
+    """State đi qua workflow graph. Mỗi node đọc vài khoá, ghi vài khoá.
+
+    Ba tầng ``raw_text -> raw_draft -> draft`` là có chủ đích, không phải thừa.
+
+    ``ScenarioDraft.model_validate()`` **ném** ``ValidationError`` khi model sinh
+    sai — tức là đúng lúc ta gọi lỗi đó "sửa được bằng repair" thì lại không còn
+    object nào để đưa cho repair sửa. Giữ nguyên liệu ở tầng dưới thì mới sửa được::
+
+        hỏng ở json.loads      -> còn raw_text   -> KHÔNG repair (1 retry ở llm.py)
+        hỏng ở model_validate  -> còn raw_draft  -> repair (SCHEMA_*)
+        hỏng ở static_check    -> còn draft      -> repair (GEOM_*, ODD_*)
+
+    Tầng 1 không repair vì nó không phải lỗi ngữ nghĩa: với structured output nó
+    gần như phải bằng 0, và nếu khác 0 thì phải sửa cấu hình chứ không sửa prompt.
+    """
+
+    # -- vào ---------------------------------------------------------------
+    user_query: str
+
+    # -- parse_intent (LLM) rồi with_defaults (code thuần) -----------------
+    odd_query: ODDQuery
+    """Chỉ trục người dùng nói ra. Đây là thứ ``retrieve`` lọc theo."""
+    odd_hints: ODDCell
+    """``odd_query.with_defaults()``. Đây là thứ ``generate_draft`` được thấy."""
+    assumptions: list[Assumption]
+
+    # -- retrieve (code) ---------------------------------------------------
+    examples: list[ScenarioSpec]
+
+    # -- generate_draft / repair_draft (LLM) -------------------------------
+    raw_text: str
+    raw_draft: dict
+    draft: ScenarioDraft
+    iteration: int
+    """Số vòng repair đã dùng. Chỉ tăng khi repair **thật sự** chạy — retry vì lỗi
+    provider không tính, nếu không thì một lần rate limit ăn mất một lượt sửa."""
+
+    # -- validate (code) ---------------------------------------------------
+    issues: list[ValidationIssue]
+
+    # -- promote + convert + persist (code) --------------------------------
+    spec: ScenarioSpec
+    xosc_content: str
+    scenario_id: str
+
+    # -- kết ---------------------------------------------------------------
+    issue_history: list[ValidationIssue]
+    """Mọi issue của mọi vòng, kể cả vòng sau đó đã sửa xong.
+
+    Không phải để debug: `plan.md` §8 bắt **failure analysis 20 case ở W5**. Không
+    lưu từ W2 thì tới W5 không có dữ liệu, và đó đúng là mục PLO7 mà `plan.md`
+    tự đánh dấu *"dễ bị bỏ khi hết giờ"*.
+    """
+    failed_reason: str
+
 
 class AgentState(TypedDict, total=False):
-    """State schema cho LangGraph agent.
+    """Còn sót từ template — ``nodes/example_node.py`` và route ``/chat`` còn dùng.
 
-    Mỗi node đọc và ghi vào state này.
-    total=False cho phép tất cả fields là optional.
+    Xoá cùng lúc với ``ChatRequest``/``ChatResponse`` trong ``schemas.py`` khi
+    graph thật thay xong graph mẫu.
     """
 
     query: str

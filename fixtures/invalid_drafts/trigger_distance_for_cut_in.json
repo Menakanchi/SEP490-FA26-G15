@@ -1,0 +1,51 @@
+{
+  "_comment": "Dùng distance_to_ego cho cut_in. RelativeDistanceCondition là ĐỘ LỚN KHÔNG DẤU nên 'cách 15m' đúng cả khi xe máy CÒN Ở SAU — nó sẽ tạt vào làn ego khi vẫn sau lưng, thành nhập làn chứ không phải tạt đầu. Xem chú thích đầu fixtures/xosc/sample_001_cut_in.xosc.",
+  "caught_by": "static_check",
+  "expected_codes": [
+    "TRIGGER_DISTANCE_UNSIGNED"
+  ],
+  "draft": {
+    "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
+    "odd": {
+      "road_type": "highway",
+      "weather": "clear",
+      "actor_type": "motorcycle",
+      "maneuver": "cut_in"
+    },
+    "time_of_day": "day",
+    "actors": [
+      {
+        "name": "hero",
+        "category": "car",
+        "position": {
+          "lane_offset": 0,
+          "s_offset_m": 0.0
+        },
+        "initial_speed_kmh": 60.0,
+        "is_ego": true
+      },
+      {
+        "name": "adversary",
+        "category": "motorcycle",
+        "position": {
+          "lane_offset": -1,
+          "s_offset_m": -25.0
+        },
+        "initial_speed_kmh": 80.0,
+        "is_ego": false
+      }
+    ],
+    "maneuvers": [
+      {
+        "actor_name": "adversary",
+        "maneuver": "cut_in",
+        "trigger": {
+          "type": "distance_to_ego",
+          "value": 15.0
+        },
+        "target_speed_kmh": 40.0
+      }
+    ],
+    "duration_s": 30.0
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "_comment": "Model bịa thêm trường spawn_index — đúng thiết kế cũ đã bị ADR-010 thay thế. extra='forbid' biến nó thành lỗi thay vì bị bỏ qua im lặng.",
+  "caught_by": "pydantic",
+  "expected_codes": [
+    "SCHEMA_EXTRA_FIELD"
+  ],
+  "draft": {
+    "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
+    "odd": {
+      "road_type": "highway",
+      "weather": "clear",
+      "actor_type": "motorcycle",
+      "maneuver": "cut_in"
+    },
+    "time_of_day": "day",
+    "actors": [
+      {
+        "name": "hero",
+        "category": "car",
+        "position": {
+          "lane_offset": 0,
+          "s_offset_m": 0.0
+        },
+        "initial_speed_kmh": 60.0,
+        "is_ego": true
+      },
+      {
+        "name": "adversary",
+        "category": "motorcycle",
+        "position": {
+          "lane_offset": -1,
+          "s_offset_m": -25.0
+        },
+        "initial_speed_kmh": 80.0,
+        "is_ego": false,
+        "spawn_index": 42
+      }
+    ],
+    "maneuvers": [
+      {
+        "actor_name": "adversary",
+        "maneuver": "cut_in",
+        "trigger": {
+          "type": "simulation_time",
+          "value": 7.0
+        },
+        "target_speed_kmh": 40.0
+      }
+    ],
+    "duration_s": 30.0
+  },
+  "expected_message": "Extra inputs are not permitted"
+}

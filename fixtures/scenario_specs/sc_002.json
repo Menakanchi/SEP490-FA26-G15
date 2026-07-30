@@ -1,0 +1,38 @@
+{
+  "_comment": "Người đi bộ băng ngang bất ngờ ở ngã tư, trời mưa. Trục ODD khác hẳn sc_001 (intersection/rain/pedestrian/jaywalk) để converter và eval có hơn một hình dạng để test. Trigger dùng simulation_time, không dùng distance_to_ego — xem chú thích trong fixtures/xosc/sample_001_cut_in.xosc về khoảng cách không dấu.",
+  "scenario_id": "sc_002",
+  "title": "Người đi bộ băng ngang ngã tư trong mưa",
+  "description_vi": "Người đi bộ bất ngờ băng qua đường ở ngã tư khi trời mưa, xe đang chạy 30 km/h.",
+  "odd": {
+    "road_type": "intersection",
+    "weather": "rain",
+    "actor_type": "pedestrian",
+    "maneuver": "jaywalk"
+  },
+  "time_of_day": "day",
+  "actors": [
+    {
+      "name": "hero",
+      "category": "car",
+      "position": { "lane_offset": 0, "s_offset_m": 0.0 },
+      "initial_speed_kmh": 30.0,
+      "is_ego": true
+    },
+    {
+      "name": "pedestrian_1",
+      "category": "pedestrian",
+      "position": { "lane_offset": 2, "s_offset_m": 25.0 },
+      "initial_speed_kmh": 0.0,
+      "is_ego": false
+    }
+  ],
+  "maneuvers": [
+    {
+      "actor_name": "pedestrian_1",
+      "maneuver": "jaywalk",
+      "trigger": { "type": "simulation_time", "value": 2.0 },
+      "target_speed_kmh": 5.0
+    }
+  ],
+  "duration_s": 20.0
+}

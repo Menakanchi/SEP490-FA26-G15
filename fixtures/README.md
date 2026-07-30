@@ -12,7 +12,40 @@ Hình dạng chuẩn nằm ở `src/models/schemas.py`. Fixture nào lệch sche
 |---|---|---|
 | `xosc/` | **Tuấn Anh** | Chạy ScenarioRunner ngay hôm nay, không cần LLM/converter/backend |
 | `scenario_specs/` | **Linh Đan** | Viết prompt + eval, test converter, seed thư viện |
+| `invalid_drafts/` | **Tuấn Anh** | Viết `static_check.py` — có sẵn cả input lẫn đáp án |
 | `execution_results/` | **Chi** | Dựng UI trên JSON tĩnh, không cần backend chạy |
+
+## `invalid_drafts/` — bộ đề cho `static_check.py`
+
+Một validator chỉ có fixture **đúng** thì không chứng minh được gì: hàm
+`return []` cũng cho pass. Thư mục này là 12 kịch bản **sai**, mỗi file tự khai
+nó sai code gì và ai phải bắt được:
+
+```json
+{
+  "_comment": "vì sao case này nguy hiểm",
+  "caught_by": "pydantic" | "static_check",
+  "expected_codes": ["GEOM_NO_CATCHUP"],
+  "draft": { ... hình dạng ScenarioDraft, không có scenario_id ... }
+}
+```
+
+| `caught_by` | Số file | Ai bắt |
+|---|---|---|
+| `pydantic` | 9 | `ScenarioDraft.model_validate()` — **đã chạy hôm nay** |
+| `static_check` | 3 | `services/carla/static_check.py` — **chưa ai viết** |
+
+Ba file `static_check` là phần đáng đọc nhất: chúng **hợp lệ hoàn toàn về
+schema**. Chạy trót lọt, `success=true`, và không có gì xảy ra — loại hỏng tệ
+nhất vì nó trông y hệt thành công. Đúng loại lỗi ADR-010 nói *"cách duy nhất để
+phát hiện là chạy sim và ngồi nhìn"*, và là lý do static validator tồn tại.
+
+Viết xong `static_check.py` thì sửa `test_geometry_bugs_pass_schema_and_need_static_check`
+trong `tests/test_fixtures.py` thành assert hàm trả đúng `expected_codes`. Bộ đề
+đã có sẵn, không phải nghĩ ra ca test nữa.
+
+Thêm case mới: đặt code vào `IssueCode` trong `schemas.py` trước, rồi mới thêm
+file — test canh chuyện đó, vì code là khoá gom nhóm cho failure analysis W5.
 
 ## `xosc/sample_001_cut_in.xosc` — chạy trước, hỏi sau
 
