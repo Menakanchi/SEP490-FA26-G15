@@ -37,19 +37,29 @@
   nó sẽ tạt vào làn ego khi vẫn còn sau lưng, thành ra nhập làn chứ không
   phải tạt đầu. Thời gian thì xác định, không nhập nhằng.
 
-  ============================ CẦN VERIFY ============================
-  Toạ độ trong <WorldPosition> của hero là GIÁ TRỊ TẠM. Nếu xe spawn trên
-  không hoặc ngoài đường, lấy toạ độ thật bằng:
+  ================== ĐÃ VERIFY TRÊN MÁY THẬT 31/7 ==================
+  Chạy được với CARLA 0.9.15 + ScenarioRunner v0.9.15 (server Windows/RTX 4060,
+  client Linux Python 3.10). Toạ độ hero KHÔNG còn là giá trị tạm: đã chọn
+  road=41 lane=-3 Town04 — 4 làn cùng chiều, >250 m đường phía trước, >60 m
+  phía sau (đủ chỗ cho ds=-25).
 
-      python -c "
-      import carla
-      w = carla.Client('localhost', 2000).get_world()
-      for i, sp in enumerate(w.get_map().get_spawn_points()[:10]):
-          print(i, sp.location, sp.rotation)"
+  Đo lại được bằng client: xe máy nằm lệch ngang -3.50 m (TRÁI) và lệch dọc
+  -25.00 m (SAU) so với hero. Đúng ý đồ.
 
-  Chọn một điểm nằm trên đoạn cao tốc nhiều làn của Town04 rồi thay 4 số
-  x/y/z/h bên dưới. KHÔNG cần sửa gì khác — xe máy đặt theo vị trí TƯƠNG ĐỐI
-  so với hero (RelativeLanePosition) nên nó tự đi theo.
+  ⚠ HAI BẪY ĐÃ TRẢ GIÁ ĐỂ BIẾT — converter phải theo, đừng theo chuẩn:
+
+  1. dLane là SỐ HỌC THUẦN trên lane_id: target = ref_lane_id + dLane.
+     Nên nghĩa trái/phải ĐẢO DẤU theo dấu của lane_id ego:
+         lane_id > 0  ->  dLane = -1 là TRÁI
+         lane_id < 0  ->  dLane = -1 là PHẢI          ◄ trường hợp này
+     Quy tắc cho converter:  dLane = lane_offset * sign(ego_lane_id)
+     Ở đây ego ở lane -3 nên "một làn bên trái" là dLane="+1", không phải -1.
+
+  2. RelativeTargetLane: value là SỐ LÀN CẦN ĐỔI có dấu (>0 trái, <0 phải),
+     KHÔNG phải làn đích tương đối; entityRef bị bỏ qua. value="0" ⇒ chia cho 0.
+  3. LaneChangeActionDynamics phải dùng dynamicsDimension="distance".
+     "time" ⇒ distance_lane_change=inf ⇒ waypoint.next(inf) ⇒ SEGFAULT.
+  Xem chú thích tại chỗ cho từng cái.
   ====================================================================
 -->
 <OpenSCENARIO>
@@ -141,8 +151,8 @@
           <PrivateAction>
             <TeleportAction>
               <Position>
-                <!-- CẦN VERIFY: 4 số dưới đây. Xem khối chú thích đầu file. -->
-                <WorldPosition x="-14.5" y="-230.0" z="0.3" h="1.5708"/>
+                <!-- Town04 road=41 lane=-3 · 4 làn cùng chiều · đã verify 31/7 -->
+                <WorldPosition x="-510.7297" y="-177.5400" z="0.3000" h="-1.577036"/>
               </Position>
             </TeleportAction>
           </PrivateAction>
@@ -163,7 +173,9 @@
           <PrivateAction>
             <TeleportAction>
               <Position>
-                <RelativeLanePosition entityRef="hero" dLane="-1" ds="-25.0" offset="0.0"/>
+                <!-- dLane="+1" = một làn BÊN TRÁI, vì ego ở lane_id ÂM (-3).
+                     Xem bẫy #1 ở khối chú thích đầu file. ds âm = phía sau. -->
+                <RelativeLanePosition entityRef="hero" dLane="1" ds="-25.0" offset="0.0"/>
               </Position>
             </TeleportAction>
           </PrivateAction>
@@ -197,12 +209,34 @@
                 <PrivateAction>
                   <LateralAction>
                     <LaneChangeAction>
+                      <!-- BẪY #3: dynamicsDimension PHẢI là "distance".
+                           Với "time", openscenario_parser.py để distance_lane_change
+                           = float("inf"), rồi ScenarioRunner gọi waypoint.next(inf)
+                           ⇒ SEGFAULT trong libcarla, không phải exception Python.
+                           Server vẫn sống, client chết câm — rất khó lần ra.
+                           30 m ở 80 km/h ≈ 1.35 s, tương đương ý đồ ban đầu. -->
                       <LaneChangeActionDynamics dynamicsShape="sinusoidal"
-                                                value="1.5"
-                                                dynamicsDimension="time"/>
+                                                value="30.0"
+                                                dynamicsDimension="distance"/>
                       <LaneChangeTarget>
-                        <!-- tạt sang đúng làn của ego -->
-                        <RelativeTargetLane entityRef="hero" value="0"/>
+                        <!-- ĐỌC KỸ: ScenarioRunner KHÔNG hiểu phần tử này theo chuẩn
+                             OpenSCENARIO. Chuẩn nói "làn đích = làn của entityRef + value",
+                             nên "tạt vào đúng làn ego" đáng lẽ là value="0".
+                             Nhưng openscenario_parser.py làm thế này:
+
+                                 direction    = "left" if value > 0 else "right"
+                                 lane_changes = abs(value)
+                                 # entityRef bị BỎ QUA hoàn toàn
+
+                             ⇒ value là SỐ LÀN CẦN ĐỔI, có dấu, tính từ làn của chính
+                             chủ thể — không phải làn đích tương đối so với ego.
+                             value="0" cho ra lane_changes=0 và nổ ZeroDivisionError
+                             ngay trong generate_target_waypoint_list_multilane().
+
+                             Xe máy ở dLane=-1 (một làn BÊN TRÁI ego) nên muốn tạt vào
+                             làn ego thì phải đổi 1 làn sang PHẢI ⇒ value="-1".
+                             Converter phải sinh theo quy ước này, không theo chuẩn. -->
+                        <RelativeTargetLane entityRef="hero" value="-1"/>
                       </LaneChangeTarget>
                     </LaneChangeAction>
                   </LateralAction>

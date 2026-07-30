@@ -44,11 +44,20 @@ Không thể có một venv duy nhất vừa chạy được template 3.11 vừa
 
 ## Số liệu cần điền
 
-| Cần đo | Ai | Khi nào | Kết quả |
-|---|---|---|---|
-| Version thật của wheel `carla` được chọn | Tuấn Anh | T3 28/7 | *(chưa đo)* |
-| Version Python của venv `worker/` | Tuấn Anh | T3 28/7 | *(chưa đo)* |
-| VRAM tiêu thụ khi chạy Town01, quality Low, 720p | Tuấn Anh | T3 28/7 | *(chưa đo)* |
+| Cần đo | Hạn | Kết quả |
+|---|---|---|
+| Version thật của wheel `carla` được chọn | T3 28/7 | ✅ **0.9.15** từ PyPI |
+| Version Python của venv `worker/` | T3 28/7 | ✅ **3.10** — wheel có cp37/38/39/**310** |
+| VRAM tiêu thụ khi chạy Town04, 640×480 | T3 28/7 | ✅ **~2.9 GB / 8.2 GB** |
+
+**Đo ngày 31/7.** Ràng buộc **lỏng hơn** giả định ban đầu: đầu ADR này ghi
+*"0.9.15 → 3.7/3.8"*, nhưng PyPI có sẵn `carla-0.9.15-cp310-manylinux_2_27_x86_64.whl`
+và nó `import` chạy thật. Nghĩa là **không cần deadsnakes PPA**, không cần build
+từ nguồn — `uv venv --python 3.10` là đủ. Quyết định hai venv giữ nguyên; chỉ con
+số đổi từ 3.8 lên 3.10.
+
+⚠ Một ràng buộc **không** nằm trong dự đoán: ScenarioRunner `import pkg_resources`,
+mà `setuptools>=81` đã bỏ module đó. Phải ghim **`setuptools<81`** trong venv worker.
 
 **Không điền bằng phỏng đoán.** Nếu con số khác dự kiến, quyết định kiến trúc ở trên vẫn giữ nguyên — chỉ đổi số trong `requirements-worker.txt`.
 

@@ -10,7 +10,7 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | ADR | Quyết định | Trạng thái |
 |---|---|---|
 | [ADR-001](ADR-001-carla-worker-tach-khoi-backend.md) | Tách CARLA ra worker riêng; backend cloud không `import carla` | Accepted |
-| [ADR-002](ADR-002-python-version-hai-venv.md) | Hai venv: `src/` 3.11, `worker/` theo wheel CARLA | Accepted — *chờ số đo* |
+| [ADR-002](ADR-002-python-version-hai-venv.md) | Hai venv: `src/` 3.11, `worker/` theo wheel CARLA (đo được: **3.10**) | Accepted |
 | [ADR-003](ADR-003-qdrant-lam-vector-store.md) | Qdrant thay ChromaDB của template | Accepted |
 | [ADR-004](ADR-004-deepeval-va-metric-retrieval-tu-implement.md) | DeepEval cho scenario; Recall/MRR/nDCG tự implement | Accepted |
 | [ADR-005](ADR-005-bo-isaac-sim-khoi-pham-vi.md) | Chỉ CARLA/ScenarioRunner; Isaac Sim ngoài phạm vi | Accepted |
@@ -18,7 +18,9 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | ADR-007 | Vì sao workflow, không agent, không multi-agent | ⏳ W2 — khung lập luận ở `plan.md` §3 |
 | ADR-008 | Model routing + lớp trừu tượng provider (LiteLLM) | ⏳ W4 |
 | ADR-009 | Chọn index Qdrant (HNSW vs exact) | ⏳ W3 — sau khi có số đo |
-| [ADR-010](ADR-010-vi-tri-tuong-doi-theo-lan-thay-vi-spawn-index.md) | Vị trí tương đối theo làn, không dùng `spawn_index` | Accepted — *thay thế thiết kế cũ ở overview.html* |
+| [ADR-010](ADR-010-vi-tri-tuong-doi-theo-lan-thay-vi-spawn-index.md) | Vị trí tương đối theo làn, không dùng `spawn_index` | Accepted — *cách hiện thực đang được ADR-012 xem lại* |
+| ADR-011 | PostgreSQL cho dữ liệu giao dịch (user · review · job) | ⏳ **đang chặn review/job API** |
+| [ADR-012](ADR-012-converter-dung-relativelaneposition.md) | Converter dùng thẳng `RelativeLanePosition`, không tự phân giải offset | ✅ **Accepted 31/7** — smoke test chạy được, kèm 3 bẫy converter |
 
 ## Luật
 

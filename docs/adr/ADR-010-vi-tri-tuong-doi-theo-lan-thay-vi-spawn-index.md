@@ -1,7 +1,7 @@
 # ADR-010: Vị trí trong `ScenarioSpec` là tương đối theo làn, không phải chỉ số điểm xuất phát
 
 **Ngày:** 2026-07-29
-**Trạng thái:** Accepted
+**Trạng thái:** Accepted — mục *Quyết định* đang được ADR-012 xem xét lại, xem cuối file
 **Thay thế:** thiết kế `spawn_index` mô tả ở `docs/overview.html` bước 3–5 và ở `plan.md` §8 (bản trước 29/7)
 
 ## Bối cảnh
@@ -81,3 +81,11 @@ sách để LLM đánh số vào.
 - `docs/overview.html` bước 3–5 và `plan.md` §8 phải viết lại theo ADR này.
 - Câu trả lời mentor cho "hallucination xử lý sao?" đổi thành: **biểu diễn không
   có chỗ để bịa** — mạnh hơn "chúng em kiểm tra sau khi nó bịa".
+
+---
+
+> **Con trỏ, không phải sửa quyết định** (2026-07-30). Mục *Quyết định* ở trên
+> viết rằng converter tự phân giải offset bằng API waypoint. Cách làm đó đang được
+> [ADR-012](ADR-012-converter-dung-relativelaneposition.md) xem xét lại — **Proposed**,
+> chờ smoke test `.xosc`. ADR này **không** bị sửa nội dung: luật ở `docs/adr/README.md`
+> là đổi ý thì viết ADR mới, không viết đè lên cái cũ.
