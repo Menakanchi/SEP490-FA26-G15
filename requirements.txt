@@ -10,13 +10,13 @@ langchain>=0.3.0
 langchain-openai>=0.3.0
 langgraph>=0.2.0
 
-# Database (uncomment as needed)
+# Vector store — Qdrant (ADR-003). Linh Đan cần ngay, xem plan.md §11.5
+qdrant-client>=1.12.0
+
+# Database — bỏ comment khi ADR-011 chốt xong (Công + Chi)
 # sqlalchemy>=2.0.0
 # alembic>=1.14.0
 # psycopg2-binary>=2.9.0
-
-# Vector Store (uncomment as needed)
-# chromadb>=0.5.0
 
 # Dev tools
 ruff>=0.8.0
