@@ -25,8 +25,9 @@ class Settings(BaseSettings):
     model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
 
-    # Database — user · review · job · trạng thái scenario.
-    # ⚠ sqlite chỉ để chạy local. Nguồn thật là PostgreSQL — chờ ADR-011.
+    # Transactional store — user · review · job · trạng thái scenario.
+    # MVP dùng SQLite. Chỉ đổi DATABASE_URL sang PostgreSQL khi deployment
+    # cần durable storage ngoài process hoặc phải xử lý concurrent writes.
     database_url: str = "sqlite:///./data/app.db"
 
     # Vector store — CHỈ phục vụ retrieval, không phải DB giao dịch (ADR-003).

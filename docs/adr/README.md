@@ -19,7 +19,7 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | ADR-008 | Model routing + lớp trừu tượng provider (LiteLLM) | ⏳ W4 |
 | ADR-009 | Chọn index Qdrant (HNSW vs exact) | ⏳ W3 — sau khi có số đo |
 | [ADR-010](ADR-010-vi-tri-tuong-doi-theo-lan-thay-vi-spawn-index.md) | Vị trí tương đối theo làn, không dùng `spawn_index` | Accepted — *cách hiện thực đang được ADR-012 xem lại* |
-| ADR-011 | PostgreSQL cho dữ liệu giao dịch (user · review · job) | ⏳ **đang chặn review/job API** |
+| ADR-011 | Persistence schema; SQLite MVP và tiêu chí chuyển sang PostgreSQL | ⏳ **đang chặn review/job API** |
 | [ADR-012](ADR-012-converter-dung-relativelaneposition.md) | Converter dùng thẳng `RelativeLanePosition`, không tự phân giải offset | ✅ **Accepted 31/7** — smoke test chạy được, kèm 3 bẫy converter |
 
 ## Luật

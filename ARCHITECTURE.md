@@ -1,162 +1,183 @@
 # Kiến trúc — Scenario Forge (RAV-03)
 
-**Deliverable #3.** Sơ đồ chi tiết ở [`docs/architecture_diagram.md`](docs/architecture_diagram.md);
-lý do từng quyết định ở [`docs/adr/`](docs/adr/README.md); kế hoạch và phân công ở
-[`docs/plan.md`](docs/plan.md). Tài liệu này nối ba thứ đó lại.
+Tài liệu này là Deliverable Architecture duy nhất: chứa sơ đồ, workflow,
+contracts, ranh giới hệ thống và trạng thái triển khai. Lý do từng quyết định nằm
+trong [`docs/adr/`](docs/adr/README.md).
 
-> Nguồn sự thật về **hình dạng dữ liệu** là `src/models/schemas.py`.
-> Nguồn sự thật về **quyết định** là `docs/adr/`. Tài liệu này vênh với chúng
-> thì tài liệu này sai.
+> Nguồn sự thật về dữ liệu là `src/models/schemas.py`. Nguồn sự thật về quyết
+> định là ADR. Nếu tài liệu này vênh với hai nguồn đó, tài liệu này sai.
 
-## 1. Tóm tắt
+## Mục tiêu
 
-Kỹ sư gõ một câu tiếng Việt mô tả tình huống giao thông nguy hiểm. Hệ thống sinh
-file **OpenSCENARIO 1.0 (`.xosc`)** chạy được bằng CARLA ScenarioRunner, bắt người
-duyệt trước khi file được tải về, rồi lưu vào thư viện tìm lại được theo ngữ nghĩa
-và theo nhãn ODD.
+Kỹ sư nhập một câu tiếng Việt mô tả tình huống giao thông nguy hiểm. Hệ thống
+sinh file OpenSCENARIO 1.0 (`.xosc`), lưu ở trạng thái chờ review, cho tải sau
+khi được duyệt và có thể gửi sang CARLA ScenarioRunner để kiểm chứng.
 
-Ba ràng buộc định hình toàn bộ kiến trúc:
+Sản phẩm chính là file `.xosc`; CARLA là tầng kiểm chứng tuỳ chọn.
 
-1. **Live URL phải sống trên hạ tầng miễn phí không GPU** ⇒ backend không bao giờ
-   `import carla`; CARLA nằm ở worker riêng, pull job qua HTTP (ADR-001).
-2. **Sản phẩm là file, không phải lần chạy sim** ⇒ `.xosc` tải được sau cổng duyệt 1
-   là đủ để hệ thống có giá trị; simulation là tầng kiểm chứng tuỳ chọn.
-3. **Người phải duyệt trước hành động rủi ro** ⇒ HITL không phải một màn hình, nó là
-   một trạng thái trong database mà mọi đường đi đều phải qua.
+## Sơ đồ hệ thống mục tiêu
 
-## 2. Phân loại: workflow AI, không phải agent
+```mermaid
+graph TB
+    U([Creator / Reviewer]) --> UI[Frontend]
+    UI --> API[FastAPI backend · Python 3.11]
+    API --> G[LangGraph workflow]
+    G --> LLM[LLM gateway]
+    G --> CONV[Deterministic converter]
+    API --> DB[(Transactional store<br/>SQLite MVP)]
+    API --> QD[(Qdrant · retrieval index)]
 
-Phân loại bằng một câu hỏi vận hành: **ai quyết thứ tự bước?**
-
-| Mức | Ai quyết thứ tự | Forge? |
-|---|---|:---:|
-| Workflow AI | Người viết code quyết trước; LLM lo phần hiểu và sinh ngôn ngữ | ✅ |
-| Agent (ReAct) | LLM tự quyết mỗi vòng gọi tool nào hay dừng | ❌ |
-| Multi-agent | Nhiều LLM có vai riêng đàm phán với nhau | ❌ |
-
-Với phạm vi hiện tại **không có** tình huống nào mà thứ tự bước phải khác đi, nên
-để code điều phối cho dễ test, dễ đặt trần chi phí và dễ tìm lỗi. Đây là lựa chọn
-có chủ đích, **không** phải làm cho dễ — lập luận đầy đủ + *điều kiện để phải đổi ý*
-nằm ở `plan.md` §3 và ADR-007.
-
-Hệ quả: **đúng 3 node được phép gọi LLM**, và điều kiện rẽ nhánh là hàm thuần.
-Phần *điều kiện rẽ nhánh* đã có thật và có test — `src/agents/routing.py` +
-`tests/test_agents/test_routing.py`, chạy không cần mock LLM. Phần *3 node* còn là
-mục tiêu: `src/agents/graph.py` hiện vẫn là graph mẫu của template (§10).
-
-## 3. Luồng xử lý
-
-> ⚠ **Đây là kiến trúc mục tiêu, không phải mô tả hệ thống đã chạy.** Hôm nay mới
-> có hợp đồng dữ liệu, fixtures và `routing.py`. Trạng thái từng phần ở §10.
-
-```
-POST /generate
-  → guardrails            code   PII · injection · yêu cầu áp lên xe thật → từ chối
-  → parse_intent          LLM    câu tiếng Việt → ODDQuery
-  → with_defaults         code   điền trục bối cảnh, ghi lại thành assumptions
-  → support_policy.check  code   không hỗ trợ / thiếu nội dung → 422 + gợi ý
-  → retrieve              code   Qdrant: vector + payload filter → ≤3 few-shot
-  → generate_draft        LLM    → ScenarioDraft
-  → validate ↔ repair     code/LLM   tối đa 3 vòng
-  → promote               code   cấp scenario_id, copy câu gốc → ScenarioSpec
-  → convert_xosc          code   → .xosc
-  → persist_pending_review code  → PostgreSQL, GRAPH KẾT THÚC
+    W[GPU worker · Python 3.10] -. pull job .-> API
+    W --> SR[ScenarioRunner 0.9.15]
+    SR --> C[CARLA 0.9.15]
+    W -. ExecutionResult .-> API
 ```
 
-Sau đó là ba HTTP transaction độc lập — cổng duyệt 1, cổng duyệt 2, tạo job.
-**Không** phải node trong graph: workflow kết thúc và ghi xuống DB, vì Render free
-tier ngủ khi không có request nên mọi thứ "đứng chờ" trong RAM đều chắc chắn chết.
+- Backend cloud không `import carla`.
+- Worker nhận chuỗi XML, không nhận object Python.
+- Worker offline không làm chết đường generate/review/download ở chế độ static.
+- Transactional store giữ state giao dịch; Qdrant có thể rebuild từ dữ liệu đã duyệt.
+- MVP dùng SQLite. Chỉ chuyển sang PostgreSQL khi deployment cần durable storage ngoài process hoặc có concurrent writes.
 
-### Phân loại lỗi
+## Workflow 7 nodes
 
-Một câu hỏi quyết định tất cả: *sửa nội dung LLM sinh ra có làm lỗi này biến mất không?*
+Đây là kiến trúc mục tiêu. Graph hiện tại vẫn là graph mẫu `analyze → respond`;
+`routing.py`, data contracts và fixtures đã có thật.
 
-- **Có** → vào vòng repair. Lỗi schema, lỗi tham chiếu actor, lỗi hình học
-  (chủ thể không bắt kịp ego, trigger bắn sau khi hết giờ, nhãn ODD không khớp thực tế).
-- **Không** → dừng ngay, **không** đốt hết 3 vòng. Rate limit, lỗi DB, bug template
-  converter, vượt ngân sách. Riêng vi phạm guardrail nằm ngoài vì lý do **an toàn**:
-  đưa một prompt injection vào vòng repair là tặng cho người tấn công lượt thử thứ 2 và 3.
+```mermaid
+graph LR
+    A[parse_intent 🤖] --> B[retrieve]
+    B --> C[generate_draft 🤖]
+    C --> D{validate}
+    D -->|error sửa được| E[repair_draft 🤖]
+    E --> D
+    D -->|hợp lệ| F[convert_xosc]
+    D -->|lỗi hệ thống / hết 3 vòng| X([failed])
+    F --> G[persist_pending_review]
+    G --> H([graph kết thúc])
+```
 
-Danh sách code ở `REPAIRABLE_CODES` trong `schemas.py` — một chỗ duy nhất, và
-`repairable_by_llm` là property dẫn xuất chứ không phải cờ ai cũng tự set được.
+`parse_intent` bao gồm hai thao tác code thuần ngay sau structured output:
 
-## 4. Ranh giới hệ thống
+- Điền mặc định cho trục bối cảnh được phép thiếu và ghi `Assumption`.
+- Kiểm thiếu actor/maneuver hoặc tổ hợp ngoài `SupportPolicy`; thất bại trả lỗi
+  có cấu trúc để API chuyển thành `422`.
 
-| Ranh giới | Đi qua nó là gì | Vì sao |
+Hai thao tác này không có retry/checkpoint/I/O độc lập nên không phải nodes.
+`ScenarioSpec.promote()` cũng chỉ là hàm backend chạy sau validation, không phải node.
+
+### Contract từng node
+
+| Node | Input | Output | Trách nhiệm |
+|---|---|---|---|
+| `parse_intent` | `user_query` | `ODDQuery`, `ODDCell`, assumptions hoặc lỗi hỗ trợ | Hiểu câu và chuẩn hoá intent |
+| `retrieve` | câu + `ODDQuery.as_filter()` | tối đa 3 `ScenarioSpec` | Vector search + payload filter |
+| `generate_draft` | câu + ODD + examples | `ScenarioDraft` | Sinh nội dung semantic có cấu trúc |
+| `validate` | `ScenarioDraft` | `list[ValidationIssue]` | Schema, invariants và static geometry |
+| `repair_draft` | draft + lỗi sửa được | `ScenarioDraft` mới | Sửa nội dung, tối đa ba vòng |
+| `convert_xosc` | `ScenarioSpec` đã promote | `xosc_content: str` | Biên dịch deterministic sang XML |
+| `persist_pending_review` | spec + XML + provenance | scenario `pending_review` | Ghi durable state rồi kết thúc graph |
+
+### Routing sau validate
+
+```text
+không còn error                 → promote → convert_xosc
+có lỗi không sửa được           → failed ngay
+còn lỗi sửa được, iteration < 3 → repair_draft
+iteration >= 3                  → failed
+```
+
+Warning không chặn flow; reviewer nhìn thấy warning ở cổng duyệt.
+
+## Sau workflow
+
+Review và simulation là các HTTP transaction độc lập, không phải nodes đứng chờ
+trong graph.
+
+```mermaid
+graph LR
+    P[(pending_review)] --> R1{BEFORE_LIBRARY}
+    R1 -->|reject + reason| RJ[rejected]
+    R1 -->|approve| LIB[Qdrant + cho tải .xosc]
+    LIB --> R2{BEFORE_SIM}
+    R2 -->|approve| JOB[ScenarioJob]
+    JOB --> W[GPU worker]
+    W --> RES[ExecutionResult]
+```
+
+- `BEFORE_LIBRARY`: yêu cầu sản phẩm, ngăn dữ liệu xấu quay lại làm few-shot.
+- `BEFORE_SIM`: chính sách đội để kiểm soát tài nguyên GPU.
+
+## Data lifecycle
+
+```text
+câu gốc
+→ ODDQuery
+→ ScenarioDraft
+→ ScenarioSpec
+→ xosc_content
+→ ScenarioJob
+→ ExecutionResult
+→ LibraryEntry
+```
+
+LLM không cấp `scenario_id` và không viết lại `description_vi`. Backend cấp ID
+và copy nguyên văn câu người dùng khi promote draft thành spec.
+
+## Ranh giới hệ thống
+
+| Ranh giới | Dữ liệu đi qua | Bất biến |
 |---|---|---|
-| cloud ↔ worker GPU | `ScenarioJob.xosc_content` (chuỗi XML) | Hai venv khác version không chia sẻ object Python được (ADR-001, ADR-002) |
-| `ScenarioSpec` ↔ simulator | không có khái niệm riêng của CARLA trong spec | Thêm Isaac sau = viết converter thứ hai, không phải viết lại (ADR-005) |
-| LLM ↔ backend | `ScenarioDraft` | `scenario_id` và `description_vi` do backend cấp — để model tự đặt id là trùng khoá chính |
-| retrieval ↔ giao dịch | Qdrant chỉ giữ vector + payload | PostgreSQL là nguồn thật cho user/review/job (chờ ADR-011) |
-| app ↔ provider LLM | `src/services/llm.py` | Đổi provider = đổi chuỗi `model=`, không sửa code (ADR-008) |
+| LLM ↔ backend | `ODDQuery`, `ScenarioDraft` | structured output, `extra="forbid"` |
+| Spec ↔ converter | `ScenarioSpec` | spec không chứa khái niệm riêng của CARLA |
+| Cloud ↔ GPU worker | `ScenarioJob.xosc_content` | không chia sẻ Python object/venv |
+| Transaction ↔ retrieval | transactional store → Qdrant projection | Qdrant không giữ job/review truth |
+| Workflow ↔ human | durable `pending_review` state | không chờ trong process memory |
 
-## 5. Thành phần
+## Converter và CARLA
 
-| Thành phần | Công nghệ | Quyết định |
-|---|---|---|
-| Frontend | Next.js 14 + Tailwind | Preview 2D vẽ từ `ScenarioSpec`, không parse XML |
-| Backend | FastAPI, Python 3.11 | Không `import carla` — ADR-001 |
-| Workflow | LangGraph | Thứ tự cố định, không ReAct — §2 |
-| LLM gateway | LiteLLM | ADR-008 |
-| Embeddings | OpenAI `text-embedding-3-small` | Không kéo torch vào image backend — ADR-006 |
-| Vector store | Qdrant | Payload filter + vector search một lượt — ADR-003 |
-| Dữ liệu giao dịch | PostgreSQL | Qdrant không phải DB giao dịch — chờ ADR-011 |
-| Converter | `xml.etree` thuần | Test trong CI không cần GPU |
-| Simulator | CARLA 0.9.15 + ScenarioRunner | Isaac ngoài phạm vi — ADR-005 |
-| Worker | Python 3.8, venv riêng | Theo wheel CARLA — ADR-002 |
+Converter chạy trên CPU backend và dùng template catalog để ánh xạ semantic spec
+sang subset OpenSCENARIO mà ScenarioRunner 0.9.15 hỗ trợ. `RelativeLanePosition`
+cho phép giữ actor tương đối theo ego; chỉ ego cần một `WorldPosition` anchor theo
+template.
 
-## 6. An toàn
+Smoke test ngày 31/07/2026 đã xác nhận:
 
-- **HITL hai cổng.** Cổng 1 trước khi vào thư viện (yêu cầu của đề). Cổng 2 trước khi
-  chạy simulation (chính sách đội, để kiểm soát GPU). Từ chối **bắt buộc** ghi lý do,
-  và `reviewer` rỗng bị schema chặn — cổng duyệt không có người chịu trách nhiệm thì
-  không phải cổng duyệt.
-- **Chỉ scenario đã qua cổng 1** mới vào thư viện và mới quay lại làm few-shot. Rác
-  lọt vào đây là rác nhân lên theo thời gian.
-- **Guardrails chạy trước LLM call đầu tiên**, và vi phạm không bao giờ đi vào repair.
-- Trần cứng: số actor, tốc độ, thời lượng, **3 vòng repair**, timeout simulation.
-- Chỉ dữ liệu mô phỏng/công khai. Không có dữ liệu cá nhân thật trong hệ thống.
-- Generate, review, simulate đều có audit log.
+- Windows CARLA server ↔ WSL2 ScenarioRunner client hoạt động.
+- Python 3.10 wheel tương thích CARLA 0.9.15.
+- `RelativeLanePosition` đặt actor đúng làn và khoảng cách.
+- ScenarioRunner xuất criteria JSON có thể chuẩn hoá thành `ExecutionResult`.
 
-## 7. Chống bịa (hallucination)
+Smoke test chưa chứng minh converter tự động hoặc outcome cut-in/collision ổn định.
+Các parser traps và giới hạn nằm ở
+[ADR-012](docs/adr/ADR-012-converter-dung-relativelaneposition.md).
 
-Bốn tầng, xếp theo thứ tự rẻ trước:
+## Bất biến được kiểm bằng CI
 
-1. **Biểu diễn không có chỗ để bịa.** Vị trí là `lane_offset` (−4…4) + `s_offset_m`
-   (±200) tương đối so với ego, không phải toạ độ tự do. Không tồn tại giá trị "sai
-   bản đồ" để sinh ra (ADR-010).
-2. **Danh sách đóng.** Mọi trục ODD là enum; giá trị ngoài phạm vi thành lỗi schema.
-3. **Static validator** kiểm *quan hệ hình học*: chủ thể có bắt kịp ego không, trigger
-   có bắn kịp không, tạt xong có va được không. Loại lỗi này **hợp lệ hoàn toàn về
-   schema** — chạy trót lọt, `success=true`, và không có gì xảy ra.
-4. **CARLA thật**, khi có GPU.
+- `src/` không import `carla`.
+- HTTP layer không query Qdrant trực tiếp.
+- Chỉ `parse_intent`, `generate_draft`, `repair_draft` được phép gọi LLM.
+- Mọi provider call đi qua `src/services/llm.py`.
+- Fixtures phải validate theo `schemas.py`.
 
-## 8. Bảo mật
+## Trạng thái hiện tại
 
-- Khoá API chỉ trong `.env` (đã ignore); `.env.example` chỉ có placeholder.
-- Mọi input qua Pydantic với `extra="forbid"` — gõ sai tên trường là lỗi, không bị
-  bỏ qua im lặng.
-- Endpoint worker (`/internal/jobs`) bảo vệ bằng `WORKER_TOKEN`.
-- Hai vai trò creator/reviewer; cấm tự duyệt scenario của chính mình.
-- CORS giới hạn theo domain frontend.
-
-## 9. Triển khai
-
-Sơ đồ ở [`docs/architecture_diagram.md`](docs/architecture_diagram.md#triển-khai).
-Backend + Qdrant + PostgreSQL chạy trên hạ tầng miễn phí không GPU; worker bật khi
-cần và **pull** job. Worker offline không làm chết web — `validation_mode=static`
-phục vụ được toàn bộ đường đi tới file `.xosc` tải được.
-
-## 10. Trạng thái hiện tại
-
-| Phần | Trạng thái |
+| Thành phần | Trạng thái |
 |---|---|
-| Hợp đồng dữ liệu (`schemas.py`) + fixtures | ✅ |
-| Điều kiện rẽ nhánh (`routing.py`) | ✅ |
-| ADR nền tảng (001–006, 010) | ✅ |
-| `static_check.py` · `converter.py` · `templates.py` | ⏳ Tuấn Anh |
-| Node LLM + nối graph | ⏳ Công |
-| PostgreSQL + review/job API | ⏳ chặn bởi ADR-011 |
-| Retrieval Qdrant + baseline | ⏳ Linh Đan |
-| ADR-007 · ADR-008 · ADR-009 · ADR-011 | ⏳ |
-| ADR-012 (`RelativeLanePosition`) | ⏳ Proposed — chờ smoke test `.xosc` |
+| `schemas.py`, fixtures | ✅ Có |
+| Routing và architecture tests | ✅ Có |
+| CARLA/ScenarioRunner smoke test | ✅ Toolchain pass |
+| Graph 7 nodes | ⏳ Graph hiện vẫn là template |
+| Static validator, templates, converter | ⏳ Chưa có |
+| Qdrant store/search và retrieval baseline | ⏳ Chưa có |
+| SQLite persistence, review/download/job API | ⏳ Chưa có |
+| Frontend và preview | ⏳ Chưa có |
+| GPU worker | ⏳ Chưa có implementation |
+| Evaluation report bằng số thật | ⏳ Chưa có |
+
+## Quy tắc thay đổi
+
+- Đổi hình dạng dữ liệu: sửa `schemas.py`, fixtures và tests trong cùng PR.
+- Đổi quyết định Accepted: viết ADR mới và supersede ADR cũ.
+- Đổi workflow: cập nhật graph, routing tests và bảng contract ở đây.
+- Ownership, deadline và tiến độ theo ngày chỉ nằm trong GitHub Issues/Project.
