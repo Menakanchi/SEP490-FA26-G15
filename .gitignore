@@ -58,3 +58,7 @@ out/
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
 .ai-log/archive/
+
+# Local-only planning documents
+/docs/overview.html
+/docs/plan.md
