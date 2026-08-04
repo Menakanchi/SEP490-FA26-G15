@@ -30,13 +30,10 @@ class Settings(BaseSettings):
     # cần durable storage ngoài process hoặc phải xử lý concurrent writes.
     database_url: str = "sqlite:///./data/app.db"
 
-    # Vector store — CHỈ phục vụ retrieval, không phải DB giao dịch (ADR-003).
-    # Đã bỏ `chroma_persist_dir` của template: ADR-003 chọn Qdrant vì cần
-    # payload filter kết hợp vector search, và để vector store nằm ngoài
-    # process backend cho khỏi ăn vào trần 512MB RAM của Render.
-    qdrant_url: str = "http://localhost:6333"
-    qdrant_api_key: str = ""
-    qdrant_collection: str = "scenarios"
+    # Không có setting nào cho vector store, và đó là quyết định chứ không phải
+    # thiếu sót: ADR-013 chốt embedding nằm cùng `database_url` dưới dạng BLOB,
+    # xếp hạng bằng cosine của numpy. Không có service riêng để cấu hình.
+    # (`chroma_persist_dir` của template đã bỏ từ ADR-003.)
 
 
 @lru_cache

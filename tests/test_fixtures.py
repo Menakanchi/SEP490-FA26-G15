@@ -553,7 +553,7 @@ def test_defaults_never_overwrite_what_user_said() -> None:
 
 
 def test_odd_query_filter_keys_match_cell_axes() -> None:
-    """Khoá của filter phải trùng tên trường của ODDCell, nếu không Qdrant lọc trượt."""
+    """Khoá của filter phải trùng tên trường của ODDCell, nếu không mệnh đề WHERE lọc trượt."""
     full = ODDQuery(
         road_type=RoadType.HIGHWAY,
         weather=Weather.CLEAR,

@@ -52,17 +52,17 @@ def test_src_never_imports_carla(path: Path) -> None:
 
 
 @pytest.mark.parametrize("path", _py_files("api"), ids=lambda p: str(p.relative_to(SRC)))
-def test_http_layer_does_not_talk_to_the_vector_store(path: Path) -> None:
-    """Router là **lớp HTTP**, logic tìm kiếm nằm ở ``services/library/``.
+def test_http_layer_does_not_query_storage_directly(path: Path) -> None:
+    """Router là **lớp HTTP**, logic lưu trữ và tìm kiếm nằm ở ``services/``.
 
-    Hai thứ cùng tên "library" rất dễ lẫn. Nếu router tự gọi Qdrant thì cách tìm
-    kiếm bị nhân đôi ở hai chỗ, và người đổi thuật toán retrieval sẽ sửa một chỗ
-    rồi tưởng xong.
+    ADR-013 bỏ Qdrant và đưa embedding vào chính SQLite, nên ranh giới cần canh
+    đổi từ *"đừng import qdrant"* sang *"đừng tự mở DB và tự tính cosine"*. Nếu
+    router tự query thì cách tìm kiếm bị nhân đôi ở hai chỗ, và người đổi thuật
+    toán retrieval sẽ sửa một chỗ rồi tưởng xong.
     """
-    offenders = {m for m in _imports(path) if m.startswith("qdrant")}
-    assert not offenders, (
-        f"{path.relative_to(SRC)} import {offenders} — gọi hàm trong services/library/ thay vì tự query"
-    )
+    banned = {"sqlite3", "sqlalchemy", "numpy"}
+    offenders = {m for m in _imports(path) if m.split(".")[0] in banned}
+    assert not offenders, f"{path.relative_to(SRC)} import {offenders} — gọi hàm trong services/ thay vì tự query"
 
 
 def test_only_three_nodes_are_allowed_to_call_an_llm() -> None:
