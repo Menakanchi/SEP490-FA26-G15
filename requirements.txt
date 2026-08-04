@@ -10,8 +10,8 @@ langchain>=0.3.0
 langchain-openai>=0.3.0
 langgraph>=0.2.0
 
-# Vector store — Qdrant (ADR-003). Linh Đan cần ngay, xem plan.md §11.5
-qdrant-client>=1.12.0
+# Vector store: không có. ADR-013 chốt embedding nằm trong SQLite dưới dạng
+# BLOB, xếp hạng bằng cosine của numpy — không thêm dependency nào cho việc này.
 
 # Database — bỏ comment khi ADR-011 chốt xong (Công + Chi)
 # sqlalchemy>=2.0.0

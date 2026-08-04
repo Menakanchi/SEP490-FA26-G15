@@ -11,7 +11,7 @@ Luồng:
         -> ScenarioSpec      (backend promote: cấp id + copy câu gốc)
         -> .xosc             (converter.py, code thuần, KHÔNG có LLM)
         -> ExecutionResult   (worker GPU chạy ScenarioRunner)
-        -> LibraryEntry      (vào Qdrant, quay lại làm few-shot)
+        -> LibraryEntry      (vào thư viện, quay lại làm few-shot)
 
 Ba ranh giới cứng, đọc kỹ trước khi thêm trường:
 
@@ -150,13 +150,13 @@ class ODDCell(ForgeModel):
 
     @property
     def key(self) -> str:
-        """Khoá ổn định để đếm coverage và làm payload filter trong Qdrant.
+        """Khoá ổn định để đếm coverage và làm điều kiện lọc ODD khi retrieval.
 
         Mọi enum ở file này dùng ``StrEnum`` (Python 3.11+) chứ không phải
         ``(str, Enum)``. Lý do không phải thẩm mỹ: với ``(str, Enum)`` thì
-        ``f"{RoadType.HIGHWAY}"`` cho ra ``"RoadType.HIGHWAY"``, và payload
-        filter của Qdrant sẽ hỏng **im lặng** — không báo lỗi, chỉ là không khớp
-        gì cả. ``StrEnum`` cho ra ``"highway"`` như mong đợi.
+        ``f"{RoadType.HIGHWAY}"`` cho ra ``"RoadType.HIGHWAY"``, và mệnh đề
+        ``WHERE`` sẽ hỏng **im lặng** — không báo lỗi, chỉ là không khớp gì cả.
+        ``StrEnum`` cho ra ``"highway"`` như mong đợi.
 
         ``test_odd_key_is_stable`` canh chỗ này; nó đã bắt được đúng lỗi đó một lần.
         """
@@ -274,10 +274,10 @@ class ODDQuery(ForgeModel):
     lúc mưa"* chỉ nói được 2/4 trục. Lọc theo trục người dùng không hề nhắc tới là
     tự thu hẹp kết quả một cách vô căn cứ — sẽ bỏ sót đúng những ví dụ hữu ích.
 
-    Node này chạy **trước** retrieve, không phải sau: payload filter của Qdrant cần
-    nhãn để lọc, mà nhãn chính là thứ node này sinh ra. Đây cũng là lý do ADR-003
-    chọn Qdrant — *vector search kết hợp payload filter*. Bỏ bước này thì phần
-    "kết hợp" biến mất và ADR-003 mất một nửa lý do tồn tại.
+    Node này chạy **trước** retrieve, không phải sau: retrieval cần nhãn để lọc,
+    mà nhãn chính là thứ node này sinh ra. Đây là nửa "lọc" của *vector search
+    kết hợp lọc ODD* (ADR-013). Bỏ bước này thì phần "kết hợp" biến mất và
+    retrieval tụt về tìm vector thuần.
 
     **Đây là output DUY NHẤT của ``parse_intent``.** Generation cần đủ 4 trục
     (``ODDCell`` không cho trục nào rỗng) nhưng phần thiếu được điền bằng
@@ -331,11 +331,11 @@ class ODDQuery(ForgeModel):
         return self
 
     def as_filter(self) -> dict[str, str]:
-        """Payload filter cho Qdrant — **chỉ gồm trục có giá trị**.
+        """Điều kiện lọc ODD cho retrieval — **chỉ gồm trục có giá trị**.
 
         Trục ``inferred`` **vẫn được lọc**. *"người băng qua đường"* suy ra
         ``pedestrian`` là gần như chắc chắn, và bỏ nó khỏi filter thì mất đúng
-        cái lợi mà ADR-003 mua Qdrant về để có. Cái giá phải trả — suy luận sai
+        cái lợi của *vector + lọc ODD*. Cái giá phải trả — suy luận sai
         thì lọc hẹp sai — được xử ở tầng retrieval: kết quả sau filter ít hơn
         ``k`` thì tìm lại lần nữa **bỏ các trục ``inferred``**. Đó là việc của
         ``services/library/search.py``, không phải của hợp đồng này.
@@ -546,7 +546,7 @@ class ScenarioCore(ForgeModel):
                     f"{self.duration_s}s — hành vi {m.maneuver.value!r} không bao giờ chạy"
                 )
 
-        # Nhãn ODD phải khớp thực tế. Nhãn này là thứ Qdrant lọc theo và là thứ
+        # Nhãn ODD phải khớp thực tế. Nhãn này là thứ retrieval lọc theo và là thứ
         # đếm ODD coverage; gắn nhãn "pedestrian" cho một kịch bản toàn ô tô sẽ
         # thổi phồng coverage và làm thư viện trả về kết quả sai nhãn.
         non_ego = {a.category.value for a in self.actors if not a.is_ego}
@@ -929,10 +929,11 @@ class ReviewDecision(ForgeModel):
 
 
 class LibraryEntry(ForgeModel):
-    """Một dòng trong thư viện Qdrant.
+    """Một dòng trong thư viện.
 
-    ``embedding_model`` ghi vào payload để biết vector nào sinh bằng model nào —
-    đổi model embedding về sau bắt buộc re-embed toàn bộ corpus (ADR-006).
+    ``embedding_model`` được lưu cạnh vector để biết vector nào sinh bằng model
+    nào — đổi model embedding về sau bắt buộc re-embed toàn bộ corpus (ADR-006).
+    Chỗ lưu là một cột cạnh cột BLOB trong cùng bảng (ADR-013).
     """
 
     scenario_id: str
