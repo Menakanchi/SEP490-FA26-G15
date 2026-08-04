@@ -177,7 +177,8 @@ class SupportPolicy(ForgeModel):
     không dựng được ``(roundabout, pedestrian, run_red_light)`` thì ô đó không
     phải "chưa phủ" mà là "không bao giờ phủ được" — báo cáo ``x/560`` lúc đó
     trông như thất bại trong khi thực chất là quyết định thu hẹp phạm vi có
-    chủ đích (`plan.md` §10: *"ODD matrix đóng khung đúng bằng danh sách đó"*).
+    chủ đích — PRD §6.1 bắt mẫu số phải dùng ``SupportPolicy.denominator()``
+    chứ không phải 560.
 
     Nên báo cáo **hai** số, không phải một::
 
@@ -189,7 +190,8 @@ class SupportPolicy(ForgeModel):
     thêm một ``ManeuverType`` mới sẽ **im lặng** rơi khỏi phạm vi.
 
     ⚠ Nội dung thật của mask do Tuấn Anh chốt **cuối W3**, sau khi viết
-    ``converter.py`` — `plan.md` §10. Tới lúc đó ``DEFAULT_SUPPORT_POLICY``
+    ``converter.py`` — PRD §10, *"danh sách maneuver/map thực sự được converter
+    hỗ trợ"*. Tới lúc đó ``DEFAULT_SUPPORT_POLICY``
     để rỗng, nghĩa là mẫu số vẫn bằng 560 và không có gì đổi hành vi hôm nay.
     """
 
@@ -346,7 +348,7 @@ class ODDQuery(ForgeModel):
         ``actor_type`` và ``maneuver`` **là nội dung** của kịch bản, không phải
         bối cảnh. Điền đại ``maneuver=cut_in`` cho câu *"tình huống nguy hiểm ở
         ngã tư"* là tự bịa ra yêu cầu của người dùng — và nó làm hỏng đúng
-        ``Danger trigger rate`` (`plan.md` §9), thước đo hỏi *"gõ 'xe máy tạt
+        ``Danger trigger rate`` (PRD §8), thước đo hỏi *"gõ 'xe máy tạt
         đầu' thì trigger tạt đầu có bắn không"*. Nếu maneuver do code chọn thì
         metric đó đang đo code chứ không đo hệ thống.
 

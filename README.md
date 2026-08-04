@@ -48,8 +48,6 @@ parse_intent
 ## Kiến trúc
 
 - [Kiến trúc, sơ đồ và contracts](ARCHITECTURE.md)
-- [Tổng quan trực quan](docs/overview.html)
-- [Kế hoạch thực thi](docs/plan.md)
 - [Architecture Decision Records](docs/adr/README.md)
 - [Golden fixtures và CARLA smoke test](fixtures/README.md)
 

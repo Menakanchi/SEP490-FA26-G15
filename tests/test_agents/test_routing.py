@@ -1,6 +1,7 @@
 """Điều kiện rẽ nhánh của workflow — test được mà không cần graph, không cần LLM.
 
-`plan.md` §3 dùng chính chỗ này để trả lời *"ai quyết thứ tự bước?"*. Nếu file
+`ARCHITECTURE.md` §"Workflow 7 nodes" dùng chính chỗ này để trả lời *"ai quyết
+thứ tự bước?"*. Nếu file
 được test ở đây mà có LLM trong đó thì câu trả lời PLO1/PLO2 mất bằng chứng.
 """
 
@@ -51,7 +52,7 @@ def test_guardrail_violation_never_reaches_the_model() -> None:
 
 @pytest.mark.parametrize("iteration", [MAX_REPAIR, MAX_REPAIR + 1])
 def test_repair_budget_is_a_hard_cap(iteration: int) -> None:
-    """Trần 3 vòng là thứ làm cost và p95 đặt trần được — lập luận chính của `plan.md` §3."""
+    """Trần 3 vòng (PRD FR-06) là thứ làm cost và p95 đặt trần được (PRD NFR-08)."""
     assert route_after_validate([REPAIRABLE], iteration=iteration) == "failed"
 
 

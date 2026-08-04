@@ -56,7 +56,7 @@ Viết ADR mới quay lại Qdrant (hoặc index ANN khác) khi **đo được**
 
 ## Hệ quả
 
-**Tài liệu cập nhật cùng lúc với ADR này:** `ARCHITECTURE.md` (sơ đồ, bất biến, bảng ranh giới, bất biến CI, bảng trạng thái), `docs/plan.md` (§3, §4 W3, §10), `docs/adr/README.md`, `docs/adr/ADR-003` (đánh dấu Superseded).
+**Tài liệu cập nhật cùng lúc với ADR này:** `ARCHITECTURE.md` (sơ đồ, bất biến, bảng ranh giới, bất biến CI, bảng trạng thái), `README.md`, `JOURNAL.md`, `docs/adr/README.md`, `docs/adr/ADR-003` (đánh dấu Superseded).
 
 **Nợ code — làm ở PR riêng**, theo "Quy tắc thay đổi" của `ARCHITECTURE.md` (đổi hình dạng dữ liệu thì sửa `schemas.py`, fixtures và tests trong cùng PR):
 

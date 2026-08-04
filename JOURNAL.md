@@ -1,7 +1,7 @@
 # Weekly Journal — P-130 · Scenario Forge (RAV-03)
 
 > Ghi lại mỗi tuần: mục tiêu, kết quả, khó khăn, bài học, kế hoạch tiếp.
-> Mốc tuần theo `docs/plan.md` §4. Bằng chứng là commit, PR, ADR, test và
+> Mốc tuần theo lịch W1–W6 của dự án. Bằng chứng là commit, PR, ADR, test và
 > `.ai-log/`; việc chưa làm được ghi thẳng là chưa làm được, không ghi bù.
 
 ---

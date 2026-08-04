@@ -71,7 +71,8 @@ def test_odd_matrix_is_560_cells() -> None:
 def test_default_support_policy_does_not_narrow_anything_yet() -> None:
     """Hôm nay mẫu số vẫn = 560 vì catalog template chưa tồn tại.
 
-    Tuấn Anh chốt ``unsupported`` cuối W3 sau khi viết converter (`plan.md` §10).
+    Tuấn Anh chốt ``unsupported`` cuối W3 sau khi viết converter — PRD §10,
+    *"danh sách maneuver/map thực sự được converter hỗ trợ"*.
     Tới lúc đó test này đỏ — và nó **nên** đỏ, vì đó là lúc `eval/` phải đổi mẫu số.
     """
     assert DEFAULT_SUPPORT_POLICY.denominator() == 560
