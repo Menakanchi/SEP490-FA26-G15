@@ -19,7 +19,7 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | ADR-008 | Model routing + lớp trừu tượng provider (LiteLLM) | ⏳ W4 |
 | ADR-009 | Chọn index Qdrant (HNSW vs exact) | ⛔ Đóng theo ADR-013 — chỉ mở lại nếu chạm ngưỡng đảo ngược |
 | [ADR-010](ADR-010-vi-tri-tuong-doi-theo-lan-thay-vi-spawn-index.md) | Vị trí tương đối theo làn, không dùng `spawn_index` | Accepted — *cách hiện thực đang được ADR-012 xem lại* |
-| ADR-011 | Persistence schema; SQLite MVP và tiêu chí chuyển sang PostgreSQL | ⏳ **đang chặn review/job API** |
+| [ADR-011](ADR-011-persistence-schema-va-state-transitions.md) | Persistence schema, `ScenarioStatus` + transition, `.xosc` trong DB, SQLite local ↔ Supabase deploy | ✅ **Accepted 04/8** — gỡ chặn review/job API |
 | [ADR-012](ADR-012-converter-dung-relativelaneposition.md) | Converter dùng thẳng `RelativeLanePosition`, không tự phân giải offset | ✅ **Accepted 31/7** — smoke test chạy được, kèm 3 bẫy converter |
 | [ADR-013](ADR-013-sqlite-blob-thay-qdrant.md) | SQLite + embedding BLOB cho retrieval MVP, thay Qdrant | ✅ **Accepted 04/8** — supersedes ADR-003; kèm ngưỡng đảo ngược đo được |
 

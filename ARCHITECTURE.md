@@ -38,7 +38,7 @@ graph TB
 - Worker nhận chuỗi XML, không nhận object Python.
 - Worker offline không làm chết đường generate/review/download ở chế độ static.
 - Transactional store là nguồn thật duy nhất: state giao dịch và embedding nằm cùng một `.db`, nên không có index ngoài để lệch (ADR-013).
-- MVP dùng SQLite. Chỉ chuyển sang PostgreSQL khi deployment cần durable storage ngoài process hoặc có concurrent writes.
+- Local, test và CI dùng SQLite. **Bản deploy có Live URL dùng Supabase PostgreSQL ngay từ lần deploy đầu** — Render free có filesystem ephemeral nên file SQLite bị xoá mỗi lần redeploy/wake-up (ADR-011 §3.6). Cùng một repository layer qua SQLAlchemy Core.
 
 ## Workflow 7 nodes
 

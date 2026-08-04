@@ -890,6 +890,47 @@ class ReviewGate(StrEnum):
     BEFORE_LIBRARY = "before_library"
 
 
+class ScenarioStatus(StrEnum):
+    """Vòng đời của **một scenario**, đúng bốn trạng thái (ADR-011).
+
+    ``queued`` / ``running`` / ``done`` / ``failed`` **không** nằm ở đây — chúng
+    là :class:`JobStatus`. Sơ đồ ở ``docs/gate-1/03-wireframe-ui-flow.md`` §7 vẽ
+    gộp hai tầng cho dễ nhìn; nhân đôi chúng thành cột thứ hai là mời gọi đúng
+    loại bug khó thấy nhất — hai cột cùng tên lệch nhau và không ai biết cột nào
+    mới là thật.
+
+    Một lần sinh **thất bại** không tạo scenario nào cả: nó sống và chết trong
+    bảng ``generation_requests`` (PRD §8 — *"không tạo pending scenario giả"*).
+    """
+
+    PENDING_REVIEW = "pending_review"  # workflow xong, chờ BEFORE_LIBRARY
+    REJECTED = "rejected"  # trạng thái kết thúc
+    APPROVED_LIBRARY = "approved_library"  # trong thư viện, tải được, có embedding
+    PENDING_SIM_REVIEW = "pending_sim_review"  # chờ BEFORE_SIM
+
+
+ALLOWED_SCENARIO_TRANSITIONS: dict[ScenarioStatus, frozenset[ScenarioStatus]] = {
+    ScenarioStatus.PENDING_REVIEW: frozenset({ScenarioStatus.REJECTED, ScenarioStatus.APPROVED_LIBRARY}),
+    ScenarioStatus.APPROVED_LIBRARY: frozenset({ScenarioStatus.PENDING_SIM_REVIEW}),
+    ScenarioStatus.PENDING_SIM_REVIEW: frozenset({ScenarioStatus.APPROVED_LIBRARY}),
+    ScenarioStatus.REJECTED: frozenset(),
+}
+"""Bảng transition của ADR-011 §3.3 — **không có đường nào khác**.
+
+Để ở đây chứ không ở tầng service vì đây là hình dạng dữ liệu, và vì một sơ đồ
+mermaid trong tài liệu không chặn được ai. ``test_scenario_transitions`` canh.
+
+Chú ý hai chiều đi vào ``approved_library`` từ ``pending_sim_review``: reject
+``BEFORE_SIM`` và approve ``BEFORE_SIM`` **cùng** trả scenario về thư viện —
+khác nhau ở chỗ approve còn tạo thêm một :class:`ScenarioJob`.
+"""
+
+
+def can_transition(current: ScenarioStatus, target: ScenarioStatus) -> bool:
+    """``True`` nếu ADR-011 cho phép đi từ ``current`` sang ``target``."""
+    return target in ALLOWED_SCENARIO_TRANSITIONS[current]
+
+
 class ReviewDecision(ForgeModel):
     """Một lần bấm duyệt.
 

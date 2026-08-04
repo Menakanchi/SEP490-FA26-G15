@@ -13,10 +13,12 @@ langgraph>=0.2.0
 # Vector store: không có. ADR-013 chốt embedding nằm trong SQLite dưới dạng
 # BLOB, xếp hạng bằng cosine của numpy — không thêm dependency nào cho việc này.
 
-# Database — bỏ comment khi ADR-011 chốt xong (Công + Chi)
-# sqlalchemy>=2.0.0
-# alembic>=1.14.0
-# psycopg2-binary>=2.9.0
+# Database — ADR-011: SQLite cho local/test, Supabase PostgreSQL cho bản deploy.
+# Cùng một repository layer qua SQLAlchemy Core; embedding là LargeBinary
+# (BLOB ở SQLite, BYTEA ở Postgres).
+sqlalchemy>=2.0.0
+alembic>=1.14.0
+psycopg2-binary>=2.9.0
 
 # Dev tools
 ruff>=0.8.0
