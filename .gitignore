@@ -29,7 +29,14 @@ env/
 Thumbs.db
 
 # Data (never commit large data)
-data/
+# `data/*` chứ không phải `data/`: git không cho re-include file khi cả thư mục
+# cha đã bị loại. `.gitkeep` phải có mặt vì SQLite không tự tạo thư mục cha
+# (ADR-011 §Hệ quả).
+data/*
+!data/.gitkeep
+
+# Ảnh chụp và snapshot của playwright-cli — rác công cụ, không phải của dự án.
+.playwright-cli/
 *.db
 *.sqlite3
 

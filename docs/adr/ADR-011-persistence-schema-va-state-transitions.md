@@ -83,9 +83,13 @@ Transition hợp lệ, **không có đường nào khác**:
 | `pending_sim_review` | reject `BEFORE_SIM` | `approved_library` |
 | `pending_sim_review` | approve `BEFORE_SIM` | `approved_library` *(+ tạo `ScenarioJob`)* |
 
+Khoá của bảng gồm **cả cổng**, không chỉ cặp trạng thái. Một quyết định gửi nhầm cổng — bấm `BEFORE_SIM` lên scenario đang `pending_review` — phải bị từ chối, nếu không hai cổng HITL trở thành hoán đổi được cho nhau và ràng buộc *"kỹ sư phải phê duyệt trước khi đưa vào bộ kiểm thử"* của đề bài mất hiệu lực. Trong code là `next_status_after_review(current, gate, approved)`, trả `None` cho mọi tổ hợp không hợp lệ.
+
 ### 3.4 `.xosc` nằm trong DB
 
-`xosc_content` là TEXT trong bảng `scenarios`, **không phải** đường dẫn file. `LibraryEntry.xosc_path` từ nay là URL tải về do API sinh ra, không phải chỗ lưu.
+`xosc_content` là TEXT trong bảng `scenarios`. **Đây là nguồn thật duy nhất** của nội dung file — không phải một đường dẫn trỏ ra filesystem.
+
+`LibraryEntry.xosc_path` **tạm thời giữ nguyên nghĩa cũ** (đường dẫn) trong phiên bản này. Đổi nó thành URL tải về là thay đổi contract, phải đi kèm migration cho fixtures (`fixtures/execution_results/*.json`) và các test đang sinh ra `outputs/sc_999.xosc` — làm ở PR hiện thực API download, không nhét lẫn vào đây. `ExecutionResult.xosc_path` thì **không đổi**: nó là đường dẫn trên máy worker và đúng là một đường dẫn thật.
 
 ### 3.5 Embedding NULL cho tới khi duyệt
 
@@ -115,7 +119,8 @@ FR-03 và FR-11 bắt *"chỉ scenario qua `BEFORE_LIBRARY` mới được tìm 
 - Bỏ comment `sqlalchemy`, `alembic`, `psycopg2-binary` trong `requirements.txt`.
 - Sửa `.env.example`: `DATABASE_URL` mặc định là SQLite cho local; ghi rõ bản deploy dùng chuỗi kết nối Supabase.
 - Sửa `ARCHITECTURE.md` theo §3.6.
-- `LibraryEntry.xosc_path` đổi ý nghĩa thành URL tải về — kiểm lại mọi chỗ đang hiểu nó là đường dẫn đĩa.
+- `LibraryEntry.xosc_path` đổi thành URL tải về — **PR riêng**, phải migrate cùng lúc `fixtures/execution_results/*.json` và các test đang sinh `outputs/sc_999.xosc`, nếu không UI sẽ nhận về đường dẫn đĩa và dựng ra link chết.
+- `data/` bị `.gitignore` nhưng SQLite không tự tạo thư mục cha; đã thêm `data/.gitkeep` để `git clone` + copy `.env.example` là chạy được ngay. Nếu sau này đổi đường dẫn DB thì kiểm lại chỗ này.
 
 **Chi phí chấp nhận:**
 

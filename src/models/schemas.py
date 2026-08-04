@@ -909,26 +909,52 @@ class ScenarioStatus(StrEnum):
     PENDING_SIM_REVIEW = "pending_sim_review"  # chờ BEFORE_SIM
 
 
-ALLOWED_SCENARIO_TRANSITIONS: dict[ScenarioStatus, frozenset[ScenarioStatus]] = {
-    ScenarioStatus.PENDING_REVIEW: frozenset({ScenarioStatus.REJECTED, ScenarioStatus.APPROVED_LIBRARY}),
-    ScenarioStatus.APPROVED_LIBRARY: frozenset({ScenarioStatus.PENDING_SIM_REVIEW}),
-    ScenarioStatus.PENDING_SIM_REVIEW: frozenset({ScenarioStatus.APPROVED_LIBRARY}),
-    ScenarioStatus.REJECTED: frozenset(),
+REVIEW_TRANSITIONS: dict[tuple[ScenarioStatus, ReviewGate, bool], ScenarioStatus] = {
+    (ScenarioStatus.PENDING_REVIEW, ReviewGate.BEFORE_LIBRARY, True): ScenarioStatus.APPROVED_LIBRARY,
+    (ScenarioStatus.PENDING_REVIEW, ReviewGate.BEFORE_LIBRARY, False): ScenarioStatus.REJECTED,
+    (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, True): ScenarioStatus.APPROVED_LIBRARY,
+    (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, False): ScenarioStatus.APPROVED_LIBRARY,
 }
 """Bảng transition của ADR-011 §3.3 — **không có đường nào khác**.
 
-Để ở đây chứ không ở tầng service vì đây là hình dạng dữ liệu, và vì một sơ đồ
-mermaid trong tài liệu không chặn được ai. ``test_scenario_transitions`` canh.
+Khoá gồm cả **cổng**, không chỉ trạng thái. Nếu chỉ khoá theo ``(từ, sang)`` thì
+một quyết định gửi nhầm cổng — ``BEFORE_SIM`` bấm lên một scenario đang
+``pending_review`` — vẫn lọt, và hai cổng HITL trở thành có thể hoán đổi cho
+nhau. Đó đúng là thứ ràng buộc *"kỹ sư phải phê duyệt trước khi đưa vào bộ kiểm
+thử"* của đề bài cấm.
 
-Chú ý hai chiều đi vào ``approved_library`` từ ``pending_sim_review``: reject
-``BEFORE_SIM`` và approve ``BEFORE_SIM`` **cùng** trả scenario về thư viện —
-khác nhau ở chỗ approve còn tạo thêm một :class:`ScenarioJob`.
+Hai dòng cuối cùng đi về một chỗ: reject và approve ``BEFORE_SIM`` **đều** trả
+scenario về thư viện. Khác nhau ở chỗ approve còn tạo thêm một
+:class:`ScenarioJob` — việc đó là của tầng service, không phải của bảng này.
 """
 
 
-def can_transition(current: ScenarioStatus, target: ScenarioStatus) -> bool:
-    """``True`` nếu ADR-011 cho phép đi từ ``current`` sang ``target``."""
-    return target in ALLOWED_SCENARIO_TRANSITIONS[current]
+def next_status_after_review(current: ScenarioStatus, gate: ReviewGate, approved: bool) -> ScenarioStatus | None:
+    """Trạng thái kế tiếp, hoặc ``None`` nếu quyết định này không hợp lệ.
+
+    ``None`` gồm cả trường hợp *đúng trạng thái nhưng sai cổng* — gọi hàm này
+    rồi bỏ qua ``None`` là tự mở lại đúng lỗ vừa bịt.
+    """
+    return REVIEW_TRANSITIONS.get((current, gate, approved))
+
+
+def can_request_simulation(current: ScenarioStatus) -> bool:
+    """Chỉ scenario đã qua ``BEFORE_LIBRARY`` mới được xin chạy sim (FR-12)."""
+    return current is ScenarioStatus.APPROVED_LIBRARY
+
+
+ALLOWED_SCENARIO_TRANSITIONS: dict[ScenarioStatus, frozenset[ScenarioStatus]] = {
+    status: frozenset(
+        {target for (src, _, _), target in REVIEW_TRANSITIONS.items() if src is status}
+        | ({ScenarioStatus.PENDING_SIM_REVIEW} if can_request_simulation(status) else set())
+    )
+    for status in ScenarioStatus
+}
+"""Bản dẫn xuất *chỉ để kiểm tra hình dạng đồ thị* — đừng dùng để cho phép.
+
+Nó cố tình được **sinh ra** từ :data:`REVIEW_TRANSITIONS` chứ không viết tay,
+để không thể tồn tại một đường đi hợp lệ ở đây mà không hợp lệ ở kia.
+"""
 
 
 class ReviewDecision(ForgeModel):
