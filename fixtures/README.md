@@ -143,7 +143,7 @@ Dùng `ExecutionResult.had_collision` để đếm adversarial. **Đừng đọc
 >
 > | Trường | Nghĩa |
 > |---|---|
-> | `ExecutionResult.success` (`plan.md` §4) | ScenarioRunner **chạy xong**, không crash/timeout/lỗi XML |
+> | `ExecutionResult.success` (PRD FR-13) | ScenarioRunner **chạy xong**, không crash/timeout/lỗi XML |
 > | `success` trong JSON của ScenarioRunner | mọi criteria đều đạt |
 >
 > **Chép thẳng trường này sang `ExecutionResult.success` là hỏng cả hai số liệu

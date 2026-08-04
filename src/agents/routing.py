@@ -1,6 +1,7 @@
 """Điều kiện rẽ nhánh của workflow. **Code thuần, không có LLM trong này.**
 
-Đây là chỗ `plan.md` §3 chỉ vào khi trả lời *"ai quyết thứ tự bước?"*. Nếu logic
+Đây là chỗ `ARCHITECTURE.md` §"Workflow 7 nodes" chỉ vào khi trả lời *"ai quyết
+thứ tự bước?"* (lập luận đầy đủ sẽ nằm ở ADR-007). Nếu logic
 ở file này chạy qua một model thì Forge không còn là workflow nữa, và câu trả
 lời PLO1/PLO2 mất bằng chứng.
 
@@ -14,9 +15,9 @@ from typing import Literal
 from src.models.schemas import IssueSeverity, ValidationIssue
 
 MAX_REPAIR = 3
-"""`plan.md` §1. Trần cứng, không phải gợi ý.
+"""PRD FR-06: *"dừng sau tối đa ba vòng"*. Trần cứng, không phải gợi ý.
 
-Là thứ làm cost và p95 latency **đặt trần được** — lập luận chính của `plan.md` §3
+Là thứ làm cost và p95 latency **đặt trần được** (PRD NFR-08) — lập luận chính
 khi chọn workflow thay vì ReAct. Đổi số này là đổi một con số trong bài nộp.
 """
 

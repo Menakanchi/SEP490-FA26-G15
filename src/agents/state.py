@@ -62,9 +62,9 @@ class ForgeState(TypedDict, total=False):
     issue_history: list[ValidationIssue]
     """Mọi issue của mọi vòng, kể cả vòng sau đó đã sửa xong.
 
-    Không phải để debug: `plan.md` §8 bắt **failure analysis 20 case ở W5**. Không
-    lưu từ W2 thì tới W5 không có dữ liệu, và đó đúng là mục PLO7 mà `plan.md`
-    tự đánh dấu *"dễ bị bỏ khi hết giờ"*.
+    Không phải để debug: **failure analysis 20 case ở W5** cần dữ liệu tích luỹ
+    từ W2. Không lưu từ bây giờ thì tới W5 không có gì để phân tích, và đó đúng
+    là mục PLO7 dễ bị bỏ nhất khi hết giờ.
     """
     failed_reason: str
 

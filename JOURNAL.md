@@ -1,7 +1,7 @@
 # Weekly Journal — P-130 · Scenario Forge (RAV-03)
 
 > Ghi lại mỗi tuần: mục tiêu, kết quả, khó khăn, bài học, kế hoạch tiếp.
-> Mốc tuần theo `docs/plan.md` §4. Bằng chứng là commit, PR, ADR, test và
+> Mốc tuần theo lịch W1–W6 của dự án. Bằng chứng là commit, PR, ADR, test và
 > `.ai-log/`; việc chưa làm được ghi thẳng là chưa làm được, không ghi bù.
 
 ---
@@ -113,7 +113,7 @@
 
 ### Kế hoạch tuần sau (W3 · 10/08 – 16/08)
 
-- [ ] Qdrant store/search + retrieval baseline vector-only, rồi bản cải tiến
+- [ ] `Retriever` (SQLite BLOB + cosine, ADR-013) + retrieval baseline vector-only, rồi bản cải tiến
 - [ ] Batch CARLA qua worker, đối chiếu outcome cut-in thật
 - [ ] Dashboard validity / cost / latency
 
@@ -123,7 +123,7 @@
 
 ### Mục tiêu tuần này
 
-- [ ] Qdrant baseline → improved retrieval (Recall@k, MRR, nDCG trên golden queries)
+- [ ] `Retriever` baseline → improved retrieval (Recall@k, MRR, nDCG trên golden queries)
 - [ ] Batch CARLA job qua worker
 - [ ] Dashboard validity/cost/latency
 
