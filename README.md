@@ -111,7 +111,7 @@ worker/                 GPU worker, Python 3.10 — chưa có implementation
 
 1. `src/` không `import carla`; CARLA chỉ nằm ở worker GPU riêng.
 2. `ScenarioSpec` độc lập simulator, không chứa blueprint hay toạ độ CARLA.
-3. Transactional store là nguồn thật cho scenario/review/job; Qdrant chỉ phục vụ retrieval. MVP dùng SQLite, PostgreSQL chỉ là phương án nâng cấp khi cần.
+3. Transactional store là nguồn thật cho scenario/review/job; embedding nằm cùng `.db` dưới dạng BLOB và chỉ phục vụ retrieval qua `Retriever` (ADR-013). MVP dùng SQLite, PostgreSQL chỉ là phương án nâng cấp khi cần.
 4. Chỉ scenario được người chịu trách nhiệm duyệt mới vào thư viện few-shot.
 5. Structured validation và static validation chạy được không cần GPU.
 

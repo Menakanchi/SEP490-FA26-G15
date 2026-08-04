@@ -45,3 +45,17 @@ Thêm trường `validation_mode: static | sim` vào request: `static` không c�
 - Worker cần secret riêng (`WORKER_TOKEN`); không dùng chung khoá với người dùng.
 - Tài liệu vận hành worker (cài đặt, chạy, troubleshooting) là trách nhiệm của `worker/README.md`.
 - Rủi ro "một máy GPU = single point of failure" **không** bị ADR này loại bỏ, chỉ bị giảm: bất kỳ ai cài được CARLA đều chạy worker được. Xem §10 của `plan.md`.
+
+## Đính chính (04/08/2026)
+
+Quyết định ở trên **không đổi**. Chỉ một câu mô tả đã cũ so với thiết kế hai cổng duyệt chốt sau đó ở Gate 1:
+
+> "Thêm trường `validation_mode: static | sim` vào request: `static` không cần worker, `sim` mới đẩy xuống hàng đợi."
+
+Câu này viết như thể chọn `sim` lúc sinh là tự tạo job. Không phải. Theo FR-12 (`docs/gate-1/02-prd.md`) và state machine ở `docs/gate-1/03-wireframe-ui-flow.md` §7, **job chỉ được tạo sau khi approve `BEFORE_SIM`**, mà `BEFORE_SIM` lại nằm sau `BEFORE_LIBRARY`. Đọc đúng phải là:
+
+- `validation_mode` là **cờ ý định** của creator, ghi vào record và hiện ở review queue để reviewer biết scenario này được tạo với mục đích chạy sim.
+- Nó **không** sinh transition nào. Đường duy nhất vào `queued` là `approved_library → pending_sim_review → approve BEFORE_SIM`.
+- `static` vẫn giữ đúng ý nghĩa vận hành mà ADR này mua về: worker tắt thì generate/review/download vẫn chạy.
+
+Sửa theo mẫu errata thay vì sửa thẳng §Quyết định, để giữ đúng luật "ADR không sửa sau khi Accepted" ở `README.md`.

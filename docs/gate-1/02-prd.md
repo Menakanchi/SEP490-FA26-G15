@@ -53,9 +53,9 @@ chứng bằng CARLA ScenarioRunner.
 
 1. Reviewer mở scenario `pending_review`.
 2. Reviewer chọn Approve hoặc Reject; Reject bắt buộc có lý do.
-3. Approve tại `BEFORE_LIBRARY` cho phép tải `.xosc` và đưa một projection của
-   scenario vào Qdrant để retrieval.
-4. Reject giữ bằng chứng quyết định nhưng không đưa scenario vào Qdrant.
+3. Approve tại `BEFORE_LIBRARY` cho phép tải `.xosc` và ghi embedding của
+   scenario để retrieval tìm lại được.
+4. Reject giữ bằng chứng quyết định nhưng scenario không vào được retrieval.
 
 ### 3.3 Chạy mô phỏng
 
@@ -89,7 +89,7 @@ parse_intent
 | ID | Yêu cầu | Acceptance criteria |
 |---|---|---|
 | FR-01 | Nhận mô tả tiếng Việt | Không nhận input rỗng; giữ nguyên câu gốc trong record hoàn chỉnh |
-| FR-02 | Parse ODD | Trả `ODDQuery`; chỉ trường explicit/non-null mới thành Qdrant filter; thiếu dữ liệu bắt buộc phải làm rõ hoặc dùng default có ghi assumption |
+| FR-02 | Parse ODD | Trả `ODDQuery`; chỉ trường explicit/non-null mới thành điều kiện lọc ODD; thiếu dữ liệu bắt buộc phải làm rõ hoặc dùng default có ghi assumption |
 | FR-03 | Retrieval | Chỉ tìm trong scenario đã qua `BEFORE_LIBRARY`; trả tối đa ba examples; không có kết quả vẫn đi tiếp được |
 | FR-04 | Structured generation | LLM trả `ScenarioDraft` đúng schema, không tự sinh ID và không sinh XML |
 | FR-05 | Static validation | Kiểm tra schema, actor references, trigger, ODD consistency và hình học; lỗi trả `ValidationIssue` có `code`, `path`, `message_vi`, `suggestion` |
@@ -132,7 +132,8 @@ phải dùng `SupportPolicy.denominator()` để loại tổ hợp không đư�
 
 - Transactional store là nguồn thật của scenario, review và job; MVP dùng
   SQLite.
-- Qdrant chỉ giữ embedding và payload/projection phục vụ retrieval.
+- Embedding nằm cùng `.db` dưới dạng BLOB; retrieval lọc ODD bằng `WHERE` rồi
+  xếp hạng bằng cosine, truy cập qua interface `Retriever` (ADR-013).
 - Chỉ scenario được duyệt mới trở thành positive few-shot example.
 - Điều kiện chuyển SQLite sang PostgreSQL là quyết định mở, phụ thuộc deployment,
   concurrent writes và yêu cầu durable storage.
@@ -170,7 +171,7 @@ Ngưỡng pass chỉ được chốt sau baseline. Không trình bày target ch�
 - **Đã có:** data contracts, fixtures, routing, CI và CARLA smoke test với
   ScenarioRunner 0.9.15.
 - **Đang triển khai:** static validator, converter, workflow đầy đủ, persistence,
-  review/download/job API, Qdrant retrieval, frontend và GPU worker.
+  review/download/job API, `Retriever` retrieval, frontend và GPU worker.
 - **Vertical slice ưu tiên:** fixture/draft → validate → convert → pending review
   → approve → download; sau đó mới nối LLM/RAG và simulation worker.
 
@@ -179,7 +180,7 @@ Ngưỡng pass chỉ được chốt sau baseline. Không trình bày target ch�
 - Persistence schema và tiêu chí SQLite → PostgreSQL.
 - Durable storage cho `.xosc` khi deploy.
 - Prompt, model và provider policy sau khi có baseline validity/cost/latency.
-- Qdrant index parameters sau retrieval baseline.
+- Có cần index ANN không — chỉ mở lại khi chạm ngưỡng đảo ngược của ADR-013.
 - Danh sách maneuver/map thực sự được converter hỗ trợ.
 - Oracle near-miss và controller cho adversarial evaluation.
 

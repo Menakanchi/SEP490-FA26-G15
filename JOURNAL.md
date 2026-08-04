@@ -113,7 +113,7 @@
 
 ### Kế hoạch tuần sau (W3 · 10/08 – 16/08)
 
-- [ ] Qdrant store/search + retrieval baseline vector-only, rồi bản cải tiến
+- [ ] `Retriever` (SQLite BLOB + cosine, ADR-013) + retrieval baseline vector-only, rồi bản cải tiến
 - [ ] Batch CARLA qua worker, đối chiếu outcome cut-in thật
 - [ ] Dashboard validity / cost / latency
 
@@ -123,7 +123,7 @@
 
 ### Mục tiêu tuần này
 
-- [ ] Qdrant baseline → improved retrieval (Recall@k, MRR, nDCG trên golden queries)
+- [ ] `Retriever` baseline → improved retrieval (Recall@k, MRR, nDCG trên golden queries)
 - [ ] Batch CARLA job qua worker
 - [ ] Dashboard validity/cost/latency
 

@@ -10,7 +10,7 @@
   người**.
 - Static path không phụ thuộc GPU; trạng thái worker phải được hiển thị nhưng
   không chặn generate/review/download.
-- UI chỉ gọi backend API; không kết nối trực tiếp Qdrant hoặc CARLA.
+- UI chỉ gọi backend API; không kết nối trực tiếp retrieval store hoặc CARLA.
 - Câu gốc, assumptions, warnings và người duyệt phải nhìn thấy được để tránh
   “thành công giả”.
 
@@ -125,7 +125,7 @@ flowchart TD
 - `reason` bắt buộc khi Reject, tối đa 1000 ký tự.
 - Trang phải hiển thị rõ `BEFORE_LIBRARY` hay `BEFORE_SIM`; không cho người dùng
   tự đổi gate bằng dropdown.
-- Approve `BEFORE_LIBRARY` mở quyền download và tạo Qdrant projection.
+- Approve `BEFORE_LIBRARY` mở quyền download và ghi embedding để retrieval tìm lại được.
 - Approve `BEFORE_SIM` mới cho backend tạo `ScenarioJob`.
 - Mỗi quyết định gắn với đúng version của spec/XML đang hiển thị.
 

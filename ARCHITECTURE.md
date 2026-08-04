@@ -24,8 +24,9 @@ graph TB
     API --> G[LangGraph workflow]
     G --> LLM[LLM gateway]
     G --> CONV[Deterministic converter]
-    API --> DB[(Transactional store<br/>SQLite MVP)]
-    API --> QD[(Qdrant · retrieval index)]
+    API --> DB[(Transactional store · SQLite MVP<br/>scenario + review + job + embedding BLOB)]
+    API --> RET[Retriever · WHERE theo ODD + cosine numpy]
+    RET --> DB
 
     W[GPU worker · Python 3.10] -. pull job .-> API
     W --> SR[ScenarioRunner 0.9.15]
@@ -36,7 +37,7 @@ graph TB
 - Backend cloud không `import carla`.
 - Worker nhận chuỗi XML, không nhận object Python.
 - Worker offline không làm chết đường generate/review/download ở chế độ static.
-- Transactional store giữ state giao dịch; Qdrant có thể rebuild từ dữ liệu đã duyệt.
+- Transactional store là nguồn thật duy nhất: state giao dịch và embedding nằm cùng một `.db`, nên không có index ngoài để lệch (ADR-013).
 - MVP dùng SQLite. Chỉ chuyển sang PostgreSQL khi deployment cần durable storage ngoài process hoặc có concurrent writes.
 
 ## Workflow 7 nodes
@@ -98,7 +99,7 @@ trong graph.
 graph LR
     P[(pending_review)] --> R1{BEFORE_LIBRARY}
     R1 -->|reject + reason| RJ[rejected]
-    R1 -->|approve| LIB[Qdrant + cho tải .xosc]
+    R1 -->|approve| LIB[Library: embedding BLOB + cho tải .xosc]
     LIB --> R2{BEFORE_SIM}
     R2 -->|approve| JOB[ScenarioJob]
     JOB --> W[GPU worker]
@@ -131,7 +132,7 @@ và copy nguyên văn câu người dùng khi promote draft thành spec.
 | LLM ↔ backend | `ODDQuery`, `ScenarioDraft` | structured output, `extra="forbid"` |
 | Spec ↔ converter | `ScenarioSpec` | spec không chứa khái niệm riêng của CARLA |
 | Cloud ↔ GPU worker | `ScenarioJob.xosc_content` | không chia sẻ Python object/venv |
-| Transaction ↔ retrieval | transactional store → Qdrant projection | Qdrant không giữ job/review truth |
+| Transaction ↔ retrieval | truy cập qua interface `Retriever` | chỉ scenario qua `BEFORE_LIBRARY` mới có embedding để tìm lại |
 | Workflow ↔ human | durable `pending_review` state | không chờ trong process memory |
 
 ## Converter và CARLA
@@ -155,7 +156,7 @@ Các parser traps và giới hạn nằm ở
 ## Bất biến được kiểm bằng CI
 
 - `src/` không import `carla`.
-- HTTP layer không query Qdrant trực tiếp.
+- HTTP layer không truy vấn retrieval store trực tiếp; mọi tìm kiếm đi qua `Retriever`. *(Test hiện tại chặn `import qdrant` trong router — sẽ đổi sang chặn import implementation của `Retriever` khi hiện thực, xem §Hệ quả của ADR-013.)*
 - Chỉ `parse_intent`, `generate_draft`, `repair_draft` được phép gọi LLM.
 - Mọi provider call đi qua `src/services/llm.py`.
 - Fixtures phải validate theo `schemas.py`.
@@ -169,7 +170,7 @@ Các parser traps và giới hạn nằm ở
 | CARLA/ScenarioRunner smoke test | ✅ Toolchain pass |
 | Graph 7 nodes | ⏳ Graph hiện vẫn là template |
 | Static validator, templates, converter | ⏳ Chưa có |
-| Qdrant store/search và retrieval baseline | ⏳ Chưa có |
+| `Retriever` (SQLite BLOB + cosine) và retrieval baseline | ⏳ Chưa có |
 | SQLite persistence, review/download/job API | ⏳ Chưa có |
 | Frontend và preview | ⏳ Chưa có |
 | GPU worker | ⏳ Chưa có implementation |

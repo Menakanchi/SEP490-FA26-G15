@@ -1,7 +1,7 @@
 # ADR-003: Dùng Qdrant làm vector store thay vì ChromaDB của template
 
 **Ngày:** 2026-07-28
-**Trạng thái:** Accepted
+**Trạng thái:** **Superseded by [ADR-013](ADR-013-sqlite-blob-thay-qdrant.md)** (04/08/2026) — quy mô thật của thư viện (<1000 scenario, ~6 MB embedding) làm lập luận RAM ở §Lý do 3 không còn đứng. Nội dung dưới đây giữ nguyên làm bằng chứng lịch sử, **không** phản ánh quyết định hiện hành.
 
 ## Bối cảnh
 
