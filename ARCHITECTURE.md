@@ -90,6 +90,77 @@ iteration >= 3                  → failed
 
 Warning không chặn flow; reviewer nhìn thấy warning ở cổng duyệt.
 
+## Ví dụ từng node
+
+Một câu đi hết pipeline. Mọi giá trị dưới đây **lấy từ `fixtures/`**, không phải
+viết tay minh hoạ — fixtures có test validate theo `schemas.py`, nên ví dụ ở đây
+không lệch được khỏi contract. Muốn xem đầy đủ thì mở file được trích dẫn.
+
+Câu vào (`fixtures/scenario_specs/sc_001.json` → `description_vi`):
+
+> *"Xe máy chạy 80 km/h ở làn bên trái, vượt lên từ phía sau ô tô đang chạy
+> 60 km/h, tạt đầu rồi phanh gấp còn 40 km/h. Trời quang, ban ngày, cao tốc."*
+
+**`parse_intent`** — output *duy nhất* của LLM là `ODDQuery`; mọi trục đều có thể
+rỗng:
+
+```json
+{"road_type": "highway", "weather": "clear",
+ "actor_type": "motorcycle", "maneuver": "cut_in", "inferred": []}
+```
+
+`inferred` rỗng vì câu này nói rõ cả 4 trục. Câu *"xe máy tạt đầu lúc mưa"* chỉ
+điền được 2 trục, phần còn lại do `ODDQuery.with_defaults()` — code thuần, không
+phải LLM — điền và sinh `list[Assumption]`.
+
+**`retrieve`** — `ODDQuery.as_filter()` cho `WHERE`, phần còn lại là cosine:
+
+```python
+{"road_type": "highway", "weather": "clear",
+ "actor_type": "motorcycle", "maneuver": "cut_in"}   # → tối đa 3 ScenarioSpec
+```
+
+**`generate_draft`** — input là `ODDCell` (đủ 4 trục) + examples; output
+`ScenarioDraft`, tức `sc_001.json` **bỏ đi** `scenario_id` và `description_vi`:
+
+```json
+{"actors": [
+   {"name": "hero",      "category": "car",        "position": {"lane_offset": 0,  "s_offset_m":   0.0}, "initial_speed_kmh": 60.0, "is_ego": true},
+   {"name": "adversary", "category": "motorcycle", "position": {"lane_offset": -1, "s_offset_m": -25.0}, "initial_speed_kmh": 80.0, "is_ego": false}],
+ "maneuvers": [
+   {"actor_name": "adversary", "maneuver": "cut_in",
+    "trigger": {"type": "simulation_time", "value": 7.0}, "target_speed_kmh": 40.0}]}
+```
+
+`s_offset_m: -25.0` là chỗ dễ sai nhất: muốn vượt lên rồi tạt đầu thì actor phải
+xuất phát **phía sau** ego. `hero` là tên actor theo quy ước của fixtures, không
+phải một trường role — vai ego nằm ở `is_ego`.
+
+**`validate`** — đổi dấu `s_offset_m` thành `+20.0` mà vẫn giữ 80 km/h thì schema
+vẫn hợp lệ nhưng hình học vô nghĩa: xe máy ở phía trước và chạy nhanh hơn thì
+khoảng cách chỉ nới rộng. Đó là `fixtures/invalid_drafts/geom_no_catchup.json`:
+
+```json
+{"caught_by": "static_check", "expected_codes": ["GEOM_NO_CATCHUP"]}
+```
+
+12 file trong `invalid_drafts/` là bộ đề của validator — mỗi file tự khai nó sai
+code gì và ai phải bắt được.
+
+**`repair_draft`** — nhận draft + issue trên, trả draft mới. Chỉ code thuộc
+`REPAIRABLE_CODES` mới đi đường này; tối đa ba vòng.
+
+**`convert_xosc`** — đích đến là `fixtures/xosc/sample_001_cut_in.xosc` (viết
+tay). Bài test đầu tiên của converter chính là:
+
+```text
+convert(fixtures/scenario_specs/sc_001.json) == sample_001_cut_in.xosc   (sau chuẩn hoá)
+```
+
+**`persist_pending_review`** — ghi `ScenarioSpec` + XML + provenance, scenario ở
+`pending_review`, graph kết thúc. `ExecutionResult` tương ứng cho UI dựng trước
+khi có backend nằm ở `fixtures/execution_results/`.
+
 ## Sau workflow
 
 Review và simulation là các HTTP transaction độc lập, không phải nodes đứng chờ

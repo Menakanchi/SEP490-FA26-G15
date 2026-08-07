@@ -67,5 +67,7 @@ out/
 .ai-log/archive/
 
 # Local-only planning documents
+# overview.html là bản nháp của một thế hệ thiết kế trước (ParsedIntent,
+# hard_brake, Qdrant, Isaac Sim) — giữ local, KHÔNG phải nguồn sự thật.
+# Ví dụ từng node đã chuyển vào ARCHITECTURE.md §Ví dụ từng node.
 /docs/overview.html
-/docs/plan.md
