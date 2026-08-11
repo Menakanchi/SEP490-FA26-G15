@@ -1,7 +1,6 @@
 """Unit tests cho Node 2 (retrieve)."""
 
 from unittest.mock import MagicMock, patch
-import pytest
 
 from src.agents.nodes.retrieve import retrieve_node
 

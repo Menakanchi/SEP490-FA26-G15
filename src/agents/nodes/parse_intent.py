@@ -20,10 +20,10 @@ import json
 import logging
 import unicodedata
 from pathlib import Path
-from langchain_core.messages import SystemMessage, HumanMessage
+
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.agents.state import ForgeState
-from src.schemas.intent import ODDQuery
 from src.models.schemas import (
     ActorType,
     IssueCode,
@@ -32,6 +32,7 @@ from src.models.schemas import (
     ValidationIssue,
     Weather,
 )
+from src.schemas.intent import ODDQuery
 from src.services.llm import get_llm
 
 logger = logging.getLogger(__name__)

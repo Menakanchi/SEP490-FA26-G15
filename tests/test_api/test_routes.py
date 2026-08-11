@@ -1,5 +1,4 @@
 import pytest
-from src.models.schemas import CriterionStatus
 
 
 @pytest.mark.asyncio
@@ -112,7 +111,7 @@ async def test_review_validation_and_flow(client):
         json={"prompt": "Ô tô lấn làn", "validation_mode": "static"},
     )
     req_id = gen_res.json()["request_id"]
-    
+
     # Wait briefly or poll until scenario_id is ready
     import asyncio
     for _ in range(20):
@@ -120,7 +119,7 @@ async def test_review_validation_and_flow(client):
         if s_res.json().get("scenario_id"):
             break
         await asyncio.sleep(0.2)
-    
+
     sc_id = (await client.get(f"/api/v1/status/{req_id}")).json().get("scenario_id")
     if sc_id:
         # Test rejection reason validation

@@ -1,6 +1,7 @@
 """Unit tests cho Node 1 (parse_intent)."""
 
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from src.agents.nodes.parse_intent import parse_intent_node

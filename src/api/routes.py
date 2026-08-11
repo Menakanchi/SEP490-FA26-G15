@@ -14,26 +14,23 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
 from src.models.schemas import (
     # Domain models
     ExecutionResult,
-    JobStatus,
-    ReviewDecision,
-    ReviewGate,
-    ScenarioJob,
-    ScenarioStatus,
-    next_status_after_review,
     # API models
     GenerateRequest,
     GenerateResponse,
+    JobStatus,
     ReviewApiRequest,
+    ReviewGate,
     ScenarioListResponse,
-    ScenarioQuery,
+    ScenarioStatus,
     StatusResponse,
+    next_status_after_review,
 )
 
 router = APIRouter()
@@ -121,10 +118,14 @@ def _extract_odd_fallback_from_prompt(prompt: str) -> dict:
     pos_ped = min([p for p in [prompt_lower.find("người đi bộ"), prompt_lower.find("nguoi di bo")] if p != -1], default=-1)
 
     positions = []
-    if pos_car != -1: positions.append((pos_car, "car"))
-    if pos_bike != -1: positions.append((pos_bike, "motorcycle"))
-    if pos_truck != -1: positions.append((pos_truck, "truck"))
-    if pos_bus != -1: positions.append((pos_bus, "car"))
+    if pos_car != -1: 
+        positions.append((pos_car, "car"))
+    if pos_bike != -1: 
+        positions.append((pos_bike, "motorcycle"))
+    if pos_truck != -1: 
+        positions.append((pos_truck, "truck"))
+    if pos_bus != -1: 
+        positions.append((pos_bus, "car"))
     if pos_ped != -1: positions.append((pos_ped, "pedestrian"))
 
     if positions:
@@ -237,7 +238,7 @@ async def _run_mock_workflow(request_id: str) -> None:
         },
         "xosc_content": f'<?xml version="1.0"?>\n<OpenSCENARIO><!-- {scenario_id} stub --></OpenSCENARIO>',
         "review_logs": [],
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "validation_mode": req["validation_mode"],
     }
 
@@ -293,7 +294,7 @@ async def generate(body: GenerateRequest) -> GenerateResponse:
         "progress": 0,
         "scenario_id": None,
         "error": None,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     # Kick off background task (mock workflow)
@@ -378,7 +379,7 @@ async def post_review(body: ReviewApiRequest) -> dict:
         "approved": body.approved,
         "reviewer": body.reviewer,
         "reason": body.reason,
-        "decided_at": datetime.now(timezone.utc).isoformat(),
+        "decided_at": datetime.now(UTC).isoformat(),
     }
     scenario.setdefault("review_logs", []).append(decision)
 
@@ -391,7 +392,7 @@ async def post_review(body: ReviewApiRequest) -> dict:
             "status": JobStatus.PENDING.value,
             "xosc_content": scenario["xosc_content"],
             "result": None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
 
     return {"ok": True}
