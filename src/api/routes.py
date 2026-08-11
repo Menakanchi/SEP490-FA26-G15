@@ -118,15 +118,16 @@ def _extract_odd_fallback_from_prompt(prompt: str) -> dict:
     pos_ped = min([p for p in [prompt_lower.find("người đi bộ"), prompt_lower.find("nguoi di bo")] if p != -1], default=-1)
 
     positions = []
-    if pos_car != -1: 
+    if pos_car != -1:
         positions.append((pos_car, "car"))
-    if pos_bike != -1: 
+    if pos_bike != -1:
         positions.append((pos_bike, "motorcycle"))
-    if pos_truck != -1: 
+    if pos_truck != -1:
         positions.append((pos_truck, "truck"))
-    if pos_bus != -1: 
+    if pos_bus != -1:
         positions.append((pos_bus, "car"))
-    if pos_ped != -1: positions.append((pos_ped, "pedestrian"))
+    if pos_ped != -1:
+        positions.append((pos_ped, "pedestrian"))
 
     if positions:
         positions.sort(key=lambda x: x[0])

@@ -1,11 +1,13 @@
 """Schema DTO cho parse_intent node."""
 
 from __future__ import annotations
-from src.models.schemas import Assumption, AssumptionSource, ODDCell, ParsedIntent
+
 from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
+
+from src.models.schemas import Assumption, AssumptionSource, ODDCell, ParsedIntent
 
 
 class ActorType(StrEnum):
