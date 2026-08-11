@@ -60,6 +60,7 @@ async def test_generated_scenario_dynamic_odd(client):
     req_id = gen_res.json()["request_id"]
 
     import asyncio
+
     sc_id = None
     for _ in range(25):
         s_res = await client.get(f"/api/v1/status/{req_id}")
@@ -114,6 +115,7 @@ async def test_review_validation_and_flow(client):
 
     # Wait briefly or poll until scenario_id is ready
     import asyncio
+
     for _ in range(20):
         s_res = await client.get(f"/api/v1/status/{req_id}")
         if s_res.json().get("scenario_id"):

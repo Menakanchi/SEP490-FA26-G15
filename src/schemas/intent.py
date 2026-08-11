@@ -41,8 +41,6 @@ class Weather(StrEnum):
     UNKNOWN = "unknown"
 
 
-
-
 class ODDQuery(BaseModel):
     """Schema ODDQuery cho Structured Output của parse_intent."""
 
@@ -104,7 +102,9 @@ class ODDQuery(BaseModel):
             assumptions.append(
                 Assumption(
                     field="road_type",
-                    value=str(odd_hints.road_type.value if hasattr(odd_hints.road_type, "value") else odd_hints.road_type),
+                    value=str(
+                        odd_hints.road_type.value if hasattr(odd_hints.road_type, "value") else odd_hints.road_type
+                    ),
                     source=AssumptionSource.DEFAULT,
                     reason_vi="Bối cảnh đường mặc định",
                 )

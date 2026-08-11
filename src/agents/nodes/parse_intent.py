@@ -122,8 +122,16 @@ def _rule_based_extract(user_query: str, rules: dict) -> ODDQuery | None:
     if extracted["actor_type"] and extracted["maneuver"]:
         logger.info(f"Matched via taxonomy_rules.json rule-based matching: {extracted}")
 
-        rt_val = RoadType(extracted["road_type"]) if (extracted["road_type"] and extracted["road_type"] in [r.value for r in RoadType]) else "unknown"
-        wt_val = Weather(extracted["weather"]) if (extracted["weather"] and extracted["weather"] in [w.value for w in Weather]) else "unknown"
+        rt_val = (
+            RoadType(extracted["road_type"])
+            if (extracted["road_type"] and extracted["road_type"] in [r.value for r in RoadType])
+            else "unknown"
+        )
+        wt_val = (
+            Weather(extracted["weather"])
+            if (extracted["weather"] and extracted["weather"] in [w.value for w in Weather])
+            else "unknown"
+        )
 
         try:
             at_val = ActorType(extracted["actor_type"])
@@ -220,9 +228,12 @@ def parse_intent_node(state: ForgeState) -> dict:
         except Exception as err:
             # Nếu prompt không chứa bất kỳ từ khóa ODD nào từ từ điển fallback -> coi là prompt rác
             from src.api.routes import _extract_odd_fallback_from_prompt
+
             fb = _extract_odd_fallback_from_prompt(user_query)
             if all(v == "unknown" for v in fb.values()):
-                raise ValueError("Không thể nhận diện tình huống giao thông từ prompt. Vui lòng cung cấp mô tả rõ ràng hơn.")
+                raise ValueError(
+                    "Không thể nhận diện tình huống giao thông từ prompt. Vui lòng cung cấp mô tả rõ ràng hơn."
+                )
             issue = ValidationIssue(
                 code=IssueCode.LLM_PROVIDER_ERROR,
                 message_vi=f"Lỗi khi gọi mô hình ngôn ngữ phân tích ODD: {err}",
@@ -232,10 +243,10 @@ def parse_intent_node(state: ForgeState) -> dict:
 
     # 4. Logic xử lý kịch bản UNPARSABLE: cả 4 trường ODD đều là None / unknown
     if not (
-        (odd_query.road_type and str(odd_query.road_type) not in ("unknown", "none")) or
-        (odd_query.weather and str(odd_query.weather) not in ("unknown", "none")) or
-        (odd_query.actor_type and str(odd_query.actor_type) not in ("unknown", "none")) or
-        (odd_query.maneuver and str(odd_query.maneuver) not in ("unknown", "none"))
+        (odd_query.road_type and str(odd_query.road_type) not in ("unknown", "none"))
+        or (odd_query.weather and str(odd_query.weather) not in ("unknown", "none"))
+        or (odd_query.actor_type and str(odd_query.actor_type) not in ("unknown", "none"))
+        or (odd_query.maneuver and str(odd_query.maneuver) not in ("unknown", "none"))
     ):
         raise ValueError("Không thể nhận diện tình huống giao thông từ prompt. Vui lòng cung cấp mô tả rõ ràng hơn.")
 

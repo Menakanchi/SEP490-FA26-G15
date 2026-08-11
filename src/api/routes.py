@@ -84,11 +84,15 @@ def _step_progress(step: str) -> int:
 # Mock workflow — chạy qua các bước rồi sinh scenario giả
 # ---------------------------------------------------------------------------
 
+
 def _extract_odd_fallback_from_prompt(prompt: str) -> dict:
     prompt_lower = prompt.lower()
 
     road_type = "unknown"
-    if any(k in prompt_lower for k in ["ngã tư", "giao lộ", "ngã ba", "nga tu", "nga ba", "giao lo", "nga 4", "nga 3", "ngã 4", "ngã 3"]):
+    if any(
+        k in prompt_lower
+        for k in ["ngã tư", "giao lộ", "ngã ba", "nga tu", "nga ba", "giao lo", "nga 4", "nga 3", "ngã 4", "ngã 3"]
+    ):
         road_type = "intersection"
     elif any(k in prompt_lower for k in ["cao tốc", "quốc lộ", "cao toc", "quoc lo"]):
         road_type = "highway"
@@ -111,11 +115,71 @@ def _extract_odd_fallback_from_prompt(prompt: str) -> dict:
 
     actor_type = "unknown"
     # Subject parsing: find first mentioned vehicle performing the maneuver
-    pos_car = min([p for p in [prompt_lower.find("o to"), prompt_lower.find("oto"), prompt_lower.find("ô tô"), prompt_lower.find("xe con"), prompt_lower.find("sedan")] if p != -1], default=-1)
-    pos_bike = min([p for p in [prompt_lower.find("xe may"), prompt_lower.find("xe máy"), prompt_lower.find("xemay"), prompt_lower.find("xe ga"), prompt_lower.find("xega"), prompt_lower.find("xe so"), prompt_lower.find("xeso")] if p != -1], default=-1)
-    pos_truck = min([p for p in [prompt_lower.find("xe tải"), prompt_lower.find("xe tai"), prompt_lower.find("container"), prompt_lower.find("xe dau keo"), prompt_lower.find("xe ben"), prompt_lower.find("cont"), prompt_lower.find("xe cont")] if p != -1], default=-1)
-    pos_bus = min([p for p in [prompt_lower.find("xe bus"), prompt_lower.find("xe buýt"), prompt_lower.find("xe buyet"), prompt_lower.find("xe 16 cho"), prompt_lower.find("16 cho"), prompt_lower.find("xe transit"), prompt_lower.find("xe khach")] if p != -1], default=-1)
-    pos_ped = min([p for p in [prompt_lower.find("người đi bộ"), prompt_lower.find("nguoi di bo")] if p != -1], default=-1)
+    pos_car = min(
+        [
+            p
+            for p in [
+                prompt_lower.find("o to"),
+                prompt_lower.find("oto"),
+                prompt_lower.find("ô tô"),
+                prompt_lower.find("xe con"),
+                prompt_lower.find("sedan"),
+            ]
+            if p != -1
+        ],
+        default=-1,
+    )
+    pos_bike = min(
+        [
+            p
+            for p in [
+                prompt_lower.find("xe may"),
+                prompt_lower.find("xe máy"),
+                prompt_lower.find("xemay"),
+                prompt_lower.find("xe ga"),
+                prompt_lower.find("xega"),
+                prompt_lower.find("xe so"),
+                prompt_lower.find("xeso"),
+            ]
+            if p != -1
+        ],
+        default=-1,
+    )
+    pos_truck = min(
+        [
+            p
+            for p in [
+                prompt_lower.find("xe tải"),
+                prompt_lower.find("xe tai"),
+                prompt_lower.find("container"),
+                prompt_lower.find("xe dau keo"),
+                prompt_lower.find("xe ben"),
+                prompt_lower.find("cont"),
+                prompt_lower.find("xe cont"),
+            ]
+            if p != -1
+        ],
+        default=-1,
+    )
+    pos_bus = min(
+        [
+            p
+            for p in [
+                prompt_lower.find("xe bus"),
+                prompt_lower.find("xe buýt"),
+                prompt_lower.find("xe buyet"),
+                prompt_lower.find("xe 16 cho"),
+                prompt_lower.find("16 cho"),
+                prompt_lower.find("xe transit"),
+                prompt_lower.find("xe khach"),
+            ]
+            if p != -1
+        ],
+        default=-1,
+    )
+    pos_ped = min(
+        [p for p in [prompt_lower.find("người đi bộ"), prompt_lower.find("nguoi di bo")] if p != -1], default=-1
+    )
 
     positions = []
     if pos_car != -1:
@@ -134,11 +198,46 @@ def _extract_odd_fallback_from_prompt(prompt: str) -> dict:
         actor_type = positions[0][1]
 
     maneuver = "unknown"
-    if any(k in prompt_lower for k in ["tạt đầu", "tat dau", "cướp làn", "cuop lan", "chặn đầu", "chan dau", "cúp đầu", "cup dau", "chèn ép", "chen ep", "chèn ngang", "chen ngang", "ép xe", "ep xe"]):
+    if any(
+        k in prompt_lower
+        for k in [
+            "tạt đầu",
+            "tat dau",
+            "cướp làn",
+            "cuop lan",
+            "chặn đầu",
+            "chan dau",
+            "cúp đầu",
+            "cup dau",
+            "chèn ép",
+            "chen ep",
+            "chèn ngang",
+            "chen ngang",
+            "ép xe",
+            "ep xe",
+        ]
+    ):
         maneuver = "cut_in"
-    elif any(k in prompt_lower for k in ["vượt ẩu", "vuot au", "vượt phải", "vuot phai", "vượt trái", "vuot trai", "vượt xe", "vuot xe"]):
+    elif any(
+        k in prompt_lower
+        for k in ["vượt ẩu", "vuot au", "vượt phải", "vuot phai", "vượt trái", "vuot trai", "vượt xe", "vuot xe"]
+    ):
         maneuver = "overtake"
-    elif any(k in prompt_lower for k in ["phanh gấp", "phanh gap", "thắng gấp", "thang gap", "dậm phanh", "dam phanh", "đập phanh", "dap phanh", "khựng lại", "khung lai"]):
+    elif any(
+        k in prompt_lower
+        for k in [
+            "phanh gấp",
+            "phanh gap",
+            "thắng gấp",
+            "thang gap",
+            "dậm phanh",
+            "dam phanh",
+            "đập phanh",
+            "dap phanh",
+            "khựng lại",
+            "khung lai",
+        ]
+    ):
         maneuver = "sudden_brake"
     elif any(k in prompt_lower for k in ["lấn làn", "lan lan", "đè vạch", "de vach", "mất lái", "mat lai"]):
         maneuver = "lane_drift"
@@ -177,6 +276,7 @@ async def _run_mock_workflow(request_id: str) -> None:
     # 2. Thử gọi Node 1 (parse_intent) để lấy ODD từ LLM nếu kết nối thành công
     try:
         from src.agents.nodes.parse_intent import parse_intent_node
+
         res = parse_intent_node({"user_query": req["description_vi"]})
         odd_obj = res.get("odd_query") or res.get("odd_hints")
         if odd_obj:
@@ -266,6 +366,7 @@ async def generate(body: GenerateRequest) -> GenerateResponse:
 
     try:
         from src.agents.nodes.parse_intent import parse_intent_node
+
         res = parse_intent_node({"user_query": prompt_text})
         if isinstance(res, dict) and "issues" in res and res["issues"]:
             for issue in res["issues"]:
@@ -425,9 +526,9 @@ async def list_scenarios(
     if search:
         search_lower = search.lower()
         items = [
-            s for s in items
-            if search_lower in s.get("title", "").lower()
-            or search_lower in s.get("description_vi", "").lower()
+            s
+            for s in items
+            if search_lower in s.get("title", "").lower() or search_lower in s.get("description_vi", "").lower()
         ]
 
     # Lọc theo ODD axes
@@ -479,10 +580,7 @@ async def list_pending_jobs() -> dict:
     Worker gọi endpoint này định kỳ. Mỗi job chứa ``xosc_content`` (chuỗi XML)
     — worker không cần biết ``ScenarioSpec`` là gì (ADR-001, ARCHITECTURE.md).
     """
-    pending = [
-        j for j in _jobs.values()
-        if j["status"] == JobStatus.PENDING.value
-    ]
+    pending = [j for j in _jobs.values() if j["status"] == JobStatus.PENDING.value]
     return {"jobs": pending}
 
 

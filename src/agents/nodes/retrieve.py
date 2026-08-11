@@ -105,6 +105,7 @@ def _build_odd_query_text(state: ForgeState) -> str | None:
 def get_chroma_client():
     """Hàm helper kết nối ChromaDB client (dễ dàng patch trong unit tests)."""
     import chromadb
+
     return chromadb.Client()
 
 
@@ -134,13 +135,15 @@ def retrieve_node(state: ForgeState, k: int = 3) -> dict:
 
             for i, doc in enumerate(docs):
                 meta = metadatas[i] if i < len(metadatas) else {}
-                doc_id = ids[i] if i < len(ids) else f"ex_{i+1}"
-                retrieved_examples.append({
-                    "id": doc_id,
-                    "title": meta.get("title", f"Kịch bản mẫu {i+1}"),
-                    "content": doc,
-                    "metadata": meta,
-                })
+                doc_id = ids[i] if i < len(ids) else f"ex_{i + 1}"
+                retrieved_examples.append(
+                    {
+                        "id": doc_id,
+                        "title": meta.get("title", f"Kịch bản mẫu {i + 1}"),
+                        "content": doc,
+                        "metadata": meta,
+                    }
+                )
     except Exception as exc:
         logger.warning(f"[NODE 2 WARNING] ChromaDB query failed or collection missing: {exc}")
         retrieved_examples = []

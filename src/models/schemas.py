@@ -1150,4 +1150,3 @@ class ParsedIntent(ForgeModel):
     odd_query: ODDQuery
     odd_cell: ODDCell
     assumptions: list[Assumption] = Field(default_factory=list)
-

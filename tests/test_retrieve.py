@@ -15,16 +15,20 @@ def test_retrieve_happy_path(mock_get_chroma, capsys):
 
     # Mock query result với 3 ví dụ mẫu
     mock_collection.query.return_value = {
-        "documents": [[
-            "Kịch bản 1: Xe máy tạt đầu ô tô ở đường thẳng",
-            "Kịch bản 2: Xe máy phanh gấp trên đường cao tốc",
-            "Kịch bản 3: Ô tô lấn làn giao lộ",
-        ]],
-        "metadatas": [[
-            {"title": "Mẫu 1: Xe máy tạt đầu"},
-            {"title": "Mẫu 2: Phanh gấp"},
-            {"title": "Mẫu 3: Lấn làn"},
-        ]],
+        "documents": [
+            [
+                "Kịch bản 1: Xe máy tạt đầu ô tô ở đường thẳng",
+                "Kịch bản 2: Xe máy phanh gấp trên đường cao tốc",
+                "Kịch bản 3: Ô tô lấn làn giao lộ",
+            ]
+        ],
+        "metadatas": [
+            [
+                {"title": "Mẫu 1: Xe máy tạt đầu"},
+                {"title": "Mẫu 2: Phanh gấp"},
+                {"title": "Mẫu 3: Lấn làn"},
+            ]
+        ],
         "ids": [["sc_ex_001", "sc_ex_002", "sc_ex_003"]],
     }
 
