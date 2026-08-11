@@ -16,8 +16,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AI20K Agent",
-    description="AI Agent built with LangGraph",
+    title="Scenario Forge API",
+    description="Backend API cho Scenario Forge — sinh kịch bản OpenSCENARIO 1.0 từ mô tả tiếng Việt",
     version="1.0.0",
     lifespan=lifespan,
 )

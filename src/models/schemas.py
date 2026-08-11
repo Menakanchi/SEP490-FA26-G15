@@ -38,7 +38,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import ClassVar, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 
 class ForgeModel(BaseModel):
@@ -298,6 +298,26 @@ class ODDQuery(ForgeModel):
     weather: Weather | None = None
     actor_type: ActorType | None = None
     maneuver: ManeuverType | None = None
+
+    @field_validator("road_type", "weather", "actor_type", "maneuver", mode="before")
+    @classmethod
+    def _normalize_unspecified_to_none(cls, v: object) -> object:
+        if isinstance(v, str):
+            v_clean = v.strip().lower()
+            if v_clean in ("bus", "xe_bus", "xe_khach"):
+                return "car"
+            if v_clean in (
+                "không xác định",
+                "khong xac dinh",
+                "khong_xac_dinh",
+                "unknown",
+                "none",
+                "n/a",
+                "null",
+                "",
+            ):
+                return None
+        return v
 
     inferred: list[ODDAxis] = Field(
         default_factory=list,
@@ -1039,16 +1059,95 @@ class LibraryEntry(ForgeModel):
 
 
 # ---------------------------------------------------------------------------
-# Còn sót từ template — KHÔNG thuộc hợp đồng của Forge
+# API Request / Response models — hợp đồng giữa Frontend và Backend
 # ---------------------------------------------------------------------------
-# `src/api/routes.py` của template còn dùng hai model này. Giữ tạm để app không
-# vỡ. Xoá cả khối này cùng lúc với route `/chat` khi Chi dựng router thật.
+# Đây là hình dạng JSON mà frontend gửi/nhận. Tách biệt với domain models
+# (ScenarioSpec, ReviewDecision, ...) vì một bên là hợp đồng HTTP, bên kia là
+# hợp đồng dữ liệu nội bộ — trộn hai thứ đó nghĩa là đổi DB schema sẽ vỡ API.
 
 
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=5000, description="Tin nhắn từ user")
+GateType = Literal["before_library", "before_sim"]
+"""Alias Literal cho gate trong API request — frontend gửi chuỗi, không gửi enum."""
 
 
-class ChatResponse(BaseModel):
-    response: str = Field(..., description="Phản hồi từ agent")
-    analysis: str = Field(default="", description="Phân tích nội bộ")
+class GenerateRequest(ForgeModel):
+    """POST /generate — body từ frontend.
+
+    ``prompt`` giữ nguyên câu tiếng Việt gốc (FR-01). ``validation_mode``
+    quyết định luồng sau workflow: ``static`` = chỉ validate XML, ``sim`` = gửi
+    sang worker CARLA (cần duyệt ``BEFORE_SIM``).
+    """
+
+    prompt: str = Field(..., min_length=1, max_length=5000, description="Câu mô tả tiếng Việt")
+    validation_mode: ValidationMode = "static"
+
+
+class GenerateResponse(ForgeModel):
+    """POST /generate — response. Client dùng ``request_id`` để poll."""
+
+    request_id: str
+
+
+class StatusResponse(ForgeModel):
+    """GET /status/{request_id} — response cho polling.
+
+    ``step`` là tên node hiện tại trong workflow hoặc ``done``/``failed``.
+    ``progress`` tính bằng phần trăm (0-100) theo index của step.
+    ``scenario_id`` chỉ có khi step = ``done``.
+    """
+
+    request_id: str
+    step: str = Field("queued", description="Tên node đang chạy hoặc done/failed")
+    progress: int = Field(0, ge=0, le=100)
+    scenario_id: str | None = None
+    error: str | None = None
+
+
+class ReviewApiRequest(ForgeModel):
+    """POST /review — body từ frontend.
+
+    Dùng ``GateType`` (Literal) thay vì ``ReviewGate`` (StrEnum) vì đây là
+    hợp đồng HTTP — frontend gửi chuỗi thuần. Chuyển đổi sang ``ReviewGate``
+    enum xảy ra ở tầng route.
+    """
+
+    scenario_id: str = Field(..., min_length=1)
+    gate: GateType
+    approved: bool
+    reviewer: str = Field(..., min_length=1, description="Tên người chịu trách nhiệm duyệt")
+    reason: str = Field("", max_length=1000, description="Bắt buộc khi approved=False")
+
+
+class ScenarioQuery(ForgeModel):
+    """GET /scenarios — query params.
+
+    Bốn trục ODD lọc bằng ``WHERE`` (ADR-013). ``search`` là full-text trên
+    title/description_vi. Phân trang bằng offset = ``(page - 1) * limit``.
+    """
+
+    search: str = ""
+    road_type: RoadType | None = None
+    weather: Weather | None = None
+    actor_type: ActorType | None = None
+    maneuver: ManeuverType | None = None
+    page: int = Field(1, ge=1)
+    limit: int = Field(20, ge=1, le=100)
+
+
+class ScenarioListResponse(ForgeModel):
+    """GET /scenarios — response wrapper."""
+
+    items: list[dict] = Field(default_factory=list, description="Danh sách scenario dạng dict")
+    total: int = 0
+
+
+class ParsedIntent(ForgeModel):
+    """Kết quả parse_intent — dùng nội bộ trong graph, không expose qua API.
+
+    Giữ ở đây vì nó thuộc hợp đồng dữ liệu, và ``ForgeState`` sẽ tham chiếu.
+    """
+
+    odd_query: ODDQuery
+    odd_cell: ODDCell
+    assumptions: list[Assumption] = Field(default_factory=list)
+
