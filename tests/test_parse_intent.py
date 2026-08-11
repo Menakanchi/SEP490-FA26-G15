@@ -15,9 +15,9 @@ from src.models.schemas import (
 
 
 def test_parse_intent_short_or_numeric_prompt():
-    """Prompt < 5 ký tự hoặc chỉ chứa chữ số ném ValueError."""
-    for invalid in ["", "   ", "0", "abc", "123", "a"]:
-        with pytest.raises(ValueError, match="Mô tả kịch bản quá ngắn hoặc không đủ thông tin"):
+    """Prompt < 10 ký tự, < 3 từ hoặc chỉ chứa chữ số ném ValueError."""
+    for invalid in ["", "   ", "0", "abc", "123", "a", "alo123", "oto"]:
+        with pytest.raises(ValueError, match="quá ngắn"):
             parse_intent_node({"user_query": invalid})
 
 
@@ -78,20 +78,20 @@ def test_parse_intent_partial_defaults(mock_get_llm):
 
 @patch("src.agents.nodes.parse_intent.get_llm")
 def test_parse_intent_missing_required_axis(mock_get_llm):
-    """Thiếu trục bắt buộc (actor_type hoặc maneuver) trả về issue NEED_MORE_DETAIL."""
+    """Thiếu trục bắt buộc (actor_type hoặc maneuver) -> trả về ValidationIssue."""
     mock_structured_llm = MagicMock()
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
 
     mock_odd_query = ODDQuery(
-        road_type=RoadType.INTERSECTION,
-        weather=Weather.RAIN,
+        road_type=RoadType.URBAN_STRAIGHT,
+        weather=Weather.CLEAR,
         actor_type=None,
-        maneuver=None,
+        maneuver=ManeuverType.CUT_IN,
         inferred=[],
     )
     mock_structured_llm.invoke.return_value = mock_odd_query
 
-    state = {"user_query": "Tình huống nguy hiểm ở ngã tư lúc trời mưa"}
+    state = {"user_query": "Một chiếc xe lạ nào đó tạt đầu"}
     result = parse_intent_node(state)
 
     assert "issues" in result
@@ -101,7 +101,7 @@ def test_parse_intent_missing_required_axis(mock_get_llm):
 
 @patch("src.agents.nodes.parse_intent.get_llm")
 def test_parse_intent_unparsable_all_none(mock_get_llm):
-    """Cả 4 trường ODD đều là None ném ValueError UNPARSABLE."""
+    """Cả 4 trục đều là None / unknown -> ném ValueError."""
     mock_structured_llm = MagicMock()
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
 
@@ -115,7 +115,7 @@ def test_parse_intent_unparsable_all_none(mock_get_llm):
     mock_structured_llm.invoke.return_value = mock_odd_query
 
     state = {"user_query": "Một ngày đẹp trời như bao ngày khác"}
-    with pytest.raises(ValueError, match="Không thể phân tích bối cảnh kịch bản"):
+    with pytest.raises(ValueError, match="Không thể nhận diện tình huống giao thông"):
         parse_intent_node(state)
 
 
@@ -223,7 +223,7 @@ def test_parse_intent_llm_exception_handled(mock_get_llm):
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
     mock_structured_llm.invoke.side_effect = RuntimeError("OpenAI API rate limit")
 
-    state = {"user_query": "xe phuong tien la phong nhanh qua ma"}
+    state = {"user_query": "phuong tien la phong nhanh phanh gap qua ma"}
     result = parse_intent_node(state)
 
     assert "issues" in result

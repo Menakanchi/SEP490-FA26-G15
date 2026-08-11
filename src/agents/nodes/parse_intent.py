@@ -188,11 +188,13 @@ NẾU CÂU MÔ TẢ KHÔNG ĐỀ CẬP BẤT KỲ THÔNG TIN ODD NÀO, BẮT BU�
 
 def parse_intent_node(state: ForgeState) -> dict:
     """Node 1: parse_intent — nhận user_query và sinh ODDQuery + ODDCell + Assumptions."""
-    user_query = state.get("user_query", "").strip()
+    user_query = state.get("user_query", "")
+    clean_prompt = user_query.strip()
+    words = clean_prompt.split()
 
-    # 1. Input Validation: rỗng, < 5 ký tự hoặc chỉ chứa chữ số
-    if len(user_query) < 5 or user_query.isnumeric():
-        raise ValueError("Mô tả kịch bản quá ngắn hoặc không đủ thông tin. Vui lòng nhập mô tả rõ ràng hơn.")
+    # 1. BƯỚC VALIDATE ĐẦU VÀO (Guardrails): rỗng, < 10 ký tự, < 3 từ hoặc chỉ chứa chữ số
+    if len(clean_prompt) < 10 or len(words) < 3 or clean_prompt.isnumeric():
+        raise ValueError("Mô tả kịch bản quá ngắn hoặc không đủ thông tin kịch bản giao thông.")
 
     rules = _load_taxonomy_rules()
 
@@ -215,6 +217,11 @@ def parse_intent_node(state: ForgeState) -> dict:
         try:
             odd_query = structured_llm.invoke(messages)
         except Exception as err:
+            # Nếu prompt không chứa bất kỳ từ khóa ODD nào từ từ điển fallback -> coi là prompt rác
+            from src.api.routes import _extract_odd_fallback_from_prompt
+            fb = _extract_odd_fallback_from_prompt(user_query)
+            if all(v == "unknown" for v in fb.values()):
+                raise ValueError("Không thể nhận diện tình huống giao thông từ prompt. Vui lòng cung cấp mô tả rõ ràng hơn.")
             issue = ValidationIssue(
                 code=IssueCode.LLM_PROVIDER_ERROR,
                 message_vi=f"Lỗi khi gọi mô hình ngôn ngữ phân tích ODD: {err}",
@@ -229,7 +236,7 @@ def parse_intent_node(state: ForgeState) -> dict:
         (odd_query.actor_type and str(odd_query.actor_type) not in ("unknown", "none")) or
         (odd_query.maneuver and str(odd_query.maneuver) not in ("unknown", "none"))
     ):
-        raise ValueError("Không thể phân tích bối cảnh kịch bản. Vui lòng mô tả rõ hơn về loại đường, thời tiết, phương tiện hoặc hành vi.")
+        raise ValueError("Không thể nhận diện tình huống giao thông từ prompt. Vui lòng cung cấp mô tả rõ ràng hơn.")
 
     # 5. Kiểm tra các trục bắt buộc (actor_type, maneuver)
     missing = odd_query.missing_required_axes()

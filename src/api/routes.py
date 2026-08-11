@@ -176,7 +176,7 @@ async def _run_mock_workflow(request_id: str) -> None:
     try:
         from src.agents.nodes.parse_intent import parse_intent_node
         res = parse_intent_node({"user_query": req["description_vi"]})
-        odd_obj = res.get("odd_hints") or res.get("odd_query")
+        odd_obj = res.get("odd_query") or res.get("odd_hints")
         if odd_obj:
             rt = getattr(odd_obj, "road_type", None)
             wt = getattr(odd_obj, "weather", None)
@@ -255,20 +255,30 @@ async def _run_mock_workflow(request_id: str) -> None:
 @router.post("/generate", response_model=GenerateResponse)
 async def generate(body: GenerateRequest) -> GenerateResponse:
     prompt_text = body.prompt.strip()
-    if len(prompt_text) < 5 or prompt_text.isnumeric():
+    words = prompt_text.split()
+    if len(prompt_text) < 10 or len(words) < 3 or prompt_text.isnumeric():
         raise HTTPException(
             status_code=400,
-            detail="Mô tả kịch bản quá ngắn hoặc không đủ thông tin. Vui lòng nhập mô tả rõ ràng hơn.",
+            detail="Mô tả kịch bản quá ngắn hoặc không đủ thông tin kịch bản giao thông.",
         )
 
     try:
         from src.agents.nodes.parse_intent import parse_intent_node
-        parse_intent_node({"user_query": prompt_text})
+        res = parse_intent_node({"user_query": prompt_text})
+        if isinstance(res, dict) and "issues" in res and res["issues"]:
+            for issue in res["issues"]:
+                msg = getattr(issue, "message_vi", str(issue))
+                raise HTTPException(
+                    status_code=400,
+                    detail=msg,
+                )
     except ValueError as err:
         raise HTTPException(
             status_code=400,
             detail=str(err),
         )
+    except HTTPException as http_err:
+        raise http_err
     except Exception:
         # Nếu LLM provider bị lỗi kết nối ở bước pre-check, tiếp tục đẩy vào pipeline
         pass
