@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Scenario Forge (RAV-03)
 
 Scenario Forge nhận mô tả tiếng Việt về một tình huống giao thông nguy hiểm và
@@ -137,3 +138,6 @@ maneuver đã hoạt động end-to-end.
 ## License
 
 MIT
+=======
+# VINAI_PRJ
+>>>>>>> cbbc227e0a618bfaa778c50bf1bc1d92f6689b2a
