@@ -220,9 +220,47 @@ Smoke test ngày 31/07/2026 đã xác nhận:
 - `RelativeLanePosition` đặt actor đúng làn và khoảng cách.
 - ScenarioRunner xuất criteria JSON có thể chuẩn hoá thành `ExecutionResult`.
 
-Smoke test chưa chứng minh converter tự động hoặc outcome cut-in/collision ổn định.
-Các parser traps và giới hạn nằm ở
-[ADR-012](docs/adr/ADR-012-converter-dung-relativelaneposition.md).
+Smoke test **chưa** chứng minh converter tự động. Outcome cut-in/collision thì đã
+ổn định trên fixture viết tay — xem §Ego baseline. Các parser traps và giới hạn
+nằm ở [ADR-012](docs/adr/ADR-012-converter-dung-relativelaneposition.md).
+
+## Ego baseline
+
+Trong mọi kịch bản, ego nhận **đúng một lệnh tốc độ ban đầu** rồi giữ nguyên:
+không controller, không model lái, không autopilot, không maneuver (bất biến
+`EGO_HAS_MANEUVER` đã ép điều này ở tầng validate).
+
+**Đây là điều kiện đối chứng có chủ đích, không phải thiếu sót.** Muốn đo chất
+lượng bộ sinh kịch bản thì đầu bên kia phải cố định. Gắn model lái thật vào lúc
+này thì mỗi lần chạy ra một số khác, và không phân biệt được *"kịch bản đổi"* với
+*"model phản ứng khác"*.
+
+Ba lần chạy `fixtures/xosc/sample_001_cut_in.xosc` (05/08 hai lần, 12/08 một lần)
+cho kết quả trùng khớp:
+
+| | 05/08 a | 05/08 b | 12/08 |
+|---|---|---|---|
+| Va chạm | có | có | có |
+| Thời lượng (s) | 13,03 | 13,04 | 13,02 |
+| Quãng đường ego (m) | 207,6 | 212,2 | 211,7 |
+| Đỉnh tốc độ ego (m/s) | 16,70 | 16,70 | 16,70 |
+
+Đỉnh tốc độ đúng bằng tốc độ khởi hành (60 km/h = 16,67 m/s; phần lẻ là bộ bám
+tốc độ hơi lố) — bằng chứng ego **chưa bao giờ phanh**.
+
+Ba hệ quả khi đọc kết quả:
+
+1. **"Tìm được va chạm" chưa phải tuyên bố về độ khó với một AV thật.** Nó chứng
+   minh kịch bản đâm được một chiếc xe không biết tránh. Vai trò 2 (gắn model lái
+   vào ego) đổi đúng biến đó — và đó là chỗ doanh nghiệp cắm model của họ vào.
+2. **Criteria của ScenarioRunner chỉ gắn vào ego** (`actor` = tên ego; riêng
+   `Duration` là `all`), nên chúng không nói gì về chủ thể gây tình huống. Câu hỏi
+   *"cú tạt đầu có thật sự xảy ra không"* phải trả lời bằng log quỹ đạo, không
+   bằng criteria — đó là lý do behavior checker của Phase 3 đọc lane history.
+3. **`ExecutionResult.success` không được map từ `success` của ScenarioRunner.**
+   Hai bên ngược nghĩa: runner coi *thành công = ego lái an toàn*, nên một kịch
+   bản đạt mục tiêu (có va chạm) sẽ trả `"success": false`. Map thẳng là ghi mọi
+   kịch bản tốt thành hỏng.
 
 ## Bất biến được kiểm bằng CI
 
