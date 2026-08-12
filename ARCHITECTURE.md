@@ -232,6 +232,53 @@ Các parser traps và giới hạn nằm ở
 - Mọi provider call đi qua `src/services/llm.py`.
 - Fixtures phải validate theo `schemas.py`.
 
+## Lộ trình bốn phase
+
+Thứ tự không tuỳ tiện: mỗi phase trả lời một câu hỏi mà phase trước chưa trả lời
+được, và câu sau chỉ có nghĩa khi câu trước đã có đáp án.
+
+| Phase | Xây gì | Trả lời được câu gì | Cần trước |
+|---|---|---|---|
+| 1 | Graph 7 nodes end-to-end, frontend, review flow | Sinh ra file dùng được không? Xong phase này là dùng thật được — không cần GPU, không cần CARLA. | — |
+| 2 | CARLA validation tự động, thu log | File có chạy nổi không? ScenarioRunner load được, xe spawn đúng chỗ, không crash. | 1 |
+| 3 | Behavior checker | Có thật sự nguy hiểm không? Bắt loại hỏng tệ nhất: chạy trót lọt, `success=true`, mà không có gì xảy ra. | 2 |
+| 4 | Agent layer: ODD → batch generation, closed-loop | Sinh hàng loạt mà từng cái vẫn đáng giá không? | 1 + 2 + 3 |
+
+`fixtures/execution_results/sc_002_success_no_collision.json` là hiện vật của câu
+hỏi Phase 3: hợp lệ, chạy xong, `success=true`, và vô dụng.
+
+## Hai chế độ sinh
+
+Phase 4 **không thay** workflow 7 nodes; nó bọc thêm một vòng lặp bên ngoài.
+
+```text
+retail      [người viết câu] → 7-node graph → .xosc → [người duyệt] → library
+
+wholesale   [người khoanh vùng ODD] → [agent sinh câu] → 7-node graph → .xosc
+                       ↑                                                  ↓
+                       └──────── explore + exploit ←─── metric ←──── CARLA
+```
+
+Agent sinh ra một câu tiếng Việt rồi nạp vào đúng đường retail. Nhờ vậy layer
+batch nằm hoàn toàn ngoài graph — không sửa node nào.
+
+| Hộp | Nhận vào | Trả ra |
+|---|---|---|
+| khoanh vùng ODD | người chọn phạm vi trên ma trận ODD, **không** phải câu tiếng Việt | `list[ODDCell]` (giao với `SupportPolicy.supported_cells()`) + số scenario mỗi ô + trần chi phí |
+| agent sinh câu | một `ODDCell` + những gì đã sinh trong chính ô đó (+ spec mồi khi exploit) | một câu tiếng Việt, nạp vào đường sinh có sẵn |
+| metric | `ScenarioSpec` + `ExecutionResult` | bảng **chỗ trống** (ô nào chưa đủ) và bảng **suýt soát** (scenario nào gần-fail) |
+| explore + exploit | hai bảng trên | lô ô / spec mồi cho vòng sau |
+
+`metric` là bộ nhớ trạng thái của vòng lặp, không phải báo cáo cuối kỳ. Bảng suýt
+soát cần `min_distance_m` / `ttc_min_s` trong `ExecutionResult.metrics` — hôm nay
+chưa có, và đó là lý do Phase 4 phụ thuộc Phase 2–3 chứ không chỉ Phase 1. Trần
+chi phí là điều kiện dừng, không phải tuỳ chọn.
+
+Hai ràng buộc mà vòng lặp áp ngược lên Phase 1 — cổng `BEFORE_SIM` duyệt theo
+**lô**, và scenario sinh hàng loạt **không** vào thư viện — nằm ở
+[ADR-014](docs/adr/ADR-014-duyet-theo-lo-va-batch-khong-vao-thu-vien.md).
+Thuật toán explore/exploit chưa chốt.
+
 ## Trạng thái hiện tại
 
 | Thành phần | Trạng thái |
@@ -245,6 +292,8 @@ Các parser traps và giới hạn nằm ở
 | SQLite persistence, review/download/job API | ⏳ Chưa có |
 | Frontend và preview | ⏳ Chưa có |
 | GPU worker | ⏳ Chưa có implementation |
+| Behavior checker (Phase 3) | ⏳ Chưa có |
+| Agent layer + closed-loop (Phase 4) | ⏳ Chưa có — ràng buộc lên Phase 1 ở ADR-014 |
 | Evaluation report bằng số thật | ⏳ Chưa có |
 
 ## Quy tắc thay đổi
