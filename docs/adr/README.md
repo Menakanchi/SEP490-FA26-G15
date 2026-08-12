@@ -23,6 +23,7 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | [ADR-012](ADR-012-converter-dung-relativelaneposition.md) | Converter dùng thẳng `RelativeLanePosition`, không tự phân giải offset | ✅ **Accepted 31/7** — smoke test chạy được, kèm 3 bẫy converter |
 | [ADR-013](ADR-013-sqlite-blob-thay-qdrant.md) | SQLite + embedding BLOB cho retrieval MVP, thay Qdrant | ✅ **Accepted 04/8** — supersedes ADR-003; kèm ngưỡng đảo ngược đo được |
 | [ADR-014](ADR-014-duyet-theo-lo-va-batch-khong-vao-thu-vien.md) | Batch: `BEFORE_SIM` duyệt theo **lô**; scenario sinh hàng loạt **không** vào thư viện | 🕐 **Proposed 12/8** — thi hành ở Phase 4, nhưng ràng buộc schema phải chốt **trước** khi viết review API |
+| [ADR-015](ADR-015-chan-trung-o-loi-vao-bang-so-khop-chuoi.md) | Câu hỏi trùng: so khớp chuỗi chuẩn hoá ở API layer trước graph; **không** ngưỡng embedding ở MVP | 🕐 **Proposed 12/8** — Phase 1, chốt cùng `POST /generate` |
 
 ## Luật
 
