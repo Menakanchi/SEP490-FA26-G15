@@ -190,10 +190,12 @@ class SupportPolicy(ForgeModel):
     mọi thứ được hỗ trợ, ai thu hẹp thì phải viết ra. Ngược lại (whitelist) thì
     thêm một ``ManeuverType`` mới sẽ **im lặng** rơi khỏi phạm vi.
 
-    ⚠ Nội dung thật của mask do Tuấn Anh chốt **cuối W3**, sau khi viết
-    ``converter.py`` — PRD §10, *"danh sách maneuver/map thực sự được converter
-    hỗ trợ"*. Tới lúc đó ``DEFAULT_SUPPORT_POLICY``
-    để rỗng, nghĩa là mẫu số vẫn bằng 560 và không có gì đổi hành vi hôm nay.
+    Nội dung mask phải khớp catalog converter — PRD §10, *"danh sách
+    maneuver/map thực sự được converter hỗ trợ"*. Tổ hợp chưa có anchor/template
+    đã kiểm chứng phải bị loại ở đây để chặn trước khi gọi LLM.
+
+    Giá trị hiện tại và ngưỡng để nới nó nằm ở ADR-016 — đừng sửa mask ở đây
+    mà không đi qua ADR, vì nó là mẫu số của ``ODD coverage``.
     """
 
     unsupported: frozenset[tuple[RoadType, ActorType, ManeuverType]] = frozenset()
@@ -225,8 +227,23 @@ class SupportPolicy(ForgeModel):
         return len(self.supported_cells())
 
 
-DEFAULT_SUPPORT_POLICY = SupportPolicy()
-"""Chưa thu hẹp gì — mẫu số = 560. Tuấn Anh điền ``unsupported`` cuối W3."""
+_HIGHWAY_ACTORS_BY_MANEUVER: dict[ManeuverType, frozenset[ActorType]] = {
+    maneuver: frozenset({ActorType.CAR, ActorType.MOTORCYCLE, ActorType.TRUCK})
+    for maneuver in ManeuverType
+    if maneuver is not ManeuverType.JAYWALK
+}
+_HIGHWAY_ACTORS_BY_MANEUVER[ManeuverType.JAYWALK] = frozenset({ActorType.PEDESTRIAN})
+
+DEFAULT_SUPPORT_POLICY = SupportPolicy(
+    unsupported=frozenset(
+        (road, actor, maneuver)
+        for road in RoadType
+        for actor in ActorType
+        for maneuver in ManeuverType
+        if road is not RoadType.HIGHWAY or actor not in _HIGHWAY_ACTORS_BY_MANEUVER[maneuver]
+    )
+)
+"""76 ô: sáu maneuver cho ba vehicle actors, jaywalk cho pedestrian, qua bốn weather."""
 
 
 class AssumptionSource(StrEnum):

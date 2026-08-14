@@ -68,14 +68,13 @@ def test_odd_matrix_is_560_cells() -> None:
     assert set(ODDCell.model_fields) == {"road_type", "weather", "actor_type", "maneuver"}
 
 
-def test_default_support_policy_does_not_narrow_anything_yet() -> None:
-    """Hôm nay mẫu số vẫn = 560 vì catalog template chưa tồn tại.
-
-    Tuấn Anh chốt ``unsupported`` cuối W3 sau khi viết converter — PRD §10,
-    *"danh sách maneuver/map thực sự được converter hỗ trợ"*.
-    Tới lúc đó test này đỏ — và nó **nên** đỏ, vì đó là lúc `eval/` phải đổi mẫu số.
-    """
-    assert DEFAULT_SUPPORT_POLICY.denominator() == 560
+def test_default_support_policy_matches_verified_converter_scope() -> None:
+    """Catalog có 6 vehicle maneuvers × 3 actors và jaywalk × pedestrian, trên 4 weather."""
+    assert DEFAULT_SUPPORT_POLICY.denominator() == 76
+    assert DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.CAR, ManeuverType.CUT_IN)
+    assert DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.JAYWALK)
+    assert not DEFAULT_SUPPORT_POLICY.supports(RoadType.INTERSECTION, ActorType.CAR, ManeuverType.CUT_IN)
+    assert not DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.CUT_IN)
 
 
 def test_supported_cells_are_enumerated_not_computed() -> None:
@@ -501,7 +500,7 @@ def test_default_road_type_asks_the_support_policy_first() -> None:
     assert cell.road_type is RoadType.HIGHWAY
     assert chi_cao_toc.supports(cell.road_type, cell.actor_type, cell.maneuver)
 
-    assert q.with_defaults()[0].road_type is RoadType.URBAN_STRAIGHT, "policy rỗng thì giữ ưu tiên cũ"
+    assert q.with_defaults()[0].road_type is RoadType.HIGHWAY, "default policy phải khớp catalog đã xác minh"
 
 
 def test_inference_is_recorded_so_reviewer_can_see_it() -> None:

@@ -326,7 +326,7 @@ Thuật toán explore/exploit chưa chốt.
 | CARLA/ScenarioRunner smoke test | ✅ Toolchain pass |
 | Graph 7 nodes | ⏳ Graph hiện vẫn là template |
 | Static validator (`validate_node`) | ✅ Có — schema, invariants, static geometry |
-| Templates và converter | ⏳ Chưa có |
+| Templates và converter (`convert_xosc`) | ✅ Có — 1 anchor Town04, 7 maneuver, golden validate theo XSD (ADR-016) |
 | `Retriever` (SQLite BLOB + cosine) và retrieval baseline | ⏳ Chưa có |
 | SQLite persistence, review/download/job API | ⏳ Chưa có |
 | Frontend và preview | ⏳ Chưa có |
