@@ -4,6 +4,9 @@
   "expected_codes": [
     "DUP_ACTOR_NAME"
   ],
+  "expected_paths": [
+    "/actors/1/name"
+  ],
   "draft": {
     "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
     "odd": {

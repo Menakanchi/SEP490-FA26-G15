@@ -1,19 +1,19 @@
 {
-  "_comment": "Nhãn ODD ghi jaywalk nhưng maneuver duy nhất là cut_in. Báo đã phủ ô jaywalk trong khi ô đó vẫn trống = tự khai khống đúng con số đề bài dùng để chấm đa dạng.",
-  "caught_by": "pydantic",
+  "_comment": "Chiều còn lại của GEOM_NO_CATCHUP: actor đặt PHÍA SAU ego (s_offset_m âm) nhưng chạy chậm hơn nên không bao giờ bắt kịp để tạt đầu. Schema hợp lệ hoàn toàn — chỉ kiểm tra hình học tĩnh mới bắt được.",
+  "caught_by": "static_check",
   "expected_codes": [
-    "ODD_MANEUVER_MISMATCH"
+    "GEOM_NO_CATCHUP"
   ],
   "expected_paths": [
-    "/odd/maneuver"
+    "/actors/1"
   ],
   "draft": {
-    "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
+    "title": "Xe máy phía sau chạy chậm hơn ego, không thể tạt đầu",
     "odd": {
       "road_type": "highway",
       "weather": "clear",
       "actor_type": "motorcycle",
-      "maneuver": "jaywalk"
+      "maneuver": "cut_in"
     },
     "time_of_day": "day",
     "actors": [
@@ -32,9 +32,9 @@
         "category": "motorcycle",
         "position": {
           "lane_offset": -1,
-          "s_offset_m": -25.0
+          "s_offset_m": -20.0
         },
-        "initial_speed_kmh": 80.0,
+        "initial_speed_kmh": 40.0,
         "is_ego": false
       }
     ],
@@ -50,6 +50,5 @@
       }
     ],
     "duration_s": 30.0
-  },
-  "expected_message": "không maneuver nào"
+  }
 }

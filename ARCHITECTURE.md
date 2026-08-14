@@ -325,7 +325,8 @@ Thuật toán explore/exploit chưa chốt.
 | Routing và architecture tests | ✅ Có |
 | CARLA/ScenarioRunner smoke test | ✅ Toolchain pass |
 | Graph 7 nodes | ⏳ Graph hiện vẫn là template |
-| Static validator, templates, converter | ⏳ Chưa có |
+| Static validator (`validate_node`) | ✅ Có — schema, invariants, static geometry |
+| Templates và converter | ⏳ Chưa có |
 | `Retriever` (SQLite BLOB + cosine) và retrieval baseline | ⏳ Chưa có |
 | SQLite persistence, review/download/job API | ⏳ Chưa có |
 | Frontend và preview | ⏳ Chưa có |

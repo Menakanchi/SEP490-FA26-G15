@@ -4,6 +4,9 @@
   "expected_codes": [
     "TRIGGER_AFTER_END"
   ],
+  "expected_paths": [
+    "/maneuvers/0/trigger/value"
+  ],
   "draft": {
     "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
     "odd": {

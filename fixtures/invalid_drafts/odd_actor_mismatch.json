@@ -4,6 +4,9 @@
   "expected_codes": [
     "ODD_ACTOR_MISMATCH"
   ],
+  "expected_paths": [
+    "/odd/actor_type"
+  ],
   "draft": {
     "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
     "odd": {
