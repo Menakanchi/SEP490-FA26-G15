@@ -1,7 +1,7 @@
 /**
  * API Client — Kết nối FastAPI Backend
  *
- * Base URL đọc từ env `NEXT_PUBLIC_API_URL`, mặc định `http://localhost:8000`.
+ * Base URL đọc từ env `NEXT_PUBLIC_API_URL`, mặc định `http://localhost:8000/api/v1`.
  */
 
 import type {
@@ -30,9 +30,16 @@ async function request<T>(
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
+    const bodyText = await res.text().catch(() => "");
+    let messageVi = "";
+    try {
+      const json = JSON.parse(bodyText);
+      messageVi = json.detail || json.message_vi || json.message || "";
+    } catch {
+      messageVi = bodyText;
+    }
     throw new Error(
-      `API ${res.status}: ${res.statusText}${body ? ` — ${body}` : ""}`,
+      messageVi || `API ${res.status}: ${res.statusText}`,
     );
   }
 
@@ -46,6 +53,7 @@ async function request<T>(
 export interface GeneratePayload {
   prompt: string;
   validation_mode: ValidationMode;
+  limit?: number;
 }
 
 export interface GenerateResponse {
@@ -55,7 +63,7 @@ export interface GenerateResponse {
 export async function postGenerate(
   payload: GeneratePayload,
 ): Promise<GenerateResponse> {
-  return request<GenerateResponse>("/generate", {
+  return request<GenerateResponse>("/scenarios/generate", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -70,20 +78,20 @@ export async function getStatus(requestId: string): Promise<GenerationStatus> {
 }
 
 // ---------------------------------------------------------------------------
-// POST /review — Gửi quyết định duyệt
+// POST /scenarios/{id}/review hoặc POST /review — Gửi quyết định duyệt
 // ---------------------------------------------------------------------------
 
 export async function postReview(
   payload: ReviewRequest,
 ): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>("/review", {
+  return request<{ ok: boolean }>(`/scenarios/${encodeURIComponent(payload.scenario_id)}/review`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 // ---------------------------------------------------------------------------
-// GET /scenarios — Danh sách kịch bản (có lọc ODD)
+// GET /library/search — Danh sách kịch bản (có lọc ODD & keyword)
 // ---------------------------------------------------------------------------
 
 export interface GetScenariosParams {
@@ -110,7 +118,7 @@ export async function getScenarios(
 
   const qs = query.toString();
   return request<{ items: ScenarioItem[]; total: number }>(
-    `/scenarios${qs ? `?${qs}` : ""}`,
+    `/library/search${qs ? `?${qs}` : ""}`,
   );
 }
 
@@ -124,4 +132,24 @@ export async function getScenarioById(
   return request<ScenarioDetail>(
     `/scenarios/${encodeURIComponent(id)}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// GET /scenarios/{id}/xosc — Tải file .xosc kèm status gate (HTTP 403)
+// ---------------------------------------------------------------------------
+
+export async function downloadXosc(id: string): Promise<string> {
+  const res = await fetch(`${BASE_URL}/scenarios/${encodeURIComponent(id)}/xosc`);
+  if (!res.ok) {
+    const bodyText = await res.text().catch(() => "");
+    let messageVi = "";
+    try {
+      const json = JSON.parse(bodyText);
+      messageVi = json.detail || json.message_vi || "";
+    } catch {
+      messageVi = bodyText;
+    }
+    throw new Error(messageVi || `Chặn tải file .xosc (Mã lỗi ${res.status})`);
+  }
+  return res.text();
 }

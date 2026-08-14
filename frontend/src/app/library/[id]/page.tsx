@@ -220,6 +220,7 @@ export default function ScenarioDetailPage() {
           {scenario.spec?.actors?.length ? (
             <SVG2DRenderer
               actors={scenario.spec.actors}
+              odd={scenario.odd}
               maneuvers={scenario.spec.maneuvers}
               width="100%"
               height={400}

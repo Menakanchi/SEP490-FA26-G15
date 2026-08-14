@@ -118,7 +118,7 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
         pos, kw_len, _ = maneuver_matches[0]
         maneuver_spec = user_query[pos : pos + kw_len].strip()
 
-    # 4. Actor Type — Span matching với word boundary
+    # 4. Actor Type — Span matching với word boundary (Bỏ qua cụm từ chỉ hạ tầng như 'làn ô tô', 'vỉa hè')
     raw_spans: list[tuple[int, int, str]] = []
     for code, keywords in rules.get("actor_type", {}).items():
         if code == "unknown":
@@ -127,6 +127,9 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
             for text in (query_raw, query_no_accents):
                 pos = _find_keyword(text, kw)
                 if pos != -1:
+                    prefix = text[max(0, pos - 12) : pos].lower()
+                    if "lan" in prefix or "làn" in prefix or "via he" in prefix or "vỉa hè" in prefix:
+                        continue
                     raw_spans.append((pos, pos + len(kw), code))
 
     raw_spans.sort(key=lambda x: (x[1] - x[0]), reverse=True)
@@ -145,12 +148,10 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
     if non_overlapping_spans:
         s, e, raw_code = non_overlapping_spans[0]
         try:
+            actor_obj = ActorType(raw_code)
+        except ValueError:
             if raw_code == "bicycle":
                 actor_obj = ActorType.MOTORCYCLE
-            else:
-                actor_obj = ActorType(raw_code)
-        except ValueError:
-            pass
         actor_spec = user_query[s:e].strip()
 
         if len(non_overlapping_spans) >= 2:
@@ -158,15 +159,15 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
             s1, e1, code1 = non_overlapping_spans[1]
             spec0 = user_query[s0:e0].strip()
             spec1 = user_query[s1:e1].strip()
-            cat0 = "motorcycle" if code0 == "bicycle" else code0
-            cat1 = "motorcycle" if code1 == "bicycle" else code1
+            cat0 = code0
+            cat1 = code1
 
             parsed_actors = [
-                {"name": "hero", "category": cat1, "specific_type": spec1, "role": "ego"},
-                {"name": "adversary_1", "category": cat0, "specific_type": spec0, "role": "adversary"},
+                {"name": "hero", "category": cat0, "specific_type": spec0, "role": "ego"},
+                {"name": "adversary_1", "category": cat1, "specific_type": spec1, "role": "adversary"},
             ]
         else:
-            cat0 = "motorcycle" if raw_code == "bicycle" else raw_code
+            cat0 = raw_code
             parsed_actors = [
                 {"name": "hero", "category": cat0, "specific_type": actor_spec, "role": "ego"},
             ]
@@ -254,6 +255,29 @@ def parse_intent_node(state: ForgeState) -> dict:
     ):
         raise ValueError("Không thể nhận diện tình huống giao thông từ prompt. Vui lòng cung cấp mô tả rõ ràng hơn.")
 
+    # Build parsed_intent dictionary object early
+    at_val = getattr(odd_query, "actor_type", None)
+    at_cat = at_val.value if hasattr(at_val, "value") else (str(at_val) if at_val else "unknown")
+    at_spec = getattr(odd_query, "specific_type", None) or (rule_dict.get("specific_type") if "rule_dict" in locals() else None) or (at_cat if at_cat != "unknown" else None)
+
+    mv_val = getattr(odd_query, "maneuver", None)
+    mv_cat = mv_val.value if hasattr(mv_val, "value") else (str(mv_val) if mv_val else "unknown")
+    mv_spec = getattr(odd_query, "specific_action", None) or (rule_dict.get("specific_action") if "rule_dict" in locals() else None) or (mv_cat if mv_cat != "unknown" else None)
+
+    rt_val = getattr(odd_query, "road_type", None)
+    rt_str = rt_val.value if hasattr(rt_val, "value") else (str(rt_val) if rt_val else "unknown")
+
+    wt_val = getattr(odd_query, "weather", None)
+    wt_str = wt_val.value if hasattr(wt_val, "value") else (str(wt_val) if wt_val else "unknown")
+
+    parsed_intent_dict = {
+        "road_type": rt_str,
+        "weather": wt_str,
+        "actor_type": {"category": at_cat, "specific_type": at_spec},
+        "maneuver": {"category": mv_cat, "specific_action": mv_spec},
+        "actors": getattr(odd_query, "actors", None) or (rule_dict.get("actors") if "rule_dict" in locals() else []),
+    }
+
     # 1. Gọi ODDQuery.missing_required_axes()
     missing = odd_query.missing_required_axes()
     if missing:
@@ -262,10 +286,16 @@ def parse_intent_node(state: ForgeState) -> dict:
             message_vi=f"Mô tả chưa rõ thông tin bắt buộc: {', '.join(missing)}",
             suggestion="Hãy ghi rõ loại phương tiện và hành vi (ví dụ: xe máy tạt đầu)",
         )
-        return {"odd_query": odd_query, "issues": [issue]}
+        return {"parsed_intent": parsed_intent_dict, "odd_query": odd_query, "issues": [issue]}
 
     # 2. Gọi ODDQuery.with_defaults(policy)
     odd_hints, assumptions = odd_query.with_defaults()
+
+    # Update parsed_intent_dict with default-filled hints
+    parsed_intent_dict["road_type"] = odd_hints.road_type.value if hasattr(odd_hints.road_type, "value") else str(odd_hints.road_type)
+    parsed_intent_dict["weather"] = odd_hints.weather.value if hasattr(odd_hints.weather, "value") else str(odd_hints.weather)
+    parsed_intent_dict["actor_type"]["category"] = odd_hints.actor_type.value if hasattr(odd_hints.actor_type, "value") else str(odd_hints.actor_type)
+    parsed_intent_dict["maneuver"]["category"] = odd_hints.maneuver.value if hasattr(odd_hints.maneuver, "value") else str(odd_hints.maneuver)
 
     # 3. Gọi SupportPolicy.supports(road_type, actor_type, maneuver)
     if not DEFAULT_SUPPORT_POLICY.supports(odd_hints.road_type, odd_hints.actor_type, odd_hints.maneuver):
@@ -274,9 +304,10 @@ def parse_intent_node(state: ForgeState) -> dict:
             message_vi=f"Tổ hợp ODD không được hỗ trợ: ({odd_hints.road_type}, {odd_hints.actor_type}, {odd_hints.maneuver})",
             suggestion="Vui lòng chọn loại đường hoặc hành vi khác phù hợp hơn với phạm vi hỗ trợ.",
         )
-        return {"odd_query": odd_query, "odd_hints": odd_hints, "issues": [issue]}
+        return {"parsed_intent": parsed_intent_dict, "odd_query": odd_query, "odd_hints": odd_hints, "issues": [issue]}
 
     return {
+        "parsed_intent": parsed_intent_dict,
         "odd_query": odd_query,
         "odd_hints": odd_hints,
         "assumptions": assumptions,

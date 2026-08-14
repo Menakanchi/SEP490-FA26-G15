@@ -202,30 +202,16 @@ class SQLiteRetriever(BaseRetriever):
             cursor.execute(sql, params)
             rows = cursor.fetchall()
 
-            # Bước 2: Nối lỏng filter (Relaxed Pre-filtering) nếu nới hẹp 100% ODD trả về 0 bản ghi
-            if not rows and len(where_clauses) > 2:
-                relaxed_clauses = [where_clauses[0]]  # Giữ Status Gate
-                relaxed_params = []
-                
-                # Chỉ lọc theo actor_type hoặc maneuver
-                if actor_cat and str(actor_cat).lower() not in ("unknown", "none", ""):
-                    relaxed_clauses.append("(actor_type = ? OR actor_type LIKE ?)")
-                    relaxed_params.extend([str(actor_cat), f"%{actor_cat}%"])
-                elif man_cat and str(man_cat).lower() not in ("unknown", "none", ""):
-                    relaxed_clauses.append("(maneuver = ? OR maneuver LIKE ?)")
-                    relaxed_params.extend([str(man_cat), f"%{man_cat}%"])
+            # Fallback nếu ODD pre-filtering trả về 0 bản ghi
+            if not rows:
+                fallback_sql = (
+                    "SELECT scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding FROM scenarios WHERE status IN ('approved_library', 'seed') AND embedding IS NOT NULL"
+                    if target_table == "scenarios"
+                    else "SELECT scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding_json, embedding FROM scenarios_seed WHERE embedding IS NOT NULL"
+                )
+                cursor.execute(fallback_sql)
+                rows = cursor.fetchall()
 
-                if len(relaxed_clauses) > 1:
-                    relaxed_sql_str = " AND ".join(relaxed_clauses)
-                    if target_table == "scenarios":
-                        rel_sql = f"SELECT scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding FROM scenarios WHERE {relaxed_sql_str}"
-                    else:
-                        rel_sql = f"SELECT scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding_json, embedding FROM scenarios_seed WHERE {relaxed_sql_str}"
-                    cursor.execute(rel_sql, relaxed_params)
-                    rows = cursor.fetchall()
-
-            # NẾU PRE-FILTERING KHÔNG KHỚP BẤT KỲ KỊCH BẢN NÀO:
-            # Trả về [] để Node 3 (generate_draft) chạy ở chế độ Zero-Shot mượt mà
             if not rows:
                 conn.close()
                 return []

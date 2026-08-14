@@ -333,6 +333,7 @@ from src.services.library.retriever import BaseRetriever, SQLiteRetriever
 
 def retrieve_node(state: ForgeState, k: int = 3, retriever: BaseRetriever | None = None) -> dict:
     """Node 2: retrieve — Hybrid ODD Pre-filtering SQL WHERE + NumPy Cosine Similarity (ADR-013, ADR-006, ADR-011)."""
+    limit = state.get("limit") or state.get("k") or k
     query_text = state.get("user_query") or _build_odd_query_text(state)
 
     if not query_text:
@@ -347,7 +348,8 @@ def retrieve_node(state: ForgeState, k: int = 3, retriever: BaseRetriever | None
     active_retriever = retriever or SQLiteRetriever()
 
     try:
-        retrieved_examples = active_retriever.retrieve(query_text, odd_query=odd_source, limit=k)
+        retrieved_examples = active_retriever.retrieve(query_text, odd_query=odd_source, limit=limit)
+        retrieved_examples = retrieved_examples[:limit]
     except Exception as exc:
         logger.warning(f"[NODE 2 WARNING] Retrieval failed: {exc}")
         retrieved_examples = []

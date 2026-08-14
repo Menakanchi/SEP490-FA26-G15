@@ -13,6 +13,16 @@ A. QUY TẮC NGUYÊN TẮC QUAN TRỌNG (STRICT RULES)
 5. Quy tắc Đa tác nhân (Multi-Actor Extraction): Nếu câu chứa từ 2 danh từ chỉ phương tiện/người tham gia giao thông trở lên (X tác động/va chạm Y), LLM BẮT BUỘC trích xuất thông tin của các tác nhân vào mảng `actors`:
    - Phương tiện chính/chịu ảnh hưởng = `role: "ego"` (Ego hero)
    - Phương tiện gây ra hành vi/tác động = `role: "adversary"` (Adversary)
+6. Quy tắc Suy luận Trạng thái Động học (Kinematic State Reasoning Rule):
+    Trước khi phân loại `maneuver`, bạn BẮT BUỘC phải phân tích trạng thái vật lý động học của tác nhân dựa trên 2 câu hỏi:
+    - (1) Tác nhân này đang di chuyển (Moving) hay đứng yên (Stationary)?
+    - (2) Tác nhân có đang cản trở quỹ đạo của xe chính không?
+    - Nếu tác nhân ở trạng thái BẤT ĐỘNG trên đường (dù với bất kỳ lý do gì: lật nghiêng, lật xe, chết máy, hỏng hóc, rơi rớt hàng hóa, vật cản nằm ngang...), bạn BẮT BUỘC phải tự động nội suy và map nó về category tĩnh phù hợp nhất: `stop_in_lane` (Dừng / cản trở giữa làn).
+    - NGUYÊN TẮC TỐI THƯỢNG: CẤM trả về `unknown` hoặc `null` cho `maneuver` nếu câu mô tả chứa đủ thông tin để nội suy ra trạng thái vật lý động học (đứng yên / di chuyển thẳng / cắt ngang / chệch làn).
+7. Quy tắc Phân tách Thực thể Không gian (Spatial Infrastructure Entity Separation Rule):
+    Bạn BẮT BUỘC phải phân biệt rõ giữa Tác nhân giao thông (Actor) và Hạ tầng Không gian (Infrastructure).
+    - Khi gặp các từ chỉ vị trí/hạ tầng như "làn ô tô", "làn xe máy", "vỉa hè", bạn BẮT BUỘC hiểu "làn ô tô" chỉ là hạ tầng làn đường ODD. TUYỆT ĐỐI KHÔNG ĐƯỢC bóc tách từ "ô tô" trong "làn ô tô" thành một tác nhân `car` phụ!
+    - "xe đạp", "đoàn xe đạp" BẮT BUỘC map đúng vào loại `bicycle`, không được đổi thành `motorcycle`.
 
 ═══════════════════════════════════════════════════════════
 B. BẢNG ENUM CHUẨN ODD & TAXONOMY HÀNH VI (MANEUVER CLASSIFICATION)
@@ -63,8 +73,8 @@ Output: {
   "specific_type": "ô tô",
   "specific_action": "đâm đít xe máy",
   "actors": [
-    {"name": "hero", "category": "motorcycle", "specific_type": "xe máy", "role": "ego"},
-    {"name": "adversary_1", "category": "car", "specific_type": "ô tô", "role": "adversary"}
+    {"name": "hero", "category": "car", "specific_type": "ô tô", "role": "ego"},
+    {"name": "adversary_1", "category": "motorcycle", "specific_type": "xe máy", "role": "adversary"}
   ]
 }
 
@@ -114,6 +124,34 @@ Output: {
   "actors": [
     {"name": "hero", "category": "motorcycle", "specific_type": "xe máy", "role": "ego"},
     {"name": "adversary_1", "category": "bus", "specific_type": "xe khách", "role": "adversary"}
+  ]
+}
+
+Input: 'đoàn xe đạp đi hàng ba chiếm trọn làn ô tô'
+Output: {
+  "actor_type": "bicycle",
+  "maneuver": "lane_drift",
+  "road_type": "urban_straight",
+  "weather": null,
+  "inferred": [],
+  "specific_type": "đoàn xe đạp",
+  "specific_action": "đi hàng ba chiếm trọn làn ô tô",
+  "actors": [
+    {"name": "hero", "category": "bicycle", "specific_type": "đoàn xe đạp", "role": "ego"}
+  ]
+}
+
+Input: 'xe con phanh gấp lúc đường sạt lở vì mưa bão'
+Output: {
+  "actor_type": "car",
+  "maneuver": "sudden_brake",
+  "road_type": null,
+  "weather": "heavy_rain",
+  "inferred": [],
+  "specific_type": "xe con",
+  "specific_action": "phanh gấp",
+  "actors": [
+    {"name": "hero", "category": "car", "specific_type": "xe con", "role": "ego"}
   ]
 }
 """

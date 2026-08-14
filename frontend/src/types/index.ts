@@ -138,6 +138,73 @@ export const renderSafeValue = (val: any, labelsMap?: Record<string, string>): s
 };
 
 // ---------------------------------------------------------------------------
+// Smart Actor Fallback Helpers (Frontend Only)
+// ---------------------------------------------------------------------------
+
+export function getSanitizedActorCategory(actor: ActorSpec, odd?: ODDCell): VehicleCategory {
+  if (actor.category && actor.category !== ("unknown" as VehicleCategory)) {
+    return actor.category;
+  }
+
+  if (odd?.actor_type) {
+    const at = odd.actor_type;
+    if (typeof at === "string" && at !== "unknown") {
+      const parts = at.split(":");
+      return parts[0] as VehicleCategory;
+    }
+    if (typeof at === "object") {
+      if (at.category && at.category !== "unknown") {
+        return at.category as VehicleCategory;
+      }
+    }
+  }
+
+  return "car" as VehicleCategory;
+}
+
+export function getSanitizedActorSpecificType(actor: ActorSpec, odd?: ODDCell): string {
+  if (actor.specific_type && actor.specific_type !== "unknown") {
+    return actor.specific_type;
+  }
+
+  if (odd?.actor_type) {
+    const at = odd.actor_type;
+    if (typeof at === "string" && at.includes(":")) {
+      return at.split(":")[1];
+    }
+    if (typeof at === "object" && at.specific_type && at.specific_type !== "unknown") {
+      return at.specific_type;
+    }
+  }
+
+  return "";
+}
+
+export function sanitizeActors(actors: ActorSpec[], odd?: ODDCell): ActorSpec[] {
+  if (!actors || actors.length === 0) return [];
+  return actors.map((actor) => {
+    const cat = getSanitizedActorCategory(actor, odd);
+    const specType = getSanitizedActorSpecificType(actor, odd);
+    return {
+      ...actor,
+      category: cat,
+      specific_type: specType || actor.specific_type,
+    };
+  });
+}
+
+export function renderActorCategoryLabel(actor: ActorSpec, odd?: ODDCell): string {
+  const cat = getSanitizedActorCategory(actor, odd);
+  const specType = getSanitizedActorSpecificType(actor, odd);
+
+  const catLabel = VEHICLE_CATEGORY_LABELS[cat] || cat;
+  if (specType) {
+    return `${catLabel} (${specType})`;
+  }
+  return catLabel;
+}
+
+// ---------------------------------------------------------------------------
 // ODD Cell
 // ---------------------------------------------------------------------------
 
@@ -165,6 +232,7 @@ export interface ActorSpec {
   position: Position;
   initial_speed_kmh: number;
   is_ego: boolean;
+  specific_type?: string;
 }
 
 export interface TriggerCondition {
@@ -233,6 +301,7 @@ export interface RetrievedExample {
   id: string;
   title: string;
   content: string;
+  description_vi?: string;
   metadata?: Record<string, any>;
   similarity_score?: number;
 }

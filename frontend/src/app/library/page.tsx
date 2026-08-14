@@ -10,8 +10,9 @@ import {
   Loader2,
   BookOpen,
   ChevronRight,
+  AlertCircle,
 } from "lucide-react";
-import { getScenarios } from "@/services/api";
+import { getScenarios, downloadXosc } from "@/services/api";
 import SVG2DRenderer from "@/components/SVG2DRenderer";
 import type {
   ScenarioItem,
@@ -34,7 +35,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const ROAD_OPTIONS: { value: RoadType | ""; label: string }[] = [
-  { value: "", label: "Tất cả" },
+  { value: "", label: "Tất cả đường" },
   ...Object.entries(ROAD_TYPE_LABELS).map(([v, l]) => ({
     value: v as RoadType,
     label: l,
@@ -42,7 +43,7 @@ const ROAD_OPTIONS: { value: RoadType | ""; label: string }[] = [
 ];
 
 const WEATHER_OPTIONS: { value: Weather | ""; label: string }[] = [
-  { value: "", label: "Tất cả" },
+  { value: "", label: "Tất cả thời tiết" },
   ...Object.entries(WEATHER_LABELS).map(([v, l]) => ({
     value: v as Weather,
     label: l,
@@ -50,7 +51,7 @@ const WEATHER_OPTIONS: { value: Weather | ""; label: string }[] = [
 ];
 
 const ACTOR_OPTIONS: { value: ActorType | ""; label: string }[] = [
-  { value: "", label: "Tất cả" },
+  { value: "", label: "Tất cả tác nhân" },
   ...Object.entries(ACTOR_TYPE_LABELS).map(([v, l]) => ({
     value: v as ActorType,
     label: l,
@@ -58,21 +59,18 @@ const ACTOR_OPTIONS: { value: ActorType | ""; label: string }[] = [
 ];
 
 const MANEUVER_OPTIONS: { value: ManeuverType | ""; label: string }[] = [
-  { value: "", label: "Tất cả" },
+  { value: "", label: "Tất cả hành vi" },
   ...Object.entries(MANEUVER_TYPE_LABELS).map(([v, l]) => ({
     value: v as ManeuverType,
     label: l,
   })),
 ];
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 export default function LibraryPage() {
   const [items, setItems] = useState<ScenarioItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<{ type: "error" | "success"; msg: string } | null>(null);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -84,7 +82,7 @@ export default function LibraryPage() {
     async (searchTerm: string, odd: ODDPayload) => {
       setLoading(true);
       try {
-        const res = await getScenarios({ search: searchTerm, odd });
+        const res = await getScenarios({ search: searchTerm, odd, limit: 100 });
         setItems(res.items);
         setTotal(res.total);
       } catch {
@@ -102,6 +100,13 @@ export default function LibraryPage() {
     fetchData("", {});
   }, [fetchData]);
 
+  // Toast auto-dismiss
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   // Debounce search
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -111,42 +116,58 @@ export default function LibraryPage() {
     }, 300);
   };
 
-  // Filter change (immediate)
+  // Filter change
   const handleFilterChange = (key: keyof ODDPayload, value: string) => {
     const next = { ...oddFilter, [key]: value || undefined };
     setOddFilter(next);
     fetchData(search, next);
   };
 
-  // Download .xosc
-  const handleDownload = (
+  // Download .xosc status gate
+  const handleDownload = async (
     e: React.MouseEvent,
     scenarioId: string,
-    xoscContent?: string,
+    status: string,
   ) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!xoscContent) return;
-    const blob = new Blob([xoscContent], { type: "text/xml" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${scenarioId}.xosc`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+
+    if (status !== "approved_library") {
+      setToast({
+        type: "error",
+        msg: "Chỉ kịch bản đã qua duyệt BEFORE_LIBRARY mới được phép tải file .xosc",
+      });
+      return;
+    }
+
+    try {
+      const xml = await downloadXosc(scenarioId);
+      const blob = new Blob([xml], { type: "text/xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${scenarioId}.xosc`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setToast({
+        type: "error",
+        msg: err instanceof Error ? err.message : "Chặn tải file .xosc",
+      });
+    }
   };
 
-  // Status badge
+  // Status badge helper
   const statusBadge = (status: string) => {
     switch (status) {
       case "approved_library":
-        return <span className="badge badge--approved">Đã duyệt</span>;
+        return <span className="badge badge--approved">Đã duyệt (Library)</span>;
       case "rejected":
         return <span className="badge badge--rejected">Từ chối</span>;
       case "pending_review":
-        return <span className="badge badge--pending">Chờ duyệt</span>;
+        return <span className="badge badge--pending font-mono">Chờ duyệt</span>;
       case "pending_sim_review":
         return <span className="badge badge--before-sim">Chờ sim</span>;
       default:
@@ -157,6 +178,18 @@ export default function LibraryPage() {
   return (
     <div className="min-h-screen p-6 pt-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* Toast */}
+        {toast && (
+          <div
+            className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm font-medium transition-all duration-300 ${
+              toast.type === "error" ? "bg-amber-500 text-slate-950 font-bold" : "bg-green-500 text-white"
+            }`}
+          >
+            <AlertCircle className="w-4 h-4" />
+            {toast.msg}
+          </div>
+        )}
+
         {/* ─── Header ─── */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -165,25 +198,28 @@ export default function LibraryPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-100">
-                Thư viện kịch bản
+                Thư viện kịch bản (Library Search)
               </h1>
-              <p className="text-sm text-slate-500">
-                {total} kịch bản
+              <p className="text-sm text-slate-400">
+                Tìm kiếm theo từ khóa & lọc theo 4 trục ODD chuẩn
               </p>
             </div>
           </div>
+          <span className="text-xs font-semibold px-3 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+            Tổng cộng: {total} kịch bản
+          </span>
         </div>
 
         {/* ─── Search & Filters ─── */}
         <div className="glass-card p-5">
           <div className="flex flex-col lg:flex-row gap-4">
-            {/* Search */}
+            {/* Search input */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <input
                 type="text"
-                className="input-field pl-10"
-                placeholder="Tìm kiếm kịch bản..."
+                className="input-field pl-10 text-sm"
+                placeholder="Tìm kiếm theo từ khóa (Ví dụ: tạt đầu, mưa lớn, cao tốc)..."
                 value={search}
                 onChange={(e) => handleSearchChange(e.target.value)}
               />
@@ -196,27 +232,23 @@ export default function LibraryPage() {
                 {
                   key: "road_type" as const,
                   options: ROAD_OPTIONS,
-                  placeholder: "Đường",
                 },
                 {
                   key: "weather" as const,
                   options: WEATHER_OPTIONS,
-                  placeholder: "Thời tiết",
                 },
                 {
                   key: "actor_type" as const,
                   options: ACTOR_OPTIONS,
-                  placeholder: "Tác nhân",
                 },
                 {
                   key: "maneuver" as const,
                   options: MANEUVER_OPTIONS,
-                  placeholder: "Hành vi",
                 },
               ].map((filter) => (
                 <select
                   key={filter.key}
-                  className="input-field w-auto min-w-[120px] text-sm py-2"
+                  className="input-field w-auto text-xs py-2"
                   value={(oddFilter[filter.key] as string) ?? ""}
                   onChange={(e) =>
                     handleFilterChange(filter.key, e.target.value)
@@ -242,12 +274,6 @@ export default function LibraryPage() {
                 <div className="p-5 space-y-3">
                   <div className="skeleton h-5 w-3/4" />
                   <div className="skeleton h-3 w-full" />
-                  <div className="skeleton h-3 w-2/3" />
-                  <div className="flex gap-2">
-                    <div className="skeleton h-5 w-16 rounded-full" />
-                    <div className="skeleton h-5 w-14 rounded-full" />
-                    <div className="skeleton h-5 w-18 rounded-full" />
-                  </div>
                 </div>
               </div>
             ))}
@@ -259,11 +285,10 @@ export default function LibraryPage() {
           <div className="glass-card py-16 flex flex-col items-center text-center">
             <FileCode className="w-16 h-16 text-slate-600 mb-4" />
             <h3 className="text-lg font-semibold text-slate-300">
-              Chưa có kịch bản nào
+              Không tìm thấy kịch bản phù hợp
             </h3>
             <p className="text-sm text-slate-500 mt-1 max-w-md">
-              Hãy tạo kịch bản đầu tiên từ trang Generator, sau đó duyệt để đưa
-              vào thư viện.
+              Hãy thử chọn bộ lọc khác hoặc nhập từ khóa tìm kiếm mới.
             </p>
           </div>
         )}
@@ -271,77 +296,87 @@ export default function LibraryPage() {
         {/* ─── Card Grid ─── */}
         {!loading && items.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {items.map((item) => (
-              <Link
-                key={item.scenario_id}
-                href={`/library/${item.scenario_id}`}
-                className="glass-card glass-card-hover overflow-hidden group block"
-              >
-                {/* SVG Thumbnail */}
-                <div className="relative h-[160px] overflow-hidden bg-slate-900/50 border-b border-slate-700/15">
-                  {item.spec?.actors?.length ? (
-                    <SVG2DRenderer
-                      actors={item.spec.actors}
-                      maneuvers={item.spec.maneuvers}
-                      width="100%"
-                      height={160}
-                      showLabels={false}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-600">
-                      <FileCode className="w-10 h-10 opacity-30" />
+            {items.map((item) => {
+              const isApproved = item.status === "approved_library";
+              return (
+                <Link
+                  key={item.scenario_id}
+                  href={`/library/${item.scenario_id}`}
+                  className="glass-card glass-card-hover overflow-hidden group block"
+                >
+                  {/* SVG 2D Thumbnail */}
+                  <div className="relative h-[160px] overflow-hidden bg-slate-900/50 border-b border-slate-700/15">
+                    {item.spec?.actors?.length ? (
+                      <SVG2DRenderer
+                        actors={item.spec.actors}
+                        maneuvers={item.spec.maneuvers}
+                        width="100%"
+                        height={160}
+                        showLabels={false}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-600">
+                        <FileCode className="w-10 h-10 opacity-30" />
+                      </div>
+                    )}
+
+                    <div className="absolute top-3 right-3 w-7 h-7 rounded-full bg-blue-500/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                      <ChevronRight className="w-4 h-4 text-white" />
                     </div>
-                  )}
-
-                  {/* Hover arrow */}
-                  <div className="absolute top-3 right-3 w-7 h-7 rounded-full bg-blue-500/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                    <ChevronRight className="w-4 h-4 text-white" />
-                  </div>
-                </div>
-
-                {/* Content */}
-                <div className="p-5 space-y-3">
-                  <h3 className="font-semibold text-slate-200 truncate text-sm group-hover:text-white transition-colors">
-                    {item.title}
-                  </h3>
-                  <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
-                    {item.description_vi}
-                  </p>
-
-                  {/* ODD Badges */}
-                  <div className="flex flex-wrap gap-1.5">
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/15">
-                      {renderSafeValue(item.odd?.road_type, ROAD_TYPE_LABELS)}
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/15">
-                      {renderSafeValue(item.odd?.weather, WEATHER_LABELS)}
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/15">
-                      {renderSafeValue(item.odd?.actor_type, ACTOR_TYPE_LABELS)}
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/15">
-                      {renderSafeValue(item.odd?.maneuver, MANEUVER_TYPE_LABELS)}
-                    </span>
                   </div>
 
-                  {/* Bottom row */}
-                  <div className="flex items-center justify-between pt-1">
-                    {statusBadge(item.status)}
-                    {item.xosc_content && (
+                  {/* Content */}
+                  <div className="p-5 space-y-3">
+                    <h3 className="font-semibold text-slate-200 truncate text-sm group-hover:text-white transition-colors">
+                      {item.title}
+                    </h3>
+                    <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                      {item.description_vi}
+                    </p>
+
+                    {/* ODD Badges */}
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/15">
+                        {renderSafeValue(item.odd?.road_type, ROAD_TYPE_LABELS)}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/15">
+                        {renderSafeValue(item.odd?.weather, WEATHER_LABELS)}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/15">
+                        {renderSafeValue(item.odd?.actor_type, ACTOR_TYPE_LABELS)}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/15">
+                        {renderSafeValue(item.odd?.maneuver, MANEUVER_TYPE_LABELS)}
+                      </span>
+                    </div>
+
+                    {/* Bottom Action Row (Download Status Gate) */}
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-700/20">
+                      {statusBadge(item.status)}
+
                       <button
-                        className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-400 transition-colors"
-                        onClick={(e) =>
-                          handleDownload(e, item.scenario_id, item.xosc_content)
+                        title={
+                          isApproved
+                            ? "Tải file .xosc"
+                            : "Chỉ kịch bản đã qua duyệt BEFORE_LIBRARY mới được phép tải file .xosc"
                         }
+                        onClick={(e) =>
+                          handleDownload(e, item.scenario_id, item.status)
+                        }
+                        className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md transition-all ${
+                          isApproved
+                            ? "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30"
+                            : "bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-50"
+                        }`}
                       >
                         <Download className="w-3 h-3" />
                         .xosc
                       </button>
-                    )}
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>

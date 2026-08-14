@@ -303,8 +303,14 @@ class ODDQuery(ForgeModel):
 
     AXES: ClassVar[tuple[ODDAxis, ...]] = get_args(ODDAxis)
 
-    road_type: RoadType | None = None
-    weather: Weather | None = None
+    road_type: RoadType | None = Field(
+        None,
+        description="Loại đường. Nếu có 'đường đèo', 'sạt lở', 'ngõ hẻm', 'cao tốc', 'giao lộ', map thành loại đường phù hợp trong enum (urban_straight/highway/intersection/residential_narrow/roundabout). Để null nếu không nhắc đến.",
+    )
+    weather: Weather | None = Field(
+        None,
+        description="Thời tiết. Nếu câu có từ 'mưa', 'bão', 'mưa bão', 'giông' BẮT BUỘC map thành 'heavy_rain' hoặc 'rain'. Nắng/quang/đẹp map thành 'clear'. Sương mù map thành 'fog'. Để null nếu không nhắc đến.",
+    )
     actor_type: ActorType | None = None
     maneuver: ManeuverType | None = None
     specific_type: str | None = Field(None, description="Tên/loại phương tiện chi tiết từ prompt")
@@ -317,6 +323,10 @@ class ODDQuery(ForgeModel):
             v_clean = v.strip().lower()
             if v_clean in ("xe_bus", "xe_khach"):
                 return "bus"
+            if v_clean in ("mua_bao", "mua_to", "mua_lon", "mưa bão", "mưa to", "mưa", "bão", "mưa bão", "mua bao"):
+                return "heavy_rain"
+            if v_clean in ("nang", "troi_quang", "nắng"):
+                return "clear"
             if v_clean in (
                 "không xác định",
                 "khong xac dinh",
@@ -352,7 +362,7 @@ class ODDQuery(ForgeModel):
         """Đánh dấu suy luận cho một trục rỗng là nói dối về nguồn gốc dữ liệu.
 
         Không cần kiểm "tên trục có tồn tại không" — ``ODDAxis`` là ``Literal``
-        nên Pydantic đã chặn từ trước, và chặn ngay trong JSON Schema gửi cho model.
+        nếu Pydantic đã chặn từ trước, và chặn ngay trong JSON Schema gửi cho model.
         """
         if empty := sorted(a for a in self.inferred if getattr(self, a) is None):
             raise ValueError(f"inferred đánh dấu trục đang rỗng: {empty}")
@@ -472,10 +482,10 @@ class Position(ForgeModel):
     """
 
     lane_offset: int = Field(
-        0,
-        ge=-4,
-        le=4,
-        description="Lệch bao nhiêu làn so với làn của ego. Âm = trái, dương = phải.",
+        1,
+        ge=-10,
+        le=10,
+        description="Số thứ tự làn đường (Strict Positive Integer >= 1 cho kịch bản mới sinh).",
     )
     s_offset_m: float = Field(
         0.0,
@@ -1065,6 +1075,7 @@ class GenerateRequest(ForgeModel):
 
     prompt: str = Field(..., min_length=1, max_length=5000, description="Câu mô tả tiếng Việt")
     validation_mode: ValidationMode = "static"
+    limit: int = Field(3, ge=1, le=20, description="Số lượng kịch bản mẫu cần retrieve (top-k)")
 
 
 class GenerateResponse(ForgeModel):
