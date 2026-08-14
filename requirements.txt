@@ -21,7 +21,7 @@ alembic>=1.14.0
 psycopg2-binary>=2.9.0
 
 # Dev tools
-ruff>=0.8.0
+ruff==0.16.0             # ghim CHẶT: >= làm style format nhảy giữa máy dev và CI (xem PR #34, #35)
 pytest>=8.0.0
 pytest-asyncio>=0.24.0
 pytest-cov>=6.0.0        # gate "Test coverage >= 60%" ở plan.md §9 — CI đo bằng cái này
