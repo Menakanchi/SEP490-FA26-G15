@@ -278,19 +278,24 @@ async def _run_mock_workflow(request_id: str) -> None:
 
     elif len(parsed_actors_raw) > 1:
         # KỊCH BẢN NHIỀU TÁC NHÂN (MULTI-ACTOR SCENARIO)
+        def _get_actor_attr(a, key: str, default=None):
+            if isinstance(a, dict):
+                return a.get(key, default)
+            return getattr(a, key, default)
+
         sorted_actors = sorted(
             parsed_actors_raw,
-            key=lambda a: (0 if getattr(a, "role", "adversary") == "ego" else 1,
-                           0 if getattr(a, "role", "adversary") == "adversary" else 2),
+            key=lambda a: (0 if _get_actor_attr(a, "role", "adversary") == "ego" else 1,
+                           0 if _get_actor_attr(a, "role", "adversary") == "adversary" else 2),
         )
         adversary_counter = 0
         for i, actor_info in enumerate(sorted_actors):
-            role = getattr(actor_info, "role", "adversary")
-            cat = _normalize_cat(getattr(actor_info, "category", "unknown"))
-            spec_type = getattr(actor_info, "specific_type", "unknown")
+            role = _get_actor_attr(actor_info, "role", "adversary")
+            cat = _normalize_cat(_get_actor_attr(actor_info, "category", "unknown"))
+            spec_type = _get_actor_attr(actor_info, "specific_type", "unknown")
             is_ego = role == "ego"
 
-            if is_ego or (i == 0 and not any(getattr(a, "role", "") == "ego" for a in sorted_actors)):
+            if is_ego or (i == 0 and not any(_get_actor_attr(a, "role", "") == "ego" for a in sorted_actors)):
                 actor_entry: dict = {
                     "name": "hero",
                     "category": cat,
@@ -306,10 +311,11 @@ async def _run_mock_workflow(request_id: str) -> None:
                 adv_name = f"adversary_{adversary_counter}"
                 s_offset = 20.0 + (adversary_counter - 1) * 15.0
                 adv_speed = _compute_actor_speed(cat, spec_type, is_slow, is_residential, is_maneuver_target=False)
+                adv_lane_offset = 1 if (man_cat == "cut_in" and adversary_counter == 1) else 0
                 actor_entry = {
                     "name": adv_name,
                     "category": cat,
-                    "position": {"lane_offset": 1 if adversary_counter == 1 else 0, "s_offset_m": s_offset},
+                    "position": {"lane_offset": adv_lane_offset, "s_offset_m": s_offset},
                     "initial_speed_kmh": adv_speed,
                     "is_ego": False,
                 }

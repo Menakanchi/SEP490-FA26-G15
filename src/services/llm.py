@@ -42,3 +42,25 @@ def get_llm():
         openai_api_key=api_key,
         temperature=0,
     )
+
+
+def get_embeddings():
+    """Khởi tạo OpenAIEmbeddings dùng model text-embedding-3-small (1536 chiều)."""
+    load_dotenv(override=True)
+    settings = get_settings()
+    api_key = os.getenv("OPENAI_API_KEY") or getattr(settings, "openai_api_key", None)
+    if not api_key or not str(api_key).strip() or api_key == "mock_key":
+        return None
+    api_key = str(api_key).strip()
+    os.environ["OPENAI_API_KEY"] = api_key
+
+    try:
+        from langchain_openai import OpenAIEmbeddings
+
+        return OpenAIEmbeddings(
+            model="text-embedding-3-small",
+            openai_api_key=api_key,
+        )
+    except Exception as exc:
+        logger.warning(f"Không thể khởi tạo OpenAIEmbeddings: {exc}")
+        return None

@@ -140,6 +140,8 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
 
     actor_obj = None
     actor_spec = None
+    parsed_actors: list[dict] = []
+
     if non_overlapping_spans:
         s, e, raw_code = non_overlapping_spans[0]
         try:
@@ -151,6 +153,24 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
             pass
         actor_spec = user_query[s:e].strip()
 
+        if len(non_overlapping_spans) >= 2:
+            s0, e0, code0 = non_overlapping_spans[0]
+            s1, e1, code1 = non_overlapping_spans[1]
+            spec0 = user_query[s0:e0].strip()
+            spec1 = user_query[s1:e1].strip()
+            cat0 = "motorcycle" if code0 == "bicycle" else code0
+            cat1 = "motorcycle" if code1 == "bicycle" else code1
+
+            parsed_actors = [
+                {"name": "hero", "category": cat1, "specific_type": spec1, "role": "ego"},
+                {"name": "adversary_1", "category": cat0, "specific_type": spec0, "role": "adversary"},
+            ]
+        else:
+            cat0 = "motorcycle" if raw_code == "bicycle" else raw_code
+            parsed_actors = [
+                {"name": "hero", "category": cat0, "specific_type": actor_spec, "role": "ego"},
+            ]
+
     return {
         "road_type": road_type,
         "weather": weather,
@@ -158,6 +178,7 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
         "maneuver": maneuver_obj,
         "specific_type": actor_spec,
         "specific_action": maneuver_spec,
+        "actors": parsed_actors,
     }
 
 
@@ -188,6 +209,8 @@ def parse_intent_node(state: ForgeState) -> dict:
             specific_action=rule_dict.get("specific_action"),
             inferred=[],
         )
+        if rule_dict.get("actors"):
+            object.__setattr__(odd_query, "actors", rule_dict.get("actors"))
     else:
         # BƯỚC 2: Gọi LLM nếu Bước 1 chưa trích xuất đủ cả 2 trục bắt buộc
         logger.info("Chuyển sang BƯỚC 2: Gọi LLM Fallback (AI Semantic Extraction)")
@@ -218,6 +241,9 @@ def parse_intent_node(state: ForgeState) -> dict:
                     suggestion="Vui lòng kiểm tra lại cấu hình LLM (API Key, hạn ngạch hoặc kết nối mạng).",
                 )
                 return {"issues": [issue]}
+
+    if rule_dict.get("actors") and not getattr(odd_query, "actors", None):
+        object.__setattr__(odd_query, "actors", rule_dict.get("actors"))
 
     # Kiểm tra kịch bản hoàn toàn không đọc được (Unparsable)
     if (

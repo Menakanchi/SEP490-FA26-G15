@@ -144,8 +144,8 @@ def get_embedding_function():
 
 
 def seed_database():
-    """Khởi tạo và nạp kịch bản mẫu vào SQLite & ChromaDB persistent storage kèm Real Vector Embeddings."""
-    ef = get_embedding_function()
+    """Khởi tạo và nạp kịch bản mẫu vào SQLite persistent storage kèm Real Float32 BLOB Vector Embeddings (ADR-013)."""
+    from src.services.library.retriever import generate_text_embedding
 
     data_dir = ROOT_DIR / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -169,7 +169,31 @@ def seed_database():
             maneuver TEXT,
             content TEXT,
             odd_json TEXT,
-            embedding_json TEXT
+            embedding_json TEXT,
+            embedding BLOB
+        )
+    """
+    )
+
+    cursor.execute("DROP TABLE IF EXISTS scenarios")
+    cursor.execute(
+        """
+        CREATE TABLE scenarios (
+            scenario_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'approved_library',
+            title TEXT NOT NULL,
+            description_vi TEXT NOT NULL,
+            spec TEXT,
+            xosc_content TEXT,
+            assumptions TEXT,
+            tags TEXT,
+            road_type TEXT,
+            weather TEXT,
+            actor_type TEXT,
+            maneuver TEXT,
+            embedding BLOB,
+            embedding_model TEXT,
+            created_at TEXT
         )
     """
     )
@@ -177,7 +201,6 @@ def seed_database():
     documents = []
     ids = []
     metadatas = []
-    embeddings_list = []
 
     for sc in SEED_SCENARIOS:
         sc_id = sc["scenario_id"]
@@ -206,21 +229,17 @@ def seed_database():
             }
         )
 
-    # Calculate real float vector embeddings
-    if ef:
-        logger.info("Đang tính toán Real Float Vector Embeddings cho 10 kịch bản...")
-        raw_embeddings = ef(documents)
-        embeddings_list = [[float(v) for v in vec] for vec in raw_embeddings]
-    else:
-        embeddings_list = [[] for _ in documents]
-
+    logger.info("Đang sinh 1536-dim Float32 Vector Embeddings (BLOB) cho 10 kịch bản mẫu...")
     for i, sc in enumerate(SEED_SCENARIOS):
         sc_id = sc["scenario_id"]
         title = sc["title"]
         desc = sc["description_vi"]
         odd = sc["odd"]
         content = documents[i]
-        emb_json = json.dumps(embeddings_list[i]) if embeddings_list[i] else ""
+
+        vec_arr = generate_text_embedding(content)
+        vec_blob = vec_arr.tobytes()
+        vec_json = json.dumps([float(v) for v in vec_arr])
 
         actor_cat = odd["actor_type"].get("category", "")
         actor_spec = odd["actor_type"].get("specific_type", "")
@@ -230,8 +249,8 @@ def seed_database():
         cursor.execute(
             """
             INSERT OR REPLACE INTO scenarios_seed
-            (scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, content, odd_json, embedding_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, content, odd_json, embedding_json, embedding)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 sc_id,
@@ -243,13 +262,38 @@ def seed_database():
                 f"{man_cat}:{man_spec}",
                 content,
                 json.dumps(odd, ensure_ascii=False),
-                emb_json,
+                vec_json,
+                vec_blob,
+            ),
+        )
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO scenarios
+            (scenario_id, status, title, description_vi, spec, xosc_content, assumptions, tags, road_type, weather, actor_type, maneuver, embedding, embedding_model, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        """,
+            (
+                sc_id,
+                "approved_library",
+                title,
+                desc,
+                json.dumps({"odd": odd, "description_vi": desc}, ensure_ascii=False),
+                "<OpenSCENARIO></OpenSCENARIO>",
+                "[]",
+                "[]",
+                odd["road_type"],
+                odd["weather"],
+                f"{actor_cat}:{actor_spec}",
+                f"{man_cat}:{man_spec}",
+                vec_blob,
+                "text-embedding-3-small",
             ),
         )
 
     conn.commit()
     conn.close()
-    logger.info(f"✅ Đã nạp thành công {len(SEED_SCENARIOS)} kịch bản mẫu + Real Embeddings vào SQLite DB (scenarios_seed)!")
+    logger.info(f"✅ Đã nạp thành công {len(SEED_SCENARIOS)} kịch bản mẫu + BLOB Vector Embeddings vào SQLite DB (scenarios & scenarios_seed)!")
 
     # 2. ChromaDB Persistent Collection
     try:
@@ -262,15 +306,11 @@ def seed_database():
         client = chromadb.PersistentClient(path=str(db_dir))
         collection = client.get_or_create_collection(name="scenarios", metadata={"hnsw:space": "cosine"})
 
-        if embeddings_list and len(embeddings_list[0]) > 0:
-            collection.upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings_list)
-        else:
-            collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
-
+        collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
         count = collection.count()
         logger.info(f"✅ Nạp thành công dữ liệu vào ChromaDB collection 'scenarios' ({count} items).")
     except Exception as err:
-        logger.warning(f"ChromaDB nạp lỗi hoặc bỏ qua ({err}). Đã có SQLite fallback.")
+        logger.warning(f"ChromaDB nạp lỗi hoặc bỏ qua ({err}). Đã có SQLite làm chính.")
 
 
 if __name__ == "__main__":

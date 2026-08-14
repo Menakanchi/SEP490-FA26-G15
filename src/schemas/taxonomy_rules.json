@@ -14,7 +14,7 @@
   },
   "maneuver": {
     "cut_in": ["tat dau", "cuop lan", "tat dau xe", "cat mat", "cut in", "chan dau", "chan dau xe", "cup dau", "cup dau xe", "chen ep", "chen ngang", "ep xe", "di chuyen ngang", "cat ngang", "qua duong noi bo", "di ngang qua duong", "sang duong"],
-    "sudden_brake": ["phanh gap", "thang gap", "dap phanh", "dam phanh", "phanh giui giui", "khung lai", "sudden brake"],
+    "sudden_brake": ["phanh gap", "thang gap", "dap phanh", "dam phanh", "phanh giui giui", "khung lai", "sudden brake", "dam dit", "huc duoi", "tong tu phia sau", "dam vao duoi", "tong vao duoi", "va cham phia sau"],
     "lane_departure": ["lan lan", "lan sang lan", "de vach", "cheo lan", "suyt quet", "lane drift", "ui dat", "uidat", "bung thung", "roi kien hang", "roi hang", "di hang ba", "di hang 3", "chiem lan", "chiem tron lan"],
     "overtake": ["vuot au", "vuot phai", "vuot trai", "vuot xe", "overtake"],
     "stop_in_lane": ["can duong", "chan duong", "dung giua lan", "dung chet", "dung xe", "stop in lane", "lui cham", "lui xe", "dang lui", "lui cong trinh"],

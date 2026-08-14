@@ -328,8 +328,11 @@ def get_chroma_client():
     return chromadb.PersistentClient(path=str(db_dir))
 
 
-def retrieve_node(state: ForgeState, k: int = 3) -> dict:
-    """Node 2: retrieve — Hybrid ODD + Semantic Search lấy k kịch bản mẫu từ ChromaDB/SQLite."""
+from src.services.library.retriever import BaseRetriever, SQLiteRetriever
+
+
+def retrieve_node(state: ForgeState, k: int = 3, retriever: BaseRetriever | None = None) -> dict:
+    """Node 2: retrieve — Hybrid ODD Pre-filtering SQL WHERE + NumPy Cosine Similarity (ADR-013, ADR-006, ADR-011)."""
     query_text = state.get("user_query") or _build_odd_query_text(state)
 
     if not query_text:
@@ -340,170 +343,14 @@ def retrieve_node(state: ForgeState, k: int = 3) -> dict:
             "retrieved_examples": [],
         }
 
-    query_odd = _extract_odd_components(state)
-    retrieved_examples: list[dict] = []
+    odd_source = state.get("odd_query") or state.get("parsed_intent") or state.get("odd_hints")
+    active_retriever = retriever or SQLiteRetriever()
 
-    # 1. Thử gọi ChromaDB Vector Search
     try:
-        client = get_chroma_client()
-        collection = None
-        try:
-            collection = client.get_collection("scenarios")
-        except Exception:
-            try:
-                from scripts.seed_db import seed_database
-
-                seed_database()
-                collection = client.get_collection("scenarios")
-            except Exception:
-                pass
-
-        if collection is not None:
-            results = collection.query(
-                query_texts=[query_text],
-                n_results=k,
-            )
-
-            if results and "documents" in results and results["documents"]:
-                docs = results["documents"][0]
-                metadatas = results.get("metadatas", [[]])[0]
-                ids = results.get("ids", [[]])[0]
-                distances = results.get("distances", [[]])[0] if "distances" in results else []
-
-                all_items = []
-                for i, doc in enumerate(docs):
-                    meta = metadatas[i] if i < len(metadatas) else {}
-                    doc_id = ids[i] if i < len(ids) else f"ex_{i + 1}"
-                    dist = float(distances[i]) if (i < len(distances) and distances[i] is not None) else 0.2
-                    vector_sim = max(0.0, min(1.0, 1.0 - dist))
-
-                    item_odd = _extract_meta_odd_components(meta)
-                    title_content = f"{meta.get('title', '')} {doc}"
-                    hybrid_score = _calculate_hybrid_score(
-                        query_odd,
-                        item_odd,
-                        vector_sim,
-                        user_query=query_text,
-                        item_title_content=title_content,
-                    )
-
-                    all_items.append(
-                        (
-                            hybrid_score,
-                            vector_sim,
-                            {
-                                "id": doc_id,
-                                "title": meta.get("title", f"Kịch bản mẫu {i + 1}"),
-                                "content": doc,
-                                "metadata": meta,
-                                "similarity_score": hybrid_score,
-                            },
-                        )
-                    )
-
-                all_items.sort(key=lambda x: (x[0], x[1]), reverse=True)
-                retrieved_examples = [item[2] for item in all_items[:k]]
+        retrieved_examples = active_retriever.retrieve(query_text, odd_query=odd_source, limit=k)
     except Exception as exc:
-        logger.warning(f"[NODE 2 WARNING] ChromaDB query failed or collection missing: {exc}")
+        logger.warning(f"[NODE 2 WARNING] Retrieval failed: {exc}")
         retrieved_examples = []
-        print(f"[NODE 2 OUTPUT] Retrieved Examples Count: 0")
-        return {
-            "examples": [],
-            "retrieved_examples": [],
-        }
-
-    # 2. Dual Fallback: SQLite Vector & Metadata Search nếu ChromaDB rỗng
-    if not retrieved_examples:
-        try:
-            import sqlite3
-            from pathlib import Path
-            from scripts.seed_db import get_embedding_function
-
-            db_path = Path("./data/app.db")
-            if db_path.exists():
-                conn = sqlite3.connect(db_path)
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT scenario_id, title, description_vi, content, odd_json, embedding_json FROM scenarios_seed"
-                )
-                rows = cursor.fetchall()
-                conn.close()
-
-                if not rows:
-                    try:
-                        from scripts.seed_db import seed_database
-
-                        seed_database()
-                        conn = sqlite3.connect(db_path)
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "SELECT scenario_id, title, description_vi, content, odd_json, embedding_json FROM scenarios_seed"
-                        )
-                        rows = cursor.fetchall()
-                        conn.close()
-                    except Exception:
-                        pass
-
-                ef = get_embedding_function()
-                query_vec = None
-                if ef:
-                    try:
-                        raw_q = ef([query_text])[0]
-                        query_vec = [float(v) for v in raw_q]
-                    except Exception:
-                        pass
-
-                all_items = []
-                for row in rows:
-                    sc_id, title, desc, content, odd_json, emb_json = row
-                    row_vec = json.loads(emb_json) if emb_json else []
-
-                    vector_sim = 0.0
-                    if query_vec and row_vec:
-                        vector_sim = _compute_cosine_similarity(query_vec, row_vec)
-                    else:
-                        q_words = set(query_text.lower().replace(",", "").split())
-                        content_lower = content.lower()
-                        match_count = sum(1 for word in query_words if word in content_lower)
-                        vector_sim = min(1.0, 0.50 + (match_count * 0.10))
-
-                    try:
-                        odd_dict = json.loads(odd_json) if isinstance(odd_json, str) else odd_json
-                    except Exception:
-                        odd_dict = {}
-
-                    item_odd = _extract_meta_odd_components({"odd": odd_dict})
-                    title_content = f"{title} {desc} {content}"
-                    hybrid_score = _calculate_hybrid_score(
-                        query_odd,
-                        item_odd,
-                        vector_sim,
-                        user_query=query_text,
-                        item_title_content=title_content,
-                    )
-
-                    all_items.append(
-                        (
-                            hybrid_score,
-                            vector_sim,
-                            {
-                                "id": sc_id,
-                                "title": title,
-                                "content": desc or content,
-                                "metadata": {
-                                    "scenario_id": sc_id,
-                                    "description_vi": desc,
-                                    "odd": odd_json,
-                                },
-                                "similarity_score": hybrid_score,
-                            },
-                        )
-                    )
-
-                all_items.sort(key=lambda x: (x[0], x[1]), reverse=True)
-                retrieved_examples = [item[2] for item in all_items[:k]]
-        except Exception as sqlite_err:
-            logger.warning(f"[NODE 2 WARNING] SQLite fallback query error: {sqlite_err}")
 
     print(f"[NODE 2 OUTPUT] Retrieved Examples Count: {len(retrieved_examples)}")
 
