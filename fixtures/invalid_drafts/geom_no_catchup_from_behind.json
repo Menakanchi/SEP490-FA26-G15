@@ -1,0 +1,54 @@
+{
+  "_comment": "Chiều còn lại của GEOM_NO_CATCHUP: actor đặt PHÍA SAU ego (s_offset_m âm) nhưng chạy chậm hơn nên không bao giờ bắt kịp để tạt đầu. Schema hợp lệ hoàn toàn — chỉ kiểm tra hình học tĩnh mới bắt được.",
+  "caught_by": "static_check",
+  "expected_codes": [
+    "GEOM_NO_CATCHUP"
+  ],
+  "expected_paths": [
+    "/actors/1"
+  ],
+  "draft": {
+    "title": "Xe máy phía sau chạy chậm hơn ego, không thể tạt đầu",
+    "odd": {
+      "road_type": "highway",
+      "weather": "clear",
+      "actor_type": "motorcycle",
+      "maneuver": "cut_in"
+    },
+    "time_of_day": "day",
+    "actors": [
+      {
+        "name": "hero",
+        "category": "car",
+        "position": {
+          "lane_offset": 0,
+          "s_offset_m": 0.0
+        },
+        "initial_speed_kmh": 60.0,
+        "is_ego": true
+      },
+      {
+        "name": "adversary",
+        "category": "motorcycle",
+        "position": {
+          "lane_offset": -1,
+          "s_offset_m": -20.0
+        },
+        "initial_speed_kmh": 40.0,
+        "is_ego": false
+      }
+    ],
+    "maneuvers": [
+      {
+        "actor_name": "adversary",
+        "maneuver": "cut_in",
+        "trigger": {
+          "type": "simulation_time",
+          "value": 7.0
+        },
+        "target_speed_kmh": 40.0
+      }
+    ],
+    "duration_s": 30.0
+  }
+}

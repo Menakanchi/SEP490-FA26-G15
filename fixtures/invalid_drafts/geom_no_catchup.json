@@ -4,6 +4,9 @@
   "expected_codes": [
     "GEOM_NO_CATCHUP"
   ],
+  "expected_paths": [
+    "/actors/1"
+  ],
   "draft": {
     "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
     "odd": {

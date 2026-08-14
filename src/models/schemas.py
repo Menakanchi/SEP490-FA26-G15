@@ -39,6 +39,7 @@ from enum import StrEnum
 from typing import ClassVar, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic_core import PydanticCustomError
 
 
 class ForgeModel(BaseModel):
@@ -485,7 +486,12 @@ class ManeuverSpec(ForgeModel):
     actor_name: str = Field(..., description="Trỏ tới ActorSpec.name")
     maneuver: ManeuverType
     trigger: TriggerCondition
-    target_speed_kmh: float | None = Field(None, ge=0.0, le=150.0, description="Tốc độ sau khi thực hiện, nếu có")
+    target_speed_kmh: float | None = Field(
+        None,
+        ge=0.0,
+        le=150.0,
+        description="Tốc độ sau khi thực hiện; None nghĩa là giữ initial_speed_kmh của actor",
+    )
 
 
 class ScenarioCore(ForgeModel):
@@ -522,18 +528,41 @@ class ScenarioCore(ForgeModel):
     def _check_refs(self) -> ScenarioCore:
         egos = [a for a in self.actors if a.is_ego]
         if len(egos) != 1:
-            raise ValueError(f"phải có đúng 1 ego, đang có {len(egos)}")
+            raise PydanticCustomError(
+                "EGO_COUNT",
+                "phải có đúng 1 ego, đang có {ego_count}",
+                {"ego_count": len(egos)},
+            )
 
         names = {a.name for a in self.actors}
         if len(names) != len(self.actors):
-            raise ValueError("tên actor bị trùng")
+            first_index_by_name: dict[str, int] = {}
+            duplicate_index = 0
+            duplicate_name = ""
+            for actor_index, actor in enumerate(self.actors):
+                if actor.name in first_index_by_name:
+                    duplicate_index = actor_index
+                    duplicate_name = actor.name
+                    break
+                first_index_by_name[actor.name] = actor_index
+            raise PydanticCustomError(
+                "DUP_ACTOR_NAME",
+                "tên actor bị trùng: {actor_name}",
+                {"actor_name": duplicate_name, "actor_index": duplicate_index},
+            )
 
-        for m in self.maneuvers:
+        for maneuver_index, m in enumerate(self.maneuvers):
             if m.actor_name not in names:
-                raise ValueError(f"maneuver trỏ tới actor không tồn tại: {m.actor_name!r}")
+                raise PydanticCustomError(
+                    "DANGLING_ACTOR_REF",
+                    "maneuver trỏ tới actor không tồn tại: {actor_name}",
+                    {"actor_name": repr(m.actor_name), "maneuver_index": maneuver_index},
+                )
             if m.actor_name == egos[0].name:
-                raise ValueError(
-                    "ego không được mang maneuver — ego là thứ ĐANG BỊ TEST, không phải thứ gây ra tình huống"
+                raise PydanticCustomError(
+                    "EGO_HAS_MANEUVER",
+                    "ego không được mang maneuver — ego là thứ ĐANG BỊ TEST, không phải thứ gây ra tình huống",
+                    {"maneuver_index": maneuver_index},
                 )
 
             # Trigger bắn sau khi kịch bản đã dừng = hành vi không bao giờ chạy.
@@ -541,9 +570,16 @@ class ScenarioCore(ForgeModel):
             # KHÔNG CÓ GÌ XẢY RA. Đây đúng cái bẫy sc_002 mô tả, và nó làm hỏng
             # cả intent_match lẫn adversarial_found mà không báo lỗi ở đâu.
             if m.trigger.type == "simulation_time" and m.trigger.value >= self.duration_s:
-                raise ValueError(
-                    f"trigger bắn ở giây {m.trigger.value} nhưng kịch bản chỉ dài "
-                    f"{self.duration_s}s — hành vi {m.maneuver.value!r} không bao giờ chạy"
+                raise PydanticCustomError(
+                    "TRIGGER_AFTER_END",
+                    "trigger bắn ở giây {trigger_time} nhưng kịch bản chỉ dài "
+                    "{duration}s — hành vi {maneuver} không bao giờ chạy",
+                    {
+                        "trigger_time": m.trigger.value,
+                        "duration": self.duration_s,
+                        "maneuver": repr(m.maneuver.value),
+                        "maneuver_index": maneuver_index,
+                    },
                 )
 
         # Nhãn ODD phải khớp thực tế. Nhãn này là thứ retrieval lọc theo và là thứ
@@ -551,9 +587,13 @@ class ScenarioCore(ForgeModel):
         # thổi phồng coverage và làm thư viện trả về kết quả sai nhãn.
         non_ego = {a.category.value for a in self.actors if not a.is_ego}
         if self.odd.actor_type.value not in non_ego:
-            raise ValueError(
-                f"odd.actor_type={self.odd.actor_type.value!r} nhưng không chủ thể nào "
-                f"thuộc loại đó (đang có: {sorted(non_ego)})"
+            raise PydanticCustomError(
+                "ODD_ACTOR_MISMATCH",
+                "odd.actor_type={actor_type} nhưng không chủ thể nào thuộc loại đó (đang có: {actual_types})",
+                {
+                    "actor_type": repr(self.odd.actor_type.value),
+                    "actual_types": sorted(non_ego),
+                },
             )
 
         # Cùng lý do, cho trục tình huống. Gắn nhãn "jaywalk" cho một kịch bản chỉ
@@ -561,9 +601,13 @@ class ScenarioCore(ForgeModel):
         # tức là tự khai khống đúng con số mà đề bài dùng để chấm độ đa dạng.
         done = {m.maneuver.value for m in self.maneuvers}
         if self.odd.maneuver.value not in done:
-            raise ValueError(
-                f"odd.maneuver={self.odd.maneuver.value!r} nhưng không maneuver nào "
-                f"thực hiện hành vi đó (đang có: {sorted(done)})"
+            raise PydanticCustomError(
+                "ODD_MANEUVER_MISMATCH",
+                "odd.maneuver={maneuver} nhưng không maneuver nào thực hiện hành vi đó (đang có: {actual_maneuvers})",
+                {
+                    "maneuver": repr(self.odd.maneuver.value),
+                    "actual_maneuvers": sorted(done),
+                },
             )
         return self
 
@@ -659,6 +703,7 @@ class IssueCode(StrEnum):
     CONVERTER_ERROR = "CONVERTER_ERROR"
     PERSISTENCE_ERROR = "PERSISTENCE_ERROR"
     BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
+    VALIDATION_CONTEXT_MISSING = "VALIDATION_CONTEXT_MISSING"
 
 
 REPAIRABLE_CODES: frozenset[IssueCode] = frozenset(

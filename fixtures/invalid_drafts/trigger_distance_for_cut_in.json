@@ -4,6 +4,9 @@
   "expected_codes": [
     "TRIGGER_DISTANCE_UNSIGNED"
   ],
+  "expected_paths": [
+    "/maneuvers/0/trigger/type"
+  ],
   "draft": {
     "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
     "odd": {
