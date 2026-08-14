@@ -81,8 +81,43 @@ def _step_progress(step: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Mock workflow — chạy qua các bước rồi sinh scenario giả
+# Mock workflow helpers & workflow
 # ---------------------------------------------------------------------------
+
+
+def _is_slow_speed(man_category: str, specific_action: str | None, desc: str) -> bool:
+    desc_lower = desc.lower()
+    act_lower = (specific_action or "").lower()
+    slow_terms = ["lùi", "lui", "chậm", "cham", "dừng", "dung", "đỗ", "do", "hỏng", "hong", "bê tông", "be tong", "xe nâng", "xe nang"]
+    if man_category in ("stop_in_lane", "sudden_brake"):
+        return True
+    return any(t in desc_lower or t in act_lower for t in slow_terms)
+
+
+def _compute_actor_speed(cat: str, spec_type: str | None, is_slow: bool, is_residential: bool, is_maneuver_target: bool = False) -> float:
+    """Tính toán tốc độ ban đầu và tốc độ mục tiêu thích hợp theo loại xe và bối cảnh đường."""
+    st = str(spec_type or "").lower()
+    is_forklift = any(w in st for w in ("xe nâng", "xe_nang", "xenang", "forklift", "xe lu", "xe ui"))
+    if is_maneuver_target:
+        if is_forklift or is_slow:
+            return 5.0
+        if is_residential:
+            return 10.0
+        return 40.0
+
+    if is_forklift or is_slow:
+        return 10.0
+    if is_residential:
+        return 15.0
+    return 50.0
+
+
+def _normalize_cat(raw_cat: str) -> str:
+    """Chuẩn hóa category về enum chuẩn OpenSCENARIO."""
+    cat = raw_cat.strip().lower()
+    if cat in ("xe_bus", "xe_khach"):
+        return "bus"
+    return cat if cat not in ("", "none", "null", "n/a") else "car"
 
 
 async def _run_mock_workflow(request_id: str) -> None:
@@ -94,7 +129,7 @@ async def _run_mock_workflow(request_id: str) -> None:
     for step in _STEP_ORDER:
         req["step"] = step
         req["progress"] = _step_progress(step)
-        await asyncio.sleep(0.3)  # Giả lập latency
+        await asyncio.sleep(0.05)  # Giả lập latency
 
     # 1. Thử gọi Node 1 (parse_intent) để lấy ODD theo Hybrid Pipeline (Rule-based + LLM Fallback)
     odd_dict = {
@@ -111,10 +146,12 @@ async def _run_mock_workflow(request_id: str) -> None:
         from src.agents.nodes.parse_intent import parse_intent_node
 
         res = parse_intent_node({"user_query": req["description_vi"]})
-        odd_obj = res.get("odd_query") or res.get("odd_hints")
+        raw_odd = res.get("odd_query")
+        hints_odd = res.get("odd_hints")
+        odd_obj = raw_odd or hints_odd
         if odd_obj:
-            rt = getattr(odd_obj, "road_type", None)
-            wt = getattr(odd_obj, "weather", None)
+            rt = getattr(raw_odd, "road_type", None) if raw_odd else getattr(odd_obj, "road_type", None)
+            wt = getattr(raw_odd, "weather", None) if raw_odd else getattr(odd_obj, "weather", None)
             at = getattr(odd_obj, "actor_type", None)
             mv = getattr(odd_obj, "maneuver", None)
 
@@ -197,29 +234,18 @@ async def _run_mock_workflow(request_id: str) -> None:
     elif man_cat == "unknown":
         man_cat = "cut_in"
 
-    # =======================================================================
-    # BUILD SPEC.ACTORS ĐỘNG TỪ MULTI-ACTOR / SINGLE-ACTOR PARSED INTENT
-    # TUYỆT ĐỐI KHÔNG HARDCODE — đọc từ danh sách actors của Node 1
-    # =======================================================================
-    def _normalize_cat(raw_cat: str) -> str:
-        """Chuẩn hóa category về enum chuẩn OpenSCENARIO."""
-        cat = raw_cat.strip().lower()
-        if cat in ("xe_bus", "xe_khach"):
-            return "bus"
-        return cat if cat not in ("", "none", "null", "n/a") else "car"
-
-    def _is_slow_speed(man_category: str, specific_action: str | None, desc: str) -> bool:
-        desc_lower = desc.lower()
-        act_lower = (specific_action or "").lower()
-        slow_terms = ["lùi", "lui", "chậm", "cham", "dừng", "dung", "đỗ", "do", "hỏng", "hong", "bê tông", "be tong"]
-        if man_category in ("stop_in_lane", "sudden_brake"):
-            return True
-        return any(t in desc_lower or t in act_lower for t in slow_terms)
-
     spec_actors: list[dict] = []
     spec_maneuvers: list[dict] = []
     is_slow = _is_slow_speed(man_cat, man_spec_act, req["description_vi"])
-    default_init_speed = 10.0 if is_slow else 60.0
+    road_type_str = str(odd_dict.get("road_type", "")).lower()
+    is_residential = road_type_str in ("residential_narrow", "residential") or "nội bộ" in req["description_vi"].lower() or "ngõ" in req["description_vi"].lower()
+
+    if is_slow:
+        default_init_speed = 10.0
+    elif is_residential:
+        default_init_speed = 20.0
+    else:
+        default_init_speed = 60.0
 
     if len(parsed_actors_raw) == 1:
         # KỊCH BẢN 1 TÁC NHÂN (SINGLE ACTOR SCENARIO)
@@ -227,12 +253,13 @@ async def _run_mock_workflow(request_id: str) -> None:
         actor_info = parsed_actors_raw[0]
         cat = _normalize_cat(getattr(actor_info, "category", "unknown"))
         spec_type = getattr(actor_info, "specific_type", "unknown")
+        act_init_speed = _compute_actor_speed(cat, spec_type, is_slow, is_residential, is_maneuver_target=False)
 
         hero_entry: dict = {
             "name": "hero",
             "category": cat,
             "position": {"lane_offset": 0, "s_offset_m": 0.0},
-            "initial_speed_kmh": default_init_speed,
+            "initial_speed_kmh": act_init_speed,
             "is_ego": True,
         }
         if spec_type and spec_type != "unknown":
@@ -243,7 +270,7 @@ async def _run_mock_workflow(request_id: str) -> None:
             "actor_name": "hero",
             "maneuver": man_cat,
             "trigger": {"type": "simulation_time", "value": 1.0},
-            "target_speed_kmh": 5.0 if is_slow else 40.0,
+            "target_speed_kmh": _compute_actor_speed(cat, spec_type, is_slow, is_residential, is_maneuver_target=True),
         }
         if man_spec_act and man_spec_act != "unknown":
             hero_maneuver["specific_action"] = man_spec_act
@@ -278,11 +305,12 @@ async def _run_mock_workflow(request_id: str) -> None:
                 adversary_counter += 1
                 adv_name = f"adversary_{adversary_counter}"
                 s_offset = 20.0 + (adversary_counter - 1) * 15.0
+                adv_speed = _compute_actor_speed(cat, spec_type, is_slow, is_residential, is_maneuver_target=False)
                 actor_entry = {
                     "name": adv_name,
                     "category": cat,
                     "position": {"lane_offset": 1 if adversary_counter == 1 else 0, "s_offset_m": s_offset},
-                    "initial_speed_kmh": 50.0,
+                    "initial_speed_kmh": adv_speed,
                     "is_ego": False,
                 }
                 if spec_type and spec_type != "unknown":
@@ -294,7 +322,7 @@ async def _run_mock_workflow(request_id: str) -> None:
                         "actor_name": adv_name,
                         "maneuver": man_cat,
                         "trigger": {"type": "distance_to_ego", "value": 15.0},
-                        "target_speed_kmh": 40.0,
+                        "target_speed_kmh": _compute_actor_speed(cat, spec_type, is_slow, is_residential, is_maneuver_target=True),
                     }
                     if man_spec_act and man_spec_act != "unknown":
                         adv_maneuver["specific_action"] = man_spec_act
@@ -305,38 +333,33 @@ async def _run_mock_workflow(request_id: str) -> None:
             spec_actors[0]["is_ego"] = True
             spec_actors[0]["name"] = "hero"
     else:
-        # Fallback nếu Node 1 không trả về actors list
+        # SINGLE ACTOR FALLBACK (Đơn phương tiện từ Node 1 actor_type)
+        # TUYỆT ĐỐI KHÔNG TỰ BỊA THÊM Ô TÔ CON (car) HOẶC ADVERSARY_1
         adv_cat = at_data["category"] if isinstance(at_data, dict) else str(at_data)
         adv_spec_type = at_data.get("specific_type") if isinstance(at_data, dict) else None
         adv_cat = _normalize_cat(adv_cat)
+        act_init_speed = _compute_actor_speed(adv_cat, adv_spec_type, is_slow, is_residential, is_maneuver_target=False)
 
         hero_entry: dict = {
             "name": "hero",
-            "category": "car",
+            "category": adv_cat,
             "position": {"lane_offset": 0, "s_offset_m": 0.0},
-            "initial_speed_kmh": default_init_speed,
+            "initial_speed_kmh": act_init_speed,
             "is_ego": True,
         }
-        adversary_entry: dict = {
-            "name": "adversary_1",
-            "category": adv_cat,
-            "position": {"lane_offset": 1, "s_offset_m": 30.0},
-            "initial_speed_kmh": 50.0,
-            "is_ego": False,
-        }
         if adv_spec_type and adv_spec_type != "unknown":
-            adversary_entry["specific_type"] = adv_spec_type
-        spec_actors = [hero_entry, adversary_entry]
+            hero_entry["specific_type"] = adv_spec_type
+        spec_actors = [hero_entry]
 
-        adv_maneuver = {
-            "actor_name": "adversary_1",
+        hero_maneuver = {
+            "actor_name": "hero",
             "maneuver": man_cat,
-            "trigger": {"type": "distance_to_ego", "value": 15.0},
-            "target_speed_kmh": 40.0,
+            "trigger": {"type": "simulation_time", "value": 1.0},
+            "target_speed_kmh": _compute_actor_speed(adv_cat, adv_spec_type, is_slow, is_residential, is_maneuver_target=True),
         }
         if man_spec_act and man_spec_act != "unknown":
-            adv_maneuver["specific_action"] = man_spec_act
-        spec_maneuvers = [adv_maneuver]
+            hero_maneuver["specific_action"] = man_spec_act
+        spec_maneuvers = [hero_maneuver]
 
     _scenarios[scenario_id] = {
         "scenario_id": scenario_id,
@@ -391,13 +414,15 @@ async def generate(body: GenerateRequest) -> GenerateResponse:
         if isinstance(res, dict) and "issues" in res and res["issues"]:
             for issue in res["issues"]:
                 msg = getattr(issue, "message_vi", str(issue))
+                code = getattr(issue, "code", None)
+                status_code = 422 if code in (IssueCode.NEED_MORE_DETAIL, IssueCode.UNSUPPORTED_COMBINATION) else 400
                 raise HTTPException(
-                    status_code=400,
+                    status_code=status_code,
                     detail=msg,
                 )
     except ValueError as err:
         raise HTTPException(
-            status_code=400,
+            status_code=422,
             detail=str(err),
         )
     except HTTPException as http_err:

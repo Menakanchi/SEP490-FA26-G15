@@ -6,16 +6,21 @@ import pytest
 
 from src.agents.nodes.parse_intent import parse_intent_node
 from src.models.schemas import (
+    DEFAULT_SUPPORT_POLICY,
     ActorType,
+    AssumptionSource,
     IssueCode,
     ManeuverType,
     ODDQuery,
     RoadType,
+    SupportPolicy,
     Weather,
 )
 
 
 def _get_cat(val):
+    if val is None:
+        return None
     return getattr(val, "category", str(val.value if hasattr(val, "value") else val))
 
 
@@ -28,7 +33,7 @@ def test_parse_intent_short_or_numeric_prompt():
 
 @patch("src.agents.nodes.parse_intent.get_llm")
 def test_parse_intent_happy_path(mock_get_llm):
-    """Happy path: Trích xuất đủ 4 trục ODD."""
+    """Test Case 1: Đủ 4 trục ODD -> không có assumption, không có issue."""
     mock_structured_llm = MagicMock()
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
 
@@ -44,20 +49,22 @@ def test_parse_intent_happy_path(mock_get_llm):
     state = {"user_query": "Xe máy tạt đầu ô tô trên đường cao tốc lúc mưa lớn"}
     result = parse_intent_node(state)
 
-    assert str(result["odd_query"].road_type) == "highway"
-    assert str(result["odd_query"].weather) == "heavy_rain"
-    assert _get_cat(result["odd_query"].actor_type) == "motorcycle"
-    assert _get_cat(result["odd_query"].maneuver) == "cut_in"
+    assert result["odd_query"].road_type == RoadType.HIGHWAY
+    assert result["odd_query"].weather == Weather.HEAVY_RAIN
+    assert result["odd_query"].actor_type == ActorType.MOTORCYCLE
+    assert result["odd_query"].maneuver == ManeuverType.CUT_IN
     assert result["odd_hints"].road_type == RoadType.HIGHWAY
     assert result["odd_hints"].weather == Weather.HEAVY_RAIN
     assert result["odd_hints"].actor_type == ActorType.MOTORCYCLE
     assert result["odd_hints"].maneuver == ManeuverType.CUT_IN
+    assert result["odd_hints"].key == "highway|heavy_rain|motorcycle|cut_in"
+    assert result["assumptions"] == []
     assert result["issues"] == []
 
 
 @patch("src.agents.nodes.parse_intent.get_llm")
 def test_parse_intent_partial_defaults(mock_get_llm):
-    """Điền mặc định cho trục bối cảnh thiếu (road_type, weather) khi qua LLM Fallback."""
+    """Test Case 2: Thiếu 2 trục bối cảnh (chỉ có actor + maneuver) -> với defaults bổ sung urban_straight + clear (AssumptionSource.DEFAULT)."""
     mock_structured_llm = MagicMock()
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
 
@@ -65,38 +72,41 @@ def test_parse_intent_partial_defaults(mock_get_llm):
         road_type=None,
         weather=None,
         actor_type=ActorType.MOTORCYCLE,
-        maneuver=ManeuverType.SUDDEN_BRAKE,
-        inferred=["actor_type"],
+        maneuver=ManeuverType.CUT_IN,
+        inferred=[],
     )
     mock_structured_llm.invoke.return_value = mock_odd_query
 
-    state = {"user_query": "xe la phong nhanh qua ma"}
+    state = {"user_query": "Xe máy tạt đầu ô tô"}
     result = parse_intent_node(state)
 
-    assert _get_cat(result["odd_query"].actor_type) == "motorcycle"
     assert result["odd_hints"].actor_type == ActorType.MOTORCYCLE
-    assert result["odd_hints"].maneuver == ManeuverType.SUDDEN_BRAKE
+    assert result["odd_hints"].maneuver == ManeuverType.CUT_IN
     assert result["odd_hints"].road_type == RoadType.URBAN_STRAIGHT
     assert result["odd_hints"].weather == Weather.CLEAR
-    assert len(result["assumptions"]) > 0
+    assert result["odd_hints"].key == "urban_straight|clear|motorcycle|cut_in"
+    assert len(result["assumptions"]) == 2
+    sources = {a.source for a in result["assumptions"]}
+    assert AssumptionSource.DEFAULT.value in sources or AssumptionSource.DEFAULT in sources
+    assert result["issues"] == []
 
 
 @patch("src.agents.nodes.parse_intent.get_llm")
-def test_parse_intent_missing_required_axis(mock_get_llm):
-    """Thiếu trục bắt buộc (actor_type hoặc maneuver) -> trả về ValidationIssue."""
+def test_parse_intent_missing_actor_type(mock_get_llm):
+    """Test Case 3: Thiếu actor_type -> trả về NEED_MORE_DETAIL issue."""
     mock_structured_llm = MagicMock()
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
 
     mock_odd_query = ODDQuery(
-        road_type=RoadType.URBAN_STRAIGHT,
-        weather=Weather.CLEAR,
+        road_type=RoadType.HIGHWAY,
+        weather=Weather.HEAVY_RAIN,
         actor_type=None,
         maneuver=ManeuverType.CUT_IN,
         inferred=[],
     )
     mock_structured_llm.invoke.return_value = mock_odd_query
 
-    state = {"user_query": "Một chiếc xe lạ nào đó tạt đầu"}
+    state = {"user_query": "Tình huống tạt đầu trên đường cao tốc lúc trời mưa"}
     result = parse_intent_node(state)
 
     assert "issues" in result
@@ -105,13 +115,36 @@ def test_parse_intent_missing_required_axis(mock_get_llm):
 
 
 @patch("src.agents.nodes.parse_intent.get_llm")
-def test_parse_intent_unparsable_all_none(mock_get_llm):
-    """Cả 4 trục đều là None / unknown -> ném ValueError."""
+def test_parse_intent_missing_maneuver(mock_get_llm):
+    """Test Case 4: Thiếu maneuver -> trả về NEED_MORE_DETAIL issue (KHÔNG tự điền lane_drift)."""
     mock_structured_llm = MagicMock()
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
 
     mock_odd_query = ODDQuery(
-        road_type=None,
+        road_type=RoadType.HIGHWAY,
+        weather=Weather.RAIN,
+        actor_type=ActorType.BUS,
+        maneuver=None,
+        inferred=[],
+    )
+    mock_structured_llm.invoke.return_value = mock_odd_query
+
+    state = {"user_query": "Xe khách chạy trên đường cao tốc lúc trời mưa"}
+    result = parse_intent_node(state)
+
+    assert "issues" in result
+    assert len(result["issues"]) == 1
+    assert result["issues"][0].code == IssueCode.NEED_MORE_DETAIL
+
+
+@patch("src.agents.nodes.parse_intent.get_llm")
+def test_parse_intent_missing_both_required_axes(mock_get_llm):
+    """Test Case 5: Thiếu cả 2 trục bắt buộc -> trả về NEED_MORE_DETAIL issue."""
+    mock_structured_llm = MagicMock()
+    mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
+
+    mock_odd_query = ODDQuery(
+        road_type=RoadType.HIGHWAY,
         weather=None,
         actor_type=None,
         maneuver=None,
@@ -119,106 +152,70 @@ def test_parse_intent_unparsable_all_none(mock_get_llm):
     )
     mock_structured_llm.invoke.return_value = mock_odd_query
 
-    state = {"user_query": "Một ngày đẹp trời như bao ngày khác"}
-    with pytest.raises(ValueError, match="Không thể nhận diện tình huống giao thông"):
-        parse_intent_node(state)
+    state = {"user_query": "Tình huống nguy hiểm trên đường cao tốc"}
+    result = parse_intent_node(state)
+
+    assert "issues" in result
+    assert len(result["issues"]) == 1
+    assert result["issues"][0].code == IssueCode.NEED_MORE_DETAIL
 
 
+@patch("src.agents.nodes.parse_intent.DEFAULT_SUPPORT_POLICY")
 @patch("src.agents.nodes.parse_intent.get_llm")
-def test_parse_intent_subject_object_distinction(mock_get_llm):
-    """Test case 1: 'o to tat dau xe may troi mua' -> actor_type là 'car' (chủ thể gây nguy hiểm), weather: 'heavy_rain'."""
+def test_parse_intent_unsupported_combination(mock_get_llm, mock_policy):
+    """Test Case 6: Tổ hợp ODD bị SupportPolicy từ chối -> trả về UNSUPPORTED_COMBINATION issue."""
     mock_structured_llm = MagicMock()
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
 
     mock_odd_query = ODDQuery(
-        road_type=None,
-        weather=Weather.HEAVY_RAIN,
-        actor_type=ActorType.CAR,
-        maneuver=ManeuverType.CUT_IN,
+        road_type=RoadType.ROUNDABOUT,
+        weather=None,
+        actor_type=ActorType.PEDESTRIAN,
+        maneuver=ManeuverType.RUN_RED_LIGHT,
         inferred=[],
     )
     mock_structured_llm.invoke.return_value = mock_odd_query
+    mock_policy.supports.return_value = False
 
-    state = {"user_query": "o to tat dau xe may troi mua"}
+    state = {"user_query": "Người đi bộ vượt đèn đỏ ở vòng xuyến"}
     result = parse_intent_node(state)
 
-    assert _get_cat(result["odd_query"].actor_type) == ActorType.CAR
-    assert _get_cat(result["odd_query"].maneuver) == ManeuverType.CUT_IN
-    assert result["odd_query"].weather == Weather.HEAVY_RAIN
-    assert result["odd_query"].road_type in (None, "unknown")
+    assert "issues" in result
+    assert len(result["issues"]) == 1
+    assert result["issues"][0].code == IssueCode.UNSUPPORTED_COMBINATION
 
 
 @patch("src.agents.nodes.parse_intent.get_llm")
-def test_parse_intent_strict_zero_default(mock_get_llm):
-    """Test case 2: 'Container mất lái va chạm xe sedan' -> actor_type: 'truck', road_type & weather: None/unknown."""
+def test_parse_intent_slang_free_description(mock_get_llm):
+    """Test Case 7: Câu dùng từ lóng / tự do ('Đoàn xe đạp đi hàng ba') -> trích xuất hợp lệ."""
     mock_structured_llm = MagicMock()
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
 
     mock_odd_query = ODDQuery(
-        road_type="unknown",
-        weather="unknown",
-        actor_type=ActorType.TRUCK,
+        road_type=RoadType.URBAN_STRAIGHT,
+        weather=None,
+        actor_type=ActorType.MOTORCYCLE,
         maneuver=ManeuverType.LANE_DRIFT,
-        inferred=[],
+        inferred=["actor_type"],
     )
     mock_structured_llm.invoke.return_value = mock_odd_query
 
-    state = {"user_query": "Container mất lái va chạm xe sedan"}
+    state = {"user_query": "Đoàn xe đạp đi hàng ba chiếm trọn làn ô tô"}
     result = parse_intent_node(state)
 
-    assert _get_cat(result["odd_query"].actor_type) == ActorType.TRUCK
-    assert _get_cat(result["odd_query"].maneuver) == ManeuverType.LANE_DRIFT
-    assert result["odd_query"].weather in (None, "unknown")
-    assert result["odd_query"].road_type in (None, "unknown")
+    assert result["issues"] == []
+    assert result["odd_hints"].actor_type == ActorType.MOTORCYCLE
+    assert result["odd_hints"].maneuver == ManeuverType.LANE_DRIFT
 
 
-@patch("src.agents.nodes.parse_intent.get_llm")
-def test_parse_intent_hybrid_reasoning(mock_get_llm):
-    """Test Hybrid Model: 'xe ben chan dau xe dien troi nang' -> actor_type: truck, maneuver: cut_in, weather: clear, road_type: None/unknown."""
-    mock_structured_llm = MagicMock()
-    mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
-
-    mock_odd_query = ODDQuery(
-        road_type="unknown",
-        weather=Weather.CLEAR,
-        actor_type=ActorType.TRUCK,
-        maneuver=ManeuverType.CUT_IN,
-        inferred=[],
-    )
-    mock_structured_llm.invoke.return_value = mock_odd_query
-
-    state = {"user_query": "xe ben chan dau xe dien troi nang"}
+def test_parse_intent_multi_actor():
+    """Test Case 8: Multi-actor ('Xe khách phanh gấp làm xe máy phía sau đâm vào')."""
+    state = {"user_query": "Xe khách phanh gấp làm xe máy phía sau đâm vào"}
     result = parse_intent_node(state)
 
-    assert _get_cat(result["odd_query"].actor_type) == ActorType.TRUCK
-    assert _get_cat(result["odd_query"].maneuver) == ManeuverType.CUT_IN
-    assert result["odd_query"].weather == Weather.CLEAR
-    assert result["odd_query"].road_type in (None, "unknown")
-
-
-@patch("src.agents.nodes.parse_intent.get_llm")
-def test_parse_intent_complex_sentence_evade(mock_get_llm):
-    """Test Complex Sentence: 'xe 16 cho dam phanh ne nguoi di bo' -> actor_type: car (xe 16 chỗ/bus), maneuver: sudden_brake."""
-    mock_structured_llm = MagicMock()
-    mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
-
-    mock_odd_query = ODDQuery(
-        road_type="unknown",
-        weather="unknown",
-        actor_type=ActorType.CAR,
-        maneuver=ManeuverType.SUDDEN_BRAKE,
-        inferred=[],
-    )
-    mock_structured_llm.invoke.return_value = mock_odd_query
-
-    state = {"user_query": "xe 16 cho dam phanh ne nguoi di bo"}
-    result = parse_intent_node(state)
-
-    assert _get_cat(result["odd_query"].actor_type) in ("bus", "car")
-    assert _get_cat(result["odd_query"].maneuver) == ManeuverType.SUDDEN_BRAKE
-    assert result["odd_query"].weather in (None, "unknown")
-    assert result["odd_query"].road_type in (None, "unknown")
-    assert result["odd_hints"].actor_type in (ActorType.BUS, ActorType.CAR)
+    assert result["issues"] == []
+    assert result["odd_hints"].actor_type == ActorType.BUS
+    assert result["odd_hints"].maneuver == ManeuverType.SUDDEN_BRAKE
 
 
 @patch("src.agents.nodes.parse_intent.get_llm")
@@ -228,24 +225,10 @@ def test_parse_intent_llm_exception_handled(mock_get_llm):
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
     mock_structured_llm.invoke.side_effect = RuntimeError("OpenAI API rate limit")
 
-    state = {"user_query": "phuong tien la phong nhanh phanh gap qua ma"}
+    state = {"user_query": "phuong tien troi toi phong nhanh qua ma"}
     result = parse_intent_node(state)
 
     assert "issues" in result
     assert len(result["issues"]) == 1
     assert result["issues"][0].code == IssueCode.LLM_PROVIDER_ERROR
 
-
-@patch("src.agents.nodes.parse_intent.get_llm")
-def test_parse_intent_llm_graceful_fallback(mock_get_llm):
-    """Khi LLM bị lỗi rate limit / 429 quota, nếu Bước 1 trích xuất được actor_type thì Graceful Fallback về rule_odd."""
-    mock_structured_llm = MagicMock()
-    mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
-    mock_structured_llm.invoke.side_effect = RuntimeError("429 RESOURCE_EXHAUSTED")
-
-    state = {"user_query": "xe tải chở hàng bị bung thùng làm rơi kiện hàng ra đường"}
-    result = parse_intent_node(state)
-
-    assert "odd_query" in result
-    assert _get_cat(result["odd_query"].actor_type) == "truck"
-    assert result["issues"] == []

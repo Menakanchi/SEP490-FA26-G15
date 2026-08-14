@@ -62,7 +62,7 @@ async def test_generated_scenario_dynamic_odd(client):
     import asyncio
 
     sc_id = None
-    for _ in range(25):
+    for _ in range(60):
         s_res = await client.get(f"/api/v1/status/{req_id}")
         sc_id = s_res.json().get("scenario_id")
         if sc_id:

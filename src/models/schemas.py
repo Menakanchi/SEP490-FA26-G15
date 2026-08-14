@@ -307,6 +307,8 @@ class ODDQuery(ForgeModel):
     weather: Weather | None = None
     actor_type: ActorType | None = None
     maneuver: ManeuverType | None = None
+    specific_type: str | None = Field(None, description="Tên/loại phương tiện chi tiết từ prompt")
+    specific_action: str | None = Field(None, description="Hành vi/sự cố chi tiết từ prompt")
 
     @field_validator("road_type", "weather", "actor_type", "maneuver", mode="before")
     @classmethod
@@ -372,19 +374,13 @@ class ODDQuery(ForgeModel):
         return {a: v.value for a in self.AXES if (v := getattr(self, a)) is not None}
 
     def missing_required_axes(self) -> list[str]:
-        """Trục **không được phép** điền default. Rỗng thì mới sinh được.
-
-        ``actor_type`` và ``maneuver`` **là nội dung** của kịch bản, không phải
-        bối cảnh. Điền đại ``maneuver=cut_in`` cho câu *"tình huống nguy hiểm ở
-        ngã tư"* là tự bịa ra yêu cầu của người dùng — và nó làm hỏng đúng
-        ``Danger trigger rate`` (PRD §8), thước đo hỏi *"gõ 'xe máy tạt
-        đầu' thì trigger tạt đầu có bắn không"*. Nếu maneuver do code chọn thì
-        metric đó đang đo code chứ không đo hệ thống.
-
-        Thiếu thì trả ``422 NEED_MORE_DETAIL`` kèm gợi ý tương thích — rẻ hơn
-        một vòng hội thoại, và không im lặng bịa.
-        """
-        return [name for name in ("actor_type", "maneuver") if getattr(self, name) is None]
+        """Trục **không được phép** điền default. Rỗng thì mới sinh được."""
+        missing = []
+        for name in ("actor_type", "maneuver"):
+            val = getattr(self, name)
+            if val is None or str(val).lower() in ("unknown", "none", "null", "n/a", ""):
+                missing.append(name)
+        return missing
 
     def with_defaults(self, policy: SupportPolicy | None = None) -> tuple[ODDCell, list[Assumption]]:
         """Điền nốt các trục **bối cảnh** bằng code thuần. Không gọi LLM.
@@ -440,6 +436,8 @@ class ODDQuery(ForgeModel):
             weather=weather,
             actor_type=self.actor_type,
             maneuver=self.maneuver,
+            specific_type=self.specific_type,
+            specific_action=self.specific_action,
         )
         return cell, assumptions
 

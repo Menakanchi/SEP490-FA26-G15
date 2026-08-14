@@ -2,7 +2,7 @@
   "actor_type": {
     "car": ["oto", "o to", "xe con", "xe 4 banh", "xe hoi", "xe oto", "sedan", "suv", "xe dien"],
     "motorcycle": ["xe may", "xemay", "xe 2 banh", "motor", "scooter", "xe so", "xeso", "xe ga", "xega", "shi", "wave", "xe ba go", "xebago", "xe ba banh", "xebabanh", "xe ba goc"],
-    "truck": ["xe tai", "xetai", "xe dau keo", "container", "xe ban tai", "pickup", "xe ben", "cont", "xe cont", "xe lu", "xelu", "xe cau", "xecau", "xe ui", "xeui", "xe cho sat", "xe tron be tong", "xe tron", "xe betong", "xe bon", "xe bung thung"],
+    "truck": ["xe tai", "xetai", "xe dau keo", "container", "xe ban tai", "pickup", "xe ben", "cont", "xe cont", "xe lu", "xelu", "xe cau", "xecau", "xe ui", "xeui", "xe cho sat", "xe tron be tong", "xe tron", "xe betong", "xe bon", "xe bung thung", "xe nang", "xenang"],
     "bus": [
       "xe buyt", "xe bus", "xe khach", 
       "xe 16 cho", "16 cho", "xe 29 cho", 
@@ -13,7 +13,7 @@
     "unknown": ["khong xac dinh", "khong ro", "unknown"]
   },
   "maneuver": {
-    "cut_in": ["tat dau", "cuop lan", "tat dau xe", "cat mat", "cut in", "chan dau", "chan dau xe", "cup dau", "cup dau xe", "chen ep", "chen ngang", "ep xe"],
+    "cut_in": ["tat dau", "cuop lan", "tat dau xe", "cat mat", "cut in", "chan dau", "chan dau xe", "cup dau", "cup dau xe", "chen ep", "chen ngang", "ep xe", "di chuyen ngang", "cat ngang", "qua duong noi bo", "di ngang qua duong", "sang duong"],
     "sudden_brake": ["phanh gap", "thang gap", "dap phanh", "dam phanh", "phanh giui giui", "khung lai", "sudden brake"],
     "lane_departure": ["lan lan", "lan sang lan", "de vach", "cheo lan", "suyt quet", "lane drift", "ui dat", "uidat", "bung thung", "roi kien hang", "roi hang", "di hang ba", "di hang 3", "chiem lan", "chiem tron lan"],
     "overtake": ["vuot au", "vuot phai", "vuot trai", "vuot xe", "overtake"],
@@ -24,10 +24,11 @@
     "urban_straight": ["duong do thi thanh", "duong thanh", "duong trong pho", "duong 1 chieu", "duong phan lan", "lan o to", "lan oto"],
     "highway": ["cao toc", "duong cao toc", "quoc lo", "expressway", "highway"],
     "intersection": ["nga tu", "nga ba", "giao lo", "nga 4", "nga 3", "giao lo co den"],
+    "residential_narrow": ["duong noi bo", "noi bo", "khu noi bo", "ngo hem", "duong lang"],
     "unknown": ["khong xac dinh", "unknown"]
   },
   "weather": {
-    "clear": ["troi quang", "nang", "dep troi", "clear", "troi nang"],
+    "clear": ["troi quang", "troi nang", "nang nong", "nang choi", "dep troi", "clear"],
     "heavy_rain": ["mua lon", "mua to", "giong mua", "mua trang troi", "heavy rain", "troi mua"],
     "fog": ["suong mu", "suong day", "mo suong", "fog"],
     "unknown": ["khong xac dinh", "unknown"]
