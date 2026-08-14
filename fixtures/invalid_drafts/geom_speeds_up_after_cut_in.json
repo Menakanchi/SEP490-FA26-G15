@@ -4,6 +4,9 @@
   "expected_codes": [
     "GEOM_NO_COLLISION_AFTER_CUTIN"
   ],
+  "expected_paths": [
+    "/maneuvers/0"
+  ],
   "draft": {
     "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
     "odd": {

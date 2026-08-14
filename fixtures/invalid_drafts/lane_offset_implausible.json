@@ -1,19 +1,19 @@
 {
-  "_comment": "Nhãn ODD ghi jaywalk nhưng maneuver duy nhất là cut_in. Báo đã phủ ô jaywalk trong khi ô đó vẫn trống = tự khai khống đúng con số đề bài dùng để chấm đa dạng.",
-  "caught_by": "pydantic",
+  "_comment": "Actor cách ego bốn làn: đây là heuristic nghi ngờ nên chỉ được cảnh báo, không chặn luồng.",
+  "caught_by": "static_check",
   "expected_codes": [
-    "ODD_MANEUVER_MISMATCH"
+    "LANE_OFFSET_IMPLAUSIBLE"
   ],
   "expected_paths": [
-    "/odd/maneuver"
+    "/actors/1/position/lane_offset"
   ],
   "draft": {
-    "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
+    "title": "Xe máy tạt đầu từ làn quá xa",
     "odd": {
       "road_type": "highway",
       "weather": "clear",
       "actor_type": "motorcycle",
-      "maneuver": "jaywalk"
+      "maneuver": "cut_in"
     },
     "time_of_day": "day",
     "actors": [
@@ -31,7 +31,7 @@
         "name": "adversary",
         "category": "motorcycle",
         "position": {
-          "lane_offset": -1,
+          "lane_offset": 4,
           "s_offset_m": -25.0
         },
         "initial_speed_kmh": 80.0,
@@ -50,6 +50,5 @@
       }
     ],
     "duration_s": 30.0
-  },
-  "expected_message": "không maneuver nào"
+  }
 }
