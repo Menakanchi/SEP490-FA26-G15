@@ -77,7 +77,8 @@ async def test_generated_scenario_dynamic_odd(client):
     assert "spec" in sc
     # Ensure ODD is not default motorcycle/cut_in when prompt is truck/lane_drift or heavy_rain
     assert sc["odd"]["weather"] == "heavy_rain"
-    assert sc["odd"]["actor_type"] == "truck"
+    act_val = sc["odd"]["actor_type"]["category"] if isinstance(sc["odd"]["actor_type"], dict) else sc["odd"]["actor_type"]
+    assert act_val == "truck"
     assert sc["spec"]["odd"]["weather"] == "heavy_rain"
 
 

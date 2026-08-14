@@ -20,6 +20,7 @@ import {
   Download,
   Filter,
   RefreshCw,
+  BookOpen,
 } from "lucide-react";
 import { getScenarios, getScenarioById, postReview } from "@/services/api";
 import SVG2DRenderer from "@/components/SVG2DRenderer";
@@ -30,6 +31,56 @@ import {
   ACTOR_TYPE_LABELS,
   MANEUVER_TYPE_LABELS,
 } from "@/types";
+
+const normalizeStr = (str: string): string => {
+  return str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/đ/g, "d")
+    .replace(/_/g, " ")
+    .trim();
+};
+
+const formatSpecificText = (text: string): string => {
+  if (!text) return "";
+  const cleaned = text.replace(/_/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+};
+
+const renderSafeValue = (val: any, labelsMap?: Record<string, string>): string => {
+  if (!val) return "unknown";
+  if (typeof val === "string") return labelsMap?.[val] ?? val;
+  if (typeof val === "object") {
+    const catKey = val.category && val.category !== "unknown" ? val.category : "";
+    const cat = catKey ? (labelsMap?.[catKey] ?? catKey) : "";
+
+    const rawSpec =
+      val.specific_type && val.specific_type !== "unknown"
+        ? val.specific_type
+        : val.specific_action && val.specific_action !== "unknown"
+        ? val.specific_action
+        : "";
+
+    const spec = formatSpecificText(rawSpec);
+
+    if (cat && spec) {
+      if (normalizeStr(cat) === normalizeStr(spec) || normalizeStr(catKey) === normalizeStr(spec)) {
+        return cat;
+      }
+      return `${cat} (${spec})`;
+    }
+    if (cat) {
+      return cat;
+    }
+    if (spec) {
+      return spec;
+    }
+    return "unknown";
+  }
+  return String(val);
+};
 
 function ReviewPageContent() {
   const searchParams = useSearchParams();
@@ -340,16 +391,16 @@ function ReviewPageContent() {
                     {/* ODD Badges */}
                     <div className="flex flex-wrap gap-1.5">
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/15">
-                        {ROAD_TYPE_LABELS[item.odd?.road_type] ?? item.odd?.road_type}
+                        {renderSafeValue(item.odd?.road_type, ROAD_TYPE_LABELS)}
                       </span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/15">
-                        {WEATHER_LABELS[item.odd?.weather] ?? item.odd?.weather}
+                        {renderSafeValue(item.odd?.weather, WEATHER_LABELS)}
                       </span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/15">
-                        {ACTOR_TYPE_LABELS[item.odd?.actor_type] ?? item.odd?.actor_type}
+                        {renderSafeValue(item.odd?.actor_type, ACTOR_TYPE_LABELS)}
                       </span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/15">
-                        {MANEUVER_TYPE_LABELS[item.odd?.maneuver] ?? item.odd?.maneuver}
+                        {renderSafeValue(item.odd?.maneuver, MANEUVER_TYPE_LABELS)}
                       </span>
                     </div>
                   </div>
@@ -448,7 +499,7 @@ function ReviewPageContent() {
                         Loại đường
                       </p>
                       <p className="text-sm font-medium text-slate-200 mt-0.5">
-                        {ROAD_TYPE_LABELS[scenario.odd?.road_type] ?? scenario.odd?.road_type}
+                        {renderSafeValue(scenario.odd?.road_type, ROAD_TYPE_LABELS)}
                       </p>
                     </div>
                   </div>
@@ -460,7 +511,7 @@ function ReviewPageContent() {
                         Thời tiết
                       </p>
                       <p className="text-sm font-medium text-slate-200 mt-0.5">
-                        {WEATHER_LABELS[scenario.odd?.weather] ?? scenario.odd?.weather}
+                        {renderSafeValue(scenario.odd?.weather, WEATHER_LABELS)}
                       </p>
                     </div>
                   </div>
@@ -472,7 +523,7 @@ function ReviewPageContent() {
                         Tác nhân
                       </p>
                       <p className="text-sm font-medium text-slate-200 mt-0.5">
-                        {ACTOR_TYPE_LABELS[scenario.odd?.actor_type] ?? scenario.odd?.actor_type}
+                        {renderSafeValue(scenario.odd?.actor_type, ACTOR_TYPE_LABELS)}
                       </p>
                     </div>
                   </div>
@@ -484,11 +535,115 @@ function ReviewPageContent() {
                         Hành vi
                       </p>
                       <p className="text-sm font-medium text-slate-200 mt-0.5">
-                        {MANEUVER_TYPE_LABELS[scenario.odd?.maneuver] ?? scenario.odd?.maneuver}
+                        {renderSafeValue(scenario.odd?.maneuver, MANEUVER_TYPE_LABELS)}
                       </p>
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Danh sách Tác nhân (Actors) - động theo spec.actors */}
+              {scenario.spec?.actors && scenario.spec.actors.length > 0 && (
+                <div className="glass-card p-6">
+                  <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-orange-400" />
+                    Danh sách Phương tiện ({scenario.spec.actors.length} tác nhân)
+                  </h3>
+                  <div className="space-y-2">
+                    {scenario.spec.actors.map((actor: any, idx: number) => {
+                      const isEgo = actor.is_ego === true;
+                      const label = isEgo ? "Ego / Quan sát" : `Adversary ${idx}`;
+                      const badgeStyle = isEgo
+                        ? "text-blue-400 bg-blue-500/10 border-blue-500/20"
+                        : "text-orange-400 bg-orange-500/10 border-orange-500/20";
+                      const catLabel = ACTOR_TYPE_LABELS[actor.category as keyof typeof ACTOR_TYPE_LABELS] ?? actor.category ?? "unknown";
+                      const specType = actor.specific_type && actor.specific_type !== "unknown"
+                        ? formatSpecificText(actor.specific_type)
+                        : null;
+                      return (
+                        <div
+                          key={actor.name ?? idx}
+                          className="bg-slate-800/40 px-4 py-3 rounded-xl border border-slate-700/20 flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="w-7 h-7 rounded-lg bg-slate-700/60 flex items-center justify-center text-slate-400 text-xs font-bold flex-shrink-0">
+                              {idx + 1}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-200 truncate">
+                                {actor.name ?? `actor_${idx}`}
+                                {specType && (
+                                  <span className="text-slate-400 font-normal ml-1.5">
+                                    ({specType})
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-0.5">{catLabel}</p>
+                            </div>
+                          </div>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${badgeStyle}`}>
+                            {label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Top 3 Kịch Bản Mẫu Tham Chiếu (Retrieval Results) */}
+
+              <div className="glass-card p-6">
+                <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-cyan-400" />
+                  Top 3 Kịch Bản Mẫu Tham Chiếu (Retrieval Results)
+                </h3>
+                {scenario.retrieved_examples && scenario.retrieved_examples.length > 0 ? (
+                  <div className="space-y-3">
+                    {scenario.retrieved_examples.map((ex, idx) => (
+                      <div
+                        key={ex.id || idx}
+                        className="bg-slate-800/40 p-3.5 rounded-xl border border-slate-700/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                              {ex.id}
+                            </span>
+                            <h4 className="text-sm font-medium text-slate-200">
+                              {ex.title}
+                            </h4>
+                          </div>
+                          {ex.content && (
+                            <p className="text-xs text-slate-400 line-clamp-2">
+                              {ex.content}
+                            </p>
+                          )}
+                        </div>
+                        {ex.similarity_score !== undefined && (
+                          <div className="text-right flex-shrink-0">
+                            <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-medium">
+                              Độ tương đồng
+                            </span>
+                            <span className={`text-xs font-semibold font-mono px-2.5 py-0.5 rounded-full border ${
+                              ex.similarity_score >= 0.7 
+                                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" 
+                                : ex.similarity_score >= 0.4 
+                                ? "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" 
+                                : "text-amber-400 bg-amber-500/10 border-amber-500/20"
+                            }`}>
+                              {Math.round(ex.similarity_score > 1 ? ex.similarity_score : ex.similarity_score * 100)}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-6 text-center text-slate-500 border border-dashed border-slate-700/30 rounded-xl">
+                    <p className="text-xs">Chưa có dữ liệu kịch bản mẫu tham chiếu từ Vector Store.</p>
+                  </div>
+                )}
               </div>
 
               {/* OpenSCENARIO XML Viewer */}

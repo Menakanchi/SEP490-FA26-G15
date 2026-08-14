@@ -85,182 +85,8 @@ def _step_progress(step: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _extract_odd_fallback_from_prompt(prompt: str) -> dict:
-    prompt_lower = prompt.lower()
-
-    road_type = "unknown"
-    if any(
-        k in prompt_lower
-        for k in ["ngã tư", "giao lộ", "ngã ba", "nga tu", "nga ba", "giao lo", "nga 4", "nga 3", "ngã 4", "ngã 3"]
-    ):
-        road_type = "intersection"
-    elif any(k in prompt_lower for k in ["cao tốc", "quốc lộ", "cao toc", "quoc lo"]):
-        road_type = "highway"
-    elif any(k in prompt_lower for k in ["vòng xoay", "bùng binh", "vong xoay", "bung binh"]):
-        road_type = "roundabout"
-    elif any(k in prompt_lower for k in ["ngõ", "hẹp", "ngo", "hep"]):
-        road_type = "residential_narrow"
-    elif any(k in prompt_lower for k in ["đường đô thị", "đường thẳng", "duong do thi", "duong thanh"]):
-        road_type = "urban_straight"
-
-    weather = "unknown"
-    if any(k in prompt_lower for k in ["mưa lớn", "mưa to", "giông", "mua lon", "mua to", "giong"]):
-        weather = "heavy_rain"
-    elif any(k in prompt_lower for k in ["mưa", "mua", "troi mua"]):
-        weather = "heavy_rain"
-    elif any(k in prompt_lower for k in ["sương mù", "suong mu"]):
-        weather = "fog"
-    elif any(k in prompt_lower for k in ["trời quang", "nắng", "troi quang", "nang", "troi nang"]):
-        weather = "clear"
-
-    actor_type = "unknown"
-    # Subject parsing: find first mentioned vehicle performing the maneuver
-    pos_car = min(
-        [
-            p
-            for p in [
-                prompt_lower.find("o to"),
-                prompt_lower.find("oto"),
-                prompt_lower.find("ô tô"),
-                prompt_lower.find("xe con"),
-                prompt_lower.find("sedan"),
-            ]
-            if p != -1
-        ],
-        default=-1,
-    )
-    pos_bike = min(
-        [
-            p
-            for p in [
-                prompt_lower.find("xe may"),
-                prompt_lower.find("xe máy"),
-                prompt_lower.find("xemay"),
-                prompt_lower.find("xe ga"),
-                prompt_lower.find("xega"),
-                prompt_lower.find("xe so"),
-                prompt_lower.find("xeso"),
-            ]
-            if p != -1
-        ],
-        default=-1,
-    )
-    pos_truck = min(
-        [
-            p
-            for p in [
-                prompt_lower.find("xe tải"),
-                prompt_lower.find("xe tai"),
-                prompt_lower.find("container"),
-                prompt_lower.find("xe dau keo"),
-                prompt_lower.find("xe ben"),
-                prompt_lower.find("cont"),
-                prompt_lower.find("xe cont"),
-            ]
-            if p != -1
-        ],
-        default=-1,
-    )
-    pos_bus = min(
-        [
-            p
-            for p in [
-                prompt_lower.find("xe bus"),
-                prompt_lower.find("xe buýt"),
-                prompt_lower.find("xe buyet"),
-                prompt_lower.find("xe 16 cho"),
-                prompt_lower.find("16 cho"),
-                prompt_lower.find("xe transit"),
-                prompt_lower.find("xe khach"),
-            ]
-            if p != -1
-        ],
-        default=-1,
-    )
-    pos_ped = min(
-        [p for p in [prompt_lower.find("người đi bộ"), prompt_lower.find("nguoi di bo")] if p != -1], default=-1
-    )
-
-    positions = []
-    if pos_car != -1:
-        positions.append((pos_car, "car"))
-    if pos_bike != -1:
-        positions.append((pos_bike, "motorcycle"))
-    if pos_truck != -1:
-        positions.append((pos_truck, "truck"))
-    if pos_bus != -1:
-        positions.append((pos_bus, "car"))
-    if pos_ped != -1:
-        positions.append((pos_ped, "pedestrian"))
-
-    if positions:
-        positions.sort(key=lambda x: x[0])
-        actor_type = positions[0][1]
-
-    maneuver = "unknown"
-    if any(
-        k in prompt_lower
-        for k in [
-            "tạt đầu",
-            "tat dau",
-            "cướp làn",
-            "cuop lan",
-            "chặn đầu",
-            "chan dau",
-            "cúp đầu",
-            "cup dau",
-            "chèn ép",
-            "chen ep",
-            "chèn ngang",
-            "chen ngang",
-            "ép xe",
-            "ep xe",
-        ]
-    ):
-        maneuver = "cut_in"
-    elif any(
-        k in prompt_lower
-        for k in ["vượt ẩu", "vuot au", "vượt phải", "vuot phai", "vượt trái", "vuot trai", "vượt xe", "vuot xe"]
-    ):
-        maneuver = "overtake"
-    elif any(
-        k in prompt_lower
-        for k in [
-            "phanh gấp",
-            "phanh gap",
-            "thắng gấp",
-            "thang gap",
-            "dậm phanh",
-            "dam phanh",
-            "đập phanh",
-            "dap phanh",
-            "khựng lại",
-            "khung lai",
-        ]
-    ):
-        maneuver = "sudden_brake"
-    elif any(k in prompt_lower for k in ["lấn làn", "lan lan", "đè vạch", "de vach", "mất lái", "mat lai"]):
-        maneuver = "lane_drift"
-    elif any(k in prompt_lower for k in ["vượt đèn đỏ", "vuot den do"]):
-        maneuver = "run_red_light"
-    elif any(k in prompt_lower for k in ["băng qua", "bang qua"]):
-        maneuver = "jaywalk"
-    elif any(k in prompt_lower for k in ["ngược chiều", "nguoc chieu"]):
-        maneuver = "wrong_way"
-
-    return {
-        "road_type": road_type,
-        "weather": weather,
-        "actor_type": actor_type,
-        "maneuver": maneuver,
-    }
-
-
 async def _run_mock_workflow(request_id: str) -> None:
-    """Background task giả lập workflow 7 nodes.
-
-    Thay bằng LangGraph workflow thật khi graph sẵn sàng.
-    """
+    """Background task giả lập workflow 7 nodes."""
     req = _generation_requests.get(request_id)
     if not req:
         return
@@ -270,10 +96,17 @@ async def _run_mock_workflow(request_id: str) -> None:
         req["progress"] = _step_progress(step)
         await asyncio.sleep(0.3)  # Giả lập latency
 
-    # 1. Trích xuất ODD fallback từ từ khóa prompt
-    odd_dict = _extract_odd_fallback_from_prompt(req["description_vi"])
-
-    # 2. Thử gọi Node 1 (parse_intent) để lấy ODD từ LLM nếu kết nối thành công
+    # 1. Thử gọi Node 1 (parse_intent) để lấy ODD theo Hybrid Pipeline (Rule-based + LLM Fallback)
+    odd_dict = {
+        "road_type": "unknown",
+        "weather": "unknown",
+        "actor_type": "unknown",
+        "maneuver": "unknown",
+    }
+    at_data = "unknown"
+    mv_data = "unknown"
+    parsed_actors_raw: list = []  # Danh sách tác nhân từ multi-actor parsing
+    odd_obj = None
     try:
         from src.agents.nodes.parse_intent import parse_intent_node
 
@@ -284,20 +117,227 @@ async def _run_mock_workflow(request_id: str) -> None:
             wt = getattr(odd_obj, "weather", None)
             at = getattr(odd_obj, "actor_type", None)
             mv = getattr(odd_obj, "maneuver", None)
+
+            rt_str = rt.value if hasattr(rt, "value") else (str(rt) if rt else "unknown")
+            wt_str = wt.value if hasattr(wt, "value") else (str(wt) if wt else "unknown")
+
+            if hasattr(at, "model_dump"):
+                at_data = at.model_dump()
+            elif isinstance(at, dict):
+                at_data = at
+            else:
+                at_cat = at.value if hasattr(at, "value") else str(at if at else "unknown")
+                at_spec = getattr(odd_obj, "specific_type", None)
+                at_data = {"category": at_cat, "specific_type": at_spec} if (at_spec and at_spec != "unknown") else at_cat
+
+            if hasattr(mv, "model_dump"):
+                mv_data = mv.model_dump()
+            elif isinstance(mv, dict):
+                mv_data = mv
+            else:
+                mv_cat = mv.value if hasattr(mv, "value") else str(mv if mv else "unknown")
+                mv_spec = getattr(odd_obj, "specific_action", None)
+                mv_data = {"category": mv_cat, "specific_action": mv_spec} if (mv_spec and mv_spec != "unknown") else mv_cat
+
             odd_dict = {
-                "road_type": rt.value if hasattr(rt, "value") else (str(rt) if rt else odd_dict["road_type"]),
-                "weather": wt.value if hasattr(wt, "value") else (str(wt) if wt else odd_dict["weather"]),
-                "actor_type": at.value if hasattr(at, "value") else (str(at) if at else odd_dict["actor_type"]),
-                "maneuver": mv.value if hasattr(mv, "value") else (str(mv) if mv else odd_dict["maneuver"]),
+                "road_type": rt_str,
+                "weather": wt_str,
+                "actor_type": at_data,
+                "maneuver": mv_data,
             }
+
+            # Trích xuất danh sách multi-actor từ Node 1
+            parsed_actors_raw = getattr(odd_obj, "actors", []) or []
     except Exception:
         pass
+
+    # 2. Gọi Node 2 (retrieve_node) để lấy Top-3 kịch bản mẫu động từ Vector DB / Repo Store
+    retrieved_examples: list[dict] = []
+    try:
+        from src.agents.nodes.retrieve import retrieve_node
+        res_ret = retrieve_node({
+            "user_query": req["description_vi"],
+            "odd_query": odd_obj if "odd_obj" in locals() else None,
+            "parsed_intent": odd_dict,
+        }, k=3)
+        retrieved_examples = res_ret.get("retrieved_examples", [])
+        if not retrieved_examples:
+            matched = []
+            for sc_id, sc in list(_scenarios.items()):
+                title = sc.get("title", "")
+                desc = sc.get("description_vi", "")
+                odd = sc.get("odd", {})
+                matched.append({
+                    "id": sc_id,
+                    "title": title,
+                    "content": desc or title,
+                    "metadata": {
+                        "scenario_id": sc_id,
+                        "road_type": str(odd.get("road_type", "")),
+                        "weather": str(odd.get("weather", "")),
+                        "actor_type": str(odd.get("actor_type", "")),
+                        "maneuver": str(odd.get("maneuver", "")),
+                    },
+                    "similarity_score": round(0.95 - (len(matched) * 0.05), 2),
+                })
+                if len(matched) >= 3:
+                    break
+            retrieved_examples = matched
+    except Exception as exc:
+        logger.warning(f"Lỗi khi gọi retrieve_node trong API route: {exc}")
 
     # Sinh scenario_id
     counter = len(_scenarios) + 1
     scenario_id = f"sc_{counter:03d}"
 
-    # Tạo scenario bằng ODD phân tích từ Node 1
+    man_cat = mv_data["category"] if isinstance(mv_data, dict) else str(mv_data)
+    man_spec_act = mv_data.get("specific_action") if isinstance(mv_data, dict) else None
+    if man_cat == "lane_departure":
+        man_cat = "lane_drift"
+    elif man_cat == "unknown":
+        man_cat = "cut_in"
+
+    # =======================================================================
+    # BUILD SPEC.ACTORS ĐỘNG TỪ MULTI-ACTOR / SINGLE-ACTOR PARSED INTENT
+    # TUYỆT ĐỐI KHÔNG HARDCODE — đọc từ danh sách actors của Node 1
+    # =======================================================================
+    def _normalize_cat(raw_cat: str) -> str:
+        """Chuẩn hóa category về enum chuẩn OpenSCENARIO."""
+        cat = raw_cat.strip().lower()
+        if cat in ("xe_bus", "xe_khach"):
+            return "bus"
+        return cat if cat not in ("", "none", "null", "n/a") else "car"
+
+    def _is_slow_speed(man_category: str, specific_action: str | None, desc: str) -> bool:
+        desc_lower = desc.lower()
+        act_lower = (specific_action or "").lower()
+        slow_terms = ["lùi", "lui", "chậm", "cham", "dừng", "dung", "đỗ", "do", "hỏng", "hong", "bê tông", "be tong"]
+        if man_category in ("stop_in_lane", "sudden_brake"):
+            return True
+        return any(t in desc_lower or t in act_lower for t in slow_terms)
+
+    spec_actors: list[dict] = []
+    spec_maneuvers: list[dict] = []
+    is_slow = _is_slow_speed(man_cat, man_spec_act, req["description_vi"])
+    default_init_speed = 10.0 if is_slow else 60.0
+
+    if len(parsed_actors_raw) == 1:
+        # KỊCH BẢN 1 TÁC NHÂN (SINGLE ACTOR SCENARIO)
+        # Chỉ tạo DUY NHẤT 1 object trong spec.actors (hero/ego)
+        actor_info = parsed_actors_raw[0]
+        cat = _normalize_cat(getattr(actor_info, "category", "unknown"))
+        spec_type = getattr(actor_info, "specific_type", "unknown")
+
+        hero_entry: dict = {
+            "name": "hero",
+            "category": cat,
+            "position": {"lane_offset": 0, "s_offset_m": 0.0},
+            "initial_speed_kmh": default_init_speed,
+            "is_ego": True,
+        }
+        if spec_type and spec_type != "unknown":
+            hero_entry["specific_type"] = spec_type
+        spec_actors = [hero_entry]
+
+        hero_maneuver: dict = {
+            "actor_name": "hero",
+            "maneuver": man_cat,
+            "trigger": {"type": "simulation_time", "value": 1.0},
+            "target_speed_kmh": 5.0 if is_slow else 40.0,
+        }
+        if man_spec_act and man_spec_act != "unknown":
+            hero_maneuver["specific_action"] = man_spec_act
+        spec_maneuvers = [hero_maneuver]
+
+    elif len(parsed_actors_raw) > 1:
+        # KỊCH BẢN NHIỀU TÁC NHÂN (MULTI-ACTOR SCENARIO)
+        sorted_actors = sorted(
+            parsed_actors_raw,
+            key=lambda a: (0 if getattr(a, "role", "adversary") == "ego" else 1,
+                           0 if getattr(a, "role", "adversary") == "adversary" else 2),
+        )
+        adversary_counter = 0
+        for i, actor_info in enumerate(sorted_actors):
+            role = getattr(actor_info, "role", "adversary")
+            cat = _normalize_cat(getattr(actor_info, "category", "unknown"))
+            spec_type = getattr(actor_info, "specific_type", "unknown")
+            is_ego = role == "ego"
+
+            if is_ego or (i == 0 and not any(getattr(a, "role", "") == "ego" for a in sorted_actors)):
+                actor_entry: dict = {
+                    "name": "hero",
+                    "category": cat,
+                    "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                    "initial_speed_kmh": default_init_speed,
+                    "is_ego": True,
+                }
+                if spec_type and spec_type != "unknown":
+                    actor_entry["specific_type"] = spec_type
+                spec_actors.insert(0, actor_entry)
+            else:
+                adversary_counter += 1
+                adv_name = f"adversary_{adversary_counter}"
+                s_offset = 20.0 + (adversary_counter - 1) * 15.0
+                actor_entry = {
+                    "name": adv_name,
+                    "category": cat,
+                    "position": {"lane_offset": 1 if adversary_counter == 1 else 0, "s_offset_m": s_offset},
+                    "initial_speed_kmh": 50.0,
+                    "is_ego": False,
+                }
+                if spec_type and spec_type != "unknown":
+                    actor_entry["specific_type"] = spec_type
+                spec_actors.append(actor_entry)
+
+                if adversary_counter == 1:
+                    adv_maneuver: dict = {
+                        "actor_name": adv_name,
+                        "maneuver": man_cat,
+                        "trigger": {"type": "distance_to_ego", "value": 15.0},
+                        "target_speed_kmh": 40.0,
+                    }
+                    if man_spec_act and man_spec_act != "unknown":
+                        adv_maneuver["specific_action"] = man_spec_act
+                    spec_maneuvers.append(adv_maneuver)
+
+        has_ego = any(a.get("is_ego") for a in spec_actors)
+        if not has_ego and spec_actors:
+            spec_actors[0]["is_ego"] = True
+            spec_actors[0]["name"] = "hero"
+    else:
+        # Fallback nếu Node 1 không trả về actors list
+        adv_cat = at_data["category"] if isinstance(at_data, dict) else str(at_data)
+        adv_spec_type = at_data.get("specific_type") if isinstance(at_data, dict) else None
+        adv_cat = _normalize_cat(adv_cat)
+
+        hero_entry: dict = {
+            "name": "hero",
+            "category": "car",
+            "position": {"lane_offset": 0, "s_offset_m": 0.0},
+            "initial_speed_kmh": default_init_speed,
+            "is_ego": True,
+        }
+        adversary_entry: dict = {
+            "name": "adversary_1",
+            "category": adv_cat,
+            "position": {"lane_offset": 1, "s_offset_m": 30.0},
+            "initial_speed_kmh": 50.0,
+            "is_ego": False,
+        }
+        if adv_spec_type and adv_spec_type != "unknown":
+            adversary_entry["specific_type"] = adv_spec_type
+        spec_actors = [hero_entry, adversary_entry]
+
+        adv_maneuver = {
+            "actor_name": "adversary_1",
+            "maneuver": man_cat,
+            "trigger": {"type": "distance_to_ego", "value": 15.0},
+            "target_speed_kmh": 40.0,
+        }
+        if man_spec_act and man_spec_act != "unknown":
+            adv_maneuver["specific_action"] = man_spec_act
+        spec_maneuvers = [adv_maneuver]
+
     _scenarios[scenario_id] = {
         "scenario_id": scenario_id,
         "title": f"Kịch bản từ: {req['description_vi'][:60]}",
@@ -305,36 +345,16 @@ async def _run_mock_workflow(request_id: str) -> None:
         "status": ScenarioStatus.PENDING_REVIEW.value,
         "odd": odd_dict,
         "time_of_day": "day",
+        "retrieved_examples": retrieved_examples,
         "spec": {
             "scenario_id": scenario_id,
             "description_vi": req["description_vi"],
             "title": f"Kịch bản từ: {req['description_vi'][:60]}",
             "odd": odd_dict,
             "time_of_day": "day",
-            "actors": [
-                {
-                    "name": "hero",
-                    "category": "car",
-                    "position": {"lane_offset": 0, "s_offset_m": 0.0},
-                    "initial_speed_kmh": 60.0,
-                    "is_ego": True,
-                },
-                {
-                    "name": "adversary_1",
-                    "category": odd_dict["actor_type"],
-                    "position": {"lane_offset": 1, "s_offset_m": 30.0},
-                    "initial_speed_kmh": 50.0,
-                    "is_ego": False,
-                },
-            ],
-            "maneuvers": [
-                {
-                    "actor_name": "adversary_1",
-                    "maneuver": odd_dict["maneuver"],
-                    "trigger": {"type": "distance_to_ego", "value": 15.0},
-                    "target_speed_kmh": 40.0,
-                },
-            ],
+            "retrieved_examples": retrieved_examples,
+            "actors": spec_actors,
+            "maneuvers": spec_maneuvers,
             "duration_s": 30.0,
         },
         "xosc_content": f'<?xml version="1.0"?>\n<OpenSCENARIO><!-- {scenario_id} stub --></OpenSCENARIO>',
@@ -531,15 +551,22 @@ async def list_scenarios(
             if search_lower in s.get("title", "").lower() or search_lower in s.get("description_vi", "").lower()
         ]
 
-    # Lọc theo ODD axes
+    # Lọc theo ODD axes (hỗ trợ cả string và dict object phân cấp)
+    def _match_axis(item_val: any, target: str) -> bool:
+        if not item_val:
+            return False
+        if isinstance(item_val, dict):
+            return item_val.get("category") == target
+        return str(item_val) == target
+
     if road_type:
-        items = [s for s in items if s.get("odd", {}).get("road_type") == road_type]
+        items = [s for s in items if _match_axis(s.get("odd", {}).get("road_type"), road_type)]
     if weather:
-        items = [s for s in items if s.get("odd", {}).get("weather") == weather]
+        items = [s for s in items if _match_axis(s.get("odd", {}).get("weather"), weather)]
     if actor_type:
-        items = [s for s in items if s.get("odd", {}).get("actor_type") == actor_type]
+        items = [s for s in items if _match_axis(s.get("odd", {}).get("actor_type"), actor_type)]
     if maneuver:
-        items = [s for s in items if s.get("odd", {}).get("maneuver") == maneuver]
+        items = [s for s in items if _match_axis(s.get("odd", {}).get("maneuver"), maneuver)]
 
     total = len(items)
 

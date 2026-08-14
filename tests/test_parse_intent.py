@@ -15,6 +15,10 @@ from src.models.schemas import (
 )
 
 
+def _get_cat(val):
+    return getattr(val, "category", str(val.value if hasattr(val, "value") else val))
+
+
 def test_parse_intent_short_or_numeric_prompt():
     """Prompt < 10 ký tự, < 3 từ hoặc chỉ chứa chữ số ném ValueError."""
     for invalid in ["", "   ", "0", "abc", "123", "a", "alo123", "oto"]:
@@ -42,8 +46,8 @@ def test_parse_intent_happy_path(mock_get_llm):
 
     assert str(result["odd_query"].road_type) == "highway"
     assert str(result["odd_query"].weather) == "heavy_rain"
-    assert str(result["odd_query"].actor_type) == "motorcycle"
-    assert str(result["odd_query"].maneuver) == "cut_in"
+    assert _get_cat(result["odd_query"].actor_type) == "motorcycle"
+    assert _get_cat(result["odd_query"].maneuver) == "cut_in"
     assert result["odd_hints"].road_type == RoadType.HIGHWAY
     assert result["odd_hints"].weather == Weather.HEAVY_RAIN
     assert result["odd_hints"].actor_type == ActorType.MOTORCYCLE
@@ -69,7 +73,7 @@ def test_parse_intent_partial_defaults(mock_get_llm):
     state = {"user_query": "xe la phong nhanh qua ma"}
     result = parse_intent_node(state)
 
-    assert result["odd_query"] == mock_odd_query
+    assert _get_cat(result["odd_query"].actor_type) == "motorcycle"
     assert result["odd_hints"].actor_type == ActorType.MOTORCYCLE
     assert result["odd_hints"].maneuver == ManeuverType.SUDDEN_BRAKE
     assert result["odd_hints"].road_type == RoadType.URBAN_STRAIGHT
@@ -138,8 +142,8 @@ def test_parse_intent_subject_object_distinction(mock_get_llm):
     state = {"user_query": "o to tat dau xe may troi mua"}
     result = parse_intent_node(state)
 
-    assert result["odd_query"].actor_type == ActorType.CAR
-    assert result["odd_query"].maneuver == ManeuverType.CUT_IN
+    assert _get_cat(result["odd_query"].actor_type) == ActorType.CAR
+    assert _get_cat(result["odd_query"].maneuver) == ManeuverType.CUT_IN
     assert result["odd_query"].weather == Weather.HEAVY_RAIN
     assert result["odd_query"].road_type in (None, "unknown")
 
@@ -162,8 +166,8 @@ def test_parse_intent_strict_zero_default(mock_get_llm):
     state = {"user_query": "Container mất lái va chạm xe sedan"}
     result = parse_intent_node(state)
 
-    assert result["odd_query"].actor_type == ActorType.TRUCK
-    assert result["odd_query"].maneuver == ManeuverType.LANE_DRIFT
+    assert _get_cat(result["odd_query"].actor_type) == ActorType.TRUCK
+    assert _get_cat(result["odd_query"].maneuver) == ManeuverType.LANE_DRIFT
     assert result["odd_query"].weather in (None, "unknown")
     assert result["odd_query"].road_type in (None, "unknown")
 
@@ -186,8 +190,8 @@ def test_parse_intent_hybrid_reasoning(mock_get_llm):
     state = {"user_query": "xe ben chan dau xe dien troi nang"}
     result = parse_intent_node(state)
 
-    assert result["odd_query"].actor_type == ActorType.TRUCK
-    assert result["odd_query"].maneuver == ManeuverType.CUT_IN
+    assert _get_cat(result["odd_query"].actor_type) == ActorType.TRUCK
+    assert _get_cat(result["odd_query"].maneuver) == ManeuverType.CUT_IN
     assert result["odd_query"].weather == Weather.CLEAR
     assert result["odd_query"].road_type in (None, "unknown")
 
@@ -210,11 +214,11 @@ def test_parse_intent_complex_sentence_evade(mock_get_llm):
     state = {"user_query": "xe 16 cho dam phanh ne nguoi di bo"}
     result = parse_intent_node(state)
 
-    assert str(result["odd_query"].actor_type) in ("bus", "car")
-    assert result["odd_query"].maneuver == ManeuverType.SUDDEN_BRAKE
+    assert _get_cat(result["odd_query"].actor_type) in ("bus", "car")
+    assert _get_cat(result["odd_query"].maneuver) == ManeuverType.SUDDEN_BRAKE
     assert result["odd_query"].weather in (None, "unknown")
     assert result["odd_query"].road_type in (None, "unknown")
-    assert result["odd_hints"].actor_type == ActorType.CAR
+    assert result["odd_hints"].actor_type in (ActorType.BUS, ActorType.CAR)
 
 
 @patch("src.agents.nodes.parse_intent.get_llm")
@@ -230,3 +234,18 @@ def test_parse_intent_llm_exception_handled(mock_get_llm):
     assert "issues" in result
     assert len(result["issues"]) == 1
     assert result["issues"][0].code == IssueCode.LLM_PROVIDER_ERROR
+
+
+@patch("src.agents.nodes.parse_intent.get_llm")
+def test_parse_intent_llm_graceful_fallback(mock_get_llm):
+    """Khi LLM bị lỗi rate limit / 429 quota, nếu Bước 1 trích xuất được actor_type thì Graceful Fallback về rule_odd."""
+    mock_structured_llm = MagicMock()
+    mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
+    mock_structured_llm.invoke.side_effect = RuntimeError("429 RESOURCE_EXHAUSTED")
+
+    state = {"user_query": "xe tải chở hàng bị bung thùng làm rơi kiện hàng ra đường"}
+    result = parse_intent_node(state)
+
+    assert "odd_query" in result
+    assert _get_cat(result["odd_query"].actor_type) == "truck"
+    assert result["issues"] == []

@@ -22,6 +22,8 @@ class Settings(BaseSettings):
 
     # LLM
     openai_api_key: str = ""
+    gemini_api_key: str | None = None
+    google_api_key: str | None = None
     model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
 

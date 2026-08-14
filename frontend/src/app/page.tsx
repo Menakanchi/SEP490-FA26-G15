@@ -7,7 +7,6 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  Circle,
   ArrowRight,
   Clock,
   ToggleLeft,
@@ -16,21 +15,6 @@ import {
 } from "lucide-react";
 import { postGenerate, getStatus } from "@/services/api";
 import type { GenerationStep, GenerationStatus, ValidationMode } from "@/types";
-
-// ---------------------------------------------------------------------------
-// Stepper definition
-// ---------------------------------------------------------------------------
-
-const STEPPER_STEPS: { key: GenerationStep; label: string }[] = [
-  { key: "queued", label: "Đang xếp hàng" },
-  { key: "parse_intent", label: "Phân tích ý định" },
-  { key: "retrieve", label: "Tìm ví dụ tương tự" },
-  { key: "generate_draft", label: "Sinh bản nháp" },
-  { key: "validate", label: "Kiểm tra hợp lệ" },
-  { key: "repair_draft", label: "Sửa bản nháp" },
-  { key: "convert_xosc", label: "Chuyển đổi XOSC" },
-  { key: "persist", label: "Lưu trữ" },
-];
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
@@ -156,38 +140,6 @@ function GeneratorPageContent() {
     }
   };
 
-  // ------ Step status helper ------
-  const getStepState = (stepKey: GenerationStep) => {
-    if (!status) return "pending";
-
-    const currentIdx = STEPPER_STEPS.findIndex((s) => s.key === status.step);
-    const stepIdx = STEPPER_STEPS.findIndex((s) => s.key === stepKey);
-
-    if (status.step === "failed") {
-      if (stepIdx === currentIdx) return "error";
-      if (stepIdx < currentIdx) return "done";
-      return "pending";
-    }
-
-    if (status.step === "done") return "done";
-    if (stepIdx < currentIdx) return "done";
-    if (stepIdx === currentIdx) return "active";
-    return "pending";
-  };
-
-  const StepIcon = ({ state }: { state: string }) => {
-    switch (state) {
-      case "done":
-        return <CheckCircle2 className="w-4 h-4" />;
-      case "active":
-        return <Loader2 className="w-4 h-4 animate-spin" />;
-      case "error":
-        return <XCircle className="w-4 h-4" />;
-      default:
-        return <Circle className="w-4 h-4" />;
-    }
-  };
-
   const isDone = status?.step === "done";
   const isFailed = status?.step === "failed";
 
@@ -267,68 +219,32 @@ function GeneratorPageContent() {
           </div>
         </div>
 
-        {/* ─── Stepper ─── */}
-        {(requestId || polling) && (
-          <div className="glass-card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-                Tiến trình
-              </h2>
-              {polling && (
-                <span className="flex items-center gap-1.5 text-xs text-cyan-400">
-                  <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full pulse-dot" />
-                  Đang xử lý...
-                </span>
-              )}
-              {isDone && (
-                <span className="flex items-center gap-1.5 text-xs text-green-400">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Hoàn tất
-                </span>
-              )}
-            </div>
-
-            {/* Progress bar */}
-            <div className="h-1 bg-slate-800 rounded-full mb-5 overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500 ease-out"
-                style={{
-                  width: `${status?.progress ?? 0}%`,
-                  background:
-                    isFailed
-                      ? "linear-gradient(90deg, #ef4444, #dc2626)"
-                      : isDone
-                        ? "linear-gradient(90deg, #10b981, #059669)"
-                        : "linear-gradient(90deg, #3b82f6, #22d3ee)",
-                }}
-              />
-            </div>
-
-            {/* Steps */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {STEPPER_STEPS.map((step) => {
-                const state = getStepState(step.key);
-                return (
-                  <div
-                    key={step.key}
-                    className={`stepper-step stepper-step--${state}`}
-                  >
-                    <span className={state === "active" ? "pulse-dot" : ""}>
-                      <StepIcon state={state} />
-                    </span>
-                    <span className="truncate">{step.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Timeout error */}
-            {timeoutError && (
-              <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center gap-2 text-sm text-red-400">
-                <Clock className="w-4 h-4 flex-shrink-0" />
-                Đã hết thời gian chờ (2 phút). Vui lòng thử lại.
+        {/* ─── Processing indicator (slim) ─── */}
+        {polling && !isDone && !isFailed && (
+          <div className="glass-card px-5 py-3 flex items-center gap-3">
+            <Loader2 className="w-4 h-4 text-cyan-400 animate-spin flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500 ease-out"
+                  style={{
+                    width: `${status?.progress ?? 5}%`,
+                    background: "linear-gradient(90deg, #3b82f6, #22d3ee)",
+                  }}
+                />
               </div>
-            )}
+            </div>
+            <span className="text-xs text-slate-400 flex-shrink-0">
+              {status?.progress ?? 0}%
+            </span>
+          </div>
+        )}
+
+        {/* ─── Timeout error ─── */}
+        {timeoutError && (
+          <div className="glass-card px-5 py-3 border-amber-500/20 flex items-center gap-2 text-sm text-amber-400">
+            <Clock className="w-4 h-4 flex-shrink-0" />
+            Đã hết thời gian chờ (2 phút). Vui lòng thử lại.
           </div>
         )}
 

@@ -147,9 +147,9 @@ def normalize(data: dict, tool: str) -> dict | None:
     # any Gemini/Cursor/Copilot turn that carried context but no plain prompt.
     payload_keys = ("prompt", "tool_input", "response_summary",
                      "tool_response", "tool_args", "files_context")
-    _LIFECYCLE_EVENTS = ("Stop", "stop", "SessionEnd", "sessionEnd", "AfterModel")
+    lifecycle_events = ("Stop", "stop", "SessionEnd", "sessionEnd", "AfterModel")
     has_payload = any(base.get(k) for k in payload_keys)
-    if not has_payload and event not in _LIFECYCLE_EVENTS:
+    if not has_payload and event not in lifecycle_events:
         return None
 
     return base

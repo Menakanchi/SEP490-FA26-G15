@@ -1,18 +1,4 @@
-"""Node 1: parse_intent — Phân tích ý định người dùng và trích xuất ODD theo Mô hình Hybrid 2 Lớp (JSON Rule-based + AI Fallback).
-
-Nhiệm vụ:
-  1. Nhận câu tiếng Việt (state["user_query"]).
-  2. Input Validation (độ dài >= 5, không chỉ có số).
-  3. BƯỚC 1 (Rule-based Matching):
-     - Khớp từ khóa trực tiếp từ file src/schemas/taxonomy_rules.json.
-     - Nếu đã khớp đủ 2 trục bắt buộc (actor_type & maneuver) -> Trả về ODDQuery ngay mà KHÔNG cần gọi ChatOpenAI.
-  4. BƯỚC 2 (AI Semantic Fallback):
-     - Chỉ gọi ChatOpenAI(model="gpt-4o-mini", temperature=0) khi BƯỚC 1 không khớp hết từ khóa (chứa từ lóng/từ mới).
-  5. Hậu xử lý (code thuần):
-     - Kiểm tra nếu cả 4 trường ODD đều None/unknown -> raise ValueError(UNPARSABLE).
-     - Kiểm tra thiếu trục bắt buộc (actor_type, maneuver) -> ném issue NEED_MORE_DETAIL.
-     - Điền mặc định cho các trục bối cảnh (road_type, weather) qua odd_query.with_defaults().
-"""
+"""Node 1: parse_intent — Phân tích ý định người dùng và trích xuất ODD theo Mô hình Taxonomy Phân cấp (Sub-Category Model)."""
 
 from __future__ import annotations
 
@@ -25,14 +11,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.agents.state import ForgeState
 from src.models.schemas import (
-    ActorType,
     IssueCode,
-    ManeuverType,
-    RoadType,
     ValidationIssue,
-    Weather,
 )
-from src.schemas.intent import ODDQuery
+from src.schemas.intent import ActorDetail, ActorInfo, ManeuverDetail, ODDQuery
 from src.services.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -41,227 +23,440 @@ TAXONOMY_RULES_PATH = Path(__file__).resolve().parent.parent.parent / "schemas" 
 
 
 def _load_taxonomy_rules() -> dict:
-    """Nạp từ điển quy đổi từ file taxonomy_rules.json (đường dẫn tuyệt đối)."""
     if TAXONOMY_RULES_PATH.exists():
         try:
             return json.loads(TAXONOMY_RULES_PATH.read_text(encoding="utf-8"))
         except Exception as exc:
-            logger.warning(f"Không thể đọc taxonomy_rules.json tại {TAXONOMY_RULES_PATH}: {exc}")
-    else:
-        logger.warning(f"File taxonomy_rules.json không tồn tại tại {TAXONOMY_RULES_PATH}")
+            logger.warning(f"Không thể đọc taxonomy_rules.json: {exc}")
     return {}
 
 
 def _remove_accents(text: str) -> str:
-    """Loại bỏ dấu tiếng Việt để so sánh chuỗi không dấu."""
     text = unicodedata.normalize("NFD", text)
     text = "".join(c for c in text if unicodedata.category(c) != "Mn")
     return text.replace("đ", "d").replace("Đ", "D")
 
 
-def _rule_based_extract(user_query: str, rules: dict) -> ODDQuery | None:
-    """BƯỚC 1: Rule-based matching trực tiếp từ taxonomy_rules.json."""
+def _slugify(text: str) -> str:
+    cleaned = _remove_accents(text.strip().lower())
+    return cleaned.replace(" ", "_")
+
+
+def _rule_based_extract(user_query: str, rules: dict) -> ODDQuery:
+    """BƯỚC 1: Rule-based matching từ taxonomy_rules.json."""
     if not rules:
-        return None
+        return ODDQuery()
 
     query_raw = user_query.lower()
     query_no_accents = _remove_accents(query_raw)
 
-    extracted: dict[str, str | None] = {
-        "road_type": None,
-        "weather": None,
-        "actor_type": None,
-        "maneuver": None,
-    }
+    road_type = "unknown"
+    weather = "unknown"
 
     # 1. Road Type
-    road_rules = rules.get("road_type", {})
-    for code, keywords in road_rules.items():
-        if code == "unknown":
-            continue
-        if any(kw in query_raw or kw in query_no_accents for kw in keywords):
-            extracted["road_type"] = code
+    for code, keywords in rules.get("road_type", {}).items():
+        if code != "unknown" and any(kw in query_raw or kw in query_no_accents for kw in keywords):
+            road_type = code
             break
 
     # 2. Weather
-    weather_rules = rules.get("weather", {})
-    for code, keywords in weather_rules.items():
-        if code == "unknown":
-            continue
-        if any(kw in query_raw or kw in query_no_accents for kw in keywords):
-            extracted["weather"] = code
+    for code, keywords in rules.get("weather", {}).items():
+        if code != "unknown" and any(kw in query_raw or kw in query_no_accents for kw in keywords):
+            weather = code
             break
 
     # 3. Maneuver
-    maneuver_rules = rules.get("maneuver", {})
-    for code, keywords in maneuver_rules.items():
-        if code == "unknown":
-            continue
-        if any(kw in query_raw or kw in query_no_accents for kw in keywords):
-            extracted["maneuver"] = code
-            break
-
-    # 4. Actor Type (Chủ thể: lấy tác nhân đầu tiên thực hiện hành vi trong prompt)
-    actor_rules = rules.get("actor_type", {})
-    actor_matches: list[tuple[int, str]] = []
-    for code, keywords in actor_rules.items():
+    maneuver_matches: list[tuple[int, str, str]] = []
+    for code, keywords in rules.get("maneuver", {}).items():
         if code == "unknown":
             continue
         for kw in keywords:
-            pos1 = query_raw.find(kw)
-            pos2 = query_no_accents.find(kw)
-            positions = [p for p in (pos1, pos2) if p != -1]
+            p1, p2 = query_raw.find(kw), query_no_accents.find(kw)
+            positions = [p for p in (p1, p2) if p != -1]
             if positions:
-                actor_matches.append((min(positions), code))
+                maneuver_matches.append((min(positions), code, _slugify(kw)))
 
-    if actor_matches:
-        actor_matches.sort(key=lambda x: x[0])
-        extracted["actor_type"] = actor_matches[0][1]
+    matched_maneuver_cat = "unknown"
+    matched_maneuver_spec = "unknown"
+    if maneuver_matches:
+        maneuver_matches.sort(key=lambda x: x[0])
+        matched_maneuver_cat = maneuver_matches[0][1]
+        matched_maneuver_spec = maneuver_matches[0][2]
 
-    # Kiểm tra nếu đã khớp đủ 2 trục bắt buộc (actor_type & maneuver) -> thành công ở Bước 1
-    if extracted["actor_type"] and extracted["maneuver"]:
-        logger.info(f"Matched via taxonomy_rules.json rule-based matching: {extracted}")
+    # 4. Actor Type — Thu thập tất cả các match kèm vị trí start/end
+    raw_spans: list[tuple[int, int, str, str]] = []
+    for code, keywords in rules.get("actor_type", {}).items():
+        if code == "unknown":
+            continue
+        for kw in keywords:
+            for text in (query_raw, query_no_accents):
+                pos = text.find(kw)
+                if pos != -1:
+                    raw_spans.append((pos, pos + len(kw), code, _slugify(kw)))
 
-        rt_val = (
-            RoadType(extracted["road_type"])
-            if (extracted["road_type"] and extracted["road_type"] in [r.value for r in RoadType])
-            else "unknown"
-        )
-        wt_val = (
-            Weather(extracted["weather"])
-            if (extracted["weather"] and extracted["weather"] in [w.value for w in Weather])
-            else "unknown"
-        )
+    # Lọc bỏ các match trùng lặp hoặc là chuỗi con (substring) của keyword dài hơn
+    # Ví dụ: "xe_tron" nằm trong "xe_tron_be_tong" cùng vị trí -> chỉ giữ "xe_tron_be_tong"
+    raw_spans.sort(key=lambda x: (x[1] - x[0]), reverse=True)  # Ưu tiên keyword dài trước
+    non_overlapping_spans: list[tuple[int, int, str, str]] = []
+    for s, e, code, spec in raw_spans:
+        # Nếu (s, e) nằm trong bất kỳ span nào dài hơn đã chọn -> bỏ qua
+        is_subspan = any(existing_s <= s and e <= existing_e for existing_s, existing_e, _, _ in non_overlapping_spans)
+        if not is_subspan:
+            non_overlapping_spans.append((s, e, code, spec))
 
-        try:
-            at_val = ActorType(extracted["actor_type"])
-        except ValueError:
-            at_val = extracted["actor_type"]
+    # Sắp xếp theo vị trí xuất hiện trong câu
+    non_overlapping_spans.sort(key=lambda x: x[0])
 
-        mv_str = extracted["maneuver"]
-        if mv_str == "lane_departure":
-            mv_str = "lane_drift"
-        try:
-            mv_val = ManeuverType(mv_str)
-        except ValueError:
-            mv_val = mv_str
+    actors_list: list[ActorInfo] = []
+    matched_actor_cat = "unknown"
+    matched_actor_spec = "unknown"
 
-        return ODDQuery(
-            road_type=rt_val,
-            weather=wt_val,
-            actor_type=at_val,
-            maneuver=mv_val,
-            inferred=[],
-        )
+    if non_overlapping_spans:
+        seen_specs = set()
+        unique_matches = []
+        for s, e, cat, spec in non_overlapping_spans:
+            if spec not in seen_specs:
+                seen_specs.add(spec)
+                unique_matches.append((s, cat, spec))
 
-    return None
+        matched_actor_cat = unique_matches[0][1]
+        matched_actor_spec = unique_matches[0][2]
+
+        for i, (pos, cat, spec) in enumerate(unique_matches):
+            role = "adversary" if i == 0 else "ego"
+            actors_list.append(ActorInfo(role=role, category=cat, specific_type=spec))
+    else:
+        for phrase in ["doan xe dap", "xe dap", "xe day", "hang rong", "xe ba goc", "doan xe"]:
+            if phrase in query_no_accents or phrase in query_raw:
+                if "dap" in phrase:
+                    matched_actor_cat = "bicycle"
+                elif "day" in phrase or "rong" in phrase:
+                    matched_actor_cat = "pedestrian"
+                elif "ba" in phrase:
+                    matched_actor_cat = "motorcycle"
+                else:
+                    matched_actor_cat = "car"
+                matched_actor_spec = _slugify(phrase)
+                actors_list.append(ActorInfo(role="adversary", category=matched_actor_cat, specific_type=matched_actor_spec))
+                break
+
+    return ODDQuery(
+        actor_type=ActorDetail(category=matched_actor_cat, specific_type=matched_actor_spec),
+        maneuver=ManeuverDetail(category=matched_maneuver_cat, specific_action=matched_maneuver_spec),
+        road_type=road_type,
+        weather=weather,
+        actors=actors_list,
+        inferred=[],
+    )
 
 
 def _get_system_prompt() -> str:
-    rules = _load_taxonomy_rules()
-    rules_json_str = json.dumps(rules, ensure_ascii=False, indent=2)
+    rules_json_str = json.dumps(_load_taxonomy_rules(), ensure_ascii=False, indent=2)
+    return f"""Bạn là chuyên gia phân tích ODD kịch bản giao thông cho xe tự lái (Autonomous Driving Multi-Actor Scenario Analyst).
+Nhiệm vụ: Phân tích mô tả tiếng Việt (bao gồm kịch bản đơn hoặc NHIỀU PHƯƠNG TIỆN MULTI-ACTOR) và trích xuất ODD theo mô hình Suy luận Ngữ nghĩa Bản chất & Phân định Vai trò (Multi-Actor Role Reasoning).
 
-    return f"""Bạn là chuyên gia phân tích kịch bản giao thông Việt Nam cho hệ thống Scenario Forge.
-Nhiệm vụ của bạn là phân tích câu mô tả tiếng Việt của người dùng và trích xuất 4 nhãn ODD (Operational Design Domain) chuẩn xác theo Enum Taxonomy bằng MÔ HÌNH HYBRID (kết hợp từ điển JSON quy chuẩn và tư duy suy luận ngữ nghĩa AI).
+═══════════════════════════════════════════════════════════
+A. BẢNG ENUM CHUẨN ODD — LLM PHẢI CHỌN ĐÚNG TRONG CÁC GIÁ TRỊ NÀY
+═══════════════════════════════════════════════════════════
 
-A. NGUYÊN TẮC HYBRID & XỬ LÝ TỪ LÓNG / VIẾT TẮT / KÝ HIỆU SỐ:
-1. ĐỌC FILE TỪ ĐIỂN JSON BÊN DƯỚI LÀM BỘ QUY CHUẨN MẪU:
-   - Nếu từ ngữ trong prompt trùng khớp với các từ trong từ điển JSON, hãy lấy đúng mã Enum tương ứng.
-2. XỬ LÝ LINH HOẠT TỪ LÓNG VÀ KÝ HIỆU SỐ:
-   - Phương tiện: "xe 16 cho", "16 cho", "xe transit", "xe khach" -> bus; "cont", "xe cont" -> truck; "xe ga", "xe so" -> motorcycle.
-   - Hành vi: "chen ep", "chen ngang", "ep xe" -> cut_in; "dam phanh", "dap phanh", "khung lai" -> sudden_brake; "cup dau" -> cut_in; "vuot au" -> overtake.
+ACTOR CATEGORY (bắt buộc chọn 1):
+  • car          — Ô tô con 4 bánh, sedan, SUV, hatchback, xe cơ quan
+  • motorcycle   — Xe máy 2-3 bánh (Honda Wave, Vision, xe côn tay, xe ba bánh gắn máy, xe ba gác máy)
+  • truck        — Xe tải hàng, xe ben, xe container, xe rơ-moóc, xe siêu trường siêu trọng, xe bồn, xe cẩu, xe công trình
+  • bus          — Xe buýt, xe khách, minibus, xe 16 chỗ trở lên, xe limousine, xe giường nằm
+  • pedestrian   — Người đi bộ, người băng qua đường, trẻ em chạy ra đường
+  • bicycle      — Xe đạp, xe đạp điện (có thể thêm người), đoàn xe đạp, xe thô sơ
+  • unknown      — Không xác định được từ mô tả
 
-B. QUY TẮC PHÂN BIỆT CHỦ THỂ TRONG CÂU PHỨC (CÂU NÉ / TRÁNH / VA CHẠM):
-1. Trong câu chứa hành vi né/tránh/va chạm (ví dụ: 'Xe A dậm phanh né/tránh Người B'), TÁC NHÂN CHÍNH (actor_type) BẮT BUỘC là Xe A (xe thực hiện hành vi dậm phanh/né/chủ ngữ), KHÔNG ĐƯỢC lấy Người B (đối tượng bị né/tránh).
-   - Ví dụ 1: "xe 16 cho dam phanh ne nguoi di bo" -> Xe 16 chỗ là chủ thể thực hiện dậm phanh né -> actor_type: "bus", maneuver: "sudden_brake" (KHÔNG ĐƯỢC lấy "pedestrian").
-   - Ví dụ 2: "o to chen ep xe may" -> Ô tô thực hiện chèn ép -> actor_type: "car", maneuver: "cut_in".
+MANEUVER CATEGORY (bắt buộc chọn 1):
+  • cut_in         — Tạt đầu, cướp làn, cắt mặt xe khác, chen vào làn đột ngột
+  • sudden_brake   — Phanh gấp, thắng gấp, dừng đột ngột giữa đường, hãm phanh khẩn cấp
+  • run_red_light  — Vượt đèn đỏ, phóng qua ngã tư khi đèn đỏ, vượt đèn tín hiệu
+  • jaywalk        — Người đi bộ băng qua đường sai vị trí, không nhìn đường, bất ngờ xuất hiện
+  • wrong_way      — Đi ngược chiều, đi vào làn đường trái, lùi xe trên cao tốc
+  • lane_drift     — Lấn làn từ từ, đè vạch kẻ đường, chệch làn, rơi vật thể ra đường, lật xe đổ vào làn khác
+  • stop_in_lane   — Dừng chết giữa làn, đỗ chặn đường, hỏng xe giữa đường, xe bị tai nạn án ngữ
+  • overtake       — Vượt xe trái phép, vượt ẩu, vượt qua tim đường
+  • unknown        — Không xác định được hành vi
 
-C. QUY TẮC TUYỆT ĐỐI CHỐNG TỰ ĐIỀN (STRICT ZERO-DEFAULT POLICY):
-1. KHÔNG ĐƯỢC TỰ Ý MẶC ĐỊNH HOẶC SUY ĐOÁN các trường thông tin mà người dùng KHÔNG ĐỀ CẬP HOẶC KHÔNG THỂ SUY LUẬN ĐƯỢC từ prompt.
-2. Nếu prompt KHÔNG đề cập đến Thời tiết (weather) -> BẮT BUỘC đặt giá trị là "unknown" (hoặc null).
-3. Nếu prompt KHÔNG đề cập đến Loại đường (road_type) -> BẮT BUỘC đặt giá trị là "unknown" (hoặc null).
-4. Chỉ gán "unknown" khi prompt hoàn toàn không nhắc đến hoặc không có cách nào suy luận được.
+ROAD TYPE (tùy chọn, nếu không rõ để "unknown"):
+  • urban_straight      — Đường đô thị thẳng, đường phố, quốc lộ trong thành phố
+  • highway             — Cao tốc, đường vành đai tốc độ cao, quốc lộ ngoài thành phố
+  • intersection        — Ngã tư, ngã ba, giao lộ có/không có đèn tín hiệu
+  • residential_narrow  — Ngõ hẻm, đường khu dân cư hẹp, kiệt đường nhỏ
+  • roundabout          — Vòng xuyến, bùng binh
+  • unknown             — Không nhắc đến trong mô tả
 
-D. ENUM TAXONOMY CHUẨN:
-- actor_type: ["car", "motorcycle", "truck", "bus", "pedestrian", "unknown"]
-- maneuver: ["cut_in", "sudden_brake", "lane_departure", "overtake", "unknown"]
-- road_type: ["urban_straight", "highway", "intersection", "unknown"]
-- weather: ["clear", "heavy_rain", "fog", "unknown"]
+WEATHER (tùy chọn, nếu không rõ để "unknown"):
+  • clear       — Trời quang, nắng, thời tiết bình thường
+  • rain        — Mưa nhẹ, mưa phùn
+  • heavy_rain  — Mưa to, mưa lớn, mưa bão, tầm nhìn kém vì mưa
+  • fog         — Sương mù, tầm nhìn hạn chế do sương
+  • unknown     — Không nhắc đến trong mô tả
 
-E. BỘ QUY CHUẨN TỪ ĐIỂN TAXONOMY (JSON):
+═══════════════════════════════════════════════════════════
+B. QUY TẮC PHÂN ĐỊNH VAI TRÒ VÀ TRÍCH XUẤT MULTI-ACTOR (`actors`)
+═══════════════════════════════════════════════════════════
+
+Đọc toàn bộ câu và trích xuất danh sách TẤT CẢ phương tiện/tác nhân vào mảng `actors`:
+1. `role`:
+   - `adversary`          : Phương tiện thực hiện hành vi/sự cố CHÍNH gây ra tình huống nguy hiểm
+   - `ego`                : Phương tiện chịu ảnh hưởng, bị đâm vào, hoặc phương tiện tự lái quan sát
+   - `secondary_adversary`: Phương tiện thứ 3 phụ trợ (nếu có)
+2. `category`     : Chọn trong bảng ACTOR CATEGORY ở trên
+3. `specific_type`: Tên/đặc điểm phương tiện chi tiết dạng slug không dấu (VD: "xe_khach_29_cho", "xe_may_wave", "xe_container_ro_mooc")
+
+Trường `actor_type` = phương tiện chính có role='adversary'.
+Trường `maneuver`   = hành vi chính do adversary thực hiện.
+
+═══════════════════════════════════════════════════════════
+C. FEW-SHOT EXAMPLES — PHỦ ĐẦY ĐỦ 8 MANEUVER VÀ 5 ROAD TYPE
+═══════════════════════════════════════════════════════════
+
+--- cut_in ---
+Input: 'Xe máy tạt đầu ô tô trên đường cao tốc lúc trời mưa'
+Output: {{
+  "actors": [
+    {{"role": "adversary", "category": "motorcycle", "specific_type": "xe_may"}},
+    {{"role": "ego", "category": "car", "specific_type": "o_to"}}
+  ],
+  "actor_type": {{"category": "motorcycle", "specific_type": "xe_may"}},
+  "maneuver": {{"category": "cut_in", "specific_action": "tat_dau_o_to"}},
+  "road_type": "highway",
+  "weather": "rain"
+}}
+
+--- sudden_brake ---
+Input: 'Xe khách phanh gấp làm xe máy phía sau đâm vào'
+Output: {{
+  "actors": [
+    {{"role": "adversary", "category": "bus", "specific_type": "xe_khach"}},
+    {{"role": "ego", "category": "motorcycle", "specific_type": "xe_may"}}
+  ],
+  "actor_type": {{"category": "bus", "specific_type": "xe_khach"}},
+  "maneuver": {{"category": "sudden_brake", "specific_action": "phanh_gap"}},
+  "road_type": "urban_straight",
+  "weather": "unknown"
+}}
+
+--- run_red_light ---
+Input: 'Xe tải vượt đèn đỏ tại ngã tư tông vào ô tô đang đi đúng làn'
+Output: {{
+  "actors": [
+    {{"role": "adversary", "category": "truck", "specific_type": "xe_tai"}},
+    {{"role": "ego", "category": "car", "specific_type": "o_to"}}
+  ],
+  "actor_type": {{"category": "truck", "specific_type": "xe_tai"}},
+  "maneuver": {{"category": "run_red_light", "specific_action": "vuot_den_do"}},
+  "road_type": "intersection",
+  "weather": "unknown"
+}}
+
+--- jaywalk ---
+Input: 'Trẻ em bất ngờ chạy ra đường tại khu dân cư khi xe ô tô đang đến gần'
+Output: {{
+  "actors": [
+    {{"role": "adversary", "category": "pedestrian", "specific_type": "tre_em"}},
+    {{"role": "ego", "category": "car", "specific_type": "o_to"}}
+  ],
+  "actor_type": {{"category": "pedestrian", "specific_type": "tre_em"}},
+  "maneuver": {{"category": "jaywalk", "specific_action": "chay_ra_duong_bat_ngo"}},
+  "road_type": "residential_narrow",
+  "weather": "unknown"
+}}
+
+--- wrong_way ---
+Input: 'Xe máy đi ngược chiều trên làn cao tốc hướng vào thành phố'
+Output: {{
+  "actors": [
+    {{"role": "adversary", "category": "motorcycle", "specific_type": "xe_may"}}
+  ],
+  "actor_type": {{"category": "motorcycle", "specific_type": "xe_may"}},
+  "maneuver": {{"category": "wrong_way", "specific_action": "di_nguoc_chieu_cao_toc"}},
+  "road_type": "highway",
+  "weather": "unknown"
+}}
+
+--- lane_drift ---
+Input: 'Xe tải lấn làn ép ô tô sedan va vào dải phân cách'
+Output: {{
+  "actors": [
+    {{"role": "adversary", "category": "truck", "specific_type": "xe_tai"}},
+    {{"role": "ego", "category": "car", "specific_type": "xe_sedan"}}
+  ],
+  "actor_type": {{"category": "truck", "specific_type": "xe_tai"}},
+  "maneuver": {{"category": "lane_drift", "specific_action": "lan_lan_ep_xe"}},
+  "road_type": "urban_straight",
+  "weather": "unknown"
+}}
+
+--- stop_in_lane ---
+Input: 'Xe buýt đột ngột dừng giữa làn đường cao tốc do hỏng máy, gây ùn tắc'
+Output: {{
+  "actors": [
+    {{"role": "adversary", "category": "bus", "specific_type": "xe_buyt"}}
+  ],
+  "actor_type": {{"category": "bus", "specific_type": "xe_buyt"}},
+  "maneuver": {{"category": "stop_in_lane", "specific_action": "dung_giua_lan_hong_may"}},
+  "road_type": "highway",
+  "weather": "unknown"
+}}
+
+--- overtake ---
+Input: 'Ô tô vượt ẩu qua tim đường tại khúc cua khuất tầm nhìn gặp xe ngược chiều'
+Output: {{
+  "actors": [
+    {{"role": "adversary", "category": "car", "specific_type": "o_to"}}
+  ],
+  "actor_type": {{"category": "car", "specific_type": "o_to"}},
+  "maneuver": {{"category": "overtake", "specific_action": "vuot_au_qua_tim_duong"}},
+  "road_type": "highway",
+  "weather": "unknown"
+}}
+
+--- residential_narrow + bicycle ---
+Input: 'Đoàn xe đạp đi hàng ba chiếm trọn làn ngõ hẹp khu dân cư'
+Output: {{
+  "actors": [
+    {{"role": "adversary", "category": "bicycle", "specific_type": "doan_xe_dap"}}
+  ],
+  "actor_type": {{"category": "bicycle", "specific_type": "doan_xe_dap"}},
+  "maneuver": {{"category": "lane_drift", "specific_action": "di_hang_ba_chiem_lan"}},
+  "road_type": "residential_narrow",
+  "weather": "unknown"
+}}
+
+--- roundabout ---
+Input: 'Xe máy không nhường đường tại vòng xuyến khiến xe ô tô phải phanh gấp'
+Output: {{
+  "actors": [
+    {{"role": "adversary", "category": "motorcycle", "specific_type": "xe_may"}},
+    {{"role": "ego", "category": "car", "specific_type": "o_to"}}
+  ],
+  "actor_type": {{"category": "motorcycle", "specific_type": "xe_may"}},
+  "maneuver": {{"category": "cut_in", "specific_action": "khong_nhuong_duong_vong_xuyen"}},
+  "road_type": "roundabout",
+  "weather": "unknown"
+}}
+
+═══════════════════════════════════════════════════════════
+D. QUY TẮC CHỐNG TỰ ĐIỀN (STRICT ZERO-DEFAULT POLICY)
+═══════════════════════════════════════════════════════════
+- road_type và weather KHÔNG được đoán nếu prompt KHÔNG nhắc tới → để "unknown"
+- specific_type và specific_action: trích xuất TRỰC TIẾP từ từ ngữ prompt, không được bịa đặt
+- BẮT BUỘC tuân thủ Pydantic Schema, trả về JSON Structured Output hợp lệ
+
+E. BỘ TỪ ĐIỂN TAXONOMY THAM KHẢO (JSON):
 {rules_json_str}
-
-NẾU CÂU MÔ TẢ KHÔNG ĐỀ CẬP BẤT KỲ THÔNG TIN ODD NÀO, BẮT BUỘC ĐẶT TẤT CẢ 4 TRƯỜNG TRÊN LÀ "unknown" (HOẶC NULL).
 """
 
 
-def parse_intent_node(state: ForgeState) -> dict:
-    """Node 1: parse_intent — nhận user_query và sinh ODDQuery + ODDCell + Assumptions."""
-    user_query = state.get("user_query", "")
-    clean_prompt = user_query.strip()
-    words = clean_prompt.split()
 
-    # 1. BƯỚC VALIDATE ĐẦU VÀO (Guardrails): rỗng, < 10 ký tự, < 3 từ hoặc chỉ chứa chữ số
-    if len(clean_prompt) < 10 or len(words) < 3 or clean_prompt.isnumeric():
+def _get_cat_and_spec(obj: Any) -> tuple[str, str]:
+    """Hàm helper trích xuất safe string category và specific_type/action từ bất kỳ dạng object/dict/enum/str nào."""
+    if obj is None:
+        return "unknown", "unknown"
+    if isinstance(obj, str):
+        v = obj.strip().lower()
+        if v in ("unknown", "none", "n/a", "null", ""):
+            return "unknown", "unknown"
+        return v, "unknown"
+    if hasattr(obj, "value"):
+        v = str(obj.value).strip().lower()
+        if v in ("unknown", "none", "n/a", "null", ""):
+            return "unknown", "unknown"
+        return v, "unknown"
+    if hasattr(obj, "category"):
+        cat = getattr(obj, "category", "unknown") or "unknown"
+        spec = getattr(obj, "specific_type", getattr(obj, "specific_action", "unknown")) or "unknown"
+        return str(cat).lower(), str(spec).lower()
+    if isinstance(obj, dict):
+        cat = obj.get("category", "unknown") or "unknown"
+        spec = obj.get("specific_type", obj.get("specific_action", "unknown")) or "unknown"
+        return str(cat).lower(), str(spec).lower()
+    v = str(obj).lower()
+    return v, "unknown"
+
+
+def parse_intent_node(state: ForgeState) -> dict:
+    """Node 1: parse_intent — Xử lý ý định người dùng."""
+    user_query = state.get("user_query", "").strip()
+
+    # Guardrail: Chặn prompt rác / quá ngắn
+    if len(user_query) < 10 or len(user_query.split()) < 3 or user_query.isnumeric():
         raise ValueError("Mô tả kịch bản quá ngắn hoặc không đủ thông tin kịch bản giao thông.")
 
     rules = _load_taxonomy_rules()
 
-    # 2. BƯỚC 1: Rule-based matching từ taxonomy_rules.json trước
-    rule_matched_odd = _rule_based_extract(user_query, rules)
-    if rule_matched_odd is not None:
-        odd_query = rule_matched_odd
+    # BƯỚC 1: Rule-based extraction local
+    rule_odd = _rule_based_extract(user_query, rules)
+
+    rule_actor_cat, rule_actor_spec = _get_cat_and_spec(rule_odd.actor_type)
+    rule_man_cat, rule_man_spec = _get_cat_and_spec(rule_odd.maneuver)
+
+    is_rule_complete = (
+        (rule_actor_cat != "unknown" or rule_actor_spec != "unknown")
+        and (rule_man_cat != "unknown" or rule_man_spec != "unknown")
+    )
+
+    odd_query = None
+
+    if is_rule_complete:
+        logger.info("Khớp hoàn toàn từ Rule-based local (Bước 1), bỏ qua LLM call.")
+        odd_query = rule_odd
     else:
-        # 3. BƯỚC 2: AI Semantic Fallback — chỉ gọi LLM khi BƯỚC 1 chưa trích xuất đủ thông tin
-        logger.info("Fallback to LLM reasoning for missing/complex ODD fields")
-        llm = get_llm()
-        structured_llm = llm.with_structured_output(ODDQuery)
-
-        system_prompt = _get_system_prompt()
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Mô tả kịch bản: {user_query}"),
-        ]
-
+        # BƯỚC 2: Gọi LLM nếu Bước 1 chưa trích xuất đủ cả 2 trục bắt buộc
+        logger.info("Chuyển sang BƯỚC 2: Gọi LLM Fallback (AI Semantic Extraction)")
         try:
+            llm = get_llm()
+            structured_llm = llm.with_structured_output(ODDQuery)
+            messages = [
+                SystemMessage(content=_get_system_prompt()),
+                HumanMessage(content=f"Mô tả kịch bản: {user_query}"),
+            ]
             odd_query = structured_llm.invoke(messages)
         except Exception as err:
-            # Nếu prompt không chứa bất kỳ từ khóa ODD nào từ từ điển fallback -> coi là prompt rác
-            from src.api.routes import _extract_odd_fallback_from_prompt
-
-            fb = _extract_odd_fallback_from_prompt(user_query)
-            if all(v == "unknown" for v in fb.values()):
-                raise ValueError(
-                    "Không thể nhận diện tình huống giao thông từ prompt. Vui lòng cung cấp mô tả rõ ràng hơn."
+            # BƯỚC 3: GRACEFUL FALLBACK KHI AI LỖI / 429 QUOTA
+            logger.warning(f"LLM Call failed ({err}). Reverting to Rule-based fallback.")
+            if rule_actor_cat != "unknown" or rule_actor_spec != "unknown":
+                odd_query = rule_odd
+                logger.info("Graceful Fallback: Trả về kết quả Rule-based local để kịch bản tiếp tục chạy.")
+            else:
+                issue = ValidationIssue(
+                    code=IssueCode.LLM_PROVIDER_ERROR,
+                    message_vi=f"Lỗi khi gọi mô hình AI phân tích ODD: {err}",
+                    suggestion="Vui lòng kiểm tra lại cấu hình LLM (API Key, hạn ngạch hoặc kết nối mạng).",
                 )
-            issue = ValidationIssue(
-                code=IssueCode.LLM_PROVIDER_ERROR,
-                message_vi=f"Lỗi khi gọi mô hình ngôn ngữ phân tích ODD: {err}",
-                suggestion="Vui lòng kiểm tra lại kết nối API OpenAI hoặc thử lại sau",
-            )
-            return {"issues": [issue]}
+                return {"issues": [issue]}
 
-    # 4. Logic xử lý kịch bản UNPARSABLE: cả 4 trường ODD đều là None / unknown
-    if not (
-        (odd_query.road_type and str(odd_query.road_type) not in ("unknown", "none"))
-        or (odd_query.weather and str(odd_query.weather) not in ("unknown", "none"))
-        or (odd_query.actor_type and str(odd_query.actor_type) not in ("unknown", "none"))
-        or (odd_query.maneuver and str(odd_query.maneuver) not in ("unknown", "none"))
-    ):
+    # Kiểm tra kịch bản hoàn toàn không đọc được (Unparsable)
+    actor_obj = getattr(odd_query, "actor_type", None)
+    maneuver_obj = getattr(odd_query, "maneuver", None)
+
+    actor_cat, actor_spec = _get_cat_and_spec(actor_obj)
+    maneuver_cat, maneuver_spec = _get_cat_and_spec(maneuver_obj)
+
+    is_actor_unknown = (actor_cat == "unknown" and actor_spec == "unknown")
+    is_maneuver_unknown = (maneuver_cat == "unknown" and maneuver_spec == "unknown")
+    is_road_unknown = (odd_query.road_type in ("unknown", None))
+    is_weather_unknown = (odd_query.weather in ("unknown", None))
+
+    if is_actor_unknown and is_maneuver_unknown and is_road_unknown and is_weather_unknown:
         raise ValueError("Không thể nhận diện tình huống giao thông từ prompt. Vui lòng cung cấp mô tả rõ ràng hơn.")
 
-    # 5. Kiểm tra các trục bắt buộc (actor_type, maneuver)
+    # Kiểm tra thiếu trục bắt buộc (actor_type)
     missing = odd_query.missing_required_axes()
+    if actor_spec != "unknown":
+        missing = [m for m in missing if m != "actor_type"]
+
     if missing:
-        missing_vi = ", ".join(missing)
         issue = ValidationIssue(
             code=IssueCode.NEED_MORE_DETAIL,
-            message_vi=f"Mô tả chưa rõ thông tin bắt buộc: {missing_vi}",
-            suggestion="Hãy ghi rõ loại phương tiện/người gây nguy hiểm và hành vi (ví dụ: xe máy tạt đầu, ô tô phanh gấp)",
+            message_vi=f"Mô tả chưa rõ thông tin bắt buộc: {', '.join(missing)}",
+            suggestion="Hãy ghi rõ loại phương tiện và hành vi (ví dụ: xe máy tạt đầu)",
         )
         return {"odd_query": odd_query, "issues": [issue]}
 
-    # 6. Điền mặc định các trục bối cảnh (road_type, weather) & ghi nhận assumptions
     odd_hints, assumptions = odd_query.with_defaults()
 
     return {

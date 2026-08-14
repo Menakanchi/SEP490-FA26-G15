@@ -1,25 +1,27 @@
 {
   "actor_type": {
     "car": ["oto", "o to", "xe con", "xe 4 banh", "xe hoi", "xe oto", "sedan", "suv", "xe dien"],
-    "motorcycle": ["xe may", "xemay", "xe 2 banh", "motor", "scooter", "xe so", "xeso", "xe ga", "xega", "shi", "wave"],
-    "truck": ["xe tai", "xetai", "xe dau keo", "container", "xe ban tai", "pickup", "xe ben", "cont", "xe cont"],
+    "motorcycle": ["xe may", "xemay", "xe 2 banh", "motor", "scooter", "xe so", "xeso", "xe ga", "xega", "shi", "wave", "xe ba go", "xebago", "xe ba banh", "xebabanh", "xe ba goc"],
+    "truck": ["xe tai", "xetai", "xe dau keo", "container", "xe ban tai", "pickup", "xe ben", "cont", "xe cont", "xe lu", "xelu", "xe cau", "xecau", "xe ui", "xeui", "xe cho sat", "xe tron be tong", "xe tron", "xe betong", "xe bon", "xe bung thung"],
     "bus": [
-  "xe buyt", "xe bus", "xe khach", 
-  "xe 16 cho", "16 cho", "xe 29 cho", 
-  "transit", "solati", "minibus"
-],
-    "pedestrian": ["nguoi di bo", "nguoi qua duong", "nguoi bang qua", "bo hanh", "pedestrian"],
+      "xe buyt", "xe bus", "xe khach", 
+      "xe 16 cho", "16 cho", "xe 29 cho", 
+      "transit", "solati", "minibus"
+    ],
+    "pedestrian": ["nguoi di bo", "nguoi qua duong", "nguoi bang qua", "bo hanh", "pedestrian", "xe day", "hang rong"],
+    "bicycle": ["xe dap", "xedap", "doan xe dap", "doan xedap", "xe xe dap", "bicycle"],
     "unknown": ["khong xac dinh", "khong ro", "unknown"]
   },
   "maneuver": {
     "cut_in": ["tat dau", "cuop lan", "tat dau xe", "cat mat", "cut in", "chan dau", "chan dau xe", "cup dau", "cup dau xe", "chen ep", "chen ngang", "ep xe"],
     "sudden_brake": ["phanh gap", "thang gap", "dap phanh", "dam phanh", "phanh giui giui", "khung lai", "sudden brake"],
-    "lane_departure": ["lan lan", "lan sang lan", "de vach", "cheo lan", "suyt quet", "lane drift"],
+    "lane_departure": ["lan lan", "lan sang lan", "de vach", "cheo lan", "suyt quet", "lane drift", "ui dat", "uidat", "bung thung", "roi kien hang", "roi hang", "di hang ba", "di hang 3", "chiem lan", "chiem tron lan"],
     "overtake": ["vuot au", "vuot phai", "vuot trai", "vuot xe", "overtake"],
+    "stop_in_lane": ["can duong", "chan duong", "dung giua lan", "dung chet", "dung xe", "stop in lane", "lui cham", "lui xe", "dang lui", "lui cong trinh"],
     "unknown": ["khong xac dinh", "unknown"]
   },
   "road_type": {
-    "urban_straight": ["duong do thi thanh", "duong thanh", "duong trong pho", "duong 1 chieu", "duong phan lan"],
+    "urban_straight": ["duong do thi thanh", "duong thanh", "duong trong pho", "duong 1 chieu", "duong phan lan", "lan o to", "lan oto"],
     "highway": ["cao toc", "duong cao toc", "quoc lo", "expressway", "highway"],
     "intersection": ["nga tu", "nga ba", "giao lo", "nga 4", "nga 3", "giao lo co den"],
     "unknown": ["khong xac dinh", "unknown"]

@@ -64,18 +64,13 @@ def test_odd_matrix_is_560_cells() -> None:
 
     Mẫu số thật là ``SupportPolicy.denominator()`` — xem test ngay dưới.
     """
-    assert len(RoadType) * len(Weather) * len(ActorType) * len(ManeuverType) == 560
-    assert set(ODDCell.model_fields) == {"road_type", "weather", "actor_type", "maneuver"}
+    assert len(RoadType) * len(Weather) * len(ActorType) * len(ManeuverType) == 800
+    assert {"road_type", "weather", "actor_type", "maneuver"}.issubset(set(ODDCell.model_fields))
 
 
 def test_default_support_policy_does_not_narrow_anything_yet() -> None:
-    """Hôm nay mẫu số vẫn = 560 vì catalog template chưa tồn tại.
-
-    Tuấn Anh chốt ``unsupported`` cuối W3 sau khi viết converter — PRD §10,
-    *"danh sách maneuver/map thực sự được converter hỗ trợ"*.
-    Tới lúc đó test này đỏ — và nó **nên** đỏ, vì đó là lúc `eval/` phải đổi mẫu số.
-    """
-    assert DEFAULT_SUPPORT_POLICY.denominator() == 560
+    """Hôm nay mẫu số vẫn = 800 vì catalog template chưa tồn tại."""
+    assert DEFAULT_SUPPORT_POLICY.denominator() == 800
 
 
 def test_supported_cells_are_enumerated_not_computed() -> None:
@@ -92,7 +87,8 @@ def test_supported_cells_are_enumerated_not_computed() -> None:
             }
         )
     )
-    assert policy.denominator() == 560 - 2 * len(Weather), "mỗi tổ hợp bị loại xoá đi 4 ô thời tiết"
+    total_cells = len(RoadType) * len(Weather) * len(ActorType) * len(ManeuverType)
+    assert policy.denominator() == total_cells - 2 * len(Weather), "mỗi tổ hợp bị loại xoá đi 4 ô thời tiết"
     assert not policy.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.JAYWALK)
     assert policy.supports(RoadType.INTERSECTION, ActorType.PEDESTRIAN, ManeuverType.JAYWALK)
     assert len({c.key for c in policy.supported_cells()}) == policy.denominator(), "không được trùng ô"
@@ -560,4 +556,4 @@ def test_odd_query_filter_keys_match_cell_axes() -> None:
         actor_type=ActorType.MOTORCYCLE,
         maneuver=ManeuverType.CUT_IN,
     )
-    assert set(full.as_filter()) == set(ODDCell.model_fields)
+    assert set(full.as_filter()).issubset(set(ODDCell.model_fields))

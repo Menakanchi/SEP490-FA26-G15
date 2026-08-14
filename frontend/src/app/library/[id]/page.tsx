@@ -27,6 +27,7 @@ import {
   WEATHER_LABELS,
   ACTOR_TYPE_LABELS,
   MANEUVER_TYPE_LABELS,
+  renderSafeValue,
 } from "@/types";
 
 export default function ScenarioDetailPage() {
@@ -246,7 +247,7 @@ export default function ScenarioDetailPage() {
                 Loại đường
               </p>
               <p className="text-base font-medium text-slate-200 mt-0.5">
-                {ROAD_TYPE_LABELS[odd.road_type] ?? odd.road_type}
+                {renderSafeValue(odd.road_type, ROAD_TYPE_LABELS)}
               </p>
             </div>
           </div>
@@ -257,7 +258,7 @@ export default function ScenarioDetailPage() {
                 Thời tiết
               </p>
               <p className="text-base font-medium text-slate-200 mt-0.5">
-                {WEATHER_LABELS[odd.weather] ?? odd.weather}
+                {renderSafeValue(odd.weather, WEATHER_LABELS)}
               </p>
             </div>
           </div>
@@ -268,7 +269,7 @@ export default function ScenarioDetailPage() {
                 Tác nhân
               </p>
               <p className="text-base font-medium text-slate-200 mt-0.5">
-                {ACTOR_TYPE_LABELS[odd.actor_type] ?? odd.actor_type}
+                {renderSafeValue(odd.actor_type, ACTOR_TYPE_LABELS)}
               </p>
             </div>
           </div>
@@ -279,7 +280,7 @@ export default function ScenarioDetailPage() {
                 Hành vi
               </p>
               <p className="text-base font-medium text-slate-200 mt-0.5">
-                {MANEUVER_TYPE_LABELS[odd.maneuver] ?? odd.maneuver}
+                {renderSafeValue(odd.maneuver, MANEUVER_TYPE_LABELS)}
               </p>
             </div>
           </div>

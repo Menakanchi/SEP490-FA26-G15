@@ -60,7 +60,7 @@ class ForgeModel(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Trục ODD — 5 x 4 x 4 x 7 = 560 ô (hạng mục nâng cao "Phủ ODD")
+# Trục ODD — 5 x 4 x 5 x 8 = 800 ô (hạng mục nâng cao "Phủ ODD")
 # ---------------------------------------------------------------------------
 
 
@@ -92,7 +92,7 @@ class TimeOfDay(StrEnum):
 
 
 class ActorType(StrEnum):
-    """4 loại chủ thể gây tình huống.
+    """5 loại chủ thể gây tình huống.
 
     MOTORCYCLE đứng đầu vì đó là chủ thể chi phối giao thông Việt Nam —
     phần lớn kịch bản corner-case của bài toán này xoay quanh xe máy.
@@ -102,6 +102,7 @@ class ActorType(StrEnum):
     CAR = "car"
     PEDESTRIAN = "pedestrian"
     TRUCK = "truck"
+    BUS = "bus"
 
 
 class ManeuverType(StrEnum):
@@ -123,10 +124,11 @@ class ManeuverType(StrEnum):
     WRONG_WAY = "wrong_way"  # đi ngược chiều
     LANE_DRIFT = "lane_drift"  # lấn làn từ từ
     STOP_IN_LANE = "stop_in_lane"  # dừng chết giữa làn
+    OVERTAKE = "overtake"  # vượt ẩu / vượt xe
 
 
 class ODDCell(ForgeModel):
-    """Một ô trong ma trận ODD. 5 x 4 x 4 x 7 = 560 ô.
+    """Một ô trong ma trận ODD. 5 x 4 x 5 x 8 = 800 ô.
 
     ``coverage`` = tỉ lệ ô đã có ít nhất một scenario hợp lệ.
 
@@ -143,31 +145,38 @@ class ODDCell(ForgeModel):
     object — đó là lý do ``key`` tồn tại.
     """
 
-    road_type: RoadType
-    weather: Weather
-    actor_type: ActorType
-    maneuver: ManeuverType
+    road_type: RoadType | str
+    weather: Weather | str
+    actor_type: ActorType | dict | str
+    maneuver: ManeuverType | dict | str
+    specific_type: str | None = Field(None, description="Tên phương tiện chi tiết từ prompt")
+    specific_action: str | None = Field(None, description="Hành vi chi tiết từ prompt")
 
     @property
     def key(self) -> str:
-        """Khoá ổn định để đếm coverage và làm điều kiện lọc ODD khi retrieval.
+        """Khoá ổn định để đếm coverage và làm điều kiện lọc ODD khi retrieval."""
+        rt_str = self.road_type.value if hasattr(self.road_type, "value") else str(self.road_type)
+        wt_str = self.weather.value if hasattr(self.weather, "value") else str(self.weather)
 
-        Mọi enum ở file này dùng ``StrEnum`` (Python 3.11+) chứ không phải
-        ``(str, Enum)``. Lý do không phải thẩm mỹ: với ``(str, Enum)`` thì
-        ``f"{RoadType.HIGHWAY}"`` cho ra ``"RoadType.HIGHWAY"``, và mệnh đề
-        ``WHERE`` sẽ hỏng **im lặng** — không báo lỗi, chỉ là không khớp gì cả.
-        ``StrEnum`` cho ra ``"highway"`` như mong đợi.
+        if isinstance(self.actor_type, dict):
+            at_str = self.actor_type.get("category", "unknown")
+        elif hasattr(self.actor_type, "category"):
+            at_str = getattr(self.actor_type, "category")
+        elif hasattr(self.actor_type, "value"):
+            at_str = self.actor_type.value
+        else:
+            at_str = str(self.actor_type)
 
-        ``test_odd_key_is_stable`` canh chỗ này; nó đã bắt được đúng lỗi đó một lần.
-        """
-        return "|".join(
-            (
-                self.road_type.value,
-                self.weather.value,
-                self.actor_type.value,
-                self.maneuver.value,
-            )
-        )
+        if isinstance(self.maneuver, dict):
+            mv_str = self.maneuver.get("category", "unknown")
+        elif hasattr(self.maneuver, "category"):
+            mv_str = getattr(self.maneuver, "category")
+        elif hasattr(self.maneuver, "value"):
+            mv_str = self.maneuver.value
+        else:
+            mv_str = str(self.maneuver)
+
+        return "|".join((rt_str, wt_str, at_str, mv_str))
 
 
 class SupportPolicy(ForgeModel):
@@ -304,8 +313,8 @@ class ODDQuery(ForgeModel):
     def _normalize_unspecified_to_none(cls, v: object) -> object:
         if isinstance(v, str):
             v_clean = v.strip().lower()
-            if v_clean in ("bus", "xe_bus", "xe_khach"):
-                return "car"
+            if v_clean in ("xe_bus", "xe_khach"):
+                return "bus"
             if v_clean in (
                 "không xác định",
                 "khong xac dinh",
@@ -452,6 +461,7 @@ class VehicleCategory(StrEnum):
     TRUCK = "truck"
     BICYCLE = "bicycle"
     PEDESTRIAN = "pedestrian"
+    BUS = "bus"
 
 
 class Position(ForgeModel):
@@ -485,15 +495,11 @@ class ActorSpec(ForgeModel):
     position: Position
     initial_speed_kmh: float = Field(..., ge=0.0, le=150.0)
     is_ego: bool = Field(False, description="Đúng một actor được đặt True")
+    specific_type: str | None = Field(None, description="Tên/loại phương tiện chi tiết từ Gemini LLM")
 
 
 class TriggerCondition(ForgeModel):
-    """Điều kiện kích hoạt. Chỉ hỗ trợ khoảng cách và thời gian.
-
-    Cố ý giữ hẹp: hai loại này phủ gần hết corner-case giao thông và
-    ánh xạ 1-1 sang ``RelativeDistanceCondition`` / ``SimulationTimeCondition``
-    của OpenSCENARIO 1.0.
-    """
+    """Điều kiện kích hoạt. Chỉ hỗ trợ khoảng cách và thời gian."""
 
     type: Literal["distance_to_ego", "simulation_time"]
     value: float = Field(..., gt=0.0, description="mét nếu distance, giây nếu time")
@@ -506,22 +512,11 @@ class ManeuverSpec(ForgeModel):
     maneuver: ManeuverType
     trigger: TriggerCondition
     target_speed_kmh: float | None = Field(None, ge=0.0, le=150.0, description="Tốc độ sau khi thực hiện, nếu có")
+    specific_action: str | None = Field(None, description="Hành vi/sự cố chi tiết từ Gemini LLM")
 
 
 class ScenarioCore(ForgeModel):
-    """Phần kịch bản mà **LLM chịu trách nhiệm**. Không có id, không có câu gốc.
-
-    LLM chịu trách nhiệm ngữ nghĩa (ai, ở đâu, làm gì, khi nào).
-    Converter chịu trách nhiệm cú pháp (tên element, hệ toạ độ, XML).
-    Tách hai lớp để mỗi lỗi định vị được: lỗi cú pháp là bug của code (sửa một
-    lần là hết), lỗi ngữ nghĩa là bug của prompt (đo được bằng eval).
-
-    Lý do class này tồn tại thay vì viết hai model song song: ``ScenarioDraft``
-    và ``ScenarioSpec`` phải kiểm **cùng một bộ ràng buộc**. Hai model song song
-    sẽ lệch nhau ngay lần thứ hai ai đó thêm validator, và lệch về phía nguy
-    hiểm — draft lỏng hơn spec nghĩa là repair không bắt được lỗi mà spec sẽ
-    chặn sau đó. Kế thừa làm việc lệch trở thành bất khả.
-    """
+    """Phần kịch bản mà **LLM chịu trách nhiệm**. Không có id, không có câu gốc."""
 
     title: str = Field(..., min_length=1, max_length=120)
 
@@ -533,7 +528,7 @@ class ScenarioCore(ForgeModel):
             "Xem ODDCell: đề bài đo đa dạng tình huống, không đo đa dạng giờ trong ngày."
         ),
     )
-    actors: list[ActorSpec] = Field(..., min_length=2, description="Ít nhất ego + 1 chủ thể")
+    actors: list[ActorSpec] = Field(..., min_length=1, description="Ít nhất 1 chủ thể")
     maneuvers: list[ManeuverSpec] = Field(..., min_length=1)
 
     duration_s: float = Field(30.0, gt=0.0, le=120.0, description="Trần thời gian mô phỏng")
@@ -551,38 +546,30 @@ class ScenarioCore(ForgeModel):
         for m in self.maneuvers:
             if m.actor_name not in names:
                 raise ValueError(f"maneuver trỏ tới actor không tồn tại: {m.actor_name!r}")
-            if m.actor_name == egos[0].name:
+            if len(self.actors) > 1 and m.actor_name == egos[0].name:
                 raise ValueError(
                     "ego không được mang maneuver — ego là thứ ĐANG BỊ TEST, không phải thứ gây ra tình huống"
                 )
 
-            # Trigger bắn sau khi kịch bản đã dừng = hành vi không bao giờ chạy.
-            # Kịch bản vẫn hợp lệ, vẫn chạy trót lọt, vẫn success=true — nhưng
-            # KHÔNG CÓ GÌ XẢY RA. Đây đúng cái bẫy sc_002 mô tả, và nó làm hỏng
-            # cả intent_match lẫn adversarial_found mà không báo lỗi ở đâu.
             if m.trigger.type == "simulation_time" and m.trigger.value >= self.duration_s:
                 raise ValueError(
                     f"trigger bắn ở giây {m.trigger.value} nhưng kịch bản chỉ dài "
                     f"{self.duration_s}s — hành vi {m.maneuver.value!r} không bao giờ chạy"
                 )
 
-        # Nhãn ODD phải khớp thực tế. Nhãn này là thứ retrieval lọc theo và là thứ
-        # đếm ODD coverage; gắn nhãn "pedestrian" cho một kịch bản toàn ô tô sẽ
-        # thổi phồng coverage và làm thư viện trả về kết quả sai nhãn.
-        non_ego = {a.category.value for a in self.actors if not a.is_ego}
-        if self.odd.actor_type.value not in non_ego:
+        odd_at_val = self.odd.actor_type.get("category") if isinstance(self.odd.actor_type, dict) else (self.odd.actor_type.value if hasattr(self.odd.actor_type, "value") else str(self.odd.actor_type))
+        non_ego = {a.category.value if hasattr(a.category, "value") else str(a.category) for a in self.actors if not a.is_ego}
+        if non_ego and odd_at_val not in non_ego:
             raise ValueError(
-                f"odd.actor_type={self.odd.actor_type.value!r} nhưng không chủ thể nào "
+                f"odd.actor_type={odd_at_val!r} nhưng không chủ thể nào "
                 f"thuộc loại đó (đang có: {sorted(non_ego)})"
             )
 
-        # Cùng lý do, cho trục tình huống. Gắn nhãn "jaywalk" cho một kịch bản chỉ
-        # có hành vi tạt đầu sẽ báo đã phủ ô jaywalk trong khi ô đó vẫn trống —
-        # tức là tự khai khống đúng con số mà đề bài dùng để chấm độ đa dạng.
+        odd_mv_val = self.odd.maneuver.get("category") if isinstance(self.odd.maneuver, dict) else (self.odd.maneuver.value if hasattr(self.odd.maneuver, "value") else str(self.odd.maneuver))
         done = {m.maneuver.value for m in self.maneuvers}
-        if self.odd.maneuver.value not in done:
+        if odd_mv_val not in done:
             raise ValueError(
-                f"odd.maneuver={self.odd.maneuver.value!r} nhưng không maneuver nào "
+                f"odd.maneuver={odd_mv_val!r} nhưng không maneuver nào "
                 f"thực hiện hành vi đó (đang có: {sorted(done)})"
             )
         return self

@@ -84,14 +84,70 @@ export const VEHICLE_CATEGORY_LABELS: Record<VehicleCategory, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Helper for Safe Value Rendering
+// ---------------------------------------------------------------------------
+
+const normalizeStr = (str: string): string => {
+  return str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/đ/g, "d")
+    .replace(/_/g, " ")
+    .trim();
+};
+
+const formatSpecificText = (text: string): string => {
+  if (!text) return "";
+  const cleaned = text.replace(/_/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+};
+
+export const renderSafeValue = (val: any, labelsMap?: Record<string, string>): string => {
+  if (!val) return "unknown";
+  if (typeof val === "string") return labelsMap?.[val] ?? val;
+  if (typeof val === "object") {
+    const catKey = val.category && val.category !== "unknown" ? val.category : "";
+    const cat = catKey ? (labelsMap?.[catKey] ?? catKey) : "";
+
+    const rawSpec =
+      val.specific_type && val.specific_type !== "unknown"
+        ? val.specific_type
+        : val.specific_action && val.specific_action !== "unknown"
+        ? val.specific_action
+        : "";
+
+    const spec = formatSpecificText(rawSpec);
+
+    if (cat && spec) {
+      if (normalizeStr(cat) === normalizeStr(spec) || normalizeStr(catKey) === normalizeStr(spec)) {
+        return cat;
+      }
+      return `${cat} (${spec})`;
+    }
+    if (cat) {
+      return cat;
+    }
+    if (spec) {
+      return spec;
+    }
+    return "unknown";
+  }
+  return String(val);
+};
+
+// ---------------------------------------------------------------------------
 // ODD Cell
 // ---------------------------------------------------------------------------
 
 export interface ODDCell {
-  road_type: RoadType;
-  weather: Weather;
-  actor_type: ActorType;
-  maneuver: ManeuverType;
+  road_type: RoadType | any;
+  weather: Weather | any;
+  actor_type: ActorType | any;
+  maneuver: ManeuverType | any;
+  specific_type?: string;
+  specific_action?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +229,14 @@ export interface ODDPayload {
 // Scenario list item — dạng summary cho Library
 // ---------------------------------------------------------------------------
 
+export interface RetrievedExample {
+  id: string;
+  title: string;
+  content: string;
+  metadata?: Record<string, any>;
+  similarity_score?: number;
+}
+
 export interface ScenarioItem {
   scenario_id: string;
   title: string;
@@ -182,6 +246,7 @@ export interface ScenarioItem {
   xosc_content?: string;
   created_at: string; // ISO datetime
   spec?: ScenarioSpec;
+  retrieved_examples?: RetrievedExample[];
 }
 
 // ---------------------------------------------------------------------------
@@ -223,4 +288,5 @@ export interface ScenarioDetail {
   xosc_content?: string;
   review_logs: ReviewLog[];
   created_at: string;
+  retrieved_examples?: RetrievedExample[];
 }

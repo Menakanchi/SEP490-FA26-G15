@@ -26,6 +26,7 @@ import {
   WEATHER_LABELS,
   ACTOR_TYPE_LABELS,
   MANEUVER_TYPE_LABELS,
+  renderSafeValue,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -310,16 +311,16 @@ export default function LibraryPage() {
                   {/* ODD Badges */}
                   <div className="flex flex-wrap gap-1.5">
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/15">
-                      {ROAD_TYPE_LABELS[item.odd.road_type] ?? item.odd.road_type}
+                      {renderSafeValue(item.odd?.road_type, ROAD_TYPE_LABELS)}
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/15">
-                      {WEATHER_LABELS[item.odd.weather] ?? item.odd.weather}
+                      {renderSafeValue(item.odd?.weather, WEATHER_LABELS)}
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/15">
-                      {ACTOR_TYPE_LABELS[item.odd.actor_type] ?? item.odd.actor_type}
+                      {renderSafeValue(item.odd?.actor_type, ACTOR_TYPE_LABELS)}
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/15">
-                      {MANEUVER_TYPE_LABELS[item.odd.maneuver] ?? item.odd.maneuver}
+                      {renderSafeValue(item.odd?.maneuver, MANEUVER_TYPE_LABELS)}
                     </span>
                   </div>
 
