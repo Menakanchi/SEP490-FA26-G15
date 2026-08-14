@@ -114,9 +114,73 @@ API, frontend, worker vẫn đang triển khai.
 | Công Nguyễn | Điền `JOURNAL.md` và `WORKLOG.md` bằng dữ liệu thật từ git/PR/ADR/`.ai-log` | ✅ Done | Deliverable #8, #9 | — |
 | Công Nguyễn | ADR-011 (persistence + state transitions) và ADR-007 (workflow cố định) | ❌ Chưa bắt đầu | Chặn API review/download của W2 | — |
 
-**Tổng kết ngày:** Bắt đầu W2. Việc tiếp theo theo `plan.md` §8: chốt ADR-011,
-rồi viết `static_check.py` → `templates.py` → `converter.py` và chạy vertical
-slice bằng fixture trước khi nối LLM/RAG.
+**Tổng kết ngày:** Bắt đầu W2. Việc tiếp theo: chốt ADR-011, rồi viết
+`static_check.py` → `templates.py` → `converter.py` và chạy vertical slice bằng
+fixture trước khi nối LLM/RAG.
+
+---
+
+## 2026-08-04
+
+| Member | Task | Status | Output | Time |
+|--------|------|--------|--------|------|
+| Công Nguyễn | ADR-013: chốt SQLite + embedding BLOB, supersede ADR-003; kèm ngưỡng đảo ngược | ✅ Done | [PR #13](https://github.com/AI20K-Build-Phase-Cohort-3/P-130/pull/13) · commit `55f6cef` | 0.5h |
+| Công Nguyễn | Bỏ mọi tham chiếu tới `plan.md` (file untracked) khỏi code và tài liệu tracked | ✅ Done | commit `0fa1389` | — |
+| Công Nguyễn | Dọn Qdrant khỏi code: `requirements.txt`, `.env.example`, `config.py`, docstring; sửa luật CI sắp thành "xanh giả" | ✅ Done | [PR #14](https://github.com/AI20K-Build-Phase-Cohort-3/P-130/pull/14) · commit `6e444fb` | 0.5h |
+| Công Nguyễn | ADR-011: 4 bảng, `ScenarioStatus` 4 trạng thái, bảng chuyển trạng thái + 13 test máy trạng thái | ✅ Done | [PR #15](https://github.com/AI20K-Build-Phase-Cohort-3/P-130/pull/15) · commit `35b8076` · `tests/test_scenario_status.py` | 0.5h |
+| Công Nguyễn | `codex review` trên ADR-011 — 3 phát hiện P2, đã sửa hết (sai gate vẫn lọt, `DATABASE_URL` chết trên fresh clone, `xosc_path` chưa migrate) | ✅ Done | commit `1d22903` · pass 2: no actionable defects | 0.5h |
+| Công Nguyễn | Sửa 3 file `.docx` Gate 1 cho khớp ADR-013, upload lại Drive | ✅ Done | Bản nộp Gate 1 trên Drive | — |
+| Công Nguyễn | Merge 3 PR stacked #13 → #14 → #15 vào `main` | ✅ Done | commits `ee95525`, `205546a`, `41562b9` | — |
+
+**Tổng kết ngày:** Gỡ xong mâu thuẫn Qdrant-vs-SQLite giữa ADR-003 và PRD — hai
+tài liệu đang chỉ dẫn người implement đi hai hướng khác nhau. Chốt cả persistence
+schema lẫn máy trạng thái hai cổng duyệt, ép FR-03/FR-11 và FR-12 bằng cấu trúc
+dữ liệu chứ không bằng lời dặn. Chốt số: 115 test pass, coverage 95%.
+Phát sinh blocker: CI của org không chạy được vì billing GitHub Actions —
+runner không khởi động (job 3–5 giây, 0 step), cả 3 PR đỏ dù code sạch khi chạy tay.
+
+---
+
+## 2026-08-05
+
+| Member | Task | Status | Output | Time |
+|--------|------|--------|--------|------|
+| Công Nguyễn | Chạy lại test + coverage lấy số cho báo cáo tuần | ✅ Done | 115 passed, coverage 95% (437 stmts / 22 miss) | — |
+| Công Nguyễn | Soạn và nộp Weekly report #3 cho BTC | ✅ Done | `Weekly report #3.txt` | — |
+| Công Nguyễn | Bổ sung WORKLOG ngày 04/8 và 05/8 | ✅ Done | File này | — |
+
+**Tổng kết ngày:** Báo cáo tuần khai thẳng blocker billing CI thay vì để nó chìm
+— từ giờ mọi PR merge mà không có kiểm tự động, đây là rủi ro cần org xử lý chứ
+không tự gỡ được. Việc tiếp theo của W2: repository layer + Alembic migration
+theo ADR-011, rồi vertical slice bằng fixture.
+
+---
+
+## 2026-08-11
+
+| Member | Task | Status | Output | Time |
+|--------|------|--------|--------|------|
+| Công Nguyễn | Rà `docs/overview.html` cho khớp `schemas.py`: node 01 đổi `ParsedIntent` → `ODDQuery` (4 trục + `inferred`), catalog đổi sang đúng 7 `ManeuverType`, M2 sửa `7×3×2=42` → `5×4×4×7=560` với mẫu số `SupportPolicy.denominator()`, stepper 01–07 lấy số từ `sc_001` | ✅ Done | `docs/overview.html` (local-only, đang trong `.gitignore`) | — |
+| Công Nguyễn | Park adversarial input của Linh Đan làm case test biên | 📌 Chờ W3 | Xem ghi chú dưới | — |
+
+**Case cần thử khi converter xong + `SupportPolicy.unsupported` được điền (cuối W3):**
+
+> *"Xe máy chạy 150km/h trong ngõ hẹp 2m tạt đầu xe tải đang lùi 80km/h"*
+
+Chạm 4 giới hạn khác nhau cùng lúc, nên đáng giữ: (1) `150` vừa đúng trần
+`initial_speed_kmh le=150.0`; (2) chiều rộng đường không tồn tại trong data model;
+(3) `reverse` không có trong `ManeuverType` và `initial_speed_kmh` có `ge=0.0` nên
+không biểu diễn được "lùi"; (4) `residential_narrow × cut_in` là ứng viên
+`SupportPolicy.unsupported` — tạt đầu cần đổi làn mà ngõ 2m không có làn thứ hai.
+Cần kiểm: hôm nay tổ hợp này đi lọt `with_defaults()` và chỉ chết ở converter
+hoặc CARLA, thay vì bị chặn sớm bằng `422 UNSUPPORTED_COMBINATION`.
+
+**Tổng kết ngày:** Phần tài liệu mô tả pipeline đã lệch khỏi contract từ một thế
+hệ thiết kế trước; `ARCHITECTURE.md` §Ví dụ từng node là bản đúng và đã tracked,
+`overview.html` giờ khớp lại nhưng vẫn là bản local. Xem lại hai đề xuất phát sinh
+(ghi lại ngữ nghĩa bị rơi ở `parse_intent`; thêm mask `SupportPolicy`) thì **cả hai
+đều không cần mở issue**: wireframe review đã đặt "Câu gốc" cạnh preview để reviewer
+tự đối chiếu, còn mask thì đã có người và có hạn ở W3.
 
 ---
 

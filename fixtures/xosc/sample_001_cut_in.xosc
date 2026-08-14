@@ -2,7 +2,7 @@
 <!--
   sample_001_cut_in.xosc  —  VIẾT TAY, không do converter sinh ra.
 
-  Mục đích: cho Tuấn Anh chạy ScenarioRunner NGAY HÔM NAY, không cần chờ
+  Mục đích: chạy ScenarioRunner NGAY HÔM NAY, không cần chờ
   LLM, converter hay backend. Nó trả lời câu hỏi rủi ro dài nhất của dự án
   ("CARLA có chạy trên máy đó không?") bằng một file thay vì bằng 3 tuần.
 

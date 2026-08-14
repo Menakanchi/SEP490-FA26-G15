@@ -90,6 +90,77 @@ iteration >= 3                  → failed
 
 Warning không chặn flow; reviewer nhìn thấy warning ở cổng duyệt.
 
+## Ví dụ từng node
+
+Một câu đi hết pipeline. Mọi giá trị dưới đây **lấy từ `fixtures/`**, không phải
+viết tay minh hoạ — fixtures có test validate theo `schemas.py`, nên ví dụ ở đây
+không lệch được khỏi contract. Muốn xem đầy đủ thì mở file được trích dẫn.
+
+Câu vào (`fixtures/scenario_specs/sc_001.json` → `description_vi`):
+
+> *"Xe máy chạy 80 km/h ở làn bên trái, vượt lên từ phía sau ô tô đang chạy
+> 60 km/h, tạt đầu rồi phanh gấp còn 40 km/h. Trời quang, ban ngày, cao tốc."*
+
+**`parse_intent`** — output *duy nhất* của LLM là `ODDQuery`; mọi trục đều có thể
+rỗng:
+
+```json
+{"road_type": "highway", "weather": "clear",
+ "actor_type": "motorcycle", "maneuver": "cut_in", "inferred": []}
+```
+
+`inferred` rỗng vì câu này nói rõ cả 4 trục. Câu *"xe máy tạt đầu lúc mưa"* chỉ
+điền được 2 trục, phần còn lại do `ODDQuery.with_defaults()` — code thuần, không
+phải LLM — điền và sinh `list[Assumption]`.
+
+**`retrieve`** — `ODDQuery.as_filter()` cho `WHERE`, phần còn lại là cosine:
+
+```python
+{"road_type": "highway", "weather": "clear",
+ "actor_type": "motorcycle", "maneuver": "cut_in"}   # → tối đa 3 ScenarioSpec
+```
+
+**`generate_draft`** — input là `ODDCell` (đủ 4 trục) + examples; output
+`ScenarioDraft`, tức `sc_001.json` **bỏ đi** `scenario_id` và `description_vi`:
+
+```json
+{"actors": [
+   {"name": "hero",      "category": "car",        "position": {"lane_offset": 0,  "s_offset_m":   0.0}, "initial_speed_kmh": 60.0, "is_ego": true},
+   {"name": "adversary", "category": "motorcycle", "position": {"lane_offset": -1, "s_offset_m": -25.0}, "initial_speed_kmh": 80.0, "is_ego": false}],
+ "maneuvers": [
+   {"actor_name": "adversary", "maneuver": "cut_in",
+    "trigger": {"type": "simulation_time", "value": 7.0}, "target_speed_kmh": 40.0}]}
+```
+
+`s_offset_m: -25.0` là chỗ dễ sai nhất: muốn vượt lên rồi tạt đầu thì actor phải
+xuất phát **phía sau** ego. `hero` là tên actor theo quy ước của fixtures, không
+phải một trường role — vai ego nằm ở `is_ego`.
+
+**`validate`** — đổi dấu `s_offset_m` thành `+20.0` mà vẫn giữ 80 km/h thì schema
+vẫn hợp lệ nhưng hình học vô nghĩa: xe máy ở phía trước và chạy nhanh hơn thì
+khoảng cách chỉ nới rộng. Đó là `fixtures/invalid_drafts/geom_no_catchup.json`:
+
+```json
+{"caught_by": "static_check", "expected_codes": ["GEOM_NO_CATCHUP"]}
+```
+
+12 file trong `invalid_drafts/` là bộ đề của validator — mỗi file tự khai nó sai
+code gì và ai phải bắt được.
+
+**`repair_draft`** — nhận draft + issue trên, trả draft mới. Chỉ code thuộc
+`REPAIRABLE_CODES` mới đi đường này; tối đa ba vòng.
+
+**`convert_xosc`** — đích đến là `fixtures/xosc/sample_001_cut_in.xosc` (viết
+tay). Bài test đầu tiên của converter chính là:
+
+```text
+convert(fixtures/scenario_specs/sc_001.json) == sample_001_cut_in.xosc   (sau chuẩn hoá)
+```
+
+**`persist_pending_review`** — ghi `ScenarioSpec` + XML + provenance, scenario ở
+`pending_review`, graph kết thúc. `ExecutionResult` tương ứng cho UI dựng trước
+khi có backend nằm ở `fixtures/execution_results/`.
+
 ## Sau workflow
 
 Review và simulation là các HTTP transaction độc lập, không phải nodes đứng chờ
@@ -149,9 +220,47 @@ Smoke test ngày 31/07/2026 đã xác nhận:
 - `RelativeLanePosition` đặt actor đúng làn và khoảng cách.
 - ScenarioRunner xuất criteria JSON có thể chuẩn hoá thành `ExecutionResult`.
 
-Smoke test chưa chứng minh converter tự động hoặc outcome cut-in/collision ổn định.
-Các parser traps và giới hạn nằm ở
-[ADR-012](docs/adr/ADR-012-converter-dung-relativelaneposition.md).
+Smoke test **chưa** chứng minh converter tự động. Outcome cut-in/collision thì đã
+ổn định trên fixture viết tay — xem §Ego baseline. Các parser traps và giới hạn
+nằm ở [ADR-012](docs/adr/ADR-012-converter-dung-relativelaneposition.md).
+
+## Ego baseline
+
+Trong mọi kịch bản, ego nhận **đúng một lệnh tốc độ ban đầu** rồi giữ nguyên:
+không controller, không model lái, không autopilot, không maneuver (bất biến
+`EGO_HAS_MANEUVER` đã ép điều này ở tầng validate).
+
+**Đây là điều kiện đối chứng có chủ đích, không phải thiếu sót.** Muốn đo chất
+lượng bộ sinh kịch bản thì đầu bên kia phải cố định. Gắn model lái thật vào lúc
+này thì mỗi lần chạy ra một số khác, và không phân biệt được *"kịch bản đổi"* với
+*"model phản ứng khác"*.
+
+Ba lần chạy `fixtures/xosc/sample_001_cut_in.xosc` (05/08 hai lần, 12/08 một lần)
+cho kết quả trùng khớp:
+
+| | 05/08 a | 05/08 b | 12/08 |
+|---|---|---|---|
+| Va chạm | có | có | có |
+| Thời lượng (s) | 13,03 | 13,04 | 13,02 |
+| Quãng đường ego (m) | 207,6 | 212,2 | 211,7 |
+| Đỉnh tốc độ ego (m/s) | 16,70 | 16,70 | 16,70 |
+
+Đỉnh tốc độ đúng bằng tốc độ khởi hành (60 km/h = 16,67 m/s; phần lẻ là bộ bám
+tốc độ hơi lố) — bằng chứng ego **chưa bao giờ phanh**.
+
+Ba hệ quả khi đọc kết quả:
+
+1. **"Tìm được va chạm" chưa phải tuyên bố về độ khó với một AV thật.** Nó chứng
+   minh kịch bản đâm được một chiếc xe không biết tránh. Vai trò 2 (gắn model lái
+   vào ego) đổi đúng biến đó — và đó là chỗ doanh nghiệp cắm model của họ vào.
+2. **Criteria của ScenarioRunner chỉ gắn vào ego** (`actor` = tên ego; riêng
+   `Duration` là `all`), nên chúng không nói gì về chủ thể gây tình huống. Câu hỏi
+   *"cú tạt đầu có thật sự xảy ra không"* phải trả lời bằng log quỹ đạo, không
+   bằng criteria — đó là lý do behavior checker của Phase 3 đọc lane history.
+3. **`ExecutionResult.success` không được map từ `success` của ScenarioRunner.**
+   Hai bên ngược nghĩa: runner coi *thành công = ego lái an toàn*, nên một kịch
+   bản đạt mục tiêu (có va chạm) sẽ trả `"success": false`. Map thẳng là ghi mọi
+   kịch bản tốt thành hỏng.
 
 ## Bất biến được kiểm bằng CI
 
@@ -161,6 +270,53 @@ Các parser traps và giới hạn nằm ở
 - Mọi provider call đi qua `src/services/llm.py`.
 - Fixtures phải validate theo `schemas.py`.
 
+## Lộ trình bốn phase
+
+Thứ tự không tuỳ tiện: mỗi phase trả lời một câu hỏi mà phase trước chưa trả lời
+được, và câu sau chỉ có nghĩa khi câu trước đã có đáp án.
+
+| Phase | Xây gì | Trả lời được câu gì | Cần trước |
+|---|---|---|---|
+| 1 | Graph 7 nodes end-to-end, frontend, review flow | Sinh ra file dùng được không? Xong phase này là dùng thật được — không cần GPU, không cần CARLA. | — |
+| 2 | CARLA validation tự động, thu log | File có chạy nổi không? ScenarioRunner load được, xe spawn đúng chỗ, không crash. | 1 |
+| 3 | Behavior checker | Có thật sự nguy hiểm không? Bắt loại hỏng tệ nhất: chạy trót lọt, `success=true`, mà không có gì xảy ra. | 2 |
+| 4 | Agent layer: ODD → batch generation, closed-loop | Sinh hàng loạt mà từng cái vẫn đáng giá không? | 1 + 2 + 3 |
+
+`fixtures/execution_results/sc_002_success_no_collision.json` là hiện vật của câu
+hỏi Phase 3: hợp lệ, chạy xong, `success=true`, và vô dụng.
+
+## Hai chế độ sinh
+
+Phase 4 **không thay** workflow 7 nodes; nó bọc thêm một vòng lặp bên ngoài.
+
+```text
+retail      [người viết câu] → 7-node graph → .xosc → [người duyệt] → library
+
+wholesale   [người khoanh vùng ODD] → [agent sinh câu] → 7-node graph → .xosc
+                       ↑                                                  ↓
+                       └──────── explore + exploit ←─── metric ←──── CARLA
+```
+
+Agent sinh ra một câu tiếng Việt rồi nạp vào đúng đường retail. Nhờ vậy layer
+batch nằm hoàn toàn ngoài graph — không sửa node nào.
+
+| Hộp | Nhận vào | Trả ra |
+|---|---|---|
+| khoanh vùng ODD | người chọn phạm vi trên ma trận ODD, **không** phải câu tiếng Việt | `list[ODDCell]` (giao với `SupportPolicy.supported_cells()`) + số scenario mỗi ô + trần chi phí |
+| agent sinh câu | một `ODDCell` + những gì đã sinh trong chính ô đó (+ spec mồi khi exploit) | một câu tiếng Việt, nạp vào đường sinh có sẵn |
+| metric | `ScenarioSpec` + `ExecutionResult` | bảng **chỗ trống** (ô nào chưa đủ) và bảng **suýt soát** (scenario nào gần-fail) |
+| explore + exploit | hai bảng trên | lô ô / spec mồi cho vòng sau |
+
+`metric` là bộ nhớ trạng thái của vòng lặp, không phải báo cáo cuối kỳ. Bảng suýt
+soát cần `min_distance_m` / `ttc_min_s` trong `ExecutionResult.metrics` — hôm nay
+chưa có, và đó là lý do Phase 4 phụ thuộc Phase 2–3 chứ không chỉ Phase 1. Trần
+chi phí là điều kiện dừng, không phải tuỳ chọn.
+
+Hai ràng buộc mà vòng lặp áp ngược lên Phase 1 — cổng `BEFORE_SIM` duyệt theo
+**lô**, và scenario sinh hàng loạt **không** vào thư viện — nằm ở
+[ADR-014](docs/adr/ADR-014-duyet-theo-lo-va-batch-khong-vao-thu-vien.md).
+Thuật toán explore/exploit chưa chốt.
+
 ## Trạng thái hiện tại
 
 | Thành phần | Trạng thái |
@@ -169,11 +325,14 @@ Các parser traps và giới hạn nằm ở
 | Routing và architecture tests | ✅ Có |
 | CARLA/ScenarioRunner smoke test | ✅ Toolchain pass |
 | Graph 7 nodes | ⏳ Graph hiện vẫn là template |
-| Static validator, templates, converter | ⏳ Chưa có |
+| Static validator (`validate_node`) | ✅ Có — schema, invariants, static geometry |
+| Templates và converter (`convert_xosc`) | ✅ Có — 1 anchor Town04, 7 maneuver, golden validate theo XSD (ADR-016) |
 | `Retriever` (SQLite BLOB + cosine) và retrieval baseline | ⏳ Chưa có |
 | SQLite persistence, review/download/job API | ⏳ Chưa có |
 | Frontend và preview | ⏳ Chưa có |
 | GPU worker | ⏳ Chưa có implementation |
+| Behavior checker (Phase 3) | ⏳ Chưa có |
+| Agent layer + closed-loop (Phase 4) | ⏳ Chưa có — ràng buộc lên Phase 1 ở ADR-014 |
 | Evaluation report bằng số thật | ⏳ Chưa có |
 
 ## Quy tắc thay đổi

@@ -68,9 +68,15 @@ def test_odd_matrix_is_560_cells() -> None:
     assert {"road_type", "weather", "actor_type", "maneuver"}.issubset(set(ODDCell.model_fields))
 
 
-def test_default_support_policy_does_not_narrow_anything_yet() -> None:
-    """Hôm nay mẫu số vẫn = 800 vì catalog template chưa tồn tại."""
-    assert DEFAULT_SUPPORT_POLICY.denominator() == 800
+
+def test_default_support_policy_matches_verified_converter_scope() -> None:
+    """Catalog có 6 vehicle maneuvers × 3 actors và jaywalk × pedestrian, trên 4 weather."""
+    assert DEFAULT_SUPPORT_POLICY.denominator() == 76
+    assert DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.CAR, ManeuverType.CUT_IN)
+    assert DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.JAYWALK)
+    assert not DEFAULT_SUPPORT_POLICY.supports(RoadType.INTERSECTION, ActorType.CAR, ManeuverType.CUT_IN)
+    assert not DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.CUT_IN)
+
 
 
 def test_supported_cells_are_enumerated_not_computed() -> None:
@@ -321,11 +327,35 @@ def test_invalid_draft_declares_known_codes(path: Path) -> None:
     trượt và không ai phát hiện — code là khoá gom nhóm, không phải chú thích.
     """
     case = _invalid(path)
-    assert case["caught_by"] in {"pydantic", "static_check"}
+    assert case["caught_by"] in {"pydantic", "static_check", "validate_node"}
     assert case["expected_codes"], "fixture sai phải nói rõ nó sai code gì"
+    assert len(case["expected_paths"]) == len(case["expected_codes"])
+    assert all(path.startswith("/") for path in case["expected_paths"])
     for code in case["expected_codes"]:
         assert code in IssueCode.__members__, f"{code} không có trong IssueCode"
-        assert IssueCode[code] in REPAIRABLE_CODES, "mọi lỗi ở đây đều là lỗi nội dung LLM sinh"
+        if IssueCode[code] is not IssueCode.LANE_OFFSET_IMPLAUSIBLE:
+            assert IssueCode[code] in REPAIRABLE_CODES, "mọi error ở đây đều là lỗi nội dung LLM sinh"
+
+
+def test_invalid_fixtures_cover_every_validate_issue_code() -> None:
+    required = {
+        IssueCode.SCHEMA_INVALID,
+        IssueCode.SCHEMA_EXTRA_FIELD,
+        IssueCode.EGO_COUNT,
+        IssueCode.DUP_ACTOR_NAME,
+        IssueCode.DANGLING_ACTOR_REF,
+        IssueCode.EGO_HAS_MANEUVER,
+        IssueCode.TRIGGER_AFTER_END,
+        IssueCode.ODD_ACTOR_MISMATCH,
+        IssueCode.ODD_MANEUVER_MISMATCH,
+        IssueCode.ODD_LABEL_DRIFT,
+        IssueCode.GEOM_NO_CATCHUP,
+        IssueCode.GEOM_NO_COLLISION_AFTER_CUTIN,
+        IssueCode.TRIGGER_DISTANCE_UNSIGNED,
+        IssueCode.LANE_OFFSET_IMPLAUSIBLE,
+    }
+    covered = {IssueCode(code) for path in _invalid_drafts() for code in _invalid(path)["expected_codes"]}
+    assert required <= covered
 
 
 @pytest.mark.parametrize(
@@ -412,6 +442,7 @@ def test_repairable_codes_exclude_system_and_safety_errors() -> None:
         IssueCode.TEMPLATE_CATALOG_INCONSISTENT,
         IssueCode.BUDGET_EXCEEDED,
         IssueCode.NEED_MORE_DETAIL,
+        IssueCode.VALIDATION_CONTEXT_MISSING,
     ):
         assert not ValidationIssue(code=code, message_vi="x").repairable_by_llm, code
     assert REPAIRABLE_CODES <= set(IssueCode)
@@ -472,7 +503,7 @@ def test_default_road_type_asks_the_support_policy_first() -> None:
     assert cell.road_type is RoadType.HIGHWAY
     assert chi_cao_toc.supports(cell.road_type, cell.actor_type, cell.maneuver)
 
-    assert q.with_defaults()[0].road_type is RoadType.URBAN_STRAIGHT, "policy rỗng thì giữ ưu tiên cũ"
+    assert q.with_defaults()[0].road_type is RoadType.HIGHWAY, "default policy phải khớp catalog đã xác minh"
 
 
 def test_inference_is_recorded_so_reviewer_can_see_it() -> None:

@@ -4,6 +4,9 @@
   "expected_codes": [
     "EGO_HAS_MANEUVER"
   ],
+  "expected_paths": [
+    "/maneuvers/0/actor_name"
+  ],
   "draft": {
     "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
     "odd": {

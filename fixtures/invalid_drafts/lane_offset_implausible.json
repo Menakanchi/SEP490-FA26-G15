@@ -1,0 +1,54 @@
+{
+  "_comment": "Actor cách ego bốn làn: đây là heuristic nghi ngờ nên chỉ được cảnh báo, không chặn luồng.",
+  "caught_by": "static_check",
+  "expected_codes": [
+    "LANE_OFFSET_IMPLAUSIBLE"
+  ],
+  "expected_paths": [
+    "/actors/1/position/lane_offset"
+  ],
+  "draft": {
+    "title": "Xe máy tạt đầu từ làn quá xa",
+    "odd": {
+      "road_type": "highway",
+      "weather": "clear",
+      "actor_type": "motorcycle",
+      "maneuver": "cut_in"
+    },
+    "time_of_day": "day",
+    "actors": [
+      {
+        "name": "hero",
+        "category": "car",
+        "position": {
+          "lane_offset": 0,
+          "s_offset_m": 0.0
+        },
+        "initial_speed_kmh": 60.0,
+        "is_ego": true
+      },
+      {
+        "name": "adversary",
+        "category": "motorcycle",
+        "position": {
+          "lane_offset": 4,
+          "s_offset_m": -25.0
+        },
+        "initial_speed_kmh": 80.0,
+        "is_ego": false
+      }
+    ],
+    "maneuvers": [
+      {
+        "actor_name": "adversary",
+        "maneuver": "cut_in",
+        "trigger": {
+          "type": "simulation_time",
+          "value": 7.0
+        },
+        "target_speed_kmh": 40.0
+      }
+    ],
+    "duration_s": 30.0
+  }
+}

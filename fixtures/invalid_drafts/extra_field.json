@@ -4,6 +4,9 @@
   "expected_codes": [
     "SCHEMA_EXTRA_FIELD"
   ],
+  "expected_paths": [
+    "/actors/1/spawn_index"
+  ],
   "draft": {
     "title": "Xe máy vượt lên, tạt đầu rồi phanh gấp trên cao tốc",
     "odd": {

@@ -66,6 +66,19 @@ out/
 .ai-log/*.jsonl
 .ai-log/archive/
 
-# Local-only planning documents
+# Local-only presentation documents
+# overview.html là BẢN TRÌNH BÀY dạng HTML để đọc và demo — nội dung của nó bám
+# theo thiết kế hiện tại (kiểm 12/8: dùng ODDQuery/ODDCell, sudden_brake, SQLite
+# BLOB, 4 ScenarioStatus của ADR-011; nhắc Qdrant và Isaac Sim ĐÚNG một lần mỗi
+# thứ, ở bảng "đề gợi ý vs quyết định thực tế").
+#
+# Giữ local KHÔNG phải vì nó lỗi thời, mà vì repo chỉ được có MỘT tài liệu kiến
+# trúc tracked: ARCHITECTURE.md. Track thêm file này là dựng tài liệu thứ hai
+# chồng lấn — đúng thứ ADR-013 §Bối cảnh đã phải viết ADR để dọn.
+#
+# Luật: mọi thiết kế trong đây phải có bản tracked ở ARCHITECTURE.md hoặc ADR
+# trước. File này chỉ được trình bày lại, không được giữ độc quyền quyết định nào.
+# Đã chuyển đi: ví dụ từng node (→ §Ví dụ từng node), lộ trình 4 phase và mô hình
+# retail/wholesale (→ §Lộ trình bốn phase, §Hai chế độ sinh), hai ràng buộc batch
+# (→ ADR-014).
 /docs/overview.html
-/docs/plan.md
