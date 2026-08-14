@@ -60,13 +60,17 @@ ODD_CELL_WRONG_WAY = ODDCell(
     maneuver=ManeuverType.WRONG_WAY,
 )
 
-# Các test dưới đây gọi API OpenAI thật. CI đặt OPENAI_API_KEY=test-key nên
-# chúng fail 401 và làm đỏ mọi PR; chạy thật thì mỗi lần CI còn tốn tiền.
-# Chỉ chạy khi có key thật trong môi trường.
-_REAL_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# Các test dưới đây gọi API OpenAI THẬT: tốn tiền và mất ~25 giây.
+#
+# Phải bật bằng tay, không suy ra từ việc có key hay không. Máy dev nào cũng
+# export OPENAI_API_KEY để chạy app, nên nếu lấy sự tồn tại của key làm điều
+# kiện thì mỗi lần `pytest` — kể cả gate pre-push — sẽ gọi API chục lần mà
+# người chạy không hề biết mình đang tiêu tiền.
+#
+# Chạy có chủ đích:  RUN_LLM_TESTS=1 pytest tests/test_agents/test_nodes/
 requires_real_llm = pytest.mark.skipif(
-    not _REAL_API_KEY or _REAL_API_KEY == "test-key",
-    reason="Cần OPENAI_API_KEY thật; bỏ qua khi chạy CI với key giả",
+    os.getenv("RUN_LLM_TESTS") != "1",
+    reason="Test gọi API thật. Bật bằng RUN_LLM_TESTS=1",
 )
 
 # Danh sách test ODDCells

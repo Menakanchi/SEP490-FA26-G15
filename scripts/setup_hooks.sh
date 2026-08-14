@@ -12,7 +12,13 @@ cat > "$HOOK_FILE" <<'EOF'
 # has python3, python, or only the `py` launcher (Windows).
 bash scripts/_pyrun.sh scripts/log_antigravity.py --auto || true
 bash scripts/_pyrun.sh scripts/submit_log.py || true
-exit 0  # Never block push, even if either step fails
+
+# Gate lint/test. Nội dung gate nằm trong scripts/pre_push_check.sh (được track)
+# nên sửa nó về sau không cần chạy lại setup_hooks.sh.
+# Bỏ qua: SKIP_CHECK=1 git push
+bash scripts/pre_push_check.sh || exit 1
+
+exit 0
 EOF
 
 chmod +x "$HOOK_FILE"
