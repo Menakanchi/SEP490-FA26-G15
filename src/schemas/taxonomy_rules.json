@@ -29,7 +29,7 @@
     "unknown": ["khong xac dinh", "unknown"]
   },
   "road_type": {
-    "urban_straight": ["duong do thi thanh", "duong thanh", "duong trong pho", "duong 1 chieu", "duong phan lan", "lan o to", "lan oto"],
+    "urban_straight": ["duong do thi", "do thi", "duong pho", "duong thanh", "trong pho", "duong trong pho", "duong 1 chieu", "duong phan lan", "lan o to", "lan oto"],
     "highway": ["cao toc", "duong cao toc", "quoc lo", "expressway", "highway"],
     "intersection": ["nga tu", "nga ba", "giao lo", "nga 4", "nga 3", "giao lo co den"],
     "roundabout": ["vong xuyen", "vong xoay", "bui binh", "roundabout"],

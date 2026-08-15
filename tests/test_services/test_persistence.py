@@ -90,28 +90,69 @@ def test_persist_is_durable_pending_review_without_embedding(
     assert reopened.get_scenario(spec.scenario_id)["xosc_content"] == "<OpenSCENARIO />"
 
 
-def test_transaction_rolls_back_scenario_when_second_insert_fails(
+def test_transaction_rolls_back_scenario_when_second_write_fails(
     repository: ScenarioRepository, spec: ScenarioSpec
 ) -> None:
+    """Ghi hỏng nửa chừng thì **không** để lại scenario mồ côi.
+
+    Scenario ghi trước, generation_request ghi sau. Nếu chỉ câu đầu thành công
+    thì thư viện có một kịch bản không thuộc lần sinh nào — đếm coverage sai, và
+    không ai lần ngược ra được nó từ đâu ra.
+
+    Ép câu thứ hai hỏng bằng một giá trị không serialise được sang JSON.
+    """
+    with pytest.raises(PersistenceError):
+        repository.persist_pending_review(
+            request_id="req_broken",
+            request_description_vi="Câu hỏi gốc",
+            scenario_description_vi=spec.description_vi,
+            validation_mode="standard",
+            spec=spec,
+            xosc_content="<OpenSCENARIO />",
+            assumptions=[],
+            issue_history=[],
+            node_metrics={"khong_serialise_duoc": object()},
+        )
+    assert repository.get_scenario(spec.scenario_id) is None
+
+
+def test_existing_request_row_is_finalised_not_duplicated(repository: ScenarioRepository, spec: ScenarioSpec) -> None:
+    """Tầng HTTP tạo hàng request trước, workflow chốt lại sau.
+
+    `POST /generate` phải trả `request_id` ngay để client poll `GET /status`,
+    nên hàng `generation_requests` ra đời **trước** khi workflow chạy xong.
+    Persist mà insert thẳng vào đó là vi phạm khoá chính, cả transaction đổ, và
+    kịch bản sinh xong không lưu được — hỏng đúng ở bước cuối.
+    """
     now = datetime.now(UTC)
     with repository.engine.begin() as connection:
         connection.execute(
             insert(generation_requests).values(
-                request_id="req_duplicate",
-                description_vi="existing",
+                request_id="req_existing",
+                description_vi="Câu hỏi gốc",
                 validation_mode="standard",
-                status="failed",
+                status="running",
+                step="retrieve",
+                progress=25,
                 scenario_id=None,
                 issue_history=[],
                 node_metrics={},
-                failed_reason="expected",
                 created_at=now,
                 updated_at=now,
             )
         )
-    with pytest.raises(PersistenceError):
-        persist(repository, spec, request_id="req_duplicate")
-    assert repository.get_scenario(spec.scenario_id) is None
+
+    persist(repository, spec, request_id="req_existing")
+
+    with repository.engine.connect() as connection:
+        rows = connection.execute(select(generation_requests)).mappings().all()
+
+    assert len(rows) == 1, "không được đẻ thêm hàng thứ hai cho cùng một request"
+    assert rows[0]["status"] == "done"
+    assert rows[0]["step"] == "done"
+    assert rows[0]["progress"] == 100
+    assert rows[0]["scenario_id"] == spec.scenario_id
+    assert repository.get_scenario(spec.scenario_id) is not None
 
 
 def test_before_library_is_only_place_embedding_is_written(repository: ScenarioRepository, spec: ScenarioSpec) -> None:

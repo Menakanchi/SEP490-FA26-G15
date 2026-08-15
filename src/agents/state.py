@@ -32,6 +32,8 @@ class ForgeState(TypedDict, total=False):
 
     # -- vào ---------------------------------------------------------------
     user_query: str
+    limit: int
+    """Top-k cho ``retrieve``. Người dùng chọn ở FE; mặc định 3 (FR-03)."""
 
     # -- parse_intent (LLM) rồi with_defaults (code thuần) -----------------
     odd_query: ODDQuery
@@ -39,9 +41,21 @@ class ForgeState(TypedDict, total=False):
     odd_hints: ODDCell
     """``odd_query.with_defaults()``. Đây là thứ ``generate_draft`` được thấy."""
     assumptions: list[Assumption]
+    parsed_intent: dict
+    """Bốn trục dạng dict, kèm nhãn mô tả thô. Dành cho FE và cho ``retrieve``."""
+    actors: list[dict]
+    """Dàn diễn viên ``parse_intent`` đọc ra được, kèm vai ego/adversary.
+
+    Không nằm trong ``ODDQuery`` vì model đó mô tả bốn trục ODD, không mô tả
+    dàn diễn viên. Phải khai ở đây: LangGraph chỉ giữ những khoá được khai
+    trong schema, khoá lạ bị **bỏ im lặng** giữa hai node.
+    """
 
     # -- retrieve (code) ---------------------------------------------------
     examples: list[ScenarioSpec]
+    retrieved_examples: list[dict]
+    """Kết quả thô của retriever (id, title, similarity_score...). Đây là thứ FE
+    hiển thị; ``examples`` mới là spec đầy đủ dùng làm few-shot."""
 
     # -- generate_draft / repair_draft (LLM) -------------------------------
     raw_text: str

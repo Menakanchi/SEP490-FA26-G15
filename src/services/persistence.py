@@ -226,20 +226,40 @@ class ScenarioRepository:
                         created_at=now,
                     )
                 )
-                connection.execute(
-                    insert(generation_requests).values(
-                        request_id=request_id,
-                        description_vi=request_description_vi,
-                        validation_mode=validation_mode,
-                        status="done",
-                        scenario_id=spec.scenario_id,
-                        issue_history=issue_history,
-                        node_metrics=node_metrics,
-                        failed_reason=None,
-                        created_at=now,
-                        updated_at=now,
-                    )
+                # Hàng `generation_requests` có thể ĐÃ tồn tại: tầng HTTP tạo nó
+                # ngay khi nhận request để `GET /status` có gì mà trả về, rồi
+                # workflow mới chạy. Insert thẳng vào đó là vi phạm khoá chính,
+                # và cả transaction đổ — tức là sinh xong nhưng không lưu được.
+                #
+                # Update-trước-insert-sau thay vì `INSERT OR REPLACE`: cú pháp
+                # upsert của SQLite và Postgres khác nhau, mà ADR-011 chốt cùng
+                # một repository chạy trên cả hai.
+                finalised = {
+                    "description_vi": request_description_vi,
+                    "validation_mode": validation_mode,
+                    "status": "done",
+                    "step": "done",
+                    "progress": 100,
+                    "error": None,
+                    "scenario_id": spec.scenario_id,
+                    "issue_history": issue_history,
+                    "node_metrics": node_metrics,
+                    "failed_reason": None,
+                    "updated_at": now,
+                }
+                updated = connection.execute(
+                    update(generation_requests)
+                    .where(generation_requests.c.request_id == request_id)
+                    .values(**finalised)
                 )
+                if updated.rowcount == 0:
+                    connection.execute(
+                        insert(generation_requests).values(
+                            request_id=request_id,
+                            created_at=now,
+                            **finalised,
+                        )
+                    )
         except Exception as exc:
             raise PersistenceError("could not persist pending scenario") from exc
 
