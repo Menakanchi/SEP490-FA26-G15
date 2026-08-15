@@ -557,19 +557,32 @@ def seed_database() -> None:
             cursor.execute(
                 """
                 INSERT OR REPLACE INTO scenarios
-                (scenario_id, status, title, description_vi, spec, xosc_content, assumptions,
-                 tags, road_type, weather, actor_type, maneuver, verification, embedding,
-                 embedding_model, created_at)
-                VALUES (?, 'approved_library', ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                (scenario_id, status, title, description_vi, created_by, spec, xosc_content,
+                 assumptions, tags, road_type, weather, actor_type, maneuver, verification,
+                 embedding, embedding_model, created_at)
+                VALUES (?, 'approved_library', ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 """,
                 (
                     scenario["scenario_id"],
                     scenario["title"],
                     scenario["description_vi"],
+                    "seed-data",
                     json.dumps(spec, ensure_ascii=False),
                     _xosc_for(spec_obj),
-                    # Xuất xứ đi kèm dữ liệu, không nằm trong đầu người viết.
-                    json.dumps(["seed", f"carla:{scenario['carla'][0]}"], ensure_ascii=False),
+                    # Tag gồm bốn trục ODD (thứ người ta lọc theo) cộng xuất xứ.
+                    # Thư viện mà tag rỗng thì "gắn tag" chỉ là một cột trống.
+                    json.dumps(
+                        [
+                            odd["road_type"],
+                            odd["weather"],
+                            odd["actor_type"],
+                            odd["maneuver"],
+                            odd["specific_type"],
+                            odd["specific_action"],
+                            "seed",
+                        ],
+                        ensure_ascii=False,
+                    ),
                     odd["road_type"],
                     odd["weather"],
                     odd["actor_type"],

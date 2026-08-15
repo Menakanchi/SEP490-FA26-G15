@@ -536,3 +536,78 @@ async def test_sim_mode_opens_the_second_gate_automatically(client):
 
     # Vẫn chưa có job nào: cổng 2 mở ra để NGƯỜI duyệt, không phải để tự chạy.
     assert (await client.get("/api/v1/internal/jobs")).json()["jobs"] == []
+
+
+@pytest.mark.asyncio
+async def test_two_roles_are_recorded_separately(client):
+    """Đề bài đòi "ít nhất 2 vai trò: người tạo và người duyệt".
+
+    Không lưu ai tạo thì hệ thống có ĐÚNG MỘT vai trò, và không phân biệt được
+    người tự duyệt bài của mình với người duyệt hộ — hai chuyện đó trông y hệt
+    nhau trong dữ liệu.
+    """
+    with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
+        req_id = (
+            await client.post(
+                "/api/v1/generate",
+                json={
+                    "prompt": "Xe máy tạt đầu ô tô trên đường cao tốc",
+                    "validation_mode": "static",
+                    "created_by": "an.nguyen@vinuni.edu.vn",
+                },
+            )
+        ).json()["request_id"]
+        for _ in range(60):
+            status = (await client.get(f"/api/v1/status/{req_id}")).json()
+            if status.get("scenario_id") or status.get("step") == "failed":
+                break
+            await asyncio.sleep(0.05)
+
+    sc_id = status["scenario_id"]
+    detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
+    assert detail["created_by"] == "an.nguyen@vinuni.edu.vn"
+
+    await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_library",
+            "approved": True,
+            "reviewer": "binh.tran@vinuni.edu.vn",
+            "reason": "",
+        },
+    )
+    reviewed = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
+    assert reviewed["review_logs"][-1]["reviewer"] == "binh.tran@vinuni.edu.vn"
+    # Hai vai trò tách rời và đọc ngược lại được — đó là điều kiện tối thiểu để
+    # nói hệ thống có phân vai.
+    assert reviewed["created_by"] != reviewed["review_logs"][-1]["reviewer"]
+
+
+@pytest.mark.asyncio
+async def test_scenario_is_tagged_from_its_odd_cell(client):
+    """ "Thư viện lưu trữ có gắn tag" — cột `tags` luôn rỗng thì tính năng đó
+    chỉ tồn tại trên giấy: không lọc được gì, không nhóm được gì.
+
+    Bốn trục ODD gắn sẵn, cộng chữ người dùng gõ nếu parse_intent giữ được.
+    """
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    tags = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["tags"]
+
+    assert {"highway", "clear", "motorcycle", "cut_in"} <= set(tags)
+
+
+@pytest.mark.asyncio
+async def test_tags_can_be_replaced(client):
+    """PUT thay toàn bộ danh sách, không phải thêm vào — client gửi trạng thái cuối."""
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+
+    res = await client.put(
+        f"/api/v1/scenarios/{sc_id}/tags",
+        json={"tags": ["  Mưa Bão ", "regression", "regression", ""]},
+    )
+    # Chuẩn hoá: bỏ khoảng trắng, về chữ thường, bỏ trùng, bỏ rỗng.
+    assert res.json()["tags"] == ["mưa bão", "regression"]
+    assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["tags"] == ["mưa bão", "regression"]
+
+    assert (await client.put("/api/v1/scenarios/sc_99999/tags", json={"tags": []})).status_code == 404

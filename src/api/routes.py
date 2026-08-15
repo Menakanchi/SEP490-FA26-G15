@@ -28,6 +28,7 @@ from src.models.schemas import (
     ScenarioListResponse,
     ScenarioStatus,
     StatusResponse,
+    TagUpdateRequest,
     can_request_simulation,
     next_status_after_review,
     verification_from_execution,
@@ -106,6 +107,7 @@ async def _run_workflow(request_id: str) -> None:
         "limit": req.get("limit") or 3,
         "request_id": request_id,
         "validation_mode": req.get("validation_mode") or "static",
+        "created_by": req.get("created_by") or "unknown",
     }
 
     final: dict = {}
@@ -168,7 +170,7 @@ async def generate(body: GenerateRequest) -> GenerateResponse:
     # Ghi hàng request TRƯỚC khi chạy workflow: client nhận request_id rồi poll
     # ngay, nên hàng đó phải tồn tại trước. Node persist_pending_review sẽ chốt
     # nó thành done ở cuối luồng.
-    db.create_generation_request(request_id, body.prompt, body.validation_mode, body.limit)
+    db.create_generation_request(request_id, body.prompt, body.validation_mode, body.limit, created_by=body.created_by)
 
     asyncio.create_task(_run_workflow(request_id))
 
@@ -310,6 +312,27 @@ async def request_simulation(scenario_id: str) -> dict:
 
     db.update_scenario_status(scenario_id, ScenarioStatus.PENDING_SIM_REVIEW.value)
     return {"ok": True, "status": ScenarioStatus.PENDING_SIM_REVIEW.value}
+
+
+# ===========================================================================
+# PUT /scenarios/{scenario_id}/tags
+# ===========================================================================
+
+
+@router.put("/scenarios/{scenario_id}/tags")
+async def update_tags(scenario_id: str, body: TagUpdateRequest) -> dict:
+    """Thay toàn bộ tag của một kịch bản.
+
+    Thay chứ không thêm: client gửi danh sách cuối cùng nó muốn. Gộp thêm/bớt
+    thành hai endpoint khác nhau chỉ tạo cơ hội cho hai bên hiểu khác nhau về
+    trạng thái hiện tại.
+    """
+    if not db.get_scenario(scenario_id):
+        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' không tồn tại")
+
+    cleaned = list(dict.fromkeys(t.strip().lower() for t in body.tags if t.strip()))
+    db.set_tags(scenario_id, cleaned)
+    return {"ok": True, "tags": cleaned}
 
 
 # ===========================================================================

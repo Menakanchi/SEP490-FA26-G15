@@ -32,6 +32,8 @@ class ForgeState(TypedDict, total=False):
 
     # -- vào ---------------------------------------------------------------
     user_query: str
+    created_by: str
+    """Tên người gõ câu. Đề bài đòi hai vai trò tạo/duyệt; đây là vế thứ nhất."""
     limit: int
     """Top-k cho ``retrieve``. Người dùng chọn ở FE; mặc định 3 (FR-03)."""
 
