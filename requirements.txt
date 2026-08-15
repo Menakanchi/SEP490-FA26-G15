@@ -11,7 +11,10 @@ langchain-openai>=0.3.0
 langgraph>=0.2.0
 
 # Vector store: không có. ADR-013 chốt embedding nằm trong SQLite dưới dạng
-# BLOB, xếp hạng bằng cosine của numpy — không thêm dependency nào cho việc này.
+# BLOB, xếp hạng bằng cosine của numpy — không dựng service vector riêng.
+# numpy là dependency trực tiếp vì chính nó là "vector store": giải BLOB thành
+# float32 và tính cosine trên tập đã lọc (`src/services/library/retriever.py`).
+numpy>=2.0.0
 
 # Database — ADR-011: SQLite cho local/test, Supabase PostgreSQL cho bản deploy.
 # Cùng một repository layer qua SQLAlchemy Core; embedding là LargeBinary

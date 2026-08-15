@@ -65,7 +65,15 @@ def test_odd_matrix_is_560_cells() -> None:
     Mẫu số thật là ``SupportPolicy.denominator()`` — xem test ngay dưới.
     """
     assert len(RoadType) * len(Weather) * len(ActorType) * len(ManeuverType) == 560
-    assert set(ODDCell.model_fields) == {"road_type", "weather", "actor_type", "maneuver"}
+    assert set(ODDCell.model_fields) == {
+        "road_type",
+        "weather",
+        "actor_type",
+        "maneuver",
+        # Hai nhãn mô tả, không phải trục. Chúng không vào `key` nên không đổi mẫu số.
+        "specific_type",
+        "specific_action",
+    }
 
 
 def test_default_support_policy_matches_verified_converter_scope() -> None:
@@ -602,4 +610,4 @@ def test_odd_query_filter_keys_match_cell_axes() -> None:
         actor_type=ActorType.MOTORCYCLE,
         maneuver=ManeuverType.CUT_IN,
     )
-    assert set(full.as_filter()) == set(ODDCell.model_fields)
+    assert set(full.as_filter()) == {"road_type", "weather", "actor_type", "maneuver"}

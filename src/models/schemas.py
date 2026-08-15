@@ -38,7 +38,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import ClassVar, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
 
@@ -148,6 +148,21 @@ class ODDCell(ForgeModel):
     weather: Weather
     actor_type: ActorType
     maneuver: ManeuverType
+
+    # Hai trường dưới đây là **nhãn mô tả**, không phải trục ODD. Chúng giữ lại
+    # đúng chữ người dùng gõ ("xe khách 29 chỗ", "vượt ẩu tạt đầu") sau khi
+    # ``parse_intent`` đã quy nó về ô enum gần nhất. Không có chỗ này thì thông
+    # tin đó mất hẳn, và người đọc lại kịch bản không biết vì sao một câu nói về
+    # xe khách lại ra ``actor_type=truck``.
+    #
+    # Cố ý **không** đưa chúng vào ``key``: coverage đếm theo ô enum, và một
+    # trục thứ năm dạng chuỗi tự do sẽ làm mẫu số vô hạn.
+    specific_type: str | None = Field(
+        default=None, max_length=120, description="Loại phương tiện chi tiết theo lời người dùng, trước khi quy về enum"
+    )
+    specific_action: str | None = Field(
+        default=None, max_length=120, description="Hành vi chi tiết theo lời người dùng, trước khi quy về enum"
+    )
 
     @property
     def key(self) -> str:
@@ -317,6 +332,33 @@ class ODDQuery(ForgeModel):
     actor_type: ActorType | None = None
     maneuver: ManeuverType | None = None
 
+    specific_type: str | None = Field(
+        default=None, max_length=120, description="Loại phương tiện chi tiết theo lời người dùng"
+    )
+    specific_action: str | None = Field(
+        default=None, max_length=120, description="Hành vi chi tiết theo lời người dùng"
+    )
+
+    @field_validator("road_type", "weather", "actor_type", "maneuver", mode="before")
+    @classmethod
+    def _sentinel_means_empty(cls, value: object) -> object:
+        """Model hay trả ``"unknown"`` thay vì bỏ trống trường — coi đó là rỗng.
+
+        Trường rỗng ở đây có nghĩa **người dùng không nhắc tới trục này**, và
+        ``with_defaults()`` sẽ điền kèm một ``Assumption`` để reviewer thấy.
+        Một chuỗi ``"unknown"`` lọt qua thì Pydantic ném ``ValidationError`` và cả
+        request chết, dù nội dung nó nói đúng điều mà ``None`` đã nói.
+
+        Chỉ nhận các **sentinel rỗng**, cố ý không dịch từ vựng tiếng Việt ở đây:
+        ánh xạ *"mưa bão" → heavy_rain* là việc của ``parse_intent`` (bảng từ
+        khoá nằm ở ``src/schemas/taxonomy_rules.json``). Nhét nó vào contract thì
+        converter, retriever và persistence cùng thừa hưởng một bảng từ vựng mà
+        chúng không cần và không ai đi kiểm.
+        """
+        if isinstance(value, str) and value.strip().lower() in {"unknown", "none", "null", "n/a", ""}:
+            return None
+        return value
+
     inferred: list[ODDAxis] = Field(
         default_factory=list,
         description="Trục do parse_intent SUY RA, không phải người dùng gõ ra",
@@ -429,6 +471,8 @@ class ODDQuery(ForgeModel):
             weather=weather,
             actor_type=self.actor_type,
             maneuver=self.maneuver,
+            specific_type=self.specific_type,
+            specific_action=self.specific_action,
         )
         return cell, assumptions
 
@@ -483,6 +527,13 @@ class ActorSpec(ForgeModel):
     position: Position
     initial_speed_kmh: float = Field(..., ge=0.0, le=150.0)
     is_ego: bool = Field(False, description="Đúng một actor được đặt True")
+
+    # Cùng vai trò với ``ODDCell.specific_type``: giữ chữ người dùng gõ sau khi
+    # đã quy về ``category``. Converter không đọc trường này — nó chỉ chọn
+    # blueprint theo ``category`` — nên thêm giá trị lạ ở đây không làm vỡ .xosc.
+    specific_type: str | None = Field(
+        default=None, max_length=120, description="Loại phương tiện chi tiết theo lời người dùng"
+    )
 
 
 class TriggerCondition(ForgeModel):
@@ -1103,16 +1154,74 @@ class LibraryEntry(ForgeModel):
 
 
 # ---------------------------------------------------------------------------
-# Còn sót từ template — KHÔNG thuộc hợp đồng của Forge
+# Hợp đồng HTTP giữa frontend và backend
 # ---------------------------------------------------------------------------
-# `src/api/routes.py` của template còn dùng hai model này. Giữ tạm để app không
-# vỡ. Xoá cả khối này cùng lúc với route `/chat` khi Chi dựng router thật.
+# Tách khỏi domain model (``ScenarioSpec``, ``ReviewDecision``, ...) có chủ đích:
+# một bên là hình dạng JSON đi qua dây, bên kia là hình dạng dữ liệu nội bộ.
+# Trộn hai thứ nghĩa là đổi một cột trong DB sẽ đổi luôn payload của frontend —
+# và người sửa DB không có cách nào biết mình vừa làm vỡ FE.
 
 
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=5000, description="Tin nhắn từ user")
+GateType = Literal["before_library", "before_sim"]
+"""Cổng duyệt dưới dạng chuỗi thuần cho tầng HTTP.
+
+``Literal`` chứ không phải ``ReviewGate`` vì frontend gửi JSON, không gửi enum
+Python. Quy đổi sang ``ReviewGate`` xảy ra trong route — đúng một chỗ, và chỗ đó
+ném 400 nếu chuỗi lạ, thay vì để một giá trị không hợp lệ trôi vào tầng dưới.
+"""
 
 
-class ChatResponse(BaseModel):
-    response: str = Field(..., description="Phản hồi từ agent")
-    analysis: str = Field(default="", description="Phân tích nội bộ")
+class GenerateRequest(ForgeModel):
+    """``POST /generate`` — body từ frontend.
+
+    ``prompt`` giữ **nguyên văn** câu tiếng Việt (FR-01): đây là thứ được lưu lại
+    và đem đối chiếu khi đo ``intent_match``, nên không được chuẩn hoá ở biên.
+    """
+
+    prompt: str = Field(..., min_length=1, max_length=5000, description="Câu mô tả tiếng Việt, giữ nguyên văn")
+    validation_mode: ValidationMode = "static"
+    limit: int = Field(3, ge=1, le=20, description="Số kịch bản mẫu cần retrieve (top-k)")
+
+
+class GenerateResponse(ForgeModel):
+    """``POST /generate`` — response. Client dùng ``request_id`` để poll ``/status``."""
+
+    request_id: str
+
+
+class StatusResponse(ForgeModel):
+    """``GET /status/{request_id}`` — response cho polling.
+
+    ``step`` là tên node đang chạy, hoặc ``done``/``failed``. ``scenario_id`` chỉ
+    có giá trị khi ``step == "done"`` — trước đó chưa có scenario nào tồn tại,
+    và FR-14 cấm đẻ ra scenario giả cho một lần sinh chưa xong.
+    """
+
+    request_id: str
+    step: str = Field("queued", description="Tên node đang chạy, hoặc done/failed")
+    progress: int = Field(0, ge=0, le=100)
+    scenario_id: str | None = None
+    error: str | None = None
+
+
+class ReviewApiRequest(ForgeModel):
+    """``POST /review`` — quyết định HITL tại một cổng duyệt."""
+
+    scenario_id: str = Field(..., min_length=1)
+    gate: GateType
+    approved: bool
+    reviewer: str = Field(..., min_length=1, description="Tên người chịu trách nhiệm duyệt")
+    reason: str = Field("", max_length=1000, description="Bắt buộc khi approved=False")
+
+
+class ScenarioListResponse(ForgeModel):
+    """``GET /scenarios`` — wrapper có ``total`` để frontend phân trang.
+
+    ``items`` để ``list[dict]`` chứ không phải ``list[ScenarioSpec]``: danh sách
+    thư viện trả về cả trạng thái, review log và metadata retrieval — những thứ
+    không thuộc spec. Ép nó thành ``ScenarioSpec`` sẽ hoặc mất dữ liệu, hoặc kéo
+    mấy trường HTTP đó ngược vào domain model.
+    """
+
+    items: list[dict] = Field(default_factory=list)
+    total: int = 0
