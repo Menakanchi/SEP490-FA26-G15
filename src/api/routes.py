@@ -245,7 +245,24 @@ async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) ->
         job_id = f"job_{uuid.uuid4().hex[:8]}"
         db.create_scenario_job(job_id, target_id, scenario["xosc_content"])
 
-    return {"ok": True}
+    # `validation_mode = "sim"` là người dùng đã nói TỪ ĐẦU rằng họ muốn kiểm
+    # chứng bằng mô phỏng. Duyệt xong cổng 1 thì mở luôn cổng 2 cho họ, thay vì
+    # bắt bấm thêm một nút nữa để nói lại điều đã nói.
+    #
+    # Vẫn KHÔNG tự chạy CARLA: cổng BEFORE_SIM còn nguyên, người vẫn phải gật
+    # trước khi tốn GPU. Cái tự động ở đây chỉ là bước chuyển trạng thái, không
+    # phải quyết định tiêu tài nguyên.
+    auto_opened = False
+    if body.approved and gate is ReviewGate.BEFORE_LIBRARY:
+        request = db.get_request_for_scenario(target_id) or {}
+        wants_sim = (request.get("validation_mode") or "static") == "sim"
+        has_xosc = len(scenario.get("xosc_content") or "") >= 100
+        if wants_sim and has_xosc:
+            db.update_scenario_status(target_id, ScenarioStatus.PENDING_SIM_REVIEW.value)
+            auto_opened = True
+            logger.info("%s chọn chế độ sim — mở sẵn cổng BEFORE_SIM", target_id)
+
+    return {"ok": True, "sim_gate_opened": auto_opened}
 
 
 # ===========================================================================
@@ -277,6 +294,17 @@ async def request_simulation(scenario_id: str) -> dict:
             status_code=409,
             detail=(
                 f"Chỉ kịch bản đã qua BEFORE_LIBRARY mới xin chạy mô phỏng được; kịch bản này đang ở '{current.value}'"
+            ),
+        )
+
+    if len(scenario.get("xosc_content") or "") < 100:
+        # Không có file thì không có gì để chạy. Chặn ở đây thay vì để worker
+        # nhận một job rỗng rồi chết bằng lỗi XML chẳng nói gì về nguyên nhân.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Kịch bản chưa biên dịch được thành .xosc nên không chạy mô phỏng được; "
+                "tổ hợp ODD của nó nằm ngoài phạm vi converter (ADR-016)."
             ),
         )
 
@@ -370,9 +398,18 @@ async def get_scenario_xosc(scenario_id: str) -> Response:
             detail="Chỉ kịch bản đã qua duyệt BEFORE_LIBRARY mới được phép tải file .xosc",
         )
 
-    xosc_content = (
-        scenario.get("xosc_content") or f'<?xml version="1.0"?>\n<OpenSCENARIO><!-- {scenario_id} --></OpenSCENARIO>'
-    )
+    xosc_content = scenario.get("xosc_content") or ""
+    if len(xosc_content) < 100:
+        # Thà 409 còn hơn phát ra một file trông như thật mà rỗng ruột. Ca này
+        # xảy ra với kịch bản nằm ngoài phạm vi converter (ADR-016): chúng vẫn
+        # hữu ích cho retrieval nhưng chưa biên dịch được thành .xosc.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Kịch bản này chưa biên dịch được thành .xosc — tổ hợp ODD của nó "
+                "nằm ngoài phạm vi converter hiện tại (ADR-016)."
+            ),
+        )
     return Response(content=xosc_content, media_type="application/xml")
 
 

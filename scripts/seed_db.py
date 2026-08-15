@@ -460,7 +460,7 @@ def _searchable_text(scenario: dict) -> str:
     )
 
 
-def _validated_spec(scenario: dict) -> dict:
+def _validated_spec(scenario: dict):
     """Dựng ``ScenarioSpec`` và **bắt nó đi qua đúng validator của sản phẩm**.
 
     Đây là chỗ trả lời một câu hỏi thẳng: seed là dữ liệu tự viết, vậy lấy gì
@@ -507,7 +507,29 @@ def _validated_spec(scenario: dict) -> dict:
         scenario_id=scenario["scenario_id"],
         description_vi=scenario["description_vi"],
     )
-    return spec.model_dump(mode="json")
+    return spec
+
+
+def _xosc_for(spec) -> str:
+    """Biên dịch spec thành `.xosc` thật, hoặc chuỗi rỗng nếu ngoài phạm vi.
+
+    Bản trước ghi cứng ``"<OpenSCENARIO/>"`` làm chỗ giữ chỗ. Nó **trông như**
+    một file hợp lệ nên mọi thứ phía sau tưởng có dữ liệu: tải về được một file
+    rỗng, và gửi sang worker thì ScenarioRunner chết bằng lỗi XML chẳng nói gì
+    về nguyên nhân. Thà để rỗng hẳn rồi từ chối tử tế còn hơn phát ra một file
+    giả trông như thật.
+
+    Sáu trong mười seed nằm ngoài phạm vi converter (ADR-016 chỉ có anchor cao
+    tốc) — chúng vẫn hữu ích cho retrieval theo văn bản và nhãn ODD, chỉ là
+    không chạy mô phỏng được.
+    """
+    from src.agents.nodes.convert_xosc_node import convert_spec_to_xosc
+
+    try:
+        return convert_spec_to_xosc(spec)
+    except Exception as exc:
+        logger.info("  %s: chưa biên dịch được .xosc (%s)", spec.scenario_id, exc)
+        return ""
 
 
 def seed_database() -> None:
@@ -530,7 +552,8 @@ def seed_database() -> None:
         for scenario in SEED_SCENARIOS:
             odd = scenario["odd"]
             vector = generate_text_embedding(_searchable_text(scenario))
-            spec = _validated_spec(scenario)
+            spec_obj = _validated_spec(scenario)
+            spec = spec_obj.model_dump(mode="json")
             cursor.execute(
                 """
                 INSERT OR REPLACE INTO scenarios
@@ -544,7 +567,7 @@ def seed_database() -> None:
                     scenario["title"],
                     scenario["description_vi"],
                     json.dumps(spec, ensure_ascii=False),
-                    "<OpenSCENARIO/>",
+                    _xosc_for(spec_obj),
                     # Xuất xứ đi kèm dữ liệu, không nằm trong đầu người viết.
                     json.dumps(["seed", f"carla:{scenario['carla'][0]}"], ensure_ascii=False),
                     odd["road_type"],
