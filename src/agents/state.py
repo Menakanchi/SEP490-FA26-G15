@@ -8,6 +8,7 @@ from src.models.schemas import (
     ODDQuery,
     ScenarioDraft,
     ScenarioSpec,
+    ScenarioStatus,
     ValidationIssue,
 )
 
@@ -57,6 +58,12 @@ class ForgeState(TypedDict, total=False):
     spec: ScenarioSpec
     xosc_content: str
     scenario_id: str
+    request_id: str
+    validation_mode: str
+    model_used: str
+    node_metrics: dict
+    tags: list[str]
+    scenario_status: ScenarioStatus
 
     # -- kết ---------------------------------------------------------------
     issue_history: list[ValidationIssue]

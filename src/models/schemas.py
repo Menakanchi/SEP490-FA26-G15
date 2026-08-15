@@ -1088,6 +1088,8 @@ class LibraryEntry(ForgeModel):
         vẫn hiển thị, chỉ có điều va chạm bị gán cho sai kịch bản. Nó làm hỏng
         cả retrieval eval lẫn ``adversarial_found`` mà không ai thấy.
         """
+        if not self.approved_by.strip():
+            raise ValueError("library entry phải ghi rõ người duyệt BEFORE_LIBRARY")
         if self.spec.scenario_id != self.scenario_id:
             raise ValueError(
                 f"spec.scenario_id={self.spec.scenario_id!r} lệch với entry scenario_id={self.scenario_id!r}"

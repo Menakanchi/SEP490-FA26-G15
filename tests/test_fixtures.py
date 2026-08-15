@@ -287,6 +287,24 @@ def test_library_entry_ids_must_agree() -> None:
         LibraryEntry.model_validate(entry)
 
 
+@pytest.mark.parametrize("approved_by", ["", "   "])
+def test_library_entry_requires_approver(approved_by: str) -> None:
+    spec = _load(FIXTURES / "scenario_specs" / "sc_001.json")
+    with pytest.raises(ValidationError, match="người duyệt BEFORE_LIBRARY"):
+        LibraryEntry.model_validate(
+            {
+                "scenario_id": spec["scenario_id"],
+                "title": spec["title"],
+                "description_vi": spec["description_vi"],
+                "odd": spec["odd"],
+                "xosc_path": "outputs/sc_001.xosc",
+                "spec": spec,
+                "approved_by": approved_by,
+                "created_at": "2026-07-29T10:00:00",
+            }
+        )
+
+
 def test_criterion_status_matches_scenario_runner_vocabulary() -> None:
     """Từ vựng phải khớp ScenarioRunner in ra, nếu không parse sẽ hỏng im lặng."""
     assert {s.value for s in CriterionStatus} == {
