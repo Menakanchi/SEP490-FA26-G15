@@ -77,10 +77,12 @@ class ForgeState(TypedDict, total=False):
 
 
 class AgentState(TypedDict, total=False):
-    """Còn sót từ template — ``nodes/example_node.py`` và route ``/chat`` còn dùng.
+    """Còn sót từ template — chỉ ``nodes/example_node.py`` và ``build_graph()``
+    trong ``agents/graph.py`` còn dùng.
 
-    Xoá cùng lúc với ``ChatRequest``/``ChatResponse`` trong ``schemas.py`` khi
-    graph thật thay xong graph mẫu.
+    Route ``/chat`` đã bỏ cùng ``ChatRequest``/``ChatResponse``. Xoá nốt khối
+    này khi ``build_persistence_tail()`` nối xong đủ 7 node và graph mẫu không
+    còn ai gọi.
     """
 
     query: str

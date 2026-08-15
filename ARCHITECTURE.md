@@ -324,12 +324,14 @@ Thuật toán explore/exploit chưa chốt.
 | `schemas.py`, fixtures | ✅ Có |
 | Routing và architecture tests | ✅ Có |
 | CARLA/ScenarioRunner smoke test | ✅ Toolchain pass |
-| Graph 7 nodes | ⏳ Graph hiện vẫn là template |
+| Graph 7 nodes | ⏳ Có `parse_intent`, `retrieve`, `generate_draft`, `validate`, `convert_xosc`, `persist_pending_review`; thiếu `repair_draft`, và chưa nối thành một graph |
 | Static validator (`validate_node`) | ✅ Có — schema, invariants, static geometry |
 | Templates và converter (`convert_xosc`) | ✅ Có — 1 anchor Town04, 7 maneuver, golden validate theo XSD (ADR-016) |
-| `Retriever` (SQLite BLOB + cosine) và retrieval baseline | ⏳ Chưa có |
-| SQLite persistence, review/download/job API | ⏳ Chưa có |
-| Frontend và preview | ⏳ Chưa có |
+| `parse_intent` | ✅ Có — rule-based theo `taxonomy_rules.json` trước, LLM chỉ chạy khi rule thiếu trục bắt buộc |
+| `Retriever` (SQLite BLOB + cosine) | ✅ Có — `WHERE` bốn trục ODD + cosine numpy; retrieval baseline bằng số thật thì chưa |
+| SQLite persistence | ✅ Có — `ScenarioRepository` (SQLAlchemy Core) là nguồn schema duy nhất |
+| API generate/status/review/download/job | ✅ Có route và status gate 403; luồng sinh vẫn là stub, chưa gọi graph thật |
+| Frontend và preview 2D | ✅ Có — hai luồng Creator/Reviewer, preview SVG |
 | GPU worker | ⏳ Chưa có implementation |
 | Behavior checker (Phase 3) | ⏳ Chưa có |
 | Agent layer + closed-loop (Phase 4) | ⏳ Chưa có — ràng buộc lên Phase 1 ở ADR-014 |

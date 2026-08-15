@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from pydantic import BaseModel
 
 from src.config import get_settings
+
+# ADR-006. Đi kèm số chiều 1536 mà cột BLOB của ADR-013 đang giả định.
+EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_DIM = 1536
 
 # =============================================================================
 # Constants cho model escalation
@@ -61,6 +65,25 @@ def get_llm() -> ChatOpenAI:
         api_key=settings.openai_api_key,
         temperature=settings.llm_temperature,
     )
+
+
+def get_embeddings() -> OpenAIEmbeddings | None:
+    """Embedder cho retrieval, hoặc ``None`` khi chưa cấu hình được key.
+
+    ADR-006 chốt ``text-embedding-3-small``; ADR-013 chốt vector sống trong cột
+    BLOB của chính SQLite. Kích thước 1536 là **một phần của hợp đồng lưu trữ**,
+    không phải tham số tuỳ chỉnh: đổi nó là phải re-embed toàn bộ corpus, nên nó
+    nằm ở đây cùng tên model chứ không rải ra chỗ gọi.
+
+    Trả ``None`` thay vì ném khi thiếu key. Người gọi duy nhất là
+    ``retriever.generate_text_embedding``, và nó có sẵn đường lui deterministic
+    theo hash để unit test chạy offline — biến "thiếu key" thành một exception ở
+    đây sẽ làm hỏng đúng đường lui đó.
+    """
+    settings = get_settings()
+    if not settings.openai_api_key.strip():
+        return None
+    return OpenAIEmbeddings(model=EMBEDDING_MODEL, api_key=settings.openai_api_key)
 
 
 # Model Escalation

@@ -44,6 +44,9 @@ data/*
 logs/
 *.log
 
+# Chỗ nháp cá nhân — không bao giờ track.
+scratch/
+
 # Test coverage
 htmlcov/
 .coverage

@@ -81,6 +81,16 @@ generation_requests = Table(
     Column("failed_reason", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    # Ba cột dưới chỉ phục vụ polling `GET /status/{request_id}`: chúng nói lần
+    # sinh này đang ở node nào, không nói kết quả của nó. Tách bảng riêng cho
+    # tiến độ thì mỗi lần poll thành hai truy vấn trên hai bảng có thể lệch nhau;
+    # để chung một hàng thì tiến trình và kết quả không bao giờ rời nhau.
+    Column("step", String(32), nullable=False, server_default="queued"),
+    Column("progress", Integer, nullable=False, server_default="0"),
+    Column("error", Text, nullable=True),
+    # Top-k người dùng chọn ở FE. Lưu lại vì nó đổi kết quả retrieval — không có
+    # nó thì không tái dựng được một lần sinh đã xảy ra.
+    Column("retrieve_limit", Integer, nullable=False, server_default="3"),
 )
 
 review_decisions = Table(
@@ -104,6 +114,10 @@ scenario_jobs = Table(
     Column("claimed_by", String(255), nullable=True),
     Column("claimed_at", DateTime(timezone=True), nullable=True),
     Column("result", JSON, nullable=True),
+    # Bản sao .xosc gửi kèm cho worker. Worker GPU chạy ở máy khác và không nối
+    # được vào bảng `scenarios`, nên job phải tự mang nội dung đi (ADR-001: thứ
+    # đi qua ranh giới máy là chuỗi XML, không phải object).
+    Column("xosc_content", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
