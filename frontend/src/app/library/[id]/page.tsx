@@ -16,7 +16,6 @@ import {
   CheckCircle2,
   XCircle,
   Shield,
-  Loader2,
   Timer,
 } from "lucide-react";
 import { getScenarioById } from "@/services/api";
