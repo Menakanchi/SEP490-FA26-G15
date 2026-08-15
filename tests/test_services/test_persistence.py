@@ -13,6 +13,7 @@ from src.services.persistence import (
     PersistenceError,
     ScenarioRepository,
     decode_embedding,
+    encode_embedding,
     generation_requests,
     make_engine,
     metadata,
@@ -191,3 +192,48 @@ def test_before_sim_approval_creates_job_atomically(repository: ScenarioReposito
         job = connection.execute(select(scenario_jobs)).mappings().one()
     assert job["scenario_id"] == spec.scenario_id
     assert repository.get_scenario(spec.scenario_id)["status"] == ScenarioStatus.APPROVED_LIBRARY.value
+
+
+def test_embedding_codec_has_one_definition() -> None:
+    """Đường ``struct`` và đường ``numpy`` phải là **cùng một định dạng**.
+
+    Hai chỗ đọc/ghi cột ``scenarios.embedding``: ``persistence`` dùng ``struct``,
+    ``library/retriever`` dùng ``np.frombuffer`` để lấy view không copy. Đó là
+    một sự đánh đổi tốc độ có chủ đích, nhưng nó chỉ an toàn khi hai đường mô tả
+    đúng cùng một byte layout.
+
+    Nếu lệch, vector **không hỏng** — nó *lệch*. Cosine vẫn trả về một con số,
+    chỉ là con số vô nghĩa, và retrieval xếp hạng sai mà không có lỗi nào bắn
+    ra. Đúng loại hỏng im lặng mà ``ForgeModel(extra="forbid")`` sinh ra để
+    chặn ở chỗ khác.
+    """
+    import numpy as np
+
+    from src.services.persistence import EMBEDDING_DTYPE, EMBEDDING_ITEMSIZE
+
+    values = [0.0, 1.0, -1.0, 0.5, 3.4028234663852886e38, 1.1754943508222875e-38]
+    blob = encode_embedding(values)
+
+    assert len(blob) == len(values) * EMBEDDING_ITEMSIZE
+    assert decode_embedding(blob) == pytest.approx(values)
+    assert np.frombuffer(blob, dtype=EMBEDDING_DTYPE).tolist() == pytest.approx(values)
+
+    # Và ngược lại: numpy ghi ra thì struct phải đọc lại được.
+    from_numpy = np.asarray(values, dtype=EMBEDDING_DTYPE).tobytes()
+    assert from_numpy == blob
+
+
+def test_embedding_blob_rejects_truncated_input() -> None:
+    """Độ dài không chia hết cho 4 nghĩa là BLOB bị cắt — đừng đoán, hãy nổ."""
+    with pytest.raises(ValueError, match="divisible by four"):
+        decode_embedding(b"\x00\x00\x00")
+
+
+def test_pack_blob_embedding_matches_the_shared_codec() -> None:
+    """Bí danh phía retriever không được là một bản cài đặt thứ hai."""
+    import numpy as np
+
+    from src.services.library.retriever import pack_blob_embedding
+
+    vector = np.asarray([0.25, -0.5, 2.0], dtype=np.float32)
+    assert pack_blob_embedding(vector) == encode_embedding(vector.tolist())

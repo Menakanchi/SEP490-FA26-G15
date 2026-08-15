@@ -206,7 +206,7 @@ def _searchable_text(scenario: dict) -> str:
 def seed_database() -> None:
     from src.config import get_settings
     from src.services.db import init_db
-    from src.services.library.retriever import generate_text_embedding
+    from src.services.library.retriever import generate_text_embedding, pack_blob_embedding
 
     init_db()
 
@@ -246,7 +246,7 @@ def seed_database() -> None:
                     odd["weather"],
                     odd["actor_type"],
                     odd["maneuver"],
-                    vector.astype("<f4").tobytes(),
+                    pack_blob_embedding(vector),
                     "text-embedding-3-small",
                 ),
             )
