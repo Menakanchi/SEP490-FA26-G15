@@ -283,3 +283,78 @@ async def test_internal_worker_jobs(client):
     jobs_res = await client.get("/api/v1/internal/jobs")
     assert jobs_res.status_code == 200
     assert "jobs" in jobs_res.json()
+
+
+@pytest.mark.asyncio
+async def test_request_sim_opens_the_second_gate(client):
+    """`approved_library` -> `pending_sim_review`, và chỉ từ đó.
+
+    Cổng 2 là xin phép **trước khi tiêu GPU**, không phải xem xong rồi quyết giữ.
+    Đề bài đòi *"kỹ sư phải phê duyệt trước khi đưa vào bộ kiểm thử"*, nên hệ
+    thống không được tự đẩy job vào CARLA.
+    """
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+
+    # Chưa qua cổng 1 thì chưa xin chạy sim được.
+    too_early = await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
+    assert too_early.status_code == 409
+
+    await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_library",
+            "approved": True,
+            "reviewer": "Cong",
+            "reason": "",
+        },
+    )
+
+    opened = await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
+    assert opened.status_code == 200
+    assert opened.json()["status"] == "pending_sim_review"
+
+    # Chưa duyệt cổng 2 thì chưa có job nào cho worker.
+    assert (await client.get("/api/v1/internal/jobs")).json()["jobs"] == []
+
+
+@pytest.mark.asyncio
+async def test_before_sim_creates_a_job_and_keeps_the_scenario(client):
+    """Duyệt cổng 2 tạo job; **từ chối cũng không xoá kịch bản**.
+
+    Số phận kịch bản đã chốt ở cổng 1 (ADR-011 §3.3) — cả hai nhánh của cổng 2
+    đều trả nó về `approved_library`. Cổng 2 chỉ nói "có chạy hay không".
+    """
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    for gate, approved in (("before_library", True),):
+        await client.post(
+            "/api/v1/review",
+            json={
+                "scenario_id": sc_id,
+                "gate": gate,
+                "approved": approved,
+                "reviewer": "Cong",
+                "reason": "",
+            },
+        )
+    await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
+
+    await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_sim",
+            "approved": True,
+            "reviewer": "Cong",
+            "reason": "",
+        },
+    )
+
+    jobs = (await client.get("/api/v1/internal/jobs")).json()["jobs"]
+    assert len(jobs) == 1
+    assert jobs[0]["scenario_id"] == sc_id
+    # Worker chạy ở máy khác, không nối được vào DB — job phải tự mang .xosc đi.
+    assert jobs[0]["xosc_content"].startswith("<?xml")
+
+    detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
+    assert detail["status"] == "approved_library", "cổng 2 không đổi số phận kịch bản"

@@ -18,8 +18,15 @@ import {
   RefreshCw,
   Layers,
   Sparkle,
+  PlayCircle,
 } from "lucide-react";
-import { getScenarios, getScenarioById, postReview, downloadXosc } from "@/services/api";
+import {
+  getScenarios,
+  getScenarioById,
+  postReview,
+  downloadXosc,
+  requestSimulation,
+} from "@/services/api";
 import SVG2DRenderer from "@/components/SVG2DRenderer";
 import type { ScenarioItem, ScenarioDetail, ReviewGate } from "@/types";
 import {
@@ -54,6 +61,7 @@ function ReviewPageContent() {
   const [formErrors, setFormErrors] = useState<{ reviewer?: string; reason?: string }>({});
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [xmlCopied, setXmlCopied] = useState(false);
+  const [requestingSim, setRequestingSim] = useState(false);
 
   // Fetch List
   // Cố ý KHÔNG `setListLoading(true)` ở đây. `listLoading` khởi tạo đã là true
@@ -199,6 +207,32 @@ function ReviewPageContent() {
       navigator.clipboard.writeText(scenario.xosc_content);
       setXmlCopied(true);
       setTimeout(() => setXmlCopied(false), 2000);
+    }
+  };
+
+  /**
+   * Mở cổng duyệt thứ hai. Không chạy CARLA — chỉ chuyển sang chờ duyệt
+   * BEFORE_SIM. Nạp lại chi tiết sau khi xong để form duyệt đổi sang cổng 2.
+   */
+  const handleRequestSim = async () => {
+    if (!scenario) return;
+    setRequestingSim(true);
+    try {
+      await requestSimulation(scenario.scenario_id);
+      const fresh = await getScenarioById(scenario.scenario_id);
+      setScenario(fresh);
+      setToast({
+        type: "success",
+        msg: "Đã mở cổng BEFORE_SIM. Duyệt tiếp thì job mới vào hàng đợi worker.",
+      });
+      await fetchScenarioList();
+    } catch (err) {
+      setToast({
+        type: "error",
+        msg: err instanceof Error ? err.message : "Không mở được cổng mô phỏng",
+      });
+    } finally {
+      setRequestingSim(false);
     }
   };
 
@@ -629,6 +663,21 @@ function ReviewPageContent() {
                     >
                       <Copy className="w-3.5 h-3.5" />
                       {xmlCopied ? "Đã chép!" : "Sao chép"}
+                    </button>
+                    <button
+                      onClick={handleRequestSim}
+                      disabled={scenario.status !== "approved_library" || requestingSim}
+                      title={
+                        scenario.status === "approved_library"
+                          ? "Mở cổng duyệt thứ hai để xin chạy trên CARLA"
+                          : "Chỉ kịch bản đã vào thư viện mới xin chạy mô phỏng được"
+                      }
+                      className={`btn-primary btn-ghost text-xs px-3 py-1.5 flex items-center gap-1 border border-slate-700/40 ${
+                        scenario.status !== "approved_library" ? "opacity-40 cursor-not-allowed" : ""
+                      }`}
+                    >
+                      <PlayCircle className="w-3.5 h-3.5" />
+                      {requestingSim ? "Đang gửi..." : "Yêu cầu chạy mô phỏng"}
                     </button>
                     <button
                       onClick={handleDownloadXml}

@@ -1,0 +1,270 @@
+"""Worker GPU: kéo job từ backend, chạy CARLA, trả ``ExecutionResult``.
+
+Issue #27. Chạy trên máy có GPU và có CARLA — **không** phải trên backend.
+
+    worker/.venv/bin/python worker/runner.py
+    worker/.venv/bin/python worker/runner.py --once      # chạy đúng một job rồi thoát
+
+Vì sao **pull** chứ không phải backend push xuống
+-------------------------------------------------
+Máy GPU là máy cá nhân sau NAT, không có IP công khai và không mở cổng. Backend
+chạy trên Render, nó không thể gọi tới đây. Nên chiều gọi phải ngược: worker hỏi
+backend "có việc không". Đổi lại, backend không cần biết worker đang ở đâu, và
+tắt/bật worker không ảnh hưởng gì tới web (NFR-02).
+
+Ranh giới với ``src/``
+----------------------
+File này **được phép** ``import carla``; ``src/`` thì không bao giờ (ADR-001).
+Thứ đi qua ranh giới hai máy là chuỗi XML trong ``ScenarioJob.xosc_content``, và
+JSON của ``ExecutionResult`` đi ngược lại — không phải object Python, vì hai venv
+ghim hai bản Python khác nhau.
+
+Phụ thuộc: chỉ thư viện chuẩn. ``worker/.venv`` ghim ``carla==0.9.15`` và
+``setuptools<81``; thêm dependency vào đó là mời gãy toolchain.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+BACKEND = os.environ.get("FORGE_BACKEND", "http://localhost:8000").rstrip("/")
+CARLA_ROOT = Path(os.environ.get("CARLA_ROOT", "/mnt/c/CARLA_0.9.15/WindowsNoEditor"))
+SR_ROOT = Path(os.environ.get("SR_ROOT", str(Path.home() / "scenario_runner")))
+WORKER_PYTHON = Path(os.environ.get("WORKER_PYTHON", sys.executable))
+CARLA_HOST = os.environ.get("CARLA_HOST", "127.0.0.1")
+CARLA_PORT = os.environ.get("CARLA_PORT", "2000")
+
+TM_PORT = os.environ.get("CARLA_TM_PORT", "8005")
+"""Cổng TrafficManager của CARLA.
+
+**Không để mặc định.** ScenarioRunner mặc định 8000, mà 8000 cũng là cổng
+backend chạy trên cùng máy lúc dev — và đó đúng là cấu hình khi demo. Trùng cổng
+thì ScenarioRunner chết bằng một thông báo chẳng liên quan gì tới nguyên nhân:
+
+    RuntimeError: trying to create rpc server for traffic manager;
+    but the system failed to create because of bind error
+"""
+
+SR_TIMEOUT_S = os.environ.get("SR_TIMEOUT_S", "60")
+"""Timeout CARLA chờ tick, truyền cho ScenarioRunner."""
+
+RUN_TIMEOUT_S = int(os.environ.get("RUN_TIMEOUT_S", "300"))
+"""Trần cứng cho cả tiến trình. ScenarioRunner có lúc treo mà không tự thoát."""
+
+POLL_INTERVAL_S = int(os.environ.get("POLL_INTERVAL_S", "5"))
+
+OUT_DIR = Path(os.environ.get("WORKER_OUT_DIR", str(Path(__file__).parent / "outputs")))
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+log = logging.getLogger("worker")
+
+
+# ---------------------------------------------------------------------------
+# HTTP
+# ---------------------------------------------------------------------------
+
+
+def _get(path: str) -> dict:
+    with urllib.request.urlopen(f"{BACKEND}{path}", timeout=30) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _post(path: str, payload: dict) -> dict:
+    req = urllib.request.Request(
+        f"{BACKEND}{path}",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# Chạy một job
+# ---------------------------------------------------------------------------
+
+
+def to_execution_result(job: dict, returncode: int, criteria_json: dict | None, error: str | None) -> dict:
+    """Output ScenarioRunner -> hình dạng ``ExecutionResult``.
+
+    **Đây là chỗ dễ sai nhất của cả worker.** JSON của ScenarioRunner *cũng* có
+    trường ``success``, nhưng nó là AND của mọi criteria — tức ``false`` khi **có
+    va chạm**, mà va chạm chính là thứ Forge muốn dựng ra. Chép thẳng trường đó
+    sang ``ExecutionResult.success`` sẽ đếm mọi kịch bản thành công thành "chạy
+    hỏng": kéo tụt validity rate và làm mất luôn ``adversarial_found``.
+
+    ``ExecutionResult.success`` chỉ có nghĩa **chạy xong, không crash / timeout /
+    lỗi XML**. Việc kịch bản có tái hiện được nguy hiểm hay không nằm ở
+    ``criteria_results``, là một trục hoàn toàn khác.
+    """
+    criteria = (criteria_json or {}).get("criteria", []) or []
+    success = returncode == 0 and criteria_json is not None and error is None
+
+    # `CriterionResult` chỉ có ba trường và `ForgeModel` cấm trường lạ — gửi
+    # thừa `expected` là backend trả 422 và cả lần chạy CARLA thành công vẫn mất
+    # kết quả. Giữ đúng hợp đồng, đừng gửi "cho đầy đủ".
+    results = [
+        {
+            "name": str(c.get("name") or "unknown"),
+            # ScenarioRunner dùng `success: bool`; từ vựng của ta là SUCCESS/FAILURE.
+            "result": "SUCCESS" if c.get("success", False) else "FAILURE",
+            "actual": str(c.get("actual", "")),
+        }
+        for c in criteria
+    ]
+
+    metrics: dict[str, float] = {"criteria_count": float(len(results))}
+
+    payload = {
+        "scenario_id": job["scenario_id"],
+        "xosc_path": job.get("xosc_path") or f"{job['scenario_id']}.xosc",
+        "success": success,
+        "criteria_results": results,
+        "metrics": metrics,
+    }
+    if not success:
+        # `ExecutionResult` từ chối success=False mà không có error — một lần
+        # chạy hỏng không nói vì sao là một con số mất tích trong báo cáo.
+        payload["error"] = error or f"ScenarioRunner thoát với mã {returncode}"
+    return payload
+
+
+def run_job(job: dict) -> dict:
+    """Ghi .xosc ra file tạm, chạy ScenarioRunner, đọc JSON criteria."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    started_at = time.time()
+
+    with tempfile.NamedTemporaryFile("w", suffix=".xosc", delete=False, encoding="utf-8") as fh:
+        fh.write(job["xosc_content"])
+        xosc_path = Path(fh.name)
+
+    env = dict(os.environ)
+    # Thiếu PythonAPI/carla thì ScenarioRunner chết ở `No module named 'agents'`.
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(CARLA_ROOT / "PythonAPI/carla"), str(SR_ROOT), env.get("PYTHONPATH", "")]
+    ).rstrip(os.pathsep)
+
+    cmd = [
+        str(WORKER_PYTHON),
+        "scenario_runner.py",
+        "--openscenario",
+        str(xosc_path),
+        "--host",
+        CARLA_HOST,
+        "--port",
+        str(CARLA_PORT),
+        "--timeout",
+        SR_TIMEOUT_S,
+        "--trafficManagerPort",
+        str(TM_PORT),
+        "--json",
+        "--outputDir",
+        str(OUT_DIR),
+    ]
+
+    error: str | None = None
+    try:
+        proc = subprocess.run(cmd, cwd=str(SR_ROOT), env=env, capture_output=True, text=True, timeout=RUN_TIMEOUT_S)
+        returncode, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
+    except subprocess.TimeoutExpired:
+        returncode, stdout, stderr = -1, "", ""
+        error = f"quá {RUN_TIMEOUT_S}s, đã giết tiến trình"
+    except OSError as exc:
+        returncode, stdout, stderr = -1, "", ""
+        error = f"không chạy được ScenarioRunner: {exc}"
+    finally:
+        xosc_path.unlink(missing_ok=True)
+
+    # ScenarioRunner đặt tên file theo <config><timestamp>.json — lấy file mới
+    # nhất sinh sau lúc bắt đầu thay vì đoán tên.
+    criteria_json = None
+    candidates = [p for p in OUT_DIR.glob("*.json") if p.stat().st_mtime >= started_at - 1]
+    if candidates:
+        newest = max(candidates, key=lambda p: p.stat().st_mtime)
+        try:
+            criteria_json = json.loads(newest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            error = error or f"đọc {newest.name} hỏng: {exc}"
+    elif error is None:
+        error = "ScenarioRunner không sinh file JSON criteria"
+
+    if error is None and returncode != 0:
+        tail = (stderr or stdout or "").strip().splitlines()[-3:]
+        error = "; ".join(tail) or f"mã thoát {returncode}"
+
+    result = to_execution_result(job, returncode, criteria_json, error)
+    result["metrics"]["wall_clock_s"] = round(time.time() - started_at, 1)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Vòng lặp
+# ---------------------------------------------------------------------------
+
+
+def poll_once() -> bool:
+    """Lấy một job và chạy. Trả ``True`` nếu có việc để làm."""
+    try:
+        jobs = _get("/api/v1/internal/jobs").get("jobs", [])
+    except (urllib.error.URLError, OSError) as exc:
+        log.warning("Không gọi được backend %s: %s", BACKEND, exc)
+        return False
+
+    if not jobs:
+        return False
+
+    job = jobs[0]
+    log.info("Nhận job %s cho %s", job.get("job_id"), job.get("scenario_id"))
+
+    result = run_job(job)
+    verdict = "chạy được" if result["success"] else f"HỎNG ({result.get('error')})"
+    collided = any(
+        c["name"].lower().startswith("collision") and c["result"] == "FAILURE" for c in result["criteria_results"]
+    )
+    log.info("  -> %s | va chạm: %s", verdict, "CÓ (tốt)" if collided else "không")
+
+    try:
+        _post(f"/api/v1/internal/jobs/{job['job_id']}/result", result)
+        log.info("  -> đã gửi kết quả về backend")
+    except (urllib.error.URLError, OSError) as exc:
+        # Không retry ở đây: job vẫn ở `pending` phía backend nên vòng sau lấy
+        # lại được. Tự giữ trong RAM để gửi lại là dựng một hàng đợi thứ hai
+        # không ai quan sát được.
+        log.error("  -> gửi kết quả thất bại, job sẽ được lấy lại: %s", exc)
+    return True
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Worker GPU cho Scenario Forge")
+    parser.add_argument("--once", action="store_true", help="Chạy đúng một job rồi thoát")
+    args = parser.parse_args()
+
+    log.info("Worker khởi động. Backend=%s CARLA=%s:%s TM=%s", BACKEND, CARLA_HOST, CARLA_PORT, TM_PORT)
+    if not (SR_ROOT / "scenario_runner.py").is_file():
+        sys.exit(f"Không thấy scenario_runner.py trong {SR_ROOT} — đặt SR_ROOT cho đúng.")
+    if not (CARLA_ROOT / "PythonAPI/carla").is_dir():
+        sys.exit(f"Không thấy PythonAPI/carla trong {CARLA_ROOT} — đặt CARLA_ROOT cho đúng.")
+
+    while True:
+        had_work = poll_once()
+        if args.once:
+            if not had_work:
+                log.info("Không có job nào đang chờ.")
+            return
+        if not had_work:
+            time.sleep(POLL_INTERVAL_S)
+
+
+if __name__ == "__main__":
+    main()
