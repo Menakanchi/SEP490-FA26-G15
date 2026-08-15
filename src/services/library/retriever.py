@@ -18,6 +18,7 @@ from typing import Any
 
 import numpy as np
 
+from src.config import get_settings
 from src.services.llm import EMBEDDING_DIM, get_embeddings
 from src.services.persistence import EMBEDDING_DTYPE, encode_embedding
 
@@ -91,6 +92,15 @@ def compute_cosine_similarity(v1: np.ndarray, v2: np.ndarray) -> float:
     return float(np.clip(sim, 0.0, 1.0))
 
 
+def _default_db_path() -> Path:
+    """Đường dẫn SQLite lấy từ ``settings.database_url`` — một nguồn duy nhất."""
+    url = get_settings().database_url
+    prefix = "sqlite:///"
+    if not url.startswith(prefix):
+        raise RuntimeError(f"SQLiteRetriever chỉ chạy trên SQLite; database_url đang là {url!r}")
+    return Path(url[len(prefix) :])
+
+
 class BaseRetriever(ABC):
     """Abstract Retriever Interface cho việc truy vấn kịch bản mẫu."""
 
@@ -104,7 +114,14 @@ class SQLiteRetriever(BaseRetriever):
     """SQLite Retriever theo ADR-013 (Pre-filtering SQL WHERE + BLOB Embedding + NumPy Cosine)."""
 
     def __init__(self, db_path: str | Path | None = None):
-        self.db_path = Path(db_path or "./data/app.db")
+        """Mặc định đọc đúng database mà mọi thứ khác đang ghi vào.
+
+        Bản trước hard-code ``./data/app.db``, bỏ qua ``settings.database_url``.
+        Hỏng theo kiểu tệ nhất: retrieval **luôn trả rỗng** mà không có lỗi nào —
+        node vẫn chạy, workflow vẫn đi tiếp, chỉ là không bao giờ có few-shot.
+        Trong test dùng DB tạm thì nó rỗng 100% và không ai thấy gì bất thường.
+        """
+        self.db_path = Path(db_path) if db_path else _default_db_path()
 
     def _get_connection(self) -> sqlite3.Connection | None:
         if not self.db_path.exists():
