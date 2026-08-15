@@ -18,12 +18,13 @@ from typing import Any
 
 import numpy as np
 
-from src.services.llm import get_embeddings
+from src.services.llm import EMBEDDING_DIM, get_embeddings
+from src.services.persistence import EMBEDDING_DTYPE, encode_embedding
 
 logger = logging.getLogger(__name__)
 
 
-def generate_text_embedding(text: str, dim: int = 1536) -> np.ndarray:
+def generate_text_embedding(text: str, dim: int = EMBEDDING_DIM) -> np.ndarray:
     """Sinh vector Float32 (1536 chiều) cho văn bản.
 
     Thử gọi OpenAI Embeddings Service (text-embedding-3-small).
@@ -54,17 +55,27 @@ def generate_text_embedding(text: str, dim: int = 1536) -> np.ndarray:
     return raw_vec / norm if norm > 0 else raw_vec
 
 
-def unpack_blob_embedding(blob: bytes | None, expected_dim: int = 1536) -> np.ndarray | None:
-    """Giải mã BLOB byte stream từ SQLite thành NumPy float32 vector."""
+def pack_blob_embedding(vector: np.ndarray) -> bytes:
+    """Vector -> BLOB. Chỉ là bí danh của codec dùng chung, để chỗ gọi đọc xuôi."""
+    return encode_embedding(vector.tolist())
+
+
+def unpack_blob_embedding(blob: bytes | None) -> np.ndarray | None:
+    """BLOB -> vector float32, hoặc ``None`` nếu hàng chưa có embedding.
+
+    Dùng ``np.frombuffer`` thay vì ``persistence.decode_embedding`` **chỉ vì tốc
+    độ**: nó tạo view trên đúng bộ nhớ đó, không dựng tuple Python trung gian.
+    Định dạng thì vẫn là một — ``EMBEDDING_DTYPE`` lấy thẳng từ persistence, và
+    ``test_embedding_codec_has_one_definition`` ghim hai đường phải khớp nhau.
+    """
     if not blob:
         return None
     try:
-        arr = np.frombuffer(blob, dtype=np.float32)
-        if len(arr) == 0:
-            return None
-        return arr
-    except Exception:
+        arr = np.frombuffer(blob, dtype=EMBEDDING_DTYPE)
+    except (ValueError, TypeError) as exc:
+        logger.warning("BLOB embedding hỏng, bỏ qua hàng này: %s", exc)
         return None
+    return arr if len(arr) else None
 
 
 def compute_cosine_similarity(v1: np.ndarray, v2: np.ndarray) -> float:

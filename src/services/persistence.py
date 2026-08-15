@@ -131,16 +131,35 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+# Định dạng BLOB của cột `scenarios.embedding`: float32, little-endian.
+#
+# Đây là **định nghĩa duy nhất** của định dạng đó. Mọi chỗ ghi hoặc đọc vector
+# phải đi qua `encode_embedding` / `decode_embedding`, hoặc dùng
+# `EMBEDDING_DTYPE` nếu cần đường nhanh của numpy.
+#
+# Trước đây có hai bản cài đặt: module này dùng `struct`, còn
+# `library/retriever.py` tự `np.frombuffer` và `.tobytes()`. Cả hai cùng chạy
+# được nên không ai thấy vấn đề — cho tới lúc một bên đổi endianness hoặc kiểu
+# số. Lúc đó vector không hỏng mà **lệch**: cosine vẫn trả về một con số, chỉ là
+# con số vô nghĩa, và retrieval xếp hạng sai mà không có lỗi nào bắn ra.
+#
+# `test_embedding_codec_has_one_definition` ghim sự tương đương giữa hai đường.
+_STRUCT_ELEMENT = "f"  # struct: float32
+EMBEDDING_DTYPE = "<f4"  # numpy: cùng thứ đó, little-endian
+EMBEDDING_ITEMSIZE = 4
+
+
 def encode_embedding(values: Iterable[float]) -> bytes:
-    """Encode float32 values using the retriever contract: little-endian BLOB."""
+    """Vector float -> BLOB theo đúng định dạng cột `scenarios.embedding`."""
     vector = tuple(float(value) for value in values)
-    return pack(f"<{len(vector)}f", *vector)
+    return pack(f"<{len(vector)}{_STRUCT_ELEMENT}", *vector)
 
 
 def decode_embedding(blob: bytes) -> tuple[float, ...]:
-    if len(blob) % 4:
+    """BLOB -> tuple float. Ngược của :func:`encode_embedding`."""
+    if len(blob) % EMBEDDING_ITEMSIZE:
         raise ValueError("embedding BLOB length must be divisible by four")
-    return unpack(f"<{len(blob) // 4}f", blob)
+    return unpack(f"<{len(blob) // EMBEDDING_ITEMSIZE}{_STRUCT_ELEMENT}", blob)
 
 
 def make_engine(database_url: str) -> Engine:

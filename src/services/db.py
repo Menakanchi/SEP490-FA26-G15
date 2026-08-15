@@ -305,13 +305,11 @@ def update_scenario_status(scenario_id: str, new_status: str) -> None:
         row = cursor.fetchone()
         if row is not None and not row["embedding"]:
             try:
-                from src.services.library.retriever import generate_text_embedding
+                from src.services.library.retriever import generate_text_embedding, pack_blob_embedding
 
                 vector = generate_text_embedding(f"{row['title']} {row['description_vi']}")
                 if vector is not None and len(vector):
-                    # float32 little-endian — cùng hợp đồng BLOB mà
-                    # `persistence.encode_embedding` và retriever đang dùng.
-                    blob_bytes = vector.astype("<f4").tobytes()
+                    blob_bytes = pack_blob_embedding(vector)
             except Exception as exc:
                 # Duyệt vẫn phải ăn: trạng thái là quyết định của con người, còn
                 # embedding chỉ là chỉ mục. Ghi log rồi đi tiếp — thiếu vector thì

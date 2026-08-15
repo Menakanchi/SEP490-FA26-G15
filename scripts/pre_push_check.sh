@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Gate local — chạy đúng ba bước mà .github/workflows/ci.yml chạy.
+# Gate local trước khi push.
+#
+# Ba bước đầu là bản sao đúng của .github/workflows/ci.yml (ruff check, ruff
+# format --check, pytest + coverage). Hai bước cuối là frontend — chưa có trong
+# CI, và chỉ chạy khi frontend/ thực sự đổi.
 #
 # Lý do tồn tại: CI của org đang không khởi động được vì lỗi thanh toán GitHub
 # Actions, nên từ 13/8 mọi PR đỏ vì cùng một nguyên nhân không liên quan tới
@@ -59,4 +63,39 @@ echo "[check] pytest + coverage…"
 "$PY" -m pytest tests/ -q --cov=src --cov-report=term-missing --cov-fail-under=60 \
   || fail "test đỏ hoặc coverage dưới 60%"
 
-echo "[check] ✓ xanh — giống hệt ba bước của CI"
+# ---------------------------------------------------------------------------
+# Frontend
+# ---------------------------------------------------------------------------
+# Chưa nằm trong ci.yml. Lý do gate này có nó trước: `npm run lint` và
+# `next build` lần đầu được chạy hôm 15/8, và đã có sẵn 10 lỗi eslint + 7 lỗi
+# typecheck tích lại — trong đó có một race condition thật ở màn hình duyệt.
+# Không ai cố tình để vậy; chỉ là không có gì chạy chúng.
+#
+# CHỈ chạy khi frontend/ thực sự đổi trong lần push này. Người làm backend
+# không phải chờ Next.js build cho một commit không đụng tới nó.
+if git diff --cached --quiet -- frontend 2>/dev/null && git diff --quiet HEAD -- frontend 2>/dev/null; then
+  CHANGED_FE=""
+else
+  CHANGED_FE="1"
+fi
+# Với `git push`, thứ cần kiểm là các commit sắp đi, không phải working tree.
+if [ -z "$CHANGED_FE" ] && [ -n "$(git diff --name-only @{push}..HEAD -- frontend 2>/dev/null)" ]; then
+  CHANGED_FE="1"
+fi
+
+if [ -n "$CHANGED_FE" ]; then
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "[check] frontend/ có thay đổi nhưng máy không có npm — bỏ qua phần này." >&2
+  elif [ ! -d frontend/node_modules ]; then
+    echo "[check] frontend/ có thay đổi nhưng chưa cài dependency — bỏ qua phần này." >&2
+    echo "[check] Cài bằng: cd frontend && npm ci" >&2
+  else
+    echo "[check] eslint…"
+    (cd frontend && npm run --silent lint) || fail "eslint đỏ — 'cd frontend && npm run lint -- --fix' sửa được phần lớn"
+
+    echo "[check] next build (gồm cả typecheck)…"
+    (cd frontend && npx --no-install next build >/dev/null) || fail "next build đỏ — chạy lại không kèm >/dev/null để xem lỗi"
+  fi
+fi
+
+echo "[check] ✓ xanh"

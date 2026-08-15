@@ -60,33 +60,66 @@ Nguồn sự thật:
 
 ## Quick start
 
-Yêu cầu: Python 3.11 cho backend.
+Yêu cầu: Python 3.11+ cho backend, Node 20+ cho frontend.
 
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+
+python scripts/init_db.py     # dựng schema từ database rỗng
+python scripts/seed_db.py     # nạp 10 kịch bản mẫu để retrieval có gì mà tìm
+
 uvicorn src.main:app --reload --port 8000
 ```
 
-Kiểm tra:
+Frontend chạy riêng ở cổng 3000, mặc định gọi backend qua
+`http://localhost:8000/api/v1` (đổi bằng `NEXT_PUBLIC_API_URL`; backend đã cho
+phép origin `localhost:3000` sẵn qua `cors_origins`):
 
 ```bash
-ruff check src/ tests/
-ruff format --check src/ tests/
-pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=60
+cd frontend
+npm ci
+npm run dev
 ```
 
-Endpoint đang có trong source hiện tại:
+Cài hook một lần sau khi clone. Nó chạy gate lint/test trước mỗi lần push, nên
+lỗi bị chặn ở máy thay vì chờ một vòng CI:
+
+```bash
+bash scripts/setup_hooks.sh                                   # macOS / Linux / Git Bash
+powershell -ExecutionPolicy Bypass -File scripts/setup_hooks.ps1   # Windows
+```
+
+Chạy tay đúng những gì gate chạy:
+
+```bash
+make check                    # ruff check + ruff format --check + pytest
+cd frontend && npm run lint && npx next build
+```
+
+Cần push gấp khi gate đỏ: `SKIP_CHECK=1 git push`.
+
+### Endpoint đang có
 
 ```text
 GET  /health
-POST /api/v1/chat      placeholder từ template
-GET  /api/v1/status
+
+POST /api/v1/generate                       (alias: /api/v1/scenarios/generate)
+GET  /api/v1/status/{request_id}
+POST /api/v1/review                         (alias: /api/v1/scenarios/{id}/review)
+GET  /api/v1/scenarios                      (alias: /api/v1/library/search)
+GET  /api/v1/scenarios/{id}
+GET  /api/v1/scenarios/{id}/xosc            403 nếu chưa duyệt BEFORE_LIBRARY
+
+GET  /api/v1/internal/jobs                  worker GPU poll
+POST /api/v1/internal/jobs/{job_id}/result
 ```
 
-Các API generate/review/download/job trong kiến trúc mục tiêu chưa được ship.
+Lưu ý: `POST /generate` hiện chạy một stub thay cho workflow đầy đủ — nó gọi
+thật `parse_intent` và `retrieve`, phần còn lại là giả lập cho tới khi
+`repair_draft` (#22) xong và 7 node được nối thành một graph.
 
 ## Cấu trúc chính
 
