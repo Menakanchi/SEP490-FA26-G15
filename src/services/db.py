@@ -67,7 +67,9 @@ def init_db() -> None:
 # ---------------------------------------------------------------------------
 
 
-def create_generation_request(request_id: str, description_vi: str, validation_mode: str, limit: int = 3) -> dict:
+def create_generation_request(
+    request_id: str, description_vi: str, validation_mode: str, limit: int = 3, created_by: str = "unknown"
+) -> dict:
     conn = _get_connection()
     cursor = conn.cursor()
     now_str = datetime.now(UTC).isoformat()
@@ -75,6 +77,7 @@ def create_generation_request(request_id: str, description_vi: str, validation_m
         "request_id": request_id,
         "description_vi": description_vi,
         "validation_mode": validation_mode,
+        "created_by": created_by,
         "limit": limit,
         "status": "running",
         "step": "queued",
@@ -87,13 +90,14 @@ def create_generation_request(request_id: str, description_vi: str, validation_m
     cursor.execute(
         """
         INSERT OR REPLACE INTO generation_requests
-        (request_id, description_vi, validation_mode, retrieve_limit, status, step, progress,
-         scenario_id, issue_history, node_metrics, failed_reason, error, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (request_id, description_vi, created_by, validation_mode, retrieve_limit, status, step,
+         progress, scenario_id, issue_history, node_metrics, failed_reason, error, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
             request_id,
             description_vi,
+            created_by,
             validation_mode,
             limit,
             "running",
@@ -301,6 +305,7 @@ def get_scenario(scenario_id: str) -> dict | None:
         "assumptions": assumptions_obj,
         "tags": tags_obj,
         "review_logs": get_review_decisions(row_dict["scenario_id"]),
+        "created_by": row_dict.get("created_by") or "unknown",
         "verification": row_dict.get("verification") or VerificationLevel.UNVERIFIED.value,
         "created_at": row_dict.get("created_at"),
     }
@@ -345,6 +350,19 @@ def update_scenario_status(scenario_id: str, new_status: str) -> None:
 
     conn.commit()
     conn.close()
+
+
+def set_tags(scenario_id: str, tags: list[str]) -> None:
+    """Thay toàn bộ tag của một kịch bản."""
+    conn = _get_connection()
+    try:
+        conn.execute(
+            "UPDATE scenarios SET tags = ? WHERE scenario_id = ?",
+            (json.dumps(tags, ensure_ascii=False), scenario_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def set_verification(scenario_id: str, level: VerificationLevel) -> None:

@@ -20,6 +20,7 @@ import {
   Sliders,
   Layers,
   Sparkle,
+  User,
 } from "lucide-react";
 import { postGenerate, getStatus, getScenarioById } from "@/services/api";
 import SVG2DRenderer from "@/components/SVG2DRenderer";
@@ -44,6 +45,16 @@ function GeneratorPageContent() {
   const [prompt, setPrompt] = useState("");
   const [validationMode, setValidationMode] = useState<ValidationMode>("static");
   const [retrieveLimit, setRetrieveLimit] = useState<number>(3);
+  // Nhớ tên người tạo giữa các lần dùng — gõ lại mỗi lần thì ai cũng bỏ trống,
+  // và cột `created_by` lại thành vô nghĩa y như khi không có.
+  const [createdBy, setCreatedBy] = useState("");
+  // Đọc localStorage phải nằm trong effect chứ không phải lazy initialiser:
+  // trang này render cả ở server, mà server không có localStorage. Lazy init sẽ
+  // cho ra giá trị khác nhau giữa server và client → cảnh báo hydration.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- đọc localStorage sau khi mount
+    setCreatedBy(localStorage.getItem("forge.createdBy") ?? "");
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   const [clientValidationError, setClientValidationError] = useState<string | null>(null);
 
@@ -153,6 +164,7 @@ function GeneratorPageContent() {
         prompt: trimmedPrompt,
         validation_mode: validationMode,
         limit: retrieveLimit,
+        created_by: createdBy.trim() || "unknown",
       });
       const url = new URL(window.location.href);
       url.searchParams.set("id", res.request_id);
@@ -248,6 +260,22 @@ function GeneratorPageContent() {
                     : "Chế độ: Kèm mô phỏng (mở sẵn cổng BEFORE_SIM)"}
                 </span>
               </button>
+
+              {/* Người tạo — vế thứ nhất của "hai vai trò" mà đề bài yêu cầu */}
+              <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/40">
+                <User className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Người tạo:</span>
+                <input
+                  className="bg-slate-900 text-slate-200 font-semibold px-2 py-0.5 rounded border border-slate-700 text-xs w-40 focus:outline-none focus:border-cyan-400"
+                  placeholder="tên hoặc email"
+                  value={createdBy}
+                  onChange={(e) => {
+                    setCreatedBy(e.target.value);
+                    localStorage.setItem("forge.createdBy", e.target.value);
+                  }}
+                  disabled={polling || submitting}
+                />
+              </div>
 
               {/* Retrieval Limit Selector */}
               <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/40">

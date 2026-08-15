@@ -45,11 +45,18 @@ def repository(request: pytest.FixtureRequest, tmp_path: Path) -> ScenarioReposi
     repo.engine.dispose()
 
 
-def persist(repository: ScenarioRepository, spec: ScenarioSpec, *, request_id: str = "req_001") -> None:
+def persist(
+    repository: ScenarioRepository,
+    spec: ScenarioSpec,
+    *,
+    request_id: str = "req_001",
+    created_by: str = "creator@example.com",
+) -> None:
     repository.persist_pending_review(
         request_id=request_id,
         request_description_vi="Câu hỏi gốc",
         scenario_description_vi=spec.description_vi,
+        created_by=created_by,
         validation_mode="standard",
         spec=spec,
         xosc_content="<OpenSCENARIO />",
@@ -106,6 +113,7 @@ def test_transaction_rolls_back_scenario_when_second_write_fails(
             request_id="req_broken",
             request_description_vi="Câu hỏi gốc",
             scenario_description_vi=spec.description_vi,
+            created_by="creator@example.com",
             validation_mode="standard",
             spec=spec,
             xosc_content="<OpenSCENARIO />",

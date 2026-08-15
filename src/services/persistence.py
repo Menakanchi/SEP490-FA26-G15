@@ -52,6 +52,11 @@ scenarios = Table(
     Column("status", String(32), nullable=False),
     Column("title", String(120), nullable=False),
     Column("description_vi", Text, nullable=False),
+    # Người tạo. Đề bài đòi "ít nhất 2 vai trò: người tạo và người duyệt" — không
+    # lưu ai tạo thì hệ thống có ĐÚNG MỘT vai trò, và không phân biệt được người
+    # tự duyệt bài của mình với người duyệt hộ. Không xác thực (đề bài không đòi),
+    # nhưng có ghi thì mới nói được là có phân vai.
+    Column("created_by", String(255), nullable=False, server_default="unknown"),
     Column("spec", JSON, nullable=False),
     Column("xosc_content", Text, nullable=False),
     Column("assumptions", JSON, nullable=False),
@@ -79,6 +84,7 @@ generation_requests = Table(
     metadata,
     Column("request_id", String(64), primary_key=True),
     Column("description_vi", Text, nullable=False),
+    Column("created_by", String(255), nullable=False, server_default="unknown"),
     Column("validation_mode", String(32), nullable=False),
     Column("status", String(16), nullable=False),
     Column("scenario_id", String(64), ForeignKey("scenarios.scenario_id"), nullable=True),
@@ -197,6 +203,7 @@ class ScenarioRepository:
         request_id: str,
         request_description_vi: str,
         scenario_description_vi: str,
+        created_by: str,
         validation_mode: str,
         spec: ScenarioSpec,
         xosc_content: str,
@@ -219,6 +226,7 @@ class ScenarioRepository:
                         status=ScenarioStatus.PENDING_REVIEW.value,
                         title=spec.title,
                         description_vi=scenario_description_vi,
+                        created_by=created_by,
                         spec=spec.model_dump(mode="json"),
                         xosc_content=xosc_content,
                         assumptions=assumptions,

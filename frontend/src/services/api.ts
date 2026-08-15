@@ -54,6 +54,8 @@ export interface GeneratePayload {
   prompt: string;
   validation_mode: ValidationMode;
   limit?: number;
+  /** Người tạo. Đề bài đòi hai vai trò tạo/duyệt — đây là vế thứ nhất. */
+  created_by?: string;
 }
 
 export interface GenerateResponse {
@@ -177,4 +179,12 @@ export async function requestSimulation(id: string): Promise<{ status: string }>
     throw new Error(messageVi || `Không mở được cổng mô phỏng (Mã lỗi ${res.status})`);
   }
   return res.json();
+}
+
+/** Thay TOÀN BỘ tag của một kịch bản (không phải thêm vào). */
+export async function updateTags(id: string, tags: string[]): Promise<{ tags: string[] }> {
+  return request<{ tags: string[] }>(`/scenarios/${encodeURIComponent(id)}/tags`, {
+    method: "PUT",
+    body: JSON.stringify({ tags }),
+  });
 }

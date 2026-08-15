@@ -19,6 +19,7 @@ import {
   Layers,
   Sparkle,
   PlayCircle,
+  Tag,
 } from "lucide-react";
 import { VERIFICATION_LABELS, type VerificationLevel } from "@/types";
 
@@ -36,6 +37,7 @@ import {
   postReview,
   downloadXosc,
   requestSimulation,
+  updateTags,
 } from "@/services/api";
 import SVG2DRenderer from "@/components/SVG2DRenderer";
 import type { ScenarioItem, ScenarioDetail, ReviewGate } from "@/types";
@@ -246,6 +248,27 @@ function ReviewPageContent() {
     }
   };
 
+  /** Sửa tag. Prompt thô nhưng đủ dùng — chỗ này không đáng một modal riêng. */
+  const handleEditTags = async () => {
+    if (!scenario) return;
+    const current = (scenario.tags ?? []).join(", ");
+    const next = window.prompt("Tag, cách nhau bằng dấu phẩy:", current);
+    if (next === null) return;
+    try {
+      await updateTags(
+        scenario.scenario_id,
+        next.split(",").map((t) => t.trim()).filter(Boolean),
+      );
+      setScenario(await getScenarioById(scenario.scenario_id));
+      setToast({ type: "success", msg: "Đã cập nhật tag." });
+    } catch (err) {
+      setToast({
+        type: "error",
+        msg: err instanceof Error ? err.message : "Không cập nhật được tag",
+      });
+    }
+  };
+
   const handleDownloadXml = async () => {
     if (!scenario) return;
     try {
@@ -419,18 +442,61 @@ function ReviewPageContent() {
                     {/* Mức kiểm chứng là trục RIÊNG, không phải trạng thái duyệt
                         (ADR-017). Không hiện nó thì người duyệt chỉ thấy "đã duyệt"
                         và hiểu nhầm rằng kịch bản đã được chứng minh là đúng. */}
-                    <span
-                      className={`inline-block mt-2 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
-                        verificationStyle[scenario.verification ?? "unverified"]
-                      }`}
-                      title="Kết quả chạy thật trên CARLA — khác với trạng thái duyệt của con người"
-                    >
-                      {VERIFICATION_LABELS[scenario.verification ?? "unverified"]}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <span
+                        className={`inline-block text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
+                          verificationStyle[scenario.verification ?? "unverified"]
+                        }`}
+                        title="Kết quả chạy thật trên CARLA — khác với trạng thái duyệt của con người"
+                      >
+                        {VERIFICATION_LABELS[scenario.verification ?? "unverified"]}
+                      </span>
+                      <span className="text-[11px] text-slate-400 px-2.5 py-1 rounded-full border border-slate-700/40 bg-slate-800/40">
+                        Người tạo: <strong className="text-slate-300">{scenario.created_by || "unknown"}</strong>
+                      </span>
+                    </div>
+
+                    {/* Đề bài đòi hai vai trò tạo/duyệt. Tự duyệt bài của mình
+                        không vi phạm ràng buộc HITL — vẫn là người kiểm AI —
+                        nhưng nó làm cổng duyệt mất tác dụng bắt điểm mù. Nhắc,
+                        không chặn: đội một người thì tự duyệt là bắt buộc, và
+                        chặn cứng chỉ khiến người ta gõ tên giả. */}
+                    {reviewer.trim() !== "" &&
+                      scenario.created_by &&
+                      reviewer.trim().toLowerCase() === scenario.created_by.toLowerCase() && (
+                        <p className="mt-2 text-[11px] text-amber-300/90 flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          Bạn đang duyệt kịch bản do chính mình tạo — vẫn hợp lệ, nhưng
+                          người khác duyệt thì dễ bắt được điểm mù hơn.
+                        </p>
+                      )}
                   </div>
                   <span className="text-xs font-semibold px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
                     Cổng áp dụng: {gateLabel}
                   </span>
+                </div>
+
+                {/* Tag — đề bài đòi "thư viện lưu trữ có gắn tag". Bốn trục ODD
+                    được gắn sẵn lúc lưu; người dùng sửa thêm được ở đây. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Tag className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  {(scenario.tags ?? []).length === 0 && (
+                    <span className="text-xs text-slate-500">chưa có tag</span>
+                  )}
+                  {(scenario.tags ?? []).map((t) => (
+                    <span
+                      key={t}
+                      className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800/70 text-slate-300 border border-slate-700/50"
+                    >
+                      {t}
+                    </span>
+                  ))}
+                  <button
+                    onClick={handleEditTags}
+                    className="text-[11px] text-slate-400 hover:text-slate-200 underline decoration-dotted"
+                  >
+                    sửa
+                  </button>
                 </div>
 
                 {/* ⚠️ Warning Banner (Informational - Amber) */}

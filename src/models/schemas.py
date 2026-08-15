@@ -1234,6 +1234,11 @@ class GenerateRequest(ForgeModel):
     """
 
     prompt: str = Field(..., min_length=1, max_length=5000, description="Câu mô tả tiếng Việt, giữ nguyên văn")
+    created_by: str = Field(
+        "unknown",
+        max_length=255,
+        description="Người tạo. Đề bài đòi hai vai trò tạo/duyệt — đây là vế thứ nhất.",
+    )
     validation_mode: ValidationMode = "static"
     limit: int = Field(3, ge=1, le=20, description="Số kịch bản mẫu cần retrieve (top-k)")
 
@@ -1267,6 +1272,12 @@ class ReviewApiRequest(ForgeModel):
     approved: bool
     reviewer: str = Field(..., min_length=1, description="Tên người chịu trách nhiệm duyệt")
     reason: str = Field("", max_length=1000, description="Bắt buộc khi approved=False")
+
+
+class TagUpdateRequest(ForgeModel):
+    """``PUT /scenarios/{id}/tags`` — danh sách tag cuối cùng, không phải phần thêm."""
+
+    tags: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ScenarioListResponse(ForgeModel):

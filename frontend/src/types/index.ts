@@ -380,6 +380,9 @@ export interface ScenarioDetail {
   odd: ODDCell;
   time_of_day: TimeOfDay;
   status: ScenarioStatus;
+  /** Người gõ câu. Vế thứ nhất của "hai vai trò" mà đề bài yêu cầu. */
+  created_by?: string;
+  tags?: string[];
   verification?: VerificationLevel;
   spec: ScenarioSpec;
   xosc_content?: string;
