@@ -153,3 +153,28 @@ export async function downloadXosc(id: string): Promise<string> {
   }
   return res.text();
 }
+
+/**
+ * Mở cổng duyệt thứ hai: `approved_library` -> `pending_sim_review`.
+ *
+ * KHÔNG phải lệnh chạy CARLA. Nó chỉ xin phép; kỹ sư còn phải duyệt ở cổng
+ * BEFORE_SIM thì job mới vào hàng đợi cho worker GPU. Cổng nằm trước khi chạy
+ * vì GPU là tài nguyên vật lý có hạn.
+ */
+export async function requestSimulation(id: string): Promise<{ status: string }> {
+  const res = await fetch(
+    `${BASE_URL}/scenarios/${encodeURIComponent(id)}/request-sim`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    const bodyText = await res.text().catch(() => "");
+    let messageVi = "";
+    try {
+      messageVi = JSON.parse(bodyText).detail || "";
+    } catch {
+      messageVi = bodyText;
+    }
+    throw new Error(messageVi || `Không mở được cổng mô phỏng (Mã lỗi ${res.status})`);
+  }
+  return res.json();
+}

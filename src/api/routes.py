@@ -28,6 +28,7 @@ from src.models.schemas import (
     ScenarioListResponse,
     ScenarioStatus,
     StatusResponse,
+    can_request_simulation,
     next_status_after_review,
 )
 from src.services import db
@@ -111,6 +112,13 @@ async def _run_workflow(request_id: str) -> None:
         async for event in build_forge_graph().astream(state):
             for node, update in event.items():
                 final.update(update or {})
+                # `astream` yield SAU khi node xong, nên đây là "vừa xong node X".
+                # Không ghi đè lên trạng thái kết thúc: node persist tự chốt hàng
+                # request thành done/100 ngay trong transaction của nó, và vòng
+                # lặp này chạy sau đó — ghi đè là kéo ngược 100% về 88%, client
+                # poll mãi không bao giờ thấy "done" dù kịch bản đã nằm trong DB.
+                if node == "persist_pending_review":
+                    continue
                 db.update_generation_request(request_id, step=node, progress=_step_progress(node))
     except Exception as exc:
         logger.exception("Workflow hỏng ở request %s", request_id)
@@ -118,6 +126,12 @@ async def _run_workflow(request_id: str) -> None:
         return
 
     if final.get("scenario_id"):
+        # Chốt lại cho chắc. Persist đã đặt done/100, nhưng luồng này là thứ
+        # client chờ nên nó phải tự chịu trách nhiệm về trạng thái cuối, không
+        # trông vào việc node ở tầng dưới nhớ làm hộ.
+        db.update_generation_request(
+            request_id, status="done", step="done", progress=100, scenario_id=final["scenario_id"]
+        )
         return
 
     # Tới đây là graph dừng sớm: thiếu thông tin, tổ hợp ngoài phạm vi, LLM
@@ -231,6 +245,42 @@ async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) ->
         db.create_scenario_job(job_id, target_id, scenario["xosc_content"])
 
     return {"ok": True}
+
+
+# ===========================================================================
+# POST /scenarios/{scenario_id}/request-sim — mở cổng duyệt thứ hai
+# ===========================================================================
+
+
+@router.post("/scenarios/{scenario_id}/request-sim")
+async def request_simulation(scenario_id: str) -> dict:
+    """``approved_library`` -> ``pending_sim_review``.
+
+    Đây **không** phải lệnh chạy CARLA. Nó chỉ mở cổng duyệt thứ hai.
+
+    Lý do cổng nằm ở đây, trước khi chạy chứ không sau: GPU là tài nguyên vật lý
+    có hạn, và đề bài đòi *"kỹ sư phải phê duyệt trước khi đưa vào bộ kiểm thử"*.
+    Để hệ thống tự đẩy job vào CARLA là để nó tự tiêu tài nguyên mà không ai gật.
+
+    Số phận của kịch bản đã chốt ở cổng 1 rồi — cả duyệt lẫn từ chối ở cổng 2
+    đều trả nó về ``approved_library`` (ADR-011 §3.3). Cổng 2 chỉ quyết định có
+    tốn GPU cho nó hay không.
+    """
+    scenario = db.get_scenario(scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' không tồn tại")
+
+    current = ScenarioStatus(scenario["status"])
+    if not can_request_simulation(current):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Chỉ kịch bản đã qua BEFORE_LIBRARY mới xin chạy mô phỏng được; kịch bản này đang ở '{current.value}'"
+            ),
+        )
+
+    db.update_scenario_status(scenario_id, ScenarioStatus.PENDING_SIM_REVIEW.value)
+    return {"ok": True, "status": ScenarioStatus.PENDING_SIM_REVIEW.value}
 
 
 # ===========================================================================

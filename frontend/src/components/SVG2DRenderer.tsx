@@ -124,22 +124,37 @@ function actorIcon(
 // Maneuver arrow
 // ---------------------------------------------------------------------------
 
+/**
+ * Mũi tên mô tả hành vi sắp xảy ra.
+ *
+ * `laneOffset` là làn của chính chủ thể, so với làn ego. Nó quyết định **chiều
+ * ngang** của mũi tên, và đó là chỗ bản trước sai: `dx` bị gán cứng sang trái
+ * cho mọi trường hợp. Một xe đứng ở làn trái (`lane_offset = -1`) tạt đầu thì
+ * phải chạy sang **phải** để cắt vào làn ego; vẽ nó rẽ trái là vẽ một chiếc xe
+ * đang tránh xa ego — ngược hẳn ý nghĩa kịch bản, và người xem preview để duyệt
+ * sẽ thấy một thứ không phải thứ họ đang duyệt.
+ */
 function maneuverArrow(
   fromX: number,
   fromY: number,
   maneuverType: string,
+  laneOffset: number,
   key: string,
 ) {
+  // Hướng cắt vào làn ego: đứng bên trái ego thì cắt sang phải, và ngược lại.
+  // Cùng làn với ego (offset 0) thì không có chiều ngang nào hợp lý — mặc định
+  // sang trái cho khỏi vẽ đè lên chính nó.
+  const towardEgo = laneOffset === 0 ? -1 : -Math.sign(laneOffset);
   let dx = 0;
   let dy = -30;
 
   switch (maneuverType) {
     case "cut_in":
-      dx = -LANE_WIDTH * 0.8;
+      dx = towardEgo * LANE_WIDTH * 0.8;
       dy = -20;
       break;
     case "lane_drift":
-      dx = -LANE_WIDTH * 0.6;
+      dx = towardEgo * LANE_WIDTH * 0.6;
       dy = -30;
       break;
     case "wrong_way":
@@ -152,7 +167,8 @@ function maneuverArrow(
       dy = 5;
       break;
     case "jaywalk":
-      dx = LANE_WIDTH * 0.8;
+      // Người đi bộ băng NGANG đường, cũng đi về phía ego.
+      dx = towardEgo * LANE_WIDTH * 0.8;
       dy = 0;
       break;
     default:
@@ -337,7 +353,7 @@ export default function SVG2DRenderer({
         if (!actor) return null;
         const x = getLaneCenterX(laneNumber(actor.position.lane_offset, egoLane));
         const y = -actor.position.s_offset_m * S_SCALE;
-        return maneuverArrow(x, y, m.maneuver, `man-${i}`);
+        return maneuverArrow(x, y, m.maneuver, actor.position.lane_offset, `man-${i}`);
       })}
 
       {/* Actors */}
