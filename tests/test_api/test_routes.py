@@ -358,3 +358,139 @@ async def test_before_sim_creates_a_job_and_keeps_the_scenario(client):
 
     detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
     assert detail["status"] == "approved_library", "cổng 2 không đổi số phận kịch bản"
+
+
+@pytest.mark.asyncio
+async def test_execution_result_updates_verification_but_not_status(client):
+    """Kết quả CARLA quay về phải **đổi được điều gì đó** — trước ADR-017 thì không.
+
+    `ExecutionResult` từng chỉ nằm im trong `scenario_jobs.result`: không gì đọc,
+    không gì đổi theo nó, retrieval không biết nó tồn tại. Kịch bản chạy ra không
+    đúng ý vẫn ở lại thư viện và tiếp tục làm ví dụ few-shot.
+    """
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["verification"] == "unverified"
+
+    await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_library",
+            "approved": True,
+            "reviewer": "Cong",
+            "reason": "",
+        },
+    )
+    await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
+    await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_sim",
+            "approved": True,
+            "reviewer": "Cong",
+            "reason": "",
+        },
+    )
+    job_id = (await client.get("/api/v1/internal/jobs")).json()["jobs"][0]["job_id"]
+
+    # Worker báo: chạy trót lọt nhưng KHÔNG va chạm.
+    posted = await client.post(
+        f"/api/v1/internal/jobs/{job_id}/result",
+        json={
+            "scenario_id": sc_id,
+            "xosc_path": f"{sc_id}.xosc",
+            "success": True,
+            "criteria_results": [{"name": "CollisionTest", "result": "SUCCESS", "actual": "0"}],
+        },
+    )
+    assert posted.json()["verification"] == "ran_no_hazard"
+
+    detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
+    assert detail["verification"] == "ran_no_hazard"
+    # Không bị rút khỏi thư viện: số phận do người quyết ở cổng 1, đây là bằng chứng.
+    assert detail["status"] == "approved_library"
+
+
+@pytest.mark.asyncio
+async def test_collision_failure_is_recorded_as_adversarial(client):
+    """`CollisionTest = FAILURE` là **tin tốt** — kịch bản dựng được nguy hiểm.
+
+    Đọc ngược dấu ở đây là cả hệ thống đi tối thiểu hoá đúng thứ phải tối đa hoá:
+    `adversarial_found` chính là đếm số kịch bản làm ego va chạm.
+    """
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    for gate in ("before_library",):
+        await client.post(
+            "/api/v1/review",
+            json={
+                "scenario_id": sc_id,
+                "gate": gate,
+                "approved": True,
+                "reviewer": "Cong",
+                "reason": "",
+            },
+        )
+    await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
+    await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_sim",
+            "approved": True,
+            "reviewer": "Cong",
+            "reason": "",
+        },
+    )
+    job_id = (await client.get("/api/v1/internal/jobs")).json()["jobs"][0]["job_id"]
+
+    posted = await client.post(
+        f"/api/v1/internal/jobs/{job_id}/result",
+        json={
+            "scenario_id": sc_id,
+            "xosc_path": f"{sc_id}.xosc",
+            "success": True,
+            "criteria_results": [{"name": "CollisionTest", "result": "FAILURE", "actual": "1"}],
+        },
+    )
+    assert posted.json()["verification"] == "adversarial"
+
+
+@pytest.mark.asyncio
+async def test_crashed_run_is_recorded_as_execution_failed(client):
+    """`success=False` là kịch bản KHÔNG chạy nổi — khác hẳn chạy xong mà không va chạm."""
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_library",
+            "approved": True,
+            "reviewer": "Cong",
+            "reason": "",
+        },
+    )
+    await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
+    await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_sim",
+            "approved": True,
+            "reviewer": "Cong",
+            "reason": "",
+        },
+    )
+    job_id = (await client.get("/api/v1/internal/jobs")).json()["jobs"][0]["job_id"]
+
+    posted = await client.post(
+        f"/api/v1/internal/jobs/{job_id}/result",
+        json={
+            "scenario_id": sc_id,
+            "xosc_path": f"{sc_id}.xosc",
+            "success": False,
+            "criteria_results": [],
+            "error": "quá 300s, đã giết tiến trình",
+        },
+    )
+    assert posted.json()["verification"] == "execution_failed"

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config import get_settings
-from src.models.schemas import ScenarioStatus
+from src.models.schemas import ScenarioStatus, VerificationLevel
 from src.services.llm import EMBEDDING_MODEL
 from src.services.persistence import make_engine, metadata
 
@@ -205,8 +205,9 @@ def save_scenario(
     cursor.execute(
         """
         INSERT OR REPLACE INTO scenarios
-        (scenario_id, status, title, description_vi, spec, xosc_content, assumptions, tags, road_type, weather, actor_type, maneuver, embedding, embedding_model, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (scenario_id, status, title, description_vi, spec, xosc_content, assumptions, tags,
+         road_type, weather, actor_type, maneuver, verification, embedding, embedding_model, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
             scenario_id,
@@ -221,6 +222,8 @@ def save_scenario(
             wt,
             at_str,
             mv_str,
+            # Mọi kịch bản mới đều chưa chạy CARLA lần nào (ADR-017).
+            VerificationLevel.UNVERIFIED.value,
             None,  # embedding — xem ghi chú ADR-011 phía trên
             None,  # embedding_model — ghi cùng lúc với embedding, không sớm hơn
             now_str,
@@ -283,6 +286,7 @@ def get_scenario(scenario_id: str) -> dict | None:
         "assumptions": assumptions_obj,
         "tags": tags_obj,
         "review_logs": get_review_decisions(row_dict["scenario_id"]),
+        "verification": row_dict.get("verification") or VerificationLevel.UNVERIFIED.value,
         "created_at": row_dict.get("created_at"),
     }
     return sc_dict
@@ -326,6 +330,25 @@ def update_scenario_status(scenario_id: str, new_status: str) -> None:
 
     conn.commit()
     conn.close()
+
+
+def set_verification(scenario_id: str, level: VerificationLevel) -> None:
+    """Ghi mức kiểm chứng suy từ kết quả chạy CARLA.
+
+    Đây là chỗ **đóng vòng lặp**. Trước ADR-017, ``ExecutionResult`` worker gửi
+    về chỉ nằm im trong ``scenario_jobs.result``: không gì đọc nó, không gì đổi
+    theo nó, retrieval không biết nó tồn tại. Kịch bản chạy ra không đúng ý vẫn
+    ở lại thư viện và tiếp tục làm ví dụ few-shot dạy LLM sinh ra thứ tương tự.
+
+    Cố ý **không** đổi ``status``: kịch bản không bị rút khỏi thư viện. Số phận
+    nó do người quyết ở cổng 1; đây chỉ là bằng chứng đi kèm.
+    """
+    conn = _get_connection()
+    try:
+        conn.execute("UPDATE scenarios SET verification = ? WHERE scenario_id = ?", (level.value, scenario_id))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def list_all_scenarios() -> list[dict]:

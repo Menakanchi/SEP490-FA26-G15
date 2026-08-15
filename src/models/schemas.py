@@ -960,6 +960,61 @@ class JobStatus(StrEnum):
     FAILED = "failed"
 
 
+class VerificationLevel(StrEnum):
+    """Kịch bản đã được kiểm chứng tới đâu. **Trục thứ hai, không phải cổng.**
+
+    ``ScenarioStatus`` trả lời *"có người chịu trách nhiệm giữ nó lại không"*.
+    Enum này trả lời một câu khác hẳn: *"nó có thật sự tái hiện được nguy hiểm
+    đã mô tả không"*. Gộp hai câu vào một trạng thái là chỗ hỏng của thiết kế
+    cũ — không có ô nào diễn tả được "đã duyệt nhưng chạy ra không đúng ý",
+    nên kịch bản kém nằm lại thư viện và tiếp tục làm few-shot.
+
+    Vì sao dùng nhãn thay vì thêm một cổng duyệt thứ ba, hoặc một nút xoá:
+
+    - Xoá là **mất thông tin**. Một kịch bản chạy không va chạm chưa chắc vô
+      dụng — có khi chỉ lệch vài km/h. Vứt nó đi là vứt luôn bằng chứng đã chạy.
+    - Ép người duyệt bấm thêm một lần nữa sau mỗi lần mô phỏng là bắt con người
+      làm việc mà dữ liệu đã tự trả lời.
+    - Có nhãn thì ``ODD coverage`` tách được thành hai con số: bao nhiêu ô đã
+      phủ, và bao nhiêu ô đã phủ bằng kịch bản **đã kiểm chứng thật**.
+
+    Chỉ ``ADVERSARIAL`` mới là thứ ta muốn nhân bản qua few-shot. Xem
+    ``REPRODUCES_HAZARD`` bên dưới. Chi tiết ở ADR-017.
+    """
+
+    UNVERIFIED = "unverified"  # chưa chạy CARLA lần nào — mọi kịch bản mới đều ở đây
+    ADVERSARIAL = "adversarial"  # chạy được VÀ dựng được tình huống nguy hiểm
+    RAN_NO_HAZARD = "ran_no_hazard"  # chạy trót lọt nhưng KHÔNG có nguy hiểm nào
+    EXECUTION_FAILED = "execution_failed"  # crash / timeout / lỗi XML
+
+
+PROVEN_BAD_FOR_FEW_SHOT: frozenset[VerificationLevel] = frozenset(
+    {VerificationLevel.RAN_NO_HAZARD, VerificationLevel.EXECUTION_FAILED}
+)
+"""Mức đã **chứng minh** là không nên dạy lại cho LLM.
+
+Cố ý **không** gồm ``UNVERIFIED``: loại cả nó thì few-shot chết ngay, vì mọi
+kịch bản mới sinh đều bắt đầu ở đó và cụm seed cũng phần lớn chưa chạy được
+(ngoài phạm vi converter). Loại thứ *chưa chứng minh* khác hẳn loại thứ *đã
+chứng minh là hỏng* — chỉ làm vế sau.
+"""
+
+
+def verification_from_execution(success: bool, criteria: list[CriterionResult]) -> VerificationLevel:
+    """``ExecutionResult`` -> mức kiểm chứng. Code thuần, không phán đoán.
+
+    ``CollisionTest = FAILURE`` là **tin tốt** (xem :class:`CriterionResult`):
+    xe bị test trượt bài kiểm va chạm, tức kịch bản đã dựng được nguy hiểm.
+    Đọc ngược dấu ở đây là cả hệ thống đi tối thiểu hoá đúng thứ phải tối đa hoá.
+    """
+    if not success:
+        return VerificationLevel.EXECUTION_FAILED
+    had_collision = any(
+        c.name.lower().startswith("collision") and c.result is CriterionStatus.FAILURE for c in criteria
+    )
+    return VerificationLevel.ADVERSARIAL if had_collision else VerificationLevel.RAN_NO_HAZARD
+
+
 ValidationMode = Literal["static", "sim"]
 """``static`` = chỉ validate XML, không cần GPU. ``sim`` = chạy thật trên worker.
 
