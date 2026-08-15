@@ -7,20 +7,15 @@ import {
   CheckCircle2,
   XCircle,
   User,
-  MessageSquare,
-  Info,
   Loader2,
   Map,
-  Cloud,
   Users,
   AlertTriangle,
-  Clock,
   FileCode,
   Copy,
   Download,
   Filter,
   RefreshCw,
-  BookOpen,
   Layers,
   Sparkle,
 } from "lucide-react";
@@ -32,7 +27,6 @@ import {
   WEATHER_LABELS,
   ACTOR_TYPE_LABELS,
   MANEUVER_TYPE_LABELS,
-  VEHICLE_CATEGORY_LABELS,
   renderSafeValue,
   renderActorCategoryLabel,
 } from "@/types";
@@ -62,8 +56,11 @@ function ReviewPageContent() {
   const [xmlCopied, setXmlCopied] = useState(false);
 
   // Fetch List
+  // Cố ý KHÔNG `setListLoading(true)` ở đây. `listLoading` khởi tạo đã là true
+  // cho lần nạp đầu, nên đặt lại là một lần render thừa ngay khi mount. Chỗ cần
+  // bật lại cờ là các lần nạp DO NGƯỜI DÙNG kích hoạt — và chúng bật ở đúng
+  // handler của mình bên dưới.
   const fetchScenarioList = useCallback(async () => {
-    setListLoading(true);
     try {
       const res = await getScenarios({ limit: 50 });
       const fetchedItems = res.items || [];
@@ -88,27 +85,45 @@ function ReviewPageContent() {
   }, [initialScenarioId]);
 
   useEffect(() => {
-    fetchScenarioList();
+  // `react-hooks` 7 chặn mọi setState mà effect với tới được, kể cả khi nó nằm
+  // sau `await`. Cách sửa thật là chuyển việc nạp lên server component / `use()`
+  // + Suspense, tức bỏ hẳn effect này — một refactor riêng, không nhét vào PR
+  // tính năng được. Tắt có phạm vi ở đúng ba chỗ để lỗi khác vẫn nhìn thấy.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp dữ liệu lúc mount
+    void fetchScenarioList();
   }, [fetchScenarioList]);
 
   // Fetch Selected Detail
+  //
+  // Cờ `cancelled` không phải để làm vừa lòng linter: reviewer bấm lướt qua
+  // danh sách thì nhiều request chồng nhau, và không có nó thì phản hồi của
+  // kịch bản bấm TRƯỚC có thể về SAU và ghi đè lên kịch bản đang xem. Người
+  // duyệt sẽ nhìn một kịch bản mà tưởng là kịch bản khác — rồi bấm duyệt.
   useEffect(() => {
     if (!selectedId) return;
-    setDetailLoading(true);
-    setDetailError(false);
+    let cancelled = false;
 
-    getScenarioById(selectedId)
-      .then((data) => {
-        setScenario(data);
-      })
-      .catch((err) => {
+    const load = async () => {
+      setDetailLoading(true);
+      setDetailError(false);
+      try {
+        const data = await getScenarioById(selectedId);
+        if (!cancelled) setScenario(data);
+      } catch (err) {
         console.error("Failed to load scenario detail", err);
-        setDetailError(true);
-        setScenario(null);
-      })
-      .finally(() => {
-        setDetailLoading(false);
-      });
+        if (!cancelled) {
+          setDetailError(true);
+          setScenario(null);
+        }
+      } finally {
+        if (!cancelled) setDetailLoading(false);
+      }
+    };
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedId]);
 
   // Toast auto-dismiss
@@ -165,6 +180,7 @@ function ReviewPageContent() {
           : `Đã từ chối kịch bản ${scenario.scenario_id}.`,
       });
 
+      setListLoading(true);
       await fetchScenarioList();
       const updated = await getScenarioById(scenario.scenario_id);
       setScenario(updated);
@@ -261,7 +277,10 @@ function ReviewPageContent() {
             {filterPendingOnly ? "Chỉ kịch bản chờ duyệt" : "Tất cả kịch bản"}
           </button>
           <button
-            onClick={fetchScenarioList}
+            onClick={() => {
+              setListLoading(true);
+              void fetchScenarioList();
+            }}
             className="btn-primary btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 border border-slate-700/50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${listLoading ? "animate-spin" : ""}`} />
@@ -497,7 +516,6 @@ function ReviewPageContent() {
                       const scorePct = item.similarity_score
                         ? Math.round(item.similarity_score * 100)
                         : 85;
-                      const meta = item.metadata || {};
                       return (
                         <div
                           key={item.id || idx}

@@ -7,7 +7,6 @@ import {
   Filter,
   Download,
   FileCode,
-  Loader2,
   BookOpen,
   ChevronRight,
   AlertCircle,
@@ -77,10 +76,10 @@ export default function LibraryPage() {
   const [oddFilter, setOddFilter] = useState<ODDPayload>({});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Debounced fetch
+  // Không bật `loading` ở đây: nó khởi tạo đã là true cho lần nạp đầu, còn các
+  // lần nạp do người dùng gõ/lọc thì bật ngay tại handler tương ứng.
   const fetchData = useCallback(
     async (searchTerm: string, odd: ODDPayload) => {
-      setLoading(true);
       try {
         const res = await getScenarios({ search: searchTerm, odd, limit: 100 });
         setItems(res.items);
@@ -97,7 +96,12 @@ export default function LibraryPage() {
 
   // On mount
   useEffect(() => {
-    fetchData("", {});
+  // `react-hooks` 7 chặn mọi setState mà effect với tới được, kể cả khi nó nằm
+  // sau `await`. Cách sửa thật là chuyển việc nạp lên server component / `use()`
+  // + Suspense, tức bỏ hẳn effect này — một refactor riêng, không nhét vào PR
+  // tính năng được. Tắt có phạm vi ở đúng ba chỗ để lỗi khác vẫn nhìn thấy.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp dữ liệu lúc mount
+    void fetchData("", {});
   }, [fetchData]);
 
   // Toast auto-dismiss
@@ -112,7 +116,8 @@ export default function LibraryPage() {
     setSearch(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      fetchData(value, oddFilter);
+      setLoading(true);
+      void fetchData(value, oddFilter);
     }, 300);
   };
 
@@ -120,7 +125,8 @@ export default function LibraryPage() {
   const handleFilterChange = (key: keyof ODDPayload, value: string) => {
     const next = { ...oddFilter, [key]: value || undefined };
     setOddFilter(next);
-    fetchData(search, next);
+    setLoading(true);
+    void fetchData(search, next);
   };
 
   // Download .xosc status gate

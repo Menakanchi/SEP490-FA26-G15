@@ -15,7 +15,6 @@ import {
   AlertTriangle,
   Info,
   Map,
-  Cloud,
   Users,
   Eye,
   Sliders,
@@ -30,7 +29,6 @@ import {
   WEATHER_LABELS,
   ACTOR_TYPE_LABELS,
   MANEUVER_TYPE_LABELS,
-  VEHICLE_CATEGORY_LABELS,
   renderSafeValue,
   renderActorCategoryLabel,
 } from "@/types";
@@ -49,10 +47,9 @@ function GeneratorPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [clientValidationError, setClientValidationError] = useState<string | null>(null);
 
-  // Polling state
-  const [requestId, setRequestId] = useState<string | null>(
-    searchParams.get("id"),
-  );
+  // Không giữ `requestId` trong state: nguồn sự thật là tham số `?id=` trên URL
+  // (chỗ duy nhất sống sót qua F5), và vòng poll bám vào `pollRef`. Một bản sao
+  // trong state chỉ tạo cơ hội cho hai giá trị lệch nhau.
   const [status, setStatus] = useState<GenerationStatus | null>(null);
   const [generatedScenario, setGeneratedScenario] = useState<ScenarioDetail | null>(null);
   const [polling, setPolling] = useState(false);
@@ -118,13 +115,17 @@ function GeneratorPageContent() {
     [doPoll, stopPolling],
   );
 
-  // Resume on mount
+  // Nối lại vòng poll cho request đang dở sau khi F5. Cố ý chạy ĐÚNG một lần:
+  // thêm `polling`/`status` vào deps sẽ khiến nó tự khởi động lại mỗi lần poll
+  // cập nhật trạng thái — vòng lặp vô tận.
+  //
   useEffect(() => {
     const idParam = searchParams.get("id");
     if (idParam && !polling && !status) {
-      setRequestId(idParam);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- nối lại poll lúc mount
       startPolling(idParam);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cố ý chỉ chạy lúc mount
   }, []);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
@@ -153,8 +154,6 @@ function GeneratorPageContent() {
         validation_mode: validationMode,
         limit: retrieveLimit,
       });
-      setRequestId(res.request_id);
-
       const url = new URL(window.location.href);
       url.searchParams.set("id", res.request_id);
       router.replace(url.pathname + url.search);

@@ -104,7 +104,25 @@ const formatSpecificText = (text: string): string => {
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 };
 
-export const renderSafeValue = (val: any, labelsMap?: Record<string, string>): string => {
+/**
+ * Một trục ODD có thể tới dưới hai hình dạng, và cả hai đều hợp lệ:
+ *   - chuỗi enum thuần (`"motorcycle"`) — đây là thứ `GET /scenarios` trả về,
+ *     vì bốn cột ODD trong DB lưu đúng giá trị enum để `WHERE` còn khớp;
+ *   - object có `category` + nhãn mô tả — đây là `parsed_intent` của Node 1,
+ *     nơi chữ người dùng gõ ("xe khách") còn được giữ nguyên bên cạnh ô enum.
+ */
+export interface OddAxisDetail {
+  category?: string;
+  specific_type?: string;
+  specific_action?: string;
+}
+
+export type OddAxisValue = string | OddAxisDetail | null | undefined;
+
+export const renderSafeValue = (
+  val: OddAxisValue,
+  labelsMap?: Record<string, string>,
+): string => {
   if (!val) return "unknown";
   if (typeof val === "string") return labelsMap?.[val] ?? val;
   if (typeof val === "object") {
@@ -141,43 +159,26 @@ export const renderSafeValue = (val: any, labelsMap?: Record<string, string>): s
 // Smart Actor Fallback Helpers (Frontend Only)
 // ---------------------------------------------------------------------------
 
+/**
+ * Loại phương tiện để vẽ. Ưu tiên `actor.category`, thiếu thì lấy nhãn ODD.
+ *
+ * `ActorType` là tập con của `VehicleCategory` (ODD không có `bicycle`), nên
+ * dùng thẳng nhãn ODD làm category là an toàn về kiểu.
+ *
+ * Bản trước có nhánh `at.split(":")` để bóc `"truck:xe_ben"`, và nhánh
+ * `typeof at === "object"`. Cả hai đã chết: backend giờ ghi giá trị enum thuần
+ * vào bốn cột ODD (chuỗi ghép làm mọi `WHERE actor_type = 'truck'` trượt), còn
+ * chi tiết thì nằm ở `specific_type` riêng.
+ */
 export function getSanitizedActorCategory(actor: ActorSpec, odd?: ODDCell): VehicleCategory {
-  if (actor.category && actor.category !== ("unknown" as VehicleCategory)) {
-    return actor.category;
-  }
-
-  if (odd?.actor_type) {
-    const at = odd.actor_type;
-    if (typeof at === "string" && at !== "unknown") {
-      const parts = at.split(":");
-      return parts[0] as VehicleCategory;
-    }
-    if (typeof at === "object") {
-      if (at.category && at.category !== "unknown") {
-        return at.category as VehicleCategory;
-      }
-    }
-  }
-
-  return "car" as VehicleCategory;
+  if (actor.category) return actor.category;
+  if (odd?.actor_type) return odd.actor_type;
+  return "car";
 }
 
+/** Chữ người dùng gõ cho phương tiện này, nếu còn giữ được. */
 export function getSanitizedActorSpecificType(actor: ActorSpec, odd?: ODDCell): string {
-  if (actor.specific_type && actor.specific_type !== "unknown") {
-    return actor.specific_type;
-  }
-
-  if (odd?.actor_type) {
-    const at = odd.actor_type;
-    if (typeof at === "string" && at.includes(":")) {
-      return at.split(":")[1];
-    }
-    if (typeof at === "object" && at.specific_type && at.specific_type !== "unknown") {
-      return at.specific_type;
-    }
-  }
-
-  return "";
+  return actor.specific_type || odd?.specific_type || "";
 }
 
 export function sanitizeActors(actors: ActorSpec[], odd?: ODDCell): ActorSpec[] {
@@ -209,12 +210,14 @@ export function renderActorCategoryLabel(actor: ActorSpec, odd?: ODDCell): strin
 // ---------------------------------------------------------------------------
 
 export interface ODDCell {
-  road_type: RoadType | any;
-  weather: Weather | any;
-  actor_type: ActorType | any;
-  maneuver: ManeuverType | any;
-  specific_type?: string;
-  specific_action?: string;
+  road_type: RoadType;
+  weather: Weather;
+  actor_type: ActorType;
+  maneuver: ManeuverType;
+  /** Chữ người dùng gõ, giữ lại sau khi đã quy về ô enum ("xe khách" -> truck).
+   *  Là nhãn mô tả, KHÔNG phải trục thứ năm — coverage vẫn đếm theo bốn trục trên. */
+  specific_type?: string | null;
+  specific_action?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,7 +308,7 @@ export interface RetrievedExample {
   title: string;
   content: string;
   description_vi?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, string>;
   similarity_score?: number;
 }
 
