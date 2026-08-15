@@ -38,6 +38,7 @@ from src.models.schemas import (
     ReviewGate,
     ScenarioSpec,
     ScenarioStatus,
+    VerificationLevel,
     can_request_simulation,
     next_status_after_review,
 )
@@ -59,6 +60,10 @@ scenarios = Table(
     Column("weather", String(50), nullable=False),
     Column("actor_type", String(50), nullable=False),
     Column("maneuver", String(50), nullable=False),
+    # Trục thứ hai bên cạnh `status`: kịch bản đã kiểm chứng tới đâu (ADR-017).
+    # Là cột thật chứ không nhét vào `tags` JSON, cùng lý do ADR-013 đưa bốn trục
+    # ODD ra cột riêng: retrieval lọc theo nó, mà `WHERE` không đào vào JSON được.
+    Column("verification", String(32), nullable=False, server_default=VerificationLevel.UNVERIFIED.value),
     Column("embedding", LargeBinary, nullable=True),
     Column("embedding_model", String(100), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
@@ -67,6 +72,7 @@ Index("ix_scenarios_road_type", scenarios.c.road_type)
 Index("ix_scenarios_weather", scenarios.c.weather)
 Index("ix_scenarios_actor_type", scenarios.c.actor_type)
 Index("ix_scenarios_maneuver", scenarios.c.maneuver)
+Index("ix_scenarios_verification", scenarios.c.verification)
 
 generation_requests = Table(
     "generation_requests",

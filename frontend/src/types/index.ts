@@ -268,6 +268,27 @@ export interface ScenarioSpec {
 // Status & Review
 // ---------------------------------------------------------------------------
 
+/**
+ * Kịch bản đã được kiểm chứng tới đâu — trục **riêng**, song song với
+ * `ScenarioStatus` (ADR-017).
+ *
+ * `status` trả lời "có người giữ nó lại không". Cái này trả lời một câu khác:
+ * "nó có thật sự tái hiện được nguy hiểm đã mô tả không". Gộp hai câu vào một
+ * ô là lý do trước đây kịch bản chạy ra sai vẫn nằm trong thư viện làm few-shot.
+ */
+export type VerificationLevel =
+  | "unverified"
+  | "adversarial"
+  | "ran_no_hazard"
+  | "execution_failed";
+
+export const VERIFICATION_LABELS: Record<VerificationLevel, string> = {
+  unverified: "Chưa chạy mô phỏng",
+  adversarial: "Đã kiểm chứng — có va chạm",
+  ran_no_hazard: "Chạy được nhưng không có nguy hiểm",
+  execution_failed: "Chạy hỏng",
+};
+
 export type ScenarioStatus =
   | "pending_review"
   | "rejected"
@@ -359,6 +380,7 @@ export interface ScenarioDetail {
   odd: ODDCell;
   time_of_day: TimeOfDay;
   status: ScenarioStatus;
+  verification?: VerificationLevel;
   spec: ScenarioSpec;
   xosc_content?: string;
   review_logs: ReviewLog[];

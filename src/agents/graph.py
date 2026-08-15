@@ -42,7 +42,14 @@ from src.agents.nodes.retrieve import retrieve_node
 from src.agents.nodes.validate_node import validate_node
 from src.agents.routing import blocking_errors, route_after_validate
 from src.agents.state import AgentState, ForgeState
-from src.models.schemas import IssueCode, ScenarioDraft, ScenarioSpec, ValidationIssue
+from src.models.schemas import (
+    PROVEN_BAD_FOR_FEW_SHOT,
+    IssueCode,
+    ScenarioDraft,
+    ScenarioSpec,
+    ValidationIssue,
+    VerificationLevel,
+)
 from src.services.persistence import ScenarioRepository
 
 logger = logging.getLogger(__name__)
@@ -124,6 +131,20 @@ def _few_shot_examples(state: ForgeState) -> list[ScenarioDraft]:
         try:
             stored = db.get_scenario(scenario_id)
             spec = (stored or {}).get("spec") or {}
+
+            # Không dạy lại thứ đã CHỨNG MINH là hỏng (ADR-017). Kịch bản chạy
+            # xong mà không dựng được nguy hiểm nào là kịch bản không tái hiện
+            # đúng câu mô tả nó; đưa vào few-shot là bảo model sinh thêm thứ
+            # tương tự, rồi thứ đó lại được duyệt và thành ví dụ mới.
+            #
+            # Chỉ loại thứ *đã chứng minh*, không loại thứ *chưa chứng minh* —
+            # `unverified` vẫn dùng, nếu không few-shot chết ngay vì mọi kịch
+            # bản mới đều bắt đầu ở đó.
+            level = VerificationLevel((stored or {}).get("verification") or VerificationLevel.UNVERIFIED)
+            if level in PROVEN_BAD_FOR_FEW_SHOT:
+                logger.debug("Bỏ qua few-shot %s: mức kiểm chứng %s", scenario_id, level.value)
+                continue
+
             core = {k: v for k, v in spec.items() if k not in ("scenario_id", "description_vi")}
             examples.append(ScenarioDraft.model_validate(core))
         except Exception as exc:

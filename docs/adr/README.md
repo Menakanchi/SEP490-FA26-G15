@@ -25,6 +25,7 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | [ADR-014](ADR-014-duyet-theo-lo-va-batch-khong-vao-thu-vien.md) | Batch: `BEFORE_SIM` duyệt theo **lô**; scenario sinh hàng loạt **không** vào thư viện | 🕐 **Proposed 12/8** — thi hành ở Phase 4, nhưng ràng buộc schema phải chốt **trước** khi viết review API |
 | [ADR-015](ADR-015-chan-trung-o-loi-vao-bang-so-khop-chuoi.md) | Câu hỏi trùng: so khớp chuỗi chuẩn hoá ở API layer trước graph; **không** ngưỡng embedding ở MVP | 🕐 **Proposed 12/8** — Phase 1, chốt cùng `POST /generate` |
 | [ADR-016](ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md) | Phạm vi converter = số anchor đã smoke-test; `DEFAULT_SUPPORT_POLICY` từ 560 xuống **76 ô** (chỉ `highway`) | 🕐 **Proposed 14/8** — Phase 1, chốt cùng `convert_xosc` |
+| [ADR-017](ADR-017-muc-kiem-chung-tach-khoi-trang-thai-duyet.md) | Mức kiểm chứng (`VerificationLevel`) là trục **riêng**, không phải trạng thái duyệt; kịch bản không bị rút khỏi thư viện, chỉ thôi làm few-shot | 🕐 **Proposed 15/8** — chốt cùng PR đóng vòng lặp mô phỏng |
 
 ## Luật
 

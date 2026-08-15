@@ -28,7 +28,7 @@ Ba điều đáng nói về cách script này viết:
 
    ``carla`` nhận ba giá trị:
    - ``adversarial``    — chạy được VÀ tái hiện đúng nguy hiểm đã mô tả
-   - ``ran-no-hazard``  — chạy trót lọt nhưng KHÔNG dựng được tình huống nguy hiểm
+   - ``ran_no_hazard``  — chạy trót lọt nhưng KHÔNG dựng được tình huống nguy hiểm
    - ``unverified``     — chưa chạy được (ngoài phạm vi converter)
 
 ChromaDB đã bỏ: ADR-013 chốt không có vector store riêng.
@@ -55,7 +55,7 @@ logger = logging.getLogger("seed_db")
 SEED_SCENARIOS = [
     {
         "scenario_id": "sc_901",
-        "carla": ("ran-no-hazard", "chạy 30s, CollisionTest=0 — không dựng được nguy hiểm"),
+        "carla": ("ran_no_hazard", "chạy 30s, CollisionTest=0 — không dựng được nguy hiểm"),
         "title": "Xe tải bung thùng rơi kiện hàng trên cao tốc",
         "description_vi": (
             "Xe tải chở hàng bị bung thùng rơi kiện hàng xuống đường cao tốc "
@@ -255,7 +255,7 @@ SEED_SCENARIOS = [
     },
     {
         "scenario_id": "sc_906",
-        "carla": ("ran-no-hazard", "chạy 30s, CollisionTest=0 — không dựng được nguy hiểm"),
+        "carla": ("ran_no_hazard", "chạy 30s, CollisionTest=0 — không dựng được nguy hiểm"),
         "title": "Xe ben lấn làn trong sương mù dày đặc",
         "description_vi": "Xe ben chở đất lấn làn đè vạch suýt quẹt ô tô ngược chiều trong sương mù dày đặc.",
         "odd": {
@@ -323,7 +323,7 @@ SEED_SCENARIOS = [
     },
     {
         "scenario_id": "sc_908",
-        "carla": ("ran-no-hazard", "chạy 6s, CollisionTest=0 — không dựng được nguy hiểm"),
+        "carla": ("ran_no_hazard", "chạy 6s, CollisionTest=0 — không dựng được nguy hiểm"),
         "title": "Xe container dừng khẩn cấp tránh chướng ngại vật",
         "description_vi": (
             "Xe container thắng gấp dừng chết giữa làn đường do phát hiện chướng ngại vật trên đường cao tốc."
@@ -535,8 +535,9 @@ def seed_database() -> None:
                 """
                 INSERT OR REPLACE INTO scenarios
                 (scenario_id, status, title, description_vi, spec, xosc_content, assumptions,
-                 tags, road_type, weather, actor_type, maneuver, embedding, embedding_model, created_at)
-                VALUES (?, 'approved_library', ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                 tags, road_type, weather, actor_type, maneuver, verification, embedding,
+                 embedding_model, created_at)
+                VALUES (?, 'approved_library', ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 """,
                 (
                     scenario["scenario_id"],
@@ -550,6 +551,9 @@ def seed_database() -> None:
                     odd["weather"],
                     odd["actor_type"],
                     odd["maneuver"],
+                    # Mức kiểm chứng là CỘT, không phải nhãn trong tags: retrieval
+                    # lọc theo nó (ADR-017), mà `WHERE` không đào vào JSON được.
+                    scenario["carla"][0],
                     pack_blob_embedding(vector),
                     "text-embedding-3-small",
                 ),

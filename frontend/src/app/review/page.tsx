@@ -20,6 +20,16 @@ import {
   Sparkle,
   PlayCircle,
 } from "lucide-react";
+import { VERIFICATION_LABELS, type VerificationLevel } from "@/types";
+
+/** Màu theo mức kiểm chứng. `adversarial` là mức TỐT — kịch bản dựng được nguy
+ *  hiểm, đúng thứ Forge tồn tại để làm — nên nó xanh, không đỏ. */
+const verificationStyle: Record<VerificationLevel, string> = {
+  adversarial: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  ran_no_hazard: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  execution_failed: "bg-red-500/15 text-red-300 border-red-500/30",
+  unverified: "bg-slate-500/15 text-slate-400 border-slate-600/30",
+};
 import {
   getScenarios,
   getScenarioById,
@@ -406,6 +416,17 @@ function ReviewPageContent() {
                       ID: {scenario.scenario_id} | Trạng thái hiện tại:{" "}
                       <strong className="text-purple-300">{scenario.status}</strong>
                     </p>
+                    {/* Mức kiểm chứng là trục RIÊNG, không phải trạng thái duyệt
+                        (ADR-017). Không hiện nó thì người duyệt chỉ thấy "đã duyệt"
+                        và hiểu nhầm rằng kịch bản đã được chứng minh là đúng. */}
+                    <span
+                      className={`inline-block mt-2 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
+                        verificationStyle[scenario.verification ?? "unverified"]
+                      }`}
+                      title="Kết quả chạy thật trên CARLA — khác với trạng thái duyệt của con người"
+                    >
+                      {VERIFICATION_LABELS[scenario.verification ?? "unverified"]}
+                    </span>
                   </div>
                   <span className="text-xs font-semibold px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
                     Cổng áp dụng: {gateLabel}

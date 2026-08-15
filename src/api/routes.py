@@ -30,6 +30,7 @@ from src.models.schemas import (
     StatusResponse,
     can_request_simulation,
     next_status_after_review,
+    verification_from_execution,
 )
 from src.services import db
 from src.services.library.retriever import SQLiteRetriever
@@ -388,11 +389,25 @@ async def list_pending_jobs() -> dict:
 
 @router.post("/internal/jobs/{job_id}/result")
 async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
-    """Worker submit kết quả sau khi chạy ScenarioRunner."""
+    """Worker submit kết quả sau khi chạy ScenarioRunner.
+
+    Đây là chỗ **đóng vòng lặp** (ADR-017). Trước đây kết quả chỉ được ghi vào
+    ``scenario_jobs.result`` rồi nằm im — không gì đọc, không gì đổi theo nó.
+    Giờ nó cập nhật mức kiểm chứng của chính kịch bản, và mức đó quyết định
+    kịch bản có được dùng làm ví dụ few-shot nữa hay không.
+
+    **Không** đổi ``status``: kịch bản không bị rút khỏi thư viện vì chạy ra
+    không đúng ý. Số phận nó do người quyết ở cổng 1; đây chỉ là bằng chứng.
+    """
     job = db.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' không tồn tại")
 
     new_status = JobStatus.DONE.value if body.success else JobStatus.FAILED.value
     db.update_job_result(job_id, new_status, body.model_dump())
-    return {"ok": True}
+
+    level = verification_from_execution(body.success, body.criteria_results)
+    db.set_verification(body.scenario_id, level)
+    logger.info("Kịch bản %s -> mức kiểm chứng %s", body.scenario_id, level.value)
+
+    return {"ok": True, "verification": level.value}

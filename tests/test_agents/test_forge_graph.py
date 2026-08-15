@@ -26,6 +26,7 @@ from src.models.schemas import (
     ScenarioDraft,
     ScenarioStatus,
     TimeOfDay,
+    VerificationLevel,
     Weather,
 )
 
@@ -213,3 +214,52 @@ async def test_every_workflow_node_is_wired():
         "convert_xosc",
         "persist_pending_review",
     }
+
+
+# ---------------------------------------------------------------------------
+# Few-shot lọc theo mức kiểm chứng (ADR-017)
+# ---------------------------------------------------------------------------
+
+
+def _library_row(scenario_id: str, verification: str) -> None:
+    """Nhét thẳng một kịch bản đã duyệt vào thư viện, khỏi chạy cả workflow."""
+    from src.services import db
+
+    db.save_scenario(
+        scenario_id=scenario_id,
+        title=f"Mẫu {scenario_id}",
+        description_vi="Xe máy tạt đầu ô tô trên cao tốc",
+        spec=good_draft().model_dump(mode="json") | {"scenario_id": scenario_id, "description_vi": "x"},
+        odd=good_draft().odd.model_dump(mode="json"),
+        xosc_content="<OpenSCENARIO/>",
+    )
+    db.set_verification(scenario_id, VerificationLevel(verification))
+
+
+@pytest.mark.parametrize(
+    "level,expected",
+    [
+        ("adversarial", 1),
+        ("unverified", 1),
+        ("ran_no_hazard", 0),
+        ("execution_failed", 0),
+    ],
+)
+def test_few_shot_drops_only_what_is_proven_bad(level: str, expected: int):
+    """Loại thứ **đã chứng minh** hỏng; giữ thứ **chưa chứng minh**.
+
+    Đây là chỗ cắt vòng tự khẳng định: kịch bản chạy xong mà không dựng được
+    nguy hiểm nào là kịch bản không tái hiện đúng câu mô tả nó — đưa vào few-shot
+    là bảo model sinh thêm thứ tương tự, rồi thứ đó lại được duyệt và thành ví dụ
+    mới, không ai phát hiện được từ bên trong.
+
+    Nhưng loại cả ``unverified`` thì few-shot chết ngay: mọi kịch bản mới sinh
+    đều bắt đầu ở đó, và phần lớn seed cũng chưa chạy được vì ngoài phạm vi
+    converter. "Chưa chứng minh" khác hẳn "đã chứng minh là hỏng".
+    """
+    from src.agents.graph import _few_shot_examples
+
+    _library_row("sc_501", level)
+    state = {"retrieved_examples": [{"id": "sc_501"}]}
+
+    assert len(_few_shot_examples(state)) == expected
