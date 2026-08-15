@@ -196,12 +196,14 @@ def run_job(job: dict) -> dict:
             criteria_json = json.loads(newest.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             error = error or f"đọc {newest.name} hỏng: {exc}"
-    elif error is None:
-        error = "ScenarioRunner không sinh file JSON criteria"
-
+    # Thứ tự quan trọng: stderr thật phải thắng thông báo chung. Bản trước đặt
+    # "không sinh file JSON criteria" trước, nên nó che mất nguyên nhân thật
+    # (lỗi XML, CARLA chưa sẵn sàng, ...) và người đọc log không biết vì sao.
     if error is None and returncode != 0:
         tail = (stderr or stdout or "").strip().splitlines()[-3:]
         error = "; ".join(tail) or f"mã thoát {returncode}"
+    if error is None and criteria_json is None:
+        error = "ScenarioRunner không sinh file JSON criteria"
 
     result = to_execution_result(job, returncode, criteria_json, error)
     result["metrics"]["wall_clock_s"] = round(time.time() - started_at, 1)

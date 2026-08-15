@@ -271,7 +271,9 @@ async def test_review_validation_and_flow(client):
         },
     )
     assert app_res.status_code == 200
-    assert app_res.json() == {"ok": True}
+    assert app_res.json()["ok"] is True
+    # Chế độ static thì không tự mở cổng 2 — chỉ chế độ sim mới mở.
+    assert app_res.json()["sim_gate_opened"] is False
 
     # Duyệt xong thì mới tải được .xosc (FR-11).
     assert (await client.get(f"/api/v1/scenarios/{sc_id}/xosc")).status_code == 200
@@ -494,3 +496,43 @@ async def test_crashed_run_is_recorded_as_execution_failed(client):
         },
     )
     assert posted.json()["verification"] == "execution_failed"
+
+
+@pytest.mark.asyncio
+async def test_sim_mode_opens_the_second_gate_automatically(client):
+    """Chọn `sim` từ đầu thì duyệt cổng 1 xong là mở luôn cổng 2.
+
+    Người dùng đã nói ý định ngay lúc gõ câu; bắt họ bấm thêm một nút để nói
+    lại điều đã nói là thừa. Nhưng **không** tự chạy CARLA: cổng BEFORE_SIM còn
+    nguyên, người vẫn phải gật trước khi tốn GPU. Tự động ở đây chỉ là bước
+    chuyển trạng thái, không phải quyết định tiêu tài nguyên.
+    """
+    with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
+        req_id = (
+            await client.post(
+                "/api/v1/generate",
+                json={"prompt": "Xe máy tạt đầu ô tô trên đường cao tốc", "validation_mode": "sim"},
+            )
+        ).json()["request_id"]
+        for _ in range(60):
+            status = (await client.get(f"/api/v1/status/{req_id}")).json()
+            if status.get("scenario_id") or status.get("step") == "failed":
+                break
+            await asyncio.sleep(0.05)
+
+    sc_id = status["scenario_id"]
+    approved = await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_library",
+            "approved": True,
+            "reviewer": "Cong",
+            "reason": "",
+        },
+    )
+    assert approved.json()["sim_gate_opened"] is True
+    assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["status"] == "pending_sim_review"
+
+    # Vẫn chưa có job nào: cổng 2 mở ra để NGƯỜI duyệt, không phải để tự chạy.
+    assert (await client.get("/api/v1/internal/jobs")).json()["jobs"] == []

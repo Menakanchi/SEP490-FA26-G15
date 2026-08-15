@@ -236,10 +236,16 @@ function GeneratorPageContent() {
                 ) : (
                   <ToggleLeft className="w-6 h-6 text-slate-500" />
                 )}
-                <span>
+                <span
+                  title={
+                    validationMode === "static"
+                      ? "Sinh và kiểm file OpenSCENARIO. Dừng ở chờ duyệt thư viện."
+                      : "Sau khi duyệt vào thư viện, mở sẵn cổng duyệt mô phỏng. Vẫn cần người duyệt lần hai trước khi tốn GPU."
+                  }
+                >
                   {validationMode === "static"
                     ? "Chế độ: Validate XML (Fast)"
-                    : "Chế độ: Mô phỏng thật (Sim)"}
+                    : "Chế độ: Kèm mô phỏng (mở sẵn cổng BEFORE_SIM)"}
                 </span>
               </button>
 
