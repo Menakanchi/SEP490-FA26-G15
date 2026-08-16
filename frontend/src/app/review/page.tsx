@@ -179,6 +179,15 @@ function ReviewPageContent() {
         ? "Cổng Mô phỏng (BEFORE_SIM)"
         : "Không có quyết định đang chờ";
 
+  // Hai cổng phải KHÁC MÀU và KHÁC CHỮ rõ ràng ngay trong form quyết định —
+  // không chỉ ở cái badge nhỏ phía trên. Lý do rất cụ thể: reviewer từng duyệt
+  // nhầm cổng 2 (BEFORE_SIM, tốn GPU thật) ngay sau khi vừa duyệt xong cổng 1,
+  // vì hai form trông giống hệt nhau và không có gì báo đã sang cổng khác.
+  const gateAccent =
+    pendingGate === "before_sim"
+      ? { border: "border-orange-500/40", text: "text-orange-300", icon: "text-orange-400" }
+      : { border: "border-purple-500/30", text: "text-slate-100", icon: "text-purple-400" };
+
   // Form Submit Handler
   const handleSubmitReview = async (approved: boolean) => {
     const errors: { reviewer?: string; reason?: string } = {};
@@ -209,6 +218,11 @@ function ReviewPageContent() {
             : `Đã phê duyệt kịch bản ${scenario.scenario_id} tại ${gateLabel}!`
           : `Đã từ chối kịch bản ${scenario.scenario_id}.`,
       });
+      // Xoá lý do sau mỗi lần gửi: nếu cổng kế tự mở ra ngay (sim_gate_opened),
+      // chữ cũ còn nằm trong ô rất dễ khiến người duyệt tưởng chưa gửi gì và
+      // bấm lại — đúng cái đã xảy ra trong demo (duyệt nhầm cổng 2 liền sau
+      // cổng 1 vì form trông y hệt, chữ trong ô còn y nguyên).
+      setReason("");
 
       setListLoading(true);
       await fetchScenarioList();
@@ -673,11 +687,16 @@ function ReviewPageContent() {
 
               {/* Chỉ hiện form khi state machine có transition hợp lệ. */}
               {pendingGate ? (
-                <div className="glass-card p-6 space-y-4 border-purple-500/30">
-                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                    <User className="w-4 h-4 text-purple-400" />
-                    Form Phê duyệt / Từ chối (HITL Decision Form)
+                <div className={`glass-card p-6 space-y-4 ${gateAccent.border}`}>
+                  <h3 className={`text-base font-bold flex items-center gap-2 ${gateAccent.text}`}>
+                    <User className={`w-4 h-4 ${gateAccent.icon}`} />
+                    Đang duyệt: {gateLabel}
                   </h3>
+                  {pendingGate === "before_sim" && (
+                    <p className="text-xs text-orange-300/90 -mt-2">
+                      Đây là cổng thứ hai — Phê duyệt ở đây sẽ tạo job và đẩy vào hàng đợi GPU worker thật.
+                    </p>
+                  )}
 
                 {/* ❌ Critical Error Banner */}
                 {(formErrors.reviewer || formErrors.reason) && (
