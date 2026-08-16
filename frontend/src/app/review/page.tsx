@@ -247,25 +247,49 @@ function ReviewPageContent() {
   };
 
   /**
-   * Mở cổng duyệt thứ hai. Không chạy CARLA — chỉ chuyển sang chờ duyệt
-   * BEFORE_SIM. Nạp lại chi tiết sau khi xong để form duyệt đổi sang cổng 2.
+   * Mở lại vòng sim thứ hai (`request-sim`) rồi quyết định luôn (`review`) —
+   * hai lệnh API riêng vì state machine ADR-011 đòi đi qua `pending_sim_review`
+   * trước khi quyết, nhưng gộp thành MỘT hành động ở UI. Bản cũ tách hai nút
+   * ("Yêu cầu" rồi mới "Duyệt") không có tác dụng gì thêm khi cùng một người
+   * bấm cả hai — chỉ tạo thêm một chỗ dễ bấm nhầm giống bug đã gặp lúc demo,
+   * và bản cũ còn không ghi reviewer/reason ở bước "yêu cầu" nên mất luôn dấu
+   * vết ai mở cổng.
    */
-  const handleRequestSim = async () => {
-    if (!scenario) return;
+  const handleRunSimNow = async (approved: boolean) => {
+    const errors: { reviewer?: string; reason?: string } = {};
+    if (!reviewer.trim()) {
+      errors.reviewer = "Vui lòng nhập tên/email người duyệt (Reviewer ID).";
+    }
+    if (!approved && reason.trim().length < 10) {
+      errors.reason = "Lý do từ chối bắt buộc có nhất 10 ký tự để lưu vết audit trail.";
+    }
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0 || !scenario) return;
+
     setRequestingSim(true);
     try {
       await requestSimulation(scenario.scenario_id);
-      const fresh = await getScenarioById(scenario.scenario_id);
-      setScenario(fresh);
+      await postReview({
+        scenario_id: scenario.scenario_id,
+        gate: "before_sim",
+        approved,
+        reviewer: reviewer.trim(),
+        reason: reason.trim(),
+      });
       setToast({
         type: "success",
-        msg: "Đã mở cổng BEFORE_SIM. Duyệt tiếp thì job mới vào hàng đợi worker.",
+        msg: approved
+          ? `Đã tạo job mô phỏng cho ${scenario.scenario_id} — vào hàng đợi GPU worker.`
+          : `Đã từ chối chạy mô phỏng cho ${scenario.scenario_id} lần này.`,
       });
+      setReason("");
+      const fresh = await getScenarioById(scenario.scenario_id);
+      setScenario(fresh);
       await fetchScenarioList();
     } catch (err) {
       setToast({
         type: "error",
-        msg: err instanceof Error ? err.message : "Không mở được cổng mô phỏng",
+        msg: err instanceof Error ? err.message : "Không chạy được mô phỏng.",
       });
     } finally {
       setRequestingSim(false);
@@ -765,6 +789,76 @@ function ReviewPageContent() {
                   </button>
                 </div>
                 </div>
+              ) : scenario.status === "approved_library" ? (
+                <div className="glass-card p-6 space-y-4 border-emerald-500/30">
+                  <h3 className="text-base font-bold text-emerald-200 flex items-center gap-2">
+                    <PlayCircle className="w-4 h-4 text-emerald-400" />
+                    Kịch bản đã ở Thư viện — chạy (lại) mô phỏng?
+                  </h3>
+                  <p className="text-xs text-slate-400 -mt-2">
+                    Một hành động duy nhất: mở cổng BEFORE_SIM và quyết luôn, không cần bấm hai lần.
+                  </p>
+
+                  {(formErrors.reviewer || formErrors.reason) && (
+                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-300 space-y-1">
+                      <div className="flex items-center gap-1.5 font-semibold text-red-200">
+                        <XCircle className="w-4 h-4 text-red-400" />
+                        Lỗi kiểm tra dữ liệu đầu vào (Validation Error):
+                      </div>
+                      {formErrors.reviewer && <p>• {formErrors.reviewer}</p>}
+                      {formErrors.reason && <p>• {formErrors.reason}</p>}
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1">
+                        Tên kỹ sư / reviewer chịu trách nhiệm <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className={`input-field text-sm ${formErrors.reviewer ? "border-red-500/60" : ""}`}
+                        placeholder="Ví dụ: Engineer QA Lead"
+                        value={reviewer}
+                        onChange={(e) => setReviewer(e.target.value)}
+                        disabled={requestingSim}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1">
+                        Ghi chú / lý do nếu không chạy mô phỏng lần này
+                      </label>
+                      <textarea
+                        className={`input-field text-sm min-h-[60px] ${formErrors.reason ? "border-red-500/60" : ""}`}
+                        placeholder="Bắt buộc có từ 10 ký tự trở lên khi chọn “Không cần mô phỏng”..."
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        disabled={requestingSim}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleRunSimNow(false)}
+                      disabled={requestingSim}
+                      className="btn-primary bg-slate-500/20 hover:bg-slate-500/30 text-slate-300 border border-slate-500/40 text-sm px-4 py-2 flex items-center gap-2"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Không cần mô phỏng
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRunSimNow(true)}
+                      disabled={requestingSim}
+                      className="btn-primary btn-success text-sm px-5 py-2 flex items-center gap-2"
+                    >
+                      {requestingSim ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
+                      Chạy mô phỏng
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <div className="glass-card p-6 border-emerald-500/30">
                   <div className="flex items-start gap-3">
@@ -774,9 +868,7 @@ function ReviewPageContent() {
                         Không có quyết định HITL đang chờ
                       </h3>
                       <p className="text-xs text-slate-400 leading-relaxed">
-                        {scenario.status === "approved_library"
-                          ? "Kịch bản đã qua cổng Thư viện. Muốn chạy hoặc chạy lại trên CARLA, hãy bấm “Yêu cầu chạy mô phỏng”; form sẽ mở lại ở cổng BEFORE_SIM."
-                          : "Kịch bản đã bị từ chối ở cổng Thư viện. Không còn hành động phê duyệt hợp lệ cho trạng thái này."}
+                        Kịch bản đã bị từ chối ở cổng Thư viện. Không còn hành động phê duyệt hợp lệ cho trạng thái này.
                       </p>
                     </div>
                   </div>
@@ -798,21 +890,6 @@ function ReviewPageContent() {
                     >
                       <Copy className="w-3.5 h-3.5" />
                       {xmlCopied ? "Đã chép!" : "Sao chép"}
-                    </button>
-                    <button
-                      onClick={handleRequestSim}
-                      disabled={scenario.status !== "approved_library" || requestingSim}
-                      title={
-                        scenario.status === "approved_library"
-                          ? "Mở cổng duyệt thứ hai để xin chạy trên CARLA"
-                          : "Chỉ kịch bản đã vào thư viện mới xin chạy mô phỏng được"
-                      }
-                      className={`btn-primary btn-ghost text-xs px-3 py-1.5 flex items-center gap-1 border border-slate-700/40 ${
-                        scenario.status !== "approved_library" ? "opacity-40 cursor-not-allowed" : ""
-                      }`}
-                    >
-                      <PlayCircle className="w-3.5 h-3.5" />
-                      {requestingSim ? "Đang gửi..." : "Yêu cầu chạy mô phỏng"}
                     </button>
                     <button
                       onClick={handleDownloadXml}
