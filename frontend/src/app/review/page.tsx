@@ -162,14 +162,22 @@ function ReviewPageContent() {
     router.replace(url.pathname + url.search, { scroll: false });
   };
 
-  // Determine Gate from Scenario Status
-  const gate: ReviewGate = (() => {
-    if (!scenario) return "before_library";
-    if (scenario.status === "pending_sim_review") return "before_sim";
-    return "before_library";
+  // Chỉ hai trạng thái pending mới có một quyết định hợp lệ trong state machine.
+  // Bản cũ mặc định mọi trạng thái khác về BEFORE_LIBRARY, nên scenario đã
+  // `approved_library` vẫn hiện form duyệt lần nữa. Backend từ chối đúng, nhưng
+  // UI lại mời người dùng bấm một hành động chắc chắn thất bại.
+  const pendingGate: ReviewGate | null = (() => {
+    if (scenario?.status === "pending_review") return "before_library";
+    if (scenario?.status === "pending_sim_review") return "before_sim";
+    return null;
   })();
 
-  const gateLabel = gate === "before_library" ? "Cổng Thư viện (BEFORE_LIBRARY)" : "Cổng Mô phỏng (BEFORE_SIM)";
+  const gateLabel =
+    pendingGate === "before_library"
+      ? "Cổng Thư viện (BEFORE_LIBRARY)"
+      : pendingGate === "before_sim"
+        ? "Cổng Mô phỏng (BEFORE_SIM)"
+        : "Không có quyết định đang chờ";
 
   // Form Submit Handler
   const handleSubmitReview = async (approved: boolean) => {
@@ -182,13 +190,13 @@ function ReviewPageContent() {
     }
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
-    if (!scenario) return;
+    if (!scenario || !pendingGate) return;
 
     setSubmitting(true);
     try {
       await postReview({
         scenario_id: scenario.scenario_id,
-        gate,
+        gate: pendingGate,
         approved,
         reviewer: reviewer.trim(),
         reason: reason.trim(),
@@ -461,7 +469,8 @@ function ReviewPageContent() {
                         nhưng nó làm cổng duyệt mất tác dụng bắt điểm mù. Nhắc,
                         không chặn: đội một người thì tự duyệt là bắt buộc, và
                         chặn cứng chỉ khiến người ta gõ tên giả. */}
-                    {reviewer.trim() !== "" &&
+                    {pendingGate &&
+                      reviewer.trim() !== "" &&
                       scenario.created_by &&
                       reviewer.trim().toLowerCase() === scenario.created_by.toLowerCase() && (
                         <p className="mt-2 text-[11px] text-amber-300/90 flex items-center gap-1.5">
@@ -472,7 +481,7 @@ function ReviewPageContent() {
                       )}
                   </div>
                   <span className="text-xs font-semibold px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    Cổng áp dụng: {gateLabel}
+                    {pendingGate ? `Cổng áp dụng: ${gateLabel}` : gateLabel}
                   </span>
                 </div>
 
@@ -660,12 +669,13 @@ function ReviewPageContent() {
                 )}
               </div>
 
-              {/* Decision Form Box */}
-              <div className="glass-card p-6 space-y-4 border-purple-500/30">
-                <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                  <User className="w-4 h-4 text-purple-400" />
-                  Form Phê duyệt / Từ chối (HITL Decision Form)
-                </h3>
+              {/* Chỉ hiện form khi state machine có transition hợp lệ. */}
+              {pendingGate ? (
+                <div className="glass-card p-6 space-y-4 border-purple-500/30">
+                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <User className="w-4 h-4 text-purple-400" />
+                    Form Phê duyệt / Từ chối (HITL Decision Form)
+                  </h3>
 
                 {/* ❌ Critical Error Banner */}
                 {(formErrors.reviewer || formErrors.reason) && (
@@ -733,7 +743,24 @@ function ReviewPageContent() {
                     Phê duyệt (Approve)
                   </button>
                 </div>
-              </div>
+                </div>
+              ) : (
+                <div className="glass-card p-6 border-emerald-500/30">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-semibold text-emerald-200">
+                        Không có quyết định HITL đang chờ
+                      </h3>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        {scenario.status === "approved_library"
+                          ? "Kịch bản đã qua cổng Thư viện. Muốn chạy hoặc chạy lại trên CARLA, hãy bấm “Yêu cầu chạy mô phỏng”; form sẽ mở lại ở cổng BEFORE_SIM."
+                          : "Kịch bản đã bị từ chối ở cổng Thư viện. Không còn hành động phê duyệt hợp lệ cho trạng thái này."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* OpenSCENARIO Code View & Download */}
               <div className="glass-card p-6 space-y-3">
