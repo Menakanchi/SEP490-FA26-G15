@@ -9,8 +9,6 @@ import {
   XCircle,
   ArrowRight,
   Clock,
-  ToggleLeft,
-  ToggleRight,
   Sparkles,
   AlertTriangle,
   Info,
@@ -24,7 +22,7 @@ import {
 } from "lucide-react";
 import { postGenerate, getStatus, getScenarioById } from "@/services/api";
 import SVG2DRenderer from "@/components/SVG2DRenderer";
-import type { GenerationStatus, ValidationMode, ScenarioDetail } from "@/types";
+import type { GenerationStatus, ScenarioDetail } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
@@ -43,7 +41,6 @@ function GeneratorPageContent() {
 
   // Form state
   const [prompt, setPrompt] = useState("");
-  const [validationMode, setValidationMode] = useState<ValidationMode>("static");
   const [retrieveLimit, setRetrieveLimit] = useState<number>(3);
   // Nhớ tên người tạo giữa các lần dùng — gõ lại mỗi lần thì ai cũng bỏ trống,
   // và cột `created_by` lại thành vô nghĩa y như khi không có.
@@ -162,7 +159,7 @@ function GeneratorPageContent() {
     try {
       const res = await postGenerate({
         prompt: trimmedPrompt,
-        validation_mode: validationMode,
+        validation_mode: "static",
         limit: retrieveLimit,
         created_by: createdBy.trim() || "unknown",
       });
@@ -234,33 +231,6 @@ function GeneratorPageContent() {
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
             <div className="flex flex-wrap items-center gap-4">
-              {/* Validation Mode Toggle */}
-              <button
-                type="button"
-                className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 transition-colors"
-                onClick={() =>
-                  setValidationMode((m) => (m === "static" ? "sim" : "static"))
-                }
-                disabled={polling || submitting}
-              >
-                {validationMode === "sim" ? (
-                  <ToggleRight className="w-6 h-6 text-cyan-400" />
-                ) : (
-                  <ToggleLeft className="w-6 h-6 text-slate-500" />
-                )}
-                <span
-                  title={
-                    validationMode === "static"
-                      ? "Sinh và kiểm file OpenSCENARIO. Dừng ở chờ duyệt thư viện."
-                      : "Sau khi duyệt vào thư viện, mở sẵn cổng duyệt mô phỏng. Vẫn cần người duyệt lần hai trước khi tốn GPU."
-                  }
-                >
-                  {validationMode === "static"
-                    ? "Chế độ: Validate XML (Fast)"
-                    : "Chế độ: Kèm mô phỏng (mở sẵn cổng BEFORE_SIM)"}
-                </span>
-              </button>
-
               {/* Người tạo — vế thứ nhất của "hai vai trò" mà đề bài yêu cầu */}
               <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/40">
                 <User className="w-3.5 h-3.5 text-cyan-400" />

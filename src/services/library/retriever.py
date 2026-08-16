@@ -184,7 +184,9 @@ class SQLiteRetriever(BaseRetriever):
             # không quên được. `embedding` chỉ được ghi trong transaction duyệt
             # BEFORE_LIBRARY, nên kịch bản chưa duyệt không có vector — dù ai đó
             # về sau lỡ xoá mất mệnh đề `status` thì nó vẫn không lọt ra.
-            where_clauses.append("status = 'approved_library' AND embedding IS NOT NULL")
+            where_clauses.append(
+                "status IN ('approved_library', 'pending_sim_review') AND embedding IS NOT NULL"
+            )
 
             # 2. ODD Pre-filtering WHERE clause (ADR-013)
             road_type = odd_filter.get("road_type")
@@ -218,7 +220,7 @@ class SQLiteRetriever(BaseRetriever):
                 params.extend([str(man_cat), f"%{man_cat}%"])
 
             columns = "scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding"
-            gate = "status = 'approved_library' AND embedding IS NOT NULL"
+            gate = "status IN ('approved_library', 'pending_sim_review') AND embedding IS NOT NULL"
 
             cursor.execute(f"SELECT {columns} FROM scenarios WHERE {' AND '.join(where_clauses)}", params)
             rows = cursor.fetchall()

@@ -272,8 +272,9 @@ async def test_review_validation_and_flow(client):
     )
     assert app_res.status_code == 200
     assert app_res.json()["ok"] is True
-    # Chế độ static thì không tự mở cổng 2 — chỉ chế độ sim mới mở.
-    assert app_res.json()["sim_gate_opened"] is False
+    # Static chỉ chứng minh file parse được, không chứng minh kịch bản có ý
+    # nghĩa — qua BEFORE_LIBRARY luôn mở sẵn BEFORE_SIM bất kể validation_mode.
+    assert app_res.json()["sim_gate_opened"] is True
 
     # Duyệt xong thì mới tải được .xosc (FR-11).
     assert (await client.get(f"/api/v1/scenarios/{sc_id}/xosc")).status_code == 200
@@ -294,6 +295,10 @@ async def test_request_sim_opens_the_second_gate(client):
     Cổng 2 là xin phép **trước khi tiêu GPU**, không phải xem xong rồi quyết giữ.
     Đề bài đòi *"kỹ sư phải phê duyệt trước khi đưa vào bộ kiểm thử"*, nên hệ
     thống không được tự đẩy job vào CARLA.
+
+    Duyệt cổng 1 giờ tự mở luôn cổng 2 (xem ``post_review``), nên endpoint này
+    chỉ còn cần thiết để **mở lại vòng sim thứ hai** sau khi cổng 2 đã có một
+    quyết định (approve hoặc reject đều trả kịch bản về ``approved_library``).
     """
     sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
 
@@ -301,7 +306,7 @@ async def test_request_sim_opens_the_second_gate(client):
     too_early = await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
     assert too_early.status_code == 409
 
-    await client.post(
+    approve_res = await client.post(
         "/api/v1/review",
         json={
             "scenario_id": sc_id,
@@ -311,13 +316,29 @@ async def test_request_sim_opens_the_second_gate(client):
             "reason": "",
         },
     )
-
-    opened = await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
-    assert opened.status_code == 200
-    assert opened.json()["status"] == "pending_sim_review"
+    # Cổng 1 duyệt xong là cổng 2 đã tự mở — gọi request-sim lúc này là thừa.
+    assert approve_res.json()["sim_gate_opened"] is True
+    assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["status"] == "pending_sim_review"
+    already_open = await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
+    assert already_open.status_code == 409
 
     # Chưa duyệt cổng 2 thì chưa có job nào cho worker.
     assert (await client.get("/api/v1/internal/jobs")).json()["jobs"] == []
+
+    # Từ chối cổng 2 trả kịch bản về approved_library — vẫn xin mở lại được.
+    await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_sim",
+            "approved": False,
+            "reviewer": "Cong",
+            "reason": "Chưa đủ tin cậy để tốn GPU đợt này",
+        },
+    )
+    reopened = await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
+    assert reopened.status_code == 200
+    assert reopened.json()["status"] == "pending_sim_review"
 
 
 @pytest.mark.asyncio
@@ -500,12 +521,13 @@ async def test_crashed_run_is_recorded_as_execution_failed(client):
 
 @pytest.mark.asyncio
 async def test_sim_mode_opens_the_second_gate_automatically(client):
-    """Chọn `sim` từ đầu thì duyệt cổng 1 xong là mở luôn cổng 2.
+    """Duyệt xong cổng 1 (BEFORE_LIBRARY) là mở luôn cổng 2, bất kể `validation_mode`.
 
-    Người dùng đã nói ý định ngay lúc gõ câu; bắt họ bấm thêm một nút để nói
-    lại điều đã nói là thừa. Nhưng **không** tự chạy CARLA: cổng BEFORE_SIM còn
-    nguyên, người vẫn phải gật trước khi tốn GPU. Tự động ở đây chỉ là bước
-    chuyển trạng thái, không phải quyết định tiêu tài nguyên.
+    Static chỉ chứng minh file parse được, không chứng minh kịch bản có ý
+    nghĩa hay tái hiện đúng nguy hiểm — không phải điểm dừng hợp lệ của sản
+    phẩm. Nhưng **không** tự chạy CARLA: cổng BEFORE_SIM còn nguyên, người vẫn
+    phải gật trước khi tốn GPU. Tự động ở đây chỉ là bước chuyển trạng thái,
+    không phải quyết định tiêu tài nguyên.
     """
     with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
         req_id = (

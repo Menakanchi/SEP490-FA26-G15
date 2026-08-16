@@ -194,7 +194,7 @@ function ReviewPageContent() {
 
     setSubmitting(true);
     try {
-      await postReview({
+      const result = await postReview({
         scenario_id: scenario.scenario_id,
         gate: pendingGate,
         approved,
@@ -204,7 +204,9 @@ function ReviewPageContent() {
       setToast({
         type: "success",
         msg: approved
-          ? `Đã phê duyệt kịch bản ${scenario.scenario_id} tại ${gateLabel}!`
+          ? result.sim_gate_opened
+            ? `Đã phê duyệt kịch bản ${scenario.scenario_id} tại ${gateLabel}! Cổng Mô phỏng (BEFORE_SIM) đã mở sẵn — static không phải điểm dừng cuối.`
+            : `Đã phê duyệt kịch bản ${scenario.scenario_id} tại ${gateLabel}!`
           : `Đã từ chối kịch bản ${scenario.scenario_id}.`,
       });
 
