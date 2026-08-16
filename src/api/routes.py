@@ -247,22 +247,21 @@ async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) ->
         job_id = f"job_{uuid.uuid4().hex[:8]}"
         db.create_scenario_job(job_id, target_id, scenario["xosc_content"])
 
-    # `validation_mode = "sim"` là người dùng đã nói TỪ ĐẦU rằng họ muốn kiểm
-    # chứng bằng mô phỏng. Duyệt xong cổng 1 thì mở luôn cổng 2 cho họ, thay vì
-    # bắt bấm thêm một nút nữa để nói lại điều đã nói.
+    # Static chỉ chứng minh file parse được, không chứng minh kịch bản có ý
+    # nghĩa hay tái hiện đúng nguy hiểm mô tả. Qua được BEFORE_LIBRARY luôn mở
+    # sẵn BEFORE_SIM — không còn tuỳ theo `validation_mode` người tạo chọn lúc
+    # generate, vì "chỉ cần static" không phải một điểm dừng hợp lệ của sản phẩm.
     #
     # Vẫn KHÔNG tự chạy CARLA: cổng BEFORE_SIM còn nguyên, người vẫn phải gật
     # trước khi tốn GPU. Cái tự động ở đây chỉ là bước chuyển trạng thái, không
     # phải quyết định tiêu tài nguyên.
     auto_opened = False
     if body.approved and gate is ReviewGate.BEFORE_LIBRARY:
-        request = db.get_request_for_scenario(target_id) or {}
-        wants_sim = (request.get("validation_mode") or "static") == "sim"
         has_xosc = len(scenario.get("xosc_content") or "") >= 100
-        if wants_sim and has_xosc:
+        if has_xosc:
             db.update_scenario_status(target_id, ScenarioStatus.PENDING_SIM_REVIEW.value)
             auto_opened = True
-            logger.info("%s chọn chế độ sim — mở sẵn cổng BEFORE_SIM", target_id)
+            logger.info("%s qua BEFORE_LIBRARY — mở sẵn cổng BEFORE_SIM", target_id)
 
     return {"ok": True, "sim_gate_opened": auto_opened}
 
@@ -414,8 +413,12 @@ async def get_scenario_xosc(scenario_id: str) -> Response:
     if not scenario:
         raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' không tồn tại")
 
+    # `pending_sim_review` vẫn đã qua BEFORE_LIBRARY — cổng 2 tự mở ngay sau đó
+    # (xem POST /review) nên kịch bản nằm ở đây suốt lúc chờ quyết định sim, và
+    # vẫn phải tải được: FR-11 chỉ đòi "đã qua BEFORE_LIBRARY", không đòi thêm
+    # điều kiện đã xong luôn BEFORE_SIM.
     current_status = scenario.get("status")
-    if current_status != ScenarioStatus.APPROVED_LIBRARY.value:
+    if current_status not in (ScenarioStatus.APPROVED_LIBRARY.value, ScenarioStatus.PENDING_SIM_REVIEW.value):
         raise HTTPException(
             status_code=403,
             detail="Chỉ kịch bản đã qua duyệt BEFORE_LIBRARY mới được phép tải file .xosc",

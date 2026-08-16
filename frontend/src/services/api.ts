@@ -85,11 +85,14 @@ export async function getStatus(requestId: string): Promise<GenerationStatus> {
 
 export async function postReview(
   payload: ReviewRequest,
-): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>(`/scenarios/${encodeURIComponent(payload.scenario_id)}/review`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+): Promise<{ ok: boolean; sim_gate_opened: boolean }> {
+  return request<{ ok: boolean; sim_gate_opened: boolean }>(
+    `/scenarios/${encodeURIComponent(payload.scenario_id)}/review`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------

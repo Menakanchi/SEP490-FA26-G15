@@ -132,21 +132,6 @@ def get_generation_request(request_id: str) -> dict | None:
     return d
 
 
-def get_request_for_scenario(scenario_id: str) -> dict | None:
-    """Lần ngược từ kịch bản về lần sinh ra nó.
-
-    Cần để biết người dùng chọn ``validation_mode`` gì lúc gõ câu — thông tin
-    đó sống ở ``generation_requests``, không nhân bản sang ``scenarios``. Một
-    kịch bản ứng với đúng một lần sinh, nên không có chuyện nhiều hàng.
-    """
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM generation_requests WHERE scenario_id = ? LIMIT 1", (scenario_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
 def update_generation_request(request_id: str, **kwargs) -> None:
     conn = _get_connection()
     cursor = conn.cursor()
