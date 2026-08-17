@@ -153,6 +153,18 @@ function ReviewPageContent() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // `reviewer`/`reason`/`formErrors` dùng chung cho cả form gate 1 và form
+  // "chạy mô phỏng" ở gate 2. Reset ba trường này NGAY tại các chỗ gây đổi
+  // cổng (xem `resetReviewForm` bên dưới, gọi trong các handler chứ không
+  // qua effect) — chữ nhập dở hay lỗi validate của cổng vừa xong không có
+  // nghĩa gì ở cổng mới và dễ khiến người duyệt tưởng nhầm đã nhập gì đó cho
+  // cổng đang xem.
+  const resetReviewForm = () => {
+    setReviewer("");
+    setReason("");
+    setFormErrors({});
+  };
+
   // Select Item Handler
   const handleSelectScenario = (id: string) => {
     setSelectedId(id);
@@ -188,8 +200,10 @@ function ReviewPageContent() {
       ? { border: "border-orange-500/40", text: "text-orange-300", icon: "text-orange-400" }
       : { border: "border-purple-500/30", text: "text-slate-100", icon: "text-purple-400" };
 
-  // Form Submit Handler
-  const handleSubmitReview = async (approved: boolean) => {
+  // Validate chung cho cả hai form quyết định (gate 1 và gate 2) — dùng chung
+  // một chỗ để hai form không trôi dần khỏi nhau khi có người sửa một bên mà
+  // quên bên kia.
+  const validateReviewForm = (approved: boolean): { reviewer?: string; reason?: string } => {
     const errors: { reviewer?: string; reason?: string } = {};
     if (!reviewer.trim()) {
       errors.reviewer = "Vui lòng nhập tên/email người duyệt (Reviewer ID).";
@@ -197,6 +211,12 @@ function ReviewPageContent() {
     if (!approved && reason.trim().length < 10) {
       errors.reason = "Lý do từ chối bắt buộc có nhất 10 ký tự để lưu vết audit trail.";
     }
+    return errors;
+  };
+
+  // Form Submit Handler
+  const handleSubmitReview = async (approved: boolean) => {
+    const errors = validateReviewForm(approved);
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
     if (!scenario || !pendingGate) return;
@@ -218,11 +238,11 @@ function ReviewPageContent() {
             : `Đã phê duyệt kịch bản ${scenario.scenario_id} tại ${gateLabel}!`
           : `Đã từ chối kịch bản ${scenario.scenario_id}.`,
       });
-      // Xoá lý do sau mỗi lần gửi: nếu cổng kế tự mở ra ngay (sim_gate_opened),
+      // Xoá cả form sau mỗi lần gửi: nếu cổng kế tự mở ra ngay (sim_gate_opened),
       // chữ cũ còn nằm trong ô rất dễ khiến người duyệt tưởng chưa gửi gì và
       // bấm lại — đúng cái đã xảy ra trong demo (duyệt nhầm cổng 2 liền sau
       // cổng 1 vì form trông y hệt, chữ trong ô còn y nguyên).
-      setReason("");
+      resetReviewForm();
 
       setListLoading(true);
       await fetchScenarioList();
@@ -256,13 +276,7 @@ function ReviewPageContent() {
    * vết ai mở cổng.
    */
   const handleRunSimNow = async (approved: boolean) => {
-    const errors: { reviewer?: string; reason?: string } = {};
-    if (!reviewer.trim()) {
-      errors.reviewer = "Vui lòng nhập tên/email người duyệt (Reviewer ID).";
-    }
-    if (!approved && reason.trim().length < 10) {
-      errors.reason = "Lý do từ chối bắt buộc có nhất 10 ký tự để lưu vết audit trail.";
-    }
+    const errors = validateReviewForm(approved);
     setFormErrors(errors);
     if (Object.keys(errors).length > 0 || !scenario) return;
 
@@ -282,7 +296,7 @@ function ReviewPageContent() {
           ? `Đã tạo job mô phỏng cho ${scenario.scenario_id} — vào hàng đợi GPU worker.`
           : `Đã từ chối chạy mô phỏng cho ${scenario.scenario_id} lần này.`,
       });
-      setReason("");
+      resetReviewForm();
       const fresh = await getScenarioById(scenario.scenario_id);
       setScenario(fresh);
       await fetchScenarioList();
@@ -291,6 +305,21 @@ function ReviewPageContent() {
         type: "error",
         msg: err instanceof Error ? err.message : "Không chạy được mô phỏng.",
       });
+      // `requestSimulation` có thể ĐÃ thành công trước khi `postReview` ném
+      // lỗi — server khi đó đã chuyển scenario sang pending_sim_review dù UI
+      // chưa biết. Nạp lại để form hiện đúng cổng đang thật sự chờ. Chỉ dọn
+      // form khi cổng thật sự đã đổi (không phải mọi lỗi mạng vặt) — nếu
+      // `requestSimulation` chưa kịp chạy tới thì scenario vẫn ở nguyên cổng
+      // cũ, xoá chữ đang gõ dở lúc đó chỉ gây khó chịu vô ích.
+      try {
+        const statusBeforeError = scenario.status;
+        const fresh = await getScenarioById(scenario.scenario_id);
+        setScenario(fresh);
+        if (fresh.status !== statusBeforeError) resetReviewForm();
+        await fetchScenarioList();
+      } catch (refetchErr) {
+        console.error("Failed to refresh scenario after error", refetchErr);
+      }
     } finally {
       setRequestingSim(false);
     }
