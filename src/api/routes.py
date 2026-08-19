@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 
 from src.agents.graph import build_forge_graph
 from src.models.schemas import (
+    TOO_VAGUE_MESSAGE,
     # Domain models
     ExecutionResult,
     # API models
@@ -30,6 +31,7 @@ from src.models.schemas import (
     StatusResponse,
     TagUpdateRequest,
     can_request_simulation,
+    is_too_vague_to_generate,
     next_status_after_review,
     verification_from_execution,
 )
@@ -149,6 +151,42 @@ def _mark_failed(request_id: str, reason: str) -> None:
     db.update_generation_request(request_id, status="failed", step="failed", progress=0, error=reason)
 
 
+# ---------------------------------------------------------------------------
+# Tra cứu dùng chung
+# ---------------------------------------------------------------------------
+
+MIN_XOSC_LENGTH = 100
+"""Dưới ngưỡng này thì cột ``xosc_content`` coi như rỗng, không phải một file."""
+
+
+def _scenario_or_404(scenario_id: str) -> dict:
+    """Đọc scenario, hoặc 404 với đúng một câu.
+
+    Sáu route mở đầu bằng cùng ba dòng này. Chép sáu lần thì câu 404 lệch nhau
+    theo thời gian, và frontend — vốn khớp theo chuỗi để hiện thông báo — sẽ
+    nhận hai câu khác nhau cho cùng một tình huống.
+    """
+    scenario = db.get_scenario(scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' không tồn tại")
+    return scenario
+
+
+def _has_xosc(scenario: dict) -> bool:
+    """Kịch bản đã biên dịch được thành .xosc chưa.
+
+    Ngưỡng nằm ở một chỗ vì cả hai chỗ dùng nó đều trả **409 với cùng lý do**:
+    tổ hợp ODD ngoài phạm vi converter (ADR-016). Hai hằng số rời thì một bên
+    phát ra file rỗng ruột trong khi bên kia đã từ chối nó.
+    """
+    return len(scenario.get("xosc_content") or "") >= MIN_XOSC_LENGTH
+
+
+UNCOMPILED_SCENARIO_DETAIL = (
+    "Kịch bản chưa biên dịch được thành .xosc — tổ hợp ODD của nó nằm ngoài phạm vi converter hiện tại (ADR-016)."
+)
+
+
 # ===========================================================================
 # POST /generate & POST /scenarios/generate
 # ===========================================================================
@@ -157,13 +195,8 @@ def _mark_failed(request_id: str, reason: str) -> None:
 @router.post("/generate", response_model=GenerateResponse)
 @router.post("/scenarios/generate", response_model=GenerateResponse)
 async def generate(body: GenerateRequest) -> GenerateResponse:
-    prompt_text = body.prompt.strip()
-    words = prompt_text.split()
-    if len(prompt_text) < 10 or len(words) < 3 or prompt_text.isnumeric():
-        raise HTTPException(
-            status_code=400,
-            detail="Mô tả kịch bản quá ngắn hoặc không đủ thông tin kịch bản giao thông.",
-        )
+    if is_too_vague_to_generate(body.prompt):
+        raise HTTPException(status_code=400, detail=TOO_VAGUE_MESSAGE)
 
     request_id = str(uuid.uuid4())
 
@@ -212,9 +245,7 @@ async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) ->
         raise HTTPException(status_code=400, detail="Thiếu scenario_id")
     body.scenario_id = target_id
 
-    scenario = db.get_scenario(target_id)
-    if not scenario:
-        raise HTTPException(status_code=404, detail=f"Scenario '{target_id}' không tồn tại")
+    scenario = _scenario_or_404(target_id)
 
     if not body.approved and len(body.reason.strip()) < 10:
         raise HTTPException(
@@ -256,12 +287,10 @@ async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) ->
     # trước khi tốn GPU. Cái tự động ở đây chỉ là bước chuyển trạng thái, không
     # phải quyết định tiêu tài nguyên.
     auto_opened = False
-    if body.approved and gate is ReviewGate.BEFORE_LIBRARY:
-        has_xosc = len(scenario.get("xosc_content") or "") >= 100
-        if has_xosc:
-            db.update_scenario_status(target_id, ScenarioStatus.PENDING_SIM_REVIEW.value)
-            auto_opened = True
-            logger.info("%s qua BEFORE_LIBRARY — mở sẵn cổng BEFORE_SIM", target_id)
+    if body.approved and gate is ReviewGate.BEFORE_LIBRARY and _has_xosc(scenario):
+        db.update_scenario_status(target_id, ScenarioStatus.PENDING_SIM_REVIEW.value)
+        auto_opened = True
+        logger.info("%s qua BEFORE_LIBRARY — mở sẵn cổng BEFORE_SIM", target_id)
 
     return {"ok": True, "sim_gate_opened": auto_opened}
 
@@ -285,9 +314,7 @@ async def request_simulation(scenario_id: str) -> dict:
     đều trả nó về ``approved_library`` (ADR-011 §3.3). Cổng 2 chỉ quyết định có
     tốn GPU cho nó hay không.
     """
-    scenario = db.get_scenario(scenario_id)
-    if not scenario:
-        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' không tồn tại")
+    scenario = _scenario_or_404(scenario_id)
 
     current = ScenarioStatus(scenario["status"])
     if not can_request_simulation(current):
@@ -298,16 +325,10 @@ async def request_simulation(scenario_id: str) -> dict:
             ),
         )
 
-    if len(scenario.get("xosc_content") or "") < 100:
+    if not _has_xosc(scenario):
         # Không có file thì không có gì để chạy. Chặn ở đây thay vì để worker
         # nhận một job rỗng rồi chết bằng lỗi XML chẳng nói gì về nguyên nhân.
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Kịch bản chưa biên dịch được thành .xosc nên không chạy mô phỏng được; "
-                "tổ hợp ODD của nó nằm ngoài phạm vi converter (ADR-016)."
-            ),
-        )
+        raise HTTPException(status_code=409, detail=UNCOMPILED_SCENARIO_DETAIL)
 
     db.update_scenario_status(scenario_id, ScenarioStatus.PENDING_SIM_REVIEW.value)
     return {"ok": True, "status": ScenarioStatus.PENDING_SIM_REVIEW.value}
@@ -326,8 +347,7 @@ async def update_tags(scenario_id: str, body: TagUpdateRequest) -> dict:
     thành hai endpoint khác nhau chỉ tạo cơ hội cho hai bên hiểu khác nhau về
     trạng thái hiện tại.
     """
-    if not db.get_scenario(scenario_id):
-        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' không tồn tại")
+    _scenario_or_404(scenario_id)
 
     cleaned = list(dict.fromkeys(t.strip().lower() for t in body.tags if t.strip()))
     db.set_tags(scenario_id, cleaned)
@@ -394,11 +414,7 @@ async def list_scenarios(
 @router.get("/scenarios/{scenario_id}")
 async def get_scenario(scenario_id: str) -> dict:
     """Chi tiết một scenario bao gồm spec, xosc_content và review_logs."""
-    scenario = db.get_scenario(scenario_id)
-    if not scenario:
-        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' không tồn tại")
-
-    return scenario
+    return _scenario_or_404(scenario_id)
 
 
 # ===========================================================================
@@ -409,9 +425,7 @@ async def get_scenario(scenario_id: str) -> dict:
 @router.get("/scenarios/{scenario_id}/xosc")
 async def get_scenario_xosc(scenario_id: str) -> Response:
     """Tải file .xosc XML của scenario (chặn HTTP 403 khi chưa được duyệt BEFORE_LIBRARY)."""
-    scenario = db.get_scenario(scenario_id)
-    if not scenario:
-        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' không tồn tại")
+    scenario = _scenario_or_404(scenario_id)
 
     # `pending_sim_review` vẫn đã qua BEFORE_LIBRARY — cổng 2 tự mở ngay sau đó
     # (xem POST /review) nên kịch bản nằm ở đây suốt lúc chờ quyết định sim, và
@@ -424,19 +438,12 @@ async def get_scenario_xosc(scenario_id: str) -> Response:
             detail="Chỉ kịch bản đã qua duyệt BEFORE_LIBRARY mới được phép tải file .xosc",
         )
 
-    xosc_content = scenario.get("xosc_content") or ""
-    if len(xosc_content) < 100:
+    if not _has_xosc(scenario):
         # Thà 409 còn hơn phát ra một file trông như thật mà rỗng ruột. Ca này
         # xảy ra với kịch bản nằm ngoài phạm vi converter (ADR-016): chúng vẫn
         # hữu ích cho retrieval nhưng chưa biên dịch được thành .xosc.
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Kịch bản này chưa biên dịch được thành .xosc — tổ hợp ODD của nó "
-                "nằm ngoài phạm vi converter hiện tại (ADR-016)."
-            ),
-        )
-    return Response(content=xosc_content, media_type="application/xml")
+        raise HTTPException(status_code=409, detail=UNCOMPILED_SCENARIO_DETAIL)
+    return Response(content=scenario["xosc_content"], media_type="application/xml")
 
 
 # ===========================================================================

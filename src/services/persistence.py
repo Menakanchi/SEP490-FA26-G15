@@ -6,8 +6,10 @@ retriever.  Keep them backend-neutral and use SQLAlchemy Core only.
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from pathlib import Path
 from struct import pack, unpack
 from typing import Any
 
@@ -172,6 +174,37 @@ def decode_embedding(blob: bytes) -> tuple[float, ...]:
     if len(blob) % EMBEDDING_ITEMSIZE:
         raise ValueError("embedding BLOB length must be divisible by four")
     return unpack(f"<{len(blob) // EMBEDDING_ITEMSIZE}{_STRUCT_ELEMENT}", blob)
+
+
+SQLITE_URL_PREFIX = "sqlite:///"
+
+
+def sqlite_path(database_url: str, *, caller: str) -> Path:
+    """``sqlite:///…`` -> đường dẫn file. **Một định nghĩa duy nhất.**
+
+    Hai module mở SQLite bằng ``sqlite3`` thuần (``services/db.py`` và
+    ``library/retriever.py``) và trước đây mỗi module tự bóc tiền tố này. Hai
+    bản sao của cùng một phép bóc chuỗi thì không sai ngay — chúng lệch nhau vào
+    lần đầu ai đó thêm một dạng URL mới ở một bên, và triệu chứng là retrieval
+    đọc đúng file khác với file backend đang ghi: **rỗng, không có lỗi nào**.
+
+    ``caller`` chỉ đi vào thông báo lỗi, để người đọc traceback biết ngay module
+    nào đòi SQLite mà cấu hình lại trỏ sang backend khác.
+    """
+    if not database_url.startswith(SQLITE_URL_PREFIX):
+        raise RuntimeError(f"{caller} chỉ chạy trên SQLite; database_url hiện tại là {database_url!r}")
+    return Path(database_url[len(SQLITE_URL_PREFIX) :])
+
+
+def connect_sqlite(path: Path) -> sqlite3.Connection:
+    """Kết nối ``sqlite3`` thuần với ``row_factory`` đã đặt sẵn.
+
+    Quên ``row_factory = sqlite3.Row`` là mọi chỗ đọc theo tên cột trở thành
+    ``TypeError`` ở tận nơi dùng, nên nó đi kèm luôn với việc mở kết nối.
+    """
+    conn = sqlite3.connect(str(path))
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 def make_engine(database_url: str) -> Engine:

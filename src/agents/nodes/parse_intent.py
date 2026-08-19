@@ -6,9 +6,10 @@ import json
 import logging
 import re
 import unicodedata
+from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -16,6 +17,7 @@ from src.agents.prompts.parse_intent import SYSTEM_PROMPT
 from src.agents.state import ForgeState
 from src.models.schemas import (
     DEFAULT_SUPPORT_POLICY,
+    TOO_VAGUE_MESSAGE,
     ActorType,
     IssueCode,
     ManeuverType,
@@ -23,6 +25,8 @@ from src.models.schemas import (
     RoadType,
     ValidationIssue,
     Weather,
+    is_too_vague_to_generate,
+    odd_axis_value,
 )
 from src.services.llm import get_llm
 
@@ -67,30 +71,34 @@ _MANEUVER_ALIASES: dict[str, ManeuverType] = {
 }
 
 
-def _to_actor_type(code: str | None) -> ActorType | None:
-    """Mã actor từ taxonomy về ``ActorType``, hoặc ``None`` nếu không quy được."""
+_EnumT = TypeVar("_EnumT", bound=StrEnum)
+
+
+def _to_enum(code: str | None, enum: type[_EnumT], aliases: Mapping[str, _EnumT]) -> _EnumT | None:
+    """Mã taxonomy -> giá trị enum, hoặc ``None`` nếu không quy được.
+
+    Actor và maneuver quy đổi theo **cùng một luật** — chuẩn hoá chữ, tra bảng
+    bí danh, rồi thử chính enum — và trước đây có hai bản sao của luật đó. Chúng
+    lệch nhau ngay lần đầu ai đó thêm `.strip()` hay đổi cách so chữ ở một bên,
+    và triệu chứng là *một nửa* từ vựng taxonomy im lặng rơi về ``None``.
+    """
     if not code:
         return None
     code = code.strip().lower()
-    if code in _ACTOR_ALIASES:
-        return _ACTOR_ALIASES[code]
+    if code in aliases:
+        return aliases[code]
     try:
-        return ActorType(code)
+        return enum(code)
     except ValueError:
         return None
+
+
+def _to_actor_type(code: str | None) -> ActorType | None:
+    return _to_enum(code, ActorType, _ACTOR_ALIASES)
 
 
 def _to_maneuver_type(code: str | None) -> ManeuverType | None:
-    """Mã hành vi từ taxonomy về ``ManeuverType``, hoặc ``None``."""
-    if not code:
-        return None
-    code = code.strip().lower()
-    if code in _MANEUVER_ALIASES:
-        return _MANEUVER_ALIASES[code]
-    try:
-        return ManeuverType(code)
-    except ValueError:
-        return None
+    return _to_enum(code, ManeuverType, _MANEUVER_ALIASES)
 
 
 def _remove_accents(text: str) -> str:
@@ -114,34 +122,25 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
     query_raw = user_query.lower()
     query_no_accents = _remove_accents(query_raw)
 
-    road_type = None
-    weather = None
+    def _first_match(axis: str, enum: type[_EnumT]) -> _EnumT | None:
+        """Giá trị enum đầu tiên có từ khoá xuất hiện trong câu.
 
-    # 1. Road Type
-    for code, keywords in rules.get("road_type", {}).items():
-        if code != "unknown":
-            for kw in keywords:
-                if _find_keyword(query_raw, kw) != -1 or _find_keyword(query_no_accents, kw) != -1:
-                    try:
-                        road_type = RoadType(code)
-                    except ValueError:
-                        pass
-                    break
-            if road_type:
-                break
+        ``road_type`` và ``weather`` quét theo đúng cùng một cách; viết rời hai
+        vòng lặp giống hệt nhau chỉ tạo hai chỗ để quên ``query_no_accents`` —
+        và quên nó nghĩa là *"cao toc"* gõ không dấu không khớp gì cả.
+        """
+        for code, keywords in rules.get(axis, {}).items():
+            if code == "unknown":
+                continue
+            if any(_find_keyword(query_raw, kw) != -1 or _find_keyword(query_no_accents, kw) != -1 for kw in keywords):
+                try:
+                    return enum(code)
+                except ValueError:
+                    return None
+        return None
 
-    # 2. Weather
-    for code, keywords in rules.get("weather", {}).items():
-        if code != "unknown":
-            for kw in keywords:
-                if _find_keyword(query_raw, kw) != -1 or _find_keyword(query_no_accents, kw) != -1:
-                    try:
-                        weather = Weather(code)
-                    except ValueError:
-                        pass
-                    break
-            if weather:
-                break
+    road_type = _first_match("road_type", RoadType)
+    weather = _first_match("weather", Weather)
 
     # 3. Maneuver
     maneuver_matches: list[tuple[int, int, str]] = []
@@ -228,9 +227,10 @@ def parse_intent_node(state: ForgeState) -> dict:
     """Node 1: parse_intent — Xử lý ý định người dùng."""
     user_query = state.get("user_query", "").strip()
 
-    # Guardrail: Chặn prompt rác / quá ngắn
-    if len(user_query) < 10 or len(user_query.split()) < 3 or user_query.isnumeric():
-        raise ValueError("Mô tả kịch bản quá ngắn hoặc không đủ thông tin kịch bản giao thông.")
+    # Guardrail: Chặn prompt rác / quá ngắn. Cùng một ngưỡng với HTTP 400 ở
+    # `POST /generate` — xem `is_too_vague_to_generate`.
+    if is_too_vague_to_generate(user_query):
+        raise ValueError(TOO_VAGUE_MESSAGE)
 
     rules = _load_taxonomy_rules()
 
@@ -238,11 +238,15 @@ def parse_intent_node(state: ForgeState) -> dict:
     rule_dict = _rule_based_extract(user_query, rules)
     is_rule_complete = (rule_dict.get("actor_type") is not None) and (rule_dict.get("maneuver") is not None)
 
-    odd_query: ODDQuery | None = None
+    def _odd_query_from_rules() -> ODDQuery:
+        """``rule_dict`` -> ``ODDQuery``. Dựng ở hai nhánh, viết một lần.
 
-    if is_rule_complete:
-        logger.info("Khớp hoàn toàn từ Rule-based local (Bước 1), bỏ qua LLM call.")
-        odd_query = ODDQuery(
+        Nhánh "rule khớp đủ" và nhánh "LLM hỏng, lùi về rule" đều dựng đúng cùng
+        một object. Hai bản sao thì thêm một trường vào ``ODDQuery`` mà chỉ sửa
+        một nhánh sẽ làm đường lui **im lặng** mất trường đó — và đường lui chỉ
+        chạy khi LLM đã hỏng, tức là đúng lúc không ai đang nhìn.
+        """
+        return ODDQuery(
             road_type=rule_dict.get("road_type"),
             weather=rule_dict.get("weather"),
             actor_type=rule_dict.get("actor_type"),
@@ -251,6 +255,12 @@ def parse_intent_node(state: ForgeState) -> dict:
             specific_action=rule_dict.get("specific_action"),
             inferred=[],
         )
+
+    odd_query: ODDQuery | None = None
+
+    if is_rule_complete:
+        logger.info("Khớp hoàn toàn từ Rule-based local (Bước 1), bỏ qua LLM call.")
+        odd_query = _odd_query_from_rules()
     else:
         # BƯỚC 2: Gọi LLM nếu Bước 1 chưa trích xuất đủ cả 2 trục bắt buộc
         logger.info("Chuyển sang BƯỚC 2: Gọi LLM Fallback (AI Semantic Extraction)")
@@ -265,15 +275,7 @@ def parse_intent_node(state: ForgeState) -> dict:
         except Exception as err:
             logger.warning(f"LLM Call failed ({err}). Reverting to Rule-based fallback.")
             if rule_dict.get("actor_type") or rule_dict.get("maneuver"):
-                odd_query = ODDQuery(
-                    road_type=rule_dict.get("road_type"),
-                    weather=rule_dict.get("weather"),
-                    actor_type=rule_dict.get("actor_type"),
-                    maneuver=rule_dict.get("maneuver"),
-                    specific_type=rule_dict.get("specific_type"),
-                    specific_action=rule_dict.get("specific_action"),
-                    inferred=[],
-                )
+                odd_query = _odd_query_from_rules()
             else:
                 issue = ValidationIssue(
                     code=IssueCode.LLM_PROVIDER_ERROR,
@@ -293,14 +295,11 @@ def parse_intent_node(state: ForgeState) -> dict:
     if all(getattr(odd_query, axis) is None for axis in ODDQuery.AXES):
         raise ValueError("Không thể nhận diện tình huống giao thông từ prompt. Vui lòng cung cấp mô tả rõ ràng hơn.")
 
-    def _axis(value: object, fallback: str = "unknown") -> str:
-        return str(value.value) if isinstance(value, StrEnum) else fallback
-
-    at_cat = _axis(odd_query.actor_type)
-    mv_cat = _axis(odd_query.maneuver)
+    at_cat = odd_axis_value(odd_query.actor_type)
+    mv_cat = odd_axis_value(odd_query.maneuver)
     parsed_intent: dict[str, Any] = {
-        "road_type": _axis(odd_query.road_type),
-        "weather": _axis(odd_query.weather),
+        "road_type": odd_axis_value(odd_query.road_type),
+        "weather": odd_axis_value(odd_query.weather),
         "actor_type": {
             "category": at_cat,
             "specific_type": odd_query.specific_type or (at_cat if at_cat != "unknown" else None),

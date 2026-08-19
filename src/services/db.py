@@ -20,14 +20,15 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from src.config import get_settings
-from src.models.schemas import ScenarioStatus, VerificationLevel
+from src.models.schemas import ScenarioStatus, VerificationLevel, odd_axis_value
 from src.services.llm import EMBEDDING_MODEL
-from src.services.persistence import make_engine, metadata
+from src.services.persistence import connect_sqlite, make_engine, metadata, sqlite_path
 
 logger = logging.getLogger(__name__)
 
@@ -38,19 +39,35 @@ def _db_path() -> Path:
     Hard-code ``./data/app.db`` sẽ làm mọi test dùng chung một file với bản dev,
     và làm biến môi trường ``DATABASE_URL`` trở thành lời nói dối.
     """
-    url = get_settings().database_url
-    prefix = "sqlite:///"
-    if not url.startswith(prefix):
-        raise RuntimeError(f"db.py chỉ chạy trên SQLite; database_url hiện tại là {url!r}")
-    return Path(url[len(prefix) :])
+    return sqlite_path(get_settings().database_url, caller="db.py")
 
 
 def _get_connection() -> sqlite3.Connection:
     path = _db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
-    conn.row_factory = sqlite3.Row
-    return conn
+    return connect_sqlite(path)
+
+
+@contextmanager
+def _cursor(*, commit: bool = False) -> Iterator[sqlite3.Cursor]:
+    """Mở kết nối, trả cursor, **luôn** đóng lại. Commit khi được yêu cầu.
+
+    Mười lăm hàm trong file này từng lặp lại đúng bốn dòng
+    ``connect / cursor / commit / close``, và lặp theo **hai** kiểu khác nhau:
+    phần lớn gọi ``conn.close()`` ở cuối thân hàm, vài hàm dùng ``try/finally``.
+    Kiểu thứ nhất rò kết nối ngay khi có exception ở giữa — trên SQLite điều đó
+    nghĩa là file còn bị khoá, và triệu chứng ("database is locked") hiện ra ở
+    một request khác chứ không ở chỗ hỏng.
+
+    Một chỗ định nghĩa thì cả hai kiểu thành một, và ``finally`` không quên được.
+    """
+    conn = _get_connection()
+    try:
+        yield conn.cursor()
+        if commit:
+            conn.commit()
+    finally:
+        conn.close()
 
 
 def init_db() -> None:
@@ -70,8 +87,6 @@ def init_db() -> None:
 def create_generation_request(
     request_id: str, description_vi: str, validation_mode: str, limit: int = 3, created_by: str = "unknown"
 ) -> dict:
-    conn = _get_connection()
-    cursor = conn.cursor()
     now_str = datetime.now(UTC).isoformat()
     req_dict = {
         "request_id": request_id,
@@ -87,44 +102,41 @@ def create_generation_request(
         "created_at": now_str,
         "updated_at": now_str,
     }
-    cursor.execute(
-        """
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
         INSERT OR REPLACE INTO generation_requests
         (request_id, description_vi, created_by, validation_mode, retrieve_limit, status, step,
          progress, scenario_id, issue_history, node_metrics, failed_reason, error, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
-        (
-            request_id,
-            description_vi,
-            created_by,
-            validation_mode,
-            limit,
-            "running",
-            "queued",
-            0,
-            None,
-            # NOT NULL ở persistence.py: một lần sinh chưa có issue nào vẫn phải
-            # ghi mảng rỗng, để "chưa có lỗi" và "chưa ghi gì" không lẫn vào nhau.
-            "[]",
-            "{}",
-            None,
-            None,
-            now_str,
-            now_str,
-        ),
-    )
-    conn.commit()
-    conn.close()
+            (
+                request_id,
+                description_vi,
+                created_by,
+                validation_mode,
+                limit,
+                "running",
+                "queued",
+                0,
+                None,
+                # NOT NULL ở persistence.py: một lần sinh chưa có issue nào vẫn phải
+                # ghi mảng rỗng, để "chưa có lỗi" và "chưa ghi gì" không lẫn vào nhau.
+                "[]",
+                "{}",
+                None,
+                None,
+                now_str,
+                now_str,
+            ),
+        )
     return req_dict
 
 
 def get_generation_request(request_id: str) -> dict | None:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM generation_requests WHERE request_id = ?", (request_id,))
-    row = cursor.fetchone()
-    conn.close()
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM generation_requests WHERE request_id = ?", (request_id,))
+        row = cursor.fetchone()
     if not row:
         return None
     d = dict(row)
@@ -133,17 +145,13 @@ def get_generation_request(request_id: str) -> dict | None:
 
 
 def update_generation_request(request_id: str, **kwargs) -> None:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    now_str = datetime.now(UTC).isoformat()
-    kwargs["updated_at"] = now_str
+    kwargs["updated_at"] = datetime.now(UTC).isoformat()
 
     fields = ", ".join([f"{k} = ?" for k in kwargs.keys()])
     values = list(kwargs.values()) + [request_id]
 
-    cursor.execute(f"UPDATE generation_requests SET {fields} WHERE request_id = ?", values)
-    conn.commit()
-    conn.close()
+    with _cursor(commit=True) as cursor:
+        cursor.execute(f"UPDATE generation_requests SET {fields} WHERE request_id = ?", values)
 
 
 # ---------------------------------------------------------------------------
@@ -151,28 +159,10 @@ def update_generation_request(request_id: str, **kwargs) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _odd_axis(value: Any) -> str:
-    """Một trục ODD về đúng chuỗi enum để ``WHERE`` còn khớp được.
-
-    ADR-013 chốt lọc ODD bằng ``WHERE`` trên bốn cột có index. Ghi vào đó một
-    chuỗi ghép kiểu ``"truck:xe container"`` sẽ làm mọi ``WHERE actor_type =
-    'truck'`` trượt sạch — retrieval trả rỗng và **không có lỗi nào bắn ra**.
-    Phần chi tiết ("xe container") sống trong ``spec.odd.specific_type``.
-    """
-    if isinstance(value, dict):
-        value = value.get("category")
-    if value is None:
-        return "unknown"
-    return str(getattr(value, "value", value))
-
-
 def get_scenario_count() -> int:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM scenarios")
-    count = cursor.fetchone()[0]
-    conn.close()
-    return count
+    with _cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM scenarios")
+        return int(cursor.fetchone()[0])
 
 
 def save_scenario(
@@ -188,14 +178,15 @@ def save_scenario(
     retrieved_examples: list | None = None,
     validation_mode: str = "fast",
 ) -> dict:
-    conn = _get_connection()
-    cursor = conn.cursor()
     now_str = datetime.now(UTC).isoformat()
 
-    rt = _odd_axis(odd.get("road_type"))
-    wt = _odd_axis(odd.get("weather"))
-    at_str = _odd_axis(odd.get("actor_type"))
-    mv_str = _odd_axis(odd.get("maneuver"))
+    # ADR-013 lọc ODD bằng ``WHERE`` trên bốn cột có index, nên bốn cột đó phải
+    # giữ đúng chuỗi enum. Chi tiết theo lời người dùng sống trong
+    # ``spec.odd.specific_type``, không ghép vào đây.
+    rt = odd_axis_value(odd.get("road_type"))
+    wt = odd_axis_value(odd.get("weather"))
+    at_str = odd_axis_value(odd.get("actor_type"))
+    mv_str = odd_axis_value(odd.get("maneuver"))
 
     spec_json = json.dumps(spec, ensure_ascii=False)
     assumptions_json = json.dumps(assumptions or [], ensure_ascii=False)
@@ -206,36 +197,34 @@ def save_scenario(
     # duyệt mới tìm lại được") được thi hành bằng cấu trúc — không có vector thì
     # không lọt vào kết quả retrieval, kể cả khi người viết truy vấn quên
     # `WHERE status = 'approved_library'`.
-    cursor.execute(
-        """
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
         INSERT OR REPLACE INTO scenarios
         (scenario_id, status, title, description_vi, spec, xosc_content, assumptions, tags,
          road_type, weather, actor_type, maneuver, verification, embedding, embedding_model, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
-        (
-            scenario_id,
-            status,
-            title,
-            description_vi,
-            spec_json,
-            xosc_content,
-            assumptions_json,
-            tags_json,
-            rt,
-            wt,
-            at_str,
-            mv_str,
-            # Mọi kịch bản mới đều chưa chạy CARLA lần nào (ADR-017).
-            VerificationLevel.UNVERIFIED.value,
-            None,  # embedding — xem ghi chú ADR-011 phía trên
-            None,  # embedding_model — ghi cùng lúc với embedding, không sớm hơn
-            now_str,
-        ),
-    )
-
-    conn.commit()
-    conn.close()
+            (
+                scenario_id,
+                status,
+                title,
+                description_vi,
+                spec_json,
+                xosc_content,
+                assumptions_json,
+                tags_json,
+                rt,
+                wt,
+                at_str,
+                mv_str,
+                # Mọi kịch bản mới đều chưa chạy CARLA lần nào (ADR-017).
+                VerificationLevel.UNVERIFIED.value,
+                None,  # embedding — xem ghi chú ADR-011 phía trên
+                None,  # embedding_model — ghi cùng lúc với embedding, không sớm hơn
+                now_str,
+            ),
+        )
 
     sc_dict = {
         "scenario_id": scenario_id,
@@ -257,11 +246,9 @@ def save_scenario(
 
 
 def get_scenario(scenario_id: str) -> dict | None:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM scenarios WHERE scenario_id = ?", (scenario_id,))
-    row = cursor.fetchone()
-    conn.close()
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM scenarios WHERE scenario_id = ?", (scenario_id,))
+        row = cursor.fetchone()
     if not row:
         return None
 
@@ -305,49 +292,42 @@ def update_scenario_status(scenario_id: str, new_status: str) -> None:
     ``rejected``, và một kịch bản bị từ chối có vector là một kịch bản bị từ chối
     **vẫn tìm lại được**. Đúng thứ ADR-011 §Hệ quả dựng cơ chế này để chặn.
     """
-    conn = _get_connection()
-    cursor = conn.cursor()
+    with _cursor(commit=True) as cursor:
+        blob_bytes: bytes | None = None
+        if new_status == ScenarioStatus.APPROVED_LIBRARY.value:
+            cursor.execute(
+                "SELECT title, description_vi, embedding FROM scenarios WHERE scenario_id = ?", (scenario_id,)
+            )
+            row = cursor.fetchone()
+            if row is not None and not row["embedding"]:
+                try:
+                    from src.services.library.retriever import generate_text_embedding, pack_blob_embedding
 
-    blob_bytes: bytes | None = None
-    if new_status == ScenarioStatus.APPROVED_LIBRARY.value:
-        cursor.execute("SELECT title, description_vi, embedding FROM scenarios WHERE scenario_id = ?", (scenario_id,))
-        row = cursor.fetchone()
-        if row is not None and not row["embedding"]:
-            try:
-                from src.services.library.retriever import generate_text_embedding, pack_blob_embedding
+                    vector = generate_text_embedding(f"{row['title']} {row['description_vi']}")
+                    if vector is not None and len(vector):
+                        blob_bytes = pack_blob_embedding(vector)
+                except Exception as exc:
+                    # Duyệt vẫn phải ăn: trạng thái là quyết định của con người, còn
+                    # embedding chỉ là chỉ mục. Ghi log rồi đi tiếp — thiếu vector thì
+                    # kịch bản chưa tìm lại được, chứ không mất.
+                    logger.warning("Không sinh được embedding cho %s: %s", scenario_id, exc)
 
-                vector = generate_text_embedding(f"{row['title']} {row['description_vi']}")
-                if vector is not None and len(vector):
-                    blob_bytes = pack_blob_embedding(vector)
-            except Exception as exc:
-                # Duyệt vẫn phải ăn: trạng thái là quyết định của con người, còn
-                # embedding chỉ là chỉ mục. Ghi log rồi đi tiếp — thiếu vector thì
-                # kịch bản chưa tìm lại được, chứ không mất.
-                logger.warning("Không sinh được embedding cho %s: %s", scenario_id, exc)
-
-    if blob_bytes is not None:
-        cursor.execute(
-            "UPDATE scenarios SET status = ?, embedding = ?, embedding_model = ? WHERE scenario_id = ?",
-            (new_status, blob_bytes, EMBEDDING_MODEL, scenario_id),
-        )
-    else:
-        cursor.execute("UPDATE scenarios SET status = ? WHERE scenario_id = ?", (new_status, scenario_id))
-
-    conn.commit()
-    conn.close()
+        if blob_bytes is not None:
+            cursor.execute(
+                "UPDATE scenarios SET status = ?, embedding = ?, embedding_model = ? WHERE scenario_id = ?",
+                (new_status, blob_bytes, EMBEDDING_MODEL, scenario_id),
+            )
+        else:
+            cursor.execute("UPDATE scenarios SET status = ? WHERE scenario_id = ?", (new_status, scenario_id))
 
 
 def set_tags(scenario_id: str, tags: list[str]) -> None:
     """Thay toàn bộ tag của một kịch bản."""
-    conn = _get_connection()
-    try:
-        conn.execute(
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
             "UPDATE scenarios SET tags = ? WHERE scenario_id = ?",
             (json.dumps(tags, ensure_ascii=False), scenario_id),
         )
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def set_verification(scenario_id: str, level: VerificationLevel) -> None:
@@ -361,20 +341,14 @@ def set_verification(scenario_id: str, level: VerificationLevel) -> None:
     Cố ý **không** đổi ``status``: kịch bản không bị rút khỏi thư viện. Số phận
     nó do người quyết ở cổng 1; đây chỉ là bằng chứng đi kèm.
     """
-    conn = _get_connection()
-    try:
-        conn.execute("UPDATE scenarios SET verification = ? WHERE scenario_id = ?", (level.value, scenario_id))
-        conn.commit()
-    finally:
-        conn.close()
+    with _cursor(commit=True) as cursor:
+        cursor.execute("UPDATE scenarios SET verification = ? WHERE scenario_id = ?", (level.value, scenario_id))
 
 
 def list_all_scenarios() -> list[dict]:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT scenario_id FROM scenarios ORDER BY created_at DESC")
-    rows = cursor.fetchall()
-    conn.close()
+    with _cursor() as cursor:
+        cursor.execute("SELECT scenario_id FROM scenarios ORDER BY created_at DESC")
+        rows = cursor.fetchall()
     scenarios = []
     for r in rows:
         sc = get_scenario(r["scenario_id"])
@@ -389,20 +363,16 @@ def list_all_scenarios() -> list[dict]:
 
 
 def save_review_decision(scenario_id: str, gate: str, approved: bool, reviewer: str, reason: str) -> dict:
-    conn = _get_connection()
-    cursor = conn.cursor()
     now_str = datetime.now(UTC).isoformat()
 
-    cursor.execute(
-        """
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
         INSERT INTO review_decisions (scenario_id, gate, approved, reviewer, reason, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
     """,
-        (scenario_id, gate, 1 if approved else 0, reviewer, reason, now_str),
-    )
-
-    conn.commit()
-    conn.close()
+            (scenario_id, gate, 1 if approved else 0, reviewer, reason, now_str),
+        )
 
     return {
         "scenario_id": scenario_id,
@@ -415,14 +385,13 @@ def save_review_decision(scenario_id: str, gate: str, approved: bool, reviewer: 
 
 
 def get_review_decisions(scenario_id: str) -> list[dict]:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT scenario_id, gate, approved, reviewer, reason, created_at as decided_at FROM review_decisions WHERE scenario_id = ? ORDER BY id ASC",
-        (scenario_id,),
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    with _cursor() as cursor:
+        cursor.execute(
+            "SELECT scenario_id, gate, approved, reviewer, reason, created_at as decided_at "
+            "FROM review_decisions WHERE scenario_id = ? ORDER BY id ASC",
+            (scenario_id,),
+        )
+        rows = cursor.fetchall()
     decisions = []
     for r in rows:
         d = dict(r)
@@ -437,8 +406,6 @@ def get_review_decisions(scenario_id: str) -> list[dict]:
 
 
 def create_scenario_job(job_id: str, scenario_id: str, xosc_content: str) -> dict:
-    conn = _get_connection()
-    cursor = conn.cursor()
     now_str = datetime.now(UTC).isoformat()
     job_dict = {
         "job_id": job_id,
@@ -452,35 +419,28 @@ def create_scenario_job(job_id: str, scenario_id: str, xosc_content: str) -> dic
         "updated_at": now_str,
     }
 
-    cursor.execute(
-        """
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
         INSERT OR REPLACE INTO scenario_jobs
         (job_id, scenario_id, status, xosc_content, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
     """,
-        (job_id, scenario_id, "pending", xosc_content, now_str, now_str),
-    )
-
-    conn.commit()
-    conn.close()
+            (job_id, scenario_id, "pending", xosc_content, now_str, now_str),
+        )
     return job_dict
 
 
 def get_pending_jobs() -> list[dict]:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM scenario_jobs WHERE status = 'pending' ORDER BY created_at ASC")
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM scenario_jobs WHERE status = 'pending' ORDER BY created_at ASC")
+        return [dict(r) for r in cursor.fetchall()]
 
 
 def get_job(job_id: str) -> dict | None:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM scenario_jobs WHERE job_id = ?", (job_id,))
-    row = cursor.fetchone()
-    conn.close()
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM scenario_jobs WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
     if not row:
         return None
     d = dict(row)
@@ -493,18 +453,15 @@ def get_job(job_id: str) -> dict | None:
 
 
 def update_job_result(job_id: str, status: str, result: dict) -> None:
-    conn = _get_connection()
-    cursor = conn.cursor()
     now_str = datetime.now(UTC).isoformat()
     result_json = json.dumps(result, ensure_ascii=False)
 
-    cursor.execute(
-        """
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
         UPDATE scenario_jobs
         SET status = ?, result = ?, updated_at = ?
         WHERE job_id = ?
     """,
-        (status, result_json, now_str, job_id),
-    )
-    conn.commit()
-    conn.close()
+            (status, result_json, now_str, job_id),
+        )
