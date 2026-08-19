@@ -60,7 +60,7 @@ Viết ADR mới quay lại Qdrant (hoặc index ANN khác) khi **đo được**
 
 **Nợ code — làm ở PR riêng**, theo "Quy tắc thay đổi" của `ARCHITECTURE.md` (đổi hình dạng dữ liệu thì sửa `schemas.py`, fixtures và tests trong cùng PR):
 
-- `requirements.txt:13-14` — bỏ `qdrant-client`.
+- Dependency backend trong `pyproject.toml` — không có `qdrant-client`.
 - `src/config.py:34-39` — bỏ `qdrant_url`, `qdrant_api_key`, `qdrant_collection`; thay bằng cấu hình đường dẫn `.db` theo ADR-011.
 - `src/models/schemas.py` — docstring nhắc Qdrant ở các dòng 14, 153-158, 275-277, 332-336, 547, 930 phải viết lại theo SQLite; ngữ nghĩa `ODDCell.filter_payload()` **không đổi**, chỉ đổi chỗ tiêu thụ.
 - `tests/test_architecture.py:58-62` — đổi bất biến "router không `import qdrant`" thành "router không tự truy vấn retrieval store", để test còn ý nghĩa sau khi bỏ Qdrant.

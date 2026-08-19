@@ -1,0 +1,33 @@
+[project]
+name = "scenario-forge"
+version = "0.1.0"
+description = "Generate and review OpenSCENARIO 1.0 traffic scenarios"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "alembic>=1.14.0",
+    "fastapi>=0.115.0",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.3.0",
+    "langgraph>=0.2.0",
+    "numpy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "pydantic-settings>=2.7.0",
+    "pydantic>=2.10.0",
+    "python-dotenv>=1.0.0",
+    "sqlalchemy>=2.0.0",
+    "uvicorn[standard]>=0.34.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "pytest>=8.0.0",
+    "ruff==0.16.0",
+    "xmlschema>=3.4.0,<5.0.0",
+]
+
+[tool.uv]
+package = false

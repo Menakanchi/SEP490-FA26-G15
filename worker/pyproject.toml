@@ -1,0 +1,25 @@
+[project]
+name = "scenario-forge-worker"
+version = "0.1.0"
+description = "CARLA ScenarioRunner worker for Scenario Forge"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "antlr4-python3-runtime==4.10",
+    "carla==0.9.15",
+    "ephem",
+    "graphviz",
+    "matplotlib",
+    "networkx",
+    "numpy",
+    "psutil",
+    "py-trees==0.8.3",
+    "setuptools<81",
+    "shapely",
+    "simple-watchdog-timer",
+    "six",
+    "tabulate",
+    "xmlschema",
+]
+
+[tool.uv]
+package = false

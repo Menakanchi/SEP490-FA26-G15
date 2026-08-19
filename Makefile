@@ -1,24 +1,24 @@
 .PHONY: run test lint format format-check typecheck check clean
 
 run:
-	uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+	uv run --locked uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
 # Cùng cờ với CI: coverage là gate, không phải báo cáo cho vui.
 test:
-	pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=60
+	uv run --locked pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=60
 
 lint:
-	ruff check src/ tests/
+	uv run --locked ruff check src/ tests/
 
 # `format` SỬA file. `format-check` chỉ KIỂM — đây mới là thứ CI chạy.
 format:
-	ruff format src/ tests/
+	uv run --locked ruff format src/ tests/
 
 format-check:
-	ruff format --check src/ tests/
+	uv run --locked ruff format --check src/ tests/
 
 typecheck:
-	mypy src/
+	uv run --locked mypy src/
 
 # Bản sao đúng ba bước của .github/workflows/ci.yml. `check` cũ gọi `format`
 # nên nó lặng lẽ sửa file rồi báo xanh — xanh ở máy mình mà CI vẫn đỏ.

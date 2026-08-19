@@ -4,9 +4,12 @@ Scenario Forge nhận mô tả tiếng Việt về một tình huống giao thô
 sinh file **OpenSCENARIO 1.0 (`.xosc`)** để kỹ sư review, tải về và tuỳ chọn kiểm
 chứng bằng CARLA ScenarioRunner.
 
-> Trạng thái hiện tại: repo đã có data contracts, fixtures, routing logic, CI và
-> một CARLA smoke test. Workflow AI, converter, retrieval, review API, frontend
-> và worker vẫn đang được triển khai. Xem [trạng thái chi tiết](ARCHITECTURE.md#trạng-thái-hiện-tại).
+> Trạng thái hiện tại: đường đi đầy đủ đã chạy — bảy node, converter, retrieval,
+> review API hai cổng, frontend và GPU worker (chạy thật trên CARLA ngày
+> 15/08/2026). Chưa có: behavior checker, agent layer closed-loop, và báo cáo
+> M1/M2/M3 bằng số trên tập lớn. Phạm vi converter còn 76/560 ô ODD — chỉ
+> `highway` ([ADR-016](docs/adr/ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md)).
+> Xem [trạng thái chi tiết](ARCHITECTURE.md#trạng-thái-hiện-tại).
 
 ## Input và output
 
@@ -26,7 +29,7 @@ File `.xosc` mô tả actors, vị trí, tốc độ, actions, triggers, thời 
 chí đánh giá theo OpenSCENARIO. CARLA là tầng kiểm chứng tuỳ chọn; web vẫn phải
 sinh và cho tải file khi GPU worker đang offline.
 
-## Workflow mục tiêu
+## Workflow
 
 ```text
 parse_intent
@@ -63,15 +66,13 @@ Nguồn sự thật:
 Yêu cầu: Python 3.11+ cho backend, Node 20+ cho frontend.
 
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync --locked
 cp .env.example .env
 
-python scripts/init_db.py     # dựng schema từ database rỗng
-python scripts/seed_db.py     # nạp 10 kịch bản mẫu để retrieval có gì mà tìm
+uv run python scripts/init_db.py     # dựng schema từ database rỗng
+uv run python scripts/seed_db.py     # nạp 10 kịch bản mẫu để retrieval có gì mà tìm
 
-uvicorn src.main:app --reload --port 8000
+uv run uvicorn src.main:app --reload --port 8000
 ```
 
 Frontend chạy riêng ở cổng 3000, mặc định gọi backend qua
@@ -112,14 +113,15 @@ POST /api/v1/review                         (alias: /api/v1/scenarios/{id}/revie
 GET  /api/v1/scenarios                      (alias: /api/v1/library/search)
 GET  /api/v1/scenarios/{id}
 GET  /api/v1/scenarios/{id}/xosc            403 nếu chưa duyệt BEFORE_LIBRARY
+POST /api/v1/scenarios/{id}/request-sim     mở cổng BEFORE_SIM, KHÔNG chạy CARLA
+PUT  /api/v1/scenarios/{id}/tags            thay toàn bộ tag
 
 GET  /api/v1/internal/jobs                  worker GPU poll
-POST /api/v1/internal/jobs/{job_id}/result
+POST /api/v1/internal/jobs/{job_id}/result  đặt VerificationLevel cho kịch bản
 ```
 
-Lưu ý: `POST /generate` hiện chạy một stub thay cho workflow đầy đủ — nó gọi
-thật `parse_intent` và `retrieve`, phần còn lại là giả lập cho tới khi
-`repair_draft` (#22) xong và 7 node được nối thành một graph.
+`POST /generate` chạy graph thật, không còn stub: nó trả `request_id` ngay rồi
+chạy bảy node nền, client poll `GET /status/{request_id}` cho tới `done|failed`.
 
 ## Cấu trúc chính
 
@@ -135,7 +137,7 @@ tests/                  unit, contract và architecture tests
 docs/adr/               lý do cho các quyết định quan trọng
 eval/                   evaluation evidence
 presentation/           pitch deck và demo material
-worker/                 GPU worker, Python 3.10 — chưa có implementation
+worker/                 GPU worker pull-based, Python 3.10
 ```
 
 ## Ranh giới quan trọng
@@ -154,8 +156,11 @@ Python 3.10. Kết quả xác nhận toolchain và `RelativeLanePosition` hoạt
 đồng thời phát hiện các khác biệt giữa chuẩn OpenSCENARIO và parser của
 ScenarioRunner. Chi tiết ở [ADR-012](docs/adr/ADR-012-converter-dung-relativelaneposition.md).
 
-Smoke test này chưa chứng minh converter tự động, RAG, LLM workflow hay toàn bộ
-maneuver đã hoạt động end-to-end.
+Smoke test này chạy fixture viết tay nên chưa chứng minh converter tự động.
+Bằng chứng đó có ngày 15/08/2026: `sc_014` do LLM sinh và converter biên dịch đã
+đi qua cả hai cổng duyệt rồi chạy trọn vòng trên worker. Kết quả `CollisionTest =
+SUCCESS` — 0 va chạm, tức kịch bản chạy trót lọt mà **không** dựng được nguy
+hiểm nào; đường ống thông không có nghĩa kịch bản đáng giá.
 
 ## Deliverables
 

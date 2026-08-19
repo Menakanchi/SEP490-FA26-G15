@@ -5,16 +5,12 @@ set -e
 
 echo "=== AI20K Project Setup ==="
 
-# Check Python version
-python3 -c "import sys; assert sys.version_info >= (3, 11), 'Python 3.11+ required'"
-echo "Python version OK"
-
-# Create virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Check uv and install the locked backend environment
+if ! command -v uv >/dev/null 2>&1; then
+    echo "uv is required: https://docs.astral.sh/uv/getting-started/installation/" >&2
+    exit 1
+fi
+uv sync --locked
 
 # Create .env if not exists
 if [ ! -f .env ]; then
@@ -25,4 +21,4 @@ fi
 # Create data directories
 mkdir -p data/chroma
 
-echo "Setup complete! Run: uvicorn src.main:app --reload"
+echo "Setup complete! Run: uv run uvicorn src.main:app --reload"

@@ -27,7 +27,7 @@ Thư viện kịch bản cần embedding để tìm kiếm ngữ nghĩa trên c�
 
 **Lựa chọn 2.** Production dùng OpenAI `text-embedding-3-small`.
 
-sentence-transformers **chỉ** dùng cho experiment local/offline nếu cần so sánh, và **không bao giờ** xuất hiện trong `requirements.txt` của backend.
+sentence-transformers **chỉ** dùng cho experiment local/offline nếu cần so sánh, và **không bao giờ** xuất hiện trong dependency backend ở `pyproject.toml`.
 
 ## Lý do
 
@@ -38,7 +38,7 @@ sentence-transformers **chỉ** dùng cho experiment local/offline nếu cần s
 
 ## Hệ quả
 
-- `requirements.txt` của backend **không được** có `torch`, `sentence-transformers`, hay bất cứ thứ gì kéo chúng theo. Nếu image phình bất thường, đây là chỗ kiểm tra đầu tiên.
+- Dependency backend trong `pyproject.toml` **không được** có `torch`, `sentence-transformers`, hay bất cứ thứ gì kéo chúng theo. Nếu image phình bất thường, đây là chỗ kiểm tra đầu tiên.
 - Embedding trở thành một lệnh gọi mạng ⇒ cần xử lý lỗi và retry trong `src/services/library/embeddings.py`.
 - Đổi model embedding về sau đòi **re-embed toàn bộ corpus**. Chốt model từ tuần 1 và ghi tên model vào payload của mỗi điểm trong Qdrant để biết vector nào sinh bằng model nào.
 - Chi phí embedding tính vào `cost/scenario` và hiện trên `/stats` cùng chi phí LLM.
