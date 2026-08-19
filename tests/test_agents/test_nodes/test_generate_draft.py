@@ -150,6 +150,21 @@ class TestBuildUserContent:
         assert "Examples" in content
         assert "Test example" in content
 
+    def test_build_user_content_keeps_actor_mentions_and_explains_roles(self):
+        content = _build_user_content(
+            user_query="xe buýt tạt ra làn, xe máy phía sau không kịp tránh",
+            odd_cell=ODD_CELL_SUDDEN_BRAKE.model_copy(update={"maneuver": ManeuverType.CUT_IN}),
+            actor_hints=[
+                {"category": "bus", "specific_type": "xe buýt", "role": "adversary"},
+                {"category": "motorcycle", "specific_type": "xe máy", "role": "ego"},
+            ],
+        )
+
+        assert '"specific_type": "xe buýt"' in content
+        assert '"specific_type": "xe máy"' in content
+        assert "không kịp tránh" in content
+        assert '"role": "ego"' in content
+
 
 # =============================================================================
 # Test _create_messages (không cần API)

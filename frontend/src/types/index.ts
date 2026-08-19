@@ -178,7 +178,13 @@ export function getSanitizedActorCategory(actor: ActorSpec, odd?: ODDCell): Vehi
 
 /** Chữ người dùng gõ cho phương tiện này, nếu còn giữ được. */
 export function getSanitizedActorSpecificType(actor: ActorSpec, odd?: ODDCell): string {
-  return actor.specific_type || odd?.specific_type || "";
+  if (actor.specific_type) return actor.specific_type;
+  // ``odd.specific_type`` mô tả tác nhân gây nguy hiểm, không phải toàn bộ
+  // dàn xe. Gắn nó cho hero từng biến một ``car`` thành "Ô tô (xe buýt)".
+  if (!actor.is_ego && actor.category === odd?.actor_type) {
+    return odd.specific_type || "";
+  }
+  return "";
 }
 
 export function sanitizeActors(actors: ActorSpec[], odd?: ODDCell): ActorSpec[] {
@@ -220,13 +226,21 @@ export interface ODDCell {
   specific_action?: string | null;
 }
 
+/** Nhãn tác nhân cho người dùng: ưu tiên loại cụ thể họ đã nhập ("xe buýt").
+ *  `actor_type` chuẩn hoá ("truck") vẫn được giữ trong dữ liệu để lọc ODD và
+ *  chọn template converter, nhưng không nên che mất loại phương tiện thực tế. */
+export function renderOddActorTypeLabel(odd?: ODDCell): string {
+  const specificType = formatSpecificText(odd?.specific_type || "");
+  return specificType || renderSafeValue(odd?.actor_type, ACTOR_TYPE_LABELS);
+}
+
 // ---------------------------------------------------------------------------
 // Scenario structures
 // ---------------------------------------------------------------------------
 
 export interface Position {
   /** Lệch bao nhiêu làn so với làn của ego. Âm = trái, dương = phải. Khoảng -4..4.
-   *  KHÔNG phải số thứ tự làn — xem `laneNumber()` trong SVG2DRenderer để quy đổi. */
+   *  Đây là độ lệch tương đối, KHÔNG phải số thứ tự làn. */
   lane_offset: number;
   /** Lệch dọc so với ego, mét. Âm = phía sau ego. Khoảng -200..200. */
   s_offset_m: number;

@@ -114,6 +114,39 @@ def _find_keyword(text: str, kw: str) -> int:
     return match.start() if match else -1
 
 
+def _infer_actor_roles(
+    query_no_accents: str,
+    actor_spans: list[tuple[int, int, str]],
+    maneuver_matches: list[tuple[int, int, str]],
+) -> list[str]:
+    """Suy vai trò từ quan hệ trong câu, không từ thứ tự actor.
+
+    Chỉ gán khi có bằng chứng ngôn ngữ: actor gần nhất đứng trước hành vi là
+    adversary; actor có cụm nạn nhân trong đoạn của nó là ego. Với đúng hai
+    actor, biết chắc một đầu thì đầu còn lại là vai đối ứng. Mơ hồ thì giữ
+    ``unknown`` để tầng sinh đọc toàn câu, thay vì code đoán bừa.
+    """
+    roles = ["unknown"] * len(actor_spans)
+
+    if maneuver_matches:
+        maneuver_pos = min(maneuver_matches, key=lambda match: match[0])[0]
+        preceding = [idx for idx, (start, _end, _code) in enumerate(actor_spans) if start <= maneuver_pos]
+        if preceding:
+            roles[preceding[-1]] = "adversary"
+
+    victim_pattern = re.compile(r"\b(?:bi|khong kip tranh|khong the tranh|phai ne tranh)\b")
+    for idx, (_start, end, _code) in enumerate(actor_spans):
+        next_start = actor_spans[idx + 1][0] if idx + 1 < len(actor_spans) else len(query_no_accents)
+        if victim_pattern.search(query_no_accents[end:next_start]):
+            roles[idx] = "ego"
+
+    if len(roles) == 2 and roles.count("unknown") == 1:
+        known_role = next(role for role in roles if role != "unknown")
+        roles[roles.index("unknown")] = "ego" if known_role == "adversary" else "adversary"
+
+    return roles
+
+
 def _rule_based_extract(user_query: str, rules: dict) -> dict:
     """BƯỚC 1: Rule-based matching từ taxonomy_rules.json -> dict chứa các trục ODD."""
     if not rules:
@@ -172,7 +205,11 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
                 pos = _find_keyword(text, kw)
                 if pos != -1:
                     prefix = text[max(0, pos - 12) : pos].lower()
-                    if "lan" in prefix or "làn" in prefix or "via he" in prefix or "vỉa hè" in prefix:
+                    # Chỉ bỏ khi tên phương tiện đứng NGAY SAU từ hạ tầng
+                    # ("làn ô tô", "vỉa hè"). Kiểm tra ``"lan" in prefix``
+                    # từng loại nhầm "..., tạt ra làn giữa, xe máy ..." chỉ vì
+                    # chữ "làn" xuất hiện đâu đó trong 12 ký tự trước actor.
+                    if re.search(r"(?:lan|làn|via he|vỉa hè)\s*$", prefix):
                         continue
                     raw_spans.append((pos, pos + len(kw), code))
 
@@ -184,6 +221,7 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
             non_overlapping_spans.append((s, e, code))
 
     non_overlapping_spans.sort(key=lambda x: x[0])
+    actor_roles = _infer_actor_roles(query_no_accents, non_overlapping_spans, maneuver_matches)
 
     actor_obj = None
     actor_spec = None
@@ -203,13 +241,28 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
             cat1 = code1
 
             parsed_actors = [
-                {"name": "hero", "category": cat0, "specific_type": spec0, "role": "ego"},
-                {"name": "adversary_1", "category": cat1, "specific_type": spec1, "role": "adversary"},
+                {
+                    "name": "hero" if actor_roles[0] == "ego" else "adversary_1",
+                    "category": cat0,
+                    "specific_type": spec0,
+                    "role": actor_roles[0],
+                },
+                {
+                    "name": "hero" if actor_roles[1] == "ego" else "adversary_2",
+                    "category": cat1,
+                    "specific_type": spec1,
+                    "role": actor_roles[1],
+                },
             ]
         else:
             cat0 = raw_code
             parsed_actors = [
-                {"name": "hero", "category": cat0, "specific_type": actor_spec, "role": "ego"},
+                {
+                    "name": "hero" if actor_roles[0] == "ego" else "actor_1",
+                    "category": cat0,
+                    "specific_type": actor_spec,
+                    "role": actor_roles[0],
+                },
             ]
 
     return {

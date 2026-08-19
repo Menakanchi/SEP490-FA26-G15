@@ -23,13 +23,18 @@ from src.models.schemas import ActorSpec, ManeuverSpec
 
 
 def cut_in_cannot_catch_up(actor: ActorSpec, ego: ActorSpec) -> bool:
-    """Chủ thể không bao giờ bắt kịp ego, nên không có gì để tạt đầu.
+    """Khoảng cách dọc không thu hẹp trước khi chủ thể tạt vào làn ego.
 
-    Muốn tạt đầu thì phải **vừa** xuất phát phía sau ego (``s_offset_m`` âm)
-    **vừa** chạy nhanh hơn ego. Thiếu một trong hai thì khoảng cách chỉ nới
-    rộng — ADR-010, ca đã xảy ra thật ở fixture đầu tiên.
+    Có hai hình học hợp lệ dùng cùng một OpenSCENARIO lane-change template:
+
+    - vượt lên tạt đầu: actor ở sau và nhanh hơn ego;
+    - từ lề/làn cạnh nhập vào: actor ở trước và chậm hơn ego, ego đuổi tới.
+
+    Tích ``s_offset * relative_speed`` phải âm thì khoảng cách mới thu hẹp.
+    Bằng 0 cũng không tạo điểm gặp nếu chỉ xét chuyển động đều trước trigger.
     """
-    return actor.position.s_offset_m >= 0 or actor.initial_speed_kmh <= ego.initial_speed_kmh
+    relative_speed = actor.initial_speed_kmh - ego.initial_speed_kmh
+    return actor.position.s_offset_m * relative_speed >= 0
 
 
 def cut_in_starts_in_ego_lane(actor: ActorSpec) -> bool:

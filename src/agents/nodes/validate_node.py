@@ -238,6 +238,29 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
             )
             return {"issues": issues}
 
+        actor_hints = state.get("actors") or []
+        hinted_ego = next((actor for actor in actor_hints if actor.get("role") == "ego"), None)
+        if hinted_ego and hinted_ego.get("category"):
+            aliases = {"bus": "truck", "bicycle": "motorcycle"}
+            raw_category = str(hinted_ego["category"])
+            expected_category = aliases.get(raw_category, raw_category)
+            if ego.category.value != expected_category:
+                ego_idx = draft.actors.index(ego)
+                issues.append(
+                    ValidationIssue(
+                        code=IssueCode.ACTOR_ROLE_MISMATCH,
+                        path=f"/actors/{ego_idx}/is_ego",
+                        message_vi=(
+                            f"Câu gốc xác định {hinted_ego.get('specific_type') or expected_category} là ego, "
+                            f"nhưng draft lại chọn {ego.specific_type or ego.category.value}."
+                        ),
+                        suggestion=(
+                            f"Chọn actor category={expected_category} làm hero/is_ego=true, "
+                            "và đặt is_ego=false cho actor hiện tại."
+                        ),
+                    )
+                )
+
         # ActorSpec.position là required. Preflight phòng thủ này chỉ bảo vệ
         # integration bị mock/bypass; lỗi contract phải dừng toàn bộ geometry checks.
         missing_positions = [
@@ -298,19 +321,16 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                     # đang hỏng — model sửa được "đặt ra sau" nhanh hơn nhiều so
                     # với một câu chung chung về "không đuổi kịp".
                     if position.s_offset_m >= 0:
-                        # ADR-010: ca đã xảy ra thật ở fixture đầu tiên. Xe máy đặt
-                        # PHÍA TRƯỚC ego mà lại nhanh hơn nên khoảng cách chỉ nới
-                        # rộng. Schema hợp lệ hoàn toàn, chỉ số học mới bắt được.
                         catchup_problem = (
-                            f"{actor.name} đặt ở phía trước ego ({position.s_offset_m}m) nên không có gì để đuổi kịp: "
-                            f"khoảng cách chỉ nới rộng, không bao giờ tạt đầu được.",
-                            f"Đặt /actors/{actor_idx}/position/s_offset_m thành số âm để actor xuất phát phía sau ego.",
+                            f"{actor.name} ở phía trước ego ({position.s_offset_m}m) nhưng không chậm hơn ego "
+                            f"({actor.initial_speed_kmh}km/h so với {ego_speed}km/h), nên khoảng cách không thu hẹp.",
+                            f"Giảm /actors/{actor_idx}/initial_speed_kmh xuống thấp hơn tốc độ ego, hoặc đặt actor phía sau và nhanh hơn ego.",
                         )
                     else:
                         catchup_problem = (
                             f"{actor.name} ở phía sau ego ({position.s_offset_m}m) nhưng vận tốc "
                             f"({actor.initial_speed_kmh}km/h) lại chậm hơn hoặc bằng ego ({ego_speed}km/h).",
-                            "Tăng initial_speed_kmh của chủ thể lên cao hơn ego để nó có thể đuổi kịp.",
+                            "Tăng initial_speed_kmh của chủ thể lên cao hơn ego, hoặc đặt actor phía trước và chậm hơn ego.",
                         )
                 if catchup_problem is not None:
                     issues.append(

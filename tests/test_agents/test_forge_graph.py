@@ -263,3 +263,20 @@ def test_few_shot_drops_only_what_is_proven_bad(level: str, expected: int):
     state = {"retrieved_examples": [{"id": "sc_501"}]}
 
     assert len(_few_shot_examples(state)) == expected
+
+
+def test_few_shot_drops_example_that_invents_generic_hero_for_multi_actor_prompt():
+    from src.agents.graph import _few_shot_examples
+
+    _library_row("sc_502", "unverified")
+    state = {
+        "retrieved_examples": [{"id": "sc_502"}],
+        "actors": [
+            {"category": "bus", "specific_type": "xe buýt"},
+            {"category": "motorcycle", "specific_type": "xe máy"},
+        ],
+    }
+
+    # Fixture sc_501/sc_502 có car + motorcycle; ``car`` không hề xuất hiện
+    # trong câu bus + motorcycle nên không được dùng để dạy model.
+    assert _few_shot_examples(state) == []

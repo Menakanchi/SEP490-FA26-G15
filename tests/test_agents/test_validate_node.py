@@ -260,6 +260,24 @@ async def test_missing_target_speed_falls_back_to_initial_speed(valid_draft: Sce
         }
     )
     assert not any(i.code is IssueCode.GEOM_NO_COLLISION_AFTER_CUTIN for i in result["issues"])
+    assert not any(i.code is IssueCode.GEOM_NO_CATCHUP for i in result["issues"])
+
+
+@pytest.mark.asyncio
+async def test_explicit_victim_actor_must_be_ego(valid_draft: ScenarioDraft) -> None:
+    result = await validate_node(
+        {
+            "draft": valid_draft,
+            "actors": [
+                {"category": "car", "specific_type": "ô tô", "role": "adversary"},
+                {"category": "motorcycle", "specific_type": "xe máy", "role": "ego"},
+            ],
+        }
+    )
+
+    issue = next(i for i in result["issues"] if i.code is IssueCode.ACTOR_ROLE_MISMATCH)
+    assert issue.path == "/actors/0/is_ego"
+    assert "xe máy" in issue.message_vi
 
 
 @pytest.mark.asyncio

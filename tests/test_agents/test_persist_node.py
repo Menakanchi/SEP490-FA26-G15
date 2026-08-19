@@ -36,6 +36,26 @@ async def test_persist_node_ends_at_pending_review(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_retrieved_examples_survive_persist_and_reload() -> None:
+    from src.services import db
+
+    spec = ScenarioSpec.model_validate(json.loads(FIXTURE.read_text(encoding="utf-8")))
+    retrieved = [{"id": "sc_777", "title": "Mẫu tương đồng", "similarity_score": 0.91}]
+    result = await persist_pending_review_node(
+        {
+            "request_id": "req_with_retrieval",
+            "user_query": spec.description_vi,
+            "spec": spec,
+            "xosc_content": "<OpenSCENARIO />",
+            "retrieved_examples": retrieved,
+        }
+    )
+
+    assert result["scenario_id"] == spec.scenario_id
+    assert db.get_scenario(spec.scenario_id)["retrieved_examples"] == retrieved
+
+
+@pytest.mark.asyncio
 async def test_persist_node_maps_write_failure_to_nonrepairable_issue(tmp_path: Path) -> None:
     repository = ScenarioRepository(make_engine(f"sqlite:///{tmp_path / 'app.db'}"))
     repository.create_schema()
