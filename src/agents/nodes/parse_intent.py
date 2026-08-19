@@ -99,11 +99,6 @@ def _remove_accents(text: str) -> str:
     return text.replace("đ", "d").replace("Đ", "D")
 
 
-def _slugify(text: str) -> str:
-    cleaned = _remove_accents(text.strip().lower())
-    return cleaned.replace(" ", "_")
-
-
 def _find_keyword(text: str, kw: str) -> int:
     """Tìm vị trí kw trong text với ràng buộc ranh giới từ (word boundary)."""
     pattern = r"(?<!\w)" + re.escape(kw) + r"(?!\w)"

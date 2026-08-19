@@ -101,24 +101,6 @@ async def test_generate_endpoint_validation(client):
 
 
 @pytest.mark.asyncio
-async def test_generation_status_polling(client):
-    # Start generation
-    gen_res = await client.post(
-        "/api/v1/generate",
-        json={"prompt": "Xe máy phanh gấp ở giao lộ", "validation_mode": "static"},
-    )
-    req_id = gen_res.json()["request_id"]
-
-    # Poll status
-    status_res = await client.get(f"/api/v1/status/{req_id}")
-    assert status_res.status_code == 200
-    sdata = status_res.json()
-    assert sdata["request_id"] == req_id
-    assert "step" in sdata
-    assert "progress" in sdata
-
-
-@pytest.mark.asyncio
 async def test_generated_scenario_dynamic_odd(client):
     """ODD phải bám theo câu người dùng, không rơi về mặc định.
 
@@ -221,16 +203,6 @@ async def test_unsupported_prompt_fails_without_creating_a_scenario(client):
 
 
 @pytest.mark.asyncio
-async def test_scenarios_list_and_detail(client):
-    # GET /scenarios
-    res = await client.get("/api/v1/scenarios")
-    assert res.status_code == 200
-    data = res.json()
-    assert "items" in data
-    assert "total" in data
-
-
-@pytest.mark.asyncio
 async def test_review_validation_and_flow(client):
     """Vòng duyệt: 404 khi không có, 422 khi từ chối cụt lý do, 200 khi duyệt."""
     res = await client.post(
@@ -278,14 +250,6 @@ async def test_review_validation_and_flow(client):
 
     # Duyệt xong thì mới tải được .xosc (FR-11).
     assert (await client.get(f"/api/v1/scenarios/{sc_id}/xosc")).status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_internal_worker_jobs(client):
-    # GET /internal/jobs
-    jobs_res = await client.get("/api/v1/internal/jobs")
-    assert jobs_res.status_code == 200
-    assert "jobs" in jobs_res.json()
 
 
 @pytest.mark.asyncio

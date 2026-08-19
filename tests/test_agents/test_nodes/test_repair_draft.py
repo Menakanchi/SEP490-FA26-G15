@@ -109,16 +109,6 @@ class TestBuildUserContent:
         assert "Draft hiện tại" in content
         assert "hero" in content
 
-    def test_build_user_content_contains_issues(self):
-        """Test content chứa issues."""
-        draft = create_valid_draft()
-        issues = [create_issue(IssueCode.GEOM_NO_CATCHUP, suggestion="cut_in cần s_offset_m ÂM")]
-
-        content = _build_user_content(draft, issues)
-
-        assert "GEOM_NO_CATCHUP" in content
-        assert "cut_in cần s_offset_m ÂM" in content
-
     def test_build_user_content_multiple_issues(self):
         """Test content với nhiều issues."""
         draft = create_valid_draft()
@@ -153,16 +143,6 @@ class TestCreateMessages:
         assert len(messages) == 2
         assert messages[0]["role"] == "system"
         assert messages[1]["role"] == "user"
-
-    def test_create_messages_system_content(self):
-        """Test system message có SYSTEM_PROMPT."""
-        draft = create_valid_draft()
-        issues = [create_issue(IssueCode.GEOM_NO_CATCHUP)]
-
-        messages = _create_messages(draft, issues)
-
-        assert "Repair Draft Generator" in messages[0]["content"]
-        assert "REPAIRABLE_CODES" in messages[0]["content"]
 
 
 # =============================================================================

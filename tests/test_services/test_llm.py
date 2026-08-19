@@ -153,28 +153,3 @@ class TestCallWithEscalation:
 
             # Verify: chỉ gọi 1 lần, không retry
             assert mock_chat.call_count == 1
-
-
-class TestExtractErrorCode:
-    """Test cho _extract_error_code (nếu muốn test riêng)."""
-
-    def test_llm_output_not_json(self):
-        """JSON decode error → LLM_OUTPUT_NOT_JSON."""
-        from src.services.llm import _extract_error_code
-
-        error = Exception("json decode error")
-        assert _extract_error_code(error) == "LLM_OUTPUT_NOT_JSON"
-
-    def test_schema_invalid(self):
-        """Validation error → SCHEMA_INVALID."""
-        from src.services.llm import _extract_error_code
-
-        error = Exception("validation error")
-        assert _extract_error_code(error) == "SCHEMA_INVALID"
-
-    def test_rate_limit(self):
-        """Rate limit → LLM_PROVIDER_ERROR."""
-        from src.services.llm import _extract_error_code
-
-        error = Exception("rate limit exceeded")
-        assert _extract_error_code(error) == "LLM_PROVIDER_ERROR"

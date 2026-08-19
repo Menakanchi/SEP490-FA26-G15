@@ -72,15 +72,12 @@ def test_only_three_nodes_are_allowed_to_call_an_llm() -> None:
     Đây là bằng chứng PLO1/PLO2 **kiểm được bằng máy**, không phải một câu
     khẳng định trong slide. Node thứ tư lặng lẽ gọi LLM là trần chi phí và trần
     p95 latency mất hiệu lực mà không ai thấy.
-
-    Hôm nay `nodes/` mới có node mẫu của template nên test chạy rỗng — nó bắt
-    đầu canh từ lúc node thật đầu tiên xuất hiện.
     """
     allowed = {"parse_intent", "generate_draft", "repair_draft"}
     guilty = {
         p.stem
         for p in _py_files("agents", "nodes")
-        if p.stem not in {"__init__", "example_node"} and any(m.endswith("services.llm") for m in _imports(p))
+        if p.stem != "__init__" and any(m.endswith("services.llm") for m in _imports(p))
     }
     assert guilty <= allowed, (
         f"node không được gọi LLM: {sorted(guilty - allowed)} — xem ARCHITECTURE.md §Workflow 7 nodes"
@@ -102,3 +99,35 @@ def test_nothing_imports_the_llm_provider_directly() -> None:
     }
     offenders = {k: v for k, v in offenders.items() if v}
     assert not offenders, f"gọi provider thẳng: {offenders} — phải đi qua services/llm.py"
+
+
+def test_installed_pre_push_hook_actually_calls_the_gate() -> None:
+    """Hook đã cài phải gọi ``scripts/pre_push_check.sh``.
+
+    ``.git/hooks/`` **không** được track, nên một commit sửa
+    ``scripts/setup_hooks.sh`` không tự cập nhật hook trên máy ai cả. Đúng chỗ
+    đó đã hỏng một lần: gate được thêm vào setup script ở #37 (14/8) nhưng
+    không ai chạy lại nó, nên hook trên máy dev vẫn là bản 29/7 kết thúc bằng
+    ``exit 0``. Gate im lặng không chạy suốt hai tuần và một lỗi format lọt vào
+    ``services/library/retriever.py`` ở #52 (16/8).
+
+    Comment cảnh báo trong hai setup script là cần, nhưng không đủ: kiểu hỏng
+    này im lặng, và không ai đọc comment của một file mình không mở. Test thì
+    chạy kể cả khi hook hỏng — đó là toàn bộ lý do nó nằm ở đây.
+
+    ``skip`` khi chưa có hook: CI và máy vừa clone chưa chạy ``setup_hooks.sh``
+    là chuyện bình thường, đỏ vì lý do đó chỉ dạy người ta bỏ qua test.
+    """
+    git_dir = Path(__file__).parent.parent / ".git"
+    if not git_dir.is_dir():
+        pytest.skip("không phải checkout git thường (worktree/submodule) — bỏ qua")
+
+    hook = git_dir / "hooks" / "pre-push"
+    if not hook.exists():
+        pytest.skip("chưa cài hook — chạy: bash scripts/setup_hooks.sh")
+
+    body = hook.read_text(encoding="utf-8", errors="replace")
+    assert "pre_push_check.sh" in body, (
+        "hook pre-push đã cài nhưng KHÔNG gọi scripts/pre_push_check.sh — "
+        "hook cũ còn sót lại. Cài lại: bash scripts/setup_hooks.sh"
+    )

@@ -184,9 +184,7 @@ class SQLiteRetriever(BaseRetriever):
             # không quên được. `embedding` chỉ được ghi trong transaction duyệt
             # BEFORE_LIBRARY, nên kịch bản chưa duyệt không có vector — dù ai đó
             # về sau lỡ xoá mất mệnh đề `status` thì nó vẫn không lọt ra.
-            where_clauses.append(
-                "status IN ('approved_library', 'pending_sim_review') AND embedding IS NOT NULL"
-            )
+            where_clauses.append("status IN ('approved_library', 'pending_sim_review') AND embedding IS NOT NULL")
 
             # 2. ODD Pre-filtering WHERE clause (ADR-013)
             road_type = odd_filter.get("road_type")
