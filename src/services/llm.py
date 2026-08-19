@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import json
+import logging
+import time
 from typing import Any
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from pydantic import BaseModel
 
 from src.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+# Chi phí theo 1M tokens (estimate, cập nhật theo bảng giá OpenAI)
+# Chỉ 2 model đang dùng: gpt-5.4-mini (primary) và gpt-5.4 (escalated)
+MODEL_COSTS = {
+    "gpt-5.4-mini": {"input": 0.15, "output": 0.6},
+    "gpt-5.4": {"input": 2.5, "output": 10.0},
+}
 
 # ADR-006. Đi kèm số chiều 1536 mà cột BLOB của ADR-013 đang giả định.
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -117,9 +129,9 @@ def call_with_escalation(
     Gọi LLM với automatic model escalation.
 
     Flow:
-        Fail lần 1 (attempt=0) → retry cùng model (gpt-5.4-mini)
-        Fail lần 2 (attempt=1) → chuyển sang model to (gpt-5.4)
-        Fail lần 3 (attempt=2) → trả lỗi có cấu trúc
+        Attempt 0, 1: Dùng primary model (gpt-5.4-mini)
+        Attempt 2: Dùng escalated model (gpt-5.4)
+        Fail 3 lần → trả lỗi có cấu trúc
 
     Args:
         messages: Danh sách messages theo format LangChain
@@ -129,11 +141,14 @@ def call_with_escalation(
         Structured output đã được parse thành object
     """
     last_error: Exception | None = None
+    total_latency = 0.0
+    total_cost = 0.0
 
     for attempt in range(MAX_RETRIES):
         # attempt < 2: dùng primary model (đọc từ config)
         # attempt >= 2: dùng escalated model (đọc từ config)
         model_to_use = _get_escalated_model() if attempt >= 2 else _get_primary_model()
+        start_time = time.time()
 
         try:
             llm = ChatOpenAI(
@@ -144,19 +159,66 @@ def call_with_escalation(
             runnable = llm.with_structured_output(structured_output_schema)
             result = runnable.invoke(messages)
 
+            # Tính latency và cost
+            latency = time.time() - start_time
+            total_latency += latency
+
+            # Ước tính cost dựa trên token count (LangChain không trả token count trực tiếp)
+            # Sử dụng estimate dựa trên số tin nhắn
+            estimated_tokens = sum(len(str(msg.get("content", ""))) // 4 for msg in messages)
+            cost_info = MODEL_COSTS.get(model_to_use, {"input": 0.0, "output": 0.0})
+            estimated_cost = (estimated_tokens / 1_000_000) * cost_info["input"]
+            total_cost += estimated_cost
+
+            # Log thông tin (JSON format)
+            log_data = {
+                "event": "llm_call_success",
+                "model": model_to_use,
+                "latency": round(latency, 3),
+                "cost": round(estimated_cost, 6),
+                "attempt": attempt,
+                "escalated": attempt >= 2,
+            }
+            logger.info(json.dumps(log_data))
+
             return result
 
         except Exception as e:
+            latency = time.time() - start_time
             error_code = _extract_error_code(e)
             last_error = e
 
             if error_code in NON_ESCALATABLE_ERRORS:
+                log_data = {
+                    "event": "llm_call_failed",
+                    "model": model_to_use,
+                    "latency": round(latency, 3),
+                    "error_code": error_code,
+                    "escalatable": False,
+                }
+                logger.error(json.dumps(log_data))
                 raise
+
+            log_data = {
+                "event": "llm_call_retry",
+                "model": model_to_use,
+                "latency": round(latency, 3),
+                "error_code": error_code,
+                "attempt": attempt,
+            }
+            logger.warning(json.dumps(log_data))
             continue
 
     # Hết MAX_RETRIES mà vẫn fail. Ném lại đúng exception của lần cuối: nuốt nó
     # rồi raise NotImplementedError thì caller mất sạch thông tin chẩn đoán —
     # repair_draft và failure analysis không còn gì để bám vào.
+    log_data = {
+        "event": "llm_call_exhausted",
+        "total_latency": round(total_latency, 3),
+        "total_cost": round(total_cost, 6),
+        "last_error": str(last_error) if last_error else None,
+    }
+    logger.error(json.dumps(log_data))
     if last_error is not None:
         raise last_error
     raise RuntimeError("call_with_escalation kết thúc mà không có kết quả lẫn lỗi")
