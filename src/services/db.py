@@ -257,6 +257,27 @@ def get_scenario(scenario_id: str) -> dict | None:
     assumptions_obj = json.loads(row_dict["assumptions"]) if row_dict.get("assumptions") else []
     tags_obj = json.loads(row_dict["tags"]) if row_dict.get("tags") else []
 
+    # ``retrieved_examples`` là dấu vết của một generation request, không phải
+    # một phần ScenarioSpec. Đọc từ request đã sinh scenario thay vì tìm nhầm
+    # trong JSON spec (schema này extra='forbid' và chưa từng chứa trường đó).
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT node_metrics FROM generation_requests
+            WHERE scenario_id = ?
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (scenario_id,),
+        )
+        request_row = cursor.fetchone()
+    retrieved_examples: list = []
+    if request_row and request_row["node_metrics"]:
+        try:
+            metrics = json.loads(request_row["node_metrics"])
+            retrieved_examples = metrics.get("retrieved_examples", []) if isinstance(metrics, dict) else []
+        except (TypeError, json.JSONDecodeError):
+            logger.warning("node_metrics không hợp lệ cho scenario %s", scenario_id)
+
     odd_data = spec_obj.get("odd") or {
         "road_type": row_dict.get("road_type"),
         "weather": row_dict.get("weather"),
@@ -271,7 +292,7 @@ def get_scenario(scenario_id: str) -> dict | None:
         "status": row_dict["status"],
         "odd": odd_data,
         "time_of_day": spec_obj.get("time_of_day", "day"),
-        "retrieved_examples": spec_obj.get("retrieved_examples", []),
+        "retrieved_examples": retrieved_examples,
         "spec": spec_obj,
         "xosc_content": row_dict.get("xosc_content", ""),
         "assumptions": assumptions_obj,

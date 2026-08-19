@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from src.models.schemas import ODDCell, ScenarioDraft
@@ -94,15 +95,16 @@ Sinh ScenarioDraft từ mô tả tiếng Việt của người dùng.
 
 ## MỐI QUAN HỆ s_offset_m VÀ MANEUVER
 
-Dựa trên fixtures và validation rules, mỗi maneuver có ràng buộc hình học riêng:
+Dựa trên quan hệ chuyển động, mỗi maneuver có ràng buộc hình học riêng:
 
 | Maneuver | s_offset_m | Cơ sở |
 |----------|-------------|--------|
-| **cut_in** | ÂM (phía sau) | sc_001: s_offset_m=-25. geom_no_catchup: s_offset_m=+20 là LỖI. |
+| **cut_in vượt lên** | ÂM (phía sau), nhanh hơn ego | Chủ thể đuổi kịp rồi tạt vào. |
+| **cut_in nhập làn** | DƯƠNG (phía trước), chậm hơn ego | Xe từ lề/làn bên cạnh nhập vào đường đi của ego. |
 | **sudden_brake** | DƯƠNG (phía trước) | sc_003: s_offset_m=+30. |
 
 **QUAN TRỌNG:** Đặt sai s_offset_m sẽ dẫn đến:
-- GEOM_NO_CATCHUP: cut_in mà ở phía trước → không bao giờ tạt đầu được
+- GEOM_NO_CATCHUP: khoảng cách giữa adversary và ego không thu hẹp trước khi cut-in
 
 ---
 
@@ -193,7 +195,7 @@ Dựa trên fixtures và validation rules, mỗi maneuver có ràng buộc hình
 ## LƯU Ý QUAN TRỌNG
 
 1. **Giữ nguyên ODDCell** - Không thay đổi bất kỳ trường nào trong odd
-2. **Chọn s_offset_m đúng** - cut_in cần s_offset_m ÂM (phía sau)
+2. **Chọn s_offset_m đúng** - cut_in vượt lên ở phía sau; nhập làn từ lề có thể ở phía trước
 3. **Trigger phải < duration_s** - Nếu không hành vi không chạy
 4. **Ego không mang maneuver** - Ego là nạn nhân
 5. **Không tự cấp scenario_id và description_vi**
@@ -209,6 +211,7 @@ def generate_draft_node(
     user_query: str,
     odd_cell: ODDCell,
     examples: list[ScenarioDraft] | None = None,
+    actor_hints: list[dict[str, Any]] | None = None,
 ) -> ScenarioDraft:
     """
     Sinh ScenarioDraft từ câu tiếng Việt.
@@ -225,7 +228,7 @@ def generate_draft_node(
     from src.services.llm import call_with_escalation
 
     # Tạo messages cho LLM
-    messages = _create_messages(user_query, odd_cell, examples)
+    messages = _create_messages(user_query, odd_cell, examples, actor_hints)
 
     # Gọi LLM với escalation
     result = call_with_escalation(messages, ScenarioDraft)
@@ -237,6 +240,7 @@ def _create_messages(
     user_query: str,
     odd_cell: ODDCell,
     examples: list[ScenarioDraft] | None = None,
+    actor_hints: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Tạo messages cho LLM từ input.
@@ -253,7 +257,7 @@ def _create_messages(
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     # User message với input
-    user_content = _build_user_content(user_query, odd_cell, examples)
+    user_content = _build_user_content(user_query, odd_cell, examples, actor_hints)
     messages.append({"role": "user", "content": user_content})
 
     return messages
@@ -263,6 +267,7 @@ def _build_user_content(
     user_query: str,
     odd_cell: ODDCell,
     examples: list[ScenarioDraft] | None = None,
+    actor_hints: list[dict[str, Any]] | None = None,
 ) -> str:
     """
     Xây dựng nội dung user message.
@@ -291,6 +296,27 @@ def _build_user_content(
 - weather: {odd_cell.weather.value}
 - actor_type: {odd_cell.actor_type.value}
 - maneuver: {odd_cell.maneuver.value}
+"""
+
+    if actor_hints:
+        mentions = [
+            {
+                "category": actor.get("category"),
+                "specific_type": actor.get("specific_type"),
+                "role": actor.get("role"),
+            }
+            for actor in actor_hints
+        ]
+        content += f"""
+
+## Phương tiện đã được nhận diện trong câu:
+{json.dumps(mentions, ensure_ascii=False)}
+
+Phải giữ các phương tiện này trong `actors`. Vai trò khác `unknown` đã có bằng
+chứng trong câu và phải được giữ: `adversary` thực hiện hành vi nguy hiểm;
+`ego` phải có tên `hero`, là phương tiện không kịp tránh/bị đe doạ. Với vai trò
+`unknown`, tự suy từ toàn câu. Không tạo thêm ô tô chung chung làm hero khi câu
+đã nêu rõ phương tiện bị đe doạ.
 """
 
     # Thêm examples nếu có

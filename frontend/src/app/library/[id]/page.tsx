@@ -19,14 +19,13 @@ import {
   Timer,
 } from "lucide-react";
 import { getScenarioById } from "@/services/api";
-import SVG2DRenderer from "@/components/SVG2DRenderer";
 import type { ScenarioDetail } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
-  ACTOR_TYPE_LABELS,
   MANEUVER_TYPE_LABELS,
   renderSafeValue,
+  renderOddActorTypeLabel,
 } from "@/types";
 
 export default function ScenarioDetailPage() {
@@ -209,30 +208,6 @@ export default function ScenarioDetailPage() {
         </div>
       </div>
 
-      {/* ─── SVG 2D Diagram ─── */}
-      <div className="glass-card p-6">
-        <h2 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
-          <Map className="w-5 h-5 text-blue-400" />
-          Sơ đồ 2D
-        </h2>
-        <div className="rounded-xl overflow-hidden border border-slate-700/20">
-          {scenario.spec?.actors?.length ? (
-            <SVG2DRenderer
-              actors={scenario.spec.actors}
-              odd={scenario.odd}
-              maneuvers={scenario.spec.maneuvers}
-              width="100%"
-              height={400}
-            />
-          ) : (
-            <div className="w-full h-[400px] flex flex-col items-center justify-center text-slate-500 bg-slate-900/50">
-              <Map className="w-12 h-12 mb-2 opacity-30" />
-              <p className="text-sm">Chưa có dữ liệu actor để vẽ sơ đồ</p>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* ─── ODD Parameters ─── */}
       <div className="glass-card p-6">
         <h2 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
@@ -269,7 +244,7 @@ export default function ScenarioDetailPage() {
                 Tác nhân
               </p>
               <p className="text-base font-medium text-slate-200 mt-0.5">
-                {renderSafeValue(odd.actor_type, ACTOR_TYPE_LABELS)}
+                {renderOddActorTypeLabel(odd)}
               </p>
             </div>
           </div>

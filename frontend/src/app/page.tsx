@@ -12,7 +12,6 @@ import {
   Sparkles,
   AlertTriangle,
   Info,
-  Map,
   Users,
   Eye,
   Sliders,
@@ -21,15 +20,14 @@ import {
   User,
 } from "lucide-react";
 import { postGenerate, getStatus, getScenarioById } from "@/services/api";
-import SVG2DRenderer from "@/components/SVG2DRenderer";
 import type { GenerationStatus, ScenarioDetail } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
-  ACTOR_TYPE_LABELS,
   MANEUVER_TYPE_LABELS,
   renderSafeValue,
   renderActorCategoryLabel,
+  renderOddActorTypeLabel,
 } from "@/types";
 
 const POLL_INTERVAL_MS = 2000;
@@ -382,7 +380,7 @@ function GeneratorPageContent() {
                   <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
                     <span className="text-[11px] text-slate-400 block uppercase">Tác nhân</span>
                     <span className="text-xs font-semibold text-orange-400">
-                      {renderSafeValue(generatedScenario.odd?.actor_type, ACTOR_TYPE_LABELS)}
+                      {renderOddActorTypeLabel(generatedScenario.odd)}
                     </span>
                   </div>
                   <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
@@ -392,25 +390,6 @@ function GeneratorPageContent() {
                     </span>
                   </div>
                 </div>
-
-                {/* 2D Lane Preview */}
-                {generatedScenario.spec?.actors?.length ? (
-                  <div className="space-y-3">
-                    <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider block flex items-center gap-2">
-                      <Map className="w-4 h-4 text-blue-400" />
-                      Sơ đồ làn đường 2D (Render đầy đủ Hero & Adversaries):
-                    </span>
-                    <div className="rounded-xl overflow-hidden border border-slate-700/20">
-                      <SVG2DRenderer
-                        actors={generatedScenario.spec.actors}
-                        odd={generatedScenario.odd}
-                        maneuvers={generatedScenario.spec.maneuvers}
-                        width="100%"
-                        height={280}
-                      />
-                    </div>
-                  </div>
-                ) : null}
 
                 {/* 1. All Actors Table (ADR-010) */}
                 {generatedScenario.spec?.actors?.length ? (
@@ -449,7 +428,7 @@ function GeneratorPageContent() {
                                   </span>
                                 )}
                               </td>
-                              <td className="p-3 font-mono">Làn {actor.position?.lane_offset || 1}</td>
+                              <td className="p-3 font-mono">Offset {actor.position?.lane_offset ?? 0}</td>
                               <td className="p-3 font-mono">{actor.position?.s_offset_m ?? 0} m</td>
                               <td className="p-3 font-mono">{actor.initial_speed_kmh ?? 50} km/h</td>
                             </tr>

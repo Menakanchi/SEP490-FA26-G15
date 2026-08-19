@@ -777,6 +777,7 @@ class IssueCode(StrEnum):
     TRIGGER_AFTER_END = "TRIGGER_AFTER_END"
     ODD_ACTOR_MISMATCH = "ODD_ACTOR_MISMATCH"
     ODD_MANEUVER_MISMATCH = "ODD_MANEUVER_MISMATCH"
+    ACTOR_ROLE_MISMATCH = "ACTOR_ROLE_MISMATCH"
     ODD_LABEL_DRIFT = "ODD_LABEL_DRIFT"  # đổi nhãn người dùng đã nói rõ
     GEOM_NO_CATCHUP = "GEOM_NO_CATCHUP"  # chủ thể không bao giờ bắt kịp ego
     GEOM_NO_COLLISION_AFTER_CUTIN = "GEOM_NO_COLLISION_AFTER_CUTIN"
@@ -809,6 +810,7 @@ REPAIRABLE_CODES: frozenset[IssueCode] = frozenset(
         IssueCode.TRIGGER_AFTER_END,
         IssueCode.ODD_ACTOR_MISMATCH,
         IssueCode.ODD_MANEUVER_MISMATCH,
+        IssueCode.ACTOR_ROLE_MISMATCH,
         IssueCode.ODD_LABEL_DRIFT,
         IssueCode.GEOM_NO_CATCHUP,
         IssueCode.GEOM_NO_COLLISION_AFTER_CUTIN,

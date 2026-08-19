@@ -8,11 +8,9 @@ import {
   Download,
   FileCode,
   BookOpen,
-  ChevronRight,
   AlertCircle,
 } from "lucide-react";
 import { getScenarios, downloadXosc } from "@/services/api";
-import SVG2DRenderer from "@/components/SVG2DRenderer";
 import type {
   ScenarioItem,
   ODDPayload,
@@ -27,6 +25,7 @@ import {
   ACTOR_TYPE_LABELS,
   MANEUVER_TYPE_LABELS,
   renderSafeValue,
+  renderOddActorTypeLabel,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -310,27 +309,6 @@ export default function LibraryPage() {
                   href={`/library/${item.scenario_id}`}
                   className="glass-card glass-card-hover overflow-hidden group block"
                 >
-                  {/* SVG 2D Thumbnail */}
-                  <div className="relative h-[160px] overflow-hidden bg-slate-900/50 border-b border-slate-700/15">
-                    {item.spec?.actors?.length ? (
-                      <SVG2DRenderer
-                        actors={item.spec.actors}
-                        maneuvers={item.spec.maneuvers}
-                        width="100%"
-                        height={160}
-                        showLabels={false}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-600">
-                        <FileCode className="w-10 h-10 opacity-30" />
-                      </div>
-                    )}
-
-                    <div className="absolute top-3 right-3 w-7 h-7 rounded-full bg-blue-500/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                      <ChevronRight className="w-4 h-4 text-white" />
-                    </div>
-                  </div>
-
                   {/* Content */}
                   <div className="p-5 space-y-3">
                     <h3 className="font-semibold text-slate-200 truncate text-sm group-hover:text-white transition-colors">
@@ -349,7 +327,7 @@ export default function LibraryPage() {
                         {renderSafeValue(item.odd?.weather, WEATHER_LABELS)}
                       </span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/15">
-                        {renderSafeValue(item.odd?.actor_type, ACTOR_TYPE_LABELS)}
+                        {renderOddActorTypeLabel(item.odd)}
                       </span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/15">
                         {renderSafeValue(item.odd?.maneuver, MANEUVER_TYPE_LABELS)}

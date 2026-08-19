@@ -66,6 +66,9 @@ async def persist_pending_review_node(
         metrics = dict(state.get("node_metrics", {}))
         metrics.setdefault("model", state.get("model_used", get_settings().model_name))
         metrics.setdefault("repair_iterations", state.get("iteration", 0))
+        # Kết quả retrieve thuộc về chính lần sinh này. Lưu cùng request để API
+        # chi tiết không biến một lần few-shot thành "Zero-Shot" sau khi reload.
+        metrics["retrieved_examples"] = list(state.get("retrieved_examples", []) or [])
 
         repo = repository or get_repository()
         repo.persist_pending_review(

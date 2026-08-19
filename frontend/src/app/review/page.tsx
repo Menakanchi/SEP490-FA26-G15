@@ -8,7 +8,6 @@ import {
   XCircle,
   User,
   Loader2,
-  Map,
   Users,
   AlertTriangle,
   FileCode,
@@ -39,15 +38,14 @@ import {
   requestSimulation,
   updateTags,
 } from "@/services/api";
-import SVG2DRenderer from "@/components/SVG2DRenderer";
 import type { ScenarioItem, ScenarioDetail, ReviewGate } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
-  ACTOR_TYPE_LABELS,
   MANEUVER_TYPE_LABELS,
   renderSafeValue,
   renderActorCategoryLabel,
+  renderOddActorTypeLabel,
 } from "@/types";
 
 function ReviewPageContent() {
@@ -607,7 +605,7 @@ function ReviewPageContent() {
                   <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
                     <span className="text-[10px] text-slate-500 block uppercase">Tác nhân</span>
                     <span className="text-xs font-semibold text-orange-400">
-                      {renderSafeValue(scenario.odd?.actor_type, ACTOR_TYPE_LABELS)}
+                      {renderOddActorTypeLabel(scenario.odd)}
                     </span>
                   </div>
                   <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
@@ -616,29 +614,6 @@ function ReviewPageContent() {
                       {renderSafeValue(scenario.odd?.maneuver, MANEUVER_TYPE_LABELS)}
                     </span>
                   </div>
-                </div>
-              </div>
-
-              {/* 2D SVG Lane Visualization */}
-              <div className="glass-card p-6 space-y-3">
-                <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                  <Map className="w-4 h-4 text-blue-400" />
-                  Sơ đồ làn đường 2D (Render Hero & Adversaries - ADR-010)
-                </h3>
-                <div className="rounded-xl overflow-hidden border border-slate-700/20">
-                  {scenario.spec?.actors?.length ? (
-                    <SVG2DRenderer
-                      actors={scenario.spec.actors}
-                      odd={scenario.odd}
-                      maneuvers={scenario.spec.maneuvers}
-                      width="100%"
-                      height={320}
-                    />
-                  ) : (
-                    <div className="h-48 flex items-center justify-center text-slate-500 text-xs">
-                      Không có thông tin vị trí các xe để vẽ 2D.
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -679,7 +654,7 @@ function ReviewPageContent() {
                                 </span>
                               )}
                             </td>
-                            <td className="p-3 font-mono">Làn {actor.position?.lane_offset || 1}</td>
+                            <td className="p-3 font-mono">Offset {actor.position?.lane_offset ?? 0}</td>
                             <td className="p-3 font-mono">{actor.position?.s_offset_m ?? 0} m</td>
                             <td className="p-3 font-mono">{actor.initial_speed_kmh ?? 50} km/h</td>
                           </tr>

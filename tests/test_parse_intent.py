@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from src.agents.nodes.parse_intent import parse_intent_node
+from src.agents.nodes.parse_intent import _load_taxonomy_rules, _rule_based_extract, parse_intent_node
 from src.models.schemas import (
     ActorType,
     AssumptionSource,
@@ -234,8 +234,37 @@ def test_parse_intent_multi_actor():
     assert result["odd_hints"].actor_type == ActorType.TRUCK
     assert result["odd_hints"].maneuver == ManeuverType.SUDDEN_BRAKE
     assert result["odd_hints"].specific_type == "Xe khách"
-    # Hai actor được nhận ra, ego đứng trước.
-    assert [a["role"] for a in result["actors"]] == ["ego", "adversary"]
+    # Phương tiện gây hành vi khớp ODD là adversary; xe phía sau là ego.
+    assert [a["role"] for a in result["actors"]] == ["adversary", "ego"]
+
+
+def test_actor_after_lane_context_is_not_dropped():
+    """ "làn giữa, xe máy" không phải cụm hạ tầng "làn xe máy"."""
+    parsed = _rule_based_extract(
+        "xe buýt tạt đầu ra làn giữa, xe máy phía sau không kịp tránh",
+        _load_taxonomy_rules(),
+    )
+
+    assert [actor["specific_type"] for actor in parsed["actors"]] == ["xe buýt", "xe máy"]
+    assert [actor["role"] for actor in parsed["actors"]] == ["adversary", "ego"]
+
+
+def test_actor_roles_do_not_depend_on_mention_order():
+    parsed = _rule_based_extract(
+        "xe máy phía sau không kịp tránh khi xe buýt tạt đầu",
+        _load_taxonomy_rules(),
+    )
+
+    assert [(actor["specific_type"], actor["role"]) for actor in parsed["actors"]] == [
+        ("xe máy", "ego"),
+        ("xe buýt", "adversary"),
+    ]
+
+
+def test_ambiguous_actor_roles_are_left_unknown():
+    parsed = _rule_based_extract("xe máy và ô tô chạy trên cao tốc", _load_taxonomy_rules())
+
+    assert [actor["role"] for actor in parsed["actors"]] == ["unknown", "unknown"]
 
 
 @patch("src.agents.nodes.parse_intent.get_llm")

@@ -483,7 +483,7 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
             if cut_in_cannot_catch_up(actor, ego):
                 raise ConversionError(
                     IssueCode.CONVERTER_ERROR,
-                    "cut_in actor must start behind ego and move faster before cutting in",
+                    "cut_in actor and ego must be moving toward the same longitudinal meeting point",
                 )
             if cut_in_never_slows_down(maneuver, actor, ego):
                 raise ConversionError(

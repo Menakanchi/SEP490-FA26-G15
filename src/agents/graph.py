@@ -96,6 +96,12 @@ def _few_shot_examples(state: ForgeState) -> list[ScenarioDraft]:
     """
     from src.services import db
 
+    alias_categories = {"bus": "truck", "bicycle": "motorcycle"}
+    mentioned_categories = {
+        alias_categories.get(str(actor.get("category")), str(actor.get("category")))
+        for actor in (state.get("actors") or [])
+        if actor.get("category")
+    }
     examples: list[ScenarioDraft] = []
     for item in state.get("retrieved_examples") or []:
         scenario_id = item.get("id") if isinstance(item, dict) else None
@@ -119,7 +125,26 @@ def _few_shot_examples(state: ForgeState) -> list[ScenarioDraft]:
                 continue
 
             core = {k: v for k, v in spec.items() if k not in ("scenario_id", "description_vi")}
-            examples.append(ScenarioDraft.model_validate(core))
+            example = ScenarioDraft.model_validate(core)
+            # Khi câu nêu rõ từ hai phương tiện trở lên, đừng đưa lại một mẫu
+            # đã tự bịa thêm hero loại khác. Đúng lỗi sc_018/sc_020: câu có xe
+            # buýt + xe máy nhưng mẫu thêm ô tô làm ego, rồi few-shot tự củng cố
+            # lỗi đó ở mọi lần sinh sau.
+            if len(mentioned_categories) >= 2:
+                example_categories = {actor.category.value for actor in example.actors}
+                if not example_categories.issubset(mentioned_categories):
+                    logger.debug("Bỏ qua few-shot %s: actor không có trong câu gốc", scenario_id)
+                    continue
+                hinted_ego = next((actor for actor in state.get("actors", []) if actor.get("role") == "ego"), None)
+                if hinted_ego:
+                    expected_ego = alias_categories.get(
+                        str(hinted_ego.get("category")), str(hinted_ego.get("category"))
+                    )
+                    actual_ego = next(actor.category.value for actor in example.actors if actor.is_ego)
+                    if actual_ego != expected_ego:
+                        logger.debug("Bỏ qua few-shot %s: đảo vai ego/adversary", scenario_id)
+                        continue
+            examples.append(example)
         except Exception as exc:
             logger.debug("Bỏ qua few-shot %s: %s", scenario_id, exc)
     return examples
@@ -134,6 +159,7 @@ def _generate_draft(state: ForgeState) -> dict[str, Any]:
             user_query=state.get("user_query", ""),
             odd_cell=odd_hints,
             examples=_few_shot_examples(state) or None,
+            actor_hints=state.get("actors") or None,
         )
     except Exception as exc:
         return _llm_failure(exc, "generate_draft")
