@@ -36,14 +36,15 @@ graph TB
 
 - Backend cloud không `import carla`.
 - Worker nhận chuỗi XML, không nhận object Python.
-- Worker offline không làm chết đường generate/review/download ở chế độ static.
+- Worker offline không làm chết đường generate/review/download: job nằm chờ trong hàng đợi, web vẫn sinh/duyệt/tải file bình thường (NFR-02).
 - Transactional store là nguồn thật duy nhất: state giao dịch và embedding nằm cùng một `.db`, nên không có index ngoài để lệch (ADR-013).
 - Local, test và CI dùng SQLite. **Bản deploy có Live URL dùng Supabase PostgreSQL ngay từ lần deploy đầu** — Render free có filesystem ephemeral nên file SQLite bị xoá mỗi lần redeploy/wake-up (ADR-011 §3.6). Cùng một repository layer qua SQLAlchemy Core.
 
 ## Workflow 7 nodes
 
-Đây là kiến trúc mục tiêu. Graph hiện tại vẫn là graph mẫu `analyze → respond`;
-`routing.py`, data contracts và fixtures đã có thật.
+Đủ bảy node đã nối trong `build_forge_graph()` và `POST /generate` chạy graph
+thật. Graph mẫu `analyze → respond` còn sót từ template đã bị xoá cùng
+`AgentState` khi nhánh này khép lại.
 
 ```mermaid
 graph LR
@@ -170,15 +171,29 @@ trong graph.
 graph LR
     P[(pending_review)] --> R1{BEFORE_LIBRARY}
     R1 -->|reject + reason| RJ[rejected]
-    R1 -->|approve| LIB[Library: embedding BLOB + cho tải .xosc]
-    LIB --> R2{BEFORE_SIM}
+    R1 -->|approve| SIM[("pending_sim_review<br/>đã vào thư viện · tải .xosc được")]
+    SIM --> R2{BEFORE_SIM}
+    R2 -->|không cần mô phỏng| LIB[(approved_library)]
+    R2 -->|approve| LIB
     R2 -->|approve| JOB[ScenarioJob]
     JOB --> W[GPU worker]
     W --> RES[ExecutionResult]
+    RES --> V["verification: adversarial / ran_no_hazard / execution_failed"]
 ```
 
 - `BEFORE_LIBRARY`: yêu cầu sản phẩm, ngăn dữ liệu xấu quay lại làm few-shot.
 - `BEFORE_SIM`: chính sách đội để kiểm soát tài nguyên GPU.
+- Qua `BEFORE_LIBRARY` là **tự mở** `BEFORE_SIM`: static chỉ chứng minh file
+  parse được, nên *"chỉ cần static"* không còn là điểm dừng hợp lệ và cờ
+  `validation_mode` của creator không còn quyết định gì. Vẫn **không** tự chạy
+  CARLA — cái tự động ở đây chỉ là bước chuyển trạng thái.
+- Hệ quả của việc đó: kịch bản đứng ở `pending_sim_review` suốt lúc chờ quyết
+  định sim, nên tải `.xosc` và `Retriever` đều phải coi trạng thái này là *đã
+  qua `BEFORE_LIBRARY`*, không chỉ nhận mỗi `approved_library`.
+- `ExecutionResult` quay về **không đổi `status`**, chỉ đặt `verification`
+  ([ADR-017](docs/adr/ADR-017-muc-kiem-chung-tach-khoi-trang-thai-duyet.md)):
+  kịch bản không bao giờ bị rút khỏi thư viện, chỉ thôi được dùng làm few-shot
+  khi đã chứng minh là hỏng.
 
 ## Data lifecycle
 
@@ -220,9 +235,14 @@ Smoke test ngày 31/07/2026 đã xác nhận:
 - `RelativeLanePosition` đặt actor đúng làn và khoảng cách.
 - ScenarioRunner xuất criteria JSON có thể chuẩn hoá thành `ExecutionResult`.
 
-Smoke test **chưa** chứng minh converter tự động. Outcome cut-in/collision thì đã
-ổn định trên fixture viết tay — xem §Ego baseline. Các parser traps và giới hạn
-nằm ở [ADR-012](docs/adr/ADR-012-converter-dung-relativelaneposition.md).
+Smoke test 31/07 **chưa** chứng minh converter tự động — nó chạy fixture viết
+tay. Bằng chứng đó có ngày **15/08**: `sc_014` do LLM sinh, converter biên dịch,
+đi qua cả hai cổng duyệt rồi chạy trọn vòng trên worker và trả `ExecutionResult`
+về backend. Nhưng kết quả là `CollisionTest = SUCCESS` — 0 va chạm, tức
+`ran_no_hazard`. Đường ống thông không có nghĩa kịch bản đáng giá; đó đúng là
+khoảng cách mà Phase 3 tồn tại để đo. Outcome cut-in/collision thì vẫn ổn định
+trên fixture viết tay — xem §Ego baseline. Các parser traps và giới hạn nằm ở
+[ADR-012](docs/adr/ADR-012-converter-dung-relativelaneposition.md).
 
 ## Ego baseline
 
@@ -265,7 +285,7 @@ Ba hệ quả khi đọc kết quả:
 ## Bất biến được kiểm bằng CI
 
 - `src/` không import `carla`.
-- HTTP layer không truy vấn retrieval store trực tiếp; mọi tìm kiếm đi qua `Retriever`. *(Test hiện tại chặn `import qdrant` trong router — sẽ đổi sang chặn import implementation của `Retriever` khi hiện thực, xem §Hệ quả của ADR-013.)*
+- HTTP layer không truy vấn retrieval store trực tiếp; mọi tìm kiếm đi qua `Retriever`. *(Test chặn `sqlite3` / `sqlalchemy` / `numpy` trong `src/api/` — ADR-013 bỏ Qdrant và đưa embedding vào chính SQLite, nên ranh giới cần canh đổi từ "đừng import qdrant" sang "đừng tự mở DB và tự tính cosine".)*
 - Chỉ `parse_intent`, `generate_draft`, `repair_draft` được phép gọi LLM.
 - Mọi provider call đi qua `src/services/llm.py`.
 - Fixtures phải validate theo `schemas.py`.
@@ -332,10 +352,15 @@ Thuật toán explore/exploit chưa chốt.
 | SQLite persistence | ✅ Có — `ScenarioRepository` (SQLAlchemy Core) là nguồn schema duy nhất |
 | API generate/status/review/download/job | ✅ Có, chạy graph thật; status gate 403 trước `BEFORE_LIBRARY` |
 | Frontend và preview 2D | ✅ Có — hai luồng Creator/Reviewer, preview SVG |
-| GPU worker | ⏳ Chưa có implementation |
+| Hai vai trò tạo/duyệt + tag thư viện | ✅ Có — `created_by` xuyên suốt (không xác thực); tag = 4 trục ODD + chữ người dùng gõ; `PUT /scenarios/{id}/tags` |
+| GPU worker | ✅ Có — `worker/runner.py` pull-based, chỉ thư viện chuẩn; chạy thật 15/08 với `sc_014`, 4 criteria quay về backend |
+| Mức kiểm chứng (`VerificationLevel`) | ✅ Có — `ExecutionResult` đặt `verification`; `PROVEN_BAD_FOR_FEW_SHOT` cắt vòng tự khẳng định của few-shot (ADR-017) |
+| Log + ước lượng chi phí LLM | ✅ Có — `call_with_escalation` ghi model, latency, token và cost mỗi lần gọi |
+| Chặn câu hỏi trùng ở lối vào | ⏳ Chưa — ADR-015 còn *Proposed*, nên gõ lại một câu cũ vẫn chạy hết bảy node |
+| Anchor map thứ hai | ⏳ Chưa — phạm vi converter còn đúng 76/560 ô, chỉ `highway` (ADR-016) |
 | Behavior checker (Phase 3) | ⏳ Chưa có |
 | Agent layer + closed-loop (Phase 4) | ⏳ Chưa có — ràng buộc lên Phase 1 ở ADR-014 |
-| Evaluation report bằng số thật | ⏳ Chưa có |
+| Evaluation report bằng số thật | ◐ Một nửa — Gate G2 có 5 case chạy qua API thật (`eval/results/report.md`); chưa có số cho `intent_match`, latency, hay tỉ lệ pass CARLA trên tập lớn |
 
 ## Quy tắc thay đổi
 
