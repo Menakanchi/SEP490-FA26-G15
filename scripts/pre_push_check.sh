@@ -35,28 +35,14 @@ if [ "${SKIP_CHECK:-0}" = "1" ]; then
   exit 0
 fi
 
-# Ưu tiên venv của repo: ruff/pytest được ghim ở requirements.txt nằm trong đó.
-# Python trên PATH có thể là bản hệ thống, không có sẵn hai công cụ này.
-if [ -x .venv/bin/python ]; then
-  PY=.venv/bin/python
-elif [ -x .venv/Scripts/python.exe ]; then
-  PY=.venv/Scripts/python.exe
-elif command -v python3 >/dev/null 2>&1; then
-  PY=python3
-elif command -v python >/dev/null 2>&1; then
-  PY=python
-else
-  echo "[check] Không tìm thấy Python — bỏ qua gate." >&2
+# `uv run --locked` dùng đúng dependency và báo lỗi nếu uv.lock đã lệch.
+if ! command -v uv >/dev/null 2>&1; then
+  echo "[check] Chưa có uv — bỏ qua gate." >&2
+  echo "[check] Cài theo: https://docs.astral.sh/uv/getting-started/installation/" >&2
   exit 0
 fi
 
-# Chưa cài ruff/pytest thì đây là máy chưa setup xong, không phải code sai.
-# Chặn push vì lý do đó chỉ gây bực, không bắt được lỗi nào.
-if ! "$PY" -m ruff --version >/dev/null 2>&1; then
-  echo "[check] Chưa có ruff trong môi trường — bỏ qua gate." >&2
-  echo "[check] Cài bằng: pip install -r requirements.txt" >&2
-  exit 0
-fi
+UV_RUN=(uv run --locked)
 
 fail() {
   echo >&2
@@ -66,13 +52,13 @@ fail() {
 }
 
 echo "[check] ruff check…"
-"$PY" -m ruff check src/ tests/ || fail "ruff check đỏ"
+"${UV_RUN[@]}" ruff check src/ tests/ || fail "ruff check đỏ"
 
 echo "[check] ruff format --check…"
-"$PY" -m ruff format --check src/ tests/ || fail "format lệch — chạy 'make format' rồi commit lại"
+"${UV_RUN[@]}" ruff format --check src/ tests/ || fail "format lệch — chạy 'make format' rồi commit lại"
 
 echo "[check] pytest + coverage…"
-"$PY" -m pytest tests/ -q --cov=src --cov-report=term-missing --cov-fail-under=60 \
+"${UV_RUN[@]}" pytest tests/ -q --cov=src --cov-report=term-missing --cov-fail-under=60 \
   || fail "test đỏ hoặc coverage dưới 60%"
 
 # ---------------------------------------------------------------------------

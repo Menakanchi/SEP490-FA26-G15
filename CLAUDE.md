@@ -30,7 +30,7 @@ cd ~/scenario_runner
     --openscenario /đường/dẫn/tới.xosc --output --timeout 60
 ```
 
-Dùng `worker/.venv`, **không** dùng `.venv` của repo: venv worker ghim
+Dùng `worker/.venv`, **không** dùng `.venv` của repo: project uv của worker ghim
 `carla==0.9.15` và `setuptools<81`, còn `src/` thì không bao giờ được import
 carla (ADR-001).
 
@@ -72,6 +72,12 @@ RUN_LLM_TESTS=1 pytest tests/test_agents/test_nodes/
 
 Có lý do: lỗi "test âm thầm gọi API trả phí" đã lọt vào repo ba lần, mỗi lần
 đều xanh trên máy người viết vì họ có sẵn key.
+
+## Quản lý dependency
+
+Backend dùng `uv sync --locked` với `pyproject.toml` + `uv.lock`. Worker CARLA là
+project Python 3.10 độc lập: `uv sync --project worker --locked`. Không dùng
+`pip` hay `requirements.txt` cho dependency của repo.
 
 ## Gate trước khi push
 

@@ -105,7 +105,7 @@ FR-03 và FR-11 bắt *"chỉ scenario qua `BEFORE_LIBRARY` mới được tìm 
 ## Lý do
 
 1. **Deliverable #5 quyết định lựa chọn, không phải sở thích kỹ thuật.** Live URL được chấm bằng cách mở từ máy lạ. Một store mất dữ liệu sau mỗi lần redeploy thì không có gì để mở ra xem.
-2. **`pytest` phải chạy được bằng `git clone` + `pip install`.** Bộ test hiện chạy trong 0.15 giây và không cần hạ tầng nào. Đánh đổi tính chất đó lấy sự đồng nhất môi trường là lỗ.
+2. **`pytest` phải chạy được bằng `git clone` + `uv sync --locked`.** Bộ test hiện chạy trong 0.15 giây và không cần hạ tầng nào. Đánh đổi tính chất đó lấy sự đồng nhất môi trường là lỗ.
 3. **Tách `generation_requests` khỏi `scenarios` là cách duy nhất tôn trọng FR-14.** Một lần sinh hỏng ở vòng repair thứ ba vẫn phải để lại dấu vết đầy đủ (issue history, cost đã tiêu) mà **không** đẻ ra một scenario giả trong thư viện. Hai vòng đời khác nhau thì hai bảng.
 4. **Bốn trạng thái thay vì tám** vì `JobStatus` đã tồn tại. Nhân đôi `running`/`failed` ở hai tầng là mời gọi đúng loại bug khó thấy: hai cột cùng tên lệch nhau, và không ai biết cột nào mới là thật.
 5. **Cột ODD riêng thay vì JSON** vì ADR-013 chốt lọc bằng `WHERE`. Nhét bốn trục vào một cột JSON thì `WHERE` phải đào vào JSON — chậm hơn, không index được, và mất luôn ràng buộc kiểu.
@@ -116,7 +116,7 @@ FR-03 và FR-11 bắt *"chỉ scenario qua `BEFORE_LIBRARY` mới được tìm 
 **Việc phải làm ngay trong PR hiện thực repository:**
 
 - Thêm `ScenarioStatus` và bảng transition vào `schemas.py`, kèm test chặn transition sai — làm cùng ADR này.
-- Bỏ comment `sqlalchemy`, `alembic`, `psycopg2-binary` trong `requirements.txt`.
+- Đưa `sqlalchemy`, `alembic`, `psycopg2-binary` vào dependency backend trong `pyproject.toml`.
 - Sửa `.env.example`: `DATABASE_URL` mặc định là SQLite cho local; ghi rõ bản deploy dùng chuỗi kết nối Supabase.
 - Sửa `ARCHITECTURE.md` theo §3.6.
 - `LibraryEntry.xosc_path` đổi thành URL tải về — **PR riêng**, phải migrate cùng lúc `fixtures/execution_results/*.json` và các test đang sinh `outputs/sc_999.xosc`, nếu không UI sẽ nhận về đường dẫn đĩa và dựng ra link chết.

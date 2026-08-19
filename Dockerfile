@@ -1,19 +1,21 @@
 # ---- Stage 1: Build ----
+FROM ghcr.io/astral-sh/uv:0.12.2 AS uv
 FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+COPY --from=uv /uv /uvx /bin/
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
 
 # ---- Stage 2: Production ----
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy installed packages from builder
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
+# Copy the locked virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
+ENV PATH=/app/.venv/bin:$PATH
 
 # Security: run as non-root user
 RUN useradd -m appuser
