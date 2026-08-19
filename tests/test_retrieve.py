@@ -115,7 +115,7 @@ def temp_sqlite_db(tmp_path):
     return db_path
 
 
-def test_sqlite_retriever_happy_path(temp_sqlite_db, capsys):
+def test_sqlite_retriever_happy_path(temp_sqlite_db):
     """Test case 1: SQLiteRetriever truy vấn thành công kịch bản đã qua cổng approved_library."""
     retriever = SQLiteRetriever(db_path=temp_sqlite_db)
     state = {
@@ -135,9 +135,6 @@ def test_sqlite_retriever_happy_path(temp_sqlite_db, capsys):
     first_ex = result["retrieved_examples"][0]
     assert first_ex["id"] == "sc_001"
     assert "Xe máy" in first_ex["title"]
-
-    captured = capsys.readouterr()
-    assert "[NODE 2 OUTPUT] Retrieved Examples Count:" in captured.out
 
 
 def test_sqlite_retriever_odd_where_filtering(temp_sqlite_db):
@@ -171,7 +168,7 @@ def test_sqlite_retriever_status_gate(temp_sqlite_db):
     assert "sc_001" in returned_ids
 
 
-def test_retrieve_empty_or_missing_db(tmp_path, capsys):
+def test_retrieve_empty_or_missing_db(tmp_path):
     """Test case 4: DB không tồn tại / rỗng / SQL WHERE không khớp -> Trả về [] an toàn cho Zero-Shot mode."""
     missing_db = tmp_path / "non_existent.db"
     retriever = SQLiteRetriever(db_path=missing_db)
@@ -186,11 +183,8 @@ def test_retrieve_empty_or_missing_db(tmp_path, capsys):
     assert result["retrieved_examples"] == []
     assert result["examples"] == []
 
-    captured = capsys.readouterr()
-    assert "[NODE 2 OUTPUT] Retrieved Examples Count: 0" in captured.out
 
-
-def test_retrieve_with_invalid_intent(capsys):
+def test_retrieve_with_invalid_intent():
     """Test case 5: State rỗng/invalid intent -> Node 2 xử lý an toàn không văng exception."""
     result_empty = retrieve_node({})
     assert result_empty["retrieved_examples"] == []
@@ -198,6 +192,3 @@ def test_retrieve_with_invalid_intent(capsys):
 
     result_none = retrieve_node({"parsed_intent": None})
     assert result_none["retrieved_examples"] == []
-
-    captured = capsys.readouterr()
-    assert "[NODE 2 OUTPUT] Retrieved Examples Count: 0" in captured.out

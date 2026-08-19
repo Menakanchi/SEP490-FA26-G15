@@ -18,16 +18,6 @@ EMBEDDING_DIM = 1536
 # Số lần thử tối đa trước khi báo lỗi
 MAX_RETRIES = 3
 
-# Các lỗi mà model to hơn CÓ THỂ cứu được
-# (output không parse được, thiếu trường, sai kiểu)
-ESCALATABLE_ERRORS = frozenset(
-    {
-        "LLM_OUTPUT_NOT_JSON",
-        "SCHEMA_INVALID",
-        "SCHEMA_EXTRA_FIELD",
-    }
-)
-
 # Các lỗi mà model to hơn KHÔNG giúp được gì
 # (lỗi hạ tầng, không phải lỗi "suy nghĩ" của LLM)
 NON_ESCALATABLE_ERRORS = frozenset(

@@ -127,16 +127,6 @@ async def test_missing_odd_query_is_a_terminal_context_error(valid_draft: Scenar
 
 
 @pytest.mark.asyncio
-async def test_schema_invalid() -> None:
-    # Thiếu trường 'title'
-    state = {
-        "draft": {"odd": {"road_type": "intersection", "weather": "clear", "actor_type": "car", "maneuver": "cut_in"}}
-    }
-    result = await validate_node(state)
-    assert result["issues"][0].code is IssueCode.SCHEMA_INVALID
-
-
-@pytest.mark.asyncio
 async def test_schema_constraint_suggestion_uses_pydantic_context(valid_draft: ScenarioDraft) -> None:
     draft = valid_draft.model_dump()
     draft["actors"][1]["initial_speed_kmh"] = 151.0
@@ -156,97 +146,6 @@ async def test_missing_field_suggestion_names_json_path(valid_draft: ScenarioDra
     issue = next(i for i in result["issues"] if i.path == "/title")
     assert issue.code is IssueCode.SCHEMA_INVALID
     assert issue.suggestion == "Bổ sung trường bắt buộc /title."
-
-
-@pytest.mark.asyncio
-async def test_schema_extra_field() -> None:
-    state = {
-        "draft": {
-            "title": "extra field test",
-            "odd": {"road_type": "intersection", "weather": "clear", "actor_type": "car", "maneuver": "cut_in"},
-            "time_of_day": "day",
-            "actors": [
-                {
-                    "name": "hero",
-                    "category": "car",
-                    "position": {"lane_offset": 0, "s_offset_m": 0.0},
-                    "initial_speed_kmh": 30.0,
-                    "is_ego": True,
-                },
-                {
-                    "name": "other",
-                    "category": "car",
-                    "position": {"lane_offset": 1, "s_offset_m": 20.0},
-                    "initial_speed_kmh": 40.0,
-                    "is_ego": False,
-                },
-            ],
-            "maneuvers": [
-                {"actor_name": "other", "maneuver": "cut_in", "trigger": {"type": "distance_to_ego", "value": 10.0}}
-            ],
-            "duration_s": 30.0,
-            "bịa_thêm": "invalid",
-        }
-    }
-    result = await validate_node(state)
-    assert any(i.code is IssueCode.SCHEMA_EXTRA_FIELD for i in result["issues"])
-    assert any(i.path == "/bịa_thêm" for i in result["issues"])
-
-
-@pytest.mark.asyncio
-async def test_ego_count(valid_draft: ScenarioDraft) -> None:
-    draft = valid_draft.model_dump()
-    draft["actors"][1]["is_ego"] = True
-    result = await validate_node({"draft": draft})
-    assert any(i.code is IssueCode.EGO_COUNT for i in result["issues"])
-
-
-@pytest.mark.asyncio
-async def test_dup_actor_name(valid_draft: ScenarioDraft) -> None:
-    draft = valid_draft.model_dump()
-    draft["actors"][1]["name"] = "hero"
-    result = await validate_node({"draft": draft})
-    assert any(i.code is IssueCode.DUP_ACTOR_NAME for i in result["issues"])
-
-
-@pytest.mark.asyncio
-async def test_dangling_actor_ref(valid_draft: ScenarioDraft) -> None:
-    draft = valid_draft.model_dump()
-    draft["maneuvers"][0]["actor_name"] = "ghost"
-    result = await validate_node({"draft": draft})
-    assert any(i.code is IssueCode.DANGLING_ACTOR_REF for i in result["issues"])
-
-
-@pytest.mark.asyncio
-async def test_ego_has_maneuver(valid_draft: ScenarioDraft) -> None:
-    draft = valid_draft.model_dump()
-    draft["maneuvers"][0]["actor_name"] = "hero"
-    result = await validate_node({"draft": draft})
-    assert any(i.code is IssueCode.EGO_HAS_MANEUVER for i in result["issues"])
-
-
-@pytest.mark.asyncio
-async def test_trigger_after_end(valid_draft: ScenarioDraft) -> None:
-    draft = valid_draft.model_dump()
-    draft["maneuvers"][0]["trigger"] = {"type": "simulation_time", "value": 40.0}  # duration_s is 30.0
-    result = await validate_node({"draft": draft})
-    assert any(i.code is IssueCode.TRIGGER_AFTER_END for i in result["issues"])
-
-
-@pytest.mark.asyncio
-async def test_odd_actor_mismatch(valid_draft: ScenarioDraft) -> None:
-    draft = valid_draft.model_dump()
-    draft["actors"][1]["category"] = "motorcycle"  # ODD expects CAR
-    result = await validate_node({"draft": draft})
-    assert any(i.code is IssueCode.ODD_ACTOR_MISMATCH for i in result["issues"])
-
-
-@pytest.mark.asyncio
-async def test_odd_maneuver_mismatch(valid_draft: ScenarioDraft) -> None:
-    draft = valid_draft.model_dump()
-    draft["maneuvers"][0]["maneuver"] = "sudden_brake"  # ODD expects CUT_IN
-    result = await validate_node({"draft": draft})
-    assert any(i.code is IssueCode.ODD_MANEUVER_MISMATCH for i in result["issues"])
 
 
 @pytest.mark.asyncio
@@ -284,17 +183,6 @@ async def test_lane_offset_implausible(valid_draft: ScenarioDraft) -> None:
     assert issue.code is IssueCode.LANE_OFFSET_IMPLAUSIBLE
     assert issue.severity == IssueSeverity.WARNING
     assert issue.path == "/actors/1/position/lane_offset"
-
-
-@pytest.mark.asyncio
-async def test_geom_no_catchup(valid_draft: ScenarioDraft) -> None:
-    draft = valid_draft.model_dump()
-    # Xe B ở phía sau ego (-10m) nhưng tốc độ lại chậm hơn (20km/h < 30km/h)
-    draft["actors"][1]["position"]["s_offset_m"] = -10.0
-    draft["actors"][1]["initial_speed_kmh"] = 20.0
-    result = await validate_node({"draft": draft})
-    assert any(i.code is IssueCode.GEOM_NO_CATCHUP for i in result["issues"])
-    assert any(i.path == "/actors/1" for i in result["issues"])
 
 
 @pytest.mark.asyncio

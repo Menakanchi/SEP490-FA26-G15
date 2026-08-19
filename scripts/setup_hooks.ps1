@@ -12,8 +12,9 @@ $HookBody = @'
 bash scripts/_pyrun.sh scripts/log_antigravity.py --auto || true
 bash scripts/_pyrun.sh scripts/submit_log.py || true
 
-# Gate lint/test. Nội dung gate nằm trong scripts/pre_push_check.sh (được track)
-# nên sửa nó về sau không cần chạy lại setup_hooks.ps1.
+# Gate lint/test. Nội dung gate nằm trong scripts/pre_push_check.sh (được
+# track) nên sửa NỘI DUNG gate không cần chạy lại setup_hooks.ps1. Đổi chính
+# dòng gọi bên dưới thì CÓ — file hook không được track, phải cài lại từng máy.
 # Bỏ qua: SKIP_CHECK=1 git push
 bash scripts/pre_push_check.sh || exit 1
 

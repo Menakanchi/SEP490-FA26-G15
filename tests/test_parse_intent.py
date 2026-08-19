@@ -17,12 +17,6 @@ from src.models.schemas import (
 )
 
 
-def _get_cat(val):
-    if val is None:
-        return None
-    return getattr(val, "category", str(val.value if hasattr(val, "value") else val))
-
-
 def test_parse_intent_short_or_numeric_prompt():
     """Prompt < 10 ký tự, < 3 từ hoặc chỉ chứa chữ số ném ValueError."""
     for invalid in ["", "   ", "0", "abc", "123", "a", "alo123", "oto"]:

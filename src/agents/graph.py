@@ -33,7 +33,6 @@ from typing import Any
 from langgraph.graph import END, StateGraph
 
 from src.agents.nodes.convert_xosc_node import convert_xosc_node
-from src.agents.nodes.example_node import analyze_node, respond_node
 from src.agents.nodes.generate_draft import generate_draft_node
 from src.agents.nodes.parse_intent import parse_intent_node
 from src.agents.nodes.persist_node import persist_pending_review_node
@@ -41,7 +40,7 @@ from src.agents.nodes.repair_draft import NothingToRepairError, repair_draft
 from src.agents.nodes.retrieve import retrieve_node
 from src.agents.nodes.validate_node import validate_node
 from src.agents.routing import blocking_errors, route_after_validate
-from src.agents.state import AgentState, ForgeState
+from src.agents.state import ForgeState
 from src.models.schemas import (
     PROVEN_BAD_FOR_FEW_SHOT,
     IssueCode,
@@ -56,32 +55,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RETRIEVE_LIMIT = 3
 """FR-03: *"trả tối đa ba examples"*."""
-
-
-def should_continue(state: AgentState) -> str:
-    """Route based on whether an error occurred during analysis."""
-    if state.get("error"):
-        return END
-    return "respond"
-
-
-def build_graph() -> StateGraph:
-    graph = StateGraph(AgentState)
-
-    # Add nodes
-    graph.add_node("analyze", analyze_node)
-    graph.add_node("respond", respond_node)
-
-    # Add edges
-    graph.set_entry_point("analyze")
-    graph.add_conditional_edges("analyze", should_continue)
-    graph.add_edge("respond", END)
-
-    return graph.compile()
-
-
-agent = build_graph()
-"""Graph mẫu còn sót từ template. Không còn route nào gọi; xoá cùng ``AgentState``."""
 
 
 # ---------------------------------------------------------------------------

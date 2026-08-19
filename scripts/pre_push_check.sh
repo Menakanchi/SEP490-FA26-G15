@@ -12,9 +12,21 @@
 #
 # Bỏ qua khi thật sự cần:  SKIP_CHECK=1 git push
 #
-# Script này được hook pre-push gọi. Nó nằm trong repo (scripts/ được track)
-# nên sửa nội dung gate về sau chỉ là một commit bình thường — không ai phải
-# chạy lại scripts/setup_hooks.sh.
+# Script này được hook pre-push gọi — NẾU hook trên máy có dòng gọi nó.
+#
+# Sửa *nội dung* gate (phần bên dưới) thì chỉ là một commit bình thường: hook
+# chỉ gọi `bash scripts/pre_push_check.sh`, còn file này được track.
+#
+# Nhưng sửa *cách gọi* — thêm/bớt dòng invoke trong thân hook do
+# scripts/setup_hooks.sh sinh ra — thì mọi máy đã clone phải chạy lại
+# `bash scripts/setup_hooks.sh`. Hook nằm ở .git/hooks/, git không track, nên
+# một commit không tự cập nhật nó.
+#
+# Đã trả giá đúng một lần: gate được thêm vào setup_hooks.sh ở #37 (14/8)
+# nhưng không ai chạy lại script, nên hook trên máy dev vẫn là bản 29/7 kết
+# thúc bằng `exit 0`. Gate im lặng không chạy, và một lỗi format lọt vào
+# src/services/library/retriever.py ở #52 (16/8). Kiểm nhanh xem hook có gate:
+#     grep -q pre_push_check .git/hooks/pre-push || bash scripts/setup_hooks.sh
 
 set -u
 

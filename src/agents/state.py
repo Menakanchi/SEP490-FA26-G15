@@ -90,20 +90,3 @@ class ForgeState(TypedDict, total=False):
     là mục PLO7 dễ bị bỏ nhất khi hết giờ.
     """
     failed_reason: str
-
-
-class AgentState(TypedDict, total=False):
-    """Còn sót từ template — chỉ ``nodes/example_node.py`` và ``build_graph()``
-    trong ``agents/graph.py`` còn dùng.
-
-    Route ``/chat`` đã bỏ cùng ``ChatRequest``/``ChatResponse``. Xoá nốt khối
-    này khi ``build_persistence_tail()`` nối xong đủ 7 node và graph mẫu không
-    còn ai gọi.
-    """
-
-    query: str
-    context: str
-    analysis: str
-    response: str
-    error: str
-    metadata: dict

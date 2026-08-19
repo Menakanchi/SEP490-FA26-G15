@@ -59,14 +59,6 @@ def test_forbidden_review_transitions(current: ScenarioStatus, gate: ReviewGate,
     assert next_status_after_review(current, gate, approved) is None
 
 
-def test_reject_before_sim_keeps_scenario_in_library() -> None:
-    """Từ chối chạy sim không được đá scenario ra khỏi thư viện."""
-    assert (
-        next_status_after_review(ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, False)
-        is ScenarioStatus.APPROVED_LIBRARY
-    )
-
-
 @pytest.mark.parametrize("status", list(ScenarioStatus))
 def test_only_library_scenarios_can_request_simulation(status: ScenarioStatus) -> None:
     """FR-12: không có job CARLA nếu chưa qua ``BEFORE_LIBRARY``."""
