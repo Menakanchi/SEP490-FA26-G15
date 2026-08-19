@@ -37,6 +37,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import sr_cli
+
 BACKEND = os.environ.get("FORGE_BACKEND", "http://localhost:8000").rstrip("/")
 CARLA_ROOT = Path(os.environ.get("CARLA_ROOT", "/mnt/c/CARLA_0.9.15/WindowsNoEditor"))
 SR_ROOT = Path(os.environ.get("SR_ROOT", str(Path.home() / "scenario_runner")))
@@ -96,33 +98,14 @@ def _post(path: str, payload: dict) -> dict:
 
 
 def to_execution_result(job: dict, returncode: int, criteria_json: dict | None, error: str | None) -> dict:
-    """Output ScenarioRunner -> hình dạng ``ExecutionResult``.
+    """Output ScenarioRunner -> payload ``ExecutionResult`` gửi về backend.
 
-    **Đây là chỗ dễ sai nhất của cả worker.** JSON của ScenarioRunner *cũng* có
-    trường ``success``, nhưng nó là AND của mọi criteria — tức ``false`` khi **có
-    va chạm**, mà va chạm chính là thứ Forge muốn dựng ra. Chép thẳng trường đó
-    sang ``ExecutionResult.success`` sẽ đếm mọi kịch bản thành công thành "chạy
-    hỏng": kéo tụt validity rate và làm mất luôn ``adversarial_found``.
-
-    ``ExecutionResult.success`` chỉ có nghĩa **chạy xong, không crash / timeout /
-    lỗi XML**. Việc kịch bản có tái hiện được nguy hiểm hay không nằm ở
-    ``criteria_results``, là một trục hoàn toàn khác.
+    Cách đọc output — cái gì là "chạy xong" và cái gì là "có nguy hiểm" — nằm ở
+    ``sr_cli``, dùng chung với ``dev_ui.py``. Đọc docstring của
+    ``sr_cli.run_succeeded`` trước khi đụng vào đây.
     """
-    criteria = (criteria_json or {}).get("criteria", []) or []
-    success = returncode == 0 and criteria_json is not None and error is None
-
-    # `CriterionResult` chỉ có ba trường và `ForgeModel` cấm trường lạ — gửi
-    # thừa `expected` là backend trả 422 và cả lần chạy CARLA thành công vẫn mất
-    # kết quả. Giữ đúng hợp đồng, đừng gửi "cho đầy đủ".
-    results = [
-        {
-            "name": str(c.get("name") or "unknown"),
-            # ScenarioRunner dùng `success: bool`; từ vựng của ta là SUCCESS/FAILURE.
-            "result": "SUCCESS" if c.get("success", False) else "FAILURE",
-            "actual": str(c.get("actual", "")),
-        }
-        for c in criteria
-    ]
+    results = sr_cli.criteria_results(criteria_json)
+    success = sr_cli.run_succeeded(returncode, criteria_json, error)
 
     metrics: dict[str, float] = {"criteria_count": float(len(results))}
 
@@ -149,29 +132,16 @@ def run_job(job: dict) -> dict:
         fh.write(job["xosc_content"])
         xosc_path = Path(fh.name)
 
-    env = dict(os.environ)
-    # Thiếu PythonAPI/carla thì ScenarioRunner chết ở `No module named 'agents'`.
-    env["PYTHONPATH"] = os.pathsep.join(
-        [str(CARLA_ROOT / "PythonAPI/carla"), str(SR_ROOT), env.get("PYTHONPATH", "")]
-    ).rstrip(os.pathsep)
-
-    cmd = [
-        str(WORKER_PYTHON),
-        "scenario_runner.py",
-        "--openscenario",
-        str(xosc_path),
-        "--host",
-        CARLA_HOST,
-        "--port",
-        str(CARLA_PORT),
-        "--timeout",
-        SR_TIMEOUT_S,
-        "--trafficManagerPort",
-        str(TM_PORT),
-        "--json",
-        "--outputDir",
-        str(OUT_DIR),
-    ]
+    env = sr_cli.scenario_runner_env(CARLA_ROOT, SR_ROOT)
+    cmd = sr_cli.scenario_runner_cmd(
+        WORKER_PYTHON,
+        xosc_path,
+        host=CARLA_HOST,
+        port=CARLA_PORT,
+        timeout_s=SR_TIMEOUT_S,
+        out_dir=OUT_DIR,
+        tm_port=TM_PORT,
+    )
 
     error: str | None = None
     try:
@@ -186,16 +156,8 @@ def run_job(job: dict) -> dict:
     finally:
         xosc_path.unlink(missing_ok=True)
 
-    # ScenarioRunner đặt tên file theo <config><timestamp>.json — lấy file mới
-    # nhất sinh sau lúc bắt đầu thay vì đoán tên.
-    criteria_json = None
-    candidates = [p for p in OUT_DIR.glob("*.json") if p.stat().st_mtime >= started_at - 1]
-    if candidates:
-        newest = max(candidates, key=lambda p: p.stat().st_mtime)
-        try:
-            criteria_json = json.loads(newest.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            error = error or f"đọc {newest.name} hỏng: {exc}"
+    _, criteria_json, read_error = sr_cli.newest_criteria_json(OUT_DIR, started_at)
+    error = error or read_error
     # Thứ tự quan trọng: stderr thật phải thắng thông báo chung. Bản trước đặt
     # "không sinh file JSON criteria" trước, nên nó che mất nguyên nhân thật
     # (lỗi XML, CARLA chưa sẵn sàng, ...) và người đọc log không biết vì sao.

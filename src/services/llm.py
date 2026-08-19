@@ -12,6 +12,17 @@ from src.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+
+def _log_event(level: int, event: str, **fields: Any) -> None:
+    """Một dòng log JSON. Bốn chỗ trong file này phát cùng một hình dạng.
+
+    Viết ``logger.x(json.dumps({...}))`` bốn lần thì đủ để một lần quên
+    ``json.dumps`` — và dòng đó vẫn ra log, chỉ là ở dạng repr của dict, nên
+    thứ đọc log bằng máy bỏ qua nó **mà không báo gì**.
+    """
+    logger.log(level, json.dumps({"event": event, **fields}))
+
+
 # Chi phí theo 1M tokens (estimate, cập nhật theo bảng giá OpenAI)
 # Chỉ 2 model đang dùng: gpt-5.4-mini (primary) và gpt-5.4 (escalated)
 MODEL_COSTS = {
@@ -60,13 +71,24 @@ def _get_escalated_model() -> str:
 # =============================================================================
 
 
-def get_llm() -> ChatOpenAI:
+def _chat_model(model_name: str) -> ChatOpenAI:
+    """Client cho một model cụ thể. **Chỗ duy nhất dựng ``ChatOpenAI``.**
+
+    ``get_llm`` và ``call_with_escalation`` từng dựng client bằng hai đoạn code
+    giống hệt nhau. Hai chỗ đọc cùng ba setting thì lệch nhau vào lần đầu ai đó
+    thêm ``timeout=`` hay ``max_retries=`` ở một bên — và bên còn lại vẫn chạy,
+    chỉ là với cấu hình khác, ở đúng đường escalation mà không ai test tay.
+    """
     settings = get_settings()
     return ChatOpenAI(
-        model=settings.model_name,
+        model=model_name,
         api_key=settings.openai_api_key,
         temperature=settings.llm_temperature,
     )
+
+
+def get_llm() -> ChatOpenAI:
+    return _chat_model(_get_primary_model())
 
 
 def get_embeddings() -> OpenAIEmbeddings | None:
@@ -151,12 +173,7 @@ def call_with_escalation(
         start_time = time.time()
 
         try:
-            llm = ChatOpenAI(
-                model=model_to_use,
-                api_key=get_settings().openai_api_key,
-                temperature=get_settings().llm_temperature,
-            )
-            runnable = llm.with_structured_output(structured_output_schema)
+            runnable = _chat_model(model_to_use).with_structured_output(structured_output_schema)
             result = runnable.invoke(messages)
 
             # Tính latency và cost
@@ -170,16 +187,15 @@ def call_with_escalation(
             estimated_cost = (estimated_tokens / 1_000_000) * cost_info["input"]
             total_cost += estimated_cost
 
-            # Log thông tin (JSON format)
-            log_data = {
-                "event": "llm_call_success",
-                "model": model_to_use,
-                "latency": round(latency, 3),
-                "cost": round(estimated_cost, 6),
-                "attempt": attempt,
-                "escalated": attempt >= 2,
-            }
-            logger.info(json.dumps(log_data))
+            _log_event(
+                logging.INFO,
+                "llm_call_success",
+                model=model_to_use,
+                latency=round(latency, 3),
+                cost=round(estimated_cost, 6),
+                attempt=attempt,
+                escalated=attempt >= 2,
+            )
 
             return result
 
@@ -189,36 +205,36 @@ def call_with_escalation(
             last_error = e
 
             if error_code in NON_ESCALATABLE_ERRORS:
-                log_data = {
-                    "event": "llm_call_failed",
-                    "model": model_to_use,
-                    "latency": round(latency, 3),
-                    "error_code": error_code,
-                    "escalatable": False,
-                }
-                logger.error(json.dumps(log_data))
+                _log_event(
+                    logging.ERROR,
+                    "llm_call_failed",
+                    model=model_to_use,
+                    latency=round(latency, 3),
+                    error_code=error_code,
+                    escalatable=False,
+                )
                 raise
 
-            log_data = {
-                "event": "llm_call_retry",
-                "model": model_to_use,
-                "latency": round(latency, 3),
-                "error_code": error_code,
-                "attempt": attempt,
-            }
-            logger.warning(json.dumps(log_data))
+            _log_event(
+                logging.WARNING,
+                "llm_call_retry",
+                model=model_to_use,
+                latency=round(latency, 3),
+                error_code=error_code,
+                attempt=attempt,
+            )
             continue
 
     # Hết MAX_RETRIES mà vẫn fail. Ném lại đúng exception của lần cuối: nuốt nó
     # rồi raise NotImplementedError thì caller mất sạch thông tin chẩn đoán —
     # repair_draft và failure analysis không còn gì để bám vào.
-    log_data = {
-        "event": "llm_call_exhausted",
-        "total_latency": round(total_latency, 3),
-        "total_cost": round(total_cost, 6),
-        "last_error": str(last_error) if last_error else None,
-    }
-    logger.error(json.dumps(log_data))
+    _log_event(
+        logging.ERROR,
+        "llm_call_exhausted",
+        total_latency=round(total_latency, 3),
+        total_cost=round(total_cost, 6),
+        last_error=str(last_error) if last_error else None,
+    )
     if last_error is not None:
         raise last_error
     raise RuntimeError("call_with_escalation kết thúc mà không có kết quả lẫn lỗi")

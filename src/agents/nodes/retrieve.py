@@ -12,12 +12,14 @@ Nhiệm vụ:
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from src.agents.state import ForgeState
+from src.models.schemas import odd_axis_value
 from src.services.library.retriever import BaseRetriever, SQLiteRetriever
 
 logger = logging.getLogger(__name__)
+
+_ODD_AXES = ("road_type", "weather", "actor_type", "maneuver")
 
 ROAD_TYPE_VI = {
     "urban_straight": "Đường đô thị thẳng",
@@ -57,14 +59,6 @@ MANEUVER_VI = {
 }
 
 
-def _get_val_str(obj: Any) -> str | None:
-    if obj is None:
-        return None
-    if hasattr(obj, "value"):
-        return str(obj.value)
-    return str(obj)
-
-
 def _build_odd_query_text(state: ForgeState) -> str | None:
     """Trích xuất và tổng hợp ODD thành câu query tiếng Việt."""
     parsed_intent = state.get("parsed_intent")
@@ -75,17 +69,16 @@ def _build_odd_query_text(state: ForgeState) -> str | None:
     if source is None:
         return None
 
+    # ``default=""`` chứ không ``"unknown"``: giá trị này chỉ dùng để ghép câu
+    # query, và một trục vắng mặt phải biến mất khỏi câu chứ không thành chữ
+    # "unknown" đi vào embedding.
     if isinstance(source, dict):
-        road_type = _get_val_str(source.get("road_type"))
-        weather = _get_val_str(source.get("weather"))
-        actor_type = _get_val_str(source.get("actor_type"))
-        maneuver = _get_val_str(source.get("maneuver"))
+        road_type, weather, actor_type, maneuver = (odd_axis_value(source.get(axis), "") for axis in _ODD_AXES)
     else:
         odd_obj = getattr(source, "odd_query", source)
-        road_type = _get_val_str(getattr(odd_obj, "road_type", None))
-        weather = _get_val_str(getattr(odd_obj, "weather", None))
-        actor_type = _get_val_str(getattr(odd_obj, "actor_type", None))
-        maneuver = _get_val_str(getattr(odd_obj, "maneuver", None))
+        road_type, weather, actor_type, maneuver = (
+            odd_axis_value(getattr(odd_obj, axis, None), "") for axis in _ODD_AXES
+        )
 
     parts = []
     if road_type:

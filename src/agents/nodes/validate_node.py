@@ -6,6 +6,12 @@ from pydantic import ValidationError
 
 from src.agents.state import ForgeState
 from src.models.schemas import IssueCode, ODDQuery, ScenarioDraft, ValidationIssue
+from src.services.scenario.geometry import (
+    cut_in_cannot_catch_up,
+    cut_in_never_slows_down,
+    cut_in_starts_in_ego_lane,
+    cut_in_trigger_is_unsigned,
+)
 
 _INVARIANT_SUGGESTIONS: dict[IssueCode, str] = {
     IssueCode.EGO_COUNT: "Chỉ định đúng một actor có is_ego=True.",
@@ -278,30 +284,34 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                 ego_speed = ego.initial_speed_kmh
                 post_maneuver_speed = m.target_speed_kmh if m.target_speed_kmh is not None else actor.initial_speed_kmh
 
-                # Pha TRƯỚC maneuver. Muốn tạt đầu thì actor phải xuất phát sau
-                # ego và chạy nhanh hơn — thiếu một trong hai thì khoảng cách
-                # không bao giờ khép lại và hành vi không có gì để kích hoạt.
+                # Số học của bốn phép kiểm dưới đây nằm ở
+                # ``services/scenario/geometry.py``, dùng chung với converter —
+                # xem docstring ở đó. Chỗ này chỉ lo câu chữ và JSON pointer.
                 #
                 # Phép kiểm này chỉ có nghĩa với cut_in. Áp cho mọi actor thì
                 # một người đi bộ jaywalk đứng sau ego cũng bị chặn luồng, và
                 # gợi ý sửa hoá ra là bảo LLM cho người đi bộ chạy nhanh hơn ô
                 # tô — ba vòng repair đốt vào một kịch bản vốn đã đúng.
                 catchup_problem: tuple[str, str] | None = None
-                if position.s_offset_m >= 0:
-                    # ADR-010: ca đã xảy ra thật ở fixture đầu tiên. Xe máy đặt
-                    # PHÍA TRƯỚC ego mà lại nhanh hơn nên khoảng cách chỉ nới
-                    # rộng. Schema hợp lệ hoàn toàn, chỉ số học mới bắt được.
-                    catchup_problem = (
-                        f"{actor.name} đặt ở phía trước ego ({position.s_offset_m}m) nên không có gì để đuổi kịp: "
-                        f"khoảng cách chỉ nới rộng, không bao giờ tạt đầu được.",
-                        f"Đặt /actors/{actor_idx}/position/s_offset_m thành số âm để actor xuất phát phía sau ego.",
-                    )
-                elif actor.initial_speed_kmh <= ego_speed:
-                    catchup_problem = (
-                        f"{actor.name} ở phía sau ego ({position.s_offset_m}m) nhưng vận tốc "
-                        f"({actor.initial_speed_kmh}km/h) lại chậm hơn hoặc bằng ego ({ego_speed}km/h).",
-                        "Tăng initial_speed_kmh của chủ thể lên cao hơn ego để nó có thể đuổi kịp.",
-                    )
+                if cut_in_cannot_catch_up(actor, ego):
+                    # Hai vế của cùng một vị từ, tách ra chỉ để nói đúng vế nào
+                    # đang hỏng — model sửa được "đặt ra sau" nhanh hơn nhiều so
+                    # với một câu chung chung về "không đuổi kịp".
+                    if position.s_offset_m >= 0:
+                        # ADR-010: ca đã xảy ra thật ở fixture đầu tiên. Xe máy đặt
+                        # PHÍA TRƯỚC ego mà lại nhanh hơn nên khoảng cách chỉ nới
+                        # rộng. Schema hợp lệ hoàn toàn, chỉ số học mới bắt được.
+                        catchup_problem = (
+                            f"{actor.name} đặt ở phía trước ego ({position.s_offset_m}m) nên không có gì để đuổi kịp: "
+                            f"khoảng cách chỉ nới rộng, không bao giờ tạt đầu được.",
+                            f"Đặt /actors/{actor_idx}/position/s_offset_m thành số âm để actor xuất phát phía sau ego.",
+                        )
+                    else:
+                        catchup_problem = (
+                            f"{actor.name} ở phía sau ego ({position.s_offset_m}m) nhưng vận tốc "
+                            f"({actor.initial_speed_kmh}km/h) lại chậm hơn hoặc bằng ego ({ego_speed}km/h).",
+                            "Tăng initial_speed_kmh của chủ thể lên cao hơn ego để nó có thể đuổi kịp.",
+                        )
                 if catchup_problem is not None:
                     issues.append(
                         ValidationIssue(
@@ -312,7 +322,7 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                         )
                     )
 
-                if m.trigger.type == "distance_to_ego":
+                if cut_in_trigger_is_unsigned(m):
                     issues.append(
                         ValidationIssue(
                             code=IssueCode.TRIGGER_DISTANCE_UNSIGNED,
@@ -323,12 +333,12 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                     )
                 collision_reasons: list[str] = []
                 repair_steps: list[str] = []
-                if position.lane_offset == 0:
+                if cut_in_starts_in_ego_lane(actor):
                     collision_reasons.append("lane_offset=0 nên actor không xuất phát ở làn bên cạnh")
                     repair_steps.append(f"đặt /actors/{actor_idx}/position/lane_offset khác 0")
                 # Pha sau maneuver: target_speed khác initial_speed. Ego chỉ
                 # thu hẹp khoảng cách khi target sau cut-in chậm hơn ego.
-                if post_maneuver_speed >= ego_speed:
+                if cut_in_never_slows_down(m, actor, ego):
                     collision_reasons.append(
                         f"tốc độ sau maneuver ({post_maneuver_speed}km/h) không thấp hơn ego ({ego_speed}km/h)"
                     )

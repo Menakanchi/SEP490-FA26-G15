@@ -19,8 +19,9 @@ from typing import Any
 import numpy as np
 
 from src.config import get_settings
+from src.models.schemas import odd_axis_value
 from src.services.llm import EMBEDDING_DIM, get_embeddings
-from src.services.persistence import EMBEDDING_DTYPE, encode_embedding
+from src.services.persistence import EMBEDDING_DTYPE, connect_sqlite, encode_embedding, sqlite_path
 
 logger = logging.getLogger(__name__)
 
@@ -94,11 +95,32 @@ def compute_cosine_similarity(v1: np.ndarray, v2: np.ndarray) -> float:
 
 def _default_db_path() -> Path:
     """Đường dẫn SQLite lấy từ ``settings.database_url`` — một nguồn duy nhất."""
-    url = get_settings().database_url
-    prefix = "sqlite:///"
-    if not url.startswith(prefix):
-        raise RuntimeError(f"SQLiteRetriever chỉ chạy trên SQLite; database_url đang là {url!r}")
-    return Path(url[len(prefix) :])
+    return sqlite_path(get_settings().database_url, caller="SQLiteRetriever")
+
+
+# Cổng trạng thái (ADR-011 / FR-03 / FR-11). Điều kiện `embedding IS NOT NULL`
+# không thừa: nó là **hàng rào thứ hai**, và là hàng rào không quên được.
+# `embedding` chỉ được ghi trong transaction duyệt BEFORE_LIBRARY, nên kịch bản
+# chưa duyệt không có vector — dù ai đó về sau lỡ xoá mất mệnh đề `status` thì
+# nó vẫn không lọt ra.
+_STATUS_GATE = "status IN ('approved_library', 'pending_sim_review') AND embedding IS NOT NULL"
+
+_ROW_COLUMNS = "scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding"
+
+_ODD_FILTER_AXES = ("road_type", "weather", "actor_type", "maneuver")
+
+_EMPTY_AXIS_VALUES = frozenset({"unknown", "none", ""})
+
+
+def _odd_filter_value(raw: Any) -> str | None:
+    """Giá trị một trục ODD để đưa vào ``WHERE``, hoặc ``None`` nếu không lọc theo nó.
+
+    Nhận cả hai hình dạng mà trục ODD đi tới: chuỗi enum thuần, và object
+    ``{"category": ...}`` của ``parsed_intent``. Sentinel rỗng (``"unknown"``,
+    ``"none"``) không phải giá trị lọc — lọc theo nó là chắc chắn trả rỗng.
+    """
+    value = odd_axis_value(raw, "")
+    return None if value.lower() in _EMPTY_AXIS_VALUES else value
 
 
 class BaseRetriever(ABC):
@@ -127,9 +149,7 @@ class SQLiteRetriever(BaseRetriever):
         if not self.db_path.exists():
             return None
         try:
-            conn = sqlite3.connect(str(self.db_path))
-            conn.row_factory = sqlite3.Row
-            return conn
+            return connect_sqlite(self.db_path)
         except Exception as exc:
             logger.warning(f"Không thể kết nối tới SQLite DB tại {self.db_path}: {exc}")
             return None
@@ -176,57 +196,30 @@ class SQLiteRetriever(BaseRetriever):
 
             odd_filter = self._extract_odd_dict(odd_query)
 
-            where_clauses: list[str] = []
+            # Cổng trạng thái viết ĐÚNG MỘT LẦN. Trước đây chuỗi này được gõ hai
+            # lần — một lần cho truy vấn có lọc ODD, một lần cho truy vấn nới —
+            # nên sửa cổng ở một chỗ mà quên chỗ kia sẽ để kịch bản chưa duyệt
+            # lọt ra qua đúng nhánh dự phòng, im lặng.
+            where_clauses: list[str] = [_STATUS_GATE]
             params: list[Any] = []
 
-            # Cổng trạng thái (ADR-011 / FR-03 / FR-11). Điều kiện `embedding IS
-            # NOT NULL` không thừa: nó là **hàng rào thứ hai**, và là hàng rào
-            # không quên được. `embedding` chỉ được ghi trong transaction duyệt
-            # BEFORE_LIBRARY, nên kịch bản chưa duyệt không có vector — dù ai đó
-            # về sau lỡ xoá mất mệnh đề `status` thì nó vẫn không lọt ra.
-            where_clauses.append("status IN ('approved_library', 'pending_sim_review') AND embedding IS NOT NULL")
+            # ODD Pre-filtering WHERE clause (ADR-013). Bốn trục dùng chung một
+            # phép so; viết rời từng trục thì lần thứ năm thêm trục là chép lại
+            # lần thứ năm, và lần chép nào cũng có thể quên `LIKE`.
+            for axis in _ODD_FILTER_AXES:
+                value = _odd_filter_value(odd_filter.get(axis))
+                if value is None:
+                    continue
+                where_clauses.append(f"({axis} = ? OR {axis} LIKE ?)")
+                params.extend([value, f"%{value}%"])
 
-            # 2. ODD Pre-filtering WHERE clause (ADR-013)
-            road_type = odd_filter.get("road_type")
-            if road_type and str(road_type).lower() not in ("unknown", "none", ""):
-                where_clauses.append("(road_type = ? OR road_type LIKE ?)")
-                params.extend([str(road_type), f"%{road_type}%"])
-
-            weather = odd_filter.get("weather")
-            if weather and str(weather).lower() not in ("unknown", "none", ""):
-                where_clauses.append("(weather = ? OR weather LIKE ?)")
-                params.extend([str(weather), f"%{weather}%"])
-
-            actor_type = odd_filter.get("actor_type")
-            if isinstance(actor_type, dict):
-                actor_cat = actor_type.get("category")
-            else:
-                actor_cat = str(actor_type) if actor_type else None
-
-            if actor_cat and str(actor_cat).lower() not in ("unknown", "none", ""):
-                where_clauses.append("(actor_type = ? OR actor_type LIKE ?)")
-                params.extend([str(actor_cat), f"%{actor_cat}%"])
-
-            maneuver = odd_filter.get("maneuver")
-            if isinstance(maneuver, dict):
-                man_cat = maneuver.get("category")
-            else:
-                man_cat = str(maneuver) if maneuver else None
-
-            if man_cat and str(man_cat).lower() not in ("unknown", "none", ""):
-                where_clauses.append("(maneuver = ? OR maneuver LIKE ?)")
-                params.extend([str(man_cat), f"%{man_cat}%"])
-
-            columns = "scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding"
-            gate = "status IN ('approved_library', 'pending_sim_review') AND embedding IS NOT NULL"
-
-            cursor.execute(f"SELECT {columns} FROM scenarios WHERE {' AND '.join(where_clauses)}", params)
+            cursor.execute(f"SELECT {_ROW_COLUMNS} FROM scenarios WHERE {' AND '.join(where_clauses)}", params)
             rows = cursor.fetchall()
 
             # Lọc ODD không khớp gì thì nới ra, chỉ giữ cổng trạng thái: vài ví
             # dụ khác ô còn hơn few-shot rỗng. Cổng trạng thái thì **không** nới.
             if not rows:
-                cursor.execute(f"SELECT {columns} FROM scenarios WHERE {gate}")
+                cursor.execute(f"SELECT {_ROW_COLUMNS} FROM scenarios WHERE {_STATUS_GATE}")
                 rows = cursor.fetchall()
 
             if not rows:

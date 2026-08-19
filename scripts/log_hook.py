@@ -4,20 +4,9 @@ Shared AI hook logger — works with Claude Code, Gemini CLI, Codex, Cursor, Cop
 Reads JSON from stdin, normalizes to common format, appends to .ai-log/session.jsonl
 """
 import json
-import os
 import sys
-import subprocess
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
 
-VN_TZ = timezone(timedelta(hours=7))
-
-
-def git(cmd):
-    try:
-        return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL).strip()
-    except Exception:
-        return ""
+from ai_log_common import append_entry, git_identity, now_iso
 
 
 def detect_tool(data: dict) -> str:
@@ -53,21 +42,16 @@ def detect_tool(data: dict) -> str:
 def normalize(data: dict, tool: str) -> dict | None:
     """Normalize tool-specific payload to common log entry."""
     event = data.get("hook_event_name") or data.get("event", "")
-    ts = datetime.now(VN_TZ).isoformat()
 
-    # Resolve repo from git origin. When cwd is not a git working tree (or
-    # origin isn't set), skip the event entirely — these entries can't be
-    # tied back to a team on the server and would just clutter the pending
-    # queue forever.
-    origin = git("git remote get-url origin")
-    if not origin:
+    # When cwd is not a git working tree (or origin isn't set), skip the event
+    # entirely — these entries can't be tied back to a team on the server and
+    # would just clutter the pending queue forever.
+    identity = git_identity()
+    if not identity["repo"]:
         return None
-    repo = origin.rstrip("/").split("/")[-1]
-    if repo.endswith(".git"):
-        repo = repo[:-4]
 
     base = {
-        "ts": ts,
+        "ts": now_iso(),
         "tool": tool,
         "event": event,
         "session_id": (
@@ -76,10 +60,7 @@ def normalize(data: dict, tool: str) -> dict | None:
             data.get("generation_id") or ""
         ),
         "model": data.get("model", ""),
-        "repo": repo,
-        "branch": git("git rev-parse --abbrev-ref HEAD"),
-        "commit": git("git rev-parse --short HEAD"),
-        "student": git("git config user.email"),
+        **identity,
     }
 
     if tool == "claude":
@@ -173,12 +154,7 @@ def main():
     if not entry:
         sys.exit(0)
 
-    log_dir = Path(os.environ.get("AI_LOG_DIR", ".ai-log"))
-    log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / "session.jsonl"
-
-    with open(log_file, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    append_entry(entry)
 
     # Output valid JSON (required by some tools like Gemini)
     print(json.dumps({"status": "logged"}))

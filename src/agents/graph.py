@@ -202,13 +202,27 @@ def _default_scenario_id() -> str:
 # ---------------------------------------------------------------------------
 
 
-def _after_parse_intent(state: ForgeState) -> str:
-    """Thiếu trục bắt buộc hoặc tổ hợp ngoài phạm vi -> dừng, đừng gọi LLM tiếp."""
-    return END if blocking_errors(state.get("issues", [])) else "retrieve"
+def _stop_on_error(next_node: str) -> Callable[[ForgeState], str]:
+    """Nhánh mặc định: còn error thì dừng, không thì đi tiếp tới ``next_node``.
+
+    Bốn cạnh của graph — sau ``parse_intent``, ``generate_draft``, ``promote``,
+    ``convert_xosc`` — đều là đúng một dòng như nhau, chỉ khác tên node kế tiếp.
+    Bốn bản sao thì thêm một node mới là chép lần thứ năm, và bản chép thiếu
+    ``blocking_errors`` sẽ **đi tiếp khi đang lỗi**: workflow chạy thêm một node
+    (có thể là node gọi LLM) trên dữ liệu đã hỏng.
+    """
+
+    def _route(state: ForgeState) -> str:
+        return END if blocking_errors(state.get("issues", [])) else next_node
+
+    return _route
 
 
-def _after_generate_draft(state: ForgeState) -> str:
-    return END if blocking_errors(state.get("issues", [])) else "validate"
+# Thiếu trục bắt buộc hoặc tổ hợp ngoài phạm vi -> dừng, đừng gọi LLM tiếp.
+_after_parse_intent = _stop_on_error("retrieve")
+_after_generate_draft = _stop_on_error("validate")
+_after_promote = _stop_on_error("convert_xosc")
+_after_convert = _stop_on_error("persist_pending_review")
 
 
 def _after_validate(state: ForgeState) -> str:
@@ -222,17 +236,31 @@ def _after_repair(state: ForgeState) -> str:
     return END if state.get("failed_reason") else "validate"
 
 
-def _after_promote(state: ForgeState) -> str:
-    return END if blocking_errors(state.get("issues", [])) else "convert_xosc"
-
-
-def _after_convert(state: ForgeState) -> str:
-    return END if blocking_errors(state.get("issues", [])) else "persist_pending_review"
-
-
 # ---------------------------------------------------------------------------
 # Graph
 # ---------------------------------------------------------------------------
+
+
+def _add_persistence_tail(graph: StateGraph, repository: ScenarioRepository | None) -> None:
+    """Nối đoạn đuôi durable ``convert_xosc -> persist_pending_review -> END``.
+
+    Đoạn này được dựng ở **hai** chỗ (graph đầy đủ và ``build_persistence_tail``
+    mà test dùng), nên nó phải được viết một lần. Hai bản sao thì test đang canh
+    bất biến "graph kết thúc ở ``pending_review``" sẽ canh một đoạn dây khác với
+    đoạn dây thật đang chạy — nó xanh trong khi luồng thật đã đổi.
+    """
+
+    async def _persist(state: ForgeState) -> dict[str, Any]:
+        return await persist_pending_review_node(state, repository)
+
+    graph.add_node("convert_xosc", convert_xosc_node)
+    graph.add_node("persist_pending_review", _persist)
+    graph.add_conditional_edges(
+        "convert_xosc",
+        _after_convert,
+        {"persist_pending_review": "persist_pending_review", END: END},
+    )
+    graph.add_edge("persist_pending_review", END)
 
 
 def build_forge_graph(
@@ -241,9 +269,6 @@ def build_forge_graph(
 ):
     """Dựng đủ 7 node. Hai tham số để test tiêm được, không phải để cấu hình."""
     scenario_id_provider = next_scenario_id or _default_scenario_id
-
-    async def _persist(state: ForgeState) -> dict[str, Any]:
-        return await persist_pending_review_node(state, repository)
 
     def _promote_node(state: ForgeState) -> dict[str, Any]:
         return _promote(state, scenario_id_provider)
@@ -255,8 +280,7 @@ def build_forge_graph(
     graph.add_node("validate", validate_node)
     graph.add_node("repair_draft", _repair_draft)
     graph.add_node("promote", _promote_node)
-    graph.add_node("convert_xosc", convert_xosc_node)
-    graph.add_node("persist_pending_review", _persist)
+    _add_persistence_tail(graph, repository)
 
     graph.set_entry_point("parse_intent")
     graph.add_conditional_edges("parse_intent", _after_parse_intent, {"retrieve": "retrieve", END: END})
@@ -269,12 +293,6 @@ def build_forge_graph(
     )
     graph.add_conditional_edges("repair_draft", _after_repair, {"validate": "validate", END: END})
     graph.add_conditional_edges("promote", _after_promote, {"convert_xosc": "convert_xosc", END: END})
-    graph.add_conditional_edges(
-        "convert_xosc",
-        _after_convert,
-        {"persist_pending_review": "persist_pending_review", END: END},
-    )
-    graph.add_edge("persist_pending_review", END)
     return graph.compile()
 
 
@@ -286,19 +304,9 @@ def build_persistence_tail(repository: ScenarioRepository | None = None):
     phải chạy cả bốn node phía trước — trong đó có hai node gọi LLM.
     """
 
-    async def _persist(state: ForgeState) -> dict[str, Any]:
-        return await persist_pending_review_node(state, repository)
-
     graph = StateGraph(ForgeState)
-    graph.add_node("convert_xosc", convert_xosc_node)
-    graph.add_node("persist_pending_review", _persist)
+    _add_persistence_tail(graph, repository)
     graph.set_entry_point("convert_xosc")
-    graph.add_conditional_edges(
-        "convert_xosc",
-        _after_convert,
-        {"persist_pending_review": "persist_pending_review", END: END},
-    )
-    graph.add_edge("persist_pending_review", END)
     return graph.compile()
 
 

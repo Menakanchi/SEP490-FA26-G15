@@ -32,6 +32,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import sr_cli
+
 # --- Cấu hình: sửa bằng biến môi trường nếu máy khác ------------------------
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -46,6 +48,7 @@ CARLA_PORT = int(os.environ.get("CARLA_PORT", "2000"))
 UI_PORT = int(os.environ.get("UI_PORT", "8765"))
 RUN_TIMEOUT_S = float(os.environ.get("RUN_TIMEOUT_S", "300"))
 SR_TIMEOUT_S = os.environ.get("SR_TIMEOUT_S", "60")  # Town04 to, mặc định 10s của SR hay hụt
+TM_PORT = os.environ.get("CARLA_TM_PORT", "8005")  # 8000 trùng cổng backend lúc dev, xem runner.py
 
 
 # --- Chạy ScenarioRunner ----------------------------------------------------
@@ -101,26 +104,16 @@ def run_scenario(xosc_path: Path, view: str = "chase") -> dict:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     started_at = time.time()
 
-    env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(
-        [str(CARLA_ROOT / "PythonAPI/carla"), str(SR_ROOT), env.get("PYTHONPATH", "")]
-    ).rstrip(os.pathsep)
-
-    cmd = [
-        str(WORKER_PYTHON),
-        "scenario_runner.py",
-        "--openscenario",
-        str(xosc_path),
-        "--host",
-        CARLA_HOST,
-        "--port",
-        str(CARLA_PORT),
-        "--timeout",
-        SR_TIMEOUT_S,
-        "--json",
-        "--outputDir",
-        str(OUT_DIR),
-    ]
+    env = sr_cli.scenario_runner_env(CARLA_ROOT, SR_ROOT)
+    cmd = sr_cli.scenario_runner_cmd(
+        WORKER_PYTHON,
+        xosc_path,
+        host=CARLA_HOST,
+        port=CARLA_PORT,
+        timeout_s=SR_TIMEOUT_S,
+        out_dir=OUT_DIR,
+        tm_port=TM_PORT,
+    )
 
     follower = start_follower(view, env)
     try:
@@ -148,16 +141,9 @@ def run_scenario(xosc_path: Path, view: str = "chase") -> dict:
             except subprocess.TimeoutExpired:
                 follower.kill()
 
-    # ScenarioRunner đặt tên file theo <config_name><timestamp>.json — lấy file
-    # mới nhất sinh ra sau lúc bắt đầu thay vì đoán tên.
-    criteria_json, criteria_path = None, None
-    candidates = [p for p in OUT_DIR.glob("*.json") if p.stat().st_mtime >= started_at - 1]
-    if candidates:
-        criteria_path = max(candidates, key=lambda p: p.stat().st_mtime)
-        try:
-            criteria_json = json.loads(criteria_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            stderr += f"\n[dev_ui] đọc {criteria_path.name} hỏng: {exc}"
+    criteria_path, criteria_json, read_error = sr_cli.newest_criteria_json(OUT_DIR, started_at)
+    if read_error:
+        stderr += f"\n[dev_ui] {read_error}"
 
     log_path = OUT_DIR / "scenario_runner.log"
     log_text = f"$ {' '.join(cmd)}\n\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
@@ -182,23 +168,19 @@ def run_scenario(xosc_path: Path, view: str = "chase") -> dict:
 
 
 def to_execution_result(returncode: int, criteria_json: dict | None) -> dict:
-    """Map output ScenarioRunner sang hình dạng ``ExecutionResult``.
+    """Tóm tắt một lần chạy để hiện lên trang dev.
 
-    **Đây là chỗ dễ sai nhất của cả worker**, đã ghi ở ``fixtures/README.md``.
-    JSON của ScenarioRunner *cũng* có trường ``success``, nhưng nó là AND của mọi
-    criteria — tức là ``false`` khi **có va chạm**, mà va chạm chính là thứ Forge
-    muốn dựng ra. Chép thẳng trường đó sang ``ExecutionResult.success`` sẽ đếm mọi
-    kịch bản thành công thành "chạy hỏng", kéo tụt validity rate và làm mất luôn
-    ``adversarial_found``.
-
-    ``ExecutionResult.success`` chỉ có nghĩa: chạy xong, không crash/timeout/lỗi XML.
+    Cách đọc output là của ``sr_cli`` — dùng chung với ``runner.py``, để bản dev
+    và worker thật không bao giờ nói hai điều khác nhau về cùng một lần chạy.
+    ``sr_success_field`` bày ra ở đây **cố ý**: nó là trường dễ đọc nhầm nhất,
+    và nhìn thấy nó cạnh ``had_collision`` là cách nhanh nhất để thấy hai thứ đó
+    không phải một (xem docstring ``sr_cli.run_succeeded``).
     """
-    criteria = (criteria_json or {}).get("criteria", []) or []
-    had_collision = any("collision" in str(c.get("name", "")).lower() and not c.get("success", True) for c in criteria)
+    results = sr_cli.criteria_results(criteria_json)
     return {
-        "success": returncode == 0 and criteria_json is not None,
-        "criteria_count": len(criteria),
-        "had_collision": had_collision,
+        "success": sr_cli.run_succeeded(returncode, criteria_json),
+        "criteria_count": len(results),
+        "had_collision": sr_cli.had_collision(results),
         "sr_success_field": (criteria_json or {}).get("success"),
     }
 

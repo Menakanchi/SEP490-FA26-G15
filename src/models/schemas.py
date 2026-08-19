@@ -296,6 +296,30 @@ class Assumption(ForgeModel):
     reason_vi: str = Field("", max_length=200)
 
 
+def odd_axis_value(value: object, default: str = "unknown") -> str:
+    """Một trục ODD -> **chuỗi enum**, bất kể nó tới dưới hình dạng nào.
+
+    Trục ODD đi qua hệ thống dưới ba hình dạng, tuỳ tầng: giá trị enum
+    (``RoadType.HIGHWAY``), chuỗi thuần (``"highway"`` — đọc lên từ DB hoặc từ
+    JSON), và object ``{"category": ...}`` của ``parsed_intent``, nơi chữ người
+    dùng gõ còn được giữ bên cạnh ô enum.
+
+    Phép bóc này từng có **ba** bản: ở ``services/db.py``, ở
+    ``agents/nodes/parse_intent.py`` và ở ``agents/nodes/retrieve.py`` — mỗi bản
+    xử lý một tập con hình dạng khác nhau. Lệch ở đây không ném lỗi: nó ghi
+    ``"RoadType.HIGHWAY"`` hoặc ``"unknown"`` vào cột mà ADR-013 lọc bằng
+    ``WHERE``, và retrieval **trả rỗng trong im lặng**.
+
+    ``default`` cho phép chỗ gọi chọn cách nói "không có": ``"unknown"`` khi giá
+    trị sẽ được ghi xuống cột NOT NULL, ``""`` khi nó chỉ dùng để ghép câu.
+    """
+    if isinstance(value, dict):
+        value = value.get("category")
+    if value is None:
+        return default
+    return str(getattr(value, "value", value))
+
+
 ODDAxis = Literal["road_type", "weather", "actor_type", "maneuver"]
 """Tên bốn trục ODD. Là ``Literal`` để lọt được vào strict structured output."""
 
@@ -1224,6 +1248,23 @@ GateType = Literal["before_library", "before_sim"]
 Python. Quy đổi sang ``ReviewGate`` xảy ra trong route — đúng một chỗ, và chỗ đó
 ném 400 nếu chuỗi lạ, thay vì để một giá trị không hợp lệ trôi vào tầng dưới.
 """
+
+
+TOO_VAGUE_MESSAGE = "Mô tả kịch bản quá ngắn hoặc không đủ thông tin kịch bản giao thông."
+"""Câu trả lời cho prompt rác. Cùng một câu ở HTTP 400 và ở guardrail của `parse_intent`."""
+
+
+def is_too_vague_to_generate(prompt: str) -> bool:
+    """Prompt rác: quá ngắn, quá ít từ, hoặc chỉ là một con số.
+
+    Phép kiểm này chạy ở **hai** chỗ, và phải là **một** phép kiểm: tầng HTTP
+    chặn sớm để không tốn một task nền, còn ``parse_intent`` chặn lại vì nó cũng
+    được gọi thẳng từ test và từ graph, không chỉ qua route. Hai bản sao của
+    cùng một ngưỡng thì lệch nhau vào lần đầu ai đó nới một bên — và bên còn lại
+    sẽ từ chối đúng thứ bên kia vừa nhận, với cùng một thông báo lỗi.
+    """
+    text = prompt.strip()
+    return len(text) < 10 or len(text.split()) < 3 or text.isnumeric()
 
 
 class GenerateRequest(ForgeModel):
