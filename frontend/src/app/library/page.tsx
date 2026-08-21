@@ -7,13 +7,13 @@ import {
   Filter,
   Download,
   FileCode,
-  Loader2,
   BookOpen,
   ChevronRight,
   AlertCircle,
 } from "lucide-react";
 import { getScenarios, downloadXosc } from "@/services/api";
 import SVG2DRenderer from "@/components/SVG2DRenderer";
+import { AuthGate } from "@/components/AuthGate";
 import type {
   ScenarioItem,
   ODDPayload,
@@ -66,7 +66,7 @@ const MANEUVER_OPTIONS: { value: ManeuverType | ""; label: string }[] = [
   })),
 ];
 
-export default function LibraryPage() {
+function LibraryPageContent() {
   const [items, setItems] = useState<ScenarioItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -77,10 +77,8 @@ export default function LibraryPage() {
   const [oddFilter, setOddFilter] = useState<ODDPayload>({});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Debounced fetch
   const fetchData = useCallback(
     async (searchTerm: string, odd: ODDPayload) => {
-      setLoading(true);
       try {
         const res = await getScenarios({ search: searchTerm, odd, limit: 100 });
         setItems(res.items);
@@ -97,30 +95,26 @@ export default function LibraryPage() {
 
   // On mount
   useEffect(() => {
-    fetchData("", {});
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch on mount
+    void fetchData("", {});
   }, [fetchData]);
 
-  // Toast auto-dismiss
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(t);
-  }, [toast]);
-
-  // Debounce search
-  const handleSearchChange = (value: string) => {
-    setSearch(value);
+  // Debounced search
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setLoading(true);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      fetchData(value, oddFilter);
-    }, 300);
+      void fetchData(val, oddFilter);
+    }, 400);
   };
 
   // Filter change
-  const handleFilterChange = (key: keyof ODDPayload, value: string) => {
-    const next = { ...oddFilter, [key]: value || undefined };
+  const handleFilterChange = (key: keyof ODDPayload, val: string) => {
+    const next = { ...oddFilter, [key]: val || undefined };
     setOddFilter(next);
-    fetchData(search, next);
+    setLoading(true);
+    void fetchData(search, next);
   };
 
   // Download .xosc status gate
@@ -163,26 +157,33 @@ export default function LibraryPage() {
   const statusBadge = (status: string) => {
     switch (status) {
       case "approved_library":
-        return <span className="badge badge--approved">Đã duyệt (Library)</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-50 dark:bg-green-950/60 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">Đã duyệt (Library)</span>;
       case "rejected":
-        return <span className="badge badge--rejected">Từ chối</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">Từ chối</span>;
       case "pending_review":
-        return <span className="badge badge--pending font-mono">Chờ duyệt</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-mono">Chờ duyệt</span>;
       case "pending_sim_review":
-        return <span className="badge badge--before-sim">Chờ sim</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">Chờ sim</span>;
       default:
-        return <span className="badge">{status}</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">{status}</span>;
     }
   };
 
+  const filterConfigs = [
+    { key: "road_type" as const, options: ROAD_OPTIONS },
+    { key: "weather" as const, options: WEATHER_OPTIONS },
+    { key: "actor_type" as const, options: ACTOR_OPTIONS },
+    { key: "maneuver" as const, options: MANEUVER_OPTIONS },
+  ];
+
   return (
-    <div className="min-h-screen p-6 pt-8">
+    <div className="min-h-screen p-6 pt-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Toast */}
         {toast && (
           <div
             className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm font-medium transition-all duration-300 ${
-              toast.type === "error" ? "bg-amber-500 text-slate-950 font-bold" : "bg-green-500 text-white"
+              toast.type === "error" ? "bg-amber-500 text-slate-950 font-bold" : "bg-green-600 text-white"
             }`}
           >
             <AlertCircle className="w-4 h-4" />
@@ -191,34 +192,34 @@ export default function LibraryPage() {
         )}
 
         {/* ─── Header ─── */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
               <BookOpen className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-100">
+              <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100">
                 Thư viện kịch bản (Library Search)
               </h1>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
                 Tìm kiếm theo từ khóa & lọc theo 4 trục ODD chuẩn
               </p>
             </div>
           </div>
-          <span className="text-xs font-semibold px-3 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+          <span className="text-xs font-bold px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 border border-slate-200 dark:border-slate-800 shadow-sm shrink-0">
             Tổng cộng: {total} kịch bản
           </span>
         </div>
 
         {/* ─── Search & Filters ─── */}
-        <div className="glass-card p-5">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <div className="flex flex-col lg:flex-row gap-4">
             {/* Search input */}
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                className="input-field pl-10 text-sm"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
                 placeholder="Tìm kiếm theo từ khóa (Ví dụ: tạt đầu, mưa lớn, cao tốc)..."
                 value={search}
                 onChange={(e) => handleSearchChange(e.target.value)}
@@ -226,29 +227,12 @@ export default function LibraryPage() {
             </div>
 
             {/* ODD Filters */}
-            <div className="flex flex-wrap items-center gap-3">
-              <Filter className="w-4 h-4 text-slate-500 hidden lg:block" />
-              {[
-                {
-                  key: "road_type" as const,
-                  options: ROAD_OPTIONS,
-                },
-                {
-                  key: "weather" as const,
-                  options: WEATHER_OPTIONS,
-                },
-                {
-                  key: "actor_type" as const,
-                  options: ACTOR_OPTIONS,
-                },
-                {
-                  key: "maneuver" as const,
-                  options: MANEUVER_OPTIONS,
-                },
-              ].map((filter) => (
+            <div className="flex flex-wrap items-center gap-2.5">
+              <Filter className="w-4 h-4 text-slate-400 hidden lg:block shrink-0" />
+              {filterConfigs.map((filter) => (
                 <select
                   key={filter.key}
-                  className="input-field w-auto text-xs py-2"
+                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
                   value={(oddFilter[filter.key] as string) ?? ""}
                   onChange={(e) =>
                     handleFilterChange(filter.key, e.target.value)
@@ -269,9 +253,9 @@ export default function LibraryPage() {
         {loading && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="glass-card overflow-hidden">
-                <div className="skeleton h-[160px] w-full rounded-none" />
-                <div className="p-5 space-y-3">
+              <div key={i} className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden space-y-3 p-4">
+                <div className="skeleton h-[160px] w-full rounded-2xl" />
+                <div className="p-2 space-y-2">
                   <div className="skeleton h-5 w-3/4" />
                   <div className="skeleton h-3 w-full" />
                 </div>
@@ -282,12 +266,12 @@ export default function LibraryPage() {
 
         {/* ─── Empty state ─── */}
         {!loading && items.length === 0 && (
-          <div className="glass-card py-16 flex flex-col items-center text-center">
-            <FileCode className="w-16 h-16 text-slate-600 mb-4" />
-            <h3 className="text-lg font-semibold text-slate-300">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 py-16 flex flex-col items-center text-center p-6 shadow-sm">
+            <FileCode className="w-14 h-14 text-slate-400 mb-4" />
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
               Không tìm thấy kịch bản phù hợp
             </h3>
-            <p className="text-sm text-slate-500 mt-1 max-w-md">
+            <p className="text-xs text-slate-500 mt-1 max-w-md">
               Hãy thử chọn bộ lọc khác hoặc nhập từ khóa tìm kiếm mới.
             </p>
           </div>
@@ -302,10 +286,10 @@ export default function LibraryPage() {
                 <Link
                   key={item.scenario_id}
                   href={`/library/${item.scenario_id}`}
-                  className="glass-card glass-card-hover overflow-hidden group block"
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden group block hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-lg transition-all duration-300"
                 >
                   {/* SVG 2D Thumbnail */}
-                  <div className="relative h-[160px] overflow-hidden bg-slate-900/50 border-b border-slate-700/15">
+                  <div className="relative h-[160px] overflow-hidden bg-slate-950 border-b border-slate-200 dark:border-slate-800">
                     {item.spec?.actors?.length ? (
                       <SVG2DRenderer
                         actors={item.spec.actors}
@@ -320,38 +304,38 @@ export default function LibraryPage() {
                       </div>
                     )}
 
-                    <div className="absolute top-3 right-3 w-7 h-7 rounded-full bg-blue-500/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                    <div className="absolute top-3 right-3 w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
                       <ChevronRight className="w-4 h-4 text-white" />
                     </div>
                   </div>
 
                   {/* Content */}
                   <div className="p-5 space-y-3">
-                    <h3 className="font-semibold text-slate-200 truncate text-sm group-hover:text-white transition-colors">
+                    <h3 className="font-bold text-slate-900 dark:text-slate-100 truncate text-sm group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                       {item.title}
                     </h3>
-                    <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">
                       {item.description_vi}
                     </p>
 
                     {/* ODD Badges */}
-                    <div className="flex flex-wrap gap-1.5">
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/15">
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                         {renderSafeValue(item.odd?.road_type, ROAD_TYPE_LABELS)}
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/15">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
                         {renderSafeValue(item.odd?.weather, WEATHER_LABELS)}
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/15">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800">
                         {renderSafeValue(item.odd?.actor_type, ACTOR_TYPE_LABELS)}
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/15">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
                         {renderSafeValue(item.odd?.maneuver, MANEUVER_TYPE_LABELS)}
                       </span>
                     </div>
 
-                    {/* Bottom Action Row (Download Status Gate) */}
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-700/20">
+                    {/* Bottom Action Row */}
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800/80">
                       {statusBadge(item.status)}
 
                       <button
@@ -363,13 +347,13 @@ export default function LibraryPage() {
                         onClick={(e) =>
                           handleDownload(e, item.scenario_id, item.status)
                         }
-                        className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md transition-all ${
+                        className={`inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1 rounded-lg transition-all ${
                           isApproved
-                            ? "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30"
-                            : "bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-50"
+                            ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm cursor-pointer"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-60"
                         }`}
                       >
-                        <Download className="w-3 h-3" />
+                        <Download className="w-3.5 h-3.5" />
                         .xosc
                       </button>
                     </div>
@@ -381,5 +365,13 @@ export default function LibraryPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function LibraryPage() {
+  return (
+    <AuthGate>
+      <LibraryPageContent />
+    </AuthGate>
   );
 }

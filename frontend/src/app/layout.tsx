@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/Sidebar";
+import { AppLayoutWrapper } from "@/components/AppLayoutWrapper";
+import { AuthProvider } from "@/context/AuthContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -19,17 +21,18 @@ export const metadata: Metadata = {
     "Hệ thống AI sinh file OpenSCENARIO 1.0 từ mô tả tiếng Việt, với HITL Review và thư viện ngữ nghĩa.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="vi"
       className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex">
-        <Sidebar />
-        <main className="flex-1 ml-[260px] min-h-screen">
-          {children}
-        </main>
+      <body className="min-h-full flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+        <ThemeProvider>
+          <AuthProvider>
+            <AppLayoutWrapper>{children}</AppLayoutWrapper>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

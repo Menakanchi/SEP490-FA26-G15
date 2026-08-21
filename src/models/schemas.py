@@ -241,11 +241,12 @@ class SupportPolicy(ForgeModel):
 
 
 _HIGHWAY_ACTORS_BY_MANEUVER: dict[ManeuverType, frozenset[ActorType]] = {
-    maneuver: frozenset({ActorType.CAR, ActorType.MOTORCYCLE, ActorType.TRUCK})
+    maneuver: frozenset({ActorType.CAR, ActorType.MOTORCYCLE, ActorType.TRUCK, ActorType.BUS})
     for maneuver in ManeuverType
-    if maneuver is not ManeuverType.JAYWALK
+    if maneuver not in (ManeuverType.JAYWALK, ManeuverType.OVERTAKE)
 }
 _HIGHWAY_ACTORS_BY_MANEUVER[ManeuverType.JAYWALK] = frozenset({ActorType.PEDESTRIAN})
+_HIGHWAY_ACTORS_BY_MANEUVER[ManeuverType.OVERTAKE] = frozenset()
 
 DEFAULT_SUPPORT_POLICY = SupportPolicy(
     unsupported=frozenset(
@@ -253,7 +254,7 @@ DEFAULT_SUPPORT_POLICY = SupportPolicy(
         for road in RoadType
         for actor in ActorType
         for maneuver in ManeuverType
-        if road is not RoadType.HIGHWAY or actor not in _HIGHWAY_ACTORS_BY_MANEUVER[maneuver]
+        if road not in (RoadType.HIGHWAY, RoadType.URBAN_STRAIGHT) or actor not in _HIGHWAY_ACTORS_BY_MANEUVER[maneuver]
     )
 )
 """76 ô: sáu maneuver cho ba vehicle actors, jaywalk cho pedestrian, qua bốn weather."""
@@ -451,7 +452,7 @@ class ODDQuery(ForgeModel):
 
         road_type = self.road_type
         if road_type is None:
-            preferred = (RoadType.URBAN_STRAIGHT, *RoadType)
+            preferred = (RoadType.HIGHWAY, RoadType.URBAN_STRAIGHT, *RoadType)
             road_type = next(
                 (r for r in preferred if policy.supports(r, self.actor_type, self.maneuver)),
                 RoadType.URBAN_STRAIGHT,
@@ -628,26 +629,27 @@ class ScenarioCore(ForgeModel):
         # Nhãn ODD phải khớp thực tế. Nhãn này là thứ retrieval lọc theo và là thứ
         # đếm ODD coverage; gắn nhãn "pedestrian" cho một kịch bản toàn ô tô sẽ
         # thổi phồng coverage và làm thư viện trả về kết quả sai nhãn.
-        non_ego = {a.category.value for a in self.actors if not a.is_ego}
-        if self.odd.actor_type.value not in non_ego:
+        non_ego = {(a.category.value if hasattr(a.category, "value") else str(a.category)) for a in self.actors if not a.is_ego}
+        odd_at_val = self.odd.actor_type.value if hasattr(self.odd.actor_type, "value") else str(self.odd.actor_type)
+        if odd_at_val not in non_ego:
             raise PydanticCustomError(
                 "ODD_ACTOR_MISMATCH",
                 "odd.actor_type={actor_type} nhưng không chủ thể nào thuộc loại đó (đang có: {actual_types})",
                 {
-                    "actor_type": repr(self.odd.actor_type.value),
+                    "actor_type": repr(odd_at_val),
                     "actual_types": sorted(non_ego),
                 },
             )
 
+        done = {(m.maneuver.value if hasattr(m.maneuver, "value") else str(m.maneuver)) for m in self.maneuvers}
         odd_mv_val = self.odd.maneuver.get("category") if isinstance(self.odd.maneuver, dict) else (self.odd.maneuver.value if hasattr(self.odd.maneuver, "value") else str(self.odd.maneuver))
-        done = {m.maneuver.value for m in self.maneuvers}
 
-        if self.odd.maneuver.value not in done:
+        if odd_mv_val not in done:
             raise PydanticCustomError(
                 "ODD_MANEUVER_MISMATCH",
                 "odd.maneuver={maneuver} nhưng không maneuver nào thực hiện hành vi đó (đang có: {actual_maneuvers})",
                 {
-                    "maneuver": repr(self.odd.maneuver.value),
+                    "maneuver": repr(odd_mv_val),
                     "actual_maneuvers": sorted(done),
                 },
             )
