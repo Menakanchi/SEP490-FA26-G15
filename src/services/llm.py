@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from openai import APITimeoutError
 from pydantic import BaseModel
 
 from src.config import get_settings
@@ -41,6 +42,9 @@ EMBEDDING_DIM = 1536
 # Số lần thử tối đa trước khi báo lỗi
 MAX_RETRIES = 3
 
+# Timeout mặc định cho LLM call (giây)
+DEFAULT_TIMEOUT = 60
+
 # Các lỗi mà model to hơn KHÔNG giúp được gì
 # (lỗi hạ tầng, không phải lỗi "suy nghĩ" của LLM)
 NON_ESCALATABLE_ERRORS = frozenset(
@@ -71,7 +75,12 @@ def _get_escalated_model() -> str:
 # =============================================================================
 
 
-def _chat_model(model_name: str) -> ChatOpenAI:
+def _chat_model(
+    model_name: str,
+    *,
+    timeout: float | None = None,
+    max_retries: int | None = None,
+) -> ChatOpenAI:
     """Client cho một model cụ thể. **Chỗ duy nhất dựng ``ChatOpenAI``.**
 
     ``get_llm`` và ``call_with_escalation`` từng dựng client bằng hai đoạn code
@@ -80,10 +89,17 @@ def _chat_model(model_name: str) -> ChatOpenAI:
     chỉ là với cấu hình khác, ở đúng đường escalation mà không ai test tay.
     """
     settings = get_settings()
+    client_options: dict[str, Any] = {}
+    if timeout is not None:
+        client_options["timeout"] = timeout
+    if max_retries is not None:
+        client_options["max_retries"] = max_retries
+
     return ChatOpenAI(
         model=model_name,
         api_key=settings.openai_api_key,
         temperature=settings.llm_temperature,
+        **client_options,
     )
 
 
@@ -146,9 +162,10 @@ def _extract_error_code(exception: Exception) -> str:
 def call_with_escalation(
     messages: list[dict[str, Any]],
     structured_output_schema: type[BaseModel],
+    timeout: int = DEFAULT_TIMEOUT,
 ) -> BaseModel:
     """
-    Gọi LLM với automatic model escalation.
+    Gọi LLM với automatic model escalation và timeout.
 
     Flow:
         Attempt 0, 1: Dùng primary model (gpt-5.4-mini)
@@ -158,6 +175,7 @@ def call_with_escalation(
     Args:
         messages: Danh sách messages theo format LangChain
         structured_output_schema: Pydantic schema cho structured output
+        timeout: Số giây tối đa cho mỗi lần gọi (mặc định 60s)
 
     Returns:
         Structured output đã được parse thành object
@@ -173,7 +191,13 @@ def call_with_escalation(
         start_time = time.time()
 
         try:
-            runnable = _chat_model(model_to_use).with_structured_output(structured_output_schema)
+            # Timeout phải ở tầng HTTP. Bọc ``invoke`` trong thread rồi chờ
+            # Future không thể huỷ request nền vẫn có thể treo khi executor
+            # shutdown. Tắt retry nội bộ của OpenAI để MAX_RETRIES ở đây
+            # là trần duy nhất, quan sát được.
+            runnable = _chat_model(model_to_use, timeout=timeout, max_retries=0).with_structured_output(
+                structured_output_schema
+            )
             result = runnable.invoke(messages)
 
             # Tính latency và cost
@@ -198,6 +222,21 @@ def call_with_escalation(
             )
 
             return result
+
+        except (APITimeoutError, TimeoutError):
+            latency = time.time() - start_time
+            timeout_error = TimeoutError(f"LLM call timed out after {timeout}s (attempt {attempt})")
+            last_error = timeout_error
+
+            _log_event(
+                logging.WARNING,
+                "llm_call_timeout",
+                model=model_to_use,
+                latency=round(latency, 3),
+                timeout_seconds=timeout,
+                attempt=attempt,
+            )
+            continue
 
         except Exception as e:
             latency = time.time() - start_time

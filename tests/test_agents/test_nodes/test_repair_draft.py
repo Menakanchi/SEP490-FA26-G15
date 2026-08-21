@@ -124,6 +124,17 @@ class TestBuildUserContent:
         assert "GEOM_NO_CATCHUP" in content
         assert "TRIGGER_AFTER_END" in content
 
+    @pytest.mark.parametrize("repair_round", [1, 2, 3])
+    def test_build_user_content_contains_repair_round(self, repair_round: int):
+        content = _build_user_content(
+            create_valid_draft(),
+            [create_issue(IssueCode.GEOM_NO_CATCHUP)],
+            repair_round,
+        )
+
+        assert f"Vòng sửa: {repair_round}/3" in content
+        assert ("ĐÂY LÀ VÒNG CUỐI" in content) is (repair_round == 3)
+
 
 # =============================================================================
 # Test _create_messages

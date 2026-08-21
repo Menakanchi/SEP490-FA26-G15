@@ -175,8 +175,10 @@ def _repair_draft(state: ForgeState) -> dict[str, Any]:
     """
     issues = list(state.get("issues", []))
     history = list(state.get("issue_history", [])) + issues
+    iteration = state.get("iteration", 0)
+    repair_round = iteration + 1  # iteration bắt đầu từ 0
     try:
-        draft = repair_draft(state["draft"], issues)
+        draft = repair_draft(state["draft"], issues, repair_round)
     except NothingToRepairError as exc:
         # Routing lẽ ra đã chặn. Tới được đây nghĩa là hai bên hiểu khác nhau —
         # dừng hẳn thay vì lặp vô ích cho hết trần.
@@ -186,7 +188,7 @@ def _repair_draft(state: ForgeState) -> dict[str, Any]:
         return {"issue_history": history, **_llm_failure(exc, "repair_draft")}
     return {
         "draft": draft,
-        "iteration": state.get("iteration", 0) + 1,
+        "iteration": iteration + 1,
         "issue_history": history,
         "issues": [],
     }

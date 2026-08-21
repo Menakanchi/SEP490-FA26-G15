@@ -132,6 +132,26 @@ class TestCallWithEscalation:
             # Verify: gọi đúng 3 lần
             assert mock_chat.call_count == MAX_RETRIES
 
+    def test_timeout_retries_three_times_at_http_layer(self):
+        """Timeout phải retry đúng trần và được truyền xuống HTTP client."""
+        messages = [{"role": "user", "content": "test"}]
+
+        with patch("src.services.llm.ChatOpenAI") as mock_chat:
+            mock_llm_instance = MagicMock()
+            mock_runnable = MagicMock()
+            mock_runnable.invoke.side_effect = TimeoutError("request timed out")
+            mock_llm_instance.with_structured_output.return_value = mock_runnable
+            mock_chat.return_value = mock_llm_instance
+
+            with pytest.raises(TimeoutError, match="timed out after 0.01s"):
+                call_with_escalation(messages, DummySchema, timeout=0.01)
+
+        assert mock_chat.call_count == MAX_RETRIES
+        assert mock_runnable.invoke.call_count == MAX_RETRIES
+        for call in mock_chat.call_args_list:
+            assert call.kwargs["timeout"] == 0.01
+            assert call.kwargs["max_retries"] == 0
+
     def test_non_escalatable_error_raise_immediately(self):
         """Lỗi rate limit → raise ngay, không retry."""
         messages = [{"role": "user", "content": "test"}]
