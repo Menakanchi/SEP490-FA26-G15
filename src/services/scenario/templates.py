@@ -52,7 +52,13 @@ TEMPLATE_CATALOG: dict[RoadType, ScenarioTemplate] = {
         road_type=RoadType.HIGHWAY,
         supported_maneuvers=TOWN04_ROAD_41_MANEUVERS,
         ego_spawn=_TOWN04_ANCHOR,
-    )
+    ),
+    RoadType.URBAN_STRAIGHT: ScenarioTemplate(
+        map_name="Town04",
+        road_type=RoadType.URBAN_STRAIGHT,
+        supported_maneuvers=TOWN04_ROAD_41_MANEUVERS,
+        ego_spawn=_TOWN04_ANCHOR,
+    ),
 }
 
 

@@ -7,32 +7,29 @@ import {
   CheckCircle2,
   XCircle,
   User,
-  MessageSquare,
-  Info,
   Loader2,
   Map,
-  Cloud,
   Users,
   AlertTriangle,
-  Clock,
   FileCode,
   Copy,
   Download,
   Filter,
   RefreshCw,
-  BookOpen,
   Layers,
   Sparkle,
 } from "lucide-react";
 import { getScenarios, getScenarioById, postReview, downloadXosc } from "@/services/api";
 import SVG2DRenderer from "@/components/SVG2DRenderer";
+import { RoleGate } from "@/components/RoleGate";
+import { AuthGate } from "@/components/AuthGate";
+import { useAuth } from "@/context/AuthContext";
 import type { ScenarioItem, ScenarioDetail, ReviewGate } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
   ACTOR_TYPE_LABELS,
   MANEUVER_TYPE_LABELS,
-  VEHICLE_CATEGORY_LABELS,
   renderSafeValue,
   renderActorCategoryLabel,
 } from "@/types";
@@ -41,6 +38,7 @@ function ReviewPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialScenarioId = searchParams.get("scenario_id");
+  const { user, role } = useAuth();
 
   // State: List
   const [list, setList] = useState<ScenarioItem[]>([]);
@@ -54,7 +52,7 @@ function ReviewPageContent() {
   const [detailError, setDetailError] = useState(false);
 
   // Form State
-  const [reviewer, setReviewer] = useState("");
+  const [reviewer, setReviewer] = useState(user?.name || user?.username || user?.email || "");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<{ reviewer?: string; reason?: string }>({});
@@ -63,7 +61,6 @@ function ReviewPageContent() {
 
   // Fetch List
   const fetchScenarioList = useCallback(async () => {
-    setListLoading(true);
     try {
       const res = await getScenarios({ limit: 50 });
       const fetchedItems = res.items || [];
@@ -88,76 +85,71 @@ function ReviewPageContent() {
   }, [initialScenarioId]);
 
   useEffect(() => {
-    fetchScenarioList();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp dữ liệu lúc mount
+    void fetchScenarioList();
   }, [fetchScenarioList]);
 
   // Fetch Selected Detail
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear scenario state when selectedId is null
+      setScenario(null);
+      return;
+    }
+
     setDetailLoading(true);
     setDetailError(false);
-
     getScenarioById(selectedId)
       .then((data) => {
         setScenario(data);
+        setDetailLoading(false);
       })
       .catch((err) => {
         console.error("Failed to load scenario detail", err);
         setDetailError(true);
-        setScenario(null);
-      })
-      .finally(() => {
         setDetailLoading(false);
       });
   }, [selectedId]);
 
-  // Toast auto-dismiss
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(t);
-  }, [toast]);
-
-  // Select Item Handler
   const handleSelectScenario = (id: string) => {
     setSelectedId(id);
-    setFormErrors({});
-    const url = new URL(window.location.href);
-    url.searchParams.set("scenario_id", id);
-    router.replace(url.pathname + url.search, { scroll: false });
+    router.replace(`/review?scenario_id=${id}`, { scroll: false });
   };
 
-  // Determine Gate from Scenario Status
-  const gate: ReviewGate = (() => {
-    if (!scenario) return "before_library";
-    if (scenario.status === "pending_sim_review") return "before_sim";
-    return "before_library";
-  })();
+  const gateToReview: ReviewGate =
+    scenario?.status === "pending_sim_review" ? "before_sim" : "before_library";
 
-  const gateLabel = gate === "before_library" ? "Cổng Thư viện (BEFORE_LIBRARY)" : "Cổng Mô phỏng (BEFORE_SIM)";
+  const gateLabel =
+    gateToReview === "before_sim" ? "Cổng 2: Mô phỏng (BEFORE_SIM)" : "Cổng 1: Thư viện (BEFORE_LIBRARY)";
 
-  // Form Submit Handler
   const handleSubmitReview = async (approved: boolean) => {
-    const errors: { reviewer?: string; reason?: string } = {};
-    if (!reviewer.trim()) {
-      errors.reviewer = "Vui lòng nhập tên/email người duyệt (Reviewer ID).";
-    }
-    if (!approved && reason.trim().length < 10) {
-      errors.reason = "Lý do từ chối bắt buộc có nhất 10 ký tự để lưu vết audit trail.";
-    }
-    setFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
     if (!scenario) return;
 
+    const errors: { reviewer?: string; reason?: string } = {};
+    if (!reviewer.trim()) {
+      errors.reviewer = "Vui lòng nhập tên reviewer chịu trách nhiệm.";
+    }
+    if (!approved && (!reason.trim() || reason.trim().length < 10)) {
+      errors.reason = "Vui lòng nhập lý do từ chối (bắt buộc từ 10 ký tự trở lên).";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
+    setFormErrors({});
     setSubmitting(true);
+
     try {
       await postReview({
         scenario_id: scenario.scenario_id,
-        gate,
+        gate: gateToReview,
         approved,
         reviewer: reviewer.trim(),
-        reason: reason.trim(),
+        reason: reason.trim() || "Chấp nhận kịch bản",
       });
+
       setToast({
         type: "success",
         msg: approved
@@ -165,6 +157,7 @@ function ReviewPageContent() {
           : `Đã từ chối kịch bản ${scenario.scenario_id}.`,
       });
 
+      setListLoading(true);
       await fetchScenarioList();
       const updated = await getScenarioById(scenario.scenario_id);
       setScenario(updated);
@@ -212,14 +205,14 @@ function ReviewPageContent() {
     : list;
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans">
       {/* Toast Notification */}
       {toast && (
         <div
           className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm font-medium transition-all duration-300 ${
             toast.type === "success"
-              ? "bg-green-500/90 text-white shadow-green-500/20"
-              : "bg-red-500/90 text-white shadow-red-500/20"
+              ? "bg-green-600 text-white shadow-green-500/20"
+              : "bg-red-600 text-white shadow-red-500/20"
           }`}
         >
           {toast.type === "success" ? (
@@ -232,37 +225,39 @@ function ReviewPageContent() {
       )}
 
       {/* Top Header */}
-      <div className="glass-card p-6 relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-blue-500/5 pointer-events-none" />
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
         <div className="relative flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
             <Shield className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl md:text-2xl font-bold text-slate-100">
+            <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-slate-100">
               Kiểm duyệt kịch bản (Reviewer Flow - HITL)
             </h1>
-            <p className="text-xs md:text-sm text-slate-400">
+            <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400">
               Cổng duyệt hai tầng: Thư viện (BEFORE_LIBRARY) & Mô phỏng (BEFORE_SIM)
             </p>
           </div>
         </div>
 
-        <div className="relative flex items-center gap-3">
+        <div className="relative flex items-center gap-2.5">
           <button
             onClick={() => setFilterPendingOnly(!filterPendingOnly)}
-            className={`btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 border ${
+            className={`text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 border font-bold transition cursor-pointer ${
               filterPendingOnly
-                ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
-                : "btn-ghost border-slate-700/50"
+                ? "bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800"
+                : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
             }`}
           >
             <Filter className="w-3.5 h-3.5" />
             {filterPendingOnly ? "Chỉ kịch bản chờ duyệt" : "Tất cả kịch bản"}
           </button>
           <button
-            onClick={fetchScenarioList}
-            className="btn-primary btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 border border-slate-700/50"
+            onClick={() => {
+              setListLoading(true);
+              void fetchScenarioList();
+            }}
+            className="text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold transition cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${listLoading ? "animate-spin" : ""}`} />
             Làm mới
@@ -274,8 +269,8 @@ function ReviewPageContent() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Sidebar List */}
         <div className="lg:col-span-4 space-y-3">
-          <div className="glass-card p-4">
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
               Danh sách kịch bản ({displayList.length})
             </h2>
 
@@ -297,29 +292,29 @@ function ReviewPageContent() {
                     <button
                       key={item.scenario_id}
                       onClick={() => handleSelectScenario(item.scenario_id)}
-                      className={`w-full text-left p-3 rounded-xl border transition-all ${
+                      className={`w-full text-left p-3.5 rounded-2xl border transition-all cursor-pointer ${
                         isSelected
-                          ? "bg-purple-500/15 border-purple-500/50 text-white shadow-lg shadow-purple-500/10"
-                          : "bg-slate-800/30 border-slate-700/20 text-slate-300 hover:bg-slate-800/60"
+                          ? "bg-purple-50 dark:bg-purple-950/60 border-purple-400 dark:border-purple-600 text-purple-950 dark:text-purple-100 shadow-sm font-bold"
+                          : "bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-xs font-semibold text-cyan-400 truncate">
+                        <span className="font-mono text-xs font-bold text-blue-600 dark:text-cyan-400 truncate">
                           {item.scenario_id}
                         </span>
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                             item.status === "approved_library"
-                              ? "bg-green-500/20 text-green-300"
+                              ? "bg-green-50 dark:bg-green-950/60 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800"
                               : item.status === "rejected"
-                              ? "bg-red-500/20 text-red-300"
-                              : "bg-amber-500/20 text-amber-300"
+                              ? "bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
+                              : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
                           }`}
                         >
                           {item.status}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-300 mt-1 line-clamp-1 font-medium">
+                      <p className="text-xs text-slate-700 dark:text-slate-300 mt-1 line-clamp-1 font-semibold">
                         {item.title}
                       </p>
                     </button>
@@ -333,37 +328,37 @@ function ReviewPageContent() {
         {/* Right Detail Pane */}
         <div className="lg:col-span-8 space-y-6">
           {detailLoading ? (
-            <div className="glass-card p-12 flex items-center justify-center">
-              <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
             </div>
           ) : detailError || !scenario ? (
-            <div className="glass-card p-12 text-center text-slate-400">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center text-slate-500 text-sm">
               Vui lòng chọn một kịch bản từ danh sách bên trái để kiểm duyệt.
             </div>
           ) : (
             <>
               {/* Header Info */}
-              <div className="glass-card p-6 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700/30 pb-4">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
                   <div>
-                    <h2 className="text-xl font-bold text-slate-100">
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
                       {scenario.title}
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1 font-mono">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
                       ID: {scenario.scenario_id} | Trạng thái hiện tại:{" "}
-                      <strong className="text-purple-300">{scenario.status}</strong>
+                      <strong className="text-purple-600 dark:text-purple-400">{scenario.status}</strong>
                     </p>
                   </div>
-                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                     Cổng áp dụng: {gateLabel}
                   </span>
                 </div>
 
-                {/* ⚠️ Warning Banner (Informational - Amber) */}
-                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-300">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                {/* ⚠️ Warning Banner */}
+                <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-300">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <strong className="font-semibold block text-amber-200 mb-0.5">
+                    <strong className="font-bold block text-amber-950 dark:text-amber-200 mb-0.5">
                       Cảnh báo thông số tự suy luận (Inferred ODD Warning):
                     </strong>
                     <span>
@@ -374,27 +369,27 @@ function ReviewPageContent() {
 
                 {/* ODD Cell Parameters */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
-                    <span className="text-[10px] text-slate-500 block uppercase">Đường</span>
-                    <span className="text-xs font-semibold text-blue-400">
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 text-center">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block uppercase font-bold">Đường</span>
+                    <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
                       {renderSafeValue(scenario.odd?.road_type, ROAD_TYPE_LABELS)}
                     </span>
                   </div>
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
-                    <span className="text-[10px] text-slate-500 block uppercase">Thời tiết</span>
-                    <span className="text-xs font-semibold text-cyan-400">
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 text-center">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block uppercase font-bold">Thời tiết</span>
+                    <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400">
                       {renderSafeValue(scenario.odd?.weather, WEATHER_LABELS)}
                     </span>
                   </div>
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
-                    <span className="text-[10px] text-slate-500 block uppercase">Tác nhân</span>
-                    <span className="text-xs font-semibold text-orange-400">
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 text-center">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block uppercase font-bold">Tác nhân</span>
+                    <span className="text-xs font-bold text-orange-600 dark:text-orange-400">
                       {renderSafeValue(scenario.odd?.actor_type, ACTOR_TYPE_LABELS)}
                     </span>
                   </div>
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
-                    <span className="text-[10px] text-slate-500 block uppercase">Hành vi</span>
-                    <span className="text-xs font-semibold text-red-400">
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 text-center">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block uppercase font-bold">Hành vi</span>
+                    <span className="text-xs font-bold text-red-600 dark:text-red-400">
                       {renderSafeValue(scenario.odd?.maneuver, MANEUVER_TYPE_LABELS)}
                     </span>
                   </div>
@@ -402,12 +397,12 @@ function ReviewPageContent() {
               </div>
 
               {/* 2D SVG Lane Visualization */}
-              <div className="glass-card p-6 space-y-3">
-                <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                  <Map className="w-4 h-4 text-blue-400" />
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <Map className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   Sơ đồ làn đường 2D (Render Hero & Adversaries - ADR-010)
                 </h3>
-                <div className="rounded-xl overflow-hidden border border-slate-700/20">
+                <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950">
                   {scenario.spec?.actors?.length ? (
                     <SVG2DRenderer
                       actors={scenario.spec.actors}
@@ -424,16 +419,16 @@ function ReviewPageContent() {
                 </div>
               </div>
 
-              {/* All Actors Table (ADR-010) */}
+              {/* All Actors Table */}
               {scenario.spec?.actors?.length ? (
-                <div className="glass-card p-6 space-y-3">
-                  <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                    <Users className="w-4 h-4 text-orange-400" />
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-orange-600 dark:text-orange-400" />
                     Danh sách toàn bộ Tác nhân (`spec.actors` - {scenario.spec.actors.length} xe):
                   </h3>
-                  <div className="overflow-x-auto border border-slate-700/30 rounded-xl">
-                    <table className="w-full text-xs text-left text-slate-300">
-                      <thead className="bg-slate-800/80 text-slate-400 uppercase font-semibold text-[10px] border-b border-slate-700/40">
+                  <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-2xl">
+                    <table className="w-full text-xs text-left text-slate-800 dark:text-slate-200">
+                      <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 uppercase font-bold text-[10px] border-b border-slate-200 dark:border-slate-700/60">
                         <tr>
                           <th className="p-3">Tên xe</th>
                           <th className="p-3">Loại phương tiện</th>
@@ -443,20 +438,20 @@ function ReviewPageContent() {
                           <th className="p-3">Tốc độ ban đầu</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-800/60">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         {scenario.spec.actors.map((actor, idx) => (
-                          <tr key={actor.name || idx} className="hover:bg-slate-800/30">
-                            <td className="p-3 font-mono font-semibold text-cyan-300">{actor.name}</td>
-                            <td className="p-3 font-semibold text-slate-200">
+                          <tr key={actor.name || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                            <td className="p-3 font-mono font-bold text-blue-600 dark:text-cyan-300">{actor.name}</td>
+                            <td className="p-3 font-bold text-slate-900 dark:text-slate-100">
                               {renderActorCategoryLabel(actor, scenario.odd)}
                             </td>
                             <td className="p-3">
                               {actor.is_ego ? (
-                                <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-semibold">
+                                <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-800">
                                   Xe chính (Hero / Ego)
                                 </span>
                               ) : (
-                                <span className="px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 font-semibold">
+                                <span className="px-2 py-0.5 rounded-md bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 font-bold border border-orange-200 dark:border-orange-800">
                                   Xe phụ (Adversary)
                                 </span>
                               )}
@@ -473,20 +468,20 @@ function ReviewPageContent() {
               ) : null}
 
               {/* Retrieved Examples Block */}
-              <div className="glass-card p-6 space-y-3">
-                <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-purple-400" />
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                   Kịch bản mẫu được Retrieve (`retrieved_examples`):
                 </h3>
 
                 {!scenario.retrieved_examples || scenario.retrieved_examples.length === 0 ? (
-                  <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center gap-3">
-                    <Sparkle className="w-5 h-5 text-purple-400 flex-shrink-0" />
+                  <div className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/80 flex items-center gap-3">
+                    <Sparkle className="w-5 h-5 text-purple-600 dark:text-purple-400 flex-shrink-0" />
                     <div>
-                      <span className="px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 text-xs font-bold mr-2">
+                      <span className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 text-xs font-bold mr-2 border border-purple-200 dark:border-purple-700">
                         Chế độ Zero-Shot
                       </span>
-                      <span className="text-xs text-slate-300">
+                      <span className="text-xs text-slate-700 dark:text-slate-300">
                         Không có kịch bản mẫu tương đồng trong cơ sở dữ liệu.
                       </span>
                     </div>
@@ -497,21 +492,20 @@ function ReviewPageContent() {
                       const scorePct = item.similarity_score
                         ? Math.round(item.similarity_score * 100)
                         : 85;
-                      const meta = item.metadata || {};
                       return (
                         <div
                           key={item.id || idx}
-                          className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/30 space-y-2"
+                          className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-2"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-xs text-slate-200 truncate">
+                            <span className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate">
                               {item.title || item.id}
                             </span>
-                            <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono text-[10px] font-bold">
+                            <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-mono text-[10px] font-bold border border-purple-200 dark:border-purple-800">
                               {scorePct}% Tương đồng
                             </span>
                           </div>
-                          <p className="text-xs text-slate-400 line-clamp-2">
+                          <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
                             {item.content || item.description_vi}
                           </p>
                         </div>
@@ -522,17 +516,17 @@ function ReviewPageContent() {
               </div>
 
               {/* Decision Form Box */}
-              <div className="glass-card p-6 space-y-4 border-purple-500/30">
-                <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                  <User className="w-4 h-4 text-purple-400" />
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm">
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <User className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                   Form Phê duyệt / Từ chối (HITL Decision Form)
                 </h3>
 
                 {/* ❌ Critical Error Banner */}
                 {(formErrors.reviewer || formErrors.reason) && (
-                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-300 space-y-1">
-                    <div className="flex items-center gap-1.5 font-semibold text-red-200">
-                      <XCircle className="w-4 h-4 text-red-400" />
+                  <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/80 text-xs text-red-800 dark:text-red-300 space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold text-red-900 dark:text-red-200">
+                      <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
                       Lỗi kiểm tra dữ liệu đầu vào (Validation Error):
                     </div>
                     {formErrors.reviewer && <p>• {formErrors.reviewer}</p>}
@@ -542,12 +536,12 @@ function ReviewPageContent() {
 
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">
-                      Tên kỹ sư / reviewer chịu trách nhiệm <span className="text-red-400">*</span>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Tên kỹ sư / reviewer chịu trách nhiệm <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      className={`input-field text-sm ${formErrors.reviewer ? "border-red-500/60" : ""}`}
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition ${formErrors.reviewer ? "border-red-500" : ""}`}
                       placeholder="Ví dụ: Engineer QA Lead"
                       value={reviewer}
                       onChange={(e) => setReviewer(e.target.value)}
@@ -556,11 +550,11 @@ function ReviewPageContent() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                       Lý do đánh giá / ghi chú lý do từ chối (Ghi rõ nguyên nhân nếu Reject)
                     </label>
                     <textarea
-                      className={`input-field text-sm min-h-[80px] ${formErrors.reason ? "border-red-500/60" : ""}`}
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition min-h-[80px] ${formErrors.reason ? "border-red-500" : ""}`}
                       placeholder="Bắt buộc có từ 10 ký tự trở lên khi từ chối (Reject)..."
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
@@ -569,47 +563,61 @@ function ReviewPageContent() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => handleSubmitReview(false)}
-                    disabled={submitting}
-                    className="btn-primary bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-sm px-4 py-2 flex items-center gap-2"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Từ chối (Reject)
-                  </button>
+                <RoleGate
+                  allowedRoles={["reviewer", "admin"]}
+                  fallback={
+                    <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-300 text-xs flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span>
+                          Tài khoản hiện tại ở vai trò <strong>{role || "guest"}</strong> (Chỉ được xem). Quyền Phê duyệt / Từ chối kịch bản chỉ dành cho <strong>Reviewer</strong> hoặc <strong>Admin</strong>.
+                        </span>
+                      </div>
+                    </div>
+                  }
+                >
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSubmitReview(false)}
+                      disabled={submitting}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition cursor-pointer"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Từ chối (Reject)
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleSubmitReview(true)}
-                    disabled={submitting}
-                    className="btn-primary btn-success text-sm px-5 py-2 flex items-center gap-2"
-                  >
-                    {submitting ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4" />
-                    )}
-                    Phê duyệt (Approve)
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => handleSubmitReview(true)}
+                      disabled={submitting}
+                      className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition cursor-pointer"
+                    >
+                      {submitting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4" />
+                      )}
+                      Phê duyệt (Approve)
+                    </button>
+                  </div>
+                </RoleGate>
               </div>
 
               {/* OpenSCENARIO Code View & Download */}
-              <div className="glass-card p-6 space-y-3">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                    <FileCode className="w-4 h-4 text-blue-400" />
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <FileCode className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     Mã OpenSCENARIO XML
                   </h3>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleCopyXml}
                       disabled={!scenario.xosc_content}
-                      className="btn-primary btn-ghost text-xs px-3 py-1.5 flex items-center gap-1 border border-slate-700/40"
+                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
                     >
-                      <Copy className="w-3.5 h-3.5" />
+                      <Copy className="w-3.5 h-3.5 inline mr-1" />
                       {xmlCopied ? "Đã chép!" : "Sao chép"}
                     </button>
                     <button
@@ -620,18 +628,18 @@ function ReviewPageContent() {
                           ? "Tải file .xosc"
                           : "Chỉ kịch bản đã qua duyệt BEFORE_LIBRARY mới được phép tải file .xosc"
                       }
-                      className={`btn-primary text-xs px-3 py-1.5 flex items-center gap-1 ${
-                        scenario.status !== "approved_library" ? "opacity-40 cursor-not-allowed" : ""
+                      className={`px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition ${
+                        scenario.status !== "approved_library" ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
                       }`}
                     >
-                      <Download className="w-3.5 h-3.5" />
+                      <Download className="w-3.5 h-3.5 inline mr-1" />
                       Tải .xosc
                     </button>
                   </div>
                 </div>
 
                 {scenario.xosc_content ? (
-                  <pre className="xml-viewer max-h-[300px] overflow-auto">
+                  <pre className="p-4 bg-slate-950 text-slate-100 rounded-2xl max-h-[300px] overflow-auto text-xs font-mono border border-slate-800">
                     <code>{scenario.xosc_content}</code>
                   </pre>
                 ) : (
@@ -650,14 +658,16 @@ function ReviewPageContent() {
 
 export default function ReviewPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
-        </div>
-      }
-    >
-      <ReviewPageContent />
-    </Suspense>
+    <AuthGate allowedRoles={["reviewer", "admin"]}>
+      <Suspense
+        fallback={
+          <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-purple-600">
+            <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
+          </div>
+        }
+      >
+        <ReviewPageContent />
+      </Suspense>
+    </AuthGate>
   );
 }

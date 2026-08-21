@@ -30,7 +30,7 @@ _GLOBAL_PARAMETERS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-@dataclass(frozen=True)
+@dataclass
 class ConversionError(Exception):
     code: IssueCode
     message: str
@@ -163,6 +163,7 @@ MANEUVER_BUILDERS: dict[ManeuverType, ActionBuilder] = {
 SPECIAL_BUILDERS = frozenset(
     {
         ManeuverType.CUT_IN,
+        ManeuverType.OVERTAKE,
         ManeuverType.JAYWALK,
         ManeuverType.WRONG_WAY,
         ManeuverType.LANE_DRIFT,
@@ -320,7 +321,7 @@ def _add_maneuver_action(
     actor: ActorSpec,
     template: ScenarioTemplate,
 ) -> None:
-    if maneuver.maneuver is ManeuverType.CUT_IN:
+    if maneuver.maneuver in (ManeuverType.CUT_IN, ManeuverType.OVERTAKE):
         lane_change_value = actor.position.lane_offset
         if lane_change_value == 0:
             raise ConversionError(
@@ -444,7 +445,7 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
     for maneuver in spec.maneuvers:
         _assert_catalog_consistent(template, maneuver.maneuver)
         actor = next(a for a in spec.actors if a.name == maneuver.actor_name)
-        if maneuver.maneuver is ManeuverType.CUT_IN:
+        if maneuver.maneuver in (ManeuverType.CUT_IN, ManeuverType.OVERTAKE):
             if maneuver.trigger.type != "simulation_time":
                 raise ConversionError(
                     IssueCode.CONVERTER_ERROR,

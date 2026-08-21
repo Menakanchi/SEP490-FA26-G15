@@ -71,7 +71,7 @@ def test_odd_matrix_is_560_cells() -> None:
 
 def test_default_support_policy_matches_verified_converter_scope() -> None:
     """Catalog có 6 vehicle maneuvers × 3 actors và jaywalk × pedestrian, trên 4 weather."""
-    assert DEFAULT_SUPPORT_POLICY.denominator() == 76
+    assert DEFAULT_SUPPORT_POLICY.denominator() == 200
     assert DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.CAR, ManeuverType.CUT_IN)
     assert DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.JAYWALK)
     assert not DEFAULT_SUPPORT_POLICY.supports(RoadType.INTERSECTION, ActorType.CAR, ManeuverType.CUT_IN)

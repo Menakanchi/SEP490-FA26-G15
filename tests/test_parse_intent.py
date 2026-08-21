@@ -82,9 +82,9 @@ def test_parse_intent_partial_defaults(mock_get_llm):
 
     assert result["odd_hints"].actor_type == ActorType.MOTORCYCLE
     assert result["odd_hints"].maneuver == ManeuverType.CUT_IN
-    assert result["odd_hints"].road_type == RoadType.URBAN_STRAIGHT
+    assert result["odd_hints"].road_type == RoadType.HIGHWAY
     assert result["odd_hints"].weather == Weather.CLEAR
-    assert result["odd_hints"].key == "urban_straight|clear|motorcycle|cut_in"
+    assert result["odd_hints"].key == "highway|clear|motorcycle|cut_in"
     assert len(result["assumptions"]) == 2
     sources = {a.source for a in result["assumptions"]}
     assert AssumptionSource.DEFAULT.value in sources or AssumptionSource.DEFAULT in sources

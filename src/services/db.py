@@ -148,8 +148,8 @@ def create_generation_request(request_id: str, description_vi: str, validation_m
     cursor.execute(
         """
         INSERT OR REPLACE INTO generation_requests
-        (request_id, description_vi, validation_mode, limit_val, status, step, progress, scenario_id, error, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (request_id, description_vi, validation_mode, limit_val, status, step, progress, scenario_id, issue_history, node_metrics, error, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
             request_id,
@@ -160,6 +160,8 @@ def create_generation_request(request_id: str, description_vi: str, validation_m
             "queued",
             0,
             None,
+            "[]",
+            "{}",
             None,
             now_str,
             now_str,

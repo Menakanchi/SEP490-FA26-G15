@@ -32,14 +32,32 @@ const ACTOR_COLOR = "#f97316";
 const MANEUVER_ARROW_COLOR = "#ef4444";
 
 /**
- * Calculates dead center X coordinate for OpenSCENARIO 1-based lane_offset (1, 2, 3...).
- * Lane 1: [0, LANE_WIDTH], center = 25px
- * Lane 2: [LANE_WIDTH, 2 * LANE_WIDTH], center = 75px
- * Lane k: [(k - 1) * LANE_WIDTH, k * LANE_WIDTH], center = (k - 1) * LANE_WIDTH + LANE_WIDTH / 2
+ * `lane_offset` trong ScenarioSpec là **độ lệch tương đối so với làn của ego**
+ * (âm = trái, dương = phải, 0 = cùng làn với ego), không phải số thứ tự làn.
+ * Đây là ràng buộc của hợp đồng dữ liệu — bộ chuyển đổi dịch nó sang lane tương
+ * đối của OpenSCENARIO, nên không được đổi nghĩa để tiện cho việc vẽ.
+ *
+ * Quy đổi sang số làn để vẽ là việc của riêng lớp hiển thị, và nó nằm ở đây:
+ * đặt ego vào một làn tham chiếu rồi cộng offset vào.
+ *
+ * Ví dụ với egoLane = 2:  offset -1 -> làn 1,  offset 0 -> làn 2,  offset +1 -> làn 3.
  */
-export function getLaneCenterX(laneOffset: number): number {
-  const lane = Math.max(1, Math.round(laneOffset || 1));
-  return (lane - 1) * LANE_WIDTH + LANE_WIDTH / 2;
+export function laneNumber(laneOffset: number, egoLane: number): number {
+  return Math.max(1, egoLane + Math.round(laneOffset || 0));
+}
+
+/** Toạ độ X tâm của một làn (1-based). */
+export function getLaneCenterX(lane: number): number {
+  return (Math.max(1, Math.round(lane)) - 1) * LANE_WIDTH + LANE_WIDTH / 2;
+}
+
+/**
+ * Làn của ego trên hình vẽ. Chọn sao cho chủ thể lệch trái nhất vẫn nằm trong
+ * khung: offset -2 thì ego phải ở làn 3 mới còn chỗ vẽ bên trái.
+ */
+export function egoLaneFor(offsets: number[]): number {
+  const mostLeft = Math.min(0, ...offsets.map((o) => Math.round(o || 0)));
+  return 1 - mostLeft;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,12 +206,18 @@ export default function SVG2DRenderer({
 }: SVG2DRendererProps) {
   const actors = useMemo(() => sanitizeActors(rawActors, odd), [rawActors, odd]);
 
-  // Determine max lane count (minimum 2 lanes for realistic road background)
+  // Làn tham chiếu của ego, đủ rộng để chủ thể lệch trái nhất vẫn hiện ra.
+  const egoLane = useMemo(
+    () => egoLaneFor(actors.map((a) => a.position?.lane_offset ?? 0)),
+    [actors],
+  );
+
+  // Số làn cần vẽ (tối thiểu 2 làn cho ra hình con đường thật).
   const maxLane = useMemo(() => {
     if (actors.length === 0) return 2;
-    const offsets = actors.map((a) => Math.max(1, Math.round(a.position?.lane_offset || 1)));
-    return Math.max(2, ...offsets);
-  }, [actors]);
+    const lanes = actors.map((a) => laneNumber(a.position?.lane_offset ?? 0, egoLane));
+    return Math.max(2, ...lanes);
+  }, [actors, egoLane]);
 
   // Determine longitudinal s-range for road length
   const sRange = useMemo(() => {
@@ -311,14 +335,14 @@ export default function SVG2DRenderer({
       {maneuvers.map((m, i) => {
         const actor = actorMap.get(m.actor_name);
         if (!actor) return null;
-        const x = getLaneCenterX(actor.position.lane_offset);
+        const x = getLaneCenterX(laneNumber(actor.position.lane_offset, egoLane));
         const y = -actor.position.s_offset_m * S_SCALE;
         return maneuverArrow(x, y, m.maneuver, `man-${i}`);
       })}
 
       {/* Actors */}
       {actors.map((actor) => {
-        const x = getLaneCenterX(actor.position.lane_offset);
+        const x = getLaneCenterX(laneNumber(actor.position.lane_offset, egoLane));
         const y = -actor.position.s_offset_m * S_SCALE;
         const color = actor.is_ego ? EGO_COLOR : ACTOR_COLOR;
         return actorIcon(actor.category, x, y, color, actor.name, showLabels);
