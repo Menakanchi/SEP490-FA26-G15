@@ -267,6 +267,23 @@ def test_ambiguous_actor_roles_are_left_unknown():
     assert [actor["role"] for actor in parsed["actors"]] == ["unknown", "unknown"]
 
 
+def test_fixture_wording_keeps_explicit_ego_and_primary_cut_in_intent():
+    """Regression cho đúng câu production từng đảo vai và chọn nhầm phanh gấp."""
+    query = (
+        "Trên cao tốc vào ban ngày, trời quang, một xe máy chạy 80 km/h ở làn bên trái, "
+        "xuất phát cách phía sau ô tô ego 25 m đang chạy 60 km/h. Xe máy vượt lên, "
+        "tạt vào trước đầu ô tô rồi phanh gấp xuống còn 40 km/h."
+    )
+
+    result = parse_intent_node({"user_query": query})
+
+    assert result["odd_hints"].maneuver is ManeuverType.CUT_IN
+    assert [(actor["specific_type"], actor["role"]) for actor in result["actors"]] == [
+        ("xe máy", "adversary"),
+        ("ô tô", "ego"),
+    ]
+
+
 @patch("src.agents.nodes.parse_intent.get_llm")
 def test_parse_intent_llm_exception_handled(mock_get_llm):
     """Bắt ngoại lệ nếu gọi provider LLM thất bại."""

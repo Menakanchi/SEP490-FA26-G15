@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from unittest.mock import patch
 
 import pytest
 
@@ -187,6 +188,48 @@ class TestCreateMessages:
         assert messages[1]["role"] == "user"
 
 
+def test_generate_keeps_cross_field_invalid_output_for_repair():
+    """Invariant sai không được làm mất raw JSON trước node validate."""
+    raw = {
+        "title": "Xe máy tạt đầu",
+        "odd": ODD_CELL_CUT_IN.model_dump(mode="json"),
+        "time_of_day": "day",
+        "actors": [
+            {
+                "name": "hero",
+                "category": "car",
+                "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                "initial_speed_kmh": 60.0,
+                "is_ego": True,
+            },
+            {
+                "name": "adversary",
+                "category": "motorcycle",
+                "position": {"lane_offset": -1, "s_offset_m": -25.0},
+                "initial_speed_kmh": 80.0,
+                "is_ego": False,
+            },
+        ],
+        # Lỗi đúng như production: maneuver bị gán cho ego.
+        "maneuvers": [
+            {
+                "actor_name": "hero",
+                "maneuver": "cut_in",
+                "trigger": {"type": "simulation_time", "value": 7.0},
+                "target_speed_kmh": 40.0,
+            }
+        ],
+        "duration_s": 30.0,
+    }
+
+    with patch("src.services.llm.call_with_escalation", return_value=raw) as mock_llm:
+        result = generate_draft_node("Xe máy tạt đầu ô tô", ODD_CELL_CUT_IN)
+
+    assert result == raw
+    schema = mock_llm.call_args.args[1]
+    assert isinstance(schema, dict), "không truyền class Pydantic làm raw output bị validate quá sớm"
+
+
 # =============================================================================
 # Test generate_draft_node với API thật
 # =============================================================================
@@ -212,8 +255,8 @@ class TestGenerateDraftWithRealLLM:
             odd_cell=odd_cell,
         )
 
-        # Verify output là ScenarioDraft
-        assert isinstance(result, ScenarioDraft)
+        # Generate giữ raw JSON; validate_node mới dựng ScenarioDraft.
+        result = ScenarioDraft.model_validate(result)
         # Verify ODDCell được giữ nguyên
         assert result.odd == odd_cell
 
@@ -228,10 +271,11 @@ class TestGenerateDraftWithRealLLM:
             "wrong_way": "Xe máy đi ngược chiều.",
         }
 
-        result = generate_draft_node(
+        raw_result = generate_draft_node(
             user_query=user_queries[name],
             odd_cell=odd_cell,
         )
+        result = ScenarioDraft.model_validate(raw_result)
 
         # 1 ego
         egos = [a for a in result.actors if a.is_ego]

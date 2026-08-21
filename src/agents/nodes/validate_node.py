@@ -374,4 +374,6 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                         )
                     )
 
-    return {"issues": issues}
+    # Chuẩn hoá raw dict thành model chỉ sau khi toàn bộ schema validation đã
+    # qua. Node promote/converter từ đây luôn nhận ScenarioDraft thật.
+    return {"issues": issues, "draft": draft}

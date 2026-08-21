@@ -1,4 +1,4 @@
-"""Final graph node: durably persist a scenario and stop at pending_review."""
+"""Final graph node: persist a scenario and stop at BEFORE_SIM."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def _default_tags(spec: ScenarioSpec, state: ForgeState) -> list[str]:
     return list(dict.fromkeys(tags))
 
 
-async def persist_pending_review_node(
+async def persist_pending_sim_review_node(
     state: ForgeState,
     repository: ScenarioRepository | None = None,
 ) -> dict[str, Any]:
@@ -71,7 +71,7 @@ async def persist_pending_review_node(
         metrics["retrieved_examples"] = list(state.get("retrieved_examples", []) or [])
 
         repo = repository or get_repository()
-        repo.persist_pending_review(
+        repo.persist_pending_sim_review(
             request_id=state.get("request_id", spec.scenario_id),
             request_description_vi=state.get("user_query", spec.description_vi),
             scenario_description_vi=spec.description_vi,
@@ -84,7 +84,7 @@ async def persist_pending_review_node(
             node_metrics=metrics,
             tags=_default_tags(spec, state),
         )
-        return {"scenario_id": spec.scenario_id, "scenario_status": ScenarioStatus.PENDING_REVIEW}
+        return {"scenario_id": spec.scenario_id, "scenario_status": ScenarioStatus.PENDING_SIM_REVIEW}
     except Exception as exc:
         issue = ValidationIssue(
             code=IssueCode.PERSISTENCE_ERROR,

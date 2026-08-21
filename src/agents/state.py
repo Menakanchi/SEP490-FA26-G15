@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from src.models.schemas import (
     Assumption,
@@ -62,7 +62,8 @@ class ForgeState(TypedDict, total=False):
     # -- generate_draft / repair_draft (LLM) -------------------------------
     raw_text: str
     raw_draft: dict
-    draft: ScenarioDraft
+    draft: ScenarioDraft | dict[str, Any]
+    """Raw dict trước validation; ScenarioDraft sau khi validate thành công."""
     iteration: int
     """Số vòng repair đã dùng. Chỉ tăng khi repair **thật sự** chạy — retry vì lỗi
     provider không tính, nếu không thì một lần rate limit ăn mất một lượt sửa."""

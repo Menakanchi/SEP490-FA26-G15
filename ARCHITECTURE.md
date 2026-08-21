@@ -55,7 +55,7 @@ graph LR
     E --> D
     D -->|hợp lệ| F[convert_xosc]
     D -->|lỗi hệ thống / hết 3 vòng| X([failed])
-    F --> G[persist_pending_review]
+    F --> G[persist_pending_sim_review]
     G --> H([graph kết thúc])
 ```
 
@@ -78,7 +78,7 @@ Hai thao tác này không có retry/checkpoint/I/O độc lập nên không ph�
 | `validate` | `ScenarioDraft` | `list[ValidationIssue]` | Schema, invariants và static geometry |
 | `repair_draft` | draft + lỗi sửa được | `ScenarioDraft` mới | Sửa nội dung, tối đa ba vòng |
 | `convert_xosc` | `ScenarioSpec` đã promote | `xosc_content: str` | Biên dịch deterministic sang XML |
-| `persist_pending_review` | spec + XML + provenance | scenario `pending_review` | Ghi durable state rồi kết thúc graph |
+| `persist_pending_sim_review` | spec + XML + provenance | scenario `pending_sim_review` | Ghi durable state ở Cổng 1 rồi kết thúc graph |
 
 ### Routing sau validate
 
@@ -158,8 +158,8 @@ tay). Bài test đầu tiên của converter chính là:
 convert(fixtures/scenario_specs/sc_001.json) == sample_001_cut_in.xosc   (sau chuẩn hoá)
 ```
 
-**`persist_pending_review`** — ghi `ScenarioSpec` + XML + provenance, scenario ở
-`pending_review`, graph kết thúc. `ExecutionResult` tương ứng cho UI dựng trước
+**`persist_pending_sim_review`** — ghi `ScenarioSpec` + XML + provenance, scenario ở
+`pending_sim_review`, graph kết thúc. `ExecutionResult` tương ứng cho UI dựng trước
 khi có backend nằm ở `fixtures/execution_results/`.
 
 ## Sau workflow
@@ -169,31 +169,26 @@ trong graph.
 
 ```mermaid
 graph LR
-    P[(pending_review)] --> R1{BEFORE_LIBRARY}
+    P[(pending_sim_review)] --> R1{Cổng 1: BEFORE_SIM}
     R1 -->|reject + reason| RJ[rejected]
-    R1 -->|approve| SIM[("pending_sim_review<br/>đã vào thư viện · tải .xosc được")]
-    SIM --> R2{BEFORE_SIM}
-    R2 -->|không cần mô phỏng| LIB[(approved_library)]
-    R2 -->|approve| LIB
-    R2 -->|approve| JOB[ScenarioJob]
+    R1 -->|approve| JOB[ScenarioJob]
+    JOB --> Q[(simulation_queued)]
     JOB --> W[GPU worker]
     W --> RES[ExecutionResult]
-    RES --> V["verification: adversarial / ran_no_hazard / execution_failed"]
+    RES --> V["verification + trace/criteria"]
+    V --> PL[(pending_library_review)]
+    PL --> R2{Cổng 2: BEFORE_LIBRARY}
+    R2 -->|reject + reason| RJ
+    R2 -->|approve + embedding| LIB[(approved_library)]
 ```
 
-- `BEFORE_LIBRARY`: yêu cầu sản phẩm, ngăn dữ liệu xấu quay lại làm few-shot.
-- `BEFORE_SIM`: chính sách đội để kiểm soát tài nguyên GPU.
-- Qua `BEFORE_LIBRARY` là **tự mở** `BEFORE_SIM`: static chỉ chứng minh file
-  parse được, nên *"chỉ cần static"* không còn là điểm dừng hợp lệ và cờ
-  `validation_mode` của creator không còn quyết định gì. Vẫn **không** tự chạy
-  CARLA — cái tự động ở đây chỉ là bước chuyển trạng thái.
-- Hệ quả của việc đó: kịch bản đứng ở `pending_sim_review` suốt lúc chờ quyết
-  định sim, nên tải `.xosc` và `Retriever` đều phải coi trạng thái này là *đã
-  qua `BEFORE_LIBRARY`*, không chỉ nhận mỗi `approved_library`.
-- `ExecutionResult` quay về **không đổi `status`**, chỉ đặt `verification`
-  ([ADR-017](docs/adr/ADR-017-muc-kiem-chung-tach-khoi-trang-thai-duyet.md)):
-  kịch bản không bao giờ bị rút khỏi thư viện, chỉ thôi được dùng làm few-shot
-  khi đã chứng minh là hỏng.
+- `BEFORE_SIM` là Cổng 1: reviewer kiểm tra spec/XML sơ bộ và cấp phép dùng GPU.
+- Worker trả kết quả thì hệ thống ghi `verification`, trace/criteria và tự mở
+  `BEFORE_LIBRARY`; kết quả chạy không tự publish dữ liệu.
+- `BEFORE_LIBRARY` là Cổng 2: reviewer xem bằng chứng thực thi rồi mới quyết
+  định cho kịch bản vào thư viện và tạo embedding.
+- `.xosc` tải được ngay sau generation để phục vụ kiểm tra; retrieval chỉ nhận
+  đúng `approved_library` có embedding.
 
 ## Data lifecycle
 
@@ -218,8 +213,8 @@ và copy nguyên văn câu người dùng khi promote draft thành spec.
 | LLM ↔ backend | `ODDQuery`, `ScenarioDraft` | structured output, `extra="forbid"` |
 | Spec ↔ converter | `ScenarioSpec` | spec không chứa khái niệm riêng của CARLA |
 | Cloud ↔ GPU worker | `ScenarioJob.xosc_content` | không chia sẻ Python object/venv |
-| Transaction ↔ retrieval | truy cập qua interface `Retriever` | chỉ scenario qua `BEFORE_LIBRARY` mới có embedding để tìm lại |
-| Workflow ↔ human | durable `pending_review` state | không chờ trong process memory |
+| Transaction ↔ retrieval | truy cập qua interface `Retriever` | chỉ scenario `approved_library` mới có embedding để tìm lại |
+| Workflow ↔ human | durable `pending_sim_review` / `pending_library_review` | không chờ trong process memory |
 
 ## Converter và CARLA
 

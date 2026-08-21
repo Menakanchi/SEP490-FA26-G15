@@ -1,7 +1,7 @@
 """Chạy thông cả 7 node, LLM được mock.
 
 Test ở đây trả lời đúng một câu: *"một câu tiếng Việt có ra được một scenario
-``pending_review`` trong database không, và vòng sửa có dừng đúng không."*
+``pending_sim_review`` trong database không, và vòng sửa có dừng đúng không."*
 
 LLM mock chứ không gọi thật, vì thứ đang kiểm là **thứ tự và rẽ nhánh** — phần
 code thuần — chứ không phải chất lượng sinh của model. Đo chất lượng model là
@@ -87,6 +87,13 @@ def broken_draft() -> ScenarioDraft:
     return _draft(s_offset_m=20.0, adv_speed=80.0)
 
 
+def ego_maneuver_raw_draft() -> dict:
+    """Output LLM đúng shape nhưng sai invariant, như lỗi production trong UI."""
+    raw = good_draft().model_dump(mode="json")
+    raw["maneuvers"][0]["actor_name"] = "hero"
+    return raw
+
+
 def _scenarios_in_db() -> list[sqlite3.Row]:
     path = get_settings().database_url.removeprefix("sqlite:///")
     conn = sqlite3.connect(path)
@@ -110,7 +117,7 @@ async def _run(llm_returns: list[ScenarioDraft]):
 
 @pytest.mark.asyncio
 async def test_one_vietnamese_sentence_becomes_a_pending_scenario():
-    """Đường hạnh phúc: câu tiếng Việt -> .xosc -> pending_review trong DB.
+    """Đường hạnh phúc: câu tiếng Việt -> .xosc -> pending_sim_review trong DB.
 
     Đây là bất biến của NFR-05: workflow **không** giữ trạng thái chờ người
     duyệt trong RAM. Chạy xong là dữ liệu đã nằm trên đĩa, kể cả khi process
@@ -119,7 +126,7 @@ async def test_one_vietnamese_sentence_becomes_a_pending_scenario():
     final, mock_llm = await _run([good_draft()])
 
     assert mock_llm.call_count == 1, "draft đúng ngay thì không được gọi repair"
-    assert final["scenario_status"] is ScenarioStatus.PENDING_REVIEW
+    assert final["scenario_status"] is ScenarioStatus.PENDING_SIM_REVIEW
     assert final["scenario_id"] == "sc_001"
     assert final["xosc_content"].startswith("<?xml")
     assert not final.get("failed_reason")
@@ -127,7 +134,7 @@ async def test_one_vietnamese_sentence_becomes_a_pending_scenario():
     rows = _scenarios_in_db()
     assert len(rows) == 1
     assert rows[0]["scenario_id"] == "sc_001"
-    assert rows[0]["status"] == ScenarioStatus.PENDING_REVIEW.value
+    assert rows[0]["status"] == ScenarioStatus.PENDING_SIM_REVIEW.value
     # ADR-011: chưa duyệt thì chưa có vector, nên chưa tìm lại được.
     assert rows[0]["embedding"] is None
     # FR-01: câu gốc phải nguyên văn — `intent_match` đối chiếu với nó.
@@ -141,12 +148,23 @@ async def test_broken_draft_goes_through_repair_and_then_succeeds():
 
     assert mock_llm.call_count == 2, "một lần sinh, một lần sửa"
     assert final["iteration"] == 1
-    assert final["scenario_status"] is ScenarioStatus.PENDING_REVIEW
+    assert final["scenario_status"] is ScenarioStatus.PENDING_SIM_REVIEW
 
     # Lỗi của vòng đầu phải còn trong lịch sử, kể cả khi vòng sau đã sửa xong.
     # Failure analysis ở W5 đọc chính chỗ này.
     assert [i.code for i in final["issue_history"]] == [IssueCode.GEOM_NO_CATCHUP]
     assert len(_scenarios_in_db()) == 1
+
+
+@pytest.mark.asyncio
+async def test_raw_ego_maneuver_reaches_repair_instead_of_failing_generation():
+    """Regression: Pydantic không được nuốt raw JSON trước vòng repair."""
+    final, mock_llm = await _run([ego_maneuver_raw_draft(), good_draft()])
+
+    assert mock_llm.call_count == 2
+    assert final["scenario_status"] is ScenarioStatus.PENDING_SIM_REVIEW
+    assert final["iteration"] == 1
+    assert [issue.code for issue in final["issue_history"]] == [IssueCode.EGO_HAS_MANEUVER]
 
 
 @pytest.mark.asyncio
@@ -212,7 +230,7 @@ async def test_every_workflow_node_is_wired():
         "repair_draft",
         "promote",
         "convert_xosc",
-        "persist_pending_review",
+        "persist_pending_sim_review",
     }
 
 

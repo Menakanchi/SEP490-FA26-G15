@@ -103,7 +103,7 @@ def _default_db_path() -> Path:
 # `embedding` chỉ được ghi trong transaction duyệt BEFORE_LIBRARY, nên kịch bản
 # chưa duyệt không có vector — dù ai đó về sau lỡ xoá mất mệnh đề `status` thì
 # nó vẫn không lọt ra.
-_STATUS_GATE = "status IN ('approved_library', 'pending_sim_review') AND embedding IS NOT NULL"
+_STATUS_GATE = "status = 'approved_library' AND embedding IS NOT NULL"
 
 _ROW_COLUMNS = "scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding"
 

@@ -128,22 +128,9 @@ export default function LibraryPage() {
     void fetchData(search, next);
   };
 
-  // Download .xosc status gate
-  const handleDownload = async (
-    e: React.MouseEvent,
-    scenarioId: string,
-    status: string,
-  ) => {
+  const handleDownload = async (e: React.MouseEvent, scenarioId: string) => {
     e.preventDefault();
     e.stopPropagation();
-
-    if (status !== "approved_library") {
-      setToast({
-        type: "error",
-        msg: "Chỉ kịch bản đã qua duyệt BEFORE_LIBRARY mới được phép tải file .xosc",
-      });
-      return;
-    }
 
     try {
       const xml = await downloadXosc(scenarioId);
@@ -171,10 +158,12 @@ export default function LibraryPage() {
         return <span className="badge badge--approved">Đã duyệt (Library)</span>;
       case "rejected":
         return <span className="badge badge--rejected">Từ chối</span>;
-      case "pending_review":
-        return <span className="badge badge--pending font-mono">Chờ duyệt</span>;
       case "pending_sim_review":
-        return <span className="badge badge--before-sim">Chờ sim</span>;
+        return <span className="badge badge--before-sim">Chờ Cổng 1</span>;
+      case "simulation_queued":
+        return <span className="badge badge--before-sim">Đang chạy sim</span>;
+      case "pending_library_review":
+        return <span className="badge badge--pending font-mono">Chờ Cổng 2</span>;
       default:
         return <span className="badge">{status}</span>;
     }
@@ -302,7 +291,6 @@ export default function LibraryPage() {
         {!loading && items.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {items.map((item) => {
-              const isApproved = item.status === "approved_library";
               return (
                 <Link
                   key={item.scenario_id}
@@ -334,24 +322,14 @@ export default function LibraryPage() {
                       </span>
                     </div>
 
-                    {/* Bottom Action Row (Download Status Gate) */}
+                    {/* XML đã được sinh trước Cổng 1 nên luôn có thể tải để kiểm tra. */}
                     <div className="flex items-center justify-between pt-2 border-t border-slate-700/20">
                       {statusBadge(item.status)}
 
                       <button
-                        title={
-                          isApproved
-                            ? "Tải file .xosc"
-                            : "Chỉ kịch bản đã qua duyệt BEFORE_LIBRARY mới được phép tải file .xosc"
-                        }
-                        onClick={(e) =>
-                          handleDownload(e, item.scenario_id, item.status)
-                        }
-                        className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md transition-all ${
-                          isApproved
-                            ? "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30"
-                            : "bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-50"
-                        }`}
+                        title="Tải file .xosc"
+                        onClick={(e) => handleDownload(e, item.scenario_id)}
+                        className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md transition-all bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30"
                       >
                         <Download className="w-3 h-3" />
                         .xosc

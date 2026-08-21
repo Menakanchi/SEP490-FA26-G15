@@ -78,7 +78,7 @@ def temp_sqlite_db(tmp_path):
         ),
         (
             "sc_004",
-            "pending_review",
+            "pending_sim_review",
             "Xe con lấn làn",
             "Chưa được duyệt",
             "urban_straight",
@@ -161,7 +161,7 @@ def test_sqlite_retriever_status_gate(temp_sqlite_db):
     results = retriever.retrieve(query_text="Kịch bản bất kỳ", odd_query=None, limit=10)
     returned_ids = [r["id"] for r in results]
 
-    # sc_004 (pending_review), sc_005 (rejected), sc_006 (embedding NULL) KHÔNG ĐƯỢC lọt vào kết quả
+    # sc_004 (pending_sim_review), sc_005 (rejected), sc_006 (embedding NULL) KHÔNG ĐƯỢC lọt vào kết quả
     assert "sc_004" not in returned_ids
     assert "sc_005" not in returned_ids
     assert "sc_006" not in returned_ids

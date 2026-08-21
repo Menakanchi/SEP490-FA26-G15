@@ -41,7 +41,7 @@ from src.models.schemas import (
     ScenarioSpec,
     ScenarioStatus,
     VerificationLevel,
-    can_request_simulation,
+    next_status_after_execution,
     next_status_after_review,
 )
 
@@ -230,7 +230,7 @@ class ScenarioRepository:
     def create_schema(self) -> None:
         metadata.create_all(self.engine)
 
-    def persist_pending_review(
+    def persist_pending_sim_review(
         self,
         *,
         request_id: str,
@@ -245,7 +245,7 @@ class ScenarioRepository:
         node_metrics: dict[str, Any],
         tags: list[str] | None = None,
     ) -> None:
-        """Atomically persist a completed request and its pending scenario.
+        """Persist a completed generation at the first gate, BEFORE_SIM.
 
         Embedding is deliberately NULL here.  It may only be written by an
         approved BEFORE_LIBRARY review transaction.
@@ -256,7 +256,7 @@ class ScenarioRepository:
                 connection.execute(
                     insert(scenarios).values(
                         scenario_id=spec.scenario_id,
-                        status=ScenarioStatus.PENDING_REVIEW.value,
+                        status=ScenarioStatus.PENDING_SIM_REVIEW.value,
                         title=spec.title,
                         description_vi=scenario_description_vi,
                         created_by=created_by,
@@ -331,7 +331,9 @@ class ScenarioRepository:
         try:
             with self.engine.begin() as connection:
                 row = connection.execute(
-                    select(scenarios.c.status).where(scenarios.c.scenario_id == decision.scenario_id).with_for_update()
+                    select(scenarios.c.status, scenarios.c.xosc_content)
+                    .where(scenarios.c.scenario_id == decision.scenario_id)
+                    .with_for_update()
                 ).one_or_none()
                 if row is None:
                     raise PersistenceError("scenario does not exist")
@@ -381,6 +383,7 @@ class ScenarioRepository:
                             claimed_by=None,
                             claimed_at=None,
                             result=None,
+                            xosc_content=row.xosc_content,
                             created_at=now,
                             updated_at=now,
                         )
@@ -391,26 +394,28 @@ class ScenarioRepository:
         except Exception as exc:
             raise PersistenceError("could not apply review") from exc
 
-    def request_simulation(self, scenario_id: str) -> None:
-        """Move an approved library scenario to the second review gate."""
+    def record_execution(self, scenario_id: str, verification: VerificationLevel) -> ScenarioStatus:
+        """Persist worker evidence and atomically open BEFORE_LIBRARY."""
         try:
             with self.engine.begin() as connection:
                 row = connection.execute(
                     select(scenarios.c.status).where(scenarios.c.scenario_id == scenario_id).with_for_update()
                 ).one_or_none()
-                if row is None or not can_request_simulation(ScenarioStatus(row.status)):
-                    raise PersistenceError("scenario is not eligible for simulation review")
+                if row is None:
+                    raise PersistenceError("scenario does not exist")
+                current = ScenarioStatus(row.status)
+                target = next_status_after_execution(current)
+                if target is None:
+                    raise PersistenceError("scenario is not waiting for execution result")
                 changed = connection.execute(
                     update(scenarios)
-                    .where(
-                        scenarios.c.scenario_id == scenario_id,
-                        scenarios.c.status == ScenarioStatus.APPROVED_LIBRARY.value,
-                    )
-                    .values(status=ScenarioStatus.PENDING_SIM_REVIEW.value)
+                    .where(scenarios.c.scenario_id == scenario_id, scenarios.c.status == current.value)
+                    .values(status=target.value, verification=verification.value)
                 )
                 if changed.rowcount != 1:
-                    raise PersistenceError("scenario changed during simulation request")
+                    raise PersistenceError("scenario changed during execution result")
+                return target
         except PersistenceError:
             raise
         except Exception as exc:
-            raise PersistenceError("could not request simulation") from exc
+            raise PersistenceError("could not record execution") from exc

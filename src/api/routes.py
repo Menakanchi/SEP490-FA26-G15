@@ -30,8 +30,8 @@ from src.models.schemas import (
     ScenarioStatus,
     StatusResponse,
     TagUpdateRequest,
-    can_request_simulation,
     is_too_vague_to_generate,
+    next_status_after_execution,
     next_status_after_review,
     verification_from_execution,
 )
@@ -66,7 +66,7 @@ _STEP_ORDER = [
     "repair_draft",
     "promote",
     "convert_xosc",
-    "persist_pending_review",
+    "persist_pending_sim_review",
 ]
 
 
@@ -96,7 +96,7 @@ async def _run_workflow(request_id: str) -> None:
     ``generation_requests`` — tiến độ nằm trên đĩa, nên process chết giữa chừng
     thì client vẫn đọc được nó dừng ở đâu, thay vì poll mãi một thứ đã chết.
 
-    Node ``persist_pending_review`` tự chốt hàng request thành ``done``, nên ở
+    Node ``persist_pending_sim_review`` tự chốt hàng request thành ``done``, nên ở
     đây không ghi đè lại; chỉ xử lý nhánh **hỏng**.
     """
     req = db.get_generation_request(request_id)
@@ -122,7 +122,7 @@ async def _run_workflow(request_id: str) -> None:
                 # request thành done/100 ngay trong transaction của nó, và vòng
                 # lặp này chạy sau đó — ghi đè là kéo ngược 100% về 88%, client
                 # poll mãi không bao giờ thấy "done" dù kịch bản đã nằm trong DB.
-                if node == "persist_pending_review":
+                if node == "persist_pending_sim_review":
                     continue
                 db.update_generation_request(request_id, step=node, progress=_step_progress(node))
     except Exception as exc:
@@ -201,7 +201,7 @@ async def generate(body: GenerateRequest) -> GenerateResponse:
     request_id = str(uuid.uuid4())
 
     # Ghi hàng request TRƯỚC khi chạy workflow: client nhận request_id rồi poll
-    # ngay, nên hàng đó phải tồn tại trước. Node persist_pending_review sẽ chốt
+    # ngay, nên hàng đó phải tồn tại trước. Node persist_pending_sim_review sẽ chốt
     # nó thành done ở cuối luồng.
     db.create_generation_request(request_id, body.prompt, body.validation_mode, body.limit, created_by=body.created_by)
 
@@ -269,69 +269,21 @@ async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) ->
             ),
         )
 
+    if body.approved and gate is ReviewGate.BEFORE_SIM and not _has_xosc(scenario):
+        raise HTTPException(status_code=409, detail=UNCOMPILED_SCENARIO_DETAIL)
+
     db.update_scenario_status(target_id, next_status.value)
     scenario["status"] = next_status.value
 
     db.save_review_decision(target_id, body.gate, body.approved, body.reviewer, body.reason)
 
-    if body.approved and gate is ReviewGate.BEFORE_SIM and scenario.get("xosc_content"):
+    job_created = False
+    if body.approved and gate is ReviewGate.BEFORE_SIM:
         job_id = f"job_{uuid.uuid4().hex[:8]}"
         db.create_scenario_job(job_id, target_id, scenario["xosc_content"])
+        job_created = True
 
-    # Static chỉ chứng minh file parse được, không chứng minh kịch bản có ý
-    # nghĩa hay tái hiện đúng nguy hiểm mô tả. Qua được BEFORE_LIBRARY luôn mở
-    # sẵn BEFORE_SIM — không còn tuỳ theo `validation_mode` người tạo chọn lúc
-    # generate, vì "chỉ cần static" không phải một điểm dừng hợp lệ của sản phẩm.
-    #
-    # Vẫn KHÔNG tự chạy CARLA: cổng BEFORE_SIM còn nguyên, người vẫn phải gật
-    # trước khi tốn GPU. Cái tự động ở đây chỉ là bước chuyển trạng thái, không
-    # phải quyết định tiêu tài nguyên.
-    auto_opened = False
-    if body.approved and gate is ReviewGate.BEFORE_LIBRARY and _has_xosc(scenario):
-        db.update_scenario_status(target_id, ScenarioStatus.PENDING_SIM_REVIEW.value)
-        auto_opened = True
-        logger.info("%s qua BEFORE_LIBRARY — mở sẵn cổng BEFORE_SIM", target_id)
-
-    return {"ok": True, "sim_gate_opened": auto_opened}
-
-
-# ===========================================================================
-# POST /scenarios/{scenario_id}/request-sim — mở cổng duyệt thứ hai
-# ===========================================================================
-
-
-@router.post("/scenarios/{scenario_id}/request-sim")
-async def request_simulation(scenario_id: str) -> dict:
-    """``approved_library`` -> ``pending_sim_review``.
-
-    Đây **không** phải lệnh chạy CARLA. Nó chỉ mở cổng duyệt thứ hai.
-
-    Lý do cổng nằm ở đây, trước khi chạy chứ không sau: GPU là tài nguyên vật lý
-    có hạn, và đề bài đòi *"kỹ sư phải phê duyệt trước khi đưa vào bộ kiểm thử"*.
-    Để hệ thống tự đẩy job vào CARLA là để nó tự tiêu tài nguyên mà không ai gật.
-
-    Số phận của kịch bản đã chốt ở cổng 1 rồi — cả duyệt lẫn từ chối ở cổng 2
-    đều trả nó về ``approved_library`` (ADR-011 §3.3). Cổng 2 chỉ quyết định có
-    tốn GPU cho nó hay không.
-    """
-    scenario = _scenario_or_404(scenario_id)
-
-    current = ScenarioStatus(scenario["status"])
-    if not can_request_simulation(current):
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Chỉ kịch bản đã qua BEFORE_LIBRARY mới xin chạy mô phỏng được; kịch bản này đang ở '{current.value}'"
-            ),
-        )
-
-    if not _has_xosc(scenario):
-        # Không có file thì không có gì để chạy. Chặn ở đây thay vì để worker
-        # nhận một job rỗng rồi chết bằng lỗi XML chẳng nói gì về nguyên nhân.
-        raise HTTPException(status_code=409, detail=UNCOMPILED_SCENARIO_DETAIL)
-
-    db.update_scenario_status(scenario_id, ScenarioStatus.PENDING_SIM_REVIEW.value)
-    return {"ok": True, "status": ScenarioStatus.PENDING_SIM_REVIEW.value}
+    return {"ok": True, "status": next_status.value, "job_created": job_created}
 
 
 # ===========================================================================
@@ -424,19 +376,8 @@ async def get_scenario(scenario_id: str) -> dict:
 
 @router.get("/scenarios/{scenario_id}/xosc")
 async def get_scenario_xosc(scenario_id: str) -> Response:
-    """Tải file .xosc XML của scenario (chặn HTTP 403 khi chưa được duyệt BEFORE_LIBRARY)."""
+    """Tải XML để reviewer có thể kiểm tra ở cả hai cổng."""
     scenario = _scenario_or_404(scenario_id)
-
-    # `pending_sim_review` vẫn đã qua BEFORE_LIBRARY — cổng 2 tự mở ngay sau đó
-    # (xem POST /review) nên kịch bản nằm ở đây suốt lúc chờ quyết định sim, và
-    # vẫn phải tải được: FR-11 chỉ đòi "đã qua BEFORE_LIBRARY", không đòi thêm
-    # điều kiện đã xong luôn BEFORE_SIM.
-    current_status = scenario.get("status")
-    if current_status not in (ScenarioStatus.APPROVED_LIBRARY.value, ScenarioStatus.PENDING_SIM_REVIEW.value):
-        raise HTTPException(
-            status_code=403,
-            detail="Chỉ kịch bản đã qua duyệt BEFORE_LIBRARY mới được phép tải file .xosc",
-        )
 
     if not _has_xosc(scenario):
         # Thà 409 còn hơn phát ra một file trông như thật mà rỗng ruột. Ca này
@@ -466,18 +407,28 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
     Giờ nó cập nhật mức kiểm chứng của chính kịch bản, và mức đó quyết định
     kịch bản có được dùng làm ví dụ few-shot nữa hay không.
 
-    **Không** đổi ``status``: kịch bản không bị rút khỏi thư viện vì chạy ra
-    không đúng ý. Số phận nó do người quyết ở cổng 1; đây chỉ là bằng chứng.
+    Worker result mở cổng thứ hai; nó không tự đưa scenario vào thư viện.
     """
     job = db.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' không tồn tại")
+    if body.scenario_id != job["scenario_id"]:
+        raise HTTPException(status_code=422, detail="scenario_id trong kết quả không khớp job")
+
+    scenario = _scenario_or_404(body.scenario_id)
+    next_status = next_status_after_execution(ScenarioStatus(scenario["status"]))
+    if next_status is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Kịch bản đang ở '{scenario['status']}', không chờ kết quả mô phỏng",
+        )
 
     new_status = JobStatus.DONE.value if body.success else JobStatus.FAILED.value
     db.update_job_result(job_id, new_status, body.model_dump())
 
     level = verification_from_execution(body.success, body.criteria_results)
-    db.set_verification(body.scenario_id, level)
-    logger.info("Kịch bản %s -> mức kiểm chứng %s", body.scenario_id, level.value)
+    if not db.complete_simulation(body.scenario_id, level):
+        raise HTTPException(status_code=409, detail="Trạng thái kịch bản đã đổi trong lúc nhận kết quả")
+    logger.info("Kịch bản %s -> %s, chờ BEFORE_LIBRARY", body.scenario_id, level.value)
 
-    return {"ok": True, "verification": level.value}
+    return {"ok": True, "verification": level.value, "status": next_status.value}

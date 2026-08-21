@@ -135,9 +135,18 @@ def _infer_actor_roles(
             roles[preceding[-1]] = "adversary"
 
     victim_pattern = re.compile(r"\b(?:bi|khong kip tranh|khong the tranh|phai ne tranh)\b")
-    for idx, (_start, end, _code) in enumerate(actor_spans):
+    for idx, (start, end, _code) in enumerate(actor_spans):
         next_start = actor_spans[idx + 1][0] if idx + 1 < len(actor_spans) else len(query_no_accents)
         if victim_pattern.search(query_no_accents[end:next_start]):
+            roles[idx] = "ego"
+
+        # Người dùng gọi thẳng "ô tô ego" / "ego ô tô" là bằng chứng mạnh
+        # hơn heuristic "actor gần maneuver nhất". Không ưu tiên marker này
+        # thì câu fixture thật gán ô tô thành adversary chỉ vì nó được nhắc gần
+        # chữ "tạt" hơn xe máy — rồi generator đảo luôn tốc độ 60/80.
+        before = query_no_accents[max(0, start - 12) : start]
+        after = query_no_accents[end : min(next_start, end + 24)]
+        if re.search(r"\bego\s*$", before) or re.match(r"\s*(?:la\s+)?ego\b", after):
             roles[idx] = "ego"
 
     if len(roles) == 2 and roles.count("unknown") == 1:
