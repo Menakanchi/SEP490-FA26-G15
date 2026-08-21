@@ -455,3 +455,150 @@ async def test_tags_can_be_replaced(client):
     assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["tags"] == ["mưa bão", "regression"]
 
     assert (await client.put("/api/v1/scenarios/sc_99999/tags", json={"tags": []})).status_code == 404
+
+
+# ===========================================================================
+# ADR-015 — chặn câu trùng ở lối vào
+# ===========================================================================
+
+
+async def _post_generate(client, prompt: str, **extra) -> dict:
+    """``POST /generate`` với LLM mock. Trả về body, không poll.
+
+    Mock kể cả khi test mong đợi **không** có workflow nào chạy: nếu chặn trùng
+    hỏng thì task nền sẽ chạy thật, và không mock nghĩa là lỗi hiện ra dưới dạng
+    một lần gọi API trả phí thay vì một assert đỏ.
+    """
+    with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
+        response = await client.post(
+            "/api/v1/generate",
+            json={"prompt": prompt, "validation_mode": "static", **extra},
+        )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+@pytest.mark.asyncio
+async def test_go_lai_dung_cau_cu_khong_sinh_kich_ban_thu_hai(client):
+    """Câu đã sinh rồi thì trả lại kịch bản cũ, không chạy lại bảy node.
+
+    Đây là toàn bộ lý do ADR-015 tồn tại: chạy lại tốn tối thiểu hai lượt LLM để
+    ra một bản "anh em họ" — khác 78 km/h với 80 km/h — rồi bắt người duyệt
+    duyệt lại thứ họ đã duyệt.
+    """
+    prompt = "Xe máy tạt đầu ô tô trên đường cao tốc"
+    sc_id = await _generate_one(client, prompt)
+
+    body = await _post_generate(client, prompt)
+
+    assert body["duplicate"]["scenario_id"] == sc_id
+    assert body["duplicate"]["scenario_status"] == "pending_sim_review"
+    assert (await client.get("/api/v1/scenarios")).json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_khac_hoa_va_khoang_trang_van_tinh_la_trung(client):
+    """Khoá tra là chuỗi **đã chuẩn hoá**, không phải chuỗi thô."""
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+
+    body = await _post_generate(client, "  xe MÁY   tạt đầu ô tô trên   đường cao tốc \n")
+
+    assert body["duplicate"]["scenario_id"] == sc_id
+
+
+@pytest.mark.asyncio
+async def test_trung_voi_kich_ban_da_bi_tu_choi_tra_ve_ly_do(client):
+    """Lý do từ chối là thông tin đắt nhất trong cả tình huống này.
+
+    Nó nói vì sao hướng đó đã bị loại — thứ mà sinh lại lần nữa không bao giờ
+    nói được, vì lần sinh mới chỉ đẻ thêm một bản gần giống rồi vào lại hàng chờ.
+    """
+    prompt = "Xe máy tạt đầu ô tô trên đường cao tốc"
+    sc_id = await _generate_one(client, prompt)
+    await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_sim",
+            "approved": False,
+            "reviewer": "Simulation Reviewer",
+            "reason": "Tổ hợp này đã có trong bộ regression, không cần thêm",
+        },
+    )
+
+    body = await _post_generate(client, prompt)
+
+    assert body["duplicate"]["scenario_status"] == "rejected"
+    assert body["duplicate"]["reason"] == "Tổ hợp này đã có trong bộ regression, không cần thêm"
+
+
+@pytest.mark.asyncio
+async def test_force_generate_van_sinh_moi(client):
+    """Gõ lại đôi khi là cố ý. §15.4 báo chứ không chặn cứng."""
+    prompt = "Xe máy tạt đầu ô tô trên đường cao tốc"
+    await _generate_one(client, prompt)
+
+    body = await _post_generate(client, prompt, force_generate=True)
+
+    assert body["duplicate"] is None
+    assert body["request_id"]
+
+
+@pytest.mark.asyncio
+async def test_lan_sinh_hong_khong_tinh_la_trung(client):
+    """Hỏng vì hạ tầng thì gõ lại là đúng việc cần làm.
+
+    Chặn nó là biến một lỗi tạm thời — hết quota, provider 500 — thành lỗi vĩnh
+    viễn: câu đó không bao giờ sinh được nữa mà không ai hiểu vì sao.
+    """
+    from src.services import db
+
+    prompt = "Xe máy tạt đầu ô tô trên đường cao tốc"
+    db.create_generation_request("req_hong", prompt, "static")
+    db.update_generation_request("req_hong", status="failed", step="failed", error="rate limit")
+
+    body = await _post_generate(client, prompt)
+
+    assert body["duplicate"] is None
+    assert body["request_id"] != "req_hong"
+
+
+@pytest.mark.asyncio
+async def test_hai_request_giong_het_den_cung_luc_chi_mo_mot_lan_sinh(client):
+    """Race condition ở khe giữa "tra thấy chưa có ai chạy" và "INSERT".
+
+    Khe đó đủ rộng cho request thứ hai lọt qua, nên phép phân xử phải nằm ở tầng
+    DB — unique index từng phần — chứ không phải ở một phép kiểm trong Python.
+    """
+    from src.services import db
+
+    prompt = "Xe máy tạt đầu ô tô trên đường cao tốc"
+    with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
+        payload = {"prompt": prompt, "validation_mode": "static"}
+        first, second = await asyncio.gather(
+            client.post("/api/v1/generate", json=payload),
+            client.post("/api/v1/generate", json=payload),
+        )
+
+    assert {first.status_code, second.status_code} == {200}
+    with db._cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) AS n FROM generation_requests")
+        assert cursor.fetchone()["n"] == 1
+
+
+def test_create_generation_request_tu_chan_ban_thu_hai_dang_chay():
+    """Hàng rào thật nằm ở DB — test thẳng nó, không qua HTTP.
+
+    Test qua ``asyncio.gather`` ở trên phụ thuộc vào việc hai coroutine thực sự
+    xen nhau; test này thì không phụ thuộc vào timing nào.
+    """
+    from src.services import db
+
+    prompt = "Xe máy tạt đầu ô tô trên đường cao tốc"
+    db.create_generation_request("req_1", prompt, "static")
+
+    with pytest.raises(db.DuplicateRequestInFlightError):
+        db.create_generation_request("req_2", prompt, "static")
+
+    # force_generate ghi NULL nên đứng ngoài index — luôn chạy được.
+    db.create_generation_request("req_3", prompt, "static", force_generate=True)

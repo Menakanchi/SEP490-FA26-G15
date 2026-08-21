@@ -34,6 +34,8 @@ Ba ranh giới cứng, đọc kỹ trước khi thêm trường:
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from datetime import datetime
 from enum import StrEnum
 from typing import ClassVar, Literal, get_args
@@ -1274,6 +1276,30 @@ def is_too_vague_to_generate(prompt: str) -> bool:
     return len(text) < 10 or len(text.split()) < 3 or text.isnumeric()
 
 
+_WHITESPACE_RUN = re.compile(r"\s+")
+
+
+def normalize_prompt(prompt: str) -> str:
+    """Khoá tra cứu trùng lặp của một câu mô tả (ADR-015 §15.2).
+
+    NFC -> cắt hai đầu -> gộp khoảng trắng -> ``casefold()``. Đây là **nguồn sự
+    thật duy nhất**: cả đường ghi (``create_generation_request``,
+    ``persist_pending_sim_review``) lẫn đường tra đều gọi hàm này. Hai đường mà
+    chuẩn hoá khác nhau thì tra không bao giờ trúng, và hỏng **im lặng** — không
+    lỗi nào bắn ra, chỉ là tính năng chặn trùng ngừng hoạt động.
+
+    **Không bỏ dấu tiếng Việt.** "tạt đầu" và "tát đầu" là hai câu khác nhau; bỏ
+    dấu là gộp nhầm chúng làm một, và đây là khoá dùng để **không chạy lại** một
+    lần sinh — gộp nhầm nghĩa là trả về kết quả của câu khác.
+
+    NFC đứng trước ``casefold()`` vì thứ tự ngược lại không ổn định trên tổ hợp
+    dấu tiếng Việt: cùng một câu gõ bằng Telex và bằng bàn phím Unicode dựng sẵn
+    cho ra hai chuỗi code point khác nhau mà mắt người không phân biệt được.
+    """
+    text = unicodedata.normalize("NFC", prompt or "")
+    return _WHITESPACE_RUN.sub(" ", text).strip().casefold()
+
+
 class GenerateRequest(ForgeModel):
     """``POST /generate`` — body từ frontend.
 
@@ -1289,12 +1315,41 @@ class GenerateRequest(ForgeModel):
     )
     validation_mode: ValidationMode = "static"
     limit: int = Field(3, ge=1, le=20, description="Số kịch bản mẫu cần retrieve (top-k)")
+    force_generate: bool = Field(
+        False,
+        description="Sinh mới kể cả khi câu này đã được sinh trước đó (ADR-015 §15.4).",
+    )
+
+
+class DuplicateMatch(ForgeModel):
+    """Lần sinh cũ của **đúng câu này**, đính kèm phản hồi của ``POST /generate``.
+
+    Không phải lỗi và không phải 4xx (ADR-015 §Hệ quả): người dùng vẫn được sinh
+    mới bằng ``force_generate``. Đây là thông tin để họ quyết định.
+
+    ``reason`` là trường đắt nhất ở đây. Với một kịch bản đã bị từ chối, nó nói
+    vì sao hướng đó đã bị loại — thứ mà sinh lại lần nữa không bao giờ nói được,
+    vì lần sinh mới chỉ tạo ra một bản anh-em-họ rồi vào lại hàng chờ duyệt.
+    """
+
+    scenario_id: str | None = None
+    scenario_status: str | None = None
+    title: str | None = None
+    reason: str | None = Field(None, description="Lý do từ chối, nếu kịch bản cũ bị loại")
+    request_status: str | None = Field(None, description="running/done/failed của lần sinh cũ")
 
 
 class GenerateResponse(ForgeModel):
-    """``POST /generate`` — response. Client dùng ``request_id`` để poll ``/status``."""
+    """``POST /generate`` — response. Client dùng ``request_id`` để poll ``/status``.
 
-    request_id: str
+    ``request_id`` là ``None`` **chỉ** khi câu này trùng với một kịch bản không
+    có hàng ``generation_requests`` nào trỏ tới (dữ liệu seed, hoặc bản ghi từ
+    trước khi có bảng đó). Không có gì để poll, nên client đọc thẳng
+    ``duplicate.scenario_id``.
+    """
+
+    request_id: str | None = None
+    duplicate: DuplicateMatch | None = None
 
 
 class StatusResponse(ForgeModel):

@@ -43,6 +43,7 @@ from src.models.schemas import (
     VerificationLevel,
     next_status_after_execution,
     next_status_after_review,
+    normalize_prompt,
 )
 
 metadata = MetaData()
@@ -54,6 +55,10 @@ scenarios = Table(
     Column("status", String(32), nullable=False),
     Column("title", String(120), nullable=False),
     Column("description_vi", Text, nullable=False),
+    # Khoá chặn trùng ở lối vào (ADR-015 §15.2): dạng đã chuẩn hoá của chính
+    # ``description_vi`` ở hàng này. Nullable vì hàng có từ trước khi cột này tồn
+    # tại; ``init_db()`` backfill chúng.
+    Column("description_normalized", Text, nullable=True),
     # Người tạo. Đề bài đòi "ít nhất 2 vai trò: người tạo và người duyệt" — không
     # lưu ai tạo thì hệ thống có ĐÚNG MỘT vai trò, và không phân biệt được người
     # tự duyệt bài của mình với người duyệt hộ. Không xác thực (đề bài không đòi),
@@ -80,12 +85,19 @@ Index("ix_scenarios_weather", scenarios.c.weather)
 Index("ix_scenarios_actor_type", scenarios.c.actor_type)
 Index("ix_scenarios_maneuver", scenarios.c.maneuver)
 Index("ix_scenarios_verification", scenarios.c.verification)
+# Có index thì tra trùng là một lần seek. Không có thì mỗi ``POST /generate`` quét
+# cả bảng — ADR-015 §Hệ quả đòi index chính vì thế.
+Index("ix_scenarios_description_normalized", scenarios.c.description_normalized)
 
 generation_requests = Table(
     "generation_requests",
     metadata,
     Column("request_id", String(64), primary_key=True),
     Column("description_vi", Text, nullable=False),
+    # Xem ghi chú cùng tên ở bảng ``scenarios``. ``NULL`` mang thêm một nghĩa ở
+    # đây: lần sinh này được yêu cầu bằng ``force_generate``, nên nó cố ý đứng
+    # ngoài cả phép tra trùng lẫn unique index bên dưới.
+    Column("description_normalized", Text, nullable=True),
     Column("created_by", String(255), nullable=False, server_default="unknown"),
     Column("validation_mode", String(32), nullable=False),
     Column("status", String(16), nullable=False),
@@ -105,6 +117,22 @@ generation_requests = Table(
     # Top-k người dùng chọn ở FE. Lưu lại vì nó đổi kết quả retrieval — không có
     # nó thì không tái dựng được một lần sinh đã xảy ra.
     Column("retrieve_limit", Integer, nullable=False, server_default="3"),
+)
+
+# Hai request giống hệt nhau tới cùng lúc thì cái sau phải hỏng ở tầng DB, không
+# phải ở tầng ứng dụng: giữa lúc handler đọc "chưa có ai chạy" và lúc nó INSERT
+# có một khe thời gian, và khe đó đủ rộng cho request thứ hai lọt qua. Unique
+# index từng phần đóng khe đó mà không cần khoá trong process — thứ vốn vô dụng
+# khi có nhiều worker.
+#
+# ``NULL`` không đụng unique index trong cả SQLite lẫn Postgres, nên
+# ``force_generate`` (ghi ``NULL``) luôn chạy được, kể cả song song.
+Index(
+    "ux_generation_requests_running_description",
+    generation_requests.c.description_normalized,
+    unique=True,
+    sqlite_where=generation_requests.c.status == "running",
+    postgresql_where=generation_requests.c.status == "running",
 )
 
 review_decisions = Table(
@@ -259,6 +287,7 @@ class ScenarioRepository:
                         status=ScenarioStatus.PENDING_SIM_REVIEW.value,
                         title=spec.title,
                         description_vi=scenario_description_vi,
+                        description_normalized=normalize_prompt(scenario_description_vi),
                         created_by=created_by,
                         spec=spec.model_dump(mode="json"),
                         xosc_content=xosc_content,

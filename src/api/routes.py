@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from src.agents.graph import build_forge_graph
 from src.models.schemas import (
     TOO_VAGUE_MESSAGE,
+    DuplicateMatch,
     # Domain models
     ExecutionResult,
     # API models
@@ -33,6 +34,7 @@ from src.models.schemas import (
     is_too_vague_to_generate,
     next_status_after_execution,
     next_status_after_review,
+    normalize_prompt,
     verification_from_execution,
 )
 from src.services import db
@@ -198,16 +200,62 @@ async def generate(body: GenerateRequest) -> GenerateResponse:
     if is_too_vague_to_generate(body.prompt):
         raise HTTPException(status_code=400, detail=TOO_VAGUE_MESSAGE)
 
+    # Chặn trùng đứng TRƯỚC parse_intent (ADR-015 §15.1). Đặt sau nó thì đã tiêu
+    # mất một lượt LLM trước khi biết là câu này đã chạy rồi; đặt ở đây thì một
+    # lần gõ lại tốn đúng một phép seek trên index.
+    normalized = normalize_prompt(body.prompt)
+    if not body.force_generate:
+        duplicate = db.find_duplicate_prompt(normalized)
+        if duplicate:
+            return _duplicate_response(duplicate)
+
     request_id = str(uuid.uuid4())
 
     # Ghi hàng request TRƯỚC khi chạy workflow: client nhận request_id rồi poll
     # ngay, nên hàng đó phải tồn tại trước. Node persist_pending_sim_review sẽ chốt
     # nó thành done ở cuối luồng.
-    db.create_generation_request(request_id, body.prompt, body.validation_mode, body.limit, created_by=body.created_by)
+    try:
+        db.create_generation_request(
+            request_id,
+            body.prompt,
+            body.validation_mode,
+            body.limit,
+            created_by=body.created_by,
+            force_generate=body.force_generate,
+        )
+    except db.DuplicateRequestInFlightError:
+        # Hai request giống hệt tới cùng lúc: cả hai cùng thấy "chưa có ai chạy"
+        # ở phép tra bên trên, rồi unique index loại cái tới sau. Tra lại để trả
+        # về lần sinh đã thắng, thay vì báo lỗi cho một request hợp lệ.
+        duplicate = db.find_duplicate_prompt(normalized)
+        if duplicate:
+            return _duplicate_response(duplicate)
+        raise
 
     asyncio.create_task(_run_workflow(request_id))
 
     return GenerateResponse(request_id=request_id)
+
+
+def _duplicate_response(duplicate: dict) -> GenerateResponse:
+    """Phản hồi "đã tồn tại" — **không** phải lỗi, nên không dùng 4xx.
+
+    ``request_id`` được trả lại nguyên: với lần sinh đang chạy thì client poll
+    tiếp lần sinh đó, với lần sinh đã xong thì ``GET /status`` trả ngay
+    ``done`` + ``scenario_id``. Client không cần đường xử lý riêng để lấy kết
+    quả — chỉ cần đọc ``duplicate`` nếu muốn giải thích cho người dùng vì sao
+    không có gì chạy.
+    """
+    return GenerateResponse(
+        request_id=duplicate.get("request_id"),
+        duplicate=DuplicateMatch(
+            scenario_id=duplicate.get("scenario_id"),
+            scenario_status=duplicate.get("scenario_status"),
+            title=duplicate.get("title"),
+            reason=duplicate.get("reason"),
+            request_status=duplicate.get("request_status"),
+        ),
+    )
 
 
 # ===========================================================================

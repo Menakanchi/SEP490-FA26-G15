@@ -169,3 +169,60 @@ def test_generation_request_round_trips_retrieve_limit() -> None:
     db.update_generation_request("req_1", step="retrieve", progress=25)
     updated = db.get_generation_request("req_1")
     assert (updated["step"], updated["progress"], updated["limit"]) == ("retrieve", 25, 7)
+
+
+# ===========================================================================
+# ADR-015 — khoá chặn trùng
+# ===========================================================================
+
+
+def test_init_db_backfill_description_normalized_cho_hang_cu() -> None:
+    """Hàng ghi trước khi có cột này phải được điền, nếu không chúng vô hình.
+
+    Đây là ca thật chứ không phải giả định: 10/27 kịch bản trên bản dev không có
+    hàng ``generation_requests`` nào trỏ tới, và cả 10 đều đang ở
+    ``approved_library`` — tức là đúng phần thư viện có sẵn nhiều nhất.
+    """
+    _save("sc_cu")
+    with _connect() as conn:
+        conn.execute("UPDATE scenarios SET description_normalized = NULL")
+        conn.commit()
+
+    db.init_db()
+
+    with _connect() as conn:
+        row = conn.execute("SELECT description_normalized FROM scenarios WHERE scenario_id = 'sc_cu'").fetchone()
+    assert row["description_normalized"] == "xe máy tạt đầu ô tô trên cao tốc"
+
+
+def test_tim_duoc_kich_ban_khong_co_generation_request() -> None:
+    """LEFT JOIN, không INNER JOIN.
+
+    Kịch bản seed không có hàng request nào trỏ tới; INNER JOIN làm chúng vô
+    hình với phép tra trùng, và người dùng gõ lại một câu seed sẽ sinh bản sao.
+    """
+    _save("sc_seed")
+
+    match = db.find_duplicate_prompt("xe máy tạt đầu ô tô trên cao tốc")
+
+    assert match["scenario_id"] == "sc_seed"
+    assert match["request_id"] is None
+
+
+def test_cau_chua_tung_go_khong_phai_la_trung() -> None:
+    _save("sc_001")
+    assert db.find_duplicate_prompt("một câu hoàn toàn khác chưa ai gõ") is None
+    assert db.find_duplicate_prompt("") is None
+
+
+def test_migration_chay_lai_duoc_nhieu_lan() -> None:
+    """``init_db`` là đường mà ``scripts/init_db.py`` gọi mỗi lần deploy.
+
+    Không idempotent thì lần chạy thứ hai hoặc đổ vì index đã tồn tại, hoặc ghi
+    đè khoá của những hàng lần một vừa điền.
+    """
+    _save("sc_001")
+    db.init_db()
+    db.init_db()
+
+    assert db.find_duplicate_prompt("xe máy tạt đầu ô tô trên cao tốc")["scenario_id"] == "sc_001"
