@@ -56,10 +56,29 @@ export interface GeneratePayload {
   limit?: number;
   /** Người tạo. Đề bài đòi hai vai trò tạo/duyệt — đây là vế thứ nhất. */
   created_by?: string;
+  /** Sinh mới kể cả khi câu này đã được sinh trước đó (ADR-015 §15.4). */
+  force_generate?: boolean;
+}
+
+/** Lần sinh cũ của đúng câu vừa gõ. Không phải lỗi — backend vẫn trả 200. */
+export interface DuplicateMatch {
+  scenario_id: string | null;
+  scenario_status: string | null;
+  title: string | null;
+  /** Lý do từ chối, nếu kịch bản cũ bị loại. */
+  reason: string | null;
+  /** running/done/failed của lần sinh cũ. */
+  request_status: string | null;
 }
 
 export interface GenerateResponse {
-  request_id: string;
+  /**
+   * `null` chỉ khi câu này trùng với một kịch bản không có lần sinh nào trỏ
+   * tới (dữ liệu seed). Không có gì để poll — đọc `duplicate.scenario_id`.
+   */
+  request_id: string | null;
+  /** Có giá trị khi câu này đã được sinh trước đó; `null` khi sinh mới. */
+  duplicate: DuplicateMatch | null;
 }
 
 export async function postGenerate(

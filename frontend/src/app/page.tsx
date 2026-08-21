@@ -161,6 +161,19 @@ function GeneratorPageContent() {
         limit: retrieveLimit,
         created_by: createdBy.trim() || "unknown",
       });
+
+      // Câu này trùng một kịch bản không có lần sinh nào trỏ tới (dữ liệu seed),
+      // nên không có gì để poll. Mở thẳng kịch bản đã có (ADR-015 §15.4).
+      // Các ca trùng khác vẫn có request_id — đang chạy thì poll tiếp lần sinh
+      // đó, đã xong thì `/status` trả ngay done + scenario_id.
+      if (!res.request_id) {
+        if (res.duplicate?.scenario_id) {
+          router.push(`/library/${res.duplicate.scenario_id}`);
+          return;
+        }
+        throw new Error("Backend không trả request_id cho lần sinh này.");
+      }
+
       const url = new URL(window.location.href);
       url.searchParams.set("id", res.request_id);
       router.replace(url.pathname + url.search);

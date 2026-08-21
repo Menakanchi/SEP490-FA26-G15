@@ -25,10 +25,10 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from src.config import get_settings
-from src.models.schemas import ScenarioStatus, VerificationLevel, odd_axis_value
+from src.models.schemas import ScenarioStatus, VerificationLevel, normalize_prompt, odd_axis_value
 from src.services.llm import EMBEDDING_MODEL
 from src.services.persistence import connect_sqlite, make_engine, metadata, sqlite_path
 
@@ -73,10 +73,14 @@ def _cursor(*, commit: bool = False) -> Iterator[sqlite3.Cursor]:
 
 
 def init_db() -> None:
-    """Dựng schema từ định nghĩa dùng chung ở ``persistence.py``.
+    """Dựng schema từ định nghĩa dùng chung ở ``persistence.py``, rồi migrate dữ liệu cũ.
 
     Cố ý **không** gọi lúc import: import một module không nên đẻ ra file trên
     đĩa. ``scripts/init_db.py`` và fixture của test là chỗ gọi nó.
+
+    ``create_all`` bỏ qua **toàn bộ** một bảng đã tồn tại, gồm cả index và cột
+    mới của nó. Với database rỗng thì nó dựng đủ và các bước dưới thành no-op;
+    với database đã có dữ liệu thì các bước dưới mới là thứ thực sự migrate.
     """
     engine = make_engine(get_settings().database_url)
     metadata.create_all(engine)
@@ -87,6 +91,73 @@ def init_db() -> None:
             text("UPDATE scenarios SET status = :new_status WHERE status = 'pending_review'"),
             {"new_status": ScenarioStatus.PENDING_SIM_REVIEW.value},
         )
+    _migrate_description_normalized(engine)
+
+
+_NORMALIZED_TABLES = ("scenarios", "generation_requests")
+
+
+def _migrate_description_normalized(engine) -> None:
+    """Thêm, backfill và đánh index cột khoá chặn trùng của ADR-015.
+
+    Chạy được nhiều lần: mỗi bước tự kiểm tra trạng thái hiện có. Không dùng
+    ``ADD COLUMN IF NOT EXISTS`` vì SQLite không có cú pháp đó, còn ADR-011 chốt
+    cùng một schema chạy trên cả SQLite lẫn Postgres.
+    """
+    inspector = inspect(engine)
+    for table in _NORMALIZED_TABLES:
+        if table not in inspector.get_table_names():
+            continue
+        if "description_normalized" not in {col["name"] for col in inspector.get_columns(table)}:
+            with engine.begin() as connection:
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN description_normalized TEXT"))
+
+        # Backfill trong Python, không trong SQL: chuẩn hoá phải đi qua đúng
+        # ``normalize_prompt``. Viết lại nó bằng hàm chuỗi của SQLite là dựng cái
+        # định nghĩa thứ hai mà ADR-015 §15.2 cấm — và bản SQL sẽ không bao giờ
+        # có ``casefold()`` cho tiếng Việt.
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(f"SELECT rowid AS rid, description_vi FROM {table} WHERE description_normalized IS NULL")
+            ).fetchall()
+            for row in rows:
+                connection.execute(
+                    text(f"UPDATE {table} SET description_normalized = :value WHERE rowid = :rid"),
+                    {"value": normalize_prompt(row.description_vi), "rid": row.rid},
+                )
+        if rows:
+            logger.info("Backfill description_normalized cho %d hàng ở %s", len(rows), table)
+
+    with engine.begin() as connection:
+        # Unique index không dựng được nếu dữ liệu cũ đã vi phạm nó. Hàng
+        # ``running`` trùng nhau là rác của tiến trình chết giữa chừng — giữ hàng
+        # mới nhất, trả các hàng còn lại về NULL để chúng đứng ngoài index.
+        connection.execute(
+            text(
+                """
+                UPDATE generation_requests SET description_normalized = NULL
+                WHERE status = 'running' AND description_normalized IS NOT NULL
+                  AND request_id NOT IN (
+                      SELECT request_id FROM (
+                          SELECT request_id,
+                                 ROW_NUMBER() OVER (
+                                     PARTITION BY description_normalized ORDER BY created_at DESC, request_id DESC
+                                 ) AS rn
+                          FROM generation_requests WHERE status = 'running'
+                      ) ranked WHERE rn = 1
+                  )
+                """
+            )
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_scenarios_description_normalized ON scenarios (description_normalized)")
+        )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_generation_requests_running_description "
+                "ON generation_requests (description_normalized) WHERE status = 'running'"
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -94,13 +165,39 @@ def init_db() -> None:
 # ---------------------------------------------------------------------------
 
 
+class DuplicateRequestInFlightError(RuntimeError):
+    """Đã có một lần sinh **đang chạy** cho đúng câu này.
+
+    Do unique index từng phần ở ``persistence.py`` ném ra, không phải do một
+    phép kiểm trong Python: hai request song song đều đọc thấy "chưa có ai chạy"
+    trước khi bên nào kịp INSERT, nên chỉ tầng DB mới phân xử được.
+    """
+
+
 def create_generation_request(
-    request_id: str, description_vi: str, validation_mode: str, limit: int = 3, created_by: str = "unknown"
+    request_id: str,
+    description_vi: str,
+    validation_mode: str,
+    limit: int = 3,
+    created_by: str = "unknown",
+    force_generate: bool = False,
 ) -> dict:
+    """Mở một hàng ``generation_requests`` ở trạng thái ``running``.
+
+    ``force_generate`` ghi ``description_normalized = NULL``: hàng đó cố ý đứng
+    ngoài unique index, nên kỹ sư chủ động sinh lại luôn chạy được, kể cả khi
+    một lần sinh của đúng câu đó đang chạy. Kịch bản nó tạo ra vẫn tìm lại được
+    về sau — ``scenarios.description_normalized`` luôn được ghi (ADR-015 §15.4).
+
+    Ném :class:`DuplicateRequestInFlightError` nếu đã có lần sinh đang chạy cho câu
+    này. Người gọi tra lại rồi trả về lần sinh đó, chứ không tạo bản thứ hai.
+    """
     now_str = datetime.now(UTC).isoformat()
+    normalized = None if force_generate else normalize_prompt(description_vi)
     req_dict = {
         "request_id": request_id,
         "description_vi": description_vi,
+        "description_normalized": normalized,
         "validation_mode": validation_mode,
         "created_by": created_by,
         "limit": limit,
@@ -112,34 +209,49 @@ def create_generation_request(
         "created_at": now_str,
         "updated_at": now_str,
     }
-    with _cursor(commit=True) as cursor:
-        cursor.execute(
-            """
-        INSERT OR REPLACE INTO generation_requests
-        (request_id, description_vi, created_by, validation_mode, retrieve_limit, status, step,
-         progress, scenario_id, issue_history, node_metrics, failed_reason, error, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """,
-            (
-                request_id,
-                description_vi,
-                created_by,
-                validation_mode,
-                limit,
-                "running",
-                "queued",
-                0,
-                None,
-                # NOT NULL ở persistence.py: một lần sinh chưa có issue nào vẫn phải
-                # ghi mảng rỗng, để "chưa có lỗi" và "chưa ghi gì" không lẫn vào nhau.
-                "[]",
-                "{}",
-                None,
-                None,
-                now_str,
-                now_str,
-            ),
-        )
+    try:
+        with _cursor(commit=True) as cursor:
+            # INSERT thuần, **không** ``INSERT OR REPLACE``. Với unique index của
+            # ADR-015, ``OR REPLACE`` sẽ lặng lẽ **xoá** hàng đang chạy mà nó đụng
+            # phải — tức là chính cái race condition ta dựng index lên để chặn,
+            # nhưng tệ hơn: request kia mất hàng, `GET /status` của nó trả 404.
+            # ``request_id`` là uuid4 mới nên nhánh REPLACE chưa bao giờ có ích.
+            cursor.execute(
+                """
+            INSERT INTO generation_requests
+            (request_id, description_vi, description_normalized, created_by, validation_mode, retrieve_limit,
+             status, step, progress, scenario_id, issue_history, node_metrics, failed_reason, error,
+             created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+                (
+                    request_id,
+                    description_vi,
+                    normalized,
+                    created_by,
+                    validation_mode,
+                    limit,
+                    "running",
+                    "queued",
+                    0,
+                    None,
+                    # NOT NULL ở persistence.py: một lần sinh chưa có issue nào vẫn phải
+                    # ghi mảng rỗng, để "chưa có lỗi" và "chưa ghi gì" không lẫn vào nhau.
+                    "[]",
+                    "{}",
+                    None,
+                    None,
+                    now_str,
+                    now_str,
+                ),
+            )
+    except sqlite3.IntegrityError as exc:
+        # Khớp theo **cột**, không theo tên index: SQLite báo "UNIQUE constraint
+        # failed: generation_requests.description_normalized" và không hề nhắc
+        # tới tên index. Khớp nhầm ở đây thì mọi lần trùng thành HTTP 500.
+        if "generation_requests.description_normalized" not in str(exc):
+            raise
+        raise DuplicateRequestInFlightError(description_vi) from exc
     return req_dict
 
 
@@ -167,6 +279,88 @@ def update_generation_request(request_id: str, **kwargs) -> None:
 # ---------------------------------------------------------------------------
 # Scenarios CRUD
 # ---------------------------------------------------------------------------
+
+
+def find_duplicate_prompt(normalized: str) -> dict | None:
+    """Lần sinh cũ của đúng câu này, hoặc ``None`` nếu chưa từng gõ (ADR-015).
+
+    Tra **mọi** ``ScenarioStatus``, không mượn bộ lọc ``approved_library`` của
+    ``retrieve``. Hai bên phục vụ hai mục đích ngược nhau: ``retrieve`` tìm bài
+    mẫu **tốt** để dạy model, còn đây tìm công việc **đã làm** rồi — và hai ca
+    đáng chặn nhất, kịch bản đang chờ duyệt và kịch bản đã bị từ chối, đều nằm
+    ngoài tầm nhìn của ``retrieve`` (ADR-015 §15.3).
+
+    Thứ tự ưu tiên:
+
+    1. Một lần sinh **đang chạy** — trả ``request_id`` của nó để client poll
+       tiếp, thay vì mở lần sinh thứ hai chạy song song cho cùng một câu.
+    2. Kịch bản **mới nhất** sinh ra từ câu này, kèm trạng thái và (nếu bị từ
+       chối) lý do.
+
+    Lần sinh ``failed`` cố ý **không** tính là trùng: hỏng vì hạ tầng thì gõ lại
+    là đúng việc cần làm, chặn nó là biến một lỗi tạm thời thành lỗi vĩnh viễn.
+    """
+    if not normalized:
+        return None
+
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT request_id FROM generation_requests
+            WHERE description_normalized = ? AND status = 'running'
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (normalized,),
+        )
+        running = cursor.fetchone()
+        if running:
+            return {
+                "request_id": running["request_id"],
+                "request_status": "running",
+                "scenario_id": None,
+                "scenario_status": None,
+                "title": None,
+                "reason": None,
+            }
+
+        # LEFT JOIN: kịch bản seed không có hàng ``generation_requests`` nào trỏ
+        # tới, nên INNER JOIN sẽ làm chúng vô hình với phép tra này — đúng phần
+        # thư viện có sẵn nhiều nhất.
+        cursor.execute(
+            """
+            SELECT s.scenario_id, s.status, s.title, g.request_id, g.status AS request_status
+            FROM scenarios s
+            LEFT JOIN generation_requests g ON g.scenario_id = s.scenario_id
+            WHERE s.description_normalized = ?
+            ORDER BY s.created_at DESC LIMIT 1
+            """,
+            (normalized,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        match = {
+            "request_id": row["request_id"],
+            "request_status": row["request_status"],
+            "scenario_id": row["scenario_id"],
+            "scenario_status": row["status"],
+            "title": row["title"],
+            "reason": None,
+        }
+        if row["status"] == ScenarioStatus.REJECTED.value:
+            cursor.execute(
+                """
+                SELECT reason FROM review_decisions
+                WHERE scenario_id = ? AND approved = 0
+                ORDER BY created_at DESC, id DESC LIMIT 1
+                """,
+                (row["scenario_id"],),
+            )
+            decision = cursor.fetchone()
+            if decision:
+                match["reason"] = decision["reason"]
+        return match
 
 
 def get_scenario_count() -> int:
@@ -211,15 +405,16 @@ def save_scenario(
         cursor.execute(
             """
         INSERT OR REPLACE INTO scenarios
-        (scenario_id, status, title, description_vi, spec, xosc_content, assumptions, tags,
-         road_type, weather, actor_type, maneuver, verification, embedding, embedding_model, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (scenario_id, status, title, description_vi, description_normalized, spec, xosc_content, assumptions,
+         tags, road_type, weather, actor_type, maneuver, verification, embedding, embedding_model, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
             (
                 scenario_id,
                 status,
                 title,
                 description_vi,
+                normalize_prompt(description_vi),
                 spec_json,
                 xosc_content,
                 assumptions_json,
