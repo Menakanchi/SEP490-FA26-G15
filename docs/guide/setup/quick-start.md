@@ -16,12 +16,8 @@ cd C2-App-XXX
 ### Bước 2: Environment Setup
 
 ```bash
-# Tạo virtual environment
-python3 -m venv .venv
-source .venv/bin/activate  # macOS/Linux
-
-# Cài dependencies
-pip install -r requirements.txt
+# Tạo môi trường và cài đúng phiên bản trong lockfile
+uv sync --locked
 
 # Tạo .env từ template
 cp .env.example .env
@@ -32,7 +28,7 @@ cp .env.example .env
 
 ```bash
 # Chạy server
-uvicorn src.main:app --reload
+uv run uvicorn src.main:app --reload
 
 # Mở browser: http://localhost:8000/docs
 # → Phải thấy Swagger UI

@@ -2,12 +2,15 @@
 # Scenario Forge (RAV-03)
 
 Scenario Forge nhận mô tả tiếng Việt về một tình huống giao thông nguy hiểm và
-sinh file **OpenSCENARIO 1.0 (`.xosc`)** để kỹ sư review, tải về và tuỳ chọn kiểm
-chứng bằng CARLA ScenarioRunner.
+sinh file **OpenSCENARIO 1.0 (`.xosc`)** để kỹ sư review, tải về và kiểm chứng
+bằng CARLA ScenarioRunner trước khi đưa vào thư viện.
 
-> Trạng thái hiện tại: repo đã có data contracts, fixtures, routing logic, CI và
-> một CARLA smoke test. Workflow AI, converter, retrieval, review API, frontend
-> và worker vẫn đang được triển khai. Xem [trạng thái chi tiết](ARCHITECTURE.md#trạng-thái-hiện-tại).
+> Trạng thái hiện tại: đường đi đầy đủ đã chạy — bảy node, converter, retrieval,
+> review API hai cổng, frontend và GPU worker (chạy thật trên CARLA ngày
+> 15/08/2026). Chưa có: behavior checker, agent layer closed-loop, và báo cáo
+> M1/M2/M3 bằng số trên tập lớn. Phạm vi converter còn 76/560 ô ODD — chỉ
+> `highway` ([ADR-016](docs/adr/ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md)).
+> Xem [trạng thái chi tiết](ARCHITECTURE.md#trạng-thái-hiện-tại).
 
 ## Input và output
 
@@ -24,10 +27,11 @@ scenario.xosc
 ```
 
 File `.xosc` mô tả actors, vị trí, tốc độ, actions, triggers, thời tiết và tiêu
-chí đánh giá theo OpenSCENARIO. CARLA là tầng kiểm chứng tuỳ chọn; web vẫn phải
-sinh và cho tải file khi GPU worker đang offline.
+chí đánh giá theo OpenSCENARIO. Web vẫn sinh và cho tải file khi GPU worker đang
+offline; tuy nhiên kịch bản chỉ vào thư viện sau khi có kết quả CARLA và qua
+`BEFORE_LIBRARY`.
 
-## Workflow mục tiêu
+## Workflow
 
 ```text
 parse_intent
@@ -35,7 +39,7 @@ parse_intent
   → generate_draft
   → validate ↔ repair_draft
   → convert_xosc
-  → persist_pending_review
+  → persist_pending_sim_review
 ```
 
 - LLM chỉ tham gia `parse_intent`, `generate_draft` và `repair_draft`.
@@ -61,33 +65,64 @@ Nguồn sự thật:
 
 ## Quick start
 
-Yêu cầu: Python 3.11 cho backend.
+Yêu cầu: Python 3.11+ cho backend, Node 20+ cho frontend.
 
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync --locked
 cp .env.example .env
-uvicorn src.main:app --reload --port 8000
+
+uv run python scripts/init_db.py     # dựng schema từ database rỗng
+uv run python scripts/seed_db.py     # nạp 10 kịch bản mẫu để retrieval có gì mà tìm
+
+uv run uvicorn src.main:app --reload --port 8000
 ```
 
-Kiểm tra:
+Frontend chạy riêng ở cổng 3000, mặc định gọi backend qua
+`http://localhost:8000/api/v1` (đổi bằng `NEXT_PUBLIC_API_URL`; backend đã cho
+phép origin `localhost:3000` sẵn qua `cors_origins`):
 
 ```bash
-ruff check src/ tests/
-ruff format --check src/ tests/
-pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=60
+cd frontend
+npm ci
+npm run dev
 ```
 
-Endpoint đang có trong source hiện tại:
+Cài hook một lần sau khi clone. Nó chạy gate lint/test trước mỗi lần push, nên
+lỗi bị chặn ở máy thay vì chờ một vòng CI:
+
+```bash
+bash scripts/setup_hooks.sh                                   # macOS / Linux / Git Bash
+powershell -ExecutionPolicy Bypass -File scripts/setup_hooks.ps1   # Windows
+```
+
+Chạy tay đúng những gì gate chạy:
+
+```bash
+make check                    # ruff check + ruff format --check + pytest
+cd frontend && npm run lint && npx next build
+```
+
+Cần push gấp khi gate đỏ: `SKIP_CHECK=1 git push`.
+
+### Endpoint đang có
 
 ```text
 GET  /health
-POST /api/v1/chat      placeholder từ template
-GET  /api/v1/status
+
+POST /api/v1/generate                       (alias: /api/v1/scenarios/generate)
+GET  /api/v1/status/{request_id}
+POST /api/v1/review                         (alias: /api/v1/scenarios/{id}/review)
+GET  /api/v1/scenarios                      (alias: /api/v1/library/search)
+GET  /api/v1/scenarios/{id}
+GET  /api/v1/scenarios/{id}/xosc            tải XML để kiểm tra từ Cổng 1
+PUT  /api/v1/scenarios/{id}/tags            thay toàn bộ tag
+
+GET  /api/v1/internal/jobs                  worker GPU poll
+POST /api/v1/internal/jobs/{job_id}/result  ghi kết quả và mở BEFORE_LIBRARY
 ```
 
-Các API generate/review/download/job trong kiến trúc mục tiêu chưa được ship.
+`POST /generate` chạy graph thật, không còn stub: nó trả `request_id` ngay rồi
+chạy bảy node nền, client poll `GET /status/{request_id}` cho tới `done|failed`.
 
 ## Cấu trúc chính
 
@@ -103,7 +138,7 @@ tests/                  unit, contract và architecture tests
 docs/adr/               lý do cho các quyết định quan trọng
 eval/                   evaluation evidence
 presentation/           pitch deck và demo material
-worker/                 GPU worker, Python 3.10 — chưa có implementation
+worker/                 GPU worker pull-based, Python 3.10
 ```
 
 ## Ranh giới quan trọng
@@ -122,8 +157,11 @@ Python 3.10. Kết quả xác nhận toolchain và `RelativeLanePosition` hoạt
 đồng thời phát hiện các khác biệt giữa chuẩn OpenSCENARIO và parser của
 ScenarioRunner. Chi tiết ở [ADR-012](docs/adr/ADR-012-converter-dung-relativelaneposition.md).
 
-Smoke test này chưa chứng minh converter tự động, RAG, LLM workflow hay toàn bộ
-maneuver đã hoạt động end-to-end.
+Smoke test này chạy fixture viết tay nên chưa chứng minh converter tự động.
+Bằng chứng đó có ngày 15/08/2026: `sc_014` do LLM sinh và converter biên dịch đã
+đi qua cả hai cổng duyệt rồi chạy trọn vòng trên worker. Kết quả `CollisionTest =
+SUCCESS` — 0 va chạm, tức kịch bản chạy trót lọt mà **không** dựng được nguy
+hiểm nào; đường ống thông không có nghĩa kịch bản đáng giá.
 
 ## Deliverables
 

@@ -64,19 +64,25 @@ def test_odd_matrix_is_560_cells() -> None:
 
     Mẫu số thật là ``SupportPolicy.denominator()`` — xem test ngay dưới.
     """
-    assert len(RoadType) * len(Weather) * len(ActorType) * len(ManeuverType) == 800
-    assert {"road_type", "weather", "actor_type", "maneuver"}.issubset(set(ODDCell.model_fields))
-
+    assert len(RoadType) * len(Weather) * len(ActorType) * len(ManeuverType) == 560
+    assert set(ODDCell.model_fields) == {
+        "road_type",
+        "weather",
+        "actor_type",
+        "maneuver",
+        # Hai nhãn mô tả, không phải trục. Chúng không vào `key` nên không đổi mẫu số.
+        "specific_type",
+        "specific_action",
+    }
 
 
 def test_default_support_policy_matches_verified_converter_scope() -> None:
     """Catalog có 6 vehicle maneuvers × 3 actors và jaywalk × pedestrian, trên 4 weather."""
-    assert DEFAULT_SUPPORT_POLICY.denominator() == 200
+    assert DEFAULT_SUPPORT_POLICY.denominator() == 76
     assert DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.CAR, ManeuverType.CUT_IN)
     assert DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.JAYWALK)
     assert not DEFAULT_SUPPORT_POLICY.supports(RoadType.INTERSECTION, ActorType.CAR, ManeuverType.CUT_IN)
     assert not DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.CUT_IN)
-
 
 
 def test_supported_cells_are_enumerated_not_computed() -> None:
@@ -93,8 +99,7 @@ def test_supported_cells_are_enumerated_not_computed() -> None:
             }
         )
     )
-    total_cells = len(RoadType) * len(Weather) * len(ActorType) * len(ManeuverType)
-    assert policy.denominator() == total_cells - 2 * len(Weather), "mỗi tổ hợp bị loại xoá đi 4 ô thời tiết"
+    assert policy.denominator() == 560 - 2 * len(Weather), "mỗi tổ hợp bị loại xoá đi 4 ô thời tiết"
     assert not policy.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.JAYWALK)
     assert policy.supports(RoadType.INTERSECTION, ActorType.PEDESTRIAN, ManeuverType.JAYWALK)
     assert len({c.key for c in policy.supported_cells()}) == policy.denominator(), "không được trùng ô"
@@ -288,6 +293,24 @@ def test_library_entry_ids_must_agree() -> None:
     }
     with pytest.raises(ValidationError, match="lệch với entry"):
         LibraryEntry.model_validate(entry)
+
+
+@pytest.mark.parametrize("approved_by", ["", "   "])
+def test_library_entry_requires_approver(approved_by: str) -> None:
+    spec = _load(FIXTURES / "scenario_specs" / "sc_001.json")
+    with pytest.raises(ValidationError, match="người duyệt BEFORE_LIBRARY"):
+        LibraryEntry.model_validate(
+            {
+                "scenario_id": spec["scenario_id"],
+                "title": spec["title"],
+                "description_vi": spec["description_vi"],
+                "odd": spec["odd"],
+                "xosc_path": "outputs/sc_001.xosc",
+                "spec": spec,
+                "approved_by": approved_by,
+                "created_at": "2026-07-29T10:00:00",
+            }
+        )
 
 
 def test_criterion_status_matches_scenario_runner_vocabulary() -> None:
@@ -587,4 +610,4 @@ def test_odd_query_filter_keys_match_cell_axes() -> None:
         actor_type=ActorType.MOTORCYCLE,
         maneuver=ManeuverType.CUT_IN,
     )
-    assert set(full.as_filter()).issubset(set(ODDCell.model_fields))
+    assert set(full.as_filter()) == {"road_type", "weather", "actor_type", "maneuver"}

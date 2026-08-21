@@ -1,10 +1,18 @@
-"""Service layer cho SQLite Database Persistence (ADR-011 & ADR-013).
+"""Truy vấn phục vụ tầng HTTP trên bốn bảng của ADR-011.
 
-Quản lý 4 bảng chính trong SQLite `./data/app.db`:
-- `scenarios`
-- `generation_requests`
-- `review_decisions`
-- `scenario_jobs`
+**Không định nghĩa schema.** Hình dạng bảng có đúng một nguồn:
+``src/services/persistence.py`` (SQLAlchemy Core, ADR-011 §3.2). Module này chỉ
+đọc/ghi trên schema đó bằng ``sqlite3`` thuần cho các đường HTTP đồng bộ.
+
+Vì sao không viết lại ``CREATE TABLE`` ở đây cho tiện: hai định nghĩa cùng trỏ
+vào một file ``app.db`` thì ``CREATE TABLE IF NOT EXISTS`` khiến bên nào chạy
+trước sẽ thắng, bên còn lại đọc/ghi trên schema không khớp **mà không có lỗi
+nào bắn ra**. Đó là loại hỏng chỉ lộ ra ở production, sau khi dữ liệu đã sai.
+
+Ranh giới với ``ScenarioRepository``: repository sở hữu các **transition có
+bất biến** (persist một lần sinh, áp một quyết định duyệt) và ép chúng bằng
+transaction. Module này phục vụ các truy vấn đọc và các cập nhật tiến độ không
+mang bất biến nào.
 """
 
 from __future__ import annotations
@@ -12,115 +20,144 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-import numpy as np
+
+from sqlalchemy import inspect, text
+
+from src.config import get_settings
+from src.models.schemas import ScenarioStatus, VerificationLevel, normalize_prompt, odd_axis_value
+from src.services.llm import EMBEDDING_MODEL
+from src.services.persistence import connect_sqlite, make_engine, metadata, sqlite_path
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path("./data/app.db")
+
+def _db_path() -> Path:
+    """Đường dẫn file SQLite lấy từ ``settings.database_url``.
+
+    Hard-code ``./data/app.db`` sẽ làm mọi test dùng chung một file với bản dev,
+    và làm biến môi trường ``DATABASE_URL`` trở thành lời nói dối.
+    """
+    return sqlite_path(get_settings().database_url, caller="db.py")
 
 
 def _get_connection() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
+    path = _db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return connect_sqlite(path)
+
+
+@contextmanager
+def _cursor(*, commit: bool = False) -> Iterator[sqlite3.Cursor]:
+    """Mở kết nối, trả cursor, **luôn** đóng lại. Commit khi được yêu cầu.
+
+    Mười lăm hàm trong file này từng lặp lại đúng bốn dòng
+    ``connect / cursor / commit / close``, và lặp theo **hai** kiểu khác nhau:
+    phần lớn gọi ``conn.close()`` ở cuối thân hàm, vài hàm dùng ``try/finally``.
+    Kiểu thứ nhất rò kết nối ngay khi có exception ở giữa — trên SQLite điều đó
+    nghĩa là file còn bị khoá, và triệu chứng ("database is locked") hiện ra ở
+    một request khác chứ không ở chỗ hỏng.
+
+    Một chỗ định nghĩa thì cả hai kiểu thành một, và ``finally`` không quên được.
+    """
+    conn = _get_connection()
+    try:
+        yield conn.cursor()
+        if commit:
+            conn.commit()
+    finally:
+        conn.close()
 
 
 def init_db() -> None:
-    """Khởi tạo cấu trúc 4 bảng SQLite nếu chưa tồn tại."""
-    conn = _get_connection()
-    cursor = conn.cursor()
+    """Dựng schema từ định nghĩa dùng chung ở ``persistence.py``, rồi migrate dữ liệu cũ.
 
-    # 1. scenarios
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS scenarios (
-            scenario_id TEXT PRIMARY KEY,
-            status TEXT NOT NULL DEFAULT 'pending_review',
-            title TEXT NOT NULL,
-            description_vi TEXT NOT NULL,
-            spec TEXT,
-            xosc_content TEXT,
-            assumptions TEXT,
-            tags TEXT,
-            road_type TEXT,
-            weather TEXT,
-            actor_type TEXT,
-            maneuver TEXT,
-            embedding BLOB,
-            embedding_model TEXT,
-            created_at TEXT
-        )
+    Cố ý **không** gọi lúc import: import một module không nên đẻ ra file trên
+    đĩa. ``scripts/init_db.py`` và fixture của test là chỗ gọi nó.
+
+    ``create_all`` bỏ qua **toàn bộ** một bảng đã tồn tại, gồm cả index và cột
+    mới của nó. Với database rỗng thì nó dựng đủ và các bước dưới thành no-op;
+    với database đã có dữ liệu thì các bước dưới mới là thứ thực sự migrate.
     """
-    )
-
-    # 2. generation_requests
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS generation_requests (
-            request_id TEXT PRIMARY KEY,
-            description_vi TEXT,
-            validation_mode TEXT,
-            status TEXT,
-            step TEXT,
-            progress INTEGER,
-            scenario_id TEXT,
-            limit_val INTEGER DEFAULT 3,
-            issue_history TEXT,
-            node_metrics TEXT,
-            failed_reason TEXT,
-            error TEXT,
-            created_at TEXT,
-            updated_at TEXT
+    engine = make_engine(get_settings().database_url)
+    metadata.create_all(engine)
+    # ADR-018 đổi tên cổng chờ ban đầu. Status là TEXT nên không cần đổi schema,
+    # nhưng record sinh bởi phiên bản cũ phải được đưa về đúng Cổng 1.
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE scenarios SET status = :new_status WHERE status = 'pending_review'"),
+            {"new_status": ScenarioStatus.PENDING_SIM_REVIEW.value},
         )
-    """
-    )
-    try:
-        cursor.execute("ALTER TABLE generation_requests ADD COLUMN limit_val INTEGER DEFAULT 3")
-    except Exception:
-        pass
+    _migrate_description_normalized(engine)
 
-    # 3. review_decisions
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS review_decisions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            scenario_id TEXT NOT NULL,
-            gate TEXT NOT NULL,
-            approved INTEGER NOT NULL,
-            reviewer TEXT NOT NULL,
-            reason TEXT,
-            created_at TEXT NOT NULL
+
+_NORMALIZED_TABLES = ("scenarios", "generation_requests")
+
+
+def _migrate_description_normalized(engine) -> None:
+    """Thêm, backfill và đánh index cột khoá chặn trùng của ADR-015.
+
+    Chạy được nhiều lần: mỗi bước tự kiểm tra trạng thái hiện có. Không dùng
+    ``ADD COLUMN IF NOT EXISTS`` vì SQLite không có cú pháp đó, còn ADR-011 chốt
+    cùng một schema chạy trên cả SQLite lẫn Postgres.
+    """
+    inspector = inspect(engine)
+    for table in _NORMALIZED_TABLES:
+        if table not in inspector.get_table_names():
+            continue
+        if "description_normalized" not in {col["name"] for col in inspector.get_columns(table)}:
+            with engine.begin() as connection:
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN description_normalized TEXT"))
+
+        # Backfill trong Python, không trong SQL: chuẩn hoá phải đi qua đúng
+        # ``normalize_prompt``. Viết lại nó bằng hàm chuỗi của SQLite là dựng cái
+        # định nghĩa thứ hai mà ADR-015 §15.2 cấm — và bản SQL sẽ không bao giờ
+        # có ``casefold()`` cho tiếng Việt.
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(f"SELECT rowid AS rid, description_vi FROM {table} WHERE description_normalized IS NULL")
+            ).fetchall()
+            for row in rows:
+                connection.execute(
+                    text(f"UPDATE {table} SET description_normalized = :value WHERE rowid = :rid"),
+                    {"value": normalize_prompt(row.description_vi), "rid": row.rid},
+                )
+        if rows:
+            logger.info("Backfill description_normalized cho %d hàng ở %s", len(rows), table)
+
+    with engine.begin() as connection:
+        # Unique index không dựng được nếu dữ liệu cũ đã vi phạm nó. Hàng
+        # ``running`` trùng nhau là rác của tiến trình chết giữa chừng — giữ hàng
+        # mới nhất, trả các hàng còn lại về NULL để chúng đứng ngoài index.
+        connection.execute(
+            text(
+                """
+                UPDATE generation_requests SET description_normalized = NULL
+                WHERE status = 'running' AND description_normalized IS NOT NULL
+                  AND request_id NOT IN (
+                      SELECT request_id FROM (
+                          SELECT request_id,
+                                 ROW_NUMBER() OVER (
+                                     PARTITION BY description_normalized ORDER BY created_at DESC, request_id DESC
+                                 ) AS rn
+                          FROM generation_requests WHERE status = 'running'
+                      ) ranked WHERE rn = 1
+                  )
+                """
+            )
         )
-    """
-    )
-
-    # 4. scenario_jobs
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS scenario_jobs (
-            job_id TEXT PRIMARY KEY,
-            scenario_id TEXT NOT NULL,
-            status TEXT NOT NULL,
-            claimed_by TEXT,
-            claimed_at TEXT,
-            result TEXT,
-            xosc_content TEXT,
-            created_at TEXT,
-            updated_at TEXT
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_scenarios_description_normalized ON scenarios (description_normalized)")
         )
-    """
-    )
-
-    conn.commit()
-    conn.close()
-
-
-# Ensure tables are initialized on import
-init_db()
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_generation_requests_running_description "
+                "ON generation_requests (description_normalized) WHERE status = 'running'"
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -128,14 +165,41 @@ init_db()
 # ---------------------------------------------------------------------------
 
 
-def create_generation_request(request_id: str, description_vi: str, validation_mode: str, limit: int = 3) -> dict:
-    conn = _get_connection()
-    cursor = conn.cursor()
+class DuplicateRequestInFlightError(RuntimeError):
+    """Đã có một lần sinh **đang chạy** cho đúng câu này.
+
+    Do unique index từng phần ở ``persistence.py`` ném ra, không phải do một
+    phép kiểm trong Python: hai request song song đều đọc thấy "chưa có ai chạy"
+    trước khi bên nào kịp INSERT, nên chỉ tầng DB mới phân xử được.
+    """
+
+
+def create_generation_request(
+    request_id: str,
+    description_vi: str,
+    validation_mode: str,
+    limit: int = 3,
+    created_by: str = "unknown",
+    force_generate: bool = False,
+) -> dict:
+    """Mở một hàng ``generation_requests`` ở trạng thái ``running``.
+
+    ``force_generate`` ghi ``description_normalized = NULL``: hàng đó cố ý đứng
+    ngoài unique index, nên kỹ sư chủ động sinh lại luôn chạy được, kể cả khi
+    một lần sinh của đúng câu đó đang chạy. Kịch bản nó tạo ra vẫn tìm lại được
+    về sau — ``scenarios.description_normalized`` luôn được ghi (ADR-015 §15.4).
+
+    Ném :class:`DuplicateRequestInFlightError` nếu đã có lần sinh đang chạy cho câu
+    này. Người gọi tra lại rồi trả về lần sinh đó, chứ không tạo bản thứ hai.
+    """
     now_str = datetime.now(UTC).isoformat()
+    normalized = None if force_generate else normalize_prompt(description_vi)
     req_dict = {
         "request_id": request_id,
         "description_vi": description_vi,
+        "description_normalized": normalized,
         "validation_mode": validation_mode,
+        "created_by": created_by,
         "limit": limit,
         "status": "running",
         "step": "queued",
@@ -145,61 +209,71 @@ def create_generation_request(request_id: str, description_vi: str, validation_m
         "created_at": now_str,
         "updated_at": now_str,
     }
-    cursor.execute(
-        """
-        INSERT OR REPLACE INTO generation_requests
-        (request_id, description_vi, validation_mode, limit_val, status, step, progress, scenario_id, issue_history, node_metrics, error, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """,
-        (
-            request_id,
-            description_vi,
-            validation_mode,
-            limit,
-            "running",
-            "queued",
-            0,
-            None,
-            "[]",
-            "{}",
-            None,
-            now_str,
-            now_str,
-        ),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        with _cursor(commit=True) as cursor:
+            # INSERT thuần, **không** ``INSERT OR REPLACE``. Với unique index của
+            # ADR-015, ``OR REPLACE`` sẽ lặng lẽ **xoá** hàng đang chạy mà nó đụng
+            # phải — tức là chính cái race condition ta dựng index lên để chặn,
+            # nhưng tệ hơn: request kia mất hàng, `GET /status` của nó trả 404.
+            # ``request_id`` là uuid4 mới nên nhánh REPLACE chưa bao giờ có ích.
+            cursor.execute(
+                """
+            INSERT INTO generation_requests
+            (request_id, description_vi, description_normalized, created_by, validation_mode, retrieve_limit,
+             status, step, progress, scenario_id, issue_history, node_metrics, failed_reason, error,
+             created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+                (
+                    request_id,
+                    description_vi,
+                    normalized,
+                    created_by,
+                    validation_mode,
+                    limit,
+                    "running",
+                    "queued",
+                    0,
+                    None,
+                    # NOT NULL ở persistence.py: một lần sinh chưa có issue nào vẫn phải
+                    # ghi mảng rỗng, để "chưa có lỗi" và "chưa ghi gì" không lẫn vào nhau.
+                    "[]",
+                    "{}",
+                    None,
+                    None,
+                    now_str,
+                    now_str,
+                ),
+            )
+    except sqlite3.IntegrityError as exc:
+        # Khớp theo **cột**, không theo tên index: SQLite báo "UNIQUE constraint
+        # failed: generation_requests.description_normalized" và không hề nhắc
+        # tới tên index. Khớp nhầm ở đây thì mọi lần trùng thành HTTP 500.
+        if "generation_requests.description_normalized" not in str(exc):
+            raise
+        raise DuplicateRequestInFlightError(description_vi) from exc
     return req_dict
 
 
 def get_generation_request(request_id: str) -> dict | None:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM generation_requests WHERE request_id = ?", (request_id,))
-    row = cursor.fetchone()
-    conn.close()
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM generation_requests WHERE request_id = ?", (request_id,))
+        row = cursor.fetchone()
     if not row:
         return None
     d = dict(row)
-    if "limit_val" in d and d["limit_val"] is not None:
-        d["limit"] = d["limit_val"]
-    elif "limit" not in d:
-        d["limit"] = 3
+    d["limit"] = d.get("retrieve_limit") or 3
     return d
 
 
 def update_generation_request(request_id: str, **kwargs) -> None:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    now_str = datetime.now(UTC).isoformat()
-    kwargs["updated_at"] = now_str
+    kwargs["updated_at"] = datetime.now(UTC).isoformat()
 
     fields = ", ".join([f"{k} = ?" for k in kwargs.keys()])
     values = list(kwargs.values()) + [request_id]
 
-    cursor.execute(f"UPDATE generation_requests SET {fields} WHERE request_id = ?", values)
-    conn.commit()
-    conn.close()
+    with _cursor(commit=True) as cursor:
+        cursor.execute(f"UPDATE generation_requests SET {fields} WHERE request_id = ?", values)
 
 
 # ---------------------------------------------------------------------------
@@ -207,13 +281,92 @@ def update_generation_request(request_id: str, **kwargs) -> None:
 # ---------------------------------------------------------------------------
 
 
+def find_duplicate_prompt(normalized: str) -> dict | None:
+    """Lần sinh cũ của đúng câu này, hoặc ``None`` nếu chưa từng gõ (ADR-015).
+
+    Tra **mọi** ``ScenarioStatus``, không mượn bộ lọc ``approved_library`` của
+    ``retrieve``. Hai bên phục vụ hai mục đích ngược nhau: ``retrieve`` tìm bài
+    mẫu **tốt** để dạy model, còn đây tìm công việc **đã làm** rồi — và hai ca
+    đáng chặn nhất, kịch bản đang chờ duyệt và kịch bản đã bị từ chối, đều nằm
+    ngoài tầm nhìn của ``retrieve`` (ADR-015 §15.3).
+
+    Thứ tự ưu tiên:
+
+    1. Một lần sinh **đang chạy** — trả ``request_id`` của nó để client poll
+       tiếp, thay vì mở lần sinh thứ hai chạy song song cho cùng một câu.
+    2. Kịch bản **mới nhất** sinh ra từ câu này, kèm trạng thái và (nếu bị từ
+       chối) lý do.
+
+    Lần sinh ``failed`` cố ý **không** tính là trùng: hỏng vì hạ tầng thì gõ lại
+    là đúng việc cần làm, chặn nó là biến một lỗi tạm thời thành lỗi vĩnh viễn.
+    """
+    if not normalized:
+        return None
+
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT request_id FROM generation_requests
+            WHERE description_normalized = ? AND status = 'running'
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (normalized,),
+        )
+        running = cursor.fetchone()
+        if running:
+            return {
+                "request_id": running["request_id"],
+                "request_status": "running",
+                "scenario_id": None,
+                "scenario_status": None,
+                "title": None,
+                "reason": None,
+            }
+
+        # LEFT JOIN: kịch bản seed không có hàng ``generation_requests`` nào trỏ
+        # tới, nên INNER JOIN sẽ làm chúng vô hình với phép tra này — đúng phần
+        # thư viện có sẵn nhiều nhất.
+        cursor.execute(
+            """
+            SELECT s.scenario_id, s.status, s.title, g.request_id, g.status AS request_status
+            FROM scenarios s
+            LEFT JOIN generation_requests g ON g.scenario_id = s.scenario_id
+            WHERE s.description_normalized = ?
+            ORDER BY s.created_at DESC LIMIT 1
+            """,
+            (normalized,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        match = {
+            "request_id": row["request_id"],
+            "request_status": row["request_status"],
+            "scenario_id": row["scenario_id"],
+            "scenario_status": row["status"],
+            "title": row["title"],
+            "reason": None,
+        }
+        if row["status"] == ScenarioStatus.REJECTED.value:
+            cursor.execute(
+                """
+                SELECT reason FROM review_decisions
+                WHERE scenario_id = ? AND approved = 0
+                ORDER BY created_at DESC, id DESC LIMIT 1
+                """,
+                (row["scenario_id"],),
+            )
+            decision = cursor.fetchone()
+            if decision:
+                match["reason"] = decision["reason"]
+        return match
+
+
 def get_scenario_count() -> int:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM scenarios")
-    count = cursor.fetchone()[0]
-    conn.close()
-    return count
+    with _cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM scenarios")
+        return int(cursor.fetchone()[0])
 
 
 def save_scenario(
@@ -222,71 +375,61 @@ def save_scenario(
     description_vi: str,
     spec: dict,
     odd: dict,
-    status: str = "pending_review",
+    status: str = ScenarioStatus.PENDING_SIM_REVIEW.value,
     xosc_content: str = "",
     assumptions: list | None = None,
     tags: list | None = None,
     retrieved_examples: list | None = None,
     validation_mode: str = "fast",
 ) -> dict:
-    conn = _get_connection()
-    cursor = conn.cursor()
     now_str = datetime.now(UTC).isoformat()
 
-    rt = str(odd.get("road_type", "unknown"))
-    wt = str(odd.get("weather", "unknown"))
-
-    at = odd.get("actor_type", "unknown")
-    if isinstance(at, dict):
-        at_str = f"{at.get('category','')}:{at.get('specific_type','')}"
-    else:
-        at_str = str(at)
-
-    mv = odd.get("maneuver", "unknown")
-    if isinstance(mv, dict):
-        mv_str = f"{mv.get('category','')}:{mv.get('specific_action','')}"
-    else:
-        mv_str = str(mv)
+    # ADR-013 lọc ODD bằng ``WHERE`` trên bốn cột có index, nên bốn cột đó phải
+    # giữ đúng chuỗi enum. Chi tiết theo lời người dùng sống trong
+    # ``spec.odd.specific_type``, không ghép vào đây.
+    rt = odd_axis_value(odd.get("road_type"))
+    wt = odd_axis_value(odd.get("weather"))
+    at_str = odd_axis_value(odd.get("actor_type"))
+    mv_str = odd_axis_value(odd.get("maneuver"))
 
     spec_json = json.dumps(spec, ensure_ascii=False)
     assumptions_json = json.dumps(assumptions or [], ensure_ascii=False)
     tags_json = json.dumps(tags or [], ensure_ascii=False)
 
-    try:
-        from src.services.library.retriever import generate_text_embedding
-        vec = generate_text_embedding(f"{title} {description_vi}")
-        blob_bytes = sqlite3.Binary(vec.astype(np.float32).tobytes()) if vec is not None and len(vec) > 0 else None
-    except Exception as exc:
-        logger.warning(f"Lỗi khi sinh embedding trong save_scenario: {exc}")
-        blob_bytes = None
-
-    cursor.execute(
-        """
+    # `embedding` để NULL. ADR-011 §Hệ quả: vector chỉ được ghi trong đúng
+    # transaction duyệt BEFORE_LIBRARY. Đó là cách FR-03/FR-11 ("chỉ scenario đã
+    # duyệt mới tìm lại được") được thi hành bằng cấu trúc — không có vector thì
+    # không lọt vào kết quả retrieval, kể cả khi người viết truy vấn quên
+    # `WHERE status = 'approved_library'`.
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
         INSERT OR REPLACE INTO scenarios
-        (scenario_id, status, title, description_vi, spec, xosc_content, assumptions, tags, road_type, weather, actor_type, maneuver, embedding, embedding_model, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (scenario_id, status, title, description_vi, description_normalized, spec, xosc_content, assumptions,
+         tags, road_type, weather, actor_type, maneuver, verification, embedding, embedding_model, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
-        (
-            scenario_id,
-            status,
-            title,
-            description_vi,
-            spec_json,
-            xosc_content,
-            assumptions_json,
-            tags_json,
-            rt,
-            wt,
-            at_str,
-            mv_str,
-            blob_bytes,
-            "text-embedding-3-small",
-            now_str,
-        ),
-    )
-
-    conn.commit()
-    conn.close()
+            (
+                scenario_id,
+                status,
+                title,
+                description_vi,
+                normalize_prompt(description_vi),
+                spec_json,
+                xosc_content,
+                assumptions_json,
+                tags_json,
+                rt,
+                wt,
+                at_str,
+                mv_str,
+                # Mọi kịch bản mới đều chưa chạy CARLA lần nào (ADR-017).
+                VerificationLevel.UNVERIFIED.value,
+                None,  # embedding — xem ghi chú ADR-011 phía trên
+                None,  # embedding_model — ghi cùng lúc với embedding, không sớm hơn
+                now_str,
+            ),
+        )
 
     sc_dict = {
         "scenario_id": scenario_id,
@@ -308,11 +451,9 @@ def save_scenario(
 
 
 def get_scenario(scenario_id: str) -> dict | None:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM scenarios WHERE scenario_id = ?", (scenario_id,))
-    row = cursor.fetchone()
-    conn.close()
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM scenarios WHERE scenario_id = ?", (scenario_id,))
+        row = cursor.fetchone()
     if not row:
         return None
 
@@ -320,6 +461,46 @@ def get_scenario(scenario_id: str) -> dict | None:
     spec_obj = json.loads(row_dict["spec"]) if row_dict.get("spec") else {}
     assumptions_obj = json.loads(row_dict["assumptions"]) if row_dict.get("assumptions") else []
     tags_obj = json.loads(row_dict["tags"]) if row_dict.get("tags") else []
+
+    # ``retrieved_examples`` là dấu vết của một generation request, không phải
+    # một phần ScenarioSpec. Đọc từ request đã sinh scenario thay vì tìm nhầm
+    # trong JSON spec (schema này extra='forbid' và chưa từng chứa trường đó).
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT node_metrics FROM generation_requests
+            WHERE scenario_id = ?
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (scenario_id,),
+        )
+        request_row = cursor.fetchone()
+    retrieved_examples: list = []
+    if request_row and request_row["node_metrics"]:
+        try:
+            metrics = json.loads(request_row["node_metrics"])
+            retrieved_examples = metrics.get("retrieved_examples", []) if isinstance(metrics, dict) else []
+        except (TypeError, json.JSONDecodeError):
+            logger.warning("node_metrics không hợp lệ cho scenario %s", scenario_id)
+
+    # Cổng BEFORE_LIBRARY phải có bằng chứng thực thi ngay trong payload detail;
+    # nếu UI chỉ thấy nhãn tổng hợp thì reviewer không thể kiểm từng criterion.
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT result FROM scenario_jobs
+            WHERE scenario_id = ? AND result IS NOT NULL
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (scenario_id,),
+        )
+        result_row = cursor.fetchone()
+    latest_execution_result = None
+    if result_row and result_row["result"]:
+        try:
+            latest_execution_result = json.loads(result_row["result"])
+        except (TypeError, json.JSONDecodeError):
+            logger.warning("scenario_jobs.result không hợp lệ cho scenario %s", scenario_id)
 
     odd_data = spec_obj.get("odd") or {
         "road_type": row_dict.get("road_type"),
@@ -335,48 +516,108 @@ def get_scenario(scenario_id: str) -> dict | None:
         "status": row_dict["status"],
         "odd": odd_data,
         "time_of_day": spec_obj.get("time_of_day", "day"),
-        "retrieved_examples": spec_obj.get("retrieved_examples", []),
+        "retrieved_examples": retrieved_examples,
         "spec": spec_obj,
         "xosc_content": row_dict.get("xosc_content", ""),
         "assumptions": assumptions_obj,
         "tags": tags_obj,
         "review_logs": get_review_decisions(row_dict["scenario_id"]),
+        "created_by": row_dict.get("created_by") or "unknown",
+        "verification": row_dict.get("verification") or VerificationLevel.UNVERIFIED.value,
+        "latest_execution_result": latest_execution_result,
         "created_at": row_dict.get("created_at"),
     }
     return sc_dict
 
 
 def update_scenario_status(scenario_id: str, new_status: str) -> None:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT title, description_vi, embedding FROM scenarios WHERE scenario_id = ?", (scenario_id,))
-    row = cursor.fetchone()
+    """Đổi trạng thái, và **chỉ khi** vào ``approved_library`` mới sinh embedding.
 
-    if row and not row["embedding"]:
-        try:
-            from src.services.library.retriever import generate_text_embedding
-            embed_text = f"{row['title']} {row['description_vi']}"
-            vec = generate_text_embedding(embed_text)
-            blob_bytes = sqlite3.Binary(vec.astype(np.float32).tobytes()) if vec is not None and len(vec) > 0 else None
+    Điều kiện gắn vào ``new_status`` chứ không gắn vào "embedding đang rỗng".
+    Cách cũ — thấy chưa có vector thì sinh — sẽ ghi vector cho cả lần chuyển sang
+    ``rejected``, và một kịch bản bị từ chối có vector là một kịch bản bị từ chối
+    **vẫn tìm lại được**. Đúng thứ ADR-011 §Hệ quả dựng cơ chế này để chặn.
+    """
+    with _cursor(commit=True) as cursor:
+        blob_bytes: bytes | None = None
+        if new_status == ScenarioStatus.APPROVED_LIBRARY.value:
+            cursor.execute(
+                "SELECT title, description_vi, embedding FROM scenarios WHERE scenario_id = ?", (scenario_id,)
+            )
+            row = cursor.fetchone()
+            if row is not None and not row["embedding"]:
+                try:
+                    from src.services.library.retriever import generate_text_embedding, pack_blob_embedding
+
+                    vector = generate_text_embedding(f"{row['title']} {row['description_vi']}")
+                    if vector is not None and len(vector):
+                        blob_bytes = pack_blob_embedding(vector)
+                except Exception as exc:
+                    # Duyệt vẫn phải ăn: trạng thái là quyết định của con người, còn
+                    # embedding chỉ là chỉ mục. Ghi log rồi đi tiếp — thiếu vector thì
+                    # kịch bản chưa tìm lại được, chứ không mất.
+                    logger.warning("Không sinh được embedding cho %s: %s", scenario_id, exc)
+
+        if blob_bytes is not None:
             cursor.execute(
                 "UPDATE scenarios SET status = ?, embedding = ?, embedding_model = ? WHERE scenario_id = ?",
-                (new_status, blob_bytes, "text-embedding-3-small", scenario_id),
+                (new_status, blob_bytes, EMBEDDING_MODEL, scenario_id),
             )
-        except Exception:
+        else:
             cursor.execute("UPDATE scenarios SET status = ? WHERE scenario_id = ?", (new_status, scenario_id))
-    else:
-        cursor.execute("UPDATE scenarios SET status = ? WHERE scenario_id = ?", (new_status, scenario_id))
 
-    conn.commit()
-    conn.close()
+
+def set_tags(scenario_id: str, tags: list[str]) -> None:
+    """Thay toàn bộ tag của một kịch bản."""
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            "UPDATE scenarios SET tags = ? WHERE scenario_id = ?",
+            (json.dumps(tags, ensure_ascii=False), scenario_id),
+        )
+
+
+def set_verification(scenario_id: str, level: VerificationLevel) -> None:
+    """Ghi mức kiểm chứng suy từ kết quả chạy CARLA.
+
+    Đây là chỗ **đóng vòng lặp**. Trước ADR-017, ``ExecutionResult`` worker gửi
+    về chỉ nằm im trong ``scenario_jobs.result``: không gì đọc nó, không gì đổi
+    theo nó, retrieval không biết nó tồn tại. Kịch bản chạy ra không đúng ý vẫn
+    ở lại thư viện và tiếp tục làm ví dụ few-shot dạy LLM sinh ra thứ tương tự.
+
+    Cố ý **không** đổi ``status``: kịch bản không bị rút khỏi thư viện. Số phận
+    nó do người quyết ở cổng 1; đây chỉ là bằng chứng đi kèm.
+    """
+    with _cursor(commit=True) as cursor:
+        cursor.execute("UPDATE scenarios SET verification = ? WHERE scenario_id = ?", (level.value, scenario_id))
+
+
+def complete_simulation(scenario_id: str, level: VerificationLevel) -> bool:
+    """Ghi bằng chứng CARLA và chỉ khi đó mở cổng BEFORE_LIBRARY.
+
+    ``WHERE status=simulation_queued`` ngăn callback trễ/lặp kéo một scenario đã
+    duyệt hoặc từ chối quay ngược về hàng chờ thư viện.
+    """
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            UPDATE scenarios
+            SET verification = ?, status = ?
+            WHERE scenario_id = ? AND status = ?
+            """,
+            (
+                level.value,
+                ScenarioStatus.PENDING_LIBRARY_REVIEW.value,
+                scenario_id,
+                ScenarioStatus.SIMULATION_QUEUED.value,
+            ),
+        )
+        return cursor.rowcount == 1
 
 
 def list_all_scenarios() -> list[dict]:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT scenario_id FROM scenarios ORDER BY created_at DESC")
-    rows = cursor.fetchall()
-    conn.close()
+    with _cursor() as cursor:
+        cursor.execute("SELECT scenario_id FROM scenarios ORDER BY created_at DESC")
+        rows = cursor.fetchall()
     scenarios = []
     for r in rows:
         sc = get_scenario(r["scenario_id"])
@@ -391,20 +632,16 @@ def list_all_scenarios() -> list[dict]:
 
 
 def save_review_decision(scenario_id: str, gate: str, approved: bool, reviewer: str, reason: str) -> dict:
-    conn = _get_connection()
-    cursor = conn.cursor()
     now_str = datetime.now(UTC).isoformat()
 
-    cursor.execute(
-        """
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
         INSERT INTO review_decisions (scenario_id, gate, approved, reviewer, reason, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
     """,
-        (scenario_id, gate, 1 if approved else 0, reviewer, reason, now_str),
-    )
-
-    conn.commit()
-    conn.close()
+            (scenario_id, gate, 1 if approved else 0, reviewer, reason, now_str),
+        )
 
     return {
         "scenario_id": scenario_id,
@@ -417,14 +654,13 @@ def save_review_decision(scenario_id: str, gate: str, approved: bool, reviewer: 
 
 
 def get_review_decisions(scenario_id: str) -> list[dict]:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT scenario_id, gate, approved, reviewer, reason, created_at as decided_at FROM review_decisions WHERE scenario_id = ? ORDER BY id ASC",
-        (scenario_id,),
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    with _cursor() as cursor:
+        cursor.execute(
+            "SELECT scenario_id, gate, approved, reviewer, reason, created_at as decided_at "
+            "FROM review_decisions WHERE scenario_id = ? ORDER BY id ASC",
+            (scenario_id,),
+        )
+        rows = cursor.fetchall()
     decisions = []
     for r in rows:
         d = dict(r)
@@ -439,8 +675,6 @@ def get_review_decisions(scenario_id: str) -> list[dict]:
 
 
 def create_scenario_job(job_id: str, scenario_id: str, xosc_content: str) -> dict:
-    conn = _get_connection()
-    cursor = conn.cursor()
     now_str = datetime.now(UTC).isoformat()
     job_dict = {
         "job_id": job_id,
@@ -454,35 +688,28 @@ def create_scenario_job(job_id: str, scenario_id: str, xosc_content: str) -> dic
         "updated_at": now_str,
     }
 
-    cursor.execute(
-        """
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
         INSERT OR REPLACE INTO scenario_jobs
         (job_id, scenario_id, status, xosc_content, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
     """,
-        (job_id, scenario_id, "pending", xosc_content, now_str, now_str),
-    )
-
-    conn.commit()
-    conn.close()
+            (job_id, scenario_id, "pending", xosc_content, now_str, now_str),
+        )
     return job_dict
 
 
 def get_pending_jobs() -> list[dict]:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM scenario_jobs WHERE status = 'pending' ORDER BY created_at ASC")
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM scenario_jobs WHERE status = 'pending' ORDER BY created_at ASC")
+        return [dict(r) for r in cursor.fetchall()]
 
 
 def get_job(job_id: str) -> dict | None:
-    conn = _get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM scenario_jobs WHERE job_id = ?", (job_id,))
-    row = cursor.fetchone()
-    conn.close()
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM scenario_jobs WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
     if not row:
         return None
     d = dict(row)
@@ -495,18 +722,15 @@ def get_job(job_id: str) -> dict | None:
 
 
 def update_job_result(job_id: str, status: str, result: dict) -> None:
-    conn = _get_connection()
-    cursor = conn.cursor()
     now_str = datetime.now(UTC).isoformat()
     result_json = json.dumps(result, ensure_ascii=False)
 
-    cursor.execute(
-        """
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
         UPDATE scenario_jobs
         SET status = ?, result = ?, updated_at = ?
         WHERE job_id = ?
     """,
-        (status, result_json, now_str, job_id),
-    )
-    conn.commit()
-    conn.close()
+            (status, result_json, now_str, job_id),
+        )

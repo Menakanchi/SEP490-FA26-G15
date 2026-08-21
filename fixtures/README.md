@@ -81,10 +81,7 @@ python scenario_runner.py \
 Môi trường worker (`worker/.venv`, Python 3.10):
 
 ```bash
-uv venv --python 3.10 worker/.venv
-uv pip install --python worker/.venv/bin/python "carla==0.9.15" "setuptools<81" \
-    "py-trees==0.8.3" networkx shapely xmlschema numpy psutil ephem tabulate \
-    six simple-watchdog-timer "antlr4-python3-runtime==4.10" matplotlib graphviz
+uv sync --project worker --locked
 ```
 
 `setuptools<81` là bắt buộc: ScenarioRunner `import pkg_resources`, mà setuptools

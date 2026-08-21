@@ -3,25 +3,18 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
-from src.agents.nodes.parse_intent import parse_intent_node
+from src.agents.nodes.parse_intent import _load_taxonomy_rules, _rule_based_extract, parse_intent_node
 from src.models.schemas import (
-    DEFAULT_SUPPORT_POLICY,
     ActorType,
     AssumptionSource,
     IssueCode,
     ManeuverType,
     ODDQuery,
     RoadType,
-    SupportPolicy,
     Weather,
 )
-
-
-def _get_cat(val):
-    if val is None:
-        return None
-    return getattr(val, "category", str(val.value if hasattr(val, "value") else val))
 
 
 def test_parse_intent_short_or_numeric_prompt():
@@ -64,7 +57,14 @@ def test_parse_intent_happy_path(mock_get_llm):
 
 @patch("src.agents.nodes.parse_intent.get_llm")
 def test_parse_intent_partial_defaults(mock_get_llm):
-    """Test Case 2: Thiếu 2 trục bối cảnh (chỉ có actor + maneuver) -> với defaults bổ sung urban_straight + clear (AssumptionSource.DEFAULT)."""
+    """Case 2: thiếu 2 trục bối cảnh -> default điền theo phạm vi converter.
+
+    Mặc định road_type **không** phải hằng số. `with_defaults` ưu tiên
+    `urban_straight`, nhưng chỉ lấy nó nếu `SupportPolicy` chấp nhận; ADR-016
+    chốt phạm vi đã kiểm chứng chỉ có cao tốc, nên câu không nói loại đường sẽ
+    ra `highway`. Điền cứng `urban_straight` ở đây sẽ khiến chính câu này bị từ
+    chối bằng UNSUPPORTED_COMBINATION — từ chối một yêu cầu vốn có lời giải.
+    """
     mock_structured_llm = MagicMock()
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
 
@@ -123,7 +123,9 @@ def test_parse_intent_missing_maneuver(mock_get_llm):
     mock_odd_query = ODDQuery(
         road_type=RoadType.HIGHWAY,
         weather=Weather.RAIN,
-        actor_type=ActorType.BUS,
+        # "xe khách" quy về TRUCK ở biên parse: ODDCell chỉ nhận enum mà
+        # converter có blueprint. Xem _ACTOR_ALIASES trong parse_intent.
+        actor_type=ActorType.TRUCK,
         maneuver=None,
         inferred=[],
     )
@@ -187,7 +189,13 @@ def test_parse_intent_unsupported_combination(mock_get_llm, mock_policy):
 
 @patch("src.agents.nodes.parse_intent.get_llm")
 def test_parse_intent_slang_free_description(mock_get_llm):
-    """Test Case 7: Câu dùng từ lóng / tự do ('Đoàn xe đạp đi hàng ba') -> trích xuất hợp lệ."""
+    """Case 7: câu dùng từ lóng vẫn trích xuất được, nhưng ô ODD ngoài phạm vi.
+
+    "Đoàn xe đạp đi hàng ba chiếm trọn làn ô tô" đọc ra đúng
+    (motorcycle + lane_drift + urban_straight), nhưng ADR-016 chốt converter mới
+    chỉ dựng được cao tốc. Hành vi đúng là **nói thẳng là chưa hỗ trợ**, không
+    phải sinh một kịch bản mà convert_xosc chắc chắn sẽ hỏng ở cuối luồng.
+    """
     mock_structured_llm = MagicMock()
     mock_get_llm.return_value.with_structured_output.return_value = mock_structured_llm
 
@@ -203,19 +211,77 @@ def test_parse_intent_slang_free_description(mock_get_llm):
     state = {"user_query": "Đoàn xe đạp đi hàng ba chiếm trọn làn ô tô"}
     result = parse_intent_node(state)
 
-    assert result["issues"] == []
+    # Trích xuất vẫn đúng — đó là việc của node này.
     assert result["odd_hints"].actor_type == ActorType.MOTORCYCLE
     assert result["odd_hints"].maneuver == ManeuverType.LANE_DRIFT
+    assert result["odd_hints"].road_type == RoadType.URBAN_STRAIGHT
+    # ...nhưng ô đó ngoài phạm vi converter, nên luồng dừng ở đây.
+    assert [i.code for i in result["issues"]] == [IssueCode.UNSUPPORTED_COMBINATION]
 
 
 def test_parse_intent_multi_actor():
-    """Test Case 8: Multi-actor ('Xe khách phanh gấp làm xe máy phía sau đâm vào')."""
-    state = {"user_query": "Xe khách phanh gấp làm xe máy phía sau đâm vào"}
+    """Case 8: multi-actor, chạy hoàn toàn bằng rule-based (không gọi LLM).
+
+    "Xe khách" quy về TRUCK — chữ gốc không mất, nó đi tiếp trong
+    `specific_type`. Đây là lý do quy đổi nằm ở biên parse chứ không phải nới
+    `ActorType`: thêm `bus` vào enum sẽ nở mẫu số ODD coverage bằng 140 ô mà
+    converter không dựng nổi.
+    """
+    state = {"user_query": "Xe khách phanh gấp làm xe máy phía sau đâm vào trên đường cao tốc"}
     result = parse_intent_node(state)
 
     assert result["issues"] == []
-    assert result["odd_hints"].actor_type == ActorType.BUS
+    assert result["odd_hints"].actor_type == ActorType.TRUCK
     assert result["odd_hints"].maneuver == ManeuverType.SUDDEN_BRAKE
+    assert result["odd_hints"].specific_type == "Xe khách"
+    # Phương tiện gây hành vi khớp ODD là adversary; xe phía sau là ego.
+    assert [a["role"] for a in result["actors"]] == ["adversary", "ego"]
+
+
+def test_actor_after_lane_context_is_not_dropped():
+    """ "làn giữa, xe máy" không phải cụm hạ tầng "làn xe máy"."""
+    parsed = _rule_based_extract(
+        "xe buýt tạt đầu ra làn giữa, xe máy phía sau không kịp tránh",
+        _load_taxonomy_rules(),
+    )
+
+    assert [actor["specific_type"] for actor in parsed["actors"]] == ["xe buýt", "xe máy"]
+    assert [actor["role"] for actor in parsed["actors"]] == ["adversary", "ego"]
+
+
+def test_actor_roles_do_not_depend_on_mention_order():
+    parsed = _rule_based_extract(
+        "xe máy phía sau không kịp tránh khi xe buýt tạt đầu",
+        _load_taxonomy_rules(),
+    )
+
+    assert [(actor["specific_type"], actor["role"]) for actor in parsed["actors"]] == [
+        ("xe máy", "ego"),
+        ("xe buýt", "adversary"),
+    ]
+
+
+def test_ambiguous_actor_roles_are_left_unknown():
+    parsed = _rule_based_extract("xe máy và ô tô chạy trên cao tốc", _load_taxonomy_rules())
+
+    assert [actor["role"] for actor in parsed["actors"]] == ["unknown", "unknown"]
+
+
+def test_fixture_wording_keeps_explicit_ego_and_primary_cut_in_intent():
+    """Regression cho đúng câu production từng đảo vai và chọn nhầm phanh gấp."""
+    query = (
+        "Trên cao tốc vào ban ngày, trời quang, một xe máy chạy 80 km/h ở làn bên trái, "
+        "xuất phát cách phía sau ô tô ego 25 m đang chạy 60 km/h. Xe máy vượt lên, "
+        "tạt vào trước đầu ô tô rồi phanh gấp xuống còn 40 km/h."
+    )
+
+    result = parse_intent_node({"user_query": query})
+
+    assert result["odd_hints"].maneuver is ManeuverType.CUT_IN
+    assert [(actor["specific_type"], actor["role"]) for actor in result["actors"]] == [
+        ("xe máy", "adversary"),
+        ("ô tô", "ego"),
+    ]
 
 
 @patch("src.agents.nodes.parse_intent.get_llm")
@@ -232,3 +298,62 @@ def test_parse_intent_llm_exception_handled(mock_get_llm):
     assert len(result["issues"]) == 1
     assert result["issues"][0].code == IssueCode.LLM_PROVIDER_ERROR
 
+
+# ---------------------------------------------------------------------------
+# Quy đổi taxonomy -> enum ở biên parse
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "user_query,expected_actor,expected_maneuver",
+    [
+        ("Xe khách phanh gấp trên đường cao tốc", ActorType.TRUCK, ManeuverType.SUDDEN_BRAKE),
+        ("Xe buýt dừng chết giữa làn trên cao tốc", ActorType.TRUCK, ManeuverType.STOP_IN_LANE),
+        ("Đoàn xe đạp lấn làn trên đường cao tốc", ActorType.MOTORCYCLE, ManeuverType.LANE_DRIFT),
+        ("Xe con vượt ẩu trên đường cao tốc", ActorType.CAR, ManeuverType.CUT_IN),
+    ],
+    ids=["xe khách->truck", "xe buýt->truck", "xe đạp->motorcycle", "vượt ẩu->cut_in"],
+)
+def test_taxonomy_vocabulary_narrows_to_enum(user_query, expected_actor, expected_maneuver):
+    """Từ vựng người dùng rộng hơn enum, và quy đổi phải xảy ra **ở đây**.
+
+    `taxonomy_rules.json` cố ý biết cả "xe khách", "xe đạp", "vượt ẩu" — đó là
+    chữ người ta gõ thật. Nhưng `ODDCell` chỉ nhận 4 ActorType và 7 ManeuverType
+    mà converter có template, nên biên parse phải thu hẹp lại.
+
+    Cách sai đã từng làm: nới enum trong `schemas.py` để nhận `bus`/`overtake`.
+    Nó nở mẫu số `ODD coverage` bằng những ô converter không dựng nổi — coverage
+    tụt vì đổi định nghĩa mẫu số chứ không phải vì hệ thống kém đi. Muốn nới
+    thật thì cần template converter + errata cho ADR-016.
+    """
+    result = parse_intent_node({"user_query": user_query})
+
+    assert result["issues"] == []
+    assert result["odd_hints"].actor_type == expected_actor
+    assert result["odd_hints"].maneuver == expected_maneuver
+
+
+def test_original_wording_survives_the_narrowing():
+    """Quy về enum không được làm mất chữ người dùng gõ."""
+    result = parse_intent_node({"user_query": "Xe khách phanh gấp trên đường cao tốc"})
+
+    hints = result["odd_hints"]
+    assert hints.actor_type == ActorType.TRUCK
+    assert hints.specific_type == "Xe khách"
+    assert hints.specific_action == "phanh gấp"
+    # Nhãn mô tả không được lọt vào `key` — coverage đếm theo ô enum.
+    assert hints.key == "highway|clear|truck|sudden_brake"
+
+
+def test_sentinel_unknown_from_llm_is_treated_as_empty():
+    """Model hay trả "unknown" thay vì bỏ trống — đừng để nó làm chết cả request."""
+    query = ODDQuery.model_validate(
+        {"road_type": "unknown", "weather": "N/A", "actor_type": "motorcycle", "maneuver": "cut_in"}
+    )
+    assert query.road_type is None
+    assert query.weather is None
+
+    # Còn từ vựng tiếng Việt thì KHÔNG dịch ở tầng contract — đó là việc của
+    # taxonomy_rules.json trong parse_intent.
+    with pytest.raises(ValidationError):
+        ODDQuery.model_validate({"weather": "mưa bão"})

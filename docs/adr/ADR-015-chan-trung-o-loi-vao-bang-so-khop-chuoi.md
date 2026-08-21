@@ -1,7 +1,7 @@
 # ADR-015: Chặn câu hỏi trùng ở lối vào bằng so khớp chuỗi chính xác, không dùng ngưỡng embedding cho MVP
 
 **Ngày:** 2026-08-12
-**Trạng thái:** Proposed — thuộc Phase 1, cần chốt cùng lúc với `POST /generate`
+**Trạng thái:** Accepted — triển khai cùng `POST /generate`, xem §Ghi chú khi triển khai
 
 ## Bối cảnh
 
@@ -102,3 +102,57 @@ Lúc đó ngưỡng cosine được hiệu chỉnh **từ chính tập câu đó
 **Rủi ro chấp nhận, nói rõ để không ai tưởng đã xong:** *"Xe máy tạt đầu ô tô"* và *"Ô tô bị xe máy tạt đầu"* là hai chuỗi khác nhau mô tả cùng một tình huống. MVP **không** bắt được ca này. Đó là giá của việc không chốt một ngưỡng bịa, và là lý do §Ngưỡng đảo ngược tồn tại.
 
 **Ngoài phạm vi ADR này:** trùng lặp ở phía **đầu ra** — hai câu vào khác nhau nhưng sinh ra hai kịch bản có cùng cấu hình động học. Đó là bài toán đo độ đa dạng của thư viện, cần dữ liệu thật để định nghĩa đơn vị đếm, và chỉ cắn khi đã có corpus. Không giải ở đây.
+
+
+## Ghi chú khi triển khai
+
+Bốn chỗ phải quyết thêm khi viết code; ghi lại vì chúng không suy ra được từ
+phần trên, và §15.2 nói thiếu một chỗ.
+
+### Cột nằm ở **hai** bảng, không chỉ `scenarios`
+
+§15.2 chỉ nhắc `scenarios`. Không đủ: hai trong năm ca cần xử lý — *"lần sinh cũ
+đang chạy"* và *"lần sinh cũ hỏng vì hạ tầng"* — chỉ tồn tại ở
+`generation_requests`, vì lúc đó chưa có hàng `scenarios` nào. Ngược lại, đo
+trên bản dev có **10/27 kịch bản không có hàng `generation_requests` nào trỏ
+tới** (dữ liệu seed), và cả 10 đều ở `approved_library` — tra riêng
+`generation_requests` sẽ mù với đúng phần thư viện có sẵn nhiều nhất.
+
+Nên: cột ở cả hai bảng, cùng gọi **một** `normalize_prompt`. Rủi ro §15.2 cảnh
+báo là **đường ghi lệch đường tra**, không phải "hai bảng" — hai bảng dùng chung
+một hàm thì không có hai định nghĩa nào cả. Mỗi bảng chuẩn hoá `description_vi`
+của **chính hàng đó**, nên quy tắc phát biểu được thành một câu và backfill được
+cho dữ liệu cũ.
+
+### `failed` không tính là trùng
+
+Hỏng vì hạ tầng — hết quota, provider 500 — thì gõ lại là đúng việc cần làm.
+Tính nó là trùng sẽ biến một lỗi tạm thời thành lỗi vĩnh viễn: câu đó không bao
+giờ sinh được nữa mà không ai hiểu vì sao.
+
+### `force_generate` ghi `NULL`, không ghi khoá
+
+Hàng đó cố ý đứng ngoài cả phép tra lẫn unique index bên dưới, nên §15.4
+("người dùng chọn sinh mới") luôn chạy được, kể cả khi một lần sinh của đúng câu
+đó đang chạy. Kịch bản nó tạo ra vẫn tìm lại được về sau, vì
+`scenarios.description_normalized` thì luôn được ghi.
+
+### Race condition: unique index từng phần, không khoá trong process
+
+ADR gốc không nói tới ca hai request giống hệt tới **cùng lúc**. Giữa lúc handler
+đọc "chưa có ai chạy" và lúc nó `INSERT` có một khe, và khe đó đủ rộng cho
+request thứ hai lọt qua.
+
+```sql
+CREATE UNIQUE INDEX ux_generation_requests_running_description
+  ON generation_requests (description_normalized) WHERE status = 'running';
+```
+
+Đặt phép phân xử ở tầng DB vì khoá trong process vô dụng khi có nhiều worker.
+`NULL` không đụng unique index trong cả SQLite lẫn Postgres, nên nó khớp sẵn với
+quy ước `force_generate` ở trên.
+
+Hệ quả kèm theo: `create_generation_request` phải đổi từ `INSERT OR REPLACE`
+sang `INSERT` thuần. Với index này, `OR REPLACE` sẽ lặng lẽ **xoá** hàng đang
+chạy mà nó đụng phải — tức là đúng cái race ta dựng index lên để chặn, nhưng tệ
+hơn: request kia mất hàng và `GET /status` của nó trả 404.

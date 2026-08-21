@@ -17,24 +17,18 @@ Phần này tổng hợp các lỗi phổ biến khi setup và chạy dự án A
 
 **Cách sửa:**
 ```bash
-# 1. Xác nhận đang ở trong venv
-which python
-# Output phải chứa .venv, ví dụ: /path/to/project/.venv/bin/python
+# Đồng bộ lại đúng môi trường đã lock
+uv sync --locked
 
-# 2. Nếu không, kích hoạt lại
-source .venv/bin/activate
-
-# 3. Cài lại package
-pip install -e ".[dev]"
+# Chạy qua môi trường của project
+uv run python -c "import fastapi; print(fastapi.__version__)"
 ```
 
 **Nếu vẫn lỗi:**
 ```bash
 # Xóa venv cũ và tạo lại
 rm -rf .venv
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync --locked
 ```
 
 ### `python3.11: command not found`
@@ -53,13 +47,13 @@ sudo apt update
 sudo apt install python3.11 python3.11-venv python3.11-dev
 ```
 
-### `pip install` chậm hoặc timeout
+### `uv sync` chậm hoặc timeout
 
 **Cách sửa:** Dùng mirror gần Việt Nam:
 ```bash
-pip install -e ".[dev]" -i https://pypi.tuna.tsinghua.edu.cn/simple
+UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync
 # Hoặc
-pip install -e ".[dev]" -i https://mirror.cloudflare.com/pypi/simple
+UV_DEFAULT_INDEX=https://mirror.cloudflare.com/pypi/simple uv sync
 ```
 
 ### `ERROR: Could not build wheel for xxx`
@@ -82,12 +76,12 @@ sudo apt install build-essential python3.11-dev
 
 ### `uvicorn: command not found`
 
-**Nguyên nhân:** uvicorn chưa được cài hoặc chưa kích hoạt venv.
+**Nguyên nhân:** môi trường project chưa được đồng bộ hoặc lệnh không chạy qua `uv`.
 
 **Cách sửa:**
 ```bash
-source .venv/bin/activate
-pip install uvicorn
+uv sync --locked
+uv run uvicorn src.main:app --reload
 ```
 
 ### `ERROR: [Errno 48] Address already in use` (Port 8000 bị chiếm)
@@ -143,7 +137,7 @@ python -c "from openai import OpenAI; c=OpenAI(); print(c.models.list().data[:3]
 
 **Cách sửa:**
 ```bash
-pip install --upgrade langgraph langchain-core
+uv add --upgrade langgraph langchain-core
 ```
 
 ### `GraphRecursionError: Recursion limit reached`
@@ -196,17 +190,16 @@ sudo usermod -aG docker $USER
 # Logout và login lại
 ```
 
-### `docker build` fails ở `pip install`
+### `docker build` fails ở `uv sync`
 
-**Nguyên nhân:** Docker không cache layer do `requirements.txt` thay đổi, hoặc network issue.
+**Nguyên nhân:** Docker không cache layer do `pyproject.toml`/`uv.lock` thay đổi, hoặc network issue.
 
 **Cách sửa:**
 ```bash
 # Build không cache
 docker build --no-cache -t my-agent .
 
-# Nếu lỗi network, thêm pip mirror vào Dockerfile:
-# RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# Nếu lỗi network, truyền index cho uv khi build.
 ```
 
 ### `docker compose up` fails — service unhealthy
@@ -278,7 +271,7 @@ Nếu CI không chạy sau khi push:
 
 **Cách sửa:**
 1. Kiểm tra build log chi tiết trên Render Dashboard
-2. Đảm bảo `Dockerfile` hoặc `requirements.txt` có trong repo
+2. Đảm bảo `Dockerfile`, `pyproject.toml` và `uv.lock` có trong repo
 3. Thêm `runtime.txt` với nội dung `3.11.x` nếu Render chọn sai Python version
 
 ### Render free tier "sleeping" — response chậm
@@ -313,4 +306,4 @@ app.add_middleware(
 2. **Google lỗi** — Copy paste error message vào Google, thường có giải pháp trên StackOverflow
 3. **Check `.env`** — 80% lỗi production do biến môi trường thiếu hoặc sai
 4. **Chạy `make check`** — Lint + format + typecheck + test trong một lệnh
-5. **Xóa và tạo lại** — `rm -rf .venv && python3.11 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`
+5. **Xóa và tạo lại** — `rm -rf .venv && uv sync --locked`
