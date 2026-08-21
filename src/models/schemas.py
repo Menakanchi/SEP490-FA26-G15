@@ -1085,7 +1085,7 @@ class ReviewGate(StrEnum):
 
 
 class ScenarioStatus(StrEnum):
-    """Vòng đời của **một scenario**, đúng bốn trạng thái (ADR-011).
+    """Vòng đời của scenario qua hai cổng và một lần chạy mô phỏng.
 
     ``queued`` / ``running`` / ``done`` / ``failed`` **không** nằm ở đây — chúng
     là :class:`JobStatus`. Sơ đồ ở ``docs/gate-1/03-wireframe-ui-flow.md`` §7 vẽ
@@ -1097,30 +1097,35 @@ class ScenarioStatus(StrEnum):
     bảng ``generation_requests`` (PRD §8 — *"không tạo pending scenario giả"*).
     """
 
-    PENDING_REVIEW = "pending_review"  # workflow xong, chờ BEFORE_LIBRARY
-    REJECTED = "rejected"  # trạng thái kết thúc
-    APPROVED_LIBRARY = "approved_library"  # trong thư viện, tải được, có embedding
-    PENDING_SIM_REVIEW = "pending_sim_review"  # chờ BEFORE_SIM
+    PENDING_SIM_REVIEW = "pending_sim_review"  # workflow xong, chờ cấp phép GPU
+    SIMULATION_QUEUED = "simulation_queued"  # đã duyệt BEFORE_SIM, chờ worker trả kết quả
+    PENDING_LIBRARY_REVIEW = "pending_library_review"  # đã có bằng chứng CARLA, chờ duyệt thư viện
+    APPROVED_LIBRARY = "approved_library"  # cổng cuối đã duyệt, có embedding
+    REJECTED = "rejected"  # bị từ chối ở một trong hai cổng
 
 
 REVIEW_TRANSITIONS: dict[tuple[ScenarioStatus, ReviewGate, bool], ScenarioStatus] = {
-    (ScenarioStatus.PENDING_REVIEW, ReviewGate.BEFORE_LIBRARY, True): ScenarioStatus.APPROVED_LIBRARY,
-    (ScenarioStatus.PENDING_REVIEW, ReviewGate.BEFORE_LIBRARY, False): ScenarioStatus.REJECTED,
-    (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, True): ScenarioStatus.APPROVED_LIBRARY,
-    (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, False): ScenarioStatus.APPROVED_LIBRARY,
+    (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, True): ScenarioStatus.SIMULATION_QUEUED,
+    (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, False): ScenarioStatus.REJECTED,
+    (ScenarioStatus.PENDING_LIBRARY_REVIEW, ReviewGate.BEFORE_LIBRARY, True): ScenarioStatus.APPROVED_LIBRARY,
+    (ScenarioStatus.PENDING_LIBRARY_REVIEW, ReviewGate.BEFORE_LIBRARY, False): ScenarioStatus.REJECTED,
 }
-"""Bảng transition của ADR-011 §3.3 — **không có đường nào khác**.
+"""Hai cổng không thể hoán đổi: BEFORE_SIM trước, BEFORE_LIBRARY sau CARLA.
 
 Khoá gồm cả **cổng**, không chỉ trạng thái. Nếu chỉ khoá theo ``(từ, sang)`` thì
-một quyết định gửi nhầm cổng — ``BEFORE_SIM`` bấm lên một scenario đang
-``pending_review`` — vẫn lọt, và hai cổng HITL trở thành có thể hoán đổi cho
+một quyết định gửi nhầm cổng — ``BEFORE_LIBRARY`` bấm lên một scenario đang
+``pending_sim_review`` — vẫn lọt, và hai cổng HITL trở thành có thể hoán đổi cho
 nhau. Đó đúng là thứ ràng buộc *"kỹ sư phải phê duyệt trước khi đưa vào bộ kiểm
 thử"* của đề bài cấm.
 
-Hai dòng cuối cùng đi về một chỗ: reject và approve ``BEFORE_SIM`` **đều** trả
-scenario về thư viện. Khác nhau ở chỗ approve còn tạo thêm một
-:class:`ScenarioJob` — việc đó là của tầng service, không phải của bảng này.
+Transition ``SIMULATION_QUEUED -> PENDING_LIBRARY_REVIEW`` do worker result,
+không phải quyết định review, nên nằm riêng bên dưới.
 """
+
+
+EXECUTION_TRANSITIONS: dict[ScenarioStatus, ScenarioStatus] = {
+    ScenarioStatus.SIMULATION_QUEUED: ScenarioStatus.PENDING_LIBRARY_REVIEW,
+}
 
 
 def next_status_after_review(current: ScenarioStatus, gate: ReviewGate, approved: bool) -> ScenarioStatus | None:
@@ -1132,15 +1137,15 @@ def next_status_after_review(current: ScenarioStatus, gate: ReviewGate, approved
     return REVIEW_TRANSITIONS.get((current, gate, approved))
 
 
-def can_request_simulation(current: ScenarioStatus) -> bool:
-    """Chỉ scenario đã qua ``BEFORE_LIBRARY`` mới được xin chạy sim (FR-12)."""
-    return current is ScenarioStatus.APPROVED_LIBRARY
+def next_status_after_execution(current: ScenarioStatus) -> ScenarioStatus | None:
+    """Mở cổng thư viện chỉ sau khi worker đã trả bằng chứng thực thi."""
+    return EXECUTION_TRANSITIONS.get(current)
 
 
 ALLOWED_SCENARIO_TRANSITIONS: dict[ScenarioStatus, frozenset[ScenarioStatus]] = {
     status: frozenset(
         {target for (src, _, _), target in REVIEW_TRANSITIONS.items() if src is status}
-        | ({ScenarioStatus.PENDING_SIM_REVIEW} if can_request_simulation(status) else set())
+        | ({EXECUTION_TRANSITIONS[status]} if status in EXECUTION_TRANSITIONS else set())
     )
     for status in ScenarioStatus
 }
@@ -1155,7 +1160,7 @@ class ReviewDecision(ForgeModel):
     """Một lần bấm duyệt.
 
     Luồng KHÔNG đứng chờ trong RAM. Tới cổng thì workflow **kết thúc** và ghi
-    xuống DB trạng thái ``pending_review``; khi có quyết định thì một đường vào
+    xuống DB trạng thái ``pending_sim_review``; khi có quyết định thì một đường vào
     khác nhặt lên chạy tiếp.
 
     Lý do rất cụ thể: Render free tier ngủ khi không có request, nên mọi thứ

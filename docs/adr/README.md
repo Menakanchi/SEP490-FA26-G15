@@ -19,13 +19,14 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | ADR-008 | Model routing + lớp trừu tượng provider (LiteLLM) | ⏳ W4 |
 | ADR-009 | Chọn index Qdrant (HNSW vs exact) | ⛔ Đóng theo ADR-013 — chỉ mở lại nếu chạm ngưỡng đảo ngược |
 | [ADR-010](ADR-010-vi-tri-tuong-doi-theo-lan-thay-vi-spawn-index.md) | Vị trí tương đối theo làn, không dùng `spawn_index` | Accepted — *cách hiện thực đang được ADR-012 xem lại* |
-| [ADR-011](ADR-011-persistence-schema-va-state-transitions.md) | Persistence schema, `ScenarioStatus` + transition, `.xosc` trong DB, SQLite local ↔ Supabase deploy | ✅ **Accepted 04/8** — gỡ chặn review/job API; *phạm vi được ADR-014 mở rộng cho luồng batch* |
+| [ADR-011](ADR-011-persistence-schema-va-state-transitions.md) | Persistence schema, `ScenarioStatus` + transition, `.xosc` trong DB, SQLite local ↔ Supabase deploy | ✅ **Accepted 04/8** — bảng transition được ADR-018 thay thế |
 | [ADR-012](ADR-012-converter-dung-relativelaneposition.md) | Converter dùng thẳng `RelativeLanePosition`, không tự phân giải offset | ✅ **Accepted 31/7** — smoke test chạy được, kèm 3 bẫy converter |
 | [ADR-013](ADR-013-sqlite-blob-thay-qdrant.md) | SQLite + embedding BLOB cho retrieval MVP, thay Qdrant | ✅ **Accepted 04/8** — supersedes ADR-003; kèm ngưỡng đảo ngược đo được |
 | [ADR-014](ADR-014-duyet-theo-lo-va-batch-khong-vao-thu-vien.md) | Batch: `BEFORE_SIM` duyệt theo **lô**; scenario sinh hàng loạt **không** vào thư viện | 🕐 **Proposed 12/8** — thi hành ở Phase 4, nhưng ràng buộc schema phải chốt **trước** khi viết review API |
 | [ADR-015](ADR-015-chan-trung-o-loi-vao-bang-so-khop-chuoi.md) | Câu hỏi trùng: so khớp chuỗi chuẩn hoá ở API layer trước graph; **không** ngưỡng embedding ở MVP | 🕐 **Proposed 12/8** — Phase 1, chốt cùng `POST /generate` |
 | [ADR-016](ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md) | Phạm vi converter = số anchor đã smoke-test; `DEFAULT_SUPPORT_POLICY` từ 560 xuống **76 ô** (chỉ `highway`) | 🕐 **Proposed 14/8** — Phase 1, chốt cùng `convert_xosc` |
-| [ADR-017](ADR-017-muc-kiem-chung-tach-khoi-trang-thai-duyet.md) | Mức kiểm chứng (`VerificationLevel`) là trục **riêng**, không phải trạng thái duyệt; kịch bản không bị rút khỏi thư viện, chỉ thôi làm few-shot | 🕐 **Proposed 15/8** — chốt cùng PR đóng vòng lặp mô phỏng |
+| [ADR-017](ADR-017-muc-kiem-chung-tach-khoi-trang-thai-duyet.md) | Mức kiểm chứng (`VerificationLevel`) là trục **riêng**, không phải trạng thái duyệt | 🕐 **Proposed 15/8** — thứ tự xử lý kết quả được ADR-018 thay thế |
+| [ADR-018](ADR-018-dao-thu-tu-hai-cong-duyet.md) | `BEFORE_SIM` → CARLA → `BEFORE_LIBRARY`; chỉ publish sau khi reviewer xem kết quả thực thi | ✅ **Accepted 19/8** |
 
 ## Luật
 

@@ -161,9 +161,9 @@ def _extract_error_code(exception: Exception) -> str:
 
 def call_with_escalation(
     messages: list[dict[str, Any]],
-    structured_output_schema: type[BaseModel],
+    structured_output_schema: type[BaseModel] | dict[str, Any],
     timeout: int = DEFAULT_TIMEOUT,
-) -> BaseModel:
+) -> BaseModel | dict[str, Any]:
     """
     Gọi LLM với automatic model escalation và timeout.
 
@@ -174,7 +174,9 @@ def call_with_escalation(
 
     Args:
         messages: Danh sách messages theo format LangChain
-        structured_output_schema: Pydantic schema cho structured output
+        structured_output_schema: Pydantic model hoặc JSON Schema cho structured output.
+            JSON Schema được dùng khi caller cần giữ output thô để validation/
+            repair ở tầng workflow xử lý các invariant liên trường.
         timeout: Số giây tối đa cho mỗi lần gọi (mặc định 60s)
 
     Returns:

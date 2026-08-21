@@ -14,7 +14,7 @@ def generate_draft_node(
     odd_cell: ODDCell,
     examples: list[ScenarioDraft] | None = None,
     actor_hints: list[dict[str, Any]] | None = None,
-) -> ScenarioDraft:
+) -> dict[str, Any]:
     """
     Sinh ScenarioDraft từ câu tiếng Việt.
 
@@ -24,7 +24,9 @@ def generate_draft_node(
         examples: Danh sách ScenarioDraft làm few-shot examples (tối đa 3)
 
     Returns:
-        ScenarioDraft đã được validate bằng Pydantic
+        JSON object theo shape của ScenarioDraft nhưng chưa chạy các invariant
+        liên trường. ``validate_node`` chịu trách nhiệm dựng ScenarioDraft và
+        chuyển lỗi ngữ nghĩa thành ValidationIssue để repair được.
     """
     # Import ở đây để tránh circular import
     from src.services.llm import call_with_escalation
@@ -32,9 +34,18 @@ def generate_draft_node(
     # Tạo messages cho LLM
     messages = _create_messages(user_query, odd_cell, examples, actor_hints)
 
-    # Gọi LLM với escalation
-    result = call_with_escalation(messages, ScenarioDraft)
-
+    # Dùng JSON Schema thay vì class Pydantic. ``with_structured_output`` với
+    # ScenarioDraft sẽ chạy model_validator ngay trong lời gọi LLM; nếu model
+    # lỡ gán maneuver cho ego thì ValidationError nổ ở đây và raw JSON bị mất,
+    # dù EGO_HAS_MANEUVER là lỗi repairable. JSON Schema vẫn giữ chặt shape và
+    # kiểu trường, còn invariant liên trường được validate_node xử lý.
+    result = call_with_escalation(messages, ScenarioDraft.model_json_schema())
+    if isinstance(result, ScenarioDraft):
+        # Giữ đường mock/test cũ tương thích; provider thật trả dict khi schema
+        # truyền vào là JSON Schema.
+        return result.model_dump(mode="json")
+    if not isinstance(result, dict):
+        raise TypeError(f"generate_draft cần JSON object, LLM trả về {type(result).__name__}")
     return result
 
 

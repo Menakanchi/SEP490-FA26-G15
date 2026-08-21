@@ -132,8 +132,9 @@ export default function ScenarioDetailPage() {
         return "badge badge--approved";
       case "rejected":
         return "badge badge--rejected";
-      case "pending_review":
       case "pending_sim_review":
+      case "simulation_queued":
+      case "pending_library_review":
         return "badge badge--pending";
       default:
         return "badge";
@@ -146,10 +147,12 @@ export default function ScenarioDetailPage() {
         return "Đã duyệt";
       case "rejected":
         return "Từ chối";
-      case "pending_review":
-        return "Chờ duyệt";
       case "pending_sim_review":
-        return "Chờ duyệt sim";
+        return "Chờ Cổng 1";
+      case "simulation_queued":
+        return "Đang chờ/chạy mô phỏng";
+      case "pending_library_review":
+        return "Chờ Cổng 2";
       default:
         return scenario.status;
     }
@@ -298,6 +301,7 @@ export default function ScenarioDetailPage() {
               onClick={handleDownload}
               className="btn-primary text-xs px-3 py-1.5"
               disabled={!scenario.xosc_content}
+              title={scenario.xosc_content ? "Tải file .xosc" : "Chưa có mã XML để tải"}
             >
               <Download className="w-3.5 h-3.5" />
               Tải .xosc

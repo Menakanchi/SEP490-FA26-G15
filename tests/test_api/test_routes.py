@@ -28,6 +28,46 @@ async def _generate_one(client, prompt: str) -> str:
     return status["scenario_id"]
 
 
+async def _approve_sim(client, scenario_id: str) -> str:
+    response = await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": scenario_id,
+            "gate": "before_sim",
+            "approved": True,
+            "reviewer": "Simulation Reviewer",
+            "reason": "",
+        },
+    )
+    assert response.status_code == 200, response.text
+    jobs = (await client.get("/api/v1/internal/jobs")).json()["jobs"]
+    return next(job["job_id"] for job in jobs if job["scenario_id"] == scenario_id)
+
+
+async def _submit_result(
+    client,
+    scenario_id: str,
+    job_id: str,
+    *,
+    success: bool = True,
+    collision: bool = False,
+) -> None:
+    payload = {
+        "scenario_id": scenario_id,
+        "xosc_path": f"{scenario_id}.xosc",
+        "success": success,
+        "criteria_results": (
+            [{"name": "CollisionTest", "result": "FAILURE" if collision else "SUCCESS", "actual": "1"}]
+            if success
+            else []
+        ),
+    }
+    if not success:
+        payload["error"] = "quá 300s, đã giết tiến trình"
+    response = await client.post(f"/api/v1/internal/jobs/{job_id}/result", json=payload)
+    assert response.status_code == 200, response.text
+
+
 def _cut_in_draft() -> ScenarioDraft:
     """Draft cut_in hợp lệ trên cao tốc — qua được validate ngay vòng đầu."""
     return ScenarioDraft.model_validate(
@@ -175,8 +215,8 @@ async def test_generated_scenario_dynamic_odd(client):
     assert sc["spec"]["odd"]["weather"] == "heavy_rain"
     # FR-01: câu gốc giữ nguyên văn — `intent_match` đối chiếu với chính nó.
     assert sc["description_vi"] == prompt
-    # Chưa duyệt thì chưa tải được .xosc (FR-11).
-    assert (await client.get(f"/api/v1/scenarios/{sc_id}/xosc")).status_code == 403
+    # Reviewer phải tải được artifact trước cả hai quyết định.
+    assert (await client.get(f"/api/v1/scenarios/{sc_id}/xosc")).status_code == 200
 
 
 @pytest.mark.asyncio
@@ -204,12 +244,12 @@ async def test_unsupported_prompt_fails_without_creating_a_scenario(client):
 
 @pytest.mark.asyncio
 async def test_review_validation_and_flow(client):
-    """Vòng duyệt: 404 khi không có, 422 khi từ chối cụt lý do, 200 khi duyệt."""
+    """Hai cổng không thể đảo: BEFORE_SIM -> result -> BEFORE_LIBRARY."""
     res = await client.post(
         "/api/v1/review",
         json={
             "scenario_id": "sc_99999",
-            "gate": "before_library",
+            "gate": "before_sim",
             "approved": True,
             "reviewer": "Engineer A",
             "reason": "",
@@ -224,7 +264,7 @@ async def test_review_validation_and_flow(client):
         "/api/v1/review",
         json={
             "scenario_id": sc_id,
-            "gate": "before_library",
+            "gate": "before_sim",
             "approved": False,
             "reviewer": "Reviewer B",
             "reason": "Ngắn",
@@ -232,7 +272,7 @@ async def test_review_validation_and_flow(client):
     )
     assert rej_res.status_code == 422
 
-    app_res = await client.post(
+    wrong_gate = await client.post(
         "/api/v1/review",
         json={
             "scenario_id": sc_id,
@@ -242,100 +282,32 @@ async def test_review_validation_and_flow(client):
             "reason": "",
         },
     )
-    assert app_res.status_code == 200
-    assert app_res.json()["ok"] is True
-    # Static chỉ chứng minh file parse được, không chứng minh kịch bản có ý
-    # nghĩa — qua BEFORE_LIBRARY luôn mở sẵn BEFORE_SIM bất kể validation_mode.
-    assert app_res.json()["sim_gate_opened"] is True
+    assert wrong_gate.status_code == 409
 
-    # Duyệt xong thì mới tải được .xosc (FR-11).
-    assert (await client.get(f"/api/v1/scenarios/{sc_id}/xosc")).status_code == 200
+    job_id = await _approve_sim(client, sc_id)
+    assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["status"] == "simulation_queued"
+    await _submit_result(client, sc_id, job_id, collision=True)
+    assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["status"] == "pending_library_review"
 
-
-@pytest.mark.asyncio
-async def test_request_sim_opens_the_second_gate(client):
-    """`approved_library` -> `pending_sim_review`, và chỉ từ đó.
-
-    Cổng 2 là xin phép **trước khi tiêu GPU**, không phải xem xong rồi quyết giữ.
-    Đề bài đòi *"kỹ sư phải phê duyệt trước khi đưa vào bộ kiểm thử"*, nên hệ
-    thống không được tự đẩy job vào CARLA.
-
-    Duyệt cổng 1 giờ tự mở luôn cổng 2 (xem ``post_review``), nên endpoint này
-    chỉ còn cần thiết để **mở lại vòng sim thứ hai** sau khi cổng 2 đã có một
-    quyết định (approve hoặc reject đều trả kịch bản về ``approved_library``).
-    """
-    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
-
-    # Chưa qua cổng 1 thì chưa xin chạy sim được.
-    too_early = await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
-    assert too_early.status_code == 409
-
-    approve_res = await client.post(
+    app_res = await client.post(
         "/api/v1/review",
         json={
             "scenario_id": sc_id,
             "gate": "before_library",
             "approved": True,
-            "reviewer": "Cong",
+            "reviewer": "Library Reviewer",
             "reason": "",
         },
     )
-    # Cổng 1 duyệt xong là cổng 2 đã tự mở — gọi request-sim lúc này là thừa.
-    assert approve_res.json()["sim_gate_opened"] is True
-    assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["status"] == "pending_sim_review"
-    already_open = await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
-    assert already_open.status_code == 409
-
-    # Chưa duyệt cổng 2 thì chưa có job nào cho worker.
-    assert (await client.get("/api/v1/internal/jobs")).json()["jobs"] == []
-
-    # Từ chối cổng 2 trả kịch bản về approved_library — vẫn xin mở lại được.
-    await client.post(
-        "/api/v1/review",
-        json={
-            "scenario_id": sc_id,
-            "gate": "before_sim",
-            "approved": False,
-            "reviewer": "Cong",
-            "reason": "Chưa đủ tin cậy để tốn GPU đợt này",
-        },
-    )
-    reopened = await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
-    assert reopened.status_code == 200
-    assert reopened.json()["status"] == "pending_sim_review"
+    assert app_res.status_code == 200
+    assert app_res.json()["status"] == "approved_library"
 
 
 @pytest.mark.asyncio
 async def test_before_sim_creates_a_job_and_keeps_the_scenario(client):
-    """Duyệt cổng 2 tạo job; **từ chối cũng không xoá kịch bản**.
-
-    Số phận kịch bản đã chốt ở cổng 1 (ADR-011 §3.3) — cả hai nhánh của cổng 2
-    đều trả nó về `approved_library`. Cổng 2 chỉ nói "có chạy hay không".
-    """
+    """Cổng đầu tiên tạo job nhưng chưa đưa scenario vào thư viện."""
     sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
-    for gate, approved in (("before_library", True),):
-        await client.post(
-            "/api/v1/review",
-            json={
-                "scenario_id": sc_id,
-                "gate": gate,
-                "approved": approved,
-                "reviewer": "Cong",
-                "reason": "",
-            },
-        )
-    await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
-
-    await client.post(
-        "/api/v1/review",
-        json={
-            "scenario_id": sc_id,
-            "gate": "before_sim",
-            "approved": True,
-            "reviewer": "Cong",
-            "reason": "",
-        },
-    )
+    await _approve_sim(client, sc_id)
 
     jobs = (await client.get("/api/v1/internal/jobs")).json()["jobs"]
     assert len(jobs) == 1
@@ -344,59 +316,23 @@ async def test_before_sim_creates_a_job_and_keeps_the_scenario(client):
     assert jobs[0]["xosc_content"].startswith("<?xml")
 
     detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
-    assert detail["status"] == "approved_library", "cổng 2 không đổi số phận kịch bản"
+    assert detail["status"] == "simulation_queued"
+    assert detail["verification"] == "unverified"
 
 
 @pytest.mark.asyncio
-async def test_execution_result_updates_verification_but_not_status(client):
-    """Kết quả CARLA quay về phải **đổi được điều gì đó** — trước ADR-017 thì không.
-
-    `ExecutionResult` từng chỉ nằm im trong `scenario_jobs.result`: không gì đọc,
-    không gì đổi theo nó, retrieval không biết nó tồn tại. Kịch bản chạy ra không
-    đúng ý vẫn ở lại thư viện và tiếp tục làm ví dụ few-shot.
-    """
+async def test_execution_result_opens_library_review(client):
+    """Worker evidence mở cổng cuối, không tự động publish."""
     sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
     assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["verification"] == "unverified"
-
-    await client.post(
-        "/api/v1/review",
-        json={
-            "scenario_id": sc_id,
-            "gate": "before_library",
-            "approved": True,
-            "reviewer": "Cong",
-            "reason": "",
-        },
-    )
-    await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
-    await client.post(
-        "/api/v1/review",
-        json={
-            "scenario_id": sc_id,
-            "gate": "before_sim",
-            "approved": True,
-            "reviewer": "Cong",
-            "reason": "",
-        },
-    )
-    job_id = (await client.get("/api/v1/internal/jobs")).json()["jobs"][0]["job_id"]
-
-    # Worker báo: chạy trót lọt nhưng KHÔNG va chạm.
-    posted = await client.post(
-        f"/api/v1/internal/jobs/{job_id}/result",
-        json={
-            "scenario_id": sc_id,
-            "xosc_path": f"{sc_id}.xosc",
-            "success": True,
-            "criteria_results": [{"name": "CollisionTest", "result": "SUCCESS", "actual": "0"}],
-        },
-    )
-    assert posted.json()["verification"] == "ran_no_hazard"
+    job_id = await _approve_sim(client, sc_id)
+    await _submit_result(client, sc_id, job_id)
 
     detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
     assert detail["verification"] == "ran_no_hazard"
-    # Không bị rút khỏi thư viện: số phận do người quyết ở cổng 1, đây là bằng chứng.
-    assert detail["status"] == "approved_library"
+    assert detail["status"] == "pending_library_review"
+    assert detail["latest_execution_result"]["success"] is True
+    assert detail["latest_execution_result"]["criteria_results"][0]["name"] == "CollisionTest"
 
 
 @pytest.mark.asyncio
@@ -407,92 +343,27 @@ async def test_collision_failure_is_recorded_as_adversarial(client):
     `adversarial_found` chính là đếm số kịch bản làm ego va chạm.
     """
     sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
-    for gate in ("before_library",):
-        await client.post(
-            "/api/v1/review",
-            json={
-                "scenario_id": sc_id,
-                "gate": gate,
-                "approved": True,
-                "reviewer": "Cong",
-                "reason": "",
-            },
-        )
-    await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
-    await client.post(
-        "/api/v1/review",
-        json={
-            "scenario_id": sc_id,
-            "gate": "before_sim",
-            "approved": True,
-            "reviewer": "Cong",
-            "reason": "",
-        },
-    )
-    job_id = (await client.get("/api/v1/internal/jobs")).json()["jobs"][0]["job_id"]
-
-    posted = await client.post(
-        f"/api/v1/internal/jobs/{job_id}/result",
-        json={
-            "scenario_id": sc_id,
-            "xosc_path": f"{sc_id}.xosc",
-            "success": True,
-            "criteria_results": [{"name": "CollisionTest", "result": "FAILURE", "actual": "1"}],
-        },
-    )
-    assert posted.json()["verification"] == "adversarial"
+    job_id = await _approve_sim(client, sc_id)
+    await _submit_result(client, sc_id, job_id, collision=True)
+    detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
+    assert detail["verification"] == "adversarial"
+    assert detail["status"] == "pending_library_review"
 
 
 @pytest.mark.asyncio
 async def test_crashed_run_is_recorded_as_execution_failed(client):
     """`success=False` là kịch bản KHÔNG chạy nổi — khác hẳn chạy xong mà không va chạm."""
     sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
-    await client.post(
-        "/api/v1/review",
-        json={
-            "scenario_id": sc_id,
-            "gate": "before_library",
-            "approved": True,
-            "reviewer": "Cong",
-            "reason": "",
-        },
-    )
-    await client.post(f"/api/v1/scenarios/{sc_id}/request-sim")
-    await client.post(
-        "/api/v1/review",
-        json={
-            "scenario_id": sc_id,
-            "gate": "before_sim",
-            "approved": True,
-            "reviewer": "Cong",
-            "reason": "",
-        },
-    )
-    job_id = (await client.get("/api/v1/internal/jobs")).json()["jobs"][0]["job_id"]
-
-    posted = await client.post(
-        f"/api/v1/internal/jobs/{job_id}/result",
-        json={
-            "scenario_id": sc_id,
-            "xosc_path": f"{sc_id}.xosc",
-            "success": False,
-            "criteria_results": [],
-            "error": "quá 300s, đã giết tiến trình",
-        },
-    )
-    assert posted.json()["verification"] == "execution_failed"
+    job_id = await _approve_sim(client, sc_id)
+    await _submit_result(client, sc_id, job_id, success=False)
+    detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
+    assert detail["verification"] == "execution_failed"
+    assert detail["status"] == "pending_library_review"
 
 
 @pytest.mark.asyncio
-async def test_sim_mode_opens_the_second_gate_automatically(client):
-    """Duyệt xong cổng 1 (BEFORE_LIBRARY) là mở luôn cổng 2, bất kể `validation_mode`.
-
-    Static chỉ chứng minh file parse được, không chứng minh kịch bản có ý
-    nghĩa hay tái hiện đúng nguy hiểm — không phải điểm dừng hợp lệ của sản
-    phẩm. Nhưng **không** tự chạy CARLA: cổng BEFORE_SIM còn nguyên, người vẫn
-    phải gật trước khi tốn GPU. Tự động ở đây chỉ là bước chuyển trạng thái,
-    không phải quyết định tiêu tài nguyên.
-    """
+async def test_generation_always_stops_at_before_sim(client):
+    """validation_mode không được bỏ qua quyết định tiêu GPU của con người."""
     with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
         req_id = (
             await client.post(
@@ -507,20 +378,7 @@ async def test_sim_mode_opens_the_second_gate_automatically(client):
             await asyncio.sleep(0.05)
 
     sc_id = status["scenario_id"]
-    approved = await client.post(
-        "/api/v1/review",
-        json={
-            "scenario_id": sc_id,
-            "gate": "before_library",
-            "approved": True,
-            "reviewer": "Cong",
-            "reason": "",
-        },
-    )
-    assert approved.json()["sim_gate_opened"] is True
     assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["status"] == "pending_sim_review"
-
-    # Vẫn chưa có job nào: cổng 2 mở ra để NGƯỜI duyệt, không phải để tự chạy.
     assert (await client.get("/api/v1/internal/jobs")).json()["jobs"] == []
 
 
@@ -557,7 +415,7 @@ async def test_two_roles_are_recorded_separately(client):
         "/api/v1/review",
         json={
             "scenario_id": sc_id,
-            "gate": "before_library",
+            "gate": "before_sim",
             "approved": True,
             "reviewer": "binh.tran@vinuni.edu.vn",
             "reason": "",

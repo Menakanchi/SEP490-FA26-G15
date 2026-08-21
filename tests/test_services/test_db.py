@@ -46,7 +46,7 @@ def _save(scenario_id: str = "sc_001", odd: dict | None = None) -> None:
         description_vi=SPEC["description_vi"],
         spec=SPEC,
         odd=odd if odd is not None else SPEC["odd"],
-        status=ScenarioStatus.PENDING_REVIEW.value,
+        status=ScenarioStatus.PENDING_SIM_REVIEW.value,
         xosc_content="<OpenSCENARIO/>",
     )
 
@@ -101,9 +101,20 @@ def test_pending_scenario_has_no_embedding() -> None:
     _save()
     with _connect() as conn:
         row = conn.execute("SELECT status, embedding, embedding_model FROM scenarios").fetchone()
-    assert row["status"] == ScenarioStatus.PENDING_REVIEW.value
+    assert row["status"] == ScenarioStatus.PENDING_SIM_REVIEW.value
     assert row["embedding"] is None
     assert row["embedding_model"] is None
+
+
+def test_init_db_migrates_legacy_pending_review_to_first_gate() -> None:
+    _save("sc_legacy")
+    with _connect() as conn:
+        conn.execute("UPDATE scenarios SET status = 'pending_review' WHERE scenario_id = 'sc_legacy'")
+        conn.commit()
+
+    db.init_db()
+
+    assert db.get_scenario("sc_legacy")["status"] == ScenarioStatus.PENDING_SIM_REVIEW.value
 
 
 def test_embedding_written_only_when_entering_library() -> None:

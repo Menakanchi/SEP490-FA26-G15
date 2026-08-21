@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, insert, inspect, select
 
-from src.models.schemas import ReviewDecision, ReviewGate, ScenarioSpec, ScenarioStatus
+from src.models.schemas import ReviewDecision, ReviewGate, ScenarioSpec, ScenarioStatus, VerificationLevel
 from src.services.persistence import (
     PersistenceError,
     ScenarioRepository,
@@ -52,7 +52,7 @@ def persist(
     request_id: str = "req_001",
     created_by: str = "creator@example.com",
 ) -> None:
-    repository.persist_pending_review(
+    repository.persist_pending_sim_review(
         request_id=request_id,
         request_description_vi="Câu hỏi gốc",
         scenario_description_vi=spec.description_vi,
@@ -75,13 +75,13 @@ def test_schema_contains_exact_shared_tables(repository: ScenarioRepository) -> 
     }
 
 
-def test_persist_is_durable_pending_review_without_embedding(
+def test_persist_is_durable_pending_sim_review_without_embedding(
     repository: ScenarioRepository, spec: ScenarioSpec
 ) -> None:
     persist(repository, spec)
     row = repository.get_scenario(spec.scenario_id)
     assert row is not None
-    assert row["status"] == ScenarioStatus.PENDING_REVIEW.value
+    assert row["status"] == ScenarioStatus.PENDING_SIM_REVIEW.value
     assert row["xosc_content"] == "<OpenSCENARIO />"
     assert row["spec"]["scenario_id"] == spec.scenario_id
     assert row["embedding"] is None
@@ -109,7 +109,7 @@ def test_transaction_rolls_back_scenario_when_second_write_fails(
     Ép câu thứ hai hỏng bằng một giá trị không serialise được sang JSON.
     """
     with pytest.raises(PersistenceError):
-        repository.persist_pending_review(
+        repository.persist_pending_sim_review(
             request_id="req_broken",
             request_description_vi="Câu hỏi gốc",
             scenario_description_vi=spec.description_vi,
@@ -165,6 +165,15 @@ def test_existing_request_row_is_finalised_not_duplicated(repository: ScenarioRe
 
 def test_before_library_is_only_place_embedding_is_written(repository: ScenarioRepository, spec: ScenarioSpec) -> None:
     persist(repository, spec)
+    sim_review = ReviewDecision(
+        scenario_id=spec.scenario_id,
+        gate=ReviewGate.BEFORE_SIM,
+        approved=True,
+        reviewer="sim-reviewer",
+        decided_at=datetime.now(UTC),
+    )
+    repository.apply_review(sim_review, job_id="job_001")
+    repository.record_execution(spec.scenario_id, VerificationLevel.ADVERSARIAL)
     decision = ReviewDecision(
         scenario_id=spec.scenario_id,
         gate=ReviewGate.BEFORE_LIBRARY,
@@ -187,6 +196,15 @@ def test_before_library_approval_without_embedding_rolls_back(
     repository: ScenarioRepository, spec: ScenarioSpec
 ) -> None:
     persist(repository, spec)
+    sim_review = ReviewDecision(
+        scenario_id=spec.scenario_id,
+        gate=ReviewGate.BEFORE_SIM,
+        approved=True,
+        reviewer="sim-reviewer",
+        decided_at=datetime.now(UTC),
+    )
+    repository.apply_review(sim_review, job_id="job_001")
+    repository.record_execution(spec.scenario_id, VerificationLevel.RAN_NO_HAZARD)
     decision = ReviewDecision(
         scenario_id=spec.scenario_id,
         gate=ReviewGate.BEFORE_LIBRARY,
@@ -196,39 +214,32 @@ def test_before_library_approval_without_embedding_rolls_back(
     )
     with pytest.raises(PersistenceError, match="requires embedding"):
         repository.apply_review(decision)
-    assert repository.get_scenario(spec.scenario_id)["status"] == ScenarioStatus.PENDING_REVIEW.value
+    assert repository.get_scenario(spec.scenario_id)["status"] == ScenarioStatus.PENDING_LIBRARY_REVIEW.value
     with repository.engine.connect() as connection:
-        assert connection.scalar(select(func.count()).select_from(review_decisions)) == 0
+        # BEFORE_SIM đã commit trước đó; transaction lỗi chỉ rollback quyết
+        # định BEFORE_LIBRARY đang thử ghi.
+        assert connection.scalar(select(func.count()).select_from(review_decisions)) == 1
 
 
 def test_invalid_transition_is_rejected_without_review_row(repository: ScenarioRepository, spec: ScenarioSpec) -> None:
     persist(repository, spec)
     wrong_gate = ReviewDecision(
         scenario_id=spec.scenario_id,
-        gate=ReviewGate.BEFORE_SIM,
+        gate=ReviewGate.BEFORE_LIBRARY,
         approved=True,
         reviewer="reviewer@example.com",
         decided_at=datetime.now(UTC),
     )
     with pytest.raises(PersistenceError, match="invalid scenario review transition"):
-        repository.apply_review(wrong_gate, job_id="job_001")
+        repository.apply_review(wrong_gate, embedding=[1.0], embedding_model="model")
     with repository.engine.connect() as connection:
         count = connection.scalar(select(func.count()).select_from(review_decisions))
     assert count == 0
-    assert repository.get_scenario(spec.scenario_id)["status"] == ScenarioStatus.PENDING_REVIEW.value
+    assert repository.get_scenario(spec.scenario_id)["status"] == ScenarioStatus.PENDING_SIM_REVIEW.value
 
 
 def test_before_sim_approval_creates_job_atomically(repository: ScenarioRepository, spec: ScenarioSpec) -> None:
     persist(repository, spec)
-    library_review = ReviewDecision(
-        scenario_id=spec.scenario_id,
-        gate=ReviewGate.BEFORE_LIBRARY,
-        approved=True,
-        reviewer="library-reviewer",
-        decided_at=datetime.now(UTC),
-    )
-    repository.apply_review(library_review, embedding=[1.0], embedding_model="model")
-    repository.request_simulation(spec.scenario_id)
     sim_review = ReviewDecision(
         scenario_id=spec.scenario_id,
         gate=ReviewGate.BEFORE_SIM,
@@ -240,7 +251,27 @@ def test_before_sim_approval_creates_job_atomically(repository: ScenarioReposito
     with repository.engine.connect() as connection:
         job = connection.execute(select(scenario_jobs)).mappings().one()
     assert job["scenario_id"] == spec.scenario_id
-    assert repository.get_scenario(spec.scenario_id)["status"] == ScenarioStatus.APPROVED_LIBRARY.value
+    assert job["xosc_content"] == "<OpenSCENARIO />"
+    assert repository.get_scenario(spec.scenario_id)["status"] == ScenarioStatus.SIMULATION_QUEUED.value
+
+
+def test_worker_result_opens_library_gate_without_embedding(repository: ScenarioRepository, spec: ScenarioSpec) -> None:
+    persist(repository, spec)
+    decision = ReviewDecision(
+        scenario_id=spec.scenario_id,
+        gate=ReviewGate.BEFORE_SIM,
+        approved=True,
+        reviewer="sim-reviewer",
+        decided_at=datetime.now(UTC),
+    )
+    repository.apply_review(decision, job_id="job_001")
+
+    target = repository.record_execution(spec.scenario_id, VerificationLevel.ADVERSARIAL)
+    row = repository.get_scenario(spec.scenario_id)
+
+    assert target is ScenarioStatus.PENDING_LIBRARY_REVIEW
+    assert row["verification"] == VerificationLevel.ADVERSARIAL.value
+    assert row["embedding"] is None
 
 
 def test_embedding_codec_has_one_definition() -> None:

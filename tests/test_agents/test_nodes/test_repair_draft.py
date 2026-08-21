@@ -224,7 +224,7 @@ class TestRepairDraftWithRealLLM:
             )
         ]
 
-        result = repair_draft(draft, issues)
+        result = ScenarioDraft.model_validate(repair_draft(draft, issues))
 
         assert isinstance(result, ScenarioDraft)
         # Không đổi nhãn ODD — ràng buộc số 3 của prompt.
@@ -283,7 +283,7 @@ class TestGuardrail:
         with patch("src.services.llm.call_with_escalation", return_value=repaired) as mock_llm:
             result = repair_draft(create_draft_with_s_offset_error(), [create_issue(IssueCode.GEOM_NO_CATCHUP)])
 
-        assert result is repaired
+        assert result == repaired.model_dump(mode="json")
         mock_llm.assert_called_once()
 
     def test_mixed_list_sends_only_the_repairable_ones(self):
@@ -300,9 +300,9 @@ class TestGuardrail:
         assert "TRIGGER_AFTER_END" in prompt
         assert "LANE_OFFSET_IMPLAUSIBLE" not in prompt, "warning không được lọt vào prompt"
 
-    def test_llm_returning_wrong_type_fails_here_not_downstream(self):
-        """Sai kiểu phải nổ tại repair kèm tên node — không trôi xuống convert_xosc."""
-        with patch("src.services.llm.call_with_escalation", return_value={"not": "a draft"}):
+    def test_llm_returning_non_object_fails_here_not_downstream(self):
+        """Sai kiểu gốc phải nổ tại repair; JSON object lỗi được validate vòng sau."""
+        with patch("src.services.llm.call_with_escalation", return_value="not a draft"):
             with pytest.raises(TypeError, match="repair_draft"):
                 repair_draft(create_valid_draft(), [create_issue(IssueCode.GEOM_NO_CATCHUP)])
 

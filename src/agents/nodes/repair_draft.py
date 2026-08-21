@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
+
+from pydantic import BaseModel
 
 from src.agents.prompts.repair_draft import SYSTEM_PROMPT
 from src.agents.routing import MAX_REPAIR, issues_for_repair_prompt
@@ -14,10 +17,10 @@ class NothingToRepairError(RuntimeError):
 
 
 def repair_draft(
-    draft: ScenarioDraft,
+    draft: ScenarioDraft | dict[str, Any],
     issues: list[ValidationIssue],
     repair_round: int = 1,
-) -> ScenarioDraft:
+) -> dict[str, Any]:
     """Sửa ``draft`` theo ``issues``, trả về bản đã sửa.
 
     Hàm **tự lọc lại** ``issues`` qua ``issues_for_repair_prompt`` thay vì tin
@@ -41,17 +44,19 @@ def repair_draft(
         raise NothingToRepairError(f"{len(issues)} issue nhưng không cái nào vừa là error vừa sửa được bằng LLM")
 
     messages = _create_messages(draft, repairable, repair_round)
-    result = call_with_escalation(messages, ScenarioDraft)
-
-    # `call_with_escalation` khai trả `BaseModel`. Thu hẹp lại ở đây, nếu không
-    # lỗi sẽ nổ ở tận node sau với thông báo chẳng liên quan gì tới repair.
-    if not isinstance(result, ScenarioDraft):
-        raise TypeError(f"repair_draft cần ScenarioDraft, LLM trả về {type(result).__name__}")
+    # Repair phải nhận được cả draft chưa vượt qua model_validator. Dùng JSON
+    # Schema để output sửa lần này cũng không bị Pydantic chặn trước khi quay
+    # lại validate_node; nếu còn lỗi, workflow còn đủ raw JSON cho vòng kế.
+    result = call_with_escalation(messages, ScenarioDraft.model_json_schema())
+    if isinstance(result, BaseModel):
+        return result.model_dump(mode="json")
+    if not isinstance(result, dict):
+        raise TypeError(f"repair_draft cần JSON object, LLM trả về {type(result).__name__}")
     return result
 
 
 def _create_messages(
-    draft: ScenarioDraft,
+    draft: ScenarioDraft | dict[str, Any],
     issues: list[ValidationIssue],
     repair_round: int = 1,
 ) -> list[dict[str, Any]]:
@@ -63,7 +68,7 @@ def _create_messages(
 
 
 def _build_user_content(
-    draft: ScenarioDraft,
+    draft: ScenarioDraft | dict[str, Any],
     issues: list[ValidationIssue],
     repair_round: int = 1,
 ) -> str:
@@ -78,6 +83,11 @@ def _build_user_content(
         issues: Danh sách lỗi cần sửa
         repair_round: Vòng sửa hiện tại (1, 2, hoặc 3)
     """
+    draft_json = (
+        draft.model_dump_json(indent=2)
+        if isinstance(draft, BaseModel)
+        else json.dumps(draft, indent=2, ensure_ascii=False)
+    )
     lines = [
         "# INPUT",
         "",
@@ -85,7 +95,7 @@ def _build_user_content(
         "",
         "## Draft hiện tại (có lỗi):",
         "```json",
-        draft.model_dump_json(indent=2),
+        draft_json,
         "```",
         "",
         "## Các lỗi cần sửa:",

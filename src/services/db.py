@@ -25,6 +25,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sqlalchemy import text
+
 from src.config import get_settings
 from src.models.schemas import ScenarioStatus, VerificationLevel, odd_axis_value
 from src.services.llm import EMBEDDING_MODEL
@@ -76,7 +78,15 @@ def init_db() -> None:
     Cố ý **không** gọi lúc import: import một module không nên đẻ ra file trên
     đĩa. ``scripts/init_db.py`` và fixture của test là chỗ gọi nó.
     """
-    metadata.create_all(make_engine(get_settings().database_url))
+    engine = make_engine(get_settings().database_url)
+    metadata.create_all(engine)
+    # ADR-018 đổi tên cổng chờ ban đầu. Status là TEXT nên không cần đổi schema,
+    # nhưng record sinh bởi phiên bản cũ phải được đưa về đúng Cổng 1.
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE scenarios SET status = :new_status WHERE status = 'pending_review'"),
+            {"new_status": ScenarioStatus.PENDING_SIM_REVIEW.value},
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +181,7 @@ def save_scenario(
     description_vi: str,
     spec: dict,
     odd: dict,
-    status: str = "pending_review",
+    status: str = ScenarioStatus.PENDING_SIM_REVIEW.value,
     xosc_content: str = "",
     assumptions: list | None = None,
     tags: list | None = None,
@@ -278,6 +288,25 @@ def get_scenario(scenario_id: str) -> dict | None:
         except (TypeError, json.JSONDecodeError):
             logger.warning("node_metrics không hợp lệ cho scenario %s", scenario_id)
 
+    # Cổng BEFORE_LIBRARY phải có bằng chứng thực thi ngay trong payload detail;
+    # nếu UI chỉ thấy nhãn tổng hợp thì reviewer không thể kiểm từng criterion.
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT result FROM scenario_jobs
+            WHERE scenario_id = ? AND result IS NOT NULL
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (scenario_id,),
+        )
+        result_row = cursor.fetchone()
+    latest_execution_result = None
+    if result_row and result_row["result"]:
+        try:
+            latest_execution_result = json.loads(result_row["result"])
+        except (TypeError, json.JSONDecodeError):
+            logger.warning("scenario_jobs.result không hợp lệ cho scenario %s", scenario_id)
+
     odd_data = spec_obj.get("odd") or {
         "road_type": row_dict.get("road_type"),
         "weather": row_dict.get("weather"),
@@ -300,6 +329,7 @@ def get_scenario(scenario_id: str) -> dict | None:
         "review_logs": get_review_decisions(row_dict["scenario_id"]),
         "created_by": row_dict.get("created_by") or "unknown",
         "verification": row_dict.get("verification") or VerificationLevel.UNVERIFIED.value,
+        "latest_execution_result": latest_execution_result,
         "created_at": row_dict.get("created_at"),
     }
     return sc_dict
@@ -364,6 +394,29 @@ def set_verification(scenario_id: str, level: VerificationLevel) -> None:
     """
     with _cursor(commit=True) as cursor:
         cursor.execute("UPDATE scenarios SET verification = ? WHERE scenario_id = ?", (level.value, scenario_id))
+
+
+def complete_simulation(scenario_id: str, level: VerificationLevel) -> bool:
+    """Ghi bằng chứng CARLA và chỉ khi đó mở cổng BEFORE_LIBRARY.
+
+    ``WHERE status=simulation_queued`` ngăn callback trễ/lặp kéo một scenario đã
+    duyệt hoặc từ chối quay ngược về hàng chờ thư viện.
+    """
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            UPDATE scenarios
+            SET verification = ?, status = ?
+            WHERE scenario_id = ? AND status = ?
+            """,
+            (
+                level.value,
+                ScenarioStatus.PENDING_LIBRARY_REVIEW.value,
+                scenario_id,
+                ScenarioStatus.SIMULATION_QUEUED.value,
+            ),
+        )
+        return cursor.rowcount == 1
 
 
 def list_all_scenarios() -> list[dict]:

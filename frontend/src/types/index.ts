@@ -304,10 +304,11 @@ export const VERIFICATION_LABELS: Record<VerificationLevel, string> = {
 };
 
 export type ScenarioStatus =
-  | "pending_review"
+  | "pending_sim_review"
+  | "simulation_queued"
+  | "pending_library_review"
   | "rejected"
-  | "approved_library"
-  | "pending_sim_review";
+  | "approved_library";
 
 export type ReviewGate = "before_library" | "before_sim";
 
@@ -398,6 +399,14 @@ export interface ScenarioDetail {
   created_by?: string;
   tags?: string[];
   verification?: VerificationLevel;
+  latest_execution_result?: {
+    scenario_id: string;
+    xosc_path: string;
+    success: boolean;
+    criteria_results: Array<{ name: string; result: string; actual: string }>;
+    metrics: Record<string, number>;
+    error?: string | null;
+  } | null;
   spec: ScenarioSpec;
   xosc_content?: string;
   review_logs: ReviewLog[];

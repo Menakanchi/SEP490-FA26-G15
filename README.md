@@ -1,8 +1,8 @@
 # Scenario Forge (RAV-03)
 
 Scenario Forge nhận mô tả tiếng Việt về một tình huống giao thông nguy hiểm và
-sinh file **OpenSCENARIO 1.0 (`.xosc`)** để kỹ sư review, tải về và tuỳ chọn kiểm
-chứng bằng CARLA ScenarioRunner.
+sinh file **OpenSCENARIO 1.0 (`.xosc`)** để kỹ sư review, tải về và kiểm chứng
+bằng CARLA ScenarioRunner trước khi đưa vào thư viện.
 
 > Trạng thái hiện tại: đường đi đầy đủ đã chạy — bảy node, converter, retrieval,
 > review API hai cổng, frontend và GPU worker (chạy thật trên CARLA ngày
@@ -26,8 +26,9 @@ scenario.xosc
 ```
 
 File `.xosc` mô tả actors, vị trí, tốc độ, actions, triggers, thời tiết và tiêu
-chí đánh giá theo OpenSCENARIO. CARLA là tầng kiểm chứng tuỳ chọn; web vẫn phải
-sinh và cho tải file khi GPU worker đang offline.
+chí đánh giá theo OpenSCENARIO. Web vẫn sinh và cho tải file khi GPU worker đang
+offline; tuy nhiên kịch bản chỉ vào thư viện sau khi có kết quả CARLA và qua
+`BEFORE_LIBRARY`.
 
 ## Workflow
 
@@ -37,7 +38,7 @@ parse_intent
   → generate_draft
   → validate ↔ repair_draft
   → convert_xosc
-  → persist_pending_review
+  → persist_pending_sim_review
 ```
 
 - LLM chỉ tham gia `parse_intent`, `generate_draft` và `repair_draft`.
@@ -112,12 +113,11 @@ GET  /api/v1/status/{request_id}
 POST /api/v1/review                         (alias: /api/v1/scenarios/{id}/review)
 GET  /api/v1/scenarios                      (alias: /api/v1/library/search)
 GET  /api/v1/scenarios/{id}
-GET  /api/v1/scenarios/{id}/xosc            403 nếu chưa duyệt BEFORE_LIBRARY
-POST /api/v1/scenarios/{id}/request-sim     mở cổng BEFORE_SIM, KHÔNG chạy CARLA
+GET  /api/v1/scenarios/{id}/xosc            tải XML để kiểm tra từ Cổng 1
 PUT  /api/v1/scenarios/{id}/tags            thay toàn bộ tag
 
 GET  /api/v1/internal/jobs                  worker GPU poll
-POST /api/v1/internal/jobs/{job_id}/result  đặt VerificationLevel cho kịch bản
+POST /api/v1/internal/jobs/{job_id}/result  ghi kết quả và mở BEFORE_LIBRARY
 ```
 
 `POST /generate` chạy graph thật, không còn stub: nó trả `request_id` ngay rồi

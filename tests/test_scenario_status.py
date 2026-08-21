@@ -15,11 +15,11 @@ from src.models.schemas import (
     JobStatus,
     ReviewGate,
     ScenarioStatus,
-    can_request_simulation,
+    next_status_after_execution,
     next_status_after_review,
 )
 
-TERMINAL = {ScenarioStatus.REJECTED}
+TERMINAL = {ScenarioStatus.REJECTED, ScenarioStatus.APPROVED_LIBRARY}
 
 
 def test_every_status_has_a_transition_row() -> None:
@@ -30,10 +30,15 @@ def test_every_status_has_a_transition_row() -> None:
 @pytest.mark.parametrize(
     ("current", "gate", "approved", "expected"),
     [
-        (ScenarioStatus.PENDING_REVIEW, ReviewGate.BEFORE_LIBRARY, True, ScenarioStatus.APPROVED_LIBRARY),
-        (ScenarioStatus.PENDING_REVIEW, ReviewGate.BEFORE_LIBRARY, False, ScenarioStatus.REJECTED),
-        (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, True, ScenarioStatus.APPROVED_LIBRARY),
-        (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, False, ScenarioStatus.APPROVED_LIBRARY),
+        (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, True, ScenarioStatus.SIMULATION_QUEUED),
+        (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, False, ScenarioStatus.REJECTED),
+        (
+            ScenarioStatus.PENDING_LIBRARY_REVIEW,
+            ReviewGate.BEFORE_LIBRARY,
+            True,
+            ScenarioStatus.APPROVED_LIBRARY,
+        ),
+        (ScenarioStatus.PENDING_LIBRARY_REVIEW, ReviewGate.BEFORE_LIBRARY, False, ScenarioStatus.REJECTED),
     ],
 )
 def test_allowed_review_transitions(
@@ -46,9 +51,9 @@ def test_allowed_review_transitions(
     ("current", "gate", "approved"),
     [
         # Đúng trạng thái, SAI CỔNG — hai cổng HITL không được hoán đổi cho nhau.
-        (ScenarioStatus.PENDING_REVIEW, ReviewGate.BEFORE_SIM, True),
-        (ScenarioStatus.PENDING_REVIEW, ReviewGate.BEFORE_SIM, False),
         (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_LIBRARY, True),
+        (ScenarioStatus.PENDING_LIBRARY_REVIEW, ReviewGate.BEFORE_SIM, True),
+        (ScenarioStatus.SIMULATION_QUEUED, ReviewGate.BEFORE_LIBRARY, True),
         # Duyệt một scenario đã bị từ chối, hoặc duyệt lại cái đã ở trong thư viện.
         (ScenarioStatus.REJECTED, ReviewGate.BEFORE_LIBRARY, True),
         (ScenarioStatus.APPROVED_LIBRARY, ReviewGate.BEFORE_LIBRARY, True),
@@ -59,10 +64,13 @@ def test_forbidden_review_transitions(current: ScenarioStatus, gate: ReviewGate,
     assert next_status_after_review(current, gate, approved) is None
 
 
-@pytest.mark.parametrize("status", list(ScenarioStatus))
-def test_only_library_scenarios_can_request_simulation(status: ScenarioStatus) -> None:
-    """FR-12: không có job CARLA nếu chưa qua ``BEFORE_LIBRARY``."""
-    assert can_request_simulation(status) is (status is ScenarioStatus.APPROVED_LIBRARY)
+def test_only_worker_result_opens_library_gate() -> None:
+    assert next_status_after_execution(ScenarioStatus.SIMULATION_QUEUED) is ScenarioStatus.PENDING_LIBRARY_REVIEW
+    assert all(
+        next_status_after_execution(status) is None
+        for status in ScenarioStatus
+        if status is not ScenarioStatus.SIMULATION_QUEUED
+    )
 
 
 def test_rejected_is_the_only_terminal_state() -> None:
@@ -81,7 +89,7 @@ def test_derived_graph_matches_review_table() -> None:
     from_reviews = {(src, target) for (src, _, _), target in REVIEW_TRANSITIONS.items()}
     derived = {(src, t) for src, targets in ALLOWED_SCENARIO_TRANSITIONS.items() for t in targets}
     extra = derived - from_reviews
-    assert extra == {(ScenarioStatus.APPROVED_LIBRARY, ScenarioStatus.PENDING_SIM_REVIEW)}
+    assert extra == {(ScenarioStatus.SIMULATION_QUEUED, ScenarioStatus.PENDING_LIBRARY_REVIEW)}
 
 
 def test_job_states_do_not_leak_into_scenario_states() -> None:

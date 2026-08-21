@@ -35,7 +35,7 @@ from langgraph.graph import END, StateGraph
 from src.agents.nodes.convert_xosc_node import convert_xosc_node
 from src.agents.nodes.generate_draft import generate_draft_node
 from src.agents.nodes.parse_intent import parse_intent_node
-from src.agents.nodes.persist_node import persist_pending_review_node
+from src.agents.nodes.persist_node import persist_pending_sim_review_node
 from src.agents.nodes.repair_draft import NothingToRepairError, repair_draft
 from src.agents.nodes.retrieve import retrieve_node
 from src.agents.nodes.validate_node import validate_node
@@ -155,7 +155,7 @@ def _generate_draft(state: ForgeState) -> dict[str, Any]:
     if odd_hints is None:
         return _llm_failure(RuntimeError("thiếu odd_hints từ parse_intent"), "generate_draft")
     try:
-        draft = generate_draft_node(
+        raw_draft = generate_draft_node(
             user_query=state.get("user_query", ""),
             odd_cell=odd_hints,
             examples=_few_shot_examples(state) or None,
@@ -163,7 +163,7 @@ def _generate_draft(state: ForgeState) -> dict[str, Any]:
         )
     except Exception as exc:
         return _llm_failure(exc, "generate_draft")
-    return {"draft": draft, "iteration": 0, "issues": []}
+    return {"raw_draft": raw_draft, "draft": raw_draft, "iteration": 0, "issues": []}
 
 
 def _repair_draft(state: ForgeState) -> dict[str, Any]:
@@ -178,7 +178,7 @@ def _repair_draft(state: ForgeState) -> dict[str, Any]:
     iteration = state.get("iteration", 0)
     repair_round = iteration + 1  # iteration bắt đầu từ 0
     try:
-        draft = repair_draft(state["draft"], issues, repair_round)
+        raw_draft = repair_draft(state["draft"], issues, repair_round)
     except NothingToRepairError as exc:
         # Routing lẽ ra đã chặn. Tới được đây nghĩa là hai bên hiểu khác nhau —
         # dừng hẳn thay vì lặp vô ích cho hết trần.
@@ -187,7 +187,8 @@ def _repair_draft(state: ForgeState) -> dict[str, Any]:
     except Exception as exc:
         return {"issue_history": history, **_llm_failure(exc, "repair_draft")}
     return {
-        "draft": draft,
+        "raw_draft": raw_draft,
+        "draft": raw_draft,
         "iteration": iteration + 1,
         "issue_history": history,
         "issues": [],
@@ -250,7 +251,7 @@ def _stop_on_error(next_node: str) -> Callable[[ForgeState], str]:
 _after_parse_intent = _stop_on_error("retrieve")
 _after_generate_draft = _stop_on_error("validate")
 _after_promote = _stop_on_error("convert_xosc")
-_after_convert = _stop_on_error("persist_pending_review")
+_after_convert = _stop_on_error("persist_pending_sim_review")
 
 
 def _after_validate(state: ForgeState) -> str:
@@ -270,25 +271,25 @@ def _after_repair(state: ForgeState) -> str:
 
 
 def _add_persistence_tail(graph: StateGraph, repository: ScenarioRepository | None) -> None:
-    """Nối đoạn đuôi durable ``convert_xosc -> persist_pending_review -> END``.
+    """Nối đoạn đuôi durable ``convert_xosc -> persist_pending_sim_review -> END``.
 
     Đoạn này được dựng ở **hai** chỗ (graph đầy đủ và ``build_persistence_tail``
     mà test dùng), nên nó phải được viết một lần. Hai bản sao thì test đang canh
-    bất biến "graph kết thúc ở ``pending_review``" sẽ canh một đoạn dây khác với
+    bất biến "graph kết thúc ở ``pending_sim_review``" sẽ canh một đoạn dây khác với
     đoạn dây thật đang chạy — nó xanh trong khi luồng thật đã đổi.
     """
 
     async def _persist(state: ForgeState) -> dict[str, Any]:
-        return await persist_pending_review_node(state, repository)
+        return await persist_pending_sim_review_node(state, repository)
 
     graph.add_node("convert_xosc", convert_xosc_node)
-    graph.add_node("persist_pending_review", _persist)
+    graph.add_node("persist_pending_sim_review", _persist)
     graph.add_conditional_edges(
         "convert_xosc",
         _after_convert,
-        {"persist_pending_review": "persist_pending_review", END: END},
+        {"persist_pending_sim_review": "persist_pending_sim_review", END: END},
     )
-    graph.add_edge("persist_pending_review", END)
+    graph.add_edge("persist_pending_sim_review", END)
 
 
 def build_forge_graph(
@@ -328,7 +329,7 @@ def build_persistence_tail(repository: ScenarioRepository | None = None):
     """Đoạn đuôi durable: convert -> persist -> END.
 
     Giữ lại vì ``test_persist_node`` dựng đúng đoạn này để kiểm bất biến
-    "graph kết thúc ở ``pending_review``, không chờ người trong RAM" mà không
+    "graph kết thúc ở ``pending_sim_review``, không chờ người trong RAM" mà không
     phải chạy cả bốn node phía trước — trong đó có hai node gọi LLM.
     """
 
@@ -339,4 +340,4 @@ def build_persistence_tail(repository: ScenarioRepository | None = None):
 
 
 forge_finalization_agent = build_persistence_tail()
-"""Exported Forge graph segment; successful execution durably ends at pending_review."""
+"""Exported Forge graph segment; successful execution durably ends at BEFORE_SIM."""

@@ -82,6 +82,20 @@ async def test_validate_node_accepts_valid_draft(valid_draft: ScenarioDraft) -> 
         }
     )
     assert result["issues"] == []
+    assert isinstance(result["draft"], ScenarioDraft)
+
+
+@pytest.mark.asyncio
+async def test_ego_maneuver_raw_draft_becomes_repairable_issue(valid_draft: ScenarioDraft) -> None:
+    raw = valid_draft.model_dump(mode="json")
+    raw["maneuvers"][0]["actor_name"] = "hero"
+
+    result = await validate_node({"draft": raw})
+
+    assert [(issue.code, issue.path) for issue in result["issues"]] == [
+        (IssueCode.EGO_HAS_MANEUVER, "/maneuvers/0/actor_name")
+    ]
+    assert "draft" not in result, "draft chưa hợp lệ phải được giữ ở dạng raw trong state"
 
 
 @pytest.mark.asyncio
