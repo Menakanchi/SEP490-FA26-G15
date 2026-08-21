@@ -19,6 +19,12 @@ from src.models.schemas import (
     VehicleCategory,
     Weather,
 )
+from src.services.scenario.geometry import (
+    cut_in_cannot_catch_up,
+    cut_in_never_slows_down,
+    cut_in_starts_in_ego_lane,
+    cut_in_trigger_is_unsigned,
+)
 from src.services.scenario.templates import ScenarioTemplate, get_template
 
 DETERMINISTIC_XOSC_DATE = "2026-07-29"
@@ -30,7 +36,7 @@ _GLOBAL_PARAMETERS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-@dataclass
+@dataclass(frozen=True)
 class ConversionError(Exception):
     code: IssueCode
     message: str
@@ -39,6 +45,55 @@ class ConversionError(Exception):
 def _number(value: float) -> str:
     """Stable, locale-independent formatting used by golden files."""
     return f"{value:.6f}".rstrip("0").rstrip(".") or "0"
+
+
+def _relative_lane_position(
+    parent: ET.Element,
+    actor: ActorSpec,
+    template: ScenarioTemplate,
+    *,
+    lane_offset: int | None = None,
+) -> ET.Element:
+    """``<RelativeLanePosition>`` cho một actor, theo hệ làn của template.
+
+    Ba chỗ dựng element này — spawn ở ``Init``, đích của ``jaywalk``, và chỗ
+    xoay đầu của ``wrong_way`` — và cả ba đều phải nhân ``lane_offset`` với
+    ``lane_sign``. Dấu đó là ADR-012: ScenarioRunner 0.9.15 làm số học thẳng
+    trên ``lane_id``, nên quên nhân ở một chỗ sẽ đặt actor sang **phía đối
+    diện** của ego. File .xosc vẫn hợp lệ, scenario vẫn chạy, chỉ là tình huống
+    nguy hiểm xảy ra ở làn không có ai.
+
+    ``lane_offset`` ghi đè chỉ dành cho ``jaywalk``, nơi actor đi **ngược** phía
+    xuất phát của nó để băng qua trước mặt ego.
+    """
+    lane_sign = 1 if template.ego_spawn.lane_id > 0 else -1
+    offset = actor.position.lane_offset if lane_offset is None else lane_offset
+    return ET.SubElement(
+        parent,
+        "RelativeLanePosition",
+        entityRef="hero",
+        dLane=str(offset * lane_sign),
+        ds=_number(actor.position.s_offset_m),
+        offset="0",
+    )
+
+
+def _condition(parent: ET.Element, name: str) -> ET.Element:
+    """``<ConditionGroup><Condition name=… delay="0" conditionEdge="rising">``.
+
+    Năm chỗ trong file dựng đúng cặp element này với đúng hai thuộc tính cố
+    định. ``conditionEdge`` gõ nhầm thành ``falling`` ở một bản sao là một
+    trigger không bao giờ bắn — kịch bản chạy trót lọt và **không có gì xảy
+    ra**, đúng cái bẫy mà ``TRIGGER_AFTER_END`` sinh ra để chặn.
+    """
+    group = ET.SubElement(parent, "ConditionGroup")
+    return ET.SubElement(group, "Condition", name=name, delay="0", conditionEdge="rising")
+
+
+def _simulation_time_condition(parent: ET.Element, name: str, value: str) -> None:
+    """Điều kiện "quá giây thứ N". Dùng cho StartTrigger/StopTrigger của Act."""
+    by_value = ET.SubElement(_condition(parent, name), "ByValueCondition")
+    ET.SubElement(by_value, "SimulationTimeCondition", value=value, rule="greaterThan")
 
 
 def _vehicle_blueprint(category: VehicleCategory) -> tuple[str, str]:
@@ -163,7 +218,6 @@ MANEUVER_BUILDERS: dict[ManeuverType, ActionBuilder] = {
 SPECIAL_BUILDERS = frozenset(
     {
         ManeuverType.CUT_IN,
-        ManeuverType.OVERTAKE,
         ManeuverType.JAYWALK,
         ManeuverType.WRONG_WAY,
         ManeuverType.LANE_DRIFT,
@@ -197,8 +251,7 @@ def _assert_catalog_consistent(template: ScenarioTemplate, maneuver: ManeuverTyp
 
 
 def _add_trigger(parent: ET.Element, m: ManeuverSpec) -> None:
-    group = ET.SubElement(parent, "ConditionGroup")
-    condition = ET.SubElement(group, "Condition", name=f"trigger_{m.maneuver.value}", delay="0", conditionEdge="rising")
+    condition = _condition(parent, f"trigger_{m.maneuver.value}")
     if m.trigger.type == "distance_to_ego":
         by_entity = ET.SubElement(condition, "ByEntityCondition")
         entities = ET.SubElement(by_entity, "TriggeringEntities", triggeringEntitiesRule="any")
@@ -260,16 +313,7 @@ def _add_init(storyboard: ET.Element, spec: ScenarioSpec, template: ScenarioTemp
                 h=_number(spawn.h),
             )
         else:
-            # ADR-012: dLane is arithmetic on lane_id in ScenarioRunner 0.9.15.
-            lane_sign = 1 if template.ego_spawn.lane_id > 0 else -1
-            ET.SubElement(
-                position,
-                "RelativeLanePosition",
-                entityRef="hero",
-                dLane=str(actor.position.lane_offset * lane_sign),
-                ds=_number(actor.position.s_offset_m),
-                offset="0",
-            )
+            _relative_lane_position(position, actor, template)
         speed_private = ET.SubElement(private, "PrivateAction")
         _add_speed_action(speed_private, actor.initial_speed_kmh, abrupt=True)
 
@@ -287,31 +331,15 @@ def _add_jaywalk_action(
     routing = ET.SubElement(parent, "RoutingAction")
     acquire = ET.SubElement(routing, "AcquirePositionAction")
     position = ET.SubElement(acquire, "Position")
-    lane_sign = 1 if template.ego_spawn.lane_id > 0 else -1
-    target_lane_offset = -actor.position.lane_offset
-    ET.SubElement(
-        position,
-        "RelativeLanePosition",
-        entityRef="hero",
-        dLane=str(target_lane_offset * lane_sign),
-        ds=_number(actor.position.s_offset_m),
-        offset="0",
-    )
+    # Đích nằm ở phía đối diện chỗ xuất phát: người đi bộ băng ngang qua ego.
+    _relative_lane_position(position, actor, template, lane_offset=-actor.position.lane_offset)
 
 
 def _add_wrong_way_action(parent: ET.Element, actor: ActorSpec, template: ScenarioTemplate) -> None:
     """Rotate the actor 180 degrees at its semantic lane-relative position."""
     teleport = ET.SubElement(parent, "TeleportAction")
     position = ET.SubElement(teleport, "Position")
-    lane_sign = 1 if template.ego_spawn.lane_id > 0 else -1
-    relative = ET.SubElement(
-        position,
-        "RelativeLanePosition",
-        entityRef="hero",
-        dLane=str(actor.position.lane_offset * lane_sign),
-        ds=_number(actor.position.s_offset_m),
-        offset="0",
-    )
+    relative = _relative_lane_position(position, actor, template)
     ET.SubElement(relative, "Orientation", h="3.141593", p="0", r="0", type="relative")
 
 
@@ -321,9 +349,8 @@ def _add_maneuver_action(
     actor: ActorSpec,
     template: ScenarioTemplate,
 ) -> None:
-    if maneuver.maneuver in (ManeuverType.CUT_IN, ManeuverType.OVERTAKE):
-        lane_change_value = actor.position.lane_offset
-        if lane_change_value == 0:
+    if maneuver.maneuver is ManeuverType.CUT_IN:
+        if cut_in_starts_in_ego_lane(actor):
             raise ConversionError(
                 IssueCode.CONVERTER_ERROR,
                 f"{maneuver.maneuver.value} requires actor {actor.name} to start outside the ego lane",
@@ -331,7 +358,7 @@ def _add_maneuver_action(
         _lane_change(
             parent,
             slow=False,
-            lane_change_value=lane_change_value,
+            lane_change_value=actor.position.lane_offset,
         )
         return
     if maneuver.maneuver is ManeuverType.LANE_DRIFT:
@@ -382,10 +409,7 @@ def _add_cut_in_slowdown(maneuver_el: ET.Element, index: int, maneuver: Maneuver
     action = ET.SubElement(event, "Action", name=f"action_{index}_slow_down")
     _add_speed_action(ET.SubElement(action, "PrivateAction"), maneuver.target_speed_kmh, abrupt=False)
     trigger = ET.SubElement(event, "StartTrigger")
-    group = ET.SubElement(trigger, "ConditionGroup")
-    condition = ET.SubElement(
-        group, "Condition", name=f"trigger_{index}_after_cut_in", delay="0", conditionEdge="rising"
-    )
+    condition = _condition(trigger, f"trigger_{index}_after_cut_in")
     by_value = ET.SubElement(condition, "ByValueCondition")
     ET.SubElement(
         by_value,
@@ -399,6 +423,8 @@ def _add_cut_in_slowdown(maneuver_el: ET.Element, index: int, maneuver: Maneuver
 def _add_criteria_stop_trigger(storyboard: ET.Element, spec: ScenarioSpec) -> None:
     stop = ET.SubElement(storyboard, "StopTrigger")
     group = ET.SubElement(stop, "ConditionGroup")
+    # NOTE: mọi criterion nằm chung MỘT ConditionGroup, nên chỗ này dựng
+    # `<Condition>` thẳng thay vì qua `_condition` (vốn mở group riêng mỗi lần).
     # ScenarioRunner 0.9.15 uses empty attributes as its no-argument criterion
     # adapter. With a non-empty parameterRef, it passes float(value) as the
     # criterion constructor's second positional argument. That would become
@@ -445,18 +471,21 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
     for maneuver in spec.maneuvers:
         _assert_catalog_consistent(template, maneuver.maneuver)
         actor = next(a for a in spec.actors if a.name == maneuver.actor_name)
-        if maneuver.maneuver in (ManeuverType.CUT_IN, ManeuverType.OVERTAKE):
-            if maneuver.trigger.type != "simulation_time":
+        if maneuver.maneuver is ManeuverType.CUT_IN:
+            # Cùng bốn vị từ mà validate_node dùng — xem
+            # ``services/scenario/geometry.py``. Tới đây thì không repair được
+            # nữa, nên chúng là lỗi cứng thay vì ValidationIssue.
+            if cut_in_trigger_is_unsigned(maneuver):
                 raise ConversionError(
                     IssueCode.CONVERTER_ERROR,
                     "cut_in requires simulation_time because RelativeDistanceCondition is unsigned",
                 )
-            if actor.position.s_offset_m >= 0 or actor.initial_speed_kmh <= ego.initial_speed_kmh:
+            if cut_in_cannot_catch_up(actor, ego):
                 raise ConversionError(
                     IssueCode.CONVERTER_ERROR,
-                    "cut_in actor must start behind ego and move faster before cutting in",
+                    "cut_in actor and ego must be moving toward the same longitudinal meeting point",
                 )
-            if maneuver.target_speed_kmh is None or maneuver.target_speed_kmh >= ego.initial_speed_kmh:
+            if cut_in_never_slows_down(maneuver, actor, ego):
                 raise ConversionError(
                     IssueCode.CONVERTER_ERROR,
                     "cut_in target_speed_kmh must be present and lower than ego speed",
@@ -522,28 +551,8 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
         if maneuver.maneuver is ManeuverType.CUT_IN:
             _add_cut_in_slowdown(maneuver_el, index, maneuver)
 
-    act_start = ET.SubElement(act, "StartTrigger")
-    start_group = ET.SubElement(act_start, "ConditionGroup")
-    start_condition = ET.SubElement(start_group, "Condition", name="start_act", delay="0", conditionEdge="rising")
-    start_value = ET.SubElement(start_condition, "ByValueCondition")
-    ET.SubElement(start_value, "SimulationTimeCondition", value="0", rule="greaterThan")
-
-    act_stop = ET.SubElement(act, "StopTrigger")
-    act_stop_group = ET.SubElement(act_stop, "ConditionGroup")
-    act_stop_condition = ET.SubElement(
-        act_stop_group,
-        "Condition",
-        name="stop_act",
-        delay="0",
-        conditionEdge="rising",
-    )
-    act_stop_value = ET.SubElement(act_stop_condition, "ByValueCondition")
-    ET.SubElement(
-        act_stop_value,
-        "SimulationTimeCondition",
-        value=_number(spec.duration_s),
-        rule="greaterThan",
-    )
+    _simulation_time_condition(ET.SubElement(act, "StartTrigger"), "start_act", "0")
+    _simulation_time_condition(ET.SubElement(act, "StopTrigger"), "stop_act", _number(spec.duration_s))
 
     _add_criteria_stop_trigger(storyboard, spec)
 

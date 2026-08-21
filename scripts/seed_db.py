@@ -1,15 +1,43 @@
-"""scripts/seed_db.py — Script khởi tạo dữ liệu kịch bản mẫu ban đầu (Seed Data) kèm Real Float Vector Embeddings.
+"""Nạp kịch bản mẫu vào bảng ``scenarios`` để retrieval có gì mà tìm.
 
-Thực hiện:
-  1. Định nghĩa 10 kịch bản mẫu giao thông thực tế chuẩn ODD bằng tiếng Việt.
-  2. Gọi Embedding Service tính Vector Float thật (384-dim) cho từng kịch bản.
-  3. Nạp dữ liệu mẫu + Vector Embedding vào SQLite Database (`./data/app.db` - bảng `scenarios_seed`).
-  4. Nạp vào ChromaDB PersistentClient (`./data/chroma_db` - collection `scenarios` với hnsw:space=cosine).
+Chạy: ``python scripts/seed_db.py`` (sau ``python scripts/init_db.py``).
+
+Ba điều đáng nói về cách script này viết:
+
+1. **Không tự ``CREATE TABLE``.** Schema có đúng một nguồn là
+   ``src/services/persistence.py`` (ADR-011 §3.2). Bản trước tự dựng bảng và
+   ``DROP TABLE IF EXISTS scenarios`` trước — nghĩa là chạy seed một lần nữa sẽ
+   **xoá sạch kịch bản người dùng đã sinh**, im lặng, không hỏi.
+
+2. **Bốn cột ODD ghi giá trị enum thuần.** ADR-013 chốt lọc bằng ``WHERE`` trên
+   bốn cột có index. Bản trước ghi ``"truck:xe_ben"`` nên mọi
+   ``WHERE actor_type = 'truck'`` trượt hết — retrieval trả rỗng mà không báo
+   lỗi. Chi tiết ("xe ben") sống trong ``spec.odd.specific_type``.
+
+3. **Seed vào thẳng ``approved_library`` kèm embedding.** Ngoại lệ duy nhất với
+   luật "embedding chỉ ghi khi duyệt". Nhưng ngoại lệ đó phải trả giá bằng bằng
+   chứng, không phải bằng sự tự tin: mỗi seed đi qua đúng ``validate_node`` của
+   sản phẩm trước khi được nạp, và trường ``carla`` ghi lại nó đã chạy thật trên
+   CARLA chưa, kết quả ra sao.
+
+   Vì sao phải ghi: seed là ví dụ few-shot mà LLM bắt chước. Seed sai được nhân
+   bản vào mọi kịch bản sinh sau đó, rồi kịch bản đó được duyệt và thành seed
+   mới — một vòng tự khẳng định không có cách nào phát hiện từ bên trong. Ghi
+   xuất xứ thì ít nhất **đếm được** bao nhiêu phần trăm thư viện là thứ đã kiểm
+   chứng thật.
+
+   ``carla`` nhận ba giá trị:
+   - ``adversarial``    — chạy được VÀ tái hiện đúng nguy hiểm đã mô tả
+   - ``ran_no_hazard``  — chạy trót lọt nhưng KHÔNG dựng được tình huống nguy hiểm
+   - ``unverified``     — chưa chạy được (ngoài phạm vi converter)
+
+ChromaDB đã bỏ: ADR-013 chốt không có vector store riêng.
 """
+
+from __future__ import annotations
 
 import json
 import logging
-import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -20,297 +48,557 @@ sys.path.insert(0, str(ROOT_DIR))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("seed_db")
 
+# `actor_type` / `maneuver` là giá trị enum của schemas.py — chỉ những giá trị
+# converter có template. `specific_type` / `specific_action` giữ nguyên chữ mô
+# tả, và chính chúng là thứ làm hai kịch bản cùng ô ODD vẫn khác nhau khi
+# retrieval xếp hạng bằng cosine.
 SEED_SCENARIOS = [
     {
-        "scenario_id": "sc_seed_001",
+        "scenario_id": "sc_901",
+        "carla": ("ran_no_hazard", "chạy 30s, CollisionTest=0 — không dựng được nguy hiểm"),
         "title": "Xe tải bung thùng rơi kiện hàng trên cao tốc",
-        "description_vi": "Xe tải chở hàng bị bung thùng rơi kiện hàng xuống đường cao tốc khiến các xe phía sau phải phanh gấp đánh lái gấp.",
+        "description_vi": (
+            "Xe tải chở hàng bị bung thùng rơi kiện hàng xuống đường cao tốc "
+            "khiến các xe phía sau phải phanh gấp đánh lái gấp."
+        ),
         "odd": {
             "road_type": "highway",
             "weather": "clear",
-            "actor_type": {"category": "truck", "specific_type": "xe_tai_bung_thung"},
-            "maneuver": {"category": "lane_departure", "specific_action": "roi_kien_hang"},
+            "actor_type": "truck",
+            "maneuver": "lane_drift",
+            "specific_type": "xe tải bung thùng",
+            "specific_action": "rơi kiện hàng",
         },
+        "actors": [
+            {
+                "name": "hero",
+                "category": "car",
+                "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                "initial_speed_kmh": 90.0,
+                "is_ego": True,
+            },
+            {
+                "name": "adv",
+                "category": "truck",
+                "position": {"lane_offset": -1, "s_offset_m": 25.0},
+                "initial_speed_kmh": 70.0,
+                "is_ego": False,
+            },
+        ],
+        "maneuvers": [
+            {"actor_name": "adv", "maneuver": "lane_drift", "trigger": {"type": "simulation_time", "value": 6.0}}
+        ],
+        "duration_s": 30.0,
     },
     {
-        "scenario_id": "sc_seed_002",
+        "scenario_id": "sc_902",
+        "carla": ("unverified", "ngoài phạm vi converter ADR-016, chưa chạy được"),
         "title": "Xe trộn bê tông lùi chậm vào công trình",
-        "description_vi": "Xe trộn bê tông lùi chậm vào cổng công trình xây dựng chắn ngang làn đường ô tô đang lưu thông.",
+        "description_vi": (
+            "Xe trộn bê tông lùi chậm vào cổng công trình xây dựng chắn ngang làn đường ô tô đang lưu thông."
+        ),
         "odd": {
             "road_type": "urban_straight",
             "weather": "clear",
-            "actor_type": {"category": "truck", "specific_type": "xe_tron_be_tong"},
-            "maneuver": {"category": "stop_in_lane", "specific_action": "lui_cham"},
+            "actor_type": "truck",
+            "maneuver": "stop_in_lane",
+            "specific_type": "xe trộn bê tông",
+            "specific_action": "lùi chậm",
         },
+        "actors": [
+            {
+                "name": "hero",
+                "category": "car",
+                "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                "initial_speed_kmh": 40.0,
+                "is_ego": True,
+            },
+            {
+                "name": "adv",
+                "category": "truck",
+                "position": {"lane_offset": 0, "s_offset_m": 35.0},
+                "initial_speed_kmh": 10.0,
+                "is_ego": False,
+            },
+        ],
+        "maneuvers": [
+            {
+                "actor_name": "adv",
+                "maneuver": "stop_in_lane",
+                "trigger": {"type": "simulation_time", "value": 5.0},
+                "target_speed_kmh": 0.0,
+            }
+        ],
+        "duration_s": 30.0,
     },
     {
-        "scenario_id": "sc_seed_003",
+        "scenario_id": "sc_903",
+        "carla": ("unverified", "ngoài phạm vi converter ADR-016, chưa chạy được"),
         "title": "Xe máy tạt đầu ô tô tại ngã tư",
         "description_vi": "Xe máy tạt đầu đột ngột cướp làn ô tô ngay tại ngã tư có đèn giao thông.",
         "odd": {
             "road_type": "intersection",
             "weather": "clear",
-            "actor_type": {"category": "motorcycle", "specific_type": "xe_may"},
-            "maneuver": {"category": "cut_in", "specific_action": "tat_dau"},
+            "actor_type": "motorcycle",
+            "maneuver": "cut_in",
+            "specific_type": "xe máy",
+            "specific_action": "tạt đầu",
         },
+        "actors": [
+            {
+                "name": "hero",
+                "category": "car",
+                "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                "initial_speed_kmh": 40.0,
+                "is_ego": True,
+            },
+            {
+                "name": "adv",
+                "category": "motorcycle",
+                "position": {"lane_offset": -1, "s_offset_m": -20.0},
+                "initial_speed_kmh": 55.0,
+                "is_ego": False,
+            },
+        ],
+        "maneuvers": [
+            {
+                "actor_name": "adv",
+                "maneuver": "cut_in",
+                "trigger": {"type": "simulation_time", "value": 6.0},
+                "target_speed_kmh": 25.0,
+            }
+        ],
+        "duration_s": 30.0,
     },
     {
-        "scenario_id": "sc_seed_004",
+        "scenario_id": "sc_904",
+        "carla": ("unverified", "ngoài phạm vi converter ADR-016, chưa chạy được"),
         "title": "Xe buýt dừng đột ngột giữa làn đón khách",
         "description_vi": "Xe buýt tạt lề dừng đột ngột giữa làn đón trả khách gây phanh gấp cho xe đi sau.",
         "odd": {
+            # "bus" không phải một ActorType: nó quy về `truck` (phương tiện lớn,
+            # có blueprint CARLA). Chữ "xe buýt" không mất — nó ở specific_type.
             "road_type": "urban_straight",
             "weather": "clear",
-            "actor_type": {"category": "bus", "specific_type": "xe_buyt"},
-            "maneuver": {"category": "sudden_brake", "specific_action": "dung_dot_ngot"},
+            "actor_type": "truck",
+            "maneuver": "sudden_brake",
+            "specific_type": "xe buýt",
+            "specific_action": "dừng đột ngột đón khách",
         },
+        "actors": [
+            {
+                "name": "hero",
+                "category": "car",
+                "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                "initial_speed_kmh": 40.0,
+                "is_ego": True,
+            },
+            {
+                "name": "adv",
+                "category": "truck",
+                "position": {"lane_offset": 0, "s_offset_m": 30.0},
+                "initial_speed_kmh": 35.0,
+                "is_ego": False,
+            },
+        ],
+        "maneuvers": [
+            {
+                "actor_name": "adv",
+                "maneuver": "sudden_brake",
+                "trigger": {"type": "simulation_time", "value": 7.0},
+                "target_speed_kmh": 0.0,
+            }
+        ],
+        "duration_s": 30.0,
     },
     {
-        "scenario_id": "sc_seed_005",
-        "title": "Ô tô phanh gấp tránh người đi bộ trong mưa lớn",
-        "description_vi": "Ô tô phanh gấp tránh người đi bộ bất ngờ băng qua đường trong điều kiện trời mưa lớn tầm nhìn hạn chế.",
+        "scenario_id": "sc_905",
+        "carla": ("unverified", "ngoài phạm vi converter ADR-016, chưa chạy được"),
+        "title": "Người đi bộ băng qua đường trong mưa lớn",
+        "description_vi": (
+            "Người đi bộ bất ngờ băng qua đường trong điều kiện trời mưa lớn tầm nhìn hạn chế, "
+            "ô tô phía sau phải phanh gấp."
+        ),
         "odd": {
             "road_type": "urban_straight",
             "weather": "heavy_rain",
-            "actor_type": {"category": "pedestrian", "specific_type": "nguoi_di_bo"},
-            "maneuver": {"category": "sudden_brake", "specific_action": "bang_qua_duong"},
+            "actor_type": "pedestrian",
+            "maneuver": "jaywalk",
+            "specific_type": "người đi bộ",
+            "specific_action": "băng qua đường",
         },
+        "actors": [
+            {
+                "name": "hero",
+                "category": "car",
+                "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                "initial_speed_kmh": 35.0,
+                "is_ego": True,
+            },
+            {
+                "name": "adv",
+                "category": "pedestrian",
+                "position": {"lane_offset": -1, "s_offset_m": 30.0},
+                "initial_speed_kmh": 5.0,
+                "is_ego": False,
+            },
+        ],
+        "maneuvers": [
+            {
+                "actor_name": "adv",
+                "maneuver": "jaywalk",
+                "trigger": {"type": "distance_to_ego", "value": 25.0},
+                "target_speed_kmh": 5.0,
+            }
+        ],
+        "duration_s": 30.0,
     },
     {
-        "scenario_id": "sc_seed_006",
+        "scenario_id": "sc_906",
+        "carla": ("ran_no_hazard", "chạy 30s, CollisionTest=0 — không dựng được nguy hiểm"),
         "title": "Xe ben lấn làn trong sương mù dày đặc",
         "description_vi": "Xe ben chở đất lấn làn đè vạch suýt quẹt ô tô ngược chiều trong sương mù dày đặc.",
         "odd": {
             "road_type": "highway",
             "weather": "fog",
-            "actor_type": {"category": "truck", "specific_type": "xe_ben"},
-            "maneuver": {"category": "lane_departure", "specific_action": "lan_lan"},
+            "actor_type": "truck",
+            "maneuver": "lane_drift",
+            "specific_type": "xe ben chở đất",
+            "specific_action": "lấn làn đè vạch",
         },
+        "actors": [
+            {
+                "name": "hero",
+                "category": "car",
+                "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                "initial_speed_kmh": 70.0,
+                "is_ego": True,
+            },
+            {
+                "name": "adv",
+                "category": "truck",
+                "position": {"lane_offset": -1, "s_offset_m": 20.0},
+                "initial_speed_kmh": 60.0,
+                "is_ego": False,
+            },
+        ],
+        "maneuvers": [
+            {"actor_name": "adv", "maneuver": "lane_drift", "trigger": {"type": "simulation_time", "value": 8.0}}
+        ],
+        "duration_s": 30.0,
     },
     {
-        "scenario_id": "sc_seed_007",
+        "scenario_id": "sc_907",
+        "carla": ("unverified", "ngoài phạm vi converter ADR-016, chưa chạy được"),
         "title": "Xe máy đi ngược chiều trên đường đô thị ban đêm",
         "description_vi": "Xe máy bật đèn pha đi ngược chiều trên đường đô thị ban đêm làm chói mắt tài xế.",
         "odd": {
             "road_type": "urban_straight",
             "weather": "clear",
-            "actor_type": {"category": "motorcycle", "specific_type": "xe_may_so"},
-            "maneuver": {"category": "lane_departure", "specific_action": "nguoc_chieu"},
+            "actor_type": "motorcycle",
+            "maneuver": "wrong_way",
+            "specific_type": "xe máy số",
+            "specific_action": "đi ngược chiều bật đèn pha",
         },
+        "actors": [
+            {
+                "name": "hero",
+                "category": "car",
+                "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                "initial_speed_kmh": 45.0,
+                "is_ego": True,
+            },
+            {
+                "name": "adv",
+                "category": "motorcycle",
+                "position": {"lane_offset": -1, "s_offset_m": 60.0},
+                "initial_speed_kmh": 30.0,
+                "is_ego": False,
+            },
+        ],
+        "maneuvers": [
+            {"actor_name": "adv", "maneuver": "wrong_way", "trigger": {"type": "simulation_time", "value": 4.0}}
+        ],
+        "duration_s": 30.0,
     },
     {
-        "scenario_id": "sc_seed_008",
+        "scenario_id": "sc_908",
+        "carla": ("ran_no_hazard", "chạy 6s, CollisionTest=0 — không dựng được nguy hiểm"),
         "title": "Xe container dừng khẩn cấp tránh chướng ngại vật",
-        "description_vi": "Xe container thắng gấp dừng chết giữa làn đường do phát hiện chướng ngại vật trên đường cao tốc.",
+        "description_vi": (
+            "Xe container thắng gấp dừng chết giữa làn đường do phát hiện chướng ngại vật trên đường cao tốc."
+        ),
         "odd": {
             "road_type": "highway",
             "weather": "clear",
-            "actor_type": {"category": "truck", "specific_type": "xe_container"},
-            "maneuver": {"category": "stop_in_lane", "specific_action": "dung_chet"},
+            "actor_type": "truck",
+            "maneuver": "stop_in_lane",
+            "specific_type": "xe container",
+            "specific_action": "dừng chết giữa làn",
         },
+        "actors": [
+            {
+                "name": "hero",
+                "category": "car",
+                "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                "initial_speed_kmh": 90.0,
+                "is_ego": True,
+            },
+            {
+                "name": "adv",
+                "category": "truck",
+                "position": {"lane_offset": 0, "s_offset_m": 45.0},
+                "initial_speed_kmh": 80.0,
+                "is_ego": False,
+            },
+        ],
+        "maneuvers": [
+            {
+                "actor_name": "adv",
+                "maneuver": "stop_in_lane",
+                "trigger": {"type": "simulation_time", "value": 6.0},
+                "target_speed_kmh": 0.0,
+            }
+        ],
+        "duration_s": 30.0,
     },
     {
-        "scenario_id": "sc_seed_009",
+        "scenario_id": "sc_909",
+        "carla": ("adversarial", "chạy 13.3s, CollisionTest=1 — tái hiện đúng va chạm"),
         "title": "Xe con vượt ẩu tạt đầu xe tải trên cao tốc",
         "description_vi": "Xe con vượt bên phải rồi tạt đầu ép xe tải trên đường cao tốc ở tốc độ cao.",
         "odd": {
+            # "overtake" quy về `cut_in`: vượt rồi tạt đầu là đúng hình học cut_in.
             "road_type": "highway",
             "weather": "clear",
-            "actor_type": {"category": "car", "specific_type": "xe_con_sedan"},
-            "maneuver": {"category": "overtake", "specific_action": "vuot_au_tat_dau"},
+            "actor_type": "car",
+            "maneuver": "cut_in",
+            "specific_type": "xe con sedan",
+            "specific_action": "vượt ẩu tạt đầu",
         },
+        "actors": [
+            {
+                "name": "hero",
+                "category": "car",
+                "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                "initial_speed_kmh": 90.0,
+                "is_ego": True,
+            },
+            {
+                "name": "adv",
+                "category": "car",
+                "position": {"lane_offset": -1, "s_offset_m": -30.0},
+                "initial_speed_kmh": 110.0,
+                "is_ego": False,
+            },
+        ],
+        "maneuvers": [
+            {
+                "actor_name": "adv",
+                "maneuver": "cut_in",
+                "trigger": {"type": "simulation_time", "value": 7.0},
+                "target_speed_kmh": 60.0,
+            }
+        ],
+        "duration_s": 30.0,
     },
     {
-        "scenario_id": "sc_seed_010",
+        "scenario_id": "sc_910",
+        "carla": ("unverified", "ngoài phạm vi converter ADR-016, chưa chạy được"),
         "title": "Xe 16 chỗ giảm tốc đột ngột va chạm xe máy",
         "description_vi": "Xe 16 chỗ giảm tốc đột ngột chuyển làn rẽ vào ngõ làm xe máy phía sau phanh không kịp.",
         "odd": {
             "road_type": "urban_straight",
             "weather": "clear",
-            "actor_type": {"category": "bus", "specific_type": "xe_16_cho"},
-            "maneuver": {"category": "sudden_brake", "specific_action": "giam_toc_dot_ngot"},
+            "actor_type": "truck",
+            "maneuver": "sudden_brake",
+            "specific_type": "xe 16 chỗ",
+            "specific_action": "giảm tốc đột ngột",
         },
+        "actors": [
+            {
+                "name": "hero",
+                "category": "car",
+                "position": {"lane_offset": 0, "s_offset_m": 0.0},
+                "initial_speed_kmh": 50.0,
+                "is_ego": True,
+            },
+            {
+                "name": "adv",
+                "category": "truck",
+                "position": {"lane_offset": 0, "s_offset_m": 25.0},
+                "initial_speed_kmh": 45.0,
+                "is_ego": False,
+            },
+        ],
+        "maneuvers": [
+            {
+                "actor_name": "adv",
+                "maneuver": "sudden_brake",
+                "trigger": {"type": "simulation_time", "value": 6.0},
+                "target_speed_kmh": 5.0,
+            }
+        ],
+        "duration_s": 30.0,
     },
 ]
 
 
-def get_embedding_function():
-    """Hàm helper khởi tạo Embedding Function thật."""
+def _searchable_text(scenario: dict) -> str:
+    """Chuỗi đem đi embed. Gộp cả nhãn ODD lẫn chữ mô tả.
+
+    Chỉ embed title + description thì hai kịch bản khác hẳn ô ODD nhưng tả bằng
+    từ giống nhau sẽ nằm sát nhau trong không gian vector — mà ODD mới là thứ
+    người dùng thực sự đang lọc theo.
+    """
+    odd = scenario["odd"]
+    return (
+        f"{scenario['title']}. {scenario['description_vi']} "
+        f"Loại đường: {odd['road_type']}, thời tiết: {odd['weather']}, "
+        f"tác nhân: {odd['actor_type']} ({odd['specific_type']}), "
+        f"hành vi: {odd['maneuver']} ({odd['specific_action']})."
+    )
+
+
+def _validated_spec(scenario: dict):
+    """Dựng ``ScenarioSpec`` và **bắt nó đi qua đúng validator của sản phẩm**.
+
+    Đây là chỗ trả lời một câu hỏi thẳng: seed là dữ liệu tự viết, vậy lấy gì
+    đảm bảo nó đúng? Nếu không kiểm, seed thành *khẳng định* chứ không phải
+    *bằng chứng* — mà chúng lại là ví dụ few-shot mà LLM bắt chước. Sai ở đây
+    được nhân bản vào mọi kịch bản sinh sau đó, và không có cơ chế nào phát hiện.
+
+    Kiểm tĩnh không thay được việc chạy CARLA, nhưng nó chặn được toàn bộ lớp
+    lỗi mà `validate_node` biết: sai bất biến, lệch nhãn ODD, hình học vô lý.
+    Seed nào không qua thì **không được nạp**, thay vì nạp rồi hy vọng.
+    """
+    import asyncio
+
+    from src.agents.nodes.validate_node import validate_node
+    from src.models.schemas import IssueSeverity, ScenarioDraft, ScenarioSpec
+
+    # Đi đúng con đường mà kịch bản sinh thật đi: draft -> validate -> promote.
+    # `validate_node` kiểm `ScenarioDraft`, và draft KHÔNG được có scenario_id
+    # hay description_vi — hai trường đó là của backend, cấp ở bước promote.
+    draft = ScenarioDraft.model_validate(
+        {
+            "title": scenario["title"],
+            "odd": scenario["odd"],
+            "time_of_day": scenario.get("time_of_day", "day"),
+            "actors": scenario["actors"],
+            "maneuvers": scenario["maneuvers"],
+            "duration_s": scenario["duration_s"],
+        }
+    )
+    # `odd_query` là nhãn NGƯỜI DÙNG nói ra, và validate cần nó để bắt
+    # ODD_LABEL_DRIFT — trường hợp draft tự đổi nhãn so với thứ được yêu cầu.
+    # Thiếu nó thì validate trả VALIDATION_CONTEXT_MISSING và từ chối kiểm, thay
+    # vì lặng lẽ bỏ qua một phép kiểm. Với seed thì nhãn trong `odd` chính là
+    # yêu cầu gốc, nên truyền lại đúng nó.
+    odd_query = {axis: scenario["odd"][axis] for axis in ("road_type", "weather", "actor_type", "maneuver")}
+    result = asyncio.run(validate_node({"draft": draft.model_dump(mode="json"), "odd_query": odd_query}))
+    blocking = [i for i in result.get("issues", []) if i.severity is IssueSeverity.ERROR]
+    if blocking:
+        detail = "\n    ".join(f"{i.code.value} tại {i.path}: {i.message_vi}" for i in blocking)
+        raise SystemExit(f"Seed {scenario['scenario_id']} không qua validate — không nạp.\n    {detail}")
+
+    spec = ScenarioSpec.promote(
+        draft,
+        scenario_id=scenario["scenario_id"],
+        description_vi=scenario["description_vi"],
+    )
+    return spec
+
+
+def _xosc_for(spec) -> str:
+    """Biên dịch spec thành `.xosc` thật, hoặc chuỗi rỗng nếu ngoài phạm vi.
+
+    Bản trước ghi cứng ``"<OpenSCENARIO/>"`` làm chỗ giữ chỗ. Nó **trông như**
+    một file hợp lệ nên mọi thứ phía sau tưởng có dữ liệu: tải về được một file
+    rỗng, và gửi sang worker thì ScenarioRunner chết bằng lỗi XML chẳng nói gì
+    về nguyên nhân. Thà để rỗng hẳn rồi từ chối tử tế còn hơn phát ra một file
+    giả trông như thật.
+
+    Sáu trong mười seed nằm ngoài phạm vi converter (ADR-016 chỉ có anchor cao
+    tốc) — chúng vẫn hữu ích cho retrieval theo văn bản và nhãn ODD, chỉ là
+    không chạy mô phỏng được.
+    """
+    from src.agents.nodes.convert_xosc_node import convert_spec_to_xosc
+
     try:
-        from chromadb.utils import embedding_functions
-        return embedding_functions.DefaultEmbeddingFunction()
-    except Exception:
-        return None
+        return convert_spec_to_xosc(spec)
+    except Exception as exc:
+        logger.info("  %s: chưa biên dịch được .xosc (%s)", spec.scenario_id, exc)
+        return ""
 
 
-def seed_database():
-    """Khởi tạo và nạp kịch bản mẫu vào SQLite persistent storage kèm Real Float32 BLOB Vector Embeddings (ADR-013)."""
-    from src.services.library.retriever import generate_text_embedding
+def seed_database() -> None:
+    from src.config import get_settings
+    from src.services.db import init_db
+    from src.services.library.retriever import generate_text_embedding, pack_blob_embedding
 
-    data_dir = ROOT_DIR / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
+    init_db()
 
-    # 1. SQLite Persistent Database
-    db_path = data_dir / "app.db"
-    logger.info(f"Kết nối tới SQLite DB tại: {db_path}")
+    url = get_settings().database_url
+    prefix = "sqlite:///"
+    if not url.startswith(prefix):
+        raise SystemExit(f"seed_db chỉ chạy trên SQLite; DATABASE_URL đang là {url!r}")
+    db_path = Path(url[len(prefix) :])
+
+    logger.info("Nạp %d kịch bản mẫu vào %s", len(SEED_SCENARIOS), db_path)
     conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute("DROP TABLE IF EXISTS scenarios_seed")
-    cursor.execute(
-        """
-        CREATE TABLE scenarios_seed (
-            scenario_id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            description_vi TEXT NOT NULL,
-            road_type TEXT,
-            weather TEXT,
-            actor_type TEXT,
-            maneuver TEXT,
-            content TEXT,
-            odd_json TEXT,
-            embedding_json TEXT,
-            embedding BLOB
-        )
-    """
-    )
-
-    cursor.execute("DROP TABLE IF EXISTS scenarios")
-    cursor.execute(
-        """
-        CREATE TABLE scenarios (
-            scenario_id TEXT PRIMARY KEY,
-            status TEXT NOT NULL DEFAULT 'approved_library',
-            title TEXT NOT NULL,
-            description_vi TEXT NOT NULL,
-            spec TEXT,
-            xosc_content TEXT,
-            assumptions TEXT,
-            tags TEXT,
-            road_type TEXT,
-            weather TEXT,
-            actor_type TEXT,
-            maneuver TEXT,
-            embedding BLOB,
-            embedding_model TEXT,
-            created_at TEXT
-        )
-    """
-    )
-
-    documents = []
-    ids = []
-    metadatas = []
-
-    for sc in SEED_SCENARIOS:
-        sc_id = sc["scenario_id"]
-        title = sc["title"]
-        desc = sc["description_vi"]
-        odd = sc["odd"]
-
-        actor_cat = odd["actor_type"].get("category", "")
-        actor_spec = odd["actor_type"].get("specific_type", "")
-        man_cat = odd["maneuver"].get("category", "")
-        man_spec = odd["maneuver"].get("specific_action", "")
-
-        content = f"{title}. {desc}. Loại đường: {odd['road_type']}, Thời tiết: {odd['weather']}, Tác nhân: {actor_cat} ({actor_spec}), Hành vi: {man_cat} ({man_spec})."
-
-        ids.append(sc_id)
-        documents.append(content)
-        metadatas.append(
-            {
-                "scenario_id": sc_id,
-                "title": title,
-                "description_vi": desc,
-                "road_type": odd["road_type"],
-                "weather": odd["weather"],
-                "actor_type": f"{actor_cat}:{actor_spec}",
-                "maneuver": f"{man_cat}:{man_spec}",
-            }
-        )
-
-    logger.info("Đang sinh 1536-dim Float32 Vector Embeddings (BLOB) cho 10 kịch bản mẫu...")
-    for i, sc in enumerate(SEED_SCENARIOS):
-        sc_id = sc["scenario_id"]
-        title = sc["title"]
-        desc = sc["description_vi"]
-        odd = sc["odd"]
-        content = documents[i]
-
-        vec_arr = generate_text_embedding(content)
-        vec_blob = vec_arr.tobytes()
-        vec_json = json.dumps([float(v) for v in vec_arr])
-
-        actor_cat = odd["actor_type"].get("category", "")
-        actor_spec = odd["actor_type"].get("specific_type", "")
-        man_cat = odd["maneuver"].get("category", "")
-        man_spec = odd["maneuver"].get("specific_action", "")
-
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO scenarios_seed
-            (scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, content, odd_json, embedding_json, embedding)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                sc_id,
-                title,
-                desc,
-                odd["road_type"],
-                odd["weather"],
-                f"{actor_cat}:{actor_spec}",
-                f"{man_cat}:{man_spec}",
-                content,
-                json.dumps(odd, ensure_ascii=False),
-                vec_json,
-                vec_blob,
-            ),
-        )
-
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO scenarios
-            (scenario_id, status, title, description_vi, spec, xosc_content, assumptions, tags, road_type, weather, actor_type, maneuver, embedding, embedding_model, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        """,
-            (
-                sc_id,
-                "approved_library",
-                title,
-                desc,
-                json.dumps({"odd": odd, "description_vi": desc}, ensure_ascii=False),
-                "<OpenSCENARIO></OpenSCENARIO>",
-                "[]",
-                "[]",
-                odd["road_type"],
-                odd["weather"],
-                f"{actor_cat}:{actor_spec}",
-                f"{man_cat}:{man_spec}",
-                vec_blob,
-                "text-embedding-3-small",
-            ),
-        )
-
-    conn.commit()
-    conn.close()
-    logger.info(f"✅ Đã nạp thành công {len(SEED_SCENARIOS)} kịch bản mẫu + BLOB Vector Embeddings vào SQLite DB (scenarios & scenarios_seed)!")
-
-    # 2. ChromaDB Persistent Collection
     try:
-        import chromadb
+        cursor = conn.cursor()
+        for scenario in SEED_SCENARIOS:
+            odd = scenario["odd"]
+            vector = generate_text_embedding(_searchable_text(scenario))
+            spec_obj = _validated_spec(scenario)
+            spec = spec_obj.model_dump(mode="json")
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO scenarios
+                (scenario_id, status, title, description_vi, created_by, spec, xosc_content,
+                 assumptions, tags, road_type, weather, actor_type, maneuver, verification,
+                 embedding, embedding_model, created_at)
+                VALUES (?, 'approved_library', ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (
+                    scenario["scenario_id"],
+                    scenario["title"],
+                    scenario["description_vi"],
+                    "seed-data",
+                    json.dumps(spec, ensure_ascii=False),
+                    _xosc_for(spec_obj),
+                    # Tag gồm bốn trục ODD (thứ người ta lọc theo) cộng xuất xứ.
+                    # Thư viện mà tag rỗng thì "gắn tag" chỉ là một cột trống.
+                    json.dumps(
+                        [
+                            odd["road_type"],
+                            odd["weather"],
+                            odd["actor_type"],
+                            odd["maneuver"],
+                            odd["specific_type"],
+                            odd["specific_action"],
+                            "seed",
+                        ],
+                        ensure_ascii=False,
+                    ),
+                    odd["road_type"],
+                    odd["weather"],
+                    odd["actor_type"],
+                    odd["maneuver"],
+                    # Mức kiểm chứng là CỘT, không phải nhãn trong tags: retrieval
+                    # lọc theo nó (ADR-017), mà `WHERE` không đào vào JSON được.
+                    scenario["carla"][0],
+                    pack_blob_embedding(vector),
+                    "text-embedding-3-small",
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
-        db_dir = data_dir / "chroma_db"
-        db_dir.mkdir(parents=True, exist_ok=True)
-
-        logger.info(f"Kết nối tới ChromaDB PersistentClient tại: {db_dir}")
-        client = chromadb.PersistentClient(path=str(db_dir))
-        collection = client.get_or_create_collection(name="scenarios", metadata={"hnsw:space": "cosine"})
-
-        collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
-        count = collection.count()
-        logger.info(f"✅ Nạp thành công dữ liệu vào ChromaDB collection 'scenarios' ({count} items).")
-    except Exception as err:
-        logger.warning(f"ChromaDB nạp lỗi hoặc bỏ qua ({err}). Đã có SQLite làm chính.")
+    logger.info("Xong. %d kịch bản mẫu ở trạng thái approved_library, có embedding.", len(SEED_SCENARIOS))
 
 
 if __name__ == "__main__":

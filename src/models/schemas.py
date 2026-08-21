@@ -34,16 +34,14 @@ Ba ranh giới cứng, đọc kỹ trước khi thêm trường:
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from datetime import datetime
 from enum import StrEnum
 from typing import ClassVar, Literal, get_args
 
-
-from pydantic import field_validator
-
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
-
 
 
 class ForgeModel(BaseModel):
@@ -65,7 +63,7 @@ class ForgeModel(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Trục ODD — 5 x 4 x 5 x 8 = 800 ô (hạng mục nâng cao "Phủ ODD")
+# Trục ODD — 5 x 4 x 4 x 7 = 560 ô (hạng mục nâng cao "Phủ ODD")
 # ---------------------------------------------------------------------------
 
 
@@ -97,7 +95,7 @@ class TimeOfDay(StrEnum):
 
 
 class ActorType(StrEnum):
-    """5 loại chủ thể gây tình huống.
+    """4 loại chủ thể gây tình huống.
 
     MOTORCYCLE đứng đầu vì đó là chủ thể chi phối giao thông Việt Nam —
     phần lớn kịch bản corner-case của bài toán này xoay quanh xe máy.
@@ -107,7 +105,6 @@ class ActorType(StrEnum):
     CAR = "car"
     PEDESTRIAN = "pedestrian"
     TRUCK = "truck"
-    BUS = "bus"
 
 
 class ManeuverType(StrEnum):
@@ -129,11 +126,10 @@ class ManeuverType(StrEnum):
     WRONG_WAY = "wrong_way"  # đi ngược chiều
     LANE_DRIFT = "lane_drift"  # lấn làn từ từ
     STOP_IN_LANE = "stop_in_lane"  # dừng chết giữa làn
-    OVERTAKE = "overtake"  # vượt ẩu / vượt xe
 
 
 class ODDCell(ForgeModel):
-    """Một ô trong ma trận ODD. 5 x 4 x 5 x 8 = 800 ô.
+    """Một ô trong ma trận ODD. 5 x 4 x 4 x 7 = 560 ô.
 
     ``coverage`` = tỉ lệ ô đã có ít nhất một scenario hợp lệ.
 
@@ -150,38 +146,46 @@ class ODDCell(ForgeModel):
     object — đó là lý do ``key`` tồn tại.
     """
 
-    road_type: RoadType | str
-    weather: Weather | str
-    actor_type: ActorType | dict | str
-    maneuver: ManeuverType | dict | str
-    specific_type: str | None = Field(None, description="Tên phương tiện chi tiết từ prompt")
-    specific_action: str | None = Field(None, description="Hành vi chi tiết từ prompt")
+    road_type: RoadType
+    weather: Weather
+    actor_type: ActorType
+    maneuver: ManeuverType
+
+    # Hai trường dưới đây là **nhãn mô tả**, không phải trục ODD. Chúng giữ lại
+    # đúng chữ người dùng gõ ("xe khách 29 chỗ", "vượt ẩu tạt đầu") sau khi
+    # ``parse_intent`` đã quy nó về ô enum gần nhất. Không có chỗ này thì thông
+    # tin đó mất hẳn, và người đọc lại kịch bản không biết vì sao một câu nói về
+    # xe khách lại ra ``actor_type=truck``.
+    #
+    # Cố ý **không** đưa chúng vào ``key``: coverage đếm theo ô enum, và một
+    # trục thứ năm dạng chuỗi tự do sẽ làm mẫu số vô hạn.
+    specific_type: str | None = Field(
+        default=None, max_length=120, description="Loại phương tiện chi tiết theo lời người dùng, trước khi quy về enum"
+    )
+    specific_action: str | None = Field(
+        default=None, max_length=120, description="Hành vi chi tiết theo lời người dùng, trước khi quy về enum"
+    )
 
     @property
     def key(self) -> str:
-        """Khoá ổn định để đếm coverage và làm điều kiện lọc ODD khi retrieval."""
-        rt_str = self.road_type.value if hasattr(self.road_type, "value") else str(self.road_type)
-        wt_str = self.weather.value if hasattr(self.weather, "value") else str(self.weather)
+        """Khoá ổn định để đếm coverage và làm điều kiện lọc ODD khi retrieval.
 
-        if isinstance(self.actor_type, dict):
-            at_str = self.actor_type.get("category", "unknown")
-        elif hasattr(self.actor_type, "category"):
-            at_str = getattr(self.actor_type, "category")
-        elif hasattr(self.actor_type, "value"):
-            at_str = self.actor_type.value
-        else:
-            at_str = str(self.actor_type)
+        Mọi enum ở file này dùng ``StrEnum`` (Python 3.11+) chứ không phải
+        ``(str, Enum)``. Lý do không phải thẩm mỹ: với ``(str, Enum)`` thì
+        ``f"{RoadType.HIGHWAY}"`` cho ra ``"RoadType.HIGHWAY"``, và mệnh đề
+        ``WHERE`` sẽ hỏng **im lặng** — không báo lỗi, chỉ là không khớp gì cả.
+        ``StrEnum`` cho ra ``"highway"`` như mong đợi.
 
-        if isinstance(self.maneuver, dict):
-            mv_str = self.maneuver.get("category", "unknown")
-        elif hasattr(self.maneuver, "category"):
-            mv_str = getattr(self.maneuver, "category")
-        elif hasattr(self.maneuver, "value"):
-            mv_str = self.maneuver.value
-        else:
-            mv_str = str(self.maneuver)
-
-        return "|".join((rt_str, wt_str, at_str, mv_str))
+        ``test_odd_key_is_stable`` canh chỗ này; nó đã bắt được đúng lỗi đó một lần.
+        """
+        return "|".join(
+            (
+                self.road_type.value,
+                self.weather.value,
+                self.actor_type.value,
+                self.maneuver.value,
+            )
+        )
 
 
 class SupportPolicy(ForgeModel):
@@ -241,12 +245,11 @@ class SupportPolicy(ForgeModel):
 
 
 _HIGHWAY_ACTORS_BY_MANEUVER: dict[ManeuverType, frozenset[ActorType]] = {
-    maneuver: frozenset({ActorType.CAR, ActorType.MOTORCYCLE, ActorType.TRUCK, ActorType.BUS})
+    maneuver: frozenset({ActorType.CAR, ActorType.MOTORCYCLE, ActorType.TRUCK})
     for maneuver in ManeuverType
-    if maneuver not in (ManeuverType.JAYWALK, ManeuverType.OVERTAKE)
+    if maneuver is not ManeuverType.JAYWALK
 }
 _HIGHWAY_ACTORS_BY_MANEUVER[ManeuverType.JAYWALK] = frozenset({ActorType.PEDESTRIAN})
-_HIGHWAY_ACTORS_BY_MANEUVER[ManeuverType.OVERTAKE] = frozenset()
 
 DEFAULT_SUPPORT_POLICY = SupportPolicy(
     unsupported=frozenset(
@@ -254,7 +257,7 @@ DEFAULT_SUPPORT_POLICY = SupportPolicy(
         for road in RoadType
         for actor in ActorType
         for maneuver in ManeuverType
-        if road not in (RoadType.HIGHWAY, RoadType.URBAN_STRAIGHT) or actor not in _HIGHWAY_ACTORS_BY_MANEUVER[maneuver]
+        if road is not RoadType.HIGHWAY or actor not in _HIGHWAY_ACTORS_BY_MANEUVER[maneuver]
     )
 )
 """76 ô: sáu maneuver cho ba vehicle actors, jaywalk cho pedestrian, qua bốn weather."""
@@ -295,6 +298,30 @@ class Assumption(ForgeModel):
     reason_vi: str = Field("", max_length=200)
 
 
+def odd_axis_value(value: object, default: str = "unknown") -> str:
+    """Một trục ODD -> **chuỗi enum**, bất kể nó tới dưới hình dạng nào.
+
+    Trục ODD đi qua hệ thống dưới ba hình dạng, tuỳ tầng: giá trị enum
+    (``RoadType.HIGHWAY``), chuỗi thuần (``"highway"`` — đọc lên từ DB hoặc từ
+    JSON), và object ``{"category": ...}`` của ``parsed_intent``, nơi chữ người
+    dùng gõ còn được giữ bên cạnh ô enum.
+
+    Phép bóc này từng có **ba** bản: ở ``services/db.py``, ở
+    ``agents/nodes/parse_intent.py`` và ở ``agents/nodes/retrieve.py`` — mỗi bản
+    xử lý một tập con hình dạng khác nhau. Lệch ở đây không ném lỗi: nó ghi
+    ``"RoadType.HIGHWAY"`` hoặc ``"unknown"`` vào cột mà ADR-013 lọc bằng
+    ``WHERE``, và retrieval **trả rỗng trong im lặng**.
+
+    ``default`` cho phép chỗ gọi chọn cách nói "không có": ``"unknown"`` khi giá
+    trị sẽ được ghi xuống cột NOT NULL, ``""`` khi nó chỉ dùng để ghép câu.
+    """
+    if isinstance(value, dict):
+        value = value.get("category")
+    if value is None:
+        return default
+    return str(getattr(value, "value", value))
+
+
 ODDAxis = Literal["road_type", "weather", "actor_type", "maneuver"]
 """Tên bốn trục ODD. Là ``Literal`` để lọt được vào strict structured output."""
 
@@ -326,42 +353,37 @@ class ODDQuery(ForgeModel):
 
     AXES: ClassVar[tuple[ODDAxis, ...]] = get_args(ODDAxis)
 
-    road_type: RoadType | None = Field(
-        None,
-        description="Loại đường. Nếu có 'đường đèo', 'sạt lở', 'ngõ hẻm', 'cao tốc', 'giao lộ', map thành loại đường phù hợp trong enum (urban_straight/highway/intersection/residential_narrow/roundabout). Để null nếu không nhắc đến.",
-    )
-    weather: Weather | None = Field(
-        None,
-        description="Thời tiết. Nếu câu có từ 'mưa', 'bão', 'mưa bão', 'giông' BẮT BUỘC map thành 'heavy_rain' hoặc 'rain'. Nắng/quang/đẹp map thành 'clear'. Sương mù map thành 'fog'. Để null nếu không nhắc đến.",
-    )
+    road_type: RoadType | None = None
+    weather: Weather | None = None
     actor_type: ActorType | None = None
     maneuver: ManeuverType | None = None
-    specific_type: str | None = Field(None, description="Tên/loại phương tiện chi tiết từ prompt")
-    specific_action: str | None = Field(None, description="Hành vi/sự cố chi tiết từ prompt")
+
+    specific_type: str | None = Field(
+        default=None, max_length=120, description="Loại phương tiện chi tiết theo lời người dùng"
+    )
+    specific_action: str | None = Field(
+        default=None, max_length=120, description="Hành vi chi tiết theo lời người dùng"
+    )
 
     @field_validator("road_type", "weather", "actor_type", "maneuver", mode="before")
     @classmethod
-    def _normalize_unspecified_to_none(cls, v: object) -> object:
-        if isinstance(v, str):
-            v_clean = v.strip().lower()
-            if v_clean in ("xe_bus", "xe_khach"):
-                return "bus"
-            if v_clean in ("mua_bao", "mua_to", "mua_lon", "mưa bão", "mưa to", "mưa", "bão", "mưa bão", "mua bao"):
-                return "heavy_rain"
-            if v_clean in ("nang", "troi_quang", "nắng"):
-                return "clear"
-            if v_clean in (
-                "không xác định",
-                "khong xac dinh",
-                "khong_xac_dinh",
-                "unknown",
-                "none",
-                "n/a",
-                "null",
-                "",
-            ):
-                return None
-        return v
+    def _sentinel_means_empty(cls, value: object) -> object:
+        """Model hay trả ``"unknown"`` thay vì bỏ trống trường — coi đó là rỗng.
+
+        Trường rỗng ở đây có nghĩa **người dùng không nhắc tới trục này**, và
+        ``with_defaults()`` sẽ điền kèm một ``Assumption`` để reviewer thấy.
+        Một chuỗi ``"unknown"`` lọt qua thì Pydantic ném ``ValidationError`` và cả
+        request chết, dù nội dung nó nói đúng điều mà ``None`` đã nói.
+
+        Chỉ nhận các **sentinel rỗng**, cố ý không dịch từ vựng tiếng Việt ở đây:
+        ánh xạ *"mưa bão" → heavy_rain* là việc của ``parse_intent`` (bảng từ
+        khoá nằm ở ``src/schemas/taxonomy_rules.json``). Nhét nó vào contract thì
+        converter, retriever và persistence cùng thừa hưởng một bảng từ vựng mà
+        chúng không cần và không ai đi kiểm.
+        """
+        if isinstance(value, str) and value.strip().lower() in {"unknown", "none", "null", "n/a", ""}:
+            return None
+        return value
 
     inferred: list[ODDAxis] = Field(
         default_factory=list,
@@ -385,7 +407,7 @@ class ODDQuery(ForgeModel):
         """Đánh dấu suy luận cho một trục rỗng là nói dối về nguồn gốc dữ liệu.
 
         Không cần kiểm "tên trục có tồn tại không" — ``ODDAxis`` là ``Literal``
-        nếu Pydantic đã chặn từ trước, và chặn ngay trong JSON Schema gửi cho model.
+        nên Pydantic đã chặn từ trước, và chặn ngay trong JSON Schema gửi cho model.
         """
         if empty := sorted(a for a in self.inferred if getattr(self, a) is None):
             raise ValueError(f"inferred đánh dấu trục đang rỗng: {empty}")
@@ -407,13 +429,19 @@ class ODDQuery(ForgeModel):
         return {a: v.value for a in self.AXES if (v := getattr(self, a)) is not None}
 
     def missing_required_axes(self) -> list[str]:
-        """Trục **không được phép** điền default. Rỗng thì mới sinh được."""
-        missing = []
-        for name in ("actor_type", "maneuver"):
-            val = getattr(self, name)
-            if val is None or str(val).lower() in ("unknown", "none", "null", "n/a", ""):
-                missing.append(name)
-        return missing
+        """Trục **không được phép** điền default. Rỗng thì mới sinh được.
+
+        ``actor_type`` và ``maneuver`` **là nội dung** của kịch bản, không phải
+        bối cảnh. Điền đại ``maneuver=cut_in`` cho câu *"tình huống nguy hiểm ở
+        ngã tư"* là tự bịa ra yêu cầu của người dùng — và nó làm hỏng đúng
+        ``Danger trigger rate`` (PRD §8), thước đo hỏi *"gõ 'xe máy tạt
+        đầu' thì trigger tạt đầu có bắn không"*. Nếu maneuver do code chọn thì
+        metric đó đang đo code chứ không đo hệ thống.
+
+        Thiếu thì trả ``422 NEED_MORE_DETAIL`` kèm gợi ý tương thích — rẻ hơn
+        một vòng hội thoại, và không im lặng bịa.
+        """
+        return [name for name in ("actor_type", "maneuver") if getattr(self, name) is None]
 
     def with_defaults(self, policy: SupportPolicy | None = None) -> tuple[ODDCell, list[Assumption]]:
         """Điền nốt các trục **bối cảnh** bằng code thuần. Không gọi LLM.
@@ -452,7 +480,7 @@ class ODDQuery(ForgeModel):
 
         road_type = self.road_type
         if road_type is None:
-            preferred = (RoadType.HIGHWAY, RoadType.URBAN_STRAIGHT, *RoadType)
+            preferred = (RoadType.URBAN_STRAIGHT, *RoadType)
             road_type = next(
                 (r for r in preferred if policy.supports(r, self.actor_type, self.maneuver)),
                 RoadType.URBAN_STRAIGHT,
@@ -492,7 +520,6 @@ class VehicleCategory(StrEnum):
     TRUCK = "truck"
     BICYCLE = "bicycle"
     PEDESTRIAN = "pedestrian"
-    BUS = "bus"
 
 
 class Position(ForgeModel):
@@ -505,10 +532,10 @@ class Position(ForgeModel):
     """
 
     lane_offset: int = Field(
-        1,
-        ge=-10,
-        le=10,
-        description="Số thứ tự làn đường (Strict Positive Integer >= 1 cho kịch bản mới sinh).",
+        0,
+        ge=-4,
+        le=4,
+        description="Lệch bao nhiêu làn so với làn của ego. Âm = trái, dương = phải.",
     )
     s_offset_m: float = Field(
         0.0,
@@ -526,11 +553,22 @@ class ActorSpec(ForgeModel):
     position: Position
     initial_speed_kmh: float = Field(..., ge=0.0, le=150.0)
     is_ego: bool = Field(False, description="Đúng một actor được đặt True")
-    specific_type: str | None = Field(None, description="Tên/loại phương tiện chi tiết từ Gemini LLM")
+
+    # Cùng vai trò với ``ODDCell.specific_type``: giữ chữ người dùng gõ sau khi
+    # đã quy về ``category``. Converter không đọc trường này — nó chỉ chọn
+    # blueprint theo ``category`` — nên thêm giá trị lạ ở đây không làm vỡ .xosc.
+    specific_type: str | None = Field(
+        default=None, max_length=120, description="Loại phương tiện chi tiết theo lời người dùng"
+    )
 
 
 class TriggerCondition(ForgeModel):
-    """Điều kiện kích hoạt. Chỉ hỗ trợ khoảng cách và thời gian."""
+    """Điều kiện kích hoạt. Chỉ hỗ trợ khoảng cách và thời gian.
+
+    Cố ý giữ hẹp: hai loại này phủ gần hết corner-case giao thông và
+    ánh xạ 1-1 sang ``RelativeDistanceCondition`` / ``SimulationTimeCondition``
+    của OpenSCENARIO 1.0.
+    """
 
     type: Literal["distance_to_ego", "simulation_time"]
     value: float = Field(..., gt=0.0, description="mét nếu distance, giây nếu time")
@@ -542,7 +580,6 @@ class ManeuverSpec(ForgeModel):
     actor_name: str = Field(..., description="Trỏ tới ActorSpec.name")
     maneuver: ManeuverType
     trigger: TriggerCondition
-
     target_speed_kmh: float | None = Field(
         None,
         ge=0.0,
@@ -551,9 +588,20 @@ class ManeuverSpec(ForgeModel):
     )
 
 
-
 class ScenarioCore(ForgeModel):
-    """Phần kịch bản mà **LLM chịu trách nhiệm**. Không có id, không có câu gốc."""
+    """Phần kịch bản mà **LLM chịu trách nhiệm**. Không có id, không có câu gốc.
+
+    LLM chịu trách nhiệm ngữ nghĩa (ai, ở đâu, làm gì, khi nào).
+    Converter chịu trách nhiệm cú pháp (tên element, hệ toạ độ, XML).
+    Tách hai lớp để mỗi lỗi định vị được: lỗi cú pháp là bug của code (sửa một
+    lần là hết), lỗi ngữ nghĩa là bug của prompt (đo được bằng eval).
+
+    Lý do class này tồn tại thay vì viết hai model song song: ``ScenarioDraft``
+    và ``ScenarioSpec`` phải kiểm **cùng một bộ ràng buộc**. Hai model song song
+    sẽ lệch nhau ngay lần thứ hai ai đó thêm validator, và lệch về phía nguy
+    hiểm — draft lỏng hơn spec nghĩa là repair không bắt được lỗi mà spec sẽ
+    chặn sau đó. Kế thừa làm việc lệch trở thành bất khả.
+    """
 
     title: str = Field(..., min_length=1, max_length=120)
 
@@ -565,7 +613,7 @@ class ScenarioCore(ForgeModel):
             "Xem ODDCell: đề bài đo đa dạng tình huống, không đo đa dạng giờ trong ngày."
         ),
     )
-    actors: list[ActorSpec] = Field(..., min_length=1, description="Ít nhất 1 chủ thể")
+    actors: list[ActorSpec] = Field(..., min_length=2, description="Ít nhất ego + 1 chủ thể")
     maneuvers: list[ManeuverSpec] = Field(..., min_length=1)
 
     duration_s: float = Field(30.0, gt=0.0, le=120.0, description="Trần thời gian mô phỏng")
@@ -599,7 +647,6 @@ class ScenarioCore(ForgeModel):
 
         for maneuver_index, m in enumerate(self.maneuvers):
             if m.actor_name not in names:
-
                 raise PydanticCustomError(
                     "DANGLING_ACTOR_REF",
                     "maneuver trỏ tới actor không tồn tại: {actor_name}",
@@ -612,6 +659,10 @@ class ScenarioCore(ForgeModel):
                     {"maneuver_index": maneuver_index},
                 )
 
+            # Trigger bắn sau khi kịch bản đã dừng = hành vi không bao giờ chạy.
+            # Kịch bản vẫn hợp lệ, vẫn chạy trót lọt, vẫn success=true — nhưng
+            # KHÔNG CÓ GÌ XẢY RA. Đây đúng cái bẫy sc_002 mô tả, và nó làm hỏng
+            # cả intent_match lẫn adversarial_found mà không báo lỗi ở đâu.
             if m.trigger.type == "simulation_time" and m.trigger.value >= self.duration_s:
                 raise PydanticCustomError(
                     "TRIGGER_AFTER_END",
@@ -625,31 +676,30 @@ class ScenarioCore(ForgeModel):
                     },
                 )
 
-
         # Nhãn ODD phải khớp thực tế. Nhãn này là thứ retrieval lọc theo và là thứ
         # đếm ODD coverage; gắn nhãn "pedestrian" cho một kịch bản toàn ô tô sẽ
         # thổi phồng coverage và làm thư viện trả về kết quả sai nhãn.
-        non_ego = {(a.category.value if hasattr(a.category, "value") else str(a.category)) for a in self.actors if not a.is_ego}
-        odd_at_val = self.odd.actor_type.value if hasattr(self.odd.actor_type, "value") else str(self.odd.actor_type)
-        if odd_at_val not in non_ego:
+        non_ego = {a.category.value for a in self.actors if not a.is_ego}
+        if self.odd.actor_type.value not in non_ego:
             raise PydanticCustomError(
                 "ODD_ACTOR_MISMATCH",
                 "odd.actor_type={actor_type} nhưng không chủ thể nào thuộc loại đó (đang có: {actual_types})",
                 {
-                    "actor_type": repr(odd_at_val),
+                    "actor_type": repr(self.odd.actor_type.value),
                     "actual_types": sorted(non_ego),
                 },
             )
 
-        done = {(m.maneuver.value if hasattr(m.maneuver, "value") else str(m.maneuver)) for m in self.maneuvers}
-        odd_mv_val = self.odd.maneuver.get("category") if isinstance(self.odd.maneuver, dict) else (self.odd.maneuver.value if hasattr(self.odd.maneuver, "value") else str(self.odd.maneuver))
-
-        if odd_mv_val not in done:
+        # Cùng lý do, cho trục tình huống. Gắn nhãn "jaywalk" cho một kịch bản chỉ
+        # có hành vi tạt đầu sẽ báo đã phủ ô jaywalk trong khi ô đó vẫn trống —
+        # tức là tự khai khống đúng con số mà đề bài dùng để chấm độ đa dạng.
+        done = {m.maneuver.value for m in self.maneuvers}
+        if self.odd.maneuver.value not in done:
             raise PydanticCustomError(
                 "ODD_MANEUVER_MISMATCH",
                 "odd.maneuver={maneuver} nhưng không maneuver nào thực hiện hành vi đó (đang có: {actual_maneuvers})",
                 {
-                    "maneuver": repr(odd_mv_val),
+                    "maneuver": repr(self.odd.maneuver.value),
                     "actual_maneuvers": sorted(done),
                 },
             )
@@ -729,6 +779,7 @@ class IssueCode(StrEnum):
     TRIGGER_AFTER_END = "TRIGGER_AFTER_END"
     ODD_ACTOR_MISMATCH = "ODD_ACTOR_MISMATCH"
     ODD_MANEUVER_MISMATCH = "ODD_MANEUVER_MISMATCH"
+    ACTOR_ROLE_MISMATCH = "ACTOR_ROLE_MISMATCH"
     ODD_LABEL_DRIFT = "ODD_LABEL_DRIFT"  # đổi nhãn người dùng đã nói rõ
     GEOM_NO_CATCHUP = "GEOM_NO_CATCHUP"  # chủ thể không bao giờ bắt kịp ego
     GEOM_NO_COLLISION_AFTER_CUTIN = "GEOM_NO_COLLISION_AFTER_CUTIN"
@@ -761,6 +812,7 @@ REPAIRABLE_CODES: frozenset[IssueCode] = frozenset(
         IssueCode.TRIGGER_AFTER_END,
         IssueCode.ODD_ACTOR_MISMATCH,
         IssueCode.ODD_MANEUVER_MISMATCH,
+        IssueCode.ACTOR_ROLE_MISMATCH,
         IssueCode.ODD_LABEL_DRIFT,
         IssueCode.GEOM_NO_CATCHUP,
         IssueCode.GEOM_NO_COLLISION_AFTER_CUTIN,
@@ -936,6 +988,61 @@ class JobStatus(StrEnum):
     FAILED = "failed"
 
 
+class VerificationLevel(StrEnum):
+    """Kịch bản đã được kiểm chứng tới đâu. **Trục thứ hai, không phải cổng.**
+
+    ``ScenarioStatus`` trả lời *"có người chịu trách nhiệm giữ nó lại không"*.
+    Enum này trả lời một câu khác hẳn: *"nó có thật sự tái hiện được nguy hiểm
+    đã mô tả không"*. Gộp hai câu vào một trạng thái là chỗ hỏng của thiết kế
+    cũ — không có ô nào diễn tả được "đã duyệt nhưng chạy ra không đúng ý",
+    nên kịch bản kém nằm lại thư viện và tiếp tục làm few-shot.
+
+    Vì sao dùng nhãn thay vì thêm một cổng duyệt thứ ba, hoặc một nút xoá:
+
+    - Xoá là **mất thông tin**. Một kịch bản chạy không va chạm chưa chắc vô
+      dụng — có khi chỉ lệch vài km/h. Vứt nó đi là vứt luôn bằng chứng đã chạy.
+    - Ép người duyệt bấm thêm một lần nữa sau mỗi lần mô phỏng là bắt con người
+      làm việc mà dữ liệu đã tự trả lời.
+    - Có nhãn thì ``ODD coverage`` tách được thành hai con số: bao nhiêu ô đã
+      phủ, và bao nhiêu ô đã phủ bằng kịch bản **đã kiểm chứng thật**.
+
+    Chỉ ``ADVERSARIAL`` mới là thứ ta muốn nhân bản qua few-shot. Xem
+    ``REPRODUCES_HAZARD`` bên dưới. Chi tiết ở ADR-017.
+    """
+
+    UNVERIFIED = "unverified"  # chưa chạy CARLA lần nào — mọi kịch bản mới đều ở đây
+    ADVERSARIAL = "adversarial"  # chạy được VÀ dựng được tình huống nguy hiểm
+    RAN_NO_HAZARD = "ran_no_hazard"  # chạy trót lọt nhưng KHÔNG có nguy hiểm nào
+    EXECUTION_FAILED = "execution_failed"  # crash / timeout / lỗi XML
+
+
+PROVEN_BAD_FOR_FEW_SHOT: frozenset[VerificationLevel] = frozenset(
+    {VerificationLevel.RAN_NO_HAZARD, VerificationLevel.EXECUTION_FAILED}
+)
+"""Mức đã **chứng minh** là không nên dạy lại cho LLM.
+
+Cố ý **không** gồm ``UNVERIFIED``: loại cả nó thì few-shot chết ngay, vì mọi
+kịch bản mới sinh đều bắt đầu ở đó và cụm seed cũng phần lớn chưa chạy được
+(ngoài phạm vi converter). Loại thứ *chưa chứng minh* khác hẳn loại thứ *đã
+chứng minh là hỏng* — chỉ làm vế sau.
+"""
+
+
+def verification_from_execution(success: bool, criteria: list[CriterionResult]) -> VerificationLevel:
+    """``ExecutionResult`` -> mức kiểm chứng. Code thuần, không phán đoán.
+
+    ``CollisionTest = FAILURE`` là **tin tốt** (xem :class:`CriterionResult`):
+    xe bị test trượt bài kiểm va chạm, tức kịch bản đã dựng được nguy hiểm.
+    Đọc ngược dấu ở đây là cả hệ thống đi tối thiểu hoá đúng thứ phải tối đa hoá.
+    """
+    if not success:
+        return VerificationLevel.EXECUTION_FAILED
+    had_collision = any(
+        c.name.lower().startswith("collision") and c.result is CriterionStatus.FAILURE for c in criteria
+    )
+    return VerificationLevel.ADVERSARIAL if had_collision else VerificationLevel.RAN_NO_HAZARD
+
+
 ValidationMode = Literal["static", "sim"]
 """``static`` = chỉ validate XML, không cần GPU. ``sim`` = chạy thật trên worker.
 
@@ -980,7 +1087,7 @@ class ReviewGate(StrEnum):
 
 
 class ScenarioStatus(StrEnum):
-    """Vòng đời của **một scenario**, đúng bốn trạng thái (ADR-011).
+    """Vòng đời của scenario qua hai cổng và một lần chạy mô phỏng.
 
     ``queued`` / ``running`` / ``done`` / ``failed`` **không** nằm ở đây — chúng
     là :class:`JobStatus`. Sơ đồ ở ``docs/gate-1/03-wireframe-ui-flow.md`` §7 vẽ
@@ -992,30 +1099,35 @@ class ScenarioStatus(StrEnum):
     bảng ``generation_requests`` (PRD §8 — *"không tạo pending scenario giả"*).
     """
 
-    PENDING_REVIEW = "pending_review"  # workflow xong, chờ BEFORE_LIBRARY
-    REJECTED = "rejected"  # trạng thái kết thúc
-    APPROVED_LIBRARY = "approved_library"  # trong thư viện, tải được, có embedding
-    PENDING_SIM_REVIEW = "pending_sim_review"  # chờ BEFORE_SIM
+    PENDING_SIM_REVIEW = "pending_sim_review"  # workflow xong, chờ cấp phép GPU
+    SIMULATION_QUEUED = "simulation_queued"  # đã duyệt BEFORE_SIM, chờ worker trả kết quả
+    PENDING_LIBRARY_REVIEW = "pending_library_review"  # đã có bằng chứng CARLA, chờ duyệt thư viện
+    APPROVED_LIBRARY = "approved_library"  # cổng cuối đã duyệt, có embedding
+    REJECTED = "rejected"  # bị từ chối ở một trong hai cổng
 
 
 REVIEW_TRANSITIONS: dict[tuple[ScenarioStatus, ReviewGate, bool], ScenarioStatus] = {
-    (ScenarioStatus.PENDING_REVIEW, ReviewGate.BEFORE_LIBRARY, True): ScenarioStatus.APPROVED_LIBRARY,
-    (ScenarioStatus.PENDING_REVIEW, ReviewGate.BEFORE_LIBRARY, False): ScenarioStatus.REJECTED,
-    (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, True): ScenarioStatus.APPROVED_LIBRARY,
-    (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, False): ScenarioStatus.APPROVED_LIBRARY,
+    (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, True): ScenarioStatus.SIMULATION_QUEUED,
+    (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, False): ScenarioStatus.REJECTED,
+    (ScenarioStatus.PENDING_LIBRARY_REVIEW, ReviewGate.BEFORE_LIBRARY, True): ScenarioStatus.APPROVED_LIBRARY,
+    (ScenarioStatus.PENDING_LIBRARY_REVIEW, ReviewGate.BEFORE_LIBRARY, False): ScenarioStatus.REJECTED,
 }
-"""Bảng transition của ADR-011 §3.3 — **không có đường nào khác**.
+"""Hai cổng không thể hoán đổi: BEFORE_SIM trước, BEFORE_LIBRARY sau CARLA.
 
 Khoá gồm cả **cổng**, không chỉ trạng thái. Nếu chỉ khoá theo ``(từ, sang)`` thì
-một quyết định gửi nhầm cổng — ``BEFORE_SIM`` bấm lên một scenario đang
-``pending_review`` — vẫn lọt, và hai cổng HITL trở thành có thể hoán đổi cho
+một quyết định gửi nhầm cổng — ``BEFORE_LIBRARY`` bấm lên một scenario đang
+``pending_sim_review`` — vẫn lọt, và hai cổng HITL trở thành có thể hoán đổi cho
 nhau. Đó đúng là thứ ràng buộc *"kỹ sư phải phê duyệt trước khi đưa vào bộ kiểm
 thử"* của đề bài cấm.
 
-Hai dòng cuối cùng đi về một chỗ: reject và approve ``BEFORE_SIM`` **đều** trả
-scenario về thư viện. Khác nhau ở chỗ approve còn tạo thêm một
-:class:`ScenarioJob` — việc đó là của tầng service, không phải của bảng này.
+Transition ``SIMULATION_QUEUED -> PENDING_LIBRARY_REVIEW`` do worker result,
+không phải quyết định review, nên nằm riêng bên dưới.
 """
+
+
+EXECUTION_TRANSITIONS: dict[ScenarioStatus, ScenarioStatus] = {
+    ScenarioStatus.SIMULATION_QUEUED: ScenarioStatus.PENDING_LIBRARY_REVIEW,
+}
 
 
 def next_status_after_review(current: ScenarioStatus, gate: ReviewGate, approved: bool) -> ScenarioStatus | None:
@@ -1027,15 +1139,15 @@ def next_status_after_review(current: ScenarioStatus, gate: ReviewGate, approved
     return REVIEW_TRANSITIONS.get((current, gate, approved))
 
 
-def can_request_simulation(current: ScenarioStatus) -> bool:
-    """Chỉ scenario đã qua ``BEFORE_LIBRARY`` mới được xin chạy sim (FR-12)."""
-    return current is ScenarioStatus.APPROVED_LIBRARY
+def next_status_after_execution(current: ScenarioStatus) -> ScenarioStatus | None:
+    """Mở cổng thư viện chỉ sau khi worker đã trả bằng chứng thực thi."""
+    return EXECUTION_TRANSITIONS.get(current)
 
 
 ALLOWED_SCENARIO_TRANSITIONS: dict[ScenarioStatus, frozenset[ScenarioStatus]] = {
     status: frozenset(
         {target for (src, _, _), target in REVIEW_TRANSITIONS.items() if src is status}
-        | ({ScenarioStatus.PENDING_SIM_REVIEW} if can_request_simulation(status) else set())
+        | ({EXECUTION_TRANSITIONS[status]} if status in EXECUTION_TRANSITIONS else set())
     )
     for status in ScenarioStatus
 }
@@ -1050,7 +1162,7 @@ class ReviewDecision(ForgeModel):
     """Một lần bấm duyệt.
 
     Luồng KHÔNG đứng chờ trong RAM. Tới cổng thì workflow **kết thúc** và ghi
-    xuống DB trạng thái ``pending_review``; khi có quyết định thì một đường vào
+    xuống DB trạng thái ``pending_sim_review``; khi có quyết định thì một đường vào
     khác nhặt lên chạy tiếp.
 
     Lý do rất cụ thể: Render free tier ngủ khi không có request, nên mọi thứ
@@ -1115,6 +1227,8 @@ class LibraryEntry(ForgeModel):
         vẫn hiển thị, chỉ có điều va chạm bị gán cho sai kịch bản. Nó làm hỏng
         cả retrieval eval lẫn ``adversarial_found`` mà không ai thấy.
         """
+        if not self.approved_by.strip():
+            raise ValueError("library entry phải ghi rõ người duyệt BEFORE_LIBRARY")
         if self.spec.scenario_id != self.scenario_id:
             raise ValueError(
                 f"spec.scenario_id={self.spec.scenario_id!r} lệch với entry scenario_id={self.scenario_id!r}"
@@ -1128,58 +1242,133 @@ class LibraryEntry(ForgeModel):
 
 
 # ---------------------------------------------------------------------------
-# API Request / Response models — hợp đồng giữa Frontend và Backend
+# Hợp đồng HTTP giữa frontend và backend
 # ---------------------------------------------------------------------------
-# Đây là hình dạng JSON mà frontend gửi/nhận. Tách biệt với domain models
-# (ScenarioSpec, ReviewDecision, ...) vì một bên là hợp đồng HTTP, bên kia là
-# hợp đồng dữ liệu nội bộ — trộn hai thứ đó nghĩa là đổi DB schema sẽ vỡ API.
+# Tách khỏi domain model (``ScenarioSpec``, ``ReviewDecision``, ...) có chủ đích:
+# một bên là hình dạng JSON đi qua dây, bên kia là hình dạng dữ liệu nội bộ.
+# Trộn hai thứ nghĩa là đổi một cột trong DB sẽ đổi luôn payload của frontend —
+# và người sửa DB không có cách nào biết mình vừa làm vỡ FE.
 
 
 GateType = Literal["before_library", "before_sim"]
-"""Alias Literal cho gate trong API request — frontend gửi chuỗi, không gửi enum."""
+"""Cổng duyệt dưới dạng chuỗi thuần cho tầng HTTP.
+
+``Literal`` chứ không phải ``ReviewGate`` vì frontend gửi JSON, không gửi enum
+Python. Quy đổi sang ``ReviewGate`` xảy ra trong route — đúng một chỗ, và chỗ đó
+ném 400 nếu chuỗi lạ, thay vì để một giá trị không hợp lệ trôi vào tầng dưới.
+"""
+
+
+TOO_VAGUE_MESSAGE = "Mô tả kịch bản quá ngắn hoặc không đủ thông tin kịch bản giao thông."
+"""Câu trả lời cho prompt rác. Cùng một câu ở HTTP 400 và ở guardrail của `parse_intent`."""
+
+
+def is_too_vague_to_generate(prompt: str) -> bool:
+    """Prompt rác: quá ngắn, quá ít từ, hoặc chỉ là một con số.
+
+    Phép kiểm này chạy ở **hai** chỗ, và phải là **một** phép kiểm: tầng HTTP
+    chặn sớm để không tốn một task nền, còn ``parse_intent`` chặn lại vì nó cũng
+    được gọi thẳng từ test và từ graph, không chỉ qua route. Hai bản sao của
+    cùng một ngưỡng thì lệch nhau vào lần đầu ai đó nới một bên — và bên còn lại
+    sẽ từ chối đúng thứ bên kia vừa nhận, với cùng một thông báo lỗi.
+    """
+    text = prompt.strip()
+    return len(text) < 10 or len(text.split()) < 3 or text.isnumeric()
+
+
+_WHITESPACE_RUN = re.compile(r"\s+")
+
+
+def normalize_prompt(prompt: str) -> str:
+    """Khoá tra cứu trùng lặp của một câu mô tả (ADR-015 §15.2).
+
+    NFC -> cắt hai đầu -> gộp khoảng trắng -> ``casefold()``. Đây là **nguồn sự
+    thật duy nhất**: cả đường ghi (``create_generation_request``,
+    ``persist_pending_sim_review``) lẫn đường tra đều gọi hàm này. Hai đường mà
+    chuẩn hoá khác nhau thì tra không bao giờ trúng, và hỏng **im lặng** — không
+    lỗi nào bắn ra, chỉ là tính năng chặn trùng ngừng hoạt động.
+
+    **Không bỏ dấu tiếng Việt.** "tạt đầu" và "tát đầu" là hai câu khác nhau; bỏ
+    dấu là gộp nhầm chúng làm một, và đây là khoá dùng để **không chạy lại** một
+    lần sinh — gộp nhầm nghĩa là trả về kết quả của câu khác.
+
+    NFC đứng trước ``casefold()`` vì thứ tự ngược lại không ổn định trên tổ hợp
+    dấu tiếng Việt: cùng một câu gõ bằng Telex và bằng bàn phím Unicode dựng sẵn
+    cho ra hai chuỗi code point khác nhau mà mắt người không phân biệt được.
+    """
+    text = unicodedata.normalize("NFC", prompt or "")
+    return _WHITESPACE_RUN.sub(" ", text).strip().casefold()
 
 
 class GenerateRequest(ForgeModel):
-    """POST /generate — body từ frontend.
+    """``POST /generate`` — body từ frontend.
 
-    ``prompt`` giữ nguyên câu tiếng Việt gốc (FR-01). ``validation_mode``
-    quyết định luồng sau workflow: ``static`` = chỉ validate XML, ``sim`` = gửi
-    sang worker CARLA (cần duyệt ``BEFORE_SIM``).
+    ``prompt`` giữ **nguyên văn** câu tiếng Việt (FR-01): đây là thứ được lưu lại
+    và đem đối chiếu khi đo ``intent_match``, nên không được chuẩn hoá ở biên.
     """
 
-    prompt: str = Field(..., min_length=1, max_length=5000, description="Câu mô tả tiếng Việt")
+    prompt: str = Field(..., min_length=1, max_length=5000, description="Câu mô tả tiếng Việt, giữ nguyên văn")
+    created_by: str = Field(
+        "unknown",
+        max_length=255,
+        description="Người tạo. Đề bài đòi hai vai trò tạo/duyệt — đây là vế thứ nhất.",
+    )
     validation_mode: ValidationMode = "static"
-    limit: int = Field(3, ge=1, le=20, description="Số lượng kịch bản mẫu cần retrieve (top-k)")
+    limit: int = Field(3, ge=1, le=20, description="Số kịch bản mẫu cần retrieve (top-k)")
+    force_generate: bool = Field(
+        False,
+        description="Sinh mới kể cả khi câu này đã được sinh trước đó (ADR-015 §15.4).",
+    )
+
+
+class DuplicateMatch(ForgeModel):
+    """Lần sinh cũ của **đúng câu này**, đính kèm phản hồi của ``POST /generate``.
+
+    Không phải lỗi và không phải 4xx (ADR-015 §Hệ quả): người dùng vẫn được sinh
+    mới bằng ``force_generate``. Đây là thông tin để họ quyết định.
+
+    ``reason`` là trường đắt nhất ở đây. Với một kịch bản đã bị từ chối, nó nói
+    vì sao hướng đó đã bị loại — thứ mà sinh lại lần nữa không bao giờ nói được,
+    vì lần sinh mới chỉ tạo ra một bản anh-em-họ rồi vào lại hàng chờ duyệt.
+    """
+
+    scenario_id: str | None = None
+    scenario_status: str | None = None
+    title: str | None = None
+    reason: str | None = Field(None, description="Lý do từ chối, nếu kịch bản cũ bị loại")
+    request_status: str | None = Field(None, description="running/done/failed của lần sinh cũ")
 
 
 class GenerateResponse(ForgeModel):
-    """POST /generate — response. Client dùng ``request_id`` để poll."""
+    """``POST /generate`` — response. Client dùng ``request_id`` để poll ``/status``.
 
-    request_id: str
+    ``request_id`` là ``None`` **chỉ** khi câu này trùng với một kịch bản không
+    có hàng ``generation_requests`` nào trỏ tới (dữ liệu seed, hoặc bản ghi từ
+    trước khi có bảng đó). Không có gì để poll, nên client đọc thẳng
+    ``duplicate.scenario_id``.
+    """
+
+    request_id: str | None = None
+    duplicate: DuplicateMatch | None = None
 
 
 class StatusResponse(ForgeModel):
-    """GET /status/{request_id} — response cho polling.
+    """``GET /status/{request_id}`` — response cho polling.
 
-    ``step`` là tên node hiện tại trong workflow hoặc ``done``/``failed``.
-    ``progress`` tính bằng phần trăm (0-100) theo index của step.
-    ``scenario_id`` chỉ có khi step = ``done``.
+    ``step`` là tên node đang chạy, hoặc ``done``/``failed``. ``scenario_id`` chỉ
+    có giá trị khi ``step == "done"`` — trước đó chưa có scenario nào tồn tại,
+    và FR-14 cấm đẻ ra scenario giả cho một lần sinh chưa xong.
     """
 
     request_id: str
-    step: str = Field("queued", description="Tên node đang chạy hoặc done/failed")
+    step: str = Field("queued", description="Tên node đang chạy, hoặc done/failed")
     progress: int = Field(0, ge=0, le=100)
     scenario_id: str | None = None
     error: str | None = None
 
 
 class ReviewApiRequest(ForgeModel):
-    """POST /review — body từ frontend.
-
-    Dùng ``GateType`` (Literal) thay vì ``ReviewGate`` (StrEnum) vì đây là
-    hợp đồng HTTP — frontend gửi chuỗi thuần. Chuyển đổi sang ``ReviewGate``
-    enum xảy ra ở tầng route.
-    """
+    """``POST /review`` — quyết định HITL tại một cổng duyệt."""
 
     scenario_id: str = Field(..., min_length=1)
     gate: GateType
@@ -1188,35 +1377,20 @@ class ReviewApiRequest(ForgeModel):
     reason: str = Field("", max_length=1000, description="Bắt buộc khi approved=False")
 
 
-class ScenarioQuery(ForgeModel):
-    """GET /scenarios — query params.
+class TagUpdateRequest(ForgeModel):
+    """``PUT /scenarios/{id}/tags`` — danh sách tag cuối cùng, không phải phần thêm."""
 
-    Bốn trục ODD lọc bằng ``WHERE`` (ADR-013). ``search`` là full-text trên
-    title/description_vi. Phân trang bằng offset = ``(page - 1) * limit``.
-    """
-
-    search: str = ""
-    road_type: RoadType | None = None
-    weather: Weather | None = None
-    actor_type: ActorType | None = None
-    maneuver: ManeuverType | None = None
-    page: int = Field(1, ge=1)
-    limit: int = Field(20, ge=1, le=100)
+    tags: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ScenarioListResponse(ForgeModel):
-    """GET /scenarios — response wrapper."""
+    """``GET /scenarios`` — wrapper có ``total`` để frontend phân trang.
 
-    items: list[dict] = Field(default_factory=list, description="Danh sách scenario dạng dict")
-    total: int = 0
-
-
-class ParsedIntent(ForgeModel):
-    """Kết quả parse_intent — dùng nội bộ trong graph, không expose qua API.
-
-    Giữ ở đây vì nó thuộc hợp đồng dữ liệu, và ``ForgeState`` sẽ tham chiếu.
+    ``items`` để ``list[dict]`` chứ không phải ``list[ScenarioSpec]``: danh sách
+    thư viện trả về cả trạng thái, review log và metadata retrieval — những thứ
+    không thuộc spec. Ép nó thành ``ScenarioSpec`` sẽ hoặc mất dữ liệu, hoặc kéo
+    mấy trường HTTP đó ngược vào domain model.
     """
 
-    odd_query: ODDQuery
-    odd_cell: ODDCell
-    assumptions: list[Assumption] = Field(default_factory=list)
+    items: list[dict] = Field(default_factory=list)
+    total: int = 0

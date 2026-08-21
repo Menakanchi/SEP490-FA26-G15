@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from src.models.schemas import (
     Assumption,
@@ -8,6 +8,7 @@ from src.models.schemas import (
     ODDQuery,
     ScenarioDraft,
     ScenarioSpec,
+    ScenarioStatus,
     ValidationIssue,
 )
 
@@ -31,6 +32,10 @@ class ForgeState(TypedDict, total=False):
 
     # -- vào ---------------------------------------------------------------
     user_query: str
+    created_by: str
+    """Tên người gõ câu. Đề bài đòi hai vai trò tạo/duyệt; đây là vế thứ nhất."""
+    limit: int
+    """Top-k cho ``retrieve``. Người dùng chọn ở FE; mặc định 3 (FR-03)."""
 
     # -- parse_intent (LLM) rồi with_defaults (code thuần) -----------------
     odd_query: ODDQuery
@@ -38,14 +43,27 @@ class ForgeState(TypedDict, total=False):
     odd_hints: ODDCell
     """``odd_query.with_defaults()``. Đây là thứ ``generate_draft`` được thấy."""
     assumptions: list[Assumption]
+    parsed_intent: dict
+    """Bốn trục dạng dict, kèm nhãn mô tả thô. Dành cho FE và cho ``retrieve``."""
+    actors: list[dict]
+    """Dàn diễn viên ``parse_intent`` đọc ra được, kèm vai ego/adversary.
+
+    Không nằm trong ``ODDQuery`` vì model đó mô tả bốn trục ODD, không mô tả
+    dàn diễn viên. Phải khai ở đây: LangGraph chỉ giữ những khoá được khai
+    trong schema, khoá lạ bị **bỏ im lặng** giữa hai node.
+    """
 
     # -- retrieve (code) ---------------------------------------------------
     examples: list[ScenarioSpec]
+    retrieved_examples: list[dict]
+    """Kết quả thô của retriever (id, title, similarity_score...). Đây là thứ FE
+    hiển thị; ``examples`` mới là spec đầy đủ dùng làm few-shot."""
 
     # -- generate_draft / repair_draft (LLM) -------------------------------
     raw_text: str
     raw_draft: dict
-    draft: ScenarioDraft
+    draft: ScenarioDraft | dict[str, Any]
+    """Raw dict trước validation; ScenarioDraft sau khi validate thành công."""
     iteration: int
     """Số vòng repair đã dùng. Chỉ tăng khi repair **thật sự** chạy — retry vì lỗi
     provider không tính, nếu không thì một lần rate limit ăn mất một lượt sửa."""
@@ -57,6 +75,12 @@ class ForgeState(TypedDict, total=False):
     spec: ScenarioSpec
     xosc_content: str
     scenario_id: str
+    request_id: str
+    validation_mode: str
+    model_used: str
+    node_metrics: dict
+    tags: list[str]
+    scenario_status: ScenarioStatus
 
     # -- kết ---------------------------------------------------------------
     issue_history: list[ValidationIssue]
@@ -67,18 +91,3 @@ class ForgeState(TypedDict, total=False):
     là mục PLO7 dễ bị bỏ nhất khi hết giờ.
     """
     failed_reason: str
-
-
-class AgentState(TypedDict, total=False):
-    """Còn sót từ template — ``nodes/example_node.py`` và route ``/chat`` còn dùng.
-
-    Xoá cùng lúc với ``ChatRequest``/``ChatResponse`` trong ``schemas.py`` khi
-    graph thật thay xong graph mẫu.
-    """
-
-    query: str
-    context: str
-    analysis: str
-    response: str
-    error: str
-    metadata: dict

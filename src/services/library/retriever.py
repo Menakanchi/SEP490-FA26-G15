@@ -18,16 +18,20 @@ from typing import Any
 
 import numpy as np
 
-from src.services.llm import get_embeddings
+from src.config import get_settings
+from src.models.schemas import odd_axis_value
+from src.services.llm import EMBEDDING_DIM, get_embeddings
+from src.services.persistence import EMBEDDING_DTYPE, connect_sqlite, encode_embedding, sqlite_path
 
 logger = logging.getLogger(__name__)
 
 
-def generate_text_embedding(text: str, dim: int = 1536) -> np.ndarray:
+def generate_text_embedding(text: str, dim: int = EMBEDDING_DIM) -> np.ndarray:
     """Sinh vector Float32 (1536 chiều) cho văn bản.
-    
+
     Thử gọi OpenAI Embeddings Service (text-embedding-3-small).
-    Nếu offline hoặc không có API key, sinh vector chuẩn hóa từ hash văn bản (deterministic fallback cho unit tests).
+    Nếu offline hoặc không có API key, sinh vector chuẩn hóa từ hash văn bản
+    (deterministic fallback cho unit test chạy offline).
     """
     if not text or not text.strip():
         return np.zeros(dim, dtype=np.float32)
@@ -53,17 +57,27 @@ def generate_text_embedding(text: str, dim: int = 1536) -> np.ndarray:
     return raw_vec / norm if norm > 0 else raw_vec
 
 
-def unpack_blob_embedding(blob: bytes | None, expected_dim: int = 1536) -> np.ndarray | None:
-    """Giải mã BLOB byte stream từ SQLite thành NumPy float32 vector."""
+def pack_blob_embedding(vector: np.ndarray) -> bytes:
+    """Vector -> BLOB. Chỉ là bí danh của codec dùng chung, để chỗ gọi đọc xuôi."""
+    return encode_embedding(vector.tolist())
+
+
+def unpack_blob_embedding(blob: bytes | None) -> np.ndarray | None:
+    """BLOB -> vector float32, hoặc ``None`` nếu hàng chưa có embedding.
+
+    Dùng ``np.frombuffer`` thay vì ``persistence.decode_embedding`` **chỉ vì tốc
+    độ**: nó tạo view trên đúng bộ nhớ đó, không dựng tuple Python trung gian.
+    Định dạng thì vẫn là một — ``EMBEDDING_DTYPE`` lấy thẳng từ persistence, và
+    ``test_embedding_codec_has_one_definition`` ghim hai đường phải khớp nhau.
+    """
     if not blob:
         return None
     try:
-        arr = np.frombuffer(blob, dtype=np.float32)
-        if len(arr) == 0:
-            return None
-        return arr
-    except Exception:
+        arr = np.frombuffer(blob, dtype=EMBEDDING_DTYPE)
+    except (ValueError, TypeError) as exc:
+        logger.warning("BLOB embedding hỏng, bỏ qua hàng này: %s", exc)
         return None
+    return arr if len(arr) else None
 
 
 def compute_cosine_similarity(v1: np.ndarray, v2: np.ndarray) -> float:
@@ -79,6 +93,36 @@ def compute_cosine_similarity(v1: np.ndarray, v2: np.ndarray) -> float:
     return float(np.clip(sim, 0.0, 1.0))
 
 
+def _default_db_path() -> Path:
+    """Đường dẫn SQLite lấy từ ``settings.database_url`` — một nguồn duy nhất."""
+    return sqlite_path(get_settings().database_url, caller="SQLiteRetriever")
+
+
+# Cổng trạng thái (ADR-011 / FR-03 / FR-11). Điều kiện `embedding IS NOT NULL`
+# không thừa: nó là **hàng rào thứ hai**, và là hàng rào không quên được.
+# `embedding` chỉ được ghi trong transaction duyệt BEFORE_LIBRARY, nên kịch bản
+# chưa duyệt không có vector — dù ai đó về sau lỡ xoá mất mệnh đề `status` thì
+# nó vẫn không lọt ra.
+_STATUS_GATE = "status = 'approved_library' AND embedding IS NOT NULL"
+
+_ROW_COLUMNS = "scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding"
+
+_ODD_FILTER_AXES = ("road_type", "weather", "actor_type", "maneuver")
+
+_EMPTY_AXIS_VALUES = frozenset({"unknown", "none", ""})
+
+
+def _odd_filter_value(raw: Any) -> str | None:
+    """Giá trị một trục ODD để đưa vào ``WHERE``, hoặc ``None`` nếu không lọc theo nó.
+
+    Nhận cả hai hình dạng mà trục ODD đi tới: chuỗi enum thuần, và object
+    ``{"category": ...}`` của ``parsed_intent``. Sentinel rỗng (``"unknown"``,
+    ``"none"``) không phải giá trị lọc — lọc theo nó là chắc chắn trả rỗng.
+    """
+    value = odd_axis_value(raw, "")
+    return None if value.lower() in _EMPTY_AXIS_VALUES else value
+
+
 class BaseRetriever(ABC):
     """Abstract Retriever Interface cho việc truy vấn kịch bản mẫu."""
 
@@ -92,15 +136,20 @@ class SQLiteRetriever(BaseRetriever):
     """SQLite Retriever theo ADR-013 (Pre-filtering SQL WHERE + BLOB Embedding + NumPy Cosine)."""
 
     def __init__(self, db_path: str | Path | None = None):
-        self.db_path = Path(db_path or "./data/app.db")
+        """Mặc định đọc đúng database mà mọi thứ khác đang ghi vào.
+
+        Bản trước hard-code ``./data/app.db``, bỏ qua ``settings.database_url``.
+        Hỏng theo kiểu tệ nhất: retrieval **luôn trả rỗng** mà không có lỗi nào —
+        node vẫn chạy, workflow vẫn đi tiếp, chỉ là không bao giờ có few-shot.
+        Trong test dùng DB tạm thì nó rỗng 100% và không ai thấy gì bất thường.
+        """
+        self.db_path = Path(db_path) if db_path else _default_db_path()
 
     def _get_connection(self) -> sqlite3.Connection | None:
         if not self.db_path.exists():
             return None
         try:
-            conn = sqlite3.connect(str(self.db_path))
-            conn.row_factory = sqlite3.Row
-            return conn
+            return connect_sqlite(self.db_path)
         except Exception as exc:
             logger.warning(f"Không thể kết nối tới SQLite DB tại {self.db_path}: {exc}")
             return None
@@ -140,76 +189,37 @@ class SQLiteRetriever(BaseRetriever):
         try:
             cursor = conn.cursor()
 
-            # Kiểm tra xem bảng scenarios hay scenarios_seed đang tồn tại
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('scenarios', 'scenarios_seed')")
-            existing_tables = [row["name"] for row in cursor.fetchall()]
-
-            if not existing_tables:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name = 'scenarios'")
+            if cursor.fetchone() is None:
                 conn.close()
                 return []
 
-            target_table = "scenarios" if "scenarios" in existing_tables else "scenarios_seed"
-
             odd_filter = self._extract_odd_dict(odd_query)
-            
-            # Xây dựng câu truy vấn SQL Pre-filtering
-            where_clauses: list[str] = []
+
+            # Cổng trạng thái viết ĐÚNG MỘT LẦN. Trước đây chuỗi này được gõ hai
+            # lần — một lần cho truy vấn có lọc ODD, một lần cho truy vấn nới —
+            # nên sửa cổng ở một chỗ mà quên chỗ kia sẽ để kịch bản chưa duyệt
+            # lọt ra qua đúng nhánh dự phòng, im lặng.
+            where_clauses: list[str] = [_STATUS_GATE]
             params: list[Any] = []
 
-            # 1. Status Gate (ADR-011): Chỉ truy vấn kịch bản đã qua duyệt library hoặc seed
-            if target_table == "scenarios":
-                where_clauses.append("(status IN ('approved_library', 'seed') AND embedding IS NOT NULL)")
-            else:
-                where_clauses.append("embedding IS NOT NULL")
+            # ODD Pre-filtering WHERE clause (ADR-013). Bốn trục dùng chung một
+            # phép so; viết rời từng trục thì lần thứ năm thêm trục là chép lại
+            # lần thứ năm, và lần chép nào cũng có thể quên `LIKE`.
+            for axis in _ODD_FILTER_AXES:
+                value = _odd_filter_value(odd_filter.get(axis))
+                if value is None:
+                    continue
+                where_clauses.append(f"({axis} = ? OR {axis} LIKE ?)")
+                params.extend([value, f"%{value}%"])
 
-            # 2. ODD Pre-filtering WHERE clause (ADR-013)
-            road_type = odd_filter.get("road_type")
-            if road_type and str(road_type).lower() not in ("unknown", "none", ""):
-                where_clauses.append("(road_type = ? OR road_type LIKE ?)")
-                params.extend([str(road_type), f"%{road_type}%"])
-
-            weather = odd_filter.get("weather")
-            if weather and str(weather).lower() not in ("unknown", "none", ""):
-                where_clauses.append("(weather = ? OR weather LIKE ?)")
-                params.extend([str(weather), f"%{weather}%"])
-
-            actor_type = odd_filter.get("actor_type")
-            if isinstance(actor_type, dict):
-                actor_cat = actor_type.get("category")
-            else:
-                actor_cat = str(actor_type) if actor_type else None
-
-            if actor_cat and str(actor_cat).lower() not in ("unknown", "none", ""):
-                where_clauses.append("(actor_type = ? OR actor_type LIKE ?)")
-                params.extend([str(actor_cat), f"%{actor_cat}%"])
-
-            maneuver = odd_filter.get("maneuver")
-            if isinstance(maneuver, dict):
-                man_cat = maneuver.get("category")
-            else:
-                man_cat = str(maneuver) if maneuver else None
-
-            if man_cat and str(man_cat).lower() not in ("unknown", "none", ""):
-                where_clauses.append("(maneuver = ? OR maneuver LIKE ?)")
-                params.extend([str(man_cat), f"%{man_cat}%"])
-
-            where_sql = " AND ".join(where_clauses)
-            if target_table == "scenarios":
-                sql = f"SELECT scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding FROM scenarios WHERE {where_sql}"
-            else:
-                sql = f"SELECT scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding_json, embedding FROM scenarios_seed WHERE {where_sql}"
-
-            cursor.execute(sql, params)
+            cursor.execute(f"SELECT {_ROW_COLUMNS} FROM scenarios WHERE {' AND '.join(where_clauses)}", params)
             rows = cursor.fetchall()
 
-            # Fallback nếu ODD pre-filtering trả về 0 bản ghi
+            # Lọc ODD không khớp gì thì nới ra, chỉ giữ cổng trạng thái: vài ví
+            # dụ khác ô còn hơn few-shot rỗng. Cổng trạng thái thì **không** nới.
             if not rows:
-                fallback_sql = (
-                    "SELECT scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding FROM scenarios WHERE status IN ('approved_library', 'seed') AND embedding IS NOT NULL"
-                    if target_table == "scenarios"
-                    else "SELECT scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding_json, embedding FROM scenarios_seed WHERE embedding IS NOT NULL"
-                )
-                cursor.execute(fallback_sql)
+                cursor.execute(f"SELECT {_ROW_COLUMNS} FROM scenarios WHERE {_STATUS_GATE}")
                 rows = cursor.fetchall()
 
             if not rows:
@@ -251,20 +261,22 @@ class SQLiteRetriever(BaseRetriever):
                     matches = sum(1 for w in words if len(w) > 1 and w in target_text)
                     sim_score = min(1.0, 0.5 + (matches * 0.1))
 
-                candidates.append({
-                    "id": sc_id,
-                    "title": title,
-                    "content": desc or title,
-                    "description_vi": desc,
-                    "metadata": {
-                        "scenario_id": sc_id,
-                        "road_type": str(r_type or ""),
-                        "weather": str(w_type or ""),
-                        "actor_type": str(a_type or ""),
-                        "maneuver": str(m_type or ""),
-                    },
-                    "similarity_score": round(float(sim_score), 2),
-                })
+                candidates.append(
+                    {
+                        "id": sc_id,
+                        "title": title,
+                        "content": desc or title,
+                        "description_vi": desc,
+                        "metadata": {
+                            "scenario_id": sc_id,
+                            "road_type": str(r_type or ""),
+                            "weather": str(w_type or ""),
+                            "actor_type": str(a_type or ""),
+                            "maneuver": str(m_type or ""),
+                        },
+                        "similarity_score": round(float(sim_score), 2),
+                    }
+                )
 
             conn.close()
 

@@ -44,6 +44,9 @@ data/*
 logs/
 *.log
 
+# Chỗ nháp cá nhân — không bao giờ track.
+scratch/
+
 # Test coverage
 htmlcov/
 .coverage
@@ -82,3 +85,6 @@ out/
 # retail/wholesale (→ §Lộ trình bốn phase, §Hai chế độ sinh), hai ràng buộc batch
 # (→ ADR-014).
 /docs/overview.html
+
+# Output của ScenarioRunner trên máy worker — log và JSON criteria mỗi lần chạy.
+worker/outputs/

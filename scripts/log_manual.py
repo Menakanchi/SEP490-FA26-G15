@@ -19,22 +19,11 @@ Examples:
   # Quick interactive mode
   python scripts/log_manual.py
 """
-import argparse
-import json
 import os
-import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+import argparse
 
-VN_TZ = timezone(timedelta(hours=7))
-
-
-def git(cmd):
-    try:
-        return subprocess.check_output(cmd.split(), shell=False, text=True, stderr=subprocess.DEVNULL).strip()
-    except Exception:
-        return ""
+from ai_log_common import append_entry, entry_id, git_identity, now_iso
 
 
 def interactive_mode():
@@ -76,34 +65,24 @@ def main():
     else:
         tool, model, prompt, result = interactive_mode()
 
-    ts = datetime.now(VN_TZ).isoformat()
-
-    student = git("git config user.email")
-    if not student:
-        student = os.environ.get("USERNAME", os.environ.get("USER", "unknown"))
-        print(f"[log] ⚠️  git email not set! Using fallback: {student}", file=sys.stderr)
-        print("[log] Run: git config user.email \"your@vinuni.edu.vn\"", file=sys.stderr)
+    identity = git_identity()
+    if not identity["student"]:
+        identity["student"] = os.environ.get("USERNAME", os.environ.get("USER", "unknown"))
+        print(f"[log] ⚠️  git email not set! Using fallback: {identity['student']}", file=sys.stderr)
+        print('[log] Run: git config user.email "your@vinuni.edu.vn"', file=sys.stderr)
 
     entry = {
-        "ts": ts,
+        "ts": now_iso(),
         "tool": tool,
         "event": "ManualLog",
-        "entry_id": f"manual-{datetime.now(VN_TZ).strftime('%Y%m%d-%H%M%S')}",
+        "entry_id": entry_id("manual"),
         "model": model,
-        "repo": git("git remote get-url origin").split("/")[-1].replace(".git", ""),
-        "branch": git("git rev-parse --abbrev-ref HEAD"),
-        "commit": git("git rev-parse --short HEAD"),
-        "student": student,
+        **identity,
         "prompt": prompt[:1000],
         "response_summary": result[:500] if result else "",
     }
 
-    log_dir = Path(os.environ.get("AI_LOG_DIR", ".ai-log"))
-    log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / "session.jsonl"
-
-    with open(log_file, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    log_file = append_entry(entry)
 
     print(f"\n[log] ✅ Logged: [{tool}] {prompt[:80]}")
     print(f"[log] 📁 Saved to: {log_file}")

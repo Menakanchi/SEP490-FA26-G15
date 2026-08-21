@@ -1,9 +1,9 @@
 """Unit tests cho Node 2 (retrieve) tuân thủ ADR-013, ADR-011, ADR-006."""
 
 import sqlite3
-import numpy as np
+
 import pytest
-from pathlib import Path
+
 from src.agents.nodes.retrieve import retrieve_node
 from src.services.library.retriever import SQLiteRetriever, generate_text_embedding
 
@@ -43,11 +43,61 @@ def temp_sqlite_db(tmp_path):
     vec_unapproved = generate_text_embedding("Kịch bản chưa được duyệt")
 
     test_data = [
-        ("sc_001", "approved_library", "Xe máy tạt đầu", "Xe máy tạt đầu ô tô", "urban_straight", "clear", "motorcycle", "cut_in", vec1.tobytes()),
-        ("sc_002", "approved_library", "Xe tải phanh gấp", "Xe tải phanh gấp cao tốc", "highway", "heavy_rain", "truck", "sudden_brake", vec2.tobytes()),
-        ("sc_003", "approved_library", "Xe nâng đường nội bộ", "Xe nâng lùi chậm", "residential_narrow", "clear", "truck", "cut_in", vec3.tobytes()),
-        ("sc_004", "pending_review", "Xe con lấn làn", "Chưa được duyệt", "urban_straight", "clear", "car", "lane_drift", vec_unapproved.tobytes()),
-        ("sc_005", "rejected", "Xe bus vượt đỏ", "Đã bị từ chối", "intersection", "clear", "bus", "run_red_light", vec_unapproved.tobytes()),
+        (
+            "sc_001",
+            "approved_library",
+            "Xe máy tạt đầu",
+            "Xe máy tạt đầu ô tô",
+            "urban_straight",
+            "clear",
+            "motorcycle",
+            "cut_in",
+            vec1.tobytes(),
+        ),
+        (
+            "sc_002",
+            "approved_library",
+            "Xe tải phanh gấp",
+            "Xe tải phanh gấp cao tốc",
+            "highway",
+            "heavy_rain",
+            "truck",
+            "sudden_brake",
+            vec2.tobytes(),
+        ),
+        (
+            "sc_003",
+            "approved_library",
+            "Xe nâng đường nội bộ",
+            "Xe nâng lùi chậm",
+            "residential_narrow",
+            "clear",
+            "truck",
+            "cut_in",
+            vec3.tobytes(),
+        ),
+        (
+            "sc_004",
+            "pending_sim_review",
+            "Xe con lấn làn",
+            "Chưa được duyệt",
+            "urban_straight",
+            "clear",
+            "car",
+            "lane_drift",
+            vec_unapproved.tobytes(),
+        ),
+        (
+            "sc_005",
+            "rejected",
+            "Xe bus vượt đỏ",
+            "Đã bị từ chối",
+            "intersection",
+            "clear",
+            "bus",
+            "run_red_light",
+            vec_unapproved.tobytes(),
+        ),
         ("sc_006", "approved_library", "Không có embedding", "Thiếu vector", "highway", "clear", "car", "cut_in", None),
     ]
 
@@ -65,7 +115,7 @@ def temp_sqlite_db(tmp_path):
     return db_path
 
 
-def test_sqlite_retriever_happy_path(temp_sqlite_db, capsys):
+def test_sqlite_retriever_happy_path(temp_sqlite_db):
     """Test case 1: SQLiteRetriever truy vấn thành công kịch bản đã qua cổng approved_library."""
     retriever = SQLiteRetriever(db_path=temp_sqlite_db)
     state = {
@@ -86,14 +136,11 @@ def test_sqlite_retriever_happy_path(temp_sqlite_db, capsys):
     assert first_ex["id"] == "sc_001"
     assert "Xe máy" in first_ex["title"]
 
-    captured = capsys.readouterr()
-    assert "[NODE 2 OUTPUT] Retrieved Examples Count:" in captured.out
-
 
 def test_sqlite_retriever_odd_where_filtering(temp_sqlite_db):
     """Test case 2: SQL WHERE ODD Pre-filtering loại bỏ chính xác kịch bản không trùng khớp ODD."""
     retriever = SQLiteRetriever(db_path=temp_sqlite_db)
-    
+
     # Lọc ODD road_type=highway, actor_type=truck, maneuver=sudden_brake
     results = retriever.retrieve(
         query_text="Xe tải phanh gấp cao tốc",
@@ -109,19 +156,19 @@ def test_sqlite_retriever_odd_where_filtering(temp_sqlite_db):
 def test_sqlite_retriever_status_gate(temp_sqlite_db):
     """Test case 3: Kiểm tra Status Gate (ADR-011) - Chỉ trả về approved_library có embedding IS NOT NULL."""
     retriever = SQLiteRetriever(db_path=temp_sqlite_db)
-    
+
     # Tìm kiếm các kịch bản bất kỳ
     results = retriever.retrieve(query_text="Kịch bản bất kỳ", odd_query=None, limit=10)
     returned_ids = [r["id"] for r in results]
 
-    # sc_004 (pending_review), sc_005 (rejected), sc_006 (embedding NULL) KHÔNG ĐƯỢC lọt vào kết quả
+    # sc_004 (pending_sim_review), sc_005 (rejected), sc_006 (embedding NULL) KHÔNG ĐƯỢC lọt vào kết quả
     assert "sc_004" not in returned_ids
     assert "sc_005" not in returned_ids
     assert "sc_006" not in returned_ids
     assert "sc_001" in returned_ids
 
 
-def test_retrieve_empty_or_missing_db(tmp_path, capsys):
+def test_retrieve_empty_or_missing_db(tmp_path):
     """Test case 4: DB không tồn tại / rỗng / SQL WHERE không khớp -> Trả về [] an toàn cho Zero-Shot mode."""
     missing_db = tmp_path / "non_existent.db"
     retriever = SQLiteRetriever(db_path=missing_db)
@@ -136,11 +183,8 @@ def test_retrieve_empty_or_missing_db(tmp_path, capsys):
     assert result["retrieved_examples"] == []
     assert result["examples"] == []
 
-    captured = capsys.readouterr()
-    assert "[NODE 2 OUTPUT] Retrieved Examples Count: 0" in captured.out
 
-
-def test_retrieve_with_invalid_intent(capsys):
+def test_retrieve_with_invalid_intent():
     """Test case 5: State rỗng/invalid intent -> Node 2 xử lý an toàn không văng exception."""
     result_empty = retrieve_node({})
     assert result_empty["retrieved_examples"] == []
@@ -148,6 +192,3 @@ def test_retrieve_with_invalid_intent(capsys):
 
     result_none = retrieve_node({"parsed_intent": None})
     assert result_none["retrieved_examples"] == []
-
-    captured = capsys.readouterr()
-    assert "[NODE 2 OUTPUT] Retrieved Examples Count: 0" in captured.out

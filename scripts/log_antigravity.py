@@ -42,10 +42,11 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
+
+from ai_log_common import VN_TZ, append_entry, entry_id, git_identity, now_iso
 
 # Fix Windows console encoding so VN diacritics in prompts print cleanly.
 if sys.platform == "win32":
@@ -55,7 +56,7 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-VN_TZ = timezone(timedelta(hours=7))
+
 GEMINI_HOME = Path.home() / ".gemini"
 
 # Antigravity has shipped under two folder names; prefer the newer IDE one.
@@ -71,15 +72,6 @@ AUX_BLOCK_RE = re.compile(
     r"</(?:ADDITIONAL_METADATA|USER_SETTINGS_CHANGE|SYSTEM_MESSAGE)>",
     re.DOTALL,
 )
-
-
-def git(cmd: str) -> str:
-    try:
-        return subprocess.check_output(
-            cmd.split(), shell=False, text=True, stderr=subprocess.DEVNULL
-        ).strip()
-    except Exception:
-        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +268,7 @@ def build_entry(msg: dict, repo: str, branch: str, commit: str,
             pass
 
     return {
-        "ts": ts or datetime.now(VN_TZ).isoformat(),
+        "ts": ts or now_iso(),
         "tool": "antigravity",
         "event": "UserPrompt",
         "entry_id": f"antigravity-{msg['conv_id']}-{msg['step_index']:05d}",
@@ -336,10 +328,11 @@ def main() -> None:
 
     repo_root_n = "" if args.no_repo_filter else _normalize(str(Path.cwd()))
 
-    repo = git("git remote get-url origin").split("/")[-1].replace(".git", "")
-    branch = git("git rev-parse --abbrev-ref HEAD")
-    commit = git("git rev-parse --short HEAD")
-    student = git("git config user.email") or os.environ.get(
+    identity = git_identity()
+    repo = identity["repo"]
+    branch = identity["branch"]
+    commit = identity["commit"]
+    student = identity["student"] or os.environ.get(
         "USERNAME", os.environ.get("USER", "unknown"))
 
     new_entries: list[dict] = []
@@ -380,25 +373,18 @@ def main() -> None:
 # ---------------------------------------------------------------------------
 
 def _legacy_log(summary: str, model: str) -> None:
-    ts = datetime.now(VN_TZ).isoformat()
-    entry = {
-        "ts": ts,
+    identity = git_identity()
+    identity["student"] = identity["student"] or os.environ.get("USERNAME", os.environ.get("USER", "unknown"))
+    append_entry({
+        "ts": now_iso(),
         "tool": "antigravity",
         "event": "TaskComplete",
-        "entry_id": f"antigravity-{datetime.now(VN_TZ).strftime('%Y%m%d-%H%M%S')}",
+        "entry_id": entry_id("antigravity"),
         "model": model,
-        "repo": git("git remote get-url origin").split("/")[-1].replace(".git", ""),
-        "branch": git("git rev-parse --abbrev-ref HEAD"),
-        "commit": git("git rev-parse --short HEAD"),
-        "student": git("git config user.email") or os.environ.get(
-            "USERNAME", os.environ.get("USER", "unknown")),
+        **identity,
         "prompt": summary[:1000],
         "response_summary": f"[Antigravity] {summary[:500]}",
-    }
-    log_dir = Path(os.environ.get("AI_LOG_DIR", ".ai-log"))
-    log_dir.mkdir(exist_ok=True)
-    with open(log_dir / "session.jsonl", "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    })
     print(f"[antigravity-log] Logged manual: {summary[:80]}...", file=sys.stderr)
 
 
