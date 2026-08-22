@@ -159,3 +159,56 @@ def test_speed_metrics_make_longitudinal_maneuvers_judgeable() -> None:
     metrics = trajectory.summarise(braking)
     assert metrics["adversary_min_speed_ms"] == pytest.approx(2.8)
     assert metrics["adversary_speed_drop_ms"] == pytest.approx(11.1)
+
+
+def test_surrogate_safety_measures_follow_their_definitions() -> None:
+    """THW, PET, DRAC — ba phép đo chuẩn ngành, kiểm bằng số học tay.
+
+    Ego 10 m/s bám sau tác nhân trong cùng làn, khe hở dọc 20 m rồi 10 m sau 1 s.
+    """
+    following = [
+        Sample(
+            t=0.0,
+            longitudinal_m=25.0,
+            lateral_m=0.1,
+            gap_lon_m=20.0,
+            gap_lat_m=-1.0,
+            ego_speed_ms=10.0,
+            adv_speed_ms=5.0,
+            adv_lane_offset_m=0.0,
+        ),
+        Sample(
+            t=1.0,
+            longitudinal_m=15.0,
+            lateral_m=0.1,
+            gap_lon_m=10.0,
+            gap_lat_m=-1.0,
+            ego_speed_ms=10.0,
+            adv_speed_ms=5.0,
+            adv_lane_offset_m=0.0,
+        ),
+    ]
+    m = trajectory.summarise(following)
+
+    assert m["thw_min_s"] == pytest.approx(1.0), "10 m khe hở / 10 m/s"
+    assert m["pet_min_s"] == pytest.approx(1.0), "chồng ngang -> 10 m / xe nhanh hơn 10 m/s"
+    # thu hẹp 10 m/s trên khe hở 10 m -> 10^2 / (2*10) = 5 m/s²
+    assert m["drac_max_ms2"] == pytest.approx(5.0)
+
+
+def test_headway_ignores_a_vehicle_in_another_lane() -> None:
+    """Xe ở làn bên cạnh không tạo headway, dù nó ở ngay phía trước."""
+    beside = [
+        Sample(
+            t=t,
+            longitudinal_m=20.0,
+            lateral_m=-3.5,
+            gap_lon_m=15.0,
+            gap_lat_m=1.1,
+            ego_speed_ms=10.0,
+            adv_speed_ms=10.0,
+            adv_lane_offset_m=0.0,
+        )
+        for t in (0.0, 1.0)
+    ]
+    assert "thw_min_s" not in trajectory.summarise(beside)

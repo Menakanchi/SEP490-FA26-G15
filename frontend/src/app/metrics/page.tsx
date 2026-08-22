@@ -75,9 +75,11 @@ function MetricsContent() {
       </Section>
 
       <Section icon={<Grid3x3 className="w-5 h-5 text-emerald-400" />} title="M2 — Độ phủ ODD"
-               note="Mẫu số là số ô converter dựng được, không phải 560 tổ hợp enum — phần lớn ô còn lại là quyết định thu hẹp phạm vi có chủ đích (ADR-016), không phải chỗ chưa làm.">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Stat value={pct(m2.rate_supported.rate)} label="Phủ trong phạm vi hỗ trợ"
+               note="Hai con số trả lời hai câu khác nhau. Phủ THEO CẶP là chuẩn kiểm thử tổ hợp: phần lớn lỗi sinh ra từ tương tác giữa hai yếu tố, nên phủ hết cặp bắt được gần hết lỗi với một phần nhỏ số ca. Phủ TOÀN PHẦN mới là thứ cần khi muốn nói đã thử mọi tổ hợp. Mẫu số của cả hai là phạm vi converter dựng được, không phải 560 tổ hợp enum (ADR-016).">
+        <div className="grid gap-3 sm:grid-cols-4">
+          <Stat value={pct(m2.rate_pairwise.rate)} label="Phủ theo cặp (pairwise)"
+                sub={`${m2.covered_pairs}/${m2.feasible_pairs} cặp trục`} />
+          <Stat value={pct(m2.rate_supported.rate)} label="Phủ toàn phần"
                 sub={`${m2.covered_supported}/${m2.supported_total} ô`} />
           <Stat value={String(m2.covered_any)} label="Ô ODD đã có kịch bản"
                 sub={`trên ${m2.enum_total} tổ hợp enum`} />

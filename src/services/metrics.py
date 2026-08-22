@@ -15,6 +15,7 @@ thì trông như thất bại.
 
 from __future__ import annotations
 
+from itertools import combinations
 from typing import Any
 
 from src.models.schemas import DEFAULT_SUPPORT_POLICY, ManeuverType, ODDCell
@@ -117,6 +118,48 @@ def validity(requests: list[dict], scenarios: list[dict], executions: list[dict]
     }
 
 
+_AXES = ("road_type", "weather", "actor_type", "maneuver")
+
+
+def _pairwise(scenarios: list[dict], supported: list[ODDCell]) -> dict[str, Any]:
+    """Độ phủ **từng cặp trục**, chuẩn của kiểm thử tổ hợp (combinatorial testing).
+
+    Vì sao báo thêm số này bên cạnh phủ toàn phần: lý thuyết kiểm thử tổ hợp nói
+    phần lớn lỗi do **tương tác giữa hai yếu tố**, nên phủ hết các cặp bắt được
+    gần hết lỗi mà chỉ tốn một phần nhỏ số ca so với phủ toàn phần. Với ma trận
+    4 trục ở đây, phủ hết cặp cần khoảng 15-20 kịch bản thay vì 76.
+
+    Nói cách khác: 12/76 ô nghe như "mới làm được 16%", nhưng nếu 12 kịch bản đó
+    phủ hết các cặp thì về mặt kiểm thử chúng đã làm gần hết việc. Hai con số trả
+    lời hai câu khác nhau và **không** thay thế nhau — phủ toàn phần vẫn là thứ
+    cần khi muốn nói "đã thử mọi tổ hợp".
+
+    Mẫu số chỉ đếm cặp **khả thi**: cặp nào không xuất hiện trong ô nào mà
+    ``SupportPolicy`` hỗ trợ thì không bao giờ phủ được, đưa vào mẫu số là tự dìm
+    con số bằng thứ không tồn tại.
+    """
+    feasible: set[tuple[str, str, str, str]] = set()
+    for cell in supported:
+        values = cell.model_dump(mode="json")
+        for left, right in combinations(_AXES, 2):
+            feasible.add((left, right, values[left], values[right]))
+
+    covered: set[tuple[str, str, str, str]] = set()
+    for scenario in scenarios:
+        if not all(scenario.get(axis) for axis in _AXES):
+            continue
+        for left, right in combinations(_AXES, 2):
+            pair = (left, right, scenario[left], scenario[right])
+            if pair in feasible:
+                covered.add(pair)
+
+    return {
+        "covered_pairs": len(covered),
+        "feasible_pairs": len(feasible),
+        "rate_pairwise": _ratio(len(covered), len(feasible)),
+    }
+
+
 def _in_scope(scenario: dict) -> bool:
     """Ô ODD của kịch bản có nằm trong phạm vi converter dựng được không."""
     axes = (
@@ -209,6 +252,7 @@ def coverage(scenarios: list[dict]) -> dict[str, Any]:
 
     in_scope = covered_keys & supported_keys
     return {
+        **_pairwise(scenarios, supported),
         "covered_supported": len(in_scope),
         "supported_total": len(supported_keys),
         "rate_supported": _ratio(len(in_scope), len(supported_keys)),
