@@ -124,6 +124,12 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
     metrics["adversary_min_speed_ms"] = round(min(speeds), 3)
     metrics["adversary_speed_drop_ms"] = round(max(speeds) - min(speeds), 3)
 
+    # Bộ đo an toàn thay thế (surrogate safety measures) dùng chung trong ngành —
+    # ISO 34502 và phần lớn công trình scenario-based testing báo cáo theo chúng.
+    # Có ba số này thì bảng metric nói cùng ngôn ngữ với tài liệu tham chiếu, thay
+    # vì chỉ có "khoảng cách nhỏ nhất" tự đặt tên.
+    metrics.update(_surrogate_safety(before_contact))
+
     ttc = _min_time_to_collision(before_contact)
     if ttc is not None:
         metrics["ttc_min_s"] = round(ttc, 3)
@@ -160,6 +166,65 @@ def _min_time_to_collision(samples: list[Sample]) -> float | None:
         if best is None or ttc < best:
             best = ttc
     return best
+
+
+def _surrogate_safety(samples: list[Sample]) -> dict[str, float]:
+    """THW, PET và DRAC — ba phép đo nguy hiểm chuẩn của ngành.
+
+    - ``thw_min_s`` **time headway**: ego mất bao lâu để tới chỗ adversary đang
+      đứng. Khác TTC ở chỗ nó không cần hai xe đang tiến lại gần nhau — hai xe
+      bám nhau ở cùng tốc độ có THW nhỏ mà TTC vô hạn, và bám quá gần vẫn là
+      nguy hiểm.
+    - ``pet_min_s`` **post-encroachment time**: chênh thời gian giữa lúc xe này
+      rời một điểm và xe kia tới đúng điểm đó. Đây là phép đo kinh điển cho xung
+      đột cắt ngang — `cut_in`, `jaywalk`, `lane_drift` đều thuộc loại đó.
+    - ``drac_max_ms2`` **deceleration rate to avoid crash**: cần giảm tốc bao
+      nhiêu để không đâm. Trên ~3,4 m/s² là mức phanh gấp; trên ~5 thì người lái
+      bình thường không kịp.
+
+    **Đây là xấp xỉ từ quỹ đạo lấy mẫu, không phải định nghĩa giải tích.** Ghi rõ
+    vì con số sẽ đi vào báo cáo: PET tính theo khe hở dọc chia cho tốc độ xe
+    nhanh hơn tại thời điểm hai thân xe chồng nhau theo chiều ngang, chứ không
+    truy vết chính xác từng điểm xung đột.
+    """
+    thw: float | None = None
+    pet: float | None = None
+    drac: float | None = None
+
+    for previous, current in zip(samples, samples[1:]):
+        dt = current.t - previous.t
+        if dt <= 0:
+            continue
+        gap = current.gap_lon_m
+        if gap < 0:
+            continue
+
+        same_corridor = abs(current.lateral_m) <= SAME_CORRIDOR_M
+        if same_corridor and current.longitudinal_m > 0 and current.ego_speed_ms > MIN_CLOSING_SPEED_MS:
+            candidate = gap / current.ego_speed_ms
+            thw = candidate if thw is None else min(thw, candidate)
+
+        # Hai thân xe chồng nhau theo chiều NGANG nghĩa là chúng đang tranh cùng
+        # một dải đường; lúc đó khe hở dọc quy ra thời gian chính là PET.
+        if current.gap_lat_m < 0:
+            faster = max(current.ego_speed_ms, current.adv_speed_ms)
+            if faster > MIN_CLOSING_SPEED_MS:
+                candidate = gap / faster
+                pet = candidate if pet is None else min(pet, candidate)
+
+        closing_ms = (previous.gap_lon_m - gap) / dt
+        if same_corridor and closing_ms > MIN_CLOSING_SPEED_MS and gap > 0.1:
+            candidate = (closing_ms**2) / (2 * gap)
+            drac = candidate if drac is None else max(drac, candidate)
+
+    out: dict[str, float] = {}
+    if thw is not None:
+        out["thw_min_s"] = round(thw, 3)
+    if pet is not None:
+        out["pet_min_s"] = round(pet, 3)
+    if drac is not None:
+        out["drac_max_ms2"] = round(drac, 3)
+    return out
 
 
 def downsample(samples: list[Sample], max_points: int = 150) -> list[dict]:

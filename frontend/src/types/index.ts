@@ -432,6 +432,10 @@ export interface QualityReport {
     enum_total: number;
     covered_out_of_scope: number;
     scenarios_per_maneuver: Record<string, number>;
+    /** Phủ theo CẶP trục — chuẩn kiểm thử tổ hợp; ít kịch bản vẫn phủ được nhiều cặp. */
+    covered_pairs: number;
+    feasible_pairs: number;
+    rate_pairwise: Ratio;
   };
   m3_hazard: {
     executed: number;

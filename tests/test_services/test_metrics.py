@@ -191,3 +191,35 @@ def test_seed_data_never_reaches_the_report() -> None:
     assert report["m2_coverage"]["covered_supported"] == 1, "chỉ ô của kịch bản thật"
     assert report["excluded_seed_data"] == 1, "và phải hiện ra là đã bỏ bao nhiêu"
     assert report["m1_validity"]["l2_xosc"]["total"] == 1
+
+
+def test_pairwise_coverage_counts_axis_pairs_not_full_cells() -> None:
+    """Phủ cặp là câu trả lời cho "sao mới 16%": ít kịch bản vẫn phủ được nhiều cặp.
+
+    Hai kịch bản dưới đây chỉ chiếm 2/76 ô, nhưng phủ 12 cặp giá trị khác nhau
+    (6 cặp trục × 2 kịch bản, không cặp nào trùng).
+    """
+    scenarios = [
+        {"road_type": "highway", "weather": "clear", "actor_type": "car", "maneuver": "cut_in"},
+        {"road_type": "highway", "weather": "fog", "actor_type": "truck", "maneuver": "lane_drift"},
+    ]
+    report = metrics.coverage(scenarios)
+
+    assert report["covered_supported"] == 2
+    assert report["covered_pairs"] == 12
+    assert report["feasible_pairs"] > report["covered_pairs"]
+    assert report["rate_pairwise"]["rate"] == round(12 / report["feasible_pairs"], 4)
+
+
+def test_infeasible_pairs_stay_out_of_the_denominator() -> None:
+    """Cặp không xuất hiện trong ô nào SupportPolicy hỗ trợ thì không bao giờ phủ được.
+
+    Đưa chúng vào mẫu số là tự dìm con số bằng thứ không tồn tại — ví dụ
+    (pedestrian, cut_in): người đi bộ không tạt đầu.
+    """
+    report = metrics.coverage([])
+    assert report["feasible_pairs"] == 78
+    # Khác với M1: ở đó mẫu số rỗng nghĩa là CHƯA ĐO ĐƯỢC nên trả None. Ở đây mẫu
+    # số biết trước (78 cặp khả thi), nên 0 kịch bản là 0% thật — một câu khẳng
+    # định, không phải một chỗ trống.
+    assert report["rate_pairwise"]["rate"] == 0.0
