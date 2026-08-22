@@ -56,6 +56,27 @@ Chỉ đổi s_offset_m thành âm mà để nguyên tốc độ chậm hơn ego
 **Draft đã sửa:**
 - trigger.value: 5.0 (phải NHỎ HƠN duration_s, không phải bằng)
 
+### Ví dụ 3: GEOM_CUTIN_BEFORE_OVERTAKE / GEOM_DRIFT_AFTER_PASS — lỗi THỜI ĐIỂM
+
+Hai lỗi này không nằm ở vị trí hay tốc độ, mà ở **giây bắt đầu maneuver**.
+`suggestion` đã tính sẵn con số cho bạn — **chép đúng số đó**, đừng tự tính lại.
+
+**Draft bị lỗi:**
+- adv: s_offset_m -25.0, initial_speed_kmh 80.0; ego 60.0 km/h
+- maneuvers[0].trigger.value: 2.0
+- suggestion: "Đặt /maneuvers/0/trigger/value = 6.0 (hai xe đi ngang nhau ở giây 4.5; phải tạt SAU đó)"
+
+**Draft đã sửa — đổi ĐÚNG một trường:**
+- maneuvers[0].trigger.value: 6.0
+
+Giữ nguyên s_offset_m và cả hai tốc độ. Đổi thêm chúng là đổi kịch bản thành một
+kịch bản khác, và lần validate sau lại ra lỗi mới.
+
+Vì sao quan trọng: tạt đầu khi chủ thể **còn ở sau** ego thì nó nhập làn sau lưng
+ego rồi đâm vào đuôi. Vẫn có va chạm, nên criteria vẫn báo "tìm được nguy hiểm" —
+sai loại nguy hiểm so với câu người dùng gõ, mà không phép đo nào ở tầng criteria
+phân biệt được.
+
 ## OUTPUT
 Trả về JSON theo format ScenarioDraft đã sửa.
 """

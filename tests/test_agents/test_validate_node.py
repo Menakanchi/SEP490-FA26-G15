@@ -457,3 +457,29 @@ async def test_cut_in_geometry_untouched_by_lane_drift_check(valid_draft: Scenar
         }
     )
     assert not [i for i in result["issues"] if i.code is IssueCode.GEOM_DRIFT_AFTER_PASS]
+
+
+@pytest.mark.asyncio
+async def test_jaywalk_in_ego_lane_is_repairable_not_terminal(valid_draft: ScenarioDraft) -> None:
+    """Converter chặn lỗi này nhưng chặn kiểu terminal — workflow chết, không sửa lần nào.
+
+    Đo trên chiến dịch ODD 22/08: ô jaywalk hỏng hai lần liên tiếp vì LLM đặt
+    lane_offset=0, và cả hai lần không có vòng repair nào chạy. Ở validate thì nó
+    sửa được bằng đúng một số.
+    """
+    draft = valid_draft.model_dump()
+    draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
+    draft["odd"]["maneuver"] = ManeuverType.JAYWALK
+    draft["actors"][1]["category"] = VehicleCategory.PEDESTRIAN
+    draft["actors"][1]["position"]["lane_offset"] = 0
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.JAYWALK
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.PEDESTRIAN, maneuver=ManeuverType.JAYWALK),
+        }
+    )
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_IN_EGO_LANE)
+    assert issue.repairable_by_llm
+    assert "lane_offset" in issue.suggestion

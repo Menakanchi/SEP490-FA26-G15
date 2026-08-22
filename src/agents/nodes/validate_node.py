@@ -12,8 +12,25 @@ from src.services.scenario.geometry import (
     cut_in_starts_in_ego_lane,
     cut_in_trigger_before_overtake,
     cut_in_trigger_is_unsigned,
+    jaywalk_starts_in_ego_lane,
     lane_drift_trigger_too_late,
+    time_until_alongside,
 )
+
+
+def _later_than(alongside_s: float) -> float:
+    """Mốc trigger an toàn SAU lúc hai xe ngang nhau, làm tròn nửa giây.
+
+    Trả số cụ thể chứ không trả lời khuyên: model chép được một con số, còn phép
+    chia thì nó bỏ qua.
+    """
+    return round((alongside_s + 1.5) * 2) / 2
+
+
+def _earlier_than(alongside_s: float) -> float:
+    """Mốc trigger an toàn TRƯỚC lúc hai xe ngang nhau, không bao giờ âm."""
+    return max(round((alongside_s - 1.5) * 2) / 2, 0.5)
+
 
 _INVARIANT_SUGGESTIONS: dict[IssueCode, str] = {
     IssueCode.EGO_COUNT: "Chỉ định đúng một actor có is_ego=True.",
@@ -306,10 +323,26 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
             actor = draft.actors[actor_idx]
             position = actor.position
 
+            if m.maneuver == "jaywalk" and jaywalk_starts_in_ego_lane(actor):
+                issues.append(
+                    ValidationIssue(
+                        code=IssueCode.GEOM_JAYWALK_IN_EGO_LANE,
+                        path=f"/actors/{actor_idx}/position/lane_offset",
+                        message_vi=(
+                            f"{actor.name} đứng sẵn trong làn ego (lane_offset=0) nên không có gì để băng ngang."
+                        ),
+                        suggestion=(
+                            f"Đặt /actors/{actor_idx}/position/lane_offset = -1 "
+                            "(bên lề trái) để người đi bộ băng qua làn ego."
+                        ),
+                    )
+                )
+
             # GEOM_DRIFT_AFTER_PASS — lấn làn phải bắt đầu trước lúc hai xe
             # đi ngang nhau, nếu không nó lấn vào chỗ ego đã rời khỏi. Số học ở
             # ``services/scenario/geometry.py`` cùng chỗ với các vị từ cut_in.
             if m.maneuver == "lane_drift" and lane_drift_trigger_too_late(m, actor, ego):
+                alongside_s = time_until_alongside(actor, ego) or 0.0
                 issues.append(
                     ValidationIssue(
                         code=IssueCode.GEOM_DRIFT_AFTER_PASS,
@@ -319,8 +352,9 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                             f"trước đó, nên xe lấn vào khoảng trống phía sau ego."
                         ),
                         suggestion=(
-                            f"Giảm /maneuvers/{i}/trigger/value xuống dưới thời điểm hai xe đi ngang nhau, "
-                            f"hoặc tăng khoảng cách ban đầu ở /actors/{actor_idx}/position/s_offset_m."
+                            f"Đặt /maneuvers/{i}/trigger/value = {_earlier_than(alongside_s)} "
+                            f"(hai xe đi ngang nhau ở giây {alongside_s:.1f}; lấn phải bắt đầu trước đó), "
+                            f"hoặc tăng /actors/{actor_idx}/position/s_offset_m để chúng gặp nhau muộn hơn."
                         ),
                     )
                 )
@@ -366,6 +400,7 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                     )
 
                 if cut_in_trigger_before_overtake(m, actor, ego):
+                    alongside_s = time_until_alongside(actor, ego) or 0.0
                     issues.append(
                         ValidationIssue(
                             code=IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE,
@@ -375,8 +410,9 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                                 f"phía sau ego, nên sẽ đâm vào đuôi ego thay vì tạt đầu."
                             ),
                             suggestion=(
-                                f"Tăng /maneuvers/{i}/trigger/value lên sau thời điểm hai xe đi ngang nhau, "
-                                f"hoặc giảm khoảng cách ban đầu ở /actors/{actor_idx}/position/s_offset_m."
+                                f"Đặt /maneuvers/{i}/trigger/value = {_later_than(alongside_s)} "
+                                f"(hai xe đi ngang nhau ở giây {alongside_s:.1f}; phải tạt SAU đó), "
+                                f"hoặc giảm /actors/{actor_idx}/position/s_offset_m để nó vượt lên sớm hơn."
                             ),
                         )
                     )
