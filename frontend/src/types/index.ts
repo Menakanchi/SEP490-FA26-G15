@@ -226,7 +226,7 @@ export interface ODDCell {
 
 export interface Position {
   /** Lệch bao nhiêu làn so với làn của ego. Âm = trái, dương = phải. Khoảng -4..4.
-   *  KHÔNG phải số thứ tự làn — xem `laneNumber()` trong SVG2DRenderer để quy đổi. */
+   *  KHÔNG phải số thứ tự làn; đây là độ lệch tương đối theo quy ước OpenSCENARIO. */
   lane_offset: number;
   /** Lệch dọc so với ego, mét. Âm = phía sau ego. Khoảng -200..200. */
   s_offset_m: number;
@@ -357,6 +357,36 @@ export interface GenerationStatus {
 // Scenario detail — full response from GET /scenarios/{id}
 // ---------------------------------------------------------------------------
 
+/** Một mẫu quỹ đạo ĐO ĐƯỢC khi chạy, không phải suy diễn từ spec. */
+export interface TrajectoryPoint {
+  t: number;
+  /** x, y, yaw(độ) trong hệ toạ độ CARLA. */
+  ego: [number, number, number];
+  adv: [number, number, number];
+  /** Tim làn ego đang đi, hỏi thẳng bản đồ — vẽ được mặt đường thật. */
+  lane_centre: [number, number];
+  /** Vị trí tác nhân trong hệ quy chiếu ego: [dọc, ngang] mét. Dọc dương = ở trước ego. */
+  rel?: [number, number];
+}
+
+export interface CriterionResult {
+  name: string;
+  result: "SUCCESS" | "FAILURE";
+  actual_value?: number | string | null;
+  expected_value?: number | string | null;
+}
+
+export interface ExecutionResult {
+  scenario_id: string;
+  success: boolean;
+  criteria_results: CriterionResult[];
+  /** Xem `ExecutionResult.metrics` ở backend: khoá vắng mặt = KHÔNG ĐO ĐƯỢC, không phải 0. */
+  metrics: Record<string, number>;
+  /** Rỗng nghĩa là không đo được quỹ đạo, không phải xe đứng yên. */
+  trajectory?: TrajectoryPoint[];
+  error?: string | null;
+}
+
 export interface ScenarioDetail {
   scenario_id: string;
   title: string;
@@ -369,6 +399,48 @@ export interface ScenarioDetail {
   review_logs: ReviewLog[];
   created_at: string;
   retrieved_examples?: RetrievedExample[];
+  /** Có sau khi worker chạy xong; đây là thứ cổng BEFORE_LIBRARY duyệt. */
+  latest_execution_result?: ExecutionResult | null;
+  verification?: string;
+}
+
+/** GET /metrics/quality — M1/M2/M3. `rate: null` nghĩa là CHƯA CÓ DỮ LIỆU, không phải 0%. */
+export interface Ratio {
+  passed: number;
+  total: number;
+  rate: number | null;
+}
+
+export interface ValidityLevel extends Ratio {
+  label: string;
+  /** Lượt chạy chưa có luật chấm — không tính là sai. */
+  not_measurable: number;
+}
+
+export interface QualityReport {
+  m1_validity: {
+    l1_schema: ValidityLevel;
+    l2_xosc: ValidityLevel;
+    l3_runtime: ValidityLevel;
+    l4_intent: ValidityLevel;
+  };
+  m2_coverage: {
+    covered_supported: number;
+    supported_total: number;
+    rate_supported: Ratio;
+    covered_any: number;
+    enum_total: number;
+    covered_out_of_scope: number;
+    scenarios_per_maneuver: Record<string, number>;
+  };
+  m3_hazard: {
+    executed: number;
+    collision: number;
+    near_miss: number;
+    no_hazard: number;
+    rate: Ratio;
+    collision_rate: Ratio;
+  };
 }
 
 export * from "./auth";

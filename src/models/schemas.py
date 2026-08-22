@@ -913,6 +913,34 @@ class CriterionStatus(StrEnum):
     TIMEOUT = "TIMEOUT"
 
 
+class TrajectoryPoint(ForgeModel):
+    """Một mẫu quỹ đạo **đo được** trong lúc chạy, dùng để vẽ lại cho người duyệt.
+
+    Đây là dữ liệu đo, không phải mô hình. Phân biệt này là lý do trường tồn tại:
+    bản preview 2D trước đây dựng lại hình học từ ``lane_offset`` rồi vẽ ra một
+    thế giới không ai kiểm chứng — nên nó vẽ một cú tạt đầu đẹp đẽ cho đúng cái
+    file mà thực tế là tông đuôi. Toạ độ ở đây lấy thẳng từ CARLA, kể cả
+    ``lane_centre`` (tim làn của ego, hỏi từ map), nên không có bước suy diễn nào
+    để sai.
+
+    Chỉ hiện ở cổng ``BEFORE_LIBRARY``: trước khi chạy thì chưa có gì để vẽ, và
+    vẽ dự đoán chính là thứ vừa bỏ đi.
+    """
+
+    t: float = Field(..., ge=0.0, description="Giây kể từ lúc bắt đầu ghi")
+    ego: tuple[float, float, float] = Field(..., description="x, y, yaw(độ) của ego trong hệ toạ độ CARLA")
+    adv: tuple[float, float, float] = Field(..., description="x, y, yaw(độ) của adversary")
+    lane_centre: tuple[float, float] = Field(..., description="x, y tim làn ego đang đi — vẽ được mặt đường thật")
+    rel: tuple[float, float] = Field(
+        (0.0, 0.0),
+        description=(
+            "Vị trí adversary trong hệ quy chiếu ego: (dọc, ngang) mét. Dọc dương = ở trước ego. "
+            "Đây là hệ toạ độ để VẼ cho người duyệt: ở hệ thế giới, một cú tạt đầu chỉ là vài pixel "
+            "vì khung nhìn phải phủ hàng trăm mét đường."
+        ),
+    )
+
+
 class CriterionResult(ForgeModel):
     """Kết quả một tiêu chí do ScenarioRunner chấm.
 
@@ -971,6 +999,13 @@ class ExecutionResult(ForgeModel):
             "Khoá vắng mặt nghĩa là **không đo được**, không phải bằng 0."
         ),
         examples=[{"min_distance_m": 0.36, "ttc_min_s": 1.5, "adversary_lane_deviation_m": 0.7}],
+    )
+    trajectory: list[TrajectoryPoint] = Field(
+        default_factory=list,
+        description=(
+            "Quỹ đạo đo được, đã giảm mẫu để gửi qua HTTP. Rỗng nghĩa là **không đo được** "
+            "(worker cũ, CARLA từ chối kết nối, scenario chết trước khi spawn) — không phải xe đứng yên."
+        ),
     )
     error: str | None = Field(None, description="Bắt buộc khi success=False")
 

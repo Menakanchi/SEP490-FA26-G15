@@ -20,7 +20,7 @@ import {
   Sparkle,
 } from "lucide-react";
 import { getScenarios, getScenarioById, postReview, downloadXosc, completeSimulation } from "@/services/api";
-import SVG2DRenderer from "@/components/SVG2DRenderer";
+import ScenarioPreview from "@/components/ScenarioPreview";
 import { RoleGate } from "@/components/RoleGate";
 import { AuthGate } from "@/components/AuthGate";
 import { useAuth } from "@/context/AuthContext";
@@ -427,7 +427,7 @@ function ReviewPageContent() {
                       Cảnh báo thông số tự suy luận (Inferred ODD Warning):
                     </strong>
                     <span>
-                      Hệ thống tự điền giả định mặc định cho các trục ODD không được đề cập trong prompt. Kỹ sư duyệt cần kiểm tra sơ đồ 2D và mảng actors bên dưới trước khi phê duyệt.
+                      Hệ thống tự điền giả định mặc định cho các trục ODD không được đề cập trong prompt. Kỹ sư duyệt cần kiểm tra các thông số ODD và mảng actors bên dưới trước khi phê duyệt.
                     </span>
                   </div>
                 </div>
@@ -461,27 +461,18 @@ function ReviewPageContent() {
                 </div>
               </div>
 
-              {/* 2D SVG Lane Visualization Box */}
+              {/* Preview — bản khai trước khi chạy, quỹ đạo đo được sau khi chạy */}
               <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
                 <h3 className="text-sm font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
                   <Map className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  Sơ đồ làn đường 2D (Render Hero & Adversaries - ADR-010)
+                  {scenario.latest_execution_result?.trajectory?.length
+                    ? "Quỹ đạo đo được trên CARLA"
+                    : "Bản khai kịch bản (chưa chạy mô phỏng)"}
                 </h3>
-                <div className="rounded-2xl overflow-hidden border border-sky-200/80 dark:border-slate-800 bg-white dark:bg-slate-950">
-                  {scenario.spec?.actors?.length ? (
-                    <SVG2DRenderer
-                      actors={scenario.spec.actors}
-                      odd={scenario.odd}
-                      maneuvers={scenario.spec.maneuvers}
-                      width="100%"
-                      height={320}
-                    />
-                  ) : (
-                    <div className="h-48 flex items-center justify-center text-slate-500 text-xs">
-                      Không có thông tin vị trí các xe để vẽ 2D.
-                    </div>
-                  )}
-                </div>
+                <ScenarioPreview
+                  spec={scenario.spec}
+                  execution={scenario.latest_execution_result}
+                />
               </div>
 
               {/* All Actors Table Box */}

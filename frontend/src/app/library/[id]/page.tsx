@@ -19,7 +19,7 @@ import {
   Timer,
 } from "lucide-react";
 import { getScenarioById } from "@/services/api";
-import SVG2DRenderer from "@/components/SVG2DRenderer";
+import ScenarioPreview from "@/components/ScenarioPreview";
 import type { ScenarioDetail } from "@/types";
 import {
   ROAD_TYPE_LABELS,
@@ -209,28 +209,15 @@ export default function ScenarioDetailPage() {
         </div>
       </div>
 
-      {/* ─── SVG 2D Diagram ─── */}
+      {/* ─── Preview: quỹ đạo đo được, hoặc bản khai nếu chưa chạy ─── */}
       <div className="glass-card p-6">
         <h2 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
           <Map className="w-5 h-5 text-blue-400" />
-          Sơ đồ 2D
+          {scenario.latest_execution_result?.trajectory?.length
+            ? "Quỹ đạo đo được trên CARLA"
+            : "Bản khai kịch bản"}
         </h2>
-        <div className="rounded-xl overflow-hidden border border-slate-700/20">
-          {scenario.spec?.actors?.length ? (
-            <SVG2DRenderer
-              actors={scenario.spec.actors}
-              odd={scenario.odd}
-              maneuvers={scenario.spec.maneuvers}
-              width="100%"
-              height={400}
-            />
-          ) : (
-            <div className="w-full h-[400px] flex flex-col items-center justify-center text-slate-500 bg-slate-900/50">
-              <Map className="w-12 h-12 mb-2 opacity-30" />
-              <p className="text-sm">Chưa có dữ liệu actor để vẽ sơ đồ</p>
-            </div>
-          )}
-        </div>
+        <ScenarioPreview spec={scenario.spec} execution={scenario.latest_execution_result} />
       </div>
 
       {/* ─── ODD Parameters ─── */}

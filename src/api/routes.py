@@ -38,7 +38,7 @@ from src.models.schemas import (
     normalize_prompt,
     verification_from_execution,
 )
-from src.services import db
+from src.services import db, metrics
 from src.services.library.retriever import SQLiteRetriever
 
 logger = logging.getLogger(__name__)
@@ -561,6 +561,17 @@ async def get_scenario_xosc(scenario_id: str) -> Response:
 # ===========================================================================
 # Internal — GPU Worker endpoints
 # ===========================================================================
+
+
+@router.get("/metrics/quality")
+async def quality_report() -> dict:
+    """Báo cáo M1/M2/M3 — mục "Báo cáo tỷ lệ kịch bản hợp lệ" của đề bài.
+
+    Tính từ dữ liệu thật trong kho mỗi lần gọi, không có bảng tổng hợp riêng:
+    số liệu báo cáo mà lệch với số liệu hệ thống là lỗi tệ nhất trong một báo cáo.
+    """
+    requests, scenarios, executions = db.metrics_rows()
+    return metrics.build_report(requests, scenarios, executions)
 
 
 @router.get("/internal/jobs")

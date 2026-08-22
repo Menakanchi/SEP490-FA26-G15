@@ -63,6 +63,11 @@ class Sample:
     adv_speed_ms: float
     adv_lane_offset_m: float
     """Adversary lệch bao nhiêu so với tim làn nó đang ở. Dùng để biết maneuver có xảy ra không."""
+    ego_pose: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    """x, y, yaw(độ) của ego trong hệ toạ độ CARLA — để vẽ lại cho người duyệt."""
+    adv_pose: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    lane_centre: tuple[float, float] = (0.0, 0.0)
+    """Tim làn ego đang đi, hỏi thẳng map. Vẽ được mặt đường mà không phải suy diễn."""
 
 
 def summarise(samples: list[Sample]) -> dict[str, float]:
@@ -74,10 +79,15 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
       lấn sau khi ego đã đi khỏi — trong khi ``CollisionTest`` trả 0 cho cả hai.
     - ``ttc_min_s`` — thời gian tới va chạm nhỏ nhất, chỉ tính khi hai xe còn
       cùng hành lang và khoảng cách đang thu hẹp.
+    - ``adversary_min_speed_ms`` / ``adversary_speed_drop_ms`` — để chấm được các
+      maneuver dọc (`sudden_brake`, `stop_in_lane`): xe có thật sự chậm lại không.
     - ``contact_longitudinal_m`` — vị trí adversary lúc **chạm đầu tiên**. Âm =
       nó ở sau ego, tức nó tông đuôi ego. Dương = ego đâm vào nó.
     - ``adversary_lane_deviation_m`` — độ lệch tim làn lớn nhất. Bằng ~0 nghĩa
       là hành vi ngang **không hề xảy ra**, dù kịch bản chạy hết và không lỗi.
+
+    Mọi số trên chỉ tính tới **va chạm đầu tiên**; ``trajectory_samples`` thì đếm
+    cả lượt. Sau cú đâm, xe bị hất khỏi làn nên số đo hành vi thành vô nghĩa.
 
     Trả về dict rỗng khi không có mẫu nào: worker vẫn gửi kết quả về, chỉ là
     không kèm số quỹ đạo — thiếu số còn hơn số bịa.
@@ -85,16 +95,36 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
     if not samples:
         return {}
 
-    min_distance = min(_freespace_distance(s) for s in samples)
-    contact = next((s for s in samples if s.gap_lon_m < 0 and s.gap_lat_m < 0), None)
+    contact_index = next(
+        (i for i, s in enumerate(samples) if s.gap_lon_m < 0 and s.gap_lat_m < 0),
+        None,
+    )
+    contact = samples[contact_index] if contact_index is not None else None
+
+    # Cắt tại va chạm đầu tiên. Sau cú đâm, xe bị hất khỏi làn và mọi số đo hành
+    # vi thành rác: đo trên sc_001 ngày 22/08, tính cả phần sau va chạm cho
+    # `adversary_lane_deviation_m` = 21,18 m — xe máy nằm giữa đồng, chứ không
+    # phải nó đã lấn 21 mét. Cùng lý do khiến `CheckDrivenDistance` = 486 m trong
+    # đó ~300 m là sau khi đã đâm.
+    before_contact = samples[: contact_index + 1] if contact_index is not None else samples
+
+    min_distance = min(_freespace_distance(s) for s in before_contact)
 
     metrics = {
         "trajectory_samples": float(len(samples)),
         "min_distance_m": round(min_distance, 3),
-        "adversary_lane_deviation_m": round(max(abs(s.adv_lane_offset_m) for s in samples), 3),
+        "adversary_lane_deviation_m": round(max(abs(s.adv_lane_offset_m) for s in before_contact), 3),
     }
 
-    ttc = _min_time_to_collision(samples)
+    # Tốc độ adversary: hai số này làm cho `sudden_brake` và `stop_in_lane` chấm
+    # được ý định. Không có chúng thì chỉ maneuver ngang mới kiểm chứng được, còn
+    # maneuver dọc chỉ biết "có va chạm hay không" — đúng cái mù mà checker sinh
+    # ra để vá.
+    speeds = [s.adv_speed_ms for s in before_contact]
+    metrics["adversary_min_speed_ms"] = round(min(speeds), 3)
+    metrics["adversary_speed_drop_ms"] = round(max(speeds) - min(speeds), 3)
+
+    ttc = _min_time_to_collision(before_contact)
     if ttc is not None:
         metrics["ttc_min_s"] = round(ttc, 3)
     if contact is not None:
@@ -132,6 +162,37 @@ def _min_time_to_collision(samples: list[Sample]) -> float | None:
     return best
 
 
+def downsample(samples: list[Sample], max_points: int = 150) -> list[dict]:
+    """Giảm mẫu để gửi qua HTTP, giữ nguyên hình dạng quỹ đạo.
+
+    ~500 mẫu mỗi lượt ở 20 Hz là quá nhiều cho một payload JSON đi qua NAT, mà
+    người duyệt cũng không phân biệt được 20 Hz với 5 Hz khi xem lại. Lấy đều
+    theo chỉ số và **luôn giữ mẫu cuối** — mẫu cuối là lúc kết thúc, bỏ nó đi
+    thì đoạn cuối kịch bản biến mất khỏi bản vẽ.
+
+    Làm tròn 2 chữ số: dưới centimet không ai nhìn thấy, mà payload nhỏ đi một nửa.
+    """
+    if not samples:
+        return []
+    step = max(1, len(samples) // max_points)
+    picked = samples[::step]
+    if picked[-1] is not samples[-1]:
+        picked.append(samples[-1])
+    return [
+        {
+            "t": round(s.t, 2),
+            "ego": [round(v, 2) for v in s.ego_pose],
+            "adv": [round(v, 2) for v in s.adv_pose],
+            "lane_centre": [round(v, 2) for v in s.lane_centre],
+            # Vị trí tương đối là thứ người duyệt thực sự nhìn: ở hệ toạ độ thế
+            # giới, cả cú tạt đầu chỉ là 7 px dịch ngang trên khung 720 px vì
+            # khung phải phủ 320 m đường. Hai số này đã đo sẵn mỗi tick.
+            "rel": [round(s.longitudinal_m, 2), round(s.lateral_m, 2)],
+        }
+        for s in picked
+    ]
+
+
 class TrajectoryRecorder:
     """Ghi quỹ đạo song song với ScenarioRunner, trong một thread riêng.
 
@@ -152,11 +213,12 @@ class TrajectoryRecorder:
         self._thread = threading.Thread(target=self._run, name="trajectory", daemon=True)
         self._thread.start()
 
-    def stop(self, join_timeout_s: float = 10.0) -> dict[str, float]:
+    def stop(self, join_timeout_s: float = 10.0) -> tuple[dict[str, float], list[dict]]:
+        """Trả (metrics, quỹ đạo đã giảm mẫu). Không đo được thì cả hai đều rỗng."""
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=join_timeout_s)
-        return summarise(self.samples)
+        return summarise(self.samples), downsample(self.samples)
 
     def _run(self) -> None:
         try:
@@ -205,6 +267,7 @@ class TrajectoryRecorder:
             t0 = t if t0 is None else t0
 
             transform = ego.get_transform()
+            adv_transform = adv.get_transform()
             forward, right = transform.get_forward_vector(), transform.get_right_vector()
             rel = adv.get_location() - ego.get_location()
             longitudinal = rel.x * forward.x + rel.y * forward.y
@@ -220,6 +283,9 @@ class TrajectoryRecorder:
                     ego_speed_ms=_speed(ego),
                     adv_speed_ms=_speed(adv),
                     adv_lane_offset_m=_lane_offset(carla_map, adv),
+                    ego_pose=_pose(transform),
+                    adv_pose=_pose(adv_transform),
+                    lane_centre=_lane_centre(carla_map, ego),
                 )
             )
 
@@ -249,3 +315,16 @@ def _lane_offset(carla_map, actor) -> float:  # noqa: ANN001
     right = waypoint.transform.get_right_vector()
     location = actor.get_location()
     return (location.x - centre.x) * right.x + (location.y - centre.y) * right.y
+
+
+def _pose(transform) -> tuple[float, float, float]:  # noqa: ANN001
+    return (transform.location.x, transform.location.y, transform.rotation.yaw)
+
+
+def _lane_centre(carla_map, actor) -> tuple[float, float]:  # noqa: ANN001
+    """Tim làn ego đang đi. Nối các điểm này lại là có mặt đường thật để vẽ."""
+    waypoint = carla_map.get_waypoint(actor.get_location(), project_to_road=True)
+    if waypoint is None:
+        location = actor.get_location()
+        return (location.x, location.y)
+    return (waypoint.transform.location.x, waypoint.transform.location.y)

@@ -12,6 +12,7 @@ import type {
   ScenarioStatus,
   ODDPayload,
   ValidationMode,
+  QualityReport,
 } from "@/types";
 import type { LoginPayload, RegisterPayload, User } from "@/types/auth";
 
@@ -358,4 +359,13 @@ export async function rejectReviewer(username: string): Promise<{ ok: boolean; u
   return request<{ ok: boolean; user: User }>(`/admin/users/${encodeURIComponent(username)}/reject`, {
     method: "POST",
   });
+}
+
+
+// ---------------------------------------------------------------------------
+// GET /metrics/quality — báo cáo M1/M2/M3
+// ---------------------------------------------------------------------------
+
+export async function getQualityReport(): Promise<QualityReport> {
+  return request<QualityReport>("/metrics/quality");
 }
