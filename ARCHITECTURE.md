@@ -239,6 +239,25 @@ khoảng cách mà Phase 3 tồn tại để đo. Outcome cut-in/collision thì 
 trên fixture viết tay — xem §Ego baseline. Các parser traps và giới hạn nằm ở
 [ADR-012](docs/adr/ADR-012-converter-dung-relativelaneposition.md).
 
+**22/08 — batch đầu tiên trên toàn bộ catalog.** Chạy cả 7 file
+`fixtures/xosc/generated/` cộng `convert(sc_001.json)` trên CARLA. Hai kết quả:
+
+1. `convert(sc_001.json)` **tái hiện được** kịch bản đã kiểm chứng — có va chạm,
+   đỉnh tốc độ ego 17,04 m/s, cùng vùng với `sample_001_cut_in.xosc` viết tay
+   (16,82 m/s). Đây là mắt xích trước đây còn thiếu: bằng chứng CARLA nằm ở file
+   viết tay, còn sản phẩm giao ra là output converter, và không có gì nối hai cái.
+2. Bốn maneuver kết thúc sau **~2,6 giây** với ego mới đi 16,6 m — `stop_in_lane`,
+   `run_red_light`, `jaywalk`, `wrong_way`. Nguyên nhân: ScenarioRunner dựng Act
+   là `Parallel(SUCCESS_ON_ONE, [Maneuvers, EndConditions])`, nên `StopTrigger`
+   của Act là nhánh OR chứ không phải sàn thời gian — hành động cuối của
+   adversary xong là kịch bản đóng. Đã sửa bằng event giữ-mở tới `duration_s`
+   (`_add_hold_open_event`); sau khi sửa cả bốn chạy đủ 30,5 s và `wrong_way`
+   dựng được va chạm thật. Tỉ lệ tái hiện nguy hiểm trên tập golden: 1/7 → 2/7.
+
+Năm kịch bản còn lại chạy đủ giờ mà vẫn 0 va chạm, vì spec sinh golden đặt
+adversary ở làn bên cạnh. Đó là hình học của spec — việc của validate, không
+phải của converter.
+
 ## Ego baseline
 
 Trong mọi kịch bản, ego nhận **đúng một lệnh tốc độ ban đầu** rồi giữ nguyên:
@@ -341,7 +360,7 @@ Thuật toán explore/exploit chưa chốt.
 | CARLA/ScenarioRunner smoke test | ✅ Toolchain pass |
 | Graph 7 nodes | ✅ Đủ 7 node, đã nối trong `build_forge_graph()`; `POST /generate` chạy graph thật, không còn stub |
 | Static validator (`validate_node`) | ✅ Có — schema, invariants, static geometry |
-| Templates và converter (`convert_xosc`) | ✅ Có — 1 anchor Town04, 7 maneuver, golden validate theo XSD (ADR-016) |
+| Templates và converter (`convert_xosc`) | ✅ Có — 1 anchor Town04, 7 maneuver, golden validate theo XSD (ADR-016); cả 7 đã chạy thật trên CARLA 22/08, 2/7 dựng được va chạm |
 | `parse_intent` | ✅ Có — rule-based theo `taxonomy_rules.json` trước, LLM chỉ chạy khi rule thiếu trục bắt buộc |
 | `Retriever` (SQLite BLOB + cosine) | ✅ Có — `WHERE` bốn trục ODD + cosine numpy; retrieval baseline bằng số thật thì chưa |
 | SQLite persistence | ✅ Có — `ScenarioRepository` (SQLAlchemy Core) là nguồn schema duy nhất |
