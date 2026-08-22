@@ -274,7 +274,9 @@ export type ScenarioStatus =
   | "approved_library"
   | "approved_sim"
   | "rejected"
-  | "pending_sim_review";
+  | "pending_sim_review"
+  | "simulation_queued"
+  | "pending_library_review";
 
 export type ReviewGate = "before_library" | "before_sim";
 
