@@ -212,3 +212,60 @@ def test_headway_ignores_a_vehicle_in_another_lane() -> None:
         for t in (0.0, 1.0)
     ]
     assert "thw_min_s" not in trajectory.summarise(beside)
+
+
+def test_crossing_is_detected_by_a_sign_flip_close_to_the_ego() -> None:
+    """Người đi bộ băng ngang = đổi dấu độ lệch ngang lúc còn gần ego."""
+    crossing = [
+        _sample(0.0, lon=25.0, lat=-4.0),
+        _sample(1.0, lon=12.0, lat=-1.5),
+        _sample(2.0, lon=6.0, lat=1.5),
+        _sample(3.0, lon=2.0, lat=4.0),
+    ]
+    assert trajectory.summarise(crossing)["adversary_crossed_ego_path"] == 1.0
+
+
+def test_crossing_far_from_the_ego_is_not_counted() -> None:
+    """Sang đường cách ego 200 m là giao thông bình thường, không phải kịch bản."""
+    far = [_sample(0.0, lon=180.0, lat=-4.0), _sample(1.0, lon=175.0, lat=4.0)]
+    assert "adversary_crossed_ego_path" not in trajectory.summarise(far)
+
+
+def test_heading_delta_reports_opposing_traffic() -> None:
+    """Ngược chiều ~180 độ; cùng chiều ~0. Quy về [0, 180] nên 350 độ là 10."""
+    opposing = [
+        Sample(
+            t=0.0,
+            longitudinal_m=40,
+            lateral_m=0.2,
+            gap_lon_m=35,
+            gap_lat_m=-1,
+            ego_speed_ms=20,
+            adv_speed_ms=16,
+            adv_lane_offset_m=0.0,
+            ego_pose=(0.0, 0.0, 90.0),
+            adv_pose=(0.0, 0.0, -90.0),
+        ),
+    ]
+    assert trajectory.summarise(opposing)["adversary_heading_delta_deg"] == 180.0
+
+    same = [
+        Sample(
+            t=0.0,
+            longitudinal_m=40,
+            lateral_m=0.2,
+            gap_lon_m=35,
+            gap_lat_m=-1,
+            ego_speed_ms=20,
+            adv_speed_ms=16,
+            adv_lane_offset_m=0.0,
+            ego_pose=(0.0, 0.0, 5.0),
+            adv_pose=(0.0, 0.0, 355.0),
+        ),
+    ]
+    assert trajectory.summarise(same)["adversary_heading_delta_deg"] == 10.0
+
+
+def test_heading_is_absent_rather_than_zero_when_no_pose_was_recorded() -> None:
+    """0 độ nghĩa là cùng hướng — khác hẳn 'không đo được'."""
+    assert "adversary_heading_delta_deg" not in trajectory.summarise([_sample(0.0, lon=10.0, lat=0.2)])

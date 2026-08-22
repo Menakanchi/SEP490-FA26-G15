@@ -130,6 +130,17 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
     # vì chỉ có "khoảng cách nhỏ nhất" tự đặt tên.
     metrics.update(_surrogate_safety(before_contact))
 
+    # Hai tín hiệu cho maneuver mà bốn số kia mù: người đi bộ băng ngang, và xe
+    # đi ngược chiều. Không có chúng thì `jaywalk` với `wrong_way` mãi ở trạng
+    # thái "chưa chấm được" — mà chấm bừa bằng `adversary_lane_deviation_m` thì
+    # sai hẳn: người đi bộ rời khỏi mặt đường nên "lệch tim làn" của họ đo được
+    # 39,9 m ở sc_026, một con số không mang nghĩa gì.
+    if _crossed_ego_path(before_contact):
+        metrics["adversary_crossed_ego_path"] = 1.0
+    heading = _max_heading_delta_deg(before_contact)
+    if heading is not None:
+        metrics["adversary_heading_delta_deg"] = round(heading, 1)
+
     ttc = _min_time_to_collision(before_contact)
     if ttc is not None:
         metrics["ttc_min_s"] = round(ttc, 3)
@@ -137,6 +148,48 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
         metrics["contact_longitudinal_m"] = round(contact.longitudinal_m, 3)
         metrics["contact_time_s"] = round(contact.t, 3)
     return metrics
+
+
+CROSSING_RANGE_M = 30.0
+"""Băng ngang ở xa hơn ngần này thì không liên quan tới ego.
+
+Người đi bộ sang đường cách ego 200 m là chuyện giao thông bình thường, không
+phải tình huống nguy hiểm mà kịch bản định dựng.
+"""
+
+OPPOSING_HEADING_DEG = 150.0
+"""Lệch hướng bao nhiêu độ thì coi là đi ngược chiều.
+
+180 độ là ngược hẳn; nới xuống 150 để đường cong và lúc đánh lái không làm trượt
+phép đo. Dưới ngưỡng này là cắt ngang hoặc cùng chiều, không phải ngược chiều.
+"""
+
+
+def _crossed_ego_path(samples: list[Sample]) -> bool:
+    """Adversary có đi ngang qua trục dọc của ego không, lúc còn ở gần.
+
+    Đo bằng **đổi dấu** của độ lệch ngang: từ một bên sang bên kia nghĩa là nó
+    cắt qua đường đi của ego. Chỉ tính lúc khoảng cách dọc còn trong tầm — xem
+    ``CROSSING_RANGE_M``.
+    """
+    near = [s for s in samples if abs(s.longitudinal_m) <= CROSSING_RANGE_M]
+    signs = {s.lateral_m > 0 for s in near if abs(s.lateral_m) > 0.5}
+    return len(signs) > 1
+
+
+def _max_heading_delta_deg(samples: list[Sample]) -> float | None:
+    """Chênh hướng lớn nhất giữa hai xe, quy về [0, 180] độ.
+
+    ``None`` khi chưa ghi được pose (worker cũ). Không trả 0: 0 độ nghĩa là hai
+    xe cùng hướng, một câu hoàn toàn khác với "không đo được".
+    """
+    deltas = []
+    for s in samples:
+        if s.ego_pose == (0.0, 0.0, 0.0) and s.adv_pose == (0.0, 0.0, 0.0):
+            continue
+        raw = abs(s.adv_pose[2] - s.ego_pose[2]) % 360.0
+        deltas.append(min(raw, 360.0 - raw))
+    return max(deltas) if deltas else None
 
 
 def _freespace_distance(sample: Sample) -> float:
