@@ -44,6 +44,13 @@ const NAV_ITEMS: NavItem[] = [
     allowedRoles: ["creator", "reviewer", "admin"],
   },
   {
+    href: "/campaign",
+    label: "Chiến dịch ODD",
+    description: "Agent sinh lô phủ ma trận",
+    icon: Layers,
+    allowedRoles: ["creator", "reviewer", "admin"],
+  },
+  {
     href: "/review",
     label: "HITL Review",
     description: "Duyệt kịch bản",

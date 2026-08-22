@@ -443,4 +443,33 @@ export interface QualityReport {
   };
 }
 
+/** Chiến dịch ODD — chế độ nâng cao: khoanh vùng ô, agent viết câu. */
+export interface CampaignSummary {
+  campaign_id: string;
+  created_by: string;
+  per_cell: number;
+  max_scenarios: number;
+  status: "running" | "done" | "stopped";
+  generated: number;
+  failed: number;
+  created_at: string;
+}
+
+export interface CampaignRequest {
+  request_id: string;
+  status: string;
+  /** Câu do AGENT viết, không phải người gõ — vẫn đi qua đúng graph 7 node. */
+  description_vi: string;
+  scenario_id: string | null;
+  road_type?: string | null;
+  weather?: string | null;
+  actor_type?: string | null;
+  maneuver?: string | null;
+}
+
+export interface CampaignDetail extends CampaignSummary {
+  cells: ODDCell[];
+  requests: CampaignRequest[];
+}
+
 export * from "./auth";
