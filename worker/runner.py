@@ -218,6 +218,13 @@ def poll_once() -> bool:
     if not jobs:
         return False
 
+    # Kiểm CARLA TRƯỚC khi nhận job. Không có bước này thì một server treo biến
+    # cả hàng đợi thành "kịch bản hỏng": job vẫn được lấy, ScenarioRunner vẫn
+    # chết, và lỗi môi trường đi thẳng vào tỷ lệ hợp lệ của báo cáo.
+    if not sr_cli.carla_is_ready(CARLA_HOST, CARLA_PORT):
+        log.warning("CARLA chưa sẵn sàng ở %s:%s — để job nằm lại hàng đợi", CARLA_HOST, CARLA_PORT)
+        return False
+
     job = jobs[0]
     log.info("Nhận job %s cho %s", job.get("job_id"), job.get("scenario_id"))
 
