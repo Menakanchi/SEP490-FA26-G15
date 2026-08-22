@@ -668,6 +668,50 @@ def list_public_scenarios() -> list[dict]:
     return scenarios
 
 
+def get_scenarios_for_near_duplicate_check(
+    odd_key: str,
+    exclude_id: str,
+) -> list[dict]:
+    """Lấy scenarios để kiểm tra gần trùng ở cổng BEFORE_SIM (ADR-019).
+
+    Lọc theo:
+    1. Status: approved_library, pending_library_review, simulation_queued, pending_sim_review
+    2. ODD Key: so khớp với odd_key của scenario mới
+    3. Loại trừ chính scenario đang duyệt
+
+    Tối ưu: Lấy tất cả columns trong 1 query thay vì N+1 queries.
+    """
+    # Các status được phép so sánh (không phải rejected hay failed)
+    valid_statuses = (
+        "approved_library",
+        "pending_library_review",
+        "simulation_queued",
+        "pending_sim_review",
+    )
+
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT scenario_id, spec, title, description_vi,
+                   road_type, weather, actor_type, maneuver, status
+            FROM scenarios
+            WHERE status IN ?
+            AND road_type || '_' || weather || '_' || actor_type || '_' || maneuver = ?
+            AND scenario_id != ?
+            """,
+            (valid_statuses, odd_key, exclude_id),
+        )
+        rows = cursor.fetchall()
+
+    scenarios = []
+    for r in rows:
+        sc = dict(r)
+        # Parse spec JSON từ database
+        sc["spec"] = json.loads(sc["spec"]) if sc.get("spec") else {}
+        scenarios.append(sc)
+    return scenarios
+
+
 def list_my_scenarios(username: str) -> list[dict]:
     with _cursor() as cursor:
         cursor.execute(

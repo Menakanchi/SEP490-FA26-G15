@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # xếp hạng bằng cosine của numpy. Không có service riêng để cấu hình.
     # (`chroma_persist_dir` của template đã bỏ từ ADR-003.)
 
+    # Near-duplicate detection thresholds (ADR-019)
+    near_duplicate_trigger_threshold: float = 5.0  # mét hoặc giây
+    near_duplicate_speed_threshold: float = 5.0  # km/h
+
 
 @lru_cache
 def get_settings() -> Settings:
