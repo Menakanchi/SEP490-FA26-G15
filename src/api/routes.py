@@ -654,6 +654,52 @@ async def stop_campaign(campaign_id: str) -> dict:
     return {"ok": True, "status": "stopped"}
 
 
+class BatchReviewRequest(BaseModel):
+    """Duyệt CẢ LÔ ở cổng 1 — ADR-014 phương án A3."""
+
+    reviewer: str = Field(..., min_length=1)
+    approved: bool = True
+    reason: str = ""
+
+
+@router.post("/campaigns/{campaign_id}/review")
+async def review_campaign(campaign_id: str, body: BatchReviewRequest) -> dict:
+    """Cổng ``BEFORE_SIM`` áp lên **lô**, không lên từng kịch bản (ADR-014 §A3).
+
+    Vì sao không giữ mỗi kịch bản một cú bấm: với 76 ô thì người duyệt bấm 76
+    lần mà không thực sự đọc, và **rubber-stamp còn tệ hơn không có cổng** — nó
+    tạo cảm giác an toàn giả trong khi vẫn tốn thời gian người. Người duyệt ở đây
+    nhìn đúng thứ họ có thông tin để quyết: phạm vi ODD nào, bao nhiêu kịch bản,
+    trần bao nhiêu — rồi đồng ý một lần.
+
+    Vì sao không bỏ cổng: đề bài bắt con người phê duyệt trước khi điều khiển
+    thiết bị. Đó là thứ duy nhất trong ADR-014 không được đem ra đánh đổi.
+
+    **Biên của phép cấp phép nằm trong chính quyết định**: nó chỉ áp cho các kịch
+    bản của chiến dịch này đang đứng ở cổng 1, không áp cho kịch bản sinh sau.
+    """
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail=f"Chiến dịch '{campaign_id}' không tồn tại")
+
+    waiting = db.campaign_scenarios_awaiting_sim(campaign_id)
+    decided: list[str] = []
+    for scenario in waiting:
+        result = await post_review(
+            ReviewApiRequest(
+                scenario_id=scenario["scenario_id"],
+                gate="before_sim",
+                approved=body.approved,
+                reviewer=body.reviewer,
+                reason=body.reason or ("duyệt theo lô " + campaign_id),
+            )
+        )
+        if result.get("ok"):
+            decided.append(scenario["scenario_id"])
+
+    return {"ok": True, "campaign_id": campaign_id, "scenarios": decided, "count": len(decided)}
+
+
 @router.get("/metrics/quality")
 async def quality_report() -> dict:
     """Báo cáo M1/M2/M3 — mục "Báo cáo tỷ lệ kịch bản hợp lệ" của đề bài.

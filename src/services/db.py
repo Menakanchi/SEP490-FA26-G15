@@ -1220,6 +1220,18 @@ def campaign_prompts(campaign_id: str, odd_key: str | None = None) -> list[str]:
         return [r["description_vi"] for r in cursor.fetchall()]
 
 
+def campaign_scenarios_awaiting_sim(campaign_id: str) -> list[dict]:
+    """Kịch bản của một chiến dịch đang chờ ở cổng 1."""
+    with _cursor() as cursor:
+        cursor.execute(
+            "SELECT s.scenario_id, s.status FROM scenarios s "
+            "JOIN generation_requests r ON r.scenario_id = s.scenario_id "
+            "WHERE r.campaign_id = ? AND s.status = ?",
+            (campaign_id, ScenarioStatus.PENDING_SIM_REVIEW.value),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
 def metrics_rows() -> tuple[list[dict], list[dict], list[dict]]:
     """Dữ liệu thô cho báo cáo M1/M2/M3. Phần tính nằm ở ``services/metrics.py``.
 
