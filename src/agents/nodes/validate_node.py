@@ -349,7 +349,7 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                         path=f"/maneuvers/{i}/trigger/value",
                         message_vi=(
                             f"{actor.name} bước xuống khi ego chỉ còn cách "
-                            f"{jaywalk_effective_gap_m(m, actor):.0f}m, "
+                            f"{jaywalk_effective_gap_m(m, actor, ego):.0f}m, "
                             f"nhưng ego chạy {ego.initial_speed_kmh}km/h nên đã đi qua trước khi "
                             f"người đi bộ sang tới làn."
                         ),

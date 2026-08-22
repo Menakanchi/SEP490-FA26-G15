@@ -122,9 +122,21 @@ async def test_invalid_fixture_returns_declared_codes_and_paths(path: Path) -> N
     assert all(issue.message_vi and issue.suggestion for issue in first["issues"])
 
 
+# sc_002 là hiện vật của câu hỏi Phase 3, ARCHITECTURE.md mô tả nguyên văn: "hợp
+# lệ, chạy xong, success=true, và vô dụng". Nó cố ý mang hình học vô hại — người
+# đi bộ cách 2 làn, ego 30 km/h chỉ còn 8 m lúc trigger bắn trong khi cần 42 m.
+#
+# Từ khi có `jaywalk_trigger_too_close`, validate **bắt được nó trước khi chạy**.
+# Đó là tiến bộ, không phải hồi quy: fixture giữ nguyên để vẫn là hiện vật, và
+# việc nó bị chặn được khẳng định bằng một test riêng bên dưới.
+_USELESS_BY_DESIGN = {"sc_002"}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", VALID_SPEC_FIXTURES, ids=lambda path: path.stem)
 async def test_valid_fixture_files_return_no_validation_errors(path: Path) -> None:
+    if path.stem in _USELESS_BY_DESIGN:
+        pytest.skip("hình học vô hại có chủ đích — xem test_the_useless_by_design_fixture_is_now_caught")
     spec = _json(path)
     spec.pop("_comment", None)
     draft = {key: value for key, value in spec.items() if key not in {"scenario_id", "description_vi"}}
@@ -133,6 +145,23 @@ async def test_valid_fixture_files_return_no_validation_errors(path: Path) -> No
     result = await validate_node({"draft": draft, "odd_query": odd_query})
 
     assert result["issues"] == []
+
+
+@pytest.mark.asyncio
+async def test_the_useless_by_design_fixture_is_now_caught_before_it_runs() -> None:
+    """Kịch bản "chạy xong mà chẳng có gì xảy ra" giờ bị chặn ở validate.
+
+    Trước đây chỉ phát hiện được sau khi tốn một lượt GPU và đọc criteria — mà
+    criteria cũng không nói được vì sao. Giờ nó chết ở tầng spec, kèm con số.
+    """
+    spec = _json(FIXTURES / "scenario_specs" / "sc_002.json")
+    spec.pop("_comment", None)
+    draft = {key: value for key, value in spec.items() if key not in {"scenario_id", "description_vi"}}
+
+    result = await validate_node({"draft": draft, "odd_query": {**draft["odd"], "inferred": []}})
+
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE)
+    assert issue.repairable_by_llm
 
 
 @pytest.mark.asyncio
@@ -642,3 +671,31 @@ async def test_jaywalk_trigger_wider_than_the_starting_gap_is_still_flagged(
     )
     issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE)
     assert "s_offset_m" in issue.suggestion, "phải bảo sửa cả vị trí xuất phát, không chỉ trigger"
+
+
+@pytest.mark.asyncio
+async def test_jaywalk_time_trigger_after_ego_passed_is_flagged(valid_draft: ScenarioDraft) -> None:
+    """Trigger theo THỜI GIAN cũng phải kiểm: giây 3 thì ego đã qua từ giây 0,74.
+
+    Đo trên sc_034 ngày 23/08: ego 88 km/h, người đi bộ cách 18 m, trigger giây 3.
+    Bản vá trước chỉ bắt trigger theo khoảng cách nên ca này lọt nguyên.
+    """
+    draft = valid_draft.model_dump()
+    draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
+    draft["odd"]["maneuver"] = ManeuverType.JAYWALK
+    draft["actors"][0]["initial_speed_kmh"] = 88.0
+    draft["actors"][1]["category"] = VehicleCategory.PEDESTRIAN
+    draft["actors"][1]["position"]["lane_offset"] = -1
+    draft["actors"][1]["position"]["s_offset_m"] = 18.0
+    draft["actors"][1]["initial_speed_kmh"] = 5.0
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.JAYWALK
+    draft["maneuvers"][0]["trigger"] = {"type": "simulation_time", "value": 3.0}
+    draft["maneuvers"][0]["target_speed_kmh"] = 5.0
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.PEDESTRIAN, maneuver=ManeuverType.JAYWALK),
+        }
+    )
+    assert [i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE]

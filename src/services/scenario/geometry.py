@@ -247,27 +247,33 @@ def jaywalk_trigger_too_close(maneuver: ManeuverSpec, actor: ActorSpec, ego: Act
     Ngưỡng nới 30%: chưa tính thời gian phản ứng của bộ điều khiển và độ trễ khi
     người đi bộ bắt đầu bước, nên chặn sát quá sẽ loại nhầm kịch bản dùng được.
     """
-    if maneuver.trigger.type != "distance_to_ego":
-        return False
     required = jaywalk_required_trigger_m(maneuver, actor, ego)
     if required is None:
         return False
-    return jaywalk_effective_gap_m(maneuver, actor) < required * 0.7
+    return jaywalk_effective_gap_m(maneuver, actor, ego) < required * 0.7
 
 
-def jaywalk_effective_gap_m(maneuver: ManeuverSpec, actor: ActorSpec) -> float:
-    """Khoảng cách THẬT giữa hai bên lúc trigger bắn.
+def jaywalk_effective_gap_m(maneuver: ManeuverSpec, actor: ActorSpec, ego: ActorSpec) -> float:
+    """Ego còn cách người đi bộ bao xa **tại thời điểm trigger thật sự bắn**.
 
-    Không phải ``trigger.value``. Người đi bộ đứng yên ở ``s_offset_m``, nên
-    khoảng cách bắt đầu bằng chính nó và chỉ giảm đi. Đặt trigger 55 m trong khi
-    người đi bộ đứng cách 18 m thì điều kiện "cách dưới 55 m" **đúng ngay giây
-    0** — trigger bắn lúc ego còn 18 m, không phải 55 m.
+    Không phải ``trigger.value``, và tính khác nhau theo loại trigger — hai bản vá
+    trước mỗi bản chỉ bắt được một loại:
 
-    Đo trên ``sc_033`` ngày 23/08: đúng cấu hình đó, và người đi bộ vẫn bước
-    xuống quá muộn dù trigger nhìn qua thì rất rộng rãi.
+    - ``distance_to_ego``: người đi bộ đứng yên nên khoảng cách bắt đầu bằng
+      ``s_offset_m`` rồi chỉ giảm. Đặt trigger 55 m trong khi họ đứng cách 18 m
+      thì điều kiện "cách dưới 55 m" **đúng ngay giây 0** — bắn lúc còn 18 m.
+      Đo trên ``sc_033``.
+    - ``simulation_time``: tới giây thứ N thì ego đã đi được ``v × N``. Với
+      ``sc_034`` (ego 88 km/h, người đi bộ cách 18 m, trigger giây 3), ego vượt
+      qua chỗ đó ở giây 0,74 — trigger bắn khi họ đã ở **sau lưng** ego.
+
+    Trả 0 khi ego đã đi qua: không còn khoảng cách nào để nói tới.
     """
     if actor.position.s_offset_m <= 0:
-        return abs(actor.position.s_offset_m)
+        return 0.0
+    if maneuver.trigger.type == "simulation_time":
+        travelled = (ego.initial_speed_kmh / 3.6) * maneuver.trigger.value
+        return max(actor.position.s_offset_m - travelled, 0.0)
     return min(actor.position.s_offset_m, maneuver.trigger.value)
 
 
