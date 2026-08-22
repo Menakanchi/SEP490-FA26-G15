@@ -602,3 +602,46 @@ def test_create_generation_request_tu_chan_ban_thu_hai_dang_chay():
 
     # force_generate ghi NULL nên đứng ngoài index — luôn chạy được.
     db.create_generation_request("req_3", prompt, "static", force_generate=True)
+
+
+@pytest.mark.asyncio
+async def test_complete_simulation_passed(client):
+    """Test luồng xác nhận chạy thử thủ công: simulation_queued -> pending_library_review -> approved_library."""
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    await _approve_sim(client, sc_id)
+
+    # Call complete-simulation passed=True
+    res = await client.post(
+        f"/api/v1/scenarios/{sc_id}/complete-simulation",
+        json={"passed": True, "notes": "Đã chạy thử ngoại tuyến đạt"},
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "pending_library_review"
+
+    # Now review BEFORE_LIBRARY should succeed and reach approved_library
+    rev = await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_library",
+            "approved": True,
+            "reviewer": "Library Reviewer",
+            "reason": "Duyệt vào thư viện",
+        },
+    )
+    assert rev.status_code == 200
+    assert rev.json()["status"] == "approved_library"
+
+
+@pytest.mark.asyncio
+async def test_complete_simulation_rejected(client):
+    """Test luồng báo lỗi chạy thử thủ công: simulation_queued -> rejected."""
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc 2")
+    await _approve_sim(client, sc_id)
+
+    res = await client.post(
+        f"/api/v1/scenarios/{sc_id}/complete-simulation",
+        json={"passed": False, "notes": "Lỗi va chạm mô phỏng"},
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "rejected"

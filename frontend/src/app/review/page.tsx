@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, useCallback } from "react";
+import React, { Suspense, useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Shield,
@@ -8,6 +8,7 @@ import {
   XCircle,
   User,
   Loader2,
+  Map,
   Users,
   AlertTriangle,
   FileCode,
@@ -17,48 +18,48 @@ import {
   RefreshCw,
   Layers,
   Sparkle,
-  PlayCircle,
-  Tag,
 } from "lucide-react";
-import {
-  VERIFICATION_LABELS,
-  type VerificationLevel,
-} from "@/types";
-
-/** Màu theo mức kiểm chứng. `adversarial` là mức TỐT — kịch bản dựng được nguy
- *  hiểm, đúng thứ Forge tồn tại để làm — nên nó xanh, không đỏ. */
-const verificationStyle: Record<VerificationLevel, string> = {
-  adversarial: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
-  ran_no_hazard: "bg-amber-500/15 text-amber-300 border-amber-500/30",
-  execution_failed: "bg-red-500/15 text-red-300 border-red-500/30",
-  unverified: "bg-slate-500/15 text-slate-400 border-slate-600/30",
-};
-import {
-  getScenarios,
-  getScenarioById,
-  postReview,
-  downloadXosc,
-  updateTags,
-} from "@/services/api";
+import { getScenarios, getScenarioById, postReview, downloadXosc, completeSimulation } from "@/services/api";
+import SVG2DRenderer from "@/components/SVG2DRenderer";
+import { RoleGate } from "@/components/RoleGate";
+import { AuthGate } from "@/components/AuthGate";
+import { useAuth } from "@/context/AuthContext";
 import type { ScenarioItem, ScenarioDetail, ReviewGate } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
+  ACTOR_TYPE_LABELS,
   MANEUVER_TYPE_LABELS,
   renderSafeValue,
   renderActorCategoryLabel,
-  renderOddActorTypeLabel,
 } from "@/types";
+
+const REVIEW_STATUS_OPTIONS = [
+  { value: "all", label: "Tất cả trạng thái" },
+  { value: "pending_sim_review", label: "Chờ duyệt mô phỏng (Cổng 2)" },
+  { value: "simulation_queued", label: "Chờ chạy thử (Queued)" },
+  { value: "pending_library_review", label: "Chờ duyệt thư viện (Cổng 1)" },
+  { value: "approved_library", label: "Đã duyệt chính thức" },
+  { value: "rejected", label: "Bị từ chối" },
+];
 
 function ReviewPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialScenarioId = searchParams.get("scenario_id");
+  const { user, role } = useAuth();
+
+  // Admin Route Guard: Redirect Admin to /admin
+  useEffect(() => {
+    if (user?.role === "admin" || role === "admin") {
+      router.push("/admin");
+    }
+  }, [user?.role, role, router]);
 
   // State: List
   const [list, setList] = useState<ScenarioItem[]>([]);
   const [listLoading, setListLoading] = useState(true);
-  const [filterPendingOnly, setFilterPendingOnly] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
 
   // State: Selected Scenario Detail
   const [selectedId, setSelectedId] = useState<string | null>(initialScenarioId);
@@ -67,7 +68,7 @@ function ReviewPageContent() {
   const [detailError, setDetailError] = useState(false);
 
   // Form State
-  const [reviewer, setReviewer] = useState("");
+  const [reviewer, setReviewer] = useState(user?.name || user?.username || user?.email || "");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<{ reviewer?: string; reason?: string }>({});
@@ -75,10 +76,6 @@ function ReviewPageContent() {
   const [xmlCopied, setXmlCopied] = useState(false);
 
   // Fetch List
-  // Cố ý KHÔNG `setListLoading(true)` ở đây. `listLoading` khởi tạo đã là true
-  // cho lần nạp đầu, nên đặt lại là một lần render thừa ngay khi mount. Chỗ cần
-  // bật lại cờ là các lần nạp DO NGƯỜI DÙNG kích hoạt — và chúng bật ở đúng
-  // handler của mình bên dưới.
   const fetchScenarioList = useCallback(async () => {
     try {
       const res = await getScenarios({ limit: 50 });
@@ -104,133 +101,77 @@ function ReviewPageContent() {
   }, [initialScenarioId]);
 
   useEffect(() => {
-  // `react-hooks` 7 chặn mọi setState mà effect với tới được, kể cả khi nó nằm
-  // sau `await`. Cách sửa thật là chuyển việc nạp lên server component / `use()`
-  // + Suspense, tức bỏ hẳn effect này — một refactor riêng, không nhét vào PR
-  // tính năng được. Tắt có phạm vi ở đúng ba chỗ để lỗi khác vẫn nhìn thấy.
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp dữ liệu lúc mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp dữ liệu lúc mount
     void fetchScenarioList();
   }, [fetchScenarioList]);
 
   // Fetch Selected Detail
-  //
-  // Cờ `cancelled` không phải để làm vừa lòng linter: reviewer bấm lướt qua
-  // danh sách thì nhiều request chồng nhau, và không có nó thì phản hồi của
-  // kịch bản bấm TRƯỚC có thể về SAU và ghi đè lên kịch bản đang xem. Người
-  // duyệt sẽ nhìn một kịch bản mà tưởng là kịch bản khác — rồi bấm duyệt.
   useEffect(() => {
-    if (!selectedId) return;
-    let cancelled = false;
+    if (!selectedId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear scenario state when selectedId is null
+      setScenario(null);
+      return;
+    }
 
-    const load = async () => {
-      setDetailLoading(true);
-      setDetailError(false);
-      try {
-        const data = await getScenarioById(selectedId);
-        if (!cancelled) setScenario(data);
-      } catch (err) {
+    setDetailLoading(true);
+    setDetailError(false);
+    getScenarioById(selectedId)
+      .then((data) => {
+        setScenario(data);
+        setDetailLoading(false);
+      })
+      .catch((err) => {
         console.error("Failed to load scenario detail", err);
-        if (!cancelled) {
-          setDetailError(true);
-          setScenario(null);
-        }
-      } finally {
-        if (!cancelled) setDetailLoading(false);
-      }
-    };
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
+        setDetailError(true);
+        setDetailLoading(false);
+      });
   }, [selectedId]);
 
-  // Toast auto-dismiss
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(t);
-  }, [toast]);
-
-  // Dọn form ngay sau mỗi quyết định để nội dung của cổng trước không bị hiểu
-  // nhầm là ghi chú cho cổng sau.
-  const resetReviewForm = () => {
-    setReviewer("");
-    setReason("");
-    setFormErrors({});
-  };
-
-  // Select Item Handler
   const handleSelectScenario = (id: string) => {
     setSelectedId(id);
-    setFormErrors({});
-    const url = new URL(window.location.href);
-    url.searchParams.set("scenario_id", id);
-    router.replace(url.pathname + url.search, { scroll: false });
+    router.replace(`/review?scenario_id=${id}`, { scroll: false });
   };
 
-  // Mỗi trạng thái pending ánh xạ duy nhất tới một cổng hợp lệ.
-  const pendingGate: ReviewGate | null = (() => {
-    if (scenario?.status === "pending_sim_review") return "before_sim";
-    if (scenario?.status === "pending_library_review") return "before_library";
-    return null;
-  })();
+  const gateToReview: ReviewGate =
+    scenario?.status === "pending_sim_review" ? "before_sim" : "before_library";
 
   const gateLabel =
-    pendingGate === "before_sim"
-      ? "Cổng 1 · Cho phép mô phỏng (BEFORE_SIM)"
-      : pendingGate === "before_library"
-        ? "Cổng 2 · Đưa vào thư viện (BEFORE_LIBRARY)"
-        : "Không có quyết định đang chờ";
+    gateToReview === "before_sim" ? "Cổng 2: Mô phỏng (BEFORE_SIM)" : "Cổng 1: Thư viện (BEFORE_LIBRARY)";
 
-  // Hai cổng phải KHÁC MÀU và KHÁC CHỮ rõ ràng ngay trong form quyết định —
-  // không chỉ ở cái badge nhỏ phía trên. Lý do rất cụ thể: reviewer từng duyệt
-  // nhầm cổng 1 (BEFORE_SIM, tốn GPU thật) với cổng 2 (BEFORE_LIBRARY),
-  // vì hai form trông giống hệt nhau và không có gì báo đã sang cổng khác.
-  const gateAccent =
-    pendingGate === "before_sim"
-      ? { border: "border-orange-500/40", text: "text-orange-300", icon: "text-orange-400" }
-      : { border: "border-purple-500/30", text: "text-slate-100", icon: "text-purple-400" };
+  const handleSubmitReview = async (approved: boolean) => {
+    if (!scenario) return;
 
-  // Validate chung cho cả hai form quyết định (gate 1 và gate 2) — dùng chung
-  // một chỗ để hai form không trôi dần khỏi nhau khi có người sửa một bên mà
-  // quên bên kia.
-  const validateReviewForm = (approved: boolean): { reviewer?: string; reason?: string } => {
     const errors: { reviewer?: string; reason?: string } = {};
     if (!reviewer.trim()) {
-      errors.reviewer = "Vui lòng nhập tên/email người duyệt (Reviewer ID).";
+      errors.reviewer = "Vui lòng nhập tên reviewer chịu trách nhiệm.";
     }
-    if (!approved && reason.trim().length < 10) {
-      errors.reason = "Lý do từ chối bắt buộc có nhất 10 ký tự để lưu vết audit trail.";
+    if (!approved && (!reason.trim() || reason.trim().length < 10)) {
+      errors.reason = "Vui lòng nhập lý do từ chối (bắt buộc từ 10 ký tự trở lên).";
     }
-    return errors;
-  };
 
-  // Form Submit Handler
-  const handleSubmitReview = async (approved: boolean) => {
-    const errors = validateReviewForm(approved);
-    setFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
-    if (!scenario || !pendingGate) return;
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
 
+    setFormErrors({});
     setSubmitting(true);
+
     try {
-      const result = await postReview({
+      await postReview({
         scenario_id: scenario.scenario_id,
-        gate: pendingGate,
+        gate: gateToReview,
         approved,
         reviewer: reviewer.trim(),
-        reason: reason.trim(),
+        reason: reason.trim() || "Chấp nhận kịch bản",
       });
+
       setToast({
         type: "success",
         msg: approved
-          ? result.job_created
-            ? `Đã cấp phép chạy ${scenario.scenario_id}; job đã vào hàng đợi GPU.`
-            : `Đã đưa ${scenario.scenario_id} vào thư viện đã duyệt.`
+          ? `Đã phê duyệt kịch bản ${scenario.scenario_id} tại ${gateLabel}!`
           : `Đã từ chối kịch bản ${scenario.scenario_id}.`,
       });
-      resetReviewForm();
 
       setListLoading(true);
       await fetchScenarioList();
@@ -246,32 +187,41 @@ function ReviewPageContent() {
     }
   };
 
+  const handleCompleteSimulation = async (passed: boolean) => {
+    if (!scenario) return;
+    setSubmitting(true);
+    try {
+      await completeSimulation(scenario.scenario_id, {
+        passed,
+        notes: reason.trim() || (passed ? "Đã kiểm thử mô phỏng ngoại tuyến đạt yêu cầu" : "Báo lỗi mô phỏng ngoại tuyến"),
+      });
+
+      setToast({
+        type: "success",
+        msg: passed
+          ? `Đã xác nhận chạy thử Đạt! Kịch bản ${scenario.scenario_id} đã chuyển sang 'Chờ duyệt thư viện' (pending_library_review).`
+          : `Đã báo lỗi mô phỏng. Kịch bản ${scenario.scenario_id} đã chuyển sang Từ chối (rejected).`,
+      });
+
+      setListLoading(true);
+      await fetchScenarioList();
+      const updated = await getScenarioById(scenario.scenario_id);
+      setScenario(updated);
+    } catch (err) {
+      setToast({
+        type: "error",
+        msg: err instanceof Error ? err.message : "Lỗi khi cập nhật kết quả mô phỏng.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleCopyXml = () => {
     if (scenario?.xosc_content) {
       navigator.clipboard.writeText(scenario.xosc_content);
       setXmlCopied(true);
       setTimeout(() => setXmlCopied(false), 2000);
-    }
-  };
-
-  /** Sửa tag. Prompt thô nhưng đủ dùng — chỗ này không đáng một modal riêng. */
-  const handleEditTags = async () => {
-    if (!scenario) return;
-    const current = (scenario.tags ?? []).join(", ");
-    const next = window.prompt("Tag, cách nhau bằng dấu phẩy:", current);
-    if (next === null) return;
-    try {
-      await updateTags(
-        scenario.scenario_id,
-        next.split(",").map((t) => t.trim()).filter(Boolean),
-      );
-      setScenario(await getScenarioById(scenario.scenario_id));
-      setToast({ type: "success", msg: "Đã cập nhật tag." });
-    } catch (err) {
-      setToast({
-        type: "error",
-        msg: err instanceof Error ? err.message : "Không cập nhật được tag",
-      });
     }
   };
 
@@ -296,21 +246,24 @@ function ReviewPageContent() {
     }
   };
 
-  const displayList = filterPendingOnly
-    ? list.filter((s) =>
-        ["pending_sim_review", "simulation_queued", "pending_library_review"].includes(s.status),
-      )
-    : list;
+  // Filter logic based on dropdown status selection
+  const displayList = list.filter((s) => {
+    if (!statusFilter || statusFilter === "all") return true;
+    if (statusFilter === "approved_library") {
+      return s.status === "approved_library" || s.status === "approved_sim";
+    }
+    return s.status === statusFilter;
+  });
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+    <div className="min-h-screen max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans bg-slate-50 dark:bg-slate-950 text-[#0f2d59] dark:text-slate-100 transition-colors duration-200">
       {/* Toast Notification */}
       {toast && (
         <div
           className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm font-medium transition-all duration-300 ${
             toast.type === "success"
-              ? "bg-green-500/90 text-white shadow-green-500/20"
-              : "bg-red-500/90 text-white shadow-red-500/20"
+              ? "bg-green-600 text-white shadow-green-500/20 font-bold"
+              : "bg-red-600 text-white shadow-red-500/20 font-bold"
           }`}
         >
           {toast.type === "success" ? (
@@ -322,56 +275,67 @@ function ReviewPageContent() {
         </div>
       )}
 
-      {/* Top Header */}
-      <div className="glass-card p-6 relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-blue-500/5 pointer-events-none" />
+      {/* Top Header Banner (Light Blue Aesthetic Box) */}
+      <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
         <div className="relative flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
             <Shield className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl md:text-2xl font-bold text-slate-100">
+            <h1 className="text-xl md:text-2xl font-black text-[#0f2d59] dark:text-white">
               Kiểm duyệt kịch bản (Reviewer Flow - HITL)
             </h1>
-            <p className="text-xs md:text-sm text-slate-400">
-              Cổng 1 cấp phép chạy CARLA → Cổng 2 duyệt kết quả vào thư viện
+            <p className="text-xs md:text-sm text-blue-900/80 dark:text-slate-400 font-medium">
+              Cổng duyệt hai tầng: Thư viện (BEFORE_LIBRARY) & Mô phỏng (BEFORE_SIM)
             </p>
           </div>
         </div>
 
-        <div className="relative flex items-center gap-3">
-          <button
-            onClick={() => setFilterPendingOnly(!filterPendingOnly)}
-            className={`btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 border ${
-              filterPendingOnly
-                ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
-                : "btn-ghost border-slate-700/50"
-            }`}
-          >
-            <Filter className="w-3.5 h-3.5" />
-            {filterPendingOnly ? "Chỉ kịch bản chờ duyệt" : "Tất cả kịch bản"}
-          </button>
+        {/* Dynamic Status Filter Dropdown & Refresh Controls */}
+        <div className="relative flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-sky-200 dark:border-slate-700 rounded-xl px-3 py-1.5 shadow-xs">
+            <Filter className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="text-xs md:text-sm font-semibold bg-transparent text-[#0f2d59] dark:text-sky-200 focus:outline-none cursor-pointer"
+            >
+              {REVIEW_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value} className="bg-white dark:bg-slate-800 text-[#0f2d59] dark:text-slate-100 font-medium">
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             onClick={() => {
               setListLoading(true);
               void fetchScenarioList();
             }}
-            className="btn-primary btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 border border-slate-700/50"
+            className="text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 border border-sky-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100/80 dark:hover:bg-slate-700 font-bold transition cursor-pointer shadow-xs"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${listLoading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 ${listLoading ? "animate-spin" : ""}`} />
             Làm mới
           </button>
         </div>
       </div>
 
-      {/* Main Grid: Sidebar + Details */}
+      {/* Main Grid: Left Sidebar + Right Details */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Sidebar List */}
+        {/* Left Sidebar List Container */}
         <div className="lg:col-span-4 space-y-3">
-          <div className="glass-card p-4">
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-              Danh sách kịch bản ({displayList.length})
-            </h2>
+          <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h2 className="text-xs font-bold text-[#0f2d59] dark:text-slate-400 uppercase tracking-wider">
+                Danh sách kịch bản ({displayList.length})
+              </h2>
+              {statusFilter !== "all" && (
+                <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800">
+                  Lọc: {REVIEW_STATUS_OPTIONS.find(o => o.value === statusFilter)?.label}
+                </span>
+              )}
+            </div>
 
             {listLoading ? (
               <div className="space-y-2 py-4">
@@ -380,40 +344,42 @@ function ReviewPageContent() {
                 ))}
               </div>
             ) : displayList.length === 0 ? (
-              <div className="py-8 text-center text-slate-500 text-xs">
-                Không tìm thấy kịch bản nào.
+              <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-xs">
+                Không tìm thấy kịch bản nào khớp với bộ lọc.
               </div>
             ) : (
-              <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">
                 {displayList.map((item) => {
                   const isSelected = item.scenario_id === selectedId;
                   return (
                     <button
                       key={item.scenario_id}
                       onClick={() => handleSelectScenario(item.scenario_id)}
-                      className={`w-full text-left p-3 rounded-xl border transition-all ${
+                      className={`w-full text-left p-3.5 rounded-2xl border transition-all cursor-pointer ${
                         isSelected
-                          ? "bg-purple-500/15 border-purple-500/50 text-white shadow-lg shadow-purple-500/10"
-                          : "bg-slate-800/30 border-slate-700/20 text-slate-300 hover:bg-slate-800/60"
+                          ? "bg-sky-100/90 dark:bg-blue-950/60 border-2 border-blue-600 text-blue-950 dark:text-purple-100 shadow-sm font-bold"
+                          : "bg-white dark:bg-slate-800/60 border-sky-100 dark:border-slate-700 text-[#0f2d59] dark:text-slate-200 hover:border-blue-300 hover:bg-sky-50/50 shadow-xs"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-xs font-semibold text-cyan-400 truncate">
+                        <span className="font-mono text-xs font-bold text-blue-700 dark:text-cyan-400 truncate">
                           {item.scenario_id}
                         </span>
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                            item.status === "approved_library"
-                              ? "bg-green-500/20 text-green-300"
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                            item.status === "approved_library" || item.status === "approved_sim"
+                              ? "bg-green-50 dark:bg-green-950/60 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800"
                               : item.status === "rejected"
-                              ? "bg-red-500/20 text-red-300"
-                              : "bg-amber-500/20 text-amber-300"
+                              ? "bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
+                              : item.status === "simulation_queued"
+                              ? "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                              : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
                           }`}
                         >
                           {item.status}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-300 mt-1 line-clamp-1 font-medium">
+                      <p className="text-xs text-[#0f2d59] dark:text-slate-300 mt-1 line-clamp-1 font-semibold">
                         {item.title}
                       </p>
                     </button>
@@ -424,95 +390,40 @@ function ReviewPageContent() {
           </div>
         </div>
 
-        {/* Right Detail Pane */}
+        {/* Right Detail Pane Containers (Light Blue Aesthetic Cards) */}
         <div className="lg:col-span-8 space-y-6">
           {detailLoading ? (
-            <div className="glass-card p-12 flex items-center justify-center">
-              <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+            <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-12 flex items-center justify-center shadow-sm">
+              <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
             </div>
           ) : detailError || !scenario ? (
-            <div className="glass-card p-12 text-center text-slate-400">
+            <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-12 text-center text-slate-600 dark:text-slate-400 text-sm font-medium shadow-sm">
               Vui lòng chọn một kịch bản từ danh sách bên trái để kiểm duyệt.
             </div>
           ) : (
             <>
               {/* Header Info */}
-              <div className="glass-card p-6 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700/30 pb-4">
+              <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sky-200/60 dark:border-slate-800 pb-4">
                   <div>
-                    <h2 className="text-xl font-bold text-slate-100">
+                    <h2 className="text-xl font-bold text-[#0f2d59] dark:text-white">
                       {scenario.title}
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1 font-mono">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
                       ID: {scenario.scenario_id} | Trạng thái hiện tại:{" "}
-                      <strong className="text-purple-300">{scenario.status}</strong>
+                      <strong className="text-purple-600 dark:text-purple-400">{scenario.status}</strong>
                     </p>
-                    {/* Mức kiểm chứng là trục RIÊNG, không phải trạng thái duyệt
-                        (ADR-017). Không hiện nó thì người duyệt chỉ thấy "đã duyệt"
-                        và hiểu nhầm rằng kịch bản đã được chứng minh là đúng. */}
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      <span
-                        className={`inline-block text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
-                          verificationStyle[scenario.verification ?? "unverified"]
-                        }`}
-                        title="Kết quả chạy thật trên CARLA — khác với trạng thái duyệt của con người"
-                      >
-                        {VERIFICATION_LABELS[scenario.verification ?? "unverified"]}
-                      </span>
-                      <span className="text-[11px] text-slate-400 px-2.5 py-1 rounded-full border border-slate-700/40 bg-slate-800/40">
-                        Người tạo: <strong className="text-slate-300">{scenario.created_by || "unknown"}</strong>
-                      </span>
-                    </div>
-
-                    {/* Đề bài đòi hai vai trò tạo/duyệt. Tự duyệt bài của mình
-                        không vi phạm ràng buộc HITL — vẫn là người kiểm AI —
-                        nhưng nó làm cổng duyệt mất tác dụng bắt điểm mù. Nhắc,
-                        không chặn: đội một người thì tự duyệt là bắt buộc, và
-                        chặn cứng chỉ khiến người ta gõ tên giả. */}
-                    {pendingGate &&
-                      reviewer.trim() !== "" &&
-                      scenario.created_by &&
-                      reviewer.trim().toLowerCase() === scenario.created_by.toLowerCase() && (
-                        <p className="mt-2 text-[11px] text-amber-300/90 flex items-center gap-1.5">
-                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                          Bạn đang duyệt kịch bản do chính mình tạo — vẫn hợp lệ, nhưng
-                          người khác duyệt thì dễ bắt được điểm mù hơn.
-                        </p>
-                      )}
                   </div>
-                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    {pendingGate ? `Cổng áp dụng: ${gateLabel}` : gateLabel}
+                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                    Cổng áp dụng: {gateLabel}
                   </span>
                 </div>
 
-                {/* Tag — đề bài đòi "thư viện lưu trữ có gắn tag". Bốn trục ODD
-                    được gắn sẵn lúc lưu; người dùng sửa thêm được ở đây. */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <Tag className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                  {(scenario.tags ?? []).length === 0 && (
-                    <span className="text-xs text-slate-500">chưa có tag</span>
-                  )}
-                  {(scenario.tags ?? []).map((t) => (
-                    <span
-                      key={t}
-                      className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800/70 text-slate-300 border border-slate-700/50"
-                    >
-                      {t}
-                    </span>
-                  ))}
-                  <button
-                    onClick={handleEditTags}
-                    className="text-[11px] text-slate-400 hover:text-slate-200 underline decoration-dotted"
-                  >
-                    sửa
-                  </button>
-                </div>
-
-                {/* ⚠️ Warning Banner (Informational - Amber) */}
-                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-300">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                {/* ⚠️ Inferred ODD Warning Banner */}
+                <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/80 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200 shadow-xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <strong className="font-semibold block text-amber-200 mb-0.5">
+                    <strong className="font-bold block text-amber-950 dark:text-amber-200 mb-0.5">
                       Cảnh báo thông số tự suy luận (Inferred ODD Warning):
                     </strong>
                     <span>
@@ -521,75 +432,112 @@ function ReviewPageContent() {
                   </div>
                 </div>
 
-                {/* ODD Cell Parameters */}
+                {/* 4 ODD Cell Parameter Boxes (Light Blue Tint) */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
-                    <span className="text-[10px] text-slate-500 block uppercase">Đường</span>
-                    <span className="text-xs font-semibold text-blue-400">
+                  <div className="bg-sky-100/60 dark:bg-slate-800 text-[#0f2d59] dark:text-sky-100 border border-sky-300/70 dark:border-slate-700 p-3 rounded-xl text-center shadow-xs">
+                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Đường</span>
+                    <span className="text-xs font-bold text-blue-700 dark:text-blue-400">
                       {renderSafeValue(scenario.odd?.road_type, ROAD_TYPE_LABELS)}
                     </span>
                   </div>
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
-                    <span className="text-[10px] text-slate-500 block uppercase">Thời tiết</span>
-                    <span className="text-xs font-semibold text-cyan-400">
+                  <div className="bg-sky-100/60 dark:bg-slate-800 text-[#0f2d59] dark:text-sky-100 border border-sky-300/70 dark:border-slate-700 p-3 rounded-xl text-center shadow-xs">
+                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Thời tiết</span>
+                    <span className="text-xs font-bold text-cyan-700 dark:text-cyan-400">
                       {renderSafeValue(scenario.odd?.weather, WEATHER_LABELS)}
                     </span>
                   </div>
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
-                    <span className="text-[10px] text-slate-500 block uppercase">Tác nhân</span>
-                    <span className="text-xs font-semibold text-orange-400">
-                      {renderOddActorTypeLabel(scenario.odd)}
+                  <div className="bg-sky-100/60 dark:bg-slate-800 text-[#0f2d59] dark:text-sky-100 border border-sky-300/70 dark:border-slate-700 p-3 rounded-xl text-center shadow-xs">
+                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Tác nhân</span>
+                    <span className="text-xs font-bold text-orange-700 dark:text-orange-400">
+                      {renderSafeValue(scenario.odd?.actor_type, ACTOR_TYPE_LABELS)}
                     </span>
                   </div>
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/20 text-center">
-                    <span className="text-[10px] text-slate-500 block uppercase">Hành vi</span>
-                    <span className="text-xs font-semibold text-red-400">
+                  <div className="bg-sky-100/60 dark:bg-slate-800 text-[#0f2d59] dark:text-sky-100 border border-sky-300/70 dark:border-slate-700 p-3 rounded-xl text-center shadow-xs">
+                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Hành vi</span>
+                    <span className="text-xs font-bold text-red-700 dark:text-red-400">
                       {renderSafeValue(scenario.odd?.maneuver, MANEUVER_TYPE_LABELS)}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* All Actors Table (ADR-010) */}
+              {/* 2D SVG Lane Visualization Box */}
+              <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
+                <h3 className="text-sm font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
+                  <Map className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  Sơ đồ làn đường 2D (Render Hero & Adversaries - ADR-010)
+                </h3>
+                <div className="rounded-2xl overflow-hidden border border-sky-200/80 dark:border-slate-800 bg-white dark:bg-slate-950">
+                  {scenario.spec?.actors?.length ? (
+                    <SVG2DRenderer
+                      actors={scenario.spec.actors}
+                      odd={scenario.odd}
+                      maneuvers={scenario.spec.maneuvers}
+                      width="100%"
+                      height={320}
+                    />
+                  ) : (
+                    <div className="h-48 flex items-center justify-center text-slate-500 text-xs">
+                      Không có thông tin vị trí các xe để vẽ 2D.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* All Actors Table Box */}
               {scenario.spec?.actors?.length ? (
-                <div className="glass-card p-6 space-y-3">
-                  <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                    <Users className="w-4 h-4 text-orange-400" />
-                    Danh sách toàn bộ Tác nhân (`spec.actors` - {scenario.spec.actors.length} xe):
+                <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
+                  <h3 className="text-sm font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
+                    <Users className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                    Danh sách toàn bộ Tác nhân (`spec.actors` - {scenario.spec.actors.length} đối tượng):
                   </h3>
-                  <div className="overflow-x-auto border border-slate-700/30 rounded-xl">
-                    <table className="w-full text-xs text-left text-slate-300">
-                      <thead className="bg-slate-800/80 text-slate-400 uppercase font-semibold text-[10px] border-b border-slate-700/40">
+                  <div className="w-full overflow-x-auto rounded-2xl border border-sky-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+                    <table className="min-w-[640px] w-full text-left border-collapse">
+                      <thead className="bg-sky-100/60 dark:bg-slate-800/80 text-[#1e3a8a] dark:text-sky-300 font-semibold text-xs tracking-wider uppercase border-b border-sky-200/80 dark:border-slate-700">
                         <tr>
-                          <th className="p-3">Tên xe</th>
-                          <th className="p-3">Loại phương tiện</th>
-                          <th className="p-3">Vai trò</th>
-                          <th className="p-3">Làn (`lane_offset`)</th>
-                          <th className="p-3">Khoảng cách S (`s_offset_m`)</th>
-                          <th className="p-3">Tốc độ ban đầu</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Tên đối tượng</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Loại xe</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Vai trò</th>
+                          <th className="py-3 px-4 whitespace-nowrap">
+                            Làn đường <span className="text-[10px] font-normal text-slate-500 normal-case">(lane_offset)</span>
+                          </th>
+                          <th className="py-3 px-4 whitespace-nowrap">
+                            Khoảng cách <span className="text-[10px] font-normal text-slate-500 normal-case">(m)</span>
+                          </th>
+                          <th className="py-3 px-4 whitespace-nowrap">
+                            Vận tốc <span className="text-[10px] font-normal text-slate-500 normal-case">(km/h)</span>
+                          </th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-800/60">
+                      <tbody className="divide-y divide-sky-100 dark:divide-slate-800 text-xs md:text-sm">
                         {scenario.spec.actors.map((actor, idx) => (
-                          <tr key={actor.name || idx} className="hover:bg-slate-800/30">
-                            <td className="p-3 font-mono font-semibold text-cyan-300">{actor.name}</td>
-                            <td className="p-3 font-semibold text-slate-200">
+                          <tr key={actor.name || idx} className="hover:bg-sky-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                            <td className="py-3 px-4 font-mono font-bold text-blue-700 dark:text-cyan-300 whitespace-nowrap">
+                              {actor.name}
+                            </td>
+                            <td className="py-3 px-4 font-bold text-[#0f2d59] dark:text-slate-100 whitespace-nowrap">
                               {renderActorCategoryLabel(actor, scenario.odd)}
                             </td>
-                            <td className="p-3">
+                            <td className="py-3 px-4 whitespace-nowrap">
                               {actor.is_ego ? (
-                                <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-semibold">
-                                  Xe chính (Hero / Ego)
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                  Xe chính (Hero)
                                 </span>
                               ) : (
-                                <span className="px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 font-semibold">
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
                                   Xe phụ (Adversary)
                                 </span>
                               )}
                             </td>
-                            <td className="p-3 font-mono">Offset {actor.position?.lane_offset ?? 0}</td>
-                            <td className="p-3 font-mono">{actor.position?.s_offset_m ?? 0} m</td>
-                            <td className="p-3 font-mono">{actor.initial_speed_kmh ?? 50} km/h</td>
+                            <td className="py-3 px-4 font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                              Làn {actor.position?.lane_offset || 0}
+                            </td>
+                            <td className="py-3 px-4 font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                              {actor.position?.s_offset_m ?? 0} m
+                            </td>
+                            <td className="py-3 px-4 font-mono font-semibold text-blue-900 dark:text-blue-300 whitespace-nowrap">
+                              {actor.initial_speed_kmh ?? 50} km/h
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -598,21 +546,21 @@ function ReviewPageContent() {
                 </div>
               ) : null}
 
-              {/* Retrieved Examples Block */}
-              <div className="glass-card p-6 space-y-3">
-                <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-purple-400" />
+              {/* Retrieved Examples Block Box */}
+              <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
+                <h3 className="text-sm font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                   Kịch bản mẫu được Retrieve (`retrieved_examples`):
                 </h3>
 
                 {!scenario.retrieved_examples || scenario.retrieved_examples.length === 0 ? (
-                  <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center gap-3">
-                    <Sparkle className="w-5 h-5 text-purple-400 flex-shrink-0" />
+                  <div className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/80 flex items-center gap-3">
+                    <Sparkle className="w-5 h-5 text-purple-600 dark:text-purple-400 flex-shrink-0" />
                     <div>
-                      <span className="px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 text-xs font-bold mr-2">
+                      <span className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 text-xs font-bold mr-2 border border-purple-200 dark:border-purple-700">
                         Chế độ Zero-Shot
                       </span>
-                      <span className="text-xs text-slate-300">
+                      <span className="text-xs text-slate-700 dark:text-slate-300">
                         Không có kịch bản mẫu tương đồng trong cơ sở dữ liệu.
                       </span>
                     </div>
@@ -626,17 +574,17 @@ function ReviewPageContent() {
                       return (
                         <div
                           key={item.id || idx}
-                          className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/30 space-y-2"
+                          className="bg-white dark:bg-slate-800/60 p-4 rounded-2xl border border-sky-200/80 dark:border-slate-700/60 space-y-2 shadow-xs"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-xs text-slate-200 truncate">
+                            <span className="font-bold text-xs text-[#0f2d59] dark:text-slate-100 truncate">
                               {item.title || item.id}
                             </span>
-                            <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono text-[10px] font-bold">
+                            <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-mono text-[10px] font-bold border border-purple-200 dark:border-purple-800">
                               {scorePct}% Tương đồng
                             </span>
                           </div>
-                          <p className="text-xs text-slate-400 line-clamp-2">
+                          <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
                             {item.content || item.description_vi}
                           </p>
                         </div>
@@ -646,211 +594,213 @@ function ReviewPageContent() {
                 )}
               </div>
 
-              {/* Bằng chứng CARLA là dữ liệu bắt buộc để quyết định ở Cổng 2. */}
-              {scenario.latest_execution_result && (
-                <div className="glass-card p-6 space-y-4 border-cyan-500/30">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                      <PlayCircle className="w-4 h-4 text-cyan-400" />
-                      Kết quả thực thi CARLA gần nhất
+              {/* Decision Form Box / Manual Simulation Control Box */}
+              {scenario.status === "simulation_queued" ? (
+                <div className="bg-sky-50/90 dark:bg-slate-900 border-2 border-blue-500/80 rounded-3xl p-6 space-y-4 shadow-md">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-200 dark:border-slate-800 pb-3">
+                    <h3 className="text-base font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
+                      <Sparkle className="w-5 h-5 text-blue-600 dark:text-cyan-400" />
+                      Kiểm thử Mô phỏng Ngoại tuyến (Manual Simulation Test)
                     </h3>
-                    <span className={`text-[11px] px-2.5 py-1 rounded-full border ${
-                      scenario.latest_execution_result.success
-                        ? "text-emerald-300 border-emerald-500/30 bg-emerald-500/10"
-                        : "text-red-300 border-red-500/30 bg-red-500/10"
-                    }`}>
-                      {scenario.latest_execution_result.success ? "Chạy hoàn tất" : "Chạy lỗi"}
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 border border-blue-300">
+                      Trạng thái: simulation_queued
                     </span>
                   </div>
 
-                  {scenario.latest_execution_result.error && (
-                    <p className="text-xs text-red-300 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                      {scenario.latest_execution_result.error}
-                    </p>
-                  )}
+                  <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                    Kịch bản đã được phê duyệt ở Cổng 2 và đang ở trạng thái chờ chạy thử mô phỏng (<code className="font-bold text-blue-700">simulation_queued</code>). Kỹ sư/Reviewer có thể tải file <code className="font-bold text-blue-700">.xosc</code> bên dưới về mô phỏng ngoại tuyến (Esmini / CARLA / Ansys) và xác nhận kết quả kiểm thử:
+                  </p>
 
-                  <div className="overflow-x-auto rounded-xl border border-slate-700/30">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-800/80 text-slate-400">
-                        <tr>
-                          <th className="p-3">Criterion</th>
-                          <th className="p-3">Kết quả</th>
-                          <th className="p-3">Giá trị thực</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                        {scenario.latest_execution_result.criteria_results.length ? (
-                          scenario.latest_execution_result.criteria_results.map((criterion, index) => (
-                            <tr key={`${criterion.name}-${index}`}>
-                              <td className="p-3 font-mono">{criterion.name}</td>
-                              <td className="p-3 font-semibold">{criterion.result}</td>
-                              <td className="p-3 font-mono">{criterion.actual || "—"}</td>
-                            </tr>
-                          ))
+                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/80 border border-sky-200/80 dark:border-slate-700 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#0f2d59] dark:text-slate-200">
+                        1. Tải file cấu hình kịch bản:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleDownloadXml}
+                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Tải file {scenario.scenario_id}.xosc
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#0f2d59] dark:text-slate-300 mb-1">
+                        2. Ghi chú kết quả chạy thử (Tùy chọn / Bắt buộc nếu từ chối):
+                      </label>
+                      <textarea
+                        className="w-full px-3.5 py-2 bg-sky-50/40 dark:bg-slate-900 border border-sky-200 dark:border-slate-700 rounded-xl text-xs text-[#0f2d59] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                        placeholder="Ghi chú kết quả mô phỏng (Ví dụ: Đã test chạy thử trên Esmini/CARLA đạt yêu cầu va chạm tại 35m)..."
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
+
+                  <RoleGate
+                    allowedRoles={["reviewer", "admin"]}
+                    fallback={
+                      <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-300 text-xs">
+                        Quyền xác nhận kết quả chạy thử chỉ dành cho <strong>Reviewer</strong> hoặc <strong>Admin</strong>.
+                      </div>
+                    }
+                  >
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCompleteSimulation(false)}
+                        disabled={submitting}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition cursor-pointer"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        🔴 Báo lỗi mô phỏng / Từ chối
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCompleteSimulation(true)}
+                        disabled={submitting}
+                        className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition cursor-pointer"
+                      >
+                        {submitting ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
-                          <tr><td className="p-3 text-slate-500" colSpan={3}>Worker không trả criterion.</td></tr>
+                          <CheckCircle2 className="w-4 h-4" />
                         )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {Object.keys(scenario.latest_execution_result.metrics ?? {}).length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {Object.entries(scenario.latest_execution_result.metrics).map(([name, value]) => (
-                        <span key={name} className="text-[11px] px-2 py-1 rounded bg-slate-800 text-slate-300 font-mono">
-                          {name}: {value}
-                        </span>
-                      ))}
+                        🟢 Xác nhận đã chạy thử Đạt
+                      </button>
                     </div>
-                  )}
-                </div>
-              )}
-
-              {/* Chỉ hiện form khi state machine có transition hợp lệ. */}
-              {pendingGate ? (
-                <div className={`glass-card p-6 space-y-4 ${gateAccent.border}`}>
-                  <h3 className={`text-base font-bold flex items-center gap-2 ${gateAccent.text}`}>
-                    <User className={`w-4 h-4 ${gateAccent.icon}`} />
-                    Đang duyệt: {gateLabel}
-                  </h3>
-                  {pendingGate === "before_sim" && (
-                    <p className="text-xs text-orange-300/90 -mt-2">
-                      Đây là cổng thứ nhất: chỉ kiểm tra sơ bộ và cấp phép dùng GPU. Phê duyệt sẽ tạo job CARLA, chưa đưa kịch bản vào thư viện.
-                    </p>
-                  )}
-                  {pendingGate === "before_library" && (
-                    <p className="text-xs text-purple-300/90 -mt-2">
-                      Đây là cổng thứ hai: hãy xem kết quả thực thi/criteria trước khi quyết định đưa kịch bản vào thư viện.
-                    </p>
-                  )}
-
-                {/* ❌ Critical Error Banner */}
-                {(formErrors.reviewer || formErrors.reason) && (
-                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-300 space-y-1">
-                    <div className="flex items-center gap-1.5 font-semibold text-red-200">
-                      <XCircle className="w-4 h-4 text-red-400" />
-                      Lỗi kiểm tra dữ liệu đầu vào (Validation Error):
-                    </div>
-                    {formErrors.reviewer && <p>• {formErrors.reviewer}</p>}
-                    {formErrors.reason && <p>• {formErrors.reason}</p>}
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">
-                      Tên kỹ sư / reviewer chịu trách nhiệm <span className="text-red-400">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      className={`input-field text-sm ${formErrors.reviewer ? "border-red-500/60" : ""}`}
-                      placeholder="Ví dụ: Engineer QA Lead"
-                      value={reviewer}
-                      onChange={(e) => setReviewer(e.target.value)}
-                      disabled={submitting}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">
-                      Lý do đánh giá / ghi chú lý do từ chối (Ghi rõ nguyên nhân nếu Reject)
-                    </label>
-                    <textarea
-                      className={`input-field text-sm min-h-[80px] ${formErrors.reason ? "border-red-500/60" : ""}`}
-                      placeholder="Bắt buộc có từ 10 ký tự trở lên khi từ chối (Reject)..."
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                      disabled={submitting}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => handleSubmitReview(false)}
-                    disabled={submitting}
-                    className="btn-primary bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-sm px-4 py-2 flex items-center gap-2"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Từ chối (Reject)
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSubmitReview(true)}
-                    disabled={submitting}
-                    className="btn-primary btn-success text-sm px-5 py-2 flex items-center gap-2"
-                  >
-                    {submitting ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4" />
-                    )}
-                    Phê duyệt (Approve)
-                  </button>
-                </div>
+                  </RoleGate>
                 </div>
               ) : (
-                <div className={`glass-card p-6 ${scenario.status === "rejected" ? "border-red-500/30" : "border-emerald-500/30"}`}>
-                  <div className="flex items-start gap-3">
-                    {scenario.status === "simulation_queued" ? (
-                      <PlayCircle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-                    ) : scenario.status === "rejected" ? (
-                      <XCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-                    ) : (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                    )}
-                    <div className="space-y-1">
-                      <h3 className="text-sm font-semibold text-slate-200">
-                        {scenario.status === "simulation_queued"
-                          ? "Đang chờ/kích hoạt CARLA worker"
-                          : scenario.status === "approved_library"
-                            ? "Đã duyệt vào thư viện"
-                            : "Kịch bản đã bị từ chối"}
-                      </h3>
-                      <p className="text-xs text-slate-400 leading-relaxed">
-                        {scenario.status === "simulation_queued"
-                          ? "Cổng 1 đã cấp phép. Sau khi worker gửi trace/criteria, kịch bản sẽ tự chuyển sang Cổng 2 để reviewer quyết định vào thư viện."
-                          : "Không còn quyết định HITL nào đang chờ ở trạng thái này."}
-                      </p>
+                <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm">
+                  <h3 className="text-base font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
+                    <User className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    Form Phê duyệt / Từ chối (HITL Decision Form)
+                  </h3>
+
+                  {/* ❌ Critical Error Banner */}
+                  {(formErrors.reviewer || formErrors.reason) && (
+                    <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/80 text-xs text-red-800 dark:text-red-300 space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-red-900 dark:text-red-200">
+                        <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                        Lỗi kiểm tra dữ liệu đầu vào (Validation Error):
+                      </div>
+                      {formErrors.reviewer && <p>• {formErrors.reviewer}</p>}
+                      {formErrors.reason && <p>• {formErrors.reason}</p>}
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-[#0f2d59] dark:text-slate-300 mb-1.5">
+                        Tên kỹ sư / reviewer chịu trách nhiệm <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-sky-200 dark:border-slate-700 rounded-xl text-xs text-[#0f2d59] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition ${formErrors.reviewer ? "border-red-500" : ""}`}
+                        placeholder="Ví dụ: Engineer QA Lead"
+                        value={reviewer}
+                        onChange={(e) => setReviewer(e.target.value)}
+                        disabled={submitting}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#0f2d59] dark:text-slate-300 mb-1.5">
+                        Lý do đánh giá / ghi chú lý do từ chối (Ghi rõ nguyên nhân nếu Reject)
+                      </label>
+                      <textarea
+                        className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-sky-200 dark:border-slate-700 rounded-xl text-xs text-[#0f2d59] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition min-h-[80px] ${formErrors.reason ? "border-red-500" : ""}`}
+                        placeholder="Bắt buộc có từ 10 ký tự trở lên khi từ chối (Reject)..."
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        disabled={submitting}
+                      />
                     </div>
                   </div>
+
+                  <RoleGate
+                    allowedRoles={["reviewer", "admin"]}
+                    fallback={
+                      <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-300 text-xs flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                          <span>
+                            Tài khoản hiện tại ở vai trò <strong>{role || "guest"}</strong> (Chỉ được xem). Quyền Phê duyệt / Từ chối kịch bản chỉ dành cho <strong>Reviewer</strong> hoặc <strong>Admin</strong>.
+                          </span>
+                        </div>
+                      </div>
+                    }
+                  >
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSubmitReview(false)}
+                        disabled={submitting}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition cursor-pointer"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        Từ chối (Reject)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSubmitReview(true)}
+                        disabled={submitting}
+                        className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition cursor-pointer"
+                      >
+                        {submitting ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4" />
+                        )}
+                        Phê duyệt (Approve)
+                      </button>
+                    </div>
+                  </RoleGate>
                 </div>
               )}
 
-              {/* OpenSCENARIO Code View & Download */}
-              <div className="glass-card p-6 space-y-3">
+              {/* OpenSCENARIO Code View & Download Box */}
+              <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                    <FileCode className="w-4 h-4 text-blue-400" />
+                  <h3 className="text-sm font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
+                    <FileCode className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     Mã OpenSCENARIO XML
                   </h3>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleCopyXml}
                       disabled={!scenario.xosc_content}
-                      className="btn-primary btn-ghost text-xs px-3 py-1.5 flex items-center gap-1 border border-slate-700/40"
+                      className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-sky-200 dark:border-slate-700 rounded-xl text-xs font-bold text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100/80 dark:hover:bg-slate-700 transition cursor-pointer"
                     >
-                      <Copy className="w-3.5 h-3.5" />
+                      <Copy className="w-3.5 h-3.5 inline mr-1 text-blue-600 dark:text-blue-400" />
                       {xmlCopied ? "Đã chép!" : "Sao chép"}
                     </button>
                     <button
                       onClick={handleDownloadXml}
-                      disabled={!scenario.xosc_content}
-                      title={scenario.xosc_content ? "Tải file .xosc" : "Chưa có mã XML để tải"}
-                      className={`btn-primary text-xs px-3 py-1.5 flex items-center gap-1 ${
-                        !scenario.xosc_content ? "opacity-40 cursor-not-allowed" : ""
+                      disabled={scenario.status !== "approved_library"}
+                      title={
+                        scenario.status === "approved_library"
+                          ? "Tải file .xosc"
+                          : "Chỉ kịch bản đã qua duyệt BEFORE_LIBRARY mới được phép tải file .xosc"
+                      }
+                      className={`px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition ${
+                        scenario.status !== "approved_library" ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
                       }`}
                     >
-                      <Download className="w-3.5 h-3.5" />
+                      <Download className="w-3.5 h-3.5 inline mr-1" />
                       Tải .xosc
                     </button>
                   </div>
                 </div>
 
                 {scenario.xosc_content ? (
-                  <pre className="xml-viewer max-h-[300px] overflow-auto">
+                  <pre className="p-4 bg-slate-950 text-slate-100 rounded-2xl max-h-[300px] overflow-auto text-xs font-mono border border-slate-800">
                     <code>{scenario.xosc_content}</code>
                   </pre>
                 ) : (
@@ -867,16 +817,43 @@ function ReviewPageContent() {
   );
 }
 
+function ReviewRoleGuard({ children }: { children: React.ReactNode }) {
+  const { role, isLoading, isAuthenticated } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && role === "creator") {
+      router.replace("/");
+    }
+  }, [isLoading, isAuthenticated, role, router]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-purple-600">
+        <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (role === "creator") {
+    return null;
+  }
+
+  return <AuthGate allowedRoles={["reviewer", "admin"]}>{children}</AuthGate>;
+}
+
 export default function ReviewPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
-        </div>
-      }
-    >
-      <ReviewPageContent />
-    </Suspense>
+    <ReviewRoleGuard>
+      <Suspense
+        fallback={
+          <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-purple-600">
+            <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
+          </div>
+        }
+      >
+        <ReviewPageContent />
+      </Suspense>
+    </ReviewRoleGuard>
   );
 }

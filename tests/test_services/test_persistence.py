@@ -72,6 +72,7 @@ def test_schema_contains_exact_shared_tables(repository: ScenarioRepository) -> 
         "review_decisions",
         "scenario_jobs",
         "scenarios",
+        "users",
     }
 
 

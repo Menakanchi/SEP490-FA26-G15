@@ -13,7 +13,8 @@ import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Body, HTTPException, Query, Response
+from pydantic import BaseModel, Field
 
 from src.agents.graph import build_forge_graph
 from src.models.schemas import (
@@ -359,6 +360,52 @@ async def update_tags(scenario_id: str, body: TagUpdateRequest) -> dict:
 # ===========================================================================
 
 
+class DraftCreateRequest(BaseModel):
+    title: str | None = "Bản nháp kịch bản ODD"
+    description_vi: str
+    odd: dict | None = None
+    spec: dict | None = None
+    xosc_content: str | None = ""
+    created_by: str | None = "creator"
+
+
+class ScenarioUpdateRequest(BaseModel):
+    title: str | None = None
+    description_vi: str | None = None
+    odd: dict | None = None
+    spec: dict | None = None
+    xosc_content: str | None = None
+    status: str | None = None
+    user: str | None = None
+
+
+@router.post("/scenarios/draft")
+async def create_draft_scenario(body: DraftCreateRequest) -> dict:
+    sc = db.save_draft_scenario(
+        title=body.title or "Bản nháp kịch bản ODD",
+        description_vi=body.description_vi,
+        odd=body.odd or {},
+        spec=body.spec or {},
+        xosc_content=body.xosc_content or "",
+        created_by=body.created_by or "creator",
+    )
+    return {"ok": True, "scenario_id": sc["scenario_id"], "scenario": sc}
+
+
+@router.get("/scenarios/public", response_model=ScenarioListResponse)
+async def list_public_scenarios_endpoint() -> ScenarioListResponse:
+    items = db.list_public_scenarios()
+    return ScenarioListResponse(items=items, total=len(items))
+
+
+@router.get("/scenarios/me", response_model=ScenarioListResponse)
+async def list_my_scenarios_endpoint(
+    user: str = Query("creator", description="Username hiện tại"),
+) -> ScenarioListResponse:
+    items = db.list_my_scenarios(user)
+    return ScenarioListResponse(items=items, total=len(items))
+
+
 @router.get("/scenarios", response_model=ScenarioListResponse)
 @router.get("/library/search", response_model=ScenarioListResponse)
 async def list_scenarios(
@@ -367,11 +414,17 @@ async def list_scenarios(
     weather: str | None = Query(None),
     actor_type: str | None = Query(None),
     maneuver: str | None = Query(None),
+    scope: str | None = Query(None, description="public | me | all"),
+    user: str | None = Query(None, description="Username lọc theo cá nhân"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ) -> ScenarioListResponse:
-    """Danh sách scenarios với lọc ODD và phân trang (sử dụng SQLiteRetriever)."""
-    if search or road_type or weather or actor_type or maneuver:
+    """Danh sách scenarios với lọc ODD, phân quyền scope và phân trang."""
+    if scope == "public":
+        items = db.list_public_scenarios()
+    elif scope == "me" or user:
+        items = db.list_my_scenarios(user or "creator")
+    elif search or road_type or weather or actor_type or maneuver:
         retriever = SQLiteRetriever()
         odd_query = {
             "road_type": road_type,
@@ -404,6 +457,76 @@ async def list_scenarios(
     paged = items[offset : offset + limit]
 
     return ScenarioListResponse(items=paged, total=total)
+
+
+@router.put("/scenarios/{scenario_id}")
+async def update_scenario_endpoint(scenario_id: str, body: ScenarioUpdateRequest) -> dict:
+    sc = _scenario_or_404(scenario_id)
+    if sc["status"] in ("approved_library", "approved_sim"):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Approved scenarios cannot be modified or deleted",
+        )
+    if body.user and sc.get("created_by") not in ("unknown", None, body.user):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: You do not have permission to modify this scenario",
+        )
+    updated = db.update_scenario(
+        scenario_id=scenario_id,
+        title=body.title,
+        description_vi=body.description_vi,
+        odd=body.odd,
+        spec=body.spec,
+        xosc_content=body.xosc_content,
+        status=body.status,
+    )
+    return {"ok": True, "scenario": updated}
+
+
+@router.delete("/scenarios/{scenario_id}")
+async def delete_scenario_endpoint(scenario_id: str, user: str = Query("creator")) -> dict:
+    sc = _scenario_or_404(scenario_id)
+    if sc["status"] in ("approved_library", "approved_sim"):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Approved scenarios cannot be modified or deleted",
+        )
+    if user and sc.get("created_by") not in ("unknown", None, user):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: You do not have permission to delete this scenario",
+        )
+    db.delete_scenario(scenario_id)
+    return {"ok": True, "scenario_id": scenario_id}
+
+
+@router.post("/scenarios/{scenario_id}/submit")
+async def submit_scenario_for_review(scenario_id: str) -> dict:
+    sc = _scenario_or_404(scenario_id)
+    if sc["status"] in ("approved_library", "approved_sim"):
+        raise HTTPException(status_code=400, detail="Scenario is already approved")
+    db.update_scenario_status(scenario_id, "pending_sim_review")
+    return {"ok": True, "scenario_id": scenario_id, "status": "pending_sim_review"}
+
+
+class CompleteSimulationRequest(BaseModel):
+    passed: bool = Field(True, description="Chạy thử đạt (True) hoặc không đạt (False)")
+    notes: str | None = Field(None, description="Ghi chú kết quả mô phỏng ngoại tuyến")
+
+
+@router.post("/scenarios/{scenario_id}/complete-simulation")
+async def complete_simulation_endpoint(scenario_id: str, body: CompleteSimulationRequest = Body(...)) -> dict:
+    _scenario_or_404(scenario_id)
+    updated = db.complete_manual_simulation(scenario_id, passed=body.passed, notes=body.notes)
+    if not updated:
+        raise HTTPException(status_code=400, detail="Không thể cập nhật trạng thái kịch bản")
+    return {
+        "ok": True,
+        "scenario_id": scenario_id,
+        "status": updated["status"],
+        "scenario": updated,
+    }
 
 
 # ===========================================================================
@@ -480,3 +603,203 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
     logger.info("Kịch bản %s -> %s, chờ BEFORE_LIBRARY", body.scenario_id, level.value)
 
     return {"ok": True, "verification": level.value, "status": next_status.value}
+
+
+# ===========================================================================
+# Auth & User Management Endpoints
+# ===========================================================================
+
+
+class RegisterApiRequest(BaseModel):
+    username: str
+    name: str
+    email: str
+    role: str = "creator"
+    password: str | None = None
+    reason: str | None = None
+
+
+class LoginApiRequest(BaseModel):
+    username: str
+    password: str | None = None
+    role: str | None = None
+
+
+class UserCreateRequest(BaseModel):
+    username: str
+    name: str
+    email: str
+    role: str = "creator"
+    status: str = "active"
+    password: str | None = None
+    reason: str | None = None
+
+
+class UserUpdateRequest(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    role: str | None = None
+    status: str | None = None
+    password: str | None = None
+    reason: str | None = None
+
+
+@router.post("/auth/register")
+async def register_user_endpoint(body: RegisterApiRequest) -> dict:
+    existing = db.get_user(body.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="Username đã tồn tại trên hệ thống")
+
+    status = "pending_approval" if body.role == "reviewer" else "active"
+    user = db.create_user(
+        username=body.username,
+        name=body.name,
+        email=body.email,
+        role=body.role,
+        status=status,
+        reason=body.reason,
+        password=body.password,
+    )
+
+    msg = (
+        "Đăng ký tài khoản Reviewer thành công! Yêu cầu của bạn đang chờ Admin phê duyệt và cấp mật khẩu qua Email."
+        if body.role == "reviewer"
+        else "Đăng ký tài khoản thành công!"
+    )
+    return {"ok": True, "user": user, "status": status, "message_vi": msg}
+
+
+@router.post("/auth/login")
+async def login_user_endpoint(body: LoginApiRequest) -> dict:
+    u_full = db.get_user_with_hash(body.username)
+    if not u_full:
+        # Tự động tạo nếu là login mock đầu tiên
+        user = db.create_user(
+            username=body.username,
+            name=body.username.capitalize(),
+            email=f"{body.username}@forge.ai",
+            role=body.role or "creator",
+            status="active",
+            password=body.password or "123456",
+        )
+        return {
+            "access_token": f"token_{uuid.uuid4().hex[:12]}",
+            "token_type": "bearer",
+            "user": user,
+        }
+
+    if u_full.get("status") == "pending_approval":
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản đang ở trạng thái 'Chờ duyệt'. Vui lòng đợi Admin phê duyệt và nhận mật khẩu qua email.",
+        )
+
+    if u_full.get("status") in ("inactive", "rejected"):
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản đã bị từ chối hoặc vô hiệu hóa. Vui lòng liên hệ Admin.",
+        )
+
+    stored_hash = u_full.get("password_hash")
+    if stored_hash and body.password:
+        if not db.verify_password(body.password, stored_hash):
+            raise HTTPException(status_code=401, detail="Mật khẩu không chính xác")
+
+    user_clean = db.get_user(body.username)
+    return {
+        "access_token": f"token_{uuid.uuid4().hex[:12]}",
+        "token_type": "bearer",
+        "user": user_clean,
+    }
+
+
+@router.get("/auth/me")
+async def get_me_endpoint(user: str = Query("admin")) -> dict:
+    u = db.get_user(user)
+    if not u:
+        u = db.get_user("admin")
+    return u or {
+        "id": "usr_admin",
+        "username": "admin",
+        "name": "Hệ Thống Admin",
+        "email": "admin@forge.ai",
+        "role": "admin",
+        "status": "active",
+    }
+
+
+# ===========================================================================
+# Admin Subsystem Endpoints (/admin)
+# ===========================================================================
+
+
+@router.get("/admin/stats")
+async def get_admin_stats_endpoint() -> dict:
+    return db.get_admin_stats()
+
+
+@router.get("/admin/pending-reviewers")
+async def list_pending_reviewers_endpoint() -> list[dict]:
+    return db.get_pending_reviewers()
+
+
+@router.get("/admin/users")
+async def list_admin_users_endpoint(role: str | None = Query(None), status: str | None = Query(None)) -> list[dict]:
+    return db.list_users(role=role, status=status)
+
+
+@router.post("/admin/users")
+async def create_admin_user_endpoint(body: UserCreateRequest) -> dict:
+    existing = db.get_user(body.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="Username đã tồn tại")
+    user = db.create_user(
+        username=body.username,
+        name=body.name,
+        email=body.email,
+        role=body.role,
+        status=body.status,
+        reason=body.reason,
+        password=body.password,
+    )
+    return {"ok": True, "user": user}
+
+
+@router.put("/admin/users/{username}")
+async def update_admin_user_endpoint(username: str, body: UserUpdateRequest) -> dict:
+    updated = db.update_user(
+        username=username,
+        name=body.name,
+        email=body.email,
+        role=body.role,
+        status=body.status,
+        reason=body.reason,
+        password=body.password,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+    return {"ok": True, "user": updated}
+
+
+@router.delete("/admin/users/{username}")
+async def delete_admin_user_endpoint(username: str) -> dict:
+    success = db.delete_user(username)
+    if not success:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+    return {"ok": True, "username": username}
+
+
+@router.post("/admin/users/{username}/approve")
+async def approve_reviewer_endpoint(username: str) -> dict:
+    user = db.approve_reviewer_request(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Reviewer")
+    return {"ok": True, "user": user}
+
+
+@router.post("/admin/users/{username}/reject")
+async def reject_reviewer_endpoint(username: str) -> dict:
+    user = db.reject_reviewer_request(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Reviewer")
+    return {"ok": True, "user": user}

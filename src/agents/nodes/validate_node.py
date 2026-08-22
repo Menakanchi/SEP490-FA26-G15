@@ -215,12 +215,14 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                     actual = getattr(draft.odd, axis)
                     if expected is None or actual == expected:
                         continue
+                    expected_str = expected.value if hasattr(expected, "value") else str(expected)
+                    actual_str = actual.value if hasattr(actual, "value") else str(actual)
                     issues.append(
                         ValidationIssue(
                             code=IssueCode.ODD_LABEL_DRIFT,
                             path=f"/odd/{axis}",
-                            message_vi=f"Nhãn ODD {axis} bị đổi từ {expected.value} sang {actual.value}.",
-                            suggestion=f"Đặt /odd/{axis} thành '{expected.value}' như odd_query gốc.",
+                            message_vi=f"Nhãn ODD {axis} bị đổi từ {expected_str} sang {actual_str}.",
+                            suggestion=f"Đặt /odd/{axis} thành '{expected_str}' như odd_query gốc.",
                         )
                     )
 

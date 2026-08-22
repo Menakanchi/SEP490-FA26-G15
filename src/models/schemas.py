@@ -1087,21 +1087,11 @@ class ReviewGate(StrEnum):
 
 
 class ScenarioStatus(StrEnum):
-    """Vòng đời của scenario qua hai cổng và một lần chạy mô phỏng.
-
-    ``queued`` / ``running`` / ``done`` / ``failed`` **không** nằm ở đây — chúng
-    là :class:`JobStatus`. Sơ đồ ở ``docs/gate-1/03-wireframe-ui-flow.md`` §7 vẽ
-    gộp hai tầng cho dễ nhìn; nhân đôi chúng thành cột thứ hai là mời gọi đúng
-    loại bug khó thấy nhất — hai cột cùng tên lệch nhau và không ai biết cột nào
-    mới là thật.
-
-    Một lần sinh **thất bại** không tạo scenario nào cả: nó sống và chết trong
-    bảng ``generation_requests`` (PRD §8 — *"không tạo pending scenario giả"*).
-    """
-
+    DRAFT = "draft"
     PENDING_SIM_REVIEW = "pending_sim_review"  # workflow xong, chờ cấp phép GPU
     SIMULATION_QUEUED = "simulation_queued"  # đã duyệt BEFORE_SIM, chờ worker trả kết quả
     PENDING_LIBRARY_REVIEW = "pending_library_review"  # đã có bằng chứng CARLA, chờ duyệt thư viện
+    APPROVED_SIM = "approved_sim"  # đã duyệt mô phỏng
     APPROVED_LIBRARY = "approved_library"  # cổng cuối đã duyệt, có embedding
     REJECTED = "rejected"  # bị từ chối ở một trong hai cổng
 
@@ -1144,10 +1134,16 @@ def next_status_after_execution(current: ScenarioStatus) -> ScenarioStatus | Non
     return EXECUTION_TRANSITIONS.get(current)
 
 
+DRAFT_TRANSITIONS: dict[ScenarioStatus, ScenarioStatus] = {
+    ScenarioStatus.DRAFT: ScenarioStatus.PENDING_SIM_REVIEW,
+}
+
+
 ALLOWED_SCENARIO_TRANSITIONS: dict[ScenarioStatus, frozenset[ScenarioStatus]] = {
     status: frozenset(
         {target for (src, _, _), target in REVIEW_TRANSITIONS.items() if src is status}
         | ({EXECUTION_TRANSITIONS[status]} if status in EXECUTION_TRANSITIONS else set())
+        | ({DRAFT_TRANSITIONS[status]} if status in DRAFT_TRANSITIONS else set())
     )
     for status in ScenarioStatus
 }

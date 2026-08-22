@@ -17,9 +17,14 @@ mang bất biến nào.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
+import secrets
 import sqlite3
+import string
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -92,6 +97,7 @@ def init_db() -> None:
             {"new_status": ScenarioStatus.PENDING_SIM_REVIEW.value},
         )
     _migrate_description_normalized(engine)
+    _seed_default_users()
 
 
 _NORMALIZED_TABLES = ("scenarios", "generation_requests")
@@ -381,12 +387,10 @@ def save_scenario(
     tags: list | None = None,
     retrieved_examples: list | None = None,
     validation_mode: str = "fast",
+    created_by: str = "creator",
 ) -> dict:
     now_str = datetime.now(UTC).isoformat()
 
-    # ADR-013 lọc ODD bằng ``WHERE`` trên bốn cột có index, nên bốn cột đó phải
-    # giữ đúng chuỗi enum. Chi tiết theo lời người dùng sống trong
-    # ``spec.odd.specific_type``, không ghép vào đây.
     rt = odd_axis_value(odd.get("road_type"))
     wt = odd_axis_value(odd.get("weather"))
     at_str = odd_axis_value(odd.get("actor_type"))
@@ -396,18 +400,13 @@ def save_scenario(
     assumptions_json = json.dumps(assumptions or [], ensure_ascii=False)
     tags_json = json.dumps(tags or [], ensure_ascii=False)
 
-    # `embedding` để NULL. ADR-011 §Hệ quả: vector chỉ được ghi trong đúng
-    # transaction duyệt BEFORE_LIBRARY. Đó là cách FR-03/FR-11 ("chỉ scenario đã
-    # duyệt mới tìm lại được") được thi hành bằng cấu trúc — không có vector thì
-    # không lọt vào kết quả retrieval, kể cả khi người viết truy vấn quên
-    # `WHERE status = 'approved_library'`.
     with _cursor(commit=True) as cursor:
         cursor.execute(
             """
         INSERT OR REPLACE INTO scenarios
         (scenario_id, status, title, description_vi, description_normalized, spec, xosc_content, assumptions,
-         tags, road_type, weather, actor_type, maneuver, verification, embedding, embedding_model, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         tags, road_type, weather, actor_type, maneuver, verification, embedding, embedding_model, created_at, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
             (
                 scenario_id,
@@ -423,11 +422,11 @@ def save_scenario(
                 wt,
                 at_str,
                 mv_str,
-                # Mọi kịch bản mới đều chưa chạy CARLA lần nào (ADR-017).
                 VerificationLevel.UNVERIFIED.value,
-                None,  # embedding — xem ghi chú ADR-011 phía trên
-                None,  # embedding_model — ghi cùng lúc với embedding, không sớm hơn
+                None,
+                None,
                 now_str,
+                created_by or "creator",
             ),
         )
 
@@ -444,6 +443,7 @@ def save_scenario(
         "assumptions": assumptions or [],
         "tags": tags or [],
         "review_logs": get_review_decisions(scenario_id),
+        "created_by": created_by or "creator",
         "created_at": now_str,
         "validation_mode": validation_mode,
     }
@@ -626,6 +626,177 @@ def list_all_scenarios() -> list[dict]:
     return scenarios
 
 
+def save_draft_scenario(
+    title: str,
+    description_vi: str,
+    odd: dict,
+    spec: dict | None = None,
+    xosc_content: str = "",
+    created_by: str = "creator",
+    scenario_id: str | None = None,
+) -> dict:
+    if not scenario_id:
+        scenario_id = f"sc_draft_{uuid.uuid4().hex[:8]}"
+
+    return save_scenario(
+        scenario_id=scenario_id,
+        title=title or "Bản nháp kịch bản ODD",
+        description_vi=description_vi,
+        spec=spec or {},
+        odd=odd or {},
+        status=ScenarioStatus.DRAFT.value,
+        xosc_content=xosc_content,
+        created_by=created_by,
+    )
+
+
+def list_public_scenarios() -> list[dict]:
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT scenario_id FROM scenarios
+            WHERE status IN ('approved_library', 'approved_sim')
+            ORDER BY created_at DESC
+            """
+        )
+        rows = cursor.fetchall()
+    scenarios = []
+    for r in rows:
+        sc = get_scenario(r["scenario_id"])
+        if sc:
+            scenarios.append(sc)
+    return scenarios
+
+
+def list_my_scenarios(username: str) -> list[dict]:
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT DISTINCT s.scenario_id
+            FROM scenarios s
+            LEFT JOIN generation_requests gr ON s.scenario_id = gr.scenario_id
+            WHERE LOWER(s.created_by) = LOWER(?) OR LOWER(gr.created_by) = LOWER(?)
+            ORDER BY s.created_at DESC
+            """,
+            (username, username),
+        )
+        rows = cursor.fetchall()
+    scenarios = []
+    seen_ids = set()
+    for r in rows:
+        sc_id = r["scenario_id"]
+        if sc_id and sc_id not in seen_ids:
+            sc = get_scenario(sc_id)
+            if sc:
+                scenarios.append(sc)
+                seen_ids.add(sc_id)
+
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT scenario_id
+            FROM generation_requests
+            WHERE LOWER(created_by) = LOWER(?) AND scenario_id IS NOT NULL
+            ORDER BY created_at DESC
+            """,
+            (username,),
+        )
+        req_rows = cursor.fetchall()
+
+    for r in req_rows:
+        sc_id = r["scenario_id"]
+        if sc_id and sc_id not in seen_ids:
+            sc = get_scenario(sc_id)
+            if sc:
+                scenarios.append(sc)
+                seen_ids.add(sc_id)
+
+    return scenarios
+
+
+def update_scenario(
+    scenario_id: str,
+    title: str | None = None,
+    description_vi: str | None = None,
+    odd: dict | None = None,
+    spec: dict | None = None,
+    xosc_content: str | None = None,
+    status: str | None = None,
+) -> dict | None:
+    sc = get_scenario(scenario_id)
+    if not sc:
+        return None
+
+    new_title = title if title is not None else sc["title"]
+    new_desc = description_vi if description_vi is not None else sc["description_vi"]
+    new_odd = odd if odd is not None else sc.get("odd", {})
+    new_spec = spec if spec is not None else sc.get("spec", {})
+    new_xosc = xosc_content if xosc_content is not None else sc.get("xosc_content", "")
+    new_status = status if status is not None else sc["status"]
+
+    rt = odd_axis_value(new_odd.get("road_type"))
+    wt = odd_axis_value(new_odd.get("weather"))
+    at_str = odd_axis_value(new_odd.get("actor_type"))
+    mv_str = odd_axis_value(new_odd.get("maneuver"))
+
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            UPDATE scenarios
+            SET title = ?, description_vi = ?, description_normalized = ?,
+                spec = ?, xosc_content = ?, road_type = ?, weather = ?, actor_type = ?, maneuver = ?, status = ?
+            WHERE scenario_id = ?
+            """,
+            (
+                new_title,
+                new_desc,
+                normalize_prompt(new_desc),
+                json.dumps(new_spec, ensure_ascii=False),
+                new_xosc,
+                rt,
+                wt,
+                at_str,
+                mv_str,
+                new_status,
+                scenario_id,
+            ),
+        )
+    return get_scenario(scenario_id)
+
+
+def delete_scenario(scenario_id: str) -> bool:
+    with _cursor(commit=True) as cursor:
+        cursor.execute("DELETE FROM scenarios WHERE scenario_id = ?", (scenario_id,))
+        return cursor.rowcount > 0
+
+
+def complete_manual_simulation(scenario_id: str, passed: bool = True, notes: str | None = None) -> dict | None:
+    sc = get_scenario(scenario_id)
+    if not sc:
+        return None
+
+    new_status = ScenarioStatus.PENDING_LIBRARY_REVIEW.value if passed else ScenarioStatus.REJECTED.value
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            "UPDATE scenarios SET status = ? WHERE scenario_id = ?",
+            (new_status, scenario_id),
+        )
+
+    if notes:
+        try:
+            save_review_decision(
+                scenario_id,
+                gate="before_sim",
+                approved=passed,
+                reviewer="manual_verifier",
+                reason=notes,
+            )
+        except Exception as err:
+            logger.warning(f"Could not save review decision log: {err}")
+
+    return get_scenario(scenario_id)
+
+
 # ---------------------------------------------------------------------------
 # Review Decisions CRUD
 # ---------------------------------------------------------------------------
@@ -734,3 +905,286 @@ def update_job_result(job_id: str, status: str, result: dict) -> None:
     """,
             (status, result_json, now_str, job_id),
         )
+
+
+# ---------------------------------------------------------------------------
+# Auth & User Management CRUD (Admin / Auth)
+# ---------------------------------------------------------------------------
+
+
+def hash_password(password: str, salt: bytes | None = None) -> str:
+    if not salt:
+        salt = os.urandom(16)
+    pw_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100000)
+    return f"{salt.hex()}:{pw_hash.hex()}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    if not stored_hash or ":" not in stored_hash:
+        return False
+    try:
+        salt_hex, pw_hex = stored_hash.split(":")
+        salt = bytes.fromhex(salt_hex)
+        expected_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100000).hex()
+        return secrets.compare_digest(pw_hex, expected_hash)
+    except Exception:
+        return False
+
+
+def generate_temp_password(length: int = 10) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "Pass_" + "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def _seed_default_users() -> None:
+    with _cursor(commit=True) as cursor:
+        cursor.execute("SELECT COUNT(*) AS cnt FROM users")
+        row = cursor.fetchone()
+        if row and row["cnt"] > 0:
+            return
+
+        now_str = datetime.now(UTC).isoformat()
+        admin_pass_hash = hash_password("admin123")
+        creator_pass_hash = hash_password("creator123")
+
+        default_users = [
+            ("admin", "Hệ Thống Admin", "admin@forge.ai", "admin", "active", None, admin_pass_hash, now_str, now_str),
+            (
+                "creator",
+                "Kỹ sư Kịch bản",
+                "creator@forge.ai",
+                "creator",
+                "active",
+                None,
+                creator_pass_hash,
+                now_str,
+                now_str,
+            ),
+            (
+                "reviewer_pending",
+                "Trần Văn Reviewer",
+                "reviewer_pending@company.com",
+                "reviewer",
+                "pending_approval",
+                "Kỹ sư mô phỏng VinFast ADAS",
+                None,
+                now_str,
+                now_str,
+            ),
+        ]
+
+        cursor.executemany(
+            """
+            INSERT INTO users (username, name, email, role, status, reason, password_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            default_users,
+        )
+
+
+def create_user(
+    username: str,
+    name: str,
+    email: str,
+    role: str = "creator",
+    status: str = "active",
+    reason: str | None = None,
+    password: str | None = None,
+) -> dict:
+    now_str = datetime.now(UTC).isoformat()
+    pw_hash = hash_password(password) if password else None
+
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            INSERT INTO users (username, name, email, role, status, reason, password_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (username, name, email, role, status, reason, pw_hash, now_str, now_str),
+        )
+    return get_user(username)  # type: ignore[return-value]
+
+
+def get_user(username: str) -> dict | None:
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cursor.fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d.pop("password_hash", None)
+    return d
+
+
+def get_user_with_hash(username: str) -> dict | None:
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def list_users(role: str | None = None, status: str | None = None) -> list[dict]:
+    query = "SELECT * FROM users WHERE 1=1"
+    params = []
+    if role:
+        query += " AND role = ?"
+        params.append(role)
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    query += " ORDER BY created_at DESC"
+
+    with _cursor() as cursor:
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+    res = []
+    for r in rows:
+        d = dict(r)
+        d.pop("password_hash", None)
+        res.append(d)
+    return res
+
+
+def update_user(
+    username: str,
+    name: str | None = None,
+    email: str | None = None,
+    role: str | None = None,
+    status: str | None = None,
+    reason: str | None = None,
+    password: str | None = None,
+) -> dict | None:
+    u = get_user_with_hash(username)
+    if not u:
+        return None
+
+    new_name = name if name is not None else u["name"]
+    new_email = email if email is not None else u["email"]
+    new_role = role if role is not None else u["role"]
+    new_status = status if status is not None else u["status"]
+    new_reason = reason if reason is not None else u["reason"]
+    new_pw_hash = hash_password(password) if password else u["password_hash"]
+    now_str = datetime.now(UTC).isoformat()
+
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            UPDATE users
+            SET name = ?, email = ?, role = ?, status = ?, reason = ?, password_hash = ?, updated_at = ?
+            WHERE LOWER(username) = LOWER(?)
+            """,
+            (new_name, new_email, new_role, new_status, new_reason, new_pw_hash, now_str, username),
+        )
+    return get_user(username)
+
+
+def delete_user(username: str) -> bool:
+    with _cursor(commit=True) as cursor:
+        cursor.execute("DELETE FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        return cursor.rowcount > 0
+
+
+def approve_reviewer_request(username: str) -> dict | None:
+    u = get_user_with_hash(username)
+    if not u:
+        return None
+
+    temp_password = generate_temp_password(10)
+    pw_hash = hash_password(temp_password)
+    now_str = datetime.now(UTC).isoformat()
+
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            UPDATE users
+            SET status = 'active', password_hash = ?, updated_at = ?
+            WHERE LOWER(username) = LOWER(?)
+            """,
+            (pw_hash, now_str, username),
+        )
+
+    # Log email service sending credentials to reviewer
+    logger.info(
+        f"[EMAIL SERVICE] Sent login credentials to {u['email']} ({u['name']}): Username: {u['username']}, Temp Password: {temp_password}"
+    )
+
+    user_dict = get_user(username)
+    if user_dict:
+        user_dict["temp_password"] = temp_password
+        user_dict["email_sent"] = True
+    return user_dict
+
+
+def reject_reviewer_request(username: str) -> dict | None:
+    return update_user(username, status="rejected")
+
+
+def get_pending_reviewers() -> list[dict]:
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT * FROM users
+            WHERE status IN ('pending_approval', 'pending')
+            ORDER BY created_at DESC
+            """
+        )
+        rows = cursor.fetchall()
+    res = []
+    for r in rows:
+        d = dict(r)
+        d.pop("password_hash", None)
+        res.append(d)
+    return res
+
+
+def get_admin_stats() -> dict:
+    with _cursor() as cursor:
+        cursor.execute("SELECT role, status, COUNT(*) AS count FROM users GROUP BY role, status")
+        user_rows = cursor.fetchall()
+
+        cursor.execute("SELECT status, COUNT(*) AS count FROM scenarios GROUP BY status")
+        scenario_rows = cursor.fetchall()
+
+    user_stats = {
+        "total": 0,
+        "creator": 0,
+        "reviewer": 0,
+        "admin": 0,
+        "pending_approval": 0,
+    }
+    for r in user_rows:
+        cnt = r["count"]
+        user_stats["total"] += cnt
+        role = r["role"]
+        status = r["status"]
+        if status in ("pending_approval", "pending"):
+            user_stats["pending_approval"] += cnt
+        elif role == "reviewer" and status == "active":
+            user_stats["reviewer"] += cnt
+        elif role == "creator" and status == "active":
+            user_stats["creator"] += cnt
+        elif role == "admin":
+            user_stats["admin"] += cnt
+
+    scenario_stats = {
+        "total": 0,
+        "draft": 0,
+        "pending_sim_review": 0,
+        "simulation_queued": 0,
+        "pending_library_review": 0,
+        "approved_library": 0,
+        "approved_sim": 0,
+        "rejected": 0,
+    }
+    for r in scenario_rows:
+        cnt = r["count"]
+        st = r["status"]
+        scenario_stats["total"] += cnt
+        if st in scenario_stats:
+            scenario_stats[st] = cnt
+
+    return {
+        "users": user_stats,
+        "scenarios": scenario_stats,
+    }
