@@ -65,7 +65,11 @@ def valid_draft() -> ScenarioDraft:
             ManeuverSpec(
                 actor_name="other",
                 maneuver=ManeuverType.CUT_IN,
-                trigger=TriggerCondition(type="simulation_time", value=5.0),
+                # Ego 30 km/h, chủ thể 40 km/h từ sau 10 m -> đi ngang nhau ở giây
+                # 3,6. Trigger 7,0 cho nó vượt lên 9,4 m rồi mới tạt — trên ngưỡng
+                # một thân xe. Bản cũ đặt 5,0 (vượt 3,89 m) và đó chính là hình học
+                # đo được là TÔNG ĐUÔI trên CARLA, xem `MIN_CUT_IN_LEAD_M`.
+                trigger=TriggerCondition(type="simulation_time", value=7.0),
                 target_speed_kmh=20.0,
             )
         ],
@@ -483,3 +487,65 @@ async def test_jaywalk_in_ego_lane_is_repairable_not_terminal(valid_draft: Scena
     issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_IN_EGO_LANE)
     assert issue.repairable_by_llm
     assert "lane_offset" in issue.suggestion
+
+
+@pytest.mark.asyncio
+async def test_cut_in_must_overtake_by_a_vehicle_length_not_just_by_a_hair() -> None:
+    """Vượt qua thôi chưa đủ — vượt 5 m rồi tạt là cắt vào sườn ego, không phải trước mũi.
+
+    Bốn kịch bản chạy thật ngày 22/08 tách thành hai cụm theo khoảng vượt lúc
+    trigger: 4,67 m và 5,05 m đều thành tông đuôi; 8,33 m và 13,89 m đều tạt đầu
+    đúng ý. Vị từ cũ chỉ đòi biên dương nên hai ca đầu đi lọt.
+    """
+
+    def draft(trigger_s: float) -> ScenarioDraft:
+        # sc_021: ego 96, chủ thể 110 từ sau 28 m -> đi ngang nhau ở giây 7,2.
+        return ScenarioDraft(
+            title="tạt đầu cao tốc",
+            odd=ODDCell(
+                road_type=RoadType.HIGHWAY,
+                weather=Weather.CLEAR,
+                actor_type=ActorType.CAR,
+                maneuver=ManeuverType.CUT_IN,
+            ),
+            time_of_day=TimeOfDay.DAY,
+            actors=[
+                ActorSpec(
+                    name="hero",
+                    category=VehicleCategory.CAR,
+                    position=Position(lane_offset=0, s_offset_m=0.0),
+                    initial_speed_kmh=96.0,
+                    is_ego=True,
+                ),
+                ActorSpec(
+                    name="adv",
+                    category=VehicleCategory.CAR,
+                    position=Position(lane_offset=-1, s_offset_m=-28.0),
+                    initial_speed_kmh=110.0,
+                    is_ego=False,
+                ),
+            ],
+            maneuvers=[
+                ManeuverSpec(
+                    actor_name="adv",
+                    maneuver=ManeuverType.CUT_IN,
+                    trigger=TriggerCondition(type="simulation_time", value=trigger_s),
+                    target_speed_kmh=70.0,
+                )
+            ],
+            duration_s=30.0,
+        )
+
+    async def codes(trigger_s: float) -> set[IssueCode]:
+        result = await validate_node(
+            {
+                "draft": draft(trigger_s),
+                "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
+            }
+        )
+        return {i.code for i in result["issues"]}
+
+    # 8,5 s = vượt 5,05 m, đúng hình học đã đo được là tông đuôi.
+    assert IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE in await codes(8.5)
+    # 10,0 s = vượt 10,9 m, trên ngưỡng một thân xe.
+    assert IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE not in await codes(10.0)
