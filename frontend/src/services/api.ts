@@ -13,7 +13,9 @@ import type {
   ODDPayload,
   ValidationMode,
   QualityReport,
-} from "@/types";
+
+  CampaignDetail,
+  CampaignSummary,} from "@/types";
 import type { LoginPayload, RegisterPayload, User } from "@/types/auth";
 
 const BASE_URL =
@@ -368,4 +370,31 @@ export async function rejectReviewer(username: string): Promise<{ ok: boolean; u
 
 export async function getQualityReport(): Promise<QualityReport> {
   return request<QualityReport>("/metrics/quality");
+}
+
+
+// ---------------------------------------------------------------------------
+// /campaigns — chiến dịch ODD (chế độ nâng cao)
+// ---------------------------------------------------------------------------
+
+export async function createCampaign(body: {
+  cells: Array<Record<string, string>>;
+  per_cell: number;
+  max_scenarios: number;
+  created_by: string;
+}): Promise<{ campaign_id: string; planned: number }> {
+  return request("/campaigns", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function listCampaigns(): Promise<CampaignSummary[]> {
+  const data = await request<{ campaigns: CampaignSummary[] }>("/campaigns");
+  return data.campaigns;
+}
+
+export async function getCampaign(id: string): Promise<CampaignDetail> {
+  return request<CampaignDetail>(`/campaigns/${encodeURIComponent(id)}`);
+}
+
+export async function stopCampaign(id: string): Promise<{ ok: boolean }> {
+  return request(`/campaigns/${encodeURIComponent(id)}/stop`, { method: "POST" });
 }
