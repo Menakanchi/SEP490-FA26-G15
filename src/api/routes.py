@@ -29,9 +29,11 @@ from src.models.schemas import (
     ReviewApiRequest,
     ReviewGate,
     ScenarioListResponse,
+    ScenarioSpec,
     ScenarioStatus,
     StatusResponse,
     TagUpdateRequest,
+    is_near_duplicate,
     is_too_vague_to_generate,
     next_status_after_execution,
     next_status_after_review,
@@ -320,6 +322,21 @@ async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) ->
 
     if body.approved and gate is ReviewGate.BEFORE_SIM and not _has_xosc(scenario):
         raise HTTPException(status_code=409, detail=UNCOMPILED_SCENARIO_DETAIL)
+
+    # ADR-019: Kiểm tra gần trùng trước khi tạo job CARLA
+    if body.approved and gate is ReviewGate.BEFORE_SIM:
+        spec_moi = ScenarioSpec.model_validate(scenario["spec"])
+        odd_key = f"{scenario['road_type']}_{scenario['weather']}_{scenario['actor_type']}_{scenario['maneuver']}"
+        candidates = db.get_scenarios_for_near_duplicate_check(odd_key, target_id)
+        for candidate in candidates:
+            spec_cu = ScenarioSpec.model_validate(candidate["spec"])
+            result = is_near_duplicate(spec_moi, spec_cu)
+            if result and not body.force_simulate:
+                return {
+                    "ok": True,
+                    "warning": "near_duplicate",
+                    "duplicate_scenario_id": result.duplicate_scenario_id,
+                }
 
     db.update_scenario_status(target_id, next_status.value)
     scenario["status"] = next_status.value

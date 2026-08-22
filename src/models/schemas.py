@@ -43,6 +43,8 @@ from typing import ClassVar, Literal, get_args
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
+from src.config import get_settings
+
 
 class ForgeModel(BaseModel):
     """Base của mọi model trong hợp đồng. Cấm trường lạ.
@@ -1238,6 +1240,108 @@ class LibraryEntry(ForgeModel):
 
 
 # ---------------------------------------------------------------------------
+# Near-duplicate detection (ADR-019)
+# ---------------------------------------------------------------------------
+
+
+class DuplicateDiff:
+    """Kịch bản gần trùng với một scenario đã có.
+
+    Dùng để hiển thị cho reviewer biết scenario nào bị trùng,
+    và reviewer sẽ quyết định có dùng scenario cũ hay sinh mới.
+    """
+
+    def __init__(
+        self,
+        duplicate_scenario_id: str,
+    ):
+        self.duplicate_scenario_id = duplicate_scenario_id
+
+
+def is_near_duplicate(spec_a: ScenarioSpec, spec_b: ScenarioSpec) -> DuplicateDiff | None:
+    """So sánh hai scenarios về động học để phát hiện gần trùng.
+
+    Hai scenarios là gần trùng khi tất cả 8 điều kiện sau đều khớp:
+    1. ODD Key (exact)
+    2. Trigger Type (exact)
+    3. Trigger Value (|Δ| ≤ 5.0)
+    4. Lane Offset (exact)
+    5. s_offset_m (exact)
+    6. Speed Actors (|Δ| ≤ 5.0 km/h cho mỗi actor)
+    7. Target Speed (|Δ| ≤ 5.0 km/h cho mỗi maneuver)
+    8. Actor Structure (exact)
+    9. Maneuvers Set (exact)
+
+    Trả về DuplicateDiff nếu trùng, None nếu không trùng.
+    """
+    # 1. ODD Key phải bằng nhau
+    if spec_a.odd.key != spec_b.odd.key:
+        return None
+
+    # Map actors theo name để so sánh
+    actors_a = {a.name: a for a in spec_a.actors}
+    actors_b = {b.name: b for b in spec_b.actors}
+
+    # 8. Actor Structure phải giống nhau (cùng name, category, is_ego)
+    if set(actors_a.keys()) != set(actors_b.keys()):
+        return None
+    for name in actors_a:
+        if actors_a[name].category != actors_b[name].category:
+            return None
+        if actors_a[name].is_ego != actors_b[name].is_ego:
+            return None
+
+    # Map maneuvers theo index để so sánh
+    maneuvers_a = spec_a.maneuvers
+    maneuvers_b = spec_b.maneuvers
+
+    # 9. Maneuvers Set phải giống nhau
+    maneuvers_set_a = {m.maneuver for m in maneuvers_a}
+    maneuvers_set_b = {m.maneuver for m in maneuvers_b}
+    if maneuvers_set_a != maneuvers_set_b:
+        return None
+
+    # 9b. Số lượng maneuvers phải bằng nhau
+    if len(maneuvers_a) != len(maneuvers_b):
+        return None
+
+    # So từng maneuver
+    for m_a, m_b in zip(maneuvers_a, maneuvers_b):
+        # 2. Trigger Type phải bằng nhau
+        if m_a.trigger.type != m_b.trigger.type:
+            return None
+
+        # 3. Trigger Value |Δ| ≤ threshold
+        delta_trigger = abs(m_a.trigger.value - m_b.trigger.value)
+        if delta_trigger > get_settings().near_duplicate_trigger_threshold:
+            return None
+
+        # 7. Target Speed |Δ| ≤ threshold cho maneuver này
+        if m_a.target_speed_kmh is not None and m_b.target_speed_kmh is not None:
+            delta_target = abs(m_a.target_speed_kmh - m_b.target_speed_kmh)
+            if delta_target > get_settings().near_duplicate_speed_threshold:
+                return None
+
+    # So từng actor
+    for name in actors_a:
+        # 4. Lane Offset exact
+        if actors_a[name].position.lane_offset != actors_b[name].position.lane_offset:
+            return None
+
+        # 5. s_offset_m exact
+        if actors_a[name].position.s_offset_m != actors_b[name].position.s_offset_m:
+            return None
+
+        # 6. Speed |Δ| ≤ threshold cho mỗi actor
+        delta_speed = abs(actors_a[name].initial_speed_kmh - actors_b[name].initial_speed_kmh)
+        if delta_speed > get_settings().near_duplicate_speed_threshold:
+            return None
+
+    # Tất cả điều kiện khớp -> gần trùng
+    return DuplicateDiff(duplicate_scenario_id=spec_b.scenario_id)
+
+
+# ---------------------------------------------------------------------------
 # Hợp đồng HTTP giữa frontend và backend
 # ---------------------------------------------------------------------------
 # Tách khỏi domain model (``ScenarioSpec``, ``ReviewDecision``, ...) có chủ đích:
@@ -1371,6 +1475,10 @@ class ReviewApiRequest(ForgeModel):
     approved: bool
     reviewer: str = Field(..., min_length=1, description="Tên người chịu trách nhiệm duyệt")
     reason: str = Field("", max_length=1000, description="Bắt buộc khi approved=False")
+    force_simulate: bool = Field(
+        False,
+        description="Bỏ qua cảnh báo gần trùng và tiếp tục tạo job CARLA (ADR-019 §15.5).",
+    )
 
 
 class TagUpdateRequest(ForgeModel):
