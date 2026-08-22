@@ -645,3 +645,61 @@ async def test_complete_simulation_rejected(client):
     )
     assert res.status_code == 200
     assert res.json()["status"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_batch_review_approves_a_whole_campaign_at_gate_one(client):
+    """Cổng 1 áp lên **lô**, không lên từng kịch bản (ADR-014 §A3).
+
+    Với 76 ô thì người duyệt bấm 76 lần mà không thực sự đọc, và rubber-stamp
+    còn tệ hơn không có cổng. Một quyết định cho cả lô, ghi rõ ai chịu trách
+    nhiệm — nhưng vẫn là con người bấm, vì đề bài bắt phải có người phê duyệt
+    trước khi điều khiển thiết bị.
+    """
+    from src.services import db
+
+    campaign_id = "cmp_test01"
+    db.create_campaign(campaign_id, cells=[], per_cell=1, max_scenarios=5, created_by="cong")
+
+    scenario_ids = []
+    # Hai câu khác chữ nhưng cùng ô ODD (xe máy · cut_in): draft mock là một
+    # bản duy nhất, nên câu nào đọc ra actor khác sẽ chết ở ODD_ACTOR_MISMATCH.
+    prompts = (
+        "Xe máy tạt đầu ô tô trên đường cao tốc",
+        "Trên cao tốc, xe máy vượt lên rồi tạt đầu ô tô đang chạy",
+    )
+    for prompt in prompts:
+        sc_id = await _generate_one(client, prompt)
+        scenario_ids.append(sc_id)
+        request_id = next(
+            r["request_id"]
+            for r in db.metrics_rows()[0]
+            if db.get_generation_request(r["request_id"])["scenario_id"] == sc_id
+        )
+        db.attach_request_to_campaign(request_id, campaign_id)
+
+    response = await client.post(
+        f"/api/v1/campaigns/{campaign_id}/review",
+        json={"reviewer": "cong", "approved": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["count"] == 2
+
+    for sc_id in scenario_ids:
+        assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["status"] == "simulation_queued"
+
+    jobs = (await client.get("/api/v1/internal/jobs")).json()["jobs"]
+    assert len(jobs) == 2, "mỗi kịch bản vẫn có job riêng — gộp là gộp QUYẾT ĐỊNH, không gộp công việc"
+
+
+@pytest.mark.asyncio
+async def test_batch_review_only_touches_scenarios_waiting_at_gate_one(client):
+    """Phép cấp phép có biên: không áp cho kịch bản ngoài chiến dịch."""
+    from src.services import db
+
+    db.create_campaign("cmp_test02", cells=[], per_cell=1, max_scenarios=5, created_by="cong")
+    outsider = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+
+    response = await client.post("/api/v1/campaigns/cmp_test02/review", json={"reviewer": "cong", "approved": True})
+    assert response.json()["count"] == 0
+    assert (await client.get(f"/api/v1/scenarios/{outsider}")).json()["status"] == "pending_sim_review"
