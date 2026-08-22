@@ -126,6 +126,24 @@ def lane_drift_trigger_too_late(maneuver: ManeuverSpec, actor: ActorSpec, ego: A
     return maneuver.trigger.value >= alongside_s
 
 
+MIN_CUT_IN_LEAD_M = 7.0
+"""Chủ thể phải vượt lên trước ego ít nhất ngần này mét rồi mới được tạt vào.
+
+Một thân xe ~4,5 m cộng khoảng an toàn. Đo trên bốn kịch bản chạy thật ngày
+22/08: 4,67 m và 5,05 m đều thành tông đuôi; 8,33 m và 13,89 m đều tạt đầu đúng
+ý. Ngưỡng nằm giữa hai cụm.
+
+Bốn điểm dữ liệu là ít, nên con số này phải đo lại khi có batch lớn hơn — nhưng
+nó có lý do vật lý chứ không phải khớp đường cong: tạt vào chỗ chưa vượt qua hết
+thân xe thì theo định nghĩa là cắt ngang sườn, không phải cắt trước mũi.
+"""
+
+
+def _closing_speed_ms(actor: ActorSpec, ego: ActorSpec) -> float:
+    """Tốc độ thu hẹp khoảng cách dọc, m/s. Luôn dương ở nhánh gọi nó."""
+    return abs(actor.initial_speed_kmh - ego.initial_speed_kmh) / 3.6
+
+
 def cut_in_trigger_before_overtake(maneuver: ManeuverSpec, actor: ActorSpec, ego: ActorSpec) -> bool:
     """Tạt đầu trước khi kịp vượt lên, nên nhập vào làn ego ở PHÍA SAU ego.
 
@@ -152,7 +170,21 @@ def cut_in_trigger_before_overtake(maneuver: ManeuverSpec, actor: ActorSpec, ego
     alongside_s = time_until_alongside(actor, ego)
     if alongside_s is None:
         return False
-    return maneuver.trigger.value <= alongside_s
+
+    # Vượt qua thôi chưa đủ — phải vượt **đủ xa**. Thứ quyết định không phải biên
+    # thời gian mà là khoảng cách đã vượt lên được lúc bắt đầu tạt: dưới một thân
+    # xe thì nó cắt vào ngay sườn ego chứ không phải trước mũi.
+    #
+    # Bốn kịch bản cut_in chạy thật ngày 22/08, sắp theo khoảng vượt lúc trigger:
+    #
+    #   sc_022  4,67 m  -> tông đuôi ego (contact_longitudinal âm)
+    #   sc_021  5,05 m  -> tông đuôi ego
+    #   sc_011  8,33 m  -> tạt đầu đúng ý
+    #   sc_012 13,89 m  -> tạt đầu đúng ý
+    #
+    # Hai cụm tách bạch quanh một thân xe (~4,5 m) cộng khoảng an toàn.
+    lead_m = (maneuver.trigger.value - alongside_s) * _closing_speed_ms(actor, ego)
+    return lead_m < MIN_CUT_IN_LEAD_M
 
 
 def jaywalk_starts_in_ego_lane(actor: ActorSpec) -> bool:
