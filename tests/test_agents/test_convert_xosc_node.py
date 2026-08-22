@@ -57,7 +57,11 @@ def make_spec(
     is_lane_drift = maneuver is ManeuverType.LANE_DRIFT
     actor_s_offset = -25 if is_cut_in else (-15 if is_lane_drift else 20)
     actor_speed = 50 if is_cut_in else (40 if is_lane_drift else (0 if pedestrian else 20))
-    trigger_value = 5 if is_lane_drift else 2
+    # cut_in phải bắn SAU lúc hai xe đi ngang nhau (25 m / 5,56 m/s = 4,5 s), nếu
+    # không adversary nhập làn ở sau lưng ego rồi tông đuôi — đo được trên CARLA
+    # 22/08 với trigger 2,0: va chạm lúc adversary còn sau ego 4,56 m.
+    # Xem `cut_in_trigger_before_overtake`.
+    trigger_value = 6 if is_cut_in else (5 if is_lane_drift else 2)
     target_speed = (
         20
         if is_cut_in
@@ -193,7 +197,10 @@ def test_lane_drift_uses_partial_offset_not_full_lane_change() -> None:
     root = ET.fromstring(convert_spec_to_xosc(make_spec(ManeuverType.LANE_DRIFT)))
     assert root.find(".//LaneOffsetAction") is not None
     assert root.find(".//LaneOffsetAction/../LaneChangeAction") is None
-    assert root.find(".//AbsoluteTargetLaneOffset").get("value") == "-0.7"
+    # Actor đứng bên TRÁI ego (lane_offset = -1) phải lấn sang PHẢI để về phía
+    # ego. ScenarioRunner đọc dương = sang phải (atomic_behaviors.py:1122), ngược
+    # với quy ước OpenSCENARIO — nên giá trị đúng là +0.7, không phải -0.7.
+    assert root.find(".//AbsoluteTargetLaneOffset").get("value") == "0.7"
     criteria = {item.get("name") for item in root.findall("./Storyboard/StopTrigger/ConditionGroup/Condition")}
     assert "criteria_KeepLaneTest" in criteria
     ego_speed = root.find(".//Private[@entityRef='hero']//AbsoluteTargetSpeed")
