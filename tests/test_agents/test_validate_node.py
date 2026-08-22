@@ -549,3 +549,61 @@ async def test_cut_in_must_overtake_by_a_vehicle_length_not_just_by_a_hair() -> 
     assert IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE in await codes(8.5)
     # 10,0 s = vượt 10,9 m, trên ngưỡng một thân xe.
     assert IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE not in await codes(10.0)
+
+
+@pytest.mark.asyncio
+async def test_jaywalk_trigger_too_close_is_flagged_with_the_computed_distance(
+    valid_draft: ScenarioDraft,
+) -> None:
+    """Người đi bộ bước xuống muộn thì ego đã đi qua trước khi họ sang tới làn.
+
+    Đo trên sc_026 ngày 22/08: ego 88 km/h, người đi bộ 6 km/h lệch một làn,
+    trigger 18 m. Cần 51,3 m. Kết quả chạy thật: khe hở nhỏ nhất 107 m — hai bên
+    chưa bao giờ ở gần nhau, dù kịch bản chạy hết và không lỗi.
+
+    Gợi ý sửa phải mang CON SỐ: đo trên output LLM thật thì model không tự làm
+    phép chia, nên nói "đặt xa hơn" là đi hết ba vòng repair mà lỗi vẫn nguyên.
+    """
+    draft = valid_draft.model_dump()
+    draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
+    draft["odd"]["maneuver"] = ManeuverType.JAYWALK
+    draft["actors"][0]["initial_speed_kmh"] = 88.0
+    draft["actors"][1]["category"] = VehicleCategory.PEDESTRIAN
+    draft["actors"][1]["position"]["lane_offset"] = 1
+    draft["actors"][1]["initial_speed_kmh"] = 6.0
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.JAYWALK
+    draft["maneuvers"][0]["trigger"] = {"type": "distance_to_ego", "value": 18.0}
+    draft["maneuvers"][0]["target_speed_kmh"] = 6.0
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.PEDESTRIAN, maneuver=ManeuverType.JAYWALK),
+        }
+    )
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE)
+    assert issue.repairable_by_llm
+    assert "51" in issue.suggestion, "phải nói khoảng cách cần thiết, không chỉ nói 'xa hơn'"
+
+
+@pytest.mark.asyncio
+async def test_jaywalk_with_enough_room_is_accepted(valid_draft: ScenarioDraft) -> None:
+    """Cùng hình học, trigger đủ xa thì không được chặn."""
+    draft = valid_draft.model_dump()
+    draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
+    draft["odd"]["maneuver"] = ManeuverType.JAYWALK
+    draft["actors"][0]["initial_speed_kmh"] = 88.0
+    draft["actors"][1]["category"] = VehicleCategory.PEDESTRIAN
+    draft["actors"][1]["position"]["lane_offset"] = 1
+    draft["actors"][1]["initial_speed_kmh"] = 6.0
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.JAYWALK
+    draft["maneuvers"][0]["trigger"] = {"type": "distance_to_ego", "value": 50.0}
+    draft["maneuvers"][0]["target_speed_kmh"] = 6.0
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.PEDESTRIAN, maneuver=ManeuverType.JAYWALK),
+        }
+    )
+    assert not [i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE]
