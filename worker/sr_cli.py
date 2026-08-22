@@ -117,3 +117,34 @@ def run_succeeded(returncode: int, criteria_json: dict | None, error: str | None
 def had_collision(results: list[dict]) -> bool:
     """Ego có va chạm không — tức kịch bản **đã dựng được** tình huống nguy hiểm."""
     return any("collision" in r["name"].lower() and r["result"] == "FAILURE" for r in results)
+
+
+def carla_is_ready(host: str, port: int, timeout_s: float = 5.0) -> bool:
+    """CARLA có **trả lời** không — không phải chỉ có mở cổng.
+
+    Phân biệt này tốn tiền thật để học. Ngày 22/08, server treo sau ~25 lượt chạy
+    liên tiếp: tiến trình còn sống, cổng 2000 vẫn mở, nhưng mọi lời gọi API
+    time-out. Worker không biết nên vẫn lấy job, ScenarioRunner chết, và **4 kịch
+    bản bị đánh dấu hỏng vì lỗi môi trường** — chúng đi thẳng vào tỷ lệ M1 như thể
+    kịch bản có vấn đề.
+
+    Một lần bắt tay ``get_server_version()`` phân biệt được hai trạng thái đó.
+    """
+    import socket
+
+    with socket.socket() as probe:
+        probe.settimeout(timeout_s)
+        if probe.connect_ex((host, int(port))) != 0:
+            return False
+    try:
+        import carla  # noqa: PLC0415 — chỉ worker mới có, và chỉ cần ở đây
+    except ImportError:
+        return True  # không kiểm được thì đừng chặn; ScenarioRunner sẽ tự báo lỗi
+
+    try:
+        client = carla.Client(host, int(port))
+        client.set_timeout(timeout_s)
+        client.get_server_version()
+    except RuntimeError:
+        return False
+    return True
