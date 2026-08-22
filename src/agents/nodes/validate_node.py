@@ -12,6 +12,7 @@ from src.services.scenario.geometry import (
     cut_in_starts_in_ego_lane,
     cut_in_trigger_before_overtake,
     cut_in_trigger_is_unsigned,
+    jaywalk_effective_gap_m,
     jaywalk_required_trigger_m,
     jaywalk_starts_in_ego_lane,
     jaywalk_trigger_too_close,
@@ -347,14 +348,15 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                         code=IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE,
                         path=f"/maneuvers/{i}/trigger/value",
                         message_vi=(
-                            f"{actor.name} bước xuống khi ego chỉ còn cách {m.trigger.value}m, "
+                            f"{actor.name} bước xuống khi ego chỉ còn cách "
+                            f"{jaywalk_effective_gap_m(m, actor):.0f}m, "
                             f"nhưng ego chạy {ego.initial_speed_kmh}km/h nên đã đi qua trước khi "
                             f"người đi bộ sang tới làn."
                         ),
                         suggestion=(
-                            f"Đặt /maneuvers/{i}/trigger/value = {round(required)} "
-                            f"(quãng đường phải bước / tốc độ đi bộ × tốc độ ego), "
-                            f"hoặc tăng /maneuvers/{i}/target_speed_kmh để họ bước nhanh hơn."
+                            f"Đặt CẢ HAI: /actors/{actor_idx}/position/s_offset_m >= {round(required)} "
+                            f"và /maneuvers/{i}/trigger/value = {round(required)}. "
+                            f"Trigger rộng hơn khoảng cách xuất phát thì vô nghĩa — nó bắn ngay giây 0."
                         ),
                     )
                 )

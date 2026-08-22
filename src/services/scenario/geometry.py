@@ -252,7 +252,23 @@ def jaywalk_trigger_too_close(maneuver: ManeuverSpec, actor: ActorSpec, ego: Act
     required = jaywalk_required_trigger_m(maneuver, actor, ego)
     if required is None:
         return False
-    return maneuver.trigger.value < required * 0.7
+    return jaywalk_effective_gap_m(maneuver, actor) < required * 0.7
+
+
+def jaywalk_effective_gap_m(maneuver: ManeuverSpec, actor: ActorSpec) -> float:
+    """Khoảng cách THẬT giữa hai bên lúc trigger bắn.
+
+    Không phải ``trigger.value``. Người đi bộ đứng yên ở ``s_offset_m``, nên
+    khoảng cách bắt đầu bằng chính nó và chỉ giảm đi. Đặt trigger 55 m trong khi
+    người đi bộ đứng cách 18 m thì điều kiện "cách dưới 55 m" **đúng ngay giây
+    0** — trigger bắn lúc ego còn 18 m, không phải 55 m.
+
+    Đo trên ``sc_033`` ngày 23/08: đúng cấu hình đó, và người đi bộ vẫn bước
+    xuống quá muộn dù trigger nhìn qua thì rất rộng rãi.
+    """
+    if actor.position.s_offset_m <= 0:
+        return abs(actor.position.s_offset_m)
+    return min(actor.position.s_offset_m, maneuver.trigger.value)
 
 
 def actor_beyond_anchor_reach(actor: ActorSpec, reach_m: tuple[float, float]) -> bool:
