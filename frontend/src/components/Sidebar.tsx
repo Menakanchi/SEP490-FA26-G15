@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import {
+  BarChart3,
   Zap,
   ClipboardCheck,
   Library,
@@ -54,6 +55,13 @@ const NAV_ITEMS: NavItem[] = [
     label: "Thư viện",
     description: "Kịch bản ODD & Cá nhân",
     icon: Library,
+    allowedRoles: ["creator", "reviewer", "admin"],
+  },
+  {
+    href: "/metrics",
+    label: "Báo cáo chất lượng",
+    description: "M1 hợp lệ · M2 phủ ODD · M3 nguy hiểm",
+    icon: BarChart3,
     allowedRoles: ["creator", "reviewer", "admin"],
   },
   {

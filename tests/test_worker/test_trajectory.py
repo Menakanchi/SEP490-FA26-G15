@@ -112,3 +112,50 @@ def test_overlapping_boxes_report_zero_distance() -> None:
     """Đã chạm thì khe hở là 0, không phải một số âm mang sang chỗ khác."""
     metrics = trajectory.summarise([_sample(5.0, lon=1.0, lat=0.1)])
     assert metrics["min_distance_m"] == 0.0
+
+
+def test_metrics_stop_at_first_contact() -> None:
+    """Sau va chạm xe bị hất khỏi làn; tính cả phần đó thì số đo hành vi thành rác.
+
+    Đo thật trên sc_001 ngày 22/08: tính cả phần sau va chạm cho
+    ``adversary_lane_deviation_m`` = 21,18 m — xe máy nằm giữa đồng, không phải
+    nó đã lấn 21 mét.
+    """
+    approach = [_sample(0.0, lon=20.0, lat=-0.2, lane_offset=0.4)]
+    contact = [_sample(1.0, lon=4.0, lat=-0.2, lane_offset=0.6)]
+    wreckage = [_sample(2.0, lon=-40.0, lat=-25.0, lane_offset=21.18)]
+
+    metrics = trajectory.summarise(approach + contact + wreckage)
+
+    assert metrics["adversary_lane_deviation_m"] == pytest.approx(0.6)
+    assert metrics["trajectory_samples"] == 3.0, "vẫn đếm đủ mẫu đã ghi"
+    assert metrics["contact_time_s"] == pytest.approx(1.0)
+
+
+def test_speed_metrics_make_longitudinal_maneuvers_judgeable() -> None:
+    """`sudden_brake` chỉ kiểm chứng được khi biết xe có thật sự chậm lại."""
+    braking = [
+        Sample(
+            t=0.0,
+            longitudinal_m=20,
+            lateral_m=0.1,
+            gap_lon_m=15,
+            gap_lat_m=-1,
+            ego_speed_ms=8.3,
+            adv_speed_ms=13.9,
+            adv_lane_offset_m=0.0,
+        ),
+        Sample(
+            t=3.0,
+            longitudinal_m=12,
+            lateral_m=0.1,
+            gap_lon_m=7,
+            gap_lat_m=-1,
+            ego_speed_ms=8.3,
+            adv_speed_ms=2.8,
+            adv_lane_offset_m=0.0,
+        ),
+    ]
+    metrics = trajectory.summarise(braking)
+    assert metrics["adversary_min_speed_ms"] == pytest.approx(2.8)
+    assert metrics["adversary_speed_drop_ms"] == pytest.approx(11.1)

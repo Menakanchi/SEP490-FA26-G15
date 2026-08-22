@@ -5,31 +5,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Play, CheckCircle2, ShieldCheck, Map, Zap, Layers, Cpu } from "lucide-react";
-import SVG2DRenderer from "@/components/SVG2DRenderer";
 import { useAuth } from "@/context/AuthContext";
 import { FadeIn } from "./FadeIn";
-import type { ActorSpec } from "@/types";
 
 export function LandingHero() {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
-
-  const demoActors: ActorSpec[] = [
-    {
-      name: "Ego_VinFast_VF8",
-      category: "car",
-      is_ego: true,
-      position: { lane_offset: 2, s_offset_m: 10 },
-      initial_speed_kmh: 65,
-    },
-    {
-      name: "Adversary_Motorbike",
-      category: "motorcycle",
-      is_ego: false,
-      position: { lane_offset: 1, s_offset_m: 35 },
-      initial_speed_kmh: 80,
-    },
-  ];
 
   const handleStartCooperation = () => {
     if (isAuthenticated) {
@@ -68,7 +49,7 @@ export function LandingHero() {
             {/* Subtitle */}
             <FadeIn direction="up" delay={300}>
               <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-2xl font-normal">
-                Chuyển đổi mô tả tự nhiên tiếng Việt → Trích xuất miền vận hành ODD → Xuất file OpenSCENARIO 1.0 và mô phỏng 2D cho xe điện thông minh (VinFast VF 8 / VF 9).
+                Chuyển đổi mô tả tự nhiên tiếng Việt → Trích xuất miền vận hành ODD → Xuất file OpenSCENARIO 1.0 cho xe điện thông minh (VinFast VF 8 / VF 9).
               </p>
             </FadeIn>
 
@@ -151,15 +132,6 @@ export function LandingHero() {
                         <Cpu className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> VF 9 LIDAR & Radar ADAS Telemetry
                       </span>
                     </div>
-                  </div>
-
-                  {/* 2D Canvas Render Overlay */}
-                  <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-950">
-                    <SVG2DRenderer
-                      actors={demoActors}
-                      odd={{ road_type: "highway", weather: "rain", actor_type: "motorcycle", maneuver: "cut_in" }}
-                      height={160}
-                    />
                   </div>
 
                   {/* Scenario Metadata Grid */}

@@ -10,7 +10,6 @@ import {
   Download,
   AlertCircle,
   MapPin,
-  Map,
   Users,
   Globe,
   User,
@@ -27,7 +26,6 @@ import {
   updateScenario,
   submitScenario,
 } from "@/services/api";
-import SVG2DRenderer from "@/components/SVG2DRenderer";
 import { useAuth } from "@/context/AuthContext";
 import type { ScenarioItem, ODDPayload } from "@/types";
 import {
@@ -487,25 +485,9 @@ function LibraryContent() {
                   className="group bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col justify-between"
                 >
                   <div>
-                    {/* Preview Container */}
-                    <div className="h-[180px] bg-slate-100/90 dark:bg-slate-950 relative border-b border-slate-100 dark:border-slate-800/80 overflow-hidden">
-                      {(item.actors?.length || item.spec?.actors?.length) ? (
-                        <SVG2DRenderer
-                          actors={item.actors || item.spec?.actors || []}
-                          odd={item.odd}
-                          maneuvers={item.spec?.maneuvers}
-                          width="100%"
-                          height={180}
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-1">
-                          <Map className="w-8 h-8 opacity-40" />
-                          <span className="text-[10px]">Chưa có sơ đồ làn</span>
-                        </div>
-                      )}
-
-                      {/* Status badge floating top-right */}
-                      <div className="absolute top-3 right-3 z-10 flex items-center gap-1">
+                    {/* Body Content */}
+                    <div className="p-5 space-y-3">
+                      <div className="flex items-center justify-end gap-1">
                         {isApproved && (
                           <span title="Khóa chỉnh sửa kịch bản đã duyệt" className="p-1 rounded bg-slate-900/80 text-amber-400">
                             <Lock className="w-3 h-3" />
@@ -513,10 +495,6 @@ function LibraryContent() {
                         )}
                         {statusBadge(item.status)}
                       </div>
-                    </div>
-
-                    {/* Body Content */}
-                    <div className="p-5 space-y-3">
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
                           <span className="truncate max-w-[180px]">

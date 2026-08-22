@@ -85,8 +85,8 @@ export function LandingWorkflow() {
                     <FileCode className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">3. Mô phỏng 2D đa tác nhân (Ego VinFast vs Adversary)</h3>
-                    <span className="text-[11px] text-slate-500">Xem trước vị trí làn đường, khoảng cách TTC & xuất OpenSCENARIO XML</span>
+                    <h3 className="text-sm font-bold text-slate-900">3. Xuất kịch bản OpenSCENARIO</h3>
+                    <span className="text-[11px] text-slate-500">Kiểm tra thông số tác nhân và xuất OpenSCENARIO XML</span>
                   </div>
                 </div>
 

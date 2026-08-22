@@ -1138,6 +1138,51 @@ def get_pending_reviewers() -> list[dict]:
     return res
 
 
+def metrics_rows() -> tuple[list[dict], list[dict], list[dict]]:
+    """Dữ liệu thô cho báo cáo M1/M2/M3. Phần tính nằm ở ``services/metrics.py``.
+
+    Trả ba tập vì ba metric hỏi ba tầng khác nhau: lần **sinh** (qua schema
+    không), **kịch bản** (biên dịch được không, phủ ô ODD nào), và lần **chạy**
+    (chạy nổi không, có dựng được nguy hiểm không).
+    """
+    with _cursor() as cursor:
+        cursor.execute("SELECT request_id, status FROM generation_requests")
+        requests = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute(
+            "SELECT scenario_id, status, road_type, weather, actor_type, maneuver, "
+            "verification, xosc_content FROM scenarios"
+        )
+        scenarios = [dict(r) for r in cursor.fetchall()]
+
+        # Chỉ lần chạy MỚI NHẤT của mỗi kịch bản. Chạy lại cùng một kịch bản ba
+        # lần rồi đếm cả ba là để một kịch bản tự bỏ phiếu ba lần vào tỷ lệ.
+        cursor.execute(
+            """
+            SELECT j.scenario_id, j.result, s.maneuver
+            FROM scenario_jobs j
+            JOIN scenarios s ON s.scenario_id = j.scenario_id
+            WHERE j.result IS NOT NULL
+              AND j.updated_at = (
+                  SELECT MAX(j2.updated_at) FROM scenario_jobs j2
+                  WHERE j2.scenario_id = j.scenario_id AND j2.result IS NOT NULL
+              )
+            """
+        )
+        executions = []
+        for row in cursor.fetchall():
+            item = dict(row)
+            if isinstance(item.get("result"), str):
+                try:
+                    item["result"] = json.loads(item["result"])
+                except (TypeError, json.JSONDecodeError):
+                    logger.warning("scenario_jobs.result không hợp lệ cho %s", item["scenario_id"])
+                    item["result"] = None
+            executions.append(item)
+
+    return requests, scenarios, executions
+
+
 def get_admin_stats() -> dict:
     with _cursor() as cursor:
         cursor.execute("SELECT role, status, COUNT(*) AS count FROM users GROUP BY role, status")
