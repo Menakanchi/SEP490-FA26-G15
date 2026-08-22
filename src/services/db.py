@@ -97,7 +97,20 @@ def init_db() -> None:
             {"new_status": ScenarioStatus.PENDING_SIM_REVIEW.value},
         )
     _migrate_description_normalized(engine)
+    _migrate_campaign_id(engine)
     _seed_default_users()
+
+
+def _migrate_campaign_id(engine) -> None:
+    """Thêm ``generation_requests.campaign_id`` cho database dựng trước chiến dịch ODD.
+
+    ``create_all`` bỏ qua bảng đã tồn tại, gồm cả cột mới của nó — nên database
+    dev đang chạy sẽ thiếu cột này và mọi lần sinh chết ở INSERT.
+    """
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(generation_requests)")}
+        if "campaign_id" not in columns:
+            connection.exec_driver_sql("ALTER TABLE generation_requests ADD COLUMN campaign_id TEXT")
 
 
 _NORMALIZED_TABLES = ("scenarios", "generation_requests")
@@ -1138,6 +1151,75 @@ def get_pending_reviewers() -> list[dict]:
     return res
 
 
+def create_campaign(campaign_id: str, cells: list[dict], per_cell: int, max_scenarios: int, created_by: str) -> dict:
+    now = datetime.now(UTC).isoformat()
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            "INSERT INTO campaigns (campaign_id, created_by, cells, per_cell, max_scenarios, status, "
+            "generated, failed, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'running', 0, 0, ?, ?)",
+            (campaign_id, created_by, json.dumps(cells), per_cell, max_scenarios, now, now),
+        )
+    return get_campaign(campaign_id) or {}
+
+
+def update_campaign(
+    campaign_id: str, *, generated: int | None = None, failed: int | None = None, status: str | None = None
+) -> None:
+    sets, params = ["updated_at = ?"], [datetime.now(UTC).isoformat()]
+    for column, value in (("generated", generated), ("failed", failed), ("status", status)):
+        if value is not None:
+            sets.append(f"{column} = ?")
+            params.append(value)
+    params.append(campaign_id)
+    with _cursor(commit=True) as cursor:
+        cursor.execute(f"UPDATE campaigns SET {', '.join(sets)} WHERE campaign_id = ?", params)
+
+
+def get_campaign(campaign_id: str) -> dict | None:
+    """Chiến dịch + các kịch bản nó đã sinh, để trang theo dõi chỉ cần một lượt gọi."""
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM campaigns WHERE campaign_id = ?", (campaign_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        campaign = dict(row)
+        campaign["cells"] = json.loads(campaign["cells"]) if campaign.get("cells") else []
+        cursor.execute(
+            "SELECT r.request_id, r.status, r.description_vi, r.scenario_id, s.road_type, s.weather, "
+            "s.actor_type, s.maneuver FROM generation_requests r "
+            "LEFT JOIN scenarios s ON s.scenario_id = r.scenario_id "
+            "WHERE r.campaign_id = ? ORDER BY r.created_at",
+            (campaign_id,),
+        )
+        campaign["requests"] = [dict(r) for r in cursor.fetchall()]
+    return campaign
+
+
+def list_campaigns() -> list[dict]:
+    with _cursor() as cursor:
+        cursor.execute(
+            "SELECT campaign_id, created_by, per_cell, max_scenarios, status, generated, "
+            "failed, created_at FROM campaigns ORDER BY created_at DESC"
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def attach_request_to_campaign(request_id: str, campaign_id: str) -> None:
+    with _cursor(commit=True) as cursor:
+        cursor.execute("UPDATE generation_requests SET campaign_id = ? WHERE request_id = ?", (campaign_id, request_id))
+
+
+def campaign_prompts(campaign_id: str, odd_key: str | None = None) -> list[str]:
+    """Câu đã sinh trong chiến dịch, để agent không lặp lại chính nó."""
+    with _cursor() as cursor:
+        cursor.execute(
+            "SELECT description_vi FROM generation_requests WHERE campaign_id = ? ORDER BY created_at",
+            (campaign_id,),
+        )
+        del odd_key
+        return [r["description_vi"] for r in cursor.fetchall()]
+
+
 def metrics_rows() -> tuple[list[dict], list[dict], list[dict]]:
     """Dữ liệu thô cho báo cáo M1/M2/M3. Phần tính nằm ở ``services/metrics.py``.
 
@@ -1150,8 +1232,10 @@ def metrics_rows() -> tuple[list[dict], list[dict], list[dict]]:
         requests = [dict(r) for r in cursor.fetchall()]
 
         cursor.execute(
-            "SELECT scenario_id, status, road_type, weather, actor_type, maneuver, "
-            "verification, xosc_content FROM scenarios"
+            # `created_by` có mặt vì báo cáo phải loại được kịch bản mock
+            # (`seed-data`) — xem `metrics.SEED_AUTHOR`.
+            "SELECT scenario_id, status, created_by, road_type, weather, actor_type, "
+            "maneuver, verification, xosc_content FROM scenarios"
         )
         scenarios = [dict(r) for r in cursor.fetchall()]
 

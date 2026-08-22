@@ -117,6 +117,9 @@ generation_requests = Table(
     # Top-k người dùng chọn ở FE. Lưu lại vì nó đổi kết quả retrieval — không có
     # nó thì không tái dựng được một lần sinh đã xảy ra.
     Column("retrieve_limit", Integer, nullable=False, server_default="3"),
+    # Lần sinh này thuộc chiến dịch nào. NULL = người tự gõ câu (đường retail).
+    # Cần để tách hai luồng khi đọc số liệu và khi duyệt theo lô (ADR-014).
+    Column("campaign_id", String(64), nullable=True),
 )
 
 # Hai request giống hệt nhau tới cùng lúc thì cái sau phải hỏng ở tầng DB, không
@@ -133,6 +136,27 @@ Index(
     unique=True,
     sqlite_where=generation_requests.c.status == "running",
     postgresql_where=generation_requests.c.status == "running",
+)
+
+campaigns = Table(
+    "campaigns",
+    metadata,
+    Column("campaign_id", String(64), primary_key=True),
+    Column("created_by", String(255), nullable=False, server_default="unknown"),
+    # Danh sách ô ODD người dùng khoanh, đã giao với SupportPolicy trước khi lưu.
+    # Lưu nguyên thay vì lưu bộ lọc: bộ lọc sinh ra ô nào phụ thuộc SupportPolicy
+    # tại thời điểm chạy, mà policy sẽ mở rộng khi có anchor mới — lúc đó không
+    # còn dựng lại được chiến dịch cũ để đối chiếu.
+    Column("cells", JSON, nullable=False),
+    Column("per_cell", Integer, nullable=False, server_default="1"),
+    # Trần chi phí là ĐIỀU KIỆN DỪNG, không phải tuỳ chọn: một vòng lặp sinh tự
+    # động không có trần là một hoá đơn không có trần.
+    Column("max_scenarios", Integer, nullable=False),
+    Column("status", String(16), nullable=False, server_default="running"),
+    Column("generated", Integer, nullable=False, server_default="0"),
+    Column("failed", Integer, nullable=False, server_default="0"),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
 review_decisions = Table(

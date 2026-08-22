@@ -41,6 +41,18 @@ SPEED_DROP_MS = 2.0
 STOPPED_MS = 0.5
 """Dưới ngưỡng này coi như đã dừng hẳn."""
 
+SEED_AUTHOR = "seed-data"
+"""Kịch bản mock dựng sẵn để demo giao diện — **không** được tính vào báo cáo.
+
+Chúng không đi qua pipeline: không có lần sinh, phần lớn không có ``.xosc``, và ô
+ODD của chúng do người gõ tay chứ không do ``parse_intent`` đọc ra từ câu. Đếm
+chúng vào M2 là báo cáo độ phủ bằng dữ liệu bịa — đúng loại lỗi mà cả module này
+tồn tại để tránh.
+
+Loại ra nhưng **đếm riêng và hiện lên**, không lọc ngầm: người đọc báo cáo phải
+thấy có bao nhiêu hàng bị bỏ và vì sao.
+"""
+
 
 def build_report(
     requests: list[dict],
@@ -48,10 +60,13 @@ def build_report(
     executions: list[dict],
 ) -> dict[str, Any]:
     """Gộp ba metric thành một payload cho ``GET /metrics/quality``."""
+    real = [s for s in scenarios if s.get("created_by") != SEED_AUTHOR]
+    seeded = len(scenarios) - len(real)
     return {
-        "m1_validity": validity(requests, scenarios, executions),
-        "m2_coverage": coverage(scenarios),
+        "m1_validity": validity(requests, real, executions),
+        "m2_coverage": {**coverage(real), "excluded_seed_data": seeded},
         "m3_hazard": hazard(executions),
+        "excluded_seed_data": seeded,
     }
 
 
@@ -71,7 +86,13 @@ def validity(requests: list[dict], scenarios: list[dict], executions: list[dict]
     finished = [r for r in requests if r.get("status") in ("done", "failed")]
     l1 = _ratio(sum(1 for r in finished if r.get("status") == "done"), len(finished))
 
-    l2 = _ratio(sum(1 for s in scenarios if (s.get("xosc_content") or "").strip()), len(scenarios))
+    # Chỉ tính kịch bản NẰM TRONG phạm vi converter. Kịch bản đô thị/ngã tư không
+    # có .xosc vì chưa có anchor cho road_type đó (ADR-016) — đó là quyết định thu
+    # hẹp phạm vi, không phải converter hỏng. Gộp chung thì bảng số tự bôi bẩn:
+    # 6 seed ngoài phạm vi kéo L2 xuống 50% và không ai đọc ra được vì sao.
+    in_scope = [s for s in scenarios if _in_scope(s)]
+    out_of_scope = len(scenarios) - len(in_scope)
+    l2 = _ratio(sum(1 for s in in_scope if (s.get("xosc_content") or "").strip()), len(in_scope))
 
     ran = [e for e in executions if e.get("result")]
     l3 = _ratio(sum(1 for e in ran if (e["result"] or {}).get("success")), len(ran))
@@ -82,7 +103,11 @@ def validity(requests: list[dict], scenarios: list[dict], executions: list[dict]
 
     return {
         "l1_schema": _level(l1, "Draft qua được schema và validate"),
-        "l2_xosc": _level(l2, "Biên dịch được thành .xosc"),
+        "l2_xosc": _level(
+            l2,
+            "Biên dịch được thành .xosc (chỉ tính ô trong phạm vi converter)",
+            not_measurable=out_of_scope,
+        ),
         "l3_runtime": _level(l3, "ScenarioRunner chạy hết, không crash / timeout"),
         "l4_intent": _level(
             l4,
@@ -90,6 +115,20 @@ def validity(requests: list[dict], scenarios: list[dict], executions: list[dict]
             not_measurable=len(verdicts) - len(judged),
         ),
     }
+
+
+def _in_scope(scenario: dict) -> bool:
+    """Ô ODD của kịch bản có nằm trong phạm vi converter dựng được không."""
+    axes = (
+        scenario.get("road_type"),
+        scenario.get("weather"),
+        scenario.get("actor_type"),
+        scenario.get("maneuver"),
+    )
+    if not all(axes):
+        return False
+    key = ODDCell(road_type=axes[0], weather=axes[1], actor_type=axes[2], maneuver=axes[3]).key
+    return key in {c.key for c in DEFAULT_SUPPORT_POLICY.supported_cells()}
 
 
 def intent_verdict(execution: dict) -> bool | None:

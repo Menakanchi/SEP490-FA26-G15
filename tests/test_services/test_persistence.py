@@ -68,6 +68,9 @@ def persist(
 
 def test_schema_contains_exact_shared_tables(repository: ScenarioRepository) -> None:
     assert set(inspect(repository.engine).get_table_names()) == {
+        # Chiến dịch ODD (chế độ nâng cao) — một hàng mỗi lần khoanh vùng, và
+        # `generation_requests.campaign_id` nối ngược về đây.
+        "campaigns",
         "generation_requests",
         "review_decisions",
         "scenario_jobs",
