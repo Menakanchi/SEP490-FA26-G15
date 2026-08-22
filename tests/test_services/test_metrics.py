@@ -255,3 +255,23 @@ def test_l4_still_returns_none_when_the_new_signals_are_missing() -> None:
     """Lượt chạy bởi worker cũ không có hai tín hiệu này — chưa chấm, không phải trượt."""
     assert metrics.intent_verdict(_execution("jaywalk", min_distance_m=0.4)) is None
     assert metrics.intent_verdict(_execution("wrong_way", min_distance_m=0.4)) is None
+
+
+def test_failed_runs_are_never_judged_for_intent() -> None:
+    """Lượt chạy hỏng không nói được gì về ý định, kể cả khi nó có kèm số.
+
+    Kết quả cũ do worker chưa có chốt chặn vẫn mang số của actor còn sót:
+    sc_025 ngày 22/08 báo `Unable to add actors` mà vẫn có khe hở 12,58 m. Chấm
+    TRƯỢT cho một kịch bản chưa từng chạy là ghi nhầm một thất bại.
+    """
+    stale = _execution("wrong_way", success=False, adversary_heading_delta_deg=142.9, min_distance_m=12.5)
+    assert metrics.intent_verdict(stale) is None
+
+
+def test_crossing_zero_is_a_verdict_but_missing_is_not() -> None:
+    """0 = đo rồi, không băng qua (TRƯỢT). Vắng mặt = worker cũ (chưa chấm)."""
+    measured_no_cross = _execution("jaywalk", adversary_crossed_ego_path=0.0, min_distance_m=0.4)
+    old_worker = _execution("jaywalk", min_distance_m=0.4)
+
+    assert metrics.intent_verdict(measured_no_cross) is False
+    assert metrics.intent_verdict(old_worker) is None

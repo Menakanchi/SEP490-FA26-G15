@@ -135,8 +135,11 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
     # thái "chưa chấm được" — mà chấm bừa bằng `adversary_lane_deviation_m` thì
     # sai hẳn: người đi bộ rời khỏi mặt đường nên "lệch tim làn" của họ đo được
     # 39,9 m ở sc_026, một con số không mang nghĩa gì.
-    if _crossed_ego_path(before_contact):
-        metrics["adversary_crossed_ego_path"] = 1.0
+    # LUÔN phát khoá này, kể cả khi bằng 0. Chỉ phát lúc True thì "vắng mặt" mang
+    # hai nghĩa chồng nhau — "worker cũ không đo" và "đo rồi, không băng qua" —
+    # và tầng chấm điểm không tách được, nên nó phải trả "chưa chấm được" cho cả
+    # hai. Đúng chuyện xảy ra với sc_026 ngày 22/08.
+    metrics["adversary_crossed_ego_path"] = 1.0 if _crossed_ego_path(before_contact) else 0.0
     heading = _max_heading_delta_deg(before_contact)
     if heading is not None:
         metrics["adversary_heading_delta_deg"] = round(heading, 1)
@@ -366,7 +369,18 @@ class TrajectoryRecorder:
                     actors[actor.attributes.get("role_name", f"id{actor.id}")] = actor
             if EGO_ROLE in actors and len(actors) >= 2:
                 ego = actors[EGO_ROLE]
-                adv = next(a for role, a in actors.items() if role != EGO_ROLE)
+                # Chọn actor GẦN EGO NHẤT, không phải "actor không phải hero" đầu tiên.
+                #
+                # Lượt chạy trước bị CARLA treo hoặc chết giữa chừng để lại actor
+                # trong world; ScenarioRunner không kịp dọn. Lấy bừa thì recorder
+                # bám nhầm một chiếc cách vài trăm mét — đo được ngày 22/08:
+                # "khe hở nhỏ nhất 228 m", "lệch làn 63 m", toàn số vô nghĩa mà
+                # trông vẫn như số thật.
+                #
+                # Adversary luôn spawn tương đối theo ego (ADR-010) nên nó ở trong
+                # vài chục mét; xe sót thì không.
+                others = [a for role, a in actors.items() if role != EGO_ROLE]
+                adv = min(others, key=lambda a: a.get_location().distance(ego.get_location()))
                 return ego, adv
             if not self._wait_tick(world):
                 break

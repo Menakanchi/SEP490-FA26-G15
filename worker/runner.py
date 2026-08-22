@@ -124,6 +124,27 @@ def to_execution_result(job: dict, returncode: int, criteria_json: dict | None, 
     return payload
 
 
+def attach_trajectory(result: dict, metrics: dict, points: list) -> dict:
+    """Gắn số quỹ đạo vào kết quả — **chỉ khi lượt chạy thành công**.
+
+    Recorder bám vào actor mang ``role_name='hero'`` đang có trong world. Nếu
+    ScenarioRunner không spawn được (``Error: Unable to add actors``) thì actor
+    còn sót từ lượt TRƯỚC vẫn nằm đó và recorder đo nhầm sang lượt cũ.
+
+    Đo được ngày 22/08: bốn lượt spawn hỏng liên tiếp vẫn trả về "khe hở nhỏ nhất
+    29,04 m" và "lệch làn 63,88 m" — số trông hoàn toàn như thật, cho những kịch
+    bản chưa bao giờ bắt đầu. Số đó mà đi vào báo cáo thì không ai lần ra được.
+
+    Một lượt chạy hỏng phải nói là hỏng, không mang theo số của người khác.
+    """
+    if result.get("success"):
+        result["metrics"].update(metrics)
+        result["trajectory"] = points
+    elif metrics:
+        log.warning("  -> bỏ số quỹ đạo: lượt chạy hỏng nên chúng thuộc về actor còn sót")
+    return result
+
+
 def run_job(job: dict) -> dict:
     """Ghi .xosc ra file tạm, chạy ScenarioRunner, đọc JSON criteria."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -181,8 +202,7 @@ def run_job(job: dict) -> dict:
         error = "ScenarioRunner không sinh file JSON criteria"
 
     result = to_execution_result(job, returncode, criteria_json, error)
-    result["metrics"].update(trajectory_metrics)
-    result["trajectory"] = trajectory_points
+    attach_trajectory(result, trajectory_metrics, trajectory_points)
     result["metrics"]["wall_clock_s"] = round(time.time() - started_at, 1)
     return result
 
