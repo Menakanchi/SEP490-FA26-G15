@@ -375,3 +375,85 @@ async def test_missing_position_is_handled(monkeypatch: pytest.MonkeyPatch, vali
     result = await validate_node({"draft": valid_draft.model_dump()})
     assert any(i.code is IssueCode.SCHEMA_INVALID for i in result["issues"])
     assert any(i.path == "/actors/1/position" for i in result["issues"])
+
+
+def _lane_drift_draft(trigger_s: float) -> ScenarioDraft:
+    """Hình học của sc_906: xe tải trước ego 20 m, chậm hơn 10 km/h.
+
+    Ego bắt kịp ở giây 20 / ((70-60)/3.6) = 7,2. Đo trên CARLA 22/08: lấn ở giây
+    5,5 cho khe hở ngang 0,36 m (suýt quẹt thật), lấn ở giây 8,0 cho 0,51 m với
+    độ lệch chỉ thành hình khi ego đã qua.
+    """
+    return ScenarioDraft(
+        title="xe ben lấn làn",
+        odd=ODDCell(
+            road_type=RoadType.HIGHWAY,
+            weather=Weather.CLEAR,
+            actor_type=ActorType.TRUCK,
+            maneuver=ManeuverType.LANE_DRIFT,
+        ),
+        time_of_day=TimeOfDay.DAY,
+        actors=[
+            ActorSpec(
+                name="hero",
+                category=VehicleCategory.CAR,
+                position=Position(lane_offset=0, s_offset_m=0.0),
+                initial_speed_kmh=70.0,
+                is_ego=True,
+            ),
+            ActorSpec(
+                name="adv",
+                category=VehicleCategory.TRUCK,
+                position=Position(lane_offset=-1, s_offset_m=20.0),
+                initial_speed_kmh=60.0,
+                is_ego=False,
+            ),
+        ],
+        maneuvers=[
+            ManeuverSpec(
+                actor_name="adv",
+                maneuver=ManeuverType.LANE_DRIFT,
+                trigger=TriggerCondition(type="simulation_time", value=trigger_s),
+                target_speed_kmh=None,
+            )
+        ],
+        duration_s=30.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_lane_drift_after_ego_passes_is_flagged() -> None:
+    """Lấn làn sau lúc hai xe đi ngang nhau là lấn vào chỗ trống."""
+    result = await validate_node(
+        {
+            "draft": _lane_drift_draft(trigger_s=8.0),
+            "odd_query": ODDQuery(actor_type=ActorType.TRUCK, maneuver=ManeuverType.LANE_DRIFT),
+        }
+    )
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_DRIFT_AFTER_PASS)
+    assert issue.path == "/maneuvers/0/trigger/value"
+    assert issue.repairable_by_llm, "hạ trigger là sửa được, không phải lỗi chặn hẳn"
+
+
+@pytest.mark.asyncio
+async def test_lane_drift_before_ego_passes_is_accepted() -> None:
+    """5,5 s là bản đã đo được 0,36 m trên CARLA — không được chặn nhầm nó."""
+    result = await validate_node(
+        {
+            "draft": _lane_drift_draft(trigger_s=5.5),
+            "odd_query": ODDQuery(actor_type=ActorType.TRUCK, maneuver=ManeuverType.LANE_DRIFT),
+        }
+    )
+    assert not [i for i in result["issues"] if i.code is IssueCode.GEOM_DRIFT_AFTER_PASS]
+
+
+@pytest.mark.asyncio
+async def test_cut_in_geometry_untouched_by_lane_drift_check(valid_draft: ScenarioDraft) -> None:
+    """Vị từ mới chỉ chạy cho lane_drift; cut_in không được đổi hành vi."""
+    result = await validate_node(
+        {
+            "draft": valid_draft,
+            "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
+        }
+    )
+    assert not [i for i in result["issues"] if i.code is IssueCode.GEOM_DRIFT_AFTER_PASS]
