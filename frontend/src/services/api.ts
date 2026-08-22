@@ -267,8 +267,8 @@ export async function postLogin(payload: LoginPayload): Promise<{ access_token: 
   });
 }
 
-export async function postRegister(payload: RegisterPayload): Promise<User> {
-  return request<User>("/auth/register", {
+export async function postRegister(payload: RegisterPayload): Promise<{ ok: boolean; user: User; status: string; message_vi?: string }> {
+  return request<{ ok: boolean; user: User; status: string; message_vi?: string }>("/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -276,4 +276,86 @@ export async function postRegister(payload: RegisterPayload): Promise<User> {
 
 export async function getMe(): Promise<User> {
   return request<User>("/auth/me");
+}
+
+// ---------------------------------------------------------------------------
+// Admin Subsystem Endpoints
+// ---------------------------------------------------------------------------
+
+export interface AdminStats {
+  users: {
+    total: number;
+    creator: number;
+    reviewer: number;
+    admin: number;
+    pending_approval: number;
+  };
+  scenarios: {
+    total: number;
+    draft: number;
+    pending_sim_review: number;
+    simulation_queued: number;
+    pending_library_review: number;
+    approved_library: number;
+    approved_sim: number;
+    rejected: number;
+  };
+}
+
+export async function getAdminStats(): Promise<AdminStats> {
+  return request<AdminStats>("/admin/stats");
+}
+
+export async function getPendingReviewers(): Promise<User[]> {
+  return request<User[]>("/admin/pending-reviewers");
+}
+
+export async function getAdminUsers(params?: { role?: string; status?: string }): Promise<User[]> {
+  const query = new URLSearchParams();
+  if (params?.role) query.append("role", params.role);
+  if (params?.status) query.append("status", params.status);
+  const qs = query.toString() ? `?${query.toString()}` : "";
+  return request<User[]>(`/admin/users${qs}`);
+}
+
+export async function createAdminUser(
+  payload: Partial<User> & { password?: string; reason?: string },
+): Promise<{ ok: boolean; user: User }> {
+  return request<{ ok: boolean; user: User }>("/admin/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAdminUser(
+  username: string,
+  payload: Partial<User> & { password?: string; reason?: string },
+): Promise<{ ok: boolean; user: User }> {
+  return request<{ ok: boolean; user: User }>(`/admin/users/${encodeURIComponent(username)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteAdminUser(username: string): Promise<{ ok: boolean; username: string }> {
+  return request<{ ok: boolean; username: string }>(`/admin/users/${encodeURIComponent(username)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function approveReviewer(
+  username: string,
+): Promise<{ ok: boolean; user: User & { temp_password?: string; email_sent?: boolean } }> {
+  return request<{ ok: boolean; user: User & { temp_password?: string; email_sent?: boolean } }>(
+    `/admin/users/${encodeURIComponent(username)}/approve`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export async function rejectReviewer(username: string): Promise<{ ok: boolean; user: User }> {
+  return request<{ ok: boolean; user: User }>(`/admin/users/${encodeURIComponent(username)}/reject`, {
+    method: "POST",
+  });
 }

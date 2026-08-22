@@ -23,7 +23,11 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
+import hashlib
+import os
 from pathlib import Path
+import secrets
+import string
 
 from sqlalchemy import inspect, text
 
@@ -92,6 +96,7 @@ def init_db() -> None:
             {"new_status": ScenarioStatus.PENDING_SIM_REVIEW.value},
         )
     _migrate_description_normalized(engine)
+    _seed_default_users()
 
 
 _NORMALIZED_TABLES = ("scenarios", "generation_requests")
@@ -905,3 +910,265 @@ def update_job_result(job_id: str, status: str, result: dict) -> None:
     """,
             (status, result_json, now_str, job_id),
         )
+
+
+# ---------------------------------------------------------------------------
+# Auth & User Management CRUD (Admin / Auth)
+# ---------------------------------------------------------------------------
+
+def hash_password(password: str, salt: bytes | None = None) -> str:
+    if not salt:
+        salt = os.urandom(16)
+    pw_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100000)
+    return f"{salt.hex()}:{pw_hash.hex()}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    if not stored_hash or ":" not in stored_hash:
+        return False
+    try:
+        salt_hex, pw_hex = stored_hash.split(":")
+        salt = bytes.fromhex(salt_hex)
+        expected_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100000).hex()
+        return secrets.compare_digest(pw_hex, expected_hash)
+    except Exception:
+        return False
+
+
+def generate_temp_password(length: int = 10) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "Pass_" + "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def _seed_default_users() -> None:
+    with _cursor(commit=True) as cursor:
+        cursor.execute("SELECT COUNT(*) AS cnt FROM users")
+        row = cursor.fetchone()
+        if row and row["cnt"] > 0:
+            return
+
+        now_str = datetime.now(UTC).isoformat()
+        admin_pass_hash = hash_password("admin123")
+        creator_pass_hash = hash_password("creator123")
+
+        default_users = [
+            ("admin", "Hệ Thống Admin", "admin@forge.ai", "admin", "active", None, admin_pass_hash, now_str, now_str),
+            ("creator", "Kỹ sư Kịch bản", "creator@forge.ai", "creator", "active", None, creator_pass_hash, now_str, now_str),
+            ("reviewer_pending", "Trần Văn Reviewer", "reviewer_pending@company.com", "reviewer", "pending_approval", "Kỹ sư mô phỏng VinFast ADAS", None, now_str, now_str),
+        ]
+
+        cursor.executemany(
+            """
+            INSERT INTO users (username, name, email, role, status, reason, password_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            default_users,
+        )
+
+
+def create_user(
+    username: str,
+    name: str,
+    email: str,
+    role: str = "creator",
+    status: str = "active",
+    reason: str | None = None,
+    password: str | None = None,
+) -> dict:
+    now_str = datetime.now(UTC).isoformat()
+    pw_hash = hash_password(password) if password else None
+
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            INSERT INTO users (username, name, email, role, status, reason, password_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (username, name, email, role, status, reason, pw_hash, now_str, now_str),
+        )
+    return get_user(username)  # type: ignore[return-value]
+
+
+def get_user(username: str) -> dict | None:
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cursor.fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d.pop("password_hash", None)
+    return d
+
+
+def get_user_with_hash(username: str) -> dict | None:
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def list_users(role: str | None = None, status: str | None = None) -> list[dict]:
+    query = "SELECT * FROM users WHERE 1=1"
+    params = []
+    if role:
+        query += " AND role = ?"
+        params.append(role)
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    query += " ORDER BY created_at DESC"
+
+    with _cursor() as cursor:
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+    res = []
+    for r in rows:
+        d = dict(r)
+        d.pop("password_hash", None)
+        res.append(d)
+    return res
+
+
+def update_user(
+    username: str,
+    name: str | None = None,
+    email: str | None = None,
+    role: str | None = None,
+    status: str | None = None,
+    reason: str | None = None,
+    password: str | None = None,
+) -> dict | None:
+    u = get_user_with_hash(username)
+    if not u:
+        return None
+
+    new_name = name if name is not None else u["name"]
+    new_email = email if email is not None else u["email"]
+    new_role = role if role is not None else u["role"]
+    new_status = status if status is not None else u["status"]
+    new_reason = reason if reason is not None else u["reason"]
+    new_pw_hash = hash_password(password) if password else u["password_hash"]
+    now_str = datetime.now(UTC).isoformat()
+
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            UPDATE users
+            SET name = ?, email = ?, role = ?, status = ?, reason = ?, password_hash = ?, updated_at = ?
+            WHERE LOWER(username) = LOWER(?)
+            """,
+            (new_name, new_email, new_role, new_status, new_reason, new_pw_hash, now_str, username),
+        )
+    return get_user(username)
+
+
+def delete_user(username: str) -> bool:
+    with _cursor(commit=True) as cursor:
+        cursor.execute("DELETE FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        return cursor.rowcount > 0
+
+
+def approve_reviewer_request(username: str) -> dict | None:
+    u = get_user_with_hash(username)
+    if not u:
+        return None
+
+    temp_password = generate_temp_password(10)
+    pw_hash = hash_password(temp_password)
+    now_str = datetime.now(UTC).isoformat()
+
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            UPDATE users
+            SET status = 'active', password_hash = ?, updated_at = ?
+            WHERE LOWER(username) = LOWER(?)
+            """,
+            (pw_hash, now_str, username),
+        )
+
+    # Log email service sending credentials to reviewer
+    logger.info(
+        f"[EMAIL SERVICE] Sent login credentials to {u['email']} ({u['name']}): Username: {u['username']}, Temp Password: {temp_password}"
+    )
+
+    user_dict = get_user(username)
+    if user_dict:
+        user_dict["temp_password"] = temp_password
+        user_dict["email_sent"] = True
+    return user_dict
+
+
+def reject_reviewer_request(username: str) -> dict | None:
+    return update_user(username, status="rejected")
+
+
+def get_pending_reviewers() -> list[dict]:
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT * FROM users
+            WHERE status IN ('pending_approval', 'pending')
+            ORDER BY created_at DESC
+            """
+        )
+        rows = cursor.fetchall()
+    res = []
+    for r in rows:
+        d = dict(r)
+        d.pop("password_hash", None)
+        res.append(d)
+    return res
+
+
+def get_admin_stats() -> dict:
+    with _cursor() as cursor:
+        cursor.execute("SELECT role, status, COUNT(*) AS count FROM users GROUP BY role, status")
+        user_rows = cursor.fetchall()
+
+        cursor.execute("SELECT status, COUNT(*) AS count FROM scenarios GROUP BY status")
+        scenario_rows = cursor.fetchall()
+
+    user_stats = {
+        "total": 0,
+        "creator": 0,
+        "reviewer": 0,
+        "admin": 0,
+        "pending_approval": 0,
+    }
+    for r in user_rows:
+        cnt = r["count"]
+        user_stats["total"] += cnt
+        role = r["role"]
+        status = r["status"]
+        if status in ("pending_approval", "pending"):
+            user_stats["pending_approval"] += cnt
+        elif role == "reviewer" and status == "active":
+            user_stats["reviewer"] += cnt
+        elif role == "creator" and status == "active":
+            user_stats["creator"] += cnt
+        elif role == "admin":
+            user_stats["admin"] += cnt
+
+    scenario_stats = {
+        "total": 0,
+        "draft": 0,
+        "pending_sim_review": 0,
+        "simulation_queued": 0,
+        "pending_library_review": 0,
+        "approved_library": 0,
+        "approved_sim": 0,
+        "rejected": 0,
+    }
+    for r in scenario_rows:
+        cnt = r["count"]
+        st = r["status"]
+        scenario_stats["total"] += cnt
+        if st in scenario_stats:
+            scenario_stats[st] = cnt
+
+    return {
+        "users": user_stats,
+        "scenarios": scenario_stats,
+    }

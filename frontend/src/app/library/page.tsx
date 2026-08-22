@@ -107,11 +107,15 @@ function LibraryContent() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync tab state with URL
+  // Sync tab state with URL (Admin is restricted to public library only)
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync tab with url parameter
-    setActiveTab(tabParam);
-  }, [tabParam]);
+    if (user?.role === "admin") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync tab for admin
+      setActiveTab("public");
+    } else {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam, user?.role]);
 
   // Fetch logic
   const fetchData = useCallback(
@@ -346,32 +350,41 @@ function LibraryContent() {
           </span>
         </div>
 
-        {/* ─── Tab Switcher (Chung vs Cá nhân) ─── */}
-        <div className="flex items-center gap-2 border-b border-sky-100 dark:border-slate-800 pb-3">
-          <button
-            onClick={() => handleTabSwitch("public")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-              activeTab === "public"
-                ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
-                : "bg-sky-50/70 dark:bg-slate-800 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-200/80 dark:border-slate-700"
-            }`}
-          >
-            <Globe className="w-4 h-4" />
-            Thư viện Chung (Public Approved)
-          </button>
+        {/* ─── Tab Switcher (Chung vs Cá nhân) - Hidden for Admin ─── */}
+        {user?.role === "admin" ? (
+          <div className="flex items-center gap-2 border-b border-sky-100 dark:border-slate-800 pb-3">
+            <span className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800 flex items-center gap-2">
+              <Globe className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              Thư viện Chung (Public Approved Library) — Chế độ Giám sát Admin (Read-Only & Download)
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 border-b border-sky-100 dark:border-slate-800 pb-3">
+            <button
+              onClick={() => handleTabSwitch("public")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                activeTab === "public"
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
+                  : "bg-sky-50/70 dark:bg-slate-800 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-200/80 dark:border-slate-700"
+              }`}
+            >
+              <Globe className="w-4 h-4" />
+              Thư viện Chung (Public Approved)
+            </button>
 
-          <button
-            onClick={() => handleTabSwitch("me")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-              activeTab === "me"
-                ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
-                : "bg-sky-50/70 dark:bg-slate-800 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-200/80 dark:border-slate-700"
-            }`}
-          >
-            <User className="w-4 h-4" />
-            Thư viện Cá nhân (My Scenarios)
-          </button>
-        </div>
+            <button
+              onClick={() => handleTabSwitch("me")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                activeTab === "me"
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
+                  : "bg-sky-50/70 dark:bg-slate-800 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-200/80 dark:border-slate-700"
+              }`}
+            >
+              <User className="w-4 h-4" />
+              Thư viện Cá nhân (My Scenarios)
+            </button>
+          </div>
+        )}
 
         {/* ─── Search & Filters Toolbar (Deep Navy Theme & Single Row Layout) ─── */}
         <div className="bg-white dark:bg-slate-900 p-4 md:p-5 rounded-2xl border border-sky-100 dark:border-slate-800 shadow-sm">

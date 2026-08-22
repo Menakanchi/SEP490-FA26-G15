@@ -164,6 +164,22 @@ scenario_jobs = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
+users = Table(
+    "users",
+    metadata,
+    Column("username", String(255), primary_key=True),
+    Column("name", String(255), nullable=False),
+    Column("email", String(255), nullable=False),
+    Column("role", String(50), nullable=False, server_default="creator"),
+    Column("status", String(50), nullable=False, server_default="active"),
+    Column("reason", Text, nullable=True),
+    Column("password_hash", String(255), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+Index("ix_users_role", users.c.role)
+Index("ix_users_status", users.c.status)
+
 
 class PersistenceError(RuntimeError):
     """A durable write or repository-enforced transition failed."""

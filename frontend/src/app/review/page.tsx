@@ -49,6 +49,13 @@ function ReviewPageContent() {
   const initialScenarioId = searchParams.get("scenario_id");
   const { user, role } = useAuth();
 
+  // Admin Route Guard: Redirect Admin to /admin
+  useEffect(() => {
+    if (user?.role === "admin" || role === "admin") {
+      router.push("/admin");
+    }
+  }, [user?.role, role, router]);
+
   // State: List
   const [list, setList] = useState<ScenarioItem[]>([]);
   const [listLoading, setListLoading] = useState(true);

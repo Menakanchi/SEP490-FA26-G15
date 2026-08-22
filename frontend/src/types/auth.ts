@@ -4,15 +4,16 @@
 
 export type Role = "admin" | "reviewer" | "creator" | "guest";
 export type UserRole = Role;
-export type UserStatus = "active" | "pending";
+export type UserStatus = "active" | "pending" | "pending_approval" | "inactive" | "rejected";
 
 export interface User {
-  id: string;
+  id?: string;
   name: string;
   email: string;
   role: Role;
-  username?: string;
+  username: string;
   status?: UserStatus;
+  reason?: string;
   created_at?: string;
 }
 
@@ -35,6 +36,7 @@ export interface RegisterPayload {
   email?: string;
   name?: string;
   role?: Role;
+  reason?: string;
 }
 
 export interface AuthContextType {

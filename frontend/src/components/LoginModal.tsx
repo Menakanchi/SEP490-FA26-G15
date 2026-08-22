@@ -13,7 +13,6 @@ import {
   Mail,
   User as UserIcon,
   Clock,
-  CheckCircle2,
   AlertCircle,
   Crown,
   UserPlus,
@@ -26,7 +25,7 @@ interface LoginModalProps {
 
 export function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const router = useRouter();
-  const { login, register, switchRole, pendingUsers, approveUser } = useAuth();
+  const { login, register, switchRole } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -377,39 +376,6 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
               </span>
             </button>
           </form>
-        )}
-
-        {/* Admin Approval Management Sub-panel */}
-        {pendingUsers.length > 0 && (
-          <div className="pt-4 border-t border-slate-100 space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-              <span className="flex items-center gap-1 text-amber-700">
-                <Clock className="w-4 h-4" /> Yêu cầu Reviewer chờ duyệt ({pendingUsers.length})
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono">Simulate Email Approval</span>
-            </div>
-            <div className="space-y-2 max-h-32 overflow-y-auto pr-1">
-              {pendingUsers.map((pending) => (
-                <div
-                  key={pending.id}
-                  className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-2 text-xs"
-                >
-                  <div>
-                    <span className="font-bold text-slate-900 block">{pending.name}</span>
-                    <span className="text-[10px] text-slate-500 font-mono">{pending.email}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => approveUser(pending.id)}
-                    className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 shrink-0 transition"
-                  >
-                    <CheckCircle2 className="w-3 h-3" />
-                    <span>Duyệt Email</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
         )}
       </div>
     </div>
