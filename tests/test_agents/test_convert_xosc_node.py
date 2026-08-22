@@ -376,3 +376,26 @@ def test_generated_fixtures_validate_against_openscenario_1_xsd() -> None:
     schema = xmlschema.XMLSchema(ROOT / "tests" / "schemas" / "OpenSCENARIO_1_0.xsd")
     for fixture in fixtures:
         schema.validate(fixture)
+
+
+def test_actor_beyond_the_anchor_reach_is_rejected_before_carla_sees_it() -> None:
+    """Anchor chỉ phủ được một đoạn đường; ra ngoài đó ScenarioRunner không spawn nổi.
+
+    `Position.s_offset_m` cho phép ±200 vì đó là biên kiểu dữ liệu. Biên thật là
+    của anchor: đo trên CARLA 22/08, làn giữ nguyên định danh tới +40 m về phía
+    trước và ít nhất −120 m về phía sau. Hai kịch bản `wrong_way` đặt actor ở
+    +120 m đều chết bằng `Error: Unable to add actors` — thông báo không nhắc gì
+    tới khoảng cách, nên chặn sớm là cách duy nhất để người sinh kịch bản hiểu.
+    """
+    data = make_spec(ManeuverType.SUDDEN_BRAKE).model_dump()
+    data["actors"][1]["position"]["s_offset_m"] = 120.0
+
+    with pytest.raises(ConversionError, match="ngoài đoạn đường"):
+        convert_spec_to_xosc(ScenarioSpec.model_validate(data))
+
+
+def test_actor_inside_the_anchor_reach_still_converts() -> None:
+    """Biên là biên của anchor, không phải lệnh cấm mọi khoảng cách lớn."""
+    data = make_spec(ManeuverType.SUDDEN_BRAKE).model_dump()
+    data["actors"][1]["position"]["s_offset_m"] = 35.0
+    assert convert_spec_to_xosc(ScenarioSpec.model_validate(data)).startswith("<?xml")

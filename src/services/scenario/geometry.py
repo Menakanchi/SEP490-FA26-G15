@@ -199,3 +199,74 @@ def jaywalk_starts_in_ego_lane(actor: ActorSpec) -> bool:
     converter giữ nguyên làm hàng rào cuối.
     """
     return actor.position.lane_offset == 0
+
+
+LANE_WIDTH_M = 3.5
+"""Bề rộng một làn. Dùng để quy độ lệch làn ra quãng đường người đi bộ phải bước."""
+
+
+def jaywalk_walking_speed_kmh(maneuver: ManeuverSpec, actor: ActorSpec) -> float:
+    """Tốc độ đi bộ thật sự dùng khi chạy: ``target_speed_kmh`` thắng tốc độ ban đầu.
+
+    Converter phát một ``SpeedAction`` đặt tốc độ này ngay khi sự kiện bắt đầu,
+    nên nó — chứ không phải ``initial_speed_kmh`` — quyết định người đi bộ mất bao
+    lâu để sang tới làn ego.
+    """
+    return maneuver.target_speed_kmh if maneuver.target_speed_kmh else actor.initial_speed_kmh
+
+
+def jaywalk_required_trigger_m(maneuver: ManeuverSpec, actor: ActorSpec, ego: ActorSpec) -> float | None:
+    """Ego phải còn cách bao xa lúc người đi bộ bước xuống, để hai bên gặp nhau.
+
+    Quãng đường phải bước = số làn lệch × bề rộng làn. Chia cho tốc độ đi bộ ra
+    thời gian; nhân với tốc độ ego ra khoảng cách cần thiết.
+
+    ``None`` khi không tính được (đứng sẵn trong làn ego, hoặc tốc độ bằng 0).
+    """
+    lanes = abs(actor.position.lane_offset)
+    walk_ms = jaywalk_walking_speed_kmh(maneuver, actor) / 3.6
+    if lanes == 0 or walk_ms <= 0 or ego.initial_speed_kmh <= 0:
+        return None
+    seconds_to_cross = (lanes * LANE_WIDTH_M) / walk_ms
+    return (ego.initial_speed_kmh / 3.6) * seconds_to_cross
+
+
+def jaywalk_trigger_too_close(maneuver: ManeuverSpec, actor: ActorSpec, ego: ActorSpec) -> bool:
+    """Người đi bộ bước xuống quá muộn, ego đã đi qua trước khi họ tới nơi.
+
+    Đo trên ``sc_026`` ngày 22/08: ego 88 km/h, người đi bộ 6 km/h lệch một làn,
+    trigger đặt ở **18 m**. Người đi bộ cần 2,1 giây để bước qua 3,5 m, trong khi
+    ego đi hết 18 m chỉ trong 0,7 giây. Kết quả đo: khe hở nhỏ nhất **107 m** —
+    hai bên chưa bao giờ ở gần nhau.
+
+    Cần ego còn cách ~51 m lúc đó. Đây là cùng một họ lỗi với
+    :func:`lane_drift_trigger_too_late` và :func:`cut_in_trigger_before_overtake`
+    — hành vi xảy ra sai thời điểm — chỉ khác là ``jaywalk`` kích hoạt theo
+    **khoảng cách** nên phép tính đi theo đường khác.
+
+    Ngưỡng nới 30%: chưa tính thời gian phản ứng của bộ điều khiển và độ trễ khi
+    người đi bộ bắt đầu bước, nên chặn sát quá sẽ loại nhầm kịch bản dùng được.
+    """
+    if maneuver.trigger.type != "distance_to_ego":
+        return False
+    required = jaywalk_required_trigger_m(maneuver, actor, ego)
+    if required is None:
+        return False
+    return maneuver.trigger.value < required * 0.7
+
+
+def actor_beyond_anchor_reach(actor: ActorSpec, reach_m: tuple[float, float]) -> bool:
+    """Chủ thể đặt ra ngoài đoạn đường mà anchor phủ được.
+
+    ``Position.s_offset_m`` cho phép ±200 vì đó là biên của kiểu dữ liệu. Biên
+    THẬT là của anchor: ScenarioRunner giải ``RelativeLanePosition`` bằng số học
+    lane_id so với ego, nên ra khỏi đoạn mà làn giữ nguyên định danh thì lane
+    đích không tồn tại.
+
+    Triệu chứng khi lọt: ``Error: Unable to add actors`` — một thông báo không
+    nhắc gì tới khoảng cách, nên rất khó lần ra. Hai kịch bản `wrong_way` đặt
+    actor ở +120 m chết đúng kiểu đó ngày 22/08, trong khi mọi kịch bản
+    |s_offset| <= 35 m đều chạy.
+    """
+    backward, forward = reach_m
+    return not (backward <= actor.position.s_offset_m <= forward)

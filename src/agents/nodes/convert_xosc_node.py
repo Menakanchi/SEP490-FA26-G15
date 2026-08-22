@@ -20,6 +20,7 @@ from src.models.schemas import (
     Weather,
 )
 from src.services.scenario.geometry import (
+    actor_beyond_anchor_reach,
     cut_in_cannot_catch_up,
     cut_in_never_slows_down,
     cut_in_starts_in_ego_lane,
@@ -510,6 +511,14 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
             IssueCode.TEMPLATE_CATALOG_INCONSISTENT,
             f"No template for road type {spec.odd.road_type.value}",
         )
+    for actor in spec.actors:
+        if not actor.is_ego and actor_beyond_anchor_reach(actor, template.s_offset_reach_m):
+            raise ConversionError(
+                IssueCode.CONVERTER_ERROR,
+                f"{actor.name} ở s_offset_m={actor.position.s_offset_m} nằm ngoài đoạn đường "
+                f"anchor phủ được {template.s_offset_reach_m} — ScenarioRunner sẽ không spawn được",
+            )
+
     for maneuver in spec.maneuvers:
         _assert_catalog_consistent(template, maneuver.maneuver)
         actor = next(a for a in spec.actors if a.name == maneuver.actor_name)

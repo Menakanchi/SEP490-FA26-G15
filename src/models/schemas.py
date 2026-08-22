@@ -787,6 +787,7 @@ class IssueCode(StrEnum):
     GEOM_DRIFT_AFTER_PASS = "GEOM_DRIFT_AFTER_PASS"  # lấn làn sau khi ego đã đi ngang qua
     GEOM_CUTIN_BEFORE_OVERTAKE = "GEOM_CUTIN_BEFORE_OVERTAKE"  # tạt đầu khi còn ở sau ego -> tông đuôi
     GEOM_JAYWALK_IN_EGO_LANE = "GEOM_JAYWALK_IN_EGO_LANE"  # người đi bộ đứng sẵn trong làn ego
+    GEOM_JAYWALK_TRIGGER_TOO_CLOSE = "GEOM_JAYWALK_TRIGGER_TOO_CLOSE"  # bước xuống muộn, ego đã đi qua
 
     # -- Suy đoán, chỉ cảnh báo ---------------------------------------------
     LANE_OFFSET_IMPLAUSIBLE = "LANE_OFFSET_IMPLAUSIBLE"
@@ -823,6 +824,7 @@ REPAIRABLE_CODES: frozenset[IssueCode] = frozenset(
         IssueCode.GEOM_DRIFT_AFTER_PASS,
         IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE,
         IssueCode.GEOM_JAYWALK_IN_EGO_LANE,
+        IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE,
     }
 )
 """Một câu hỏi quyết định tất cả: *sửa nội dung LLM sinh ra có làm lỗi này biến mất không?*

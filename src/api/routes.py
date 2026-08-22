@@ -14,9 +14,10 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Body, HTTPException, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from src.agents.graph import build_forge_graph
+from src.agents.nodes.convert_xosc_node import convert_spec_to_xosc
 from src.models.schemas import (
     TOO_VAGUE_MESSAGE,
     DuplicateMatch,
@@ -29,6 +30,7 @@ from src.models.schemas import (
     ReviewApiRequest,
     ReviewGate,
     ScenarioListResponse,
+    ScenarioSpec,
     ScenarioStatus,
     StatusResponse,
     TagUpdateRequest,
@@ -39,7 +41,7 @@ from src.models.schemas import (
     verification_from_execution,
 )
 from src.services import campaign as campaign_service
-from src.services import db, metrics
+from src.services import db, metrics, tuning
 from src.services.library.retriever import SQLiteRetriever
 
 logger = logging.getLogger(__name__)
@@ -698,6 +700,74 @@ async def review_campaign(campaign_id: str, body: BatchReviewRequest) -> dict:
             decided.append(scenario["scenario_id"])
 
     return {"ok": True, "campaign_id": campaign_id, "scenarios": decided, "count": len(decided)}
+
+
+@router.post("/scenarios/{scenario_id}/tune")
+async def tune_scenario(scenario_id: str) -> dict:
+    """Sinh các biến thể để tìm bộ tham số làm kịch bản **thật sự tới hạn**.
+
+    Bước *concretization* của tài liệu ngành: file hợp lệ mới là nửa việc, chọn
+    được giá trị cụ thể tái hiện được nguy hiểm mới là nửa còn lại. Đo ngày 22/08:
+    5 trên 8 kịch bản chấm được đã chạy trót lọt mà vô hại.
+
+    Biến thể đi qua **đúng hàng đợi job và đúng cổng duyệt** như mọi kịch bản
+    khác — cố ý. Cho chúng tự chạy là dựng một đường tắt vòng qua HITL, mà đó là
+    ràng buộc không được đánh đổi của đề bài.
+    """
+    scenario = _scenario_or_404(scenario_id)
+    try:
+        spec = ScenarioSpec.model_validate(scenario["spec"])
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=f"Spec không hợp lệ: {exc}") from exc
+
+    variants = tuning.variant_specs(spec)
+    if not variants:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Không dò được theo thời điểm trigger. Hoặc hai xe không tiến lại gần nhau, "
+                "hoặc chúng gặp nhau quá sớm để hành vi kịp thành hình (cần ~2,5s), hoặc trigger "
+                "không phải simulation_time. Cả ba đều nói vấn đề nằm ở vị trí/tốc độ ban đầu."
+            ),
+        )
+
+    created: list[str] = []
+    for index, variant in enumerate(variants, start=1):
+        variant_id = f"{scenario_id}_t{index}"
+        try:
+            xosc = convert_spec_to_xosc(variant.model_copy(update={"scenario_id": variant_id}))
+        except Exception as exc:  # noqa: BLE001 — một biến thể hỏng không được giết cả phép dò
+            logger.warning("Biến thể %s không biên dịch được: %s", variant_id, exc)
+            continue
+        db.save_scenario(
+            variant_id,
+            variant.title,
+            scenario["description_vi"],
+            variant.model_dump(mode="json"),
+            variant.odd.model_dump(mode="json"),
+            xosc_content=xosc,
+            created_by=f"tuner:{scenario_id}",
+        )
+        created.append(variant_id)
+
+    return {"ok": True, "scenario_id": scenario_id, "variants": created, "count": len(created)}
+
+
+@router.get("/scenarios/{scenario_id}/tune")
+async def tuning_result(scenario_id: str) -> dict:
+    """So các biến thể đã chạy với kịch bản gốc."""
+    _scenario_or_404(scenario_id)
+    _, _, executions = db.metrics_rows()
+    by_id = {e["scenario_id"]: e for e in executions}
+
+    baseline = by_id.get(scenario_id) or {}
+    results = [
+        {"scenario_id": sid, "metrics": (by_id[sid].get("result") or {}).get("metrics") or {}}
+        for sid in sorted(by_id)
+        if sid.startswith(f"{scenario_id}_t")
+    ]
+    summary = tuning.summarise_tuning({"metrics": (baseline.get("result") or {}).get("metrics") or {}}, results)
+    return {"scenario_id": scenario_id, **summary}
 
 
 @router.get("/metrics/quality")
