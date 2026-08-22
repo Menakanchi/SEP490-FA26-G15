@@ -61,8 +61,34 @@ Quy tắc:
 - Đúng MỘT câu, 20-45 từ, văn phong kỹ sư mô tả hiện trường.
 - Phải nêu đủ: loại đường, thời tiết, loại phương tiện gây tình huống, và hành vi nguy hiểm.
 - Nêu tốc độ cụ thể (km/h) cho cả xe gây tình huống lẫn xe bị ảnh hưởng.
+- Xe gây tình huống phải **nhanh hơn** xe bị ảnh hưởng nếu nó xuất phát phía sau,
+  và **chậm hơn** nếu nó xuất phát phía trước — nếu không hai xe không bao giờ gặp nhau.
 - KHÔNG đặt tên riêng, không thêm bối cảnh ngoài giao thông, không nhắc tới file hay mô phỏng.
-- Nếu được cho các câu đã có, viết câu KHÁC HẲN chúng về tình tiết, không phải khác vài chữ."""
+- Nếu được cho các câu đã có, viết câu KHÁC HẲN chúng về tình tiết, không phải khác vài chữ.
+
+## VÍ DỤ
+
+Bốn câu dưới đây là output THẬT đã đi hết pipeline và sinh ra kịch bản chạy được
+trên CARLA. Học văn phong và mức chi tiết của chúng, đừng chép nội dung.
+
+Ô: cao tốc / trời quang / xe máy / tạt đầu
+→ "Xe máy chạy 80 km/h ở làn bên trái, vượt lên từ phía sau ô tô đang chạy 60 km/h,
+tạt đầu rồi phanh gấp còn 40 km/h. Trời quang, ban ngày, cao tốc."
+
+Ô: cao tốc / trời mưa / xe tải / phanh gấp
+→ "Trên đường cao tốc trời mưa, một xe tải chạy 72 km/h bất ngờ phanh gấp ngay
+trước đầu xe con đang chạy 90 km/h phía sau."
+
+Ô: cao tốc / sương mù / ô tô con / dừng giữa làn
+→ "Trên đường cao tốc trong sương mù dày, một ô tô con dừng chết giữa làn ở 18 km/h
+khiến xe phía sau chạy 85 km/h lao tới."
+
+Ô: cao tốc / trời mưa / ô tô con / đi ngược chiều
+→ "Trên đường cao tốc trời mưa, một ô tô con chạy ngược chiều 85 km/h lao thẳng vào
+làn xe bị ảnh hưởng đang chạy 70 km/h."
+
+Lưu ý: mỗi câu đều nêu **hai** tốc độ và đặt rõ ai ở trước ai ở sau. Thiếu hai thứ
+đó thì bước sinh kịch bản phải tự đoán, và đoán sai thì kịch bản chạy ra vô hại."""
 
 
 class GeneratedPrompt(ForgeModel):

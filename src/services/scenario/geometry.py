@@ -67,8 +67,13 @@ def cut_in_trigger_is_unsigned(maneuver: ManeuverSpec) -> bool:
     return maneuver.trigger.type != "simulation_time"
 
 
-def _time_until_alongside(actor: ActorSpec, ego: ActorSpec) -> float | None:
+def time_until_alongside(actor: ActorSpec, ego: ActorSpec) -> float | None:
     """Giây thứ mấy thì hai xe đi ngang nhau, nếu điều đó xảy ra.
+
+    Công khai vì ``validate_node`` cần **con số** chứ không chỉ cần biết đúng/sai:
+    gợi ý sửa mà chỉ nói "đặt trigger sớm hơn" thì model phải tự làm phép chia
+    ``s_offset / Δv`` — và đo trên output LLM thật ngày 22/08 thì nó không làm,
+    nên hết ba vòng repair mà lỗi vẫn nguyên.
 
     ``None`` nghĩa là khoảng cách dọc không thu hẹp — chúng không bao giờ ngang
     nhau, và câu hỏi "lấn sớm hay muộn" không còn nghĩa.
@@ -115,7 +120,7 @@ def lane_drift_trigger_too_late(maneuver: ManeuverSpec, actor: ActorSpec, ego: A
     """
     if maneuver.trigger.type != "simulation_time":
         return False
-    alongside_s = _time_until_alongside(actor, ego)
+    alongside_s = time_until_alongside(actor, ego)
     if alongside_s is None:
         return False
     return maneuver.trigger.value >= alongside_s
@@ -144,7 +149,21 @@ def cut_in_trigger_before_overtake(maneuver: ManeuverSpec, actor: ActorSpec, ego
     """
     if maneuver.trigger.type != "simulation_time":
         return False
-    alongside_s = _time_until_alongside(actor, ego)
+    alongside_s = time_until_alongside(actor, ego)
     if alongside_s is None:
         return False
     return maneuver.trigger.value <= alongside_s
+
+
+def jaywalk_starts_in_ego_lane(actor: ActorSpec) -> bool:
+    """Người đi bộ xuất phát ngay trong làn ego, nên không có gì để "băng ngang".
+
+    Converter đã chặn từ trước, nhưng chặn ở đó là **terminal**: workflow chết mà
+    không repair lần nào, dù lỗi sửa được bằng đúng một số. Đo trên chiến dịch
+    ODD ngày 22/08: ô ``jaywalk`` hỏng hai lần liên tiếp vì LLM đặt
+    ``lane_offset=0``, và cả hai lần đều không có vòng sửa nào chạy.
+
+    Đưa lên validate thì nó thành ``ValidationIssue`` repair được; chốt ở
+    converter giữ nguyên làm hàng rào cuối.
+    """
+    return actor.position.lane_offset == 0
