@@ -15,13 +15,11 @@ import {
   Crown,
   AlertCircle,
   ArrowLeft,
-  Clock,
-  CheckCircle2,
 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, switchRole, pendingUsers, approveUser } = useAuth();
+  const { login, switchRole } = useAuth();
   const [emailInput, setEmailInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -188,42 +186,13 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => handleQuickSelect("creator", "creator")}
-              className="p-2.5 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-blue-700 font-bold text-center flex flex-col items-center gap-1 transition"
+              className="p-2.5 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-blue-700 font-bold text-center flex flex-col items-center gap-1 transition cursor-pointer"
             >
               <Zap className="w-4 h-4 text-blue-600" />
               <span>Creator</span>
             </button>
           </div>
         </div>
-
-        {/* Admin Pending Approval Sub-panel */}
-        {pendingUsers.length > 0 && (
-          <div className="pt-3 space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-              <span className="flex items-center gap-1 text-amber-700">
-                <Clock className="w-3.5 h-3.5" /> Reviewer chờ Admin duyệt ({pendingUsers.length})
-              </span>
-            </div>
-            <div className="space-y-1.5">
-              {pendingUsers.map((pending) => (
-                <div
-                  key={pending.id}
-                  className="p-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-2 text-[11px]"
-                >
-                  <span className="font-medium text-slate-800 truncate">{pending.email}</span>
-                  <button
-                    type="button"
-                    onClick={() => approveUser(pending.id)}
-                    className="px-2 py-0.5 bg-green-600 hover:bg-green-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shrink-0 transition"
-                  >
-                    <CheckCircle2 className="w-3 h-3" />
-                    <span>Duyệt Email</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

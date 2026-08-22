@@ -44,6 +44,13 @@ function GeneratorPageContent() {
   const searchParams = useSearchParams();
   const { user, role } = useAuth();
 
+  // Admin Route Guard: Redirect Admin to /admin
+  useEffect(() => {
+    if (user?.role === "admin" || role === "admin") {
+      router.push("/admin");
+    }
+  }, [user?.role, role, router]);
+
   // Form state
   const [prompt, setPrompt] = useState("");
   const [validationMode, setValidationMode] = useState<ValidationMode>("static");

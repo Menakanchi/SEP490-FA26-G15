@@ -609,3 +609,196 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
     logger.info("Kịch bản %s -> %s, chờ BEFORE_LIBRARY", body.scenario_id, level.value)
 
     return {"ok": True, "verification": level.value, "status": next_status.value}
+
+
+# ===========================================================================
+# Auth & User Management Endpoints
+# ===========================================================================
+
+class RegisterApiRequest(BaseModel):
+    username: str
+    name: str
+    email: str
+    role: str = "creator"
+    password: str | None = None
+    reason: str | None = None
+
+
+class LoginApiRequest(BaseModel):
+    username: str
+    password: str | None = None
+    role: str | None = None
+
+
+class UserCreateRequest(BaseModel):
+    username: str
+    name: str
+    email: str
+    role: str = "creator"
+    status: str = "active"
+    password: str | None = None
+    reason: str | None = None
+
+
+class UserUpdateRequest(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    role: str | None = None
+    status: str | None = None
+    password: str | None = None
+    reason: str | None = None
+
+
+@router.post("/auth/register")
+async def register_user_endpoint(body: RegisterApiRequest) -> dict:
+    existing = db.get_user(body.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="Username đã tồn tại trên hệ thống")
+
+    status = "pending_approval" if body.role == "reviewer" else "active"
+    user = db.create_user(
+        username=body.username,
+        name=body.name,
+        email=body.email,
+        role=body.role,
+        status=status,
+        reason=body.reason,
+        password=body.password,
+    )
+
+    msg = (
+        "Đăng ký tài khoản Reviewer thành công! Yêu cầu của bạn đang chờ Admin phê duyệt và cấp mật khẩu qua Email."
+        if body.role == "reviewer"
+        else "Đăng ký tài khoản thành công!"
+    )
+    return {"ok": True, "user": user, "status": status, "message_vi": msg}
+
+
+@router.post("/auth/login")
+async def login_user_endpoint(body: LoginApiRequest) -> dict:
+    u_full = db.get_user_with_hash(body.username)
+    if not u_full:
+        # Tự động tạo nếu là login mock đầu tiên
+        user = db.create_user(
+            username=body.username,
+            name=body.username.capitalize(),
+            email=f"{body.username}@forge.ai",
+            role=body.role or "creator",
+            status="active",
+            password=body.password or "123456",
+        )
+        return {
+            "access_token": f"token_{uuid.uuid4().hex[:12]}",
+            "token_type": "bearer",
+            "user": user,
+        }
+
+    if u_full.get("status") == "pending_approval":
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản đang ở trạng thái 'Chờ duyệt'. Vui lòng đợi Admin phê duyệt và nhận mật khẩu qua email.",
+        )
+
+    if u_full.get("status") in ("inactive", "rejected"):
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản đã bị từ chối hoặc vô hiệu hóa. Vui lòng liên hệ Admin.",
+        )
+
+    stored_hash = u_full.get("password_hash")
+    if stored_hash and body.password:
+        if not db.verify_password(body.password, stored_hash):
+            raise HTTPException(status_code=401, detail="Mật khẩu không chính xác")
+
+    user_clean = db.get_user(body.username)
+    return {
+        "access_token": f"token_{uuid.uuid4().hex[:12]}",
+        "token_type": "bearer",
+        "user": user_clean,
+    }
+
+
+@router.get("/auth/me")
+async def get_me_endpoint(user: str = Query("admin")) -> dict:
+    u = db.get_user(user)
+    if not u:
+        u = db.get_user("admin")
+    return u or {"id": "usr_admin", "username": "admin", "name": "Hệ Thống Admin", "email": "admin@forge.ai", "role": "admin", "status": "active"}
+
+
+# ===========================================================================
+# Admin Subsystem Endpoints (/admin)
+# ===========================================================================
+
+@router.get("/admin/stats")
+async def get_admin_stats_endpoint() -> dict:
+    return db.get_admin_stats()
+
+
+@router.get("/admin/pending-reviewers")
+async def list_pending_reviewers_endpoint() -> list[dict]:
+    return db.get_pending_reviewers()
+
+
+@router.get("/admin/users")
+async def list_admin_users_endpoint(
+    role: str | None = Query(None), status: str | None = Query(None)
+) -> list[dict]:
+    return db.list_users(role=role, status=status)
+
+
+@router.post("/admin/users")
+async def create_admin_user_endpoint(body: UserCreateRequest) -> dict:
+    existing = db.get_user(body.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="Username đã tồn tại")
+    user = db.create_user(
+        username=body.username,
+        name=body.name,
+        email=body.email,
+        role=body.role,
+        status=body.status,
+        reason=body.reason,
+        password=body.password,
+    )
+    return {"ok": True, "user": user}
+
+
+@router.put("/admin/users/{username}")
+async def update_admin_user_endpoint(username: str, body: UserUpdateRequest) -> dict:
+    updated = db.update_user(
+        username=username,
+        name=body.name,
+        email=body.email,
+        role=body.role,
+        status=body.status,
+        reason=body.reason,
+        password=body.password,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+    return {"ok": True, "user": updated}
+
+
+@router.delete("/admin/users/{username}")
+async def delete_admin_user_endpoint(username: str) -> dict:
+    success = db.delete_user(username)
+    if not success:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+    return {"ok": True, "username": username}
+
+
+@router.post("/admin/users/{username}/approve")
+async def approve_reviewer_endpoint(username: str) -> dict:
+    user = db.approve_reviewer_request(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Reviewer")
+    return {"ok": True, "user": user}
+
+
+@router.post("/admin/users/{username}/reject")
+async def reject_reviewer_endpoint(username: str) -> dict:
+    user = db.reject_reviewer_request(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Reviewer")
+    return {"ok": True, "user": user}

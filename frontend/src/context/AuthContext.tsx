@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import type { User, Role, LoginPayload, RegisterPayload, AuthContextType } from "@/types/auth";
+import type { User, Role, UserStatus, LoginPayload, RegisterPayload, AuthContextType } from "@/types/auth";
 import { postLogin, postRegister, getMe } from "@/services/api";
 
 const DEFAULT_MOCK_USER: User = {
@@ -234,57 +234,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (payload: RegisterPayload) => {
       setIsLoading(true);
       try {
+        const res = await postRegister(payload);
+        const userStatus: UserStatus = (res.status as UserStatus) || (payload.role === "reviewer" ? "pending_approval" : "active");
+
+        if (userStatus === "active" && res.user) {
+          setUser(res.user);
+          setToken(`token_${Date.now()}`);
+          localStorage.setItem("auth_user", JSON.stringify(res.user));
+        }
+        return { status: userStatus, user: res.user };
+      } catch {
         const targetRole = payload.role || "creator";
         const email = payload.email || `${payload.username || "user"}@company.com`;
         const name = payload.name || payload.username || "User";
+        const fallbackStatus: UserStatus = targetRole === "reviewer" ? "pending_approval" : "active";
 
-        if (targetRole === "reviewer") {
-          // Reviewer accounts require Admin approval
-          const pendingUser: User = {
-            id: `usr_rev_pending_${Date.now().toString().slice(-4)}`,
-            name,
-            email,
-            role: "reviewer",
-            username: payload.username || email.split("@")[0],
-            status: "pending",
-            created_at: new Date().toISOString(),
-          };
+        const fallbackUser: User = {
+          id: `usr_${targetRole}_${Date.now().toString().slice(-4)}`,
+          name,
+          email,
+          role: targetRole,
+          username: payload.username || email.split("@")[0],
+          status: fallbackStatus,
+          reason: payload.reason,
+          created_at: new Date().toISOString(),
+        };
 
-          setPendingUsers((prev) => {
-            const updated = [pendingUser, ...prev];
-            localStorage.setItem("forge_pending_users", JSON.stringify(updated));
-            return updated;
-          });
-
-          return { status: "pending" as const, user: pendingUser };
-        } else {
-          // Creator accounts are active immediately
-          if (payload.username && payload.password) {
-            try {
-              await postRegister(payload);
-            } catch {
-              // Dev fallback
-            }
-          }
-
-          const activeUser: User = {
-            id: `usr_creator_${Date.now().toString().slice(-4)}`,
-            name,
-            email,
-            role: "creator",
-            username: payload.username || email.split("@")[0],
-            status: "active",
-            created_at: new Date().toISOString(),
-          };
-
-          const mockToken = `token_creator_${Date.now()}`;
-          setUser(activeUser);
-          setToken(mockToken);
-          localStorage.setItem("auth_user", JSON.stringify(activeUser));
-          localStorage.setItem("forge_token", mockToken);
-
-          return { status: "active" as const, user: activeUser };
+        if (fallbackStatus === "active") {
+          setUser(fallbackUser);
+          setToken(`token_${Date.now()}`);
+          localStorage.setItem("auth_user", JSON.stringify(fallbackUser));
         }
+        return { status: fallbackStatus, user: fallbackUser };
       } finally {
         setIsLoading(false);
       }

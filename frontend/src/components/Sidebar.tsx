@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
@@ -15,6 +15,7 @@ import {
   LogOut,
   Sun,
   Moon,
+  Shield,
 } from "lucide-react";
 import type { Role } from "@/types/auth";
 
@@ -55,6 +56,13 @@ const NAV_ITEMS: NavItem[] = [
     icon: Library,
     allowedRoles: ["creator", "reviewer", "admin"],
   },
+  {
+    href: "/admin",
+    label: "Dashboard Quản Trị",
+    description: "Thống kê & Quản lý User",
+    icon: Shield,
+    allowedRoles: ["admin"],
+  },
 ];
 
 function SidebarContent() {
@@ -74,11 +82,32 @@ function SidebarContent() {
     router.push("/");
   };
 
-  const filteredNavItems = NAV_ITEMS.filter((item) => {
-    if (!item.allowedRoles) return true;
-    if (role) return item.allowedRoles.includes(role);
-    return item.allowedRoles.includes("creator");
-  });
+  const filteredNavItems = useMemo(() => {
+    if (role === "admin" || user?.role === "admin") {
+      return [
+        {
+          href: "/admin",
+          label: "Dashboard Quản Trị",
+          description: "Thống kê & Quản lý User",
+          icon: Shield,
+          allowedRoles: ["admin" as Role],
+        },
+        {
+          href: "/library",
+          label: "Thư viện",
+          description: "Kịch bản ODD & Cá nhân",
+          icon: Library,
+          allowedRoles: ["creator" as Role, "reviewer" as Role, "admin" as Role],
+        },
+      ];
+    }
+    return NAV_ITEMS.filter((item) => {
+      if (item.href === "/admin") return false;
+      if (!item.allowedRoles) return true;
+      if (role) return item.allowedRoles.includes(role);
+      return item.allowedRoles.includes("creator");
+    });
+  }, [role, user?.role]);
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-[260px] flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 z-50 shadow-sm font-sans transition-colors duration-200">
