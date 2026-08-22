@@ -1,58 +1,95 @@
 "use client";
 
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import {
   Zap,
   ClipboardCheck,
-  Library,
   Layers,
   ChevronRight,
   Compass,
   LogOut,
   Sun,
   Moon,
+  Globe,
+  User,
 } from "lucide-react";
+import type { Role } from "@/types/auth";
 
-const NAV_ITEMS = [
+interface NavItem {
+  href: string;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+  allowedRoles?: Role[];
+}
+
+const NAV_ITEMS: NavItem[] = [
   {
     href: "/landing",
     label: "Giới thiệu Platform",
     description: "Tổng quan & ODD Platform",
     icon: Compass,
+    allowedRoles: ["creator", "reviewer", "admin"],
   },
   {
     href: "/",
     label: "Generator",
     description: "Sinh kịch bản mới",
     icon: Zap,
+    allowedRoles: ["creator", "reviewer", "admin"],
   },
   {
     href: "/review",
     label: "HITL Review",
     description: "Duyệt kịch bản",
     icon: ClipboardCheck,
+    allowedRoles: ["reviewer", "admin"],
   },
   {
     href: "/library",
-    label: "Thư viện",
+    label: "Thư viện chung",
     description: "Kịch bản đã duyệt",
-    icon: Library,
+    icon: Globe,
+    allowedRoles: ["creator", "reviewer", "admin"],
+  },
+  {
+    href: "/library?tab=me",
+    label: "Thư viện cá nhân",
+    description: "Nháp & Kịch bản của tôi",
+    icon: User,
+    allowedRoles: ["creator", "reviewer", "admin"],
   },
 ];
 
-export function Sidebar() {
+function SidebarContent() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { logout, user, role } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- avoid hydration mismatch on theme button
+    setMounted(true);
+  }, []);
 
   const handleLogout = () => {
     logout();
     router.push("/");
   };
+
+  const filteredNavItems = NAV_ITEMS.filter((item) => {
+    if (!item.allowedRoles) return true;
+    if (role) return item.allowedRoles.includes(role);
+    return item.allowedRoles.includes("creator");
+  });
+
+  const currentTab = searchParams.get("tab");
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-[260px] flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 z-50 shadow-sm font-sans transition-colors duration-200">
@@ -78,10 +115,17 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {NAV_ITEMS.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== "/" && pathname.startsWith(item.href));
+        {filteredNavItems.map((item) => {
+          let isActive = false;
+          if (item.href === "/library?tab=me") {
+            isActive = pathname === "/library" && currentTab === "me";
+          } else if (item.href === "/library") {
+            isActive = pathname === "/library" && currentTab !== "me";
+          } else {
+            isActive =
+              pathname === item.href ||
+              (item.href !== "/" && pathname.startsWith(item.href));
+          }
 
           return (
             <Link
@@ -92,8 +136,8 @@ export function Sidebar() {
                 text-sm font-semibold transition-all duration-200
                 ${
                   isActive
-                    ? "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 shadow-sm border border-blue-200/60 dark:border-blue-800/60 font-bold"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                    ? "bg-blue-50/80 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 shadow-sm border border-blue-200/80 dark:border-blue-800/60 font-bold border-r-2 border-r-blue-600"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-sky-50/50 dark:hover:bg-slate-800/60"
                 }
               `}
             >
@@ -121,16 +165,21 @@ export function Sidebar() {
       </nav>
 
       {/* Footer Profile, Theme Toggle & Logout */}
-      <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 space-y-3">
+      <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-sky-50/30 dark:bg-slate-950/40 space-y-3">
         {/* Quick Theme Switch Row */}
         <div className="flex items-center justify-between px-1 text-xs">
           <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Giao diện:</span>
           <button
             type="button"
             onClick={toggleTheme}
-            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-bold text-[11px] flex items-center gap-1.5 shadow-sm hover:border-blue-500 transition cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-sky-100 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-bold text-[11px] flex items-center gap-1.5 shadow-sm hover:border-blue-500 transition cursor-pointer"
           >
-            {theme === "light" ? (
+            {!mounted ? (
+              <>
+                <Moon className="w-3.5 h-3.5 text-blue-600" />
+                <span>Chế độ Tối</span>
+              </>
+            ) : theme === "light" ? (
               <>
                 <Moon className="w-3.5 h-3.5 text-blue-600" />
                 <span>Chế độ Tối</span>
@@ -168,5 +217,13 @@ export function Sidebar() {
         )}
       </div>
     </aside>
+  );
+}
+
+export function Sidebar() {
+  return (
+    <Suspense fallback={<aside className="fixed left-0 top-0 bottom-0 w-[260px] border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900" />}>
+      <SidebarContent />
+    </Suspense>
   );
 }

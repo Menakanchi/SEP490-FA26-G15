@@ -269,9 +269,11 @@ export interface ScenarioSpec {
 // ---------------------------------------------------------------------------
 
 export type ScenarioStatus =
+  | "draft"
   | "pending_review"
-  | "rejected"
   | "approved_library"
+  | "approved_sim"
+  | "rejected"
   | "pending_sim_review";
 
 export type ReviewGate = "before_library" | "before_sim";
@@ -320,6 +322,7 @@ export interface ScenarioItem {
   status: ScenarioStatus;
   xosc_content?: string;
   created_at: string; // ISO datetime
+  actors?: ActorSpec[];
   spec?: ScenarioSpec;
   retrieved_examples?: RetrievedExample[];
 }
