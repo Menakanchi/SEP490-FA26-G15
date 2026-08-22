@@ -237,6 +237,42 @@ def test_wrong_way_rotates_actor_and_adds_criterion() -> None:
     assert "criteria_WrongLaneTest" in criteria
 
 
+@pytest.mark.parametrize("maneuver", SUPPORTED_MANEUVERS)
+def test_every_maneuver_group_stays_open_until_duration(maneuver: ManeuverType) -> None:
+    """Mỗi maneuver group phải có event giữ kịch bản chạy hết ``duration_s``.
+
+    ScenarioRunner dựng Act là ``Parallel(SUCCESS_ON_ONE, [Maneuvers, EndConditions])``
+    (`srunner/scenarios/open_scenario.py`), nên ``StopTrigger`` của Act là nhánh
+    OR chứ không phải sàn thời gian — hết việc trong storyboard là kịch bản đóng
+    ngay lập tức.
+
+    Đo trên CARLA ngày 22/08 trước khi có event này: `stop_in_lane`,
+    `run_red_light`, `jaywalk` và `wrong_way` đều kết thúc sau ~2,6 s với ego mới
+    đi 16,6 m — chưa kịp tới chỗ adversary, nên không kịch bản nào trong bốn cái
+    đó mô phỏng được gì. Sau khi có: cả bốn chạy đủ 30,5 s, và `wrong_way` dựng
+    được va chạm thật.
+
+    Test này tách khỏi golden byte-identical có chủ đích: golden bắt được *thay
+    đổi*, còn test này nói *vì sao* file phải như thế. Xoá `_add_hold_open_event`
+    rồi sinh lại golden thì golden vẫn xanh — chỉ test này đỏ.
+    """
+    spec = make_spec(maneuver)
+    root = ET.fromstring(convert_spec_to_xosc(spec))
+    groups = root.findall("./Storyboard/Story/Act/ManeuverGroup")
+    assert groups, "Act phải có ít nhất một ManeuverGroup"
+    for group in groups:
+        held_open = [
+            condition
+            for condition in group.findall(".//Event/StartTrigger//SimulationTimeCondition")
+            if float(condition.get("value")) == pytest.approx(spec.duration_s)
+            and condition.get("rule") == "greaterThan"
+        ]
+        assert held_open, (
+            f"{group.get('name')} không có event nào chờ tới duration_s={spec.duration_s}; "
+            "kịch bản sẽ đóng ngay khi adversary xong việc"
+        )
+
+
 def test_fixed_dates_are_named_deterministic_output() -> None:
     root = ET.fromstring(convert_spec_to_xosc(make_spec(ManeuverType.SUDDEN_BRAKE)))
     assert root.find("FileHeader").get("date") == f"{DETERMINISTIC_XOSC_DATE}T00:00:00"
