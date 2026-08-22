@@ -165,7 +165,7 @@ def run_job(job: dict) -> dict:
         xosc_path.unlink(missing_ok=True)
         # Đo hỏng không được làm hỏng lượt chạy: `stop()` nuốt lỗi và trả dict
         # rỗng, còn `recorder.error` chỉ đi vào log.
-        trajectory_metrics = recorder.stop()
+        trajectory_metrics, trajectory_points = recorder.stop()
         if recorder.error:
             log.warning("  -> không đo được quỹ đạo: %s", recorder.error)
 
@@ -182,6 +182,7 @@ def run_job(job: dict) -> dict:
 
     result = to_execution_result(job, returncode, criteria_json, error)
     result["metrics"].update(trajectory_metrics)
+    result["trajectory"] = trajectory_points
     result["metrics"]["wall_clock_s"] = round(time.time() - started_at, 1)
     return result
 
