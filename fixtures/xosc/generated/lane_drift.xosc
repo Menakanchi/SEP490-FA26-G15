@@ -118,7 +118,7 @@
                     <LaneOffsetAction continuous="true">
                       <LaneOffsetActionDynamics maxLateralAcc="0.4" dynamicsShape="linear" />
                       <LaneOffsetTarget>
-                        <AbsoluteTargetLaneOffset value="-0.7" />
+                        <AbsoluteTargetLaneOffset value="0.7" />
                       </LaneOffsetTarget>
                     </LaneOffsetAction>
                   </LateralAction>

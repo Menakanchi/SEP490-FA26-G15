@@ -128,7 +128,7 @@
                 <ConditionGroup>
                   <Condition name="trigger_cut_in" delay="0" conditionEdge="rising">
                     <ByValueCondition>
-                      <SimulationTimeCondition value="2" rule="greaterThan" />
+                      <SimulationTimeCondition value="6" rule="greaterThan" />
                     </ByValueCondition>
                   </Condition>
                 </ConditionGroup>

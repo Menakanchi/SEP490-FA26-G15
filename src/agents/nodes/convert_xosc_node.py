@@ -203,8 +203,20 @@ def _lane_drift(parent: ET.Element, actor: ActorSpec) -> None:
     action = ET.SubElement(lateral, "LaneOffsetAction", continuous="true")
     ET.SubElement(action, "LaneOffsetActionDynamics", maxLateralAcc="0.4", dynamicsShape="linear")
     target = ET.SubElement(action, "LaneOffsetTarget")
-    # OpenSCENARIO offset is positive to the left, negative to the right.
-    offset = 0.7 if actor.position.lane_offset > 0 else -0.7
+    # ScenarioRunner 0.9.15 dùng dấu NGƯỢC với quy ước OpenSCENARIO:
+    # `ChangeActorLaneOffset` ghi rõ "positive distance imply a displacement to
+    # the right" (atomic_behaviors.py:1122), và openscenario_parser.py:1405
+    # truyền thẳng giá trị trong XML không đổi dấu.
+    #
+    # Bản trước lấy dấu theo quy ước chuẩn nên lấn NGƯỢC HƯỚNG trong mọi trường
+    # hợp: xe ở bên trái ego dạt thêm sang trái, xe bên phải dạt thêm sang phải.
+    # Hỏng im lặng — kịch bản vẫn chạy, XML vẫn hợp lệ, `CollisionTest` vẫn 0,
+    # nên không có gì báo. Đo trên CARLA 22/08 với sc_906: khe hở ngang giữa hai
+    # thân xe NỞ RỘNG từ 1,05 m lên 2,3 m sau khi "lấn".
+    #
+    # Actor bên trái ego (lane_offset < 0) muốn lấn về phía ego thì phải đi sang
+    # phải, tức offset dương.
+    offset = 0.7 if actor.position.lane_offset < 0 else -0.7
     ET.SubElement(target, "AbsoluteTargetLaneOffset", value=_number(offset))
 
 
