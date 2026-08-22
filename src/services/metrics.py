@@ -193,6 +193,13 @@ def intent_verdict(execution: dict) -> bool | None:
     if not metrics or not maneuver:
         return None
 
+    # Lượt chạy hỏng thì không nói được gì về ý định — kể cả khi nó có kèm số.
+    # Kết quả cũ do worker chưa có chốt chặn gửi về vẫn mang số của actor còn sót
+    # (sc_025 ngày 22/08: `Unable to add actors` mà vẫn có khe hở 12,58 m), và
+    # chấm "TRƯỢT" cho một kịch bản chưa từng chạy là ghi nhầm thất bại.
+    if not result.get("success"):
+        return None
+
     deviation = metrics.get("adversary_lane_deviation_m")
     contact = metrics.get("contact_longitudinal_m")
     drop = metrics.get("adversary_speed_drop_ms")

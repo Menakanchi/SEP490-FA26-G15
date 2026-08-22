@@ -226,9 +226,13 @@ def test_crossing_is_detected_by_a_sign_flip_close_to_the_ego() -> None:
 
 
 def test_crossing_far_from_the_ego_is_not_counted() -> None:
-    """Sang đường cách ego 200 m là giao thông bình thường, không phải kịch bản."""
+    """Sang đường cách ego 200 m là giao thông bình thường, không phải kịch bản.
+
+    Khoá vẫn phải CÓ MẶT với giá trị 0: vắng mặt dành riêng cho "worker cũ không
+    đo", còn 0 là một phán quyết — đo rồi, và nó không băng qua.
+    """
     far = [_sample(0.0, lon=180.0, lat=-4.0), _sample(1.0, lon=175.0, lat=4.0)]
-    assert "adversary_crossed_ego_path" not in trajectory.summarise(far)
+    assert trajectory.summarise(far)["adversary_crossed_ego_path"] == 0.0
 
 
 def test_heading_delta_reports_opposing_traffic() -> None:
@@ -269,3 +273,36 @@ def test_heading_delta_reports_opposing_traffic() -> None:
 def test_heading_is_absent_rather_than_zero_when_no_pose_was_recorded() -> None:
     """0 độ nghĩa là cùng hướng — khác hẳn 'không đo được'."""
     assert "adversary_heading_delta_deg" not in trajectory.summarise([_sample(0.0, lon=10.0, lat=0.2)])
+
+
+def _load_runner():
+    """`worker/runner.py` import được từ venv backend: nó không `import carla` ở đầu file."""
+    import importlib.util
+
+    root = Path(__file__).parents[2] / "worker"
+    sys.path.insert(0, str(root))
+    spec = importlib.util.spec_from_file_location("worker_runner", root / "runner.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["worker_runner"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_failed_runs_never_carry_trajectory_numbers() -> None:
+    """Spawn hỏng thì recorder đo nhầm actor còn sót từ lượt trước.
+
+    Đo thật ngày 22/08: bốn lượt `Error: Unable to add actors` liên tiếp vẫn trả
+    "khe hở nhỏ nhất 29,04 m" — số trông như thật cho kịch bản chưa hề bắt đầu.
+    """
+    runner = _load_runner()
+    stale = {"min_distance_m": 29.04, "adversary_lane_deviation_m": 63.88}
+
+    failed = runner.attach_trajectory(
+        {"success": False, "metrics": {}, "error": "Unable to add actors"}, stale, [{"t": 0.0}]
+    )
+    assert failed["metrics"] == {}
+    assert "trajectory" not in failed
+
+    ok = runner.attach_trajectory({"success": True, "metrics": {}}, stale, [{"t": 0.0}])
+    assert ok["metrics"]["min_distance_m"] == 29.04
+    assert len(ok["trajectory"]) == 1
