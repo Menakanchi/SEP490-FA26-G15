@@ -13,12 +13,40 @@ from src.services.scenario.geometry import (
     cut_in_trigger_before_overtake,
     cut_in_trigger_is_unsigned,
     jaywalk_effective_gap_m,
+    jaywalk_max_ego_speed_kmh,
     jaywalk_required_trigger_m,
     jaywalk_starts_in_ego_lane,
     jaywalk_trigger_too_close,
     lane_drift_trigger_too_late,
     time_until_alongside,
 )
+from src.services.scenario.templates import get_template
+
+
+def _jaywalk_suggestion(index: int, actor_idx: int, maneuver, actor, ego, required: float, road_type) -> str:
+    """Gợi ý sửa jaywalk, có tính tới tầm với của anchor.
+
+    Nếu khoảng cách cần thiết vượt tầm anchor thì bảo model dời chỗ đứng là đẩy nó
+    vào vòng lặp bất khả thi — converter chặn ngay sau đó, và ba vòng repair trôi
+    đi mà không sửa được gì (đo ngày 23/08: ego 88 km/h cần 62 m, anchor với tới
+    40 m). Lối thoát thật lúc ấy là **giảm tốc độ ego** hoặc **cho người đi bộ
+    chạy vụt qua**.
+    """
+    template = get_template(road_type)
+    forward = template.s_offset_reach_m[1] if template else None
+    if forward is not None and required > forward:
+        max_speed = jaywalk_max_ego_speed_kmh(maneuver, actor, forward)
+        cap = f"{max_speed:.0f} km/h" if max_speed else "thấp hơn"
+        return (
+            f"Cần {round(required)}m nhưng anchor chỉ với tới {forward:.0f}m, nên dời chỗ đứng là bất khả thi. "
+            f"Giảm tốc độ ego xuống <= {cap}, hoặc tăng /maneuvers/{index}/target_speed_kmh "
+            f"(người đi bộ chạy vụt qua) để rút thời gian băng đường."
+        )
+    return (
+        f"Đặt CẢ HAI: /actors/{actor_idx}/position/s_offset_m >= {round(required)} "
+        f"và /maneuvers/{index}/trigger/value = {round(required)}. "
+        f"Trigger rộng hơn khoảng cách xuất phát thì vô nghĩa — nó bắn ngay giây 0."
+    )
 
 
 def _later_than(alongside_s: float) -> float:
@@ -353,11 +381,7 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                             f"nhưng ego chạy {ego.initial_speed_kmh}km/h nên đã đi qua trước khi "
                             f"người đi bộ sang tới làn."
                         ),
-                        suggestion=(
-                            f"Đặt CẢ HAI: /actors/{actor_idx}/position/s_offset_m >= {round(required)} "
-                            f"và /maneuvers/{i}/trigger/value = {round(required)}. "
-                            f"Trigger rộng hơn khoảng cách xuất phát thì vô nghĩa — nó bắn ngay giây 0."
-                        ),
+                        suggestion=_jaywalk_suggestion(i, actor_idx, m, actor, ego, required, draft.odd.road_type),
                     )
                 )
 

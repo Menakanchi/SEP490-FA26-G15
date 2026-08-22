@@ -652,6 +652,8 @@ async def test_jaywalk_trigger_wider_than_the_starting_gap_is_still_flagged(
     chỉ nhìn `trigger.value`. Khoảng cách THẬT lúc bắn là min(s_offset, trigger).
     """
     draft = valid_draft.model_dump()
+    # highway là road_type duy nhất có anchor; gợi ý sửa cần biết tầm với của nó.
+    draft["odd"]["road_type"] = RoadType.HIGHWAY
     draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
     draft["odd"]["maneuver"] = ManeuverType.JAYWALK
     draft["actors"][0]["initial_speed_kmh"] = 78.0
@@ -670,7 +672,10 @@ async def test_jaywalk_trigger_wider_than_the_starting_gap_is_still_flagged(
         }
     )
     issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE)
-    assert "s_offset_m" in issue.suggestion, "phải bảo sửa cả vị trí xuất phát, không chỉ trigger"
+    # Cần 55 m nhưng anchor Town04 chỉ với tới 40 m, nên dời chỗ đứng là bất khả
+    # thi — gợi ý phải chỉ lối thoát thật thay vì đẩy repair vào vòng lặp.
+    assert "anchor" in issue.suggestion
+    assert "km/h" in issue.suggestion
 
 
 @pytest.mark.asyncio
