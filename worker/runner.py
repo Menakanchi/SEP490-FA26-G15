@@ -40,7 +40,7 @@ from pathlib import Path
 import sr_cli
 
 BACKEND = os.environ.get("FORGE_BACKEND", "http://localhost:8000").rstrip("/")
-CARLA_ROOT = Path(os.environ.get("CARLA_ROOT", "/mnt/c/CARLA_0.9.15/WindowsNoEditor"))
+CARLA_ROOT = Path(os.environ.get("CARLA_ROOT", str(Path.home() / "CARLA_0.9.15")))
 SR_ROOT = Path(os.environ.get("SR_ROOT", str(Path.home() / "scenario_runner")))
 WORKER_PYTHON = Path(os.environ.get("WORKER_PYTHON", sys.executable))
 CARLA_HOST = os.environ.get("CARLA_HOST", "127.0.0.1")

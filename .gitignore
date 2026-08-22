@@ -88,3 +88,4 @@ out/
 
 # Output của ScenarioRunner trên máy worker — log và JSON criteria mỗi lần chạy.
 worker/outputs/
+scripts/env_local.sh
