@@ -38,6 +38,7 @@ import urllib.request
 from pathlib import Path
 
 import sr_cli
+import trajectory
 
 BACKEND = os.environ.get("FORGE_BACKEND", "http://localhost:8000").rstrip("/")
 CARLA_ROOT = Path(os.environ.get("CARLA_ROOT", str(Path.home() / "CARLA_0.9.15")))
@@ -143,6 +144,13 @@ def run_job(job: dict) -> dict:
         tm_port=TM_PORT,
     )
 
+    # Ghi quỹ đạo song song. Criteria của ScenarioRunner chỉ nói CÓ VA CHẠM
+    # KHÔNG; nó không phân biệt được "tạt đầu đúng ý" với "tông đuôi ego", cũng
+    # không phân biệt "suýt quẹt thật" với "chẳng có gì xảy ra". Xem
+    # `trajectory.summarise`.
+    recorder = trajectory.TrajectoryRecorder(CARLA_HOST, CARLA_PORT)
+    recorder.start()
+
     error: str | None = None
     try:
         proc = subprocess.run(cmd, cwd=str(SR_ROOT), env=env, capture_output=True, text=True, timeout=RUN_TIMEOUT_S)
@@ -155,6 +163,11 @@ def run_job(job: dict) -> dict:
         error = f"không chạy được ScenarioRunner: {exc}"
     finally:
         xosc_path.unlink(missing_ok=True)
+        # Đo hỏng không được làm hỏng lượt chạy: `stop()` nuốt lỗi và trả dict
+        # rỗng, còn `recorder.error` chỉ đi vào log.
+        trajectory_metrics = recorder.stop()
+        if recorder.error:
+            log.warning("  -> không đo được quỹ đạo: %s", recorder.error)
 
     _, criteria_json, read_error = sr_cli.newest_criteria_json(OUT_DIR, started_at)
     error = error or read_error
@@ -168,6 +181,7 @@ def run_job(job: dict) -> dict:
         error = "ScenarioRunner không sinh file JSON criteria"
 
     result = to_execution_result(job, returncode, criteria_json, error)
+    result["metrics"].update(trajectory_metrics)
     result["metrics"]["wall_clock_s"] = round(time.time() - started_at, 1)
     return result
 
@@ -175,6 +189,21 @@ def run_job(job: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Vòng lặp
 # ---------------------------------------------------------------------------
+
+
+def _log_trajectory(metrics: dict) -> None:
+    """In số quỹ đạo ra log, kèm cách đọc — người trực worker đọc log chứ không đọc DB."""
+    if "min_distance_m" not in metrics:
+        return
+    parts = [f"khe hở nhỏ nhất {metrics['min_distance_m']:.2f}m"]
+    if "ttc_min_s" in metrics:
+        parts.append(f"TTC {metrics['ttc_min_s']:.2f}s")
+    if "adversary_lane_deviation_m" in metrics:
+        parts.append(f"lệch làn {metrics['adversary_lane_deviation_m']:.2f}m")
+    if "contact_longitudinal_m" in metrics:
+        who = "ADVERSARY TÔNG ĐUÔI EGO" if metrics["contact_longitudinal_m"] < 0 else "ego đâm vào adversary"
+        parts.append(who)
+    log.info("  -> quỹ đạo: %s", " | ".join(parts))
 
 
 def poll_once() -> bool:
@@ -197,6 +226,7 @@ def poll_once() -> bool:
         c["name"].lower().startswith("collision") and c["result"] == "FAILURE" for c in result["criteria_results"]
     )
     log.info("  -> %s | va chạm: %s", verdict, "CÓ (tốt)" if collided else "không")
+    _log_trajectory(result["metrics"])
 
     try:
         _post(f"/api/v1/internal/jobs/{job['job_id']}/result", result)

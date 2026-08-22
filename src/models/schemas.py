@@ -959,7 +959,19 @@ class ExecutionResult(ForgeModel):
         description=("ScenarioRunner chạy hết mà không crash / timeout / lỗi XML. KHÔNG có nghĩa là 'không va chạm'."),
     )
     criteria_results: list[CriterionResult] = Field(default_factory=list)
-    metrics: dict[str, float] = Field(default_factory=dict, examples=[{"total_ticks": 600, "duration_s": 30.0}])
+    metrics: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Số đo quỹ đạo do worker ghi trong lúc chạy (`worker/trajectory.py`). Các khoá đáng đọc: "
+            "`min_distance_m` khe hở nhỏ nhất giữa hai thân xe — phân biệt 'suýt quẹt thật' với "
+            "'chẳng có gì xảy ra', thứ `CollisionTest` mù hoàn toàn vì cả hai đều 0 va chạm; "
+            "`contact_longitudinal_m` vị trí adversary lúc chạm, ÂM = nó tông đuôi ego, DƯƠNG = ego đâm nó, "
+            "tức nó phân biệt cut_in đúng ý với tông đuôi trong khi criteria báo FAILURE cho cả hai; "
+            "`adversary_lane_deviation_m` ~0 nghĩa là hành vi ngang không hề xảy ra; `ttc_min_s`. "
+            "Khoá vắng mặt nghĩa là **không đo được**, không phải bằng 0."
+        ),
+        examples=[{"min_distance_m": 0.36, "ttc_min_s": 1.5, "adversary_lane_deviation_m": 0.7}],
+    )
     error: str | None = Field(None, description="Bắt buộc khi success=False")
 
     @model_validator(mode="after")
