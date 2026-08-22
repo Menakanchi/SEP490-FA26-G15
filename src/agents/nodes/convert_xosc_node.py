@@ -420,6 +420,36 @@ def _add_cut_in_slowdown(maneuver_el: ET.Element, index: int, maneuver: Maneuver
     )
 
 
+def _add_hold_open_event(maneuver_el: ET.Element, index: int, actor: ActorSpec, duration_s: float) -> None:
+    """Giữ kịch bản chạy đủ ``duration_s`` thay vì đóng khi hết việc.
+
+    ScenarioRunner dựng Act là ``Parallel(SUCCESS_ON_ONE, [Maneuvers, EndConditions])``
+    (`srunner/scenarios/open_scenario.py`). Nên ``StopTrigger`` của Act là **nhánh
+    OR**, không phải sàn thời gian: hành động cuối của adversary xong là toàn bộ
+    kịch bản đóng ngay, kể cả khi mới ở giây thứ 2,6.
+
+    Đo được ngày 22/08: bốn maneuver có hành động hoàn tất tức thì
+    (`stop_in_lane`, `run_red_light` dùng `SpeedAction` step; `wrong_way` dùng
+    `TeleportAction`; `jaywalk` dùng `AcquirePositionAction`) đều kết thúc sau
+    ~2,6 s với ego mới đi 16,6 m — chưa kịp tới chỗ adversary, nên không có cách
+    nào xảy ra nguy hiểm. Chúng "chạy xong" mà không mô phỏng được gì.
+
+    Event này không chạm vào vật lý. Trong ScenarioRunner, Event là
+    ``Sequence([StartTrigger, Actions])`` nên nó ở trạng thái RUNNING suốt thời
+    gian chờ trigger, giữ maneuver group không hoàn tất. Tới ``duration_s`` thì
+    trigger và ``StopTrigger`` của Act cùng bắn trong một tick, nên hành động bên
+    trong không kịp có hiệu lực — nó ở đây vì XSD bắt Event phải có ít nhất một
+    ``Action``, không phải vì cần nó chạy.
+    """
+    event = ET.SubElement(maneuver_el, "Event", name=f"event_{index}_hold_open", priority="overwrite")
+    action = ET.SubElement(event, "Action", name=f"action_{index}_hold_open")
+    _add_speed_action(ET.SubElement(action, "PrivateAction"), actor.initial_speed_kmh, abrupt=True)
+    trigger = ET.SubElement(event, "StartTrigger")
+    condition = _condition(trigger, f"trigger_{index}_hold_open")
+    by_value = ET.SubElement(condition, "ByValueCondition")
+    ET.SubElement(by_value, "SimulationTimeCondition", value=_number(duration_s), rule="greaterThan")
+
+
 def _add_criteria_stop_trigger(storyboard: ET.Element, spec: ScenarioSpec) -> None:
     stop = ET.SubElement(storyboard, "StopTrigger")
     group = ET.SubElement(stop, "ConditionGroup")
@@ -550,6 +580,7 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
         _add_trigger(ET.SubElement(event, "StartTrigger"), maneuver)
         if maneuver.maneuver is ManeuverType.CUT_IN:
             _add_cut_in_slowdown(maneuver_el, index, maneuver)
+        _add_hold_open_event(maneuver_el, index, actors_by_name[maneuver.actor_name], spec.duration_s)
 
     _simulation_time_condition(ET.SubElement(act, "StartTrigger"), "start_act", "0")
     _simulation_time_condition(ET.SubElement(act, "StopTrigger"), "stop_act", _number(spec.duration_s))
