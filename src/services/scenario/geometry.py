@@ -1,4 +1,4 @@
-"""Điều kiện hình học của ``cut_in``. **Một định nghĩa, hai chỗ dùng.**
+"""Điều kiện hình học của ``cut_in`` và ``lane_drift``. **Một định nghĩa, hai chỗ dùng.**
 
 Cùng bốn phép kiểm này chạy ở hai tầng, vì hai tầng cần hai thứ khác nhau:
 
@@ -65,3 +65,86 @@ def cut_in_trigger_is_unsigned(maneuver: ManeuverSpec) -> bool:
     ``simulation_time`` để nó vượt hẳn lên rồi mới tạt.
     """
     return maneuver.trigger.type != "simulation_time"
+
+
+def _time_until_alongside(actor: ActorSpec, ego: ActorSpec) -> float | None:
+    """Giây thứ mấy thì hai xe đi ngang nhau, nếu điều đó xảy ra.
+
+    ``None`` nghĩa là khoảng cách dọc không thu hẹp — chúng không bao giờ ngang
+    nhau, và câu hỏi "lấn sớm hay muộn" không còn nghĩa.
+    """
+    gap_m = abs(actor.position.s_offset_m)
+    closing_kmh = (
+        ego.initial_speed_kmh - actor.initial_speed_kmh
+        if actor.position.s_offset_m > 0
+        else actor.initial_speed_kmh - ego.initial_speed_kmh
+    )
+    if closing_kmh <= 0:
+        return None
+    return gap_m / (closing_kmh / 3.6)
+
+
+def lane_drift_trigger_too_late(maneuver: ManeuverSpec, actor: ActorSpec, ego: ActorSpec) -> bool:
+    """Xe bắt đầu lấn làn sau khi ego đã đi ngang qua, nên lấn vào chỗ trống.
+
+    ``lane_drift`` không dựng va chạm — nó dựng một lần **đi sát nhau**. Muốn có
+    lần đó thì xe phải bắt đầu lệch **trước** thời điểm hai xe đi ngang nhau.
+
+    Ngưỡng là "bắt đầu trước", không phải "lệch xong trước". Đo trên CARLA
+    22/08, ba lần chạy cùng maneuver chỉ khác thời điểm trigger (khe hở ngang
+    nhỏ nhất giữa hai thân xe):
+
+    - ``sc_906`` trigger 5,5 s, ngang nhau ở 7,2 s -> **0,36 m**, suýt quẹt thật.
+    - ``sc_906`` trigger 8,0 s, ngang nhau ở 7,2 s -> **0,51 m**; lệch chỉ thành
+      hình khi ego đã qua, nên cái "sát" đó là quệt phần đuôi ego.
+    - ``sc_901`` trigger 6,0 s, ngang nhau ở 4,5 s -> **1,01 m**, đúng bằng
+      khoảng cách hai làn kề nhau lúc bình thường. Không có gì xảy ra.
+
+    Lệch hết 0,7 m mất khoảng 2,3-2,5 s với ``maxLateralAcc=0.4`` mà converter
+    đặt, nên bắt đầu càng sớm càng sát. Nhưng đòi "lệch xong trước lúc ngang
+    nhau" thì chặn nhầm chính bản 5,5 s đã đo được là tốt — hai xe còn kề nhau
+    thêm vài giây sau thời điểm đó, mà tính khoảng thời gian kề nhau lại cần
+    chiều dài xe, thứ ``ScenarioSpec`` không có (kích thước xe nằm ở converter).
+    Nên ngưỡng dừng ở chỗ dữ liệu đỡ được.
+
+    ``CollisionTest`` trả 0 cho cả ba trường hợp, nên phép đo đó không phân biệt
+    được. Đây là chỗ chặn rẻ nhất: bằng số học trên spec, trước khi tiêu GPU.
+
+    Chỉ xét trigger ``simulation_time``; ``distance_to_ego`` bắn theo khoảng
+    cách nên không so được với mốc thời gian — đó là câu hỏi riêng.
+    """
+    if maneuver.trigger.type != "simulation_time":
+        return False
+    alongside_s = _time_until_alongside(actor, ego)
+    if alongside_s is None:
+        return False
+    return maneuver.trigger.value >= alongside_s
+
+
+def cut_in_trigger_before_overtake(maneuver: ManeuverSpec, actor: ActorSpec, ego: ActorSpec) -> bool:
+    """Tạt đầu trước khi kịp vượt lên, nên nhập vào làn ego ở PHÍA SAU ego.
+
+    ``cut_in`` là tạt **đầu**: chủ thể phải vượt qua ego rồi mới cắt vào làn. Nếu
+    trigger bắn lúc nó còn phía sau, nó nhập làn sau lưng ego và — vì đang chạy
+    nhanh hơn — đâm thẳng vào đuôi ego. Va chạm vẫn xảy ra, nên ``CollisionTest``
+    vẫn báo "tìm được nguy hiểm"; chỉ là sai loại nguy hiểm so với câu người dùng
+    gõ. Không phép đo nào ở tầng criteria phân biệt được hai thứ đó.
+
+    Đo trên CARLA 22/08 với golden ``cut_in`` (adversary sau ego 25 m, 50 km/h so
+    với ego 30 km/h, đi ngang nhau ở giây 4,5, trigger đặt ở giây 2,0): va chạm ở
+    giây 4,72 với adversary nằm **sau ego 4,56 m**, và ego bị đẩy từ 8,4 lên
+    11,6 m/s. Tông đuôi, không phải tạt đầu.
+
+    Ngưỡng dùng lại :func:`_time_until_alongside` — cùng số học với
+    :func:`lane_drift_trigger_too_late`, chỉ ngược dấu bất đẳng thức: lane_drift
+    cần lệch **trước** lúc ngang nhau, cut_in cần cắt **sau** lúc đó.
+
+    Chỉ xét trigger ``simulation_time``; ``distance_to_ego`` đã bị
+    :func:`cut_in_trigger_is_unsigned` chặn từ trước vì lý do liên quan.
+    """
+    if maneuver.trigger.type != "simulation_time":
+        return False
+    alongside_s = _time_until_alongside(actor, ego)
+    if alongside_s is None:
+        return False
+    return maneuver.trigger.value <= alongside_s

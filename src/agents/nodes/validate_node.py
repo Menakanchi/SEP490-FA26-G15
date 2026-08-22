@@ -10,7 +10,9 @@ from src.services.scenario.geometry import (
     cut_in_cannot_catch_up,
     cut_in_never_slows_down,
     cut_in_starts_in_ego_lane,
+    cut_in_trigger_before_overtake,
     cut_in_trigger_is_unsigned,
+    lane_drift_trigger_too_late,
 )
 
 _INVARIANT_SUGGESTIONS: dict[IssueCode, str] = {
@@ -304,6 +306,25 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
             actor = draft.actors[actor_idx]
             position = actor.position
 
+            # GEOM_DRIFT_AFTER_PASS — lấn làn phải bắt đầu trước lúc hai xe
+            # đi ngang nhau, nếu không nó lấn vào chỗ ego đã rời khỏi. Số học ở
+            # ``services/scenario/geometry.py`` cùng chỗ với các vị từ cut_in.
+            if m.maneuver == "lane_drift" and lane_drift_trigger_too_late(m, actor, ego):
+                issues.append(
+                    ValidationIssue(
+                        code=IssueCode.GEOM_DRIFT_AFTER_PASS,
+                        path=f"/maneuvers/{i}/trigger/value",
+                        message_vi=(
+                            f"{actor.name} bắt đầu lấn làn ở giây {m.trigger.value} nhưng ego đã đi ngang qua "
+                            f"trước đó, nên xe lấn vào khoảng trống phía sau ego."
+                        ),
+                        suggestion=(
+                            f"Giảm /maneuvers/{i}/trigger/value xuống dưới thời điểm hai xe đi ngang nhau, "
+                            f"hoặc tăng khoảng cách ban đầu ở /actors/{actor_idx}/position/s_offset_m."
+                        ),
+                    )
+                )
+
             # GEOM_NO_COLLISION_AFTER_CUTIN
             if m.maneuver == "cut_in":
                 ego_speed = ego.initial_speed_kmh
@@ -341,6 +362,22 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                             path=f"/actors/{actor_idx}",
                             message_vi=catchup_problem[0],
                             suggestion=catchup_problem[1],
+                        )
+                    )
+
+                if cut_in_trigger_before_overtake(m, actor, ego):
+                    issues.append(
+                        ValidationIssue(
+                            code=IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE,
+                            path=f"/maneuvers/{i}/trigger/value",
+                            message_vi=(
+                                f"{actor.name} tạt vào làn ego ở giây {m.trigger.value} nhưng lúc đó nó vẫn ở "
+                                f"phía sau ego, nên sẽ đâm vào đuôi ego thay vì tạt đầu."
+                            ),
+                            suggestion=(
+                                f"Tăng /maneuvers/{i}/trigger/value lên sau thời điểm hai xe đi ngang nhau, "
+                                f"hoặc giảm khoảng cách ban đầu ở /actors/{actor_idx}/position/s_offset_m."
+                            ),
                         )
                     )
 
