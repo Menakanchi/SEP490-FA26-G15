@@ -13,8 +13,8 @@ import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, HTTPException, Query, Response
+from pydantic import BaseModel, Field
 
 from src.agents.graph import build_forge_graph
 from src.models.schemas import (
@@ -508,6 +508,31 @@ async def submit_scenario_for_review(scenario_id: str) -> dict:
         raise HTTPException(status_code=400, detail="Scenario is already approved")
     db.update_scenario_status(scenario_id, "pending_sim_review")
     return {"ok": True, "scenario_id": scenario_id, "status": "pending_sim_review"}
+
+
+class CompleteSimulationRequest(BaseModel):
+    passed: bool = Field(True, description="Chạy thử đạt (True) hoặc không đạt (False)")
+    notes: str | None = Field(None, description="Ghi chú kết quả mô phỏng ngoại tuyến")
+
+
+@router.post("/scenarios/{scenario_id}/complete-simulation")
+async def complete_simulation_endpoint(
+    scenario_id: str, body: CompleteSimulationRequest = Body(...)
+) -> dict:
+    sc = _scenario_or_404(scenario_id)
+    updated = db.complete_manual_simulation(
+        scenario_id, passed=body.passed, notes=body.notes
+    )
+    if not updated:
+        raise HTTPException(
+            status_code=400, detail="Không thể cập nhật trạng thái kịch bản"
+        )
+    return {
+        "ok": True,
+        "scenario_id": scenario_id,
+        "status": updated["status"],
+        "scenario": updated,
+    }
 
 
 # ===========================================================================

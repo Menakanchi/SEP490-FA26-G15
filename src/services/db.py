@@ -764,6 +764,39 @@ def delete_scenario(scenario_id: str) -> bool:
         return cursor.rowcount > 0
 
 
+def complete_manual_simulation(
+    scenario_id: str, passed: bool = True, notes: str | None = None
+) -> dict | None:
+    sc = get_scenario(scenario_id)
+    if not sc:
+        return None
+
+    new_status = (
+        ScenarioStatus.PENDING_LIBRARY_REVIEW.value
+        if passed
+        else ScenarioStatus.REJECTED.value
+    )
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            "UPDATE scenarios SET status = ? WHERE scenario_id = ?",
+            (new_status, scenario_id),
+        )
+
+    if notes:
+        try:
+            save_review_decision(
+                scenario_id,
+                gate="before_sim",
+                approved=passed,
+                reviewer="manual_verifier",
+                reason=notes,
+            )
+        except Exception as err:
+            logger.warning(f"Could not save review decision log: {err}")
+
+    return get_scenario(scenario_id)
+
+
 # ---------------------------------------------------------------------------
 # Review Decisions CRUD
 # ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import type {
   ReviewRequest,
   ScenarioDetail,
   ScenarioItem,
+  ScenarioStatus,
   ODDPayload,
   ValidationMode,
 } from "@/types";
@@ -231,6 +232,28 @@ export async function downloadXosc(id: string): Promise<string> {
     throw new Error(messageVi || `Chặn tải file .xosc (Mã lỗi ${res.status})`);
   }
   return res.text();
+}
+
+// ---------------------------------------------------------------------------
+// POST /scenarios/{id}/complete-simulation — Manual Simulation Verification
+// ---------------------------------------------------------------------------
+
+export interface CompleteSimulationPayload {
+  passed: boolean;
+  notes?: string;
+}
+
+export async function completeSimulation(
+  scenarioId: string,
+  payload: CompleteSimulationPayload,
+): Promise<{ ok: boolean; scenario_id: string; status: ScenarioStatus }> {
+  return request<{ ok: boolean; scenario_id: string; status: ScenarioStatus }>(
+    `/scenarios/${encodeURIComponent(scenarioId)}/complete-simulation`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
