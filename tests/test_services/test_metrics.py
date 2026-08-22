@@ -50,19 +50,13 @@ def test_l4_accepts_a_proper_cut_in() -> None:
 def test_l4_rejects_a_drift_that_met_nobody() -> None:
     """Lấn làn có xảy ra (0,70 m) nhưng ego đã đi khỏi — khe hở 1,01 m, vô hại."""
     assert (
-        metrics.intent_verdict(
-            _execution("lane_drift", adversary_lane_deviation_m=0.70, min_distance_m=1.01)
-        )
-        is False
+        metrics.intent_verdict(_execution("lane_drift", adversary_lane_deviation_m=0.70, min_distance_m=1.01)) is False
     )
 
 
 def test_l4_accepts_a_drift_that_actually_grazed_the_ego() -> None:
     assert (
-        metrics.intent_verdict(
-            _execution("lane_drift", adversary_lane_deviation_m=0.70, min_distance_m=0.36)
-        )
-        is True
+        metrics.intent_verdict(_execution("lane_drift", adversary_lane_deviation_m=0.70, min_distance_m=0.36)) is True
     )
 
 
@@ -146,3 +140,54 @@ def test_hazard_ignores_runs_that_never_completed() -> None:
     report = metrics.hazard([_execution("cut_in", success=False, collision=True)])
     assert report["executed"] == 0
     assert report["rate"]["rate"] is None
+
+
+def test_l2_excludes_scenarios_the_converter_was_never_meant_to_build() -> None:
+    """6 seed đô thị kéo L2 xuống 50% và trông như converter hỏng 6 lần.
+
+    Chúng không có .xosc vì `urban_straight` chưa có anchor (ADR-016) — quyết
+    định thu hẹp phạm vi, không phải lỗi. Tính riêng thì bảng số nói đúng chuyện.
+    """
+    scenarios = [
+        {
+            "road_type": "highway",
+            "weather": "clear",
+            "actor_type": "car",
+            "maneuver": "cut_in",
+            "xosc_content": "<xml/>",
+        },
+        {
+            "road_type": "urban_straight",
+            "weather": "clear",
+            "actor_type": "truck",
+            "maneuver": "stop_in_lane",
+            "xosc_content": "",
+        },
+    ]
+    level = metrics.validity(requests=[], scenarios=scenarios, executions=[])["l2_xosc"]
+    assert level["rate"] == 1.0, "một ô trong phạm vi, biên dịch được"
+    assert level["total"] == 1
+    assert level["not_measurable"] == 1, "ô ngoài phạm vi đếm riêng"
+
+
+def test_seed_data_never_reaches_the_report() -> None:
+    """Kịch bản mock dựng sẵn để demo giao diện không được tính vào độ phủ.
+
+    Chúng không đi qua pipeline: không có lần sinh, ô ODD do người gõ tay. Đếm
+    chúng là báo cáo độ phủ bằng dữ liệu bịa.
+    """
+    real = {
+        "created_by": "creator",
+        "road_type": "highway",
+        "weather": "clear",
+        "actor_type": "car",
+        "maneuver": "cut_in",
+        "xosc_content": "<xml/>",
+    }
+    mock = {**real, "created_by": metrics.SEED_AUTHOR, "weather": "rain"}
+
+    report = metrics.build_report(requests=[], scenarios=[real, mock], executions=[])
+
+    assert report["m2_coverage"]["covered_supported"] == 1, "chỉ ô của kịch bản thật"
+    assert report["excluded_seed_data"] == 1, "và phải hiện ra là đã bỏ bao nhiêu"
+    assert report["m1_validity"]["l2_xosc"]["total"] == 1

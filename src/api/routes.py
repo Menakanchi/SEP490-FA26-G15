@@ -38,6 +38,7 @@ from src.models.schemas import (
     normalize_prompt,
     verification_from_execution,
 )
+from src.services import campaign as campaign_service
 from src.services import db, metrics
 from src.services.library.retriever import SQLiteRetriever
 
@@ -561,6 +562,96 @@ async def get_scenario_xosc(scenario_id: str) -> Response:
 # ===========================================================================
 # Internal — GPU Worker endpoints
 # ===========================================================================
+
+
+class CampaignCreateRequest(BaseModel):
+    """Khoanh vùng ODD — đầu vào của chế độ nâng cao.
+
+    Người dùng **không** gõ câu tiếng Việt ở đây; họ chọn ô trên ma trận ODD còn
+    agent viết câu. Câu đó rồi đi qua đúng đường mà chế độ cơ bản đang đi.
+    """
+
+    cells: list[dict] = Field(..., min_length=1, max_length=200)
+    per_cell: int = Field(1, ge=1, le=20)
+    # Trần là điều kiện dừng, không phải tuỳ chọn — xem docstring `services/campaign.py`.
+    max_scenarios: int = Field(10, ge=1, le=200)
+    created_by: str = "creator"
+
+
+async def _run_campaign(campaign_id: str, plan: list, created_by: str) -> None:
+    """Chạy tuần tự: mỗi ô một câu, mỗi câu một lượt sinh đầy đủ.
+
+    Không chạy song song có chủ đích. Backend free tier có một worker nên song
+    song chỉ đổi chỗ hàng đợi, mà mất khả năng dừng đúng lúc chạm trần.
+
+    Mỗi lỗi chỉ giết một ô, không giết chiến dịch: một câu bị chặn vì trùng, hay
+    một lần LLM hỏng, không được làm mất phần còn lại của lô.
+    """
+    generated = failed = 0
+    for cell in plan:
+        if (db.get_campaign(campaign_id) or {}).get("status") == "stopped":
+            break
+        try:
+            prompt = await asyncio.to_thread(campaign_service.compose_prompt, cell, db.campaign_prompts(campaign_id))
+            request_id = str(uuid.uuid4())
+            db.create_generation_request(request_id, prompt, "static", 3, created_by=created_by, force_generate=True)
+            db.attach_request_to_campaign(request_id, campaign_id)
+            await _run_workflow(request_id)
+            req = db.get_generation_request(request_id) or {}
+            if req.get("scenario_id"):
+                generated += 1
+            else:
+                failed += 1
+        except Exception:  # noqa: BLE001 — một ô hỏng không được kéo cả lô theo
+            logger.exception("Chiến dịch %s hỏng ở ô %s", campaign_id, cell.key)
+            failed += 1
+        db.update_campaign(campaign_id, generated=generated, failed=failed)
+
+    final = (db.get_campaign(campaign_id) or {}).get("status")
+    db.update_campaign(campaign_id, status="stopped" if final == "stopped" else "done")
+
+
+@router.post("/campaigns")
+async def create_campaign(body: CampaignCreateRequest) -> dict:
+    """Mở một chiến dịch ODD và chạy nền."""
+    plan = campaign_service.plan_cells(body.cells, body.per_cell, body.max_scenarios)
+    if not plan:
+        raise HTTPException(
+            status_code=422,
+            detail="Không ô nào nằm trong phạm vi converter dựng được (hiện chỉ highway — ADR-016)",
+        )
+    campaign_id = f"cmp_{uuid.uuid4().hex[:8]}"
+    db.create_campaign(
+        campaign_id,
+        [c.model_dump(mode="json") for c in plan],
+        body.per_cell,
+        body.max_scenarios,
+        body.created_by,
+    )
+    asyncio.create_task(_run_campaign(campaign_id, plan, body.created_by))
+    return {"campaign_id": campaign_id, "planned": len(plan)}
+
+
+@router.get("/campaigns")
+async def list_campaigns() -> dict:
+    return {"campaigns": db.list_campaigns()}
+
+
+@router.get("/campaigns/{campaign_id}")
+async def get_campaign(campaign_id: str) -> dict:
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail=f"Chiến dịch '{campaign_id}' không tồn tại")
+    return campaign
+
+
+@router.post("/campaigns/{campaign_id}/stop")
+async def stop_campaign(campaign_id: str) -> dict:
+    """Dừng giữa chừng. Ô đang chạy vẫn chạy nốt; các ô sau không bắt đầu nữa."""
+    if not db.get_campaign(campaign_id):
+        raise HTTPException(status_code=404, detail=f"Chiến dịch '{campaign_id}' không tồn tại")
+    db.update_campaign(campaign_id, status="stopped")
+    return {"ok": True, "status": "stopped"}
 
 
 @router.get("/metrics/quality")
