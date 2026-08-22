@@ -36,6 +36,8 @@
   --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
 }
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ---------------------------------------------------------------------------
    Base
    --------------------------------------------------------------------------- */
@@ -45,9 +47,16 @@ html {
 }
 
 body {
-  background: var(--color-surface-900);
-  color: #e2e8f0;
+  background-color: #f8fafc;
+  color: #0f172a;
   font-family: var(--font-sans);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dark body,
+html.dark body {
+  background-color: #020617;
+  color: #f8fafc;
 }
 
 /* ---------------------------------------------------------------------------
@@ -312,3 +321,69 @@ body {
   animation: shimmer 1.5s infinite;
   border-radius: 8px;
 }
+
+/* ---------------------------------------------------------------------------
+   Modern Micro-Interactions & Hardware Accelerated Animations
+   --------------------------------------------------------------------------- */
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes pulseRadar {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+}
+
+.animate-radar-pulse {
+  animation: pulseRadar 3s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.sheen-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.sheen-card::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    60deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.25) 50%,
+    transparent 70%
+  );
+  transform: rotate(30deg) translateX(-100%);
+  transition: transform 0.8s ease-out;
+  pointer-events: none;
+}
+
+.sheen-card:hover::after {
+  transform: rotate(30deg) translateX(100%);
+}
+

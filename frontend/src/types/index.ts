@@ -178,13 +178,7 @@ export function getSanitizedActorCategory(actor: ActorSpec, odd?: ODDCell): Vehi
 
 /** Chữ người dùng gõ cho phương tiện này, nếu còn giữ được. */
 export function getSanitizedActorSpecificType(actor: ActorSpec, odd?: ODDCell): string {
-  if (actor.specific_type) return actor.specific_type;
-  // ``odd.specific_type`` mô tả tác nhân gây nguy hiểm, không phải toàn bộ
-  // dàn xe. Gắn nó cho hero từng biến một ``car`` thành "Ô tô (xe buýt)".
-  if (!actor.is_ego && actor.category === odd?.actor_type) {
-    return odd.specific_type || "";
-  }
-  return "";
+  return actor.specific_type || odd?.specific_type || "";
 }
 
 export function sanitizeActors(actors: ActorSpec[], odd?: ODDCell): ActorSpec[] {
@@ -226,21 +220,13 @@ export interface ODDCell {
   specific_action?: string | null;
 }
 
-/** Nhãn tác nhân cho người dùng: ưu tiên loại cụ thể họ đã nhập ("xe buýt").
- *  `actor_type` chuẩn hoá ("truck") vẫn được giữ trong dữ liệu để lọc ODD và
- *  chọn template converter, nhưng không nên che mất loại phương tiện thực tế. */
-export function renderOddActorTypeLabel(odd?: ODDCell): string {
-  const specificType = formatSpecificText(odd?.specific_type || "");
-  return specificType || renderSafeValue(odd?.actor_type, ACTOR_TYPE_LABELS);
-}
-
 // ---------------------------------------------------------------------------
 // Scenario structures
 // ---------------------------------------------------------------------------
 
 export interface Position {
   /** Lệch bao nhiêu làn so với làn của ego. Âm = trái, dương = phải. Khoảng -4..4.
-   *  Đây là độ lệch tương đối, KHÔNG phải số thứ tự làn. */
+   *  KHÔNG phải số thứ tự làn — xem `laneNumber()` trong SVG2DRenderer để quy đổi. */
   lane_offset: number;
   /** Lệch dọc so với ego, mét. Âm = phía sau ego. Khoảng -200..200. */
   s_offset_m: number;
@@ -282,33 +268,15 @@ export interface ScenarioSpec {
 // Status & Review
 // ---------------------------------------------------------------------------
 
-/**
- * Kịch bản đã được kiểm chứng tới đâu — trục **riêng**, song song với
- * `ScenarioStatus` (ADR-017).
- *
- * `status` trả lời "có người giữ nó lại không". Cái này trả lời một câu khác:
- * "nó có thật sự tái hiện được nguy hiểm đã mô tả không". Gộp hai câu vào một
- * ô là lý do trước đây kịch bản chạy ra sai vẫn nằm trong thư viện làm few-shot.
- */
-export type VerificationLevel =
-  | "unverified"
-  | "adversarial"
-  | "ran_no_hazard"
-  | "execution_failed";
-
-export const VERIFICATION_LABELS: Record<VerificationLevel, string> = {
-  unverified: "Chưa chạy mô phỏng",
-  adversarial: "Đã kiểm chứng — có va chạm",
-  ran_no_hazard: "Chạy được nhưng không có nguy hiểm",
-  execution_failed: "Chạy hỏng",
-};
-
 export type ScenarioStatus =
+  | "draft"
+  | "pending_review"
+  | "approved_library"
+  | "approved_sim"
+  | "rejected"
   | "pending_sim_review"
   | "simulation_queued"
-  | "pending_library_review"
-  | "rejected"
-  | "approved_library";
+  | "pending_library_review";
 
 export type ReviewGate = "before_library" | "before_sim";
 
@@ -356,6 +324,7 @@ export interface ScenarioItem {
   status: ScenarioStatus;
   xosc_content?: string;
   created_at: string; // ISO datetime
+  actors?: ActorSpec[];
   spec?: ScenarioSpec;
   retrieved_examples?: RetrievedExample[];
 }
@@ -395,21 +364,11 @@ export interface ScenarioDetail {
   odd: ODDCell;
   time_of_day: TimeOfDay;
   status: ScenarioStatus;
-  /** Người gõ câu. Vế thứ nhất của "hai vai trò" mà đề bài yêu cầu. */
-  created_by?: string;
-  tags?: string[];
-  verification?: VerificationLevel;
-  latest_execution_result?: {
-    scenario_id: string;
-    xosc_path: string;
-    success: boolean;
-    criteria_results: Array<{ name: string; result: string; actual: string }>;
-    metrics: Record<string, number>;
-    error?: string | null;
-  } | null;
   spec: ScenarioSpec;
   xosc_content?: string;
   review_logs: ReviewLog[];
   created_at: string;
   retrieved_examples?: RetrievedExample[];
 }
+
+export * from "./auth";

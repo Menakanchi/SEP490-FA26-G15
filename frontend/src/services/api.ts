@@ -9,9 +9,11 @@ import type {
   ReviewRequest,
   ScenarioDetail,
   ScenarioItem,
+  ScenarioStatus,
   ODDPayload,
   ValidationMode,
 } from "@/types";
+import type { LoginPayload, RegisterPayload, User } from "@/types/auth";
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
@@ -54,31 +56,11 @@ export interface GeneratePayload {
   prompt: string;
   validation_mode: ValidationMode;
   limit?: number;
-  /** Người tạo. Đề bài đòi hai vai trò tạo/duyệt — đây là vế thứ nhất. */
   created_by?: string;
-  /** Sinh mới kể cả khi câu này đã được sinh trước đó (ADR-015 §15.4). */
-  force_generate?: boolean;
-}
-
-/** Lần sinh cũ của đúng câu vừa gõ. Không phải lỗi — backend vẫn trả 200. */
-export interface DuplicateMatch {
-  scenario_id: string | null;
-  scenario_status: string | null;
-  title: string | null;
-  /** Lý do từ chối, nếu kịch bản cũ bị loại. */
-  reason: string | null;
-  /** running/done/failed của lần sinh cũ. */
-  request_status: string | null;
 }
 
 export interface GenerateResponse {
-  /**
-   * `null` chỉ khi câu này trùng với một kịch bản không có lần sinh nào trỏ
-   * tới (dữ liệu seed). Không có gì để poll — đọc `duplicate.scenario_id`.
-   */
-  request_id: string | null;
-  /** Có giá trị khi câu này đã được sinh trước đó; `null` khi sinh mới. */
-  duplicate: DuplicateMatch | null;
+  request_id: string;
 }
 
 export async function postGenerate(
@@ -104,14 +86,11 @@ export async function getStatus(requestId: string): Promise<GenerationStatus> {
 
 export async function postReview(
   payload: ReviewRequest,
-): Promise<{ ok: boolean; status: string; job_created: boolean }> {
-  return request<{ ok: boolean; status: string; job_created: boolean }>(
-    `/scenarios/${encodeURIComponent(payload.scenario_id)}/review`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-  );
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/scenarios/${encodeURIComponent(payload.scenario_id)}/review`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +100,8 @@ export async function postReview(
 export interface GetScenariosParams {
   search?: string;
   odd?: ODDPayload;
+  scope?: "public" | "me" | "all";
+  user?: string;
   page?: number;
   limit?: number;
 }
@@ -131,6 +112,8 @@ export async function getScenarios(
   const query = new URLSearchParams();
 
   if (params?.search) query.set("search", params.search);
+  if (params?.scope) query.set("scope", params.scope);
+  if (params?.user) query.set("user", params.user);
   if (params?.page) query.set("page", String(params.page));
   if (params?.limit) query.set("limit", String(params.limit));
 
@@ -143,6 +126,79 @@ export async function getScenarios(
   const qs = query.toString();
   return request<{ items: ScenarioItem[]; total: number }>(
     `/library/search${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export async function getPublicScenarios(): Promise<{ items: ScenarioItem[]; total: number }> {
+  return request<{ items: ScenarioItem[]; total: number }>("/scenarios/public");
+}
+
+export async function getMyScenarios(
+  user?: string,
+): Promise<{ items: ScenarioItem[]; total: number }> {
+  const query = user ? `?user=${encodeURIComponent(user)}` : "";
+  return request<{ items: ScenarioItem[]; total: number }>(`/scenarios/me${query}`);
+}
+
+// ---------------------------------------------------------------------------
+// Draft & CRUD API
+// ---------------------------------------------------------------------------
+
+export interface DraftPayload {
+  title?: string;
+  description_vi: string;
+  odd?: ODDPayload;
+  spec?: Record<string, unknown>;
+  xosc_content?: string;
+  created_by?: string;
+}
+
+export async function postDraftScenario(
+  payload: DraftPayload,
+): Promise<{ ok: boolean; scenario_id: string; scenario: ScenarioDetail }> {
+  return request<{ ok: boolean; scenario_id: string; scenario: ScenarioDetail }>(
+    "/scenarios/draft",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function updateScenario(
+  id: string,
+  payload: Partial<ScenarioDetail> & { user?: string },
+): Promise<{ ok: boolean; scenario: ScenarioDetail }> {
+  return request<{ ok: boolean; scenario: ScenarioDetail }>(
+    `/scenarios/${encodeURIComponent(id)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function deleteScenario(
+  id: string,
+  user?: string,
+): Promise<{ ok: boolean; scenario_id: string }> {
+  const query = user ? `?user=${encodeURIComponent(user)}` : "";
+  return request<{ ok: boolean; scenario_id: string }>(
+    `/scenarios/${encodeURIComponent(id)}${query}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+export async function submitScenario(
+  id: string,
+): Promise<{ ok: boolean; scenario_id: string; status: string }> {
+  return request<{ ok: boolean; scenario_id: string; status: string }>(
+    `/scenarios/${encodeURIComponent(id)}/submit`,
+    {
+      method: "POST",
+    },
   );
 }
 
@@ -178,10 +234,128 @@ export async function downloadXosc(id: string): Promise<string> {
   return res.text();
 }
 
-/** Thay TOÀN BỘ tag của một kịch bản (không phải thêm vào). */
-export async function updateTags(id: string, tags: string[]): Promise<{ tags: string[] }> {
-  return request<{ tags: string[] }>(`/scenarios/${encodeURIComponent(id)}/tags`, {
+// ---------------------------------------------------------------------------
+// POST /scenarios/{id}/complete-simulation — Manual Simulation Verification
+// ---------------------------------------------------------------------------
+
+export interface CompleteSimulationPayload {
+  passed: boolean;
+  notes?: string;
+}
+
+export async function completeSimulation(
+  scenarioId: string,
+  payload: CompleteSimulationPayload,
+): Promise<{ ok: boolean; scenario_id: string; status: ScenarioStatus }> {
+  return request<{ ok: boolean; scenario_id: string; status: ScenarioStatus }>(
+    `/scenarios/${encodeURIComponent(scenarioId)}/complete-simulation`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Auth Endpoints
+// ---------------------------------------------------------------------------
+
+export async function postLogin(payload: LoginPayload): Promise<{ access_token: string; user: User }> {
+  return request<{ access_token: string; user: User }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function postRegister(payload: RegisterPayload): Promise<{ ok: boolean; user: User; status: string; message_vi?: string }> {
+  return request<{ ok: boolean; user: User; status: string; message_vi?: string }>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getMe(): Promise<User> {
+  return request<User>("/auth/me");
+}
+
+// ---------------------------------------------------------------------------
+// Admin Subsystem Endpoints
+// ---------------------------------------------------------------------------
+
+export interface AdminStats {
+  users: {
+    total: number;
+    creator: number;
+    reviewer: number;
+    admin: number;
+    pending_approval: number;
+  };
+  scenarios: {
+    total: number;
+    draft: number;
+    pending_sim_review: number;
+    simulation_queued: number;
+    pending_library_review: number;
+    approved_library: number;
+    approved_sim: number;
+    rejected: number;
+  };
+}
+
+export async function getAdminStats(): Promise<AdminStats> {
+  return request<AdminStats>("/admin/stats");
+}
+
+export async function getPendingReviewers(): Promise<User[]> {
+  return request<User[]>("/admin/pending-reviewers");
+}
+
+export async function getAdminUsers(params?: { role?: string; status?: string }): Promise<User[]> {
+  const query = new URLSearchParams();
+  if (params?.role) query.append("role", params.role);
+  if (params?.status) query.append("status", params.status);
+  const qs = query.toString() ? `?${query.toString()}` : "";
+  return request<User[]>(`/admin/users${qs}`);
+}
+
+export async function createAdminUser(
+  payload: Partial<User> & { password?: string; reason?: string },
+): Promise<{ ok: boolean; user: User }> {
+  return request<{ ok: boolean; user: User }>("/admin/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAdminUser(
+  username: string,
+  payload: Partial<User> & { password?: string; reason?: string },
+): Promise<{ ok: boolean; user: User }> {
+  return request<{ ok: boolean; user: User }>(`/admin/users/${encodeURIComponent(username)}`, {
     method: "PUT",
-    body: JSON.stringify({ tags }),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteAdminUser(username: string): Promise<{ ok: boolean; username: string }> {
+  return request<{ ok: boolean; username: string }>(`/admin/users/${encodeURIComponent(username)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function approveReviewer(
+  username: string,
+): Promise<{ ok: boolean; user: User & { temp_password?: string; email_sent?: boolean } }> {
+  return request<{ ok: boolean; user: User & { temp_password?: string; email_sent?: boolean } }>(
+    `/admin/users/${encodeURIComponent(username)}/approve`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export async function rejectReviewer(username: string): Promise<{ ok: boolean; user: User }> {
+  return request<{ ok: boolean; user: User }>(`/admin/users/${encodeURIComponent(username)}/reject`, {
+    method: "POST",
   });
 }
