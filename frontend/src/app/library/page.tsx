@@ -142,7 +142,7 @@ function LibraryContent() {
   const handleTabSwitch = (tab: "public" | "me") => {
     setActiveTab(tab);
     setLoading(true);
-    router.push(`/library?tab=${tab}`);
+    router.push(tab === "public" ? "/library" : "/library?tab=me");
   };
 
   // Debounced search

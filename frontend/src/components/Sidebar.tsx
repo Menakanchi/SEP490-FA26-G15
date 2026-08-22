@@ -2,20 +2,19 @@
 
 import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import {
   Zap,
   ClipboardCheck,
+  Library,
   Layers,
   ChevronRight,
   Compass,
   LogOut,
   Sun,
   Moon,
-  Globe,
-  User,
 } from "lucide-react";
 import type { Role } from "@/types/auth";
 
@@ -51,23 +50,15 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/library",
-    label: "Thư viện chung",
-    description: "Kịch bản đã duyệt",
-    icon: Globe,
-    allowedRoles: ["creator", "reviewer", "admin"],
-  },
-  {
-    href: "/library?tab=me",
-    label: "Thư viện cá nhân",
-    description: "Nháp & Kịch bản của tôi",
-    icon: User,
+    label: "Thư viện",
+    description: "Kịch bản ODD & Cá nhân",
+    icon: Library,
     allowedRoles: ["creator", "reviewer", "admin"],
   },
 ];
 
 function SidebarContent() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const { logout, user, role } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -88,8 +79,6 @@ function SidebarContent() {
     if (role) return item.allowedRoles.includes(role);
     return item.allowedRoles.includes("creator");
   });
-
-  const currentTab = searchParams.get("tab");
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-[260px] flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 z-50 shadow-sm font-sans transition-colors duration-200">
@@ -116,16 +105,9 @@ function SidebarContent() {
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1">
         {filteredNavItems.map((item) => {
-          let isActive = false;
-          if (item.href === "/library?tab=me") {
-            isActive = pathname === "/library" && currentTab === "me";
-          } else if (item.href === "/library") {
-            isActive = pathname === "/library" && currentTab !== "me";
-          } else {
-            isActive =
-              pathname === item.href ||
-              (item.href !== "/" && pathname.startsWith(item.href));
-          }
+          const isActive =
+            pathname === item.href ||
+            (item.href !== "/" && pathname.startsWith(item.href));
 
           return (
             <Link
