@@ -223,3 +223,35 @@ def test_infeasible_pairs_stay_out_of_the_denominator() -> None:
     # số biết trước (78 cặp khả thi), nên 0 kịch bản là 0% thật — một câu khẳng
     # định, không phải một chỗ trống.
     assert report["rate_pairwise"]["rate"] == 0.0
+
+
+def test_l4_judges_jaywalk_by_crossing_not_by_lane_offset() -> None:
+    """Người đi bộ rời khỏi mặt đường, nên `lane_deviation` của họ vô nghĩa.
+
+    Đo thật ngày 22/08: sc_026 cho `adversary_lane_deviation_m = 39,9 m` — chấm
+    theo số đó là chấm bừa. Tín hiệu đúng là **có băng qua trục dọc của ego không**.
+    """
+    crossed_close = _execution("jaywalk", adversary_crossed_ego_path=1.0, min_distance_m=0.4)
+    crossed_far = _execution("jaywalk", adversary_crossed_ego_path=1.0, min_distance_m=15.0)
+    never_crossed = _execution("jaywalk", adversary_crossed_ego_path=0.0, min_distance_m=0.4)
+
+    assert metrics.intent_verdict(crossed_close) is True
+    assert metrics.intent_verdict(crossed_far) is False, "băng qua lúc ego còn xa thì không nguy hiểm"
+    assert metrics.intent_verdict(never_crossed) is False
+
+
+def test_l4_judges_wrong_way_by_heading_and_proximity() -> None:
+    """Ngược hướng thôi chưa đủ — xe đỗ quay đầu bên lề cũng ngược hướng."""
+    oncoming = _execution("wrong_way", adversary_heading_delta_deg=178.0, min_distance_m=0.6)
+    parked_facing_back = _execution("wrong_way", adversary_heading_delta_deg=176.0, min_distance_m=40.0)
+    same_direction = _execution("wrong_way", adversary_heading_delta_deg=4.0, min_distance_m=0.5)
+
+    assert metrics.intent_verdict(oncoming) is True
+    assert metrics.intent_verdict(parked_facing_back) is False
+    assert metrics.intent_verdict(same_direction) is False
+
+
+def test_l4_still_returns_none_when_the_new_signals_are_missing() -> None:
+    """Lượt chạy bởi worker cũ không có hai tín hiệu này — chưa chấm, không phải trượt."""
+    assert metrics.intent_verdict(_execution("jaywalk", min_distance_m=0.4)) is None
+    assert metrics.intent_verdict(_execution("wrong_way", min_distance_m=0.4)) is None

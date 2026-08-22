@@ -39,6 +39,9 @@ lấn làn thật kéo xuống 0,36 m. Ngưỡng 1,0 m tách đúng hai trườn
 SPEED_DROP_MS = 2.0
 """Giảm tốc bao nhiêu thì coi là "phanh". ~7 km/h, đủ để loại nhiễu bám tốc độ."""
 
+OPPOSING_HEADING_DEG = 150.0
+"""Lệch hướng bao nhiêu độ thì coi là đi ngược chiều. Giữ khớp với worker."""
+
 STOPPED_MS = 0.5
 """Dưới ngưỡng này coi như đã dừng hẳn."""
 
@@ -218,7 +221,26 @@ def intent_verdict(execution: dict) -> bool | None:
     if maneuver == ManeuverType.STOP_IN_LANE.value:
         return None if min_speed is None else min_speed <= STOPPED_MS
 
-    # jaywalk / wrong_way / run_red_light cần tín hiệu riêng (người đi bộ sang
+    if maneuver == ManeuverType.JAYWALK.value:
+        # Ý định của jaywalk là **băng ngang trước mũi ego**, không phải va chạm.
+        # `adversary_lane_deviation_m` vô dụng ở đây: người đi bộ rời khỏi mặt
+        # đường nên nó đo được 39,9 m ở sc_026 — con số không mang nghĩa gì.
+        crossed = metrics.get("adversary_crossed_ego_path")
+        if crossed is None:
+            return None
+        near = metrics.get("min_distance_m")
+        return bool(crossed) and near is not None and near < NEAR_MISS_M
+
+    if maneuver == ManeuverType.WRONG_WAY.value:
+        # Đi ngược chiều = hướng xe ngược với ego VÀ tiến về phía ego. Chỉ ngược
+        # hướng thôi chưa đủ: một xe đỗ quay đầu bên lề cũng ngược hướng.
+        heading = metrics.get("adversary_heading_delta_deg")
+        if heading is None:
+            return None
+        near = metrics.get("min_distance_m")
+        return heading >= OPPOSING_HEADING_DEG and near is not None and near < NEAR_MISS_M
+
+    # run_red_light cần tín hiệu riêng (người đi bộ sang
     # được bên kia đường; xe đi ngược chiều dòng; xe vượt vạch lúc đèn đỏ) mà
     # bốn số hiện có không nói lên được. Chưa chấm còn hơn chấm bừa.
     return None
