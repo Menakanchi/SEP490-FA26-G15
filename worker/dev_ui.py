@@ -11,9 +11,11 @@ Chạy:
 
     python worker/dev_ui.py
 
-CARLA server vẫn phải bật riêng (nó là app GPU trên Windows, UI không thay được):
+CARLA server vẫn phải bật riêng (nó là app GPU, UI không thay được):
 
-    C:\\CARLA_0.9.15\\WindowsNoEditor\\CarlaUE4.exe -carla-rpc-port=2000 -windowed -ResX=640 -ResY=480
+    cd ~/CARLA_0.9.15
+    __NV_PRIME_RENDER_OFFLOAD=1 __VK_LAYER_NV_optimus=NVIDIA_only \\
+        ./CarlaUE4.sh -carla-rpc-port=2000 -windowed -ResX=800 -ResY=600
 
 KHÔNG thêm ``-quality-level=Low`` — cờ đó làm server sập trên Town04, xem fixtures/README.md.
 """
@@ -37,7 +39,7 @@ import sr_cli
 # --- Cấu hình: sửa bằng biến môi trường nếu máy khác ------------------------
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CARLA_ROOT = Path(os.environ.get("CARLA_ROOT", "/mnt/c/CARLA_0.9.15/WindowsNoEditor"))
+CARLA_ROOT = Path(os.environ.get("CARLA_ROOT", str(Path.home() / "CARLA_0.9.15")))
 SR_ROOT = Path(os.environ.get("SR_ROOT", str(Path.home() / "scenario_runner")))
 WORKER_PYTHON = Path(os.environ.get("WORKER_PYTHON", str(REPO_ROOT / "worker/.venv/bin/python")))
 OUT_DIR = Path(os.environ.get("OUT_DIR", str(REPO_ROOT / "out")))
