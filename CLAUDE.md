@@ -89,13 +89,30 @@ chế độ synchronous mà ScenarioRunner đang giữ.
 
 ## Đọc kết quả ScenarioRunner
 
-`CollisionTest = FAILURE` là **tin tốt**: nghĩa là kịch bản đã dựng được tình
-huống nguy hiểm — đúng thứ ta muốn (`adversarial_found`). `GLOBAL RESULT =
-FAILURE` đi kèm nó cũng vậy.
+Đọc **dòng `CollisionTest`**, đừng đọc `GLOBAL RESULT`.
+
+`CollisionTest = FAILURE` là **tin tốt**: kịch bản đã dựng được tình huống nguy
+hiểm — đúng thứ ta muốn (`adversarial_found`).
 
 Ngược lại, `CollisionTest = SUCCESS` (0 va chạm) nghĩa là kịch bản **chạy trót
 lọt nhưng không tái hiện được nguy hiểm nào** — về mặt sản phẩm đó mới là thất
 bại. Đừng đọc ngược.
+
+**`GLOBAL RESULT = FAILURE` không đồng nghĩa "tìm được nguy hiểm".** Nó là AND
+của mọi criteria, nên `CheckDrivenDistance` hay `CheckMaximumVelocity` trượt là
+đủ kéo nó xuống FAILURE trong khi không có va chạm nào. Ngày 22/08 có bốn kịch
+bản đóng sau ~2,6 giây (ego mới đi 16,6 m, dưới ngưỡng 50 m của
+`CheckDrivenDistance`): cả bốn đều `GLOBAL RESULT = FAILURE` mà chẳng mô phỏng
+được gì. Đọc theo `GLOBAL RESULT` là ghi nhầm cả bốn thành thành công.
+
+Code đã làm đúng chuyện này, đừng sửa theo hướng khác: `sr_cli.run_succeeded`
+chỉ trả lời "chạy xong, không crash/timeout", còn `sr_cli.had_collision` đọc
+riêng dòng `CollisionTest`; `verification_from` trong `schemas.py` map
+`ADVERSARIAL` / `RAN_NO_HAZARD` từ đó.
+
+Kịch bản chạy ngắn hơn `duration_s` nhiều là dấu hiệu storyboard hết việc sớm
+chứ không phải kịch bản "xong nhanh" — xem `_add_hold_open_event` trong
+`convert_xosc_node.py`.
 
 ## Test gọi LLM
 
