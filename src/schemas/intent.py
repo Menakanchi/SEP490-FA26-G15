@@ -25,7 +25,7 @@ class Maneuver(StrEnum):
     RUN_RED_LIGHT = "run_red_light"
     JAYWALK = "jaywalk"
     WRONG_WAY = "wrong_way"
-    LANE_DRIFT = "lane_drift"        # Đồng bộ với ManeuverType trong schemas.py
+    LANE_DRIFT = "lane_drift"  # Đồng bộ với ManeuverType trong schemas.py
     STOP_IN_LANE = "stop_in_lane"
     OVERTAKE = "overtake"
     UNKNOWN = "unknown"
@@ -36,13 +36,13 @@ class RoadType(StrEnum):
     HIGHWAY = "highway"
     INTERSECTION = "intersection"
     RESIDENTIAL_NARROW = "residential_narrow"  # Đồng bộ với RoadType trong schemas.py
-    ROUNDABOUT = "roundabout"                  # Đồng bộ với RoadType trong schemas.py
+    ROUNDABOUT = "roundabout"  # Đồng bộ với RoadType trong schemas.py
     UNKNOWN = "unknown"
 
 
 class Weather(StrEnum):
     CLEAR = "clear"
-    RAIN = "rain"                    # Đồng bộ với Weather trong schemas.py
+    RAIN = "rain"  # Đồng bộ với Weather trong schemas.py
     HEAVY_RAIN = "heavy_rain"
     FOG = "fog"
     UNKNOWN = "unknown"
@@ -217,8 +217,12 @@ class ODDQuery(BaseModel):
         if mv_val == "lane_departure":
             mv_val = "lane_drift"
 
-        spec_type = self.actor_type.specific_type if (self.actor_type and self.actor_type.specific_type != "unknown") else None
-        spec_act = self.maneuver.specific_action if (self.maneuver and self.maneuver.specific_action != "unknown") else None
+        spec_type = (
+            self.actor_type.specific_type if (self.actor_type and self.actor_type.specific_type != "unknown") else None
+        )
+        spec_act = (
+            self.maneuver.specific_action if (self.maneuver and self.maneuver.specific_action != "unknown") else None
+        )
 
         odd_hints = ODDCell(
             road_type=rt_val,

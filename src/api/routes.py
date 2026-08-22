@@ -400,7 +400,7 @@ async def list_public_scenarios_endpoint() -> ScenarioListResponse:
 
 @router.get("/scenarios/me", response_model=ScenarioListResponse)
 async def list_my_scenarios_endpoint(
-    user: str = Query("creator", description="Username hiện tại")
+    user: str = Query("creator", description="Username hiện tại"),
 ) -> ScenarioListResponse:
     items = db.list_my_scenarios(user)
     return ScenarioListResponse(items=items, total=len(items))
@@ -516,17 +516,11 @@ class CompleteSimulationRequest(BaseModel):
 
 
 @router.post("/scenarios/{scenario_id}/complete-simulation")
-async def complete_simulation_endpoint(
-    scenario_id: str, body: CompleteSimulationRequest = Body(...)
-) -> dict:
-    sc = _scenario_or_404(scenario_id)
-    updated = db.complete_manual_simulation(
-        scenario_id, passed=body.passed, notes=body.notes
-    )
+async def complete_simulation_endpoint(scenario_id: str, body: CompleteSimulationRequest = Body(...)) -> dict:
+    _scenario_or_404(scenario_id)
+    updated = db.complete_manual_simulation(scenario_id, passed=body.passed, notes=body.notes)
     if not updated:
-        raise HTTPException(
-            status_code=400, detail="Không thể cập nhật trạng thái kịch bản"
-        )
+        raise HTTPException(status_code=400, detail="Không thể cập nhật trạng thái kịch bản")
     return {
         "ok": True,
         "scenario_id": scenario_id,
@@ -614,6 +608,7 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
 # ===========================================================================
 # Auth & User Management Endpoints
 # ===========================================================================
+
 
 class RegisterApiRequest(BaseModel):
     username: str
@@ -723,12 +718,20 @@ async def get_me_endpoint(user: str = Query("admin")) -> dict:
     u = db.get_user(user)
     if not u:
         u = db.get_user("admin")
-    return u or {"id": "usr_admin", "username": "admin", "name": "Hệ Thống Admin", "email": "admin@forge.ai", "role": "admin", "status": "active"}
+    return u or {
+        "id": "usr_admin",
+        "username": "admin",
+        "name": "Hệ Thống Admin",
+        "email": "admin@forge.ai",
+        "role": "admin",
+        "status": "active",
+    }
 
 
 # ===========================================================================
 # Admin Subsystem Endpoints (/admin)
 # ===========================================================================
+
 
 @router.get("/admin/stats")
 async def get_admin_stats_endpoint() -> dict:
@@ -741,9 +744,7 @@ async def list_pending_reviewers_endpoint() -> list[dict]:
 
 
 @router.get("/admin/users")
-async def list_admin_users_endpoint(
-    role: str | None = Query(None), status: str | None = Query(None)
-) -> list[dict]:
+async def list_admin_users_endpoint(role: str | None = Query(None), status: str | None = Query(None)) -> list[dict]:
     return db.list_users(role=role, status=status)
 
 

@@ -17,17 +17,18 @@ mang bất biến nào.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
+import secrets
 import sqlite3
+import string
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-import hashlib
-import os
 from pathlib import Path
-import secrets
-import string
 
 from sqlalchemy import inspect, text
 
@@ -769,18 +770,12 @@ def delete_scenario(scenario_id: str) -> bool:
         return cursor.rowcount > 0
 
 
-def complete_manual_simulation(
-    scenario_id: str, passed: bool = True, notes: str | None = None
-) -> dict | None:
+def complete_manual_simulation(scenario_id: str, passed: bool = True, notes: str | None = None) -> dict | None:
     sc = get_scenario(scenario_id)
     if not sc:
         return None
 
-    new_status = (
-        ScenarioStatus.PENDING_LIBRARY_REVIEW.value
-        if passed
-        else ScenarioStatus.REJECTED.value
-    )
+    new_status = ScenarioStatus.PENDING_LIBRARY_REVIEW.value if passed else ScenarioStatus.REJECTED.value
     with _cursor(commit=True) as cursor:
         cursor.execute(
             "UPDATE scenarios SET status = ? WHERE scenario_id = ?",
@@ -916,6 +911,7 @@ def update_job_result(job_id: str, status: str, result: dict) -> None:
 # Auth & User Management CRUD (Admin / Auth)
 # ---------------------------------------------------------------------------
 
+
 def hash_password(password: str, salt: bytes | None = None) -> str:
     if not salt:
         salt = os.urandom(16)
@@ -953,8 +949,28 @@ def _seed_default_users() -> None:
 
         default_users = [
             ("admin", "Hệ Thống Admin", "admin@forge.ai", "admin", "active", None, admin_pass_hash, now_str, now_str),
-            ("creator", "Kỹ sư Kịch bản", "creator@forge.ai", "creator", "active", None, creator_pass_hash, now_str, now_str),
-            ("reviewer_pending", "Trần Văn Reviewer", "reviewer_pending@company.com", "reviewer", "pending_approval", "Kỹ sư mô phỏng VinFast ADAS", None, now_str, now_str),
+            (
+                "creator",
+                "Kỹ sư Kịch bản",
+                "creator@forge.ai",
+                "creator",
+                "active",
+                None,
+                creator_pass_hash,
+                now_str,
+                now_str,
+            ),
+            (
+                "reviewer_pending",
+                "Trần Văn Reviewer",
+                "reviewer_pending@company.com",
+                "reviewer",
+                "pending_approval",
+                "Kỹ sư mô phỏng VinFast ADAS",
+                None,
+                now_str,
+                now_str,
+            ),
         ]
 
         cursor.executemany(
