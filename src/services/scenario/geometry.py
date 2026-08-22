@@ -292,3 +292,24 @@ def actor_beyond_anchor_reach(actor: ActorSpec, reach_m: tuple[float, float]) ->
     """
     backward, forward = reach_m
     return not (backward <= actor.position.s_offset_m <= forward)
+
+
+def jaywalk_max_ego_speed_kmh(maneuver: ManeuverSpec, actor: ActorSpec, forward_reach_m: float) -> float | None:
+    """Ego nhanh nhất bao nhiêu thì ``jaywalk`` còn dựng được trong tầm anchor.
+
+    Hai ràng buộc kéo ngược nhau và có thể **không cùng thoả được**:
+
+    - người đi bộ phải đứng đủ xa để kịp bước sang: ``s_offset >= v_ego × t_qua``;
+    - nhưng anchor chỉ với tới ``forward_reach_m`` (Town04: +40 m), ngoài đó
+      ScenarioRunner không spawn nổi actor.
+
+    Đo ngày 23/08: LLM sinh ego 88 km/h -> cần 62 m, quá tầm 40 m. Repair chạy hết
+    ba vòng vì sửa cái này là vi phạm cái kia. Trả về trần tốc độ để **gợi ý sửa
+    chỉ ra lối thoát thật** thay vì đẩy model vào vòng lặp bất khả thi.
+    """
+    walk_ms = jaywalk_walking_speed_kmh(maneuver, actor) / 3.6
+    lanes = abs(actor.position.lane_offset)
+    if walk_ms <= 0 or lanes == 0:
+        return None
+    seconds_to_cross = (lanes * LANE_WIDTH_M) / walk_ms
+    return (forward_reach_m / seconds_to_cross) * 3.6
