@@ -14,6 +14,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query, Response
+from pydantic import BaseModel
 
 from src.agents.graph import build_forge_graph
 from src.models.schemas import (
@@ -359,6 +360,52 @@ async def update_tags(scenario_id: str, body: TagUpdateRequest) -> dict:
 # ===========================================================================
 
 
+class DraftCreateRequest(BaseModel):
+    title: str | None = "Bản nháp kịch bản ODD"
+    description_vi: str
+    odd: dict | None = None
+    spec: dict | None = None
+    xosc_content: str | None = ""
+    created_by: str | None = "creator"
+
+
+class ScenarioUpdateRequest(BaseModel):
+    title: str | None = None
+    description_vi: str | None = None
+    odd: dict | None = None
+    spec: dict | None = None
+    xosc_content: str | None = None
+    status: str | None = None
+    user: str | None = None
+
+
+@router.post("/scenarios/draft")
+async def create_draft_scenario(body: DraftCreateRequest) -> dict:
+    sc = db.save_draft_scenario(
+        title=body.title or "Bản nháp kịch bản ODD",
+        description_vi=body.description_vi,
+        odd=body.odd or {},
+        spec=body.spec or {},
+        xosc_content=body.xosc_content or "",
+        created_by=body.created_by or "creator",
+    )
+    return {"ok": True, "scenario_id": sc["scenario_id"], "scenario": sc}
+
+
+@router.get("/scenarios/public", response_model=ScenarioListResponse)
+async def list_public_scenarios_endpoint() -> ScenarioListResponse:
+    items = db.list_public_scenarios()
+    return ScenarioListResponse(items=items, total=len(items))
+
+
+@router.get("/scenarios/me", response_model=ScenarioListResponse)
+async def list_my_scenarios_endpoint(
+    user: str = Query("creator", description="Username hiện tại")
+) -> ScenarioListResponse:
+    items = db.list_my_scenarios(user)
+    return ScenarioListResponse(items=items, total=len(items))
+
+
 @router.get("/scenarios", response_model=ScenarioListResponse)
 @router.get("/library/search", response_model=ScenarioListResponse)
 async def list_scenarios(
@@ -367,11 +414,17 @@ async def list_scenarios(
     weather: str | None = Query(None),
     actor_type: str | None = Query(None),
     maneuver: str | None = Query(None),
+    scope: str | None = Query(None, description="public | me | all"),
+    user: str | None = Query(None, description="Username lọc theo cá nhân"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ) -> ScenarioListResponse:
-    """Danh sách scenarios với lọc ODD và phân trang (sử dụng SQLiteRetriever)."""
-    if search or road_type or weather or actor_type or maneuver:
+    """Danh sách scenarios với lọc ODD, phân quyền scope và phân trang."""
+    if scope == "public":
+        items = db.list_public_scenarios()
+    elif scope == "me" or user:
+        items = db.list_my_scenarios(user or "creator")
+    elif search or road_type or weather or actor_type or maneuver:
         retriever = SQLiteRetriever()
         odd_query = {
             "road_type": road_type,
@@ -404,6 +457,57 @@ async def list_scenarios(
     paged = items[offset : offset + limit]
 
     return ScenarioListResponse(items=paged, total=total)
+
+
+@router.put("/scenarios/{scenario_id}")
+async def update_scenario_endpoint(scenario_id: str, body: ScenarioUpdateRequest) -> dict:
+    sc = _scenario_or_404(scenario_id)
+    if sc["status"] in ("approved_library", "approved_sim"):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Approved scenarios cannot be modified or deleted",
+        )
+    if body.user and sc.get("created_by") not in ("unknown", None, body.user):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: You do not have permission to modify this scenario",
+        )
+    updated = db.update_scenario(
+        scenario_id=scenario_id,
+        title=body.title,
+        description_vi=body.description_vi,
+        odd=body.odd,
+        spec=body.spec,
+        xosc_content=body.xosc_content,
+        status=body.status,
+    )
+    return {"ok": True, "scenario": updated}
+
+
+@router.delete("/scenarios/{scenario_id}")
+async def delete_scenario_endpoint(scenario_id: str, user: str = Query("creator")) -> dict:
+    sc = _scenario_or_404(scenario_id)
+    if sc["status"] in ("approved_library", "approved_sim"):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Approved scenarios cannot be modified or deleted",
+        )
+    if user and sc.get("created_by") not in ("unknown", None, user):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: You do not have permission to delete this scenario",
+        )
+    db.delete_scenario(scenario_id)
+    return {"ok": True, "scenario_id": scenario_id}
+
+
+@router.post("/scenarios/{scenario_id}/submit")
+async def submit_scenario_for_review(scenario_id: str) -> dict:
+    sc = _scenario_or_404(scenario_id)
+    if sc["status"] in ("approved_library", "approved_sim"):
+        raise HTTPException(status_code=400, detail="Scenario is already approved")
+    db.update_scenario_status(scenario_id, "pending_sim_review")
+    return {"ok": True, "scenario_id": scenario_id, "status": "pending_sim_review"}
 
 
 # ===========================================================================

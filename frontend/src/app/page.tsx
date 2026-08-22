@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Zap,
@@ -20,8 +21,9 @@ import {
   Sliders,
   Layers,
   Sparkle,
+  Bookmark,
 } from "lucide-react";
-import { postGenerate, getStatus, getScenarioById } from "@/services/api";
+import { postGenerate, getStatus, getScenarioById, postDraftScenario } from "@/services/api";
 import SVG2DRenderer from "@/components/SVG2DRenderer";
 import { useAuth } from "@/context/AuthContext";
 import type { GenerationStatus, ValidationMode, ScenarioDetail } from "@/types";
@@ -130,6 +132,34 @@ function GeneratorPageContent() {
     };
   }, [searchParams, startPolling, stopPolling]);
 
+  const [drafting, setDrafting] = useState(false);
+  const [draftSuccess, setDraftSuccess] = useState<string | null>(null);
+
+  const handleSaveDraft = async () => {
+    const trimmed = prompt.trim();
+    if (!trimmed) {
+      setClientValidationError("Vui lòng nhập mô tả kịch bản trước khi lưu nháp.");
+      return;
+    }
+    setClientValidationError(null);
+    setDrafting(true);
+    setDraftSuccess(null);
+
+    try {
+      const res = await postDraftScenario({
+        description_vi: trimmed,
+        created_by: user?.username || user?.name || "creator",
+      });
+      setDrafting(false);
+      setDraftSuccess(`Đã lưu bản nháp mã '${res.scenario_id}' thành công!`);
+    } catch (err) {
+      setDrafting(false);
+      setClientValidationError(
+        err instanceof Error ? err.message : "Lưu bản nháp thất bại.",
+      );
+    }
+  };
+
   // Form Submit
   const handleSubmit = async () => {
     const trimmed = prompt.trim();
@@ -152,6 +182,7 @@ function GeneratorPageContent() {
         prompt: trimmed,
         validation_mode: validationMode,
         limit: retrieveLimit,
+        created_by: user?.username || user?.name || "creator",
       });
 
       setSubmitting(false);
@@ -171,7 +202,7 @@ function GeneratorPageContent() {
   const isFailed = status?.step === "failed";
 
   return (
-    <div className="min-h-screen p-6 pt-8 font-sans">
+    <div className="min-h-screen p-6 pt-8 font-sans bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="relative">
@@ -184,28 +215,28 @@ function GeneratorPageContent() {
                 <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100">
                   Sinh kịch bản mới (Creator Flow)
                 </h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                <p className="text-sm text-blue-900/80 dark:text-slate-400 font-medium">
                   Mô tả tình huống tiếng Việt → Tự động trích xuất ODD & tạo OpenSCENARIO 1.0
                 </p>
               </div>
             </div>
             {user && (
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-sky-50/80 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-sky-100 dark:border-slate-800 shadow-sm">
                 <span>Tác giả:</span>
                 <span className="font-bold text-blue-600 dark:text-cyan-400">{user.name || user.username}</span>
-                <span className="uppercase text-[10px] text-blue-600 font-mono">({role})</span>
+                <span className="uppercase text-[10px] text-blue-600 dark:text-blue-400 font-mono">({role})</span>
               </span>
             )}
           </div>
         </div>
 
         {/* Form Box */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 border border-sky-100 dark:border-slate-800 shadow-sm rounded-3xl p-6 space-y-4">
           <label className="block text-sm font-bold text-slate-900 dark:text-slate-100">
             Mô tả tình huống giao thông (Tiếng Việt)
           </label>
           <textarea
-            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition min-h-[120px] resize-y font-sans"
+            className="w-full px-4 py-3 bg-sky-50/40 dark:bg-slate-950 border border-sky-200 dark:border-slate-700 rounded-2xl text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 transition min-h-[120px] resize-y font-sans"
             placeholder="Ví dụ: ô tô đâm đít xe máy / Xe máy tạt đầu ô tô trên đường cao tốc..."
             value={prompt}
             onChange={(e) => {
@@ -216,9 +247,24 @@ function GeneratorPageContent() {
           />
 
           {clientValidationError && (
-            <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 flex items-center gap-2 text-xs text-amber-900 dark:text-amber-300">
+            <div className="p-3.5 rounded-2xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 flex items-center gap-2 text-xs text-amber-900 dark:text-amber-300">
               <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
               <span>{clientValidationError}</span>
+            </div>
+          )}
+
+          {draftSuccess && (
+            <div className="p-3.5 rounded-2xl bg-green-50/90 dark:bg-green-950/40 border border-green-200 dark:border-green-800/80 flex items-center justify-between gap-2 text-xs text-green-900 dark:text-green-300">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                <span>{draftSuccess}</span>
+              </div>
+              <Link
+                href="/library?tab=me"
+                className="font-bold text-blue-600 dark:text-cyan-400 underline hover:text-blue-700"
+              >
+                Xem trong Thư viện cá nhân &rarr;
+              </Link>
             </div>
           )}
 
@@ -227,11 +273,11 @@ function GeneratorPageContent() {
               {/* Validation Mode Toggle */}
               <button
                 type="button"
-                className="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+                className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-white transition cursor-pointer"
                 onClick={() =>
                   setValidationMode((m) => (m === "static" ? "sim" : "static"))
                 }
-                disabled={polling || submitting}
+                disabled={polling || submitting || drafting}
               >
                 {validationMode === "sim" ? (
                   <ToggleRight className="w-6 h-6 text-blue-600 dark:text-cyan-400" />
@@ -246,42 +292,58 @@ function GeneratorPageContent() {
               </button>
 
               {/* Retrieval Limit Selector */}
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-sky-50/70 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-sky-200 dark:border-slate-700">
                 <Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>Số mẫu Retrieve (Limit Top-K):</span>
                 <select
-                  className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-bold px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:border-blue-500"
+                  className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-bold px-2 py-0.5 rounded border border-sky-200 dark:border-slate-700 text-xs focus:outline-none focus:border-blue-500"
                   value={retrieveLimit}
                   onChange={(e) => setRetrieveLimit(Number(e.target.value))}
-                  disabled={polling || submitting}
+                  disabled={polling || submitting || drafting}
                 >
-                  <option value={1}>1 kịch bản</option>
-                  <option value={2}>2 kịch bản</option>
-                  <option value={3}>3 kịch bản (mặc định)</option>
-                  <option value={5}>5 kịch bản</option>
-                  <option value={10}>10 kịch bản</option>
+                  <option value={1} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">1 kịch bản</option>
+                  <option value={2} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">2 kịch bản</option>
+                  <option value={3} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">3 kịch bản (mặc định)</option>
+                  <option value={5} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">5 kịch bản</option>
+                  <option value={10} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">10 kịch bản</option>
                 </select>
               </div>
             </div>
 
-            <button
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/20 flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
-              onClick={handleSubmit}
-              disabled={!prompt.trim() || polling || submitting}
-            >
-              {submitting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Zap className="w-4 h-4" />
-              )}
-              {submitting ? "Đang gửi..." : "Bắt đầu sinh kịch bản"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="px-4 py-3 bg-sky-50/80 hover:bg-sky-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-blue-700 dark:text-blue-300 font-bold text-xs rounded-xl border border-sky-200 dark:border-slate-700 shadow-xs flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
+                onClick={handleSaveDraft}
+                disabled={!prompt.trim() || polling || submitting || drafting}
+              >
+                {drafting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Bookmark className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                )}
+                {drafting ? "Đang lưu..." : "Lưu nháp"}
+              </button>
+
+              <button
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-600/20 flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
+                onClick={handleSubmit}
+                disabled={!prompt.trim() || polling || submitting || drafting}
+              >
+                {submitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Zap className="w-4 h-4" />
+                )}
+                {submitting ? "Đang gửi..." : "Bắt đầu sinh kịch bản"}
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Processing indicator */}
         {polling && !isDone && !isFailed && (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl px-5 py-4 space-y-2 shadow-sm">
+          <div className="bg-white dark:bg-slate-900 border border-sky-100 dark:border-slate-800 rounded-3xl px-5 py-4 space-y-2 shadow-sm">
             <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
               <span className="flex items-center gap-2">
                 <Loader2 className="w-4 h-4 text-blue-600 dark:text-cyan-400 animate-spin" />
@@ -289,12 +351,11 @@ function GeneratorPageContent() {
               </span>
               <span>{status?.progress ?? 0}%</span>
             </div>
-            <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div className="h-2 bg-sky-100 dark:bg-slate-800 rounded-full overflow-hidden">
               <div
-                className="h-full rounded-full transition-all duration-500 ease-out"
+                className="h-full rounded-full transition-all duration-500 ease-out bg-blue-600"
                 style={{
                   width: `${Math.max(status?.progress ?? 5, 5)}%`,
-                  background: "linear-gradient(90deg, #2563eb, #06b6d4)",
                 }}
               />
             </div>
@@ -303,8 +364,8 @@ function GeneratorPageContent() {
 
         {/* Timeout error */}
         {timeoutError && (
-          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl px-5 py-3 flex items-center gap-2 text-xs font-bold text-amber-900 dark:text-amber-300">
-            <Clock className="w-4 h-4 flex-shrink-0" />
+          <div className="bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200 rounded-2xl px-5 py-3 flex items-center gap-2 text-xs font-bold shadow-sm">
+            <Clock className="w-4 h-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
             Đã hết thời gian chờ (2 phút). Vui lòng thử lại.
           </div>
         )}
@@ -357,34 +418,34 @@ function GeneratorPageContent() {
 
             {/* Generated Details Preview */}
             {generatedScenario && (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-6 shadow-sm">
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="bg-white dark:bg-slate-900 border border-sky-100 dark:border-slate-800 rounded-3xl p-6 space-y-6 shadow-sm">
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 border-b border-sky-100 dark:border-slate-800 pb-3">
                   <Info className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                   Chi tiết Kịch bản & Suy luận (ADR-010 Multi-Actor Preview)
                 </h3>
 
                 {/* ODD Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 text-center">
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block uppercase font-bold">Loại đường</span>
+                  <div className="bg-sky-50/80 dark:bg-slate-800 p-3 rounded-xl border border-sky-200/70 dark:border-slate-700/60 text-center">
+                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Loại đường</span>
                     <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
                       {renderSafeValue(generatedScenario.odd?.road_type, ROAD_TYPE_LABELS)}
                     </span>
                   </div>
-                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 text-center">
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block uppercase font-bold">Thời tiết</span>
+                  <div className="bg-sky-50/80 dark:bg-slate-800 p-3 rounded-xl border border-sky-200/70 dark:border-slate-700/60 text-center">
+                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Thời tiết</span>
                     <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400">
                       {renderSafeValue(generatedScenario.odd?.weather, WEATHER_LABELS)}
                     </span>
                   </div>
-                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 text-center">
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block uppercase font-bold">Tác nhân</span>
+                  <div className="bg-sky-50/80 dark:bg-slate-800 p-3 rounded-xl border border-sky-200/70 dark:border-slate-700/60 text-center">
+                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Tác nhân</span>
                     <span className="text-xs font-bold text-orange-600 dark:text-orange-400">
                       {renderSafeValue(generatedScenario.odd?.actor_type, ACTOR_TYPE_LABELS)}
                     </span>
                   </div>
-                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 text-center">
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block uppercase font-bold">Hành vi</span>
+                  <div className="bg-sky-50/80 dark:bg-slate-800 p-3 rounded-xl border border-sky-200/70 dark:border-slate-700/60 text-center">
+                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Hành vi</span>
                     <span className="text-xs font-bold text-red-600 dark:text-red-400">
                       {renderSafeValue(generatedScenario.odd?.maneuver, MANEUVER_TYPE_LABELS)}
                     </span>
@@ -398,7 +459,7 @@ function GeneratorPageContent() {
                       <Map className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                       Sơ đồ làn đường 2D (Render đầy đủ Hero & Adversaries):
                     </span>
-                    <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950">
+                    <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950">
                       <SVG2DRenderer
                         actors={generatedScenario.spec.actors}
                         odd={generatedScenario.odd}
@@ -417,9 +478,9 @@ function GeneratorPageContent() {
                       <Users className="w-4 h-4 text-orange-600 dark:text-orange-400" />
                       Danh sách toàn bộ Tác nhân (`spec.actors` - {generatedScenario.spec.actors.length} xe):
                     </h4>
-                    <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-2xl">
+                    <div className="overflow-x-auto border border-sky-100 dark:border-slate-800 rounded-2xl">
                       <table className="w-full text-xs text-left text-slate-800 dark:text-slate-200">
-                        <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 uppercase font-bold text-[10px] border-b border-slate-200 dark:border-slate-700/60">
+                        <thead className="bg-sky-50/60 dark:bg-slate-800/80 text-blue-900 dark:text-slate-400 uppercase font-bold text-[10px] border-b border-sky-100 dark:border-slate-700/60">
                           <tr>
                             <th className="p-3">Tên xe</th>
                             <th className="p-3">Loại phương tiện</th>
@@ -429,9 +490,9 @@ function GeneratorPageContent() {
                             <th className="p-3">Tốc độ ban đầu</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        <tbody className="divide-y divide-sky-100/60 dark:divide-slate-800">
                           {generatedScenario.spec.actors.map((actor, idx) => (
-                            <tr key={actor.name || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                            <tr key={actor.name || idx} className="hover:bg-sky-50/50 dark:hover:bg-slate-800/40">
                               <td className="p-3 font-mono font-bold text-blue-600 dark:text-cyan-300">{actor.name}</td>
                               <td className="p-3 font-bold text-slate-900 dark:text-slate-100">
                                 {renderActorCategoryLabel(actor, generatedScenario.odd)}
@@ -459,7 +520,7 @@ function GeneratorPageContent() {
                 ) : null}
 
                 {/* Retrieved Examples Block */}
-                <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="space-y-3 pt-2 border-t border-sky-100 dark:border-slate-800">
                   <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
                     <Layers className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                     Khối kịch bản mẫu tương đồng được Retrieve (`retrieved_examples`):
@@ -487,7 +548,7 @@ function GeneratorPageContent() {
                         return (
                           <div
                             key={item.id || idx}
-                            className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-2"
+                            className="bg-sky-50/50 dark:bg-slate-800/40 p-4 rounded-2xl border border-sky-100 dark:border-slate-700/60 space-y-2"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate">
@@ -544,7 +605,7 @@ export default function GeneratorPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-blue-600">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950 text-blue-600">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
@@ -557,7 +618,7 @@ export default function GeneratorPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
         </div>
       }

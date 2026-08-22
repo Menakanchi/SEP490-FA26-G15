@@ -381,12 +381,10 @@ def save_scenario(
     tags: list | None = None,
     retrieved_examples: list | None = None,
     validation_mode: str = "fast",
+    created_by: str = "creator",
 ) -> dict:
     now_str = datetime.now(UTC).isoformat()
 
-    # ADR-013 lọc ODD bằng ``WHERE`` trên bốn cột có index, nên bốn cột đó phải
-    # giữ đúng chuỗi enum. Chi tiết theo lời người dùng sống trong
-    # ``spec.odd.specific_type``, không ghép vào đây.
     rt = odd_axis_value(odd.get("road_type"))
     wt = odd_axis_value(odd.get("weather"))
     at_str = odd_axis_value(odd.get("actor_type"))
@@ -396,18 +394,13 @@ def save_scenario(
     assumptions_json = json.dumps(assumptions or [], ensure_ascii=False)
     tags_json = json.dumps(tags or [], ensure_ascii=False)
 
-    # `embedding` để NULL. ADR-011 §Hệ quả: vector chỉ được ghi trong đúng
-    # transaction duyệt BEFORE_LIBRARY. Đó là cách FR-03/FR-11 ("chỉ scenario đã
-    # duyệt mới tìm lại được") được thi hành bằng cấu trúc — không có vector thì
-    # không lọt vào kết quả retrieval, kể cả khi người viết truy vấn quên
-    # `WHERE status = 'approved_library'`.
     with _cursor(commit=True) as cursor:
         cursor.execute(
             """
         INSERT OR REPLACE INTO scenarios
         (scenario_id, status, title, description_vi, description_normalized, spec, xosc_content, assumptions,
-         tags, road_type, weather, actor_type, maneuver, verification, embedding, embedding_model, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         tags, road_type, weather, actor_type, maneuver, verification, embedding, embedding_model, created_at, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
             (
                 scenario_id,
@@ -423,11 +416,11 @@ def save_scenario(
                 wt,
                 at_str,
                 mv_str,
-                # Mọi kịch bản mới đều chưa chạy CARLA lần nào (ADR-017).
                 VerificationLevel.UNVERIFIED.value,
-                None,  # embedding — xem ghi chú ADR-011 phía trên
-                None,  # embedding_model — ghi cùng lúc với embedding, không sớm hơn
+                None,
+                None,
                 now_str,
+                created_by or "creator",
             ),
         )
 
@@ -444,6 +437,7 @@ def save_scenario(
         "assumptions": assumptions or [],
         "tags": tags or [],
         "review_logs": get_review_decisions(scenario_id),
+        "created_by": created_by or "creator",
         "created_at": now_str,
         "validation_mode": validation_mode,
     }
@@ -624,6 +618,150 @@ def list_all_scenarios() -> list[dict]:
         if sc:
             scenarios.append(sc)
     return scenarios
+
+
+def save_draft_scenario(
+    title: str,
+    description_vi: str,
+    odd: dict,
+    spec: dict | None = None,
+    xosc_content: str = "",
+    created_by: str = "creator",
+    scenario_id: str | None = None,
+) -> dict:
+    if not scenario_id:
+        scenario_id = f"sc_draft_{uuid.uuid4().hex[:8]}"
+
+    return save_scenario(
+        scenario_id=scenario_id,
+        title=title or "Bản nháp kịch bản ODD",
+        description_vi=description_vi,
+        spec=spec or {},
+        odd=odd or {},
+        status=ScenarioStatus.DRAFT.value,
+        xosc_content=xosc_content,
+        created_by=created_by,
+    )
+
+
+def list_public_scenarios() -> list[dict]:
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT scenario_id FROM scenarios
+            WHERE status IN ('approved_library', 'approved_sim')
+            ORDER BY created_at DESC
+            """
+        )
+        rows = cursor.fetchall()
+    scenarios = []
+    for r in rows:
+        sc = get_scenario(r["scenario_id"])
+        if sc:
+            scenarios.append(sc)
+    return scenarios
+
+
+def list_my_scenarios(username: str) -> list[dict]:
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT DISTINCT s.scenario_id
+            FROM scenarios s
+            LEFT JOIN generation_requests gr ON s.scenario_id = gr.scenario_id
+            WHERE LOWER(s.created_by) = LOWER(?) OR LOWER(gr.created_by) = LOWER(?)
+            ORDER BY s.created_at DESC
+            """,
+            (username, username),
+        )
+        rows = cursor.fetchall()
+    scenarios = []
+    seen_ids = set()
+    for r in rows:
+        sc_id = r["scenario_id"]
+        if sc_id and sc_id not in seen_ids:
+            sc = get_scenario(sc_id)
+            if sc:
+                scenarios.append(sc)
+                seen_ids.add(sc_id)
+
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT scenario_id
+            FROM generation_requests
+            WHERE LOWER(created_by) = LOWER(?) AND scenario_id IS NOT NULL
+            ORDER BY created_at DESC
+            """,
+            (username,),
+        )
+        req_rows = cursor.fetchall()
+
+    for r in req_rows:
+        sc_id = r["scenario_id"]
+        if sc_id and sc_id not in seen_ids:
+            sc = get_scenario(sc_id)
+            if sc:
+                scenarios.append(sc)
+                seen_ids.add(sc_id)
+
+    return scenarios
+
+
+def update_scenario(
+    scenario_id: str,
+    title: str | None = None,
+    description_vi: str | None = None,
+    odd: dict | None = None,
+    spec: dict | None = None,
+    xosc_content: str | None = None,
+    status: str | None = None,
+) -> dict | None:
+    sc = get_scenario(scenario_id)
+    if not sc:
+        return None
+
+    new_title = title if title is not None else sc["title"]
+    new_desc = description_vi if description_vi is not None else sc["description_vi"]
+    new_odd = odd if odd is not None else sc.get("odd", {})
+    new_spec = spec if spec is not None else sc.get("spec", {})
+    new_xosc = xosc_content if xosc_content is not None else sc.get("xosc_content", "")
+    new_status = status if status is not None else sc["status"]
+
+    rt = odd_axis_value(new_odd.get("road_type"))
+    wt = odd_axis_value(new_odd.get("weather"))
+    at_str = odd_axis_value(new_odd.get("actor_type"))
+    mv_str = odd_axis_value(new_odd.get("maneuver"))
+
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            UPDATE scenarios
+            SET title = ?, description_vi = ?, description_normalized = ?,
+                spec = ?, xosc_content = ?, road_type = ?, weather = ?, actor_type = ?, maneuver = ?, status = ?
+            WHERE scenario_id = ?
+            """,
+            (
+                new_title,
+                new_desc,
+                normalize_prompt(new_desc),
+                json.dumps(new_spec, ensure_ascii=False),
+                new_xosc,
+                rt,
+                wt,
+                at_str,
+                mv_str,
+                new_status,
+                scenario_id,
+            ),
+        )
+    return get_scenario(scenario_id)
+
+
+def delete_scenario(scenario_id: str) -> bool:
+    with _cursor(commit=True) as cursor:
+        cursor.execute("DELETE FROM scenarios WHERE scenario_id = ?", (scenario_id,))
+        return cursor.rowcount > 0
 
 
 # ---------------------------------------------------------------------------

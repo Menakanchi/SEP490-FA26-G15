@@ -19,7 +19,7 @@ from src.models.schemas import (
     next_status_after_review,
 )
 
-TERMINAL = {ScenarioStatus.REJECTED, ScenarioStatus.APPROVED_LIBRARY}
+TERMINAL = {ScenarioStatus.REJECTED, ScenarioStatus.APPROVED_LIBRARY, ScenarioStatus.APPROVED_SIM}
 
 
 def test_every_status_has_a_transition_row() -> None:
@@ -89,7 +89,10 @@ def test_derived_graph_matches_review_table() -> None:
     from_reviews = {(src, target) for (src, _, _), target in REVIEW_TRANSITIONS.items()}
     derived = {(src, t) for src, targets in ALLOWED_SCENARIO_TRANSITIONS.items() for t in targets}
     extra = derived - from_reviews
-    assert extra == {(ScenarioStatus.SIMULATION_QUEUED, ScenarioStatus.PENDING_LIBRARY_REVIEW)}
+    assert extra == {
+        (ScenarioStatus.SIMULATION_QUEUED, ScenarioStatus.PENDING_LIBRARY_REVIEW),
+        (ScenarioStatus.DRAFT, ScenarioStatus.PENDING_SIM_REVIEW),
+    }
 
 
 def test_job_states_do_not_leak_into_scenario_states() -> None:

@@ -36,6 +36,8 @@
   --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
 }
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ---------------------------------------------------------------------------
    Base
    --------------------------------------------------------------------------- */
@@ -45,9 +47,16 @@ html {
 }
 
 body {
-  background: var(--color-surface-900);
-  color: #e2e8f0;
+  background-color: #f8fafc;
+  color: #0f172a;
   font-family: var(--font-sans);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dark body,
+html.dark body {
+  background-color: #020617;
+  color: #f8fafc;
 }
 
 /* ---------------------------------------------------------------------------
