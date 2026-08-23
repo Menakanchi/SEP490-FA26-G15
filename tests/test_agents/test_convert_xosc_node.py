@@ -221,8 +221,12 @@ def test_lane_drift_uses_partial_offset_not_full_lane_change() -> None:
     assert root.find(".//LaneOffsetAction/../LaneChangeAction") is None
     # Actor đứng bên TRÁI ego (lane_offset = -1) phải lấn sang PHẢI để về phía
     # ego. ScenarioRunner đọc dương = sang phải (atomic_behaviors.py:1122), ngược
-    # với quy ước OpenSCENARIO — nên giá trị đúng là +0.7, không phải -0.7.
-    assert root.find(".//AbsoluteTargetLaneOffset").get("value") == "0.7"
+    # với quy ước OpenSCENARIO — nên giá trị phải DƯƠNG.
+    offset = float(root.find(".//AbsoluteTargetLaneOffset").get("value"))
+    assert offset > 0
+    # Và phải qua được nửa bề rộng làn, nếu không xe không bao giờ chạm vạch:
+    # bản 0,7 m dịch sang ngang thật mà chưa từng vào làn ego (sc_024, 23/08).
+    assert offset > 1.75, "lấn ít hơn nửa làn thì không phải lấn làn"
     criteria = {item.get("name") for item in root.findall("./Storyboard/StopTrigger/ConditionGroup/Condition")}
     assert "criteria_KeepLaneTest" in criteria
     ego_speed = root.find(".//Private[@entityRef='hero']//AbsoluteTargetSpeed")

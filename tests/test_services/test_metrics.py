@@ -34,7 +34,7 @@ def test_l4_rejects_a_cut_in_that_became_a_rear_end() -> None:
     phân biệt được. Đo thật ngày 22/08: chạm lúc adversary còn sau ego 4,71 m.
     """
     verdict = metrics.intent_verdict(
-        _execution("cut_in", collision=True, adversary_lane_deviation_m=1.72, contact_longitudinal_m=-4.71)
+        _execution("cut_in", collision=True, adversary_entered_ego_lane=1.0, contact_longitudinal_m=-4.71)
     )
     assert verdict is False
 
@@ -42,21 +42,21 @@ def test_l4_rejects_a_cut_in_that_became_a_rear_end() -> None:
 def test_l4_accepts_a_proper_cut_in() -> None:
     """Cùng kịch bản, trigger đúng: chạm lúc adversary ở trước ego 4,78 m."""
     verdict = metrics.intent_verdict(
-        _execution("cut_in", collision=True, adversary_lane_deviation_m=1.73, contact_longitudinal_m=4.78)
+        _execution("cut_in", collision=True, adversary_entered_ego_lane=1.0, contact_longitudinal_m=4.78)
     )
     assert verdict is True
 
 
 def test_l4_rejects_a_drift_that_met_nobody() -> None:
-    """Lấn làn có xảy ra (0,70 m) nhưng ego đã đi khỏi — khe hở 1,01 m, vô hại."""
+    """Đã lấn vào làn ego nhưng ego đã đi khỏi — khe hở 1,01 m, vô hại."""
     assert (
-        metrics.intent_verdict(_execution("lane_drift", adversary_lane_deviation_m=0.70, min_distance_m=1.01)) is False
+        metrics.intent_verdict(_execution("lane_drift", adversary_entered_ego_lane=1.0, min_distance_m=1.01)) is False
     )
 
 
 def test_l4_accepts_a_drift_that_actually_grazed_the_ego() -> None:
     assert (
-        metrics.intent_verdict(_execution("lane_drift", adversary_lane_deviation_m=0.70, min_distance_m=0.36)) is True
+        metrics.intent_verdict(_execution("lane_drift", adversary_entered_ego_lane=1.0, min_distance_m=0.36)) is True
     )
 
 
@@ -75,7 +75,7 @@ def test_unjudgeable_runs_are_reported_separately_not_as_failures() -> None:
         requests=[],
         scenarios=[],
         executions=[
-            _execution("cut_in", collision=True, adversary_lane_deviation_m=1.7, contact_longitudinal_m=4.8),
+            _execution("cut_in", collision=True, adversary_entered_ego_lane=1.0, contact_longitudinal_m=4.8),
             _execution("jaywalk", adversary_lane_deviation_m=0.9),
         ],
     )
@@ -275,3 +275,28 @@ def test_crossing_zero_is_a_verdict_but_missing_is_not() -> None:
 
     assert metrics.intent_verdict(measured_no_cross) is False
     assert metrics.intent_verdict(old_worker) is None
+
+
+def test_l4_rejects_a_drift_that_never_crossed_into_the_ego_lane() -> None:
+    """Chỗ lệch đầu tiên mà bộ nhãn người tìm ra — sc_024 ngày 23/08/2026.
+
+    Xe lấn 0,70 m trong khi cần 1,75 m mới chạm vạch; tâm nó vẫn cách tim ego
+    2,80 m. Luật cũ chấm ĐÚNG (lệch 0,7 >= 0,3 và khe hở 0,68 < 1,0). Người xem
+    trực tiếp trên CARLA chấm SAI: "chưa lấn sang làn ego, chỉ gần chạm vạch".
+
+    Người đúng — câu mô tả hứa "lấn làn đè vạch sang làn giữa". Luật cũ hỏi "có
+    nhúc nhích sang ngang không"; câu phải hỏi là "có cắt qua vạch không".
+    """
+    verdict = metrics.intent_verdict(
+        _execution("lane_drift", adversary_entered_ego_lane=0.0, min_distance_m=0.682)
+    )
+    assert verdict is False
+
+
+def test_l4_cannot_judge_lateral_maneuvers_from_older_runs() -> None:
+    """Lượt chạy cũ không có `adversary_entered_ego_lane` thì trả None, không đoán.
+
+    Chấm chúng bằng luật vừa bị bác bỏ là bê nguyên lỗi cũ vào báo cáo mới.
+    """
+    assert metrics.intent_verdict(_execution("lane_drift", min_distance_m=0.36)) is None
+    assert metrics.intent_verdict(_execution("cut_in", collision=True, contact_longitudinal_m=4.8)) is None

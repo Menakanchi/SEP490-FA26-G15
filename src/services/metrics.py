@@ -22,11 +22,19 @@ from src.models.schemas import DEFAULT_SUPPORT_POLICY, ManeuverType, ODDCell
 
 # Ngưỡng dưới đây đều lấy từ số đo trên CARLA ngày 22/08/2026, không phải chọn cho tròn.
 
-LATERAL_DEVIATION_M = 0.3
-"""Lệch tim làn bao nhiêu thì coi là hành vi ngang **đã xảy ra**.
+EGO_LANE_HALF_WIDTH_M = 1.75
+"""Nửa bề rộng làn — ranh giới "đã lấn vào làn ego hay chưa".
 
-Kịch bản `lane_drift` chạy đúng đo được 0,70 m; bản lấn ngược hướng (lỗi dấu) và
-bản chưa kịp lấn đều dưới 0,15 m. Đặt ở 0,3 m là ở giữa hai cụm.
+Thay cho ngưỡng cũ ``LATERAL_DEVIATION_M = 0.3`` (đã gỡ). Ngưỡng đó hỏi *"có
+nhúc nhích sang ngang không"*; câu cần hỏi là *"có cắt qua vạch vào làn ego
+không"*.
+
+Đo trên ``sc_024`` ngày 23/08/2026: xe lấn 0,70 m trong khi cần 1,75 m mới chạm
+vạch, tâm xe vẫn cách tim ego 2,80 m. Máy chấm ĐÚNG (lệch 0,7 >= 0,3 và khe hở
+0,68 < 1,0), người xem trực tiếp trên CARLA chấm SAI — "chưa lấn sang làn ego,
+chỉ gần chạm vạch". Người đúng: câu mô tả hứa "lấn làn đè vạch sang làn giữa".
+
+Đây là chỗ lệch đầu tiên bộ nhãn người tìm ra, và nó là lý do bộ nhãn tồn tại.
 """
 
 NEAR_MISS_M = 1.0
@@ -200,27 +208,29 @@ def intent_verdict(execution: dict) -> bool | None:
     if not result.get("success"):
         return None
 
-    deviation = metrics.get("adversary_lane_deviation_m")
     contact = metrics.get("contact_longitudinal_m")
     drop = metrics.get("adversary_speed_drop_ms")
     min_speed = metrics.get("adversary_min_speed_ms")
 
+    entered = metrics.get("adversary_entered_ego_lane")
+
     if maneuver == ManeuverType.CUT_IN.value:
-        if deviation is None:
+        if entered is None:
             return None
         # Tạt đầu = vượt lên rồi cắt vào. Chạm lúc adversary còn ở phía sau nghĩa
         # là nó nhập làn sau lưng ego rồi tông đuôi — có va chạm, nhưng sai loại.
         if contact is not None and contact < 0:
             return False
-        return deviation >= LATERAL_DEVIATION_M
+        return bool(entered)
 
     if maneuver == ManeuverType.LANE_DRIFT.value:
-        if deviation is None:
+        if entered is None:
             return None
-        # Lấn làn không dựng va chạm; nó dựng một lần đi sát nhau. Lấn mà không
-        # gặp ai (ego đã đi khỏi) thì hành vi có xảy ra nhưng kịch bản vô dụng.
+        # Lấn làn không dựng va chạm; nó dựng một lần đi sát nhau. Hai điều kiện
+        # tách bạch: đã cắt vạch vào làn ego CHƯA, và lúc đó có ai ở đó không.
+        # Lấn mà ego đã đi khỏi thì hành vi có xảy ra nhưng kịch bản vô dụng.
         near = metrics.get("min_distance_m")
-        return deviation >= LATERAL_DEVIATION_M and near is not None and near < NEAR_MISS_M
+        return bool(entered) and near is not None and near < NEAR_MISS_M
 
     if maneuver == ManeuverType.SUDDEN_BRAKE.value:
         return None if drop is None else drop >= SPEED_DROP_MS

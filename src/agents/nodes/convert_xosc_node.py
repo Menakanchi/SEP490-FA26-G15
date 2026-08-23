@@ -237,11 +237,32 @@ def _run_red_light(parent: ET.Element, m: ManeuverSpec, actor: ActorSpec) -> Non
     _add_speed_action(parent, target_speed, abrupt=True)
 
 
+DRIFT_OFFSET_M = 2.2
+"""Xe ``lane_drift`` lấn bao nhiêu mét khỏi tim làn của nó.
+
+**Phải lớn hơn nửa bề rộng làn (1,75 m), nếu không nó không bao giờ chạm vạch.**
+Bản trước đặt 0,7 m: xe dịch sang ngang thật, nhưng tâm nó vẫn cách tim ego
+2,80 m — chưa từng vào làn ego trong bất kỳ kịch bản nào. Câu mô tả thì hứa "lấn
+làn đè vạch sang làn giữa". Người xem trực tiếp trên CARLA ngày 23/08/2026 nói
+đúng chỗ này: "vẫn chưa lấn sang làn của ego, chỉ gần chạm vạch thôi".
+
+2,2 m đưa tâm xe qua vạch 0,45 m — đủ để thân xe nằm rõ trong làn ego, mà chưa
+thành một cú chuyển làn hoàn chỉnh (thứ đó là ``cut_in``).
+"""
+
+DRIFT_LATERAL_ACC = 0.8
+"""Gia tốc ngang tối đa của ``LaneOffsetAction``.
+
+Thời gian lấn thành hình là ``2*sqrt(offset/acc)``. Giữ 0,4 như cũ thì lấn 2,2 m
+mất 4,7 giây — dài hơn cả cửa sổ hai xe còn ở gần nhau, nên hành vi không kịp xảy
+ra. 0,8 kéo về 3,3 giây, đúng tầm một cú dạt làn thật ngoài đời.
+"""
+
 def _lane_drift(parent: ET.Element, actor: ActorSpec) -> None:
     """Partially invade the ego side without completing a lane change."""
     lateral = ET.SubElement(parent, "LateralAction")
     action = ET.SubElement(lateral, "LaneOffsetAction", continuous="true")
-    ET.SubElement(action, "LaneOffsetActionDynamics", maxLateralAcc="0.4", dynamicsShape="linear")
+    ET.SubElement(action, "LaneOffsetActionDynamics", maxLateralAcc=_number(DRIFT_LATERAL_ACC), dynamicsShape="linear")
     target = ET.SubElement(action, "LaneOffsetTarget")
     # ScenarioRunner 0.9.15 dùng dấu NGƯỢC với quy ước OpenSCENARIO:
     # `ChangeActorLaneOffset` ghi rõ "positive distance imply a displacement to
@@ -256,7 +277,7 @@ def _lane_drift(parent: ET.Element, actor: ActorSpec) -> None:
     #
     # Actor bên trái ego (lane_offset < 0) muốn lấn về phía ego thì phải đi sang
     # phải, tức offset dương.
-    offset = 0.7 if actor.position.lane_offset < 0 else -0.7
+    offset = DRIFT_OFFSET_M if actor.position.lane_offset < 0 else -DRIFT_OFFSET_M
     ET.SubElement(target, "AbsoluteTargetLaneOffset", value=_number(offset))
 
 
