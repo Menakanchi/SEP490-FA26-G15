@@ -443,3 +443,43 @@ def test_jaywalk_crosses_the_road_and_ends_on_the_far_shoulder() -> None:
 
     assert destination in shoulders, "đích phải là lề đường"
     assert (destination > 0) != (start > 0), "đường đi phải cắt qua làn ego"
+
+
+@pytest.mark.parametrize(
+    ("weather", "expected_cloudiness"),
+    [(Weather.CLEAR, 15.0), (Weather.RAIN, 65.0), (Weather.HEAVY_RAIN, 90.0), (Weather.FOG, 85.0)],
+)
+def test_cloud_cover_rides_on_sun_intensity_because_cloudstate_is_ignored(
+    weather: Weather, expected_cloudiness: float
+) -> None:
+    """ScenarioRunner tính mây bằng `100 - Sun.intensity*100` và KHÔNG đọc `cloudState`.
+
+    Bản trước hardcode `intensity="0.85"` cho mọi thời tiết, nên mây luôn 15% kể
+    cả khi trời mưa — đo trên sc_023 ngày 23/08 ra cloudiness=15 với nắng 75 độ.
+    Người xem nói "tôi không thấy trời mưa", và họ đúng: file khai báo mưa, CARLA
+    có đổ mưa, nhưng dưới trời nắng gắt thì không ai nhận ra.
+    """
+    spec = make_spec(ManeuverType.CUT_IN)
+    spec = spec.model_copy(update={"odd": spec.odd.model_copy(update={"weather": weather})})
+
+    sun = ET.fromstring(convert_spec_to_xosc(spec)).find(".//Weather/Sun")
+    assert sun is not None
+    assert 100 - float(sun.get("intensity")) * 100 == pytest.approx(expected_cloudiness)
+
+
+@pytest.mark.parametrize(
+    ("time_of_day", "is_daylight"),
+    [(TimeOfDay.DAY, True), (TimeOfDay.DUSK, True), (TimeOfDay.NIGHT, False)],
+)
+def test_night_scenarios_do_not_render_at_high_noon(time_of_day: TimeOfDay, is_daylight: bool) -> None:
+    """Góc mặt trời phải theo thời điểm trong ngày, không phải hằng số.
+
+    `dateTime` có đổi theo giờ nhưng ScenarioRunner chỉ dùng nó cho animation —
+    góc mặt trời nó đọc thẳng từ `Sun@elevation`. Hardcode 1.31 rad thì kịch bản
+    ban đêm cũng hiện ra giữa trưa nắng. CARLA hiểu góc âm là đêm.
+    """
+    spec = make_spec(ManeuverType.CUT_IN).model_copy(update={"time_of_day": time_of_day})
+
+    sun = ET.fromstring(convert_spec_to_xosc(spec)).find(".//Weather/Sun")
+    assert sun is not None
+    assert (float(sun.get("elevation")) > 0) is is_daylight

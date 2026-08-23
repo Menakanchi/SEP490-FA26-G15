@@ -110,6 +110,45 @@ def _vehicle_blueprint(category: VehicleCategory) -> tuple[str, str]:
         raise ConversionError(IssueCode.CONVERTER_ERROR, f"No vehicle mapping for {category.value}") from exc
 
 
+_WEATHER_TABLE: dict[Weather, tuple[str, str, str, str, str]] = {
+    # (cloudState, kiểu mưa, cường độ mưa, tầm nhìn, CƯỜNG ĐỘ NẮNG)
+    Weather.CLEAR: ("free", "dry", "0", "100000", "0.85"),
+    Weather.RAIN: ("cloudy", "rain", "0.5", "5000", "0.35"),
+    Weather.HEAVY_RAIN: ("overcast", "rain", "1", "1500", "0.10"),
+    Weather.FOG: ("overcast", "dry", "0", "200", "0.15"),
+}
+"""Thời tiết quy ra thuộc tính OpenSCENARIO.
+
+**``cloudState`` bị ScenarioRunner bỏ qua hoàn toàn.** Nó tính độ mây bằng
+``cloudiness = 100 - Sun.intensity * 100`` (`openscenario_parser.py:485`) và
+không hề đọc ``cloudState``. Bản trước hardcode ``Sun intensity="0.85"`` cho mọi
+kiểu thời tiết, nên **mây luôn 15% kể cả khi trời mưa**: đo trên ``sc_023`` ngày
+23/08/2026 ra ``cloudiness=15``, ``sun_altitude=75°`` — mưa lất phất dưới nắng
+giữa trưa. Người xem nói thẳng "tôi không thấy trời mưa", và họ đúng.
+
+Giữ ``cloudState`` lại dù ScenarioRunner không dùng: nó là thuộc tính chuẩn của
+OpenSCENARIO, và công cụ khác (esmini) có đọc.
+
+Lưu ý khi đọc file bằng công cụ khác: chuẩn OpenSCENARIO định nghĩa
+``Sun@intensity`` là **độ rọi tính bằng lux**, còn ScenarioRunner diễn giải nó
+như một tỉ lệ 0..1. Giá trị ở đây chọn theo cách hiểu của ScenarioRunner vì đó là
+thứ thật sự chạy kịch bản.
+"""
+
+_SUN_ELEVATION_RAD: dict[TimeOfDay, str] = {
+    TimeOfDay.DAY: "1.31",  # 75 độ, nắng giữa trưa
+    TimeOfDay.DUSK: "0.17",  # 10 độ, mặt trời sát chân trời
+    TimeOfDay.NIGHT: "-0.26",  # -15 độ; CARLA hiểu góc âm là đêm
+}
+"""Góc mặt trời theo thời điểm trong ngày, radian.
+
+Cùng một lỗi với ``Sun@intensity``: bản trước hardcode ``elevation="1.31"`` nên
+**kịch bản ban đêm cũng hiện ra giữa trưa nắng**. ``dateTime`` có đổi theo giờ
+(12/18/23) nhưng ScenarioRunner chỉ dùng nó cho animation, còn góc mặt trời thì
+đọc thẳng từ thuộc tính này.
+"""
+
+
 def _add_vehicle(parent: ET.Element, actor: ActorSpec) -> None:
     blueprint, osc_category = _vehicle_blueprint(actor.category)
     vehicle = ET.SubElement(parent, "Vehicle", name=blueprint, vehicleCategory=osc_category)
@@ -299,14 +338,15 @@ def _add_init(storyboard: ET.Element, spec: ScenarioSpec, template: ScenarioTemp
         animation="false",
         dateTime=f"{DETERMINISTIC_XOSC_DATE}T{hour:02d}:00:00",
     )
-    cloud_state, precipitation_type, intensity, visual_range = {
-        Weather.CLEAR: ("free", "dry", "0", "100000"),
-        Weather.RAIN: ("cloudy", "rain", "0.5", "5000"),
-        Weather.HEAVY_RAIN: ("overcast", "rain", "1", "1500"),
-        Weather.FOG: ("overcast", "dry", "0", "200"),
-    }[spec.odd.weather]
+    cloud_state, precipitation_type, intensity, visual_range, sun_intensity = _WEATHER_TABLE[spec.odd.weather]
     weather = ET.SubElement(environment, "Weather", cloudState=cloud_state)
-    ET.SubElement(weather, "Sun", intensity="0.85", azimuth="0", elevation="1.31")
+    ET.SubElement(
+        weather,
+        "Sun",
+        intensity=sun_intensity,
+        azimuth="0",
+        elevation=_SUN_ELEVATION_RAD[spec.time_of_day],
+    )
     ET.SubElement(weather, "Fog", visualRange=visual_range)
     ET.SubElement(weather, "Precipitation", precipitationType=precipitation_type, intensity=intensity)
     ET.SubElement(environment, "RoadCondition", frictionScaleFactor="0.7" if precipitation_type == "rain" else "1")
