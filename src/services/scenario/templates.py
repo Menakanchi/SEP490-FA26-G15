@@ -62,7 +62,9 @@ TOWN04_ROAD_41_MANEUVERS = frozenset(
         ManeuverType.CUT_IN,
         ManeuverType.SUDDEN_BRAKE,
         ManeuverType.RUN_RED_LIGHT,
-        ManeuverType.JAYWALK,
+        # ManeuverType.JAYWALK đã gỡ 23/08/2026 — người đi bộ trên cao tốc là phi
+        # lý, và cơ chế băng đường của ScenarioRunner định tuyến dọc làn chứ không
+        # cắt ngang. Xem `_HIGHWAY_ACTORS_BY_MANEUVER` trong schemas.py.
         ManeuverType.WRONG_WAY,
         ManeuverType.LANE_DRIFT,
         ManeuverType.STOP_IN_LANE,
@@ -93,17 +95,17 @@ _TOWN04_REACH_M = (-120.0, 40.0)
 _TOWN04_SHOULDERS = (1, -2)
 
 TEMPLATE_CATALOG: dict[RoadType, ScenarioTemplate] = {
+    # CHỈ có cao tốc. `URBAN_STRAIGHT` từng nằm ở đây và **trỏ vào đúng anchor cao
+    # tốc này** — cùng map, cùng road, cùng lane, chỉ khác cái nhãn. Nó không dựng
+    # ra con đường đô thị nào; nó chỉ khiến hệ thống trả lời "có hỗ trợ đô thị"
+    # cho một câu hỏi mà câu trả lời thật là "chưa".
+    #
+    # Thêm road type mới nghĩa là thêm một anchor ĐÃ ĐO: tầm với dọc đường, mặt
+    # cắt ngang (lề nằm ở đâu), và chạy thử từng maneuver trên đó. Khai báo mà
+    # không đo là dựng lại đúng lời nói dối vừa gỡ.
     RoadType.HIGHWAY: ScenarioTemplate(
         map_name="Town04",
         road_type=RoadType.HIGHWAY,
-        supported_maneuvers=TOWN04_ROAD_41_MANEUVERS,
-        ego_spawn=_TOWN04_ANCHOR,
-        s_offset_reach_m=_TOWN04_REACH_M,
-        shoulder_lane_offsets=_TOWN04_SHOULDERS,
-    ),
-    RoadType.URBAN_STRAIGHT: ScenarioTemplate(
-        map_name="Town04",
-        road_type=RoadType.URBAN_STRAIGHT,
         supported_maneuvers=TOWN04_ROAD_41_MANEUVERS,
         ego_spawn=_TOWN04_ANCHOR,
         s_offset_reach_m=_TOWN04_REACH_M,
