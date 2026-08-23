@@ -78,6 +78,11 @@ class Sample:
     adv_pose: tuple[float, float, float] = (0.0, 0.0, 0.0)
     lane_centre: tuple[float, float] = (0.0, 0.0)
     """Tim làn ego đang đi, hỏi thẳng map. Vẽ được mặt đường mà không phải suy diễn."""
+    adv_red_light_active: bool = False
+    """Một đèn đỏ đang trực tiếp chi phối adversary ở tick này."""
+    adv_crossed_red_light: bool = False
+    """Sticky flag: adversary đã rời vùng chi phối khi đèn vẫn đỏ và còn chạy."""
+    adv_traffic_light_id: int | None = None
 
 
 def summarise(samples: list[Sample]) -> dict[str, float]:
@@ -205,6 +210,23 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
     heading = _max_heading_delta_deg(before_contact)
     if heading is not None:
         metrics["adversary_heading_delta_deg"] = round(heading, 1)
+
+    # Tín hiệu chuyên biệt cho run_red_light. ``adv_crossed_red_light`` được
+    # recorder chốt tại transition: xe từng chịu một đèn RED, rồi rời vùng ảnh
+    # hưởng của chính đèn đó trong khi vẫn chuyển động. Converter giữ đèn đỏ nên
+    # transition này chính là lúc xe vượt vạch, không phải lúc pha đổi xanh.
+    encountered_red = any(sample.adv_red_light_active for sample in before_contact)
+    crossing = next((sample for sample in before_contact if sample.adv_crossed_red_light), None)
+    metrics["adversary_encountered_red_light"] = 1.0 if encountered_red else 0.0
+    metrics["adversary_ran_red_light"] = 1.0 if crossing is not None else 0.0
+    if crossing is not None:
+        metrics["adversary_red_light_crossing_time_s"] = round(crossing.t, 3)
+    traffic_light_id = next(
+        (sample.adv_traffic_light_id for sample in before_contact if sample.adv_traffic_light_id is not None),
+        None,
+    )
+    if traffic_light_id is not None:
+        metrics["adversary_traffic_light_id"] = float(traffic_light_id)
 
     ttc = _min_time_to_collision(before_contact)
     if ttc is not None:
@@ -433,6 +455,9 @@ class TrajectoryRecorder:
         self._thread: threading.Thread | None = None
         self.samples: list[Sample] = []
         self.error: str | None = None
+        self._tracked_red_light_id: int | None = None
+        self._ran_red_light = False
+        self._red_light_crossing_id: int | None = None
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name="trajectory", daemon=True)
@@ -511,6 +536,17 @@ class TrajectoryRecorder:
 
             transform = ego.get_transform()
             adv_transform = adv.get_transform()
+            adv_speed = _speed(adv)
+            light_id, light_is_red = _traffic_light_observation(adv)
+            self._tracked_red_light_id, crossed_id = _advance_red_light_tracker(
+                self._tracked_red_light_id,
+                light_id,
+                light_is_red,
+                adv_speed,
+            )
+            if crossed_id is not None:
+                self._ran_red_light = True
+                self._red_light_crossing_id = crossed_id
             forward, right = transform.get_forward_vector(), transform.get_right_vector()
             rel = adv.get_location() - ego.get_location()
             longitudinal = rel.x * forward.x + rel.y * forward.y
@@ -524,13 +560,16 @@ class TrajectoryRecorder:
                     gap_lon_m=abs(longitudinal) - (ego_half[0] + adv_half[0]),
                     gap_lat_m=abs(lateral) - (ego_half[1] + adv_half[1]),
                     ego_speed_ms=_speed(ego),
-                    adv_speed_ms=_speed(adv),
+                    adv_speed_ms=adv_speed,
                     adv_lane_offset_m=_lane_offset(carla_map, adv),
                     ego_half_width_m=ego_half[1],
                     adv_half_width_m=adv_half[1],
                     ego_pose=_pose(transform),
                     adv_pose=_pose(adv_transform),
                     lane_centre=_lane_centre(carla_map, ego),
+                    adv_red_light_active=light_is_red,
+                    adv_crossed_red_light=self._ran_red_light,
+                    adv_traffic_light_id=light_id or self._red_light_crossing_id,
                 )
             )
 
@@ -549,6 +588,39 @@ class TrajectoryRecorder:
 def _speed(actor) -> float:  # noqa: ANN001
     velocity = actor.get_velocity()
     return math.hypot(velocity.x, velocity.y)
+
+
+def _traffic_light_observation(actor) -> tuple[int | None, bool]:  # noqa: ANN001
+    """Đèn đang chi phối vehicle và nó có đỏ không; actor khác trả ``(None, False)``."""
+    get_light = getattr(actor, "get_traffic_light", None)
+    if get_light is None:
+        return None, False
+    light = get_light()
+    if light is None:
+        return None, False
+    state = str(light.get_state()).rsplit(".", maxsplit=1)[-1].lower()
+    return int(light.id), state == "red"
+
+
+def _advance_red_light_tracker(
+    tracked_id: int | None,
+    light_id: int | None,
+    light_is_red: bool,
+    speed_ms: float,
+) -> tuple[int | None, int | None]:
+    """Máy trạng thái nhỏ phân biệt vượt đèn đỏ với chờ tới xanh rồi đi.
+
+    Trả ``(đèn đang theo dõi, id đèn vừa bị vượt)``. Nếu chính đèn đang theo dõi
+    chuyển xanh trước khi vehicle rời trigger thì xoá theo dõi; vì vậy việc rời
+    trigger sau đó không bị ghi nhầm thành vi phạm.
+    """
+    if light_id is not None and light_is_red:
+        return light_id, None
+    if light_id == tracked_id and not light_is_red:
+        return None, None
+    if tracked_id is not None and light_id is None and speed_ms > MOVING_THRESHOLD_MS:
+        return None, tracked_id
+    return tracked_id, None
 
 
 def _lane_offset(carla_map, actor) -> float:  # noqa: ANN001

@@ -216,10 +216,11 @@ def test_infeasible_pairs_stay_out_of_the_denominator() -> None:
     (pedestrian, cut_in): người đi bộ không tạt đầu.
 
     Từ 23/08/2026 không còn ô nào có pedestrian: `jaywalk` đã bị loại khỏi phạm
-    vi, nên mọi cặp dính pedestrian đều rời mẫu số. 78 -> 67.
+    vi, nên mọi cặp dính pedestrian đều rời mẫu số. Anchor đô thị cho riêng
+    `run_red_light` thêm bảy cặp khả thi so với scope một-road cũ: 67 -> 74.
     """
     report = metrics.coverage([])
-    assert report["feasible_pairs"] == 67
+    assert report["feasible_pairs"] == 74
     # Khác với M1: ở đó mẫu số rỗng nghĩa là CHƯA ĐO ĐƯỢC nên trả None. Ở đây mẫu
     # số biết trước (78 cặp khả thi), nên 0 kịch bản là 0% thật — một câu khẳng
     # định, không phải một chỗ trống.
@@ -260,6 +261,12 @@ def test_l4_judges_wrong_way_by_heading_and_proximity() -> None:
     assert metrics.intent_verdict(parked_facing_back) is False
     assert metrics.intent_verdict(same_direction) is False
     assert metrics.intent_verdict(crossed_into_guardrail) is False
+
+
+def test_l4_judges_run_red_light_only_from_a_measured_crossing() -> None:
+    assert metrics.intent_verdict(_execution("run_red_light", adversary_ran_red_light=1.0)) is True
+    assert metrics.intent_verdict(_execution("run_red_light", adversary_ran_red_light=0.0)) is False
+    assert metrics.intent_verdict(_execution("run_red_light")) is None
 
 
 def test_l4_still_returns_none_when_the_new_signals_are_missing() -> None:

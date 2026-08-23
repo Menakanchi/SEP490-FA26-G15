@@ -46,6 +46,33 @@ def test_no_samples_returns_no_metrics() -> None:
     assert trajectory.summarise([]) == {}
 
 
+def test_red_light_metrics_record_the_crossing_time_and_signal() -> None:
+    approaching = replace(_sample(1.0, lon=20.0, lat=0.0), adv_red_light_active=True, adv_traffic_light_id=145)
+    crossing = replace(
+        _sample(2.5, lon=35.0, lat=0.0),
+        adv_crossed_red_light=True,
+        adv_traffic_light_id=145,
+    )
+    measured = trajectory.summarise([approaching, crossing])
+    assert measured["adversary_encountered_red_light"] == 1.0
+    assert measured["adversary_ran_red_light"] == 1.0
+    assert measured["adversary_red_light_crossing_time_s"] == pytest.approx(2.5)
+    assert measured["adversary_traffic_light_id"] == 145.0
+
+
+def test_red_light_tracker_does_not_call_a_green_departure_an_infraction() -> None:
+    tracked, crossed = trajectory._advance_red_light_tracker(None, 145, True, 8.0)
+    assert (tracked, crossed) == (145, None)
+    tracked, crossed = trajectory._advance_red_light_tracker(tracked, 145, False, 8.0)
+    assert (tracked, crossed) == (None, None), "đèn xanh trước khi xe rời trigger"
+    assert trajectory._advance_red_light_tracker(tracked, None, False, 8.0) == (None, None)
+
+
+def test_red_light_tracker_detects_leaving_a_red_signal_while_moving() -> None:
+    tracked, _ = trajectory._advance_red_light_tracker(None, 145, True, 8.0)
+    assert trajectory._advance_red_light_tracker(tracked, None, False, 8.0) == (None, 145)
+
+
 def test_near_miss_and_nothing_happened_get_different_numbers() -> None:
     """Đây là lý do checker tồn tại: CollisionTest trả 0 cho cả hai.
 

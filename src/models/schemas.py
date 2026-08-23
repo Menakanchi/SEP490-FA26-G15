@@ -244,12 +244,13 @@ class SupportPolicy(ForgeModel):
         return len(self.supported_cells())
 
 
-_HIGHWAY_ACTORS_BY_MANEUVER: dict[ManeuverType, frozenset[ActorType]] = {
-    maneuver: frozenset({ActorType.CAR, ActorType.MOTORCYCLE, ActorType.TRUCK})
+_VEHICLE_ACTORS = frozenset({ActorType.CAR, ActorType.MOTORCYCLE, ActorType.TRUCK})
+_SUPPORTED_ACTORS_BY_ROAD_MANEUVER: dict[tuple[RoadType, ManeuverType], frozenset[ActorType]] = {
+    (RoadType.HIGHWAY, maneuver): _VEHICLE_ACTORS
     for maneuver in ManeuverType
-    if maneuver is not ManeuverType.JAYWALK
+    if maneuver not in {ManeuverType.JAYWALK, ManeuverType.RUN_RED_LIGHT}
 }
-_HIGHWAY_ACTORS_BY_MANEUVER[ManeuverType.JAYWALK] = frozenset()
+_SUPPORTED_ACTORS_BY_ROAD_MANEUVER[(RoadType.URBAN_STRAIGHT, ManeuverType.RUN_RED_LIGHT)] = _VEHICLE_ACTORS
 """``jaywalk`` **không có actor nào** — nó nằm ngoài phạm vi, có chủ đích.
 
 Hai lý do độc lập, mỗi lý do đủ để loại:
@@ -279,10 +280,15 @@ DEFAULT_SUPPORT_POLICY = SupportPolicy(
         for road in RoadType
         for actor in ActorType
         for maneuver in ManeuverType
-        if road is not RoadType.HIGHWAY or actor not in _HIGHWAY_ACTORS_BY_MANEUVER[maneuver]
+        if actor not in _SUPPORTED_ACTORS_BY_ROAD_MANEUVER.get((road, maneuver), frozenset())
     )
 )
-"""72 ô: sáu maneuver cho ba vehicle actors, qua bốn weather. ``jaywalk`` bị loại — xem trên."""
+"""72 ô đã đo: 60 highway + 12 urban ``run_red_light``, qua bốn weather.
+
+``run_red_light`` không nằm ở highway: đèn gần anchor cao tốc nhất cách 211,8 m,
+ngoài tầm +40 m. Nó dùng anchor đô thị Town04 riêng, ngay trước vạch dừng. Năm
+maneuver xe còn lại ở highway; ``jaywalk`` bị loại — xem trên.
+"""
 
 
 class AssumptionSource(StrEnum):
@@ -551,6 +557,10 @@ class Position(ForgeModel):
       - độc lập map: cùng spec chạy được trên nhiều map;
       - LLM sinh ra được (nó không biết toạ độ thật của Town04);
       - converter dịch sang WorldPosition khi cần.
+
+    Ngoại lệ có chủ đích: ``run_red_light`` dùng vị trí 0/0 như khoá chọn
+    approach vuông góc đã đo trong template đô thị. Converter từ chối mọi giá trị
+    khác để không im lặng bỏ qua hình học do LLM sinh.
     """
 
     lane_offset: int = Field(
@@ -816,6 +826,7 @@ class IssueCode(StrEnum):
     GEOM_JAYWALK_IN_EGO_LANE = "GEOM_JAYWALK_IN_EGO_LANE"  # người đi bộ đứng sẵn trong làn ego
     GEOM_JAYWALK_TRIGGER_TOO_CLOSE = "GEOM_JAYWALK_TRIGGER_TOO_CLOSE"  # bước xuống muộn, ego đã đi qua
     GEOM_JAYWALK_NOT_FROM_SHOULDER = "GEOM_JAYWALK_NOT_FROM_SHOULDER"  # xuất phát giữa phần xe chạy
+    GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH = "GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH"
 
     # -- Suy đoán, chỉ cảnh báo ---------------------------------------------
     LANE_OFFSET_IMPLAUSIBLE = "LANE_OFFSET_IMPLAUSIBLE"
@@ -855,6 +866,7 @@ REPAIRABLE_CODES: frozenset[IssueCode] = frozenset(
         IssueCode.GEOM_JAYWALK_IN_EGO_LANE,
         IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE,
         IssueCode.GEOM_JAYWALK_NOT_FROM_SHOULDER,
+        IssueCode.GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH,
     }
 )
 """Một câu hỏi quyết định tất cả: *sửa nội dung LLM sinh ra có làm lỗi này biến mất không?*

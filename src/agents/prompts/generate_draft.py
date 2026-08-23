@@ -78,6 +78,8 @@ Sinh ScenarioDraft từ mô tả tiếng Việt của người dùng.
 ### s_offset_m
 - Khoảng cách dọc so với ego (âm đến +200 mét)
 - **ÂM = phía SAU ego**
+- Riêng run_red_light: bắt buộc actor dùng lane_offset=0 và s_offset_m=0; template
+  sẽ đặt actor trên approach vuông góc có đèn đỏ, cắt qua đường ego đang đèn xanh
 - **DƯƠNG = phía TRƯỚC ego**
 
 ---

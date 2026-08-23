@@ -56,15 +56,23 @@ class ScenarioTemplate:
     +1 và -2, không phải ±1.
     """
 
+    traffic_signal_name: str | None = None
+    """Tên đèn theo cú pháp ScenarioRunner, chỉ có ở anchor ``run_red_light``."""
+
+    ego_traffic_signal_name: str | None = None
+    """Đèn xanh chi phối ego ở template giao cắt, nếu có."""
+
+    maneuver_actor_spawn: EgoSpawn | None = None
+    """Approach vuông góc dành cho actor vượt đèn đỏ; không dùng ở highway."""
+
 
 TOWN04_ROAD_41_MANEUVERS = frozenset(
     {
         ManeuverType.CUT_IN,
         ManeuverType.SUDDEN_BRAKE,
-        ManeuverType.RUN_RED_LIGHT,
         # ManeuverType.JAYWALK đã gỡ 23/08/2026 — người đi bộ trên cao tốc là phi
         # lý, và cơ chế băng đường của ScenarioRunner định tuyến dọc làn chứ không
-        # cắt ngang. Xem `_HIGHWAY_ACTORS_BY_MANEUVER` trong schemas.py.
+        # cắt ngang. Xem `_SUPPORTED_ACTORS_BY_ROAD_MANEUVER` trong schemas.py.
         ManeuverType.WRONG_WAY,
         ManeuverType.LANE_DRIFT,
         ManeuverType.STOP_IN_LANE,
@@ -94,15 +102,32 @@ _TOWN04_REACH_M = (-120.0, 40.0)
 # lane -4 (lane_offset +1) và lane -1 (lane_offset -2). Xem ScenarioTemplate.
 _TOWN04_SHOULDERS = (1, -2)
 
+# Anchor đô thị đo trực tiếp ngày 24/08/2026. Ego đi về phía đông theo đèn xanh
+# id=118; actor đi từ phía bắc xuống, vượt đèn đỏ id=122. Hai quỹ đạo cắt nhau
+# quanh CARLA (258, -169), thay vì actor chạy cùng làn phía trước ego như bản
+# hiệu chuẩn sc_044/sc_045. Toạ độ dưới đây ở hệ OpenSCENARIO: y và yaw đổi dấu
+# so với CARLA vì ScenarioRunner 0.9.15 dùng hệ tay phải.
+_TOWN04_URBAN_SIGNAL_ANCHOR = EgoSpawn(
+    x=217.0400,
+    y=169.4200,
+    z=0.3000,
+    h=-0.005236,
+    lane_id=-1,
+)
+_TOWN04_URBAN_SIGNAL_REACH_M = (-60.0, 25.0)
+_TOWN04_URBAN_SHOULDERS = (1, -2)
+_TOWN04_RED_LIGHT_ACTOR_SPAWN = EgoSpawn(
+    x=258.3100,
+    y=130.8600,
+    z=0.3000,
+    h=1.567306,
+    lane_id=-1,
+)
+
 TEMPLATE_CATALOG: dict[RoadType, ScenarioTemplate] = {
-    # CHỈ có cao tốc. `URBAN_STRAIGHT` từng nằm ở đây và **trỏ vào đúng anchor cao
-    # tốc này** — cùng map, cùng road, cùng lane, chỉ khác cái nhãn. Nó không dựng
-    # ra con đường đô thị nào; nó chỉ khiến hệ thống trả lời "có hỗ trợ đô thị"
-    # cho một câu hỏi mà câu trả lời thật là "chưa".
-    #
     # Thêm road type mới nghĩa là thêm một anchor ĐÃ ĐO: tầm với dọc đường, mặt
     # cắt ngang (lề nằm ở đâu), và chạy thử từng maneuver trên đó. Khai báo mà
-    # không đo là dựng lại đúng lời nói dối vừa gỡ.
+    # không đo sẽ làm nhãn ODD không còn phản ánh hình học CARLA thật.
     RoadType.HIGHWAY: ScenarioTemplate(
         map_name="Town04",
         road_type=RoadType.HIGHWAY,
@@ -110,6 +135,17 @@ TEMPLATE_CATALOG: dict[RoadType, ScenarioTemplate] = {
         ego_spawn=_TOWN04_ANCHOR,
         s_offset_reach_m=_TOWN04_REACH_M,
         shoulder_lane_offsets=_TOWN04_SHOULDERS,
+    ),
+    RoadType.URBAN_STRAIGHT: ScenarioTemplate(
+        map_name="Town04",
+        road_type=RoadType.URBAN_STRAIGHT,
+        supported_maneuvers=frozenset({ManeuverType.RUN_RED_LIGHT}),
+        ego_spawn=_TOWN04_URBAN_SIGNAL_ANCHOR,
+        s_offset_reach_m=_TOWN04_URBAN_SIGNAL_REACH_M,
+        shoulder_lane_offsets=_TOWN04_URBAN_SHOULDERS,
+        traffic_signal_name="id=122",
+        ego_traffic_signal_name="id=118",
+        maneuver_actor_spawn=_TOWN04_RED_LIGHT_ACTOR_SPAWN,
     ),
 }
 

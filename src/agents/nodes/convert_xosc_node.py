@@ -427,8 +427,36 @@ def _add_init(storyboard: ET.Element, spec: ScenarioSpec, template: ScenarioTemp
     ET.SubElement(weather, "Fog", visualRange=visual_range)
     ET.SubElement(weather, "Precipitation", precipitationType=precipitation_type, intensity=intensity)
     ET.SubElement(environment, "RoadCondition", frictionScaleFactor="0.7" if precipitation_type == "rain" else "1")
+    if any(maneuver.maneuver is ManeuverType.RUN_RED_LIGHT for maneuver in spec.maneuvers):
+        if not template.traffic_signal_name:
+            raise ConversionError(
+                IssueCode.TEMPLATE_CATALOG_INCONSISTENT,
+                f"run_red_light template {template.road_type.value} has no traffic signal",
+            )
+        signal_global = ET.SubElement(actions, "GlobalAction")
+        infrastructure = ET.SubElement(signal_global, "InfrastructureAction")
+        signal_action = ET.SubElement(infrastructure, "TrafficSignalAction")
+        ET.SubElement(
+            signal_action,
+            "TrafficSignalStateAction",
+            name=template.traffic_signal_name,
+            state="RED",
+        )
+        if template.ego_traffic_signal_name:
+            ego_signal_global = ET.SubElement(actions, "GlobalAction")
+            ego_infrastructure = ET.SubElement(ego_signal_global, "InfrastructureAction")
+            ego_signal_action = ET.SubElement(ego_infrastructure, "TrafficSignalAction")
+            ET.SubElement(
+                ego_signal_action,
+                "TrafficSignalStateAction",
+                name=template.ego_traffic_signal_name,
+                state="GREEN",
+            )
     wrong_way_actors = {
         maneuver.actor_name for maneuver in spec.maneuvers if maneuver.maneuver is ManeuverType.WRONG_WAY
+    }
+    run_red_light_actors = {
+        maneuver.actor_name for maneuver in spec.maneuvers if maneuver.maneuver is ManeuverType.RUN_RED_LIGHT
     }
     for actor in spec.actors:
         private = ET.SubElement(actions, "Private", entityRef=actor.name)
@@ -437,6 +465,21 @@ def _add_init(storyboard: ET.Element, spec: ScenarioSpec, template: ScenarioTemp
         position = ET.SubElement(teleport, "Position")
         if actor.is_ego:
             spawn = template.ego_spawn
+            ET.SubElement(
+                position,
+                "WorldPosition",
+                x=_number(spawn.x),
+                y=_number(spawn.y),
+                z=_number(spawn.z),
+                h=_number(spawn.h),
+            )
+        elif actor.name in run_red_light_actors:
+            spawn = template.maneuver_actor_spawn
+            if spawn is None:
+                raise ConversionError(
+                    IssueCode.TEMPLATE_CATALOG_INCONSISTENT,
+                    f"run_red_light template {template.road_type.value} has no crossing actor spawn",
+                )
             ET.SubElement(
                 position,
                 "WorldPosition",
@@ -723,8 +766,10 @@ def _add_criteria_stop_trigger(storyboard: ET.Element, spec: ScenarioSpec) -> No
     ]
     if any(m.maneuver is ManeuverType.LANE_DRIFT for m in spec.maneuvers):
         criteria.append(("KeepLaneTest", "", ""))
-    if any(m.maneuver is ManeuverType.RUN_RED_LIGHT for m in spec.maneuvers):
-        criteria.append(("RunningRedLightTest", "", ""))
+    # Không thêm RunningRedLightTest: OpenScenarioParser luôn gắn criterion này
+    # vào ``ego_vehicles``, trong khi validator cấm ego mang maneuver và actor
+    # vượt đèn đỏ nằm ở ``other_actors``. Giữ criterion sẽ báo SUCCESS cho sai
+    # chiếc xe. Worker đo trực tiếp adversary và phát ``adversary_ran_red_light``.
     if any(m.maneuver is ManeuverType.WRONG_WAY for m in spec.maneuvers):
         criteria.append(("WrongLaneTest", "", ""))
     for name, parameter_ref, value in criteria:
@@ -790,6 +835,14 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
                     IssueCode.CONVERTER_ERROR,
                     "cut_in target_speed_kmh must be present and lower than ego speed",
                 )
+        if maneuver.maneuver is ManeuverType.RUN_RED_LIGHT and (
+            actor.position.lane_offset != 0 or abs(actor.position.s_offset_m) > 1e-6
+        ):
+            raise ConversionError(
+                IssueCode.CONVERTER_ERROR,
+                "run_red_light actor position must be lane_offset=0, s_offset_m=0; "
+                "the verified urban template places it on the perpendicular red-light approach",
+            )
 
     root = ET.Element("OpenSCENARIO")
     ET.SubElement(
