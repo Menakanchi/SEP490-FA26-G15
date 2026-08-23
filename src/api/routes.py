@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from src.agents.graph import build_forge_graph
 from src.agents.nodes.convert_xosc_node import convert_spec_to_xosc
+from src.agents.nodes.validate_node import validate_node
 from src.models.schemas import (
     TOO_VAGUE_MESSAGE,
     DuplicateMatch,
@@ -887,6 +888,68 @@ async def intent_agreement_report() -> dict:
     """Chấm tự động khớp với người chấm tay tới đâu — và lệch ở đâu."""
     _, _, executions = db.metrics_rows()
     return metrics.intent_agreement(executions, db.intent_labels())
+
+
+@router.get("/library/audit")
+async def library_audit() -> dict:
+    """Rà lại **toàn kho** theo luật hiện tại. Chỉ báo, không sửa.
+
+    Vì sao cần: luật hình học được bổ sung dần, nhưng chỉ áp **lúc sinh**. Kịch
+    bản vào kho trước khi một luật ra đời thì không bao giờ được kiểm lại.
+
+    Bằng chứng ngày 23/08/2026: ``sc_022`` nằm trong kho vi phạm
+    ``MIN_CUT_IN_LEAD_M`` — nó tạt vào làn ego khi mới dẫn trước 4,67 m, dưới
+    ngưỡng 7,0 m. Người xem trực tiếp trên CARLA phát hiện ("lúc ego đi qua rồi
+    mới thấy xe máy nó tạt sang"), rồi chạy validate lại mới thấy luật **đã có
+    sẵn** và bắt được nó từ lâu.
+
+    Lượt rà đầu tiên bắt đúng hai kịch bản mà người chấm tay đã đánh "sai"
+    (``sc_021``, ``sc_022``), và **không báo nhầm** cái nào trong năm kịch bản
+    người chấm "đúng".
+
+    **Không tự sửa**: sửa là đổi nội dung kịch bản, và đó là quyết định của người
+    duyệt (ADR-018). Trả về kèm ``suggestion`` để họ có số cụ thể mà áp.
+    """
+    _, scenarios, _ = db.metrics_rows()
+    rows = [s for s in scenarios if (s.get("created_by") or "") != metrics.SEED_AUTHOR]
+
+    clean: list[str] = []
+    flagged: list[dict] = []
+    unbuildable: list[dict] = []
+
+    for row in sorted(rows, key=lambda r: r["scenario_id"]):
+        scenario_id = row["scenario_id"]
+        full = db.get_scenario(scenario_id) or {}
+        spec_data = dict(full.get("spec") or {})
+        draft = {k: v for k, v in spec_data.items() if k not in ("scenario_id", "description_vi")}
+
+        result = await validate_node({"draft": draft, "odd_query": {**draft.get("odd", {}), "inferred": []}})
+        issues = result["issues"]
+
+        try:
+            convert_spec_to_xosc(ScenarioSpec.model_validate(spec_data))
+        except Exception as exc:  # noqa: BLE001 — mọi kiểu hỏng đều là "không dựng lại được"
+            unbuildable.append({"scenario_id": scenario_id, "status": row["status"], "reason": str(exc)})
+            continue
+
+        if issues:
+            flagged.append(
+                {
+                    "scenario_id": scenario_id,
+                    "status": row["status"],
+                    "maneuver": row["maneuver"],
+                    "issues": [i.model_dump(mode="json") for i in issues],
+                }
+            )
+        else:
+            clean.append(scenario_id)
+
+    return {
+        "audited": len(rows),
+        "clean": len(clean),
+        "flagged": flagged,
+        "unbuildable": unbuildable,
+    }
 
 
 @router.get("/metrics/quality")
