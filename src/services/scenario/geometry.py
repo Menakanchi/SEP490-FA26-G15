@@ -139,6 +139,11 @@ thân xe thì theo định nghĩa là cắt ngang sườn, không phải cắt t
 """
 
 
+def closing_speed_ms(actor: ActorSpec, ego: ActorSpec) -> float:
+    """Bản công khai của :func:`_closing_speed_ms`, cho tầng validate dựng gợi ý."""
+    return _closing_speed_ms(actor, ego)
+
+
 def _closing_speed_ms(actor: ActorSpec, ego: ActorSpec) -> float:
     """Tốc độ thu hẹp khoảng cách dọc, m/s. Luôn dương ở nhánh gọi nó."""
     return abs(actor.initial_speed_kmh - ego.initial_speed_kmh) / 3.6

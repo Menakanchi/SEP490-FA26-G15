@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from pydantic import ValidationError
@@ -7,6 +8,8 @@ from pydantic import ValidationError
 from src.agents.state import ForgeState
 from src.models.schemas import IssueCode, ODDQuery, ScenarioDraft, ValidationIssue
 from src.services.scenario.geometry import (
+    MIN_CUT_IN_LEAD_M,
+    closing_speed_ms,
     cut_in_cannot_catch_up,
     cut_in_never_slows_down,
     cut_in_starts_in_ego_lane,
@@ -73,13 +76,25 @@ def _jaywalk_suggestion(index: int, actor_idx: int, maneuver, actor, ego, requir
     )
 
 
-def _later_than(alongside_s: float) -> float:
-    """Mốc trigger an toàn SAU lúc hai xe ngang nhau, làm tròn nửa giây.
+def _later_than(alongside_s: float, closing_ms: float = 0.0) -> float:
+    """Mốc trigger SAU lúc hai xe ngang nhau, đủ để chủ thể vượt hẳn ``MIN_CUT_IN_LEAD_M``.
 
     Trả số cụ thể chứ không trả lời khuyên: model chép được một con số, còn phép
     chia thì nó bỏ qua.
+
+    **Phải tính theo tốc độ tiếp cận, không cộng cứng một hằng số.** Bản trước
+    cộng 1,5 giây bất kể hai xe khép lại nhanh hay chậm. Với ``sc_022`` (tiếp cận
+    3,33 m/s) nó ra 6,6 + 1,5 = 8,1 -> làm tròn **8,0** — đúng bằng giá trị đang
+    sai, và chỉ cho 4,67 m dẫn trước trong khi ngưỡng là 7,0 m. Vòng repair chép
+    lại con số cũ rồi báo đã sửa xong.
+
+    Hệ số 1,2 là biên: tạt đúng ngưỡng thì chỉ cần một chút sai lệch tốc độ thực
+    tế là rơi lại dưới ngưỡng. Làm tròn **lên** nửa giây, cùng lý do.
     """
-    return round((alongside_s + 1.5) * 2) / 2
+    if closing_ms <= 0:
+        return round((alongside_s + 1.5) * 2) / 2
+    needed = alongside_s + (MIN_CUT_IN_LEAD_M * 1.2) / closing_ms
+    return math.ceil(needed * 2) / 2
 
 
 def _earlier_than(alongside_s: float) -> float:
@@ -494,7 +509,8 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                                 f"phía sau ego, nên sẽ đâm vào đuôi ego thay vì tạt đầu."
                             ),
                             suggestion=(
-                                f"Đặt /maneuvers/{i}/trigger/value = {_later_than(alongside_s)} "
+                                f"Đặt /maneuvers/{i}/trigger/value = "
+                                f"{_later_than(alongside_s, closing_speed_ms(actor, ego))} "
                                 f"(hai xe đi ngang nhau ở giây {alongside_s:.1f}; phải tạt SAU đó), "
                                 f"hoặc giảm /actors/{actor_idx}/position/s_offset_m để nó vượt lên sớm hơn."
                             ),
