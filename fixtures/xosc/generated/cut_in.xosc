@@ -199,6 +199,20 @@
               </ByValueCondition>
             </Condition>
           </ConditionGroup>
+          <ConditionGroup>
+            <Condition name="stop_on_collision_other" delay="0" conditionEdge="rising">
+              <ByEntityCondition>
+                <TriggeringEntities triggeringEntitiesRule="any">
+                  <EntityRef entityRef="hero" />
+                </TriggeringEntities>
+                <EntityCondition>
+                  <CollisionCondition>
+                    <EntityRef entityRef="other" />
+                  </CollisionCondition>
+                </EntityCondition>
+              </ByEntityCondition>
+            </Condition>
+          </ConditionGroup>
         </StopTrigger>
       </Act>
     </Story>

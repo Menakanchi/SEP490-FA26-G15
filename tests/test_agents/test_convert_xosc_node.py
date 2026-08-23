@@ -114,6 +114,27 @@ def test_each_maneuver_matches_byte_identical_golden(maneuver: ManeuverType) -> 
     ET.fromstring(xml)
 
 
+def test_act_closes_on_collision_as_well_as_on_timeout() -> None:
+    """Mọi thứ sau va chạm đầu tiên là dữ liệu bỏ đi — mô phỏng tiếp chỉ đốt GPU.
+
+    `sc_001` chạm ở giây 11,3 rồi chạy thêm 19 giây, và `trajectory.summarise` cắt
+    hết phần đó (không cắt thì `adversary_lane_deviation_m` đọc ra 21,18 m thay vì
+    1,689 m vì xe bị hất khỏi làn).
+
+    Hai điều kiện phải nằm ở HAI `ConditionGroup` khác nhau: trigger trong
+    OpenSCENARIO là OR giữa các nhóm và AND bên trong một nhóm — gộp chung là
+    thành "hết giờ VÀ có va chạm", tức là không bao giờ đóng sớm.
+    """
+    root = ET.fromstring(convert_spec_to_xosc(make_spec(ManeuverType.CUT_IN)))
+    stop = root.find(".//Act/StopTrigger")
+    assert stop is not None
+    groups = stop.findall("ConditionGroup")
+    assert len(groups) == 2, "hết giờ và va chạm phải là hai nhánh OR"
+    assert groups[0].find(".//SimulationTimeCondition") is not None
+    collision = groups[1].find(".//CollisionCondition/EntityRef")
+    assert collision is not None and collision.get("entityRef") == "other"
+
+
 def test_builder_catalog_covers_all_maneuver_types() -> None:
     assert set(MANEUVER_BUILDERS) | set(SPECIAL_BUILDERS) == set(ManeuverType)
     assert set(MANEUVER_BUILDERS).isdisjoint(SPECIAL_BUILDERS)

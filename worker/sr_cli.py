@@ -148,3 +148,47 @@ def carla_is_ready(host: str, port: int, timeout_s: float = 5.0) -> bool:
     except RuntimeError:
         return False
     return True
+
+
+def apply_no_rendering(host: str, port: int, enabled: bool, timeout_s: float = 5.0) -> bool | None:
+    """Bật/tắt ``no_rendering_mode`` của world. Trả ``None`` nếu không đụng tới được.
+
+    Vì sao đây là cách giảm tải GPU đúng chỗ: kịch bản của dự án **không dùng
+    camera sensor** nào. Ego chạy theo lệnh tốc độ, adversary theo kịch bản, mọi
+    criteria và cả ``trajectory.TrajectoryRecorder`` đều chỉ đọc
+    ``get_location()``/``get_velocity()``. Không có phép đo nào cần tới pixel, nên
+    dựng hình là công việc bỏ đi hoàn toàn — mà nó lại là phần nặng nhất.
+
+    Vật lý không đổi: ``no_rendering_mode`` chỉ tắt khâu dựng hình của Unreal,
+    bước mô phỏng vẫn chạy nguyên vẹn.
+
+    Đặt trước **mỗi** job chứ không đặt một lần lúc khởi động: ``load_world`` đưa
+    settings về mặc định, và một lần đổi map là mất thiết lập mà không báo gì.
+
+    Đo trên máy này thì KHÔNG tiết kiệm được gì (xem ``runner.NO_RENDER``): GPU
+    trung bình 0,6% khi bật render và 0,5% khi tắt. Nút cổ chai là physics phía
+    CPU, không phải dựng hình. Bật cờ này ở máy khác thì phải đo lại trước.
+
+    Đánh đổi: ``follow_hero.py`` không còn gì để hiện — cửa sổ CARLA đứng im. Đó
+    đúng là cái bẫy CLAUDE.md cảnh báo ("nhìn thấy đường trống rồi kết luận không
+    chạy"), nên khi demo thì đặt ``CARLA_NO_RENDER=0``.
+    """
+    try:
+        import carla  # noqa: PLC0415 — chỉ worker mới có
+    except ImportError:
+        return None
+
+    try:
+        client = carla.Client(host, int(port))
+        client.set_timeout(timeout_s)
+        world = client.get_world()
+        settings = world.get_settings()
+        if settings.no_rendering_mode == enabled:
+            return enabled
+        settings.no_rendering_mode = enabled
+        world.apply_settings(settings)
+    except RuntimeError:
+        # Không phải lỗi chí mạng: thiếu bước này thì chỉ là chạy chậm hơn, nên
+        # đừng để nó chặn job. `carla_is_ready` mới là cổng gác thật.
+        return None
+    return enabled

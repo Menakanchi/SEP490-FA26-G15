@@ -64,6 +64,27 @@ SR_TIMEOUT_S = os.environ.get("SR_TIMEOUT_S", "60")
 RUN_TIMEOUT_S = int(os.environ.get("RUN_TIMEOUT_S", "300"))
 """Trần cứng cho cả tiến trình. ScenarioRunner có lúc treo mà không tự thoát."""
 
+NO_RENDER = os.environ.get("CARLA_NO_RENDER", "0") not in ("0", "false", "no")
+"""Tắt dựng hình. **Mặc định TẮT tính năng này** — đo rồi, không đáng.
+
+Giả thuyết ban đầu: kịch bản không dùng camera sensor nào (mọi criteria và
+``trajectory.TrajectoryRecorder`` chỉ đọc ``get_location()``/``get_velocity()``),
+nên dựng hình là công việc bỏ đi và bỏ nó sẽ nhẹ GPU.
+
+Đo trên máy này ngày 23/08/2026, ``sc_001``, lấy mẫu ``nvidia-smi`` mỗi 200 ms:
+
+    render bật   GPU trung bình 0,6%   đỉnh 16%   thời gian tường 15,4 s
+    render tắt   GPU trung bình 0,5%   đỉnh 16%   thời gian tường 15,9 s
+
+Tức là **không có gì để tiết kiệm**: cửa sổ 800x600 gần như không làm RTX 4060
+bận, nút cổ chai nằm ở physics phía CPU. Đổi lại cái giá rất thật — cửa sổ CARLA
+đứng im, đúng cái bẫy CLAUDE.md cảnh báo ("nhìn thấy đường trống rồi kết luận
+không chạy").
+
+Giữ lại cờ vì nó có thể có ích ở cấu hình khác (màn 4K, GPU yếu, chạy nhiều
+server song song trên một máy), nhưng bật nó thì phải đo lại trước.
+"""
+
 POLL_INTERVAL_S = int(os.environ.get("POLL_INTERVAL_S", "5"))
 
 OUT_DIR = Path(os.environ.get("WORKER_OUT_DIR", str(Path(__file__).parent / "outputs")))
@@ -245,6 +266,9 @@ def poll_once() -> bool:
         log.warning("CARLA chưa sẵn sàng ở %s:%s — để job nằm lại hàng đợi", CARLA_HOST, CARLA_PORT)
         return False
 
+    # Đặt lại trước mỗi job: `load_world` đưa settings về mặc định.
+    sr_cli.apply_no_rendering(CARLA_HOST, CARLA_PORT, NO_RENDER)
+
     job = jobs[0]
     log.info("Nhận job %s cho %s", job.get("job_id"), job.get("scenario_id"))
 
@@ -272,7 +296,12 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="Chạy đúng một job rồi thoát")
     args = parser.parse_args()
 
-    log.info("Worker khởi động. Backend=%s CARLA=%s:%s TM=%s", BACKEND, CARLA_HOST, CARLA_PORT, TM_PORT)
+    log.info(
+        "Worker khởi động. Backend=%s CARLA=%s:%s TM=%s render=%s",
+        BACKEND, CARLA_HOST, CARLA_PORT, TM_PORT, "TẮT" if NO_RENDER else "bật",
+    )
+    if NO_RENDER:
+        log.info("  (tắt dựng hình để nhẹ GPU — cửa sổ CARLA sẽ đứng im. Demo thì đặt CARLA_NO_RENDER=0)")
     if not (SR_ROOT / "scenario_runner.py").is_file():
         sys.exit(f"Không thấy scenario_runner.py trong {SR_ROOT} — đặt SR_ROOT cho đúng.")
     if not (CARLA_ROOT / "PythonAPI/carla").is_dir():
