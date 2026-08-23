@@ -237,27 +237,31 @@ def _run_red_light(parent: ET.Element, m: ManeuverSpec, actor: ActorSpec) -> Non
     _add_speed_action(parent, target_speed, abrupt=True)
 
 
-DRIFT_OFFSET_M = 1.35
+DRIFT_OFFSET_M = 0.95
 """Xe ``lane_drift`` lấn bao nhiêu mét khỏi tim làn của nó.
 
-Có một **cửa sổ hẹp** phải rơi vào, và hai lần đầu đều trượt — mỗi lần trượt một
-đầu. Với làn 3,5 m và hai thân xe nửa rộng ~0,9 m:
+Con số này rơi vào một **cửa sổ hẹp**, và ba lần đầu đều trượt:
 
-    lấn 0,70 m  ->  mép thân còn cách vạch 0,15 m   (chưa đè vạch)
-    lấn 1,35 m  ->  mép thân qua vạch 0,50 m, khe hở hai thân 0,35 m
-    lấn 1,70 m  ->  khe hở 0,00 m                    (đâm nhau)
-    lấn 2,20 m  ->  khe hở -0,50 m                   (đâm nhau)
+    lệnh 0,70 m  ->  mép thân còn cách vạch ~0,08 m   (chưa đè vạch)
+    lệnh 0,95 m  ->  đè vạch ~0,35 m, khe hở ~0,37 m  (bản này)
+    lệnh 1,35 m  ->  đè vạch  0,68 m, khe hở  0,04 m  (đo thật: CHẠM)
+    lệnh 2,20 m  ->  khe hở âm                        (đâm hẳn)
 
-Bản đầu 0,7 m: người xem trên CARLA nói "vẫn chưa lấn sang làn của ego, chỉ gần
-chạm vạch thôi" — đúng, mép thân còn thiếu 0,15 m. Bản sửa 2,2 m lấy mốc là *tâm*
-xe vượt vạch, và người xem nói tiếp "lần này thì tôi thấy nó còn va chạm nhau
-rồi" — cũng đúng: tâm vượt vạch thì thân đã chồng lên ego.
+Người xem trên CARLA bắt được cả hai đầu: bản 0,7 m — *"vẫn chưa lấn sang làn của
+ego, chỉ gần chạm vạch thôi"*; bản 2,2 m (lấy mốc **tâm** xe vượt vạch) — *"lần
+này thì tôi thấy nó còn va chạm nhau rồi"*. Cả hai nhận xét đều đúng.
 
-1,35 m đè vạch nửa mét mà vẫn chừa 0,35 m khe hở. Đó mới là *suýt quẹt*, thứ
-maneuver này sinh ra để dựng — nó cố ý không phải một cú va chạm.
+Cửa sổ hẹp hơn tính trên giấy vì hai lý do chỉ lộ ra khi **đo thật** trên CARLA:
 
-Xe rộng hơn (xe tải) vẫn có thể chạm ở cùng biên độ này. Đó là hệ quả đúng của
-hình học, không phải lỗi.
+- tổng nửa thân hai xe là **2,00 m**, không phải 1,80 như giả định theo cỡ xe
+  danh nghĩa — nên khoảng trống giữa hai làn chỉ còn 1,50 m chứ không phải 1,70;
+- ``LaneOffsetAction`` **vượt quá lệnh ~0,18 m** trước khi ổn định.
+
+Hai sai số đó cùng ăn về một phía, nên bản tính lý thuyết "1,35 m còn dư 0,35 m
+khe hở" thực tế cho **0,04 m** — tức là chạm.
+
+Xe rộng hơn (xe tải) vẫn có thể chạm ở cùng biên độ. Đó là hệ quả đúng của hình
+học, không phải lỗi cần vá.
 """
 
 DRIFT_LATERAL_ACC = 0.8

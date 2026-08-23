@@ -303,7 +303,11 @@ def intent_agreement(executions: list[dict], labels: list[dict]) -> dict[str, An
     khác nhau nghĩa là chính câu hỏi còn mơ hồ, và đó là phát hiện chứ không phải
     nhiễu cần làm phẳng.
     """
-    verdicts = {e["scenario_id"]: intent_verdict(e) for e in executions if _in_scope(e)}
+    # KHÔNG lọc theo `_in_scope`: hàng execution chỉ mang `scenario_id`,
+    # `maneuver`, `result` — không có bốn trục ODD, nên `_in_scope` trả False cho
+    # tất cả và mức khớp ra 0/0. Lọc ở đây cũng thừa: kịch bản ngoài phạm vi
+    # không có luật chấm nên `intent_verdict` đã trả None cho chúng.
+    verdicts = {e["scenario_id"]: intent_verdict(e) for e in executions}
 
     latest: dict[tuple[str, str], dict] = {}
     for label in sorted(labels, key=lambda row: row.get("created_at") or ""):

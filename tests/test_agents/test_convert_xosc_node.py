@@ -223,14 +223,15 @@ def test_lane_drift_uses_partial_offset_not_full_lane_change() -> None:
     offset = float(root.find(".//AbsoluteTargetLaneOffset").get("value"))
     assert offset > 0
 
-    # Cửa sổ hẹp, và hai bản trước đều trượt — mỗi bản một đầu. Làn 3,5 m, nửa
-    # thân xe ~0,9 m:
-    #   mép thân qua vạch  = offset - (1.75 - 0.9)
-    #   khe hở hai thân    = 3.5 - offset - 1.8
-    # Bản 0,7 m chưa đè vạch; bản 2,2 m (lấy mốc TÂM xe vượt vạch) thì đâm nhau.
-    half_lane, half_body = 1.75, 0.9
-    encroachment = offset - (half_lane - half_body)
-    body_gap = 3.5 - offset - 2 * half_body
+    # Cửa sổ hẹp, và ba bản trước đều trượt. Hằng số dưới đây là số ĐO THẬT trên
+    # CARLA, không phải cỡ xe danh nghĩa: tổng nửa thân hai xe 2,00 m (không phải
+    # 1,80), và LaneOffsetAction vượt quá lệnh ~0,18 m. Hai sai số cùng ăn về một
+    # phía, nên bản tính lý thuyết "1,35 m còn dư 0,35 m" thực tế cho 0,04 m.
+    lane_w, half_lane, bodies, overshoot = 3.5, 1.75, 2.00, 0.18
+    actual = offset + overshoot
+    lateral = lane_w - actual
+    encroachment = half_lane - (lateral - bodies / 2)
+    body_gap = lateral - bodies
     assert encroachment > 0.2, "phải đè hẳn qua vạch, không chỉ bám sát"
     assert body_gap > 0.2, "lane_drift dựng suýt quẹt, không dựng va chạm"
     criteria = {item.get("name") for item in root.findall("./Storyboard/StopTrigger/ConditionGroup/Condition")}
