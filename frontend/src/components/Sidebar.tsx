@@ -65,6 +65,13 @@ const NAV_ITEMS: NavItem[] = [
     allowedRoles: ["creator", "reviewer", "admin"],
   },
   {
+    href: "/label",
+    label: "Chấm ý định",
+    description: "Người chấm tay để đo lại L4",
+    icon: ClipboardCheck,
+    allowedRoles: ["creator", "reviewer", "admin"],
+  },
+  {
     href: "/metrics",
     label: "Báo cáo chất lượng",
     description: "M1 hợp lệ · M2 phủ ODD · M3 nguy hiểm",

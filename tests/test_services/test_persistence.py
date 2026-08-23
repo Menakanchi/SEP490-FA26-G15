@@ -72,6 +72,8 @@ def test_schema_contains_exact_shared_tables(repository: ScenarioRepository) -> 
         # `generation_requests.campaign_id` nối ngược về đây.
         "campaigns",
         "generation_requests",
+        # Nhãn người chấm ý định — thứ biến L4 từ "máy tự chấm máy" thành đo được.
+        "intent_labels",
         "review_decisions",
         "scenario_jobs",
         "scenarios",

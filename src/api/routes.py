@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Body, HTTPException, Query, Response
 from pydantic import BaseModel, Field, ValidationError
@@ -798,6 +799,84 @@ async def tuning_result(scenario_id: str) -> dict:
     ]
     summary = tuning.summarise_tuning({"metrics": (baseline.get("result") or {}).get("metrics") or {}}, results)
     return {"scenario_id": scenario_id, **summary}
+
+
+class IntentLabelRequest(BaseModel):
+    """Nhãn người cho câu "kịch bản này có tái hiện đúng ý định không"."""
+
+    label: Literal["correct", "wrong", "unsure"]
+    reason: str = ""
+    labeller: str = "unknown"
+
+
+# Đường dẫn riêng chứ không phải /scenarios/awaiting-label: route động
+# /scenarios/{scenario_id} khai báo trước sẽ nuốt nó, và lỗi hiện ra là
+# "Scenario 'awaiting-label' không tồn tại" — chẳng trỏ về nguyên nhân.
+@router.get("/intent-labels/queue")
+async def intent_label_queue(labeller: str = "unknown") -> dict:
+    """Các lượt chạy có quỹ đạo, kèm mô tả gốc — **không kèm phán quyết của máy**.
+
+    Giấu phán quyết là chủ đích, không phải thiếu sót. Hiện sẵn "L4: đúng ý định"
+    thì người chấm sẽ gật theo, và mức khớp thu được là con số vô nghĩa. Đây là
+    chỗ dễ tự lừa nhất trong cả phép đo.
+
+    ``labelled`` chỉ nói người này đã chấm kịch bản đó chưa, để họ biết còn bao
+    nhiêu việc — nó không tiết lộ đã chấm ra sao.
+    """
+    _, scenarios, executions = db.metrics_rows()
+    described = {s["scenario_id"]: s for s in scenarios}
+    mine = {row["scenario_id"] for row in db.intent_labels() if row["labeller"] == labeller}
+
+    items = []
+    for execution in sorted(executions, key=lambda e: e["scenario_id"]):
+        result = execution.get("result") or {}
+        if not result.get("trajectory"):
+            continue
+        scenario = db.get_scenario(execution["scenario_id"]) or {}
+        items.append(
+            {
+                "scenario_id": execution["scenario_id"],
+                "title": scenario.get("title", ""),
+                "description_vi": scenario.get("description_vi", ""),
+                "maneuver": execution.get("maneuver"),
+                "road_type": described.get(execution["scenario_id"], {}).get("road_type"),
+                "trajectory": result["trajectory"],
+                "labelled": execution["scenario_id"] in mine,
+            }
+        )
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/scenarios/{scenario_id}/intent-label")
+async def label_intent(scenario_id: str, body: IntentLabelRequest) -> dict:
+    """Ghi nhãn người, kèm phán quyết của máy **tại thời điểm chấm**.
+
+    Chép lại phán quyết máy vào hàng nhãn để chỗ lệch còn truy được về sau khi
+    luật L4 đã đổi. Không có nó thì mỗi lần sửa luật là mất sạch lịch sử bất
+    đồng — mà bất đồng mới là thứ đáng giá.
+    """
+    _scenario_or_404(scenario_id)
+    _, _, executions = db.metrics_rows()
+    execution = next((e for e in executions if e["scenario_id"] == scenario_id), None)
+    if execution is None:
+        raise HTTPException(status_code=409, detail="Kịch bản chưa chạy nên chưa có gì để chấm")
+
+    verdict = metrics.intent_verdict(execution)
+    saved = db.save_intent_label(
+        scenario_id,
+        body.labeller,
+        body.label,
+        body.reason.strip(),
+        None if verdict is None else ("correct" if verdict else "wrong"),
+    )
+    return {"ok": True, **saved}
+
+
+@router.get("/metrics/intent-agreement")
+async def intent_agreement_report() -> dict:
+    """Chấm tự động khớp với người chấm tay tới đâu — và lệch ở đâu."""
+    _, _, executions = db.metrics_rows()
+    return metrics.intent_agreement(executions, db.intent_labels())
 
 
 @router.get("/metrics/quality")

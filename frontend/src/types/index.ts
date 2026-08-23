@@ -477,3 +477,29 @@ export interface CampaignDetail extends CampaignSummary {
 }
 
 export * from "./auth";
+
+/** Một kịch bản chờ người chấm ý định.
+ *
+ * Cố ý **không** có trường phán quyết của máy: thấy trước thì người chấm gật
+ * theo, và mức khớp thu được là con số vô nghĩa. Backend cũng không gửi nó.
+ */
+export interface LabelQueueItem {
+  scenario_id: string;
+  title: string;
+  description_vi: string;
+  maneuver: string;
+  road_type: string;
+  trajectory: TrajectoryPoint[];
+  /** Người đang đăng nhập đã chấm kịch bản này chưa — không nói đã chấm ra sao. */
+  labelled: boolean;
+}
+
+export interface IntentAgreement {
+  agreement: number | null;
+  matched: number;
+  scored: number;
+  labelled_scenarios: number;
+  unsure: number;
+  human_conflicts: number;
+  disagreements: { scenario_id: string; human: string; machine: string; reason: string }[];
+}

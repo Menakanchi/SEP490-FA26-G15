@@ -837,6 +837,47 @@ def save_review_decision(scenario_id: str, gate: str, approved: bool, reviewer: 
     }
 
 
+def save_intent_label(
+    scenario_id: str, labeller: str, label: str, reason: str, automatic_verdict: str | None
+) -> dict:
+    """Ghi một nhãn người cho câu "kịch bản này có đúng ý định không".
+
+    Ghi thêm hàng chứ **không** ghi đè nhãn cũ: hai người chấm cùng một kịch bản
+    là chuyện mong muốn (cho ra mức đồng thuận giữa người với người), và một
+    người đổi ý cũng là dữ liệu — biết họ đổi ý còn hơn mất dấu.
+    """
+    now_str = datetime.now(UTC).isoformat()
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+        INSERT INTO intent_labels
+            (scenario_id, labeller, label, reason, automatic_verdict, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """,
+            (scenario_id, labeller, label, reason, automatic_verdict, now_str),
+        )
+    return {
+        "scenario_id": scenario_id,
+        "labeller": labeller,
+        "label": label,
+        "reason": reason,
+        "automatic_verdict": automatic_verdict,
+        "created_at": now_str,
+    }
+
+
+def intent_labels() -> list[dict]:
+    """Mọi nhãn người đã chấm, mới nhất trước."""
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+        SELECT scenario_id, labeller, label, reason, automatic_verdict, created_at
+        FROM intent_labels ORDER BY created_at DESC
+    """
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
 def get_review_decisions(scenario_id: str) -> list[dict]:
     with _cursor() as cursor:
         cursor.execute(
