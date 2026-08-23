@@ -77,10 +77,12 @@ def test_odd_matrix_is_560_cells() -> None:
 
 
 def test_default_support_policy_matches_verified_converter_scope() -> None:
-    """Catalog có 6 vehicle maneuvers × 3 actors và jaywalk × pedestrian, trên 4 weather."""
-    assert DEFAULT_SUPPORT_POLICY.denominator() == 76
+    """Catalog có 6 vehicle maneuvers × 3 actors, trên 4 weather. Không có jaywalk."""
+    assert DEFAULT_SUPPORT_POLICY.denominator() == 72
     assert DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.CAR, ManeuverType.CUT_IN)
-    assert DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.JAYWALK)
+    # jaywalk bị loại 23/08/2026: người đi bộ trên cao tốc là phi lý, và cơ chế
+    # băng đường của ScenarioRunner định tuyến dọc làn chứ không cắt ngang.
+    assert not DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.JAYWALK)
     assert not DEFAULT_SUPPORT_POLICY.supports(RoadType.INTERSECTION, ActorType.CAR, ManeuverType.CUT_IN)
     assert not DEFAULT_SUPPORT_POLICY.supports(RoadType.HIGHWAY, ActorType.PEDESTRIAN, ManeuverType.CUT_IN)
 

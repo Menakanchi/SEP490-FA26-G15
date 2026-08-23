@@ -30,7 +30,6 @@ from src.models.schemas import (
     Weather,
 )
 from src.services.scenario import templates
-from src.services.scenario.templates import get_template
 
 ROOT = Path(__file__).parents[2]
 GOLDENS = ROOT / "fixtures" / "xosc" / "generated"
@@ -38,7 +37,6 @@ SUPPORTED_MANEUVERS = (
     ManeuverType.CUT_IN,
     ManeuverType.SUDDEN_BRAKE,
     ManeuverType.RUN_RED_LIGHT,
-    ManeuverType.JAYWALK,
     ManeuverType.WRONG_WAY,
     ManeuverType.LANE_DRIFT,
     ManeuverType.STOP_IN_LANE,
@@ -255,16 +253,6 @@ def test_run_red_light_keeps_actor_moving_and_adds_criterion() -> None:
     assert "criteria_RunningRedLightTest" in criteria
 
 
-def test_jaywalk_uses_supported_pedestrian_routing_action() -> None:
-    root = ET.fromstring(convert_spec_to_xosc(make_spec(ManeuverType.JAYWALK)))
-    pedestrian = root.find(".//ScenarioObject[@name='other']/Pedestrian")
-    acquire = root.find(".//Event[@name='event_0_jaywalk']//AcquirePositionAction")
-    target = root.find(".//Event[@name='event_0_jaywalk']//AcquirePositionAction/Position/RelativeLanePosition")
-    assert pedestrian is not None
-    assert acquire is not None
-    assert target is not None and target.get("dLane") == "-1"
-
-
 def test_wrong_way_rotates_actor_and_adds_criterion() -> None:
     root = ET.fromstring(convert_spec_to_xosc(make_spec(ManeuverType.WRONG_WAY)))
     orientation = root.find(".//Event[@name='event_0_wrong_way']//RelativeLanePosition/Orientation")
@@ -435,28 +423,6 @@ def test_actor_inside_the_anchor_reach_still_converts() -> None:
     assert convert_spec_to_xosc(ScenarioSpec.model_validate(data)).startswith("<?xml")
 
 
-def test_jaywalk_crosses_the_road_and_ends_on_the_far_shoulder() -> None:
-    """Băng qua đường là đi từ lề này sang lề kia, không phải dừng giữa làn xe chạy.
-
-    Cách cũ lấy đích bằng ``-lane_offset``, ngầm giả định ego nằm giữa mặt cắt
-    ngang. Đo trên anchor Town04 thì sai: hai lề ở ``lane_offset`` +1 và -2, nên
-    người xuất phát ở lề +1 lại đi tới -1 — **giữa làn xe chạy**.
-    """
-    spec = make_spec(ManeuverType.JAYWALK)
-    shoulders = get_template(spec.odd.road_type).shoulder_lane_offsets
-    start = spec.actors[1].position.lane_offset
-
-    root = ET.fromstring(convert_spec_to_xosc(spec))
-    target = root.find(".//AcquirePositionAction/Position/RelativeLanePosition")
-    assert target is not None
-    # dLane đã nhân lane_sign, nên quy ngược về lane_offset để so với mặt cắt.
-    lane_sign = 1 if get_template(spec.odd.road_type).ego_spawn.lane_id > 0 else -1
-    destination = int(target.get("dLane")) * lane_sign
-
-    assert destination in shoulders, "đích phải là lề đường"
-    assert (destination > 0) != (start > 0), "đường đi phải cắt qua làn ego"
-
-
 @pytest.mark.parametrize(
     ("weather", "expected_cloudiness"),
     [(Weather.CLEAR, 15.0), (Weather.RAIN, 65.0), (Weather.HEAVY_RAIN, 90.0), (Weather.FOG, 85.0)],
@@ -495,3 +461,23 @@ def test_night_scenarios_do_not_render_at_high_noon(time_of_day: TimeOfDay, is_d
     sun = ET.fromstring(convert_spec_to_xosc(spec)).find(".//Weather/Sun")
     assert sun is not None
     assert (float(sun.get("elevation")) > 0) is is_daylight
+
+
+def test_jaywalk_is_refused_as_out_of_scope() -> None:
+    """``jaywalk`` bị loại khỏi phạm vi 23/08/2026 — hai lý do độc lập.
+
+    Nội dung: băng qua đường là hành vi đô thị, mà anchor duy nhất đã đo là một
+    đoạn cao tốc. Người đi bộ đi bộ trên làn ô tô cao tốc là sai từ đề bài.
+
+    Cơ chế: ScenarioRunner dịch ``AcquirePositionAction`` thành một bộ định tuyến
+    trên đồ thị đường, và đồ thị đường không có cạnh cắt ngang mặt đường — nên
+    người đi bộ đi DỌC làn. Đo trên sc_026: dịch ngang 0,54 m trong khi chạy dọc
+    44 m. Đổi bản đồ không sửa được chuyện này.
+
+    Từ chối ở converter chứ không im lặng bỏ qua: một maneuver ngoài phạm vi phải
+    nói ra là ngoài phạm vi.
+    """
+    with pytest.raises(ConversionError) as excinfo:
+        convert_spec_to_xosc(make_spec(ManeuverType.JAYWALK))
+    assert excinfo.value.code is IssueCode.TEMPLATE_CATALOG_INCONSISTENT
+    assert "jaywalk" in excinfo.value.message

@@ -249,7 +249,29 @@ _HIGHWAY_ACTORS_BY_MANEUVER: dict[ManeuverType, frozenset[ActorType]] = {
     for maneuver in ManeuverType
     if maneuver is not ManeuverType.JAYWALK
 }
-_HIGHWAY_ACTORS_BY_MANEUVER[ManeuverType.JAYWALK] = frozenset({ActorType.PEDESTRIAN})
+_HIGHWAY_ACTORS_BY_MANEUVER[ManeuverType.JAYWALK] = frozenset()
+"""``jaywalk`` **không có actor nào** — nó nằm ngoài phạm vi, có chủ đích.
+
+Hai lý do độc lập, mỗi lý do đủ để loại:
+
+**Phi lý về nội dung.** Băng qua đường là hành vi đô thị. Anchor duy nhất đã đo
+kỹ là một đoạn cao tốc Town04, và đặt người đi bộ đi bộ trên làn ô tô cao tốc là
+sai ngay từ đề bài — sửa cho nó chạy mượt cũng chỉ ra một kịch bản vô lý mượt mà.
+
+**Hỏng về cơ chế, và không phải lỗi bản đồ.** ScenarioRunner dịch
+``AcquirePositionAction`` thành ``ChangeActorWaypoints(..., 'fastest')``, một bộ
+định tuyến trên **đồ thị đường**. Đồ thị đường không có cạnh cắt ngang mặt đường,
+nên người đi bộ được vạch lộ trình **dọc theo làn** thay vì băng qua. Đo trên
+``sc_026`` ngày 23/08/2026: trong 2,6 giây họ dịch ngang **0,54 m** trong khi
+chạy dọc 44 m. Đổi sang bản đồ đô thị **không** sửa được chuyện này.
+
+Muốn mở lại thì cần hai thứ, không phải một: một anchor đô thị đã đo (tầm với,
+mặt cắt ngang, chạy thử từng maneuver), **và** một cơ chế băng đường khác — quỹ
+đạo tường minh, hoặc lưới điều hướng người đi bộ của CARLA.
+
+Đếm nó vào độ phủ trong khi không dựng nổi một lần băng đường nào là tự dìm giá
+trị của chính con số đó.
+"""
 
 DEFAULT_SUPPORT_POLICY = SupportPolicy(
     unsupported=frozenset(
@@ -260,7 +282,7 @@ DEFAULT_SUPPORT_POLICY = SupportPolicy(
         if road is not RoadType.HIGHWAY or actor not in _HIGHWAY_ACTORS_BY_MANEUVER[maneuver]
     )
 )
-"""76 ô: sáu maneuver cho ba vehicle actors, jaywalk cho pedestrian, qua bốn weather."""
+"""72 ô: sáu maneuver cho ba vehicle actors, qua bốn weather. ``jaywalk`` bị loại — xem trên."""
 
 
 class AssumptionSource(StrEnum):

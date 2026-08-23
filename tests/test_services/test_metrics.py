@@ -196,7 +196,7 @@ def test_seed_data_never_reaches_the_report() -> None:
 def test_pairwise_coverage_counts_axis_pairs_not_full_cells() -> None:
     """Phủ cặp là câu trả lời cho "sao mới 16%": ít kịch bản vẫn phủ được nhiều cặp.
 
-    Hai kịch bản dưới đây chỉ chiếm 2/76 ô, nhưng phủ 12 cặp giá trị khác nhau
+    Hai kịch bản dưới đây chỉ chiếm 2/72 ô, nhưng phủ 12 cặp giá trị khác nhau
     (6 cặp trục × 2 kịch bản, không cặp nào trùng).
     """
     scenarios = [
@@ -216,9 +216,12 @@ def test_infeasible_pairs_stay_out_of_the_denominator() -> None:
 
     Đưa chúng vào mẫu số là tự dìm con số bằng thứ không tồn tại — ví dụ
     (pedestrian, cut_in): người đi bộ không tạt đầu.
+
+    Từ 23/08/2026 không còn ô nào có pedestrian: `jaywalk` đã bị loại khỏi phạm
+    vi, nên mọi cặp dính pedestrian đều rời mẫu số. 78 -> 67.
     """
     report = metrics.coverage([])
-    assert report["feasible_pairs"] == 78
+    assert report["feasible_pairs"] == 67
     # Khác với M1: ở đó mẫu số rỗng nghĩa là CHƯA ĐO ĐƯỢC nên trả None. Ở đây mẫu
     # số biết trước (78 cặp khả thi), nên 0 kịch bản là 0% thật — một câu khẳng
     # định, không phải một chỗ trống.
