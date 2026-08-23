@@ -209,7 +209,26 @@ function Replay({ item }: { item: LabelQueueItem }) {
     };
   }, [rels]);
 
+  // Tốc độ THẬT của hai xe, tính từ vị trí thế giới ở hai tick liền nhau.
+  //
+  // Không có nó thì hệ quy chiếu ego đánh lừa người xem: một xe bò 10 km/h phía
+  // trước trông y hệt một xe đang lao ngược chiều về phía bạn, vì ego đuổi tới
+  // với 85 km/h nên khoảng cách co lại rất nhanh. Đo trên sc_023 đúng như vậy —
+  // và nhầm chỗ này thì mọi nhãn `stop_in_lane`, `sudden_brake` và `wrong_way`
+  // đều sai.
+  const speeds = useMemo(() => {
+    const kmh = (a: [number, number, number], b: [number, number, number], dt: number) =>
+      dt > 0 ? (Math.hypot(b[0] - a[0], b[1] - a[1]) / dt) * 3.6 : 0;
+    return shown.map((p, i) => {
+      const next = shown[i + 1];
+      if (!next) return { adv: 0, ego: 0 };
+      const dt = next.t - p.t;
+      return { adv: kmh(p.adv, next.adv, dt), ego: kmh(p.ego, next.ego, dt) };
+    });
+  }, [shown]);
+
   const [curLon, curLat] = rels[Math.min(frame, rels.length - 1)];
+  const speed = speeds[Math.min(frame, speeds.length - 1)] ?? { adv: 0, ego: 0 };
   const path = rels.map(([lon, l]) => `${view.x(lon).toFixed(1)},${view.y(l).toFixed(1)}`).join(" ");
 
   return (
@@ -265,9 +284,19 @@ function Replay({ item }: { item: LabelQueueItem }) {
           {shown[Math.min(frame, shown.length - 1)]?.t.toFixed(1)}s
         </span>
       </div>
+
+      <div className="flex gap-4 text-xs tabular-nums">
+        <span className="text-amber-400">tác nhân {speed.adv.toFixed(0)} km/h</span>
+        <span className="text-sky-400">ego {speed.ego.toFixed(0)} km/h</span>
+        <span className="text-slate-500">
+          {curLon >= 0 ? `trước ego ${curLon.toFixed(0)} m` : `sau ego ${Math.abs(curLon).toFixed(0)} m`}
+        </span>
+      </div>
       <p className="text-[11px] text-slate-500 leading-relaxed">
         Ego đứng yên ở giữa, tác nhân đi quanh nó — đây là <strong>đường đi đo được</strong>, không
         phải dựng lại. Vùng nâu là <strong>lề đường</strong>; {LANE} m là bề rộng một làn.
+        Vì ego đứng yên trên hình, một xe <strong>chạy chậm cùng chiều</strong> trông như đang lùi về
+        phía bạn — đọc cột <strong>km/h</strong> để phân biệt với xe đi ngược chiều thật.
         {item.contact_time_s != null && (
           <> Bản phát lại <strong>dừng ở giây {item.contact_time_s.toFixed(1)}</strong> khi xảy ra va
           chạm: sau cú đâm xe bị hất khỏi làn nên mọi số đo thành vô nghĩa.</>
