@@ -463,6 +463,45 @@ def _add_hold_open_event(maneuver_el: ET.Element, index: int, actor: ActorSpec, 
     ET.SubElement(by_value, "SimulationTimeCondition", value=_number(duration_s), rule="greaterThan")
 
 
+def _add_collision_stop_conditions(stop_trigger: ET.Element, spec: ScenarioSpec) -> None:
+    """Đóng Act ngay khi ego va chạm, thay vì chạy nốt cho đủ ``duration_s``.
+
+    Mọi thứ sau va chạm đầu tiên là **dữ liệu bỏ đi**: xe bị hất khỏi làn nên
+    ``adversary_lane_deviation_m`` của ``sc_001`` đọc ra 21,18 m trong khi giá trị
+    thật là 1,689 m — đó là lý do ``trajectory.summarise`` cắt chuỗi mẫu tại điểm
+    chạm. Mô phỏng tiếp phần đã biết chắc sẽ vứt chỉ đốt GPU: ``sc_001`` chạm ở
+    giây 11,3 rồi chạy thêm 19 giây nữa.
+
+    Đây là ``StopTrigger`` của Act, mà trigger trong OpenSCENARIO là **OR giữa các
+    ConditionGroup** — nên thêm nhóm ở đây không đụng gì tới điều kiện hết giờ đã
+    có: cái nào tới trước thì đóng.
+
+    An toàn với cách đọc kết quả (``CollisionTest``, xem CLAUDE.md): trong
+    ScenarioRunner, ``CollisionTest._count_collisions`` đặt ``test_status`` ngay
+    trong callback của sensor chứ không đợi ``update()``, nên criterion đã ghi
+    nhận va chạm trước khi cây hành vi kịp dừng.
+
+    Không dùng thuộc tính ``delay`` để nán lại vài giây sau va chạm:
+    ScenarioRunner hiện thực nó thành ``Sequence([TimeOut(delay), condition])``
+    (`openscenario_parser.py:874`), tức là **bỏ qua** mọi va chạm trong ``delay``
+    giây đầu — ngược hẳn với ý muốn.
+
+    Chỉ đếm va chạm với diễn viên trong kịch bản, không dùng ``ByType``: đâm phải
+    lan can hay xe nền không phải tình huống ta dựng ra, và đóng kịch bản vì
+    chuyện đó là mất phần thú vị.
+    """
+    for actor in spec.actors:
+        if actor.is_ego:
+            continue
+        condition = _condition(stop_trigger, f"stop_on_collision_{actor.name}")
+        by_entity = ET.SubElement(condition, "ByEntityCondition")
+        entities = ET.SubElement(by_entity, "TriggeringEntities", triggeringEntitiesRule="any")
+        ET.SubElement(entities, "EntityRef", entityRef="hero")
+        entity_condition = ET.SubElement(by_entity, "EntityCondition")
+        collision = ET.SubElement(entity_condition, "CollisionCondition")
+        ET.SubElement(collision, "EntityRef", entityRef=actor.name)
+
+
 def _add_criteria_stop_trigger(storyboard: ET.Element, spec: ScenarioSpec) -> None:
     stop = ET.SubElement(storyboard, "StopTrigger")
     group = ET.SubElement(stop, "ConditionGroup")
@@ -604,7 +643,9 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
         _add_hold_open_event(maneuver_el, index, actors_by_name[maneuver.actor_name], spec.duration_s)
 
     _simulation_time_condition(ET.SubElement(act, "StartTrigger"), "start_act", "0")
-    _simulation_time_condition(ET.SubElement(act, "StopTrigger"), "stop_act", _number(spec.duration_s))
+    act_stop = ET.SubElement(act, "StopTrigger")
+    _simulation_time_condition(act_stop, "stop_act", _number(spec.duration_s))
+    _add_collision_stop_conditions(act_stop, spec)
 
     _add_criteria_stop_trigger(storyboard, spec)
 

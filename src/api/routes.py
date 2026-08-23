@@ -720,8 +720,7 @@ async def tune_scenario(scenario_id: str) -> dict:
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=f"Spec không hợp lệ: {exc}") from exc
 
-    variants = tuning.variant_specs(spec)
-    if not variants:
+    if not tuning.variant_specs(spec):
         raise HTTPException(
             status_code=422,
             detail=(
@@ -731,26 +730,57 @@ async def tune_scenario(scenario_id: str) -> dict:
             ),
         )
 
-    created: list[str] = []
-    for index, variant in enumerate(variants, start=1):
-        variant_id = f"{scenario_id}_t{index}"
-        try:
-            xosc = convert_spec_to_xosc(variant.model_copy(update={"scenario_id": variant_id}))
-        except Exception as exc:  # noqa: BLE001 — một biến thể hỏng không được giết cả phép dò
-            logger.warning("Biến thể %s không biên dịch được: %s", variant_id, exc)
-            continue
-        db.save_scenario(
-            variant_id,
-            variant.title,
-            scenario["description_vi"],
-            variant.model_dump(mode="json"),
-            variant.odd.model_dump(mode="json"),
-            xosc_content=xosc,
-            created_by=f"tuner:{scenario_id}",
-        )
-        created.append(variant_id)
+    done = _tuning_variants_so_far(scenario_id)
+    variant, decision = tuning.plan_sweep_step(spec, done)
+    if variant is None:
+        return {
+            "ok": True,
+            "scenario_id": scenario_id,
+            "variants": [],
+            "count": 0,
+            "stopped": decision,
+            "tried": [item["scenario_id"] for item in done],
+        }
 
-    return {"ok": True, "scenario_id": scenario_id, "variants": created, "count": len(created)}
+    variant_id = f"{scenario_id}_t{len(done) + 1}"
+    try:
+        xosc = convert_spec_to_xosc(variant.model_copy(update={"scenario_id": variant_id}))
+    except Exception as exc:  # noqa: BLE001 — một biến thể hỏng không được giết cả phép dò
+        logger.warning("Biến thể %s không biên dịch được: %s", variant_id, exc)
+        raise HTTPException(status_code=422, detail=f"Biến thể không biên dịch được: {exc}") from exc
+
+    db.save_scenario(
+        variant_id,
+        variant.title,
+        scenario["description_vi"],
+        variant.model_dump(mode="json"),
+        variant.odd.model_dump(mode="json"),
+        xosc_content=xosc,
+        created_by=f"tuner:{scenario_id}",
+    )
+    return {
+        "ok": True,
+        "scenario_id": scenario_id,
+        "variants": [variant_id],
+        "count": 1,
+        "stopped": None,
+        "tried": [item["scenario_id"] for item in done],
+    }
+
+
+def _tuning_variants_so_far(scenario_id: str) -> list[dict]:
+    """Các biến thể đã tạo cho kịch bản này, kèm metrics nếu đã chạy xong.
+
+    Sắp theo ``scenario_id`` được vì hậu tố là ``_t1``, ``_t2``… theo đúng thứ tự
+    ``propose_triggers`` sinh ra, và phép dò không bao giờ tới hai chữ số.
+    """
+    _, scenarios, executions = db.metrics_rows()
+    metrics_by_id = {e["scenario_id"]: (e.get("result") or {}).get("metrics") or {} for e in executions}
+    return [
+        {"scenario_id": row["scenario_id"], "metrics": metrics_by_id.get(row["scenario_id"], {})}
+        for row in sorted(scenarios, key=lambda r: r["scenario_id"])
+        if row["scenario_id"].startswith(f"{scenario_id}_t")
+    ]
 
 
 @router.get("/scenarios/{scenario_id}/tune")

@@ -119,3 +119,58 @@ def test_no_sweep_when_the_vehicles_meet_before_the_maneuver_can_form() -> None:
     data["actors"][0]["initial_speed_kmh"] = 90.0
     data["actors"][1]["initial_speed_kmh"] = 45.0
     assert tuning.propose_triggers(ScenarioSpec.model_validate(data)) == []
+
+
+def test_sweep_stops_as_soon_as_a_variant_reaches_the_critical_band() -> None:
+    """Đo trên sc_024: 78,26 m -> 0,63 m ngay ở bước thứ ba.
+
+    Hai lượt còn lại chỉ để xác nhận chúng tệ hơn — đó là ~70 giây GPU mua một
+    thông tin đã biết trước, vì các bước càng xa mốc neo càng nhạt.
+    """
+    variant, decision = tuning.plan_sweep_step(
+        _spec(),
+        [
+            {"scenario_id": "sc_024_t1", "metrics": {"min_distance_m": 12.0}},
+            {"scenario_id": "sc_024_t2", "metrics": {"min_distance_m": 3.4}},
+            {"scenario_id": "sc_024_t3", "metrics": {"min_distance_m": 0.63}},
+        ],
+    )
+    assert variant is None
+    assert decision == tuning.SWEEP_STOP_REACHED_CRITICAL
+
+
+def test_sweep_waits_instead_of_queueing_a_second_run() -> None:
+    """Biến thể chưa chạy xong có thể đã đủ tới hạn — dựng thêm là đặt trước một lượt GPU thừa."""
+    variant, decision = tuning.plan_sweep_step(
+        _spec(), [{"scenario_id": "sc_024_t1", "metrics": {}}]
+    )
+    assert variant is None
+    assert decision == tuning.SWEEP_STOP_WAITING
+
+
+def test_a_collision_counts_as_measured_not_as_pending() -> None:
+    """Khe hở 0,0 m là va chạm. Kiểm bằng falsy thì nó thành "chưa đo" và dò tiếp vô ích."""
+    variant, decision = tuning.plan_sweep_step(
+        _spec(), [{"scenario_id": "sc_024_t1", "metrics": {"min_distance_m": 0.0}}]
+    )
+    assert variant is None
+    assert decision == tuning.SWEEP_STOP_REACHED_CRITICAL
+
+
+def test_sweep_hands_back_the_next_trigger_in_order() -> None:
+    """Mỗi lần đúng một biến thể, theo đúng thứ tự propose_triggers (gần mốc neo trước)."""
+    spec = _spec()
+    first, decision = tuning.plan_sweep_step(spec, [])
+    assert decision == tuning.SWEEP_NEXT
+    assert first is not None and first.maneuvers[0].trigger.value == 6.2
+
+    second, _ = tuning.plan_sweep_step(spec, [{"scenario_id": "x_t1", "metrics": {"min_distance_m": 9.0}}])
+    assert second is not None and second.maneuvers[0].trigger.value == 5.2
+
+
+def test_sweep_reports_exhaustion_when_no_trigger_helped() -> None:
+    """Thử hết mà không tới hạn nghĩa là thời điểm KHÔNG phải nguyên nhân — vẫn là thông tin."""
+    done = [{"scenario_id": f"x_t{i}", "metrics": {"min_distance_m": 9.0}} for i in range(1, 5)]
+    variant, decision = tuning.plan_sweep_step(_spec(), done)
+    assert variant is None
+    assert decision == tuning.SWEEP_STOP_EXHAUSTED

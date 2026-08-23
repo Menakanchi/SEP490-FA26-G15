@@ -117,6 +117,47 @@ def variant_specs(spec: ScenarioSpec) -> list[ScenarioSpec]:
     return variants
 
 
+SWEEP_STOP_REACHED_CRITICAL = "reached_critical"
+SWEEP_STOP_WAITING = "waiting"
+SWEEP_STOP_EXHAUSTED = "exhausted"
+SWEEP_NEXT = "next"
+
+
+def plan_sweep_step(spec: ScenarioSpec, done: list[dict[str, Any]]) -> tuple[ScenarioSpec | None, str]:
+    """Bước dò tiếp theo — hoặc lý do dừng. Mỗi lần đúng **một** biến thể.
+
+    Vì sao không dựng cả 4 biến thể rồi chạy hết
+    --------------------------------------------
+    Mỗi lượt chạy là ~35 giây GPU, và phép dò thường trúng sớm: ``sc_024`` xuống
+    0,63 m ngay ở bước thứ ba (78,26 m -> 0,63 m). Hai lượt còn lại chỉ để xác
+    nhận chúng tệ hơn — biết trước rồi vì các bước xa mốc neo dần.
+
+    Ba trạng thái dừng, và cả ba đều là **kết luận**:
+
+    - ``reached_critical``: đã có biến thể dưới ``CRITICAL_DISTANCE_M``. Dò tiếp
+      không tìm được thứ gì đáng giá hơn thứ đã có.
+    - ``waiting``: có biến thể đã tạo mà chưa chạy xong. Dựng thêm lúc này là tự
+      xếp hàng cho một lượt GPU mà kết quả sắp tới có thể khiến nó thành thừa.
+    - ``exhausted``: đã thử hết ``propose_triggers``. Thời điểm trigger không phải
+      nguyên nhân — người đọc nên nhìn sang vị trí hoặc tốc độ ban đầu.
+
+    ``done`` là các biến thể đã tạo: mỗi phần tử có ``scenario_id`` và ``metrics``
+    (``metrics`` rỗng nghĩa là chưa chạy xong).
+    """
+    for item in done:
+        distance = (item.get("metrics") or {}).get("min_distance_m")
+        if distance is not None and distance < CRITICAL_DISTANCE_M:
+            return None, SWEEP_STOP_REACHED_CRITICAL
+    # `is None` chứ không phải falsy: khe hở 0,0 m là va chạm, không phải "chưa đo".
+    if any((item.get("metrics") or {}).get("min_distance_m") is None for item in done):
+        return None, SWEEP_STOP_WAITING
+
+    variants = variant_specs(spec)
+    if len(done) >= len(variants):
+        return None, SWEEP_STOP_EXHAUSTED
+    return variants[len(done)], SWEEP_NEXT
+
+
 def rank_variants(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Xếp biến thể theo mức tới hạn, cao nhất trước.
 
