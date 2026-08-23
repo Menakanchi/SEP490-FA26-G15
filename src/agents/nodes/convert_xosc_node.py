@@ -115,7 +115,7 @@ _WEATHER_TABLE: dict[Weather, tuple[str, str, str, str, str]] = {
     Weather.CLEAR: ("free", "dry", "0", "100000", "0.85"),
     Weather.RAIN: ("cloudy", "rain", "0.5", "5000", "0.35"),
     Weather.HEAVY_RAIN: ("overcast", "rain", "1", "1500", "0.10"),
-    Weather.FOG: ("overcast", "dry", "0", "200", "0.15"),
+    Weather.FOG: ("overcast", "dry", "0", "25", "0.15"),
 }
 """Thời tiết quy ra thuộc tính OpenSCENARIO.
 
@@ -128,6 +128,13 @@ giữa trưa. Người xem nói thẳng "tôi không thấy trời mưa", và h�
 
 Giữ ``cloudState`` lại dù ScenarioRunner không dùng: nó là thuộc tính chuẩn của
 OpenSCENARIO, và công cụ khác (esmini) có đọc.
+
+``visualRange`` cũng bị ScenarioRunner hiểu khác chuẩn: nó gán thẳng vào
+``carla_weather.fog_distance``, mà trong CARLA đó là **khoảng cách sương bắt đầu
+xuất hiện**, không phải tầm nhìn xa. Bản trước ghi 200 (ý là "nhìn xa 200 m") nên
+CARLA hiểu thành "trong 200 m quanh xe không có sương" — đo ngày 23/08/2026:
+``fog_density=100`` mà người xem nói "tôi không thấy fog", và họ đúng. 25 đưa
+sương lại sát xe.
 
 Lưu ý khi đọc file bằng công cụ khác: chuẩn OpenSCENARIO định nghĩa
 ``Sun@intensity`` là **độ rọi tính bằng lux**, còn ScenarioRunner diễn giải nó

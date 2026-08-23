@@ -303,3 +303,38 @@ def test_l4_cannot_judge_lateral_maneuvers_from_older_runs() -> None:
     """
     assert metrics.intent_verdict(_execution("lane_drift", min_distance_m=0.36)) is None
     assert metrics.intent_verdict(_execution("cut_in", collision=True, contact_longitudinal_m=4.8)) is None
+
+
+def test_l4_rejects_a_cut_in_that_happened_behind_the_ego_without_touching_it() -> None:
+    """Điểm mù thứ hai bộ nhãn người tìm ra — sc_022 ngày 23/08/2026.
+
+    Luật cũ chỉ chặn `contact_longitudinal_m < 0`: nhập làn sau lưng **rồi tông
+    đuôi**. Không va chạm thì bộ chặn không bao giờ chạy, nên một cú cắt vào sau
+    lưng ego mà không đâm ai lọt qua sạch.
+
+    Đo thật: vào làn ego ở **-8,25 m sau lưng**, khe hở 2,79 m, không va chạm.
+    Máy chấm ĐÚNG; người xem trực tiếp nói "lúc ego đi qua rồi mới thấy xe máy nó
+    tạt sang". Người đúng — câu mô tả nói "tạt đầu cắt vào làn **trước mũi**".
+    """
+    verdict = metrics.intent_verdict(
+        _execution(
+            "cut_in",
+            adversary_entered_ego_lane=1.0,
+            adversary_entry_longitudinal_m=-8.25,
+            min_distance_m=2.79,
+        )
+    )
+    assert verdict is False
+
+
+def test_l4_accepts_a_cut_in_that_entered_ahead_of_the_ego() -> None:
+    """Cùng hình học, nhưng vào làn khi còn ở TRƯỚC ego."""
+    verdict = metrics.intent_verdict(
+        _execution(
+            "cut_in",
+            adversary_entered_ego_lane=1.0,
+            adversary_entry_longitudinal_m=6.4,
+            min_distance_m=0.9,
+        )
+    )
+    assert verdict is True
