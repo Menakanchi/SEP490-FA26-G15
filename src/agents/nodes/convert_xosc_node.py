@@ -491,14 +491,59 @@ def _far_shoulder_offset(actor: ActorSpec, template: ScenarioTemplate) -> int:
 
 
 def _add_wrong_way_action(parent: ET.Element, maneuver: ManeuverSpec, actor: ActorSpec) -> None:
-    """Giữ xe chạy theo hướng ngược đã đặt trong ``Init``.
+    """Giữ tốc độ xe chạy theo hướng ngược đã đặt trong ``Init``.
 
     Không teleport một xe đang chuyển động để xoay đầu: CARLA giữ quán tính cũ,
     nên hướng thân xe và hướng vận tốc có thể ngược nhau. ``Init`` đặt transform
-    trước, còn event này chỉ khẳng định lại tốc độ mục tiêu.
+    trước, còn action này chỉ khẳng định lại tốc độ mục tiêu. Route bám làn được
+    dựng riêng bởi ``_add_wrong_way_route`` để chạy song song với action tốc độ.
     """
     target = maneuver.target_speed_kmh if maneuver.target_speed_kmh is not None else actor.initial_speed_kmh
     _add_speed_action(parent, target, abrupt=True)
+
+
+def _add_wrong_way_route(
+    parent: ET.Element,
+    actor: ActorSpec,
+    template: ScenarioTemplate,
+) -> None:
+    """Cấp chuỗi waypoint giảm dần để xe ngược chiều bám đúng làn đường cong.
+
+    Chỉ xoay actor 180 độ là chưa đủ. ``NpcVehicleControl`` của ScenarioRunner
+    không tự sinh lộ trình khi danh sách waypoint rỗng; nó giữ ga theo hướng
+    thân xe. Ở khúc cong Town04, hướng đó là tiếp tuyến nên xe cắt ngang nhiều
+    làn rồi đâm hộ lan. Route ``shortest`` dưới đây được giữ nguyên đúng thứ tự
+    thay vì đưa qua GlobalRoutePlanner (planner chỉ biết chiều giao thông hợp
+    lệ). Các ``ds`` giảm dần buộc LocalPlanner chạy ngược tuyến nhưng vẫn bám
+    tâm chính làn actor đã được spawn.
+    """
+    route_lower_bound = template.s_offset_reach_m[0] + 5.0
+    first_waypoint = actor.position.s_offset_m - 8.0
+    if first_waypoint - route_lower_bound < 10.0:
+        raise ConversionError(
+            IssueCode.CONVERTER_ERROR,
+            "wrong_way actor needs at least 18 m of backward route inside the template anchor",
+        )
+
+    routing = ET.SubElement(parent, "RoutingAction")
+    assign = ET.SubElement(routing, "AssignRouteAction")
+    route = ET.SubElement(assign, "Route", name=f"{actor.name}_wrong_way_route", closed="false")
+
+    offsets: list[float] = []
+    cursor = first_waypoint
+    while cursor > route_lower_bound:
+        # ScenarioRunner gọi ``waypoint.next(ds)[-1]`` cho ds >= 0, nhưng CARLA
+        # cấm ``next(0)`` bằng ``RuntimeError: distance > 0.0``. Mốc 0 không
+        # mang thêm hình học so với hai mốc ±10 m, nên bỏ nó khỏi route.
+        if abs(cursor) > 1e-6:
+            offsets.append(cursor)
+        cursor -= 10.0
+    offsets.append(route_lower_bound)
+
+    for s_offset_m in offsets:
+        waypoint = ET.SubElement(route, "Waypoint", routeStrategy="shortest")
+        position = ET.SubElement(waypoint, "Position")
+        _relative_lane_position(position, actor, template, s_offset_m=s_offset_m)
 
 
 def _add_maneuver_action(
@@ -548,6 +593,21 @@ def _add_event_actions(
         _add_speed_action(ET.SubElement(speed_action, "PrivateAction"), speed, abrupt=True)
         route_action = ET.SubElement(event, "Action", name=f"action_{index}_jaywalk_route")
         _add_jaywalk_action(
+            ET.SubElement(route_action, "PrivateAction"),
+            actor,
+            template,
+        )
+        return
+
+    if maneuver.maneuver is ManeuverType.WRONG_WAY:
+        speed_action = ET.SubElement(event, "Action", name=f"action_{index}_wrong_way_speed")
+        _add_wrong_way_action(
+            ET.SubElement(speed_action, "PrivateAction"),
+            maneuver,
+            actor,
+        )
+        route_action = ET.SubElement(event, "Action", name=f"action_{index}_wrong_way_route")
+        _add_wrong_way_route(
             ET.SubElement(route_action, "PrivateAction"),
             actor,
             template,

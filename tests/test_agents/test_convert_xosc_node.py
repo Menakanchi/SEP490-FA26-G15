@@ -258,6 +258,9 @@ def test_wrong_way_starts_reversed_before_speed_and_adds_criterion() -> None:
     position = root.find(".//Init//Private[@entityRef='other']//RelativeLanePosition")
     orientation = position.find("Orientation") if position is not None else None
     event_speed = root.find(".//Event[@name='event_0_wrong_way']//AbsoluteTargetSpeed")
+    route = root.find(".//Event[@name='event_0_wrong_way']//AssignRouteAction/Route")
+    waypoints = route.findall("Waypoint") if route is not None else []
+    route_positions = [waypoint.find("./Position/RelativeLanePosition") for waypoint in waypoints]
     criteria = {item.get("name") for item in root.findall("./Storyboard/StopTrigger/ConditionGroup/Condition")}
     assert orientation is not None and orientation.attrib == {
         "h": "3.141593",
@@ -266,8 +269,27 @@ def test_wrong_way_starts_reversed_before_speed_and_adds_criterion() -> None:
         "type": "relative",
     }
     assert event_speed is not None and float(event_speed.get("value")) > 0
+    assert route is not None and route.attrib == {"name": "other_wrong_way_route", "closed": "false"}
+    assert len(route_positions) >= 2
+    assert all(position is not None and position.get("dLane") == "1" for position in route_positions)
+    assert all(waypoint.get("routeStrategy") == "shortest" for waypoint in waypoints)
+    offsets = [float(position.get("ds")) for position in route_positions if position is not None]
+    assert offsets == sorted(offsets, reverse=True)
+    assert offsets[0] < 20
+    assert offsets[-1] == -115
     assert root.find(".//Event[@name='event_0_wrong_way']//TeleportAction") is None
     assert "criteria_WrongLaneTest" in criteria
+
+
+def test_wrong_way_route_never_emits_zero_distance_waypoint() -> None:
+    spec = make_spec(ManeuverType.WRONG_WAY)
+    adversary = spec.actors[1].model_copy(update={"position": Position(lane_offset=0, s_offset_m=38)})
+    spec = spec.model_copy(update={"actors": [spec.actors[0], adversary]})
+    root = ET.fromstring(convert_spec_to_xosc(spec))
+    positions = root.findall(".//Event[@name='event_0_wrong_way']//AssignRouteAction//RelativeLanePosition")
+    offsets = [float(position.get("ds")) for position in positions]
+    assert 0.0 not in offsets
+    assert offsets[:4] == [30.0, 20.0, 10.0, -10.0]
 
 
 @pytest.mark.parametrize("maneuver", SUPPORTED_MANEUVERS)

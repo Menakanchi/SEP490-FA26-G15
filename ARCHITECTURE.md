@@ -258,6 +258,14 @@ Năm kịch bản còn lại chạy đủ giờ mà vẫn 0 va chạm, vì spec 
 adversary ở làn bên cạnh. Đó là hình học của spec — việc của validate, không
 phải của converter.
 
+**24/08 — `wrong_way` trên đường cong.** Orientation 180° chỉ sửa hướng ban đầu,
+không tạo ra lateral route. Không có waypoint, controller cho actor chạy theo
+tiếp tuyến và xe cắt ngang vào hộ lan. Converter hiện phát song song SpeedAction
+và `AssignRouteAction` với chuỗi `RelativeLanePosition` giảm dần trên chính làn
+actor; dùng `routeStrategy="shortest"` để ScenarioRunner giữ nguyên thứ tự ngược
+tuyến. Hai lượt CARLA cuối (`sc_042`, `sc_043`) lệch tim làn tối đa 0,188/0,194 m
+và đã được người xem xác nhận đúng.
+
 ## Ego baseline
 
 Trong mọi kịch bản, ego nhận **đúng một lệnh tốc độ ban đầu** rồi giữ nguyên:

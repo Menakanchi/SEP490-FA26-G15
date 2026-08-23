@@ -19,9 +19,9 @@
 | Mức | Định nghĩa | Kết quả |
 |---|---|---:|
 | L1 | Request sinh được draft qua schema và validate | **25/34 = 73,53%** |
-| L2 | Scenario trong scope biên dịch được `.xosc` | **23/23 = 100%** |
-| L3 | ScenarioRunner chạy hết, không crash/timeout | **22/24 = 91,67%** |
-| L4 | Quỹ đạo CARLA tái hiện đúng maneuver | **13/22 = 59,09%** |
+| L2 | Scenario trong scope biên dịch được `.xosc` | **27/27 = 100%** |
+| L3 | ScenarioRunner chạy hết, không crash/timeout | **26/28 = 92,86%** |
+| L4 | Quỹ đạo CARLA tái hiện đúng maneuver | **12/26 = 46,15%** |
 
 Hai lượt L3 chưa chấm được ở L4 được báo riêng, không tính thành sai. L4 hiện có
 oracle cho `cut_in`, `lane_drift`, `sudden_brake`, `stop_in_lane` và
@@ -42,13 +42,13 @@ thử bao nhiêu tương tác hai yếu tố; hai số không thay thế nhau.
 
 | Kết quả lần chạy mới nhất | Số lượng |
 |---|---:|
-| Có va chạm | 8 |
+| Có va chạm | 10 |
 | Suýt va chạm, khe hở < 1 m | 7 |
-| Không dựng được nguy hiểm | 7 |
-| Tổng lượt chạy được | 22 |
+| Không dựng được nguy hiểm | 9 |
+| Tổng lượt chạy được | 26 |
 
-Tỷ lệ kích hoạt nguy hiểm: **15/22 = 68,18%**. Collision riêng là
-**8/22 = 36,36%**. `lane_drift` chủ đích dựng near-miss nên không thể chỉ dùng
+Tỷ lệ kích hoạt nguy hiểm: **17/26 = 65,38%**. Collision riêng là
+**10/26 = 38,46%**. `lane_drift` chủ đích dựng near-miss nên không thể chỉ dùng
 `CollisionTest` làm M3.
 
 ## 5. Bằng chứng sửa `cut_in`
@@ -70,22 +70,33 @@ lên, nhập làn rồi giảm tốc; ego chạm vào đuôi adversary.
 ## 6. Bằng chứng sửa `wrong_way`
 
 Hai bản lịch sử `sc_020` và `sc_025` đặt actor ở +120 m, ngoài tầm +40 m của
-anchor nên đã bị từ chối. Hai bản thay thế đặt ở +35 m. Lần chạy đầu phát hiện
-một lỗi khác: teleport xoay xe đang chạy làm CARLA giữ vector quán tính cũ — xe
-nhìn ngược đầu nhưng vẫn trôi theo hướng cũ.
+anchor nên đã bị từ chối. Các lượt thay thế sau đó tìm ra **hai lỗi độc lập**:
 
-Converter được sửa để đặt Orientation 180° ngay trong `Init`, trước SpeedAction.
-Kết quả chạy lại:
+1. Teleport xoay xe ở Event sau khi đã cấp tốc độ làm CARLA giữ vector quán
+   tính cũ. Sửa bằng cách đặt Orientation 180° ngay trong `Init`.
+2. Chỉ xoay đầu và cấp tốc độ vẫn không đủ trên đường cong: khi không có route,
+   `NpcVehicleControl` chạy theo tiếp tuyến, cắt ngang nhiều làn rồi đâm hộ lan.
+   Người xem trực tiếp phát hiện lỗi này ở `sc_038`–`sc_041`; độ lệch tim làn
+   trước va chạm là **1,754–3,006 m**.
 
-| Scenario | Actor | Heading delta | Khe hở nhỏ nhất | Va chạm | L4 |
-|---|---|---:|---:|---|---|
-| `sc_038` | car | 180,0° | 0,416 m | không | đúng |
-| `sc_039` | truck | 180,0° | 0,287 m | có | đúng |
+Converter hiện phát đồng thời SpeedAction và một `AssignRouteAction` gồm các
+`RelativeLanePosition` giảm dần, `routeStrategy="shortest"`. Route đi đúng thứ
+tự waypoint ngược tuyến, không qua GlobalRoutePlanner một chiều; mốc `ds=0`
+được bỏ vì ScenarioRunner gọi `waypoint.next(0)` và CARLA từ chối. Kết quả cuối:
+
+| Scenario | Actor | Heading delta | Lệch tim làn lớn nhất | Khe hở nhỏ nhất | Va chạm | Người xem |
+|---|---|---:|---:|---:|---|---|
+| `sc_042` | car | 180,0° | 0,188 m | 0,000 m | có | đúng |
+| `sc_043` | truck | 180,0° | 0,194 m | 0,000 m | có | đúng |
+
+Cả hai đã được duyệt vào thư viện. Oracle `wrong_way` cũng được siết lại: ngoài
+heading ≥150° và khe hở <1 m, actor phải lệch tim làn không quá 1 m. Vì vậy bốn
+lượt cũ lao vào hộ lan không còn bị chấm nhầm là đúng ý định.
 
 ## 7. Đối chiếu nhãn người
 
-Sau khi ghi lại xác nhận cho bốn `cut_in`, behavior checker khớp người chấm
-**6/9 = 66,67%**. Ba bất đồng còn lại là dữ liệu cần điều tra, không bị che:
+Sau khi ghi thêm xác nhận cho hai `wrong_way`, behavior checker khớp người chấm
+**8/11 = 72,73%**. Ba bất đồng còn lại là dữ liệu cần điều tra, không bị che:
 
 - `sc_018`: người đúng, máy sai.
 - `sc_023`: người đúng, máy sai sau khi sửa biểu diễn thời tiết.
