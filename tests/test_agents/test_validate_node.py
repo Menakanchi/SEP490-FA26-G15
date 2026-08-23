@@ -704,3 +704,56 @@ async def test_jaywalk_time_trigger_after_ego_passed_is_flagged(valid_draft: Sce
         }
     )
     assert [i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE]
+
+
+def _jaywalk_draft(valid_draft: ScenarioDraft, lane_offset: int) -> dict:
+    draft = valid_draft.model_dump()
+    # HIGHWAY chứ không phải INTERSECTION: chỉ road_type có template mới biết lề ở đâu.
+    draft["odd"]["road_type"] = RoadType.HIGHWAY
+    draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
+    draft["odd"]["maneuver"] = ManeuverType.JAYWALK
+    draft["actors"][1]["category"] = VehicleCategory.PEDESTRIAN
+    draft["actors"][1]["position"]["lane_offset"] = lane_offset
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.JAYWALK
+    return draft
+
+
+async def _jaywalk_issues(valid_draft: ScenarioDraft, lane_offset: int) -> list:
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(_jaywalk_draft(valid_draft, lane_offset)),
+            "odd_query": ODDQuery(actor_type=ActorType.PEDESTRIAN, maneuver=ManeuverType.JAYWALK),
+        }
+    )
+    return result["issues"]
+
+
+@pytest.mark.asyncio
+async def test_jaywalk_starting_on_the_carriageway_is_flagged(valid_draft: ScenarioDraft) -> None:
+    """Xuất phát giữa làn xe chạy là "đi bộ trên đường", không phải băng qua đường.
+
+    Lỗi này có nguồn gốc là một GỢI Ý SAI: chỗ chặn ``lane_offset=0`` từng khuyên
+    "đặt -1 (bên lề trái)", mà trên anchor Town04 thì -1 là làn xe chạy — hai lề ở
+    +1 và -2. ``sc_035`` sinh ra đúng từ câu đó. Một gợi ý sai trong vòng repair
+    không dừng ở một kịch bản, nó đẻ ra cả một họ kịch bản sai.
+    """
+    issues = await _jaywalk_issues(valid_draft, -1)
+    issue = next(i for i in issues if i.code is IssueCode.GEOM_JAYWALK_NOT_FROM_SHOULDER)
+    assert issue.repairable_by_llm
+    assert "1" in issue.suggestion and "-2" in issue.suggestion, "phải nói rõ lề nằm ở đâu"
+
+
+@pytest.mark.asyncio
+async def test_a_pedestrian_standing_on_the_shoulder_is_accepted(valid_draft: ScenarioDraft) -> None:
+    """Lề đường là chỗ đúng để đứng — không được báo lỗi ở đó."""
+    issues = await _jaywalk_issues(valid_draft, 1)
+    assert IssueCode.GEOM_JAYWALK_NOT_FROM_SHOULDER not in [i.code for i in issues]
+
+
+@pytest.mark.asyncio
+async def test_the_repair_suggestion_never_points_at_a_driving_lane(valid_draft: ScenarioDraft) -> None:
+    """Bản cũ khuyên -1 kèm chú thích 'bên lề trái' — sai, và sai một cách tự tin."""
+    issues = await _jaywalk_issues(valid_draft, 0)
+    suggestion = next(i.suggestion for i in issues if i.code is IssueCode.GEOM_JAYWALK_IN_EGO_LANE)
+    assert "lề" in suggestion
+    assert "-1" not in suggestion.replace("-2", ""), "-1 là làn xe chạy trên anchor này"

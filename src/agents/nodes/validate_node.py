@@ -16,11 +16,35 @@ from src.services.scenario.geometry import (
     jaywalk_max_ego_speed_kmh,
     jaywalk_required_trigger_m,
     jaywalk_starts_in_ego_lane,
+    jaywalk_starts_on_carriageway,
     jaywalk_trigger_too_close,
     lane_drift_trigger_too_late,
     time_until_alongside,
 )
 from src.services.scenario.templates import get_template
+
+
+def _shoulders_for(road_type) -> tuple[int, int] | None:
+    template = get_template(road_type)
+    return template.shoulder_lane_offsets if template else None
+
+
+def _shoulder_suggestion(actor_idx: int, road_type) -> str:
+    """Khuyên đặt người đi bộ lên **lề**, và nói rõ lề nằm ở đâu.
+
+    Bản cũ khuyên cứng ``lane_offset = -1`` kèm chú thích "bên lề trái". Trên
+    anchor Town04 thì -1 là **làn xe chạy**; hai lề nằm ở +1 và -2. Một gợi ý sai
+    trong vòng repair không dừng ở một kịch bản — nó sinh ra cả một họ kịch bản
+    sai, và ``sc_035`` là con đẻ của chính câu đó.
+    """
+    shoulders = _shoulders_for(road_type)
+    if not shoulders:
+        return f"Đặt /actors/{actor_idx}/position/lane_offset ra lề đường để người đi bộ băng qua làn ego."
+    right, left = shoulders
+    return (
+        f"Đặt /actors/{actor_idx}/position/lane_offset = {right} (lề phải) hoặc {left} (lề trái) "
+        f"— người đi bộ phải đứng ở lề rồi băng qua làn ego sang lề bên kia."
+    )
 
 
 def _jaywalk_suggestion(index: int, actor_idx: int, maneuver, actor, ego, required: float, road_type) -> str:
@@ -362,12 +386,25 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                         message_vi=(
                             f"{actor.name} đứng sẵn trong làn ego (lane_offset=0) nên không có gì để băng ngang."
                         ),
-                        suggestion=(
-                            f"Đặt /actors/{actor_idx}/position/lane_offset = -1 "
-                            "(bên lề trái) để người đi bộ băng qua làn ego."
-                        ),
+                        suggestion=_shoulder_suggestion(actor_idx, draft.odd.road_type),
                     )
                 )
+
+            if m.maneuver == "jaywalk" and not jaywalk_starts_in_ego_lane(actor):
+                shoulders = _shoulders_for(draft.odd.road_type)
+                if shoulders and jaywalk_starts_on_carriageway(actor, shoulders):
+                    issues.append(
+                        ValidationIssue(
+                            code=IssueCode.GEOM_JAYWALK_NOT_FROM_SHOULDER,
+                            path=f"/actors/{actor_idx}/position/lane_offset",
+                            message_vi=(
+                                f"{actor.name} xuất phát giữa phần xe chạy "
+                                f"(lane_offset={actor.position.lane_offset}) chứ không đứng ở lề, "
+                                "nên đây là đi bộ trên đường chứ không phải băng qua đường."
+                            ),
+                            suggestion=_shoulder_suggestion(actor_idx, draft.odd.road_type),
+                        )
+                    )
 
             if m.maneuver == "jaywalk" and jaywalk_trigger_too_close(m, actor, ego):
                 required = jaywalk_required_trigger_m(m, actor, ego) or 0.0

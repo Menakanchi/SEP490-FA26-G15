@@ -201,6 +201,22 @@ def jaywalk_starts_in_ego_lane(actor: ActorSpec) -> bool:
     return actor.position.lane_offset == 0
 
 
+def jaywalk_starts_on_carriageway(actor: ActorSpec, shoulder_offsets: tuple[int, int]) -> bool:
+    """Người đi bộ xuất phát **giữa phần xe chạy** thay vì đứng ở lề.
+
+    Băng qua đường là đi từ lề này sang lề kia. Xuất phát giữa làn xe chạy thì
+    không phải băng đường — nó là *đi bộ trên đường*, thứ nhìn vào là thấy vô lý
+    ngay, và người xem có lý khi không tin kịch bản.
+
+    Nguồn gốc lỗi này là một gợi ý sửa sai: chỗ chặn ``lane_offset=0`` từng khuyên
+    "đặt -1 (bên lề trái)", mà đo trên anchor Town04 thì -1 là **làn xe chạy**;
+    hai lề nằm ở +1 và -2. ``sc_035`` sinh ra đúng từ lời khuyên đó.
+
+    Nhận ``shoulder_offsets`` làm tham số chứ không tự tra template: module này
+    thuần hình học, không biết gì về map.
+    """
+    return actor.position.lane_offset not in shoulder_offsets
+
 LANE_WIDTH_M = 3.5
 """Bề rộng một làn. Dùng để quy độ lệch làn ra quãng đường người đi bộ phải bước."""
 
