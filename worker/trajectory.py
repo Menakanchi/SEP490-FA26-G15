@@ -42,6 +42,13 @@ dọc thu hẹp không còn nghĩa là sắp đâm nhau — tính TTC ở đó r
 đáng sợ cho một tình huống vượt xe hoàn toàn bình thường.
 """
 
+MOVING_THRESHOLD_MS = 0.5
+"""Trên ngưỡng này thì coi là actor đã thật sự bắt đầu chạy.
+
+Dùng để cắt bỏ các tick đầu, lúc bộ ghi đã chạy mà ScenarioRunner chưa áp tốc độ
+ban đầu. Xem :func:`_from_first_movement`.
+"""
+
 MIN_CLOSING_SPEED_MS = 0.1
 """Dưới ngưỡng này coi như không thu hẹp; chia cho nó ra TTC vô nghĩa lớn."""
 
@@ -123,9 +130,22 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
     # được ý định. Không có chúng thì chỉ maneuver ngang mới kiểm chứng được, còn
     # maneuver dọc chỉ biết "có va chạm hay không" — đúng cái mù mà checker sinh
     # ra để vá.
-    speeds = [s.adv_speed_ms for s in before_contact]
-    metrics["adversary_min_speed_ms"] = round(min(speeds), 3)
-    metrics["adversary_speed_drop_ms"] = round(max(speeds) - min(speeds), 3)
+    # Đo TỪ LÚC ACTOR ĐÃ CHUYỂN ĐỘNG, không đo từ tick đầu tiên.
+    #
+    # Bộ ghi chạy trước khi ScenarioRunner kịp áp tốc độ ban đầu, nên mẫu đầu
+    # luôn là 0 m/s. Đo cả nó thì `adversary_min_speed_ms` = 0 ở **mọi** kịch bản
+    # — đo được ngày 23/08/2026 trên cả 17 lượt, kể cả `lane_drift` (xe không bao
+    # giờ dừng) lẫn `jaywalk` (người đi bộ đi liên tục).
+    #
+    # Đó không phải một con số hơi lệch, nó làm hai luật chấm thành RỖNG NGHĨA:
+    # `stop_in_lane` hỏi "tốc độ nhỏ nhất <= 0,5 m/s?" nên luôn ĐÚNG, còn
+    # `adversary_speed_drop_ms` = max - min thực chất đang đo *tốc độ ban đầu* chứ
+    # không đo phanh, nên `sudden_brake` cũng luôn ĐÚNG.
+    moving = _from_first_movement(before_contact)
+    if moving:
+        speeds = [s.adv_speed_ms for s in moving]
+        metrics["adversary_min_speed_ms"] = round(min(speeds), 3)
+        metrics["adversary_speed_drop_ms"] = round(max(speeds) - min(speeds), 3)
 
     # Bộ đo an toàn thay thế (surrogate safety measures) dùng chung trong ngành —
     # ISO 34502 và phần lớn công trình scenario-based testing báo cáo theo chúng.
@@ -168,6 +188,18 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
     metrics["adversary_min_lateral_m"] = round(min(lateral), 3)
     metrics["adversary_lane_incursion_m"] = round(incursion, 3)
     metrics["adversary_entered_ego_lane"] = 1.0 if incursion > 0 else 0.0
+
+    # Lúc **vào làn**, tác nhân đang ở trước hay sau ego. Dương = trước.
+    #
+    # Đây là thứ phân biệt tạt đầu thật với nhập làn sau lưng rồi bám đuôi. Luật
+    # cũ chỉ chặn được trường hợp có va chạm (`contact_longitudinal_m < 0`), nên
+    # một cú cắt vào sau lưng mà không đâm ai thì lọt sạch: `sc_022` vào làn ego ở
+    # **-8,25 m sau lưng**, khe hở 2,79 m, không va chạm — máy chấm ĐÚNG, người
+    # xem trực tiếp trên CARLA nói "lúc ego đi qua rồi mới thấy xe máy nó tạt
+    # sang". Người đúng.
+    entry = _lane_entry_longitudinal(before_contact)
+    if entry is not None:
+        metrics["adversary_entry_longitudinal_m"] = round(entry, 3)
     heading = _max_heading_delta_deg(before_contact)
     if heading is not None:
         metrics["adversary_heading_delta_deg"] = round(heading, 1)
@@ -203,6 +235,35 @@ OPPOSING_HEADING_DEG = 150.0
 180 độ là ngược hẳn; nới xuống 150 để đường cong và lúc đánh lái không làm trượt
 phép đo. Dưới ngưỡng này là cắt ngang hoặc cùng chiều, không phải ngược chiều.
 """
+
+
+def _lane_entry_longitudinal(samples: list[Sample]) -> float | None:
+    """Vị trí dọc của tác nhân **lần đầu** mép thân nó đè qua vạch vào làn ego.
+
+    ``None`` khi nó chưa bao giờ vào làn ego — không có gì để nói về thời điểm
+    của một việc chưa xảy ra.
+    """
+    inside = False
+    for sample in samples:
+        now = EGO_LANE_HALF_WIDTH_M - (abs(sample.lateral_m) - sample.adv_half_width_m) > 0
+        if now and not inside:
+            return sample.longitudinal_m
+        inside = now
+    return None
+
+
+def _from_first_movement(samples: list[Sample]) -> list[Sample]:
+    """Bỏ các tick đầu khi actor còn đứng yên vì kịch bản chưa khởi động.
+
+    Trả rỗng nếu actor **chưa bao giờ** chuyển động — và đó là câu trả lời đúng:
+    tầng chấm điểm sẽ thấy thiếu số liệu tốc độ và trả "chưa chấm được", thay vì
+    nhận một số 0 trông y hệt "xe đã dừng lại" và chấm ĐÚNG cho một kịch bản chưa
+    từng chạy.
+    """
+    for index, sample in enumerate(samples):
+        if sample.adv_speed_ms > MOVING_THRESHOLD_MS:
+            return samples[index:]
+    return []
 
 
 def _crossed_ego_path(samples: list[Sample]) -> bool:

@@ -217,8 +217,16 @@ def intent_verdict(execution: dict) -> bool | None:
     if maneuver == ManeuverType.CUT_IN.value:
         if entered is None:
             return None
-        # Tạt đầu = vượt lên rồi cắt vào. Chạm lúc adversary còn ở phía sau nghĩa
-        # là nó nhập làn sau lưng ego rồi tông đuôi — có va chạm, nhưng sai loại.
+        # Tạt đầu = vượt lên rồi cắt vào **trước mũi** ego.
+        #
+        # Kiểm thời điểm VÀO LÀN, không chỉ kiểm lúc va chạm. Luật cũ chỉ chặn
+        # `contact < 0` (nhập làn sau lưng rồi tông đuôi), nên một cú cắt vào sau
+        # lưng mà không đâm ai thì lọt: `sc_022` vào làn ở -8,25 m sau lưng ego,
+        # khe hở 2,79 m, không va chạm — chấm ĐÚNG trong khi người xem nói "lúc
+        # ego đi qua rồi mới thấy xe máy nó tạt sang".
+        entry = metrics.get("adversary_entry_longitudinal_m")
+        if entry is not None and entry < 0:
+            return False
         if contact is not None and contact < 0:
             return False
         return bool(entered)

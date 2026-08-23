@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -306,3 +307,63 @@ def test_failed_runs_never_carry_trajectory_numbers() -> None:
     ok = runner.attach_trajectory({"success": True, "metrics": {}}, stale, [{"t": 0.0}])
     assert ok["metrics"]["min_distance_m"] == 29.04
     assert len(ok["trajectory"]) == 1
+
+
+def test_speed_metrics_ignore_the_ticks_before_the_scenario_starts_moving() -> None:
+    """Mẫu đầu luôn 0 m/s vì bộ ghi chạy trước khi ScenarioRunner áp tốc độ ban đầu.
+
+    Đo được ngày 23/08/2026: `adversary_min_speed_ms = 0.0` ở **cả 17 lượt chạy**,
+    kể cả `lane_drift` (xe không bao giờ dừng) lẫn `jaywalk` (người đi bộ đi liên
+    tục). Đó không phải một con số hơi lệch — nó làm hai luật chấm thành rỗng
+    nghĩa: `stop_in_lane` hỏi "tốc độ nhỏ nhất <= 0,5?" nên luôn ĐÚNG, còn
+    `sudden_brake` đọc `max - min` thực chất là *tốc độ ban đầu* chứ không phải
+    lượng phanh.
+    """
+    samples = [
+        _sample(0.0, lon=30.0, lat=0.1),   # tick đầu: chưa khởi động
+        _sample(1.0, lon=25.0, lat=0.1),
+        _sample(2.0, lon=20.0, lat=0.1),
+    ]
+    samples[0] = replace(samples[0], adv_speed_ms=0.0)
+    samples[2] = replace(samples[2], adv_speed_ms=12.0)
+
+    metrics = trajectory.summarise(samples)
+
+    assert metrics["adversary_min_speed_ms"] == pytest.approx(12.0), "0 m/s lúc chưa chạy không phải 'đã dừng'"
+    assert metrics["adversary_speed_drop_ms"] == pytest.approx(4.5), "16,5 -> 12,0, không phải 16,5 -> 0"
+
+
+def test_an_actor_that_never_moved_yields_no_speed_metrics() -> None:
+    """Thiếu số còn hơn số bịa: tầng chấm điểm sẽ trả 'chưa chấm được'.
+
+    Nhận một số 0 ở đây thì nó trông y hệt "xe đã dừng lại", và `stop_in_lane`
+    được chấm ĐÚNG cho một kịch bản chưa từng chạy.
+    """
+    frozen = [replace(_sample(t, lon=30.0, lat=0.1), adv_speed_ms=0.0) for t in (0.0, 1.0)]
+
+    metrics = trajectory.summarise(frozen)
+
+    assert "adversary_min_speed_ms" not in metrics
+    assert "adversary_speed_drop_ms" not in metrics
+
+
+def test_lane_entry_records_whether_the_actor_was_ahead_or_behind() -> None:
+    """Phân biệt tạt đầu thật với nhập làn sau lưng rồi bám đuôi.
+
+    `sc_022` vào làn ego ở -8,25 m sau lưng mà không va chạm, nên bộ chặn cũ
+    (chỉ kiểm lúc va chạm) không bao giờ chạy.
+    """
+    samples = [
+        _sample(0.0, lon=-20.0, lat=3.5),   # còn ở làn bên, sau ego
+        _sample(1.0, lon=-8.25, lat=0.5),   # vào làn ego, VẪN SAU LƯNG
+        _sample(2.0, lon=-30.0, lat=0.2),
+    ]
+    metrics = trajectory.summarise(samples)
+    assert metrics["adversary_entry_longitudinal_m"] == pytest.approx(-8.25)
+    assert metrics["adversary_entered_ego_lane"] == 1.0
+
+
+def test_no_lane_entry_metric_when_the_actor_never_came_in() -> None:
+    """Không có gì để nói về thời điểm của một việc chưa xảy ra."""
+    metrics = trajectory.summarise([_sample(t, lon=10.0, lat=3.5) for t in (0.0, 1.0)])
+    assert "adversary_entry_longitudinal_m" not in metrics
