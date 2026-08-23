@@ -612,7 +612,8 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
 
 class RegisterApiRequest(BaseModel):
     username: str
-    name: str
+    name: str | None = None
+    full_name: str | None = None
     email: str
     role: str = "creator"
     password: str | None = None
@@ -627,7 +628,8 @@ class LoginApiRequest(BaseModel):
 
 class UserCreateRequest(BaseModel):
     username: str
-    name: str
+    name: str | None = None
+    full_name: str | None = None
     email: str
     role: str = "creator"
     status: str = "active"
@@ -637,6 +639,7 @@ class UserCreateRequest(BaseModel):
 
 class UserUpdateRequest(BaseModel):
     name: str | None = None
+    full_name: str | None = None
     email: str | None = None
     role: str | None = None
     status: str | None = None
@@ -650,10 +653,11 @@ async def register_user_endpoint(body: RegisterApiRequest) -> dict:
     if existing:
         raise HTTPException(status_code=400, detail="Username đã tồn tại trên hệ thống")
 
+    user_name = body.name or body.full_name or body.username
     status = "pending_approval" if body.role == "reviewer" else "active"
     user = db.create_user(
         username=body.username,
-        name=body.name,
+        name=user_name,
         email=body.email,
         role=body.role,
         status=status,
@@ -790,11 +794,19 @@ async def delete_admin_user_endpoint(username: str) -> dict:
 
 
 @router.post("/admin/users/{username}/approve")
+@router.post("/admin/approve-reviewer/{username}")
 async def approve_reviewer_endpoint(username: str) -> dict:
     user = db.approve_reviewer_request(username)
     if not user:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Reviewer")
-    return {"ok": True, "user": user}
+    return {
+        "ok": True,
+        "status": "success",
+        "message": "Đã phê duyệt và gửi mật khẩu qua email thành công",
+        "user": user,
+        "temp_password_debug": user.get("temp_password"),
+        "email_sent": user.get("email_sent", False),
+    }
 
 
 @router.post("/admin/users/{username}/reject")

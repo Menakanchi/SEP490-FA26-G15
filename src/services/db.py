@@ -97,7 +97,30 @@ def init_db() -> None:
             {"new_status": ScenarioStatus.PENDING_SIM_REVIEW.value},
         )
     _migrate_description_normalized(engine)
+    _migrate_users_table(engine)
     _seed_default_users()
+
+
+def _migrate_users_table(engine) -> None:
+    """Đảm bảo bảng users và các cột bắt buộc tồn tại trong database."""
+    from src.services.persistence import users as users_table
+
+    with engine.begin() as conn:
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        if "users" not in tables:
+            users_table.create(conn)
+            return
+
+        columns = [c["name"] for c in inspector.get_columns("users")]
+        if "reason" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN reason TEXT"))
+        if "password_hash" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+        if "status" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN status VARCHAR(50) DEFAULT 'active'"))
+        if "role" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'creator'"))
 
 
 _NORMALIZED_TABLES = ("scenarios", "generation_requests")
@@ -937,60 +960,59 @@ def generate_temp_password(length: int = 10) -> str:
 
 
 def _seed_default_users() -> None:
+    now_str = datetime.now(UTC).isoformat()
+    admin_pass_hash = hash_password("admin123")
+    creator_pass_hash = hash_password("creator123")
+
+    default_users = [
+        ("admin", "Hệ Thống Admin", "admin@forge.ai", "admin", "active", None, admin_pass_hash, now_str, now_str),
+        (
+            "creator",
+            "Kỹ sư Kịch bản",
+            "creator@forge.ai",
+            "creator",
+            "active",
+            None,
+            creator_pass_hash,
+            now_str,
+            now_str,
+        ),
+        (
+            "reviewer_pending",
+            "Trần Văn Reviewer",
+            "reviewer_pending@company.com",
+            "reviewer",
+            "pending_approval",
+            "Kỹ sư mô phỏng VinFast ADAS",
+            None,
+            now_str,
+            now_str,
+        ),
+    ]
+
     with _cursor(commit=True) as cursor:
-        cursor.execute("SELECT COUNT(*) AS cnt FROM users")
-        row = cursor.fetchone()
-        if row and row["cnt"] > 0:
-            return
-
-        now_str = datetime.now(UTC).isoformat()
-        admin_pass_hash = hash_password("admin123")
-        creator_pass_hash = hash_password("creator123")
-
-        default_users = [
-            ("admin", "Hệ Thống Admin", "admin@forge.ai", "admin", "active", None, admin_pass_hash, now_str, now_str),
-            (
-                "creator",
-                "Kỹ sư Kịch bản",
-                "creator@forge.ai",
-                "creator",
-                "active",
-                None,
-                creator_pass_hash,
-                now_str,
-                now_str,
-            ),
-            (
-                "reviewer_pending",
-                "Trần Văn Reviewer",
-                "reviewer_pending@company.com",
-                "reviewer",
-                "pending_approval",
-                "Kỹ sư mô phỏng VinFast ADAS",
-                None,
-                now_str,
-                now_str,
-            ),
-        ]
-
-        cursor.executemany(
-            """
-            INSERT INTO users (username, name, email, role, status, reason, password_hash, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            default_users,
-        )
+        for u in default_users:
+            cursor.execute(
+                """
+                INSERT INTO users (username, name, email, role, status, reason, password_hash, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(username) DO NOTHING
+                """,
+                u,
+            )
 
 
 def create_user(
     username: str,
-    name: str,
-    email: str,
+    name: str | None = None,
+    email: str = "",
     role: str = "creator",
     status: str = "active",
     reason: str | None = None,
     password: str | None = None,
+    full_name: str | None = None,
 ) -> dict:
+    real_name = name or full_name or username
     now_str = datetime.now(UTC).isoformat()
     pw_hash = hash_password(password) if password else None
 
@@ -1000,7 +1022,7 @@ def create_user(
             INSERT INTO users (username, name, email, role, status, reason, password_hash, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (username, name, email, role, status, reason, pw_hash, now_str, now_str),
+            (username, real_name, email, role, status, reason, pw_hash, now_str, now_str),
         )
     return get_user(username)  # type: ignore[return-value]
 
@@ -1104,15 +1126,22 @@ def approve_reviewer_request(username: str) -> dict | None:
             (pw_hash, now_str, username),
         )
 
-    # Log email service sending credentials to reviewer
-    logger.info(
-        f"[EMAIL SERVICE] Sent login credentials to {u['email']} ({u['name']}): Username: {u['username']}, Temp Password: {temp_password}"
+    from src.services.email_service import send_approval_email
+
+    recipient_email = u.get("email") or f"{u['username']}@company.com"
+    recipient_name = u.get("name") or u.get("username") or "Reviewer"
+
+    sent_via_smtp = send_approval_email(
+        to_email=recipient_email,
+        recipient_name=recipient_name,
+        username=u["username"],
+        temp_password=temp_password,
     )
 
     user_dict = get_user(username)
     if user_dict:
         user_dict["temp_password"] = temp_password
-        user_dict["email_sent"] = True
+        user_dict["email_sent"] = sent_via_smtp
     return user_dict
 
 

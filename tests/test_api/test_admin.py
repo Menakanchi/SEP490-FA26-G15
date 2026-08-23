@@ -83,3 +83,29 @@ async def test_admin_stats_and_crud(client):
     del_res = await client.delete("/api/v1/admin/users/new_creator")
     assert del_res.status_code == 200
     assert del_res.json()["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_reviewer_registration_with_full_name_payload(client):
+    """Test đăng ký Reviewer sử dụng full_name thay vì name, kiểm tra hiển thị trong pending-reviewers."""
+    reg_res = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "full_name": "Ngô Chi",
+            "username": "adf",
+            "email": "ngochiine@gmail.com",
+            "reason": "Kỹ sư mô phỏng VinFast",
+            "role": "reviewer",
+        },
+    )
+    assert reg_res.status_code == 200
+    assert reg_res.json()["status"] == "pending_approval"
+    assert reg_res.json()["user"]["username"] == "adf"
+    assert reg_res.json()["user"]["name"] == "Ngô Chi"
+
+    # Check pending reviewers API
+    pending_res = await client.get("/api/v1/admin/pending-reviewers")
+    assert pending_res.status_code == 200
+    pending_list = pending_res.json()
+    usernames = [u["username"] for u in pending_list]
+    assert "adf" in usernames

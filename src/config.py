@@ -37,7 +37,14 @@ class Settings(BaseSettings):
     # Không có setting nào cho vector store, và đó là quyết định chứ không phải
     # thiếu sót: ADR-013 chốt embedding nằm cùng `database_url` dưới dạng BLOB,
     # xếp hạng bằng cosine của numpy. Không có service riêng để cấu hình.
-    # (`chroma_persist_dir` của template đã bỏ từ ADR-003.)
+    # SMTP Email
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_name: str = "Scenario Forge ADAS"
+    smtp_from_email: str = "noreply@scenarioforge.ai"
+    smtp_use_tls: bool = True
 
 
 @lru_cache
