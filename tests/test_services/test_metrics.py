@@ -242,20 +242,33 @@ def test_l4_judges_jaywalk_by_crossing_not_by_lane_offset() -> None:
 
 
 def test_l4_judges_wrong_way_by_heading_and_proximity() -> None:
-    """Ngược hướng thôi chưa đủ — xe đỗ quay đầu bên lề cũng ngược hướng."""
-    oncoming = _execution("wrong_way", adversary_heading_delta_deg=178.0, min_distance_m=0.6)
-    parked_facing_back = _execution("wrong_way", adversary_heading_delta_deg=176.0, min_distance_m=40.0)
-    same_direction = _execution("wrong_way", adversary_heading_delta_deg=4.0, min_distance_m=0.5)
+    """Ngược hướng thôi chưa đủ — xe phải tiến tới gần và bám đúng làn."""
+    oncoming = _execution(
+        "wrong_way", adversary_heading_delta_deg=178.0, adversary_lane_deviation_m=0.19, min_distance_m=0.6
+    )
+    parked_facing_back = _execution(
+        "wrong_way", adversary_heading_delta_deg=176.0, adversary_lane_deviation_m=0.1, min_distance_m=40.0
+    )
+    same_direction = _execution(
+        "wrong_way", adversary_heading_delta_deg=4.0, adversary_lane_deviation_m=0.1, min_distance_m=0.5
+    )
+    crossed_into_guardrail = _execution(
+        "wrong_way", adversary_heading_delta_deg=180.0, adversary_lane_deviation_m=1.75, min_distance_m=0.4
+    )
 
     assert metrics.intent_verdict(oncoming) is True
     assert metrics.intent_verdict(parked_facing_back) is False
     assert metrics.intent_verdict(same_direction) is False
+    assert metrics.intent_verdict(crossed_into_guardrail) is False
 
 
 def test_l4_still_returns_none_when_the_new_signals_are_missing() -> None:
     """Lượt chạy bởi worker cũ không có hai tín hiệu này — chưa chấm, không phải trượt."""
     assert metrics.intent_verdict(_execution("jaywalk", min_distance_m=0.4)) is None
     assert metrics.intent_verdict(_execution("wrong_way", min_distance_m=0.4)) is None
+    assert (
+        metrics.intent_verdict(_execution("wrong_way", adversary_heading_delta_deg=180.0, min_distance_m=0.4)) is None
+    )
 
 
 def test_failed_runs_are_never_judged_for_intent() -> None:

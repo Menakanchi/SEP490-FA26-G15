@@ -50,6 +50,16 @@ SPEED_DROP_MS = 2.0
 OPPOSING_HEADING_DEG = 150.0
 """Lệch hướng bao nhiêu độ thì coi là đi ngược chiều. Giữ khớp với worker."""
 
+WRONG_WAY_MAX_LANE_DEVIATION_M = 1.0
+"""Xe đi ngược chiều vẫn phải bám trong làn, không được lao theo tiếp tuyến.
+
+Người xem phát hiện ngày 24/08/2026: các bản ``sc_038``–``sc_041`` quay đúng
+180° và có lúc tới gần ego, nhưng actor lệch tim làn 1,75–3,01 m rồi cắt ngang
+vào hộ lan. Hai bản có route tường minh ``sc_042``/``sc_043`` chỉ lệch lần lượt
+0,188/0,194 m. Ngưỡng 1 m tách hai nhóm bằng khoảng trống lớn và còn chặt hơn
+nửa bề rộng làn 1,75 m.
+"""
+
 STOPPED_MS = 0.5
 """Dưới ngưỡng này coi như đã dừng hẳn."""
 
@@ -257,13 +267,20 @@ def intent_verdict(execution: dict) -> bool | None:
         return bool(crossed) and near is not None and near < NEAR_MISS_M
 
     if maneuver == ManeuverType.WRONG_WAY.value:
-        # Đi ngược chiều = hướng xe ngược với ego VÀ tiến về phía ego. Chỉ ngược
-        # hướng thôi chưa đủ: một xe đỗ quay đầu bên lề cũng ngược hướng.
+        # Đi ngược chiều = hướng xe ngược với ego, tiến về phía ego VÀ bám đúng
+        # làn. Chỉ ngược hướng thôi chưa đủ: một xe đỗ quay đầu bên lề cũng ngược
+        # hướng; chỉ tới gần cũng chưa đủ nếu nó cắt ngang rồi đâm hộ lan.
         heading = metrics.get("adversary_heading_delta_deg")
-        if heading is None:
+        lane_deviation = metrics.get("adversary_lane_deviation_m")
+        if heading is None or lane_deviation is None:
             return None
         near = metrics.get("min_distance_m")
-        return heading >= OPPOSING_HEADING_DEG and near is not None and near < NEAR_MISS_M
+        return (
+            heading >= OPPOSING_HEADING_DEG
+            and lane_deviation <= WRONG_WAY_MAX_LANE_DEVIATION_M
+            and near is not None
+            and near < NEAR_MISS_M
+        )
 
     # run_red_light cần tín hiệu riêng (người đi bộ sang
     # được bên kia đường; xe đi ngược chiều dòng; xe vượt vạch lúc đèn đỏ) mà
