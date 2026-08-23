@@ -370,6 +370,26 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
             actor = draft.actors[actor_idx]
             position = actor.position
 
+            # run_red_light dùng position 0/0 như một khoá hình học: converter
+            # đặt actor lên approach vuông góc đã đo trong template. Cho LLM
+            # dịch lane/s ở đây từng khiến hai xe chạy cùng làn và không tạo
+            # xung đột, dù nhãn vẫn ghi "vượt đèn đỏ".
+            if m.maneuver == "run_red_light" and (position.lane_offset != 0 or abs(position.s_offset_m) > 1e-6):
+                issues.append(
+                    ValidationIssue(
+                        code=IssueCode.GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH,
+                        path=f"/actors/{actor_idx}/position",
+                        message_vi=(
+                            f"{actor.name} có position lane_offset={position.lane_offset}, "
+                            f"s_offset_m={position.s_offset_m}; cấu hình này không chọn approach cắt ngang đèn đỏ."
+                        ),
+                        suggestion=(
+                            f"Đặt đồng thời /actors/{actor_idx}/position/lane_offset = 0 và "
+                            f"/actors/{actor_idx}/position/s_offset_m = 0 để dùng approach vuông góc đã đo."
+                        ),
+                    )
+                )
+
             if m.maneuver == "jaywalk" and jaywalk_starts_in_ego_lane(actor):
                 issues.append(
                     ValidationIssue(

@@ -62,11 +62,25 @@
             </Environment>
           </EnvironmentAction>
         </GlobalAction>
+        <GlobalAction>
+          <InfrastructureAction>
+            <TrafficSignalAction>
+              <TrafficSignalStateAction name="id=122" state="RED" />
+            </TrafficSignalAction>
+          </InfrastructureAction>
+        </GlobalAction>
+        <GlobalAction>
+          <InfrastructureAction>
+            <TrafficSignalAction>
+              <TrafficSignalStateAction name="id=118" state="GREEN" />
+            </TrafficSignalAction>
+          </InfrastructureAction>
+        </GlobalAction>
         <Private entityRef="hero">
           <PrivateAction>
             <TeleportAction>
               <Position>
-                <WorldPosition x="-510.7297" y="-177.54" z="0.3" h="-1.577036" />
+                <WorldPosition x="217.04" y="169.42" z="0.3" h="-0.005236" />
               </Position>
             </TeleportAction>
           </PrivateAction>
@@ -85,7 +99,7 @@
           <PrivateAction>
             <TeleportAction>
               <Position>
-                <RelativeLanePosition entityRef="hero" dLane="1" ds="20" offset="0" />
+                <WorldPosition x="258.31" y="130.86" z="0.3" h="1.567306" />
               </Position>
             </TeleportAction>
           </PrivateAction>
@@ -208,11 +222,6 @@
         <Condition name="criteria_MaxVelocityTest" delay="0" conditionEdge="rising">
           <ByValueCondition>
             <ParameterCondition parameterRef="max_velocity_allowed" value="30" rule="lessThan" />
-          </ByValueCondition>
-        </Condition>
-        <Condition name="criteria_RunningRedLightTest" delay="0" conditionEdge="rising">
-          <ByValueCondition>
-            <ParameterCondition parameterRef="" value="" rule="lessThan" />
           </ByValueCondition>
         </Condition>
       </ConditionGroup>

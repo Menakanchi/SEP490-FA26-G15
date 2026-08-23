@@ -7,11 +7,12 @@ bằng CARLA ScenarioRunner trước khi đưa vào thư viện.
 > Trạng thái ngày 24/08/2026: đường đi đầy đủ đã chạy — bảy node, converter,
 > retrieval, hai cổng review, frontend, campaign ODD, behavior checker và GPU
 > worker CARLA. Báo cáo M1/M2/M3 được tính trực tiếp từ dữ liệu thực thi. Phạm
-> vi converter hiện là 72/560 ô ODD — sáu maneuver cho ba loại xe trên
-> `highway`; `jaywalk` đã được loại khỏi phạm vi vì không phù hợp anchor Town04
+> vi converter hiện là 72/560 ô ODD — năm maneuver xe trên anchor `highway` và
+> `run_red_light` trên anchor `urban_straight`, cho ba loại xe qua bốn kiểu thời
+> tiết; `jaywalk` đã được loại khỏi phạm vi vì không phù hợp anchor Town04
 > ([ADR-016](docs/adr/ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md)).
-> Phần nâng cao còn thiếu là closed-loop với mô hình lái và anchor bản đồ thứ
-> hai. Xem [báo cáo đánh giá](eval/results/report.md).
+> Sáu oracle L4 trong phạm vi đều đã có. Phần nâng cao còn thiếu là closed-loop
+> với mô hình lái. Xem [báo cáo đánh giá](eval/results/report.md).
 
 ## Input và output
 

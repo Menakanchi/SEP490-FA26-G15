@@ -211,6 +211,53 @@ async def test_negative_simulation_time_is_generic_schema_error(valid_draft: Sce
     assert issue.suggestion == "Đặt /maneuvers/0/trigger/value lớn hơn 0.0."
 
 
+def _run_red_light_draft(valid_draft: ScenarioDraft, *, lane_offset: int, s_offset_m: float) -> ScenarioDraft:
+    draft = valid_draft.model_dump()
+    draft["odd"]["road_type"] = RoadType.URBAN_STRAIGHT
+    draft["odd"]["maneuver"] = ManeuverType.RUN_RED_LIGHT
+    draft["actors"][1]["position"] = {"lane_offset": lane_offset, "s_offset_m": s_offset_m}
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.RUN_RED_LIGHT
+    draft["maneuvers"][0]["trigger"] = {"type": "simulation_time", "value": 1.0}
+    draft["maneuvers"][0]["target_speed_kmh"] = 30.0
+    return ScenarioDraft.model_validate(draft)
+
+
+@pytest.mark.asyncio
+async def test_run_red_light_must_select_the_measured_crossing_approach(valid_draft: ScenarioDraft) -> None:
+    result = await validate_node(
+        {
+            "draft": _run_red_light_draft(valid_draft, lane_offset=1, s_offset_m=-10.0),
+            "odd_query": ODDQuery(
+                road_type=RoadType.URBAN_STRAIGHT,
+                actor_type=ActorType.CAR,
+                maneuver=ManeuverType.RUN_RED_LIGHT,
+            ),
+        }
+    )
+
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH)
+    assert issue.path == "/actors/1/position"
+    assert issue.repairable_by_llm
+    assert "lane_offset = 0" in issue.suggestion
+    assert "s_offset_m = 0" in issue.suggestion
+
+
+@pytest.mark.asyncio
+async def test_run_red_light_accepts_the_measured_crossing_approach(valid_draft: ScenarioDraft) -> None:
+    result = await validate_node(
+        {
+            "draft": _run_red_light_draft(valid_draft, lane_offset=0, s_offset_m=0.0),
+            "odd_query": ODDQuery(
+                road_type=RoadType.URBAN_STRAIGHT,
+                actor_type=ActorType.CAR,
+                maneuver=ManeuverType.RUN_RED_LIGHT,
+            ),
+        }
+    )
+
+    assert IssueCode.GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH not in [i.code for i in result["issues"]]
+
+
 @pytest.mark.asyncio
 async def test_lane_offset_implausible(valid_draft: ScenarioDraft) -> None:
     draft = valid_draft.model_dump()

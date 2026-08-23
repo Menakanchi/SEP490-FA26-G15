@@ -7,8 +7,9 @@
 ## 1. Phạm vi đo
 
 - Simulator: CARLA 0.9.15 + ScenarioRunner 0.9.15, Town04.
-- Phạm vi converter: `highway`, 3 loại xe (`car`, `motorcycle`, `truck`),
-  6 maneuver và 4 thời tiết = **72 ô hỗ trợ**.
+- Phạm vi converter: 5 maneuver xe trên anchor `highway` và
+  `run_red_light` trên anchor `urban_straight`, cùng 3 loại xe
+  (`car`, `motorcycle`, `truck`) × 4 thời tiết = **72 ô hỗ trợ**.
 - `jaywalk` không nằm trong phạm vi highway: tình huống không hợp lý trên anchor
   này và `AcquirePositionAction` định tuyến dọc làn thay vì băng ngang.
 - Một execution `success=true` chỉ có nghĩa ScenarioRunner chạy hết. L4 mới trả
@@ -19,21 +20,21 @@
 | Mức | Định nghĩa | Kết quả |
 |---|---|---:|
 | L1 | Request sinh được draft qua schema và validate | **25/34 = 73,53%** |
-| L2 | Scenario trong scope biên dịch được `.xosc` | **27/27 = 100%** |
-| L3 | ScenarioRunner chạy hết, không crash/timeout | **26/28 = 92,86%** |
-| L4 | Quỹ đạo CARLA tái hiện đúng maneuver | **12/26 = 46,15%** |
+| L2 | Scenario trong scope biên dịch được `.xosc` | **31/31 = 100%** |
+| L3 | ScenarioRunner chạy hết, không crash/timeout | **30/32 = 93,75%** |
+| L4 | Quỹ đạo CARLA tái hiện đúng maneuver | **16/30 = 53,33%** |
 
 Hai lượt L3 chưa chấm được ở L4 được báo riêng, không tính thành sai. L4 hiện có
-oracle cho `cut_in`, `lane_drift`, `sudden_brake`, `stop_in_lane` và
-`wrong_way`; `run_red_light` còn thiếu tín hiệu đèn chuyên biệt.
+oracle cho đủ 6 maneuver trong phạm vi: `cut_in`, `lane_drift`, `sudden_brake`,
+`stop_in_lane`, `wrong_way` và `run_red_light`.
 
 ## 3. Kết quả M2 — độ phủ ODD
 
 | Cách đo | Kết quả |
 |---|---:|
-| Phủ toàn phần trong phạm vi converter | **10/72 = 13,89%** |
-| Phủ theo cặp trục khả thi | **40/67 = 59,70%** |
-| Ô có dữ liệu ở mọi scope | 13/560 |
+| Phủ toàn phần trong phạm vi converter | **12/72 = 16,67%** |
+| Phủ theo cặp trục khả thi | **50/74 = 67,57%** |
+| Ô có dữ liệu ở mọi scope | 15/560 |
 
 Phủ toàn phần trả lời đã thử bao nhiêu tổ hợp hoàn chỉnh. Phủ theo cặp trả lời đã
 thử bao nhiêu tương tác hai yếu tố; hai số không thay thế nhau.
@@ -42,13 +43,13 @@ thử bao nhiêu tương tác hai yếu tố; hai số không thay thế nhau.
 
 | Kết quả lần chạy mới nhất | Số lượng |
 |---|---:|
-| Có va chạm | 10 |
+| Có va chạm | 12 |
 | Suýt va chạm, khe hở < 1 m | 7 |
-| Không dựng được nguy hiểm | 9 |
-| Tổng lượt chạy được | 26 |
+| Không dựng được nguy hiểm | 11 |
+| Tổng lượt chạy được | 30 |
 
-Tỷ lệ kích hoạt nguy hiểm: **17/26 = 65,38%**. Collision riêng là
-**10/26 = 38,46%**. `lane_drift` chủ đích dựng near-miss nên không thể chỉ dùng
+Tỷ lệ kích hoạt nguy hiểm: **19/30 = 63,33%**. Collision riêng là
+**12/30 = 40,00%**. `lane_drift` chủ đích dựng near-miss nên không thể chỉ dùng
 `CollisionTest` làm M3.
 
 ## 5. Bằng chứng sửa `cut_in`
@@ -93,10 +94,32 @@ Cả hai đã được duyệt vào thư viện. Oracle `wrong_way` cũng đư�
 heading ≥150° và khe hở <1 m, actor phải lệch tim làn không quá 1 m. Vì vậy bốn
 lượt cũ lao vào hộ lan không còn bị chấm nhầm là đúng ý định.
 
-## 7. Đối chiếu nhãn người
+## 7. Bằng chứng `run_red_light` cắt ngang đường ego
 
-Sau khi ghi thêm xác nhận cho hai `wrong_way`, behavior checker khớp người chấm
-**8/11 = 72,73%**. Ba bất đồng còn lại là dữ liệu cần điều tra, không bị che:
+Anchor highway không có đèn trong tầm dùng được: đèn gần nhất cách 211,8 m,
+trong khi đoạn tiến chỉ tới +40 m. Vì vậy `run_red_light` được chuyển sang anchor
+`urban_straight` đã đo trên Town04: ego đi theo đèn xanh `id=118`, adversary từ
+approach vuông góc vượt đèn đỏ `id=122`, hai quỹ đạo cắt nhau quanh
+CARLA `(258, -169)`.
+
+Hai bản hiệu chuẩn cùng làn `sc_044`/`sc_045` bị từ chối vì có vượt đèn đỏ nhưng
+không tạo xung đột với ego. Hai bản cuối dùng đúng giao cắt:
+
+| Scenario | Actor | Qua đèn đỏ | Chạm ego | Khe hở nhỏ nhất | Người xem |
+|---|---|---:|---:|---:|---|
+| `sc_046` | car | 3,983 s | 5,361 s | 0,000 m | đúng |
+| `sc_047` | truck | 4,140 s | 5,451 s | 0,000 m | đúng |
+
+Worker theo dõi trạng thái đèn của adversary và chỉ ghi
+`adversary_ran_red_light=true` khi xe qua vạch lúc đèn vẫn đỏ; chờ tới xanh rồi
+đi không được chấm là vượt đèn đỏ. Không dùng `RunningRedLightTest` mặc định của
+ScenarioRunner vì criterion đó gắn vào ego, trong khi maneuver thuộc adversary.
+Cả hai bản cuối đã được người xem xác nhận và duyệt vào thư viện.
+
+## 8. Đối chiếu nhãn người
+
+Sau khi ghi thêm xác nhận cho hai `run_red_light`, behavior checker khớp người
+chấm **10/13 = 76,92%**. Ba bất đồng còn lại là dữ liệu cần điều tra, không bị che:
 
 - `sc_018`: người đúng, máy sai.
 - `sc_023`: người đúng, máy sai sau khi sửa biểu diễn thời tiết.
@@ -105,18 +128,17 @@ Sau khi ghi thêm xác nhận cho hai `wrong_way`, behavior checker khớp ngư�
 Nhãn `unsure` không vào mẫu số. Phán quyết máy không được gửi trước cho người
 chấm để tránh bias.
 
-## 8. Giới hạn và việc tiếp theo
+## 9. Giới hạn và việc tiếp theo
 
-1. Thêm oracle thực thi cho `run_red_light`.
-2. Mở rộng nhãn người trên từng maneuver, không chỉ các case lỗi đã biết.
-3. Tổng hợp cost/request và p50/p95 latency; log hiện mới ở cấp lần gọi.
-4. Backend cần enforce token/role cho review, không chỉ phân vai trên frontend.
-5. Closed-loop với mô hình lái chưa có; ego hiện là điều kiện đối chứng giữ tốc
+1. Mở rộng nhãn người trên từng maneuver, không chỉ các case lỗi đã biết.
+2. Tổng hợp cost/request và p50/p95 latency; log hiện mới ở cấp lần gọi.
+3. Backend cần enforce token/role cho review, không chỉ phân vai trên frontend.
+4. Closed-loop với mô hình lái chưa có; ego hiện là điều kiện đối chứng giữ tốc
    độ cố định.
-6. Anchor thứ hai chỉ được thêm sau khi đo tầm dọc, mặt cắt ngang và chạy thật
-   từng maneuver.
+5. Chỉ mở thêm maneuver/road type khi đã đo hình học và chạy thật trên anchor
+   tương ứng; hiện anchor đô thị chỉ cam kết cho `run_red_light`.
 
-## 9. Cách tái tạo snapshot
+## 10. Cách tái tạo snapshot
 
 ```bash
 curl http://127.0.0.1:8000/api/v1/metrics/quality

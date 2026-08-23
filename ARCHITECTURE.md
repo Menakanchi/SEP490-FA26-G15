@@ -266,6 +266,17 @@ actor; dùng `routeStrategy="shortest"` để ScenarioRunner giữ nguyên thứ
 tuyến. Hai lượt CARLA cuối (`sc_042`, `sc_043`) lệch tim làn tối đa 0,188/0,194 m
 và đã được người xem xác nhận đúng.
 
+**24/08 — `run_red_light` cần một giao cắt thật, không chỉ một đèn đỏ.** Đèn gần
+anchor highway nhất cách 211,8 m, ngoài tầm tiến +40 m, nên đổi nhãn hoặc đặt xe
+cùng làn không thể tạo đúng tình huống. Catalog hiện có thêm anchor đô thị
+Town04 đã đo: ego theo đèn xanh `id=118`, adversary đi từ approach vuông góc qua
+đèn đỏ `id=122`, hai quỹ đạo cắt nhau quanh `(258, -169)`. Converter đặt actor
+bằng `WorldPosition` của approach này và validator yêu cầu position 0/0 như khoá
+chọn hình học. Worker chỉ chấm đúng khi adversary qua vạch lúc tín hiệu của chính
+nó vẫn đỏ; criterion `RunningRedLightTest` mặc định không dùng vì ScenarioRunner
+gắn nó vào ego. `sc_046`/`sc_047` đều vượt đỏ, va chạm với ego, được xem trực
+tiếp và duyệt vào thư viện.
+
 ## Ego baseline
 
 Trong mọi kịch bản, ego nhận **đúng một lệnh tốc độ ban đầu** rồi giữ nguyên:
@@ -368,7 +379,7 @@ Thuật toán explore/exploit chưa chốt.
 | CARLA/ScenarioRunner smoke test | ✅ Toolchain pass |
 | Graph 7 nodes | ✅ Đủ 7 node, đã nối trong `build_forge_graph()`; `POST /generate` chạy graph thật, không còn stub |
 | Static validator (`validate_node`) | ✅ Có — schema, invariants, static geometry |
-| Templates và converter (`convert_xosc`) | ✅ Có — 1 anchor Town04, 6 maneuver cho 3 loại xe qua 4 thời tiết = 72 ô; `jaywalk` đã loại khỏi highway; golden validate theo XSD (ADR-016) |
+| Templates và converter (`convert_xosc`) | ✅ Có — 2 anchor Town04: 5 maneuver xe trên highway + `run_red_light` trên urban, cho 3 loại xe qua 4 thời tiết = 72 ô; `jaywalk` đã loại khỏi highway; golden validate theo XSD (ADR-016) |
 | `parse_intent` | ✅ Có — rule-based theo `taxonomy_rules.json` trước, LLM chỉ chạy khi rule thiếu trục bắt buộc |
 | `Retriever` (SQLite BLOB + cosine) | ✅ Có — `WHERE` bốn trục ODD + cosine numpy; retrieval baseline bằng số thật thì chưa |
 | SQLite persistence | ✅ Có — `ScenarioRepository` (SQLAlchemy Core) là nguồn schema duy nhất |
@@ -380,8 +391,8 @@ Thuật toán explore/exploit chưa chốt.
 | Log + ước lượng chi phí LLM | ✅ Có — `call_with_escalation` ghi model, latency, token và cost mỗi lần gọi |
 | Chặn câu hỏi trùng ở lối vào | ✅ Có — chuẩn hoá NFC + exact match trước LLM (ADR-015) |
 | Campaign ODD + batch CARLA | ✅ Có — sinh theo ô hỗ trợ, batch review, worker queue và dashboard M1/M2/M3 |
-| Anchor map thứ hai | ⏳ Chưa — phạm vi converter còn đúng 72/560 ô, chỉ `highway` (ADR-016) |
-| Behavior checker (Phase 3) | ◐ Có 5/6 oracle trong phạm vi; còn thiếu `run_red_light` |
+| Anchor hình học thứ hai | ✅ Có — approach giao cắt đô thị Town04 đã đo và chỉ cam kết cho `run_red_light` (ADR-016) |
+| Behavior checker (Phase 3) | ✅ Có đủ 6/6 oracle trong phạm vi; tiếp tục mở rộng nhãn người |
 | Agent layer + closed-loop (Phase 4) | ◐ Campaign batch đã có; chưa có feedback explore/exploit và mô hình lái |
 | Evaluation report bằng số thật | ✅ Có snapshot M1/M2/M3, nhãn người và kết quả CARLA trong `eval/results/report.md` |
 

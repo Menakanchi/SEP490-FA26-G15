@@ -282,9 +282,11 @@ def intent_verdict(execution: dict) -> bool | None:
             and near < NEAR_MISS_M
         )
 
-    # run_red_light cần tín hiệu riêng (người đi bộ sang
-    # được bên kia đường; xe đi ngược chiều dòng; xe vượt vạch lúc đèn đỏ) mà
-    # bốn số hiện có không nói lên được. Chưa chấm còn hơn chấm bừa.
+    if maneuver == ManeuverType.RUN_RED_LIGHT.value:
+        ran_red = metrics.get("adversary_ran_red_light")
+        return None if ran_red is None else bool(ran_red)
+
+    # Maneuver mới chưa có tín hiệu chuyên biệt thì chưa chấm còn hơn chấm bừa.
     return None
 
 
