@@ -568,16 +568,20 @@ export default function AdminDashboardPage() {
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
                         {u.status === "active" ? (
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">
-                            Active
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 dark:bg-green-950/60 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800">
+                            🟢 Active
+                          </span>
+                        ) : u.status === "inactive" ? (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
+                            🔴 Inactive (Đã Khóa)
                           </span>
                         ) : u.status === "pending_approval" || u.status === "pending" ? (
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                            Chờ duyệt
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                            🟡 Chờ duyệt
                           </span>
                         ) : (
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200">
-                            {u.status || "Inactive"}
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                            ⚪ {u.status || "Inactive"}
                           </span>
                         )}
                       </td>
@@ -743,12 +747,16 @@ export default function AdminDashboardPage() {
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as UserStatus })}
-                    className="w-full px-3.5 py-2 bg-sky-50/40 dark:bg-slate-800 border border-sky-200 dark:border-slate-700 rounded-xl text-xs text-[#0f2d59] dark:text-slate-100"
+                    className="w-full px-3.5 py-2 bg-sky-50/40 dark:bg-slate-800 border border-sky-200 dark:border-slate-700 rounded-xl text-xs text-[#0f2d59] dark:text-slate-100 font-semibold"
                   >
-                    <option value="active">Active (Hoạt động)</option>
-                    <option value="pending_approval">Pending (Chờ duyệt)</option>
-                    <option value="inactive">Inactive (Khóa)</option>
-                    <option value="rejected">Rejected (Từ chối)</option>
+                    <option value="active">🟢 Active (Hoạt động)</option>
+                    <option value="inactive">🔴 Inactive (Khóa / Vô hiệu hóa)</option>
+                    {editUser && (editUser.status === "pending_approval" || editUser.status === "pending") && (
+                      <option value={editUser.status}>🟡 Pending (Chờ duyệt)</option>
+                    )}
+                    {editUser && editUser.status === "rejected" && (
+                      <option value="rejected">⚪ Rejected (Từ chối)</option>
+                    )}
                   </select>
                 </div>
               </div>
