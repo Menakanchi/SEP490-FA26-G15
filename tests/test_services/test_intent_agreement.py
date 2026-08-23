@@ -96,3 +96,16 @@ def test_the_latest_label_per_person_wins() -> None:
 
     assert report["agreement"] == 1.0
     assert report["human_conflicts"] == 0
+
+
+def test_executions_are_not_filtered_by_odd_scope() -> None:
+    """Hàng execution không mang bốn trục ODD — lọc theo phạm vi ở đây là loại sạch.
+
+    Lỗi đo được ngày 23/08/2026: `intent_agreement` gọi `_in_scope(e)` trên hàng
+    execution, mà hàng đó chỉ có `scenario_id`, `maneuver`, `result`. Kết quả:
+    9 nhãn người đã chấm mà báo cáo ra "khớp 0/0".
+    """
+    bare = {"scenario_id": "sc_a", "maneuver": "cut_in", "result": {"success": True, "metrics": {
+        "adversary_entered_ego_lane": 1.0, "min_distance_m": 0.4, "contact_longitudinal_m": 4.8}}}
+    report = intent_agreement([bare], [_label("sc_a", "correct")])
+    assert report["scored"] == 1, "không có trục ODD không phải lý do bỏ qua"
