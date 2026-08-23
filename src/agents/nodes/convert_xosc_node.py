@@ -344,8 +344,25 @@ def _add_jaywalk_action(
     routing = ET.SubElement(parent, "RoutingAction")
     acquire = ET.SubElement(routing, "AcquirePositionAction")
     position = ET.SubElement(acquire, "Position")
-    # Đích nằm ở phía đối diện chỗ xuất phát: người đi bộ băng ngang qua ego.
-    _relative_lane_position(position, actor, template, lane_offset=-actor.position.lane_offset)
+    _relative_lane_position(
+        position, actor, template, lane_offset=_far_shoulder_offset(actor, template)
+    )
+
+
+def _far_shoulder_offset(actor: ActorSpec, template: ScenarioTemplate) -> int:
+    """``lane_offset`` của lề bên kia đường — đích thật sự của người băng đường.
+
+    Cách cũ lấy đích bằng ``-lane_offset``. Nó ngầm giả định ego nằm giữa mặt
+    cắt ngang, mà điều đó **sai**: đo trên anchor Town04 thì hai lề nằm ở
+    ``lane_offset`` +1 và -2, không đối xứng. Nên người đi bộ xuất phát ở lề (+1)
+    lại đi tới -1 và **dừng giữa làn xe chạy** — nhìn ra ngay là vô lý, và cũng
+    không phải "băng qua đường" theo bất kỳ nghĩa nào.
+
+    Chọn lề xa hơn so với chỗ xuất phát, để đường đi cắt qua toàn bộ phần xe
+    chạy — kể cả làn ego.
+    """
+    start = actor.position.lane_offset
+    return max(template.shoulder_lane_offsets, key=lambda offset: abs(start - offset))
 
 
 def _add_wrong_way_action(parent: ET.Element, actor: ActorSpec, template: ScenarioTemplate) -> None:

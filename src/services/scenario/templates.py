@@ -35,6 +35,27 @@ class ScenarioTemplate:
     không nhắc gì tới khoảng cách.
     """
 
+    shoulder_lane_offsets: tuple[int, int]
+    """``lane_offset`` của hai lề đường, theo thứ tự (phải ego, trái ego).
+
+    Người đi bộ phải **đứng ở lề rồi băng sang lề bên kia**. Không có mặt cắt
+    ngang này thì code chỉ còn cách đoán, và cách đoán cũ — lấy đích bằng cách
+    đảo dấu ``lane_offset`` — đặt người đi bộ dừng **giữa làn xe chạy**, vì ego
+    không nằm giữa mặt cắt.
+
+    Đo trên CARLA ngày 23/08/2026 bằng ``get_left_lane``/``get_right_lane`` từ
+    anchor (road 23, lane -3):
+
+        lane -1  Shoulder   <- lane_offset -2
+        lane -2  Driving       lane_offset -1
+        lane -3  Driving       ego
+        lane -4  Shoulder   <- lane_offset +1
+
+    Chỉ **hai** làn xe chạy, hai bên là lề. Quan hệ là ``lane_id = ego_lane_id -
+    lane_offset`` với anchor lane_id âm, nên hai lề lệch nhau **không đối xứng**:
+    +1 và -2, không phải ±1.
+    """
+
 
 TOWN04_ROAD_41_MANEUVERS = frozenset(
     {
@@ -67,6 +88,10 @@ _TOWN04_ANCHOR = EgoSpawn(
 # còn hai kịch bản đặt actor ở +120 m đều chết ở bước spawn.
 _TOWN04_REACH_M = (-120.0, 40.0)
 
+# Đo cùng ngày 23/08 bằng get_left_lane/get_right_lane từ anchor: lề nằm ở
+# lane -4 (lane_offset +1) và lane -1 (lane_offset -2). Xem ScenarioTemplate.
+_TOWN04_SHOULDERS = (1, -2)
+
 TEMPLATE_CATALOG: dict[RoadType, ScenarioTemplate] = {
     RoadType.HIGHWAY: ScenarioTemplate(
         map_name="Town04",
@@ -74,6 +99,7 @@ TEMPLATE_CATALOG: dict[RoadType, ScenarioTemplate] = {
         supported_maneuvers=TOWN04_ROAD_41_MANEUVERS,
         ego_spawn=_TOWN04_ANCHOR,
         s_offset_reach_m=_TOWN04_REACH_M,
+        shoulder_lane_offsets=_TOWN04_SHOULDERS,
     ),
     RoadType.URBAN_STRAIGHT: ScenarioTemplate(
         map_name="Town04",
@@ -81,6 +107,7 @@ TEMPLATE_CATALOG: dict[RoadType, ScenarioTemplate] = {
         supported_maneuvers=TOWN04_ROAD_41_MANEUVERS,
         ego_spawn=_TOWN04_ANCHOR,
         s_offset_reach_m=_TOWN04_REACH_M,
+        shoulder_lane_offsets=_TOWN04_SHOULDERS,
     ),
 }
 

@@ -30,6 +30,7 @@ from src.models.schemas import (
     Weather,
 )
 from src.services.scenario import templates
+from src.services.scenario.templates import get_template
 
 ROOT = Path(__file__).parents[2]
 GOLDENS = ROOT / "fixtures" / "xosc" / "generated"
@@ -420,3 +421,25 @@ def test_actor_inside_the_anchor_reach_still_converts() -> None:
     data = make_spec(ManeuverType.SUDDEN_BRAKE).model_dump()
     data["actors"][1]["position"]["s_offset_m"] = 35.0
     assert convert_spec_to_xosc(ScenarioSpec.model_validate(data)).startswith("<?xml")
+
+
+def test_jaywalk_crosses_the_road_and_ends_on_the_far_shoulder() -> None:
+    """Băng qua đường là đi từ lề này sang lề kia, không phải dừng giữa làn xe chạy.
+
+    Cách cũ lấy đích bằng ``-lane_offset``, ngầm giả định ego nằm giữa mặt cắt
+    ngang. Đo trên anchor Town04 thì sai: hai lề ở ``lane_offset`` +1 và -2, nên
+    người xuất phát ở lề +1 lại đi tới -1 — **giữa làn xe chạy**.
+    """
+    spec = make_spec(ManeuverType.JAYWALK)
+    shoulders = get_template(spec.odd.road_type).shoulder_lane_offsets
+    start = spec.actors[1].position.lane_offset
+
+    root = ET.fromstring(convert_spec_to_xosc(spec))
+    target = root.find(".//AcquirePositionAction/Position/RelativeLanePosition")
+    assert target is not None
+    # dLane đã nhân lane_sign, nên quy ngược về lane_offset để so với mặt cắt.
+    lane_sign = 1 if get_template(spec.odd.road_type).ego_spawn.lane_id > 0 else -1
+    destination = int(target.get("dLane")) * lane_sign
+
+    assert destination in shoulders, "đích phải là lề đường"
+    assert (destination > 0) != (start > 0), "đường đi phải cắt qua làn ego"
