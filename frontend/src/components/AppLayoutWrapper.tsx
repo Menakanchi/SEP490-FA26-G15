@@ -5,9 +5,12 @@ import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { useAuth } from "@/context/AuthContext";
 
+import { useSidebar } from "@/context/SidebarContext";
+
 export function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isAuthenticated } = useAuth();
+  const { isCollapsed } = useSidebar();
 
   // Ẩn Sidebar trên các trang độc lập hoặc khi chưa đăng nhập tại trang chủ
   const isStandalonePage =
@@ -27,7 +30,11 @@ export function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
   return (
     <>
       <Sidebar />
-      <main className="flex-1 ml-[260px] min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+      <main
+        className={`flex-1 ${
+          isCollapsed ? "ml-[72px]" : "ml-[260px]"
+        } min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-all duration-300 ease-in-out`}
+      >
         {children}
       </main>
     </>
