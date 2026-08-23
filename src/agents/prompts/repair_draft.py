@@ -56,21 +56,21 @@ Chỉ đổi s_offset_m thành âm mà để nguyên tốc độ chậm hơn ego
 **Draft đã sửa:**
 - trigger.value: 5.0 (phải NHỎ HƠN duration_s, không phải bằng)
 
-### Ví dụ 3: GEOM_CUTIN_BEFORE_OVERTAKE / GEOM_DRIFT_AFTER_PASS — lỗi THỜI ĐIỂM
+### Ví dụ 3: TRIGGER_CUTIN_NOT_POSITIONAL — cut_in phải theo VỊ TRÍ
 
-Hai lỗi này không nằm ở vị trí hay tốc độ, mà ở **giây bắt đầu maneuver**.
-`suggestion` đã tính sẵn con số cho bạn — **chép đúng số đó**, đừng tự tính lại.
+Tốc độ ghi trong spec là lệnh, không bảo đảm tốc độ thật. Vì vậy không được suy
+vị trí vượt lên từ số giây; hãy kích hoạt trực tiếp theo mét dẫn trước.
 
 **Draft bị lỗi:**
 - adv: s_offset_m -25.0, initial_speed_kmh 80.0; ego 60.0 km/h
-- maneuvers[0].trigger.value: 2.0
-- suggestion: "Đặt /maneuvers/0/trigger/value = 6.0 (hai xe đi ngang nhau ở giây 4.5; phải tạt SAU đó)"
+- maneuvers[0].trigger: {{"type": "simulation_time", "value": 6.0}}
+- suggestion: "Đặt trigger = {{'type': 'lead_distance', 'value': 7.0}}"
 
-**Draft đã sửa — đổi ĐÚNG một trường:**
-- maneuvers[0].trigger.value: 6.0
+**Draft đã sửa:**
+- maneuvers[0].trigger: {{"type": "lead_distance", "value": 7.0}}
 
-Giữ nguyên s_offset_m và cả hai tốc độ. Đổi thêm chúng là đổi kịch bản thành một
-kịch bản khác, và lần validate sau lại ra lỗi mới.
+Giữ nguyên s_offset_m và cả hai tốc độ. `lead_distance` dùng đơn vị mét và phải
+>= 7 m để actor vượt đủ một thân xe trước khi tạt.
 
 Vì sao quan trọng: tạt đầu khi chủ thể **còn ở sau** ego thì nó nhập làn sau lưng
 ego rồi đâm vào đuôi. Vẫn có va chạm, nên criteria vẫn báo "tìm được nguy hiểm" —

@@ -113,6 +113,11 @@ Dựa trên quan hệ chuyển động, mỗi maneuver có ràng buộc hình h�
 ### distance_to_ego
 - Kích hoạt khi cách ego X mét
 
+### lead_distance
+- Chỉ dùng cho `cut_in`
+- Kích hoạt khi chủ thể đã ở PHÍA TRƯỚC ego X mét; dùng tối thiểu 7 m
+- Không đổi nó sang giây: tốc độ thực trên CARLA có thể lệch tốc độ ghi trong spec
+
 ---
 
 ## VỀ THỜI GIAN
@@ -151,7 +156,7 @@ Dựa trên quan hệ chuyển động, mỗi maneuver có ràng buộc hình h�
     {"name": "adversary", "category": "motorcycle", "position": {"lane_offset": -1, "s_offset_m": -25.0}, "initial_speed_kmh": 80.0, "is_ego": false}
   ],
   "maneuvers": [
-    {"actor_name": "adversary", "maneuver": "cut_in", "trigger": {"type": "simulation_time", "value": 7.0}, "target_speed_kmh": 40.0}
+    {"actor_name": "adversary", "maneuver": "cut_in", "trigger": {"type": "lead_distance", "value": 7.0}, "target_speed_kmh": 40.0}
   ],
   "duration_s": 30.0
 }

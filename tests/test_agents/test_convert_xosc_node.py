@@ -46,7 +46,7 @@ SUPPORTED_MANEUVERS = (
 def make_spec(
     maneuver: ManeuverType,
     *,
-    trigger_type: str = "simulation_time",
+    trigger_type: str | None = None,
     title: str = "Generated scenario",
 ) -> ScenarioSpec:
     pedestrian = maneuver is ManeuverType.JAYWALK
@@ -56,11 +56,10 @@ def make_spec(
     is_lane_drift = maneuver is ManeuverType.LANE_DRIFT
     actor_s_offset = -25 if is_cut_in else (-15 if is_lane_drift else 20)
     actor_speed = 50 if is_cut_in else (40 if is_lane_drift else (0 if pedestrian else 20))
-    # cut_in phải bắn SAU lúc hai xe đi ngang nhau (25 m / 5,56 m/s = 4,5 s), nếu
-    # không adversary nhập làn ở sau lưng ego rồi tông đuôi — đo được trên CARLA
-    # 22/08 với trigger 2,0: va chạm lúc adversary còn sau ego 4,56 m.
-    # Xem `cut_in_trigger_before_overtake`.
-    trigger_value = 6 if is_cut_in else (5 if is_lane_drift else 2)
+    # cut_in bắn theo vị trí thật: actor phải dẫn trước đủ 7 m. Không suy vị trí
+    # từ tốc độ lệnh, vì số đo sc_021/sc_022 cho thấy tốc độ thật lệch đáng kể.
+    trigger_type = trigger_type or ("lead_distance" if is_cut_in else "simulation_time")
+    trigger_value = 7 if is_cut_in else (5 if is_lane_drift else 2)
     target_speed = (
         20
         if is_cut_in
@@ -342,6 +341,22 @@ def test_both_trigger_types_map_correctly(trigger_type: str, xpath: str) -> None
     root = ET.fromstring(convert_spec_to_xosc(make_spec(ManeuverType.SUDDEN_BRAKE, trigger_type=trigger_type)))
     trigger = root.find(xpath)
     assert trigger is not None and trigger.get("value") == "2"
+
+
+def test_cut_in_trigger_tracks_a_position_ahead_of_the_moving_ego() -> None:
+    root = ET.fromstring(convert_spec_to_xosc(make_spec(ManeuverType.CUT_IN)))
+    reach = root.find(".//Event/StartTrigger//ReachPositionCondition")
+    assert reach is not None and reach.get("tolerance") == "2.5"
+    position = reach.find("./Position/RelativeLanePosition")
+    assert position is not None
+    assert position.attrib == {
+        "entityRef": "hero",
+        "dLane": "1",
+        "ds": "9.5",
+        "offset": "0",
+    }
+    triggering = root.find(".//Event/StartTrigger//TriggeringEntities/EntityRef")
+    assert triggering is not None and triggering.get("entityRef") == "other"
 
 
 def test_actor_controlled_xml_attributes_are_escaped() -> None:

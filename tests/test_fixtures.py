@@ -231,16 +231,9 @@ def test_cut_in_geometry_actually_produces_a_cut_in() -> None:
     assert adv.position.s_offset_m < 0, "chủ thể phải xuất phát PHÍA SAU ego"
     assert adv.initial_speed_kmh > ego.initial_speed_kmh, "phải nhanh hơn thì mới vượt lên được"
 
-    closing_ms = (adv.initial_speed_kmh - ego.initial_speed_kmh) / 3.6
     trigger = spec.maneuvers[0].trigger
-    assert trigger.type == "simulation_time"
-
-    lead_at_trigger_m = closing_ms * trigger.value + adv.position.s_offset_m
-    assert lead_at_trigger_m > 5.0, (
-        f"lúc trigger bắn, chủ thể mới ở {lead_at_trigger_m:.1f}m so với ego — "
-        "phải đã vượt lên trước thì tạt đầu mới có nghĩa"
-    )
-    assert trigger.value < spec.duration_s, "trigger phải bắn trước khi hết giờ"
+    assert trigger.type == "lead_distance"
+    assert trigger.value >= 7.0, "trigger phải bắn khi actor đã vượt đủ một thân xe"
 
     # Lỗi thứ hai đã mắc: tạt đầu xong vẫn giữ tốc độ cao hơn ego. Khoảng cách
     # nới rộng ra, không thể có va chạm — kịch bản "thành công" mà vô hại.
@@ -251,12 +244,14 @@ def test_cut_in_geometry_actually_produces_a_cut_in() -> None:
         "thì xe máy chạy xa dần — không bao giờ va chạm"
     )
 
-    # Va chạm phải xảy ra trước khi hết giờ, nếu không kịch bản vô nghĩa.
+    # Sau khi trigger bắn, ego phải thu hẹp được chính khoảng dẫn trước đó trong
+    # thời lượng còn lại. Thời điểm trigger do CARLA quyết định nên không suy từ
+    # tốc độ lệnh ở đây nữa.
     reclosing_ms = (ego.initial_speed_kmh - after) / 3.6
-    t_collision = trigger.value + lead_at_trigger_m / reclosing_ms
-    assert t_collision < spec.duration_s, (
-        f"va chạm rơi vào giây {t_collision:.1f} nhưng kịch bản chỉ dài "
-        f"{spec.duration_s}s — kéo dài duration hoặc phanh sâu hơn"
+    seconds_after_trigger = trigger.value / reclosing_ms
+    assert seconds_after_trigger < spec.duration_s, (
+        f"sau trigger còn cần {seconds_after_trigger:.1f}s mới khép hết khoảng dẫn trước, "
+        f"nhưng kịch bản chỉ dài {spec.duration_s}s"
     )
 
 
@@ -376,7 +371,7 @@ def test_invalid_fixtures_cover_every_validate_issue_code() -> None:
         IssueCode.ODD_LABEL_DRIFT,
         IssueCode.GEOM_NO_CATCHUP,
         IssueCode.GEOM_NO_COLLISION_AFTER_CUTIN,
-        IssueCode.TRIGGER_DISTANCE_UNSIGNED,
+        IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL,
         IssueCode.LANE_OFFSET_IMPLAUSIBLE,
     }
     covered = {IssueCode(code) for path in _invalid_drafts() for code in _invalid(path)["expected_codes"]}

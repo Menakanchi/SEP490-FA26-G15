@@ -20,16 +20,21 @@ from src.models.schemas import (
     Weather,
 )
 from src.services.scenario.geometry import (
+    MIN_CUT_IN_LEAD_M,
     actor_beyond_anchor_reach,
     cut_in_cannot_catch_up,
+    cut_in_lead_too_short,
     cut_in_never_slows_down,
     cut_in_starts_in_ego_lane,
-    cut_in_trigger_is_unsigned,
+    cut_in_trigger_is_not_positional,
 )
 from src.services.scenario.templates import ScenarioTemplate, get_template
 
 DETERMINISTIC_XOSC_DATE = "2026-07-29"
 """Stable fixture date; ScenarioSpec intentionally has no calendar-date field."""
+
+CUT_IN_REACH_TOLERANCE_M = 2.5
+"""Bán kính trigger vị trí; converter bù để sự kiện bắn đúng ``lead_distance``."""
 
 _GLOBAL_PARAMETERS: tuple[tuple[str, str, str], ...] = (
     ("distance_success", "double", "50"),
@@ -54,6 +59,7 @@ def _relative_lane_position(
     template: ScenarioTemplate,
     *,
     lane_offset: int | None = None,
+    s_offset_m: float | None = None,
 ) -> ET.Element:
     """``<RelativeLanePosition>`` cho một actor, theo hệ làn của template.
 
@@ -74,7 +80,7 @@ def _relative_lane_position(
         "RelativeLanePosition",
         entityRef="hero",
         dLane=str(offset * lane_sign),
-        ds=_number(actor.position.s_offset_m),
+        ds=_number(actor.position.s_offset_m if s_offset_m is None else s_offset_m),
         offset="0",
     )
 
@@ -279,6 +285,7 @@ Giữ 0,4 như cũ thì mất 3,7 s — dài hơn cửa sổ hai xe còn ở g�
 kịch bản, nên hành vi không kịp xảy ra.
 """
 
+
 def _lane_drift(parent: ET.Element, actor: ActorSpec) -> None:
     """Partially invade the ego side without completing a lane change."""
     lateral = ET.SubElement(parent, "LateralAction")
@@ -344,7 +351,12 @@ def _assert_catalog_consistent(template: ScenarioTemplate, maneuver: ManeuverTyp
         )
 
 
-def _add_trigger(parent: ET.Element, m: ManeuverSpec) -> None:
+def _add_trigger(
+    parent: ET.Element,
+    m: ManeuverSpec,
+    actor: ActorSpec,
+    template: ScenarioTemplate,
+) -> None:
     condition = _condition(parent, f"trigger_{m.maneuver.value}")
     if m.trigger.type == "distance_to_ego":
         by_entity = ET.SubElement(condition, "ByEntityCondition")
@@ -359,6 +371,29 @@ def _add_trigger(parent: ET.Element, m: ManeuverSpec) -> None:
             value=_number(m.trigger.value),
             freespace="true",
             rule="lessThan",
+        )
+    elif m.trigger.type == "lead_distance":
+        by_entity = ET.SubElement(condition, "ByEntityCondition")
+        entities = ET.SubElement(by_entity, "TriggeringEntities", triggeringEntitiesRule="any")
+        ET.SubElement(entities, "EntityRef", entityRef=actor.name)
+        entity_condition = ET.SubElement(by_entity, "EntityCondition")
+        reach = ET.SubElement(
+            entity_condition,
+            "ReachPositionCondition",
+            tolerance=_number(CUT_IN_REACH_TOLERANCE_M),
+        )
+        position = ET.SubElement(reach, "Position")
+
+        # ReachPositionCondition bắn khi actor đi vào hình cầu tolerance. Actor
+        # vượt từ phía sau tiếp cận biên dưới, nên đặt tâm xa hơn đúng tolerance;
+        # actor vốn ở trước và bị ego đuổi tiếp cận biên trên, nên bù ngược lại.
+        direction = 1.0 if actor.position.s_offset_m < m.trigger.value else -1.0
+        target_lead_m = m.trigger.value + direction * CUT_IN_REACH_TOLERANCE_M
+        _relative_lane_position(
+            position,
+            actor,
+            template,
+            s_offset_m=target_lead_m,
         )
     else:
         by_value = ET.SubElement(condition, "ByValueCondition")
@@ -426,9 +461,7 @@ def _add_jaywalk_action(
     routing = ET.SubElement(parent, "RoutingAction")
     acquire = ET.SubElement(routing, "AcquirePositionAction")
     position = ET.SubElement(acquire, "Position")
-    _relative_lane_position(
-        position, actor, template, lane_offset=_far_shoulder_offset(actor, template)
-    )
+    _relative_lane_position(position, actor, template, lane_offset=_far_shoulder_offset(actor, template))
 
 
 def _far_shoulder_offset(actor: ActorSpec, template: ScenarioTemplate) -> int:
@@ -664,10 +697,15 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
             # Cùng bốn vị từ mà validate_node dùng — xem
             # ``services/scenario/geometry.py``. Tới đây thì không repair được
             # nữa, nên chúng là lỗi cứng thay vì ValidationIssue.
-            if cut_in_trigger_is_unsigned(maneuver):
+            if cut_in_trigger_is_not_positional(maneuver):
                 raise ConversionError(
                     IssueCode.CONVERTER_ERROR,
-                    "cut_in requires simulation_time because RelativeDistanceCondition is unsigned",
+                    "cut_in requires lead_distance so it starts only after the actor is ahead of ego",
+                )
+            if cut_in_lead_too_short(maneuver):
+                raise ConversionError(
+                    IssueCode.CONVERTER_ERROR,
+                    f"cut_in lead_distance must be at least {MIN_CUT_IN_LEAD_M} m",
                 )
             if cut_in_cannot_catch_up(actor, ego):
                 raise ConversionError(
@@ -736,7 +774,12 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
             actors_by_name[maneuver.actor_name],
             template,
         )
-        _add_trigger(ET.SubElement(event, "StartTrigger"), maneuver)
+        _add_trigger(
+            ET.SubElement(event, "StartTrigger"),
+            maneuver,
+            actors_by_name[maneuver.actor_name],
+            template,
+        )
         if maneuver.maneuver is ManeuverType.CUT_IN:
             _add_cut_in_slowdown(maneuver_el, index, maneuver)
         _add_hold_open_event(maneuver_el, index, actors_by_name[maneuver.actor_name], spec.duration_s)

@@ -105,7 +105,13 @@ def test_executions_are_not_filtered_by_odd_scope() -> None:
     execution, mà hàng đó chỉ có `scenario_id`, `maneuver`, `result`. Kết quả:
     9 nhãn người đã chấm mà báo cáo ra "khớp 0/0".
     """
-    bare = {"scenario_id": "sc_a", "maneuver": "cut_in", "result": {"success": True, "metrics": {
-        "adversary_entered_ego_lane": 1.0, "min_distance_m": 0.4, "contact_longitudinal_m": 4.8}}}
+    bare = {
+        "scenario_id": "sc_a",
+        "maneuver": "cut_in",
+        "result": {
+            "success": True,
+            "metrics": {"adversary_entered_ego_lane": 1.0, "min_distance_m": 0.4, "contact_longitudinal_m": 4.8},
+        },
+    }
     report = intent_agreement([bare], [_label("sc_a", "correct")])
     assert report["scored"] == 1, "không có trục ODD không phải lý do bỏ qua"

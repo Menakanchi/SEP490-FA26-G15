@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from pydantic import ValidationError
@@ -9,12 +8,11 @@ from src.agents.state import ForgeState
 from src.models.schemas import IssueCode, ODDQuery, ScenarioDraft, ValidationIssue
 from src.services.scenario.geometry import (
     MIN_CUT_IN_LEAD_M,
-    closing_speed_ms,
     cut_in_cannot_catch_up,
+    cut_in_lead_too_short,
     cut_in_never_slows_down,
     cut_in_starts_in_ego_lane,
-    cut_in_trigger_before_overtake,
-    cut_in_trigger_is_unsigned,
+    cut_in_trigger_is_not_positional,
     jaywalk_effective_gap_m,
     jaywalk_max_ego_speed_kmh,
     jaywalk_required_trigger_m,
@@ -74,27 +72,6 @@ def _jaywalk_suggestion(index: int, actor_idx: int, maneuver, actor, ego, requir
         f"và /maneuvers/{index}/trigger/value = {round(required)}. "
         f"Trigger rộng hơn khoảng cách xuất phát thì vô nghĩa — nó bắn ngay giây 0."
     )
-
-
-def _later_than(alongside_s: float, closing_ms: float = 0.0) -> float:
-    """Mốc trigger SAU lúc hai xe ngang nhau, đủ để chủ thể vượt hẳn ``MIN_CUT_IN_LEAD_M``.
-
-    Trả số cụ thể chứ không trả lời khuyên: model chép được một con số, còn phép
-    chia thì nó bỏ qua.
-
-    **Phải tính theo tốc độ tiếp cận, không cộng cứng một hằng số.** Bản trước
-    cộng 1,5 giây bất kể hai xe khép lại nhanh hay chậm. Với ``sc_022`` (tiếp cận
-    3,33 m/s) nó ra 6,6 + 1,5 = 8,1 -> làm tròn **8,0** — đúng bằng giá trị đang
-    sai, và chỉ cho 4,67 m dẫn trước trong khi ngưỡng là 7,0 m. Vòng repair chép
-    lại con số cũ rồi báo đã sửa xong.
-
-    Hệ số 1,2 là biên: tạt đúng ngưỡng thì chỉ cần một chút sai lệch tốc độ thực
-    tế là rơi lại dưới ngưỡng. Làm tròn **lên** nửa giây, cùng lý do.
-    """
-    if closing_ms <= 0:
-        return round((alongside_s + 1.5) * 2) / 2
-    needed = alongside_s + (MIN_CUT_IN_LEAD_M * 1.2) / closing_ms
-    return math.ceil(needed * 2) / 2
 
 
 def _earlier_than(alongside_s: float) -> float:
@@ -498,32 +475,36 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                         )
                     )
 
-                if cut_in_trigger_before_overtake(m, actor, ego):
-                    alongside_s = time_until_alongside(actor, ego) or 0.0
+                if cut_in_trigger_is_not_positional(m):
                     issues.append(
                         ValidationIssue(
-                            code=IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE,
-                            path=f"/maneuvers/{i}/trigger/value",
+                            code=IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL,
+                            path=f"/maneuvers/{i}/trigger/type",
                             message_vi=(
-                                f"{actor.name} tạt vào làn ego ở giây {m.trigger.value} nhưng lúc đó nó vẫn ở "
-                                f"phía sau ego, nên sẽ đâm vào đuôi ego thay vì tạt đầu."
+                                "cut_in không được kích hoạt theo thời gian hoặc khoảng cách vô hướng: "
+                                "tốc độ thực trên CARLA có thể lệch tốc độ lệnh, nên actor vẫn có thể ở sau ego."
                             ),
                             suggestion=(
-                                f"Đặt /maneuvers/{i}/trigger/value = "
-                                f"{_later_than(alongside_s, closing_speed_ms(actor, ego))} "
-                                f"(hai xe đi ngang nhau ở giây {alongside_s:.1f}; phải tạt SAU đó), "
-                                f"hoặc giảm /actors/{actor_idx}/position/s_offset_m để nó vượt lên sớm hơn."
+                                f"Đặt /maneuvers/{i}/trigger = "
+                                f"{{'type': 'lead_distance', 'value': {MIN_CUT_IN_LEAD_M}}} để chỉ tạt "
+                                "khi actor đã ở trước ego đủ một thân xe."
                             ),
                         )
                     )
 
-                if cut_in_trigger_is_unsigned(m):
+                if cut_in_lead_too_short(m):
                     issues.append(
                         ValidationIssue(
-                            code=IssueCode.TRIGGER_DISTANCE_UNSIGNED,
-                            path=f"/maneuvers/{i}/trigger/type",
-                            message_vi="cut_in không được dùng distance_to_ego vì khoảng cách không phân biệt trước/sau.",
-                            suggestion="Dùng trigger.type='simulation_time' để actor vượt hẳn lên trước ego rồi mới tạt vào.",
+                            code=IssueCode.GEOM_CUTIN_LEAD_TOO_SHORT,
+                            path=f"/maneuvers/{i}/trigger/value",
+                            message_vi=(
+                                f"{actor.name} chỉ dẫn trước {m.trigger.value}m khi bắt đầu tạt; "
+                                f"cần ít nhất {MIN_CUT_IN_LEAD_M}m để không cắt vào sườn hoặc đuôi ego."
+                            ),
+                            suggestion=(
+                                f"Đặt /maneuvers/{i}/trigger/value >= {MIN_CUT_IN_LEAD_M}; "
+                                "giá trị này là mét dẫn trước ego, không phải giây."
+                            ),
                         )
                     )
                 collision_reasons: list[str] = []

@@ -100,7 +100,7 @@ def _cut_in_draft() -> ScenarioDraft:
                 {
                     "actor_name": "adv",
                     "maneuver": "cut_in",
-                    "trigger": {"type": "simulation_time", "value": 7.0},
+                    "trigger": {"type": "lead_distance", "value": 7.0},
                     "target_speed_kmh": 40.0,
                 }
             ],

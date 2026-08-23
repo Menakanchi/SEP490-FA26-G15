@@ -57,14 +57,15 @@ def cut_in_never_slows_down(maneuver: ManeuverSpec, actor: ActorSpec, ego: Actor
     return post_speed >= ego.initial_speed_kmh
 
 
-def cut_in_trigger_is_unsigned(maneuver: ManeuverSpec) -> bool:
-    """Trigger dùng khoảng cách, mà khoảng cách không phân biệt trước/sau ego.
+def cut_in_trigger_is_not_positional(maneuver: ManeuverSpec) -> bool:
+    """Cut-in phải bắn theo vị trí dẫn trước, không theo đồng hồ hay khoảng cách vô hướng.
 
-    ``RelativeDistanceCondition`` trả trị tuyệt đối, nên nó bắn ngay lúc chủ thể
-    còn **đằng sau** ego — tạt đầu vào khoảng không. Phải dùng
-    ``simulation_time`` để nó vượt hẳn lên rồi mới tạt.
+    Tốc độ trong spec là lệnh, không phải bảo đảm. Dùng ``simulation_time`` suy
+    ra vị trí từ tốc độ lệnh đã làm sc_021/sc_022 tạt khi actor còn ở phía sau.
+    ``distance_to_ego`` cũng không dùng được vì ``RelativeDistanceCondition``
+    không phân biệt trước/sau.
     """
-    return maneuver.trigger.type != "simulation_time"
+    return maneuver.trigger.type != "lead_distance"
 
 
 def time_until_alongside(actor: ActorSpec, ego: ActorSpec) -> float | None:
@@ -139,57 +140,13 @@ thân xe thì theo định nghĩa là cắt ngang sườn, không phải cắt t
 """
 
 
-def closing_speed_ms(actor: ActorSpec, ego: ActorSpec) -> float:
-    """Bản công khai của :func:`_closing_speed_ms`, cho tầng validate dựng gợi ý."""
-    return _closing_speed_ms(actor, ego)
+def cut_in_lead_too_short(maneuver: ManeuverSpec) -> bool:
+    """Khoảng dẫn trước nhỏ hơn một thân xe cộng biên an toàn.
 
-
-def _closing_speed_ms(actor: ActorSpec, ego: ActorSpec) -> float:
-    """Tốc độ thu hẹp khoảng cách dọc, m/s. Luôn dương ở nhánh gọi nó."""
-    return abs(actor.initial_speed_kmh - ego.initial_speed_kmh) / 3.6
-
-
-def cut_in_trigger_before_overtake(maneuver: ManeuverSpec, actor: ActorSpec, ego: ActorSpec) -> bool:
-    """Tạt đầu trước khi kịp vượt lên, nên nhập vào làn ego ở PHÍA SAU ego.
-
-    ``cut_in`` là tạt **đầu**: chủ thể phải vượt qua ego rồi mới cắt vào làn. Nếu
-    trigger bắn lúc nó còn phía sau, nó nhập làn sau lưng ego và — vì đang chạy
-    nhanh hơn — đâm thẳng vào đuôi ego. Va chạm vẫn xảy ra, nên ``CollisionTest``
-    vẫn báo "tìm được nguy hiểm"; chỉ là sai loại nguy hiểm so với câu người dùng
-    gõ. Không phép đo nào ở tầng criteria phân biệt được hai thứ đó.
-
-    Đo trên CARLA 22/08 với golden ``cut_in`` (adversary sau ego 25 m, 50 km/h so
-    với ego 30 km/h, đi ngang nhau ở giây 4,5, trigger đặt ở giây 2,0): va chạm ở
-    giây 4,72 với adversary nằm **sau ego 4,56 m**, và ego bị đẩy từ 8,4 lên
-    11,6 m/s. Tông đuôi, không phải tạt đầu.
-
-    Ngưỡng dùng lại :func:`_time_until_alongside` — cùng số học với
-    :func:`lane_drift_trigger_too_late`, chỉ ngược dấu bất đẳng thức: lane_drift
-    cần lệch **trước** lúc ngang nhau, cut_in cần cắt **sau** lúc đó.
-
-    Chỉ xét trigger ``simulation_time``; ``distance_to_ego`` đã bị
-    :func:`cut_in_trigger_is_unsigned` chặn từ trước vì lý do liên quan.
+    Chỉ xét ``lead_distance``; trigger sai loại được báo riêng. Khác phép kiểm cũ,
+    vị từ này không suy vị trí từ tốc độ trong spec.
     """
-    if maneuver.trigger.type != "simulation_time":
-        return False
-    alongside_s = time_until_alongside(actor, ego)
-    if alongside_s is None:
-        return False
-
-    # Vượt qua thôi chưa đủ — phải vượt **đủ xa**. Thứ quyết định không phải biên
-    # thời gian mà là khoảng cách đã vượt lên được lúc bắt đầu tạt: dưới một thân
-    # xe thì nó cắt vào ngay sườn ego chứ không phải trước mũi.
-    #
-    # Bốn kịch bản cut_in chạy thật ngày 22/08, sắp theo khoảng vượt lúc trigger:
-    #
-    #   sc_022  4,67 m  -> tông đuôi ego (contact_longitudinal âm)
-    #   sc_021  5,05 m  -> tông đuôi ego
-    #   sc_011  8,33 m  -> tạt đầu đúng ý
-    #   sc_012 13,89 m  -> tạt đầu đúng ý
-    #
-    # Hai cụm tách bạch quanh một thân xe (~4,5 m) cộng khoảng an toàn.
-    lead_m = (maneuver.trigger.value - alongside_s) * _closing_speed_ms(actor, ego)
-    return lead_m < MIN_CUT_IN_LEAD_M
+    return maneuver.trigger.type == "lead_distance" and maneuver.trigger.value < MIN_CUT_IN_LEAD_M
 
 
 def jaywalk_starts_in_ego_lane(actor: ActorSpec) -> bool:
@@ -221,6 +178,7 @@ def jaywalk_starts_on_carriageway(actor: ActorSpec, shoulder_offsets: tuple[int,
     thuần hình học, không biết gì về map.
     """
     return actor.position.lane_offset not in shoulder_offsets
+
 
 LANE_WIDTH_M = 3.5
 """Bề rộng một làn. Dùng để quy độ lệch làn ra quãng đường người đi bộ phải bước."""
@@ -261,9 +219,9 @@ def jaywalk_trigger_too_close(maneuver: ManeuverSpec, actor: ActorSpec, ego: Act
     hai bên chưa bao giờ ở gần nhau.
 
     Cần ego còn cách ~51 m lúc đó. Đây là cùng một họ lỗi với
-    :func:`lane_drift_trigger_too_late` và :func:`cut_in_trigger_before_overtake`
-    — hành vi xảy ra sai thời điểm — chỉ khác là ``jaywalk`` kích hoạt theo
-    **khoảng cách** nên phép tính đi theo đường khác.
+    :func:`lane_drift_trigger_too_late` — hành vi xảy ra sai thời điểm — chỉ
+    khác là ``jaywalk`` kích hoạt theo **khoảng cách** nên phép tính đi theo
+    đường khác.
 
     Ngưỡng nới 30%: chưa tính thời gian phản ứng của bộ điều khiển và độ trễ khi
     người đi bộ bắt đầu bước, nên chặn sát quá sẽ loại nhầm kịch bản dùng được.

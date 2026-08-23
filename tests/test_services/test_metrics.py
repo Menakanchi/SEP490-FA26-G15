@@ -55,9 +55,7 @@ def test_l4_rejects_a_drift_that_met_nobody() -> None:
 
 
 def test_l4_accepts_a_drift_that_actually_grazed_the_ego() -> None:
-    assert (
-        metrics.intent_verdict(_execution("lane_drift", adversary_entered_ego_lane=1.0, min_distance_m=0.36)) is True
-    )
+    assert metrics.intent_verdict(_execution("lane_drift", adversary_entered_ego_lane=1.0, min_distance_m=0.36)) is True
 
 
 def test_l4_returns_none_for_maneuvers_without_a_rule_yet() -> None:
@@ -290,9 +288,7 @@ def test_l4_rejects_a_drift_that_never_crossed_into_the_ego_lane() -> None:
     Người đúng — câu mô tả hứa "lấn làn đè vạch sang làn giữa". Luật cũ hỏi "có
     nhúc nhích sang ngang không"; câu phải hỏi là "có cắt qua vạch không".
     """
-    verdict = metrics.intent_verdict(
-        _execution("lane_drift", adversary_entered_ego_lane=0.0, min_distance_m=0.682)
-    )
+    verdict = metrics.intent_verdict(_execution("lane_drift", adversary_entered_ego_lane=0.0, min_distance_m=0.682))
     assert verdict is False
 
 
