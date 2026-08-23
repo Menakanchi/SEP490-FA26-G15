@@ -85,7 +85,9 @@
           <PrivateAction>
             <TeleportAction>
               <Position>
-                <RelativeLanePosition entityRef="hero" dLane="1" ds="20" offset="0" />
+                <RelativeLanePosition entityRef="hero" dLane="1" ds="20" offset="0">
+                  <Orientation h="3.141593" p="0" r="0" type="relative" />
+                </RelativeLanePosition>
               </Position>
             </TeleportAction>
           </PrivateAction>
@@ -114,13 +116,14 @@
             <Event name="event_0_wrong_way" priority="overwrite">
               <Action name="action_0_wrong_way">
                 <PrivateAction>
-                  <TeleportAction>
-                    <Position>
-                      <RelativeLanePosition entityRef="hero" dLane="1" ds="20" offset="0">
-                        <Orientation h="3.141593" p="0" r="0" type="relative" />
-                      </RelativeLanePosition>
-                    </Position>
-                  </TeleportAction>
+                  <LongitudinalAction>
+                    <SpeedAction>
+                      <SpeedActionDynamics dynamicsShape="step" value="0" dynamicsDimension="time" />
+                      <SpeedActionTarget>
+                        <AbsoluteTargetSpeed value="2.777778" />
+                      </SpeedActionTarget>
+                    </SpeedAction>
+                  </LongitudinalAction>
                 </PrivateAction>
               </Action>
               <StartTrigger>

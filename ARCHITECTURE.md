@@ -360,21 +360,22 @@ Thuật toán explore/exploit chưa chốt.
 | CARLA/ScenarioRunner smoke test | ✅ Toolchain pass |
 | Graph 7 nodes | ✅ Đủ 7 node, đã nối trong `build_forge_graph()`; `POST /generate` chạy graph thật, không còn stub |
 | Static validator (`validate_node`) | ✅ Có — schema, invariants, static geometry |
-| Templates và converter (`convert_xosc`) | ✅ Có — 1 anchor Town04, 7 maneuver, golden validate theo XSD (ADR-016); cả 7 đã chạy thật trên CARLA 22/08, 2/7 dựng được va chạm |
+| Templates và converter (`convert_xosc`) | ✅ Có — 1 anchor Town04, 6 maneuver cho 3 loại xe qua 4 thời tiết = 72 ô; `jaywalk` đã loại khỏi highway; golden validate theo XSD (ADR-016) |
 | `parse_intent` | ✅ Có — rule-based theo `taxonomy_rules.json` trước, LLM chỉ chạy khi rule thiếu trục bắt buộc |
 | `Retriever` (SQLite BLOB + cosine) | ✅ Có — `WHERE` bốn trục ODD + cosine numpy; retrieval baseline bằng số thật thì chưa |
 | SQLite persistence | ✅ Có — `ScenarioRepository` (SQLAlchemy Core) là nguồn schema duy nhất |
 | API generate/status/review/download/job | ✅ Có, chạy graph thật; status gate 403 trước `BEFORE_LIBRARY` |
-| Frontend và preview 2D | ✅ Có — hai luồng Creator/Reviewer, preview SVG |
+| Frontend và preview | ✅ Có — hai luồng Creator/Reviewer; trước CARLA hiện timeline khai báo, sau CARLA replay quỹ đạo đo thật |
 | Hai vai trò tạo/duyệt + tag thư viện | ✅ Có — `created_by` xuyên suốt (không xác thực); tag = 4 trục ODD + chữ người dùng gõ; `PUT /scenarios/{id}/tags` |
 | GPU worker | ✅ Có — `worker/runner.py` pull-based, chỉ thư viện chuẩn; chạy thật 15/08 với `sc_014`, 4 criteria quay về backend |
 | Mức kiểm chứng (`VerificationLevel`) | ✅ Có — `ExecutionResult` đặt `verification`; `PROVEN_BAD_FOR_FEW_SHOT` cắt vòng tự khẳng định của few-shot (ADR-017) |
 | Log + ước lượng chi phí LLM | ✅ Có — `call_with_escalation` ghi model, latency, token và cost mỗi lần gọi |
-| Chặn câu hỏi trùng ở lối vào | ⏳ Chưa — ADR-015 còn *Proposed*, nên gõ lại một câu cũ vẫn chạy hết bảy node |
-| Anchor map thứ hai | ⏳ Chưa — phạm vi converter còn đúng 76/560 ô, chỉ `highway` (ADR-016) |
-| Behavior checker (Phase 3) | ⏳ Chưa có |
-| Agent layer + closed-loop (Phase 4) | ⏳ Chưa có — ràng buộc lên Phase 1 ở ADR-014 |
-| Evaluation report bằng số thật | ◐ Một nửa — Gate G2 có 5 case chạy qua API thật (`eval/results/report.md`); chưa có số cho `intent_match`, latency, hay tỉ lệ pass CARLA trên tập lớn |
+| Chặn câu hỏi trùng ở lối vào | ✅ Có — chuẩn hoá NFC + exact match trước LLM (ADR-015) |
+| Campaign ODD + batch CARLA | ✅ Có — sinh theo ô hỗ trợ, batch review, worker queue và dashboard M1/M2/M3 |
+| Anchor map thứ hai | ⏳ Chưa — phạm vi converter còn đúng 72/560 ô, chỉ `highway` (ADR-016) |
+| Behavior checker (Phase 3) | ◐ Có 5/6 oracle trong phạm vi; còn thiếu `run_red_light` |
+| Agent layer + closed-loop (Phase 4) | ◐ Campaign batch đã có; chưa có feedback explore/exploit và mô hình lái |
+| Evaluation report bằng số thật | ✅ Có snapshot M1/M2/M3, nhãn người và kết quả CARLA trong `eval/results/report.md` |
 
 ## Quy tắc thay đổi
 
