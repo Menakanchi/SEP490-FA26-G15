@@ -841,6 +841,16 @@ async def intent_label_queue(labeller: str = "unknown") -> dict:
                 "maneuver": execution.get("maneuver"),
                 "road_type": described.get(execution["scenario_id"], {}).get("road_type"),
                 "trajectory": result["trajectory"],
+                # Thời điểm va chạm để bản phát lại CẮT ở đó. Sau cú đâm, xe bị
+                # hất khỏi làn: đo trên sc_011 thì lệch ngang nhảy từ 3,8 m lên
+                # 153,5 m và xe kết thúc ở 208 m sau lưng ego. Vẽ tiếp phần đó
+                # thì tác nhân trông như đi giật lùi, và trục ngang phải phủ hàng
+                # trăm mét nên cả mặt cắt đường bị ép thành một dải mỏng.
+                #
+                # Đây không phải rò rỉ phán quyết của máy: "có va chạm hay không"
+                # không phải tiêu chí chấm ý định của maneuver nào cả — cut_in
+                # tông đuôi cũng va chạm, mà vẫn là sai ý định.
+                "contact_time_s": (result.get("metrics") or {}).get("contact_time_s"),
                 "labelled": execution["scenario_id"] in mine,
             }
         )

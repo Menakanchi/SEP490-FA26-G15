@@ -490,6 +490,8 @@ export interface LabelQueueItem {
   maneuver: string;
   road_type: string;
   trajectory: TrajectoryPoint[];
+  /** Giây xảy ra va chạm đầu tiên, nếu có. Bản phát lại cắt ở đây. */
+  contact_time_s?: number | null;
   /** Người đang đăng nhập đã chấm kịch bản này chưa — không nói đã chấm ra sao. */
   labelled: boolean;
 }

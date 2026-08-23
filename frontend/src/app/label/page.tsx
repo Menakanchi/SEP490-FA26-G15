@@ -157,9 +157,23 @@ function Replay({ item }: { item: LabelQueueItem }) {
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(true);
 
+  // Cắt tại va chạm đầu tiên. Sau cú đâm, xe bị hất khỏi làn và mọi thứ vẽ ra
+  // đều là rác: đo trên sc_011, lệch ngang nhảy từ 3,8 m lên 153,5 m và xe kết
+  // thúc ở 208 m sau lưng ego — nên tác nhân trông như đi giật lùi, và trục ngang
+  // phải phủ hàng trăm mét khiến cả mặt cắt đường bị ép thành một dải mỏng.
+  //
+  // Cùng phép cắt mà `trajectory.summarise` áp cho số liệu; bản phát lại không
+  // cắt là hai nơi kể hai câu chuyện khác nhau về cùng một lượt chạy.
+  const shown = useMemo(() => {
+    const contact = item.contact_time_s;
+    if (contact == null) return item.trajectory;
+    const end = item.trajectory.findIndex((p) => p.t > contact);
+    return end <= 0 ? item.trajectory : item.trajectory.slice(0, end);
+  }, [item.trajectory, item.contact_time_s]);
+
   const rels = useMemo(
-    () => item.trajectory.map((p) => p.rel ?? ([0, 0] as [number, number])),
-    [item.trajectory],
+    () => shown.map((p) => p.rel ?? ([0, 0] as [number, number])),
+    [shown],
   );
 
   useEffect(() => {
@@ -172,7 +186,10 @@ function Replay({ item }: { item: LabelQueueItem }) {
     const maxLon = Math.min(Math.max(...rels.map((r) => Math.abs(r[0]))) + 5, 60);
     // Trục ngang luôn phủ trọn mặt cắt: co lại theo dữ liệu thì lề biến mất khỏi
     // hình, mà lề chính là thứ cần nhìn.
-    const lat = Math.max(9.0, Math.max(...rels.map((r) => Math.abs(r[1]))) + 1);
+    // Chặn trên 12 m: mặt cắt chỉ rộng 14 m, nên khung rộng hơn thế chỉ làm
+    // đường mỏng đi mà không thêm thông tin. Chặn dưới 9 m để lề luôn nằm trong
+    // khung — lề chính là thứ cần nhìn.
+    const lat = Math.min(12, Math.max(9.0, Math.max(...rels.map((r) => Math.abs(r[1]))) + 1));
     const sx = (VIEW_W - 40) / (2 * maxLon);
     const sy = (VIEW_H - 30) / (2 * lat);
     return {
@@ -199,7 +216,8 @@ function Replay({ item }: { item: LabelQueueItem }) {
               <g key={band.label}>
                 <rect x={0} y={top} width={VIEW_W} height={height} fill={fill}
                       opacity={band.kind === "shoulder" ? 0.45 : 1} />
-                <text x={6} y={top + 12} className="fill-slate-500 text-[9px]">{band.label}</text>
+                <text x={VIEW_W - 8} y={top + height / 2 + 3} textAnchor="end"
+                      className="fill-slate-500 text-[9px]">{band.label}</text>
               </g>
             );
           })}
@@ -234,12 +252,16 @@ function Replay({ item }: { item: LabelQueueItem }) {
                onChange={(e) => { setPlaying(false); setFrame(Number(e.target.value)); }}
                className="flex-1 accent-sky-500" />
         <span className="text-xs text-slate-500 tabular-nums w-14 text-right">
-          {item.trajectory[Math.min(frame, item.trajectory.length - 1)]?.t.toFixed(1)}s
+          {shown[Math.min(frame, shown.length - 1)]?.t.toFixed(1)}s
         </span>
       </div>
       <p className="text-[11px] text-slate-500 leading-relaxed">
         Ego đứng yên ở giữa, tác nhân đi quanh nó — đây là <strong>đường đi đo được</strong>, không
         phải dựng lại. Vùng nâu là <strong>lề đường</strong>; {LANE} m là bề rộng một làn.
+        {item.contact_time_s != null && (
+          <> Bản phát lại <strong>dừng ở giây {item.contact_time_s.toFixed(1)}</strong> khi xảy ra va
+          chạm: sau cú đâm xe bị hất khỏi làn nên mọi số đo thành vô nghĩa.</>
+        )}
       </p>
     </div>
   );
