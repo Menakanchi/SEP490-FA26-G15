@@ -254,6 +254,99 @@ def intent_verdict(execution: dict) -> bool | None:
 
 
 # ---------------------------------------------------------------------------
+# Hợp thức hoá L4 bằng nhãn người
+# ---------------------------------------------------------------------------
+
+LABEL_CORRECT = "correct"
+LABEL_WRONG = "wrong"
+LABEL_UNSURE = "unsure"
+
+
+def intent_agreement(executions: list[dict], labels: list[dict]) -> dict[str, Any]:
+    """Chấm tự động (L4) khớp với người chấm tay tới đâu.
+
+    Vì sao phép đo này cần tồn tại
+    ------------------------------
+    L4 chấm bằng luật do chính ta viết, với ngưỡng do chính ta đo. Không có nhãn
+    người thì câu trả lời cho "ai nói kịch bản này đúng ý định" là **máy tự chấm
+    máy** — và một hệ đo tự chấm không phát hiện được điểm mù của chính nó.
+
+    Bằng chứng cho điểm mù đó: ngày 23/08/2026, kịch bản ``jaywalk`` cho người đi
+    bộ đứng **giữa làn xe chạy** rồi đi dọc cao tốc. Nó qua sạch L1-L4 với khe hở
+    2,19 m và ``adversary_crossed_ego_path = 1``. Không chỉ số nào kêu; một người
+    nhìn 5 giây thì kêu ngay. Luật L4 chấm được *hành vi có xảy ra không*, nó
+    không chấm được *tình huống có hợp lý không*.
+
+    Cách đọc kết quả
+    ----------------
+    ``agreement`` là tỷ lệ khớp, nhưng **``disagreements`` mới là thứ đáng đọc**.
+    Mỗi chỗ lệch là một trong hai thứ, và cả hai đều là việc phải làm:
+
+    - máy nói đúng, người nói sai -> luật L4 có lỗ hổng;
+    - máy nói sai, người nói đúng -> luật quá chặt, đang vứt kịch bản dùng được.
+
+    Nhãn ``unsure`` **không** vào mẫu số. Ép một người đang lưỡng lự phải chọn
+    bên là tự tạo ra dữ liệu mà chính họ không tin.
+
+    Nhiều nhãn cho cùng một kịch bản thì lấy nhãn mới nhất của **mỗi người**, và
+    khi hai người bất đồng thì ``human_conflicts`` đếm chúng — hai người chấm
+    khác nhau nghĩa là chính câu hỏi còn mơ hồ, và đó là phát hiện chứ không phải
+    nhiễu cần làm phẳng.
+    """
+    verdicts = {e["scenario_id"]: intent_verdict(e) for e in executions if _in_scope(e)}
+
+    latest: dict[tuple[str, str], dict] = {}
+    for label in sorted(labels, key=lambda row: row.get("created_at") or ""):
+        latest[(label["scenario_id"], label["labeller"])] = label
+
+    by_scenario: dict[str, list[dict]] = {}
+    for (scenario_id, _), label in latest.items():
+        by_scenario.setdefault(scenario_id, []).append(label)
+
+    matched = 0
+    scored = 0
+    disagreements: list[dict[str, Any]] = []
+    conflicts = 0
+    unsure = 0
+
+    for scenario_id, rows in sorted(by_scenario.items()):
+        if len({row["label"] for row in rows}) > 1:
+            conflicts += 1
+            continue
+        human = rows[0]["label"]
+        if human == LABEL_UNSURE:
+            unsure += 1
+            continue
+        machine = verdicts.get(scenario_id)
+        if machine is None:
+            # Máy chưa chấm được thì không có gì để so — đây không phải chỗ lệch.
+            continue
+        scored += 1
+        human_says_correct = human == LABEL_CORRECT
+        if human_says_correct == machine:
+            matched += 1
+        else:
+            disagreements.append(
+                {
+                    "scenario_id": scenario_id,
+                    "human": human,
+                    "machine": "correct" if machine else "wrong",
+                    "reason": next((row.get("reason") for row in rows if row.get("reason")), ""),
+                }
+            )
+
+    return {
+        "agreement": round(matched / scored, 4) if scored else None,
+        "matched": matched,
+        "scored": scored,
+        "labelled_scenarios": len(by_scenario),
+        "unsure": unsure,
+        "human_conflicts": conflicts,
+        "disagreements": disagreements,
+    }
+
+
+# ---------------------------------------------------------------------------
 # M2 — độ phủ ODD
 # ---------------------------------------------------------------------------
 

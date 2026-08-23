@@ -171,6 +171,31 @@ review_decisions = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+intent_labels = Table(
+    "intent_labels",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("scenario_id", String(64), ForeignKey("scenarios.scenario_id"), nullable=False),
+    Column("labeller", String(255), nullable=False),
+    Column("label", String(16), nullable=False),
+    Column("reason", Text, nullable=False, server_default=""),
+    Column("automatic_verdict", String(16), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+"""Nhãn người chấm cho câu hỏi "kịch bản này có tái hiện đúng ý định không".
+
+Vì sao cần bảng này: mức L4 hiện do máy tự chấm bằng luật do chính ta viết, nên
+nó không trả lời được câu "ai nói kịch bản này đúng?". Có nhãn người thì L4 đo
+được — báo cáo được **mức khớp** giữa chấm tự động và chấm tay.
+
+``automatic_verdict`` chép lại phán quyết của máy **tại thời điểm chấm**. Nó ở
+đây để chỗ lệch còn truy được về sau khi luật chấm đã đổi; không có nó thì sửa
+luật một lần là mất sạch lịch sử bất đồng, mà chỗ bất đồng mới là thứ đáng giá.
+
+Nhiều nhãn cho cùng một kịch bản là **hợp lệ và mong muốn**: hai người chấm chồng
+lên nhau cho ra mức đồng thuận giữa người với người, thước đo mạnh hơn hẳn.
+"""
+
 scenario_jobs = Table(
     "scenario_jobs",
     metadata,

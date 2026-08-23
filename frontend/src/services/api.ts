@@ -15,7 +15,10 @@ import type {
   QualityReport,
 
   CampaignDetail,
-  CampaignSummary,} from "@/types";
+  CampaignSummary,
+  LabelQueueItem,
+  IntentAgreement,
+} from "@/types";
 import type { LoginPayload, RegisterPayload, User } from "@/types/auth";
 
 const BASE_URL =
@@ -397,4 +400,29 @@ export async function getCampaign(id: string): Promise<CampaignDetail> {
 
 export async function stopCampaign(id: string): Promise<{ ok: boolean }> {
   return request(`/campaigns/${encodeURIComponent(id)}/stop`, { method: "POST" });
+}
+
+
+// ---------------------------------------------------------------------------
+// Chấm ý định bằng người — hợp thức hoá mức L4
+// ---------------------------------------------------------------------------
+
+export async function getLabelQueue(labeller: string): Promise<{ items: LabelQueueItem[]; count: number }> {
+  return request<{ items: LabelQueueItem[]; count: number }>(
+    `/intent-labels/queue?labeller=${encodeURIComponent(labeller)}`,
+  );
+}
+
+export async function submitIntentLabel(
+  scenarioId: string,
+  body: { label: "correct" | "wrong" | "unsure"; reason: string; labeller: string },
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/scenarios/${scenarioId}/intent-label`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getIntentAgreement(): Promise<IntentAgreement> {
+  return request<IntentAgreement>("/metrics/intent-agreement");
 }
