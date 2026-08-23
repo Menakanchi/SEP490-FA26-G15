@@ -237,25 +237,35 @@ def _run_red_light(parent: ET.Element, m: ManeuverSpec, actor: ActorSpec) -> Non
     _add_speed_action(parent, target_speed, abrupt=True)
 
 
-DRIFT_OFFSET_M = 2.2
+DRIFT_OFFSET_M = 1.35
 """Xe ``lane_drift`` lấn bao nhiêu mét khỏi tim làn của nó.
 
-**Phải lớn hơn nửa bề rộng làn (1,75 m), nếu không nó không bao giờ chạm vạch.**
-Bản trước đặt 0,7 m: xe dịch sang ngang thật, nhưng tâm nó vẫn cách tim ego
-2,80 m — chưa từng vào làn ego trong bất kỳ kịch bản nào. Câu mô tả thì hứa "lấn
-làn đè vạch sang làn giữa". Người xem trực tiếp trên CARLA ngày 23/08/2026 nói
-đúng chỗ này: "vẫn chưa lấn sang làn của ego, chỉ gần chạm vạch thôi".
+Có một **cửa sổ hẹp** phải rơi vào, và hai lần đầu đều trượt — mỗi lần trượt một
+đầu. Với làn 3,5 m và hai thân xe nửa rộng ~0,9 m:
 
-2,2 m đưa tâm xe qua vạch 0,45 m — đủ để thân xe nằm rõ trong làn ego, mà chưa
-thành một cú chuyển làn hoàn chỉnh (thứ đó là ``cut_in``).
+    lấn 0,70 m  ->  mép thân còn cách vạch 0,15 m   (chưa đè vạch)
+    lấn 1,35 m  ->  mép thân qua vạch 0,50 m, khe hở hai thân 0,35 m
+    lấn 1,70 m  ->  khe hở 0,00 m                    (đâm nhau)
+    lấn 2,20 m  ->  khe hở -0,50 m                   (đâm nhau)
+
+Bản đầu 0,7 m: người xem trên CARLA nói "vẫn chưa lấn sang làn của ego, chỉ gần
+chạm vạch thôi" — đúng, mép thân còn thiếu 0,15 m. Bản sửa 2,2 m lấy mốc là *tâm*
+xe vượt vạch, và người xem nói tiếp "lần này thì tôi thấy nó còn va chạm nhau
+rồi" — cũng đúng: tâm vượt vạch thì thân đã chồng lên ego.
+
+1,35 m đè vạch nửa mét mà vẫn chừa 0,35 m khe hở. Đó mới là *suýt quẹt*, thứ
+maneuver này sinh ra để dựng — nó cố ý không phải một cú va chạm.
+
+Xe rộng hơn (xe tải) vẫn có thể chạm ở cùng biên độ này. Đó là hệ quả đúng của
+hình học, không phải lỗi.
 """
 
 DRIFT_LATERAL_ACC = 0.8
 """Gia tốc ngang tối đa của ``LaneOffsetAction``.
 
-Thời gian lấn thành hình là ``2*sqrt(offset/acc)``. Giữ 0,4 như cũ thì lấn 2,2 m
-mất 4,7 giây — dài hơn cả cửa sổ hai xe còn ở gần nhau, nên hành vi không kịp xảy
-ra. 0,8 kéo về 3,3 giây, đúng tầm một cú dạt làn thật ngoài đời.
+Thời gian lấn thành hình là ``2*sqrt(offset/acc)`` = 2,6 s với các hằng số ở đây.
+Giữ 0,4 như cũ thì mất 3,7 s — dài hơn cửa sổ hai xe còn ở gần nhau trong nhiều
+kịch bản, nên hành vi không kịp xảy ra.
 """
 
 def _lane_drift(parent: ET.Element, actor: ActorSpec) -> None:

@@ -224,9 +224,17 @@ def test_lane_drift_uses_partial_offset_not_full_lane_change() -> None:
     # với quy ước OpenSCENARIO — nên giá trị phải DƯƠNG.
     offset = float(root.find(".//AbsoluteTargetLaneOffset").get("value"))
     assert offset > 0
-    # Và phải qua được nửa bề rộng làn, nếu không xe không bao giờ chạm vạch:
-    # bản 0,7 m dịch sang ngang thật mà chưa từng vào làn ego (sc_024, 23/08).
-    assert offset > 1.75, "lấn ít hơn nửa làn thì không phải lấn làn"
+
+    # Cửa sổ hẹp, và hai bản trước đều trượt — mỗi bản một đầu. Làn 3,5 m, nửa
+    # thân xe ~0,9 m:
+    #   mép thân qua vạch  = offset - (1.75 - 0.9)
+    #   khe hở hai thân    = 3.5 - offset - 1.8
+    # Bản 0,7 m chưa đè vạch; bản 2,2 m (lấy mốc TÂM xe vượt vạch) thì đâm nhau.
+    half_lane, half_body = 1.75, 0.9
+    encroachment = offset - (half_lane - half_body)
+    body_gap = 3.5 - offset - 2 * half_body
+    assert encroachment > 0.2, "phải đè hẳn qua vạch, không chỉ bám sát"
+    assert body_gap > 0.2, "lane_drift dựng suýt quẹt, không dựng va chạm"
     criteria = {item.get("name") for item in root.findall("./Storyboard/StopTrigger/ConditionGroup/Condition")}
     assert "criteria_KeepLaneTest" in criteria
     ego_speed = root.find(".//Private[@entityRef='hero']//AbsoluteTargetSpeed")

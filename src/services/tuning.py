@@ -38,15 +38,14 @@ SWEEP_STEPS = 4
 # Khoảng cách giữa hai bước, giây.
 STEP_S = 1.0
 
-MANEUVER_RAMP_S = 3.3
+MANEUVER_RAMP_S = 2.6
 """Hành vi ngang cần bao lâu mới thành hình.
 
 Thời gian lấn thành hình là ``2*sqrt(offset/maxLateralAcc)``. Converter đặt
-``DRIFT_OFFSET_M = 2.2`` và ``DRIFT_LATERAL_ACC = 0.8`` -> 3,3 s.
+``DRIFT_OFFSET_M = 1.35`` và ``DRIFT_LATERAL_ACC = 0.8`` -> 2,6 s.
 
-Con số này **phải đi theo** hai hằng số đó. Bản trước ghi 2,5 s cho biên độ 0,7 m;
-khi biên độ tăng lên 2,2 m để xe thật sự cắt được vạch, ngưỡng khả thi cũng phải
-tăng — giữ nguyên thì phép dò nhận cả những kịch bản mà hành vi không kịp xảy ra.
+Con số này **phải đi theo** hai hằng số đó — sửa biên độ lấn mà quên chỗ này thì
+phép dò nhận cả những kịch bản mà hành vi không kịp thành hình.
 
 Con số này là **điều kiện khả thi** của phép dò: nếu hai xe đi ngang nhau trước
 khi hành vi kịp thành hình thì không giá trị trigger nào cứu được, và dò tiếp chỉ

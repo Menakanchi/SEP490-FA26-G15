@@ -63,6 +63,9 @@ class Sample:
     adv_speed_ms: float
     adv_lane_offset_m: float
     """Adversary lệch bao nhiêu so với tim làn nó đang ở. Dùng để biết maneuver có xảy ra không."""
+    ego_half_width_m: float = 0.9
+    """Nửa bề rộng thân ego. Cần để tính mép thân xe, không chỉ tâm xe."""
+    adv_half_width_m: float = 0.9
     ego_pose: tuple[float, float, float] = (0.0, 0.0, 0.0)
     """x, y, yaw(độ) của ego trong hệ toạ độ CARLA — để vẽ lại cho người duyệt."""
     adv_pose: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -153,9 +156,18 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
     #   sc_024 lane_drift 2,80 m -> chưa vào (người chấm: sai)
     #   sc_019 lane_drift 3,09 m -> chưa vào (người chấm: sai)
     #   sc_011 cut_in     0,03 m -> đã vào   (người chấm: đúng)
+    # Đo bằng MÉP THÂN XE, không phải tâm xe. "Lấn làn đè vạch" nghĩa là thân xe
+    # đè qua vạch; đòi tâm xe vượt vạch là đòi nó nằm hẳn trong làn ego, và với
+    # một ego chạy thẳng thì đó luôn là va chạm chứ không còn là suýt va chạm.
+    #
+    # Người xem trực tiếp ngày 23/08/2026 bắt được đúng chỗ này: bản đặt biên độ
+    # theo tâm xe (2,2 m) làm hai xe đâm nhau, "lần này thì tôi thấy nó còn va
+    # chạm nhau rồi".
     lateral = [abs(s.lateral_m) for s in before_contact]
+    incursion = max(EGO_LANE_HALF_WIDTH_M - (abs(s.lateral_m) - s.adv_half_width_m) for s in before_contact)
     metrics["adversary_min_lateral_m"] = round(min(lateral), 3)
-    metrics["adversary_entered_ego_lane"] = 1.0 if min(lateral) < EGO_LANE_HALF_WIDTH_M else 0.0
+    metrics["adversary_lane_incursion_m"] = round(incursion, 3)
+    metrics["adversary_entered_ego_lane"] = 1.0 if incursion > 0 else 0.0
     heading = _max_heading_delta_deg(before_contact)
     if heading is not None:
         metrics["adversary_heading_delta_deg"] = round(heading, 1)
@@ -170,10 +182,12 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
 
 
 EGO_LANE_HALF_WIDTH_M = 1.75
-"""Nửa bề rộng làn. Tâm tác nhân gần tim ego hơn ngần này thì nó đã ở trong làn ego.
+"""Nửa bề rộng làn — vạch kẻ nằm ở đây, tính từ tim làn ego.
 
-Đo tim-tới-tim chứ không đo thân xe: định nghĩa gọn, không phụ thuộc kích thước
-từng loại xe, và đủ chặt — thân xe đã chớm sang từ trước đó.
+``adversary_lane_incursion_m`` là **mép thân** tác nhân đè qua vạch bao nhiêu mét.
+Dương = đã đè vạch. Đo mép thân chứ không đo tâm: "lấn làn đè vạch" nói về thân
+xe, còn đòi tâm xe vượt vạch là đòi nó nằm hẳn trong làn ego — với một ego chạy
+thẳng thì đó luôn thành va chạm, không còn là suýt va chạm nữa.
 """
 
 CROSSING_RANGE_M = 30.0
@@ -438,6 +452,8 @@ class TrajectoryRecorder:
                     ego_speed_ms=_speed(ego),
                     adv_speed_ms=_speed(adv),
                     adv_lane_offset_m=_lane_offset(carla_map, adv),
+                    ego_half_width_m=ego_half[1],
+                    adv_half_width_m=adv_half[1],
                     ego_pose=_pose(transform),
                     adv_pose=_pose(adv_transform),
                     lane_centre=_lane_centre(carla_map, ego),
