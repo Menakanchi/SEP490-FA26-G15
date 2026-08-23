@@ -144,6 +144,10 @@ const VIEW_W = 720;
 const VIEW_H = 260;
 const LANE = 3.5;
 
+/** Ngoài ngần này mét thì tác nhân không còn ở trên đường. Mặt cắt rộng 14 m
+ *  (hai lề + hai làn), cộng biên cho người đi bộ bước qua khỏi lề. */
+const OFF_ROAD_M = 15;
+
 /** Mặt cắt ngang đo trên anchor Town04 (road 23, lane -3), 23/08/2026.
  *  Toạ độ ngang cùng dấu với `lane_offset`, xác nhận trên sc_011. */
 const CROSS_SECTION = [
@@ -166,9 +170,15 @@ function Replay({ item }: { item: LabelQueueItem }) {
   // cắt là hai nơi kể hai câu chuyện khác nhau về cùng một lượt chạy.
   const shown = useMemo(() => {
     const contact = item.contact_time_s;
-    if (contact == null) return item.trajectory;
-    const end = item.trajectory.findIndex((p) => p.t > contact);
-    return end <= 0 ? item.trajectory : item.trajectory.slice(0, end);
+    const byContact = contact == null ? -1 : item.trajectory.findIndex((p) => p.t > contact);
+    // Chốt chặn thứ hai, đọc thẳng từ dữ liệu: mặt cắt chỉ rộng 14 m, nên lệch
+    // ngang quá OFF_ROAD_M nghĩa là tác nhân không còn ở trên đường — bị hất bay
+    // sau va chạm, hoặc bị xoá. Có nó thì bản phát lại vẫn đúng cả với lượt chạy
+    // cũ không kèm `contact_time_s`, thay vì phụ thuộc vào một trường có thể vắng.
+    const byOffRoad = item.trajectory.findIndex((p) => Math.abs(p.rel?.[1] ?? 0) > OFF_ROAD_M);
+    const cuts = [byContact, byOffRoad].filter((i) => i > 0);
+    const end = cuts.length ? Math.min(...cuts) : -1;
+    return end > 0 ? item.trajectory.slice(0, end) : item.trajectory;
   }, [item.trajectory, item.contact_time_s]);
 
   const rels = useMemo(
