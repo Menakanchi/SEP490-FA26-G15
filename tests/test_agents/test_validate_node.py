@@ -757,3 +757,43 @@ async def test_the_repair_suggestion_never_points_at_a_driving_lane(valid_draft:
     suggestion = next(i.suggestion for i in issues if i.code is IssueCode.GEOM_JAYWALK_IN_EGO_LANE)
     assert "lề" in suggestion
     assert "-1" not in suggestion.replace("-2", ""), "-1 là làn xe chạy trên anchor này"
+
+
+@pytest.mark.asyncio
+async def test_the_cut_in_suggestion_actually_satisfies_the_rule_it_just_raised(
+    valid_draft: ScenarioDraft,
+) -> None:
+    """Gợi ý phải **thật sự sửa được** lỗi nó vừa báo, không chỉ nghe hợp lý.
+
+    Hình học sc_022: chủ thể sau ego 22 m, 88 km/h đuổi 76 km/h -> ngang nhau ở
+    giây 6,6, tiếp cận 3,33 m/s. Bản cũ cộng cứng 1,5 giây bất kể tốc độ tiếp
+    cận, ra 8,1 -> làm tròn **8,0** — đúng bằng giá trị đang sai. Vòng repair chép
+    lại con số cũ rồi báo đã sửa xong.
+    """
+    draft = valid_draft.model_dump()
+    draft["odd"]["road_type"] = RoadType.HIGHWAY
+    draft["actors"][0]["initial_speed_kmh"] = 76.0
+    draft["actors"][1]["initial_speed_kmh"] = 88.0
+    draft["actors"][1]["position"]["s_offset_m"] = -22.0
+    draft["maneuvers"][0]["trigger"]["value"] = 8.0
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
+        }
+    )
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE)
+
+    suggested = float(issue.suggestion.split("trigger/value = ")[1].split()[0])
+    assert suggested > 8.0, "gợi ý không được trùng giá trị đang sai"
+
+    # Áp gợi ý vào rồi kiểm lại: lỗi phải biến mất.
+    draft["maneuvers"][0]["trigger"]["value"] = suggested
+    again = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
+        }
+    )
+    assert IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE not in [i.code for i in again["issues"]]
