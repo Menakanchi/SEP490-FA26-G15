@@ -12,8 +12,8 @@ CUT_IN = {
 }
 
 
-def _execution(scenario_id: str, *, deviation: float, contact: float | None = None) -> dict:
-    metrics = {"adversary_lane_deviation_m": deviation, "min_distance_m": 0.4}
+def _execution(scenario_id: str, *, entered: float = 1.0, contact: float | None = None) -> dict:
+    metrics = {"adversary_entered_ego_lane": entered, "min_distance_m": 0.4}
     if contact is not None:
         metrics["contact_longitudinal_m"] = contact
     return {
@@ -36,7 +36,7 @@ def _label(scenario_id: str, label: str, labeller: str = "cong", reason: str = "
 def test_agreement_counts_only_scenarios_the_machine_could_judge() -> None:
     """Máy trả "chưa chấm được" thì không có gì để so — đó không phải chỗ lệch."""
     executions = [
-        _execution("sc_a", deviation=0.9),
+        _execution("sc_a", entered=1.0),
         {"scenario_id": "sc_b", **CUT_IN, "result": {"success": True, "metrics": {}}},
     ]
     report = intent_agreement(executions, [_label("sc_a", "correct"), _label("sc_b", "correct")])
@@ -52,7 +52,7 @@ def test_a_disagreement_is_reported_with_the_human_reason() -> None:
     Đây đúng hình dạng của lỗi jaywalk 23/08: máy gật vì hành vi có xảy ra, người
     lắc vì tình huống vô lý.
     """
-    executions = [_execution("sc_a", deviation=0.9)]
+    executions = [_execution("sc_a", entered=1.0)]
     labels = [_label("sc_a", "wrong", reason="người đi bộ đứng giữa làn xe chạy")]
 
     report = intent_agreement(executions, labels)
@@ -70,7 +70,7 @@ def test_a_disagreement_is_reported_with_the_human_reason() -> None:
 
 def test_unsure_is_excluded_instead_of_forced_to_a_side() -> None:
     """Ép người đang lưỡng lự chọn bên là tự tạo ra dữ liệu chính họ không tin."""
-    report = intent_agreement([_execution("sc_a", deviation=0.9)], [_label("sc_a", "unsure")])
+    report = intent_agreement([_execution("sc_a", entered=1.0)], [_label("sc_a", "unsure")])
 
     assert report["scored"] == 0
     assert report["unsure"] == 1
@@ -81,7 +81,7 @@ def test_two_people_disagreeing_is_a_finding_not_noise() -> None:
     """Hai người chấm khác nhau nghĩa là chính câu hỏi còn mơ hồ — đừng làm phẳng nó."""
     labels = [_label("sc_a", "correct", labeller="cong"), _label("sc_a", "wrong", labeller="ban")]
 
-    report = intent_agreement([_execution("sc_a", deviation=0.9)], labels)
+    report = intent_agreement([_execution("sc_a", entered=1.0)], labels)
 
     assert report["human_conflicts"] == 1
     assert report["scored"] == 0
@@ -92,7 +92,7 @@ def test_the_latest_label_per_person_wins() -> None:
     old = {**_label("sc_a", "wrong"), "created_at": "2026-08-23T09:00:00+00:00"}
     new = {**_label("sc_a", "correct"), "created_at": "2026-08-23T11:00:00+00:00"}
 
-    report = intent_agreement([_execution("sc_a", deviation=0.9)], [old, new])
+    report = intent_agreement([_execution("sc_a", entered=1.0)], [old, new])
 
     assert report["agreement"] == 1.0
     assert report["human_conflicts"] == 0

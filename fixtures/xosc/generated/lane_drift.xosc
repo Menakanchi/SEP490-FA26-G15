@@ -116,9 +116,9 @@
                 <PrivateAction>
                   <LateralAction>
                     <LaneOffsetAction continuous="true">
-                      <LaneOffsetActionDynamics maxLateralAcc="0.4" dynamicsShape="linear" />
+                      <LaneOffsetActionDynamics maxLateralAcc="0.8" dynamicsShape="linear" />
                       <LaneOffsetTarget>
-                        <AbsoluteTargetLaneOffset value="0.7" />
+                        <AbsoluteTargetLaneOffset value="2.2" />
                       </LaneOffsetTarget>
                     </LaneOffsetAction>
                   </LateralAction>

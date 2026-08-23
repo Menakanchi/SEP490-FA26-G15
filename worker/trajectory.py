@@ -140,6 +140,22 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
     # và tầng chấm điểm không tách được, nên nó phải trả "chưa chấm được" cho cả
     # hai. Đúng chuyện xảy ra với sc_026 ngày 22/08.
     metrics["adversary_crossed_ego_path"] = 1.0 if _crossed_ego_path(before_contact) else 0.0
+
+    # Có thật sự lấn vào làn ego không — đo bằng khoảng cách ngang trong hệ quy
+    # chiếu ego, KHÔNG bằng `adversary_lane_deviation_m`.
+    #
+    # Vì sao chỉ số kia không dùng được cho việc này: `_lane_offset` chiếu xe lên
+    # **làn nó đang ở**. Khi xe vượt qua vạch, waypoint nhảy sang làn mới và độ
+    # lệch tụt về gần 0 — nó bão hoà ở nửa bề rộng làn rồi quay đầu, nên một xe
+    # lấn hẳn sang làn ego và một xe chỉ bám sát vạch cho ra con số như nhau.
+    #
+    # Đo trên ba lượt chạy ngày 23/08/2026, đối chiếu với người chấm tay:
+    #   sc_024 lane_drift 2,80 m -> chưa vào (người chấm: sai)
+    #   sc_019 lane_drift 3,09 m -> chưa vào (người chấm: sai)
+    #   sc_011 cut_in     0,03 m -> đã vào   (người chấm: đúng)
+    lateral = [abs(s.lateral_m) for s in before_contact]
+    metrics["adversary_min_lateral_m"] = round(min(lateral), 3)
+    metrics["adversary_entered_ego_lane"] = 1.0 if min(lateral) < EGO_LANE_HALF_WIDTH_M else 0.0
     heading = _max_heading_delta_deg(before_contact)
     if heading is not None:
         metrics["adversary_heading_delta_deg"] = round(heading, 1)
@@ -152,6 +168,13 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
         metrics["contact_time_s"] = round(contact.t, 3)
     return metrics
 
+
+EGO_LANE_HALF_WIDTH_M = 1.75
+"""Nửa bề rộng làn. Tâm tác nhân gần tim ego hơn ngần này thì nó đã ở trong làn ego.
+
+Đo tim-tới-tim chứ không đo thân xe: định nghĩa gọn, không phụ thuộc kích thước
+từng loại xe, và đủ chặt — thân xe đã chớm sang từ trước đó.
+"""
 
 CROSSING_RANGE_M = 30.0
 """Băng ngang ở xa hơn ngần này thì không liên quan tới ego.
