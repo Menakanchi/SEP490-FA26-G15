@@ -31,3 +31,12 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.pytest.ini_options]
+# `pytest` trần ở gốc repo phải chạy đúng thứ mà Makefile và
+# `scripts/pre_push_check.sh` chạy. `scratch/` chứa probe tay gọi LLM thật và
+# ghi vào DB thật — chúng đã đổi tên thành `probe_*.py` nên không bị gom nữa,
+# nhưng hai dòng dưới là hàng rào thứ hai: đặt tên nhầm một lần là một lệnh
+# `pytest` vô hại tiêu tiền API.
+testpaths = ["tests"]
+norecursedirs = ["scratch", "worker", "frontend", ".venv", "data"]
