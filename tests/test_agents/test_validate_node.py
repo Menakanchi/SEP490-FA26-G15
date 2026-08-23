@@ -65,11 +65,7 @@ def valid_draft() -> ScenarioDraft:
             ManeuverSpec(
                 actor_name="other",
                 maneuver=ManeuverType.CUT_IN,
-                # Ego 30 km/h, chủ thể 40 km/h từ sau 10 m -> đi ngang nhau ở giây
-                # 3,6. Trigger 7,0 cho nó vượt lên 9,4 m rồi mới tạt — trên ngưỡng
-                # một thân xe. Bản cũ đặt 5,0 (vượt 3,89 m) và đó chính là hình học
-                # đo được là TÔNG ĐUÔI trên CARLA, xem `MIN_CUT_IN_LEAD_M`.
-                trigger=TriggerCondition(type="simulation_time", value=7.0),
+                trigger=TriggerCondition(type="lead_distance", value=7.0),
                 target_speed_kmh=20.0,
             )
         ],
@@ -332,7 +328,7 @@ async def test_cut_in_distance_trigger_is_rejected(valid_draft: ScenarioDraft) -
     draft = valid_draft.model_dump()
     draft["maneuvers"][0]["trigger"] = {"type": "distance_to_ego", "value": 15.0}
     result = await validate_node({"draft": draft})
-    assert any(i.code is IssueCode.TRIGGER_DISTANCE_UNSIGNED for i in result["issues"])
+    assert any(i.code is IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL for i in result["issues"])
     assert any(i.path == "/maneuvers/0/trigger/type" for i in result["issues"])
 
 
@@ -519,16 +515,15 @@ async def test_jaywalk_in_ego_lane_is_repairable_not_terminal(valid_draft: Scena
 
 
 @pytest.mark.asyncio
-async def test_cut_in_must_overtake_by_a_vehicle_length_not_just_by_a_hair() -> None:
-    """Vượt qua thôi chưa đủ — vượt 5 m rồi tạt là cắt vào sườn ego, không phải trước mũi.
+async def test_cut_in_lead_distance_must_cover_a_vehicle_length() -> None:
+    """Dẫn trước 5 m rồi tạt là cắt vào sườn ego, không phải trước mũi.
 
     Bốn kịch bản chạy thật ngày 22/08 tách thành hai cụm theo khoảng vượt lúc
     trigger: 4,67 m và 5,05 m đều thành tông đuôi; 8,33 m và 13,89 m đều tạt đầu
     đúng ý. Vị từ cũ chỉ đòi biên dương nên hai ca đầu đi lọt.
     """
 
-    def draft(trigger_s: float) -> ScenarioDraft:
-        # sc_021: ego 96, chủ thể 110 từ sau 28 m -> đi ngang nhau ở giây 7,2.
+    def draft(lead_m: float) -> ScenarioDraft:
         return ScenarioDraft(
             title="tạt đầu cao tốc",
             odd=ODDCell(
@@ -558,26 +553,24 @@ async def test_cut_in_must_overtake_by_a_vehicle_length_not_just_by_a_hair() -> 
                 ManeuverSpec(
                     actor_name="adv",
                     maneuver=ManeuverType.CUT_IN,
-                    trigger=TriggerCondition(type="simulation_time", value=trigger_s),
+                    trigger=TriggerCondition(type="lead_distance", value=lead_m),
                     target_speed_kmh=70.0,
                 )
             ],
             duration_s=30.0,
         )
 
-    async def codes(trigger_s: float) -> set[IssueCode]:
+    async def codes(lead_m: float) -> set[IssueCode]:
         result = await validate_node(
             {
-                "draft": draft(trigger_s),
+                "draft": draft(lead_m),
                 "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
             }
         )
         return {i.code for i in result["issues"]}
 
-    # 8,5 s = vượt 5,05 m, đúng hình học đã đo được là tông đuôi.
-    assert IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE in await codes(8.5)
-    # 10,0 s = vượt 10,9 m, trên ngưỡng một thân xe.
-    assert IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE not in await codes(10.0)
+    assert IssueCode.GEOM_CUTIN_LEAD_TOO_SHORT in await codes(5.0)
+    assert IssueCode.GEOM_CUTIN_LEAD_TOO_SHORT not in await codes(7.0)
 
 
 @pytest.mark.asyncio
@@ -760,22 +753,16 @@ async def test_the_repair_suggestion_never_points_at_a_driving_lane(valid_draft:
 
 
 @pytest.mark.asyncio
-async def test_the_cut_in_suggestion_actually_satisfies_the_rule_it_just_raised(
+async def test_the_cut_in_positional_suggestion_actually_satisfies_the_rule_it_just_raised(
     valid_draft: ScenarioDraft,
 ) -> None:
-    """Gợi ý phải **thật sự sửa được** lỗi nó vừa báo, không chỉ nghe hợp lý.
-
-    Hình học sc_022: chủ thể sau ego 22 m, 88 km/h đuổi 76 km/h -> ngang nhau ở
-    giây 6,6, tiếp cận 3,33 m/s. Bản cũ cộng cứng 1,5 giây bất kể tốc độ tiếp
-    cận, ra 8,1 -> làm tròn **8,0** — đúng bằng giá trị đang sai. Vòng repair chép
-    lại con số cũ rồi báo đã sửa xong.
-    """
+    """Gợi ý phải đổi cả loại trigger lẫn đơn vị, và thật sự làm lỗi biến mất."""
     draft = valid_draft.model_dump()
     draft["odd"]["road_type"] = RoadType.HIGHWAY
     draft["actors"][0]["initial_speed_kmh"] = 76.0
     draft["actors"][1]["initial_speed_kmh"] = 88.0
     draft["actors"][1]["position"]["s_offset_m"] = -22.0
-    draft["maneuvers"][0]["trigger"]["value"] = 8.0
+    draft["maneuvers"][0]["trigger"] = {"type": "simulation_time", "value": 8.0}
 
     result = await validate_node(
         {
@@ -783,17 +770,15 @@ async def test_the_cut_in_suggestion_actually_satisfies_the_rule_it_just_raised(
             "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
         }
     )
-    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE)
-
-    suggested = float(issue.suggestion.split("trigger/value = ")[1].split()[0])
-    assert suggested > 8.0, "gợi ý không được trùng giá trị đang sai"
+    issue = next(i for i in result["issues"] if i.code is IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL)
+    assert "lead_distance" in issue.suggestion
 
     # Áp gợi ý vào rồi kiểm lại: lỗi phải biến mất.
-    draft["maneuvers"][0]["trigger"]["value"] = suggested
+    draft["maneuvers"][0]["trigger"] = {"type": "lead_distance", "value": 7.0}
     again = await validate_node(
         {
             "draft": ScenarioDraft.model_validate(draft),
             "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
         }
     )
-    assert IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE not in [i.code for i in again["issues"]]
+    assert IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL not in [i.code for i in again["issues"]]

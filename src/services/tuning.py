@@ -11,9 +11,10 @@ riêng, khó hơn việc viết ra file.
 Vì sao không quét lưới
 ----------------------
 Quét lưới trên toàn khoảng tham số vừa đắt (mỗi lượt chạy ~35 giây trên GPU) vừa
-hay bỏ sót đúng vùng nguy hiểm. Ở đây có thứ tốt hơn: **thời điểm hai xe đi ngang
-nhau tính được bằng số học** từ vị trí và tốc độ ban đầu. Neo phép dò vào mốc đó
-thì 4 lượt chạy phủ được vùng đáng quan tâm, thay vì 20 lượt rải đều.
+hay bỏ sót đúng vùng nguy hiểm. ``lane_drift`` neo vào thời điểm hai xe đi ngang
+nhau tính từ spec. ``cut_in`` neo thẳng vào khoảng dẫn trước tối thiểu một thân
+xe, vì tốc độ lệnh không bảo đảm tốc độ thật trên CARLA. Bốn lượt quanh mốc vật
+lý này phủ vùng đáng quan tâm, thay vì 20 lượt rải đều.
 
 Bằng chứng mốc neo này đúng: cùng kịch bản ``sc_906``, dời trigger từ 8,0 s
 (sau mốc) về 5,5 s (trước mốc) kéo khe hở nhỏ nhất từ **1,05 m xuống 0,36 m**.
@@ -30,13 +31,16 @@ from __future__ import annotations
 from typing import Any
 
 from src.models.schemas import ManeuverType, ScenarioSpec
-from src.services.scenario.geometry import time_until_alongside
+from src.services.scenario.geometry import MIN_CUT_IN_LEAD_M, time_until_alongside
 
 # Số bước dò. Bốn là đủ để bắc qua mốc neo mà vẫn dưới ba phút GPU cho một kịch bản.
 SWEEP_STEPS = 4
 
 # Khoảng cách giữa hai bước, giây.
 STEP_S = 1.0
+
+# Cut-in không còn dò theo giây. Bước một mét đủ mịn quanh ngưỡng một thân xe.
+LEAD_STEP_M = 1.0
 
 MANEUVER_RAMP_S = 2.6
 """Hành vi ngang cần bao lâu mới thành hình.
@@ -58,12 +62,12 @@ CRITICAL_DISTANCE_M = 1.0
 
 
 def propose_triggers(spec: ScenarioSpec) -> list[float]:
-    """Danh sách giá trị ``trigger.value`` đáng thử, neo vào mốc hai xe ngang nhau.
+    """Danh sách giá trị ``trigger.value`` đáng thử quanh mốc hình học tương ứng.
 
     Hướng dò phụ thuộc maneuver, vì hai họ hành vi cần thời điểm ngược nhau:
 
-    - ``cut_in`` phải cắt **sau** khi vượt qua ego, nếu không nó nhập làn sau lưng
-      rồi tông đuôi — đo được ở ``sc_021``/``sc_022``.
+    - ``cut_in`` dò trực tiếp số mét dẫn trước, neo ở ngưỡng một thân xe; không
+      suy ra thời gian từ tốc độ lệnh.
     - ``lane_drift``, ``sudden_brake``, ``stop_in_lane`` phải xảy ra **trước** lúc
       ego tới nơi, nếu không chúng diễn ra trong khoảng trống phía sau.
 
@@ -76,7 +80,17 @@ def propose_triggers(spec: ScenarioSpec) -> list[float]:
     thời điểm trigger — nên dò tiếp chỉ đốt GPU để khẳng định lại.
     """
     maneuver = spec.maneuvers[0] if spec.maneuvers else None
-    if maneuver is None or maneuver.trigger.type != "simulation_time":
+    if maneuver is None:
+        return []
+
+    if maneuver.maneuver is ManeuverType.CUT_IN:
+        if maneuver.trigger.type != "lead_distance":
+            return []
+        candidates = [round(MIN_CUT_IN_LEAD_M + step * LEAD_STEP_M, 1) for step in range(SWEEP_STEPS)]
+        current = maneuver.trigger.value
+        return [candidate for candidate in candidates if abs(candidate - current) > 0.05]
+
+    if maneuver.trigger.type != "simulation_time":
         return []
 
     ego = next((a for a in spec.actors if a.is_ego), None)
@@ -88,14 +102,13 @@ def propose_triggers(spec: ScenarioSpec) -> list[float]:
     if alongside is None:
         return []
 
-    after = maneuver.maneuver is ManeuverType.CUT_IN
-    if not after and alongside < MANEUVER_RAMP_S:
+    if alongside < MANEUVER_RAMP_S:
         # Hành vi không kịp thành hình trước lúc ego đi qua. Nguyên nhân nằm ở
         # chênh tốc độ hoặc khoảng cách ban đầu, không nằm ở thời điểm.
         return []
     candidates: list[float] = []
     for step in range(1, SWEEP_STEPS + 1):
-        value = alongside + step * STEP_S if after else alongside - step * STEP_S
+        value = alongside - step * STEP_S
         # Trigger phải nằm trong kịch bản: sau 0 và trước lúc kết thúc.
         if 0.5 <= value < spec.duration_s:
             candidates.append(round(value, 1))
@@ -115,7 +128,8 @@ def variant_specs(spec: ScenarioSpec) -> list[ScenarioSpec]:
     for trigger_value in propose_triggers(spec):
         data: dict[str, Any] = spec.model_dump(mode="json")
         data["maneuvers"][0]["trigger"]["value"] = trigger_value
-        data["title"] = f"{spec.title} [trigger {trigger_value}s]"
+        unit = "m lead" if data["maneuvers"][0]["trigger"]["type"] == "lead_distance" else "s"
+        data["title"] = f"{spec.title} [trigger {trigger_value}{unit}]"
         variants.append(ScenarioSpec.model_validate(data))
     return variants
 

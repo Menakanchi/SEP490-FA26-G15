@@ -68,7 +68,7 @@ def create_valid_draft() -> ScenarioDraft:
             ManeuverSpec(
                 actor_name="adv",
                 maneuver=ManeuverType.CUT_IN,
-                trigger=TriggerCondition(type="simulation_time", value=7.0),
+                trigger=TriggerCondition(type="lead_distance", value=7.0),
                 target_speed_kmh=40.0,
             )
         ],

@@ -88,7 +88,10 @@ Hai kịch bản là *gần trùng* khi thoả **tất cả**:
 | Cùng đa tập `(category, is_ego)` của `actors` | `spec.actors` |
 | Cùng đa tập `maneuver` của `maneuvers` | `spec.maneuvers[i].maneuver` |
 
-Đơn vị của `trigger.value` phụ thuộc `trigger.type` (mét nếu `distance_to_ego`, giây nếu `simulation_time`), nên **bắt buộc so `type` trước** rồi mới so `value`. So `value` khi `type` khác nhau là so mét với giây.
+Đơn vị và ngữ nghĩa của `trigger.value` phụ thuộc `trigger.type` (mét vô hướng
+nếu `distance_to_ego`, giây nếu `simulation_time`, mét dẫn trước có hướng nếu
+`lead_distance`), nên **bắt buộc so `type` trước** rồi mới so `value`. So `value`
+khi `type` khác nhau có thể là so mét với giây, hoặc so hai loại mét khác nghĩa.
 
 **`time_of_day` không nằm trong khoá.** Nó không phải trục ODD (`ODDCell` nói rõ), và đưa nó vào là dựng trục đo phủ thứ hai — đúng lỗi mà `ODDCell` docstring cảnh báo.
 

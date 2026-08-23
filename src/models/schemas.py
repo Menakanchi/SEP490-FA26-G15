@@ -585,15 +585,19 @@ class ActorSpec(ForgeModel):
 
 
 class TriggerCondition(ForgeModel):
-    """Điều kiện kích hoạt. Chỉ hỗ trợ khoảng cách và thời gian.
+    """Điều kiện kích hoạt, không chứa toạ độ hay định danh làn CARLA.
 
-    Cố ý giữ hẹp: hai loại này phủ gần hết corner-case giao thông và
-    ánh xạ 1-1 sang ``RelativeDistanceCondition`` / ``SimulationTimeCondition``
-    của OpenSCENARIO 1.0.
+    ``lead_distance`` là khoảng cách dọc có dấu theo ngữ nghĩa: maneuver bắn khi
+    actor đã ở **trước** ego ``value`` mét. Converter ánh xạ nó sang một
+    ``ReachPositionCondition`` động, neo vào ``hero``; spec vẫn độc lập map.
     """
 
-    type: Literal["distance_to_ego", "simulation_time"]
-    value: float = Field(..., gt=0.0, description="mét nếu distance, giây nếu time")
+    type: Literal["distance_to_ego", "simulation_time", "lead_distance"]
+    value: float = Field(
+        ...,
+        gt=0.0,
+        description="mét nếu distance/lead_distance, giây nếu simulation_time",
+    )
 
 
 class ManeuverSpec(ForgeModel):
@@ -806,8 +810,9 @@ class IssueCode(StrEnum):
     GEOM_NO_CATCHUP = "GEOM_NO_CATCHUP"  # chủ thể không bao giờ bắt kịp ego
     GEOM_NO_COLLISION_AFTER_CUTIN = "GEOM_NO_COLLISION_AFTER_CUTIN"
     TRIGGER_DISTANCE_UNSIGNED = "TRIGGER_DISTANCE_UNSIGNED"
+    TRIGGER_CUTIN_NOT_POSITIONAL = "TRIGGER_CUTIN_NOT_POSITIONAL"
+    GEOM_CUTIN_LEAD_TOO_SHORT = "GEOM_CUTIN_LEAD_TOO_SHORT"
     GEOM_DRIFT_AFTER_PASS = "GEOM_DRIFT_AFTER_PASS"  # lấn làn sau khi ego đã đi ngang qua
-    GEOM_CUTIN_BEFORE_OVERTAKE = "GEOM_CUTIN_BEFORE_OVERTAKE"  # tạt đầu khi còn ở sau ego -> tông đuôi
     GEOM_JAYWALK_IN_EGO_LANE = "GEOM_JAYWALK_IN_EGO_LANE"  # người đi bộ đứng sẵn trong làn ego
     GEOM_JAYWALK_TRIGGER_TOO_CLOSE = "GEOM_JAYWALK_TRIGGER_TOO_CLOSE"  # bước xuống muộn, ego đã đi qua
     GEOM_JAYWALK_NOT_FROM_SHOULDER = "GEOM_JAYWALK_NOT_FROM_SHOULDER"  # xuất phát giữa phần xe chạy
@@ -844,8 +849,9 @@ REPAIRABLE_CODES: frozenset[IssueCode] = frozenset(
         IssueCode.GEOM_NO_CATCHUP,
         IssueCode.GEOM_NO_COLLISION_AFTER_CUTIN,
         IssueCode.TRIGGER_DISTANCE_UNSIGNED,
+        IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL,
+        IssueCode.GEOM_CUTIN_LEAD_TOO_SHORT,
         IssueCode.GEOM_DRIFT_AFTER_PASS,
-        IssueCode.GEOM_CUTIN_BEFORE_OVERTAKE,
         IssueCode.GEOM_JAYWALK_IN_EGO_LANE,
         IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE,
         IssueCode.GEOM_JAYWALK_NOT_FROM_SHOULDER,

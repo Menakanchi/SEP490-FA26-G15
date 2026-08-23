@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from src.models.schemas import ManeuverType, ScenarioSpec
 from src.services import tuning
 
@@ -22,6 +20,7 @@ def _spec(**overrides) -> ScenarioSpec:
     data["actors"][1]["initial_speed_kmh"] = 60.0
     data["maneuvers"][0]["maneuver"] = ManeuverType.LANE_DRIFT.value
     data["odd"]["maneuver"] = ManeuverType.LANE_DRIFT.value
+    data["maneuvers"][0]["trigger"]["type"] = "simulation_time"
     data["maneuvers"][0]["trigger"]["value"] = 8.0
     for key, value in overrides.items():
         data[key] = value
@@ -37,16 +36,20 @@ def test_sweep_is_anchored_on_the_moment_the_vehicles_draw_level() -> None:
     assert triggers == [6.2, 5.2, 4.2, 3.2]
 
 
-def test_cut_in_sweeps_the_other_direction() -> None:
-    """`cut_in` phải cắt SAU khi vượt qua ego, nếu không nó tông đuôi (sc_021)."""
+def test_cut_in_sweeps_lead_distance_without_using_commanded_speed() -> None:
+    """`cut_in` dò theo mét dẫn trước, không theo mốc thời gian suy từ tốc độ."""
     data = json.loads((FIXTURES / "sc_001.json").read_text(encoding="utf-8"))
     data.pop("_comment", None)
-    spec = ScenarioSpec.model_validate(data)  # adversary sau ego 25 m, nhanh hơn -> ngang nhau 4,5 s
+    spec = ScenarioSpec.model_validate(data)
 
     triggers = tuning.propose_triggers(spec)
 
-    assert all(t > 4.5 for t in triggers), "phải thử các mốc SAU lúc vượt qua"
-    assert triggers[0] == pytest.approx(5.5)
+    assert triggers == [8.0, 9.0, 10.0]
+
+    changed = spec.model_dump(mode="json")
+    changed["actors"][0]["initial_speed_kmh"] = 95.0
+    changed["actors"][1]["initial_speed_kmh"] = 96.0
+    assert tuning.propose_triggers(ScenarioSpec.model_validate(changed)) == triggers
 
 
 def test_no_sweep_when_the_vehicles_never_close_on_each_other() -> None:
@@ -141,9 +144,7 @@ def test_sweep_stops_as_soon_as_a_variant_reaches_the_critical_band() -> None:
 
 def test_sweep_waits_instead_of_queueing_a_second_run() -> None:
     """Biến thể chưa chạy xong có thể đã đủ tới hạn — dựng thêm là đặt trước một lượt GPU thừa."""
-    variant, decision = tuning.plan_sweep_step(
-        _spec(), [{"scenario_id": "sc_024_t1", "metrics": {}}]
-    )
+    variant, decision = tuning.plan_sweep_step(_spec(), [{"scenario_id": "sc_024_t1", "metrics": {}}])
     assert variant is None
     assert decision == tuning.SWEEP_STOP_WAITING
 

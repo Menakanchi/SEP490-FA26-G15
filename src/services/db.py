@@ -837,9 +837,7 @@ def save_review_decision(scenario_id: str, gate: str, approved: bool, reviewer: 
     }
 
 
-def save_intent_label(
-    scenario_id: str, labeller: str, label: str, reason: str, automatic_verdict: str | None
-) -> dict:
+def save_intent_label(scenario_id: str, labeller: str, label: str, reason: str, automatic_verdict: str | None) -> dict:
     """Ghi một nhãn người cho câu "kịch bản này có đúng ý định không".
 
     Ghi thêm hàng chứ **không** ghi đè nhãn cũ: hai người chấm cùng một kịch bản

@@ -189,7 +189,9 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
     metrics["adversary_lane_incursion_m"] = round(incursion, 3)
     metrics["adversary_entered_ego_lane"] = 1.0 if incursion > 0 else 0.0
 
-    # Lúc **vào làn**, tác nhân đang ở trước hay sau ego. Dương = trước.
+    # Lúc **vào làn và giữ hướng đi vào**, tác nhân đang ở trước hay sau ego.
+    # Dương = trước. Xem `_lane_entry_longitudinal`: bỏ lần lắc nhẹ qua vạch rồi
+    # quay ra của actor rộng trước khi maneuver chính bắt đầu.
     #
     # Đây là thứ phân biệt tạt đầu thật với nhập làn sau lưng rồi bám đuôi. Luật
     # cũ chỉ chặn được trường hợp có va chạm (`contact_longitudinal_m < 0`), nên
@@ -238,18 +240,22 @@ phép đo. Dưới ngưỡng này là cắt ngang hoặc cùng chiều, không p
 
 
 def _lane_entry_longitudinal(samples: list[Sample]) -> float | None:
-    """Vị trí dọc của tác nhân **lần đầu** mép thân nó đè qua vạch vào làn ego.
+    """Vị trí dọc của lần vào làn ego cuối cùng trước va chạm/kết thúc.
 
-    ``None`` khi nó chưa bao giờ vào làn ego — không có gì để nói về thời điểm
-    của một việc chưa xảy ra.
+    Actor rộng như xe tải có thể lắc nhẹ qua vạch lúc controller vừa khởi động,
+    rồi trở lại làn bên trước khi cut-in thật sự. Lấy lần đè vạch đầu tiên đã làm
+    sc_021 báo ``-20 m`` dù maneuver chính bắt đầu khi actor dẫn trước ~10 m.
+    Lần chuyển trạng thái cuối cùng là lần vào làn mà actor còn giữ tới kết quả;
+    nếu chỉ có một lần vào thì giá trị không đổi. ``None`` khi chưa từng vào.
     """
     inside = False
+    entry: float | None = None
     for sample in samples:
         now = EGO_LANE_HALF_WIDTH_M - (abs(sample.lateral_m) - sample.adv_half_width_m) > 0
         if now and not inside:
-            return sample.longitudinal_m
+            entry = sample.longitudinal_m
         inside = now
-    return None
+    return entry
 
 
 def _from_first_movement(samples: list[Sample]) -> list[Sample]:
@@ -449,13 +455,20 @@ class TrajectoryRecorder:
         try:
             client = carla.Client(self._host, self._port)
             client.set_timeout(20.0)
-            world = client.get_world()
-            carla_map = world.get_map()
-            ego, adv = self._wait_for_actors(world)
-            if ego is None or adv is None:
+            # ScenarioRunner gọi load_world() sau khi recorder đã khởi động.
+            # Tham chiếu world lấy trước lần load đó trỏ vào world CŨ và không
+            # bao giờ thấy actor mới — cùng bẫy mà follow_hero.py phải xử lý.
+            # Mỗi lần world ngừng tick mà chưa thấy đủ actor, lấy lại world từ
+            # client thay vì kết luận recorder hỏng.
+            while not self._stop.is_set():
+                world = client.get_world()
+                carla_map = world.get_map()
+                ego, adv = self._wait_for_actors(world)
+                if ego is not None and adv is not None:
+                    self._record(world, carla_map, ego, adv)
+                    return
+            if not self.samples:
                 self.error = "không thấy đủ ego + adversary"
-                return
-            self._record(world, carla_map, ego, adv)
         except Exception as exc:  # noqa: BLE001 — đo hỏng không được làm hỏng lượt chạy
             self.error = f"{type(exc).__name__}: {exc}"
 

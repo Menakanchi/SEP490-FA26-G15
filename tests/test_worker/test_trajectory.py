@@ -320,7 +320,7 @@ def test_speed_metrics_ignore_the_ticks_before_the_scenario_starts_moving() -> N
     lượng phanh.
     """
     samples = [
-        _sample(0.0, lon=30.0, lat=0.1),   # tick đầu: chưa khởi động
+        _sample(0.0, lon=30.0, lat=0.1),  # tick đầu: chưa khởi động
         _sample(1.0, lon=25.0, lat=0.1),
         _sample(2.0, lon=20.0, lat=0.1),
     ]
@@ -354,13 +354,32 @@ def test_lane_entry_records_whether_the_actor_was_ahead_or_behind() -> None:
     (chỉ kiểm lúc va chạm) không bao giờ chạy.
     """
     samples = [
-        _sample(0.0, lon=-20.0, lat=3.5),   # còn ở làn bên, sau ego
-        _sample(1.0, lon=-8.25, lat=0.5),   # vào làn ego, VẪN SAU LƯNG
+        _sample(0.0, lon=-20.0, lat=3.5),  # còn ở làn bên, sau ego
+        _sample(1.0, lon=-8.25, lat=0.5),  # vào làn ego, VẪN SAU LƯNG
         _sample(2.0, lon=-30.0, lat=0.2),
     ]
     metrics = trajectory.summarise(samples)
     assert metrics["adversary_entry_longitudinal_m"] == pytest.approx(-8.25)
     assert metrics["adversary_entered_ego_lane"] == 1.0
+
+
+def test_lane_entry_ignores_an_early_transient_incursion_that_returns_to_its_lane() -> None:
+    """Xe tải rộng có thể lắc qua vạch lúc controller khởi động rồi quay ra.
+
+    sc_021 đo thật ngày 24/08: lần chạm vạch thoáng qua ở -20,05 m, cut-in chính
+    bắt đầu ở +10,37 m. Chấm lần đầu biến một cut-in đúng thành tông đuôi giả.
+    """
+    samples = [
+        _sample(0.0, lon=-28.0, lat=3.5),
+        _sample(2.0, lon=-20.0, lat=2.9),
+        _sample(5.0, lon=-13.0, lat=3.5),
+        _sample(14.0, lon=10.4, lat=2.0),
+        _sample(15.0, lon=11.0, lat=0.2),
+    ]
+
+    metrics = trajectory.summarise(samples)
+
+    assert metrics["adversary_entry_longitudinal_m"] == pytest.approx(10.4)
 
 
 def test_no_lane_entry_metric_when_the_actor_never_came_in() -> None:
