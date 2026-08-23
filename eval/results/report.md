@@ -1,151 +1,115 @@
-# Evaluation Report
+# Evaluation Report — Scenario Forge
 
-> Báo cáo đánh giá chất lượng sản phẩm — Gate G2.
-> Ngày chạy: 16/08/2026. Chạy trực tiếp qua API thật (`POST /api/v1/generate`),
-> **không** dùng fixture viết tay — mọi output dưới đây do pipeline
-> `parse_intent → retrieve → generate_draft → validate → convert_xosc →
-> persist_pending_review` tự sinh từ câu tiếng Việt nhập vào.
+> Snapshot: 24/08/2026, lấy trực tiếp từ database phát triển qua
+> `GET /api/v1/metrics/quality`. Không tính 10 scenario `seed-data` vào M1/M2.
+> Mỗi scenario chỉ dùng lần chạy CARLA mới nhất để không tự bỏ phiếu nhiều lần.
 
-## 1. Cách chạy
+## 1. Phạm vi đo
+
+- Simulator: CARLA 0.9.15 + ScenarioRunner 0.9.15, Town04.
+- Phạm vi converter: `highway`, 3 loại xe (`car`, `motorcycle`, `truck`),
+  6 maneuver và 4 thời tiết = **72 ô hỗ trợ**.
+- `jaywalk` không nằm trong phạm vi highway: tình huống không hợp lý trên anchor
+  này và `AcquirePositionAction` định tuyến dọc làn thay vì băng ngang.
+- Một execution `success=true` chỉ có nghĩa ScenarioRunner chạy hết. L4 mới trả
+  lời hành vi có đúng ý định hay không.
+
+## 2. Kết quả M1 — tính hợp lệ
+
+| Mức | Định nghĩa | Kết quả |
+|---|---|---:|
+| L1 | Request sinh được draft qua schema và validate | **25/34 = 73,53%** |
+| L2 | Scenario trong scope biên dịch được `.xosc` | **23/23 = 100%** |
+| L3 | ScenarioRunner chạy hết, không crash/timeout | **22/24 = 91,67%** |
+| L4 | Quỹ đạo CARLA tái hiện đúng maneuver | **13/22 = 59,09%** |
+
+Hai lượt L3 chưa chấm được ở L4 được báo riêng, không tính thành sai. L4 hiện có
+oracle cho `cut_in`, `lane_drift`, `sudden_brake`, `stop_in_lane` và
+`wrong_way`; `run_red_light` còn thiếu tín hiệu đèn chuyên biệt.
+
+## 3. Kết quả M2 — độ phủ ODD
+
+| Cách đo | Kết quả |
+|---|---:|
+| Phủ toàn phần trong phạm vi converter | **10/72 = 13,89%** |
+| Phủ theo cặp trục khả thi | **40/67 = 59,70%** |
+| Ô có dữ liệu ở mọi scope | 13/560 |
+
+Phủ toàn phần trả lời đã thử bao nhiêu tổ hợp hoàn chỉnh. Phủ theo cặp trả lời đã
+thử bao nhiêu tương tác hai yếu tố; hai số không thay thế nhau.
+
+## 4. Kết quả M3 — kích hoạt nguy hiểm
+
+| Kết quả lần chạy mới nhất | Số lượng |
+|---|---:|
+| Có va chạm | 8 |
+| Suýt va chạm, khe hở < 1 m | 7 |
+| Không dựng được nguy hiểm | 7 |
+| Tổng lượt chạy được | 22 |
+
+Tỷ lệ kích hoạt nguy hiểm: **15/22 = 68,18%**. Collision riêng là
+**8/22 = 36,36%**. `lane_drift` chủ đích dựng near-miss nên không thể chỉ dùng
+`CollisionTest` làm M3.
+
+## 5. Bằng chứng sửa `cut_in`
+
+Trigger thời gian từng làm adversary nhập làn sau ego rồi tông đuôi. Converter
+hiện dùng `lead_distance` + `ReachPositionCondition`, chỉ kích hoạt khi actor đã
+dẫn trước ít nhất 7 m. Bốn lượt chạy lại đều được người xem trực tiếp xác nhận:
+
+| Scenario | Vị trí dọc lúc vào làn | Vị trí dọc lúc chạm | Kết luận |
+|---|---:|---:|---|
+| `sc_011` | +11,767 m | +3,066 m | đúng |
+| `sc_012` | +14,287 m | +3,472 m | đúng |
+| `sc_021` | +9,707 m | +4,979 m | đúng |
+| `sc_022` | +10,341 m | +3,440 m | đúng |
+
+Số dương nghĩa là adversary ở trước ego. Cả bốn trường hợp là adversary vượt
+lên, nhập làn rồi giảm tốc; ego chạm vào đuôi adversary.
+
+## 6. Bằng chứng sửa `wrong_way`
+
+Hai bản lịch sử `sc_020` và `sc_025` đặt actor ở +120 m, ngoài tầm +40 m của
+anchor nên đã bị từ chối. Hai bản thay thế đặt ở +35 m. Lần chạy đầu phát hiện
+một lỗi khác: teleport xoay xe đang chạy làm CARLA giữ vector quán tính cũ — xe
+nhìn ngược đầu nhưng vẫn trôi theo hướng cũ.
+
+Converter được sửa để đặt Orientation 180° ngay trong `Init`, trước SpeedAction.
+Kết quả chạy lại:
+
+| Scenario | Actor | Heading delta | Khe hở nhỏ nhất | Va chạm | L4 |
+|---|---|---:|---:|---|---|
+| `sc_038` | car | 180,0° | 0,416 m | không | đúng |
+| `sc_039` | truck | 180,0° | 0,287 m | có | đúng |
+
+## 7. Đối chiếu nhãn người
+
+Sau khi ghi lại xác nhận cho bốn `cut_in`, behavior checker khớp người chấm
+**6/9 = 66,67%**. Ba bất đồng còn lại là dữ liệu cần điều tra, không bị che:
+
+- `sc_018`: người đúng, máy sai.
+- `sc_023`: người đúng, máy sai sau khi sửa biểu diễn thời tiết.
+- `sc_024`: người sai, máy đúng; người thấy xe mới gần vạch, chưa lấn đủ.
+
+Nhãn `unsure` không vào mẫu số. Phán quyết máy không được gửi trước cho người
+chấm để tránh bias.
+
+## 8. Giới hạn và việc tiếp theo
+
+1. Thêm oracle thực thi cho `run_red_light`.
+2. Mở rộng nhãn người trên từng maneuver, không chỉ các case lỗi đã biết.
+3. Tổng hợp cost/request và p50/p95 latency; log hiện mới ở cấp lần gọi.
+4. Backend cần enforce token/role cho review, không chỉ phân vai trên frontend.
+5. Closed-loop với mô hình lái chưa có; ego hiện là điều kiện đối chứng giữ tốc
+   độ cố định.
+6. Anchor thứ hai chỉ được thêm sau khi đo tầm dọc, mặt cắt ngang và chạy thật
+   từng maneuver.
+
+## 9. Cách tái tạo snapshot
 
 ```bash
-uvicorn src.api.main:app --host 127.0.0.1 --port 8123
-curl -X POST http://127.0.0.1:8123/api/v1/generate \
-     -H "Content-Type: application/json" \
-     -d '{"prompt": "<câu tiếng Việt>", "created_by": "eval-manual"}'
-# poll GET /api/v1/status/{request_id} tới khi step=done|failed
-# xem GET /api/v1/scenarios/{scenario_id} để lấy odd/spec/xosc_content
+curl http://127.0.0.1:8000/api/v1/metrics/quality
+curl http://127.0.0.1:8000/api/v1/metrics/intent-agreement
+curl http://127.0.0.1:8000/api/v1/library/audit
+bash scripts/pre_push_check.sh
 ```
-
-## 2. Test cases (5 câu nhập, output thực tế)
-
-### Case 1 — Cut-in cao tốc, đủ thông tin
-
-**Input:** *"Xe máy chạy 80 km/h ở làn bên trái, vượt lên từ phía sau ô tô đang
-chạy 60 km/h, tạt đầu rồi phanh gấp còn 40 km/h. Trời quang, ban ngày, cao
-tốc."*
-
-**Output:** `scenario_id = sc_011`, `status = done` → review `before_library`
-approve → tải `.xosc` thành công (`HTTP 200`, 8361 bytes, XML well-formed).
-
-```json
-"odd": {"road_type": "highway", "weather": "clear", "actor_type": "motorcycle", "maneuver": "cut_in"}
-"assumptions": []
-"actors": [
-  {"name": "hero", "category": "car", "initial_speed_kmh": 60.0, "is_ego": true},
-  {"name": "motorcycle_adv", "category": "motorcycle", "initial_speed_kmh": 80.0,
-   "position": {"lane_offset": -1, "s_offset_m": -25.0}}
-]
-```
-
-Đánh giá: mọi trục ODD được điền đúng từ câu, không cần assumption, hình học
-`s_offset_m = -25.0` đúng (adversary xuất phát phía sau ego để vượt lên).
-
----
-
-### Case 2 — Tổ hợp ngoài `SupportPolicy` (kỳ vọng bị chặn)
-
-**Input:** *"Xe tải đang đỗ bên đường trong khu dân cư, một chiếc xe máy đột
-ngột mở cửa xe tải rồi lao ra giữa đường lúc trời mưa."*
-
-**Output:** `step = failed`, **đúng như thiết kế**:
-
-```json
-{"error": "Chưa hỗ trợ tổ hợp (residential_narrow, motorcycle, cut_in)."}
-```
-
-Đánh giá: `parse_intent` phân loại đúng ODD (`residential_narrow` +
-`motorcycle` + gần nhất với `cut_in`), rồi `SupportPolicy` từ chối đúng vì tổ
-hợp này chưa nằm trong tập được hỗ trợ. Đây là hàng rào chống sinh kịch bản vô
-nghĩa hoạt động đúng — không phải lỗi hệ thống.
-
----
-
-### Case 3 — Sương mù, ba actor, ban đêm
-
-**Input:** *"Ô tô con chạy trong sương mù dày trên đường quốc lộ, phía trước
-có xe đạp đi chậm không đèn, ô tô phải phanh gấp để tránh."*
-
-**Output:** `scenario_id = sc_013`, `status = done` → approve → tải `.xosc`
-thành công (9064 bytes, XML well-formed).
-
-```json
-"odd": {"road_type": "highway", "weather": "fog", "actor_type": "car", "maneuver": "sudden_brake"}
-"time_of_day": "night"
-"actors": [
-  {"name": "hero", "category": "car", "initial_speed_kmh": 60.0},
-  {"name": "car_ahead", "category": "car", "initial_speed_kmh": 55.0},
-  {"name": "bicycle_unlit", "category": "bicycle", "initial_speed_kmh": 12.0}
-]
-"maneuvers": [{"actor_name": "car_ahead", "maneuver": "sudden_brake",
-               "trigger": {"type": "distance_to_ego", "value": 20.0}}]
-```
-
-Đánh giá: câu không nói rõ "ban đêm" nhưng model suy luận `night` hợp lý từ
-ngữ cảnh (sương mù dày, xe đạp không đèn); sinh đúng 3 actor thay vì 2 —
-draft phức tạp hơn case 1 vẫn qua validate.
-
----
-
-### Case 4 — Câu thiếu trục ODD (kiểm `with_defaults()`)
-
-**Input:** *"Xe máy tạt đầu lúc mưa."* (chỉ nói `weather` + `maneuver` +
-`actor_type`, thiếu `road_type`)
-
-**Output:** `scenario_id = sc_012`, `status = done` → approve → tải `.xosc`
-thành công (8357 bytes, XML well-formed).
-
-```json
-"odd": {"road_type": "highway", ...}
-"assumptions": [
-  {"field": "road_type", "value": "highway", "source": "default",
-   "reason_vi": "câu không nhắc tới, dùng mặc định"}
-]
-```
-
-Đánh giá: đúng cơ chế tài liệu ở `ARCHITECTURE.md §parse_intent` —
-`ODDQuery.with_defaults()` điền trục thiếu và ghi lại `Assumption` có thể xem
-lại ở bước review, thay vì hỏi lại người dùng hoặc bịa im lặng.
-
----
-
-### Case 5 — Vi phạm invariant hình học (kỳ vọng bị chặn)
-
-**Input:** *"Người đi bộ băng qua đường cao tốc vào ban đêm khi ô tô đang
-chạy tốc độ cao."*
-
-**Output:** `step = failed`, **đúng như thiết kế**:
-
-```json
-{"error": "jaywalk actor must start outside the ego lane"}
-```
-
-Đánh giá: `generate_draft` sinh actor đi bộ nhưng đặt sai lane; tầng
-`validate` (static geometry invariant) bắt được lỗi này và từ chối draft thay
-vì để lọt một kịch bản vô nghĩa vật lý. Sau 3 vòng `repair_draft` vẫn không
-sửa được → `failed` đúng theo routing table ở `ARCHITECTURE.md`.
-
-## 3. Tổng kết
-
-| # | Input (rút gọn) | Kết quả | Ghi chú |
-|---|---|---|---|
-| 1 | Cut-in cao tốc, đủ thông tin | ✅ done, .xosc tải được | mọi trục ODD khớp câu |
-| 2 | Xe máy mở cửa xe tải, khu dân cư | ✅ failed đúng thiết kế | `SupportPolicy` chặn tổ hợp chưa hỗ trợ |
-| 3 | Phanh gấp trong sương mù, 3 actor | ✅ done, .xosc tải được | suy luận `time_of_day` hợp lý |
-| 4 | Câu thiếu trục ("tạt đầu lúc mưa") | ✅ done, .xosc tải được | `with_defaults()` điền + ghi assumption |
-| 5 | Người đi bộ băng cao tốc ban đêm | ✅ failed đúng thiết kế | static geometry invariant chặn draft sai |
-
-5/5 case cho hành vi đúng kỳ vọng: 3 kịch bản sinh thành công và tải được
-`.xosc` hợp lệ (XML well-formed), 2 kịch bản bị chặn đúng lý do (chính sách hỗ
-trợ / hình học vô nghĩa) thay vì sinh bừa. Full request/response JSON và các
-file `.xosc` lưu tại `eval/results/cases/`.
-
-## 4. Giới hạn đã biết
-
-- Chưa đo bằng số cho `intent_match`, `latency`, hay tỉ lệ pass CARLA trên
-  tập lớn — mới dừng ở kiểm chứng thủ công theo case.
-- Behavior checker (Phase 3) chưa có, nên "kịch bản hợp lệ" ở đây là hợp lệ
-  theo schema + static geometry, chưa chứng minh mức độ nguy hiểm khi chạy
-  CARLA (xem `ARCHITECTURE.md §Ego baseline` về khoảng cách hai tuyên bố này).
-- CARLA chạy trên Windows GPU host, không chạy được trong môi trường soạn báo
-  cáo này — 3 case `done` ở trên dừng ở bước tải `.xosc`, chưa mô phỏng.

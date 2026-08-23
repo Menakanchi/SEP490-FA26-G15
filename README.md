@@ -1,16 +1,17 @@
-<<<<<<< HEAD
 # Scenario Forge (RAV-03)
 
 Scenario Forge nhận mô tả tiếng Việt về một tình huống giao thông nguy hiểm và
 sinh file **OpenSCENARIO 1.0 (`.xosc`)** để kỹ sư review, tải về và kiểm chứng
 bằng CARLA ScenarioRunner trước khi đưa vào thư viện.
 
-> Trạng thái hiện tại: đường đi đầy đủ đã chạy — bảy node, converter, retrieval,
-> review API hai cổng, frontend và GPU worker (chạy thật trên CARLA ngày
-> 15/08/2026). Chưa có: behavior checker, agent layer closed-loop, và báo cáo
-> M1/M2/M3 bằng số trên tập lớn. Phạm vi converter còn 76/560 ô ODD — chỉ
-> `highway` ([ADR-016](docs/adr/ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md)).
-> Xem [trạng thái chi tiết](ARCHITECTURE.md#trạng-thái-hiện-tại).
+> Trạng thái ngày 24/08/2026: đường đi đầy đủ đã chạy — bảy node, converter,
+> retrieval, hai cổng review, frontend, campaign ODD, behavior checker và GPU
+> worker CARLA. Báo cáo M1/M2/M3 được tính trực tiếp từ dữ liệu thực thi. Phạm
+> vi converter hiện là 72/560 ô ODD — sáu maneuver cho ba loại xe trên
+> `highway`; `jaywalk` đã được loại khỏi phạm vi vì không phù hợp anchor Town04
+> ([ADR-016](docs/adr/ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md)).
+> Phần nâng cao còn thiếu là closed-loop với mô hình lái và anchor bản đồ thứ
+> hai. Xem [báo cáo đánh giá](eval/results/report.md).
 
 ## Input và output
 
@@ -117,6 +118,12 @@ GET  /api/v1/scenarios/{id}
 GET  /api/v1/scenarios/{id}/xosc            tải XML để kiểm tra từ Cổng 1
 PUT  /api/v1/scenarios/{id}/tags            thay toàn bộ tag
 
+POST /api/v1/campaigns                      sinh một batch phủ các ô ODD đã chọn
+POST /api/v1/campaigns/{id}/review          duyệt batch trước khi chạy GPU
+GET  /api/v1/metrics/quality                báo cáo M1/M2/M3 từ dữ liệu thật
+GET  /api/v1/metrics/intent-agreement       mức khớp giữa behavior checker và người
+GET  /api/v1/library/audit                  rà lại kho theo luật hiện tại
+
 GET  /api/v1/internal/jobs                  worker GPU poll
 POST /api/v1/internal/jobs/{job_id}/result  ghi kết quả và mở BEFORE_LIBRARY
 ```
@@ -176,6 +183,3 @@ hiểm nào; đường ống thông không có nghĩa kịch bản đáng giá.
 ## License
 
 MIT
-=======
-# VINAI_PRJ
->>>>>>> cbbc227e0a618bfaa778c50bf1bc1d92f6689b2a

@@ -63,8 +63,8 @@ def _relative_lane_position(
 ) -> ET.Element:
     """``<RelativeLanePosition>`` cho một actor, theo hệ làn của template.
 
-    Ba chỗ dựng element này — spawn ở ``Init``, đích của ``jaywalk``, và chỗ
-    xoay đầu của ``wrong_way`` — và cả ba đều phải nhân ``lane_offset`` với
+    Hai chỗ dựng element này — spawn ở ``Init`` và đích của ``jaywalk`` — đều
+    phải nhân ``lane_offset`` với
     ``lane_sign``. Dấu đó là ADR-012: ScenarioRunner 0.9.15 làm số học thẳng
     trên ``lane_id``, nên quên nhân ở một chỗ sẽ đặt actor sang **phía đối
     diện** của ego. File .xosc vẫn hợp lệ, scenario vẫn chạy, chỉ là tình huống
@@ -427,6 +427,9 @@ def _add_init(storyboard: ET.Element, spec: ScenarioSpec, template: ScenarioTemp
     ET.SubElement(weather, "Fog", visualRange=visual_range)
     ET.SubElement(weather, "Precipitation", precipitationType=precipitation_type, intensity=intensity)
     ET.SubElement(environment, "RoadCondition", frictionScaleFactor="0.7" if precipitation_type == "rain" else "1")
+    wrong_way_actors = {
+        maneuver.actor_name for maneuver in spec.maneuvers if maneuver.maneuver is ManeuverType.WRONG_WAY
+    }
     for actor in spec.actors:
         private = ET.SubElement(actions, "Private", entityRef=actor.name)
         teleport_private = ET.SubElement(private, "PrivateAction")
@@ -443,7 +446,14 @@ def _add_init(storyboard: ET.Element, spec: ScenarioSpec, template: ScenarioTemp
                 h=_number(spawn.h),
             )
         else:
-            _relative_lane_position(position, actor, template)
+            relative = _relative_lane_position(position, actor, template)
+            if actor.name in wrong_way_actors:
+                # Xoay ngay trong Init, TRƯỚC khi SpeedAction đặt vận tốc. Bản cũ
+                # teleport xoay ở Event sau khi xe đã chạy: CARLA đổi transform
+                # nhưng giữ vector quán tính cũ, nên xe tải nhìn ngược đầu mà vẫn
+                # trôi ra xa ego (sc_037: khe hở nhỏ nhất 20,42 m). Spawn đúng
+                # hướng làm lệnh tốc độ ban đầu tác dụng dọc theo hướng ngược.
+                ET.SubElement(relative, "Orientation", h="3.141593", p="0", r="0", type="relative")
         speed_private = ET.SubElement(private, "PrivateAction")
         _add_speed_action(speed_private, actor.initial_speed_kmh, abrupt=True)
 
@@ -480,12 +490,15 @@ def _far_shoulder_offset(actor: ActorSpec, template: ScenarioTemplate) -> int:
     return max(template.shoulder_lane_offsets, key=lambda offset: abs(start - offset))
 
 
-def _add_wrong_way_action(parent: ET.Element, actor: ActorSpec, template: ScenarioTemplate) -> None:
-    """Rotate the actor 180 degrees at its semantic lane-relative position."""
-    teleport = ET.SubElement(parent, "TeleportAction")
-    position = ET.SubElement(teleport, "Position")
-    relative = _relative_lane_position(position, actor, template)
-    ET.SubElement(relative, "Orientation", h="3.141593", p="0", r="0", type="relative")
+def _add_wrong_way_action(parent: ET.Element, maneuver: ManeuverSpec, actor: ActorSpec) -> None:
+    """Giữ xe chạy theo hướng ngược đã đặt trong ``Init``.
+
+    Không teleport một xe đang chuyển động để xoay đầu: CARLA giữ quán tính cũ,
+    nên hướng thân xe và hướng vận tốc có thể ngược nhau. ``Init`` đặt transform
+    trước, còn event này chỉ khẳng định lại tốc độ mục tiêu.
+    """
+    target = maneuver.target_speed_kmh if maneuver.target_speed_kmh is not None else actor.initial_speed_kmh
+    _add_speed_action(parent, target, abrupt=True)
 
 
 def _add_maneuver_action(
@@ -515,7 +528,7 @@ def _add_maneuver_action(
         _lane_drift(parent, actor)
         return
     if maneuver.maneuver is ManeuverType.WRONG_WAY:
-        _add_wrong_way_action(parent, actor, template)
+        _add_wrong_way_action(parent, maneuver, actor)
         return
     MANEUVER_BUILDERS[maneuver.maneuver](parent, maneuver, actor)
 
@@ -574,8 +587,8 @@ def _add_hold_open_event(maneuver_el: ET.Element, index: int, actor: ActorSpec, 
     kịch bản đóng ngay, kể cả khi mới ở giây thứ 2,6.
 
     Đo được ngày 22/08: bốn maneuver có hành động hoàn tất tức thì
-    (`stop_in_lane`, `run_red_light` dùng `SpeedAction` step; `wrong_way` dùng
-    `TeleportAction`; `jaywalk` dùng `AcquirePositionAction`) đều kết thúc sau
+    (`stop_in_lane`, `run_red_light`, `wrong_way` dùng `SpeedAction` step;
+    `jaywalk` dùng `AcquirePositionAction`) đều kết thúc sau
     ~2,6 s với ego mới đi 16,6 m — chưa kịp tới chỗ adversary, nên không có cách
     nào xảy ra nguy hiểm. Chúng "chạy xong" mà không mô phỏng được gì.
 

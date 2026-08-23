@@ -253,9 +253,11 @@ def test_run_red_light_keeps_actor_moving_and_adds_criterion() -> None:
     assert "criteria_RunningRedLightTest" in criteria
 
 
-def test_wrong_way_rotates_actor_and_adds_criterion() -> None:
+def test_wrong_way_starts_reversed_before_speed_and_adds_criterion() -> None:
     root = ET.fromstring(convert_spec_to_xosc(make_spec(ManeuverType.WRONG_WAY)))
-    orientation = root.find(".//Event[@name='event_0_wrong_way']//RelativeLanePosition/Orientation")
+    position = root.find(".//Init//Private[@entityRef='other']//RelativeLanePosition")
+    orientation = position.find("Orientation") if position is not None else None
+    event_speed = root.find(".//Event[@name='event_0_wrong_way']//AbsoluteTargetSpeed")
     criteria = {item.get("name") for item in root.findall("./Storyboard/StopTrigger/ConditionGroup/Condition")}
     assert orientation is not None and orientation.attrib == {
         "h": "3.141593",
@@ -263,6 +265,8 @@ def test_wrong_way_rotates_actor_and_adds_criterion() -> None:
         "r": "0",
         "type": "relative",
     }
+    assert event_speed is not None and float(event_speed.get("value")) > 0
+    assert root.find(".//Event[@name='event_0_wrong_way']//TeleportAction") is None
     assert "criteria_WrongLaneTest" in criteria
 
 
