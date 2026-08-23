@@ -129,8 +129,17 @@ def plan_sweep_step(spec: ScenarioSpec, done: list[dict[str, Any]]) -> tuple[Sce
     Vì sao không dựng cả 4 biến thể rồi chạy hết
     --------------------------------------------
     Mỗi lượt chạy là ~35 giây GPU, và phép dò thường trúng sớm: ``sc_024`` xuống
-    0,63 m ngay ở bước thứ ba (78,26 m -> 0,63 m). Hai lượt còn lại chỉ để xác
-    nhận chúng tệ hơn — biết trước rồi vì các bước xa mốc neo dần.
+    0,63 m ngay ở bước thứ ba. Hai lượt còn lại chỉ để xác nhận chúng tệ hơn —
+    biết trước rồi vì các bước xa mốc neo dần.
+
+    Cẩn thận với con số "78,26 m -> 0,63 m" từng ghi ở đây: 78,26 m là nền đo khi
+    converter còn lỗi. Sau khi sửa (đóng kịch bản khi va chạm, sửa dấu lệch làn,
+    sửa thời điểm cut_in), đo lại ngày 23/08/2026 thì **chính bản gốc sc_024 đã
+    xuống 0,68 m**, còn 4 biến thể nằm trong 0,62-0,70 m. Tức là phần lớn cải
+    thiện đó thuộc về việc sửa converter, không thuộc về phép dò.
+
+    Bằng chứng còn đứng vững cho phép dò là sc_906: 1,05 m -> 0,36 m, và đó là
+    hiệu ứng thuần của thời điểm trigger.
 
     Ba trạng thái dừng, và cả ba đều là **kết luận**:
 
