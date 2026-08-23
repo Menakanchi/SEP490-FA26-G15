@@ -4,19 +4,41 @@ Những thứ không suy ra được từ code, và mất thời gian nếu ph�
 
 ## Chạy CARLA
 
-Server là app GPU chạy trên **Windows**, không phải trong WSL. Bật từ WSL được:
+Server là app GPU chạy native trên Ubuntu, giải nén ở `~/CARLA_0.9.15` (bản
+`CARLA_0.9.15.tar.gz` cho Linux — GitHub release `0.9.15` không có asset nào,
+tải từ mirror `carla-releases.s3.us-east-005.backblazeb2.com/Linux/`).
 
 ```bash
-powershell.exe -NoProfile -Command "Start-Process -FilePath 'C:\CARLA_0.9.15\WindowsNoEditor\CarlaUE4.exe' -ArgumentList '-carla-rpc-port=2000','-windowed','-ResX=640','-ResY=480'"
+cd ~/CARLA_0.9.15
+__NV_PRIME_RENDER_OFFLOAD=1 __VK_LAYER_NV_optimus=NVIDIA_only \
+    ./CarlaUE4.sh -carla-rpc-port=2000 -windowed -ResX=800 -ResY=600
 ```
 
-Mất khoảng 30-60 giây mới mở cổng. Kiểm bằng:
+**Hai cờ `__NV_*` là bắt buộc.** Máy có Intel iGPU cạnh NVIDIA dGPU; thiếu chúng
+thì Vulkan có thể chọn nhầm Intel và server bò hoặc chết. Kiểm GPU nào đang có:
+`vulkaninfo --summary | grep deviceName`.
+
+Cổng mở sau vài giây tới ~30 giây. Kiểm bằng:
 
 ```bash
 python3 -c "import socket;s=socket.socket();s.settimeout(2);print(s.connect_ex(('127.0.0.1',2000))==0)"
 ```
 
-**KHÔNG thêm `-quality-level=Low`** — cờ đó làm server sập trên Town04.
+Cổng mở chưa chắc server đã sẵn sàng — chắc ăn thì hỏi thẳng version:
+
+```bash
+PYTHONPATH="$HOME/CARLA_0.9.15/PythonAPI/carla" \
+    worker/.venv/bin/python -c "import carla;print(carla.Client('127.0.0.1',2000).get_server_version())"
+```
+
+**KHÔNG thêm `-quality-level=Low`** — cờ đó làm server sập trên Town04. (Ghi
+nhận từ bản Windows; chưa thử lại trên Linux, và cũng không có lý do gì để thử.)
+
+Lib hệ thống cần có, nếu thiếu thì `CarlaUE4.sh` chết bằng lỗi `.so` khó hiểu:
+
+```bash
+sudo apt install -y libomp5 libsdl2-2.0-0 libxerces-c3.2 vulkan-tools
+```
 
 ## Chạy một file .xosc
 
@@ -24,15 +46,29 @@ Cần `PythonAPI/carla` của CARLA trên `PYTHONPATH`, nếu không ScenarioRun
 chết ở `ModuleNotFoundError: No module named 'agents'`:
 
 ```bash
-export PYTHONPATH="/mnt/c/CARLA_0.9.15/WindowsNoEditor/PythonAPI/carla:$HOME/scenario_runner"
+export PYTHONPATH="$HOME/CARLA_0.9.15/PythonAPI/carla:$HOME/scenario_runner"
 cd ~/scenario_runner
 /home/cong/code/P-130/worker/.venv/bin/python scenario_runner.py \
-    --openscenario /đường/dẫn/tới.xosc --output --timeout 60
+    --openscenario /đường/dẫn/tới.xosc --output --timeout 60 \
+    --trafficManagerPort 8005
 ```
 
 Dùng `worker/.venv`, **không** dùng `.venv` của repo: project uv của worker ghim
 `carla==0.9.15` và `setuptools<81`, còn `src/` thì không bao giờ được import
 carla (ADR-001).
+
+**Luôn truyền `--trafficManagerPort`.** Mặc định của ScenarioRunner là 8000 —
+đúng cổng backend chạy cùng máy lúc dev. Trùng cổng thì nó chết bằng một thông
+báo chẳng liên quan gì tới nguyên nhân:
+
+```text
+RuntimeError: trying to create rpc server for traffic manager;
+but the system failed to create because of bind error
+```
+
+`worker/runner.py` và `worker/dev_ui.py` mặc định `CARLA_ROOT=~/CARLA_0.9.15`,
+`SR_ROOT=~/scenario_runner`, `CARLA_TM_PORT=8005` — đúng cho máy này, không cần
+đặt gì. Giải nén CARLA chỗ khác thì override bằng biến môi trường cùng tên.
 
 ## Không nhìn thấy gì trong cửa sổ CARLA
 
@@ -43,7 +79,7 @@ nào đó của Town04 còn cửa sổ vẫn nhìn vào chỗ map vừa load —
 Bật song song ở terminal khác, **trước** khi chạy scenario:
 
 ```bash
-PYTHONPATH="/mnt/c/CARLA_0.9.15/WindowsNoEditor/PythonAPI/carla" \
+PYTHONPATH="$HOME/CARLA_0.9.15/PythonAPI/carla" \
     worker/.venv/bin/python worker/follow_hero.py          # bám sau xe
     # hoặc: --view bird                                     # nhìn từ trên
 ```
@@ -53,13 +89,30 @@ chế độ synchronous mà ScenarioRunner đang giữ.
 
 ## Đọc kết quả ScenarioRunner
 
-`CollisionTest = FAILURE` là **tin tốt**: nghĩa là kịch bản đã dựng được tình
-huống nguy hiểm — đúng thứ ta muốn (`adversarial_found`). `GLOBAL RESULT =
-FAILURE` đi kèm nó cũng vậy.
+Đọc **dòng `CollisionTest`**, đừng đọc `GLOBAL RESULT`.
+
+`CollisionTest = FAILURE` là **tin tốt**: kịch bản đã dựng được tình huống nguy
+hiểm — đúng thứ ta muốn (`adversarial_found`).
 
 Ngược lại, `CollisionTest = SUCCESS` (0 va chạm) nghĩa là kịch bản **chạy trót
 lọt nhưng không tái hiện được nguy hiểm nào** — về mặt sản phẩm đó mới là thất
 bại. Đừng đọc ngược.
+
+**`GLOBAL RESULT = FAILURE` không đồng nghĩa "tìm được nguy hiểm".** Nó là AND
+của mọi criteria, nên `CheckDrivenDistance` hay `CheckMaximumVelocity` trượt là
+đủ kéo nó xuống FAILURE trong khi không có va chạm nào. Ngày 22/08 có bốn kịch
+bản đóng sau ~2,6 giây (ego mới đi 16,6 m, dưới ngưỡng 50 m của
+`CheckDrivenDistance`): cả bốn đều `GLOBAL RESULT = FAILURE` mà chẳng mô phỏng
+được gì. Đọc theo `GLOBAL RESULT` là ghi nhầm cả bốn thành thành công.
+
+Code đã làm đúng chuyện này, đừng sửa theo hướng khác: `sr_cli.run_succeeded`
+chỉ trả lời "chạy xong, không crash/timeout", còn `sr_cli.had_collision` đọc
+riêng dòng `CollisionTest`; `verification_from` trong `schemas.py` map
+`ADVERSARIAL` / `RAN_NO_HAZARD` từ đó.
+
+Kịch bản chạy ngắn hơn `duration_s` nhiều là dấu hiệu storyboard hết việc sớm
+chứ không phải kịch bản "xong nhanh" — xem `_add_hold_open_event` trong
+`convert_xosc_node.py`.
 
 ## Test gọi LLM
 

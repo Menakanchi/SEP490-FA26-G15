@@ -133,6 +133,29 @@
                 </ConditionGroup>
               </StartTrigger>
             </Event>
+            <Event name="event_0_hold_open" priority="overwrite">
+              <Action name="action_0_hold_open">
+                <PrivateAction>
+                  <LongitudinalAction>
+                    <SpeedAction>
+                      <SpeedActionDynamics dynamicsShape="step" value="0" dynamicsDimension="time" />
+                      <SpeedActionTarget>
+                        <AbsoluteTargetSpeed value="5.555556" />
+                      </SpeedActionTarget>
+                    </SpeedAction>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="trigger_0_hold_open" delay="0" conditionEdge="rising">
+                    <ByValueCondition>
+                      <SimulationTimeCondition value="30" rule="greaterThan" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
           </Maneuver>
         </ManeuverGroup>
         <StartTrigger>
