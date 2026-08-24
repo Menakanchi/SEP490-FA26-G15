@@ -99,6 +99,31 @@ npm ci
 npm run dev
 ```
 
+### Một lệnh chạy demo
+
+Sau khi đã tạo `.env`, lệnh mặc định dựng backend, frontend, CARLA có render,
+camera bám xe và GPU worker. Nó tái sử dụng service đang chạy và khi nhấn
+`Ctrl+C` chỉ dừng process do chính lệnh đó tạo:
+
+```bash
+make demo
+```
+
+Máy không có CARLA/GPU vẫn demo được luồng sinh, review và thư viện:
+
+```bash
+make demo-web
+```
+
+Kiểm dependency và đường dẫn mà chưa khởi động gì:
+
+```bash
+make demo-check
+```
+
+Log của từng service được giữ trong một thư mục
+`/tmp/scenario-forge-demo.*` và in ra khi lệnh khởi động.
+
 Cài hook một lần sau khi clone. Nó chạy gate lint/test trước mỗi lần push, nên
 lỗi bị chặn ở máy thay vì chờ một vòng CI:
 
