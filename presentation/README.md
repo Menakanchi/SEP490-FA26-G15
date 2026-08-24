@@ -1,22 +1,36 @@
-# Pitch Deck & Demo Materials
+# Pitch Deck Demo Day
 
 ## Files
 
-- `pitch_deck.pptx` — Slide thuyết trình Demo Day
-- `video_demo.mp4` — Video demo sản phẩm (tối đa 5 phút)
+- `pitch_deck.pptx` — bản có thể chỉnh sửa, gồm 15 slide
+- `pitch_deck.pdf` — bản PDF để nộp link
+- Video demo được nộp qua URL riêng theo yêu cầu của Demo Day.
 
-## Pitch Deck Structure (10 slides)
+Các câu giải thích dài nằm trong **speaker notes** của PPTX; slide chỉ giữ số,
+sơ đồ và kết luận chính.
 
-1. **Title** — Tên dự án + Team
-2. **Problem** — Vấn đề là gì? Có bao nhiêu người gặp?
-3. **Solution** — Giải pháp AI của bạn
-4. **Demo** — Screenshot/Video ngắn
-5. **Architecture** — System diagram đơn giản
-6. **Tech Stack** — Technologies used
-7. **Traction** — Metrics, users, feedback
-8. **Market** — Quy mô thị trường
-9. **Team** — Ai làm gì
-10. **Ask** — Bạn cần gì tiếp theo?
+## Cấu trúc 15 slide
+
+| # | Slide | Vai trò theo template Demo Day |
+|---|---|---|
+| 1 | Scenario Forge — title + 4 con số chốt | Title |
+| 2 | Xe tự lái không hỏng ở đường thẳng | Problem |
+| 3 | Vào một câu, ra một file chạy được | Solution |
+| 4 | Sáu tình huống đang sinh được | Demo |
+| 5 | Bên trong: 7 node, LLM chỉ làm 3 | Architecture |
+| 6 | Không có gì tự vào thư viện (hai cổng duyệt) | Architecture |
+| 7 | Kiến trúc & tech stack | Tech Stack |
+| 8 | Từ một kịch bản đến một chiến dịch đánh giá | **Yêu cầu nâng cao** |
+| 9 | M1 — nó chạy được tới đâu (L1–L4) | Traction |
+| 10 | M2 — độ phủ ODD (ma trận 72 ô) | Traction |
+| 11 | M3 — kích hoạt nguy hiểm + đối chiếu nhãn người | Traction |
+| 12 | Cost/request và p50/p95 latency | Traction |
+| 13 | A/B model LLM và quyết định giữ nguyên | Traction |
+| 14 | Ai dùng, và thay cho việc gì | Market |
+| 15 | Làm gì tiếp | Ask |
+
+Số liệu lấy từ [`eval/results/report.md`](../eval/results/report.md) (snapshot
+24/08/2026). Đổi số thì đổi ở cả hai chỗ.
 
 ## Video Demo Checklist
 
