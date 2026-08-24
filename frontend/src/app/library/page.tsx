@@ -489,7 +489,7 @@ function LibraryContent() {
                     <div className="p-5 space-y-3">
                       <div className="flex items-center justify-end gap-1">
                         {isApproved && (
-                          <span title="Khóa chỉnh sửa kịch bản đã duyệt" className="p-1 rounded bg-slate-900/80 text-amber-400">
+                          <span title="Khóa chỉnh sửa kịch bản đã duyệt" className="p-1 rounded bg-amber-50 dark:bg-slate-800 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-slate-700">
                             <Lock className="w-3 h-3" />
                           </span>
                         )}
