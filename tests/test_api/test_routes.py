@@ -638,10 +638,48 @@ async def test_complete_simulation_rejected(client):
     """Test luồng báo lỗi chạy thử thủ công: simulation_queued -> rejected."""
     sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc 2")
     await _approve_sim(client, sc_id)
-
     res = await client.post(
         f"/api/v1/scenarios/{sc_id}/complete-simulation",
         json={"passed": False, "notes": "Lỗi va chạm mô phỏng"},
     )
     assert res.status_code == 200
     assert res.json()["status"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_draft_scenario_is_private_to_creator(client):
+    """Kịch bản draft là dữ liệu riêng tư: chỉ người tạo (created_by) mới xem được, bị 403 đối với người khác."""
+    # 1. Tạo draft của creator_a
+    draft_res = await client.post(
+        "/api/v1/scenarios/draft",
+        json={
+            "title": "Bản nháp riêng tư của Creator A",
+            "description_vi": "Mô tả nháp riêng tư",
+            "odd": {"road_type": "highway"},
+            "created_by": "creator_a",
+        },
+    )
+    assert draft_res.status_code == 200
+    draft_id = draft_res.json()["scenario_id"]
+
+    # 2. GET /scenarios không tham số hoặc với user khác KHÔNG thấy draft
+    public_list = (await client.get("/api/v1/scenarios")).json()["items"]
+    assert not any(item["scenario_id"] == draft_id for item in public_list)
+
+    reviewer_list = (await client.get("/api/v1/scenarios?user=reviewer_b")).json()["items"]
+    assert not any(item["scenario_id"] == draft_id for item in reviewer_list)
+
+    # 3. GET /scenarios với scope=me&user=creator_a THẤY draft
+    my_list = (await client.get("/api/v1/scenarios?scope=me&user=creator_a")).json()["items"]
+    assert any(item["scenario_id"] == draft_id for item in my_list)
+
+    # 4. GET /scenarios/{draft_id} với user khác trả về 403 Forbidden
+    forbidden_res = await client.get(f"/api/v1/scenarios/{draft_id}?user=reviewer_b")
+    assert forbidden_res.status_code == 403
+    assert "Forbidden" in forbidden_res.json()["detail"]
+
+    # 5. GET /scenarios/{draft_id} với chính creator_a trả về 200 OK
+    allowed_res = await client.get(f"/api/v1/scenarios/{draft_id}?user=creator_a")
+    assert allowed_res.status_code == 200
+    assert allowed_res.json()["scenario_id"] == draft_id
+

@@ -115,9 +115,9 @@ function SidebarContent() {
 
   return (
     <aside
-      className={`fixed left-0 top-0 bottom-0 ${
+      className={`fixed left-3 top-3 bottom-3 ${
         isCollapsed ? "w-[72px]" : "w-[260px]"
-      } flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 z-50 shadow-sm font-sans transition-all duration-300 ease-in-out`}
+      } flex flex-col border border-slate-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl text-slate-900 dark:text-slate-100 z-50 shadow-xl dark:shadow-2xl dark:shadow-black/50 rounded-3xl font-sans transition-all duration-300 ease-in-out`}
     >
       {/* Header & Toggle Button */}
       <div className={`px-4 py-5 flex items-center ${isCollapsed ? "justify-center" : "justify-between"}`}>
@@ -142,6 +142,7 @@ function SidebarContent() {
             type="button"
             onClick={toggleSidebar}
             title="Thu gọn Sidebar"
+            aria-label="Thu gọn Sidebar"
             className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
           >
             <PanelLeftClose className="w-4 h-4" />
@@ -155,6 +156,7 @@ function SidebarContent() {
             type="button"
             onClick={toggleSidebar}
             title="Mở rộng Sidebar"
+            aria-label="Mở rộng Sidebar"
             className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <PanelLeftOpen className="w-4 h-4" />
@@ -221,6 +223,7 @@ function SidebarContent() {
             type="button"
             onClick={toggleTheme}
             title={isCollapsed ? (theme === "light" ? "Chuyển Chế độ Tối" : "Chuyển Chế độ Sáng") : undefined}
+            aria-label="Chuyển đổi giao diện Sáng/Tối"
             className={`${
               isCollapsed ? "p-2" : "px-3 py-1.5"
             } rounded-xl bg-white dark:bg-slate-800 border border-sky-100 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-bold text-[11px] flex items-center justify-center gap-1.5 shadow-sm hover:border-blue-500 transition cursor-pointer`}
@@ -254,6 +257,7 @@ function SidebarContent() {
             <button
               onClick={handleLogout}
               title="Đăng xuất"
+              aria-label="Đăng xuất khỏi tài khoản"
               className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition shrink-0 cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
@@ -267,7 +271,7 @@ function SidebarContent() {
 
 export function Sidebar() {
   return (
-    <Suspense fallback={<aside className="fixed left-0 top-0 bottom-0 w-[260px] border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900" />}>
+    <Suspense fallback={<aside className="fixed left-3 top-3 bottom-3 w-[260px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-3xl" />}>
       <SidebarContent />
     </Suspense>
   );

@@ -592,16 +592,18 @@ export default function AdminDashboardPage() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => openEditModal(u)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 active:scale-[0.95] rounded-lg transition cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                             title="Sửa thông tin"
+                            aria-label={`Sửa thông tin người dùng ${u.username}`}
                           >
                             <Edit className="w-4 h-4" />
                           </button>
 
                           <button
                             onClick={() => setDeleteTarget(u)}
-                            className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                            className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 active:scale-[0.95] rounded-lg transition cursor-pointer focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
                             title="Xóa người dùng"
+                            aria-label={`Xóa người dùng ${u.username}`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

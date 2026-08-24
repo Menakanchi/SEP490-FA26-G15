@@ -452,6 +452,18 @@ async def list_scenarios(
     else:
         items = db.list_all_scenarios()
 
+    # Filter out draft scenarios unless requested by their creator
+    filtered = []
+    for item in items:
+        if item.get("status") == "draft":
+            created_by = item.get("created_by") or ""
+            if scope == "me" or (user and created_by and user.strip().lower() == created_by.strip().lower()):
+                filtered.append(item)
+            # Omit private draft scenario from public/review listing
+        else:
+            filtered.append(item)
+    items = filtered
+
     total = len(items)
     offset = (page - 1) * limit
     paged = items[offset : offset + limit]
@@ -535,9 +547,20 @@ async def complete_simulation_endpoint(scenario_id: str, body: CompleteSimulatio
 
 
 @router.get("/scenarios/{scenario_id}")
-async def get_scenario(scenario_id: str) -> dict:
+async def get_scenario(
+    scenario_id: str,
+    user: str | None = Query(None, description="Username người dùng hiện tại"),
+) -> dict:
     """Chi tiết một scenario bao gồm spec, xosc_content và review_logs."""
-    return _scenario_or_404(scenario_id)
+    sc = _scenario_or_404(scenario_id)
+    if sc.get("status") == "draft":
+        created_by = sc.get("created_by") or ""
+        if not user or user.strip().lower() != created_by.strip().lower():
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: Bạn không có quyền truy cập bản nháp này",
+            )
+    return sc
 
 
 # ===========================================================================
@@ -546,9 +569,19 @@ async def get_scenario(scenario_id: str) -> dict:
 
 
 @router.get("/scenarios/{scenario_id}/xosc")
-async def get_scenario_xosc(scenario_id: str) -> Response:
+async def get_scenario_xosc(
+    scenario_id: str,
+    user: str | None = Query(None, description="Username người dùng hiện tại"),
+) -> Response:
     """Tải XML để reviewer có thể kiểm tra ở cả hai cổng."""
     scenario = _scenario_or_404(scenario_id)
+    if scenario.get("status") == "draft":
+        created_by = scenario.get("created_by") or ""
+        if not user or user.strip().lower() != created_by.strip().lower():
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: Bạn không có quyền truy cập bản nháp này",
+            )
 
     if not _has_xosc(scenario):
         # Thà 409 còn hơn phát ra một file trông như thật mà rỗng ruột. Ca này
