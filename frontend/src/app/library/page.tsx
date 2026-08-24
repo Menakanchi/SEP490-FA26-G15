@@ -10,7 +10,6 @@ import {
   Download,
   AlertCircle,
   MapPin,
-  Map,
   Users,
   Globe,
   User,
@@ -27,7 +26,6 @@ import {
   updateScenario,
   submitScenario,
 } from "@/services/api";
-import SVG2DRenderer from "@/components/SVG2DRenderer";
 import { useAuth } from "@/context/AuthContext";
 import type { ScenarioItem, ODDPayload } from "@/types";
 import {
@@ -116,17 +114,6 @@ function LibraryContent() {
       setActiveTab(tabParam);
     }
   }, [tabParam, user?.role]);
-
-  // Display unauthorized warning if redirected from /review
-  useEffect(() => {
-    if (searchParams.get("unauthorized") === "true") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- handle unauthorized redirect toast
-      setToast({
-        type: "error",
-        msg: "Bạn không có quyền thẩm định kịch bản.",
-      });
-    }
-  }, [searchParams]);
 
   // Fetch logic
   const fetchData = useCallback(
@@ -325,208 +312,189 @@ function LibraryContent() {
   ];
 
   return (
-    <div className="w-full max-w-7xl mx-auto flex-1 flex flex-col min-h-0 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border border-sky-100/80 dark:border-white/10 rounded-3xl p-6 shadow-xl dark:shadow-2xl dark:shadow-black/50 space-y-6 transition-all duration-300 font-sans text-[#0f2d59] dark:text-slate-100">
-      {/* Toast */}
-      {toast && (
-        <div
-          className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm font-medium transition-all duration-300 ${
-            toast.type === "error" ? "bg-amber-500 text-slate-950 font-bold" : "bg-green-600 text-white font-bold"
-          }`}
-        >
-          <AlertCircle className="w-4 h-4" />
-          {toast.msg}
-        </div>
-      )}
-
-      {/* ─── Header Banner ─── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <BookOpen className="w-5 h-5 text-white" />
+    <div className="min-h-screen p-6 pt-8 font-sans bg-white dark:bg-slate-950 text-[#0f2d59] dark:text-slate-100 transition-colors duration-200">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Toast */}
+        {toast && (
+          <div
+            className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm font-medium transition-all duration-300 ${
+              toast.type === "error" ? "bg-amber-500 text-slate-950 font-bold" : "bg-green-600 text-white font-bold"
+            }`}
+          >
+            <AlertCircle className="w-4 h-4" />
+            {toast.msg}
           </div>
-          <div>
-            <h1 className="text-2xl font-black text-[#0f2d59] dark:text-slate-100">
-              Thư viện kịch bản ODD
-            </h1>
-            <p className="text-sm text-blue-900/80 dark:text-slate-400 font-medium">
-              {activeTab === "public"
-                ? "Thư viện Chung: Tất cả kịch bản đã qua duyệt chính thức (Read-Only & Download)"
-                : "Thư viện Cá nhân: Quản lý bản nháp, kịch bản chờ duyệt và lịch sử sinh kịch bản của tôi"}
-            </p>
-          </div>
-        </div>
-        <span className="text-xs font-bold px-3.5 py-1.5 rounded-full bg-sky-50/80 dark:bg-slate-900/80 text-[#0f2d59] dark:text-blue-300 border border-sky-100 dark:border-slate-800 shadow-sm shrink-0">
-          Hiển thị: {displayItems.length} / {total} kịch bản
-        </span>
-      </div>
+        )}
 
-      {/* ─── Tab Switcher (Chung vs Cá nhân) - Hidden for Admin ─── */}
-      {user?.role === "admin" ? (
-        <div className="flex items-center gap-2 border-b border-sky-100 dark:border-slate-800 pb-3">
-          <span className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800 flex items-center gap-2">
-            <Globe className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            Thư viện Chung (Public Approved Library) — Chế độ Giám sát Admin (Read-Only & Download)
+        {/* ─── Header Banner ─── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <BookOpen className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-[#0f2d59] dark:text-slate-100">
+                Thư viện kịch bản ODD
+              </h1>
+              <p className="text-sm text-blue-900/80 dark:text-slate-400 font-medium">
+                {activeTab === "public"
+                  ? "Thư viện Chung: Tất cả kịch bản đã qua duyệt chính thức (Read-Only & Download)"
+                  : "Thư viện Cá nhân: Quản lý bản nháp, kịch bản chờ duyệt và lịch sử sinh kịch bản của tôi"}
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-bold px-3.5 py-1.5 rounded-full bg-sky-50/80 dark:bg-slate-900 text-[#0f2d59] dark:text-blue-300 border border-sky-100 dark:border-slate-800 shadow-sm shrink-0">
+            Hiển thị: {displayItems.length} / {total} kịch bản
           </span>
         </div>
-      ) : (
-        <div className="flex items-center gap-2 border-b border-sky-100 dark:border-slate-800 pb-3">
-          <button
-            onClick={() => handleTabSwitch("public")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-              activeTab === "public"
-                ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
-                : "bg-sky-50/70 dark:bg-slate-800/80 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-200/80 dark:border-slate-700"
-            }`}
-          >
-            <Globe className="w-4 h-4" />
-            Thư viện Chung (Public Approved)
-          </button>
 
-          <button
-            onClick={() => handleTabSwitch("me")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-              activeTab === "me"
-                ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
-                : "bg-sky-50/70 dark:bg-slate-800/80 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-200/80 dark:border-slate-700"
-            }`}
-          >
-            <User className="w-4 h-4" />
-            Thư viện Cá nhân (My Scenarios)
-          </button>
-        </div>
-      )}
-
-      {/* ─── Search & Filters Toolbar (Glassmorphism Styled) ─── */}
-      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-4 md:p-5 rounded-2xl border border-sky-100/80 dark:border-white/10 shadow-sm">
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-center">
-          {/* Search Input (~35% width / 4 of 12 columns on xl screens) */}
-          <div className="relative xl:col-span-4 min-w-[220px]">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1e3a8a] dark:text-sky-400" />
-            <input
-              type="text"
-              className="w-full pl-10 pr-4 py-2 bg-sky-50/60 dark:bg-slate-800/80 border border-sky-200/80 dark:border-slate-700 rounded-xl text-xs md:text-sm text-[#0f2d59] dark:text-sky-100 placeholder:text-blue-900/40 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800 transition font-medium"
-              placeholder="Tìm kiếm từ khóa (tạt đầu, mưa lớn, cao tốc)..."
-              value={search}
-              onChange={(e) => handleSearchChange(e.target.value)}
-            />
+        {/* ─── Tab Switcher (Chung vs Cá nhân) - Hidden for Admin ─── */}
+        {user?.role === "admin" ? (
+          <div className="flex items-center gap-2 border-b border-sky-100 dark:border-slate-800 pb-3">
+            <span className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800 flex items-center gap-2">
+              <Globe className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              Thư viện Chung (Public Approved Library) — Chế độ Giám sát Admin (Read-Only & Download)
+            </span>
           </div>
+        ) : (
+          <div className="flex items-center gap-2 border-b border-sky-100 dark:border-slate-800 pb-3">
+            <button
+              onClick={() => handleTabSwitch("public")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                activeTab === "public"
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
+                  : "bg-sky-50/70 dark:bg-slate-800 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-200/80 dark:border-slate-700"
+              }`}
+            >
+              <Globe className="w-4 h-4" />
+              Thư viện Chung (Public Approved)
+            </button>
 
-          {/* Dropdown Filters Group (8 of 12 columns on xl screens) */}
-          <div className="xl:col-span-8 flex items-center gap-2">
-            <Filter className="w-4 h-4 text-[#1e3a8a] dark:text-sky-400 hidden 2xl:block shrink-0" />
-            <div className={`grid ${activeTab === "me" ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" : "grid-cols-2 sm:grid-cols-4"} gap-2 w-full`}>
-              {/* Status Filter — Only displayed in My Scenarios tab */}
-              {activeTab === "me" && (
-                <select
-                  className="w-full px-2.5 py-2 bg-blue-50/80 dark:bg-slate-800/90 border border-blue-200/90 dark:border-slate-700 rounded-xl text-xs md:text-sm font-bold text-[#0f2d59] dark:text-sky-200 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition cursor-pointer"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                >
-                  {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value} className="bg-white dark:bg-slate-800 text-[#0f2d59] dark:text-slate-100 font-medium">
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              )}
+            <button
+              onClick={() => handleTabSwitch("me")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                activeTab === "me"
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
+                  : "bg-sky-50/70 dark:bg-slate-800 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-200/80 dark:border-slate-700"
+              }`}
+            >
+              <User className="w-4 h-4" />
+              Thư viện Cá nhân (My Scenarios)
+            </button>
+          </div>
+        )}
 
-              {/* ODD Filters */}
-              {filterConfigs.map((filter) => (
-                <select
-                  key={filter.key}
-                  className="w-full px-2.5 py-2 bg-sky-50/60 dark:bg-slate-800/80 border border-sky-200/80 dark:border-slate-700 rounded-xl text-xs md:text-sm font-medium text-[#0f2d59] dark:text-sky-200 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition cursor-pointer"
-                  value={(oddFilter[filter.key] as string) ?? ""}
-                  onChange={(e) =>
-                    handleFilterChange(filter.key, e.target.value)
-                  }
-                >
-                  {filter.options.map((opt) => (
-                    <option key={opt.value} value={opt.value} className="bg-white dark:bg-slate-800 text-[#0f2d59] dark:text-slate-100 font-medium">
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              ))}
+        {/* ─── Search & Filters Toolbar (Deep Navy Theme & Single Row Layout) ─── */}
+        <div className="bg-white dark:bg-slate-900 p-4 md:p-5 rounded-2xl border border-sky-100 dark:border-slate-800 shadow-sm">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-center">
+            {/* Search Input (~35% width / 4 of 12 columns on xl screens) */}
+            <div className="relative xl:col-span-4 min-w-[220px]">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1e3a8a] dark:text-sky-400" />
+              <input
+                type="text"
+                className="w-full pl-10 pr-4 py-2 bg-sky-50/60 dark:bg-slate-800/80 border border-sky-200/80 dark:border-slate-700 rounded-xl text-xs md:text-sm text-[#0f2d59] dark:text-sky-100 placeholder:text-blue-900/40 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800 transition font-medium"
+                placeholder="Tìm kiếm từ khóa (tạt đầu, mưa lớn, cao tốc)..."
+                value={search}
+                onChange={(e) => handleSearchChange(e.target.value)}
+              />
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* ─── Loading ─── */}
-      {loading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-3xl border border-sky-100 dark:border-slate-800 overflow-hidden space-y-3 p-4 shadow-sm">
-              <div className="skeleton h-[160px] w-full rounded-2xl" />
-              <div className="p-2 space-y-2">
-                <div className="skeleton h-5 w-3/4" />
-                <div className="skeleton h-3 w-full" />
+            {/* Dropdown Filters Group (8 of 12 columns on xl screens) */}
+            <div className="xl:col-span-8 flex items-center gap-2">
+              <Filter className="w-4 h-4 text-[#1e3a8a] dark:text-sky-400 hidden 2xl:block shrink-0" />
+              <div className={`grid ${activeTab === "me" ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" : "grid-cols-2 sm:grid-cols-4"} gap-2 w-full`}>
+                {/* Status Filter — Only displayed in My Scenarios tab */}
+                {activeTab === "me" && (
+                  <select
+                    className="w-full px-2.5 py-2 bg-blue-50/80 dark:bg-slate-800/90 border border-blue-200/90 dark:border-slate-700 rounded-xl text-xs md:text-sm font-bold text-[#0f2d59] dark:text-sky-200 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition cursor-pointer"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value} className="bg-white dark:bg-slate-800 text-[#0f2d59] dark:text-slate-100 font-medium">
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {/* ODD Filters */}
+                {filterConfigs.map((filter) => (
+                  <select
+                    key={filter.key}
+                    className="w-full px-2.5 py-2 bg-sky-50/60 dark:bg-slate-800/80 border border-sky-200/80 dark:border-slate-700 rounded-xl text-xs md:text-sm font-medium text-[#0f2d59] dark:text-sky-200 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition cursor-pointer"
+                    value={(oddFilter[filter.key] as string) ?? ""}
+                    onChange={(e) =>
+                      handleFilterChange(filter.key, e.target.value)
+                    }
+                  >
+                    {filter.options.map((opt) => (
+                      <option key={opt.value} value={opt.value} className="bg-white dark:bg-slate-800 text-[#0f2d59] dark:text-slate-100 font-medium">
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                ))}
               </div>
             </div>
-          ))}
+          </div>
         </div>
-      )}
 
-      {/* ─── Empty state ─── */}
-      {!loading && displayItems.length === 0 && (
-        <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-3xl border border-sky-100 dark:border-slate-800 p-12 text-center space-y-3 shadow-sm">
-          <BookOpen className="w-12 h-12 text-slate-400 mx-auto" />
-          <h3 className="text-base font-bold text-[#0f2d59] dark:text-slate-100">
-            Không tìm thấy kịch bản nào
-          </h3>
-          <p className="text-xs text-slate-500 max-w-md mx-auto">
-            {activeTab === "public"
-              ? "Chưa có kịch bản đã duyệt công khai. Hãy sinh kịch bản mới và gửi duyệt!"
-              : statusFilter
-              ? `Không có kịch bản nào có trạng thái '${STATUS_OPTIONS.find(o => o.value === statusFilter)?.label}'.`
-              : "Bạn chưa tạo kịch bản cá nhân nào. Hãy bấm 'Sinh kịch bản mới' hoặc 'Lưu nháp' tại trang Generator."}
-          </p>
-        </div>
-      )}
+        {/* ─── Loading ─── */}
+        {loading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="bg-white dark:bg-slate-900 rounded-3xl border border-sky-100 dark:border-slate-800 overflow-hidden space-y-3 p-4 shadow-sm">
+                <div className="skeleton h-[160px] w-full rounded-2xl" />
+                <div className="p-2 space-y-2">
+                  <div className="skeleton h-5 w-3/4" />
+                  <div className="skeleton h-3 w-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
-      {/* ─── Scenario Cards Grid (Layered Glass Depth) ─── */}
-      {!loading && displayItems.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {displayItems.map((item) => {
-            const isApproved =
-              item.status === "approved_library" || item.status === "approved_sim";
+        {/* ─── Empty state ─── */}
+        {!loading && displayItems.length === 0 && (
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-sky-100 dark:border-slate-800 p-12 text-center space-y-3 shadow-sm">
+            <BookOpen className="w-12 h-12 text-slate-400 mx-auto" />
+            <h3 className="text-base font-bold text-[#0f2d59] dark:text-slate-100">
+              Không tìm thấy kịch bản nào
+            </h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              {activeTab === "public"
+                ? "Chưa có kịch bản đã duyệt công khai. Hãy sinh kịch bản mới và gửi duyệt!"
+                : statusFilter
+                ? `Không có kịch bản nào có trạng thái '${STATUS_OPTIONS.find(o => o.value === statusFilter)?.label}'.`
+                : "Bạn chưa tạo kịch bản cá nhân nào. Hãy bấm 'Sinh kịch bản mới' hoặc 'Lưu nháp' tại trang Generator."}
+            </p>
+          </div>
+        )}
 
-            return (
-              <div
-                key={item.scenario_id}
-                className="group bg-white/80 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl border border-sky-200/80 dark:border-white/10 hover:border-blue-500/50 dark:hover:border-cyan-500/50 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col justify-between"
-              >
+        {/* ─── Scenario Cards Grid ─── */}
+        {!loading && displayItems.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {displayItems.map((item) => {
+              const isApproved =
+                item.status === "approved_library" || item.status === "approved_sim";
+
+              return (
+                <div
+                  key={item.scenario_id}
+                  className="group bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col justify-between"
+                >
                   <div>
-                    {/* Preview Container */}
-                    <div className="h-[180px] bg-slate-100/90 dark:bg-slate-950 relative border-b border-slate-100 dark:border-slate-800/80 overflow-hidden">
-                      {(item.actors?.length || item.spec?.actors?.length) ? (
-                        <SVG2DRenderer
-                          actors={item.actors || item.spec?.actors || []}
-                          odd={item.odd}
-                          maneuvers={item.spec?.maneuvers}
-                          width="100%"
-                          height={180}
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-1">
-                          <Map className="w-8 h-8 opacity-40" />
-                          <span className="text-[10px]">Chưa có sơ đồ làn</span>
-                        </div>
-                      )}
-
-                      {/* Status badge floating top-right */}
-                      <div className="absolute top-3 right-3 z-10 flex items-center gap-1">
+                    {/* Body Content */}
+                    <div className="p-5 space-y-3">
+                      <div className="flex items-center justify-end gap-1">
                         {isApproved && (
-                          <span title="Khóa chỉnh sửa kịch bản đã duyệt" className="p-1 rounded bg-slate-900/80 text-amber-400">
+                          <span title="Khóa chỉnh sửa kịch bản đã duyệt" className="p-1 rounded bg-amber-50 dark:bg-slate-800 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-slate-700">
                             <Lock className="w-3 h-3" />
                           </span>
                         )}
                         {statusBadge(item.status)}
                       </div>
-                    </div>
-
-                    {/* Body Content */}
-                    <div className="p-5 space-y-3">
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
                           <span className="truncate max-w-[180px]">
@@ -645,6 +613,7 @@ function LibraryContent() {
             })}
           </div>
         )}
+      </div>
 
       {/* ─── Edit Scenario Modal ─── */}
       {editingItem && (

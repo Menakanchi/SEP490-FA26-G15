@@ -338,7 +338,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
                     <Zap className="w-3.5 h-3.5" /> Creator (Kỹ sư AI)
                   </div>
                   <p className="text-[10px] text-slate-500 leading-normal">
-                    Kích hoạt ngay. Sinh kịch bản và xem trước 2D layout.
+                    Kích hoạt ngay. Sinh và quản lý kịch bản kiểm thử.
                   </p>
                 </button>
 

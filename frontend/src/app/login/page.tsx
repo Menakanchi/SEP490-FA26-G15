@@ -122,7 +122,7 @@ export default function LoginPage() {
             <input
               type="text"
               required
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none transition"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               placeholder="creator@forge.ai"
               value={emailInput}
               onChange={(e) => setEmailInput(e.target.value)}
@@ -136,7 +136,7 @@ export default function LoginPage() {
             <input
               type="password"
               required
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none transition"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               placeholder="••••••••"
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
@@ -146,7 +146,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition"
           >
             <UserCheck className="w-4 h-4" />
             <span>{loading ? "Đang xử lý..." : "Đăng Nhập Workspace"}</span>
@@ -156,7 +156,7 @@ export default function LoginPage() {
         {/* Register Navigation Link */}
         <div className="text-center text-xs text-slate-600">
           Chưa có tài khoản?{" "}
-          <Link href="/register" className="font-bold text-blue-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
+          <Link href="/register" className="font-bold text-blue-600 hover:underline">
             Đăng ký tài khoản ngay
           </Link>
         </div>
@@ -169,27 +169,24 @@ export default function LoginPage() {
           <div className="grid grid-cols-3 gap-2 text-xs">
             <button
               type="button"
-              disabled={loading}
               onClick={() => handleQuickSelect("admin", "admin")}
-              className="p-2.5 rounded-xl border border-red-200 bg-red-50/50 hover:bg-red-50 active:scale-[0.98] text-red-700 font-bold text-center flex flex-col items-center gap-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
+              className="p-2.5 rounded-xl border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-700 font-bold text-center flex flex-col items-center gap-1 transition"
             >
               <Crown className="w-4 h-4 text-red-600" />
               <span>Admin</span>
             </button>
             <button
               type="button"
-              disabled={loading}
               onClick={() => handleQuickSelect("reviewer", "reviewer")}
-              className="p-2.5 rounded-xl border border-purple-200 bg-purple-50/50 hover:bg-purple-50 active:scale-[0.98] text-purple-700 font-bold text-center flex flex-col items-center gap-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:outline-none"
+              className="p-2.5 rounded-xl border border-purple-200 bg-purple-50/50 hover:bg-purple-50 text-purple-700 font-bold text-center flex flex-col items-center gap-1 transition"
             >
               <ShieldCheck className="w-4 h-4 text-purple-600" />
               <span>Reviewer</span>
             </button>
             <button
               type="button"
-              disabled={loading}
               onClick={() => handleQuickSelect("creator", "creator")}
-              className="p-2.5 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-50 active:scale-[0.98] text-blue-700 font-bold text-center flex flex-col items-center gap-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+              className="p-2.5 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-blue-700 font-bold text-center flex flex-col items-center gap-1 transition cursor-pointer"
             >
               <Zap className="w-4 h-4 text-blue-600" />
               <span>Creator</span>

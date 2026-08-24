@@ -15,17 +15,14 @@ import {
   Sparkles,
   AlertTriangle,
   Info,
-  Map,
   Users,
   Eye,
   Sliders,
   Layers,
   Sparkle,
   Bookmark,
-  Library,
 } from "lucide-react";
 import { postGenerate, getStatus, getScenarioById, postDraftScenario } from "@/services/api";
-import SVG2DRenderer from "@/components/SVG2DRenderer";
 import { useAuth } from "@/context/AuthContext";
 import type { GenerationStatus, ValidationMode, ScenarioDetail } from "@/types";
 import {
@@ -281,7 +278,7 @@ function GeneratorPageContent() {
               {/* Validation Mode Toggle */}
               <button
                 type="button"
-                className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-white transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none rounded-lg p-1"
+                className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-white transition cursor-pointer"
                 onClick={() =>
                   setValidationMode((m) => (m === "static" ? "sim" : "static"))
                 }
@@ -304,7 +301,7 @@ function GeneratorPageContent() {
                 <Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>Số mẫu Retrieve (Limit Top-K):</span>
                 <select
-                  className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-bold px-2 py-0.5 rounded border border-sky-200 dark:border-slate-700 text-xs focus:outline-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+                  className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-bold px-2 py-0.5 rounded border border-sky-200 dark:border-slate-700 text-xs focus:outline-none focus:border-blue-500"
                   value={retrieveLimit}
                   onChange={(e) => setRetrieveLimit(Number(e.target.value))}
                   disabled={polling || submitting || drafting}
@@ -321,7 +318,7 @@ function GeneratorPageContent() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="px-4 py-3 bg-sky-50/80 hover:bg-sky-100 dark:bg-slate-800 dark:hover:bg-slate-700 active:scale-[0.98] text-blue-700 dark:text-blue-300 font-bold text-xs rounded-xl border border-sky-200 dark:border-slate-700 shadow-xs flex items-center gap-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+                className="px-4 py-3 bg-sky-50/80 hover:bg-sky-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-blue-700 dark:text-blue-300 font-bold text-xs rounded-xl border border-sky-200 dark:border-slate-700 shadow-xs flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
                 onClick={handleSaveDraft}
                 disabled={!prompt.trim() || polling || submitting || drafting}
               >
@@ -334,7 +331,7 @@ function GeneratorPageContent() {
               </button>
 
               <button
-                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs rounded-xl shadow-md shadow-blue-600/20 flex items-center gap-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-600/20 flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
                 onClick={handleSubmit}
                 disabled={!prompt.trim() || polling || submitting || drafting}
               >
@@ -411,32 +408,19 @@ function GeneratorPageContent() {
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                     Scenario ID: <code className="text-blue-600 dark:text-cyan-300 font-mono font-bold">{status.scenario_id}</code>
+                    {role === "creator" && (
+                      <span className="block mt-1">Kịch bản đã được đưa vào hàng chờ; Reviewer cần đăng nhập để duyệt.</span>
+                    )}
                   </p>
                 </div>
-                {user?.role === "creator" || role === "creator" ? (
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                    <span className="text-xs font-bold text-green-800 dark:text-green-300">
-                      Kịch bản đã được gửi vào danh sách chờ duyệt!
-                    </span>
-                    <Link
-                      href="/library?tab=me"
-                      className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition cursor-pointer shrink-0"
-                    >
-                      <Library className="w-4 h-4" />
-                      Xem trong Thư viện cá nhân
-                      <ArrowRight className="w-4 h-4" />
-                    </Link>
-                  </div>
-                ) : (
-                  <Link
-                    href={`/review?scenario_id=${status.scenario_id}`}
-                    className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition cursor-pointer shrink-0"
-                  >
-                    <Eye className="w-4 h-4" />
-                    Chuyển sang bước Duyệt (Reviewer)
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
-                )}
+                <Link
+                  href={role === "reviewer" || role === "admin" ? `/review?scenario_id=${status.scenario_id}` : "/library?tab=me"}
+                  className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition"
+                >
+                  <Eye className="w-4 h-4" />
+                  {role === "reviewer" || role === "admin" ? "Mở bước Duyệt" : "Xem trong Thư viện cá nhân"}
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
               </div>
             </div>
 
@@ -475,25 +459,6 @@ function GeneratorPageContent() {
                     </span>
                   </div>
                 </div>
-
-                {/* 2D Lane Preview */}
-                {generatedScenario.spec?.actors?.length ? (
-                  <div className="space-y-3">
-                    <span className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider block flex items-center gap-2">
-                      <Map className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                      Sơ đồ làn đường 2D (Render đầy đủ Hero & Adversaries):
-                    </span>
-                    <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950">
-                      <SVG2DRenderer
-                        actors={generatedScenario.spec.actors}
-                        odd={generatedScenario.odd}
-                        maneuvers={generatedScenario.spec.maneuvers}
-                        width="100%"
-                        height={280}
-                      />
-                    </div>
-                  </div>
-                ) : null}
 
                 {/* All Actors Table */}
                 {generatedScenario.spec?.actors?.length ? (

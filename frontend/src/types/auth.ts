@@ -9,7 +9,6 @@ export type UserStatus = "active" | "pending" | "pending_approval" | "inactive" 
 export interface User {
   id?: string;
   name: string;
-  full_name?: string;
   email: string;
   role: Role;
   username: string;
@@ -36,7 +35,6 @@ export interface RegisterPayload {
   password?: string;
   email?: string;
   name?: string;
-  full_name?: string;
   role?: Role;
   reason?: string;
 }

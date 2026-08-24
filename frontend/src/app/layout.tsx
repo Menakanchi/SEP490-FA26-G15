@@ -4,7 +4,6 @@ import "./globals.css";
 import { AppLayoutWrapper } from "@/components/AppLayoutWrapper";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
-import { SidebarProvider } from "@/context/SidebarContext";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -31,9 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
         <ThemeProvider>
           <AuthProvider>
-            <SidebarProvider>
-              <AppLayoutWrapper>{children}</AppLayoutWrapper>
-            </SidebarProvider>
+            <AppLayoutWrapper>{children}</AppLayoutWrapper>
           </AuthProvider>
         </ThemeProvider>
       </body>
