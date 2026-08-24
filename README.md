@@ -11,8 +11,12 @@ bằng CARLA ScenarioRunner trước khi đưa vào thư viện.
 > `run_red_light` trên anchor `urban_straight`, cho ba loại xe qua bốn kiểu thời
 > tiết; `jaywalk` đã được loại khỏi phạm vi vì không phù hợp anchor Town04
 > ([ADR-016](docs/adr/ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md)).
-> Sáu oracle L4 trong phạm vi đều đã có. Phần nâng cao còn thiếu là closed-loop
-> với mô hình lái. Xem [báo cáo đánh giá](eval/results/report.md).
+> Sáu oracle L4 trong phạm vi đều đã có. Closed-loop với CARLA BehaviorAgent đã
+> có trên nhánh `feature/closed-loop`: job đánh giá tách khỏi job xác minh, UI
+> so A/B và lưu số phanh/khe hở/giảm tốc. Phần nâng cao còn thiếu là vòng ngoài
+> tự chọn biến thể tiếp theo và benchmark cost/latency. Xem
+> [ADR-021](docs/adr/ADR-021-danh-gia-controller-tach-khoi-xac-minh-kich-ban.md)
+> và [báo cáo đánh giá](eval/results/report.md).
 
 ## Input và output
 

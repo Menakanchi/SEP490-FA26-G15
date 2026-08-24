@@ -1013,6 +1013,16 @@ class CriterionResult(ForgeModel):
     actual: str = Field("", description="Giá trị thật, dạng chuỗi do ScenarioRunner in ra")
 
 
+class EgoControllerType(StrEnum):
+    SCENARIO_RUNNER_DEFAULT = "constant_speed"
+    BEHAVIOR_AGENT = "behavior_agent"
+
+
+class JobKind(StrEnum):
+    SCENARIO_VALIDATION = "scenario_validation"
+    CONTROLLER_EVALUATION = "controller_evaluation"
+
+
 class ExecutionResult(ForgeModel):
     """Kết quả worker trả về sau khi chạy ScenarioRunner.
 
@@ -1053,6 +1063,7 @@ class ExecutionResult(ForgeModel):
             "(worker cũ, CARLA từ chối kết nối, scenario chết trước khi spawn) — không phải xe đứng yên."
         ),
     )
+    ego_controller: EgoControllerType = EgoControllerType.SCENARIO_RUNNER_DEFAULT
     error: str | None = Field(None, description="Bắt buộc khi success=False")
 
     @model_validator(mode="after")
@@ -1161,6 +1172,8 @@ class ScenarioJob(ForgeModel):
     scenario_id: str
     xosc_content: str = Field(..., description="Nội dung file .xosc, không phải đường dẫn")
     status: JobStatus = JobStatus.PENDING
+    job_kind: JobKind = JobKind.SCENARIO_VALIDATION
+    ego_controller: EgoControllerType = EgoControllerType.SCENARIO_RUNNER_DEFAULT
     created_at: datetime
     timeout_s: float = Field(120.0, gt=0.0)
 

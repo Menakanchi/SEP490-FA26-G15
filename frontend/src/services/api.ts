@@ -13,6 +13,7 @@ import type {
   ODDPayload,
   ValidationMode,
   QualityReport,
+  ControllerRunsResponse,
 
   CampaignDetail,
   CampaignSummary,
@@ -217,6 +218,23 @@ export async function getScenarioById(
 ): Promise<ScenarioDetail> {
   return request<ScenarioDetail>(
     `/scenarios/${encodeURIComponent(id)}`,
+  );
+}
+
+export async function getControllerRuns(
+  id: string,
+): Promise<ControllerRunsResponse> {
+  return request<ControllerRunsResponse>(
+    `/scenarios/${encodeURIComponent(id)}/controller-runs`,
+  );
+}
+
+export async function postControllerRun(
+  id: string,
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(
+    `/scenarios/${encodeURIComponent(id)}/controller-runs`,
+    { method: "POST" },
   );
 }
 

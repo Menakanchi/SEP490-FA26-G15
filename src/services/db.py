@@ -33,7 +33,14 @@ from pathlib import Path
 from sqlalchemy import inspect, text
 
 from src.config import get_settings
-from src.models.schemas import ScenarioStatus, VerificationLevel, normalize_prompt, odd_axis_value
+from src.models.schemas import (
+    EgoControllerType,
+    JobKind,
+    ScenarioStatus,
+    VerificationLevel,
+    normalize_prompt,
+    odd_axis_value,
+)
 from src.services.llm import EMBEDDING_MODEL
 from src.services.persistence import connect_sqlite, make_engine, metadata, sqlite_path
 
@@ -98,6 +105,7 @@ def init_db() -> None:
         )
     _migrate_description_normalized(engine)
     _migrate_campaign_id(engine)
+    _migrate_scenario_job_metadata(engine)
     _seed_default_users()
 
 
@@ -111,6 +119,22 @@ def _migrate_campaign_id(engine) -> None:
         columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(generation_requests)")}
         if "campaign_id" not in columns:
             connection.exec_driver_sql("ALTER TABLE generation_requests ADD COLUMN campaign_id TEXT")
+
+
+def _migrate_scenario_job_metadata(engine) -> None:
+    """Tách lượt xác minh kịch bản khỏi lượt đánh giá controller."""
+    columns = {column["name"] for column in inspect(engine).get_columns("scenario_jobs")}
+    with engine.begin() as connection:
+        if "job_kind" not in columns:
+            connection.execute(
+                text("ALTER TABLE scenario_jobs ADD COLUMN job_kind VARCHAR(32) NOT NULL DEFAULT 'scenario_validation'")
+            )
+        if "ego_controller" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE scenario_jobs ADD COLUMN ego_controller VARCHAR(32) NOT NULL DEFAULT 'constant_speed'"
+                )
+            )
 
 
 _NORMALIZED_TABLES = ("scenarios", "generation_requests")
@@ -502,7 +526,7 @@ def get_scenario(scenario_id: str) -> dict | None:
         cursor.execute(
             """
             SELECT result FROM scenario_jobs
-            WHERE scenario_id = ? AND result IS NOT NULL
+            WHERE scenario_id = ? AND job_kind = 'scenario_validation' AND result IS NOT NULL
             ORDER BY updated_at DESC LIMIT 1
             """,
             (scenario_id,),
@@ -897,12 +921,21 @@ def get_review_decisions(scenario_id: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def create_scenario_job(job_id: str, scenario_id: str, xosc_content: str) -> dict:
+def create_scenario_job(
+    job_id: str,
+    scenario_id: str,
+    xosc_content: str,
+    *,
+    job_kind: JobKind = JobKind.SCENARIO_VALIDATION,
+    ego_controller: EgoControllerType = EgoControllerType.SCENARIO_RUNNER_DEFAULT,
+) -> dict:
     now_str = datetime.now(UTC).isoformat()
     job_dict = {
         "job_id": job_id,
         "scenario_id": scenario_id,
         "status": "pending",
+        "job_kind": job_kind.value,
+        "ego_controller": ego_controller.value,
         "claimed_by": None,
         "claimed_at": None,
         "result": None,
@@ -915,12 +948,43 @@ def create_scenario_job(job_id: str, scenario_id: str, xosc_content: str) -> dic
         cursor.execute(
             """
         INSERT OR REPLACE INTO scenario_jobs
-        (job_id, scenario_id, status, xosc_content, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (job_id, scenario_id, status, job_kind, ego_controller, xosc_content, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """,
-            (job_id, scenario_id, "pending", xosc_content, now_str, now_str),
+            (
+                job_id,
+                scenario_id,
+                "pending",
+                job_kind.value,
+                ego_controller.value,
+                xosc_content,
+                now_str,
+                now_str,
+            ),
         )
     return job_dict
+
+
+def get_controller_runs(scenario_id: str) -> list[dict]:
+    """Mọi lượt đánh giá controller của một kịch bản, mới nhất trước."""
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT job_id, scenario_id, status, job_kind, ego_controller, result, created_at, updated_at
+            FROM scenario_jobs
+            WHERE scenario_id = ? AND job_kind = 'controller_evaluation'
+            ORDER BY created_at DESC
+            """,
+            (scenario_id,),
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+    for row in rows:
+        if isinstance(row.get("result"), str):
+            try:
+                row["result"] = json.loads(row["result"])
+            except (TypeError, json.JSONDecodeError):
+                row["result"] = None
+    return rows
 
 
 def get_pending_jobs() -> list[dict]:
@@ -1298,9 +1362,11 @@ def metrics_rows() -> tuple[list[dict], list[dict], list[dict]]:
             FROM scenario_jobs j
             JOIN scenarios s ON s.scenario_id = j.scenario_id
             WHERE j.result IS NOT NULL
+              AND j.job_kind = 'scenario_validation'
               AND j.updated_at = (
                   SELECT MAX(j2.updated_at) FROM scenario_jobs j2
-                  WHERE j2.scenario_id = j.scenario_id AND j2.result IS NOT NULL
+                  WHERE j2.scenario_id = j.scenario_id
+                    AND j2.job_kind = 'scenario_validation' AND j2.result IS NOT NULL
               )
             """
         )

@@ -37,6 +37,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import ego_controllers
 import sr_cli
 import trajectory
 
@@ -137,6 +138,7 @@ def to_execution_result(job: dict, returncode: int, criteria_json: dict | None, 
         "success": success,
         "criteria_results": results,
         "metrics": metrics,
+        "ego_controller": job.get("ego_controller", ego_controllers.CONSTANT_SPEED),
     }
     if not success:
         # `ExecutionResult` từ chối success=False mà không có error — một lần
@@ -171,8 +173,16 @@ def run_job(job: dict) -> dict:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     started_at = time.time()
 
+    controller = job.get("ego_controller", ego_controllers.CONSTANT_SPEED)
+    try:
+        runtime_xosc = ego_controllers.prepare_xosc(job["xosc_content"], controller)
+    except (OSError, ValueError) as exc:
+        result = to_execution_result(job, -1, None, f"không chuẩn bị được ego controller: {exc}")
+        result["metrics"]["wall_clock_s"] = round(time.time() - started_at, 1)
+        return result
+
     with tempfile.NamedTemporaryFile("w", suffix=".xosc", delete=False, encoding="utf-8") as fh:
-        fh.write(job["xosc_content"])
+        fh.write(runtime_xosc)
         xosc_path = Path(fh.name)
 
     env = sr_cli.scenario_runner_env(CARLA_ROOT, SR_ROOT)
@@ -270,7 +280,12 @@ def poll_once() -> bool:
     sr_cli.apply_no_rendering(CARLA_HOST, CARLA_PORT, NO_RENDER)
 
     job = jobs[0]
-    log.info("Nhận job %s cho %s", job.get("job_id"), job.get("scenario_id"))
+    log.info(
+        "Nhận job %s cho %s | ego=%s",
+        job.get("job_id"),
+        job.get("scenario_id"),
+        job.get("ego_controller", ego_controllers.CONSTANT_SPEED),
+    )
 
     result = run_job(job)
     verdict = "chạy được" if result["success"] else f"HỎNG ({result.get('error')})"

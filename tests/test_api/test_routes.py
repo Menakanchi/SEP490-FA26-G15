@@ -351,6 +351,55 @@ async def test_collision_failure_is_recorded_as_adversarial(client):
 
 
 @pytest.mark.asyncio
+async def test_controller_run_is_separate_from_scenario_verification(client):
+    """Closed-loop lưu bằng chứng mô hình lái nhưng không viết lại bằng chứng scenario."""
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    validation_job = await _approve_sim(client, sc_id)
+    await _submit_result(client, sc_id, validation_job, collision=True)
+    approved = await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_library",
+            "approved": True,
+            "reviewer": "Library Reviewer",
+            "reason": "",
+        },
+    )
+    assert approved.status_code == 200
+
+    queued = await client.post(f"/api/v1/scenarios/{sc_id}/controller-runs")
+    assert queued.status_code == 200, queued.text
+    controller_job = queued.json()["job"]
+    assert controller_job["job_kind"] == "controller_evaluation"
+    assert controller_job["ego_controller"] == "behavior_agent"
+
+    result = await client.post(
+        f"/api/v1/internal/jobs/{controller_job['job_id']}/result",
+        json={
+            "scenario_id": sc_id,
+            "xosc_path": f"{sc_id}.xosc",
+            "success": True,
+            "ego_controller": "behavior_agent",
+            "criteria_results": [{"name": "CollisionTest", "result": "SUCCESS", "actual": "0"}],
+            "metrics": {"min_distance_m": 1.98, "ego_max_brake": 0.3},
+        },
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["job_kind"] == "controller_evaluation"
+
+    detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
+    assert detail["status"] == "approved_library"
+    assert detail["verification"] == "adversarial"
+    assert detail["latest_execution_result"]["criteria_results"][0]["result"] == "FAILURE"
+
+    comparison = (await client.get(f"/api/v1/scenarios/{sc_id}/controller-runs")).json()
+    assert comparison["comparison"]["outcome"] == "avoided_hazard"
+    assert comparison["comparison"]["baseline_collision"] is True
+    assert comparison["comparison"]["controller_collision"] is False
+
+
+@pytest.mark.asyncio
 async def test_crashed_run_is_recorded_as_execution_failed(client):
     """`success=False` là kịch bản KHÔNG chạy nổi — khác hẳn chạy xong mà không va chạm."""
     sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
