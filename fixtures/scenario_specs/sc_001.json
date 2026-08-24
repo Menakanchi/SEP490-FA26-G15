@@ -36,7 +36,7 @@
       "actor_name": "adversary",
       "maneuver": "cut_in",
       "trigger": {
-        "type": "simulation_time",
+        "type": "lead_distance",
         "value": 7.0
       },
       "target_speed_kmh": 40.0

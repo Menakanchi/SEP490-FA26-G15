@@ -24,10 +24,13 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | [ADR-013](ADR-013-sqlite-blob-thay-qdrant.md) | SQLite + embedding BLOB cho retrieval MVP, thay Qdrant | ✅ **Accepted 04/8** — supersedes ADR-003; kèm ngưỡng đảo ngược đo được |
 | [ADR-014](ADR-014-duyet-theo-lo-va-batch-khong-vao-thu-vien.md) | Batch: `BEFORE_SIM` duyệt theo **lô**; scenario sinh hàng loạt **không** vào thư viện | 🕐 **Proposed 12/8** — thi hành ở Phase 4, nhưng ràng buộc schema phải chốt **trước** khi viết review API |
 | [ADR-015](ADR-015-chan-trung-o-loi-vao-bang-so-khop-chuoi.md) | Câu hỏi trùng: so khớp chuỗi chuẩn hoá ở API layer trước graph; **không** ngưỡng embedding ở MVP | ✅ **Accepted 21/8** |
-| [ADR-016](ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md) | Phạm vi converter = số anchor đã smoke-test; `DEFAULT_SUPPORT_POLICY` từ 560 xuống **76 ô** (chỉ `highway`) | 🕐 **Proposed 14/8** — Phase 1, chốt cùng `convert_xosc` |
+| [ADR-016](ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md) | Phạm vi converter = các anchor đã đo; **72 ô** gồm 5 maneuver highway + `run_red_light` đô thị | ✅ **Accepted, cập nhật 24/8** |
 | [ADR-017](ADR-017-muc-kiem-chung-tach-khoi-trang-thai-duyet.md) | Mức kiểm chứng (`VerificationLevel`) là trục **riêng**, không phải trạng thái duyệt | 🕐 **Proposed 15/8** — thứ tự xử lý kết quả được ADR-018 thay thế |
 | [ADR-018](ADR-018-dao-thu-tu-hai-cong-duyet.md) | `BEFORE_SIM` → CARLA → `BEFORE_LIBRARY`; chỉ publish sau khi reviewer xem kết quả thực thi | ✅ **Accepted 19/8** |
-| [ADR-019](ADR-019-chan-trung-o-dau-ra-truoc-khi-tieu-gpu.md) | Trùng ở **đầu ra**: so khớp động học tất định ở cổng `BEFORE_SIM`, chặn trước khi tiêu GPU; **không** embedding | 🕐 **Proposed 21/8** — Phase 2, đo trước khi triển khai |
+| [ADR-019](ADR-019-chan-trung-o-dau-ra-truoc-khi-tieu-gpu.md) | Trùng ở **đầu ra**: so khớp động học tất định ở cổng `BEFORE_SIM`, cảnh báo trước khi tiêu GPU; **không** embedding | ✅ **Accepted 24/8** — cảnh báo mềm, có `force_simulate`; tuner có ngoại lệ nhưng vẫn qua HITL |
+| [ADR-020](ADR-020-cut-in-trigger-theo-vi-tri-dan-truoc.md) | `cut_in` dùng `lead_distance` + `ReachPositionCondition` động, không suy vị trí từ tốc độ lệnh | ✅ **Accepted 24/8** |
+| [ADR-021](ADR-021-danh-gia-controller-tach-khoi-xac-minh-kich-ban.md) | Lượt đánh giá mô hình lái tách khỏi xác minh scenario; BehaviorAgent chạy trong tick loop qua `ControllerAction` | ✅ **Accepted 24/8** |
+| [ADR-022](ADR-022-closed-loop-dung-o-cap-ab-co-nguoi-khoi-dong.md) | Closed-loop MVP dừng ở cặp A/B có người khởi động; không tự chạy nhiều thế hệ | ✅ **Accepted 24/8** |
 
 ## Luật
 

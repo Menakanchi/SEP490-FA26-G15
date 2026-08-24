@@ -15,7 +15,6 @@ import {
   Sparkles,
   AlertTriangle,
   Info,
-  Map,
   Users,
   Eye,
   Sliders,
@@ -24,7 +23,6 @@ import {
   Bookmark,
 } from "lucide-react";
 import { postGenerate, getStatus, getScenarioById, postDraftScenario } from "@/services/api";
-import SVG2DRenderer from "@/components/SVG2DRenderer";
 import { useAuth } from "@/context/AuthContext";
 import type { GenerationStatus, ValidationMode, ScenarioDetail } from "@/types";
 import {
@@ -410,16 +408,19 @@ function GeneratorPageContent() {
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                     Scenario ID: <code className="text-blue-600 dark:text-cyan-300 font-mono font-bold">{status.scenario_id}</code>
+                    {role === "creator" && (
+                      <span className="block mt-1">Kịch bản đã được đưa vào hàng chờ; Reviewer cần đăng nhập để duyệt.</span>
+                    )}
                   </p>
                 </div>
-                <a
-                  href={`/review?scenario_id=${status.scenario_id}`}
+                <Link
+                  href={role === "reviewer" || role === "admin" ? `/review?scenario_id=${status.scenario_id}` : "/library?tab=me"}
                   className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition"
                 >
                   <Eye className="w-4 h-4" />
-                  Chuyển sang bước Duyệt (Reviewer)
+                  {role === "reviewer" || role === "admin" ? "Mở bước Duyệt" : "Xem trong Thư viện cá nhân"}
                   <ArrowRight className="w-4 h-4" />
-                </a>
+                </Link>
               </div>
             </div>
 
@@ -458,25 +459,6 @@ function GeneratorPageContent() {
                     </span>
                   </div>
                 </div>
-
-                {/* 2D Lane Preview */}
-                {generatedScenario.spec?.actors?.length ? (
-                  <div className="space-y-3">
-                    <span className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider block flex items-center gap-2">
-                      <Map className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                      Sơ đồ làn đường 2D (Render đầy đủ Hero & Adversaries):
-                    </span>
-                    <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950">
-                      <SVG2DRenderer
-                        actors={generatedScenario.spec.actors}
-                        odd={generatedScenario.odd}
-                        maneuvers={generatedScenario.spec.maneuvers}
-                        width="100%"
-                        height={280}
-                      />
-                    </div>
-                  </div>
-                ) : null}
 
                 {/* All Actors Table */}
                 {generatedScenario.spec?.actors?.length ? (
