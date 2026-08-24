@@ -1,0 +1,1723 @@
+{
+  "benchmark": "generation_cost_latency",
+  "measured_at": "2026-08-24T04:03:53.274720+00:00",
+  "scope": "7-node generation workflow through BEFORE_SIM; excludes HTTP polling and CARLA",
+  "sample_count": 20,
+  "completed": 17,
+  "failed": 3,
+  "model": "gpt-5.4-mini",
+  "escalated_model": "gpt-5.4",
+  "percentile_method": "linear interpolation at (n-1)*q",
+  "pricing_usd_per_million_tokens": {
+    "gpt-5.4-mini": {
+      "input": 0.75,
+      "cached_input": 0.075,
+      "output": 4.5
+    },
+    "gpt-5.4": {
+      "input": 2.5,
+      "cached_input": 0.25,
+      "output": 15.0
+    },
+    "text-embedding-3-small": {
+      "input": 0.02
+    }
+  },
+  "pricing_sources": [
+    "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+    "https://developers.openai.com/api/docs/models/gpt-5.4",
+    "https://developers.openai.com/api/docs/models/text-embedding-3-small"
+  ],
+  "summary": {
+    "workflow_latency_s": {
+      "min": 2.289772,
+      "mean": 3.13878,
+      "p50": 2.765743,
+      "p95": 4.151707,
+      "max": 5.089852
+    },
+    "cost_usd_per_request": {
+      "min": 0.00150944,
+      "mean": 0.00272042,
+      "p50": 0.00230441,
+      "p95": 0.004582171,
+      "max": 0.00691463
+    },
+    "total_cost_usd": 0.05440839,
+    "input_tokens_per_request": {
+      "min": 6522.0,
+      "mean": 8274.0,
+      "p50": 7184.0,
+      "p95": 11951.5,
+      "max": 11998.0
+    },
+    "output_tokens_per_request": {
+      "min": 212.0,
+      "mean": 367.4,
+      "p50": 340.5,
+      "p95": 509.6,
+      "max": 692.0
+    },
+    "provider_calls_per_request": {
+      "min": 2.0,
+      "mean": 2.3,
+      "p50": 2.0,
+      "p95": 3.0,
+      "max": 3.0
+    },
+    "node_latency_s": {
+      "convert_xosc": {
+        "min": 0.000553,
+        "mean": 0.000973,
+        "p50": 0.000995,
+        "p95": 0.001136,
+        "max": 0.001509
+      },
+      "generate_draft": {
+        "min": 1.951444,
+        "mean": 2.304001,
+        "p50": 2.255088,
+        "p95": 2.597217,
+        "max": 3.404909
+      },
+      "parse_intent": {
+        "min": 0.012819,
+        "mean": 0.255279,
+        "p50": 0.013571,
+        "p95": 1.234328,
+        "max": 1.424953
+      },
+      "persist_pending_sim_review": {
+        "min": 0.001091,
+        "mean": 0.001456,
+        "p50": 0.001177,
+        "p95": 0.002235,
+        "max": 0.00555
+      },
+      "promote": {
+        "min": 0.000837,
+        "mean": 0.001028,
+        "p50": 0.001005,
+        "p95": 0.001336,
+        "max": 0.001463
+      },
+      "repair_draft": {
+        "min": 1.833672,
+        "mean": 2.133682,
+        "p50": 2.133682,
+        "p95": 2.403692,
+        "max": 2.433693
+      },
+      "retrieve": {
+        "min": 0.247464,
+        "mean": 0.361619,
+        "p50": 0.288035,
+        "p95": 0.731881,
+        "max": 0.874292
+      },
+      "validate": {
+        "min": 0.000786,
+        "mean": 0.000978,
+        "p50": 0.000871,
+        "p95": 0.001621,
+        "max": 0.001889
+      }
+    }
+  },
+  "samples": [
+    {
+      "sample": 1,
+      "prompt": "Trên cao tốc trời quang, xe máy vượt lên tạt đầu ô tô ego đang chạy 55 km/h rồi phanh gấp.",
+      "status": "done",
+      "scenario_id": "sc_048",
+      "error": null,
+      "workflow_latency_s": 3.45949,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.021934
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.874292
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.554707
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000809
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.000853
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.001065
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.00555
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 6895,
+        "cached_input_tokens": 6400,
+        "output_tokens": 341,
+        "latency_s": 3.186412,
+        "cost_usd": 0.00236969,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.637009,
+            "input_tokens": 22,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4.4e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.549403,
+            "input_tokens": 6873,
+            "cached_input_tokens": 6400,
+            "output_tokens": 341,
+            "cost_usd": 0.00236925,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 2,
+      "prompt": "Trên cao tốc mưa nhẹ, ô tô vượt phải tạt đầu xe ego ở tốc độ 50 km/h rồi giảm tốc đột ngột.",
+      "status": "done",
+      "scenario_id": "sc_049",
+      "error": null,
+      "workflow_latency_s": 2.5617,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.013669
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.288709
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.254952
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000873
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.000881
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.001022
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001296
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 7193,
+        "cached_input_tokens": 6912,
+        "output_tokens": 340,
+        "latency_s": 2.53644,
+        "cost_usd": 0.00224309,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.286447,
+            "input_tokens": 22,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4.4e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.249993,
+            "input_tokens": 7171,
+            "cached_input_tokens": 6912,
+            "output_tokens": 340,
+            "cost_usd": 0.00224265,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 3,
+      "prompt": "Trên cao tốc mưa lớn, xe tải vượt lên cắt vào làn trước ô tô ego rồi phanh gấp.",
+      "status": "done",
+      "scenario_id": "sc_050",
+      "error": null,
+      "workflow_latency_s": 4.102331,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.015192
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.296551
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 1.951444
+        },
+        "validate": {
+          "calls": 2,
+          "latency_s": 0.001607
+        },
+        "repair_draft": {
+          "calls": 1,
+          "latency_s": 1.833672
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.001062
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.001102
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001369
+        }
+      },
+      "provider": {
+        "calls": 3,
+        "llm_calls": 2,
+        "embedding_calls": 1,
+        "input_tokens": 11998,
+        "cached_input_tokens": 6400,
+        "output_tokens": 500,
+        "latency_s": 4.070608,
+        "cost_usd": 0.00691463,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.294121,
+            "input_tokens": 19,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 3.8e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 1.945482,
+            "input_tokens": 6516,
+            "cached_input_tokens": 6400,
+            "output_tokens": 250,
+            "cost_usd": 0.001692,
+            "token_source": "provider"
+          },
+          {
+            "kind": "llm",
+            "operation": "repair_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 1.831005,
+            "input_tokens": 5463,
+            "cached_input_tokens": 0,
+            "output_tokens": 250,
+            "cost_usd": 0.00522225,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 4,
+      "prompt": "Trên cao tốc sương mù, xe máy từ phía sau tạt đầu xe ego đang chạy 45 km/h.",
+      "status": "done",
+      "scenario_id": "sc_051",
+      "error": null,
+      "workflow_latency_s": 5.089852,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.014426
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.278486
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.357982
+        },
+        "validate": {
+          "calls": 2,
+          "latency_s": 0.001889
+        },
+        "repair_draft": {
+          "calls": 1,
+          "latency_s": 2.433693
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.000965
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.000984
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001177
+        }
+      },
+      "provider": {
+        "calls": 3,
+        "llm_calls": 2,
+        "embedding_calls": 1,
+        "input_tokens": 11949,
+        "cached_input_tokens": 11264,
+        "output_tokens": 692,
+        "latency_s": 5.060967,
+        "cost_usd": 0.00445941,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.276313,
+            "input_tokens": 18,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 3.6e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.353698,
+            "input_tokens": 6513,
+            "cached_input_tokens": 6400,
+            "output_tokens": 346,
+            "cost_usd": 0.00212175,
+            "token_source": "provider"
+          },
+          {
+            "kind": "llm",
+            "operation": "repair_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.430956,
+            "input_tokens": 5418,
+            "cached_input_tokens": 4864,
+            "output_tokens": 346,
+            "cost_usd": 0.0023373,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 5,
+      "prompt": "Trên cao tốc trời quang, xe tải phía trước phanh gấp khi ô tô ego đang chạy 60 km/h.",
+      "status": "done",
+      "scenario_id": "sc_052",
+      "error": null,
+      "workflow_latency_s": 2.479171,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.013022
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.309415
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.152432
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000869
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.001002
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.000994
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001183
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 6878,
+        "cached_input_tokens": 6400,
+        "output_tokens": 333,
+        "latency_s": 2.453661,
+        "cost_usd": 0.00232167,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.306987,
+            "input_tokens": 21,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4.2e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.146674,
+            "input_tokens": 6857,
+            "cached_input_tokens": 6400,
+            "output_tokens": 333,
+            "cost_usd": 0.00232125,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 6,
+      "prompt": "Trên cao tốc mưa nhẹ, ô tô phía trước bất ngờ phanh gấp trước xe ego ở khoảng cách gần.",
+      "status": "done",
+      "scenario_id": "sc_053",
+      "error": null,
+      "workflow_latency_s": 2.969786,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.013421
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.696235
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.255413
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000906
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.001329
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.001116
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001122
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 7188,
+        "cached_input_tokens": 6912,
+        "output_tokens": 329,
+        "latency_s": 2.943065,
+        "cost_usd": 0.00219057,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.693702,
+            "input_tokens": 21,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4.2e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.249363,
+            "input_tokens": 7167,
+            "cached_input_tokens": 6912,
+            "output_tokens": 329,
+            "cost_usd": 0.00219015,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 7,
+      "prompt": "Trên cao tốc mưa lớn, xe máy phía trước giảm tốc đột ngột khiến ô tô ego không kịp tránh.",
+      "status": "done",
+      "scenario_id": "sc_054",
+      "error": null,
+      "workflow_latency_s": 3.992793,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 1.424953
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.247464
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.316153
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000836
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.001009
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.001022
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001109
+        }
+      },
+      "provider": {
+        "calls": 3,
+        "llm_calls": 2,
+        "embedding_calls": 1,
+        "input_tokens": 11121,
+        "cached_input_tokens": 10240,
+        "output_tokens": 406,
+        "latency_s": 3.965054,
+        "cost_usd": 0.00323969,
+        "events": [
+          {
+            "kind": "llm",
+            "operation": "parse_intent",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 1.409936,
+            "input_tokens": 4240,
+            "cached_input_tokens": 3840,
+            "output_tokens": 59,
+            "cost_usd": 0.0008535,
+            "token_source": "provider"
+          },
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.245002,
+            "input_tokens": 22,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4.4e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.310116,
+            "input_tokens": 6859,
+            "cached_input_tokens": 6400,
+            "output_tokens": 347,
+            "cost_usd": 0.00238575,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 8,
+      "prompt": "Trên cao tốc sương mù, xe tải đang chạy phía trước ô tô ego bất ngờ phanh gấp.",
+      "status": "done",
+      "scenario_id": "sc_055",
+      "error": null,
+      "workflow_latency_s": 2.529872,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.012819
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.286022
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.226885
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000879
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.000837
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.00098
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001161
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 6875,
+        "cached_input_tokens": 6400,
+        "output_tokens": 345,
+        "latency_s": 2.504843,
+        "cost_usd": 0.00237488,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.283714,
+            "input_tokens": 19,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 3.8e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.221129,
+            "input_tokens": 6856,
+            "cached_input_tokens": 6400,
+            "output_tokens": 345,
+            "cost_usd": 0.0023745,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 9,
+      "prompt": "Trên cao tốc trời quang, ô tô bên cạnh lấn sang làn của xe ego đang chạy 50 km/h.",
+      "status": "done",
+      "scenario_id": "sc_056",
+      "error": null,
+      "workflow_latency_s": 2.998085,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.013439
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.724386
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.255872
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000928
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.001089
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.000991
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001137
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 7189,
+        "cached_input_tokens": 6912,
+        "output_tokens": 335,
+        "latency_s": 2.972084,
+        "cost_usd": 0.00221905,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.72204,
+            "input_tokens": 20,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.250044,
+            "input_tokens": 7169,
+            "cached_input_tokens": 6912,
+            "output_tokens": 335,
+            "cost_usd": 0.00221865,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 10,
+      "prompt": "Trên cao tốc mưa nhẹ, xe tải trôi làn sang phần đường của ô tô ego ở khoảng cách gần.",
+      "status": "done",
+      "scenario_id": "sc_057",
+      "error": null,
+      "workflow_latency_s": 3.995005,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 1.224295
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.25168
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.513159
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.001222
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.001463
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.001509
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001406
+        }
+      },
+      "provider": {
+        "calls": 3,
+        "llm_calls": 2,
+        "embedding_calls": 1,
+        "input_tokens": 11442,
+        "cached_input_tokens": 10752,
+        "output_tokens": 387,
+        "latency_s": 3.966259,
+        "cost_usd": 0.00305007,
+        "events": [
+          {
+            "kind": "llm",
+            "operation": "parse_intent",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 1.209865,
+            "input_tokens": 4238,
+            "cached_input_tokens": 3840,
+            "output_tokens": 60,
+            "cost_usd": 0.0008565,
+            "token_source": "provider"
+          },
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.249051,
+            "input_tokens": 21,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4.2e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.507343,
+            "input_tokens": 7183,
+            "cached_input_tokens": 6912,
+            "output_tokens": 327,
+            "cost_usd": 0.00219315,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 11,
+      "prompt": "Trên cao tốc mưa lớn, xe máy lấn làn của ô tô ego khi hai xe đang chạy song song.",
+      "status": "done",
+      "scenario_id": "sc_058",
+      "error": null,
+      "workflow_latency_s": 3.706737,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.013506
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.283712
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 3.404909
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000976
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.00114
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.001018
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001195
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 6877,
+        "cached_input_tokens": 6400,
+        "output_tokens": 349,
+        "latency_s": 3.679375,
+        "cost_usd": 0.00239365,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.280527,
+            "input_tokens": 20,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 3.398848,
+            "input_tokens": 6857,
+            "cached_input_tokens": 6400,
+            "output_tokens": 349,
+            "cost_usd": 0.00239325,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 12,
+      "prompt": "Trên cao tốc sương mù, ô tô ở làn bên cạnh lệch dần vào làn xe ego.",
+      "status": "done",
+      "scenario_id": "sc_059",
+      "error": null,
+      "workflow_latency_s": 3.661925,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 1.098427
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.303982
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.255136
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000863
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.001088
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.000996
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001173
+        }
+      },
+      "provider": {
+        "calls": 3,
+        "llm_calls": 2,
+        "embedding_calls": 1,
+        "input_tokens": 11417,
+        "cached_input_tokens": 10752,
+        "output_tokens": 401,
+        "latency_s": 3.635035,
+        "cost_usd": 0.00309797,
+        "events": [
+          {
+            "kind": "llm",
+            "operation": "parse_intent",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 1.083778,
+            "input_tokens": 4238,
+            "cached_input_tokens": 3840,
+            "output_tokens": 55,
+            "cost_usd": 0.000834,
+            "token_source": "provider"
+          },
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.301736,
+            "input_tokens": 16,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 3.2e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.249521,
+            "input_tokens": 7163,
+            "cached_input_tokens": 6912,
+            "output_tokens": 346,
+            "cost_usd": 0.00226365,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 13,
+      "prompt": "Trên cao tốc trời quang, ô tô phía trước bất ngờ dừng giữa làn khiến xe ego phải xử lý.",
+      "status": "done",
+      "scenario_id": "sc_060",
+      "error": null,
+      "workflow_latency_s": 2.558265,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.013585
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.260076
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.280508
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000803
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.00093
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.00092
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001174
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 7199,
+        "cached_input_tokens": 6912,
+        "output_tokens": 327,
+        "latency_s": 2.532574,
+        "cost_usd": 0.00218982,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.257586,
+            "input_tokens": 21,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4.2e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.274988,
+            "input_tokens": 7178,
+            "cached_input_tokens": 6912,
+            "output_tokens": 327,
+            "cost_usd": 0.0021894,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 14,
+      "prompt": "Trên cao tốc mưa nhẹ, xe tải dừng giữa làn ngay trước ô tô ego đang chạy 45 km/h.",
+      "status": "done",
+      "scenario_id": "sc_061",
+      "error": null,
+      "workflow_latency_s": 2.560288,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.013542
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.287361
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.255039
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000976
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.000965
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.000961
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001173
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 6861,
+        "cached_input_tokens": 6400,
+        "output_tokens": 328,
+        "latency_s": 2.534041,
+        "cost_usd": 0.00228715,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.284861,
+            "input_tokens": 20,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.24918,
+            "input_tokens": 6841,
+            "cached_input_tokens": 6400,
+            "output_tokens": 328,
+            "cost_usd": 0.00228675,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 15,
+      "prompt": "Trên cao tốc mưa lớn, xe máy phía trước dừng lại trong làn của ô tô ego.",
+      "status": "done",
+      "scenario_id": "sc_062",
+      "error": null,
+      "workflow_latency_s": 3.993381,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 1.132526
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.396478
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.460248
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000836
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.000935
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.000988
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001091
+        }
+      },
+      "provider": {
+        "calls": 3,
+        "llm_calls": 2,
+        "embedding_calls": 1,
+        "input_tokens": 11107,
+        "cached_input_tokens": 10240,
+        "output_tokens": 405,
+        "latency_s": 3.965868,
+        "cost_usd": 0.00322761,
+        "events": [
+          {
+            "kind": "llm",
+            "operation": "parse_intent",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 1.117663,
+            "input_tokens": 4235,
+            "cached_input_tokens": 3840,
+            "output_tokens": 58,
+            "cost_usd": 0.00084525,
+            "token_source": "provider"
+          },
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.393913,
+            "input_tokens": 18,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 3.6e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.454292,
+            "input_tokens": 6854,
+            "cached_input_tokens": 6400,
+            "output_tokens": 347,
+            "cost_usd": 0.002382,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 16,
+      "prompt": "Trên cao tốc sương mù, một xe tải chạy ngược chiều trong đúng làn của ô tô ego.",
+      "status": "failed",
+      "scenario_id": null,
+      "error": "truck_adv ở s_offset_m=60.0 nằm ngoài đoạn đường anchor phủ được (-120.0, 40.0) — ScenarioRunner sẽ không spawn được",
+      "workflow_latency_s": 2.513653,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.012917
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.286746
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.211234
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000826
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.000926
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.000553
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 6541,
+        "cached_input_tokens": 6400,
+        "output_tokens": 341,
+        "latency_s": 2.491886,
+        "cost_usd": 0.00210638,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.284597,
+            "input_tokens": 19,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 3.8e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.207289,
+            "input_tokens": 6522,
+            "cached_input_tokens": 6400,
+            "output_tokens": 341,
+            "cost_usd": 0.002106,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 17,
+      "prompt": "Trên cao tốc trời quang, ô tô chạy ngược chiều đối đầu xe ego trong cùng làn.",
+      "status": "failed",
+      "scenario_id": null,
+      "error": "car_adv ở s_offset_m=50.0 nằm ngoài đoạn đường anchor phủ được (-120.0, 40.0) — ScenarioRunner sẽ không spawn được",
+      "workflow_latency_s": 2.538404,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.013836
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.332121
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.189638
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000786
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.001026
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.000561
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 7180,
+        "cached_input_tokens": 6912,
+        "output_tokens": 322,
+        "latency_s": 2.513675,
+        "cost_usd": 0.00215453,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.329546,
+            "input_tokens": 19,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 3.8e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.184129,
+            "input_tokens": 7161,
+            "cached_input_tokens": 6912,
+            "output_tokens": 322,
+            "cost_usd": 0.00215415,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 18,
+      "prompt": "Trên cao tốc mưa nhẹ, xe máy đi ngược chiều trong làn của ô tô ego đang tiến tới.",
+      "status": "failed",
+      "scenario_id": null,
+      "error": "motorcycle_adv ở s_offset_m=60.0 nằm ngoài đoạn đường anchor phủ được (-120.0, 40.0) — ScenarioRunner sẽ không spawn được",
+      "workflow_latency_s": 2.415728,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.01312
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.251823
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.148066
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.000841
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.000868
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.000585
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 6527,
+        "cached_input_tokens": 6400,
+        "output_tokens": 325,
+        "latency_s": 2.391912,
+        "cost_usd": 0.00202315,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.249414,
+            "input_tokens": 20,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.142498,
+            "input_tokens": 6507,
+            "cached_input_tokens": 6400,
+            "output_tokens": 325,
+            "cost_usd": 0.00202275,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 19,
+      "prompt": "Trên đường đô thị thẳng trời quang, ô tô vượt đèn đỏ cắt ngang đường xe ego đang đèn xanh.",
+      "status": "done",
+      "scenario_id": "sc_063",
+      "error": null,
+      "workflow_latency_s": 2.35937,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.013557
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.290684
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 2.050804
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.00079
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.001009
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.001022
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001223
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 6522,
+        "cached_input_tokens": 6400,
+        "output_tokens": 329,
+        "latency_s": 2.334789,
+        "cost_usd": 0.00203594,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.288514,
+            "input_tokens": 22,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4.4e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 2.046275,
+            "input_tokens": 6500,
+            "cached_input_tokens": 6400,
+            "output_tokens": 329,
+            "cost_usd": 0.0020355,
+            "token_source": "provider"
+          }
+        ]
+      }
+    },
+    {
+      "sample": 20,
+      "prompt": "Trên đường đô thị thẳng mưa nhẹ, xe tải vượt đèn đỏ từ đường vuông góc và cắt trước xe ego.",
+      "status": "done",
+      "scenario_id": "sc_064",
+      "error": null,
+      "workflow_latency_s": 2.289772,
+      "node_latency": {
+        "parse_intent": {
+          "calls": 1,
+          "latency_s": 0.013393
+        },
+        "retrieve": {
+          "calls": 1,
+          "latency_s": 0.286156
+        },
+        "generate_draft": {
+          "calls": 1,
+          "latency_s": 1.985444
+        },
+        "validate": {
+          "calls": 1,
+          "latency_s": 0.001045
+        },
+        "promote": {
+          "calls": 1,
+          "latency_s": 0.001174
+        },
+        "convert_xosc": {
+          "calls": 1,
+          "latency_s": 0.001064
+        },
+        "persist_pending_sim_review": {
+          "calls": 1,
+          "latency_s": 0.001219
+        }
+      },
+      "provider": {
+        "calls": 2,
+        "llm_calls": 1,
+        "embedding_calls": 1,
+        "input_tokens": 6522,
+        "cached_input_tokens": 6400,
+        "output_tokens": 212,
+        "latency_s": 2.265176,
+        "cost_usd": 0.00150944,
+        "events": [
+          {
+            "kind": "embedding",
+            "operation": "retrieve_embedding",
+            "model": "text-embedding-3-small",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 0.283987,
+            "input_tokens": 22,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 4.4e-07,
+            "token_source": "estimated_chars_div_4"
+          },
+          {
+            "kind": "llm",
+            "operation": "generate_draft",
+            "model": "gpt-5.4-mini",
+            "attempt": 0,
+            "escalated": false,
+            "latency_s": 1.981189,
+            "input_tokens": 6500,
+            "cached_input_tokens": 6400,
+            "output_tokens": 212,
+            "cost_usd": 0.001509,
+            "token_source": "provider"
+          }
+        ]
+      }
+    }
+  ]
+}

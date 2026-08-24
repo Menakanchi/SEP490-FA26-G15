@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import unicodedata
 from collections.abc import Mapping
 from enum import StrEnum
@@ -28,7 +29,7 @@ from src.models.schemas import (
     is_too_vague_to_generate,
     odd_axis_value,
 )
-from src.services.llm import get_llm
+from src.services.llm import _get_primary_model, get_llm, measure_structured_response
 
 logger = logging.getLogger(__name__)
 
@@ -328,12 +329,23 @@ def parse_intent_node(state: ForgeState) -> dict:
         logger.info("Chuyển sang BƯỚC 2: Gọi LLM Fallback (AI Semantic Extraction)")
         try:
             llm = get_llm()
-            structured_llm = llm.with_structured_output(ODDQuery)
+            structured_llm = llm.with_structured_output(ODDQuery, include_raw=True)
             messages = [
                 SystemMessage(content=SYSTEM_PROMPT),
                 HumanMessage(content=f"Mô tả kịch bản: {user_query}"),
             ]
-            odd_query = structured_llm.invoke(messages)
+            started = time.perf_counter()
+            envelope = structured_llm.invoke(messages)
+            odd_query, parsing_error, _cost = measure_structured_response(
+                envelope,
+                messages=messages,
+                model=_get_primary_model(),
+                operation="parse_intent",
+                attempt=0,
+                latency_s=time.perf_counter() - started,
+            )
+            if parsing_error is not None:
+                raise parsing_error
         except Exception as err:
             logger.warning(f"LLM Call failed ({err}). Reverting to Rule-based fallback.")
             if rule_dict.get("actor_type") or rule_dict.get("maneuver"):

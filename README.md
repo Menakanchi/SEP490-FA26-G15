@@ -14,10 +14,15 @@ bằng CARLA ScenarioRunner trước khi đưa vào thư viện.
 > Sáu oracle L4 trong phạm vi đều đã có. Closed-loop với CARLA BehaviorAgent đã
 > có trên nhánh `feature/closed-loop`: job đánh giá tách khỏi job xác minh, mỗi
 > lần chạy một cặp baseline/BehaviorAgent mới; UI kiểm tốc độ đầu rồi so số
-> phanh/khe hở/giảm tốc. Phần nâng cao còn thiếu là vòng ngoài
-> tự chọn biến thể tiếp theo và benchmark cost/latency. Xem
+> phanh/khe hở/giảm tốc. Closed-loop dừng có chủ đích ở cặp A/B do con người
+> khởi động; vòng tự sinh nhiều thế hệ nằm ngoài phạm vi. Benchmark online 20
+> request cho generation workflow đo p50/p95 latency **2,766/4,152 s** và
+> cost/request **$0,002304/$0,004582**; 17/20 request hoàn tất và request lỗi
+> vẫn nằm trong mẫu số. Xem
 > [ADR-021](docs/adr/ADR-021-danh-gia-controller-tach-khoi-xac-minh-kich-ban.md)
-> và [báo cáo đánh giá](eval/results/report.md).
+> và [ADR-022](docs/adr/ADR-022-closed-loop-dung-o-cap-ab-co-nguoi-khoi-dong.md),
+> [báo cáo đánh giá](eval/results/report.md) và
+> [artifact benchmark](eval/results/cost_latency_2026-08-24.json).
 
 ## Input và output
 
