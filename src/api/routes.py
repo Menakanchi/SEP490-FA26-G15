@@ -23,11 +23,13 @@ from src.agents.nodes.validate_node import validate_node
 from src.models.schemas import (
     TOO_VAGUE_MESSAGE,
     DuplicateMatch,
+    EgoControllerType,
     # Domain models
     ExecutionResult,
     # API models
     GenerateRequest,
     GenerateResponse,
+    JobKind,
     JobStatus,
     ReviewApiRequest,
     ReviewGate,
@@ -963,6 +965,83 @@ async def quality_report() -> dict:
     return metrics.build_report(requests, scenarios, executions)
 
 
+def _result_had_collision(result: dict | None) -> bool | None:
+    if not result or not result.get("success"):
+        return None
+    return any(
+        str(item.get("name", "")).lower().startswith("collision") and str(item.get("result", "")).upper() == "FAILURE"
+        for item in result.get("criteria_results", [])
+    )
+
+
+@router.post("/scenarios/{scenario_id}/controller-runs")
+async def create_controller_run(scenario_id: str) -> dict:
+    """Đánh giá BehaviorAgent trên artifact đã xác minh, không sửa workflow HITL."""
+    scenario = _scenario_or_404(scenario_id)
+    if scenario["status"] != ScenarioStatus.APPROVED_LIBRARY.value:
+        raise HTTPException(status_code=409, detail="Chỉ đánh giá controller trên kịch bản đã vào thư viện")
+    if scenario.get("verification") != "adversarial":
+        raise HTTPException(status_code=409, detail="Kịch bản phải tái hiện được nguy hiểm trước khi thử controller")
+    if not _has_xosc(scenario):
+        raise HTTPException(status_code=409, detail=UNCOMPILED_SCENARIO_DETAIL)
+    if any(
+        run["status"] in (JobStatus.PENDING.value, JobStatus.RUNNING.value)
+        for run in db.get_controller_runs(scenario_id)
+    ):
+        raise HTTPException(status_code=409, detail="Kịch bản đã có một lượt đánh giá controller đang chờ")
+
+    job_id = f"ctrl_{uuid.uuid4().hex[:8]}"
+    job = db.create_scenario_job(
+        job_id,
+        scenario_id,
+        scenario["xosc_content"],
+        job_kind=JobKind.CONTROLLER_EVALUATION,
+        ego_controller=EgoControllerType.BEHAVIOR_AGENT,
+    )
+    return {"ok": True, "job": job}
+
+
+@router.get("/scenarios/{scenario_id}/controller-runs")
+async def list_controller_runs(scenario_id: str) -> dict:
+    """Trả lịch sử closed-loop và kết luận A/B dễ đọc cho UI/demo."""
+    scenario = _scenario_or_404(scenario_id)
+    runs = db.get_controller_runs(scenario_id)
+    latest = next((run for run in runs if run.get("result")), None)
+    baseline = scenario.get("latest_execution_result")
+    baseline_collision = _result_had_collision(baseline)
+    controller_collision = _result_had_collision(latest.get("result") if latest else None)
+
+    if latest is None:
+        outcome = "pending" if runs else "not_run"
+        recommendation_vi = "Chạy BehaviorAgent để đánh giá phản ứng closed-loop trên kịch bản này."
+    elif latest["status"] == JobStatus.FAILED.value or not latest["result"].get("success"):
+        outcome = "execution_failed"
+        recommendation_vi = "Lượt đánh giá bị lỗi thực thi; cần sửa worker trước khi kết luận mô hình lái."
+    elif baseline_collision is True and controller_collision is False:
+        outcome = "avoided_hazard"
+        recommendation_vi = "BehaviorAgent đã tránh nguy hiểm baseline; có thể tạo biến thể khó hơn cho vòng tiếp theo."
+    elif controller_collision is True:
+        outcome = "controller_collision"
+        recommendation_vi = (
+            "BehaviorAgent vẫn va chạm; giữ kịch bản này làm ca thất bại để phân tích hoặc tinh chỉnh mô hình."
+        )
+    else:
+        outcome = "inconclusive"
+        recommendation_vi = "Chưa có chênh lệch A/B rõ; nên điều chỉnh thời điểm hoặc mức nghiêm trọng của biến thể."
+
+    return {
+        "scenario_id": scenario_id,
+        "baseline": baseline,
+        "runs": runs,
+        "comparison": {
+            "outcome": outcome,
+            "baseline_collision": baseline_collision,
+            "controller_collision": controller_collision,
+            "recommendation_vi": recommendation_vi,
+        },
+    }
+
+
 @router.get("/internal/jobs")
 async def list_pending_jobs() -> dict:
     """Worker poll: trả pending jobs để worker nhận chạy."""
@@ -986,6 +1065,13 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
     if body.scenario_id != job["scenario_id"]:
         raise HTTPException(status_code=422, detail="scenario_id trong kết quả không khớp job")
 
+    new_status = JobStatus.DONE.value if body.success else JobStatus.FAILED.value
+    if job.get("job_kind") == JobKind.CONTROLLER_EVALUATION.value:
+        if body.ego_controller.value != job.get("ego_controller"):
+            raise HTTPException(status_code=422, detail="ego_controller trong kết quả không khớp job")
+        db.update_job_result(job_id, new_status, body.model_dump(mode="json"))
+        return {"ok": True, "status": new_status, "job_kind": JobKind.CONTROLLER_EVALUATION.value}
+
     scenario = _scenario_or_404(body.scenario_id)
     next_status = next_status_after_execution(ScenarioStatus(scenario["status"]))
     if next_status is None:
@@ -994,8 +1080,7 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
             detail=f"Kịch bản đang ở '{scenario['status']}', không chờ kết quả mô phỏng",
         )
 
-    new_status = JobStatus.DONE.value if body.success else JobStatus.FAILED.value
-    db.update_job_result(job_id, new_status, body.model_dump())
+    db.update_job_result(job_id, new_status, body.model_dump(mode="json"))
 
     level = verification_from_execution(body.success, body.criteria_results)
     if not db.complete_simulation(body.scenario_id, level):

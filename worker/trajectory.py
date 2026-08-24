@@ -70,6 +70,10 @@ class Sample:
     adv_speed_ms: float
     adv_lane_offset_m: float
     """Adversary lệch bao nhiêu so với tim làn nó đang ở. Dùng để biết maneuver có xảy ra không."""
+    ego_throttle: float = 0.0
+    ego_brake: float = 0.0
+    ego_steer: float = 0.0
+    ego_lane_offset_m: float = 0.0
     ego_half_width_m: float = 0.9
     """Nửa bề rộng thân ego. Cần để tính mép thân xe, không chỉ tâm xe."""
     adv_half_width_m: float = 0.9
@@ -151,6 +155,42 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
         speeds = [s.adv_speed_ms for s in moving]
         metrics["adversary_min_speed_ms"] = round(min(speeds), 3)
         metrics["adversary_speed_drop_ms"] = round(max(speeds) - min(speeds), 3)
+
+    # Tín hiệu phản ứng của ego controller. Bỏ phần đứng yên trước Init nhưng
+    # giữ mọi mẫu sau khi ego bắt đầu chạy, kể cả nó phanh về 0.
+    ego_start = next(
+        (index for index, sample in enumerate(before_contact) if sample.ego_speed_ms > MOVING_THRESHOLD_MS),
+        None,
+    )
+    ego_motion = before_contact[ego_start:] if ego_start is not None else []
+    if ego_motion:
+        ego_speeds = [sample.ego_speed_ms for sample in ego_motion]
+        peak_index = max(range(len(ego_speeds)), key=ego_speeds.__getitem__)
+        post_peak_speeds = ego_speeds[peak_index:]
+        metrics["ego_min_speed_ms"] = round(min(ego_speeds), 3)
+        metrics["ego_speed_drop_ms"] = round(max(ego_speeds) - min(ego_speeds), 3)
+        metrics["ego_peak_speed_ms"] = round(ego_speeds[peak_index], 3)
+        metrics["ego_post_peak_min_speed_ms"] = round(min(post_peak_speeds), 3)
+        metrics["ego_post_peak_speed_drop_ms"] = round(
+            ego_speeds[peak_index] - min(post_peak_speeds),
+            3,
+        )
+    max_brake = max((sample.ego_brake for sample in before_contact), default=0.0)
+    metrics["ego_max_brake"] = round(max_brake, 3)
+    metrics["ego_braked"] = 1.0 if max_brake >= 0.1 else 0.0
+    metrics["ego_max_abs_steer"] = round(max((abs(sample.ego_steer) for sample in before_contact), default=0.0), 3)
+    metrics["ego_max_lane_deviation_m"] = round(
+        max((abs(sample.ego_lane_offset_m) for sample in before_contact), default=0.0),
+        3,
+    )
+    steering_signs = [
+        1 if sample.ego_steer > 0 else -1
+        for sample in before_contact
+        if abs(sample.ego_steer) >= 0.05
+    ]
+    metrics["ego_steering_reversals"] = float(
+        sum(current != previous for previous, current in zip(steering_signs, steering_signs[1:], strict=False))
+    )
 
     # Bộ đo an toàn thay thế (surrogate safety measures) dùng chung trong ngành —
     # ISO 34502 và phần lớn công trình scenario-based testing báo cáo theo chúng.
@@ -536,6 +576,7 @@ class TrajectoryRecorder:
 
             transform = ego.get_transform()
             adv_transform = adv.get_transform()
+            ego_control = ego.get_control()
             adv_speed = _speed(adv)
             light_id, light_is_red = _traffic_light_observation(adv)
             self._tracked_red_light_id, crossed_id = _advance_red_light_tracker(
@@ -562,6 +603,10 @@ class TrajectoryRecorder:
                     ego_speed_ms=_speed(ego),
                     adv_speed_ms=adv_speed,
                     adv_lane_offset_m=_lane_offset(carla_map, adv),
+                    ego_throttle=float(getattr(ego_control, "throttle", 0.0)),
+                    ego_brake=float(getattr(ego_control, "brake", 0.0)),
+                    ego_steer=float(getattr(ego_control, "steer", 0.0)),
+                    ego_lane_offset_m=_lane_offset(carla_map, ego),
                     ego_half_width_m=ego_half[1],
                     adv_half_width_m=adv_half[1],
                     ego_pose=_pose(transform),

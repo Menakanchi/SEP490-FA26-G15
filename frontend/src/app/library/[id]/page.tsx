@@ -17,10 +17,13 @@ import {
   XCircle,
   Shield,
   Timer,
+  Bot,
+  Play,
+  RefreshCw,
 } from "lucide-react";
-import { getScenarioById } from "@/services/api";
+import { getControllerRuns, getScenarioById, postControllerRun } from "@/services/api";
 import ScenarioPreview from "@/components/ScenarioPreview";
-import type { ScenarioDetail } from "@/types";
+import type { ControllerRunsResponse, ScenarioDetail } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
@@ -36,6 +39,10 @@ export default function ScenarioDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [controllerRuns, setControllerRuns] = useState<ControllerRunsResponse | null>(null);
+  const [controllerLoading, setControllerLoading] = useState(true);
+  const [controllerError, setControllerError] = useState("");
+  const [controllerQueuing, setControllerQueuing] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -52,6 +59,59 @@ export default function ScenarioDetailPage() {
     };
     fetchDetail();
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const fetchRuns = async () => {
+      try {
+        setControllerRuns(await getControllerRuns(id));
+        setControllerError("");
+      } catch (err) {
+        setControllerError(err instanceof Error ? err.message : "Không tải được kết quả vòng kín");
+      } finally {
+        setControllerLoading(false);
+      }
+    };
+    fetchRuns();
+  }, [id]);
+
+  useEffect(() => {
+    const status = controllerRuns?.runs[0]?.status;
+    if (status !== "pending" && status !== "running") return;
+    const timer = window.setInterval(async () => {
+      try {
+        setControllerRuns(await getControllerRuns(id));
+      } catch {
+        // Giữ kết quả gần nhất; nút làm mới bên dưới cho phép thử lại có chủ đích.
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [controllerRuns?.runs, id]);
+
+  const handleControllerRun = async () => {
+    setControllerQueuing(true);
+    setControllerError("");
+    try {
+      await postControllerRun(id);
+      setControllerRuns(await getControllerRuns(id));
+    } catch (err) {
+      setControllerError(err instanceof Error ? err.message : "Không tạo được lượt đánh giá");
+    } finally {
+      setControllerQueuing(false);
+    }
+  };
+
+  const refreshControllerRuns = async () => {
+    setControllerLoading(true);
+    try {
+      setControllerRuns(await getControllerRuns(id));
+      setControllerError("");
+    } catch (err) {
+      setControllerError(err instanceof Error ? err.message : "Không tải được kết quả vòng kín");
+    } finally {
+      setControllerLoading(false);
+    }
+  };
 
   const handleCopy = () => {
     if (scenario?.xosc_content) {
@@ -219,6 +279,115 @@ export default function ScenarioDetailPage() {
         </h2>
         <ScenarioPreview spec={scenario.spec} execution={scenario.latest_execution_result} />
       </div>
+
+      {/* ─── Closed-loop controller evaluation ─── */}
+      {scenario.status === "approved_library" && scenario.verification === "adversarial" && (
+        <div className="glass-card p-6 border border-cyan-500/20">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                <Bot className="w-5 h-5 text-cyan-400" />
+                Đánh giá vòng kín với mô hình lái
+              </h2>
+              <p className="text-sm text-slate-400 mt-2 max-w-2xl">
+                Chạy lại artifact đã xác minh bằng CARLA BehaviorAgent. Kết quả này đánh giá phản ứng của
+                ego, không thay đổi trạng thái duyệt hay bằng chứng nguy hiểm của kịch bản.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={refreshControllerRuns}
+                className="btn-primary btn-ghost text-xs px-3 py-2"
+                disabled={controllerLoading}
+                title="Làm mới kết quả"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${controllerLoading ? "animate-spin" : ""}`} />
+                Làm mới
+              </button>
+              <button
+                onClick={handleControllerRun}
+                className="btn-primary text-xs px-3 py-2"
+                disabled={
+                  controllerQueuing ||
+                  controllerRuns?.runs[0]?.status === "pending" ||
+                  controllerRuns?.runs[0]?.status === "running"
+                }
+              >
+                <Play className="w-3.5 h-3.5" />
+                {controllerQueuing ? "Đang xếp hàng..." : "Chạy BehaviorAgent"}
+              </button>
+            </div>
+          </div>
+
+          {controllerError && (
+            <p className="mt-4 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+              {controllerError}
+            </p>
+          )}
+
+          {controllerLoading && !controllerRuns ? (
+            <div className="skeleton h-24 w-full mt-5" />
+          ) : controllerRuns?.runs[0] ? (
+            <div className="mt-5 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="bg-slate-800/40 border border-slate-700/20 rounded-xl p-4">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">Baseline kịch bản</p>
+                  <p className="mt-2 font-medium text-slate-200">
+                    {controllerRuns.comparison.baseline_collision === true
+                      ? "Có va chạm — tình huống nguy hiểm được tái hiện"
+                      : controllerRuns.comparison.baseline_collision === false
+                        ? "Không va chạm"
+                        : "Chưa có kết quả hợp lệ"}
+                  </p>
+                </div>
+                <div className="bg-slate-800/40 border border-cyan-500/20 rounded-xl p-4">
+                  <p className="text-xs uppercase tracking-wider text-cyan-500/70">BehaviorAgent closed-loop</p>
+                  <p className="mt-2 font-medium text-slate-200">
+                    {controllerRuns.runs[0].status === "pending"
+                      ? "Đang chờ worker CARLA"
+                      : controllerRuns.runs[0].status === "running"
+                        ? "Đang chạy trong CARLA"
+                        : controllerRuns.comparison.controller_collision === true
+                          ? "Vẫn va chạm"
+                          : controllerRuns.comparison.controller_collision === false
+                            ? "Đã tránh va chạm"
+                            : "Lượt chạy bị lỗi"}
+                  </p>
+                </div>
+              </div>
+
+              {controllerRuns.runs[0].result?.metrics && (
+                <div className="flex flex-wrap gap-2 text-xs text-slate-300">
+                  {controllerRuns.runs[0].result.metrics.min_distance_m !== undefined && (
+                    <span className="bg-slate-800/70 rounded-md px-2.5 py-1.5">
+                      Khe hở nhỏ nhất: {controllerRuns.runs[0].result.metrics.min_distance_m.toFixed(2)} m
+                    </span>
+                  )}
+                  {controllerRuns.runs[0].result.metrics.ego_max_brake !== undefined && (
+                    <span className="bg-slate-800/70 rounded-md px-2.5 py-1.5">
+                      Phanh cực đại: {controllerRuns.runs[0].result.metrics.ego_max_brake.toFixed(2)}
+                    </span>
+                  )}
+                  {controllerRuns.runs[0].result.metrics.ego_post_peak_speed_drop_ms !== undefined && (
+                    <span className="bg-slate-800/70 rounded-md px-2.5 py-1.5">
+                      Giảm tốc sau đỉnh: {controllerRuns.runs[0].result.metrics.ego_post_peak_speed_drop_ms.toFixed(2)} m/s
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <p className="text-sm text-cyan-100 bg-cyan-500/10 border border-cyan-500/20 rounded-lg p-3">
+                {controllerRuns.comparison.recommendation_vi}
+              </p>
+            </div>
+          ) : (
+            <div className="mt-5 py-8 text-center text-slate-500 border border-dashed border-slate-700/30 rounded-xl">
+              <Bot className="w-9 h-9 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">Chưa chạy mô hình lái trên kịch bản này.</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ─── ODD Parameters ─── */}
       <div className="glass-card p-6">

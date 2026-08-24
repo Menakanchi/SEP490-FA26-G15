@@ -35,6 +35,8 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 
 from src.models.schemas import (
+    EgoControllerType,
+    JobKind,
     JobStatus,
     ReviewDecision,
     ReviewGate,
@@ -202,6 +204,13 @@ scenario_jobs = Table(
     Column("job_id", String(64), primary_key=True),
     Column("scenario_id", String(64), ForeignKey("scenarios.scenario_id"), nullable=False),
     Column("status", String(32), nullable=False),
+    Column("job_kind", String(32), nullable=False, server_default=JobKind.SCENARIO_VALIDATION.value),
+    Column(
+        "ego_controller",
+        String(32),
+        nullable=False,
+        server_default=EgoControllerType.SCENARIO_RUNNER_DEFAULT.value,
+    ),
     Column("claimed_by", String(255), nullable=True),
     Column("claimed_at", DateTime(timezone=True), nullable=True),
     Column("result", JSON, nullable=True),
@@ -474,6 +483,8 @@ class ScenarioRepository:
                             job_id=job_id,
                             scenario_id=decision.scenario_id,
                             status=JobStatus.PENDING.value,
+                            job_kind=JobKind.SCENARIO_VALIDATION.value,
+                            ego_controller=EgoControllerType.SCENARIO_RUNNER_DEFAULT.value,
                             claimed_by=None,
                             claimed_at=None,
                             result=None,

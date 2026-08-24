@@ -189,6 +189,44 @@ def test_speed_metrics_make_longitudinal_maneuvers_judgeable() -> None:
     assert metrics["adversary_speed_drop_ms"] == pytest.approx(11.1)
 
 
+def test_ego_braking_metrics_show_that_a_controller_reacted() -> None:
+    samples = [
+        replace(
+            _sample(0.0, lon=25.0, lat=0.0, ego_v=10.0),
+            ego_throttle=0.5,
+            ego_brake=0.0,
+            ego_steer=0.1,
+            ego_lane_offset_m=0.1,
+        ),
+        replace(
+            _sample(1.0, lon=18.0, lat=0.0, ego_v=8.0),
+            ego_throttle=0.0,
+            ego_brake=0.4,
+            ego_steer=-0.2,
+            ego_lane_offset_m=-0.3,
+        ),
+        replace(
+            _sample(2.0, lon=14.0, lat=0.0, ego_v=3.0),
+            ego_throttle=0.0,
+            ego_brake=1.0,
+            ego_steer=0.15,
+            ego_lane_offset_m=0.2,
+        ),
+    ]
+
+    metrics = trajectory.summarise(samples)
+    assert metrics["ego_braked"] == 1.0
+    assert metrics["ego_max_brake"] == pytest.approx(1.0)
+    assert metrics["ego_min_speed_ms"] == pytest.approx(3.0)
+    assert metrics["ego_speed_drop_ms"] == pytest.approx(7.0)
+    assert metrics["ego_peak_speed_ms"] == pytest.approx(10.0)
+    assert metrics["ego_post_peak_min_speed_ms"] == pytest.approx(3.0)
+    assert metrics["ego_post_peak_speed_drop_ms"] == pytest.approx(7.0)
+    assert metrics["ego_max_abs_steer"] == pytest.approx(0.2)
+    assert metrics["ego_max_lane_deviation_m"] == pytest.approx(0.3)
+    assert metrics["ego_steering_reversals"] == pytest.approx(2.0)
+
+
 def test_surrogate_safety_measures_follow_their_definitions() -> None:
     """THW, PET, DRAC — ba phép đo chuẩn ngành, kiểm bằng số học tay.
 

@@ -258,6 +258,8 @@ def test_before_sim_approval_creates_job_atomically(repository: ScenarioReposito
         job = connection.execute(select(scenario_jobs)).mappings().one()
     assert job["scenario_id"] == spec.scenario_id
     assert job["xosc_content"] == "<OpenSCENARIO />"
+    assert job["job_kind"] == "scenario_validation"
+    assert job["ego_controller"] == "constant_speed"
     assert repository.get_scenario(spec.scenario_id)["status"] == ScenarioStatus.SIMULATION_QUEUED.value
 
 
