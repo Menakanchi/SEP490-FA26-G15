@@ -111,6 +111,7 @@ export interface GetScenariosParams {
   odd?: ODDPayload;
   scope?: "public" | "me" | "all";
   user?: string;
+  reviewQueue?: boolean;
   page?: number;
   limit?: number;
 }
@@ -123,6 +124,7 @@ export async function getScenarios(
   if (params?.search) query.set("search", params.search);
   if (params?.scope) query.set("scope", params.scope);
   if (params?.user) query.set("user", params.user);
+  if (params?.reviewQueue) query.set("review_queue", "true");
   if (params?.page) query.set("page", String(params.page));
   if (params?.limit) query.set("limit", String(params.limit));
 

@@ -112,7 +112,7 @@ function ReviewPageContent() {
   // Fetch List
   const fetchScenarioList = useCallback(async () => {
     try {
-      const res = await getScenarios({ limit: 50 });
+      const res = await getScenarios({ limit: 50, reviewQueue: true });
       const fetchedItems = res.items || [];
       setList(fetchedItems);
 
