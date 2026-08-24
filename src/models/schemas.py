@@ -1348,6 +1348,28 @@ class LibraryEntry(ForgeModel):
 
 
 # ---------------------------------------------------------------------------
+# Near-duplicate detection (ADR-019)
+# ---------------------------------------------------------------------------
+
+
+class DuplicateDifference(ForgeModel):
+    """Một chênh lệch nhỏ vẫn nằm trong ngưỡng gần trùng của ADR-019."""
+
+    field: str
+    current: str | float | int | None
+    existing: str | float | int | None
+    delta: float | None = None
+    unit: Literal["km/h", "m", "s"] | None = None
+
+
+class DuplicateDiff(ForgeModel):
+    """Cảnh báo gần trùng đủ dữ liệu để reviewer tự quyết định."""
+
+    duplicate_scenario_id: str
+    differences: list[DuplicateDifference] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Hợp đồng HTTP giữa frontend và backend
 # ---------------------------------------------------------------------------
 # Tách khỏi domain model (``ScenarioSpec``, ``ReviewDecision``, ...) có chủ đích:
@@ -1481,6 +1503,10 @@ class ReviewApiRequest(ForgeModel):
     approved: bool
     reviewer: str = Field(..., min_length=1, description="Tên người chịu trách nhiệm duyệt")
     reason: str = Field("", max_length=1000, description="Bắt buộc khi approved=False")
+    force_simulate: bool = Field(
+        False,
+        description="Bỏ qua cảnh báo gần trùng và tiếp tục tạo job CARLA (ADR-019 §19.5).",
+    )
 
 
 class TagUpdateRequest(ForgeModel):

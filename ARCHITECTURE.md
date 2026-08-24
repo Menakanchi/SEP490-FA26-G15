@@ -392,6 +392,7 @@ không phải backlog còn thiếu.
 | Mức kiểm chứng (`VerificationLevel`) | ✅ Có — `ExecutionResult` đặt `verification`; `PROVEN_BAD_FOR_FEW_SHOT` cắt vòng tự khẳng định của few-shot (ADR-017) |
 | Cost/request + latency | ✅ Có — provider token usage theo request/node; benchmark online 20 request: latency p50/p95 2,766/4,152 s, cost p50/p95 $0,002304/$0,004582 |
 | Chặn câu hỏi trùng ở lối vào | ✅ Có — chuẩn hoá NFC + exact match trước LLM (ADR-015) |
+| Cảnh báo đầu ra gần trùng trước GPU | ✅ Có — shortlist bằng 4 cột ODD, so động học trong Python, trả diff và chỉ tạo job sau quyết định rõ ràng (ADR-019) |
 | Campaign ODD + batch CARLA | ✅ Có — sinh theo ô hỗ trợ, batch review, worker queue và dashboard M1/M2/M3 |
 | Anchor hình học thứ hai | ✅ Có — approach giao cắt đô thị Town04 đã đo và chỉ cam kết cho `run_red_light` (ADR-016) |
 | Behavior checker (Phase 3) | ✅ Có đủ 6/6 oracle trong phạm vi; tiếp tục mở rộng nhãn người |

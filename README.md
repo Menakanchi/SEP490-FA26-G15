@@ -61,6 +61,9 @@ parse_intent
 - Converter deterministic biến `ScenarioSpec` thành `.xosc`.
 - Review và CARLA simulation là các HTTP transaction sau workflow, không phải
   node đứng chờ trong RAM.
+- Tại `BEFORE_SIM`, spec gần trùng được cảnh báo bằng chênh lệch động học trước
+  khi tạo job GPU; reviewer có thể xem bản cũ hoặc chủ động chọn vẫn chạy
+  ([ADR-019](docs/adr/ADR-019-chan-trung-o-dau-ra-truoc-khi-tieu-gpu.md)).
 
 ## Kiến trúc
 

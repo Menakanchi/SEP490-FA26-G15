@@ -24,7 +24,7 @@ import ScenarioPreview from "@/components/ScenarioPreview";
 import { RoleGate } from "@/components/RoleGate";
 import { AuthGate } from "@/components/AuthGate";
 import { useAuth } from "@/context/AuthContext";
-import type { ScenarioItem, ScenarioDetail, ReviewGate } from "@/types";
+import type { DuplicateDiff, ScenarioItem, ScenarioDetail, ReviewGate } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
@@ -36,12 +36,45 @@ import {
 
 const REVIEW_STATUS_OPTIONS = [
   { value: "all", label: "Tất cả trạng thái" },
-  { value: "pending_sim_review", label: "Chờ duyệt mô phỏng (Cổng 2)" },
+  { value: "pending_sim_review", label: "Chờ duyệt mô phỏng (Cổng 1)" },
   { value: "simulation_queued", label: "Chờ chạy thử (Queued)" },
-  { value: "pending_library_review", label: "Chờ duyệt thư viện (Cổng 1)" },
+  { value: "pending_library_review", label: "Chờ duyệt thư viện (Cổng 2)" },
   { value: "approved_library", label: "Đã duyệt chính thức" },
   { value: "rejected", label: "Bị từ chối" },
 ];
+
+const DUPLICATE_ROLE_LABELS: Record<string, string> = {
+  ego: "xe ego",
+  car: "ô tô con",
+  motorcycle: "xe máy",
+  truck: "xe tải",
+  pedestrian: "người đi bộ",
+};
+
+const DUPLICATE_MANEUVER_LABELS: Record<string, string> = {
+  cut_in: "tạt đầu",
+  sudden_brake: "phanh gấp",
+  lane_drift: "lấn làn",
+  stop_in_lane: "dừng giữa làn",
+  run_red_light: "vượt đèn đỏ",
+  wrong_way: "đi ngược chiều",
+  jaywalk: "băng ngang đường",
+};
+
+function duplicateFieldLabel(field: string): string {
+  const parts = field.split(".");
+  if (parts[0] === "actors") {
+    const role = DUPLICATE_ROLE_LABELS[parts[1]] ?? parts[1];
+    if (parts[2] === "s_offset_m") return `Vị trí dọc của ${role}`;
+    if (parts[2] === "initial_speed_kmh") return `Tốc độ ban đầu của ${role}`;
+  }
+  if (parts[0] === "maneuvers") {
+    const maneuver = DUPLICATE_MANEUVER_LABELS[parts[1]] ?? parts[1];
+    if (parts.slice(2).join(".") === "trigger.value") return `Ngưỡng kích hoạt hành vi ${maneuver}`;
+    if (parts[2] === "target_speed_kmh") return `Tốc độ đích khi ${maneuver}`;
+  }
+  return field;
+}
 
 function ReviewPageContent() {
   const searchParams = useSearchParams();
@@ -73,6 +106,7 @@ function ReviewPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<{ reviewer?: string; reason?: string }>({});
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [nearDuplicate, setNearDuplicate] = useState<DuplicateDiff | null>(null);
   const [xmlCopied, setXmlCopied] = useState(false);
 
   // Fetch List
@@ -128,6 +162,7 @@ function ReviewPageContent() {
   }, [selectedId]);
 
   const handleSelectScenario = (id: string) => {
+    setNearDuplicate(null);
     setSelectedId(id);
     router.replace(`/review?scenario_id=${id}`, { scroll: false });
   };
@@ -136,9 +171,9 @@ function ReviewPageContent() {
     scenario?.status === "pending_sim_review" ? "before_sim" : "before_library";
 
   const gateLabel =
-    gateToReview === "before_sim" ? "Cổng 2: Mô phỏng (BEFORE_SIM)" : "Cổng 1: Thư viện (BEFORE_LIBRARY)";
+    gateToReview === "before_sim" ? "Cổng 1: Mô phỏng (BEFORE_SIM)" : "Cổng 2: Thư viện (BEFORE_LIBRARY)";
 
-  const handleSubmitReview = async (approved: boolean) => {
+  const handleSubmitReview = async (approved: boolean, forceSimulate = false) => {
     if (!scenario) return;
 
     const errors: { reviewer?: string; reason?: string } = {};
@@ -158,13 +193,24 @@ function ReviewPageContent() {
     setSubmitting(true);
 
     try {
-      await postReview({
+      const result = await postReview({
         scenario_id: scenario.scenario_id,
         gate: gateToReview,
         approved,
         reviewer: reviewer.trim(),
-        reason: reason.trim() || "Chấp nhận kịch bản",
+        reason: forceSimulate && nearDuplicate
+          ? `Vẫn chạy dù gần trùng với ${nearDuplicate.duplicate_scenario_id}. ${reason.trim()}`.trim()
+          : reason.trim() || "Chấp nhận kịch bản",
+        force_simulate: forceSimulate,
       });
+
+      if (result.warning === "near_duplicate" && result.duplicate) {
+        setNearDuplicate(result.duplicate);
+        setToast(null);
+        return;
+      }
+
+      setNearDuplicate(null);
 
       setToast({
         type: "success",
@@ -599,7 +645,7 @@ function ReviewPageContent() {
                   </div>
 
                   <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                    Kịch bản đã được phê duyệt ở Cổng 2 và đang ở trạng thái chờ chạy thử mô phỏng (<code className="font-bold text-blue-700">simulation_queued</code>). Kỹ sư/Reviewer có thể tải file <code className="font-bold text-blue-700">.xosc</code> bên dưới về mô phỏng ngoại tuyến (Esmini / CARLA / Ansys) và xác nhận kết quả kiểm thử:
+                    Kịch bản đã được phê duyệt ở Cổng 1 và đang ở trạng thái chờ chạy thử mô phỏng (<code className="font-bold text-blue-700">simulation_queued</code>). Kỹ sư/Reviewer có thể tải file <code className="font-bold text-blue-700">.xosc</code> bên dưới về mô phỏng ngoại tuyến (Esmini / CARLA / Ansys) và xác nhận kết quả kiểm thử:
                   </p>
 
                   <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/80 border border-sky-200/80 dark:border-slate-700 space-y-3">
@@ -672,6 +718,52 @@ function ReviewPageContent() {
                     <User className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                     Form Phê duyệt / Từ chối (HITL Decision Form)
                   </h3>
+
+                  {nearDuplicate && gateToReview === "before_sim" && (
+                    <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 space-y-3">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                            Gần trùng với {nearDuplicate.duplicate_scenario_id}
+                          </p>
+                          <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
+                            Chưa có job CARLA nào được tạo. Hãy xem chênh lệch rồi quyết định dùng bản cũ hoặc vẫn chạy bản này.
+                          </p>
+                        </div>
+                      </div>
+                      {nearDuplicate.differences.length > 0 ? (
+                        <div className="space-y-1 text-xs text-amber-900 dark:text-amber-200">
+                          {nearDuplicate.differences.map((difference, index) => (
+                            <div key={`${difference.field}-${index}`} title={difference.field}>
+                              <span className="font-semibold">{duplicateFieldLabel(difference.field)}</span>:{" "}
+                              <span className="font-mono">{String(difference.existing)} → {String(difference.current)}</span>
+                              {difference.delta !== null ? ` (Δ ${difference.delta}${difference.unit ? ` ${difference.unit}` : ""})` : ""}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-amber-800 dark:text-amber-300">Động học trùng hoàn toàn trong ngưỡng so sánh.</p>
+                      )}
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/library/${nearDuplicate.duplicate_scenario_id}`)}
+                          className="px-3 py-2 rounded-xl border border-amber-400 text-amber-900 dark:text-amber-200 text-xs font-bold"
+                        >
+                          Xem bản đã có
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSubmitReview(true, true)}
+                          disabled={submitting}
+                          className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold disabled:opacity-50"
+                        >
+                          Vẫn chạy CARLA
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* ❌ Critical Error Banner */}
                   {(formErrors.reviewer || formErrors.reason) && (

@@ -775,10 +775,86 @@ async def test_complete_simulation_rejected(client):
 
 
 @pytest.mark.asyncio
+async def test_near_duplicate_warns_before_gpu_and_requires_explicit_override(client):
+    first = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    await _approve_sim(client, first)
+    second = await _generate_one(client, "Trên cao tốc, xe máy vượt lên rồi tạt đầu ô tô đang chạy")
+
+    warning = await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": second,
+            "gate": "before_sim",
+            "approved": True,
+            "reviewer": "Simulation Reviewer",
+            "reason": "",
+        },
+    )
+
+    assert warning.status_code == 200
+    assert warning.json()["ok"] is False
+    assert warning.json()["warning"] == "near_duplicate"
+    assert warning.json()["duplicate"] == {"duplicate_scenario_id": first, "differences": []}
+    assert (await client.get(f"/api/v1/scenarios/{second}")).json()["status"] == "pending_sim_review"
+    assert len((await client.get("/api/v1/internal/jobs")).json()["jobs"]) == 1
+
+    forced = await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": second,
+            "gate": "before_sim",
+            "approved": True,
+            "reviewer": "Simulation Reviewer",
+            "reason": f"Đã đối chiếu và vẫn cần chạy cạnh {first}",
+            "force_simulate": True,
+        },
+    )
+
+    assert forced.status_code == 200
+    assert forced.json() == {"ok": True, "status": "simulation_queued", "job_created": True}
+    assert len((await client.get("/api/v1/internal/jobs")).json()["jobs"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_tuner_variant_keeps_hitl_but_bypasses_duplicate_warning(client):
+    """Biến thể dò biên cố ý đứng sát nhau; ADR-019 không được vô hiệu tuner."""
+    from src.services import db
+
+    base = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    await _approve_sim(client, base)
+    base_row = db.get_scenario(base)
+    variant_spec = {**base_row["spec"], "scenario_id": "sc_999"}
+    db.save_scenario(
+        scenario_id="sc_999",
+        title=base_row["title"],
+        description_vi=base_row["description_vi"],
+        spec=variant_spec,
+        odd=base_row["odd"],
+        status="pending_sim_review",
+        xosc_content=base_row["xosc_content"],
+        created_by=f"tuner:{base}",
+    )
+
+    response = await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": "sc_999",
+            "gate": "before_sim",
+            "approved": True,
+            "reviewer": "Simulation Reviewer",
+            "reason": "Duyệt biến thể tuner để dò biên",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "status": "simulation_queued", "job_created": True}
+
+
+@pytest.mark.asyncio
 async def test_batch_review_approves_a_whole_campaign_at_gate_one(client):
     """Cổng 1 áp lên **lô**, không lên từng kịch bản (ADR-014 §A3).
 
-    Với 76 ô thì người duyệt bấm 76 lần mà không thực sự đọc, và rubber-stamp
+    Với 72 ô thì người duyệt bấm 72 lần mà không thực sự đọc, và rubber-stamp
     còn tệ hơn không có cổng. Một quyết định cho cả lô, ghi rõ ai chịu trách
     nhiệm — nhưng vẫn là con người bấm, vì đề bài bắt phải có người phê duyệt
     trước khi điều khiển thiết bị.
@@ -810,7 +886,27 @@ async def test_batch_review_approves_a_whole_campaign_at_gate_one(client):
         json={"reviewer": "cong", "approved": True},
     )
     assert response.status_code == 200
-    assert response.json()["count"] == 2
+    assert response.json()["ok"] is False
+    assert response.json()["count"] == 0
+    assert len(response.json()["near_duplicates"]) == 2
+
+    first_status = (await client.get(f"/api/v1/scenarios/{scenario_ids[0]}")).json()["status"]
+    second_status = (await client.get(f"/api/v1/scenarios/{scenario_ids[1]}")).json()["status"]
+    assert {first_status, second_status} == {"pending_sim_review"}
+
+    override = await client.post(
+        f"/api/v1/campaigns/{campaign_id}/review",
+        json={
+            "reviewer": "cong",
+            "approved": True,
+            "reason": "Đã xem cảnh báo gần trùng của cả lô",
+            "force_simulate": True,
+        },
+    )
+    assert override.status_code == 200
+    assert override.json()["ok"] is True
+    assert override.json()["count"] == 2
+    assert override.json()["near_duplicates"] == []
 
     for sc_id in scenario_ids:
         assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["status"] == "simulation_queued"

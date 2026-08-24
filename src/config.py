@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # xếp hạng bằng cosine của numpy. Không có service riêng để cấu hình.
     # (`chroma_persist_dir` của template đã bỏ từ ADR-003.)
 
+    # Near-duplicate detection (ADR-019). Delta trigger mang cùng đơn vị với
+    # trigger.type: giây cho simulation_time, mét cho hai loại khoảng cách.
+    near_duplicate_trigger_delta: float = Field(default=5.0, ge=0.0)
+    near_duplicate_speed_kmh: float = Field(default=5.0, ge=0.0)
+    near_duplicate_distance_m: float = Field(default=5.0, ge=0.0)
+
 
 @lru_cache
 def get_settings() -> Settings:

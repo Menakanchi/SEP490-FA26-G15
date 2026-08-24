@@ -286,6 +286,28 @@ export interface ReviewRequest {
   approved: boolean;
   reviewer: string;
   reason: string;
+  force_simulate?: boolean;
+}
+
+export interface DuplicateDifference {
+  field: string;
+  current: string | number | null;
+  existing: string | number | null;
+  delta: number | null;
+  unit: "km/h" | "m" | "s" | null;
+}
+
+export interface DuplicateDiff {
+  duplicate_scenario_id: string;
+  differences: DuplicateDifference[];
+}
+
+export interface ReviewResponse {
+  ok: boolean;
+  status?: ScenarioStatus;
+  job_created?: boolean;
+  warning?: "near_duplicate";
+  duplicate?: DuplicateDiff;
 }
 
 export interface ReviewLog extends ReviewRequest {
@@ -516,6 +538,18 @@ export interface CampaignRequest {
 export interface CampaignDetail extends CampaignSummary {
   cells: ODDCell[];
   requests: CampaignRequest[];
+}
+
+export interface CampaignReviewResponse {
+  ok: boolean;
+  campaign_id: string;
+  scenarios: string[];
+  count: number;
+  near_duplicates: Array<{
+    scenario_id: string;
+    warning: "near_duplicate";
+    duplicate: DuplicateDiff;
+  }>;
 }
 
 export * from "./auth";
