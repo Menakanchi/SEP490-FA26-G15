@@ -229,8 +229,6 @@ function Replay({ item }: { item: LabelQueueItem }) {
 
   const [curLon, curLat] = rels[Math.min(frame, rels.length - 1)];
   const speed = speeds[Math.min(frame, speeds.length - 1)] ?? { adv: 0, ego: 0 };
-  const path = rels.map(([lon, l]) => `${view.x(lon).toFixed(1)},${view.y(l).toFixed(1)}`).join(" ");
-
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-slate-800 bg-slate-950 overflow-x-auto">
@@ -255,12 +253,12 @@ function Replay({ item }: { item: LabelQueueItem }) {
                   stroke="#475569" strokeWidth={1} strokeDasharray={Math.abs(l) > 3 ? undefined : "8 8"} />
           ))}
 
-          <polyline points={path} fill="none" stroke="#f59e0b" strokeWidth={2.5} />
-
           <rect x={view.x(0) - 9} y={view.y(0) - 5} width={18} height={10} rx={2} fill="#0ea5e9" />
           <text x={view.x(0)} y={view.y(0) + 22} textAnchor="middle"
                 className="fill-sky-300 text-[10px] font-bold">ego</text>
 
+          <line x1={view.x(0)} y1={view.y(0)} x2={view.x(curLon)} y2={view.y(curLat)}
+                stroke="#475569" strokeWidth={1.5} strokeDasharray="4 5" />
           <circle cx={view.x(curLon)} cy={view.y(curLat)} r={6} fill="#f59e0b" />
 
           <text x={12} y={VIEW_H - 6} className="fill-slate-500 text-[10px]">
@@ -293,8 +291,9 @@ function Replay({ item }: { item: LabelQueueItem }) {
         </span>
       </div>
       <p className="text-[11px] text-slate-500 leading-relaxed">
-        Ego đứng yên ở giữa, tác nhân đi quanh nó — đây là <strong>đường đi đo được</strong>, không
-        phải dựng lại. Vùng nâu là <strong>lề đường</strong>; {LANE} m là bề rộng một làn.
+        Ego đứng yên ở giữa; mỗi frame là vị trí tương đối <strong>đo được</strong>, không phải dựng
+        lại. Không nối các frame thành đường vì hệ trục quay theo ego ở từng thời điểm — nối chúng
+        sẽ tạo ra một quỹ đạo giả. Vùng nâu là <strong>lề đường</strong>; {LANE} m là bề rộng một làn.
         Vì ego đứng yên trên hình, một xe <strong>chạy chậm cùng chiều</strong> trông như đang lùi về
         phía bạn — đọc cột <strong>km/h</strong> để phân biệt với xe đi ngược chiều thật.
         {item.contact_time_s != null && (

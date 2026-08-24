@@ -96,8 +96,14 @@ function DeclaredSummary({ spec }: { spec?: ScenarioSpec }) {
 function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
   // useMemo để danh tính mảng ổn định giữa các lần render: `?? []` dựng mảng mới
   // mỗi lần, làm phép chiếu khung nhìn tính lại vô ích trong lúc kéo thanh thời gian.
-  const points = useMemo(() => execution.trajectory ?? [], [execution.trajectory]);
   const metrics = execution.metrics ?? {};
+  const allPoints = useMemo(() => execution.trajectory ?? [], [execution.trajectory]);
+  const contactTime = metrics.contact_time_s;
+  const points = useMemo(() => {
+    if (contactTime == null) return allPoints;
+    const firstAfterContact = allPoints.findIndex((point) => point.t > contactTime);
+    return firstAfterContact > 0 ? allPoints.slice(0, firstAfterContact) : allPoints;
+  }, [allPoints, contactTime]);
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -112,7 +118,7 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
     };
   }, [playing, points.length]);
 
-  // Vẽ trong HỆ QUY CHIẾU EGO, không phải hệ toạ độ thế giới.
+  // Phát lại trong HỆ QUY CHIẾU EGO, không phải hệ toạ độ thế giới.
   //
   // Ở hệ thế giới, khung nhìn phải phủ cả quãng đường ego chạy — đo trên sc_012
   // là 320 m, tức 2,08 px mỗi mét, nên bề rộng một làn (3,5 m) chỉ còn 7,3 px và
@@ -120,8 +126,9 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
   // hai xe đã rời nhau 265 m.
   //
   // Đặt ego ở gốc thì khung chỉ cần phủ khoảng cách GIỮA hai xe, và cú tạt đầu
-  // hiện ra đúng tỉ lệ. Vẫn là dữ liệu đo — `rel` do worker tính mỗi tick, đây
-  // chỉ là đổi hệ quy chiếu chứ không dựng lại gì.
+  // hiện ra đúng tỉ lệ. Nhưng hệ trục này quay theo ego ở TỪNG tick: mỗi điểm
+  // riêng lẻ đúng, còn nối chúng thành một polyline sẽ tạo ra một đường giả mà
+  // xe không hề chạy trên CARLA. Vì vậy chỉ vẽ trạng thái của frame hiện tại.
   const rels = useMemo(
     () => points.map((p) => p.rel ?? ([0, 0] as [number, number])),
     [points],
@@ -143,19 +150,11 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
     return { project, sx, sy, maxLon, maxLat };
   }, [rels]);
 
-  const advPath = rels
-    .map(([lon, lat]) => {
-      const [x, y] = view.project(lon, lat);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-
   const current = points[Math.min(frame, points.length - 1)];
   const [curLon, curLat] = rels[Math.min(frame, rels.length - 1)];
   const [advX, advY] = view.project(curLon, curLat);
   const [egoX, egoY] = view.project(0, 0);
 
-  const contactTime = metrics.contact_time_s;
   const contactIndex =
     contactTime == null
       ? -1
@@ -168,9 +167,10 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
   return (
     <div className="space-y-4">
       <Note>
-        Đây là <strong>đường đi đo được</strong> của tác nhân <strong>so với ego</strong>: ego đứng yên
-        ở giữa, tác nhân di chuyển quanh nó. Vẽ ở hệ toạ độ thế giới thì cả cú tạt đầu chỉ còn vài
-        pixel vì khung phải phủ hàng trăm mét đường.
+        Đây là <strong>bản phát lại từng thời điểm</strong> từ dữ liệu đo trên CARLA: ego đứng yên ở
+        giữa, vị trí tác nhân được chiếu theo hướng ego ở frame đang xem. Các frame không được nối
+        thành đường vì hệ trục quay theo ego; nối lại sẽ tạo cảm giác xe đi ngoằn ngoèo dù CARLA
+        không hề chạy như vậy.
       </Note>
 
       <div className="rounded-2xl border border-sky-200/80 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-x-auto">
@@ -187,8 +187,9 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
             );
           })}
 
-          <polyline points={advPath} fill="none" stroke="currentColor"
-                    className="text-amber-500" strokeWidth={2.5} />
+          <line x1={egoX} y1={egoY} x2={advX} y2={advY} stroke="currentColor"
+                className="text-slate-300 dark:text-slate-700" strokeWidth={1.5}
+                strokeDasharray="4 5" />
 
           {contactIndex >= 0 && (() => {
             const [cx, cy] = view.project(...rels[contactIndex]);
@@ -210,6 +211,11 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
                 className="fill-sky-700 dark:fill-sky-300 text-[10px] font-bold">ego</text>
 
           <rect x={advX - 8} y={advY - 5} width={16} height={10} rx={2} className="fill-amber-500" />
+
+          <text x={PAD} y={PAD - 8} className="fill-slate-500 dark:fill-slate-400 text-[10px] font-medium">
+            {curLon >= 0 ? `tác nhân trước ego ${curLon.toFixed(1)} m` : `tác nhân sau ego ${Math.abs(curLon).toFixed(1)} m`}
+            {` · lệch ngang ${curLat.toFixed(1)} m`}
+          </text>
 
           <text x={PAD} y={VIEW_H - 8} className="fill-slate-400 text-[10px]">
             ← sau ego {view.maxLon.toFixed(0)}m
