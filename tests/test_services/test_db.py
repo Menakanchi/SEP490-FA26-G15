@@ -247,3 +247,29 @@ def test_migration_chay_lai_duoc_nhieu_lan() -> None:
     db.init_db()
 
     assert db.find_duplicate_prompt("xe máy tạt đầu ô tô trên cao tốc")["scenario_id"] == "sc_001"
+
+
+# ===========================================================================
+# ADR-019 — shortlist gần trùng trước GPU
+# ===========================================================================
+
+
+def test_near_duplicate_candidates_filter_by_odd_status_and_id() -> None:
+    _save("sc_match")
+    _save("sc_excluded")
+    _save("sc_fog", odd={**SPEC["odd"], "weather": "fog"})
+    _save("sc_rejected")
+    db.update_scenario_status("sc_rejected", ScenarioStatus.REJECTED.value)
+    _save("sc_legacy_sim")
+    db.update_scenario_status("sc_legacy_sim", ScenarioStatus.APPROVED_SIM.value)
+
+    rows = db.get_scenarios_for_near_duplicate_check(
+        road_type="highway",
+        weather="clear",
+        actor_type="motorcycle",
+        maneuver="cut_in",
+        exclude_id="sc_excluded",
+    )
+
+    assert {row["scenario_id"] for row in rows} == {"sc_match", "sc_legacy_sim"}
+    assert all(row["spec"] == SPEC for row in rows)

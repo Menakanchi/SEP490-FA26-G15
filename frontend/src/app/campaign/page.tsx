@@ -13,11 +13,11 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Layers, Loader2, Play, Square } from "lucide-react";
+import { AlertTriangle, Layers, Loader2, Play, ShieldCheck, Square } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
-import { createCampaign, getCampaign, listCampaigns, stopCampaign } from "@/services/api";
+import { createCampaign, getCampaign, listCampaigns, reviewCampaign, stopCampaign } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
-import type { CampaignDetail, CampaignSummary } from "@/types";
+import type { CampaignDetail, CampaignReviewResponse, CampaignSummary } from "@/types";
 
 // Phạm vi converter hiện tại: chỉ `highway` có anchor đã smoke-test (ADR-016).
 // Hard-code ở đây là có chủ đích — chọn ô ngoài phạm vi thì backend loại và
@@ -53,6 +53,8 @@ function CampaignContent() {
   const [error, setError] = useState<string | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
   const [active, setActive] = useState<CampaignDetail | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [batchReview, setBatchReview] = useState<CampaignReviewResponse | null>(null);
 
   const cells = weathers.flatMap((weather) =>
     maneuvers.flatMap((maneuver) =>
@@ -90,12 +92,35 @@ function CampaignContent() {
         max_scenarios: maxScenarios,
         created_by: (typeof user === "string" ? user : user?.username) ?? "creator",
       });
+      setBatchReview(null);
       setActive(await getCampaign(campaign_id));
       await refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setStarting(false);
+    }
+  };
+
+  const reviewActive = async (forceSimulate = false) => {
+    if (!active) return;
+    setReviewing(true);
+    setError(null);
+    try {
+      const result = await reviewCampaign(active.campaign_id, {
+        reviewer: (typeof user === "string" ? user : user?.username) ?? "creator",
+        approved: true,
+        reason: forceSimulate
+          ? `Vẫn chạy các bản gần trùng trong chiến dịch ${active.campaign_id}`
+          : `Duyệt theo lô chiến dịch ${active.campaign_id}`,
+        force_simulate: forceSimulate,
+      });
+      setBatchReview(result);
+      setActive(await getCampaign(active.campaign_id));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReviewing(false);
     }
   };
 
@@ -136,10 +161,18 @@ function CampaignContent() {
         {error && <p className="text-sm text-red-400">{error}</p>}
       </section>
 
-      {active && <ActiveCampaign campaign={active} onStop={async () => {
-        await stopCampaign(active.campaign_id);
-        setActive(await getCampaign(active.campaign_id));
-      }} />}
+      {active && (
+        <ActiveCampaign
+          campaign={active}
+          reviewing={reviewing}
+          batchReview={batchReview}
+          onReview={reviewActive}
+          onStop={async () => {
+            await stopCampaign(active.campaign_id);
+            setActive(await getCampaign(active.campaign_id));
+          }}
+        />
+      )}
 
       {campaigns.length > 0 && (
         <section className="glass-card p-6">
@@ -147,7 +180,10 @@ function CampaignContent() {
           <div className="space-y-1">
             {campaigns.map((c) => (
               <button key={c.campaign_id} type="button"
-                      onClick={() => getCampaign(c.campaign_id).then(setActive)}
+                      onClick={() => {
+                        setBatchReview(null);
+                        getCampaign(c.campaign_id).then(setActive);
+                      }}
                       className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center justify-between text-sm">
                 <code className="text-purple-300">{c.campaign_id}</code>
                 <span className="text-slate-400 text-xs">
@@ -162,7 +198,19 @@ function CampaignContent() {
   );
 }
 
-function ActiveCampaign({ campaign, onStop }: { campaign: CampaignDetail; onStop: () => void }) {
+function ActiveCampaign({
+  campaign,
+  reviewing,
+  batchReview,
+  onReview,
+  onStop,
+}: {
+  campaign: CampaignDetail;
+  reviewing: boolean;
+  batchReview: CampaignReviewResponse | null;
+  onReview: (forceSimulate?: boolean) => void;
+  onStop: () => void;
+}) {
   const done = campaign.generated + campaign.failed;
   const total = campaign.cells.length;
   return (
@@ -213,6 +261,53 @@ function ActiveCampaign({ campaign, onStop }: { campaign: CampaignDetail; onStop
           </div>
         ))}
       </div>
+
+      {campaign.status !== "running" && campaign.generated > 0 && (
+        <div className="border-t border-slate-700/60 pt-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-slate-400 max-w-2xl">
+              Một quyết định áp dụng cho các kịch bản của đúng chiến dịch này đang chờ chạy CARLA.
+              Bản gần trùng sẽ được giữ lại để bạn xem trước, không âm thầm tạo job GPU.
+            </p>
+            <button
+              type="button"
+              onClick={() => onReview(false)}
+              disabled={reviewing}
+              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2"
+            >
+              {reviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+              Duyệt cả lô để chạy CARLA
+            </button>
+          </div>
+
+          {batchReview && batchReview.near_duplicates.length > 0 && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 space-y-3">
+              <div className="flex items-start gap-2 text-amber-200">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <p className="text-xs leading-relaxed">
+                  Đã tạo job cho {batchReview.count} kịch bản. Còn {batchReview.near_duplicates.length} bản gần
+                  trùng đang dừng trước GPU: {batchReview.near_duplicates.map((item) => item.scenario_id).join(", ")}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onReview(true)}
+                disabled={reviewing}
+                className="px-3 py-2 rounded-lg border border-amber-400/60 hover:bg-amber-500/20 disabled:opacity-50 text-amber-100 text-xs font-semibold"
+              >
+                Vẫn chạy các bản gần trùng
+              </button>
+            </div>
+          )}
+
+          {batchReview?.ok && batchReview.count > 0 && (
+            <p className="text-xs text-emerald-400">Đã tạo {batchReview.count} job CARLA từ quyết định duyệt theo lô.</p>
+          )}
+          {batchReview?.ok && batchReview.count === 0 && (
+            <p className="text-xs text-slate-400">Chiến dịch này không còn kịch bản nào chờ duyệt để chạy CARLA.</p>
+          )}
+        </div>
+      )}
     </section>
   );
 }

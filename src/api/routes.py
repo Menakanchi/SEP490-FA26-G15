@@ -49,6 +49,7 @@ from src.services import campaign as campaign_service
 from src.services import db, metrics, tuning
 from src.services.library.retriever import SQLiteRetriever
 from src.services.llm import collect_provider_metrics, summarize_provider_metrics
+from src.services.near_duplicate import is_near_duplicate
 
 logger = logging.getLogger(__name__)
 
@@ -351,6 +352,58 @@ async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) ->
 
     if body.approved and gate is ReviewGate.BEFORE_SIM and not _has_xosc(scenario):
         raise HTTPException(status_code=409, detail=UNCOMPILED_SCENARIO_DETAIL)
+
+    # ADR-019: cảnh báo gần trùng trước khi tạo job CARLA. Biến thể do tuner
+    # sinh ra cố ý đứng sát nhau để dò biên tới hạn, nên không đem chúng qua
+    # chốt này; chúng vẫn phải qua đúng cổng người duyệt như trước.
+    if (
+        body.approved
+        and gate is ReviewGate.BEFORE_SIM
+        and not str(scenario.get("created_by") or "").startswith("tuner:")
+    ):
+        spec_moi = ScenarioSpec.model_validate(scenario["spec"])
+        candidates = db.get_scenarios_for_near_duplicate_check(
+            road_type=spec_moi.odd.road_type.value,
+            weather=spec_moi.odd.weather.value,
+            actor_type=spec_moi.odd.actor_type.value,
+            maneuver=spec_moi.odd.maneuver.value,
+            exclude_id=target_id,
+        )
+        for candidate in candidates:
+            try:
+                spec_cu = ScenarioSpec.model_validate(candidate["spec"])
+            except ValidationError:
+                logger.warning("Bỏ qua candidate gần trùng có spec hỏng: %s", candidate["scenario_id"])
+                continue
+            result = is_near_duplicate(spec_moi, spec_cu)
+            if not result:
+                continue
+            # ID ở hàng DB là nguồn sự thật cho điều hướng. Dữ liệu tuning cũ
+            # từng copy spec gốc nên ``spec.scenario_id`` có thể vẫn là ID base.
+            result = result.model_copy(update={"duplicate_scenario_id": candidate["scenario_id"]})
+            if not body.force_simulate:
+                logger.info(
+                    "near_duplicate_warning scenario=%s duplicate=%s differences=%s",
+                    target_id,
+                    result.duplicate_scenario_id,
+                    len(result.differences),
+                )
+                return {
+                    "ok": False,
+                    "warning": "near_duplicate",
+                    "duplicate": result.model_dump(mode="json"),
+                    "status": current_status.value,
+                    "job_created": False,
+                }
+            logger.info(
+                "near_duplicate_force_simulate scenario=%s duplicate=%s reviewer=%s",
+                target_id,
+                result.duplicate_scenario_id,
+                body.reviewer,
+            )
+            if not body.reason.strip():
+                body.reason = f"Vẫn chạy dù gần trùng với {result.duplicate_scenario_id}"
+            break
 
     db.update_scenario_status(target_id, next_status.value)
     scenario["status"] = next_status.value
@@ -690,13 +743,14 @@ class BatchReviewRequest(BaseModel):
     reviewer: str = Field(..., min_length=1)
     approved: bool = True
     reason: str = ""
+    force_simulate: bool = False
 
 
 @router.post("/campaigns/{campaign_id}/review")
 async def review_campaign(campaign_id: str, body: BatchReviewRequest) -> dict:
     """Cổng ``BEFORE_SIM`` áp lên **lô**, không lên từng kịch bản (ADR-014 §A3).
 
-    Vì sao không giữ mỗi kịch bản một cú bấm: với 76 ô thì người duyệt bấm 76
+    Vì sao không giữ mỗi kịch bản một cú bấm: với 72 ô thì người duyệt bấm 72
     lần mà không thực sự đọc, và **rubber-stamp còn tệ hơn không có cổng** — nó
     tạo cảm giác an toàn giả trong khi vẫn tốn thời gian người. Người duyệt ở đây
     nhìn đúng thứ họ có thông tin để quyết: phạm vi ODD nào, bao nhiêu kịch bản,
@@ -714,6 +768,7 @@ async def review_campaign(campaign_id: str, body: BatchReviewRequest) -> dict:
 
     waiting = db.campaign_scenarios_awaiting_sim(campaign_id)
     decided: list[str] = []
+    warnings: list[dict] = []
     for scenario in waiting:
         result = await post_review(
             ReviewApiRequest(
@@ -722,12 +777,21 @@ async def review_campaign(campaign_id: str, body: BatchReviewRequest) -> dict:
                 approved=body.approved,
                 reviewer=body.reviewer,
                 reason=body.reason or ("duyệt theo lô " + campaign_id),
+                force_simulate=body.force_simulate,
             )
         )
         if result.get("ok"):
             decided.append(scenario["scenario_id"])
+        elif result.get("warning") == "near_duplicate":
+            warnings.append({"scenario_id": scenario["scenario_id"], **result})
 
-    return {"ok": True, "campaign_id": campaign_id, "scenarios": decided, "count": len(decided)}
+    return {
+        "ok": not warnings,
+        "campaign_id": campaign_id,
+        "scenarios": decided,
+        "count": len(decided),
+        "near_duplicates": warnings,
+    }
 
 
 @router.post("/scenarios/{scenario_id}/tune")

@@ -7,6 +7,7 @@
 import type {
   GenerationStatus,
   ReviewRequest,
+  ReviewResponse,
   ScenarioDetail,
   ScenarioItem,
   ScenarioStatus,
@@ -16,6 +17,7 @@ import type {
   ControllerRunsResponse,
 
   CampaignDetail,
+  CampaignReviewResponse,
   CampaignSummary,
   LabelQueueItem,
   IntentAgreement,
@@ -93,8 +95,8 @@ export async function getStatus(requestId: string): Promise<GenerationStatus> {
 
 export async function postReview(
   payload: ReviewRequest,
-): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>(`/scenarios/${encodeURIComponent(payload.scenario_id)}/review`, {
+): Promise<ReviewResponse> {
+  return request<ReviewResponse>(`/scenarios/${encodeURIComponent(payload.scenario_id)}/review`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -418,6 +420,16 @@ export async function getCampaign(id: string): Promise<CampaignDetail> {
 
 export async function stopCampaign(id: string): Promise<{ ok: boolean }> {
   return request(`/campaigns/${encodeURIComponent(id)}/stop`, { method: "POST" });
+}
+
+export async function reviewCampaign(
+  id: string,
+  body: { reviewer: string; approved?: boolean; reason?: string; force_simulate?: boolean },
+): Promise<CampaignReviewResponse> {
+  return request<CampaignReviewResponse>(`/campaigns/${encodeURIComponent(id)}/review`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 
