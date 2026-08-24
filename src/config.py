@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     google_api_key: str | None = None
     model_name: str = "gpt-5.4-mini"
     escalated_model: str = "gpt-5.4"
+    llm_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "none"
 
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
 
