@@ -27,18 +27,28 @@ tick và kết quả không còn truy được nguyên nhân.
 3. `BehaviorAgentControl` thực thi bên trong tick loop `ActorControl` của
    ScenarioRunner. Tốc độ mục tiêu vẫn lấy từ scenario để phép A/B chỉ đổi
    controller; PID ngang dùng bộ hệ số ổn định của `NpcVehicleControl`.
-4. API/UI hiển thị baseline cạnh kết quả BehaviorAgent. Khi baseline va chạm mà
-   controller tránh được, vòng kế tiếp là một quyết định có người: tạo biến thể
-   khó hơn qua cơ chế tuning hiện có. Chưa tự động chạy vô hạn.
+4. Mỗi lần đánh giá xếp một **cặp job mới**: controller mặc định và
+   BehaviorAgent trên cùng artifact/worker. Không so controller hiện tại với
+   baseline lịch sử có thể được đo bằng code khác phiên bản.
+5. API/UI kiểm chênh vận tốc ego ở giây 2 trước khi kết luận. Controller tránh
+   được thì đề xuất biến thể khó hơn; controller va chạm thì giữ scenario làm ca
+   regression. Chưa tự động chạy vô hạn.
 
 ## Bằng chứng nghiệm thu
 
-Trên `sc_011` (xe máy vượt, tạt đầu rồi phanh):
+Trên `sc_011` (xe máy vượt, tạt đầu rồi phanh), cặp chạy cuối:
 
-- baseline: không phanh, va chạm ở 10,60 s;
-- BehaviorAgent: phanh, giảm 5,43 m/s sau đỉnh, giữ khe hở 1,98 m, không va chạm;
+- vận tốc ego ở giây 2 chỉ lệch **0,019 m/s** giữa hai lượt;
+- baseline: không phanh, va chạm ở 10,823 s;
+- BehaviorAgent: phanh 0,5, giảm 3,676 m/s sau đỉnh nhưng vẫn va chạm ở
+  10,750 s — một controller failure thật;
 - sau khi hiệu chỉnh tuyến/PID: góc lái cực đại 0,024, lệch tim làn 0,164 m,
   không còn đảo dấu góc lái vượt ngưỡng 0,05.
+
+Lượt thử trước từng cho kết quả tránh được với khe hở 1,98 m, nhưng bị loại khỏi
+bằng chứng nghiệm thu: adapter đã bỏ qua `set_init_speed()` nên BehaviorAgent chỉ
+đạt khoảng 16,5 m/s trong khi baseline đạt gần 25 m/s. Kết quả đó đo lệch nhịp,
+không đo năng lực tránh va chạm.
 
 ## Hệ quả
 

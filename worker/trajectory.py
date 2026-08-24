@@ -175,6 +175,10 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
             ego_speeds[peak_index] - min(post_peak_speeds),
             3,
         )
+        for checkpoint_s in (1.0, 2.0):
+            checkpoint = next((sample for sample in before_contact if sample.t >= checkpoint_s), None)
+            if checkpoint is not None:
+                metrics[f"ego_speed_at_{int(checkpoint_s)}s_ms"] = round(checkpoint.ego_speed_ms, 3)
     max_brake = max((sample.ego_brake for sample in before_contact), default=0.0)
     metrics["ego_max_brake"] = round(max_brake, 3)
     metrics["ego_braked"] = 1.0 if max_brake >= 0.1 else 0.0
@@ -183,11 +187,7 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
         max((abs(sample.ego_lane_offset_m) for sample in before_contact), default=0.0),
         3,
     )
-    steering_signs = [
-        1 if sample.ego_steer > 0 else -1
-        for sample in before_contact
-        if abs(sample.ego_steer) >= 0.05
-    ]
+    steering_signs = [1 if sample.ego_steer > 0 else -1 for sample in before_contact if abs(sample.ego_steer) >= 0.05]
     metrics["ego_steering_reversals"] = float(
         sum(current != previous for previous, current in zip(steering_signs, steering_signs[1:], strict=False))
     )
@@ -488,9 +488,16 @@ class TrajectoryRecorder:
     chế ``follow_hero.py`` đã dùng.
     """
 
-    def __init__(self, host: str, port: int, tick_timeout_s: float = 5.0) -> None:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        tick_timeout_s: float = 5.0,
+        actor_refresh_ticks: int = 10,
+    ) -> None:
         self._host, self._port = host, int(port)
         self._tick_timeout_s = tick_timeout_s
+        self._actor_refresh_ticks = max(actor_refresh_ticks, 1)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.samples: list[Sample] = []
@@ -538,6 +545,7 @@ class TrajectoryRecorder:
             self.error = f"{type(exc).__name__}: {exc}"
 
     def _wait_for_actors(self, world) -> tuple[object | None, object | None]:  # noqa: ANN001
+        ticks_without_actors = 0
         while not self._stop.is_set():
             actors = {}
             for kind in ("vehicle.*", "walker.*"):
@@ -559,6 +567,12 @@ class TrajectoryRecorder:
                 adv = min(others, key=lambda a: a.get_location().distance(ego.get_location()))
                 return ego, adv
             if not self._wait_tick(world):
+                break
+            ticks_without_actors += 1
+            # Handle world cũ có thể vẫn trả tick trong lúc ScenarioRunner đã
+            # load map mới. Nếu chỉ reconnect khi timeout, recorder bám map cũ
+            # suốt cả scenario ngắn và trả metrics rỗng.
+            if ticks_without_actors >= self._actor_refresh_ticks:
                 break
         return None, None
 

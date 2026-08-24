@@ -222,6 +222,8 @@ def test_ego_braking_metrics_show_that_a_controller_reacted() -> None:
     assert metrics["ego_peak_speed_ms"] == pytest.approx(10.0)
     assert metrics["ego_post_peak_min_speed_ms"] == pytest.approx(3.0)
     assert metrics["ego_post_peak_speed_drop_ms"] == pytest.approx(7.0)
+    assert metrics["ego_speed_at_1s_ms"] == pytest.approx(8.0)
+    assert metrics["ego_speed_at_2s_ms"] == pytest.approx(3.0)
     assert metrics["ego_max_abs_steer"] == pytest.approx(0.2)
     assert metrics["ego_max_lane_deviation_m"] == pytest.approx(0.3)
     assert metrics["ego_steering_reversals"] == pytest.approx(2.0)

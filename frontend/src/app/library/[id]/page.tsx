@@ -229,6 +229,10 @@ export default function ScenarioDetailPage() {
   };
 
   const odd = scenario.odd;
+  const behaviorRun = controllerRuns?.runs.find((run) => run.ego_controller === "behavior_agent");
+  const controllerPairPending = controllerRuns?.runs.some(
+    (run) => run.status === "pending" || run.status === "running",
+  );
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 p-6 pt-8">
@@ -309,8 +313,7 @@ export default function ScenarioDetailPage() {
                 className="btn-primary text-xs px-3 py-2"
                 disabled={
                   controllerQueuing ||
-                  controllerRuns?.runs[0]?.status === "pending" ||
-                  controllerRuns?.runs[0]?.status === "running"
+                  controllerPairPending
                 }
               >
                 <Play className="w-3.5 h-3.5" />
@@ -327,7 +330,7 @@ export default function ScenarioDetailPage() {
 
           {controllerLoading && !controllerRuns ? (
             <div className="skeleton h-24 w-full mt-5" />
-          ) : controllerRuns?.runs[0] ? (
+          ) : behaviorRun && controllerRuns ? (
             <div className="mt-5 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="bg-slate-800/40 border border-slate-700/20 rounded-xl p-4">
@@ -343,9 +346,11 @@ export default function ScenarioDetailPage() {
                 <div className="bg-slate-800/40 border border-cyan-500/20 rounded-xl p-4">
                   <p className="text-xs uppercase tracking-wider text-cyan-500/70">BehaviorAgent closed-loop</p>
                   <p className="mt-2 font-medium text-slate-200">
-                    {controllerRuns.runs[0].status === "pending"
+                    {controllerPairPending
+                      ? "Đang chạy cặp A/B trong CARLA"
+                      : behaviorRun.status === "pending"
                       ? "Đang chờ worker CARLA"
-                      : controllerRuns.runs[0].status === "running"
+                      : behaviorRun.status === "running"
                         ? "Đang chạy trong CARLA"
                         : controllerRuns.comparison.controller_collision === true
                           ? "Vẫn va chạm"
@@ -356,21 +361,32 @@ export default function ScenarioDetailPage() {
                 </div>
               </div>
 
-              {controllerRuns.runs[0].result?.metrics && (
+              {behaviorRun.result?.metrics && (
                 <div className="flex flex-wrap gap-2 text-xs text-slate-300">
-                  {controllerRuns.runs[0].result.metrics.min_distance_m !== undefined && (
-                    <span className="bg-slate-800/70 rounded-md px-2.5 py-1.5">
-                      Khe hở nhỏ nhất: {controllerRuns.runs[0].result.metrics.min_distance_m.toFixed(2)} m
+                  {controllerRuns.comparison.initial_speed_delta_ms !== null && (
+                    <span
+                      className={`rounded-md px-2.5 py-1.5 ${
+                        controllerRuns.comparison.comparable_initial_conditions
+                          ? "bg-green-500/10 text-green-300"
+                          : "bg-red-500/10 text-red-300"
+                      }`}
+                    >
+                      Lệch tốc độ đầu: {controllerRuns.comparison.initial_speed_delta_ms.toFixed(2)} m/s
                     </span>
                   )}
-                  {controllerRuns.runs[0].result.metrics.ego_max_brake !== undefined && (
+                  {behaviorRun.result.metrics.min_distance_m !== undefined && (
                     <span className="bg-slate-800/70 rounded-md px-2.5 py-1.5">
-                      Phanh cực đại: {controllerRuns.runs[0].result.metrics.ego_max_brake.toFixed(2)}
+                      Khe hở nhỏ nhất: {behaviorRun.result.metrics.min_distance_m.toFixed(2)} m
                     </span>
                   )}
-                  {controllerRuns.runs[0].result.metrics.ego_post_peak_speed_drop_ms !== undefined && (
+                  {behaviorRun.result.metrics.ego_max_brake !== undefined && (
                     <span className="bg-slate-800/70 rounded-md px-2.5 py-1.5">
-                      Giảm tốc sau đỉnh: {controllerRuns.runs[0].result.metrics.ego_post_peak_speed_drop_ms.toFixed(2)} m/s
+                      Phanh cực đại: {behaviorRun.result.metrics.ego_max_brake.toFixed(2)}
+                    </span>
+                  )}
+                  {behaviorRun.result.metrics.ego_post_peak_speed_drop_ms !== undefined && (
+                    <span className="bg-slate-800/70 rounded-md px-2.5 py-1.5">
+                      Giảm tốc sau đỉnh: {behaviorRun.result.metrics.ego_post_peak_speed_drop_ms.toFixed(2)} m/s
                     </span>
                   )}
                 </div>
