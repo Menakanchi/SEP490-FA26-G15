@@ -65,7 +65,7 @@ def valid_draft() -> ScenarioDraft:
             ManeuverSpec(
                 actor_name="other",
                 maneuver=ManeuverType.CUT_IN,
-                trigger=TriggerCondition(type="simulation_time", value=5.0),
+                trigger=TriggerCondition(type="lead_distance", value=7.0),
                 target_speed_kmh=20.0,
             )
         ],
@@ -118,9 +118,21 @@ async def test_invalid_fixture_returns_declared_codes_and_paths(path: Path) -> N
     assert all(issue.message_vi and issue.suggestion for issue in first["issues"])
 
 
+# sc_002 là hiện vật của câu hỏi Phase 3, ARCHITECTURE.md mô tả nguyên văn: "hợp
+# lệ, chạy xong, success=true, và vô dụng". Nó cố ý mang hình học vô hại — người
+# đi bộ cách 2 làn, ego 30 km/h chỉ còn 8 m lúc trigger bắn trong khi cần 42 m.
+#
+# Từ khi có `jaywalk_trigger_too_close`, validate **bắt được nó trước khi chạy**.
+# Đó là tiến bộ, không phải hồi quy: fixture giữ nguyên để vẫn là hiện vật, và
+# việc nó bị chặn được khẳng định bằng một test riêng bên dưới.
+_USELESS_BY_DESIGN = {"sc_002"}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", VALID_SPEC_FIXTURES, ids=lambda path: path.stem)
 async def test_valid_fixture_files_return_no_validation_errors(path: Path) -> None:
+    if path.stem in _USELESS_BY_DESIGN:
+        pytest.skip("hình học vô hại có chủ đích — xem test_the_useless_by_design_fixture_is_now_caught")
     spec = _json(path)
     spec.pop("_comment", None)
     draft = {key: value for key, value in spec.items() if key not in {"scenario_id", "description_vi"}}
@@ -129,6 +141,23 @@ async def test_valid_fixture_files_return_no_validation_errors(path: Path) -> No
     result = await validate_node({"draft": draft, "odd_query": odd_query})
 
     assert result["issues"] == []
+
+
+@pytest.mark.asyncio
+async def test_the_useless_by_design_fixture_is_now_caught_before_it_runs() -> None:
+    """Kịch bản "chạy xong mà chẳng có gì xảy ra" giờ bị chặn ở validate.
+
+    Trước đây chỉ phát hiện được sau khi tốn một lượt GPU và đọc criteria — mà
+    criteria cũng không nói được vì sao. Giờ nó chết ở tầng spec, kèm con số.
+    """
+    spec = _json(FIXTURES / "scenario_specs" / "sc_002.json")
+    spec.pop("_comment", None)
+    draft = {key: value for key, value in spec.items() if key not in {"scenario_id", "description_vi"}}
+
+    result = await validate_node({"draft": draft, "odd_query": {**draft["odd"], "inferred": []}})
+
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE)
+    assert issue.repairable_by_llm
 
 
 @pytest.mark.asyncio
@@ -180,6 +209,53 @@ async def test_negative_simulation_time_is_generic_schema_error(valid_draft: Sce
     issue = next(i for i in result["issues"] if i.path == "/maneuvers/0/trigger/value")
     assert issue.code is IssueCode.SCHEMA_INVALID
     assert issue.suggestion == "Đặt /maneuvers/0/trigger/value lớn hơn 0.0."
+
+
+def _run_red_light_draft(valid_draft: ScenarioDraft, *, lane_offset: int, s_offset_m: float) -> ScenarioDraft:
+    draft = valid_draft.model_dump()
+    draft["odd"]["road_type"] = RoadType.URBAN_STRAIGHT
+    draft["odd"]["maneuver"] = ManeuverType.RUN_RED_LIGHT
+    draft["actors"][1]["position"] = {"lane_offset": lane_offset, "s_offset_m": s_offset_m}
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.RUN_RED_LIGHT
+    draft["maneuvers"][0]["trigger"] = {"type": "simulation_time", "value": 1.0}
+    draft["maneuvers"][0]["target_speed_kmh"] = 30.0
+    return ScenarioDraft.model_validate(draft)
+
+
+@pytest.mark.asyncio
+async def test_run_red_light_must_select_the_measured_crossing_approach(valid_draft: ScenarioDraft) -> None:
+    result = await validate_node(
+        {
+            "draft": _run_red_light_draft(valid_draft, lane_offset=1, s_offset_m=-10.0),
+            "odd_query": ODDQuery(
+                road_type=RoadType.URBAN_STRAIGHT,
+                actor_type=ActorType.CAR,
+                maneuver=ManeuverType.RUN_RED_LIGHT,
+            ),
+        }
+    )
+
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH)
+    assert issue.path == "/actors/1/position"
+    assert issue.repairable_by_llm
+    assert "lane_offset = 0" in issue.suggestion
+    assert "s_offset_m = 0" in issue.suggestion
+
+
+@pytest.mark.asyncio
+async def test_run_red_light_accepts_the_measured_crossing_approach(valid_draft: ScenarioDraft) -> None:
+    result = await validate_node(
+        {
+            "draft": _run_red_light_draft(valid_draft, lane_offset=0, s_offset_m=0.0),
+            "odd_query": ODDQuery(
+                road_type=RoadType.URBAN_STRAIGHT,
+                actor_type=ActorType.CAR,
+                maneuver=ManeuverType.RUN_RED_LIGHT,
+            ),
+        }
+    )
+
+    assert IssueCode.GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH not in [i.code for i in result["issues"]]
 
 
 @pytest.mark.asyncio
@@ -299,7 +375,7 @@ async def test_cut_in_distance_trigger_is_rejected(valid_draft: ScenarioDraft) -
     draft = valid_draft.model_dump()
     draft["maneuvers"][0]["trigger"] = {"type": "distance_to_ego", "value": 15.0}
     result = await validate_node({"draft": draft})
-    assert any(i.code is IssueCode.TRIGGER_DISTANCE_UNSIGNED for i in result["issues"])
+    assert any(i.code is IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL for i in result["issues"])
     assert any(i.path == "/maneuvers/0/trigger/type" for i in result["issues"])
 
 
@@ -375,3 +451,381 @@ async def test_missing_position_is_handled(monkeypatch: pytest.MonkeyPatch, vali
     result = await validate_node({"draft": valid_draft.model_dump()})
     assert any(i.code is IssueCode.SCHEMA_INVALID for i in result["issues"])
     assert any(i.path == "/actors/1/position" for i in result["issues"])
+
+
+def _lane_drift_draft(trigger_s: float) -> ScenarioDraft:
+    """Hình học của sc_906: xe tải trước ego 20 m, chậm hơn 10 km/h.
+
+    Ego bắt kịp ở giây 20 / ((70-60)/3.6) = 7,2. Đo trên CARLA 22/08: lấn ở giây
+    5,5 cho khe hở ngang 0,36 m (suýt quẹt thật), lấn ở giây 8,0 cho 0,51 m với
+    độ lệch chỉ thành hình khi ego đã qua.
+    """
+    return ScenarioDraft(
+        title="xe ben lấn làn",
+        odd=ODDCell(
+            road_type=RoadType.HIGHWAY,
+            weather=Weather.CLEAR,
+            actor_type=ActorType.TRUCK,
+            maneuver=ManeuverType.LANE_DRIFT,
+        ),
+        time_of_day=TimeOfDay.DAY,
+        actors=[
+            ActorSpec(
+                name="hero",
+                category=VehicleCategory.CAR,
+                position=Position(lane_offset=0, s_offset_m=0.0),
+                initial_speed_kmh=70.0,
+                is_ego=True,
+            ),
+            ActorSpec(
+                name="adv",
+                category=VehicleCategory.TRUCK,
+                position=Position(lane_offset=-1, s_offset_m=20.0),
+                initial_speed_kmh=60.0,
+                is_ego=False,
+            ),
+        ],
+        maneuvers=[
+            ManeuverSpec(
+                actor_name="adv",
+                maneuver=ManeuverType.LANE_DRIFT,
+                trigger=TriggerCondition(type="simulation_time", value=trigger_s),
+                target_speed_kmh=None,
+            )
+        ],
+        duration_s=30.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_lane_drift_after_ego_passes_is_flagged() -> None:
+    """Lấn làn sau lúc hai xe đi ngang nhau là lấn vào chỗ trống."""
+    result = await validate_node(
+        {
+            "draft": _lane_drift_draft(trigger_s=8.0),
+            "odd_query": ODDQuery(actor_type=ActorType.TRUCK, maneuver=ManeuverType.LANE_DRIFT),
+        }
+    )
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_DRIFT_AFTER_PASS)
+    assert issue.path == "/maneuvers/0/trigger/value"
+    assert issue.repairable_by_llm, "hạ trigger là sửa được, không phải lỗi chặn hẳn"
+
+
+@pytest.mark.asyncio
+async def test_lane_drift_before_ego_passes_is_accepted() -> None:
+    """5,5 s là bản đã đo được 0,36 m trên CARLA — không được chặn nhầm nó."""
+    result = await validate_node(
+        {
+            "draft": _lane_drift_draft(trigger_s=5.5),
+            "odd_query": ODDQuery(actor_type=ActorType.TRUCK, maneuver=ManeuverType.LANE_DRIFT),
+        }
+    )
+    assert not [i for i in result["issues"] if i.code is IssueCode.GEOM_DRIFT_AFTER_PASS]
+
+
+@pytest.mark.asyncio
+async def test_cut_in_geometry_untouched_by_lane_drift_check(valid_draft: ScenarioDraft) -> None:
+    """Vị từ mới chỉ chạy cho lane_drift; cut_in không được đổi hành vi."""
+    result = await validate_node(
+        {
+            "draft": valid_draft,
+            "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
+        }
+    )
+    assert not [i for i in result["issues"] if i.code is IssueCode.GEOM_DRIFT_AFTER_PASS]
+
+
+@pytest.mark.asyncio
+async def test_jaywalk_in_ego_lane_is_repairable_not_terminal(valid_draft: ScenarioDraft) -> None:
+    """Converter chặn lỗi này nhưng chặn kiểu terminal — workflow chết, không sửa lần nào.
+
+    Đo trên chiến dịch ODD 22/08: ô jaywalk hỏng hai lần liên tiếp vì LLM đặt
+    lane_offset=0, và cả hai lần không có vòng repair nào chạy. Ở validate thì nó
+    sửa được bằng đúng một số.
+    """
+    draft = valid_draft.model_dump()
+    draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
+    draft["odd"]["maneuver"] = ManeuverType.JAYWALK
+    draft["actors"][1]["category"] = VehicleCategory.PEDESTRIAN
+    draft["actors"][1]["position"]["lane_offset"] = 0
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.JAYWALK
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.PEDESTRIAN, maneuver=ManeuverType.JAYWALK),
+        }
+    )
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_IN_EGO_LANE)
+    assert issue.repairable_by_llm
+    assert "lane_offset" in issue.suggestion
+
+
+@pytest.mark.asyncio
+async def test_cut_in_lead_distance_must_cover_a_vehicle_length() -> None:
+    """Dẫn trước 5 m rồi tạt là cắt vào sườn ego, không phải trước mũi.
+
+    Bốn kịch bản chạy thật ngày 22/08 tách thành hai cụm theo khoảng vượt lúc
+    trigger: 4,67 m và 5,05 m đều thành tông đuôi; 8,33 m và 13,89 m đều tạt đầu
+    đúng ý. Vị từ cũ chỉ đòi biên dương nên hai ca đầu đi lọt.
+    """
+
+    def draft(lead_m: float) -> ScenarioDraft:
+        return ScenarioDraft(
+            title="tạt đầu cao tốc",
+            odd=ODDCell(
+                road_type=RoadType.HIGHWAY,
+                weather=Weather.CLEAR,
+                actor_type=ActorType.CAR,
+                maneuver=ManeuverType.CUT_IN,
+            ),
+            time_of_day=TimeOfDay.DAY,
+            actors=[
+                ActorSpec(
+                    name="hero",
+                    category=VehicleCategory.CAR,
+                    position=Position(lane_offset=0, s_offset_m=0.0),
+                    initial_speed_kmh=96.0,
+                    is_ego=True,
+                ),
+                ActorSpec(
+                    name="adv",
+                    category=VehicleCategory.CAR,
+                    position=Position(lane_offset=-1, s_offset_m=-28.0),
+                    initial_speed_kmh=110.0,
+                    is_ego=False,
+                ),
+            ],
+            maneuvers=[
+                ManeuverSpec(
+                    actor_name="adv",
+                    maneuver=ManeuverType.CUT_IN,
+                    trigger=TriggerCondition(type="lead_distance", value=lead_m),
+                    target_speed_kmh=70.0,
+                )
+            ],
+            duration_s=30.0,
+        )
+
+    async def codes(lead_m: float) -> set[IssueCode]:
+        result = await validate_node(
+            {
+                "draft": draft(lead_m),
+                "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
+            }
+        )
+        return {i.code for i in result["issues"]}
+
+    assert IssueCode.GEOM_CUTIN_LEAD_TOO_SHORT in await codes(5.0)
+    assert IssueCode.GEOM_CUTIN_LEAD_TOO_SHORT not in await codes(7.0)
+
+
+@pytest.mark.asyncio
+async def test_jaywalk_trigger_too_close_is_flagged_with_the_computed_distance(
+    valid_draft: ScenarioDraft,
+) -> None:
+    """Người đi bộ bước xuống muộn thì ego đã đi qua trước khi họ sang tới làn.
+
+    Đo trên sc_026 ngày 22/08: ego 88 km/h, người đi bộ 6 km/h lệch một làn,
+    trigger 18 m. Cần 51,3 m. Kết quả chạy thật: khe hở nhỏ nhất 107 m — hai bên
+    chưa bao giờ ở gần nhau, dù kịch bản chạy hết và không lỗi.
+
+    Gợi ý sửa phải mang CON SỐ: đo trên output LLM thật thì model không tự làm
+    phép chia, nên nói "đặt xa hơn" là đi hết ba vòng repair mà lỗi vẫn nguyên.
+    """
+    draft = valid_draft.model_dump()
+    draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
+    draft["odd"]["maneuver"] = ManeuverType.JAYWALK
+    draft["actors"][0]["initial_speed_kmh"] = 88.0
+    draft["actors"][1]["category"] = VehicleCategory.PEDESTRIAN
+    draft["actors"][1]["position"]["lane_offset"] = 1
+    draft["actors"][1]["initial_speed_kmh"] = 6.0
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.JAYWALK
+    draft["maneuvers"][0]["trigger"] = {"type": "distance_to_ego", "value": 18.0}
+    draft["maneuvers"][0]["target_speed_kmh"] = 6.0
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.PEDESTRIAN, maneuver=ManeuverType.JAYWALK),
+        }
+    )
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE)
+    assert issue.repairable_by_llm
+    assert "51" in issue.suggestion, "phải nói khoảng cách cần thiết, không chỉ nói 'xa hơn'"
+
+
+@pytest.mark.asyncio
+async def test_jaywalk_with_enough_room_is_accepted(valid_draft: ScenarioDraft) -> None:
+    """Cùng hình học, đứng đủ xa VÀ trigger đủ rộng thì không được chặn.
+
+    Cả hai điều kiện đều cần: trigger rộng mà đứng gần thì nó bắn ngay giây 0.
+    """
+    draft = valid_draft.model_dump()
+    draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
+    draft["odd"]["maneuver"] = ManeuverType.JAYWALK
+    draft["actors"][0]["initial_speed_kmh"] = 88.0
+    draft["actors"][1]["category"] = VehicleCategory.PEDESTRIAN
+    draft["actors"][1]["position"]["lane_offset"] = 1
+    draft["actors"][1]["position"]["s_offset_m"] = 60.0
+    draft["actors"][1]["initial_speed_kmh"] = 6.0
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.JAYWALK
+    draft["maneuvers"][0]["trigger"] = {"type": "distance_to_ego", "value": 50.0}
+    draft["maneuvers"][0]["target_speed_kmh"] = 6.0
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.PEDESTRIAN, maneuver=ManeuverType.JAYWALK),
+        }
+    )
+    assert not [i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE]
+
+
+@pytest.mark.asyncio
+async def test_jaywalk_trigger_wider_than_the_starting_gap_is_still_flagged(
+    valid_draft: ScenarioDraft,
+) -> None:
+    """Trigger 55 m mà người đi bộ đứng cách 18 m thì trigger bắn ngay giây 0.
+
+    Đo trên sc_033 ngày 23/08: đúng cấu hình này lọt qua bản kiểm đầu tiên vì nó
+    chỉ nhìn `trigger.value`. Khoảng cách THẬT lúc bắn là min(s_offset, trigger).
+    """
+    draft = valid_draft.model_dump()
+    # highway là road_type duy nhất có anchor; gợi ý sửa cần biết tầm với của nó.
+    draft["odd"]["road_type"] = RoadType.HIGHWAY
+    draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
+    draft["odd"]["maneuver"] = ManeuverType.JAYWALK
+    draft["actors"][0]["initial_speed_kmh"] = 78.0
+    draft["actors"][1]["category"] = VehicleCategory.PEDESTRIAN
+    draft["actors"][1]["position"]["lane_offset"] = -1
+    draft["actors"][1]["position"]["s_offset_m"] = 18.0
+    draft["actors"][1]["initial_speed_kmh"] = 5.0
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.JAYWALK
+    draft["maneuvers"][0]["trigger"] = {"type": "distance_to_ego", "value": 55.0}
+    draft["maneuvers"][0]["target_speed_kmh"] = 5.0
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.PEDESTRIAN, maneuver=ManeuverType.JAYWALK),
+        }
+    )
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE)
+    # Cần 55 m nhưng anchor Town04 chỉ với tới 40 m, nên dời chỗ đứng là bất khả
+    # thi — gợi ý phải chỉ lối thoát thật thay vì đẩy repair vào vòng lặp.
+    assert "anchor" in issue.suggestion
+    assert "km/h" in issue.suggestion
+
+
+@pytest.mark.asyncio
+async def test_jaywalk_time_trigger_after_ego_passed_is_flagged(valid_draft: ScenarioDraft) -> None:
+    """Trigger theo THỜI GIAN cũng phải kiểm: giây 3 thì ego đã qua từ giây 0,74.
+
+    Đo trên sc_034 ngày 23/08: ego 88 km/h, người đi bộ cách 18 m, trigger giây 3.
+    Bản vá trước chỉ bắt trigger theo khoảng cách nên ca này lọt nguyên.
+    """
+    draft = valid_draft.model_dump()
+    draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
+    draft["odd"]["maneuver"] = ManeuverType.JAYWALK
+    draft["actors"][0]["initial_speed_kmh"] = 88.0
+    draft["actors"][1]["category"] = VehicleCategory.PEDESTRIAN
+    draft["actors"][1]["position"]["lane_offset"] = -1
+    draft["actors"][1]["position"]["s_offset_m"] = 18.0
+    draft["actors"][1]["initial_speed_kmh"] = 5.0
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.JAYWALK
+    draft["maneuvers"][0]["trigger"] = {"type": "simulation_time", "value": 3.0}
+    draft["maneuvers"][0]["target_speed_kmh"] = 5.0
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.PEDESTRIAN, maneuver=ManeuverType.JAYWALK),
+        }
+    )
+    assert [i for i in result["issues"] if i.code is IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE]
+
+
+def _jaywalk_draft(valid_draft: ScenarioDraft, lane_offset: int) -> dict:
+    draft = valid_draft.model_dump()
+    # HIGHWAY chứ không phải INTERSECTION: chỉ road_type có template mới biết lề ở đâu.
+    draft["odd"]["road_type"] = RoadType.HIGHWAY
+    draft["odd"]["actor_type"] = ActorType.PEDESTRIAN
+    draft["odd"]["maneuver"] = ManeuverType.JAYWALK
+    draft["actors"][1]["category"] = VehicleCategory.PEDESTRIAN
+    draft["actors"][1]["position"]["lane_offset"] = lane_offset
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.JAYWALK
+    return draft
+
+
+async def _jaywalk_issues(valid_draft: ScenarioDraft, lane_offset: int) -> list:
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(_jaywalk_draft(valid_draft, lane_offset)),
+            "odd_query": ODDQuery(actor_type=ActorType.PEDESTRIAN, maneuver=ManeuverType.JAYWALK),
+        }
+    )
+    return result["issues"]
+
+
+@pytest.mark.asyncio
+async def test_jaywalk_starting_on_the_carriageway_is_flagged(valid_draft: ScenarioDraft) -> None:
+    """Xuất phát giữa làn xe chạy là "đi bộ trên đường", không phải băng qua đường.
+
+    Lỗi này có nguồn gốc là một GỢI Ý SAI: chỗ chặn ``lane_offset=0`` từng khuyên
+    "đặt -1 (bên lề trái)", mà trên anchor Town04 thì -1 là làn xe chạy — hai lề ở
+    +1 và -2. ``sc_035`` sinh ra đúng từ câu đó. Một gợi ý sai trong vòng repair
+    không dừng ở một kịch bản, nó đẻ ra cả một họ kịch bản sai.
+    """
+    issues = await _jaywalk_issues(valid_draft, -1)
+    issue = next(i for i in issues if i.code is IssueCode.GEOM_JAYWALK_NOT_FROM_SHOULDER)
+    assert issue.repairable_by_llm
+    assert "1" in issue.suggestion and "-2" in issue.suggestion, "phải nói rõ lề nằm ở đâu"
+
+
+@pytest.mark.asyncio
+async def test_a_pedestrian_standing_on_the_shoulder_is_accepted(valid_draft: ScenarioDraft) -> None:
+    """Lề đường là chỗ đúng để đứng — không được báo lỗi ở đó."""
+    issues = await _jaywalk_issues(valid_draft, 1)
+    assert IssueCode.GEOM_JAYWALK_NOT_FROM_SHOULDER not in [i.code for i in issues]
+
+
+@pytest.mark.asyncio
+async def test_the_repair_suggestion_never_points_at_a_driving_lane(valid_draft: ScenarioDraft) -> None:
+    """Bản cũ khuyên -1 kèm chú thích 'bên lề trái' — sai, và sai một cách tự tin."""
+    issues = await _jaywalk_issues(valid_draft, 0)
+    suggestion = next(i.suggestion for i in issues if i.code is IssueCode.GEOM_JAYWALK_IN_EGO_LANE)
+    assert "lề" in suggestion
+    assert "-1" not in suggestion.replace("-2", ""), "-1 là làn xe chạy trên anchor này"
+
+
+@pytest.mark.asyncio
+async def test_the_cut_in_positional_suggestion_actually_satisfies_the_rule_it_just_raised(
+    valid_draft: ScenarioDraft,
+) -> None:
+    """Gợi ý phải đổi cả loại trigger lẫn đơn vị, và thật sự làm lỗi biến mất."""
+    draft = valid_draft.model_dump()
+    draft["odd"]["road_type"] = RoadType.HIGHWAY
+    draft["actors"][0]["initial_speed_kmh"] = 76.0
+    draft["actors"][1]["initial_speed_kmh"] = 88.0
+    draft["actors"][1]["position"]["s_offset_m"] = -22.0
+    draft["maneuvers"][0]["trigger"] = {"type": "simulation_time", "value": 8.0}
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
+        }
+    )
+    issue = next(i for i in result["issues"] if i.code is IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL)
+    assert "lead_distance" in issue.suggestion
+
+    # Áp gợi ý vào rồi kiểm lại: lỗi phải biến mất.
+    draft["maneuvers"][0]["trigger"] = {"type": "lead_distance", "value": 7.0}
+    again = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
+        }
+    )
+    assert IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL not in [i.code for i in again["issues"]]

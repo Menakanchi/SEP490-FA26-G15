@@ -258,6 +258,25 @@ Năm kịch bản còn lại chạy đủ giờ mà vẫn 0 va chạm, vì spec 
 adversary ở làn bên cạnh. Đó là hình học của spec — việc của validate, không
 phải của converter.
 
+**24/08 — `wrong_way` trên đường cong.** Orientation 180° chỉ sửa hướng ban đầu,
+không tạo ra lateral route. Không có waypoint, controller cho actor chạy theo
+tiếp tuyến và xe cắt ngang vào hộ lan. Converter hiện phát song song SpeedAction
+và `AssignRouteAction` với chuỗi `RelativeLanePosition` giảm dần trên chính làn
+actor; dùng `routeStrategy="shortest"` để ScenarioRunner giữ nguyên thứ tự ngược
+tuyến. Hai lượt CARLA cuối (`sc_042`, `sc_043`) lệch tim làn tối đa 0,188/0,194 m
+và đã được người xem xác nhận đúng.
+
+**24/08 — `run_red_light` cần một giao cắt thật, không chỉ một đèn đỏ.** Đèn gần
+anchor highway nhất cách 211,8 m, ngoài tầm tiến +40 m, nên đổi nhãn hoặc đặt xe
+cùng làn không thể tạo đúng tình huống. Catalog hiện có thêm anchor đô thị
+Town04 đã đo: ego theo đèn xanh `id=118`, adversary đi từ approach vuông góc qua
+đèn đỏ `id=122`, hai quỹ đạo cắt nhau quanh `(258, -169)`. Converter đặt actor
+bằng `WorldPosition` của approach này và validator yêu cầu position 0/0 như khoá
+chọn hình học. Worker chỉ chấm đúng khi adversary qua vạch lúc tín hiệu của chính
+nó vẫn đỏ; criterion `RunningRedLightTest` mặc định không dùng vì ScenarioRunner
+gắn nó vào ego. `sc_046`/`sc_047` đều vượt đỏ, va chạm với ego, được xem trực
+tiếp và duyệt vào thư viện.
+
 ## Ego baseline
 
 Trong mọi kịch bản, ego nhận **đúng một lệnh tốc độ ban đầu** rồi giữ nguyên:
@@ -314,21 +333,24 @@ Thứ tự không tuỳ tiện: mỗi phase trả lời một câu hỏi mà pha
 | 1 | Graph 7 nodes end-to-end, frontend, review flow | Sinh ra file dùng được không? Xong phase này là dùng thật được — không cần GPU, không cần CARLA. | — |
 | 2 | CARLA validation tự động, thu log | File có chạy nổi không? ScenarioRunner load được, xe spawn đúng chỗ, không crash. | 1 |
 | 3 | Behavior checker | Có thật sự nguy hiểm không? Bắt loại hỏng tệ nhất: chạy trót lọt, `success=true`, mà không có gì xảy ra. | 2 |
-| 4 | Agent layer: ODD → batch generation, closed-loop | Sinh hàng loạt mà từng cái vẫn đáng giá không? | 1 + 2 + 3 |
+| 4 | Agent layer: ODD → batch generation + controller A/B | Sinh theo vùng ODD và kịch bản nào làm controller tham chiếu thất bại? | 1 + 2 + 3 |
 
 `fixtures/execution_results/sc_002_success_no_collision.json` là hiện vật của câu
 hỏi Phase 3: hợp lệ, chạy xong, `success=true`, và vô dụng.
 
 ## Hai chế độ sinh
 
-Phase 4 **không thay** workflow 7 nodes; nó bọc thêm một vòng lặp bên ngoài.
+Phase 4 **không thay** workflow 7 nodes. Nó thêm một lối vào theo batch và một
+phép đánh giá A/B có người vận hành khởi động.
 
 ```text
 retail      [người viết câu] → 7-node graph → .xosc → [người duyệt] → library
 
 wholesale   [người khoanh vùng ODD] → [agent sinh câu] → 7-node graph → .xosc
-                       ↑                                                  ↓
-                       └──────── explore + exploit ←─── metric ←──── CARLA
+                                                         ↓
+                          [duyệt lô] → CARLA → M1/M2/M3 → [người xem]
+                                                         ↓
+                          [người chạy A/B hoặc Tune khi cần]
 ```
 
 Agent sinh ra một câu tiếng Việt rồi nạp vào đúng đường retail. Nhờ vậy layer
@@ -336,20 +358,19 @@ batch nằm hoàn toàn ngoài graph — không sửa node nào.
 
 | Hộp | Nhận vào | Trả ra |
 |---|---|---|
-| khoanh vùng ODD | người chọn phạm vi trên ma trận ODD, **không** phải câu tiếng Việt | `list[ODDCell]` (giao với `SupportPolicy.supported_cells()`) + số scenario mỗi ô + trần chi phí |
-| agent sinh câu | một `ODDCell` + những gì đã sinh trong chính ô đó (+ spec mồi khi exploit) | một câu tiếng Việt, nạp vào đường sinh có sẵn |
-| metric | `ScenarioSpec` + `ExecutionResult` | bảng **chỗ trống** (ô nào chưa đủ) và bảng **suýt soát** (scenario nào gần-fail) |
-| explore + exploit | hai bảng trên | lô ô / spec mồi cho vòng sau |
+| khoanh vùng ODD | người chọn phạm vi trên ma trận ODD, **không** phải câu tiếng Việt | `list[ODDCell]` giao với `SupportPolicy.supported_cells()` + số scenario mỗi ô + trần số lượng |
+| agent sinh câu | một `ODDCell` + những câu đã sinh trong chính ô đó | một câu tiếng Việt, nạp vào đường sinh có sẵn |
+| metric | `ScenarioSpec` + `ExecutionResult` | M1 validity, M2 coverage, M3 hazard và metrics quỹ đạo |
+| controller A/B | một scenario đã vào thư viện + thao tác của người vận hành | baseline/BehaviorAgent cùng điều kiện đầu, kết luận controller failure hay tránh được |
 
-`metric` là bộ nhớ trạng thái của vòng lặp, không phải báo cáo cuối kỳ. Bảng suýt
-soát cần `min_distance_m` / `ttc_min_s` trong `ExecutionResult.metrics` — hôm nay
-chưa có, và đó là lý do Phase 4 phụ thuộc Phase 2–3 chứ không chỉ Phase 1. Trần
-chi phí là điều kiện dừng, không phải tuỳ chọn.
-
-Hai ràng buộc mà vòng lặp áp ngược lên Phase 1 — cổng `BEFORE_SIM` duyệt theo
-**lô**, và scenario sinh hàng loạt **không** vào thư viện — nằm ở
+Campaign batch vẫn qua cổng duyệt lô và scenario sinh hàng loạt không tự động
+vào thư viện theo
 [ADR-014](docs/adr/ADR-014-duyet-theo-lo-va-batch-khong-vao-thu-vien.md).
-Thuật toán explore/exploit chưa chốt.
+Closed-loop MVP dừng sau **một cặp A/B do con người khởi động**: hệ thống so
+metrics và đưa khuyến nghị, con người quyết định có chạy Tune hay không. Vòng tự
+chọn biến thể, mutate và chạy nhiều thế hệ không giám sát nằm ngoài phạm vi theo
+[ADR-022](docs/adr/ADR-022-closed-loop-dung-o-cap-ab-co-nguoi-khoi-dong.md),
+không phải backlog còn thiếu.
 
 ## Trạng thái hiện tại
 
@@ -360,21 +381,22 @@ Thuật toán explore/exploit chưa chốt.
 | CARLA/ScenarioRunner smoke test | ✅ Toolchain pass |
 | Graph 7 nodes | ✅ Đủ 7 node, đã nối trong `build_forge_graph()`; `POST /generate` chạy graph thật, không còn stub |
 | Static validator (`validate_node`) | ✅ Có — schema, invariants, static geometry |
-| Templates và converter (`convert_xosc`) | ✅ Có — 1 anchor Town04, 7 maneuver, golden validate theo XSD (ADR-016); cả 7 đã chạy thật trên CARLA 22/08, 2/7 dựng được va chạm |
+| Templates và converter (`convert_xosc`) | ✅ Có — 2 anchor Town04: 5 maneuver xe trên highway + `run_red_light` trên urban, cho 3 loại xe qua 4 thời tiết = 72 ô; `jaywalk` đã loại khỏi highway; golden validate theo XSD (ADR-016) |
 | `parse_intent` | ✅ Có — rule-based theo `taxonomy_rules.json` trước, LLM chỉ chạy khi rule thiếu trục bắt buộc |
 | `Retriever` (SQLite BLOB + cosine) | ✅ Có — `WHERE` bốn trục ODD + cosine numpy; retrieval baseline bằng số thật thì chưa |
 | SQLite persistence | ✅ Có — `ScenarioRepository` (SQLAlchemy Core) là nguồn schema duy nhất |
 | API generate/status/review/download/job | ✅ Có, chạy graph thật; status gate 403 trước `BEFORE_LIBRARY` |
-| Frontend và preview 2D | ✅ Có — hai luồng Creator/Reviewer, preview SVG |
-| Hai vai trò tạo/duyệt + tag thư viện | ✅ Có — `created_by` xuyên suốt (không xác thực); tag = 4 trục ODD + chữ người dùng gõ; `PUT /scenarios/{id}/tags` |
+| Frontend và preview | ✅ Có — hai luồng Creator/Reviewer; trước CARLA hiện timeline khai báo, sau CARLA phát lại từng frame dữ liệu đo trong hệ quy chiếu ego |
+| Hai vai trò tạo/duyệt + tag thư viện | ✅ Có — backend có register/login/admin duyệt reviewer; `created_by` xuyên suốt; tag = 4 trục ODD + chữ người dùng gõ; `PUT /scenarios/{id}/tags` |
 | GPU worker | ✅ Có — `worker/runner.py` pull-based, chỉ thư viện chuẩn; chạy thật 15/08 với `sc_014`, 4 criteria quay về backend |
 | Mức kiểm chứng (`VerificationLevel`) | ✅ Có — `ExecutionResult` đặt `verification`; `PROVEN_BAD_FOR_FEW_SHOT` cắt vòng tự khẳng định của few-shot (ADR-017) |
-| Log + ước lượng chi phí LLM | ✅ Có — `call_with_escalation` ghi model, latency, token và cost mỗi lần gọi |
-| Chặn câu hỏi trùng ở lối vào | ⏳ Chưa — ADR-015 còn *Proposed*, nên gõ lại một câu cũ vẫn chạy hết bảy node |
-| Anchor map thứ hai | ⏳ Chưa — phạm vi converter còn đúng 76/560 ô, chỉ `highway` (ADR-016) |
-| Behavior checker (Phase 3) | ⏳ Chưa có |
-| Agent layer + closed-loop (Phase 4) | ⏳ Chưa có — ràng buộc lên Phase 1 ở ADR-014 |
-| Evaluation report bằng số thật | ◐ Một nửa — Gate G2 có 5 case chạy qua API thật (`eval/results/report.md`); chưa có số cho `intent_match`, latency, hay tỉ lệ pass CARLA trên tập lớn |
+| Cost/request + latency | ✅ Có — provider token usage theo request/node; benchmark online 20 request: latency p50/p95 2,766/4,152 s, cost p50/p95 $0,002304/$0,004582 |
+| Chặn câu hỏi trùng ở lối vào | ✅ Có — chuẩn hoá NFC + exact match trước LLM (ADR-015) |
+| Campaign ODD + batch CARLA | ✅ Có — sinh theo ô hỗ trợ, batch review, worker queue và dashboard M1/M2/M3 |
+| Anchor hình học thứ hai | ✅ Có — approach giao cắt đô thị Town04 đã đo và chỉ cam kết cho `run_red_light` (ADR-016) |
+| Behavior checker (Phase 3) | ✅ Có đủ 6/6 oracle trong phạm vi; tiếp tục mở rộng nhãn người |
+| Agent layer + closed-loop (Phase 4) | ✅ Campaign batch + baseline/BehaviorAgent A/B có người khởi động; không cam kết vòng nhiều thế hệ (ADR-022) |
+| Evaluation report bằng số thật | ✅ Có M1/M2/M3, nhãn người, kết quả CARLA và benchmark cost/latency trong `eval/results/report.md` |
 
 ## Quy tắc thay đổi
 

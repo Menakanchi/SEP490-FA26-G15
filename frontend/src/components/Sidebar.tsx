@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import {
+  BarChart3,
   Zap,
   ClipboardCheck,
   Library,
@@ -43,6 +44,13 @@ const NAV_ITEMS: NavItem[] = [
     allowedRoles: ["creator", "reviewer", "admin"],
   },
   {
+    href: "/campaign",
+    label: "Chiến dịch ODD",
+    description: "Agent sinh lô phủ ma trận",
+    icon: Layers,
+    allowedRoles: ["creator", "reviewer", "admin"],
+  },
+  {
     href: "/review",
     label: "HITL Review",
     description: "Duyệt kịch bản",
@@ -54,6 +62,20 @@ const NAV_ITEMS: NavItem[] = [
     label: "Thư viện",
     description: "Kịch bản ODD & Cá nhân",
     icon: Library,
+    allowedRoles: ["creator", "reviewer", "admin"],
+  },
+  {
+    href: "/label",
+    label: "Chấm ý định",
+    description: "Người chấm tay để đo lại L4",
+    icon: ClipboardCheck,
+    allowedRoles: ["creator", "reviewer", "admin"],
+  },
+  {
+    href: "/metrics",
+    label: "Báo cáo chất lượng",
+    description: "M1 hợp lệ · M2 phủ ODD · M3 nguy hiểm",
+    icon: BarChart3,
     allowedRoles: ["creator", "reviewer", "admin"],
   },
   {

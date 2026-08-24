@@ -244,12 +244,35 @@ class SupportPolicy(ForgeModel):
         return len(self.supported_cells())
 
 
-_HIGHWAY_ACTORS_BY_MANEUVER: dict[ManeuverType, frozenset[ActorType]] = {
-    maneuver: frozenset({ActorType.CAR, ActorType.MOTORCYCLE, ActorType.TRUCK})
+_VEHICLE_ACTORS = frozenset({ActorType.CAR, ActorType.MOTORCYCLE, ActorType.TRUCK})
+_SUPPORTED_ACTORS_BY_ROAD_MANEUVER: dict[tuple[RoadType, ManeuverType], frozenset[ActorType]] = {
+    (RoadType.HIGHWAY, maneuver): _VEHICLE_ACTORS
     for maneuver in ManeuverType
-    if maneuver is not ManeuverType.JAYWALK
+    if maneuver not in {ManeuverType.JAYWALK, ManeuverType.RUN_RED_LIGHT}
 }
-_HIGHWAY_ACTORS_BY_MANEUVER[ManeuverType.JAYWALK] = frozenset({ActorType.PEDESTRIAN})
+_SUPPORTED_ACTORS_BY_ROAD_MANEUVER[(RoadType.URBAN_STRAIGHT, ManeuverType.RUN_RED_LIGHT)] = _VEHICLE_ACTORS
+"""``jaywalk`` **không có actor nào** — nó nằm ngoài phạm vi, có chủ đích.
+
+Hai lý do độc lập, mỗi lý do đủ để loại:
+
+**Phi lý về nội dung.** Băng qua đường là hành vi đô thị. Anchor duy nhất đã đo
+kỹ là một đoạn cao tốc Town04, và đặt người đi bộ đi bộ trên làn ô tô cao tốc là
+sai ngay từ đề bài — sửa cho nó chạy mượt cũng chỉ ra một kịch bản vô lý mượt mà.
+
+**Hỏng về cơ chế, và không phải lỗi bản đồ.** ScenarioRunner dịch
+``AcquirePositionAction`` thành ``ChangeActorWaypoints(..., 'fastest')``, một bộ
+định tuyến trên **đồ thị đường**. Đồ thị đường không có cạnh cắt ngang mặt đường,
+nên người đi bộ được vạch lộ trình **dọc theo làn** thay vì băng qua. Đo trên
+``sc_026`` ngày 23/08/2026: trong 2,6 giây họ dịch ngang **0,54 m** trong khi
+chạy dọc 44 m. Đổi sang bản đồ đô thị **không** sửa được chuyện này.
+
+Muốn mở lại thì cần hai thứ, không phải một: một anchor đô thị đã đo (tầm với,
+mặt cắt ngang, chạy thử từng maneuver), **và** một cơ chế băng đường khác — quỹ
+đạo tường minh, hoặc lưới điều hướng người đi bộ của CARLA.
+
+Đếm nó vào độ phủ trong khi không dựng nổi một lần băng đường nào là tự dìm giá
+trị của chính con số đó.
+"""
 
 DEFAULT_SUPPORT_POLICY = SupportPolicy(
     unsupported=frozenset(
@@ -257,10 +280,15 @@ DEFAULT_SUPPORT_POLICY = SupportPolicy(
         for road in RoadType
         for actor in ActorType
         for maneuver in ManeuverType
-        if road is not RoadType.HIGHWAY or actor not in _HIGHWAY_ACTORS_BY_MANEUVER[maneuver]
+        if actor not in _SUPPORTED_ACTORS_BY_ROAD_MANEUVER.get((road, maneuver), frozenset())
     )
 )
-"""76 ô: sáu maneuver cho ba vehicle actors, jaywalk cho pedestrian, qua bốn weather."""
+"""72 ô đã đo: 60 highway + 12 urban ``run_red_light``, qua bốn weather.
+
+``run_red_light`` không nằm ở highway: đèn gần anchor cao tốc nhất cách 211,8 m,
+ngoài tầm +40 m. Nó dùng anchor đô thị Town04 riêng, ngay trước vạch dừng. Năm
+maneuver xe còn lại ở highway; ``jaywalk`` bị loại — xem trên.
+"""
 
 
 class AssumptionSource(StrEnum):
@@ -529,6 +557,10 @@ class Position(ForgeModel):
       - độc lập map: cùng spec chạy được trên nhiều map;
       - LLM sinh ra được (nó không biết toạ độ thật của Town04);
       - converter dịch sang WorldPosition khi cần.
+
+    Ngoại lệ có chủ đích: ``run_red_light`` dùng vị trí 0/0 như khoá chọn
+    approach vuông góc đã đo trong template đô thị. Converter từ chối mọi giá trị
+    khác để không im lặng bỏ qua hình học do LLM sinh.
     """
 
     lane_offset: int = Field(
@@ -563,15 +595,19 @@ class ActorSpec(ForgeModel):
 
 
 class TriggerCondition(ForgeModel):
-    """Điều kiện kích hoạt. Chỉ hỗ trợ khoảng cách và thời gian.
+    """Điều kiện kích hoạt, không chứa toạ độ hay định danh làn CARLA.
 
-    Cố ý giữ hẹp: hai loại này phủ gần hết corner-case giao thông và
-    ánh xạ 1-1 sang ``RelativeDistanceCondition`` / ``SimulationTimeCondition``
-    của OpenSCENARIO 1.0.
+    ``lead_distance`` là khoảng cách dọc có dấu theo ngữ nghĩa: maneuver bắn khi
+    actor đã ở **trước** ego ``value`` mét. Converter ánh xạ nó sang một
+    ``ReachPositionCondition`` động, neo vào ``hero``; spec vẫn độc lập map.
     """
 
-    type: Literal["distance_to_ego", "simulation_time"]
-    value: float = Field(..., gt=0.0, description="mét nếu distance, giây nếu time")
+    type: Literal["distance_to_ego", "simulation_time", "lead_distance"]
+    value: float = Field(
+        ...,
+        gt=0.0,
+        description="mét nếu distance/lead_distance, giây nếu simulation_time",
+    )
 
 
 class ManeuverSpec(ForgeModel):
@@ -784,6 +820,13 @@ class IssueCode(StrEnum):
     GEOM_NO_CATCHUP = "GEOM_NO_CATCHUP"  # chủ thể không bao giờ bắt kịp ego
     GEOM_NO_COLLISION_AFTER_CUTIN = "GEOM_NO_COLLISION_AFTER_CUTIN"
     TRIGGER_DISTANCE_UNSIGNED = "TRIGGER_DISTANCE_UNSIGNED"
+    TRIGGER_CUTIN_NOT_POSITIONAL = "TRIGGER_CUTIN_NOT_POSITIONAL"
+    GEOM_CUTIN_LEAD_TOO_SHORT = "GEOM_CUTIN_LEAD_TOO_SHORT"
+    GEOM_DRIFT_AFTER_PASS = "GEOM_DRIFT_AFTER_PASS"  # lấn làn sau khi ego đã đi ngang qua
+    GEOM_JAYWALK_IN_EGO_LANE = "GEOM_JAYWALK_IN_EGO_LANE"  # người đi bộ đứng sẵn trong làn ego
+    GEOM_JAYWALK_TRIGGER_TOO_CLOSE = "GEOM_JAYWALK_TRIGGER_TOO_CLOSE"  # bước xuống muộn, ego đã đi qua
+    GEOM_JAYWALK_NOT_FROM_SHOULDER = "GEOM_JAYWALK_NOT_FROM_SHOULDER"  # xuất phát giữa phần xe chạy
+    GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH = "GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH"
 
     # -- Suy đoán, chỉ cảnh báo ---------------------------------------------
     LANE_OFFSET_IMPLAUSIBLE = "LANE_OFFSET_IMPLAUSIBLE"
@@ -817,6 +860,13 @@ REPAIRABLE_CODES: frozenset[IssueCode] = frozenset(
         IssueCode.GEOM_NO_CATCHUP,
         IssueCode.GEOM_NO_COLLISION_AFTER_CUTIN,
         IssueCode.TRIGGER_DISTANCE_UNSIGNED,
+        IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL,
+        IssueCode.GEOM_CUTIN_LEAD_TOO_SHORT,
+        IssueCode.GEOM_DRIFT_AFTER_PASS,
+        IssueCode.GEOM_JAYWALK_IN_EGO_LANE,
+        IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE,
+        IssueCode.GEOM_JAYWALK_NOT_FROM_SHOULDER,
+        IssueCode.GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH,
     }
 )
 """Một câu hỏi quyết định tất cả: *sửa nội dung LLM sinh ra có làm lỗi này biến mất không?*
@@ -909,6 +959,34 @@ class CriterionStatus(StrEnum):
     TIMEOUT = "TIMEOUT"
 
 
+class TrajectoryPoint(ForgeModel):
+    """Một mẫu quỹ đạo **đo được** trong lúc chạy, dùng để vẽ lại cho người duyệt.
+
+    Đây là dữ liệu đo, không phải mô hình. Phân biệt này là lý do trường tồn tại:
+    bản preview 2D trước đây dựng lại hình học từ ``lane_offset`` rồi vẽ ra một
+    thế giới không ai kiểm chứng — nên nó vẽ một cú tạt đầu đẹp đẽ cho đúng cái
+    file mà thực tế là tông đuôi. Toạ độ ở đây lấy thẳng từ CARLA, kể cả
+    ``lane_centre`` (tim làn của ego, hỏi từ map), nên không có bước suy diễn nào
+    để sai.
+
+    Chỉ hiện ở cổng ``BEFORE_LIBRARY``: trước khi chạy thì chưa có gì để vẽ, và
+    vẽ dự đoán chính là thứ vừa bỏ đi.
+    """
+
+    t: float = Field(..., ge=0.0, description="Giây kể từ lúc bắt đầu ghi")
+    ego: tuple[float, float, float] = Field(..., description="x, y, yaw(độ) của ego trong hệ toạ độ CARLA")
+    adv: tuple[float, float, float] = Field(..., description="x, y, yaw(độ) của adversary")
+    lane_centre: tuple[float, float] = Field(..., description="x, y tim làn ego đang đi — vẽ được mặt đường thật")
+    rel: tuple[float, float] = Field(
+        (0.0, 0.0),
+        description=(
+            "Vị trí adversary trong hệ quy chiếu ego: (dọc, ngang) mét. Dọc dương = ở trước ego. "
+            "Đây là hệ toạ độ để VẼ cho người duyệt: ở hệ thế giới, một cú tạt đầu chỉ là vài pixel "
+            "vì khung nhìn phải phủ hàng trăm mét đường."
+        ),
+    )
+
+
 class CriterionResult(ForgeModel):
     """Kết quả một tiêu chí do ScenarioRunner chấm.
 
@@ -935,6 +1013,16 @@ class CriterionResult(ForgeModel):
     actual: str = Field("", description="Giá trị thật, dạng chuỗi do ScenarioRunner in ra")
 
 
+class EgoControllerType(StrEnum):
+    SCENARIO_RUNNER_DEFAULT = "constant_speed"
+    BEHAVIOR_AGENT = "behavior_agent"
+
+
+class JobKind(StrEnum):
+    SCENARIO_VALIDATION = "scenario_validation"
+    CONTROLLER_EVALUATION = "controller_evaluation"
+
+
 class ExecutionResult(ForgeModel):
     """Kết quả worker trả về sau khi chạy ScenarioRunner.
 
@@ -955,7 +1043,27 @@ class ExecutionResult(ForgeModel):
         description=("ScenarioRunner chạy hết mà không crash / timeout / lỗi XML. KHÔNG có nghĩa là 'không va chạm'."),
     )
     criteria_results: list[CriterionResult] = Field(default_factory=list)
-    metrics: dict[str, float] = Field(default_factory=dict, examples=[{"total_ticks": 600, "duration_s": 30.0}])
+    metrics: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Số đo quỹ đạo do worker ghi trong lúc chạy (`worker/trajectory.py`). Các khoá đáng đọc: "
+            "`min_distance_m` khe hở nhỏ nhất giữa hai thân xe — phân biệt 'suýt quẹt thật' với "
+            "'chẳng có gì xảy ra', thứ `CollisionTest` mù hoàn toàn vì cả hai đều 0 va chạm; "
+            "`contact_longitudinal_m` vị trí adversary lúc chạm, ÂM = nó tông đuôi ego, DƯƠNG = ego đâm nó, "
+            "tức nó phân biệt cut_in đúng ý với tông đuôi trong khi criteria báo FAILURE cho cả hai; "
+            "`adversary_lane_deviation_m` ~0 nghĩa là hành vi ngang không hề xảy ra; `ttc_min_s`. "
+            "Khoá vắng mặt nghĩa là **không đo được**, không phải bằng 0."
+        ),
+        examples=[{"min_distance_m": 0.36, "ttc_min_s": 1.5, "adversary_lane_deviation_m": 0.7}],
+    )
+    trajectory: list[TrajectoryPoint] = Field(
+        default_factory=list,
+        description=(
+            "Quỹ đạo đo được, đã giảm mẫu để gửi qua HTTP. Rỗng nghĩa là **không đo được** "
+            "(worker cũ, CARLA từ chối kết nối, scenario chết trước khi spawn) — không phải xe đứng yên."
+        ),
+    )
+    ego_controller: EgoControllerType = EgoControllerType.SCENARIO_RUNNER_DEFAULT
     error: str | None = Field(None, description="Bắt buộc khi success=False")
 
     @model_validator(mode="after")
@@ -1064,6 +1172,8 @@ class ScenarioJob(ForgeModel):
     scenario_id: str
     xosc_content: str = Field(..., description="Nội dung file .xosc, không phải đường dẫn")
     status: JobStatus = JobStatus.PENDING
+    job_kind: JobKind = JobKind.SCENARIO_VALIDATION
+    ego_controller: EgoControllerType = EgoControllerType.SCENARIO_RUNNER_DEFAULT
     created_at: datetime
     timeout_s: float = Field(120.0, gt=0.0)
 

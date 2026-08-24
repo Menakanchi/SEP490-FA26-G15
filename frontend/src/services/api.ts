@@ -12,6 +12,13 @@ import type {
   ScenarioStatus,
   ODDPayload,
   ValidationMode,
+  QualityReport,
+  ControllerRunsResponse,
+
+  CampaignDetail,
+  CampaignSummary,
+  LabelQueueItem,
+  IntentAgreement,
 } from "@/types";
 import type { LoginPayload, RegisterPayload, User } from "@/types/auth";
 
@@ -214,6 +221,23 @@ export async function getScenarioById(
   );
 }
 
+export async function getControllerRuns(
+  id: string,
+): Promise<ControllerRunsResponse> {
+  return request<ControllerRunsResponse>(
+    `/scenarios/${encodeURIComponent(id)}/controller-runs`,
+  );
+}
+
+export async function postControllerRun(
+  id: string,
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(
+    `/scenarios/${encodeURIComponent(id)}/controller-runs`,
+    { method: "POST" },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // GET /scenarios/{id}/xosc — Tải file .xosc kèm status gate (HTTP 403)
 // ---------------------------------------------------------------------------
@@ -358,4 +382,65 @@ export async function rejectReviewer(username: string): Promise<{ ok: boolean; u
   return request<{ ok: boolean; user: User }>(`/admin/users/${encodeURIComponent(username)}/reject`, {
     method: "POST",
   });
+}
+
+
+// ---------------------------------------------------------------------------
+// GET /metrics/quality — báo cáo M1/M2/M3
+// ---------------------------------------------------------------------------
+
+export async function getQualityReport(): Promise<QualityReport> {
+  return request<QualityReport>("/metrics/quality");
+}
+
+
+// ---------------------------------------------------------------------------
+// /campaigns — chiến dịch ODD (chế độ nâng cao)
+// ---------------------------------------------------------------------------
+
+export async function createCampaign(body: {
+  cells: Array<Record<string, string>>;
+  per_cell: number;
+  max_scenarios: number;
+  created_by: string;
+}): Promise<{ campaign_id: string; planned: number }> {
+  return request("/campaigns", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function listCampaigns(): Promise<CampaignSummary[]> {
+  const data = await request<{ campaigns: CampaignSummary[] }>("/campaigns");
+  return data.campaigns;
+}
+
+export async function getCampaign(id: string): Promise<CampaignDetail> {
+  return request<CampaignDetail>(`/campaigns/${encodeURIComponent(id)}`);
+}
+
+export async function stopCampaign(id: string): Promise<{ ok: boolean }> {
+  return request(`/campaigns/${encodeURIComponent(id)}/stop`, { method: "POST" });
+}
+
+
+// ---------------------------------------------------------------------------
+// Chấm ý định bằng người — hợp thức hoá mức L4
+// ---------------------------------------------------------------------------
+
+export async function getLabelQueue(labeller: string): Promise<{ items: LabelQueueItem[]; count: number }> {
+  return request<{ items: LabelQueueItem[]; count: number }>(
+    `/intent-labels/queue?labeller=${encodeURIComponent(labeller)}`,
+  );
+}
+
+export async function submitIntentLabel(
+  scenarioId: string,
+  body: { label: "correct" | "wrong" | "unsure"; reason: string; labeller: string },
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/scenarios/${scenarioId}/intent-label`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getIntentAgreement(): Promise<IntentAgreement> {
+  return request<IntentAgreement>("/metrics/intent-agreement");
 }

@@ -47,7 +47,7 @@ def repair_draft(
     # Repair phải nhận được cả draft chưa vượt qua model_validator. Dùng JSON
     # Schema để output sửa lần này cũng không bị Pydantic chặn trước khi quay
     # lại validate_node; nếu còn lỗi, workflow còn đủ raw JSON cho vòng kế.
-    result = call_with_escalation(messages, ScenarioDraft.model_json_schema())
+    result = call_with_escalation(messages, ScenarioDraft.model_json_schema(), operation="repair_draft")
     if isinstance(result, BaseModel):
         return result.model_dump(mode="json")
     if not isinstance(result, dict):

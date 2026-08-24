@@ -1,91 +1,84 @@
-# ADR-016: Phạm vi converter bằng đúng số anchor đã smoke-test — `DEFAULT_SUPPORT_POLICY` từ 560 xuống 76 ô
+# ADR-016: Phạm vi converter bằng đúng các anchor đã đo — 72 ô hỗ trợ
 
 **Ngày:** 2026-08-14
-**Trạng thái:** Proposed — chốt cùng PR #35 (`convert_xosc`)
+**Cập nhật:** 2026-08-24
+**Trạng thái:** Accepted
 
 ## Bối cảnh
 
-`SupportPolicy` tồn tại từ đầu nhưng `unsupported` để rỗng, kèm ghi chú trong docstring:
+`ODDCell` có 5 × 4 × 4 × 7 = **560** tổ hợp enum. Converter không thể dựng mọi
+tổ hợp chỉ từ nhãn ngữ nghĩa: mỗi loại đường và maneuver cần một anchor có toạ
+độ, topology và hành vi đã chạy được trên CARLA/ScenarioRunner.
 
-> ⚠ Nội dung thật của mask do Tuấn Anh chốt **cuối W3**, sau khi viết `converter.py` — PRD §10, *"danh sách maneuver/map thực sự được converter hỗ trợ"*.
+Bản đầu của quyết định chỉ có anchor highway Town04 và đặt mẫu số hỗ trợ là 76.
+Đo thực tế sau đó cho thấy hai giả định trong 76 ô đó sai:
 
-Converter giờ đã tồn tại, nên đây là lúc điền. Vấn đề là điền theo cái gì.
+- `jaywalk` trên highway không hợp lý, và `AcquirePositionAction` định tuyến dọc
+  đồ thị đường thay vì cắt ngang mặt đường;
+- `run_red_light` không thể xảy ra ở anchor highway: đèn gần nhất cách 211,8 m,
+  ngoài tầm tiến +40 m của đoạn lane ổn định.
 
-`ODDCell` có 5 × 4 × 4 × 7 = **560** tổ hợp enum. Nhưng converter không sinh `.xosc` từ không khí — nó cần một **anchor**: toạ độ spawn ego có thật trên một map có thật, đã chạy được qua ScenarioRunner. `templates.py` hiện có đúng **một**:
-
-```python
-# ADR-012 smoke-tested anchor: Town04 road=41, lane=-3
-_TOWN04_ANCHOR = EgoSpawn(x=-510.7297, y=-177.5400, z=0.3000, h=-1.577036, lane_id=-3)
-TEMPLATE_CATALOG = {RoadType.HIGHWAY: ScenarioTemplate(map_name="Town04", ...)}
-```
-
-Bốn `RoadType` còn lại — `intersection`, `urban_straight`, `residential_narrow`, `roundabout` — **không có anchor nào**. Không phải "chưa tối ưu", mà là converter sẽ không có toạ độ để ghi vào `WorldPosition`.
-
-Câu hỏi của ADR này: mẫu số 560 kia có ý nghĩa gì khi 484 ô trong đó không thể sinh ra file?
+Ngày 24/08 đã đo thêm một giao cắt đô thị trên cùng Town04. Ego đi theo đèn xanh
+`id=118`; adversary đi từ approach vuông góc qua đèn đỏ `id=122`; hai quỹ đạo
+cắt nhau quanh CARLA `(258, -169)`. Hai kịch bản cuối đã chạy, va chạm, được xem
+trực tiếp và duyệt vào thư viện.
 
 ## Vấn đề
 
-Mẫu số sai không chỉ làm xấu một con số trên slide. Nó hỏng ba chỗ:
+Mẫu số sai gây lỗi ở ba tầng:
 
-**1. `ODD coverage` tự thổi phồng theo chiều ngược.** Mẫu số 560 làm coverage trông *thấp* hơn thực tế — nhưng tệ hơn là nó mô tả sai bài toán. Nói "phủ 30/560" ngụ ý còn 530 ô đang chờ được phủ. Sự thật là 484 trong số đó **không phủ được bằng code hiện có**, và không lượng prompt engineering nào thay đổi điều đó.
-
-**2. Người dùng nhận lỗi ở sai chỗ.** `parse_intent` nhận câu *"ô tô vượt đèn đỏ ở ngã tư"*, `SupportPolicy` nói hỗ trợ, `generate_draft` gọi LLM sinh draft, `validate` cho qua, rồi `convert_xosc` mới ném `TEMPLATE_CATALOG_INCONSISTENT` — một lỗi **terminal, không repairable**. Người dùng đợi hết vòng, tốn một lượt LLM, để nhận về "hệ thống lỗi". Đúng thứ mà `UNSUPPORTED_COMBINATION` ở cửa vào sinh ra để tránh.
-
-**3. `with_defaults()` điền mặc định vào ô không sinh được.** Câu không nói rõ loại đường sẽ được điền `urban_straight` theo thứ tự ưu tiên cũ — một ô không có template. Mặc định đưa thẳng người dùng vào ngõ cụt.
-
-## Các lựa chọn
-
-**A. Giữ `SupportPolicy()` rỗng, để converter tự ném lỗi.**
-- Ưu: không đổi gì; mẫu số vẫn là con số enum "trung thực".
-- Nhược: cả ba vấn đề trên còn nguyên. Đây là trạng thái hôm nay, và nó đã sai — chỉ chưa ai chạm vào vì converter mới có.
-
-**B. Mask theo `RoadType`: loại 4 road không có template, giữ nguyên actor × maneuver.**
-- Ưu: đơn giản, một dòng.
-- Nhược: cho qua `(highway, pedestrian, cut_in)` — người đi bộ tạt đầu trên cao tốc. Converter có builder cho `cut_in` nên nó **sinh được file**, chỉ là file mô tả một tình huống vô nghĩa. Mask phải chặn được cả tổ hợp actor × maneuver, đúng như `supported_cells()` đã lường trước trong docstring.
-
-**C. Mask = đúng những gì catalog kiểm chứng được, cả ba trục.** ← **chọn**
-- Ưu: mẫu số bằng đúng số ô sinh ra được file có nghĩa. Lỗi rơi ở cửa vào dưới dạng `UNSUPPORTED_COMBINATION`, trước khi tốn một lượt LLM.
-- Nhược: thu hẹp sản phẩm xuống **một** `RoadType`. Phải nói thẳng chuyện này ra thay vì để nó ẩn trong một mask.
+1. Coverage mô tả những ô code không thể dựng, nên tỷ lệ không còn ý nghĩa.
+2. Request ngoài hình học thật đi qua LLM và validate rồi mới chết ở converter,
+   vừa tốn chi phí vừa trả lỗi ở sai chỗ.
+3. Một template được gắn nhãn road type khác với topology thật tạo file hợp lệ
+   nhưng tình huống sai — ví dụ xe “vượt đèn đỏ” chạy cùng làn ego.
 
 ## Quyết định
 
-`DEFAULT_SUPPORT_POLICY` loại mọi tổ hợp trừ:
+`DEFAULT_SUPPORT_POLICY` chỉ chứa các tổ hợp đã đo:
 
-| Trục | Được hỗ trợ | Lý do |
-|---|---|---|
-| `road_type` | `highway` | anchor duy nhất đã smoke-test (ADR-012, Town04 road=41 lane=-3) |
-| `actor_type` × `maneuver` | `{car, motorcycle, truck}` × 6 maneuver | ba loại xe dùng chung `_add_vehicle`, đã có blueprint CARLA |
-| | `pedestrian` × `jaywalk` | `_add_pedestrian` + `AcquirePositionAction`; đây là maneuver duy nhất có nghĩa cho người đi bộ |
-| `weather` | cả 4 | `_add_init` map đủ 4 sang `cloudState`/`Precipitation`/`Fog` |
+| Anchor | Road type | Maneuver | Actor | Weather | Số ô |
+|---|---|---|---|---|---:|
+| Town04 highway, road 23 lane -3 | `highway` | `cut_in`, `sudden_brake`, `wrong_way`, `lane_drift`, `stop_in_lane` | car, motorcycle, truck | 4 | 60 |
+| Town04 giao cắt đèn 118/122 | `urban_straight` | `run_red_light` | car, motorcycle, truck | 4 | 12 |
+| **Tổng** | | | | | **72** |
 
-**Mẫu số = (6 × 3 + 1) × 4 = 76 ô.**
+Mask được biểu diễn bằng `_SUPPORTED_ACTORS_BY_ROAD_MANEUVER`, tức khoá
+`(road_type, maneuver) → set[actor]`. Không liệt kê thủ công 560 tuple và không
+suy ra support chỉ từ việc enum có giá trị.
 
-Tổ hợp bị loại rõ ràng: `pedestrian` với 6 maneuver xe (`cut_in`, `sudden_brake`, `run_red_light`, `wrong_way`, `lane_drift`, `stop_in_lane`), và `jaywalk` với 3 loại xe. Cả hai chiều đều vô nghĩa về mặt tình huống, không chỉ về mặt kỹ thuật.
+Với `run_red_light`, `Position(lane_offset=0, s_offset_m=0)` là khoá chọn
+approach vuông góc đã đo, không phải spawn tương đối theo ego. Validator trả lỗi
+repairable nếu LLM sinh giá trị khác; converter cũng kiểm lại trước khi phát
+`WorldPosition` tường minh cho adversary.
 
-Mask viết bằng `_HIGHWAY_ACTORS_BY_MANEUVER` — một dict `maneuver → set[actor]` — chứ không phải liệt kê 484 tuple bằng tay. Thêm một `ManeuverType` mới mà quên khai báo sẽ ném `KeyError` ngay lúc import, không im lặng rơi khỏi phạm vi.
+Không dùng `RunningRedLightTest` mặc định của ScenarioRunner làm oracle vì nó
+luôn gắn criterion vào ego. Worker theo dõi tín hiệu của adversary và chỉ ghi
+`adversary_ran_red_light=true` khi actor qua vạch lúc đèn vẫn đỏ; chờ đèn xanh
+rồi đi không được chấm đúng.
 
-## Ngưỡng đảo ngược
+## Ngưỡng mở rộng
 
-Mở rộng khi — và chỉ khi — có **anchor thứ hai đã chạy được qua ScenarioRunner**, tức đủ ba thứ:
+Một road type hoặc maneuver mới chỉ được thêm khi có đủ:
 
-1. Toạ độ `EgoSpawn` thật trên map đó, đo được chứ không phỏng đoán;
-2. Một `.xosc` sinh từ template đó chạy hết trong CARLA 0.9.15 không lỗi;
-3. Golden file kèm test XSD, cùng chuẩn với 7 file `fixtures/xosc/generated/` hiện có.
+1. Toạ độ spawn và topology thật đã đo trên map;
+2. tầm dọc, mặt cắt ngang hoặc approach giao cắt cần thiết;
+3. `.xosc` do converter sinh chạy hết trên CARLA 0.9.15;
+4. oracle đo đúng actor gây tình huống;
+5. golden fixture, test converter/validator và cập nhật mẫu số eval trong cùng
+   thay đổi.
 
-Lúc đó thêm entry vào `TEMPLATE_CATALOG`, mask tự nới theo, và **`eval/` phải đổi mẫu số trong cùng PR** — `test_default_support_policy_*` sẽ đỏ, và nó **nên** đỏ.
-
-Không nới mask vì thấy con số 76 nhỏ. Con số nhỏ là thông tin đúng.
+Không mở rộng chỉ vì enum đã có hoặc vì muốn coverage nhìn lớn hơn.
 
 ## Hệ quả
 
-**`eval/`:** mẫu số `ODD coverage` là `DEFAULT_SUPPORT_POLICY.denominator()` = 76, không hard-code 560. Mọi báo cáo phải ghi rõ mẫu số bên cạnh tỉ lệ — "24/76" đọc được, "32%" thì không.
+- `SupportPolicy.denominator()` là **72**, còn enum đầy đủ vẫn là 560.
+- Pairwise denominator khả thi là **74**, suy từ policy thay vì hard-code.
+- Request `jaywalk` trên highway bị chặn trước LLM.
+- `run_red_light` chỉ được nhận ở `urban_straight`; năm maneuver còn lại chỉ ở
+  highway.
+- Catalog có hai anchor hình học nhưng vẫn chỉ một map Town04. Đây chưa phải hỗ
+  trợ đô thị tổng quát: anchor đô thị hiện chỉ cam kết cho `run_red_light`.
 
-**`parse_intent`:** tổ hợp ngoài mask bị chặn ở cửa vào bằng `UNSUPPORTED_COMBINATION`, trả `422`, **không** gọi LLM. Đây là chỗ tiết kiệm thật: một câu về ngã tư giờ tốn 0 token thay vì một vòng generate + validate + convert.
-
-**`with_defaults()`:** `road_type` mặc định đổi từ `urban_straight` sang `highway`, vì hàm này hỏi `SupportPolicy` trước — hành vi vốn đã được `test_default_road_type_asks_the_support_policy_first` khoá lại, chỉ là hôm nay policy rỗng nên nó rơi về ưu tiên cũ.
-
-**Không đụng:** `ODDCell` vẫn có 560 tổ hợp enum, `test_odd_matrix_is_560_cells` giữ nguyên. Mask là **chính sách**, không phải kiểu dữ liệu — ADR này không thu hẹp enum, và không được thu hẹp, vì Phase 2–3 sẽ cần chúng khi có thêm anchor.
-
-**Rủi ro chấp nhận, nói rõ để không ai tưởng đã xong:** demo chỉ chạy được kịch bản cao tốc. Câu *"xe máy vượt đèn đỏ ở ngã tư"* — một tình huống rất Việt Nam và rất dễ được hỏi khi trình bày — sẽ bị từ chối ở cửa vào. Đó là giá của việc không bịa toạ độ spawn cho một map chưa smoke-test, và là lý do §Ngưỡng đảo ngược ghi rõ ba điều kiện đo được thay vì "khi nào rảnh thì thêm".
-
-**Liên quan:** [ADR-012](ADR-012-converter-dung-relativelaneposition.md) cung cấp anchor và ba bẫy converter. [ADR-010](ADR-010-vi-tri-tuong-doi-theo-lan-thay-vi-spawn-index.md) là lý do vị trí actor không cần anchor riêng — chỉ ego cần.
+**Liên quan:** [ADR-010](ADR-010-vi-tri-tuong-doi-theo-lan-thay-vi-spawn-index.md),
+[ADR-012](ADR-012-converter-dung-relativelaneposition.md).

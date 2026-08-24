@@ -10,7 +10,7 @@ export function LandingFAQ() {
   const faqs = [
     {
       q: "Hệ thống hỗ trợ những định dạng xuất file nào?",
-      a: "Scenario Forge xuất ra mã nguồn chuẩn quốc tế ASAM OpenSCENARIO 1.0 XML (.xosc), dữ liệu cấu hình JSON Spec, và sơ đồ làn đường 2D SVG layout tương thích với các phần mềm mô phỏng xe tự lái hàng đầu (CARLA, SVL, LGSVL).",
+      a: "Scenario Forge xuất ra mã nguồn chuẩn quốc tế ASAM OpenSCENARIO 1.0 XML (.xosc) và dữ liệu cấu hình JSON Spec để dùng trong quy trình mô phỏng.",
     },
     {
       q: "Độ chính xác của việc trích xuất ODD từ tiếng Việt là bao nhiêu?",
