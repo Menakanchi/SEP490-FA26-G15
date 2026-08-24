@@ -26,7 +26,7 @@ export function LandingHeader() {
               </span>
             </span>
             <span className="text-[10px] text-slate-500 font-medium">
-              Autonomous Vehicle Testing & ADAS Scenario Platform
+              ODD → OpenSCENARIO 1.0 → CARLA
             </span>
           </div>
         </Link>
@@ -47,7 +47,7 @@ export function LandingHeader() {
               className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-600/20 flex items-center gap-2 transition"
             >
               <UserCheck className="w-4 h-4 text-blue-100" />
-              <span>Đăng ký / Đăng nhập</span>
+              <span>Đăng nhập để trải nghiệm</span>
             </Link>
           )}
         </div>

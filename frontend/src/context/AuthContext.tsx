@@ -1,17 +1,21 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import type { User, Role, UserStatus, LoginPayload, RegisterPayload, AuthContextType } from "@/types/auth";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
+import type {
+  User,
+  Role,
+  UserStatus,
+  LoginPayload,
+  RegisterPayload,
+  AuthContextType,
+} from "@/types/auth";
 import { postLogin, postRegister, getMe } from "@/services/api";
-
-const DEFAULT_MOCK_USER: User = {
-  id: "usr_creator_01",
-  name: "Creator User",
-  email: "creator@forge.ai",
-  role: "creator",
-  username: "creator",
-  status: "active",
-};
 
 const DEFAULT_PENDING_REVIEWERS: User[] = [
   {
@@ -40,7 +44,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return DEFAULT_PENDING_REVIEWERS;
       }
     }
-    localStorage.setItem("forge_pending_users", JSON.stringify(DEFAULT_PENDING_REVIEWERS));
+    localStorage.setItem(
+      "forge_pending_users",
+      JSON.stringify(DEFAULT_PENDING_REVIEWERS),
+    );
     return DEFAULT_PENDING_REVIEWERS;
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -72,29 +79,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const parsedUser = JSON.parse(savedUserStr) as User;
               setUser(parsedUser);
             } catch {
-              setUser(DEFAULT_MOCK_USER);
+              localStorage.removeItem("auth_user");
+              localStorage.removeItem("forge_token");
+              setUser(null);
+              setToken(null);
             }
           } else {
-            setUser(DEFAULT_MOCK_USER);
+            localStorage.removeItem("forge_token");
+            setUser(null);
+            setToken(null);
           }
         })
         .finally(() => setIsLoading(false));
     } else if (savedUserStr) {
-      try {
-        const parsedUser = JSON.parse(savedUserStr) as User;
-        setUser(parsedUser);
-        setToken("mock_jwt_token");
-      } catch {
-        setUser(DEFAULT_MOCK_USER);
-        setToken("mock_jwt_token");
-      }
+      // A user record without a token is not a valid session. This can happen
+      // after logout or when old demo data remains in localStorage.
+      localStorage.removeItem("auth_user");
+      setUser(null);
+      setToken(null);
       setIsLoading(false);
     } else {
-      // Default initial session
-      setUser(DEFAULT_MOCK_USER);
-      setToken("mock_jwt_token");
-      localStorage.setItem("auth_user", JSON.stringify(DEFAULT_MOCK_USER));
-      localStorage.setItem("forge_token", "mock_jwt_token");
+      // Stay signed out. Demo users are created only after an explicit login.
+      setUser(null);
+      setToken(null);
       setIsLoading(false);
     }
   }, []);
@@ -108,7 +115,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (emailOrPayload?: string | LoginPayload, roleOrPass?: Role | string) => {
+    async (
+      emailOrPayload?: string | LoginPayload,
+      roleOrPass?: Role | string,
+    ) => {
       setIsLoading(true);
       try {
         if (typeof emailOrPayload === "string") {
@@ -118,10 +128,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           // Check if pending reviewer
           const isPending = pendingUsers.some(
-            (p) => p.email.toLowerCase() === email.toLowerCase() || p.username === username,
+            (p) =>
+              p.email.toLowerCase() === email.toLowerCase() ||
+              p.username === username,
           );
           if (isPending && targetRole === "reviewer") {
-            throw new Error("Tài khoản Reviewer của bạn chưa được Admin phê duyệt qua email.");
+            throw new Error(
+              "Tài khoản Reviewer của bạn chưa được Admin phê duyệt qua email.",
+            );
           }
 
           const newUser: User = {
@@ -151,7 +165,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 (matchUsername && p.username === matchUsername),
             );
             if (pendingMatch) {
-              throw new Error("Tài khoản Reviewer của bạn chưa được Admin phê duyệt qua email.");
+              throw new Error(
+                "Tài khoản Reviewer của bạn chưa được Admin phê duyệt qua email.",
+              );
             }
           }
 
@@ -180,8 +196,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 (payload.username.includes("review")
                   ? "reviewer"
                   : payload.username.includes("admin")
-                  ? "admin"
-                  : "creator");
+                    ? "admin"
+                    : "creator");
 
               const fallbackUser: User = {
                 id: `usr_${fallbackRole}_${Date.now().toString().slice(-4)}`,
@@ -230,48 +246,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const register = useCallback(
-    async (payload: RegisterPayload) => {
-      setIsLoading(true);
-      try {
-        const res = await postRegister(payload);
-        const userStatus: UserStatus = (res.status as UserStatus) || (payload.role === "reviewer" ? "pending_approval" : "active");
+  const register = useCallback(async (payload: RegisterPayload) => {
+    setIsLoading(true);
+    try {
+      const res = await postRegister(payload);
+      const userStatus: UserStatus =
+        (res.status as UserStatus) ||
+        (payload.role === "reviewer" ? "pending_approval" : "active");
 
-        if (userStatus === "active" && res.user) {
-          setUser(res.user);
-          setToken(`token_${Date.now()}`);
-          localStorage.setItem("auth_user", JSON.stringify(res.user));
-        }
-        return { status: userStatus, user: res.user };
-      } catch {
-        const targetRole = payload.role || "creator";
-        const email = payload.email || `${payload.username || "user"}@company.com`;
-        const name = payload.name || payload.username || "User";
-        const fallbackStatus: UserStatus = targetRole === "reviewer" ? "pending_approval" : "active";
-
-        const fallbackUser: User = {
-          id: `usr_${targetRole}_${Date.now().toString().slice(-4)}`,
-          name,
-          email,
-          role: targetRole,
-          username: payload.username || email.split("@")[0],
-          status: fallbackStatus,
-          reason: payload.reason,
-          created_at: new Date().toISOString(),
-        };
-
-        if (fallbackStatus === "active") {
-          setUser(fallbackUser);
-          setToken(`token_${Date.now()}`);
-          localStorage.setItem("auth_user", JSON.stringify(fallbackUser));
-        }
-        return { status: fallbackStatus, user: fallbackUser };
-      } finally {
-        setIsLoading(false);
+      if (userStatus === "active" && res.user) {
+        setUser(res.user);
+        setToken(`token_${Date.now()}`);
+        localStorage.setItem("auth_user", JSON.stringify(res.user));
       }
-    },
-    [],
-  );
+      return { status: userStatus, user: res.user };
+    } catch {
+      const targetRole = payload.role || "creator";
+      const email =
+        payload.email || `${payload.username || "user"}@company.com`;
+      const name = payload.name || payload.username || "User";
+      const fallbackStatus: UserStatus =
+        targetRole === "reviewer" ? "pending_approval" : "active";
+
+      const fallbackUser: User = {
+        id: `usr_${targetRole}_${Date.now().toString().slice(-4)}`,
+        name,
+        email,
+        role: targetRole,
+        username: payload.username || email.split("@")[0],
+        status: fallbackStatus,
+        reason: payload.reason,
+        created_at: new Date().toISOString(),
+      };
+
+      if (fallbackStatus === "active") {
+        setUser(fallbackUser);
+        setToken(`token_${Date.now()}`);
+        localStorage.setItem("auth_user", JSON.stringify(fallbackUser));
+      }
+      return { status: fallbackStatus, user: fallbackUser };
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   return (
     <AuthContext.Provider
