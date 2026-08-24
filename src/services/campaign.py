@@ -121,6 +121,7 @@ def compose_prompt(cell: ODDCell, existing: list[str] | None = None) -> str:
             {"role": "user", "content": "\n".join(parts)},
         ],
         structured_output_schema=GeneratedPrompt,
+        operation="campaign_prompt",
     )
     text = result.description_vi if isinstance(result, GeneratedPrompt) else str(result.get("description_vi", ""))
     return text.strip()

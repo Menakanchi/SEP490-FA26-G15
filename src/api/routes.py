@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from typing import Literal
 
@@ -47,6 +48,7 @@ from src.models.schemas import (
 from src.services import campaign as campaign_service
 from src.services import db, metrics, tuning
 from src.services.library.retriever import SQLiteRetriever
+from src.services.llm import collect_provider_metrics, summarize_provider_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -123,38 +125,60 @@ async def _run_workflow(request_id: str) -> None:
     }
 
     final: dict = {}
-    try:
-        async for event in build_forge_graph().astream(state):
-            for node, update in event.items():
-                final.update(update or {})
-                # `astream` yield SAU khi node xong, nên đây là "vừa xong node X".
-                # Không ghi đè lên trạng thái kết thúc: node persist tự chốt hàng
-                # request thành done/100 ngay trong transaction của nó, và vòng
-                # lặp này chạy sau đó — ghi đè là kéo ngược 100% về 88%, client
-                # poll mãi không bao giờ thấy "done" dù kịch bản đã nằm trong DB.
-                if node == "persist_pending_sim_review":
-                    continue
-                db.update_generation_request(request_id, step=node, progress=_step_progress(node))
-    except Exception as exc:
-        logger.exception("Workflow hỏng ở request %s", request_id)
-        _mark_failed(request_id, str(exc) or type(exc).__name__)
-        return
+    workflow_started = time.perf_counter()
+    node_started = workflow_started
+    node_latency: dict[str, dict[str, float | int]] = {}
 
-    if final.get("scenario_id"):
-        # Chốt lại cho chắc. Persist đã đặt done/100, nhưng luồng này là thứ
-        # client chờ nên nó phải tự chịu trách nhiệm về trạng thái cuối, không
-        # trông vào việc node ở tầng dưới nhớ làm hộ.
-        db.update_generation_request(
-            request_id, status="done", step="done", progress=100, scenario_id=final["scenario_id"]
-        )
-        return
-
-    # Tới đây là graph dừng sớm: thiếu thông tin, tổ hợp ngoài phạm vi, LLM
-    # hỏng, hoặc hết ba vòng sửa. FR-14: **không** tạo scenario giả cho một lần
-    # sinh thất bại — chỉ ghi lại dấu vết trên chính hàng request.
-    issues = final.get("issues") or []
-    reason = final.get("failed_reason") or (issues[0].message_vi if issues else "Không sinh được kịch bản")
-    _mark_failed(request_id, reason)
+    with collect_provider_metrics() as provider_events:
+        try:
+            async for event in build_forge_graph().astream(state):
+                node_finished = time.perf_counter()
+                elapsed = node_finished - node_started
+                for node, update in event.items():
+                    final.update(update or {})
+                    timing = node_latency.setdefault(node, {"calls": 0, "latency_s": 0.0})
+                    timing["calls"] = int(timing["calls"]) + 1
+                    timing["latency_s"] = round(float(timing["latency_s"]) + elapsed, 6)
+                    # `astream` yield SAU khi node xong, nên đây là "vừa xong node X".
+                    # Không ghi đè lên trạng thái kết thúc: node persist tự chốt hàng
+                    # request thành done/100 ngay trong transaction của nó, và vòng
+                    # lặp này chạy sau đó — ghi đè là kéo ngược 100% về 88%, client
+                    # poll mãi không bao giờ thấy "done" dù kịch bản đã nằm trong DB.
+                    if node == "persist_pending_sim_review":
+                        continue
+                    db.update_generation_request(request_id, step=node, progress=_step_progress(node))
+                node_started = node_finished
+        except Exception as exc:
+            logger.exception("Workflow hỏng ở request %s", request_id)
+            _mark_failed(request_id, str(exc) or type(exc).__name__)
+        else:
+            if final.get("scenario_id"):
+                # Chốt lại cho chắc. Persist đã đặt done/100, nhưng luồng này là thứ
+                # client chờ nên nó phải tự chịu trách nhiệm về trạng thái cuối, không
+                # trông vào việc node ở tầng dưới nhớ làm hộ.
+                db.update_generation_request(
+                    request_id, status="done", step="done", progress=100, scenario_id=final["scenario_id"]
+                )
+            else:
+                # Tới đây là graph dừng sớm: thiếu thông tin, tổ hợp ngoài phạm vi, LLM
+                # hỏng, hoặc hết ba vòng sửa. FR-14: **không** tạo scenario giả cho một
+                # lần sinh thất bại — chỉ ghi lại dấu vết trên chính hàng request.
+                issues = final.get("issues") or []
+                reason = final.get("failed_reason") or (issues[0].message_vi if issues else "Không sinh được kịch bản")
+                _mark_failed(request_id, reason)
+        finally:
+            telemetry = {
+                "telemetry_version": 1,
+                "workflow_latency_s": round(time.perf_counter() - workflow_started, 6),
+                "node_latency": node_latency,
+                "provider": summarize_provider_metrics(provider_events),
+            }
+            try:
+                db.merge_generation_node_metrics(request_id, telemetry)
+            except Exception:
+                # Telemetry không được phép biến một scenario đã sinh đúng thành
+                # request failed. Log để vận hành thấy, nhưng giữ kết quả workflow.
+                logger.exception("Không lưu được telemetry cho request %s", request_id)
 
 
 def _mark_failed(request_id: str, reason: str) -> None:

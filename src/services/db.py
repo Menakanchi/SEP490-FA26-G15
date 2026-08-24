@@ -319,6 +319,33 @@ def update_generation_request(request_id: str, **kwargs) -> None:
         cursor.execute(f"UPDATE generation_requests SET {fields} WHERE request_id = ?", values)
 
 
+def merge_generation_node_metrics(request_id: str, metrics: dict) -> None:
+    """Gộp telemetry vào JSON ``node_metrics`` mà không làm mất provenance.
+
+    Node persist đã ghi model, số vòng repair và examples retrieval trong cùng
+    cột. Telemetry hoàn tất sau node đó, nên phải merge thay vì ghi đè.
+    """
+    with _cursor(commit=True) as cursor:
+        cursor.execute("SELECT node_metrics FROM generation_requests WHERE request_id = ?", (request_id,))
+        row = cursor.fetchone()
+        if not row:
+            return
+        current: dict = {}
+        raw = row["node_metrics"]
+        if raw:
+            try:
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+                if isinstance(parsed, dict):
+                    current = parsed
+            except (TypeError, json.JSONDecodeError):
+                logger.warning("node_metrics không hợp lệ cho request %s; thay bằng telemetry mới", request_id)
+        current.update(metrics)
+        cursor.execute(
+            "UPDATE generation_requests SET node_metrics = ?, updated_at = ? WHERE request_id = ?",
+            (json.dumps(current, ensure_ascii=False), datetime.now(UTC).isoformat(), request_id),
+        )
+
+
 # ---------------------------------------------------------------------------
 # Scenarios CRUD
 # ---------------------------------------------------------------------------

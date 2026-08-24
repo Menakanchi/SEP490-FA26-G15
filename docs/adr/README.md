@@ -30,6 +30,7 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | [ADR-019](ADR-019-chan-trung-o-dau-ra-truoc-khi-tieu-gpu.md) | Trùng ở **đầu ra**: so khớp động học tất định ở cổng `BEFORE_SIM`, chặn trước khi tiêu GPU; **không** embedding | 🕐 **Proposed 21/8** — Phase 2, đo trước khi triển khai |
 | [ADR-020](ADR-020-cut-in-trigger-theo-vi-tri-dan-truoc.md) | `cut_in` dùng `lead_distance` + `ReachPositionCondition` động, không suy vị trí từ tốc độ lệnh | ✅ **Accepted 24/8** |
 | [ADR-021](ADR-021-danh-gia-controller-tach-khoi-xac-minh-kich-ban.md) | Lượt đánh giá mô hình lái tách khỏi xác minh scenario; BehaviorAgent chạy trong tick loop qua `ControllerAction` | ✅ **Accepted 24/8** |
+| [ADR-022](ADR-022-closed-loop-dung-o-cap-ab-co-nguoi-khoi-dong.md) | Closed-loop MVP dừng ở cặp A/B có người khởi động; không tự chạy nhiều thế hệ | ✅ **Accepted 24/8** |
 
 ## Luật
 

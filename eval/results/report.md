@@ -128,21 +128,66 @@ chấm **10/13 = 76,92%**. Ba bất đồng còn lại là dữ liệu cần đi
 Nhãn `unsure` không vào mẫu số. Phán quyết máy không được gửi trước cho người
 chấm để tránh bias.
 
-## 9. Giới hạn và việc tiếp theo
+## 9. Benchmark cost/request và p50/p95 latency
+
+Ngày 24/08/2026, benchmark online chạy **20 mô tả** trên bản sao nhất quán của
+database thật: đủ 6 maneuver trong phạm vi, bốn kiểu thời tiết và ba loại xe.
+Mỗi request chạy graph 7 node tới `BEFORE_SIM`; không tính HTTP polling và không
+chạy CARLA. Ba request `wrong_way` bị validator từ chối vì model đặt actor ngoài
+tầm anchor vẫn nằm trong mẫu số — không lọc request thất bại để làm đẹp p95.
+
+| Chỉ số trên 20 request | Mean | p50 | p95 | Max |
+|---|---:|---:|---:|---:|
+| Latency toàn workflow | 3,139 s | **2,766 s** | **4,152 s** | 5,090 s |
+| Cost/request | $0,002720 | **$0,002304** | **$0,004582** | $0,006915 |
+| Input token/request | 8.274 | 7.184 | 11.952 | 11.998 |
+| Output token/request | 367 | 341 | 510 | 692 |
+| Provider call/request | 2,30 | 2 | 3 | 3 |
+
+- **17/20 = 85%** request hoàn tất; cả 20 đều được tính latency và cost.
+- Tổng chi phí đo: **$0,054408**. Trong đó 26 LLM call là $0,054400; 20
+  embedding call là $0,000008.
+- Provider báo **151.808/165.079 = 91,96%** input token LLM được đọc từ cache.
+  Nếu cùng token đó đều tính giá input thường, chi phí LLM sẽ là $0,156871 thay
+  vì $0,054400: cached-input pricing giảm **65,32%** trên chính tập đo này.
+- Rule parser xử lý trọn 16/20 mô tả; chỉ 4 request cần LLM fallback ở
+  `parse_intent`. Cả 20 vẫn cần `generate_draft`; 2 request dùng thêm một lượt
+  `repair_draft`; không request nào phải escalation sang `gpt-5.4`.
+- Chat token lấy trực tiếp từ `usage_metadata` của provider. LangChain chỉ trả
+  vector embedding nên 402 embedding token được ước lượng bằng `chars/4` và gắn
+  nhãn riêng; phần này chỉ chiếm 0,015% tổng cost.
+- Giá Standard tại thời điểm đo: `gpt-5.4-mini` $0,75 input / $0,075 cached /
+  $4,50 output; `gpt-5.4` $2,50 / $0,25 / $15; embedding
+  `text-embedding-3-small` $0,02, đều theo một triệu token. Nguồn:
+  [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini),
+  [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4),
+  [text-embedding-3-small](https://developers.openai.com/api/docs/models/text-embedding-3-small).
+- p50/p95 dùng linear interpolation tại `(n-1)×q`. Đây là snapshot một đường
+  mạng và một thời điểm; phải chạy lại khi đổi model, prompt, giá hoặc khu vực.
+
+Artifact đầy đủ từng request và từng node:
+[`cost_latency_2026-08-24.json`](cost_latency_2026-08-24.json).
+
+## 10. Giới hạn và việc tiếp theo
 
 1. Mở rộng nhãn người trên từng maneuver, không chỉ các case lỗi đã biết.
-2. Tổng hợp cost/request và p50/p95 latency; log hiện mới ở cấp lần gọi.
-3. Backend cần enforce token/role cho review, không chỉ phân vai trên frontend.
-4. Closed-loop với mô hình lái chưa có; ego hiện là điều kiện đối chứng giữ tốc
-   độ cố định.
-5. Chỉ mở thêm maneuver/road type khi đã đo hình học và chạy thật trên anchor
+2. Backend cần enforce token/role cho review và `WORKER_TOKEN`, không chỉ phân
+   vai trên frontend.
+3. Closed-loop MVP dừng ở cặp baseline/BehaviorAgent do người vận hành khởi
+   động theo ADR-022; không tuyên bố có vòng tự sinh nhiều thế hệ.
+4. Chỉ mở thêm maneuver/road type khi đã đo hình học và chạy thật trên anchor
    tương ứng; hiện anchor đô thị chỉ cam kết cho `run_red_light`.
+5. Benchmark mới có 20 request tuần tự trên một máy/mạng; chưa phải load test
+   nhiều người dùng đồng thời hay SLA production.
 
-## 10. Cách tái tạo snapshot
+## 11. Cách tái tạo snapshot
 
 ```bash
 curl http://127.0.0.1:8000/api/v1/metrics/quality
 curl http://127.0.0.1:8000/api/v1/metrics/intent-agreement
 curl http://127.0.0.1:8000/api/v1/library/audit
+OPENAI_API_KEY=... uv run python eval/benchmarks/generation_cost_latency.py \
+  --source-db data/app.db --samples 20 \
+  --output eval/results/cost_latency_$(date +%F).json
 bash scripts/pre_push_check.sh
 ```

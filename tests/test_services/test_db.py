@@ -8,6 +8,7 @@ chuỗi ghép làm `WHERE` trượt sạch.
 from __future__ import annotations
 
 import ast
+import json
 import sqlite3
 from pathlib import Path
 
@@ -169,6 +170,26 @@ def test_generation_request_round_trips_retrieve_limit() -> None:
     db.update_generation_request("req_1", step="retrieve", progress=25)
     updated = db.get_generation_request("req_1")
     assert (updated["step"], updated["progress"], updated["limit"]) == ("retrieve", 25, 7)
+
+
+def test_merge_generation_metrics_giu_provenance_cu() -> None:
+    db.create_generation_request("req_metrics", "Xe máy tạt đầu", "static")
+    db.update_generation_request(
+        "req_metrics",
+        node_metrics='{"model":"gpt-test","retrieved_examples":[{"id":"sc_001"}]}',
+    )
+
+    db.merge_generation_node_metrics(
+        "req_metrics",
+        {"workflow_latency_s": 1.25, "provider": {"cost_usd": 0.004}},
+    )
+
+    raw = db.get_generation_request("req_metrics")["node_metrics"]
+    metrics = json.loads(raw)
+    assert metrics["model"] == "gpt-test"
+    assert metrics["retrieved_examples"] == [{"id": "sc_001"}]
+    assert metrics["workflow_latency_s"] == 1.25
+    assert metrics["provider"]["cost_usd"] == 0.004
 
 
 # ===========================================================================
