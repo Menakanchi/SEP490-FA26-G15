@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000, ge=1, le=65535)
     app_host: str = "0.0.0.0"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     # LLM
     openai_api_key: str = ""
@@ -37,14 +37,13 @@ class Settings(BaseSettings):
     # Không có setting nào cho vector store, và đó là quyết định chứ không phải
     # thiếu sót: ADR-013 chốt embedding nằm cùng `database_url` dưới dạng BLOB,
     # xếp hạng bằng cosine của numpy. Không có service riêng để cấu hình.
-    # SMTP Email
-    smtp_host: str = "localhost"
-    smtp_port: int = 587
-    smtp_user: str = ""
-    smtp_password: str = ""
-    smtp_from_name: str = "Scenario Forge ADAS"
-    smtp_from_email: str = "noreply@scenarioforge.ai"
-    smtp_use_tls: bool = True
+    # (`chroma_persist_dir` của template đã bỏ từ ADR-003.)
+
+    # Near-duplicate detection (ADR-019). Delta trigger mang cùng đơn vị với
+    # trigger.type: giây cho simulation_time, mét cho hai loại khoảng cách.
+    near_duplicate_trigger_delta: float = Field(default=5.0, ge=0.0)
+    near_duplicate_speed_kmh: float = Field(default=5.0, ge=0.0)
+    near_duplicate_distance_m: float = Field(default=5.0, ge=0.0)
 
 
 @lru_cache

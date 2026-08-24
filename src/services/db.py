@@ -33,7 +33,14 @@ from pathlib import Path
 from sqlalchemy import inspect, text
 
 from src.config import get_settings
-from src.models.schemas import ScenarioStatus, VerificationLevel, normalize_prompt, odd_axis_value
+from src.models.schemas import (
+    EgoControllerType,
+    JobKind,
+    ScenarioStatus,
+    VerificationLevel,
+    normalize_prompt,
+    odd_axis_value,
+)
 from src.services.llm import EMBEDDING_MODEL
 from src.services.persistence import connect_sqlite, make_engine, metadata, sqlite_path
 
@@ -97,30 +104,37 @@ def init_db() -> None:
             {"new_status": ScenarioStatus.PENDING_SIM_REVIEW.value},
         )
     _migrate_description_normalized(engine)
-    _migrate_users_table(engine)
+    _migrate_campaign_id(engine)
+    _migrate_scenario_job_metadata(engine)
     _seed_default_users()
 
 
-def _migrate_users_table(engine) -> None:
-    """Đảm bảo bảng users và các cột bắt buộc tồn tại trong database."""
-    from src.services.persistence import users as users_table
+def _migrate_campaign_id(engine) -> None:
+    """Thêm ``generation_requests.campaign_id`` cho database dựng trước chiến dịch ODD.
 
-    with engine.begin() as conn:
-        inspector = inspect(engine)
-        tables = inspector.get_table_names()
-        if "users" not in tables:
-            users_table.create(conn)
-            return
+    ``create_all`` bỏ qua bảng đã tồn tại, gồm cả cột mới của nó — nên database
+    dev đang chạy sẽ thiếu cột này và mọi lần sinh chết ở INSERT.
+    """
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(generation_requests)")}
+        if "campaign_id" not in columns:
+            connection.exec_driver_sql("ALTER TABLE generation_requests ADD COLUMN campaign_id TEXT")
 
-        columns = [c["name"] for c in inspector.get_columns("users")]
-        if "reason" not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN reason TEXT"))
-        if "password_hash" not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
-        if "status" not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN status VARCHAR(50) DEFAULT 'active'"))
-        if "role" not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'creator'"))
+
+def _migrate_scenario_job_metadata(engine) -> None:
+    """Tách lượt xác minh kịch bản khỏi lượt đánh giá controller."""
+    columns = {column["name"] for column in inspect(engine).get_columns("scenario_jobs")}
+    with engine.begin() as connection:
+        if "job_kind" not in columns:
+            connection.execute(
+                text("ALTER TABLE scenario_jobs ADD COLUMN job_kind VARCHAR(32) NOT NULL DEFAULT 'scenario_validation'")
+            )
+        if "ego_controller" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE scenario_jobs ADD COLUMN ego_controller VARCHAR(32) NOT NULL DEFAULT 'constant_speed'"
+                )
+            )
 
 
 _NORMALIZED_TABLES = ("scenarios", "generation_requests")
@@ -303,6 +317,33 @@ def update_generation_request(request_id: str, **kwargs) -> None:
 
     with _cursor(commit=True) as cursor:
         cursor.execute(f"UPDATE generation_requests SET {fields} WHERE request_id = ?", values)
+
+
+def merge_generation_node_metrics(request_id: str, metrics: dict) -> None:
+    """Gộp telemetry vào JSON ``node_metrics`` mà không làm mất provenance.
+
+    Node persist đã ghi model, số vòng repair và examples retrieval trong cùng
+    cột. Telemetry hoàn tất sau node đó, nên phải merge thay vì ghi đè.
+    """
+    with _cursor(commit=True) as cursor:
+        cursor.execute("SELECT node_metrics FROM generation_requests WHERE request_id = ?", (request_id,))
+        row = cursor.fetchone()
+        if not row:
+            return
+        current: dict = {}
+        raw = row["node_metrics"]
+        if raw:
+            try:
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+                if isinstance(parsed, dict):
+                    current = parsed
+            except (TypeError, json.JSONDecodeError):
+                logger.warning("node_metrics không hợp lệ cho request %s; thay bằng telemetry mới", request_id)
+        current.update(metrics)
+        cursor.execute(
+            "UPDATE generation_requests SET node_metrics = ?, updated_at = ? WHERE request_id = ?",
+            (json.dumps(current, ensure_ascii=False), datetime.now(UTC).isoformat(), request_id),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -512,7 +553,7 @@ def get_scenario(scenario_id: str) -> dict | None:
         cursor.execute(
             """
             SELECT result FROM scenario_jobs
-            WHERE scenario_id = ? AND result IS NOT NULL
+            WHERE scenario_id = ? AND job_kind = 'scenario_validation' AND result IS NOT NULL
             ORDER BY updated_at DESC LIMIT 1
             """,
             (scenario_id,),
@@ -691,6 +732,52 @@ def list_public_scenarios() -> list[dict]:
     return scenarios
 
 
+def get_scenarios_for_near_duplicate_check(
+    *,
+    road_type: str,
+    weather: str,
+    actor_type: str,
+    maneuver: str,
+    exclude_id: str,
+) -> list[dict]:
+    """Lấy scenarios để kiểm tra gần trùng ở cổng BEFORE_SIM (ADR-019).
+
+    Lọc theo:
+    1. Status: approved_library, approved_sim (legacy), pending_library_review,
+       simulation_queued, pending_sim_review
+    2. Bốn trục ODD: so khớp với scenario mới
+    3. Loại trừ chính scenario đang duyệt
+
+    Tối ưu: Lấy tất cả columns trong 1 query thay vì N+1 queries.
+    """
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT scenario_id, spec, title, description_vi,
+                   road_type, weather, actor_type, maneuver, status
+            FROM scenarios
+            WHERE status IN ('approved_library', 'approved_sim', 'pending_library_review',
+                             'simulation_queued', 'pending_sim_review')
+            AND road_type = ?
+            AND weather = ?
+            AND actor_type = ?
+            AND maneuver = ?
+            AND scenario_id != ?
+            ORDER BY created_at DESC
+            """,
+            (road_type, weather, actor_type, maneuver, exclude_id),
+        )
+        rows = cursor.fetchall()
+
+    scenarios = []
+    for r in rows:
+        sc = dict(r)
+        # Parse spec JSON từ database
+        sc["spec"] = json.loads(sc["spec"]) if sc.get("spec") else {}
+        scenarios.append(sc)
+    return scenarios
+
+
 def list_my_scenarios(username: str) -> list[dict]:
     with _cursor() as cursor:
         cursor.execute(
@@ -847,6 +934,45 @@ def save_review_decision(scenario_id: str, gate: str, approved: bool, reviewer: 
     }
 
 
+def save_intent_label(scenario_id: str, labeller: str, label: str, reason: str, automatic_verdict: str | None) -> dict:
+    """Ghi một nhãn người cho câu "kịch bản này có đúng ý định không".
+
+    Ghi thêm hàng chứ **không** ghi đè nhãn cũ: hai người chấm cùng một kịch bản
+    là chuyện mong muốn (cho ra mức đồng thuận giữa người với người), và một
+    người đổi ý cũng là dữ liệu — biết họ đổi ý còn hơn mất dấu.
+    """
+    now_str = datetime.now(UTC).isoformat()
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+        INSERT INTO intent_labels
+            (scenario_id, labeller, label, reason, automatic_verdict, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """,
+            (scenario_id, labeller, label, reason, automatic_verdict, now_str),
+        )
+    return {
+        "scenario_id": scenario_id,
+        "labeller": labeller,
+        "label": label,
+        "reason": reason,
+        "automatic_verdict": automatic_verdict,
+        "created_at": now_str,
+    }
+
+
+def intent_labels() -> list[dict]:
+    """Mọi nhãn người đã chấm, mới nhất trước."""
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+        SELECT scenario_id, labeller, label, reason, automatic_verdict, created_at
+        FROM intent_labels ORDER BY created_at DESC
+    """
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
 def get_review_decisions(scenario_id: str) -> list[dict]:
     with _cursor() as cursor:
         cursor.execute(
@@ -868,12 +994,21 @@ def get_review_decisions(scenario_id: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def create_scenario_job(job_id: str, scenario_id: str, xosc_content: str) -> dict:
+def create_scenario_job(
+    job_id: str,
+    scenario_id: str,
+    xosc_content: str,
+    *,
+    job_kind: JobKind = JobKind.SCENARIO_VALIDATION,
+    ego_controller: EgoControllerType = EgoControllerType.SCENARIO_RUNNER_DEFAULT,
+) -> dict:
     now_str = datetime.now(UTC).isoformat()
     job_dict = {
         "job_id": job_id,
         "scenario_id": scenario_id,
         "status": "pending",
+        "job_kind": job_kind.value,
+        "ego_controller": ego_controller.value,
         "claimed_by": None,
         "claimed_at": None,
         "result": None,
@@ -886,12 +1021,43 @@ def create_scenario_job(job_id: str, scenario_id: str, xosc_content: str) -> dic
         cursor.execute(
             """
         INSERT OR REPLACE INTO scenario_jobs
-        (job_id, scenario_id, status, xosc_content, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (job_id, scenario_id, status, job_kind, ego_controller, xosc_content, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """,
-            (job_id, scenario_id, "pending", xosc_content, now_str, now_str),
+            (
+                job_id,
+                scenario_id,
+                "pending",
+                job_kind.value,
+                ego_controller.value,
+                xosc_content,
+                now_str,
+                now_str,
+            ),
         )
     return job_dict
+
+
+def get_controller_runs(scenario_id: str) -> list[dict]:
+    """Mọi lượt đánh giá controller của một kịch bản, mới nhất trước."""
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT job_id, scenario_id, status, job_kind, ego_controller, result, created_at, updated_at
+            FROM scenario_jobs
+            WHERE scenario_id = ? AND job_kind = 'controller_evaluation'
+            ORDER BY created_at DESC
+            """,
+            (scenario_id,),
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+    for row in rows:
+        if isinstance(row.get("result"), str):
+            try:
+                row["result"] = json.loads(row["result"])
+            except (TypeError, json.JSONDecodeError):
+                row["result"] = None
+    return rows
 
 
 def get_pending_jobs() -> list[dict]:
@@ -960,59 +1126,60 @@ def generate_temp_password(length: int = 10) -> str:
 
 
 def _seed_default_users() -> None:
-    now_str = datetime.now(UTC).isoformat()
-    admin_pass_hash = hash_password("admin123")
-    creator_pass_hash = hash_password("creator123")
-
-    default_users = [
-        ("admin", "Hệ Thống Admin", "admin@forge.ai", "admin", "active", None, admin_pass_hash, now_str, now_str),
-        (
-            "creator",
-            "Kỹ sư Kịch bản",
-            "creator@forge.ai",
-            "creator",
-            "active",
-            None,
-            creator_pass_hash,
-            now_str,
-            now_str,
-        ),
-        (
-            "reviewer_pending",
-            "Trần Văn Reviewer",
-            "reviewer_pending@company.com",
-            "reviewer",
-            "pending_approval",
-            "Kỹ sư mô phỏng VinFast ADAS",
-            None,
-            now_str,
-            now_str,
-        ),
-    ]
-
     with _cursor(commit=True) as cursor:
-        for u in default_users:
-            cursor.execute(
-                """
-                INSERT INTO users (username, name, email, role, status, reason, password_hash, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(username) DO NOTHING
-                """,
-                u,
-            )
+        cursor.execute("SELECT COUNT(*) AS cnt FROM users")
+        row = cursor.fetchone()
+        if row and row["cnt"] > 0:
+            return
+
+        now_str = datetime.now(UTC).isoformat()
+        admin_pass_hash = hash_password("admin123")
+        creator_pass_hash = hash_password("creator123")
+
+        default_users = [
+            ("admin", "Hệ Thống Admin", "admin@forge.ai", "admin", "active", None, admin_pass_hash, now_str, now_str),
+            (
+                "creator",
+                "Kỹ sư Kịch bản",
+                "creator@forge.ai",
+                "creator",
+                "active",
+                None,
+                creator_pass_hash,
+                now_str,
+                now_str,
+            ),
+            (
+                "reviewer_pending",
+                "Trần Văn Reviewer",
+                "reviewer_pending@company.com",
+                "reviewer",
+                "pending_approval",
+                "Kỹ sư mô phỏng VinFast ADAS",
+                None,
+                now_str,
+                now_str,
+            ),
+        ]
+
+        cursor.executemany(
+            """
+            INSERT INTO users (username, name, email, role, status, reason, password_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            default_users,
+        )
 
 
 def create_user(
     username: str,
-    name: str | None = None,
-    email: str = "",
+    name: str,
+    email: str,
     role: str = "creator",
     status: str = "active",
     reason: str | None = None,
     password: str | None = None,
-    full_name: str | None = None,
 ) -> dict:
-    real_name = name or full_name or username
     now_str = datetime.now(UTC).isoformat()
     pw_hash = hash_password(password) if password else None
 
@@ -1022,7 +1189,7 @@ def create_user(
             INSERT INTO users (username, name, email, role, status, reason, password_hash, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (username, real_name, email, role, status, reason, pw_hash, now_str, now_str),
+            (username, name, email, role, status, reason, pw_hash, now_str, now_str),
         )
     return get_user(username)  # type: ignore[return-value]
 
@@ -1126,22 +1293,15 @@ def approve_reviewer_request(username: str) -> dict | None:
             (pw_hash, now_str, username),
         )
 
-    from src.services.email_service import send_approval_email
-
-    recipient_email = u.get("email") or f"{u['username']}@company.com"
-    recipient_name = u.get("name") or u.get("username") or "Reviewer"
-
-    sent_via_smtp = send_approval_email(
-        to_email=recipient_email,
-        recipient_name=recipient_name,
-        username=u["username"],
-        temp_password=temp_password,
+    # Log email service sending credentials to reviewer
+    logger.info(
+        f"[EMAIL SERVICE] Sent login credentials to {u['email']} ({u['name']}): Username: {u['username']}, Temp Password: {temp_password}"
     )
 
     user_dict = get_user(username)
     if user_dict:
         user_dict["temp_password"] = temp_password
-        user_dict["email_sent"] = sent_via_smtp
+        user_dict["email_sent"] = True
     return user_dict
 
 
@@ -1165,6 +1325,136 @@ def get_pending_reviewers() -> list[dict]:
         d.pop("password_hash", None)
         res.append(d)
     return res
+
+
+def create_campaign(campaign_id: str, cells: list[dict], per_cell: int, max_scenarios: int, created_by: str) -> dict:
+    now = datetime.now(UTC).isoformat()
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            "INSERT INTO campaigns (campaign_id, created_by, cells, per_cell, max_scenarios, status, "
+            "generated, failed, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'running', 0, 0, ?, ?)",
+            (campaign_id, created_by, json.dumps(cells), per_cell, max_scenarios, now, now),
+        )
+    return get_campaign(campaign_id) or {}
+
+
+def update_campaign(
+    campaign_id: str, *, generated: int | None = None, failed: int | None = None, status: str | None = None
+) -> None:
+    sets, params = ["updated_at = ?"], [datetime.now(UTC).isoformat()]
+    for column, value in (("generated", generated), ("failed", failed), ("status", status)):
+        if value is not None:
+            sets.append(f"{column} = ?")
+            params.append(value)
+    params.append(campaign_id)
+    with _cursor(commit=True) as cursor:
+        cursor.execute(f"UPDATE campaigns SET {', '.join(sets)} WHERE campaign_id = ?", params)
+
+
+def get_campaign(campaign_id: str) -> dict | None:
+    """Chiến dịch + các kịch bản nó đã sinh, để trang theo dõi chỉ cần một lượt gọi."""
+    with _cursor() as cursor:
+        cursor.execute("SELECT * FROM campaigns WHERE campaign_id = ?", (campaign_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        campaign = dict(row)
+        campaign["cells"] = json.loads(campaign["cells"]) if campaign.get("cells") else []
+        cursor.execute(
+            "SELECT r.request_id, r.status, r.description_vi, r.scenario_id, s.road_type, s.weather, "
+            "s.actor_type, s.maneuver FROM generation_requests r "
+            "LEFT JOIN scenarios s ON s.scenario_id = r.scenario_id "
+            "WHERE r.campaign_id = ? ORDER BY r.created_at",
+            (campaign_id,),
+        )
+        campaign["requests"] = [dict(r) for r in cursor.fetchall()]
+    return campaign
+
+
+def list_campaigns() -> list[dict]:
+    with _cursor() as cursor:
+        cursor.execute(
+            "SELECT campaign_id, created_by, per_cell, max_scenarios, status, generated, "
+            "failed, created_at FROM campaigns ORDER BY created_at DESC"
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def attach_request_to_campaign(request_id: str, campaign_id: str) -> None:
+    with _cursor(commit=True) as cursor:
+        cursor.execute("UPDATE generation_requests SET campaign_id = ? WHERE request_id = ?", (campaign_id, request_id))
+
+
+def campaign_prompts(campaign_id: str, odd_key: str | None = None) -> list[str]:
+    """Câu đã sinh trong chiến dịch, để agent không lặp lại chính nó."""
+    with _cursor() as cursor:
+        cursor.execute(
+            "SELECT description_vi FROM generation_requests WHERE campaign_id = ? ORDER BY created_at",
+            (campaign_id,),
+        )
+        del odd_key
+        return [r["description_vi"] for r in cursor.fetchall()]
+
+
+def campaign_scenarios_awaiting_sim(campaign_id: str) -> list[dict]:
+    """Kịch bản của một chiến dịch đang chờ ở cổng 1."""
+    with _cursor() as cursor:
+        cursor.execute(
+            "SELECT s.scenario_id, s.status FROM scenarios s "
+            "JOIN generation_requests r ON r.scenario_id = s.scenario_id "
+            "WHERE r.campaign_id = ? AND s.status = ?",
+            (campaign_id, ScenarioStatus.PENDING_SIM_REVIEW.value),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def metrics_rows() -> tuple[list[dict], list[dict], list[dict]]:
+    """Dữ liệu thô cho báo cáo M1/M2/M3. Phần tính nằm ở ``services/metrics.py``.
+
+    Trả ba tập vì ba metric hỏi ba tầng khác nhau: lần **sinh** (qua schema
+    không), **kịch bản** (biên dịch được không, phủ ô ODD nào), và lần **chạy**
+    (chạy nổi không, có dựng được nguy hiểm không).
+    """
+    with _cursor() as cursor:
+        cursor.execute("SELECT request_id, status FROM generation_requests")
+        requests = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute(
+            # `created_by` có mặt vì báo cáo phải loại được kịch bản mock
+            # (`seed-data`) — xem `metrics.SEED_AUTHOR`.
+            "SELECT scenario_id, status, created_by, road_type, weather, actor_type, "
+            "maneuver, verification, xosc_content FROM scenarios"
+        )
+        scenarios = [dict(r) for r in cursor.fetchall()]
+
+        # Chỉ lần chạy MỚI NHẤT của mỗi kịch bản. Chạy lại cùng một kịch bản ba
+        # lần rồi đếm cả ba là để một kịch bản tự bỏ phiếu ba lần vào tỷ lệ.
+        cursor.execute(
+            """
+            SELECT j.scenario_id, j.result, s.maneuver
+            FROM scenario_jobs j
+            JOIN scenarios s ON s.scenario_id = j.scenario_id
+            WHERE j.result IS NOT NULL
+              AND j.job_kind = 'scenario_validation'
+              AND j.updated_at = (
+                  SELECT MAX(j2.updated_at) FROM scenario_jobs j2
+                  WHERE j2.scenario_id = j.scenario_id
+                    AND j2.job_kind = 'scenario_validation' AND j2.result IS NOT NULL
+              )
+            """
+        )
+        executions = []
+        for row in cursor.fetchall():
+            item = dict(row)
+            if isinstance(item.get("result"), str):
+                try:
+                    item["result"] = json.loads(item["result"])
+                except (TypeError, json.JSONDecodeError):
+                    logger.warning("scenario_jobs.result không hợp lệ cho %s", item["scenario_id"])
+                    item["result"] = None
+            executions.append(item)
+
+    return requests, scenarios, executions
 
 
 def get_admin_stats() -> dict:

@@ -37,7 +37,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import ego_controllers
 import sr_cli
+import trajectory
 
 BACKEND = os.environ.get("FORGE_BACKEND", "http://localhost:8000").rstrip("/")
 CARLA_ROOT = Path(os.environ.get("CARLA_ROOT", str(Path.home() / "CARLA_0.9.15")))
@@ -62,6 +64,27 @@ SR_TIMEOUT_S = os.environ.get("SR_TIMEOUT_S", "60")
 
 RUN_TIMEOUT_S = int(os.environ.get("RUN_TIMEOUT_S", "300"))
 """Trần cứng cho cả tiến trình. ScenarioRunner có lúc treo mà không tự thoát."""
+
+NO_RENDER = os.environ.get("CARLA_NO_RENDER", "0") not in ("0", "false", "no")
+"""Tắt dựng hình. **Mặc định TẮT tính năng này** — đo rồi, không đáng.
+
+Giả thuyết ban đầu: kịch bản không dùng camera sensor nào (mọi criteria và
+``trajectory.TrajectoryRecorder`` chỉ đọc ``get_location()``/``get_velocity()``),
+nên dựng hình là công việc bỏ đi và bỏ nó sẽ nhẹ GPU.
+
+Đo trên máy này ngày 23/08/2026, ``sc_001``, lấy mẫu ``nvidia-smi`` mỗi 200 ms:
+
+    render bật   GPU trung bình 0,6%   đỉnh 16%   thời gian tường 15,4 s
+    render tắt   GPU trung bình 0,5%   đỉnh 16%   thời gian tường 15,9 s
+
+Tức là **không có gì để tiết kiệm**: cửa sổ 800x600 gần như không làm RTX 4060
+bận, nút cổ chai nằm ở physics phía CPU. Đổi lại cái giá rất thật — cửa sổ CARLA
+đứng im, đúng cái bẫy CLAUDE.md cảnh báo ("nhìn thấy đường trống rồi kết luận
+không chạy").
+
+Giữ lại cờ vì nó có thể có ích ở cấu hình khác (màn 4K, GPU yếu, chạy nhiều
+server song song trên một máy), nhưng bật nó thì phải đo lại trước.
+"""
 
 POLL_INTERVAL_S = int(os.environ.get("POLL_INTERVAL_S", "5"))
 
@@ -115,6 +138,7 @@ def to_execution_result(job: dict, returncode: int, criteria_json: dict | None, 
         "success": success,
         "criteria_results": results,
         "metrics": metrics,
+        "ego_controller": job.get("ego_controller", ego_controllers.CONSTANT_SPEED),
     }
     if not success:
         # `ExecutionResult` từ chối success=False mà không có error — một lần
@@ -123,13 +147,42 @@ def to_execution_result(job: dict, returncode: int, criteria_json: dict | None, 
     return payload
 
 
+def attach_trajectory(result: dict, metrics: dict, points: list) -> dict:
+    """Gắn số quỹ đạo vào kết quả — **chỉ khi lượt chạy thành công**.
+
+    Recorder bám vào actor mang ``role_name='hero'`` đang có trong world. Nếu
+    ScenarioRunner không spawn được (``Error: Unable to add actors``) thì actor
+    còn sót từ lượt TRƯỚC vẫn nằm đó và recorder đo nhầm sang lượt cũ.
+
+    Đo được ngày 22/08: bốn lượt spawn hỏng liên tiếp vẫn trả về "khe hở nhỏ nhất
+    29,04 m" và "lệch làn 63,88 m" — số trông hoàn toàn như thật, cho những kịch
+    bản chưa bao giờ bắt đầu. Số đó mà đi vào báo cáo thì không ai lần ra được.
+
+    Một lượt chạy hỏng phải nói là hỏng, không mang theo số của người khác.
+    """
+    if result.get("success"):
+        result["metrics"].update(metrics)
+        result["trajectory"] = points
+    elif metrics:
+        log.warning("  -> bỏ số quỹ đạo: lượt chạy hỏng nên chúng thuộc về actor còn sót")
+    return result
+
+
 def run_job(job: dict) -> dict:
     """Ghi .xosc ra file tạm, chạy ScenarioRunner, đọc JSON criteria."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     started_at = time.time()
 
+    controller = job.get("ego_controller", ego_controllers.CONSTANT_SPEED)
+    try:
+        runtime_xosc = ego_controllers.prepare_xosc(job["xosc_content"], controller)
+    except (OSError, ValueError) as exc:
+        result = to_execution_result(job, -1, None, f"không chuẩn bị được ego controller: {exc}")
+        result["metrics"]["wall_clock_s"] = round(time.time() - started_at, 1)
+        return result
+
     with tempfile.NamedTemporaryFile("w", suffix=".xosc", delete=False, encoding="utf-8") as fh:
-        fh.write(job["xosc_content"])
+        fh.write(runtime_xosc)
         xosc_path = Path(fh.name)
 
     env = sr_cli.scenario_runner_env(CARLA_ROOT, SR_ROOT)
@@ -143,6 +196,13 @@ def run_job(job: dict) -> dict:
         tm_port=TM_PORT,
     )
 
+    # Ghi quỹ đạo song song. Criteria của ScenarioRunner chỉ nói CÓ VA CHẠM
+    # KHÔNG; nó không phân biệt được "tạt đầu đúng ý" với "tông đuôi ego", cũng
+    # không phân biệt "suýt quẹt thật" với "chẳng có gì xảy ra". Xem
+    # `trajectory.summarise`.
+    recorder = trajectory.TrajectoryRecorder(CARLA_HOST, CARLA_PORT)
+    recorder.start()
+
     error: str | None = None
     try:
         proc = subprocess.run(cmd, cwd=str(SR_ROOT), env=env, capture_output=True, text=True, timeout=RUN_TIMEOUT_S)
@@ -155,6 +215,11 @@ def run_job(job: dict) -> dict:
         error = f"không chạy được ScenarioRunner: {exc}"
     finally:
         xosc_path.unlink(missing_ok=True)
+        # Đo hỏng không được làm hỏng lượt chạy: `stop()` nuốt lỗi và trả dict
+        # rỗng, còn `recorder.error` chỉ đi vào log.
+        trajectory_metrics, trajectory_points = recorder.stop()
+        if recorder.error:
+            log.warning("  -> không đo được quỹ đạo: %s", recorder.error)
 
     _, criteria_json, read_error = sr_cli.newest_criteria_json(OUT_DIR, started_at)
     error = error or read_error
@@ -168,6 +233,7 @@ def run_job(job: dict) -> dict:
         error = "ScenarioRunner không sinh file JSON criteria"
 
     result = to_execution_result(job, returncode, criteria_json, error)
+    attach_trajectory(result, trajectory_metrics, trajectory_points)
     result["metrics"]["wall_clock_s"] = round(time.time() - started_at, 1)
     return result
 
@@ -175,6 +241,21 @@ def run_job(job: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Vòng lặp
 # ---------------------------------------------------------------------------
+
+
+def _log_trajectory(metrics: dict) -> None:
+    """In số quỹ đạo ra log, kèm cách đọc — người trực worker đọc log chứ không đọc DB."""
+    if "min_distance_m" not in metrics:
+        return
+    parts = [f"khe hở nhỏ nhất {metrics['min_distance_m']:.2f}m"]
+    if "ttc_min_s" in metrics:
+        parts.append(f"TTC {metrics['ttc_min_s']:.2f}s")
+    if "adversary_lane_deviation_m" in metrics:
+        parts.append(f"lệch làn {metrics['adversary_lane_deviation_m']:.2f}m")
+    if "contact_longitudinal_m" in metrics:
+        who = "ADVERSARY TÔNG ĐUÔI EGO" if metrics["contact_longitudinal_m"] < 0 else "ego đâm vào adversary"
+        parts.append(who)
+    log.info("  -> quỹ đạo: %s", " | ".join(parts))
 
 
 def poll_once() -> bool:
@@ -188,8 +269,23 @@ def poll_once() -> bool:
     if not jobs:
         return False
 
+    # Kiểm CARLA TRƯỚC khi nhận job. Không có bước này thì một server treo biến
+    # cả hàng đợi thành "kịch bản hỏng": job vẫn được lấy, ScenarioRunner vẫn
+    # chết, và lỗi môi trường đi thẳng vào tỷ lệ hợp lệ của báo cáo.
+    if not sr_cli.carla_is_ready(CARLA_HOST, CARLA_PORT):
+        log.warning("CARLA chưa sẵn sàng ở %s:%s — để job nằm lại hàng đợi", CARLA_HOST, CARLA_PORT)
+        return False
+
+    # Đặt lại trước mỗi job: `load_world` đưa settings về mặc định.
+    sr_cli.apply_no_rendering(CARLA_HOST, CARLA_PORT, NO_RENDER)
+
     job = jobs[0]
-    log.info("Nhận job %s cho %s", job.get("job_id"), job.get("scenario_id"))
+    log.info(
+        "Nhận job %s cho %s | ego=%s",
+        job.get("job_id"),
+        job.get("scenario_id"),
+        job.get("ego_controller", ego_controllers.CONSTANT_SPEED),
+    )
 
     result = run_job(job)
     verdict = "chạy được" if result["success"] else f"HỎNG ({result.get('error')})"
@@ -197,6 +293,7 @@ def poll_once() -> bool:
         c["name"].lower().startswith("collision") and c["result"] == "FAILURE" for c in result["criteria_results"]
     )
     log.info("  -> %s | va chạm: %s", verdict, "CÓ (tốt)" if collided else "không")
+    _log_trajectory(result["metrics"])
 
     try:
         _post(f"/api/v1/internal/jobs/{job['job_id']}/result", result)
@@ -214,7 +311,12 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="Chạy đúng một job rồi thoát")
     args = parser.parse_args()
 
-    log.info("Worker khởi động. Backend=%s CARLA=%s:%s TM=%s", BACKEND, CARLA_HOST, CARLA_PORT, TM_PORT)
+    log.info(
+        "Worker khởi động. Backend=%s CARLA=%s:%s TM=%s render=%s",
+        BACKEND, CARLA_HOST, CARLA_PORT, TM_PORT, "TẮT" if NO_RENDER else "bật",
+    )
+    if NO_RENDER:
+        log.info("  (tắt dựng hình để nhẹ GPU — cửa sổ CARLA sẽ đứng im. Demo thì đặt CARLA_NO_RENDER=0)")
     if not (SR_ROOT / "scenario_runner.py").is_file():
         sys.exit(f"Không thấy scenario_runner.py trong {SR_ROOT} — đặt SR_ROOT cho đúng.")
     if not (CARLA_ROOT / "PythonAPI/carla").is_dir():

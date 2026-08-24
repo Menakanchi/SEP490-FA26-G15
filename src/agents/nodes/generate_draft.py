@@ -39,7 +39,7 @@ def generate_draft_node(
     # lỡ gán maneuver cho ego thì ValidationError nổ ở đây và raw JSON bị mất,
     # dù EGO_HAS_MANEUVER là lỗi repairable. JSON Schema vẫn giữ chặt shape và
     # kiểu trường, còn invariant liên trường được validate_node xử lý.
-    result = call_with_escalation(messages, ScenarioDraft.model_json_schema())
+    result = call_with_escalation(messages, ScenarioDraft.model_json_schema(), operation="generate_draft")
     if isinstance(result, ScenarioDraft):
         # Giữ đường mock/test cũ tương thích; provider thật trả dict khi schema
         # truyền vào là JSON Schema.

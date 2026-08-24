@@ -43,7 +43,6 @@ export default function RegisterPage() {
     try {
       const result = await register({
         name: nameInput,
-        full_name: nameInput,
         email: emailInput,
         username,
         password: roleInput === "reviewer" ? undefined : (passwordInput || "password123"),

@@ -244,7 +244,7 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <div className="w-full max-w-full overflow-hidden flex flex-col min-h-screen bg-slate-50 dark:bg-slate-950 text-[#0f2d59] dark:text-slate-100 p-4 md:p-6 space-y-6 font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-[#0f2d59] dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans">
       {/* Toast Notification */}
       {toast && (
         <div
@@ -267,17 +267,17 @@ export default function AdminDashboardPage() {
       )}
 
       {/* Header */}
-      <div className="w-full max-w-full overflow-hidden flex flex-wrap items-center justify-between gap-4 bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-5 shadow-sm shrink-0">
-        <div className="space-y-1 min-w-0 flex-1">
+      <div className="flex flex-wrap items-center justify-between gap-4 bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+        <div className="space-y-1">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-2xl bg-blue-600 text-white shadow-md shrink-0">
+            <div className="p-2 rounded-2xl bg-blue-600 text-white shadow-md">
               <Shield className="w-6 h-6" />
             </div>
-            <h1 className="text-lg md:text-xl font-black text-[#0f2d59] dark:text-white tracking-tight truncate">
+            <h1 className="text-xl md:text-2xl font-black text-[#0f2d59] dark:text-white tracking-tight">
               Dashboard Quản Trị Hệ Thống (Admin Control Panel)
             </h1>
           </div>
-          <p className="text-xs text-slate-600 dark:text-slate-400 pl-11 truncate">
+          <p className="text-xs text-slate-600 dark:text-slate-400 pl-11">
             Quản lý tài khoản, phê duyệt yêu cầu Reviewer không mật khẩu & thống kê dữ liệu thực tế (`data/app.db`)
           </p>
         </div>
@@ -285,7 +285,7 @@ export default function AdminDashboardPage() {
         <button
           onClick={loadDashboardData}
           disabled={loading}
-          className="px-4 py-2 bg-white dark:bg-slate-800 border border-sky-200 dark:border-slate-700 hover:bg-sky-50 dark:hover:bg-slate-700 text-[#0f2d59] dark:text-slate-200 rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-2 cursor-pointer shrink-0"
+          className="px-4 py-2 bg-white dark:bg-slate-800 border border-sky-200 dark:border-slate-700 hover:bg-sky-50 dark:hover:bg-slate-700 text-[#0f2d59] dark:text-slate-200 rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-2 cursor-pointer"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           Tải lại dữ liệu
@@ -293,62 +293,62 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Overall Metrics Cards (BrightBuild Styling) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-full shrink-0">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* User Stats Card */}
-        <div className="flex-1 min-w-0 bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-5 space-y-4 shadow-sm">
+        <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm">
           <div className="flex items-center justify-between border-b border-sky-200/80 dark:border-slate-800 pb-3">
-            <div className="flex items-center gap-2 font-bold text-xs md:text-sm text-[#0f2d59] dark:text-white truncate">
-              <Users className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
+            <div className="flex items-center gap-2 font-bold text-sm text-[#0f2d59] dark:text-white">
+              <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               Tổng Số Người Dùng Trực Tuyến
             </div>
-            <span className="px-3 py-1 bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 text-xs font-black rounded-full border border-blue-300 shrink-0">
+            <span className="px-3 py-1 bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 text-xs font-black rounded-full border border-blue-300">
               {stats?.users.total || users.length} người dùng
             </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2.5 text-center">
-            <div className="p-3 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-1 flex-1 min-w-0">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block truncate">Creator</span>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="p-3 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Creator (Kỹ sư)</span>
               <span className="text-xl font-black text-blue-700 dark:text-blue-400">{stats?.users.creator || 0}</span>
             </div>
-            <div className="p-3 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-1 flex-1 min-w-0">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block truncate">Reviewer</span>
+            <div className="p-3 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Reviewer (Duyệt)</span>
               <span className="text-xl font-black text-purple-700 dark:text-purple-400">{stats?.users.reviewer || 0}</span>
             </div>
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl space-y-1 flex-1 min-w-0">
-              <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider block truncate">Chờ Duyệt</span>
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl space-y-1">
+              <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider block">Chờ Phê Duyệt</span>
               <span className="text-xl font-black text-amber-700 dark:text-amber-400">{pendingList.length}</span>
             </div>
           </div>
         </div>
 
         {/* Scenario Stats Card */}
-        <div className="flex-1 min-w-0 bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-5 space-y-4 shadow-sm">
+        <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm">
           <div className="flex items-center justify-between border-b border-sky-200/80 dark:border-slate-800 pb-3">
-            <div className="flex items-center gap-2 font-bold text-xs md:text-sm text-[#0f2d59] dark:text-white truncate">
-              <FileText className="w-5 h-5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+            <div className="flex items-center gap-2 font-bold text-sm text-[#0f2d59] dark:text-white">
+              <FileText className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
               Thống Kê Kho Kịch Bản ODD
             </div>
-            <span className="px-3 py-1 bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-200 text-xs font-black rounded-full border border-cyan-300 shrink-0">
+            <span className="px-3 py-1 bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-200 text-xs font-black rounded-full border border-cyan-300">
               {stats?.scenarios.total || 0} kịch bản
             </span>
           </div>
 
           <div className="grid grid-cols-4 gap-2 text-center">
-            <div className="p-2.5 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5 flex-1 min-w-0">
-              <span className="text-[9px] font-bold text-slate-500 uppercase block truncate">Bản Nháp</span>
+            <div className="p-2.5 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5">
+              <span className="text-[9px] font-bold text-slate-500 uppercase block">Bản Nháp</span>
               <span className="text-base font-black text-slate-700 dark:text-slate-300">{stats?.scenarios.draft || 0}</span>
             </div>
-            <div className="p-2.5 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5 flex-1 min-w-0">
-              <span className="text-[9px] font-bold text-amber-600 uppercase block truncate">Chờ Mô Phỏng</span>
+            <div className="p-2.5 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5">
+              <span className="text-[9px] font-bold text-amber-600 uppercase block">Chờ Mô phỏng</span>
               <span className="text-base font-black text-amber-600">{stats?.scenarios.pending_sim_review || 0}</span>
             </div>
-            <div className="p-2.5 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5 flex-1 min-w-0">
-              <span className="text-[9px] font-bold text-blue-600 uppercase block truncate">Chờ Chạy Thử</span>
+            <div className="p-2.5 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5">
+              <span className="text-[9px] font-bold text-blue-600 uppercase block">Chờ Chạy thử</span>
               <span className="text-base font-black text-blue-600">{stats?.scenarios.simulation_queued || 0}</span>
             </div>
-            <div className="p-2.5 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 rounded-2xl space-y-0.5 flex-1 min-w-0">
-              <span className="text-[9px] font-bold text-green-700 dark:text-green-300 uppercase block truncate">Đã Duyệt</span>
+            <div className="p-2.5 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 rounded-2xl space-y-0.5">
+              <span className="text-[9px] font-bold text-green-700 dark:text-green-300 uppercase block">Đã Duyệt</span>
               <span className="text-base font-black text-green-700 dark:text-green-300">{stats?.scenarios.approved_library || 0}</span>
             </div>
           </div>
@@ -356,9 +356,9 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Main Content Area */}
-      <div className="w-full max-w-full flex-1 flex flex-col min-h-0 bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-5 space-y-4 shadow-sm overflow-hidden">
+      <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-6 shadow-sm">
         {/* Navigation Tabs */}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sky-200/80 dark:border-slate-800 pb-3 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sky-200/80 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setActiveTab("pending")}
@@ -403,8 +403,8 @@ export default function AdminDashboardPage() {
 
         {/* TAB 1: PENDING APPROVALS */}
         {activeTab === "pending" && (
-          <div className="flex-1 flex flex-col min-h-0 space-y-4 overflow-hidden">
-            <div className="flex items-center justify-between shrink-0">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
                 <Shield className="w-4 h-4 text-amber-600" />
                 Yêu cầu Đăng ký Tài khoản Reviewer (Không Mật khẩu) - Cần Phê Duyệt:
@@ -422,60 +422,58 @@ export default function AdminDashboardPage() {
                 </p>
               </div>
             ) : (
-              <div className="w-full flex-1 flex flex-col min-h-0 rounded-2xl border border-sky-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
-                <div className="w-full overflow-x-auto overflow-y-auto max-h-[calc(100vh-420px)] min-h-[300px]">
-                  <table className="min-w-[700px] w-full text-left border-collapse">
-                    <thead className="sticky top-0 z-10 bg-sky-100/90 dark:bg-slate-800/90 backdrop-blur-md text-[#1e3a8a] dark:text-sky-300 font-semibold text-xs tracking-wider uppercase border-b border-sky-200/80 dark:border-slate-700">
-                      <tr>
-                        <th className="py-3 px-4 whitespace-nowrap">Họ và tên</th>
-                        <th className="py-3 px-4 whitespace-nowrap">Username</th>
-                        <th className="py-3 px-4 whitespace-nowrap">Email làm việc</th>
-                        <th className="py-3 px-4 whitespace-nowrap">Lý do / Đơn vị công tác</th>
-                        <th className="py-3 px-4 whitespace-nowrap">Ngày đăng ký</th>
-                        <th className="py-3 px-4 whitespace-nowrap text-right">Thao tác Admin</th>
+              <div className="w-full overflow-x-auto rounded-2xl border border-sky-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+                <table className="min-w-[700px] w-full text-left border-collapse">
+                  <thead className="bg-sky-100/60 dark:bg-slate-800/80 text-[#1e3a8a] dark:text-sky-300 font-semibold text-xs tracking-wider uppercase border-b border-sky-200/80 dark:border-slate-700">
+                    <tr>
+                      <th className="py-3 px-4 whitespace-nowrap">Họ và tên</th>
+                      <th className="py-3 px-4 whitespace-nowrap">Username</th>
+                      <th className="py-3 px-4 whitespace-nowrap">Email làm việc</th>
+                      <th className="py-3 px-4 whitespace-nowrap">Lý do / Đơn vị công tác</th>
+                      <th className="py-3 px-4 whitespace-nowrap">Ngày đăng ký</th>
+                      <th className="py-3 px-4 whitespace-nowrap text-right">Thao tác Admin</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-sky-100 dark:divide-slate-800 text-xs md:text-sm">
+                    {pendingList.map((u) => (
+                      <tr key={u.username} className="hover:bg-sky-50/50 dark:hover:bg-slate-800/50 transition">
+                        <td className="py-3 px-4 font-bold text-[#0f2d59] dark:text-slate-100 whitespace-nowrap">
+                          {u.name || u.username}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-bold text-purple-700 dark:text-purple-300 whitespace-nowrap">
+                          {u.username}
+                        </td>
+                        <td className="py-3 px-4 text-slate-700 dark:text-slate-300 whitespace-nowrap">{u.email}</td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400 max-w-xs truncate">
+                          {u.reason || "Kỹ sư mô phỏng Đơn vị Thẩm định"}
+                        </td>
+                        <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
+                          {u.created_at ? new Date(u.created_at).toLocaleDateString("vi-VN") : "Gần đây"}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleRejectReviewer(u.username)}
+                              disabled={submitting}
+                              className="px-3 py-1.5 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 text-red-700 dark:text-red-300 rounded-xl text-xs font-bold border border-red-200 dark:border-red-800 transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <UserX className="w-3.5 h-3.5" />
+                              Từ chối
+                            </button>
+                            <button
+                              onClick={() => handleApproveReviewer(u.username)}
+                              disabled={submitting}
+                              className="px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <UserCheck className="w-4 h-4" />
+                              Duyệt & Gửi Mật Khẩu qua Email
+                            </button>
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-sky-100 dark:divide-slate-800 text-xs md:text-sm">
-                      {pendingList.map((u) => (
-                        <tr key={u.username} className="hover:bg-sky-50/50 dark:hover:bg-slate-800/50 transition">
-                          <td className="py-3 px-4 font-bold text-[#0f2d59] dark:text-slate-100 whitespace-nowrap">
-                            {u.name || u.username}
-                          </td>
-                          <td className="py-3 px-4 font-mono font-bold text-purple-700 dark:text-purple-300 whitespace-nowrap">
-                            {u.username}
-                          </td>
-                          <td className="py-3 px-4 text-slate-700 dark:text-slate-300 whitespace-nowrap">{u.email}</td>
-                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400 max-w-xs truncate">
-                            {u.reason || "Kỹ sư mô phỏng Đơn vị Thẩm định"}
-                          </td>
-                          <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
-                            {u.created_at ? new Date(u.created_at).toLocaleDateString("vi-VN") : "Gần đây"}
-                          </td>
-                          <td className="py-3 px-4 whitespace-nowrap text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => handleRejectReviewer(u.username)}
-                                disabled={submitting}
-                                className="px-3 py-1.5 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 text-red-700 dark:text-red-300 rounded-xl text-xs font-bold border border-red-200 dark:border-red-800 transition flex items-center gap-1 cursor-pointer"
-                              >
-                                <UserX className="w-3.5 h-3.5" />
-                                Từ chối
-                              </button>
-                              <button
-                                onClick={() => handleApproveReviewer(u.username)}
-                                disabled={submitting}
-                                className="px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-                              >
-                                <UserCheck className="w-4 h-4" />
-                                Duyệt & Gửi Mật Khẩu qua Email
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -483,9 +481,9 @@ export default function AdminDashboardPage() {
 
         {/* TAB 2: USER MANAGEMENT (CRUD USERS) */}
         {activeTab === "users" && (
-          <div className="flex-1 flex flex-col min-h-0 space-y-4 overflow-hidden">
+          <div className="space-y-4">
             {/* Filter Toolbar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-800/80 p-4 rounded-2xl border border-sky-100 dark:border-slate-700 shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-800/80 p-4 rounded-2xl border border-sky-100 dark:border-slate-700">
               <div className="flex items-center gap-2 flex-1 min-w-[240px]">
                 <Search className="w-4 h-4 text-slate-400 shrink-0" />
                 <input
@@ -531,11 +529,10 @@ export default function AdminDashboardPage() {
             </div>
 
             {/* Users Table */}
-            <div className="w-full flex-1 flex flex-col min-h-0 rounded-2xl border border-sky-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
-              <div className="w-full overflow-x-auto overflow-y-auto max-h-[calc(100vh-420px)] min-h-[300px]">
-                <table className="min-w-[750px] w-full text-left border-collapse">
-                  <thead className="sticky top-0 z-10 bg-sky-100/90 dark:bg-slate-800/90 backdrop-blur-md text-[#1e3a8a] dark:text-sky-300 font-semibold text-xs tracking-wider uppercase border-b border-sky-200/80 dark:border-slate-700">
-                    <tr>
+            <div className="w-full overflow-x-auto rounded-2xl border border-sky-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+              <table className="min-w-[750px] w-full text-left border-collapse">
+                <thead className="bg-sky-100/60 dark:bg-slate-800/80 text-[#1e3a8a] dark:text-sky-300 font-semibold text-xs tracking-wider uppercase border-b border-sky-200/80 dark:border-slate-700">
+                  <tr>
                     <th className="py-3 px-4 whitespace-nowrap">Username</th>
                     <th className="py-3 px-4 whitespace-nowrap">Họ và tên</th>
                     <th className="py-3 px-4 whitespace-nowrap">Email</th>
@@ -571,20 +568,16 @@ export default function AdminDashboardPage() {
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
                         {u.status === "active" ? (
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 dark:bg-green-950/60 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800">
-                            🟢 Active
-                          </span>
-                        ) : u.status === "inactive" ? (
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
-                            🔴 Inactive (Đã Khóa)
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">
+                            Active
                           </span>
                         ) : u.status === "pending_approval" || u.status === "pending" ? (
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                            🟡 Chờ duyệt
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            Chờ duyệt
                           </span>
                         ) : (
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
-                            ⚪ {u.status || "Inactive"}
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200">
+                            {u.status || "Inactive"}
                           </span>
                         )}
                       </td>
@@ -613,7 +606,6 @@ export default function AdminDashboardPage() {
               </table>
             </div>
           </div>
-        </div>
         )}
       </div>
 
@@ -751,16 +743,12 @@ export default function AdminDashboardPage() {
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as UserStatus })}
-                    className="w-full px-3.5 py-2 bg-sky-50/40 dark:bg-slate-800 border border-sky-200 dark:border-slate-700 rounded-xl text-xs text-[#0f2d59] dark:text-slate-100 font-semibold"
+                    className="w-full px-3.5 py-2 bg-sky-50/40 dark:bg-slate-800 border border-sky-200 dark:border-slate-700 rounded-xl text-xs text-[#0f2d59] dark:text-slate-100"
                   >
-                    <option value="active">🟢 Active (Hoạt động)</option>
-                    <option value="inactive">🔴 Inactive (Khóa / Vô hiệu hóa)</option>
-                    {editUser && (editUser.status === "pending_approval" || editUser.status === "pending") && (
-                      <option value={editUser.status}>🟡 Pending (Chờ duyệt)</option>
-                    )}
-                    {editUser && editUser.status === "rejected" && (
-                      <option value="rejected">⚪ Rejected (Từ chối)</option>
-                    )}
+                    <option value="active">Active (Hoạt động)</option>
+                    <option value="pending_approval">Pending (Chờ duyệt)</option>
+                    <option value="inactive">Inactive (Khóa)</option>
+                    <option value="rejected">Rejected (Từ chối)</option>
                   </select>
                 </div>
               </div>

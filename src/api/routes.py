@@ -11,24 +11,31 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Body, HTTPException, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from src.agents.graph import build_forge_graph
+from src.agents.nodes.convert_xosc_node import convert_spec_to_xosc
+from src.agents.nodes.validate_node import validate_node
 from src.models.schemas import (
     TOO_VAGUE_MESSAGE,
     DuplicateMatch,
+    EgoControllerType,
     # Domain models
     ExecutionResult,
     # API models
     GenerateRequest,
     GenerateResponse,
+    JobKind,
     JobStatus,
     ReviewApiRequest,
     ReviewGate,
     ScenarioListResponse,
+    ScenarioSpec,
     ScenarioStatus,
     StatusResponse,
     TagUpdateRequest,
@@ -38,8 +45,11 @@ from src.models.schemas import (
     normalize_prompt,
     verification_from_execution,
 )
-from src.services import db
+from src.services import campaign as campaign_service
+from src.services import db, metrics, tuning
 from src.services.library.retriever import SQLiteRetriever
+from src.services.llm import collect_provider_metrics, summarize_provider_metrics
+from src.services.near_duplicate import is_near_duplicate
 
 logger = logging.getLogger(__name__)
 
@@ -116,38 +126,60 @@ async def _run_workflow(request_id: str) -> None:
     }
 
     final: dict = {}
-    try:
-        async for event in build_forge_graph().astream(state):
-            for node, update in event.items():
-                final.update(update or {})
-                # `astream` yield SAU khi node xong, nên đây là "vừa xong node X".
-                # Không ghi đè lên trạng thái kết thúc: node persist tự chốt hàng
-                # request thành done/100 ngay trong transaction của nó, và vòng
-                # lặp này chạy sau đó — ghi đè là kéo ngược 100% về 88%, client
-                # poll mãi không bao giờ thấy "done" dù kịch bản đã nằm trong DB.
-                if node == "persist_pending_sim_review":
-                    continue
-                db.update_generation_request(request_id, step=node, progress=_step_progress(node))
-    except Exception as exc:
-        logger.exception("Workflow hỏng ở request %s", request_id)
-        _mark_failed(request_id, str(exc) or type(exc).__name__)
-        return
+    workflow_started = time.perf_counter()
+    node_started = workflow_started
+    node_latency: dict[str, dict[str, float | int]] = {}
 
-    if final.get("scenario_id"):
-        # Chốt lại cho chắc. Persist đã đặt done/100, nhưng luồng này là thứ
-        # client chờ nên nó phải tự chịu trách nhiệm về trạng thái cuối, không
-        # trông vào việc node ở tầng dưới nhớ làm hộ.
-        db.update_generation_request(
-            request_id, status="done", step="done", progress=100, scenario_id=final["scenario_id"]
-        )
-        return
-
-    # Tới đây là graph dừng sớm: thiếu thông tin, tổ hợp ngoài phạm vi, LLM
-    # hỏng, hoặc hết ba vòng sửa. FR-14: **không** tạo scenario giả cho một lần
-    # sinh thất bại — chỉ ghi lại dấu vết trên chính hàng request.
-    issues = final.get("issues") or []
-    reason = final.get("failed_reason") or (issues[0].message_vi if issues else "Không sinh được kịch bản")
-    _mark_failed(request_id, reason)
+    with collect_provider_metrics() as provider_events:
+        try:
+            async for event in build_forge_graph().astream(state):
+                node_finished = time.perf_counter()
+                elapsed = node_finished - node_started
+                for node, update in event.items():
+                    final.update(update or {})
+                    timing = node_latency.setdefault(node, {"calls": 0, "latency_s": 0.0})
+                    timing["calls"] = int(timing["calls"]) + 1
+                    timing["latency_s"] = round(float(timing["latency_s"]) + elapsed, 6)
+                    # `astream` yield SAU khi node xong, nên đây là "vừa xong node X".
+                    # Không ghi đè lên trạng thái kết thúc: node persist tự chốt hàng
+                    # request thành done/100 ngay trong transaction của nó, và vòng
+                    # lặp này chạy sau đó — ghi đè là kéo ngược 100% về 88%, client
+                    # poll mãi không bao giờ thấy "done" dù kịch bản đã nằm trong DB.
+                    if node == "persist_pending_sim_review":
+                        continue
+                    db.update_generation_request(request_id, step=node, progress=_step_progress(node))
+                node_started = node_finished
+        except Exception as exc:
+            logger.exception("Workflow hỏng ở request %s", request_id)
+            _mark_failed(request_id, str(exc) or type(exc).__name__)
+        else:
+            if final.get("scenario_id"):
+                # Chốt lại cho chắc. Persist đã đặt done/100, nhưng luồng này là thứ
+                # client chờ nên nó phải tự chịu trách nhiệm về trạng thái cuối, không
+                # trông vào việc node ở tầng dưới nhớ làm hộ.
+                db.update_generation_request(
+                    request_id, status="done", step="done", progress=100, scenario_id=final["scenario_id"]
+                )
+            else:
+                # Tới đây là graph dừng sớm: thiếu thông tin, tổ hợp ngoài phạm vi, LLM
+                # hỏng, hoặc hết ba vòng sửa. FR-14: **không** tạo scenario giả cho một
+                # lần sinh thất bại — chỉ ghi lại dấu vết trên chính hàng request.
+                issues = final.get("issues") or []
+                reason = final.get("failed_reason") or (issues[0].message_vi if issues else "Không sinh được kịch bản")
+                _mark_failed(request_id, reason)
+        finally:
+            telemetry = {
+                "telemetry_version": 1,
+                "workflow_latency_s": round(time.perf_counter() - workflow_started, 6),
+                "node_latency": node_latency,
+                "provider": summarize_provider_metrics(provider_events),
+            }
+            try:
+                db.merge_generation_node_metrics(request_id, telemetry)
+            except Exception:
+                # Telemetry không được phép biến một scenario đã sinh đúng thành
+                # request failed. Log để vận hành thấy, nhưng giữ kết quả workflow.
+                logger.exception("Không lưu được telemetry cho request %s", request_id)
 
 
 def _mark_failed(request_id: str, reason: str) -> None:
@@ -321,6 +353,58 @@ async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) ->
     if body.approved and gate is ReviewGate.BEFORE_SIM and not _has_xosc(scenario):
         raise HTTPException(status_code=409, detail=UNCOMPILED_SCENARIO_DETAIL)
 
+    # ADR-019: cảnh báo gần trùng trước khi tạo job CARLA. Biến thể do tuner
+    # sinh ra cố ý đứng sát nhau để dò biên tới hạn, nên không đem chúng qua
+    # chốt này; chúng vẫn phải qua đúng cổng người duyệt như trước.
+    if (
+        body.approved
+        and gate is ReviewGate.BEFORE_SIM
+        and not str(scenario.get("created_by") or "").startswith("tuner:")
+    ):
+        spec_moi = ScenarioSpec.model_validate(scenario["spec"])
+        candidates = db.get_scenarios_for_near_duplicate_check(
+            road_type=spec_moi.odd.road_type.value,
+            weather=spec_moi.odd.weather.value,
+            actor_type=spec_moi.odd.actor_type.value,
+            maneuver=spec_moi.odd.maneuver.value,
+            exclude_id=target_id,
+        )
+        for candidate in candidates:
+            try:
+                spec_cu = ScenarioSpec.model_validate(candidate["spec"])
+            except ValidationError:
+                logger.warning("Bỏ qua candidate gần trùng có spec hỏng: %s", candidate["scenario_id"])
+                continue
+            result = is_near_duplicate(spec_moi, spec_cu)
+            if not result:
+                continue
+            # ID ở hàng DB là nguồn sự thật cho điều hướng. Dữ liệu tuning cũ
+            # từng copy spec gốc nên ``spec.scenario_id`` có thể vẫn là ID base.
+            result = result.model_copy(update={"duplicate_scenario_id": candidate["scenario_id"]})
+            if not body.force_simulate:
+                logger.info(
+                    "near_duplicate_warning scenario=%s duplicate=%s differences=%s",
+                    target_id,
+                    result.duplicate_scenario_id,
+                    len(result.differences),
+                )
+                return {
+                    "ok": False,
+                    "warning": "near_duplicate",
+                    "duplicate": result.model_dump(mode="json"),
+                    "status": current_status.value,
+                    "job_created": False,
+                }
+            logger.info(
+                "near_duplicate_force_simulate scenario=%s duplicate=%s reviewer=%s",
+                target_id,
+                result.duplicate_scenario_id,
+                body.reviewer,
+            )
+            if not body.reason.strip():
+                body.reason = f"Vẫn chạy dù gần trùng với {result.duplicate_scenario_id}"
+            break
+
     db.update_scenario_status(target_id, next_status.value)
     scenario["status"] = next_status.value
 
@@ -416,6 +500,7 @@ async def list_scenarios(
     maneuver: str | None = Query(None),
     scope: str | None = Query(None, description="public | me | all"),
     user: str | None = Query(None, description="Username lọc theo cá nhân"),
+    review_queue: bool = Query(False, description="Loại bản nháp khỏi hàng làm việc của reviewer"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ) -> ScenarioListResponse:
@@ -451,6 +536,12 @@ async def list_scenarios(
                 )
     else:
         items = db.list_all_scenarios()
+
+    # Đây là lọc theo ngữ nghĩa màn hình, không phải access control. Backend
+    # hiện chưa xác thực bearer token nên tuyệt đối không gọi query-param này là
+    # "quyền riêng tư"; nó chỉ ngăn draft xuất hiện ở nơi không thể review.
+    if review_queue:
+        items = [item for item in items if item.get("status") != ScenarioStatus.DRAFT.value]
 
     total = len(items)
     offset = (page - 1) * limit
@@ -563,6 +654,553 @@ async def get_scenario_xosc(scenario_id: str) -> Response:
 # ===========================================================================
 
 
+class CampaignCreateRequest(BaseModel):
+    """Khoanh vùng ODD — đầu vào của chế độ nâng cao.
+
+    Người dùng **không** gõ câu tiếng Việt ở đây; họ chọn ô trên ma trận ODD còn
+    agent viết câu. Câu đó rồi đi qua đúng đường mà chế độ cơ bản đang đi.
+    """
+
+    cells: list[dict] = Field(..., min_length=1, max_length=200)
+    per_cell: int = Field(1, ge=1, le=20)
+    # Trần là điều kiện dừng, không phải tuỳ chọn — xem docstring `services/campaign.py`.
+    max_scenarios: int = Field(10, ge=1, le=200)
+    created_by: str = "creator"
+
+
+async def _run_campaign(campaign_id: str, plan: list, created_by: str) -> None:
+    """Chạy tuần tự: mỗi ô một câu, mỗi câu một lượt sinh đầy đủ.
+
+    Không chạy song song có chủ đích. Backend free tier có một worker nên song
+    song chỉ đổi chỗ hàng đợi, mà mất khả năng dừng đúng lúc chạm trần.
+
+    Mỗi lỗi chỉ giết một ô, không giết chiến dịch: một câu bị chặn vì trùng, hay
+    một lần LLM hỏng, không được làm mất phần còn lại của lô.
+    """
+    generated = failed = 0
+    for cell in plan:
+        if (db.get_campaign(campaign_id) or {}).get("status") == "stopped":
+            break
+        try:
+            prompt = await asyncio.to_thread(campaign_service.compose_prompt, cell, db.campaign_prompts(campaign_id))
+            request_id = str(uuid.uuid4())
+            db.create_generation_request(request_id, prompt, "static", 3, created_by=created_by, force_generate=True)
+            db.attach_request_to_campaign(request_id, campaign_id)
+            await _run_workflow(request_id)
+            req = db.get_generation_request(request_id) or {}
+            if req.get("scenario_id"):
+                generated += 1
+            else:
+                failed += 1
+        except Exception:  # noqa: BLE001 — một ô hỏng không được kéo cả lô theo
+            logger.exception("Chiến dịch %s hỏng ở ô %s", campaign_id, cell.key)
+            failed += 1
+        db.update_campaign(campaign_id, generated=generated, failed=failed)
+
+    final = (db.get_campaign(campaign_id) or {}).get("status")
+    db.update_campaign(campaign_id, status="stopped" if final == "stopped" else "done")
+
+
+@router.post("/campaigns")
+async def create_campaign(body: CampaignCreateRequest) -> dict:
+    """Mở một chiến dịch ODD và chạy nền."""
+    plan = campaign_service.plan_cells(body.cells, body.per_cell, body.max_scenarios)
+    if not plan:
+        raise HTTPException(
+            status_code=422,
+            detail="Không ô nào nằm trong phạm vi converter dựng được (hiện chỉ highway — ADR-016)",
+        )
+    campaign_id = f"cmp_{uuid.uuid4().hex[:8]}"
+    db.create_campaign(
+        campaign_id,
+        [c.model_dump(mode="json") for c in plan],
+        body.per_cell,
+        body.max_scenarios,
+        body.created_by,
+    )
+    asyncio.create_task(_run_campaign(campaign_id, plan, body.created_by))
+    return {"campaign_id": campaign_id, "planned": len(plan)}
+
+
+@router.get("/campaigns")
+async def list_campaigns() -> dict:
+    return {"campaigns": db.list_campaigns()}
+
+
+@router.get("/campaigns/{campaign_id}")
+async def get_campaign(campaign_id: str) -> dict:
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail=f"Chiến dịch '{campaign_id}' không tồn tại")
+    return campaign
+
+
+@router.post("/campaigns/{campaign_id}/stop")
+async def stop_campaign(campaign_id: str) -> dict:
+    """Dừng giữa chừng. Ô đang chạy vẫn chạy nốt; các ô sau không bắt đầu nữa."""
+    if not db.get_campaign(campaign_id):
+        raise HTTPException(status_code=404, detail=f"Chiến dịch '{campaign_id}' không tồn tại")
+    db.update_campaign(campaign_id, status="stopped")
+    return {"ok": True, "status": "stopped"}
+
+
+class BatchReviewRequest(BaseModel):
+    """Duyệt CẢ LÔ ở cổng 1 — ADR-014 phương án A3."""
+
+    reviewer: str = Field(..., min_length=1)
+    approved: bool = True
+    reason: str = ""
+    force_simulate: bool = False
+
+
+@router.post("/campaigns/{campaign_id}/review")
+async def review_campaign(campaign_id: str, body: BatchReviewRequest) -> dict:
+    """Cổng ``BEFORE_SIM`` áp lên **lô**, không lên từng kịch bản (ADR-014 §A3).
+
+    Vì sao không giữ mỗi kịch bản một cú bấm: với 72 ô thì người duyệt bấm 72
+    lần mà không thực sự đọc, và **rubber-stamp còn tệ hơn không có cổng** — nó
+    tạo cảm giác an toàn giả trong khi vẫn tốn thời gian người. Người duyệt ở đây
+    nhìn đúng thứ họ có thông tin để quyết: phạm vi ODD nào, bao nhiêu kịch bản,
+    trần bao nhiêu — rồi đồng ý một lần.
+
+    Vì sao không bỏ cổng: đề bài bắt con người phê duyệt trước khi điều khiển
+    thiết bị. Đó là thứ duy nhất trong ADR-014 không được đem ra đánh đổi.
+
+    **Biên của phép cấp phép nằm trong chính quyết định**: nó chỉ áp cho các kịch
+    bản của chiến dịch này đang đứng ở cổng 1, không áp cho kịch bản sinh sau.
+    """
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail=f"Chiến dịch '{campaign_id}' không tồn tại")
+
+    waiting = db.campaign_scenarios_awaiting_sim(campaign_id)
+    decided: list[str] = []
+    warnings: list[dict] = []
+    for scenario in waiting:
+        result = await post_review(
+            ReviewApiRequest(
+                scenario_id=scenario["scenario_id"],
+                gate="before_sim",
+                approved=body.approved,
+                reviewer=body.reviewer,
+                reason=body.reason or ("duyệt theo lô " + campaign_id),
+                force_simulate=body.force_simulate,
+            )
+        )
+        if result.get("ok"):
+            decided.append(scenario["scenario_id"])
+        elif result.get("warning") == "near_duplicate":
+            warnings.append({"scenario_id": scenario["scenario_id"], **result})
+
+    return {
+        "ok": not warnings,
+        "campaign_id": campaign_id,
+        "scenarios": decided,
+        "count": len(decided),
+        "near_duplicates": warnings,
+    }
+
+
+@router.post("/scenarios/{scenario_id}/tune")
+async def tune_scenario(scenario_id: str) -> dict:
+    """Sinh các biến thể để tìm bộ tham số làm kịch bản **thật sự tới hạn**.
+
+    Bước *concretization* của tài liệu ngành: file hợp lệ mới là nửa việc, chọn
+    được giá trị cụ thể tái hiện được nguy hiểm mới là nửa còn lại. Đo ngày 22/08:
+    5 trên 8 kịch bản chấm được đã chạy trót lọt mà vô hại.
+
+    Biến thể đi qua **đúng hàng đợi job và đúng cổng duyệt** như mọi kịch bản
+    khác — cố ý. Cho chúng tự chạy là dựng một đường tắt vòng qua HITL, mà đó là
+    ràng buộc không được đánh đổi của đề bài.
+    """
+    scenario = _scenario_or_404(scenario_id)
+    try:
+        spec = ScenarioSpec.model_validate(scenario["spec"])
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=f"Spec không hợp lệ: {exc}") from exc
+
+    if not tuning.variant_specs(spec):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Không dò được theo thời điểm trigger. Hoặc hai xe không tiến lại gần nhau, "
+                "hoặc chúng gặp nhau quá sớm để hành vi kịp thành hình (cần ~2,5s), hoặc trigger "
+                "không phải simulation_time. Cả ba đều nói vấn đề nằm ở vị trí/tốc độ ban đầu."
+            ),
+        )
+
+    done = _tuning_variants_so_far(scenario_id)
+    variant, decision = tuning.plan_sweep_step(spec, done)
+    if variant is None:
+        return {
+            "ok": True,
+            "scenario_id": scenario_id,
+            "variants": [],
+            "count": 0,
+            "stopped": decision,
+            "tried": [item["scenario_id"] for item in done],
+        }
+
+    variant_id = f"{scenario_id}_t{len(done) + 1}"
+    try:
+        xosc = convert_spec_to_xosc(variant.model_copy(update={"scenario_id": variant_id}))
+    except Exception as exc:  # noqa: BLE001 — một biến thể hỏng không được giết cả phép dò
+        logger.warning("Biến thể %s không biên dịch được: %s", variant_id, exc)
+        raise HTTPException(status_code=422, detail=f"Biến thể không biên dịch được: {exc}") from exc
+
+    db.save_scenario(
+        variant_id,
+        variant.title,
+        scenario["description_vi"],
+        variant.model_dump(mode="json"),
+        variant.odd.model_dump(mode="json"),
+        xosc_content=xosc,
+        created_by=f"tuner:{scenario_id}",
+    )
+    return {
+        "ok": True,
+        "scenario_id": scenario_id,
+        "variants": [variant_id],
+        "count": 1,
+        "stopped": None,
+        "tried": [item["scenario_id"] for item in done],
+    }
+
+
+def _tuning_variants_so_far(scenario_id: str) -> list[dict]:
+    """Các biến thể đã tạo cho kịch bản này, kèm metrics nếu đã chạy xong.
+
+    Sắp theo ``scenario_id`` được vì hậu tố là ``_t1``, ``_t2``… theo đúng thứ tự
+    ``propose_triggers`` sinh ra, và phép dò không bao giờ tới hai chữ số.
+    """
+    _, scenarios, executions = db.metrics_rows()
+    metrics_by_id = {e["scenario_id"]: (e.get("result") or {}).get("metrics") or {} for e in executions}
+    return [
+        {"scenario_id": row["scenario_id"], "metrics": metrics_by_id.get(row["scenario_id"], {})}
+        for row in sorted(scenarios, key=lambda r: r["scenario_id"])
+        if row["scenario_id"].startswith(f"{scenario_id}_t")
+    ]
+
+
+@router.get("/scenarios/{scenario_id}/tune")
+async def tuning_result(scenario_id: str) -> dict:
+    """So các biến thể đã chạy với kịch bản gốc."""
+    _scenario_or_404(scenario_id)
+    _, _, executions = db.metrics_rows()
+    by_id = {e["scenario_id"]: e for e in executions}
+
+    baseline = by_id.get(scenario_id) or {}
+    results = [
+        {"scenario_id": sid, "metrics": (by_id[sid].get("result") or {}).get("metrics") or {}}
+        for sid in sorted(by_id)
+        if sid.startswith(f"{scenario_id}_t")
+    ]
+    summary = tuning.summarise_tuning({"metrics": (baseline.get("result") or {}).get("metrics") or {}}, results)
+    return {"scenario_id": scenario_id, **summary}
+
+
+class IntentLabelRequest(BaseModel):
+    """Nhãn người cho câu "kịch bản này có tái hiện đúng ý định không"."""
+
+    label: Literal["correct", "wrong", "unsure"]
+    reason: str = ""
+    labeller: str = "unknown"
+
+
+# Đường dẫn riêng chứ không phải /scenarios/awaiting-label: route động
+# /scenarios/{scenario_id} khai báo trước sẽ nuốt nó, và lỗi hiện ra là
+# "Scenario 'awaiting-label' không tồn tại" — chẳng trỏ về nguyên nhân.
+@router.get("/intent-labels/queue")
+async def intent_label_queue(labeller: str = "unknown") -> dict:
+    """Các lượt chạy có quỹ đạo, kèm mô tả gốc — **không kèm phán quyết của máy**.
+
+    Giấu phán quyết là chủ đích, không phải thiếu sót. Hiện sẵn "L4: đúng ý định"
+    thì người chấm sẽ gật theo, và mức khớp thu được là con số vô nghĩa. Đây là
+    chỗ dễ tự lừa nhất trong cả phép đo.
+
+    ``labelled`` chỉ nói người này đã chấm kịch bản đó chưa, để họ biết còn bao
+    nhiêu việc — nó không tiết lộ đã chấm ra sao.
+    """
+    _, scenarios, executions = db.metrics_rows()
+    described = {s["scenario_id"]: s for s in scenarios}
+    mine = {row["scenario_id"] for row in db.intent_labels() if row["labeller"] == labeller}
+
+    items = []
+    for execution in sorted(executions, key=lambda e: e["scenario_id"]):
+        result = execution.get("result") or {}
+        if not result.get("trajectory"):
+            continue
+        scenario = db.get_scenario(execution["scenario_id"]) or {}
+        items.append(
+            {
+                "scenario_id": execution["scenario_id"],
+                "title": scenario.get("title", ""),
+                "description_vi": scenario.get("description_vi", ""),
+                "maneuver": execution.get("maneuver"),
+                "road_type": described.get(execution["scenario_id"], {}).get("road_type"),
+                "trajectory": result["trajectory"],
+                # Thời điểm va chạm để bản phát lại CẮT ở đó. Sau cú đâm, xe bị
+                # hất khỏi làn: đo trên sc_011 thì lệch ngang nhảy từ 3,8 m lên
+                # 153,5 m và xe kết thúc ở 208 m sau lưng ego. Vẽ tiếp phần đó
+                # thì tác nhân trông như đi giật lùi, và trục ngang phải phủ hàng
+                # trăm mét nên cả mặt cắt đường bị ép thành một dải mỏng.
+                #
+                # Đây không phải rò rỉ phán quyết của máy: "có va chạm hay không"
+                # không phải tiêu chí chấm ý định của maneuver nào cả — cut_in
+                # tông đuôi cũng va chạm, mà vẫn là sai ý định.
+                "contact_time_s": (result.get("metrics") or {}).get("contact_time_s"),
+                "labelled": execution["scenario_id"] in mine,
+            }
+        )
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/scenarios/{scenario_id}/intent-label")
+async def label_intent(scenario_id: str, body: IntentLabelRequest) -> dict:
+    """Ghi nhãn người, kèm phán quyết của máy **tại thời điểm chấm**.
+
+    Chép lại phán quyết máy vào hàng nhãn để chỗ lệch còn truy được về sau khi
+    luật L4 đã đổi. Không có nó thì mỗi lần sửa luật là mất sạch lịch sử bất
+    đồng — mà bất đồng mới là thứ đáng giá.
+    """
+    _scenario_or_404(scenario_id)
+    _, _, executions = db.metrics_rows()
+    execution = next((e for e in executions if e["scenario_id"] == scenario_id), None)
+    if execution is None:
+        raise HTTPException(status_code=409, detail="Kịch bản chưa chạy nên chưa có gì để chấm")
+
+    verdict = metrics.intent_verdict(execution)
+    saved = db.save_intent_label(
+        scenario_id,
+        body.labeller,
+        body.label,
+        body.reason.strip(),
+        None if verdict is None else ("correct" if verdict else "wrong"),
+    )
+    return {"ok": True, **saved}
+
+
+@router.get("/metrics/intent-agreement")
+async def intent_agreement_report() -> dict:
+    """Chấm tự động khớp với người chấm tay tới đâu — và lệch ở đâu."""
+    _, _, executions = db.metrics_rows()
+    return metrics.intent_agreement(executions, db.intent_labels())
+
+
+@router.get("/library/audit")
+async def library_audit() -> dict:
+    """Rà lại **toàn kho** theo luật hiện tại. Chỉ báo, không sửa.
+
+    Vì sao cần: luật hình học được bổ sung dần, nhưng chỉ áp **lúc sinh**. Kịch
+    bản vào kho trước khi một luật ra đời thì không bao giờ được kiểm lại.
+
+    Bằng chứng ngày 23/08/2026: ``sc_022`` nằm trong kho vi phạm
+    ``MIN_CUT_IN_LEAD_M`` — nó tạt vào làn ego khi mới dẫn trước 4,67 m, dưới
+    ngưỡng 7,0 m. Người xem trực tiếp trên CARLA phát hiện ("lúc ego đi qua rồi
+    mới thấy xe máy nó tạt sang"), rồi chạy validate lại mới thấy luật **đã có
+    sẵn** và bắt được nó từ lâu.
+
+    Lượt rà đầu tiên bắt đúng hai kịch bản mà người chấm tay đã đánh "sai"
+    (``sc_021``, ``sc_022``), và **không báo nhầm** cái nào trong năm kịch bản
+    người chấm "đúng".
+
+    **Không tự sửa**: sửa là đổi nội dung kịch bản, và đó là quyết định của người
+    duyệt (ADR-018). Trả về kèm ``suggestion`` để họ có số cụ thể mà áp.
+    """
+    _, scenarios, _ = db.metrics_rows()
+    rows = [s for s in scenarios if (s.get("created_by") or "") != metrics.SEED_AUTHOR]
+
+    clean: list[str] = []
+    flagged: list[dict] = []
+    unbuildable: list[dict] = []
+
+    for row in sorted(rows, key=lambda r: r["scenario_id"]):
+        scenario_id = row["scenario_id"]
+        full = db.get_scenario(scenario_id) or {}
+        spec_data = dict(full.get("spec") or {})
+        draft = {k: v for k, v in spec_data.items() if k not in ("scenario_id", "description_vi")}
+
+        result = await validate_node({"draft": draft, "odd_query": {**draft.get("odd", {}), "inferred": []}})
+        issues = result["issues"]
+
+        try:
+            convert_spec_to_xosc(ScenarioSpec.model_validate(spec_data))
+        except Exception as exc:  # noqa: BLE001 — mọi kiểu hỏng đều là "không dựng lại được"
+            unbuildable.append({"scenario_id": scenario_id, "status": row["status"], "reason": str(exc)})
+            continue
+
+        if issues:
+            flagged.append(
+                {
+                    "scenario_id": scenario_id,
+                    "status": row["status"],
+                    "maneuver": row["maneuver"],
+                    "issues": [i.model_dump(mode="json") for i in issues],
+                }
+            )
+        else:
+            clean.append(scenario_id)
+
+    return {
+        "audited": len(rows),
+        "clean": len(clean),
+        "flagged": flagged,
+        "unbuildable": unbuildable,
+    }
+
+
+@router.get("/metrics/quality")
+async def quality_report() -> dict:
+    """Báo cáo M1/M2/M3 — mục "Báo cáo tỷ lệ kịch bản hợp lệ" của đề bài.
+
+    Tính từ dữ liệu thật trong kho mỗi lần gọi, không có bảng tổng hợp riêng:
+    số liệu báo cáo mà lệch với số liệu hệ thống là lỗi tệ nhất trong một báo cáo.
+    """
+    requests, scenarios, executions = db.metrics_rows()
+    return metrics.build_report(requests, scenarios, executions)
+
+
+def _result_had_collision(result: dict | None) -> bool | None:
+    if not result or not result.get("success"):
+        return None
+    return any(
+        str(item.get("name", "")).lower().startswith("collision") and str(item.get("result", "")).upper() == "FAILURE"
+        for item in result.get("criteria_results", [])
+    )
+
+
+def _initial_speed_delta_ms(baseline: dict | None, controller: dict | None) -> float | None:
+    """Độ lệch vận tốc ego ở giây 2; thiếu metric thì không giả vờ là bằng nhau."""
+    baseline_speed = (baseline or {}).get("metrics", {}).get("ego_speed_at_2s_ms")
+    controller_speed = (controller or {}).get("metrics", {}).get("ego_speed_at_2s_ms")
+    if baseline_speed is None or controller_speed is None:
+        return None
+    return round(abs(float(baseline_speed) - float(controller_speed)), 3)
+
+
+@router.post("/scenarios/{scenario_id}/controller-runs")
+async def create_controller_run(scenario_id: str) -> dict:
+    """Xếp một cặp A/B mới trên artifact đã xác minh, không sửa workflow HITL."""
+    scenario = _scenario_or_404(scenario_id)
+    if scenario["status"] != ScenarioStatus.APPROVED_LIBRARY.value:
+        raise HTTPException(status_code=409, detail="Chỉ đánh giá controller trên kịch bản đã vào thư viện")
+    if scenario.get("verification") != "adversarial":
+        raise HTTPException(status_code=409, detail="Kịch bản phải tái hiện được nguy hiểm trước khi thử controller")
+    if not _has_xosc(scenario):
+        raise HTTPException(status_code=409, detail=UNCOMPILED_SCENARIO_DETAIL)
+    if any(
+        run["status"] in (JobStatus.PENDING.value, JobStatus.RUNNING.value)
+        for run in db.get_controller_runs(scenario_id)
+    ):
+        raise HTTPException(status_code=409, detail="Kịch bản đã có một lượt đánh giá controller đang chờ")
+
+    run_id = uuid.uuid4().hex[:8]
+    baseline_job = db.create_scenario_job(
+        f"ctrlbase_{run_id}",
+        scenario_id,
+        scenario["xosc_content"],
+        job_kind=JobKind.CONTROLLER_EVALUATION,
+        ego_controller=EgoControllerType.SCENARIO_RUNNER_DEFAULT,
+    )
+    behavior_job = db.create_scenario_job(
+        f"ctrl_{run_id}",
+        scenario_id,
+        scenario["xosc_content"],
+        job_kind=JobKind.CONTROLLER_EVALUATION,
+        ego_controller=EgoControllerType.BEHAVIOR_AGENT,
+    )
+    return {"ok": True, "jobs": [baseline_job, behavior_job]}
+
+
+@router.get("/scenarios/{scenario_id}/controller-runs")
+async def list_controller_runs(scenario_id: str) -> dict:
+    """Trả lịch sử closed-loop và kết luận A/B dễ đọc cho UI/demo."""
+    scenario = _scenario_or_404(scenario_id)
+    runs = db.get_controller_runs(scenario_id)
+    pending = any(run["status"] in (JobStatus.PENDING.value, JobStatus.RUNNING.value) for run in runs)
+    latest = next(
+        (
+            run
+            for run in runs
+            if run.get("result") and run.get("ego_controller") == EgoControllerType.BEHAVIOR_AGENT.value
+        ),
+        None,
+    )
+    evaluation_baseline = next(
+        (
+            run
+            for run in runs
+            if run.get("result") and run.get("ego_controller") == EgoControllerType.SCENARIO_RUNNER_DEFAULT.value
+        ),
+        None,
+    )
+    baseline = (evaluation_baseline or {}).get("result") or scenario.get("latest_execution_result")
+    controller_result = latest.get("result") if latest else None
+    baseline_collision = _result_had_collision(baseline)
+    controller_collision = _result_had_collision(controller_result)
+    initial_speed_delta_ms = _initial_speed_delta_ms(baseline, controller_result)
+    comparable_initial_conditions = initial_speed_delta_ms is None or initial_speed_delta_ms <= 1.0
+    controller_metrics = (controller_result or {}).get("metrics", {})
+    min_distance = controller_metrics.get("min_distance_m")
+    ttc = controller_metrics.get("ttc_min_s")
+
+    if pending:
+        outcome = "pending"
+        next_action = "wait_for_pair"
+        recommendation_vi = "Đang chạy cặp baseline và BehaviorAgent trên cùng artifact; chờ đủ hai lượt để so sánh."
+    elif latest is None:
+        outcome = "not_run"
+        next_action = "run_controller"
+        recommendation_vi = "Chạy BehaviorAgent để đánh giá phản ứng closed-loop trên kịch bản này."
+    elif latest["status"] == JobStatus.FAILED.value or not latest["result"].get("success"):
+        outcome = "execution_failed"
+        next_action = "fix_worker"
+        recommendation_vi = "Lượt đánh giá bị lỗi thực thi; cần sửa worker trước khi kết luận mô hình lái."
+    elif not comparable_initial_conditions:
+        outcome = "incomparable_initial_conditions"
+        next_action = "rerun_controller"
+        recommendation_vi = (
+            f"Hai lượt lệch vận tốc ego {initial_speed_delta_ms:.2f} m/s ở giây 2; "
+            "phải chạy lại trước khi kết luận controller."
+        )
+    elif baseline_collision is True and controller_collision is False:
+        if (min_distance is not None and min_distance < 1.0) or (ttc is not None and ttc < 1.0):
+            outcome = "near_failure"
+            next_action = "create_harder_variant"
+            recommendation_vi = (
+                "BehaviorAgent tránh được nhưng đã vào vùng tới hạn; ưu tiên sinh biến thể quanh điểm này."
+            )
+        else:
+            outcome = "avoided_hazard"
+            next_action = "create_harder_variant"
+            recommendation_vi = "BehaviorAgent đã tránh tương đối dễ; tạo biến thể gần/gấp hơn cho vòng tiếp theo."
+    elif controller_collision is True:
+        outcome = "controller_collision"
+        next_action = "keep_regression"
+        recommendation_vi = (
+            "BehaviorAgent đã phản ứng nhưng vẫn va chạm; giữ kịch bản này làm ca thất bại/regression của mô hình lái."
+        )
+    else:
+        outcome = "inconclusive"
+        next_action = "adjust_scenario"
+        recommendation_vi = "Chưa có chênh lệch A/B rõ; nên điều chỉnh thời điểm hoặc mức nghiêm trọng của biến thể."
+
+    return {
+        "scenario_id": scenario_id,
+        "baseline": baseline,
+        "runs": runs,
+        "comparison": {
+            "outcome": outcome,
+            "baseline_collision": baseline_collision,
+            "controller_collision": controller_collision,
+            "initial_speed_delta_ms": initial_speed_delta_ms,
+            "comparable_initial_conditions": comparable_initial_conditions,
+            "next_action": next_action,
+            "recommendation_vi": recommendation_vi,
+        },
+    }
+
+
 @router.get("/internal/jobs")
 async def list_pending_jobs() -> dict:
     """Worker poll: trả pending jobs để worker nhận chạy."""
@@ -586,6 +1224,13 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
     if body.scenario_id != job["scenario_id"]:
         raise HTTPException(status_code=422, detail="scenario_id trong kết quả không khớp job")
 
+    new_status = JobStatus.DONE.value if body.success else JobStatus.FAILED.value
+    if job.get("job_kind") == JobKind.CONTROLLER_EVALUATION.value:
+        if body.ego_controller.value != job.get("ego_controller"):
+            raise HTTPException(status_code=422, detail="ego_controller trong kết quả không khớp job")
+        db.update_job_result(job_id, new_status, body.model_dump(mode="json"))
+        return {"ok": True, "status": new_status, "job_kind": JobKind.CONTROLLER_EVALUATION.value}
+
     scenario = _scenario_or_404(body.scenario_id)
     next_status = next_status_after_execution(ScenarioStatus(scenario["status"]))
     if next_status is None:
@@ -594,8 +1239,7 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
             detail=f"Kịch bản đang ở '{scenario['status']}', không chờ kết quả mô phỏng",
         )
 
-    new_status = JobStatus.DONE.value if body.success else JobStatus.FAILED.value
-    db.update_job_result(job_id, new_status, body.model_dump())
+    db.update_job_result(job_id, new_status, body.model_dump(mode="json"))
 
     level = verification_from_execution(body.success, body.criteria_results)
     if not db.complete_simulation(body.scenario_id, level):
@@ -612,8 +1256,7 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
 
 class RegisterApiRequest(BaseModel):
     username: str
-    name: str | None = None
-    full_name: str | None = None
+    name: str
     email: str
     role: str = "creator"
     password: str | None = None
@@ -628,8 +1271,7 @@ class LoginApiRequest(BaseModel):
 
 class UserCreateRequest(BaseModel):
     username: str
-    name: str | None = None
-    full_name: str | None = None
+    name: str
     email: str
     role: str = "creator"
     status: str = "active"
@@ -639,7 +1281,6 @@ class UserCreateRequest(BaseModel):
 
 class UserUpdateRequest(BaseModel):
     name: str | None = None
-    full_name: str | None = None
     email: str | None = None
     role: str | None = None
     status: str | None = None
@@ -653,11 +1294,10 @@ async def register_user_endpoint(body: RegisterApiRequest) -> dict:
     if existing:
         raise HTTPException(status_code=400, detail="Username đã tồn tại trên hệ thống")
 
-    user_name = body.name or body.full_name or body.username
     status = "pending_approval" if body.role == "reviewer" else "active"
     user = db.create_user(
         username=body.username,
-        name=user_name,
+        name=body.name,
         email=body.email,
         role=body.role,
         status=status,
@@ -794,19 +1434,11 @@ async def delete_admin_user_endpoint(username: str) -> dict:
 
 
 @router.post("/admin/users/{username}/approve")
-@router.post("/admin/approve-reviewer/{username}")
 async def approve_reviewer_endpoint(username: str) -> dict:
     user = db.approve_reviewer_request(username)
     if not user:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Reviewer")
-    return {
-        "ok": True,
-        "status": "success",
-        "message": "Đã phê duyệt và gửi mật khẩu qua email thành công",
-        "user": user,
-        "temp_password_debug": user.get("temp_password"),
-        "email_sent": user.get("email_sent", False),
-    }
+    return {"ok": True, "user": user}
 
 
 @router.post("/admin/users/{username}/reject")

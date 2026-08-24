@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import sqlite3
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,13 @@ import numpy as np
 
 from src.config import get_settings
 from src.models.schemas import odd_axis_value
-from src.services.llm import EMBEDDING_DIM, get_embeddings
+from src.services.llm import (
+    EMBEDDING_COST_PER_MILLION_TOKENS,
+    EMBEDDING_DIM,
+    EMBEDDING_MODEL,
+    get_embeddings,
+    record_provider_metric,
+)
 from src.services.persistence import EMBEDDING_DTYPE, connect_sqlite, encode_embedding, sqlite_path
 
 logger = logging.getLogger(__name__)
@@ -39,7 +46,26 @@ def generate_text_embedding(text: str, dim: int = EMBEDDING_DIM) -> np.ndarray:
     embedder = get_embeddings()
     if embedder:
         try:
+            started = time.perf_counter()
             vec_list = embedder.embed_query(text)
+            latency = time.perf_counter() - started
+            # LangChain chỉ trả vector, không chuyển tiếp ``usage`` của
+            # Embeddings API. Token ở đây vì thế là estimate có nhãn rõ; latency
+            # vẫn là wall-clock thật. Phần chat phía trên dùng usage thật.
+            estimated_tokens = max(1, len(text) // 4)
+            record_provider_metric(
+                kind="embedding",
+                operation="retrieve_embedding",
+                model=EMBEDDING_MODEL,
+                attempt=0,
+                escalated=False,
+                latency_s=round(latency, 6),
+                input_tokens=estimated_tokens,
+                cached_input_tokens=0,
+                output_tokens=0,
+                cost_usd=round(estimated_tokens * EMBEDDING_COST_PER_MILLION_TOKENS / 1_000_000, 9),
+                token_source="estimated_chars_div_4",
+            )
             vec = np.array(vec_list, dtype=np.float32)
             norm = np.linalg.norm(vec)
             if norm > 0:
