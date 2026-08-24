@@ -500,6 +500,7 @@ async def list_scenarios(
     maneuver: str | None = Query(None),
     scope: str | None = Query(None, description="public | me | all"),
     user: str | None = Query(None, description="Username lọc theo cá nhân"),
+    review_queue: bool = Query(False, description="Loại bản nháp khỏi hàng làm việc của reviewer"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ) -> ScenarioListResponse:
@@ -535,6 +536,12 @@ async def list_scenarios(
                 )
     else:
         items = db.list_all_scenarios()
+
+    # Đây là lọc theo ngữ nghĩa màn hình, không phải access control. Backend
+    # hiện chưa xác thực bearer token nên tuyệt đối không gọi query-param này là
+    # "quyền riêng tư"; nó chỉ ngăn draft xuất hiện ở nơi không thể review.
+    if review_queue:
+        items = [item for item in items if item.get("status") != ScenarioStatus.DRAFT.value]
 
     total = len(items)
     offset = (page - 1) * limit

@@ -134,6 +134,27 @@ async def test_cors_accepts_loopback_frontend(client):
 
 
 @pytest.mark.asyncio
+async def test_review_queue_excludes_drafts_without_hiding_them_from_creator_library(client):
+    draft = await client.post(
+        "/api/v1/scenarios/draft",
+        json={
+            "title": "Bản nháp chỉ để tiếp tục chỉnh sửa",
+            "description_vi": "Bản nháp chưa sẵn sàng cho reviewer",
+            "odd": {"road_type": "highway"},
+            "created_by": "creator_a",
+        },
+    )
+    assert draft.status_code == 200
+    draft_id = draft.json()["scenario_id"]
+
+    review_items = (await client.get("/api/v1/scenarios?review_queue=true&limit=100")).json()["items"]
+    assert draft_id not in {item["scenario_id"] for item in review_items}
+
+    creator_items = (await client.get("/api/v1/scenarios?scope=me&user=creator_a&limit=100")).json()["items"]
+    assert draft_id in {item["scenario_id"] for item in creator_items}
+
+
+@pytest.mark.asyncio
 async def test_generate_endpoint_validation(client):
     # Empty prompt should return 422 (Pydantic min_length=1)
     response = await client.post("/api/v1/generate", json={"prompt": "", "validation_mode": "static"})
