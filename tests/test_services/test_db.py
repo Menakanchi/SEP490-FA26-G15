@@ -8,6 +8,7 @@ chuỗi ghép làm `WHERE` trượt sạch.
 from __future__ import annotations
 
 import ast
+import json
 import sqlite3
 from pathlib import Path
 
@@ -171,6 +172,26 @@ def test_generation_request_round_trips_retrieve_limit() -> None:
     assert (updated["step"], updated["progress"], updated["limit"]) == ("retrieve", 25, 7)
 
 
+def test_merge_generation_metrics_giu_provenance_cu() -> None:
+    db.create_generation_request("req_metrics", "Xe máy tạt đầu", "static")
+    db.update_generation_request(
+        "req_metrics",
+        node_metrics='{"model":"gpt-test","retrieved_examples":[{"id":"sc_001"}]}',
+    )
+
+    db.merge_generation_node_metrics(
+        "req_metrics",
+        {"workflow_latency_s": 1.25, "provider": {"cost_usd": 0.004}},
+    )
+
+    raw = db.get_generation_request("req_metrics")["node_metrics"]
+    metrics = json.loads(raw)
+    assert metrics["model"] == "gpt-test"
+    assert metrics["retrieved_examples"] == [{"id": "sc_001"}]
+    assert metrics["workflow_latency_s"] == 1.25
+    assert metrics["provider"]["cost_usd"] == 0.004
+
+
 # ===========================================================================
 # ADR-015 — khoá chặn trùng
 # ===========================================================================
@@ -226,3 +247,29 @@ def test_migration_chay_lai_duoc_nhieu_lan() -> None:
     db.init_db()
 
     assert db.find_duplicate_prompt("xe máy tạt đầu ô tô trên cao tốc")["scenario_id"] == "sc_001"
+
+
+# ===========================================================================
+# ADR-019 — shortlist gần trùng trước GPU
+# ===========================================================================
+
+
+def test_near_duplicate_candidates_filter_by_odd_status_and_id() -> None:
+    _save("sc_match")
+    _save("sc_excluded")
+    _save("sc_fog", odd={**SPEC["odd"], "weather": "fog"})
+    _save("sc_rejected")
+    db.update_scenario_status("sc_rejected", ScenarioStatus.REJECTED.value)
+    _save("sc_legacy_sim")
+    db.update_scenario_status("sc_legacy_sim", ScenarioStatus.APPROVED_SIM.value)
+
+    rows = db.get_scenarios_for_near_duplicate_check(
+        road_type="highway",
+        weather="clear",
+        actor_type="motorcycle",
+        maneuver="cut_in",
+        exclude_id="sc_excluded",
+    )
+
+    assert {row["scenario_id"] for row in rows} == {"sc_match", "sc_legacy_sim"}
+    assert all(row["spec"] == SPEC for row in rows)

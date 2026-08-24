@@ -2,7 +2,7 @@
   "_comment": "Dùng distance_to_ego cho cut_in. RelativeDistanceCondition là ĐỘ LỚN KHÔNG DẤU nên 'cách 15m' đúng cả khi xe máy CÒN Ở SAU — nó sẽ tạt vào làn ego khi vẫn sau lưng, thành nhập làn chứ không phải tạt đầu. Xem chú thích đầu fixtures/xosc/sample_001_cut_in.xosc.",
   "caught_by": "static_check",
   "expected_codes": [
-    "TRIGGER_DISTANCE_UNSIGNED"
+    "TRIGGER_CUTIN_NOT_POSITIONAL"
   ],
   "expected_paths": [
     "/maneuvers/0/trigger/type"

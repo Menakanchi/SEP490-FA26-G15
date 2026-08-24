@@ -127,9 +127,18 @@
               <StartTrigger>
                 <ConditionGroup>
                   <Condition name="trigger_cut_in" delay="0" conditionEdge="rising">
-                    <ByValueCondition>
-                      <SimulationTimeCondition value="2" rule="greaterThan" />
-                    </ByValueCondition>
+                    <ByEntityCondition>
+                      <TriggeringEntities triggeringEntitiesRule="any">
+                        <EntityRef entityRef="other" />
+                      </TriggeringEntities>
+                      <EntityCondition>
+                        <ReachPositionCondition tolerance="2.5">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="9.5" offset="0" />
+                          </Position>
+                        </ReachPositionCondition>
+                      </EntityCondition>
+                    </ByEntityCondition>
                   </Condition>
                 </ConditionGroup>
               </StartTrigger>
@@ -197,6 +206,20 @@
               <ByValueCondition>
                 <SimulationTimeCondition value="30" rule="greaterThan" />
               </ByValueCondition>
+            </Condition>
+          </ConditionGroup>
+          <ConditionGroup>
+            <Condition name="stop_on_collision_other" delay="0" conditionEdge="rising">
+              <ByEntityCondition>
+                <TriggeringEntities triggeringEntitiesRule="any">
+                  <EntityRef entityRef="hero" />
+                </TriggeringEntities>
+                <EntityCondition>
+                  <CollisionCondition>
+                    <EntityRef entityRef="other" />
+                  </CollisionCondition>
+                </EntityCondition>
+              </ByEntityCondition>
             </Condition>
           </ConditionGroup>
         </StopTrigger>

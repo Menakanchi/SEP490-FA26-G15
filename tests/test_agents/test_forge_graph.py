@@ -68,7 +68,7 @@ def _draft(*, s_offset_m: float, adv_speed: float) -> ScenarioDraft:
                 {
                     "actor_name": "adv",
                     "maneuver": ManeuverType.CUT_IN,
-                    "trigger": {"type": "simulation_time", "value": 7.0},
+                    "trigger": {"type": "lead_distance", "value": 7.0},
                     "target_speed_kmh": 40.0,
                 }
             ],
