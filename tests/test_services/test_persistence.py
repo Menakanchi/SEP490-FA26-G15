@@ -68,7 +68,12 @@ def persist(
 
 def test_schema_contains_exact_shared_tables(repository: ScenarioRepository) -> None:
     assert set(inspect(repository.engine).get_table_names()) == {
+        # Chiến dịch ODD (chế độ nâng cao) — một hàng mỗi lần khoanh vùng, và
+        # `generation_requests.campaign_id` nối ngược về đây.
+        "campaigns",
         "generation_requests",
+        # Nhãn người chấm ý định — thứ biến L4 từ "máy tự chấm máy" thành đo được.
+        "intent_labels",
         "review_decisions",
         "scenario_jobs",
         "scenarios",
@@ -253,6 +258,8 @@ def test_before_sim_approval_creates_job_atomically(repository: ScenarioReposito
         job = connection.execute(select(scenario_jobs)).mappings().one()
     assert job["scenario_id"] == spec.scenario_id
     assert job["xosc_content"] == "<OpenSCENARIO />"
+    assert job["job_kind"] == "scenario_validation"
+    assert job["ego_controller"] == "constant_speed"
     assert repository.get_scenario(spec.scenario_id)["status"] == ScenarioStatus.SIMULATION_QUEUED.value
 
 

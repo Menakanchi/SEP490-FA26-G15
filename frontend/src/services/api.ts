@@ -7,11 +7,20 @@
 import type {
   GenerationStatus,
   ReviewRequest,
+  ReviewResponse,
   ScenarioDetail,
   ScenarioItem,
   ScenarioStatus,
   ODDPayload,
   ValidationMode,
+  QualityReport,
+  ControllerRunsResponse,
+
+  CampaignDetail,
+  CampaignReviewResponse,
+  CampaignSummary,
+  LabelQueueItem,
+  IntentAgreement,
 } from "@/types";
 import type { LoginPayload, RegisterPayload, User } from "@/types/auth";
 
@@ -86,8 +95,8 @@ export async function getStatus(requestId: string): Promise<GenerationStatus> {
 
 export async function postReview(
   payload: ReviewRequest,
-): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>(`/scenarios/${encodeURIComponent(payload.scenario_id)}/review`, {
+): Promise<ReviewResponse> {
+  return request<ReviewResponse>(`/scenarios/${encodeURIComponent(payload.scenario_id)}/review`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -102,6 +111,7 @@ export interface GetScenariosParams {
   odd?: ODDPayload;
   scope?: "public" | "me" | "all";
   user?: string;
+  reviewQueue?: boolean;
   page?: number;
   limit?: number;
 }
@@ -114,6 +124,7 @@ export async function getScenarios(
   if (params?.search) query.set("search", params.search);
   if (params?.scope) query.set("scope", params.scope);
   if (params?.user) query.set("user", params.user);
+  if (params?.reviewQueue) query.set("review_queue", "true");
   if (params?.page) query.set("page", String(params.page));
   if (params?.limit) query.set("limit", String(params.limit));
 
@@ -211,6 +222,23 @@ export async function getScenarioById(
 ): Promise<ScenarioDetail> {
   return request<ScenarioDetail>(
     `/scenarios/${encodeURIComponent(id)}`,
+  );
+}
+
+export async function getControllerRuns(
+  id: string,
+): Promise<ControllerRunsResponse> {
+  return request<ControllerRunsResponse>(
+    `/scenarios/${encodeURIComponent(id)}/controller-runs`,
+  );
+}
+
+export async function postControllerRun(
+  id: string,
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(
+    `/scenarios/${encodeURIComponent(id)}/controller-runs`,
+    { method: "POST" },
   );
 }
 
@@ -358,4 +386,75 @@ export async function rejectReviewer(username: string): Promise<{ ok: boolean; u
   return request<{ ok: boolean; user: User }>(`/admin/users/${encodeURIComponent(username)}/reject`, {
     method: "POST",
   });
+}
+
+
+// ---------------------------------------------------------------------------
+// GET /metrics/quality — báo cáo M1/M2/M3
+// ---------------------------------------------------------------------------
+
+export async function getQualityReport(): Promise<QualityReport> {
+  return request<QualityReport>("/metrics/quality");
+}
+
+
+// ---------------------------------------------------------------------------
+// /campaigns — chiến dịch ODD (chế độ nâng cao)
+// ---------------------------------------------------------------------------
+
+export async function createCampaign(body: {
+  cells: Array<Record<string, string>>;
+  per_cell: number;
+  max_scenarios: number;
+  created_by: string;
+}): Promise<{ campaign_id: string; planned: number }> {
+  return request("/campaigns", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function listCampaigns(): Promise<CampaignSummary[]> {
+  const data = await request<{ campaigns: CampaignSummary[] }>("/campaigns");
+  return data.campaigns;
+}
+
+export async function getCampaign(id: string): Promise<CampaignDetail> {
+  return request<CampaignDetail>(`/campaigns/${encodeURIComponent(id)}`);
+}
+
+export async function stopCampaign(id: string): Promise<{ ok: boolean }> {
+  return request(`/campaigns/${encodeURIComponent(id)}/stop`, { method: "POST" });
+}
+
+export async function reviewCampaign(
+  id: string,
+  body: { reviewer: string; approved?: boolean; reason?: string; force_simulate?: boolean },
+): Promise<CampaignReviewResponse> {
+  return request<CampaignReviewResponse>(`/campaigns/${encodeURIComponent(id)}/review`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+
+// ---------------------------------------------------------------------------
+// Chấm ý định bằng người — hợp thức hoá mức L4
+// ---------------------------------------------------------------------------
+
+export async function getLabelQueue(labeller: string): Promise<{ items: LabelQueueItem[]; count: number }> {
+  return request<{ items: LabelQueueItem[]; count: number }>(
+    `/intent-labels/queue?labeller=${encodeURIComponent(labeller)}`,
+  );
+}
+
+export async function submitIntentLabel(
+  scenarioId: string,
+  body: { label: "correct" | "wrong" | "unsure"; reason: string; labeller: string },
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/scenarios/${scenarioId}/intent-label`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getIntentAgreement(): Promise<IntentAgreement> {
+  return request<IntentAgreement>("/metrics/intent-agreement");
 }

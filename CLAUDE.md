@@ -70,7 +70,12 @@ but the system failed to create because of bind error
 `SR_ROOT=~/scenario_runner`, `CARLA_TM_PORT=8005` — đúng cho máy này, không cần
 đặt gì. Giải nén CARLA chỗ khác thì override bằng biến môi trường cùng tên.
 
-## Không nhìn thấy gì trong cửa sổ CARLA
+## Luôn bật camera bám xe trước khi chạy kịch bản
+
+**Quy tắc: chạy `follow_hero.py` TRƯỚC mọi lần chạy scenario, kể cả batch.**
+Không có nó thì người ngồi cạnh nhìn cửa sổ CARLA thấy đường trống và kết luận
+"không chạy" — trong khi worker đang chạy job thứ mười. Đã mất thời gian vì
+chuyện này hai lần.
 
 ScenarioRunner **không** di chuyển spectator camera. Kịch bản chạy ở một góc
 nào đó của Town04 còn cửa sổ vẫn nhìn vào chỗ map vừa load — nhìn vào đó thấy
