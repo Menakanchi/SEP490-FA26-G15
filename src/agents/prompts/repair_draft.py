@@ -56,6 +56,27 @@ Chỉ đổi s_offset_m thành âm mà để nguyên tốc độ chậm hơn ego
 **Draft đã sửa:**
 - trigger.value: 5.0 (phải NHỎ HƠN duration_s, không phải bằng)
 
+### Ví dụ 3: TRIGGER_CUTIN_NOT_POSITIONAL — cut_in phải theo VỊ TRÍ
+
+Tốc độ ghi trong spec là lệnh, không bảo đảm tốc độ thật. Vì vậy không được suy
+vị trí vượt lên từ số giây; hãy kích hoạt trực tiếp theo mét dẫn trước.
+
+**Draft bị lỗi:**
+- adv: s_offset_m -25.0, initial_speed_kmh 80.0; ego 60.0 km/h
+- maneuvers[0].trigger: {{"type": "simulation_time", "value": 6.0}}
+- suggestion: "Đặt trigger = {{'type': 'lead_distance', 'value': 7.0}}"
+
+**Draft đã sửa:**
+- maneuvers[0].trigger: {{"type": "lead_distance", "value": 7.0}}
+
+Giữ nguyên s_offset_m và cả hai tốc độ. `lead_distance` dùng đơn vị mét và phải
+>= 7 m để actor vượt đủ một thân xe trước khi tạt.
+
+Vì sao quan trọng: tạt đầu khi chủ thể **còn ở sau** ego thì nó nhập làn sau lưng
+ego rồi đâm vào đuôi. Vẫn có va chạm, nên criteria vẫn báo "tìm được nguy hiểm" —
+sai loại nguy hiểm so với câu người dùng gõ, mà không phép đo nào ở tầng criteria
+phân biệt được.
+
 ## OUTPUT
 Trả về JSON theo format ScenarioDraft đã sửa.
 """

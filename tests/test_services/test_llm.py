@@ -12,6 +12,8 @@ from src.services.llm import (
     _get_escalated_model,
     _get_primary_model,
     call_with_escalation,
+    collect_provider_metrics,
+    token_cost_usd,
 )
 
 
@@ -47,6 +49,38 @@ class TestCallWithEscalation:
             # Verify: trả về đúng kết quả
             assert result.name == "test"
             assert result.value == 42
+
+    def test_provider_usage_tinh_ca_output_va_cached_input(self):
+        """Cost phải dùng usage thật; output không được âm thầm tính bằng 0."""
+        messages = [{"role": "user", "content": "test"}]
+        raw = MagicMock()
+        raw.usage_metadata = {
+            "input_tokens": 1_000,
+            "output_tokens": 200,
+            "input_token_details": {"cache_read": 400},
+        }
+        envelope = {
+            "raw": raw,
+            "parsed": DummySchema(name="test", value=42),
+            "parsing_error": None,
+        }
+        with patch("src.services.llm.ChatOpenAI") as mock_chat:
+            mock_chat.return_value.with_structured_output.return_value.invoke.return_value = envelope
+            with collect_provider_metrics() as events:
+                result = call_with_escalation(messages, DummySchema, operation="benchmark")
+
+        assert result.value == 42
+        assert events[0]["token_source"] == "provider"
+        assert events[0]["input_tokens"] == 1_000
+        assert events[0]["output_tokens"] == 200
+        assert events[0]["cost_usd"] == pytest.approx(
+            token_cost_usd(
+                _get_primary_model(),
+                input_tokens=1_000,
+                output_tokens=200,
+                cached_input_tokens=400,
+            )
+        )
 
     def test_fail_once_retry_same_model(self):
         """Fail 1 lần → retry cùng model, lần 2 thành công."""
@@ -173,3 +207,14 @@ class TestCallWithEscalation:
 
             # Verify: chỉ gọi 1 lần, không retry
             assert mock_chat.call_count == 1
+
+
+def test_token_cost_usd_tru_cached_khoi_input_thuong() -> None:
+    # gpt-5.4-mini: 600 token thường × 0,75 + 400 cached × 0,075
+    # + 200 output × 4,5, tất cả theo 1M token.
+    assert token_cost_usd(
+        "gpt-5.4-mini",
+        input_tokens=1_000,
+        cached_input_tokens=400,
+        output_tokens=200,
+    ) == pytest.approx((600 * 0.75 + 400 * 0.075 + 200 * 4.5) / 1_000_000)

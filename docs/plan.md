@@ -72,8 +72,8 @@ Nếu milestone trước chưa đạt, không mở feature nâng cao của miles
 
 | # | Deliverable | Evidence | Trạng thái |
 |---|---|---|---|
-| 1 | Source code | `src/`, `worker/`, frontend, tests | Đang làm |
-| 2 | README | `README.md` | Có bản dự án, tiếp tục cập nhật |
+| 1 | Source code | `src/`, `worker/`, frontend, tests | Có vertical slice + campaign + CARLA metrics |
+| 2 | README | `README.md` | Đã cập nhật trạng thái 24/08 |
 | 3 | Architecture | `ARCHITECTURE.md`, ADRs | Có bản mục tiêu + trạng thái |
 | 4 | AI logs | `.ai-log/`, LangSmith traces | Cần đủ mọi thành viên |
 | 5 | Live URL | frontend + backend `/health` | Chưa có |
@@ -81,7 +81,7 @@ Nếu milestone trước chưa đạt, không mở feature nâng cao của miles
 | 7 | Pitch deck | `presentation/` | Chưa có |
 | 8 | Weekly journal | `JOURNAL.md` | Cần ghi thật mỗi tuần |
 | 9 | Worklog | `WORKLOG.md` | Cần ghi thật mỗi ngày |
-| 10 | Evaluation | `eval/results/report.md` | Chưa có số thật |
+| 10 | Evaluation | `eval/results/report.md` | Có snapshot số thật 24/08; cần mở rộng nhãn người |
 
 ## 6. Quality gates
 

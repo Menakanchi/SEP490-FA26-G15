@@ -1,16 +1,28 @@
-<<<<<<< HEAD
 # Scenario Forge (RAV-03)
 
 Scenario Forge nhận mô tả tiếng Việt về một tình huống giao thông nguy hiểm và
 sinh file **OpenSCENARIO 1.0 (`.xosc`)** để kỹ sư review, tải về và kiểm chứng
 bằng CARLA ScenarioRunner trước khi đưa vào thư viện.
 
-> Trạng thái hiện tại: đường đi đầy đủ đã chạy — bảy node, converter, retrieval,
-> review API hai cổng, frontend và GPU worker (chạy thật trên CARLA ngày
-> 15/08/2026). Chưa có: behavior checker, agent layer closed-loop, và báo cáo
-> M1/M2/M3 bằng số trên tập lớn. Phạm vi converter còn 76/560 ô ODD — chỉ
-> `highway` ([ADR-016](docs/adr/ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md)).
-> Xem [trạng thái chi tiết](ARCHITECTURE.md#trạng-thái-hiện-tại).
+> Trạng thái ngày 24/08/2026: đường đi đầy đủ đã chạy — bảy node, converter,
+> retrieval, hai cổng review, frontend, campaign ODD, behavior checker và GPU
+> worker CARLA. Báo cáo M1/M2/M3 được tính trực tiếp từ dữ liệu thực thi. Phạm
+> vi converter hiện là 72/560 ô ODD — năm maneuver xe trên anchor `highway` và
+> `run_red_light` trên anchor `urban_straight`, cho ba loại xe qua bốn kiểu thời
+> tiết; `jaywalk` đã được loại khỏi phạm vi vì không phù hợp anchor Town04
+> ([ADR-016](docs/adr/ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md)).
+> Sáu oracle L4 trong phạm vi đều đã có. Closed-loop với CARLA BehaviorAgent đã
+> có trên nhánh `feature/closed-loop`: job đánh giá tách khỏi job xác minh, mỗi
+> lần chạy một cặp baseline/BehaviorAgent mới; UI kiểm tốc độ đầu rồi so số
+> phanh/khe hở/giảm tốc. Closed-loop dừng có chủ đích ở cặp A/B do con người
+> khởi động; vòng tự sinh nhiều thế hệ nằm ngoài phạm vi. Benchmark online 20
+> request cho generation workflow đo p50/p95 latency **2,766/4,152 s** và
+> cost/request **$0,002304/$0,004582**; 17/20 request hoàn tất và request lỗi
+> vẫn nằm trong mẫu số. Xem
+> [ADR-021](docs/adr/ADR-021-danh-gia-controller-tach-khoi-xac-minh-kich-ban.md)
+> và [ADR-022](docs/adr/ADR-022-closed-loop-dung-o-cap-ab-co-nguoi-khoi-dong.md),
+> [báo cáo đánh giá](eval/results/report.md) và
+> [artifact benchmark](eval/results/cost_latency_2026-08-24.json).
 
 ## Input và output
 
@@ -87,6 +99,31 @@ npm ci
 npm run dev
 ```
 
+### Một lệnh chạy demo
+
+Sau khi đã tạo `.env`, lệnh mặc định dựng backend, frontend, CARLA có render,
+camera bám xe và GPU worker. Nó tái sử dụng service đang chạy và khi nhấn
+`Ctrl+C` chỉ dừng process do chính lệnh đó tạo:
+
+```bash
+make demo
+```
+
+Máy không có CARLA/GPU vẫn demo được luồng sinh, review và thư viện:
+
+```bash
+make demo-web
+```
+
+Kiểm dependency và đường dẫn mà chưa khởi động gì:
+
+```bash
+make demo-check
+```
+
+Log của từng service được giữ trong một thư mục
+`/tmp/scenario-forge-demo.*` và in ra khi lệnh khởi động.
+
 Cài hook một lần sau khi clone. Nó chạy gate lint/test trước mỗi lần push, nên
 lỗi bị chặn ở máy thay vì chờ một vòng CI:
 
@@ -116,6 +153,12 @@ GET  /api/v1/scenarios                      (alias: /api/v1/library/search)
 GET  /api/v1/scenarios/{id}
 GET  /api/v1/scenarios/{id}/xosc            tải XML để kiểm tra từ Cổng 1
 PUT  /api/v1/scenarios/{id}/tags            thay toàn bộ tag
+
+POST /api/v1/campaigns                      sinh một batch phủ các ô ODD đã chọn
+POST /api/v1/campaigns/{id}/review          duyệt batch trước khi chạy GPU
+GET  /api/v1/metrics/quality                báo cáo M1/M2/M3 từ dữ liệu thật
+GET  /api/v1/metrics/intent-agreement       mức khớp giữa behavior checker và người
+GET  /api/v1/library/audit                  rà lại kho theo luật hiện tại
 
 GET  /api/v1/internal/jobs                  worker GPU poll
 POST /api/v1/internal/jobs/{job_id}/result  ghi kết quả và mở BEFORE_LIBRARY
@@ -176,6 +219,3 @@ hiểm nào; đường ống thông không có nghĩa kịch bản đáng giá.
 ## License
 
 MIT
-=======
-# VINAI_PRJ
->>>>>>> cbbc227e0a618bfaa778c50bf1bc1d92f6689b2a

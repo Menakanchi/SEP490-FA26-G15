@@ -7,11 +7,77 @@ from pydantic import ValidationError
 from src.agents.state import ForgeState
 from src.models.schemas import IssueCode, ODDQuery, ScenarioDraft, ValidationIssue
 from src.services.scenario.geometry import (
+    MIN_CUT_IN_LEAD_M,
     cut_in_cannot_catch_up,
+    cut_in_lead_too_short,
     cut_in_never_slows_down,
     cut_in_starts_in_ego_lane,
-    cut_in_trigger_is_unsigned,
+    cut_in_trigger_is_not_positional,
+    jaywalk_effective_gap_m,
+    jaywalk_max_ego_speed_kmh,
+    jaywalk_required_trigger_m,
+    jaywalk_starts_in_ego_lane,
+    jaywalk_starts_on_carriageway,
+    jaywalk_trigger_too_close,
+    lane_drift_trigger_too_late,
+    time_until_alongside,
 )
+from src.services.scenario.templates import get_template
+
+
+def _shoulders_for(road_type) -> tuple[int, int] | None:
+    template = get_template(road_type)
+    return template.shoulder_lane_offsets if template else None
+
+
+def _shoulder_suggestion(actor_idx: int, road_type) -> str:
+    """Khuyên đặt người đi bộ lên **lề**, và nói rõ lề nằm ở đâu.
+
+    Bản cũ khuyên cứng ``lane_offset = -1`` kèm chú thích "bên lề trái". Trên
+    anchor Town04 thì -1 là **làn xe chạy**; hai lề nằm ở +1 và -2. Một gợi ý sai
+    trong vòng repair không dừng ở một kịch bản — nó sinh ra cả một họ kịch bản
+    sai, và ``sc_035`` là con đẻ của chính câu đó.
+    """
+    shoulders = _shoulders_for(road_type)
+    if not shoulders:
+        return f"Đặt /actors/{actor_idx}/position/lane_offset ra lề đường để người đi bộ băng qua làn ego."
+    right, left = shoulders
+    return (
+        f"Đặt /actors/{actor_idx}/position/lane_offset = {right} (lề phải) hoặc {left} (lề trái) "
+        f"— người đi bộ phải đứng ở lề rồi băng qua làn ego sang lề bên kia."
+    )
+
+
+def _jaywalk_suggestion(index: int, actor_idx: int, maneuver, actor, ego, required: float, road_type) -> str:
+    """Gợi ý sửa jaywalk, có tính tới tầm với của anchor.
+
+    Nếu khoảng cách cần thiết vượt tầm anchor thì bảo model dời chỗ đứng là đẩy nó
+    vào vòng lặp bất khả thi — converter chặn ngay sau đó, và ba vòng repair trôi
+    đi mà không sửa được gì (đo ngày 23/08: ego 88 km/h cần 62 m, anchor với tới
+    40 m). Lối thoát thật lúc ấy là **giảm tốc độ ego** hoặc **cho người đi bộ
+    chạy vụt qua**.
+    """
+    template = get_template(road_type)
+    forward = template.s_offset_reach_m[1] if template else None
+    if forward is not None and required > forward:
+        max_speed = jaywalk_max_ego_speed_kmh(maneuver, actor, forward)
+        cap = f"{max_speed:.0f} km/h" if max_speed else "thấp hơn"
+        return (
+            f"Cần {round(required)}m nhưng anchor chỉ với tới {forward:.0f}m, nên dời chỗ đứng là bất khả thi. "
+            f"Giảm tốc độ ego xuống <= {cap}, hoặc tăng /maneuvers/{index}/target_speed_kmh "
+            f"(người đi bộ chạy vụt qua) để rút thời gian băng đường."
+        )
+    return (
+        f"Đặt CẢ HAI: /actors/{actor_idx}/position/s_offset_m >= {round(required)} "
+        f"và /maneuvers/{index}/trigger/value = {round(required)}. "
+        f"Trigger rộng hơn khoảng cách xuất phát thì vô nghĩa — nó bắn ngay giây 0."
+    )
+
+
+def _earlier_than(alongside_s: float) -> float:
+    """Mốc trigger an toàn TRƯỚC lúc hai xe ngang nhau, không bao giờ âm."""
+    return max(round((alongside_s - 1.5) * 2) / 2, 0.5)
+
 
 _INVARIANT_SUGGESTIONS: dict[IssueCode, str] = {
     IssueCode.EGO_COUNT: "Chỉ định đúng một actor có is_ego=True.",
@@ -304,6 +370,91 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
             actor = draft.actors[actor_idx]
             position = actor.position
 
+            # run_red_light dùng position 0/0 như một khoá hình học: converter
+            # đặt actor lên approach vuông góc đã đo trong template. Cho LLM
+            # dịch lane/s ở đây từng khiến hai xe chạy cùng làn và không tạo
+            # xung đột, dù nhãn vẫn ghi "vượt đèn đỏ".
+            if m.maneuver == "run_red_light" and (position.lane_offset != 0 or abs(position.s_offset_m) > 1e-6):
+                issues.append(
+                    ValidationIssue(
+                        code=IssueCode.GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH,
+                        path=f"/actors/{actor_idx}/position",
+                        message_vi=(
+                            f"{actor.name} có position lane_offset={position.lane_offset}, "
+                            f"s_offset_m={position.s_offset_m}; cấu hình này không chọn approach cắt ngang đèn đỏ."
+                        ),
+                        suggestion=(
+                            f"Đặt đồng thời /actors/{actor_idx}/position/lane_offset = 0 và "
+                            f"/actors/{actor_idx}/position/s_offset_m = 0 để dùng approach vuông góc đã đo."
+                        ),
+                    )
+                )
+
+            if m.maneuver == "jaywalk" and jaywalk_starts_in_ego_lane(actor):
+                issues.append(
+                    ValidationIssue(
+                        code=IssueCode.GEOM_JAYWALK_IN_EGO_LANE,
+                        path=f"/actors/{actor_idx}/position/lane_offset",
+                        message_vi=(
+                            f"{actor.name} đứng sẵn trong làn ego (lane_offset=0) nên không có gì để băng ngang."
+                        ),
+                        suggestion=_shoulder_suggestion(actor_idx, draft.odd.road_type),
+                    )
+                )
+
+            if m.maneuver == "jaywalk" and not jaywalk_starts_in_ego_lane(actor):
+                shoulders = _shoulders_for(draft.odd.road_type)
+                if shoulders and jaywalk_starts_on_carriageway(actor, shoulders):
+                    issues.append(
+                        ValidationIssue(
+                            code=IssueCode.GEOM_JAYWALK_NOT_FROM_SHOULDER,
+                            path=f"/actors/{actor_idx}/position/lane_offset",
+                            message_vi=(
+                                f"{actor.name} xuất phát giữa phần xe chạy "
+                                f"(lane_offset={actor.position.lane_offset}) chứ không đứng ở lề, "
+                                "nên đây là đi bộ trên đường chứ không phải băng qua đường."
+                            ),
+                            suggestion=_shoulder_suggestion(actor_idx, draft.odd.road_type),
+                        )
+                    )
+
+            if m.maneuver == "jaywalk" and jaywalk_trigger_too_close(m, actor, ego):
+                required = jaywalk_required_trigger_m(m, actor, ego) or 0.0
+                issues.append(
+                    ValidationIssue(
+                        code=IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE,
+                        path=f"/maneuvers/{i}/trigger/value",
+                        message_vi=(
+                            f"{actor.name} bước xuống khi ego chỉ còn cách "
+                            f"{jaywalk_effective_gap_m(m, actor, ego):.0f}m, "
+                            f"nhưng ego chạy {ego.initial_speed_kmh}km/h nên đã đi qua trước khi "
+                            f"người đi bộ sang tới làn."
+                        ),
+                        suggestion=_jaywalk_suggestion(i, actor_idx, m, actor, ego, required, draft.odd.road_type),
+                    )
+                )
+
+            # GEOM_DRIFT_AFTER_PASS — lấn làn phải bắt đầu trước lúc hai xe
+            # đi ngang nhau, nếu không nó lấn vào chỗ ego đã rời khỏi. Số học ở
+            # ``services/scenario/geometry.py`` cùng chỗ với các vị từ cut_in.
+            if m.maneuver == "lane_drift" and lane_drift_trigger_too_late(m, actor, ego):
+                alongside_s = time_until_alongside(actor, ego) or 0.0
+                issues.append(
+                    ValidationIssue(
+                        code=IssueCode.GEOM_DRIFT_AFTER_PASS,
+                        path=f"/maneuvers/{i}/trigger/value",
+                        message_vi=(
+                            f"{actor.name} bắt đầu lấn làn ở giây {m.trigger.value} nhưng ego đã đi ngang qua "
+                            f"trước đó, nên xe lấn vào khoảng trống phía sau ego."
+                        ),
+                        suggestion=(
+                            f"Đặt /maneuvers/{i}/trigger/value = {_earlier_than(alongside_s)} "
+                            f"(hai xe đi ngang nhau ở giây {alongside_s:.1f}; lấn phải bắt đầu trước đó), "
+                            f"hoặc tăng /actors/{actor_idx}/position/s_offset_m để chúng gặp nhau muộn hơn."
+                        ),
+                    )
+                )
+
             # GEOM_NO_COLLISION_AFTER_CUTIN
             if m.maneuver == "cut_in":
                 ego_speed = ego.initial_speed_kmh
@@ -344,13 +495,36 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                         )
                     )
 
-                if cut_in_trigger_is_unsigned(m):
+                if cut_in_trigger_is_not_positional(m):
                     issues.append(
                         ValidationIssue(
-                            code=IssueCode.TRIGGER_DISTANCE_UNSIGNED,
+                            code=IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL,
                             path=f"/maneuvers/{i}/trigger/type",
-                            message_vi="cut_in không được dùng distance_to_ego vì khoảng cách không phân biệt trước/sau.",
-                            suggestion="Dùng trigger.type='simulation_time' để actor vượt hẳn lên trước ego rồi mới tạt vào.",
+                            message_vi=(
+                                "cut_in không được kích hoạt theo thời gian hoặc khoảng cách vô hướng: "
+                                "tốc độ thực trên CARLA có thể lệch tốc độ lệnh, nên actor vẫn có thể ở sau ego."
+                            ),
+                            suggestion=(
+                                f"Đặt /maneuvers/{i}/trigger = "
+                                f"{{'type': 'lead_distance', 'value': {MIN_CUT_IN_LEAD_M}}} để chỉ tạt "
+                                "khi actor đã ở trước ego đủ một thân xe."
+                            ),
+                        )
+                    )
+
+                if cut_in_lead_too_short(m):
+                    issues.append(
+                        ValidationIssue(
+                            code=IssueCode.GEOM_CUTIN_LEAD_TOO_SHORT,
+                            path=f"/maneuvers/{i}/trigger/value",
+                            message_vi=(
+                                f"{actor.name} chỉ dẫn trước {m.trigger.value}m khi bắt đầu tạt; "
+                                f"cần ít nhất {MIN_CUT_IN_LEAD_M}m để không cắt vào sườn hoặc đuôi ego."
+                            ),
+                            suggestion=(
+                                f"Đặt /maneuvers/{i}/trigger/value >= {MIN_CUT_IN_LEAD_M}; "
+                                "giá trị này là mét dẫn trước ego, không phải giây."
+                            ),
                         )
                     )
                 collision_reasons: list[str] = []
