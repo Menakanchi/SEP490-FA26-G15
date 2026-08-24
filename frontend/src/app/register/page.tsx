@@ -188,7 +188,7 @@ export default function RegisterPage() {
             <input
               type="text"
               required
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none transition"
               placeholder="Nguyễn Văn A"
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
@@ -202,7 +202,7 @@ export default function RegisterPage() {
             <input
               type="text"
               required
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none transition"
               placeholder="nguyenvana"
               value={usernameInput}
               onChange={(e) => setUsernameInput(e.target.value)}
@@ -216,7 +216,7 @@ export default function RegisterPage() {
             <input
               type="email"
               required
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none transition"
               placeholder="name@company.com"
               value={emailInput}
               onChange={(e) => setEmailInput(e.target.value)}
@@ -231,7 +231,7 @@ export default function RegisterPage() {
                 </label>
                 <textarea
                   required
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 min-h-[70px]"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:outline-none transition min-h-[70px]"
                   placeholder="Ví dụ: Kỹ sư Kiểm thử Mô phỏng ADAS - VinFast..."
                   value={reasonInput}
                   onChange={(e) => setReasonInput(e.target.value)}
@@ -250,7 +250,7 @@ export default function RegisterPage() {
               <input
                 type="password"
                 required
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none transition"
                 placeholder="••••••••"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
@@ -261,7 +261,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
           >
             <UserPlus className="w-4 h-4" />
             <span>
@@ -277,7 +277,7 @@ export default function RegisterPage() {
         {/* Login Navigation Link */}
         <div className="text-center text-xs text-slate-600 pt-2 border-t border-slate-100">
           Đã có tài khoản?{" "}
-          <Link href="/login" className="font-bold text-blue-600 hover:underline">
+          <Link href="/login" className="font-bold text-blue-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
             Đăng nhập tại đây
           </Link>
         </div>
