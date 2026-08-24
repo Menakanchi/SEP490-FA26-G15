@@ -45,6 +45,7 @@ class TestCallWithEscalation:
             # Verify: gọi đúng model (primary)
             assert mock_chat.call_count == 1
             assert _get_primary_model() in str(mock_chat.call_args)
+            assert mock_chat.call_args.kwargs["reasoning_effort"] == "none"
 
             # Verify: trả về đúng kết quả
             assert result.name == "test"

@@ -168,6 +168,30 @@ tầm anchor vẫn nằm trong mẫu số — không lọc request thất bại 
 Artifact đầy đủ từng request và từng node:
 [`cost_latency_2026-08-24.json`](cost_latency_2026-08-24.json).
 
+### 9.1. A/B GPT-5.4 mini và GPT-5.6 Luna
+
+Cùng ngày, 20 mô tả và snapshot database trên được phát lại bằng
+`gpt-5.6-luna`. Cả hai nhánh đều dùng `reasoning_effort=none`; primary và
+escalated model cùng trỏ vào model đang đo để fallback không che kết quả.
+
+| Chỉ số | GPT-5.4 mini | GPT-5.6 Luna | Thay đổi của Luna |
+|---|---:|---:|---:|
+| Request hoàn tất | 17/20 | 17/20 | không đổi |
+| Lượt `repair_draft` | 2 | 1 | -1 lượt |
+| Latency p50 | 2,766 s | 3,950 s | +42,8% |
+| Latency p95 | 4,152 s | 6,730 s | +62,1% |
+| Cost/request p50 | $0,002304 | $0,000626 | -72,8% |
+| Tổng cost 20 request | $0,054408 | $0,015392 | -71,7% |
+
+Luna vẫn trượt đúng ba mô tả `wrong_way` do đặt actor ngoài tầm anchor. Một
+lượt repair ít hơn chưa đủ chứng minh chất lượng tốt hơn trên 20 mẫu, trong khi
+hai percentile latency đều xấu đi rõ rệt. Vì không tăng tỷ lệ hoàn tất hay sửa
+được failure mode đã biết, dự án **giữ `gpt-5.4-mini` làm primary**; Luna chỉ
+được ghi nhận là phương án rẻ hơn, không được đổi thành mặc định.
+
+Artifact Luna đầy đủ từng request và từng node:
+[`cost_latency_gpt56luna_2026-08-24.json`](cost_latency_gpt56luna_2026-08-24.json).
+
 ## 10. Giới hạn và việc tiếp theo
 
 1. Mở rộng nhãn người trên từng maneuver, không chỉ các case lỗi đã biết.
