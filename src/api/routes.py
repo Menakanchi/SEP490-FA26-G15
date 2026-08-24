@@ -15,7 +15,7 @@ import time
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Body, HTTPException, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from src.agents.graph import build_forge_graph
@@ -47,7 +47,9 @@ from src.models.schemas import (
 )
 from src.services import campaign as campaign_service
 from src.services import db, metrics, tuning
+from src.services.email import send_registration_received_email, send_reviewer_approval_email
 from src.services.library.retriever import SQLiteRetriever
+
 from src.services.llm import collect_provider_metrics, summarize_provider_metrics
 from src.services.near_duplicate import is_near_duplicate
 
@@ -1289,7 +1291,7 @@ class UserUpdateRequest(BaseModel):
 
 
 @router.post("/auth/register")
-async def register_user_endpoint(body: RegisterApiRequest) -> dict:
+async def register_user_endpoint(body: RegisterApiRequest, background_tasks: BackgroundTasks) -> dict:
     existing = db.get_user(body.username)
     if existing:
         raise HTTPException(status_code=400, detail="Username đã tồn tại trên hệ thống")
@@ -1305,12 +1307,21 @@ async def register_user_endpoint(body: RegisterApiRequest) -> dict:
         password=body.password,
     )
 
+    if body.role == "reviewer" and body.email:
+        background_tasks.add_task(
+            send_registration_received_email,
+            to_email=body.email,
+            recipient_name=body.name,
+            username=body.username,
+        )
+
     msg = (
         "Đăng ký tài khoản Reviewer thành công! Yêu cầu của bạn đang chờ Admin phê duyệt và cấp mật khẩu qua Email."
         if body.role == "reviewer"
         else "Đăng ký tài khoản thành công!"
     )
     return {"ok": True, "user": user, "status": status, "message_vi": msg}
+
 
 
 @router.post("/auth/login")
@@ -1434,11 +1445,22 @@ async def delete_admin_user_endpoint(username: str) -> dict:
 
 
 @router.post("/admin/users/{username}/approve")
-async def approve_reviewer_endpoint(username: str) -> dict:
+async def approve_reviewer_endpoint(username: str, background_tasks: BackgroundTasks) -> dict:
     user = db.approve_reviewer_request(username)
     if not user:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Reviewer")
+
+    if user.get("email") and user.get("temp_password"):
+        background_tasks.add_task(
+            send_reviewer_approval_email,
+            to_email=user["email"],
+            recipient_name=user.get("name") or user.get("username", username),
+            username=user.get("username", username),
+            temp_password=user["temp_password"],
+        )
+
     return {"ok": True, "user": user}
+
 
 
 @router.post("/admin/users/{username}/reject")
