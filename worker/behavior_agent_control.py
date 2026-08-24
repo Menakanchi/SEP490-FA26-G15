@@ -6,6 +6,8 @@ Tên file và tên class cố ý khớp quy tắc import của OpenScenarioParse
 
 from __future__ import annotations
 
+import math
+
 import carla
 from agents.navigation.behavior_agent import BehaviorAgent
 from agents.navigation.local_planner import RoadOption
@@ -54,8 +56,8 @@ class _ScenarioBehaviorAgent(BehaviorAgent):
         self._speed_limit = self._scenario_speed_kmh
         self._local_planner.set_speed(self._scenario_speed_kmh)
         self._look_ahead_steps = int(self._scenario_speed_kmh / 10)
-        self._incoming_waypoint, self._incoming_direction = (
-            self._local_planner.get_incoming_waypoint_and_direction(steps=self._look_ahead_steps)
+        self._incoming_waypoint, self._incoming_direction = self._local_planner.get_incoming_waypoint_and_direction(
+            steps=self._look_ahead_steps
         )
         if self._incoming_direction is None:
             self._incoming_direction = RoadOption.LANEFOLLOW
@@ -110,6 +112,21 @@ class BehaviorAgentControl(EgoController):
             return
         self._apply_speed_cap()
         self._actor.apply_control(self._agent.run_step(debug=False))
+        # OpenScenario đánh dấu SpeedAction trong Init bằng ``set_init_speed``.
+        # NpcVehicleControl của baseline ép vận tốc thật lên target cho tới khi
+        # PID bắt kịp; custom controller phải giữ cùng hợp đồng, nếu không phép
+        # A/B đổi cả controller lẫn nhịp gặp adversary.
+        velocity = self._actor.get_velocity()
+        current_speed = math.hypot(velocity.x, velocity.y)
+        if self._init_speed and abs(self._target_speed - current_speed) > 3.0:
+            yaw = math.radians(self._actor.get_transform().rotation.yaw)
+            self._actor.set_target_velocity(
+                carla.Vector3D(
+                    x=math.cos(yaw) * self._target_speed,
+                    y=math.sin(yaw) * self._target_speed,
+                    z=0.0,
+                )
+            )
 
     def reset(self) -> None:
         if self._actor and self._actor.is_alive:

@@ -393,7 +393,7 @@ export interface ControllerRun {
   scenario_id: string;
   status: "pending" | "running" | "done" | "failed";
   job_kind: "controller_evaluation";
-  ego_controller: "behavior_agent";
+  ego_controller: "constant_speed" | "behavior_agent";
   result?: ExecutionResult | null;
   created_at: string;
   updated_at: string;
@@ -404,9 +404,27 @@ export interface ControllerRunsResponse {
   baseline?: ExecutionResult | null;
   runs: ControllerRun[];
   comparison: {
-    outcome: "not_run" | "pending" | "execution_failed" | "avoided_hazard" | "controller_collision" | "inconclusive";
+    outcome:
+      | "not_run"
+      | "pending"
+      | "execution_failed"
+      | "incomparable_initial_conditions"
+      | "avoided_hazard"
+      | "near_failure"
+      | "controller_collision"
+      | "inconclusive";
     baseline_collision: boolean | null;
     controller_collision: boolean | null;
+    initial_speed_delta_ms: number | null;
+    comparable_initial_conditions: boolean;
+    next_action:
+      | "run_controller"
+      | "wait_for_pair"
+      | "fix_worker"
+      | "rerun_controller"
+      | "create_harder_variant"
+      | "keep_regression"
+      | "adjust_scenario";
     recommendation_vi: string;
   };
 }

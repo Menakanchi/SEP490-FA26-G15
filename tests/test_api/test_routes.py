@@ -51,6 +51,7 @@ async def _submit_result(
     *,
     success: bool = True,
     collision: bool = False,
+    metrics: dict[str, float] | None = None,
 ) -> None:
     payload = {
         "scenario_id": scenario_id,
@@ -61,6 +62,7 @@ async def _submit_result(
             if success
             else []
         ),
+        "metrics": metrics or {},
     }
     if not success:
         payload["error"] = "quá 300s, đã giết tiến trình"
@@ -355,7 +357,13 @@ async def test_controller_run_is_separate_from_scenario_verification(client):
     """Closed-loop lưu bằng chứng mô hình lái nhưng không viết lại bằng chứng scenario."""
     sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
     validation_job = await _approve_sim(client, sc_id)
-    await _submit_result(client, sc_id, validation_job, collision=True)
+    await _submit_result(
+        client,
+        sc_id,
+        validation_job,
+        collision=True,
+        metrics={"ego_speed_at_2s_ms": 24.9},
+    )
     approved = await client.post(
         "/api/v1/review",
         json={
@@ -370,9 +378,24 @@ async def test_controller_run_is_separate_from_scenario_verification(client):
 
     queued = await client.post(f"/api/v1/scenarios/{sc_id}/controller-runs")
     assert queued.status_code == 200, queued.text
-    controller_job = queued.json()["job"]
+    jobs = queued.json()["jobs"]
+    assert [job["ego_controller"] for job in jobs] == ["constant_speed", "behavior_agent"]
+    baseline_job, controller_job = jobs
     assert controller_job["job_kind"] == "controller_evaluation"
     assert controller_job["ego_controller"] == "behavior_agent"
+
+    baseline_result = await client.post(
+        f"/api/v1/internal/jobs/{baseline_job['job_id']}/result",
+        json={
+            "scenario_id": sc_id,
+            "xosc_path": f"{sc_id}.xosc",
+            "success": True,
+            "ego_controller": "constant_speed",
+            "criteria_results": [{"name": "CollisionTest", "result": "FAILURE", "actual": "1"}],
+            "metrics": {"min_distance_m": 0.0, "ego_speed_at_2s_ms": 24.9},
+        },
+    )
+    assert baseline_result.status_code == 200, baseline_result.text
 
     result = await client.post(
         f"/api/v1/internal/jobs/{controller_job['job_id']}/result",
@@ -382,7 +405,11 @@ async def test_controller_run_is_separate_from_scenario_verification(client):
             "success": True,
             "ego_controller": "behavior_agent",
             "criteria_results": [{"name": "CollisionTest", "result": "SUCCESS", "actual": "0"}],
-            "metrics": {"min_distance_m": 1.98, "ego_max_brake": 0.3},
+            "metrics": {
+                "min_distance_m": 1.98,
+                "ego_max_brake": 0.3,
+                "ego_speed_at_2s_ms": 24.8,
+            },
         },
     )
     assert result.status_code == 200, result.text
@@ -397,6 +424,43 @@ async def test_controller_run_is_separate_from_scenario_verification(client):
     assert comparison["comparison"]["outcome"] == "avoided_hazard"
     assert comparison["comparison"]["baseline_collision"] is True
     assert comparison["comparison"]["controller_collision"] is False
+    assert comparison["comparison"]["initial_speed_delta_ms"] == pytest.approx(0.1)
+    assert comparison["comparison"]["comparable_initial_conditions"] is True
+    assert comparison["comparison"]["next_action"] == "create_harder_variant"
+
+    second_jobs = (await client.post(f"/api/v1/scenarios/{sc_id}/controller-runs")).json()["jobs"]
+    second_baseline, second = second_jobs
+    second_baseline_result = await client.post(
+        f"/api/v1/internal/jobs/{second_baseline['job_id']}/result",
+        json={
+            "scenario_id": sc_id,
+            "xosc_path": f"{sc_id}.xosc",
+            "success": True,
+            "ego_controller": "constant_speed",
+            "criteria_results": [{"name": "CollisionTest", "result": "FAILURE", "actual": "1"}],
+            "metrics": {"min_distance_m": 0.0, "ego_speed_at_2s_ms": 24.9},
+        },
+    )
+    assert second_baseline_result.status_code == 200, second_baseline_result.text
+    collided = await client.post(
+        f"/api/v1/internal/jobs/{second['job_id']}/result",
+        json={
+            "scenario_id": sc_id,
+            "xosc_path": f"{sc_id}.xosc",
+            "success": True,
+            "ego_controller": "behavior_agent",
+            "criteria_results": [{"name": "CollisionTest", "result": "FAILURE", "actual": "1"}],
+            "metrics": {
+                "min_distance_m": 0.0,
+                "ego_max_brake": 0.5,
+                "ego_speed_at_2s_ms": 24.85,
+            },
+        },
+    )
+    assert collided.status_code == 200, collided.text
+    failure = (await client.get(f"/api/v1/scenarios/{sc_id}/controller-runs")).json()
+    assert failure["comparison"]["outcome"] == "controller_collision"
+    assert failure["comparison"]["next_action"] == "keep_regression"
 
 
 @pytest.mark.asyncio

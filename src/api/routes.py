@@ -974,9 +974,18 @@ def _result_had_collision(result: dict | None) -> bool | None:
     )
 
 
+def _initial_speed_delta_ms(baseline: dict | None, controller: dict | None) -> float | None:
+    """Độ lệch vận tốc ego ở giây 2; thiếu metric thì không giả vờ là bằng nhau."""
+    baseline_speed = (baseline or {}).get("metrics", {}).get("ego_speed_at_2s_ms")
+    controller_speed = (controller or {}).get("metrics", {}).get("ego_speed_at_2s_ms")
+    if baseline_speed is None or controller_speed is None:
+        return None
+    return round(abs(float(baseline_speed) - float(controller_speed)), 3)
+
+
 @router.post("/scenarios/{scenario_id}/controller-runs")
 async def create_controller_run(scenario_id: str) -> dict:
-    """Đánh giá BehaviorAgent trên artifact đã xác minh, không sửa workflow HITL."""
+    """Xếp một cặp A/B mới trên artifact đã xác minh, không sửa workflow HITL."""
     scenario = _scenario_or_404(scenario_id)
     if scenario["status"] != ScenarioStatus.APPROVED_LIBRARY.value:
         raise HTTPException(status_code=409, detail="Chỉ đánh giá controller trên kịch bản đã vào thư viện")
@@ -990,15 +999,22 @@ async def create_controller_run(scenario_id: str) -> dict:
     ):
         raise HTTPException(status_code=409, detail="Kịch bản đã có một lượt đánh giá controller đang chờ")
 
-    job_id = f"ctrl_{uuid.uuid4().hex[:8]}"
-    job = db.create_scenario_job(
-        job_id,
+    run_id = uuid.uuid4().hex[:8]
+    baseline_job = db.create_scenario_job(
+        f"ctrlbase_{run_id}",
+        scenario_id,
+        scenario["xosc_content"],
+        job_kind=JobKind.CONTROLLER_EVALUATION,
+        ego_controller=EgoControllerType.SCENARIO_RUNNER_DEFAULT,
+    )
+    behavior_job = db.create_scenario_job(
+        f"ctrl_{run_id}",
         scenario_id,
         scenario["xosc_content"],
         job_kind=JobKind.CONTROLLER_EVALUATION,
         ego_controller=EgoControllerType.BEHAVIOR_AGENT,
     )
-    return {"ok": True, "job": job}
+    return {"ok": True, "jobs": [baseline_job, behavior_job]}
 
 
 @router.get("/scenarios/{scenario_id}/controller-runs")
@@ -1006,27 +1022,72 @@ async def list_controller_runs(scenario_id: str) -> dict:
     """Trả lịch sử closed-loop và kết luận A/B dễ đọc cho UI/demo."""
     scenario = _scenario_or_404(scenario_id)
     runs = db.get_controller_runs(scenario_id)
-    latest = next((run for run in runs if run.get("result")), None)
-    baseline = scenario.get("latest_execution_result")
+    pending = any(run["status"] in (JobStatus.PENDING.value, JobStatus.RUNNING.value) for run in runs)
+    latest = next(
+        (
+            run
+            for run in runs
+            if run.get("result") and run.get("ego_controller") == EgoControllerType.BEHAVIOR_AGENT.value
+        ),
+        None,
+    )
+    evaluation_baseline = next(
+        (
+            run
+            for run in runs
+            if run.get("result") and run.get("ego_controller") == EgoControllerType.SCENARIO_RUNNER_DEFAULT.value
+        ),
+        None,
+    )
+    baseline = (evaluation_baseline or {}).get("result") or scenario.get("latest_execution_result")
+    controller_result = latest.get("result") if latest else None
     baseline_collision = _result_had_collision(baseline)
-    controller_collision = _result_had_collision(latest.get("result") if latest else None)
+    controller_collision = _result_had_collision(controller_result)
+    initial_speed_delta_ms = _initial_speed_delta_ms(baseline, controller_result)
+    comparable_initial_conditions = initial_speed_delta_ms is None or initial_speed_delta_ms <= 1.0
+    controller_metrics = (controller_result or {}).get("metrics", {})
+    min_distance = controller_metrics.get("min_distance_m")
+    ttc = controller_metrics.get("ttc_min_s")
 
-    if latest is None:
-        outcome = "pending" if runs else "not_run"
+    if pending:
+        outcome = "pending"
+        next_action = "wait_for_pair"
+        recommendation_vi = "Đang chạy cặp baseline và BehaviorAgent trên cùng artifact; chờ đủ hai lượt để so sánh."
+    elif latest is None:
+        outcome = "not_run"
+        next_action = "run_controller"
         recommendation_vi = "Chạy BehaviorAgent để đánh giá phản ứng closed-loop trên kịch bản này."
     elif latest["status"] == JobStatus.FAILED.value or not latest["result"].get("success"):
         outcome = "execution_failed"
+        next_action = "fix_worker"
         recommendation_vi = "Lượt đánh giá bị lỗi thực thi; cần sửa worker trước khi kết luận mô hình lái."
+    elif not comparable_initial_conditions:
+        outcome = "incomparable_initial_conditions"
+        next_action = "rerun_controller"
+        recommendation_vi = (
+            f"Hai lượt lệch vận tốc ego {initial_speed_delta_ms:.2f} m/s ở giây 2; "
+            "phải chạy lại trước khi kết luận controller."
+        )
     elif baseline_collision is True and controller_collision is False:
-        outcome = "avoided_hazard"
-        recommendation_vi = "BehaviorAgent đã tránh nguy hiểm baseline; có thể tạo biến thể khó hơn cho vòng tiếp theo."
+        if (min_distance is not None and min_distance < 1.0) or (ttc is not None and ttc < 1.0):
+            outcome = "near_failure"
+            next_action = "create_harder_variant"
+            recommendation_vi = (
+                "BehaviorAgent tránh được nhưng đã vào vùng tới hạn; ưu tiên sinh biến thể quanh điểm này."
+            )
+        else:
+            outcome = "avoided_hazard"
+            next_action = "create_harder_variant"
+            recommendation_vi = "BehaviorAgent đã tránh tương đối dễ; tạo biến thể gần/gấp hơn cho vòng tiếp theo."
     elif controller_collision is True:
         outcome = "controller_collision"
+        next_action = "keep_regression"
         recommendation_vi = (
-            "BehaviorAgent vẫn va chạm; giữ kịch bản này làm ca thất bại để phân tích hoặc tinh chỉnh mô hình."
+            "BehaviorAgent đã phản ứng nhưng vẫn va chạm; giữ kịch bản này làm ca thất bại/regression của mô hình lái."
         )
     else:
         outcome = "inconclusive"
+        next_action = "adjust_scenario"
         recommendation_vi = "Chưa có chênh lệch A/B rõ; nên điều chỉnh thời điểm hoặc mức nghiêm trọng của biến thể."
 
     return {
@@ -1037,6 +1098,9 @@ async def list_controller_runs(scenario_id: str) -> dict:
             "outcome": outcome,
             "baseline_collision": baseline_collision,
             "controller_collision": controller_collision,
+            "initial_speed_delta_ms": initial_speed_delta_ms,
+            "comparable_initial_conditions": comparable_initial_conditions,
+            "next_action": next_action,
             "recommendation_vi": recommendation_vi,
         },
     }
