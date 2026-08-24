@@ -31,6 +31,7 @@ def _log_event(level: int, event: str, **fields: Any) -> None:
 # thức của OpenAI. Cached input được tính riêng; output gồm cả reasoning token
 # mà provider báo trong ``usage_metadata``.
 MODEL_COSTS = {
+    "gpt-5.6-luna": {"input": 0.20, "cached_input": 0.02, "output": 1.20},
     "gpt-5.4-mini": {"input": 0.75, "cached_input": 0.075, "output": 4.5},
     "gpt-5.4": {"input": 2.5, "cached_input": 0.25, "output": 15.0},
 }
@@ -228,6 +229,7 @@ def _chat_model(
         model=model_name,
         api_key=settings.openai_api_key,
         temperature=settings.llm_temperature,
+        reasoning_effort=settings.llm_reasoning_effort,
         **client_options,
     )
 

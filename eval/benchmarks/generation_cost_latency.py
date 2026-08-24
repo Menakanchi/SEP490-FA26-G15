@@ -177,6 +177,7 @@ async def _run(source_db: Path, samples: int) -> dict[str, Any]:
                 "text-embedding-3-small": {"input": EMBEDDING_COST_PER_MILLION_TOKENS},
             },
             "pricing_sources": [
+                "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
                 "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
                 "https://developers.openai.com/api/docs/models/gpt-5.4",
                 "https://developers.openai.com/api/docs/models/text-embedding-3-small",
