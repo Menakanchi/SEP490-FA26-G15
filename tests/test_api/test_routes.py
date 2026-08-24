@@ -120,6 +120,20 @@ async def test_health(client):
 
 
 @pytest.mark.asyncio
+async def test_cors_accepts_loopback_frontend(client):
+    response = await client.options(
+        "/api/v1/scenarios/sc_011",
+        headers={
+            "Origin": "http://127.0.0.1:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:3000"
+
+
+@pytest.mark.asyncio
 async def test_generate_endpoint_validation(client):
     # Empty prompt should return 422 (Pydantic min_length=1)
     response = await client.post("/api/v1/generate", json={"prompt": "", "validation_mode": "static"})
