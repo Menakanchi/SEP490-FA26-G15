@@ -110,13 +110,15 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
 
   useEffect(() => {
     if (!playing) return;
-    timer.current = setInterval(() => {
-      setFrame((f) => (f + 1 >= points.length ? 0 : f + 1));
+    timer.current = setTimeout(() => {
+      const next = Math.min(frame + 1, points.length - 1);
+      setFrame(next);
+      if (next >= points.length - 1) setPlaying(false);
     }, 60);
     return () => {
-      if (timer.current) clearInterval(timer.current);
+      if (timer.current) clearTimeout(timer.current);
     };
-  }, [playing, points.length]);
+  }, [frame, playing, points.length]);
 
   // Phát lại trong HỆ QUY CHIẾU EGO, không phải hệ toạ độ thế giới.
   //
@@ -163,6 +165,16 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
             Math.abs(p.t - contactTime) < Math.abs(points[best].t - contactTime) ? i : best,
           0,
         );
+  const showContact = contactIndex >= 0 && frame >= contactIndex;
+
+  const togglePlayback = () => {
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (frame >= points.length - 1) setFrame(0);
+    setPlaying(true);
+  };
 
   return (
     <div className="space-y-4">
@@ -191,19 +203,6 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
                 className="text-slate-300 dark:text-slate-700" strokeWidth={1.5}
                 strokeDasharray="4 5" />
 
-          {contactIndex >= 0 && (() => {
-            const [cx, cy] = view.project(...rels[contactIndex]);
-            return (
-              <>
-                <circle cx={cx} cy={cy} r={11} fill="none" stroke="currentColor"
-                        className="text-red-500" strokeWidth={2} />
-                <text x={cx + 15} y={cy + 4} className="fill-red-500 text-[11px] font-bold">
-                  va chạm {contactTime?.toFixed(1)}s
-                </text>
-              </>
-            );
-          })()}
-
           {/* Ego đứng yên ở gốc — cả bản vẽ là "tác nhân đi thế nào so với ego". */}
           <rect x={egoX - 8} y={egoY - 5} width={16} height={10} rx={2}
                 className="fill-sky-600 dark:fill-sky-400" />
@@ -211,6 +210,18 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
                 className="fill-sky-700 dark:fill-sky-300 text-[10px] font-bold">ego</text>
 
           <rect x={advX - 8} y={advY - 5} width={16} height={10} rx={2} className="fill-amber-500" />
+
+          {/* Chỉ đánh dấu khi phát lại đã tới va chạm. Vòng đỏ bao quanh xe tác
+              nhân ở frame đó; nó không giả vờ là điểm tiếp xúc trên thân xe. */}
+          {showContact && (
+            <>
+              <rect x={advX - 13} y={advY - 10} width={26} height={20} rx={6}
+                    fill="none" stroke="currentColor" className="text-red-500" strokeWidth={2} />
+              <text x={advX + 17} y={advY + 4} className="fill-red-500 text-[11px] font-bold">
+                va chạm {contactTime?.toFixed(1)}s
+              </text>
+            </>
+          )}
 
           <text x={PAD} y={PAD - 8} className="fill-slate-500 dark:fill-slate-400 text-[10px] font-medium">
             {curLon >= 0 ? `tác nhân trước ego ${curLon.toFixed(1)} m` : `tác nhân sau ego ${Math.abs(curLon).toFixed(1)} m`}
@@ -227,7 +238,7 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <button type="button" onClick={() => setPlaying((p) => !p)}
+        <button type="button" onClick={togglePlayback}
                 className="p-2 rounded-full bg-sky-600 text-white hover:bg-sky-700 transition"
                 aria-label={playing ? "Tạm dừng" : "Chạy lại"}>
           {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}

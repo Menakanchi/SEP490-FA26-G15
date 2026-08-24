@@ -233,6 +233,8 @@ export default function ScenarioDetailPage() {
   const controllerPairPending = controllerRuns?.runs.some(
     (run) => run.status === "pending" || run.status === "running",
   );
+  const controllerPairRunning = controllerRuns?.runs.some((run) => run.status === "running") ?? false;
+  const controllerPairQueued = controllerPairPending && !controllerPairRunning;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 p-6 pt-8">
@@ -317,7 +319,13 @@ export default function ScenarioDetailPage() {
                 }
               >
                 <Play className="w-3.5 h-3.5" />
-                {controllerQueuing ? "Đang xếp hàng..." : "Chạy BehaviorAgent"}
+                {controllerQueuing
+                  ? "Đang xếp hàng..."
+                  : controllerPairRunning
+                    ? "Đang chạy trong CARLA"
+                    : controllerPairQueued
+                      ? "Đang chờ worker CARLA"
+                      : "Chạy BehaviorAgent"}
               </button>
             </div>
           </div>
@@ -346,8 +354,10 @@ export default function ScenarioDetailPage() {
                 <div className="bg-cyan-50/60 dark:bg-slate-800/40 border border-cyan-200 dark:border-cyan-500/20 rounded-xl p-4">
                   <p className="text-xs uppercase tracking-wider text-cyan-700 dark:text-cyan-500/70">BehaviorAgent closed-loop</p>
                   <p className="mt-2 font-medium text-slate-800 dark:text-slate-200">
-                    {controllerPairPending
+                    {controllerPairRunning
                       ? "Đang chạy cặp A/B trong CARLA"
+                      : controllerPairQueued
+                        ? "Đã xếp hàng — đang chờ worker CARLA"
                       : behaviorRun.status === "pending"
                       ? "Đang chờ worker CARLA"
                       : behaviorRun.status === "running"
