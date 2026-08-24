@@ -1,7 +1,7 @@
 # ADR-019: Chặn kịch bản trùng ở đầu ra bằng so khớp động học tất định, đặt trước cổng GPU
 
-**Ngày:** 2026-08-21
-**Trạng thái:** Proposed — Phase 2, chốt cùng review API cổng 1
+**Ngày:** 2026-08-21; cập nhật triển khai 2026-08-24
+**Trạng thái:** Accepted — triển khai dưới dạng cảnh báo có quyền bỏ qua tại cổng 1
 **Liên quan:** mở rộng [ADR-015](ADR-015-chan-trung-o-loi-vao-bang-so-khop-chuoi.md) §Ngoài phạm vi; lấy bối cảnh mới từ [ADR-018](ADR-018-dao-thu-tu-hai-cong-duyet.md)
 
 ## Bối cảnh
@@ -28,7 +28,7 @@ Một kịch bản trùng bây giờ tiêu: 2 lượt LLM + **một lượt GPU*
 
 ### Miền bài toán hẹp nên va chạm là tất yếu
 
-[ADR-016](ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md) chốt `DEFAULT_SUPPORT_POLICY` ở **76 ô**. Cùng một đội, cùng một miền, 76 ô: hai người làm cùng ô là chuyện thường ngày, không phải trường hợp biên. ADR-015 §Bối cảnh đã dự đoán đúng chuyện này — chỉ chưa lường được nó đắt tới đâu sau ADR-018.
+[ADR-016](ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md) chốt `DEFAULT_SUPPORT_POLICY` hiện tại ở **72 ô**. Cùng một đội, cùng một miền, 72 ô: hai người làm cùng ô là chuyện thường ngày, không phải trường hợp biên. ADR-015 §Bối cảnh đã dự đoán đúng chuyện này — chỉ chưa lường được nó đắt tới đâu sau ADR-018.
 
 ### "Anh em họ" là dạng trùng mà đầu vào không bao giờ bắt được
 
@@ -85,10 +85,21 @@ Hai kịch bản là *gần trùng* khi thoả **tất cả**:
 | `ODDCell.key` bằng nhau | `spec.odd.key` |
 | Cùng `trigger.type`, và `abs(Δ trigger.value) <= 5.0` | `spec.maneuvers[i].trigger` |
 | `abs(Δ initial_speed_kmh) <= 5.0` cho từng actor khớp vai | `spec.actors[i].initial_speed_kmh` |
+| Cùng `lane_offset`, `abs(Δ s_offset_m) <= 5.0` cho từng actor khớp vai | `spec.actors[i].position` |
+| Cùng trạng thái có/không có `target_speed_kmh`; nếu có thì `abs(Δ target_speed_kmh) <= 5.0` | `spec.maneuvers[i].target_speed_kmh` |
 | Cùng đa tập `(category, is_ego)` của `actors` | `spec.actors` |
-| Cùng đa tập `maneuver` của `maneuvers` | `spec.maneuvers[i].maneuver` |
+| Cùng đa tập `(vai actor, maneuver)` của `maneuvers` | `spec.maneuvers` |
 
-Đơn vị của `trigger.value` phụ thuộc `trigger.type` (mét nếu `distance_to_ego`, giây nếu `simulation_time`), nên **bắt buộc so `type` trước** rồi mới so `value`. So `value` khi `type` khác nhau là so mét với giây.
+Actor được ghép một-một theo `(category, is_ego)` bằng phương án có tổng độ
+lệch nhỏ nhất. Tên như `adv`, `motorcycle_1` chỉ là định danh do LLM đặt và
+**không** mang ngữ nghĩa; thứ tự hai list `actors`/`maneuvers` cũng không được
+dùng làm khoá. Với nhiều actor cùng vai, maneuver được ghép lại qua ánh xạ actor
+trước khi so trigger và tốc độ đích.
+
+Đơn vị và ngữ nghĩa của `trigger.value` phụ thuộc `trigger.type` (mét vô hướng
+nếu `distance_to_ego`, giây nếu `simulation_time`, mét dẫn trước có hướng nếu
+`lead_distance`), nên **bắt buộc so `type` trước** rồi mới so `value`. So `value`
+khi `type` khác nhau có thể là so mét với giây, hoặc so hai loại mét khác nghĩa.
 
 **`time_of_day` không nằm trong khoá.** Nó không phải trục ODD (`ODDCell` nói rõ), và đưa nó vào là dựng trục đo phủ thứ hai — đúng lỗi mà `ODDCell` docstring cảnh báo.
 
@@ -100,13 +111,14 @@ Hai kịch bản là *gần trùng* khi thoả **tất cả**:
 
 Đây là điểm phân biệt ADR này với Lựa chọn 2 của ADR-015. Lý do ADR-015 loại tầng cosine là *"ngưỡng là số bịa cho tới khi có dữ liệu đo"* — đúng, vì `0.95` trong không gian cosine không có nghĩa vật lý nào. `5 km/h` thì có.
 
-Ngưỡng đặt trong `src/config.py`, không hard-code tại chỗ dùng — để hiệu chỉnh được khi có dữ liệu thật mà không phải sửa logic.
+Ngưỡng đặt trong `src/config.py`, không hard-code tại chỗ dùng — để hiệu chỉnh được khi có dữ liệu thật mà không phải sửa logic: `near_duplicate_trigger_delta`, `near_duplicate_speed_kmh`, `near_duplicate_distance_m`, mặc định cùng là `5.0`.
 
 ### 19.4 Phạm vi tra cứu: mọi trạng thái trừ `rejected` và `failed`
 
 | Trạng thái | Có tra không | Vì sao |
 |---|---|---|
 | `approved_library` | ✅ | Việc đã làm xong |
+| `approved_sim` | ✅ | Trạng thái legacy của bản đã chạy; giữ để đọc dữ liệu cũ |
 | `pending_library_review`, `simulation_queued` | ✅ | Đã tiêu GPU hoặc đang tiêu |
 | `pending_sim_review` | ✅ | Hai bản trùng cùng chờ ở cổng 1 |
 | `rejected` | ❌ | Người đã loại nó; sinh lại bản gần giống là hợp lệ |
@@ -121,6 +133,18 @@ Trùng thì trả về cảnh báo kèm `scenario_id` của bản gần nhất v
 Không dùng `4xx`. Đây không phải lỗi, và trùng đôi khi là cố ý (kiểm tra tính lặp lại của chính pipeline). Cùng tinh thần [ADR-015](ADR-015-chan-trung-o-loi-vao-bang-so-khop-chuoi.md) §15.4.
 
 Có cờ `force_simulate` để bỏ qua, ghi lại lý do vào `review_decisions`.
+
+Frontend chế độ cơ bản phải hiện ID bản đã có, từng chênh lệch và hai hành động
+`Xem bản đã có` / `Vẫn chạy CARLA`; không được đổi cảnh báo thành toast thành
+công. Chế độ chiến dịch áp cùng quy tắc cho batch: kịch bản không trùng vẫn tạo
+job, nhóm gần trùng đứng lại và chỉ chạy khi có lần duyệt batch thứ hai với
+`force_simulate=true`.
+
+Biến thể có `created_by="tuner:..."` là ngoại lệ có chủ đích. Tuner sinh các
+điểm sát nhau để dò biên tới hạn nên chặn gần trùng sẽ vô hiệu chính thuật toán;
+chúng bỏ qua phép so này nhưng **không** bỏ qua HITL. Controller closed-loop chạy
+trên scenario đã kiểm chứng, không đi qua `BEFORE_SIM`, nên không thuộc phạm vi
+ADR này.
 
 ## Lý do
 
@@ -141,12 +165,20 @@ Ngược lại, nếu sau ADR này mà tỉ lệ "gần giống lọt chặn chu
 
 ## Hệ quả
 
-**Đo trước đã.** Trước khi viết logic chặn, log `spec.odd.key` cộng động học đã làm tròn cho mọi kịch bản đi qua cổng 1. Hai tuần dữ liệu trả lời được câu *"bao nhiêu % kịch bản tới cổng GPU là gần trùng"* — và nếu con số đó dưới 5% thì ADR này nên bị hoãn, không phải triển khai. **Không tự cho phép bỏ qua bước này.**
+**Kết quả đo trước khi merge (24/08/2026).** Audit 31 scenario ở các trạng thái
+đủ điều kiện cho ra 10 cặp gần trùng, nhưng cả 10 đều nằm trong đúng cụm tuner
+`sc_024` + bốn biến thể. Sau khi áp ngoại lệ tuner, corpus hiện tại chưa có cặp
+organic nào chứng minh mức tiết kiệm GPU. Vì vậy không được trình bày ADR-019 như
+một tối ưu đã có số hiệu quả. Product owner vẫn chọn đưa vào luồng cơ bản dưới
+dạng **cảnh báo mềm** để hoàn thiện yêu cầu đầu ra; quyết định này chấp nhận rằng
+giá trị thực tế phải được đo tiếp từ log `near_duplicate_warning` và
+`near_duplicate_force_simulate`. Nếu dữ liệu thật tiếp tục dưới 5%, có thể tắt
+cảnh báo mà không đổi graph, schema scenario hay worker.
 
 **Code:**
-- Hàm `is_near_duplicate(spec_a, spec_b) -> DuplicateDiff | None` đặt cạnh `schemas.py`, thuần, không I/O, không LLM. Kèm test khoá hành vi — cùng loại như `test_odd_key_is_stable` và `test_normalize_prompt`, vì đây cũng là một khoá hỏng im lặng được.
+- Hàm `is_near_duplicate(spec_a, spec_b) -> DuplicateDiff | None` đặt ở `src/services/near_duplicate.py`, thuần theo nghĩa nghiệp vụ (không I/O, không LLM). Kèm test khoá hành vi — cùng loại như `test_odd_key_is_stable` và `test_normalize_prompt`, vì đây cũng là một khoá hỏng im lặng được.
 - Truy vấn ứng viên lọc trước bằng bốn cột `road_type/weather/actor_type/maneuver` đã có index, rồi mới so động học trong Python. Cùng hình dạng "pre-filter SQL rồi tính trong bộ nhớ" như [ADR-013](ADR-013-sqlite-blob-thay-qdrant.md).
-- Ngưỡng vào `src/config.py`: `near_duplicate_speed_kmh = 5.0`, `near_duplicate_distance_m = 5.0`.
+- Ngưỡng vào `src/config.py`: `near_duplicate_trigger_delta = 5.0`, `near_duplicate_speed_kmh = 5.0`, `near_duplicate_distance_m = 5.0`.
 
 **API:** `POST /review` thêm `force_simulate: bool = False`, và một dạng phản hồi cảnh báo khi `gate=BEFORE_SIM`, `approved=true` mà phát hiện gần trùng.
 

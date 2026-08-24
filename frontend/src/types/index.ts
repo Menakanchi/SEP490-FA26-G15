@@ -226,7 +226,7 @@ export interface ODDCell {
 
 export interface Position {
   /** Lệch bao nhiêu làn so với làn của ego. Âm = trái, dương = phải. Khoảng -4..4.
-   *  KHÔNG phải số thứ tự làn — xem `laneNumber()` trong SVG2DRenderer để quy đổi. */
+   *  KHÔNG phải số thứ tự làn; đây là độ lệch tương đối theo quy ước OpenSCENARIO. */
   lane_offset: number;
   /** Lệch dọc so với ego, mét. Âm = phía sau ego. Khoảng -200..200. */
   s_offset_m: number;
@@ -286,6 +286,28 @@ export interface ReviewRequest {
   approved: boolean;
   reviewer: string;
   reason: string;
+  force_simulate?: boolean;
+}
+
+export interface DuplicateDifference {
+  field: string;
+  current: string | number | null;
+  existing: string | number | null;
+  delta: number | null;
+  unit: "km/h" | "m" | "s" | null;
+}
+
+export interface DuplicateDiff {
+  duplicate_scenario_id: string;
+  differences: DuplicateDifference[];
+}
+
+export interface ReviewResponse {
+  ok: boolean;
+  status?: ScenarioStatus;
+  job_created?: boolean;
+  warning?: "near_duplicate";
+  duplicate?: DuplicateDiff;
 }
 
 export interface ReviewLog extends ReviewRequest {
@@ -357,6 +379,78 @@ export interface GenerationStatus {
 // Scenario detail — full response from GET /scenarios/{id}
 // ---------------------------------------------------------------------------
 
+/** Một mẫu quỹ đạo ĐO ĐƯỢC khi chạy, không phải suy diễn từ spec. */
+export interface TrajectoryPoint {
+  t: number;
+  /** x, y, yaw(độ) trong hệ toạ độ CARLA. */
+  ego: [number, number, number];
+  adv: [number, number, number];
+  /** Tim làn ego đang đi, hỏi thẳng bản đồ — vẽ được mặt đường thật. */
+  lane_centre: [number, number];
+  /** Vị trí tác nhân trong hệ quy chiếu ego: [dọc, ngang] mét. Dọc dương = ở trước ego. */
+  rel?: [number, number];
+}
+
+export interface CriterionResult {
+  name: string;
+  result: "SUCCESS" | "FAILURE";
+  actual_value?: number | string | null;
+  expected_value?: number | string | null;
+}
+
+export interface ExecutionResult {
+  scenario_id: string;
+  success: boolean;
+  criteria_results: CriterionResult[];
+  /** Xem `ExecutionResult.metrics` ở backend: khoá vắng mặt = KHÔNG ĐO ĐƯỢC, không phải 0. */
+  metrics: Record<string, number>;
+  /** Rỗng nghĩa là không đo được quỹ đạo, không phải xe đứng yên. */
+  trajectory?: TrajectoryPoint[];
+  ego_controller?: "constant_speed" | "behavior_agent";
+  error?: string | null;
+}
+
+export interface ControllerRun {
+  job_id: string;
+  scenario_id: string;
+  status: "pending" | "running" | "done" | "failed";
+  job_kind: "controller_evaluation";
+  ego_controller: "constant_speed" | "behavior_agent";
+  result?: ExecutionResult | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ControllerRunsResponse {
+  scenario_id: string;
+  baseline?: ExecutionResult | null;
+  runs: ControllerRun[];
+  comparison: {
+    outcome:
+      | "not_run"
+      | "pending"
+      | "execution_failed"
+      | "incomparable_initial_conditions"
+      | "avoided_hazard"
+      | "near_failure"
+      | "controller_collision"
+      | "inconclusive";
+    baseline_collision: boolean | null;
+    controller_collision: boolean | null;
+    initial_speed_delta_ms: number | null;
+    comparable_initial_conditions: boolean;
+    next_action:
+      | "run_controller"
+      | "wait_for_pair"
+      | "fix_worker"
+      | "rerun_controller"
+      | "create_harder_variant"
+      | "keep_regression"
+      | "adjust_scenario";
+    recommendation_vi: string;
+  };
+}
+
 export interface ScenarioDetail {
   scenario_id: string;
   title: string;
@@ -369,6 +463,121 @@ export interface ScenarioDetail {
   review_logs: ReviewLog[];
   created_at: string;
   retrieved_examples?: RetrievedExample[];
+  /** Có sau khi worker chạy xong; đây là thứ cổng BEFORE_LIBRARY duyệt. */
+  latest_execution_result?: ExecutionResult | null;
+  verification?: string;
+}
+
+/** GET /metrics/quality — M1/M2/M3. `rate: null` nghĩa là CHƯA CÓ DỮ LIỆU, không phải 0%. */
+export interface Ratio {
+  passed: number;
+  total: number;
+  rate: number | null;
+}
+
+export interface ValidityLevel extends Ratio {
+  label: string;
+  /** Lượt chạy chưa có luật chấm — không tính là sai. */
+  not_measurable: number;
+}
+
+export interface QualityReport {
+  m1_validity: {
+    l1_schema: ValidityLevel;
+    l2_xosc: ValidityLevel;
+    l3_runtime: ValidityLevel;
+    l4_intent: ValidityLevel;
+  };
+  m2_coverage: {
+    covered_supported: number;
+    supported_total: number;
+    rate_supported: Ratio;
+    covered_any: number;
+    enum_total: number;
+    covered_out_of_scope: number;
+    scenarios_per_maneuver: Record<string, number>;
+    /** Phủ theo CẶP trục — chuẩn kiểm thử tổ hợp; ít kịch bản vẫn phủ được nhiều cặp. */
+    covered_pairs: number;
+    feasible_pairs: number;
+    rate_pairwise: Ratio;
+  };
+  m3_hazard: {
+    executed: number;
+    collision: number;
+    near_miss: number;
+    no_hazard: number;
+    rate: Ratio;
+    collision_rate: Ratio;
+  };
+}
+
+/** Chiến dịch ODD — chế độ nâng cao: khoanh vùng ô, agent viết câu. */
+export interface CampaignSummary {
+  campaign_id: string;
+  created_by: string;
+  per_cell: number;
+  max_scenarios: number;
+  status: "running" | "done" | "stopped";
+  generated: number;
+  failed: number;
+  created_at: string;
+}
+
+export interface CampaignRequest {
+  request_id: string;
+  status: string;
+  /** Câu do AGENT viết, không phải người gõ — vẫn đi qua đúng graph 7 node. */
+  description_vi: string;
+  scenario_id: string | null;
+  road_type?: string | null;
+  weather?: string | null;
+  actor_type?: string | null;
+  maneuver?: string | null;
+}
+
+export interface CampaignDetail extends CampaignSummary {
+  cells: ODDCell[];
+  requests: CampaignRequest[];
+}
+
+export interface CampaignReviewResponse {
+  ok: boolean;
+  campaign_id: string;
+  scenarios: string[];
+  count: number;
+  near_duplicates: Array<{
+    scenario_id: string;
+    warning: "near_duplicate";
+    duplicate: DuplicateDiff;
+  }>;
 }
 
 export * from "./auth";
+
+/** Một kịch bản chờ người chấm ý định.
+ *
+ * Cố ý **không** có trường phán quyết của máy: thấy trước thì người chấm gật
+ * theo, và mức khớp thu được là con số vô nghĩa. Backend cũng không gửi nó.
+ */
+export interface LabelQueueItem {
+  scenario_id: string;
+  title: string;
+  description_vi: string;
+  maneuver: string;
+  road_type: string;
+  trajectory: TrajectoryPoint[];
+  /** Giây xảy ra va chạm đầu tiên, nếu có. Bản phát lại cắt ở đây. */
+  contact_time_s?: number | null;
+  /** Người đang đăng nhập đã chấm kịch bản này chưa — không nói đã chấm ra sao. */
+  labelled: boolean;
+}
+
+export interface IntentAgreement {
+  agreement: number | null;
+  matched: number;
+  scored: number;
+  labelled_scenarios: number;
+  unsure: number;
+  human_conflicts: number;
+  disagreements: { scenario_id: string; human: string; machine: string; reason: string }[];
+}

@@ -85,7 +85,9 @@
           <PrivateAction>
             <TeleportAction>
               <Position>
-                <RelativeLanePosition entityRef="hero" dLane="1" ds="20" offset="0" />
+                <RelativeLanePosition entityRef="hero" dLane="1" ds="20" offset="0">
+                  <Orientation h="3.141593" p="0" r="0" type="relative" />
+                </RelativeLanePosition>
               </Position>
             </TeleportAction>
           </PrivateAction>
@@ -112,15 +114,96 @@
           <Maneuver name="maneuver_0_wrong_way">
             <ParameterDeclarations />
             <Event name="event_0_wrong_way" priority="overwrite">
-              <Action name="action_0_wrong_way">
+              <Action name="action_0_wrong_way_speed">
                 <PrivateAction>
-                  <TeleportAction>
-                    <Position>
-                      <RelativeLanePosition entityRef="hero" dLane="1" ds="20" offset="0">
-                        <Orientation h="3.141593" p="0" r="0" type="relative" />
-                      </RelativeLanePosition>
-                    </Position>
-                  </TeleportAction>
+                  <LongitudinalAction>
+                    <SpeedAction>
+                      <SpeedActionDynamics dynamicsShape="step" value="0" dynamicsDimension="time" />
+                      <SpeedActionTarget>
+                        <AbsoluteTargetSpeed value="2.777778" />
+                      </SpeedActionTarget>
+                    </SpeedAction>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+              <Action name="action_0_wrong_way_route">
+                <PrivateAction>
+                  <RoutingAction>
+                    <AssignRouteAction>
+                      <Route name="other_wrong_way_route" closed="false">
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="12" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="2" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-8" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-18" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-28" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-38" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-48" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-58" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-68" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-78" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-88" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-98" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-108" offset="0" />
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeLanePosition entityRef="hero" dLane="1" ds="-115" offset="0" />
+                          </Position>
+                        </Waypoint>
+                      </Route>
+                    </AssignRouteAction>
+                  </RoutingAction>
                 </PrivateAction>
               </Action>
               <StartTrigger>
@@ -173,6 +256,20 @@
               <ByValueCondition>
                 <SimulationTimeCondition value="30" rule="greaterThan" />
               </ByValueCondition>
+            </Condition>
+          </ConditionGroup>
+          <ConditionGroup>
+            <Condition name="stop_on_collision_other" delay="0" conditionEdge="rising">
+              <ByEntityCondition>
+                <TriggeringEntities triggeringEntitiesRule="any">
+                  <EntityRef entityRef="hero" />
+                </TriggeringEntities>
+                <EntityCondition>
+                  <CollisionCondition>
+                    <EntityRef entityRef="other" />
+                  </CollisionCondition>
+                </EntityCondition>
+              </ByEntityCondition>
             </Condition>
           </ConditionGroup>
         </StopTrigger>

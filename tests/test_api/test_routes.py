@@ -51,6 +51,7 @@ async def _submit_result(
     *,
     success: bool = True,
     collision: bool = False,
+    metrics: dict[str, float] | None = None,
 ) -> None:
     payload = {
         "scenario_id": scenario_id,
@@ -61,6 +62,7 @@ async def _submit_result(
             if success
             else []
         ),
+        "metrics": metrics or {},
     }
     if not success:
         payload["error"] = "quá 300s, đã giết tiến trình"
@@ -100,7 +102,7 @@ def _cut_in_draft() -> ScenarioDraft:
                 {
                     "actor_name": "adv",
                     "maneuver": "cut_in",
-                    "trigger": {"type": "simulation_time", "value": 7.0},
+                    "trigger": {"type": "lead_distance", "value": 7.0},
                     "target_speed_kmh": 40.0,
                 }
             ],
@@ -115,6 +117,41 @@ async def test_health(client):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_cors_accepts_loopback_frontend(client):
+    response = await client.options(
+        "/api/v1/scenarios/sc_011",
+        headers={
+            "Origin": "http://127.0.0.1:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:3000"
+
+
+@pytest.mark.asyncio
+async def test_review_queue_excludes_drafts_without_hiding_them_from_creator_library(client):
+    draft = await client.post(
+        "/api/v1/scenarios/draft",
+        json={
+            "title": "Bản nháp chỉ để tiếp tục chỉnh sửa",
+            "description_vi": "Bản nháp chưa sẵn sàng cho reviewer",
+            "odd": {"road_type": "highway"},
+            "created_by": "creator_a",
+        },
+    )
+    assert draft.status_code == 200
+    draft_id = draft.json()["scenario_id"]
+
+    review_items = (await client.get("/api/v1/scenarios?review_queue=true&limit=100")).json()["items"]
+    assert draft_id not in {item["scenario_id"] for item in review_items}
+
+    creator_items = (await client.get("/api/v1/scenarios?scope=me&user=creator_a&limit=100")).json()["items"]
+    assert draft_id in {item["scenario_id"] for item in creator_items}
 
 
 @pytest.mark.asyncio
@@ -348,6 +385,117 @@ async def test_collision_failure_is_recorded_as_adversarial(client):
     detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
     assert detail["verification"] == "adversarial"
     assert detail["status"] == "pending_library_review"
+
+
+@pytest.mark.asyncio
+async def test_controller_run_is_separate_from_scenario_verification(client):
+    """Closed-loop lưu bằng chứng mô hình lái nhưng không viết lại bằng chứng scenario."""
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    validation_job = await _approve_sim(client, sc_id)
+    await _submit_result(
+        client,
+        sc_id,
+        validation_job,
+        collision=True,
+        metrics={"ego_speed_at_2s_ms": 24.9},
+    )
+    approved = await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_library",
+            "approved": True,
+            "reviewer": "Library Reviewer",
+            "reason": "",
+        },
+    )
+    assert approved.status_code == 200
+
+    queued = await client.post(f"/api/v1/scenarios/{sc_id}/controller-runs")
+    assert queued.status_code == 200, queued.text
+    jobs = queued.json()["jobs"]
+    assert [job["ego_controller"] for job in jobs] == ["constant_speed", "behavior_agent"]
+    baseline_job, controller_job = jobs
+    assert controller_job["job_kind"] == "controller_evaluation"
+    assert controller_job["ego_controller"] == "behavior_agent"
+
+    baseline_result = await client.post(
+        f"/api/v1/internal/jobs/{baseline_job['job_id']}/result",
+        json={
+            "scenario_id": sc_id,
+            "xosc_path": f"{sc_id}.xosc",
+            "success": True,
+            "ego_controller": "constant_speed",
+            "criteria_results": [{"name": "CollisionTest", "result": "FAILURE", "actual": "1"}],
+            "metrics": {"min_distance_m": 0.0, "ego_speed_at_2s_ms": 24.9},
+        },
+    )
+    assert baseline_result.status_code == 200, baseline_result.text
+
+    result = await client.post(
+        f"/api/v1/internal/jobs/{controller_job['job_id']}/result",
+        json={
+            "scenario_id": sc_id,
+            "xosc_path": f"{sc_id}.xosc",
+            "success": True,
+            "ego_controller": "behavior_agent",
+            "criteria_results": [{"name": "CollisionTest", "result": "SUCCESS", "actual": "0"}],
+            "metrics": {
+                "min_distance_m": 1.98,
+                "ego_max_brake": 0.3,
+                "ego_speed_at_2s_ms": 24.8,
+            },
+        },
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["job_kind"] == "controller_evaluation"
+
+    detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
+    assert detail["status"] == "approved_library"
+    assert detail["verification"] == "adversarial"
+    assert detail["latest_execution_result"]["criteria_results"][0]["result"] == "FAILURE"
+
+    comparison = (await client.get(f"/api/v1/scenarios/{sc_id}/controller-runs")).json()
+    assert comparison["comparison"]["outcome"] == "avoided_hazard"
+    assert comparison["comparison"]["baseline_collision"] is True
+    assert comparison["comparison"]["controller_collision"] is False
+    assert comparison["comparison"]["initial_speed_delta_ms"] == pytest.approx(0.1)
+    assert comparison["comparison"]["comparable_initial_conditions"] is True
+    assert comparison["comparison"]["next_action"] == "create_harder_variant"
+
+    second_jobs = (await client.post(f"/api/v1/scenarios/{sc_id}/controller-runs")).json()["jobs"]
+    second_baseline, second = second_jobs
+    second_baseline_result = await client.post(
+        f"/api/v1/internal/jobs/{second_baseline['job_id']}/result",
+        json={
+            "scenario_id": sc_id,
+            "xosc_path": f"{sc_id}.xosc",
+            "success": True,
+            "ego_controller": "constant_speed",
+            "criteria_results": [{"name": "CollisionTest", "result": "FAILURE", "actual": "1"}],
+            "metrics": {"min_distance_m": 0.0, "ego_speed_at_2s_ms": 24.9},
+        },
+    )
+    assert second_baseline_result.status_code == 200, second_baseline_result.text
+    collided = await client.post(
+        f"/api/v1/internal/jobs/{second['job_id']}/result",
+        json={
+            "scenario_id": sc_id,
+            "xosc_path": f"{sc_id}.xosc",
+            "success": True,
+            "ego_controller": "behavior_agent",
+            "criteria_results": [{"name": "CollisionTest", "result": "FAILURE", "actual": "1"}],
+            "metrics": {
+                "min_distance_m": 0.0,
+                "ego_max_brake": 0.5,
+                "ego_speed_at_2s_ms": 24.85,
+            },
+        },
+    )
+    assert collided.status_code == 200, collided.text
+    failure = (await client.get(f"/api/v1/scenarios/{sc_id}/controller-runs")).json()
+    assert failure["comparison"]["outcome"] == "controller_collision"
+    assert failure["comparison"]["next_action"] == "keep_regression"
 
 
 @pytest.mark.asyncio
@@ -645,3 +793,157 @@ async def test_complete_simulation_rejected(client):
     )
     assert res.status_code == 200
     assert res.json()["status"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_near_duplicate_warns_before_gpu_and_requires_explicit_override(client):
+    first = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    await _approve_sim(client, first)
+    second = await _generate_one(client, "Trên cao tốc, xe máy vượt lên rồi tạt đầu ô tô đang chạy")
+
+    warning = await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": second,
+            "gate": "before_sim",
+            "approved": True,
+            "reviewer": "Simulation Reviewer",
+            "reason": "",
+        },
+    )
+
+    assert warning.status_code == 200
+    assert warning.json()["ok"] is False
+    assert warning.json()["warning"] == "near_duplicate"
+    assert warning.json()["duplicate"] == {"duplicate_scenario_id": first, "differences": []}
+    assert (await client.get(f"/api/v1/scenarios/{second}")).json()["status"] == "pending_sim_review"
+    assert len((await client.get("/api/v1/internal/jobs")).json()["jobs"]) == 1
+
+    forced = await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": second,
+            "gate": "before_sim",
+            "approved": True,
+            "reviewer": "Simulation Reviewer",
+            "reason": f"Đã đối chiếu và vẫn cần chạy cạnh {first}",
+            "force_simulate": True,
+        },
+    )
+
+    assert forced.status_code == 200
+    assert forced.json() == {"ok": True, "status": "simulation_queued", "job_created": True}
+    assert len((await client.get("/api/v1/internal/jobs")).json()["jobs"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_tuner_variant_keeps_hitl_but_bypasses_duplicate_warning(client):
+    """Biến thể dò biên cố ý đứng sát nhau; ADR-019 không được vô hiệu tuner."""
+    from src.services import db
+
+    base = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    await _approve_sim(client, base)
+    base_row = db.get_scenario(base)
+    variant_spec = {**base_row["spec"], "scenario_id": "sc_999"}
+    db.save_scenario(
+        scenario_id="sc_999",
+        title=base_row["title"],
+        description_vi=base_row["description_vi"],
+        spec=variant_spec,
+        odd=base_row["odd"],
+        status="pending_sim_review",
+        xosc_content=base_row["xosc_content"],
+        created_by=f"tuner:{base}",
+    )
+
+    response = await client.post(
+        "/api/v1/review",
+        json={
+            "scenario_id": "sc_999",
+            "gate": "before_sim",
+            "approved": True,
+            "reviewer": "Simulation Reviewer",
+            "reason": "Duyệt biến thể tuner để dò biên",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "status": "simulation_queued", "job_created": True}
+
+
+@pytest.mark.asyncio
+async def test_batch_review_approves_a_whole_campaign_at_gate_one(client):
+    """Cổng 1 áp lên **lô**, không lên từng kịch bản (ADR-014 §A3).
+
+    Với 72 ô thì người duyệt bấm 72 lần mà không thực sự đọc, và rubber-stamp
+    còn tệ hơn không có cổng. Một quyết định cho cả lô, ghi rõ ai chịu trách
+    nhiệm — nhưng vẫn là con người bấm, vì đề bài bắt phải có người phê duyệt
+    trước khi điều khiển thiết bị.
+    """
+    from src.services import db
+
+    campaign_id = "cmp_test01"
+    db.create_campaign(campaign_id, cells=[], per_cell=1, max_scenarios=5, created_by="cong")
+
+    scenario_ids = []
+    # Hai câu khác chữ nhưng cùng ô ODD (xe máy · cut_in): draft mock là một
+    # bản duy nhất, nên câu nào đọc ra actor khác sẽ chết ở ODD_ACTOR_MISMATCH.
+    prompts = (
+        "Xe máy tạt đầu ô tô trên đường cao tốc",
+        "Trên cao tốc, xe máy vượt lên rồi tạt đầu ô tô đang chạy",
+    )
+    for prompt in prompts:
+        sc_id = await _generate_one(client, prompt)
+        scenario_ids.append(sc_id)
+        request_id = next(
+            r["request_id"]
+            for r in db.metrics_rows()[0]
+            if db.get_generation_request(r["request_id"])["scenario_id"] == sc_id
+        )
+        db.attach_request_to_campaign(request_id, campaign_id)
+
+    response = await client.post(
+        f"/api/v1/campaigns/{campaign_id}/review",
+        json={"reviewer": "cong", "approved": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["ok"] is False
+    assert response.json()["count"] == 0
+    assert len(response.json()["near_duplicates"]) == 2
+
+    first_status = (await client.get(f"/api/v1/scenarios/{scenario_ids[0]}")).json()["status"]
+    second_status = (await client.get(f"/api/v1/scenarios/{scenario_ids[1]}")).json()["status"]
+    assert {first_status, second_status} == {"pending_sim_review"}
+
+    override = await client.post(
+        f"/api/v1/campaigns/{campaign_id}/review",
+        json={
+            "reviewer": "cong",
+            "approved": True,
+            "reason": "Đã xem cảnh báo gần trùng của cả lô",
+            "force_simulate": True,
+        },
+    )
+    assert override.status_code == 200
+    assert override.json()["ok"] is True
+    assert override.json()["count"] == 2
+    assert override.json()["near_duplicates"] == []
+
+    for sc_id in scenario_ids:
+        assert (await client.get(f"/api/v1/scenarios/{sc_id}")).json()["status"] == "simulation_queued"
+
+    jobs = (await client.get("/api/v1/internal/jobs")).json()["jobs"]
+    assert len(jobs) == 2, "mỗi kịch bản vẫn có job riêng — gộp là gộp QUYẾT ĐỊNH, không gộp công việc"
+
+
+@pytest.mark.asyncio
+async def test_batch_review_only_touches_scenarios_waiting_at_gate_one(client):
+    """Phép cấp phép có biên: không áp cho kịch bản ngoài chiến dịch."""
+    from src.services import db
+
+    db.create_campaign("cmp_test02", cells=[], per_cell=1, max_scenarios=5, created_by="cong")
+    outsider = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+
+    response = await client.post("/api/v1/campaigns/cmp_test02/review", json={"reviewer": "cong", "approved": True})
+    assert response.json()["count"] == 0
+    assert (await client.get(f"/api/v1/scenarios/{outsider}")).json()["status"] == "pending_sim_review"
