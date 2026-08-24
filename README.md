@@ -12,7 +12,7 @@ bằng CARLA ScenarioRunner trước khi đưa vào thư viện.
 > tiết; `jaywalk` đã được loại khỏi phạm vi vì không phù hợp anchor Town04
 > ([ADR-016](docs/adr/ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md)).
 > Sáu oracle L4 trong phạm vi đều đã có. Closed-loop với CARLA BehaviorAgent đã
-> có trên nhánh `feature/closed-loop`: job đánh giá tách khỏi job xác minh, mỗi
+> được tích hợp trên `main`: job đánh giá tách khỏi job xác minh, mỗi
 > lần chạy một cặp baseline/BehaviorAgent mới; UI kiểm tốc độ đầu rồi so số
 > phanh/khe hở/giảm tốc. Closed-loop dừng có chủ đích ở cặp A/B do con người
 > khởi động; vòng tự sinh nhiều thế hệ nằm ngoài phạm vi. Benchmark online 20
@@ -91,7 +91,7 @@ uv run uvicorn src.main:app --reload --port 8000
 
 Frontend chạy riêng ở cổng 3000, mặc định gọi backend qua
 `http://localhost:8000/api/v1` (đổi bằng `NEXT_PUBLIC_API_URL`; backend đã cho
-phép origin `localhost:3000` sẵn qua `cors_origins`):
+phép các origin `localhost:3000` và `127.0.0.1:3000` qua `cors_origins`):
 
 ```bash
 cd frontend
@@ -100,6 +100,10 @@ npm run dev
 ```
 
 ### Một lệnh chạy demo
+
+Demo đầy đủ cần CARLA 0.9.15 có render/Vulkan, ScenarioRunner 0.9.15 và Python
+3.10 cho worker. Script mặc định tìm ở `~/CARLA_0.9.15` và
+`~/scenario_runner`; có thể đổi bằng `CARLA_ROOT` và `SR_ROOT`.
 
 Sau khi đã tạo `.env`, lệnh mặc định dựng backend, frontend, CARLA có render,
 camera bám xe và GPU worker. Nó tái sử dụng service đang chạy và khi nhấn
@@ -141,7 +145,7 @@ cd frontend && npm run lint && npx next build
 
 Cần push gấp khi gate đỏ: `SKIP_CHECK=1 git push`.
 
-### Endpoint đang có
+### Endpoint chính
 
 ```text
 GET  /health
@@ -156,6 +160,10 @@ PUT  /api/v1/scenarios/{id}/tags            thay toàn bộ tag
 
 POST /api/v1/campaigns                      sinh một batch phủ các ô ODD đã chọn
 POST /api/v1/campaigns/{id}/review          duyệt batch trước khi chạy GPU
+POST /api/v1/scenarios/{id}/tune             sinh bước dò tham số tới hạn tiếp theo
+GET  /api/v1/scenarios/{id}/tune             so kết quả các biến thể với bản gốc
+POST /api/v1/scenarios/{id}/controller-runs  xếp cặp baseline/BehaviorAgent mới
+GET  /api/v1/scenarios/{id}/controller-runs  đọc lịch sử và kết luận closed-loop
 GET  /api/v1/metrics/quality                báo cáo M1/M2/M3 từ dữ liệu thật
 GET  /api/v1/metrics/intent-agreement       mức khớp giữa behavior checker và người
 GET  /api/v1/library/audit                  rà lại kho theo luật hiện tại
@@ -206,12 +214,20 @@ Bằng chứng đó có ngày 15/08/2026: `sc_014` do LLM sinh và converter bi�
 SUCCESS` — 0 va chạm, tức kịch bản chạy trót lọt mà **không** dựng được nguy
 hiểm nào; đường ống thông không có nghĩa kịch bản đáng giá.
 
+Bằng chứng mới nhất ngày 24/08/2026 đã đi xa hơn smoke test: `sc_042`/`sc_043`
+chạy ngược chiều đúng tuyến với lệch tim làn tối đa 0,188/0,194 m;
+`sc_046`/`sc_047` vượt đèn đỏ từ nhánh vuông góc và va chạm ego. Cả bốn lượt đã
+được xem trực tiếp và duyệt vào thư viện. Với closed-loop trên `sc_011`, cặp A/B
+có vận tốc ego ở giây 2 chỉ lệch 0,019 m/s; baseline và BehaviorAgent đều va
+chạm, cho thấy một controller failure có thể dùng làm ca regression. Chi tiết ở
+[ADR-021](docs/adr/ADR-021-danh-gia-controller-tach-khoi-xac-minh-kich-ban.md).
+
 ## Deliverables
 
 - Source code và CI
 - README và architecture
 - AI usage logs
-- Live URL
+- Live URL web-only *(tuỳ chọn, chưa triển khai production; GPU worker tách rời)*
 - Demo video và pitch deck
 - `JOURNAL.md` và `WORKLOG.md`
 - Evaluation report trong `eval/results/`
