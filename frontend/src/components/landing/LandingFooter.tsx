@@ -18,10 +18,10 @@ export function LandingFooter() {
             </div>
             <div>
               <span className="text-sm font-extrabold text-slate-100 tracking-tight block">
-                AV-Scenario Gen (P-130)
+                Scenario Forge (P-130)
               </span>
               <span className="text-[10px] text-slate-500">
-                Nền tảng Tự động sinh Kịch bản Kiểm thử Xe tự lái
+                Nền tảng sinh và đánh giá kịch bản kiểm thử ADAS
               </span>
             </div>
           </div>
@@ -38,17 +38,18 @@ export function LandingFooter() {
               Cổng Duyệt HITL
             </Link>
             <a href="#standards" className="hover:text-blue-400 transition">
-              Chuẩn ASAM OpenSCENARIO
+              Bằng chứng đánh giá
             </a>
           </div>
         </div>
 
         {/* Bottom Credits & Copyright */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
-          <p>© 2026 Scenario Forge — VINAI_PRJ (P-130). Đã bảo lưu mọi quyền.</p>
+          <p>© 2026 Scenario Forge — Dự án P-130.</p>
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1 text-slate-400">
-              <Shield className="w-3.5 h-3.5 text-blue-400" /> Chuẩn mã hóa ASAM OpenSCENARIO 1.0
+              <Shield className="w-3.5 h-3.5 text-blue-400" /> Xuất OpenSCENARIO
+              1.0 · Kiểm chứng trên CARLA 0.9.15
             </span>
           </div>
         </div>
