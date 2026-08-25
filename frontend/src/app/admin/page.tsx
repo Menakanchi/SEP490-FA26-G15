@@ -33,6 +33,8 @@ import {
   Filter,
   Mail,
 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -244,7 +246,7 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-[#0f2d59] dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans">
+    <div className="max-w-6xl mx-auto space-y-6 font-sans text-slate-900 dark:text-slate-100">
       {/* Toast Notification */}
       {toast && (
         <div
@@ -266,36 +268,30 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-2xl bg-blue-600 text-white shadow-md">
-              <Shield className="w-6 h-6" />
-            </div>
-            <h1 className="text-xl md:text-2xl font-black text-[#0f2d59] dark:text-white tracking-tight">
-              Dashboard Quản Trị Hệ Thống (Admin Control Panel)
-            </h1>
-          </div>
-          <p className="text-xs text-slate-600 dark:text-slate-400 pl-11">
-            Quản lý tài khoản, phê duyệt yêu cầu Reviewer không mật khẩu & thống kê dữ liệu thực tế (`data/app.db`)
-          </p>
-        </div>
-
-        <button
-          onClick={loadDashboardData}
-          disabled={loading}
-          className="px-4 py-2 bg-white dark:bg-slate-800 border border-sky-200 dark:border-slate-700 hover:bg-sky-50 dark:hover:bg-slate-700 text-[#0f2d59] dark:text-slate-200 rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-2 cursor-pointer"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          Tải lại dữ liệu
-        </button>
+      {/* Header Glass Box */}
+      <div className="bg-white/70 dark:bg-slate-900/80 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 shadow-2xl rounded-[32px] p-6 sm:p-7 transition-all">
+        <PageHeader
+          icon={Shield}
+          title="Dashboard Quản Trị Hệ Thống"
+          subtitle="Quản lý tài khoản, phê duyệt yêu cầu Reviewer & Thống kê dữ liệu hệ thống"
+          badge="Admin Control"
+          actions={
+            <button
+              onClick={loadDashboardData}
+              disabled={loading}
+              className="px-4 py-2 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-2xl text-xs font-bold shadow-xs transition flex items-center gap-2 cursor-pointer backdrop-blur-md"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-blue-600" : ""}`} />
+              <span>Làm mới</span>
+            </button>
+          }
+        />
       </div>
 
-      {/* Overall Metrics Cards (BrightBuild Styling) */}
+      {/* Overall Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* User Stats Card */}
-        <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm">
+        <div className="bg-white/75 dark:bg-slate-900/85 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] p-6 space-y-4 shadow-2xl">
           <div className="flex items-center justify-between border-b border-sky-200/80 dark:border-slate-800 pb-3">
             <div className="flex items-center gap-2 font-bold text-sm text-[#0f2d59] dark:text-white">
               <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
@@ -323,7 +319,7 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Scenario Stats Card */}
-        <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm">
+        <div className="bg-white/75 dark:bg-slate-900/85 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] p-6 space-y-4 shadow-2xl">
           <div className="flex items-center justify-between border-b border-sky-200/80 dark:border-slate-800 pb-3">
             <div className="flex items-center gap-2 font-bold text-sm text-[#0f2d59] dark:text-white">
               <FileText className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
@@ -335,19 +331,19 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="grid grid-cols-4 gap-2 text-center">
-            <div className="p-2.5 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5">
+            <div className="p-2.5 bg-white/80 dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5">
               <span className="text-[9px] font-bold text-slate-500 uppercase block">Bản Nháp</span>
               <span className="text-base font-black text-slate-700 dark:text-slate-300">{stats?.scenarios.draft || 0}</span>
             </div>
-            <div className="p-2.5 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5">
+            <div className="p-2.5 bg-white/80 dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5">
               <span className="text-[9px] font-bold text-amber-600 uppercase block">Chờ Mô phỏng</span>
               <span className="text-base font-black text-amber-600">{stats?.scenarios.pending_sim_review || 0}</span>
             </div>
-            <div className="p-2.5 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5">
+            <div className="p-2.5 bg-white/80 dark:bg-slate-800/80 border border-sky-100 dark:border-slate-700 rounded-2xl space-y-0.5">
               <span className="text-[9px] font-bold text-blue-600 uppercase block">Chờ Chạy thử</span>
               <span className="text-base font-black text-blue-600">{stats?.scenarios.simulation_queued || 0}</span>
             </div>
-            <div className="p-2.5 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 rounded-2xl space-y-0.5">
+            <div className="p-2.5 bg-green-50/80 dark:bg-green-950/40 border border-green-200 dark:border-green-800 rounded-2xl space-y-0.5">
               <span className="text-[9px] font-bold text-green-700 dark:text-green-300 uppercase block">Đã Duyệt</span>
               <span className="text-base font-black text-green-700 dark:text-green-300">{stats?.scenarios.approved_library || 0}</span>
             </div>
@@ -356,7 +352,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Main Content Area */}
-      <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-6 shadow-sm">
+      <div className="bg-white/75 dark:bg-slate-900/85 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] p-6 space-y-6 shadow-2xl">
         {/* Navigation Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sky-200/80 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-3">

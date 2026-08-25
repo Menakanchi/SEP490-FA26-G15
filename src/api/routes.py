@@ -1368,19 +1368,68 @@ async def login_user_endpoint(body: LoginApiRequest) -> dict:
     }
 
 
+class ProfileUpdateRequest(BaseModel):
+    username: str
+    full_name: str | None = None
+    avatar_url: str | None = None
+
+
+class ChangePasswordApiRequest(BaseModel):
+    username: str
+    old_password: str
+    new_password: str
+
+
 @router.get("/auth/me")
-async def get_me_endpoint(user: str = Query("admin")) -> dict:
-    u = db.get_user(user)
-    if not u:
-        u = db.get_user("admin")
+@router.get("/users/profile")
+async def get_user_profile_endpoint(username: str | None = Query(None), user: str | None = Query(None)) -> dict:
+    target_username = username or user
+    if target_username:
+        u = db.get_user(target_username)
+        if u:
+            return u
+    u = db.get_user("creator") or db.get_user("admin")
     return u or {
-        "id": "usr_admin",
-        "username": "admin",
-        "name": "Hệ Thống Admin",
-        "email": "admin@forge.ai",
-        "role": "admin",
+        "id": "usr_creator",
+        "username": "creator",
+        "name": "Kỹ sư Kịch bản",
+        "full_name": "Kỹ sư Kịch bản",
+        "email": "creator@forge.ai",
+        "role": "creator",
         "status": "active",
+        "avatar_url": None,
     }
+
+
+@router.put("/users/profile")
+async def update_user_profile_endpoint(body: ProfileUpdateRequest) -> dict:
+    if not body.username:
+        raise HTTPException(status_code=400, detail="Username là bắt buộc")
+    updated = db.update_user_profile(
+        username=body.username,
+        full_name=body.full_name,
+        avatar_url=body.avatar_url,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+    return {"ok": True, "user": updated}
+
+
+@router.post("/users/change-password")
+async def change_password_endpoint(body: ChangePasswordApiRequest) -> dict:
+    if not body.username or not body.old_password or not body.new_password:
+        raise HTTPException(status_code=400, detail="Vui lòng điền đầy đủ các thông tin bắt buộc")
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Mật khẩu mới phải có ít nhất 6 ký tự")
+
+    success, msg = db.change_user_password(
+        username=body.username,
+        old_password=body.old_password,
+        new_password=body.new_password,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"ok": True, "message_vi": msg}
 
 
 # ===========================================================================

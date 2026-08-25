@@ -27,7 +27,9 @@ import {
   submitScenario,
 } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
+import { PageHeader } from "@/components/PageHeader";
 import type { ScenarioItem, ODDPayload } from "@/types";
+
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
@@ -312,70 +314,59 @@ function LibraryContent() {
   ];
 
   return (
-    <div className="min-h-screen p-6 pt-8 font-sans bg-white dark:bg-slate-950 text-[#0f2d59] dark:text-slate-100 transition-colors duration-200">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Toast */}
-        {toast && (
-          <div
-            className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm font-medium transition-all duration-300 ${
-              toast.type === "error" ? "bg-amber-500 text-slate-950 font-bold" : "bg-green-600 text-white font-bold"
-            }`}
-          >
-            <AlertCircle className="w-4 h-4" />
-            {toast.msg}
-          </div>
-        )}
-
-        {/* ─── Header Banner ─── */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <BookOpen className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black text-[#0f2d59] dark:text-slate-100">
-                Thư viện kịch bản ODD
-              </h1>
-              <p className="text-sm text-blue-900/80 dark:text-slate-400 font-medium">
-                {activeTab === "public"
-                  ? "Thư viện Chung: Tất cả kịch bản đã qua duyệt chính thức (Read-Only & Download)"
-                  : "Thư viện Cá nhân: Quản lý bản nháp, kịch bản chờ duyệt và lịch sử sinh kịch bản của tôi"}
-              </p>
-            </div>
-          </div>
-          <span className="text-xs font-bold px-3.5 py-1.5 rounded-full bg-sky-50/80 dark:bg-slate-900 text-[#0f2d59] dark:text-blue-300 border border-sky-100 dark:border-slate-800 shadow-sm shrink-0">
-            Hiển thị: {displayItems.length} / {total} kịch bản
-          </span>
+    <div className="max-w-7xl mx-auto space-y-6 font-sans text-slate-900 dark:text-slate-100">
+      {/* Toast */}
+      {toast && (
+        <div
+          className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-sm font-medium transition-all duration-300 ${
+            toast.type === "error" ? "bg-amber-500 text-slate-950 font-bold" : "bg-green-600 text-white font-bold"
+          }`}
+        >
+          <AlertCircle className="w-4 h-4" />
+          {toast.msg}
         </div>
+      )}
 
-        {/* ─── Tab Switcher (Chung vs Cá nhân) - Hidden for Admin ─── */}
+      {/* Header Glass Box */}
+      <div className="bg-white/70 dark:bg-slate-900/80 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 shadow-2xl rounded-[32px] p-6 sm:p-7 space-y-4 transition-all">
+        <PageHeader
+          icon={BookOpen}
+          title="Thư viện kịch bản ODD"
+          subtitle={
+            activeTab === "public"
+              ? "Thư viện Chung: Tất cả kịch bản đã qua duyệt chính thức (Read-Only & Download)"
+              : "Thư viện Cá nhân: Quản lý bản nháp, kịch bản chờ duyệt và lịch sử sinh kịch bản của tôi"
+          }
+          badge={`Hiển thị: ${displayItems.length} / ${total}`}
+        />
+
+        {/* Tab Switcher (Chung vs Cá nhân) */}
         {user?.role === "admin" ? (
-          <div className="flex items-center gap-2 border-b border-sky-100 dark:border-slate-800 pb-3">
-            <span className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800 flex items-center gap-2">
-              <Globe className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/80">
+            <span className="px-3.5 py-1.5 rounded-2xl text-xs font-bold bg-blue-50/80 dark:bg-blue-950/80 text-blue-800 dark:text-blue-200 border border-blue-200/60 dark:border-blue-800 flex items-center gap-2">
+              <Globe className="w-4 h-4 text-blue-600 dark:text-cyan-400" />
               Thư viện Chung (Public Approved Library) — Chế độ Giám sát Admin (Read-Only & Download)
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-2 border-b border-sky-100 dark:border-slate-800 pb-3">
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/80">
             <button
               onClick={() => handleTabSwitch("public")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+              className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
                 activeTab === "public"
                   ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
-                  : "bg-sky-50/70 dark:bg-slate-800 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-200/80 dark:border-slate-700"
+                  : "bg-white/60 dark:bg-slate-800/60 text-[#0f2d59] dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 border border-slate-200/60 dark:border-slate-700"
               }`}
             >
               <Globe className="w-4 h-4" />
-              Thư viện Chung (Public Approved)
+              Thư viện Chung
             </button>
-
             <button
               onClick={() => handleTabSwitch("me")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+              className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
                 activeTab === "me"
                   ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
-                  : "bg-sky-50/70 dark:bg-slate-800 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-200/80 dark:border-slate-700"
+                  : "bg-white/60 dark:bg-slate-800/60 text-[#0f2d59] dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 border border-slate-200/60 dark:border-slate-700"
               }`}
             >
               <User className="w-4 h-4" />
@@ -383,7 +374,6 @@ function LibraryContent() {
             </button>
           </div>
         )}
-
         {/* ─── Search & Filters Toolbar (Deep Navy Theme & Single Row Layout) ─── */}
         <div className="bg-white dark:bg-slate-900 p-4 md:p-5 rounded-2xl border border-sky-100 dark:border-slate-800 shadow-sm">
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-center">

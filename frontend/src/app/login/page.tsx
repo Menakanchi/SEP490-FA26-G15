@@ -26,7 +26,9 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const navigateTarget = (r: Role) => {
-    if (r === "reviewer" || r === "admin") {
+    if (r === "admin") {
+      router.push("/admin");
+    } else if (r === "reviewer") {
       router.push("/review");
     } else {
       router.push("/");

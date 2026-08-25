@@ -302,8 +302,31 @@ export async function postRegister(payload: RegisterPayload): Promise<{ ok: bool
   });
 }
 
-export async function getMe(): Promise<User> {
-  return request<User>("/auth/me");
+export async function getMe(username?: string): Promise<User> {
+  const query = username ? `?username=${encodeURIComponent(username)}` : "";
+  return request<User>(`/users/profile${query}`);
+}
+
+export async function updateUserProfile(payload: {
+  username: string;
+  full_name?: string;
+  avatar_url?: string;
+}): Promise<{ ok: boolean; user: User }> {
+  return request<{ ok: boolean; user: User }>("/users/profile", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function changePassword(payload: {
+  username: string;
+  old_password: string;
+  new_password: string;
+}): Promise<{ ok: boolean; message_vi: string }> {
+  return request<{ ok: boolean; message_vi: string }>("/users/change-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 // ---------------------------------------------------------------------------

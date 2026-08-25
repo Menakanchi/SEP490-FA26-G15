@@ -9,6 +9,8 @@ export type UserStatus = "active" | "pending" | "pending_approval" | "inactive" 
 export interface User {
   id?: string;
   name: string;
+  full_name?: string;
+  avatar_url?: string;
   email: string;
   role: Role;
   username: string;
@@ -51,4 +53,5 @@ export interface AuthContextType {
   switchRole: (role: Role) => void;
   register: (payload: RegisterPayload) => Promise<{ status: UserStatus; user: User }>;
   approveUser: (userId: string) => void;
+  updateCurrentUser: (updatedUser: User) => void;
 }
