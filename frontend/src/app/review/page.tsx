@@ -3,9 +3,9 @@
 import React, { Suspense, useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
-  Shield,
   CheckCircle2,
   XCircle,
+
   User,
   Loader2,
   Map,
@@ -18,12 +18,16 @@ import {
   RefreshCw,
   Layers,
   Sparkle,
+  ClipboardCheck,
 } from "lucide-react";
+
 import { getScenarios, getScenarioById, postReview, downloadXosc, completeSimulation } from "@/services/api";
 import ScenarioPreview from "@/components/ScenarioPreview";
 import { RoleGate } from "@/components/RoleGate";
 import { AuthGate } from "@/components/AuthGate";
+import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/context/AuthContext";
+
 import type { DuplicateDiff, ScenarioItem, ScenarioDetail, ReviewGate } from "@/types";
 import {
   ROAD_TYPE_LABELS,
@@ -302,11 +306,11 @@ function ReviewPageContent() {
   });
 
   return (
-    <div className="min-h-screen max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans bg-slate-50 dark:bg-slate-950 text-[#0f2d59] dark:text-slate-100 transition-colors duration-200">
+    <div className="max-w-7xl mx-auto space-y-6 font-sans text-slate-900 dark:text-slate-100">
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm font-medium transition-all duration-300 ${
+          className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-sm font-medium transition-all duration-300 ${
             toast.type === "success"
               ? "bg-green-600 text-white shadow-green-500/20 font-bold"
               : "bg-red-600 text-white shadow-red-500/20 font-bold"
@@ -321,57 +325,50 @@ function ReviewPageContent() {
         </div>
       )}
 
-      {/* Top Header Banner (Light Blue Aesthetic Box) */}
-      <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-        <div className="relative flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
-            <Shield className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl md:text-2xl font-black text-[#0f2d59] dark:text-white">
-              Kiểm duyệt kịch bản (Reviewer Flow - HITL)
-            </h1>
-            <p className="text-xs md:text-sm text-blue-900/80 dark:text-slate-400 font-medium">
-              Cổng duyệt hai tầng: Thư viện (BEFORE_LIBRARY) & Mô phỏng (BEFORE_SIM)
-            </p>
-          </div>
-        </div>
+      {/* Header Glass Box */}
+      <div className="bg-white/70 dark:bg-slate-900/80 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 shadow-2xl rounded-[32px] p-6 sm:p-7 transition-all">
+        <PageHeader
+          icon={ClipboardCheck}
+          title="HITL Review — Phê duyệt kịch bản"
+          subtitle="Cổng duyệt hai tầng: Thư viện (BEFORE_LIBRARY) & Mô phỏng CARLA (BEFORE_SIM)"
+          badge="HITL Review"
+          actions={
+            <div className="relative flex flex-wrap items-center gap-2.5">
+              <div className="flex items-center gap-1.5 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl px-3.5 py-2 shadow-xs backdrop-blur-md">
+                <Filter className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="text-xs md:text-sm font-bold bg-transparent text-slate-900 dark:text-sky-200 focus:outline-none cursor-pointer"
+                >
+                  {REVIEW_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium">
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-        {/* Dynamic Status Filter Dropdown & Refresh Controls */}
-        <div className="relative flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-sky-200 dark:border-slate-700 rounded-xl px-3 py-1.5 shadow-xs">
-            <Filter className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-xs md:text-sm font-semibold bg-transparent text-[#0f2d59] dark:text-sky-200 focus:outline-none cursor-pointer"
-            >
-              {REVIEW_STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value} className="bg-white dark:bg-slate-800 text-[#0f2d59] dark:text-slate-100 font-medium">
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <button
-            onClick={() => {
-              setListLoading(true);
-              void fetchScenarioList();
-            }}
-            className="text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 border border-sky-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100/80 dark:hover:bg-slate-700 font-bold transition cursor-pointer shadow-xs"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 ${listLoading ? "animate-spin" : ""}`} />
-            Làm mới
-          </button>
-        </div>
+              <button
+                onClick={() => {
+                  setListLoading(true);
+                  void fetchScenarioList();
+                }}
+                className="text-xs px-4 py-2.5 rounded-2xl flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-800 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 font-extrabold transition cursor-pointer shadow-xs backdrop-blur-md"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-blue-600 dark:text-cyan-400 ${listLoading ? "animate-spin" : ""}`} />
+                Làm mới
+              </button>
+            </div>
+          }
+        />
       </div>
 
       {/* Main Grid: Left Sidebar + Right Details */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Sidebar List Container */}
         <div className="lg:col-span-4 space-y-3">
-          <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-4 shadow-sm">
+          <div className="bg-white/75 dark:bg-slate-900/85 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] p-5 shadow-2xl">
             <div className="flex items-center justify-between mb-3 px-1">
               <h2 className="text-xs font-bold text-[#0f2d59] dark:text-slate-400 uppercase tracking-wider">
                 Danh sách kịch bản ({displayList.length})
@@ -901,14 +898,17 @@ function ReviewPageContent() {
 }
 
 function ReviewRoleGuard({ children }: { children: React.ReactNode }) {
-  const { role, isLoading, isAuthenticated } = useAuth();
+  const { role, user, isLoading, isAuthenticated } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated && role === "creator") {
+    const currentRole = role || user?.role;
+    if (!isLoading && isAuthenticated && currentRole === "creator") {
       router.replace("/");
+    } else if (!isLoading && isAuthenticated && currentRole === "admin") {
+      router.replace("/admin");
     }
-  }, [isLoading, isAuthenticated, role, router]);
+  }, [isLoading, isAuthenticated, role, user?.role, router]);
 
   if (isLoading) {
     return (
@@ -918,11 +918,12 @@ function ReviewRoleGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (role === "creator") {
+  const currentRole = role || user?.role;
+  if (currentRole === "creator" || currentRole === "admin") {
     return null;
   }
 
-  return <AuthGate allowedRoles={["reviewer", "admin"]}>{children}</AuthGate>;
+  return <AuthGate allowedRoles={["reviewer"]}>{children}</AuthGate>;
 }
 
 export default function ReviewPage() {

@@ -354,3 +354,49 @@ def test_l4_accepts_a_cut_in_that_entered_ahead_of_the_ego() -> None:
         )
     )
     assert verdict is True
+
+
+def test_unknown_and_invalid_enum_handling_in_metrics() -> None:
+    """Xử lý an toàn khi kịch bản chứa 'unknown', None hoặc chuỗi không hợp lệ."""
+    bad_scenarios = [
+        {
+            "scenario_id": "sc_unknown",
+            "road_type": "unknown",
+            "weather": "rain",
+            "actor_type": "car",
+            "maneuver": "cut_in",
+            "status": "draft",
+            "xosc_content": "some_xosc",
+            "created_by": "creator",
+        },
+        {
+            "scenario_id": "sc_invalid_enum",
+            "road_type": "invalid_road",
+            "weather": "invalid_weather",
+            "actor_type": "invalid_actor",
+            "maneuver": "invalid_maneuver",
+            "status": "draft",
+            "xosc_content": "some_xosc",
+            "created_by": "creator",
+        },
+        {
+            "scenario_id": "sc_none",
+            "road_type": None,
+            "weather": "rain",
+            "actor_type": "car",
+            "maneuver": "cut_in",
+            "status": "draft",
+            "xosc_content": "",
+            "created_by": "creator",
+        },
+    ]
+
+    for sc in bad_scenarios:
+        assert metrics._in_scope(sc) is False
+
+    report = metrics.build_report([], bad_scenarios, [])
+    assert report is not None
+    assert "m1_validity" in report
+    assert "m2_coverage" in report
+    assert "m3_hazard" in report
+

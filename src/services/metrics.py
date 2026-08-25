@@ -18,7 +18,9 @@ from __future__ import annotations
 from itertools import combinations
 from typing import Any
 
+from pydantic import ValidationError
 from src.models.schemas import DEFAULT_SUPPORT_POLICY, ManeuverType, ODDCell
+
 
 # Ngưỡng dưới đây đều lấy từ số đo trên CARLA ngày 22/08/2026, không phải chọn cho tròn.
 
@@ -169,10 +171,13 @@ def _pairwise(scenarios: list[dict], supported: list[ODDCell]) -> dict[str, Any]
     for scenario in scenarios:
         if not all(scenario.get(axis) for axis in _AXES):
             continue
+        if any(scenario.get(axis) == "unknown" or scenario.get(axis) is None for axis in _AXES):
+            continue
         for left, right in combinations(_AXES, 2):
             pair = (left, right, scenario[left], scenario[right])
             if pair in feasible:
                 covered.add(pair)
+
 
     return {
         "covered_pairs": len(covered),
@@ -191,8 +196,14 @@ def _in_scope(scenario: dict) -> bool:
     )
     if not all(axes):
         return False
-    key = ODDCell(road_type=axes[0], weather=axes[1], actor_type=axes[2], maneuver=axes[3]).key
-    return key in {c.key for c in DEFAULT_SUPPORT_POLICY.supported_cells()}
+    if any(a == "unknown" or a is None for a in axes):
+        return False
+    try:
+        key = ODDCell(road_type=axes[0], weather=axes[1], actor_type=axes[2], maneuver=axes[3]).key
+        return key in {c.key for c in DEFAULT_SUPPORT_POLICY.supported_cells()}
+    except (ValidationError, ValueError, TypeError, Exception):
+        return False
+
 
 
 def intent_verdict(execution: dict) -> bool | None:
@@ -409,9 +420,15 @@ def coverage(scenarios: list[dict]) -> dict[str, Any]:
         axes = (s.get("road_type"), s.get("weather"), s.get("actor_type"), s.get("maneuver"))
         if not all(axes):
             continue
-        key = ODDCell(road_type=axes[0], weather=axes[1], actor_type=axes[2], maneuver=axes[3]).key
-        covered_keys.add(key)
-        per_maneuver[axes[3]] = per_maneuver.get(axes[3], 0) + 1
+        if any(a == "unknown" or a is None for a in axes):
+            continue
+        try:
+            key = ODDCell(road_type=axes[0], weather=axes[1], actor_type=axes[2], maneuver=axes[3]).key
+            covered_keys.add(key)
+            per_maneuver[axes[3]] = per_maneuver.get(axes[3], 0) + 1
+        except (ValidationError, ValueError, TypeError, Exception):
+            continue
+
 
     in_scope = covered_keys & supported_keys
     return {
