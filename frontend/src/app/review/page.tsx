@@ -24,7 +24,7 @@ import ScenarioPreview from "@/components/ScenarioPreview";
 import { RoleGate } from "@/components/RoleGate";
 import { AuthGate } from "@/components/AuthGate";
 import { useAuth } from "@/context/AuthContext";
-import type { DuplicateDiff, ScenarioItem, ScenarioDetail, ReviewGate } from "@/types";
+import type { AssumptionSource, DuplicateDiff, ScenarioItem, ScenarioDetail, ReviewGate } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
@@ -42,6 +42,21 @@ const REVIEW_STATUS_OPTIONS = [
   { value: "approved_library", label: "Đã duyệt chính thức" },
   { value: "rejected", label: "Bị từ chối" },
 ];
+
+const ODD_AXIS_LABELS: Record<string, string> = {
+  road_type: "Đường",
+  weather: "Thời tiết",
+  actor_type: "Tác nhân",
+  maneuver: "Hành vi",
+};
+
+/** Hai nguồn có độ tin cậy khác hẳn nhau, nên hiện tách bạch chứ không gộp thành
+ * "tự điền": `inferred` là máy đọc câu mà suy ra (thường đúng), `default` là câu
+ * không hề nhắc tới. Reviewer cần biết cái nào đáng nghi hơn. */
+const ASSUMPTION_SOURCE_LABELS: Record<AssumptionSource, string> = {
+  inferred: "máy suy ra từ câu",
+  default: "máy điền mặc định",
+};
 
 const DUPLICATE_ROLE_LABELS: Record<string, string> = {
   ego: "xe ego",
@@ -172,6 +187,10 @@ function ReviewPageContent() {
 
   const gateLabel =
     gateToReview === "before_sim" ? "Cổng 1: Mô phỏng (BEFORE_SIM)" : "Cổng 2: Thư viện (BEFORE_LIBRARY)";
+
+  /** Trục ODD máy tự điền. Rỗng là một câu trả lời có nghĩa — không phải "chưa có
+   * dữ liệu" — nên UI nói thẳng "cả bốn trục đều do người gõ" thay vì im lặng. */
+  const assumptions = scenario?.assumptions ?? [];
 
   const handleSubmitReview = async (approved: boolean, forceSimulate = false) => {
     if (!scenario) return;
@@ -465,45 +484,100 @@ function ReviewPageContent() {
                   </span>
                 </div>
 
-                {/* ⚠️ Inferred ODD Warning Banner */}
-                <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/80 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200 shadow-xs">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="font-bold block text-amber-950 dark:text-amber-200 mb-0.5">
-                      Cảnh báo thông số tự suy luận (Inferred ODD Warning):
-                    </strong>
+                {/* Trục ODD do máy tự điền — chỉ cảnh báo khi THẬT SỰ có, và nói rõ
+                    trục nào. Banner bật ở mọi kịch bản là banner không ai đọc, và
+                    lúc có một suy luận sai thật thì nó chìm nghỉm. */}
+                {assumptions.length > 0 ? (
+                  <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/80 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200 shadow-xs">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="font-bold block text-amber-950 dark:text-amber-200 mb-1">
+                        {assumptions.length}/4 trục ODD không do người dùng gõ ra
+                      </strong>
+                      <ul className="space-y-0.5">
+                        {assumptions.map((assumption) => (
+                          <li key={assumption.field}>
+                            <strong className="font-semibold">
+                              {ODD_AXIS_LABELS[assumption.field] ?? assumption.field}
+                            </strong>{" = "}
+                            <code className="font-mono">{assumption.value}</code>
+                            {" — "}
+                            {ASSUMPTION_SOURCE_LABELS[assumption.source] ?? assumption.source}
+                            {assumption.reason_vi ? `: ${assumption.reason_vi}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                      <span className="block mt-1.5">
+                        Một trục đoán sai vừa làm hẹp kết quả tìm ví dụ mẫu, vừa đổi nội dung kịch bản. Đối chiếu với
+                        câu gốc trước khi phê duyệt.
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/80 flex items-start gap-2.5 text-xs text-emerald-900 dark:text-emerald-200 shadow-xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
                     <span>
-                      Hệ thống tự điền giả định mặc định cho các trục ODD không được đề cập trong prompt. Kỹ sư duyệt cần kiểm tra các thông số ODD và mảng actors bên dưới trước khi phê duyệt.
+                      Cả bốn trục ODD đều đọc được từ câu người dùng gõ — không có giá trị nào do hệ thống đoán.
                     </span>
                   </div>
-                </div>
+                )}
 
-                {/* 4 ODD Cell Parameter Boxes (Light Blue Tint) */}
+                {/* 4 ODD Cell Parameter Boxes (Light Blue Tint) — ô nào do máy điền
+                    thì viền hổ phách và có badge, để cảnh báo ở trên trỏ được vào
+                    đúng chỗ thay vì bắt reviewer tự dò. */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="bg-sky-100/60 dark:bg-slate-800 text-[#0f2d59] dark:text-sky-100 border border-sky-300/70 dark:border-slate-700 p-3 rounded-xl text-center shadow-xs">
-                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Đường</span>
-                    <span className="text-xs font-bold text-blue-700 dark:text-blue-400">
-                      {renderSafeValue(scenario.odd?.road_type, ROAD_TYPE_LABELS)}
-                    </span>
-                  </div>
-                  <div className="bg-sky-100/60 dark:bg-slate-800 text-[#0f2d59] dark:text-sky-100 border border-sky-300/70 dark:border-slate-700 p-3 rounded-xl text-center shadow-xs">
-                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Thời tiết</span>
-                    <span className="text-xs font-bold text-cyan-700 dark:text-cyan-400">
-                      {renderSafeValue(scenario.odd?.weather, WEATHER_LABELS)}
-                    </span>
-                  </div>
-                  <div className="bg-sky-100/60 dark:bg-slate-800 text-[#0f2d59] dark:text-sky-100 border border-sky-300/70 dark:border-slate-700 p-3 rounded-xl text-center shadow-xs">
-                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Tác nhân</span>
-                    <span className="text-xs font-bold text-orange-700 dark:text-orange-400">
-                      {renderSafeValue(scenario.odd?.actor_type, ACTOR_TYPE_LABELS)}
-                    </span>
-                  </div>
-                  <div className="bg-sky-100/60 dark:bg-slate-800 text-[#0f2d59] dark:text-sky-100 border border-sky-300/70 dark:border-slate-700 p-3 rounded-xl text-center shadow-xs">
-                    <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">Hành vi</span>
-                    <span className="text-xs font-bold text-red-700 dark:text-red-400">
-                      {renderSafeValue(scenario.odd?.maneuver, MANEUVER_TYPE_LABELS)}
-                    </span>
-                  </div>
+                  {(
+                    [
+                      {
+                        axis: "road_type",
+                        label: "Đường",
+                        value: renderSafeValue(scenario.odd?.road_type, ROAD_TYPE_LABELS),
+                        tone: "text-blue-700 dark:text-blue-400",
+                      },
+                      {
+                        axis: "weather",
+                        label: "Thời tiết",
+                        value: renderSafeValue(scenario.odd?.weather, WEATHER_LABELS),
+                        tone: "text-cyan-700 dark:text-cyan-400",
+                      },
+                      {
+                        axis: "actor_type",
+                        label: "Tác nhân",
+                        value: renderSafeValue(scenario.odd?.actor_type, ACTOR_TYPE_LABELS),
+                        tone: "text-orange-700 dark:text-orange-400",
+                      },
+                      {
+                        axis: "maneuver",
+                        label: "Hành vi",
+                        value: renderSafeValue(scenario.odd?.maneuver, MANEUVER_TYPE_LABELS),
+                        tone: "text-red-700 dark:text-red-400",
+                      },
+                    ] as const
+                  ).map((box) => {
+                    const guessed = assumptions.find((assumption) => assumption.field === box.axis);
+                    return (
+                      <div
+                        key={box.axis}
+                        title={guessed?.reason_vi || undefined}
+                        className={`p-3 rounded-xl text-center shadow-xs border text-[#0f2d59] dark:text-sky-100 ${
+                          guessed
+                            ? "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-900/80"
+                            : "bg-sky-100/60 dark:bg-slate-800 border-sky-300/70 dark:border-slate-700"
+                        }`}
+                      >
+                        <span className="text-[10px] text-blue-800/80 dark:text-slate-400 block uppercase font-bold">
+                          {box.label}
+                        </span>
+                        <span className={`text-xs font-bold ${box.tone}`}>{box.value}</span>
+                        {guessed && (
+                          <span className="mt-1 flex items-center justify-center gap-1 text-[9px] font-bold uppercase text-amber-700 dark:text-amber-400">
+                            <Sparkle className="w-2.5 h-2.5 flex-shrink-0" />
+                            {ASSUMPTION_SOURCE_LABELS[guessed.source] ?? guessed.source}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

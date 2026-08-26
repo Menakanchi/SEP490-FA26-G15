@@ -1361,7 +1361,7 @@ def get_campaign(campaign_id: str) -> dict | None:
         campaign = dict(row)
         campaign["cells"] = json.loads(campaign["cells"]) if campaign.get("cells") else []
         cursor.execute(
-            "SELECT r.request_id, r.status, r.description_vi, r.scenario_id, s.road_type, s.weather, "
+            "SELECT r.request_id, r.status, r.description_vi, r.scenario_id, r.error, s.road_type, s.weather, "
             "s.actor_type, s.maneuver FROM generation_requests r "
             "LEFT JOIN scenarios s ON s.scenario_id = r.scenario_id "
             "WHERE r.campaign_id = ? ORDER BY r.created_at",
@@ -1374,10 +1374,13 @@ def get_campaign(campaign_id: str) -> dict | None:
 def list_campaigns() -> list[dict]:
     with _cursor() as cursor:
         cursor.execute(
-            "SELECT campaign_id, created_by, per_cell, max_scenarios, status, generated, "
+            "SELECT campaign_id, created_by, cells, per_cell, max_scenarios, status, generated, "
             "failed, created_at FROM campaigns ORDER BY created_at DESC"
         )
-        return [dict(r) for r in cursor.fetchall()]
+        campaigns = [dict(r) for r in cursor.fetchall()]
+    for campaign in campaigns:
+        campaign["cells"] = json.loads(campaign["cells"]) if campaign.get("cells") else []
+    return campaigns
 
 
 def attach_request_to_campaign(request_id: str, campaign_id: str) -> None:

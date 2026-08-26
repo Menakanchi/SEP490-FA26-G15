@@ -86,6 +86,24 @@ out/
 # (→ ADR-014).
 /docs/overview.html
 
+# scenario-forge-eli5.html cùng loại và cùng luật: trang HTML giải thích lại hệ
+# thống cho người mới (đường ống 7 node, ma trận ODD, hai cổng duyệt, cách đọc
+# kết quả CARLA). Mọi thứ trong đó đã có bản tracked ở ARCHITECTURE.md, ADR,
+# `schemas.py` và `eval/results/` — nó chỉ trình bày lại, không giữ độc quyền
+# quyết định nào. Vì vậy giữ local, không track: một tài liệu kiến trúc tracked
+# là ARCHITECTURE.md, và đã có bản đọc được ở Artifact.
+/docs/scenario-forge-eli5.html
+
 # Output của ScenarioRunner trên máy worker — log và JSON criteria mỗi lần chạy.
 worker/outputs/
 scripts/env_local.sh
+
+# Tài liệu tuần và vật liệu dựng pitch deck — giữ local.
+#
+# `presentation/pitch_deck.pptx` và `.pdf` đã tracked; đó là hiện vật giao ra.
+# Còn script dựng và thư mục hình thì không: `build_deck.py` sinh lại được từ
+# số liệu trong `eval/results/`, và `figures/` là output của chính nó. Track cả
+# ba là track cùng một nội dung ở hai dạng, rồi chúng lệch nhau.
+/Weekly report *.txt
+/presentation/build_deck.py
+/presentation/figures/
