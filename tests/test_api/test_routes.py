@@ -196,7 +196,8 @@ async def test_operational_library_and_review_hide_seed_and_unbuildable_approved
     assert "sc_seed_hidden" not in review_ids
     assert "sc_unbuildable_hidden" not in review_ids
 
-    # Không xoá vật lý: seed vẫn ở kho nội bộ để retriever có thể dùng.
+    # Không xoá vật lý: seed vẫn ở kho nội bộ để audit/reproduce, nhưng không
+    # còn xuất hiện trong UI hoặc được retriever dùng làm few-shot.
     assert db.get_scenario("sc_seed_hidden") is not None
 
 

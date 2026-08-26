@@ -587,10 +587,7 @@ async def list_scenarios(
             for item in items
             if item.get("status") != ScenarioStatus.DRAFT.value
             and item.get("created_by") != metrics.SEED_AUTHOR
-            and (
-                item.get("status") not in (ScenarioStatus.APPROVED_LIBRARY.value, ScenarioStatus.APPROVED_SIM.value)
-                or _is_operational_library_item(item)
-            )
+            and _is_operational_library_item(item)
         ]
 
     total = len(items)
