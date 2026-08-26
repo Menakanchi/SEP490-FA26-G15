@@ -79,6 +79,96 @@ def _earlier_than(alongside_s: float) -> float:
     return max(round((alongside_s - 1.5) * 2) / 2, 0.5)
 
 
+_SPEED_TOLERANCE_KMH = 0.5
+
+
+def _hinted_number(hints: dict[str, Any], key: str) -> float | None:
+    """Đọc số từ state phòng thủ; bool không được coi là 0/1 km/h."""
+    value = hints.get(key)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def _intent_kinematic_issues(draft: ScenarioDraft, hints: dict[str, Any]) -> list[ValidationIssue]:
+    """Chặn draft đổi những dữ kiện động học người dùng đã nói rõ.
+
+    Những ràng buộc này khác geometry checks: geometry trả lời "có dựng được
+    tình huống không", còn đây trả lời "có đúng tình huống được yêu cầu không".
+    ``sc_052`` từng qua geometry vì cấu hình 110 km/h từ phía sau thực sự tạo
+    va chạm, nhưng câu gốc lại nói 68 km/h từ phía trước.
+    """
+    if not hints:
+        return []
+
+    ego_idx = next((idx for idx, actor in enumerate(draft.actors) if actor.is_ego), None)
+    primary_idx = next(
+        (idx for idx, maneuver in enumerate(draft.maneuvers) if maneuver.maneuver == draft.odd.maneuver),
+        0,
+    )
+    primary = draft.maneuvers[primary_idx]
+    adversary_idx = next(
+        (idx for idx, actor in enumerate(draft.actors) if actor.name == primary.actor_name),
+        None,
+    )
+    if ego_idx is None or adversary_idx is None:
+        return []
+
+    ego = draft.actors[ego_idx]
+    adversary = draft.actors[adversary_idx]
+    issues: list[ValidationIssue] = []
+
+    speed_checks = (
+        ("ego_speed_kmh", ego.initial_speed_kmh, f"/actors/{ego_idx}/initial_speed_kmh", "ego"),
+        (
+            "adversary_speed_kmh",
+            adversary.initial_speed_kmh,
+            f"/actors/{adversary_idx}/initial_speed_kmh",
+            adversary.name,
+        ),
+        (
+            "adversary_target_speed_kmh",
+            primary.target_speed_kmh,
+            f"/maneuvers/{primary_idx}/target_speed_kmh",
+            f"tốc độ sau hành vi của {adversary.name}",
+        ),
+    )
+    for key, actual, path, label in speed_checks:
+        expected = _hinted_number(hints, key)
+        if expected is None or (actual is not None and abs(actual - expected) <= _SPEED_TOLERANCE_KMH):
+            continue
+        actual_text = "không được đặt" if actual is None else f"{actual:g} km/h"
+        issues.append(
+            ValidationIssue(
+                code=IssueCode.INTENT_SPEED_MISMATCH,
+                path=path,
+                message_vi=f"Câu gốc đặt {label} ở {expected:g} km/h nhưng draft đang là {actual_text}.",
+                suggestion=f"Đặt {path} = {expected:g} đúng như câu người dùng.",
+            )
+        )
+
+    relation = hints.get("adversary_relative_position")
+    offset = adversary.position.s_offset_m
+    relation_matches = (relation == "ahead" and offset > 0) or (relation == "behind" and offset < 0)
+    if relation in {"ahead", "behind"} and not relation_matches:
+        expected_vi = "phía trước" if relation == "ahead" else "phía sau"
+        sign = 1 if relation == "ahead" else -1
+        suggested_offset = sign * max(abs(offset), 20.0)
+        path = f"/actors/{adversary_idx}/position/s_offset_m"
+        issues.append(
+            ValidationIssue(
+                code=IssueCode.INTENT_POSITION_MISMATCH,
+                path=path,
+                message_vi=(
+                    f"Câu gốc đặt {adversary.name} ở {expected_vi} ego nhưng draft dùng s_offset_m={offset:g}."
+                ),
+                suggestion=f"Đặt {path} = {suggested_offset:g} để giữ quan hệ {expected_vi} ego.",
+            )
+        )
+
+    return issues
+
+
 _INVARIANT_SUGGESTIONS: dict[IssueCode, str] = {
     IssueCode.EGO_COUNT: "Chỉ định đúng một actor có is_ego=True.",
     IssueCode.DUP_ACTOR_NAME: "Đảm bảo mỗi actor có một thuộc tính name duy nhất.",
@@ -345,6 +435,8 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
                 for act_idx, actor in missing_positions
             )
             return {"issues": issues}
+
+        issues.extend(_intent_kinematic_issues(draft, state.get("kinematic_hints") or {}))
 
         for act_idx, actor in enumerate(draft.actors):
             if actor.is_ego:

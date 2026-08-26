@@ -160,6 +160,7 @@ def _generate_draft(state: ForgeState) -> dict[str, Any]:
             odd_cell=odd_hints,
             examples=_few_shot_examples(state) or None,
             actor_hints=state.get("actors") or None,
+            kinematic_hints=state.get("kinematic_hints") or None,
         )
     except Exception as exc:
         return _llm_failure(exc, "generate_draft")

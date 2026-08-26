@@ -52,6 +52,12 @@ class ForgeState(TypedDict, total=False):
     dàn diễn viên. Phải khai ở đây: LangGraph chỉ giữ những khoá được khai
     trong schema, khoá lạ bị **bỏ im lặng** giữa hai node.
     """
+    kinematic_hints: dict[str, Any]
+    """Tốc độ và quan hệ trước/sau được nói rõ trong câu.
+
+    Không nhập chúng vào ``ODDQuery``: đây là ràng buộc của một scenario cụ thể,
+    không phải trục dùng để tính coverage hay lọc retrieval.
+    """
 
     # -- retrieve (code) ---------------------------------------------------
     examples: list[ScenarioSpec]

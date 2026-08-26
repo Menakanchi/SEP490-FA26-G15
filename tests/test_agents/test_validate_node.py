@@ -86,6 +86,61 @@ async def test_validate_node_accepts_valid_draft(valid_draft: ScenarioDraft) -> 
 
 
 @pytest.mark.asyncio
+async def test_validate_rejects_speed_and_position_drift_from_explicit_intent(
+    valid_draft: ScenarioDraft,
+) -> None:
+    """Hình học có thể gây va chạm nhưng vẫn sai intent như hiện vật sc_052."""
+    draft = valid_draft.model_dump()
+    draft["actors"][0]["initial_speed_kmh"] = 96.0
+    draft["actors"][1]["initial_speed_kmh"] = 110.0
+    draft["actors"][1]["position"]["s_offset_m"] = -25.0
+    draft["maneuvers"][0]["target_speed_kmh"] = 40.0
+
+    result = await validate_node(
+        {
+            "draft": draft,
+            "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
+            "kinematic_hints": {
+                "ego_speed_kmh": 96.0,
+                "adversary_speed_kmh": 68.0,
+                "adversary_relative_position": "ahead",
+            },
+        }
+    )
+
+    intent_issues = [issue for issue in result["issues"] if issue.code.value.startswith("INTENT_")]
+    assert [(issue.code, issue.path) for issue in intent_issues] == [
+        (IssueCode.INTENT_SPEED_MISMATCH, "/actors/1/initial_speed_kmh"),
+        (IssueCode.INTENT_POSITION_MISMATCH, "/actors/1/position/s_offset_m"),
+    ]
+    assert all(issue.repairable_by_llm for issue in intent_issues)
+
+
+@pytest.mark.asyncio
+async def test_validate_accepts_kinematics_that_preserve_explicit_intent(valid_draft: ScenarioDraft) -> None:
+    draft = valid_draft.model_dump()
+    draft["actors"][0]["initial_speed_kmh"] = 96.0
+    draft["actors"][1]["initial_speed_kmh"] = 68.0
+    draft["actors"][1]["position"]["s_offset_m"] = 25.0
+    draft["maneuvers"][0]["target_speed_kmh"] = 40.0
+
+    result = await validate_node(
+        {
+            "draft": draft,
+            "odd_query": ODDQuery(actor_type=ActorType.CAR, maneuver=ManeuverType.CUT_IN),
+            "kinematic_hints": {
+                "ego_speed_kmh": 96.0,
+                "adversary_speed_kmh": 68.0,
+                "adversary_target_speed_kmh": 40.0,
+                "adversary_relative_position": "ahead",
+            },
+        }
+    )
+
+    assert not [issue for issue in result["issues"] if issue.code.value.startswith("INTENT_")]
+
+
+@pytest.mark.asyncio
 async def test_ego_maneuver_raw_draft_becomes_repairable_issue(valid_draft: ScenarioDraft) -> None:
     raw = valid_draft.model_dump(mode="json")
     raw["maneuvers"][0]["actor_name"] = "hero"

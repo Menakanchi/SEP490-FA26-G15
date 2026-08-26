@@ -74,6 +74,87 @@ _MANEUVER_ALIASES: dict[str, ManeuverType] = {
 
 _EnumT = TypeVar("_EnumT", bound=StrEnum)
 
+_SPEED_VALUE = r"(\d+(?:[.,]\d+)?)\s*km\s*/?\s*h"
+_MOVING_SPEED_RE = re.compile(rf"\b(?:dang\s+)?(?:chay|di)\s+{_SPEED_VALUE}")
+_TARGET_SPEED_RE = re.compile(
+    rf"\b(?:phanh|thang|giam\s+toc|cham\s+lai)[^.;,\n]{{0,50}}?"
+    rf"\b(?:xuong(?:\s+con)?|con)\s+{_SPEED_VALUE}"
+)
+
+
+def _speed_value(match: re.Match[str] | None) -> float | None:
+    if match is None:
+        return None
+    return float(match.group(1).replace(",", "."))
+
+
+def _relative_position(segment: str) -> str | None:
+    """Chỉ đọc quan hệ xuất phát được nói rõ, không suy từ chữ "tạt trước đầu"."""
+    behind = re.search(
+        r"\b(?:tu|o)\s+phia\s+sau\b|\bxuat\s+phat[^,;.]{0,35}\bphia\s+sau\b",
+        segment,
+    )
+    ahead = re.search(
+        r"\b(?:tu|o)\s+phia\s+truoc\b|\bxuat\s+phat[^,;.]{0,35}\bphia\s+truoc\b",
+        segment,
+    )
+    if behind and not ahead:
+        return "behind"
+    if ahead and not behind:
+        return "ahead"
+    return None
+
+
+def _extract_kinematic_hints(
+    query_no_accents: str,
+    actor_spans: list[tuple[int, int, str]],
+    actor_roles: list[str],
+) -> dict[str, float | str]:
+    """Giữ các con số/quan hệ người dùng nói rõ để validate draft về sau.
+
+    Chỉ phát hint khi có bằng chứng trực tiếp. Một hint thiếu chỉ có nghĩa là câu
+    không nói rõ và generator được quyền chọn; tuyệt đối không điền mặc định ở đây.
+    """
+    hints: dict[str, float | str] = {}
+    actor_relations: dict[str, str] = {}
+
+    for index, (start, end, _code) in enumerate(actor_spans):
+        role = actor_roles[index]
+        next_start = actor_spans[index + 1][0] if index + 1 < len(actor_spans) else len(query_no_accents)
+        segment = query_no_accents[end:next_start]
+        speed = _speed_value(_MOVING_SPEED_RE.search(segment))
+        relation = _relative_position(segment)
+
+        if role in {"ego", "adversary"} and speed is not None:
+            hints[f"{role}_speed_kmh"] = speed
+        if role in {"ego", "adversary"} and relation is not None:
+            actor_relations[role] = relation
+
+    # "xe bị ảnh hưởng" không phải một ActorType nên taxonomy không tạo span
+    # cho nó. Đây là marker vai trò rõ ràng; đọc riêng để không làm mất tốc độ ego.
+    if "ego_speed_kmh" not in hints:
+        ego_patterns = (
+            re.compile(rf"\b(?:o\s*to\s+)?ego\b[^.;,\n]{{0,55}}?\b(?:dang\s+)?chay\s+{_SPEED_VALUE}"),
+            re.compile(rf"\bxe\s+bi\s+anh\s+huong\b[^.;,\n]{{0,55}}?\b(?:dang\s+)?chay\s+{_SPEED_VALUE}"),
+        )
+        for pattern in ego_patterns:
+            speed = _speed_value(pattern.search(query_no_accents))
+            if speed is not None:
+                hints["ego_speed_kmh"] = speed
+                break
+
+    target_speed = _speed_value(_TARGET_SPEED_RE.search(query_no_accents))
+    if target_speed is not None:
+        hints["adversary_target_speed_kmh"] = target_speed
+
+    adversary_relation = actor_relations.get("adversary")
+    if adversary_relation is None and (ego_relation := actor_relations.get("ego")) is not None:
+        adversary_relation = "ahead" if ego_relation == "behind" else "behind"
+    if adversary_relation is not None:
+        hints["adversary_relative_position"] = adversary_relation
+
+    return hints
+
 
 def _to_enum(code: str | None, enum: type[_EnumT], aliases: Mapping[str, _EnumT]) -> _EnumT | None:
     """Mã taxonomy -> giá trị enum, hoặc ``None`` nếu không quy được.
@@ -138,7 +219,14 @@ def _infer_actor_roles(
     victim_pattern = re.compile(r"\b(?:bi|khong kip tranh|khong the tranh|phai ne tranh)\b")
     for idx, (start, end, _code) in enumerate(actor_spans):
         next_start = actor_spans[idx + 1][0] if idx + 1 < len(actor_spans) else len(query_no_accents)
-        if victim_pattern.search(query_no_accents[end:next_start]):
+        segment = query_no_accents[end:next_start]
+        # "xe bị ảnh hưởng" là một vai riêng dù không nói loại xe, nên taxonomy
+        # không tạo actor span cho nó. Chiếc xe được nhắc trước marker này là
+        # adversary, không phải nạn nhân chỉ vì segment có chữ "bị". Đây chính
+        # là cấu trúc câu đã sinh sc_052 và từng đảo cả vai lẫn tốc độ 68/96.
+        if re.search(r"\bxe\s+bi\s+anh\s+huong\b", segment):
+            roles[idx] = "adversary"
+        elif victim_pattern.search(segment):
             roles[idx] = "ego"
 
         # Người dùng gọi thẳng "ô tô ego" / "ego ô tô" là bằng chứng mạnh
@@ -232,6 +320,7 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
 
     non_overlapping_spans.sort(key=lambda x: x[0])
     actor_roles = _infer_actor_roles(query_no_accents, non_overlapping_spans, maneuver_matches)
+    kinematic_hints = _extract_kinematic_hints(query_no_accents, non_overlapping_spans, actor_roles)
 
     actor_obj = None
     actor_spec = None
@@ -283,6 +372,7 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
         "specific_type": actor_spec,
         "specific_action": maneuver_spec,
         "actors": parsed_actors,
+        "kinematic_hints": kinematic_hints,
     }
 
 
@@ -364,6 +454,7 @@ def parse_intent_node(state: ForgeState) -> dict:
     # không được validate, không có trong ``model_dump()``, và biến mất im lặng
     # ở bất kỳ chỗ nào serialize lại object. Thread thẳng qua state thay vì vậy.
     actors = rule_dict.get("actors") or []
+    kinematic_hints = rule_dict.get("kinematic_hints") or {}
 
     # Không đọc nổi trục nào = prompt không phải mô tả giao thông.
     if all(getattr(odd_query, axis) is None for axis in ODDQuery.AXES):
@@ -383,6 +474,7 @@ def parse_intent_node(state: ForgeState) -> dict:
             "specific_action": odd_query.specific_action or (mv_cat if mv_cat != "unknown" else None),
         },
         "actors": actors,
+        "kinematic_hints": kinematic_hints,
     }
 
     if missing := odd_query.missing_required_axes():
@@ -391,7 +483,12 @@ def parse_intent_node(state: ForgeState) -> dict:
             message_vi=f"Mô tả chưa rõ thông tin bắt buộc: {', '.join(missing)}",
             suggestion="Hãy ghi rõ loại phương tiện và hành vi (ví dụ: xe máy tạt đầu)",
         )
-        return {"parsed_intent": parsed_intent, "odd_query": odd_query, "issues": [issue]}
+        return {
+            "parsed_intent": parsed_intent,
+            "odd_query": odd_query,
+            "kinematic_hints": kinematic_hints,
+            "issues": [issue],
+        }
 
     # Điền hai trục bối cảnh còn trống. Truyền policy tường minh: mặc định của
     # `with_defaults` cũng là nó, nhưng viết ra thì người đọc thấy ngay rằng
@@ -416,6 +513,7 @@ def parse_intent_node(state: ForgeState) -> dict:
             "parsed_intent": parsed_intent,
             "odd_query": odd_query,
             "odd_hints": odd_hints,
+            "kinematic_hints": kinematic_hints,
             "issues": [issue],
         }
 
@@ -425,5 +523,6 @@ def parse_intent_node(state: ForgeState) -> dict:
         "odd_hints": odd_hints,
         "assumptions": assumptions,
         "actors": actors,
+        "kinematic_hints": kinematic_hints,
         "issues": [],
     }
