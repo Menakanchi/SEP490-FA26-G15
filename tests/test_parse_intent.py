@@ -261,6 +261,37 @@ def test_actor_roles_do_not_depend_on_mention_order():
     ]
 
 
+def test_explicit_kinematics_survive_parse_for_the_sc052_sentence_shape():
+    """Cụm "xe bị ảnh hưởng" không được đảo chiếc xe gây nguy hiểm thành ego."""
+    parsed = _rule_based_extract(
+        "Trên cao tốc trời quang, một ô tô con chạy 68 km/h từ phía trước bất ngờ "
+        "cắt ngang sang làn xe bị ảnh hưởng đang chạy 96 km/h, ép xe sau phải giảm tốc "
+        "và đánh lái né gấp.",
+        _load_taxonomy_rules(),
+    )
+
+    assert [actor["role"] for actor in parsed["actors"]] == ["adversary"]
+    assert parsed["kinematic_hints"] == {
+        "adversary_speed_kmh": 68.0,
+        "ego_speed_kmh": 96.0,
+        "adversary_relative_position": "ahead",
+    }
+
+
+def test_explicit_zero_speeds_are_not_dropped_as_falsy():
+    parsed = _rule_based_extract(
+        "Xe máy chạy 0 km/h từ phía trước tạt đầu ô tô ego đang chạy 0 km/h rồi phanh xuống còn 0 km/h trên cao tốc.",
+        _load_taxonomy_rules(),
+    )
+
+    assert parsed["kinematic_hints"] == {
+        "adversary_speed_kmh": 0.0,
+        "ego_speed_kmh": 0.0,
+        "adversary_target_speed_kmh": 0.0,
+        "adversary_relative_position": "ahead",
+    }
+
+
 def test_ambiguous_actor_roles_are_left_unknown():
     parsed = _rule_based_extract("xe máy và ô tô chạy trên cao tốc", _load_taxonomy_rules())
 

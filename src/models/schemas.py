@@ -817,6 +817,8 @@ class IssueCode(StrEnum):
     ODD_MANEUVER_MISMATCH = "ODD_MANEUVER_MISMATCH"
     ACTOR_ROLE_MISMATCH = "ACTOR_ROLE_MISMATCH"
     ODD_LABEL_DRIFT = "ODD_LABEL_DRIFT"  # đổi nhãn người dùng đã nói rõ
+    INTENT_SPEED_MISMATCH = "INTENT_SPEED_MISMATCH"  # đổi tốc độ người dùng đã nói rõ
+    INTENT_POSITION_MISMATCH = "INTENT_POSITION_MISMATCH"  # đảo trước/sau so với câu gốc
     GEOM_NO_CATCHUP = "GEOM_NO_CATCHUP"  # chủ thể không bao giờ bắt kịp ego
     GEOM_NO_COLLISION_AFTER_CUTIN = "GEOM_NO_COLLISION_AFTER_CUTIN"
     TRIGGER_DISTANCE_UNSIGNED = "TRIGGER_DISTANCE_UNSIGNED"
@@ -857,6 +859,8 @@ REPAIRABLE_CODES: frozenset[IssueCode] = frozenset(
         IssueCode.ODD_MANEUVER_MISMATCH,
         IssueCode.ACTOR_ROLE_MISMATCH,
         IssueCode.ODD_LABEL_DRIFT,
+        IssueCode.INTENT_SPEED_MISMATCH,
+        IssueCode.INTENT_POSITION_MISMATCH,
         IssueCode.GEOM_NO_CATCHUP,
         IssueCode.GEOM_NO_COLLISION_AFTER_CUTIN,
         IssueCode.TRIGGER_DISTANCE_UNSIGNED,

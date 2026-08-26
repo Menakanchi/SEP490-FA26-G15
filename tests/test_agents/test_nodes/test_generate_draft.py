@@ -166,6 +166,23 @@ class TestBuildUserContent:
         assert "không kịp tránh" in content
         assert '"role": "ego"' in content
 
+    def test_build_user_content_marks_explicit_kinematics_as_required(self):
+        content = _build_user_content(
+            user_query="Ô tô chạy 68 km/h từ phía trước, ego chạy 96 km/h",
+            odd_cell=ODD_CELL_CUT_IN.model_copy(update={"actor_type": ActorType.CAR}),
+            kinematic_hints={
+                "adversary_speed_kmh": 68.0,
+                "ego_speed_kmh": 96.0,
+                "adversary_relative_position": "ahead",
+            },
+        )
+
+        assert '"adversary_speed_kmh": 68.0' in content
+        assert '"ego_speed_kmh": 96.0' in content
+        assert '"adversary_relative_position": "ahead"' in content
+        assert "ràng buộc bắt buộc" in content
+        assert "`s_offset_m > 0`" in content
+
 
 # =============================================================================
 # Test _create_messages (không cần API)

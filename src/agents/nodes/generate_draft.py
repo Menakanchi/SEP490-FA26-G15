@@ -14,6 +14,7 @@ def generate_draft_node(
     odd_cell: ODDCell,
     examples: list[ScenarioDraft] | None = None,
     actor_hints: list[dict[str, Any]] | None = None,
+    kinematic_hints: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Sinh ScenarioDraft từ câu tiếng Việt.
@@ -22,6 +23,8 @@ def generate_draft_node(
         user_query: Câu tiếng Việt mô tả tình huống
         odd_cell: ODDCell đầy đủ 4 trục (từ parse_intent + with_defaults)
         examples: Danh sách ScenarioDraft làm few-shot examples (tối đa 3)
+        actor_hints: Phương tiện và vai trò đọc trực tiếp từ câu gốc
+        kinematic_hints: Tốc độ và quan hệ trước/sau đọc trực tiếp từ câu gốc
 
     Returns:
         JSON object theo shape của ScenarioDraft nhưng chưa chạy các invariant
@@ -32,7 +35,7 @@ def generate_draft_node(
     from src.services.llm import call_with_escalation
 
     # Tạo messages cho LLM
-    messages = _create_messages(user_query, odd_cell, examples, actor_hints)
+    messages = _create_messages(user_query, odd_cell, examples, actor_hints, kinematic_hints)
 
     # Dùng JSON Schema thay vì class Pydantic. ``with_structured_output`` với
     # ScenarioDraft sẽ chạy model_validator ngay trong lời gọi LLM; nếu model
@@ -54,6 +57,7 @@ def _create_messages(
     odd_cell: ODDCell,
     examples: list[ScenarioDraft] | None = None,
     actor_hints: list[dict[str, Any]] | None = None,
+    kinematic_hints: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Tạo messages cho LLM từ input.
@@ -62,6 +66,8 @@ def _create_messages(
         user_query: Câu tiếng Việt gốc
         odd_cell: ODDCell đầy đủ 4 trục
         examples: Few-shot examples (tối đa 3)
+        actor_hints: Phương tiện và vai trò đọc trực tiếp từ câu gốc
+        kinematic_hints: Tốc độ và quan hệ trước/sau đọc trực tiếp từ câu gốc
 
     Returns:
         List of messages theo format LangChain
@@ -70,7 +76,7 @@ def _create_messages(
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     # User message với input
-    user_content = _build_user_content(user_query, odd_cell, examples, actor_hints)
+    user_content = _build_user_content(user_query, odd_cell, examples, actor_hints, kinematic_hints)
     messages.append({"role": "user", "content": user_content})
 
     return messages
@@ -81,6 +87,7 @@ def _build_user_content(
     odd_cell: ODDCell,
     examples: list[ScenarioDraft] | None = None,
     actor_hints: list[dict[str, Any]] | None = None,
+    kinematic_hints: dict[str, Any] | None = None,
 ) -> str:
     """
     Xây dựng nội dung user message.
@@ -130,6 +137,17 @@ chứng trong câu và phải được giữ: `adversary` thực hiện hành vi
 `ego` phải có tên `hero`, là phương tiện không kịp tránh/bị đe doạ. Với vai trò
 `unknown`, tự suy từ toàn câu. Không tạo thêm ô tô chung chung làm hero khi câu
 đã nêu rõ phương tiện bị đe doạ.
+"""
+
+    if kinematic_hints:
+        content += f"""
+
+## Động học được nói rõ trong câu:
+{json.dumps(kinematic_hints, ensure_ascii=False)}
+
+Đây là ràng buộc bắt buộc, không phải gợi ý. Giữ nguyên các tốc độ đã nêu;
+`adversary_relative_position=ahead` nghĩa là `s_offset_m > 0`, còn `behind`
+nghĩa là `s_offset_m < 0`.
 """
 
     # Thêm examples nếu có

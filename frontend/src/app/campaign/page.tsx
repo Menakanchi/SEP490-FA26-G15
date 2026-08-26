@@ -166,7 +166,7 @@ function CampaignContent() {
 
         <div className="flex flex-wrap items-end gap-4 pt-2 border-t border-slate-200 dark:border-slate-700/50">
           <label className="text-sm text-slate-700 dark:text-slate-300">
-            <span className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Trần số kịch bản</span>
+            <span className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Số kịch bản tối đa</span>
             <input type="number" min={1} max={200} value={maxScenarios}
                    onChange={(e) => setMax(Number(e.target.value))}
                    className="w-28 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100" />
@@ -174,8 +174,7 @@ function CampaignContent() {
           <p className="text-xs text-slate-600 dark:text-slate-400 flex-1 min-w-[220px]">
             Đã chọn <strong className="text-slate-900 dark:text-slate-200">{selectedValueCount}</strong> giá trị
             {" · "}<strong className="text-slate-900 dark:text-slate-200">{cells.length}</strong> tổ hợp ODD tiềm năng.
-            {" "}Trần <strong className="text-slate-900 dark:text-slate-200">{maxScenarios}</strong> là điều kiện dừng
-            của chiến dịch.
+            {" "}Chiến dịch sẽ sinh tối đa <strong className="text-slate-900 dark:text-slate-200">{maxScenarios}</strong> kịch bản.
           </p>
           <button type="button" onClick={start} disabled={starting || !cells.length}
                   className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-semibold flex items-center gap-2">
@@ -253,7 +252,7 @@ function ActiveCampaign({
           </h2>
           <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
             Tạo được {campaign.generated} bản nháp hợp lệ, {campaign.failed} lượt bị loại khi sinh hoặc kiểm tra
-            {" "}trên {total} lượt theo trần
+            {" "}trên tối đa {total} lượt
             {" · "}<code>{campaign.campaign_id}</code>
           </p>
         </div>

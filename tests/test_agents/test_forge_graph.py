@@ -34,6 +34,10 @@ from src.models.schemas import (
 # không gọi LLM — giữ test offline và nhanh. Tổ hợp (highway, motorcycle, cut_in)
 # nằm trong phạm vi converter đã kiểm chứng của ADR-016.
 USER_QUERY = "Xe máy tạt đầu ô tô trên đường cao tốc"
+SC052_QUERY = (
+    "Trên cao tốc trời quang, một ô tô con chạy 68 km/h từ phía trước bất ngờ cắt ngang "
+    "sang làn xe bị ảnh hưởng đang chạy 96 km/h, ép xe sau phải giảm tốc và đánh lái né gấp."
+)
 
 
 def _draft(*, s_offset_m: float, adv_speed: float) -> ScenarioDraft:
@@ -92,6 +96,16 @@ def ego_maneuver_raw_draft() -> dict:
     raw = good_draft().model_dump(mode="json")
     raw["maneuvers"][0]["actor_name"] = "hero"
     return raw
+
+
+def _sc052_draft(*, adversary_speed: float, s_offset_m: float) -> ScenarioDraft:
+    raw = good_draft().model_dump(mode="json")
+    raw["odd"]["actor_type"] = ActorType.CAR
+    raw["actors"][0]["initial_speed_kmh"] = 96.0
+    raw["actors"][1]["category"] = "car"
+    raw["actors"][1]["initial_speed_kmh"] = adversary_speed
+    raw["actors"][1]["position"]["s_offset_m"] = s_offset_m
+    return ScenarioDraft.model_validate(raw)
 
 
 def _scenarios_in_db() -> list[sqlite3.Row]:
@@ -154,6 +168,29 @@ async def test_broken_draft_goes_through_repair_and_then_succeeds():
     # Failure analysis ở W5 đọc chính chỗ này.
     assert [i.code for i in final["issue_history"]] == [IssueCode.GEOM_NO_CATCHUP]
     assert len(_scenarios_in_db()) == 1
+
+
+@pytest.mark.asyncio
+async def test_explicit_sc052_kinematics_survive_the_full_graph_and_trigger_repair():
+    """Parse → state → validate phải giữ 68/96 và phía trước tới tận repair."""
+    graph = build_forge_graph(next_scenario_id=lambda: "sc_052")
+    wrong = _sc052_draft(adversary_speed=110.0, s_offset_m=-25.0)
+    corrected = _sc052_draft(adversary_speed=68.0, s_offset_m=25.0)
+
+    with patch("src.services.llm.call_with_escalation", side_effect=[wrong, corrected]) as mock_llm:
+        final = await graph.ainvoke({"user_query": SC052_QUERY, "limit": 3})
+
+    assert mock_llm.call_count == 2
+    assert final["kinematic_hints"] == {
+        "adversary_speed_kmh": 68.0,
+        "ego_speed_kmh": 96.0,
+        "adversary_relative_position": "ahead",
+    }
+    assert [issue.code for issue in final["issue_history"]] == [
+        IssueCode.INTENT_SPEED_MISMATCH,
+        IssueCode.INTENT_POSITION_MISMATCH,
+    ]
+    assert final["scenario_status"] is ScenarioStatus.PENDING_SIM_REVIEW
 
 
 @pytest.mark.asyncio
