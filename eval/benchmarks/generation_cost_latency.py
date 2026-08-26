@@ -89,7 +89,7 @@ def _read_metrics(raw: Any) -> dict[str, Any]:
     return {}
 
 
-async def _run(source_db: Path, samples: int) -> dict[str, Any]:
+async def _run(source_db: Path, samples: int, *, few_shot: bool = True) -> dict[str, Any]:
     if not os.environ.get("OPENAI_API_KEY", "").strip():
         raise SystemExit("Thiếu OPENAI_API_KEY; benchmark online không dùng số giả.")
     if not source_db.is_file():
@@ -113,10 +113,31 @@ async def _run(source_db: Path, samples: int) -> dict[str, Any]:
         from src.services.llm import EMBEDDING_COST_PER_MILLION_TOKENS, MODEL_COSTS
 
         db.init_db()
+
+        # Đo đóng góp của few-shot: cùng 20 mô tả, cùng snapshot, chỉ khác việc
+        # ví dụ retrieval có được đưa vào prompt hay không.
+        #
+        # Vá ở ``graph._few_shot_examples`` chứ không tắt node ``retrieve``: giữ
+        # nguyên lượt gọi embedding và mệnh đề WHERE để hai nhánh chỉ lệch đúng
+        # một biến — nội dung prompt của ``generate_draft``. Tắt cả node thì cost
+        # chênh lệch lẫn cả tiền embedding và không tách được nguyên nhân.
+        from src.agents import graph as graph_module
+
+        original_few_shot = graph_module._few_shot_examples
+        examples_seen: list[int] = []
+
+        def _instrumented_few_shot(state: Any) -> list[Any]:
+            found = original_few_shot(state)
+            examples_seen.append(len(found))
+            return found if few_shot else []
+
+        graph_module._few_shot_examples = _instrumented_few_shot
+
         selected = PROMPTS[:samples]
         rows: list[dict[str, Any]] = []
 
         for index, prompt in enumerate(selected, start=1):
+            examples_seen.clear()
             request_id = f"bench_{uuid.uuid4().hex}"
             db.create_generation_request(
                 request_id,
@@ -139,6 +160,10 @@ async def _run(source_db: Path, samples: int) -> dict[str, Any]:
                 "workflow_latency_s": metrics.get("workflow_latency_s"),
                 "node_latency": metrics.get("node_latency") or {},
                 "provider": provider,
+                # Số ví dụ retrieval TÌM ĐƯỢC (kể cả khi nhánh off không dùng),
+                # để chứng minh hai nhánh chạy trên cùng một thư viện.
+                "examples_retrieved": max(examples_seen) if examples_seen else 0,
+                "repair_calls": int(((metrics.get("node_latency") or {}).get("repair_draft") or {}).get("calls") or 0),
             }
             rows.append(row)
             print(
@@ -166,9 +191,13 @@ async def _run(source_db: Path, samples: int) -> dict[str, Any]:
             "benchmark": "generation_cost_latency",
             "measured_at": datetime.now(UTC).isoformat(),
             "scope": "7-node generation workflow through BEFORE_SIM; excludes HTTP polling and CARLA",
+            "few_shot": "on" if few_shot else "off",
             "sample_count": len(rows),
             "completed": sum(row["status"] == "done" for row in rows),
             "failed": sum(row["status"] != "done" for row in rows),
+            "requests_needing_repair": sum(row["repair_calls"] > 0 for row in rows),
+            "total_repair_calls": sum(row["repair_calls"] for row in rows),
+            "examples_retrieved_total": sum(row["examples_retrieved"] for row in rows),
             "model": get_settings().model_name,
             "escalated_model": get_settings().escalated_model,
             "percentile_method": "linear interpolation at (n-1)*q",
@@ -200,9 +229,15 @@ def main() -> None:
     parser.add_argument("--source-db", type=Path, required=True, help="SQLite library dùng làm snapshot retrieval")
     parser.add_argument("--samples", type=int, default=len(PROMPTS), choices=range(1, len(PROMPTS) + 1))
     parser.add_argument("--output", type=Path, help="Ghi JSON; bỏ trống thì in stdout")
+    parser.add_argument(
+        "--few-shot",
+        choices=("on", "off"),
+        default="on",
+        help="off = vẫn chạy retrieve nhưng KHÔNG đưa ví dụ vào prompt generate_draft (nhánh đối chứng)",
+    )
     args = parser.parse_args()
 
-    result = asyncio.run(_run(args.source_db.resolve(), args.samples))
+    result = asyncio.run(_run(args.source_db.resolve(), args.samples, few_shot=args.few_shot == "on"))
     rendered = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
