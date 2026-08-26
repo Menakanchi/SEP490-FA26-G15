@@ -22,7 +22,13 @@ import {
   Sparkle,
   Bookmark,
 } from "lucide-react";
-import { postGenerate, getStatus, getScenarioById, postDraftScenario } from "@/services/api";
+import {
+  postGenerate,
+  getStatus,
+  getScenarioById,
+  postDraftScenario,
+  type GenerateDuplicateMatch,
+} from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
 import type { GenerationStatus, ValidationMode, ScenarioDetail } from "@/types";
 import {
@@ -55,6 +61,7 @@ function GeneratorPageContent() {
   const [retrieveLimit, setRetrieveLimit] = useState<number>(3);
   const [submitting, setSubmitting] = useState(false);
   const [clientValidationError, setClientValidationError] = useState<string | null>(null);
+  const [duplicateMatch, setDuplicateMatch] = useState<GenerateDuplicateMatch | null>(null);
 
   const [status, setStatus] = useState<GenerationStatus | null>(null);
   const [generatedScenario, setGeneratedScenario] = useState<ScenarioDetail | null>(null);
@@ -166,7 +173,7 @@ function GeneratorPageContent() {
   };
 
   // Form Submit
-  const handleSubmit = async () => {
+  const handleSubmit = async (forceGenerate = false) => {
     const trimmed = prompt.trim();
     if (!trimmed) {
       setClientValidationError("Vui lòng nhập mô tả kịch bản trước khi gửi.");
@@ -179,6 +186,7 @@ function GeneratorPageContent() {
     }
 
     setClientValidationError(null);
+    setDuplicateMatch(null);
     setSubmitting(true);
     setGeneratedScenario(null);
 
@@ -188,12 +196,23 @@ function GeneratorPageContent() {
         validation_mode: validationMode,
         limit: retrieveLimit,
         created_by: user?.username || user?.name || "creator",
+        force_generate: forceGenerate,
       });
 
       setSubmitting(false);
 
+      if (res.duplicate && !forceGenerate) {
+        setDuplicateMatch(res.duplicate);
+        if (res.request_id && !res.duplicate.scenario_id) {
+          router.push(`/?id=${res.request_id}`);
+        }
+        return;
+      }
+
       if (res.request_id) {
         router.push(`/?id=${res.request_id}`);
+      } else {
+        setClientValidationError("Backend không trả về mã yêu cầu hoặc kịch bản đã tồn tại.");
       }
     } catch (err) {
       setSubmitting(false);
@@ -247,6 +266,7 @@ function GeneratorPageContent() {
             onChange={(e) => {
               setPrompt(e.target.value);
               if (clientValidationError) setClientValidationError(null);
+              if (duplicateMatch) setDuplicateMatch(null);
             }}
             disabled={polling || submitting}
           />
@@ -270,6 +290,48 @@ function GeneratorPageContent() {
               >
                 Xem trong Thư viện cá nhân &rarr;
               </Link>
+            </div>
+          )}
+
+          {duplicateMatch && (
+            <div className="p-4 rounded-2xl bg-blue-50/90 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/70 flex items-start gap-3 text-xs text-blue-950 dark:text-blue-200">
+              <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <div className="space-y-2 flex-1">
+                <p className="font-bold">
+                  Mô tả này đã tồn tại
+                  {duplicateMatch.scenario_id ? ` dưới mã ${duplicateMatch.scenario_id}` : " trong một lượt sinh đang chạy"}.
+                </p>
+                {duplicateMatch.title && <p>{duplicateMatch.title}</p>}
+                {duplicateMatch.reason && (
+                  <p className="text-amber-800 dark:text-amber-300">
+                    <strong>Lý do từng bị từ chối:</strong> {duplicateMatch.reason}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {duplicateMatch.scenario_id && (
+                    <Link
+                      href={
+                        duplicateMatch.scenario_status === "approved_library"
+                          ? `/library/${duplicateMatch.scenario_id}`
+                          : role === "reviewer" || role === "admin"
+                            ? `/review?scenario_id=${duplicateMatch.scenario_id}`
+                            : `/library/${duplicateMatch.scenario_id}`
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 font-bold transition"
+                    >
+                      Mở kịch bản cũ <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmit(true)}
+                    disabled={submitting}
+                    className="rounded-lg border border-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/40 px-3 py-2 font-bold transition disabled:opacity-50"
+                  >
+                    Vẫn sinh bản mới
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -332,7 +394,7 @@ function GeneratorPageContent() {
 
               <button
                 className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-600/20 flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
-                onClick={handleSubmit}
+                onClick={() => void handleSubmit(false)}
                 disabled={!prompt.trim() || polling || submitting || drafting}
               >
                 {submitting ? (
