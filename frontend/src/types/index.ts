@@ -533,9 +533,12 @@ export interface QualityReport {
   };
   m3_hazard: {
     executed: number;
+    evaluated: number;
+    triggered: number;
+    not_triggered: number;
+    not_measurable: number;
     collision: number;
     near_miss: number;
-    no_hazard: number;
     rate: Ratio;
     collision_rate: Ratio;
   };

@@ -118,19 +118,47 @@ def test_coverage_counts_out_of_scope_cells_separately() -> None:
 
 
 def test_hazard_counts_near_miss_as_a_success_not_a_failure() -> None:
-    """`lane_drift` cố ý không va chạm; đo bằng CollisionTest thì nó luôn trông như trượt."""
+    """M3 dùng oracle maneuver; collision/near-miss chỉ là breakdown vật lý."""
     report = metrics.hazard(
         [
-            _execution("cut_in", collision=True, min_distance_m=0.0),
-            _execution("lane_drift", min_distance_m=0.36),
-            _execution("lane_drift", min_distance_m=1.01),
+            _execution(
+                "cut_in",
+                collision=True,
+                min_distance_m=0.0,
+                adversary_entered_ego_lane=1.0,
+                contact_longitudinal_m=4.8,
+            ),
+            _execution("lane_drift", min_distance_m=0.36, adversary_entered_ego_lane=1.0),
+            _execution("lane_drift", min_distance_m=1.01, adversary_entered_ego_lane=1.0),
         ]
     )
     assert report["collision"] == 1
     assert report["near_miss"] == 1
-    assert report["no_hazard"] == 1
+    assert report["triggered"] == 2
+    assert report["not_triggered"] == 1
     assert report["rate"]["rate"] == 0.6667
     assert report["collision_rate"]["rate"] == 0.3333
+
+
+def test_hazard_uses_maneuver_oracle_not_collision_as_the_headline() -> None:
+    """Sai intent có đâm nhau vẫn trượt; vượt đèn đỏ đúng mà không đâm vẫn đạt."""
+    report = metrics.hazard(
+        [
+            _execution(
+                "cut_in",
+                collision=True,
+                min_distance_m=0.0,
+                adversary_entered_ego_lane=1.0,
+                contact_longitudinal_m=-4.7,
+            ),
+            _execution("run_red_light", min_distance_m=15.0, adversary_ran_red_light=True),
+        ]
+    )
+    assert report["collision"] == 1
+    assert report["near_miss"] == 0
+    assert report["triggered"] == 1
+    assert report["not_triggered"] == 1
+    assert report["rate"] == {"passed": 1, "total": 2, "rate": 0.5}
 
 
 def test_hazard_ignores_runs_that_never_completed() -> None:
@@ -175,6 +203,7 @@ def test_seed_data_never_reaches_the_report() -> None:
     chúng là báo cáo độ phủ bằng dữ liệu bịa.
     """
     real = {
+        "scenario_id": "sc_real",
         "created_by": "creator",
         "road_type": "highway",
         "weather": "clear",
@@ -182,13 +211,30 @@ def test_seed_data_never_reaches_the_report() -> None:
         "maneuver": "cut_in",
         "xosc_content": "<xml/>",
     }
-    mock = {**real, "created_by": metrics.SEED_AUTHOR, "weather": "rain"}
+    mock = {
+        **real,
+        "scenario_id": "sc_seed",
+        "created_by": metrics.SEED_AUTHOR,
+        "weather": "rain",
+    }
 
-    report = metrics.build_report(requests=[], scenarios=[real, mock], executions=[])
+    seed_execution = {
+        **_execution(
+            "cut_in",
+            collision=True,
+            adversary_entered_ego_lane=1.0,
+            contact_longitudinal_m=4.8,
+        ),
+        "scenario_id": "sc_seed",
+    }
+
+    report = metrics.build_report(requests=[], scenarios=[real, mock], executions=[seed_execution])
 
     assert report["m2_coverage"]["covered_supported"] == 1, "chỉ ô của kịch bản thật"
     assert report["excluded_seed_data"] == 1, "và phải hiện ra là đã bỏ bao nhiêu"
     assert report["m1_validity"]["l2_xosc"]["total"] == 1
+    assert report["m1_validity"]["l3_runtime"]["total"] == 0
+    assert report["m3_hazard"]["executed"] == 0
 
 
 def test_pairwise_coverage_counts_axis_pairs_not_full_cells() -> None:
