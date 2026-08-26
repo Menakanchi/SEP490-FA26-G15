@@ -350,6 +350,8 @@ export interface ScenarioItem {
   actors?: ActorSpec[];
   spec?: ScenarioSpec;
   retrieved_examples?: RetrievedExample[];
+  /** Kết quả model evaluation tách biệt với lifecycle `approved_library`. */
+  controller_evaluation?: ControllerRunsResponse["comparison"];
 }
 
 // ---------------------------------------------------------------------------

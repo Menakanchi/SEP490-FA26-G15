@@ -18,6 +18,7 @@ import {
   Trash2,
   Send,
   X,
+  Bot,
 } from "lucide-react";
 import {
   getScenarios,
@@ -243,6 +244,54 @@ function LibraryContent() {
       default:
         return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">{status}</span>;
     }
+  };
+
+  const controllerBadge = (evaluation: ScenarioItem["controller_evaluation"]) => {
+    const outcome = evaluation?.outcome ?? "not_run";
+    const badges: Record<string, { label: string; classes: string }> = {
+      not_run: {
+        label: "BA: Chưa đánh giá",
+        classes: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700",
+      },
+      pending: {
+        label: "BA: Đang chạy A/B",
+        classes: "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800",
+      },
+      controller_collision: {
+        label: "BA: Va chạm",
+        classes: "bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800",
+      },
+      near_failure: {
+        label: "BA: Suýt thất bại",
+        classes: "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+      },
+      avoided_hazard: {
+        label: "BA: Đã tránh",
+        classes: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+      },
+      execution_failed: {
+        label: "BA: Lỗi thực thi",
+        classes: "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800",
+      },
+      incomparable_initial_conditions: {
+        label: "BA: Cần chạy lại",
+        classes: "bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800",
+      },
+      inconclusive: {
+        label: "BA: Chưa kết luận",
+        classes: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700",
+      },
+    };
+    const badge = badges[outcome] ?? badges.inconclusive;
+    return (
+      <span
+        title={evaluation?.recommendation_vi ?? "Kịch bản chưa được đánh giá bằng BehaviorAgent"}
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${badge.classes}`}
+      >
+        <Bot className="w-3 h-3" />
+        {badge.label}
+      </span>
+    );
   };
 
   // Open Edit Modal
@@ -487,13 +536,14 @@ function LibraryContent() {
                   <div>
                     {/* Body Content */}
                     <div className="p-5 space-y-3">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex flex-wrap items-center justify-end gap-1">
                         {isApproved && (
                           <span title="Khóa chỉnh sửa kịch bản đã duyệt" className="p-1 rounded bg-amber-50 dark:bg-slate-800 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-slate-700">
                             <Lock className="w-3 h-3" />
                           </span>
                         )}
                         {statusBadge(item.status)}
+                        {isApproved && controllerBadge(item.controller_evaluation)}
                       </div>
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">

@@ -495,6 +495,7 @@ async def create_draft_scenario(body: DraftCreateRequest) -> dict:
 @router.get("/scenarios/public", response_model=ScenarioListResponse)
 async def list_public_scenarios_endpoint() -> ScenarioListResponse:
     items = db.list_public_scenarios()
+    _attach_controller_evaluations(items)
     return ScenarioListResponse(items=items, total=len(items))
 
 
@@ -503,6 +504,7 @@ async def list_my_scenarios_endpoint(
     user: str = Query("creator", description="Username hiện tại"),
 ) -> ScenarioListResponse:
     items = db.list_my_scenarios(user)
+    _attach_controller_evaluations(items)
     return ScenarioListResponse(items=items, total=len(items))
 
 
@@ -562,6 +564,7 @@ async def list_scenarios(
     total = len(items)
     offset = (page - 1) * limit
     paged = items[offset : offset + limit]
+    _attach_controller_evaluations(paged)
 
     return ScenarioListResponse(items=paged, total=total)
 
@@ -1182,11 +1185,9 @@ async def create_controller_run(scenario_id: str) -> dict:
     return {"ok": True, "jobs": _create_controller_pair(scenario)}
 
 
-@router.get("/scenarios/{scenario_id}/controller-runs")
-async def list_controller_runs(scenario_id: str) -> dict:
-    """Trả lịch sử closed-loop và kết luận A/B dễ đọc cho UI/demo."""
-    scenario = _scenario_or_404(scenario_id)
-    runs = db.get_controller_runs(scenario_id)
+def _controller_evaluation(scenario: dict, runs: list[dict]) -> dict:
+    """Phân loại A/B dùng chung cho detail, campaign và badge thư viện."""
+    scenario_id = scenario["scenario_id"]
     pending = any(run["status"] in (JobStatus.PENDING.value, JobStatus.RUNNING.value) for run in runs)
     latest = next(
         (
@@ -1269,6 +1270,30 @@ async def list_controller_runs(scenario_id: str) -> dict:
             "recommendation_vi": recommendation_vi,
         },
     }
+
+
+def _attach_controller_evaluations(items: list[dict]) -> None:
+    """Gắn trạng thái controller cho card đã duyệt mà không đổi lifecycle.
+
+    Chỉ query sau phân trang nên tối đa ``limit`` lần (API chặn ở 100), không
+    quét toàn thư viện. Draft và hàng chờ không đủ điều kiện chạy controller nên
+    không gắn badge để tránh nói "chưa đánh giá" cho một artifact chưa hợp lệ.
+    """
+    for item in items:
+        if item.get("status") not in (
+            ScenarioStatus.APPROVED_LIBRARY.value,
+            ScenarioStatus.APPROVED_SIM.value,
+        ):
+            continue
+        runs = db.get_controller_runs(item["scenario_id"])
+        item["controller_evaluation"] = _controller_evaluation(item, runs)["comparison"]
+
+
+@router.get("/scenarios/{scenario_id}/controller-runs")
+async def list_controller_runs(scenario_id: str) -> dict:
+    """Trả lịch sử closed-loop và kết luận A/B dễ đọc cho UI/demo."""
+    scenario = _scenario_or_404(scenario_id)
+    return _controller_evaluation(scenario, db.get_controller_runs(scenario_id))
 
 
 @router.post("/campaigns/{campaign_id}/controller-runs")

@@ -411,6 +411,11 @@ async def test_controller_run_is_separate_from_scenario_verification(client):
     )
     assert approved.status_code == 200
 
+    library_before = (await client.get("/api/v1/library/search?scope=public")).json()["items"]
+    card_before = next(item for item in library_before if item["scenario_id"] == sc_id)
+    assert card_before["status"] == "approved_library"
+    assert card_before["controller_evaluation"]["outcome"] == "not_run"
+
     queued = await client.post(f"/api/v1/scenarios/{sc_id}/controller-runs")
     assert queued.status_code == 200, queued.text
     jobs = queued.json()["jobs"]
@@ -496,6 +501,11 @@ async def test_controller_run_is_separate_from_scenario_verification(client):
     failure = (await client.get(f"/api/v1/scenarios/{sc_id}/controller-runs")).json()
     assert failure["comparison"]["outcome"] == "controller_collision"
     assert failure["comparison"]["next_action"] == "keep_regression"
+
+    library_after = (await client.get("/api/v1/library/search?scope=public")).json()["items"]
+    card_after = next(item for item in library_after if item["scenario_id"] == sc_id)
+    assert card_after["status"] == "approved_library", "controller không được viết đè lifecycle của artifact"
+    assert card_after["controller_evaluation"]["outcome"] == "controller_collision"
 
 
 @pytest.mark.asyncio
