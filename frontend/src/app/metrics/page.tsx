@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, BarChart3, Grid3x3, ShieldAlert } from "lucide-react";
+import { BarChart3, Grid3x3, ShieldAlert } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { getQualityReport } from "@/services/api";
 import type { QualityReport } from "@/types";
@@ -58,20 +58,10 @@ function MetricsContent() {
               <p className="text-xs text-slate-400 mt-1 leading-snug">{level.label}</p>
               <p className="text-[11px] text-slate-500 mt-2 tabular-nums">
                 {level.passed}/{level.total} lượt
-                {level.not_measurable > 0 && (
-                  <span className="text-amber-500"> · {level.not_measurable} chưa chấm được</span>
-                )}
               </p>
             </div>
           ))}
         </div>
-        {m1.l4_intent.not_measurable > 0 && (
-          <Caveat>
-            {m1.l4_intent.not_measurable} lượt chạy chưa chấm được ý định: <code>jaywalk</code>,{" "}
-            <code>wrong_way</code> và <code>run_red_light</code> cần tín hiệu riêng mà bốn số quỹ đạo
-            hiện có chưa nói lên được. Chúng <strong>không</strong> bị tính là sai.
-          </Caveat>
-        )}
       </Section>
 
       <Section icon={<Grid3x3 className="w-5 h-5 text-emerald-400" />} title="M2 — Độ phủ ODD"
@@ -152,14 +142,5 @@ function Stat({ value, label, sub, tone }: {
       <p className="text-xs text-slate-300 mt-1">{label}</p>
       <p className="text-[11px] text-slate-500 mt-0.5">{sub}</p>
     </div>
-  );
-}
-
-function Caveat({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-xs text-amber-400/90 flex gap-2 items-start mt-3">
-      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-      <span className="leading-relaxed">{children}</span>
-    </p>
   );
 }
