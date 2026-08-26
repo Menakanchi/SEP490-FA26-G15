@@ -1433,6 +1433,19 @@ def campaign_scenarios_awaiting_sim(campaign_id: str) -> list[dict]:
         return [dict(r) for r in cursor.fetchall()]
 
 
+def campaign_scenarios(campaign_id: str) -> list[dict]:
+    """Mọi kịch bản đã sinh bởi chiến dịch, không lẫn scenario bên ngoài."""
+    with _cursor() as cursor:
+        cursor.execute(
+            "SELECT s.scenario_id, s.status, s.verification, s.xosc_content "
+            "FROM scenarios s "
+            "JOIN generation_requests r ON r.scenario_id = s.scenario_id "
+            "WHERE r.campaign_id = ? ORDER BY r.created_at",
+            (campaign_id,),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
 def metrics_rows() -> tuple[list[dict], list[dict], list[dict]]:
     """Dữ liệu thô cho báo cáo M1/M2/M3. Phần tính nằm ở ``services/metrics.py``.
 

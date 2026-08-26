@@ -238,6 +238,11 @@ function ReviewPageContent() {
     if (!approved && (!reason.trim() || reason.trim().length < 10)) {
       errors.reason = "Vui lòng nhập lý do từ chối (bắt buộc từ 10 ký tự trở lên).";
     }
+    const overridingIntentMismatch =
+      approved && gateToReview === "before_library" && scenario.intent_evaluation?.verdict === false;
+    if (overridingIntentMismatch && reason.trim().length < 10) {
+      errors.reason = "Máy báo sai ý định; muốn phê duyệt ngoại lệ, vui lòng ghi lý do ít nhất 10 ký tự.";
+    }
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -257,6 +262,7 @@ function ReviewPageContent() {
           ? `Vẫn chạy dù gần trùng với ${nearDuplicate.duplicate_scenario_id}. ${reason.trim()}`.trim()
           : reason.trim() || "Chấp nhận kịch bản",
         force_simulate: forceSimulate,
+        force_intent_override: overridingIntentMismatch,
       });
 
       if (result.warning === "near_duplicate" && result.duplicate) {
@@ -621,6 +627,40 @@ function ReviewPageContent() {
               </div>
 
               {/* Preview — bản khai trước khi chạy, quỹ đạo đo được sau khi chạy */}
+              {scenario.latest_execution_result && scenario.intent_evaluation && (
+                <div
+                  className={`rounded-3xl border p-5 shadow-sm ${
+                    scenario.intent_evaluation.verdict === true
+                      ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
+                      : scenario.intent_evaluation.verdict === false
+                        ? "border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/30"
+                        : "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {scenario.intent_evaluation.verdict === true ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    ) : scenario.intent_evaluation.verdict === false ? (
+                      <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    )}
+                    <div>
+                      <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                        Kiểm tra intent L4: {scenario.intent_evaluation.label_vi}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                        {scenario.intent_evaluation.verdict === true
+                          ? "Telemetry CARLA cho thấy hành vi đã xảy ra đúng quan hệ hình học của mô tả. Reviewer vẫn đưa ra quyết định cuối."
+                          : scenario.intent_evaluation.verdict === false
+                            ? "Mặc định không nên đưa vào thư viện. Nếu quan sát thực tế cho thấy oracle báo nhầm, reviewer có thể ghi lý do và phê duyệt ngoại lệ."
+                            : "Máy không tự đoán khi thiếu tín hiệu. Reviewer cần dùng quỹ đạo và kết quả mô phỏng để tự kết luận."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
                 <h3 className="text-sm font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
                   <Map className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -945,7 +985,9 @@ function ReviewPageContent() {
                         ) : (
                           <CheckCircle2 className="w-4 h-4" />
                         )}
-                        Phê duyệt (Approve)
+                        {gateToReview === "before_library" && scenario.intent_evaluation?.verdict === false
+                          ? "Phê duyệt ngoại lệ L4"
+                          : "Phê duyệt (Approve)"}
                       </button>
                     </div>
                   </RoleGate>

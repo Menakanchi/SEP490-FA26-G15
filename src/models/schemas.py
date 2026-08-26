@@ -1511,6 +1511,10 @@ class ReviewApiRequest(ForgeModel):
         False,
         description="Bỏ qua cảnh báo gần trùng và tiếp tục tạo job CARLA (ADR-019 §19.5).",
     )
+    force_intent_override: bool = Field(
+        False,
+        description="Reviewer xác nhận vẫn duyệt Cổng 2 khi luật L4 tự động báo sai ý định.",
+    )
 
 
 class TagUpdateRequest(ForgeModel):

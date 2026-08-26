@@ -340,6 +340,22 @@ async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) ->
         gate = ReviewGate(body.gate)
     current_status = ScenarioStatus(scenario["status"])
 
+    # L4 là chốt tự động, không phải người duyệt thay thế. Khi oracle nói sai
+    # rõ ràng, API chặn cú approve vô thức; reviewer vẫn có quyền override nhưng
+    # phải gửi cờ tường minh và ghi lý do để review log còn truy được quyết định.
+    if body.approved and gate is ReviewGate.BEFORE_LIBRARY:
+        intent_evaluation = _intent_evaluation(scenario)
+        if intent_evaluation["verdict"] is False and not body.force_intent_override:
+            raise HTTPException(
+                status_code=409,
+                detail="L4 tự động báo kịch bản không khớp ý định; hãy từ chối hoặc xác nhận override kèm lý do",
+            )
+        if body.force_intent_override and len(body.reason.strip()) < 10:
+            raise HTTPException(
+                status_code=422,
+                detail="Override cảnh báo L4 phải có lý do ít nhất 10 ký tự",
+            )
+
     next_status = next_status_after_review(current_status, gate, body.approved)
     if next_status is None:
         raise HTTPException(
@@ -625,10 +641,46 @@ async def complete_simulation_endpoint(scenario_id: str, body: CompleteSimulatio
 # ===========================================================================
 
 
+def _intent_evaluation(scenario: dict) -> dict:
+    """Phán quyết L4 của lượt validation mới nhất, ở dạng UI dùng trực tiếp.
+
+    Không chép lại luật hình học ở router: báo cáo M1-L4, trang gắn nhãn và Cổng
+    2 phải cùng gọi đúng một oracle, nếu không cùng một lượt chạy có thể vừa
+    "đúng" trong báo cáo vừa "sai" trên form duyệt.
+    """
+    execution_result = scenario.get("latest_execution_result")
+    if not execution_result:
+        return {
+            "verdict": None,
+            "status": "not_measurable",
+            "label_vi": "Chưa có đủ dữ liệu để máy chấm ý định",
+        }
+
+    odd = scenario.get("odd") or {}
+    verdict = metrics.intent_verdict(
+        {
+            "scenario_id": scenario.get("scenario_id"),
+            "maneuver": odd.get("maneuver"),
+            "result": execution_result,
+        }
+    )
+    if verdict is True:
+        return {"verdict": True, "status": "matched", "label_vi": "Khớp ý định mô tả"}
+    if verdict is False:
+        return {"verdict": False, "status": "mismatched", "label_vi": "Không khớp ý định mô tả"}
+    return {
+        "verdict": None,
+        "status": "not_measurable",
+        "label_vi": "Luật L4 chưa đủ dữ liệu để kết luận",
+    }
+
+
 @router.get("/scenarios/{scenario_id}")
 async def get_scenario(scenario_id: str) -> dict:
     """Chi tiết một scenario bao gồm spec, xosc_content và review_logs."""
-    return _scenario_or_404(scenario_id)
+    scenario = _scenario_or_404(scenario_id)
+    scenario["intent_evaluation"] = _intent_evaluation(scenario)
+    return scenario
 
 
 # ===========================================================================
@@ -1078,22 +1130,9 @@ def _initial_speed_delta_ms(baseline: dict | None, controller: dict | None) -> f
     return round(abs(float(baseline_speed) - float(controller_speed)), 3)
 
 
-@router.post("/scenarios/{scenario_id}/controller-runs")
-async def create_controller_run(scenario_id: str) -> dict:
-    """Xếp một cặp A/B mới trên artifact đã xác minh, không sửa workflow HITL."""
-    scenario = _scenario_or_404(scenario_id)
-    if scenario["status"] != ScenarioStatus.APPROVED_LIBRARY.value:
-        raise HTTPException(status_code=409, detail="Chỉ đánh giá controller trên kịch bản đã vào thư viện")
-    if scenario.get("verification") != "adversarial":
-        raise HTTPException(status_code=409, detail="Kịch bản phải tái hiện được nguy hiểm trước khi thử controller")
-    if not _has_xosc(scenario):
-        raise HTTPException(status_code=409, detail=UNCOMPILED_SCENARIO_DETAIL)
-    if any(
-        run["status"] in (JobStatus.PENDING.value, JobStatus.RUNNING.value)
-        for run in db.get_controller_runs(scenario_id)
-    ):
-        raise HTTPException(status_code=409, detail="Kịch bản đã có một lượt đánh giá controller đang chờ")
-
+def _create_controller_pair(scenario: dict) -> list[dict]:
+    """Tạo đúng một cặp A/B; mọi endpoint dùng chung để không lệch cấu hình."""
+    scenario_id = scenario["scenario_id"]
     run_id = uuid.uuid4().hex[:8]
     baseline_job = db.create_scenario_job(
         f"ctrlbase_{run_id}",
@@ -1109,7 +1148,38 @@ async def create_controller_run(scenario_id: str) -> dict:
         job_kind=JobKind.CONTROLLER_EVALUATION,
         ego_controller=EgoControllerType.BEHAVIOR_AGENT,
     )
-    return {"ok": True, "jobs": [baseline_job, behavior_job]}
+    return [baseline_job, behavior_job]
+
+
+def _controller_ineligible_reason(scenario: dict, *, skip_completed: bool = False) -> str | None:
+    if scenario["status"] != ScenarioStatus.APPROVED_LIBRARY.value:
+        return "not_approved_library"
+    if scenario.get("verification") != "adversarial":
+        return "not_adversarial"
+    if not _has_xosc(scenario):
+        return "missing_xosc"
+    runs = db.get_controller_runs(scenario["scenario_id"])
+    if any(run["status"] in (JobStatus.PENDING.value, JobStatus.RUNNING.value) for run in runs):
+        return "controller_run_pending"
+    if skip_completed and runs:
+        return "already_evaluated"
+    return None
+
+
+@router.post("/scenarios/{scenario_id}/controller-runs")
+async def create_controller_run(scenario_id: str) -> dict:
+    """Xếp một cặp A/B mới trên artifact đã xác minh, không sửa workflow HITL."""
+    scenario = _scenario_or_404(scenario_id)
+    reason = _controller_ineligible_reason(scenario)
+    messages = {
+        "not_approved_library": "Chỉ đánh giá controller trên kịch bản đã vào thư viện",
+        "not_adversarial": "Kịch bản phải tái hiện được nguy hiểm trước khi thử controller",
+        "missing_xosc": UNCOMPILED_SCENARIO_DETAIL,
+        "controller_run_pending": "Kịch bản đã có một lượt đánh giá controller đang chờ",
+    }
+    if reason:
+        raise HTTPException(status_code=409, detail=messages[reason])
+    return {"ok": True, "jobs": _create_controller_pair(scenario)}
 
 
 @router.get("/scenarios/{scenario_id}/controller-runs")
@@ -1198,6 +1268,64 @@ async def list_controller_runs(scenario_id: str) -> dict:
             "next_action": next_action,
             "recommendation_vi": recommendation_vi,
         },
+    }
+
+
+@router.post("/campaigns/{campaign_id}/controller-runs")
+async def create_campaign_controller_runs(campaign_id: str) -> dict:
+    """Xếp BehaviorAgent cho mọi ca nguy hiểm đã duyệt trong một chiến dịch.
+
+    Batch mặc định chỉ chạy mỗi scenario một lần. Nút bấm lại trang không được
+    âm thầm nhân đôi chi phí GPU; muốn regression lần hai vẫn dùng endpoint của
+    từng scenario, nơi người dùng nhìn đúng artifact mình đang chạy lại.
+    """
+    if not db.get_campaign(campaign_id):
+        raise HTTPException(status_code=404, detail=f"Chiến dịch '{campaign_id}' không tồn tại")
+
+    jobs: list[dict] = []
+    queued_scenarios: list[str] = []
+    skipped: list[dict] = []
+    for row in db.campaign_scenarios(campaign_id):
+        scenario = db.get_scenario(row["scenario_id"]) or row
+        reason = _controller_ineligible_reason(scenario, skip_completed=True)
+        if reason:
+            skipped.append({"scenario_id": row["scenario_id"], "reason": reason})
+            continue
+        jobs.extend(_create_controller_pair(scenario))
+        queued_scenarios.append(row["scenario_id"])
+
+    return {
+        "ok": True,
+        "campaign_id": campaign_id,
+        "queued_scenarios": queued_scenarios,
+        "count": len(queued_scenarios),
+        "job_count": len(jobs),
+        "jobs": jobs,
+        "skipped": skipped,
+    }
+
+
+@router.get("/campaigns/{campaign_id}/controller-runs")
+async def list_campaign_controller_runs(campaign_id: str) -> dict:
+    """Tổng hợp kết luận closed-loop của lô để reviewer lọc lỗi mô hình."""
+    if not db.get_campaign(campaign_id):
+        raise HTTPException(status_code=404, detail=f"Chiến dịch '{campaign_id}' không tồn tại")
+
+    evaluations: list[dict] = []
+    counts: dict[str, int] = {}
+    for row in db.campaign_scenarios(campaign_id):
+        if not db.get_controller_runs(row["scenario_id"]):
+            continue
+        evaluation = await list_controller_runs(row["scenario_id"])
+        evaluations.append(evaluation)
+        outcome = evaluation["comparison"]["outcome"]
+        counts[outcome] = counts.get(outcome, 0) + 1
+
+    return {
+        "campaign_id": campaign_id,
+        "evaluations": evaluations,
+        "counts": counts,
+        "pending": any(item["comparison"]["outcome"] == "pending" for item in evaluations),
     }
 
 

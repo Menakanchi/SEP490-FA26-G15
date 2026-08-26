@@ -287,6 +287,7 @@ export interface ReviewRequest {
   reviewer: string;
   reason: string;
   force_simulate?: boolean;
+  force_intent_override?: boolean;
 }
 
 export interface DuplicateDifference {
@@ -487,6 +488,12 @@ export interface ScenarioDetail {
   /** Có sau khi worker chạy xong; đây là thứ cổng BEFORE_LIBRARY duyệt. */
   latest_execution_result?: ExecutionResult | null;
   verification?: string;
+  /** Oracle L4 chấm từ telemetry CARLA; null nghĩa là chưa đủ dữ liệu, không phải sai. */
+  intent_evaluation?: {
+    verdict: boolean | null;
+    status: "matched" | "mismatched" | "not_measurable";
+    label_vi: string;
+  };
 }
 
 /** GET /metrics/quality — M1/M2/M3. `rate: null` nghĩa là CHƯA CÓ DỮ LIỆU, không phải 0%. */
@@ -572,6 +579,23 @@ export interface CampaignReviewResponse {
     warning: "near_duplicate";
     duplicate: DuplicateDiff;
   }>;
+}
+
+export interface CampaignControllerBatchResponse {
+  ok: boolean;
+  campaign_id: string;
+  queued_scenarios: string[];
+  count: number;
+  job_count: number;
+  jobs: ControllerRun[];
+  skipped: Array<{ scenario_id: string; reason: string }>;
+}
+
+export interface CampaignControllerSummary {
+  campaign_id: string;
+  evaluations: ControllerRunsResponse[];
+  counts: Record<string, number>;
+  pending: boolean;
 }
 
 export * from "./auth";
