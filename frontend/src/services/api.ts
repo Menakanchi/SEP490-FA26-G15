@@ -17,6 +17,8 @@ import type {
   ControllerRunsResponse,
 
   CampaignDetail,
+  CampaignControllerBatchResponse,
+  CampaignControllerSummary,
   CampaignReviewResponse,
   CampaignSummary,
   LabelQueueItem,
@@ -443,6 +445,16 @@ export async function reviewCampaign(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export async function createCampaignControllerRuns(id: string): Promise<CampaignControllerBatchResponse> {
+  return request<CampaignControllerBatchResponse>(`/campaigns/${encodeURIComponent(id)}/controller-runs`, {
+    method: "POST",
+  });
+}
+
+export async function getCampaignControllerRuns(id: string): Promise<CampaignControllerSummary> {
+  return request<CampaignControllerSummary>(`/campaigns/${encodeURIComponent(id)}/controller-runs`);
 }
 
 

@@ -13,18 +13,36 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Layers, Loader2, Play, ShieldCheck, Square } from "lucide-react";
+import { AlertTriangle, Bot, Layers, Loader2, Play, ShieldCheck, Square } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
-import { createCampaign, getCampaign, listCampaigns, reviewCampaign, stopCampaign } from "@/services/api";
+import {
+  createCampaign,
+  createCampaignControllerRuns,
+  getCampaign,
+  getCampaignControllerRuns,
+  listCampaigns,
+  reviewCampaign,
+  stopCampaign,
+} from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
-import type { CampaignDetail, CampaignReviewResponse, CampaignSummary } from "@/types";
+import type {
+  CampaignControllerBatchResponse,
+  CampaignControllerSummary,
+  CampaignDetail,
+  CampaignReviewResponse,
+  CampaignSummary,
+  ManeuverType,
+} from "@/types";
 
-// Phạm vi converter hiện tại: chỉ `highway` có anchor đã smoke-test (ADR-016).
-// Hard-code ở đây là có chủ đích — chọn ô ngoài phạm vi thì backend loại và
-// người dùng nhận về một chiến dịch rỗng mà không hiểu vì sao.
-const ROAD_TYPE = "highway";
+// UI chỉ đưa ra đúng 72 ô SupportPolicy đã kiểm chứng: 60 ô highway cho năm
+// hành vi xe và 12 ô urban_straight cho vượt đèn đỏ. Không hiện một lựa chọn
+// rồi để backend âm thầm loại nó.
+const ROAD_MANEUVERS: Record<"highway" | "urban_straight", readonly ManeuverType[]> = {
+  highway: ["cut_in", "sudden_brake", "lane_drift", "stop_in_lane", "wrong_way"],
+  urban_straight: ["run_red_light"],
+};
+const ROAD_TYPES = Object.keys(ROAD_MANEUVERS) as Array<keyof typeof ROAD_MANEUVERS>;
 const WEATHERS = ["clear", "rain", "heavy_rain", "fog"] as const;
-const VEHICLE_MANEUVERS = ["cut_in", "sudden_brake", "lane_drift", "stop_in_lane", "run_red_light", "wrong_way"] as const;
 const VEHICLES = ["car", "motorcycle", "truck"] as const;
 
 const LABELS: Record<string, string> = {
@@ -33,6 +51,7 @@ const LABELS: Record<string, string> = {
   cut_in: "Tạt đầu", sudden_brake: "Phanh gấp", lane_drift: "Lấn làn",
   stop_in_lane: "Dừng giữa làn", run_red_light: "Vượt đèn đỏ", wrong_way: "Đi ngược chiều",
   jaywalk: "Băng ngang đường",
+  highway: "Cao tốc", urban_straight: "Đường đô thị có đèn",
 };
 
 const STATUS_LABELS: Record<CampaignSummary["status"], string> = {
@@ -42,10 +61,11 @@ const STATUS_LABELS: Record<CampaignSummary["status"], string> = {
 };
 
 function campaignLabel(campaign: CampaignSummary): string {
+  const roads = [...new Set(campaign.cells.map((cell) => LABELS[cell.road_type] ?? cell.road_type))];
   const actors = [...new Set(campaign.cells.map((cell) => LABELS[cell.actor_type] ?? cell.actor_type))];
   const maneuvers = [...new Set(campaign.cells.map((cell) => LABELS[cell.maneuver] ?? cell.maneuver))];
   const weatherCount = new Set(campaign.cells.map((cell) => cell.weather)).size;
-  return `${actors.join(", ")} · ${maneuvers.join(", ")} · ${weatherCount} thời tiết`;
+  return `${roads.join(", ")} · ${actors.join(", ")} · ${maneuvers.join(", ")} · ${weatherCount} thời tiết`;
 }
 
 function campaignTime(createdAt: string): string {
@@ -67,9 +87,11 @@ export default function CampaignPage() {
 
 function CampaignContent() {
   const { user } = useAuth();
+  const [roadType, setRoadType] = useState<keyof typeof ROAD_MANEUVERS>("highway");
   const [weathers, setWeathers] = useState<string[]>(["clear"]);
   const [maneuvers, setManeuvers] = useState<string[]>(["cut_in"]);
   const [actors, setActors] = useState<string[]>(["car"]);
+  const [perCell, setPerCell] = useState(1);
   const [maxScenarios, setMax] = useState(6);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,13 +99,17 @@ function CampaignContent() {
   const [active, setActive] = useState<CampaignDetail | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [batchReview, setBatchReview] = useState<CampaignReviewResponse | null>(null);
+  const [controllerStarting, setControllerStarting] = useState(false);
+  const [controllerBatch, setControllerBatch] = useState<CampaignControllerBatchResponse | null>(null);
+  const [controllerSummary, setControllerSummary] = useState<CampaignControllerSummary | null>(null);
 
   const cells = weathers.flatMap((weather) =>
     maneuvers.flatMap((maneuver) =>
-      actors.map((actor_type) => ({ road_type: ROAD_TYPE, weather, actor_type, maneuver })),
+      actors.map((actor_type) => ({ road_type: roadType, weather, actor_type, maneuver })),
     ),
   );
-  const selectedValueCount = weathers.length + maneuvers.length + actors.length;
+  const selectedValueCount = 1 + weathers.length + maneuvers.length + actors.length;
+  const plannedCount = Math.min(cells.length * perCell, maxScenarios);
 
   const refresh = useCallback(async () => {
     setCampaigns(await listCampaigns());
@@ -105,23 +131,58 @@ function CampaignContent() {
     return () => clearInterval(timer);
   }, [active, refresh]);
 
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    getCampaignControllerRuns(active.campaign_id)
+      .then((value) => {
+        if (!cancelled) setControllerSummary(value);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || !controllerSummary?.pending) return;
+    const timer = window.setInterval(() => {
+      getCampaignControllerRuns(active.campaign_id).then(setControllerSummary).catch(() => undefined);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [active, controllerSummary?.pending]);
+
   const start = async () => {
     setStarting(true);
     setError(null);
     try {
       const { campaign_id } = await createCampaign({
         cells,
-        per_cell: 1,
+        per_cell: perCell,
         max_scenarios: maxScenarios,
         created_by: (typeof user === "string" ? user : user?.username) ?? "creator",
       });
       setBatchReview(null);
+      setControllerBatch(null);
+      setControllerSummary(null);
       setActive(await getCampaign(campaign_id));
       await refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setStarting(false);
+    }
+  };
+
+  const runControllers = async () => {
+    if (!active) return;
+    setControllerStarting(true);
+    setError(null);
+    try {
+      setControllerBatch(await createCampaignControllerRuns(active.campaign_id));
+      setControllerSummary(await getCampaignControllerRuns(active.campaign_id));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setControllerStarting(false);
     }
   };
 
@@ -155,16 +216,31 @@ function CampaignContent() {
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
           Khoanh vùng ODD, agent viết câu tiếng Việt cho từng ô rồi nạp vào đúng pipeline của chế độ cơ bản.
-          Phạm vi hiện tại: <code className="text-purple-700 dark:text-purple-300">highway</code> — ô khác chưa có anchor đã kiểm chứng.
+          Chỉ các tổ hợp có anchor CARLA đã kiểm chứng mới được hiển thị.
         </p>
       </header>
 
       <section className="theme-card p-6 space-y-5">
+        <SinglePicker
+          label="Loại đường"
+          options={ROAD_TYPES}
+          value={roadType}
+          onChange={(value) => {
+            setRoadType(value);
+            setManeuvers([...ROAD_MANEUVERS[value]]);
+          }}
+        />
         <Picker label="Thời tiết" options={[...WEATHERS]} value={weathers} onChange={setWeathers} />
         <Picker label="Tác nhân" options={[...VEHICLES]} value={actors} onChange={setActors} />
-        <Picker label="Hành vi" options={[...VEHICLE_MANEUVERS]} value={maneuvers} onChange={setManeuvers} />
+        <Picker label="Hành vi" options={[...ROAD_MANEUVERS[roadType]]} value={maneuvers} onChange={setManeuvers} />
 
         <div className="flex flex-wrap items-end gap-4 pt-2 border-t border-slate-200 dark:border-slate-700/50">
+          <label className="text-sm text-slate-700 dark:text-slate-300">
+            <span className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Biến thể mỗi tổ hợp</span>
+            <input type="number" min={1} max={20} value={perCell}
+                   onChange={(e) => setPerCell(Math.max(1, Number(e.target.value)))}
+                   className="w-28 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100" />
+          </label>
           <label className="text-sm text-slate-700 dark:text-slate-300">
             <span className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Số kịch bản tối đa</span>
             <input type="number" min={1} max={200} value={maxScenarios}
@@ -174,7 +250,8 @@ function CampaignContent() {
           <p className="text-xs text-slate-600 dark:text-slate-400 flex-1 min-w-[220px]">
             Đã chọn <strong className="text-slate-900 dark:text-slate-200">{selectedValueCount}</strong> giá trị
             {" · "}<strong className="text-slate-900 dark:text-slate-200">{cells.length}</strong> tổ hợp ODD tiềm năng.
-            {" "}Chiến dịch sẽ sinh tối đa <strong className="text-slate-900 dark:text-slate-200">{maxScenarios}</strong> kịch bản.
+            {" "}Kế hoạch thực tế: <strong className="text-slate-900 dark:text-slate-200">{plannedCount}</strong> lượt
+            {" "}({perCell} biến thể/tổ hợp, dừng ở trần {maxScenarios}).
           </p>
           <button type="button" onClick={start} disabled={starting || !cells.length}
                   className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-semibold flex items-center gap-2">
@@ -190,7 +267,11 @@ function CampaignContent() {
           campaign={active}
           reviewing={reviewing}
           batchReview={batchReview}
+          controllerStarting={controllerStarting}
+          controllerBatch={controllerBatch}
+          controllerSummary={controllerSummary}
           onReview={reviewActive}
+          onRunControllers={runControllers}
           onStop={async () => {
             await stopCampaign(active.campaign_id);
             setActive(await getCampaign(active.campaign_id));
@@ -206,6 +287,8 @@ function CampaignContent() {
               <button key={c.campaign_id} type="button"
                       onClick={() => {
                         setBatchReview(null);
+                        setControllerBatch(null);
+                        setControllerSummary(null);
                         getCampaign(c.campaign_id).then(setActive);
                       }}
                       className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between gap-4 text-sm">
@@ -232,13 +315,21 @@ function ActiveCampaign({
   campaign,
   reviewing,
   batchReview,
+  controllerStarting,
+  controllerBatch,
+  controllerSummary,
   onReview,
+  onRunControllers,
   onStop,
 }: {
   campaign: CampaignDetail;
   reviewing: boolean;
   batchReview: CampaignReviewResponse | null;
+  controllerStarting: boolean;
+  controllerBatch: CampaignControllerBatchResponse | null;
+  controllerSummary: CampaignControllerSummary | null;
   onReview: (forceSimulate?: boolean) => void;
+  onRunControllers: () => void;
   onStop: () => void;
 }) {
   const done = campaign.generated + campaign.failed;
@@ -345,7 +436,87 @@ function ActiveCampaign({
           )}
         </div>
       )}
+
+      {campaign.status !== "running" && campaign.generated > 0 && (
+        <div className="border-t border-slate-200 dark:border-slate-700/60 pt-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="max-w-2xl">
+              <p className="text-xs font-bold text-slate-900 dark:text-slate-200 flex items-center gap-2">
+                <Bot className="w-4 h-4 text-cyan-600 dark:text-cyan-400" /> Closed-loop BehaviorAgent theo lô
+              </p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                Chỉ xếp cặp A/B cho các kịch bản đã vào thư viện và đã tái hiện nguy hiểm. Kịch bản đã chạy hoặc đang chờ sẽ không bị tạo job trùng.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onRunControllers}
+              disabled={controllerStarting || controllerSummary?.pending}
+              className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2"
+            >
+              {controllerStarting || controllerSummary?.pending
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Play className="w-4 h-4" />}
+              {controllerSummary?.pending ? "Đang chạy BehaviorAgent" : "Đánh giá BehaviorAgent cả lô"}
+            </button>
+          </div>
+
+          {controllerBatch && (
+            <p className={`text-xs ${controllerBatch.count > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-slate-600 dark:text-slate-400"}`}>
+              {controllerBatch.count > 0
+                ? `Đã xếp ${controllerBatch.count} kịch bản (${controllerBatch.job_count} job A/B).`
+                : "Không có kịch bản mới đủ điều kiện; hãy hoàn tất Cổng 2 hoặc xem các kết quả đã chạy."}
+              {controllerBatch.skipped.length > 0 && ` Bỏ qua ${controllerBatch.skipped.length} kịch bản chưa đủ điều kiện hoặc đã được đánh giá.`}
+            </p>
+          )}
+
+          {controllerSummary && controllerSummary.evaluations.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                ["controller_collision", "Mô hình va chạm", "text-red-700 dark:text-red-300"],
+                ["near_failure", "Suýt thất bại", "text-amber-700 dark:text-amber-300"],
+                ["avoided_hazard", "Đã tránh", "text-emerald-700 dark:text-emerald-300"],
+                ["pending", "Đang chạy", "text-blue-700 dark:text-blue-300"],
+              ].map(([key, label, tone]) => (
+                <div key={key} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-3 text-center">
+                  <span className="block text-[10px] uppercase text-slate-500 dark:text-slate-400">{label}</span>
+                  <strong className={`text-lg ${tone}`}>{controllerSummary.counts[key] ?? 0}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {controllerSummary?.evaluations.map((evaluation) => (
+            <div key={evaluation.scenario_id} className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 text-xs flex flex-wrap gap-2 justify-between">
+              <code className="text-cyan-700 dark:text-cyan-300">{evaluation.scenario_id}</code>
+              <span className="text-slate-700 dark:text-slate-300">{evaluation.comparison.recommendation_vi}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
+  );
+}
+
+function SinglePicker<T extends string>({ label, options, value, onChange }: {
+  label: string; options: T[]; value: T; onChange: (value: T) => void;
+}) {
+  return (
+    <div>
+      <span className="block text-xs text-slate-500 dark:text-slate-400 mb-2">{label}</span>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => (
+          <button key={option} type="button" onClick={() => onChange(option)}
+                  className={`px-3 py-1.5 rounded-lg text-xs border transition ${
+                    value === option
+                      ? "bg-purple-100 border-purple-500 text-purple-800 dark:bg-purple-600/20 dark:text-purple-200"
+                      : "bg-slate-50 border-slate-300 text-slate-700 hover:border-slate-400 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600"
+                  }`}>
+            {LABELS[option] ?? option}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

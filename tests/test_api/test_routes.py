@@ -499,6 +499,96 @@ async def test_controller_run_is_separate_from_scenario_verification(client):
 
 
 @pytest.mark.asyncio
+async def test_gate_two_surfaces_l4_and_requires_explicit_override_when_wrong(client):
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    job_id = await _approve_sim(client, sc_id)
+    await _submit_result(
+        client,
+        sc_id,
+        job_id,
+        collision=True,
+        metrics={
+            "adversary_entered_ego_lane": 1.0,
+            "adversary_entry_longitudinal_m": -8.0,
+        },
+    )
+
+    detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
+    assert detail["intent_evaluation"] == {
+        "verdict": False,
+        "status": "mismatched",
+        "label_vi": "Không khớp ý định mô tả",
+    }
+
+    blocked = await client.post(
+        f"/api/v1/scenarios/{sc_id}/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_library",
+            "approved": True,
+            "reviewer": "Reviewer",
+            "reason": "",
+        },
+    )
+    assert blocked.status_code == 409
+
+    overridden = await client.post(
+        f"/api/v1/scenarios/{sc_id}/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_library",
+            "approved": True,
+            "reviewer": "Reviewer",
+            "reason": "Đã xem quỹ đạo và xác nhận oracle báo nhầm",
+            "force_intent_override": True,
+        },
+    )
+    assert overridden.status_code == 200
+    assert overridden.json()["status"] == "approved_library"
+
+
+@pytest.mark.asyncio
+async def test_campaign_controller_batch_only_queues_each_eligible_scenario_once(client):
+    from src.services import db
+
+    campaign_id = "cmp_ctrl01"
+    db.create_campaign(campaign_id, cells=[], per_cell=1, max_scenarios=2, created_by="cong")
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    request_id = next(
+        row["request_id"]
+        for row in db.metrics_rows()[0]
+        if db.get_generation_request(row["request_id"])["scenario_id"] == sc_id
+    )
+    db.attach_request_to_campaign(request_id, campaign_id)
+    validation_job = await _approve_sim(client, sc_id)
+    await _submit_result(client, sc_id, validation_job, collision=True)
+    approved = await client.post(
+        f"/api/v1/scenarios/{sc_id}/review",
+        json={
+            "scenario_id": sc_id,
+            "gate": "before_library",
+            "approved": True,
+            "reviewer": "Reviewer",
+            "reason": "",
+        },
+    )
+    assert approved.status_code == 200
+
+    queued = (await client.post(f"/api/v1/campaigns/{campaign_id}/controller-runs")).json()
+    assert queued["queued_scenarios"] == [sc_id]
+    assert queued["count"] == 1
+    assert queued["job_count"] == 2
+
+    repeated = (await client.post(f"/api/v1/campaigns/{campaign_id}/controller-runs")).json()
+    assert repeated["count"] == 0
+    assert repeated["skipped"] == [{"scenario_id": sc_id, "reason": "controller_run_pending"}]
+
+    summary = (await client.get(f"/api/v1/campaigns/{campaign_id}/controller-runs")).json()
+    assert summary["pending"] is True
+    assert summary["counts"] == {"pending": 1}
+
+
+@pytest.mark.asyncio
 async def test_crashed_run_is_recorded_as_execution_failed(client):
     """`success=False` là kịch bản KHÔNG chạy nổi — khác hẳn chạy xong mà không va chạm."""
     sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
