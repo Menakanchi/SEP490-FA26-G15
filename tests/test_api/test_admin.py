@@ -45,6 +45,27 @@ async def test_reviewer_registration_and_admin_approval_flow(client):
 
 
 @pytest.mark.asyncio
+async def test_auth_me_restores_requested_user_without_admin_fallback(client):
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "reviewer", "password": "reviewer123"},
+    )
+    assert login.status_code == 200
+    assert login.json()["user"]["role"] == "reviewer"
+
+    reviewer = await client.get("/api/v1/auth/me", params={"user": "reviewer"})
+    assert reviewer.status_code == 200
+    assert reviewer.json()["username"] == "reviewer"
+    assert reviewer.json()["role"] == "reviewer"
+
+    missing_query = await client.get("/api/v1/auth/me")
+    assert missing_query.status_code == 422
+
+    unknown_user = await client.get("/api/v1/auth/me", params={"user": "does_not_exist"})
+    assert unknown_user.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_admin_stats_and_crud(client):
     """Test Admin Stats API & CRUD User endpoints."""
     # 1. Stats

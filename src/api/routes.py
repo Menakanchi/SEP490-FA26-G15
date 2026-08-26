@@ -1358,18 +1358,12 @@ async def login_user_endpoint(body: LoginApiRequest) -> dict:
 
 
 @router.get("/auth/me")
-async def get_me_endpoint(user: str = Query("admin")) -> dict:
+async def get_me_endpoint(user: str = Query(..., min_length=1)) -> dict:
+    """Khôi phục đúng user đã đăng nhập; tuyệt đối không mặc định thành Admin."""
     u = db.get_user(user)
     if not u:
-        u = db.get_user("admin")
-    return u or {
-        "id": "usr_admin",
-        "username": "admin",
-        "name": "Hệ Thống Admin",
-        "email": "admin@forge.ai",
-        "role": "admin",
-        "status": "active",
-    }
+        raise HTTPException(status_code=404, detail="Tài khoản đăng nhập không còn tồn tại")
+    return u
 
 
 # ===========================================================================

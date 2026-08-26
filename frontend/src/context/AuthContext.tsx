@@ -57,10 +57,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const savedUserStr = localStorage.getItem("auth_user");
     const savedToken = localStorage.getItem("forge_token");
 
-    if (savedToken) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Restore token on mount
-      setToken(savedToken);
-      getMe()
+    if (savedToken && savedUserStr) {
+      let savedUser: User;
+      try {
+        savedUser = JSON.parse(savedUserStr) as User;
+        if (!savedUser.username) throw new Error("missing username");
+      } catch {
+        localStorage.removeItem("auth_user");
+        localStorage.removeItem("forge_token");
+        queueMicrotask(() => {
+          setUser(null);
+          setToken(null);
+          setIsLoading(false);
+        });
+        return;
+      }
+
+      getMe(savedUser.username)
         .then((userData: User) => {
           const userWithRole: User = {
             ...userData,
@@ -70,39 +83,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role: (userData.role as Role) || "creator",
             status: userData.status || "active",
           };
+          setToken(savedToken);
           setUser(userWithRole);
           localStorage.setItem("auth_user", JSON.stringify(userWithRole));
         })
         .catch(() => {
-          if (savedUserStr) {
-            try {
-              const parsedUser = JSON.parse(savedUserStr) as User;
-              setUser(parsedUser);
-            } catch {
-              localStorage.removeItem("auth_user");
-              localStorage.removeItem("forge_token");
-              setUser(null);
-              setToken(null);
-            }
-          } else {
-            localStorage.removeItem("forge_token");
-            setUser(null);
-            setToken(null);
-          }
+          // Backend có thể đang reload giữa phiên demo. Giữ user đã lưu thay
+          // vì đổi role hoặc đăng xuất; request kế tiếp vẫn báo lỗi thật nếu
+          // backend chưa sẵn sàng.
+          setToken(savedToken);
+          setUser(savedUser);
         })
         .finally(() => setIsLoading(false));
     } else if (savedUserStr) {
       // A user record without a token is not a valid session. This can happen
       // after logout or when old demo data remains in localStorage.
       localStorage.removeItem("auth_user");
-      setUser(null);
-      setToken(null);
-      setIsLoading(false);
+      queueMicrotask(() => {
+        setUser(null);
+        setToken(null);
+        setIsLoading(false);
+      });
     } else {
       // Stay signed out. Demo users are created only after an explicit login.
-      setUser(null);
-      setToken(null);
-      setIsLoading(false);
+      queueMicrotask(() => {
+        setUser(null);
+        setToken(null);
+        setIsLoading(false);
+      });
     }
   }, []);
 
