@@ -1127,14 +1127,10 @@ def generate_temp_password(length: int = 10) -> str:
 
 def _seed_default_users() -> None:
     with _cursor(commit=True) as cursor:
-        cursor.execute("SELECT COUNT(*) AS cnt FROM users")
-        row = cursor.fetchone()
-        if row and row["cnt"] > 0:
-            return
-
         now_str = datetime.now(UTC).isoformat()
         admin_pass_hash = hash_password("admin123")
         creator_pass_hash = hash_password("creator123")
+        reviewer_pass_hash = hash_password("reviewer123")
 
         default_users = [
             ("admin", "Hệ Thống Admin", "admin@forge.ai", "admin", "active", None, admin_pass_hash, now_str, now_str),
@@ -1146,6 +1142,17 @@ def _seed_default_users() -> None:
                 "active",
                 None,
                 creator_pass_hash,
+                now_str,
+                now_str,
+            ),
+            (
+                "reviewer",
+                "Kỹ sư Thẩm định",
+                "reviewer@forge.ai",
+                "reviewer",
+                "active",
+                None,
+                reviewer_pass_hash,
                 now_str,
                 now_str,
             ),
@@ -1164,10 +1171,25 @@ def _seed_default_users() -> None:
 
         cursor.executemany(
             """
-            INSERT INTO users (username, name, email, role, status, reason, password_hash, created_at, updated_at)
+            INSERT OR IGNORE INTO users
+                (username, name, email, role, status, reason, password_hash, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             default_users,
+        )
+
+        # Các bản trước không seed tài khoản Reviewer demo. Lần đăng nhập nhanh
+        # đầu tiên vì thế tự tạo username ``reviewer`` với role mặc định
+        # ``creator``. Sửa đúng riêng tài khoản demo đã công bố trên UI; không
+        # đụng tới reviewer thật do Admin tạo.
+        cursor.execute(
+            """
+            UPDATE users
+            SET name = ?, email = ?, role = 'reviewer', status = 'active',
+                reason = NULL, password_hash = ?, updated_at = ?
+            WHERE LOWER(username) = 'reviewer'
+            """,
+            ("Kỹ sư Thẩm định", "reviewer@forge.ai", reviewer_pass_hash, now_str),
         )
 
 

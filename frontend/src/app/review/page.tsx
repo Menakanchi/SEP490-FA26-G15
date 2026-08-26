@@ -97,13 +97,6 @@ function ReviewPageContent() {
   const initialScenarioId = searchParams.get("scenario_id");
   const { user, role } = useAuth();
 
-  // Admin Route Guard: Redirect Admin to /admin
-  useEffect(() => {
-    if (user?.role === "admin" || role === "admin") {
-      router.push("/admin");
-    }
-  }, [user?.role, role, router]);
-
   // State: List
   const [list, setList] = useState<ScenarioItem[]>([]);
   const [listLoading, setListLoading] = useState(true);
@@ -154,27 +147,70 @@ function ReviewPageContent() {
     void fetchScenarioList();
   }, [fetchScenarioList]);
 
+  const fetchScenarioDetail = useCallback(async (id: string, showLoading = true) => {
+    if (showLoading) setDetailLoading(true);
+    setDetailError(false);
+    try {
+      const data = await getScenarioById(id);
+      setScenario(data);
+      return data;
+    } catch (err) {
+      console.error("Failed to load scenario detail", err);
+      setDetailError(true);
+      return null;
+    } finally {
+      if (showLoading) setDetailLoading(false);
+    }
+  }, []);
+
   // Fetch Selected Detail
   useEffect(() => {
-    if (!selectedId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear scenario state when selectedId is null
-      setScenario(null);
-      return;
-    }
+    if (!selectedId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp detail khi scenario được chọn
+    void fetchScenarioDetail(selectedId);
+  }, [fetchScenarioDetail, selectedId]);
 
-    setDetailLoading(true);
-    setDetailError(false);
-    getScenarioById(selectedId)
-      .then((data) => {
-        setScenario(data);
-        setDetailLoading(false);
-      })
-      .catch((err) => {
-        console.error("Failed to load scenario detail", err);
-        setDetailError(true);
-        setDetailLoading(false);
-      });
-  }, [selectedId]);
+  // Worker cập nhật trạng thái ở backend. Tab Review đang mở phải tự theo dõi
+  // đúng scenario thay vì bắt reviewer reload cả trang (reload trước đây còn
+  // làm lộ lỗi session bị đổi thành Admin).
+  useEffect(() => {
+    if (!selectedId || scenario?.status !== "simulation_queued") return;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const updated = await getScenarioById(selectedId);
+        if (cancelled) return;
+        setScenario(updated);
+        if (updated.status !== "simulation_queued") {
+          setListLoading(true);
+          void fetchScenarioList();
+          if (updated.status === "pending_library_review") {
+            setToast({
+              type: "success",
+              msg: `CARLA đã trả kết quả cho ${updated.scenario_id}. Kịch bản đã chuyển sang Cổng 2.`,
+            });
+            window.setTimeout(() => {
+              document.getElementById("review-decision")?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+            }, 100);
+          }
+        }
+      } catch {
+        // Worker hoặc backend có thể đang đổi world; giữ kết quả gần nhất và
+        // thử lại ở nhịp sau. Nút Làm mới vẫn cho phép thử ngay có chủ đích.
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [fetchScenarioList, scenario?.status, selectedId]);
 
   const handleSelectScenario = (id: string) => {
     setNearDuplicate(null);
@@ -240,8 +276,7 @@ function ReviewPageContent() {
 
       setListLoading(true);
       await fetchScenarioList();
-      const updated = await getScenarioById(scenario.scenario_id);
-      setScenario(updated);
+      await fetchScenarioDetail(scenario.scenario_id, false);
     } catch (err) {
       setToast({
         type: "error",
@@ -270,8 +305,7 @@ function ReviewPageContent() {
 
       setListLoading(true);
       await fetchScenarioList();
-      const updated = await getScenarioById(scenario.scenario_id);
-      setScenario(updated);
+      await fetchScenarioDetail(scenario.scenario_id, false);
     } catch (err) {
       setToast({
         type: "error",
@@ -309,6 +343,14 @@ function ReviewPageContent() {
         msg: err instanceof Error ? err.message : "Chưa được phép tải file .xosc",
       });
     }
+  };
+
+  const handleRefresh = async () => {
+    setListLoading(true);
+    await Promise.all([
+      fetchScenarioList(),
+      selectedId ? fetchScenarioDetail(selectedId, false) : Promise.resolve(null),
+    ]);
   };
 
   // Filter logic based on dropdown status selection
@@ -351,7 +393,7 @@ function ReviewPageContent() {
               Kiểm duyệt kịch bản (Reviewer Flow - HITL)
             </h1>
             <p className="text-xs md:text-sm text-blue-900/80 dark:text-slate-400 font-medium">
-              Cổng duyệt hai tầng: Thư viện (BEFORE_LIBRARY) & Mô phỏng (BEFORE_SIM)
+              Cổng 1: Mô phỏng (BEFORE_SIM) → Cổng 2: Thư viện (BEFORE_LIBRARY)
             </p>
           </div>
         </div>
@@ -374,10 +416,7 @@ function ReviewPageContent() {
           </div>
 
           <button
-            onClick={() => {
-              setListLoading(true);
-              void fetchScenarioList();
-            }}
+            onClick={() => void handleRefresh()}
             className="text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 border border-sky-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0f2d59] dark:text-slate-300 hover:bg-sky-100/80 dark:hover:bg-slate-700 font-bold transition cursor-pointer shadow-xs"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 ${listLoading ? "animate-spin" : ""}`} />
@@ -710,8 +749,8 @@ function ReviewPageContent() {
                 <div className="bg-sky-50/90 dark:bg-slate-900 border-2 border-blue-500/80 rounded-3xl p-6 space-y-4 shadow-md">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-200 dark:border-slate-800 pb-3">
                     <h3 className="text-base font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
-                      <Sparkle className="w-5 h-5 text-blue-600 dark:text-cyan-400" />
-                      Kiểm thử Mô phỏng Ngoại tuyến (Manual Simulation Test)
+                      <Loader2 className="w-5 h-5 text-blue-600 dark:text-cyan-400 animate-spin" />
+                      Đang chờ kết quả từ worker CARLA
                     </h3>
                     <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 border border-blue-300">
                       Trạng thái: simulation_queued
@@ -719,75 +758,66 @@ function ReviewPageContent() {
                   </div>
 
                   <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                    Kịch bản đã được phê duyệt ở Cổng 1 và đang ở trạng thái chờ chạy thử mô phỏng (<code className="font-bold text-blue-700">simulation_queued</code>). Kỹ sư/Reviewer có thể tải file <code className="font-bold text-blue-700">.xosc</code> bên dưới về mô phỏng ngoại tuyến (Esmini / CARLA / Ansys) và xác nhận kết quả kiểm thử:
+                    Kịch bản đã qua Cổng 1 và được xếp hàng cho worker. Trang này tự cập nhật mỗi 2 giây;
+                    khi CARLA trả kết quả, giao diện sẽ chuyển thẳng sang Cổng 2 mà không cần tải lại trang.
                   </p>
 
-                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/80 border border-sky-200/80 dark:border-slate-700 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-[#0f2d59] dark:text-slate-200">
-                        1. Tải file cấu hình kịch bản:
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleDownloadXml}
-                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Tải file {scenario.scenario_id}.xosc
-                      </button>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-[#0f2d59] dark:text-slate-300 mb-1">
-                        2. Ghi chú kết quả chạy thử (Tùy chọn / Bắt buộc nếu từ chối):
-                      </label>
+                  <details className="rounded-2xl bg-white dark:bg-slate-800/80 border border-sky-200/80 dark:border-slate-700 p-4">
+                    <summary className="cursor-pointer text-xs font-bold text-[#0f2d59] dark:text-slate-200">
+                      Không dùng worker? Xác nhận một lượt mô phỏng ngoại tuyến
+                    </summary>
+                    <div className="pt-4 space-y-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs text-slate-600 dark:text-slate-300">
+                          Tải artifact để chạy bằng CARLA, Esmini hoặc công cụ ngoài.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleDownloadXml}
+                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Tải file {scenario.scenario_id}.xosc
+                        </button>
+                      </div>
                       <textarea
                         className="w-full px-3.5 py-2 bg-sky-50/40 dark:bg-slate-900 border border-sky-200 dark:border-slate-700 rounded-xl text-xs text-[#0f2d59] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        placeholder="Ghi chú kết quả mô phỏng (Ví dụ: Đã test chạy thử trên Esmini/CARLA đạt yêu cầu va chạm tại 35m)..."
+                        placeholder="Ghi chú kết quả mô phỏng ngoại tuyến…"
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
                         disabled={submitting}
                       />
+                      <RoleGate allowedRoles={["reviewer", "admin"]}>
+                        <div className="flex flex-wrap items-center justify-end gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteSimulation(false)}
+                            disabled={submitting}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
+                          >
+                            <XCircle className="w-4 h-4" />
+                            Báo lỗi mô phỏng
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteSimulation(true)}
+                            disabled={submitting}
+                            className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
+                          >
+                            {submitting ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="w-4 h-4" />
+                            )}
+                            Xác nhận lượt ngoại tuyến đạt
+                          </button>
+                        </div>
+                      </RoleGate>
                     </div>
-                  </div>
-
-                  <RoleGate
-                    allowedRoles={["reviewer", "admin"]}
-                    fallback={
-                      <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-300 text-xs">
-                        Quyền xác nhận kết quả chạy thử chỉ dành cho <strong>Reviewer</strong> hoặc <strong>Admin</strong>.
-                      </div>
-                    }
-                  >
-                    <div className="flex items-center justify-end gap-3 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => handleCompleteSimulation(false)}
-                        disabled={submitting}
-                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition cursor-pointer"
-                      >
-                        <XCircle className="w-4 h-4" />
-                        🔴 Báo lỗi mô phỏng / Từ chối
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleCompleteSimulation(true)}
-                        disabled={submitting}
-                        className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transition cursor-pointer"
-                      >
-                        {submitting ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="w-4 h-4" />
-                        )}
-                        🟢 Xác nhận đã chạy thử Đạt
-                      </button>
-                    </div>
-                  </RoleGate>
+                  </details>
                 </div>
-              ) : (
-                <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm">
+              ) : scenario.status === "pending_sim_review" || scenario.status === "pending_library_review" ? (
+                <div id="review-decision" className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm scroll-mt-6">
                   <h3 className="text-base font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
                     <User className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                     Form Phê duyệt / Từ chối (HITL Decision Form)
@@ -919,6 +949,26 @@ function ReviewPageContent() {
                       </button>
                     </div>
                   </RoleGate>
+                </div>
+              ) : (
+                <div className="bg-slate-100/80 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    {scenario.status === "approved_library" ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                    )}
+                    <div>
+                      <h3 className="text-sm font-bold text-[#0f2d59] dark:text-white">
+                        {scenario.status === "approved_library"
+                          ? "Kịch bản đã hoàn tất hai cổng duyệt"
+                          : "Kịch bản không còn chờ quyết định"}
+                      </h3>
+                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                        Trạng thái hiện tại: <code className="font-bold">{scenario.status}</code>. Lịch sử quyết định được giữ lại để truy vết.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
 

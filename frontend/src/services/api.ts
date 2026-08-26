@@ -302,8 +302,9 @@ export async function postRegister(payload: RegisterPayload): Promise<{ ok: bool
   });
 }
 
-export async function getMe(): Promise<User> {
-  return request<User>("/auth/me");
+export async function getMe(username: string): Promise<User> {
+  const query = new URLSearchParams({ user: username });
+  return request<User>(`/auth/me?${query.toString()}`);
 }
 
 // ---------------------------------------------------------------------------

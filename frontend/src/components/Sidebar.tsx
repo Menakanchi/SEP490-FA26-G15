@@ -121,6 +121,13 @@ function SidebarContent() {
           icon: Library,
           allowedRoles: ["creator" as Role, "reviewer" as Role, "admin" as Role],
         },
+        {
+          href: "/review",
+          label: "HITL Review",
+          description: "Duyệt kịch bản",
+          icon: ClipboardCheck,
+          allowedRoles: ["reviewer" as Role, "admin" as Role],
+        },
       ];
     }
     return NAV_ITEMS.filter((item) => {
