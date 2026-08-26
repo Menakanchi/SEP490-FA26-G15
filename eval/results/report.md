@@ -39,6 +39,31 @@ oracle cho đủ 6 maneuver trong phạm vi: `cut_in`, `lane_drift`, `sudden_bra
 Phủ toàn phần trả lời đã thử bao nhiêu tổ hợp hoàn chỉnh. Phủ theo cặp trả lời đã
 thử bao nhiêu tương tác hai yếu tố; hai số không thay thế nhau.
 
+### 3.1. Mật độ lặp — vì sao 31 kịch bản chỉ phủ 12 ô
+
+**31 kịch bản trong phạm vi nằm trên 12 ô, tức trung bình ~2,6 kịch bản mỗi ô.**
+Con số này nên đọc cùng M2, vì thiếu nó thì "31 kịch bản" nghe như 31 tình huống
+khác nhau — không phải.
+
+Phần lớn kịch bản lặp lại là **lần thử đi thử lại cùng một tình huống cho tới khi
+nó chạy đúng**, hoặc **biến thể dò tham số**, chứ không phải đa dạng mới:
+
+- `sc_024` cộng bốn biến thể `sc_024_t1..t4` — một kịch bản `lane_drift` với bốn
+  bước dò thời điểm trigger (§9 của `docs/adr/`, phép dò 4 bước quanh mốc neo).
+- Chuỗi `wrong_way` trên `car`: `sc_016` → `sc_020` → `sc_036` → `sc_038` →
+  `sc_040` → `sc_042`, sáu lượt cho tới khi bản cuối bám đúng làn (§6). Chỉ
+  `sc_042` được duyệt vào thư viện.
+- `sc_044`/`sc_046` và `sc_045`/`sc_047`: bản hiệu chuẩn bị từ chối, rồi bản dùng
+  đúng giao cắt (§7).
+
+Hệ quả khi đọc M1: **L2 = 31/31 = 100% không mạnh như trông**. Nó nói "mọi thứ
+trong phạm vi đều biên dịch được", không nói "31 tình huống độc lập đều biên dịch
+được". Con số phản ánh đa dạng tình huống đúng nhất vẫn là M2 = 12/72.
+
+Đây cũng là câu trả lời cho *"đã sinh 31 bản mà sao phủ có 16,67%"*: công sức của
+đợt 22–24/08 đổ vào **làm cho một số ít ô chạy đúng**, không đổ vào phủ thêm ô
+mới. Chiến dịch ODD tồn tại để đảo hướng đó.
+
 ## 4. Kết quả M3 — kích hoạt nguy hiểm
 
 | Kết quả lần chạy mới nhất | Số lượng |
