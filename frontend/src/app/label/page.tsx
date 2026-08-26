@@ -82,7 +82,7 @@ function LabelContent() {
     <Shell>
       <div className="flex items-center justify-between text-sm">
         <span className="text-slate-400">
-          Kịch bản {index + 1}/{items.length} · đã chấm {done}
+          Kịch bản {index + 1}/{items.length} · đã kiểm định {done}
         </span>
         <div className="flex gap-1">
           {items.map((it, i) => (
@@ -327,9 +327,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="space-y-5 p-6 max-w-4xl">
       <header>
-        <h1 className="text-2xl font-bold text-slate-100">Chấm ý định</h1>
+        <h1 className="text-2xl font-bold text-slate-100">Kiểm định L4</h1>
         <p className="text-sm text-slate-400 mt-1 leading-relaxed">
-          Kịch bản có tái hiện đúng thứ câu mô tả nói không? Phán quyết của máy được{" "}
+          Người kiểm định xác nhận kịch bản có tái hiện đúng ý định mô tả hay không. Phán quyết L4 của máy được{" "}
           <strong>giấu đi</strong> cho tới khi bạn bấm — thấy trước thì sẽ gật theo, và con số khớp
           thu được là con số vô nghĩa.
         </p>

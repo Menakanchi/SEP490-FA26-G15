@@ -66,8 +66,8 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/label",
-    label: "Chấm ý định",
-    description: "Người chấm tay để đo lại L4",
+    label: "Kiểm định L4",
+    description: "Nhãn người kiểm tra oracle L4",
     icon: ClipboardCheck,
     allowedRoles: ["creator", "reviewer", "admin"],
   },
