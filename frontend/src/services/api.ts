@@ -66,10 +66,20 @@ export interface GeneratePayload {
   validation_mode: ValidationMode;
   limit?: number;
   created_by?: string;
+  force_generate?: boolean;
+}
+
+export interface GenerateDuplicateMatch {
+  scenario_id?: string | null;
+  scenario_status?: ScenarioStatus | null;
+  title?: string | null;
+  reason?: string | null;
+  request_status?: string | null;
 }
 
 export interface GenerateResponse {
-  request_id: string;
+  request_id: string | null;
+  duplicate?: GenerateDuplicateMatch | null;
 }
 
 export async function postGenerate(
