@@ -192,6 +192,64 @@ hai percentile latency đều xấu đi rõ rệt. Vì không tăng tỷ lệ ho
 Artifact Luna đầy đủ từng request và từng node:
 [`cost_latency_gpt56luna_2026-08-24.json`](cost_latency_gpt56luna_2026-08-24.json).
 
+### 9.2. A/B few-shot: retrieval đóng góp được gì cho chất lượng sinh
+
+Ngày 26/08/2026. `ADR-004` cam kết tự implement metric retrieval để chứng minh
+`improved > baseline` (PLO3); cam kết đó chưa hoàn thành, và §"Trạng thái hiện
+tại" của `ARCHITECTURE.md` cũng ghi nhận *"retrieval baseline bằng số thật thì
+chưa"*. Phép đo dưới đây trả lời một câu hẹp hơn nhưng trả lời được ngay: **ví dụ
+few-shot có làm kết quả sinh tốt hơn không, và giá bao nhiêu.**
+
+Thiết kế: cùng 20 mô tả, cùng snapshot database, nhánh `off` **vẫn chạy node
+`retrieve`** (vẫn gọi embedding, vẫn lọc `WHERE` bốn trục) mà chỉ không đưa ví dụ
+vào prompt `generate_draft`. Hai nhánh vì vậy lệch đúng **một** biến. Cả hai nhánh
+đều tìm được 41 ví dụ trên 20 request, xác nhận chúng chạy trên cùng một thư viện.
+
+| Lượt | done | lượt `repair_draft` | tổng cost | cached input | output token | p50 latency |
+|---|---:|---:|---:|---:|---:|---:|
+| ON, cache nguội | 18/20 | 1 | $0,081482 | 65,0% | 7.094 | 2,93 s |
+| **OFF** | **17/20** | **3** | **$0,043344** | 94,0% | 5.662 | 2,59 s |
+| **ON, cache ấm** | **17/20** | **2** | **$0,051810** | 94,7% | 7.500 | 3,19 s |
+
+**Vì sao có lượt thứ ba.** Lượt ON đầu tiên chạy khi cache còn nguội nên chỉ 65%
+input token đọc từ cache, trong khi lượt OFF chạy sau được hưởng cache đã ấm. So
+thẳng hai lượt đó cho ra "few-shot đắt gần gấp đôi", mà phần lớn chênh lệch thuộc
+về **thứ tự chạy**. Chạy lại ON sau OFF (cache 94,7%, ngang OFF) mới có cặp so
+được. Ghi lại cả ba lượt vì lượt nguội chính là bằng chứng của cái bẫy đó.
+
+**Đọc trên cặp cùng điều kiện cache (OFF và ON ấm):**
+
+- **Tỷ lệ hoàn tất không khác:** 17/20 cả hai. Ba request hỏng của hai nhánh là
+  **cùng ba request** (16, 17, 18) và cùng một nguyên nhân
+  `actor_beyond_anchor_reach` — model đặt actor ở `s_offset_m` 60–120 m, ngoài
+  tầm anchor `(-120, +40)`. Lượt ON nguội tránh được request 16 còn lượt ON ấm
+  thì không, nên chênh lệch đó là nhiễu.
+- **Few-shot giảm số vòng repair:** 1–2 lượt so với 3. Nhất quán về hướng nhưng
+  chênh 1–2 trên n=20 thì chưa kết luận được.
+- **Few-shot đắt hơn 19,5%:** $0,051810 so với $0,043344. Nguyên nhân chính không
+  phải input token (165.480 so với 157.152, chênh 5%) mà là **output token:
+  7.500 so với 5.662, +32%** — có ví dụ mẫu thì model viết draft dài hơn.
+- **Chậm hơn:** p50 3,19 s so với 2,59 s.
+
+**Kết luận.** Ở quy mô thư viện hiện tại, few-shot **không mua được chất lượng đo
+được**: tốn thêm ~20% chi phí và ~0,6 s để đổi lấy ít hơn 1–2 lượt repair, trong
+khi tỷ lệ hoàn tất y hệt.
+
+Đây **không** phải kết luận về few-shot nói chung mà về few-shot với thư viện hiện
+tại: 18 hàng `approved_library` có embedding, trong đó 10 là `seed-data` do người
+gõ tay và 3 mang `verification = ran_no_hazard` (bị `PROVEN_BAD_FOR_FEW_SHOT` loại
+khỏi prompt). Tín hiệu thật còn rất mỏng.
+
+**Việc rút ra, đáng giá hơn cả con số:** cả ba request hỏng đều hỏng vì cùng một
+lý do, và few-shot không sửa được nó. Muốn L1 lên thì thứ cần sửa là prompt và
+suggestion quanh `s_offset_m`, không phải retrieval. Phép đo này nên chạy lại khi
+thư viện có ~50 kịch bản `adversarial` thật; nếu lúc đó vẫn hoà thì mới có căn cứ
+bàn chuyện bỏ ví dụ khỏi prompt mà vẫn giữ retrieval cho thư viện.
+
+Artifact: [`fewshot_on_cold_2026-08-26.json`](fewshot_on_cold_2026-08-26.json),
+[`fewshot_off_warm_2026-08-26.json`](fewshot_off_warm_2026-08-26.json),
+[`fewshot_on_warm_2026-08-26.json`](fewshot_on_warm_2026-08-26.json).
+
 ## 10. Giới hạn và việc tiếp theo
 
 1. Mở rộng nhãn người trên từng maneuver, không chỉ các case lỗi đã biết.
@@ -203,6 +261,10 @@ Artifact Luna đầy đủ từng request và từng node:
    tương ứng; hiện anchor đô thị chỉ cam kết cho `run_red_light`.
 5. Benchmark mới có 20 request tuần tự trên một máy/mạng; chưa phải load test
    nhiều người dùng đồng thời hay SLA production.
+6. Chưa có metric retrieval (Recall@k / MRR / nDCG) trên golden set như `ADR-004`
+   cam kết. §9.2 mới chỉ đo *đóng góp của few-shot vào kết quả sinh*, không đo
+   *chất lượng xếp hạng của retriever*; và đo trên một thư viện 18 hàng, quá mỏng
+   để kết luận về few-shot nói chung.
 
 ## 11. Cách tái tạo snapshot
 
@@ -213,5 +275,11 @@ curl http://127.0.0.1:8000/api/v1/library/audit
 OPENAI_API_KEY=... uv run python eval/benchmarks/generation_cost_latency.py \
   --source-db data/app.db --samples 20 \
   --output eval/results/cost_latency_$(date +%F).json
+
+# §9.2 — A/B few-shot. Chạy ON trước rồi OFF thì cache nguội/ấm sẽ trộn vào
+# chênh lệch cost; muốn so cost thì phải có một lượt ON chạy SAU lượt OFF.
+OPENAI_API_KEY=... uv run python eval/benchmarks/generation_cost_latency.py \
+  --source-db data/app.db --few-shot off \
+  --output eval/results/fewshot_off_warm_$(date +%F).json
 bash scripts/pre_push_check.sh
 ```
