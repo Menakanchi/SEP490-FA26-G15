@@ -32,6 +32,7 @@ def temp_sqlite_db(tmp_path):
             maneuver TEXT,
             embedding BLOB,
             embedding_model TEXT,
+            created_by TEXT NOT NULL DEFAULT 'unknown',
             created_at TEXT
         )
     """
@@ -110,6 +111,27 @@ def temp_sqlite_db(tmp_path):
             item,
         )
 
+    cursor.execute(
+        """
+        INSERT INTO scenarios
+            (scenario_id, status, title, description_vi, road_type, weather,
+             actor_type, maneuver, embedding, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "sc_seed",
+            "approved_library",
+            "Seed chỉ để dựng giao diện",
+            "Xe máy tạt đầu ô tô",
+            "highway",
+            "clear",
+            "motorcycle",
+            "cut_in",
+            vec1.tobytes(),
+            "seed-data",
+        ),
+    )
+
     conn.commit()
     conn.close()
     return db_path
@@ -161,10 +183,11 @@ def test_sqlite_retriever_status_gate(temp_sqlite_db):
     results = retriever.retrieve(query_text="Kịch bản bất kỳ", odd_query=None, limit=10)
     returned_ids = [r["id"] for r in results]
 
-    # sc_004 (pending_sim_review), sc_005 (rejected), sc_006 (embedding NULL) KHÔNG ĐƯỢC lọt vào kết quả
+    # Các hàng chưa duyệt, thiếu vector và seed giao diện đều không được lọt vào.
     assert "sc_004" not in returned_ids
     assert "sc_005" not in returned_ids
     assert "sc_006" not in returned_ids
+    assert "sc_seed" not in returned_ids
     assert "sc_001" in returned_ids
 
 
