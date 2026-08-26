@@ -22,6 +22,7 @@ from src.agents.graph import build_forge_graph
 from src.agents.nodes.convert_xosc_node import convert_spec_to_xosc
 from src.agents.nodes.validate_node import validate_node
 from src.models.schemas import (
+    DEFAULT_SUPPORT_POLICY,
     TOO_VAGUE_MESSAGE,
     DuplicateMatch,
     EgoControllerType,
@@ -32,6 +33,7 @@ from src.models.schemas import (
     GenerateResponse,
     JobKind,
     JobStatus,
+    ODDCell,
     ReviewApiRequest,
     ReviewGate,
     ScenarioListResponse,
@@ -479,6 +481,27 @@ class ScenarioUpdateRequest(BaseModel):
     user: str | None = None
 
 
+def _is_operational_library_item(item: dict) -> bool:
+    """Chỉ artifact thật được phép xuất hiện trong thư viện vận hành.
+
+    ``seed-data`` tồn tại để retrieval có ví dụ đa dạng, không phải bằng chứng
+    converter/CARLA. Một số seed cố ý nằm ngoài SupportPolicy và rỗng `.xosc`;
+    gắn sẵn ``approved_library`` cho chúng rồi hiện cạnh artifact thật khiến UI
+    nói sai rằng hệ thống hỗ trợ các ca như pedestrian/jaywalk.
+    """
+    if item.get("created_by") == metrics.SEED_AUTHOR or not _has_xosc(item):
+        return False
+    try:
+        odd = ODDCell.model_validate(item.get("odd") or {})
+    except ValidationError:
+        return False
+    return DEFAULT_SUPPORT_POLICY.supports(odd.road_type, odd.actor_type, odd.maneuver)
+
+
+def _operational_library(items: list[dict]) -> list[dict]:
+    return [item for item in items if _is_operational_library_item(item)]
+
+
 @router.post("/scenarios/draft")
 async def create_draft_scenario(body: DraftCreateRequest) -> dict:
     sc = db.save_draft_scenario(
@@ -494,7 +517,7 @@ async def create_draft_scenario(body: DraftCreateRequest) -> dict:
 
 @router.get("/scenarios/public", response_model=ScenarioListResponse)
 async def list_public_scenarios_endpoint() -> ScenarioListResponse:
-    items = db.list_public_scenarios()
+    items = _operational_library(db.list_public_scenarios())
     _attach_controller_evaluations(items)
     return ScenarioListResponse(items=items, total=len(items))
 
@@ -524,7 +547,7 @@ async def list_scenarios(
 ) -> ScenarioListResponse:
     """Danh sách scenarios với lọc ODD, phân quyền scope và phân trang."""
     if scope == "public":
-        items = db.list_public_scenarios()
+        items = _operational_library(db.list_public_scenarios())
     elif scope == "me" or user:
         items = db.list_my_scenarios(user or "creator")
     elif search or road_type or weather or actor_type or maneuver:
@@ -559,7 +582,16 @@ async def list_scenarios(
     # hiện chưa xác thực bearer token nên tuyệt đối không gọi query-param này là
     # "quyền riêng tư"; nó chỉ ngăn draft xuất hiện ở nơi không thể review.
     if review_queue:
-        items = [item for item in items if item.get("status") != ScenarioStatus.DRAFT.value]
+        items = [
+            item
+            for item in items
+            if item.get("status") != ScenarioStatus.DRAFT.value
+            and item.get("created_by") != metrics.SEED_AUTHOR
+            and (
+                item.get("status") not in (ScenarioStatus.APPROVED_LIBRARY.value, ScenarioStatus.APPROVED_SIM.value)
+                or _is_operational_library_item(item)
+            )
+        ]
 
     total = len(items)
     offset = (page - 1) * limit

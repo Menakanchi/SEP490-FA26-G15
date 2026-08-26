@@ -2,7 +2,7 @@
 
     M1  tỷ lệ kịch bản hợp lệ      — bốn mức L1..L4
     M2  độ phủ ODD                 — bao nhiêu ô trong ma trận đã có kịch bản
-    M3  tỷ lệ kích hoạt nguy hiểm  — bao nhiêu lượt chạy dựng được tình huống
+    M3  tỷ lệ kích hoạt nguy hiểm  — oracle riêng của từng loại hành vi
 
 **Hàm thuần trên list dict.** Truy vấn nằm ở ``db.py``, câu chữ nằm ở API. Tách
 ra vì ba metric này là thứ đi vào báo cáo nộp bài: chúng phải test được bằng dữ
@@ -83,11 +83,13 @@ def build_report(
 ) -> dict[str, Any]:
     """Gộp ba metric thành một payload cho ``GET /metrics/quality``."""
     real = [s for s in scenarios if s.get("created_by") != SEED_AUTHOR]
+    real_ids = {s.get("scenario_id") for s in real}
+    real_executions = [e for e in executions if e.get("scenario_id") in real_ids]
     seeded = len(scenarios) - len(real)
     return {
-        "m1_validity": validity(requests, real, executions),
+        "m1_validity": validity(requests, real, real_executions),
         "m2_coverage": {**coverage(real), "excluded_seed_data": seeded},
-        "m3_hazard": hazard(executions),
+        "m3_hazard": hazard(real_executions),
         "excluded_seed_data": seeded,
     }
 
@@ -124,7 +126,9 @@ def validity(requests: list[dict], scenarios: list[dict], executions: list[dict]
     l4 = _ratio(sum(judged), len(judged))
 
     return {
-        "l1_schema": _level(l1, "Draft qua được schema và validate"),
+        # `done` chỉ được ghi sau node persist cuối cùng, nên đây là yield của
+        # toàn pipeline sinh — không phải riêng lần Pydantic parse đầu tiên.
+        "l1_schema": _level(l1, "Yêu cầu sinh hoàn tất toàn pipeline"),
         "l2_xosc": _level(
             l2,
             "Biên dịch được thành .xosc (chỉ tính ô trong phạm vi converter)",
@@ -433,17 +437,16 @@ def coverage(scenarios: list[dict]) -> dict[str, Any]:
 
 
 def hazard(executions: list[dict]) -> dict[str, Any]:
-    """Bao nhiêu lượt chạy dựng được tình huống nguy hiểm.
+    """Bao nhiêu lượt chạy kích hoạt **đúng nguy hiểm được yêu cầu**.
 
-    Đếm **hai** loại, vì va chạm không phải hình thái nguy hiểm duy nhất:
-    ``lane_drift`` cố ý không va chạm — nó dựng một lần đi sát nhau, và đo bằng
-    ``CollisionTest`` thì nó luôn trông như thất bại. Suýt va chạm là kết quả
-    đạt, không phải kết quả trượt.
+    Tử số phải dùng oracle riêng của maneuver. Chỉ cộng va chạm/suýt va chạm là
+    sai ở cả hai phía: một cú tông đuôi sai intent vẫn va chạm, còn vượt đèn đỏ
+    đúng intent có thể không đâm ai. Hai số vật lý đó vẫn trả về để giải thích
+    kết quả, nhưng không được phép quyết định headline M3.
     """
     ran = [e for e in executions if (e.get("result") or {}).get("success")]
     collided = 0
     near_miss = 0
-    nothing = 0
     for e in ran:
         result = e["result"]
         metrics = result.get("metrics") or {}
@@ -453,16 +456,20 @@ def hazard(executions: list[dict]) -> dict[str, Any]:
         distance = metrics.get("min_distance_m")
         if distance is not None and distance < NEAR_MISS_M:
             near_miss += 1
-        else:
-            nothing += 1
 
-    hazardous = collided + near_miss
+    verdicts = [intent_verdict(e) for e in ran]
+    judged = [v for v in verdicts if v is not None]
+    triggered = sum(v is True for v in judged)
+    not_triggered = sum(v is False for v in judged)
     return {
         "executed": len(ran),
+        "evaluated": len(judged),
+        "triggered": triggered,
+        "not_triggered": not_triggered,
+        "not_measurable": len(verdicts) - len(judged),
         "collision": collided,
         "near_miss": near_miss,
-        "no_hazard": nothing,
-        "rate": _ratio(hazardous, len(ran)),
+        "rate": _ratio(triggered, len(judged)),
         "collision_rate": _ratio(collided, len(ran)),
     }
 

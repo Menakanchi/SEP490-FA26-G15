@@ -87,12 +87,12 @@ function MetricsContent() {
       </Section>
 
       <Section icon={<ShieldAlert className="w-5 h-5 text-amber-400" />} title="M3 — Tỷ lệ kích hoạt hành vi nguy hiểm"
-               note="Đếm hai hình thái: va chạm và suýt va chạm. lane_drift cố ý không va chạm — đo nó bằng CollisionTest thì nó luôn trông như thất bại.">
+               note="Headline được chấm bằng oracle riêng của từng hành vi; va chạm và suýt va chạm là bằng chứng vật lý phụ, không được dùng thay cho intent.">
         <div className="grid gap-3 sm:grid-cols-4">
-          <Stat value={pct(m3.rate.rate)} label="Dựng được nguy hiểm" sub={`${m3.collision + m3.near_miss}/${m3.executed} lượt`} />
+          <Stat value={pct(m3.rate.rate)} label="Đúng nguy hiểm mong muốn" sub={`${m3.triggered}/${m3.evaluated} lượt chấm được`} />
           <Stat value={String(m3.collision)} label="Có va chạm" sub={`tỷ lệ ${pct(m3.collision_rate.rate)}`} />
           <Stat value={String(m3.near_miss)} label="Suýt va chạm" sub="khe hở < 1,0 m" />
-          <Stat value={String(m3.no_hazard)} label="Chạy trót lọt, vô hại" sub="đây mới là thất bại" tone="warn" />
+          <Stat value={String(m3.not_triggered)} label="Không đúng hành vi yêu cầu" sub={`${m3.evaluated} lượt có đủ telemetry`} tone="warn" />
         </div>
       </Section>
     </Shell>

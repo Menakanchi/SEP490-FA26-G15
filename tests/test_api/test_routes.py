@@ -155,6 +155,52 @@ async def test_review_queue_excludes_drafts_without_hiding_them_from_creator_lib
 
 
 @pytest.mark.asyncio
+async def test_operational_library_and_review_hide_seed_and_unbuildable_approved_rows(client):
+    """Seed retrieval và artifact vận hành là hai tập khác nhau."""
+    from src.services import db, metrics
+
+    spec = _cut_in_draft().model_dump(mode="json")
+    db.save_scenario(
+        scenario_id="sc_seed_hidden",
+        title="Seed hợp lệ về hình dạng nhưng không phải bằng chứng vận hành",
+        description_vi="Xe máy tạt đầu ô tô trên cao tốc trời quang",
+        spec={**spec, "scenario_id": "sc_seed_hidden", "description_vi": "seed"},
+        odd=spec["odd"],
+        status="approved_library",
+        xosc_content="<OpenSCENARIO>" + (" " * 200) + "</OpenSCENARIO>",
+        created_by=metrics.SEED_AUTHOR,
+    )
+    db.save_scenario(
+        scenario_id="sc_unbuildable_hidden",
+        title="Artifact ngoài SupportPolicy",
+        description_vi="Người đi bộ băng ngang đường đô thị",
+        spec={},
+        odd={
+            "road_type": "urban_straight",
+            "weather": "clear",
+            "actor_type": "pedestrian",
+            "maneuver": "jaywalk",
+        },
+        status="approved_library",
+        xosc_content="",
+        created_by="legacy-import",
+    )
+
+    public_items = (await client.get("/api/v1/library/search?scope=public&limit=100")).json()["items"]
+    public_ids = {item["scenario_id"] for item in public_items}
+    assert "sc_seed_hidden" not in public_ids
+    assert "sc_unbuildable_hidden" not in public_ids
+
+    review_items = (await client.get("/api/v1/scenarios?review_queue=true&limit=100")).json()["items"]
+    review_ids = {item["scenario_id"] for item in review_items}
+    assert "sc_seed_hidden" not in review_ids
+    assert "sc_unbuildable_hidden" not in review_ids
+
+    # Không xoá vật lý: seed vẫn ở kho nội bộ để retriever có thể dùng.
+    assert db.get_scenario("sc_seed_hidden") is not None
+
+
+@pytest.mark.asyncio
 async def test_generate_endpoint_validation(client):
     # Empty prompt should return 422 (Pydantic min_length=1)
     response = await client.post("/api/v1/generate", json={"prompt": "", "validation_mode": "static"})
