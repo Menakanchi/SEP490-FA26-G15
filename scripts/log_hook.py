@@ -4,6 +4,7 @@ Shared AI hook logger — works with Claude Code, Gemini CLI, Codex, Cursor, Cop
 Reads JSON from stdin, normalizes to common format, appends to .ai-log/session.jsonl
 """
 import json
+import os
 import sys
 
 from ai_log_common import append_entry, git_identity, now_iso

@@ -73,9 +73,10 @@ html.dark body {
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-/* Trang chi tiết hỗ trợ cả hai theme. `glass-card` gốc là surface tối dành cho
-   các màn vận hành cũ; dùng nó trong light mode khiến chữ và nền cùng tối. */
-.scenario-detail-card {
+/* Surface hỗ trợ cả hai theme. `glass-card` gốc là surface tối dành cho các
+   màn vận hành cũ; dùng nó trong light mode khiến chữ và nền cùng tối. */
+.scenario-detail-card,
+.theme-card {
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid #e0f2fe;
   backdrop-filter: blur(16px);
@@ -83,7 +84,8 @@ html.dark body {
   box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
 }
 
-.dark .scenario-detail-card {
+.dark .scenario-detail-card,
+.dark .theme-card {
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
   border-color: rgba(148, 163, 184, 0.08);
   box-shadow:

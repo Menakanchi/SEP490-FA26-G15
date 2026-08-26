@@ -451,6 +451,25 @@ export interface ControllerRunsResponse {
   };
 }
 
+/** Vì sao một trục ODD có giá trị mà người dùng không gõ ra.
+ *
+ * Không có `explicit`: trục người dùng nói thẳng thì backend **không sinh
+ * Assumption nào**. Vắng mặt chính là dấu hiệu. */
+export type AssumptionSource = "inferred" | "default";
+
+/** Một giá trị hệ thống tự điền thay người dùng.
+ *
+ * Metadata của *lần sinh này*, không phải thuộc tính của kịch bản — nên nó nằm
+ * cạnh `ScenarioDetail` chứ không nằm trong `spec`. Đây là thứ reviewer ở cổng 1
+ * cần thấy để biết trục nào do người gõ, trục nào do máy đoán. */
+export interface Assumption {
+  /** Tên trục ODD: `road_type` | `weather` | `actor_type` | `maneuver`. */
+  field: string;
+  value: string;
+  source: AssumptionSource;
+  reason_vi: string;
+}
+
 export interface ScenarioDetail {
   scenario_id: string;
   title: string;
@@ -462,6 +481,8 @@ export interface ScenarioDetail {
   xosc_content?: string;
   review_logs: ReviewLog[];
   created_at: string;
+  /** Trục ODD hệ thống tự điền. Rỗng nghĩa là cả bốn trục đều lấy từ câu người dùng. */
+  assumptions?: Assumption[];
   retrieved_examples?: RetrievedExample[];
   /** Có sau khi worker chạy xong; đây là thứ cổng BEFORE_LIBRARY duyệt. */
   latest_execution_result?: ExecutionResult | null;
@@ -515,6 +536,7 @@ export interface QualityReport {
 export interface CampaignSummary {
   campaign_id: string;
   created_by: string;
+  cells: ODDCell[];
   per_cell: number;
   max_scenarios: number;
   status: "running" | "done" | "stopped";
@@ -529,6 +551,7 @@ export interface CampaignRequest {
   /** Câu do AGENT viết, không phải người gõ — vẫn đi qua đúng graph 7 node. */
   description_vi: string;
   scenario_id: string | null;
+  error?: string | null;
   road_type?: string | null;
   weather?: string | null;
   actor_type?: string | null;
@@ -536,7 +559,6 @@ export interface CampaignRequest {
 }
 
 export interface CampaignDetail extends CampaignSummary {
-  cells: ODDCell[];
   requests: CampaignRequest[];
 }
 
