@@ -49,10 +49,29 @@ def test_parse_evaluator_checks_provenance_and_specific_text():
     output["specific_action"] = "phanh gấp"
     output["inferred"] = []
 
-    errors = evaluate_parse(output, expected)
+    errors = evaluate_parse(output, {"expected": expected, "user_input": "Tình huống tạt đầu trên cao tốc"})
 
     assert any(error.startswith("specific_action:") for error in errors)
     assert any(error.startswith("inferred:") for error in errors)
+
+
+def test_parse_evaluator_accepts_a_longer_verbatim_span_and_case_change():
+    expected = {
+        "road_type": None,
+        "weather": "fog",
+        "actor_type": "truck",
+        "maneuver": "sudden_brake",
+        "inferred": [],
+        "specific_type": "xe tải",
+        "specific_action": "phanh gấp",
+    }
+    output = {**expected, "specific_type": "Xe tải", "specific_action": "phanh gấp đột ngột"}
+    case = {
+        "expected": expected,
+        "user_input": "Xe tải chạy trước phanh gấp đột ngột khi trời sương mù.",
+    }
+
+    assert evaluate_parse(output, case) == []
 
 
 def test_generate_evaluator_checks_expectations_previously_ignored():
