@@ -1,442 +1,441 @@
 #!/usr/bin/env python3
-"""Runner: Chạy A/B experiment với các prompt variants."""
+"""Reproducible prompt benchmark using production schemas and validators."""
+
+from __future__ import annotations
 
 import argparse
-import json
-import time
-import yaml
+import asyncio
+import concurrent.futures
+import hashlib
 import importlib.util
-import re
+import json
 import os
-from dataclasses import dataclass, asdict
-from datetime import datetime
+import re
+import statistics
+import subprocess
+import time
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from dotenv import load_dotenv
+from typing import Any
 
-# Load .env
-load_dotenv(Path(__file__).parent.parent / ".env")
+import yaml
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import ValidationError
 
-import requests
+from src.agents.nodes.generate_draft import _build_user_content as build_generate_content
+from src.agents.nodes.repair_draft import _build_user_content as build_repair_content
+from src.agents.nodes.validate_node import validate_node
+from src.config import get_settings
+from src.models.schemas import ODDQuery, ScenarioDraft, ValidationIssue
+from src.services.llm import call_with_escalation, collect_provider_metrics, summarize_provider_metrics
 
-NODES = ["parse_intent", "generate_draft", "repair_draft"]
+ROOT = Path(__file__).resolve().parent
+NODES = ("parse_intent", "generate_draft", "repair_draft")
+VARIANTS = ("variant_A", "variant_B")
+EXPECTED_KEYS = {
+    "parse_intent": frozenset(ODDQuery.model_fields),
+    "generate_draft": frozenset(
+        {"actors_count", "has_ego", "ego_has_maneuver", "maneuver_type", "s_offset_sign", "trigger_type"}
+    ),
+    "repair_draft": frozenset(
+        {
+            "s_offset_m",
+            "initial_speed_kmh",
+            "trigger_value",
+            "trigger_type",
+            "hero_has_maneuver",
+            "adv_category",
+            "odd_actor_type",
+            "maneuver_type",
+            "target_speed_lower_or_s_offset_closer",
+            "target_speed_kmh",
+            "trigger_time",
+            "odd_unchanged",
+            "ego_count",
+            "has_actors",
+            "has_maneuvers",
+        }
+    ),
+}
 
 
 @dataclass
 class RunResult:
-    """Kết quả một lần chạy."""
     case_id: int
+    repeat: int
     node: str
     variant: str
     success: bool
-    output: str | None
-    error: str | None
+    errors: list[str]
+    output: dict[str, Any] | None
     latency_ms: float
-    tokens_used: int | None
-    cost_usd: float | None
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
     timestamp: str
 
 
-def load_prompt(node: str, variant: str) -> str:
-    """Load prompt từ file variant."""
-    base_dir = Path(__file__).parent
-    path = base_dir / "prompts" / node / f"{variant}.py"
-    spec = importlib.util.spec_from_file_location(f"prompt_ab.prompts.{node}.{variant}", path)
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def git_sha() -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT.parent, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def load_prompt(node: str, variant: str) -> tuple[str, Path]:
+    if node not in NODES or variant not in VARIANTS:
+        raise ValueError(f"Unsupported prompt selection: {node}/{variant}")
+    path = (ROOT / "prompts" / node / f"{variant}.py").resolve()
+    expected_parent = (ROOT / "prompts" / node).resolve()
+    if path.parent != expected_parent or not path.is_file():
+        raise FileNotFoundError(path)
+    spec = importlib.util.spec_from_file_location(f"prompt_ab_{node}_{variant}", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.SYSTEM_PROMPT
+    prompt = getattr(module, "SYSTEM_PROMPT", None)
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError(f"{path} must define a non-empty SYSTEM_PROMPT")
+    return prompt, path
 
 
-def load_test_cases(node: str) -> list[dict]:
-    """Load test cases từ YAML file cho một node."""
-    base_dir = Path(__file__).parent
-    path = base_dir / "test_cases" / f"{node}.yaml"
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    return data["test_cases"]
+def load_cases(node: str) -> tuple[list[dict[str, Any]], Path]:
+    path = ROOT / "holdout" / f"{node}.yaml"
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    cases = payload.get("test_cases", [])
+    if not cases:
+        raise ValueError(f"No holdout cases in {path}")
+    expected_field = "expected_fix" if node == "repair_draft" else "expected"
+    seen: set[int] = set()
+    for case in cases:
+        case_id = case.get("id")
+        if not isinstance(case_id, int) or case_id in seen:
+            raise ValueError(f"Case ids must be unique integers in {path}: {case_id!r}")
+        seen.add(case_id)
+        unsupported = set(case.get(expected_field, {})) - EXPECTED_KEYS[node]
+        if unsupported:
+            raise ValueError(f"Case {case_id} has unchecked expectations: {sorted(unsupported)}")
+    return cases, path
 
 
-def call_llm(prompt: str, user_message: str, config: dict) -> dict:
-    """Gọi LLM bằng requests."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    model = config.get("model", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+def assert_no_exact_leakage(node: str, cases: list[dict[str, Any]], prompt: str, variant: str) -> None:
+    """Reject holdout inputs copied verbatim into a prompt's few-shot examples."""
+    if node == "repair_draft":
+        return
+    input_key = "user_input" if node == "parse_intent" else "user_query"
+    normalized_prompt = re.sub(r"\W+", " ", prompt.casefold()).strip()
+    leaked = []
+    for case in cases:
+        normalized_input = re.sub(r"\W+", " ", case[input_key].casefold()).strip()
+        if normalized_input in normalized_prompt:
+            leaked.append(case["id"])
+    if leaked:
+        raise ValueError(f"{node}/{variant} contains holdout inputs verbatim: {leaked}")
 
-    if not api_key:
-        return call_mock()
 
-    return call_openai(prompt, user_message, api_key, model)
+def _odd_query(odd: dict[str, Any]) -> ODDQuery:
+    return ODDQuery(**odd, inferred=[])
 
 
-def call_openai(prompt: str, user_message: str, api_key: str, model: str) -> dict:
-    """Gọi OpenAI API bằng requests."""
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": model,
-        "messages": [
+def _messages(node: str, prompt: str, case: dict[str, Any]) -> tuple[list[Any], type | dict[str, Any]]:
+    if node == "parse_intent":
+        messages = [SystemMessage(content=prompt), HumanMessage(content=f"Mô tả kịch bản: {case['user_input']}")]
+        return messages, ODDQuery
+    if node == "generate_draft":
+        odd, _assumptions = _odd_query(case["odd_cell"]).with_defaults()
+        content = build_generate_content(case["user_query"], odd, [], [], {})
+        return [
             {"role": "system", "content": prompt},
-            {"role": "user", "content": user_message},
-        ],
-        "temperature": 0.0,
-    }
+            {"role": "user", "content": content},
+        ], ScenarioDraft.model_json_schema()
+    issues = [ValidationIssue.model_validate(issue) for issue in case["issues"]]
+    content = build_repair_content(case["invalid_draft"], issues)
+    return [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": content},
+    ], ScenarioDraft.model_json_schema()
 
-    start = time.time()
-    response = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers=headers,
-        json=payload,
-        timeout=60,
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if not isinstance(value, dict):
+        raise TypeError(f"Structured output must be an object, got {type(value).__name__}")
+    return value
+
+
+def _compare(actual: float, expression: str | int | float) -> bool:
+    if isinstance(expression, int | float):
+        return actual == float(expression)
+    expression = expression.strip()
+    for operator in (">=", "<=", ">", "<"):
+        if expression.startswith(operator):
+            target = float(expression[len(operator) :].strip())
+            return {">=": actual >= target, "<=": actual <= target, ">": actual > target, "<": actual < target}[
+                operator
+            ]
+    return actual == float(expression)
+
+
+def evaluate_parse(data: dict[str, Any], expected: dict[str, Any]) -> list[str]:
+    try:
+        actual = ODDQuery.model_validate(data).model_dump(mode="json")
+    except ValidationError as exc:
+        return [f"ODDQuery schema: {exc.errors()[0]['msg']}"]
+    errors = []
+    for key, wanted in expected.items():
+        got = actual.get(key)
+        if key == "inferred":
+            got, wanted = sorted(got or []), sorted(wanted or [])
+        if got != wanted:
+            errors.append(f"{key}: expected {wanted!r}, got {got!r}")
+    return errors
+
+
+async def _production_issues(data: dict[str, Any], odd: dict[str, Any]) -> list[ValidationIssue]:
+    state = {"draft": data, "odd_query": _odd_query(odd), "actors": [], "kinematic_hints": {}}
+    return (await validate_node(state)).get("issues", [])
+
+
+def _error_issues(data: dict[str, Any], odd: dict[str, Any]) -> list[str]:
+    issues = asyncio.run(_production_issues(data, odd))
+    return [
+        f"production validator: {issue.code.value} at {issue.path}"
+        for issue in issues
+        if issue.severity.value == "error"
+    ]
+
+
+def evaluate_generate(data: dict[str, Any], case: dict[str, Any]) -> list[str]:
+    expected = case["expected"]
+    try:
+        draft = ScenarioDraft.model_validate(data)
+    except ValidationError as exc:
+        return [f"ScenarioDraft schema: {error['msg']}" for error in exc.errors()]
+    errors = _error_issues(data, case["odd_cell"])
+    ego = next((actor for actor in draft.actors if actor.is_ego), None)
+    adversaries = [actor for actor in draft.actors if not actor.is_ego]
+    primary = next((m for m in draft.maneuvers if m.maneuver.value == case["odd_cell"]["maneuver"]), None)
+    checks = {
+        "actors_count": len(draft.actors),
+        "has_ego": ego is not None,
+        "ego_has_maneuver": bool(ego and any(m.actor_name == ego.name for m in draft.maneuvers)),
+        "maneuver_type": primary.maneuver.value if primary else None,
+        "trigger_type": getattr(primary.trigger.type, "value", primary.trigger.type) if primary else None,
+    }
+    if adversaries:
+        offset = adversaries[0].position.s_offset_m
+        checks["s_offset_sign"] = "negative" if offset < 0 else "positive" if offset > 0 else "zero"
+    for key, wanted in expected.items():
+        if checks.get(key) != wanted:
+            errors.append(f"{key}: expected {wanted!r}, got {checks.get(key)!r}")
+    return errors
+
+
+def evaluate_repair(data: dict[str, Any], case: dict[str, Any]) -> list[str]:
+    try:
+        draft = ScenarioDraft.model_validate(data)
+    except ValidationError as exc:
+        return [f"ScenarioDraft schema: {error['msg']}" for error in exc.errors()]
+    invalid, expected = case["invalid_draft"], case["expected_fix"]
+    errors = _error_issues(data, invalid["odd"])
+    adversary = next((actor for actor in draft.actors if not actor.is_ego), None)
+    hero = next((actor for actor in draft.actors if actor.name == "hero"), None)
+    primary = draft.maneuvers[0] if draft.maneuvers else None
+    values: dict[str, Any] = {
+        "s_offset_m": adversary.position.s_offset_m if adversary else None,
+        "initial_speed_kmh": adversary.initial_speed_kmh if adversary else None,
+        "trigger_value": primary.trigger.value if primary else None,
+        "trigger_type": getattr(primary.trigger.type, "value", primary.trigger.type) if primary else None,
+        "hero_has_maneuver": bool(hero and any(m.actor_name == hero.name for m in draft.maneuvers)),
+        "adv_category": adversary.category.value if adversary else None,
+        "odd_actor_type": draft.odd.actor_type.value,
+        "maneuver_type": primary.maneuver.value if primary else None,
+        "target_speed_kmh": primary.target_speed_kmh if primary else None,
+        "trigger_time": primary.trigger.value if primary else None,
+        "odd_unchanged": draft.odd.model_dump(mode="json") == invalid["odd"],
+        "ego_count": sum(actor.is_ego for actor in draft.actors),
+        "has_actors": bool(draft.actors),
+        "has_maneuvers": bool(draft.maneuvers),
+    }
+    for key, wanted in expected.items():
+        if key == "target_speed_lower_or_s_offset_closer":
+            old_adv = next((actor for actor in invalid["actors"] if not actor.get("is_ego")), None)
+            old_maneuver = invalid["maneuvers"][0]
+            passed = bool(
+                adversary
+                and primary
+                and (
+                    (primary.target_speed_kmh or 0) < (old_maneuver.get("target_speed_kmh") or 0)
+                    or abs(adversary.position.s_offset_m) < abs(old_adv["position"]["s_offset_m"])
+                )
+            )
+        elif key in {"s_offset_m", "initial_speed_kmh", "trigger_value", "trigger_time", "target_speed_kmh"}:
+            passed = values[key] is not None and _compare(float(values[key]), wanted)
+        else:
+            passed = values.get(key) == wanted
+        if not passed:
+            errors.append(f"{key}: expected {wanted!r}, got {values.get(key)!r}")
+    return errors
+
+
+def evaluate(node: str, data: dict[str, Any], case: dict[str, Any]) -> list[str]:
+    if node == "parse_intent":
+        return evaluate_parse(data, case["expected"])
+    if node == "generate_draft":
+        return evaluate_generate(data, case)
+    return evaluate_repair(data, case)
+
+
+def run_once(node: str, variant: str, prompt: str, case: dict[str, Any], repeat: int) -> RunResult:
+    started, output, errors, metrics = time.perf_counter(), None, [], {}
+    try:
+        messages, schema = _messages(node, prompt, case)
+        with collect_provider_metrics() as events:
+            result = call_with_escalation(messages, schema, operation=f"prompt_ab.{node}")
+        metrics = summarize_provider_metrics(events)
+        output = _as_dict(result)
+        errors = evaluate(node, output, case)
+    except Exception as exc:
+        errors = [f"{type(exc).__name__}: {exc}"]
+    return RunResult(
+        case_id=case["id"],
+        repeat=repeat,
+        node=node,
+        variant=variant,
+        success=not errors,
+        errors=errors,
+        output=output,
+        latency_ms=(time.perf_counter() - started) * 1000,
+        input_tokens=int(metrics.get("input_tokens", 0)),
+        output_tokens=int(metrics.get("output_tokens", 0)),
+        cost_usd=float(metrics.get("cost_usd", 0.0)),
+        timestamp=datetime.now(UTC).isoformat(),
     )
 
-    response.raise_for_status()
-    data = response.json()
 
-    latency_ms = (time.time() - start) * 1000
-    usage = data.get("usage", {})
-    tokens = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
-
-    # Cost per 1k tokens
-    cost_per_1k = {
-        "gpt-4o": 0.005,
-        "gpt-4o-mini": 0.00015,
-        "gpt-3.5-turbo": 0.0015,
-        "gpt-4": 0.03,
-    }.get(model, 0.001)
-
-    cost = tokens / 1000 * cost_per_1k
-
-    return {
-        "output": data["choices"][0]["message"]["content"],
-        "latency_ms": latency_ms,
-        "tokens_used": tokens,
-        "cost_usd": cost,
-    }
+def aggregate(results: list[RunResult]) -> dict[str, Any]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for node in sorted({result.node for result in results}):
+        grouped[node] = {}
+        for variant in VARIANTS:
+            selected = [result for result in results if result.node == node and result.variant == variant]
+            if not selected:
+                continue
+            latencies = [result.latency_ms for result in selected]
+            grouped[node][variant] = {
+                "success_rate": sum(result.success for result in selected) / len(selected),
+                "passed": sum(result.success for result in selected),
+                "total": len(selected),
+                "latency_median_ms": statistics.median(latencies),
+                "latency_p95_ms": sorted(latencies)[max(0, int(len(latencies) * 0.95) - 1)],
+                "total_cost_usd": sum(result.cost_usd for result in selected),
+            }
+    return grouped
 
 
-def call_mock() -> dict:
-    """Mock LLM call khi không có API key."""
-    time.sleep(0.1)
-    return {
-        "output": '{"mock": true}',
-        "latency_ms": 100,
-        "tokens_used": 100,
-        "cost_usd": 0.001,
-    }
+def winner(metrics: dict[str, Any]) -> str | None:
+    a, b = metrics.get("variant_A"), metrics.get("variant_B")
+    if not a or not b:
+        return None
+    if b["success_rate"] - a["success_rate"] >= 0.05 and b["total_cost_usd"] <= 2 * max(a["total_cost_usd"], 1e-12):
+        return "variant_B"
+    if a["success_rate"] - b["success_rate"] >= 0.05 and a["total_cost_usd"] <= 2 * max(b["total_cost_usd"], 1e-12):
+        return "variant_A"
+    return None
 
 
-def extract_json(text: str) -> str:
-    """Extract JSON từ markdown code block."""
-    match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        return match.group(0)
-    return text
-
-
-def build_user_message_parse_intent(case: dict) -> str:
-    """Build user message cho parse_intent."""
-    return case["user_input"]
-
-
-def build_user_message_generate_draft(case: dict) -> str:
-    """Build user message cho generate_draft."""
+def write_report(directory: Path, metadata: dict[str, Any], summary: dict[str, Any]) -> None:
     lines = [
-        f"Input: {case['user_query']}",
+        "# Prompt benchmark report",
         "",
-        "ODDCell:",
-        f"  road_type: {case['odd_cell']['road_type']}",
-        f"  weather: {case['odd_cell']['weather']}",
-        f"  actor_type: {case['odd_cell']['actor_type']}",
-        f"  maneuver: {case['odd_cell']['maneuver']}",
-    ]
-    return "\n".join(lines)
-
-
-def build_user_message_repair_draft(case: dict) -> str:
-    """Build user message cho repair_draft."""
-    lines = [
-        "Draft hiện tại (có lỗi):",
-        "```json",
-        json.dumps(case["invalid_draft"], indent=2, ensure_ascii=False),
-        "```",
+        f"Commit: `{metadata['git_sha']}`",
+        f"Repeats: {metadata['repeats']}",
         "",
-        "Các lỗi cần sửa:",
+        "| Node | A pass | B pass | A median | B median | Winner |",
+        "|---|---:|---:|---:|---:|---|",
     ]
-    for i, issue in enumerate(case["issues"], 1):
-        lines.append(f"  {i}. {issue['code']}")
-        lines.append(f"     - message: {issue['message_vi']}")
-        lines.append(f"     - suggestion: {issue['suggestion']}")
-    lines.append("")
-    lines.append("Sửa các lỗi trên và trả về ScenarioDraft đã sửa.")
-    return "\n".join(lines)
+    for node, variants in summary.items():
+        a, b = variants.get("variant_A", {}), variants.get("variant_B", {})
+        lines.append(
+            f"| {node} | {a.get('success_rate', 0):.1%} | {b.get('success_rate', 0):.1%} | {a.get('latency_median_ms', 0):.0f} ms | {b.get('latency_median_ms', 0):.0f} ms | {winner(variants) or 'inconclusive'} |"
+        )
+    (directory / "REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def validate_parse_intent(output: str, expected: dict) -> tuple[bool, list[str]]:
-    """Validate output cho parse_intent."""
-    errors = []
-    json_text = extract_json(output)
-
-    try:
-        data = json.loads(json_text)
-    except json.JSONDecodeError as e:
-        return False, [f"Invalid JSON: {e}"]
-
-    # Check actor_type - strict: both must match
-    if data.get("actor_type") != expected.get("actor_type"):
-        errors.append(f"actor_type mismatch")
-
-    # Check maneuver - strict: both must match
-    if data.get("maneuver") != expected.get("maneuver"):
-        errors.append(f"maneuver mismatch")
-
-    # Check road_type - strict: both must match (including null)
-    if data.get("road_type") != expected.get("road_type"):
-        errors.append(f"road_type mismatch")
-
-    # Check weather - strict: both must match (including null)
-    if data.get("weather") != expected.get("weather"):
-        errors.append(f"weather mismatch")
-
-    return len(errors) == 0, errors
-
-
-def validate_generate_draft(output: str, expected: dict) -> tuple[bool, list[str]]:
-    """Validate output cho generate_draft."""
-    errors = []
-    json_text = extract_json(output)
-
-    try:
-        data = json.loads(json_text)
-    except json.JSONDecodeError as e:
-        return False, [f"Invalid JSON: {e}"]
-
-    if "actors" not in data:
-        errors.append("Missing actors")
-    else:
-        ego_count = sum(1 for a in data["actors"] if a.get("is_ego"))
-        if ego_count != 1:
-            errors.append(f"Wrong ego count: {ego_count}")
-        if len(data["actors"]) < 2:
-            errors.append("Need at least 2 actors")
-
-    if "maneuvers" not in data or len(data["maneuvers"]) < 1:
-        errors.append("Missing maneuvers")
-
-    # Validate against expected if provided
-    if expected:
-        if "odd" in data and expected.get("odd_cell"):
-            odd_cell = expected["odd_cell"]
-            if odd_cell.get("road_type") and data["odd"].get("road_type") != odd_cell["road_type"]:
-                errors.append("odd.road_type mismatch")
-            if odd_cell.get("weather") and data["odd"].get("weather") != odd_cell["weather"]:
-                errors.append("odd.weather mismatch")
-            if odd_cell.get("actor_type") and data["odd"].get("actor_type") != odd_cell["actor_type"]:
-                errors.append("odd.actor_type mismatch")
-
-    return len(errors) == 0, errors
-
-
-def validate_repair_draft(output: str, expected_fix: dict) -> tuple[bool, list[str]]:
-    """Validate output cho repair_draft."""
-    errors = []
-    json_text = extract_json(output)
-
-    try:
-        data = json.loads(json_text)
-    except json.JSONDecodeError as e:
-        return False, [f"Invalid JSON: {e}"]
-
-    if not expected_fix:
-        return True, errors
-
-    # Check s_offset_m
-    if "s_offset_m" in expected_fix:
-        adv = next((a for a in data.get("actors", []) if a.get("name") == "adv"), None)
-        if adv:
-            s_offset = adv.get("position", {}).get("s_offset_m", 0)
-            if expected_fix["s_offset_m"].startswith("<"):
-                threshold = float(expected_fix["s_offset_m"][1:])
-                if s_offset >= threshold:
-                    errors.append(f"s_offset_m should be < {threshold}, got {s_offset}")
-
-    # Check initial_speed_kmh
-    if "initial_speed_kmh" in expected_fix:
-        adv = next((a for a in data.get("actors", []) if a.get("name") == "adv"), None)
-        if adv:
-            speed = adv.get("initial_speed_kmh", 0)
-            if expected_fix["initial_speed_kmh"].startswith(">"):
-                threshold = float(expected_fix["initial_speed_kmh"][1:])
-                if speed <= threshold:
-                    errors.append(f"initial_speed_kmh should be > {threshold}, got {speed}")
-
-    # Check ego_count
-    if expected_fix.get("ego_count") == 1:
-        ego_count = sum(1 for a in data.get("actors", []) if a.get("is_ego"))
-        if ego_count != 1:
-            errors.append(f"Must have exactly 1 ego, got {ego_count}")
-
-    return len(errors) == 0, errors
-
-
-def run_node(node: str, variant: str, test_cases: list[dict], config: dict) -> list[RunResult]:
-    """Chạy tất cả test cases cho một node với một variant."""
-    prompt = load_prompt(node, variant)
-    results = []
-
-    for case in test_cases:
-        try:
-            if node == "parse_intent":
-                user_message = build_user_message_parse_intent(case)
-                expected = case["expected"]
-                response = call_llm(prompt, user_message, config)
-                success, errors = validate_parse_intent(response["output"], expected)
-
-            elif node == "generate_draft":
-                user_message = build_user_message_generate_draft(case)
-                expected = case.get("expected", {})
-                response = call_llm(prompt, user_message, config)
-                success, errors = validate_generate_draft(response["output"], expected)
-
-            elif node == "repair_draft":
-                user_message = build_user_message_repair_draft(case)
-                expected_fix = case.get("expected_fix", {})
-                response = call_llm(prompt, user_message, config)
-                success, errors = validate_repair_draft(response["output"], expected_fix)
-
-            result = RunResult(
-                case_id=case["id"],
-                node=node,
-                variant=variant,
-                success=success,
-                output=response["output"] if success else None,
-                error="\n".join(errors) if errors else None,
-                latency_ms=response["latency_ms"],
-                tokens_used=response.get("tokens_used"),
-                cost_usd=response.get("cost_usd"),
-                timestamp=datetime.now().isoformat(),
-            )
-
-        except Exception as e:
-            result = RunResult(
-                case_id=case["id"],
-                node=node,
-                variant=variant,
-                success=False,
-                output=None,
-                error=str(e),
-                latency_ms=0,
-                tokens_used=None,
-                cost_usd=None,
-                timestamp=datetime.now().isoformat(),
-            )
-
-        results.append(result)
-        status = "PASS" if result.success else "FAIL"
-        print(f"    Case {case['id']}: {status} ({result.latency_ms:.0f}ms)")
-
-    return results
-
-
-def save_results(results: list[RunResult], experiment_name: str):
-    """Lưu kết quả vào JSON file."""
-    output_dir = Path(f"prompt_ab/results/{experiment_name}")
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    by_key = {}
-    for r in results:
-        key = f"{r.node}_{r.variant}"
-        if key not in by_key:
-            by_key[key] = []
-        by_key[key].append(asdict(r))
-
-    for key, data in by_key.items():
-        output_path = output_dir / f"{key}.json"
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        print(f"  Saved: {output_path}")
-
-    # Get unique nodes from results
-    unique_nodes = list(set(r.node for r in results))
-
-    summary = {
-        "experiment_name": experiment_name,
-        "timestamp": datetime.now().isoformat(),
-        "nodes": {},
-    }
-
-    for node in unique_nodes:
-        summary["nodes"][node] = {}
-        for variant in ["variant_A", "variant_B"]:
-            node_results = [r for r in results if r.node == node and r.variant == variant]
-            if node_results:
-                success_count = sum(1 for r in node_results if r.success)
-                total = len(node_results)
-                summary["nodes"][node][variant] = {
-                    "success_rate": success_count / total,
-                    "avg_latency_ms": sum(r.latency_ms for r in node_results) / total,
-                    "total_cost_usd": sum(r.cost_usd or 0 for r in node_results),
-                }
-
-    summary_path = output_dir / "summary.json"
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2, ensure_ascii=False)
-    print(f"  Saved: {summary_path}")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Run A/B experiment for prompts")
-    parser.add_argument("--nodes", nargs="+", default=NODES, choices=NODES)
-    parser.add_argument("--variants", nargs="+", default=["variant_A", "variant_B"])
-    parser.add_argument("--experiment-name", type=str, default=None)
-    parser.add_argument("--model", type=str, default=None)
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--nodes", nargs="+", choices=NODES, default=list(NODES))
+    parser.add_argument("--variants", nargs="+", choices=VARIANTS, default=list(VARIANTS))
+    parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--experiment-name", default=datetime.now(UTC).strftime("%Y%m%d_%H%M%S"))
+    parser.add_argument("--model")
+    parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args()
+    if args.repeats < 3:
+        parser.error("--repeats must be at least 3 for a mergeable benchmark")
+    if args.workers < 1 or args.workers > 8:
+        parser.error("--workers must be between 1 and 8")
+    if args.model:
+        os.environ["MODEL_NAME"], os.environ["ESCALATED_MODEL"] = args.model, args.model
+        get_settings.cache_clear()
+    settings = get_settings()
+    if not settings.openai_api_key.strip():
+        parser.error("OPENAI_API_KEY is required; mock results are never benchmark evidence")
 
-    experiment_name = args.experiment_name or datetime.now().strftime("%Y%m%d_%H%M%S")
-    config = {"model": args.model} if args.model else {}
-
-    print(f"\n{'='*60}")
-    print(f"A/B Experiment: {experiment_name}")
-    print(f"{'='*60}\n")
-
-    all_results = []
-
+    prompts, files, cases_by_node = {}, {}, {}
     for node in args.nodes:
-        print(f"\n### Node: {node} ###")
-        test_cases = load_test_cases(node)
-        print(f"  Loaded {len(test_cases)} test cases")
-
+        cases_by_node[node], case_path = load_cases(node)
+        files[str(case_path.relative_to(ROOT.parent))] = sha256(case_path)
         for variant in args.variants:
-            print(f"\n  Running variant: {variant}")
-            results = run_node(node, variant, test_cases, config)
-            all_results.extend(results)
-
-    print(f"\n{'='*60}")
-    print("Saving results...")
-    save_results(all_results, experiment_name)
-
-    print(f"\n{'='*60}")
-    print("SUMMARY")
-    print(f"{'='*60}\n")
-
-    unique_nodes = list(set(r.node for r in all_results))
-
-    for node in unique_nodes:
-        print(f"\n{node}:")
+            prompts[node, variant], prompt_path = load_prompt(node, variant)
+            assert_no_exact_leakage(node, cases_by_node[node], prompts[node, variant], variant)
+            files[str(prompt_path.relative_to(ROOT.parent))] = sha256(prompt_path)
+    metadata = {
+        "experiment_name": args.experiment_name,
+        "created_at": datetime.now(UTC).isoformat(),
+        "git_sha": git_sha(),
+        "primary_model": settings.model_name,
+        "escalated_model": settings.escalated_model,
+        "repeats": args.repeats,
+        "workers": args.workers,
+        "nodes": args.nodes,
+        "variants": args.variants,
+        "file_sha256": files,
+        "winner_policy": {"minimum_quality_delta": 0.05, "maximum_cost_ratio": 2.0},
+    }
+    tasks = []
+    for node in args.nodes:
         for variant in args.variants:
-            node_results = [r for r in all_results if r.node == node and r.variant == variant]
-            if node_results:
-                success_count = sum(1 for r in node_results if r.success)
-                total = len(node_results)
-                avg_latency = sum(r.latency_ms for r in node_results) / total
-                success_rate = 100 * success_count / total
-                total_cost = sum(r.cost_usd or 0 for r in node_results)
-                print(f"  {variant}: {success_rate:.1f}% ({success_count}/{total}) | Avg: {avg_latency:.0f}ms | Cost: ${total_cost:.4f}")
-
-    print(f"\nResults saved to: prompt_ab/results/{experiment_name}/")
+            for repeat in range(1, args.repeats + 1):
+                for case in cases_by_node[node]:
+                    tasks.append((node, variant, prompts[node, variant], case, repeat))
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures = [executor.submit(run_once, *task) for task in tasks]
+        for future in concurrent.futures.as_completed(futures):
+            result = future.result()
+            results.append(result)
+            print(
+                f"{result.node}/{result.variant} repeat={result.repeat} "
+                f"case={result.case_id}: {'PASS' if result.success else 'FAIL'}"
+            )
+    results.sort(key=lambda result: (result.node, result.variant, result.repeat, result.case_id))
+    output_dir = ROOT / "results" / args.experiment_name
+    output_dir.mkdir(parents=True, exist_ok=False)
+    summary = aggregate(results)
+    payload = {"metadata": metadata, "results": [asdict(result) for result in results]}
+    (output_dir / "results.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (output_dir / "summary.json").write_text(
+        json.dumps({"metadata": metadata, "nodes": summary}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    write_report(output_dir, metadata, summary)
+    print(f"Results written to {output_dir}")
 
 
 if __name__ == "__main__":

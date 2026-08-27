@@ -485,10 +485,10 @@ test_cases:
       hero_has_maneuver: false
 
   # ============================================
-  # NHOM 5: ODDCELL_CHANGED (2 cases)
+  # NHOM 5: ODD_ACTOR_MISMATCH (2 cases)
   # ============================================
   - id: 15
-    issue_type: "ODDCELL_CHANGED"
+    issue_type: "ODD_ACTOR_MISMATCH"
     invalid_draft:
       title: "Actor khong khop ODD"
       odd:
@@ -514,14 +514,14 @@ test_cases:
           trigger: {type: "lead_distance", value: 7}
       duration_s: 30
     issues:
-      - code: "ODDCELL_CHANGED"
+      - code: "ODD_ACTOR_MISMATCH"
         message_vi: "odd.actor_type khong khop voi actor"
         suggestion: "Doi actor category thanh motorcycle"
     expected_fix:
       adv_category: "motorcycle"
 
   - id: 16
-    issue_type: "ODDCELL_CHANGED"
+    issue_type: "ODD_ACTOR_MISMATCH"
     invalid_draft:
       title: "Truck nhung ODD la car"
       odd:
@@ -547,11 +547,11 @@ test_cases:
           trigger: {type: "simulation_time", value: 5}
       duration_s: 25
     issues:
-      - code: "ODDCELL_CHANGED"
+      - code: "ODD_ACTOR_MISMATCH"
         message_vi: "odd.actor_type khong khop voi actor"
-        suggestion: "Doi odd.actor_type thanh truck"
+        suggestion: "Doi actor category thanh car de giu nguyen ODD"
     expected_fix:
-      odd_actor_type: "truck"
+      adv_category: "car"
 
   # ============================================
   # NHOM 6: ODD_MANEUVER_MISMATCH (2 cases)
