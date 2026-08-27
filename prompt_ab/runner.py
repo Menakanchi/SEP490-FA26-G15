@@ -126,6 +126,17 @@ def load_cases(node: str) -> tuple[list[dict[str, Any]], Path]:
         unsupported = set(case.get(expected_field, {})) - EXPECTED_KEYS[node]
         if unsupported:
             raise ValueError(f"Case {case_id} has unchecked expectations: {sorted(unsupported)}")
+        try:
+            if node == "parse_intent":
+                ODDQuery.model_validate(case["expected"])
+            elif node == "generate_draft":
+                _odd_query(case["odd_cell"])
+            else:
+                _odd_query(case["invalid_draft"]["odd"])
+                for issue in case["issues"]:
+                    ValidationIssue.model_validate(issue)
+        except (KeyError, ValidationError) as exc:
+            raise ValueError(f"Case {case_id} has invalid production input: {exc}") from exc
     return cases, path
 
 

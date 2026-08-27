@@ -383,7 +383,7 @@ test_cases:
     odd_cell:
       road_type: "urban_straight"
       weather: "clear"
-      actor_type: "bicycle"
+      actor_type: "motorcycle"
       maneuver: "lane_drift"
     expected:
       actors_count: 2
@@ -452,7 +452,7 @@ test_cases:
     user_query: "Xe đạp điện lấn làn từ từ trên đường đô thị vào ban đêm."
     odd_cell:
       road_type: "urban_straight"
-      weather: "night"
+      weather: "clear"
       actor_type: "motorcycle"
       maneuver: "lane_drift"
     expected:
@@ -701,7 +701,7 @@ test_cases:
     user_query: "Trẻ em chạy qua đường đột ngột khi xe đang đến gần."
     odd_cell:
       road_type: "urban_straight"
-      weather: "night"
+      weather: "clear"
       actor_type: "pedestrian"
       maneuver: "jaywalk"
     expected:

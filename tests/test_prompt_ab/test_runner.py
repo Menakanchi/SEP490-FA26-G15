@@ -21,6 +21,12 @@ def test_every_declared_expectation_is_checked(node):
     assert all(set(case[field]) <= EXPECTED_KEYS[node] for case in cases)
 
 
+def test_holdout_inputs_use_production_schemas():
+    for node in ("parse_intent", "generate_draft", "repair_draft"):
+        cases, _ = load_cases(node)
+        assert cases
+
+
 @pytest.mark.parametrize("node", ["parse_intent", "generate_draft"])
 @pytest.mark.parametrize("variant", ["variant_A", "variant_B"])
 def test_holdout_is_not_copied_verbatim_into_prompts(node, variant):
