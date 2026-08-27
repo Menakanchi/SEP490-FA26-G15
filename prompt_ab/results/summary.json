@@ -33,9 +33,9 @@
         "total_cost_usd": 0.004038149999999999
       },
       "variant_B": {
-        "success_rate": 0.9666666666666667,
-        "avg_latency_ms": 4039.7278229395547,
-        "total_cost_usd": 0.00406425
+        "success_rate": 1.0,
+        "avg_latency_ms": 5213.6299928029375,
+        "total_cost_usd": 0.004659150000000001
       }
     }
   }

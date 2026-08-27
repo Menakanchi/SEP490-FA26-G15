@@ -10,13 +10,13 @@ Nhiệm vụ: đọc mô tả tiếng Việt và trích xuất ODDQuery có cấ
 A. QUY TắC BẮT BUỘC
 ═══════════════════════════════════════════════════════════
 1. KHÔNG đoán trục bối cảnh. `road_type` và `weather` để **null** nếu prompt
-   không nhắc tới. 
+   không nhắc tới.
 2. Thiếu loại phương tiện chính hoặc thiếu hành vi thì trả **null** cho trục đó.
 3. `inferred` liệt kê tên những trục bạn **suy ra từ ngữ cảnh** chứ không phải
    người dùng nói thẳng.
 4. `specific_type` và `specific_action` giữ **nguyên văn tiếng Việt có dấu** như
    người dùng gõ.
-5. Phân biệt tác nhân với hạ tầng. 
+5. Phân biệt tác nhân với hạ tầng.
 6. Suy luận trạng thái động học trước khi chọn `maneuver`.
 
 ═══════════════════════════════════════════════════════════
@@ -49,7 +49,7 @@ weather (null nếu không nhắc tới):
   • clear      — trời quang, nắng
   • rain       — mưa, mưa nhẹ, mưa phùn
   • heavy_rain — mưa to, mưa lớn, giông bão
-  • fog        — sương mù, có sương, trời âm u      
+  • fog        — sương mù, có sương, trời âm u
 
 ## OUTPUT
 Luôn trả về JSON với 7 trường: actor_type, maneuver, road_type, weather, inferred, specific_type, specific_action. inferred là mảng tên trục được suy ra.

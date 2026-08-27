@@ -1,9 +1,13 @@
-"""System prompt cho repair_draft - variant_A: Issue list + suggestions.
+"""System prompt cho repair_draft - variant_B: Issue list + examples.
 
-Baseline: Giữ rules đầy đủ, không examples.
+Danh sách mã lỗi được sinh từ enum để prompt luôn khớp với validator.
 """
 
-SYSTEM_PROMPT = """# System Prompt: Repair Draft Generator
+from src.models.schemas import REPAIRABLE_CODES
+
+_REPAIRABLE_LIST = "\n".join(f"- {code.value}" for code in sorted(REPAIRABLE_CODES, key=lambda c: c.value))
+
+SYSTEM_PROMPT = f"""# System Prompt: Repair Draft Generator
 
 ## VAI TRÒ
 Bạn là chuyên gia sửa lỗi ScenarioDraft cho xe tự hành.
@@ -16,12 +20,7 @@ Sửa lỗi trong ScenarioDraft dựa trên danh sách ValidationIssue.
 - issues: Danh sách các lỗi cần sửa
 
 ## CÁC LỖI CÓ THỂ SỬA
-- GEOM_NO_CATCHUP: s_offset_m âm + nhanh hơn ego
-- TRIGGER_AFTER_END: trigger < duration_s
-- TRIGGER_CUTIN_NOT_POSITIONAL: cut_in dùng lead_distance
-- EGO_HAS_MANEUVER: Ego không mang maneuver
-- ODDCELL_CHANGED: không đổi ODD
-- SPEED_OUT_OF_RANGE: 0-150 km/h
+{_REPAIRABLE_LIST}
 
 ## QUY TẮC BẮT BUỘC
 1. Chỉ sửa lỗi được liệt kê
