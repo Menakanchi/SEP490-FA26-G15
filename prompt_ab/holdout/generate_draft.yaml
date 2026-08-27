@@ -1,0 +1,724 @@
+# Test cases cho generate_draft node
+# 50 cases theo maneuver type
+
+test_cases:
+  # ============================================
+  # NHÓM 1: cut_in (15 cases)
+  # ============================================
+  - id: 1
+    user_query: "Xe máy chạy 80 km/h ở làn bên trái, vượt lên từ phía sau ô tô đang chạy 60 km/h, tạt đầu rồi phanh gấp còn 40 km/h."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      s_offset_sign: "negative"  # cut_in vượt lên phải ở phía sau
+      trigger_type: "lead_distance"
+
+  - id: 2
+    user_query: "Xe con 70 km/h vượt từ làn phải, cắt ngang đầu xe tải 50 km/h trên đường cao tốc."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "car"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      s_offset_sign: "negative"
+      trigger_type: "lead_distance"
+
+  - id: 3
+    user_query: "Xe máy vượt ẩu từ phía sau, tạt đầu xe ô tô đang chạy trên cao tốc."
+    odd_cell:
+      road_type: "highway"
+      weather: "rain"
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      s_offset_sign: "negative"
+      trigger_type: "lead_distance"
+
+  - id: 4
+    user_query: "Ô tô con chạy 90 km/h cắt mặt xe tải trên đường đô thị."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "car"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      s_offset_sign: "negative"
+      trigger_type: "lead_distance"
+
+  - id: 5
+    user_query: "Xe buýt nhập làn đột ngột trước xe con đang chạy 60 km/h."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      trigger_type: "lead_distance"
+
+  - id: 6
+    user_query: "Xe tải chở hàng vượt lên từ làn bên phải, cắt ngang đầu xe con."
+    odd_cell:
+      road_type: "highway"
+      weather: "fog"
+      actor_type: "truck"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      s_offset_sign: "negative"
+      trigger_type: "lead_distance"
+
+  - id: 7
+    user_query: "Xe máy cướp làn trước xe đang chạy trên phố."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      trigger_type: "lead_distance"
+
+  - id: 8
+    user_query: "Xe container chen ép vào làn xe con đang chạy 80 km/h trên cao tốc."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      trigger_type: "lead_distance"
+
+  - id: 9
+    user_query: "Xe số đi từ làn bên trái, tạt đầu xe đang chạy trên đường nội bộ."
+    odd_cell:
+      road_type: "residential_narrow"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      trigger_type: "lead_distance"
+
+  - id: 10
+    user_query: "Xe ga vượt ẩu từ phía sau, cắt ngang xe ô tô đang chạy."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      s_offset_sign: "negative"
+      trigger_type: "lead_distance"
+
+  - id: 11
+    user_query: "Xe ben nhập làn trước xe con 70 km/h trên đường cao tốc khi trời mưa."
+    odd_cell:
+      road_type: "highway"
+      weather: "rain"
+      actor_type: "truck"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      trigger_type: "lead_distance"
+
+  - id: 12
+    user_query: "Xe nâng di chuyển ngang qua đường, cắt làn xe đang chạy 40 km/h."
+    odd_cell:
+      road_type: "residential_narrow"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      trigger_type: "lead_distance"
+
+  - id: 13
+    user_query: "Xe khách 16 chỗ vượt lên từ phía sau ô tô đang chạy trên cao tốc."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      s_offset_sign: "negative"
+      trigger_type: "lead_distance"
+
+  - id: 14
+    user_query: "Xe đạp điện vượt lên từ làn bên phải, tạt đầu xe máy."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      trigger_type: "lead_distance"
+
+  - id: 15
+    user_query: "Ô tô SUV chạy 100 km/h cắt làn trước xe tải đang lên dốc."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "car"
+      maneuver: "cut_in"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "cut_in"
+      trigger_type: "lead_distance"
+
+  # ============================================
+  # NHÓM 2: sudden_brake (10 cases)
+  # ============================================
+  - id: 16
+    user_query: "Xe tải phanh gấp đột ngột phía trước, ego chạy 50 km/h phía sau không kịp tránh."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "fog"
+      actor_type: "truck"
+      maneuver: "sudden_brake"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "sudden_brake"
+      s_offset_sign: "positive"  # phía trước ego
+      trigger_type: "simulation_time"
+
+  - id: 17
+    user_query: "Xe máy phanh gấp đột ngột trước ô tô đang đi cùng làn."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "sudden_brake"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "sudden_brake"
+      s_offset_sign: "positive"
+      trigger_type: "simulation_time"
+
+  - id: 18
+    user_query: "Ô tô đâm đít xe máy phía trước trên đường cao tốc."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "car"
+      maneuver: "sudden_brake"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "sudden_brake"
+      s_offset_sign: "positive"
+      trigger_type: "simulation_time"
+
+  - id: 19
+    user_query: "Xe buýt thắng gấp vì có người qua đường đột ngột."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "sudden_brake"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "sudden_brake"
+      s_offset_sign: "positive"
+      trigger_type: "simulation_time"
+
+  - id: 20
+    user_query: "Xe con húc đuôi xe tải phía trước trên đường đô thị."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "rain"
+      actor_type: "car"
+      maneuver: "sudden_brake"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "sudden_brake"
+      s_offset_sign: "positive"
+      trigger_type: "simulation_time"
+
+  - id: 21
+    user_query: "Xe tải đang chạy thì dừng lại đột ngột vì đèn đỏ."
+    odd_cell:
+      road_type: "intersection"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "sudden_brake"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "sudden_brake"
+      s_offset_sign: "positive"
+      trigger_type: "simulation_time"
+
+  - id: 22
+    user_query: "Xe máy phanh gấp vì xe trước đột ngột giảm tốc."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "sudden_brake"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "sudden_brake"
+      s_offset_sign: "positive"
+      trigger_type: "simulation_time"
+
+  - id: 23
+    user_query: "Xe container phanh gấp trên cao tốc vì kẹt xe phía trước."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "sudden_brake"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "sudden_brake"
+      s_offset_sign: "positive"
+      trigger_type: "simulation_time"
+
+  - id: 24
+    user_query: "Ô tô tông vào đuôi xe tải đang dừng đúng làn."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "car"
+      maneuver: "sudden_brake"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "sudden_brake"
+      s_offset_sign: "positive"
+      trigger_type: "simulation_time"
+
+  - id: 25
+    user_query: "Xe ben dừng đột ngột giữa đường vì có vật cản."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "sudden_brake"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "sudden_brake"
+      s_offset_sign: "positive"
+      trigger_type: "simulation_time"
+
+  # ============================================
+  # NHÓM 3: lane_drift (8 cases)
+  # ============================================
+  - id: 26
+    user_query: "Xe đạp lấn dần vào làn ô tô trên đường phố."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "lane_drift"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "lane_drift"
+      trigger_type: "simulation_time"
+
+  - id: 27
+    user_query: "Xe tải chạy chậm lấn dần sang làn xe con đang chạy 60 km/h."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "rain"
+      actor_type: "truck"
+      maneuver: "lane_drift"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "lane_drift"
+      trigger_type: "simulation_time"
+
+  - id: 28
+    user_query: "Xe máy lệch làn từ từ, đè vạch kẻ đường trên cao tốc."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "lane_drift"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "lane_drift"
+      trigger_type: "simulation_time"
+
+  - id: 29
+    user_query: "Ô tô suýt quét xe máy khi lấn làn đột ngột."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "car"
+      maneuver: "lane_drift"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "lane_drift"
+      trigger_type: "simulation_time"
+
+  - id: 30
+    user_query: "Xe buýt lấn dần vào làn xe con trên đường nội bộ."
+    odd_cell:
+      road_type: "residential_narrow"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "lane_drift"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "lane_drift"
+      trigger_type: "simulation_time"
+
+  - id: 31
+    user_query: "Xe đạp điện lấn làn từ từ trên đường đô thị vào ban đêm."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "lane_drift"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "lane_drift"
+      trigger_type: "simulation_time"
+
+  - id: 32
+    user_query: "Xe tải lấn làn đột ngột trước xe con trên đường cao tốc."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "lane_drift"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "lane_drift"
+      trigger_type: "simulation_time"
+
+  - id: 33
+    user_query: "Xe công trình lấn dần vào làn đang có xe chạy."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "fog"
+      actor_type: "truck"
+      maneuver: "lane_drift"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "lane_drift"
+      trigger_type: "simulation_time"
+
+  # ============================================
+  # NHÓM 4: wrong_way (5 cases)
+  # ============================================
+  - id: 34
+    user_query: "Ô tô đi ngược chiều đột ngột xuất hiện trên đường cao tốc."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "car"
+      maneuver: "wrong_way"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "wrong_way"
+
+  - id: 35
+    user_query: "Xe tải đi ngược vào làn cao tốc, đối đầu với xe đang chạy đúng chiều."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "wrong_way"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "wrong_way"
+
+  - id: 36
+    user_query: "Xe máy lùi xe trên cao tốc, đi ngược chiều với các xe khác."
+    odd_cell:
+      road_type: "highway"
+      weather: "rain"
+      actor_type: "motorcycle"
+      maneuver: "wrong_way"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "wrong_way"
+
+  - id: 37
+    user_query: "Ô tô con đi sai làn, đi ngược chiều trên đường đô thị."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "car"
+      maneuver: "wrong_way"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "wrong_way"
+
+  - id: 38
+    user_query: "Xe khách đi ngược chiều trên đường một chiều."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "wrong_way"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "wrong_way"
+
+  # ============================================
+  # NHÓM 5: stop_in_lane (5 cases)
+  # ============================================
+  - id: 39
+    user_query: "Xe tải dừng chết giữa làn đường cao tốc, ego không kịp tránh."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "stop_in_lane"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "stop_in_lane"
+
+  - id: 40
+    user_query: "Xe máy hỏng máy, dừng đỗ bất thường giữa làn đường đô thị."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "stop_in_lane"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "stop_in_lane"
+
+  - id: 41
+    user_query: "Ô tô chết máy giữa đường, cản trở giao thông."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "car"
+      maneuver: "stop_in_lane"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "stop_in_lane"
+
+  - id: 42
+    user_query: "Xe buýt dừng đỗ bất ngờ giữa làn đường trên phố."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "rain"
+      actor_type: "truck"
+      maneuver: "stop_in_lane"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "stop_in_lane"
+
+  - id: 43
+    user_query: "Xe tải lùi chậm cản đường trên cao tốc."
+    odd_cell:
+      road_type: "highway"
+      weather: "clear"
+      actor_type: "truck"
+      maneuver: "stop_in_lane"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "stop_in_lane"
+
+  # ============================================
+  # NHÓM 6: run_red_light (4 cases)
+  # ============================================
+  - id: 44
+    user_query: "Xe máy vượt đèn đỏ, tông vào xe đang đi đúng làn đường của mình."
+    odd_cell:
+      road_type: "intersection"
+      weather: "clear"
+      actor_type: "motorcycle"
+      maneuver: "run_red_light"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "run_red_light"
+
+  - id: 45
+    user_query: "Ô tô phóng qua ngã tư khi đèn đỏ, đâm vào xe đang đi đúng tín hiệu."
+    odd_cell:
+      road_type: "intersection"
+      weather: "clear"
+      actor_type: "car"
+      maneuver: "run_red_light"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "run_red_light"
+
+  - id: 46
+    user_query: "Xe tải không dừng ở đèn đỏ, đi thẳng qua ngã tư đối đầu xe khác."
+    odd_cell:
+      road_type: "intersection"
+      weather: "rain"
+      actor_type: "truck"
+      maneuver: "run_red_light"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "run_red_light"
+
+  - id: 47
+    user_query: "Xe con chạy quá tốc độ, lao qua đèn đỏ trên đường phố."
+    odd_cell:
+      road_type: "intersection"
+      weather: "clear"
+      actor_type: "car"
+      maneuver: "run_red_light"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "run_red_light"
+
+  # ============================================
+  # NHÓM 7: jaywalk (3 cases)
+  # ============================================
+  - id: 48
+    user_query: "Người đi bộ bất ngờ băng qua đường trên đường đô thị, ego đang chạy 40 km/h."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "pedestrian"
+      maneuver: "jaywalk"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "jaywalk"
+
+  - id: 49
+    user_query: "Trẻ em chạy qua đường đột ngột khi xe đang đến gần."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "clear"
+      actor_type: "pedestrian"
+      maneuver: "jaywalk"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "jaywalk"
+
+  - id: 50
+    user_query: "Người đi bộ sang đường sai vị trí, không có vạch qua đường."
+    odd_cell:
+      road_type: "urban_straight"
+      weather: "fog"
+      actor_type: "pedestrian"
+      maneuver: "jaywalk"
+    expected:
+      actors_count: 2
+      has_ego: true
+      ego_has_maneuver: false
+      maneuver_type: "jaywalk"

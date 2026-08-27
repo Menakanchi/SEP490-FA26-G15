@@ -1,0 +1,1037 @@
+# Test cases cho repair_draft node
+# 30 cases cover cac loai loi co the sua
+
+test_cases:
+  # ============================================
+  # NHOM 1: GEOM_NO_CATCHUP (5 cases)
+  # ============================================
+  - id: 1
+    issue_type: "GEOM_NO_CATCHUP"
+    invalid_draft:
+      title: "Xe may vuot lat"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: 20}
+          initial_speed_kmh: 50
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+      duration_s: 30
+    issues:
+      - code: "GEOM_NO_CATCHUP"
+        message_vi: "Khoang cach khong thu hep"
+        suggestion: "Dat s_offset_m < 0 va initial_speed > 60"
+    expected_fix:
+      s_offset_m: < 0
+      initial_speed_kmh: "> 60"
+
+  - id: 2
+    issue_type: "GEOM_NO_CATCHUP"
+    invalid_draft:
+      title: "Xe con cat lan"
+      odd:
+        road_type: "urban_straight"
+        weather: "clear"
+        actor_type: "car"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 70
+          is_ego: true
+        - name: "adv"
+          category: "car"
+          position: {lane_offset: 1, s_offset_m: 0}
+          initial_speed_kmh: 70
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+      duration_s: 30
+    issues:
+      - code: "GEOM_NO_CATCHUP"
+        message_vi: "Khoang cach khong thu hep"
+        suggestion: "Dat s_offset_m < 0 va initial_speed > 70"
+    expected_fix:
+      s_offset_m: < 0
+      initial_speed_kmh: "> 70"
+
+  - id: 3
+    issue_type: "GEOM_NO_CATCHUP"
+    invalid_draft:
+      title: "Xe tai phanh gap"
+      odd:
+        road_type: "highway"
+        weather: "fog"
+        actor_type: "truck"
+        maneuver: "cut_in"
+      time_of_day: "dusk"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 80
+          is_ego: true
+        - name: "truck"
+          category: "truck"
+          position: {lane_offset: 0, s_offset_m: 30}
+          initial_speed_kmh: 80
+          is_ego: false
+      maneuvers:
+        - actor_name: "truck"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+      duration_s: 30
+    issues:
+      - code: "GEOM_NO_CATCHUP"
+        message_vi: "Khoang cach khong thu hep"
+        suggestion: "Dat s_offset_m < 0 va initial_speed > 80"
+    expected_fix:
+      s_offset_m: < 0
+      initial_speed_kmh: "> 80"
+
+  - id: 4
+    issue_type: "GEOM_NO_CATCHUP"
+    invalid_draft:
+      title: "Xe may vuot am"
+      odd:
+        road_type: "highway"
+        weather: "rain"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -20}
+          initial_speed_kmh: 50
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+      duration_s: 30
+    issues:
+      - code: "GEOM_NO_CATCHUP"
+        message_vi: "Khoang cach khong thu hep"
+        suggestion: "Dat s_offset_m < 0 va initial_speed > 60"
+    expected_fix:
+      s_offset_m: < 0
+      initial_speed_kmh: "> 60"
+
+  - id: 5
+    issue_type: "GEOM_NO_CATCHUP"
+    invalid_draft:
+      title: "Xe buyt cat lan"
+      odd:
+        road_type: "urban_straight"
+        weather: "clear"
+        actor_type: "truck"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 50
+          is_ego: true
+        - name: "bus"
+          category: "truck"
+          position: {lane_offset: 1, s_offset_m: 15}
+          initial_speed_kmh: 50
+          is_ego: false
+      maneuvers:
+        - actor_name: "bus"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+      duration_s: 30
+    issues:
+      - code: "GEOM_NO_CATCHUP"
+        message_vi: "Khoang cach khong thu hep"
+        suggestion: "Dat s_offset_m < 0 va initial_speed > 50"
+    expected_fix:
+      s_offset_m: < 0
+      initial_speed_kmh: "> 50"
+
+  # ============================================
+  # NHOM 2: TRIGGER_AFTER_END (3 cases)
+  # ============================================
+  - id: 6
+    issue_type: "TRIGGER_AFTER_END"
+    invalid_draft:
+      title: "Trigger qua muon"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -25}
+          initial_speed_kmh: 80
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "simulation_time", value: 50}
+      duration_s: 30
+    issues:
+      - code: "TRIGGER_AFTER_END"
+        message_vi: "Trigger chay sau khi ket thuc mo phong"
+        suggestion: "Dat trigger < duration_s"
+    expected_fix:
+      trigger_value: "< 30"
+
+  - id: 7
+    issue_type: "TRIGGER_AFTER_END"
+    invalid_draft:
+      title: "Trigger bang duration"
+      odd:
+        road_type: "urban_straight"
+        weather: "clear"
+        actor_type: "car"
+        maneuver: "sudden_brake"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 50
+          is_ego: true
+        - name: "truck"
+          category: "truck"
+          position: {lane_offset: 0, s_offset_m: 30}
+          initial_speed_kmh: 50
+          is_ego: false
+      maneuvers:
+        - actor_name: "truck"
+          maneuver: "sudden_brake"
+          trigger: {type: "simulation_time", value: 25}
+      duration_s: 25
+    issues:
+      - code: "TRIGGER_AFTER_END"
+        message_vi: "Trigger chay sau khi ket thuc mo phong"
+        suggestion: "Dat trigger < 25"
+    expected_fix:
+      trigger_value: "< 25"
+
+  - id: 8
+    issue_type: "TRIGGER_AFTER_END"
+    invalid_draft:
+      title: "Trigger lon hon nhieu"
+      odd:
+        road_type: "highway"
+        weather: "rain"
+        actor_type: "truck"
+        maneuver: "sudden_brake"
+      time_of_day: "dusk"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 70
+          is_ego: true
+        - name: "truck"
+          category: "truck"
+          position: {lane_offset: 0, s_offset_m: 40}
+          initial_speed_kmh: 70
+          is_ego: false
+      maneuvers:
+        - actor_name: "truck"
+          maneuver: "sudden_brake"
+          trigger: {type: "simulation_time", value: 60}
+      duration_s: 40
+    issues:
+      - code: "TRIGGER_AFTER_END"
+        message_vi: "Trigger chay sau khi ket thuc mo phong"
+        suggestion: "Dat trigger < 40"
+    expected_fix:
+      trigger_value: "< 40"
+
+  # ============================================
+  # NHOM 3: TRIGGER_CUTIN_NOT_POSITIONAL (3 cases)
+  # ============================================
+  - id: 9
+    issue_type: "TRIGGER_CUTIN_NOT_POSITIONAL"
+    invalid_draft:
+      title: "Cut-in dung simulation_time"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -25}
+          initial_speed_kmh: 80
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "simulation_time", value: 5}
+      duration_s: 30
+    issues:
+      - code: "TRIGGER_CUTIN_NOT_POSITIONAL"
+        message_vi: "Cut-in phai dung lead_distance"
+        suggestion: "Doi trigger.type thanh lead_distance, value >= 7"
+    expected_fix:
+      trigger_type: "lead_distance"
+      trigger_value: ">= 7"
+
+  - id: 10
+    issue_type: "TRIGGER_CUTIN_NOT_POSITIONAL"
+    invalid_draft:
+      title: "Cut-in sai trigger"
+      odd:
+        road_type: "urban_straight"
+        weather: "clear"
+        actor_type: "car"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 50
+          is_ego: true
+        - name: "adv"
+          category: "car"
+          position: {lane_offset: 1, s_offset_m: 20}
+          initial_speed_kmh: 70
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "distance_to_ego", value: 10}
+      duration_s: 30
+    issues:
+      - code: "TRIGGER_CUTIN_NOT_POSITIONAL"
+        message_vi: "Cut-in phai dung lead_distance"
+        suggestion: "Doi trigger.type thanh lead_distance, value >= 7"
+    expected_fix:
+      trigger_type: "lead_distance"
+      trigger_value: ">= 7"
+
+  - id: 11
+    issue_type: "TRIGGER_CUTIN_NOT_POSITIONAL"
+    invalid_draft:
+      title: "Xe tai cut-in sai"
+      odd:
+        road_type: "highway"
+        weather: "fog"
+        actor_type: "truck"
+        maneuver: "cut_in"
+      time_of_day: "dusk"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 80
+          is_ego: true
+        - name: "truck"
+          category: "truck"
+          position: {lane_offset: -1, s_offset_m: -30}
+          initial_speed_kmh: 100
+          is_ego: false
+      maneuvers:
+        - actor_name: "truck"
+          maneuver: "cut_in"
+          trigger: {type: "simulation_time", value: 3}
+      duration_s: 30
+    issues:
+      - code: "TRIGGER_CUTIN_NOT_POSITIONAL"
+        message_vi: "Cut-in phai dung lead_distance"
+        suggestion: "Doi trigger.type thanh lead_distance, value >= 7"
+    expected_fix:
+      trigger_type: "lead_distance"
+      trigger_value: ">= 7"
+
+  # ============================================
+  # NHOM 4: EGO_HAS_MANEUVER (3 cases)
+  # ============================================
+  - id: 12
+    issue_type: "EGO_HAS_MANEUVER"
+    invalid_draft:
+      title: "Ego co maneuver"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -25}
+          initial_speed_kmh: 80
+          is_ego: false
+      maneuvers:
+        - actor_name: "hero"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+      duration_s: 30
+    issues:
+      - code: "EGO_HAS_MANEUVER"
+        message_vi: "Ego khong duoc mang maneuver"
+        suggestion: "Xoa maneuver cua ego, chi giu maneuver cua adversary"
+    expected_fix:
+      hero_has_maneuver: false
+
+  - id: 13
+    issue_type: "EGO_HAS_MANEUVER"
+    invalid_draft:
+      title: "Ego sudden brake"
+      odd:
+        road_type: "urban_straight"
+        weather: "clear"
+        actor_type: "car"
+        maneuver: "sudden_brake"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 50
+          is_ego: true
+        - name: "truck"
+          category: "truck"
+          position: {lane_offset: 0, s_offset_m: 30}
+          initial_speed_kmh: 50
+          is_ego: false
+      maneuvers:
+        - actor_name: "hero"
+          maneuver: "sudden_brake"
+          trigger: {type: "simulation_time", value: 5}
+      duration_s: 25
+    issues:
+      - code: "EGO_HAS_MANEUVER"
+        message_vi: "Ego khong duoc mang maneuver"
+        suggestion: "Xoa maneuver cua ego"
+    expected_fix:
+      hero_has_maneuver: false
+
+  - id: 14
+    issue_type: "EGO_HAS_MANEUVER"
+    invalid_draft:
+      title: "Ego lane drift"
+      odd:
+        road_type: "urban_straight"
+        weather: "rain"
+        actor_type: "motorcycle"
+        maneuver: "lane_drift"
+      time_of_day: "dusk"
+      actors:
+        - name: "hero"
+          category: "motorcycle"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 40
+          is_ego: true
+        - name: "car"
+          category: "car"
+          position: {lane_offset: 1, s_offset_m: 15}
+          initial_speed_kmh: 40
+          is_ego: false
+      maneuvers:
+        - actor_name: "hero"
+          maneuver: "lane_drift"
+          trigger: {type: "simulation_time", value: 3}
+      duration_s: 20
+    issues:
+      - code: "EGO_HAS_MANEUVER"
+        message_vi: "Ego khong duoc mang maneuver"
+        suggestion: "Xoa maneuver cua ego"
+    expected_fix:
+      hero_has_maneuver: false
+
+  # ============================================
+  # NHOM 5: ODD_ACTOR_MISMATCH (2 cases)
+  # ============================================
+  - id: 15
+    issue_type: "ODD_ACTOR_MISMATCH"
+    invalid_draft:
+      title: "Actor khong khop ODD"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "car"
+          position: {lane_offset: -1, s_offset_m: -25}
+          initial_speed_kmh: 80
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+      duration_s: 30
+    issues:
+      - code: "ODD_ACTOR_MISMATCH"
+        message_vi: "odd.actor_type khong khop voi actor"
+        suggestion: "Doi actor category thanh motorcycle"
+    expected_fix:
+      adv_category: "motorcycle"
+
+  - id: 16
+    issue_type: "ODD_ACTOR_MISMATCH"
+    invalid_draft:
+      title: "Truck nhung ODD la car"
+      odd:
+        road_type: "urban_straight"
+        weather: "clear"
+        actor_type: "car"
+        maneuver: "sudden_brake"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 50
+          is_ego: true
+        - name: "truck"
+          category: "truck"
+          position: {lane_offset: 0, s_offset_m: 30}
+          initial_speed_kmh: 50
+          is_ego: false
+      maneuvers:
+        - actor_name: "truck"
+          maneuver: "sudden_brake"
+          trigger: {type: "simulation_time", value: 5}
+      duration_s: 25
+    issues:
+      - code: "ODD_ACTOR_MISMATCH"
+        message_vi: "odd.actor_type khong khop voi actor"
+        suggestion: "Doi actor category thanh car de giu nguyen ODD"
+    expected_fix:
+      adv_category: "car"
+
+  # ============================================
+  # NHOM 6: ODD_MANEUVER_MISMATCH (2 cases)
+  # ============================================
+  - id: 17
+    issue_type: "ODD_MANEUVER_MISMATCH"
+    invalid_draft:
+      title: "Maneuver khong khop ODD"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -25}
+          initial_speed_kmh: 80
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "sudden_brake"
+          trigger: {type: "simulation_time", value: 5}
+      duration_s: 30
+    issues:
+      - code: "ODD_MANEUVER_MISMATCH"
+        message_vi: "Maneuver khong khop voi odd.maneuver"
+        suggestion: "Doi maneuver thanh cut_in"
+    expected_fix:
+      maneuver_type: "cut_in"
+
+  - id: 18
+    issue_type: "ODD_MANEUVER_MISMATCH"
+    invalid_draft:
+      title: "Lane drift nhung ODD cut-in"
+      odd:
+        road_type: "urban_straight"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 40
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -20}
+          initial_speed_kmh: 50
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "lane_drift"
+          trigger: {type: "simulation_time", value: 3}
+      duration_s: 20
+    issues:
+      - code: "ODD_MANEUVER_MISMATCH"
+        message_vi: "Maneuver khong khop voi odd.maneuver"
+        suggestion: "Doi maneuver thanh cut_in"
+    expected_fix:
+      maneuver_type: "cut_in"
+
+  # ============================================
+  # NHOM 7: GEOM_CUTIN_LEAD_TOO_SHORT (2 cases)
+  # ============================================
+  - id: 19
+    issue_type: "GEOM_CUTIN_LEAD_TOO_SHORT"
+    invalid_draft:
+      title: "Lead distance qua ngan"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -25}
+          initial_speed_kmh: 80
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 3}
+      duration_s: 30
+    issues:
+      - code: "GEOM_CUTIN_LEAD_TOO_SHORT"
+        message_vi: "Lead distance qua ngan, can >= 7m"
+        suggestion: "Tang lead_distance >= 7"
+    expected_fix:
+      trigger_value: ">= 7"
+
+  - id: 20
+    issue_type: "GEOM_CUTIN_LEAD_TOO_SHORT"
+    invalid_draft:
+      title: "Lead distance bang 0"
+      odd:
+        road_type: "urban_straight"
+        weather: "clear"
+        actor_type: "car"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 50
+          is_ego: true
+        - name: "adv"
+          category: "car"
+          position: {lane_offset: 1, s_offset_m: 20}
+          initial_speed_kmh: 70
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 5}
+      duration_s: 30
+    issues:
+      - code: "GEOM_CUTIN_LEAD_TOO_SHORT"
+        message_vi: "Lead distance qua ngan, can >= 7m"
+        suggestion: "Tang lead_distance >= 7"
+    expected_fix:
+      trigger_value: ">= 7"
+
+  # ============================================
+  # NHOM 8: GEOM_NO_COLLISION_AFTER_CUTIN (2 cases)
+  # ============================================
+  - id: 21
+    issue_type: "GEOM_NO_COLLISION_AFTER_CUTIN"
+    invalid_draft:
+      title: "Khong va cham sau cut-in"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -30}
+          initial_speed_kmh: 65
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+          target_speed_kmh: 60
+      duration_s: 30
+    issues:
+      - code: "GEOM_NO_COLLISION_AFTER_CUTIN"
+        message_vi: "Sau cut-in khong co va cham"
+        suggestion: "Doi target_speed_kmh thap hon hoac s_offset_m gan hon"
+    expected_fix:
+      target_speed_lower_or_s_offset_closer: true
+
+  - id: 22
+    issue_type: "GEOM_NO_COLLISION_AFTER_CUTIN"
+    invalid_draft:
+      title: "Target speed cao qua"
+      odd:
+        road_type: "urban_straight"
+        weather: "clear"
+        actor_type: "car"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 50
+          is_ego: true
+        - name: "adv"
+          category: "car"
+          position: {lane_offset: 1, s_offset_m: 15}
+          initial_speed_kmh: 70
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+          target_speed_kmh: 70
+      duration_s: 30
+    issues:
+      - code: "GEOM_NO_COLLISION_AFTER_CUTIN"
+        message_vi: "Sau cut-in khong co va cham"
+        suggestion: "Giam target_speed_kmh"
+    expected_fix:
+      target_speed_kmh: "< 70"
+
+  # ============================================
+  # NHOM 9: TRIGGER_DISTANCE_UNSIGNED (2 cases)
+  # ============================================
+  - id: 23
+    issue_type: "TRIGGER_DISTANCE_UNSIGNED"
+    invalid_draft:
+      title: "Distance am"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -25}
+          initial_speed_kmh: 80
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: -5}
+      duration_s: 30
+    issues:
+      - code: "TRIGGER_DISTANCE_UNSIGNED"
+        message_vi: "Khoang cach phai duong"
+        suggestion: "Doi trigger.value thanh so duong >= 7"
+    expected_fix:
+      trigger_value: "> 0"
+
+  - id: 24
+    issue_type: "TRIGGER_DISTANCE_UNSIGNED"
+    invalid_draft:
+      title: "Distance bang 0"
+      odd:
+        road_type: "urban_straight"
+        weather: "clear"
+        actor_type: "car"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 50
+          is_ego: true
+        - name: "adv"
+          category: "car"
+          position: {lane_offset: 1, s_offset_m: 20}
+          initial_speed_kmh: 70
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 0}
+      duration_s: 30
+    issues:
+      - code: "TRIGGER_DISTANCE_UNSIGNED"
+        message_vi: "Khoang cach phai duong"
+        suggestion: "Doi trigger.value >= 7"
+    expected_fix:
+      trigger_value: ">= 7"
+
+  # ============================================
+  # NHOM 10: GEOM_DRIFT_AFTER_PASS (2 cases)
+  # ============================================
+  - id: 25
+    issue_type: "GEOM_DRIFT_AFTER_PASS"
+    invalid_draft:
+      title: "Drift sau khi ego da di qua"
+      odd:
+        road_type: "urban_straight"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "lane_drift"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 40
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: 50}
+          initial_speed_kmh: 30
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "lane_drift"
+          trigger: {type: "simulation_time", value: 15}
+      duration_s: 20
+    issues:
+      - code: "GEOM_DRIFT_AFTER_PASS"
+        message_vi: "Lane drift kich hoat sau khi ego da di ngang qua"
+        suggestion: "Dat trigger som hon"
+    expected_fix:
+      trigger_time: "< 15"
+
+  - id: 26
+    issue_type: "GEOM_DRIFT_AFTER_PASS"
+    invalid_draft:
+      title: "Drift qua tre"
+      odd:
+        road_type: "urban_straight"
+        weather: "rain"
+        actor_type: "car"
+        maneuver: "lane_drift"
+      time_of_day: "dusk"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 50
+          is_ego: true
+        - name: "truck"
+          category: "truck"
+          position: {lane_offset: 1, s_offset_m: 40}
+          initial_speed_kmh: 40
+          is_ego: false
+      maneuvers:
+        - actor_name: "truck"
+          maneuver: "lane_drift"
+          trigger: {type: "simulation_time", value: 20}
+      duration_s: 25
+    issues:
+      - code: "GEOM_DRIFT_AFTER_PASS"
+        message_vi: "Lane drift kich hoat sau khi ego da di ngang qua"
+        suggestion: "Dat trigger som hon"
+    expected_fix:
+      trigger_time: "< 20"
+
+  # ============================================
+  # NHOM 11: ODD_LABEL_DRIFT (2 cases)
+  # ============================================
+  - id: 27
+    issue_type: "ODD_LABEL_DRIFT"
+    invalid_draft:
+      title: "ODD bi danh nguoi dung"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -25}
+          initial_speed_kmh: 80
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+      duration_s: 30
+    issues:
+      - code: "ODD_LABEL_DRIFT"
+        message_vi: "ODD bi thay doi so voi nhu cau nguoi dung"
+        suggestion: "Giu nguyen ODD nhu nguoi dung da noi"
+    expected_fix:
+      odd_unchanged: true
+
+  - id: 28
+    issue_type: "ODD_LABEL_DRIFT"
+    invalid_draft:
+      title: "ODD weather thay doi"
+      odd:
+        road_type: "highway"
+        weather: "rain"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -25}
+          initial_speed_kmh: 80
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+      duration_s: 30
+    issues:
+      - code: "ODD_LABEL_DRIFT"
+        message_vi: "ODD bi thay doi so voi nhu cau nguoi dung"
+        suggestion: "Kiem tra lai ODD"
+    expected_fix:
+      odd_unchanged: true
+
+  # ============================================
+  # NHOM 12: CON_LAI (2 cases)
+  # ============================================
+  - id: 29
+    issue_type: "EGO_COUNT"
+    invalid_draft:
+      title: "Nhieu hon 1 ego"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "hero2"
+          category: "car"
+          position: {lane_offset: 1, s_offset_m: 10}
+          initial_speed_kmh: 60
+          is_ego: true
+        - name: "adv"
+          category: "motorcycle"
+          position: {lane_offset: -1, s_offset_m: -25}
+          initial_speed_kmh: 80
+          is_ego: false
+      maneuvers:
+        - actor_name: "adv"
+          maneuver: "cut_in"
+          trigger: {type: "lead_distance", value: 7}
+      duration_s: 30
+    issues:
+      - code: "EGO_COUNT"
+        message_vi: "Phai co dung 1 ego"
+        suggestion: "Chi giu 1 actor co is_ego=true"
+    expected_fix:
+      ego_count: 1
+
+  - id: 30
+    issue_type: "SCHEMA_INVALID"
+    invalid_draft:
+      title: "Thieu truong bat buoc"
+      odd:
+        road_type: "highway"
+        weather: "clear"
+        actor_type: "motorcycle"
+        maneuver: "cut_in"
+      time_of_day: "day"
+      actors:
+        - name: "hero"
+          category: "car"
+          position: {lane_offset: 0, s_offset_m: 0}
+          initial_speed_kmh: 60
+          is_ego: true
+      maneuvers: []
+      duration_s: 30
+    issues:
+      - code: "SCHEMA_INVALID"
+        message_vi: "Thieu truong bat buoc"
+        suggestion: "Them it nhat 1 actor va 1 maneuver"
+    expected_fix:
+      has_actors: true
+      has_maneuvers: true
