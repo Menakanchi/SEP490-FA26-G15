@@ -1,0 +1,91 @@
+{
+  "metadata": {
+    "experiment_name": "20260827_holdout_v3",
+    "created_at": "2026-08-27T08:21:01.024382+00:00",
+    "git_sha": "6d2459838e803145e4c967081f61ef4d5a1b2d2e",
+    "primary_model": "gpt-5.4-mini",
+    "escalated_model": "gpt-5.4",
+    "repeats": 3,
+    "workers": 4,
+    "nodes": [
+      "parse_intent",
+      "generate_draft",
+      "repair_draft"
+    ],
+    "variants": [
+      "variant_A",
+      "variant_B"
+    ],
+    "file_sha256": {
+      "prompt_ab/holdout/parse_intent.yaml": "e2349e35a602541017f4998e1f1bd236819dfcd911109b5f5fe42d47dcaaefcc",
+      "prompt_ab/prompts/parse_intent/variant_A.py": "811096b87f9c7e7a7719e72c32631342438245fd9c3a136e760317604b82c1fd",
+      "prompt_ab/prompts/parse_intent/variant_B.py": "54b722ed177e23a2cde8a4f3184f3dee8694e0a4fd4b3cab869099ab9ac26521",
+      "prompt_ab/holdout/generate_draft.yaml": "dd3b110b8101f9bd11549878d2934de00232b62bfae6defe290d0115307c2a61",
+      "prompt_ab/prompts/generate_draft/variant_A.py": "442decfc50eeb993e7f28c14bc1581fbe5c3430c9c88b5b51985151291b15372",
+      "prompt_ab/prompts/generate_draft/variant_B.py": "32179996245620af6d9720c719d50916ab8986c1b18ac5f005e2acc5d36c5f93",
+      "prompt_ab/holdout/repair_draft.yaml": "d2fada7569f7f18d71bc220bd9f698b8c2f1a2e7465ba08a72eca8767075c6c6",
+      "prompt_ab/prompts/repair_draft/variant_A.py": "9ecff3d6ca2802211b14d1c2300dd6be0fa2335fa9fcb372cb79a802e63a42fb",
+      "prompt_ab/prompts/repair_draft/variant_B.py": "e6bcdd03d97794f7c7e14bfa3395ca6f7dec91d76e5ce351871f4cfd004aad82"
+    },
+    "winner_policy": {
+      "minimum_quality_delta": 0.05,
+      "maximum_cost_ratio": 2.0
+    }
+  },
+  "nodes": {
+    "generate_draft": {
+      "variant_A": {
+        "success_rate": 0.6066666666666667,
+        "passed": 91,
+        "total": 150,
+        "latency_median_ms": 1728.348508000181,
+        "latency_p95_ms": 2141.546876000575,
+        "total_cost_usd": 0.22398389999999999
+      },
+      "variant_B": {
+        "success_rate": 0.68,
+        "passed": 102,
+        "total": 150,
+        "latency_median_ms": 2247.6852870004222,
+        "latency_p95_ms": 2757.0523579997825,
+        "total_cost_usd": 0.32301
+      }
+    },
+    "parse_intent": {
+      "variant_A": {
+        "success_rate": 0.12666666666666668,
+        "passed": 19,
+        "total": 150,
+        "latency_median_ms": 1139.2709740002829,
+        "latency_p95_ms": 3522.6007780001964,
+        "total_cost_usd": 0.15603415
+      },
+      "variant_B": {
+        "success_rate": 0.25333333333333335,
+        "passed": 38,
+        "total": 150,
+        "latency_median_ms": 1047.2465110001394,
+        "latency_p95_ms": 1341.1016350000864,
+        "total_cost_usd": 0.14903775
+      }
+    },
+    "repair_draft": {
+      "variant_A": {
+        "success_rate": 0.3333333333333333,
+        "passed": 30,
+        "total": 90,
+        "latency_median_ms": 1766.365688499718,
+        "latency_p95_ms": 2343.56406400002,
+        "total_cost_usd": 0.1557801
+      },
+      "variant_B": {
+        "success_rate": 0.32222222222222224,
+        "passed": 29,
+        "total": 90,
+        "latency_median_ms": 1804.2485770001804,
+        "latency_p95_ms": 2136.079752999649,
+        "total_cost_usd": 0.16500599999999999
+      }
+    }
+  }
+}
