@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402 -- direct script execution must add the repository root before src imports
 """Reproducible prompt benchmark using production schemas and validators."""
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import os
 import re
 import statistics
 import subprocess
+import sys
 import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -23,6 +25,10 @@ import yaml
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from src.agents.nodes.generate_draft import _build_user_content as build_generate_content
 from src.agents.nodes.repair_draft import _build_user_content as build_repair_content
 from src.agents.nodes.validate_node import validate_node
@@ -30,7 +36,7 @@ from src.config import get_settings
 from src.models.schemas import ODDQuery, ScenarioDraft, ValidationIssue
 from src.services.llm import call_with_escalation, collect_provider_metrics, summarize_provider_metrics
 
-ROOT = Path(__file__).resolve().parent
+ROOT = PROJECT_ROOT / "prompt_ab"
 NODES = ("parse_intent", "generate_draft", "repair_draft")
 VARIANTS = ("variant_A", "variant_B")
 EXPECTED_KEYS = {
