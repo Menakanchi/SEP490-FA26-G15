@@ -85,6 +85,3 @@ prompt_ab/
 | Cost | **$0.004** | $0.005 | variant_A |
 
 **Winner: variant_B** - Examples giúp LLM hiểu đúng/sai cho từng loại lỗi
-
----
-
