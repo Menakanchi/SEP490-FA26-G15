@@ -1,0 +1,42 @@
+{
+  "experiment_name": "results",
+  "timestamp": "2026-08-27T10:49:22.522916",
+  "nodes": {
+    "generate_draft": {
+      "variant_A": {
+        "success_rate": 0.92,
+        "avg_latency_ms": 2952.2363662719727,
+        "total_cost_usd": 0.006274499999999999
+      },
+      "variant_B": {
+        "success_rate": 1.0,
+        "avg_latency_ms": 4726.522688865662,
+        "total_cost_usd": 0.012432899999999998
+      }
+    },
+    "parse_intent": {
+      "variant_A": {
+        "success_rate": 0.86,
+        "avg_latency_ms": 2222.901487350464,
+        "total_cost_usd": 0.006951599999999999
+      },
+      "variant_B": {
+        "success_rate": 0.98,
+        "avg_latency_ms": 1988.037748336792,
+        "total_cost_usd": 0.014489250000000004
+      }
+    },
+    "repair_draft": {
+      "variant_A": {
+        "success_rate": 0.9,
+        "avg_latency_ms": 4812.800105412801,
+        "total_cost_usd": 0.004038149999999999
+      },
+      "variant_B": {
+        "success_rate": 0.9666666666666667,
+        "avg_latency_ms": 4039.7278229395547,
+        "total_cost_usd": 0.00406425
+      }
+    }
+  }
+}

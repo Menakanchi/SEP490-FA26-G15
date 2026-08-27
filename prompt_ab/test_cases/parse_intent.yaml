@@ -1,0 +1,574 @@
+# Test cases cho parse_intent node
+# 50 cases cover đa dạng scenarios
+
+test_cases:
+  # ============================================
+  # NHÓM 1: Full 4 fields (15 cases)
+  # ============================================
+  - id: 1
+    user_input: "Xe máy chạy 80 km/h ở làn bên trái, vượt lên từ phía sau ô tô đang chạy 60 km/h, tạt đầu rồi phanh gấp còn 40 km/h. Trời quang, ban ngày, cao tốc."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+      road_type: "highway"
+      weather: "clear"
+      inferred: []
+      specific_type: "xe máy"
+      specific_action: "tạt đầu"
+
+  - id: 2
+    user_input: "Xe tải chạy trước phanh gấp đột ngột khi trời sương mù, ego chạy 50 km/h phía sau."
+    expected:
+      actor_type: "truck"
+      maneuver: "sudden_brake"
+      road_type: null
+      weather: "fog"
+      inferred: []
+      specific_type: "xe tải"
+      specific_action: "phanh gấp"
+
+  - id: 3
+    user_input: "Người đi bộ bất ngờ băng qua đường trong sương mù trên đường đô thị, ego đang chạy 40 km/h."
+    expected:
+      actor_type: "pedestrian"
+      maneuver: "jaywalk"
+      road_type: "urban_straight"
+      weather: "fog"
+      inferred: []
+      specific_type: "người đi bộ"
+      specific_action: "bất ngờ băng qua đường"
+
+  - id: 4
+    user_input: "Xe ô tô đi ngược chiều đột ngột xuất hiện trên đường cao tốc, ego đang chạy 80 km/h."
+    expected:
+      actor_type: "car"
+      maneuver: "wrong_way"
+      road_type: "highway"
+      weather: null
+      inferred: []
+      specific_type: "xe ô tô"
+      specific_action: "đi ngược chiều"
+
+  - id: 5
+    user_input: "Xe máy chạy nhanh 70 km/h cắt ngang đầu xe bus đang chạy 40 km/h trên đường đô thị."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+      road_type: "urban_straight"
+      weather: null
+      inferred: []
+      specific_type: "xe máy"
+      specific_action: "cắt ngang đầu"
+
+  - id: 6
+    user_input: "Xe tải dừng đột ngột giữa làn đường cao tốc, ego đang chạy 80 km/h phía sau."
+    expected:
+      actor_type: "truck"
+      maneuver: "stop_in_lane"
+      road_type: "highway"
+      weather: null
+      inferred: []
+      specific_type: "xe tải"
+      specific_action: "dừng đột ngột giữa làn"
+
+  - id: 7
+    user_input: "Xe đạp di chuyển chậm 15 km/h lấn dần vào làn đường xe máy trên đường đô thị khi trời mưa."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "lane_drift"
+      road_type: "urban_straight"
+      weather: "rain"
+      inferred: []
+      specific_type: "xe đạp"
+      specific_action: "lấn dần vào làn"
+
+  - id: 8
+    user_input: "Xe máy vượt đèn đỏ đâm vào xe ego đang đi đúng làn đường của mình trên đường phố."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "run_red_light"
+      road_type: "urban_straight"
+      weather: null
+      inferred: []
+      specific_type: "xe máy"
+      specific_action: "vượt đèn đỏ"
+
+  - id: 9
+    user_input: "Xe con 60 km/h cắt làn trước xe tải đang chạy 50 km/h trên đường cao tốc khi trời mưa."
+    expected:
+      actor_type: "car"
+      maneuver: "cut_in"
+      road_type: "highway"
+      weather: "rain"
+      inferred: []
+      specific_type: "xe con"
+      specific_action: "cắt làn"
+
+  - id: 10
+    user_input: "Người đi bộ chạy qua đường bất ngờ trong sương mù, ego đang chạy 30 km/h."
+    expected:
+      actor_type: "pedestrian"
+      maneuver: "jaywalk"
+      road_type: null
+      weather: "fog"
+      inferred: []
+      specific_type: "người đi bộ"
+      specific_action: "chạy qua đường bất ngờ"
+
+  - id: 11
+    user_input: "Xe máy vượt ẩu từ làn bên phải trong mưa to, cắt ngang đường ego đang chạy 45 km/h trên đường đô thị."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+      road_type: "urban_straight"
+      weather: "heavy_rain"
+      inferred: []
+      specific_type: "xe máy"
+      specific_action: "vượt ẩu"
+
+  - id: 12
+    user_input: "Xe tải chạy chậm 30 km/h lấn dần vào làn của ego đang chạy 50 km/h trên đường nội bộ khi trời quang."
+    expected:
+      actor_type: "truck"
+      maneuver: "lane_drift"
+      road_type: "residential_narrow"
+      weather: "clear"
+      inferred: []
+      specific_type: "xe tải"
+      specific_action: "lấn dần vào làn"
+
+  - id: 13
+    user_input: "Xe ô tô đi ngược chiều trên đường cao tốc đối đầu với ego đang chạy 100 km/h khi trời quang."
+    expected:
+      actor_type: "car"
+      maneuver: "wrong_way"
+      road_type: "highway"
+      weather: "clear"
+      inferred: []
+      specific_type: "xe ô tô"
+      specific_action: "đi ngược chiều"
+
+  - id: 14
+    user_input: "Xe máy phanh gấp đột ngột phía trước ego khi trời sương mù, ego đang chạy 55 km/h trên đường đô thị."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "sudden_brake"
+      road_type: "urban_straight"
+      weather: "fog"
+      inferred: []
+      specific_type: "xe máy"
+      specific_action: "phanh gấp"
+
+  - id: 15
+    user_input: "Người đi bộ băng qua đường bất ngờ khi trời mưa nhẹ, ego đang chạy 35 km/h trên đường phố."
+    expected:
+      actor_type: "pedestrian"
+      maneuver: "jaywalk"
+      road_type: "urban_straight"
+      weather: "rain"
+      inferred: []
+      specific_type: "người đi bộ"
+      specific_action: "băng qua đường bất ngờ"
+
+  # ============================================
+  # NHÓM 2: Thiếu weather (6 cases)
+  # ============================================
+  - id: 16
+    user_input: "Ô tô đâm đít xe máy phía trước trên đường cao tốc."
+    expected:
+      actor_type: "car"
+      maneuver: "sudden_brake"
+      road_type: "highway"
+      weather: null
+      inferred: []
+      specific_type: "ô tô"
+      specific_action: "đâm đít"
+
+  - id: 17
+    user_input: "Xe máy tạt đầu ô tô trên đường đô thị."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+      road_type: "urban_straight"
+      weather: null
+      inferred: []
+      specific_type: "xe máy"
+      specific_action: "tạt đầu"
+
+  - id: 18
+    user_input: "Xe tải đi ngược chiều trên đường cao tốc."
+    expected:
+      actor_type: "truck"
+      maneuver: "wrong_way"
+      road_type: "highway"
+      weather: null
+      inferred: []
+      specific_type: "xe tải"
+      specific_action: "đi ngược chiều"
+
+  - id: 19
+    user_input: "Người đi bộ bất ngờ băng qua đường trên đường phố."
+    expected:
+      actor_type: "pedestrian"
+      maneuver: "jaywalk"
+      road_type: "urban_straight"
+      weather: null
+      inferred: []
+      specific_type: "người đi bộ"
+      specific_action: "băng qua đường"
+
+  - id: 20
+    user_input: "Xe đạp lấn dần vào làn xe máy trên đường nội bộ."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "lane_drift"
+      road_type: "residential_narrow"
+      weather: null
+      inferred: []
+      specific_type: "xe đạp"
+      specific_action: "lấn dần vào làn"
+
+  - id: 21
+    user_input: "Xe buýt phanh gấp đột ngột trên đường đô thị, ego đang chạy phía sau."
+    expected:
+      actor_type: "truck"
+      maneuver: "sudden_brake"
+      road_type: "urban_straight"
+      weather: null
+      inferred: []
+      specific_type: "xe buýt"
+      specific_action: "phanh gấp"
+
+  # ============================================
+  # NHÓM 3: Thiếu road_type (6 cases)
+  # ============================================
+  - id: 22
+    user_input: "Xe máy tạt đầu ô tô lúc trời mưa."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+      road_type: null
+      weather: "rain"
+      inferred: []
+      specific_type: "xe máy"
+      specific_action: "tạt đầu"
+
+  - id: 23
+    user_input: "Xe tải phanh gấp đột ngột khi trời sương mù."
+    expected:
+      actor_type: "truck"
+      maneuver: "sudden_brake"
+      road_type: null
+      weather: "fog"
+      inferred: []
+      specific_type: "xe tải"
+      specific_action: "phanh gấp"
+
+  - id: 24
+    user_input: "Ô tô đi ngược chiều đột ngột khi trời nắng."
+    expected:
+      actor_type: "car"
+      maneuver: "wrong_way"
+      road_type: null
+      weather: "clear"
+      inferred: []
+      specific_type: "ô tô"
+      specific_action: "đi ngược chiều"
+
+  - id: 25
+    user_input: "Người đi bộ băng qua đường bất ngờ khi trời mưa nhẹ."
+    expected:
+      actor_type: "pedestrian"
+      maneuver: "jaywalk"
+      road_type: null
+      weather: "rain"
+      inferred: []
+      specific_type: "người đi bộ"
+      specific_action: "băng qua đường"
+
+  - id: 26
+    user_input: "Xe máy vượt đèn đỏ khi trời quang."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "run_red_light"
+      road_type: null
+      weather: "clear"
+      inferred: []
+      specific_type: "xe máy"
+      specific_action: "vượt đèn đỏ"
+
+  - id: 27
+    user_input: "Xe khách dừng đột ngột giữa đường khi trời mưa to."
+    expected:
+      actor_type: "truck"
+      maneuver: "stop_in_lane"
+      road_type: null
+      weather: "heavy_rain"
+      inferred: []
+      specific_type: "xe khách"
+      specific_action: "dừng đột ngột giữa đường"
+
+  # ============================================
+  # NHÓM 4: Thiếu weather + road_type (6 cases)
+  # ============================================
+  - id: 28
+    user_input: "Xe máy chạy 80 km/h vượt lên từ phía sau ô tô 60 km/h rồi tạt đầu."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+      road_type: null
+      weather: null
+      inferred: []
+      specific_type: "xe máy"
+      specific_action: "tạt đầu"
+
+  - id: 29
+    user_input: "Xe tải phanh gấp đột ngột phía trước xe đang chạy."
+    expected:
+      actor_type: "truck"
+      maneuver: "sudden_brake"
+      road_type: null
+      weather: null
+      inferred: []
+      specific_type: "xe tải"
+      specific_action: "phanh gấp"
+
+  - id: 30
+    user_input: "Ô tô đi ngược chiều đối đầu với xe đang chạy."
+    expected:
+      actor_type: "car"
+      maneuver: "wrong_way"
+      road_type: null
+      weather: null
+      inferred: []
+      specific_type: "ô tô"
+      specific_action: "đi ngược chiều"
+
+  - id: 31
+    user_input: "Người đi bộ bất ngờ xuất hiện trên đường."
+    expected:
+      actor_type: "pedestrian"
+      maneuver: "jaywalk"
+      road_type: null
+      weather: null
+      inferred: []
+      specific_type: "người đi bộ"
+      specific_action: "bất ngờ xuất hiện"
+
+  - id: 32
+    user_input: "Xe đạp lấn dần vào làn xe đang chạy."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "lane_drift"
+      road_type: null
+      weather: null
+      inferred: []
+      specific_type: "xe đạp"
+      specific_action: "lấn dần vào làn"
+
+  - id: 33
+    user_input: "Xe con cắt làn trước xe đang chạy phía trước."
+    expected:
+      actor_type: "car"
+      maneuver: "cut_in"
+      road_type: null
+      weather: null
+      inferred: []
+      specific_type: "xe con"
+      specific_action: "cắt làn"
+
+  # ============================================
+  # NHÓM 5: Thiếu actor_type/ maneuver
+  # ============================================
+  - id: 34
+    user_input: "Tình huống tạt đầu trên đường cao tốc lúc trời mưa."
+    expected:
+      actor_type: "car"
+      maneuver: "cut_in"
+      road_type: "highway"
+      weather: "rain"
+      inferred: ["actor_type"]
+      specific_type: null
+      specific_action: "tạt đầu"
+
+  - id: 35
+    user_input: "Phóng nhanh vượt lên từ phía sau rồi tạt đầu trên đường."
+    expected:
+      actor_type: "car"
+      maneuver: "cut_in"
+      road_type: null
+      weather: null
+      inferred: ["actor_type"]
+      specific_type: null
+      specific_action: "tạt đầu"
+
+  - id: 36
+    user_input: "Va chạm trên đường khi trời mưa."
+    expected:
+      actor_type: null
+      maneuver: null
+      road_type: null
+      weather: "rain"
+      inferred: []
+      specific_type: null
+      specific_action: null
+
+  - id: 37
+    user_input: "Chở nặng di chuyển ngang qua đường trước xe đang chạy."
+    expected:
+      actor_type: "truck"
+      maneuver: "cut_in"
+      road_type: null
+      weather: null
+      inferred: ["actor_type"]
+      specific_type: null
+      specific_action: "di chuyển ngang qua đường"
+
+  - id: 38
+    user_input: "Đi ngược chiều đối đầu với xe đang chạy 80 km/h."
+    expected:
+      actor_type: "car"
+      maneuver: "wrong_way"
+      road_type: null
+      weather: null
+      inferred: ["actor_type"]
+      specific_type: null
+      specific_action: "đi ngược chiều"
+
+  - id: 39
+    user_input: "Xe máy vượt từ làn bên phải vào làn của xe đang chạy trên đường cao tốc."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "cut_in"
+      road_type: "highway"
+      weather: null
+      inferred: ["maneuver"]
+      specific_type: "xe máy"
+      specific_action: null
+
+  - id: 40
+    user_input: "Xe gặp chướng ngại vật phía trước, khiến xe phía sau phải xử lý."
+    expected:
+      actor_type: "car"
+      maneuver: "sudden_brake"
+      road_type: null
+      weather: null
+      inferred: ["actor_type"]
+      specific_type: null
+      specific_action: "gặp chướng ngại vật"
+
+  - id: 41
+    user_input: "Xe đi trên đường cao tốc gặp tình huống bất ngờ."
+    expected:
+      actor_type: "car"
+      maneuver: null
+      road_type: "highway"
+      weather: null
+      inferred: []
+      specific_type: "xe"
+      specific_action: null
+
+  - id: 42
+    user_input: "Phương tiện hai bánh lấn dần sang làn bên cạnh trên đường."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "lane_drift"
+      road_type: null
+      weather: null
+      inferred: ["maneuver"]
+      specific_type: "phương tiện hai bánh"
+      specific_action: null
+
+  - id: 43
+    user_input: "Xe gặp tình huống bất ngờ trên đường, khiến va chạm với xe đang chạy."
+    expected:
+      actor_type: null
+      maneuver: null
+      road_type: null
+      weather: null
+      inferred: []
+      specific_type: null
+      specific_action: null
+
+  # ============================================
+  # NHÓM 7: Thiếu actor_type + maneuver (2 cases)
+  # ============================================
+  - id: 44
+    user_input: "Va chạm trên đường đô thị."
+    expected:
+      actor_type: null
+      maneuver: null
+      road_type: "urban_straight"
+      weather: null
+      inferred: []
+      specific_type: null
+      specific_action: null
+
+  - id: 45
+    user_input: "Tai nạn xảy ra trên đường cao tốc."
+    expected:
+      actor_type: null
+      maneuver: null
+      road_type: "highway"
+      weather: null
+      inferred: []
+      specific_type: null
+      specific_action: null
+
+  # ============================================
+  # NHÓM 8: Edge cases (5 cases)
+  # ============================================
+  - id: 46
+    user_input: "Xe nâng chở hàng di chuyển ngang qua đường nội bộ khi trời quang."
+    expected:
+      actor_type: "truck"
+      maneuver: "cut_in"
+      road_type: "residential_narrow"
+      weather: "clear"
+      inferred: []
+      specific_type: "xe nâng chở hàng"
+      specific_action: "di chuyển ngang qua đường"
+
+  - id: 47
+    user_input: "Đoàn xe đạp đi hàng ba chiếm trọn làn ô tô trên đường phố."
+    expected:
+      actor_type: "motorcycle"
+      maneuver: "lane_drift"
+      road_type: "urban_straight"
+      weather: null
+      inferred: []
+      specific_type: "đoàn xe đạp"
+      specific_action: "đi hàng ba chiếm trọn làn"
+
+  - id: 48
+    user_input: "Xe khách 16 chỗ phanh gấp đột ngột trên đường đô thị khi trời mưa."
+    expected:
+      actor_type: "truck"
+      maneuver: "sudden_brake"
+      road_type: "urban_straight"
+      weather: "rain"
+      inferred: []
+      specific_type: "xe khách 16 chỗ"
+      specific_action: "phanh gấp"
+
+  - id: 49
+    user_input: "Xe container đi ngược chiều trên đường cao tốc, ego đang chạy 90 km/h."
+    expected:
+      actor_type: "truck"
+      maneuver: "wrong_way"
+      road_type: "highway"
+      weather: null
+      inferred: []
+      specific_type: "xe container"
+      specific_action: "đi ngược chiều"
+
+  - id: 50
+    user_input: "Xe ben chở bê tông lấn dần vào làn xe đang chạy trên đường nội bộ."
+    expected:
+      actor_type: "truck"
+      maneuver: "lane_drift"
+      road_type: "residential_narrow"
+      weather: null
+      inferred: []
+      specific_type: "xe ben"
+      specific_action: "lấn dần vào làn"
