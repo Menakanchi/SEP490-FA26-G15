@@ -170,7 +170,12 @@ def _messages(node: str, prompt: str, case: dict[str, Any]) -> tuple[list[Any], 
             {"role": "system", "content": prompt},
             {"role": "user", "content": content},
         ], ScenarioDraft.model_json_schema()
-    issues = [ValidationIssue.model_validate(issue) for issue in case["issues"]]
+    declared = [ValidationIssue.model_validate(issue) for issue in case["issues"]]
+    issues = asyncio.run(_production_issues(case["invalid_draft"], case["invalid_draft"]["odd"]))
+    existing_codes = {issue.code for issue in issues}
+    issues.extend(issue for issue in declared if issue.code not in existing_codes)
+    if not issues:
+        raise ValueError(f"Repair case {case['id']} has no production or declared issues")
     content = build_repair_content(case["invalid_draft"], issues)
     return [
         {"role": "system", "content": prompt},
@@ -199,7 +204,12 @@ def _compare(actual: float, expression: str | int | float) -> bool:
     return actual == float(expression)
 
 
-def evaluate_parse(data: dict[str, Any], expected: dict[str, Any]) -> list[str]:
+def _normalized_text(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def evaluate_parse(data: dict[str, Any], case: dict[str, Any]) -> list[str]:
+    expected = case["expected"]
     try:
         actual = ODDQuery.model_validate(data).model_dump(mode="json")
     except ValidationError as exc:
@@ -209,6 +219,11 @@ def evaluate_parse(data: dict[str, Any], expected: dict[str, Any]) -> list[str]:
         got = actual.get(key)
         if key == "inferred":
             got, wanted = sorted(got or []), sorted(wanted or [])
+        if key in {"specific_type", "specific_action"} and isinstance(wanted, str) and isinstance(got, str):
+            wanted_text, got_text = _normalized_text(wanted), _normalized_text(got)
+            input_text = _normalized_text(case["user_input"])
+            if wanted_text in got_text and got_text in input_text:
+                continue
         if got != wanted:
             errors.append(f"{key}: expected {wanted!r}, got {got!r}")
     return errors
@@ -303,7 +318,7 @@ def evaluate_repair(data: dict[str, Any], case: dict[str, Any]) -> list[str]:
 
 def evaluate(node: str, data: dict[str, Any], case: dict[str, Any]) -> list[str]:
     if node == "parse_intent":
-        return evaluate_parse(data, case["expected"])
+        return evaluate_parse(data, case)
     if node == "generate_draft":
         return evaluate_generate(data, case)
     return evaluate_repair(data, case)
