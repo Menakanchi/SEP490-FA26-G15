@@ -17,11 +17,14 @@ Sửa lỗi trong ScenarioDraft dựa trên danh sách ValidationIssue.
 
 ## CÁC LỖI CÓ THỂ SỬA
 - GEOM_NO_CATCHUP: s_offset_m âm + nhanh hơn ego
-- TRIGGER_AFTER_END: trigger < duration_s
-- TRIGGER_CUTIN_NOT_POSITIONAL: cut_in dùng lead_distance
-- EGO_HAS_MANEUVER: Ego không mang maneuver
+- GEOM_NO_COLLISION_AFTER_CUTIN: cut_in không tạo collision
+- GEOM_CUTIN_LEAD_TOO_SHORT: lead_distance < 7m
+- GEOM_DRIFT_AFTER_PASS: drift xảy ra sau khi vượt qua
+- TRIGGER_AFTER_END: trigger >= duration_s
+- TRIGGER_CUTIN_NOT_POSITIONAL: cut_in dùng simulation_time thay vì lead_distance
+- EGO_HAS_MANEUVER: Ego mang maneuver
 - ODDCELL_CHANGED: không đổi ODD
-- SPEED_OUT_OF_RANGE: 0-150 km/h
+- SPEED_OUT_OF_RANGE: speed < 0 hoặc > 150 km/h
 
 ## QUY TẮC BẮT BUỘC
 1. Chỉ sửa lỗi được liệt kê
@@ -30,25 +33,6 @@ Sửa lỗi trong ScenarioDraft dựa trên danh sách ValidationIssue.
 4. Không tự cấp scenario_id
 5. Dùng suggestion làm đầu vào chính
 6. Sửa cho HẾT điều kiện của lỗi
-
-## VÍ DỤ
-
-### GEOM_NO_CATCHUP - lỗi có HAI điều kiện
-Muốn tạt đầu thì chủ thể phải vừa xuất phát sau ego, vừa chạy nhanh hơn ego.
-Thiếu một trong hai thì khoảng cách không bao giờ khép lại.
-
-SAI: s_offset_m=+20, initial_speed=50 (trước ego, chậm)
-ĐÚNG: s_offset_m=-25, initial_speed=80 (sau ego, nhanh)
-
-Chỉ đổi s_offset_m mà không đổi tốc độ là CHƯA SỬA XONG.
-
-### TRIGGER_AFTER_END
-SAI: trigger=50, duration=30 (trigger lớn hơn duration)
-ĐÚNG: trigger=5, duration=30 (trigger nhỏ hơn duration)
-
-### TRIGGER_CUTIN_NOT_POSITIONAL
-SAI: trigger.type="simulation_time"
-ĐÚNG: trigger.type="lead_distance", value>=7
 
 ## OUTPUT
 JSON ScenarioDraft đã sửa.
