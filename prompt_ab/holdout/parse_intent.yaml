@@ -519,15 +519,15 @@ test_cases:
   # NHÓM 8: Edge cases (5 cases)
   # ============================================
   - id: 46
-    user_input: "Xe nâng chở hàng di chuyển ngang qua đường nội bộ khi trời quang."
+    user_input: "Xe cẩu công trình bất ngờ cắt mặt ô tô trong khu dân cư hẹp lúc trời nắng."
     expected:
       actor_type: "truck"
       maneuver: "cut_in"
       road_type: "residential_narrow"
       weather: "clear"
       inferred: []
-      specific_type: "xe nâng chở hàng"
-      specific_action: "di chuyển ngang qua đường"
+      specific_type: "xe cẩu công trình"
+      specific_action: "bất ngờ cắt mặt"
 
   - id: 47
     user_input: "Đoàn xe đạp đi hàng ba chiếm trọn làn ô tô trên đường phố."

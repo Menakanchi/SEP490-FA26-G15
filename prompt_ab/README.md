@@ -1,87 +1,66 @@
-# Prompt A/B Testing Framework
+# Prompt benchmark
 
-Framework để so sánh hiệu quả của các prompt variants.
+Benchmark so sánh prompt bằng đúng schema, structured-output client, model
+escalation, token accounting và validator mà production sử dụng.
 
-## Cấu trúc
+## Phạm vi
 
-```
+PR này chỉ cung cấp benchmark infrastructure. Kết quả benchmark không tự động
+thay prompt trong `src/agents/prompts/`; việc triển khai một winner phải nằm ở
+PR riêng và dẫn tới một kết quả tái lập từ framework này.
+
+```text
 prompt_ab/
-├── prompts/              # Prompt variants
-│   ├── parse_intent/
-│   ├── generate_draft/
-│   └── repair_draft/
-├── test_cases/          # Test cases YAML
-├── results/            # Kết quả A/B test
-├── runner.py           # Test runner
-└── README.md
+├── holdout/        # dữ liệu đánh giá, không được chép vào prompt
+├── prompts/        # variant A/B và few-shot examples
+├── results/        # output được sinh tự động
+└── runner.py
 ```
 
-## Tổng kết
+## Chạy benchmark
 
-| Node | variant_A | variant_B | Winner |
-|------|-----------|----------|--------|
-| parse_intent | 86% | **98%** | variant_B |
-| generate_draft | 92% | **100%** | variant_B |
-| repair_draft | 90% | **100%** | variant_B |
+Benchmark gọi API thật và từ chối chạy nếu thiếu key. Mỗi case bắt buộc chạy ít
+nhất ba lần.
 
-## Chi tiết
+```bash
+OPENAI_API_KEY=... uv run --locked python prompt_ab/runner.py \
+  --repeats 3 --workers 4 --experiment-name 20260827_holdout_v1
+```
 
-### parse_intent
+Có thể giới hạn node trong lúc phát triển:
 
-**Mục đích:** Trích xuất ODDQuery từ mô tả tiếng Việt
+```bash
+OPENAI_API_KEY=... uv run --locked python prompt_ab/runner.py \
+  --nodes parse_intent --repeats 3 --experiment-name parse_intent_probe
+```
 
-| Khía cạnh | variant_A | variant_B |
-|-----------|---------|----------|
-| Style | Zero-shot | Few-shot |
-| Examples | ❌ Không | ✅ 6 examples |
-| Rules | 7 rules | 7 rules + bổ sung |
-| Độ dài | 2541 chars | 5708 chars |
+Mỗi thư mục kết quả chứa:
 
-| Metrics | variant_A | variant_B | Winner |
-|---------|---------|----------|--------|
-| Success Rate | 86% (43/50) | **98%** (49/50) | variant_B |
-| Latency (avg) | 2223ms | **1988ms** | variant_B |
-| Cost | **$0.007** | $0.014 | variant_A |
+- `results.json`: từng output, lỗi evaluator, token, cost và latency;
+- `summary.json`: pass rate, median/p95 latency và tổng cost;
+- `REPORT.md`: bảng tóm tắt sinh từ chính summary.
 
-**Winner: variant_B** - Few-shot giúp LLM hiểu format và rules tốt hơn
+Metadata bao gồm commit SHA, model production/escalation, số lần lặp và SHA-256
+của từng prompt/holdout file. Không sửa report hoặc summary bằng tay.
 
----
+## Cách chấm
 
-### generate_draft
+- `parse_intent`: validate bằng `ODDQuery` và so cả bảy trường, bao gồm
+  `inferred`, `specific_type`, `specific_action`.
+- `generate_draft`: validate bằng `ScenarioDraft`, chạy `validate_node`, rồi
+  kiểm tra toàn bộ expectation về actor, ego, maneuver, vị trí và trigger.
+- `repair_draft`: validate output bằng `ScenarioDraft`, chạy lại
+  `validate_node`, và kiểm tra toàn bộ post-condition của case.
 
-**Mục đích:** Sinh ScenarioDraft từ ODDQuery
+Runner dừng ngay nếu một holdout case khai báo expectation mà evaluator chưa hỗ
+trợ. Nó cũng chặn input holdout bị chép nguyên văn vào prompt.
 
-| Khía cạnh | variant_A | variant_B |
-|-----------|---------|----------|
-| Style | Zero-shot | Few-shot + CoT |
-| Examples | ❌ Không | ✅ 2 examples |
-| Chain-of-Thought | ❌ Không | ✅ Có |
-| Độ dài | 1797 chars | 3593 chars |
+## Chọn winner
 
-| Metrics | variant_A | variant_B | Winner |
-|---------|---------|----------|--------|
-| Success Rate | 92% (46/50) | **100%** (50/50) | variant_B |
-| Latency (avg) | **2952ms** | 4727ms | variant_A |
-| Cost | **$0.006** | $0.012 | variant_A |
+Winner chỉ được công bố khi:
 
-**Winner: variant_B** - CoT reasoning giúp LLM suy nghĩ trước khi sinh JSON
+- pass rate cao hơn ít nhất 5 điểm phần trăm; và
+- tổng cost không vượt quá 2 lần variant còn lại.
 
----
-
-### repair_draft
-
-**Mục đích:** Sửa lỗi ScenarioDraft
-
-| Khía cạnh | variant_A | variant_B |
-|-----------|---------|----------|
-| Style | Issue list | Issue list + examples |
-| Examples | ❌ Không | ✅ Có |
-| Độ dài | 994 chars | 1049 chars |
-
-| Metrics | variant_A | variant_B | Winner |
-|---------|---------|----------|--------|
-| Success Rate | 90% (27/30) | **100%** (30/30) | variant_B |
-| Latency (avg) | **3907ms** | 5214ms | variant_A |
-| Cost | **$0.004** | $0.005 | variant_A |
-
-**Winner: variant_B** - Examples giúp LLM hiểu đúng/sai cho từng loại lỗi
+Nếu không đạt cả hai điều kiện, kết quả là `inconclusive`; không thay prompt
+production dựa trên kết quả đó.
