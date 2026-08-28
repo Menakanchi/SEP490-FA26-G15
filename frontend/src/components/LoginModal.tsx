@@ -40,7 +40,9 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
   if (!isOpen) return null;
 
   const navigateTarget = (r: Role) => {
-    if (r === "reviewer" || r === "admin") {
+    if (r === "admin") {
+      router.push("/admin");
+    } else if (r === "reviewer") {
       router.push("/review");
     } else {
       router.push("/");

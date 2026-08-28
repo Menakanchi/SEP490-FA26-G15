@@ -26,7 +26,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, HelpCircle, XCircle } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
+import { PageHeader } from "@/components/PageHeader";
 import { getLabelQueue, submitIntentLabel } from "@/services/api";
+
 import type { LabelQueueItem } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 
@@ -103,7 +105,7 @@ function LabelContent() {
         </div>
       </div>
 
-      <section className="glass-card p-6 space-y-5">
+      <section className="bg-white/75 dark:bg-slate-900/85 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] p-6 sm:p-8 space-y-5 shadow-2xl">
         <div>
           <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">
             Câu mô tả gốc — đây là thứ bạn chấm kịch bản dựa vào
@@ -329,16 +331,17 @@ function Choice({ icon, label, tone, onClick, disabled }: {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="space-y-5 p-6 max-w-4xl">
-      <header>
-        <h1 className="text-2xl font-bold text-slate-100">Kiểm định L4</h1>
-        <p className="text-sm text-slate-400 mt-1 leading-relaxed">
-          Người kiểm định xác nhận kịch bản có tái hiện đúng ý định mô tả hay không. Phán quyết L4 của máy được{" "}
-          <strong>giấu đi</strong> cho tới khi bạn bấm — thấy trước thì sẽ gật theo, và con số khớp
-          thu được là con số vô nghĩa.
-        </p>
-      </header>
+    <div className="space-y-6 max-w-4xl mx-auto font-sans">
+      <div className="bg-white/70 dark:bg-slate-900/80 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 shadow-2xl rounded-[32px] p-6 sm:p-7 transition-all">
+        <PageHeader
+          icon={CheckCircle2}
+          title="Chấm ý định kịch bản (L4)"
+          subtitle="Đánh giá trực quan quỹ đạo mô phỏng để chấm nhãn người (correct / wrong / unsure) đo lại L4."
+          badge="Human Labeling"
+        />
+      </div>
       {children}
     </div>
   );
 }
+

@@ -11,16 +11,46 @@
  */
 
 import { useEffect, useState } from "react";
-import { BarChart3, Grid3x3, ShieldAlert } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, BarChart3, Grid3x3, ShieldAlert, Loader2 } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
+import { PageHeader } from "@/components/PageHeader";
+import { useAuth } from "@/context/AuthContext";
 import { getQualityReport } from "@/services/api";
 import type { QualityReport } from "@/types";
 
+function MetricsRoleGuard({ children }: { children: React.ReactNode }) {
+  const { role, user, isLoading, isAuthenticated } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    const currentRole = role || user?.role;
+    if (!isLoading && isAuthenticated && currentRole === "creator") {
+      router.replace("/");
+    }
+  }, [isLoading, isAuthenticated, role, user?.role, router]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-blue-600">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
+
+  const currentRole = role || user?.role;
+  if (currentRole === "creator") {
+    return null;
+  }
+
+  return <AuthGate allowedRoles={["admin"]}>{children}</AuthGate>;
+}
+
 export default function MetricsPage() {
   return (
-    <AuthGate>
+    <MetricsRoleGuard>
       <MetricsContent />
-    </AuthGate>
+    </MetricsRoleGuard>
   );
 }
 
@@ -105,13 +135,15 @@ function pct(rate: number | null) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="space-y-6 p-6 max-w-6xl">
-      <header>
-        <h1 className="text-2xl font-bold text-slate-100">Báo cáo chất lượng</h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Tính lại từ kho mỗi lần mở trang — không có bảng tổng hợp riêng để lệch.
-        </p>
-      </header>
+    <div className="space-y-6 max-w-6xl mx-auto font-sans">
+      <div className="bg-white/70 dark:bg-slate-900/80 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 shadow-2xl rounded-[32px] p-6 sm:p-7 transition-all">
+        <PageHeader
+          icon={BarChart3}
+          title="Báo cáo chất lượng (M1 · M2 · M3)"
+          subtitle="Tính toán trực tiếp từ kho kịch bản — M1 Tỷ lệ hợp lệ L1-L4, M2 Độ phủ ODD, M3 Tỷ lệ tái hiện nguy hiểm"
+          badge="Quality Metrics"
+        />
+      </div>
       {children}
     </div>
   );
@@ -121,10 +153,10 @@ function Section({ icon, title, note, children }: {
   icon: React.ReactNode; title: string; note: string; children: React.ReactNode;
 }) {
   return (
-    <section className="glass-card p-6 space-y-4">
+    <section className="bg-white/75 dark:bg-slate-900/85 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] p-6 sm:p-8 space-y-4 shadow-2xl">
       <div>
-        <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">{icon}{title}</h2>
-        <p className="text-xs text-slate-400 mt-1 leading-relaxed">{note}</p>
+        <h2 className="text-lg font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">{icon}{title}</h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{note}</p>
       </div>
       {children}
     </section>

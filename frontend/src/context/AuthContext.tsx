@@ -56,6 +56,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const savedUserStr = localStorage.getItem("auth_user");
     const savedToken = localStorage.getItem("forge_token");
+    let savedUsername: string | undefined;
+
+    if (savedUserStr) {
+      try {
+        const parsed = JSON.parse(savedUserStr);
+        savedUsername = parsed.username;
+      } catch {
+        // ignore
+      }
+    }
 
     if (savedToken && savedUserStr) {
       let savedUser: User;
@@ -73,12 +83,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      setToken(savedToken);
       getMe(savedUser.username)
         .then((userData: User) => {
           const userWithRole: User = {
             ...userData,
             id: String(userData.id ?? "usr_01"),
-            name: userData.name || userData.username || "User",
+            name: userData.full_name || userData.name || userData.username || "User",
+            full_name: userData.full_name || userData.name,
+            avatar_url: userData.avatar_url,
             email: userData.email || `${userData.username || "user"}@forge.ai`,
             role: (userData.role as Role) || "creator",
             status: userData.status || "active",
@@ -187,7 +200,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
               const fetchedUser: User = {
                 id: String(res.user.id ?? "usr_01"),
-                name: res.user.name || res.user.username || payload.username,
+                name: res.user.full_name || res.user.name || res.user.username || payload.username,
+                full_name: res.user.full_name || res.user.name,
+                avatar_url: res.user.avatar_url,
                 email: res.user.email || `${payload.username}@forge.ai`,
                 role: (res.user.role as Role) || payload.role || "creator",
                 username: res.user.username || payload.username,
@@ -239,14 +254,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const switchRole = useCallback((newRole: Role) => {
     setUser((prev) => {
+      const newUsername = newRole === "admin" ? "admin" : newRole === "reviewer" ? "reviewer" : newRole === "creator" ? "creator" : newRole;
       const updatedUser: User = prev
-        ? { ...prev, role: newRole }
+        ? { ...prev, role: newRole, username: newUsername }
         : {
             id: `usr_${newRole}_${Date.now().toString().slice(-4)}`,
             name: `${newRole.toUpperCase()} User`,
             email: `${newRole}@forge.ai`,
             role: newRole,
-            username: newRole,
+            username: newUsername,
             status: "active",
           };
       localStorage.setItem("auth_user", JSON.stringify(updatedUser));
@@ -298,6 +314,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateCurrentUser = useCallback((updatedUser: User) => {
+    setUser((prev) => {
+      const merged = { ...prev, ...updatedUser };
+      try {
+        localStorage.setItem("auth_user", JSON.stringify(merged));
+      } catch {
+        // ignore
+      }
+      return merged;
+    });
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -312,6 +340,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         switchRole,
         register,
         approveUser,
+        updateCurrentUser,
       }}
     >
       {children}

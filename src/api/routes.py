@@ -15,7 +15,7 @@ import time
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Body, HTTPException, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from src.agents.graph import build_forge_graph
@@ -49,7 +49,9 @@ from src.models.schemas import (
 )
 from src.services import campaign as campaign_service
 from src.services import db, metrics, tuning
+from src.services.email import send_registration_received_email, send_reviewer_approval_email
 from src.services.library.retriever import SQLiteRetriever
+
 from src.services.llm import collect_provider_metrics, summarize_provider_metrics
 from src.services.near_duplicate import is_near_duplicate
 
@@ -1471,7 +1473,7 @@ class UserUpdateRequest(BaseModel):
 
 
 @router.post("/auth/register")
-async def register_user_endpoint(body: RegisterApiRequest) -> dict:
+async def register_user_endpoint(body: RegisterApiRequest, background_tasks: BackgroundTasks) -> dict:
     existing = db.get_user(body.username)
     if existing:
         raise HTTPException(status_code=400, detail="Username đã tồn tại trên hệ thống")
@@ -1487,12 +1489,21 @@ async def register_user_endpoint(body: RegisterApiRequest) -> dict:
         password=body.password,
     )
 
+    if body.role == "reviewer" and body.email:
+        background_tasks.add_task(
+            send_registration_received_email,
+            to_email=body.email,
+            recipient_name=body.name,
+            username=body.username,
+        )
+
     msg = (
         "Đăng ký tài khoản Reviewer thành công! Yêu cầu của bạn đang chờ Admin phê duyệt và cấp mật khẩu qua Email."
         if body.role == "reviewer"
         else "Đăng ký tài khoản thành công!"
     )
     return {"ok": True, "user": user, "status": status, "message_vi": msg}
+
 
 
 @router.post("/auth/login")
@@ -1539,6 +1550,18 @@ async def login_user_endpoint(body: LoginApiRequest) -> dict:
     }
 
 
+class ProfileUpdateRequest(BaseModel):
+    username: str
+    full_name: str | None = None
+    avatar_url: str | None = None
+
+
+class ChangePasswordApiRequest(BaseModel):
+    username: str
+    old_password: str
+    new_password: str
+
+
 @router.get("/auth/me")
 async def get_me_endpoint(user: str = Query(..., min_length=1)) -> dict:
     """Khôi phục đúng user đã đăng nhập; tuyệt đối không mặc định thành Admin."""
@@ -1546,6 +1569,57 @@ async def get_me_endpoint(user: str = Query(..., min_length=1)) -> dict:
     if not u:
         raise HTTPException(status_code=404, detail="Tài khoản đăng nhập không còn tồn tại")
     return u
+
+
+@router.get("/users/profile")
+async def get_user_profile_endpoint(username: str | None = Query(None), user: str | None = Query(None)) -> dict:
+    target_username = username or user
+    if target_username:
+        u = db.get_user(target_username)
+        if u:
+            return u
+    u = db.get_user("creator") or db.get_user("admin")
+    return u or {
+        "id": "usr_creator",
+        "username": "creator",
+        "name": "Kỹ sư Kịch bản",
+        "full_name": "Kỹ sư Kịch bản",
+        "email": "creator@forge.ai",
+        "role": "creator",
+        "status": "active",
+        "avatar_url": None,
+    }
+
+
+@router.put("/users/profile")
+async def update_user_profile_endpoint(body: ProfileUpdateRequest) -> dict:
+    if not body.username:
+        raise HTTPException(status_code=400, detail="Username là bắt buộc")
+    updated = db.update_user_profile(
+        username=body.username,
+        full_name=body.full_name,
+        avatar_url=body.avatar_url,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+    return {"ok": True, "user": updated}
+
+
+@router.post("/users/change-password")
+async def change_password_endpoint(body: ChangePasswordApiRequest) -> dict:
+    if not body.username or not body.old_password or not body.new_password:
+        raise HTTPException(status_code=400, detail="Vui lòng điền đầy đủ các thông tin bắt buộc")
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Mật khẩu mới phải có ít nhất 6 ký tự")
+
+    success, msg = db.change_user_password(
+        username=body.username,
+        old_password=body.old_password,
+        new_password=body.new_password,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"ok": True, "message_vi": msg}
 
 
 # ===========================================================================
@@ -1610,11 +1684,22 @@ async def delete_admin_user_endpoint(username: str) -> dict:
 
 
 @router.post("/admin/users/{username}/approve")
-async def approve_reviewer_endpoint(username: str) -> dict:
+async def approve_reviewer_endpoint(username: str, background_tasks: BackgroundTasks) -> dict:
     user = db.approve_reviewer_request(username)
     if not user:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Reviewer")
+
+    if user.get("email") and user.get("temp_password"):
+        background_tasks.add_task(
+            send_reviewer_approval_email,
+            to_email=user["email"],
+            recipient_name=user.get("name") or user.get("username", username),
+            username=user.get("username", username),
+            temp_password=user["temp_password"],
+        )
+
     return {"ok": True, "user": user}
+
 
 
 @router.post("/admin/users/{username}/reject")

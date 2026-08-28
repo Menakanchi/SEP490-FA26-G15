@@ -12,8 +12,8 @@ import {
   Clock,
   ToggleLeft,
   ToggleRight,
-  Sparkles,
   AlertTriangle,
+
   Info,
   Users,
   Eye,
@@ -30,6 +30,7 @@ import {
   type GenerateDuplicateMatch,
 } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
+import { useBackground } from "@/context/BackgroundContext";
 import type { GenerationStatus, ValidationMode, ScenarioDetail } from "@/types";
 import {
   ROAD_TYPE_LABELS,
@@ -40,6 +41,8 @@ import {
   renderActorCategoryLabel,
 } from "@/types";
 
+import { PageHeader } from "@/components/PageHeader";
+
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
@@ -47,6 +50,7 @@ function GeneratorPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, role } = useAuth();
+  const { openModal } = useBackground();
 
   // Admin Route Guard: Redirect Admin to /admin
   useEffect(() => {
@@ -226,41 +230,35 @@ function GeneratorPageContent() {
   const isFailed = status?.step === "failed";
 
   return (
-    <div className="min-h-screen p-6 pt-8 font-sans bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <div className="min-h-screen font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
       <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="relative">
-          <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                <Sparkles className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100">
-                  Sinh kịch bản mới (Creator Flow)
-                </h1>
-                <p className="text-sm text-blue-900/80 dark:text-slate-400 font-medium">
-                  Mô tả tình huống tiếng Việt → Tự động trích xuất ODD & tạo OpenSCENARIO 1.0
-                </p>
-              </div>
-            </div>
-            {user && (
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-sky-50/80 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-sky-100 dark:border-slate-800 shadow-sm">
-                <span>Tác giả:</span>
-                <span className="font-bold text-blue-600 dark:text-cyan-400">{user.name || user.username}</span>
-                <span className="uppercase text-[10px] text-blue-600 dark:text-blue-400 font-mono">({role})</span>
-              </span>
-            )}
-          </div>
+        {/* Header Glass Box */}
+        <div className="bg-white/70 dark:bg-slate-900/80 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 shadow-2xl rounded-[32px] p-6 sm:p-7 transition-all">
+          <PageHeader
+            icon={Zap}
+            title="Generator — Sinh kịch bản mới"
+            subtitle="Mô tả tình huống giao thông bằng tiếng Việt → Tự động trích xuất ODD & tạo file OpenSCENARIO 1.0"
+            badge="Creator Flow"
+            actions={
+              <button
+                type="button"
+                onClick={openModal}
+                className="px-4 py-2.5 rounded-2xl bg-white/80 dark:bg-slate-800/80 border border-white/60 dark:border-slate-700/60 text-slate-800 dark:text-slate-200 hover:bg-blue-600 hover:text-white dark:hover:bg-cyan-500 dark:hover:text-slate-950 text-xs font-extrabold shadow-md shadow-blue-500/10 transition flex items-center gap-2 cursor-pointer backdrop-blur-md"
+              >
+                <Sparkle className="w-4 h-4 text-blue-600 dark:text-cyan-400 group-hover:text-white" />
+                <span>Cài đặt Background</span>
+              </button>
+            }
+          />
         </div>
 
-        {/* Form Box */}
-        <div className="bg-white dark:bg-slate-900 border border-sky-100 dark:border-slate-800 shadow-sm rounded-3xl p-6 space-y-4">
-          <label className="block text-sm font-bold text-slate-900 dark:text-slate-100">
+        {/* Input & Behavior Form Glass Box */}
+        <div className="bg-white/70 dark:bg-slate-900/80 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 shadow-2xl rounded-[32px] p-6 sm:p-8 space-y-5 transition-all">
+          <label className="block text-sm font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
             Mô tả tình huống giao thông (Tiếng Việt)
           </label>
           <textarea
-            className="w-full px-4 py-3 bg-sky-50/40 dark:bg-slate-950 border border-sky-200 dark:border-slate-700 rounded-2xl text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 transition min-h-[120px] resize-y font-sans"
+            className="w-full px-5 py-4 bg-white/50 dark:bg-slate-950/60 backdrop-blur-md border border-slate-200/60 dark:border-slate-700/60 rounded-3xl text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 focus:bg-white/90 dark:focus:bg-slate-900/90 transition min-h-[130px] resize-y font-sans shadow-inner"
             placeholder="Ví dụ: ô tô đâm đít xe máy / Xe máy tạt đầu ô tô trên đường cao tốc..."
             value={prompt}
             onChange={(e) => {
@@ -272,14 +270,14 @@ function GeneratorPageContent() {
           />
 
           {clientValidationError && (
-            <div className="p-3.5 rounded-2xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 flex items-center gap-2 text-xs text-amber-900 dark:text-amber-300">
+            <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-950/40 border border-amber-500/30 dark:border-amber-800/80 flex items-center gap-2.5 text-xs font-semibold text-amber-900 dark:text-amber-300">
               <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
               <span>{clientValidationError}</span>
             </div>
           )}
 
           {draftSuccess && (
-            <div className="p-3.5 rounded-2xl bg-green-50/90 dark:bg-green-950/40 border border-green-200 dark:border-green-800/80 flex items-center justify-between gap-2 text-xs text-green-900 dark:text-green-300">
+            <div className="p-4 rounded-2xl bg-green-500/10 dark:bg-green-950/40 border border-green-500/30 dark:border-green-800/80 flex items-center justify-between gap-2.5 text-xs text-green-900 dark:text-green-300 font-semibold">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
                 <span>{draftSuccess}</span>
@@ -336,11 +334,11 @@ function GeneratorPageContent() {
           )}
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3">
               {/* Validation Mode Toggle */}
               <button
                 type="button"
-                className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-white transition cursor-pointer"
+                className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-white bg-white/60 dark:bg-slate-800/60 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 transition cursor-pointer shadow-xs"
                 onClick={() =>
                   setValidationMode((m) => (m === "static" ? "sim" : "static"))
                 }
@@ -359,11 +357,11 @@ function GeneratorPageContent() {
               </button>
 
               {/* Retrieval Limit Selector */}
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-sky-50/70 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-sky-200 dark:border-slate-700">
-                <Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 shadow-xs">
+                <Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-cyan-400" />
                 <span>Số mẫu Retrieve (Limit Top-K):</span>
                 <select
-                  className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-bold px-2 py-0.5 rounded border border-sky-200 dark:border-slate-700 text-xs focus:outline-none focus:border-blue-500"
+                  className="bg-white/90 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-extrabold px-2 py-0.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:border-blue-500"
                   value={retrieveLimit}
                   onChange={(e) => setRetrieveLimit(Number(e.target.value))}
                   disabled={polling || submitting || drafting}
@@ -377,23 +375,23 @@ function GeneratorPageContent() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <button
                 type="button"
-                className="px-4 py-3 bg-sky-50/80 hover:bg-sky-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-blue-700 dark:text-blue-300 font-bold text-xs rounded-xl border border-sky-200 dark:border-slate-700 shadow-xs flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
+                className="px-4 py-3 bg-white/80 hover:bg-white dark:bg-slate-800/80 dark:hover:bg-slate-800 text-blue-700 dark:text-blue-300 font-bold text-xs rounded-2xl border border-slate-200/60 dark:border-slate-700/60 shadow-xs flex items-center gap-2 transition cursor-pointer disabled:opacity-50 backdrop-blur-md"
                 onClick={handleSaveDraft}
                 disabled={!prompt.trim() || polling || submitting || drafting}
               >
                 {drafting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Bookmark className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <Bookmark className="w-4 h-4 text-blue-600 dark:text-cyan-400" />
                 )}
                 {drafting ? "Đang lưu..." : "Lưu nháp"}
               </button>
 
               <button
-                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-600/20 flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-2xl shadow-xl shadow-blue-600/25 flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
                 onClick={() => void handleSubmit(false)}
                 disabled={!prompt.trim() || polling || submitting || drafting}
               >
@@ -410,17 +408,17 @@ function GeneratorPageContent() {
 
         {/* Processing indicator */}
         {polling && !isDone && !isFailed && (
-          <div className="bg-white dark:bg-slate-900 border border-sky-100 dark:border-slate-800 rounded-3xl px-5 py-4 space-y-2 shadow-sm">
+          <div className="bg-white/70 dark:bg-slate-900/80 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] px-6 py-5 space-y-3 shadow-2xl">
             <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
               <span className="flex items-center gap-2">
                 <Loader2 className="w-4 h-4 text-blue-600 dark:text-cyan-400 animate-spin" />
-                Đang xử lý qua các Node: <code className="text-blue-600 dark:text-cyan-300 font-mono">{status?.step}</code>
+                Đang xử lý qua các Node: <code className="text-blue-600 dark:text-cyan-300 font-mono font-bold">{status?.step}</code>
               </span>
-              <span>{status?.progress ?? 0}%</span>
+              <span className="font-mono text-sm font-extrabold text-blue-600 dark:text-cyan-400">{status?.progress ?? 0}%</span>
             </div>
-            <div className="h-2 bg-sky-100 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div className="h-2.5 bg-slate-200/60 dark:bg-slate-800/80 rounded-full overflow-hidden">
               <div
-                className="h-full rounded-full transition-all duration-500 ease-out bg-blue-600"
+                className="h-full rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-blue-600 to-cyan-400"
                 style={{
                   width: `${Math.max(status?.progress ?? 5, 5)}%`,
                 }}
@@ -431,7 +429,7 @@ function GeneratorPageContent() {
 
         {/* Timeout error */}
         {timeoutError && (
-          <div className="bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200 rounded-2xl px-5 py-3 flex items-center gap-2 text-xs font-bold shadow-sm">
+          <div className="bg-amber-500/10 dark:bg-amber-950/40 backdrop-blur-xl border border-amber-500/30 dark:border-amber-900/80 text-amber-900 dark:text-amber-200 rounded-3xl px-6 py-4 flex items-center gap-2.5 text-xs font-bold shadow-xl">
             <Clock className="w-4 h-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
             Đã hết thời gian chờ (2 phút). Vui lòng thử lại.
           </div>
@@ -439,18 +437,18 @@ function GeneratorPageContent() {
 
         {/* Error HTTP 400 / 422 Display */}
         {isFailed && status?.error && (
-          <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-3xl p-6">
+          <div className="bg-red-500/10 dark:bg-red-950/40 backdrop-blur-xl border border-red-500/30 dark:border-red-800/80 rounded-[32px] p-6 shadow-2xl">
             <div className="flex items-start gap-3">
               <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
               <div className="space-y-2">
-                <h3 className="font-bold text-red-900 dark:text-red-300 text-sm">
+                <h3 className="font-extrabold text-red-900 dark:text-red-300 text-sm">
                   Không thể xử lý yêu cầu (HTTP 400 / 422)
                 </h3>
-                <p className="text-xs text-red-950 dark:text-slate-300 leading-relaxed font-mono bg-white dark:bg-slate-900 p-3 rounded-xl border border-red-200 dark:border-red-900/60">
+                <p className="text-xs text-red-950 dark:text-slate-200 leading-relaxed font-mono bg-white/60 dark:bg-slate-900/80 p-3.5 rounded-2xl border border-red-200/60 dark:border-red-900/60">
                   {status.error}
                 </p>
-                <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 pt-1 font-medium">
-                  <Info className="w-3.5 h-3.5 text-blue-600" />
+                <div className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1.5 pt-1 font-medium">
+                  <Info className="w-3.5 h-3.5 text-blue-600 dark:text-cyan-400" />
                   <span>Gợi ý: Hãy nhập câu đầy đủ về loại phương tiện và hành vi va chạm cụ thể.</span>
                 </div>
               </div>
@@ -461,7 +459,7 @@ function GeneratorPageContent() {
         {/* Result & Generated Scenario Details */}
         {isDone && status?.scenario_id && (
           <div className="space-y-5">
-            <div className="bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 rounded-3xl p-6 relative overflow-hidden shadow-sm">
+            <div className="bg-green-500/10 dark:bg-green-950/40 backdrop-blur-xl border border-green-500/30 dark:border-green-800/80 rounded-[32px] p-6 sm:p-7 relative overflow-hidden shadow-2xl">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 text-green-700 dark:text-green-300 font-extrabold text-base">
@@ -477,7 +475,7 @@ function GeneratorPageContent() {
                 </div>
                 <Link
                   href={role === "reviewer" || role === "admin" ? `/review?scenario_id=${status.scenario_id}` : "/library?tab=me"}
-                  className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition"
+                  className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-2xl shadow-md shadow-green-600/20 flex items-center gap-2 transition"
                 >
                   <Eye className="w-4 h-4" />
                   {role === "reviewer" || role === "admin" ? "Mở bước Duyệt" : "Xem trong Thư viện cá nhân"}
@@ -486,11 +484,11 @@ function GeneratorPageContent() {
               </div>
             </div>
 
-            {/* Generated Details Preview */}
+            {/* Generated Details Preview Card */}
             {generatedScenario && (
-              <div className="bg-white dark:bg-slate-900 border border-sky-100 dark:border-slate-800 rounded-3xl p-6 space-y-6 shadow-sm">
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 border-b border-sky-100 dark:border-slate-800 pb-3">
-                  <Info className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <div className="bg-white/75 dark:bg-slate-900/85 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] p-6 sm:p-8 space-y-6 shadow-2xl">
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2 border-b border-slate-200/60 dark:border-slate-800/80 pb-4">
+                  <Info className="w-5 h-5 text-blue-600 dark:text-cyan-400" />
                   Chi tiết Kịch bản & Suy luận (ADR-010 Multi-Actor Preview)
                 </h3>
 

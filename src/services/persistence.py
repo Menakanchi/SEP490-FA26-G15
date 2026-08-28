@@ -227,11 +227,13 @@ users = Table(
     metadata,
     Column("username", String(255), primary_key=True),
     Column("name", String(255), nullable=False),
+    Column("full_name", String(255), nullable=True),
     Column("email", String(255), nullable=False),
     Column("role", String(50), nullable=False, server_default="creator"),
     Column("status", String(50), nullable=False, server_default="active"),
     Column("reason", Text, nullable=True),
     Column("password_hash", String(255), nullable=True),
+    Column("avatar_url", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )

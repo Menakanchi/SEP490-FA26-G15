@@ -106,7 +106,39 @@ def init_db() -> None:
     _migrate_description_normalized(engine)
     _migrate_campaign_id(engine)
     _migrate_scenario_job_metadata(engine)
+    _migrate_user_profile_columns(engine)
     _seed_default_users()
+
+
+def _migrate_user_profile_columns(engine) -> None:
+    """Thêm các cột profile mới (full_name, avatar_url) cho database đã dựng từ trước."""
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(users)")}
+        if "full_name" not in columns:
+            connection.exec_driver_sql("ALTER TABLE users ADD COLUMN full_name VARCHAR(255)")
+        if "avatar_url" not in columns:
+            connection.exec_driver_sql("ALTER TABLE users ADD COLUMN avatar_url TEXT")
+
+
+def _ensure_user_profile_columns_sqlite(cursor: sqlite3.Cursor) -> None:
+    """Tự động kiểm tra và thêm cột full_name, avatar_url cho bảng users nếu chưa có trong kết nối SQLite hiện tại."""
+    try:
+        cursor.execute("PRAGMA table_info(users)")
+        rows = cursor.fetchall()
+        if not rows:
+            return
+        columns = set()
+        for r in rows:
+            if isinstance(r, (tuple, list)) and len(r) > 1:
+                columns.add(r[1])
+            elif hasattr(r, "keys") or isinstance(r, dict):
+                columns.add(r["name"])
+        if "full_name" not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN full_name TEXT")
+        if "avatar_url" not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN avatar_url TEXT")
+    except Exception as e:
+        logger.debug("Auto-migration check for user profile columns: %s", e)
 
 
 def _migrate_campaign_id(engine) -> None:
@@ -1224,14 +1256,22 @@ def get_user(username: str) -> dict | None:
         return None
     d = dict(row)
     d.pop("password_hash", None)
+    if not d.get("full_name"):
+        d["full_name"] = d.get("name")
     return d
 
 
 def get_user_with_hash(username: str) -> dict | None:
-    with _cursor() as cursor:
+    with _cursor(commit=True) as cursor:
+        _ensure_user_profile_columns_sqlite(cursor)
         cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,))
         row = cursor.fetchone()
-    return dict(row) if row else None
+    if not row:
+        return None
+    d = dict(row)
+    if not d.get("full_name"):
+        d["full_name"] = d.get("name")
+    return d
 
 
 def list_users(role: str | None = None, status: str | None = None) -> list[dict]:
@@ -1245,7 +1285,8 @@ def list_users(role: str | None = None, status: str | None = None) -> list[dict]
         params.append(status)
     query += " ORDER BY created_at DESC"
 
-    with _cursor() as cursor:
+    with _cursor(commit=True) as cursor:
+        _ensure_user_profile_columns_sqlite(cursor)
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
@@ -1253,8 +1294,69 @@ def list_users(role: str | None = None, status: str | None = None) -> list[dict]
     for r in rows:
         d = dict(r)
         d.pop("password_hash", None)
+        if not d.get("full_name"):
+            d["full_name"] = d.get("name")
         res.append(d)
     return res
+
+
+def update_user_profile(
+    username: str,
+    full_name: str | None = None,
+    avatar_url: str | None = None,
+) -> dict | None:
+    with _cursor(commit=True) as cursor:
+        _ensure_user_profile_columns_sqlite(cursor)
+
+    u = get_user_with_hash(username)
+    if not u:
+        return None
+
+    new_full_name = full_name if full_name is not None else u.get("full_name") or u.get("name")
+    new_name = new_full_name or u.get("name")
+    new_avatar = avatar_url if avatar_url is not None else u.get("avatar_url")
+    now_str = datetime.now(UTC).isoformat()
+
+    with _cursor(commit=True) as cursor:
+        _ensure_user_profile_columns_sqlite(cursor)
+        cursor.execute(
+            """
+            UPDATE users
+            SET full_name = ?, name = ?, avatar_url = ?, updated_at = ?
+            WHERE LOWER(username) = LOWER(?)
+            """,
+            (new_full_name, new_name, new_avatar, now_str, username),
+        )
+    return get_user(username)
+
+
+def change_user_password(
+    username: str,
+    old_password: str,
+    new_password: str,
+) -> tuple[bool, str]:
+    u = get_user_with_hash(username)
+    if not u:
+        return False, "Người dùng không tồn tại"
+
+    stored_hash = u.get("password_hash")
+    if stored_hash:
+        if not verify_password(old_password, stored_hash):
+            return False, "Mật khẩu hiện tại không chính xác"
+
+    new_hash = hash_password(new_password)
+    now_str = datetime.now(UTC).isoformat()
+
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            UPDATE users
+            SET password_hash = ?, updated_at = ?
+            WHERE LOWER(username) = LOWER(?)
+            """,
+            (new_hash, now_str, username),
+        )
+    return True, "Đổi mật khẩu thành công"
 
 
 def update_user(
