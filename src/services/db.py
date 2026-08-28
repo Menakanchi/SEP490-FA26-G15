@@ -1092,6 +1092,34 @@ def get_controller_runs(scenario_id: str) -> list[dict]:
     return rows
 
 
+def get_controller_runs_by_scenario_ids(scenario_ids: list[str]) -> dict[str, list[dict]]:
+    """Mọi lượt đánh giá controller của danh sách scenario_ids trong một batch query SQL."""
+    if not scenario_ids:
+        return {}
+    placeholders = ",".join("?" for _ in scenario_ids)
+    with _cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT job_id, scenario_id, status, job_kind, ego_controller, result, created_at, updated_at
+            FROM scenario_jobs
+            WHERE scenario_id IN ({placeholders}) AND job_kind = 'controller_evaluation'
+            ORDER BY created_at DESC
+            """,
+            tuple(scenario_ids),
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+
+    result_map: dict[str, list[dict]] = {sid: [] for sid in scenario_ids}
+    for row in rows:
+        if isinstance(row.get("result"), str):
+            try:
+                row["result"] = json.loads(row["result"])
+            except (TypeError, json.JSONDecodeError):
+                row["result"] = None
+        result_map.setdefault(row["scenario_id"], []).append(row)
+    return result_map
+
+
 def get_pending_jobs() -> list[dict]:
     with _cursor() as cursor:
         cursor.execute("SELECT * FROM scenario_jobs WHERE status = 'pending' ORDER BY created_at ASC")
@@ -1210,20 +1238,6 @@ def _seed_default_users() -> None:
             default_users,
         )
 
-        # Các bản trước không seed tài khoản Reviewer demo. Lần đăng nhập nhanh
-        # đầu tiên vì thế tự tạo username ``reviewer`` với role mặc định
-        # ``creator``. Sửa đúng riêng tài khoản demo đã công bố trên UI; không
-        # đụng tới reviewer thật do Admin tạo.
-        cursor.execute(
-            """
-            UPDATE users
-            SET name = ?, email = ?, role = 'reviewer', status = 'active',
-                reason = NULL, password_hash = ?, updated_at = ?
-            WHERE LOWER(username) = 'reviewer'
-            """,
-            ("Kỹ sư Thẩm định", "reviewer@forge.ai", reviewer_pass_hash, now_str),
-        )
-
 
 def create_user(
     username: str,
@@ -1335,6 +1349,9 @@ def change_user_password(
     old_password: str,
     new_password: str,
 ) -> tuple[bool, str]:
+    if len(new_password) > 128 or len(old_password) > 128:
+        return False, "Mật khẩu không được vượt quá 128 ký tự"
+
     u = get_user_with_hash(username)
     if not u:
         return False, "Người dùng không tồn tại"
