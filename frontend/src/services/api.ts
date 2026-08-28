@@ -47,9 +47,27 @@ async function request<T>(
     let messageVi = "";
     try {
       const json = JSON.parse(bodyText);
-      messageVi = json.detail || json.message_vi || json.message || "";
+      if (typeof json.detail === "string") {
+        messageVi = json.detail;
+      } else if (Array.isArray(json.detail)) {
+        messageVi = json.detail
+          .map((d: any) => {
+            if (typeof d === "string") return d;
+            if (d && typeof d === "object") {
+              const field = Array.isArray(d.loc) ? d.loc.slice(1).join(".") : "";
+              const msg = d.msg || JSON.stringify(d);
+              return field ? `${field}: ${msg}` : msg;
+            }
+            return String(d);
+          })
+          .join("; ");
+      } else if (json.detail && typeof json.detail === "object") {
+        messageVi = json.detail.msg || json.detail.message || JSON.stringify(json.detail);
+      } else {
+        messageVi = json.message_vi || json.message || "";
+      }
     } catch {
-      messageVi = bodyText;
+      messageVi = typeof bodyText === "string" ? bodyText : "";
     }
     throw new Error(
       messageVi || `API ${res.status}: ${res.statusText}`,
@@ -108,9 +126,15 @@ export async function getStatus(requestId: string): Promise<GenerationStatus> {
 export async function postReview(
   payload: ReviewRequest,
 ): Promise<ReviewResponse> {
-  return request<ReviewResponse>(`/scenarios/${encodeURIComponent(payload.scenario_id)}/review`, {
+  const { scenario_id, ...cleanPayload } = payload;
+  const bodyData = {
+    ...cleanPayload,
+    scenario_id: scenario_id || "",
+  };
+
+  return request<ReviewResponse>(`/scenarios/${encodeURIComponent(scenario_id)}/review`, {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(bodyData),
   });
 }
 
