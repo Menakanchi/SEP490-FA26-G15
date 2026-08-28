@@ -1502,7 +1502,9 @@ class StatusResponse(ForgeModel):
 class ReviewApiRequest(ForgeModel):
     """``POST /review`` — quyết định HITL tại một cổng duyệt."""
 
-    scenario_id: str = Field(..., min_length=1)
+    model_config = ConfigDict(extra="ignore")
+
+    scenario_id: str = Field(default="", description="ID kịch bản, nếu không truyền trong URL path")
     gate: GateType
     approved: bool
     reviewer: str = Field(..., min_length=1, description="Tên người chịu trách nhiệm duyệt")

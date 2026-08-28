@@ -286,10 +286,25 @@ function ReviewPageContent() {
       setListLoading(true);
       await fetchScenarioList();
       await fetchScenarioDetail(scenario.scenario_id, false);
-    } catch (err) {
+    } catch (err: any) {
+      const detailMsg =
+        err?.response?.data?.detail ||
+        err?.data?.detail ||
+        err?.detail ||
+        (err instanceof Error ? err.message : String(err));
+
+      const finalMsg =
+        typeof detailMsg === "string"
+          ? detailMsg
+          : Array.isArray(detailMsg)
+          ? detailMsg.map((d: any) => d.msg || JSON.stringify(d)).join("; ")
+          : typeof detailMsg === "object" && detailMsg !== null
+          ? JSON.stringify(detailMsg)
+          : String(detailMsg);
+
       setToast({
         type: "error",
-        msg: err instanceof Error ? err.message : "Lỗi khi gửi quyết định duyệt.",
+        msg: finalMsg || "Lỗi khi gửi quyết định duyệt.",
       });
     } finally {
       setSubmitting(false);
