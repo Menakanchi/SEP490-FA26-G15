@@ -345,7 +345,6 @@ export async function changePassword(payload: {
     body: JSON.stringify(payload),
   });
 }
-}
 
 // ---------------------------------------------------------------------------
 // Admin Subsystem Endpoints

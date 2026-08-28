@@ -427,6 +427,7 @@ function ReviewPageContent() {
               </button>
             </div>
           }
+        />
       </div>
 
       {/* Main Grid: Left Sidebar + Right Details */}
