@@ -46,11 +46,14 @@ function LabelContent() {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     getLabelQueue(labeller)
       .then((r) => setItems(r.items))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoading(false));
   }, [labeller]);
 
   const current = items[index];
@@ -73,8 +76,9 @@ function LabelContent() {
     [current, index, items.length, labeller, reason, saving],
   );
 
+  if (loading) return <Shell><p className="text-slate-400 text-sm">Đang tải…</p></Shell>;
   if (error) return <Shell><p className="text-red-500 text-sm">{error}</p></Shell>;
-  if (!items.length) return <Shell><p className="text-slate-400 text-sm">Đang tải…</p></Shell>;
+  if (!items.length) return <Shell><p className="text-slate-400 text-sm">Không có kịch bản nào cần chấm nhãn ý định.</p></Shell>;
 
   const done = items.filter((i) => i.labelled).length;
 
