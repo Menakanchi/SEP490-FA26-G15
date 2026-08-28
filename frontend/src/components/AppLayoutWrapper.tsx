@@ -55,10 +55,12 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
               backgroundImage: `url(${bgImage})`,
               filter: `blur(${bgBlur}px)`,
             }}
+            suppressHydrationWarning
           />
           <div
             className="fixed inset-0 z-0 bg-slate-950 pointer-events-none transition-opacity duration-300"
             style={{ opacity: overlayOpacity }}
+            suppressHydrationWarning
           />
         </>
       )}
