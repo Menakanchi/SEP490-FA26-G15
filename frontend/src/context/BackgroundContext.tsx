@@ -55,11 +55,12 @@ function getUserStorageKeys(username?: string | null, id?: string | null): strin
   const keys: string[] = [];
   if (username) {
     keys.push(`scenario_forge_bg_${username}`);
-    keys.push(`forge_bg_${username}`);
   }
   if (id && id !== username) {
     keys.push(`scenario_forge_bg_${id}`);
-    keys.push(`forge_bg_${id}`);
+  }
+  if (keys.length === 0) {
+    keys.push("scenario_forge_bg_guest");
   }
   return keys;
 }
@@ -99,12 +100,6 @@ export function BackgroundProvider({ children }: { children: React.ReactNode }) 
       // ignore
     }
 
-    if (!username && !userId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync background state from user context
-      setSettings(DEFAULT_SETTINGS);
-      return;
-    }
-
     const storageKeys = getUserStorageKeys(username, userId);
     let loaded = false;
 
@@ -113,7 +108,7 @@ export function BackgroundProvider({ children }: { children: React.ReactNode }) 
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          setSettings((prev) => ({ ...prev, ...parsed }));
+          setSettings({ ...DEFAULT_SETTINGS, ...parsed });
           loaded = true;
           break;
         } catch {
@@ -131,10 +126,12 @@ export function BackgroundProvider({ children }: { children: React.ReactNode }) 
       if (e.key && storageKeys.includes(e.key) && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          setSettings((prev) => ({ ...prev, ...parsed }));
+          setSettings({ ...DEFAULT_SETTINGS, ...parsed });
         } catch {
           // ignore
         }
+      } else if (e.key && storageKeys.includes(e.key) && !e.newValue) {
+        setSettings(DEFAULT_SETTINGS);
       }
     };
 
