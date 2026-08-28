@@ -1094,3 +1094,39 @@ async def test_batch_review_only_touches_scenarios_waiting_at_gate_one(client):
     response = await client.post("/api/v1/campaigns/cmp_test02/review", json={"reviewer": "cong", "approved": True})
     assert response.json()["count"] == 0
     assert (await client.get(f"/api/v1/scenarios/{outsider}")).json()["status"] == "pending_sim_review"
+
+
+@pytest.mark.asyncio
+async def test_user_profile_no_auth_bypass_401_404(client):
+    """Bảo mật: get_user_profile_endpoint không trả về creator mock giả mạo."""
+    # Không truyền username/user -> 401 Unauthorized
+    res_401 = await client.get("/api/v1/users/profile")
+    assert res_401.status_code == 401
+    assert "Chưa xác thực" in res_401.json()["detail"]
+
+    # Truyền username không tồn tại -> 404 Not Found
+    res_404 = await client.get("/api/v1/users/profile?username=non_existent_user_999")
+    assert res_404.status_code == 404
+    assert "Không tìm thấy" in res_404.json()["detail"]
+
+    # Truyền username tồn tại (admin/creator) -> 200 OK với đúng user trong DB
+    res_200 = await client.get("/api/v1/users/profile?username=admin")
+    assert res_200.status_code == 200
+    assert res_200.json()["username"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_change_password_max_length_limit(client):
+    """Chống CPU DoS băm mật khẩu siêu dài (>128 ký tự)."""
+    long_pass = "A" * 150
+    res = await client.post(
+        "/api/v1/users/change-password",
+        json={
+            "username": "creator",
+            "old_password": "creator123",
+            "new_password": long_pass,
+        },
+    )
+    assert res.status_code == 400
+    assert "không được vượt quá 128 ký tự" in res.json()["detail"]
+

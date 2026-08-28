@@ -1367,12 +1367,19 @@ async def list_campaign_controller_runs(campaign_id: str) -> dict:
     if not db.get_campaign(campaign_id):
         raise HTTPException(status_code=404, detail=f"Chiến dịch '{campaign_id}' không tồn tại")
 
+    scenarios = db.campaign_scenarios(campaign_id)
+    scenario_ids = [s["scenario_id"] for s in scenarios]
+    runs_map = db.get_controller_runs_by_scenario_ids(scenario_ids)
+
     evaluations: list[dict] = []
     counts: dict[str, int] = {}
-    for row in db.campaign_scenarios(campaign_id):
-        if not db.get_controller_runs(row["scenario_id"]):
+    for scenario_row in scenarios:
+        sid = scenario_row["scenario_id"]
+        runs = runs_map.get(sid, [])
+        if not runs:
             continue
-        evaluation = await list_controller_runs(row["scenario_id"])
+        full_scenario = db.get_scenario(sid) or scenario_row
+        evaluation = _controller_evaluation(full_scenario, runs)
         evaluations.append(evaluation)
         outcome = evaluation["comparison"]["outcome"]
         counts[outcome] = counts.get(outcome, 0) + 1
@@ -1574,21 +1581,12 @@ async def get_me_endpoint(user: str = Query(..., min_length=1)) -> dict:
 @router.get("/users/profile")
 async def get_user_profile_endpoint(username: str | None = Query(None), user: str | None = Query(None)) -> dict:
     target_username = username or user
-    if target_username:
-        u = db.get_user(target_username)
-        if u:
-            return u
-    u = db.get_user("creator") or db.get_user("admin")
-    return u or {
-        "id": "usr_creator",
-        "username": "creator",
-        "name": "Kỹ sư Kịch bản",
-        "full_name": "Kỹ sư Kịch bản",
-        "email": "creator@forge.ai",
-        "role": "creator",
-        "status": "active",
-        "avatar_url": None,
-    }
+    if not target_username:
+        raise HTTPException(status_code=401, detail="Chưa xác thực người dùng. Vui lòng cung cấp username")
+    u = db.get_user(target_username)
+    if not u:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thông tin người dùng")
+    return u
 
 
 @router.put("/users/profile")
@@ -1611,6 +1609,8 @@ async def change_password_endpoint(body: ChangePasswordApiRequest) -> dict:
         raise HTTPException(status_code=400, detail="Vui lòng điền đầy đủ các thông tin bắt buộc")
     if len(body.new_password) < 6:
         raise HTTPException(status_code=400, detail="Mật khẩu mới phải có ít nhất 6 ký tự")
+    if len(body.new_password) > 128 or len(body.old_password) > 128:
+        raise HTTPException(status_code=400, detail="Mật khẩu không được vượt quá 128 ký tự")
 
     success, msg = db.change_user_password(
         username=body.username,
