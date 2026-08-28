@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     near_duplicate_speed_kmh: float = Field(default=5.0, ge=0.0)
     near_duplicate_distance_m: float = Field(default=5.0, ge=0.0)
 
+    # SMTP Email Configuration
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+
+
 
 @lru_cache
 def get_settings() -> Settings:

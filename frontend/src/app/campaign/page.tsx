@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Bot, Layers, Loader2, Play, ShieldCheck, Square } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
+import { PageHeader } from "@/components/PageHeader";
 import {
   createCampaign,
   createCampaignControllerRuns,
@@ -34,9 +35,6 @@ import type {
   ManeuverType,
 } from "@/types";
 
-// UI chỉ đưa ra đúng 72 ô SupportPolicy đã kiểm chứng: 60 ô highway cho năm
-// hành vi xe và 12 ô urban_straight cho vượt đèn đỏ. Không hiện một lựa chọn
-// rồi để backend âm thầm loại nó.
 const ROAD_MANEUVERS: Record<"highway" | "urban_straight", readonly ManeuverType[]> = {
   highway: ["cut_in", "sudden_brake", "lane_drift", "stop_in_lane", "wrong_way"],
   urban_straight: ["run_red_light"],
@@ -116,12 +114,9 @@ function CampaignContent() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp danh sách lần đầu; setState nằm trong callback async của refresh
     refresh().catch(() => undefined);
   }, [refresh]);
 
-  // Chiến dịch chạy nền ở backend nên trang phải hỏi lại; dừng hỏi khi nó xong
-  // để không poll vô hạn một thứ đã kết thúc.
   useEffect(() => {
     if (!active || active.status !== "running") return;
     const timer = setInterval(() => {
@@ -192,11 +187,9 @@ function CampaignContent() {
     setError(null);
     try {
       const result = await reviewCampaign(active.campaign_id, {
-        reviewer: (typeof user === "string" ? user : user?.username) ?? "creator",
+        reviewer: (typeof user === "string" ? user : user?.username) ?? "reviewer",
         approved: true,
-        reason: forceSimulate
-          ? `Vẫn chạy các bản gần trùng trong chiến dịch ${active.campaign_id}`
-          : `Duyệt theo lô chiến dịch ${active.campaign_id}`,
+        reason: "Duyệt theo lô từ trang chiến dịch ODD",
         force_simulate: forceSimulate,
       });
       setBatchReview(result);
@@ -209,18 +202,19 @@ function CampaignContent() {
   };
 
   return (
-    <div className="space-y-6 p-6 max-w-6xl">
-      <header>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-          <Layers className="w-6 h-6 text-purple-600 dark:text-purple-400" /> Chiến dịch ODD
-        </h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-          Khoanh vùng ODD, agent viết câu tiếng Việt cho từng ô rồi nạp vào đúng pipeline của chế độ cơ bản.
-          Chỉ các tổ hợp có anchor CARLA đã kiểm chứng mới được hiển thị.
-        </p>
-      </header>
+    <div className="space-y-6 max-w-6xl mx-auto font-sans">
+      {/* Header Glass Box */}
+      <div className="bg-white/70 dark:bg-slate-900/80 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 shadow-2xl rounded-[32px] p-6 sm:p-7 transition-all">
+        <PageHeader
+          icon={Layers}
+          title="Chiến dịch ODD — Sinh lô ma trận"
+          subtitle="Khoanh vùng ODD, agent tự động viết câu tiếng Việt cho từng ô rồi nạp vào pipeline."
+          badge="Batch Generation"
+        />
+      </div>
 
-      <section className="theme-card p-6 space-y-5">
+      {/* Configuration Glass Card */}
+      <section className="bg-white/75 dark:bg-slate-900/85 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] p-6 sm:p-8 shadow-2xl space-y-5">
         <SinglePicker
           label="Loại đường"
           options={ROAD_TYPES}
@@ -234,32 +228,46 @@ function CampaignContent() {
         <Picker label="Tác nhân" options={[...VEHICLES]} value={actors} onChange={setActors} />
         <Picker label="Hành vi" options={[...ROAD_MANEUVERS[roadType]]} value={maneuvers} onChange={setManeuvers} />
 
-        <div className="flex flex-wrap items-end gap-4 pt-2 border-t border-slate-200 dark:border-slate-700/50">
-          <label className="text-sm text-slate-700 dark:text-slate-300">
+        <div className="flex flex-wrap items-end gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+          <label className="text-sm font-semibold text-slate-800 dark:text-slate-200">
             <span className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Biến thể mỗi tổ hợp</span>
-            <input type="number" min={1} max={20} value={perCell}
-                   onChange={(e) => setPerCell(Math.max(1, Number(e.target.value)))}
-                   className="w-28 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100" />
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={perCell}
+              onChange={(e) => setPerCell(Math.max(1, Number(e.target.value)))}
+              className="w-28 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
           </label>
-          <label className="text-sm text-slate-700 dark:text-slate-300">
+          <label className="text-sm font-semibold text-slate-800 dark:text-slate-200">
             <span className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Số kịch bản tối đa</span>
-            <input type="number" min={1} max={200} value={maxScenarios}
-                   onChange={(e) => setMax(Number(e.target.value))}
-                   className="w-28 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100" />
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={maxScenarios}
+              onChange={(e) => setMax(Number(e.target.value))}
+              className="w-28 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
           </label>
-          <p className="text-xs text-slate-600 dark:text-slate-400 flex-1 min-w-[220px]">
-            Đã chọn <strong className="text-slate-900 dark:text-slate-200">{selectedValueCount}</strong> giá trị
-            {" · "}<strong className="text-slate-900 dark:text-slate-200">{cells.length}</strong> tổ hợp ODD tiềm năng.
-            {" "}Kế hoạch thực tế: <strong className="text-slate-900 dark:text-slate-200">{plannedCount}</strong> lượt
+          <p className="text-xs text-slate-500 dark:text-slate-400 flex-1 min-w-[220px] leading-relaxed">
+            Đã chọn <strong className="text-slate-800 dark:text-slate-200 font-bold">{selectedValueCount}</strong> giá trị
+            {" · "}<strong className="text-slate-800 dark:text-slate-200 font-bold">{cells.length}</strong> tổ hợp.
+            {" "}Kế hoạch thực tế: <strong className="text-slate-800 dark:text-slate-200 font-bold">{plannedCount}</strong> lượt
             {" "}({perCell} biến thể/tổ hợp, dừng ở trần {maxScenarios}).
           </p>
-          <button type="button" onClick={start} disabled={starting || !cells.length}
-                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-semibold flex items-center gap-2">
+          <button
+            type="button"
+            onClick={start}
+            disabled={starting || !cells.length}
+            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 text-white text-sm font-bold shadow-md shadow-indigo-500/20 flex items-center gap-2 transition cursor-pointer"
+          >
             {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
             Chạy chiến dịch
           </button>
         </div>
-        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        {error && <p className="text-sm font-semibold text-red-600 dark:text-red-400">{error}</p>}
       </section>
 
       {active && (
@@ -280,26 +288,29 @@ function CampaignContent() {
       )}
 
       {campaigns.length > 0 && (
-        <section className="theme-card p-6">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-200 mb-3">Các chiến dịch đã chạy</h2>
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+          <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3">Các chiến dịch đã chạy</h2>
           <div className="space-y-1">
             {campaigns.map((c) => (
-              <button key={c.campaign_id} type="button"
-                      onClick={() => {
-                        setBatchReview(null);
-                        setControllerBatch(null);
-                        setControllerSummary(null);
-                        getCampaign(c.campaign_id).then(setActive);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between gap-4 text-sm">
+              <button
+                key={c.campaign_id}
+                type="button"
+                onClick={() => {
+                  setBatchReview(null);
+                  setControllerBatch(null);
+                  setControllerSummary(null);
+                  getCampaign(c.campaign_id).then(setActive);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-sm transition cursor-pointer"
+              >
                 <span className="min-w-0">
                   <span className="block font-medium text-slate-800 dark:text-slate-200 truncate">{campaignLabel(c)}</span>
                   <span className="block text-xs text-slate-500 dark:text-slate-400">
-                    {campaignTime(c.created_at)} · <code>{c.campaign_id}</code>
+                    {campaignTime(c.created_at)} · <code className="font-mono text-indigo-600 dark:text-purple-300">{c.campaign_id}</code>
                   </span>
                 </span>
                 <span className="text-slate-600 dark:text-slate-400 text-xs shrink-0 text-right">
-                  <span className="block">{STATUS_LABELS[c.status]}</span>
+                  <span className="block font-bold">{STATUS_LABELS[c.status]}</span>
                   <span className="block">Bản nháp hợp lệ {c.generated}/{c.generated + c.failed} · bị loại {c.failed}</span>
                 </span>
               </button>
@@ -335,42 +346,51 @@ function ActiveCampaign({
   const done = campaign.generated + campaign.failed;
   const total = Math.min(campaign.cells.length * campaign.per_cell, campaign.max_scenarios);
   return (
-    <section className="theme-card p-6 space-y-4">
+    <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-200">
+          <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200">
             {campaignLabel(campaign)} · {STATUS_LABELS[campaign.status]}
           </h2>
-          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-            Tạo được {campaign.generated} bản nháp hợp lệ, {campaign.failed} lượt bị loại khi sinh hoặc kiểm tra
-            {" "}trên tối đa {total} lượt
-            {" · "}<code>{campaign.campaign_id}</code>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Tạo được {campaign.generated} bản nháp hợp lệ, {campaign.failed} lượt bị loại khi sinh hoặc kiểm tra trên tối đa {total} lượt
+            {" · "}<code className="font-mono text-indigo-600 dark:text-purple-300">{campaign.campaign_id}</code>
           </p>
         </div>
         {campaign.status === "running" && (
-          <button type="button" onClick={onStop}
-                  className="px-3 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 text-xs flex items-center gap-2">
-            <Square className="w-3 h-3" /> Dừng
+          <button
+            type="button"
+            onClick={onStop}
+            className="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 text-xs font-bold flex items-center gap-2 cursor-pointer transition"
+          >
+            <Square className="w-3.5 h-3.5" /> Dừng
           </button>
         )}
       </div>
 
-      <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
-        <div className="h-full bg-purple-500 transition-all"
-             style={{ width: `${total ? (done / total) * 100 : 0}%` }} />
+      <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+        <div
+          className="h-full bg-indigo-600 dark:bg-purple-500 transition-all"
+          style={{ width: `${total ? (done / total) * 100 : 0}%` }}
+        />
       </div>
 
       <div className="space-y-2">
         {campaign.requests.map((r) => (
-          <div key={r.request_id} className="text-xs border border-slate-200 dark:border-slate-700/60 rounded-lg p-3">
+          <div key={r.request_id} className="text-xs border border-slate-200 dark:border-slate-800 rounded-xl p-3 bg-slate-50/50 dark:bg-slate-950/50">
             <div className="flex items-center gap-2 mb-1">
-              <span className={
-                r.status === "done" ? "text-emerald-600 dark:text-emerald-400 font-bold"
-                : r.status === "failed" ? "text-red-600 dark:text-red-400 font-bold" : "text-amber-600 dark:text-amber-400 font-bold"
-              }>
+              <span
+                className={
+                  r.status === "done"
+                    ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                    : r.status === "failed"
+                    ? "text-red-600 dark:text-red-400 font-bold"
+                    : "text-amber-600 dark:text-amber-400 font-bold"
+                }
+              >
                 {r.status === "done" ? "Đã tạo bản nháp" : r.status === "failed" ? "Bị loại" : "Đang xử lý"}
               </span>
-              {r.scenario_id && <code className="text-sky-700 dark:text-sky-300">{r.scenario_id}</code>}
+              {r.scenario_id && <code className="text-indigo-600 dark:text-sky-300 font-mono font-bold">{r.scenario_id}</code>}
               {r.maneuver && (
                 <span className="text-slate-500 dark:text-slate-400">
                   {LABELS[r.weather ?? ""] ?? r.weather} · {LABELS[r.actor_type ?? ""] ?? r.actor_type} ·{" "}
@@ -378,8 +398,6 @@ function ActiveCampaign({
                 </span>
               )}
             </div>
-            {/* Câu do agent viết — hiện nguyên văn để người duyệt đối chiếu được
-                với kịch bản sinh ra, đúng như câu người dùng tự gõ ở chế độ cơ bản. */}
             <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{r.description_vi}</p>
             {r.status === "failed" && r.error && (
               <p className="mt-2 text-red-700 dark:text-red-300 leading-relaxed">
@@ -391,9 +409,9 @@ function ActiveCampaign({
       </div>
 
       {campaign.status !== "running" && campaign.generated > 0 && (
-        <div className="border-t border-slate-200 dark:border-slate-700/60 pt-4 space-y-3">
+        <div className="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-slate-600 dark:text-slate-400 max-w-2xl">
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl leading-relaxed">
               Một quyết định áp dụng cho các kịch bản của đúng chiến dịch này đang chờ chạy CARLA.
               Bản gần trùng sẽ được giữ lại để bạn xem trước, không âm thầm tạo job GPU.
             </p>
@@ -401,7 +419,7 @@ function ActiveCampaign({
               type="button"
               onClick={() => onReview(false)}
               disabled={reviewing}
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2"
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center gap-2 cursor-pointer transition"
             >
               {reviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
               Duyệt cả lô để chạy CARLA
@@ -409,9 +427,9 @@ function ActiveCampaign({
           </div>
 
           {batchReview && batchReview.near_duplicates.length > 0 && (
-            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 space-y-3">
-              <div className="flex items-start gap-2 text-amber-800 dark:text-amber-200">
-                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <div className="rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-4 space-y-3">
+              <div className="flex items-start gap-2 text-amber-900 dark:text-amber-200">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                 <p className="text-xs leading-relaxed">
                   Đã tạo job cho {batchReview.count} kịch bản. Còn {batchReview.near_duplicates.length} bản gần
                   trùng đang dừng trước GPU: {batchReview.near_duplicates.map((item) => item.scenario_id).join(", ")}.
@@ -421,7 +439,7 @@ function ActiveCampaign({
                 type="button"
                 onClick={() => onReview(true)}
                 disabled={reviewing}
-                className="px-3 py-2 rounded-lg border border-amber-500/60 hover:bg-amber-500/20 disabled:opacity-50 text-amber-800 dark:text-amber-100 text-xs font-semibold"
+                className="px-3 py-2 rounded-lg border border-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/20 disabled:opacity-50 text-amber-900 dark:text-amber-100 text-xs font-bold cursor-pointer transition"
               >
                 Vẫn chạy các bản gần trùng
               </button>
@@ -429,10 +447,10 @@ function ActiveCampaign({
           )}
 
           {batchReview?.ok && batchReview.count > 0 && (
-            <p className="text-xs text-emerald-700 dark:text-emerald-400">Đã tạo {batchReview.count} job CARLA từ quyết định duyệt theo lô.</p>
+            <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Đã tạo {batchReview.count} job CARLA từ quyết định duyệt theo lô.</p>
           )}
           {batchReview?.ok && batchReview.count === 0 && (
-            <p className="text-xs text-slate-600 dark:text-slate-400">Chiến dịch này không còn kịch bản nào chờ duyệt để chạy CARLA.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Chiến dịch này không còn kịch bản nào chờ duyệt để chạy CARLA.</p>
           )}
         </div>
       )}
@@ -452,7 +470,7 @@ function ActiveCampaign({
               type="button"
               onClick={onRunControllers}
               disabled={controllerStarting || controllerSummary?.pending}
-              className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2"
+              className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 cursor-pointer transition"
             >
               {controllerStarting || controllerSummary?.pending
                 ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -503,15 +521,19 @@ function SinglePicker<T extends string>({ label, options, value, onChange }: {
 }) {
   return (
     <div>
-      <span className="block text-xs text-slate-500 dark:text-slate-400 mb-2">{label}</span>
+      <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">{label}</span>
       <div className="flex flex-wrap gap-2">
         {options.map((option) => (
-          <button key={option} type="button" onClick={() => onChange(option)}
-                  className={`px-3 py-1.5 rounded-lg text-xs border transition ${
-                    value === option
-                      ? "bg-purple-100 border-purple-500 text-purple-800 dark:bg-purple-600/20 dark:text-purple-200"
-                      : "bg-slate-50 border-slate-300 text-slate-700 hover:border-slate-400 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600"
-                  }`}>
+          <button
+            key={option}
+            type="button"
+            onClick={() => onChange(option)}
+            className={`px-3.5 py-1.5 rounded-xl text-xs transition cursor-pointer font-medium ${
+              value === option
+                ? "bg-indigo-600 text-white font-bold shadow-sm shadow-indigo-500/20 border border-indigo-600"
+                : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
+            }`}
+          >
             {LABELS[option] ?? option}
           </button>
         ))}
@@ -520,25 +542,40 @@ function SinglePicker<T extends string>({ label, options, value, onChange }: {
   );
 }
 
-function Picker({ label, options, value, onChange }: {
-  label: string; options: string[]; value: string[]; onChange: (v: string[]) => void;
+function Picker({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  value: string[];
+  onChange: (v: string[]) => void;
 }) {
   const toggle = (option: string) =>
     onChange(value.includes(option) ? value.filter((v) => v !== option) : [...value, option]);
   return (
     <div>
-      <span className="block text-xs text-slate-500 dark:text-slate-400 mb-2">{label}</span>
+      <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">{label}</span>
       <div className="flex flex-wrap gap-2">
-        {options.map((option) => (
-          <button key={option} type="button" onClick={() => toggle(option)}
-                  className={`px-3 py-1.5 rounded-lg text-xs border transition ${
-                    value.includes(option)
-                      ? "bg-purple-100 border-purple-500 text-purple-800 dark:bg-purple-600/20 dark:text-purple-200"
-                      : "bg-slate-50 border-slate-300 text-slate-700 hover:border-slate-400 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600"
-                  }`}>
-            {LABELS[option] ?? option}
-          </button>
-        ))}
+        {options.map((option) => {
+          const isSelected = value.includes(option);
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => toggle(option)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs transition cursor-pointer font-medium ${
+                isSelected
+                  ? "bg-indigo-600 text-white font-bold shadow-sm shadow-indigo-500/20 border border-indigo-600"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              {LABELS[option] ?? option}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

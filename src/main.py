@@ -11,6 +11,11 @@ from src.config import get_settings
 async def lifespan(app: FastAPI):
     settings = get_settings()
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
+    try:
+        from src.services import db
+        db.init_db()
+    except Exception as e:
+        print(f"DB Init Warning: {e}")
     yield
     print("Shutting down...")
 
