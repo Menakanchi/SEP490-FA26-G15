@@ -2,14 +2,14 @@
 
 ## Files
 
-- `pitch_deck.pptx` — bản có thể chỉnh sửa, gồm 15 slide
+- `pitch_deck.pptx` — bản có thể chỉnh sửa, gồm 14 slide
 - `pitch_deck.pdf` — bản PDF để nộp link
 - Video demo được nộp qua URL riêng theo yêu cầu của Demo Day.
 
 Các câu giải thích dài nằm trong **speaker notes** của PPTX; slide chỉ giữ số,
 sơ đồ và kết luận chính.
 
-## Cấu trúc 15 slide
+## Cấu trúc 14 slide
 
 | # | Slide | Vai trò theo template Demo Day |
 |---|---|---|
@@ -26,8 +26,7 @@ sơ đồ và kết luận chính.
 | 11 | M3 — kích hoạt nguy hiểm + đối chiếu nhãn người | Traction |
 | 12 | Cost/request và p50/p95 latency | Traction |
 | 13 | A/B model LLM và quyết định giữ nguyên | Traction |
-| 14 | Ai dùng, và thay cho việc gì | Market |
-| 15 | Làm gì tiếp | Ask |
+| 14 | Làm gì tiếp | Ask |
 
 Số liệu M1/M2/M3 lấy trực tiếp từ database qua `metrics.build_report()`
 (snapshot **29/08/2026**); phần cost/latency và A/B model vẫn theo
