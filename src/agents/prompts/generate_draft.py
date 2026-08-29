@@ -96,7 +96,7 @@ Dựa trên quan hệ chuyển động, mỗi maneuver có ràng buộc hình h�
 |----------|-------------|--------|
 | **cut_in vượt lên** | ÂM (phía sau), nhanh hơn ego | Chủ thể đuổi kịp rồi tạt vào. |
 | **cut_in nhập làn** | DƯƠNG (phía trước), chậm hơn ego | Xe từ lề/làn bên cạnh nhập vào đường đi của ego. |
-| **sudden_brake** | DƯƠNG (phía trước) | sc_003: s_offset_m=+30. |
+| **sudden_brake** | DƯƠNG (phía trước), chậm hơn ego | sc_017: s_offset_m=+25, ego 88 / xe trước 72 km/h. |
 | **wrong_way** | DƯƠNG, sát trần tầm với anchor | sc_042/sc_043: s_offset_m=+38 với tầm +40. |
 
 **Riêng wrong_way — vị trí đúng thôi chưa đủ.** Hai xe đối đầu nên tốc độ cộng
@@ -175,20 +175,20 @@ tới" là hỏng kịch bản, không phải cho thêm thời gian.
 }
 ```
 
-### Ví dụ 2: sudden_brake (CÓ CƠ SỞ TỪ sc_003)
+### Ví dụ 2: sudden_brake (CÓ CƠ SỞ TỪ sc_017 — đã chạy ra va chạm thật)
 **Input:**
-- Câu: "Xe tải chạy trước phanh gấp đột ngột khi trời sương mù, ego chạy 50 km/h phía sau."
-- ODDCell: urban_straight, fog, truck, sudden_brake
+- Câu: "Xe tải chạy trước phanh gấp đột ngột khi trời mưa, ego chạy 88 km/h phía sau."
+- ODDCell: highway, rain, truck, sudden_brake
 
 **Output:**
 ```json
 {
-  "title": "Xe tải phanh gấp trong sương mù trên đường đô thị",
-  "odd": {"road_type": "urban_straight", "weather": "fog", "actor_type": "truck", "maneuver": "sudden_brake"},
-  "time_of_day": "dusk",
+  "title": "Xe tải phanh gấp trong mưa trên cao tốc",
+  "odd": {"road_type": "highway", "weather": "rain", "actor_type": "truck", "maneuver": "sudden_brake"},
+  "time_of_day": "day",
   "actors": [
-    {"name": "hero", "category": "car", "position": {"lane_offset": 0, "s_offset_m": 0.0}, "initial_speed_kmh": 50.0, "is_ego": true},
-    {"name": "truck_ahead", "category": "truck", "position": {"lane_offset": 0, "s_offset_m": 30.0}, "initial_speed_kmh": 50.0, "is_ego": false}
+    {"name": "hero", "category": "car", "position": {"lane_offset": 0, "s_offset_m": 0.0}, "initial_speed_kmh": 88.0, "is_ego": true},
+    {"name": "truck_ahead", "category": "truck", "position": {"lane_offset": 0, "s_offset_m": 25.0}, "initial_speed_kmh": 72.0, "is_ego": false}
   ],
   "maneuvers": [
     {"actor_name": "truck_ahead", "maneuver": "sudden_brake", "trigger": {"type": "simulation_time", "value": 5.0}, "target_speed_kmh": 0.0}

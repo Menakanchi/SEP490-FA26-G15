@@ -74,6 +74,11 @@ _MANEUVER_ALIASES: dict[str, ManeuverType] = {
 
 _EnumT = TypeVar("_EnumT", bound=StrEnum)
 
+# Marker vai trò ego không phải ActorType nên taxonomy KHÔNG tạo span cho nó.
+# Nó vẫn là ranh giới thật giữa hai chủ thể trong câu: chữ đứng sau "xe ego" nói
+# về ego, không nói về chủ thể liền trước.
+_EGO_MARKER_RE = re.compile(r"\b(?:xe\s+)?ego\b|\bxe\s+bi\s+anh\s+huong\b")
+
 _SPEED_VALUE = r"(\d+(?:[.,]\d+)?)\s*km\s*/?\s*h"
 _MOVING_SPEED_RE = re.compile(rf"\b(?:dang\s+)?(?:chay|di)\s+{_SPEED_VALUE}")
 _TARGET_SPEED_RE = re.compile(
@@ -121,6 +126,20 @@ def _extract_kinematic_hints(
     for index, (start, end, _code) in enumerate(actor_spans):
         role = actor_roles[index]
         next_start = actor_spans[index + 1][0] if index + 1 < len(actor_spans) else len(query_no_accents)
+
+        # Cắt segment ở marker ego nữa, không chỉ ở span actor kế tiếp. "ô tô
+        # ego" có span (taxonomy khớp "ô tô") nên vẫn chặn đúng, còn "xe ego"
+        # thì không — và segment của chủ thể liền trước nuốt luôn tốc độ của ego.
+        # Đo trên sample 4 của benchmark: "xe máy từ phía sau tạt đầu xe ego đang
+        # chạy 45 km/h" gán 45 km/h cho CẢ hai, mà cut_in từ phía sau lại đòi
+        # adversary nhanh hơn ego. Hai ràng buộc loại trừ nhau nên ba vòng repair
+        # dao động rồi chết.
+        #
+        # Mất hint thì generator được quyền chọn; gán nhầm hint thì nó bị ép vào
+        # một con số sai và validate bắt lỗi mãi. Cắt sớm là hướng hỏng an toàn.
+        if (ego_marker := _EGO_MARKER_RE.search(query_no_accents, end)) is not None:
+            next_start = min(next_start, ego_marker.start())
+
         segment = query_no_accents[end:next_start]
         speed = _speed_value(_MOVING_SPEED_RE.search(segment))
         relation = _relative_position(segment)
