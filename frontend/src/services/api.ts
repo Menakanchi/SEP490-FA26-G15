@@ -130,11 +130,18 @@ export async function getStatus(requestId: string): Promise<GenerationStatus> {
 // ---------------------------------------------------------------------------
 
 export async function postReview(
-  payload: ReviewRequest,
+  payloadOrId: ReviewRequest | string,
+  maybePayload?: Partial<ReviewRequest>,
 ): Promise<ReviewResponse> {
-  const scenarioId = payload.scenario_id;
+  const payload: ReviewRequest =
+    typeof payloadOrId === "string"
+      ? ({ scenario_id: payloadOrId, ...maybePayload } as ReviewRequest)
+      : payloadOrId;
+
+  const scenarioId = payload.scenario_id || (typeof payloadOrId === "string" ? payloadOrId : "");
   const notes = (payload as unknown as Record<string, unknown>).notes;
   const cleanBody: Record<string, unknown> = {
+    scenario_id: scenarioId,
     gate: payload.gate,
     approved: Boolean(payload.approved),
     reviewer: payload.reviewer || "Reviewer",
