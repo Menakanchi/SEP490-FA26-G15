@@ -190,7 +190,7 @@ def process_job(job: dict) -> bool:
 
     from src.services import db
 
-    scenario = db.get_scenario(scenario_id) or {}
+    scenario = db.get_scenario(scenario_id, auto_heal=False) or {}
     prev_status = scenario.get("status")
 
     # Nếu kịch bản đang ở trạng thái khác 'simulation_queued' (chẳng hạn lỡ ở approved_library),

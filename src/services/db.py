@@ -546,7 +546,7 @@ def save_scenario(
     return sc_dict
 
 
-def get_scenario(scenario_id: str) -> dict | None:
+def get_scenario(scenario_id: str, auto_heal: bool = True) -> dict | None:
     with _cursor() as cursor:
         cursor.execute("SELECT * FROM scenarios WHERE scenario_id = ?", (scenario_id,))
         row = cursor.fetchone()
@@ -598,7 +598,7 @@ def get_scenario(scenario_id: str) -> dict | None:
         except (TypeError, json.JSONDecodeError):
             logger.warning("scenario_jobs.result không hợp lệ cho scenario %s", scenario_id)
 
-    if not latest_execution_result or not (latest_execution_result.get("trajectory") or latest_execution_result.get("frames")):
+    if auto_heal and (not latest_execution_result or not (latest_execution_result.get("trajectory") or latest_execution_result.get("frames"))):
         healed = self_heal_scenario_trajectory(scenario_id)
         if healed:
             latest_execution_result = healed
@@ -1252,7 +1252,7 @@ def _seed_default_users() -> None:
 
 
 def self_heal_scenario_trajectory(scenario_id: str) -> dict | None:
-    """Tự động tính toán và lưu dữ liệu trajectory động học cho kịch bản nếu chưa có kết quả mô phỏng."""
+    """Tự động tính toán và lưu dữ liệu trajectory động học cho kịch bản trực tiếp bằng SQL & in-memory math mà KHÔNG đệ quy."""
     with _cursor() as cursor:
         cursor.execute(
             """
@@ -1275,24 +1275,52 @@ def self_heal_scenario_trajectory(scenario_id: str) -> dict | None:
         return None
 
     try:
-        from worker.mock_runner import process_job
+        with _cursor() as cursor:
+            cursor.execute("SELECT spec FROM scenarios WHERE scenario_id = ?", (scenario_id,))
+            sc_row = cursor.fetchone()
+
+        if not sc_row:
+            return None
+
+        row_data = dict(sc_row)
+        spec_str = row_data.get("spec") or "{}"
+        spec = json.loads(spec_str) if isinstance(spec_str, str) else spec_str
+        if not isinstance(spec, dict):
+            spec = {}
+
+        from worker.mock_runner import simulate_kinematics
+        import worker.trajectory as trajectory
+
+        samples, had_collision = simulate_kinematics(scenario_id, spec)
+        metrics = trajectory.summarise(samples)
+        trajectory_points = trajectory.downsample(samples)
+
+        criteria_results = [
+            {
+                "name": "CollisionTest",
+                "result": "FAILURE" if had_collision else "SUCCESS",
+                "actual": "collision detected" if had_collision else "no collision",
+            },
+            {"name": "DrivenDistanceTest", "result": "SUCCESS", "actual": "150m"},
+            {"name": "MaxVelocityTest", "result": "SUCCESS", "actual": "80 km/h"},
+        ]
+
+        result_payload = {
+            "scenario_id": scenario_id,
+            "xosc_path": f"{scenario_id}.xosc",
+            "success": True,
+            "criteria_results": criteria_results,
+            "metrics": metrics,
+            "trajectory": trajectory_points,
+            "ego_controller": "constant_speed",
+            "error": None,
+        }
 
         job_id = f"job_heal_{scenario_id}_{uuid.uuid4().hex[:4]}"
         create_scenario_job(job_id, scenario_id, "<OpenSCENARIO/>")
-        process_job({"job_id": job_id, "scenario_id": scenario_id, "xosc_path": ""})
+        update_job_result(job_id, "done", result_payload)
 
-        with _cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT result FROM scenario_jobs
-                WHERE scenario_id = ? AND result IS NOT NULL AND result LIKE '%trajectory%'
-                ORDER BY updated_at DESC LIMIT 1
-                """,
-                (scenario_id,),
-            )
-            row = cursor.fetchone()
-            if row and row["result"]:
-                return json.loads(row["result"]) if isinstance(row["result"], str) else row["result"]
+        return result_payload
     except Exception as e:
         logger.warning("Không thể tự động hồi phục trajectory cho %s: %s", scenario_id, e)
 
