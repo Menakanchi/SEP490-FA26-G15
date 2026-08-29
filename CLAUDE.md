@@ -1,12 +1,17 @@
-# Ghi chú vận hành cho P-130
+# Ghi chú vận hành khó suy ra cho P-130
 
-Những thứ không suy ra được từ code, và mất thời gian nếu phải mò lại.
+Chỉ giữ ở đây những bẫy đã gặp ngoài thực tế mà đọc code khó biết được. Hướng
+dẫn thông thường nằm trong `README.md` và README của từng thư mục.
 
-## Chạy CARLA
+## CARLA trên máy dev này
 
-Server là app GPU chạy native trên Ubuntu, giải nén ở `~/CARLA_0.9.15` (bản
-`CARLA_0.9.15.tar.gz` cho Linux — GitHub release `0.9.15` không có asset nào,
-tải từ mirror `carla-releases.s3.us-east-005.backblazeb2.com/Linux/`).
+CARLA 0.9.15 chạy native Ubuntu ở `~/CARLA_0.9.15`; ScenarioRunner 0.9.15 ở
+`~/scenario_runner`. Bản Linux từng phải lấy từ mirror
+`carla-releases.s3.us-east-005.backblazeb2.com/Linux/`, vì GitHub release
+0.9.15 không có asset tương ứng.
+
+Máy có Intel iGPU cạnh NVIDIA dGPU. Khi tự bật server, **phải ép Vulkan dùng
+NVIDIA**:
 
 ```bash
 cd ~/CARLA_0.9.15
@@ -14,130 +19,58 @@ __NV_PRIME_RENDER_OFFLOAD=1 __VK_LAYER_NV_optimus=NVIDIA_only \
     ./CarlaUE4.sh -carla-rpc-port=2000 -windowed -ResX=800 -ResY=600
 ```
 
-**Hai cờ `__NV_*` là bắt buộc.** Máy có Intel iGPU cạnh NVIDIA dGPU; thiếu chúng
-thì Vulkan có thể chọn nhầm Intel và server bò hoặc chết. Kiểm GPU nào đang có:
-`vulkaninfo --summary | grep deviceName`.
+Thiếu hai biến trên có thể khiến CARLA chọn Intel rồi rất chậm hoặc chết. Kiểm
+tra bằng `vulkaninfo --summary | grep deviceName`. **Không thêm
+`-quality-level=Low`**: cờ này từng làm server sập trên Town04.
 
-Cổng mở sau vài giây tới ~30 giây. Kiểm bằng:
-
-```bash
-python3 -c "import socket;s=socket.socket();s.settimeout(2);print(s.connect_ex(('127.0.0.1',2000))==0)"
-```
-
-Cổng mở chưa chắc server đã sẵn sàng — chắc ăn thì hỏi thẳng version:
-
-```bash
-PYTHONPATH="$HOME/CARLA_0.9.15/PythonAPI/carla" \
-    worker/.venv/bin/python -c "import carla;print(carla.Client('127.0.0.1',2000).get_server_version())"
-```
-
-**KHÔNG thêm `-quality-level=Low`** — cờ đó làm server sập trên Town04. (Ghi
-nhận từ bản Windows; chưa thử lại trên Linux, và cũng không có lý do gì để thử.)
-
-Lib hệ thống cần có, nếu thiếu thì `CarlaUE4.sh` chết bằng lỗi `.so` khó hiểu:
+Các thư viện hệ thống đã từng thiếu và gây lỗi `.so` khó hiểu:
 
 ```bash
 sudo apt install -y libomp5 libsdl2-2.0-0 libxerces-c3.2 vulkan-tools
 ```
 
-## Chạy một file .xosc
+## Khi chạy ScenarioRunner thủ công
 
-Cần `PythonAPI/carla` của CARLA trên `PYTHONPATH`, nếu không ScenarioRunner
-chết ở `ModuleNotFoundError: No module named 'agents'`:
+Dùng `worker/.venv` (Python 3.10), không dùng `.venv` của backend. Thêm cả
+PythonAPI CARLA và ScenarioRunner vào `PYTHONPATH`, đồng thời luôn chọn Traffic
+Manager port khác 8000 vì backend dev dùng cổng đó:
 
 ```bash
 export PYTHONPATH="$HOME/CARLA_0.9.15/PythonAPI/carla:$HOME/scenario_runner"
 cd ~/scenario_runner
 /home/cong/code/P-130/worker/.venv/bin/python scenario_runner.py \
-    --openscenario /đường/dẫn/tới.xosc --output --timeout 60 \
+    --openscenario /duong/dan/toi.xosc --output --timeout 60 \
     --trafficManagerPort 8005
 ```
 
-Dùng `worker/.venv`, **không** dùng `.venv` của repo: project uv của worker ghim
-`carla==0.9.15` và `setuptools<81`, còn `src/` thì không bao giờ được import
-carla (ADR-001).
+Nếu quên `--trafficManagerPort`, ScenarioRunner thường chỉ báo lỗi bind RPC
+không nói rõ cổng 8000 đang trùng.
 
-**Luôn truyền `--trafficManagerPort`.** Mặc định của ScenarioRunner là 8000 —
-đúng cổng backend chạy cùng máy lúc dev. Trùng cổng thì nó chết bằng một thông
-báo chẳng liên quan gì tới nguyên nhân:
-
-```text
-RuntimeError: trying to create rpc server for traffic manager;
-but the system failed to create because of bind error
-```
-
-`worker/runner.py` và `worker/dev_ui.py` mặc định `CARLA_ROOT=~/CARLA_0.9.15`,
-`SR_ROOT=~/scenario_runner`, `CARLA_TM_PORT=8005` — đúng cho máy này, không cần
-đặt gì. Giải nén CARLA chỗ khác thì override bằng biến môi trường cùng tên.
-
-## Luôn bật camera bám xe trước khi chạy kịch bản
-
-**Quy tắc: chạy `follow_hero.py` TRƯỚC mọi lần chạy scenario, kể cả batch.**
-Không có nó thì người ngồi cạnh nhìn cửa sổ CARLA thấy đường trống và kết luận
-"không chạy" — trong khi worker đang chạy job thứ mười. Đã mất thời gian vì
-chuyện này hai lần.
-
-ScenarioRunner **không** di chuyển spectator camera. Kịch bản chạy ở một góc
-nào đó của Town04 còn cửa sổ vẫn nhìn vào chỗ map vừa load — nhìn vào đó thấy
-đường trống và tưởng scenario không chạy.
-
-Bật song song ở terminal khác, **trước** khi chạy scenario:
-
-```bash
-PYTHONPATH="$HOME/CARLA_0.9.15/PythonAPI/carla" \
-    worker/.venv/bin/python worker/follow_hero.py          # bám sau xe
-    # hoặc: --view bird                                     # nhìn từ trên
-```
-
-Nó chỉ đọc vị trí xe rồi đặt spectator, không gọi `world.tick()` nên không phá
-chế độ synchronous mà ScenarioRunner đang giữ.
+ScenarioRunner không tự di chuyển spectator. Khi chạy tay, bật
+`worker/follow_hero.py` ở terminal khác trước khi chạy scenario; nếu không cửa
+sổ CARLA có thể chỉ hiện đường trống dù scenario vẫn chạy. `make demo` và
+`worker/dev_ui.py` đã tự làm việc này.
 
 ## Đọc kết quả ScenarioRunner
 
-Đọc **dòng `CollisionTest`**, đừng đọc `GLOBAL RESULT`.
+Trong mục tiêu của dự án, `CollisionTest = FAILURE` thường là **kết quả mong
+muốn**: scenario đã tái hiện va chạm (`adversarial`). `CollisionTest = SUCCESS`
+nghĩa là chạy xong nhưng không có va chạm (`ran_no_hazard`).
 
-`CollisionTest = FAILURE` là **tin tốt**: kịch bản đã dựng được tình huống nguy
-hiểm — đúng thứ ta muốn (`adversarial_found`).
+Không suy ra điều đó từ `GLOBAL RESULT`: đây là AND của mọi criterion, nên
+`CheckDrivenDistance` hoặc `CheckMaximumVelocity` cũng có thể làm nó thành
+`FAILURE`. Giữ tách biệt hai khái niệm:
 
-Ngược lại, `CollisionTest = SUCCESS` (0 va chạm) nghĩa là kịch bản **chạy trót
-lọt nhưng không tái hiện được nguy hiểm nào** — về mặt sản phẩm đó mới là thất
-bại. Đừng đọc ngược.
+- `run_succeeded`: tiến trình chạy xong, không crash/timeout;
+- `had_collision`: riêng `CollisionTest` báo `FAILURE`.
 
-**`GLOBAL RESULT = FAILURE` không đồng nghĩa "tìm được nguy hiểm".** Nó là AND
-của mọi criteria, nên `CheckDrivenDistance` hay `CheckMaximumVelocity` trượt là
-đủ kéo nó xuống FAILURE trong khi không có va chạm nào. Ngày 22/08 có bốn kịch
-bản đóng sau ~2,6 giây (ego mới đi 16,6 m, dưới ngưỡng 50 m của
-`CheckDrivenDistance`): cả bốn đều `GLOBAL RESULT = FAILURE` mà chẳng mô phỏng
-được gì. Đọc theo `GLOBAL RESULT` là ghi nhầm cả bốn thành thành công.
+Scenario kết thúc sớm hơn nhiều so với `duration_s` thường là storyboard hết
+event sớm, không phải chạy nhanh; xem `_add_hold_open_event` trong converter.
 
-Code đã làm đúng chuyện này, đừng sửa theo hướng khác: `sr_cli.run_succeeded`
-chỉ trả lời "chạy xong, không crash/timeout", còn `sr_cli.had_collision` đọc
-riêng dòng `CollisionTest`; `verification_from` trong `schemas.py` map
-`ADVERSARIAL` / `RAN_NO_HAZARD` từ đó.
+## Lệnh có thể gọi LLM trả phí
 
-Kịch bản chạy ngắn hơn `duration_s` nhiều là dấu hiệu storyboard hết việc sớm
-chứ không phải kịch bản "xong nhanh" — xem `_add_hold_open_event` trong
-`convert_xosc_node.py`.
-
-## Test gọi LLM
-
-`pytest` mặc định **chặn** mọi lần gọi `call_with_escalation` (fixture autouse
-trong `tests/conftest.py`). Muốn chạy thật:
-
-```bash
-RUN_LLM_TESTS=1 pytest tests/test_agents/test_nodes/
-```
-
-Có lý do: lỗi "test âm thầm gọi API trả phí" đã lọt vào repo ba lần, mỗi lần
-đều xanh trên máy người viết vì họ có sẵn key.
-
-## Quản lý dependency
-
-Backend dùng `uv sync --locked` với `pyproject.toml` + `uv.lock`. Worker CARLA là
-project Python 3.10 độc lập: `uv sync --project worker --locked`. Không dùng
-`pip` hay `requirements.txt` cho dependency của repo.
-
-## Gate trước khi push
-
-`bash scripts/pre_push_check.sh` — ruff + pytest, cộng eslint/`next build` nếu
-`frontend/` có thay đổi. Bỏ qua khi thật sự cần: `SKIP_CHECK=1 git push`.
+Pytest mặc định chặn `call_with_escalation`; chỉ bật gọi thật có chủ đích bằng
+`RUN_LLM_TESTS=1`. Ngược lại, `prompt_ab/runner.py` luôn gọi API thật và không
+đi qua công tắc này. Artifact benchmark là bằng chứng tái lập, không sửa tay và
+không tự động cho phép thay prompt production; quy trình đầy đủ ở
+`prompt_ab/README.md`.
