@@ -24,7 +24,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, HelpCircle, XCircle } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, CheckCircle2, HelpCircle, PlusCircle, XCircle } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { PageHeader } from "@/components/PageHeader";
 import { getLabelQueue, submitIntentLabel } from "@/services/api";
@@ -42,7 +43,7 @@ export default function LabelPage() {
 
 function LabelContent() {
   const { user } = useAuth();
-  const labeller = (typeof user === "string" ? user : user?.username) ?? "unknown";
+  const labeller = (typeof user === "string" ? user : user?.username || user?.name) || "unknown";
   const [items, setItems] = useState<LabelQueueItem[]>([]);
   const [index, setIndex] = useState(0);
   const [reason, setReason] = useState("");
@@ -80,7 +81,41 @@ function LabelContent() {
 
   if (loading) return <Shell><p className="text-slate-400 text-sm">Đang tải…</p></Shell>;
   if (error) return <Shell><p className="text-red-500 text-sm">{error}</p></Shell>;
-  if (!items.length) return <Shell><p className="text-slate-400 text-sm">Không có kịch bản nào cần chấm nhãn ý định.</p></Shell>;
+  if (!items.length) {
+    return (
+      <Shell>
+        <div className="bg-white/75 dark:bg-slate-900/85 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] p-8 sm:p-12 text-center space-y-6 shadow-2xl">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+            <HelpCircle className="w-8 h-8" />
+          </div>
+          <div className="max-w-md mx-auto space-y-2">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+              Không có kịch bản nào cần chấm nhãn ý định
+            </h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Hàng chờ chấm nhãn L4 hiện đang trống. Bạn có thể tạo kịch bản mới hoặc duyệt các kịch bản đang ở Cổng 1 (BEFORE_SIM) để mô phỏng và sinh quỹ đạo chuyển sang hàng chờ.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-3 pt-2">
+            <Link
+              href="/landing"
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg transition flex items-center gap-2"
+            >
+              <PlusCircle className="w-4 h-4" />
+              Tạo kịch bản mới
+            </Link>
+            <Link
+              href="/review"
+              className="px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs border border-slate-300 dark:border-slate-700 transition flex items-center gap-2"
+            >
+              <ArrowRight className="w-4 h-4" />
+              Chuyển sang Duyệt Cổng 1
+            </Link>
+          </div>
+        </div>
+      </Shell>
+    );
+  }
 
   const done = items.filter((i) => i.labelled).length;
 
