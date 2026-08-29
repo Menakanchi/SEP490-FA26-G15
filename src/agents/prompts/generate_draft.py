@@ -76,7 +76,11 @@ Sinh ScenarioDraft từ mô tả tiếng Việt của người dùng.
 - Âm = làn bên trái, Dương = làn bên phải
 
 ### s_offset_m
-- Khoảng cách dọc so với ego (âm đến +200 mét)
+- Khoảng cách dọc so với ego, tính bằng mét
+- **BIÊN BẮT BUỘC: dùng đúng khoảng "Tầm với anchor" ghi trong phần INPUT.**
+  Đó là đoạn đường mà anchor CARLA phủ được; đặt actor ra ngoài đoạn đó thì
+  ScenarioRunner không spawn nổi và kịch bản hỏng, không sửa lại được.
+  ±200 chỉ là biên của kiểu dữ liệu, KHÔNG phải biên dùng được.
 - **ÂM = phía SAU ego**
 - Riêng run_red_light: bắt buộc actor dùng lane_offset=0 và s_offset_m=0; template
   sẽ đặt actor trên approach vuông góc có đèn đỏ, cắt qua đường ego đang đèn xanh
@@ -92,7 +96,23 @@ Dựa trên quan hệ chuyển động, mỗi maneuver có ràng buộc hình h�
 |----------|-------------|--------|
 | **cut_in vượt lên** | ÂM (phía sau), nhanh hơn ego | Chủ thể đuổi kịp rồi tạt vào. |
 | **cut_in nhập làn** | DƯƠNG (phía trước), chậm hơn ego | Xe từ lề/làn bên cạnh nhập vào đường đi của ego. |
-| **sudden_brake** | DƯƠNG (phía trước) | sc_003: s_offset_m=+30. |
+| **sudden_brake** | DƯƠNG (phía trước), chậm hơn ego | sc_017: s_offset_m=+25, ego 88 / xe trước 72 km/h. |
+| **wrong_way** | DƯƠNG, sát trần tầm với anchor | sc_042/sc_043: s_offset_m=+38 với tầm +40. |
+| **run_red_light** | **BẮT BUỘC 0**, kèm lane_offset=0 | Actor nằm trên nhánh đường VUÔNG GÓC, không trước/sau ego. |
+| **lane_drift** | quanh 0, kèm lane_offset khác 0 | Lấn làn là đi SONG SONG rồi lệch dần sang, không phải đuổi từ sau. |
+
+**Riêng wrong_way — vị trí đúng thôi chưa đủ.** Hai xe đối đầu nên tốc độ cộng
+dồn: sc_036/sc_038 đặt actor ở 35 m (hợp lệ) nhưng để 95/85 km/h thì chạy xong
+không dựng được nguy hiểm nào. Cặp dựng được va chạm thật là **s_offset_m = 38
+kèm CẢ HAI xe ~25 km/h** (sc_042, sc_043). Đặt xa hơn tầm anchor để "có chỗ chạy
+tới" là hỏng kịch bản, không phải cho thêm thời gian.
+
+**Riêng run_red_light — đừng dịch câu tiếng Việt thành trước/sau.** Câu gốc hay
+nói *"từ phía trước vượt đèn đỏ cắt ngang đầu xe ego"*, nhưng "phía trước" ở đây
+là hướng nhìn của người kể, không phải trục dọc đường. Actor đi trên **nhánh
+đường cắt ngang**, và template đã đo sẵn chỗ đặt nó. Bất kỳ giá trị nào khác
+`lane_offset=0, s_offset_m=0` đều làm hai xe chạy cùng một làn và không còn xung
+đột nào, dù nhãn vẫn ghi "vượt đèn đỏ".
 
 **QUAN TRỌNG:** Đặt sai s_offset_m sẽ dẫn đến:
 - GEOM_NO_CATCHUP: khoảng cách giữa adversary và ego không thu hẹp trước khi cut-in
@@ -164,20 +184,20 @@ Dựa trên quan hệ chuyển động, mỗi maneuver có ràng buộc hình h�
 }
 ```
 
-### Ví dụ 2: sudden_brake (CÓ CƠ SỞ TỪ sc_003)
+### Ví dụ 2: sudden_brake (CÓ CƠ SỞ TỪ sc_017 — đã chạy ra va chạm thật)
 **Input:**
-- Câu: "Xe tải chạy trước phanh gấp đột ngột khi trời sương mù, ego chạy 50 km/h phía sau."
-- ODDCell: urban_straight, fog, truck, sudden_brake
+- Câu: "Xe tải chạy trước phanh gấp đột ngột khi trời mưa, ego chạy 88 km/h phía sau."
+- ODDCell: highway, rain, truck, sudden_brake
 
 **Output:**
 ```json
 {
-  "title": "Xe tải phanh gấp trong sương mù trên đường đô thị",
-  "odd": {"road_type": "urban_straight", "weather": "fog", "actor_type": "truck", "maneuver": "sudden_brake"},
-  "time_of_day": "dusk",
+  "title": "Xe tải phanh gấp trong mưa trên cao tốc",
+  "odd": {"road_type": "highway", "weather": "rain", "actor_type": "truck", "maneuver": "sudden_brake"},
+  "time_of_day": "day",
   "actors": [
-    {"name": "hero", "category": "car", "position": {"lane_offset": 0, "s_offset_m": 0.0}, "initial_speed_kmh": 50.0, "is_ego": true},
-    {"name": "truck_ahead", "category": "truck", "position": {"lane_offset": 0, "s_offset_m": 30.0}, "initial_speed_kmh": 50.0, "is_ego": false}
+    {"name": "hero", "category": "car", "position": {"lane_offset": 0, "s_offset_m": 0.0}, "initial_speed_kmh": 88.0, "is_ego": true},
+    {"name": "truck_ahead", "category": "truck", "position": {"lane_offset": 0, "s_offset_m": 25.0}, "initial_speed_kmh": 72.0, "is_ego": false}
   ],
   "maneuvers": [
     {"actor_name": "truck_ahead", "maneuver": "sudden_brake", "trigger": {"type": "simulation_time", "value": 5.0}, "target_speed_kmh": 0.0}

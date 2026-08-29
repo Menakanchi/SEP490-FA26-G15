@@ -388,3 +388,84 @@ def test_sentinel_unknown_from_llm_is_treated_as_empty():
     # taxonomy_rules.json trong parse_intent.
     with pytest.raises(ValidationError):
         ODDQuery.model_validate({"weather": "mưa bão"})
+
+
+def test_speed_after_a_bare_ego_marker_belongs_to_ego_only():
+    """ "xe ego" không có span taxonomy, và segment của chủ thể liền trước nuốt nó.
+
+    Sample 4 của benchmark hỏng đúng vì chuyện này: 45 km/h là của ego, nhưng
+    ``adversary_speed_kmh`` cũng nhận 45. ``cut_in`` từ phía sau lại đòi adversary
+    nhanh hơn ego, nên ``INTENT_SPEED_MISMATCH`` và ``GEOM_NO_CATCHUP`` loại trừ
+    nhau — ba vòng repair dao động 60 -> 55 rồi chết.
+
+    "ô tô ego" không dính lỗi này vì "ô tô" khớp taxonomy nên có span chặn sẵn;
+    chỉ marker trần mới lọt.
+    """
+    parsed = _rule_based_extract(
+        "Trên cao tốc sương mù, xe máy từ phía sau tạt đầu xe ego đang chạy 45 km/h.",
+        _load_taxonomy_rules(),
+    )
+
+    assert parsed["kinematic_hints"] == {
+        "ego_speed_kmh": 45.0,
+        "adversary_relative_position": "behind",
+    }
+
+
+def test_adversary_speed_before_the_ego_marker_is_still_read():
+    """Cắt ở marker ego không được làm mất tốc độ nói trước đó."""
+    parsed = _rule_based_extract(
+        "Trên cao tốc trời quang, xe máy chạy 80 km/h tạt đầu xe ego đang chạy 55 km/h.",
+        _load_taxonomy_rules(),
+    )
+
+    assert parsed["kinematic_hints"]["adversary_speed_kmh"] == 80.0
+    assert parsed["kinematic_hints"]["ego_speed_kmh"] == 55.0
+
+
+def test_run_red_light_beats_a_cut_in_keyword_that_appears_earlier():
+    """ "Vượt đèn đỏ" gọi tên hành vi; "cắt ngang" chỉ tả hệ quả của nó.
+
+    Câu tiếng Việt tự nhiên hay nói hệ quả trước — *"trên nhánh đường cắt ngang
+    vượt đèn đỏ lao qua nút giao"*. Sắp theo vị trí thì `cut_in` thắng, nhãn ODD
+    thành `urban_straight + cut_in` — tổ hợp converter không dựng được — và
+    request chết ngay ở bước đầu. Chiến dịch ODD 29/08 mất 10 ô vì đúng chuyện
+    này.
+    """
+    parsed = _rule_based_extract(
+        "Trên đường phố nội đô trời mưa, một xe máy chạy 33 km/h trên nhánh đường cắt ngang "
+        "vượt đèn đỏ lao qua nút giao, cắt mặt xe bị ảnh hưởng đang đi hợp lệ 22 km/h.",
+        _load_taxonomy_rules(),
+    )
+
+    assert parsed["maneuver"] is ManeuverType.RUN_RED_LIGHT
+
+
+def test_cut_in_still_wins_when_no_decisive_signal_is_present():
+    """Danh sách quyết định phải HẸP; nới rộng là biến sắp theo vị trí thành vô nghĩa."""
+    parsed = _rule_based_extract(
+        "Trên cao tốc trời quang, xe máy vượt lên tạt đầu ô tô ego đang chạy 55 km/h rồi phanh gấp.",
+        _load_taxonomy_rules(),
+    )
+
+    assert parsed["maneuver"] is ManeuverType.CUT_IN
+
+
+@pytest.mark.parametrize(
+    "cach_noi",
+    ["vượt đèn đỏ", "bất chấp đèn đỏ", "phớt lờ đèn đỏ", "lao qua đèn đỏ"],
+)
+def test_cach_noi_khac_nhau_ve_den_do_deu_ra_run_red_light(cach_noi: str):
+    """Từ điển chỉ có bốn cách nói, mà tiếng Việt còn nhiều cách khác.
+
+    Ô cuối cùng của chiến dịch ODD 29/08 chết vì câu dùng "bất chấp đèn đỏ" —
+    không khớp từ khoá nào, nên "cắt ngang" thắng và nhãn thành `cut_in`. Danh
+    sách quyết định ở trên chỉ cứu được khi có ÍT NHẤT một từ khoá khớp.
+    """
+    parsed = _rule_based_extract(
+        f"Tại nút giao đường phố nội đô trời quang, một xe máy chạy 42 km/h trên hướng vuông góc "
+        f"{cach_noi}, lao cắt ngang làn ô tô bị ảnh hưởng đang đi 28 km/h.",
+        _load_taxonomy_rules(),
+    )
+
+    assert parsed["maneuver"] is ManeuverType.RUN_RED_LIGHT

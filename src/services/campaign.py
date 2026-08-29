@@ -97,6 +97,44 @@ class GeneratedPrompt(ForgeModel):
     description_vi: str = Field(..., min_length=20, max_length=400)
 
 
+# Ràng buộc hình học riêng của từng maneuver, bơm thẳng vào lời gọi thay vì để
+# trong `_SYSTEM_PROMPT`.
+#
+# Luật "xuất phát phía sau thì phải nhanh hơn" ĐÃ nằm trong system prompt, và
+# chiến dịch 29/08 vẫn vi phạm nó 6/35 lần: sinh ra "xe tải chạy 68 km/h từ phía
+# sau vượt lên tạt đầu xe ego đang chạy 94 km/h" — xe chậm hơn không thể vượt xe
+# nhanh hơn. Bước sinh kịch bản buộc phải nâng tốc adversary lên 110 để hình học
+# chạy được, rồi `INTENT_SPEED_MISMATCH` bắt đúng cái nó vừa buộc phải làm.
+#
+# Một dòng cụ thể cho đúng maneuver đang viết ăn hơn một gạch đầu dòng tổng quát
+# nằm giữa bảy gạch khác — cùng bài học với tầm với anchor (§9.3 của report).
+_MANEUVER_CONSTRAINT_VI: dict[str, str] = {
+    "cut_in": (
+        "Xe gây tình huống xuất phát PHÍA SAU và phải NHANH HƠN xe bị ảnh hưởng ít nhất 15 km/h "
+        "(ví dụ ego 90 km/h thì nó 105-115 km/h). Xe chậm hơn không bao giờ vượt lên được để tạt đầu."
+    ),
+    "sudden_brake": ("Xe gây tình huống chạy PHÍA TRƯỚC và CHẬM HƠN hoặc bằng xe bị ảnh hưởng, rồi mới phanh gấp."),
+    "stop_in_lane": "Xe gây tình huống đứng hoặc bò rất chậm PHÍA TRƯỚC, xe bị ảnh hưởng lao tới từ sau.",
+    "lane_drift": (
+        "Xe gây tình huống đi SONG SONG ở LÀN BÊN CẠNH, ngang tầm xe bị ảnh hưởng, rồi lệch dần sang. "
+        "KHÔNG viết 'từ phía sau' hay 'từ phía trước' — lấn làn không phải đuổi kịp."
+    ),
+    "wrong_way": (
+        "Hai xe ĐỐI ĐẦU. Để tốc độ CẢ HAI thấp, quanh 25 km/h: đối đầu ở tốc độ cao thì hai xe gặp nhau "
+        "quá sớm để kịp thành tình huống."
+    ),
+    # Không dùng chữ "cắt ngang"/"cắt mặt"/"chen ngang" trong ràng buộc này: cả
+    # ba đều là từ khoá của `cut_in` trong taxonomy, và câu sinh ra sẽ chép lại
+    # chúng. Chiến dịch 29/08 hỏng 10 ô đúng vì vậy.
+    "run_red_light": (
+        "Xe gây tình huống đi trên đường VUÔNG GÓC với đường của xe bị ảnh hưởng. Phải dùng đúng cụm "
+        "'vượt đèn đỏ' — không viết 'bất chấp đèn đỏ' hay 'phớt lờ đèn đỏ'. KHÔNG viết 'từ phía trước' "
+        "hay 'từ phía sau' — hai xe ở hai hướng khác nhau."
+    ),
+    "jaywalk": "Người đi bộ đứng ở LỀ rồi bước xuống băng ngang làn xe bị ảnh hưởng đang tới.",
+}
+
+
 def compose_prompt(cell: ODDCell, existing: list[str] | None = None) -> str:
     """Viết một câu tiếng Việt cho ô ODD này.
 
@@ -111,6 +149,8 @@ def compose_prompt(cell: ODDCell, existing: list[str] | None = None) -> str:
         f"Phương tiện gây tình huống: {_vi(cell.actor_type.value)}",
         f"Hành vi nguy hiểm: {_vi(cell.maneuver.value)}",
     ]
+    if constraint := _MANEUVER_CONSTRAINT_VI.get(cell.maneuver.value):
+        parts.append(f"Ràng buộc BẮT BUỘC cho hành vi này: {constraint}")
     if existing:
         parts.append("Các câu đã có trong ô này (phải khác hẳn):")
         parts.extend(f"- {sentence}" for sentence in existing[-5:])

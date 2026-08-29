@@ -9,38 +9,285 @@
     "rain, nếu không 'mưa to' sẽ khớp 'mua' của rain rồi không bao giờ tới nơi."
   ],
   "actor_type": {
-    "car": ["oto", "o to", "xe con", "xe 4 banh", "xe hoi", "xe oto", "sedan", "suv", "xe dien"],
-    "motorcycle": ["xe may", "xemay", "xe 2 banh", "motor", "scooter", "xe so", "xeso", "xe ga", "xega", "shi", "wave", "xe ba go", "xebago", "xe ba banh", "xebabanh", "xe ba goc"],
-    "truck": ["xe tai", "xetai", "xe dau keo", "container", "xe ban tai", "pickup", "xe ben", "cont", "xe cont", "xe lu", "xelu", "xe cau", "xecau", "xe ui", "xeui", "xe cho sat", "xe tron be tong", "xe tron", "xe betong", "xe bon", "xe bung thung", "xe nang", "xenang"],
-    "bus": ["xe buyt", "xe bus", "xe khach", "xe 16 cho", "16 cho", "xe 29 cho", "transit", "solati", "minibus"],
-    "pedestrian": ["nguoi di bo", "nguoi qua duong", "nguoi bang qua", "bo hanh", "pedestrian", "xe day", "hang rong"],
-    "bicycle": ["xe dap", "xedap", "doan xe dap", "doan xedap", "xe xe dap", "bicycle"],
-    "unknown": ["khong xac dinh", "khong ro", "unknown"]
+    "car": [
+      "oto",
+      "o to",
+      "xe con",
+      "xe 4 banh",
+      "xe hoi",
+      "xe oto",
+      "sedan",
+      "suv",
+      "xe dien"
+    ],
+    "motorcycle": [
+      "xe may",
+      "xemay",
+      "xe 2 banh",
+      "motor",
+      "scooter",
+      "xe so",
+      "xeso",
+      "xe ga",
+      "xega",
+      "shi",
+      "wave",
+      "xe ba go",
+      "xebago",
+      "xe ba banh",
+      "xebabanh",
+      "xe ba goc"
+    ],
+    "truck": [
+      "xe tai",
+      "xetai",
+      "xe dau keo",
+      "container",
+      "xe ban tai",
+      "pickup",
+      "xe ben",
+      "cont",
+      "xe cont",
+      "xe lu",
+      "xelu",
+      "xe cau",
+      "xecau",
+      "xe ui",
+      "xeui",
+      "xe cho sat",
+      "xe tron be tong",
+      "xe tron",
+      "xe betong",
+      "xe bon",
+      "xe bung thung",
+      "xe nang",
+      "xenang"
+    ],
+    "bus": [
+      "xe buyt",
+      "xe bus",
+      "xe khach",
+      "xe 16 cho",
+      "16 cho",
+      "xe 29 cho",
+      "transit",
+      "solati",
+      "minibus"
+    ],
+    "pedestrian": [
+      "nguoi di bo",
+      "nguoi qua duong",
+      "nguoi bang qua",
+      "bo hanh",
+      "pedestrian",
+      "xe day",
+      "hang rong"
+    ],
+    "bicycle": [
+      "xe dap",
+      "xedap",
+      "doan xe dap",
+      "doan xedap",
+      "xe xe dap",
+      "bicycle"
+    ],
+    "unknown": [
+      "khong xac dinh",
+      "khong ro",
+      "unknown"
+    ]
   },
   "maneuver": {
-    "cut_in": ["tat dau", "tat vao truoc dau", "tat sang lan", "cuop lan", "tat dau xe", "cat mat", "cut in", "chan dau", "chan dau xe", "cup dau", "cup dau xe", "chen ep", "chen ngang", "ep xe", "di chuyen ngang", "cat ngang", "qua duong noi bo", "di ngang qua duong", "sang duong"],
-    "sudden_brake": ["phanh gap", "thang gap", "dap phanh", "dam phanh", "phanh giui giui", "khung lai", "sudden brake", "dam dit", "huc duoi", "tong tu phia sau", "dam vao duoi", "tong vao duoi", "va cham phia sau"],
-    "lane_drift": ["lan lan", "lan sang lan", "de vach", "cheo lan", "suyt quet", "lane drift", "ui dat", "uidat", "bung thung", "roi kien hang", "roi hang", "di hang ba", "di hang 3", "chiem lan", "chiem tron lan"],
-    "overtake": ["vuot au", "vuot phai", "vuot trai", "vuot xe", "overtake"],
-    "run_red_light": ["vuot den do", "vuot den", "khong dung den do", "pha den do", "run red light"],
-    "jaywalk": ["bang qua duong", "sang duong au", "bang ngang duong", "jaywalk"],
-    "wrong_way": ["di nguoc chieu", "nguoc chieu", "di sai chieu", "wrong way"],
-    "stop_in_lane": ["can duong", "chan duong", "dung giua lan", "dung chet", "dung xe", "stop in lane", "lui cham", "lui xe", "dang lui", "lui cong trinh", "lat nghieng", "lat xe", "chan ngang", "nam ngang", "chet may", "hong xe"],
-    "unknown": ["khong xac dinh", "unknown"]
+    "cut_in": [
+      "tat dau",
+      "tat vao truoc dau",
+      "tat sang lan",
+      "cuop lan",
+      "tat dau xe",
+      "cat mat",
+      "cut in",
+      "chan dau",
+      "chan dau xe",
+      "cup dau",
+      "cup dau xe",
+      "chen ep",
+      "chen ngang",
+      "ep xe",
+      "di chuyen ngang",
+      "cat ngang",
+      "qua duong noi bo",
+      "di ngang qua duong",
+      "sang duong"
+    ],
+    "sudden_brake": [
+      "phanh gap",
+      "thang gap",
+      "dap phanh",
+      "dam phanh",
+      "phanh giui giui",
+      "khung lai",
+      "sudden brake",
+      "dam dit",
+      "huc duoi",
+      "tong tu phia sau",
+      "dam vao duoi",
+      "tong vao duoi",
+      "va cham phia sau"
+    ],
+    "lane_drift": [
+      "lan lan",
+      "lan sang lan",
+      "de vach",
+      "cheo lan",
+      "suyt quet",
+      "lane drift",
+      "ui dat",
+      "uidat",
+      "bung thung",
+      "roi kien hang",
+      "roi hang",
+      "di hang ba",
+      "di hang 3",
+      "chiem lan",
+      "chiem tron lan"
+    ],
+    "overtake": [
+      "vuot au",
+      "vuot phai",
+      "vuot trai",
+      "vuot xe",
+      "overtake"
+    ],
+    "run_red_light": [
+      "vuot den do",
+      "vuot den",
+      "khong dung den do",
+      "pha den do",
+      "run red light",
+      "bat chap den do",
+      "phot lo den do",
+      "lao qua den do",
+      "vuot qua den do",
+      "khong nhuong den do"
+    ],
+    "jaywalk": [
+      "bang qua duong",
+      "sang duong au",
+      "bang ngang duong",
+      "jaywalk"
+    ],
+    "wrong_way": [
+      "di nguoc chieu",
+      "nguoc chieu",
+      "di sai chieu",
+      "wrong way"
+    ],
+    "stop_in_lane": [
+      "can duong",
+      "chan duong",
+      "dung giua lan",
+      "dung chet",
+      "dung xe",
+      "stop in lane",
+      "lui cham",
+      "lui xe",
+      "dang lui",
+      "lui cong trinh",
+      "lat nghieng",
+      "lat xe",
+      "chan ngang",
+      "nam ngang",
+      "chet may",
+      "hong xe"
+    ],
+    "unknown": [
+      "khong xac dinh",
+      "unknown"
+    ]
   },
   "road_type": {
-    "urban_straight": ["duong do thi", "do thi", "duong pho", "duong thanh", "trong pho", "duong trong pho", "duong 1 chieu", "duong phan lan", "lan o to", "lan oto"],
-    "highway": ["cao toc", "duong cao toc", "quoc lo", "expressway", "highway"],
-    "intersection": ["nga tu", "nga ba", "giao lo", "nga 4", "nga 3", "giao lo co den"],
-    "roundabout": ["vong xuyen", "vong xoay", "bui binh", "roundabout"],
-    "residential_narrow": ["duong noi bo", "noi bo", "khu noi bo", "ngo hem", "duong lang"],
-    "unknown": ["khong xac dinh", "unknown"]
+    "urban_straight": [
+      "duong do thi",
+      "do thi",
+      "duong pho",
+      "duong thanh",
+      "trong pho",
+      "duong trong pho",
+      "duong 1 chieu",
+      "duong phan lan",
+      "lan o to",
+      "lan oto"
+    ],
+    "highway": [
+      "cao toc",
+      "duong cao toc",
+      "quoc lo",
+      "expressway",
+      "highway"
+    ],
+    "intersection": [
+      "nga tu",
+      "nga ba",
+      "giao lo",
+      "nga 4",
+      "nga 3",
+      "giao lo co den"
+    ],
+    "roundabout": [
+      "vong xuyen",
+      "vong xoay",
+      "bui binh",
+      "roundabout"
+    ],
+    "residential_narrow": [
+      "duong noi bo",
+      "noi bo",
+      "khu noi bo",
+      "ngo hem",
+      "duong lang"
+    ],
+    "unknown": [
+      "khong xac dinh",
+      "unknown"
+    ]
   },
   "weather": {
-    "clear": ["troi quang", "troi nang", "nang nong", "nang choi", "dep troi", "clear"],
-    "heavy_rain": ["mua lon", "mua to", "giong mua", "mua trang troi", "heavy rain", "mua bao", "bao", "mua gio", "mua xoi xa"],
-    "rain": ["mua", "troi mua", "co mua", "mua nho", "duong uot", "rain"],
-    "fog": ["suong mu", "suong day", "mo suong", "fog"],
-    "unknown": ["khong xac dinh", "unknown"]
+    "clear": [
+      "troi quang",
+      "troi nang",
+      "nang nong",
+      "nang choi",
+      "dep troi",
+      "clear"
+    ],
+    "heavy_rain": [
+      "mua lon",
+      "mua to",
+      "giong mua",
+      "mua trang troi",
+      "heavy rain",
+      "mua bao",
+      "bao",
+      "mua gio",
+      "mua xoi xa"
+    ],
+    "rain": [
+      "mua",
+      "troi mua",
+      "co mua",
+      "mua nho",
+      "duong uot",
+      "rain"
+    ],
+    "fog": [
+      "suong mu",
+      "suong day",
+      "mo suong",
+      "fog"
+    ],
+    "unknown": [
+      "khong xac dinh",
+      "unknown"
+    ]
   }
 }
