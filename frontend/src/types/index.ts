@@ -489,6 +489,9 @@ export interface ScenarioDetail {
   retrieved_examples?: RetrievedExample[];
   /** Có sau khi worker chạy xong; đây là thứ cổng BEFORE_LIBRARY duyệt. */
   latest_execution_result?: ExecutionResult | null;
+  result?: ExecutionResult | Record<string, unknown> | null;
+  trajectory?: TrajectoryPoint[] | null;
+  metrics?: Record<string, unknown> | null;
   verification?: string;
   /** Oracle L4 chấm từ telemetry CARLA; null nghĩa là chưa đủ dữ liệu, không phải sai. */
   intent_evaluation?: {
