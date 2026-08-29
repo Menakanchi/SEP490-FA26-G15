@@ -473,6 +473,27 @@ export interface Assumption {
   reason_vi: string;
 }
 
+/** GET /scenarios/{id}/tune — tóm tắt phép dò biến thể tới hạn. */
+export interface TuningSummary {
+  scenario_id: string;
+  baseline_min_distance_m: number | null;
+  best_min_distance_m: number | null;
+  best_scenario_id: string | null;
+  improved: boolean;
+  reached_critical: boolean;
+  ranked: { scenario_id: string; metrics: { min_distance_m?: number | null; ttc_min_s?: number | null } }[];
+}
+
+/** POST /scenarios/{id}/tune — một bước dò. `variants` rỗng nghĩa là đã dừng. */
+export interface TuneStepResponse {
+  ok: boolean;
+  scenario_id: string;
+  variants: string[];
+  count?: number;
+  stopped?: string;
+  tried?: string[];
+}
+
 export interface ScenarioDetail {
   scenario_id: string;
   title: string;
