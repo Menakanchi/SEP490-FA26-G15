@@ -449,3 +449,23 @@ def test_cut_in_still_wins_when_no_decisive_signal_is_present():
     )
 
     assert parsed["maneuver"] is ManeuverType.CUT_IN
+
+
+@pytest.mark.parametrize(
+    "cach_noi",
+    ["vượt đèn đỏ", "bất chấp đèn đỏ", "phớt lờ đèn đỏ", "lao qua đèn đỏ"],
+)
+def test_cach_noi_khac_nhau_ve_den_do_deu_ra_run_red_light(cach_noi: str):
+    """Từ điển chỉ có bốn cách nói, mà tiếng Việt còn nhiều cách khác.
+
+    Ô cuối cùng của chiến dịch ODD 29/08 chết vì câu dùng "bất chấp đèn đỏ" —
+    không khớp từ khoá nào, nên "cắt ngang" thắng và nhãn thành `cut_in`. Danh
+    sách quyết định ở trên chỉ cứu được khi có ÍT NHẤT một từ khoá khớp.
+    """
+    parsed = _rule_based_extract(
+        f"Tại nút giao đường phố nội đô trời quang, một xe máy chạy 42 km/h trên hướng vuông góc "
+        f"{cach_noi}, lao cắt ngang làn ô tô bị ảnh hưởng đang đi 28 km/h.",
+        _load_taxonomy_rules(),
+    )
+
+    assert parsed["maneuver"] is ManeuverType.RUN_RED_LIGHT
