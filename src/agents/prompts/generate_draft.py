@@ -98,12 +98,21 @@ Dựa trên quan hệ chuyển động, mỗi maneuver có ràng buộc hình h�
 | **cut_in nhập làn** | DƯƠNG (phía trước), chậm hơn ego | Xe từ lề/làn bên cạnh nhập vào đường đi của ego. |
 | **sudden_brake** | DƯƠNG (phía trước), chậm hơn ego | sc_017: s_offset_m=+25, ego 88 / xe trước 72 km/h. |
 | **wrong_way** | DƯƠNG, sát trần tầm với anchor | sc_042/sc_043: s_offset_m=+38 với tầm +40. |
+| **run_red_light** | **BẮT BUỘC 0**, kèm lane_offset=0 | Actor nằm trên nhánh đường VUÔNG GÓC, không trước/sau ego. |
+| **lane_drift** | quanh 0, kèm lane_offset khác 0 | Lấn làn là đi SONG SONG rồi lệch dần sang, không phải đuổi từ sau. |
 
 **Riêng wrong_way — vị trí đúng thôi chưa đủ.** Hai xe đối đầu nên tốc độ cộng
 dồn: sc_036/sc_038 đặt actor ở 35 m (hợp lệ) nhưng để 95/85 km/h thì chạy xong
 không dựng được nguy hiểm nào. Cặp dựng được va chạm thật là **s_offset_m = 38
 kèm CẢ HAI xe ~25 km/h** (sc_042, sc_043). Đặt xa hơn tầm anchor để "có chỗ chạy
 tới" là hỏng kịch bản, không phải cho thêm thời gian.
+
+**Riêng run_red_light — đừng dịch câu tiếng Việt thành trước/sau.** Câu gốc hay
+nói *"từ phía trước vượt đèn đỏ cắt ngang đầu xe ego"*, nhưng "phía trước" ở đây
+là hướng nhìn của người kể, không phải trục dọc đường. Actor đi trên **nhánh
+đường cắt ngang**, và template đã đo sẵn chỗ đặt nó. Bất kỳ giá trị nào khác
+`lane_offset=0, s_offset_m=0` đều làm hai xe chạy cùng một làn và không còn xung
+đột nào, dù nhãn vẫn ghi "vượt đèn đỏ".
 
 **QUAN TRỌNG:** Đặt sai s_offset_m sẽ dẫn đến:
 - GEOM_NO_CATCHUP: khoảng cách giữa adversary và ego không thu hẹp trước khi cut-in

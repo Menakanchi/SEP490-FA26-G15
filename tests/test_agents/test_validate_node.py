@@ -948,3 +948,47 @@ async def test_actor_inside_anchor_reach_raises_nothing(valid_draft: ScenarioDra
     )
 
     assert not [i for i in result["issues"] if i.code is IssueCode.GEOM_ACTOR_BEYOND_ANCHOR_REACH]
+
+
+@pytest.mark.asyncio
+async def test_run_red_light_ignores_the_positional_intent_hint(valid_draft: ScenarioDraft) -> None:
+    """Hai luật của chính dự án đòi ngược nhau, và model không thoát được.
+
+    `run_red_light` bắt buộc position 0/0 vì converter đặt actor lên approach
+    vuông góc đã đo. Nhưng câu tiếng Việt tự nhiên nói "từ phía trước vượt đèn đỏ
+    cắt ngang đầu xe ego", nên parse_intent sinh hint `ahead` và
+    `INTENT_POSITION_MISMATCH` đòi `s_offset_m > 0` — đúng thứ luật kia cấm.
+
+    Chiến dịch ODD 29/08: ba ô `run_red_light` chết vì cặp này, không ô nào
+    repair thoát.
+    """
+    draft = valid_draft.model_dump()
+    draft["odd"]["road_type"] = RoadType.URBAN_STRAIGHT
+    draft["odd"]["maneuver"] = ManeuverType.RUN_RED_LIGHT
+    draft["actors"][1]["position"] = {"lane_offset": 0, "s_offset_m": 0.0}
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.RUN_RED_LIGHT
+    draft["maneuvers"][0]["trigger"] = {"type": "simulation_time", "value": 1.0}
+
+    result = await validate_node(
+        {
+            "draft": ScenarioDraft.model_validate(draft),
+            "odd_query": ODDQuery(road_type=RoadType.URBAN_STRAIGHT, maneuver=ManeuverType.RUN_RED_LIGHT),
+            "kinematic_hints": {"adversary_relative_position": "ahead"},
+        }
+    )
+
+    assert not [i for i in result["issues"] if i.code is IssueCode.INTENT_POSITION_MISMATCH]
+
+
+@pytest.mark.asyncio
+async def test_positional_intent_hint_still_applies_to_other_maneuvers(valid_draft: ScenarioDraft) -> None:
+    """Chỉ `run_red_light` được miễn; miễn rộng hơn là mất một guard thật."""
+    result = await validate_node(
+        {
+            "draft": valid_draft,
+            "odd_query": ODDQuery(road_type=RoadType.INTERSECTION, maneuver=ManeuverType.CUT_IN),
+            "kinematic_hints": {"adversary_relative_position": "ahead"},
+        }
+    )
+
+    assert [i for i in result["issues"] if i.code is IssueCode.INTENT_POSITION_MISMATCH]
