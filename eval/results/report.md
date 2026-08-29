@@ -271,9 +271,74 @@ suggestion quanh `s_offset_m`, không phải retrieval. Phép đo này nên ch�
 thư viện có ~50 kịch bản `adversarial` thật; nếu lúc đó vẫn hoà thì mới có căn cứ
 bàn chuyện bỏ ví dụ khỏi prompt mà vẫn giữ retrieval cho thư viện.
 
+> **Đính chính diễn giải (29/08/2026).** Số liệu ở trên đúng, nhưng "không mua
+> được chất lượng đo được" là đọc quá hẹp: nó chỉ đếm pass/fail. Trên trục liên
+> tục thì few-shot **có** tác dụng đo được và nhất quán — `s_offset_m` mà model
+> sinh cho ba mô tả `wrong_way` là **80/120/80** khi zero-shot và **45/60/60**
+> khi có ví dụ. Cả sáu đều vượt tầm anchor (+40) nên cả sáu đều hỏng, và pass
+> rate che mất chuyển động đó.
+>
+> Đọc lại theo hướng này thì kết luận đổi hẳn: model **đi đúng hướng nhưng không
+> biết dừng ở đâu**, vì chưa chỗ nào nêu con số. Thứ nó thiếu là **biên**, không
+> phải **ví dụ** — và đó là đường dẫn thẳng tới §9.3.
+
 Artifact: [`fewshot_on_cold_2026-08-26.json`](fewshot_on_cold_2026-08-26.json),
 [`fewshot_off_warm_2026-08-26.json`](fewshot_off_warm_2026-08-26.json),
 [`fewshot_on_warm_2026-08-26.json`](fewshot_on_warm_2026-08-26.json).
+
+### 9.3. Tầm với anchor: dạy model một con số nó chưa từng được cho biết
+
+Ngày 29/08/2026. §9.2 kết lại rằng ba request hỏng đều hỏng vì `s_offset_m` vượt
+tầm anchor. Truy lại thì con số ấy **chưa bao giờ tới được model**, và cũng
+**chưa bao giờ sửa được**:
+
+- prompt ghi biên là *"âm đến +200 mét"* — đó là biên của kiểu dữ liệu
+  (`Position.s_offset_m`), không phải của anchor. Biên thật là `(-120, +40)` trên
+  `highway` và `(-60, +25)` trên `urban_straight`;
+- biên thật chỉ được kiểm ở `convert_spec_to_xosc`, mà node `convert_xosc` chạy
+  **sau** `promote` và không có cạnh nào quay lại `repair_draft`. Một lỗi model
+  sửa được bằng đúng một con số vì thế thành lỗi chết, kèm một `scenario_id` bị
+  tiêu.
+
+Bản sửa gồm bốn phần: `validate_node` phát `GEOM_ACTOR_BEYOND_ANCHOR_REACH`
+repair được (cùng khuôn mẫu với ba vị từ `cut_in`: repair được ở validate, khẳng
+định lại cứng ở converter); `_build_user_content` bơm tầm với thật của anchor vào
+INPUT, tra theo `road_type` nên biết trước khi gọi LLM; prompt bỏ con số ±200; và
+bảng geometry có thêm dòng `wrong_way`.
+
+| Lượt (cùng 20 mô tả, cùng snapshot) | done | lỗi vượt tầm | repair | tổng cost | p50 | cached | output token |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| base (`HEAD~1`), chạy cùng ngày | 17/20 | **2** | 4 | $0,083696 | 2,68 s | 71,9% | 8.260 |
+| **fix, cache nguội** | **19/20** | **0** | 4 | $0,079364 | 2,48 s | 75,3% | 7.869 |
+| **fix, cache ấm** | **19/20** | **0** | 5 | $0,062909 | 2,56 s | 90,3% | 8.166 |
+
+Lỗi vượt tầm anchor biến mất hoàn toàn ở cả hai lượt sau. Khối bơm vào INPUT chỉ
+~41 token và nằm ở user message, nên **output token không tăng** (7.869 và 8.166
+so với 8.260) và latency không xấu đi.
+
+**Vì sao phải chạy lượt `base` thay vì so với artifact 26/08.** Lượt fix đầu tiên
+làm hỏng sample 4 — một lỗi không có trong artifact cũ, trông y hệt regression.
+Chạy lại `HEAD~1` trong **cùng ngày** thì sample 4 hỏng y hệt: đó là model drift
+trong ba ngày, không phải bản sửa. §9.2 đã phải chạy lượt thứ ba vì biến *thứ tự
+cache*; đây là biến *thời điểm*. Cùng một luật: **so hai lượt khác ngày là so hai
+biến cùng lúc.**
+
+**Sample 4 hỏng ở cả ba lượt**, vì một lỗi khác và có thật: với câu *"xe máy từ
+phía sau tạt đầu xe ego đang chạy 45 km/h"*, rule parser gán 45 km/h cho **cả**
+`adversary_speed_kmh` lẫn `ego_speed_kmh`, dù câu chỉ nói tốc độ của ego. Từ đó
+`INTENT_SPEED_MISMATCH` đòi adversary = ego, còn hình học `cut_in` từ phía sau
+đòi adversary nhanh hơn ego (`GEOM_NO_CATCHUP`). Hai ràng buộc loại trừ nhau nên
+ba vòng repair dao động 60 → 55 rồi chết — đúng họ "vòng repair bất khả thi",
+lần này ở `parse_intent`.
+
+Con số 17/20 → 19/20 **không** phải L1 ở §2: mẫu số ở đây là 20 mô tả benchmark
+không ghi vào database thật, còn L1 đo trên các request thật qua
+`GET /api/v1/metrics/quality`. Bản sửa không hồi tố L1; nó chỉ làm request mới ít
+hỏng hơn, và L1 sẽ tự đi lên khi có request mới chạy qua.
+
+Artifact: [`anchor_reach_base_2026-08-29.json`](anchor_reach_base_2026-08-29.json),
+[`anchor_reach_fix_cold_2026-08-29.json`](anchor_reach_fix_cold_2026-08-29.json),
+[`anchor_reach_fix_warm_2026-08-29.json`](anchor_reach_fix_warm_2026-08-29.json).
 
 ## 10. Giới hạn và việc tiếp theo
 
@@ -290,6 +355,19 @@ Artifact: [`fewshot_on_cold_2026-08-26.json`](fewshot_on_cold_2026-08-26.json),
    cam kết. §9.2 mới chỉ đo *đóng góp của few-shot vào kết quả sinh*, không đo
    *chất lượng xếp hạng của retriever*; và đo trên một thư viện 18 hàng, quá mỏng
    để kết luận về few-shot nói chung.
+
+   Kiểm lại ngày 29/08: ở quy mô hiện tại thì metric ấy **chưa đo được gì**, chứ
+   không chỉ là chưa làm. Cổng của retriever loại luôn `created_by='seed-data'`,
+   nên pool tham gia xếp hạng là **9 hàng** chứ không phải 18, trải trên 8 ô ODD
+   với ô đông nhất chỉ 2 hàng. Mà `WHERE` lọc đủ bốn trục trước khi tính cosine,
+   còn `k = 3`: trên nhánh lọc trúng ô, số ứng viên luôn ≤ 2 < k, nên cosine
+   không loại bỏ gì — nó chỉ đảo thứ tự của tối đa hai phần tử. `Recall@5` khi ấy
+   bằng 1,0 theo định nghĩa, không theo chất lượng. Điều kiện để phép đo có
+   nghĩa: vài ô đạt **≥ 4 hàng** approved non-seed (pool > k).
+
+7. Sample 4 của benchmark hỏng vì `parse_intent` gán tốc độ của ego cho cả
+   adversary, tạo cặp ràng buộc loại trừ nhau với hình học `cut_in` (xem §9.3).
+   Đây là lỗi còn lại duy nhất trong benchmark sau bản sửa §9.3.
 
 ## 11. Cách tái tạo snapshot
 
