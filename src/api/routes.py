@@ -1019,17 +1019,11 @@ class IntentLabelRequest(BaseModel):
 # Đường dẫn riêng chứ không phải /scenarios/awaiting-label: route động
 # /scenarios/{scenario_id} khai báo trước sẽ nuốt nó, và lỗi hiện ra là
 # "Scenario 'awaiting-label' không tồn tại" — chẳng trỏ về nguyên nhân.
+@router.get("/label/queue")
 @router.get("/intent-labels/queue")
 async def intent_label_queue(labeller: str = "unknown") -> dict:
-    """Các lượt chạy có quỹ đạo, kèm mô tả gốc — **không kèm phán quyết của máy**.
-
-    Giấu phán quyết là chủ đích, không phải thiếu sót. Hiện sẵn "L4: đúng ý định"
-    thì người chấm sẽ gật theo, và mức khớp thu được là con số vô nghĩa. Đây là
-    chỗ dễ tự lừa nhất trong cả phép đo.
-
-    ``labelled`` chỉ nói người này đã chấm kịch bản đó chưa, để họ biết còn bao
-    nhiêu việc — nó không tiết lộ đã chấm ra sao.
-    """
+    """Các lượt chạy có quỹ đạo, kèm mô tả gốc — **không kèm phán quyết của máy**."""
+    labeller = labeller.strip() if labeller and labeller.strip() else "unknown"
     _, scenarios, executions = db.metrics_rows()
     has_trajectories = False
     for ex in executions:
@@ -1039,13 +1033,14 @@ async def intent_label_queue(labeller: str = "unknown") -> dict:
                 res = json.loads(res)
             except Exception:
                 res = {}
-        if isinstance(res, dict) and res.get("trajectory"):
+        if isinstance(res, dict) and (res.get("trajectory") or res.get("frames")):
             has_trajectories = True
             break
 
     if not has_trajectories:
         db.seed_default_trajectories()
         _, scenarios, executions = db.metrics_rows()
+
     described = {s["scenario_id"]: s for s in scenarios}
     mine = {row["scenario_id"] for row in db.intent_labels() if row["labeller"] == labeller}
 
@@ -1057,8 +1052,12 @@ async def intent_label_queue(labeller: str = "unknown") -> dict:
                 result = json.loads(result)
             except Exception:
                 result = {}
-        if not isinstance(result, dict) or not result.get("trajectory"):
+        if not isinstance(result, dict):
             continue
+        trajectory_data = result.get("trajectory") or result.get("frames")
+        if not trajectory_data:
+            continue
+
         scenario = db.get_scenario(execution["scenario_id"]) or {}
         items.append(
             {
@@ -1067,16 +1066,7 @@ async def intent_label_queue(labeller: str = "unknown") -> dict:
                 "description_vi": scenario.get("description_vi", ""),
                 "maneuver": execution.get("maneuver"),
                 "road_type": described.get(execution["scenario_id"], {}).get("road_type"),
-                "trajectory": result["trajectory"],
-                # Thời điểm va chạm để bản phát lại CẮT ở đó. Sau cú đâm, xe bị
-                # hất khỏi làn: đo trên sc_011 thì lệch ngang nhảy từ 3,8 m lên
-                # 153,5 m và xe kết thúc ở 208 m sau lưng ego. Vẽ tiếp phần đó
-                # thì tác nhân trông như đi giật lùi, và trục ngang phải phủ hàng
-                # trăm mét nên cả mặt cắt đường bị ép thành một dải mỏng.
-                #
-                # Đây không phải rò rỉ phán quyết của máy: "có va chạm hay không"
-                # không phải tiêu chí chấm ý định của maneuver nào cả — cut_in
-                # tông đuôi cũng va chạm, mà vẫn là sai ý định.
+                "trajectory": trajectory_data,
                 "contact_time_s": (result.get("metrics") or {}).get("contact_time_s"),
                 "labelled": execution["scenario_id"] in mine,
             }
