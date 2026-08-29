@@ -271,9 +271,101 @@ suggestion quanh `s_offset_m`, không phải retrieval. Phép đo này nên ch�
 thư viện có ~50 kịch bản `adversarial` thật; nếu lúc đó vẫn hoà thì mới có căn cứ
 bàn chuyện bỏ ví dụ khỏi prompt mà vẫn giữ retrieval cho thư viện.
 
+> **Đính chính diễn giải (29/08/2026).** Số liệu ở trên đúng, nhưng "không mua
+> được chất lượng đo được" là đọc quá hẹp: nó chỉ đếm pass/fail. Trên trục liên
+> tục thì few-shot **có** tác dụng đo được và nhất quán — `s_offset_m` mà model
+> sinh cho ba mô tả `wrong_way` là **80/120/80** khi zero-shot và **45/60/60**
+> khi có ví dụ. Cả sáu đều vượt tầm anchor (+40) nên cả sáu đều hỏng, và pass
+> rate che mất chuyển động đó.
+>
+> Đọc lại theo hướng này thì kết luận đổi hẳn: model **đi đúng hướng nhưng không
+> biết dừng ở đâu**, vì chưa chỗ nào nêu con số. Thứ nó thiếu là **biên**, không
+> phải **ví dụ** — và đó là đường dẫn thẳng tới §9.3.
+
 Artifact: [`fewshot_on_cold_2026-08-26.json`](fewshot_on_cold_2026-08-26.json),
 [`fewshot_off_warm_2026-08-26.json`](fewshot_off_warm_2026-08-26.json),
 [`fewshot_on_warm_2026-08-26.json`](fewshot_on_warm_2026-08-26.json).
+
+### 9.3. Tầm với anchor: dạy model một con số nó chưa từng được cho biết
+
+Ngày 29/08/2026. §9.2 kết lại rằng ba request hỏng đều hỏng vì `s_offset_m` vượt
+tầm anchor. Truy lại thì con số ấy **chưa bao giờ tới được model**, và cũng
+**chưa bao giờ sửa được**:
+
+- prompt ghi biên là *"âm đến +200 mét"* — đó là biên của kiểu dữ liệu
+  (`Position.s_offset_m`), không phải của anchor. Biên thật là `(-120, +40)` trên
+  `highway` và `(-60, +25)` trên `urban_straight`;
+- biên thật chỉ được kiểm ở `convert_spec_to_xosc`, mà node `convert_xosc` chạy
+  **sau** `promote` và không có cạnh nào quay lại `repair_draft`. Một lỗi model
+  sửa được bằng đúng một con số vì thế thành lỗi chết, kèm một `scenario_id` bị
+  tiêu.
+
+Bản sửa gồm bốn phần: `validate_node` phát `GEOM_ACTOR_BEYOND_ANCHOR_REACH`
+repair được (cùng khuôn mẫu với ba vị từ `cut_in`: repair được ở validate, khẳng
+định lại cứng ở converter); `_build_user_content` bơm tầm với thật của anchor vào
+INPUT, tra theo `road_type` nên biết trước khi gọi LLM; prompt bỏ con số ±200; và
+bảng geometry có thêm dòng `wrong_way`.
+
+| Lượt (cùng 20 mô tả, cùng snapshot) | done | lỗi vượt tầm | repair | tổng cost | p50 | cached | output token |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| base (`HEAD~1`), chạy cùng ngày | 17/20 | **2** | 4 | $0,083696 | 2,68 s | 71,9% | 8.260 |
+| **fix, cache nguội** | **19/20** | **0** | 4 | $0,079364 | 2,48 s | 75,3% | 7.869 |
+| **fix, cache ấm** | **19/20** | **0** | 5 | $0,062909 | 2,56 s | 90,3% | 8.166 |
+
+Lỗi vượt tầm anchor biến mất hoàn toàn ở cả hai lượt sau. Khối bơm vào INPUT chỉ
+~41 token và nằm ở user message, nên **output token không tăng** (7.869 và 8.166
+so với 8.260) và latency không xấu đi.
+
+**Vì sao phải chạy lượt `base` thay vì so với artifact 26/08.** Lượt fix đầu tiên
+làm hỏng sample 4 — một lỗi không có trong artifact cũ, trông y hệt regression.
+Chạy lại `HEAD~1` trong **cùng ngày** thì sample 4 hỏng y hệt: đó là model drift
+trong ba ngày, không phải bản sửa. §9.2 đã phải chạy lượt thứ ba vì biến *thứ tự
+cache*; đây là biến *thời điểm*. Cùng một luật: **so hai lượt khác ngày là so hai
+biến cùng lúc.**
+
+**Sample 4 hỏng ở cả ba lượt**, vì một lỗi khác và có thật: với câu *"xe máy từ
+phía sau tạt đầu xe ego đang chạy 45 km/h"*, rule parser gán 45 km/h cho **cả**
+`adversary_speed_kmh` lẫn `ego_speed_kmh`, dù câu chỉ nói tốc độ của ego. Từ đó
+`INTENT_SPEED_MISMATCH` đòi adversary = ego, còn hình học `cut_in` từ phía sau
+đòi adversary nhanh hơn ego (`GEOM_NO_CATCHUP`). Hai ràng buộc loại trừ nhau nên
+ba vòng repair dao động 60 → 55 rồi chết — đúng họ "vòng repair bất khả thi",
+lần này ở `parse_intent`.
+
+Con số 17/20 → 19/20 **không** phải L1 ở §2: mẫu số ở đây là 20 mô tả benchmark
+không ghi vào database thật, còn L1 đo trên các request thật qua
+`GET /api/v1/metrics/quality`. Bản sửa không hồi tố L1; nó chỉ làm request mới ít
+hỏng hơn, và L1 sẽ tự đi lên khi có request mới chạy qua.
+
+Artifact: [`anchor_reach_base_2026-08-29.json`](anchor_reach_base_2026-08-29.json),
+[`anchor_reach_fix_cold_2026-08-29.json`](anchor_reach_fix_cold_2026-08-29.json),
+[`anchor_reach_fix_warm_2026-08-29.json`](anchor_reach_fix_warm_2026-08-29.json).
+
+### 9.4. Tốc độ gán nhầm chủ thể: 20/20 và không còn vòng repair nào
+
+Cùng ngày, sau khi sửa nốt lỗi §9.3 để lại. Marker vai trò ego không phải
+`ActorType` nên taxonomy không tạo span cho nó, mà segment tính hint chỉ cắt ở
+span kế tiếp — nên tốc độ đứng sau *"xe ego"* bị gán cho cả chủ thể liền trước.
+*"Ô tô ego"* không dính vì "ô tô" khớp taxonomy nên có span chặn sẵn; chỉ marker
+trần mới lọt. Quét cả 20 mô tả: đúng hai câu bị (sample 4 và 9), và chỉ sample 4
+biểu hiện thành lỗi vì `cut_in` đòi chênh tốc độ còn `lane_drift` thì không.
+
+| Lượt (cùng 20 mô tả, cùng snapshot) | done | repair | tổng cost | p50 | cached | output token |
+|---|---:|---:|---:|---:|---:|---:|
+| base (trước cả hai bản sửa) | 17/20 | 4 | $0,083696 | 2,68 s | 71,9% | 8.260 |
+| sau §9.3 | 19/20 | 5 | $0,062909 | 2,56 s | 90,3% | 8.166 |
+| **sau §9.4** | **20/20** | **0** | $0,064336 | 3,51 s | 78,8% | **6.538** |
+
+**Không còn vòng repair nào trên cả 20 request** — từ 4-5 vòng xuống 0. Đó là
+con số đáng chú ý hơn cả pass rate: mỗi vòng repair là một lượt LLM thêm, nên
+output token giảm 20% (6.538 so với 8.166) dù sinh nhiều kịch bản hơn.
+
+Hai bản sửa cùng một hình dạng: **ràng buộc có thật của hệ thống không tới được
+model, và chỗ phát hiện ra nó lại nằm ngoài tầm sửa.** §9.3 là biên hình học chỉ
+kiểm ở converter sau `promote`; §9.4 là một hint sai sinh ra cặp ràng buộc loại
+trừ nhau mà repair không thể thoả. Cả hai đều biểu hiện thành *"model cứ sai
+mãi"*, và cả hai đều không sửa được bằng cách thêm ví dụ.
+
+Artifact: [`intent_speed_fix_2026-08-29.json`](intent_speed_fix_2026-08-29.json).
 
 ## 10. Giới hạn và việc tiếp theo
 
@@ -290,6 +382,35 @@ Artifact: [`fewshot_on_cold_2026-08-26.json`](fewshot_on_cold_2026-08-26.json),
    cam kết. §9.2 mới chỉ đo *đóng góp của few-shot vào kết quả sinh*, không đo
    *chất lượng xếp hạng của retriever*; và đo trên một thư viện 18 hàng, quá mỏng
    để kết luận về few-shot nói chung.
+
+   Kiểm lại ngày 29/08: ở quy mô hiện tại thì metric ấy **chưa đo được gì**, chứ
+   không chỉ là chưa làm. Cổng của retriever loại luôn `created_by='seed-data'`,
+   nên pool tham gia xếp hạng là **9 hàng** chứ không phải 18, trải trên 8 ô ODD
+   với ô đông nhất chỉ 2 hàng. Mà `WHERE` lọc đủ bốn trục trước khi tính cosine,
+   còn `k = 3`: trên nhánh lọc trúng ô, số ứng viên luôn ≤ 2 < k, nên cosine
+   không loại bỏ gì — nó chỉ đảo thứ tự của tối đa hai phần tử. `Recall@5` khi ấy
+   bằng 1,0 theo định nghĩa, không theo chất lượng. Điều kiện để phép đo có
+   nghĩa: vài ô đạt **≥ 4 hàng** approved non-seed (pool > k).
+
+7. Seed data: 6/10 hàng nằm **ngoài phạm vi converter có chủ đích** (ADR-016 mới
+   có anchor cao tốc và một giao cắt đô thị) — chúng vẫn hữu ích cho retrieval
+   theo văn bản và nhãn ODD. Nhưng kiểm ngày 29/08 thì **8/10 không biên dịch
+   được**, tức có hai hàng nằm *trong* phạm vi mà vẫn hỏng: `sc_908` đặt actor ở
+   45 m sau khi tầm với anchor được đo lại còn `+40`, và `sc_909` dùng trigger
+   `simulation_time` sau khi `cut_in` chuyển sang đòi `lead_distance`.
+
+   Cả hai còn mang trường `carla` khai đã chạy thật trên CARLA — điều không thể
+   đúng với một spec mà converter từ chối biên dịch. Nguyên nhân chung: luật
+   converter siết lại sau khi seed được viết, và `_xosc_for` nuốt cả hai loại
+   thất bại bằng một `except Exception` ghi log mức INFO, nên không ai thấy.
+
+   Đã sửa: hai hàng đó đi qua converter được, `_xosc_for` phân biệt *ngoài phạm
+   vi* (im lặng bỏ qua) với *trong phạm vi mà hỏng* (dừng hẳn), và
+   `tests/test_seed_data.py` canh cả hai bất biến. Nhãn xuất xứ được chỉnh theo
+   hướng **bảo thủ**: `sc_908` giữ `ran_no_hazard` (nhãn đang loại nó khỏi
+   few-shot, hạ xuống `unverified` là nới một guard đang có tác dụng), còn
+   `sc_909` hạ từ `adversarial` xuống `unverified` vì spec đã đổi thì không được
+   giữ nhãn của một lần chạy khác.
 
 ## 11. Cách tái tạo snapshot
 

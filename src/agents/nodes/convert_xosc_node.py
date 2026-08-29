@@ -800,6 +800,10 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
             IssueCode.TEMPLATE_CATALOG_INCONSISTENT,
             f"No template for road type {spec.odd.road_type.value}",
         )
+    # ``validate_node`` kiểm đúng vị từ này trước và phát ra
+    # ``GEOM_ACTOR_BEYOND_ANCHOR_REACH`` repair được — cùng khuôn mẫu với ba vị từ
+    # ``cut_in`` bên dưới. Bản ở đây là lưới an toàn cho spec đi vòng qua validate
+    # (seed, import, sửa tay), và tới đây thì không repair được nữa.
     for actor in spec.actors:
         if not actor.is_ego and actor_beyond_anchor_reach(actor, template.s_offset_reach_m):
             raise ConversionError(
