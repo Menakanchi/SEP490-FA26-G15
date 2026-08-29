@@ -320,9 +320,28 @@ async def get_status(request_id: str) -> StatusResponse:
 # ===========================================================================
 
 
+def _auto_simulate_background(job_id: str, scenario_id: str) -> None:
+    import os
+    from src.config import get_settings
+
+    if os.environ.get("PYTEST_CURRENT_TEST") or get_settings().app_env == "test":
+        return
+    try:
+        from worker.mock_runner import process_job
+
+        process_job({"job_id": job_id, "scenario_id": scenario_id, "xosc_path": ""})
+        logger.info("Background mock simulation completed for scenario %s", scenario_id)
+    except Exception as exc:
+        logger.warning("Background mock simulation failed for scenario %s: %s", scenario_id, exc)
+
+
 @router.post("/review")
 @router.post("/scenarios/{scenario_id}/review")
-async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) -> dict:
+async def post_review(
+    body: ReviewApiRequest,
+    scenario_id: str | None = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+) -> dict:
     """Gửi quyết định HITL tại một cổng duyệt."""
     target_id = scenario_id or body.scenario_id
     if not target_id:
@@ -434,6 +453,8 @@ async def post_review(body: ReviewApiRequest, scenario_id: str | None = None) ->
         job_id = f"job_{uuid.uuid4().hex[:8]}"
         db.create_scenario_job(job_id, target_id, scenario["xosc_content"])
         job_created = True
+        if background_tasks is not None:
+            background_tasks.add_task(_auto_simulate_background, job_id, target_id)
 
     return {"ok": True, "status": next_status.value, "job_created": job_created}
 

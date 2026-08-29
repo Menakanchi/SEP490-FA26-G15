@@ -279,7 +279,9 @@ function ReviewPageContent() {
       setToast({
         type: "success",
         msg: approved
-          ? `Đã phê duyệt kịch bản ${scenario.scenario_id} tại ${gateLabel}!`
+          ? gateToReview === "before_sim"
+            ? `Đã duyệt Cổng 1 & tự động tạo mô phỏng. Kịch bản ${scenario.scenario_id} đã sẵn sàng tại trang Chấm ý định`
+            : `Đã phê duyệt kịch bản ${scenario.scenario_id} tại ${gateLabel}!`
           : `Đã từ chối kịch bản ${scenario.scenario_id}.`,
       });
 
