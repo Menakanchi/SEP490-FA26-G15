@@ -1237,6 +1237,9 @@ def _seed_default_users() -> None:
             """,
             default_users,
         )
+        cursor.execute(
+            "UPDATE users SET role = 'reviewer', status = 'active' WHERE LOWER(username) IN ('reviewer', 'reviewer1')"
+        )
 
 
 def seed_default_trajectories() -> None:
