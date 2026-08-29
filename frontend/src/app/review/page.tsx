@@ -264,8 +264,6 @@ function ReviewPageContent() {
         reason: forceSimulate && nearDuplicate
           ? `Vẫn chạy dù gần trùng với ${nearDuplicate.duplicate_scenario_id}. ${reason.trim()}`.trim()
           : reason.trim() || "Chấp nhận kịch bản",
-        force_simulate: forceSimulate,
-        force_intent_override: overridingIntentMismatch,
       });
 
       if (result.warning === "near_duplicate" && result.duplicate) {
@@ -286,20 +284,37 @@ function ReviewPageContent() {
       setListLoading(true);
       await fetchScenarioList();
       await fetchScenarioDetail(scenario.scenario_id, false);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errObj = err as Record<string, unknown> | null | undefined;
+      const resData = (errObj?.response as Record<string, unknown> | undefined)?.data as Record<string, unknown> | undefined;
       const detailMsg =
-        err?.response?.data?.detail ||
-        err?.data?.detail ||
-        err?.detail ||
+        resData?.detail ||
+        errObj?.data ||
+        errObj?.detail ||
         (err instanceof Error ? err.message : String(err));
 
       const finalMsg =
         typeof detailMsg === "string"
           ? detailMsg
           : Array.isArray(detailMsg)
-          ? detailMsg.map((d: any) => d.msg || JSON.stringify(d)).join("; ")
+          ? detailMsg
+              .map((d: Record<string, unknown> | string) => {
+                if (typeof d === "string") return d;
+                if (d && typeof d === "object") {
+                  const locArr = (d as { loc?: unknown[] }).loc;
+                  const field = Array.isArray(locArr)
+                    ? locArr.filter((x: unknown) => x !== "body").join(".")
+                    : "";
+                  const msg = (d as { msg?: string }).msg || JSON.stringify(d);
+                  return field ? `${field}: ${msg}` : msg;
+                }
+                return String(d);
+              })
+              .join("; ")
           : typeof detailMsg === "object" && detailMsg !== null
-          ? JSON.stringify(detailMsg)
+          ? (detailMsg as { msg?: string; message?: string }).msg ||
+            (detailMsg as { msg?: string; message?: string }).message ||
+            JSON.stringify(detailMsg)
           : String(detailMsg);
 
       setToast({

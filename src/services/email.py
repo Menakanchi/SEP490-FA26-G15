@@ -85,7 +85,7 @@ def send_reviewer_approval_email(
 ) -> bool:
     """Gửi email thông báo Admin đã phê duyệt tài khoản Reviewer kèm mật khẩu tạm thời."""
     subject = "[Scenario Forge] Phê duyệt tài khoản Reviewer & Thông tin đăng nhập"
-    
+
     name_display = recipient_name or username
     body_text = (
         f"Xin chào {name_display},\n\n"
@@ -123,7 +123,7 @@ def send_registration_received_email(
 ) -> bool:
     """Gửi email thông báo đã nhận yêu cầu đăng ký Reviewer và đang chờ Admin phê duyệt."""
     subject = "[Scenario Forge] Tiếp nhận yêu cầu đăng ký tài khoản Reviewer"
-    
+
     name_display = recipient_name or username
     body_text = (
         f"Xin chào {name_display},\n\n"

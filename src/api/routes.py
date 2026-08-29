@@ -16,7 +16,7 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query, Response
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from src.agents.graph import build_forge_graph
 from src.agents.nodes.convert_xosc_node import convert_spec_to_xosc
@@ -51,7 +51,6 @@ from src.services import campaign as campaign_service
 from src.services import db, metrics, tuning
 from src.services.email import send_registration_received_email, send_reviewer_approval_email
 from src.services.library.retriever import SQLiteRetriever
-
 from src.services.llm import collect_provider_metrics, summarize_provider_metrics
 from src.services.near_duplicate import is_near_duplicate
 
@@ -833,10 +832,13 @@ async def stop_campaign(campaign_id: str) -> dict:
 class BatchReviewRequest(BaseModel):
     """Duyệt CẢ LÔ ở cổng 1 — ADR-014 phương án A3."""
 
+    model_config = ConfigDict(extra="ignore")
+
     reviewer: str = Field(..., min_length=1)
     approved: bool = True
     reason: str = ""
     force_simulate: bool = False
+    force_intent_override: bool = False
 
 
 @router.post("/campaigns/{campaign_id}/review")
@@ -1512,7 +1514,6 @@ async def register_user_endpoint(body: RegisterApiRequest, background_tasks: Bac
     return {"ok": True, "user": user, "status": status, "message_vi": msg}
 
 
-
 @router.post("/auth/login")
 async def login_user_endpoint(body: LoginApiRequest) -> dict:
     u_full = db.get_user_with_hash(body.username)
@@ -1699,7 +1700,6 @@ async def approve_reviewer_endpoint(username: str, background_tasks: BackgroundT
         )
 
     return {"ok": True, "user": user}
-
 
 
 @router.post("/admin/users/{username}/reject")

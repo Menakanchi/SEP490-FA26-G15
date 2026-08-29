@@ -54,7 +54,6 @@ class Settings(BaseSettings):
     smtp_from_email: str = ""
 
 
-
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

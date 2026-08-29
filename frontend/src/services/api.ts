@@ -26,8 +26,13 @@ import type {
 } from "@/types";
 import type { LoginPayload, RegisterPayload, User } from "@/types/auth";
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+const getBaseUrl = (): string => {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  const trimmed = envUrl.replace(/\/+$/, "");
+  return trimmed.endsWith("/api/v1") ? trimmed : `${trimmed}/api/v1`;
+};
+
+const BASE_URL = getBaseUrl();
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,11 +56,12 @@ async function request<T>(
         messageVi = json.detail;
       } else if (Array.isArray(json.detail)) {
         messageVi = json.detail
-          .map((d: any) => {
+          .map((d: Record<string, unknown> | string) => {
             if (typeof d === "string") return d;
             if (d && typeof d === "object") {
-              const field = Array.isArray(d.loc) ? d.loc.slice(1).join(".") : "";
-              const msg = d.msg || JSON.stringify(d);
+              const locArr = (d as { loc?: unknown[] }).loc;
+              const field = Array.isArray(locArr) ? locArr.slice(1).join(".") : "";
+              const msg = (d as { msg?: string }).msg || JSON.stringify(d);
               return field ? `${field}: ${msg}` : msg;
             }
             return String(d);
@@ -126,17 +132,22 @@ export async function getStatus(requestId: string): Promise<GenerationStatus> {
 export async function postReview(
   payload: ReviewRequest,
 ): Promise<ReviewResponse> {
-  const { scenario_id, ...cleanPayload } = payload;
+  const scenarioId = payload.scenario_id;
+  const notes = (payload as Record<string, unknown>).notes;
   const bodyData = {
-    ...cleanPayload,
-    scenario_id: scenario_id || "",
+    gate: payload.gate,
+    approved: Boolean(payload.approved),
+    reviewer: payload.reviewer,
+    reason: payload.reason || (typeof notes === "string" ? notes : ""),
   };
 
-  return request<ReviewResponse>(`/scenarios/${encodeURIComponent(scenario_id)}/review`, {
+  return request<ReviewResponse>(`/scenarios/${encodeURIComponent(scenarioId)}/review`, {
     method: "POST",
     body: JSON.stringify(bodyData),
   });
 }
+
+export const reviewScenario = postReview;
 
 // ---------------------------------------------------------------------------
 // GET /library/search — Danh sách kịch bản (có lọc ODD & keyword)
