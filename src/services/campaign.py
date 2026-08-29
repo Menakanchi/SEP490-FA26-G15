@@ -123,9 +123,12 @@ _MANEUVER_CONSTRAINT_VI: dict[str, str] = {
         "Hai xe ĐỐI ĐẦU. Để tốc độ CẢ HAI thấp, quanh 25 km/h: đối đầu ở tốc độ cao thì hai xe gặp nhau "
         "quá sớm để kịp thành tình huống."
     ),
+    # Không dùng chữ "cắt ngang"/"cắt mặt"/"chen ngang" trong ràng buộc này: cả
+    # ba đều là từ khoá của `cut_in` trong taxonomy, và câu sinh ra sẽ chép lại
+    # chúng. Chiến dịch 29/08 hỏng 10 ô đúng vì vậy.
     "run_red_light": (
-        "Xe gây tình huống đi trên NHÁNH ĐƯỜNG CẮT NGANG và vượt đèn đỏ, không đi cùng đường với xe bị "
-        "ảnh hưởng. KHÔNG viết 'từ phía trước' hay 'từ phía sau' — hai xe ở hai nhánh khác nhau."
+        "Xe gây tình huống đi trên đường VUÔNG GÓC với đường của xe bị ảnh hưởng và vượt đèn đỏ khi qua "
+        "nút giao. KHÔNG viết 'từ phía trước' hay 'từ phía sau' — hai xe ở hai hướng khác nhau."
     ),
     "jaywalk": "Người đi bộ đứng ở LỀ rồi bước xuống băng ngang làn xe bị ảnh hưởng đang tới.",
 }
