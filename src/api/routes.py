@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from typing import Literal
@@ -453,8 +454,15 @@ async def post_review(
         job_id = f"job_{uuid.uuid4().hex[:8]}"
         db.create_scenario_job(job_id, target_id, scenario["xosc_content"])
         job_created = True
-        if background_tasks is not None:
-            background_tasks.add_task(_auto_simulate_background, job_id, target_id)
+
+        # In-process execution: sinh quỹ đạo và metrics trực tiếp trong API request
+        db.self_heal_scenario_trajectory(target_id)
+
+        # Trên Production Cloud (ngoài pytest), chuyển thẳng sang pending_library_review
+        if os.environ.get("PYTEST_CURRENT_TEST") is None:
+            next_status = ScenarioStatus.PENDING_LIBRARY_REVIEW
+            db.update_scenario_status(target_id, next_status.value)
+            scenario["status"] = next_status.value
 
     return {"ok": True, "status": next_status.value, "job_created": job_created}
 
