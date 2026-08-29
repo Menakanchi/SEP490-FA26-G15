@@ -392,14 +392,25 @@ Artifact: [`intent_speed_fix_2026-08-29.json`](intent_speed_fix_2026-08-29.json)
    bằng 1,0 theo định nghĩa, không theo chất lượng. Điều kiện để phép đo có
    nghĩa: vài ô đạt **≥ 4 hàng** approved non-seed (pool > k).
 
-7. Seed data còn nhiều hàng `approved_library` mà converter không dựng được:
-   `sc_907` đặt `s_offset_m = 60` (ngoài tầm anchor `+40`), còn `sc_904` và
-   `sc_910` mang tổ hợp `urban_straight` + `sudden_brake` mà anchor đô thị không
-   hỗ trợ. Hiện vô hại vì cổng của retriever loại `created_by='seed-data'` khỏi
-   few-shot, nhưng đó là may chứ không phải thiết kế: đổi cổng là chúng thành ví
-   dụ dạy model đúng những lỗi §9.3 vừa sửa. Cần một test canh *"mọi hàng
-   `approved_library` phải convert được"*, và dọn seed data trước khi bật test
-   đó.
+7. Seed data: 6/10 hàng nằm **ngoài phạm vi converter có chủ đích** (ADR-016 mới
+   có anchor cao tốc và một giao cắt đô thị) — chúng vẫn hữu ích cho retrieval
+   theo văn bản và nhãn ODD. Nhưng kiểm ngày 29/08 thì **8/10 không biên dịch
+   được**, tức có hai hàng nằm *trong* phạm vi mà vẫn hỏng: `sc_908` đặt actor ở
+   45 m sau khi tầm với anchor được đo lại còn `+40`, và `sc_909` dùng trigger
+   `simulation_time` sau khi `cut_in` chuyển sang đòi `lead_distance`.
+
+   Cả hai còn mang trường `carla` khai đã chạy thật trên CARLA — điều không thể
+   đúng với một spec mà converter từ chối biên dịch. Nguyên nhân chung: luật
+   converter siết lại sau khi seed được viết, và `_xosc_for` nuốt cả hai loại
+   thất bại bằng một `except Exception` ghi log mức INFO, nên không ai thấy.
+
+   Đã sửa: hai hàng đó đi qua converter được, `_xosc_for` phân biệt *ngoài phạm
+   vi* (im lặng bỏ qua) với *trong phạm vi mà hỏng* (dừng hẳn), và
+   `tests/test_seed_data.py` canh cả hai bất biến. Nhãn xuất xứ được chỉnh theo
+   hướng **bảo thủ**: `sc_908` giữ `ran_no_hazard` (nhãn đang loại nó khỏi
+   few-shot, hạ xuống `unverified` là nới một guard đang có tác dụng), còn
+   `sc_909` hạ từ `adversarial` xuống `unverified` vì spec đã đổi thì không được
+   giữ nhãn của một lần chạy khác.
 
 ## 11. Cách tái tạo snapshot
 
