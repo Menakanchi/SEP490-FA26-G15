@@ -1239,6 +1239,101 @@ def _seed_default_users() -> None:
         )
 
 
+def seed_default_trajectories() -> None:
+    """Tự động sinh dữ liệu trajectory mô phỏng cho kịch bản seed mặc định để hàng đợi /label luôn có sẵn dữ liệu."""
+    try:
+        with _cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM scenario_jobs WHERE result IS NOT NULL AND result LIKE '%trajectory%'")
+            row = cursor.fetchone()
+            if row and row[0] > 0:
+                return
+
+        from worker.mock_runner import process_job
+
+        seed_items = [
+            (
+                "sc_001",
+                "Xe con cắt mặt ép lane xe tải trên cao tốc",
+                "Xe con sedan phóng nhanh chuyển làn đột ngột tạt đầu xe tải ở khoảng cách gần.",
+                {
+                    "road_type": "highway",
+                    "weather": "clear",
+                    "actor_type": "car",
+                    "maneuver": "cut_in",
+                },
+            ),
+            (
+                "sc_002",
+                "Xe buýt phanh gấp đón khách giữa làn đô thị",
+                "Xe buýt tạt vào dải phân cách dừng đột ngột đón trả khách làm các xe đi sau phải phanh gấp.",
+                {
+                    "road_type": "urban_straight",
+                    "weather": "clear",
+                    "actor_type": "truck",
+                    "maneuver": "sudden_brake",
+                },
+            ),
+            (
+                "sc_003",
+                "Xe máy lọt điểm mù tạt đầu tại ngã tư",
+                "Xe máy vượt phải tạt đầu ô tô ngay trước vạch dừng đèn đỏ ngã tư.",
+                {
+                    "road_type": "intersection",
+                    "weather": "clear",
+                    "actor_type": "motorcycle",
+                    "maneuver": "cut_in",
+                },
+            ),
+        ]
+
+        for sc_id, title, desc, odd in seed_items:
+            save_scenario(
+                scenario_id=sc_id,
+                title=title,
+                description_vi=desc,
+                spec={
+                    "scenario_id": sc_id,
+                    "title": title,
+                    "description_vi": desc,
+                    "odd": odd,
+                    "duration_s": 20.0,
+                    "actors": [
+                        {
+                            "name": "hero",
+                            "category": "car",
+                            "position": {"s_offset_m": 0.0},
+                            "initial_speed_kmh": 60.0,
+                            "is_ego": True,
+                        },
+                        {
+                            "name": "adv",
+                            "category": odd["actor_type"],
+                            "position": {"s_offset_m": 30.0, "lane_offset": -1},
+                            "initial_speed_kmh": 70.0,
+                            "is_ego": False,
+                        },
+                    ],
+                    "maneuvers": [
+                        {
+                            "actor_name": "adv",
+                            "maneuver": odd["maneuver"],
+                            "trigger": {"type": "simulation_time", "value": 4.0},
+                            "target_speed_kmh": 20.0,
+                        }
+                    ],
+                },
+                odd=odd,
+                status=ScenarioStatus.APPROVED_LIBRARY.value,
+                created_by="seed-data",
+            )
+            job_id = f"job_seed_{sc_id}"
+            create_scenario_job(job_id, sc_id, "<OpenSCENARIO/>")
+            process_job({"job_id": job_id, "scenario_id": sc_id, "xosc_path": ""})
+            update_scenario_status(sc_id, ScenarioStatus.APPROVED_LIBRARY.value)
+    except Exception as e:
+        logger.warning("Lỗi tự động nạp seed trajectory cho /label: %s", e)
+
+
 def create_user(
     username: str,
     name: str,

@@ -1010,13 +1010,33 @@ async def intent_label_queue(labeller: str = "unknown") -> dict:
     nhiêu việc — nó không tiết lộ đã chấm ra sao.
     """
     _, scenarios, executions = db.metrics_rows()
+    has_trajectories = False
+    for ex in executions:
+        res = ex.get("result") or {}
+        if isinstance(res, str):
+            try:
+                res = json.loads(res)
+            except Exception:
+                res = {}
+        if isinstance(res, dict) and res.get("trajectory"):
+            has_trajectories = True
+            break
+
+    if not has_trajectories:
+        db.seed_default_trajectories()
+        _, scenarios, executions = db.metrics_rows()
     described = {s["scenario_id"]: s for s in scenarios}
     mine = {row["scenario_id"] for row in db.intent_labels() if row["labeller"] == labeller}
 
     items = []
     for execution in sorted(executions, key=lambda e: e["scenario_id"]):
         result = execution.get("result") or {}
-        if not result.get("trajectory"):
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except Exception:
+                result = {}
+        if not isinstance(result, dict) or not result.get("trajectory"):
             continue
         scenario = db.get_scenario(execution["scenario_id"]) or {}
         items.append(
