@@ -1328,15 +1328,26 @@ def self_heal_scenario_trajectory(scenario_id: str) -> dict | None:
 
 
 def self_heal_all_scenarios() -> None:
-    """Quét toàn bộ kịch bản trên DB và tự động phục hồi dữ liệu trajectory nếu chưa có."""
+    """Quét toàn bộ kịch bản trên DB chưa có kết quả trajectory trong scenario_jobs và tự động phục hồi dữ liệu trajectory in-process."""
     if os.environ.get("PYTEST_CURRENT_TEST") is not None:
         return
     try:
         with _cursor() as cursor:
-            cursor.execute("SELECT scenario_id FROM scenarios")
-            rows = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT scenario_id, status FROM scenarios
+                WHERE scenario_id NOT IN (
+                    SELECT scenario_id FROM scenario_jobs
+                    WHERE result IS NOT NULL AND result LIKE '%trajectory%'
+                )
+                """
+            )
+            rows = [dict(r) for r in cursor.fetchall()]
             for r in rows:
-                self_heal_scenario_trajectory(r["scenario_id"])
+                sc_id = r["scenario_id"]
+                self_heal_scenario_trajectory(sc_id)
+                if r.get("status") == ScenarioStatus.SIMULATION_QUEUED.value:
+                    update_scenario_status(sc_id, ScenarioStatus.PENDING_LIBRARY_REVIEW.value)
     except Exception as e:
         logger.warning("Lỗi khi tự động hồi phục trajectory toàn bộ kịch bản: %s", e)
 
@@ -1346,6 +1357,7 @@ def migrate_stuck_simulation_queued_scenarios() -> None:
     if os.environ.get("PYTEST_CURRENT_TEST") is not None:
         return
     try:
+        self_heal_all_scenarios()
         with _cursor() as cursor:
             cursor.execute(
                 "SELECT scenario_id FROM scenarios WHERE status = ?",
@@ -1365,14 +1377,6 @@ def migrate_stuck_simulation_queued_scenarios() -> None:
 def seed_default_trajectories() -> None:
     """Tự động sinh dữ liệu trajectory mô phỏng cho kịch bản seed mặc định để hàng đợi /label luôn có sẵn dữ liệu."""
     try:
-        with _cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM scenario_jobs WHERE result IS NOT NULL AND result LIKE '%trajectory%'")
-            row = cursor.fetchone()
-            if row and row[0] > 0:
-                return
-
-        from worker.mock_runner import process_job
-
         seed_items = [
             (
                 "sc_001",
@@ -1449,9 +1453,7 @@ def seed_default_trajectories() -> None:
                 status=ScenarioStatus.APPROVED_LIBRARY.value,
                 created_by="seed-data",
             )
-            job_id = f"job_seed_{sc_id}"
-            create_scenario_job(job_id, sc_id, "<OpenSCENARIO/>")
-            process_job({"job_id": job_id, "scenario_id": sc_id, "xosc_path": ""})
+            self_heal_scenario_trajectory(sc_id)
             update_scenario_status(sc_id, ScenarioStatus.APPROVED_LIBRARY.value)
     except Exception as e:
         logger.warning("Lỗi tự động nạp seed trajectory cho /label: %s", e)
