@@ -11,42 +11,38 @@ import {
   Layers,
   Play,
   Sun,
-  Truck,
 } from "lucide-react";
 import { FadeIn } from "./FadeIn";
 
 const cards = [
   {
-    id: "sc_011",
-    title: "Xe máy tạt đầu rồi phanh gấp",
-    description:
-      "Xe máy vượt từ phía sau, cắt vào làn ego rồi giảm tốc trên cao tốc.",
-    tags: ["Cao tốc", "Cut-in", "BehaviorAgent"],
+    id: "sc_008",
+    title: "Ô tô tông đít xe máy trên cao tốc trong sương mù",
+    description: "ô tô đâm đít xe máy trên cao tốc trời sương mù, 30km",
+    tags: ["Cao tốc", "Sương mù", "Ô tô", "Phanh gấp"],
     actorIcon: Bike,
     weatherIcon: CloudFog,
     weather: "Sương mù",
     tone: "from-orange-100 to-amber-50 text-orange-700",
   },
   {
-    id: "sc_043",
-    title: "Xe tải đi ngược chiều trong làn ego",
-    description:
-      "Xe tải đối đầu ego trên cao tốc; quỹ đạo dùng để kiểm tra hướng và hành lang làn.",
-    tags: ["Cao tốc", "Đi ngược chiều", "CARLA"],
-    actorIcon: Truck,
-    weatherIcon: CloudFog,
-    weather: "Sương mù",
-    tone: "from-slate-200 to-blue-50 text-slate-700",
-  },
-  {
-    id: "sc_046",
-    title: "Ô tô vượt đèn đỏ cắt ngang ego",
-    description:
-      "Tác nhân đi từ đường vuông góc, vượt đèn đỏ và tạo xung đột tại giao lộ Town04.",
-    tags: ["Đô thị", "Vượt đèn đỏ", "Đã kiểm chứng"],
+    id: "sc_007",
+    title: "Ô tô đâm đít xe máy trên cao tốc",
+    description: "o to dam dit xe may tren cao toc",
+    tags: ["Cao tốc", "Trời quang", "Ô tô", "Phanh gấp"],
     actorIcon: CarFront,
     weatherIcon: Sun,
     weather: "Trời quang",
+    tone: "from-slate-200 to-blue-50 text-slate-700",
+  },
+  {
+    id: "sc_001",
+    title: "Ô tô phanh gấp trong mưa lớn trên cao tốc",
+    description: "ô tô đâm đít xe máy trời mưa to",
+    tags: ["Cao tốc", "Mưa lớn", "Ô tô", "Phanh gấp"],
+    actorIcon: CarFront,
+    weatherIcon: CloudFog,
+    weather: "Mưa lớn",
     tone: "from-emerald-100 to-cyan-50 text-emerald-700",
   },
 ];
