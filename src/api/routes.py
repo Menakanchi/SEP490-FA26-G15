@@ -1021,6 +1021,7 @@ class IntentLabelRequest(BaseModel):
 # "Scenario 'awaiting-label' không tồn tại" — chẳng trỏ về nguyên nhân.
 @router.get("/label/queue")
 @router.get("/intent-labels/queue")
+@router.get("/scenarios/label/queue")
 async def intent_label_queue(labeller: str = "unknown") -> dict:
     """Các lượt chạy có quỹ đạo, kèm mô tả gốc — **không kèm phán quyết của máy**."""
     labeller = labeller.strip() if labeller and labeller.strip() else "unknown"
@@ -1059,16 +1060,26 @@ async def intent_label_queue(labeller: str = "unknown") -> dict:
             continue
 
         scenario = db.get_scenario(execution["scenario_id"]) or {}
+        scenario_id = execution["scenario_id"]
+        title_val = scenario.get("title", "")
+        desc_val = scenario.get("description_vi", "")
+        road_type_val = described.get(scenario_id, {}).get("road_type") or "ODD"
+
         items.append(
             {
-                "scenario_id": execution["scenario_id"],
-                "title": scenario.get("title", ""),
-                "description_vi": scenario.get("description_vi", ""),
+                "id": scenario_id,
+                "scenario_id": scenario_id,
+                "name": title_val,
+                "title": title_val,
+                "description": desc_val,
+                "description_vi": desc_val,
+                "category": road_type_val,
+                "road_type": road_type_val,
                 "maneuver": execution.get("maneuver"),
-                "road_type": described.get(execution["scenario_id"], {}).get("road_type"),
                 "trajectory": trajectory_data,
+                "result": {"trajectory": trajectory_data, "metrics": result.get("metrics")},
                 "contact_time_s": (result.get("metrics") or {}).get("contact_time_s"),
-                "labelled": execution["scenario_id"] in mine,
+                "labelled": scenario_id in mine,
             }
         )
     return {"items": items, "count": len(items)}
