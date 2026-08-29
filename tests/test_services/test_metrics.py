@@ -445,4 +445,3 @@ def test_unknown_and_invalid_enum_handling_in_metrics() -> None:
     assert "m1_validity" in report
     assert "m2_coverage" in report
     assert "m3_hazard" in report
-

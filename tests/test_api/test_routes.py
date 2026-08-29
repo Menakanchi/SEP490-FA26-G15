@@ -1129,4 +1129,3 @@ async def test_change_password_max_length_limit(client):
     )
     assert res.status_code == 400
     assert "không được vượt quá 128 ký tự" in res.json()["detail"]
-
