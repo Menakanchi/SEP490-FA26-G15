@@ -340,6 +340,33 @@ Artifact: [`anchor_reach_base_2026-08-29.json`](anchor_reach_base_2026-08-29.jso
 [`anchor_reach_fix_cold_2026-08-29.json`](anchor_reach_fix_cold_2026-08-29.json),
 [`anchor_reach_fix_warm_2026-08-29.json`](anchor_reach_fix_warm_2026-08-29.json).
 
+### 9.4. Tốc độ gán nhầm chủ thể: 20/20 và không còn vòng repair nào
+
+Cùng ngày, sau khi sửa nốt lỗi §9.3 để lại. Marker vai trò ego không phải
+`ActorType` nên taxonomy không tạo span cho nó, mà segment tính hint chỉ cắt ở
+span kế tiếp — nên tốc độ đứng sau *"xe ego"* bị gán cho cả chủ thể liền trước.
+*"Ô tô ego"* không dính vì "ô tô" khớp taxonomy nên có span chặn sẵn; chỉ marker
+trần mới lọt. Quét cả 20 mô tả: đúng hai câu bị (sample 4 và 9), và chỉ sample 4
+biểu hiện thành lỗi vì `cut_in` đòi chênh tốc độ còn `lane_drift` thì không.
+
+| Lượt (cùng 20 mô tả, cùng snapshot) | done | repair | tổng cost | p50 | cached | output token |
+|---|---:|---:|---:|---:|---:|---:|
+| base (trước cả hai bản sửa) | 17/20 | 4 | $0,083696 | 2,68 s | 71,9% | 8.260 |
+| sau §9.3 | 19/20 | 5 | $0,062909 | 2,56 s | 90,3% | 8.166 |
+| **sau §9.4** | **20/20** | **0** | $0,064336 | 3,51 s | 78,8% | **6.538** |
+
+**Không còn vòng repair nào trên cả 20 request** — từ 4-5 vòng xuống 0. Đó là
+con số đáng chú ý hơn cả pass rate: mỗi vòng repair là một lượt LLM thêm, nên
+output token giảm 20% (6.538 so với 8.166) dù sinh nhiều kịch bản hơn.
+
+Hai bản sửa cùng một hình dạng: **ràng buộc có thật của hệ thống không tới được
+model, và chỗ phát hiện ra nó lại nằm ngoài tầm sửa.** §9.3 là biên hình học chỉ
+kiểm ở converter sau `promote`; §9.4 là một hint sai sinh ra cặp ràng buộc loại
+trừ nhau mà repair không thể thoả. Cả hai đều biểu hiện thành *"model cứ sai
+mãi"*, và cả hai đều không sửa được bằng cách thêm ví dụ.
+
+Artifact: [`intent_speed_fix_2026-08-29.json`](intent_speed_fix_2026-08-29.json).
+
 ## 10. Giới hạn và việc tiếp theo
 
 1. Mở rộng nhãn người trên từng maneuver, không chỉ các case lỗi đã biết.
@@ -365,9 +392,14 @@ Artifact: [`anchor_reach_base_2026-08-29.json`](anchor_reach_base_2026-08-29.jso
    bằng 1,0 theo định nghĩa, không theo chất lượng. Điều kiện để phép đo có
    nghĩa: vài ô đạt **≥ 4 hàng** approved non-seed (pool > k).
 
-7. Sample 4 của benchmark hỏng vì `parse_intent` gán tốc độ của ego cho cả
-   adversary, tạo cặp ràng buộc loại trừ nhau với hình học `cut_in` (xem §9.3).
-   Đây là lỗi còn lại duy nhất trong benchmark sau bản sửa §9.3.
+7. Seed data còn nhiều hàng `approved_library` mà converter không dựng được:
+   `sc_907` đặt `s_offset_m = 60` (ngoài tầm anchor `+40`), còn `sc_904` và
+   `sc_910` mang tổ hợp `urban_straight` + `sudden_brake` mà anchor đô thị không
+   hỗ trợ. Hiện vô hại vì cổng của retriever loại `created_by='seed-data'` khỏi
+   few-shot, nhưng đó là may chứ không phải thiết kế: đổi cổng là chúng thành ví
+   dụ dạy model đúng những lỗi §9.3 vừa sửa. Cần một test canh *"mọi hàng
+   `approved_library` phải convert được"*, và dọn seed data trước khi bật test
+   đó.
 
 ## 11. Cách tái tạo snapshot
 
