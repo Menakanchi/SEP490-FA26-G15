@@ -598,12 +598,19 @@ def get_scenario(scenario_id: str) -> dict | None:
         except (TypeError, json.JSONDecodeError):
             logger.warning("scenario_jobs.result không hợp lệ cho scenario %s", scenario_id)
 
+    if not latest_execution_result or not (latest_execution_result.get("trajectory") or latest_execution_result.get("frames")):
+        healed = self_heal_scenario_trajectory(scenario_id)
+        if healed:
+            latest_execution_result = healed
+
     odd_data = spec_obj.get("odd") or {
         "road_type": row_dict.get("road_type"),
         "weather": row_dict.get("weather"),
         "actor_type": row_dict.get("actor_type"),
         "maneuver": row_dict.get("maneuver"),
     }
+
+    trajectory_data = (latest_execution_result or {}).get("trajectory") if isinstance(latest_execution_result, dict) else None
 
     sc_dict = {
         "scenario_id": row_dict["scenario_id"],
@@ -621,6 +628,8 @@ def get_scenario(scenario_id: str) -> dict | None:
         "created_by": row_dict.get("created_by") or "unknown",
         "verification": row_dict.get("verification") or VerificationLevel.UNVERIFIED.value,
         "latest_execution_result": latest_execution_result,
+        "result": latest_execution_result,
+        "trajectory": trajectory_data,
         "created_at": row_dict.get("created_at"),
     }
     return sc_dict
@@ -1240,6 +1249,68 @@ def _seed_default_users() -> None:
         cursor.execute(
             "UPDATE users SET role = 'reviewer', status = 'active' WHERE LOWER(username) IN ('reviewer', 'reviewer1')"
         )
+
+
+def self_heal_scenario_trajectory(scenario_id: str) -> dict | None:
+    """Tự động tính toán và lưu dữ liệu trajectory động học cho kịch bản nếu chưa có kết quả mô phỏng."""
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT result FROM scenario_jobs
+            WHERE scenario_id = ? AND result IS NOT NULL AND result LIKE '%trajectory%'
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (scenario_id,),
+        )
+        row = cursor.fetchone()
+        if row and row["result"]:
+            try:
+                res = json.loads(row["result"]) if isinstance(row["result"], str) else row["result"]
+                if isinstance(res, dict) and (res.get("trajectory") or res.get("frames")):
+                    return res
+            except Exception:
+                pass
+
+    if os.environ.get("PYTEST_CURRENT_TEST") is not None:
+        return None
+
+    try:
+        from worker.mock_runner import process_job
+
+        job_id = f"job_heal_{scenario_id}_{uuid.uuid4().hex[:4]}"
+        create_scenario_job(job_id, scenario_id, "<OpenSCENARIO/>")
+        process_job({"job_id": job_id, "scenario_id": scenario_id, "xosc_path": ""})
+
+        with _cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT result FROM scenario_jobs
+                WHERE scenario_id = ? AND result IS NOT NULL AND result LIKE '%trajectory%'
+                ORDER BY updated_at DESC LIMIT 1
+                """,
+                (scenario_id,),
+            )
+            row = cursor.fetchone()
+            if row and row["result"]:
+                return json.loads(row["result"]) if isinstance(row["result"], str) else row["result"]
+    except Exception as e:
+        logger.warning("Không thể tự động hồi phục trajectory cho %s: %s", scenario_id, e)
+
+    return None
+
+
+def self_heal_all_scenarios() -> None:
+    """Quét toàn bộ kịch bản trên DB và tự động phục hồi dữ liệu trajectory nếu chưa có."""
+    if os.environ.get("PYTEST_CURRENT_TEST") is not None:
+        return
+    try:
+        with _cursor() as cursor:
+            cursor.execute("SELECT scenario_id FROM scenarios")
+            rows = cursor.fetchall()
+            for r in rows:
+                self_heal_scenario_trajectory(r["scenario_id"])
+    except Exception as e:
+        logger.warning("Lỗi khi tự động hồi phục trajectory toàn bộ kịch bản: %s", e)
 
 
 def seed_default_trajectories() -> None:

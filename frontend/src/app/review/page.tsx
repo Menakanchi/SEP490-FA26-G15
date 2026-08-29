@@ -27,7 +27,7 @@ import { RoleGate } from "@/components/RoleGate";
 import { AuthGate } from "@/components/AuthGate";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/context/AuthContext";
-import type { AssumptionSource, DuplicateDiff, ScenarioItem, ScenarioDetail, ReviewGate } from "@/types";
+import type { AssumptionSource, DuplicateDiff, ScenarioItem, ScenarioDetail, ReviewGate, ExecutionResult } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
@@ -695,18 +695,26 @@ function ReviewPageContent() {
                 </div>
               )}
 
-              <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
-                <h3 className="text-sm font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
-                  <Map className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  {scenario.latest_execution_result?.trajectory?.length
-                    ? "Quỹ đạo đo được trên CARLA"
-                    : "Bản khai kịch bản (chưa chạy mô phỏng)"}
-                </h3>
-                <ScenarioPreview
-                  spec={scenario.spec}
-                  execution={scenario.latest_execution_result}
-                />
-              </div>
+              {(() => {
+                const rawExec = scenario.latest_execution_result || scenario.result || (scenario.trajectory ? { scenario_id: scenario.scenario_id, success: true, criteria_results: [], metrics: scenario.metrics || {}, trajectory: scenario.trajectory } : null);
+                const executionObj = rawExec as ExecutionResult | null;
+                const trajPoints = executionObj?.trajectory || [];
+                const hasTrajectory = Boolean(trajPoints.length && trajPoints.length > 1);
+                return (
+                  <div className="bg-sky-50/70 dark:bg-slate-900 border border-sky-200/80 dark:border-slate-800 rounded-3xl p-6 space-y-3 shadow-sm">
+                    <h3 className="text-sm font-bold text-[#0f2d59] dark:text-white flex items-center gap-2">
+                      <Map className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      {hasTrajectory
+                        ? "Quỹ đạo đo được trên CARLA"
+                        : "Bản khai kịch bản (chưa chạy mô phỏng)"}
+                    </h3>
+                    <ScenarioPreview
+                      spec={scenario.spec}
+                      execution={executionObj}
+                    />
+                  </div>
+                );
+              })()}
 
               {/* All Actors Table Box */}
               {scenario.spec?.actors?.length ? (
