@@ -20,10 +20,17 @@ import {
   Bot,
   Play,
   RefreshCw,
+  TrendingUp,
 } from "lucide-react";
-import { getControllerRuns, getScenarioById, postControllerRun } from "@/services/api";
+import {
+  getControllerRuns,
+  getScenarioById,
+  getTuningSummary,
+  postControllerRun,
+  postTuneStep,
+} from "@/services/api";
 import ScenarioPreview from "@/components/ScenarioPreview";
-import type { ControllerRunsResponse, ScenarioDetail } from "@/types";
+import type { ControllerRunsResponse, ScenarioDetail, TuningSummary } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
@@ -43,6 +50,10 @@ export default function ScenarioDetailPage() {
   const [controllerLoading, setControllerLoading] = useState(true);
   const [controllerError, setControllerError] = useState("");
   const [controllerQueuing, setControllerQueuing] = useState(false);
+  const [tuning, setTuning] = useState<TuningSummary | null>(null);
+  const [tuningError, setTuningError] = useState("");
+  const [tuningBusy, setTuningBusy] = useState(false);
+  const [tuningNote, setTuningNote] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -87,6 +98,32 @@ export default function ScenarioDetailPage() {
     }, 3000);
     return () => window.clearInterval(timer);
   }, [controllerRuns?.runs, id]);
+
+  useEffect(() => {
+    if (!id) return;
+    getTuningSummary(id)
+      .then(setTuning)
+      .catch(() => setTuning(null));
+  }, [id]);
+
+  const handleTuneStep = async () => {
+    setTuningBusy(true);
+    setTuningError("");
+    setTuningNote("");
+    try {
+      const res = await postTuneStep(id);
+      setTuningNote(
+        res.variants.length
+          ? `Đã sinh ${res.variants.join(", ")} — biến thể chờ duyệt như mọi kịch bản khác.`
+          : `Phép dò đã dừng: ${res.stopped ?? "không còn bước nào"}.`,
+      );
+      setTuning(await getTuningSummary(id));
+    } catch (err) {
+      setTuningError(err instanceof Error ? err.message : "Không sinh được biến thể");
+    } finally {
+      setTuningBusy(false);
+    }
+  };
 
   const handleControllerRun = async () => {
     setControllerQueuing(true);
@@ -410,6 +447,105 @@ export default function ScenarioDetailPage() {
             <div className="mt-5 py-8 text-center text-slate-500 border border-dashed border-slate-300 dark:border-slate-700/30 rounded-xl">
               <Bot className="w-9 h-9 mx-auto mb-2 opacity-30" />
               <p className="text-sm">Chưa chạy mô hình lái trên kịch bản này.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Dò biến thể tới hạn ───
+          Cổng là "đã chạy CARLA ít nhất một lần", KHÔNG phải "đã vào thư viện":
+          ca đáng dò nhất là kịch bản chạy xong mà vô hại (ran_no_hazard) — mà
+          đúng những kịch bản đó thì không bao giờ được duyệt vào thư viện. */}
+      {scenario.latest_execution_result && (
+        <div className="scenario-detail-card p-6 border border-orange-200 dark:border-orange-500/20">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-200 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                Dò biến thể khó hơn
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 max-w-2xl">
+                Mỗi lần bấm sinh một biến thể dịch thời điểm kích hoạt quanh mốc vật lý đã đo, tối đa 4
+                bước và tự dừng khi khe hở xuống dưới 1 m. Biến thể đi qua đúng cổng duyệt như mọi kịch
+                bản khác, không tự vào thư viện.
+              </p>
+            </div>
+            <button
+              onClick={handleTuneStep}
+              className="btn-primary text-xs px-3 py-2 shrink-0"
+              disabled={tuningBusy}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              {tuningBusy ? "Đang sinh..." : "Sinh biến thể khó hơn"}
+            </button>
+          </div>
+
+          {tuningError && (
+            <p className="mt-4 text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg p-3">
+              {tuningError}
+            </p>
+          )}
+          {tuningNote && (
+            <p className="mt-4 text-sm text-orange-900 dark:text-orange-100 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 rounded-lg p-3">
+              {tuningNote}
+            </p>
+          )}
+
+          {tuning && tuning.ranked.length > 0 ? (
+            <div className="mt-5 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/20 rounded-xl p-4">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">Khe hở bản gốc</p>
+                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-200">
+                    {tuning.baseline_min_distance_m?.toFixed(2) ?? "—"} m
+                  </p>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/20 rounded-xl p-4">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">Biến thể tới hạn nhất</p>
+                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-200">
+                    {tuning.best_min_distance_m?.toFixed(2) ?? "—"} m
+                  </p>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/20 rounded-xl p-4">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">Kết luận</p>
+                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-200">
+                    {tuning.reached_critical
+                      ? "Đã tới hạn"
+                      : tuning.improved
+                        ? "Có cải thiện"
+                        : "Chưa cải thiện"}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                {tuning.ranked.map((item) => (
+                  <div
+                    key={item.scenario_id}
+                    className="flex items-center justify-between text-sm bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/20 rounded-lg px-3 py-2"
+                  >
+                    <Link
+                      href={`/library/${item.scenario_id}`}
+                      className="font-mono text-slate-700 dark:text-slate-300 hover:underline"
+                    >
+                      {item.scenario_id}
+                    </Link>
+                    <span className="text-slate-500">
+                      khe hở {item.metrics.min_distance_m?.toFixed(2) ?? "—"} m
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {!tuning.improved && (
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Thời điểm kích hoạt không phải thứ khiến kịch bản này vô hại — nên nhìn sang vị trí
+                  hoặc tốc độ ban đầu.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="mt-5 py-8 text-center text-slate-500 border border-dashed border-slate-300 dark:border-slate-700/30 rounded-xl">
+              <TrendingUp className="w-9 h-9 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">Chưa dò biến thể nào cho kịch bản này.</p>
             </div>
           )}
         </div>

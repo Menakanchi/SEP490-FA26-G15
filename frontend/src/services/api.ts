@@ -23,6 +23,8 @@ import type {
   CampaignSummary,
   LabelQueueItem,
   IntentAgreement,
+  TuningSummary,
+  TuneStepResponse,
 } from "@/types";
 import type { LoginPayload, RegisterPayload, User } from "@/types/auth";
 
@@ -250,6 +252,21 @@ export async function postControllerRun(
 ): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>(
     `/scenarios/${encodeURIComponent(id)}/controller-runs`,
+    { method: "POST" },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dò biến thể tới hạn — POST sinh một bước, GET tóm tắt kết quả đã chạy
+// ---------------------------------------------------------------------------
+
+export async function getTuningSummary(id: string): Promise<TuningSummary> {
+  return request<TuningSummary>(`/scenarios/${encodeURIComponent(id)}/tune`);
+}
+
+export async function postTuneStep(id: string): Promise<TuneStepResponse> {
+  return request<TuneStepResponse>(
+    `/scenarios/${encodeURIComponent(id)}/tune`,
     { method: "POST" },
   );
 }
