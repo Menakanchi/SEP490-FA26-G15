@@ -884,3 +884,67 @@ async def test_the_cut_in_positional_suggestion_actually_satisfies_the_rule_it_j
         }
     )
     assert IssueCode.TRIGGER_CUTIN_NOT_POSITIONAL not in [i.code for i in again["issues"]]
+
+
+def _wrong_way_draft(valid_draft: ScenarioDraft, *, s_offset_m: float) -> ScenarioDraft:
+    draft = valid_draft.model_dump()
+    draft["odd"]["road_type"] = RoadType.HIGHWAY
+    draft["odd"]["maneuver"] = ManeuverType.WRONG_WAY
+    draft["actors"][1]["position"] = {"lane_offset": 0, "s_offset_m": s_offset_m}
+    draft["maneuvers"][0]["maneuver"] = ManeuverType.WRONG_WAY
+    draft["maneuvers"][0]["trigger"] = {"type": "simulation_time", "value": 1.0}
+    return ScenarioDraft.model_validate(draft)
+
+
+@pytest.mark.asyncio
+async def test_actor_beyond_anchor_reach_is_repairable_not_terminal(valid_draft: ScenarioDraft) -> None:
+    """Converter bắt lỗi này, nhưng bắt sau ``promote`` nên workflow chết không sửa lần nào.
+
+    Benchmark 26/08: ba mô tả ``wrong_way`` hỏng đúng kiểu đó — s_offset_m 80,
+    120 và 80 trên anchor chỉ với tới +40. Sample 16 còn chạy trọn một vòng
+    repair cho lỗi khác rồi mới chết ở converter: vòng lặp đã ở ngay đó, chỉ là
+    lỗi này không với tới được.
+    """
+    result = await validate_node(
+        {
+            "draft": _wrong_way_draft(valid_draft, s_offset_m=80.0),
+            "odd_query": ODDQuery(road_type=RoadType.HIGHWAY, maneuver=ManeuverType.WRONG_WAY),
+        }
+    )
+
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_ACTOR_BEYOND_ANCHOR_REACH)
+    assert issue.repairable_by_llm
+    assert issue.path == "/actors/1/position/s_offset_m"
+    assert "[-120, 40]" in issue.suggestion
+
+
+@pytest.mark.asyncio
+async def test_wrong_way_suggestion_pairs_the_bound_with_a_speed(valid_draft: ScenarioDraft) -> None:
+    """Kéo về trong tầm thôi thì đổi lỗi convert lấy một lần chạy vô ích.
+
+    ``sc_036``/``sc_038`` đặt actor ở 35 m — hợp lệ, convert trót lọt — nhưng để
+    hai xe đối đầu ở 95/85 km/h nên chạy xong vẫn ``ran_no_hazard``. Cặp dựng
+    được va chạm thật là ``sc_042``/``sc_043``: 38 m kèm cả hai xe ~25 km/h.
+    """
+    result = await validate_node(
+        {
+            "draft": _wrong_way_draft(valid_draft, s_offset_m=120.0),
+            "odd_query": ODDQuery(road_type=RoadType.HIGHWAY, maneuver=ManeuverType.WRONG_WAY),
+        }
+    )
+
+    issue = next(i for i in result["issues"] if i.code is IssueCode.GEOM_ACTOR_BEYOND_ANCHOR_REACH)
+    assert "38" in issue.suggestion
+    assert "25 km/h" in issue.suggestion
+
+
+@pytest.mark.asyncio
+async def test_actor_inside_anchor_reach_raises_nothing(valid_draft: ScenarioDraft) -> None:
+    result = await validate_node(
+        {
+            "draft": _wrong_way_draft(valid_draft, s_offset_m=38.0),
+            "odd_query": ODDQuery(road_type=RoadType.HIGHWAY, maneuver=ManeuverType.WRONG_WAY),
+        }
+    )
+
+    assert not [i for i in result["issues"] if i.code is IssueCode.GEOM_ACTOR_BEYOND_ANCHOR_REACH]

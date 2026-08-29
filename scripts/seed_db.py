@@ -323,7 +323,14 @@ SEED_SCENARIOS = [
     },
     {
         "scenario_id": "sc_908",
-        "carla": ("ran_no_hazard", "chạy 6s, CollisionTest=0 — không dựng được nguy hiểm"),
+        # Giữ `ran_no_hazard`: lần chạy thật cho kết quả đó, và đây là nhãn
+        # BẢO THỦ (PROVEN_BAD_FOR_FEW_SHOT loại nó khỏi prompt). Hạ xuống
+        # `unverified` vì spec đã chỉnh sẽ nới một guard đang có tác dụng.
+        "carla": (
+            "ran_no_hazard",
+            "chạy 6s, CollisionTest=0 — không dựng được nguy hiểm; s_offset_m hạ 45 -> 38 "
+            "sau khi đo tầm với anchor 22/08, cần chạy lại để xác nhận",
+        ),
         "title": "Xe container dừng khẩn cấp tránh chướng ngại vật",
         "description_vi": (
             "Xe container thắng gấp dừng chết giữa làn đường do phát hiện chướng ngại vật trên đường cao tốc."
@@ -347,7 +354,7 @@ SEED_SCENARIOS = [
             {
                 "name": "adv",
                 "category": "truck",
-                "position": {"lane_offset": 0, "s_offset_m": 45.0},
+                "position": {"lane_offset": 0, "s_offset_m": 38.0},
                 "initial_speed_kmh": 80.0,
                 "is_ego": False,
             },
@@ -364,7 +371,15 @@ SEED_SCENARIOS = [
     },
     {
         "scenario_id": "sc_909",
-        "carla": ("adversarial", "chạy 13.3s, CollisionTest=1 — tái hiện đúng va chạm"),
+        # Hạ xuống `unverified`: lần chạy 13.3s đúng là có va chạm, nhưng nó chạy
+        # trên spec dùng trigger `simulation_time`, thứ converter không còn nhận
+        # cho `cut_in`. Spec đã đổi nên không được giữ nhãn `adversarial` của một
+        # lần chạy khác — đó là bịa lại xuất xứ.
+        "carla": (
+            "unverified",
+            "từng chạy 13.3s CollisionTest=1, nhưng trigger đã đổi simulation_time -> "
+            "lead_distance theo ADR-012; cần chạy lại để lấy lại nhãn adversarial",
+        ),
         "title": "Xe con vượt ẩu tạt đầu xe tải trên cao tốc",
         "description_vi": "Xe con vượt bên phải rồi tạt đầu ép xe tải trên đường cao tốc ở tốc độ cao.",
         "odd": {
@@ -396,7 +411,10 @@ SEED_SCENARIOS = [
             {
                 "actor_name": "adv",
                 "maneuver": "cut_in",
-                "trigger": {"type": "simulation_time", "value": 7.0},
+                # `lead_distance` chứ không phải giây: tốc độ thật trên CARLA lệch
+                # tốc độ ghi trong spec. 8 m nằm trong cụm đã đo là tạt đúng đầu
+                # (8,33 và 13,89 m), trên ngưỡng MIN_CUT_IN_LEAD_M = 7.
+                "trigger": {"type": "lead_distance", "value": 8.0},
                 "target_speed_kmh": 60.0,
             }
         ],
@@ -522,13 +540,32 @@ def _xosc_for(spec) -> str:
     Sáu trong mười seed nằm ngoài phạm vi converter (ADR-016 chỉ có anchor cao
     tốc) — chúng vẫn hữu ích cho retrieval theo văn bản và nhãn ODD, chỉ là
     không chạy mô phỏng được.
+
+    Nhưng **ngoài phạm vi** và **trong phạm vi mà vẫn hỏng** là hai chuyện khác
+    hẳn, và một ``except Exception`` nuốt cả hai. Nó đã che đúng hai lỗi thật:
+    ``sc_908`` đặt actor ở 45 m sau khi tầm với anchor được đo lại còn +40, và
+    ``sc_909`` dùng trigger ``simulation_time`` sau khi ``cut_in`` chuyển sang
+    đòi ``lead_distance``. Cả hai còn mang trường ``carla`` khai là đã chạy thật
+    trên CARLA — điều không thể đúng với một spec converter từ chối biên dịch.
+
+    Cả hai đều là hệ quả của cùng một chuyện: luật converter siết lại sau khi
+    seed được viết, và không ai kiểm lại seed theo luật mới. Ngoài phạm vi thì
+    im lặng bỏ qua; trong phạm vi mà hỏng thì dừng hẳn, đúng như
+    ``_validated_spec`` đã làm với validate.
     """
     from src.agents.nodes.convert_xosc_node import convert_spec_to_xosc
+    from src.models.schemas import DEFAULT_SUPPORT_POLICY
 
+    in_scope = DEFAULT_SUPPORT_POLICY.supports(spec.odd.road_type, spec.odd.actor_type, spec.odd.maneuver)
     try:
         return convert_spec_to_xosc(spec)
     except Exception as exc:
-        logger.info("  %s: chưa biên dịch được .xosc (%s)", spec.scenario_id, exc)
+        if in_scope:
+            raise SystemExit(
+                f"Seed {spec.scenario_id} nằm TRONG phạm vi converter ({spec.odd.key}) "
+                f"nhưng không biên dịch được — không nạp.\n    {exc}"
+            ) from exc
+        logger.info("  %s: ngoài phạm vi converter, chưa biên dịch được .xosc (%s)", spec.scenario_id, exc)
         return ""
 
 
