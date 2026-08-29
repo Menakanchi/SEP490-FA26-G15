@@ -264,6 +264,8 @@ function ReviewPageContent() {
         reason: forceSimulate && nearDuplicate
           ? `Vẫn chạy dù gần trùng với ${nearDuplicate.duplicate_scenario_id}. ${reason.trim()}`.trim()
           : reason.trim() || "Chấp nhận kịch bản",
+        force_simulate: forceSimulate,
+        force_intent_override: overridingIntentMismatch,
       });
 
       if (result.warning === "near_duplicate" && result.duplicate) {
@@ -284,6 +286,7 @@ function ReviewPageContent() {
       setListLoading(true);
       await fetchScenarioList();
       await fetchScenarioDetail(scenario.scenario_id, false);
+      router.refresh();
     } catch (err: unknown) {
       const errObj = err as Record<string, unknown> | null | undefined;
       const resData = (errObj?.response as Record<string, unknown> | undefined)?.data as Record<string, unknown> | undefined;
@@ -930,8 +933,9 @@ function ReviewPageContent() {
                           type="button"
                           onClick={() => handleSubmitReview(true, true)}
                           disabled={submitting}
-                          className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold disabled:opacity-50"
+                          className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                         >
+                          {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                           Vẫn chạy CARLA
                         </button>
                       </div>
