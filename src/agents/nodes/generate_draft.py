@@ -7,6 +7,7 @@ from typing import Any
 
 from src.agents.prompts.generate_draft import SYSTEM_PROMPT
 from src.models.schemas import ODDCell, ScenarioDraft
+from src.services.scenario.templates import get_template
 
 
 def generate_draft_node(
@@ -82,6 +83,32 @@ def _create_messages(
     return messages
 
 
+def _anchor_reach_block(odd_cell: ODDCell) -> str:
+    """Nói cho model biết đoạn đường anchor thật sự phủ được.
+
+    Mỗi ``road_type`` neo vào một anchor CARLA đã đo, và tầm với của hai anchor
+    KHÁC NHAU (highway (-120, +40); urban_straight (-60, +25)). Trước đây con số
+    này không bao giờ tới được model: prompt nói ±200 — biên của kiểu dữ liệu —
+    còn biên thật chỉ lộ ra ở converter, sau promote, chỗ không repair được nữa.
+    Đo ngày 26/08: model sinh s_offset_m 80/120/80 cho ba mô tả ``wrong_way``;
+    có ví dụ few-shot thì còn 45/60/60 — đúng hướng nhưng vẫn ngoài tầm, vì
+    không chỗ nào nêu con số.
+
+    Tra theo ``road_type`` nên biết trước khi gọi LLM; không có template — hoặc
+    có nhưng anchor đó không dựng được maneuver này — thì im lặng bỏ qua. Nêu
+    tầm với của một anchor sẽ không được dùng là dạy model một con số sai.
+    """
+    template = get_template(odd_cell.road_type)
+    if template is None or odd_cell.maneuver not in template.supported_maneuvers:
+        return ""
+    backward, forward = template.s_offset_reach_m
+    return (
+        f"\n## Tầm với anchor (BẮT BUỘC):\n"
+        f"- s_offset_m của MỌI actor phải nằm trong [{backward:g}, {forward:g}] mét.\n"
+        f"- Ngoài khoảng này ScenarioRunner không spawn được actor và kịch bản hỏng.\n"
+    )
+
+
 def _build_user_content(
     user_query: str,
     odd_cell: ODDCell,
@@ -117,6 +144,8 @@ def _build_user_content(
 - actor_type: {odd_cell.actor_type.value}
 - maneuver: {odd_cell.maneuver.value}
 """
+
+    content += _anchor_reach_block(odd_cell)
 
     if actor_hints:
         mentions = [
