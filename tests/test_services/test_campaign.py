@@ -47,3 +47,35 @@ def test_every_supported_cell_can_be_planned() -> None:
     plan = campaign.plan_cells(cells, per_cell=1, max_scenarios=1000)
     assert len(plan) == DEFAULT_SUPPORT_POLICY.denominator()
     assert len({c.key for c in plan}) == len(plan), "không ô nào bị lặp"
+
+
+def test_compose_prompt_injects_the_maneuver_constraint(monkeypatch) -> None:
+    """Luật hình học phải tới được lời gọi sinh câu, không nằm chờ trong system prompt.
+
+    Chiến dịch 29/08 vi phạm luật "xuất phát phía sau thì phải nhanh hơn" 6/35
+    lần dù luật đó đã có trong `_SYSTEM_PROMPT` — sinh ra "xe tải 68 km/h từ phía
+    sau vượt lên xe ego 94 km/h". Một dòng cụ thể cho đúng maneuver đang viết ăn
+    hơn một gạch đầu dòng tổng quát.
+    """
+    from src.models.schemas import ActorType, ManeuverType, ODDCell, RoadType, Weather
+    from src.services import campaign
+
+    seen: dict[str, str] = {}
+
+    def _fake_call(messages, structured_output_schema, operation):  # noqa: ANN001, ARG001
+        seen["user"] = messages[-1]["content"]
+        return {"description_vi": "Một câu mô tả tình huống giao thông nguy hiểm trên cao tốc để test."}
+
+    monkeypatch.setattr(campaign, "call_with_escalation", _fake_call)
+
+    campaign.compose_prompt(
+        ODDCell(
+            road_type=RoadType.HIGHWAY,
+            weather=Weather.CLEAR,
+            actor_type=ActorType.CAR,
+            maneuver=ManeuverType.CUT_IN,
+        )
+    )
+
+    assert "NHANH HƠN" in seen["user"]
+    assert "15 km/h" in seen["user"]

@@ -189,7 +189,16 @@ def _intent_kinematic_issues(draft: ScenarioDraft, hints: dict[str, Any]) -> lis
             )
         )
 
-    relation = hints.get("adversary_relative_position")
+    # `run_red_light` không có trục trước/sau để mà đúng hay sai: converter đặt
+    # actor lên approach VUÔNG GÓC đã đo, và validate ở dưới bắt buộc position
+    # 0/0 (GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH). Câu tiếng Việt vẫn tự
+    # nhiên nói "từ phía trước cắt ngang đầu xe ego", nên hint sinh ra `ahead`
+    # và đòi s_offset_m > 0 — đòi đúng thứ luật kia cấm.
+    #
+    # Đo trên chiến dịch ODD 29/08: ba ô `run_red_light` chết vì đúng cặp ràng
+    # buộc loại trừ nhau này, không ô nào repair thoát được. Bỏ qua trục vị trí
+    # ở đây; trục tốc độ phía trên vẫn kiểm bình thường.
+    relation = None if draft.odd.maneuver == "run_red_light" else hints.get("adversary_relative_position")
     offset = adversary.position.s_offset_m
     relation_matches = (relation == "ahead" and offset > 0) or (relation == "behind" and offset < 0)
     if relation in {"ahead", "behind"} and not relation_matches:
