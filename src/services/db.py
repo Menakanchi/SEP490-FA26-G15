@@ -1341,6 +1341,27 @@ def self_heal_all_scenarios() -> None:
         logger.warning("Lỗi khi tự động hồi phục trajectory toàn bộ kịch bản: %s", e)
 
 
+def migrate_stuck_simulation_queued_scenarios() -> None:
+    """Quét toàn bộ kịch bản kẹt ở trạng thái 'simulation_queued', tính trajectory in-process và chuyển sang 'pending_library_review'."""
+    if os.environ.get("PYTEST_CURRENT_TEST") is not None:
+        return
+    try:
+        with _cursor() as cursor:
+            cursor.execute(
+                "SELECT scenario_id FROM scenarios WHERE status = ?",
+                (ScenarioStatus.SIMULATION_QUEUED.value,),
+            )
+            rows = [dict(r) for r in cursor.fetchall()]
+
+        for row in rows:
+            sc_id = row["scenario_id"]
+            self_heal_scenario_trajectory(sc_id)
+            update_scenario_status(sc_id, ScenarioStatus.PENDING_LIBRARY_REVIEW.value)
+            logger.info("Auto-migrated stuck scenario %s from simulation_queued -> pending_library_review", sc_id)
+    except Exception as e:
+        logger.warning("Lỗi auto-migrate stuck scenarios: %s", e)
+
+
 def seed_default_trajectories() -> None:
     """Tự động sinh dữ liệu trajectory mô phỏng cho kịch bản seed mặc định để hàng đợi /label luôn có sẵn dữ liệu."""
     try:
