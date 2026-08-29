@@ -127,8 +127,9 @@ _MANEUVER_CONSTRAINT_VI: dict[str, str] = {
     # ba đều là từ khoá của `cut_in` trong taxonomy, và câu sinh ra sẽ chép lại
     # chúng. Chiến dịch 29/08 hỏng 10 ô đúng vì vậy.
     "run_red_light": (
-        "Xe gây tình huống đi trên đường VUÔNG GÓC với đường của xe bị ảnh hưởng và vượt đèn đỏ khi qua "
-        "nút giao. KHÔNG viết 'từ phía trước' hay 'từ phía sau' — hai xe ở hai hướng khác nhau."
+        "Xe gây tình huống đi trên đường VUÔNG GÓC với đường của xe bị ảnh hưởng. Phải dùng đúng cụm "
+        "'vượt đèn đỏ' — không viết 'bất chấp đèn đỏ' hay 'phớt lờ đèn đỏ'. KHÔNG viết 'từ phía trước' "
+        "hay 'từ phía sau' — hai xe ở hai hướng khác nhau."
     ),
     "jaywalk": "Người đi bộ đứng ở LỀ rồi bước xuống băng ngang làn xe bị ảnh hưởng đang tới.",
 }
