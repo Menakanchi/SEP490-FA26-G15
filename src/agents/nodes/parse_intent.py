@@ -307,7 +307,20 @@ def _rule_based_extract(user_query: str, rules: dict) -> dict:
     maneuver_obj = None
     maneuver_spec = None
     if maneuver_matches:
-        maneuver_matches.sort(key=lambda x: x[0])
+        # Từ khoá sớm nhất thắng — TRỪ khi có một tín hiệu không thể nhầm.
+        #
+        # "Vượt đèn đỏ" đặt tên cho chính hành vi; "cắt ngang", "chen ngang",
+        # "cắt mặt" chỉ tả HỆ QUẢ của nó, và chúng cũng là từ khoá của `cut_in`.
+        # Câu tự nhiên hay nói hệ quả trước: *"trên nhánh đường cắt ngang vượt
+        # đèn đỏ lao qua nút giao"* — sắp theo vị trí thì `cut_in` thắng, nhãn
+        # ODD thành `urban_straight + cut_in`, một tổ hợp converter không dựng
+        # được, và request chết ở ngay bước đầu.
+        #
+        # Đo trên chiến dịch ODD 29/08: 10 ô `run_red_light` chết đúng kiểu này.
+        # Danh sách cố ý HẸP — chỉ maneuver nào có cụm từ gọi đúng tên nó mới
+        # được vào, vì mở rộng bừa là biến sắp xếp theo vị trí thành vô nghĩa.
+        decisive = {"run_red_light"}
+        maneuver_matches.sort(key=lambda x: (x[2] not in decisive, x[0]))
         maneuver_obj = _to_maneuver_type(maneuver_matches[0][2])
         pos, kw_len, _ = maneuver_matches[0]
         maneuver_spec = user_query[pos : pos + kw_len].strip()
