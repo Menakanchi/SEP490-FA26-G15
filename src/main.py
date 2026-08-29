@@ -15,6 +15,8 @@ async def lifespan(app: FastAPI):
         from src.services import db
 
         db.init_db()
+        if settings.app_env != "test":
+            db.seed_default_trajectories()
     except Exception as e:
         print(f"DB Init Warning: {e}")
     yield

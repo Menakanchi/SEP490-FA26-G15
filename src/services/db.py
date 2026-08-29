@@ -1337,6 +1337,71 @@ def seed_default_trajectories() -> None:
         logger.warning("Lỗi tự động nạp seed trajectory cho /label: %s", e)
 
 
+def get_label_queue_items(labeller: str = "unknown") -> list[dict]:
+    """Lấy danh sách kịch bản có trajectory cho hàng đợi /label mà không cần INNER JOIN phức tạp."""
+    labeller = labeller.strip() if labeller and labeller.strip() else "unknown"
+    with _cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT s.scenario_id, s.title, s.description_vi, s.road_type, s.maneuver, j.result
+            FROM scenario_jobs j
+            JOIN scenarios s ON s.scenario_id = j.scenario_id
+            WHERE j.result IS NOT NULL
+              AND j.result LIKE '%trajectory%'
+            ORDER BY j.updated_at DESC
+            """
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    mine = {row["scenario_id"] for row in intent_labels() if row["labeller"] == labeller}
+
+    items = []
+    seen = set()
+    for row in rows:
+        sc_id = row["scenario_id"]
+        if sc_id in seen:
+            continue
+        seen.add(sc_id)
+
+        raw_result = row["result"]
+        res_dict = {}
+        if isinstance(raw_result, str):
+            try:
+                res_dict = json.loads(raw_result)
+            except Exception:
+                res_dict = {}
+        elif isinstance(raw_result, dict):
+            res_dict = raw_result
+
+        trajectory_data = res_dict.get("trajectory") or res_dict.get("frames")
+        if not trajectory_data:
+            continue
+
+        title_val = row.get("title") or ""
+        desc_val = row.get("description_vi") or ""
+        road_type_val = row.get("road_type") or "ODD"
+
+        items.append(
+            {
+                "id": sc_id,
+                "scenario_id": sc_id,
+                "name": title_val,
+                "title": title_val,
+                "description": desc_val,
+                "description_vi": desc_val,
+                "category": road_type_val,
+                "road_type": road_type_val,
+                "maneuver": row.get("maneuver"),
+                "trajectory": trajectory_data,
+                "result": {"trajectory": trajectory_data, "metrics": res_dict.get("metrics")},
+                "contact_time_s": (res_dict.get("metrics") or {}).get("contact_time_s"),
+                "labelled": sc_id in mine,
+            }
+        )
+
+    return items
+
+
 def create_user(
     username: str,
     name: str,

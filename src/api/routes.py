@@ -1025,63 +1025,10 @@ class IntentLabelRequest(BaseModel):
 async def intent_label_queue(labeller: str = "unknown") -> dict:
     """Các lượt chạy có quỹ đạo, kèm mô tả gốc — **không kèm phán quyết của máy**."""
     labeller = labeller.strip() if labeller and labeller.strip() else "unknown"
-    _, scenarios, executions = db.metrics_rows()
-    has_trajectories = False
-    for ex in executions:
-        res = ex.get("result") or {}
-        if isinstance(res, str):
-            try:
-                res = json.loads(res)
-            except Exception:
-                res = {}
-        if isinstance(res, dict) and (res.get("trajectory") or res.get("frames")):
-            has_trajectories = True
-            break
-
-    if not has_trajectories:
+    items = db.get_label_queue_items(labeller)
+    if not items and os.environ.get("PYTEST_CURRENT_TEST") is None:
         db.seed_default_trajectories()
-        _, scenarios, executions = db.metrics_rows()
-
-    described = {s["scenario_id"]: s for s in scenarios}
-    mine = {row["scenario_id"] for row in db.intent_labels() if row["labeller"] == labeller}
-
-    items = []
-    for execution in sorted(executions, key=lambda e: e["scenario_id"]):
-        result = execution.get("result") or {}
-        if isinstance(result, str):
-            try:
-                result = json.loads(result)
-            except Exception:
-                result = {}
-        if not isinstance(result, dict):
-            continue
-        trajectory_data = result.get("trajectory") or result.get("frames")
-        if not trajectory_data:
-            continue
-
-        scenario = db.get_scenario(execution["scenario_id"]) or {}
-        scenario_id = execution["scenario_id"]
-        title_val = scenario.get("title", "")
-        desc_val = scenario.get("description_vi", "")
-        road_type_val = described.get(scenario_id, {}).get("road_type") or "ODD"
-
-        items.append(
-            {
-                "id": scenario_id,
-                "scenario_id": scenario_id,
-                "name": title_val,
-                "title": title_val,
-                "description": desc_val,
-                "description_vi": desc_val,
-                "category": road_type_val,
-                "road_type": road_type_val,
-                "maneuver": execution.get("maneuver"),
-                "trajectory": trajectory_data,
-                "result": {"trajectory": trajectory_data, "metrics": result.get("metrics")},
-                "contact_time_s": (result.get("metrics") or {}).get("contact_time_s"),
-                "labelled": scenario_id in mine,
-            }
-        )
+        items = db.get_label_queue_items(labeller)
     return {"items": items, "count": len(items)}
 
 
