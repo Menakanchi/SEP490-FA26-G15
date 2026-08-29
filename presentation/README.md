@@ -29,8 +29,23 @@ sơ đồ và kết luận chính.
 | 14 | Ai dùng, và thay cho việc gì | Market |
 | 15 | Làm gì tiếp | Ask |
 
-Số liệu lấy từ [`eval/results/report.md`](../eval/results/report.md) (snapshot
-24/08/2026). Đổi số thì đổi ở cả hai chỗ.
+Số liệu M1/M2/M3 lấy trực tiếp từ database qua `metrics.build_report()`
+(snapshot **29/08/2026**); phần cost/latency và A/B model vẫn theo
+[`eval/results/report.md`](../eval/results/report.md) (24/08/2026). Đổi số thì
+đổi ở cả hai chỗ.
+
+Slide 10 vẽ **hai lớp** có chủ đích: ô nhạt = đã có kịch bản sinh + validate
+(72/72), ô đậm = đã có lượt CARLA thật (13/72). `metrics.coverage()` tính một ô
+là đã phủ ngay khi có kịch bản, không đợi chạy — gộp một màu là mời người xem
+hiểu nhầm "phủ 100%" thành "đã kiểm chứng 100%".
+
+## Dựng lại file
+
+```bash
+cd presentation
+uv run --with python-pptx python build_deck.py     # -> pitch_deck.pptx
+soffice --headless --convert-to pdf --outdir . pitch_deck.pptx
+```
 
 ## Video Demo Checklist
 
