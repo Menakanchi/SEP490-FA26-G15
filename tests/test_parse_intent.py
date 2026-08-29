@@ -421,3 +421,31 @@ def test_adversary_speed_before_the_ego_marker_is_still_read():
 
     assert parsed["kinematic_hints"]["adversary_speed_kmh"] == 80.0
     assert parsed["kinematic_hints"]["ego_speed_kmh"] == 55.0
+
+
+def test_run_red_light_beats_a_cut_in_keyword_that_appears_earlier():
+    """ "Vượt đèn đỏ" gọi tên hành vi; "cắt ngang" chỉ tả hệ quả của nó.
+
+    Câu tiếng Việt tự nhiên hay nói hệ quả trước — *"trên nhánh đường cắt ngang
+    vượt đèn đỏ lao qua nút giao"*. Sắp theo vị trí thì `cut_in` thắng, nhãn ODD
+    thành `urban_straight + cut_in` — tổ hợp converter không dựng được — và
+    request chết ngay ở bước đầu. Chiến dịch ODD 29/08 mất 10 ô vì đúng chuyện
+    này.
+    """
+    parsed = _rule_based_extract(
+        "Trên đường phố nội đô trời mưa, một xe máy chạy 33 km/h trên nhánh đường cắt ngang "
+        "vượt đèn đỏ lao qua nút giao, cắt mặt xe bị ảnh hưởng đang đi hợp lệ 22 km/h.",
+        _load_taxonomy_rules(),
+    )
+
+    assert parsed["maneuver"] is ManeuverType.RUN_RED_LIGHT
+
+
+def test_cut_in_still_wins_when_no_decisive_signal_is_present():
+    """Danh sách quyết định phải HẸP; nới rộng là biến sắp theo vị trí thành vô nghĩa."""
+    parsed = _rule_based_extract(
+        "Trên cao tốc trời quang, xe máy vượt lên tạt đầu ô tô ego đang chạy 55 km/h rồi phanh gấp.",
+        _load_taxonomy_rules(),
+    )
+
+    assert parsed["maneuver"] is ManeuverType.CUT_IN
