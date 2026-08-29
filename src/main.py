@@ -19,6 +19,7 @@ async def lifespan(app: FastAPI):
             db.seed_default_trajectories()
             db.migrate_stuck_simulation_queued_scenarios()
             db.self_heal_all_scenarios()
+            db.heal_all_missing_trajectories()
     except Exception as e:
         print(f"DB Init Warning: {e}")
     yield
