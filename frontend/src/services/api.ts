@@ -27,8 +27,8 @@ import type {
 import type { LoginPayload, RegisterPayload, User } from "@/types/auth";
 
 const getBaseUrl = (): string => {
-  const envUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-  const trimmed = envUrl.replace(/\/+$/, "");
+  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const trimmed = rawBaseUrl.replace(/\/+$/, "");
   return trimmed.endsWith("/api/v1") ? trimmed : `${trimmed}/api/v1`;
 };
 
@@ -133,17 +133,24 @@ export async function postReview(
   payload: ReviewRequest,
 ): Promise<ReviewResponse> {
   const scenarioId = payload.scenario_id;
-  const notes = (payload as Record<string, unknown>).notes;
-  const bodyData = {
+  const notes = (payload as unknown as Record<string, unknown>).notes;
+  const cleanBody: Record<string, unknown> = {
     gate: payload.gate,
     approved: Boolean(payload.approved),
-    reviewer: payload.reviewer,
-    reason: payload.reason || (typeof notes === "string" ? notes : ""),
+    reviewer: payload.reviewer || "Reviewer",
+    reason: payload.reason || (typeof notes === "string" ? notes : "") || "",
   };
+
+  if (payload.force_simulate) {
+    cleanBody.force_simulate = true;
+  }
+  if (payload.force_intent_override) {
+    cleanBody.force_intent_override = true;
+  }
 
   return request<ReviewResponse>(`/scenarios/${encodeURIComponent(scenarioId)}/review`, {
     method: "POST",
-    body: JSON.stringify(bodyData),
+    body: JSON.stringify(cleanBody),
   });
 }
 
