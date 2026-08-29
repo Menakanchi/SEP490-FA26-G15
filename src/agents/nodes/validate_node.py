@@ -8,6 +8,7 @@ from src.agents.state import ForgeState
 from src.models.schemas import IssueCode, ODDQuery, ScenarioDraft, ValidationIssue
 from src.services.scenario.geometry import (
     MIN_CUT_IN_LEAD_M,
+    actor_beyond_anchor_reach,
     cut_in_cannot_catch_up,
     cut_in_lead_too_short,
     cut_in_never_slows_down,
@@ -28,6 +29,47 @@ from src.services.scenario.templates import get_template
 def _shoulders_for(road_type) -> tuple[int, int] | None:
     template = get_template(road_type)
     return template.shoulder_lane_offsets if template else None
+
+
+def _anchor_reach_for(road_type, maneuver) -> tuple[float, float] | None:
+    """Tầm với của anchor, chỉ khi anchor đó thật sự dựng được maneuver này.
+
+    Tầm với được đo trên **một** anchor cụ thể, nên nó chỉ có nghĩa khi anchor đó
+    là chỗ kịch bản sẽ chạy. ``urban_straight`` neo vào giao cắt đã đo cho
+    ``run_red_light``; ép tầm ``(-60, +25)`` của nó lên một ``sudden_brake`` là
+    bảo model dời actor để thoả một anchor không bao giờ được dùng — đúng kiểu
+    vòng repair bất khả thi mà ``_jaywalk_suggestion`` đã phải tránh một lần.
+
+    Tổ hợp ngoài phạm vi là lỗi **phạm vi**, không phải lỗi hình học: converter
+    báo ``TEMPLATE_CATALOG_INCONSISTENT`` và cố ý không repair được, vì sửa nội
+    dung draft không làm nó biến mất.
+    """
+    template = get_template(road_type)
+    if template is None or maneuver not in template.supported_maneuvers:
+        return None
+    return template.s_offset_reach_m
+
+
+def _anchor_reach_suggestion(actor_idx: int, reach_m: tuple[float, float], maneuver) -> str:
+    """Kéo actor về trong tầm anchor, và với ``wrong_way`` thì nói cả lối thoát thật.
+
+    Trần khoảng cách là điều kiện CẦN chứ chưa đủ: ``sc_036``/``sc_038`` đặt actor
+    ở 35 m — trong tầm, convert trót lọt — nhưng để hai xe đối đầu ở 95/85 km/h
+    nên chạy xong vẫn ``ran_no_hazard``. Cặp dựng được va chạm thật
+    (``sc_042``/``sc_043``) là 38 m **đi kèm** cả hai xe ~25 km/h. Gợi ý mỗi con số
+    trần là đổi một lỗi convert lấy một lần chạy CARLA vô ích.
+    """
+    backward, forward = reach_m
+    base = (
+        f"Đặt /actors/{actor_idx}/position/s_offset_m trong khoảng "
+        f"[{backward:g}, {forward:g}] — ngoài đoạn này ScenarioRunner không spawn được actor."
+    )
+    if maneuver == "wrong_way":
+        return (
+            f"{base} Với wrong_way, dùng s_offset_m ~ {forward - 2:g} và hạ tốc độ CẢ HAI xe xuống "
+            "~25 km/h: đối đầu ở tốc độ cao thì hai xe gặp nhau quá sớm để kịp thành tình huống."
+        )
+    return base
 
 
 def _shoulder_suggestion(actor_idx: int, road_type) -> str:
@@ -438,11 +480,31 @@ async def validate_node(state: ForgeState) -> dict[str, Any]:
 
         issues.extend(_intent_kinematic_issues(draft, state.get("kinematic_hints") or {}))
 
+        anchor_reach = _anchor_reach_for(draft.odd.road_type, draft.odd.maneuver)
+
         for act_idx, actor in enumerate(draft.actors):
             if actor.is_ego:
                 continue
 
             position = actor.position
+
+            # Biên THẬT của s_offset_m là tầm với của anchor, không phải ±200 của
+            # kiểu dữ liệu. Converter vẫn chặn lần nữa, nhưng nó chạy SAU promote
+            # và không có cạnh nào quay lại repair_draft (xem graph.py): tới đó
+            # thì một lỗi model sửa được đã thành lỗi chết, và đã tiêu một
+            # scenario_id. Bắt ở đây để nó đi qua đúng vòng repair như cut_in.
+            if anchor_reach and actor_beyond_anchor_reach(actor, anchor_reach):
+                issues.append(
+                    ValidationIssue(
+                        code=IssueCode.GEOM_ACTOR_BEYOND_ANCHOR_REACH,
+                        path=f"/actors/{act_idx}/position/s_offset_m",
+                        message_vi=(
+                            f"{actor.name} ở s_offset_m={position.s_offset_m:g} nằm ngoài đoạn đường "
+                            f"anchor phủ được {anchor_reach}."
+                        ),
+                        suggestion=_anchor_reach_suggestion(act_idx, anchor_reach, draft.odd.maneuver),
+                    )
+                )
 
             # LANE_OFFSET_IMPLAUSIBLE
             if abs(position.lane_offset) > 3:

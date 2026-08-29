@@ -829,6 +829,7 @@ class IssueCode(StrEnum):
     GEOM_JAYWALK_TRIGGER_TOO_CLOSE = "GEOM_JAYWALK_TRIGGER_TOO_CLOSE"  # bước xuống muộn, ego đã đi qua
     GEOM_JAYWALK_NOT_FROM_SHOULDER = "GEOM_JAYWALK_NOT_FROM_SHOULDER"  # xuất phát giữa phần xe chạy
     GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH = "GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH"
+    GEOM_ACTOR_BEYOND_ANCHOR_REACH = "GEOM_ACTOR_BEYOND_ANCHOR_REACH"  # đặt ngoài đoạn đường anchor phủ được
 
     # -- Suy đoán, chỉ cảnh báo ---------------------------------------------
     LANE_OFFSET_IMPLAUSIBLE = "LANE_OFFSET_IMPLAUSIBLE"
@@ -871,6 +872,7 @@ REPAIRABLE_CODES: frozenset[IssueCode] = frozenset(
         IssueCode.GEOM_JAYWALK_TRIGGER_TOO_CLOSE,
         IssueCode.GEOM_JAYWALK_NOT_FROM_SHOULDER,
         IssueCode.GEOM_RUN_RED_LIGHT_NOT_CROSSING_APPROACH,
+        IssueCode.GEOM_ACTOR_BEYOND_ANCHOR_REACH,
     }
 )
 """Một câu hỏi quyết định tất cả: *sửa nội dung LLM sinh ra có làm lỗi này biến mất không?*

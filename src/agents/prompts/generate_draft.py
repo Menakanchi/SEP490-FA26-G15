@@ -76,7 +76,11 @@ Sinh ScenarioDraft từ mô tả tiếng Việt của người dùng.
 - Âm = làn bên trái, Dương = làn bên phải
 
 ### s_offset_m
-- Khoảng cách dọc so với ego (âm đến +200 mét)
+- Khoảng cách dọc so với ego, tính bằng mét
+- **BIÊN BẮT BUỘC: dùng đúng khoảng "Tầm với anchor" ghi trong phần INPUT.**
+  Đó là đoạn đường mà anchor CARLA phủ được; đặt actor ra ngoài đoạn đó thì
+  ScenarioRunner không spawn nổi và kịch bản hỏng, không sửa lại được.
+  ±200 chỉ là biên của kiểu dữ liệu, KHÔNG phải biên dùng được.
 - **ÂM = phía SAU ego**
 - Riêng run_red_light: bắt buộc actor dùng lane_offset=0 và s_offset_m=0; template
   sẽ đặt actor trên approach vuông góc có đèn đỏ, cắt qua đường ego đang đèn xanh
@@ -93,6 +97,13 @@ Dựa trên quan hệ chuyển động, mỗi maneuver có ràng buộc hình h�
 | **cut_in vượt lên** | ÂM (phía sau), nhanh hơn ego | Chủ thể đuổi kịp rồi tạt vào. |
 | **cut_in nhập làn** | DƯƠNG (phía trước), chậm hơn ego | Xe từ lề/làn bên cạnh nhập vào đường đi của ego. |
 | **sudden_brake** | DƯƠNG (phía trước) | sc_003: s_offset_m=+30. |
+| **wrong_way** | DƯƠNG, sát trần tầm với anchor | sc_042/sc_043: s_offset_m=+38 với tầm +40. |
+
+**Riêng wrong_way — vị trí đúng thôi chưa đủ.** Hai xe đối đầu nên tốc độ cộng
+dồn: sc_036/sc_038 đặt actor ở 35 m (hợp lệ) nhưng để 95/85 km/h thì chạy xong
+không dựng được nguy hiểm nào. Cặp dựng được va chạm thật là **s_offset_m = 38
+kèm CẢ HAI xe ~25 km/h** (sc_042, sc_043). Đặt xa hơn tầm anchor để "có chỗ chạy
+tới" là hỏng kịch bản, không phải cho thêm thời gian.
 
 **QUAN TRỌNG:** Đặt sai s_offset_m sẽ dẫn đến:
 - GEOM_NO_CATCHUP: khoảng cách giữa adversary và ego không thu hẹp trước khi cut-in

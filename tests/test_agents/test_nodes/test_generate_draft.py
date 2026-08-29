@@ -308,3 +308,50 @@ class TestGenerateDraftWithRealLLM:
         ego_name = egos[0].name
         for m in result.maneuvers:
             assert m.actor_name != ego_name
+
+
+# =============================================================================
+# Tầm với anchor phải tới được model (đo 26/08/2026)
+# =============================================================================
+
+
+class TestAnchorReachBlock:
+    """Biên thật của ``s_offset_m`` là tầm với anchor, và nó phải nằm trong prompt.
+
+    Trước đây con số này chỉ tồn tại ở converter — sau ``promote``, chỗ không còn
+    vòng repair. Ba mô tả ``wrong_way`` trong benchmark 26/08 sinh s_offset_m
+    80/120/80 (zero-shot) và 45/60/60 (few-shot): model đi đúng hướng nhưng không
+    chỗ nào nêu trần, nên không bao giờ dừng đúng chỗ.
+    """
+
+    def test_highway_reach_reaches_the_prompt(self):
+        content = _build_user_content(user_query="Xe máy tạt đầu", odd_cell=ODD_CELL_CUT_IN)
+
+        assert "[-120, 40]" in content
+
+    def test_urban_anchor_does_not_borrow_the_highway_reach(self):
+        """Hai anchor có tầm với khác nhau; hard-code một cặp là sai một nửa số ô."""
+        urban = ODDCell(
+            road_type=RoadType.URBAN_STRAIGHT,
+            weather=Weather.CLEAR,
+            actor_type=ActorType.CAR,
+            maneuver=ManeuverType.RUN_RED_LIGHT,
+        )
+
+        content = _build_user_content(user_query="Ô tô vượt đèn đỏ", odd_cell=urban)
+
+        assert "[-60, 25]" in content
+        assert "[-120, 40]" not in content
+
+    def test_road_type_without_template_states_no_bound(self):
+        """Road type chưa đo anchor thì im lặng, không được bịa ra một biên."""
+        unmeasured = ODDCell(
+            road_type=RoadType.ROUNDABOUT,
+            weather=Weather.CLEAR,
+            actor_type=ActorType.CAR,
+            maneuver=ManeuverType.CUT_IN,
+        )
+
+        content = _build_user_content(user_query="Ô tô tạt đầu ở vòng xoay", odd_cell=unmeasured)
+
+        assert "Tầm với anchor" not in content
