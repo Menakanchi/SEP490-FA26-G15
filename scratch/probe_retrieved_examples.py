@@ -38,7 +38,6 @@ async def main() -> int:
     db.create_generation_request(
         request_id,
         PROMPT,
-        validation_mode="static",
         limit=3,
         created_by="scratch-probe",
         force_generate=True,

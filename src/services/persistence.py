@@ -50,6 +50,12 @@ from src.models.schemas import (
 
 metadata = MetaData()
 
+# Cột ``generation_requests.validation_mode`` (NOT NULL) không còn khái niệm
+# nào phía trên đọc — ``ValidationMode`` đã bị xoá khỏi ``GenerateRequest``.
+# Ghi hằng số ở một chỗ thay vì nhận nó làm tham số, để không còn giá trị lệch
+# nhau ("static" ở đây, "standard" ở nơi khác) cho một cột đã chết.
+LEGACY_VALIDATION_MODE = "static"
+
 scenarios = Table(
     "scenarios",
     metadata,
@@ -339,7 +345,6 @@ class ScenarioRepository:
         request_description_vi: str,
         scenario_description_vi: str,
         created_by: str,
-        validation_mode: str,
         spec: ScenarioSpec,
         xosc_content: str,
         assumptions: list[dict[str, Any]],
@@ -386,7 +391,7 @@ class ScenarioRepository:
                 # một repository chạy trên cả hai.
                 finalised = {
                     "description_vi": request_description_vi,
-                    "validation_mode": validation_mode,
+                    "validation_mode": LEGACY_VALIDATION_MODE,
                     "status": "done",
                     "step": "done",
                     "progress": 100,
