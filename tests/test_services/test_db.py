@@ -164,7 +164,7 @@ def test_odd_columns_store_bare_enum_values(actor_value) -> None:
 
 def test_generation_request_round_trips_retrieve_limit() -> None:
     """Top-k người dùng chọn phải sống sót qua DB — nó đổi kết quả retrieval."""
-    db.create_generation_request("req_1", "Xe máy tạt đầu", "static", limit=7)
+    db.create_generation_request("req_1", "Xe máy tạt đầu", limit=7)
     assert db.get_generation_request("req_1")["limit"] == 7
 
     db.update_generation_request("req_1", step="retrieve", progress=25)
@@ -173,7 +173,7 @@ def test_generation_request_round_trips_retrieve_limit() -> None:
 
 
 def test_merge_generation_metrics_giu_provenance_cu() -> None:
-    db.create_generation_request("req_metrics", "Xe máy tạt đầu", "static")
+    db.create_generation_request("req_metrics", "Xe máy tạt đầu")
     db.update_generation_request(
         "req_metrics",
         node_metrics='{"model":"gpt-test","retrieved_examples":[{"id":"sc_001"}]}',

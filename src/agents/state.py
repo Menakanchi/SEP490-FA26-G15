@@ -82,7 +82,6 @@ class ForgeState(TypedDict, total=False):
     xosc_content: str
     scenario_id: str
     request_id: str
-    validation_mode: str
     model_used: str
     node_metrics: dict
     tags: list[str]

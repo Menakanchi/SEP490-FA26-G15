@@ -14,7 +14,7 @@ async def _generate_one(client, prompt: str) -> str:
     trước khi task chạy xong — không ai thấy tiền đi đâu.
     """
     with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
-        req_id = (await client.post("/api/v1/generate", json={"prompt": prompt, "validation_mode": "static"})).json()[
+        req_id = (await client.post("/api/v1/generate", json={"prompt": prompt})).json()[
             "request_id"
         ]
 
@@ -204,19 +204,19 @@ async def test_operational_library_and_review_hide_seed_and_unbuildable_approved
 @pytest.mark.asyncio
 async def test_generate_endpoint_validation(client):
     # Empty prompt should return 422 (Pydantic min_length=1)
-    response = await client.post("/api/v1/generate", json={"prompt": "", "validation_mode": "static"})
+    response = await client.post("/api/v1/generate", json={"prompt": ""})
     assert response.status_code == 422
 
     # Short or numeric prompt should return 400
     for invalid in ["0", "abc", "123", "a"]:
-        res_400 = await client.post("/api/v1/generate", json={"prompt": invalid, "validation_mode": "static"})
+        res_400 = await client.post("/api/v1/generate", json={"prompt": invalid})
         assert res_400.status_code == 400
         assert "Mô tả kịch bản quá ngắn hoặc không đủ thông tin" in res_400.json()["detail"]
 
     # Valid prompt returns request_id
     response = await client.post(
         "/api/v1/generate",
-        json={"prompt": "Xe máy tạt đầu ô tô trên đường cao tốc", "validation_mode": "static"},
+        json={"prompt": "Xe máy tạt đầu ô tô trên đường cao tốc"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -276,7 +276,7 @@ async def test_generated_scenario_dynamic_odd(client):
     with patch("src.services.llm.call_with_escalation", return_value=draft):
         gen_res = await client.post(
             "/api/v1/generate",
-            json={"prompt": prompt, "validation_mode": "static"},
+            json={"prompt": prompt},
         )
         req_id = gen_res.json()["request_id"]
 
@@ -309,7 +309,7 @@ async def test_unsupported_prompt_fails_without_creating_a_scenario(client):
     with patch("src.services.llm.call_with_escalation") as mock_llm:
         gen_res = await client.post(
             "/api/v1/generate",
-            json={"prompt": "Người đi bộ băng qua đường ở ngã tư lúc trời mưa", "validation_mode": "static"},
+            json={"prompt": "Người đi bộ băng qua đường ở ngã tư lúc trời mưa"},
         )
         req_id = gen_res.json()["request_id"]
 
@@ -658,12 +658,12 @@ async def test_crashed_run_is_recorded_as_execution_failed(client):
 
 @pytest.mark.asyncio
 async def test_generation_always_stops_at_before_sim(client):
-    """validation_mode không được bỏ qua quyết định tiêu GPU của con người."""
+    """Workflow luôn dừng ở BEFORE_SIM — không tự tiêu GPU mà không có người duyệt."""
     with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
         req_id = (
             await client.post(
                 "/api/v1/generate",
-                json={"prompt": "Xe máy tạt đầu ô tô trên đường cao tốc", "validation_mode": "sim"},
+                json={"prompt": "Xe máy tạt đầu ô tô trên đường cao tốc"},
             )
         ).json()["request_id"]
         for _ in range(60):
@@ -691,7 +691,6 @@ async def test_two_roles_are_recorded_separately(client):
                 "/api/v1/generate",
                 json={
                     "prompt": "Xe máy tạt đầu ô tô trên đường cao tốc",
-                    "validation_mode": "static",
                     "created_by": "an.nguyen@vinuni.edu.vn",
                 },
             )
@@ -767,7 +766,7 @@ async def _post_generate(client, prompt: str, **extra) -> dict:
     with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
         response = await client.post(
             "/api/v1/generate",
-            json={"prompt": prompt, "validation_mode": "static", **extra},
+            json={"prompt": prompt, **extra},
         )
     assert response.status_code == 200, response.text
     return response.json()
@@ -849,7 +848,7 @@ async def test_lan_sinh_hong_khong_tinh_la_trung(client):
     from src.services import db
 
     prompt = "Xe máy tạt đầu ô tô trên đường cao tốc"
-    db.create_generation_request("req_hong", prompt, "static")
+    db.create_generation_request("req_hong", prompt)
     db.update_generation_request("req_hong", status="failed", step="failed", error="rate limit")
 
     body = await _post_generate(client, prompt)
@@ -869,7 +868,7 @@ async def test_hai_request_giong_het_den_cung_luc_chi_mo_mot_lan_sinh(client):
 
     prompt = "Xe máy tạt đầu ô tô trên đường cao tốc"
     with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
-        payload = {"prompt": prompt, "validation_mode": "static"}
+        payload = {"prompt": prompt}
         first, second = await asyncio.gather(
             client.post("/api/v1/generate", json=payload),
             client.post("/api/v1/generate", json=payload),
@@ -890,13 +889,13 @@ def test_create_generation_request_tu_chan_ban_thu_hai_dang_chay():
     from src.services import db
 
     prompt = "Xe máy tạt đầu ô tô trên đường cao tốc"
-    db.create_generation_request("req_1", prompt, "static")
+    db.create_generation_request("req_1", prompt)
 
     with pytest.raises(db.DuplicateRequestInFlightError):
-        db.create_generation_request("req_2", prompt, "static")
+        db.create_generation_request("req_2", prompt)
 
     # force_generate ghi NULL nên đứng ngoài index — luôn chạy được.
-    db.create_generation_request("req_3", prompt, "static", force_generate=True)
+    db.create_generation_request("req_3", prompt, force_generate=True)
 
 
 @pytest.mark.asyncio
@@ -1094,3 +1093,132 @@ async def test_batch_review_only_touches_scenarios_waiting_at_gate_one(client):
     response = await client.post("/api/v1/campaigns/cmp_test02/review", json={"reviewer": "cong", "approved": True})
     assert response.json()["count"] == 0
     assert (await client.get(f"/api/v1/scenarios/{outsider}")).json()["status"] == "pending_sim_review"
+
+
+# ---------------------------------------------------------------------------
+# /scenarios/{id}/tune — POST sinh biến thể, GET tóm tắt kết quả
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tune_post_creates_first_variant(client):
+    """Lần gọi đầu tiên sinh đúng một biến thể và trả tên của nó."""
+    base = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+
+    resp = await client.post(f"/api/v1/scenarios/{base}/tune")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["variants"] == [f"{base}_t1"]
+    assert data["stopped"] is None
+
+
+@pytest.mark.asyncio
+async def test_tune_post_waits_when_variant_has_no_result_yet(client):
+    """Biến thể t1 chưa chạy xong → dừng chờ, không dựng thêm lượt GPU thừa."""
+    base = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+
+    await client.post(f"/api/v1/scenarios/{base}/tune")  # tạo t1
+    resp = await client.post(f"/api/v1/scenarios/{base}/tune")  # t1 chưa có kết quả
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["variants"] == []
+    assert "waiting" in data["stopped"]
+
+
+@pytest.mark.asyncio
+async def test_tune_post_404_for_unknown_scenario(client):
+    resp = await client.post("/api/v1/scenarios/sc_does_not_exist/tune")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_tune_post_422_when_geometry_prevents_sweep(client):
+    """Trigger cut_in + simulation_time không có mốc neo → 422 với lý do rõ."""
+    from src.services import db
+
+    # Dùng lại spec của cut_in nhưng đổi trigger type → variant_specs() trả rỗng
+    base = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    base_row = db.get_scenario(base)
+    broken_spec = base_row["spec"]
+    broken_spec["maneuvers"][0]["trigger"] = {"type": "simulation_time", "value": 5.0}
+
+    unsweepable_id = f"{base}_unsweepable"
+    db.save_scenario(
+        scenario_id=unsweepable_id,
+        title="Kịch bản không dò được",
+        description_vi=base_row["description_vi"],
+        spec=broken_spec,
+        odd=base_row["odd"],
+        xosc_content="<OpenSCENARIO />",
+    )
+
+    resp = await client.post(f"/api/v1/scenarios/{unsweepable_id}/tune")
+
+    assert resp.status_code == 422
+    assert "trigger" in resp.json()["detail"].lower() or "dò" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_tune_get_returns_empty_summary_before_any_variants(client):
+    """GET /tune trả đúng shape khi chưa có biến thể nào."""
+    base = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+
+    resp = await client.get(f"/api/v1/scenarios/{base}/tune")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["scenario_id"] == base
+    assert data["ranked"] == []
+    assert data["improved"] is False
+    assert data["reached_critical"] is False
+
+
+@pytest.mark.asyncio
+async def test_tune_get_summary_includes_variant_metrics_after_run(client):
+    """GET /tune phản chiếu kết quả biến thể đã chạy: ranked, improved, best."""
+    base = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+
+    # Chạy kịch bản gốc — baseline min_distance
+    base_job = await _approve_sim(client, base)
+    await _submit_result(client, base, base_job, success=True, metrics={"min_distance_m": 1.5})
+
+    # Sinh biến thể t1
+    tune_resp = await client.post(f"/api/v1/scenarios/{base}/tune")
+    variant_id = tune_resp.json()["variants"][0]
+
+    # Chạy biến thể — khe hở nhỏ hơn → cải thiện
+    variant_job = await _approve_sim(client, variant_id)
+    await _submit_result(client, variant_id, variant_job, success=True, metrics={"min_distance_m": 0.4})
+
+    resp = await client.get(f"/api/v1/scenarios/{base}/tune")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["improved"] is True
+    assert data["reached_critical"] is True  # 0,4 m < 1,0 m ngưỡng tới hạn
+    assert data["best_min_distance_m"] == pytest.approx(0.4)
+    assert any(r["scenario_id"] == variant_id for r in data["ranked"])
+
+
+@pytest.mark.asyncio
+async def test_tune_get_404_for_unknown_scenario(client):
+    resp = await client.get("/api/v1/scenarios/sc_does_not_exist/tune")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Đã bỏ trường validation_mode — API phải từ chối payload cũ (extra="forbid")
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_rejects_unknown_field_after_validation_mode_removal(client):
+    """extra='forbid' bắt payload cũ có validation_mode thay vì âm thầm bỏ qua."""
+    resp = await client.post(
+        "/api/v1/generate",
+        json={"prompt": "Xe máy tạt đầu ô tô trên đường cao tốc", "validation_mode": "sim"},
+    )
+    assert resp.status_code == 422
