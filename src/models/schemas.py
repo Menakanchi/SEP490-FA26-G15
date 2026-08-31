@@ -1157,14 +1157,6 @@ def verification_from_execution(success: bool, criteria: list[CriterionResult]) 
     return VerificationLevel.ADVERSARIAL if had_collision else VerificationLevel.RAN_NO_HAZARD
 
 
-ValidationMode = Literal["static", "sim"]
-"""``static`` = chỉ validate XML, không cần GPU. ``sim`` = chạy thật trên worker.
-
-Live URL luôn phục vụ được ở chế độ ``static`` kể cả khi worker tắt — đó là
-bất biến của ADR-001 và là thứ giữ Deliverable #5 sống.
-"""
-
-
 class ScenarioJob(ForgeModel):
     """Payload đi từ backend sang worker GPU.
 
@@ -1442,12 +1434,19 @@ class GenerateRequest(ForgeModel):
     """
 
     prompt: str = Field(..., min_length=1, max_length=5000, description="Câu mô tả tiếng Việt, giữ nguyên văn")
+    validation_mode: Literal["static", "sim"] | None = Field(
+        None,
+        exclude=True,
+        deprecated=True,
+        description=(
+            "Trường tương thích cho client cũ; backend bỏ qua. Quyền chạy GPU chỉ được cấp qua cổng duyệt BEFORE_SIM."
+        ),
+    )
     created_by: str = Field(
         "unknown",
         max_length=255,
         description="Người tạo. Đề bài đòi hai vai trò tạo/duyệt — đây là vế thứ nhất.",
     )
-    validation_mode: ValidationMode = "static"
     limit: int = Field(3, ge=1, le=20, description="Số kịch bản mẫu cần retrieve (top-k)")
     force_generate: bool = Field(
         False,

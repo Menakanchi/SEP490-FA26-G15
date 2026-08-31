@@ -42,12 +42,14 @@ chứng bằng CARLA ScenarioRunner.
 
 ### 3.1 Sinh kịch bản
 
-1. Creator nhập mô tả tiếng Việt và chọn `validation_mode` là `static` hoặc
-   `sim`.
+1. Creator nhập mô tả tiếng Việt.
 2. Hệ thống trả một ID để client theo dõi trạng thái bất đồng bộ.
 3. Workflow tạo draft, validate, repair tối đa ba vòng và convert thành `.xosc`.
 4. Hệ thống lưu durable record ở trạng thái `pending_review`; workflow kết thúc.
 5. UI hiển thị câu gốc, nội dung đã chuẩn hoá, warning và preview 2D.
+
+Generate không tự tạo simulation job. Khi muốn chạy GPU, creator gửi yêu cầu
+simulation và reviewer phải approve ở cổng `BEFORE_SIM`.
 
 ### 3.2 Duyệt vào thư viện
 

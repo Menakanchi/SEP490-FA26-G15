@@ -42,7 +42,13 @@ from src.models.schemas import (
     odd_axis_value,
 )
 from src.services.llm import EMBEDDING_MODEL
-from src.services.persistence import connect_sqlite, make_engine, metadata, sqlite_path
+from src.services.persistence import (
+    LEGACY_VALIDATION_MODE,
+    connect_sqlite,
+    make_engine,
+    metadata,
+    sqlite_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +226,6 @@ class DuplicateRequestInFlightError(RuntimeError):
 def create_generation_request(
     request_id: str,
     description_vi: str,
-    validation_mode: str,
     limit: int = 3,
     created_by: str = "unknown",
     force_generate: bool = False,
@@ -241,7 +246,7 @@ def create_generation_request(
         "request_id": request_id,
         "description_vi": description_vi,
         "description_normalized": normalized,
-        "validation_mode": validation_mode,
+        "validation_mode": LEGACY_VALIDATION_MODE,
         "created_by": created_by,
         "limit": limit,
         "status": "running",
@@ -272,7 +277,7 @@ def create_generation_request(
                     description_vi,
                     normalized,
                     created_by,
-                    validation_mode,
+                    LEGACY_VALIDATION_MODE,
                     limit,
                     "running",
                     "queued",
@@ -450,7 +455,6 @@ def save_scenario(
     assumptions: list | None = None,
     tags: list | None = None,
     retrieved_examples: list | None = None,
-    validation_mode: str = "fast",
     created_by: str = "creator",
 ) -> dict:
     now_str = datetime.now(UTC).isoformat()
@@ -509,7 +513,6 @@ def save_scenario(
         "review_logs": get_review_decisions(scenario_id),
         "created_by": created_by or "creator",
         "created_at": now_str,
-        "validation_mode": validation_mode,
     }
     return sc_dict
 
@@ -678,16 +681,33 @@ def complete_simulation(scenario_id: str, level: VerificationLevel) -> bool:
         return cursor.rowcount == 1
 
 
+def _fetch_by_ids(rows: list[sqlite3.Row], seen: set[str] | None = None) -> list[dict]:
+    """Lấy full record cho từng ``scenario_id`` trong ``rows``.
+
+    ``seen`` là tập id đã lấy rồi ở một vòng trước — dùng khi hai truy vấn khác
+    nhau có thể trả về cùng một scenario (``list_my_scenarios``). Bỏ qua id đã
+    thấy thay vì gọi lại ``get_scenario`` cho nó, và ghi thêm id mới vào chính
+    tập đó để lần gọi kế tiếp cũng thấy.
+    """
+    result = []
+    for r in rows:
+        sc_id = r["scenario_id"]
+        if not sc_id or (seen is not None and sc_id in seen):
+            continue
+        sc = get_scenario(sc_id)
+        if sc is None:
+            continue
+        result.append(sc)
+        if seen is not None:
+            seen.add(sc_id)
+    return result
+
+
 def list_all_scenarios() -> list[dict]:
     with _cursor() as cursor:
         cursor.execute("SELECT scenario_id FROM scenarios ORDER BY created_at DESC")
         rows = cursor.fetchall()
-    scenarios = []
-    for r in rows:
-        sc = get_scenario(r["scenario_id"])
-        if sc:
-            scenarios.append(sc)
-    return scenarios
+    return _fetch_by_ids(rows)
 
 
 def save_draft_scenario(
@@ -724,12 +744,7 @@ def list_public_scenarios() -> list[dict]:
             """
         )
         rows = cursor.fetchall()
-    scenarios = []
-    for r in rows:
-        sc = get_scenario(r["scenario_id"])
-        if sc:
-            scenarios.append(sc)
-    return scenarios
+    return _fetch_by_ids(rows)
 
 
 def get_scenarios_for_near_duplicate_check(
@@ -791,15 +806,8 @@ def list_my_scenarios(username: str) -> list[dict]:
             (username, username),
         )
         rows = cursor.fetchall()
-    scenarios = []
-    seen_ids = set()
-    for r in rows:
-        sc_id = r["scenario_id"]
-        if sc_id and sc_id not in seen_ids:
-            sc = get_scenario(sc_id)
-            if sc:
-                scenarios.append(sc)
-                seen_ids.add(sc_id)
+    seen_ids: set[str] = set()
+    scenarios = _fetch_by_ids(rows, seen_ids)
 
     with _cursor() as cursor:
         cursor.execute(
@@ -813,14 +821,7 @@ def list_my_scenarios(username: str) -> list[dict]:
         )
         req_rows = cursor.fetchall()
 
-    for r in req_rows:
-        sc_id = r["scenario_id"]
-        if sc_id and sc_id not in seen_ids:
-            sc = get_scenario(sc_id)
-            if sc:
-                scenarios.append(sc)
-                seen_ids.add(sc_id)
-
+    scenarios += _fetch_by_ids(req_rows, seen_ids)
     return scenarios
 
 

@@ -12,7 +12,6 @@ import type {
   ScenarioItem,
   ScenarioStatus,
   ODDPayload,
-  ValidationMode,
   QualityReport,
   ControllerRunsResponse,
 
@@ -22,7 +21,6 @@ import type {
   CampaignReviewResponse,
   CampaignSummary,
   LabelQueueItem,
-  IntentAgreement,
   TuningSummary,
   TuneStepResponse,
 } from "@/types";
@@ -67,7 +65,6 @@ async function request<T>(
 
 export interface GeneratePayload {
   prompt: string;
-  validation_mode: ValidationMode;
   limit?: number;
   created_by?: string;
   force_generate?: boolean;
@@ -152,17 +149,6 @@ export async function getScenarios(
   return request<{ items: ScenarioItem[]; total: number }>(
     `/library/search${qs ? `?${qs}` : ""}`,
   );
-}
-
-export async function getPublicScenarios(): Promise<{ items: ScenarioItem[]; total: number }> {
-  return request<{ items: ScenarioItem[]; total: number }>("/scenarios/public");
-}
-
-export async function getMyScenarios(
-  user?: string,
-): Promise<{ items: ScenarioItem[]; total: number }> {
-  const query = user ? `?user=${encodeURIComponent(user)}` : "";
-  return request<{ items: ScenarioItem[]; total: number }>(`/scenarios/me${query}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -493,8 +479,4 @@ export async function submitIntentLabel(
     method: "POST",
     body: JSON.stringify(body),
   });
-}
-
-export async function getIntentAgreement(): Promise<IntentAgreement> {
-  return request<IntentAgreement>("/metrics/intent-agreement");
 }

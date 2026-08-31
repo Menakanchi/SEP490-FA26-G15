@@ -10,8 +10,6 @@ import {
   XCircle,
   ArrowRight,
   Clock,
-  ToggleLeft,
-  ToggleRight,
   Sparkles,
   AlertTriangle,
   Info,
@@ -30,7 +28,7 @@ import {
   type GenerateDuplicateMatch,
 } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
-import type { GenerationStatus, ValidationMode, ScenarioDetail } from "@/types";
+import type { GenerationStatus, ScenarioDetail } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
@@ -57,7 +55,6 @@ function GeneratorPageContent() {
 
   // Form state
   const [prompt, setPrompt] = useState("");
-  const [validationMode, setValidationMode] = useState<ValidationMode>("static");
   const [retrieveLimit, setRetrieveLimit] = useState<number>(3);
   const [submitting, setSubmitting] = useState(false);
   const [clientValidationError, setClientValidationError] = useState<string | null>(null);
@@ -193,7 +190,6 @@ function GeneratorPageContent() {
     try {
       const res = await postGenerate({
         prompt: trimmed,
-        validation_mode: validationMode,
         limit: retrieveLimit,
         created_by: user?.username || user?.name || "creator",
         force_generate: forceGenerate,
@@ -337,27 +333,6 @@ function GeneratorPageContent() {
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
             <div className="flex flex-wrap items-center gap-4">
-              {/* Validation Mode Toggle */}
-              <button
-                type="button"
-                className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-white transition cursor-pointer"
-                onClick={() =>
-                  setValidationMode((m) => (m === "static" ? "sim" : "static"))
-                }
-                disabled={polling || submitting || drafting}
-              >
-                {validationMode === "sim" ? (
-                  <ToggleRight className="w-6 h-6 text-blue-600 dark:text-cyan-400" />
-                ) : (
-                  <ToggleLeft className="w-6 h-6 text-slate-400" />
-                )}
-                <span>
-                  {validationMode === "static"
-                    ? "Chế độ: Validate XML (Fast)"
-                    : "Chế độ: Mô phỏng thật (Sim)"}
-                </span>
-              </button>
-
               {/* Retrieval Limit Selector */}
               <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-sky-50/70 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-sky-200 dark:border-slate-700">
                 <Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
