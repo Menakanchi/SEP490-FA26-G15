@@ -37,8 +37,6 @@ export type VehicleCategory =
   | "bicycle"
   | "pedestrian";
 
-export type ValidationMode = "static" | "sim";
-
 // ---------------------------------------------------------------------------
 // Label maps — hiển thị UI tiếng Việt
 // ---------------------------------------------------------------------------
@@ -642,14 +640,4 @@ export interface LabelQueueItem {
   contact_time_s?: number | null;
   /** Người đang đăng nhập đã chấm kịch bản này chưa — không nói đã chấm ra sao. */
   labelled: boolean;
-}
-
-export interface IntentAgreement {
-  agreement: number | null;
-  matched: number;
-  scored: number;
-  labelled_scenarios: number;
-  unsure: number;
-  human_conflicts: number;
-  disagreements: { scenario_id: string; human: string; machine: string; reason: string }[];
 }

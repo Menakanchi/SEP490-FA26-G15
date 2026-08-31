@@ -19,7 +19,7 @@
 ```text
 Scenario Forge
 ├── Generator
-│   ├── Prompt + validation mode
+│   ├── Prompt
 │   ├── Processing status
 │   └── Result preview
 ├── Review Queue
@@ -36,8 +36,7 @@ Scenario Forge
 
 ```mermaid
 flowchart TD
-    A[Creator nhập mô tả tiếng Việt] --> B[Chọn static hoặc sim]
-    B --> C[Backend tạo request ID]
+    A[Creator nhập mô tả tiếng Việt] --> C[Backend tạo request ID]
     C --> D[Workflow: parse → retrieve → generate]
     D --> E{Validate pass?}
     E -->|Lỗi sửa được và còn lượt| F[Repair draft]

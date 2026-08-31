@@ -50,7 +50,7 @@ ADR này **không** chốt thuật toán explore/exploit, không chốt tỉ l�
 
 ### 14.1 Đơn vị duyệt của luồng batch là **lô**, không phải scenario
 
-- Thêm khái niệm `BatchRun`: phạm vi ODD (`list[ODDCell]` sau khi giao với `SupportPolicy.supported_cells()`) + số kịch bản mỗi ô + **trần chi phí** (USD và thời gian GPU) + `validation_mode`.
+- Thêm khái niệm `BatchRun`: phạm vi ODD (`list[ODDCell]` sau khi giao với `SupportPolicy.supported_cells()`) + số kịch bản mỗi ô + **trần chi phí** (USD và thời gian GPU).
 - Cổng `BEFORE_SIM` áp lên `BatchRun`. Một quyết định duyệt cấp phép tạo job cho mọi scenario sinh ra trong lô đó — **trong giới hạn trần đã ghi trong chính quyết định**.
 - **Trần là một phần của thứ được duyệt, không phải cấu hình bên cạnh.** Chạm trần thì lô dừng và cần một quyết định mới. Không có đường tự nới.
 - `ReviewGate` giữ nguyên hai giá trị. Đổi *thứ được trỏ tới*, không đổi ý nghĩa của cổng.
