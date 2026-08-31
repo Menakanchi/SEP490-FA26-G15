@@ -1157,8 +1157,6 @@ def verification_from_execution(success: bool, criteria: list[CriterionResult]) 
     return VerificationLevel.ADVERSARIAL if had_collision else VerificationLevel.RAN_NO_HAZARD
 
 
-
-
 class ScenarioJob(ForgeModel):
     """Payload đi từ backend sang worker GPU.
 

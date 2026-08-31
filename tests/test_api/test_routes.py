@@ -14,9 +14,7 @@ async def _generate_one(client, prompt: str) -> str:
     trước khi task chạy xong — không ai thấy tiền đi đâu.
     """
     with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
-        req_id = (await client.post("/api/v1/generate", json={"prompt": prompt})).json()[
-            "request_id"
-        ]
+        req_id = (await client.post("/api/v1/generate", json={"prompt": prompt})).json()["request_id"]
 
         for _ in range(60):
             status = (await client.get(f"/api/v1/status/{req_id}")).json()
