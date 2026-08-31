@@ -1434,6 +1434,14 @@ class GenerateRequest(ForgeModel):
     """
 
     prompt: str = Field(..., min_length=1, max_length=5000, description="Câu mô tả tiếng Việt, giữ nguyên văn")
+    validation_mode: Literal["static", "sim"] | None = Field(
+        None,
+        exclude=True,
+        deprecated=True,
+        description=(
+            "Trường tương thích cho client cũ; backend bỏ qua. Quyền chạy GPU chỉ được cấp qua cổng duyệt BEFORE_SIM."
+        ),
+    )
     created_by: str = Field(
         "unknown",
         max_length=255,

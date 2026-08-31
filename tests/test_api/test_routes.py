@@ -1208,15 +1208,22 @@ async def test_tune_get_404_for_unknown_scenario(client):
 
 
 # ---------------------------------------------------------------------------
-# Đã bỏ trường validation_mode — API phải từ chối payload cũ (extra="forbid")
+# Đã bỏ hành vi validation_mode — API vẫn nhận payload cũ trong thời gian chuyển tiếp
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_generate_rejects_unknown_field_after_validation_mode_removal(client):
-    """extra='forbid' bắt payload cũ có validation_mode thay vì âm thầm bỏ qua."""
-    resp = await client.post(
-        "/api/v1/generate",
-        json={"prompt": "Xe máy tạt đầu ô tô trên đường cao tốc", "validation_mode": "sim"},
-    )
-    assert resp.status_code == 422
+async def test_generate_accepts_but_ignores_legacy_validation_mode(client):
+    """Client cũ không gãy, nhưng cờ cũ không được phép vượt cổng BEFORE_SIM."""
+    from src.services import db
+
+    with patch("src.services.llm.call_with_escalation", return_value=_cut_in_draft()):
+        resp = await client.post(
+            "/api/v1/generate",
+            json={"prompt": "Xe máy tạt đầu ô tô trên đường cao tốc", "validation_mode": "sim"},
+        )
+
+    assert resp.status_code == 200
+    request = db.get_generation_request(resp.json()["request_id"])
+    assert request is not None
+    assert request["validation_mode"] == "static"
