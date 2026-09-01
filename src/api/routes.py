@@ -326,9 +326,8 @@ def _auto_simulate_background(job_id: str, scenario_id: str) -> None:
     if os.environ.get("PYTEST_CURRENT_TEST") or get_settings().app_env == "test":
         return
     try:
-        from worker.mock_runner import process_job
-
-        process_job({"job_id": job_id, "scenario_id": scenario_id, "xosc_path": ""})
+        db.self_heal_scenario_trajectory(scenario_id)
+        db.update_scenario_status(scenario_id, ScenarioStatus.PENDING_LIBRARY_REVIEW.value)
         logger.info("Background mock simulation completed for scenario %s", scenario_id)
     except Exception as exc:
         logger.warning("Background mock simulation failed for scenario %s: %s", scenario_id, exc)
@@ -453,14 +452,8 @@ async def post_review(
         db.create_scenario_job(job_id, target_id, scenario["xosc_content"])
         job_created = True
 
-        # In-process execution: sinh quỹ đạo và metrics trực tiếp trong API request
-        db.self_heal_scenario_trajectory(target_id)
-
-        # Trên Production Cloud (ngoài pytest), chuyển thẳng sang pending_library_review
-        if os.environ.get("PYTEST_CURRENT_TEST") is None:
-            next_status = ScenarioStatus.PENDING_LIBRARY_REVIEW
-            db.update_scenario_status(target_id, next_status.value)
-            scenario["status"] = next_status.value
+        # Tối ưu hiệu năng API: Tách tác vụ CPU-intensive sang chạy nền bằng BackgroundTasks
+        background_tasks.add_task(_auto_simulate_background, job_id, target_id)
 
     return {"ok": True, "status": next_status.value, "job_created": job_created}
 
@@ -1588,25 +1581,34 @@ async def get_user_profile_endpoint(username: str | None = Query(None), user: st
 @router.put("/users/profile")
 async def update_user_profile_endpoint(body: ProfileUpdateRequest) -> dict:
     if not body.username:
-        raise HTTPException(status_code=400, detail="Username là bắt buộc")
+        raise HTTPException(status_code=401, detail="Chưa xác thực người dùng. Vui lòng cung cấp username")
+    target_user = db.get_user(body.username)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thông tin người dùng")
     updated = db.update_user_profile(
         username=body.username,
         full_name=body.full_name,
         avatar_url=body.avatar_url,
     )
     if not updated:
-        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+        raise HTTPException(status_code=404, detail="Không tìm thấy thông tin người dùng")
     return {"ok": True, "user": updated}
 
 
 @router.post("/users/change-password")
 async def change_password_endpoint(body: ChangePasswordApiRequest) -> dict:
-    if not body.username or not body.old_password or not body.new_password:
+    if not body.username:
+        raise HTTPException(status_code=401, detail="Chưa xác thực người dùng. Vui lòng cung cấp username")
+    if not body.old_password or not body.new_password:
         raise HTTPException(status_code=400, detail="Vui lòng điền đầy đủ các thông tin bắt buộc")
     if len(body.new_password) < 6:
         raise HTTPException(status_code=400, detail="Mật khẩu mới phải có ít nhất 6 ký tự")
     if len(body.new_password) > 128 or len(body.old_password) > 128:
         raise HTTPException(status_code=400, detail="Mật khẩu không được vượt quá 128 ký tự")
+
+    target_user = db.get_user(body.username)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thông tin người dùng")
 
     success, msg = db.change_user_password(
         username=body.username,

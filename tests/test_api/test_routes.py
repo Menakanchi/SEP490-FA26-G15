@@ -1113,8 +1113,55 @@ async def test_user_profile_no_auth_bypass_401_404(client):
 
 
 @pytest.mark.asyncio
-async def test_change_password_max_length_limit(client):
-    """Chống CPU DoS băm mật khẩu siêu dài (>128 ký tự)."""
+async def test_update_user_profile_auth_and_update(client):
+    """Xác thực và cập nhật hồ sơ người dùng."""
+    # Không truyền username -> 401
+    res_401 = await client.put("/api/v1/users/profile", json={"username": ""})
+    assert res_401.status_code == 401
+    assert "Chưa xác thực" in res_401.json()["detail"]
+
+    # Truyền username không tồn tại -> 404
+    res_404 = await client.put(
+        "/api/v1/users/profile",
+        json={"username": "non_existent_user_999", "full_name": "New Name"},
+    )
+    assert res_404.status_code == 404
+    assert "Không tìm thấy" in res_404.json()["detail"]
+
+    # Cập nhật thành công với user hợp lệ
+    res_200 = await client.put(
+        "/api/v1/users/profile",
+        json={"username": "creator", "full_name": "Scenario Creator Pro"},
+    )
+    assert res_200.status_code == 200
+    assert res_200.json()["ok"] is True
+    assert res_200.json()["user"]["full_name"] == "Scenario Creator Pro"
+
+
+@pytest.mark.asyncio
+async def test_change_password_auth_and_limits(client):
+    """Xác thực và giới hạn đổi mật khẩu."""
+    # Không truyền username -> 401
+    res_401 = await client.post(
+        "/api/v1/users/change-password",
+        json={"username": "", "old_password": "123", "new_password": "456"},
+    )
+    assert res_401.status_code == 401
+    assert "Chưa xác thực" in res_401.json()["detail"]
+
+    # Username không tồn tại -> 404
+    res_404 = await client.post(
+        "/api/v1/users/change-password",
+        json={
+            "username": "non_existent_user_999",
+            "old_password": "creator123",
+            "new_password": "newpassword123",
+        },
+    )
+    assert res_404.status_code == 404
+    assert "Không tìm thấy" in res_404.json()["detail"]
+
+    # Chống CPU DoS băm mật khẩu siêu dài (>128 ký tự)
     long_pass = "A" * 150
     res = await client.post(
         "/api/v1/users/change-password",
