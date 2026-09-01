@@ -12,7 +12,6 @@ import type {
   ScenarioItem,
   ScenarioStatus,
   ODDPayload,
-  ValidationMode,
   QualityReport,
   ControllerRunsResponse,
 
@@ -22,7 +21,8 @@ import type {
   CampaignReviewResponse,
   CampaignSummary,
   LabelQueueItem,
-  IntentAgreement,
+  TuningSummary,
+  TuneStepResponse,
 } from "@/types";
 import type { LoginPayload, RegisterPayload, User } from "@/types/auth";
 
@@ -89,7 +89,6 @@ async function request<T>(
 
 export interface GeneratePayload {
   prompt: string;
-  validation_mode: ValidationMode;
   limit?: number;
   created_by?: string;
   force_generate?: boolean;
@@ -201,17 +200,6 @@ export async function getScenarios(
   );
 }
 
-export async function getPublicScenarios(): Promise<{ items: ScenarioItem[]; total: number }> {
-  return request<{ items: ScenarioItem[]; total: number }>("/scenarios/public");
-}
-
-export async function getMyScenarios(
-  user?: string,
-): Promise<{ items: ScenarioItem[]; total: number }> {
-  const query = user ? `?user=${encodeURIComponent(user)}` : "";
-  return request<{ items: ScenarioItem[]; total: number }>(`/scenarios/me${query}`);
-}
-
 // ---------------------------------------------------------------------------
 // Draft & CRUD API
 // ---------------------------------------------------------------------------
@@ -299,6 +287,21 @@ export async function postControllerRun(
 ): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>(
     `/scenarios/${encodeURIComponent(id)}/controller-runs`,
+    { method: "POST" },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dò biến thể tới hạn — POST sinh một bước, GET tóm tắt kết quả đã chạy
+// ---------------------------------------------------------------------------
+
+export async function getTuningSummary(id: string): Promise<TuningSummary> {
+  return request<TuningSummary>(`/scenarios/${encodeURIComponent(id)}/tune`);
+}
+
+export async function postTuneStep(id: string): Promise<TuneStepResponse> {
+  return request<TuneStepResponse>(
+    `/scenarios/${encodeURIComponent(id)}/tune`,
     { method: "POST" },
   );
 }
@@ -552,8 +555,4 @@ export async function submitIntentLabel(
     method: "POST",
     body: JSON.stringify(body),
   });
-}
-
-export async function getIntentAgreement(): Promise<IntentAgreement> {
-  return request<IntentAgreement>("/metrics/intent-agreement");
 }

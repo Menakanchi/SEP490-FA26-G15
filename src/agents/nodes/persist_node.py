@@ -76,7 +76,6 @@ async def persist_pending_sim_review_node(
             request_description_vi=state.get("user_query", spec.description_vi),
             scenario_description_vi=spec.description_vi,
             created_by=state.get("created_by") or "unknown",
-            validation_mode=state.get("validation_mode", "standard"),
             spec=spec,
             xosc_content=xosc_content,
             assumptions=[a.model_dump(mode="json") if hasattr(a, "model_dump") else a for a in assumptions],

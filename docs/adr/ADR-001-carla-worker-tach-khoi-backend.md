@@ -59,3 +59,18 @@ Câu này viết như thể chọn `sim` lúc sinh là tự tạo job. Không ph
 - `static` vẫn giữ đúng ý nghĩa vận hành mà ADR này mua về: worker tắt thì generate/review/download vẫn chạy.
 
 Sửa theo mẫu errata thay vì sửa thẳng §Quyết định, để giữ đúng luật "ADR không sửa sau khi Accepted" ở `README.md`.
+
+## Đính chính (31/08/2026)
+
+Kiến trúc backend cloud và worker GPU tách rời **không đổi**, nhưng cờ
+`validation_mode` đã được thay thế hoàn toàn bởi hai cổng duyệt:
+
+- Generate luôn dừng trước simulation và không tự tiêu GPU.
+- Creator yêu cầu chạy bằng thao tác đưa scenario vào `pending_sim_review`.
+- Chỉ quyết định approve `BEFORE_SIM` mới tạo job cho worker.
+
+Vì vậy cờ ý định không còn mang thêm thông tin hay điều khiển transition nào và
+được bỏ khỏi UI, state và tầng nghiệp vụ. API tạm nhận trường cũ dưới dạng
+deprecated rồi bỏ qua để không làm gãy client đang triển khai. Cột
+`generation_requests.validation_mode` được giữ với hằng `static` chỉ để các DB
+đã tạo và schema `NOT NULL` cũ tiếp tục tương thích.

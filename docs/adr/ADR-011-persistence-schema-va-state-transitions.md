@@ -53,7 +53,11 @@ Truy cập qua **SQLAlchemy Core** trong `src/services/`. Không viết SQL thô
 ### 3.2 Bốn bảng
 
 **`generation_requests`** — một lần bấm "Sinh kịch bản".
-`request_id` (PK) · `description_vi` · `validation_mode` · `status` (`running` | `failed` | `done`) · `scenario_id` (NULL cho tới khi thành công) · `issue_history` (JSON) · `node_metrics` (JSON: tokens, cost, latency theo node) · `failed_reason` · `created_at` · `updated_at`
+`request_id` (PK) · `description_vi` · `validation_mode` (legacy, luôn là
+`static`, chỉ giữ để tương thích DB cũ) · `status` (`running` | `failed` |
+`done`) · `scenario_id` (NULL cho tới khi thành công) · `issue_history` (JSON) ·
+`node_metrics` (JSON: tokens, cost, latency theo node) · `failed_reason` ·
+`created_at` · `updated_at`
 
 **`scenarios`** — kết quả sinh thành công.
 `scenario_id` (PK) · `status` (`ScenarioStatus`) · `title` · `description_vi` · `spec` (JSON) · **`xosc_content` (TEXT)** · `assumptions` (JSON) · `tags` (JSON) · **`road_type`, `weather`, `actor_type`, `maneuver` (cột riêng, có index)** · `embedding` (BLOB, **NULL** cho tới khi duyệt) · `embedding_model` · `created_at`
