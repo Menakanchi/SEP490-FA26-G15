@@ -12,6 +12,7 @@ import {
   Clock,
   ToggleLeft,
   ToggleRight,
+  Sparkles,
   AlertTriangle,
 
   Info,
@@ -61,7 +62,6 @@ function GeneratorPageContent() {
 
   // Form state
   const [prompt, setPrompt] = useState("");
-  const [validationMode, setValidationMode] = useState<ValidationMode>("static");
   const [retrieveLimit, setRetrieveLimit] = useState<number>(3);
   const [submitting, setSubmitting] = useState(false);
   const [clientValidationError, setClientValidationError] = useState<string | null>(null);
@@ -197,7 +197,6 @@ function GeneratorPageContent() {
     try {
       const res = await postGenerate({
         prompt: trimmed,
-        validation_mode: validationMode,
         limit: retrieveLimit,
         created_by: user?.username || user?.name || "creator",
         force_generate: forceGenerate,
@@ -374,6 +373,7 @@ function GeneratorPageContent() {
                 </select>
               </div>
             </div>
+
 
             <div className="flex items-center gap-2.5">
               <button

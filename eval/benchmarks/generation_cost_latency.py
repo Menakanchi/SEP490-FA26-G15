@@ -142,7 +142,6 @@ async def _run(source_db: Path, samples: int, *, few_shot: bool = True) -> dict[
             db.create_generation_request(
                 request_id,
                 prompt,
-                "static",
                 limit=3,
                 created_by="benchmark",
                 force_generate=True,

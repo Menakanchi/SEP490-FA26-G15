@@ -37,8 +37,6 @@ export type VehicleCategory =
   | "bicycle"
   | "pedestrian";
 
-export type ValidationMode = "static" | "sim";
-
 // ---------------------------------------------------------------------------
 // Label maps — hiển thị UI tiếng Việt
 // ---------------------------------------------------------------------------
@@ -473,6 +471,27 @@ export interface Assumption {
   reason_vi: string;
 }
 
+/** GET /scenarios/{id}/tune — tóm tắt phép dò biến thể tới hạn. */
+export interface TuningSummary {
+  scenario_id: string;
+  baseline_min_distance_m: number | null;
+  best_min_distance_m: number | null;
+  best_scenario_id: string | null;
+  improved: boolean;
+  reached_critical: boolean;
+  ranked: { scenario_id: string; metrics: { min_distance_m?: number | null; ttc_min_s?: number | null } }[];
+}
+
+/** POST /scenarios/{id}/tune — một bước dò. `variants` rỗng nghĩa là đã dừng. */
+export interface TuneStepResponse {
+  ok: boolean;
+  scenario_id: string;
+  variants: string[];
+  count?: number;
+  stopped?: string;
+  tried?: string[];
+}
+
 export interface ScenarioDetail {
   scenario_id: string;
   title: string;
@@ -624,14 +643,4 @@ export interface LabelQueueItem {
   contact_time_s?: number | null;
   /** Người đang đăng nhập đã chấm kịch bản này chưa — không nói đã chấm ra sao. */
   labelled: boolean;
-}
-
-export interface IntentAgreement {
-  agreement: number | null;
-  matched: number;
-  scored: number;
-  labelled_scenarios: number;
-  unsure: number;
-  human_conflicts: number;
-  disagreements: { scenario_id: string; human: string; machine: string; reason: string }[];
 }

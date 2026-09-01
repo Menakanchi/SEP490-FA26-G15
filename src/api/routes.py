@@ -125,7 +125,6 @@ async def _run_workflow(request_id: str) -> None:
         "user_query": req["description_vi"],
         "limit": req.get("limit") or 3,
         "request_id": request_id,
-        "validation_mode": req.get("validation_mode") or "static",
         "created_by": req.get("created_by") or "unknown",
     }
 
@@ -255,7 +254,6 @@ async def generate(body: GenerateRequest) -> GenerateResponse:
         db.create_generation_request(
             request_id,
             body.prompt,
-            body.validation_mode,
             body.limit,
             created_by=body.created_by,
             force_generate=body.force_generate,
@@ -798,7 +796,7 @@ async def _run_campaign(campaign_id: str, plan: list, created_by: str) -> None:
         try:
             prompt = await asyncio.to_thread(campaign_service.compose_prompt, cell, db.campaign_prompts(campaign_id))
             request_id = str(uuid.uuid4())
-            db.create_generation_request(request_id, prompt, "static", 3, created_by=created_by, force_generate=True)
+            db.create_generation_request(request_id, prompt, 3, created_by=created_by, force_generate=True)
             db.attach_request_to_campaign(request_id, campaign_id)
             await _run_workflow(request_id)
             req = db.get_generation_request(request_id) or {}

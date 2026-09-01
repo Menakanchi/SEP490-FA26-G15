@@ -107,3 +107,25 @@ def test_exported_forge_graph_has_persist_as_its_only_success_terminal() -> None
     assert outgoing == {"persist_pending_sim_review": "__end__"}
     assert "convert_xosc" in graph.nodes
     assert "persist_pending_sim_review" in graph.nodes
+
+
+@pytest.mark.asyncio
+async def test_persist_node_succeeds_without_validation_mode_in_state(tmp_path: Path) -> None:
+    """validation_mode đã bị xoá khỏi ForgeState — node không được chết khi key vắng mặt."""
+    spec = ScenarioSpec.model_validate(json.loads(FIXTURE.read_text(encoding="utf-8")))
+    repository = ScenarioRepository(make_engine(f"sqlite:///{tmp_path / 'app.db'}"))
+    repository.create_schema()
+
+    # Không có "validation_mode" trong state — như mọi lần chạy sau khi bỏ trường
+    result = await persist_pending_sim_review_node(
+        {
+            "request_id": "req_no_vm",
+            "user_query": "Không có validation_mode",
+            "spec": spec,
+            "xosc_content": "<OpenSCENARIO />",
+        },
+        repository,
+    )
+
+    assert result["scenario_status"] == ScenarioStatus.PENDING_SIM_REVIEW
+    assert repository.get_scenario(spec.scenario_id) is not None
