@@ -1300,6 +1300,13 @@ def self_heal_scenario_trajectory(scenario_id: str) -> dict | None:
         metrics = trajectory.summarise(samples)
         trajectory_points = trajectory.downsample(samples)
 
+        # Bổ sung 4 chỉ số an toàn thực tế
+        metrics["min_gap_m"] = metrics.get("min_distance_m", 0.0)
+        if "ttc_min_s" in metrics:
+            metrics["min_ttc_s"] = metrics["ttc_min_s"]
+        metrics["lateral_deviation_m"] = metrics.get("adversary_lane_deviation_m", 0.0)
+        metrics["collision_detected"] = had_collision
+
         criteria_results = [
             {
                 "name": "CollisionTest",
@@ -1322,8 +1329,8 @@ def self_heal_scenario_trajectory(scenario_id: str) -> dict | None:
         }
 
         job_id = f"job_heal_{scenario_id}_{uuid.uuid4().hex[:4]}"
-        create_scenario_job(job_id, scenario_id, "<OpenSCENARIO/>")
-        update_job_result(job_id, "done", result_payload)
+        create_scenario_job(job_id, scenario_id, "<OpenSCENARIO/>", job_kind=JobKind.SCENARIO_VALIDATION)
+        update_job_result(job_id, "completed", result_payload)
 
         return result_payload
     except Exception as e:

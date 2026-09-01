@@ -736,6 +736,12 @@ def _intent_evaluation(scenario: dict) -> dict:
 async def get_scenario(scenario_id: str) -> dict:
     """Chi tiết một scenario bao gồm spec, xosc_content và review_logs."""
     scenario = _scenario_or_404(scenario_id)
+    if not scenario.get("latest_execution_result") and os.environ.get("PYTEST_CURRENT_TEST") is None:
+        healed = db.self_heal_scenario_trajectory(scenario_id)
+        if healed:
+            scenario["latest_execution_result"] = healed
+            scenario["result"] = healed
+            scenario["trajectory"] = healed.get("trajectory")
     scenario["intent_evaluation"] = _intent_evaluation(scenario)
     return scenario
 
@@ -1028,9 +1034,12 @@ class IntentLabelRequest(BaseModel):
 async def intent_label_queue(labeller: str = "unknown") -> dict:
     """Các lượt chạy có quỹ đạo, kèm mô tả gốc — **không kèm phán quyết của máy**."""
     labeller = labeller.strip() if labeller and labeller.strip() else "unknown"
+    if os.environ.get("PYTEST_CURRENT_TEST") is None:
+        db.heal_all_missing_trajectories()
     items = db.get_label_queue_items(labeller)
     if not items and os.environ.get("PYTEST_CURRENT_TEST") is None:
         db.seed_default_trajectories()
+        db.heal_all_missing_trajectories()
         items = db.get_label_queue_items(labeller)
     return {"items": items, "count": len(items)}
 
