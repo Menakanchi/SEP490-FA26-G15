@@ -92,6 +92,7 @@ export interface GeneratePayload {
   limit?: number;
   created_by?: string;
   force_generate?: boolean;
+  validation_mode?: "static" | "sim";
 }
 
 export interface GenerateDuplicateMatch {

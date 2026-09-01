@@ -32,7 +32,7 @@ import {
 } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
 import { useBackground } from "@/context/BackgroundContext";
-import type { GenerationStatus, ValidationMode, ScenarioDetail } from "@/types";
+import type { GenerationStatus, ScenarioDetail } from "@/types";
 import {
   ROAD_TYPE_LABELS,
   WEATHER_LABELS,
@@ -63,6 +63,7 @@ function GeneratorPageContent() {
   // Form state
   const [prompt, setPrompt] = useState("");
   const [retrieveLimit, setRetrieveLimit] = useState<number>(3);
+  const [validationMode, setValidationMode] = useState<"static" | "sim">("static");
   const [submitting, setSubmitting] = useState(false);
   const [clientValidationError, setClientValidationError] = useState<string | null>(null);
   const [duplicateMatch, setDuplicateMatch] = useState<GenerateDuplicateMatch | null>(null);
@@ -200,6 +201,7 @@ function GeneratorPageContent() {
         limit: retrieveLimit,
         created_by: user?.username || user?.name || "creator",
         force_generate: forceGenerate,
+        validation_mode: validationMode,
       });
 
       setSubmitting(false);
