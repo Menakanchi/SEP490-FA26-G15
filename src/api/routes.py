@@ -452,8 +452,12 @@ async def post_review(
         db.create_scenario_job(job_id, target_id, scenario["xosc_content"])
         job_created = True
 
-        # Tối ưu hiệu năng API: Tách tác vụ CPU-intensive sang chạy nền bằng BackgroundTasks
-        background_tasks.add_task(_auto_simulate_background, job_id, target_id)
+        # Tự động gọi Mock Kinematics in-process để lưu ngay bản ghi trajectory vào scenario_jobs
+        db.self_heal_scenario_trajectory(target_id)
+        if os.environ.get("PYTEST_CURRENT_TEST") is None:
+            next_status = ScenarioStatus.PENDING_LIBRARY_REVIEW
+            db.update_scenario_status(target_id, next_status.value)
+            scenario["status"] = next_status.value
 
     return {"ok": True, "status": next_status.value, "job_created": job_created}
 

@@ -927,6 +927,9 @@ def complete_manual_simulation(scenario_id: str, passed: bool = True, notes: str
     if not sc:
         return None
 
+    # Tự động tính toán & ghi nhận trajectory vào scenario_jobs
+    self_heal_scenario_trajectory(scenario_id)
+
     new_status = ScenarioStatus.PENDING_LIBRARY_REVIEW.value if passed else ScenarioStatus.REJECTED.value
     with _cursor(commit=True) as cursor:
         cursor.execute(
