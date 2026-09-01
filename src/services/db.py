@@ -1106,6 +1106,7 @@ def get_controller_runs_by_scenario_ids(scenario_ids: list[str]) -> dict[str, li
     """Mọi lượt đánh giá controller của danh sách scenario_ids trong một batch query SQL."""
     if not scenario_ids:
         return {}
+    scenario_ids = list(scenario_ids)[:100]
     placeholders = ",".join("?" for _ in scenario_ids)
     with _cursor() as cursor:
         cursor.execute(
@@ -1661,8 +1662,7 @@ def get_user(username: str) -> dict | None:
 
 
 def get_user_with_hash(username: str) -> dict | None:
-    with _cursor(commit=True) as cursor:
-        _ensure_user_profile_columns_sqlite(cursor)
+    with _cursor() as cursor:
         cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,))
         row = cursor.fetchone()
     if not row:
@@ -1684,8 +1684,7 @@ def list_users(role: str | None = None, status: str | None = None) -> list[dict]
         params.append(status)
     query += " ORDER BY created_at DESC"
 
-    with _cursor(commit=True) as cursor:
-        _ensure_user_profile_columns_sqlite(cursor)
+    with _cursor() as cursor:
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
@@ -1704,9 +1703,6 @@ def update_user_profile(
     full_name: str | None = None,
     avatar_url: str | None = None,
 ) -> dict | None:
-    with _cursor(commit=True) as cursor:
-        _ensure_user_profile_columns_sqlite(cursor)
-
     u = get_user_with_hash(username)
     if not u:
         return None
@@ -1717,7 +1713,6 @@ def update_user_profile(
     now_str = datetime.now(UTC).isoformat()
 
     with _cursor(commit=True) as cursor:
-        _ensure_user_profile_columns_sqlite(cursor)
         cursor.execute(
             """
             UPDATE users

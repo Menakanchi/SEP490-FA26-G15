@@ -23,12 +23,13 @@ def main():
     smtp_password = os.getenv("SMTP_PASSWORD", "")
     smtp_from = os.getenv("SMTP_FROM_EMAIL", smtp_user)
     
+    masked_pw = ("*" * len(smtp_password)) if smtp_password else "<empty>"
     print(f"Loaded config from .env:")
     print(f"  SMTP_HOST: {smtp_host}")
     print(f"  SMTP_PORT: {smtp_port_raw}")
     print(f"  SMTP_USER: {smtp_user}")
     print(f"  SMTP_FROM_EMAIL: {smtp_from}")
-    print(f"  SMTP_PASSWORD length: {len(smtp_password)} (Raw value: '{smtp_password}')")
+    print(f"  SMTP_PASSWORD: {masked_pw}")
     
     try:
         smtp_port = int(smtp_port_raw)
@@ -38,7 +39,6 @@ def main():
 
     # Clean password if it has spaces
     clean_password = smtp_password.replace(" ", "")
-    print(f"  Cleaned SMTP_PASSWORD (without spaces) length: {len(clean_password)}")
     
     # Target recipient
     target_email = "ngochiine@gmail.com"
