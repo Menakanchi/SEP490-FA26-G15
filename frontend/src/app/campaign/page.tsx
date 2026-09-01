@@ -59,10 +59,11 @@ const STATUS_LABELS: Record<CampaignSummary["status"], string> = {
 };
 
 function campaignLabel(campaign: CampaignSummary): string {
-  const roads = [...new Set(campaign.cells.map((cell) => LABELS[cell.road_type] ?? cell.road_type))];
-  const actors = [...new Set(campaign.cells.map((cell) => LABELS[cell.actor_type] ?? cell.actor_type))];
-  const maneuvers = [...new Set(campaign.cells.map((cell) => LABELS[cell.maneuver] ?? cell.maneuver))];
-  const weatherCount = new Set(campaign.cells.map((cell) => cell.weather)).size;
+  const cells = campaign.cells ?? [];
+  const roads = [...new Set(cells.map((cell) => LABELS[cell.road_type] ?? cell.road_type))];
+  const actors = [...new Set(cells.map((cell) => LABELS[cell.actor_type] ?? cell.actor_type))];
+  const maneuvers = [...new Set(cells.map((cell) => LABELS[cell.maneuver] ?? cell.maneuver))];
+  const weatherCount = new Set(cells.map((cell) => cell.weather)).size;
   return `${roads.join(", ")} · ${actors.join(", ")} · ${maneuvers.join(", ")} · ${weatherCount} thời tiết`;
 }
 
@@ -344,7 +345,7 @@ function ActiveCampaign({
   onStop: () => void;
 }) {
   const done = campaign.generated + campaign.failed;
-  const total = Math.min(campaign.cells.length * campaign.per_cell, campaign.max_scenarios);
+  const total = Math.min((campaign.cells ?? []).length * campaign.per_cell, campaign.max_scenarios);
   return (
     <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
       <div className="flex items-center justify-between gap-4">
@@ -376,7 +377,7 @@ function ActiveCampaign({
       </div>
 
       <div className="space-y-2">
-        {campaign.requests.map((r) => (
+        {(campaign.requests ?? []).map((r) => (
           <div key={r.request_id} className="text-xs border border-slate-200 dark:border-slate-800 rounded-xl p-3 bg-slate-50/50 dark:bg-slate-950/50">
             <div className="flex items-center gap-2 mb-1">
               <span
@@ -426,13 +427,13 @@ function ActiveCampaign({
             </button>
           </div>
 
-          {batchReview && batchReview.near_duplicates.length > 0 && (
+          {batchReview && (batchReview.near_duplicates ?? []).length > 0 && (
             <div className="rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-4 space-y-3">
               <div className="flex items-start gap-2 text-amber-900 dark:text-amber-200">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                 <p className="text-xs leading-relaxed">
-                  Đã tạo job cho {batchReview.count} kịch bản. Còn {batchReview.near_duplicates.length} bản gần
-                  trùng đang dừng trước GPU: {batchReview.near_duplicates.map((item) => item.scenario_id).join(", ")}.
+                  Đã tạo job cho {batchReview.count} kịch bản. Còn {(batchReview.near_duplicates ?? []).length} bản gần
+                  trùng đang dừng trước GPU: {(batchReview.near_duplicates ?? []).map((item) => item.scenario_id).join(", ")}.
                 </p>
               </div>
               <button
@@ -484,11 +485,11 @@ function ActiveCampaign({
               {controllerBatch.count > 0
                 ? `Đã xếp ${controllerBatch.count} kịch bản (${controllerBatch.job_count} job A/B).`
                 : "Không có kịch bản mới đủ điều kiện; hãy hoàn tất Cổng 2 hoặc xem các kết quả đã chạy."}
-              {controllerBatch.skipped.length > 0 && ` Bỏ qua ${controllerBatch.skipped.length} kịch bản chưa đủ điều kiện hoặc đã được đánh giá.`}
+              {(controllerBatch.skipped ?? []).length > 0 && ` Bỏ qua ${(controllerBatch.skipped ?? []).length} kịch bản chưa đủ điều kiện hoặc đã được đánh giá.`}
             </p>
           )}
 
-          {controllerSummary && controllerSummary.evaluations.length > 0 && (
+          {controllerSummary && (controllerSummary.evaluations ?? []).length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
                 ["controller_collision", "Mô hình va chạm", "text-red-700 dark:text-red-300"],
@@ -504,7 +505,7 @@ function ActiveCampaign({
             </div>
           )}
 
-          {controllerSummary?.evaluations.map((evaluation) => (
+          {(controllerSummary?.evaluations ?? []).map((evaluation) => (
             <div key={evaluation.scenario_id} className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 text-xs flex flex-wrap gap-2 justify-between">
               <code className="text-cyan-700 dark:text-cyan-300">{evaluation.scenario_id}</code>
               <span className="text-slate-700 dark:text-slate-300">{evaluation.comparison.recommendation_vi}</span>
@@ -523,7 +524,7 @@ function SinglePicker<T extends string>({ label, options, value, onChange }: {
     <div>
       <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">{label}</span>
       <div className="flex flex-wrap gap-2">
-        {options.map((option) => (
+        {(options ?? []).map((option) => (
           <button
             key={option}
             type="button"
@@ -559,7 +560,7 @@ function Picker({
     <div>
       <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">{label}</span>
       <div className="flex flex-wrap gap-2">
-        {options.map((option) => {
+        {(options ?? []).map((option) => {
           const isSelected = value.includes(option);
           return (
             <button
