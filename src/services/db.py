@@ -1428,6 +1428,13 @@ def heal_all_missing_trajectories() -> None:
                 metrics = traj_module.summarise(samples)
                 trajectory_points = traj_module.downsample(samples)
 
+                # Bổ sung 4 chỉ số an toàn thực tế
+                metrics["min_gap_m"] = metrics.get("min_distance_m", 0.0)
+                if "ttc_min_s" in metrics:
+                    metrics["min_ttc_s"] = metrics["ttc_min_s"]
+                metrics["lateral_deviation_m"] = metrics.get("adversary_lane_deviation_m", 0.0)
+                metrics["collision_detected"] = had_collision
+
                 criteria_results = [
                     {
                         "name": "CollisionTest",
@@ -1450,8 +1457,8 @@ def heal_all_missing_trajectories() -> None:
                 }
 
                 job_id = f"job_heal_{sc_id}_{uuid.uuid4().hex[:6]}"
-                create_scenario_job(job_id, sc_id, xosc)
-                update_job_result(job_id, "done", result_payload)
+                create_scenario_job(job_id, sc_id, xosc, job_kind=JobKind.SCENARIO_VALIDATION)
+                update_job_result(job_id, "completed", result_payload)
 
                 # Nếu kịch bản bị kẹt ở simulation_queued, chuyển sang pending_library_review
                 if r.get("status") == ScenarioStatus.SIMULATION_QUEUED.value:
