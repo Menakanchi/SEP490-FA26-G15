@@ -542,3 +542,23 @@ def test_jaywalk_is_refused_as_out_of_scope() -> None:
         convert_spec_to_xosc(make_spec(ManeuverType.JAYWALK))
     assert excinfo.value.code is IssueCode.TEMPLATE_CATALOG_INCONSISTENT
     assert "jaywalk" in excinfo.value.message
+
+
+def test_title_with_a_slash_does_not_become_a_directory_path() -> None:
+    """ScenarioRunner lấy `FileHeader/@description` làm TÊN FILE báo cáo JSON.
+
+    Một dấu `/` biến nó thành đường dẫn thư mục con không tồn tại và bước ghi file
+    chết bằng FileNotFoundError — sau khi mô phỏng đã chạy xong. Triệu chứng dễ
+    đọc nhầm: kịch bản chạy trọn, cả bốn criteria đều có kết quả, nhưng
+    `success=false` vì worker không đọc được file. Một lượt GPU tốt bị ghi thành
+    lượt hỏng và kéo L3 xuống.
+
+    `km/h` là cụm hoàn toàn tự nhiên trong câu tiếng Việt mô tả tốc độ, mà title
+    là chữ tự do do LLM sinh. Đo ngày 02/09/2026 trên `sc_107_t1`.
+    """
+    spec = make_spec(ManeuverType.CUT_IN).model_copy(update={"title": "Xe máy 80 km/h tạt đầu"})
+
+    xml = convert_spec_to_xosc(spec)
+
+    assert "km/h" not in xml
+    assert "km-h" in xml

@@ -28,10 +28,12 @@ là dựng một đường tắt vòng qua HITL.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from src.models.schemas import ManeuverType, ScenarioSpec
 from src.services.scenario.geometry import MIN_CUT_IN_LEAD_M, time_until_alongside
+from src.services.scenario.templates import ScenarioTemplate, get_template
 
 # Số bước dò. Bốn là đủ để bắc qua mốc neo mà vẫn dưới ba phút GPU cho một kịch bản.
 SWEEP_STEPS = 4
@@ -59,6 +61,108 @@ khi hành vi kịp thành hình thì không giá trị trigger nào cứu đư�
 
 CRITICAL_DISTANCE_M = 1.0
 """Dưới ngưỡng này coi là đã tới hạn — cùng ngưỡng suýt-va-chạm của M3."""
+
+
+TTI_DELTA_STEPS_S = (0.0, -0.3, 0.3, -0.6)
+"""Chênh lệch thời gian tới điểm xung đột mà phép dò ``run_red_light`` nhắm tới.
+
+``delta = t_actor - t_ego``. Bằng 0 nghĩa là hai xe tới điểm cắt cùng lúc — chồng
+lấn lớn nhất. Âm nghĩa là actor tới trước.
+
+Vì sao dò **hai phía**, khác hẳn phép dò theo thời điểm trigger: ở đó hình học
+loại sẵn một hướng (kích hoạt sau lúc hai xe đi ngang nhau thì ego đã đi qua rồi).
+Ở giao lộ vuông góc thì không có hướng nào bị loại — actor tới sớm quá hay muộn
+quá đều trượt như nhau, nên phải bắc qua cả hai bên mốc.
+
+Mốc lấy từ đo thật: ``sc_046``/``sc_047`` là hai kịch bản ``run_red_light`` duy
+nhất chạy ra va chạm, và cả hai có ``delta = -0,33 s``. Chuỗi trên bắc qua đúng
+vùng đó thay vì đoán.
+"""
+
+MIN_CROSSING_SPEED_KMH = 5.0
+MAX_CROSSING_SPEED_KMH = 60.0
+"""Biên tốc độ actor băng qua nút giao đô thị. Ngoài khoảng này thì con số không
+còn là một tình huống giao thông đáng tái hiện, dù hình học vẫn giải được."""
+
+
+def _conflict_distances(template: ScenarioTemplate) -> tuple[float, float] | None:
+    """Quãng đường từ mỗi xe tới chỗ hai quỹ đạo cắt nhau, mét.
+
+    Ego chạy thẳng từ ``ego_spawn`` theo hướng ``h`` của nó; actor chạy thẳng từ
+    ``maneuver_actor_spawn`` theo hướng của nó. Giao điểm hai tia là điểm xung
+    đột — **tính ra** từ template chứ không ghi cứng, để thêm anchor đô thị mới
+    thì không phải sửa chỗ này.
+
+    ``None`` khi hai hướng song song, hoặc khi giao điểm nằm phía sau một trong
+    hai xe — cả hai đều nghĩa là chúng không bao giờ gặp nhau.
+    """
+    ego, actor = template.ego_spawn, template.maneuver_actor_spawn
+    if actor is None:
+        return None
+
+    ex, ey = math.cos(ego.h), math.sin(ego.h)
+    ax, ay = math.cos(actor.h), math.sin(actor.h)
+    det = ex * (-ay) - (-ax) * ey
+    if abs(det) < 1e-9:
+        return None
+
+    dx, dy = actor.x - ego.x, actor.y - ego.y
+    t_ego = (dx * (-ay) - (-ax) * dy) / det
+    t_actor = (ex * dy - ey * dx) / det
+    if t_ego <= 0 or t_actor <= 0:
+        return None
+    return t_ego, t_actor
+
+
+def propose_crossing_speeds(spec: ScenarioSpec) -> list[float]:
+    """Tốc độ actor đáng thử cho ``run_red_light``, km/h.
+
+    Phép dò theo thời điểm trigger **không dùng được** ở đây: nó neo vào giây hai
+    xe đi ngang nhau, tính bằng ``khoảng cách dọc / chênh tốc độ``. Mà
+    ``run_red_light`` bắt buộc actor có ``s_offset_m = 0`` — nó nằm trên nhánh
+    đường vuông góc, không trước cũng không sau ego. Khoảng cách dọc bằng 0 nên
+    công thức vô nghĩa, và ``propose_triggers`` trả rỗng.
+
+    Núm đúng ở đây là **tốc độ**: chỉnh sao cho hai xe tới điểm cắt cùng lúc. Đo
+    trên 13 kịch bản ``run_red_light`` trong kho ngày 30/08/2026, hai bản chạy ra
+    va chạm có ``delta = -0,33 s``, còn 11 bản do chiến dịch ODD sinh nằm ở
+    ``-1,2`` đến ``-2,3 s`` — actor qua nút giao xong từ lâu rồi ego mới tới.
+
+    Trả rỗng khi ego đứng yên (không có thời điểm tới để mà khớp), khi anchor
+    không khai actor spawn, hoặc khi mọi tốc độ tính ra đều ngoài biên đô thị.
+    """
+    maneuver = spec.maneuvers[0] if spec.maneuvers else None
+    if maneuver is None or maneuver.maneuver is not ManeuverType.RUN_RED_LIGHT:
+        return []
+
+    template = get_template(spec.odd.road_type)
+    if template is None:
+        return []
+    distances = _conflict_distances(template)
+    if distances is None:
+        return []
+    d_ego, d_actor = distances
+
+    ego = next((a for a in spec.actors if a.is_ego), None)
+    actor = next((a for a in spec.actors if a.name == maneuver.actor_name), None)
+    if ego is None or actor is None or ego.initial_speed_kmh <= 0:
+        return []
+
+    t_ego = d_ego / (ego.initial_speed_kmh / 3.6)
+    current = maneuver.target_speed_kmh if maneuver.target_speed_kmh is not None else actor.initial_speed_kmh
+
+    speeds: list[float] = []
+    for delta in TTI_DELTA_STEPS_S:
+        t_actor = t_ego + delta
+        if t_actor <= 0:
+            continue
+        speed = round((d_actor / t_actor) * 3.6, 1)
+        if not MIN_CROSSING_SPEED_KMH <= speed <= MAX_CROSSING_SPEED_KMH:
+            continue
+        if abs(speed - current) <= 0.05 or speed in speeds:
+            continue
+        speeds.append(speed)
+    return speeds
 
 
 def propose_triggers(spec: ScenarioSpec) -> list[float]:
@@ -125,6 +229,25 @@ def variant_specs(spec: ScenarioSpec) -> list[ScenarioSpec]:
     dùng mô tả nữa.
     """
     variants: list[ScenarioSpec] = []
+
+    # ``run_red_light`` đi nhánh riêng: núm của nó là tốc độ, không phải thời
+    # điểm. Vẫn đúng luật "một tham số" — tốc độ băng qua nút giao là MỘT đại
+    # lượng, chỉ là nó nằm ở hai trường. ``target_speed_kmh`` là thứ converter
+    # thật sự dùng (xem ``_run_red_light``), còn ``initial_speed_kmh`` phải đi
+    # theo, nếu không xe xuất phát ở một tốc độ rồi giật sang tốc độ khác ngay
+    # trước nút giao — một tình huống khác hẳn thứ được mô tả.
+    for speed in propose_crossing_speeds(spec):
+        data = spec.model_dump(mode="json")
+        actor_name = data["maneuvers"][0]["actor_name"]
+        for entry in data["actors"]:
+            if entry["name"] == actor_name:
+                entry["initial_speed_kmh"] = speed
+        data["maneuvers"][0]["target_speed_kmh"] = speed
+        data["title"] = f"{spec.title} [qua nút giao {speed} km/h]"
+        variants.append(ScenarioSpec.model_validate(data))
+    if variants:
+        return variants
+
     for trigger_value in propose_triggers(spec):
         data: dict[str, Any] = spec.model_dump(mode="json")
         data["maneuvers"][0]["trigger"]["value"] = trigger_value
