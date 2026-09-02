@@ -427,31 +427,6 @@ def _add_init(storyboard: ET.Element, spec: ScenarioSpec, template: ScenarioTemp
     ET.SubElement(weather, "Fog", visualRange=visual_range)
     ET.SubElement(weather, "Precipitation", precipitationType=precipitation_type, intensity=intensity)
     ET.SubElement(environment, "RoadCondition", frictionScaleFactor="0.7" if precipitation_type == "rain" else "1")
-    if any(maneuver.maneuver is ManeuverType.RUN_RED_LIGHT for maneuver in spec.maneuvers):
-        if not template.traffic_signal_name:
-            raise ConversionError(
-                IssueCode.TEMPLATE_CATALOG_INCONSISTENT,
-                f"run_red_light template {template.road_type.value} has no traffic signal",
-            )
-        signal_global = ET.SubElement(actions, "GlobalAction")
-        infrastructure = ET.SubElement(signal_global, "InfrastructureAction")
-        signal_action = ET.SubElement(infrastructure, "TrafficSignalAction")
-        ET.SubElement(
-            signal_action,
-            "TrafficSignalStateAction",
-            name=template.traffic_signal_name,
-            state="RED",
-        )
-        if template.ego_traffic_signal_name:
-            ego_signal_global = ET.SubElement(actions, "GlobalAction")
-            ego_infrastructure = ET.SubElement(ego_signal_global, "InfrastructureAction")
-            ego_signal_action = ET.SubElement(ego_infrastructure, "TrafficSignalAction")
-            ET.SubElement(
-                ego_signal_action,
-                "TrafficSignalStateAction",
-                name=template.ego_traffic_signal_name,
-                state="GREEN",
-            )
     wrong_way_actors = {
         maneuver.actor_name for maneuver in spec.maneuvers if maneuver.maneuver is ManeuverType.WRONG_WAY
     }
@@ -619,6 +594,66 @@ def _add_maneuver_action(
         _add_wrong_way_action(parent, maneuver, actor)
         return
     MANEUVER_BUILDERS[maneuver.maneuver](parent, maneuver, actor)
+
+
+def _add_traffic_signal_group(act: ET.Element, spec: ScenarioSpec, template: ScenarioTemplate) -> None:
+    """Đặt trạng thái hai đèn giao thông, trong **Story** chứ không phải Init.
+
+    ScenarioRunner **bỏ qua hoàn toàn** ``InfrastructureAction`` nằm trong
+    ``Init``. Bảng hỗ trợ chính thức ghi rõ: ``TrafficSignalStateAction`` là
+    ❌ ở cột *Init support*, ✅ ở cột *Story support*. Đọc code khớp với bảng —
+    ``open_scenario.py:_create_init_behavior`` chỉ duyệt các khối ``Private``, còn
+    ``_initialize_parameters`` chỉ xử lý ``ParameterAction``; không chỗ nào chạm
+    tới ``InfrastructureAction``. Nó chỉ được dựng thành atomic khi đi qua
+    ``openscenario_parser.convert_maneuver_to_atomic``, tức khi nằm trong một
+    maneuver của Story.
+
+    Bản trước đặt cả hai lệnh trong Init, nên đèn **chưa bao giờ được đặt**: cả 12
+    ô ``run_red_light`` chạy với chu kỳ đèn tự nhiên của CARLA, ai đỏ ai xanh là
+    ngẫu nhiên theo thời điểm. Xem thật trên CARLA ngày 02/09/2026 thì thấy chính
+    **ego** vượt đèn đỏ — nhãn ODD nói adversary vượt đèn đỏ, mô phỏng không tái
+    hiện điều đó.
+
+    Nhóm này neo vào ego chứ không vào actor: nó không điều khiển xe nào, và ego
+    là thực thể chắc chắn tồn tại trong mọi kịch bản.
+    """
+    if not any(maneuver.maneuver is ManeuverType.RUN_RED_LIGHT for maneuver in spec.maneuvers):
+        return
+    if not template.traffic_signal_name:
+        raise ConversionError(
+            IssueCode.TEMPLATE_CATALOG_INCONSISTENT,
+            f"run_red_light template {template.road_type.value} has no traffic signal",
+        )
+
+    ego = next(actor for actor in spec.actors if actor.is_ego)
+    group = ET.SubElement(act, "ManeuverGroup", maximumExecutionCount="1", name="group_traffic_signals")
+    actors = ET.SubElement(group, "Actors", selectTriggeringEntities="false")
+    ET.SubElement(actors, "EntityRef", entityRef=ego.name)
+    maneuver_el = ET.SubElement(group, "Maneuver", name="maneuver_traffic_signals")
+    ET.SubElement(maneuver_el, "ParameterDeclarations")
+    event = ET.SubElement(maneuver_el, "Event", name="event_traffic_signals", priority="overwrite")
+
+    signals = [(template.traffic_signal_name, "RED")]
+    if template.ego_traffic_signal_name:
+        signals.append((template.ego_traffic_signal_name, "GREEN"))
+    for signal_index, (signal_name, state) in enumerate(signals):
+        action = ET.SubElement(event, "Action", name=f"action_traffic_signal_{signal_index}")
+        infrastructure = ET.SubElement(ET.SubElement(action, "GlobalAction"), "InfrastructureAction")
+        signal_action = ET.SubElement(infrastructure, "TrafficSignalAction")
+        ET.SubElement(signal_action, "TrafficSignalStateAction", name=signal_name, state=state)
+
+    _simulation_time_condition(ET.SubElement(event, "StartTrigger"), "start_traffic_signals", "0")
+
+    # Nhóm này cũng phải giữ mở tới ``duration_s``, cùng lý do với
+    # ``_add_hold_open_event``: Act là ``Parallel(SUCCESS_ON_ONE, ...)``, nên một
+    # nhóm hoàn tất ở giây 0 đóng luôn cả kịch bản. Đặt đèn xong là xong việc, nên
+    # không có event giữ mở thì storyboard tắt trước cả khi xe kịp lăn bánh.
+    hold = ET.SubElement(maneuver_el, "Event", name="event_traffic_signals_hold_open", priority="overwrite")
+    hold_action = ET.SubElement(hold, "Action", name="action_traffic_signals_hold_open")
+    _add_speed_action(ET.SubElement(hold_action, "PrivateAction"), ego.initial_speed_kmh, abrupt=True)
+    condition = _condition(ET.SubElement(hold, "StartTrigger"), "trigger_traffic_signals_hold_open")
+    by_value = ET.SubElement(condition, "ByValueCondition")
+    ET.SubElement(by_value, "SimulationTimeCondition", value=_number(spec.duration_s), rule="greaterThan")
 
 
 def _add_event_actions(
@@ -906,6 +941,7 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
     ET.SubElement(story, "ParameterDeclarations")
     act = ET.SubElement(story, "Act", name=f"act_{spec.scenario_id}")
     actors_by_name = {actor.name: actor for actor in spec.actors}
+    _add_traffic_signal_group(act, spec, template)
     for index, maneuver in enumerate(spec.maneuvers):
         group = ET.SubElement(
             act, "ManeuverGroup", maximumExecutionCount="1", name=f"group_{index}_{maneuver.actor_name}"
