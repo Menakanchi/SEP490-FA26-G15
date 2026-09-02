@@ -255,11 +255,26 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
         <Metric icon={<Route className="w-3.5 h-3.5" />} label="Khe hở nhỏ nhất"
                 value={fmt(metrics.min_distance_m, "m")}
                 hint="Giữa hai thân xe. 0 = đã chạm." />
-        <Metric icon={<Clock className="w-3.5 h-3.5" />} label="TTC nhỏ nhất"
-                value={fmt(metrics.ttc_min_s, "s")} hint="Chỉ tính khi cùng làn và đang thu hẹp." />
+        {/* TTC là phép đo DỌC, chỉ tính khi hai xe cùng hành lang. Với xung đột
+            cắt ngang — `run_red_light` — actor đi trên đường vuông góc nên lệch
+            ngang tới hàng chục mét và TTC không bao giờ đo được. Thước đúng ở đó
+            là PET, chênh thời gian giữa lúc xe này rời điểm xung đột và xe kia
+            tới đúng điểm đó. Chọn theo phép đo NÀO ĐO ĐƯỢC chứ không theo
+            maneuver: chính sự vắng mặt của TTC đã nói hai xe không cùng hành
+            lang. Đo 03/09: cả 10 biến thể run_red_light có TTC rỗng, còn
+            `sc_116_t1` có PET 0,24 s — rất sát, mà màn hình cũ chỉ hiện
+            "không đo được". */}
+        {metrics.ttc_min_s == null && metrics.pet_min_s != null ? (
+          <Metric icon={<Clock className="w-3.5 h-3.5" />} label="PET nhỏ nhất"
+                  value={fmt(metrics.pet_min_s, "s")}
+                  hint="Chênh thời gian hai xe qua điểm cắt. Thước cho xung đột cắt ngang." />
+        ) : (
+          <Metric icon={<Clock className="w-3.5 h-3.5" />} label="TTC nhỏ nhất"
+                  value={fmt(metrics.ttc_min_s, "s")} hint="Chỉ tính khi cùng làn và đang thu hẹp." />
+        )}
         <Metric icon={<Activity className="w-3.5 h-3.5" />} label="Lệch làn của tác nhân"
                 value={fmt(metrics.adversary_lane_deviation_m, "m")}
-                hint="≈0 nghĩa là hành vi ngang không hề xảy ra." />
+                hint="≈0 = không có hành vi ngang. Đúng cho lane_drift; với run_red_light thì ≈0 mới là đúng, vì xe đi thẳng qua nút giao." />
         <Metric icon={<Activity className="w-3.5 h-3.5" />} label="Ai va chạm"
                 value={
                   metrics.contact_longitudinal_m == null
