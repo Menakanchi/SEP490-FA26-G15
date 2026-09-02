@@ -249,9 +249,21 @@ def test_lane_drift_uses_partial_offset_not_full_lane_change() -> None:
 
 
 def test_run_red_light_keeps_actor_moving_and_sets_its_signal_red() -> None:
+    """Lệnh đèn phải nằm trong Story, KHÔNG phải Init.
+
+    Bảng hỗ trợ của ScenarioRunner ghi `TrafficSignalStateAction` là ❌ ở cột
+    *Init support*, ✅ ở cột *Story support*, và code khớp với bảng:
+    `_create_init_behavior` chỉ duyệt khối `Private`, `_initialize_parameters`
+    chỉ xử lý `ParameterAction`. Đặt ở Init thì đèn KHÔNG BAO GIỜ được set —
+    cả 12 ô run_red_light chạy với chu kỳ đèn tự nhiên của CARLA, và xem thật
+    ngày 02/09/2026 thì thấy chính ego vượt đèn đỏ.
+    """
     root = ET.fromstring(convert_spec_to_xosc(make_spec(ManeuverType.RUN_RED_LIGHT)))
     speed = root.find(".//Event[@name='event_0_run_red_light']//AbsoluteTargetSpeed")
-    signals = root.findall(".//Init/Actions/GlobalAction/InfrastructureAction//TrafficSignalStateAction")
+    assert root.findall(".//Init/Actions/GlobalAction/InfrastructureAction") == [], (
+        "InfrastructureAction trong Init bị ScenarioRunner bỏ qua"
+    )
+    signals = root.findall(".//Story//Event[@name='event_traffic_signals']//TrafficSignalStateAction")
     ego_position = root.find(".//Init//Private[@entityRef='hero']//WorldPosition")
     actor_position = root.find(".//Init//Private[@entityRef='other']//WorldPosition")
     assert speed is not None and float(speed.get("value")) > 0
