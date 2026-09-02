@@ -1,7 +1,8 @@
 # Evaluation Report — Scenario Forge
 
-> Snapshot: 24/08/2026, lấy trực tiếp từ database phát triển qua
-> `GET /api/v1/metrics/quality`. Không tính 10 scenario `seed-data` vào M1/M2.
+> Snapshot §1–§8: 24/08/2026, lấy trực tiếp từ database phát triển qua
+> `GET /api/v1/metrics/quality`. §9.3–§9.5 và §10 cập nhật tới 03/09/2026; bảng
+> chỉ số mới nhất ở cuối §9.5. Không tính 10 scenario `seed-data` vào M1/M2.
 > Mỗi scenario chỉ dùng lần chạy CARLA mới nhất để không tự bỏ phiếu nhiều lần.
 
 ## 1. Phạm vi đo
@@ -367,6 +368,97 @@ mãi"*, và cả hai đều không sửa được bằng cách thêm ví dụ.
 
 Artifact: [`intent_speed_fix_2026-08-29.json`](intent_speed_fix_2026-08-29.json).
 
+### 9.5. Bộ dò `run_red_light`, và hai bug chỉ lộ ra khi chạy thật
+
+Ngày 02–03/09/2026. §10.7 (bản 29/08) ghi bộ dò biến thể **từ chối thẳng** mọi
+kịch bản `run_red_light`: nó neo vào giây hai xe đi ngang nhau, tính bằng
+`khoảng cách dọc ÷ chênh tốc độ`, mà maneuver này bắt buộc actor có
+`s_offset_m = 0` — nó nằm trên nhánh đường vuông góc. Khoảng cách dọc bằng 0 nên
+không có mốc nào để neo. Ảnh hưởng 12 ô ODD.
+
+**Bộ dò mới vặn tốc độ thay vì thời điểm.** Nó tính giao điểm hai quỹ đạo từ toạ
+độ và hướng trong template — suy ra, không ghi cứng — rồi chọn tốc độ actor sao
+cho hai *thời gian tới điểm xung đột* trùng nhau. Trên anchor đô thị: ego 41,27 m,
+actor 38,56 m.
+
+Mốc lấy từ đo, không đoán. Với `delta = t_actor − t_ego`, hai kịch bản
+`run_red_light` duy nhất từng ra va chạm (`sc_046`, `sc_047`) có `delta = −0,33 s`,
+còn 9 bản do chiến dịch ODD sinh nằm ở **−1,24 đến −2,33 s** — actor qua nút giao
+xong từ lâu rồi ego mới tới.
+
+| gốc | ego / actor | delta | khe hở gốc | actor sau dò | khe hở mới | kết quả |
+|---|---|---:|---:|---:|---:|---|
+| `sc_108` | 26 / 34 | −1,63 | 4,39 m | 24,1 | **0,59 m** | va chạm |
+| `sc_110` | 27 / 38 | −1,85 | 4,88 m | 25,0 | **1,12 m** | va chạm |
+| `sc_111` | 25 / 33 | −1,74 | 4,78 m | 23,2 | **0,62 m** | va chạm |
+| `sc_113` | 24 / 36 | −2,33 | 6,32 m | 22,2 | **1,10 m** | va chạm |
+| `sc_114` | 26 / 34 | −1,63 | 4,38 m | 24,1 | **0,53 m** | va chạm |
+| `sc_115` | 22 / 31 | −2,28 | 3,68 m | 20,4 | 0,73 m | suýt va chạm |
+| `sc_116` | 36 / 48 | −1,24 | 1,89 m | 33,3 | 0,84 m | suýt va chạm |
+| `sc_109` | 22 / 31 | −2,28 | 3,58 m | 20,4 | 1,46 m | chưa tới hạn |
+| **`sc_112`** | 23 / 29 | −1,67 | **0,37 m** | 21,3 | **1,40 m** | **tệ đi** |
+| `sc_107` | 24 / 36 | −2,33 | 6,46 m | 22,2 | **0,71 m** | va chạm |
+
+Tám trên chín thu hẹp khe hở, năm thành va chạm thật.
+
+**`sc_112` là ca đáng đọc nhất, và nó nói giới hạn của mô hình.** Bản gốc đã ở
+0,37 m — tới hạn nhất cả lô — mà phép dò kéo nó lên 1,40 m. Vì bộ dò nhắm
+`delta = 0`, còn `delta = 0` **không phải lúc nào cũng là cực trị**: kích thước
+xe và góc cắt cũng tham gia. Hệ thống báo `improved = false` cho ca này thay vì
+giấu. Lời giải là dò hai chiều — bước đầu tệ hơn bản gốc thì đổi hướng thay vì đi
+tiếp — chưa làm.
+
+#### Hai bug chỉ lộ ra khi chạy thật
+
+**1. Title chứa `/` làm hỏng lượt chạy SAU khi đã chạy xong.** ScenarioRunner lấy
+`FileHeader/@description` — tức `spec.title` — làm **tên file** báo cáo JSON. Dấu
+`/` trong `km/h` biến nó thành đường dẫn thư mục con không tồn tại, và bước ghi
+file chết bằng `FileNotFoundError`.
+
+Triệu chứng rất dễ đọc nhầm: kịch bản chạy đủ 12,6 giây, cả bốn criteria đều có
+kết quả, nhưng `success = false` vì worker không đọc được file. Một lượt GPU tốt
+bị ghi thành lượt hỏng và **kéo L3 xuống**. Đây là lỗi có sẵn — title là chữ tự do
+do LLM sinh, và `km/h` là cụm hoàn toàn tự nhiên khi mô tả tốc độ.
+
+**2. Lệnh đặt đèn nằm trong `Init` nên CHƯA BAO GIỜ có hiệu lực.** Bảng hỗ trợ
+của ScenarioRunner ghi `TrafficSignalStateAction` là ❌ ở cột *Init support*, ✅ ở
+cột *Story support*; code khớp với bảng — `_create_init_behavior` chỉ duyệt các
+khối `Private`, `_initialize_parameters` chỉ xử lý `ParameterAction`.
+
+Hệ quả: **cả 12 ô `run_red_light` chạy với chu kỳ đèn tự nhiên của CARLA**, ai đỏ
+ai xanh là ngẫu nhiên theo thời điểm. Xem trực tiếp trên CARLA thì thấy chính
+**ego** vượt đèn đỏ. Nhãn ODD nói adversary vượt đèn đỏ, mô phỏng không tái hiện
+điều đó.
+
+Ba giả thuyết đã loại trước khi kết luận: đèn tự đổi chu kỳ đè lên lệnh (sai —
+`set_state` giữ ổn định 9 s); sai id đèn (sai — `get_traffic_lights_from_waypoint`
+cho ego→118, actor→122, đúng như template); parser không đọc `id=` trên CARLA town
+(sai — `get_traffic_light_from_osc_name` hỗ trợ, và ném lỗi nếu không tìm thấy).
+
+Xác minh sau khi chuyển lệnh sang Story: đặt sẵn hai đèn **ngược hẳn** (122 xanh,
+118 đỏ) rồi chạy; sau lượt chạy chúng lật thành 118 xanh, 122 đỏ.
+
+> **Đính chính §2 và §4.** Mọi số L4 và M3 trên nhóm ô `run_red_light` trước
+> 03/09/2026 đo trên một tình huống **khác** với nhãn: hai xe cắt nhau ở giao lộ
+> với đèn ngẫu nhiên, không phải một xe vượt đèn đỏ. Không dùng lại được. 13 kịch
+> bản `run_red_light` đã chạy lại toàn bộ; `sc_046` và `sc_047` vẫn ra va chạm nên
+> giữ nhãn `adversarial`, lần này với bằng chứng đúng điều kiện.
+
+#### Chỉ số sau đợt chạy lại
+
+| | snapshot 24/08 | 29/08 | **03/09** |
+|---|---:|---:|---:|
+| L1 hiểu câu, qua pipeline | 73,53% | 71,21% | 71,21% |
+| L2 biên dịch `.xosc` | 100% | 100% | 100% (110/110) |
+| L3 CARLA chạy hết | 93,75% | 94,59% | **96,55%** (56 lượt) |
+| L4 quỹ đạo đúng ý định | 53,33% | 60,00% | **75,00%** |
+| M3 kích hoạt nguy hiểm | 63,33% | 60,00% | **75,00%** (42/56) |
+| — riêng va chạm | 12 | 17 | **24** |
+| M2 phủ toàn phần | 16,67% | 100% | 100% (72/72) |
+
+L1 không đổi vì đợt này không sinh request mới — chỉ chạy lại và dò biến thể từ
+kịch bản đã có.
+
 ## 10. Giới hạn và việc tiếp theo
 
 1. Mở rộng nhãn người trên từng maneuver, không chỉ các case lỗi đã biết.
@@ -374,11 +466,32 @@ Artifact: [`intent_speed_fix_2026-08-29.json`](intent_speed_fix_2026-08-29.json)
    vai trên frontend.
 3. Closed-loop MVP dừng ở cặp baseline/BehaviorAgent do người vận hành khởi
    động theo ADR-022; không tuyên bố có vòng tự sinh nhiều thế hệ.
+
+   Bổ sung 03/09: bộ dò biến thể đi **một hướng** — nhắm `delta = 0` với
+   `run_red_light`, lùi dần từ mốc "hai xe đi ngang nhau" với các maneuver khác.
+   `sc_112` cho thấy giới hạn: bản gốc đã ở 0,37 m mà phép dò kéo lên 1,40 m, vì
+   `delta = 0` không phải lúc nào cũng là cực trị. Cần **dò hai chiều thích nghi**
+   — bước đầu tệ hơn bản gốc thì đổi hướng, và giảm bước khi hai điểm liền kề hoà
+   (`sc_024`: `t3` và `t4` cùng 0,38 m, tiêu một lượt GPU để khẳng định lại đáy).
 4. Chỉ mở thêm maneuver/road type khi đã đo hình học và chạy thật trên anchor
    tương ứng; hiện anchor đô thị chỉ cam kết cho `run_red_light`.
-5. Benchmark mới có 20 request tuần tự trên một máy/mạng; chưa phải load test
+
+   Bài học 03/09, đắt hơn cả bốn dòng trên: **hai bug nặng nhất của đợt này đều
+   vô hình với test.** Title chứa `/` và lệnh đèn đặt sai chỗ đều cho ra file
+   `.xosc` hợp lệ theo XSD, qua sạch 547 test, và chỉ lộ ra khi có người **ngồi
+   nhìn CARLA chạy**. Không phép kiểm tĩnh nào bắt được "ScenarioRunner lấy title
+   làm tên file" hay "InfrastructureAction ở Init bị bỏ qua". Với lớp lỗi này thì
+   một lượt chạy thật đáng giá hơn một trăm test.
+
+5. Kịch bản không va chạm chạy hết `duration_s` dù không còn gì để xảy ra. Với
+   `run_red_light`, ego qua giao lộ ở giây ~5-6 và hai quỹ đạo chỉ cắt nhau ở một
+   điểm, nhưng kịch bản vẫn chạy nốt ~24 giây. Cần điều kiện đóng Act khi ego đã
+   qua điểm xung đột, cùng hình dạng với stop-on-collision — nhưng chỉ cho
+   maneuver có điểm cắt rõ ràng, vì `lane_drift` có khe hở nhỏ nhất **sau** lúc
+   hai xe đi ngang nhau.
+6. Benchmark mới có 20 request tuần tự trên một máy/mạng; chưa phải load test
    nhiều người dùng đồng thời hay SLA production.
-6. Chưa có metric retrieval (Recall@k / MRR / nDCG) trên golden set như `ADR-004`
+7. Chưa có metric retrieval (Recall@k / MRR / nDCG) trên golden set như `ADR-004`
    cam kết. §9.2 mới chỉ đo *đóng góp của few-shot vào kết quả sinh*, không đo
    *chất lượng xếp hạng của retriever*; và đo trên một thư viện 18 hàng, quá mỏng
    để kết luận về few-shot nói chung.
@@ -392,7 +505,7 @@ Artifact: [`intent_speed_fix_2026-08-29.json`](intent_speed_fix_2026-08-29.json)
    bằng 1,0 theo định nghĩa, không theo chất lượng. Điều kiện để phép đo có
    nghĩa: vài ô đạt **≥ 4 hàng** approved non-seed (pool > k).
 
-7. Seed data: 6/10 hàng nằm **ngoài phạm vi converter có chủ đích** (ADR-016 mới
+8. Seed data: 6/10 hàng nằm **ngoài phạm vi converter có chủ đích** (ADR-016 mới
    có anchor cao tốc và một giao cắt đô thị) — chúng vẫn hữu ích cho retrieval
    theo văn bản và nhãn ODD. Nhưng kiểm ngày 29/08 thì **8/10 không biên dịch
    được**, tức có hai hàng nằm *trong* phạm vi mà vẫn hỏng: `sc_908` đặt actor ở
