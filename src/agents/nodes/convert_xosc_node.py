@@ -778,6 +778,26 @@ def _add_criteria_stop_trigger(storyboard: ET.Element, spec: ScenarioSpec) -> No
         ET.SubElement(by_value, "ParameterCondition", parameterRef=parameter_ref, value=value, rule="lessThan")
 
 
+_PATH_SEPARATORS = str.maketrans({"/": "-", "\\": "-"})
+
+
+def _filesystem_safe(title: str) -> str:
+    """Bỏ dấu phân cách đường dẫn khỏi ``FileHeader/@description``.
+
+    ScenarioRunner lấy chuỗi này làm **tên file** báo cáo JSON. Một dấu ``/``
+    biến nó thành đường dẫn thư mục con không tồn tại, và bước ghi file chết bằng
+    ``FileNotFoundError`` — SAU khi mô phỏng đã chạy xong.
+
+    Triệu chứng rất dễ đọc nhầm: kịch bản chạy trọn, cả bốn criteria đều có kết
+    quả, nhưng ``success=false`` vì worker không đọc được file JSON. Một lượt GPU
+    tốt bị ghi thành lượt hỏng và kéo L3 xuống.
+
+    Title là chữ tự do do LLM sinh, và ``km/h`` là cụm hoàn toàn tự nhiên trong
+    câu tiếng Việt mô tả tốc độ. Đo ngày 02/09/2026 trên ``sc_107_t1``.
+    """
+    return title.translate(_PATH_SEPARATORS)
+
+
 def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
     ego = next(actor for actor in spec.actors if actor.is_ego)
     if ego.name != "hero":
@@ -855,7 +875,7 @@ def convert_spec_to_xosc(spec: ScenarioSpec) -> str:
         revMajor="1",
         revMinor="0",
         date=f"{DETERMINISTIC_XOSC_DATE}T00:00:00",
-        description=spec.title,
+        description=_filesystem_safe(spec.title),
         author="ScenarioForge",
     )
     parameter_declarations = ET.SubElement(root, "ParameterDeclarations")
