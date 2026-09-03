@@ -368,7 +368,7 @@ mãi"*, và cả hai đều không sửa được bằng cách thêm ví dụ.
 
 Artifact: [`intent_speed_fix_2026-08-29.json`](intent_speed_fix_2026-08-29.json).
 
-### 9.5. Bộ dò `run_red_light`, và hai bug chỉ lộ ra khi chạy thật
+### 9.5. Bộ dò `run_red_light`, và ba bug chỉ lộ ra khi chạy thật
 
 Ngày 02–03/09/2026. §10.7 (bản 29/08) ghi bộ dò biến thể **từ chối thẳng** mọi
 kịch bản `run_red_light`: nó neo vào giây hai xe đi ngang nhau, tính bằng
@@ -386,29 +386,37 @@ Mốc lấy từ đo, không đoán. Với `delta = t_actor − t_ego`, hai kị
 còn 9 bản do chiến dịch ODD sinh nằm ở **−1,24 đến −2,33 s** — actor qua nút giao
 xong từ lâu rồi ego mới tới.
 
+Số dưới đây đo lại toàn bộ ngày 03/09 sau khi sửa hộp bao định hướng (bug 3
+bên dưới); bản đo trước đó cộng thêm tới ~1,4 m ảo vào mọi khe hở cắt ngang.
+
 | gốc | ego / actor | delta | khe hở gốc | actor sau dò | khe hở mới | kết quả |
 |---|---|---:|---:|---:|---:|---|
-| `sc_108` | 26 / 34 | −1,63 | 4,39 m | 24,1 | **0,59 m** | va chạm |
-| `sc_110` | 27 / 38 | −1,85 | 4,88 m | 25,0 | **1,12 m** | va chạm |
-| `sc_111` | 25 / 33 | −1,74 | 4,78 m | 23,2 | **0,62 m** | va chạm |
-| `sc_113` | 24 / 36 | −2,33 | 6,32 m | 22,2 | **1,10 m** | va chạm |
-| `sc_114` | 26 / 34 | −1,63 | 4,38 m | 24,1 | **0,53 m** | va chạm |
-| `sc_115` | 22 / 31 | −2,28 | 3,68 m | 20,4 | 0,73 m | suýt va chạm |
-| `sc_116` | 36 / 48 | −1,24 | 1,89 m | 33,3 | 0,84 m | suýt va chạm |
-| `sc_109` | 22 / 31 | −2,28 | 3,58 m | 20,4 | 1,46 m | chưa tới hạn |
-| **`sc_112`** | 23 / 29 | −1,67 | **0,37 m** | 21,3 | **1,40 m** | **tệ đi** |
-| `sc_107` | 24 / 36 | −2,33 | 6,46 m | 22,2 | **0,71 m** | va chạm |
+| `sc_108` | 26 / 34 | −1,63 | 4,59 m | 24,1 | **0,00 m** | va chạm |
+| `sc_110` | 27 / 38 | −1,85 | 5,20 m | 25,0 | **0,00 m** | va chạm |
+| `sc_111` | 25 / 33 | −1,74 | 4,89 m | 23,2 | **0,00 m** | va chạm |
+| `sc_113` | 24 / 36 | −2,33 | 6,69 m | 22,2 | **0,00 m** | va chạm |
+| `sc_114` | 26 / 34 | −1,63 | 4,41 m | 24,1 | **0,00 m** | va chạm |
+| `sc_109` | 22 / 31 | −2,28 | 3,35 m | 20,4 | 0,08 m | suýt va chạm |
+| `sc_116` | 36 / 48 | −1,24 | 1,85 m | 33,3 | 0,77 m | suýt va chạm |
+| `sc_115` | 22 / 31 | −2,28 | 3,56 m | 20,4 | 1,43 m | chưa tới hạn |
+| **`sc_112`** | 23 / 29 | −1,67 | **0,77 m** | 21,3 | **1,18 m** | **tệ đi** |
+| `sc_107` | 24 / 36 | −2,33 | 6,85 m | 22,2 | **0,00 m** | va chạm |
 
 Tám trên chín thu hẹp khe hở, năm thành va chạm thật.
 
+Sáu lượt ra `CollisionTest = FAILURE` giờ đều đọc khe hở **đúng 0,000 m** kèm
+`contact_time_s` 5,9–6,6 s. Trước bản vá không lượt nào trong sáu lượt đó có
+thời điểm tiếp xúc, và cả sáu báo còn khe hở 0,53–1,12 m *trong khi đang va
+chạm* — xem bug 3.
+
 **`sc_112` là ca đáng đọc nhất, và nó nói giới hạn của mô hình.** Bản gốc đã ở
-0,37 m — tới hạn nhất cả lô — mà phép dò kéo nó lên 1,40 m. Vì bộ dò nhắm
+0,77 m — tới hạn nhất cả lô — mà phép dò kéo nó lên 1,18 m. Vì bộ dò nhắm
 `delta = 0`, còn `delta = 0` **không phải lúc nào cũng là cực trị**: kích thước
 xe và góc cắt cũng tham gia. Hệ thống báo `improved = false` cho ca này thay vì
 giấu. Lời giải là dò hai chiều — bước đầu tệ hơn bản gốc thì đổi hướng thay vì đi
 tiếp — chưa làm.
 
-#### Hai bug chỉ lộ ra khi chạy thật
+#### Ba bug chỉ lộ ra khi chạy thật
 
 **1. Title chứa `/` làm hỏng lượt chạy SAU khi đã chạy xong.** ScenarioRunner lấy
 `FileHeader/@description` — tức `spec.title` — làm **tên file** báo cáo JSON. Dấu
@@ -437,6 +445,35 @@ cho ego→118, actor→122, đúng như template); parser không đọc `id=` tr
 
 Xác minh sau khi chuyển lệnh sang Story: đặt sẵn hai đèn **ngược hẳn** (122 xanh,
 118 đỏ) rồi chạy; sau lượt chạy chúng lật thành 118 xanh, 122 đỏ.
+
+**3. Hộp bao giả định hai xe cùng hướng, nên mọi khe hở cắt ngang bị nới ra.**
+`worker/trajectory.py` tính khe hở bằng `|dọc| − (nửa_dài_ego + nửa_dài_adv)`,
+lấy thẳng `bounding_box.extent.x` của adversary làm bề dài theo trục dọc **của
+ego**. Đúng khi hai xe cùng hướng; sai hẳn khi chúng cắt nhau. Ở góc 90° chiếc
+xe ngang đường chắn theo trục dọc của ego đúng bằng **bề ngang** của nó, không
+phải bề dài.
+
+Sai số cực đại vì thế là `extent.x − extent.y` ≈ 2,4 − 1,0 = **1,4 m**, đạt tới
+khi góc cắt gần 90°. Nó không phải nhiễu mà là lệch một chiều: khe hở luôn bị
+báo **rộng hơn** thực tế.
+
+Triệu chứng nhìn thấy được: sáu lượt `CollisionTest = FAILURE` mà `min_distance_m`
+đọc 0,53–1,12 m và `contact_longitudinal_m` là `None` — hai xe đâm nhau nhưng
+bảng số nói còn cách nửa mét, và giao diện hiển thị "không va chạm". Sửa bằng
+`oriented_span()`, chiếu hộp bao adversary lên hệ trục ego theo yaw tương đối
+(phép chiếu trục tách). Ở 0° và 180° hàm trả đúng giá trị cũ, nên `cut_in`,
+`sudden_brake` và `wrong_way` không đổi; chỉ `run_red_light` và `jaywalk` được sửa.
+
+Đây là bug thứ ba liên tiếp cùng một hình dạng: **tầng đo được xây quanh hình học
+dọc, cùng làn, rồi đem dùng cho tình huống cắt ngang.** Hai cái trước là TTC (phép
+đo dọc, trả `None` khi khác hành lang — giao diện phải hiện PET thay thế) và lệnh
+đèn đặt ở `Init`. Cả ba đều vô hình với 551 test và chỉ lộ ra khi ngồi xem CARLA
+chạy.
+
+Đo lại toàn bộ 20 lượt ngày 03/09 sau khi vá: sáu lượt va chạm giờ đều đọc
+0,000 m kèm `contact_time_s`. Chỉ số tổng hợp (L3, L4, M3, số va chạm) **không
+đổi** — bản vá sửa độ chính xác của khoảng cách, không lật kết luận
+`CollisionTest` của lượt nào.
 
 > **Đính chính §2 và §4.** Mọi số L4 và M3 trên nhóm ô `run_red_light` trước
 > 03/09/2026 đo trên một tình huống **khác** với nhãn: hai xe cắt nhau ở giao lộ
