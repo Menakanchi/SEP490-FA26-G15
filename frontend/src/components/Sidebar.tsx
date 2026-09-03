@@ -19,7 +19,6 @@ import {
   Sun,
   Moon,
   Shield,
-  CheckCircle2,
   Sparkles,
   Settings,
 } from "lucide-react";
@@ -74,13 +73,6 @@ const NAV_ITEMS: NavItem[] = [
     label: "Thư viện",
     description: "Kịch bản ODD & Cá nhân",
     icon: Library,
-    allowedRoles: ["creator", "reviewer", "admin"],
-  },
-  {
-    href: "/label",
-    label: "Chấm ý định",
-    description: "Người chấm tay để đo lại L4",
-    icon: CheckCircle2,
     allowedRoles: ["creator", "reviewer", "admin"],
   },
   {
