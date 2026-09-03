@@ -101,15 +101,14 @@ export function BackgroundProvider({ children }: { children: React.ReactNode }) 
     }
 
     const storageKeys = getUserStorageKeys(username, userId);
-    let loaded = false;
+    let restoredSettings = DEFAULT_SETTINGS;
 
     for (const key of storageKeys) {
       const saved = localStorage.getItem(key);
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          setSettings({ ...DEFAULT_SETTINGS, ...parsed });
-          loaded = true;
+          restoredSettings = { ...DEFAULT_SETTINGS, ...parsed };
           break;
         } catch {
           // ignore
@@ -117,9 +116,7 @@ export function BackgroundProvider({ children }: { children: React.ReactNode }) 
       }
     }
 
-    if (!loaded) {
-      setSettings(DEFAULT_SETTINGS);
-    }
+    queueMicrotask(() => setSettings(restoredSettings));
 
     // Cross-tab real-time sync listener for current user's storage keys
     const handleStorage = (e: StorageEvent) => {

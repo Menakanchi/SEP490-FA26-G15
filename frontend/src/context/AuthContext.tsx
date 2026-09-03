@@ -56,17 +56,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const savedUserStr = localStorage.getItem("auth_user");
     const savedToken = localStorage.getItem("forge_token");
-    let savedUsername: string | undefined;
-
-    if (savedUserStr) {
-      try {
-        const parsed = JSON.parse(savedUserStr);
-        savedUsername = parsed.username;
-      } catch {
-        // ignore
-      }
-    }
-
     if (savedToken && savedUserStr) {
       let savedUser: User;
       try {
@@ -83,7 +72,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      setToken(savedToken);
       getMe(savedUser.username)
         .then((userData: User) => {
           const userWithRole: User = {

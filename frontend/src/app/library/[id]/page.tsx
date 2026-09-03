@@ -320,7 +320,11 @@ export default function ScenarioDetailPage() {
             ? "Phát lại dữ liệu đo trên CARLA"
             : "Bản khai kịch bản"}
         </h2>
-        <ScenarioPreview spec={scenario.spec} execution={scenario.latest_execution_result} />
+        <ScenarioPreview
+          spec={scenario.spec}
+          execution={scenario.latest_execution_result}
+          verification={scenario.verification}
+        />
       </div>
 
       {/* ─── Closed-loop controller evaluation ─── */}

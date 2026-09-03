@@ -46,6 +46,17 @@ const REVIEW_STATUS_OPTIONS = [
   { value: "rejected", label: "Bị từ chối" },
 ];
 
+const VERIFICATION_LABELS: Record<string, string> = {
+  unverified: "CARLA: chưa kiểm chứng",
+  adversarial: "CARLA: va chạm hoặc suýt va chạm",
+  ran_no_hazard: "CARLA: ngoài ngưỡng nguy hiểm",
+  execution_failed: "CARLA: lượt chạy bị lỗi",
+};
+
+function reviewStatusLabel(status: string): string {
+  return REVIEW_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
+}
+
 const ODD_AXIS_LABELS: Record<string, string> = {
   road_type: "Đường",
   weather: "Thời tiết",
@@ -389,14 +400,6 @@ function ReviewPageContent() {
     }
   };
 
-  const handleRefresh = async () => {
-    setListLoading(true);
-    await Promise.all([
-      fetchScenarioList(),
-      selectedId ? fetchScenarioDetail(selectedId, false) : Promise.resolve(null),
-    ]);
-  };
-
   // Filter logic based on dropdown status selection
   const displayList = list.filter((s) => {
     if (!statusFilter || statusFilter === "all") return true;
@@ -520,7 +523,7 @@ function ReviewPageContent() {
                               : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
                           }`}
                         >
-                          {item.status}
+                          {reviewStatusLabel(item.status)}
                         </span>
                       </div>
                       <p className="text-xs text-[#0f2d59] dark:text-slate-300 mt-1 line-clamp-1 font-semibold">
@@ -553,14 +556,23 @@ function ReviewPageContent() {
                     <h2 className="text-xl font-bold text-[#0f2d59] dark:text-white">
                       {scenario.title}
                     </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
-                      ID: {scenario.scenario_id} | Trạng thái hiện tại:{" "}
-                      <strong className="text-purple-600 dark:text-purple-400">{scenario.status}</strong>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      <span className="font-mono">ID: {scenario.scenario_id}</span> · Vòng đời:{" "}
+                      <strong className="text-purple-600 dark:text-purple-400">
+                        {reviewStatusLabel(scenario.status)}
+                      </strong>
                     </p>
                   </div>
-                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                    Cổng áp dụng: {gateLabel}
-                  </span>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {scenario.verification && (
+                      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                        {VERIFICATION_LABELS[scenario.verification] ?? scenario.verification}
+                      </span>
+                    )}
+                    <span className="text-xs font-bold px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                      Cổng áp dụng: {gateLabel}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Trục ODD do máy tự điền — chỉ cảnh báo khi THẬT SỰ có, và nói rõ
@@ -711,6 +723,7 @@ function ReviewPageContent() {
                     <ScenarioPreview
                       spec={scenario.spec}
                       execution={executionObj}
+                      verification={scenario.verification}
                     />
                   </div>
                 );
