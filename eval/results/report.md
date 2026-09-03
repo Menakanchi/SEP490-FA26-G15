@@ -1,7 +1,8 @@
 # Evaluation Report — Scenario Forge
 
-> Snapshot: 24/08/2026, lấy trực tiếp từ database phát triển qua
-> `GET /api/v1/metrics/quality`. Không tính 10 scenario `seed-data` vào M1/M2.
+> Snapshot §1–§8: 24/08/2026, lấy trực tiếp từ database phát triển qua
+> `GET /api/v1/metrics/quality`. §9.3–§9.5 và §10 cập nhật tới 03/09/2026; bảng
+> chỉ số mới nhất ở cuối §9.5. Không tính 10 scenario `seed-data` vào M1/M2.
 > Mỗi scenario chỉ dùng lần chạy CARLA mới nhất để không tự bỏ phiếu nhiều lần.
 
 ## 1. Phạm vi đo
@@ -367,6 +368,241 @@ mãi"*, và cả hai đều không sửa được bằng cách thêm ví dụ.
 
 Artifact: [`intent_speed_fix_2026-08-29.json`](intent_speed_fix_2026-08-29.json).
 
+### 9.5. Bộ dò `run_red_light`, và bốn bug chỉ lộ ra khi chạy thật
+
+Ngày 02–03/09/2026. §10.7 (bản 29/08) ghi bộ dò biến thể **từ chối thẳng** mọi
+kịch bản `run_red_light`: nó neo vào giây hai xe đi ngang nhau, tính bằng
+`khoảng cách dọc ÷ chênh tốc độ`, mà maneuver này bắt buộc actor có
+`s_offset_m = 0` — nó nằm trên nhánh đường vuông góc. Khoảng cách dọc bằng 0 nên
+không có mốc nào để neo. Ảnh hưởng 12 ô ODD.
+
+**Bộ dò mới vặn tốc độ thay vì thời điểm.** Nó tính giao điểm hai quỹ đạo từ toạ
+độ và hướng trong template — suy ra, không ghi cứng — rồi chọn tốc độ actor sao
+cho hai *thời gian tới điểm xung đột* trùng nhau. Trên anchor đô thị: ego 41,27 m,
+actor 38,56 m.
+
+Mốc lấy từ đo, không đoán. Với `delta = t_actor − t_ego`, hai kịch bản
+`run_red_light` duy nhất từng ra va chạm (`sc_046`, `sc_047`) có `delta = −0,33 s`,
+còn 9 bản do chiến dịch ODD sinh nằm ở **−1,24 đến −2,33 s** — actor qua nút giao
+xong từ lâu rồi ego mới tới.
+
+Số dưới đây đo lại toàn bộ ngày 03/09 sau khi sửa hộp bao định hướng (bug 3
+bên dưới); bản đo trước đó cộng thêm tới ~1,4 m ảo vào mọi khe hở cắt ngang.
+
+| gốc | ego / actor | delta | khe hở gốc | actor sau dò | khe hở mới | kết quả |
+|---|---|---:|---:|---:|---:|---|
+| `sc_108` | 26 / 34 | −1,63 | 4,59 m | 24,1 | **0,00 m** | va chạm |
+| `sc_110` | 27 / 38 | −1,85 | 5,20 m | 25,0 | **0,00 m** | va chạm |
+| `sc_111` | 25 / 33 | −1,74 | 4,89 m | 23,2 | **0,00 m** | va chạm |
+| `sc_113` | 24 / 36 | −2,33 | 6,69 m | 22,2 | **0,00 m** | va chạm |
+| `sc_114` | 26 / 34 | −1,63 | 4,41 m | 24,1 | **0,00 m** | va chạm |
+| `sc_109` | 22 / 31 | −2,28 | 3,35 m | 20,4 | 0,08 m | suýt va chạm |
+| `sc_116` | 36 / 48 | −1,24 | 1,85 m | 33,3 | 0,77 m | suýt va chạm |
+| `sc_115` | 22 / 31 | −2,28 | 3,56 m | 20,4 | 1,43 m | chưa tới hạn |
+| **`sc_112`** | 23 / 29 | −1,67 | **0,77 m** | 21,3 | **1,18 m** | **tệ đi** |
+| `sc_107` | 24 / 36 | −2,33 | 6,85 m | 22,2 | **0,00 m** | va chạm |
+
+Tám trên chín thu hẹp khe hở, năm thành va chạm thật.
+
+Sáu lượt ra `CollisionTest = FAILURE` giờ đều đọc khe hở **đúng 0,000 m** kèm
+`contact_time_s` 5,9–6,6 s. Trước bản vá không lượt nào trong sáu lượt đó có
+thời điểm tiếp xúc, và cả sáu báo còn khe hở 0,53–1,12 m *trong khi đang va
+chạm* — xem bug 3.
+
+**`sc_112` là ca đáng đọc nhất, và nó nói giới hạn của mô hình.** Bản gốc đã ở
+0,77 m — tới hạn nhất cả lô — mà phép dò kéo nó lên 1,18 m. Vì bộ dò nhắm
+`delta = 0`, còn `delta = 0` **không phải lúc nào cũng là cực trị**: kích thước
+xe và góc cắt cũng tham gia. Hệ thống báo `improved = false` cho ca này thay vì
+giấu. Lời giải là dò hai chiều — bước đầu tệ hơn bản gốc thì đổi hướng thay vì đi
+tiếp — chưa làm.
+
+#### Bốn bug chỉ lộ ra khi chạy thật
+
+**1. Title chứa `/` làm hỏng lượt chạy SAU khi đã chạy xong.** ScenarioRunner lấy
+`FileHeader/@description` — tức `spec.title` — làm **tên file** báo cáo JSON. Dấu
+`/` trong `km/h` biến nó thành đường dẫn thư mục con không tồn tại, và bước ghi
+file chết bằng `FileNotFoundError`.
+
+Triệu chứng rất dễ đọc nhầm: kịch bản chạy đủ 12,6 giây, cả bốn criteria đều có
+kết quả, nhưng `success = false` vì worker không đọc được file. Một lượt GPU tốt
+bị ghi thành lượt hỏng và **kéo L3 xuống**. Đây là lỗi có sẵn — title là chữ tự do
+do LLM sinh, và `km/h` là cụm hoàn toàn tự nhiên khi mô tả tốc độ.
+
+**2. Lệnh đặt đèn nằm trong `Init` nên CHƯA BAO GIỜ có hiệu lực.** Bảng hỗ trợ
+của ScenarioRunner ghi `TrafficSignalStateAction` là ❌ ở cột *Init support*, ✅ ở
+cột *Story support*; code khớp với bảng — `_create_init_behavior` chỉ duyệt các
+khối `Private`, `_initialize_parameters` chỉ xử lý `ParameterAction`.
+
+Hệ quả: **cả 12 ô `run_red_light` chạy với chu kỳ đèn tự nhiên của CARLA**, ai đỏ
+ai xanh là ngẫu nhiên theo thời điểm. Xem trực tiếp trên CARLA thì thấy chính
+**ego** vượt đèn đỏ. Nhãn ODD nói adversary vượt đèn đỏ, mô phỏng không tái hiện
+điều đó.
+
+Ba giả thuyết đã loại trước khi kết luận: đèn tự đổi chu kỳ đè lên lệnh (sai —
+`set_state` giữ ổn định 9 s); sai id đèn (sai — `get_traffic_lights_from_waypoint`
+cho ego→118, actor→122, đúng như template); parser không đọc `id=` trên CARLA town
+(sai — `get_traffic_light_from_osc_name` hỗ trợ, và ném lỗi nếu không tìm thấy).
+
+Xác minh sau khi chuyển lệnh sang Story: đặt sẵn hai đèn **ngược hẳn** (122 xanh,
+118 đỏ) rồi chạy; sau lượt chạy chúng lật thành 118 xanh, 122 đỏ.
+
+**3. Hộp bao giả định hai xe cùng hướng, nên mọi khe hở cắt ngang bị nới ra.**
+`worker/trajectory.py` tính khe hở bằng `|dọc| − (nửa_dài_ego + nửa_dài_adv)`,
+lấy thẳng `bounding_box.extent.x` của adversary làm bề dài theo trục dọc **của
+ego**. Đúng khi hai xe cùng hướng; sai hẳn khi chúng cắt nhau. Ở góc 90° chiếc
+xe ngang đường chắn theo trục dọc của ego đúng bằng **bề ngang** của nó, không
+phải bề dài.
+
+Sai số cực đại vì thế là `extent.x − extent.y` ≈ 2,4 − 1,0 = **1,4 m**, đạt tới
+khi góc cắt gần 90°. Nó không phải nhiễu mà là lệch một chiều: khe hở luôn bị
+báo **rộng hơn** thực tế.
+
+Triệu chứng nhìn thấy được: sáu lượt `CollisionTest = FAILURE` mà `min_distance_m`
+đọc 0,53–1,12 m và `contact_longitudinal_m` là `None` — hai xe đâm nhau nhưng
+bảng số nói còn cách nửa mét, và giao diện hiển thị "không va chạm". Sửa bằng
+`oriented_span()`, chiếu hộp bao adversary lên hệ trục ego theo yaw tương đối
+(phép chiếu trục tách). Ở 0° và 180° hàm trả đúng giá trị cũ, nên `cut_in`,
+`sudden_brake` và `wrong_way` không đổi; chỉ `run_red_light` và `jaywalk` được sửa.
+
+Đây là bug thứ ba liên tiếp cùng một hình dạng: **tầng đo được xây quanh hình học
+dọc, cùng làn, rồi đem dùng cho tình huống cắt ngang.** Hai cái trước là TTC (phép
+đo dọc, trả `None` khi khác hành lang — giao diện phải hiện PET thay thế) và lệnh
+đèn đặt ở `Init`. Cả ba đều vô hình với 551 test và chỉ lộ ra khi ngồi xem CARLA
+chạy.
+
+Đo lại toàn bộ 20 lượt ngày 03/09 sau khi vá: sáu lượt va chạm giờ đều đọc
+0,000 m kèm `contact_time_s`. Chỉ số tổng hợp (L3, L4, M3, số va chạm) **không
+đổi** — bản vá sửa độ chính xác của khoảng cách, không lật kết luận
+`CollisionTest` của lượt nào.
+
+**4. Bản vá bug 3 báo chạm cả khi hai xe chỉ sượt góc chéo.** `oriented_span`
+thay hộp nghiêng của adversary bằng **hộp thẳng-trục bao ngoài** nó, mà hộp bao
+ngoài luôn to hơn hộp thật — lệch nhiều nhất đúng ở 45 độ. Chỉ xét hai trục của
+ego thì phép kiểm bảo toàn một phía: không bỏ sót va chạm thật, nhưng dương tính
+giả ở góc chéo.
+
+`sc_116_t1_t1` là ca lộ ra: bảng số ghi `contact_time_s = 5,321`,
+`contact_longitudinal_m = −2,207` và `min_distance_m = 0`, trong khi
+`CollisionTest` của CARLA báo SUCCESS — không có cú đâm nào.
+
+Sửa bằng phép chiếu trục tách đủ **bốn** trục: hai của ego, hai của adversary.
+Hai hộp chồng nhau khi và chỉ khi cả bốn khoảng tách đều âm; một trục dương là đã
+có trục tách. Ở 0 và 180 độ hai hệ trục trùng nhau nên bốn số thu về hai, và
+`cut_in`, `sudden_brake`, `wrong_way` giữ nguyên số cũ — có test chốt tính chất
+này.
+
+Đo lại trên CARLA, cùng một `.xosc`:
+
+| | khe hở | tiếp xúc | PET | CollisionTest |
+|---|---:|---:|---:|---|
+| hai trục | 0,000 m | 5,32 s | — | SUCCESS |
+| **bốn trục** | **0,212 m** | — | 0,038 s | SUCCESS |
+
+PET chuyển từ `None` sang đo được, vì tiếp xúc giả không còn cắt chuỗi mẫu ở giây
+5,32. Đối chứng ngược trên `sc_114_t1` — va chạm đã biết chắc — vẫn đọc 0,000 m,
+`contact_longitudinal_m = 2,798` và `CollisionTest = FAILURE`, nên phép kiểm khắt
+khe hơn không chối cú đâm thật.
+
+**Bốn bug, một hình dạng.** Cả bốn đều là một ràng buộc hoặc một giả định không
+tới được tầng cần nó: tầm với anchor chỉ converter biết, lệnh đèn đặt ở nơi
+ScenarioRunner không đọc, TTC là phép đo dọc đem dùng cho hành lang khác, hộp bao
+giả định cùng hướng. Không có cái nào bị 557 test bắt được, và cả bốn đều lộ ra
+vì có một lượt CARLA để đối chiếu. Bug 4 còn đáng đọc hơn: nó là **hệ quả của bản
+vá bug 3**, và chỉ lộ ra vì đem kết quả hình học đối chiếu với cảm biến va chạm
+của CARLA thay vì tin phép đo của chính mình.
+
+> **Đính chính §2 và §4.** Mọi số L4 và M3 trên nhóm ô `run_red_light` trước
+> 03/09/2026 đo trên một tình huống **khác** với nhãn: hai xe cắt nhau ở giao lộ
+> với đèn ngẫu nhiên, không phải một xe vượt đèn đỏ. Không dùng lại được. 13 kịch
+> bản `run_red_light` đã chạy lại toàn bộ; `sc_046` và `sc_047` vẫn ra va chạm nên
+> giữ nhãn `adversarial`, lần này với bằng chứng đúng điều kiện.
+
+#### Chỉ số sau đợt chạy lại
+
+| | snapshot 24/08 | 29/08 | **03/09** |
+|---|---:|---:|---:|
+| L1 hiểu câu, qua pipeline | 73,53% | 71,21% | 71,21% |
+| L2 biên dịch `.xosc` | 100% | 100% | 100% (110/110) |
+| L3 CARLA chạy hết | 93,75% | 94,59% | **96,55%** (56 lượt) |
+| L4 quỹ đạo đúng ý định | 53,33% | 60,00% | **75,00%** |
+| M3 kích hoạt nguy hiểm | 63,33% | 60,00% | **75,00%** (42/56) |
+| — riêng va chạm | 12 | 17 | **24** |
+| M2 phủ toàn phần | 16,67% | 100% | 100% (72/72) |
+
+L1 không đổi vì đợt này không sinh request mới — chỉ chạy lại và dò biến thể từ
+kịch bản đã có.
+
+### 9.6. Thời tiết: mã hoá thì có, tác động thì không đo được
+
+Ngày 03/09/2026, **đính chính bản viết cùng ngày sớm hơn.** Bản đầu kết luận ma
+sát mưa đủ để lật nhãn `adversarial`, và giải thích rằng ma sát thấp làm ego tăng
+tốc chậm hơn nên tới nút giao muộn hơn. Kiểm lại bằng số thì **giải thích đó
+sai**, và kết luận không đứng được.
+
+#### Đường đi của thời tiết trong hệ
+
+Converter phát ba thứ vào `.xosc`: `Fog/@visualRange`, `Precipitation`, và
+`RoadCondition/@frictionScaleFactor` (0,7 cho mưa, 1 cho còn lại). ScenarioRunner
+*có* thi hành ma sát — `ChangeRoadFriction` spawn một `static.trigger.friction`
+extent 10⁶ m phủ toàn map. Phần này đọc code là chắc chắn.
+
+Hai thứ đầu thì trung tính bằng thiết kế: dự án **không dùng camera sensor** nào
+(`worker/sr_cli.py`), ego chạy theo lệnh tốc độ, criteria và `TrajectoryRecorder`
+chỉ đọc `get_location()`/`get_velocity()`, `BehaviorAgent` là planner đọc
+ground-truth. Không phép đo nào đọc tầm nhìn.
+
+#### Cặp đối chứng, và vì sao nó không kết luận được điều đã tưởng
+
+`sc_109` và `sc_115` khác nhau đúng một biến — sương mù so với mưa. Đã kiểm trong
+`.xosc`: cùng `vehicle.tesla.model3` và `vehicle.yamaha.yzf`, cùng vị trí, cùng
+tốc độ (`specific_type` không chọn blueprint). Bộ dò đưa cả hai qua ba mức tốc độ
+actor.
+
+| tốc độ actor | sương mù (μ = 1,00) | mưa (μ = 0,70) | chênh |
+|---|---|---|---:|
+| 31,0 km/h | 3,346 m | 3,558 m | 0,21 m |
+| 20,4 km/h | 0,082 m | 1,425 m | 1,34 m |
+| 21,3 km/h | **va chạm** 0,000 m | 0,100 m | — |
+
+Ở mức thứ ba nhãn lật từ `adversarial` sang `ran_no_hazard`. Nhưng **động lực học
+của cả hai xe thì giống nhau tới ba chữ số**:
+
+| | sương mù | mưa |
+|---|---:|---:|
+| ego, giây 1 | 6,038 m/s | 6,037 m/s |
+| ego, giây 2 | 5,784 | 5,774 |
+| ego, đỉnh | 6,825 | 6,801 |
+| xe máy, đỉnh | 6,444 | 6,444 |
+| xe máy, giây 2 | 3,818 | 3,818 |
+
+Ma sát 1,0 so với 0,7 **không dịch được chuyển động của xe nào**. Hai quỹ đạo
+trùng nhau ở đoạn đầu rồi mới tách ra về sau: lượt mưa xe máy dừng hẳn
+(`adversary_min_speed_ms = 0`, giảm tốc 6,49 m/s), lượt sương mù nó chỉ chậm còn
+2,71. Thời điểm qua nút giao lệch **0,125 s** — và 0,125 s đó là toàn bộ khác
+biệt giữa va chạm và không.
+
+Ba mức chênh cũng không theo quy luật nào của ma sát: 0,21 m, rồi 1,34 m, rồi cỡ
+0,1 m.
+
+#### Kết luận đúng: gần điểm tới hạn thì hệ rất nhạy
+
+Với một cặp cho mỗi mức tốc độ, và quỹ đạo đầu trùng nhau, **không tách được "do
+mưa" khỏi "do mô phỏng không tất định"**. Điều đo được là chuyện khác và quan
+trọng hơn: ở sát điểm tới hạn, một khác biệt cỡ **một phần mười giây lật hẳn
+nhãn**.
+
+Hệ quả cho cách xếp hạng biến thể: bộ dò hiện chọn bản có `min_distance_m` nhỏ
+nhất, tức đang ưu tiên đúng loại ca mong manh nhất — ca 0,1 m có thể ra va chạm
+lần này và không va chạm lần sau. Thư viện nên ưu tiên ca **va chạm dứt khoát**
+hơn ca sát nút. Chưa sửa; ghi vào §10.
+
+Về trục ODD: giữ, nhưng không vì thời tiết đã chứng minh có tác dụng — nó chưa.
+Giữ vì M2 tính trên bốn trục, vì `frictionScaleFactor` vẫn được ghi đúng vào
+`.xosc` cho bất cứ ai sau này cắm perception stack hoặc mô hình động lực học có
+xét lốp, và vì `clear`/`fog` hiện dùng chung ma sát 1 nên bốn nhãn mới ứng với
+**hai** trạng thái phân biệt được — đó là chỗ cần sửa trước khi đo lại tác động
+của thời tiết cho tử tế.
+
 ## 10. Giới hạn và việc tiếp theo
 
 1. Mở rộng nhãn người trên từng maneuver, không chỉ các case lỗi đã biết.
@@ -374,11 +610,39 @@ Artifact: [`intent_speed_fix_2026-08-29.json`](intent_speed_fix_2026-08-29.json)
    vai trên frontend.
 3. Closed-loop MVP dừng ở cặp baseline/BehaviorAgent do người vận hành khởi
    động theo ADR-022; không tuyên bố có vòng tự sinh nhiều thế hệ.
+
+   Bổ sung 03/09: bộ dò biến thể đi **một hướng** — nhắm `delta = 0` với
+   `run_red_light`, lùi dần từ mốc "hai xe đi ngang nhau" với các maneuver khác.
+   `sc_112` cho thấy giới hạn: bản gốc đã ở 0,77 m mà phép dò kéo lên 1,18 m, vì
+   `delta = 0` không phải lúc nào cũng là cực trị. Cần **dò hai chiều thích nghi**
+   — bước đầu tệ hơn bản gốc thì đổi hướng, và giảm bước khi hai điểm liền kề hoà
+   (`sc_024`: `t3` và `t4` cùng 0,38 m, tiêu một lượt GPU để khẳng định lại đáy).
 4. Chỉ mở thêm maneuver/road type khi đã đo hình học và chạy thật trên anchor
    tương ứng; hiện anchor đô thị chỉ cam kết cho `run_red_light`.
-5. Benchmark mới có 20 request tuần tự trên một máy/mạng; chưa phải load test
+
+   Bài học 03/09, đắt hơn cả bốn dòng trên: **bốn bug nặng nhất của đợt này đều
+   vô hình với test.** Title chứa `/`, lệnh đèn đặt sai chỗ, hộp bao giả định hai
+   xe cùng hướng, và hộp bao ngoài báo chạm ở góc chéo — tất cả đều cho ra file
+   `.xosc` hợp lệ theo XSD, qua sạch 557 test, và chỉ lộ ra khi có người **ngồi
+   nhìn CARLA chạy** hoặc đem số của mình đối chiếu với `CollisionTest`. Không
+   phép kiểm tĩnh nào bắt được "ScenarioRunner lấy title làm tên file" hay
+   "InfrastructureAction ở Init bị bỏ qua". Với lớp lỗi này thì một lượt chạy thật
+   đáng giá hơn một trăm test.
+
+   Ba trong bốn cái chia chung một hình dạng: tầng đo được xây quanh hình học
+   **dọc, cùng làn**, rồi đem dùng cho tình huống cắt ngang. Cái thứ tư là hệ quả
+   của bản vá cái thứ ba, nên lớp lỗi này còn sinh tiếp nếu không có lượt chạy
+   thật để đối chiếu.
+
+5. Kịch bản không va chạm chạy hết `duration_s` dù không còn gì để xảy ra. Với
+   `run_red_light`, ego qua giao lộ ở giây ~5-6 và hai quỹ đạo chỉ cắt nhau ở một
+   điểm, nhưng kịch bản vẫn chạy nốt ~24 giây. Cần điều kiện đóng Act khi ego đã
+   qua điểm xung đột, cùng hình dạng với stop-on-collision — nhưng chỉ cho
+   maneuver có điểm cắt rõ ràng, vì `lane_drift` có khe hở nhỏ nhất **sau** lúc
+   hai xe đi ngang nhau.
+6. Benchmark mới có 20 request tuần tự trên một máy/mạng; chưa phải load test
    nhiều người dùng đồng thời hay SLA production.
-6. Chưa có metric retrieval (Recall@k / MRR / nDCG) trên golden set như `ADR-004`
+7. Chưa có metric retrieval (Recall@k / MRR / nDCG) trên golden set như `ADR-004`
    cam kết. §9.2 mới chỉ đo *đóng góp của few-shot vào kết quả sinh*, không đo
    *chất lượng xếp hạng của retriever*; và đo trên một thư viện 18 hàng, quá mỏng
    để kết luận về few-shot nói chung.
@@ -392,7 +656,35 @@ Artifact: [`intent_speed_fix_2026-08-29.json`](intent_speed_fix_2026-08-29.json)
    bằng 1,0 theo định nghĩa, không theo chất lượng. Điều kiện để phép đo có
    nghĩa: vài ô đạt **≥ 4 hàng** approved non-seed (pool > k).
 
-7. Seed data: 6/10 hàng nằm **ngoài phạm vi converter có chủ đích** (ADR-016 mới
+   Cập nhật 03/09: ngưỡng đó **đã vượt ở một ô**. Sau khi duyệt 28 kịch bản đọng
+   ở cổng thư viện, pool xếp hạng lên 22 hàng, và
+   `highway / clear / motorcycle / cut_in` có **6 hàng** — lần đầu có một ô mà
+   `k = 3` thật sự phải chọn, tức cosine có việc để làm và `Recall@3` không còn
+   bằng 1,0 theo định nghĩa.
+
+   Chưa đủ để kết luận về retriever: một ô vẫn là một ô, và ô đông thứ hai mới có
+   2 hàng. Nhưng nó đổi bản chất của hạn chế này — từ "phép đo vô nghĩa ở mọi ô"
+   thành "phép đo có nghĩa ở một ô, cần thêm vài ô nữa để nói được điều gì chung".
+   Bước tiếp theo rẻ nhất là nhắm chiến dịch vào 2-3 ô đã có sẵn 2 hàng, thay vì
+   dàn đều để phủ ô mới.
+
+   Con số 22 này phụ thuộc hàng rào `verification = 'adversarial'` thêm cùng ngày
+   (§9.5): thiếu nó thì pool là 43 hàng, nhưng nửa số đó là kịch bản chạy xong mà
+   không tái hiện được nguy hiểm nào — đông hơn mà không dạy được gì.
+
+8. Trục thời tiết chỉ có **hai** trạng thái vật lý cho bốn nhãn: `clear` và
+   `fog` cùng `frictionScaleFactor = 1`, `rain` và `heavy_rain` cùng `0,7`. §9.6
+   thử đo tác động của ma sát và **không đo được**: trên cặp đối chứng duy nhất,
+   động lực học cả hai xe giống nhau tới ba chữ số. Cho `heavy_rain` một hệ số
+   riêng là điều kiện cần để phép đo có nghĩa, nhưng nó đổi số L4/M3 của mọi ô
+   mưa nên cần một đợt chạy lại riêng. Sương mù thì trung tính bằng thiết kế và
+   sẽ vẫn trung tính cho tới khi có perception stack.
+9. Bộ dò xếp hạng biến thể theo `min_distance_m` nhỏ nhất, tức ưu tiên đúng loại
+   ca **mong manh nhất**. §9.6 cho thấy ở sát điểm tới hạn một khác biệt cỡ 0,1 s
+   lật hẳn nhãn va chạm, nên một biến thể 0,1 m không tái lập chắc chắn. Tiêu chí
+   nên tính thêm độ bền: ca va chạm dứt khoát đáng giữ hơn ca sát nút, hoặc phải
+   chạy lại vài lượt trước khi kết luận.
+10. Seed data: 6/10 hàng nằm **ngoài phạm vi converter có chủ đích** (ADR-016 mới
    có anchor cao tốc và một giao cắt đô thị) — chúng vẫn hữu ích cho retrieval
    theo văn bản và nhãn ODD. Nhưng kiểm ngày 29/08 thì **8/10 không biên dịch
    được**, tức có hai hàng nằm *trong* phạm vi mà vẫn hỏng: `sc_908` đặt actor ở

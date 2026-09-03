@@ -639,12 +639,17 @@ def get_scenario(scenario_id: str, auto_heal: bool = True) -> dict | None:
 
 
 def update_scenario_status(scenario_id: str, new_status: str) -> None:
-    """Đổi trạng thái, và **chỉ khi** vào ``approved_library`` mới sinh embedding.
+    """Đổi trạng thái. Vào ``approved_library`` thì sinh embedding, rời ra thì xoá.
 
     Điều kiện gắn vào ``new_status`` chứ không gắn vào "embedding đang rỗng".
     Cách cũ — thấy chưa có vector thì sinh — sẽ ghi vector cho cả lần chuyển sang
     ``rejected``, và một kịch bản bị từ chối có vector là một kịch bản bị từ chối
     **vẫn tìm lại được**. Đúng thứ ADR-011 §Hệ quả dựng cơ chế này để chặn.
+
+    Chiều ngược lại thêm 03/09, cùng một lý lẽ. Cổng của retriever có hai mệnh đề
+    độc lập, ``status`` và ``embedding IS NOT NULL``, để một cái hỏng thì cái kia
+    còn giữ. Rút một kịch bản khỏi thư viện mà để vector lại thì hai mệnh đề cùng
+    dựa vào ``status``, và tầng phòng thủ thứ hai biến thành đồ trang trí.
     """
     with _cursor(commit=True) as cursor:
         blob_bytes: bytes | None = None
@@ -670,6 +675,11 @@ def update_scenario_status(scenario_id: str, new_status: str) -> None:
             cursor.execute(
                 "UPDATE scenarios SET status = ?, embedding = ?, embedding_model = ? WHERE scenario_id = ?",
                 (new_status, blob_bytes, EMBEDDING_MODEL, scenario_id),
+            )
+        elif new_status == ScenarioStatus.REJECTED.value:
+            cursor.execute(
+                "UPDATE scenarios SET status = ?, embedding = NULL, embedding_model = NULL WHERE scenario_id = ?",
+                (new_status, scenario_id),
             )
         else:
             cursor.execute("UPDATE scenarios SET status = ? WHERE scenario_id = ?", (new_status, scenario_id))
