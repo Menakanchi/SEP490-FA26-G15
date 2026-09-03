@@ -140,6 +140,30 @@ def test_embedding_written_only_when_entering_library() -> None:
     assert len(rows["sc_approved"]["embedding"]) == 1536 * 4
 
 
+def test_withdrawing_from_the_library_also_clears_the_vector() -> None:
+    """Rút khỏi thư viện phải xoá vector, nếu không hàng rào thứ hai thành đồ trang trí.
+
+    Cổng của retriever có hai mệnh đề độc lập — ``status`` và
+    ``embedding IS NOT NULL`` — để một cái hỏng thì cái kia còn giữ. Rút một kịch
+    bản ra mà để vector lại thì cả hai cùng dựa vào ``status``.
+    """
+    _save("sc_withdrawn")
+    db.update_scenario_status("sc_withdrawn", ScenarioStatus.APPROVED_LIBRARY.value)
+    with _connect() as conn:
+        truoc = conn.execute("SELECT embedding FROM scenarios WHERE scenario_id = 'sc_withdrawn'").fetchone()
+    assert truoc["embedding"] is not None, "chưa vào thư viện thì không có gì để kiểm"
+
+    db.update_scenario_status("sc_withdrawn", ScenarioStatus.REJECTED.value)
+
+    with _connect() as conn:
+        sau = conn.execute(
+            "SELECT status, embedding, embedding_model FROM scenarios WHERE scenario_id = 'sc_withdrawn'"
+        ).fetchone()
+    assert sau["status"] == ScenarioStatus.REJECTED.value
+    assert sau["embedding"] is None
+    assert sau["embedding_model"] is None
+
+
 @pytest.mark.parametrize(
     "actor_value",
     [

@@ -19,7 +19,10 @@ from src.models.schemas import (
     next_status_after_review,
 )
 
-TERMINAL = {ScenarioStatus.REJECTED, ScenarioStatus.APPROVED_LIBRARY, ScenarioStatus.APPROVED_SIM}
+# `approved_library` KHÔNG còn ở đây từ 03/09: nó có đường rút về `rejected`.
+# Trước đó nó là trạng thái một chiều, nên gỡ một kịch bản đã duyệt phải sửa DB
+# tay — tức đi vòng qua chính cổng người duyệt mà bảng này bảo vệ.
+TERMINAL = {ScenarioStatus.REJECTED, ScenarioStatus.APPROVED_SIM}
 
 
 def test_every_status_has_a_transition_row() -> None:
@@ -58,6 +61,8 @@ def test_allowed_review_transitions(
         (ScenarioStatus.REJECTED, ReviewGate.BEFORE_LIBRARY, True),
         (ScenarioStatus.APPROVED_LIBRARY, ReviewGate.BEFORE_LIBRARY, True),
         (ScenarioStatus.APPROVED_LIBRARY, ReviewGate.BEFORE_SIM, True),
+        # Rút khỏi thư viện chỉ đi qua Cổng 2. Cổng 1 không có quyền đó.
+        (ScenarioStatus.APPROVED_LIBRARY, ReviewGate.BEFORE_SIM, False),
     ],
 )
 def test_forbidden_review_transitions(current: ScenarioStatus, gate: ReviewGate, approved: bool) -> None:
@@ -102,3 +107,17 @@ def test_job_states_do_not_leak_into_scenario_states() -> None:
     — đúng loại bug không bao giờ tự lộ ra.
     """
     assert {s.value for s in ScenarioStatus} & {s.value for s in JobStatus} == set()
+
+
+def test_withdrawing_from_the_library_goes_through_gate_two() -> None:
+    """Rút một kịch bản đã duyệt là quyết định của người, không phải sửa DB tay.
+
+    Ca thật buộc phải có transition này: `sc_116_t1_t1` vào thư viện khi số đo còn
+    báo va chạm, rồi bản vá hình học 03/09 cho thấy đó là dương tính giả — nó chưa
+    từng va chạm. Không có đường rút thì kịch bản đứng sai chỗ vĩnh viễn, hoặc
+    phải gỡ bằng UPDATE tay, tức đi vòng qua đúng cổng mà bảng này bảo vệ.
+    """
+    assert (
+        next_status_after_review(ScenarioStatus.APPROVED_LIBRARY, ReviewGate.BEFORE_LIBRARY, False)
+        is ScenarioStatus.REJECTED
+    )
