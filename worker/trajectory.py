@@ -361,6 +361,28 @@ def _max_heading_delta_deg(samples: list[Sample]) -> float | None:
     return max(deltas) if deltas else None
 
 
+def oriented_span(half: tuple[float, float], relative_yaw_rad: float) -> tuple[float, float]:
+    """Hộp bao của adversary chiếu lên hai trục CỦA EGO, có tính hướng tương đối.
+
+    ``half`` là (nửa chiều dài, nửa chiều rộng) theo trục của chính adversary.
+    Trả về (span dọc, span ngang) theo trục của ego.
+
+    Bản cũ cộng thẳng nửa-dài vào trục dọc và nửa-rộng vào trục ngang, tức ngầm
+    giả định hai xe cùng hướng. Đúng cho ``cut_in``, ``sudden_brake``,
+    ``wrong_way`` (lệch 180 độ cho |cos| = 1, |sin| = 0 nên kết quả y hệt), sai
+    cho ``run_red_light`` và ``jaywalk`` — ở đó actor đi **vuông góc**, nên bề
+    rộng của nó mới nằm dọc trục ego còn chiều dài nằm ngang.
+
+    Đo ngày 03/09 trên 6 biến thể ``run_red_light`` mà ``CollisionTest`` báo
+    FAILURE: giả định cũ tính thừa ~2,3 m ở trục dọc nên hai ``gap`` không bao giờ
+    cùng âm — ``contact_longitudinal_m`` rỗng cả 6, và ``min_distance_m`` chạm đáy
+    ở 0,53-1,12 m thay vì 0. Giao diện đọc đúng trường đó nên hiện "không va
+    chạm" cho một cú đâm thật.
+    """
+    cos_yaw, sin_yaw = abs(math.cos(relative_yaw_rad)), abs(math.sin(relative_yaw_rad))
+    return (half[0] * cos_yaw + half[1] * sin_yaw, half[0] * sin_yaw + half[1] * cos_yaw)
+
+
 def _freespace_distance(sample: Sample) -> float:
     """Khoảng cách giữa hai thân xe, xấp xỉ bằng hộp bao trục-song-song.
 
@@ -607,13 +629,32 @@ class TrajectoryRecorder:
             longitudinal = rel.x * forward.x + rel.y * forward.y
             lateral = rel.x * right.x + rel.y * right.y
 
+            # Chiếu hộp bao của adversary lên HAI TRỤC CỦA EGO, có tính hướng
+            # tương đối. Bản cũ cộng thẳng nửa-dài của adv vào trục dọc và
+            # nửa-rộng vào trục ngang, tức ngầm giả định hai xe cùng hướng.
+            #
+            # Với `run_red_light` và `jaywalk` thì actor đi VUÔNG GÓC: bề rộng
+            # của nó mới nằm dọc trục ego, còn chiều dài nằm ngang. Giả định cũ
+            # tính thừa ~2,3 m ở trục dọc và thiếu bấy nhiêu ở trục ngang, nên
+            # hai `gap` không bao giờ cùng âm.
+            #
+            # Hệ quả đo được ngày 03/09 trên 6 biến thể `run_red_light` mà
+            # CollisionTest báo FAILURE: `contact_longitudinal_m` rỗng cả 6, và
+            # `min_distance_m` chạm đáy ở 0,53-1,12 m thay vì 0. Giao diện đọc
+            # đúng trường đó nên hiện "không va chạm" cho một cú đâm thật.
+            #
+            # `wrong_way` không đổi: hướng ngược 180 độ cho |cos| = 1, |sin| = 0,
+            # tức đúng bằng công thức cũ.
+            rel_yaw = math.radians(adv.get_transform().rotation.yaw - transform.rotation.yaw)
+            adv_span_lon, adv_span_lat = oriented_span(adv_half, rel_yaw)
+
             self.samples.append(
                 Sample(
                     t=round(t - t0, 3),
                     longitudinal_m=longitudinal,
                     lateral_m=lateral,
-                    gap_lon_m=abs(longitudinal) - (ego_half[0] + adv_half[0]),
-                    gap_lat_m=abs(lateral) - (ego_half[1] + adv_half[1]),
+                    gap_lon_m=abs(longitudinal) - (ego_half[0] + adv_span_lon),
+                    gap_lat_m=abs(lateral) - (ego_half[1] + adv_span_lat),
                     ego_speed_ms=_speed(ego),
                     adv_speed_ms=adv_speed,
                     adv_lane_offset_m=_lane_offset(carla_map, adv),

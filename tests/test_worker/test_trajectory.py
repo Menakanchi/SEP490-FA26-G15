@@ -8,6 +8,7 @@ những lượt chạy CARLA thật ngày 22/08/2026, không phải số bịa c
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -453,3 +454,25 @@ def test_no_lane_entry_metric_when_the_actor_never_came_in() -> None:
     """Không có gì để nói về thời điểm của một việc chưa xảy ra."""
     metrics = trajectory.summarise([_sample(t, lon=10.0, lat=3.5) for t in (0.0, 1.0)])
     assert "adversary_entry_longitudinal_m" not in metrics
+
+
+@pytest.mark.parametrize(
+    ("deg", "expected"),
+    [(0.0, (2.4, 1.0)), (180.0, (2.4, 1.0)), (90.0, (1.0, 2.4)), (-90.0, (1.0, 2.4))],
+)
+def test_oriented_span_swaps_axes_for_a_perpendicular_actor(deg: float, expected: tuple[float, float]) -> None:
+    """Hộp bao adversary phải chiếu lên trục ego theo hướng tương đối.
+
+    Bản cũ cộng thẳng nửa-dài vào trục dọc, tức ngầm giả định hai xe cùng hướng.
+    Với `run_red_light` và `jaywalk` thì actor đi vuông góc: bề rộng của nó mới
+    nằm dọc trục ego. Giả định cũ tính thừa ~2,3 m ở trục dọc nên hai `gap` không
+    bao giờ cùng âm — đo 03/09 trên 6 biến thể mà CollisionTest báo FAILURE:
+    `contact_longitudinal_m` rỗng cả 6, `min_distance_m` chạm đáy 0,53-1,12 m
+    thay vì 0.
+
+    0 và 180 độ phải cho đúng kết quả cũ, nếu không thì `cut_in`, `sudden_brake`
+    và `wrong_way` đổi số mà không có lý do.
+    """
+    span = trajectory.oriented_span((2.4, 1.0), math.radians(deg))
+
+    assert span == pytest.approx(expected, abs=1e-9)
