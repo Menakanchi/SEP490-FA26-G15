@@ -638,6 +638,22 @@ cho bất cứ ai sau này cắm perception stack vào.
    bằng 1,0 theo định nghĩa, không theo chất lượng. Điều kiện để phép đo có
    nghĩa: vài ô đạt **≥ 4 hàng** approved non-seed (pool > k).
 
+   Cập nhật 03/09: ngưỡng đó **đã vượt ở một ô**. Sau khi duyệt 28 kịch bản đọng
+   ở cổng thư viện, pool xếp hạng lên 22 hàng, và
+   `highway / clear / motorcycle / cut_in` có **6 hàng** — lần đầu có một ô mà
+   `k = 3` thật sự phải chọn, tức cosine có việc để làm và `Recall@3` không còn
+   bằng 1,0 theo định nghĩa.
+
+   Chưa đủ để kết luận về retriever: một ô vẫn là một ô, và ô đông thứ hai mới có
+   2 hàng. Nhưng nó đổi bản chất của hạn chế này — từ "phép đo vô nghĩa ở mọi ô"
+   thành "phép đo có nghĩa ở một ô, cần thêm vài ô nữa để nói được điều gì chung".
+   Bước tiếp theo rẻ nhất là nhắm chiến dịch vào 2-3 ô đã có sẵn 2 hàng, thay vì
+   dàn đều để phủ ô mới.
+
+   Con số 22 này phụ thuộc hàng rào `verification = 'adversarial'` thêm cùng ngày
+   (§9.5): thiếu nó thì pool là 43 hàng, nhưng nửa số đó là kịch bản chạy xong mà
+   không tái hiện được nguy hiểm nào — đông hơn mà không dạy được gì.
+
 8. Trục thời tiết chỉ có **hai** trạng thái vật lý cho bốn nhãn: `clear` và
    `fog` cùng `frictionScaleFactor = 1`, `rain` và `heavy_rain` cùng `0,7`. §9.6
    đo được rằng ma sát đủ để lật nhãn `adversarial`, nên hai cặp trùng nhau đó
