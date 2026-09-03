@@ -21,7 +21,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Clock, Pause, Play, Route } from "lucide-react";
-import type { ExecutionResult, ScenarioSpec } from "@/types";
+import type { ExecutionResult, ScenarioSpec, TrajectoryPoint } from "@/types";
 
 const VIEW_W = 720;
 const VIEW_H = 320;
@@ -186,6 +186,8 @@ function MeasuredReplay({ execution, verification }: { execution: ExecutionResul
         không hề chạy như vậy.
       </Note>
 
+      {metrics.pet_min_s != null && <WorldTrajectoryOverview points={points} frame={frame} />}
+
       <div className="rounded-2xl border border-sky-200/80 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-x-auto">
         <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="w-full min-w-[560px]" role="img"
              aria-label="Đường đi của tác nhân trong hệ quy chiếu ego">
@@ -294,6 +296,78 @@ function MeasuredReplay({ execution, verification }: { execution: ExecutionResul
                     : "Dấu vị trí tác nhân lúc chạm — phân biệt tạt đầu với tông đuôi."
                 } />
       </div>
+    </div>
+  );
+}
+
+/** Tổng quan riêng trong hệ tọa độ thế giới CARLA.
+ *
+ * Khác hình tương đối bên dưới, hệ trục này không quay theo ego nên được phép nối
+ * các frame thành hai polyline thật. Chỉ hiện khi có PET: đó là tín hiệu hai xe
+ * đi qua một điểm cắt, nơi hai đường giúp người xem hiểu hình học nhanh hơn hẳn
+ * một snapshot tương đối. */
+function WorldTrajectoryOverview({ points, frame }: { points: TrajectoryPoint[]; frame: number }) {
+  const world = useMemo(() => {
+    const coordinates = points.flatMap((point) => [point.ego, point.adv]);
+    const xs = coordinates.map((point) => point[0]);
+    const ys = coordinates.map((point) => point[1]);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const spanX = Math.max(maxX - minX, 1);
+    const spanY = Math.max(maxY - minY, 1);
+    const scale = Math.min((VIEW_W - 2 * PAD) / spanX, (VIEW_H - 2 * PAD) / spanY);
+    const usedW = spanX * scale;
+    const usedH = spanY * scale;
+    const offsetX = (VIEW_W - usedW) / 2;
+    const offsetY = (VIEW_H - usedH) / 2;
+    const project = (point: [number, number, number]): [number, number] => [
+      offsetX + (point[0] - minX) * scale,
+      offsetY + (maxY - point[1]) * scale,
+    ];
+    const polyline = (key: "ego" | "adv") =>
+      points.map((point) => project(point[key]).map((value) => value.toFixed(1)).join(",")).join(" ");
+    return { project, egoLine: polyline("ego"), advLine: polyline("adv") };
+  }, [points]);
+
+  const current = points[Math.min(frame, points.length - 1)];
+  const [egoX, egoY] = world.project(current.ego);
+  const [advX, advY] = world.project(current.adv);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <strong className="text-[#0f2d59] dark:text-slate-100">Hai đường đi đo trong CARLA</strong>
+        <div className="flex items-center gap-4 font-semibold">
+          <span className="flex items-center gap-1.5 text-sky-700 dark:text-sky-300">
+            <span className="h-0.5 w-5 bg-sky-600" /> ego
+          </span>
+          <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
+            <span className="h-0.5 w-5 bg-amber-500" /> tác nhân
+          </span>
+        </div>
+      </div>
+      <div className="rounded-2xl border border-sky-200/80 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-x-auto">
+        <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="w-full min-w-[560px]" role="img"
+             aria-label="Hai quỹ đạo đo được trong hệ tọa độ thế giới CARLA">
+          <polyline points={world.egoLine} fill="none" stroke="currentColor"
+                    className="text-sky-600 dark:text-sky-400" strokeWidth={3} />
+          <polyline points={world.advLine} fill="none" stroke="currentColor"
+                    className="text-amber-500" strokeWidth={3} />
+          <circle cx={egoX} cy={egoY} r={6} className="fill-sky-600 dark:fill-sky-400" />
+          <circle cx={advX} cy={advY} r={6} className="fill-amber-500" />
+          <text x={egoX + 9} y={egoY - 8} className="fill-sky-700 dark:fill-sky-300 text-[10px] font-bold">
+            ego
+          </text>
+          <text x={advX + 9} y={advY - 8} className="fill-amber-700 dark:fill-amber-300 text-[10px] font-bold">
+            tác nhân
+          </text>
+        </svg>
+      </div>
+      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+        Hai đường nối tọa độ thế giới đo được; hai chấm di chuyển cùng thanh thời gian bên dưới.
+      </p>
     </div>
   );
 }
