@@ -18,7 +18,7 @@ from __future__ import annotations
 from itertools import combinations
 from typing import Any
 
-from src.models.schemas import DEFAULT_SUPPORT_POLICY, ManeuverType, ODDCell
+from src.models.schemas import DEFAULT_SUPPORT_POLICY, NEAR_MISS_M, ManeuverType, ODDCell
 
 # Ngưỡng dưới đây đều lấy từ số đo trên CARLA ngày 22/08/2026, không phải chọn cho tròn.
 
@@ -37,7 +37,8 @@ chỉ gần chạm vạch". Người đúng: câu mô tả hứa "lấn làn đ�
 Đây là chỗ lệch đầu tiên bộ nhãn người tìm ra, và nó là lý do bộ nhãn tồn tại.
 """
 
-NEAR_MISS_M = 1.0
+# NEAR_MISS_M nhập từ schemas: nhãn kiểm chứng và luật L4/M3 phải dùng ĐÚNG
+# một ngưỡng, nếu không cùng một lượt chạy vừa 'suýt va chạm' vừa không.
 """Khe hở nhỏ hơn ngần này mà không va chạm thì tính là **suýt va chạm**.
 
 Hai xe đi hai làn kề nhau bình thường cách nhau ~1,05 m (đo trên sc_906). Một cú

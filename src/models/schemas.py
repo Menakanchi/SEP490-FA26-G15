@@ -1142,19 +1142,52 @@ chứng minh là hỏng* — chỉ làm vế sau.
 """
 
 
-def verification_from_execution(success: bool, criteria: list[CriterionResult]) -> VerificationLevel:
+NEAR_MISS_M = 1.0
+"""Khe hở dưới ngưỡng này là **suýt va chạm**, tính là đã tái hiện được nguy hiểm.
+
+Một con số, dùng ở cả ba chỗ: nhãn kiểm chứng ở đây, luật L4 và M3 trong
+``src/services/metrics.py``. Để hai bản sao là để chúng lệch nhau.
+"""
+
+
+def verification_from_execution(
+    success: bool,
+    criteria: list[CriterionResult],
+    *,
+    min_distance_m: float | None = None,
+) -> VerificationLevel:
     """``ExecutionResult`` -> mức kiểm chứng. Code thuần, không phán đoán.
 
     ``CollisionTest = FAILURE`` là **tin tốt** (xem :class:`CriterionResult`):
     xe bị test trượt bài kiểm va chạm, tức kịch bản đã dựng được nguy hiểm.
     Đọc ngược dấu ở đây là cả hệ thống đi tối thiểu hoá đúng thứ phải tối đa hoá.
+
+    Nhưng va chạm **không phải** định nghĩa duy nhất của nguy hiểm, và đọc mỗi
+    ``CollisionTest`` là chỗ hàm này từng sai. ``lane_drift`` và ``jaywalk`` cố ý
+    dựng một lần đi sát nhau chứ không dựng cú đâm, nên chúng **không bao giờ**
+    ra ``CollisionTest = FAILURE``. Đo ngày 03/09: 0/19 ``lane_drift`` và 0/5
+    ``jaywalk`` từng được gắn ``ADVERSARIAL``, kể cả bản khe hở 0,375 m. Hệ quả:
+    cổng few-shot lọc theo nhãn này cấm cửa hai maneuver đó vĩnh viễn.
+
+    Nên nhãn xét **cả hai** đường tới nguy hiểm — đâm thật, hoặc trượt nhau dưới
+    ``NEAR_MISS_M``. Đúng hai thứ mà M3 đang đếm.
+
+    Cố ý **không** dùng ``intent_verdict`` (L4) làm tiêu chí ở đây, dù nghe hợp
+    lý hơn. L4 trả lời *"có làm đúng điều câu tiếng Việt mô tả không"*, không trả
+    lời *"có nguy hiểm không"*: ``sc_107`` khe hở 6,46 m vẫn có L4 = True vì xe
+    tải đã thật sự vượt đèn đỏ. Lấy L4 làm cổng là nhận lại đúng nhóm kịch bản
+    chạy trót lọt mà vô hại.
+
+    ``min_distance_m = None`` (không có số quỹ đạo) thì rơi về đúng hành vi cũ:
+    chỉ đọc ``CollisionTest``.
     """
     if not success:
         return VerificationLevel.EXECUTION_FAILED
     had_collision = any(
         c.name.lower().startswith("collision") and c.result is CriterionStatus.FAILURE for c in criteria
     )
-    return VerificationLevel.ADVERSARIAL if had_collision else VerificationLevel.RAN_NO_HAZARD
+    near_miss = min_distance_m is not None and min_distance_m < NEAR_MISS_M
+    return VerificationLevel.ADVERSARIAL if (had_collision or near_miss) else VerificationLevel.RAN_NO_HAZARD
 
 
 class ScenarioJob(ForgeModel):
@@ -1209,6 +1242,15 @@ REVIEW_TRANSITIONS: dict[tuple[ScenarioStatus, ReviewGate, bool], ScenarioStatus
     (ScenarioStatus.PENDING_SIM_REVIEW, ReviewGate.BEFORE_SIM, False): ScenarioStatus.REJECTED,
     (ScenarioStatus.PENDING_LIBRARY_REVIEW, ReviewGate.BEFORE_LIBRARY, True): ScenarioStatus.APPROVED_LIBRARY,
     (ScenarioStatus.PENDING_LIBRARY_REVIEW, ReviewGate.BEFORE_LIBRARY, False): ScenarioStatus.REJECTED,
+    # Rút khỏi thư viện. Thêm 03/09 vì trước đó `approved_library` là trạng thái
+    # MỘT CHIỀU: gỡ một kịch bản đã duyệt phải sửa DB tay, tức đi vòng qua chính
+    # cổng người duyệt mà bảng này tồn tại để bảo vệ.
+    #
+    # Ca thật buộc phải có nó: `sc_116_t1_t1` được duyệt vào thư viện khi số đo
+    # còn báo va chạm, rồi bản vá hình học 03/09 cho thấy đó là dương tính giả —
+    # nó chưa từng va chạm. Không có đường rút thì kịch bản đứng sai chỗ vĩnh
+    # viễn. Rút vẫn phải qua người và vẫn phải ghi lý do, như mọi quyết định khác.
+    (ScenarioStatus.APPROVED_LIBRARY, ReviewGate.BEFORE_LIBRARY, False): ScenarioStatus.REJECTED,
 }
 """Hai cổng không thể hoán đổi: BEFORE_SIM trước, BEFORE_LIBRARY sau CARLA.
 

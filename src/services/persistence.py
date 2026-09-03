@@ -458,6 +458,15 @@ class ScenarioRepository:
                     if not embedding_blob:
                         raise PersistenceError("BEFORE_LIBRARY approval requires a non-empty embedding")
                     values.update(embedding=embedding_blob, embedding_model=embedding_model)
+                elif target is ScenarioStatus.REJECTED:
+                    # Bất biến: chỉ hàng `approved_library` được mang vector.
+                    #
+                    # `embedding IS NOT NULL` trong cổng của retriever là hàng rào
+                    # THỨ HAI, độc lập với mệnh đề `status` — để một kịch bản chưa
+                    # kiểm chứng vẫn không lọt ra dù ai đó lỡ xoá mất mệnh đề kia.
+                    # Rút khỏi thư viện mà để vector lại là làm hai hàng rào dựa
+                    # vào cùng một điều kiện, tức mất một tầng phòng thủ.
+                    values.update(embedding=None, embedding_model=None)
 
                 changed = connection.execute(
                     update(scenarios)
