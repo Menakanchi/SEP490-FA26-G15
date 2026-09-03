@@ -249,9 +249,21 @@ def test_lane_drift_uses_partial_offset_not_full_lane_change() -> None:
 
 
 def test_run_red_light_keeps_actor_moving_and_sets_its_signal_red() -> None:
+    """Lệnh đèn phải nằm trong Story, KHÔNG phải Init.
+
+    Bảng hỗ trợ của ScenarioRunner ghi `TrafficSignalStateAction` là ❌ ở cột
+    *Init support*, ✅ ở cột *Story support*, và code khớp với bảng:
+    `_create_init_behavior` chỉ duyệt khối `Private`, `_initialize_parameters`
+    chỉ xử lý `ParameterAction`. Đặt ở Init thì đèn KHÔNG BAO GIỜ được set —
+    cả 12 ô run_red_light chạy với chu kỳ đèn tự nhiên của CARLA, và xem thật
+    ngày 02/09/2026 thì thấy chính ego vượt đèn đỏ.
+    """
     root = ET.fromstring(convert_spec_to_xosc(make_spec(ManeuverType.RUN_RED_LIGHT)))
     speed = root.find(".//Event[@name='event_0_run_red_light']//AbsoluteTargetSpeed")
-    signals = root.findall(".//Init/Actions/GlobalAction/InfrastructureAction//TrafficSignalStateAction")
+    assert root.findall(".//Init/Actions/GlobalAction/InfrastructureAction") == [], (
+        "InfrastructureAction trong Init bị ScenarioRunner bỏ qua"
+    )
+    signals = root.findall(".//Story//Event[@name='event_traffic_signals']//TrafficSignalStateAction")
     ego_position = root.find(".//Init//Private[@entityRef='hero']//WorldPosition")
     actor_position = root.find(".//Init//Private[@entityRef='other']//WorldPosition")
     assert speed is not None and float(speed.get("value")) > 0
@@ -542,3 +554,23 @@ def test_jaywalk_is_refused_as_out_of_scope() -> None:
         convert_spec_to_xosc(make_spec(ManeuverType.JAYWALK))
     assert excinfo.value.code is IssueCode.TEMPLATE_CATALOG_INCONSISTENT
     assert "jaywalk" in excinfo.value.message
+
+
+def test_title_with_a_slash_does_not_become_a_directory_path() -> None:
+    """ScenarioRunner lấy `FileHeader/@description` làm TÊN FILE báo cáo JSON.
+
+    Một dấu `/` biến nó thành đường dẫn thư mục con không tồn tại và bước ghi file
+    chết bằng FileNotFoundError — sau khi mô phỏng đã chạy xong. Triệu chứng dễ
+    đọc nhầm: kịch bản chạy trọn, cả bốn criteria đều có kết quả, nhưng
+    `success=false` vì worker không đọc được file. Một lượt GPU tốt bị ghi thành
+    lượt hỏng và kéo L3 xuống.
+
+    `km/h` là cụm hoàn toàn tự nhiên trong câu tiếng Việt mô tả tốc độ, mà title
+    là chữ tự do do LLM sinh. Đo ngày 02/09/2026 trên `sc_107_t1`.
+    """
+    spec = make_spec(ManeuverType.CUT_IN).model_copy(update={"title": "Xe máy 80 km/h tạt đầu"})
+
+    xml = convert_spec_to_xosc(spec)
+
+    assert "km/h" not in xml
+    assert "km-h" in xml

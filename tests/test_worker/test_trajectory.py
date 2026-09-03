@@ -8,6 +8,7 @@ những lượt chạy CARLA thật ngày 22/08/2026, không phải số bịa c
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -35,6 +36,11 @@ def _sample(t: float, *, lon: float, lat: float, lane_offset: float = 0.0, ego_v
         lateral_m=lat,
         gap_lon_m=abs(lon) - (2.4 + 2.6),
         gap_lat_m=abs(lat) - (1.08 + 1.31),
+        # Helper này dựng hai xe CÙNG HƯỚNG, nên hai trục của adversary trùng
+        # hai trục của ego. Bỏ trống là để mặc định 0,0 và mọi phép kiểm va chạm
+        # bốn trục sẽ không bao giờ bắn.
+        gap_adv_lon_m=abs(lon) - (2.4 + 2.6),
+        gap_adv_lat_m=abs(lat) - (1.08 + 1.31),
         ego_speed_ms=ego_v,
         adv_speed_ms=16.5,
         adv_lane_offset_m=lane_offset,
@@ -453,3 +459,83 @@ def test_no_lane_entry_metric_when_the_actor_never_came_in() -> None:
     """Không có gì để nói về thời điểm của một việc chưa xảy ra."""
     metrics = trajectory.summarise([_sample(t, lon=10.0, lat=3.5) for t in (0.0, 1.0)])
     assert "adversary_entry_longitudinal_m" not in metrics
+
+
+@pytest.mark.parametrize(
+    ("deg", "expected"),
+    [(0.0, (2.4, 1.0)), (180.0, (2.4, 1.0)), (90.0, (1.0, 2.4)), (-90.0, (1.0, 2.4))],
+)
+def test_oriented_span_swaps_axes_for_a_perpendicular_actor(deg: float, expected: tuple[float, float]) -> None:
+    """Hộp bao adversary phải chiếu lên trục ego theo hướng tương đối.
+
+    Bản cũ cộng thẳng nửa-dài vào trục dọc, tức ngầm giả định hai xe cùng hướng.
+    Với `run_red_light` và `jaywalk` thì actor đi vuông góc: bề rộng của nó mới
+    nằm dọc trục ego. Giả định cũ tính thừa ~2,3 m ở trục dọc nên hai `gap` không
+    bao giờ cùng âm — đo 03/09 trên 6 biến thể mà CollisionTest báo FAILURE:
+    `contact_longitudinal_m` rỗng cả 6, `min_distance_m` chạm đáy 0,53-1,12 m
+    thay vì 0.
+
+    0 và 180 độ phải cho đúng kết quả cũ, nếu không thì `cut_in`, `sudden_brake`
+    và `wrong_way` đổi số mà không có lý do.
+    """
+    span = trajectory.oriented_span((2.4, 1.0), math.radians(deg))
+
+    assert span == pytest.approx(expected, abs=1e-9)
+
+
+@pytest.mark.parametrize("deg", [0.0, 180.0, -180.0])
+def test_sat_agrees_with_the_old_two_axis_gaps_when_headings_align(deg: float) -> None:
+    """Cùng hướng thì hai hệ trục trùng nhau, nên bốn khoảng tách chỉ còn hai giá trị.
+
+    Đây là chốt giữ cho `cut_in`, `sudden_brake` và `wrong_way` không đổi số khi
+    thêm hai trục của adversary.
+    """
+    lon_ego, lat_ego, lon_adv, lat_adv = trajectory.sat_separations(
+        ego_half=(2.4, 1.0), adv_half=(2.2, 0.9), longitudinal=6.0, lateral=1.5, relative_yaw_rad=math.radians(deg)
+    )
+
+    assert lon_ego == pytest.approx(6.0 - (2.4 + 2.2))
+    assert lat_ego == pytest.approx(1.5 - (1.0 + 0.9))
+    assert lon_adv == pytest.approx(lon_ego)
+    assert lat_adv == pytest.approx(lat_ego)
+
+
+def test_sat_finds_a_separating_axis_that_the_ego_axes_alone_miss() -> None:
+    """Ca dương tính giả: hai trục của ego đều âm nhưng hai xe không chạm nhau.
+
+    Đo thật trên `sc_116_t1_t1` ngày 03/09 — bảng số ghi `contact_time_s = 5,321`
+    và `min_distance_m = 0` trong khi `CollisionTest` của CARLA báo SUCCESS. Gốc
+    rễ: `oriented_span` thay hộp nghiêng bằng hộp thẳng-trục bao ngoài nó, mà hộp
+    bao ngoài to hơn hộp thật, lệch nhiều nhất ở 45 độ.
+    """
+    ego_half, adv_half = (2.4, 1.0), (2.4, 1.0)
+    # Ở 45 độ hộp bao ngoài của mỗi xe là 2,404 m mỗi chiều. Chọn lon/lat nằm
+    # TRONG hộp bao ngoài đó (nên hai trục ego đều âm) mà tổng lon+lat vẫn đủ lớn
+    # để trục dọc của adversary tách được.
+    seps = trajectory.sat_separations(
+        ego_half, adv_half, longitudinal=4.5, lateral=2.8, relative_yaw_rad=math.radians(45.0)
+    )
+
+    # Hai trục của ego nói "chồng nhau"…
+    assert seps[0] < 0
+    assert seps[1] < 0
+    # …nhưng có trục tách, nên hai xe thực ra không chạm.
+    assert max(seps) > 0
+    assert not all(s < 0 for s in seps)
+
+
+def test_a_real_overlap_still_reads_as_contact_on_all_four_axes() -> None:
+    """Thêm trục không được làm phép kiểm bỏ sót va chạm thật: hai tâm gần trùng."""
+    seps = trajectory.sat_separations(
+        (2.4, 1.0), (2.4, 1.0), longitudinal=0.3, lateral=0.2, relative_yaw_rad=math.radians(90.0)
+    )
+
+    assert all(s < 0 for s in seps)
+
+
+def test_freespace_distance_prefers_the_axis_pair_that_separates_better() -> None:
+    """Mỗi cặp trục là một chặn dưới; cặp tách rõ hơn là cặp đúng hơn."""
+    sample = _sample(0.0, lon=3.2, lat=3.2)
+    sample = replace(sample, gap_lon_m=-0.2, gap_lat_m=-0.2, gap_adv_lon_m=0.9, gap_adv_lat_m=0.4)
+
+    assert trajectory._freespace_distance(sample) == pytest.approx(math.hypot(0.9, 0.4))

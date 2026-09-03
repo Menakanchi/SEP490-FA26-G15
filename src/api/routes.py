@@ -1435,7 +1435,14 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
 
     db.update_job_result(job_id, new_status, body.model_dump(mode="json"))
 
-    level = verification_from_execution(body.success, body.criteria_results)
+    # Khe hở nhỏ nhất quyết định nhãn cùng với CollisionTest: `lane_drift` và
+    # `jaywalk` cố ý không dựng cú đâm, nên thiếu số này chúng vĩnh viễn không
+    # bao giờ được gắn ADVERSARIAL. Xem `verification_from_execution`.
+    level = verification_from_execution(
+        body.success,
+        body.criteria_results,
+        min_distance_m=(body.metrics or {}).get("min_distance_m"),
+    )
     if not db.complete_simulation(body.scenario_id, level):
         raise HTTPException(status_code=409, detail="Trạng thái kịch bản đã đổi trong lúc nhận kết quả")
     logger.info("Kịch bản %s -> %s, chờ BEFORE_LIBRARY", body.scenario_id, level.value)
