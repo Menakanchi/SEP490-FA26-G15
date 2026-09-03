@@ -30,6 +30,7 @@ def temp_sqlite_db(tmp_path):
             weather TEXT,
             actor_type TEXT,
             maneuver TEXT,
+            verification TEXT NOT NULL DEFAULT 'adversarial',
             embedding BLOB,
             embedding_model TEXT,
             created_by TEXT NOT NULL DEFAULT 'unknown',
@@ -115,6 +116,28 @@ def temp_sqlite_db(tmp_path):
         """
         INSERT INTO scenarios
             (scenario_id, status, title, description_vi, road_type, weather,
+             actor_type, maneuver, embedding, created_by, verification)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "sc_007",
+            "approved_library",
+            "Đã duyệt nhưng chạy ra vô hại",
+            "Xe máy tạt đầu ô tô",
+            "urban_straight",
+            "clear",
+            "motorcycle",
+            "cut_in",
+            vec1.tobytes(),
+            "creator",
+            "ran_no_hazard",
+        ),
+    )
+
+    cursor.execute(
+        """
+        INSERT INTO scenarios
+            (scenario_id, status, title, description_vi, road_type, weather,
              actor_type, maneuver, embedding, created_by)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
@@ -188,6 +211,26 @@ def test_sqlite_retriever_status_gate(temp_sqlite_db):
     assert "sc_005" not in returned_ids
     assert "sc_006" not in returned_ids
     assert "sc_seed" not in returned_ids
+    assert "sc_001" in returned_ids
+
+
+def test_status_gate_keeps_out_scenarios_that_ran_without_a_hazard(temp_sqlite_db):
+    """Đã duyệt vào thư viện chưa đủ để làm ví dụ few-shot: phải nguy hiểm thật.
+
+    `sc_007` giống hệt `sc_001` về ODD và mô tả, khác đúng một trường
+    `verification = 'ran_no_hazard'`. Duyệt vào thư viện và dạy model là hai việc
+    khác nhau; trước 03/09 chúng dùng chung một điều kiện.
+
+    Lô `run_red_light` ngày 03/09 làm lộ chỗ này: 14 kịch bản chạy xong mà vô hại
+    vẫn đáng giữ làm dữ liệu đối chứng, nhưng đem chúng làm ví dụ thì phần lớn pool
+    sẽ là những lần chọn tốc độ trượt.
+    """
+    retriever = SQLiteRetriever(db_path=temp_sqlite_db)
+
+    results = retriever.retrieve(query_text="Xe máy tạt đầu ô tô", odd_query=None, limit=10)
+    returned_ids = [r["id"] for r in results]
+
+    assert "sc_007" not in returned_ids
     assert "sc_001" in returned_ids
 
 
