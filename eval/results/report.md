@@ -532,58 +532,76 @@ của CARLA thay vì tin phép đo của chính mình.
 L1 không đổi vì đợt này không sinh request mới — chỉ chạy lại và dò biến thể từ
 kịch bản đã có.
 
-### 9.6. Thời tiết có đổi kết quả, và một cặp đối chứng tình cờ
+### 9.6. Thời tiết: mã hoá thì có, tác động thì không đo được
 
-Ngày 03/09/2026. Câu hỏi đặt ra là trục thời tiết trong ODD có ý nghĩa gì không,
-khi dự án **không dùng camera sensor** nào — ego chạy theo lệnh tốc độ, criteria
-và `TrajectoryRecorder` chỉ đọc `get_location()`/`get_velocity()`, và cả
-`BehaviorAgent` cũng là planner đọc ground-truth qua API. Không có vòng điều
-khiển nào đọc tới tầm nhìn.
+Ngày 03/09/2026, **đính chính bản viết cùng ngày sớm hơn.** Bản đầu kết luận ma
+sát mưa đủ để lật nhãn `adversarial`, và giải thích rằng ma sát thấp làm ego tăng
+tốc chậm hơn nên tới nút giao muộn hơn. Kiểm lại bằng số thì **giải thích đó
+sai**, và kết luận không đứng được.
 
-Câu trả lời tách làm hai nửa, và chúng khác nhau.
+#### Đường đi của thời tiết trong hệ
 
-**Sương mù thật sự trung tính.** `_WEATHER_TABLE` cho `fog` và `clear` cùng
-`frictionScaleFactor = 1`. Khác biệt duy nhất là `Fog/@visualRange` (25 so với
-100000), mà không phép đo nào đọc nó. Hai nhãn đó hiện là **cùng một kịch bản vật
-lý** dưới hai cái tên.
+Converter phát ba thứ vào `.xosc`: `Fog/@visualRange`, `Precipitation`, và
+`RoadCondition/@frictionScaleFactor` (0,7 cho mưa, 1 cho còn lại). ScenarioRunner
+*có* thi hành ma sát — `ChangeRoadFriction` spawn một `static.trigger.friction`
+extent 10⁶ m phủ toàn map. Phần này đọc code là chắc chắn.
 
-**Mưa thì không.** Converter phát `RoadCondition frictionScaleFactor="0.7"`, và
-ScenarioRunner *có* thi hành: `ChangeRoadFriction` spawn một
-`static.trigger.friction` với extent 10⁶ m, phủ toàn map. Ma sát 1,0 → 0,7 đổi cả
-gia tốc lẫn quãng đường phanh.
+Hai thứ đầu thì trung tính bằng thiết kế: dự án **không dùng camera sensor** nào
+(`worker/sr_cli.py`), ego chạy theo lệnh tốc độ, criteria và `TrajectoryRecorder`
+chỉ đọc `get_location()`/`get_velocity()`, `BehaviorAgent` là planner đọc
+ground-truth. Không phép đo nào đọc tầm nhìn.
 
-**Cặp đối chứng.** Chiến dịch ODD tình cờ sinh ra `sc_109` và `sc_115` khác nhau
-đúng một biến. Cùng `urban_straight`, cùng `vehicle.tesla.model3` và
-`vehicle.yamaha.yzf`, cùng vị trí, cùng tốc độ; `sc_109` sương mù, `sc_115` mưa.
-Bộ dò biến thể sau đó đưa cả hai qua đúng ba mức tốc độ actor, nên có ba cặp đo
-độc lập:
+#### Cặp đối chứng, và vì sao nó không kết luận được điều đã tưởng
 
-| tốc độ actor | sương mù (μ = 1,00) | mưa (μ = 0,70) |
-|---|---|---|
-| 31,0 km/h | 3,346 m · PET 0,496 s | 3,558 m · PET 0,750 s |
-| 20,4 km/h | 0,082 m · PET 0,014 s | 1,425 m · PET 0,487 s |
-| **21,3 km/h** | **va chạm** (0,000 m) | 0,100 m · PET 0,079 s |
+`sc_109` và `sc_115` khác nhau đúng một biến — sương mù so với mưa. Đã kiểm trong
+`.xosc`: cùng `vehicle.tesla.model3` và `vehicle.yamaha.yzf`, cùng vị trí, cùng
+tốc độ (`specific_type` không chọn blueprint). Bộ dò đưa cả hai qua ba mức tốc độ
+actor.
 
-Ở mức thứ ba, cùng một kịch bản và cùng một tốc độ, đổi mỗi thời tiết thì nhãn
-lật từ `adversarial` sang `ran_no_hazard`. Ma sát thấp làm ego tăng tốc chậm hơn,
-tới nút giao muộn hơn, nên xe máy đã qua rồi.
+| tốc độ actor | sương mù (μ = 1,00) | mưa (μ = 0,70) | chênh |
+|---|---|---|---:|
+| 31,0 km/h | 3,346 m | 3,558 m | 0,21 m |
+| 20,4 km/h | 0,082 m | 1,425 m | 1,34 m |
+| 21,3 km/h | **va chạm** 0,000 m | 0,100 m | — |
 
-PET là cột đáng đọc hơn khe hở, vì khe hở chạm sàn ở 0 khi va chạm. Mưa cho PET
-cao hơn ở **cả ba** mức — hiệu ứng đơn điệu, không phải một lần trùng hợp.
+Ở mức thứ ba nhãn lật từ `adversarial` sang `ran_no_hazard`. Nhưng **động lực học
+của cả hai xe thì giống nhau tới ba chữ số**:
 
-Hiệu ứng **không phải hằng số**: ở tốc độ chưa dò hai bên chỉ lệch 0,21 m, ở tốc
-độ gần tới hạn lệch 1,34 m. Nói cách khác thời tiết chỉ quan trọng khi hệ đã ở gần
-điểm chuyển, mà đó đúng là vùng bộ dò biến thể làm việc.
+| | sương mù | mưa |
+|---|---:|---:|
+| ego, giây 1 | 6,038 m/s | 6,037 m/s |
+| ego, giây 2 | 5,784 | 5,774 |
+| ego, đỉnh | 6,825 | 6,801 |
+| xe máy, đỉnh | 6,444 | 6,444 |
+| xe máy, giây 2 | 3,818 | 3,818 |
 
-**Chỗ đáng sửa.** `rain` và `heavy_rain` đều map về đúng `0,7`. Bốn giá trị thời
-tiết đang thu về **hai** trạng thái vật lý phân biệt được, nên "mưa lớn" hiện
-không khó hơn "mưa" một chút nào. Cho `heavy_rain` một hệ số riêng thì bốn nhãn
-mới ứng với bốn trạng thái thật — chưa làm, vì nó sẽ đổi số L4/M3 của mọi ô mưa
-và cần một đợt chạy lại riêng.
+Ma sát 1,0 so với 0,7 **không dịch được chuyển động của xe nào**. Hai quỹ đạo
+trùng nhau ở đoạn đầu rồi mới tách ra về sau: lượt mưa xe máy dừng hẳn
+(`adversary_min_speed_ms = 0`, giảm tốc 6,49 m/s), lượt sương mù nó chỉ chậm còn
+2,71. Thời điểm qua nút giao lệch **0,125 s** — và 0,125 s đó là toàn bộ khác
+biệt giữa va chạm và không.
 
-Kết luận cho trục ODD: giữ. Không phải vì sương mù có tác dụng — nó không có —
-mà vì mưa có, vì M2 tính trên bốn trục, và vì thời tiết vẫn được ghi vào `.xosc`
-cho bất cứ ai sau này cắm perception stack vào.
+Ba mức chênh cũng không theo quy luật nào của ma sát: 0,21 m, rồi 1,34 m, rồi cỡ
+0,1 m.
+
+#### Kết luận đúng: gần điểm tới hạn thì hệ rất nhạy
+
+Với một cặp cho mỗi mức tốc độ, và quỹ đạo đầu trùng nhau, **không tách được "do
+mưa" khỏi "do mô phỏng không tất định"**. Điều đo được là chuyện khác và quan
+trọng hơn: ở sát điểm tới hạn, một khác biệt cỡ **một phần mười giây lật hẳn
+nhãn**.
+
+Hệ quả cho cách xếp hạng biến thể: bộ dò hiện chọn bản có `min_distance_m` nhỏ
+nhất, tức đang ưu tiên đúng loại ca mong manh nhất — ca 0,1 m có thể ra va chạm
+lần này và không va chạm lần sau. Thư viện nên ưu tiên ca **va chạm dứt khoát**
+hơn ca sát nút. Chưa sửa; ghi vào §10.
+
+Về trục ODD: giữ, nhưng không vì thời tiết đã chứng minh có tác dụng — nó chưa.
+Giữ vì M2 tính trên bốn trục, vì `frictionScaleFactor` vẫn được ghi đúng vào
+`.xosc` cho bất cứ ai sau này cắm perception stack hoặc mô hình động lực học có
+xét lốp, và vì `clear`/`fog` hiện dùng chung ma sát 1 nên bốn nhãn mới ứng với
+**hai** trạng thái phân biệt được — đó là chỗ cần sửa trước khi đo lại tác động
+của thời tiết cho tử tế.
 
 ## 10. Giới hạn và việc tiếp theo
 
@@ -656,12 +674,17 @@ cho bất cứ ai sau này cắm perception stack vào.
 
 8. Trục thời tiết chỉ có **hai** trạng thái vật lý cho bốn nhãn: `clear` và
    `fog` cùng `frictionScaleFactor = 1`, `rain` và `heavy_rain` cùng `0,7`. §9.6
-   đo được rằng ma sát đủ để lật nhãn `adversarial`, nên hai cặp trùng nhau đó
-   đang làm mất độ phân giải thật của trục. Cho `heavy_rain` một hệ số riêng là
-   sửa đúng chỗ, nhưng nó đổi số L4/M3 của mọi ô mưa nên cần một đợt chạy lại
-   riêng. Sương mù thì đúng là trung tính và sẽ vẫn trung tính cho tới khi có
-   perception stack.
-9. Seed data: 6/10 hàng nằm **ngoài phạm vi converter có chủ đích** (ADR-016 mới
+   thử đo tác động của ma sát và **không đo được**: trên cặp đối chứng duy nhất,
+   động lực học cả hai xe giống nhau tới ba chữ số. Cho `heavy_rain` một hệ số
+   riêng là điều kiện cần để phép đo có nghĩa, nhưng nó đổi số L4/M3 của mọi ô
+   mưa nên cần một đợt chạy lại riêng. Sương mù thì trung tính bằng thiết kế và
+   sẽ vẫn trung tính cho tới khi có perception stack.
+9. Bộ dò xếp hạng biến thể theo `min_distance_m` nhỏ nhất, tức ưu tiên đúng loại
+   ca **mong manh nhất**. §9.6 cho thấy ở sát điểm tới hạn một khác biệt cỡ 0,1 s
+   lật hẳn nhãn va chạm, nên một biến thể 0,1 m không tái lập chắc chắn. Tiêu chí
+   nên tính thêm độ bền: ca va chạm dứt khoát đáng giữ hơn ca sát nút, hoặc phải
+   chạy lại vài lượt trước khi kết luận.
+10. Seed data: 6/10 hàng nằm **ngoài phạm vi converter có chủ đích** (ADR-016 mới
    có anchor cao tốc và một giao cắt đô thị) — chúng vẫn hữu ích cho retrieval
    theo văn bản và nhãn ODD. Nhưng kiểm ngày 29/08 thì **8/10 không biên dịch
    được**, tức có hai hàng nằm *trong* phạm vi mà vẫn hỏng: `sc_908` đặt actor ở
