@@ -129,7 +129,20 @@ def _default_db_path() -> Path:
 # `embedding` chỉ được ghi trong transaction duyệt BEFORE_LIBRARY, nên kịch bản
 # chưa duyệt không có vector — dù ai đó về sau lỡ xoá mất mệnh đề `status` thì
 # nó vẫn không lọt ra.
-_STATUS_GATE = "status = 'approved_library' AND embedding IS NOT NULL AND created_by != 'seed-data'"
+#
+# `verification = 'adversarial'` là hàng rào thứ ba, thêm 03/09. Duyệt vào thư
+# viện và làm ví dụ few-shot là hai việc khác nhau, mà trước đây chúng dùng chung
+# một điều kiện. Lô `run_red_light` ngày 03/09 làm lộ chỗ này: 14 kịch bản chạy
+# xong mà vô hại vẫn đáng giữ làm dữ liệu đối chứng, nhưng đem chúng dạy model thì
+# phần lớn ví dụ trong pool sẽ là những lần chọn tốc độ TRƯỢT. Ví dụ few-shot chỉ
+# nên là kịch bản đã chứng minh được là nguy hiểm thật.
+#
+# Đo 03/09 sau khi duyệt lô đó: pool còn **22 hàng** thay vì 43 nếu thiếu mệnh đề
+# này — tức nửa số ví dụ sẽ là kịch bản không tái hiện được nguy hiểm nào.
+_STATUS_GATE = (
+    "status = 'approved_library' AND verification = 'adversarial' "
+    "AND embedding IS NOT NULL AND created_by != 'seed-data'"
+)
 
 _ROW_COLUMNS = "scenario_id, title, description_vi, road_type, weather, actor_type, maneuver, embedding"
 
