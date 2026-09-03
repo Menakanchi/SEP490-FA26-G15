@@ -30,12 +30,13 @@ const PAD = 28;
 interface Props {
   spec?: ScenarioSpec;
   execution?: ExecutionResult | null;
+  verification?: string;
 }
 
-export default function ScenarioPreview({ spec, execution }: Props) {
+export default function ScenarioPreview({ spec, execution, verification }: Props) {
   const trajectory = execution?.trajectory ?? [];
   return trajectory.length > 1 ? (
-    <MeasuredReplay execution={execution!} />
+    <MeasuredReplay execution={execution!} verification={verification} />
   ) : (
     <DeclaredSummary spec={spec} />
   );
@@ -93,7 +94,7 @@ function DeclaredSummary({ spec }: { spec?: ScenarioSpec }) {
 /* Cổng 2 — bản chạy thật: vẽ lại quỹ đạo đo được                      */
 /* ------------------------------------------------------------------ */
 
-function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
+function MeasuredReplay({ execution, verification }: { execution: ExecutionResult; verification?: string }) {
   // useMemo để danh tính mảng ổn định giữa các lần render: `?? []` dựng mảng mới
   // mỗi lần, làm phép chiếu khung nhìn tính lại vô ích trong lúc kéo thanh thời gian.
   const metrics = execution.metrics ?? {};
@@ -275,15 +276,23 @@ function MeasuredReplay({ execution }: { execution: ExecutionResult }) {
         <Metric icon={<Activity className="w-3.5 h-3.5" />} label="Lệch làn của tác nhân"
                 value={fmt(metrics.adversary_lane_deviation_m, "m")}
                 hint="≈0 = không có hành vi ngang. Đúng cho lane_drift; với run_red_light thì ≈0 mới là đúng, vì xe đi thẳng qua nút giao." />
-        <Metric icon={<Activity className="w-3.5 h-3.5" />} label="Ai va chạm"
+        <Metric icon={<Activity className="w-3.5 h-3.5" />} label="Kết quả tiếp cận"
                 value={
                   metrics.contact_longitudinal_m == null
-                    ? "không va chạm"
+                    ? verification === "adversarial"
+                      ? `suýt va chạm · ${fmt(metrics.min_distance_m, "m")}`
+                      : "không va chạm · ngoài ngưỡng"
                     : metrics.contact_longitudinal_m < 0
                       ? "tác nhân tông đuôi ego"
                       : "ego đâm vào tác nhân"
                 }
-                hint="Dấu vị trí tác nhân lúc chạm — phân biệt tạt đầu với tông đuôi." />
+                hint={
+                  metrics.contact_longitudinal_m == null
+                    ? verification === "adversarial"
+                      ? "Không chạm, nhưng khe hở dưới ngưỡng 1 m nên vẫn là một tình huống nguy hiểm."
+                      : "Không chạm và khe hở không nằm trong ngưỡng suýt va chạm."
+                    : "Dấu vị trí tác nhân lúc chạm — phân biệt tạt đầu với tông đuôi."
+                } />
       </div>
     </div>
   );

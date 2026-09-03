@@ -52,11 +52,24 @@ function LabelContent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    getLabelQueue(labeller)
-      .then((r) => setItems(r.items))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setLoading(true);
+      getLabelQueue(labeller)
+        .then((r) => {
+          if (!cancelled) setItems(r.items);
+        })
+        .catch((e: unknown) => {
+          if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [labeller]);
 
   const current = items[index];
@@ -379,4 +392,3 @@ function Shell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-

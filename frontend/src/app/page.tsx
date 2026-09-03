@@ -12,7 +12,6 @@ import {
   Clock,
   ToggleLeft,
   ToggleRight,
-  Sparkles,
   AlertTriangle,
 
   Info,

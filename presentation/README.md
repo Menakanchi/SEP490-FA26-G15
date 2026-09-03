@@ -2,53 +2,46 @@
 
 ## Files
 
-- `pitch_deck.pptx` — bản có thể chỉnh sửa, gồm 14 slide
-- `pitch_deck.pdf` — bản PDF để nộp link
-- Video demo được nộp qua URL riêng theo yêu cầu của Demo Day.
+- `pitch_deck.pptx` — bản chỉnh sửa, 8 slide.
+- `pitch_deck.pdf` — bản PDF dự phòng khi PowerPoint lỗi font/animation.
+- `DEMO_RUNBOOK.md` — lời thoại và thao tác live theo quỹ 10 phút.
 
-Các câu giải thích dài nằm trong **speaker notes** của PPTX; slide chỉ giữ số,
-sơ đồ và kết luận chính.
+Các câu giải thích dài nằm trong **speaker notes** của PPTX; slide chỉ giữ bằng
+chứng, sơ đồ và kết luận chính.
 
-## Cấu trúc 14 slide
+## Cấu trúc 8 slide
 
-| # | Slide | Vai trò theo template Demo Day |
+| # | Slide | Vai trò |
 |---|---|---|
-| 1 | Scenario Forge — title + 4 con số chốt | Title |
-| 2 | Xe tự lái không hỏng ở đường thẳng | Problem |
-| 3 | Vào một câu, ra một file chạy được | Solution |
-| 4 | Sáu tình huống đang sinh được | Demo |
-| 5 | Bên trong: 7 node, LLM chỉ làm 3 | Architecture |
-| 6 | Không có gì tự vào thư viện (hai cổng duyệt) | Architecture |
-| 7 | Kiến trúc & tech stack | Tech Stack |
-| 8 | Từ một kịch bản đến một chiến dịch đánh giá | **Yêu cầu nâng cao** |
-| 9 | M1 — nó chạy được tới đâu (L1–L4) | Traction |
-| 10 | M2 — độ phủ ODD (ma trận 72 ô) | Traction |
-| 11 | M3 — kích hoạt nguy hiểm + đối chiếu nhãn người | Traction |
-| 12 | Cost/request và p50/p95 latency | Traction |
-| 13 | A/B model LLM và quyết định giữ nguyên | Traction |
-| 14 | Làm gì tiếp | Ask |
+| 1 | Một câu tiếng Việt → một `.xosc` chạy được | Lời hứa sản phẩm |
+| 2 | Xe tự lái hỏng ở tình huống hiếm | Vấn đề |
+| 3 | Từ câu vào tới artifact cụ thể | Giải pháp |
+| 4 | Sáu maneuver trong phạm vi | Dẫn vào demo |
+| 5 | Hai cổng người duyệt + CARLA thật | USP quản trị |
+| 6 | Controller thoát được thì dò bản khó hơn | USP closed-loop |
+| 7 | M1/M2/M3 và bằng chứng vật lý | Kết quả |
+| 8 | Cắm controller của doanh nghiệp | Hướng tiếp theo |
 
-Số liệu M1/M2/M3 lấy trực tiếp từ database qua `metrics.build_report()`
-(snapshot **29/08/2026**); phần cost/latency và A/B model vẫn theo
-[`eval/results/report.md`](../eval/results/report.md) (24/08/2026). Đổi số thì
-đổi ở cả hai chỗ.
+Quỹ thời gian: khoảng 3 phút slide, 4 phút demo, 2 phút kết quả/USP và 1 phút
+dự phòng chuyển màn hình hoặc câu hỏi ngắt quãng. Không trình bày kiến trúc hay
+tech stack nếu BGK không hỏi.
 
-Slide 10 vẽ **hai lớp** có chủ đích: ô nhạt = đã có kịch bản sinh + validate
-(72/72), ô đậm = đã có lượt CARLA thật (13/72). `metrics.coverage()` tính một ô
-là đã phủ ngay khi có kịch bản, không đợi chạy — gộp một màu là mời người xem
-hiểu nhầm "phủ 100%" thành "đã kiểm chứng 100%".
+Số liệu M1/M2/M3 lấy trực tiếp từ database qua `/api/v1/metrics/quality`
+(snapshot **03/09/2026**). Cost/latency lấy từ
+[`eval/results/report.md`](../eval/results/report.md) (24/08/2026).
+
+Coverage chính thức là **72/72 ô trong phạm vi converter**. Database còn ba ô
+lịch sử ngoài phạm vi, nên có 75 ô từng chạy CARLA; không viết `75/75` vì 75
+không phải mẫu số của support policy.
 
 ## Dựng lại file
 
 ```bash
 cd presentation
-uv run --with python-pptx python build_deck.py     # -> pitch_deck.pptx
+uv run --with python-pptx python build_deck.py
 soffice --headless --convert-to pdf --outdir . pitch_deck.pptx
 ```
 
-## Video Demo Checklist
-
-- [ ] Giới thiệu problem (< 30 giây)
-- [ ] Demo live feature chính (2-3 phút)
-- [ ] Hiển thị kết quả AI (1 phút)
-- [ ] Tóm tắt impact (< 30 giây)
+Sau khi dựng, mở cả PPTX và PDF để kiểm tra xuống dòng. Trước buổi nói, mở sẵn
+các URL trong `DEMO_RUNBOOK.md`; không phụ thuộc vào một lần gọi LLM hoặc một
+lượt CARLA mới để hoàn tất câu chuyện chính.

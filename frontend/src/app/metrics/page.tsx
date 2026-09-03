@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, BarChart3, Grid3x3, ShieldAlert, Loader2 } from "lucide-react";
+import { BarChart3, Grid3x3, ShieldAlert, Loader2 } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/context/AuthContext";

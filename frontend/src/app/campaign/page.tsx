@@ -115,7 +115,7 @@ function CampaignContent() {
   }, []);
 
   useEffect(() => {
-    refresh().catch(() => undefined);
+    queueMicrotask(() => refresh().catch(() => undefined));
   }, [refresh]);
 
   useEffect(() => {
