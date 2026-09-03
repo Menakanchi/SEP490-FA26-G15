@@ -127,10 +127,10 @@ hơn. Vòng lặp không tự chạy để không đi vòng qua HITL.”
 
 Không đọc toàn bộ bảng. Nói:
 
-“116/118 lượt ScenarioRunner chạy hết. 61 lượt va chạm thật và 19 near-miss dưới
+“119/119 lượt ScenarioRunner chạy hết. 63 lượt va chạm thật và 19 near-miss dưới
 một mét. 72/72 ô trong phạm vi đã có lượt CARLA. Con số em quan tâm nhất là L4:
-74/115 quỹ đạo đúng ý định; 41 ca còn lại cho thấy file chạy được chưa đồng
-nghĩa kịch bản có giá trị.”
+76/118 quỹ đạo đúng ý định; 42 ca được đánh giá chưa khớp cho thấy file chạy
+được chưa đồng nghĩa kịch bản có giá trị.”
 
 Nếu bị hỏi vì sao 64% thấp: “Vì mẫu số gồm cả toàn bộ chiến dịch trước khi sửa
 converter và prompt; em giữ thất bại trong mẫu số thay vì chỉ báo phần đẹp.”
