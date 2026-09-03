@@ -77,6 +77,10 @@ class Sample:
     ego_half_width_m: float = 0.9
     """Nửa bề rộng thân ego. Cần để tính mép thân xe, không chỉ tâm xe."""
     adv_half_width_m: float = 0.9
+    gap_adv_lon_m: float = 0.0
+    """Khoảng tách theo trục DỌC CỦA ADVERSARY. Hai trục còn lại của phép chiếu trục tách."""
+    gap_adv_lat_m: float = 0.0
+    """Khoảng tách theo trục NGANG CỦA ADVERSARY."""
     ego_pose: tuple[float, float, float] = (0.0, 0.0, 0.0)
     """x, y, yaw(độ) của ego trong hệ toạ độ CARLA — để vẽ lại cho người duyệt."""
     adv_pose: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -115,7 +119,11 @@ def summarise(samples: list[Sample]) -> dict[str, float]:
         return {}
 
     contact_index = next(
-        (i for i, s in enumerate(samples) if s.gap_lon_m < 0 and s.gap_lat_m < 0),
+        (
+            i
+            for i, s in enumerate(samples)
+            if s.gap_lon_m < 0 and s.gap_lat_m < 0 and s.gap_adv_lon_m < 0 and s.gap_adv_lat_m < 0
+        ),
         None,
     )
     contact = samples[contact_index] if contact_index is not None else None
@@ -383,13 +391,58 @@ def oriented_span(half: tuple[float, float], relative_yaw_rad: float) -> tuple[f
     return (half[0] * cos_yaw + half[1] * sin_yaw, half[0] * sin_yaw + half[1] * cos_yaw)
 
 
+def sat_separations(
+    ego_half: tuple[float, float],
+    adv_half: tuple[float, float],
+    longitudinal: float,
+    lateral: float,
+    relative_yaw_rad: float,
+) -> tuple[float, float, float, float]:
+    """Bốn khoảng tách của phép chiếu trục tách 2D giữa hai hộp bao có hướng.
+
+    Trả về ``(dọc_ego, ngang_ego, dọc_adv, ngang_adv)``. Hai hộp chồng nhau khi
+    và chỉ khi **cả bốn** đều âm; chỉ cần một trục dương là có trục tách, tức hai
+    xe không chạm nhau.
+
+    Vì sao cần hai trục sau: ``oriented_span`` thay hộp nghiêng của adversary
+    bằng hộp thẳng-trục bao ngoài nó, mà hộp bao ngoài luôn to hơn hộp thật (lệch
+    nhiều nhất ở 45 độ). Chỉ xét hai trục của ego thì phép kiểm bảo toàn một
+    phía: không bỏ sót va chạm thật, nhưng báo chạm cả khi hai xe chỉ sượt qua ở
+    góc chéo.
+
+    Đo ngày 03/09 trên ``sc_116_t1_t1``: hai trục của ego đều âm ở giây 5,32 nên
+    bảng số ghi ``contact_time_s = 5,321`` và ``min_distance_m = 0``, trong khi
+    ``CollisionTest`` của CARLA báo SUCCESS — không có cú đâm nào. Thêm hai trục
+    của adversary thì tìm được trục tách, và hai nguồn số hết mâu thuẫn.
+    """
+    adv_span_lon, adv_span_lat = oriented_span(adv_half, relative_yaw_rad)
+    ego_span_lon, ego_span_lat = oriented_span(ego_half, relative_yaw_rad)
+    cos_yaw, sin_yaw = math.cos(relative_yaw_rad), math.sin(relative_yaw_rad)
+    # Cùng vector nối tâm, đọc trong hệ trục của adversary.
+    delta_adv_lon = longitudinal * cos_yaw + lateral * sin_yaw
+    delta_adv_lat = -longitudinal * sin_yaw + lateral * cos_yaw
+    return (
+        abs(longitudinal) - (ego_half[0] + adv_span_lon),
+        abs(lateral) - (ego_half[1] + adv_span_lat),
+        abs(delta_adv_lon) - (adv_half[0] + ego_span_lon),
+        abs(delta_adv_lat) - (adv_half[1] + ego_span_lat),
+    )
+
+
 def _freespace_distance(sample: Sample) -> float:
     """Khoảng cách giữa hai thân xe, xấp xỉ bằng hộp bao trục-song-song.
 
     Chồng nhau ở chiều nào thì chiều đó đóng góp 0 — nên hai xe đi song song sát
     nhau cho đúng khe hở ngang, không bị khoảng cách dọc pha loãng.
+
+    Đo trên cả hai cặp trục của phép chiếu trục tách rồi lấy giá trị LỚN HƠN: mỗi
+    cặp là một chặn dưới của khoảng cách thật, nên cặp nào tách rõ hơn thì cặp đó
+    đúng hơn. Khi hai xe cùng hướng (0 hoặc 180 độ) hai hệ trục trùng nhau và hai
+    số bằng nhau, nên ``cut_in``, ``sudden_brake``, ``wrong_way`` giữ nguyên số cũ.
     """
-    return math.hypot(max(sample.gap_lon_m, 0.0), max(sample.gap_lat_m, 0.0))
+    theo_ego = math.hypot(max(sample.gap_lon_m, 0.0), max(sample.gap_lat_m, 0.0))
+    theo_adv = math.hypot(max(sample.gap_adv_lon_m, 0.0), max(sample.gap_adv_lat_m, 0.0))
+    return max(theo_ego, theo_adv)
 
 
 def _min_time_to_collision(samples: list[Sample]) -> float | None:
@@ -646,15 +699,19 @@ class TrajectoryRecorder:
             # `wrong_way` không đổi: hướng ngược 180 độ cho |cos| = 1, |sin| = 0,
             # tức đúng bằng công thức cũ.
             rel_yaw = math.radians(adv.get_transform().rotation.yaw - transform.rotation.yaw)
-            adv_span_lon, adv_span_lat = oriented_span(adv_half, rel_yaw)
+            gap_lon, gap_lat, gap_adv_lon, gap_adv_lat = sat_separations(
+                ego_half, adv_half, longitudinal, lateral, rel_yaw
+            )
 
             self.samples.append(
                 Sample(
                     t=round(t - t0, 3),
                     longitudinal_m=longitudinal,
                     lateral_m=lateral,
-                    gap_lon_m=abs(longitudinal) - (ego_half[0] + adv_span_lon),
-                    gap_lat_m=abs(lateral) - (ego_half[1] + adv_span_lat),
+                    gap_lon_m=gap_lon,
+                    gap_lat_m=gap_lat,
+                    gap_adv_lon_m=gap_adv_lon,
+                    gap_adv_lat_m=gap_adv_lat,
                     ego_speed_ms=_speed(ego),
                     adv_speed_ms=adv_speed,
                     adv_lane_offset_m=_lane_offset(carla_map, adv),
