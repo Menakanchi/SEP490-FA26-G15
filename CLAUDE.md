@@ -1,4 +1,4 @@
-# Ghi chú vận hành khó suy ra cho P-130
+# Ghi chú vận hành khó suy ra cho VSOS
 
 Chỉ giữ ở đây những bẫy đã gặp ngoài thực tế mà đọc code khó biết được. Hướng
 dẫn thông thường nằm trong `README.md` và README của từng thư mục.
