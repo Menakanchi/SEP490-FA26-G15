@@ -1,4 +1,4 @@
-# Kiến trúc — Scenario Forge (RAV-03)
+# Kiến trúc — VSOS
 
 Tài liệu này là Deliverable Architecture duy nhất: chứa sơ đồ, workflow,
 contracts, ranh giới hệ thống và trạng thái triển khai. Lý do từng quyết định nằm
