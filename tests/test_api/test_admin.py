@@ -2,67 +2,43 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_reviewer_registration_and_admin_approval_flow(client):
-    """Test trọn vẹn luồng: Đăng ký Reviewer không mật khẩu -> Admin Approve cấp mật khẩu -> Login thành công."""
-    # 1. Register Reviewer (No password provided)
-    reg_res = await client.post(
-        "/api/v1/auth/register",
+async def test_reviewer_approval_emails_temp_password_but_never_returns_it(client, monkeypatch, caplog):
+    """Mật khẩu tạm chỉ đi tới email chính chủ — không nằm trong JSON, không nằm trong log.
+
+    Đăng ký / đăng nhập đã chuyển sang ``/auth/*`` mới (test_auth.py); luồng
+    duyệt reviewer của Forge cũ còn lại ở ``/admin`` nên vẫn canh chỗ rò này.
+    """
+    emailed: dict = {}
+
+    def _fake_send(to_email, recipient_name, username, temp_password):
+        emailed.update(to=to_email, temp_password=temp_password)
+        return True
+
+    monkeypatch.setattr("src.api.routes.send_reviewer_approval_email", _fake_send)
+
+    created = await client.post(
+        "/api/v1/admin/users",
         json={
             "username": "reviewer_qa",
             "name": "Lê Văn QA",
             "email": "reviewer_qa@vinfast.vn",
             "role": "reviewer",
-            "reason": "Kỹ sư Thẩm định kịch bản VinFast ADAS",
+            "status": "pending_approval",
         },
     )
-    assert reg_res.status_code == 200
-    assert reg_res.json()["status"] == "pending_approval"
+    assert created.status_code == 200
 
-    # 2. Login before approval should fail with HTTP 403 (Pending Approval)
-    login_fail = await client.post(
-        "/api/v1/auth/login",
-        json={"username": "reviewer_qa", "password": "any_password"},
-    )
-    assert login_fail.status_code == 403
-    assert "Chờ duyệt" in login_fail.json()["detail"]
-
-    # 3. Admin approves reviewer request
-    appr_res = await client.post("/api/v1/admin/users/reviewer_qa/approve")
+    with caplog.at_level("INFO"):
+        appr_res = await client.post("/api/v1/admin/users/reviewer_qa/approve")
     assert appr_res.status_code == 200
     user_data = appr_res.json()["user"]
     assert user_data["status"] == "active"
-    temp_pass = user_data["temp_password"]
-    assert temp_pass and temp_pass.startswith("Pass_")
+    assert "temp_password" not in user_data
 
-    # 4. Login after approval with generated temp_password succeeds
-    login_ok = await client.post(
-        "/api/v1/auth/login",
-        json={"username": "reviewer_qa", "password": temp_pass},
-    )
-    assert login_ok.status_code == 200
-    assert login_ok.json()["user"]["username"] == "reviewer_qa"
-    assert login_ok.json()["user"]["role"] == "reviewer"
-
-
-@pytest.mark.asyncio
-async def test_auth_me_restores_requested_user_without_admin_fallback(client):
-    login = await client.post(
-        "/api/v1/auth/login",
-        json={"username": "reviewer", "password": "reviewer123"},
-    )
-    assert login.status_code == 200
-    assert login.json()["user"]["role"] == "reviewer"
-
-    reviewer = await client.get("/api/v1/auth/me", params={"user": "reviewer"})
-    assert reviewer.status_code == 200
-    assert reviewer.json()["username"] == "reviewer"
-    assert reviewer.json()["role"] == "reviewer"
-
-    missing_query = await client.get("/api/v1/auth/me")
-    assert missing_query.status_code == 422
-
-    unknown_user = await client.get("/api/v1/auth/me", params={"user": "does_not_exist"})
-    assert unknown_user.status_code == 404
+    assert emailed["to"] == "reviewer_qa@vinfast.vn"
+    assert emailed["temp_password"].startswith("Pass_")
+    assert emailed["temp_password"] not in appr_res.text
+    assert emailed["temp_password"] not in caplog.text
 
 
 @pytest.mark.asyncio

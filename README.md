@@ -1,5 +1,8 @@
 # Scenario Forge (RAV-03)
 
+> Người mới và AI agent: đọc [`AGENTS.md`](AGENTS.md) trước — bản đồ repo, lệnh chạy/kiểm chứng,
+> luật cứng. Phân hệ VehicSim MVP: [`docs/vehicsim/architecture.md`](docs/vehicsim/architecture.md).
+
 Scenario Forge nhận mô tả tiếng Việt về một tình huống giao thông nguy hiểm và
 sinh file **OpenSCENARIO 1.0 (`.xosc`)** để kỹ sư review, tải về và kiểm chứng
 bằng CARLA ScenarioRunner trước khi đưa vào thư viện.

@@ -7,6 +7,10 @@ trong [`docs/adr/`](docs/adr/README.md).
 > Nguồn sự thật về dữ liệu là `src/models/schemas.py`. Nguồn sự thật về quyết
 > định là ADR. Nếu tài liệu này vênh với hai nguồn đó, tài liệu này sai.
 
+> Tài liệu này mô tả **Scenario Forge**. Phân hệ **VehicSim MVP** (vòng AEB 6 bước,
+> MySQL, Celery) có kiến trúc riêng ở [`docs/vehicsim/architecture.md`](docs/vehicsim/architecture.md);
+> bản đồ chung cho agent và người mới ở [`AGENTS.md`](AGENTS.md).
+
 ## Mục tiêu
 
 Kỹ sư nhập một câu tiếng Việt mô tả tình huống giao thông nguy hiểm. Hệ thống

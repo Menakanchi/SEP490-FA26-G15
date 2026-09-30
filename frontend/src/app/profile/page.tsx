@@ -17,8 +17,9 @@ import {
 import { AuthGate } from "@/components/AuthGate";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/context/AuthContext";
-import { updateUserProfile, changePassword } from "@/services/api";
 import { AvatarCropModal } from "@/components/AvatarCropModal";
+
+const MIN_PASSWORD_LENGTH = 8;
 
 export default function ProfilePage() {
   return (
@@ -30,7 +31,7 @@ export default function ProfilePage() {
 
 function ProfileContent() {
   const router = useRouter();
-  const { user, updateCurrentUser } = useAuth();
+  const { user, updateProfile, changePassword } = useAuth();
 
   // Profile Form State
   const [fullName, setFullName] = useState("");
@@ -92,18 +93,8 @@ function ProfileContent() {
     setProfileSaving(true);
     setToast(null);
     try {
-      const res = await updateUserProfile({
-        username: user.username,
-        full_name: fullName.trim(),
-        avatar_url: avatarUrl,
-      });
-
-      if (res.ok && res.user) {
-        updateCurrentUser(res.user);
-        setToast({ type: "success", msg: "Cập nhật thông tin cá nhân thành công!" });
-      } else {
-        setToast({ type: "error", msg: "Cập nhật thông tin thất bại." });
-      }
+      await updateProfile(fullName, avatarUrl || undefined);
+      setToast({ type: "success", msg: "Cập nhật thông tin cá nhân thành công!" });
     } catch (err) {
       setToast({
         type: "error",
@@ -122,8 +113,8 @@ function ProfileContent() {
       setToast({ type: "error", msg: "Vui lòng nhập mật khẩu hiện tại" });
       return;
     }
-    if (!newPassword || newPassword.length < 6) {
-      setToast({ type: "error", msg: "Mật khẩu mới phải có độ dài ít nhất 6 ký tự" });
+    if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
+      setToast({ type: "error", msg: `Mật khẩu mới phải có độ dài ít nhất ${MIN_PASSWORD_LENGTH} ký tự` });
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -133,20 +124,12 @@ function ProfileContent() {
 
     setPasswordSaving(true);
     try {
-      const res = await changePassword({
-        username: user.username,
-        old_password: oldPassword,
-        new_password: newPassword,
-      });
-
-      if (res.ok) {
-        setToast({ type: "success", msg: res.message_vi || "Đổi mật khẩu thành công!" });
-        setOldPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
-      } else {
-        setToast({ type: "error", msg: "Đổi mật khẩu thất bại." });
-      }
+      // Backend cấp phiên mới; các thiết bị khác đang đăng nhập bị đăng xuất.
+      await changePassword(oldPassword, newPassword);
+      setToast({ type: "success", msg: "Đổi mật khẩu thành công! Các thiết bị khác đã bị đăng xuất." });
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
     } catch (err) {
       setToast({
         type: "error",
@@ -252,7 +235,7 @@ function ProfileContent() {
                   Ảnh đại diện (Avatar)
                 </label>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Tải file ảnh đại diện từ máy tính cá nhân.
+                  Tải file ảnh đại diện từ máy tính cá nhân. Ảnh chỉ lưu trên trình duyệt này.
                 </p>
 
                 <div className="pt-1">
@@ -291,22 +274,10 @@ function ProfileContent() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400">
-                    Tên đăng nhập (Username)
-                  </label>
-                  <input
-                    type="text"
-                    value={user.username}
-                    readOnly
-                    className="w-full px-4 py-2.5 bg-slate-100/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-mono font-bold text-slate-500 cursor-not-allowed"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400">
-                    Email tài khoản
+                    Email đăng nhập
                   </label>
                   <input
                     type="email"
@@ -382,7 +353,7 @@ function ProfileContent() {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Ít nhất 6 ký tự"
+                  placeholder={`Ít nhất ${MIN_PASSWORD_LENGTH} ký tự`}
                   className="w-full px-4 py-2.5 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   required
                 />
@@ -418,7 +389,7 @@ function ProfileContent() {
           <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/30 border border-slate-200/60 dark:border-slate-800/60 text-[11px] text-slate-500 dark:text-slate-400 space-y-1.5">
             <span className="font-bold text-slate-700 dark:text-slate-300 block">Lưu ý bảo mật:</span>
             <p className="leading-relaxed">
-              Mật khẩu mới của bạn sẽ được mã hóa an toàn bằng thuật toán PBKDF2-HMAC-SHA256 trên cơ sở dữ liệu.
+              Mật khẩu được băm bằng PBKDF2-HMAC-SHA256 trước khi lưu. Đổi mật khẩu sẽ đăng xuất mọi thiết bị khác đang dùng tài khoản này.
             </p>
           </div>
         </div>

@@ -5,6 +5,39 @@
    --------------------------------------------------------------------------- */
 
 @theme {
+  /* VehicSim (Figma FE-12/13/14) — dùng cho các trang /vs */
+  --color-vehicsim-bg: #f4f5f7;
+  --color-vehicsim-ink: #111111;
+  --color-vehicsim-muted: #5b6170;
+  --color-vehicsim-faint: #9aa0ac;
+  --color-vehicsim-line: #eceef2;
+  --color-vehicsim-line-strong: #dde0e6;
+  --color-vehicsim-check: #c9cdd5;
+  --color-vehicsim-soft: #f7f8fa;
+  --color-vehicsim-row: #fafafc;
+  --color-vehicsim-avatar: #dce3f5;
+  --color-vehicsim-perception: #7c3aed;
+  --color-vehicsim-perception-bg: #f1eafe;
+  --color-vehicsim-decision: #2563eb;
+  --color-vehicsim-decision-bg: #e8f0fe;
+  --color-vehicsim-control: #ea580c;
+  --color-vehicsim-control-bg: #fdeee3;
+  --color-vehicsim-dynamics: #0d9488;
+  --color-vehicsim-dynamics-bg: #e2f5f3;
+  --color-vehicsim-danger: #e5484d;
+  --color-vehicsim-danger-bg: #fdecec;
+  --color-vehicsim-warn: #b45309;
+  --color-vehicsim-warn-bg: #fef3e2;
+  --color-vehicsim-ok: #16a34a;
+  --color-vehicsim-ok-bg: #e7f6ec;
+  --color-vehicsim-fail-card: #fff7f7;
+  --color-vehicsim-amber: #f59e0b;
+  --color-vehicsim-road: #e9ebef;
+  --color-vehicsim-lane: #d5d9e0;
+  --color-vehicsim-zebra: #e3e6eb;
+  --shadow-vehicsim-card: 0px 4px 16px 0px rgba(18, 20, 26, 0.05);
+  --shadow-vehicsim-soft: 0px 4px 8px rgba(18, 20, 26, 0.05);
+
   /* Brand palette */
   --color-forge-50: #eff6ff;
   --color-forge-100: #dbeafe;

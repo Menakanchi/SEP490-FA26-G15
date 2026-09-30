@@ -3,13 +3,24 @@
 import React, { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
-import { useAuth } from "@/context/AuthContext";
 import { BackgroundProvider, useBackground } from "@/context/BackgroundContext";
 import { BackgroundSettingsModal } from "@/components/BackgroundSettingsModal";
+import { VehicSimShell } from "@/components/VehicSimShell";
+
+/**
+ * Trang VehicSim nằm thẳng trong `app/` (`app/page.tsx`, `app/scenarios`, `app/aeb`,
+ * `app/analysis`, `app/validation`) và dùng khung riêng `VehicSimShell` (sidebar Figma,
+ * kiểm tra đăng nhập) thay cho sidebar của Scenario Forge. Thêm trang VehicSim ở một
+ * thư mục gốc mới thì thêm tiền tố URL vào đây.
+ */
+const VEHICSIM_PREFIXES = ["/scenarios", "/aeb", "/analysis", "/validation"];
+
+function isVehicSimPath(pathname: string): boolean {
+  return pathname === "/" || VEHICSIM_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
 
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { isAuthenticated } = useAuth();
   const { bgImage, bgBlur, overlayOpacity } = useBackground();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -29,12 +40,16 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // Ẩn Sidebar trên các trang độc lập hoặc khi chưa đăng nhập tại trang chủ
+  if (isVehicSimPath(pathname)) {
+    return <VehicSimShell>{children}</VehicSimShell>;
+  }
+
+  // Trang độc lập (không sidebar): landing, đăng nhập, đăng ký, quên mật khẩu.
   const isStandalonePage =
     pathname === "/landing" ||
     pathname === "/login" ||
     pathname === "/register" ||
-    (!isAuthenticated && pathname === "/");
+    pathname === "/forgot-password";
 
   if (isStandalonePage) {
     return (

@@ -30,7 +30,7 @@ export function Header() {
   };
 
   const navItems = [
-    { href: "/", label: "Generator", icon: Zap },
+    { href: "/generator", label: "Generator", icon: Zap },
     { href: "/review", label: "HITL Review", icon: ClipboardCheck },
     { href: "/library", label: "Thư viện", icon: Library },
   ];

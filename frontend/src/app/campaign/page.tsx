@@ -78,7 +78,7 @@ function campaignTime(createdAt: string): string {
 
 export default function CampaignPage() {
   return (
-    <AuthGate>
+    <AuthGate allowedRoles={["creator", "reviewer", "engineer", "admin"]}>
       <CampaignContent />
     </AuthGate>
   );

@@ -8,6 +8,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { useBackground } from "@/context/BackgroundContext";
 import {
   BarChart3,
+  Gauge,
   Zap,
   ClipboardCheck,
   Library,
@@ -45,35 +46,42 @@ const NAV_ITEMS: NavItem[] = [
     label: "Giới thiệu Platform",
     description: "Tổng quan & ODD Platform",
     icon: Compass,
-    allowedRoles: ["creator", "reviewer"],
+    allowedRoles: ["creator", "reviewer", "engineer", "viewer"],
   },
   {
     href: "/",
+    label: "VehicSim (AEB)",
+    description: "Ca lỗi · Hồi quy · Duyệt",
+    icon: Gauge,
+    allowedRoles: ["admin", "creator", "reviewer", "engineer", "viewer"],
+  },
+  {
+    href: "/generator",
     label: "Generator",
     description: "Sinh kịch bản mới",
     icon: Zap,
-    allowedRoles: ["creator", "reviewer"],
+    allowedRoles: ["creator", "reviewer", "engineer"],
   },
   {
     href: "/campaign",
     label: "Chiến dịch ODD",
     description: "Agent sinh lô phủ ma trận",
     icon: Layers,
-    allowedRoles: ["creator", "reviewer"],
+    allowedRoles: ["creator", "reviewer", "engineer"],
   },
   {
     href: "/review",
     label: "HITL Review",
     description: "Duyệt kịch bản 2 cổng",
     icon: ClipboardCheck,
-    allowedRoles: ["reviewer"],
+    allowedRoles: ["reviewer", "engineer"],
   },
   {
     href: "/library",
     label: "Thư viện",
     description: "Kịch bản ODD & Cá nhân",
     icon: Library,
-    allowedRoles: ["creator", "reviewer", "admin"],
+    allowedRoles: ["creator", "reviewer", "engineer", "viewer", "admin"],
   },
   {
     href: "/metrics",
@@ -108,7 +116,7 @@ function SidebarContent({ isCollapsed = false, onToggle }: SidebarProps) {
   };
 
   const filteredNavItems = useMemo(() => {
-    const currentRole: Role = role || user?.role || "creator";
+    const currentRole: Role = role || user?.role || "guest";
     return NAV_ITEMS.filter((item) =>
       item.allowedRoles ? item.allowedRoles.includes(currentRole) : true
     );

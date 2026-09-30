@@ -34,6 +34,11 @@ MODEL_COSTS = {
     "gpt-5.6-luna": {"input": 0.20, "cached_input": 0.02, "output": 1.20},
     "gpt-5.4-mini": {"input": 0.75, "cached_input": 0.075, "output": 4.5},
     "gpt-5.4": {"input": 2.5, "cached_input": 0.25, "output": 15.0},
+    # DeepSeek, kiểm 29/09/2026 tại https://api-docs.deepseek.com/quick_start/pricing.
+    # Giá có giờ cao điểm (01-04 và 06-10 UTC, thứ Hai-Sáu) và thấp điểm = một nửa.
+    # Ghi giá CAO ĐIỂM: số báo cáo là trần trên, không bao giờ thấp hơn hoá đơn thật.
+    "deepseek-flash": {"input": 0.30, "cached_input": 0.006, "output": 1.20},
+    "deepseek-v4-pro": {"input": 1.32, "cached_input": 0.044, "output": 3.96},
 }
 
 # ADR-006. Đi kèm số chiều 1536 mà cột BLOB của ADR-013 đang giả định.
@@ -225,6 +230,19 @@ def _chat_model(
     if max_retries is not None:
         client_options["max_retries"] = max_retries
 
+    if settings.llm_provider == "deepseek":
+        # DeepSeek nói giao thức OpenAI, chỉ khác base_url và key. ``reasoning_effort``
+        # ở đây luôn là "none" (config ép): tắt thinking mode, thứ mặc định BẬT
+        # và chặn tool call bắt buộc mà structured output cần.
+        return ChatOpenAI(
+            model=model_name,
+            api_key=settings.deepseek_api_key,
+            base_url=settings.deepseek_base_url,
+            temperature=settings.llm_temperature,
+            reasoning_effort=settings.llm_reasoning_effort,
+            **client_options,
+        )
+
     return ChatOpenAI(
         model=model_name,
         api_key=settings.openai_api_key,
@@ -236,6 +254,19 @@ def _chat_model(
 
 def get_llm() -> ChatOpenAI:
     return _chat_model(_get_primary_model())
+
+
+def structured_output_kwargs() -> dict[str, Any]:
+    """Tham số ``with_structured_output`` hợp với provider đang chọn.
+
+    OpenAI giữ mặc định của LangChain (structured outputs theo JSON Schema).
+    DeepSeek không có ``response_format: json_schema`` nên phải ép schema qua
+    tool call (``function_calling``) — nếu không mọi lệnh gọi hỏng ngay ở
+    request đầu. Mọi chỗ gọi ``with_structured_output`` phải trải dict này vào.
+    """
+    if get_settings().llm_provider == "deepseek":
+        return {"method": "function_calling"}
+    return {}
 
 
 def get_embeddings() -> OpenAIEmbeddings | None:
@@ -331,7 +362,7 @@ def call_with_escalation(
             # shutdown. Tắt retry nội bộ của OpenAI để MAX_RETRIES ở đây
             # là trần duy nhất, quan sát được.
             runnable = _chat_model(model_to_use, timeout=timeout, max_retries=0).with_structured_output(
-                structured_output_schema, include_raw=True
+                structured_output_schema, include_raw=True, **structured_output_kwargs()
             )
             envelope = runnable.invoke(messages)
 

@@ -50,7 +50,7 @@ from src.models.schemas import (
 )
 from src.services import campaign as campaign_service
 from src.services import db, metrics, tuning
-from src.services.email import send_registration_received_email, send_reviewer_approval_email
+from src.services.email import send_reviewer_approval_email
 from src.services.library.retriever import SQLiteRetriever
 from src.services.llm import collect_provider_metrics, summarize_provider_metrics
 from src.services.near_duplicate import is_near_duplicate
@@ -1451,23 +1451,13 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
 
 
 # ===========================================================================
-# Auth & User Management Endpoints
+# User Management Endpoints (Forge cũ, SQLite)
+#
+# Đăng ký / đăng nhập / /auth/me đã chuyển sang src/api/auth_routes.py (JWT +
+# OTP email trên schema MySQL). Các endpoint giả ở đây — tự tạo tài khoản mật
+# khẩu 123456 khi đăng nhập username lạ, token `token_<uuid>` không ai kiểm,
+# /auth/me?user=<bất kỳ ai> — đã bị gỡ.
 # ===========================================================================
-
-
-class RegisterApiRequest(BaseModel):
-    username: str
-    name: str
-    email: str
-    role: str = "creator"
-    password: str | None = None
-    reason: str | None = None
-
-
-class LoginApiRequest(BaseModel):
-    username: str
-    password: str | None = None
-    role: str | None = None
 
 
 class UserCreateRequest(BaseModel):
@@ -1489,83 +1479,6 @@ class UserUpdateRequest(BaseModel):
     reason: str | None = None
 
 
-@router.post("/auth/register")
-async def register_user_endpoint(body: RegisterApiRequest, background_tasks: BackgroundTasks) -> dict:
-    existing = db.get_user(body.username)
-    if existing:
-        raise HTTPException(status_code=400, detail="Username đã tồn tại trên hệ thống")
-
-    status = "pending_approval" if body.role == "reviewer" else "active"
-    user = db.create_user(
-        username=body.username,
-        name=body.name,
-        email=body.email,
-        role=body.role,
-        status=status,
-        reason=body.reason,
-        password=body.password,
-    )
-
-    if body.role == "reviewer" and body.email:
-        background_tasks.add_task(
-            send_registration_received_email,
-            to_email=body.email,
-            recipient_name=body.name,
-            username=body.username,
-        )
-
-    msg = (
-        "Đăng ký tài khoản Reviewer thành công! Yêu cầu của bạn đang chờ Admin phê duyệt và cấp mật khẩu qua Email."
-        if body.role == "reviewer"
-        else "Đăng ký tài khoản thành công!"
-    )
-    return {"ok": True, "user": user, "status": status, "message_vi": msg}
-
-
-@router.post("/auth/login")
-async def login_user_endpoint(body: LoginApiRequest) -> dict:
-    u_full = db.get_user_with_hash(body.username)
-    if not u_full:
-        # Tự động tạo nếu là login mock đầu tiên
-        user = db.create_user(
-            username=body.username,
-            name=body.username.capitalize(),
-            email=f"{body.username}@forge.ai",
-            role=body.role or "creator",
-            status="active",
-            password=body.password or "123456",
-        )
-        return {
-            "access_token": f"token_{uuid.uuid4().hex[:12]}",
-            "token_type": "bearer",
-            "user": user,
-        }
-
-    if u_full.get("status") == "pending_approval":
-        raise HTTPException(
-            status_code=403,
-            detail="Tài khoản đang ở trạng thái 'Chờ duyệt'. Vui lòng đợi Admin phê duyệt và nhận mật khẩu qua email.",
-        )
-
-    if u_full.get("status") in ("inactive", "rejected"):
-        raise HTTPException(
-            status_code=403,
-            detail="Tài khoản đã bị từ chối hoặc vô hiệu hóa. Vui lòng liên hệ Admin.",
-        )
-
-    stored_hash = u_full.get("password_hash")
-    if stored_hash and body.password:
-        if not db.verify_password(body.password, stored_hash):
-            raise HTTPException(status_code=401, detail="Mật khẩu không chính xác")
-
-    user_clean = db.get_user(body.username)
-    return {
-        "access_token": f"token_{uuid.uuid4().hex[:12]}",
-        "token_type": "bearer",
-        "user": user_clean,
-    }
-
-
 class ProfileUpdateRequest(BaseModel):
     username: str
     full_name: str | None = None
@@ -1576,15 +1489,6 @@ class ChangePasswordApiRequest(BaseModel):
     username: str
     old_password: str
     new_password: str
-
-
-@router.get("/auth/me")
-async def get_me_endpoint(user: str = Query(..., min_length=1)) -> dict:
-    """Khôi phục đúng user đã đăng nhập; tuyệt đối không mặc định thành Admin."""
-    u = db.get_user(user)
-    if not u:
-        raise HTTPException(status_code=404, detail="Tài khoản đăng nhập không còn tồn tại")
-    return u
 
 
 @router.get("/users/profile")
@@ -1707,13 +1611,16 @@ async def approve_reviewer_endpoint(username: str, background_tasks: BackgroundT
     if not user:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Reviewer")
 
-    if user.get("email") and user.get("temp_password"):
+    # Mật khẩu tạm chỉ đi qua email tới chính chủ, không bao giờ nằm trong
+    # response: ai gọi được API này (hiện chưa có kiểm quyền) sẽ đọc được nó.
+    temp_password = user.pop("temp_password", None)
+    if user.get("email") and temp_password:
         background_tasks.add_task(
             send_reviewer_approval_email,
             to_email=user["email"],
             recipient_name=user.get("name") or user.get("username", username),
             username=user.get("username", username),
-            temp_password=user["temp_password"],
+            temp_password=temp_password,
         )
 
     return {"ok": True, "user": user}

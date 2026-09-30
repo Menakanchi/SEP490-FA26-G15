@@ -417,8 +417,10 @@ def main() -> None:
         os.environ["MODEL_NAME"], os.environ["ESCALATED_MODEL"] = args.model, args.model
         get_settings.cache_clear()
     settings = get_settings()
-    if not settings.openai_api_key.strip():
-        parser.error("OPENAI_API_KEY is required; mock results are never benchmark evidence")
+    if not settings.llm_api_key().strip():
+        parser.error(
+            f"API key for LLM_PROVIDER={settings.llm_provider} is required; mock results are never benchmark evidence"
+        )
 
     prompts, files, cases_by_node = {}, {}, {}
     for node in args.nodes:

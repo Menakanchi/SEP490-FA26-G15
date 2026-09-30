@@ -1,0 +1,189 @@
+# Kiến trúc — VehicSim MVP
+
+Tài liệu cho phân hệ **VehicSim MVP**: vòng khép kín AEB trên *một* motif (người đi
+bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge (graph 7 node, CARLA) có kiến
+trúc riêng ở [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
+
+> Nguồn sự thật: schema DB là [`database/mysql/01_schema.sql`](../../database/mysql/01_schema.sql)
+> (mirror trong `src/services/vehicsim/tables.py`); lý do quyết định là ADR-023 →
+> ADR-026 trong [`docs/adr/`](../adr/README.md). Tài liệu này vênh với hai nguồn đó
+> thì tài liệu này sai.
+
+## Vòng MVP 6 bước
+
+| Bước | Người dùng làm | URL (code: `frontend/src/app/<URL>/page.tsx`) | API (`/api/v1/vehicsim`) | Code chính |
+|---|---|---|---|---|
+| 1. Mô tả kịch bản | Câu tiếng Việt → xem/sửa Scenario IR | `/scenarios/new` | `POST /scenarios/describe` | `describe.py` |
+| 2. Sinh biến thể | Lưới tham số → họ kịch bản | `/scenarios/new`, `/scenarios` | `POST /families` | `family.py` |
+| 3. Chạy baseline | Chạy mọi biến thể với AEB baseline | `/scenarios` | `POST /families/{id}/run` | `runs.py` + Celery |
+| 4. Phân tích lỗi | Danh sách lỗi → chi tiết/nguyên nhân → playback | `/analysis/failures/**` | `GET /failures`, `/runs/{id}`, `/runs/{id}/playback` | `evaluation.py`, `views.py` |
+| 5. Cấu hình mới & chạy lại | Tạo candidate AEB → regression cùng seed | `/aeb`, `/validation/regression/new` | `POST /aeb/versions`, `GET /regression/preview`, `POST /regression` | `aeb.py`, `regression.py` |
+| 6. So sánh & quyết định | Kết quả regression → khuyến nghị → Accept/Reject/Request more tests | `/validation/**` | `GET /regression/{id}`, `/recommendations/{id}`, `POST /recommendations/{id}/decision` | `regression.py`, `views.py` |
+
+Trang `/` (Tổng quan) tính trạng thái 6 bước từ dữ liệu thật và chỉ bước tiếp theo;
+mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước ở
+`components/vehicsimFlow.ts`).
+
+## Sơ đồ
+
+```
+Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  FastAPI /api/v1/vehicsim/*  (vehicsim_routes.py: chỉ đổi lỗi → HTTP)
+                              │
+                              ▼
+                  src/services/vehicsim/*  ──SQLAlchemy Core──▶  MySQL (22/27 bảng)
+                              │ dispatch(run_ids)
+                              ▼
+              Redis db1 (broker) ──▶ Celery worker `vehicsim.run_simulation`
+                                           │ execute_run(run_id)
+                                           ▼
+                        simulator.simulate() → evaluation.evaluate()
+                        → ghi results/aeb_results/failures/root_causes
+                        → regression.on_run_finished() → try_finalize()
+```
+
+`VEHICSIM_RUN_MODE=inline` chạy `execute_run` ngay trong request (dùng cho test);
+mặc định `celery`. Worker Windows chạy `--pool=solo`.
+
+## Bản đồ module (`src/services/vehicsim/`)
+
+| File | Trách nhiệm |
+|---|---|
+| `tables.py` | Bảng SQLAlchemy Core mirror `01_schema.sql` (dùng chung `metadata` với auth) |
+| `bootstrap.py` | Project/workspace/xe/hệ AEB mặc định, 10 tham số AEB (`AEB_PARAMETER_SEED`), baseline v1.0 (TTC 1,5 s) |
+| `describe.py` | Câu mô tả → LLM → IR đã kiểm; sửa ≤ 3 lần; lùi về luật khi LLM lỗi |
+| `family.py` | `FamilySpec` (lưới, giới hạn, ≤ 300 biến thể), tạo họ + bản gốc + biến thể trong một transaction |
+| `simulator.py` | Mô phỏng động học tất định: perception (độ tin cậy theo thời tiết/giờ/khoảng cách + nhiễu theo seed), decision (TTC + hành lang), control (trễ, actuator, tăng lực phanh), dynamics (μ·g). `DT = 0.05 s`, tối đa 12 s |
+| `evaluation.py` | Kết quả `COLLISION` / `NEAR_MISS` / `SAFE`, verdict, false/missed activation, chuỗi nguyên nhân PERCEPTION → DECISION → CONTROL → VEHICLE_DYNAMICS theo ngân sách thời gian |
+| `runs.py` | Tạo run (seed = `48000 + id biến thể`), dispatch inline/Celery, `execute_run` idempotent |
+| `regression.py` | Tạo test, ghép cặp, chốt PASSED/FAILED, `decide`, `preview` |
+| `aeb.py` | Tạo candidate: tham số trong khoảng, phải khác version cha |
+| `views.py` | Payload đọc cho từng màn (failures, run detail, playback, regression, recommendation) |
+| `common.py` | `NotFoundError`, `InvalidRequestError`, nhãn hiển thị |
+
+`src/celery_app.py`: app `vehicsim`, task `vehicsim.run_simulation`, queue
+`vehicsim.simulation`, `acks_late`, time limit theo `SIMULATION_TIMEOUT_S`.
+
+## Dữ liệu
+
+- **Họ kịch bản = `scenarios`**; mỗi biến thể là một `scenario_versions` với
+  `source = GENERATED` và `parent_version_id` trỏ về **bản gốc** của họ. Bản gốc là
+  `MANUAL` (nhập tay) hoặc `NATURAL_LANGUAGE` (từ bước 1, giữ
+  `natural_language_input`, `llm_model`, `scenario_ir.described`). Không có bảng
+  biến thể riêng — quyết định của nhóm, đừng tranh luận lại.
+- **Run baseline** (`purpose = BASELINE`) và **run regression** (`REGRESSION`, có
+  `regression_test_id` + `baseline_run_id`); FK composite ép run regression dùng
+  đúng biến thể + seed của run baseline.
+- **AEB**: `aeb_versions` (BASELINE/CANDIDATE/ACCEPTED/REJECTED/ARCHIVED; UNIQUE ép
+  mỗi hệ đúng một BASELINE) + `aeb_parameter_values` cho đúng 10 tham số.
+- 5/27 bảng chưa dùng: `project_members`, `sensors`, `simulation_artifacts`,
+  `optimization_runs`, `optimization_trials` (chờ CARLA thật và FE-13).
+
+## Regression và quyết định
+
+Tiêu chí mặc định (`DEFAULT_CRITERIA` trong `regression.py`):
+
+| Tiêu chí | Mặc định | Tắt được |
+|---|---|---|
+| Không kịch bản an toàn nào thành va chạm (`no_new_collision`) | bật | không |
+| Tỉ lệ va chạm không tăng | bật | có |
+| Phanh oan tăng ≤ 0,5 điểm % | bật | có |
+| Median min TTC thay đổi ≥ −0,1 s | bật | có |
+| Cùng seed cho hai version (`identical_seeds`) | bật | không |
+
+Mọi tiêu chí đang bật phải qua thì test mới `PASSED`. Quyết định (`decide`) cần lý do
+và xác nhận; Accept chỉ khi test `PASSED`, baseline của test vẫn là BASELINE hiện hành
+và candidate vẫn là CANDIDATE. Accept: hạ baseline cũ `ARCHIVED` **trước**, rồi nâng
+candidate thành `BASELINE` trong cùng transaction.
+
+Bài học đo được: trên họ demo 96 biến thể, chỉ tăng TTC (1,6 hoặc 1,8 s) luôn trượt
+tiêu chí phanh oan; cấu hình qua được là TTC 1,6 + safety margin 0,5 m + prediction
+horizon 1,5 s + brake delay 0,05 s (13 sửa được, 0 xấu đi).
+
+## Bước 1: câu mô tả → Scenario IR
+
+`describe.describe(text)`:
+
+1. Chặn câu quá mơ hồ bằng `is_too_vague_to_generate` (dùng chung với `POST /generate` của Forge).
+2. Gọi `llm.call_with_escalation` với JSON Schema của `DescribedScenario`
+   (provider theo `LLM_PROVIDER`: `openai` hoặc `deepseek`).
+3. Kiểm IR theo giới hạn của simulator; sai thì gửi lỗi lại cho LLM, **tối đa 3 lần sửa**.
+4. LLM lỗi hẳn → trích bằng regex/từ khoá (`rule_based`), không bịa số.
+5. Mỗi trường có nguồn gốc: `stated` / `inferred` / `assumed` (điền mặc định) —
+   giao diện hiện rõ, người dùng sửa thì thành `edited`.
+
+Chỉ hỗ trợ motif người đi bộ băng ngang (kể cả ca dừng ở lề); mô tả khác trả 400.
+Giới hạn 30 lượt / 15 phút / người (Redis) vì app public và mỗi lượt tốn tiền.
+Graph 7 node của Forge **không** được dùng ở đây — xem ADR-026.
+
+## Xác thực
+
+- Đăng ký và quên mật khẩu: email → mã 6 số (TTL 600 s, tối đa 5 lần nhập sai,
+  gửi lại sau 60 s, giới hạn theo IP). Mã lưu **HMAC** trong Redis, không lưu MySQL.
+- Không tiết lộ email có tồn tại: phản hồi và thời gian như nhau.
+- JWT HS256 mang `pwv` (dấu vân tay của password hash): đổi mật khẩu là mọi phiên cũ
+  hết hiệu lực. Production không chạy nếu thiếu `JWT_SECRET_KEY`.
+- Vai trò: `ADMIN`, `ENGINEER` (tự đăng ký), `VIEWER` (chỉ đọc). App **public** nên
+  giữ tự đăng ký.
+
+## Bất biến và máy kiểm
+
+| Bất biến | Máy kiểm |
+|---|---|
+| Cùng biến thể + seed ⇒ cùng kết quả; seed chỉ đổi nhiễu perception | `test_same_seed_gives_identical_run`, `test_different_seed_changes_perception_noise_only_through_rng` |
+| Người dừng ở lề ⇒ phanh oan, không phải va chạm | `test_pedestrian_stopping_at_curb_is_false_braking_not_collision` |
+| Mọi tham số AEB được simulator dùng; seed Python khớp SQL | `test_every_seeded_parameter_is_used_by_the_simulator`, `test_python_parameter_seed_matches_sql_seed` |
+| Mọi route API `/api/v1/vehicsim/*` cần đăng nhập; VIEWER không ghi được | `test_every_vehicsim_route_requires_login`, `test_viewer_can_read_but_not_write` |
+| Candidate chạy đúng seed baseline; Accept đổi baseline | `test_regression_pairs_same_seeds_and_accept_swaps_baseline` |
+| Test FAILED không Accept được | `test_failed_regression_cannot_be_accepted` |
+| Quyết định cần lý do + xác nhận | `test_decision_requires_reason_and_confirmation` |
+| Baseline đã đổi ⇒ không Accept/Reject test cũ | `test_accepting_one_candidate_blocks_stale_tests` |
+| Tham số candidate nằm trong khoảng | `test_candidate_values_must_stay_in_parameter_range` |
+| Preview khớp bộ kịch bản thật của test | `test_regression_preview_counts_match_created_test` |
+| IR đánh dấu đúng nguồn gốc; sửa có phản hồi, tối đa 3 lần | `test_llm_ir_marks_stated_inferred_and_assumed`, `test_invalid_ir_is_repaired_with_feedback`, `test_repairs_are_capped` |
+| LLM lỗi ⇒ lùi về luật; mô tả sai motif ⇒ 400 | `test_llm_failure_falls_back_to_rules`, `test_non_pedestrian_and_vague_prompts_are_rejected` |
+| Bước 1 cần ENGINEER + giới hạn tần suất | `test_describe_endpoint_permissions_and_rate_limit` |
+| Họ từ mô tả giữ nguồn `NATURAL_LANGUAGE` | `test_family_from_description_keeps_nl_origin` |
+| Mọi lời gọi LLM qua `services/llm.py` | `test_nothing_imports_the_llm_provider_directly` |
+| Test không gọi LLM thật | fixture chặn trong `tests/conftest.py` |
+
+`tests/test_agent_docs.py` bắt tên test ở bảng này phải còn tồn tại — đổi tên test
+thì sửa bảng.
+
+## Frontend
+
+- Trang VehicSim nằm **thẳng** trong `app/` (`app/page.tsx`, `app/scenarios`, `app/aeb`,
+  `app/analysis`, `app/validation`), URL không có tiền tố. Khung riêng `components/VehicSimShell.tsx`
+  (sidebar Figma, kiểm tra đăng nhập, Plus Jakarta Sans, token `vehicsim-*`
+  trong `globals.css`), theo Figma *VehicSim — FE-12/13/14 UI (Trung)* (file key
+  `k6LErf7biJUfWfd320Foe0`). Màn đăng nhập/đăng ký không có trong Figma, dựng theo
+  cùng token.
+- Client API: `services/vehicsim.ts`; kiểu: `types/vehicsim.ts` (khớp payload
+  `views.py`). Component VehicSim nằm thẳng trong `components/`:
+  `VehicSimShell`, `VehicSimSidebar`, `VehicSimPage`, `VehicSimContext`, `VehicSimUi`,
+  `FlowBar`, `FamilyForm`, `ScenarioMap`, `TelemetryChart`, `vehicsimFlow`, `vehicsimFonts`,
+  `vehicsimI18n`.
+- `/` là Tổng quan; chưa đăng nhập thì chuyển sang `/login`, trang giới thiệu ở `/landing`.
+  Generator cũ của Forge ở `/generator`. URL cũ `/vs/*` được chuyển hướng trong
+  `frontend/next.config.ts`. Thêm trang VehicSim ở một tiền tố gốc mới thì phải thêm tiền
+  tố vào `VEHICSIM_PREFIXES` (`components/AppLayoutWrapper.tsx`) — nơi chọn `VehicSimShell`
+  cho URL VehicSim — nếu không trang sẽ bị lồng sidebar của Forge. Ảnh SVG của Figma nằm ở `frontend/public/vehicsim/`.
+- Giao diện tiếng Việt; **DB và API giữ nguyên tiếng Anh**. Câu do backend sinh ra (mô tả
+  lỗi, nguyên nhân gốc, tiêu đề, nhãn sự kiện, tóm tắt biến thể, tiêu chí, đánh đổi, bằng
+  chứng) được dịch **ở tầng hiển thị** bởi `components/vehicsimI18n.ts` (`vi`, `viSummary`,
+  `viWeather`, `viTime`): khớp mẫu câu, giữ số, không khớp thì hiện nguyên văn. Đổi câu
+  chữ trong `evaluation.py` / `simulator.py` / `views.py` / `regression.py` thì sửa mẫu ở đó.
+  Tên do DB/người dùng đặt (họ kịch bản, tham số AEB, workspace) hiển thị nguyên văn.
+
+## Cấu hình
+
+| Biến | Ý nghĩa |
+|---|---|
+| `VEHICSIM_DATABASE_URL` | MySQL VehicSim + auth (`mysql+pymysql://…`) |
+| `REDIS_URL` | OTP + rate limit |
+| `CELERY_BROKER_URL` | Broker Celery (mặc định `redis://localhost:6379/1`) |
+| `VEHICSIM_RUN_MODE` | `celery` (mặc định) hoặc `inline` |
+| `SIMULATION_TIMEOUT_S` | Trần thời gian một run (mặc định 120) |
+| `JWT_SECRET_KEY`, `ACCESS_TOKEN_TTL_MINUTES` | Phiên đăng nhập |
+| `OTP_TTL_SECONDS`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS` | Mã 6 số |
+| `LLM_PROVIDER`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY` | Lớp LLM dùng chung |
+| `SMTP_*` | Gửi mã qua email |

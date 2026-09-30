@@ -882,7 +882,7 @@ function ReviewPageContent() {
                         onChange={(e) => setReason(e.target.value)}
                         disabled={submitting}
                       />
-                      <RoleGate allowedRoles={["reviewer", "admin"]}>
+                      <RoleGate allowedRoles={["reviewer", "engineer", "admin"]}>
                         <div className="flex flex-wrap items-center justify-end gap-3">
                           <button
                             type="button"
@@ -1007,7 +1007,7 @@ function ReviewPageContent() {
                   </div>
 
                   <RoleGate
-                    allowedRoles={["reviewer", "admin"]}
+                    allowedRoles={["reviewer", "engineer", "admin"]}
                     fallback={
                       <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-300 text-xs flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
@@ -1148,7 +1148,7 @@ function ReviewRoleGuard({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  return <AuthGate allowedRoles={["reviewer"]}>{children}</AuthGate>;
+  return <AuthGate allowedRoles={["reviewer", "engineer"]}>{children}</AuthGate>;
 }
 
 export default function ReviewPage() {
