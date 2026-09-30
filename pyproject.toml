@@ -17,10 +17,17 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "sqlalchemy>=2.0.0",
     "uvicorn[standard]>=0.34.0",
+    "pyjwt>=2.9",
+    "redis>=5.0",
+    "pymysql>=1.1",
+    "cryptography>=43",
+    "email-validator>=2.2",
+    "celery[redis]>=5.4",
 ]
 
 [dependency-groups]
 dev = [
+    "fakeredis>=2.26",
     "httpx>=0.28.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",

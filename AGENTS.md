@@ -1,1 +1,99 @@
-@CLAUDE.md
+# AGENTS.md — bản đồ cho agent và người mới vào repo
+
+File này là **bản đồ**, không phải cẩm nang: mỗi mục chỉ nói *ở đâu* và *luật
+nào không được phá*. Chi tiết nằm ở các link. Thứ gì không có trong repo thì
+agent coi như không tồn tại — quyết định, bài học, nợ kỹ thuật phải được viết vào
+`docs/`, không để trong chat hay Google Docs. `tests/test_agent_docs.py` giữ file
+này ngắn và giữ mọi link còn sống.
+
+## Repo này là gì
+
+VehicSim / VSOS (SEP490-FA26-G15): nền tảng mô phỏng và tối ưu AEB/FCW. Repo có
+hai phân hệ dùng chung FastAPI + Next.js + lớp LLM + xác thực:
+
+| Phân hệ | Làm gì | Code chính | Lưu trữ | Đọc trước |
+|---|---|---|---|---|
+| Scenario Forge (có trước) | Câu mô tả → graph 7 node → `.xosc` → CARLA worker | `src/agents/`, `src/api/routes.py`, `worker/` | SQLite (`DATABASE_URL`) | [ARCHITECTURE.md](ARCHITECTURE.md), [docs/adr/](docs/adr/README.md) |
+| VehicSim MVP (nhánh `trungdam`, 09/2026) | Vòng AEB 6 bước: mô tả → biến thể → baseline → lỗi → candidate → regression → kỹ sư quyết định | `src/services/vehicsim/`, `src/api/vehicsim_routes.py`, `frontend/src/app/{page.tsx,scenarios,aeb,analysis,validation}`, `frontend/src/components/VehicSim*` | MySQL 27 bảng + Redis | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
+| Xác thực dùng chung | Đăng ký/quên mật khẩu bằng mã 6 số, JWT | `src/services/auth/`, `src/api/auth_routes.py`, `frontend/src/app/{login,register,forgot-password}` | MySQL `users/roles` + Redis (OTP) | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#xác-thực) |
+
+Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
+[docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md).
+
+## Chạy và tự kiểm chứng
+
+| Việc | Lệnh |
+|---|---|
+| Bật toàn bộ app (Windows) | `scripts\dev-up.cmd` — Docker (MySQL, Redis) + Celery worker + backend `:8001` + frontend `:3000`, mỗi dịch vụ một cửa sổ |
+| Tạo admin | `uv run python scripts/create_admin.py --email <email>` |
+| Seed project VehicSim | `uv run python scripts/seed_vehicsim.py --owner <email> [--demo]` |
+| Gate backend (đúng như CI) | `make check` hoặc `uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/ && uv run pytest tests/` — đang đỏ vì lỗi có sẵn, xem TD-16 |
+| Gate frontend (**chưa có trong CI**, chạy tay) | `cd frontend && npm run lint && npx tsc --noEmit && npx next build` |
+| Chỉ test VehicSim | `uv run pytest tests/test_vehicsim tests/test_api/test_auth.py` |
+
+- Test **mặc định chặn LLM thật** (`tests/conftest.py`); gọi thật phải bật
+  `RUN_LLM_TESTS=1` có chủ đích. Mock `src.services.llm.call_with_escalation`,
+  đừng mock lớp dưới.
+- Test VehicSim chạy mô phỏng inline (`VEHICSIM_RUN_MODE=inline`), DB SQLite RAM,
+  Redis giả (`fakeredis`) — không cần Docker.
+- Sửa UI thì phải nhìn UI: chạy app, đăng nhập, chụp màn hình bằng trình duyệt
+  headless và so với Figma trước khi báo xong (cách làm ở exec plan §Kiểm chứng).
+
+## Bản đồ tài liệu
+
+| Cần biết | Đọc |
+|---|---|
+| Kiến trúc VehicSim: module, luồng dữ liệu, API, bất biến ↔ test | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
+| Kiến trúc Scenario Forge, graph 7 node, CARLA | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Vì sao chọn X thay vì Y | [docs/adr/README.md](docs/adr/README.md) — VehicSim: ADR-023 → ADR-026 |
+| Đã làm gì, quyết định lúc nào, kiểm chứng ra sao | [docs/exec-plans/completed/](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md) |
+| Còn thiếu gì, nợ gì | [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) |
+| Schema MySQL (nguồn sự thật của DB VehicSim) | [database/mysql/01_schema.sql](database/mysql/01_schema.sql) |
+| Bẫy khi chạy CARLA / ScenarioRunner thật | [CLAUDE.md](CLAUDE.md) |
+| Quy ước Next.js 16 của frontend (khác bản cũ) | [frontend/AGENTS.md](frontend/AGENTS.md) |
+| Kế hoạch, phạm vi, quality gate của Scenario Forge | [docs/plan.md](docs/plan.md) |
+
+## Luật cứng — có máy kiểm, phá là test/CI đỏ
+
+1. Mọi lời gọi LLM đi qua `src/services/llm.py`; không import SDK provider ở chỗ khác
+   (`test_nothing_imports_the_llm_provider_directly`). Trong graph Forge chỉ 3 node
+   được gọi LLM (`test_only_three_nodes_are_allowed_to_call_an_llm`).
+2. `src/` không import `carla` (`test_src_never_imports_carla`).
+3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập; VIEWER chỉ đọc
+   (`test_every_vehicsim_route_requires_login`, `test_viewer_can_read_but_not_write`).
+4. Cùng biến thể + cùng seed ⇒ cùng kết quả mô phỏng; candidate luôn chạy lại **đúng
+   seed** của run baseline (`test_same_seed_gives_identical_run`,
+   `test_regression_pairs_same_seeds_and_accept_swaps_baseline`).
+5. Không bao giờ tự Accept: test FAILED không Accept được, quyết định cần lý do +
+   xác nhận, baseline đã đổi thì không Accept test cũ (bảng bất biến đầy đủ ở
+   [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#bất-biến-và-máy-kiểm)).
+6. Tham số AEB Python khớp seed SQL (`test_python_parameter_seed_matches_sql_seed`).
+7. Không lộ email có tồn tại hay không; mã OTP lưu dạng hash, dùng một lần
+   (`tests/test_api/test_auth.py`).
+
+## Luật mềm — chưa có máy kiểm, reviewer phải canh
+
+- Không ghi "AI đã sửa xe" hay ngụ ý chứng nhận an toàn. Khuyến nghị luôn cần kỹ sư.
+- Màn/chỉ số chưa có dữ liệu thật thì để mờ kèm lý do, trả `NOT_RUN` — không vẽ
+  tick xanh giả (Robustness, Pareto, Sensitivity, Chase cam/RGB/LiDAR).
+- Tham số kịch bản và tham số AEB không đổi cùng lúc trong một lần so sánh.
+- Trigger kịch bản là tương đối (khoảng cách/TTC), không dùng thời gian tuyệt đối.
+- Đổi schema MySQL: sửa `database/mysql/01_schema.sql` **và**
+  `src/services/vehicsim/tables.py` trong cùng PR. Chưa có migration tool — DB
+  đang chạy phải `ALTER` tay, không `docker compose down -v` trên máy người khác.
+- Giao diện tiếng Việt, DB/API tiếng Anh: câu backend được dịch ở tầng hiển thị trong
+  `frontend/src/components/vehicsimI18n.ts` — đổi câu chữ backend thì sửa mẫu ở đó (TD-08).
+- Trang VehicSim nằm thẳng trong `frontend/src/app/`; thêm trang ở thư mục gốc mới thì thêm
+  tiền tố vào `VEHICSIM_PREFIXES` (`frontend/src/components/AppLayoutWrapper.tsx`), nếu
+  không trang sẽ bị lồng sidebar của Forge.
+- `.env` không bao giờ vào git; `.env.example` chỉ chứa giá trị mẫu.
+
+## Khi làm việc
+
+- Đổi một quyết định đã Accepted → viết ADR mới, supersede ADR cũ (luật ở
+  [docs/adr/README.md](docs/adr/README.md)).
+- Việc nhiều bước → exec plan ở `docs/exec-plans/active/`; xong thì chuyển sang
+  `completed/` kèm bằng chứng kiểm chứng.
+- Thấy nợ mà không sửa trong PR này → thêm một dòng vào
+  [tech-debt-tracker](docs/exec-plans/tech-debt-tracker.md).
+- Owner, deadline, tiến độ theo ngày → GitHub Issues/Project, không ghi vào docs.

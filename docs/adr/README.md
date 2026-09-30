@@ -31,6 +31,10 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | [ADR-020](ADR-020-cut-in-trigger-theo-vi-tri-dan-truoc.md) | `cut_in` dùng `lead_distance` + `ReachPositionCondition` động, không suy vị trí từ tốc độ lệnh | ✅ **Accepted 24/8** |
 | [ADR-021](ADR-021-danh-gia-controller-tach-khoi-xac-minh-kich-ban.md) | Lượt đánh giá mô hình lái tách khỏi xác minh scenario; BehaviorAgent chạy trong tick loop qua `ControllerAction` | ✅ **Accepted 24/8** |
 | [ADR-022](ADR-022-closed-loop-dung-o-cap-ab-co-nguoi-khoi-dong.md) | Closed-loop MVP dừng ở cặp A/B có người khởi động; không tự chạy nhiều thế hệ | ✅ **Accepted 24/8** |
+| [ADR-023](ADR-023-vehicsim-mvp-dung-simulator-dong-hoc.md) | VehicSim MVP chạy trên simulator động học tất định sau hợp đồng `execute_run`; CARLA cắm vào sau | 🕐 **Proposed 30/9** |
+| [ADR-024](ADR-024-vehicsim-mysql-redis-tach-khoi-sqlite-forge.md) | VehicSim + tài khoản trên MySQL 27 bảng, Redis cho OTP/rate limit/Celery; Forge giữ SQLite; biến thể = `scenario_versions` | 🕐 **Proposed 30/9** |
+| [ADR-025](ADR-025-cong-regression-cung-seed-khong-tu-accept.md) | Regression so từng cặp cùng seed; không bao giờ tự Accept; chặn quyết định trên baseline đã đổi | 🕐 **Proposed 30/9** |
+| [ADR-026](ADR-026-mo-ta-sang-ir-dung-lop-llm-chung.md) | Bước 1 câu mô tả → Scenario IR dùng lớp LLM chung, không qua graph 7 node | 🕐 **Proposed 30/9** |
 
 ## Luật
 

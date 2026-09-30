@@ -1,3 +1,5 @@
+@AGENTS.md
+
 # Ghi chú vận hành khó suy ra cho VSOS
 
 Chỉ giữ ở đây những bẫy đã gặp ngoài thực tế mà đọc code khó biết được. Hướng

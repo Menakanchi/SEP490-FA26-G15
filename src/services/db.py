@@ -17,7 +17,6 @@ mang bất biến nào.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -40,6 +39,10 @@ from src.models.schemas import (
     VerificationLevel,
     normalize_prompt,
     odd_axis_value,
+)
+from src.services.auth.passwords import (  # noqa: F401 — re-export, một thuật toán duy nhất
+    hash_password,
+    verify_password,
 )
 from src.services.llm import EMBEDDING_MODEL
 from src.services.persistence import (
@@ -1185,25 +1188,6 @@ def update_job_result(job_id: str, status: str, result: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def hash_password(password: str, salt: bytes | None = None) -> str:
-    if not salt:
-        salt = os.urandom(16)
-    pw_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100000)
-    return f"{salt.hex()}:{pw_hash.hex()}"
-
-
-def verify_password(password: str, stored_hash: str) -> bool:
-    if not stored_hash or ":" not in stored_hash:
-        return False
-    try:
-        salt_hex, pw_hex = stored_hash.split(":")
-        salt = bytes.fromhex(salt_hex)
-        expected_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100000).hex()
-        return secrets.compare_digest(pw_hex, expected_hash)
-    except Exception:
-        return False
-
-
 def generate_temp_password(length: int = 10) -> str:
     alphabet = string.ascii_letters + string.digits
     return "Pass_" + "".join(secrets.choice(alphabet) for _ in range(length))
@@ -1834,10 +1818,8 @@ def approve_reviewer_request(username: str) -> dict | None:
             (pw_hash, now_str, username),
         )
 
-    # Log email service sending credentials to reviewer
-    logger.info(
-        f"[EMAIL SERVICE] Sent login credentials to {u['email']} ({u['name']}): Username: {u['username']}, Temp Password: {temp_password}"
-    )
+    # Không ghi mật khẩu vào log: log đi qua nhiều tay hơn email của chính chủ.
+    logger.info("Đã cấp mật khẩu tạm cho reviewer %s; gửi qua email %s", u["username"], u["email"])
 
     user_dict = get_user(username)
     if user_dict:

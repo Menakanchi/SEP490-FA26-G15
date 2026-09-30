@@ -77,6 +77,33 @@ def send_email_smtp(
         return False
 
 
+_OTP_EMAIL_COPY = {
+    "register": ("Mã xác minh đăng ký tài khoản", "hoàn tất đăng ký tài khoản"),
+    "reset": ("Mã đặt lại mật khẩu", "đặt lại mật khẩu"),
+}
+
+
+def send_otp_email(to_email: str, code: str, purpose: str, ttl_minutes: int) -> bool:
+    """Gửi mã OTP 6 số cho đăng ký (``register``) hoặc quên mật khẩu (``reset``)."""
+    title, action = _OTP_EMAIL_COPY[purpose]
+    subject = f"[VehicSim] {title}: {code}"
+    body_text = (
+        f"Mã của bạn để {action} trên VehicSim là: {code}\n\n"
+        f"Mã có hiệu lực trong {ttl_minutes} phút và chỉ dùng được một lần.\n"
+        f"Nếu bạn không yêu cầu mã này, hãy bỏ qua email.\n\n"
+        f"VehicSim"
+    )
+    body_html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+        <p>Mã của bạn để {action} trên <strong>VehicSim</strong> là:</p>
+        <p style="font-size: 32px; letter-spacing: 8px; font-weight: bold; margin: 16px 0;">{code}</p>
+        <p>Mã có hiệu lực trong {ttl_minutes} phút và chỉ dùng được một lần.</p>
+        <p style="font-size: 12px; color: #64748b;">Nếu bạn không yêu cầu mã này, hãy bỏ qua email.</p>
+    </div>
+    """
+    return send_email_smtp(to_email, subject, body_text, body_html)
+
+
 def send_reviewer_approval_email(
     to_email: str,
     recipient_name: str,

@@ -34,6 +34,68 @@ def isolated_database(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+TEST_JWT_SECRET = "test-only-jwt-secret-not-for-production"
+
+
+@pytest.fixture(autouse=True)
+def isolated_auth(monkeypatch, isolated_database):
+    """Xác thực chạy trên SQLite trong RAM + fakeredis, không cần MySQL/Redis thật.
+
+    Bảng dựng từ chính ``users.metadata`` (cùng cột với ``01_schema.sql``) và
+    seed ba role như file SQL. Phụ thuộc ``isolated_database`` để chạy SAU nó —
+    fixture đó xoá cache ``get_settings`` mà khoá JWT ở đây cần.
+    """
+    import fakeredis
+    from sqlalchemy import create_engine, insert
+    from sqlalchemy.pool import StaticPool
+
+    from src.services.auth import otp, tokens, users
+    from src.services.vehicsim import tables as _vehicsim_tables  # noqa: F401 — đăng ký bảng vào metadata
+
+    monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
+    get_settings.cache_clear()
+    tokens.secret_key.cache_clear()
+
+    # StaticPool: một kết nối dùng chung, nếu không mỗi kết nối "sqlite://" là
+    # một DB rỗng riêng. check_same_thread=False vì route auth chạy trong threadpool.
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    users.metadata.create_all(engine)
+    with engine.begin() as conn:
+        now = users._now()
+        conn.execute(
+            insert(users.roles_table),
+            [
+                {"code": "ADMIN", "name": "Administrator", "created_at": now},
+                {"code": "ENGINEER", "name": "Engineer", "created_at": now},
+                {"code": "VIEWER", "name": "Viewer", "created_at": now},
+            ],
+        )
+    monkeypatch.setattr(users, "get_engine", lambda: engine)
+
+    fake_redis = fakeredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(otp, "get_redis", lambda: fake_redis)
+    yield fake_redis
+    tokens.secret_key.cache_clear()
+    engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def pinned_llm_provider(monkeypatch):
+    """Test không được phụ thuộc ``.env`` của máy dev.
+
+    Biến môi trường thắng ``.env`` trong pydantic-settings, nên ghim ở đây là đủ:
+    một người đặt ``LLM_PROVIDER=deepseek`` trong ``.env`` để chạy local vẫn chạy
+    ra cùng kết quả test như CI. Test nào cần DeepSeek tự ``setenv`` đè lên.
+    """
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.delenv("MODEL_NAME", raising=False)
+    monkeypatch.delenv("ESCALATED_MODEL", raising=False)
+    monkeypatch.setenv("LLM_REASONING_EFFORT", "none")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture(autouse=True)
 def no_accidental_llm_calls(monkeypatch):
     """Chặn mọi lần gọi LLM thật mà test không cố ý mock.

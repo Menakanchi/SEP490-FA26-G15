@@ -9,6 +9,16 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    # Trong mạng compose, MySQL/Redis có hostname là tên service, không phải
+    # localhost như trong .env (dùng khi chạy uvicorn trực tiếp trên máy).
+    environment:
+      VEHICSIM_DATABASE_URL: mysql+pymysql://${MYSQL_USER:-vehicsim}:${MYSQL_PASSWORD:-vehicsim}@mysql:3306/vehicsim
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -17,3 +27,44 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # Schema VehicSim (27 bảng) — database/mysql/*.sql chỉ chạy khi volume còn
+  # rỗng. Đổi schema xong phải `docker compose down -v` rồi dựng lại.
+  # Hiện chỉ phần xác thực (src/services/auth) đọc DB này; phần còn lại của
+  # backend vẫn dùng DATABASE_URL (SQLite) của Forge.
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-vehicsim_root}
+      MYSQL_DATABASE: vehicsim
+      MYSQL_USER: ${MYSQL_USER:-vehicsim}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-vehicsim}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./database/mysql:/docker-entrypoint-initdb.d:ro
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-vehicsim_root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Mã OTP 6 số (đăng ký / quên mật khẩu), bộ đếm nhập sai và giới hạn tần
+  # suất. Không bật lưu xuống đĩa: mọi key đều sống vài phút, mất khi restart
+  # chỉ khiến người dùng phải xin mã mới. Sau này Celery dùng chung làm broker.
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql_data:

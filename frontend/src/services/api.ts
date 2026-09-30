@@ -24,7 +24,7 @@ import type {
   TuningSummary,
   TuneStepResponse,
 } from "@/types";
-import type { LoginPayload, RegisterPayload, User } from "@/types/auth";
+import type { ApiUser, SessionResponse, User } from "@/types/auth";
 
 const getBaseUrl = (): string => {
   const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -35,16 +35,74 @@ const getBaseUrl = (): string => {
 const BASE_URL = getBaseUrl();
 
 // ---------------------------------------------------------------------------
+// Access token (JWT) — lưu trong localStorage, gắn vào MỌI request
+// ---------------------------------------------------------------------------
+
+const ACCESS_TOKEN_KEY = "vehicsim_access_token";
+
+export function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(ACCESS_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function storeToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) localStorage.setItem(ACCESS_TOKEN_KEY, token);
+    else localStorage.removeItem(ACCESS_TOKEN_KEY);
+  } catch {
+    // Trình duyệt chặn storage (chế độ riêng tư): phiên chỉ sống trong tab này.
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Lỗi HTTP có mã trạng thái, để nơi gọi phân biệt 401 (hết phiên) với lỗi khác. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** Tải file (CSV…) từ API có kèm token rồi cho trình duyệt lưu. */
+export async function apiDownload(path: string, filename: string): Promise<void> {
+  const token = getStoredToken();
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new ApiError(`API ${res.status}: ${res.statusText}`, res.status);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export { request as apiRequest };
 
 async function request<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
+  const token = getStoredToken();
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options?.headers ?? {}),
+    },
   });
 
   if (!res.ok) {
@@ -75,8 +133,9 @@ async function request<T>(
     } catch {
       messageVi = typeof bodyText === "string" ? bodyText : "";
     }
-    throw new Error(
+    throw new ApiError(
       messageVi || `API ${res.status}: ${res.statusText}`,
+      res.status,
     );
   }
 
@@ -353,49 +412,71 @@ export async function completeSimulation(
 // Auth Endpoints
 // ---------------------------------------------------------------------------
 
-export async function postLogin(payload: LoginPayload): Promise<{ access_token: string; user: User }> {
-  return request<{ access_token: string; user: User }>("/auth/login", {
+// Đăng ký và quên mật khẩu đều 2 bước: xin mã 6 số qua email, rồi gửi mã kèm
+// thông tin. Bước xin mã luôn trả cùng một câu, kể cả khi email không hợp lệ
+// với luồng đó — không dựa vào response để đoán email đã đăng ký hay chưa.
+
+export async function requestRegisterCode(email: string): Promise<{ message_vi: string }> {
+  return request<{ message_vi: string }>("/auth/register/request", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function verifyRegistration(payload: {
+  email: string;
+  code: string;
+  full_name: string;
+  password: string;
+}): Promise<SessionResponse> {
+  return request<SessionResponse>("/auth/register/verify", {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
-export async function postRegister(payload: RegisterPayload): Promise<{ ok: boolean; user: User; status: string; message_vi?: string }> {
-  return request<{ ok: boolean; user: User; status: string; message_vi?: string }>("/auth/register", {
+export async function requestPasswordResetCode(email: string): Promise<{ message_vi: string }> {
+  return request<{ message_vi: string }>("/auth/password/forgot", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ email }),
   });
 }
 
-export async function getMe(username: string): Promise<User> {
-  const query = new URLSearchParams({ user: username });
-  return request<User>(`/auth/me?${query.toString()}`);
-}
-
-export async function getUserProfile(username?: string): Promise<User> {
-  const query = username ? `?username=${encodeURIComponent(username)}` : "";
-  return request<User>(`/users/profile${query}`);
-}
-
-export async function updateUserProfile(payload: {
-  username: string;
-  full_name?: string;
-  avatar_url?: string;
-}): Promise<{ ok: boolean; user: User }> {
-  return request<{ ok: boolean; user: User }>("/users/profile", {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function changePassword(payload: {
-  username: string;
-  old_password: string;
+export async function resetPassword(payload: {
+  email: string;
+  code: string;
   new_password: string;
 }): Promise<{ ok: boolean; message_vi: string }> {
-  return request<{ ok: boolean; message_vi: string }>("/users/change-password", {
+  return request<{ ok: boolean; message_vi: string }>("/auth/password/reset", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function postLogin(email: string, password: string): Promise<SessionResponse> {
+  return request<SessionResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+/** Người đang đăng nhập, xác định bằng token trong header — không nhận username nào. */
+export async function getMe(): Promise<ApiUser> {
+  return request<ApiUser>("/auth/me");
+}
+
+export async function updateMyProfile(fullName: string): Promise<ApiUser> {
+  return request<ApiUser>("/auth/me", {
+    method: "PUT",
+    body: JSON.stringify({ full_name: fullName }),
+  });
+}
+
+/** Trả phiên MỚI: đổi mật khẩu làm mọi token cũ, kể cả token hiện tại, hết hiệu lực. */
+export async function changeMyPassword(oldPassword: string, newPassword: string): Promise<SessionResponse> {
+  return request<SessionResponse>("/auth/password/change", {
+    method: "POST",
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
   });
 }
 

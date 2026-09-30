@@ -90,8 +90,11 @@ def _read_metrics(raw: Any) -> dict[str, Any]:
 
 
 async def _run(source_db: Path, samples: int, *, few_shot: bool = True) -> dict[str, Any]:
-    if not os.environ.get("OPENAI_API_KEY", "").strip():
-        raise SystemExit("Thiếu OPENAI_API_KEY; benchmark online không dùng số giả.")
+    from src.config import get_settings
+
+    settings = get_settings()
+    if not settings.llm_api_key().strip():
+        raise SystemExit(f"Thiếu API key của provider {settings.llm_provider}; benchmark online không dùng số giả.")
     if not source_db.is_file():
         raise SystemExit(f"Không tìm thấy database nguồn: {source_db}")
 

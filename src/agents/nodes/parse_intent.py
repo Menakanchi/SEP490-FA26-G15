@@ -29,7 +29,7 @@ from src.models.schemas import (
     is_too_vague_to_generate,
     odd_axis_value,
 )
-from src.services.llm import _get_primary_model, get_llm, measure_structured_response
+from src.services.llm import _get_primary_model, get_llm, measure_structured_response, structured_output_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -451,7 +451,7 @@ def parse_intent_node(state: ForgeState) -> dict:
         logger.info("Chuyển sang BƯỚC 2: Gọi LLM Fallback (AI Semantic Extraction)")
         try:
             llm = get_llm()
-            structured_llm = llm.with_structured_output(ODDQuery, include_raw=True)
+            structured_llm = llm.with_structured_output(ODDQuery, include_raw=True, **structured_output_kwargs())
             messages = [
                 SystemMessage(content=SYSTEM_PROMPT),
                 HumanMessage(content=f"Mô tả kịch bản: {user_query}"),

@@ -219,3 +219,80 @@ def test_token_cost_usd_tru_cached_khoi_input_thuong() -> None:
         cached_input_tokens=400,
         output_tokens=200,
     ) == pytest.approx((600 * 0.75 + 400 * 0.075 + 200 * 4.5) / 1_000_000)
+
+
+# ---------------------------------------------------------------------------
+# Chọn provider: LLM_PROVIDER=openai | deepseek
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def deepseek_env(monkeypatch):
+    from src.config import get_settings
+
+    monkeypatch.setenv("LLM_PROVIDER", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-test-key")
+    monkeypatch.delenv("MODEL_NAME", raising=False)
+    monkeypatch.delenv("ESCALATED_MODEL", raising=False)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def test_deepseek_models_default_to_current_names(deepseek_env) -> None:
+    # deepseek-chat / deepseek-reasoner đã ngừng 24/07/2026.
+    assert _get_primary_model() == "deepseek-flash"
+    assert _get_escalated_model() == "deepseek-v4-pro"
+
+
+def test_explicit_model_name_wins_over_provider_default(deepseek_env, monkeypatch) -> None:
+    from src.config import get_settings
+
+    monkeypatch.setenv("MODEL_NAME", "deepseek-v4-pro")
+    get_settings.cache_clear()
+    assert _get_primary_model() == "deepseek-v4-pro"
+
+
+def test_deepseek_client_uses_deepseek_endpoint_key_and_disables_thinking(deepseek_env) -> None:
+    from src.services.llm import _chat_model
+
+    client = _chat_model("deepseek-flash")
+    assert client.model_name == "deepseek-flash"
+    assert client.openai_api_base == "https://api.deepseek.com"
+    assert client.openai_api_key.get_secret_value() == "ds-test-key"
+    assert client.reasoning_effort == "none"
+
+
+def test_deepseek_structured_output_goes_through_function_calling(deepseek_env) -> None:
+    """DeepSeek không có response_format json_schema: structured output phải qua tool call."""
+    messages = [{"role": "user", "content": "test"}]
+    with patch("src.services.llm.ChatOpenAI") as mock_chat:
+        runnable = MagicMock()
+        runnable.invoke.return_value = DummySchema(name="x", value=1)
+        mock_chat.return_value.with_structured_output.return_value = runnable
+        call_with_escalation(messages, DummySchema)
+    _, kwargs = mock_chat.return_value.with_structured_output.call_args
+    assert kwargs["method"] == "function_calling"
+    assert mock_chat.call_args.kwargs["base_url"] == "https://api.deepseek.com"
+
+
+def test_openai_structured_output_keeps_langchain_default() -> None:
+    from src.services.llm import structured_output_kwargs
+
+    assert structured_output_kwargs() == {}
+
+
+def test_deepseek_rejects_thinking_mode(monkeypatch) -> None:
+    """Thinking mode của DeepSeek trả 400 cho tool call bắt buộc -> chặn ngay khi đọc config."""
+    from pydantic import ValidationError
+
+    from src.config import Settings
+
+    with pytest.raises(ValidationError, match="LLM_REASONING_EFFORT=none"):
+        Settings(_env_file=None, llm_provider="deepseek", llm_reasoning_effort="high")
+
+
+def test_deepseek_cost_uses_peak_price_as_upper_bound() -> None:
+    # 1M input, trong đó 400k cache hit; 100k output — giá cao điểm deepseek-flash.
+    cost = token_cost_usd("deepseek-flash", input_tokens=1_000_000, cached_input_tokens=400_000, output_tokens=100_000)
+    assert cost == pytest.approx(0.6 * 0.30 + 0.4 * 0.006 + 0.1 * 1.20)
