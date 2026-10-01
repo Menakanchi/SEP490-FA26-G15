@@ -6,7 +6,7 @@ trúc riêng ở [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
 > Nguồn sự thật: schema DB là [`database/mysql/01_schema.sql`](../../database/mysql/01_schema.sql)
 > (mirror trong `src/services/vehicsim/tables.py`); lý do quyết định là ADR-023 →
-> ADR-026 trong [`docs/adr/`](../adr/README.md). Tài liệu này vênh với hai nguồn đó
+> ADR-027 trong [`docs/adr/`](../adr/README.md). Tài liệu này vênh với hai nguồn đó
 > thì tài liệu này sai.
 
 ## Vòng MVP 6 bước
@@ -16,7 +16,7 @@ trúc riêng ở [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 | 1. Mô tả kịch bản | Câu tiếng Việt → xem/sửa Scenario IR | `/scenarios/new` | `POST /scenarios/describe` | `describe.py` |
 | 2. Sinh biến thể | Lưới tham số → họ kịch bản | `/scenarios/new`, `/scenarios` | `POST /families` | `family.py` |
 | 3. Chạy baseline | Chạy mọi biến thể với AEB baseline | `/scenarios` | `POST /families/{id}/run` | `runs.py` + Celery |
-| 4. Phân tích lỗi | Danh sách lỗi → chi tiết/nguyên nhân → playback | `/analysis/failures/**` | `GET /failures`, `/runs/{id}`, `/runs/{id}/playback` | `evaluation.py`, `views.py` |
+| 4. Phân tích lỗi | Danh sách lỗi → chi tiết/nguyên nhân → playback → tải JSON chạy lại trên CARLA | `/analysis/failures/**` | `GET /failures`, `/runs/{id}`, `/runs/{id}/playback`, `/runs/{id}/bundle` | `evaluation.py`, `views.py`, `worker/run_variant.py` |
 | 5. Cấu hình mới & chạy lại | Tạo candidate AEB → regression cùng seed | `/aeb`, `/validation/regression/new` | `POST /aeb/versions`, `GET /regression/preview`, `POST /regression` | `aeb.py`, `regression.py` |
 | 6. So sánh & quyết định | Kết quả regression → khuyến nghị → Accept/Reject/Request more tests | `/validation/**` | `GET /regression/{id}`, `/recommendations/{id}`, `POST /recommendations/{id}/decision` | `regression.py`, `views.py` |
 
@@ -34,15 +34,20 @@ Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  F
                               │ dispatch(run_ids)
                               ▼
               Redis db1 (broker) ──▶ Celery worker `vehicsim.run_simulation`
-                                           │ execute_run(run_id)
+                                           │ execute_run(run_id) → spec_for_run() (= JSON "Tải JSON chạy CARLA")
                                            ▼
-                        simulator.simulate() → evaluation.evaluate()
-                        → ghi results/aeb_results/failures/root_causes
+            carla_version = vehicsim-kinematic-1.0          carla_version = carla-<x.y.z>
+            simulator.simulate() (trong process)            VEHICSIM_CARLA_COMMAND <bundle> --out runs/<id> --fast
+                                     │                       (tiến trình con, timeout) → result.json
+                                     └──────────┬───────────────────────┘
+                                                ▼  cả hai dùng chung aeb_stack.AebStack
+                        evaluation.evaluate() → ghi results/aeb_results/failures/root_causes(/artifacts)
                         → regression.on_run_finished() → try_finalize()
 ```
 
 `VEHICSIM_RUN_MODE=inline` chạy `execute_run` ngay trong request (dùng cho test);
-mặc định `celery`. Worker Windows chạy `--pool=solo`.
+mặc định `celery`. Worker Windows chạy `--pool=solo`; worker chạy CARLA trên Linux phải
+`--concurrency=1` (một server CARLA chỉ chạy một lượt một lúc).
 
 ## Bản đồ module (`src/services/vehicsim/`)
 
@@ -52,9 +57,11 @@ mặc định `celery`. Worker Windows chạy `--pool=solo`.
 | `bootstrap.py` | Project/workspace/xe/hệ AEB mặc định, 10 tham số AEB (`AEB_PARAMETER_SEED`), baseline v1.0 (TTC 1,5 s) |
 | `describe.py` | Câu mô tả → LLM → IR đã kiểm; sửa ≤ 3 lần; lùi về luật khi LLM lỗi |
 | `family.py` | `FamilySpec` (lưới, giới hạn, ≤ 300 biến thể), tạo họ + bản gốc + biến thể trong một transaction |
-| `simulator.py` | Mô phỏng động học tất định: perception (độ tin cậy theo thời tiết/giờ/khoảng cách + nhiễu theo seed), decision (TTC + hành lang), control (trễ, actuator, tăng lực phanh), dynamics (μ·g). `DT = 0.05 s`, tối đa 12 s |
+| `aeb_stack.py` | **Hệ AEB cần kiểm thử**, dùng chung cho mọi bộ mô phỏng: `AebParams` (10 tham số), `AebStack.step` mỗi tick = perception (độ tin cậy theo thời tiết/giờ/khoảng cách + nhiễu theo seed) → decision (TTC + hành lang) → control (trễ, actuator, tăng lực phanh). Chỉ thư viện chuẩn |
+| `simulator.py` | "Thế giới" động học tất định: xe, người đi bộ, va chạm, μ·g; `make_frame` / `MotionStats` / `build_outcome` dùng chung với CARLA. `DT = 0.05 s`, tối đa 12 s |
+| `bundle.py` | Hợp đồng JSON: `vehicsim.variant/v1` (biến thể + AEB + xe + seed) và `vehicsim.result/v1`; `read_spec` nhận cả Scenario IR trần |
 | `evaluation.py` | Kết quả `COLLISION` / `NEAR_MISS` / `SAFE`, verdict, false/missed activation, chuỗi nguyên nhân PERCEPTION → DECISION → CONTROL → VEHICLE_DYNAMICS theo ngân sách thời gian |
-| `runs.py` | Tạo run (seed = `48000 + id biến thể`), dispatch inline/Celery, `execute_run` idempotent |
+| `runs.py` | Tạo run (seed = `48000 + id biến thể`, bộ mô phỏng theo cấu hình hoặc chép từ run baseline), dispatch inline/Celery, `execute_run` idempotent, `spec_for_run`/`bundle_for_run`, gọi CLI CARLA bằng tiến trình con |
 | `regression.py` | Tạo test, ghép cặp, chốt PASSED/FAILED, `decide`, `preview` |
 | `aeb.py` | Tạo candidate: tham số trong khoảng, phải khác version cha |
 | `views.py` | Payload đọc cho từng màn (failures, run detail, playback, regression, recommendation) |
@@ -62,6 +69,45 @@ mặc định `celery`. Worker Windows chạy `--pool=solo`.
 
 `src/celery_app.py`: app `vehicsim`, task `vehicsim.run_simulation`, queue
 `vehicsim.simulation`, `acks_late`, time limit theo `SIMULATION_TIMEOUT_S`.
+
+`aeb_stack.py`, `simulator.py`, `bundle.py`, `evaluation.py` là **lõi mô phỏng**: chỉ thư
+viện chuẩn, cú pháp Python 3.10, vì venv CARLA của worker import thẳng chúng.
+
+## Bộ mô phỏng: động học và CARLA
+
+Hai bộ mô phỏng thay thế nhau sau một hợp đồng (ADR-027). Cả hai nhận **cùng file
+JSON**, dùng **cùng `AebStack`**, ghi **cùng `result.json`**, được chấm bằng **cùng
+`evaluation.py`**:
+
+| | Động học (`worker/kinematic_sim.py`, hoặc trong process) | CARLA (`worker/run_variant.py`) |
+|---|---|---|
+| Chạy ở đâu | Máy nào cũng được, < 1 s/run | Máy có server CARLA (venv worker, `carla` khớp phiên bản server) |
+| Vật lý | Điểm khối, giảm tốc tức thì theo lệnh, μ·g | Xe/lốp/va chạm của CARLA; người đi bộ tăng tốc dần |
+| Perception | Mô hình tổng hợp trên ground truth | Như bên trái (chưa đọc camera/LiDAR) |
+| Cảnh | Không có hình | Đoạn làn thẳng tự tìm trên map đang mở, camera bám xe, `--video` |
+| Dùng khi | Dev, test tự động, batch nhanh, dự phòng khi demo | Xem tận mắt, quay video, đối chiếu |
+
+Chạy tay một JSON tải từ web (nút **"Tải JSON chạy CARLA"** ở màn Chi tiết lỗi /
+Phát lại, hoặc Scenario IR ở màn Sinh từ mô tả):
+
+```bash
+python worker/kinematic_sim.py vehicsim-run-42.json                      # khớp kết quả trên web
+worker/.venv/bin/python worker/run_variant.py vehicsim-run-42.json --video # CARLA, xem trong cửa sổ CARLA
+python worker/kinematic_sim.py scenario-ir.json --aeb aeb_v1.2.json --seed 7
+```
+
+Kết quả nằm ở thư mục cùng tên file JSON (`--out` để đổi). Thoát `0` = chạy xong (dù
+AEB FAIL), `2` = JSON sai (in đủ mọi lỗi), `3` = CARLA lỗi kết nối/spawn.
+
+Chạy cả batch trên CARLA: đặt `VEHICSIM_SIMULATOR=carla` và `VEHICSIM_CARLA_COMMAND` trên
+máy chạy worker Celery. Run regression luôn chép bộ mô phỏng của run baseline; đổi cấu
+hình sang CARLA thì regression tự dựng baseline CARLA mới, không ghép với baseline động học.
+
+Đo thật trên CARLA 0.9.16 (01/10/2026, exec plan
+[2026-10-01](../exec-plans/completed/2026-10-01-carla-variant-runner.md)): phanh xe CARLA yếu
+hơn mô hình (~4,6 m/s²), và người đi bộ tăng tốc dần nên hay va vào **hông xe** — lộ ra
+điểm mù của AEB (TD-18). Không dùng số CARLA làm bằng chứng regression cho tới khi
+hiệu chuẩn xong (TD-17).
 
 ## Dữ liệu
 
@@ -75,8 +121,11 @@ mặc định `celery`. Worker Windows chạy `--pool=solo`.
   đúng biến thể + seed của run baseline.
 - **AEB**: `aeb_versions` (BASELINE/CANDIDATE/ACCEPTED/REJECTED/ARCHIVED; UNIQUE ép
   mỗi hệ đúng một BASELINE) + `aeb_parameter_values` cho đúng 10 tham số.
-- 5/27 bảng chưa dùng: `project_members`, `sensors`, `simulation_artifacts`,
-  `optimization_runs`, `optimization_trials` (chờ CARLA thật và FE-13).
+- **Bộ mô phỏng** của run nằm ở `simulation_runs.carla_version`
+  (`vehicsim-kinematic-1.0` hoặc `carla-<x.y.z>`); file của run CARLA (result.json,
+  video) ghi đường dẫn vào `simulation_artifacts`.
+- 4/27 bảng chưa dùng: `project_members`, `sensors`, `optimization_runs`,
+  `optimization_trials` (chờ cảm biến thật và FE-13).
 
 ## Regression và quyết định
 
@@ -131,6 +180,12 @@ Graph 7 node của Forge **không** được dùng ở đây — xem ADR-026.
 |---|---|
 | Cùng biến thể + seed ⇒ cùng kết quả; seed chỉ đổi nhiễu perception | `test_same_seed_gives_identical_run`, `test_different_seed_changes_perception_noise_only_through_rng` |
 | Người dừng ở lề ⇒ phanh oan, không phải va chạm | `test_pedestrian_stopping_at_curb_is_false_braking_not_collision` |
+| Va vào hông xe vẫn là va chạm, không bao giờ là phanh oan | `test_pedestrian_walking_into_the_side_is_a_collision_never_false_braking` |
+| Lõi mô phỏng chỉ thư viện chuẩn + cú pháp 3.10 (venv CARLA import được) | `test_sim_core_is_stdlib_only_and_python310` |
+| JSON tải từ web chạy lại ra đúng kết quả đã lưu; CLI động học = backend | `test_exported_bundle_reproduces_the_stored_run`, `test_kinematic_cli_writes_the_same_result_as_the_backend` |
+| CARLA và động học dùng chung AEB, frame, số đo | `test_runner_reuses_the_kinematic_aeb_and_result_builders` |
+| Run CARLA đi qua tiến trình con; crash/sai phiên bản chỉ hỏng run đó | `test_carla_runs_go_through_the_simulator_subprocess`, `test_simulator_failure_marks_only_that_run_failed` |
+| Regression không bao giờ ghép kết quả động học với CARLA | `test_regression_never_pairs_kinematic_with_carla` |
 | Mọi tham số AEB được simulator dùng; seed Python khớp SQL | `test_every_seeded_parameter_is_used_by_the_simulator`, `test_python_parameter_seed_matches_sql_seed` |
 | Mọi route API `/api/v1/vehicsim/*` cần đăng nhập; VIEWER không ghi được | `test_every_vehicsim_route_requires_login`, `test_viewer_can_read_but_not_write` |
 | Candidate chạy đúng seed baseline; Accept đổi baseline | `test_regression_pairs_same_seeds_and_accept_swaps_baseline` |
@@ -182,7 +237,11 @@ thì sửa bảng.
 | `REDIS_URL` | OTP + rate limit |
 | `CELERY_BROKER_URL` | Broker Celery (mặc định `redis://localhost:6379/1`) |
 | `VEHICSIM_RUN_MODE` | `celery` (mặc định) hoặc `inline` |
-| `SIMULATION_TIMEOUT_S` | Trần thời gian một run (mặc định 120) |
+| `SIMULATION_TIMEOUT_S` | Trần thời gian một run (mặc định 120; CARLA nên 300) |
+| `VEHICSIM_SIMULATOR` | Bộ mô phỏng cho run mới: `kinematic` (mặc định) hoặc `carla` |
+| `VEHICSIM_CARLA_COMMAND` | Lệnh gọi CLI CARLA, JSON list (vd. `["…/worker/.venv/bin/python","worker/run_variant.py","--map","Town05"]`) |
+| `VEHICSIM_CARLA_VERSION` | Phiên bản server CARLA mà run mới yêu cầu (mặc định `0.9.15`) |
+| `VEHICSIM_DATA_ROOT` | Thư mục `runs/<id>/` của run CARLA (mặc định `./data/vehicsim`) |
 | `JWT_SECRET_KEY`, `ACCESS_TOKEN_TTL_MINUTES` | Phiên đăng nhập |
 | `OTP_TTL_SECONDS`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS` | Mã 6 số |
 | `LLM_PROVIDER`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY` | Lớp LLM dùng chung |

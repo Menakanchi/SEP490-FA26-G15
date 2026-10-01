@@ -31,7 +31,9 @@ function Test-Port([int]$port) {
 
 function Start-Window([string]$title, [string]$dir, [string]$command) {
     $script = "`$host.UI.RawUI.WindowTitle = '$title'; Set-Location '$dir'; $command"
-    Start-Process powershell -WorkingDirectory $dir -ArgumentList '-NoExit', '-NoProfile', '-Command', $script | Out-Null
+    $bytes = [System.Text.Encoding]::Unicode.GetBytes($script)
+    $encoded = [Convert]::ToBase64String($bytes)
+    Start-Process powershell -WorkingDirectory $dir -ArgumentList '-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded | Out-Null
     Write-Host "  started: $title"
 }
 
@@ -63,7 +65,7 @@ if (Test-Port 8001) { Write-Host '  skip: port 8001 already in use (backend runn
 else { Start-Window 'VehicSim backend :8001' $root "& '$uv' run uvicorn src.main:app --host 127.0.0.1 --port 8001" }
 
 if (Test-Port 3000) { Write-Host '  skip: port 3000 already in use (frontend running?)' }
-else { Start-Window 'VehicSim frontend :3000' (Join-Path $root 'frontend') "`$env:NEXT_PUBLIC_API_URL = 'http://localhost:8001'; npm run dev -- --port 3000" }
+else { Start-Window 'VehicSim frontend :3000' (Join-Path $root 'frontend') "`$env:NEXT_PUBLIC_API_URL = 'http://localhost:8001'; npm.cmd run dev -- --port 3000" }
 
 Write-Host ''
 Write-Host 'Open http://localhost:3000 (backend health: http://localhost:8001/health)'

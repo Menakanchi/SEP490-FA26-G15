@@ -36,7 +36,7 @@ from src.services.vehicsim.evaluation import (
     OUTCOME_SAFE,
     classify_outcome,
 )
-from src.services.vehicsim.runs import create_runs, dispatch
+from src.services.vehicsim.runs import configured_simulator, create_runs, dispatch
 
 _RANK = {OUTCOME_SAFE: 0, OUTCOME_NEAR_MISS: 1, OUTCOME_COLLISION: 2}
 
@@ -85,7 +85,11 @@ def _merge_criteria(overrides: dict | None) -> dict:
 
 
 def _latest_baseline_runs(conn, baseline_version_id: int, variant_ids: list[int]) -> dict[int, object]:
-    """Run baseline mới nhất (không phải run regression, không FAILED) của mỗi biến thể."""
+    """Run baseline mới nhất (không phải run regression, không FAILED) của mỗi biến thể.
+
+    Chỉ lấy run của bộ mô phỏng đang cấu hình: đổi sang CARLA thì regression dựng
+    baseline CARLA mới, không bao giờ ghép candidate CARLA với baseline động học.
+    """
     if not variant_ids:
         return {}
     rows = conn.execute(
@@ -95,6 +99,7 @@ def _latest_baseline_runs(conn, baseline_version_id: int, variant_ids: list[int]
             t.simulation_runs.c.scenario_version_id.in_(variant_ids),
             t.simulation_runs.c.purpose.in_(("BASELINE", "MANUAL")),
             t.simulation_runs.c.status != "FAILED",
+            t.simulation_runs.c.carla_version == configured_simulator(),
         )
         .order_by(t.simulation_runs.c.id)
     ).all()

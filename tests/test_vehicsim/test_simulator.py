@@ -64,6 +64,24 @@ def test_pedestrian_stopping_at_curb_is_false_braking_not_collision():
     assert ev.failure["failure_type"] == "FALSE_BRAKING"
 
 
+@pytest.mark.parametrize("weather", ["CLEAR", "HEAVY_RAIN"], ids=["aeb-silent", "aeb-fired"])
+def test_pedestrian_walking_into_the_side_is_a_collision_never_false_braking(weather):
+    """Người bước vào hông xe sau khi đầu xe qua vạch: không có ttc_gt, nhưng vẫn là va chạm.
+
+    Trước 01/10/2026 ca "aeb-fired" bị chấm FALSE_BRAKING (2 run trong DB demo), ca
+    "aeb-silent" bị đổ cho ngưỡng TTC (30 run) — lộ ra khi chạy cùng biến thể trên CARLA.
+    """
+    out = simulate(PedestrianCrossingCase(50, 20, 1.5, weather=weather), AebParams(), seed=48_001)
+    assert out.metrics["collision"] and not out.metrics["pedestrian_entered_path"]
+    assert (out.metrics["aeb_decision_t"] is not None) == (weather == "HEAVY_RAIN")
+
+    ev = evaluate(out, AebParams())
+    assert ev.outcome == OUTCOME_COLLISION and ev.failure["failure_type"] == "COLLISION"
+    assert not ev.aeb_result["false_activation"]
+    assert ev.primary_stage.stage == "DECISION" and ev.primary_stage.cause_code == "SIDE_ENTRY_NOT_PREDICTED"
+    assert "side of the car" in ev.headline
+
+
 def test_raising_ttc_trades_collisions_for_false_braking():
     """Đúng câu chuyện demo MVP: 1,5 -> 1,8 s bớt va chạm, thêm phanh oan, không va chạm mới."""
     grid = list(itertools.product((40, 50, 60, 70), (20, 30, 40), (1.5, 3.0), (False, True)))

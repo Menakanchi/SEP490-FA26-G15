@@ -147,8 +147,11 @@ export default function PlaybackPage() {
       subtitle="Phát lại ca lỗi từng khung hình. So sánh thực tế (ground truth) với những gì khâu nhận thức ghi nhận."
       actions={
         <>
-          <PillButton disabled title="Xuất clip cần bản ghi camera từ CARLA — chưa có với simulator động học">
-            Xuất clip
+          <PillButton
+            title={`Xem lượt này trong cửa sổ CARLA (và quay video với --video): python worker/run_variant.py vehicsim-run-${runId}.json`}
+            onClick={() => void vehicsimApi.downloadRunBundle(Number(runId)).catch((e) => setError(e.message))}
+          >
+            Tải JSON chạy CARLA
           </PillButton>
           <PillButton
             variant="dark"

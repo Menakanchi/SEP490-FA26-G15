@@ -72,6 +72,10 @@ const RULES: Rule[] = [
   [re(String.raw`The pedestrian was detected too late for AEB to stop\.`), () => "Phát hiện người đi bộ quá muộn để AEB dừng kịp."],
   [re(String.raw`The pedestrian was detected in time, but AEB activated ${N} s too late\.`), (m) => `Phát hiện người đi bộ kịp thời nhưng AEB kích hoạt muộn ${m[1]} s.`],
   [re(String.raw`The pedestrian was detected in time, but the TTC threshold left too little room to stop\.`), () => "Phát hiện người đi bộ kịp thời nhưng ngưỡng TTC để lại quá ít thời gian để dừng."],
+  [
+    re(String.raw`The pedestrian walked into the side of the car; AEB only checks the moment the front arrives\.`),
+    () => "Người đi bộ đi vào hông xe; AEB chỉ xét thời điểm đầu xe tới vạch.",
+  ],
   [re(String.raw`AEB fired in time, but braking built up too slowly\.`), () => "AEB kích hoạt kịp nhưng lực phanh tăng quá chậm."],
   [re(String.raw`AEB fired in time, but the road could not deliver the requested deceleration\.`), () => "AEB kích hoạt kịp nhưng mặt đường không cho đạt mức giảm tốc yêu cầu."],
   // --- evaluation.py: mô tả lỗi và từng khâu --------------------------------------------
@@ -91,6 +95,10 @@ const RULES: Rule[] = [
   [re(String.raw`Pedestrian detected at t ${N} s \(${N} m\) with latency 0\.1 s\.`), (m) => `Phát hiện người đi bộ lúc t = ${m[1]} s (cách ${m[2]} m), độ trễ 0.1 s.`],
   [re(String.raw`Pedestrian detected at t ${N} s\.`), (m) => `Phát hiện người đi bộ lúc t = ${m[1]} s.`],
   [re(String.raw`AEB never issued a brake command: the predicted path did not enter the lane in time\.`), () => "AEB không ra lệnh phanh: quỹ đạo dự đoán không đi vào làn xe kịp lúc."],
+  [
+    re(String.raw`Pedestrian stepped into the side of the car after its front had passed the crossing; AEB only predicts the pedestrian's position for the moment the front arrives\.`),
+    () => "Người đi bộ bước vào hông xe khi đầu xe đã qua vạch; AEB chỉ dự đoán vị trí người đi bộ tại thời điểm đầu xe tới nơi.",
+  ],
   [
     re(String.raw`AEB fired at TTC ${N} s, ${N} s after the ${N} s threshold was reached\.`),
     (m) => `AEB kích hoạt ở TTC ${m[1]} s, trễ ${m[2]} s sau khi chạm ngưỡng ${m[3]} s.`,

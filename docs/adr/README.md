@@ -35,6 +35,7 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | [ADR-024](ADR-024-vehicsim-mysql-redis-tach-khoi-sqlite-forge.md) | VehicSim + tài khoản trên MySQL 27 bảng, Redis cho OTP/rate limit/Celery; Forge giữ SQLite; biến thể = `scenario_versions` | 🕐 **Proposed 30/9** |
 | [ADR-025](ADR-025-cong-regression-cung-seed-khong-tu-accept.md) | Regression so từng cặp cùng seed; không bao giờ tự Accept; chặn quyết định trên baseline đã đổi | 🕐 **Proposed 30/9** |
 | [ADR-026](ADR-026-mo-ta-sang-ir-dung-lop-llm-chung.md) | Bước 1 câu mô tả → Scenario IR dùng lớp LLM chung, không qua graph 7 node | 🕐 **Proposed 30/9** |
+| [ADR-027](ADR-027-bo-mo-phong-cam-duoc-hop-dong-json.md) | Bộ mô phỏng cắm được: JSON chung, AEB dùng chung, CARLA chạy bằng tiến trình con; không ghép cặp khác simulator | 🕐 **Proposed 1/10** |
 
 ## Luật
 

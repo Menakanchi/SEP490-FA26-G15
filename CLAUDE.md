@@ -31,6 +31,25 @@ Các thư viện hệ thống đã từng thiếu và gây lỗi `.so` khó hi�
 sudo apt install -y libomp5 libsdl2-2.0-0 libxerces-c3.2 vulkan-tools
 ```
 
+## CARLA trên máy Windows dev (TrungDQ)
+
+Khác máy Ubuntu ở trên: server **0.9.16** ở `C:\Carla_package`, client là Python 3.12
+hệ thống (`py -3.12`, gói `carla 0.9.16` khớp server). Chạy batch ở đây thì đặt
+`VEHICSIM_CARLA_VERSION=0.9.16`, nếu không mọi run CARLA FAILED vì lệch phiên bản.
+
+```bat
+C:\Carla_package\CarlaUE4.exe -windowed -ResX=800 -ResY=600 -quality-level=Low
+py -3.12 worker\run_variant.py vehicsim-run-42.json
+```
+
+Máy chỉ có GPU tích hợp AMD: `-quality-level=Low` chạy ổn với Town10HD_Opt mặc định
+(cảnh báo về cờ này ở trên là của Linux/Town04). Server ăn ~3 GB RAM; ngày 01/10 Docker
+Desktop tự thoát trong lúc CARLA chạy (chưa rõ nguyên nhân) — bật lại bằng
+`scripts\dev-up.cmd`. Máy chưa có `ffmpeg` nên `--video` chỉ ra ảnh PNG từng khung.
+
+Kết quả CARLA khác bộ động học là **bình thường**: phanh xe CARLA yếu hơn và người đi
+bộ tăng tốc dần (số đo ở TD-17, exec plan 2026-10-01). Đừng "sửa" cho khớp số.
+
 ## Khi chạy ScenarioRunner thủ công
 
 Dùng `worker/.venv` (Python 3.10), không dùng `.venv` của backend. Thêm cả
