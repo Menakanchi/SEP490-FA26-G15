@@ -21,6 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sim_common.add_common_args(parser)
     args = parser.parse_args(argv)
+    sim_common.install_stop_handlers()
     spec = sim_common.load_spec(args)
     outcome = simulate(spec.case, spec.params, seed=spec.seed, vehicle=spec.vehicle)
     return sim_common.finish(args, spec, outcome, simulator=KINEMATIC_SIMULATOR)

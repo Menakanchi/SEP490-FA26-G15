@@ -50,6 +50,12 @@ Desktop tự thoát trong lúc CARLA chạy (chưa rõ nguyên nhân) — bật 
 Kết quả CARLA khác bộ động học là **bình thường**: phanh xe CARLA yếu hơn và người đi
 bộ tăng tốc dần (số đo ở TD-17, exec plan 2026-10-01). Đừng "sửa" cho khớp số.
 
+Lúc nạp map server lên tới ~8 GB RAM rồi mới hạ về ~4 GB; máy còn ít RAM (Docker đang
+chạy) thì nó có thể thoát ngay sau khi mở mà không để log. Nếu cửa sổ CARLA **đứng hình**
+sau khi một lượt `run_variant.py` bị giết (Ctrl+C hai lần, đóng terminal, timeout), server
+đang kẹt chế độ đồng bộ: chạy lại bất kỳ JSON nào — runner tự gỡ và xoá actor
+`vehicsim_*` sót lại. Không giết `run_variant.py` bằng Task Manager khi chưa cần.
+
 ## Khi chạy ScenarioRunner thủ công
 
 Dùng `worker/.venv` (Python 3.10), không dùng `.venv` của backend. Thêm cả

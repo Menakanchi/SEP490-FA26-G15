@@ -141,6 +141,25 @@ async def test_carla_mode_without_a_command_is_rejected(client, engineer, use_si
 
 
 @pytest.mark.asyncio
+async def test_hung_simulator_is_asked_to_stop_and_cleans_up(client, engineer, use_simulator, monkeypatch, tmp_path):
+    """Quá giờ thì xin dừng (CTRL_BREAK / SIGTERM) trước khi giết: CLI kịp chạy ``finally``.
+
+    Giết cứng ngay (``subprocess.run(timeout=...)``) để CARLA kẹt chế độ đồng bộ và giữ
+    lại actor — tái hiện trên CARLA 0.9.16 ngày 01/10/2026.
+    """
+    from src.services.vehicsim import runs as runs_module
+
+    monkeypatch.setattr(runs_module, "_subprocess_timeout", lambda: 2)
+    use_simulator("carla", "--hang")
+    found = _runs(await _family(client, engineer))
+
+    assert found and {r.status for r in found} == {"FAILED"}
+    for run in found:
+        assert "vượt 2 s" in run.error_message
+        assert (tmp_path / "data" / "runs" / str(run.id) / "cleaned_up").exists(), "CLI bị giết trước khi dọn dẹp"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("fake_args", "message"),
     [

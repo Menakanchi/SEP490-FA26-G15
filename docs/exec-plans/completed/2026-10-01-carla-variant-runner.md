@@ -60,6 +60,21 @@ JSON xuất ra từ kịch bản phải hiện lên CARLA và chạy được**.
 Chưa kiểm: batch CARLA thật qua Celery (đã kiểm đường tiến trình con bằng CLI giả
 `tests/test_vehicsim/fake_carla_cli.py`); CARLA 0.9.15 trên Ubuntu.
 
+## Review chéo sau commit `d6551d6` (Antigravity · Gemini 3.1 Pro)
+
+Toàn bộ test backend trên `d6551d6`: 725 passed, 35 skipped. Bốn phát hiện, từng cái
+được đối chiếu trên code và CARLA thật:
+
+| Phát hiện | Kết luận | Bằng chứng / xử lý |
+|---|---|---|
+| `enable_constant_velocity` nhận vector toàn cục, xe trượt ngang trên đường không hướng Đông | **Sai** | Đo trên hai đoạn yaw 90° và −90°: vận tốc dọc hướng xe 10,13 m/s, ngang 0,00 m/s — vector là hệ cục bộ |
+| Timeout của `subprocess.run` giết cứng CLI, bỏ qua `finally`: CARLA giữ actor và kẹt chế độ đồng bộ | **Đúng** | Tái hiện: sau khi giết, `synchronous_mode=True`, còn xe + người đi bộ + cảm biến. Sửa 3 lớp: backend xin dừng (CTRL_BREAK / SIGTERM cả nhóm tiến trình), chờ `STOP_GRACE_S` rồi mới giết cả cây; CLI đổi tín hiệu thành `SystemExit` (mã 4); runner gắn `role_name=vehicsim_*`, khi khởi động gỡ chế độ đồng bộ + xoá actor sót, khi thoát luôn về không đồng bộ. Kiểm trên CARLA: dừng êm → sạch; giết cứng → lần chạy sau xoá 3 actor sót và gỡ đồng bộ. Máy kiểm: `test_hung_simulator_is_asked_to_stop_and_cleans_up` |
+| `AebStack` cộng `ramp·dt` ngay ở tick bắt đầu phanh — phanh sớm 1 tick | **Không sửa** | Là quy ước mô hình có từ trước (refactor giữ nguyên từng bit); chênh ≤ 0,05 m/s; đổi sẽ làm mọi baseline đã lưu không còn so được |
+| `ffmpeg` không có timeout | **Đúng, mức thấp** | Thêm `FFMPEG_TIMEOUT_S = 120`; quá hạn thì giữ ảnh PNG |
+
+Khi sửa còn lộ thêm một bẫy: lúc server đang đồng bộ, `get_actors()` trả ảnh cũ (rỗng)
+cho tới tick kế tiếp — phải gỡ đồng bộ và chờ một tick trước khi tìm actor sót.
+
 ## Bài học
 
 - Chạy cùng biến thể trên một bộ vật lý khác là cách rẻ nhất để tìm lỗi trong luật
