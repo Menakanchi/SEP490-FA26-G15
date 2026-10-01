@@ -73,6 +73,8 @@ CLEARANCE_AFTER_M = 15.0  # đoạn thẳng còn phải có sau vạch để xe 
 MAX_LATERAL_DEVIATION_M = 0.3  # đoạn "thẳng": mọi waypoint lệch khỏi đường thẳng đầu đoạn ít hơn mức này
 MAX_HEADING_DEVIATION_DEG = 1.0
 SETTLE_TICKS = 10  # cho xe/người tiếp đất trước khi bắt đầu đo
+ROLE_PREFIX = "vehicsim_"  # role_name của mọi actor runner tạo — để lần sau nhận ra đồ bỏ lại
+FFMPEG_TIMEOUT_S = 120
 
 
 # ---------------------------------------------------------------------------
@@ -274,8 +276,9 @@ def _spawn_scene(carla, world, spec: RunSpec, args, scene: _Scene):
     cmap = world.get_map()
     library = world.get_blueprint_library()
     ego_bp = library.find(args.blueprint)
-    ego_bp.set_attribute("role_name", "hero")  # follow_hero.py và dev_ui.py nhận ra xe này
+    ego_bp.set_attribute("role_name", f"{ROLE_PREFIX}ego")  # runner tự lái camera, không cần follow_hero.py
     walker_bp = library.find(WALKER_BLUEPRINT)
+    walker_bp.set_attribute("role_name", f"{ROLE_PREFIX}pedestrian")
     if walker_bp.has_attribute("is_invincible"):
         walker_bp.set_attribute("is_invincible", "false")
 
@@ -329,7 +332,33 @@ def _encode_video(frames_dir: Path, target: Path) -> Path | None:
         return None
     cmd = [ffmpeg, "-y", "-loglevel", "error", "-framerate", str(round(1 / DT)), "-i", str(frames_dir / "%06d.png")]
     cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", str(target)]
-    return target if subprocess.run(cmd, check=False).returncode == 0 else None
+    try:
+        done = subprocess.run(cmd, check=False, timeout=FFMPEG_TIMEOUT_S)
+    except subprocess.TimeoutExpired:  # run() đã giết ffmpeg; giữ lại ảnh PNG
+        return None
+    return target if done.returncode == 0 else None
+
+
+def _destroy_leftovers(world) -> int:
+    """Xoá actor ``vehicsim_*`` mà lần chạy trước bị giết cứng để lại; trả số actor đã xoá."""
+    leftovers = [a for a in world.get_actors() if a.attributes.get("role_name", "").startswith(ROLE_PREFIX)]
+    for actor in sorted(leftovers, key=lambda a: not a.type_id.startswith("sensor.")):  # cảm biến trước
+        if actor.type_id.startswith("sensor."):
+            actor.stop()
+        actor.destroy()
+    return len(leftovers)
+
+
+def _release(world, original) -> None:
+    """Trả server về chế độ không đồng bộ khi thoát — kể cả khi trước đó đang đồng bộ.
+
+    "Trước đó đang đồng bộ" thường là do một lần chạy bị giết cứng để lại; khôi phục
+    nguyên trạng thì server vẫn chờ một tick không bao giờ đến và đứng hình.
+    """
+    settings = world.get_settings()
+    settings.synchronous_mode = False
+    settings.fixed_delta_seconds = None if original.synchronous_mode else original.fixed_delta_seconds
+    world.apply_settings(settings)
 
 
 def run_on_carla(spec: RunSpec, args, out: Path) -> tuple[SimulationOutcome, str, dict]:
@@ -343,6 +372,15 @@ def run_on_carla(spec: RunSpec, args, out: Path) -> tuple[SimulationOutcome, str
         print(f"Đang nạp map {args.map}…")
         world = client.load_world(args.map)
     original = world.get_settings()
+    if original.synchronous_mode:  # thường do lần chạy trước bị giết cứng: không còn ai tick
+        _release(world, original)
+    world.wait_for_tick()  # ở chế độ đồng bộ, get_actors() là ảnh cũ cho tới tick kế tiếp (đo 01/10)
+    leftovers = _destroy_leftovers(world)
+    if leftovers or original.synchronous_mode:
+        print(
+            f"Dọn lại sau lần chạy bị ngắt: xoá {leftovers} actor cũ, server đang đồng bộ = {original.synchronous_mode}.",
+            file=sys.stderr,
+        )
     settings = world.get_settings()
     settings.synchronous_mode = True
     settings.fixed_delta_seconds = DT
@@ -355,9 +393,9 @@ def run_on_carla(spec: RunSpec, args, out: Path) -> tuple[SimulationOutcome, str
         ego, walker, frame, front_offset, start = _spawn_scene(carla, world, spec, args, scene)
 
         collisions: list[str] = []
-        collision_sensor = world.spawn_actor(
-            world.get_blueprint_library().find("sensor.other.collision"), carla.Transform(), attach_to=ego
-        )
+        collision_bp = world.get_blueprint_library().find("sensor.other.collision")
+        collision_bp.set_attribute("role_name", f"{ROLE_PREFIX}sensor")
+        collision_sensor = world.spawn_actor(collision_bp, carla.Transform(), attach_to=ego)
         scene.sensors.append(collision_sensor)
         collision_sensor.listen(lambda e: collisions.append(e.other_actor.type_id))
 
@@ -368,6 +406,7 @@ def run_on_carla(spec: RunSpec, args, out: Path) -> tuple[SimulationOutcome, str
             cam_bp = world.get_blueprint_library().find("sensor.camera.rgb")
             cam_bp.set_attribute("image_size_x", "1280")
             cam_bp.set_attribute("image_size_y", "720")
+            cam_bp.set_attribute("role_name", f"{ROLE_PREFIX}sensor")
             camera = world.spawn_actor(
                 cam_bp, carla.Transform(carla.Location(x=-7.0, z=3.0), carla.Rotation(pitch=-12.0)), attach_to=ego
             )
@@ -518,7 +557,7 @@ def run_on_carla(spec: RunSpec, args, out: Path) -> tuple[SimulationOutcome, str
         return outcome, name, artifacts
     finally:
         scene.destroy()
-        world.apply_settings(original)
+        _release(world, original)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -538,6 +577,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--video", action="store_true", help="quay video.mp4 từ camera sau xe (cần ffmpeg)")
     args = parser.parse_args(argv)
+    sim_common.install_stop_handlers()
     spec = sim_common.load_spec(args)
     out = sim_common.out_dir(args)
     if spec.case.crossing_x + spec.vehicle.length_m > 250:

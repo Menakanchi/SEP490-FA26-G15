@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import signal
 import sys
 from pathlib import Path
 
@@ -28,6 +29,23 @@ from src.services.vehicsim.simulator import SimulationOutcome  # noqa: E402
 # kiểm thử, không phải lỗi). Khác 0 nghĩa là không có kết quả để đọc.
 EXIT_BAD_INPUT = 2
 EXIT_SIMULATOR_ERROR = 3
+EXIT_STOPPED = 4  # bị yêu cầu dừng (backend hết thời gian chờ) — đã dọn dẹp xong mới thoát
+
+
+def install_stop_handlers() -> None:
+    """SIGTERM (Linux) / CTRL_BREAK (Windows) -> ``SystemExit`` để các khối ``finally`` kịp chạy.
+
+    Backend dừng CLI quá hạn bằng các tín hiệu này trước khi giết cứng. Nếu bị giết
+    cứng giữa chừng, CARLA giữ lại xe/người đi bộ/cảm biến và kẹt ở chế độ đồng bộ —
+    đã tái hiện trên 0.9.16 ngày 01/10/2026.
+    """
+
+    def _stop(signum, _frame) -> None:
+        raise SystemExit(EXIT_STOPPED)
+
+    for name in ("SIGTERM", "SIGBREAK"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), _stop)
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:

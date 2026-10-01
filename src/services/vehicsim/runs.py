@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import signal
 import socket
 import subprocess
 from pathlib import Path
@@ -252,12 +254,46 @@ def run_dir(run_id: int) -> Path:
     return root / "runs" / str(run_id)
 
 
-def _simulate_in_subprocess(run, spec: RunSpec):
-    """Gọi CLI mô phỏng (CARLA) với bundle của run; đọc lại ``result.json``.
+STOP_GRACE_S = 15
+"""Sau khi hết giờ: thời gian chờ CLI tự dọn (xoá actor, trả CARLA về chế độ thường).
 
-    Timeout chừa 10 s cho Celery (``task_time_limit`` = ``SIMULATION_TIMEOUT_S``) để
-    run được ghi FAILED tử tế thay vì bị giết giữa chừng.
+Giết cứng ngay thì CARLA giữ lại xe/người đi bộ/cảm biến và kẹt ở chế độ đồng bộ —
+đã tái hiện trên CARLA 0.9.16 ngày 01/10/2026 (review chéo bằng Antigravity).
+"""
+
+
+def _subprocess_timeout() -> int:
+    """Chừa ``STOP_GRACE_S`` + 10 s trong ``task_time_limit`` của Celery để run được ghi FAILED tử tế."""
+    return max(10, get_settings().simulation_timeout_s - STOP_GRACE_S - 10)
+
+
+def _stop(proc: subprocess.Popen) -> None:
+    """Xin dừng cả nhóm tiến trình (CTRL_BREAK / SIGTERM); quá ``STOP_GRACE_S`` mới giết cứng cả cây.
+
+    Cả nhóm chứ không chỉ ``proc``: trên Windows, ``python.exe`` của venv là launcher
+    chạy Python thật ở tiến trình con — giết riêng launcher thì mô phỏng vẫn chạy tiếp.
     """
+    try:
+        if os.name == "nt":
+            proc.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(proc.pid, signal.SIGTERM)
+        proc.wait(timeout=STOP_GRACE_S)
+        return
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False)
+    else:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            pass
+    proc.wait()
+
+
+def _simulate_in_subprocess(run, spec: RunSpec):
+    """Gọi CLI mô phỏng (CARLA) với bundle của run; đọc lại ``result.json``."""
     settings = get_settings()
     command = list(settings.vehicsim_carla_command)
     if not command:
@@ -270,23 +306,29 @@ def _simulate_in_subprocess(run, spec: RunSpec):
     bundle_path.write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
     result_path = folder / "result.json"
     result_path.unlink(missing_ok=True)
-    timeout = max(10, settings.simulation_timeout_s - 10)
+    timeout = _subprocess_timeout()
+    # Nhóm tiến trình riêng để gửi tín hiệu dừng cho cả CLI lẫn con của nó (launcher venv, ffmpeg).
+    group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+    proc = subprocess.Popen(
+        [*command, str(bundle_path), "--out", str(folder), "--fast"],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        **group,
+    )
     try:
-        proc = subprocess.run(
-            [*command, str(bundle_path), "--out", str(folder), "--fast"],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-        )
+        stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired as exc:
-        raise SimulatorError(f"bộ mô phỏng vượt {timeout} s, đã dừng") from exc
-    (folder / "simulator.log").write_text(proc.stdout + proc.stderr, encoding="utf-8")
+        _stop(proc)
+        stdout, stderr = proc.communicate()
+        (folder / "simulator.log").write_text(stdout + stderr, encoding="utf-8")
+        raise SimulatorError(f"bộ mô phỏng vượt {timeout} s, đã dừng (mã thoát {proc.returncode})") from exc
+    (folder / "simulator.log").write_text(stdout + stderr, encoding="utf-8")
     if proc.returncode != 0 or not result_path.exists():
-        tail = (proc.stderr or proc.stdout).strip().splitlines()[-3:]
+        tail = (stderr or stdout).strip().splitlines()[-3:]
         raise SimulatorError(f"bộ mô phỏng thoát mã {proc.returncode}: {' | '.join(tail)}")
     try:
         simulator, outcome, artifacts = read_result(json.loads(result_path.read_text(encoding="utf-8")))
