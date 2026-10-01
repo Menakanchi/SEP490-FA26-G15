@@ -6,6 +6,9 @@
 import { apiDownload, apiRequest } from "@/services/api";
 import type {
   AebVersion,
+  AssistantAnswer,
+  AssistantStatus,
+  AssistantTurn,
   DescribeResult,
   FailureDetail,
   FailureFilters,
@@ -77,4 +80,9 @@ export const vehicsimApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  /** Trợ lý dự án — chỉ đọc; trả lời từ dữ liệu project + tài liệu repo, kèm nguồn. */
+  assistantAsk: (question: string, history: AssistantTurn[]) =>
+    apiRequest<AssistantAnswer>("/vehicsim/assistant/ask", { method: "POST", body: JSON.stringify({ question, history }) }),
+  assistantStatus: () => apiRequest<AssistantStatus>("/vehicsim/assistant/status"),
 };

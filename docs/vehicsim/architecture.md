@@ -6,7 +6,7 @@ trúc riêng ở [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
 > Nguồn sự thật: schema DB là [`database/mysql/01_schema.sql`](../../database/mysql/01_schema.sql)
 > (mirror trong `src/services/vehicsim/tables.py`); lý do quyết định là ADR-023 →
-> ADR-027 trong [`docs/adr/`](../adr/README.md). Tài liệu này vênh với hai nguồn đó
+> ADR-028 trong [`docs/adr/`](../adr/README.md). Tài liệu này vênh với hai nguồn đó
 > thì tài liệu này sai.
 
 ## Vòng MVP 6 bước
@@ -30,7 +30,7 @@ mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước
 Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  FastAPI /api/v1/vehicsim/*  (vehicsim_routes.py: chỉ đổi lỗi → HTTP)
                               │
                               ▼
-                  src/services/vehicsim/*  ──SQLAlchemy Core──▶  MySQL (22/27 bảng)
+                  src/services/vehicsim/*  ──SQLAlchemy Core──▶  MySQL (24/28 bảng)
                               │ dispatch(run_ids)
                               ▼
               Redis db1 (broker) ──▶ Celery worker `vehicsim.run_simulation`
@@ -65,6 +65,10 @@ mặc định `celery`. Worker Windows chạy `--pool=solo`; worker chạy CARLA
 | `regression.py` | Tạo test, ghép cặp, chốt PASSED/FAILED, `decide`, `preview` |
 | `aeb.py` | Tạo candidate: tham số trong khoảng, phải khác version cha |
 | `views.py` | Payload đọc cho từng màn (failures, run detail, playback, regression, recommendation) |
+| `knowledge.py` | Trợ lý dự án: dựng đoạn tri thức từ `views.py` + tài liệu trong danh sách trắng, nhúng vector, chỉ mục tăng dần, tìm kiếm |
+| `assistant.py` | Meomeo Agent: vòng ReAct (≤ 6 bước) trên `llm.call_with_escalation`, chặn đầu vào, kiểm đầu ra, chỉ giữ nguồn có thật |
+| `agent_tools.py` | 9 công cụ chỉ đọc của agent (danh sách trắng, tham số kiểu chặt, project do server gắn, kết quả qua `guardrails.clean`) |
+| `guardrails.py` | Chặn câu injection/đòi bí mật, lọc khoá nhạy cảm, che email/khoá/token, vô hiệu hoá câu giống lệnh trong dữ liệu người dùng nhập, kiểm đầu ra |
 | `common.py` | `NotFoundError`, `InvalidRequestError`, nhãn hiển thị |
 
 `src/celery_app.py`: app `vehicsim`, task `vehicsim.run_simulation`, queue
@@ -100,7 +104,9 @@ Kết quả nằm ở thư mục cùng tên file JSON (`--out` để đổi). Th
 AEB FAIL), `2` = JSON sai (in đủ mọi lỗi), `3` = CARLA lỗi kết nối/spawn.
 
 Chạy cả batch trên CARLA: đặt `VEHICSIM_SIMULATOR=carla` và `VEHICSIM_CARLA_COMMAND` trên
-máy chạy worker Celery. Run regression luôn chép bộ mô phỏng của run baseline; đổi cấu
+máy chạy worker Celery. Quá giờ, worker gửi CTRL_BREAK/SIGTERM cho cả nhóm tiến trình, chờ
+`STOP_GRACE_S` (15 s) để CLI xoá actor và trả CARLA về chế độ không đồng bộ, rồi mới giết;
+CLI bị giết cứng thì lần chạy sau tự xoá actor `vehicsim_*` sót lại. Run regression luôn chép bộ mô phỏng của run baseline; đổi cấu
 hình sang CARLA thì regression tự dựng baseline CARLA mới, không ghép với baseline động học.
 
 Đo thật trên CARLA 0.9.16 (01/10/2026, exec plan
@@ -124,7 +130,7 @@ hiệu chuẩn xong (TD-17).
 - **Bộ mô phỏng** của run nằm ở `simulation_runs.carla_version`
   (`vehicsim-kinematic-1.0` hoặc `carla-<x.y.z>`); file của run CARLA (result.json,
   video) ghi đường dẫn vào `simulation_artifacts`.
-- 4/27 bảng chưa dùng: `project_members`, `sensors`, `optimization_runs`,
+- 4/28 bảng chưa dùng: `project_members`, `sensors`, `optimization_runs`,
   `optimization_trials` (chờ cảm biến thật và FE-13).
 
 ## Regression và quyết định
@@ -164,6 +170,40 @@ Chỉ hỗ trợ motif người đi bộ băng ngang (kể cả ca dừng ở l�
 Giới hạn 30 lượt / 15 phút / người (Redis) vì app public và mỗi lượt tốn tiền.
 Graph 7 node của Forge **không** được dùng ở đây — xem ADR-026.
 
+## Trợ lý dự án — Meomeo Agent (ReAct, chỉ đọc)
+
+Nút **Meomeo Agent** (linh vật chú mèo, ảnh ở `frontend/public/vehicsim/assistant-*.jpg`) ở góc
+phải dưới trang Tổng quan mở cửa sổ hội thoại (`components/ProjectAssistant.tsx`) cho
+ENGINEER/ADMIN. Quyết định: ADR-028 (chỉ mục tri thức) và ADR-029 (ReAct + guardrails).
+
+```
+câu hỏi ─▶ POST /assistant/ask
+  1. guardrails.check_question  ─▶ đòi ghi đè luật / bí mật / dữ liệu người dùng → "blocked", 0 lượt LLM
+  2. knowledge.sync + search     ─▶ không nhắc mã nào và điểm < MIN_SCORE → "out_of_scope", 0 lượt LLM
+  3. vòng ReAct ≤ 6 bước          ─▶ LLM {thought, action, args} → agent_tools.run_tool (chỉ đọc, project do
+                                    server gắn) → kết quả đã guardrails.clean, bọc <<<DỮ_LIỆU_nonce ...>>>
+  4. final_answer                ─▶ chỉ giữ nguồn [S#] công cụ đã trả; guardrails.guard_answer (che bí mật,
+                                    chặn lộ system prompt)
+```
+
+- **Công cụ** (`agent_tools.TOOLS`): `search_knowledge` (chỉ mục ADR-028), `project_overview`,
+  `get_run`, `list_failures`, `failure_stats` (đếm trên toàn bộ ca lỗi, kèm top va chạm và bộ mô
+  phỏng), `get_parameters`, `get_aeb_version`, `get_family`, `get_regression`. Không công cụ nào
+  chạm bảng người dùng, cấu hình, file hay hàm ghi.
+- **Nguồn tri thức** cho `search_knowledge` (bảng `knowledge_chunks`): tổng quan, 10 tham số, AEB
+  version, họ kịch bản, ca lỗi, thống kê, regression — dựng từ `views.py` sau `guardrails.clean`;
+  tài liệu trong `knowledge.DOC_SOURCES` (kiến trúc, ADR-023+, nợ kỹ thuật, exec plan) — **không**
+  AGENTS.md / CLAUDE.md (file chỉ dẫn cho agent).
+- **Thông tin người dùng:** trợ lý không thấy email, tên người tạo/duyệt, token; "ai tạo RT-004?"
+  được trả "không có thông tin" — xem màn hình nếu cần truy vết.
+- **Lịch sử hội thoại:** lưu ở trình duyệt (`services/assistantHistory.ts`, localStorage, khoá
+  riêng theo tài khoản, tối đa 40 tin) — giữ khi chuyển trang và tải lại, **chỉ xoá khi đăng
+  xuất** (`AuthContext.logout`) hoặc bấm "Cuộc trò chuyện mới". Server không lưu hội thoại; mỗi
+  câu hỏi chỉ dùng tối đa 3 câu hỏi trước của người dùng, lượt "trợ lý" do trình duyệt gửi bị bỏ.
+- **Chi phí đo trên DB dev (03/10):** chỉ mục 797 đoạn; mỗi câu 2–3 lượt LLM, 2–9 s,
+  0,002–0,005 USD (`gpt-5.4-mini`). Giới hạn 40 câu / 15 phút / người.
+- Không có OpenAI key thì embedding chạy offline (`hashing-bow-v1`) — tách câu lạc đề kém hơn (TD-23).
+
 ## Xác thực
 
 - Đăng ký và quên mật khẩu: email → mã 6 số (TTL 600 s, tối đa 5 lần nhập sai,
@@ -185,6 +225,7 @@ Graph 7 node của Forge **không** được dùng ở đây — xem ADR-026.
 | JSON tải từ web chạy lại ra đúng kết quả đã lưu; CLI động học = backend | `test_exported_bundle_reproduces_the_stored_run`, `test_kinematic_cli_writes_the_same_result_as_the_backend` |
 | CARLA và động học dùng chung AEB, frame, số đo | `test_runner_reuses_the_kinematic_aeb_and_result_builders` |
 | Run CARLA đi qua tiến trình con; crash/sai phiên bản chỉ hỏng run đó | `test_carla_runs_go_through_the_simulator_subprocess`, `test_simulator_failure_marks_only_that_run_failed` |
+| CLI quá giờ được xin dừng trước khi bị giết, kịp dọn CARLA | `test_hung_simulator_is_asked_to_stop_and_cleans_up` |
 | Regression không bao giờ ghép kết quả động học với CARLA | `test_regression_never_pairs_kinematic_with_carla` |
 | Mọi tham số AEB được simulator dùng; seed Python khớp SQL | `test_every_seeded_parameter_is_used_by_the_simulator`, `test_python_parameter_seed_matches_sql_seed` |
 | Mọi route API `/api/v1/vehicsim/*` cần đăng nhập; VIEWER không ghi được | `test_every_vehicsim_route_requires_login`, `test_viewer_can_read_but_not_write` |
@@ -200,6 +241,16 @@ Graph 7 node của Forge **không** được dùng ở đây — xem ADR-026.
 | Họ từ mô tả giữ nguồn `NATURAL_LANGUAGE` | `test_family_from_description_keeps_nl_origin` |
 | Mọi lời gọi LLM qua `services/llm.py` | `test_nothing_imports_the_llm_provider_directly` |
 | Test không gọi LLM thật | fixture chặn trong `tests/conftest.py` |
+| Trợ lý dự án chỉ đọc: hỏi xong không bảng nào ngoài `knowledge_chunks` đổi | `test_assistant_never_writes_project_data` |
+| Agent gọi công cụ và chỉ dẫn nguồn công cụ đã trả; câu ngoài phạm vi không kèm nguồn | `test_react_loop_calls_tools_and_cites_only_what_they_returned`, `test_out_of_scope_answer_carries_no_sources` |
+| Câu injection / đòi bí mật / dữ liệu người dùng bị chặn trước khi gọi LLM | `test_injection_and_secret_requests_are_blocked_before_any_llm_call` |
+| Kết quả công cụ và chỉ mục không mang email, tên người dùng hay câu lệnh cài trong dữ liệu | `test_tool_output_never_carries_user_data_or_injected_commands`, `test_indexed_project_text_is_neutralized` |
+| Lượt "trợ lý" giả trong lịch sử bị bỏ; câu trả lời lộ prompt hay bí mật bị lọc | `test_forged_assistant_turns_in_history_are_dropped`, `test_answer_leaking_the_system_prompt_or_secrets_is_filtered` |
+| Công cụ lạ, gọi lặp, quá số bước bị chặn; sai định dạng được sửa một lần thay vì 503 | `test_unknown_tools_repeats_and_step_limit_are_contained`, `test_malformed_step_gets_one_repair_instead_of_a_503` |
+| Câu lạc đề rõ rệt bị từ chối trước khi tốn lượt LLM | `test_off_topic_question_is_refused_without_calling_the_llm` |
+| Câu tổng hợp luôn có đoạn thống kê toàn bộ ca lỗi | `test_aggregate_questions_always_get_the_statistics` |
+| Chỉ mục tăng dần, theo kịp dữ liệu; chỉ đọc tài liệu trong danh sách trắng | `test_index_is_incremental_and_follows_data_changes`, `test_only_whitelisted_docs_are_indexed` |
+| Trợ lý cần ENGINEER, có giới hạn tần suất; LLM lỗi trả 503 chứ không bịa | `test_assistant_requires_engineer`, `test_assistant_rate_limit`, `test_llm_failure_is_a_503_not_a_made_up_answer` |
 
 `tests/test_agent_docs.py` bắt tên test ở bảng này phải còn tồn tại — đổi tên test
 thì sửa bảng.
@@ -215,7 +266,7 @@ thì sửa bảng.
 - Client API: `services/vehicsim.ts`; kiểu: `types/vehicsim.ts` (khớp payload
   `views.py`). Component VehicSim nằm thẳng trong `components/`:
   `VehicSimShell`, `VehicSimSidebar`, `VehicSimPage`, `VehicSimContext`, `VehicSimUi`,
-  `FlowBar`, `FamilyForm`, `ScenarioMap`, `TelemetryChart`, `vehicsimFlow`, `vehicsimFonts`,
+  `FlowBar`, `FamilyForm`, `ScenarioMap`, `TelemetryChart`, `ProjectAssistant`, `vehicsimFlow`, `vehicsimFonts`,
   `vehicsimI18n`.
 - `/` là Tổng quan; chưa đăng nhập thì chuyển sang `/login`, trang giới thiệu ở `/landing`.
   Generator cũ của Forge ở `/generator`. URL cũ `/vs/*` được chuyển hướng trong
@@ -244,5 +295,5 @@ thì sửa bảng.
 | `VEHICSIM_DATA_ROOT` | Thư mục `runs/<id>/` của run CARLA (mặc định `./data/vehicsim`) |
 | `JWT_SECRET_KEY`, `ACCESS_TOKEN_TTL_MINUTES` | Phiên đăng nhập |
 | `OTP_TTL_SECONDS`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS` | Mã 6 số |
-| `LLM_PROVIDER`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY` | Lớp LLM dùng chung |
+| `LLM_PROVIDER`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY` | Lớp LLM dùng chung; `OPENAI_API_KEY` còn quyết định embedding của Trợ lý dự án (thiếu → offline) |
 | `SMTP_*` | Gửi mã qua email |

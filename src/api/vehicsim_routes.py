@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from src.api.auth_routes import CurrentUser, get_current_user
 from src.services.auth import otp
 from src.services.auth.users import User
-from src.services.vehicsim import aeb, describe, family, regression, runs, views
+from src.services.vehicsim import aeb, assistant, describe, family, knowledge, regression, runs, views
 from src.services.vehicsim.common import InvalidRequestError, NotFoundError
 
 router = APIRouter(prefix="/vehicsim", tags=["vehicsim"], dependencies=[Depends(get_current_user)])
@@ -320,3 +320,41 @@ def decide(test_id: int, body: DecisionRequest, user: Engineer) -> dict:
         confirmed=body.confirmed,
     )
     return _call(views.recommendation_detail, test_id)
+
+
+# ---------------------------------------------------------------------------
+# Trợ lý dự án (RAG, chỉ đọc) — ADR-028
+# ---------------------------------------------------------------------------
+
+
+class AssistantTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class AssistantRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=assistant.MAX_QUESTION_CHARS)
+    history: list[AssistantTurn] = Field(default_factory=list, max_length=12)
+
+
+# Mỗi câu hỏi tốn tiền LLM (lần đầu còn tốn embedding): giới hạn theo người dùng.
+ASSISTANT_LIMIT_PER_WINDOW = 40
+
+
+@router.post("/assistant/ask")
+def ask_assistant(body: AssistantRequest, user: Engineer) -> dict:
+    """Hỏi về dữ liệu + tài liệu của project. Chỉ đọc: không tạo/sửa/chạy gì."""
+    if otp.hit_rate_limit("vs_assistant", str(user.id), ASSISTANT_LIMIT_PER_WINDOW):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail="Hỏi quá nhiều lần, thử lại sau ít phút")
+    try:
+        history = [turn.model_dump() for turn in body.history]
+        return _call(assistant.ask, _project_id(), body.question, history, user_id=user.id)
+    except assistant.AssistantUnavailableError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Trợ lý tạm thời không trả lời được: {exc}"
+        ) from exc
+
+
+@router.get("/assistant/status")
+def assistant_status() -> dict:
+    return _call(knowledge.status, _project_id())

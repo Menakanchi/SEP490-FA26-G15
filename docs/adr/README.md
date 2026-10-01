@@ -36,6 +36,8 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | [ADR-025](ADR-025-cong-regression-cung-seed-khong-tu-accept.md) | Regression so từng cặp cùng seed; không bao giờ tự Accept; chặn quyết định trên baseline đã đổi | 🕐 **Proposed 30/9** |
 | [ADR-026](ADR-026-mo-ta-sang-ir-dung-lop-llm-chung.md) | Bước 1 câu mô tả → Scenario IR dùng lớp LLM chung, không qua graph 7 node | 🕐 **Proposed 30/9** |
 | [ADR-027](ADR-027-bo-mo-phong-cam-duoc-hop-dong-json.md) | Bộ mô phỏng cắm được: JSON chung, AEB dùng chung, CARLA chạy bằng tiến trình con; không ghép cặp khác simulator | 🕐 **Proposed 1/10** |
+| [ADR-028](ADR-028-tro-ly-du-an-rag-chi-doc.md) | Trợ lý dự án: RAG chỉ đọc trên dữ liệu project + tài liệu repo, vector trong bảng MySQL `knowledge_chunks` | 🕐 **Proposed 2/10** · cơ chế trả lời thay bởi ADR-029 |
+| [ADR-029](ADR-029-tro-ly-react-cong-cu-chi-doc-guardrails.md) | Meomeo Agent: ReAct với 9 công cụ chỉ đọc + guardrails bảo vệ người dùng, chống prompt injection | 🕐 **Proposed 3/10** |
 
 ## Luật
 

@@ -14,12 +14,13 @@ hai phân hệ dùng chung FastAPI + Next.js + lớp LLM + xác thực:
 | Phân hệ | Làm gì | Code chính | Lưu trữ | Đọc trước |
 |---|---|---|---|---|
 | Scenario Forge (có trước) | Câu mô tả → graph 7 node → `.xosc` → CARLA worker | `src/agents/`, `src/api/routes.py`, `worker/` | SQLite (`DATABASE_URL`) | [ARCHITECTURE.md](ARCHITECTURE.md), [docs/adr/](docs/adr/README.md) |
-| VehicSim MVP (nhánh `trungdam`, 09/2026) | Vòng AEB 6 bước: mô tả → biến thể → baseline → lỗi → candidate → regression → kỹ sư quyết định; mô phỏng bằng bộ động học hoặc CARLA sau một hợp đồng JSON | `src/services/vehicsim/`, `src/api/vehicsim_routes.py`, `worker/{run_variant,kinematic_sim,sim_common}.py`, `frontend/src/app/{page.tsx,scenarios,aeb,analysis,validation}`, `frontend/src/components/VehicSim*` | MySQL 27 bảng + Redis | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
+| VehicSim MVP (nhánh `trungdam`, 09/2026) | Vòng AEB 6 bước: mô tả → biến thể → baseline → lỗi → candidate → regression → kỹ sư quyết định; mô phỏng bằng bộ động học hoặc CARLA sau một hợp đồng JSON; Trợ lý dự án (RAG, chỉ đọc) trên Tổng quan | `src/services/vehicsim/`, `src/api/vehicsim_routes.py`, `worker/{run_variant,kinematic_sim,sim_common}.py`, `frontend/src/app/{page.tsx,scenarios,aeb,analysis,validation}`, `frontend/src/components/VehicSim*` | MySQL 28 bảng + Redis | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
 | Xác thực dùng chung | Đăng ký/quên mật khẩu bằng mã 6 số, JWT | `src/services/auth/`, `src/api/auth_routes.py`, `frontend/src/app/{login,register,forgot-password}` | MySQL `users/roles` + Redis (OTP) | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#xác-thực) |
 
 Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 [vòng MVP](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md),
-[JSON → CARLA](docs/exec-plans/completed/2026-10-01-carla-variant-runner.md).
+[JSON → CARLA](docs/exec-plans/completed/2026-10-01-carla-variant-runner.md),
+[Trợ lý dự án](docs/exec-plans/completed/2026-10-02-project-assistant.md).
 
 ## Chạy và tự kiểm chứng
 
@@ -47,7 +48,7 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 |---|---|
 | Kiến trúc VehicSim: module, luồng dữ liệu, API, bất biến ↔ test | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
 | Kiến trúc Scenario Forge, graph 7 node, CARLA | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Vì sao chọn X thay vì Y | [docs/adr/README.md](docs/adr/README.md) — VehicSim: ADR-023 → ADR-027 |
+| Vì sao chọn X thay vì Y | [docs/adr/README.md](docs/adr/README.md) — VehicSim: ADR-023 → ADR-028 |
 | Đã làm gì, quyết định lúc nào, kiểm chứng ra sao | [docs/exec-plans/completed/](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md) |
 | Còn thiếu gì, nợ gì | [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) |
 | Schema MySQL (nguồn sự thật của DB VehicSim) | [database/mysql/01_schema.sql](database/mysql/01_schema.sql) |
@@ -79,6 +80,13 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 9. Regression không bao giờ ghép kết quả động học với CARLA
    (`test_regression_never_pairs_kinematic_with_carla`); JSON tải từ web chạy lại ra đúng
    kết quả đã lưu (`test_exported_bundle_reproduces_the_stored_run`).
+10. Meomeo Agent (trợ lý dự án, ADR-029) chỉ đọc qua 9 công cụ trong `agent_tools.TOOLS`: không ghi
+    bảng nào ngoài `knowledge_chunks` (`test_assistant_never_writes_project_data`); không lộ dữ liệu
+    người dùng, không làm theo câu lệnh cài trong dữ liệu
+    (`test_tool_output_never_carries_user_data_or_injected_commands`,
+    `test_injection_and_secret_requests_are_blocked_before_any_llm_call`); không đọc AGENTS.md /
+    CLAUDE.md hay file ngoài danh sách trắng (`test_only_whitelisted_docs_are_indexed`). Thêm công
+    cụ mới thì phải chỉ đọc, kết quả qua `guardrails.clean`, và thêm vào test chỉ-đọc ở trên.
 
 ## Luật mềm — chưa có máy kiểm, reviewer phải canh
 

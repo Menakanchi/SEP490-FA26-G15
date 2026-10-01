@@ -1,5 +1,5 @@
 -- =====================================================================
--- VehicSim - MySQL 8.x schema (27 tables)
+-- VehicSim - MySQL 8.x schema (28 tables)
 -- Scenario -> CARLA -> AEB Evaluation -> Failure Analysis
 --          -> Optimization -> Regression
 -- Yêu cầu: MySQL >= 8.0.16 (CHECK constraint có hiệu lực)
@@ -661,6 +661,33 @@ CREATE TABLE regression_tests (
   CONSTRAINT fk_rt_reviewer  FOREIGN KEY (reviewed_by)              REFERENCES users(id)            ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT fk_rt_creator   FOREIGN KEY (created_by)               REFERENCES users(id)            ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT ck_rt_diff CHECK (baseline_aeb_version_id <> candidate_aeb_version_id)
+) ENGINE=InnoDB;
+
+-- =====================================================================
+-- 10. TRỢ LÝ DỰ ÁN (RAG, chỉ đọc)  (1 bảng)
+-- Mỗi hàng là một đoạn tri thức + vector: tài liệu repo (project_id NULL) hoặc
+-- dữ liệu của một project (tổng quan, tham số AEB, họ kịch bản, ca lỗi, regression).
+-- Là dữ liệu dẫn xuất: xoá đi thì lần hỏi sau tự dựng lại.
+-- =====================================================================
+
+CREATE TABLE knowledge_chunks (
+  id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  project_id       BIGINT UNSIGNED NULL,                   -- NULL = tài liệu repo, dùng chung
+  source_type      ENUM('DOC','PROJECT','AEB','FAMILY','FAILURE','REGRESSION') NOT NULL,
+  source_key       VARCHAR(255)  NOT NULL,                 -- "doc:docs/adr/ADR-027…md#3", "p1:failure:1055"
+  source_ref       VARCHAR(255)  NOT NULL,                 -- mã người đọc thấy: "#1055", "RT-004", "v1.3", đường dẫn tài liệu
+  title            VARCHAR(255)  NOT NULL,
+  link             VARCHAR(255)  NULL,                     -- URL màn hình VehicSim tương ứng
+  content          TEXT          NOT NULL,
+  content_hash     CHAR(64)      NOT NULL,                 -- sha256(model + nội dung): đổi thì embed lại
+  embedding_model  VARCHAR(64)   NOT NULL,
+  embedding        BLOB          NOT NULL,                 -- float32 little-endian, đã chuẩn hoá L2
+  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_kc_source (source_key),
+  KEY idx_kc_scope (project_id, embedding_model),
+  CONSTRAINT fk_kc_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 SET FOREIGN_KEY_CHECKS = 1;
