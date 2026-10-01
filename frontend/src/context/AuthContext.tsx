@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ApiUser, AuthContextType, Role, SessionResponse, User } from "@/types/auth";
+import { clearAllAssistantChats } from "@/services/assistantHistory";
 import {
   ApiError,
   changeMyPassword,
@@ -84,6 +85,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     storeToken(null);
     setToken(null);
     setUser(null);
+    // Lịch sử Meomeo Agent chỉ mất khi đăng xuất — chuyển trang hay tải lại thì vẫn giữ.
+    clearAllAssistantChats();
   }, []);
 
   // Khôi phục phiên: có token thì hỏi backend nó còn hợp lệ không.

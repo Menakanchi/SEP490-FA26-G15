@@ -6,6 +6,12 @@ from src.config import get_settings
 
 
 @pytest.fixture(autouse=True)
+def offline_embeddings(monkeypatch):
+    """Trợ lý dự án dùng embedding băm túi từ trong test — không bao giờ gọi API embedding thật."""
+    monkeypatch.setattr("src.services.vehicsim.knowledge._openai_embedder", lambda: None)
+
+
+@pytest.fixture(autouse=True)
 def inline_runs(monkeypatch):
     """Test chạy mô phỏng ngay trong process — không cần Celery/Redis."""
     monkeypatch.setenv("VEHICSIM_RUN_MODE", "inline")

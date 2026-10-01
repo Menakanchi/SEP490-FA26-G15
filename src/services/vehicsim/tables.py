@@ -21,6 +21,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    LargeBinary,
     Numeric,
     SmallInteger,
     String,
@@ -396,6 +397,27 @@ regression_tests = Table(
     Column("review_note", Text),
     Column("review_conditions", Text),
     Column("created_by", _Id, _fk("users.id"), nullable=False),
+    Column("created_at", DateTime, nullable=False),
+    Column("updated_at", DateTime, nullable=False),
+)
+
+KNOWLEDGE_SOURCE_TYPES = ("DOC", "PROJECT", "AEB", "FAMILY", "FAILURE", "REGRESSION")
+
+# Trợ lý dự án (RAG, chỉ đọc): đoạn tri thức + vector. Dữ liệu dẫn xuất — xem knowledge.py.
+knowledge_chunks = Table(
+    "knowledge_chunks",
+    metadata,
+    Column("id", _Id, primary_key=True, autoincrement=True),
+    Column("project_id", _Id, _fk("projects.id", ondelete="CASCADE")),
+    Column("source_type", Enum(*KNOWLEDGE_SOURCE_TYPES, native_enum=False), nullable=False),
+    Column("source_key", String(255), nullable=False, unique=True),
+    Column("source_ref", String(255), nullable=False),
+    Column("title", String(255), nullable=False),
+    Column("link", String(255)),
+    Column("content", Text, nullable=False),
+    Column("content_hash", String(64), nullable=False),
+    Column("embedding_model", String(64), nullable=False),
+    Column("embedding", LargeBinary, nullable=False),
     Column("created_at", DateTime, nullable=False),
     Column("updated_at", DateTime, nullable=False),
 )

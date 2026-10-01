@@ -427,3 +427,50 @@ export interface RecommendationDetail extends RegressionDetail {
     requested_by: string | null;
   };
 }
+
+// ---------------------------------------------------------------------------
+// Trợ lý dự án (RAG, chỉ đọc) — `src/services/vehicsim/assistant.py`
+// ---------------------------------------------------------------------------
+
+export type AssistantScope = "in_scope" | "not_found" | "out_of_scope" | "blocked";
+export type KnowledgeSourceType = "DOC" | "PROJECT" | "AEB" | "FAMILY" | "FAILURE" | "REGRESSION";
+
+export interface AssistantSource {
+  id: string; // "S1"… — khớp mã [S1] trong câu trả lời
+  type: KnowledgeSourceType;
+  ref: string; // "#1055", "RT-004", "v1.3", "parameters", "docs/adr/…md"
+  title: string;
+  link: string | null; // màn hình VehicSim tương ứng (tài liệu repo thì null)
+}
+
+export interface AssistantTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** Một bước ReAct: công cụ chỉ đọc đã gọi (không có suy nghĩ nội bộ của LLM). */
+export interface AssistantTraceStep {
+  tool: string;
+  args: Record<string, string | number | boolean>;
+  sources: string[];
+}
+
+export interface AssistantAnswer {
+  scope: AssistantScope;
+  answer: string;
+  sources: AssistantSource[];
+  grounded: boolean;
+  trace: AssistantTraceStep[];
+  retrieved: number;
+  model: string | null;
+  cost_usd: number;
+  llm_calls: number;
+}
+
+export interface AssistantStatus {
+  model: string;
+  embeddings: "openai" | "offline";
+  chunks: number;
+  by_type: Partial<Record<KnowledgeSourceType, number>>;
+  updated_at: string | null;
+}
