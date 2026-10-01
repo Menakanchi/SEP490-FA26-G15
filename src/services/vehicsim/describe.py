@@ -25,8 +25,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from src.models.schemas import TOO_VAGUE_MESSAGE, is_too_vague_to_generate
 from src.services import llm
+from src.services.vehicsim.bundle import IR_BOUNDS, TIMES, WEATHERS
 from src.services.vehicsim.common import InvalidRequestError
-from src.services.vehicsim.family import TIMES, WEATHERS
 
 MOTIF = "pedestrian_crossing"
 MAX_REPAIRS = 3
@@ -65,11 +65,7 @@ class DescribedScenario(BaseModel):
 
 
 # Khớp FamilySpec.validate — IR ngoài khoảng này không dựng được họ kịch bản.
-BOUNDS = {
-    "ego_speed_kmh": (10.0, 130.0),
-    "trigger_distance_m": (5.0, 80.0),
-    "pedestrian_speed_mps": (0.5, 8.0),
-}
+BOUNDS = IR_BOUNDS
 # Giá trị giả định khi câu không nói tới (IR phải đủ trường để chạy được).
 DEFAULTS = {
     "ego_speed_kmh": 50.0,

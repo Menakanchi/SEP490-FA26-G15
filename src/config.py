@@ -77,6 +77,16 @@ class Settings(BaseSettings):
     vehicsim_run_mode: Literal["celery", "inline"] = "celery"
     celery_broker_url: str = "redis://localhost:6379/1"
     simulation_timeout_s: int = Field(default=120, ge=10, le=3600)
+    # Bộ mô phỏng cho các run MỚI (ADR-027). "carla" cần lệnh gọi CLI CARLA dạng
+    # JSON list, chạy trên máy có CARLA, vd.
+    # VEHICSIM_CARLA_COMMAND=["/path/worker/.venv/bin/python","worker/run_variant.py","--map","Town05"]
+    # Backend nối thêm: <bundle.json> --out <thư mục run> --fast.
+    vehicsim_simulator: Literal["kinematic", "carla"] = "kinematic"
+    vehicsim_carla_command: list[str] = Field(default_factory=list)
+    # Phiên bản server CARLA mà run mới yêu cầu; server báo khác thì run FAILED,
+    # để regression không trộn kết quả hai phiên bản CARLA.
+    vehicsim_carla_version: str = "0.9.15"
+    vehicsim_data_root: str = "./data/vehicsim"
 
     # SMTP Email Configuration
     smtp_host: str = "smtp.gmail.com"

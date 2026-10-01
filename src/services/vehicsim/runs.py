@@ -1,28 +1,73 @@
 """Lần chạy mô phỏng: xếp hàng, thực thi, ghi kết quả (FE-08/09/11/12).
 
-Một ``simulation_runs`` = một biến thể × một AEB version × một seed. Thực thi:
-simulator động học (thay CARLA cho MVP) -> ``evaluation`` -> ghi
-``simulation_results`` + ``aeb_results`` + ``collision_events`` + ``failures`` +
-``root_causes`` trong **một** transaction, rồi báo cho regression (nếu run thuộc
-một regression test) để nó tự chốt khi đủ cặp.
+Một ``simulation_runs`` = một biến thể × một AEB version × một seed × một bộ mô
+phỏng. Thực thi: dựng ``RunSpec`` (``spec_for_run`` — cũng là thứ nút "Tải JSON
+chạy CARLA" xuất ra) -> bộ mô phỏng -> ``evaluation`` -> ghi ``simulation_results``
++ ``aeb_results`` + ``collision_events`` + ``failures`` + ``root_causes`` trong
+**một** transaction, rồi báo cho regression (nếu run thuộc một regression test)
+để nó tự chốt khi đủ cặp.
+
+Hai bộ mô phỏng cắm vào cùng hợp đồng (ADR-027), phân biệt bằng
+``simulation_runs.carla_version``:
+
+- ``vehicsim-kinematic-1.0``: chạy ngay trong process (dưới 1 giây/run).
+- ``carla-<phiên bản server>``: gọi ``VEHICSIM_CARLA_COMMAND`` (thường là
+  ``worker/run_variant.py``) như **tiến trình con có timeout** — CARLA treo thì chỉ
+  run đó FAILED, worker vẫn sống. Mỗi run có thư mục riêng
+  ``VEHICSIM_DATA_ROOT/runs/<run_id>/`` chứa bundle.json, result.json, video.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import socket
+import subprocess
+from pathlib import Path
 
 from sqlalchemy import insert, select, update
 
 from src.config import get_settings
 from src.services.vehicsim import tables as t
-from src.services.vehicsim.common import NotFoundError, aeb_values, engine, now
+from src.services.vehicsim.bundle import (
+    KINEMATIC_SIMULATOR,
+    BundleError,
+    RunSpec,
+    carla_simulator,
+    make_bundle,
+    read_result,
+)
+from src.services.vehicsim.common import InvalidRequestError, NotFoundError, aeb_values, engine, now
 from src.services.vehicsim.evaluation import evaluate
 from src.services.vehicsim.simulator import DT, MAX_DURATION_S, AebParams, PedestrianCrossingCase, VehicleSpec, simulate
 
 logger = logging.getLogger(__name__)
 
-SIMULATOR_NAME = "vehicsim-kinematic-1.0"  # ghi vào carla_version để phân biệt với CARLA thật
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+class SimulatorError(RuntimeError):
+    """Bộ mô phỏng không trả được kết quả (crash, timeout, sai định dạng)."""
+
+
+def configured_simulator() -> str:
+    """Bộ mô phỏng mà cấu hình hiện tại chọn — dùng để lọc baseline cho regression."""
+    settings = get_settings()
+    if settings.vehicsim_simulator == "carla":
+        return carla_simulator(settings.vehicsim_carla_version)
+    return KINEMATIC_SIMULATOR
+
+
+def simulator_for_new_runs() -> str:
+    """Như ``configured_simulator`` nhưng từ chối ngay nếu chọn CARLA mà chưa có lệnh gọi."""
+    settings = get_settings()
+    if settings.vehicsim_simulator == "carla" and not settings.vehicsim_carla_command:
+        raise InvalidRequestError("VEHICSIM_SIMULATOR=carla nhưng chưa đặt VEHICSIM_CARLA_COMMAND")
+    return configured_simulator()
+
+
+def is_carla(simulator: str | None) -> bool:
+    return bool(simulator) and simulator.startswith("carla-")
 
 
 def seed_for(scenario_version_id: int) -> int:
@@ -54,13 +99,20 @@ def create_runs(
     """Tạo các dòng ``simulation_runs`` (QUEUED). Chưa dispatch — người gọi dispatch sau commit.
 
     Với REGRESSION, ``baseline_runs`` = ``{scenario_version_id: run baseline}``: run mới
-    chép đúng seed của run baseline (FK ``fk_sr_baseline_run`` ép điều này ở MySQL).
+    chép đúng seed của run baseline (FK ``fk_sr_baseline_run`` ép điều này ở MySQL)
+    **và đúng bộ mô phỏng** của nó — kết quả động học không bao giờ được so với CARLA.
     """
     ts = now()
     ids: list[int] = []
+    new_run_simulator: str | None = None
     for variant in variants:
         baseline = (baseline_runs or {}).get(variant.id)
         seed = baseline.random_seed if baseline is not None else seed_for(variant.id)
+        if baseline is not None:
+            simulator = baseline.carla_version
+        else:
+            new_run_simulator = new_run_simulator or simulator_for_new_runs()
+            simulator = new_run_simulator
         run_id = conn.execute(
             insert(t.simulation_runs).values(
                 project_id=project_id,
@@ -74,7 +126,7 @@ def create_runs(
                 purpose=purpose,
                 random_seed=seed,
                 status="QUEUED",
-                carla_version=SIMULATOR_NAME,
+                carla_version=simulator,
                 fixed_delta_seconds=DT,
                 max_duration_s=MAX_DURATION_S,
                 run_config=variant.scenario_ir,
@@ -117,31 +169,14 @@ def execute_run(run_id: int) -> None:
     try:
         with engine().connect() as conn:
             run = _run_row(conn, run_id)
-            params = AebParams.from_codes(aeb_values(conn, run.aeb_version_id))
-            vehicle_row = conn.execute(select(t.vehicles).where(t.vehicles.c.id == run.vehicle_id)).first()
-            env = conn.execute(
-                select(t.scenario_environments).where(
-                    t.scenario_environments.c.scenario_version_id == run.scenario_version_id
-                )
-            ).first()
-        ir = run.run_config or {}
-        case = PedestrianCrossingCase(
-            ego_speed_kmh=float(ir["ego_speed_kmh"]),
-            trigger_distance_m=float(ir["trigger_distance_m"]),
-            pedestrian_speed_mps=float(ir["pedestrian_speed_mps"]),
-            stops_at_curb=bool(ir.get("stops_at_curb", False)),
-            weather=ir.get("weather", "CLEAR"),
-            time_of_day=ir.get("time_of_day", "DAY"),
-            friction=float(env.friction) if env is not None else None,
-        )
-        vehicle = VehicleSpec(
-            length_m=float(vehicle_row.length_m),
-            width_m=float(vehicle_row.width_m),
-            max_brake_decel_mps2=float(vehicle_row.max_brake_decel_mps2),
-        )
-        outcome = simulate(case, params, seed=int(run.random_seed), vehicle=vehicle)
-        result = evaluate(outcome, params)
-        _persist(run_id, outcome, result)
+            spec = spec_for_run(conn, run)
+        artifacts: dict = {}
+        if is_carla(run.carla_version):
+            outcome, artifacts = _simulate_in_subprocess(run, spec)
+        else:
+            outcome = simulate(spec.case, spec.params, seed=spec.seed, vehicle=spec.vehicle)
+        result = evaluate(outcome, spec.params)
+        _persist(run_id, outcome, result, artifacts)
     except Exception as exc:
         logger.exception("simulation run %s failed", run_id)
         with engine().begin() as conn:
@@ -156,7 +191,116 @@ def execute_run(run_id: int) -> None:
     regression.on_run_finished(run_id)
 
 
-def _persist(run_id: int, outcome, result) -> None:
+def spec_for_run(conn, run) -> RunSpec:
+    """Đúng những gì bộ mô phỏng nhận cho run này — dùng cho cả chạy lẫn xuất JSON."""
+    params = AebParams.from_codes(aeb_values(conn, run.aeb_version_id))
+    vehicle_row = conn.execute(select(t.vehicles).where(t.vehicles.c.id == run.vehicle_id)).first()
+    env = conn.execute(
+        select(t.scenario_environments).where(t.scenario_environments.c.scenario_version_id == run.scenario_version_id)
+    ).first()
+    version = conn.execute(select(t.aeb_versions).where(t.aeb_versions.c.id == run.aeb_version_id)).first()
+    ir = run.run_config or {}
+    case = PedestrianCrossingCase(
+        ego_speed_kmh=float(ir["ego_speed_kmh"]),
+        trigger_distance_m=float(ir["trigger_distance_m"]),
+        pedestrian_speed_mps=float(ir["pedestrian_speed_mps"]),
+        stops_at_curb=bool(ir.get("stops_at_curb", False)),
+        weather=ir.get("weather", "CLEAR"),
+        time_of_day=ir.get("time_of_day", "DAY"),
+        friction=float(env.friction) if env is not None else None,
+    )
+    vehicle = VehicleSpec(
+        length_m=float(vehicle_row.length_m),
+        width_m=float(vehicle_row.width_m),
+        max_brake_decel_mps2=float(vehicle_row.max_brake_decel_mps2),
+    )
+    return RunSpec(
+        case=case,
+        params=params,
+        vehicle=vehicle,
+        seed=int(run.random_seed),
+        aeb_label=version.label if version is not None else None,
+        vehicle_name=vehicle_row.name,
+        source={
+            "run_id": run.id,
+            "scenario_id": run.scenario_id,
+            "scenario_version_id": run.scenario_version_id,
+            "aeb_version_id": run.aeb_version_id,
+            "simulator": run.carla_version,
+        },
+    )
+
+
+def bundle_for_run(conn, run) -> dict:
+    """JSON mà nút "Tải JSON chạy CARLA" trả về — chính là đầu vào backend đưa cho bộ mô phỏng."""
+    spec = spec_for_run(conn, run)
+    return make_bundle(
+        case=spec.case,
+        params=spec.params,
+        vehicle=spec.vehicle,
+        seed=spec.seed,
+        aeb_label=spec.aeb_label,
+        vehicle_name=spec.vehicle_name,
+        source=spec.source,
+    )
+
+
+def run_dir(run_id: int) -> Path:
+    root = Path(get_settings().vehicsim_data_root)
+    if not root.is_absolute():
+        root = REPO_ROOT / root
+    return root / "runs" / str(run_id)
+
+
+def _simulate_in_subprocess(run, spec: RunSpec):
+    """Gọi CLI mô phỏng (CARLA) với bundle của run; đọc lại ``result.json``.
+
+    Timeout chừa 10 s cho Celery (``task_time_limit`` = ``SIMULATION_TIMEOUT_S``) để
+    run được ghi FAILED tử tế thay vì bị giết giữa chừng.
+    """
+    settings = get_settings()
+    command = list(settings.vehicsim_carla_command)
+    if not command:
+        raise SimulatorError("run cần CARLA nhưng máy này chưa đặt VEHICSIM_CARLA_COMMAND")
+    folder = run_dir(run.id)
+    folder.mkdir(parents=True, exist_ok=True)
+    bundle_path = folder / "bundle.json"
+    with engine().connect() as conn:
+        bundle = bundle_for_run(conn, run)
+    bundle_path.write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
+    result_path = folder / "result.json"
+    result_path.unlink(missing_ok=True)
+    timeout = max(10, settings.simulation_timeout_s - 10)
+    try:
+        proc = subprocess.run(
+            [*command, str(bundle_path), "--out", str(folder), "--fast"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SimulatorError(f"bộ mô phỏng vượt {timeout} s, đã dừng") from exc
+    (folder / "simulator.log").write_text(proc.stdout + proc.stderr, encoding="utf-8")
+    if proc.returncode != 0 or not result_path.exists():
+        tail = (proc.stderr or proc.stdout).strip().splitlines()[-3:]
+        raise SimulatorError(f"bộ mô phỏng thoát mã {proc.returncode}: {' | '.join(tail)}")
+    try:
+        simulator, outcome, artifacts = read_result(json.loads(result_path.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, BundleError) as exc:
+        raise SimulatorError(str(exc)) from exc
+    if simulator != run.carla_version:
+        raise SimulatorError(f"run yêu cầu {run.carla_version} nhưng bộ mô phỏng báo {simulator}")
+    return outcome, {"result": str(result_path), **artifacts}
+
+
+_ARTIFACT_TYPES = {"result": ("RESULT_JSON", "application/json"), "video": ("VIDEO_MP4", "video/mp4")}
+
+
+def _persist(run_id: int, outcome, result, artifacts: dict | None = None) -> None:
     ts = now()
     raw = {
         "frames": outcome.frames,
@@ -253,6 +397,21 @@ def _persist(run_id: int, outcome, result) -> None:
                         created_at=ts,
                     )
                 )
+
+        for kind, path in (artifacts or {}).items():
+            artifact_type, mime = _ARTIFACT_TYPES.get(kind, ("OTHER", None))
+            file = Path(path)
+            conn.execute(
+                insert(t.simulation_artifacts).values(
+                    simulation_run_id=run_id,
+                    artifact_type=artifact_type,
+                    file_name=file.name,
+                    storage_url=str(file),
+                    mime_type=mime,
+                    file_size_bytes=file.stat().st_size if file.is_file() else None,
+                    created_at=ts,
+                )
+            )
 
         conn.execute(
             update(t.simulation_runs)

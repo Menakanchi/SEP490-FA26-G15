@@ -13,7 +13,7 @@ from datetime import timedelta
 from sqlalchemy import func, select
 
 from src.services.auth.users import users_table
-from src.services.vehicsim import regression
+from src.services.vehicsim import regression, runs
 from src.services.vehicsim import tables as t
 from src.services.vehicsim.common import (
     TIME_LABELS,
@@ -512,6 +512,30 @@ def _related_runs(conn, run) -> list[dict]:
         }
         for r in rows
     ]
+
+
+def run_variant_bundle(run_id: int) -> dict:
+    """JSON của nút "Tải JSON chạy CARLA" — đúng đầu vào backend đưa cho bộ mô phỏng (ADR-027)."""
+    with engine().connect() as conn:
+        project = current_project(conn)
+        run = conn.execute(
+            select(t.simulation_runs).where(
+                t.simulation_runs.c.id == run_id, t.simulation_runs.c.project_id == project.id
+            )
+        ).first()
+        if run is None:
+            raise NotFoundError("simulation run")
+        doc = runs.bundle_for_run(conn, run)
+        scenario = conn.execute(select(t.scenarios).where(t.scenarios.c.id == run.scenario_id)).first()
+        variant = conn.execute(
+            select(t.scenario_versions).where(t.scenario_versions.c.id == run.scenario_version_id)
+        ).first()
+    doc["source"].update(
+        family=scenario.name,
+        variant=variant_label(scenario.code, variant.version_number),
+        exported_at=now().isoformat(timespec="seconds"),
+    )
+    return doc
 
 
 def playback(run_id: int) -> dict:

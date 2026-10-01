@@ -34,6 +34,7 @@ OUTCOME_NEAR_MISS = "NEAR_MISS"
 OUTCOME_SAFE = "SAFE"
 
 STAGES = ("PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS")
+SIDE_ENTRY_CAUSE = "SIDE_ENTRY_NOT_PREDICTED"
 
 
 @dataclass
@@ -83,7 +84,10 @@ def evaluate(outcome: SimulationOutcome, params: AebParams) -> Evaluation:
     m = outcome.metrics
     kind = classify_outcome(m)
     triggered = m["aeb_decision_t"] is not None
-    hazard = m["pedestrian_entered_path"]
+    # Va chạm luôn là có mối nguy — kể cả khi người đi bộ bước vào HÔNG xe sau khi mũi
+    # xe đã qua vạch (khi đó ttc_gt không bao giờ có, pedestrian_entered_path = False).
+    # Thiếu vế này, ca đó bị chấm nhầm thành "phanh oan" (lộ ra khi chạy CARLA, 01/10/2026).
+    hazard = m["pedestrian_entered_path"] or m["collision"]
     false_activation = triggered and not hazard
     ideal_t = _ideal_trigger_t(outcome, params)
     missed_activation = hazard and ideal_t is not None and not triggered
@@ -199,7 +203,17 @@ def _hazard_chain(outcome: SimulationOutcome, params: AebParams, ideal_t: float 
     entry_ttc = next((f["ttc_gt"] for f in outcome.frames if f["ttc_gt"] is not None), None)
 
     # -- Decision ------------------------------------------------------------------
-    if dec_t is None:
+    if m["collision"] and entry_ttc is None:
+        decision = StageVerdict(
+            "DECISION",
+            False,
+            "Pedestrian stepped into the side of the car after its front had passed the crossing; "
+            "AEB only predicts the pedestrian's position for the moment the front arrives.",
+            SIDE_ENTRY_CAUSE,
+            "PREDICTION_HORIZON",
+            confidence=0.6,
+        )
+    elif dec_t is None:
         decision = StageVerdict(
             "DECISION",
             False,
@@ -310,6 +324,8 @@ def _headline(chain: list[StageVerdict], m: dict, ideal_t: float | None) -> str:
     if primary.stage == "PERCEPTION":
         return "The pedestrian was detected too late for AEB to stop."
     if primary.stage == "DECISION":
+        if primary.cause_code == SIDE_ENTRY_CAUSE:
+            return "The pedestrian walked into the side of the car; AEB only checks the moment the front arrives."
         if m["aeb_decision_t"] is not None and ideal_t is not None and m["aeb_decision_t"] > ideal_t:
             return f"The pedestrian was detected in time, but AEB activated {m['aeb_decision_t'] - ideal_t:.1f} s too late."
         return "The pedestrian was detected in time, but the TTC threshold left too little room to stop."

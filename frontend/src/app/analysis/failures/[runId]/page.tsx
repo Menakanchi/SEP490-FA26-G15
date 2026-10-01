@@ -70,6 +70,12 @@ export default function FailureDetailPage() {
           <PillButton disabled title="Sửa nhãn nguyên nhân (màn 05) chưa có trong đợt MVP">
             Sửa nguyên nhân
           </PillButton>
+          <PillButton
+            title={`Chạy lại đúng lượt này (cùng biến thể, AEB, seed) trên CARLA: python worker/run_variant.py vehicsim-run-${runId}.json`}
+            onClick={() => void vehicsimApi.downloadRunBundle(Number(runId)).catch((e) => setError(e.message))}
+          >
+            Tải JSON chạy CARLA
+          </PillButton>
           <PillButton variant="dark" href={`/analysis/failures/${runId}/playback`}>
             ▶  Phát lại
           </PillButton>

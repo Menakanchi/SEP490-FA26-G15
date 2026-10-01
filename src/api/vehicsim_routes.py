@@ -12,7 +12,7 @@ import io
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from src.api.auth_routes import CurrentUser, get_current_user
@@ -229,6 +229,15 @@ def get_run(run_id: int) -> dict:
 @router.get("/runs/{run_id}/playback")
 def get_playback(run_id: int) -> dict:
     return _call(views.playback, run_id)
+
+
+@router.get("/runs/{run_id}/bundle")
+def get_run_bundle(run_id: int) -> JSONResponse:
+    """File JSON chạy lại đúng run này ngoài web: ``worker/run_variant.py`` (CARLA) hoặc ``kinematic_sim.py``."""
+    return JSONResponse(
+        _call(views.run_variant_bundle, run_id),
+        headers={"Content-Disposition": f'attachment; filename="vehicsim-run-{run_id}.json"'},
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import func, insert, select
 
+from src.services.vehicsim import bundle
 from src.services.vehicsim import tables as t
 from src.services.vehicsim.common import InvalidRequestError, NotFoundError, engine, now
 from src.services.vehicsim.simulator import WEATHER_FRICTION
@@ -25,8 +26,7 @@ MOTIF_NAME = "Pedestrian Crossing"
 DEFAULT_MAP = "Town10HD"  # bản đồ CARLA dự kiến khi runner thật thay simulator
 MAX_VARIANTS = 300  # trần mỗi lần sinh — ngân sách chạy 50–100+ run của kế hoạch rủi ro
 
-WEATHERS = ("CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG")
-TIMES = ("DAY", "DUSK", "NIGHT")
+WEATHERS, TIMES = bundle.WEATHERS, bundle.TIMES  # một nguồn với hợp đồng JSON của bộ mô phỏng
 
 
 @dataclass
@@ -44,16 +44,16 @@ class FamilySpec:
 
     def validate(self) -> None:
         axes = {
-            "ego_speeds_kmh": (self.ego_speeds_kmh, 10, 130),
-            "trigger_distances_m": (self.trigger_distances_m, 5, 80),
-            "pedestrian_speeds_mps": (self.pedestrian_speeds_mps, 0.5, 8),
+            "ego_speeds_kmh": (self.ego_speeds_kmh, *bundle.IR_BOUNDS["ego_speed_kmh"]),
+            "trigger_distances_m": (self.trigger_distances_m, *bundle.IR_BOUNDS["trigger_distance_m"]),
+            "pedestrian_speeds_mps": (self.pedestrian_speeds_mps, *bundle.IR_BOUNDS["pedestrian_speed_mps"]),
         }
         for name, (values, lo, hi) in axes.items():
             if not values:
                 raise InvalidRequestError(f"{name} cần ít nhất một giá trị")
             bad = [v for v in values if not lo <= v <= hi]
             if bad:
-                raise InvalidRequestError(f"{name} ngoài khoảng [{lo}, {hi}]: {bad}")
+                raise InvalidRequestError(f"{name} ngoài khoảng [{lo:g}, {hi:g}]: {bad}")
         if not self.stops_at_curb:
             raise InvalidRequestError("stops_at_curb cần ít nhất một giá trị")
         if not self.weathers or any(w not in WEATHERS for w in self.weathers):

@@ -14,11 +14,12 @@ hai phân hệ dùng chung FastAPI + Next.js + lớp LLM + xác thực:
 | Phân hệ | Làm gì | Code chính | Lưu trữ | Đọc trước |
 |---|---|---|---|---|
 | Scenario Forge (có trước) | Câu mô tả → graph 7 node → `.xosc` → CARLA worker | `src/agents/`, `src/api/routes.py`, `worker/` | SQLite (`DATABASE_URL`) | [ARCHITECTURE.md](ARCHITECTURE.md), [docs/adr/](docs/adr/README.md) |
-| VehicSim MVP (nhánh `trungdam`, 09/2026) | Vòng AEB 6 bước: mô tả → biến thể → baseline → lỗi → candidate → regression → kỹ sư quyết định | `src/services/vehicsim/`, `src/api/vehicsim_routes.py`, `frontend/src/app/{page.tsx,scenarios,aeb,analysis,validation}`, `frontend/src/components/VehicSim*` | MySQL 27 bảng + Redis | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
+| VehicSim MVP (nhánh `trungdam`, 09/2026) | Vòng AEB 6 bước: mô tả → biến thể → baseline → lỗi → candidate → regression → kỹ sư quyết định; mô phỏng bằng bộ động học hoặc CARLA sau một hợp đồng JSON | `src/services/vehicsim/`, `src/api/vehicsim_routes.py`, `worker/{run_variant,kinematic_sim,sim_common}.py`, `frontend/src/app/{page.tsx,scenarios,aeb,analysis,validation}`, `frontend/src/components/VehicSim*` | MySQL 27 bảng + Redis | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
 | Xác thực dùng chung | Đăng ký/quên mật khẩu bằng mã 6 số, JWT | `src/services/auth/`, `src/api/auth_routes.py`, `frontend/src/app/{login,register,forgot-password}` | MySQL `users/roles` + Redis (OTP) | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#xác-thực) |
 
 Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
-[docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md).
+[vòng MVP](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md),
+[JSON → CARLA](docs/exec-plans/completed/2026-10-01-carla-variant-runner.md).
 
 ## Chạy và tự kiểm chứng
 
@@ -29,7 +30,8 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 | Seed project VehicSim | `uv run python scripts/seed_vehicsim.py --owner <email> [--demo]` |
 | Gate backend (đúng như CI) | `make check` hoặc `uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/ && uv run pytest tests/` — đang đỏ vì lỗi có sẵn, xem TD-16 |
 | Gate frontend (**chưa có trong CI**, chạy tay) | `cd frontend && npm run lint && npx tsc --noEmit && npx next build` |
-| Chỉ test VehicSim | `uv run pytest tests/test_vehicsim tests/test_api/test_auth.py` |
+| Chỉ test VehicSim | `uv run pytest tests/test_vehicsim tests/test_worker/test_run_variant.py tests/test_api/test_auth.py` |
+| Chạy một JSON tải từ web ("Tải JSON chạy CARLA") | `python worker/kinematic_sim.py <file>.json` (máy nào cũng chạy) · `worker/.venv/bin/python worker/run_variant.py <file>.json [--video]` (cần server CARLA) |
 
 - Test **mặc định chặn LLM thật** (`tests/conftest.py`); gọi thật phải bật
   `RUN_LLM_TESTS=1` có chủ đích. Mock `src.services.llm.call_with_escalation`,
@@ -45,7 +47,7 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 |---|---|
 | Kiến trúc VehicSim: module, luồng dữ liệu, API, bất biến ↔ test | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
 | Kiến trúc Scenario Forge, graph 7 node, CARLA | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Vì sao chọn X thay vì Y | [docs/adr/README.md](docs/adr/README.md) — VehicSim: ADR-023 → ADR-026 |
+| Vì sao chọn X thay vì Y | [docs/adr/README.md](docs/adr/README.md) — VehicSim: ADR-023 → ADR-027 |
 | Đã làm gì, quyết định lúc nào, kiểm chứng ra sao | [docs/exec-plans/completed/](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md) |
 | Còn thiếu gì, nợ gì | [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) |
 | Schema MySQL (nguồn sự thật của DB VehicSim) | [database/mysql/01_schema.sql](database/mysql/01_schema.sql) |
@@ -70,6 +72,13 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 6. Tham số AEB Python khớp seed SQL (`test_python_parameter_seed_matches_sql_seed`).
 7. Không lộ email có tồn tại hay không; mã OTP lưu dạng hash, dùng một lần
    (`tests/test_api/test_auth.py`).
+8. Một AEB cho mọi bộ mô phỏng: logic AEB chỉ ở `src/services/vehicsim/aeb_stack.py`; lõi
+   mô phỏng chỉ dùng thư viện chuẩn + cú pháp 3.10 để venv CARLA import được
+   (`test_sim_core_is_stdlib_only_and_python310`,
+   `test_runner_reuses_the_kinematic_aeb_and_result_builders`).
+9. Regression không bao giờ ghép kết quả động học với CARLA
+   (`test_regression_never_pairs_kinematic_with_carla`); JSON tải từ web chạy lại ra đúng
+   kết quả đã lưu (`test_exported_bundle_reproduces_the_stored_run`).
 
 ## Luật mềm — chưa có máy kiểm, reviewer phải canh
 
@@ -77,6 +86,10 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 - Màn/chỉ số chưa có dữ liệu thật thì để mờ kèm lý do, trả `NOT_RUN` — không vẽ
   tick xanh giả (Robustness, Pareto, Sensitivity, Chase cam/RGB/LiDAR).
 - Tham số kịch bản và tham số AEB không đổi cùng lúc trong một lần so sánh.
+- Đổi `aeb_stack.py` hoặc `simulator.py` mà kết quả động học đổi thì phải đổi tên bộ mô
+  phỏng (`KINEMATIC_SIMULATOR` trong `bundle.py`) để run cũ không bị ghép với run mới.
+- Số đo từ CARLA chưa hiệu chuẩn phanh (TD-17): dùng để quan sát/đối chiếu, không ghi
+  làm bằng chứng regression trong báo cáo.
 - Trigger kịch bản là tương đối (khoảng cách/TTC), không dùng thời gian tuyệt đối.
 - Đổi schema MySQL: sửa `database/mysql/01_schema.sql` **và**
   `src/services/vehicsim/tables.py` trong cùng PR. Chưa có migration tool — DB

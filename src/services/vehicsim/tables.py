@@ -280,6 +280,22 @@ simulation_results = Table(
     Column("created_at", DateTime, nullable=False),
 )
 
+# File của run chạy ngoài process (CARLA): result.json, video.mp4. Chỉ lưu đường dẫn.
+simulation_artifacts = Table(
+    "simulation_artifacts",
+    metadata,
+    Column("id", _Id, primary_key=True, autoincrement=True),
+    Column("simulation_run_id", _Id, _fk("simulation_runs.id", ondelete="CASCADE"), nullable=False),
+    Column("artifact_type", String(16), nullable=False),
+    Column("file_name", String(255), nullable=False),
+    Column("storage_url", String(1024), nullable=False),
+    Column("mime_type", String(100)),
+    Column("file_size_bytes", BigInteger),
+    Column("checksum_sha256", String(64)),
+    Column("metadata", JSON),
+    Column("created_at", DateTime, nullable=False),
+)
+
 aeb_results = Table(
     "aeb_results",
     metadata,

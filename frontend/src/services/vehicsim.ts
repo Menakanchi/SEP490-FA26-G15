@@ -59,6 +59,9 @@ export const vehicsimApi = {
   exportFailures: (filters: FailureFilters) => apiDownload(`/vehicsim/failures.csv${query(filters)}`, "failure_cases.csv"),
   run: (runId: number) => apiRequest<FailureDetail>(`/vehicsim/runs/${runId}`),
   playback: (runId: number) => apiRequest<Playback>(`/vehicsim/runs/${runId}/playback`),
+  /** JSON chạy lại đúng run này ngoài web: `worker/run_variant.py` (CARLA) hoặc `worker/kinematic_sim.py`. */
+  downloadRunBundle: (runId: number) =>
+    apiDownload(`/vehicsim/runs/${runId}/bundle`, `vehicsim-run-${runId}.json`),
 
   regressions: (status?: string) => apiRequest<RegressionList>(`/vehicsim/regression${query({ status })}`),
   regressionPreview: (scenarioId: number) =>
