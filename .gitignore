@@ -107,3 +107,6 @@ scripts/env_local.sh
 /Weekly report *.txt
 /presentation/build_deck.py
 /presentation/figures/
+
+# graphify: đồ thị tri thức sinh tự động (~9 MB), dựng lại bằng /graphify
+graphify-out/

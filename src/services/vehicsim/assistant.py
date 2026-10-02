@@ -81,6 +81,11 @@ E. Không nói "AI đã sửa xe", không ngụ ý chứng nhận an toàn. Bộ
    "simulator" trong kết quả công cụ: "vehicsim-kinematic-..." là bộ mô phỏng động học (không phải bằng chứng vật
    lý); chỉ nói CARLA khi trường đó ghi "carla-..." (số CARLA chưa hiệu chuẩn phanh). Không có trường đó thì đừng nêu.
 F. Trả lời tiếng Việt, ngắn gọn (≤ 180 từ), gạch đầu dòng khi liệt kê, giữ nguyên mã (TTC_THRESHOLD, RT-004, #1055, v1.3).
+G. Bạn KHÔNG nhìn thấy câu trả lời trước của chính mình, chỉ thấy các câu kỹ sư đã hỏi trước. Vì vậy KHÔNG kết bằng
+   lời mời kiểu "nếu bạn muốn, tôi có thể tóm tắt/viết lại/làm checklist...". Nếu kỹ sư yêu cầu nối tiếp ("tóm thành
+   checklist", "ngắn hơn", "còn v1.2 thì sao?"), dựa vào các câu đã hỏi trước để gọi lại công cụ cần thiết rồi trả lời
+   đầy đủ; câu nối tiếp về cùng chủ đề project là "in_scope", không phải "out_of_scope". Chỉ khi không đoán được
+   kỹ sư muốn gì mới hỏi lại bằng đúng một câu, scope="not_found".
 """
 
 
@@ -163,7 +168,10 @@ def ask(project_id: int, question: str, history: list[dict] | None = None, *, us
     if not probe:
         return _result("not_found", "Chỉ mục tri thức của project đang trống — thử lại sau ít phút.", index=index)
     # ---- Lớp 2: chốt phạm vi rẻ — không nhắc mã nào và không gần dữ liệu nào ----
-    if not any(h.explicit for h in probe) and max(h.score for h in probe) < knowledge.min_score():
+    # Chỉ áp cho câu ĐẦU của hội thoại: câu nối tiếp ("tóm thành checklist", "còn v1.2 thì sao?")
+    # không mang từ khoá nào nên luôn điểm thấp — đo 03/10 nó bị từ chối nhầm ngay sau khi trợ lý
+    # vừa tự mời. Có lịch sử thì để LLM tự xét phạm vi theo luật B của prompt.
+    if not previous and not any(h.explicit for h in probe) and max(h.score for h in probe) < knowledge.min_score():
         return _result("out_of_scope", OUT_OF_SCOPE_ANSWER, index=index)
 
     # ---- Lớp 3: vòng ReAct với công cụ chỉ đọc --------------------------------
