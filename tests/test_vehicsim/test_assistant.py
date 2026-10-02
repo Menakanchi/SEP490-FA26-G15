@@ -281,6 +281,24 @@ async def test_off_topic_question_is_refused_without_calling_the_llm(client, eng
 
 
 @pytest.mark.asyncio
+async def test_follow_up_without_keywords_reaches_the_llm_instead_of_the_cheap_gate(client, engineer, monkeypatch):
+    """Đo 03/10: bấm lại lời mời "tôi có thể tóm thành checklist 5 bước" bị từ chối nhầm ở lớp 2."""
+    await _family(client, engineer)
+    follow_up = "Nếu bạn muốn, tôi có thể tóm tiếp thành checklist 5 bước cho test local."
+    history = [{"role": "user", "content": "Cách demo và chạy test local?"}]
+
+    calls = _llm(monkeypatch, error=AssertionError("câu hỏi ĐẦU không từ khoá vẫn phải bị lớp 2 chặn"))
+    first = (await _ask(client, engineer, follow_up)).json()
+    assert first["scope"] == "out_of_scope" and calls == []
+
+    calls = _llm(monkeypatch, final("1. Chạy dev-up [S1]", ["S1"]) | {"citations": []})
+    out = (await _ask(client, engineer, follow_up, history)).json()
+    assert len(calls) == 1 and out["scope"] == "in_scope"
+    assert "Cách demo và chạy test local?" in calls[0][-1]["content"]  # câu trước được đưa kèm làm ngữ cảnh
+    assert "KHÔNG kết bằng" in calls[0][0]["content"]  # luật G: không tự mời việc không làm được
+
+
+@pytest.mark.asyncio
 async def test_out_of_scope_answer_carries_no_sources(client, engineer, monkeypatch):
     await _family(client, engineer)
     _llm(monkeypatch, tool("get_parameters"), final("Không liên quan [S1].", ["S1"], scope="out_of_scope"))
