@@ -5,16 +5,12 @@ description = "Generate and review OpenSCENARIO 1.0 traffic scenarios"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "alembic>=1.14.0",
     "fastapi>=0.115.0",
-    "langchain>=0.3.0",
     "langchain-openai>=0.3.0",
     "langgraph>=0.2.0",
     "numpy>=2.0.0",
-    "psycopg2-binary>=2.9.0",
     "pydantic-settings>=2.7.0",
     "pydantic>=2.10.0",
-    "python-dotenv>=1.0.0",
     "sqlalchemy>=2.0.0",
     "uvicorn[standard]>=0.34.0",
     "pyjwt>=2.9",
