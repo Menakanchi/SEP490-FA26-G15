@@ -129,27 +129,6 @@ def _migrate_user_profile_columns(engine) -> None:
             connection.exec_driver_sql("ALTER TABLE users ADD COLUMN avatar_url TEXT")
 
 
-def _ensure_user_profile_columns_sqlite(cursor: sqlite3.Cursor) -> None:
-    """Tự động kiểm tra và thêm cột full_name, avatar_url cho bảng users nếu chưa có trong kết nối SQLite hiện tại."""
-    try:
-        cursor.execute("PRAGMA table_info(users)")
-        rows = cursor.fetchall()
-        if not rows:
-            return
-        columns = set()
-        for r in rows:
-            if isinstance(r, (tuple, list)) and len(r) > 1:
-                columns.add(r[1])
-            elif hasattr(r, "keys") or isinstance(r, dict):
-                columns.add(r["name"])
-        if "full_name" not in columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN full_name TEXT")
-        if "avatar_url" not in columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN avatar_url TEXT")
-    except Exception as e:
-        logger.debug("Auto-migration check for user profile columns: %s", e)
-
-
 def _migrate_campaign_id(engine) -> None:
     """Thêm ``generation_requests.campaign_id`` cho database dựng trước chiến dịch ODD.
 
