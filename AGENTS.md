@@ -39,6 +39,9 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
   đừng mock lớp dưới.
 - Test VehicSim chạy mô phỏng inline (`VEHICSIM_RUN_MODE=inline`), DB SQLite RAM,
   Redis giả (`fakeredis`) — không cần Docker.
+- Đồ thị code (graphify, tuỳ chọn, chỉ nằm trên máy dựng nó vì `graphify-out/` bị gitignore):
+  `graphify update .` dựng lại (AST, không tốn token), `graphify query "<câu hỏi>"` thay cho
+  đọc nhiều file. Không có đồ thị thì cứ đọc code như bình thường.
 - Sửa UI thì phải nhìn UI: chạy app, đăng nhập, chụp màn hình bằng trình duyệt
   headless và so với Figma trước khi báo xong (cách làm ở exec plan §Kiểm chứng).
 
