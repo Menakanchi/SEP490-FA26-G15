@@ -1,7 +1,8 @@
 """HTTP cho vòng MVP VehicSim: ``/api/v1/vehicsim/*``.
 
-Mọi route cần đăng nhập (``get_current_user``). VIEWER chỉ đọc; thao tác tạo /
-chạy / quyết định cần ENGINEER hoặc ADMIN. Nghiệp vụ nằm trong
+Mọi route cần đăng nhập (``get_current_user``). Thao tác tạo / chạy / quyết định
+cần ENGINEER, EXPERT hoặc ADMIN; tài khoản không mang role nào trong đó chỉ đọc
+(ADR-030 đã bỏ role VIEWER). Nghiệp vụ nằm trong
 ``src/services/vehicsim``; file này chỉ đổi lỗi thành mã HTTP.
 """
 
@@ -23,7 +24,7 @@ from src.services.vehicsim.common import InvalidRequestError, NotFoundError
 
 router = APIRouter(prefix="/vehicsim", tags=["vehicsim"], dependencies=[Depends(get_current_user)])
 
-WRITE_ROLES = {"ADMIN", "ENGINEER"}
+WRITE_ROLES = {"ADMIN", "EXPERT", "ENGINEER"}
 
 
 def require_engineer(user: CurrentUser) -> User:

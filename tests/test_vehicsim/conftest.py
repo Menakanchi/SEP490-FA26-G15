@@ -55,7 +55,14 @@ def engineer():
 
 @pytest.fixture
 def viewer(engineer):
-    return _make_user("viewer@vehicsim.vn", ("VIEWER",))
+    """Tài khoản không mang role ghi nào (ADR-030 bỏ role VIEWER): chỉ được đọc."""
+    return _make_user("viewer@vehicsim.vn", ())
+
+
+@pytest.fixture
+def expert(engineer):
+    """EXPERT không kèm ENGINEER: phải chạy/kiểm thử được như ENGINEER (ADR-030)."""
+    return _make_user("expert@vehicsim.vn", ("EXPERT",))
 
 
 SMALL_FAMILY = {

@@ -6,8 +6,10 @@ file SQL — MySQL dựng bảng từ đó, ``metadata.create_all`` chỉ chạy
 trong test. Dùng chung ``metadata`` với ``users`` để khoá ngoại tới ``users``
 dựng được trong test.
 
-Không mô tả ``optimization_*`` và ``sensors``: MVP không đụng tới (FE-13 và
-cảm biến thật để sau).
+Không mô tả các bảng code chưa đọc/ghi: ``optimization_*``, ``robustness_tests``,
+``sensors``, ``sensitivity_*``, ``notifications``, ``system_settings``, ``audit_logs``,
+``forum_*`` (nghĩa từng cột ở
+``docs/vehicsim/database-schema.md``). Thêm code dùng bảng nào thì mô tả bảng đó ở đây.
 """
 
 from __future__ import annotations
@@ -229,7 +231,7 @@ scenario_parameters = Table(
     Column("unit", String(20)),
 )
 
-RUN_PURPOSES = ("MANUAL", "BASELINE", "OPTIMIZATION", "REGRESSION")
+RUN_PURPOSES = ("MANUAL", "BASELINE", "OPTIMIZATION", "REGRESSION", "ROBUSTNESS")
 RUN_STATUSES = ("QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED")
 
 simulation_runs = Table(

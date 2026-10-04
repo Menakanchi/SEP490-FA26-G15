@@ -3,9 +3,9 @@
 Hai nguồn, cùng bảng ``knowledge_chunks``:
 
 - **Tài liệu repo** (``project_id`` NULL): chỉ các file trong danh sách trắng
-  ``DOC_SOURCES`` — kiến trúc VehicSim, ADR-023 → 029, nợ kỹ thuật, exec plan, AGENTS/CLAUDE.
-  Không bao giờ đọc ``.env``, code hay dữ liệu ngoài danh sách
-  (``test_only_whitelisted_docs_are_indexed``).
+  ``DOC_SOURCES`` — kiến trúc VehicSim, ADR-023 → 029, nợ kỹ thuật, exec plan; trừ
+  ``DOC_EXCLUDED`` (từ điển dữ liệu). Không bao giờ đọc AGENTS.md / CLAUDE.md, ``.env``, code
+  hay dữ liệu ngoài danh sách (``test_only_whitelisted_docs_are_indexed``).
 - **Dữ liệu project**: dựng từ chính các view màn hình (``views.py``), nên số trợ lý thấy
   là số kỹ sư thấy trên UI: tổng quan, 10 tham số + mọi AEB version, họ kịch bản, từng ca
   lỗi, từng regression + khuyến nghị.
@@ -49,6 +49,9 @@ DOC_SOURCES = (
     "docs/exec-plans/tech-debt-tracker.md",
     "docs/exec-plans/completed/*.md",
 )
+# Từ điển dữ liệu mô tả cấu trúc bảng users/roles, cách lưu mật khẩu và bí mật: kỹ sư hỏi về AEB
+# không cần, còn lộ ra thì chỉ có lợi cho người dò tấn công DB — trợ lý không đọc.
+DOC_EXCLUDED = frozenset({"docs/vehicsim/database-schema.md"})
 KNOWLEDGE_VERSION = 2  # đổi cách dựng văn bản thì tăng số này để chỉ mục dựng lại (2: guardrails)
 MAX_CHUNK_CHARS = 1800
 EMBED_BATCH = 96
@@ -168,7 +171,11 @@ def embed(texts: list[str], model: str) -> np.ndarray:
 def doc_paths() -> list[Path]:
     paths: set[Path] = set()
     for pattern in DOC_SOURCES:
-        paths.update(p for p in REPO_ROOT.glob(pattern) if p.is_file())
+        paths.update(
+            p
+            for p in REPO_ROOT.glob(pattern)
+            if p.is_file() and p.relative_to(REPO_ROOT).as_posix() not in DOC_EXCLUDED
+        )
     return sorted(paths)
 
 
