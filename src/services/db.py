@@ -1149,7 +1149,7 @@ def get_controller_runs_by_scenario_ids(scenario_ids: list[str]) -> dict[str, li
 
 def get_pending_jobs() -> list[dict]:
     with _cursor() as cursor:
-        cursor.execute("SELECT * FROM scenario_jobs WHERE status = 'pending' ORDER BY created_at ASC")
+        cursor.execute("SELECT * FROM scenario_jobs WHERE status IN ('pending', 'simulation_queued') ORDER BY created_at ASC")
         return [dict(r) for r in cursor.fetchall()]
 
 
@@ -1162,10 +1162,33 @@ def get_job(job_id: str) -> dict | None:
     d = dict(row)
     if d.get("result"):
         try:
-            d["result"] = json.loads(d["result"])
+            d["result"] = json.loads(d["result"]) if isinstance(d["result"], str) else d["result"]
         except Exception:
             pass
     return d
+
+
+def claim_job(job_id: str, worker_id: str = "carla_worker") -> bool:
+    now_str = datetime.now(UTC).isoformat()
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            """
+            UPDATE scenario_jobs
+            SET status = 'simulation_running', claimed_by = ?, claimed_at = ?, updated_at = ?
+            WHERE job_id = ? AND status IN ('pending', 'simulation_queued')
+            """,
+            (worker_id, now_str, now_str, job_id),
+        )
+        return cursor.rowcount > 0
+
+
+def update_job_status(job_id: str, status: str) -> None:
+    now_str = datetime.now(UTC).isoformat()
+    with _cursor(commit=True) as cursor:
+        cursor.execute(
+            "UPDATE scenario_jobs SET status = ?, updated_at = ? WHERE job_id = ?",
+            (status, now_str, job_id),
+        )
 
 
 def update_job_result(job_id: str, status: str, result: dict) -> None:
@@ -1181,6 +1204,7 @@ def update_job_result(job_id: str, status: str, result: dict) -> None:
     """,
             (status, result_json, now_str, job_id),
         )
+
 
 
 # ---------------------------------------------------------------------------

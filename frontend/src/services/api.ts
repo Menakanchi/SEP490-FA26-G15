@@ -638,3 +638,56 @@ export async function submitIntentLabel(
     body: JSON.stringify(body),
   });
 }
+
+
+// ---------------------------------------------------------------------------
+// Simulation Job Endpoints (CARLA Queue - Worker)
+// ---------------------------------------------------------------------------
+
+export interface SimulateTriggerResponse {
+  ok: boolean;
+  job_id: string;
+  scenario_id: string;
+  status: "simulation_queued" | "pending";
+  message?: string;
+}
+
+export interface SimulationJobStatusResponse {
+  job_id: string;
+  scenario_id: string;
+  status: "simulation_queued" | "simulation_running" | "completed" | "failed";
+  created_at?: string;
+  updated_at?: string;
+  result?: {
+    success: boolean;
+    criteria_results: Array<{ name: string; result: string; actual: string }>;
+    metrics: {
+      min_distance_m: number;
+      collision_detected: number;
+      sample_count?: number;
+      [key: string]: any;
+    };
+    trajectory: Array<{
+      t: number;
+      ego: [number, number, number];
+      adv: [number, number, number];
+      ego_speed?: number;
+      adv_speed?: number;
+      distance?: number;
+      collision?: boolean;
+    }>;
+    error?: string | null;
+  } | null;
+  error?: string;
+}
+
+export async function triggerScenarioSimulation(scenarioId: string): Promise<SimulateTriggerResponse> {
+  return request<SimulateTriggerResponse>(`/scenarios/${encodeURIComponent(scenarioId)}/simulate`, {
+    method: "POST",
+  });
+}
+
+export async function getSimulationJobStatus(jobId: string): Promise<SimulationJobStatusResponse> {
+  return request<SimulationJobStatusResponse>(`/jobs/${encodeURIComponent(jobId)}/status`);
+}
+
