@@ -1,16 +1,12 @@
 /**
  * Auth Data Types — VehicSim
  *
- * Backend (`/api/v1/auth/*`) trả `roles` dạng mã MySQL: ADMIN / ENGINEER / VIEWER.
+ * Backend (`/api/v1/auth/*`) trả `roles` dạng mã MySQL: ADMIN / EXPERT / ENGINEER (ADR-030).
  * Frontend quy về MỘT `Role` để chia trang (xem `primaryRole` trong AuthContext):
- *   ADMIN -> "admin" · ENGINEER -> "engineer" · VIEWER -> "viewer".
- * "creator" / "reviewer" còn lại từ Forge cũ — không tài khoản mới nào mang chúng,
- * nhưng trang quản lý user cũ (/admin, SQLite) vẫn hiển thị các giá trị này.
+ *   ADMIN -> "admin" · EXPERT -> "expert" · ENGINEER -> "engineer"; không role nào -> "guest".
  */
 
-export type Role = "admin" | "engineer" | "viewer" | "reviewer" | "creator" | "guest";
-export type UserRole = Role;
-export type UserStatus = "active" | "pending" | "pending_approval" | "inactive" | "rejected";
+export type Role = "admin" | "expert" | "engineer" | "guest";
 
 /** Người dùng đang đăng nhập, đã quy đổi từ `ApiUser`. */
 export interface User {
@@ -20,16 +16,10 @@ export interface User {
   avatar_url?: string;
   email: string;
   role: Role;
-  /** Mã role gốc từ backend (ADMIN / ENGINEER / VIEWER). */
+  /** Mã role gốc từ backend (ADMIN / EXPERT / ENGINEER). */
   roles?: string[];
-  /**
-   * Định danh cho các API Forge cũ (`created_by`, `reviewer`, ...). Tài khoản
-   * VehicSim không có username riêng nên đây chính là email.
-   */
+  /** Tên hiển thị dự phòng. Tài khoản VehicSim không có username riêng nên đây chính là email. */
   username: string;
-  status?: UserStatus;
-  reason?: string;
-  created_at?: string;
 }
 
 /** Hình dạng user mà backend `/auth/*` trả về. */

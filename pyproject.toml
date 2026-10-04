@@ -1,13 +1,12 @@
 [project]
-name = "scenario-forge"
+name = "vehicsim"
 version = "0.1.0"
-description = "Generate and review OpenSCENARIO 1.0 traffic scenarios"
+description = "VehicSim: simulate, evaluate and optimize AEB/FCW (SEP490-FA26-G15)"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "fastapi>=0.115.0",
     "langchain-openai>=0.3.0",
-    "langgraph>=0.2.0",
     "numpy>=2.0.0",
     "pydantic-settings>=2.7.0",
     "pydantic>=2.10.0",

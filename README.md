@@ -1,243 +1,78 @@
-# Scenario Forge (RAV-03)
+# VehicSim (VSOS) — SEP490-FA26-G15
 
-> Người mới và AI agent: đọc [`AGENTS.md`](AGENTS.md) trước — bản đồ repo, lệnh chạy/kiểm chứng,
-> luật cứng. Phân hệ VehicSim MVP: [`docs/vehicsim/architecture.md`](docs/vehicsim/architecture.md).
+Nền tảng web mô phỏng, kiểm thử và tối ưu **AEB** (phanh khẩn cấp tự động) và **FCW** (cảnh báo va
+chạm phía trước). Vòng khép kín của MVP:
 
-Scenario Forge nhận mô tả tiếng Việt về một tình huống giao thông nguy hiểm và
-sinh file **OpenSCENARIO 1.0 (`.xosc`)** để kỹ sư review, tải về và kiểm chứng
-bằng CARLA ScenarioRunner trước khi đưa vào thư viện.
+> Mô tả bằng tiếng Việt → Scenario IR → sinh biến thể → mô phỏng baseline → phân tích lỗi
+> (Perception / Decision / Control / Dynamics) → AEB candidate → regression cùng seed →
+> **kỹ sư Accept/Reject**
 
-> Trạng thái ngày 24/08/2026: đường đi đầy đủ đã chạy — bảy node, converter,
-> retrieval, hai cổng review, frontend, campaign ODD, behavior checker và GPU
-> worker CARLA. Báo cáo M1/M2/M3 được tính trực tiếp từ dữ liệu thực thi. Phạm
-> vi converter hiện là 72/560 ô ODD — năm maneuver xe trên anchor `highway` và
-> `run_red_light` trên anchor `urban_straight`, cho ba loại xe qua bốn kiểu thời
-> tiết; `jaywalk` đã được loại khỏi phạm vi vì không phù hợp anchor Town04
-> ([ADR-016](docs/adr/ADR-016-pham-vi-converter-mot-anchor-da-kiem-chung.md)).
-> Sáu oracle L4 trong phạm vi đều đã có. Closed-loop với CARLA BehaviorAgent đã
-> được tích hợp trên `main`: job đánh giá tách khỏi job xác minh, mỗi
-> lần chạy một cặp baseline/BehaviorAgent mới; UI kiểm tốc độ đầu rồi so số
-> phanh/khe hở/giảm tốc. Closed-loop dừng có chủ đích ở cặp A/B do con người
-> khởi động; vòng tự sinh nhiều thế hệ nằm ngoài phạm vi. Benchmark online 20
-> request cho generation workflow đo p50/p95 latency **2,766/4,152 s** và
-> cost/request **$0,002304/$0,004582**; 17/20 request hoàn tất và request lỗi
-> vẫn nằm trong mẫu số. Xem
-> [ADR-021](docs/adr/ADR-021-danh-gia-controller-tach-khoi-xac-minh-kich-ban.md)
-> và [ADR-022](docs/adr/ADR-022-closed-loop-dung-o-cap-ab-co-nguoi-khoi-dong.md),
-> [báo cáo đánh giá](eval/results/report.md) và
-> [artifact benchmark](eval/results/cost_latency_2026-08-24.json).
+Mô phỏng chạy bằng bộ động học tất định (máy nào cũng chạy) hoặc CARLA sau cùng một hợp đồng JSON.
+Khuyến nghị dựa trên mô phỏng — không thay thế kiểm thử vật lý hay chứng nhận an toàn.
 
-## Input và output
+## Chạy local
 
-**Input**
-
-```text
-Xe máy chạy từ phía sau, vượt lên, tạt đầu ô tô rồi phanh gấp.
-```
-
-**Output chính**
-
-```text
-scenario.xosc
-```
-
-File `.xosc` mô tả actors, vị trí, tốc độ, actions, triggers, thời tiết và tiêu
-chí đánh giá theo OpenSCENARIO. Web vẫn sinh và cho tải file khi GPU worker đang
-offline; tuy nhiên kịch bản chỉ vào thư viện sau khi có kết quả CARLA và qua
-`BEFORE_LIBRARY`.
-
-## Workflow
-
-```text
-parse_intent
-  → retrieve
-  → generate_draft
-  → validate ↔ repair_draft
-  → convert_xosc
-  → persist_pending_sim_review
-```
-
-- LLM chỉ tham gia `parse_intent`, `generate_draft` và `repair_draft`.
-- Thứ tự, nhánh lỗi và trần ba vòng repair do code quyết định.
-- LLM sinh `ScenarioDraft`, không sinh thẳng XML.
-- Backend cấp `scenario_id`, giữ nguyên câu gốc rồi tạo `ScenarioSpec`.
-- Converter deterministic biến `ScenarioSpec` thành `.xosc`.
-- Review và CARLA simulation là các HTTP transaction sau workflow, không phải
-  node đứng chờ trong RAM.
-- Tại `BEFORE_SIM`, spec gần trùng được cảnh báo bằng chênh lệch động học trước
-  khi tạo job GPU; reviewer có thể xem bản cũ hoặc chủ động chọn vẫn chạy
-  ([ADR-019](docs/adr/ADR-019-chan-trung-o-dau-ra-truoc-khi-tieu-gpu.md)).
-
-## Kiến trúc
-
-- [Kiến trúc, sơ đồ và contracts](ARCHITECTURE.md)
-- [Architecture Decision Records](docs/adr/README.md)
-- [Golden fixtures và CARLA smoke test](fixtures/README.md)
-
-Nguồn sự thật:
-
-- Hình dạng dữ liệu: `src/models/schemas.py`
-- Quyết định kiến trúc: `docs/adr/`
-- Tiến độ và ownership: GitHub Issues/Project
-- Bằng chứng thực thi: tests, `eval/`, `JOURNAL.md`, `WORKLOG.md`
-
-## Quick start
-
-Yêu cầu: Python 3.11+ cho backend, Node 20+ cho frontend.
+Cần: Docker Desktop, [uv](https://docs.astral.sh/uv/), Node.js 20+.
 
 ```bash
+cp .env.example .env          # điền khoá LLM, SMTP; JWT_SECRET_KEY bắt buộc ở production
 uv sync --locked
-cp .env.example .env
-
-uv run python scripts/init_db.py     # dựng schema từ database rỗng
-uv run python scripts/seed_db.py     # nạp 10 kịch bản mẫu để retrieval có gì mà tìm
-
-uv run uvicorn src.main:app --reload --port 8000
+cd frontend && npm ci && cd ..
 ```
 
-Frontend chạy riêng ở cổng 3000, mặc định gọi backend qua
-`http://localhost:8000/api/v1` (đổi bằng `NEXT_PUBLIC_API_URL`; backend đã cho
-phép các origin `localhost:3000` và `127.0.0.1:3000` qua `cors_origins`):
+**Windows:** `scripts\dev-up.cmd` bật MySQL + Redis (Docker), Celery worker, backend
+`http://localhost:8001`, frontend `http://localhost:3000` — mỗi dịch vụ một cửa sổ.
+
+**Thủ công:**
 
 ```bash
-cd frontend
-npm ci
-npm run dev
+docker compose up -d mysql redis
+uv run celery -A src.celery_app worker --pool=solo -Q vehicsim.simulation   # hoặc VEHICSIM_RUN_MODE=inline
+uv run uvicorn src.main:app --reload --port 8001
+cd frontend && NEXT_PUBLIC_API_URL=http://localhost:8001 npm run dev
 ```
 
-### Một lệnh chạy demo
-
-Demo đầy đủ cần CARLA 0.9.15 có render/Vulkan, ScenarioRunner 0.9.15 và Python
-3.10 cho worker. Script mặc định tìm ở `~/CARLA_0.9.15` và
-`~/scenario_runner`; có thể đổi bằng `CARLA_ROOT` và `SR_ROOT`.
-
-Sau khi đã tạo `.env`, lệnh mặc định dựng backend, frontend, CARLA có render,
-camera bám xe và GPU worker. Nó tái sử dụng service đang chạy và khi nhấn
-`Ctrl+C` chỉ dừng process do chính lệnh đó tạo:
+Tài khoản và dữ liệu mẫu:
 
 ```bash
-make demo
+uv run python scripts/create_admin.py --email admin@example.com          # --role EXPERT cho chuyên gia
+uv run python scripts/seed_vehicsim.py --owner admin@example.com --demo
 ```
 
-Máy không có CARLA/GPU vẫn demo được luồng sinh, review và thư viện:
+Database MySQL dựng từ `database/mysql/01_schema.sql` ở lần đầu; DB đã có thì nâng bằng file trong
+`database/mysql/migrations/` (không `docker compose down -v`).
+
+## Kiểm tra
 
 ```bash
-make demo-web
+make check                                   # ruff + format + pytest (giống CI)
+cd frontend && npm run lint && npx tsc --noEmit && npx next build
 ```
 
-Kiểm dependency và đường dẫn mà chưa khởi động gì:
+Test không cần Docker (SQLite RAM + Redis giả) và chặn mọi lời gọi LLM thật trừ khi `RUN_LLM_TESTS=1`.
 
-```bash
-make demo-check
+## Cấu trúc
+
 ```
-
-Log của từng service được giữ trong một thư mục
-`/tmp/scenario-forge-demo.*` và in ra khi lệnh khởi động.
-
-Cài hook một lần sau khi clone. Nó chạy gate lint/test trước mỗi lần push, nên
-lỗi bị chặn ở máy thay vì chờ một vòng CI:
-
-```bash
-bash scripts/setup_hooks.sh                                   # macOS / Linux / Git Bash
-powershell -ExecutionPolicy Bypass -File scripts/setup_hooks.ps1   # Windows
-```
-
-Chạy tay đúng những gì gate chạy:
-
-```bash
-make check                    # ruff check + ruff format --check + pytest
-cd frontend && npm run lint && npx next build
-```
-
-Cần push gấp khi gate đỏ: `SKIP_CHECK=1 git push`.
-
-### Endpoint chính
-
-```text
-GET  /health
-
-POST /api/v1/generate                       (alias: /api/v1/scenarios/generate)
-GET  /api/v1/status/{request_id}
-POST /api/v1/review                         (alias: /api/v1/scenarios/{id}/review)
-GET  /api/v1/scenarios                      (alias: /api/v1/library/search)
-GET  /api/v1/scenarios/{id}
-GET  /api/v1/scenarios/{id}/xosc            tải XML để kiểm tra từ Cổng 1
-PUT  /api/v1/scenarios/{id}/tags            thay toàn bộ tag
-
-POST /api/v1/campaigns                      sinh một batch phủ các ô ODD đã chọn
-POST /api/v1/campaigns/{id}/review          duyệt batch trước khi chạy GPU
-POST /api/v1/scenarios/{id}/tune             sinh bước dò tham số tới hạn tiếp theo
-GET  /api/v1/scenarios/{id}/tune             so kết quả các biến thể với bản gốc
-POST /api/v1/scenarios/{id}/controller-runs  xếp cặp baseline/BehaviorAgent mới
-GET  /api/v1/scenarios/{id}/controller-runs  đọc lịch sử và kết luận closed-loop
-GET  /api/v1/metrics/quality                báo cáo M1/M2/M3 từ dữ liệu thật
-GET  /api/v1/metrics/intent-agreement       mức khớp giữa behavior checker và người
-GET  /api/v1/library/audit                  rà lại kho theo luật hiện tại
-
-GET  /api/v1/internal/jobs                  worker GPU poll
-POST /api/v1/internal/jobs/{job_id}/result  ghi kết quả và mở BEFORE_LIBRARY
-```
-
-`POST /generate` chạy graph thật, không còn stub: nó trả `request_id` ngay rồi
-chạy bảy node nền, client poll `GET /status/{request_id}` cho tới `done|failed`.
-
-## Cấu trúc chính
-
-```text
 src/
-├── agents/             state, routing, graph và nodes
-├── api/                FastAPI routes
-├── models/schemas.py   data contracts
-└── services/           LLM và business logic
-
-fixtures/               specs, invalid drafts, execution results, golden .xosc
-tests/                  unit, contract và architecture tests
-docs/adr/               lý do cho các quyết định quan trọng
-eval/                   evaluation evidence
-presentation/           pitch deck và demo material
-worker/                 GPU worker pull-based, Python 3.10
+  api/                 vehicsim_routes.py, auth_routes.py  (chỉ đổi lỗi -> HTTP)
+  services/vehicsim/   vòng AEB: family, runs, simulator, aeb_stack, evaluation, regression,
+                       views; Meomeo Agent (assistant, agent_tools, knowledge, guardrails)
+  services/auth/       đăng ký/quên mật khẩu bằng mã OTP, JWT
+  services/openscenario/  bộ sinh OpenSCENARIO 1.0 (.xosc), chưa nối API
+  services/llm.py      cửa duy nhất tới LLM (OpenAI / DeepSeek)
+worker/                run_variant.py (JSON -> CARLA), kinematic_sim.py, follow_hero.py
+frontend/              Next.js 16 — app/ (Tổng quan, kịch bản, AEB, phân tích, kiểm định, hồ sơ)
+database/mysql/        01_schema.sql (36 bảng) + migrations/
+docs/                  vehicsim/ (kiến trúc, từ điển dữ liệu), adr/, exec-plans/
 ```
 
-## Ranh giới quan trọng
+## Tài liệu
 
-1. `src/` không `import carla`; CARLA chỉ nằm ở worker GPU riêng.
-2. `ScenarioSpec` độc lập simulator, không chứa blueprint hay toạ độ CARLA.
-3. Transactional store là nguồn thật cho scenario/review/job; embedding nằm cùng `.db` dưới dạng BLOB và chỉ phục vụ retrieval qua `Retriever` (ADR-013). MVP dùng SQLite, PostgreSQL chỉ là phương án nâng cấp khi cần.
-4. Chỉ scenario được người chịu trách nhiệm duyệt mới vào thư viện few-shot.
-5. Structured validation và static validation chạy được không cần GPU.
+- [AGENTS.md](AGENTS.md) — bản đồ repo và luật không được phá (đọc trước)
+- [Kiến trúc VehicSim](docs/vehicsim/architecture.md) · [Từ điển dữ liệu](docs/vehicsim/database-schema.md)
+- [ADR](docs/adr/README.md) · [Việc đã làm](docs/exec-plans/completed/) · [Nợ kỹ thuật](docs/exec-plans/tech-debt-tracker.md)
+- [CLAUDE.md](CLAUDE.md) — bẫy khi chạy CARLA / ScenarioRunner thật
 
-## CARLA smoke test
-
-Ngày 31/07/2026, fixture `fixtures/xosc/sample_001_cut_in.xosc` đã được
-ScenarioRunner 0.9.15 chạy với CARLA 0.9.15 server trên Windows và client WSL2
-Python 3.10. Kết quả xác nhận toolchain và `RelativeLanePosition` hoạt động,
-đồng thời phát hiện các khác biệt giữa chuẩn OpenSCENARIO và parser của
-ScenarioRunner. Chi tiết ở [ADR-012](docs/adr/ADR-012-converter-dung-relativelaneposition.md).
-
-Smoke test này chạy fixture viết tay nên chưa chứng minh converter tự động.
-Bằng chứng đó có ngày 15/08/2026: `sc_014` do LLM sinh và converter biên dịch đã
-đi qua cả hai cổng duyệt rồi chạy trọn vòng trên worker. Kết quả `CollisionTest =
-SUCCESS` — 0 va chạm, tức kịch bản chạy trót lọt mà **không** dựng được nguy
-hiểm nào; đường ống thông không có nghĩa kịch bản đáng giá.
-
-Bằng chứng mới nhất ngày 24/08/2026 đã đi xa hơn smoke test: `sc_042`/`sc_043`
-chạy ngược chiều đúng tuyến với lệch tim làn tối đa 0,188/0,194 m;
-`sc_046`/`sc_047` vượt đèn đỏ từ nhánh vuông góc và va chạm ego. Cả bốn lượt đã
-được xem trực tiếp và duyệt vào thư viện. Với closed-loop trên `sc_011`, cặp A/B
-có vận tốc ego ở giây 2 chỉ lệch 0,019 m/s; baseline và BehaviorAgent đều va
-chạm, cho thấy một controller failure có thể dùng làm ca regression. Chi tiết ở
-[ADR-021](docs/adr/ADR-021-danh-gia-controller-tach-khoi-xac-minh-kich-ban.md).
-
-## Deliverables
-
-- Source code và CI
-- README và architecture
-- AI usage logs
-- Live URL web-only *(tuỳ chọn, chưa triển khai production; GPU worker tách rời)*
-- Demo video và pitch deck
-- `JOURNAL.md` và `WORKLOG.md`
-- Evaluation report trong `eval/results/`
-
-## License
-
-MIT
+Repo dựng lên từ Scenario Forge (dự án AI20K RAV-03); phần Forge đã gỡ ngày 04/10/2026 (ADR-032),
+lịch sử còn trong git.

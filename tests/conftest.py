@@ -1,5 +1,4 @@
 import os
-from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -8,42 +7,15 @@ from httpx import ASGITransport, AsyncClient
 from src.config import get_settings
 from src.main import app
 
-
-@pytest.fixture(autouse=True)
-def isolated_database(tmp_path, monkeypatch):
-    """Mỗi test một file SQLite riêng, dựng sẵn schema.
-
-    Autouse vì hai lý do. Một: không test nào được ghi vào `data/app.db` của bản
-    dev — chạy `pytest` mà mất dữ liệu đang xem là chuyện không ai ngờ tới. Hai:
-    `db.py` cố ý **không** tạo bảng lúc import (import một module không nên đẻ ra
-    file trên đĩa), nên chỗ dựng schema cho test phải là đây.
-    """
-    from src.agents.nodes.persist_node import get_repository
-    from src.services import db
-
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
-    get_settings.cache_clear()
-    # `get_repository` là `@lru_cache(maxsize=1)`: nó giữ engine dựng từ
-    # `database_url` của **lần gọi đầu tiên**. Không xoá thì test thứ hai trở đi
-    # ghi vào file của test thứ nhất — file đã bị dọn — và persist hỏng im lặng.
-    # Cùng lý do áp cho production: đổi DATABASE_URL lúc chạy sẽ không có tác dụng.
-    get_repository.cache_clear()
-    db.init_db()
-    yield
-    get_repository.cache_clear()
-    get_settings.cache_clear()
-
-
 TEST_JWT_SECRET = "test-only-jwt-secret-not-for-production"
 
 
 @pytest.fixture(autouse=True)
-def isolated_auth(monkeypatch, isolated_database):
-    """Xác thực chạy trên SQLite trong RAM + fakeredis, không cần MySQL/Redis thật.
+def isolated_auth(monkeypatch):
+    """Xác thực + VehicSim chạy trên SQLite trong RAM + fakeredis, không cần MySQL/Redis thật.
 
     Bảng dựng từ chính ``users.metadata`` (cùng cột với ``01_schema.sql``) và
-    seed ba role như file SQL. Phụ thuộc ``isolated_database`` để chạy SAU nó —
-    fixture đó xoá cache ``get_settings`` mà khoá JWT ở đây cần.
+    seed ba role như file SQL. Autouse: không test nào được chạm DB dev thật.
     """
     import fakeredis
     from sqlalchemy import create_engine, insert
@@ -67,7 +39,7 @@ def isolated_auth(monkeypatch, isolated_database):
             [
                 {"code": "ADMIN", "name": "Administrator", "created_at": now},
                 {"code": "ENGINEER", "name": "Engineer", "created_at": now},
-                {"code": "VIEWER", "name": "Viewer", "created_at": now},
+                {"code": "EXPERT", "name": "Expert", "created_at": now},
             ],
         )
     monkeypatch.setattr(users, "get_engine", lambda: engine)
@@ -126,17 +98,3 @@ async def client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
-
-
-@pytest.fixture
-def mock_llm():
-    """Mock LLM to avoid calling OpenAI during tests.
-
-    Usage in test:
-        def test_something(mock_llm):
-            # LLM calls will return mock response instead of hitting OpenAI
-            ...
-    """
-    mock = AsyncMock()
-    mock.ainvoke.return_value = AsyncMock(content="Mocked LLM response")
-    return mock

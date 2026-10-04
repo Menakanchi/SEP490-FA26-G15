@@ -8,12 +8,15 @@ __pycache__
 *.pyc
 .pytest_cache
 .ruff_cache
-docs/
-presentation/
-eval/
+# Dữ liệu và run của máy dev không lên image; frontend deploy riêng (Vercel).
+data/
+frontend/
+graphify-out/
+scratch/
 .ai-log/
 worker/outputs/
-*.md
+# KHÔNG loại docs/ hay *.md: Meomeo Agent đánh chỉ mục docs/vehicsim, ADR, exec plan
+# lúc chạy (knowledge.DOC_SOURCES) — thiếu thì trợ lý trên cloud mất phần tài liệu.
 .dockerignore
 Dockerfile
 docker-compose.yml

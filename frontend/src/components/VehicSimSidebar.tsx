@@ -169,13 +169,15 @@ export function VehicSimSidebar() {
       <div className="flex-1" />
 
       <div className="flex items-center gap-[10px] rounded-[16px] bg-vehicsim-soft p-3">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-[16px] bg-vehicsim-avatar text-[12px] font-bold text-vehicsim-decision">
-          {initials(user?.full_name || user?.name || "U")}
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-          <span className="truncate text-[13px] font-semibold text-vehicsim-ink">{user?.full_name || user?.name}</span>
-          <span className="truncate text-[12px] text-vehicsim-faint">{ROLE_LABELS[user?.role ?? ""] ?? user?.role}</span>
-        </span>
+        <Link href="/profile" title="Hồ sơ cá nhân" className="flex min-w-0 flex-1 items-center gap-[10px] rounded-[12px] hover:opacity-80">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-[16px] bg-vehicsim-avatar text-[12px] font-bold text-vehicsim-decision">
+            {initials(user?.full_name || user?.name || "U")}
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
+            <span className="truncate text-[13px] font-semibold text-vehicsim-ink">{user?.full_name || user?.name}</span>
+            <span className="truncate text-[12px] text-vehicsim-faint">{ROLE_LABELS[user?.role ?? ""] ?? user?.role}</span>
+          </span>
+        </Link>
         <button
           type="button"
           title="Đăng xuất"

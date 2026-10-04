@@ -47,8 +47,8 @@ function writeAvatar(userId: number | string, dataUrl: string | undefined): void
 /** Một user có thể mang nhiều role; trang được chia theo role cao nhất. */
 export function primaryRole(roles: string[]): Role {
   if (roles.includes("ADMIN")) return "admin";
+  if (roles.includes("EXPERT")) return "expert";
   if (roles.includes("ENGINEER")) return "engineer";
-  if (roles.includes("VIEWER")) return "viewer";
   return "guest";
 }
 
@@ -61,7 +61,6 @@ function toUser(api: ApiUser): User {
     username: api.email,
     roles: api.roles,
     role: primaryRole(api.roles),
-    status: "active",
     avatar_url: readAvatar(api.id),
   };
 }

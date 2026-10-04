@@ -1,7 +1,7 @@
 [project]
 name = "scenario-forge-worker"
 version = "0.1.0"
-description = "CARLA ScenarioRunner worker for Scenario Forge"
+description = "CARLA-side tools for VehicSim: run_variant.py (JSON variant -> CARLA) and ScenarioRunner for exported .xosc"
 requires-python = ">=3.10,<3.11"
 dependencies = [
     "antlr4-python3-runtime==4.10",

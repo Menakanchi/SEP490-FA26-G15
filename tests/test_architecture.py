@@ -42,9 +42,9 @@ def _py_files(*parts: str) -> list[Path]:
 
 @pytest.mark.parametrize("path", _py_files(), ids=lambda p: str(p.relative_to(SRC)))
 def test_src_never_imports_carla(path: Path) -> None:
-    """ADR-001. Vi phạm = backend không deploy được = mất Deliverable #5.
+    """ADR-001. Vi phạm = backend không deploy được lên cloud (không có CARLA).
 
-    Hỏng theo kiểu tệ nhất: máy dev có CARLA nên chạy ngon, chỉ chết trên Render
+    Hỏng theo kiểu tệ nhất: máy dev có CARLA nên chạy ngon, chỉ chết trên server
     — nơi không ai nhìn cho tới lúc demo.
     """
     offenders = {m for m in _imports(path) if m == "carla" or m.startswith("carla.")}
@@ -55,41 +55,32 @@ def test_src_never_imports_carla(path: Path) -> None:
 def test_http_layer_does_not_query_storage_directly(path: Path) -> None:
     """Router là **lớp HTTP**, logic lưu trữ và tìm kiếm nằm ở ``services/``.
 
-    ADR-013 bỏ Qdrant và đưa embedding vào chính SQLite, nên ranh giới cần canh
-    đổi từ *"đừng import qdrant"* sang *"đừng tự mở DB và tự tính cosine"*. Nếu
-    router tự query thì cách tìm kiếm bị nhân đôi ở hai chỗ, và người đổi thuật
-    toán retrieval sẽ sửa một chỗ rồi tưởng xong.
+    Router tự query thì cùng một truy vấn bị nhân đôi ở hai chỗ, và người đổi cách lưu
+    hay cách tìm kiếm sẽ sửa một chỗ rồi tưởng xong.
     """
     banned = {"sqlite3", "sqlalchemy", "numpy"}
     offenders = {m for m in _imports(path) if m.split(".")[0] in banned}
     assert not offenders, f"{path.relative_to(SRC)} import {offenders} — gọi hàm trong services/ thay vì tự query"
 
 
-def test_only_three_nodes_are_allowed_to_call_an_llm() -> None:
-    """`ARCHITECTURE.md` §"Workflow 7 nodes" + ADR-007: đúng 3 node gọi LLM,
-    phần còn lại là code thuần.
+def test_openscenario_generator_never_calls_an_llm() -> None:
+    """Bộ sinh ``.xosc`` (``services/openscenario``) là code thuần, tất định: cùng spec ra cùng byte.
 
-    Đây là bằng chứng PLO1/PLO2 **kiểm được bằng máy**, không phải một câu
-    khẳng định trong slide. Node thứ tư lặng lẽ gọi LLM là trần chi phí và trần
-    p95 latency mất hiệu lực mà không ai thấy.
+    Gọi LLM ở đây là mất tính tái lập của file kịch bản xuất ra (ADR-032).
     """
-    allowed = {"parse_intent", "generate_draft", "repair_draft"}
     guilty = {
-        p.stem
-        for p in _py_files("agents", "nodes")
-        if p.stem != "__init__" and any(m.endswith("services.llm") for m in _imports(p))
+        str(p.relative_to(SRC))
+        for p in _py_files("services", "openscenario")
+        if any(m.endswith("services.llm") or m.split(".")[0] in {"openai", "langchain_openai"} for m in _imports(p))
     }
-    assert guilty <= allowed, (
-        f"node không được gọi LLM: {sorted(guilty - allowed)} — xem ARCHITECTURE.md §Workflow 7 nodes"
-    )
+    assert not guilty, f"bộ sinh OpenSCENARIO không được gọi LLM: {sorted(guilty)}"
 
 
 def test_nothing_imports_the_llm_provider_directly() -> None:
-    """`ARCHITECTURE.md` §"Bất biến được kiểm bằng CI": mọi lệnh gọi LLM đi qua
-    ``src/services/llm.py``.
+    """Mọi lệnh gọi LLM đi qua ``src/services/llm.py`` (luật cứng 1 trong AGENTS.md).
 
     Đó là thứ làm *"đổi provider = đổi một biến môi trường"* thành câu nói thật
-    — và là plan B khi hết quota giữa tuần demo (PRD §10, model/provider policy).
+    — và là plan B khi hết quota giữa tuần demo.
     """
     banned = ("openai", "anthropic", "litellm", "google.generativeai")
     offenders = {

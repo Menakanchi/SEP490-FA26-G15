@@ -1,8 +1,9 @@
 # Kiến trúc — VehicSim MVP
 
-Tài liệu cho phân hệ **VehicSim MVP**: vòng khép kín AEB trên *một* motif (người đi
-bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge (graph 7 node, CARLA) có kiến
-trúc riêng ở [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
+Tài liệu kiến trúc của **VehicSim**: vòng khép kín AEB trên *một* motif (người đi
+bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà repo dựng lên từ đó —
+đã gỡ ngày 04/10/2026; chỉ giữ bộ sinh OpenSCENARIO ở `src/services/openscenario/`
+([ADR-032](../adr/ADR-032-go-scenario-forge-giu-bo-sinh-openscenario.md)).
 
 > Nguồn sự thật: schema DB là [`database/mysql/01_schema.sql`](../../database/mysql/01_schema.sql)
 > (mirror trong `src/services/vehicsim/tables.py`); lý do quyết định là ADR-023 →
@@ -30,7 +31,7 @@ mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước
 Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  FastAPI /api/v1/vehicsim/*  (vehicsim_routes.py: chỉ đổi lỗi → HTTP)
                               │
                               ▼
-                  src/services/vehicsim/*  ──SQLAlchemy Core──▶  MySQL (24/28 bảng)
+                  src/services/vehicsim/*  ──SQLAlchemy Core──▶  MySQL (24/36 bảng)
                               │ dispatch(run_ids)
                               ▼
               Redis db1 (broker) ──▶ Celery worker `vehicsim.run_simulation`
@@ -130,8 +131,9 @@ hiệu chuẩn xong (TD-17).
 - **Bộ mô phỏng** của run nằm ở `simulation_runs.carla_version`
   (`vehicsim-kinematic-1.0` hoặc `carla-<x.y.z>`); file của run CARLA (result.json,
   video) ghi đường dẫn vào `simulation_artifacts`.
-- 4/28 bảng chưa dùng: `project_members`, `sensors`, `optimization_runs`,
-  `optimization_trials` (chờ cảm biến thật và FE-13).
+- Schema có 36 bảng (phủ FE-01 → FE-14 + forum, ADR-031; một xe, không phiên bản xe); code mới đọc/ghi 24 bảng. Bảng
+  chưa có code, nghĩa từng cột và lệnh nâng DB cũ ở
+  [database-schema.md](database-schema.md).
 
 ## Regression và quyết định
 
@@ -158,7 +160,7 @@ horizon 1,5 s + brake delay 0,05 s (13 sửa được, 0 xấu đi).
 
 `describe.describe(text)`:
 
-1. Chặn câu quá mơ hồ bằng `is_too_vague_to_generate` (dùng chung với `POST /generate` của Forge).
+1. Chặn câu quá mơ hồ bằng `is_too_vague_to_generate` (trước khi tốn một lượt LLM).
 2. Gọi `llm.call_with_escalation` với JSON Schema của `DescribedScenario`
    (provider theo `LLM_PROVIDER`: `openai` hoặc `deepseek`).
 3. Kiểm IR theo giới hạn của simulator; sai thì gửi lỗi lại cho LLM, **tối đa 3 lần sửa**.
@@ -168,7 +170,16 @@ horizon 1,5 s + brake delay 0,05 s (13 sửa được, 0 xấu đi).
 
 Chỉ hỗ trợ motif người đi bộ băng ngang (kể cả ca dừng ở lề); mô tả khác trả 400.
 Giới hạn 30 lượt / 15 phút / người (Redis) vì app public và mỗi lượt tốn tiền.
-Graph 7 node của Forge **không** được dùng ở đây — xem ADR-026.
+
+## Bộ sinh OpenSCENARIO (`src/services/openscenario/`)
+
+Giữ lại từ Scenario Forge (ADR-032) cho FE-07 "Import/Export `.xosc`":
+`convert_spec_to_xosc(ScenarioSpec) -> str` sinh OpenSCENARIO 1.0 chạy được bằng ScenarioRunner
+0.9.15; `try_convert_spec` trả `(xosc, None)` hoặc `(None, ValidationIssue)` thay vì ném lỗi. Code
+thuần, tất định (cùng spec → cùng byte, kiểm bằng 6 file mẫu trong `tests/test_openscenario/goldens/`
+và XSD OpenSCENARIO 1.0), không gọi LLM (`test_openscenario_generator_never_calls_an_llm`).
+**Chưa nối vào API/màn hình:** đầu vào là `ScenarioSpec` (taxonomy ODD của Forge: cut-in, sudden
+brake, …), chưa có ánh xạ từ IR người đi bộ băng ngang của VehicSim — việc của FE-07.
 
 ## Trợ lý dự án — Meomeo Agent (ReAct, chỉ đọc)
 
@@ -211,8 +222,9 @@ câu hỏi ─▶ POST /assistant/ask
 - Không tiết lộ email có tồn tại: phản hồi và thời gian như nhau.
 - JWT HS256 mang `pwv` (dấu vân tay của password hash): đổi mật khẩu là mọi phiên cũ
   hết hiệu lực. Production không chạy nếu thiếu `JWT_SECRET_KEY`.
-- Vai trò: `ADMIN`, `ENGINEER` (tự đăng ký), `VIEWER` (chỉ đọc). App **public** nên
-  giữ tự đăng ký.
+- Vai trò: `ADMIN`, `EXPERT` (chạy/kiểm thử như ENGINEER + forum; cấp bằng
+  `scripts/create_admin.py --role EXPERT`), `ENGINEER` (tự đăng ký). Role `VIEWER` đã bỏ
+  (ADR-030); tài khoản không mang role ghi nào chỉ đọc. App **public** nên giữ tự đăng ký.
 
 ## Bất biến và máy kiểm
 
@@ -228,7 +240,7 @@ câu hỏi ─▶ POST /assistant/ask
 | CLI quá giờ được xin dừng trước khi bị giết, kịp dọn CARLA | `test_hung_simulator_is_asked_to_stop_and_cleans_up` |
 | Regression không bao giờ ghép kết quả động học với CARLA | `test_regression_never_pairs_kinematic_with_carla` |
 | Mọi tham số AEB được simulator dùng; seed Python khớp SQL | `test_every_seeded_parameter_is_used_by_the_simulator`, `test_python_parameter_seed_matches_sql_seed` |
-| Mọi route API `/api/v1/vehicsim/*` cần đăng nhập; VIEWER không ghi được | `test_every_vehicsim_route_requires_login`, `test_viewer_can_read_but_not_write` |
+| Mọi route API `/api/v1/vehicsim/*` cần đăng nhập; tài khoản không có role ghi thì không ghi được; EXPERT ghi được như ENGINEER | `test_every_vehicsim_route_requires_login`, `test_viewer_can_read_but_not_write`, `test_expert_can_run_and_test_like_engineer` |
 | Candidate chạy đúng seed baseline; Accept đổi baseline | `test_regression_pairs_same_seeds_and_accept_swaps_baseline` |
 | Test FAILED không Accept được | `test_failed_regression_cannot_be_accepted` |
 | Quyết định cần lý do + xác nhận | `test_decision_requires_reason_and_confirmation` |
@@ -268,11 +280,11 @@ thì sửa bảng.
   `VehicSimShell`, `VehicSimSidebar`, `VehicSimPage`, `VehicSimContext`, `VehicSimUi`,
   `FlowBar`, `FamilyForm`, `ScenarioMap`, `TelemetryChart`, `ProjectAssistant`, `vehicsimFlow`, `vehicsimFonts`,
   `vehicsimI18n`.
-- `/` là Tổng quan; chưa đăng nhập thì chuyển sang `/login`, trang giới thiệu ở `/landing`.
-  Generator cũ của Forge ở `/generator`. URL cũ `/vs/*` được chuyển hướng trong
-  `frontend/next.config.ts`. Thêm trang VehicSim ở một tiền tố gốc mới thì phải thêm tiền
-  tố vào `VEHICSIM_PREFIXES` (`components/AppLayoutWrapper.tsx`) — nơi chọn `VehicSimShell`
-  cho URL VehicSim — nếu không trang sẽ bị lồng sidebar của Forge. Ảnh SVG của Figma nằm ở `frontend/public/vehicsim/`.
+- `/` là Tổng quan; chưa đăng nhập thì chuyển sang `/login`. Hồ sơ cá nhân ở `/profile` (bấm
+  tên ở cuối sidebar). URL cũ `/vs/*` được chuyển hướng trong `frontend/next.config.ts`.
+  Mọi trang trong `app/` tự nằm trong `VehicSimShell` (sidebar + kiểm đăng nhập); trang không
+  cần đăng nhập thì thêm vào `STANDALONE_PATHS` (`components/AppLayoutWrapper.tsx`).
+  Ảnh SVG của Figma nằm ở `frontend/public/vehicsim/`.
 - Giao diện tiếng Việt; **DB và API giữ nguyên tiếng Anh**. Câu do backend sinh ra (mô tả
   lỗi, nguyên nhân gốc, tiêu đề, nhãn sự kiện, tóm tắt biến thể, tiêu chí, đánh đổi, bằng
   chứng) được dịch **ở tầng hiển thị** bởi `components/vehicsimI18n.ts` (`vi`, `viSummary`,

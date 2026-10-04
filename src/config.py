@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     )
 
     # App
-    app_name: str = "Scenario Forge"
+    app_name: str = "VehicSim"
     app_env: Literal["development", "production", "test"] = "development"
     app_port: int = Field(default=8000, ge=1, le=65535)
     app_host: str = "0.0.0.0"
@@ -39,24 +39,8 @@ class Settings(BaseSettings):
 
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
 
-    # Transactional store — user · review · job · trạng thái scenario.
-    # MVP dùng SQLite. Chỉ đổi DATABASE_URL sang PostgreSQL khi deployment
-    # cần durable storage ngoài process hoặc phải xử lý concurrent writes.
-    database_url: str = "sqlite:///./data/app.db"
-
-    # Không có setting nào cho vector store, và đó là quyết định chứ không phải
-    # thiếu sót: ADR-013 chốt embedding nằm cùng `database_url` dưới dạng BLOB,
-    # xếp hạng bằng cosine của numpy. Không có service riêng để cấu hình.
-    # (`chroma_persist_dir` của template đã bỏ từ ADR-003.)
-
-    # Near-duplicate detection (ADR-019). Delta trigger mang cùng đơn vị với
-    # trigger.type: giây cho simulation_time, mét cho hai loại khoảng cách.
-    near_duplicate_trigger_delta: float = Field(default=5.0, ge=0.0)
-    near_duplicate_speed_kmh: float = Field(default=5.0, ge=0.0)
-    near_duplicate_distance_m: float = Field(default=5.0, ge=0.0)
-
-    # Xác thực VehicSim — schema MySQL mới (database/mysql/01_schema.sql).
-    # Chỉ src/services/auth đọc DB này; phần còn lại vẫn ở `database_url`.
+    # Database duy nhất của hệ thống — MySQL (database/mysql/01_schema.sql). Lên cloud thì
+    # thêm SSL vào URL, vd. ...@host:3306/vehicsim?ssl_ca=/etc/ssl/certs/ca-certificates.crt
     vehicsim_database_url: str = "mysql+pymysql://vehicsim:vehicsim@localhost:3306/vehicsim"
     redis_url: str = "redis://localhost:6379/0"
     # Rỗng ở development/test -> khoá ngẫu nhiên theo process (xem auth/tokens.py).

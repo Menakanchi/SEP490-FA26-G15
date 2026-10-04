@@ -22,6 +22,7 @@ AGENT_DOCS = sorted(
         *(ROOT / "docs" / "vehicsim").glob("*.md"),
         *(ROOT / "docs" / "exec-plans").rglob("*.md"),
         *(ROOT / "docs" / "adr").glob("ADR-02[3-9]-*.md"),
+        *(ROOT / "docs" / "adr").glob("ADR-03[0-9]-*.md"),
     }
 )
 
@@ -78,6 +79,22 @@ def test_every_test_named_in_agent_docs_exists() -> None:
         if name not in defined
     }
     assert not missing, f"Tài liệu nhắc tới test không còn tồn tại (đổi tên thì sửa tài liệu): {sorted(missing)}"
+
+
+def test_schema_doc_covers_every_table_and_column() -> None:
+    """Thêm bảng/cột vào 01_schema.sql mà quên từ điển dữ liệu thì đỏ."""
+    sql = (ROOT / "database" / "mysql" / "01_schema.sql").read_text(encoding="utf-8")
+    doc = (ROOT / "docs" / "vehicsim" / "database-schema.md").read_text(encoding="utf-8")
+    sections = dict(re.findall(r"^#### `(\w+)`.*?\n(.*?)(?=^#{1,4} )", doc + "\n#", re.MULTILINE | re.DOTALL))
+    missing = []
+    for table, body in re.findall(r"^CREATE TABLE (\w+) \((.*?)\n\) ENGINE", sql, re.MULTILINE | re.DOTALL):
+        if table not in sections:
+            missing.append(table)
+            continue
+        for column in re.findall(r"^\s{2}([a-z][a-z0-9_]*)\s+[A-Z]", body, re.MULTILINE):
+            if column not in ("constraint",) and f"| `{column}` |" not in sections[table]:
+                missing.append(f"{table}.{column}")
+    assert not missing, f"docs/vehicsim/database-schema.md thiếu: {missing}"
 
 
 def test_every_adr_file_is_listed_in_the_index() -> None:
