@@ -356,6 +356,7 @@ def test_only_whitelisted_docs_are_indexed():
     refs = {c.ref for c in chunks}
     assert "docs/vehicsim/architecture.md" in refs
     assert not refs & {"AGENTS.md", "CLAUDE.md", ".env", ".env.example"}
+    assert "docs/vehicsim/database-schema.md" not in refs  # cấu trúc bảng users / cách lưu bí mật
     assert all(ref.startswith("docs/") and ref.endswith(".md") for ref in refs)
     assert all(len(c.content) <= knowledge.MAX_CHUNK_CHARS + 300 for c in chunks)
 

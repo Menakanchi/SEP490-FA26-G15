@@ -9,7 +9,7 @@ interface VehicSimContextValue {
   ctx: Ctx | null;
   error: string | null;
   refresh: () => Promise<void>;
-  /** ENGINEER/ADMIN được tạo và quyết định; VIEWER chỉ xem (backend cũng trả 403). */
+  /** ENGINEER/EXPERT/ADMIN được tạo và quyết định; tài khoản không mang role đó chỉ xem (backend cũng trả 403). */
   canWrite: boolean;
 }
 
@@ -20,7 +20,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
   const [ctx, setCtx] = useState<Ctx | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
-  const canWrite = !!user?.roles?.some((r) => r === "ENGINEER" || r === "ADMIN");
+  const canWrite = !!user?.roles?.some((r) => r === "ENGINEER" || r === "EXPERT" || r === "ADMIN");
 
   const refresh = useCallback(async () => {
     try {

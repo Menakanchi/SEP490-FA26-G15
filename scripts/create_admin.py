@@ -1,9 +1,10 @@
-"""Tạo tài khoản ADMIN, hoặc cấp quyền ADMIN cho tài khoản đã có.
+"""Tạo tài khoản ADMIN/EXPERT, hoặc cấp quyền đó cho tài khoản đã có.
 
-Đăng ký công khai chỉ tạo ENGINEER; không có API nào tự nâng lên ADMIN, nên
-tài khoản quản trị đầu tiên phải tạo từ máy chủ bằng script này:
+Đăng ký công khai chỉ tạo ENGINEER; không có API nào tự nâng lên ADMIN hay EXPERT
+(ADR-030), nên hai role này phải cấp từ máy chủ bằng script này:
 
     uv run python scripts/create_admin.py --email admin@vehicsim.vn --full-name "Quản trị viên"
+    uv run python scripts/create_admin.py --email chuyengia@vehicsim.vn --role EXPERT
 
 Mật khẩu được hỏi qua bàn phím (không hiện, không nằm trong lịch sử shell).
 Đọc ``VEHICSIM_DATABASE_URL`` từ ``.env`` như backend.
@@ -30,6 +31,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--email", required=True)
     parser.add_argument("--full-name", default="Quản trị viên")
+    parser.add_argument("--role", choices=("ADMIN", "EXPERT"), default="ADMIN")
     args = parser.parse_args()
 
     # Cùng luật với API đăng nhập (EmailStr): email mà API từ chối — vd. tên miền
@@ -42,11 +44,11 @@ def main() -> int:
 
     existing = users.get_by_email(args.email)
     if existing is not None:
-        users.grant_role(existing.id, "ADMIN")
-        print(f"Đã cấp quyền ADMIN cho tài khoản có sẵn: {existing.email}")
+        users.grant_role(existing.id, args.role)
+        print(f"Đã cấp quyền {args.role} cho tài khoản có sẵn: {existing.email}")
         return 0
 
-    password = getpass.getpass("Mật khẩu cho tài khoản ADMIN mới: ")
+    password = getpass.getpass(f"Mật khẩu cho tài khoản {args.role} mới: ")
     if len(password) < MIN_PASSWORD_LENGTH:
         print(f"Mật khẩu phải có ít nhất {MIN_PASSWORD_LENGTH} ký tự.", file=sys.stderr)
         return 1
@@ -55,9 +57,9 @@ def main() -> int:
         return 1
 
     user = users.create(
-        email=args.email, full_name=args.full_name, password_hash=hash_password(password), role_code="ADMIN"
+        email=args.email, full_name=args.full_name, password_hash=hash_password(password), role_code=args.role
     )
-    print(f"Đã tạo tài khoản ADMIN: {user.email}")
+    print(f"Đã tạo tài khoản {args.role}: {user.email}")
     return 0
 
 

@@ -43,6 +43,13 @@ async def test_viewer_can_read_but_not_write(client, engineer, viewer):
 
 
 @pytest.mark.asyncio
+async def test_expert_can_run_and_test_like_engineer(client, engineer, expert):
+    assert set(expert["user"].roles) == {"EXPERT"}
+    res = await client.post(f"{API}/families", json=SMALL_FAMILY, headers=expert["headers"])
+    assert res.is_success, res.text
+
+
+@pytest.mark.asyncio
 async def test_family_creates_grid_variants_and_runs_baseline(client, engineer):
     created = await _setup_family(client, engineer)
     expected = 3 * 2 * 2 * 2 * 2 * 2
