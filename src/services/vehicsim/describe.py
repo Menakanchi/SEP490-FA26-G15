@@ -1,14 +1,13 @@
 """Bước 1 của vòng MVP: câu mô tả tiếng Việt → LLM → Scenario IR (FE-06).
 
-Dùng lại hạ tầng của Generator cũ (Scenario Forge):
-
-- ``is_too_vague_to_generate`` chặn câu rác giống ``POST /generate``;
+- ``is_too_vague_to_generate`` chặn câu rác trước khi tốn một lượt LLM (giữ từ Generator của
+  Scenario Forge khi gỡ Forge — ADR-032);
 - LLM gọi qua ``llm.call_with_escalation`` (DeepSeek/OpenAI theo cấu hình,
   structured output, tự leo model khi lỗi) — gọi qua *tên module* để lưới chặn
   LLM thật trong ``tests/conftest.py`` vẫn có hiệu lực;
-- LLM hỏng thì lùi về trích xuất bằng luật, như ``parse_intent`` của Forge.
+- LLM hỏng thì lùi về trích xuất bằng luật.
 
-Khác Forge ở chỗ không dựng ODD/xosc: MVP chỉ có motif người đi bộ băng ngang,
+Không dựng ODD/xosc: MVP chỉ có motif người đi bộ băng ngang,
 nên IR là đúng các tham số mà simulator và ``FamilySpec`` dùng. Theo kế hoạch
 MVP: IR được kiểm tra, sai thì cho LLM sửa tối đa ``MAX_REPAIRS`` lần, và mọi
 giá trị không có trong câu được liệt kê rõ là *giả định*.
@@ -23,13 +22,21 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from src.models.schemas import TOO_VAGUE_MESSAGE, is_too_vague_to_generate
 from src.services import llm
 from src.services.vehicsim.bundle import IR_BOUNDS, TIMES, WEATHERS
 from src.services.vehicsim.common import InvalidRequestError
 
 MOTIF = "pedestrian_crossing"
 MAX_REPAIRS = 3
+
+TOO_VAGUE_MESSAGE = "Mô tả kịch bản quá ngắn hoặc không đủ thông tin kịch bản giao thông."
+
+
+def is_too_vague_to_generate(prompt: str) -> bool:
+    """Câu rác: quá ngắn, quá ít từ, hoặc chỉ là một con số — chặn trước khi gọi LLM."""
+    text = prompt.strip()
+    return len(text) < 10 or len(text.split()) < 3 or text.isnumeric()
+
 
 WeatherCode = Literal["CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG"]
 TimeCode = Literal["DAY", "DUSK", "NIGHT"]

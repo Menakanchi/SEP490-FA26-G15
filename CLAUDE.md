@@ -58,6 +58,9 @@ sau khi một lượt `run_variant.py` bị giết (Ctrl+C hai lần, đóng ter
 
 ## Khi chạy ScenarioRunner thủ công
 
+Dùng để kiểm một file `.xosc` do bộ sinh OpenSCENARIO (`src/services/openscenario`, ADR-032)
+xuất ra — vòng VehicSim tự nó chạy CARLA bằng `worker/run_variant.py`, không qua ScenarioRunner.
+
 Dùng `worker/.venv` (Python 3.10), không dùng `.venv` của backend. Thêm cả
 PythonAPI CARLA và ScenarioRunner vào `PYTHONPATH`, đồng thời luôn chọn Traffic
 Manager port khác 8000 vì backend dev dùng cổng đó:
@@ -65,7 +68,7 @@ Manager port khác 8000 vì backend dev dùng cổng đó:
 ```bash
 export PYTHONPATH="$HOME/CARLA_0.9.15/PythonAPI/carla:$HOME/scenario_runner"
 cd ~/scenario_runner
-/home/cong/code/P-130/worker/.venv/bin/python scenario_runner.py \
+<repo>/worker/.venv/bin/python scenario_runner.py \
     --openscenario /duong/dan/toi.xosc --output --timeout 60 \
     --trafficManagerPort 8005
 ```
@@ -75,8 +78,7 @@ không nói rõ cổng 8000 đang trùng.
 
 ScenarioRunner không tự di chuyển spectator. Khi chạy tay, bật
 `worker/follow_hero.py` ở terminal khác trước khi chạy scenario; nếu không cửa
-sổ CARLA có thể chỉ hiện đường trống dù scenario vẫn chạy. `make demo` và
-`worker/dev_ui.py` đã tự làm việc này.
+sổ CARLA có thể chỉ hiện đường trống dù scenario vẫn chạy.
 
 ## Đọc kết quả ScenarioRunner
 
@@ -97,7 +99,5 @@ event sớm, không phải chạy nhanh; xem `_add_hold_open_event` trong conver
 ## Lệnh có thể gọi LLM trả phí
 
 Pytest mặc định chặn `call_with_escalation`; chỉ bật gọi thật có chủ đích bằng
-`RUN_LLM_TESTS=1`. Ngược lại, `prompt_ab/runner.py` luôn gọi API thật và không
-đi qua công tắc này. Artifact benchmark là bằng chứng tái lập, không sửa tay và
-không tự động cho phép thay prompt production; quy trình đầy đủ ở
-`prompt_ab/README.md`.
+`RUN_LLM_TESTS=1`. Ngoài test, chỉ hai đường gọi LLM thật: bước "Sinh từ mô tả"
+(`describe.py`) và Meomeo Agent (`assistant.py`) — cả hai đi qua `src/services/llm.py`.

@@ -1,11 +1,14 @@
 # Nhật ký quyết định kiến trúc (ADR)
 
-Mỗi file là **một quyết định**: chọn X thay vì Y, và vì sao. Theo mẫu ở `docs/guide/chapter-03.md`
-(Bối cảnh · Các lựa chọn · Quyết định · Lý do · Hệ quả).
+Mỗi file là **một quyết định**: chọn X thay vì Y, và vì sao (Bối cảnh · Các lựa chọn · Quyết định ·
+Lý do · Hệ quả). Đáng ghi ADR: lựa chọn framework, database, LLM provider, kiến trúc, cách deploy.
 
-**Nguồn của yêu cầu này:** `docs/guide/chapter-03.md` — chương kiến trúc đặt mục tiêu "ít nhất 2–3 ADR cho các quyết định quan trọng" (dòng 678) và liệt kê thứ đáng ghi ADR: *lựa chọn framework, database, LLM provider, architecture pattern, deployment strategy* (dòng 660).
-
-ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chương 9). Nó là **bằng chứng cho PLO1** (kiến trúc) và là chỗ dựa cho Deliverable #3 (Architecture Diagram) — không phải một mục nộp riêng.
+**ADR-001 → ADR-022 là lịch sử của Scenario Forge** — dự án gốc mà repo dựng lên từ đó, đã gỡ ngày
+04/10/2026 ([ADR-032](ADR-032-go-scenario-forge-giu-bo-sinh-openscenario.md)). File và thư mục chúng
+nhắc tới (`ARCHITECTURE.md`, `docs/guide/`, `eval/`, `fixtures/`…) chỉ còn trong lịch sử git. Vẫn còn
+hiệu lực với VehicSim: ADR-001 (`src/` không `import carla`), ADR-002 (venv riêng cho worker CARLA),
+ADR-005 (chỉ CARLA), ADR-006 (OpenAI embeddings), và ADR-010/012/016/020 (thiết kế bộ sinh `.xosc` được
+giữ lại). VehicSim: ADR-023 trở đi.
 
 | ADR | Quyết định | Trạng thái |
 |---|---|---|
@@ -38,6 +41,9 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | [ADR-027](ADR-027-bo-mo-phong-cam-duoc-hop-dong-json.md) | Bộ mô phỏng cắm được: JSON chung, AEB dùng chung, CARLA chạy bằng tiến trình con; không ghép cặp khác simulator | 🕐 **Proposed 1/10** |
 | [ADR-028](ADR-028-tro-ly-du-an-rag-chi-doc.md) | Trợ lý dự án: RAG chỉ đọc trên dữ liệu project + tài liệu repo, vector trong bảng MySQL `knowledge_chunks` | 🕐 **Proposed 2/10** · cơ chế trả lời thay bởi ADR-029 |
 | [ADR-029](ADR-029-tro-ly-react-cong-cu-chi-doc-guardrails.md) | Meomeo Agent: ReAct với 9 công cụ chỉ đọc + guardrails bảo vệ người dùng, chống prompt injection | 🕐 **Proposed 3/10** |
+| [ADR-030](ADR-030-bo-viewer-them-expert-va-forum.md) | Bỏ role VIEWER; thêm EXPERT; một forum AEB chung — bài của ENGINEER chờ ADMIN/EXPERT duyệt, comment không duyệt | 🕐 **Proposed 3/10** — schema đã áp (ADR-031), API/màn forum chưa code |
+| [ADR-031](ADR-031-database-phu-du-chuc-nang.md) | Database phủ FE-01 → FE-14: 36 bảng (+8), một xe không phiên bản (thêm xe = clone từ CARLA), migration SQL đánh số | 🕐 **Proposed 3/10** — DB dev đã nâng, 8 bảng mới chưa code |
+| [ADR-032](ADR-032-go-scenario-forge-giu-bo-sinh-openscenario.md) | Gỡ Scenario Forge (graph 7 node, SQLite, 8 trang, worker ScenarioRunner); giữ bộ sinh OpenSCENARIO ở `src/services/openscenario/`; một database duy nhất | 🕐 **Proposed 4/10** |
 
 ## Luật
 

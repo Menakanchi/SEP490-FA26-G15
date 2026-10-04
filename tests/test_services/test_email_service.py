@@ -5,8 +5,6 @@ import pytest
 from src.config import Settings
 from src.services.email import (
     send_email_smtp,
-    send_registration_received_email,
-    send_reviewer_approval_email,
 )
 
 
@@ -48,40 +46,3 @@ def test_send_email_smtp_missing_credentials(monkeypatch):
 
     success = send_email_smtp("to@example.com", "Subject", "Body")
     assert success is False
-
-
-def test_send_reviewer_approval_email(mock_settings):
-    with patch("src.services.email.send_email_smtp") as mock_send:
-        mock_send.return_value = True
-
-        res = send_reviewer_approval_email(
-            to_email="reviewer@example.com",
-            recipient_name="Nguyen Van A",
-            username="reviewer_a",
-            temp_password="Pass_123456",
-        )
-
-        assert res is True
-        mock_send.assert_called_once()
-        args, _ = mock_send.call_args
-        assert args[0] == "reviewer@example.com"
-        assert "Phê duyệt" in args[1]
-        assert "reviewer_a" in args[2]
-        assert "Pass_123456" in args[2]
-
-
-def test_send_registration_received_email(mock_settings):
-    with patch("src.services.email.send_email_smtp") as mock_send:
-        mock_send.return_value = True
-
-        res = send_registration_received_email(
-            to_email="applicant@example.com",
-            recipient_name="Tran Van B",
-            username="reviewer_b",
-        )
-
-        assert res is True
-        mock_send.assert_called_once()
-        args, _ = mock_send.call_args
-        assert args[0] == "applicant@example.com"
-        assert "Tiếp nhận" in args[1]
