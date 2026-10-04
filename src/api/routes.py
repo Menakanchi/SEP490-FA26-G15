@@ -1450,6 +1450,128 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
     return {"ok": True, "verification": level.value, "status": next_status.value}
 
 
+@router.post("/internal/sim-callback")
+async def sim_callback_endpoint(body: dict = Body(...)) -> dict:
+    """Callback nhận telemetry, sensor data và summary metrics từ CARLA worker."""
+    job_id = body.get("job_id")
+    scenario_id = body.get("scenario_id")
+    if not job_id:
+        raise HTTPException(status_code=422, detail="job_id là bắt buộc trong payload callback")
+
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' không tồn tại")
+
+    success = bool(body.get("success", True))
+    new_status = "completed" if success else "failed"
+
+    db.update_job_result(job_id, new_status, body)
+
+    if scenario_id:
+        metrics = body.get("metrics") or {}
+        had_col = bool(metrics.get("collision_detected"))
+        min_dist = metrics.get("min_gap_m", metrics.get("min_distance_m", 0.0))
+        level = (
+            VerificationLevel.ADVERSARIAL
+            if (had_col or (min_dist is not None and min_dist < 1.0))
+            else VerificationLevel.RAN_NO_HAZARD
+        )
+        if not success:
+            level = VerificationLevel.EXECUTION_FAILED
+        db.complete_simulation(scenario_id, level)
+
+    return {"ok": True, "job_id": job_id, "status": new_status}
+
+
+
+@router.post("/scenarios/{scenario_id}/simulate")
+async def simulate_scenario(scenario_id: str) -> dict:
+    """Tạo tác vụ mô phỏng CARLA bất đồng bộ và đưa vào hàng đợi."""
+    scenario = db.get_scenario(scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail=f"Kịch bản '{scenario_id}' không tồn tại")
+
+    xosc_content = scenario.get("xosc_content") or ""
+    if not xosc_content.strip():
+        spec = scenario.get("spec")
+        if spec:
+            try:
+                xosc_content = convert_spec_to_xosc(ScenarioSpec.model_validate(spec))
+            except Exception as exc:
+                raise HTTPException(status_code=422, detail=f"Không thể tạo OpenSCENARIO từ spec: {exc}")
+        else:
+            raise HTTPException(status_code=400, detail="Kịch bản chưa có dữ liệu OpenSCENARIO (.xosc)")
+
+    job_id = f"job_sim_{scenario_id}_{uuid.uuid4().hex[:6]}"
+    db.create_scenario_job(
+        job_id=job_id,
+        scenario_id=scenario_id,
+        xosc_content=xosc_content,
+        job_kind=JobKind.SCENARIO_VALIDATION,
+    )
+    db.update_job_status(job_id, "simulation_queued")
+    db.update_scenario_status(scenario_id, ScenarioStatus.SIMULATION_QUEUED.value)
+
+    return {
+        "ok": True,
+        "job_id": job_id,
+        "scenario_id": scenario_id,
+        "status": "simulation_queued",
+        "message": "Đã đưa kịch bản vào hàng đợi mô phỏng CARLA",
+    }
+
+
+@router.get("/jobs/{job_id}/status")
+async def get_job_status_endpoint(job_id: str) -> dict:
+    """Frontend polling: kiểm tra tiến độ và kết quả chạy mô phỏng của job."""
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' không tồn tại")
+
+    raw_status = job.get("status", "unknown")
+    result = job.get("result")
+
+    normalized_status = raw_status
+    if raw_status in ("done", "completed"):
+        normalized_status = "completed"
+    elif raw_status == "running":
+        normalized_status = "simulation_running"
+    elif raw_status == "pending":
+        normalized_status = "simulation_queued"
+
+    response_data = {
+        "job_id": job_id,
+        "scenario_id": job.get("scenario_id"),
+        "status": normalized_status,
+        "job_kind": job.get("job_kind"),
+        "created_at": job.get("created_at"),
+        "updated_at": job.get("updated_at"),
+        "result": result,
+    }
+
+    if normalized_status == "failed":
+        response_data["error"] = (
+            result.get("error") if isinstance(result, dict) else None
+        ) or "Mô phỏng CARLA thất bại"
+
+    return response_data
+
+
+@router.post("/internal/jobs/{job_id}/claim")
+async def claim_job_endpoint(job_id: str, worker_id: str = "carla_worker") -> dict:
+    """Worker đánh dấu bắt đầu chạy: chuyển status sang simulation_running."""
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' không tồn tại")
+
+    success = db.claim_job(job_id, worker_id=worker_id)
+    if not success:
+        raise HTTPException(status_code=409, detail="Job đã được nhận bởi worker khác hoặc đã kết thúc")
+
+    return {"ok": True, "job_id": job_id, "status": "simulation_running"}
+
+
+
 # ===========================================================================
 # User Management Endpoints (Forge cũ, SQLite)
 #
