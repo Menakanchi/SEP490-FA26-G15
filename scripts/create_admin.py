@@ -1,10 +1,10 @@
-"""Tạo tài khoản ADMIN/EXPERT, hoặc cấp quyền đó cho tài khoản đã có.
+"""Tạo tài khoản ADMIN/MANAGER/ENGINEER/REVIEWER, hoặc đổi role của tài khoản đã có.
 
-Đăng ký công khai chỉ tạo ENGINEER; không có API nào tự nâng lên ADMIN hay EXPERT
-(ADR-030), nên hai role này phải cấp từ máy chủ bằng script này:
+Đăng ký công khai chỉ tạo EXPERIENCER; mỗi người đúng một role và chưa có API đổi role
+(ADR-035, TD-28), nên các role khác phải cấp từ máy chủ bằng script này:
 
     uv run python scripts/create_admin.py --email admin@vehicsim.vn --full-name "Quản trị viên"
-    uv run python scripts/create_admin.py --email chuyengia@vehicsim.vn --role EXPERT
+    uv run python scripts/create_admin.py --email quanly@vehicsim.vn --role MANAGER
 
 Mật khẩu được hỏi qua bàn phím (không hiện, không nằm trong lịch sử shell).
 Đọc ``VEHICSIM_DATABASE_URL`` từ ``.env`` như backend.
@@ -31,7 +31,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--email", required=True)
     parser.add_argument("--full-name", default="Quản trị viên")
-    parser.add_argument("--role", choices=("ADMIN", "EXPERT"), default="ADMIN")
+    parser.add_argument("--role", choices=("ADMIN", "MANAGER", "ENGINEER", "REVIEWER"), default="ADMIN")
     args = parser.parse_args()
 
     # Cùng luật với API đăng nhập (EmailStr): email mà API từ chối — vd. tên miền
@@ -44,8 +44,8 @@ def main() -> int:
 
     existing = users.get_by_email(args.email)
     if existing is not None:
-        users.grant_role(existing.id, args.role)
-        print(f"Đã cấp quyền {args.role} cho tài khoản có sẵn: {existing.email}")
+        users.set_role(existing.id, args.role)
+        print(f"Đã đổi role của {existing.email}: {existing.role} -> {args.role}")
         return 0
 
     password = getpass.getpass(f"Mật khẩu cho tài khoản {args.role} mới: ")

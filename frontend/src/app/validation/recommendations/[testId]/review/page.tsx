@@ -16,7 +16,7 @@ export default function ReviewPage() {
   const { testId } = useParams<{ testId: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const { refresh, canWrite } = useVehicSimContext();
+  const { refresh, canDecide } = useVehicSimContext();
   const [r, setR] = useState<RecommendationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checks, setChecks] = useState<boolean[]>([false, false, false, false]);
@@ -91,7 +91,7 @@ export default function ReviewPage() {
     <>Tôi hiểu rằng bằng chứng độ bền vững, Pareto và độ nhạy chưa được chạy cho ứng viên này</>,
   ];
   const ready =
-    canWrite && !final && !running && !!decision && checks.every(Boolean) && reason.trim().length > 0 && confirmed && !submitting &&
+    canDecide && !final && !running && !!decision && checks.every(Boolean) && reason.trim().length > 0 && confirmed && !submitting &&
     !(decision === "ACCEPT" && acceptBlock) && !(decision === "REJECT" && rejectBlock);
 
   const submit = async () => {
@@ -165,7 +165,7 @@ export default function ReviewPage() {
     >
       <ErrorNote message={error} />
       {final && <ErrorNote message={`Khuyến nghị này đã có quyết định cuối (${RECOMMENDATION_STATUS[r.recommendation_status].label}).`} />}
-      {!canWrite && <ErrorNote message="Tài khoản người xem không được ra quyết định." />}
+      {!canDecide && <ErrorNote message="Chỉ Người duyệt (REVIEWER) được ra quyết định; người làm không tự duyệt việc của mình." />}
 
       <div className="flex w-full items-start gap-4">
         <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">

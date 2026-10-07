@@ -6,12 +6,6 @@ from src.config import get_settings
 
 
 @pytest.fixture(autouse=True)
-def offline_embeddings(monkeypatch):
-    """Trợ lý dự án dùng embedding băm túi từ trong test — không bao giờ gọi API embedding thật."""
-    monkeypatch.setattr("src.services.vehicsim.knowledge._openai_embedder", lambda: None)
-
-
-@pytest.fixture(autouse=True)
 def inline_runs(monkeypatch):
     """Test chạy mô phỏng ngay trong process — không cần Celery/Redis."""
     monkeypatch.setenv("VEHICSIM_RUN_MODE", "inline")
@@ -20,49 +14,42 @@ def inline_runs(monkeypatch):
     get_settings.cache_clear()
 
 
-def _make_user(email: str, roles: tuple[str, ...]) -> dict:
+def _make_user(email: str, role: str) -> dict:
     from src.services.auth import service, users
     from src.services.auth.passwords import hash_password
 
-    user = users.create(email=email, full_name=email.split("@")[0], password_hash=hash_password("pass-12345"))
-    for role in roles:
-        users.grant_role(user.id, role)
-    if "ENGINEER" not in roles:
-        # Người tự đăng ký luôn có ENGINEER; bỏ đi để thử quyền chỉ-đọc.
-        from sqlalchemy import delete, select
-
-        with users.get_engine().begin() as conn:
-            role_id = conn.execute(
-                select(users.roles_table.c.id).where(users.roles_table.c.code == "ENGINEER")
-            ).scalar()
-            conn.execute(
-                delete(users.user_roles_table).where(
-                    users.user_roles_table.c.user_id == user.id, users.user_roles_table.c.role_id == role_id
-                )
-            )
-    user = users.get_by_id(user.id)
+    user = users.create(
+        email=email, full_name=email.split("@")[0], password_hash=hash_password("pass-12345"), role_code=role
+    )
     return {"user": user, "headers": {"Authorization": f"Bearer {service._session_for(user).access_token}"}}
 
 
 @pytest.fixture
 def engineer():
+    """Người làm việc trên project: tài khoản tự đăng ký (role EXPERIENCER) — tạo, chạy, candidate, regression."""
     from src.services.vehicsim.bootstrap import ensure_default_project
 
-    who = _make_user("engineer@vehicsim.vn", ("ENGINEER",))
+    who = _make_user("engineer@vehicsim.vn", "EXPERIENCER")
     ensure_default_project(who["user"].id)
     return who
 
 
 @pytest.fixture
-def viewer(engineer):
-    """Tài khoản không mang role ghi nào (ADR-030 bỏ role VIEWER): chỉ được đọc."""
-    return _make_user("viewer@vehicsim.vn", ())
+def reviewer(engineer):
+    """REVIEWER (Admin cấp): đọc và Accept / Reject recommendation, không chạy mô phỏng (ADR-035)."""
+    return _make_user("reviewer@vehicsim.vn", "REVIEWER")
 
 
 @pytest.fixture
-def expert(engineer):
-    """EXPERT không kèm ENGINEER: phải chạy/kiểm thử được như ENGINEER (ADR-030)."""
-    return _make_user("expert@vehicsim.vn", ("EXPERT",))
+def viewer(engineer):
+    """Tài khoản chỉ đọc: MANAGER không làm engineering và không duyệt."""
+    return _make_user("viewer@vehicsim.vn", "MANAGER")
+
+
+@pytest.fixture
+def manager(engineer):
+    """MANAGER (Admin cấp): quản lý workspace, không chạy mô phỏng."""
+    return _make_user("manager@vehicsim.vn", "MANAGER")
 
 
 SMALL_FAMILY = {

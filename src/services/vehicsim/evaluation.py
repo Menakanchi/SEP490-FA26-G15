@@ -1,4 +1,4 @@
-"""Chấm một lần chạy: outcome, số đo ``aeb_results``, lỗi và chuỗi nguyên nhân gốc.
+"""Chấm một lần chạy: outcome, số đo AEB (cột kết quả của ``simulation_runs``), lỗi và chuỗi nguyên nhân gốc.
 
 Code thuần, không đụng DB — nhận ``SimulationOutcome`` trả dict để tầng lưu trữ ghi.
 Chữ mô tả viết tiếng Anh vì giao diện VehicSim (Figma FE-12/14) là tiếng Anh.
@@ -138,8 +138,8 @@ def evaluate(outcome: SimulationOutcome, params: AebParams) -> Evaluation:
     primary = next((s for s in chain if not s.passed), None)
     description = primary.summary if primary else None
     if primary is None and kind == OUTCOME_NEAR_MISS:
-        # Mọi khâu đạt chuẩn mà vẫn sát nút: lỗi nằm ở biên an toàn, không ở khâu nào.
-        failure_type, severity = "INSUFFICIENT_STOPPING_DISTANCE", "LOW"
+        # Mọi khâu đạt chuẩn mà vẫn sát nút: lỗi nằm ở biên an toàn, không ở khâu nào (UC-50, ADR-037).
+        failure_type, severity = "NEAR_MISS", "LOW"
         description = (
             f"Every stage met spec, but the margin was thin: min distance {m['min_distance_m'] or 0:.2f} m, "
             f"min TTC {m['min_ttc_s'] or 0:.2f} s."

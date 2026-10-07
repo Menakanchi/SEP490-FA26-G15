@@ -1,9 +1,10 @@
 """HTTP cho vòng MVP VehicSim: ``/api/v1/vehicsim/*``.
 
-Mọi route cần đăng nhập (``get_current_user``). Thao tác tạo / chạy / quyết định
-cần ENGINEER, EXPERT hoặc ADMIN; tài khoản không mang role nào trong đó chỉ đọc
-(ADR-030 đã bỏ role VIEWER). Nghiệp vụ nằm trong
-``src/services/vehicsim``; file này chỉ đổi lỗi thành mã HTTP.
+Mọi route cần đăng nhập (``get_current_user``). Mỗi người đúng một role hệ thống (ADR-035):
+tạo / chạy / candidate / regression cần ENGINEER, EXPERIENCER (người tự đăng ký) hoặc ADMIN;
+Accept / Reject recommendation chỉ REVIEWER; MANAGER chỉ đọc. Tạm thời (TD-30) app vẫn chạy
+trên một project, chưa lọc theo workspace. Nghiệp vụ nằm trong ``src/services/vehicsim``;
+file này chỉ đổi lỗi thành mã HTTP.
 """
 
 from __future__ import annotations
@@ -19,21 +20,32 @@ from pydantic import BaseModel, Field
 from src.api.auth_routes import CurrentUser, get_current_user
 from src.services.auth import otp
 from src.services.auth.users import User
-from src.services.vehicsim import aeb, assistant, describe, family, knowledge, regression, runs, views
+from src.services.vehicsim import aeb, describe, family, regression, runs, views
 from src.services.vehicsim.common import InvalidRequestError, NotFoundError
 
 router = APIRouter(prefix="/vehicsim", tags=["vehicsim"], dependencies=[Depends(get_current_user)])
 
-WRITE_ROLES = {"ADMIN", "EXPERT", "ENGINEER"}
+WRITE_ROLES = {"ADMIN", "ENGINEER", "EXPERIENCER"}
+DECIDE_ROLES = {"REVIEWER"}
+"""Chỉ Reviewer duyệt: Engineer không tự duyệt việc mình làm, EXP không có recommendation (ADR-035)."""
 
 
 def require_engineer(user: CurrentUser) -> User:
-    if not WRITE_ROLES & set(user.roles):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Cần quyền ENGINEER để thực hiện thao tác này")
+    if user.role not in WRITE_ROLES:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="Cần quyền ENGINEER, EXPERIENCER hoặc ADMIN để thực hiện thao tác này"
+        )
+    return user
+
+
+def require_reviewer(user: CurrentUser) -> User:
+    if user.role not in DECIDE_ROLES:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Chỉ REVIEWER được Accept / Reject recommendation")
     return user
 
 
 Engineer = Annotated[User, Depends(require_engineer)]
+Reviewer = Annotated[User, Depends(require_reviewer)]
 
 
 def _call(fn, *args, **kwargs):
@@ -309,7 +321,7 @@ class DecisionRequest(BaseModel):
 
 
 @router.post("/recommendations/{test_id}/decision")
-def decide(test_id: int, body: DecisionRequest, user: Engineer) -> dict:
+def decide(test_id: int, body: DecisionRequest, user: Reviewer) -> dict:
     _call(
         regression.decide,
         project_id=_project_id(),
@@ -321,41 +333,3 @@ def decide(test_id: int, body: DecisionRequest, user: Engineer) -> dict:
         confirmed=body.confirmed,
     )
     return _call(views.recommendation_detail, test_id)
-
-
-# ---------------------------------------------------------------------------
-# Trợ lý dự án (RAG, chỉ đọc) — ADR-028
-# ---------------------------------------------------------------------------
-
-
-class AssistantTurn(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=4000)
-
-
-class AssistantRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=assistant.MAX_QUESTION_CHARS)
-    history: list[AssistantTurn] = Field(default_factory=list, max_length=12)
-
-
-# Mỗi câu hỏi tốn tiền LLM (lần đầu còn tốn embedding): giới hạn theo người dùng.
-ASSISTANT_LIMIT_PER_WINDOW = 40
-
-
-@router.post("/assistant/ask")
-def ask_assistant(body: AssistantRequest, user: Engineer) -> dict:
-    """Hỏi về dữ liệu + tài liệu của project. Chỉ đọc: không tạo/sửa/chạy gì."""
-    if otp.hit_rate_limit("vs_assistant", str(user.id), ASSISTANT_LIMIT_PER_WINDOW):
-        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail="Hỏi quá nhiều lần, thử lại sau ít phút")
-    try:
-        history = [turn.model_dump() for turn in body.history]
-        return _call(assistant.ask, _project_id(), body.question, history, user_id=user.id)
-    except assistant.AssistantUnavailableError as exc:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Trợ lý tạm thời không trả lời được: {exc}"
-        ) from exc
-
-
-@router.get("/assistant/status")
-def assistant_status() -> dict:
-    return _call(knowledge.status, _project_id())

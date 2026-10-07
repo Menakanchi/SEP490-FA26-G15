@@ -3,6 +3,10 @@
 MVP chỉ có một project mặc định (``current_project``). Lọc theo thời tiết / kết quả
 làm trong Python sau khi đọc: ở quy mô MVP (vài trăm lần chạy) như vậy đủ nhanh,
 và tránh phải trích JSON bằng SQL khác nhau giữa MySQL và SQLite của test.
+
+Dạng JSON trả về giữ như trước schema 29 bảng (ADR-036): trạng thái regression hiển thị
+(PASSED / FAILED / ERROR) suy từ ``execution_status`` + ``verdict``, quyết định của Reviewer
+lấy từ ``engineering_recommendations``.
 """
 
 from __future__ import annotations
@@ -12,25 +16,29 @@ from datetime import timedelta
 
 from sqlalchemy import func, select
 
-from src.services.auth.users import users_table
+from src.services.auth.users import display_names
 from src.services.vehicsim import regression, runs
 from src.services.vehicsim import tables as t
 from src.services.vehicsim.common import (
     TIME_LABELS,
     WEATHER_LABELS,
     NotFoundError,
+    active_vehicle,
     aeb_parameter_catalog,
     aeb_values,
+    baseline_version,
     engine,
     now,
     variant_label,
     variant_summary,
+    vehicle_by_id,
     version_label,
 )
 from src.services.vehicsim.evaluation import OUTCOME_COLLISION, OUTCOME_NEAR_MISS, classify_outcome
 from src.services.vehicsim.simulator import LANE_WIDTH_M
 
 STAGE_ORDER = ("PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS")
+AEB_SYSTEM_NAME = "AEB"  # một hệ AEB mỗi project — không còn bảng aeb_systems
 
 
 # ---------------------------------------------------------------------------
@@ -47,24 +55,17 @@ def current_project(conn):
     return row
 
 
-def _system(conn, project_id: int):
-    system = conn.execute(select(t.aeb_systems).where(t.aeb_systems.c.project_id == project_id)).first()
-    if system is None:
-        raise NotFoundError("AEB system")
-    return system
+def _versions(conn, project_id: int, *, newest_first: bool = False) -> list:
+    order = t.aeb_versions.c.version_no.desc() if newest_first else t.aeb_versions.c.version_no
+    return conn.execute(select(t.aeb_versions).where(t.aeb_versions.c.project_id == project_id).order_by(order)).all()
 
 
 def context() -> dict:
     with engine().connect() as conn:
         project = current_project(conn)
         workspace = conn.execute(select(t.workspaces).where(t.workspaces.c.id == project.workspace_id)).first()
-        vehicle = conn.execute(select(t.vehicles).where(t.vehicles.c.project_id == project.id)).first()
-        system = _system(conn, project.id)
-        versions = conn.execute(
-            select(t.aeb_versions)
-            .where(t.aeb_versions.c.aeb_system_id == system.id)
-            .order_by(t.aeb_versions.c.version_number)
-        ).all()
+        vehicle = active_vehicle(conn, project.id)
+        versions = _versions(conn, project.id)
         baseline = next((v for v in versions if v.status == "BASELINE"), None)
         families = conn.execute(
             select(t.scenarios).where(t.scenarios.c.project_id == project.id).order_by(t.scenarios.c.id)
@@ -72,10 +73,10 @@ def context() -> dict:
         return {
             "project": {"id": project.id, "name": project.name},
             "workspace": {"id": workspace.id, "name": workspace.name} if workspace else None,
-            "vehicle": {"id": vehicle.id, "name": vehicle.name} if vehicle else None,
+            "vehicle": {"id": vehicle.id, "name": vehicle.name},
             "system": {
-                "id": system.id,
-                "name": system.name,
+                "id": project.id,
+                "name": AEB_SYSTEM_NAME,
                 "baseline": _version_brief(baseline) if baseline else None,
             },
             "versions": [_version_brief(v) for v in versions],
@@ -91,12 +92,12 @@ def _version_brief(v) -> dict:
     return {
         "id": v.id,
         "label": version_label(v),
-        "version_number": v.version_number,
+        "version_number": v.version_no,
         "status": v.status,
         "source": v.source,
         "parent_version_id": v.parent_version_id,
         "notes": v.notes,
-        "created_at": v.created_at.isoformat() if v.created_at else None,
+        "created_at": v.created_date.isoformat() if v.created_date else None,
     }
 
 
@@ -110,12 +111,7 @@ def families() -> list[dict]:
 
     with engine().connect() as conn:
         project = current_project(conn)
-        system = _system(conn, project.id)
-        baseline = conn.execute(
-            select(t.aeb_versions).where(
-                t.aeb_versions.c.aeb_system_id == system.id, t.aeb_versions.c.status == "BASELINE"
-            )
-        ).first()
+        baseline = baseline_version(conn, project.id)
         out = []
         for f in conn.execute(select(t.scenarios).where(t.scenarios.c.project_id == project.id)).all():
             base_id = latest_base_version_id(conn, f.id)
@@ -127,7 +123,7 @@ def families() -> list[dict]:
                 .group_by(t.simulation_runs.c.status)
             ).all()
             # Đếm theo baseline hiện hành, không cộng lỗi của các run regression của candidate.
-            failing = regression.critical_variant_ids(conn, baseline.id, variant_ids) if baseline else set()
+            failing = regression.critical_variant_ids(conn, baseline, variant_ids) if baseline else set()
             out.append(
                 {
                     "id": f.id,
@@ -135,11 +131,11 @@ def families() -> list[dict]:
                     "name": f.name,
                     "description": f.description,
                     "variants": len(variant_ids),
-                    "parameter_space": (base.scenario_ir or {}).get("parameter_space", {}),
+                    "parameter_space": (base.scenario_ir_json or {}).get("parameter_space", {}),
                     "runs": {r[0]: int(r[1]) for r in run_stats},
                     "failures": len(failing),
                     "baseline": version_label(baseline) if baseline else None,
-                    "created_at": f.created_at.isoformat(),
+                    "created_at": f.created_date.isoformat(),
                 }
             )
         return out
@@ -148,13 +144,10 @@ def families() -> list[dict]:
 def aeb_versions() -> list[dict]:
     with engine().connect() as conn:
         project = current_project(conn)
-        system = _system(conn, project.id)
-        versions = conn.execute(
-            select(t.aeb_versions)
-            .where(t.aeb_versions.c.aeb_system_id == system.id)
-            .order_by(t.aeb_versions.c.version_number.desc())
-        ).all()
-        return [{**_version_brief(v), "parameters": aeb_values(conn, v.id)} for v in versions]
+        return [
+            {**_version_brief(v), "parameters": aeb_values(conn, v.id)}
+            for v in _versions(conn, project.id, newest_first=True)
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -162,12 +155,18 @@ def aeb_versions() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+def _outcome(collision, min_ttc_s, min_distance_m, false_activation) -> str:
+    if false_activation:
+        return "FALSE_BRAKING"
+    return classify_outcome({"collision": bool(collision), "min_ttc_s": min_ttc_s, "min_distance_m": min_distance_m})
+
+
 def _failure_rows(conn, project_id: int) -> list[dict]:
     """Mọi lần chạy có lỗi, kèm nguyên nhân chính — một dòng mỗi run."""
     primary = (
         select(
             t.root_causes.c.failure_id,
-            t.root_causes.c.cause_category,
+            t.root_causes.c.category,
             t.root_causes.c.cause_code,
             t.root_causes.c.description,
             t.root_causes.c.confidence,
@@ -175,57 +174,54 @@ def _failure_rows(conn, project_id: int) -> list[dict]:
         .where(t.root_causes.c.is_primary.is_(True))
         .subquery()
     )
+    runs_t = t.simulation_runs
     rows = conn.execute(
         select(
             t.failures.c.id.label("failure_id"),
             t.failures.c.failure_type,
             t.failures.c.severity,
             t.failures.c.description.label("failure_description"),
-            t.failures.c.created_at,
-            t.simulation_runs.c.id.label("run_id"),
-            t.simulation_runs.c.purpose,
-            t.simulation_runs.c.random_seed,
-            t.simulation_runs.c.aeb_version_id,
-            t.simulation_runs.c.run_config,
+            t.failures.c.created_date,
+            runs_t.c.id.label("run_id"),
+            runs_t.c.purpose,
+            runs_t.c.random_seed,
+            runs_t.c.aeb_version_id,
+            runs_t.c.run_config_json,
+            runs_t.c.collision_occurred,
+            runs_t.c.min_ttc_s,
+            runs_t.c.min_distance_m,
+            runs_t.c.impact_speed_mps,
+            runs_t.c.is_false_positive,
             t.scenarios.c.id.label("scenario_id"),
             t.scenarios.c.code.label("scenario_code"),
             t.scenarios.c.name.label("scenario_name"),
-            t.scenario_versions.c.version_number,
+            t.scenario_versions.c.version_no,
             t.aeb_versions.c.label.label("aeb_label"),
-            t.aeb_versions.c.version_number.label("aeb_version_number"),
-            t.aeb_results.c.collision,
-            t.aeb_results.c.min_ttc_s,
-            t.aeb_results.c.min_distance_m,
-            t.aeb_results.c.impact_speed_mps,
-            t.aeb_results.c.false_activation,
-            primary.c.cause_category,
+            t.aeb_versions.c.version_no.label("aeb_version_no"),
+            primary.c.category.label("cause_category"),
             primary.c.cause_code,
             primary.c.description.label("cause_description"),
             primary.c.confidence,
         )
         .select_from(t.failures)
-        .join(t.simulation_runs, t.simulation_runs.c.id == t.failures.c.simulation_run_id)
-        .join(t.scenarios, t.scenarios.c.id == t.simulation_runs.c.scenario_id)
-        .join(t.scenario_versions, t.scenario_versions.c.id == t.simulation_runs.c.scenario_version_id)
-        .join(t.aeb_versions, t.aeb_versions.c.id == t.simulation_runs.c.aeb_version_id)
-        .join(t.aeb_results, t.aeb_results.c.id == t.failures.c.aeb_result_id)
+        .join(runs_t, runs_t.c.id == t.failures.c.simulation_run_id)
+        .join(t.scenarios, t.scenarios.c.id == runs_t.c.scenario_id)
+        .join(t.scenario_versions, t.scenario_versions.c.id == runs_t.c.scenario_version_id)
+        .join(t.aeb_versions, t.aeb_versions.c.id == runs_t.c.aeb_version_id)
         .outerjoin(primary, primary.c.failure_id == t.failures.c.id)
-        .where(t.simulation_runs.c.project_id == project_id)
-        .order_by(t.simulation_runs.c.id.desc())
+        .where(runs_t.c.project_id == project_id)
+        .order_by(runs_t.c.id.desc())
     ).all()
     out = []
     for r in rows:
-        ir = r.run_config or {}
-        outcome = classify_outcome(
-            {"collision": bool(r.collision), "min_ttc_s": r.min_ttc_s, "min_distance_m": r.min_distance_m}
-        )
+        ir = r.run_config_json or {}
         out.append(
             {
                 "run_id": r.run_id,
                 "failure_id": r.failure_id,
                 "failure_type": r.failure_type,
                 "severity": r.severity,
-                "outcome": "FALSE_BRAKING" if r.false_activation else outcome,
+                "outcome": _outcome(r.collision_occurred, r.min_ttc_s, r.min_distance_m, r.is_false_positive),
                 "failure_class": r.cause_category,
                 "cause_code": r.cause_code,
                 "root_cause": r.cause_description or r.failure_description,
@@ -234,15 +230,15 @@ def _failure_rows(conn, project_id: int) -> list[dict]:
                 "min_ttc_s": None if r.min_ttc_s is None else round(float(r.min_ttc_s), 2),
                 "scenario_id": r.scenario_id,
                 "family": r.scenario_name,
-                "variant": variant_label(r.scenario_code, r.version_number),
+                "variant": variant_label(r.scenario_code, r.version_no),
                 "summary": variant_summary(ir),
                 "weather": ir.get("weather"),
                 "time_of_day": ir.get("time_of_day"),
                 "parameters": ir,
                 "aeb_version_id": r.aeb_version_id,
-                "config": r.aeb_label or f"v{r.aeb_version_number}",
+                "config": r.aeb_label or f"v{r.aeb_version_no}",
                 "purpose": r.purpose,
-                "created_at": r.created_at.isoformat(),
+                "created_at": r.created_date.isoformat(),
             }
         )
     return out
@@ -318,37 +314,30 @@ def _run_bundle(conn, project_id: int, run_id: int) -> dict:
     ).first()
     if run is None:
         raise NotFoundError("simulation run")
-    result = conn.execute(
-        select(t.simulation_results).where(t.simulation_results.c.simulation_run_id == run_id)
-    ).first()
-    if result is None:
-        raise NotFoundError("simulation result (run chưa chạy xong)")
-    aeb = conn.execute(select(t.aeb_results).where(t.aeb_results.c.simulation_result_id == result.id)).first()
+    if run.status != "COMPLETED":
+        raise NotFoundError("kết quả mô phỏng (run chưa chạy xong)")
     scenario = conn.execute(select(t.scenarios).where(t.scenarios.c.id == run.scenario_id)).first()
     variant = conn.execute(
         select(t.scenario_versions).where(t.scenario_versions.c.id == run.scenario_version_id)
     ).first()
     version = conn.execute(select(t.aeb_versions).where(t.aeb_versions.c.id == run.aeb_version_id)).first()
-    vehicle = conn.execute(select(t.vehicles).where(t.vehicles.c.id == run.vehicle_id)).first()
     failure = conn.execute(select(t.failures).where(t.failures.c.simulation_run_id == run_id)).first()
     return {
         "run": run,
-        "result": result,
-        "aeb": aeb,
         "scenario": scenario,
         "variant": variant,
         "version": version,
-        "vehicle": vehicle,
+        "vehicle": vehicle_by_id(conn, run.vehicle_version_id),
         "failure": failure,
-        "raw": result.raw_metrics or {},
+        "raw": run.telemetry_json or {},
     }
 
 
 def _header(b: dict) -> dict:
-    run, raw, aeb = b["run"], b["raw"], b["aeb"]
-    ir = run.run_config or {}
+    run, raw = b["run"], b["raw"]
+    ir = run.run_config_json or {}
     outcome = raw.get("outcome") or classify_outcome(
-        {"collision": bool(aeb.collision), "min_ttc_s": aeb.min_ttc_s, "min_distance_m": aeb.min_distance_m}
+        {"collision": bool(run.collision_occurred), "min_ttc_s": run.min_ttc_s, "min_distance_m": run.min_distance_m}
     )
     primary = next((s for s in raw.get("chain", []) if not s["passed"]), None)
     return {
@@ -358,16 +347,16 @@ def _header(b: dict) -> dict:
         "seed": run.random_seed,
         "family": b["scenario"].name,
         "scenario_id": b["scenario"].id,
-        "variant": variant_label(b["scenario"].code, b["variant"].version_number),
+        "variant": variant_label(b["scenario"].code, b["variant"].version_no),
         "variant_id": b["variant"].id,
         "summary": variant_summary(ir),
         "vehicle": b["vehicle"].name,
         "config": version_label(b["version"]),
         "aeb_version_id": b["version"].id,
-        "simulator": run.carla_version,
-        "date": run.created_at.isoformat(),
-        "outcome": "FALSE_BRAKING" if aeb.false_activation else outcome,
-        "verdict": aeb.verdict,
+        "simulator": run.simulator_version,
+        "date": run.queued_at.isoformat(),
+        "outcome": "FALSE_BRAKING" if run.is_false_positive else outcome,
+        "verdict": run.verdict,
         "failure_type": b["failure"].failure_type if b["failure"] else None,
         "failure_class": primary["stage"] if primary else None,
         "headline": raw.get("headline", ""),
@@ -381,9 +370,9 @@ def failure_detail(run_id: int) -> dict:
         params = aeb_values(conn, b["run"].aeb_version_id)
         catalog = aeb_parameter_catalog(conn)
         similar = _similar_failures(conn, project.id, b)
-    raw, aeb, run = b["raw"], b["aeb"], b["run"]
+    raw, run = b["raw"], b["run"]
     m = raw.get("metrics", {})
-    ir = run.run_config or {}
+    ir = run.run_config_json or {}
     case = raw.get("case", {})
     root_confidence = next((s["confidence"] for s in raw.get("chain", []) if not s["passed"]), None)
 
@@ -398,19 +387,19 @@ def failure_detail(run_id: int) -> dict:
     return {
         **_header(b),
         "metrics": {
-            "impact_speed_kmh": None if aeb.impact_speed_mps is None else round(float(aeb.impact_speed_mps) * 3.6, 1),
-            "min_distance_m": aeb.min_distance_m,
-            "min_ttc_s": aeb.min_ttc_s,
-            "first_detection_t": m.get("first_detection_t"),
-            "first_detection_distance_m": m.get("first_detection_distance_m"),
-            "aeb_activation_t": m.get("aeb_decision_t"),
+            "impact_speed_kmh": None if run.impact_speed_mps is None else round(float(run.impact_speed_mps) * 3.6, 1),
+            "min_distance_m": run.min_distance_m,
+            "min_ttc_s": run.min_ttc_s,
+            "first_detection_t": run.first_detection_time_s,
+            "first_detection_distance_m": run.first_detection_distance_m,
+            "aeb_activation_t": run.aeb_activation_time_s,
             "aeb_activation_ttc_s": m.get("aeb_decision_ttc_s"),
-            "fcw_t": m.get("fcw_t"),
+            "fcw_t": run.fcw_time_s,
             "brake_onset_t": m.get("brake_onset_t"),
-            "max_deceleration_mps2": aeb.max_deceleration_mps2,
-            "stopping_distance_m": aeb.stopping_distance_m,
-            "false_activation": bool(aeb.false_activation),
-            "missed_activation": bool(aeb.missed_activation),
+            "max_deceleration_mps2": run.max_deceleration_mps2,
+            "stopping_distance_m": run.stopping_distance_m,
+            "false_activation": bool(run.is_false_positive),
+            "missed_activation": bool(run.is_false_negative),
         },
         "chain": raw.get("chain", []),
         "chain_confidence": root_confidence,
@@ -448,7 +437,7 @@ def _scene(raw: dict, vehicle) -> dict:
 
 def _similar_failures(conn, project_id: int, b: dict, limit: int = 3) -> list[dict]:
     """Ca lỗi gần nhất theo tham số kịch bản, cùng nhóm nguyên nhân chính nếu có."""
-    me = b["run"].run_config or {}
+    me = b["run"].run_config_json or {}
     my_class = next((s["stage"] for s in b["raw"].get("chain", []) if not s["passed"]), None)
     scored = []
     for r in _failure_rows(conn, project_id):
@@ -478,37 +467,32 @@ def _similar_failures(conn, project_id: int, b: dict, limit: int = 3) -> list[di
 
 def _related_runs(conn, run) -> list[dict]:
     """Các lần chạy khác đã xong của CÙNG biến thể — để so sánh giữa các AEB version."""
+    runs_t = t.simulation_runs
     rows = conn.execute(
         select(
-            t.simulation_runs.c.id,
-            t.simulation_runs.c.purpose,
+            runs_t.c.id,
+            runs_t.c.purpose,
+            runs_t.c.collision_occurred,
+            runs_t.c.min_ttc_s,
+            runs_t.c.min_distance_m,
+            runs_t.c.is_false_positive,
             t.aeb_versions.c.label,
-            t.aeb_versions.c.version_number,
-            t.aeb_results.c.collision,
-            t.aeb_results.c.min_ttc_s,
-            t.aeb_results.c.min_distance_m,
-            t.aeb_results.c.false_activation,
+            t.aeb_versions.c.version_no,
         )
-        .join(t.aeb_versions, t.aeb_versions.c.id == t.simulation_runs.c.aeb_version_id)
-        .join(t.simulation_results, t.simulation_results.c.simulation_run_id == t.simulation_runs.c.id)
-        .join(t.aeb_results, t.aeb_results.c.simulation_result_id == t.simulation_results.c.id)
+        .join(t.aeb_versions, t.aeb_versions.c.id == runs_t.c.aeb_version_id)
         .where(
-            t.simulation_runs.c.scenario_version_id == run.scenario_version_id,
-            t.simulation_runs.c.id != run.id,
-            t.simulation_runs.c.status == "COMPLETED",
+            runs_t.c.scenario_version_id == run.scenario_version_id,
+            runs_t.c.id != run.id,
+            runs_t.c.status == "COMPLETED",
         )
-        .order_by(t.simulation_runs.c.id.desc())
+        .order_by(runs_t.c.id.desc())
     ).all()
     return [
         {
             "run_id": r.id,
-            "config": r.label or f"v{r.version_number}",
+            "config": r.label or f"v{r.version_no}",
             "purpose": r.purpose,
-            "outcome": "FALSE_BRAKING"
-            if r.false_activation
-            else classify_outcome(
-                {"collision": bool(r.collision), "min_ttc_s": r.min_ttc_s, "min_distance_m": r.min_distance_m}
-            ),
+            "outcome": _outcome(r.collision_occurred, r.min_ttc_s, r.min_distance_m, r.is_false_positive),
         }
         for r in rows
     ]
@@ -532,7 +516,7 @@ def run_variant_bundle(run_id: int) -> dict:
         ).first()
     doc["source"].update(
         family=scenario.name,
-        variant=variant_label(scenario.code, variant.version_number),
+        variant=variant_label(scenario.code, variant.version_no),
         exported_at=now().isoformat(timespec="seconds"),
     )
     return doc
@@ -547,7 +531,7 @@ def playback(run_id: int) -> dict:
     return {
         **_header(b),
         "related_runs": related,
-        "duration_s": float(b["result"].simulated_duration_s or 0),
+        "duration_s": float(b["run"].simulated_duration_s or 0),
         "frames": raw.get("frames", []),
         "events": raw.get("events", []),
         "crossing_x": raw.get("crossing_x"),
@@ -555,23 +539,13 @@ def playback(run_id: int) -> dict:
         "vehicle_length_m": float(b["vehicle"].length_m),
         "vehicle_width_m": float(b["vehicle"].width_m),
         "ttc_threshold_s": raw.get("params", {}).get("ttc_threshold"),
-        "ego_speed_kmh": (b["run"].run_config or {}).get("ego_speed_kmh"),
+        "ego_speed_kmh": (b["run"].run_config_json or {}).get("ego_speed_kmh"),
     }
 
 
 # ---------------------------------------------------------------------------
 # 16 · Regression list · 04 · Regression results
 # ---------------------------------------------------------------------------
-
-
-def _user_names(conn, ids: set[int]) -> dict[int, str]:
-    ids = {i for i in ids if i is not None}
-    if not ids:
-        return {}
-    return {
-        r.id: r.full_name
-        for r in conn.execute(select(users_table.c.id, users_table.c.full_name).where(users_table.c.id.in_(ids)))
-    }
 
 
 def _progress(conn, test_id: int) -> dict:
@@ -584,6 +558,15 @@ def _progress(conn, test_id: int) -> dict:
     return {"done": counts.get("COMPLETED", 0) + counts.get("FAILED", 0), "total": sum(counts.values())}
 
 
+def _recommendations_by_test(conn, test_ids: list[int]) -> dict[int, object]:
+    if not test_ids:
+        return {}
+    rows = conn.execute(
+        select(t.engineering_recommendations).where(t.engineering_recommendations.c.regression_test_id.in_(test_ids))
+    ).all()
+    return {r.regression_test_id: r for r in rows}
+
+
 def regression_list(status: str | None = None) -> dict:
     with engine().connect() as conn:
         project = current_project(conn)
@@ -592,12 +575,12 @@ def regression_list(status: str | None = None) -> dict:
             .where(t.regression_tests.c.project_id == project.id)
             .order_by(t.regression_tests.c.id.desc())
         ).all()
-        versions = {v.id: v for v in conn.execute(select(t.aeb_versions)).all()}
-        names = _user_names(conn, {x.created_by for x in tests})
+        versions = {v.id: v for v in _versions(conn, project.id)}
+        recs = _recommendations_by_test(conn, [x.id for x in tests])
+        names = display_names(conn, {x.created_by_user_id for x in tests})
         items = []
         for x in tests:
-            deltas = x.metric_deltas or {}
-            counts = deltas.get("counts", {})
+            done = x.execution_status == "COMPLETED"
             items.append(
                 {
                     "id": x.id,
@@ -606,14 +589,14 @@ def regression_list(status: str | None = None) -> dict:
                     "baseline": version_label(versions[x.baseline_aeb_version_id]),
                     "candidate": version_label(versions[x.candidate_aeb_version_id]),
                     "candidate_version_id": x.candidate_aeb_version_id,
-                    "status": x.status,
-                    "review_decision": x.review_decision,
-                    "scenarios": (x.pass_criteria or {}).get("scenario_set", {}).get("variant_count"),
+                    "status": regression.display_status(x),
+                    "review_decision": regression.display_decision(recs.get(x.id)),
+                    "scenarios": (x.pass_criteria_json or {}).get("scenario_set", {}).get("variant_count"),
                     "progress": _progress(conn, x.id),
-                    "fixed": counts.get("fixed"),
-                    "regressed": counts.get("regressed"),
-                    "created_by": names.get(x.created_by),
-                    "created_at": x.created_at.isoformat(),
+                    "fixed": x.fixed_scenarios if done else None,
+                    "regressed": x.regressed_scenarios if done else None,
+                    "created_by": names.get(x.created_by_user_id),
+                    "created_at": x.created_date.isoformat(),
                 }
             )
     filtered = [i for i in items if status is None or i["status"] == status]
@@ -634,7 +617,7 @@ def regression_list(status: str | None = None) -> dict:
 KEY_PARAMS = ("TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "DETECTION_CONFIDENCE_THRESHOLD", "MAX_DECELERATION")
 
 
-def _test_bundle(conn, project_id: int, test_id: int):
+def _test(conn, project_id: int, test_id: int):
     test = conn.execute(
         select(t.regression_tests).where(
             t.regression_tests.c.id == test_id, t.regression_tests.c.project_id == project_id
@@ -648,7 +631,7 @@ def _test_bundle(conn, project_id: int, test_id: int):
 def regression_detail(test_id: int) -> dict:
     with engine().connect() as conn:
         project = current_project(conn)
-        test = _test_bundle(conn, project.id, test_id)
+        test = _test(conn, project.id, test_id)
         baseline = conn.execute(
             select(t.aeb_versions).where(t.aeb_versions.c.id == test.baseline_aeb_version_id)
         ).first()
@@ -657,17 +640,18 @@ def regression_detail(test_id: int) -> dict:
         ).first()
         diff = regression.parameter_diff(conn, baseline.id, candidate.id)
         scenario = conn.execute(select(t.scenarios).where(t.scenarios.c.id == test.scenario_id)).first()
-        names = _user_names(conn, {test.created_by, test.reviewed_by})
+        names = display_names(conn, {test.created_by_user_id})
         progress = _progress(conn, test.id)
-    deltas = test.metric_deltas or {}
+        rec = regression.recommendation_for(conn, test.id)
+        summary = regression.summary(conn, test)
     by_code = {d["code"]: d for d in diff}
     return {
         "id": test.id,
         "code": regression.test_code(test.id),
         "recommendation_code": regression.recommendation_code(test.id),
         "name": test.name,
-        "status": test.status,
-        "review_decision": test.review_decision,
+        "status": regression.display_status(test),
+        "review_decision": regression.display_decision(rec),
         "family": scenario.name,
         "scenario_id": scenario.id,
         "baseline": {"id": baseline.id, "label": version_label(baseline), "status": baseline.status},
@@ -678,11 +662,12 @@ def regression_detail(test_id: int) -> dict:
             if c in by_code
         ],
         "parameter_diff": diff,
-        "pass_criteria": test.pass_criteria,
+        "pass_criteria": test.pass_criteria_json,
+        "simulator": test.simulator_version,
         "progress": progress,
-        "created_by": names.get(test.created_by),
-        "created_at": test.created_at.isoformat(),
-        "summary": deltas,
+        "created_by": names.get(test.created_by_user_id),
+        "created_at": test.created_date.isoformat(),
+        "summary": summary,
     }
 
 
@@ -698,10 +683,10 @@ REVIEW_LABELS = {
 }
 
 
-def _recommendation_status(test) -> str:
-    if test.status == "FAILED":
+def _recommendation_status(test, rec) -> str:
+    if regression.display_status(test) == "FAILED":
         return "BLOCKED"
-    return test.review_decision
+    return regression.display_decision(rec)
 
 
 def recommendations() -> list[dict]:
@@ -709,10 +694,12 @@ def recommendations() -> list[dict]:
         project = current_project(conn)
         tests = conn.execute(
             select(t.regression_tests)
-            .where(t.regression_tests.c.project_id == project.id, t.regression_tests.c.status.in_(("PASSED", "FAILED")))
+            .where(t.regression_tests.c.project_id == project.id, t.regression_tests.c.execution_status == "COMPLETED")
             .order_by(t.regression_tests.c.id.desc())
         ).all()
-        versions = {v.id: v for v in conn.execute(select(t.aeb_versions)).all()}
+        versions = {v.id: v for v in _versions(conn, project.id)}
+        recs = _recommendations_by_test(conn, [x.id for x in tests])
+        summaries = {x.id: regression.summary(conn, x) for x in tests}
     return [
         {
             "id": x.id,
@@ -720,10 +707,10 @@ def recommendations() -> list[dict]:
             "regression_code": regression.test_code(x.id),
             "baseline": version_label(versions[x.baseline_aeb_version_id]),
             "candidate": version_label(versions[x.candidate_aeb_version_id]),
-            "status": _recommendation_status(x),
-            "rates": (x.metric_deltas or {}).get("rates", {}),
-            "counts": (x.metric_deltas or {}).get("counts", {}),
-            "created_at": x.updated_at.isoformat(),
+            "status": _recommendation_status(x, recs.get(x.id)),
+            "rates": summaries[x.id].get("rates", {}),
+            "counts": summaries[x.id].get("counts", {}),
+            "created_at": (recs[x.id].updated_at if x.id in recs else x.finished_at or x.created_date).isoformat(),
         }
         for x in tests
     ]
@@ -733,8 +720,9 @@ def recommendation_detail(test_id: int) -> dict:
     detail = regression_detail(test_id)
     with engine().connect() as conn:
         project = current_project(conn)
-        test = _test_bundle(conn, project.id, test_id)
-        names = _user_names(conn, {test.created_by, test.reviewed_by})
+        test = _test(conn, project.id, test_id)
+        rec = regression.recommendation_for(conn, test_id)
+        names = display_names(conn, {test.created_by_user_id, rec.reviewed_by_user_id if rec else None})
     summary = detail["summary"] or {}
     rates = summary.get("rates", {})
     counts = summary.get("counts", {})
@@ -757,15 +745,12 @@ def recommendation_detail(test_id: int) -> dict:
 
     passed = detail["status"] == "PASSED"
     regressions = counts.get("regressed", 0)
-    confidence = (
-        "High" if passed and regressions == 0 and counts.get("scenarios", 0) >= 20 else "Medium" if passed else "Low"
-    )
+    status = _recommendation_status(test, rec)
+    decision = regression.display_decision(rec)
     return {
         **detail,
-        "recommendation_status": _recommendation_status(test),
-        "recommendation_status_label": "Blocked"
-        if _recommendation_status(test) == "BLOCKED"
-        else REVIEW_LABELS[test.review_decision],
+        "recommendation_status": status,
+        "recommendation_status_label": "Blocked" if status == "BLOCKED" else REVIEW_LABELS[decision],
         "changed_parameters": changed,
         "expected_effect": {
             "collision_rate": [rates.get("collision_baseline_pct"), rates.get("collision_candidate_pct")],
@@ -778,7 +763,7 @@ def recommendation_detail(test_id: int) -> dict:
             "regressed": regressions,
         },
         "tradeoffs": tradeoffs,
-        "confidence": confidence,
+        "confidence": regression.confidence(passed, counts),
         "evidence": [
             {
                 "key": "regression",
@@ -802,11 +787,11 @@ def recommendation_detail(test_id: int) -> dict:
             },
         ],
         "review": {
-            "decision": test.review_decision,
-            "reviewed_by": names.get(test.reviewed_by),
-            "reviewed_at": test.reviewed_at.isoformat() if test.reviewed_at else None,
-            "note": test.review_note,
-            "conditions": test.review_conditions,
-            "requested_by": names.get(test.created_by),
+            "decision": decision,
+            "reviewed_by": names.get(rec.reviewed_by_user_id) if rec else None,
+            "reviewed_at": rec.reviewed_at.isoformat() if rec and rec.reviewed_at else None,
+            "note": rec.review_notes if rec else None,
+            "conditions": rec.review_conditions if rec else None,
+            "requested_by": names.get(test.created_by_user_id),
         },
     }

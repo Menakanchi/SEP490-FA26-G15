@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,13 +19,100 @@ import run_variant  # noqa: E402
 sys.path.remove(str(WORKER))
 
 from src.services.vehicsim import simulator  # noqa: E402
-from src.services.vehicsim.bundle import read_spec  # noqa: E402
+from src.services.vehicsim.bundle import WHEEL_FIELDS, read_spec  # noqa: E402
 from src.services.vehicsim.simulator import CURB_STOP_Y_M, PEDESTRIAN_START_Y_M, PedestrianCrossingCase  # noqa: E402
 
 
 def test_module_imports_without_carla() -> None:
     """``carla`` chỉ được import trong ``run_on_carla`` — nạp module không cần CARLA."""
     assert "carla" not in vars(run_variant)
+
+
+def _fake_physics_control() -> SimpleNamespace:
+    """Như ``ego.get_physics_control()`` của audi.etron: 4 bánh, vị trí tính bằng cm."""
+
+    def wheel(x: float, y: float) -> SimpleNamespace:
+        values = dict.fromkeys(WHEEL_FIELDS, 1.0)
+        values.update(tire_friction=3.5, max_brake_torque=700.0)
+        return SimpleNamespace(**values, position=SimpleNamespace(x=x, y=y, z=30.0))
+
+    return SimpleNamespace(
+        mass=2500.0,
+        drag_coefficient=0.3,
+        max_rpm=6000.0,
+        moi=1.0,
+        final_ratio=4.0,
+        center_of_mass=SimpleNamespace(x=0.0, y=0.0, z=-0.3),
+        wheels=[wheel(300, -80), wheel(300, 80), wheel(5, -80), wheel(5, 80)],
+    )
+
+
+def test_db_vehicle_is_forced_into_carla_and_checked() -> None:
+    """ADR-033: blueprint + vật lý từ DB vào CARLA; cái gì CARLA không nhận thì bảng đối chiếu nói rõ."""
+    carla = {
+        "blueprint": "vehicle.audi.etron",
+        "physics": {"mass": 2400.0, "wheels": {"max_brake_torque": 900.0}},
+        "dimensions": {"height_m": 1.67, "wheelbase_m": 2.95},
+    }
+    spec = read_spec(
+        {
+            "ego_speed_kmh": 40,
+            "trigger_distance_m": 20,
+            "pedestrian_speed_mps": 1.5,
+            "vehicle": {"length_m": 4.75, "width_m": 1.93, "max_brake_decel_mps2": 9.5, "carla": carla},
+        }
+    )
+    assert run_variant.ego_blueprint(spec, None) == "vehicle.audi.etron"
+    assert run_variant.ego_blueprint(spec, "vehicle.tesla.model3") == "vehicle.tesla.model3"
+    assert run_variant.ego_blueprint(read_spec({**_IR}), None) == run_variant.DEFAULT_BLUEPRINT
+
+    pc = _fake_physics_control()
+    run_variant.apply_physics_overrides(
+        pc, spec.vehicle_carla["physics"], lambda x, y, z: SimpleNamespace(x=x, y=y, z=z)
+    )
+    assert pc.mass == 2400.0 and {w.max_brake_torque for w in pc.wheels} == {900.0}
+    assert {w.tire_friction for w in pc.wheels} == {3.5}  # trường không yêu cầu thì giữ nguyên
+
+    actual = run_variant.physics_snapshot(pc, SimpleNamespace(x=2.45, y=0.965, z=0.835))
+    assert actual["wheelbase_m"] == pytest.approx(2.95)
+    rows = {
+        r["param"]: r
+        for r in run_variant.vehicle_check(spec, actual, blueprint="vehicle.audi.etron", full_brake_decel=4.6)
+    }
+    assert {k: r["status"] for k, r in rows.items()} == {
+        "blueprint": "MATCH",
+        "length_m": "MISMATCH",  # 4,75 cấu hình vs 4,9 của mesh — không ép được
+        "width_m": "MATCH",
+        "height_m": "MATCH",
+        "wheelbase_m": "MATCH",
+        "mass": "APPLIED",
+        "wheels.max_brake_torque": "APPLIED",
+        "max_brake_decel_mps2": "UNREACHABLE",  # 9,5 m/s² nhưng CARLA phanh hết cỡ ~4,6
+    }
+    assert "TD-17" in rows["wheels.max_brake_torque"]["note"]
+
+    pc.mass = 2500.0  # CARLA không nhận
+    weaker = read_spec({**_IR, "vehicle": {"max_brake_decel_mps2": 4.0, "carla": carla}})
+    rows = {
+        r["param"]: r["status"]
+        for r in run_variant.vehicle_check(
+            weaker,
+            run_variant.physics_snapshot(pc, SimpleNamespace(x=2.45, y=0.965, z=0.835)),
+            blueprint="vehicle.tesla.model3",
+            full_brake_decel=4.6,
+        )
+    }
+    assert rows["mass"] == "NOT_APPLIED"
+    assert rows["blueprint"] == "CLI_OVERRIDE"
+    assert rows["max_brake_decel_mps2"] == "CONTROLLER_CAP"
+
+
+def test_per_wheel_overrides_must_match_the_wheel_count() -> None:
+    with pytest.raises(RuntimeError, match="2 phần tử nhưng xe có 4 bánh"):
+        run_variant.apply_physics_overrides(_fake_physics_control(), {"wheels": [{"radius": 37.0}] * 2}, None)
+
+
+_IR = {"ego_speed_kmh": 40, "trigger_distance_m": 20, "pedestrian_speed_mps": 1.5}
 
 
 @pytest.mark.parametrize("weather", ["CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG"])

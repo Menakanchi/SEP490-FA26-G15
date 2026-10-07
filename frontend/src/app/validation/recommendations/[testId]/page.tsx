@@ -15,7 +15,7 @@ const CONFIDENCE_LABEL = { High: "Cao", Medium: "Trung bình", Low: "Thấp" } a
 
 export default function RecommendationPage() {
   const { testId } = useParams<{ testId: string }>();
-  const { canWrite } = useVehicSimContext();
+  const { canDecide } = useVehicSimContext();
   const [r, setR] = useState<RecommendationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,9 +47,9 @@ export default function RecommendationPage() {
             </PillButton>
             <PillButton
               variant="dark"
-              href={!final && !running && canWrite ? `/validation/recommendations/${r.id}/review` : undefined}
-              disabled={final || running || !canWrite}
-              title={!canWrite ? "Tài khoản người xem chỉ có quyền xem" : final ? "Đã có quyết định cuối" : undefined}
+              href={!final && !running && canDecide ? `/validation/recommendations/${r.id}/review` : undefined}
+              disabled={final || running || !canDecide}
+              title={!canDecide ? "Chỉ Người duyệt (REVIEWER) được ra quyết định" : final ? "Đã có quyết định cuối" : undefined}
               className="print:hidden"
             >
               Duyệt quyết định →

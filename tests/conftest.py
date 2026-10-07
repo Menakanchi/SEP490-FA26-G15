@@ -15,7 +15,7 @@ def isolated_auth(monkeypatch):
     """Xác thực + VehicSim chạy trên SQLite trong RAM + fakeredis, không cần MySQL/Redis thật.
 
     Bảng dựng từ chính ``users.metadata`` (cùng cột với ``01_schema.sql``) và
-    seed ba role như file SQL. Autouse: không test nào được chạm DB dev thật.
+    seed năm role như file SQL. Autouse: không test nào được chạm DB dev thật.
     """
     import fakeredis
     from sqlalchemy import create_engine, insert
@@ -37,9 +37,11 @@ def isolated_auth(monkeypatch):
         conn.execute(
             insert(users.roles_table),
             [
-                {"code": "ADMIN", "name": "Administrator", "created_at": now},
-                {"code": "ENGINEER", "name": "Engineer", "created_at": now},
-                {"code": "EXPERT", "name": "Expert", "created_at": now},
+                {"code": "ADMIN", "name": "Administrator", "created_date": now},
+                {"code": "MANAGER", "name": "Manager", "created_date": now},
+                {"code": "ENGINEER", "name": "Engineer", "created_date": now},
+                {"code": "REVIEWER", "name": "Reviewer", "created_date": now},
+                {"code": "EXPERIENCER", "name": "Experiencer", "created_date": now},
             ],
         )
     monkeypatch.setattr(users, "get_engine", lambda: engine)

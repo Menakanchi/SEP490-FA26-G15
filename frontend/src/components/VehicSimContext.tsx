@@ -9,18 +9,29 @@ interface VehicSimContextValue {
   ctx: Ctx | null;
   error: string | null;
   refresh: () => Promise<void>;
-  /** ENGINEER/EXPERT/ADMIN được tạo và quyết định; tài khoản không mang role đó chỉ xem (backend cũng trả 403). */
+  /** ENGINEER, EXPERIENCER (người tự đăng ký) và ADMIN được tạo / chạy / regression (backend cũng trả 403). */
   canWrite: boolean;
+  /** Chỉ REVIEWER được Accept / Reject recommendation (ADR-035). */
+  canDecide: boolean;
 }
 
-const VehicSimCtx = createContext<VehicSimContextValue>({ ctx: null, error: null, refresh: async () => {}, canWrite: false });
+const WRITE_ROLES = ["ADMIN", "ENGINEER", "EXPERIENCER"];
+
+const VehicSimCtx = createContext<VehicSimContextValue>({
+  ctx: null,
+  error: null,
+  refresh: async () => {},
+  canWrite: false,
+  canDecide: false,
+});
 
 /** Ngữ cảnh chung cho mọi trang VehicSim: project, xe, hệ thống AEB, baseline, các họ kịch bản. */
 export function VehicSimContextProvider({ children }: { children: React.ReactNode }) {
   const [ctx, setCtx] = useState<Ctx | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
-  const canWrite = !!user?.roles?.some((r) => r === "ENGINEER" || r === "EXPERT" || r === "ADMIN");
+  const canWrite = WRITE_ROLES.includes(user?.roleCode ?? "");
+  const canDecide = user?.roleCode === "REVIEWER";
 
   const refresh = useCallback(async () => {
     try {
@@ -36,7 +47,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
     void refresh();
   }, [refresh]);
 
-  return <VehicSimCtx.Provider value={{ ctx, error, refresh, canWrite }}>{children}</VehicSimCtx.Provider>;
+  return <VehicSimCtx.Provider value={{ ctx, error, refresh, canWrite, canDecide }}>{children}</VehicSimCtx.Provider>;
 }
 
 export function useVehicSimContext(): VehicSimContextValue {

@@ -2,7 +2,6 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ApiUser, AuthContextType, Role, SessionResponse, User } from "@/types/auth";
-import { clearAllAssistantChats } from "@/services/assistantHistory";
 import {
   ApiError,
   changeMyPassword,
@@ -44,12 +43,17 @@ function writeAvatar(userId: number | string, dataUrl: string | undefined): void
   }
 }
 
-/** Một user có thể mang nhiều role; trang được chia theo role cao nhất. */
-export function primaryRole(roles: string[]): Role {
-  if (roles.includes("ADMIN")) return "admin";
-  if (roles.includes("EXPERT")) return "expert";
-  if (roles.includes("ENGINEER")) return "engineer";
-  return "guest";
+const ROLE_BY_CODE: Record<string, Role> = {
+  ADMIN: "admin",
+  MANAGER: "manager",
+  ENGINEER: "engineer",
+  REVIEWER: "reviewer",
+  EXPERIENCER: "experience",
+};
+
+/** Mỗi user đúng một role hệ thống (ADR-035). */
+export function toRole(code: string): Role {
+  return ROLE_BY_CODE[code] ?? "guest";
 }
 
 function toUser(api: ApiUser): User {
@@ -59,8 +63,8 @@ function toUser(api: ApiUser): User {
     full_name: api.full_name,
     email: api.email,
     username: api.email,
-    roles: api.roles,
-    role: primaryRole(api.roles),
+    roleCode: api.role,
+    role: toRole(api.role),
     avatar_url: readAvatar(api.id),
   };
 }
@@ -84,8 +88,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     storeToken(null);
     setToken(null);
     setUser(null);
-    // Lịch sử Meomeo Agent chỉ mất khi đăng xuất — chuyển trang hay tải lại thì vẫn giữ.
-    clearAllAssistantChats();
   }, []);
 
   // Khôi phục phiên: có token thì hỏi backend nó còn hợp lệ không.
@@ -173,6 +175,6 @@ export function useAuth(): AuthContextType {
 
 /** Trang đích sau khi đăng nhập, theo role. */
 export function homeFor(role: Role): string {
-  void role; // mọi vai trò vào VehicSim; quyền ghi do backend + `canWrite` quyết định
+  void role; // mọi vai trò vào VehicSim; quyền ghi / duyệt do backend + `canWrite` / `canDecide` quyết định
   return "/";
 }

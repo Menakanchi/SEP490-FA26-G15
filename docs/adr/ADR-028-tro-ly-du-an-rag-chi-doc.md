@@ -1,5 +1,6 @@
 # ADR-028 — Trợ lý dự án: RAG chỉ đọc trên dữ liệu project + tài liệu repo, vector trong MySQL
 
+**⛔ Superseded by [ADR-035](ADR-035-nam-role-he-thong-bo-cau-hinh-xe-va-meomeo.md) (06/10/2026)** — Meomeo Agent đã gỡ.
 **Trạng thái:** Proposed 02/10/2026 — **cơ chế trả lời bị thay bởi ADR-029** (03/10: ReAct + guardrails); chỉ mục `knowledge_chunks` vẫn theo ADR này
 **Phạm vi:** VehicSim — cửa sổ hội thoại trên trang Tổng quan, `src/services/vehicsim/{knowledge,assistant}.py`
 
@@ -51,8 +52,8 @@ thành đường tắt để thay đổi hệ thống (luật "không bao giờ 
 - Báo cáo §2.1.3 ghi Qdrant cho vector — nay là bảng MySQL; cần cập nhật báo cáo (TD-24).
 - Trợ lý chỉ biết những gì nằm trong đoạn tri thức: câu tổng hợp ngoài các chiều của đoạn
   thống kê (vd. theo tháng) sẽ được trả lời "không có trong dữ liệu".
-- Máy kiểm: `test_assistant_never_writes_project_data`,
-  `test_react_loop_calls_tools_and_cites_only_what_they_returned`,
-  `test_off_topic_question_is_refused_without_calling_the_llm`,
-  `test_aggregate_questions_always_get_the_statistics`,
-  `test_index_is_incremental_and_follows_data_changes`, `test_only_whitelisted_docs_are_indexed`.
+- Máy kiểm: test_assistant_never_writes_project_data,
+  test_react_loop_calls_tools_and_cites_only_what_they_returned,
+  test_off_topic_question_is_refused_without_calling_the_llm,
+  test_aggregate_questions_always_get_the_statistics,
+  test_index_is_incremental_and_follows_data_changes, test_only_whitelisted_docs_are_indexed.

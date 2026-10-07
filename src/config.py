@@ -24,8 +24,7 @@ class Settings(BaseSettings):
     # đi qua src/services/llm.py nên không file nào khác phải biết provider là gì.
     llm_provider: Literal["openai", "deepseek"] = "openai"
     openai_api_key: str = ""
-    # DeepSeek dùng API tương thích OpenAI. Nó KHÔNG có embeddings: retrieval
-    # vẫn dùng OpenAI nếu có OPENAI_API_KEY, không có thì rơi về vector theo hash.
+    # DeepSeek dùng API tương thích OpenAI.
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     gemini_api_key: str | None = None

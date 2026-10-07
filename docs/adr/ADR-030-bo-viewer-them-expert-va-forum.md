@@ -1,6 +1,8 @@
 # ADR-030 — Bỏ role VIEWER, thêm role EXPERT và forum AEB chung toàn hệ thống
 
-**Trạng thái:** Proposed 03/10/2026 (TrungDQ, nhánh `trungdam`; chờ nhóm duyệt). Phần role (EXPERT, bỏ
+**Trạng thái:** ⛔ **Superseded by [ADR-034](ADR-034-role-he-thong-va-role-trong-workspace.md)** (05/10/2026):
+role đổi thành ADMIN / MANAGER / EXPERT + ENGINEER / REVIEWER theo workspace, forum bỏ hẳn. Bản gốc dưới đây
+giữ làm lịch sử. Proposed 03/10/2026 (TrungDQ, nhánh `trungdam`; chờ nhóm duyệt). Phần role (EXPERT, bỏ
 VIEWER) và hai bảng forum **đã vào schema** cùng [ADR-031](ADR-031-database-phu-du-chuc-nang.md) — DDL chuẩn
 ở `database/mysql/01_schema.sql`, khối SQL bên dưới là bản đề xuất ban đầu. API/màn hình forum chưa code.
 **Phạm vi:** role hệ thống của VehicSim + xác thực dùng chung (MySQL `roles`/`user_roles`) và hai

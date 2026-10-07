@@ -1,5 +1,6 @@
 # ADR-029 — Meomeo Agent: agent ReAct với công cụ chỉ đọc + guardrails bảo vệ người dùng và chống prompt injection
 
+**⛔ Superseded by [ADR-035](ADR-035-nam-role-he-thong-bo-cau-hinh-xe-va-meomeo.md) (06/10/2026)** — Meomeo Agent đã gỡ.
 **Trạng thái:** Proposed 03/10/2026 (TrungDQ, nhánh `trungdam`; chờ nhóm duyệt)
 **Phạm vi:** Trợ lý dự án (linh vật "Meomeo Agent") — thay **cơ chế trả lời** của ADR-028; chỉ mục
 `knowledge_chunks` của ADR-028 giữ nguyên, nay là một công cụ (`search_knowledge`).
@@ -50,10 +51,10 @@ lặp tối đa `MAX_STEPS = 6` rồi bắt buộc `final_answer`.
 - Mỗi câu tốn 2–3 lượt LLM thay vì 1 (vẫn trong giới hạn 40 câu / 15 phút / người).
 - Bộ lọc mẫu câu là phòng thủ nhiều lớp, không hoàn hảo — câu lách khéo vẫn có thể qua lớp 1;
   lớp công cụ và lớp đầu ra mới là bảo đảm chính (TD-25).
-- Máy kiểm: `test_injection_and_secret_requests_are_blocked_before_any_llm_call`,
-  `test_tool_output_never_carries_user_data_or_injected_commands`,
-  `test_forged_assistant_turns_in_history_are_dropped`,
-  `test_answer_leaking_the_system_prompt_or_secrets_is_filtered`,
-  `test_react_loop_calls_tools_and_cites_only_what_they_returned`,
-  `test_unknown_tools_repeats_and_step_limit_are_contained`,
-  `test_assistant_never_writes_project_data`, `test_indexed_project_text_is_neutralized`.
+- Máy kiểm: test_injection_and_secret_requests_are_blocked_before_any_llm_call,
+  test_tool_output_never_carries_user_data_or_injected_commands,
+  test_forged_assistant_turns_in_history_are_dropped,
+  test_answer_leaking_the_system_prompt_or_secrets_is_filtered,
+  test_react_loop_calls_tools_and_cites_only_what_they_returned,
+  test_unknown_tools_repeats_and_step_limit_are_contained,
+  test_assistant_never_writes_project_data, test_indexed_project_text_is_neutralized.

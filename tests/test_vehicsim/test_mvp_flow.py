@@ -43,10 +43,14 @@ async def test_viewer_can_read_but_not_write(client, engineer, viewer):
 
 
 @pytest.mark.asyncio
-async def test_expert_can_run_and_test_like_engineer(client, engineer, expert):
-    assert set(expert["user"].roles) == {"EXPERT"}
-    res = await client.post(f"{API}/families", json=SMALL_FAMILY, headers=expert["headers"])
+async def test_registered_experience_user_can_run_but_manager_only_cannot(client, engineer, manager):
+    """ADR-035: tự đăng ký = EXPERIENCER (chạy, kiểm thử); MANAGER chỉ quản lý workspace."""
+    assert engineer["user"].role == "EXPERIENCER"
+    res = await client.post(f"{API}/families", json=SMALL_FAMILY, headers=engineer["headers"])
     assert res.is_success, res.text
+    assert manager["user"].role == "MANAGER"
+    res = await client.post(f"{API}/families", json=SMALL_FAMILY, headers=manager["headers"])
+    assert res.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -105,7 +109,7 @@ async def test_candidate_values_must_stay_in_parameter_range(client, engineer):
 
 
 @pytest.mark.asyncio
-async def test_regression_pairs_same_seeds_and_accept_swaps_baseline(client, engineer):
+async def test_regression_pairs_same_seeds_and_accept_swaps_baseline(client, engineer, reviewer):
     created = await _setup_family(client, engineer)
     candidate_id = await _candidate(client, engineer, ttc=1.8)
 
@@ -151,7 +155,7 @@ async def test_regression_pairs_same_seeds_and_accept_swaps_baseline(client, eng
     decision = await client.post(
         f"{API}/recommendations/{test_id}/decision",
         json={"decision": "ACCEPT", "reason": "Fewer collisions, no new ones.", "confirmed": True},
-        headers=engineer["headers"],
+        headers=reviewer["headers"],
     )
     assert decision.status_code == 200, decision.text
     assert decision.json()["review"]["decision"] == "ACCEPT"
@@ -163,13 +167,13 @@ async def test_regression_pairs_same_seeds_and_accept_swaps_baseline(client, eng
     again = await client.post(
         f"{API}/recommendations/{test_id}/decision",
         json={"decision": "REJECT", "reason": "changed my mind", "confirmed": True},
-        headers=engineer["headers"],
+        headers=reviewer["headers"],
     )
     assert again.status_code == 400
 
 
 @pytest.mark.asyncio
-async def test_failed_regression_cannot_be_accepted(client, engineer):
+async def test_failed_regression_cannot_be_accepted(client, engineer, reviewer):
     created = await _setup_family(client, engineer)
     # Ngưỡng thấp hơn baseline -> va chạm mới -> "no_new_collision" (bắt buộc) hỏng.
     candidate_id = await _candidate(client, engineer, ttc=0.8, label="v0.8-bad")
@@ -190,13 +194,13 @@ async def test_failed_regression_cannot_be_accepted(client, engineer):
     accept = await client.post(
         f"{API}/recommendations/{test_id}/decision",
         json={"decision": "ACCEPT", "reason": "ship it", "confirmed": True},
-        headers=engineer["headers"],
+        headers=reviewer["headers"],
     )
     assert accept.status_code == 400
     reject = await client.post(
         f"{API}/recommendations/{test_id}/decision",
         json={"decision": "REJECT", "reason": "Introduces new collisions.", "confirmed": True},
-        headers=engineer["headers"],
+        headers=reviewer["headers"],
     )
     assert reject.status_code == 200
     versions = {
@@ -206,7 +210,7 @@ async def test_failed_regression_cannot_be_accepted(client, engineer):
 
 
 @pytest.mark.asyncio
-async def test_decision_requires_reason_and_confirmation(client, engineer):
+async def test_decision_requires_reason_and_confirmation(client, engineer, reviewer):
     created = await _setup_family(client, engineer)
     candidate_id = await _candidate(client, engineer, ttc=1.6)
     test_id = (
@@ -219,7 +223,7 @@ async def test_decision_requires_reason_and_confirmation(client, engineer):
     unconfirmed = await client.post(
         f"{API}/recommendations/{test_id}/decision",
         json={"decision": "REQUEST_MORE_TESTS", "reason": "need rain cases", "confirmed": False},
-        headers=engineer["headers"],
+        headers=reviewer["headers"],
     )
     assert unconfirmed.status_code == 400
     ok = await client.post(
@@ -230,7 +234,7 @@ async def test_decision_requires_reason_and_confirmation(client, engineer):
             "conditions": "add fog",
             "confirmed": True,
         },
-        headers=engineer["headers"],
+        headers=reviewer["headers"],
     )
     assert ok.status_code == 200 and ok.json()["review"]["conditions"] == "add fog"
 
@@ -286,7 +290,7 @@ async def test_regression_preview_counts_match_created_test(client, engineer):
 
 
 @pytest.mark.asyncio
-async def test_accepting_one_candidate_blocks_stale_tests(client, engineer):
+async def test_accepting_one_candidate_blocks_stale_tests(client, engineer, reviewer):
     created = await _setup_family(client, engineer)
     loose = {"false_activation_increase_max_pts": {"value": 100}, "median_min_ttc_change_min_s": {"value": -10}}
 
@@ -308,17 +312,38 @@ async def test_accepting_one_candidate_blocks_stale_tests(client, engineer):
 
     decision = {"decision": "ACCEPT", "reason": "fewer collisions", "confirmed": True}
     assert (
-        await client.post(f"{API}/recommendations/{first}/decision", json=decision, headers=engineer["headers"])
+        await client.post(f"{API}/recommendations/{first}/decision", json=decision, headers=reviewer["headers"])
     ).status_code == 200
     # Baseline v1.0 của test thứ hai đã bị ARCHIVED -> không được ghi đè baseline mới.
-    stale = await client.post(f"{API}/recommendations/{second}/decision", json=decision, headers=engineer["headers"])
+    stale = await client.post(f"{API}/recommendations/{second}/decision", json=decision, headers=reviewer["headers"])
     assert stale.status_code == 400 and "baseline" in stale.json()["detail"]
     # v1.1 giờ là BASELINE -> test khác của cùng candidate không được Reject nó.
     reject = {"decision": "REJECT", "reason": "dup", "confirmed": True}
-    dup = await client.post(f"{API}/recommendations/{again}/decision", json=reject, headers=engineer["headers"])
+    dup = await client.post(f"{API}/recommendations/{again}/decision", json=reject, headers=reviewer["headers"])
     assert dup.status_code == 400
 
     versions = {
         v["label"]: v["status"] for v in (await client.get(f"{API}/aeb/versions", headers=engineer["headers"])).json()
     }
     assert versions == {"v1.0": "ARCHIVED", "v1.1": "BASELINE", "v1.2": "CANDIDATE"}
+
+
+@pytest.mark.asyncio
+async def test_only_reviewer_decides_and_reviewer_cannot_run(client, engineer, reviewer, manager):
+    """ADR-035: người làm (ENGINEER / EXP) không tự duyệt; REVIEWER duyệt nhưng không chạy mô phỏng."""
+    created = await _setup_family(client, engineer)
+    candidate_id = await _candidate(client, engineer, ttc=1.6)
+    test_id = (
+        await client.post(
+            f"{API}/regression",
+            json={"candidate_version_id": candidate_id, "scenario_id": created["scenario_id"]},
+            headers=engineer["headers"],
+        )
+    ).json()["id"]
+    body = {"decision": "REJECT", "reason": "not convinced", "confirmed": True}
+    for who in (engineer, manager):
+        res = await client.post(f"{API}/recommendations/{test_id}/decision", json=body, headers=who["headers"])
+        assert res.status_code == 403
+    assert (await client.post(f"{API}/families", json=SMALL_FAMILY, headers=reviewer["headers"])).status_code == 403
+    res = await client.post(f"{API}/recommendations/{test_id}/decision", json=body, headers=reviewer["headers"])
+    assert res.status_code == 200 and res.json()["review"]["decision"] == "REJECT"

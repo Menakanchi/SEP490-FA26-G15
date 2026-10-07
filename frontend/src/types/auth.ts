@@ -1,12 +1,12 @@
 /**
  * Auth Data Types — VehicSim
  *
- * Backend (`/api/v1/auth/*`) trả `roles` dạng mã MySQL: ADMIN / EXPERT / ENGINEER (ADR-030).
- * Frontend quy về MỘT `Role` để chia trang (xem `primaryRole` trong AuthContext):
- *   ADMIN -> "admin" · EXPERT -> "expert" · ENGINEER -> "engineer"; không role nào -> "guest".
+ * Backend (`/api/v1/auth/*`) trả `role` — đúng MỘT mã role hệ thống MySQL (ADR-035):
+ * ADMIN / MANAGER / ENGINEER / REVIEWER / EXPERIENCER (người tự đăng ký).
+ * Frontend quy về `Role` chữ thường để chia trang (xem `toRole` trong AuthContext).
  */
 
-export type Role = "admin" | "expert" | "engineer" | "guest";
+export type Role = "admin" | "manager" | "engineer" | "reviewer" | "experience" | "guest";
 
 /** Người dùng đang đăng nhập, đã quy đổi từ `ApiUser`. */
 export interface User {
@@ -16,8 +16,8 @@ export interface User {
   avatar_url?: string;
   email: string;
   role: Role;
-  /** Mã role gốc từ backend (ADMIN / EXPERT / ENGINEER). */
-  roles?: string[];
+  /** Mã role gốc từ backend (ADMIN / MANAGER / ENGINEER / REVIEWER / EXPERIENCER). */
+  roleCode?: string;
   /** Tên hiển thị dự phòng. Tài khoản VehicSim không có username riêng nên đây chính là email. */
   username: string;
 }
@@ -27,7 +27,7 @@ export interface ApiUser {
   id: number;
   email: string;
   full_name: string;
-  roles: string[];
+  role: string;
 }
 
 export interface SessionResponse {

@@ -89,7 +89,7 @@ không va chạm vẫn tới hạn hơn hẳn khe 1,7 m, mà đếm va chạm th
 bao giờ có va chạm để đếm). Biến thể không đo được xếp cuối, không bị loại.
 
 **Áp vào:** mô hình thay thế (Gaussian Process) của BO học tốt trên **mục tiêu liên tục** — dùng
-`min_distance_m`, `min_ttc_s`, `impact_speed_mps` (đã có trong `aeb_results`), đừng tối ưu thẳng tỉ lệ va
+`min_distance_m`, `min_ttc_s`, `impact_speed_mps` (đã có trong `simulation_runs`), đừng tối ưu thẳng tỉ lệ va
 chạm 0/1. Tỉ lệ va chạm / phanh oan để báo cáo và làm ràng buộc, không làm tín hiệu học.
 
 ## 6. Ngân sách là điều kiện dừng; chỉ lấy mẫu trong vùng chạy được
@@ -116,7 +116,7 @@ thì có thể đề xuất theo lô, nhưng kiểm trần **trước** khi xế
 xuống 0,68 m — phần lớn "cải thiện" là nhờ sửa lỗi, không nhờ phép dò. Bằng chứng còn đứng vững chỉ là
 `sc_906` (1,05 → 0,36 m).
 
-**Áp vào:** so candidate với baseline **chạy lại cùng phiên bản bộ mô phỏng** (`carla_version`,
+**Áp vào:** so candidate với baseline **chạy lại cùng phiên bản bộ mô phỏng** (`simulator_version`,
 `KINEMATIC_SIMULATOR`) — đúng điều regression đã ép; mọi con số "tối ưu cải thiện X%" trong báo cáo phải
 đo theo cách này.
 
@@ -157,9 +157,9 @@ Bảng đã dựng sẵn cho FE-13 ([ADR-031](../adr/ADR-031-database-phu-du-chu
 | Trần ngân sách, mục tiêu, ràng buộc (mục 5, 6) | `optimization_runs.max_trials`, `objective_config` |
 | Điểm từ đâu ra, hàm thu nhận chấm bao nhiêu (mục 1, 4) | `optimization_trials.sampling_source` (`INITIAL_DESIGN` / `ACQUISITION` / `ACTIVE_LEARNING`), `acquisition_value` |
 | Pareto, khuyến nghị (mục 10) | `optimization_trials.is_pareto_optimal`, `is_recommended` |
-| Kiểm dưới nhiễu | `robustness_tests` + run `purpose = ROBUSTNESS` |
-| Núm nào nên dò trước (mục 3) | `sensitivity_analyses`, `sensitivity_results` |
-| Kết quả từng điểm, mục tiêu liên tục (mục 5, 7) | `simulation_runs` + `aeb_results` |
+| Kiểm dưới nhiễu | `analysis_results` (ROBUSTNESS_VALIDATION, nhiễu ở `config_json`) + run `purpose = ROBUSTNESS` |
+| Núm nào nên dò trước (mục 3) | `analysis_results` (SENSITIVITY / INTERACTION) |
+| Kết quả từng điểm, mục tiêu liên tục (mục 5, 7) | `simulation_runs` (cột kết quả) + `optimization_trials` (ba mục tiêu Pareto) |
 
 ## Xem code gốc
 

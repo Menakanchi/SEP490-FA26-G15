@@ -26,7 +26,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # Schema VehicSim (36 bảng): database/mysql/01_schema.sql chỉ chạy khi volume
+  # Schema VehicSim (30 bảng): database/mysql/01_schema.sql chỉ chạy khi volume
   # còn rỗng (lần dựng đầu); thư mục migrations/ bên trong bị entrypoint bỏ qua.
   # DB đã có dữ liệu thì nâng bằng file trong database/mysql/migrations/ — KHÔNG
   # `docker compose down -v` (mất tài khoản và dữ liệu). Đây là database duy nhất.
