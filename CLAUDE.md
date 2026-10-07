@@ -99,5 +99,5 @@ event sớm, không phải chạy nhanh; xem `_add_hold_open_event` trong conver
 ## Lệnh có thể gọi LLM trả phí
 
 Pytest mặc định chặn `call_with_escalation`; chỉ bật gọi thật có chủ đích bằng
-`RUN_LLM_TESTS=1`. Ngoài test, chỉ hai đường gọi LLM thật: bước "Sinh từ mô tả"
-(`describe.py`) và Meomeo Agent (`assistant.py`) — cả hai đi qua `src/services/llm.py`.
+`RUN_LLM_TESTS=1`. Ngoài test, chỉ một đường gọi LLM thật: bước "Sinh từ mô tả"
+(`describe.py`), đi qua `src/services/llm.py` (Meomeo Agent đã gỡ — ADR-035).

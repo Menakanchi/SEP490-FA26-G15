@@ -1,7 +1,9 @@
 # ADR-031 — Database phủ đủ FE-01 → FE-14: 36 bảng, một xe không phiên bản, migration đánh số
 
-**Trạng thái:** Proposed 03/10/2026 (TrungDQ, nhánh `trungdam`; chờ nhóm duyệt). Schema và DB dev máy
-TrungDQ đã áp; 8 bảng mới **chưa có code**.
+**Trạng thái:** ⛔ Superseded by [ADR-036](ADR-036-schema-29-bang.md) (07/10/2026 — schema 29 bảng). Gốc: Proposed 03/10/2026 (TrungDQ, nhánh `trungdam`; chờ nhóm duyệt). Schema và DB dev máy
+TrungDQ đã áp; 8 bảng mới **chưa có code**. Bổ sung 04/10 bởi
+[ADR-033](ADR-033-cau-hinh-xe-de-so-sanh.md): +2 bảng cấu hình xe chỉ để so sánh (38 bảng) — "một xe, không
+phiên bản" giữ nguyên.
 **Phạm vi:** MySQL `vehicsim` ([01_schema.sql](../../database/mysql/01_schema.sql)); nghĩa từng cột ở
 [database-schema.md](../vehicsim/database-schema.md).
 

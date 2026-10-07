@@ -135,4 +135,4 @@ async def test_family_from_description_keeps_nl_origin(client, engineer):
         ).one()
     assert base.source == "NATURAL_LANGUAGE"
     assert base.natural_language_input == TEXT and base.llm_model == "deepseek-flash"
-    assert base.scenario_ir["described"] == {"ir": GOOD}
+    assert base.scenario_ir_json["described"] == {"ir": GOOD}

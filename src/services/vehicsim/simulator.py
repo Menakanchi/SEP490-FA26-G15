@@ -144,7 +144,7 @@ def make_frame(
 
 
 class MotionStats:
-    """Cộng dồn giảm tốc/jerk mỗi khung cho ``aeb_results`` (max, trung bình, jerk)."""
+    """Cộng dồn giảm tốc/jerk mỗi khung cho kết quả run (max, trung bình, jerk)."""
 
     def __init__(self, dt: float = DT) -> None:
         self.dt = dt

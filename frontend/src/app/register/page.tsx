@@ -13,7 +13,7 @@ const MIN_PASSWORD_LENGTH = 8;
 
 /**
  * Đăng ký 2 bước: (1) email -> backend gửi mã 6 số; (2) mã + họ tên + mật khẩu
- * -> tạo tài khoản ENGINEER và đăng nhập luôn. Tài khoản chỉ được tạo khi mã
+ * -> tạo tài khoản EXPERIENCER và đăng nhập luôn. Tài khoản chỉ được tạo khi mã
  * đúng, tức email đã được chứng minh là của người đăng ký.
  */
 export default function RegisterPage() {

@@ -7,7 +7,7 @@ bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà 
 
 > Nguồn sự thật: schema DB là [`database/mysql/01_schema.sql`](../../database/mysql/01_schema.sql)
 > (mirror trong `src/services/vehicsim/tables.py`); lý do quyết định là ADR-023 →
-> ADR-028 trong [`docs/adr/`](../adr/README.md). Tài liệu này vênh với hai nguồn đó
+> ADR-035 trong [`docs/adr/`](../adr/README.md). Tài liệu này vênh với hai nguồn đó
 > thì tài liệu này sai.
 
 ## Vòng MVP 6 bước
@@ -19,7 +19,7 @@ bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà 
 | 3. Chạy baseline | Chạy mọi biến thể với AEB baseline | `/scenarios` | `POST /families/{id}/run` | `runs.py` + Celery |
 | 4. Phân tích lỗi | Danh sách lỗi → chi tiết/nguyên nhân → playback → tải JSON chạy lại trên CARLA | `/analysis/failures/**` | `GET /failures`, `/runs/{id}`, `/runs/{id}/playback`, `/runs/{id}/bundle` | `evaluation.py`, `views.py`, `worker/run_variant.py` |
 | 5. Cấu hình mới & chạy lại | Tạo candidate AEB → regression cùng seed | `/aeb`, `/validation/regression/new` | `POST /aeb/versions`, `GET /regression/preview`, `POST /regression` | `aeb.py`, `regression.py` |
-| 6. So sánh & quyết định | Kết quả regression → khuyến nghị → Accept/Reject/Request more tests | `/validation/**` | `GET /regression/{id}`, `/recommendations/{id}`, `POST /recommendations/{id}/decision` | `regression.py`, `views.py` |
+| 6. So sánh & quyết định | Kết quả regression → khuyến nghị → **Reviewer** Accept/Reject/Request more tests | `/validation/**` | `GET /regression/{id}`, `/recommendations/{id}`, `POST /recommendations/{id}/decision` | `regression.py`, `views.py` |
 
 Trang `/` (Tổng quan) tính trạng thái 6 bước từ dữ liệu thật và chỉ bước tiếp theo;
 mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước ở
@@ -31,18 +31,18 @@ mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước
 Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  FastAPI /api/v1/vehicsim/*  (vehicsim_routes.py: chỉ đổi lỗi → HTTP)
                               │
                               ▼
-                  src/services/vehicsim/*  ──SQLAlchemy Core──▶  MySQL (24/36 bảng)
+                  src/services/vehicsim/*  ──SQLAlchemy Core──▶  MySQL (19/30 bảng)
                               │ dispatch(run_ids)
                               ▼
               Redis db1 (broker) ──▶ Celery worker `vehicsim.run_simulation`
                                            │ execute_run(run_id) → spec_for_run() (= JSON "Tải JSON chạy CARLA")
                                            ▼
-            carla_version = vehicsim-kinematic-1.0          carla_version = carla-<x.y.z>
+        simulator_version = vehicsim-kinematic-1.0      simulator_version = carla-<x.y.z>
             simulator.simulate() (trong process)            VEHICSIM_CARLA_COMMAND <bundle> --out runs/<id> --fast
                                      │                       (tiến trình con, timeout) → result.json
                                      └──────────┬───────────────────────┘
                                                 ▼  cả hai dùng chung aeb_stack.AebStack
-                        evaluation.evaluate() → ghi results/aeb_results/failures/root_causes(/artifacts)
+                        evaluation.evaluate() → ghi kết quả vào simulation_runs + collision_events/failures/root_causes(/artifacts)
                         → regression.on_run_finished() → try_finalize()
 ```
 
@@ -54,8 +54,8 @@ mặc định `celery`. Worker Windows chạy `--pool=solo`; worker chạy CARLA
 
 | File | Trách nhiệm |
 |---|---|
-| `tables.py` | Bảng SQLAlchemy Core mirror `01_schema.sql` (dùng chung `metadata` với auth) |
-| `bootstrap.py` | Project/workspace/xe/hệ AEB mặc định, 10 tham số AEB (`AEB_PARAMETER_SEED`), baseline v1.0 (TTC 1,5 s) |
+| `tables.py` | Bảng SQLAlchemy Core mirror `01_schema.sql` (chỉ cột code dùng; chung `metadata` với auth) |
+| `bootstrap.py` | Workspace/project/phiên bản xe mặc định, 10 tham số AEB (`AEB_PARAMETER_SEED`), baseline v1.0 (TTC 1,5 s) |
 | `describe.py` | Câu mô tả → LLM → IR đã kiểm; sửa ≤ 3 lần; lùi về luật khi LLM lỗi |
 | `family.py` | `FamilySpec` (lưới, giới hạn, ≤ 300 biến thể), tạo họ + bản gốc + biến thể trong một transaction |
 | `aeb_stack.py` | **Hệ AEB cần kiểm thử**, dùng chung cho mọi bộ mô phỏng: `AebParams` (10 tham số), `AebStack.step` mỗi tick = perception (độ tin cậy theo thời tiết/giờ/khoảng cách + nhiễu theo seed) → decision (TTC + hành lang) → control (trễ, actuator, tăng lực phanh). Chỉ thư viện chuẩn |
@@ -63,14 +63,10 @@ mặc định `celery`. Worker Windows chạy `--pool=solo`; worker chạy CARLA
 | `bundle.py` | Hợp đồng JSON: `vehicsim.variant/v1` (biến thể + AEB + xe + seed) và `vehicsim.result/v1`; `read_spec` nhận cả Scenario IR trần |
 | `evaluation.py` | Kết quả `COLLISION` / `NEAR_MISS` / `SAFE`, verdict, false/missed activation, chuỗi nguyên nhân PERCEPTION → DECISION → CONTROL → VEHICLE_DYNAMICS theo ngân sách thời gian |
 | `runs.py` | Tạo run (seed = `48000 + id biến thể`, bộ mô phỏng theo cấu hình hoặc chép từ run baseline), dispatch inline/Celery, `execute_run` idempotent, `spec_for_run`/`bundle_for_run`, gọi CLI CARLA bằng tiến trình con |
-| `regression.py` | Tạo test, ghép cặp, chốt PASSED/FAILED, `decide`, `preview` |
+| `regression.py` | Tạo test (chốt xe + bộ mô phỏng), ghép cặp, chốt verdict + `regression_test_items` + khuyến nghị, `summary` tính lại từ run, `decide`, `preview` |
 | `aeb.py` | Tạo candidate: tham số trong khoảng, phải khác version cha |
 | `views.py` | Payload đọc cho từng màn (failures, run detail, playback, regression, recommendation) |
-| `knowledge.py` | Trợ lý dự án: dựng đoạn tri thức từ `views.py` + tài liệu trong danh sách trắng, nhúng vector, chỉ mục tăng dần, tìm kiếm |
-| `assistant.py` | Meomeo Agent: vòng ReAct (≤ 6 bước) trên `llm.call_with_escalation`, chặn đầu vào, kiểm đầu ra, chỉ giữ nguồn có thật |
-| `agent_tools.py` | 9 công cụ chỉ đọc của agent (danh sách trắng, tham số kiểu chặt, project do server gắn, kết quả qua `guardrails.clean`) |
-| `guardrails.py` | Chặn câu injection/đòi bí mật, lọc khoá nhạy cảm, che email/khoá/token, vô hiệu hoá câu giống lệnh trong dữ liệu người dùng nhập, kiểm đầu ra |
-| `common.py` | `NotFoundError`, `InvalidRequestError`, nhãn hiển thị |
+| `common.py` | `NotFoundError`, `InvalidRequestError`, nhãn hiển thị, `baseline_version`, `active_vehicle` |
 
 `src/celery_app.py`: app `vehicsim`, task `vehicsim.run_simulation`, queue
 `vehicsim.simulation`, `acks_late`, time limit theo `SIMULATION_TIMEOUT_S`.
@@ -121,17 +117,27 @@ hiệu chuẩn xong (TD-17).
 - **Họ kịch bản = `scenarios`**; mỗi biến thể là một `scenario_versions` với
   `source = GENERATED` và `parent_version_id` trỏ về **bản gốc** của họ. Bản gốc là
   `MANUAL` (nhập tay) hoặc `NATURAL_LANGUAGE` (từ bước 1, giữ
-  `natural_language_input`, `llm_model`, `scenario_ir.described`). Không có bảng
-  biến thể riêng — quyết định của nhóm, đừng tranh luận lại.
+  `natural_language_input`, `llm_model`, `scenario_ir_json.described`). Biến thể ghi điểm lưới
+  vào cả IR lẫn cột lọc (`ego_speed_kmh`, `weather`, `road_friction`…). Không có bảng biến thể
+  riêng — quyết định của nhóm, đừng tranh luận lại.
 - **Run baseline** (`purpose = BASELINE`) và **run regression** (`REGRESSION`, có
   `regression_test_id` + `baseline_run_id`); FK composite ép run regression dùng
-  đúng biến thể + seed của run baseline.
+  đúng biến thể + seed + bộ mô phỏng + phiên bản xe của run baseline, và đúng candidate / xe /
+  bộ mô phỏng mà regression test đã chốt.
 - **AEB**: `aeb_versions` (BASELINE/CANDIDATE/ACCEPTED/REJECTED/ARCHIVED; UNIQUE ép
-  mỗi hệ đúng một BASELINE) + `aeb_parameter_values` cho đúng 10 tham số.
-- **Bộ mô phỏng** của run nằm ở `simulation_runs.carla_version`
-  (`vehicsim-kinematic-1.0` hoặc `carla-<x.y.z>`); file của run CARLA (result.json,
+  mỗi project đúng một BASELINE) + `aeb_parameter_values` cho đúng 10 tham số.
+- **Xe**: `vehicle_versions` (Digital Twin có phiên bản, đúng một bản đang dùng mỗi project; run giữ
+  đúng phiên bản nó đã chạy) + `carla_vehicle_models` (blueprint, kích thước từ mesh). Bộ động học đọc
+  dài/rộng/phanh tối đa; runner CARLA spawn `carla_blueprint_id`, ép khối lượng + hệ số cản + trọng tâm
+  (`apply_physics_control`) và ghi bảng đối chiếu xe ↔ CARLA vào `telemetry_json.case.carla.vehicle_check`
+  — kích thước không ép được (mesh của blueprint quyết định).
+- **Bộ mô phỏng** của run nằm ở `simulation_runs.simulator_version`
+  (`vehicsim-kinematic-1.0` hoặc `carla-<x.y.z>`; `simulator_type` để lọc); file của run CARLA (result.json,
   video) ghi đường dẫn vào `simulation_artifacts`.
-- Schema có 36 bảng (phủ FE-01 → FE-14 + forum, ADR-031; một xe, không phiên bản xe); code mới đọc/ghi 24 bảng. Bảng
+- **Kết quả chấm** AEB/FCW nằm ngay trong `simulation_runs` (verdict, va chạm, min TTC, phanh oan,
+  FCW…), chuỗi khung ở `telemetry_json`. Regression lưu số đếm + `regression_test_items`; bảng tổng hợp
+  (`regression.summary`) tính lại từ run. Quyết định của Reviewer ở `engineering_recommendations`.
+- Schema có 30 bảng (13 FE, ADR-036, ADR-037; 5 role hệ thống, mỗi người một role, ADR-035); code đọc/ghi 19 bảng. Bảng
   chưa có code, nghĩa từng cột và lệnh nâng DB cũ ở
   [database-schema.md](database-schema.md).
 
@@ -147,7 +153,12 @@ Tiêu chí mặc định (`DEFAULT_CRITERIA` trong `regression.py`):
 | Median min TTC thay đổi ≥ −0,1 s | bật | có |
 | Cùng seed cho hai version (`identical_seeds`) | bật | không |
 
-Mọi tiêu chí đang bật phải qua thì test mới `PASSED`. Quyết định (`decide`) cần lý do
+Mọi tiêu chí đang bật phải qua thì verdict mới `PASSED`; trượt mà có ca tệ hơn baseline là `REGRESSED`,
+trượt tiêu chí khác là `FAILED` (giao diện gộp hai loại thành FAILED). Chốt xong thì tạo một
+`engineering_recommendations`. Chỉ **REVIEWER** được quyết định (`decide`) — Engineer / EXP tạo
+regression nhưng không tự duyệt (DB còn chặn người duyệt = người tạo); project cá nhân của EXP không
+có recommendation.
+Quyết định cần lý do
 và xác nhận; Accept chỉ khi test `PASSED`, baseline của test vẫn là BASELINE hiện hành
 và candidate vẫn là CANDIDATE. Accept: hạ baseline cũ `ARCHIVED` **trước**, rồi nâng
 candidate thành `BASELINE` trong cùng transaction.
@@ -181,40 +192,6 @@ và XSD OpenSCENARIO 1.0), không gọi LLM (`test_openscenario_generator_never_
 **Chưa nối vào API/màn hình:** đầu vào là `ScenarioSpec` (taxonomy ODD của Forge: cut-in, sudden
 brake, …), chưa có ánh xạ từ IR người đi bộ băng ngang của VehicSim — việc của FE-07.
 
-## Trợ lý dự án — Meomeo Agent (ReAct, chỉ đọc)
-
-Nút **Meomeo Agent** (linh vật chú mèo, ảnh ở `frontend/public/vehicsim/assistant-*.jpg`) ở góc
-phải dưới trang Tổng quan mở cửa sổ hội thoại (`components/ProjectAssistant.tsx`) cho
-ENGINEER/ADMIN. Quyết định: ADR-028 (chỉ mục tri thức) và ADR-029 (ReAct + guardrails).
-
-```
-câu hỏi ─▶ POST /assistant/ask
-  1. guardrails.check_question  ─▶ đòi ghi đè luật / bí mật / dữ liệu người dùng → "blocked", 0 lượt LLM
-  2. knowledge.sync + search     ─▶ không nhắc mã nào và điểm < MIN_SCORE → "out_of_scope", 0 lượt LLM
-  3. vòng ReAct ≤ 6 bước          ─▶ LLM {thought, action, args} → agent_tools.run_tool (chỉ đọc, project do
-                                    server gắn) → kết quả đã guardrails.clean, bọc <<<DỮ_LIỆU_nonce ...>>>
-  4. final_answer                ─▶ chỉ giữ nguồn [S#] công cụ đã trả; guardrails.guard_answer (che bí mật,
-                                    chặn lộ system prompt)
-```
-
-- **Công cụ** (`agent_tools.TOOLS`): `search_knowledge` (chỉ mục ADR-028), `project_overview`,
-  `get_run`, `list_failures`, `failure_stats` (đếm trên toàn bộ ca lỗi, kèm top va chạm và bộ mô
-  phỏng), `get_parameters`, `get_aeb_version`, `get_family`, `get_regression`. Không công cụ nào
-  chạm bảng người dùng, cấu hình, file hay hàm ghi.
-- **Nguồn tri thức** cho `search_knowledge` (bảng `knowledge_chunks`): tổng quan, 10 tham số, AEB
-  version, họ kịch bản, ca lỗi, thống kê, regression — dựng từ `views.py` sau `guardrails.clean`;
-  tài liệu trong `knowledge.DOC_SOURCES` (kiến trúc, ADR-023+, nợ kỹ thuật, exec plan) — **không**
-  AGENTS.md / CLAUDE.md (file chỉ dẫn cho agent).
-- **Thông tin người dùng:** trợ lý không thấy email, tên người tạo/duyệt, token; "ai tạo RT-004?"
-  được trả "không có thông tin" — xem màn hình nếu cần truy vết.
-- **Lịch sử hội thoại:** lưu ở trình duyệt (`services/assistantHistory.ts`, localStorage, khoá
-  riêng theo tài khoản, tối đa 40 tin) — giữ khi chuyển trang và tải lại, **chỉ xoá khi đăng
-  xuất** (`AuthContext.logout`) hoặc bấm "Cuộc trò chuyện mới". Server không lưu hội thoại; mỗi
-  câu hỏi chỉ dùng tối đa 3 câu hỏi trước của người dùng, lượt "trợ lý" do trình duyệt gửi bị bỏ.
-- **Chi phí đo trên DB dev (03/10):** chỉ mục 797 đoạn; mỗi câu 2–3 lượt LLM, 2–9 s,
-  0,002–0,005 USD (`gpt-5.4-mini`). Giới hạn 40 câu / 15 phút / người.
-- Không có OpenAI key thì embedding chạy offline (`hashing-bow-v1`) — tách câu lạc đề kém hơn (TD-23).
-
 ## Xác thực
 
 - Đăng ký và quên mật khẩu: email → mã 6 số (TTL 600 s, tối đa 5 lần nhập sai,
@@ -222,9 +199,11 @@ câu hỏi ─▶ POST /assistant/ask
 - Không tiết lộ email có tồn tại: phản hồi và thời gian như nhau.
 - JWT HS256 mang `pwv` (dấu vân tay của password hash): đổi mật khẩu là mọi phiên cũ
   hết hiệu lực. Production không chạy nếu thiếu `JWT_SECRET_KEY`.
-- Vai trò: `ADMIN`, `EXPERT` (chạy/kiểm thử như ENGINEER + forum; cấp bằng
-  `scripts/create_admin.py --role EXPERT`), `ENGINEER` (tự đăng ký). Role `VIEWER` đã bỏ
-  (ADR-030); tài khoản không mang role ghi nào chỉ đọc. App **public** nên giữ tự đăng ký.
+- Vai trò (ADR-035): **mỗi người đúng một role hệ thống** (`users.role_id`) — `ADMIN`, `MANAGER` (tạo
+  workspace, thêm Engineer/Reviewer; chỉ đọc phần kỹ thuật), `ENGINEER` (làm toàn bộ quy trình), `REVIEWER`
+  (chỉ duyệt recommendation), `EXPERIENCER` (tự đăng ký: project cá nhân, mô phỏng, tối ưu, regression; không
+  recommendation, không duyệt). Role khác EXPERIENCER do Admin cấp bằng `scripts/create_admin.py --role …`
+  (API quản lý user là TD-28). Lọc project theo workspace chưa làm (TD-30). App **public** nên giữ tự đăng ký.
 
 ## Bất biến và máy kiểm
 
@@ -238,9 +217,11 @@ câu hỏi ─▶ POST /assistant/ask
 | CARLA và động học dùng chung AEB, frame, số đo | `test_runner_reuses_the_kinematic_aeb_and_result_builders` |
 | Run CARLA đi qua tiến trình con; crash/sai phiên bản chỉ hỏng run đó | `test_carla_runs_go_through_the_simulator_subprocess`, `test_simulator_failure_marks_only_that_run_failed` |
 | CLI quá giờ được xin dừng trước khi bị giết, kịp dọn CARLA | `test_hung_simulator_is_asked_to_stop_and_cleans_up` |
-| Regression không bao giờ ghép kết quả động học với CARLA | `test_regression_never_pairs_kinematic_with_carla` |
+| Regression không bao giờ ghép kết quả động học với CARLA, hay khác phiên bản xe (MySQL cũng ép bằng `fk_sr_baseline` / `fk_sr_regression`) | `test_regression_never_pairs_kinematic_with_carla` |
+| Thông số xe lấy từ DB: CARLA nhận blueprint + vật lý của xe và báo rõ cái gì không ép được | `test_bundle_carries_the_main_vehicle_into_carla`, `test_db_vehicle_is_forced_into_carla_and_checked` |
 | Mọi tham số AEB được simulator dùng; seed Python khớp SQL | `test_every_seeded_parameter_is_used_by_the_simulator`, `test_python_parameter_seed_matches_sql_seed` |
-| Mọi route API `/api/v1/vehicsim/*` cần đăng nhập; tài khoản không có role ghi thì không ghi được; EXPERT ghi được như ENGINEER | `test_every_vehicsim_route_requires_login`, `test_viewer_can_read_but_not_write`, `test_expert_can_run_and_test_like_engineer` |
+| Mọi route API `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi được, MANAGER chỉ đọc | `test_every_vehicsim_route_requires_login`, `test_viewer_can_read_but_not_write`, `test_registered_experience_user_can_run_but_manager_only_cannot` |
+| Chỉ REVIEWER quyết định recommendation; người làm không tự duyệt; REVIEWER không chạy mô phỏng | `test_only_reviewer_decides_and_reviewer_cannot_run` |
 | Candidate chạy đúng seed baseline; Accept đổi baseline | `test_regression_pairs_same_seeds_and_accept_swaps_baseline` |
 | Test FAILED không Accept được | `test_failed_regression_cannot_be_accepted` |
 | Quyết định cần lý do + xác nhận | `test_decision_requires_reason_and_confirmation` |
@@ -249,20 +230,10 @@ câu hỏi ─▶ POST /assistant/ask
 | Preview khớp bộ kịch bản thật của test | `test_regression_preview_counts_match_created_test` |
 | IR đánh dấu đúng nguồn gốc; sửa có phản hồi, tối đa 3 lần | `test_llm_ir_marks_stated_inferred_and_assumed`, `test_invalid_ir_is_repaired_with_feedback`, `test_repairs_are_capped` |
 | LLM lỗi ⇒ lùi về luật; mô tả sai motif ⇒ 400 | `test_llm_failure_falls_back_to_rules`, `test_non_pedestrian_and_vague_prompts_are_rejected` |
-| Bước 1 cần ENGINEER + giới hạn tần suất | `test_describe_endpoint_permissions_and_rate_limit` |
+| Bước 1 cần quyền ghi (ENGINEER/EXPERIENCER/ADMIN) + giới hạn tần suất | `test_describe_endpoint_permissions_and_rate_limit` |
 | Họ từ mô tả giữ nguồn `NATURAL_LANGUAGE` | `test_family_from_description_keeps_nl_origin` |
 | Mọi lời gọi LLM qua `services/llm.py` | `test_nothing_imports_the_llm_provider_directly` |
 | Test không gọi LLM thật | fixture chặn trong `tests/conftest.py` |
-| Trợ lý dự án chỉ đọc: hỏi xong không bảng nào ngoài `knowledge_chunks` đổi | `test_assistant_never_writes_project_data` |
-| Agent gọi công cụ và chỉ dẫn nguồn công cụ đã trả; câu ngoài phạm vi không kèm nguồn | `test_react_loop_calls_tools_and_cites_only_what_they_returned`, `test_out_of_scope_answer_carries_no_sources` |
-| Câu injection / đòi bí mật / dữ liệu người dùng bị chặn trước khi gọi LLM | `test_injection_and_secret_requests_are_blocked_before_any_llm_call` |
-| Kết quả công cụ và chỉ mục không mang email, tên người dùng hay câu lệnh cài trong dữ liệu | `test_tool_output_never_carries_user_data_or_injected_commands`, `test_indexed_project_text_is_neutralized` |
-| Lượt "trợ lý" giả trong lịch sử bị bỏ; câu trả lời lộ prompt hay bí mật bị lọc | `test_forged_assistant_turns_in_history_are_dropped`, `test_answer_leaking_the_system_prompt_or_secrets_is_filtered` |
-| Công cụ lạ, gọi lặp, quá số bước bị chặn; sai định dạng được sửa một lần thay vì 503 | `test_unknown_tools_repeats_and_step_limit_are_contained`, `test_malformed_step_gets_one_repair_instead_of_a_503` |
-| Câu lạc đề rõ rệt bị từ chối trước khi tốn lượt LLM | `test_off_topic_question_is_refused_without_calling_the_llm` |
-| Câu tổng hợp luôn có đoạn thống kê toàn bộ ca lỗi | `test_aggregate_questions_always_get_the_statistics` |
-| Chỉ mục tăng dần, theo kịp dữ liệu; chỉ đọc tài liệu trong danh sách trắng | `test_index_is_incremental_and_follows_data_changes`, `test_only_whitelisted_docs_are_indexed` |
-| Trợ lý cần ENGINEER, có giới hạn tần suất; LLM lỗi trả 503 chứ không bịa | `test_assistant_requires_engineer`, `test_assistant_rate_limit`, `test_llm_failure_is_a_503_not_a_made_up_answer` |
 
 `tests/test_agent_docs.py` bắt tên test ở bảng này phải còn tồn tại — đổi tên test
 thì sửa bảng.
@@ -278,7 +249,7 @@ thì sửa bảng.
 - Client API: `services/vehicsim.ts`; kiểu: `types/vehicsim.ts` (khớp payload
   `views.py`). Component VehicSim nằm thẳng trong `components/`:
   `VehicSimShell`, `VehicSimSidebar`, `VehicSimPage`, `VehicSimContext`, `VehicSimUi`,
-  `FlowBar`, `FamilyForm`, `ScenarioMap`, `TelemetryChart`, `ProjectAssistant`, `vehicsimFlow`, `vehicsimFonts`,
+  `FlowBar`, `FamilyForm`, `ScenarioMap`, `TelemetryChart`, `vehicsimFlow`, `vehicsimFonts`,
   `vehicsimI18n`.
 - `/` là Tổng quan; chưa đăng nhập thì chuyển sang `/login`. Hồ sơ cá nhân ở `/profile` (bấm
   tên ở cuối sidebar). URL cũ `/vs/*` được chuyển hướng trong `frontend/next.config.ts`.
@@ -307,5 +278,5 @@ thì sửa bảng.
 | `VEHICSIM_DATA_ROOT` | Thư mục `runs/<id>/` của run CARLA (mặc định `./data/vehicsim`) |
 | `JWT_SECRET_KEY`, `ACCESS_TOKEN_TTL_MINUTES` | Phiên đăng nhập |
 | `OTP_TTL_SECONDS`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS` | Mã 6 số |
-| `LLM_PROVIDER`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY` | Lớp LLM dùng chung; `OPENAI_API_KEY` còn quyết định embedding của Trợ lý dự án (thiếu → offline) |
+| `LLM_PROVIDER`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY` | Lớp LLM dùng chung (chỉ bước 1 "Sinh từ mô tả" gọi LLM) |
 | `SMTP_*` | Gửi mã qua email |

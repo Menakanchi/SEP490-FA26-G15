@@ -58,14 +58,14 @@ def _wrong(code: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_register_with_emailed_code_creates_engineer_and_logs_in(client, outbox):
+async def test_register_with_emailed_code_creates_experience_user_and_logs_in(client, outbox):
     body = await _register(client, outbox)
 
     assert outbox[0]["purpose"] == "register"
     assert len(outbox[0]["code"]) == 6 and outbox[0]["code"].isdigit()
     assert body["token_type"] == "bearer" and body["expires_in"] > 0
     assert body["user"]["email"] == "kysu@vehicsim.vn"
-    assert body["user"]["roles"] == ["ENGINEER"]
+    assert body["user"]["role"] == "EXPERIENCER"
     assert "password_hash" not in body["user"]
 
     me = await client.get(f"{API}/me", headers=_bearer(body["access_token"]))
@@ -346,8 +346,9 @@ async def test_change_password_returns_fresh_session_and_kills_old_one(client, o
     assert relogin.status_code == 200
 
 
-def test_grant_admin_role_is_idempotent():
+def test_set_role_replaces_the_single_role():
     user = users.create(email="admin@vehicsim.vn", full_name="Admin", password_hash="salt:hash")
-    users.grant_role(user.id, "ADMIN")
-    users.grant_role(user.id, "ADMIN")
-    assert users.get_by_id(user.id).roles == ("ADMIN", "ENGINEER")
+    assert users.get_by_id(user.id).role == "EXPERIENCER"
+    users.set_role(user.id, "REVIEWER")
+    users.set_role(user.id, "ADMIN")
+    assert users.get_by_id(user.id).role == "ADMIN"

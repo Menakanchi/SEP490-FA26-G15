@@ -10,6 +10,10 @@ kịch bản + bộ tham số AEB + thông số xe + seed. Cả hai bộ mô ph�
 Ngoài bundle đầy đủ, ``read_spec`` còn nhận Scenario IR trần (màn "Sinh từ mô tả")
 — khi đó AEB là baseline v1.0 mặc định, xe là VF8 mặc định, seed = 0 trừ khi truyền.
 
+``vehicle.carla`` (tuỳ chọn, ADR-033) là phần CHỈ runner CARLA đọc: blueprint để spawn,
+các trường ``VehiclePhysicsControl`` để ép vào xe sau khi spawn, và kích thước cấu hình để
+đối chiếu với mesh. Bộ động học bỏ qua khối này.
+
 Chỉ dùng thư viện chuẩn và cú pháp Python 3.10 (venv CARLA import file này).
 """
 
@@ -25,7 +29,7 @@ from src.services.vehicsim.simulator import PedestrianCrossingCase, SimulationOu
 VARIANT_FORMAT = "vehicsim.variant/v1"
 RESULT_FORMAT = "vehicsim.result/v1"
 
-# Danh tính bộ mô phỏng, ghi vào ``simulation_runs.carla_version``. Regression chỉ
+# Danh tính bộ mô phỏng, ghi vào ``simulation_runs.simulator_version``. Regression chỉ
 # ghép hai run cùng giá trị này — không bao giờ so kết quả động học với CARLA, hay
 # CARLA 0.9.15 với 0.9.16.
 KINEMATIC_SIMULATOR = "vehicsim-kinematic-1.0"
@@ -46,6 +50,22 @@ IR_BOUNDS = {
     "pedestrian_speed_mps": (0.5, 8.0),
 }
 
+# Trường ``carla.VehiclePhysicsControl`` / ``WheelPhysicsControl`` (0.9.16) được phép ép từ DB.
+# Đổi kích thước xe thì không có trường nào — kích thước gắn với mesh của blueprint.
+PHYSICS_SCALARS = ("mass", "drag_coefficient", "max_rpm", "moi", "final_ratio")
+WHEEL_FIELDS = (
+    "tire_friction",
+    "max_brake_torque",
+    "max_handbrake_torque",
+    "max_steer_angle",
+    "radius",
+    "damping_rate",
+    "long_stiff_value",
+    "lat_stiff_value",
+    "lat_stiff_max_load",
+)
+CONFIG_DIMENSIONS = ("height_m", "wheelbase_m")
+
 
 class BundleError(ValueError):
     """File JSON không đọc được thành một lần chạy. Thông điệp liệt kê mọi lỗi."""
@@ -62,6 +82,7 @@ class RunSpec:
     aeb_label: str | None = None
     vehicle_name: str | None = None
     source: dict = field(default_factory=dict)
+    vehicle_carla: dict = field(default_factory=dict)  # {"blueprint", "physics", "dimensions"} — chỉ CARLA đọc
 
 
 def make_bundle(
@@ -73,7 +94,11 @@ def make_bundle(
     aeb_label: str | None = None,
     vehicle_name: str | None = None,
     source: dict | None = None,
+    vehicle_carla: dict | None = None,
 ) -> dict:
+    vehicle_doc = {"name": vehicle_name, **asdict(vehicle)}
+    if vehicle_carla:
+        vehicle_doc["carla"] = vehicle_carla
     return {
         "format": VARIANT_FORMAT,
         "variant": {
@@ -86,7 +111,7 @@ def make_bundle(
             "friction": case.friction,
         },
         "aeb": {"label": aeb_label, "params": params.as_codes()},
-        "vehicle": {"name": vehicle_name, **asdict(vehicle)},
+        "vehicle": vehicle_doc,
         "seed": int(seed),
         "source": source or {},
     }
@@ -115,6 +140,8 @@ def read_spec(doc: dict, *, aeb: dict | None = None, seed: int | None = None) ->
     aeb_doc = aeb if aeb is not None else doc.get("aeb")
     params, aeb_label = _read_aeb(aeb_doc, errors)
     vehicle, vehicle_name = _read_vehicle(doc.get("vehicle"), errors)
+    vehicle_doc = doc.get("vehicle")
+    vehicle_carla = _read_vehicle_carla(vehicle_doc.get("carla"), errors) if isinstance(vehicle_doc, dict) else {}
     run_seed = seed if seed is not None else doc.get("seed", 0)
     if isinstance(run_seed, bool) or not isinstance(run_seed, int):
         errors.append(f"seed phải là số nguyên, nhận {run_seed!r}")
@@ -128,6 +155,7 @@ def read_spec(doc: dict, *, aeb: dict | None = None, seed: int | None = None) ->
         aeb_label=aeb_label,
         vehicle_name=vehicle_name,
         source=doc.get("source") or {},
+        vehicle_carla=vehicle_carla,
     )
 
 
@@ -213,6 +241,92 @@ def _read_vehicle(vehicle_doc, errors: list[str]) -> tuple[VehicleSpec, str | No
             errors.append(f"vehicle.{key} phải dương")
         dims[key] = value if value is not None and value > 0 else getattr(default, key)
     return VehicleSpec(**dims), vehicle_doc.get("name")
+
+
+def _read_vehicle_carla(carla_doc, errors: list[str]) -> dict:
+    """``vehicle.carla`` -> dict đã kiểm. Trường lạ bị từ chối thay vì lặng lẽ bỏ qua."""
+    if carla_doc is None:
+        return {}
+    if not isinstance(carla_doc, dict):
+        errors.append("vehicle.carla phải là một object")
+        return {}
+    out: dict = {}
+    for key in carla_doc:
+        if key not in ("blueprint", "physics", "dimensions"):
+            errors.append(f"vehicle.carla.{key} không tồn tại")
+    blueprint = carla_doc.get("blueprint")
+    if blueprint is not None:
+        if not isinstance(blueprint, str) or not blueprint.startswith("vehicle."):
+            errors.append(f"vehicle.carla.blueprint phải là blueprint xe 'vehicle.…', nhận {blueprint!r}")
+        else:
+            out["blueprint"] = blueprint
+    physics = _read_physics(carla_doc.get("physics"), errors)
+    if physics:
+        out["physics"] = physics
+    dims_doc = carla_doc.get("dimensions")
+    if dims_doc is not None:
+        if not isinstance(dims_doc, dict):
+            errors.append("vehicle.carla.dimensions phải là một object")
+        else:
+            dims = {}
+            for key, value in dims_doc.items():
+                if key not in CONFIG_DIMENSIONS:
+                    errors.append(f"vehicle.carla.dimensions.{key} không tồn tại")
+                    continue
+                number = _number(dims_doc, key, errors)
+                if number is not None and number > 0:
+                    dims[key] = number
+                elif number is not None:
+                    errors.append(f"vehicle.carla.dimensions.{key} phải dương")
+            if dims:
+                out["dimensions"] = dims
+    return out
+
+
+def _read_physics(physics_doc, errors: list[str]) -> dict:
+    if physics_doc is None:
+        return {}
+    if not isinstance(physics_doc, dict):
+        errors.append("vehicle.carla.physics phải là một object")
+        return {}
+    out: dict = {}
+    for key, value in physics_doc.items():
+        if key in PHYSICS_SCALARS:
+            number = _number(physics_doc, key, errors)
+            if number is not None and number <= 0:
+                errors.append(f"vehicle.carla.physics.{key} phải dương")
+            elif number is not None:
+                out[key] = number
+        elif key == "center_of_mass":
+            com = value if isinstance(value, dict) else None
+            if com is None or set(com) != {"x", "y", "z"}:
+                errors.append("vehicle.carla.physics.center_of_mass phải có đúng x, y, z")
+                continue
+            coords = {axis: _number(com, axis, errors) for axis in ("x", "y", "z")}
+            if None not in coords.values():
+                out[key] = coords
+        elif key == "wheels":
+            wheels = [value] if isinstance(value, dict) else value
+            if not isinstance(wheels, list) or not wheels or not all(isinstance(w, dict) for w in wheels):
+                errors.append("vehicle.carla.physics.wheels phải là một object (mọi bánh) hoặc danh sách object")
+                continue
+            parsed = []
+            for i, wheel in enumerate(wheels):
+                item = {}
+                for field_name in wheel:
+                    if field_name not in WHEEL_FIELDS:
+                        errors.append(f"vehicle.carla.physics.wheels[{i}].{field_name} không tồn tại")
+                        continue
+                    number = _number(wheel, field_name, errors)
+                    if number is not None and number < 0:
+                        errors.append(f"vehicle.carla.physics.wheels[{i}].{field_name} không được âm")
+                    elif number is not None:
+                        item[field_name] = number
+                parsed.append(item)
+            out[key] = parsed[0] if isinstance(value, dict) else parsed
+        else:
+            errors.append(f"vehicle.carla.physics.{key} không ép được vào CARLA")
+    return out
 
 
 def result_document(

@@ -1,9 +1,10 @@
 """Họ kịch bản "người đi bộ băng qua đường" (FE-07, bản tối thiểu cho vòng MVP).
 
 Một họ = một dòng ``scenarios`` + một bản gốc (``scenario_versions`` source MANUAL,
-giữ không gian tham số trong ``scenario_ir``) + các biến thể dạng lưới (source
-GENERATED, ``parent_version_id`` = bản gốc). Mỗi biến thể có đủ
-``scenario_objects`` / ``scenario_environments`` / ``scenario_parameters``.
+giữ không gian tham số trong ``scenario_ir_json``) + các biến thể dạng lưới (source
+GENERATED, ``parent_version_id`` = bản gốc). Mỗi biến thể ghi điểm lưới vào cả IR lẫn
+các cột lọc (tốc độ, khoảng cách, thời tiết, ma sát…) để lọc ca lỗi và làm đặc trưng
+cho phân tích độ nhạy.
 
 Chưa có LLM ở đây: form nhập tham số tạo ra cùng IR mà NL → IR (FE-06) sau này
 sinh ra, nên phần đó cắm vào mà không đổi bảng.
@@ -115,6 +116,15 @@ def _next_code(conn, project_id: int) -> str:
     return f"PX{n}"
 
 
+def _family_name(conn, project_id: int, name: str, code: str) -> str:
+    """``scenarios`` UNIQUE (project_id, name): tên đã có thì thêm mã họ, như migration 005."""
+    name = name.strip()[:150] or MOTIF_NAME
+    taken = conn.execute(
+        select(t.scenarios.c.id).where(t.scenarios.c.project_id == project_id, t.scenarios.c.name == name)
+    ).first()
+    return name if taken is None else f"{name[:140]} ({code})"
+
+
 def create_family(project_id: int, spec: FamilySpec, user_id: int, origin: dict | None = None) -> dict:
     """Tạo họ + bản gốc + toàn bộ biến thể trong **một** transaction.
 
@@ -133,113 +143,64 @@ def create_family(project_id: int, spec: FamilySpec, user_id: int, origin: dict 
             insert(t.scenarios).values(
                 project_id=project_id,
                 code=code,
-                name=spec.name.strip() or MOTIF_NAME,
+                name=_family_name(conn, project_id, spec.name, code),
                 description=spec.description or None,
-                category="PEDESTRIAN",
-                created_by=user_id,
-                created_at=ts,
+                created_by_user_id=user_id,
+                created_date=ts,
                 updated_at=ts,
             )
         ).inserted_primary_key[0]
         base_id = conn.execute(
             insert(t.scenario_versions).values(
                 scenario_id=scenario_id,
-                version_number=1,
+                version_no=1,
                 source="NATURAL_LANGUAGE" if nl_text else "MANUAL",
                 natural_language_input=nl_text or None,
                 llm_model=((origin or {}).get("llm_model") or None) if nl_text else None,
-                scenario_ir={
+                scenario_ir_json={
                     "motif": MOTIF,
                     "parameter_space": spec.parameter_space(),
                     **(
                         {"described": origin.get("described")} if nl_text and origin and origin.get("described") else {}
                     ),
                 },
+                map_name=DEFAULT_MAP,
                 validation_status="VALID",
-                opendrive_map=DEFAULT_MAP,
-                change_note="Family from natural-language description"
+                status_message="Family from natural-language description"
                 if nl_text
                 else "Family definition (parameter space)",
-                created_by=user_id,
-                created_at=ts,
+                created_by_user_id=user_id,
+                created_date=ts,
             )
         ).inserted_primary_key[0]
-
-        for index, ir in enumerate(spec.grid(), start=2):
-            version_id = conn.execute(
-                insert(t.scenario_versions).values(
-                    scenario_id=scenario_id,
-                    version_number=index,
-                    source="GENERATED",
-                    parent_version_id=base_id,
-                    scenario_ir=ir,
-                    validation_status="VALID",
-                    opendrive_map=DEFAULT_MAP,
-                    created_by=user_id,
-                    created_at=ts,
-                )
-            ).inserted_primary_key[0]
-            ego_id = conn.execute(
-                insert(t.scenario_objects).values(
-                    scenario_version_id=version_id,
-                    name="ego",
-                    role="EGO",
-                    object_type="EGO_VEHICLE",
-                    carla_blueprint="vehicle.tesla.model3",
-                )
-            ).inserted_primary_key[0]
-            ped_id = conn.execute(
-                insert(t.scenario_objects).values(
-                    scenario_version_id=version_id,
-                    name="pedestrian_1",
-                    role="TARGET",
-                    object_type="PEDESTRIAN",
-                    carla_blueprint="walker.pedestrian.0001",
-                )
-            ).inserted_primary_key[0]
-            friction = WEATHER_FRICTION.get(ir["weather"], 1.0)
-            conn.execute(
-                insert(t.scenario_environments).values(
-                    scenario_version_id=version_id,
-                    weather=ir["weather"],
-                    time_of_day=ir["time_of_day"],
-                    road_condition="WET" if friction < 1.0 else "DRY",
-                    friction=friction,
-                )
-            )
-            conn.execute(
-                insert(t.scenario_parameters),
-                [
-                    {
-                        "scenario_version_id": version_id,
-                        "scenario_object_id": ego_id,
-                        "param_name": "speed_kmh",
-                        "value": ir["ego_speed_kmh"],
-                        "unit": "km/h",
-                    },
-                    {
-                        "scenario_version_id": version_id,
-                        "scenario_object_id": ped_id,
-                        "param_name": "trigger_distance_m",
-                        "value": ir["trigger_distance_m"],
-                        "unit": "m",
-                    },
-                    {
-                        "scenario_version_id": version_id,
-                        "scenario_object_id": ped_id,
-                        "param_name": "speed_mps",
-                        "value": ir["pedestrian_speed_mps"],
-                        "unit": "m/s",
-                    },
-                    {
-                        "scenario_version_id": version_id,
-                        "scenario_object_id": ped_id,
-                        "param_name": "stops_at_curb",
-                        "value": 1 if ir["stops_at_curb"] else 0,
-                        "unit": "bool",
-                    },
-                ],
-            )
+        # Cột lọc của biến thể = đúng điểm lưới trong IR; ma sát suy từ thời tiết như bộ động học.
+        conn.execute(
+            insert(t.scenario_versions),
+            [
+                {
+                    "scenario_id": scenario_id,
+                    "version_no": index,
+                    "source": "GENERATED",
+                    "parent_version_id": base_id,
+                    "scenario_ir_json": ir,
+                    "ego_speed_kmh": ir["ego_speed_kmh"],
+                    "trigger_distance_m": ir["trigger_distance_m"],
+                    "pedestrian_speed_mps": ir["pedestrian_speed_mps"],
+                    "stops_at_curb": ir["stops_at_curb"],
+                    "weather": ir["weather"],
+                    "time_of_day": ir["time_of_day"],
+                    "road_friction": WEATHER_FRICTION.get(ir["weather"], 1.0),
+                    "map_name": DEFAULT_MAP,
+                    "validation_status": "VALID",
+                    "status_message": None,
+                    "natural_language_input": None,
+                    "llm_model": None,
+                    "created_by_user_id": user_id,
+                    "created_date": ts,
+                }
+                for index, ir in enumerate(spec.grid(), start=2)
+            ],
+        )
     return {"scenario_id": scenario_id, "code": code, "base_version_id": base_id, "variants": spec.variant_count()}
 
 
@@ -260,5 +221,5 @@ def variants_of(conn, base_version_id: int) -> list:
     return conn.execute(
         select(t.scenario_versions)
         .where(t.scenario_versions.c.parent_version_id == base_version_id)
-        .order_by(t.scenario_versions.c.version_number)
+        .order_by(t.scenario_versions.c.version_no)
     ).all()

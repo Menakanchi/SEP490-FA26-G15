@@ -15,8 +15,6 @@ graphify-out/
 scratch/
 .ai-log/
 worker/outputs/
-# KHÔNG loại docs/ hay *.md: Meomeo Agent đánh chỉ mục docs/vehicsim, ADR, exec plan
-# lúc chạy (knowledge.DOC_SOURCES) — thiếu thì trợ lý trên cloud mất phần tài liệu.
 .dockerignore
 Dockerfile
 docker-compose.yml

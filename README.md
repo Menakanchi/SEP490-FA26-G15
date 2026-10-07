@@ -35,7 +35,7 @@ cd frontend && NEXT_PUBLIC_API_URL=http://localhost:8001 npm run dev
 Tài khoản và dữ liệu mẫu:
 
 ```bash
-uv run python scripts/create_admin.py --email admin@example.com          # --role EXPERT cho chuyên gia
+uv run python scripts/create_admin.py --email admin@example.com          # --role MANAGER cho người quản lý workspace
 uv run python scripts/seed_vehicsim.py --owner admin@example.com --demo
 ```
 
@@ -57,13 +57,13 @@ Test không cần Docker (SQLite RAM + Redis giả) và chặn mọi lời gọi
 src/
   api/                 vehicsim_routes.py, auth_routes.py  (chỉ đổi lỗi -> HTTP)
   services/vehicsim/   vòng AEB: family, runs, simulator, aeb_stack, evaluation, regression,
-                       views; Meomeo Agent (assistant, agent_tools, knowledge, guardrails)
+                       views, describe (câu mô tả -> Scenario IR)
   services/auth/       đăng ký/quên mật khẩu bằng mã OTP, JWT
   services/openscenario/  bộ sinh OpenSCENARIO 1.0 (.xosc), chưa nối API
   services/llm.py      cửa duy nhất tới LLM (OpenAI / DeepSeek)
 worker/                run_variant.py (JSON -> CARLA), kinematic_sim.py, follow_hero.py
 frontend/              Next.js 16 — app/ (Tổng quan, kịch bản, AEB, phân tích, kiểm định, hồ sơ)
-database/mysql/        01_schema.sql (36 bảng) + migrations/
+database/mysql/        01_schema.sql (30 bảng) + migrations/
 docs/                  vehicsim/ (kiến trúc, từ điển dữ liệu), adr/, exec-plans/
 ```
 

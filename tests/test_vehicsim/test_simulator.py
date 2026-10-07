@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from src.services.vehicsim.bootstrap import AEB_PARAMETER_SEED
-from src.services.vehicsim.evaluation import OUTCOME_COLLISION, OUTCOME_SAFE, evaluate
+from src.services.vehicsim.evaluation import OUTCOME_COLLISION, OUTCOME_NEAR_MISS, OUTCOME_SAFE, evaluate
 from src.services.vehicsim.simulator import AebParams, PedestrianCrossingCase, simulate
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -101,6 +101,23 @@ def test_raising_ttc_trades_collisions_for_false_braking():
     assert fixed > 0
     assert new_collisions == 0
     assert new_false > 0
+
+
+def test_thin_margin_with_every_stage_passing_is_a_near_miss_failure():
+    """UC-50: suýt va chạm mà không khâu nào sai vẫn hiện trong danh sách lỗi, loại NEAR_MISS."""
+    params = AebParams(ttc_threshold=1.5)
+    ev = evaluate(simulate(PedestrianCrossingCase(30, 10, 3.0), params, seed=104), params)
+    assert ev.outcome == OUTCOME_NEAR_MISS and ev.primary_stage is None
+    assert ev.failure["failure_type"] == "NEAR_MISS" and ev.failure["severity"] == "LOW"
+
+
+def test_every_failure_type_the_evaluator_writes_exists_in_the_sql_enum():
+    sql = (ROOT / "database" / "mysql" / "01_schema.sql").read_text(encoding="utf-8")
+    enum = re.search(r"failure_type\s+ENUM\(([^)]*)\)", sql).group(1)
+    allowed = set(re.findall(r"'(\w+)'", enum))
+    source = (ROOT / "src" / "services" / "vehicsim" / "evaluation.py").read_text(encoding="utf-8")
+    written = set(re.findall(r'failure_type[^\n]*?"([A-Z_]+)"', source))
+    assert written and written <= allowed
 
 
 @pytest.mark.parametrize("code", [row[0] for row in AEB_PARAMETER_SEED])

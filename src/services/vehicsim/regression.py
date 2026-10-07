@@ -1,29 +1,38 @@
-"""Regression test + khuyến nghị + quyết định của kỹ sư (FE-14).
+"""Regression test + khuyến nghị + quyết định của Reviewer (FE-14).
 
 Luồng:
-1. ``create_test``: candidate phải là AEB version CANDIDATE cùng system với
-   baseline hiện hành. Mỗi biến thể trong bộ được chọn có một run baseline (dùng
-   lại run cũ nếu có, không thì tạo) và một run REGRESSION chạy candidate với
-   **đúng seed** của run baseline đó.
-2. Mỗi run xong gọi ``on_run_finished`` -> ``try_finalize``: đủ cặp thì tính
-   ma trận chuyển trạng thái, số ca fixed/regressed, các tiêu chí -> PASSED/FAILED.
-3. ``decide``: kỹ sư Accept / Reject / Request more tests. **Không bao giờ tự
-   Accept**, và test FAILED không Accept được: ứng viên sửa kịch bản A mà làm hỏng
-   kịch bản B bị chặn (luật regression của concept doc).
+1. ``create_test``: candidate phải là AEB version CANDIDATE cùng project với baseline
+   hiện hành. Test chốt **một phiên bản xe** (xe đang dùng) và **một bộ mô phỏng** (bộ
+   đang cấu hình). Mỗi biến thể trong bộ được chọn có một run baseline (dùng lại run cũ
+   cùng xe + cùng bộ mô phỏng nếu có, không thì tạo) và một run REGRESSION chạy candidate
+   với **đúng seed** của run baseline đó — ``fk_sr_baseline`` / ``fk_sr_regression`` ép cả
+   bốn điều này ở MySQL.
+2. Mỗi run xong gọi ``on_run_finished`` -> ``try_finalize``: đủ cặp thì ghi từng cặp vào
+   ``regression_test_items``, số ca fixed/regressed, verdict PASSED / REGRESSED / FAILED,
+   rồi tạo **một** ``engineering_recommendations`` (chỉ project thuộc workspace — EXPERIENCER
+   không có khuyến nghị, ADR-035).
+3. ``decide``: Reviewer Accept / Reject / Request more tests. **Không bao giờ tự Accept**,
+   test không PASSED thì không Accept được: ứng viên sửa kịch bản A mà làm hỏng kịch bản B
+   bị chặn (luật regression của concept doc). Người tạo không tự duyệt.
+
+Bảng tổng hợp (ma trận chuyển trạng thái, tỉ lệ, tiêu chí) không lưu: ``summary`` tính lại
+từ các run đã xong — run không đổi sau khi COMPLETED nên kết quả luôn như lúc chốt.
 """
 
 from __future__ import annotations
 
 import statistics
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import insert, select, update
 
 from src.services.vehicsim import family
 from src.services.vehicsim import tables as t
 from src.services.vehicsim.common import (
     InvalidRequestError,
     NotFoundError,
+    active_vehicle,
     aeb_values,
+    baseline_version,
     engine,
     now,
     variant_label,
@@ -56,6 +65,15 @@ DEFAULT_CRITERIA = {
 }
 REQUIRED_CRITERIA = ("no_new_collision", "identical_seeds")
 
+# Trạng thái hiển thị (giữ nguyên API cũ) <- execution_status + verdict của bảng mới.
+_DECISION_OF = {
+    "PENDING_REVIEW": "PENDING",
+    "ACCEPTED": "ACCEPT",
+    "REJECTED": "REJECT",
+    "MORE_TESTS_REQUESTED": "REQUEST_MORE_TESTS",
+}
+_STATUS_OF_DECISION = {v: k for k, v in _DECISION_OF.items()}
+
 
 def test_code(test_id: int) -> str:
     return f"RT-{test_id:03d}"
@@ -63,6 +81,26 @@ def test_code(test_id: int) -> str:
 
 def recommendation_code(test_id: int) -> str:
     return f"REC-{test_id:03d}"
+
+
+def display_status(test) -> str:
+    """PENDING / RUNNING / PASSED / FAILED / ERROR — trạng thái mà giao diện dùng."""
+    if test.execution_status == "COMPLETED":
+        return "PASSED" if test.verdict == "PASSED" else "FAILED"
+    if test.execution_status in ("FAILED", "CANCELLED"):
+        return "ERROR"
+    return test.execution_status
+
+
+def display_decision(recommendation) -> str:
+    """PENDING / ACCEPT / REJECT / REQUEST_MORE_TESTS — chưa có khuyến nghị thì PENDING."""
+    return _DECISION_OF[recommendation.status] if recommendation is not None else "PENDING"
+
+
+def recommendation_for(conn, test_id: int):
+    return conn.execute(
+        select(t.engineering_recommendations).where(t.engineering_recommendations.c.regression_test_id == test_id)
+    ).first()
 
 
 # ---------------------------------------------------------------------------
@@ -84,31 +122,33 @@ def _merge_criteria(overrides: dict | None) -> dict:
     return merged
 
 
-def _latest_baseline_runs(conn, baseline_version_id: int, variant_ids: list[int]) -> dict[int, object]:
+def _latest_baseline_runs(conn, baseline, variant_ids: list[int]) -> dict[int, object]:
     """Run baseline mới nhất (không phải run regression, không FAILED) của mỗi biến thể.
 
-    Chỉ lấy run của bộ mô phỏng đang cấu hình: đổi sang CARLA thì regression dựng
-    baseline CARLA mới, không bao giờ ghép candidate CARLA với baseline động học.
+    Chỉ lấy run của bộ mô phỏng đang cấu hình và của xe đang dùng: đổi sang CARLA (hay đổi
+    xe) thì regression dựng baseline mới, không bao giờ ghép candidate CARLA với baseline
+    động học hay với xe khác.
     """
     if not variant_ids:
         return {}
     rows = conn.execute(
         select(t.simulation_runs)
         .where(
-            t.simulation_runs.c.aeb_version_id == baseline_version_id,
+            t.simulation_runs.c.aeb_version_id == baseline.id,
             t.simulation_runs.c.scenario_version_id.in_(variant_ids),
-            t.simulation_runs.c.purpose.in_(("BASELINE", "MANUAL")),
+            t.simulation_runs.c.purpose.in_(("BASELINE", "EVALUATION")),
             t.simulation_runs.c.status != "FAILED",
-            t.simulation_runs.c.carla_version == configured_simulator(),
+            t.simulation_runs.c.simulator_version == configured_simulator(),
+            t.simulation_runs.c.vehicle_version_id == active_vehicle(conn, baseline.project_id).id,
         )
         .order_by(t.simulation_runs.c.id)
     ).all()
     return {r.scenario_version_id: r for r in rows}  # id tăng dần -> giữ run mới nhất
 
 
-def critical_variant_ids(conn, baseline_version_id: int, variant_ids: list[int]) -> set[int]:
+def critical_variant_ids(conn, baseline, variant_ids: list[int]) -> set[int]:
     """Biến thể mà run baseline mới nhất (đã COMPLETED) có ghi nhận lỗi — "old critical"."""
-    runs = _latest_baseline_runs(conn, baseline_version_id, variant_ids)
+    runs = _latest_baseline_runs(conn, baseline, variant_ids)
     return _failed_variant_ids(conn, [r.id for r in runs.values() if r.status == "COMPLETED"])
 
 
@@ -126,16 +166,9 @@ def _failed_variant_ids(conn, run_ids: list[int]) -> set[int]:
 def preview(*, project_id: int, scenario_id: int) -> dict:
     """Số liệu khung "Run summary" của màn 15 — cùng cách chọn bộ kịch bản với ``create_test``."""
     with engine().connect() as conn:
-        system = conn.execute(select(t.aeb_systems).where(t.aeb_systems.c.project_id == project_id)).first()
-        if system is None:
-            raise NotFoundError("AEB system")
-        baseline = conn.execute(
-            select(t.aeb_versions).where(
-                t.aeb_versions.c.aeb_system_id == system.id, t.aeb_versions.c.status == "BASELINE"
-            )
-        ).first()
+        baseline = baseline_version(conn, project_id)
         if baseline is None:
-            raise InvalidRequestError("AEB system chưa có baseline")
+            raise InvalidRequestError("project chưa có baseline")
         scenario = conn.execute(
             select(t.scenarios).where(t.scenarios.c.id == scenario_id, t.scenarios.c.project_id == project_id)
         ).first()
@@ -143,13 +176,13 @@ def preview(*, project_id: int, scenario_id: int) -> dict:
             raise NotFoundError("scenario family")
         variants = family.variants_of(conn, family.latest_base_version_id(conn, scenario_id))
         variant_ids = [v.id for v in variants]
-        baseline_runs = _latest_baseline_runs(conn, baseline.id, variant_ids)
+        baseline_runs = _latest_baseline_runs(conn, baseline, variant_ids)
         return {
             "scenario_id": scenario_id,
             "family": scenario.name,
             "baseline": version_label(baseline),
             "variant_count": len(variants),
-            "old_critical_count": len(critical_variant_ids(conn, baseline.id, variant_ids)),
+            "old_critical_count": len(critical_variant_ids(conn, baseline, variant_ids)),
             # Biến thể đã có run baseline thì dùng lại, chỉ phần còn thiếu phải chạy thêm.
             "baseline_runs_existing": len(baseline_runs),
         }
@@ -170,31 +203,28 @@ def create_test(
         raise InvalidRequestError("chọn ít nhất một bộ kịch bản")
     merged = _merge_criteria(criteria)
     with engine().begin() as conn:
-        candidate = conn.execute(select(t.aeb_versions).where(t.aeb_versions.c.id == candidate_version_id)).first()
+        candidate = conn.execute(
+            select(t.aeb_versions).where(
+                t.aeb_versions.c.id == candidate_version_id, t.aeb_versions.c.project_id == project_id
+            )
+        ).first()
         if candidate is None:
             raise NotFoundError("candidate AEB version")
         if candidate.status != "CANDIDATE":
             raise InvalidRequestError("chỉ version ở trạng thái CANDIDATE mới đem đi regression được")
-        system = conn.execute(select(t.aeb_systems).where(t.aeb_systems.c.id == candidate.aeb_system_id)).first()
-        if system is None or system.project_id != project_id:
-            raise NotFoundError("AEB system")
-        baseline = conn.execute(
-            select(t.aeb_versions).where(
-                t.aeb_versions.c.aeb_system_id == system.id, t.aeb_versions.c.status == "BASELINE"
-            )
-        ).first()
+        baseline = baseline_version(conn, project_id)
         if baseline is None:
-            raise InvalidRequestError("AEB system chưa có baseline")
+            raise InvalidRequestError("project chưa có baseline")
         scenario = conn.execute(
             select(t.scenarios).where(t.scenarios.c.id == scenario_id, t.scenarios.c.project_id == project_id)
         ).first()
         if scenario is None:
             raise NotFoundError("scenario family")
 
-        base_version_id = family.latest_base_version_id(conn, scenario_id)
-        variants = family.variants_of(conn, base_version_id)
+        vehicle = active_vehicle(conn, project_id)
+        variants = family.variants_of(conn, family.latest_base_version_id(conn, scenario_id))
         by_id = {v.id: v for v in variants}
-        baseline_runs = _latest_baseline_runs(conn, baseline.id, list(by_id))
+        baseline_runs = _latest_baseline_runs(conn, baseline, list(by_id))
         completed = [r for r in baseline_runs.values() if r.status == "COMPLETED"]
         critical = _failed_variant_ids(conn, [r.id for r in completed])
 
@@ -205,18 +235,17 @@ def create_test(
         if not selected:
             raise InvalidRequestError("bộ kịch bản được chọn đang rỗng (chưa có ca lỗi nào của baseline)")
 
-        ts = now()
         test_id = int(
             conn.execute(
                 insert(t.regression_tests).values(
                     project_id=project_id,
-                    name=name or f"{version_label(baseline)} → {version_label(candidate)}",
-                    aeb_system_id=system.id,
+                    scenario_id=scenario_id,
                     baseline_aeb_version_id=baseline.id,
                     candidate_aeb_version_id=candidate.id,
-                    scenario_id=scenario_id,
-                    base_scenario_version_id=base_version_id,
-                    pass_criteria={
+                    vehicle_version_id=vehicle.id,
+                    simulator_version=configured_simulator(),
+                    name=name or f"{version_label(baseline)} → {version_label(candidate)}",
+                    pass_criteria_json={
                         "criteria": merged,
                         "scenario_set": {
                             "old_critical": include_old_critical,
@@ -225,11 +254,11 @@ def create_test(
                             "variant_count": len(selected),
                         },
                     },
-                    status="RUNNING",
-                    review_decision="PENDING",
-                    created_by=user_id,
-                    created_at=ts,
-                    updated_at=ts,
+                    execution_status="RUNNING",
+                    verdict="PENDING",
+                    total_scenarios=len(selected),
+                    created_by_user_id=user_id,
+                    created_date=now(),
                 )
             ).inserted_primary_key[0]
         )
@@ -240,8 +269,7 @@ def create_test(
             project_id=project_id,
             scenario_id=scenario_id,
             variants=missing,
-            vehicle_id=system.vehicle_id,
-            aeb_system_id=system.id,
+            vehicle_version_id=vehicle.id,
             aeb_version_id=baseline.id,
             user_id=user_id,
             purpose="BASELINE",
@@ -260,8 +288,7 @@ def create_test(
             project_id=project_id,
             scenario_id=scenario_id,
             variants=selected,
-            vehicle_id=system.vehicle_id,
-            aeb_system_id=system.id,
+            vehicle_version_id=vehicle.id,
             aeb_version_id=candidate.id,
             user_id=user_id,
             purpose="REGRESSION",
@@ -301,24 +328,28 @@ def _run_results(conn, run_ids: list[int]) -> dict[int, dict]:
         select(
             t.simulation_runs.c.id,
             t.simulation_runs.c.status,
-            t.aeb_results.c.collision,
-            t.aeb_results.c.min_ttc_s,
-            t.aeb_results.c.min_distance_m,
-            t.aeb_results.c.impact_speed_mps,
-            t.aeb_results.c.false_activation,
-            t.aeb_results.c.verdict,
-        )
-        .select_from(t.simulation_runs)
-        .outerjoin(t.simulation_results, t.simulation_results.c.simulation_run_id == t.simulation_runs.c.id)
-        .outerjoin(t.aeb_results, t.aeb_results.c.simulation_result_id == t.simulation_results.c.id)
-        .where(t.simulation_runs.c.id.in_(run_ids))
+            t.simulation_runs.c.collision_occurred,
+            t.simulation_runs.c.min_ttc_s,
+            t.simulation_runs.c.min_distance_m,
+            t.simulation_runs.c.impact_speed_mps,
+            t.simulation_runs.c.is_false_positive,
+            t.simulation_runs.c.verdict,
+        ).where(t.simulation_runs.c.id.in_(run_ids))
     ).all()
     out = {}
     for r in rows:
-        d = dict(r._mapping)
-        if d["collision"] is not None:
+        d = {
+            "status": r.status,
+            "collision": r.collision_occurred,
+            "min_ttc_s": r.min_ttc_s,
+            "min_distance_m": r.min_distance_m,
+            "impact_speed_mps": r.impact_speed_mps,
+            "false_activation": r.is_false_positive,
+            "verdict": r.verdict,
+        }
+        if r.status == "COMPLETED":
             d["outcome"] = classify_outcome(
-                {"collision": bool(d["collision"]), "min_ttc_s": d["min_ttc_s"], "min_distance_m": d["min_distance_m"]}
+                {"collision": bool(r.collision_occurred), "min_ttc_s": r.min_ttc_s, "min_distance_m": r.min_distance_m}
             )
         out[r.id] = d
     return out
@@ -328,34 +359,119 @@ def _median(values: list[float]) -> float | None:
     return round(statistics.median(values), 3) if values else None
 
 
+def _candidate_runs(conn, test_id: int) -> list:
+    return conn.execute(select(t.simulation_runs).where(t.simulation_runs.c.regression_test_id == test_id)).all()
+
+
 def try_finalize(test_id: int) -> None:
     with engine().begin() as conn:
         test = conn.execute(select(t.regression_tests).where(t.regression_tests.c.id == test_id)).first()
-        if test is None or test.status != "RUNNING":
+        if test is None or test.execution_status != "RUNNING":
             return
-        cand_runs = conn.execute(
-            select(t.simulation_runs).where(t.simulation_runs.c.regression_test_id == test_id)
-        ).all()
+        cand_runs = _candidate_runs(conn, test_id)
         base_ids = [r.baseline_run_id for r in cand_runs]
         results = _run_results(conn, [r.id for r in cand_runs] + base_ids)
         statuses = [results.get(i, {}).get("status") for i in [r.id for r in cand_runs] + base_ids]
-        if any(s in ("QUEUED", "RUNNING", None) for s in statuses):
+        if any(s in ("PENDING", "RUNNING", "PAUSED", None) for s in statuses):
             return
-        if any(s == "FAILED" for s in statuses):
-            _set_final(conn, test_id, "ERROR", {"error": "một số lần chạy mô phỏng hỏng — xem simulation_runs"})
+        if any(s != "COMPLETED" for s in statuses):
+            # Một số lần chạy hỏng: test FAILED (hiển thị ERROR), không có verdict và không có khuyến nghị.
+            conn.execute(
+                update(t.regression_tests)
+                .where(t.regression_tests.c.id == test_id, t.regression_tests.c.execution_status == "RUNNING")
+                .values(execution_status="FAILED", finished_at=now())
+            )
             return
         summary = _summarize(conn, test, cand_runs, results)
-        status = "PASSED" if all(c["passed"] for c in summary["criteria"] if c["enabled"]) else "FAILED"
-        _set_final(conn, test_id, status, summary)
+        counts = summary["counts"]
+        if all(c["passed"] for c in summary["criteria"] if c["enabled"]):
+            verdict = "PASSED"
+        else:
+            verdict = "REGRESSED" if counts["regressed"] else "FAILED"
+        # Điều kiện execution_status = RUNNING: hai worker xong cùng lúc thì chỉ một bên ghi được.
+        claimed = conn.execute(
+            update(t.regression_tests)
+            .where(t.regression_tests.c.id == test_id, t.regression_tests.c.execution_status == "RUNNING")
+            .values(
+                execution_status="COMPLETED",
+                verdict=verdict,
+                total_scenarios=counts["scenarios"],
+                fixed_scenarios=counts["fixed"],
+                regressed_scenarios=counts["regressed"],
+                finished_at=now(),
+            )
+        ).rowcount
+        if not claimed:
+            return
+        conn.execute(
+            insert(t.regression_test_items),
+            [
+                {
+                    "regression_test_id": test_id,
+                    "scenario_version_id": p["variant_id"],
+                    "baseline_run_id": p["baseline_run_id"],
+                    "candidate_run_id": p["candidate_run_id"],
+                    "baseline_outcome": p["baseline_outcome"],
+                    "candidate_outcome": p["candidate_outcome"],
+                    "change_type": p["change"].upper(),
+                    "is_regression": p["change"] == "regressed",
+                }
+                for p in summary["pairs"]
+            ],
+        )
+        _create_recommendation(conn, test, verdict, summary)
 
 
-def _set_final(conn, test_id: int, status: str, deltas: dict) -> None:
-    # Điều kiện status = RUNNING: hai worker xong cùng lúc thì chỉ một bên ghi được.
+def _create_recommendation(conn, test, verdict: str, summary: dict) -> None:
+    """Một khuyến nghị cho mỗi regression đã chạy xong — chỉ project thuộc workspace (ADR-035)."""
+    workspace_id = conn.execute(select(t.projects.c.workspace_id).where(t.projects.c.id == test.project_id)).scalar()
+    if workspace_id is None:
+        return
+    versions = {
+        v.id: v
+        for v in conn.execute(
+            select(t.aeb_versions).where(
+                t.aeb_versions.c.id.in_((test.baseline_aeb_version_id, test.candidate_aeb_version_id))
+            )
+        ).all()
+    }
+    counts = summary["counts"]
+    ts = now()
     conn.execute(
-        update(t.regression_tests)
-        .where(t.regression_tests.c.id == test_id, t.regression_tests.c.status == "RUNNING")
-        .values(status=status, metric_deltas=deltas, updated_at=now())
+        insert(t.engineering_recommendations).values(
+            project_id=test.project_id,
+            regression_test_id=test.id,
+            candidate_aeb_version_id=test.candidate_aeb_version_id,
+            content=(
+                f"Candidate {version_label(versions[test.candidate_aeb_version_id])} vs baseline "
+                f"{version_label(versions[test.baseline_aeb_version_id])}: {counts['fixed']} fixed, "
+                f"{counts['regressed']} regressed of {counts['scenarios']} scenarios."
+            ),
+            confidence=confidence(verdict == "PASSED", counts).upper(),
+            status="PENDING_REVIEW",
+            created_by_user_id=test.created_by_user_id,
+            created_date=ts,
+            updated_at=ts,
+        )
     )
+
+
+def confidence(passed: bool, counts: dict) -> str:
+    """High / Medium / Low — cùng luật với màn khuyến nghị."""
+    if passed and counts.get("regressed", 0) == 0 and counts.get("scenarios", 0) >= 20:
+        return "High"
+    return "Medium" if passed else "Low"
+
+
+def summary(conn, test) -> dict:
+    """Bảng tổng hợp của một test đã chốt (tính lại từ run); test hỏng trả ``error``; chưa xong thì rỗng."""
+    if test.execution_status == "FAILED":
+        return {"error": "một số lần chạy mô phỏng hỏng — xem simulation_runs"}
+    if test.execution_status != "COMPLETED":
+        return {}
+    cand_runs = _candidate_runs(conn, test.id)
+    results = _run_results(conn, [r.id for r in cand_runs] + [r.baseline_run_id for r in cand_runs])
+    return _summarize(conn, test, cand_runs, results)
 
 
 def _summarize(conn, test, cand_runs: list, results: dict[int, dict]) -> dict:
@@ -368,7 +484,7 @@ def _summarize(conn, test, cand_runs: list, results: dict[int, dict]) -> dict:
     scenario = conn.execute(select(t.scenarios).where(t.scenarios.c.id == test.scenario_id)).first()
     transitions = {a: {b: 0 for b in _RANK} for a in _RANK}
     pairs = []
-    for c in sorted(cand_runs, key=lambda r: versions[r.scenario_version_id].version_number):
+    for c in sorted(cand_runs, key=lambda r: versions[r.scenario_version_id].version_no):
         b_res, c_res = results[c.baseline_run_id], results[c.id]
         b_out, c_out = b_res["outcome"], c_res["outcome"]
         transitions[b_out][c_out] += 1
@@ -382,8 +498,8 @@ def _summarize(conn, test, cand_runs: list, results: dict[int, dict]) -> dict:
         pairs.append(
             {
                 "variant_id": v.id,
-                "label": variant_label(scenario.code, v.version_number),
-                "summary": variant_summary(v.scenario_ir or {}),
+                "label": variant_label(scenario.code, v.version_no),
+                "summary": variant_summary(v.scenario_ir_json or {}),
                 "family": scenario.name,
                 "baseline_run_id": c.baseline_run_id,
                 "candidate_run_id": c.id,
@@ -427,7 +543,7 @@ def _summarize(conn, test, cand_runs: list, results: dict[int, dict]) -> dict:
         if results[p["candidate_run_id"]]["min_ttc_s"] is not None
     ]
 
-    crit = test.pass_criteria["criteria"]
+    crit = test.pass_criteria_json["criteria"]
     checks = [
         ("no_new_collision", new_collisions == 0, new_collisions),
         ("collision_rate_not_increase", collision_c <= collision_b, round(collision_c - collision_b, 2)),
@@ -442,7 +558,7 @@ def _summarize(conn, test, cand_runs: list, results: dict[int, dict]) -> dict:
             or median_ttc_delta >= crit["median_min_ttc_change_min_s"].get("value", -0.1) - 1e-9,
             median_ttc_delta,
         ),
-        # FK fk_sr_baseline_run ép seed trùng ở MySQL; ở đây kiểm lại cho có bằng chứng trong kết quả.
+        # FK fk_sr_baseline ép seed trùng ở MySQL; ở đây kiểm lại cho có bằng chứng trong kết quả.
         ("identical_seeds", True, "enforced"),
     ]
     criteria = [
@@ -490,7 +606,7 @@ def _summarize(conn, test, cand_runs: list, results: dict[int, dict]) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Quyết định của kỹ sư
+# Quyết định của Reviewer
 # ---------------------------------------------------------------------------
 
 DECISIONS = ("ACCEPT", "REJECT", "REQUEST_MORE_TESTS")
@@ -521,11 +637,16 @@ def decide(
         ).first()
         if test is None:
             raise NotFoundError("regression test")
-        if test.review_decision in ("ACCEPT", "REJECT"):
-            raise InvalidRequestError("recommendation này đã có quyết định cuối")
-        if test.status in ("PENDING", "RUNNING"):
+        if test.execution_status in ("PENDING", "RUNNING"):
             raise InvalidRequestError("regression test chưa chạy xong")
-        if decision == "ACCEPT" and test.status != "PASSED":
+        rec = recommendation_for(conn, test_id)
+        if rec is None:
+            raise InvalidRequestError("regression test này không có khuyến nghị để duyệt")
+        if rec.status in ("ACCEPTED", "REJECTED"):
+            raise InvalidRequestError("recommendation này đã có quyết định cuối")
+        if rec.created_by_user_id == user_id:
+            raise InvalidRequestError("người tạo khuyến nghị không tự duyệt được")
+        if decision == "ACCEPT" and test.verdict != "PASSED":
             raise InvalidRequestError("không thể Accept: ứng viên chưa qua regression test")
         # Hai test cùng baseline có thể cùng PASSED; Accept một cái sẽ đổi baseline hoặc
         # trạng thái candidate, nên cái còn lại phải chạy lại thay vì ghi đè.
@@ -544,7 +665,7 @@ def decide(
             )
 
         if decision == "ACCEPT":
-            # Một system chỉ có một BASELINE (uq_aeb_versions_one_baseline): hạ bản cũ TRƯỚC.
+            # Một project chỉ có một BASELINE (uq_aeb_versions_one_baseline): hạ bản cũ TRƯỚC.
             conn.execute(
                 update(t.aeb_versions)
                 .where(t.aeb_versions.c.id == test.baseline_aeb_version_id)
@@ -562,13 +683,13 @@ def decide(
                 .values(status="REJECTED")
             )
         conn.execute(
-            update(t.regression_tests)
-            .where(t.regression_tests.c.id == test_id)
+            update(t.engineering_recommendations)
+            .where(t.engineering_recommendations.c.id == rec.id)
             .values(
-                review_decision=decision,
-                reviewed_by=user_id,
+                status=_STATUS_OF_DECISION[decision],
+                reviewed_by_user_id=user_id,
                 reviewed_at=ts,
-                review_note=reason.strip(),
+                review_notes=reason.strip(),
                 review_conditions=(conditions or "").strip() or None,
                 updated_at=ts,
             )
@@ -591,12 +712,3 @@ def parameter_diff(conn, baseline_version_id: int, candidate_version_id: int) ->
         }
         for p in catalog
     ]
-
-
-def count_by_status(conn, project_id: int) -> dict:
-    rows = conn.execute(
-        select(t.regression_tests.c.status, func.count())
-        .where(t.regression_tests.c.project_id == project_id)
-        .group_by(t.regression_tests.c.status)
-    ).all()
-    return {r[0]: int(r[1]) for r in rows}

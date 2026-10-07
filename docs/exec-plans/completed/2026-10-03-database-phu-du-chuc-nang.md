@@ -19,7 +19,7 @@ cứu một xe, xe là bản duy nhất, không có version; lấy thêm xe thì
 5. Code theo schema: `WRITE_ROLES` + EXPERT, `RUN_PURPOSES` + ROBUSTNESS, `scripts/create_admin.py --role`,
    frontend nhận role `expert` (quyền ghi, nhãn "Chuyên gia", các `allowedRoles` có `engineer`).
 6. Meomeo Agent không đánh chỉ mục `database-schema.md` (`DOC_EXCLUDED`) — guardrail
-   `test_tool_output_never_carries_user_data_or_injected_commands` đã bắt được tài liệu mới làm lộ tên cột
+   test_tool_output_never_carries_user_data_or_injected_commands đã bắt được tài liệu mới làm lộ tên cột
    của bảng `users`.
 7. Tài liệu: database-schema.md viết lại cho 36 bảng; `test_schema_doc_covers_every_table_and_column`
    giữ tài liệu khớp file SQL; AGENTS.md, architecture.md, tech-debt-tracker cập nhật.

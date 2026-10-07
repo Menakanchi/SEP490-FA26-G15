@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
 
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from openai import APITimeoutError
 from pydantic import BaseModel
 
@@ -40,11 +40,6 @@ MODEL_COSTS = {
     "deepseek-flash": {"input": 0.30, "cached_input": 0.006, "output": 1.20},
     "deepseek-v4-pro": {"input": 1.32, "cached_input": 0.044, "output": 3.96},
 }
-
-# ADR-006. Đi kèm số chiều 1536 mà cột BLOB của ADR-013 đang giả định.
-EMBEDDING_MODEL = "text-embedding-3-small"
-EMBEDDING_DIM = 1536
-EMBEDDING_COST_PER_MILLION_TOKENS = 0.02
 
 
 # Mỗi request FastAPI chạy trong một asyncio task riêng. ContextVar giữ bộ thu
@@ -93,11 +88,10 @@ def token_cost_usd(
 
 
 def summarize_provider_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
-    """Gộp event LLM/embedding thành số theo một generation request."""
+    """Gộp event LLM thành số theo một generation request."""
     return {
         "calls": len(events),
         "llm_calls": sum(event.get("kind") == "llm" for event in events),
-        "embedding_calls": sum(event.get("kind") == "embedding" for event in events),
         "input_tokens": sum(int(event.get("input_tokens") or 0) for event in events),
         "cached_input_tokens": sum(int(event.get("cached_input_tokens") or 0) for event in events),
         "output_tokens": sum(int(event.get("output_tokens") or 0) for event in events),
@@ -267,25 +261,6 @@ def structured_output_kwargs() -> dict[str, Any]:
     if get_settings().llm_provider == "deepseek":
         return {"method": "function_calling"}
     return {}
-
-
-def get_embeddings() -> OpenAIEmbeddings | None:
-    """Embedder cho retrieval, hoặc ``None`` khi chưa cấu hình được key.
-
-    ADR-006 chốt ``text-embedding-3-small``; ADR-013 chốt vector sống trong cột
-    BLOB của chính SQLite. Kích thước 1536 là **một phần của hợp đồng lưu trữ**,
-    không phải tham số tuỳ chỉnh: đổi nó là phải re-embed toàn bộ corpus, nên nó
-    nằm ở đây cùng tên model chứ không rải ra chỗ gọi.
-
-    Trả ``None`` thay vì ném khi thiếu key. Người gọi duy nhất là
-    ``retriever.generate_text_embedding``, và nó có sẵn đường lui deterministic
-    theo hash để unit test chạy offline — biến "thiếu key" thành một exception ở
-    đây sẽ làm hỏng đúng đường lui đó.
-    """
-    settings = get_settings()
-    if not settings.openai_api_key.strip():
-        return None
-    return OpenAIEmbeddings(model=EMBEDDING_MODEL, api_key=settings.openai_api_key)
 
 
 # Model Escalation

@@ -4,7 +4,7 @@
 - **Thời gian:** 01/10 → 02/10/2026
 - **Người chịu trách nhiệm:** TrungDQ, làm cùng Claude Code
 - **Quyết định:** [ADR-028](../../adr/ADR-028-tro-ly-du-an-rag-chi-doc.md)
-- **Kiến trúc kết quả:** [docs/vehicsim/architecture.md](../../vehicsim/architecture.md#trợ-lý-dự-án--meomeo-agent-react-chỉ-đọc)
+- **Kiến trúc kết quả:** [ADR-029](../../adr/ADR-029-tro-ly-react-cong-cu-chi-doc-guardrails.md) (Meomeo Agent đã gỡ 06/10 — [ADR-035](../../adr/ADR-035-nam-role-he-thong-bo-cau-hinh-xe-va-meomeo.md))
 - **Nợ còn lại:** TD-22, TD-23, TD-24 trong [tech-debt-tracker](../tech-debt-tracker.md)
 
 ## Mục tiêu

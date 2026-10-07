@@ -57,9 +57,7 @@ def _runs(scenario_id: int, purpose: str | None = None) -> list:
 
 def _raw(run_id: int) -> dict:
     with engine().connect() as conn:
-        return conn.execute(
-            select(t.simulation_results.c.raw_metrics).where(t.simulation_results.c.simulation_run_id == run_id)
-        ).scalar()
+        return conn.execute(select(t.simulation_runs.c.telemetry_json).where(t.simulation_runs.c.id == run_id)).scalar()
 
 
 async def _family(client, engineer) -> int:
@@ -92,10 +90,11 @@ async def test_carla_runs_go_through_the_simulator_subprocess(client, engineer, 
     runs = _runs(await _family(client, engineer))
 
     assert runs and {r.status for r in runs} == {"COMPLETED"}
-    assert {r.carla_version for r in runs} == {"carla-0.9.15"}
+    assert {r.simulator_version for r in runs} == {"carla-0.9.15"}
+    assert {r.simulator_type for r in runs} == {"CARLA"}
     with engine().connect() as conn:
         artifacts = conn.execute(select(t.simulation_artifacts)).all()
-    assert {a.artifact_type for a in artifacts} == {"RESULT_JSON"} and len(artifacts) == len(runs)
+    assert {a.artifact_type for a in artifacts} == {"RESULT_FILE"} and len(artifacts) == len(runs)
     for run in runs:
         folder = tmp_path / "data" / "runs" / str(run.id)
         assert (folder / "bundle.json").exists() and (folder / "result.json").exists()
@@ -127,10 +126,11 @@ async def test_regression_never_pairs_kinematic_with_carla(client, engineer, use
     pairs = [(by_id[r.baseline_run_id], r) for r in by_id.values() if r.purpose == "REGRESSION"]
     assert len(pairs) == len(TINY_FAMILY["ego_speeds_kmh"])
     for baseline, candidate_run in pairs:
-        assert baseline.carla_version == candidate_run.carla_version == "carla-0.9.15"
+        assert baseline.simulator_version == candidate_run.simulator_version == "carla-0.9.15"
+        assert baseline.vehicle_version_id == candidate_run.vehicle_version_id
         assert baseline.random_seed == candidate_run.random_seed
     # Baseline động học cũ vẫn còn, chỉ không được ghép cặp.
-    assert any(r.carla_version == "vehicsim-kinematic-1.0" for r in by_id.values())
+    assert any(r.simulator_version == "vehicsim-kinematic-1.0" for r in by_id.values())
 
 
 @pytest.mark.asyncio

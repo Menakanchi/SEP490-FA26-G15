@@ -341,8 +341,10 @@ export const fmt = {
 
 export const ROLE_LABELS: Record<string, string> = {
   admin: "Quản trị viên",
-  expert: "Chuyên gia",
-  engineer: "Kỹ sư kiểm định",
+  manager: "Quản lý workspace",
+  engineer: "Kỹ sư",
+  reviewer: "Người duyệt",
+  experience: "Người trải nghiệm (EXP)",
 };
 
 export function initials(name: string): string {

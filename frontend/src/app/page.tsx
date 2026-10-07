@@ -6,7 +6,6 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { MVP_STEPS, type FlowStep } from "@/components/vehicsimFlow";
 import { ErrorNote, PillButton, StatCard, Tag, cx } from "@/components/VehicSimUi";
-import { ProjectAssistant } from "@/components/ProjectAssistant";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { FamilyItem, RecommendationItem, RegressionList } from "@/types/vehicsim";
 
@@ -109,10 +108,6 @@ export default function MvpLoopPage() {
         Bộ mô phỏng động học (CARLA chạy được qua file JSON của từng lượt) · mỗi biến thể chạy với seed cố định nên bản cơ sở và ứng viên so được
         từng cặp. Khuyến nghị chỉ dựa trên mô phỏng, luôn cần kỹ sư quyết định.
       </p>
-
-      {/* Chừa chỗ để nội dung cuối trang cuộn lên khỏi nút trợ lý nổi. */}
-      <div aria-hidden className="h-16 shrink-0" />
-      <ProjectAssistant />
     </VehicSimPage>
   );
 }
