@@ -8,15 +8,17 @@ này ngắn và giữ mọi link còn sống.
 
 ## Repo này là gì
 
-VehicSim / VSOS (SEP490-FA26-G15): nền tảng mô phỏng và tối ưu AEB/FCW — FastAPI + Next.js +
-lớp LLM + một database MySQL. Scenario Forge, dự án gốc mà repo dựng lên từ đó, đã gỡ ngày 04/10
+VehicSim / VSOS (SEP490-FA26-G15): nền tảng mô phỏng và tối ưu AEB/FCW — Spring Boot (Java 21) + Next.js +
+lớp LLM + một database MySQL; **mô phỏng và chấm điểm chạy ở `worker/` Python** qua bundle JSON
+([ADR-039](docs/adr/ADR-039-backend-java-mo-phong-o-worker-python.md)). Backend FastAPI cũ nằm ở
+`src_python_backup/` (gitignore, chỉ để đối chiếu). Scenario Forge, dự án gốc mà repo dựng lên từ đó, đã gỡ ngày 04/10
 ([ADR-032](docs/adr/ADR-032-go-scenario-forge-giu-bo-sinh-openscenario.md)); chỉ giữ bộ sinh OpenSCENARIO.
 
 | Phần | Làm gì | Code chính | Lưu trữ | Đọc trước |
 |---|---|---|---|---|
-| VehicSim MVP (nhánh `trungdam`, 09/2026) | Vòng AEB 6 bước: mô tả → biến thể → baseline → lỗi → candidate → regression → Reviewer quyết định; mô phỏng bằng bộ động học hoặc CARLA sau một hợp đồng JSON | `src/services/vehicsim/`, `src/api/vehicsim_routes.py`, `worker/{run_variant,kinematic_sim,sim_common}.py`, `frontend/src/app/{page.tsx,scenarios,aeb,analysis,validation}`, `frontend/src/components/VehicSim*` | MySQL 30 bảng + Redis | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
-| Xác thực | Đăng ký/quên mật khẩu bằng mã 6 số, JWT, hồ sơ | `src/services/auth/`, `src/api/auth_routes.py`, `frontend/src/app/{login,register,forgot-password,profile}` | MySQL `users/roles` (mỗi người một role) + Redis (OTP) | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#xác-thực) |
-| Bộ sinh OpenSCENARIO (giữ từ Forge) | `ScenarioSpec` → `.xosc` tất định, chưa nối API (TD-27) | `src/services/openscenario/`, `tests/test_openscenario/` | — | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#bộ-sinh-openscenario-srcservicesopenscenario) |
+| VehicSim MVP (nhánh `trungdam`, 09/2026) | Vòng AEB 6 bước: mô tả → biến thể → baseline → lỗi → candidate → regression → Reviewer quyết định; mô phỏng bằng bộ động học hoặc CARLA sau một hợp đồng JSON | `src/main/java/com/vehicsim/vehicsim/` (route + nghiệp vụ), `worker/vehicsim_core/` (AEB, bộ động học, luật chấm), `worker/{run_variant,kinematic_sim,sim_common}.py`, `frontend/src/app/{page.tsx,scenarios,aeb,analysis,validation}`, `frontend/src/components/VehicSim*` | MySQL 29 bảng + Redis | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
+| Xác thực | Đăng ký/quên mật khẩu bằng mã 6 số, JWT, hồ sơ | `src/main/java/com/vehicsim/{service,controller,security,config}/`, `frontend/src/app/{login,register,forgot-password,profile}` | MySQL `users/roles` (mỗi người một role) + Redis (OTP) | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#xác-thực) |
+| Bộ sinh OpenSCENARIO (giữ từ Forge) | `ScenarioSpec` → `.xosc` tất định, chưa nối API (TD-27) | `src_python_backup/services/openscenario/` (chưa port sang Java) | — | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#bộ-sinh-openscenario-srcservicesopenscenario) |
 
 Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 [vòng MVP](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md),
@@ -27,25 +29,26 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 [cấu hình xe để so sánh](docs/exec-plans/completed/2026-10-04-cau-hinh-xe.md),
 [role theo workspace](docs/exec-plans/completed/2026-10-05-role-theo-workspace.md),
 [5 role hệ thống, bỏ cấu hình xe và Meomeo](docs/exec-plans/completed/2026-10-06-nam-role-he-thong.md),
-[schema 29 bảng](docs/exec-plans/completed/2026-10-07-schema-29-bang.md).
+[schema 29 bảng](docs/exec-plans/completed/2026-10-07-schema-29-bang.md),
+[bỏ phiên bản xe, Admin tạo workspace](docs/exec-plans/completed/2026-10-07-bo-phien-ban-xe.md).
 
 ## Chạy và tự kiểm chứng
 
 | Việc | Lệnh |
 |---|---|
-| Bật toàn bộ app (Windows) | `scripts\dev-up.cmd` — Docker (MySQL, Redis) + Celery worker + backend `:8001` + frontend `:3000`, mỗi dịch vụ một cửa sổ |
-| Tạo admin | `uv run python scripts/create_admin.py --email <email>` |
-| Seed project VehicSim | `uv run python scripts/seed_vehicsim.py --owner <email> [--demo]` |
-| Gate backend (đúng như CI) | `make check` hoặc `uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/ && uv run pytest tests/` |
+| Bật toàn bộ app (Windows) | `scripts\dev-up.cmd` — Docker (MySQL, Redis) + backend Java `:8001` + frontend `:3000`, mỗi dịch vụ một cửa sổ |
+| Chỉ backend | `./mvnw spring-boot:run` (đọc `.env` ở thư mục gốc); Swagger: `http://localhost:8001/swagger-ui.html` |
+| Tạo admin | đăng ký rồi `UPDATE users SET role_id = (SELECT id FROM roles WHERE code = 'ADMIN') WHERE email = '<email>'` |
+| Seed project VehicSim | ADMIN gọi `POST /api/v1/vehicsim/bootstrap` (idempotent) |
+| Gate backend | `./mvnw clean test` · lõi mô phỏng: `python -m pytest worker/tests` |
 | Gate frontend (**chưa có trong CI**, chạy tay) | `cd frontend && npm run lint && npx tsc --noEmit && npx next build` |
-| Chỉ test VehicSim | `uv run pytest tests/test_vehicsim tests/test_worker/test_run_variant.py tests/test_api/test_auth.py` |
 | Chạy một JSON tải từ web ("Tải JSON chạy CARLA") | `python worker/kinematic_sim.py <file>.json` (máy nào cũng chạy) · `worker/.venv/bin/python worker/run_variant.py <file>.json [--video]` (cần server CARLA) |
 
-- Test **mặc định chặn LLM thật** (`tests/conftest.py`); gọi thật phải bật
-  `RUN_LLM_TESTS=1` có chủ đích. Mock `src.services.llm.call_with_escalation`,
-  đừng mock lớp dưới.
-- Test VehicSim chạy mô phỏng inline (`VEHICSIM_RUN_MODE=inline`), DB SQLite RAM,
-  Redis giả (`fakeredis`) — không cần Docker.
+- Gặp `Unresolved compilation problem` / `ClassFormatError` khi chạy backend: IDE đã ghi `.class` hỏng vào `target/` —
+  chạy `./mvnw clean` rồi build lại.
+- Gọi LLM thật tốn tiền: test Java dùng máy chủ giả (`DescribeServiceTest`); đừng thêm test gọi provider thật.
+- Mô phỏng chạy ở thread pool của backend (`VEHICSIM_RUN_MODE=inline` để chạy ngay trong request khi thử), mỗi run là một
+  tiến trình `worker/kinematic_sim.py`; máy phải có Python ≥ 3.10 (`VEHICSIM_WORKER_PYTHON`).
 - Đồ thị code (graphify, tuỳ chọn, chỉ nằm trên máy dựng nó vì `graphify-out/` bị gitignore):
   `graphify update .` dựng lại (AST, không tốn token), `graphify query "<câu hỏi>"` thay cho
   đọc nhiều file. Không có đồ thị thì cứ đọc code như bình thường.
@@ -57,7 +60,7 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 | Cần biết | Đọc |
 |---|---|
 | Kiến trúc VehicSim: module, luồng dữ liệu, API, bất biến ↔ test | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
-| Vì sao chọn X thay vì Y | [docs/adr/README.md](docs/adr/README.md) — VehicSim: ADR-023 → ADR-037; ADR-001 → 022 là lịch sử Forge |
+| Vì sao chọn X thay vì Y | [docs/adr/README.md](docs/adr/README.md) — VehicSim: ADR-023 → ADR-038; ADR-001 → 022 là lịch sử Forge |
 | Đã làm gì, quyết định lúc nào, kiểm chứng ra sao | [docs/exec-plans/completed/](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md) |
 | Còn thiếu gì, nợ gì | [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) |
 | Schema MySQL (nguồn sự thật của DB VehicSim) | [database/mysql/01_schema.sql](database/mysql/01_schema.sql) |
@@ -67,6 +70,11 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 | Quy ước Next.js 16 của frontend (khác bản cũ) | [frontend/AGENTS.md](frontend/AGENTS.md) |
 
 ## Luật cứng — có máy kiểm, phá là test/CI đỏ
+
+> **Sau ADR-039 (14/10):** tên test dưới đây là của bộ Python cũ. Nội dung các luật vẫn đúng với backend Java. Máy kiểm
+> hiện có: luật 6 và 8 ở `worker/tests/` (`test_java_parameter_seed_matches_sql_seed`, `test_sim_core_is_stdlib_only_and_python310`),
+> luật 4 ở worker (cùng seed → cùng khung hình). Các luật 1, 2, 3, 5, 7, 9 mới được đối chiếu bằng tay với Python trên DB thật
+> ([exec plan 14/10](docs/exec-plans/completed/2026-10-14-port-backend-java.md)), **chưa có test Java tự động** — TD-33.
 
 1. Mọi lời gọi LLM đi qua `src/services/llm.py`; không import SDK provider ở chỗ khác
    (`test_nothing_imports_the_llm_provider_directly`); bộ sinh `.xosc` không gọi LLM

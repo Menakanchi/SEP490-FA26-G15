@@ -6,6 +6,8 @@
  * Frontend quy về `Role` chữ thường để chia trang (xem `toRole` trong AuthContext).
  */
 
+import type { RegisterPayload } from "@/services/api";
+
 export type Role = "admin" | "manager" | "engineer" | "reviewer" | "experience" | "guest";
 
 /** Người dùng đang đăng nhập, đã quy đổi từ `ApiUser`. */
@@ -44,8 +46,8 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<User>;
-  /** Bước 2 của đăng ký: mã 6 số + họ tên + mật khẩu -> tài khoản + phiên. */
-  completeRegistration: (email: string, code: string, fullName: string, password: string) => Promise<User>;
+  /** Đăng ký một bước: tạo tài khoản EXPERIENCER và đăng nhập luôn. */
+  register: (payload: RegisterPayload) => Promise<User>;
   /** Đổi mật khẩu khi đang đăng nhập; backend cấp phiên mới vì phiên cũ hết hiệu lực. */
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
   updateProfile: (fullName: string, avatarUrl?: string) => Promise<User>;

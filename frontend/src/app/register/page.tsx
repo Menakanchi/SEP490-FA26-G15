@@ -4,51 +4,41 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { homeFor, useAuth } from "@/context/AuthContext";
-import { requestRegisterCode } from "@/services/api";
+import type { RegisterPayload } from "@/services/api";
 import { AuthCard, inputClass, labelClass, linkClass, primaryButtonClass } from "@/components/auth/AuthCard";
-import { OtpCodeField } from "@/components/auth/OtpCodeField";
-import { Mail, Lock, User as UserIcon, Send, UserPlus, Loader2 } from "lucide-react";
+import { Lock, Mail, User as UserIcon, UserPlus, Loader2, Phone, CalendarDays, MapPin } from "lucide-react";
 
 const MIN_PASSWORD_LENGTH = 8;
 
+const GENDERS: { value: NonNullable<RegisterPayload["gender"]>; label: string }[] = [
+  { value: "MALE", label: "Nam" },
+  { value: "FEMALE", label: "Nữ" },
+  { value: "OTHER", label: "Khác" },
+];
+
 /**
- * Đăng ký 2 bước: (1) email -> backend gửi mã 6 số; (2) mã + họ tên + mật khẩu
- * -> tạo tài khoản EXPERIENCER và đăng nhập luôn. Tài khoản chỉ được tạo khi mã
- * đúng, tức email đã được chứng minh là của người đăng ký.
+ * Đăng ký một bước với backend Java (`POST /api/v1/auth/register`): tạo tài khoản
+ * EXPERIENCER và đăng nhập luôn. Chưa xác minh email bằng mã OTP — bản này khớp
+ * đúng những gì backend Java đang có.
  */
 export default function RegisterPage() {
   const router = useRouter();
-  const { completeRegistration } = useAuth();
-  const [step, setStep] = useState<"email" | "verify">("email");
+  const { register } = useAuth();
+
+  const [lastName, setLastName] = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [firstName, setFirstName] = useState("");
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [gender, setGender] = useState<RegisterPayload["gender"] | "">("");
+  const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
-  const sendCode = async () => {
-    setError(null);
-    const res = await requestRegisterCode(email.trim());
-    setNotice(res.message_vi);
-  };
-
-  const handleEmailSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      await sendCode();
-      setStep("verify");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Không gửi được mã. Vui lòng thử lại.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifySubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (password.length < MIN_PASSWORD_LENGTH) {
@@ -61,7 +51,17 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const user = await completeRegistration(email, code, fullName, password);
+      const user = await register({
+        email,
+        password,
+        lastName: lastName.trim(),
+        middleName: middleName.trim() || undefined,
+        firstName: firstName.trim(),
+        phoneNumber: phoneNumber.trim() || undefined,
+        dateOfBirth: dateOfBirth || undefined,
+        gender: gender || undefined,
+        address: address.trim() || undefined,
+      });
       router.push(homeFor(user.role));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Đăng ký không thành công. Vui lòng thử lại.");
@@ -70,85 +70,76 @@ export default function RegisterPage() {
     }
   };
 
-  const footer = (
-    <>
-      Đã có tài khoản?{" "}
-      <Link href="/login" className={linkClass}>
-        Đăng nhập tại đây
-      </Link>
-    </>
-  );
-
-  if (step === "email") {
-    return (
-      <AuthCard
-        stepLabel="Bước 1/2 · Email"
-        title="Tạo tài khoản"
-        subtitle="Nhập email làm việc, VehicSim sẽ gửi mã xác minh 6 số."
-        backHref="/login"
-        backLabel="Quay lại trang Đăng nhập"
-        error={error}
-        footer={footer}
-      >
-        <form onSubmit={handleEmailSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="register-email" className={labelClass}>
-              <Mail className="size-3.5" /> Email làm việc <span className="text-vehicsim-danger">*</span>
-            </label>
-            <input
-              id="register-email"
-              type="email"
-              required
-              autoComplete="email"
-              className={inputClass}
-              placeholder="name@company.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <button type="submit" disabled={loading} className={primaryButtonClass}>
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            <span>{loading ? "Đang gửi mã..." : "Gửi mã xác minh"}</span>
-          </button>
-        </form>
-      </AuthCard>
-    );
-  }
-
   return (
     <AuthCard
-      stepLabel="Bước 2/2 · Xác minh"
-      title="Hoàn tất đăng ký"
-      subtitle="Nhập mã trong email, họ tên và mật khẩu. Xong là vào thẳng vòng MVP."
-      backHref="/register"
-      backLabel="Dùng email khác"
-      onBack={() => {
-        setStep("email");
-        setCode("");
-        setError(null);
-        setNotice(null);
-      }}
+      title="Tạo tài khoản"
+      subtitle="Đăng ký bằng email để bắt đầu vòng kiểm thử AEB / FCW. Đăng ký xong bạn được đăng nhập luôn."
+      backHref="/login"
+      backLabel="Quay lại trang Đăng nhập"
       error={error}
-      notice={notice}
-      footer={footer}
+      footer={
+        <>
+          Đã có tài khoản?{" "}
+          <Link href="/login" className={linkClass}>
+            Đăng nhập tại đây
+          </Link>
+        </>
+      }
     >
-      <form onSubmit={handleVerifySubmit} className="space-y-4">
-        <OtpCodeField email={email} value={code} onChange={setCode} onResend={sendCode} />
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div>
+          <span className={labelClass}>
+            <UserIcon className="size-3.5" /> Họ và tên <span className="text-vehicsim-danger">*</span>
+          </span>
+          <div className="grid grid-cols-3 gap-2">
+            <input
+              aria-label="Họ"
+              type="text"
+              required
+              maxLength={80}
+              autoComplete="family-name"
+              className={inputClass}
+              placeholder="Họ"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+            />
+            <input
+              aria-label="Tên đệm"
+              type="text"
+              maxLength={80}
+              autoComplete="additional-name"
+              className={inputClass}
+              placeholder="Đệm"
+              value={middleName}
+              onChange={(e) => setMiddleName(e.target.value)}
+            />
+            <input
+              aria-label="Tên"
+              type="text"
+              required
+              maxLength={80}
+              autoComplete="given-name"
+              className={inputClass}
+              placeholder="Tên"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+            />
+          </div>
+        </div>
 
         <div>
-          <label htmlFor="register-name" className={labelClass}>
-            <UserIcon className="size-3.5" /> Họ và tên <span className="text-vehicsim-danger">*</span>
+          <label htmlFor="register-email" className={labelClass}>
+            <Mail className="size-3.5" /> Email <span className="text-vehicsim-danger">*</span>
           </label>
           <input
-            id="register-name"
-            type="text"
+            id="register-email"
+            type="email"
             required
-            maxLength={150}
-            autoComplete="name"
+            autoComplete="email"
             className={inputClass}
-            placeholder="Nguyễn Văn A"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
+            placeholder="name@company.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
         </div>
 
@@ -186,8 +177,82 @@ export default function RegisterPage() {
           />
         </div>
 
-        <button type="submit" disabled={loading || code.length !== 6} className={primaryButtonClass}>
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+        <details className="rounded-[14px] border border-solid border-vehicsim-line px-4 py-3 [&[open]>summary]:mb-4">
+          <summary className="cursor-pointer text-[13px] font-semibold text-vehicsim-muted">
+            Thông tin thêm (không bắt buộc)
+          </summary>
+          <div className="flex flex-col gap-4">
+            <div>
+              <label htmlFor="register-phone" className={labelClass}>
+                <Phone className="size-3.5" /> Số điện thoại
+              </label>
+              <input
+                id="register-phone"
+                type="tel"
+                maxLength={30}
+                autoComplete="tel"
+                className={inputClass}
+                placeholder="0901234567"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label htmlFor="register-dob" className={labelClass}>
+                  <CalendarDays className="size-3.5" /> Ngày sinh
+                </label>
+                <input
+                  id="register-dob"
+                  type="date"
+                  autoComplete="bday"
+                  className={inputClass}
+                  value={dateOfBirth}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="register-gender" className={labelClass}>
+                  <UserIcon className="size-3.5" /> Giới tính
+                </label>
+                <select
+                  id="register-gender"
+                  className={inputClass}
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value as RegisterPayload["gender"] | "")}
+                >
+                  <option value="">Không chọn</option>
+                  {GENDERS.map((g) => (
+                    <option key={g.value} value={g.value}>
+                      {g.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="register-address" className={labelClass}>
+                <MapPin className="size-3.5" /> Địa chỉ
+              </label>
+              <input
+                id="register-address"
+                type="text"
+                maxLength={500}
+                autoComplete="street-address"
+                className={inputClass}
+                placeholder="Số nhà, đường, quận / huyện, tỉnh / thành"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+              />
+            </div>
+          </div>
+        </details>
+
+        <button type="submit" disabled={loading} className={primaryButtonClass}>
+          {loading ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
           <span>{loading ? "Đang tạo tài khoản..." : "Tạo tài khoản"}</span>
         </button>
       </form>

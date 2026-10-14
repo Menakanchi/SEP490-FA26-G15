@@ -4,9 +4,10 @@ Hai CLI nhận **cùng tham số**, đọc **cùng file JSON** web xuất ra và
 ``result.json``** — nên backend gọi CLI nào cũng được, tầng trên không cần biết
 bên dưới là CARLA hay mô hình động học (ADR-027).
 
-Lõi (AEB cần kiểm thử, luật chấm, định dạng file) nằm ở ``src/services/vehicsim/``
+Lõi (AEB cần kiểm thử, luật chấm, định dạng file) nằm ở ``worker/vehicsim_core/``
 và chỉ dùng thư viện chuẩn, nên venv CARLA (Python 3.10) import thẳng được: file
-này chỉ thêm gốc repo vào ``sys.path``. Không kéo thêm dependency nào vào worker.
+này chỉ thêm thư mục ``worker/`` vào ``sys.path``. Không kéo thêm dependency nào vào worker.
+Backend Java gọi CLI này như tiến trình con và đọc ``result.json`` (ADR-027).
 """
 
 from __future__ import annotations
@@ -17,13 +18,13 @@ import signal
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+WORKER_DIR = Path(__file__).resolve().parent
+if str(WORKER_DIR) not in sys.path:
+    sys.path.insert(0, str(WORKER_DIR))
 
-from src.services.vehicsim.bundle import BundleError, RunSpec, read_spec, result_document  # noqa: E402
-from src.services.vehicsim.evaluation import evaluate  # noqa: E402
-from src.services.vehicsim.simulator import SimulationOutcome  # noqa: E402
+from vehicsim_core.bundle import BundleError, RunSpec, read_spec, result_document  # noqa: E402
+from vehicsim_core.evaluation import evaluate, to_document  # noqa: E402
+from vehicsim_core.simulator import SimulationOutcome  # noqa: E402
 
 # Tiến trình chạy xong mô phỏng thì thoát 0 — kể cả khi AEB FAIL (đó là kết quả
 # kiểm thử, không phải lỗi). Khác 0 nghĩa là không có kết quả để đọc.
@@ -93,12 +94,12 @@ def finish(
     simulator: str,
     artifacts: dict | None = None,
 ) -> int:
-    """Ghi ``result.json`` rồi in tóm tắt PASS/FAIL bằng đúng luật chấm của backend."""
+    """Ghi ``result.json`` (kèm kết quả chấm) rồi in tóm tắt PASS/FAIL bằng đúng luật chấm đó."""
     target = out_dir(args) / "result.json"
-    doc = result_document(spec, outcome, simulator=simulator, artifacts=artifacts)
+    ev = evaluate(outcome, spec.params)
+    doc = result_document(spec, outcome, simulator=simulator, artifacts=artifacts, evaluation=to_document(ev))
     target.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
 
-    ev = evaluate(outcome, spec.params)
     m = outcome.metrics
     case = spec.case
     print(f"Bộ mô phỏng : {simulator}")

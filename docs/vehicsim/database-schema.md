@@ -1,4 +1,4 @@
-# Từ điển dữ liệu VehicSim (MySQL, 30 bảng)
+# Từ điển dữ liệu VehicSim (MySQL, 29 bảng)
 
 Tài liệu giải thích **từng bảng, từng cột** của database VehicSim: nghĩa nghiệp vụ, ràng buộc, ai
 ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệu nhóm 06/10/2026).
@@ -9,6 +9,8 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
   và [src/services/auth/users.py](../../src/services/auth/users.py) (`users`, `roles`).
 - **Vì sao 29 bảng, đổi gì so với bản 32 bảng:** [ADR-036](../adr/ADR-036-schema-29-bang.md). Bảng thứ 30
   (`project_members`), loại lỗi `NEAR_MISS` và 2 loại thông báo mới: [ADR-037](../adr/ADR-037-thanh-vien-project-near-miss.md).
+  Bỏ phiên bản xe, Admin tạo workspace, báo cáo theo project (còn 29 bảng):
+  [ADR-038](../adr/ADR-038-bo-phien-ban-xe-admin-tao-workspace.md).
 - **DB tạo từ bản cũ hơn:** chạy các file trong `database/mysql/migrations/` theo thứ tự (§10).
 - **Máy kiểm:** `test_schema_doc_covers_every_table_and_column` bắt buộc mọi bảng và cột trong file SQL
   có mặt ở đây. Bảng cột ở §6 được sinh từ file SQL ngày 07/10/2026; về sau đổi cột thì sửa tay §6.
@@ -20,17 +22,17 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 
 | | Số lượng |
 |---|---|
-| Bảng | 30 |
-| Cột | 392 |
-| Khoá ngoại | 83 (nhiều khoá ghép) |
-| CHECK | 30 |
+| Bảng | 29 |
+| Cột | 378 |
+| Khoá ngoại | 80 (nhiều khoá ghép) |
+| CHECK | 27 |
 | Engine / charset | InnoDB · `utf8mb4` / `utf8mb4_0900_ai_ci` · MySQL ≥ 8.0.16 (cần CHECK) |
 
 | # | Nhóm | Bảng | Code đang dùng |
 |---|---|---|---|
 | 1 | Tài khoản | `roles`, `users` | Có |
-| 2 | Workspace, cộng tác, task | `workspaces`, `workspace_members`, `workspace_messages`, `notifications`, `workspace_tasks`, `workspace_task_reports` | `workspaces` (seed) |
-| 3 | Project & Vehicle Digital Twin | `projects`, `project_members`, `carla_vehicle_models`, `vehicle_versions`, `sensors` | Có, trừ `project_members`, `sensors` |
+| 2 | Workspace, cộng tác, task | `workspaces`, `workspace_members`, `workspace_messages`, `notifications`, `workspace_tasks`, `task_reports` | `workspaces` (seed) |
+| 3 | Project & xe | `projects`, `project_members`, `carla_vehicle_models`, `sensors` | Có, trừ `project_members`, `sensors` |
 | 4 | AEB | `aeb_parameters`, `aeb_versions`, `aeb_parameter_values` | Có |
 | 5 | Kịch bản | `scenarios`, `scenario_versions` | Có |
 | 6 | Tối ưu & regression | `optimization_runs`, `optimization_trials`, `regression_tests` | `regression_tests` |
@@ -44,11 +46,14 @@ Bảng chưa có code là thiết kế trước theo FE (0 dòng); màn hình / 
 
 | Role | Được làm |
 |---|---|
-| ADMIN | Quản trị user / role, duyệt / từ chối workspace, quản lý `tech_references` |
-| MANAGER | Xin tạo workspace, thêm Engineer / Reviewer, giao task, duyệt báo cáo task. Không làm kỹ thuật, không tạo project, không duyệt khuyến nghị |
+| ADMIN | Quản trị user / role, tạo workspace và gán Manager (ADR-038), quản lý `tech_references` |
+| MANAGER | Quản lý workspace được Admin gán: xem mọi thành viên, thêm Engineer / Reviewer, giao task, duyệt báo cáo của các project. Không làm kỹ thuật, không tạo project, không duyệt khuyến nghị |
 | ENGINEER | Toàn bộ quy trình kỹ thuật trong project của workspace (xe, kịch bản, mô phỏng, tối ưu, regression) |
 | REVIEWER | Xem kết quả, Accept / Reject khuyến nghị — quyết định cuối, không cần Manager (ADR-037). Không chạy mô phỏng |
 | EXPERIENCER | Người tự đăng ký: project cá nhân, chạy tới tối ưu + regression; **không có** khuyến nghị / duyệt |
+
+Quyền xem thành viên (kiểm ở API, ADR-038): Manager xem mọi thành viên workspace mình quản lý; trong project chỉ
+owner và thành viên của chính project đó xem được danh sách thành viên — không xem được thành viên project khác.
 
 ## 2. Quy ước
 
@@ -71,12 +76,13 @@ Bảng chưa có code là thiết kế trước theo FE (0 dòng); màn hình / 
 
 ### 3.1 Khoá ngoại ghép ép "cùng project"
 
-Một run, regression, lần tối ưu hay phân tích chỉ được dùng kịch bản / xe / AEB **của cùng project**.
-Bảng cha có `UNIQUE (project_id, id)`; bảng con lặp lại `project_id` và trỏ cả cặp:
+Một run, regression, lần tối ưu hay phân tích chỉ được dùng kịch bản / AEB **của cùng project**. Xe là danh
+mục chung (`carla_vehicle_models`), không thuộc project. Bảng cha có `UNIQUE (project_id, id)`; bảng con lặp lại
+`project_id` và trỏ cả cặp:
 
 ```sql
--- simulation_runs không thể dùng xe của project khác:
-FOREIGN KEY (project_id, vehicle_version_id) REFERENCES vehicle_versions(project_id, id)
+-- simulation_runs không thể dùng AEB version của project khác:
+FOREIGN KEY (project_id, aeb_version_id) REFERENCES aeb_versions(project_id, id)
 ```
 
 Vì vậy `scenario_id` và `project_id` **lặp lại có chủ đích** ở `simulation_runs`, `optimization_trials`…
@@ -89,7 +95,6 @@ Vì vậy `scenario_id` và `project_id` **lặp lại có chủ đích** ở `s
 | Cột sinh | Ép |
 |---|---|
 | `aeb_versions.baseline_project_key` | Đúng một BASELINE mỗi project. Accept: hạ baseline cũ về `ARCHIVED` **trước**, rồi nâng candidate — một transaction |
-| `vehicle_versions.active_project_key` | Đúng một phiên bản xe đang dùng mỗi project |
 | `projects.personal_owner_key` | Không trùng tên project cá nhân của cùng người |
 
 ### 3.3 Run phải thuộc đúng việc và chạy đúng cấu hình
@@ -120,9 +125,9 @@ CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](.
 |---|---|---|
 | Xe ego | `carla_vehicle_models.carla_blueprint_id` | `world.get_blueprint_library().find(...)` |
 | Kích thước | `carla_vehicle_models.length_m/width_m/height_m` | `actor.bounding_box.extent × 2` — gắn mesh, chỉ đối chiếu |
-| Vật lý ép được | `vehicle_versions.mass_kg`, `drag_coefficient`, `center_of_mass_*_m` | `VehiclePhysicsControl` qua `apply_physics_control` |
-| Bánh xe | `vehicle_versions.tire_friction`, `max_brake_torque_nm` | `WheelPhysicsControl` — đo thấy chưa đổi quãng phanh (TD-17), chưa gửi |
-| Phanh thực đo | `vehicle_versions.carla_full_brake_decel_mps2` | Giảm tốc khi phanh 100% — runner đổi giảm tốc AEB → bàn đạp (`--full-brake-decel`) |
+| Vật lý ép được | `carla_vehicle_models.mass_kg`, `drag_coefficient`, `center_of_mass_*_m` | `VehiclePhysicsControl` qua `apply_physics_control` |
+| Bánh xe | `carla_vehicle_models.tire_friction`, `max_brake_torque_nm` | `WheelPhysicsControl` — đo thấy chưa đổi quãng phanh (TD-17), chưa gửi |
+| Phanh thực đo | `carla_vehicle_models.carla_full_brake_decel_mps2` | Giảm tốc khi phanh 100% — runner đổi giảm tốc AEB → bàn đạp (`--full-brake-decel`) |
 | Cảm biến | `sensors.carla_blueprint_id`, `location_*`, `rotation_*`, `attributes_json` | `sensor.*` blueprint + `carla.Transform` + `set_attribute` |
 | Thời tiết | `scenario_versions.weather`, `time_of_day` | `carla.WeatherParameters` (`run_variant.weather_parameters`) |
 | Map | `scenario_versions.map_name` (dự kiến), `simulation_runs.map_name` (thực nạp) | `client.load_world` / `world.get_map().name` |
@@ -136,7 +141,7 @@ CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](.
   chọn tập con. Trial nào cũng là một `aeb_versions` đủ 10 tham số, nên đem đi regression như candidate tay.
 - **Mục tiêu (Pareto):** `optimization_trials.collision_rate_pct`, `false_activation_rate_pct`,
   `comfort_max_jerk_mps3` — ba trục của concept (va chạm ↔ phanh oan ↔ độ êm); `score` cho BO / Random.
-- **So được:** mọi trial dùng cùng họ kịch bản, cùng `vehicle_version_id`, cùng `simulator_version` của lần
+- **So được:** mọi trial dùng cùng họ kịch bản, cùng `carla_vehicle_model_id`, cùng `simulator_version` của lần
   tối ưu; seed cố định theo biến thể.
 - **Đặc trưng cho độ nhạy / SHAP:** cột lọc của biến thể (`ego_speed_kmh`, `trigger_distance_m`,
   `pedestrian_speed_mps`, `stops_at_curb`, `weather`, `time_of_day`, `road_friction`) + 10 tham số AEB →
@@ -147,10 +152,12 @@ CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](.
 ### 3.7 Giới hạn MySQL đã gặp (đừng "sửa" ngược)
 
 - Cột nằm trong `CHECK` không được tham gia FK có referential action (ERROR 3823) ⇒ các FK đó `RESTRICT`
-  cả hai chiều (`fk_sv_parent`, `fk_sr_*`, `fk_workspaces_approver`, `fk_vv_calibrator`, `fk_er_reviewer`…).
+  cả hai chiều (`fk_sv_parent`, `fk_sr_*`, `fk_tr_reviewer`, `fk_er_reviewer`…).
 - Cột sinh dùng `VIRTUAL` (STORED cấm FK có CASCADE trên cột gốc).
 - Tên khoá ngoại / CHECK là duy nhất **trong cả schema** ⇒ migration 005 chuyển bảng cũ sang schema tạm
   thay vì đổi tên tại chỗ.
+- FK tự tham chiếu (`fk_sr_baseline`) phải thêm ở câu `ALTER` **sau** câu tạo khoá đích (`uq_sr_replay`),
+  không cùng một câu (ERROR 1215, gặp ở migration 006).
 - `optimization_*` và `regression_tests` tạo **trước** `simulation_runs`; `analysis_results` tạo sau nhưng
   vẫn là đích FK của `simulation_runs` (dựng với `FOREIGN_KEY_CHECKS = 0`).
 - Nạp file SQL **phải** dùng `--default-character-set=utf8mb4`.
@@ -162,7 +169,7 @@ simulation_runs (kết quả chấm AEB/FCW + telemetry_json)
       ├──1:n── collision_events
       ├──1:n── failures ──1:n── root_causes ──n:1── aeb_parameters  (tham số nghi ngờ)
       ├──1:n── simulation_artifacts ──n:1── sensors
-      └── scenario_versions · vehicle_versions · aeb_versions · random_seed · simulator_version  (tái lập được)
+      └── scenario_versions · carla_vehicle_models · aeb_versions · random_seed · simulator_version  (tái lập được)
 ```
 
 ## 4. Sơ đồ quan hệ (ERD)
@@ -176,14 +183,14 @@ erDiagram
     workspaces ||--o{ workspace_members : members
     workspaces ||--o{ workspace_messages : chat
     workspaces ||--o{ workspace_tasks : tasks
-    workspace_tasks ||--o{ workspace_task_reports : reports
+    projects ||--o{ task_reports : reports
+    workspace_tasks |o--o{ task_reports : "task (tuỳ chọn, cùng project)"
     users ||--o{ notifications : receives
     workspaces |o--o{ projects : "contains (NULL = cá nhân)"
     projects ||--o{ project_members : members
     workspace_members ||--o{ project_members : "phải là thành viên workspace"
-    projects ||--o{ vehicle_versions : versions
-    carla_vehicle_models ||--o{ vehicle_versions : blueprint
-    vehicle_versions ||--o{ sensors : mounts
+    carla_vehicle_models |o--o{ projects : "xe đang chọn"
+    carla_vehicle_models ||--o{ sensors : mounts
     projects ||--o{ aeb_versions : versions
     aeb_versions ||--o{ aeb_parameter_values : sets
     aeb_parameters ||--o{ aeb_parameter_values : defines
@@ -196,7 +203,7 @@ Thực thi, tối ưu, regression, phân tích:
 ```mermaid
 erDiagram
     scenario_versions ||--o{ simulation_runs : runs
-    vehicle_versions ||--o{ simulation_runs : vehicle
+    carla_vehicle_models ||--o{ simulation_runs : vehicle
     aeb_versions ||--o{ simulation_runs : config
     simulation_runs |o--o{ simulation_runs : baseline_run
     simulation_runs ||--o{ collision_events : collisions
@@ -217,7 +224,7 @@ erDiagram
 
 | Bước | Màn / lệnh | Module ghi | Bảng được ghi |
 |---|---|---|---|
-| 0. Khởi tạo | `scripts/seed_vehicsim.py` | `vehicsim/bootstrap.py` | `aeb_parameters`, `carla_vehicle_models` (nếu thiếu), `workspaces` (ACTIVE), `projects`, `vehicle_versions` (v1 đang dùng), `aeb_versions` (v1.0 BASELINE), `aeb_parameter_values` |
+| 0. Khởi tạo | `scripts/seed_vehicsim.py` | `vehicsim/bootstrap.py` | `aeb_parameters`, `carla_vehicle_models` (nếu thiếu, kèm thông số vật lý), `workspaces` (ACTIVE), `projects` (chọn sẵn xe), `aeb_versions` (v1.0 BASELINE), `aeb_parameter_values` |
 | — Tài khoản | Đăng ký / đăng nhập; `scripts/create_admin.py --role …` | `services/auth/users.py` | `users` (tự đăng ký = EXPERIENCER) |
 | 1. Mô tả → biến thể | Kịch bản mới | `describe.py` (LLM) → `family.py` | `scenarios`, `scenario_versions` (bản gốc + biến thể có cột lọc) |
 | 2. Chạy baseline | Chạy họ | `runs.py` | `simulation_runs` (`PENDING → RUNNING → COMPLETED/FAILED`, kết quả ghi vào chính dòng), `collision_events`, `failures` + `root_causes`, `simulation_artifacts` |
@@ -270,23 +277,20 @@ Tài khoản. Mỗi người **đúng một role** (`role_id`). Tự đăng ký 
 
 #### `workspaces` — FE-03
 
-Nhóm làm việc do MANAGER quản lý. Manager xin → Admin duyệt / từ chối. **Code dùng:** seed (`bootstrap.py`) tạo một workspace ACTIVE; màn quản lý chưa có.
+Nhóm làm việc. **Admin tạo và gán thẳng một MANAGER** quản lý — không có bước xin / duyệt (ADR-038). Manager xem
+được mọi thành viên của workspace mình (kiểm ở API). **Code dùng:** seed (`bootstrap.py`) tạo một workspace ACTIVE;
+màn quản lý chưa có.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; AI | Khoá chính. |
 | `name` | VARCHAR(150) | ✓ |  | UQ `uq_workspaces_manager_name` | Tên workspace; duy nhất theo manager. |
 | `description` | TEXT |  |  |  | Mô tả mục đích. |
-| `manager_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_workspaces_manager_name`; FK → `users` | MANAGER quản lý workspace. |
-| `status` | ENUM | ✓ | `'PENDING_APPROVAL'` |  | `PENDING_APPROVAL` (Manager xin) → `ACTIVE` / `REJECTED` (Admin quyết) → `ARCHIVED`. Giá trị: 'PENDING_APPROVAL', 'ACTIVE', 'ARCHIVED', 'REJECTED'. |
-| `requested_by_user_id` | BIGINT UNSIGNED |  |  | FK → `users` | Người xin tạo (Manager); `NULL` khi Admin tự tạo. |
-| `approved_by_user_id` | BIGINT UNSIGNED |  |  | FK → `users` | Admin đã duyệt / từ chối. Bắt buộc khi `ACTIVE`/`REJECTED` (`ck_workspaces_approval`). |
-| `approved_at` | DATETIME |  |  |  | Lúc duyệt / từ chối. |
-| `review_note` | TEXT |  |  |  | Ghi chú của Admin; bắt buộc khi `REJECTED` (`ck_workspaces_reject_note`). _Ghi chú khi Admin duyệt; bắt buộc khi REJECTED (lý do từ chối)_ |
+| `manager_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_workspaces_manager_name`; FK → `users` | MANAGER do Admin gán (service kiểm role). |
+| `status` | ENUM | ✓ | `'ACTIVE'` |  | `ACTIVE` / `ARCHIVED`. Giá trị: 'ACTIVE', 'ARCHIVED'. |
+| `created_by_user_id` | BIGINT UNSIGNED | ✓ |  | FK → `users` | Admin tạo workspace. |
 | `created_date` | DATETIME | ✓ | `CURRENT_TIMESTAMP` |  | Lúc tạo. |
 | `updated_at` | DATETIME | ✓ | `CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` |  | Lần sửa gần nhất. |
-
-CHECK: `ck_workspaces_approval`, `ck_workspaces_reject_note`.
 
 #### `workspace_members` — FE-03
 
@@ -322,7 +326,7 @@ Thông báo cho từng người. Chưa có code.
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; AI | Khoá chính. |
 | `user_id` | BIGINT UNSIGNED | ✓ |  | FK → `users` | Người nhận. |
 | `workspace_id` | BIGINT UNSIGNED |  |  | FK → `workspaces` | Workspace liên quan (nếu có). |
-| `type` | ENUM | ✓ |  |  | Loại sự kiện. `FAILURE_DETECTED` = run có lỗi mới, `CANDIDATE_CREATED` = có AEB candidate mới (UC-22, ADR-037). Giá trị: 'SIMULATION_DONE', 'SIMULATION_FAILED', 'REGRESSION_DONE', 'RECOMMENDATION_PENDING', 'RECOMMENDATION_DECIDED', 'TASK_ASSIGNED', 'REPORT_SUBMITTED', 'WORKSPACE_REQUESTED', 'WORKSPACE_DECIDED', 'MEMBER_ADDED', 'FAILURE_DETECTED', 'CANDIDATE_CREATED', 'SYSTEM'. |
+| `type` | ENUM | ✓ |  |  | Loại sự kiện. `WORKSPACE_ASSIGNED` = Admin gán Manager cho workspace (ADR-038), `FAILURE_DETECTED` = run có lỗi mới, `CANDIDATE_CREATED` = có AEB candidate mới (UC-22, ADR-037). Giá trị: 'SIMULATION_DONE', 'SIMULATION_FAILED', 'REGRESSION_DONE', 'RECOMMENDATION_PENDING', 'RECOMMENDATION_DECIDED', 'TASK_ASSIGNED', 'REPORT_SUBMITTED', 'WORKSPACE_ASSIGNED', 'MEMBER_ADDED', 'FAILURE_DETECTED', 'CANDIDATE_CREATED', 'SYSTEM'. |
 | `title` | VARCHAR(255) | ✓ |  |  | Tiêu đề hiển thị. |
 | `content` | TEXT | ✓ |  |  | Nội dung. |
 | `reference_type` | VARCHAR(50) |  |  |  | Loại đối tượng được nhắc tới: `SIMULATION_RUN`, `TASK`, `RECOMMENDATION`, `WORKSPACE`… _SIMULATION_RUN, TASK, RECOMMENDATION, WORKSPACE…_ |
@@ -336,9 +340,9 @@ Task Manager giao cho Engineer / Reviewer. Chưa có code.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
-| `id` | BIGINT UNSIGNED | ✓ |  | PK; AI | Khoá chính. |
+| `id` | BIGINT UNSIGNED | ✓ |  | PK; AI; UQ `uq_wt_id_project` | Khoá chính. |
 | `workspace_id` | BIGINT UNSIGNED | ✓ |  | FK → `workspaces` | Workspace. |
-| `project_id` | BIGINT UNSIGNED |  |  | FK → `projects` | Project mà task nói tới (tuỳ chọn). |
+| `project_id` | BIGINT UNSIGNED |  |  | UQ `uq_wt_id_project`; FK → `projects` | Project mà task nói tới (tuỳ chọn). Báo cáo của task phải cùng project này. |
 | `title` | VARCHAR(255) | ✓ |  |  | Tên task. |
 | `description` | TEXT |  |  |  | Mô tả. |
 | `priority` | ENUM | ✓ | `'MEDIUM'` |  | Độ ưu tiên. Giá trị: 'LOW', 'MEDIUM', 'HIGH', 'URGENT'. |
@@ -352,27 +356,29 @@ Task Manager giao cho Engineer / Reviewer. Chưa có code.
 
 CHECK: `ck_wt_progress`.
 
-#### `workspace_task_reports` — FE-13
+#### `task_reports` — FE-13
 
-Báo cáo kết quả task, Manager duyệt. Chưa có code.
+Báo cáo công việc gửi **theo từng project**; Manager của workspace chứa project duyệt (ADR-038). Gắn với một task
+thì tuỳ chọn, nhưng task đó phải thuộc đúng project của báo cáo. Chưa có code.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; AI | Khoá chính. |
-| `task_id` | BIGINT UNSIGNED | ✓ |  | FK → `workspace_tasks` | Task được báo cáo. |
-| `submitted_by_user_id` | BIGINT UNSIGNED | ✓ |  | FK → `users` | Người nộp. |
+| `project_id` | BIGINT UNSIGNED | ✓ |  | FK → `projects`; FK → `workspace_tasks(id,project_id)` | Project được báo cáo. |
+| `task_id` | BIGINT UNSIGNED |  |  | FK → `workspace_tasks(id,project_id)` | Task được báo cáo (tuỳ chọn); FK ghép ép task cùng project. |
+| `submitted_by_user_id` | BIGINT UNSIGNED | ✓ |  | FK → `users` | Người nộp (service kiểm: thành viên hoặc owner của project). |
 | `report_title` | VARCHAR(255) | ✓ |  |  | Tiêu đề. |
 | `report_content` | TEXT | ✓ |  |  | Nội dung báo cáo. |
 | `attachment_url` | VARCHAR(1024) |  |  |  | File đính kèm (URL). |
 | `status` | ENUM | ✓ | `'SUBMITTED'` |  | `SUBMITTED` → Manager `APPROVED` / `REJECTED`. Giá trị: 'SUBMITTED', 'APPROVED', 'REJECTED'. |
-| `reviewed_by_user_id` | BIGINT UNSIGNED |  |  | FK → `users` | Manager duyệt; bắt buộc khi đã duyệt (`ck_wtr_review`). |
+| `reviewed_by_user_id` | BIGINT UNSIGNED |  |  | FK → `users` | Manager duyệt; bắt buộc khi đã duyệt (`ck_tr_review`). _Manager duyệt_ |
 | `reviewed_at` | DATETIME |  |  |  | Lúc duyệt. |
 | `review_note` | TEXT |  |  |  | Nhận xét của Manager. |
 | `created_date` | DATETIME | ✓ | `CURRENT_TIMESTAMP` |  | Lúc nộp. |
 
-CHECK: `ck_wtr_review`.
+CHECK: `ck_tr_review`.
 
-### 6.3 Project và Vehicle Digital Twin
+### 6.3 Project và xe
 
 #### `projects` — FE-04
 
@@ -386,6 +392,7 @@ Nơi chứa xe, AEB, kịch bản, run. Thuộc workspace hoặc là project cá
 | `description` | TEXT |  |  |  | Mô tả. |
 | `status` | ENUM | ✓ | `'ACTIVE'` |  | `ACTIVE` / `ARCHIVED`. Project đã có run thì chỉ lưu trữ, không xoá. Giá trị: 'ACTIVE', 'ARCHIVED'. |
 | `created_by_user_id` | BIGINT UNSIGNED | ✓ |  | FK → `users` | Người tạo (ENGINEER trong workspace, EXPERIENCER với project cá nhân). |
+| `carla_vehicle_model_id` | BIGINT UNSIGNED |  |  | FK → `carla_vehicle_models` | Xe project đang dùng cho run mới (UC-23); `NULL` = chưa chọn xe. Đổi xe thì run cũ giữ xe của nó. |
 | `personal_owner_key` | BIGINT UNSIGNED |  |  | UQ `uq_projects_personal_name`; GEN | **GEN**: = người tạo khi là project cá nhân, `NULL` khi thuộc workspace — để `UNIQUE` chặn trùng tên project cá nhân. |
 | `created_date` | DATETIME | ✓ | `CURRENT_TIMESTAMP` |  | Lúc tạo. |
 | `updated_at` | DATETIME | ✓ | `CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` |  | Lần sửa gần nhất. |
@@ -394,7 +401,7 @@ Nơi chứa xe, AEB, kịch bản, run. Thuộc workspace hoặc là project cá
 
 Thành viên của một project thuộc workspace (thêm / xoá / xem). Owner là người tạo (`projects.created_by_user_id`),
 không cần dòng ở đây. Project cá nhân không có thành viên. Không có cột role: mỗi người một role hệ thống.
-Chưa có code.
+Chỉ owner và thành viên của project này xem được danh sách thành viên của nó (kiểm ở API, ADR-038). Chưa có code.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -405,65 +412,46 @@ Chưa có code.
 | `added_by_user_id` | BIGINT UNSIGNED |  |  | FK → `users` | Người đã thêm (service kiểm quyền: owner của project). |
 | `joined_at` | DATETIME | ✓ | `CURRENT_TIMESTAMP` |  | Lúc được thêm. |
 
-#### `carla_vehicle_models` — FE-04-01
+#### `carla_vehicle_models` — FE-04-01/02
 
-Danh mục blueprint xe CARLA và kích thước đọc từ mesh. Seed `vehicle.audi.etron` (cỡ VF8; CARLA không có VinFast).
+Danh mục xe: blueprint CARLA + kích thước + **thông số vật lý cố định**. Không có phiên bản, app không cho sửa
+(ADR-038); run, regression, tối ưu trỏ thẳng vào đây nên run cũ luôn tái lập đúng xe. Seed `vehicle.audi.etron`
+(cỡ VF8; CARLA không có VinFast) với thông số của xe MVP cũ — chưa đo lại trên CARLA (TD-17). **Code dùng:**
+`common.active_vehicle` / `vehicle_by_id`, `runs.carla_vehicle` (→ khối `vehicle.carla` của bundle).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; AI | Khoá chính. |
 | `carla_blueprint_id` | VARCHAR(100) | ✓ |  | UQ | Blueprint xe CARLA, vd `vehicle.audi.etron` — runner spawn đúng blueprint này. |
-| `display_name` | VARCHAR(150) |  |  |  | Tên hiển thị. |
+| `display_name` | VARCHAR(150) |  |  |  | Tên hiển thị (cũng là tên xe trong bundle). |
 | `length_m` | DECIMAL(6,3) | ✓ |  |  | Dài (m), đọc từ `bounding_box.extent.x × 2` — gắn với mesh, không ép được. |
 | `width_m` | DECIMAL(6,3) | ✓ |  |  | Rộng (m), từ bounding box. Bộ động học dùng để biết người đi bộ có nằm trên đường đi của xe không. |
 | `height_m` | DECIMAL(6,3) | ✓ |  |  | Cao (m), từ bounding box; runner đối chiếu. |
 | `num_wheels` | TINYINT UNSIGNED | ✓ | `4` |  | Số bánh (2 hoặc 4). |
-| `is_supported` | BOOLEAN | ✓ | `TRUE` |  | Còn cho chọn khi tạo phiên bản xe mới không. |
-
-CHECK: `ck_cvm_dims`, `ck_cvm_wheels`.
-
-#### `vehicle_versions` — FE-04-02/03
-
-Digital Twin của xe: mỗi phiên bản là một bộ thông số vật lý, ghi rõ trạng thái hiệu chuẩn. Đúng một phiên bản đang dùng mỗi project; run giữ đúng phiên bản nó đã chạy. **Code dùng:** `common.active_vehicle`, `runs.carla_vehicle` (→ khối `vehicle.carla` của bundle).
-
-| Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
-|---|---|---|---|---|---|
-| `id` | BIGINT UNSIGNED | ✓ |  | PK; UQ `uq_vv_project_id`; AI | Khoá chính. |
-| `project_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_vv_project_version`; UQ `uq_vv_project_id`; FK → `projects` | Project sở hữu xe. |
-| `carla_vehicle_model_id` | BIGINT UNSIGNED | ✓ |  | FK → `carla_vehicle_models` | Blueprint CARLA mà phiên bản này dựa trên. |
-| `version_no` | INT UNSIGNED | ✓ |  | UQ `uq_vv_project_version` | Số phiên bản trong project (1, 2…). |
-| `name` | VARCHAR(100) | ✓ | `'Ego Vehicle'` |  | Tên hiển thị, vd `VF8 v1.2`. |
-| `mass_kg` | DECIMAL(8,2) | ✓ |  |  | VehiclePhysicsControl.mass |
+| `mass_kg` | DECIMAL(8,2) | ✓ |  |  | VehiclePhysicsControl.mass — runner luôn ép. |
 | `drag_coefficient` | DECIMAL(4,3) |  |  |  | VehiclePhysicsControl.drag_coefficient |
-| `center_of_mass_x_m` | DECIMAL(6,3) |  |  |  | VehiclePhysicsControl.center_of_mass (m, so với gốc actor); đủ x/y/z hoặc để trống cả ba |
+| `center_of_mass_x_m` | DECIMAL(6,3) |  |  |  | VehiclePhysicsControl.center_of_mass (m, so với gốc actor); đủ x/y/z hoặc để trống cả ba (`ck_cvm_center_of_mass`). |
 | `center_of_mass_y_m` | DECIMAL(6,3) |  |  |  | Trọng tâm, trục y (m). |
 | `center_of_mass_z_m` | DECIMAL(6,3) |  |  |  | Trọng tâm, trục z (m). |
-| `tire_friction` | DECIMAL(4,2) |  |  |  | WheelPhysicsControl.tire_friction, mọi bánh (ma sát mặt đường thuộc kịch bản) |
-| `max_brake_torque_nm` | DECIMAL(8,2) |  |  |  | WheelPhysicsControl.max_brake_torque, mọi bánh |
-| `wheelbase_m` | DECIMAL(5,3) |  |  |  | Đối chiếu với vị trí bánh của blueprint |
+| `tire_friction` | DECIMAL(4,2) |  |  |  | WheelPhysicsControl.tire_friction, mọi bánh (ma sát mặt đường thuộc kịch bản) — chưa gửi sang CARLA (TD-17). |
+| `max_brake_torque_nm` | DECIMAL(8,2) |  |  |  | WheelPhysicsControl.max_brake_torque, mọi bánh — chưa gửi (TD-17). |
+| `wheelbase_m` | DECIMAL(5,3) |  |  |  | Đối chiếu với vị trí bánh của blueprint. |
 | `max_speed_mps` | DECIMAL(6,2) |  |  |  | Tốc độ tối đa (m/s) — đối chiếu, không ép vào CARLA. |
-| `max_brake_decel_mps2` | DECIMAL(5,2) | ✓ |  |  | Giới hạn phanh của xe — bộ động học dùng; AEB không xin quá mức này |
-| `carla_full_brake_decel_mps2` | DECIMAL(5,2) |  |  |  | Đo trên CARLA: giảm tốc khi phanh 100% — runner đổi giảm tốc AEB ra bàn đạp (TD-17) |
-| `calibration_status` | ENUM | ✓ | `'UNVERIFIED'` |  | `UNVERIFIED` (giả định) / `CALIBRATED` (đo trên CARLA) / `VERIFIED` (đối chiếu số đo thật). Giá trị: 'UNVERIFIED', 'CALIBRATED', 'VERIFIED'. |
-| `calibration_notes` | TEXT |  |  |  | Đo thế nào, ở đâu, sai số bao nhiêu. |
-| `calibrated_by_user_id` | BIGINT UNSIGNED |  |  | FK → `users` | Người xác nhận hiệu chuẩn — bắt buộc khi khác `UNVERIFIED` (`ck_vv_calibration`). _Người xác nhận CALIBRATED / VERIFIED_ |
-| `calibrated_at` | DATETIME |  |  |  | Lúc xác nhận. |
-| `is_active` | BOOLEAN | ✓ | `FALSE` |  | Phiên bản dùng cho run mới — đúng một mỗi project. _Version đang dùng cho run mới_ |
-| `active_project_key` | BIGINT UNSIGNED |  |  | UQ; GEN | **GEN**: = `project_id` khi `is_active`, ngược lại `NULL` — `UNIQUE` ép một phiên bản đang dùng. |
-| `created_by_user_id` | BIGINT UNSIGNED | ✓ |  | FK → `users` | Người tạo. |
-| `created_date` | DATETIME | ✓ | `CURRENT_TIMESTAMP` |  | Lúc tạo. Phiên bản đã có run thì không sửa — tạo phiên bản mới. |
+| `max_brake_decel_mps2` | DECIMAL(5,2) | ✓ |  |  | Giới hạn phanh của xe — bộ động học dùng; AEB không xin quá mức này. |
+| `carla_full_brake_decel_mps2` | DECIMAL(5,2) |  |  |  | Đo trên CARLA: giảm tốc khi phanh 100% — runner đổi giảm tốc AEB ra bàn đạp (TD-17, TD-32). |
+| `is_supported` | BOOLEAN | ✓ | `TRUE` |  | Còn cho project chọn xe này không. |
 
-CHECK: `ck_vv_calibration`, `ck_vv_physics`, `ck_vv_center_of_mass`.
+CHECK: `ck_cvm_dims`, `ck_cvm_wheels`, `ck_cvm_physics`, `ck_cvm_center_of_mass`.
 
 #### `sensors` — FE-04, FE-08-03
 
-Cảm biến gắn trên phiên bản xe, tham số đúng tên attribute blueprint CARLA. Chưa có code: runner hiện chỉ gắn `sensor.other.collision` (+ camera khi `--video`).
+Bộ cảm biến của mẫu xe, cố định như thông số xe; tham số đúng tên attribute blueprint CARLA. Chưa có code: runner hiện chỉ gắn `sensor.other.collision` (+ camera khi `--video`).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; AI | Khoá chính. |
-| `vehicle_version_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sensors_version_name`; FK → `vehicle_versions` | Gắn trên phiên bản xe nào. |
-| `name` | VARCHAR(100) | ✓ |  | UQ `uq_sensors_version_name` | Tên trong phiên bản xe, vd `front_radar`. |
+| `carla_vehicle_model_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sensors_model_name`; FK → `carla_vehicle_models` | Gắn trên mẫu xe nào. |
+| `name` | VARCHAR(100) | ✓ |  | UQ `uq_sensors_model_name` | Tên trong bộ cảm biến của xe, vd `front_radar`. |
 | `sensor_type` | ENUM |  |  |  | Nhóm cảm biến (camera RGB / depth / segmentation, LiDAR, radar, collision, obstacle, lane invasion). |
 | `carla_blueprint_id` | VARCHAR(100) | ✓ |  |  | vd: sensor.camera.rgb, sensor.lidar.ray_cast, sensor.other.radar |
 | `location_x_m` | DECIMAL(7,3) | ✓ | `0` |  | Vị trí gắn so với gốc xe (m, hệ toạ độ CARLA: x tiến, y phải, z lên). |
@@ -586,10 +574,10 @@ Một lần tối ưu tham số AEB trên cả họ, cố định xe và bộ m�
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; UQ `uq_or_project_id`; AI | Khoá chính. |
-| `project_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_or_project_id`; FK → `scenarios(project_id,id)`; FK → `projects`; FK → `aeb_versions(project_id,id)`; FK → `vehicle_versions(project_id,id)` | Project. |
+| `project_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_or_project_id`; FK → `scenarios(project_id,id)`; FK → `projects`; FK → `aeb_versions(project_id,id)` | Project. |
 | `scenario_id` | BIGINT UNSIGNED | ✓ |  | FK → `scenarios(project_id,id)` | Họ kịch bản: mọi trial chấm trên cả họ (chống học vẹt một kịch bản). |
 | `base_aeb_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `aeb_versions(project_id,id)` | AEB version xuất phát (thường là baseline). |
-| `vehicle_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `vehicle_versions(project_id,id)` | Phiên bản xe cố định cho mọi trial. |
+| `carla_vehicle_model_id` | BIGINT UNSIGNED | ✓ |  | FK → `carla_vehicle_models` | Xe cố định cho mọi trial. |
 | `simulator_version` | VARCHAR(30) | ✓ |  |  | vd: vehicsim-kinematic-1.0, carla-0.9.16 — như simulation_runs |
 | `name` | VARCHAR(150) | ✓ |  |  | Tên lần tối ưu. |
 | `algorithm` | ENUM | ✓ |  |  | `BAYESIAN_OPTIMIZATION` (GP), `NSGA_II` (đa mục tiêu), `RANDOM_SEARCH`. Giá trị: 'BAYESIAN_OPTIMIZATION', 'NSGA_II', 'RANDOM_SEARCH'. |
@@ -641,11 +629,11 @@ So candidate với baseline trên cả họ, cùng seed, cùng xe, cùng bộ m�
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; UQ `uq_rt_project_id`; UQ `uq_rt_id_candidate`; UQ `uq_rt_run_scope`; AI | Khoá chính; mã hiển thị `RT-001`, khuyến nghị `REC-001`. |
-| `project_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rt_project_id`; FK → `aeb_versions(project_id,id)`; FK → `projects`; FK → `vehicle_versions(project_id,id)`; FK → `scenarios(project_id,id)` | Project. |
+| `project_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rt_project_id`; FK → `aeb_versions(project_id,id)`; FK → `projects`; FK → `scenarios(project_id,id)` | Project. |
 | `scenario_id` | BIGINT UNSIGNED | ✓ |  | FK → `scenarios(project_id,id)` | Họ kịch bản được so. |
 | `baseline_aeb_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `aeb_versions(project_id,id)` | Baseline lúc tạo test. |
 | `candidate_aeb_version_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rt_id_candidate`; UQ `uq_rt_run_scope`; FK → `aeb_versions(project_id,id)` | Candidate được kiểm; khác baseline (`ck_rt_distinct`). |
-| `vehicle_version_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rt_run_scope`; FK → `vehicle_versions(project_id,id)` | Mọi cặp run chạy đúng phiên bản xe này |
+| `carla_vehicle_model_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rt_run_scope`; FK → `carla_vehicle_models` | Mọi cặp run chạy đúng xe này |
 | `simulator_version` | VARCHAR(30) | ✓ |  | UQ `uq_rt_run_scope` | Mọi cặp run chạy đúng bộ mô phỏng này (không trộn động học với CARLA) |
 | `name` | VARCHAR(150) |  |  |  | Tên. |
 | `description` | TEXT |  |  |  | Mô tả. |
@@ -665,26 +653,26 @@ CHECK: `ck_rt_distinct`, `ck_rt_verdict`.
 
 #### `simulation_runs` — FE-07/08/09
 
-Một lần chạy một biến thể × phiên bản xe × AEB version × seed × bộ mô phỏng, **gồm luôn kết quả chấm AEB/FCW**. **Code dùng:** `runs.py` (ghi), `views.py`, `regression.py` (đọc).
+Một lần chạy một biến thể × xe × AEB version × seed × bộ mô phỏng, **gồm luôn kết quả chấm AEB/FCW**. **Code dùng:** `runs.py` (ghi), `views.py`, `regression.py` (đọc).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; UQ `uq_sr_replay`; UQ `uq_sr_pair`; AI | Khoá chính. |
-| `project_id` | BIGINT UNSIGNED | ✓ |  | FK → `projects`; FK → `scenarios(project_id,id)`; FK → `vehicle_versions(project_id,id)`; FK → `aeb_versions(project_id,id)`; FK → `analysis_results(project_id,id,aeb_version_id)` | Project. |
+| `project_id` | BIGINT UNSIGNED | ✓ |  | FK → `projects`; FK → `scenarios(project_id,id)`; FK → `aeb_versions(project_id,id)`; FK → `analysis_results(project_id,id,aeb_version_id)` | Project. |
 | `scenario_id` | BIGINT UNSIGNED | ✓ |  | FK → `scenarios(project_id,id)`; FK → `scenario_versions(scenario_id,id)` | lặp lại có chủ đích để FK ghép ép cùng project |
-| `scenario_version_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; UQ `uq_sr_pair`; FK → `scenario_versions(scenario_id,id)`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,vehicle_version_id)` | Biến thể được chạy. |
-| `vehicle_version_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; FK → `vehicle_versions(project_id,id)`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,vehicle_version_id)`; FK → `regression_tests(id,candidate_aeb_version_id,vehicle_version_id,simulator_version)` | Phiên bản xe — cùng project (FK ghép). |
-| `aeb_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `aeb_versions(project_id,id)`; FK → `regression_tests(id,candidate_aeb_version_id,vehicle_version_id,simulator_version)`; FK → `optimization_trials(id,candidate_aeb_version_id)`; FK → `analysis_results(project_id,id,aeb_version_id)` | AEB version — cùng project (FK ghép). |
+| `scenario_version_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; UQ `uq_sr_pair`; FK → `scenario_versions(scenario_id,id)`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)` | Biến thể được chạy. |
+| `carla_vehicle_model_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; FK → `carla_vehicle_models`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)` | Xe đã chạy (danh mục chung). Run REGRESSION phải cùng xe với run baseline và với regression test. |
+| `aeb_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `aeb_versions(project_id,id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)`; FK → `optimization_trials(id,candidate_aeb_version_id)`; FK → `analysis_results(project_id,id,aeb_version_id)` | AEB version — cùng project (FK ghép). |
 | `simulator_type` | ENUM | ✓ |  |  | `KINEMATIC` / `CARLA` — nhóm để lọc; khớp `simulator_version` (`ck_sr_simulator`). Giá trị: 'KINEMATIC', 'CARLA'. |
-| `simulator_version` | VARCHAR(30) | ✓ |  | UQ `uq_sr_replay`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,vehicle_version_id)`; FK → `regression_tests(id,candidate_aeb_version_id,vehicle_version_id,simulator_version)` | Danh tính bộ mô phỏng: vehicsim-kinematic-1.0 | carla-0.9.16; đổi logic động học thì đổi tên |
+| `simulator_version` | VARCHAR(30) | ✓ |  | UQ `uq_sr_replay`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)` | Danh tính bộ mô phỏng: vehicsim-kinematic-1.0 | carla-0.9.16; đổi logic động học thì đổi tên |
 | `map_name` | VARCHAR(100) |  |  |  | Map CARLA thực nạp (world.get_map().name); NULL với động học |
 | `fixed_delta_seconds` | DECIMAL(6,4) | ✓ | `0.0500` |  | Bước mô phỏng, CARLA chạy synchronous_mode — cần để tái lập |
 | `max_duration_s` | DECIMAL(8,2) |  |  |  | Hết giờ mô phỏng thì end_reason = TIMEOUT |
 | `purpose` | ENUM | ✓ |  |  | `BASELINE`, `EVALUATION` (AEB khác baseline), `OPTIMIZATION`, `REGRESSION`, `ROBUSTNESS`. Giá trị: 'BASELINE', 'EVALUATION', 'OPTIMIZATION', 'REGRESSION', 'ROBUSTNESS'. |
 | `status` | ENUM | ✓ | `'PENDING'` |  | `PENDING → RUNNING → COMPLETED / FAILED`; `PAUSED`, `STOPPED` cho điều khiển tay. Giá trị: 'PENDING', 'RUNNING', 'PAUSED', 'COMPLETED', 'FAILED', 'STOPPED'. |
-| `random_seed` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,vehicle_version_id)` | Seed nhiễu perception — cùng biến thể + seed + bộ mô phỏng ⇒ cùng kết quả. Mặc định `48000 + scenario_version_id`. |
-| `baseline_run_id` | BIGINT UNSIGNED |  |  | UQ `uq_sr_pair`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,vehicle_version_id)` | Run REGRESSION chạy lại đúng biến thể + seed + bộ mô phỏng + xe của run này |
-| `regression_test_id` | BIGINT UNSIGNED |  |  | UQ `uq_sr_pair`; FK → `regression_tests(id,candidate_aeb_version_id,vehicle_version_id,simulator_version)` | Run thuộc regression nào (`purpose = REGRESSION`). |
+| `random_seed` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)` | Seed nhiễu perception — cùng biến thể + seed + bộ mô phỏng ⇒ cùng kết quả. Mặc định `48000 + scenario_version_id`. |
+| `baseline_run_id` | BIGINT UNSIGNED |  |  | UQ `uq_sr_pair`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)` | Run REGRESSION chạy lại đúng biến thể + seed + bộ mô phỏng + xe của run này |
+| `regression_test_id` | BIGINT UNSIGNED |  |  | UQ `uq_sr_pair`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)` | Run thuộc regression nào (`purpose = REGRESSION`). |
 | `optimization_trial_id` | BIGINT UNSIGNED |  |  | FK → `optimization_trials(id,candidate_aeb_version_id)` | Run thuộc trial nào (`purpose = OPTIMIZATION`). |
 | `analysis_result_id` | BIGINT UNSIGNED |  |  | FK → `analysis_results(project_id,id,aeb_version_id)` | Run ROBUSTNESS thuộc lần kiểm robustness nào (FE-11-05) |
 | `run_config_json` | JSON |  |  |  | Bản chụp tham số biến thể lúc chạy (+ nhiễu nếu ROBUSTNESS) |
@@ -940,5 +928,6 @@ Cùng một PR (luật mềm ở `AGENTS.md`):
 | `003_2026-10-05_role-theo-workspace.sql` | Role theo workspace (ADR-034) |
 | `004_2026-10-06_nam-role-he-thong.sql` | 5 role hệ thống, bỏ cấu hình xe và Meomeo (ADR-035), 36 → 32 bảng |
 | `005_2026-10-06_schema-30-bang.sql` | Schema 30 bảng, giữ dữ liệu (ADR-036 + ADR-037), 32 → 30 bảng |
+| `006_2026-10-07_bo-phien-ban-xe-admin-tao-workspace.sql` | Bỏ phiên bản xe, Admin tạo workspace, báo cáo theo project (ADR-038), 30 → 29 bảng |
 
 Luôn sao lưu trước (`mysqldump --single-transaction`), không `docker compose down -v` trên máy người khác.

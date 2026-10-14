@@ -1,6 +1,6 @@
 """DB lái thông số xe của cả hai bộ mô phỏng.
 
-Phiên bản xe đang dùng (``vehicle_versions`` + ``carla_vehicle_models``) đi vào bundle: kích thước + phanh cho bộ động học,
+Xe project đang chọn (một dòng ``carla_vehicle_models``, ADR-038) đi vào bundle: kích thước + phanh cho bộ động học,
 ``vehicle.carla`` (blueprint, vật lý, kích thước) cho runner CARLA. Khối ``vehicle.carla``
 được kiểm chặt: thứ CARLA không ép được thì báo lỗi, không lặng lẽ bỏ qua.
 """

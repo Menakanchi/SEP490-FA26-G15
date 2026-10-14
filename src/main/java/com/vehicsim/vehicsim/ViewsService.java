@@ -1,0 +1,692 @@
+package com.vehicsim.vehicsim;
+
+import com.vehicsim.vehicsim.Vs.NotFoundException;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Mô hình đọc cho giao diện VehicSim — mỗi hàm trả đúng dữ liệu một màn Figma cần. Port của ``views.py``.
+ * <p>
+ * MVP chỉ có một project mặc định. Lọc theo thời tiết / kết quả làm trong bộ nhớ sau khi đọc: ở quy mô MVP (vài trăm lần
+ * chạy) như vậy đủ nhanh. Dạng JSON trả về giữ nguyên như backend Python (khoá snake_case) để frontend không phải đổi.
+ */
+@Service
+public class ViewsService {
+
+    private static final List<String> STAGE_ORDER = List.of("PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS");
+    private static final String AEB_SYSTEM_NAME = "AEB";
+    private static final List<String> KEY_PARAMS = List.of("TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "DETECTION_CONFIDENCE_THRESHOLD", "MAX_DECELERATION");
+    private static final Map<String, String> REVIEW_LABELS = Map.of(
+            "PENDING", "Awaiting review", "ACCEPT", "Accepted", "REJECT", "Rejected", "REQUEST_MORE_TESTS", "More tests requested");
+
+    private final Db db;
+    private final Queries queries;
+    private final FamilyService families;
+    private final RegressionService regression;
+    private final RunService runs;
+
+    public ViewsService(Db db, Queries queries, FamilyService families, RegressionService regression, RunService runs) {
+        this.db = db;
+        this.queries = queries;
+        this.families = families;
+        this.regression = regression;
+        this.runs = runs;
+    }
+
+    // ------------------------------------------------------------------ ngữ cảnh
+
+    public Map<String, Object> context() {
+        Row project = queries.currentProject();
+        Row workspace = db.first("SELECT * FROM workspaces WHERE id = ?", project.lng("workspace_id"));
+        Row vehicle = queries.activeVehicle(project.lng("id"));
+        List<Row> versions = queries.versions(project.lng("id"), false);
+        Row baseline = versions.stream().filter(v -> "BASELINE".equals(v.str("status"))).findFirst().orElse(null);
+        List<Row> fams = db.list("SELECT * FROM scenarios WHERE project_id = ? ORDER BY id", project.lng("id"));
+
+        List<Map<String, Object>> parameters = new ArrayList<>();
+        for (Row p : queries.parameterCatalog()) {
+            parameters.add(Json.obj("code", p.str("code"), "name", p.str("name"), "category", p.str("category"), "unit", p.str("unit"),
+                    "min_value", p.dbl("min_value"), "max_value", p.dbl("max_value"), "default_value", p.dbl("default_value")));
+        }
+        String vehicleName = vehicle.str("display_name") != null && !vehicle.str("display_name").isEmpty()
+                ? vehicle.str("display_name") : vehicle.str("carla_blueprint_id");
+        return Json.obj(
+                "project", Json.obj("id", project.lng("id"), "name", project.str("name")),
+                "workspace", workspace == null ? null : Json.obj("id", workspace.lng("id"), "name", workspace.str("name")),
+                "vehicle", Json.obj("id", vehicle.lng("id"), "name", vehicleName),
+                "system", Json.obj("id", project.lng("id"), "name", AEB_SYSTEM_NAME, "baseline", baseline == null ? null : versionBrief(baseline)),
+                "versions", versions.stream().map(this::versionBrief).toList(),
+                "families", fams.stream().map(f -> Json.obj("id", f.lng("id"), "code", f.str("code"), "name", f.str("name"))).toList(),
+                "parameters", parameters);
+    }
+
+    private Map<String, Object> versionBrief(Row v) {
+        return Json.obj("id", v.lng("id"), "label", Vs.versionLabel(v), "version_number", v.lng("version_no"), "status", v.str("status"),
+                "source", v.str("source"), "parent_version_id", v.getLong("parent_version_id"), "notes", v.str("notes"),
+                "created_at", Vs.iso(v.ts("created_date")));
+    }
+
+    // ------------------------------------------------------------------ họ kịch bản + AEB versions
+
+    public List<Map<String, Object>> families() {
+        Row project = queries.currentProject();
+        Row baseline = queries.baselineVersion(project.lng("id"));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Row f : db.list("SELECT * FROM scenarios WHERE project_id = ?", project.lng("id"))) {
+            long baseId = families.latestBaseVersionId(f.lng("id"));
+            Row base = db.first("SELECT * FROM scenario_versions WHERE id = ?", baseId);
+            List<Long> variantIds = families.variantIdsOf(baseId);
+            Map<String, Object> runStats = new LinkedHashMap<>();
+            for (Row r : db.list("SELECT status, COUNT(*) AS n FROM simulation_runs WHERE scenario_id = ? GROUP BY status", f.lng("id"))) {
+                runStats.put(r.str("status"), r.lng("n"));
+            }
+            // Đếm theo baseline hiện hành, không cộng lỗi của các run regression của candidate.
+            int failing = baseline == null ? 0 : regression.criticalVariantIds(baseline, variantIds).size();
+            out.add(Json.obj(
+                    "id", f.lng("id"), "code", f.str("code"), "name", f.str("name"), "description", f.str("description"),
+                    "variants", variantIds.size(),
+                    "parameter_space", Json.asMap(base.json("scenario_ir_json").get("parameter_space")),
+                    "runs", runStats, "failures", failing,
+                    "baseline", baseline == null ? null : Vs.versionLabel(baseline),
+                    "created_at", Vs.iso(f.ts("created_date"))));
+        }
+        return out;
+    }
+
+    public List<Map<String, Object>> aebVersions() {
+        Row project = queries.currentProject();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Row v : queries.versions(project.lng("id"), true)) {
+            Map<String, Object> m = versionBrief(v);
+            m.put("parameters", queries.aebValues(v.lng("id")));
+            out.add(m);
+        }
+        return out;
+    }
+
+    // ------------------------------------------------------------------ 01 · Failure Cases
+
+    private static String outcomeOf(boolean collision, Double minTtc, Double minDistance, boolean falseActivation) {
+        return falseActivation ? "FALSE_BRAKING" : Vs.classifyOutcome(collision, minTtc, minDistance);
+    }
+
+    /** Mọi lần chạy có lỗi, kèm nguyên nhân chính — một dòng mỗi run. */
+    private List<Map<String, Object>> failureRows(long projectId) {
+        List<Row> rows = db.list(
+                "SELECT f.id AS failure_id, f.failure_type, f.severity, f.description AS failure_description, f.created_date, "
+                        + "r.id AS run_id, r.purpose, r.random_seed, r.aeb_version_id, r.run_config_json, r.collision_occurred, r.min_ttc_s, "
+                        + "r.min_distance_m, r.impact_speed_mps, r.is_false_positive, "
+                        + "s.id AS scenario_id, s.code AS scenario_code, s.name AS scenario_name, sv.version_no, "
+                        + "av.label AS aeb_label, av.version_no AS aeb_version_no, "
+                        + "pc.category AS cause_category, pc.cause_code, pc.description AS cause_description, pc.confidence "
+                        + "FROM failures f "
+                        + "JOIN simulation_runs r ON r.id = f.simulation_run_id "
+                        + "JOIN scenarios s ON s.id = r.scenario_id "
+                        + "JOIN scenario_versions sv ON sv.id = r.scenario_version_id "
+                        + "JOIN aeb_versions av ON av.id = r.aeb_version_id "
+                        + "LEFT JOIN (SELECT failure_id, category, cause_code, description, confidence FROM root_causes WHERE is_primary = 1) pc "
+                        + "ON pc.failure_id = f.id "
+                        + "WHERE r.project_id = ? ORDER BY r.id DESC", projectId);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Row r : rows) {
+            Map<String, Object> ir = r.json("run_config_json");
+            Double impact = r.dbl("impact_speed_mps");
+            Double ttc = r.dbl("min_ttc_s");
+            String causeDescription = r.str("cause_description");
+            out.add(Json.obj(
+                    "run_id", r.lng("run_id"),
+                    "failure_id", r.lng("failure_id"),
+                    "failure_type", r.str("failure_type"),
+                    "severity", r.str("severity"),
+                    "outcome", outcomeOf(r.bool("collision_occurred"), ttc, r.dbl("min_distance_m"), r.bool("is_false_positive")),
+                    "failure_class", r.str("cause_category"),
+                    "cause_code", r.str("cause_code"),
+                    "root_cause", causeDescription != null && !causeDescription.isEmpty() ? causeDescription : r.str("failure_description"),
+                    "confidence", r.dbl("confidence"),
+                    "impact_kmh", impact == null ? null : Vs.round(impact * 3.6, 1),
+                    "min_ttc_s", ttc == null ? null : Vs.round(ttc, 2),
+                    "scenario_id", r.lng("scenario_id"),
+                    "family", r.str("scenario_name"),
+                    "variant", Vs.variantLabel(r.str("scenario_code"), r.lng("version_no")),
+                    "summary", Vs.variantSummary(ir),
+                    "weather", ir.get("weather"),
+                    "time_of_day", ir.get("time_of_day"),
+                    "parameters", ir,
+                    "aeb_version_id", r.lng("aeb_version_id"),
+                    "config", r.str("aeb_label") != null && !r.str("aeb_label").isEmpty() ? r.str("aeb_label") : "v" + r.lng("aeb_version_no"),
+                    "purpose", r.str("purpose"),
+                    "created_at", Vs.iso(r.ts("created_date"))));
+        }
+        return out;
+    }
+
+    public Map<String, Object> failureList(Long scenarioId, String failureClass, String outcome, String weather, Long aebVersionId,
+                                           Integer days, int page, int pageSize) {
+        Row project = queries.currentProject();
+        List<Map<String, Object>> rows = failureRows(project.lng("id"));
+
+        List<Map<String, Object>> scoped = new ArrayList<>(rows);
+        if (aebVersionId != null) {
+            scoped.removeIf(r -> !aebVersionId.equals(r.get("aeb_version_id")));
+        }
+        if (days != null && days > 0) {
+            String cutoff = Vs.iso(Vs.now().minusDays(days));
+            scoped.removeIf(r -> ((String) r.get("created_at")).compareTo(cutoff) < 0);
+        }
+
+        String weekAgo = Vs.iso(Vs.now().minusDays(7));
+        Map<String, Object> byClass = new LinkedHashMap<>();
+        STAGE_ORDER.forEach(stage -> byClass.put(stage, 0));
+        for (Map<String, Object> r : scoped) {
+            Object cls = r.get("failure_class");
+            if (cls != null && byClass.containsKey(cls)) {
+                byClass.merge((String) cls, 1, (a, b) -> (Integer) a + 1);
+            }
+        }
+        Map<String, Object> kpis = Json.obj(
+                "total", scoped.size(),
+                "this_week", scoped.stream().filter(r -> ((String) r.get("created_at")).compareTo(weekAgo) >= 0).count(),
+                "collisions", scoped.stream().filter(r -> Vs.OUTCOME_COLLISION.equals(r.get("outcome"))).count(),
+                "near_misses", scoped.stream().filter(r -> Vs.OUTCOME_NEAR_MISS.equals(r.get("outcome"))).count(),
+                "false_braking", scoped.stream().filter(r -> "FALSE_BRAKING".equals(r.get("outcome"))).count(),
+                "by_class", byClass);
+
+        Map<Long, Map<String, Object>> familyCounts = new LinkedHashMap<>();
+        for (Map<String, Object> r : scoped) {
+            Map<String, Object> f = familyCounts.computeIfAbsent((Long) r.get("scenario_id"),
+                    id -> Json.obj("id", id, "name", r.get("family"), "failures", 0));
+            f.put("failures", (Integer) f.get("failures") + 1);
+        }
+
+        List<Map<String, Object>> filtered = scoped.stream()
+                .filter(r -> scenarioId == null || scenarioId.equals(r.get("scenario_id")))
+                .filter(r -> failureClass == null || failureClass.equals(r.get("failure_class")))
+                .filter(r -> outcome == null || outcome.equals(r.get("outcome")))
+                .filter(r -> weather == null || weather.equals(r.get("weather")))
+                .toList();
+        int p = Math.max(1, page);
+        int start = (p - 1) * pageSize;
+        List<Map<String, Object>> items = start >= filtered.size() ? List.of() : filtered.subList(start, Math.min(filtered.size(), start + pageSize));
+        List<Map<String, Object>> familyList = new ArrayList<>(familyCounts.values());
+        familyList.sort(Comparator.comparingInt(f -> -(Integer) f.get("failures"))); // sort ổn định như Python
+        return Json.obj(
+                "kpis", kpis,
+                "families", familyList,
+                "total", filtered.size(),
+                "page", p,
+                "page_size", pageSize,
+                "pages", Math.max(1, (int) Math.ceil(filtered.size() / (double) pageSize)),
+                "items", items);
+    }
+
+    // ------------------------------------------------------------------ 02 · Failure detail + 06 · Playback
+
+    /** Run + các dòng liên quan của nó. */
+    private record RunBundle(Row run, Row scenario, Row variant, Row version, Row vehicle, Row failure, Map<String, Object> raw) {
+    }
+
+    private RunBundle runBundle(long projectId, long runId) {
+        Row run = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ?", runId, projectId);
+        if (run == null) {
+            throw new NotFoundException("simulation run");
+        }
+        if (!"COMPLETED".equals(run.str("status"))) {
+            throw new NotFoundException("kết quả mô phỏng (run chưa chạy xong)");
+        }
+        return new RunBundle(
+                run,
+                db.first("SELECT * FROM scenarios WHERE id = ?", run.lng("scenario_id")),
+                db.first("SELECT * FROM scenario_versions WHERE id = ?", run.lng("scenario_version_id")),
+                db.first("SELECT * FROM aeb_versions WHERE id = ?", run.lng("aeb_version_id")),
+                queries.vehicleById(run.lng("carla_vehicle_model_id")),
+                db.first("SELECT * FROM failures WHERE simulation_run_id = ?", runId),
+                run.json("telemetry_json"));
+    }
+
+    private Map<String, Object> header(RunBundle b) {
+        Row run = b.run();
+        Map<String, Object> raw = b.raw();
+        Map<String, Object> ir = run.json("run_config_json");
+        Object outcome = raw.get("outcome") != null && !"".equals(raw.get("outcome")) ? raw.get("outcome")
+                : Vs.classifyOutcome(run.bool("collision_occurred"), run.dbl("min_ttc_s"), run.dbl("min_distance_m"));
+        Map<String, Object> primary = Json.asList(raw.get("chain")).stream().map(Json::asMap)
+                .filter(s -> !Boolean.TRUE.equals(s.get("passed"))).findFirst().orElse(null);
+        Row vehicle = b.vehicle();
+        return Json.obj(
+                "run_id", run.lng("id"),
+                "purpose", run.str("purpose"),
+                "status", run.str("status"),
+                "seed", run.getLong("random_seed"),
+                "family", b.scenario().str("name"),
+                "scenario_id", b.scenario().lng("id"),
+                "variant", Vs.variantLabel(b.scenario().str("code"), b.variant().lng("version_no")),
+                "variant_id", b.variant().lng("id"),
+                "summary", Vs.variantSummary(ir),
+                "vehicle", vehicle.str("display_name") != null && !vehicle.str("display_name").isEmpty() ? vehicle.str("display_name") : vehicle.str("carla_blueprint_id"),
+                "config", Vs.versionLabel(b.version()),
+                "aeb_version_id", b.version().lng("id"),
+                "simulator", run.str("simulator_version"),
+                "date", Vs.iso(run.ts("queued_at")),
+                "outcome", run.bool("is_false_positive") ? "FALSE_BRAKING" : outcome,
+                "verdict", run.str("verdict"),
+                "failure_type", b.failure() == null ? null : b.failure().str("failure_type"),
+                "failure_class", primary == null ? null : primary.get("stage"),
+                "headline", raw.get("headline") == null ? "" : raw.get("headline"));
+    }
+
+    public Map<String, Object> failureDetail(long runId) {
+        Row project = queries.currentProject();
+        RunBundle b = runBundle(project.lng("id"), runId);
+        Map<String, Double> params = queries.aebValues(b.run().getLong("aeb_version_id"));
+        List<Row> catalog = queries.parameterCatalog();
+        List<Map<String, Object>> similar = similarFailures(project.lng("id"), b, 3);
+
+        Row run = b.run();
+        Map<String, Object> raw = b.raw();
+        Map<String, Object> m = Json.asMap(raw.get("metrics"));
+        Map<String, Object> ir = run.json("run_config_json");
+        Map<String, Object> caseDoc = Json.asMap(raw.get("case"));
+        List<Object> chain = Json.asList(raw.get("chain"));
+        Object rootConfidence = chain.stream().map(Json::asMap).filter(s -> !Boolean.TRUE.equals(s.get("passed")))
+                .map(s -> s.get("confidence")).findFirst().orElse(null);
+
+        List<Object> frames = Json.asList(raw.get("frames"));
+        List<Map<String, Object>> telemetry = new ArrayList<>();
+        for (Object o : frames) {
+            Map<String, Object> f = Json.asMap(o);
+            telemetry.add(Json.obj("t", f.get("t"), "ttc", f.get("ttc") != null ? f.get("ttc") : f.get("ttc_gt"),
+                    "speed_kmh", Vs.round(((Number) f.get("ego_v")).doubleValue() * 3.6, 2)));
+        }
+        Double impact = run.dbl("impact_speed_mps");
+        List<Map<String, Object>> configuration = new ArrayList<>();
+        for (Row p : catalog) {
+            configuration.add(Json.obj("code", p.str("code"), "name", p.str("name"), "unit", p.str("unit"), "value", params.get(p.str("code"))));
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>(header(b));
+        out.put("metrics", Json.obj(
+                "impact_speed_kmh", impact == null ? null : Vs.round(impact * 3.6, 1),
+                "min_distance_m", run.dbl("min_distance_m"),
+                "min_ttc_s", run.dbl("min_ttc_s"),
+                "first_detection_t", run.dbl("first_detection_time_s"),
+                "first_detection_distance_m", run.dbl("first_detection_distance_m"),
+                "aeb_activation_t", run.dbl("aeb_activation_time_s"),
+                "aeb_activation_ttc_s", m.get("aeb_decision_ttc_s"),
+                "fcw_t", run.dbl("fcw_time_s"),
+                "brake_onset_t", m.get("brake_onset_t"),
+                "max_deceleration_mps2", run.dbl("max_deceleration_mps2"),
+                "stopping_distance_m", run.dbl("stopping_distance_m"),
+                "false_activation", run.bool("is_false_positive"),
+                "missed_activation", run.bool("is_false_negative")));
+        out.put("chain", chain);
+        out.put("chain_confidence", rootConfidence);
+        out.put("configuration", configuration);
+        Object weather = ir.get("weather");
+        Object tod = ir.get("time_of_day");
+        out.put("environment", Json.obj(
+                "ego_speed_kmh", ir.get("ego_speed_kmh"),
+                "trigger_distance_m", ir.get("trigger_distance_m"),
+                "pedestrian_speed_mps", ir.get("pedestrian_speed_mps"),
+                "stops_at_curb", ir.get("stops_at_curb"),
+                "weather", Vs.WEATHER_LABELS.getOrDefault(weather == null ? "" : weather.toString(), weather == null ? null : weather.toString()),
+                "time_of_day", Vs.TIME_LABELS.getOrDefault(tod == null ? "" : tod.toString(), tod == null ? null : tod.toString()),
+                "road_friction", caseDoc.get("road_friction")));
+        out.put("ttc_threshold_s", params.get("TTC_THRESHOLD"));
+        out.put("telemetry", telemetry);
+        out.put("events", raw.get("events") == null ? List.of() : raw.get("events"));
+        out.put("scene", scene(raw, b.vehicle()));
+        out.put("similar", similar);
+        return out;
+    }
+
+    private Map<String, Object> scene(Map<String, Object> raw, Row vehicle) {
+        List<Object> frames = Json.asList(raw.get("frames"));
+        int stride = Math.max(1, frames.size() / 60);
+        List<Map<String, Object>> path = new ArrayList<>();
+        for (int i = 0; i < frames.size(); i += stride) {
+            Map<String, Object> f = Json.asMap(frames.get(i));
+            path.add(Json.obj("t", f.get("t"), "x", f.get("ego_x"), "ped_y", f.get("ped_y")));
+        }
+        return Json.obj(
+                "crossing_x", raw.get("crossing_x"),
+                "lane_width_m", Vs.LANE_WIDTH_M,
+                "vehicle_length_m", vehicle.dbl("length_m"),
+                "vehicle_width_m", vehicle.dbl("width_m"),
+                "path", path,
+                "end", frames.isEmpty() ? null : frames.get(frames.size() - 1));
+    }
+
+    /** Ca lỗi gần nhất theo tham số kịch bản, cùng nhóm nguyên nhân chính nếu có. */
+    private List<Map<String, Object>> similarFailures(long projectId, RunBundle b, int limit) {
+        Map<String, Object> me = b.run().json("run_config_json");
+        Object myClass = Json.asList(b.raw().get("chain")).stream().map(Json::asMap)
+                .filter(s -> !Boolean.TRUE.equals(s.get("passed"))).map(s -> s.get("stage")).findFirst().orElse(null);
+        record Scored(double distance, Map<String, Object> row) {
+        }
+        List<Scored> scored = new ArrayList<>();
+        for (Map<String, Object> r : failureRows(projectId)) {
+            if (r.get("run_id").equals(b.run().lng("id"))) {
+                continue;
+            }
+            Map<String, Object> ir = Json.asMap(r.get("parameters"));
+            double distance = Math.abs((num(ir, "ego_speed_kmh") - num(me, "ego_speed_kmh")) / 40)
+                    + Math.abs((num(ir, "trigger_distance_m") - num(me, "trigger_distance_m")) / 30)
+                    + Math.abs((num(ir, "pedestrian_speed_mps") - num(me, "pedestrian_speed_mps")) / 4)
+                    + (java.util.Objects.equals(ir.get("weather"), me.get("weather")) ? 0 : 0.5)
+                    + (java.util.Objects.equals(ir.get("time_of_day"), me.get("time_of_day")) ? 0 : 0.5)
+                    + (java.util.Objects.equals(r.get("failure_class"), myClass) ? 0 : 0.5);
+            scored.add(new Scored(distance, r));
+        }
+        scored.sort(Comparator.comparingDouble(Scored::distance)); // sort ổn định như Python
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Scored s : scored.subList(0, Math.min(limit, scored.size()))) {
+            out.add(Json.obj("run_id", s.row().get("run_id"), "variant", s.row().get("variant"), "summary", s.row().get("summary"),
+                    "similarity_pct", Math.max(0, Vs.roundToLong(100 * (1 - s.distance() / 3.5)))));
+        }
+        return out;
+    }
+
+    private static double num(Map<String, Object> m, String key) {
+        Object v = m.get(key);
+        return v instanceof Number n ? n.doubleValue() : 0.0;
+    }
+
+    /** Các lần chạy khác đã xong của CÙNG biến thể — để so sánh giữa các AEB version. */
+    private List<Map<String, Object>> relatedRuns(Row run) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Row r : db.list("SELECT r.id, r.purpose, r.collision_occurred, r.min_ttc_s, r.min_distance_m, r.is_false_positive, av.label, av.version_no "
+                + "FROM simulation_runs r JOIN aeb_versions av ON av.id = r.aeb_version_id "
+                + "WHERE r.scenario_version_id = ? AND r.id != ? AND r.status = 'COMPLETED' ORDER BY r.id DESC",
+                run.lng("scenario_version_id"), run.lng("id"))) {
+            out.add(Json.obj("run_id", r.lng("id"),
+                    "config", r.str("label") != null && !r.str("label").isEmpty() ? r.str("label") : "v" + r.lng("version_no"),
+                    "purpose", r.str("purpose"),
+                    "outcome", outcomeOf(r.bool("collision_occurred"), r.dbl("min_ttc_s"), r.dbl("min_distance_m"), r.bool("is_false_positive"))));
+        }
+        return out;
+    }
+
+    /** JSON của nút "Tải JSON chạy CARLA" — đúng đầu vào backend đưa cho bộ mô phỏng (ADR-027). */
+    public Map<String, Object> runVariantBundle(long runId) {
+        Row project = queries.currentProject();
+        Row run = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ?", runId, project.lng("id"));
+        if (run == null) {
+            throw new NotFoundException("simulation run");
+        }
+        Map<String, Object> doc = runs.bundleForRun(run);
+        Row scenario = db.first("SELECT * FROM scenarios WHERE id = ?", run.lng("scenario_id"));
+        Row variant = db.first("SELECT * FROM scenario_versions WHERE id = ?", run.lng("scenario_version_id"));
+        Json.asMap(doc.get("source")).putAll(Json.obj(
+                "family", scenario.str("name"),
+                "variant", Vs.variantLabel(scenario.str("code"), variant.lng("version_no")),
+                "exported_at", Vs.isoSeconds(Vs.now())));
+        return doc;
+    }
+
+    public Map<String, Object> playback(long runId) {
+        Row project = queries.currentProject();
+        RunBundle b = runBundle(project.lng("id"), runId);
+        List<Map<String, Object>> related = relatedRuns(b.run());
+        Map<String, Object> raw = b.raw();
+        Double simulated = b.run().dbl("simulated_duration_s");
+        Map<String, Object> out = new LinkedHashMap<>(header(b));
+        out.put("related_runs", related);
+        out.put("duration_s", simulated == null ? 0.0 : simulated);
+        out.put("frames", raw.get("frames") == null ? List.of() : raw.get("frames"));
+        out.put("events", raw.get("events") == null ? List.of() : raw.get("events"));
+        out.put("crossing_x", raw.get("crossing_x"));
+        out.put("lane_width_m", Vs.LANE_WIDTH_M);
+        out.put("vehicle_length_m", b.vehicle().dbl("length_m"));
+        out.put("vehicle_width_m", b.vehicle().dbl("width_m"));
+        out.put("ttc_threshold_s", Json.asMap(raw.get("params")).get("ttc_threshold"));
+        out.put("ego_speed_kmh", b.run().json("run_config_json").get("ego_speed_kmh"));
+        return out;
+    }
+
+    // ------------------------------------------------------------------ 16 · Regression list · 04 · Regression results
+
+    private Map<String, Object> progress(long testId) {
+        long done = 0;
+        long total = 0;
+        for (Row r : db.list("SELECT status, COUNT(*) AS n FROM simulation_runs WHERE regression_test_id = ? GROUP BY status", testId)) {
+            long n = r.lng("n");
+            total += n;
+            if ("COMPLETED".equals(r.str("status")) || "FAILED".equals(r.str("status"))) {
+                done += n;
+            }
+        }
+        return Json.obj("done", done, "total", total);
+    }
+
+    private Map<Long, Row> recommendationsByTest(List<Long> testIds) {
+        Map<Long, Row> out = new LinkedHashMap<>();
+        if (testIds.isEmpty()) {
+            return out;
+        }
+        for (Row r : db.list("SELECT * FROM engineering_recommendations WHERE regression_test_id IN (" + Db.placeholders(testIds.size()) + ")", testIds.toArray())) {
+            out.put(r.lng("regression_test_id"), r);
+        }
+        return out;
+    }
+
+    public Map<String, Object> regressionList(String status) {
+        Row project = queries.currentProject();
+        List<Row> tests = db.list("SELECT * FROM regression_tests WHERE project_id = ? ORDER BY id DESC", project.lng("id"));
+        Map<Long, Row> versions = new LinkedHashMap<>();
+        queries.versions(project.lng("id"), false).forEach(v -> versions.put(v.lng("id"), v));
+        Map<Long, Row> recs = recommendationsByTest(tests.stream().map(t -> t.lng("id")).toList());
+        Map<Long, String> names = queries.displayNames(tests.stream().map(t -> t.getLong("created_by_user_id")).toList());
+
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Row x : tests) {
+            boolean done = "COMPLETED".equals(x.str("execution_status"));
+            Object variantCount = Json.asMap(x.json("pass_criteria_json").get("scenario_set")).get("variant_count");
+            items.add(Json.obj(
+                    "id", x.lng("id"),
+                    "code", RegressionService.testCode(x.lng("id")),
+                    "name", x.str("name"),
+                    "baseline", Vs.versionLabel(versions.get(x.lng("baseline_aeb_version_id"))),
+                    "candidate", Vs.versionLabel(versions.get(x.lng("candidate_aeb_version_id"))),
+                    "candidate_version_id", x.lng("candidate_aeb_version_id"),
+                    "status", RegressionService.displayStatus(x),
+                    "review_decision", RegressionService.displayDecision(recs.get(x.lng("id"))),
+                    "scenarios", variantCount,
+                    "progress", progress(x.lng("id")),
+                    "fixed", done ? x.getLong("fixed_scenarios") : null,
+                    "regressed", done ? x.getLong("regressed_scenarios") : null,
+                    "created_by", names.get(x.getLong("created_by_user_id")),
+                    "created_at", Vs.iso(x.ts("created_date"))));
+        }
+        List<Map<String, Object>> filtered = items.stream().filter(i -> status == null || status.equals(i.get("status"))).toList();
+        Map<String, Object> running = items.stream().filter(i -> "RUNNING".equals(i.get("status"))).findFirst().orElse(null);
+        Object runningProgress = null;
+        if (running != null) {
+            Map<String, Object> rp = new LinkedHashMap<>();
+            rp.put("code", running.get("code"));
+            rp.putAll(Json.asMap(running.get("progress")));
+            runningProgress = rp;
+        }
+        return Json.obj(
+                "kpis", Json.obj(
+                        "total", items.size(),
+                        "passed", items.stream().filter(i -> "PASSED".equals(i.get("status"))).count(),
+                        "failed", items.stream().filter(i -> "FAILED".equals(i.get("status"))).count(),
+                        "running", items.stream().filter(i -> "RUNNING".equals(i.get("status"))).count(),
+                        "running_progress", runningProgress,
+                        "since", items.isEmpty() ? null : items.get(items.size() - 1).get("created_at")),
+                "items", filtered);
+    }
+
+    private Row test(long projectId, long testId) {
+        Row test = db.first("SELECT * FROM regression_tests WHERE id = ? AND project_id = ?", testId, projectId);
+        if (test == null) {
+            throw new NotFoundException("regression test");
+        }
+        return test;
+    }
+
+    public Map<String, Object> regressionDetail(long testId) {
+        Row project = queries.currentProject();
+        Row test = test(project.lng("id"), testId);
+        Row baseline = db.first("SELECT * FROM aeb_versions WHERE id = ?", test.lng("baseline_aeb_version_id"));
+        Row candidate = db.first("SELECT * FROM aeb_versions WHERE id = ?", test.lng("candidate_aeb_version_id"));
+        List<Map<String, Object>> diff = regression.parameterDiff(baseline.lng("id"), candidate.lng("id"));
+        Row scenario = db.first("SELECT * FROM scenarios WHERE id = ?", test.lng("scenario_id"));
+        Map<Long, String> names = queries.displayNames(List.of(test.lng("created_by_user_id")));
+        Map<String, Object> progress = progress(test.lng("id"));
+        Row rec = regression.recommendationFor(test.lng("id"));
+        Map<String, Object> summary = regression.summary(test);
+
+        Map<String, Map<String, Object>> byCode = new LinkedHashMap<>();
+        diff.forEach(d -> byCode.put((String) d.get("code"), d));
+        List<Map<String, Object>> keyParameters = new ArrayList<>();
+        for (String c : KEY_PARAMS) {
+            Map<String, Object> d = byCode.get(c);
+            if (d != null) {
+                keyParameters.add(Json.obj("code", d.get("code"), "name", d.get("name"), "unit", d.get("unit"),
+                        "baseline", d.get("baseline"), "candidate", d.get("candidate"), "changed", d.get("changed")));
+            }
+        }
+        return Json.obj(
+                "id", test.lng("id"),
+                "code", RegressionService.testCode(test.lng("id")),
+                "recommendation_code", RegressionService.recommendationCode(test.lng("id")),
+                "name", test.str("name"),
+                "status", RegressionService.displayStatus(test),
+                "review_decision", RegressionService.displayDecision(rec),
+                "family", scenario.str("name"),
+                "scenario_id", scenario.lng("id"),
+                "baseline", Json.obj("id", baseline.lng("id"), "label", Vs.versionLabel(baseline), "status", baseline.str("status")),
+                "candidate", Json.obj("id", candidate.lng("id"), "label", Vs.versionLabel(candidate), "status", candidate.str("status")),
+                "key_parameters", keyParameters,
+                "parameter_diff", diff,
+                "pass_criteria", test.json("pass_criteria_json"),
+                "simulator", test.str("simulator_version"),
+                "progress", progress,
+                "created_by", names.get(test.getLong("created_by_user_id")),
+                "created_at", Vs.iso(test.ts("created_date")),
+                "summary", summary);
+    }
+
+    // ------------------------------------------------------------------ 17 · Recommendation · 18 · Review
+
+    private static String recommendationStatus(Row test, Row rec) {
+        if ("FAILED".equals(RegressionService.displayStatus(test))) {
+            return "BLOCKED";
+        }
+        return RegressionService.displayDecision(rec);
+    }
+
+    public List<Map<String, Object>> recommendations() {
+        Row project = queries.currentProject();
+        List<Row> tests = db.list("SELECT * FROM regression_tests WHERE project_id = ? AND execution_status = 'COMPLETED' ORDER BY id DESC", project.lng("id"));
+        Map<Long, Row> versions = new LinkedHashMap<>();
+        queries.versions(project.lng("id"), false).forEach(v -> versions.put(v.lng("id"), v));
+        Map<Long, Row> recs = recommendationsByTest(tests.stream().map(t -> t.lng("id")).toList());
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Row x : tests) {
+            Map<String, Object> summary = regression.summary(x);
+            Row rec = recs.get(x.lng("id"));
+            LocalDateTime createdAt = rec != null ? rec.ts("updated_at") : x.ts("finished_at") != null ? x.ts("finished_at") : x.ts("created_date");
+            out.add(Json.obj(
+                    "id", x.lng("id"),
+                    "code", RegressionService.recommendationCode(x.lng("id")),
+                    "regression_code", RegressionService.testCode(x.lng("id")),
+                    "baseline", Vs.versionLabel(versions.get(x.lng("baseline_aeb_version_id"))),
+                    "candidate", Vs.versionLabel(versions.get(x.lng("candidate_aeb_version_id"))),
+                    "status", recommendationStatus(x, rec),
+                    "rates", summary.getOrDefault("rates", Map.of()),
+                    "counts", summary.getOrDefault("counts", Map.of()),
+                    "created_at", Vs.iso(createdAt)));
+        }
+        return out;
+    }
+
+    public Map<String, Object> recommendationDetail(long testId) {
+        Map<String, Object> detail = regressionDetail(testId);
+        Row project = queries.currentProject();
+        Row test = test(project.lng("id"), testId);
+        Row rec = regression.recommendationFor(testId);
+        List<Long> nameIds = new ArrayList<>();
+        nameIds.add(test.getLong("created_by_user_id"));
+        nameIds.add(rec == null ? null : rec.getLong("reviewed_by_user_id"));
+        Map<Long, String> names = queries.displayNames(nameIds);
+
+        Map<String, Object> summary = detail.get("summary") instanceof Map ? Json.asMap(detail.get("summary")) : Map.of();
+        Map<String, Object> rates = Json.asMap(summary.get("rates"));
+        Map<String, Object> counts = Json.asMap(summary.get("counts"));
+        Map<String, Object> ttc = Json.asMap(summary.get("median_min_ttc"));
+        List<Map<String, Object>> changed = Json.asList(detail.get("parameter_diff")).stream().map(Json::asMap)
+                .filter(d -> Boolean.TRUE.equals(d.get("changed"))).toList();
+
+        List<String> tradeoffs = new ArrayList<>();
+        if (!rates.isEmpty() && dbl(rates, "false_activation_candidate_pct") > dbl(rates, "false_activation_baseline_pct")) {
+            tradeoffs.add(String.format(java.util.Locale.ROOT, "False activation rises from %.1f%% to %.1f%% (pedestrians who stop at the curb).",
+                    pyFixed(dbl(rates, "false_activation_baseline_pct"), 1), pyFixed(dbl(rates, "false_activation_candidate_pct"), 1)));
+        }
+        long regressions = counts.get("regressed") instanceof Number n ? n.longValue() : 0;
+        if (regressions > 0) {
+            tradeoffs.add(regressions + " scenario(s) get worse than on the baseline.");
+        }
+        if (!rates.isEmpty() && dbl(rates, "collision_candidate_pct") > 0) {
+            tradeoffs.add(String.format(java.util.Locale.ROOT, "%.1f%% of scenarios still end in a collision — mostly late dart-outs that no threshold can stop in time.",
+                    pyFixed(dbl(rates, "collision_candidate_pct"), 1)));
+        }
+
+        boolean passed = "PASSED".equals(detail.get("status"));
+        String status = recommendationStatus(test, rec);
+        String decision = RegressionService.displayDecision(rec);
+        Map<String, Object> out = new LinkedHashMap<>(detail);
+        out.put("recommendation_status", status);
+        out.put("recommendation_status_label", "BLOCKED".equals(status) ? "Blocked" : REVIEW_LABELS.get(decision));
+        out.put("changed_parameters", changed);
+        out.put("expected_effect", Json.obj(
+                "collision_rate", listOf(rates.get("collision_baseline_pct"), rates.get("collision_candidate_pct")),
+                "false_activation", listOf(rates.get("false_activation_baseline_pct"), rates.get("false_activation_candidate_pct")),
+                "median_min_ttc", listOf(ttc.get("baseline"), ttc.get("candidate")),
+                "fixed", counts.get("fixed"),
+                "regressed", regressions));
+        out.put("tradeoffs", tradeoffs);
+        out.put("confidence", RegressionService.confidence(passed, counts));
+        out.put("evidence", List.of(
+                Json.obj("key", "regression", "title", "Regression " + detail.get("code"), "status", passed ? "PASS" : "FAIL",
+                        "detail", regressions + " regressions · " + (counts.get("fixed") == null ? 0 : counts.get("fixed")) + " fixed"),
+                // FE-13 chưa làm: nói rõ là chưa chạy, không vẽ tick xanh giả.
+                Json.obj("key", "robustness", "title", "Robustness validation", "status", "NOT_RUN", "detail", "FE-13 — not run yet"),
+                Json.obj("key", "pareto", "title", "Pareto front", "status", "NOT_RUN", "detail", "FE-13 — not run yet"),
+                Json.obj("key", "sensitivity", "title", "Sensitivity analysis", "status", "NOT_RUN", "detail", "FE-12 — not run yet")));
+        out.put("review", Json.obj(
+                "decision", decision,
+                "reviewed_by", rec == null ? null : names.get(rec.getLong("reviewed_by_user_id")),
+                "reviewed_at", rec != null && rec.ts("reviewed_at") != null ? Vs.iso(rec.ts("reviewed_at")) : null,
+                "note", rec == null ? null : rec.str("review_notes"),
+                "conditions", rec == null ? null : rec.str("review_conditions"),
+                "requested_by", names.get(test.getLong("created_by_user_id"))));
+        return out;
+    }
+
+    private static List<Object> listOf(Object a, Object b) {
+        List<Object> l = new ArrayList<>();
+        l.add(a);
+        l.add(b);
+        return l;
+    }
+
+    private static double dbl(Map<String, Object> m, String key) {
+        Object v = m.get(key);
+        return v instanceof Number n ? n.doubleValue() : 0.0;
+    }
+
+    /** Làm tròn half-even như ``f"{x:.1f}"`` rồi để ``%.1f`` chỉ còn việc in. */
+    private static double pyFixed(double x, int digits) {
+        return Vs.round(x, digits);
+    }
+}

@@ -71,7 +71,25 @@ export async function apiDownload(path: string, filename: string): Promise<void>
 
 export { request as apiRequest };
 
-async function request<T>(
+/**
+ * GET giống hệt (cùng đường dẫn, cùng token) đang bay thì dùng chung một lời gọi. Trang tổng quan có nhiều component
+ * cùng cần `/vehicsim/context`, `/vehicsim/families`… và React Strict Mode (dev) chạy effect hai lần — nếu không gom,
+ * mỗi API bị gọi 2–4 lần và backend làm lại cùng một truy vấn. Chỉ gom khi lời gọi còn đang chạy, không cache.
+ */
+const inflightGets = new Map<string, Promise<unknown>>();
+
+function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const method = (options?.method ?? "GET").toUpperCase();
+  if (method !== "GET" || options?.body) return send<T>(path, options);
+  const key = `${getStoredToken() ?? ""}|${path}`;
+  const running = inflightGets.get(key);
+  if (running) return running as Promise<T>;
+  const call = send<T>(path, options).finally(() => inflightGets.delete(key));
+  inflightGets.set(key, call);
+  return call;
+}
+
+async function send<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
@@ -144,6 +162,26 @@ export async function verifyRegistration(payload: {
   password: string;
 }): Promise<SessionResponse> {
   return request<SessionResponse>("/auth/register/verify", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Đăng ký một bước của backend Java (`POST /auth/register`): tạo tài khoản EXPERIENCER và cấp phiên luôn. */
+export interface RegisterPayload {
+  email: string;
+  password: string;
+  lastName: string;
+  middleName?: string;
+  firstName: string;
+  dateOfBirth?: string; // yyyy-MM-dd
+  gender?: "MALE" | "FEMALE" | "OTHER";
+  phoneNumber?: string;
+  address?: string;
+}
+
+export async function postRegister(payload: RegisterPayload): Promise<SessionResponse> {
+  return request<SessionResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
   });

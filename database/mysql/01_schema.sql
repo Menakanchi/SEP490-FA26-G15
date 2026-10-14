@@ -1,5 +1,5 @@
 -- =====================================================================
--- VehicSim — MySQL 8.4 schema (30 bảng) — bản rút gọn, đủ 13 FE (ADR-036, ADR-037)
+-- VehicSim — MySQL 8.4 schema (29 bảng) — bản rút gọn, đủ 13 FE (ADR-036, ADR-037, ADR-038)
 -- Từ điển dữ liệu (nghĩa từng cột, ai ghi, JSON): docs/vehicsim/database-schema.md
 -- DB đã tạo từ bản cũ hơn: chạy các file trong database/mysql/migrations/ theo thứ tự
 -- Backend: FastAPI (Python 3.11) + Celery / Redis · Simulator: CARLA 0.9.16 + bộ động học
@@ -62,32 +62,23 @@ CREATE TABLE users (
 -- ---------------------------------------------------------------------
 -- 2. WORKSPACE, CỘNG TÁC, TASK (FE-03, FE-13)  — 6 bảng
 -- ---------------------------------------------------------------------
--- FE-03-03: Admin tạo (ACTIVE, có người duyệt) hoặc Manager xin (PENDING_APPROVAL) → Admin duyệt / từ chối.
+-- FE-03-03: Admin tạo workspace và gán thẳng một MANAGER quản lý (ADR-038) — không có bước xin / duyệt.
+-- Manager xem được mọi thành viên của workspace mình quản lý (kiểm ở API).
 CREATE TABLE workspaces (
-  id                   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  name                 VARCHAR(150) NOT NULL,
-  description          TEXT         NULL,
-  manager_id           BIGINT UNSIGNED NOT NULL,
-  status               ENUM('PENDING_APPROVAL','ACTIVE','ARCHIVED','REJECTED') NOT NULL DEFAULT 'PENDING_APPROVAL',
-  requested_by_user_id BIGINT UNSIGNED NULL,
-  approved_by_user_id  BIGINT UNSIGNED NULL,
-  approved_at          DATETIME NULL,
-  review_note          TEXT NULL COMMENT 'Ghi chú khi Admin duyệt; bắt buộc khi REJECTED (lý do từ chối)',
-  created_date           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name               VARCHAR(150) NOT NULL,
+  description        TEXT         NULL,
+  manager_id         BIGINT UNSIGNED NOT NULL COMMENT 'MANAGER do Admin gán (service kiểm role)',
+  status             ENUM('ACTIVE','ARCHIVED') NOT NULL DEFAULT 'ACTIVE',
+  created_by_user_id BIGINT UNSIGNED NOT NULL COMMENT 'Admin tạo workspace',
+  created_date       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_workspaces_manager_name (manager_id, name),
   KEY idx_workspaces_status (status),
-  KEY idx_workspaces_requester (requested_by_user_id),
-  KEY idx_workspaces_approver (approved_by_user_id),
-  CONSTRAINT fk_workspaces_manager   FOREIGN KEY (manager_id)           REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT fk_workspaces_requester FOREIGN KEY (requested_by_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE RESTRICT,
-  CONSTRAINT fk_workspaces_approver  FOREIGN KEY (approved_by_user_id)  REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT ck_workspaces_approval CHECK (
-    (status = 'PENDING_APPROVAL' AND approved_by_user_id IS NULL AND approved_at IS NULL)
-    OR (status IN ('ACTIVE','REJECTED') AND approved_by_user_id IS NOT NULL AND approved_at IS NOT NULL)
-    OR status = 'ARCHIVED'),
-  CONSTRAINT ck_workspaces_reject_note CHECK (status <> 'REJECTED' OR review_note IS NOT NULL)
+  KEY idx_workspaces_creator (created_by_user_id),
+  CONSTRAINT fk_workspaces_manager FOREIGN KEY (manager_id)         REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_workspaces_creator FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE=InnoDB;
 
 -- Manager thêm Engineer / Reviewer (service kiểm role).
@@ -127,9 +118,8 @@ CREATE TABLE notifications (
   user_id        BIGINT UNSIGNED NOT NULL,
   workspace_id   BIGINT UNSIGNED NULL,
   type           ENUM('SIMULATION_DONE','SIMULATION_FAILED','REGRESSION_DONE','RECOMMENDATION_PENDING',
-                      'RECOMMENDATION_DECIDED','TASK_ASSIGNED','REPORT_SUBMITTED','WORKSPACE_REQUESTED',
-                      'WORKSPACE_DECIDED','MEMBER_ADDED','FAILURE_DETECTED','CANDIDATE_CREATED',
-                      'SYSTEM') NOT NULL,
+                      'RECOMMENDATION_DECIDED','TASK_ASSIGNED','REPORT_SUBMITTED','WORKSPACE_ASSIGNED',
+                      'MEMBER_ADDED','FAILURE_DETECTED','CANDIDATE_CREATED','SYSTEM') NOT NULL,
   title          VARCHAR(255) NOT NULL,
   content        TEXT NOT NULL,
   reference_type VARCHAR(50)  NULL COMMENT 'SIMULATION_RUN, TASK, RECOMMENDATION, WORKSPACE…',
@@ -160,6 +150,7 @@ CREATE TABLE workspace_tasks (
   created_date          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
+  UNIQUE KEY uq_wt_id_project (id, project_id),  -- đích của fk_tr_task
   KEY idx_wt_workspace_status (workspace_id, status),
   KEY idx_wt_project (project_id),
   KEY idx_wt_assignee (assigned_to_user_id),
@@ -171,31 +162,35 @@ CREATE TABLE workspace_tasks (
   CONSTRAINT ck_wt_progress CHECK (progress_pct <= 100)
 ) ENGINE=InnoDB;
 
--- FE-13-03/04: báo cáo kết quả công việc của task; Manager duyệt.
-CREATE TABLE workspace_task_reports (
+-- FE-13-03/04: báo cáo công việc gửi theo từng PROJECT; Manager của workspace chứa project duyệt (ADR-038).
+-- task_id tuỳ chọn; có thì task phải thuộc đúng project của báo cáo (FK ghép fk_tr_task).
+CREATE TABLE task_reports (
   id                   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  task_id              BIGINT UNSIGNED NOT NULL,
+  project_id           BIGINT UNSIGNED NOT NULL,
+  task_id              BIGINT UNSIGNED NULL,
   submitted_by_user_id BIGINT UNSIGNED NOT NULL,
   report_title         VARCHAR(255)  NOT NULL,
   report_content       TEXT          NOT NULL,
   attachment_url       VARCHAR(1024) NULL,
   status               ENUM('SUBMITTED','APPROVED','REJECTED') NOT NULL DEFAULT 'SUBMITTED',
-  reviewed_by_user_id  BIGINT UNSIGNED NULL,
+  reviewed_by_user_id  BIGINT UNSIGNED NULL COMMENT 'Manager duyệt',
   reviewed_at          DATETIME NULL,
   review_note          TEXT NULL,
-  created_date           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_date         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY idx_wtr_task (task_id),
-  KEY idx_wtr_submitter (submitted_by_user_id),
-  KEY idx_wtr_reviewer (reviewed_by_user_id),
-  CONSTRAINT fk_wtr_task      FOREIGN KEY (task_id)              REFERENCES workspace_tasks(id) ON DELETE CASCADE  ON UPDATE RESTRICT,
-  CONSTRAINT fk_wtr_submitter FOREIGN KEY (submitted_by_user_id) REFERENCES users(id)           ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT fk_wtr_reviewer  FOREIGN KEY (reviewed_by_user_id)  REFERENCES users(id)           ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT ck_wtr_review CHECK ((status = 'SUBMITTED') = (reviewed_by_user_id IS NULL AND reviewed_at IS NULL))
+  KEY idx_tr_project_status (project_id, status),
+  KEY idx_tr_task (task_id, project_id),
+  KEY idx_tr_submitter (submitted_by_user_id),
+  KEY idx_tr_reviewer (reviewed_by_user_id),
+  CONSTRAINT fk_tr_project   FOREIGN KEY (project_id)           REFERENCES projects(id)                    ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_tr_task      FOREIGN KEY (task_id, project_id)  REFERENCES workspace_tasks(id, project_id) ON DELETE CASCADE  ON UPDATE RESTRICT,
+  CONSTRAINT fk_tr_submitter FOREIGN KEY (submitted_by_user_id) REFERENCES users(id)                       ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_tr_reviewer  FOREIGN KEY (reviewed_by_user_id)  REFERENCES users(id)                       ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT ck_tr_review CHECK ((status = 'SUBMITTED') = (reviewed_by_user_id IS NULL AND reviewed_at IS NULL))
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 3. PROJECT & VEHICLE DIGITAL TWIN (FE-04)  — 5 bảng
+-- 3. PROJECT & XE (FE-04)  — 4 bảng
 -- ---------------------------------------------------------------------
 -- Người dùng tự tạo project: Workspace Project (workspace_id có giá trị, ENGINEER tạo) / Personal Project
 -- (NULL, EXPERIENCER tạo). Người tạo là owner; thành viên khác nằm ở project_members (ADR-037).
@@ -207,6 +202,7 @@ CREATE TABLE projects (
   description        TEXT NULL,
   status             ENUM('ACTIVE','ARCHIVED') NOT NULL DEFAULT 'ACTIVE',
   created_by_user_id BIGINT UNSIGNED NOT NULL,
+  carla_vehicle_model_id BIGINT UNSIGNED NULL COMMENT 'Xe project đang dùng cho run mới (UC-23); đổi xe thì run cũ giữ xe của nó',
   -- = người tạo khi là project cá nhân, NULL khi thuộc workspace: UNIQUE chặn trùng tên project cá nhân.
   personal_owner_key BIGINT UNSIGNED GENERATED ALWAYS AS (IF(workspace_id IS NULL, created_by_user_id, NULL)) VIRTUAL,
   created_date         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -216,6 +212,8 @@ CREATE TABLE projects (
   UNIQUE KEY uq_projects_personal_name (personal_owner_key, name),
   UNIQUE KEY uq_projects_id_ws (id, workspace_id),
   KEY idx_projects_creator (created_by_user_id),
+  KEY idx_projects_vehicle (carla_vehicle_model_id),
+  CONSTRAINT fk_projects_vehicle   FOREIGN KEY (carla_vehicle_model_id) REFERENCES carla_vehicle_models(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_projects_workspace FOREIGN KEY (workspace_id)       REFERENCES workspaces(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_projects_creator   FOREIGN KEY (created_by_user_id) REFERENCES users(id)      ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE=InnoDB;
@@ -243,93 +241,63 @@ CREATE TABLE project_members (
   CONSTRAINT fk_pm_added_by  FOREIGN KEY (added_by_user_id)         REFERENCES users(id)                                   ON DELETE SET NULL ON UPDATE RESTRICT
 ) ENGINE=InnoDB;
 
--- FE-04-01: danh mục blueprint CARLA; kích thước đọc từ bounding box (CARLA không cho đổi).
+-- FE-04-01/02: danh mục xe = blueprint CARLA + thông số vật lý. Thông số cố định, app KHÔNG cho sửa và
+-- không có phiên bản (ADR-038); kích thước đọc từ bounding box (CARLA không cho đổi).
 CREATE TABLE carla_vehicle_models (
-  id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  carla_blueprint_id VARCHAR(100) NOT NULL,
-  display_name       VARCHAR(150) NULL,
-  length_m           DECIMAL(6,3) NOT NULL,
-  width_m            DECIMAL(6,3) NOT NULL,
-  height_m           DECIMAL(6,3) NOT NULL,
-  num_wheels         TINYINT UNSIGNED NOT NULL DEFAULT 4,
-  is_supported       BOOLEAN NOT NULL DEFAULT TRUE,
+  id                          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  carla_blueprint_id          VARCHAR(100) NOT NULL,
+  display_name                VARCHAR(150) NULL,
+  length_m                    DECIMAL(6,3) NOT NULL,
+  width_m                     DECIMAL(6,3) NOT NULL,
+  height_m                    DECIMAL(6,3) NOT NULL,
+  num_wheels                  TINYINT UNSIGNED NOT NULL DEFAULT 4,
+  -- Ép vào CARLA bằng apply_physics_control (VehiclePhysicsControl / WheelPhysicsControl, 0.9.16).
+  mass_kg                     DECIMAL(8,2) NOT NULL COMMENT 'VehiclePhysicsControl.mass',
+  drag_coefficient            DECIMAL(4,3) NULL COMMENT 'VehiclePhysicsControl.drag_coefficient',
+  center_of_mass_x_m          DECIMAL(6,3) NULL COMMENT 'VehiclePhysicsControl.center_of_mass (m, so với gốc actor); đủ x/y/z hoặc để trống cả ba',
+  center_of_mass_y_m          DECIMAL(6,3) NULL,
+  center_of_mass_z_m          DECIMAL(6,3) NULL,
+  tire_friction               DECIMAL(4,2) NULL COMMENT 'WheelPhysicsControl.tire_friction, mọi bánh (ma sát mặt đường thuộc kịch bản)',
+  max_brake_torque_nm         DECIMAL(8,2) NULL COMMENT 'WheelPhysicsControl.max_brake_torque, mọi bánh',
+  -- Chỉ đối chiếu / bộ động học dùng: CARLA lấy từ mesh hoặc từ vật lý, không ép được.
+  wheelbase_m                 DECIMAL(5,3) NULL COMMENT 'Đối chiếu với vị trí bánh của blueprint',
+  max_speed_mps               DECIMAL(6,2) NULL,
+  max_brake_decel_mps2        DECIMAL(5,2) NOT NULL COMMENT 'Giới hạn phanh của xe — bộ động học dùng; AEB không xin quá mức này',
+  carla_full_brake_decel_mps2 DECIMAL(5,2) NULL COMMENT 'Đo trên CARLA: giảm tốc khi phanh 100% — runner đổi giảm tốc AEB ra bàn đạp (TD-17)',
+  is_supported                BOOLEAN NOT NULL DEFAULT TRUE,
   PRIMARY KEY (id),
   UNIQUE KEY uq_cvm_blueprint (carla_blueprint_id),
   CONSTRAINT ck_cvm_dims   CHECK (length_m > 0 AND width_m > 0 AND height_m > 0),
-  CONSTRAINT ck_cvm_wheels CHECK (num_wheels IN (2, 4))
+  CONSTRAINT ck_cvm_wheels CHECK (num_wheels IN (2, 4)),
+  CONSTRAINT ck_cvm_physics CHECK (mass_kg > 0 AND max_brake_decel_mps2 > 0
+                                   AND (max_speed_mps IS NULL OR max_speed_mps > 0)
+                                   AND (max_brake_torque_nm IS NULL OR max_brake_torque_nm > 0)
+                                   AND (carla_full_brake_decel_mps2 IS NULL OR carla_full_brake_decel_mps2 > 0)
+                                   AND (drag_coefficient IS NULL OR drag_coefficient > 0)
+                                   AND (tire_friction IS NULL OR tire_friction > 0)),
+  CONSTRAINT ck_cvm_center_of_mass CHECK ((center_of_mass_x_m IS NULL) = (center_of_mass_y_m IS NULL)
+                                          AND (center_of_mass_y_m IS NULL) = (center_of_mass_z_m IS NULL))
 ) ENGINE=InnoDB;
 
--- FE-04-02/03: xe của project = các phiên bản Digital Twin. Đúng MỘT version đang dùng mỗi project
--- ("một project dùng một xe tại một thời điểm"). Version đã có run thì không sửa — tạo version mới.
-CREATE TABLE vehicle_versions (
-  id                         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  project_id                 BIGINT UNSIGNED NOT NULL,
-  carla_vehicle_model_id     BIGINT UNSIGNED NOT NULL,
-  version_no                 INT UNSIGNED NOT NULL,
-  name                       VARCHAR(100) NOT NULL DEFAULT 'Ego Vehicle',
-  -- Ép vào CARLA bằng apply_physics_control (VehiclePhysicsControl / WheelPhysicsControl, 0.9.16).
-  mass_kg                    DECIMAL(8,2) NOT NULL COMMENT 'VehiclePhysicsControl.mass',
-  drag_coefficient           DECIMAL(4,3) NULL COMMENT 'VehiclePhysicsControl.drag_coefficient',
-  center_of_mass_x_m         DECIMAL(6,3) NULL COMMENT 'VehiclePhysicsControl.center_of_mass (m, so với gốc actor); đủ x/y/z hoặc để trống cả ba',
-  center_of_mass_y_m         DECIMAL(6,3) NULL,
-  center_of_mass_z_m         DECIMAL(6,3) NULL,
-  tire_friction              DECIMAL(4,2) NULL COMMENT 'WheelPhysicsControl.tire_friction, mọi bánh (ma sát mặt đường thuộc kịch bản)',
-  max_brake_torque_nm        DECIMAL(8,2) NULL COMMENT 'WheelPhysicsControl.max_brake_torque, mọi bánh',
-  -- Chỉ đối chiếu / bộ động học dùng: CARLA lấy từ mesh hoặc từ vật lý, không ép được.
-  wheelbase_m                DECIMAL(5,3) NULL COMMENT 'Đối chiếu với vị trí bánh của blueprint',
-  max_speed_mps              DECIMAL(6,2) NULL,
-  max_brake_decel_mps2       DECIMAL(5,2) NOT NULL COMMENT 'Giới hạn phanh của xe — bộ động học dùng; AEB không xin quá mức này',
-  carla_full_brake_decel_mps2 DECIMAL(5,2) NULL COMMENT 'Đo trên CARLA: giảm tốc khi phanh 100% — runner đổi giảm tốc AEB ra bàn đạp (TD-17)',
-  calibration_status         ENUM('UNVERIFIED','CALIBRATED','VERIFIED') NOT NULL DEFAULT 'UNVERIFIED',
-  calibration_notes          TEXT NULL,
-  calibrated_by_user_id      BIGINT UNSIGNED NULL COMMENT 'Người xác nhận CALIBRATED / VERIFIED',
-  calibrated_at              DATETIME NULL,
-  is_active                 BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Version đang dùng cho run mới',
-  active_project_key         BIGINT UNSIGNED GENERATED ALWAYS AS (IF(is_active, project_id, NULL)) VIRTUAL,
-  created_by_user_id         BIGINT UNSIGNED NOT NULL,
-  created_date                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uq_vv_project_version (project_id, version_no),
-  UNIQUE KEY uq_vv_project_id (project_id, id),
-  UNIQUE KEY uq_vv_one_active (active_project_key),
-  KEY idx_vv_model (carla_vehicle_model_id),
-  KEY idx_vv_creator (created_by_user_id),
-  KEY idx_vv_calibrator (calibrated_by_user_id),
-  CONSTRAINT fk_vv_project FOREIGN KEY (project_id)             REFERENCES projects(id)             ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT fk_vv_model   FOREIGN KEY (carla_vehicle_model_id) REFERENCES carla_vehicle_models(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT fk_vv_creator FOREIGN KEY (created_by_user_id)     REFERENCES users(id)                ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT fk_vv_calibrator FOREIGN KEY (calibrated_by_user_id) REFERENCES users(id)              ON DELETE RESTRICT ON UPDATE RESTRICT,
-  -- UNVERIFIED thì chưa ai xác nhận; CALIBRATED / VERIFIED phải ghi người và thời điểm.
-  CONSTRAINT ck_vv_calibration CHECK ((calibration_status = 'UNVERIFIED') = (calibrated_by_user_id IS NULL AND calibrated_at IS NULL)),
-  CONSTRAINT ck_vv_physics CHECK (mass_kg > 0 AND max_brake_decel_mps2 > 0
-                                  AND (max_speed_mps IS NULL OR max_speed_mps > 0)
-                                  AND (max_brake_torque_nm IS NULL OR max_brake_torque_nm > 0)
-                                  AND (carla_full_brake_decel_mps2 IS NULL OR carla_full_brake_decel_mps2 > 0)
-                                  AND (drag_coefficient IS NULL OR drag_coefficient > 0)
-                                  AND (tire_friction IS NULL OR tire_friction > 0)),
-  CONSTRAINT ck_vv_center_of_mass CHECK ((center_of_mass_x_m IS NULL) = (center_of_mass_y_m IS NULL)
-                                         AND (center_of_mass_y_m IS NULL) = (center_of_mass_z_m IS NULL))
-) ENGINE=InnoDB;
-
--- FE-04, FE-08-03: cảm biến gắn trên một phiên bản xe (vị trí tương đối với xe).
+-- FE-04, FE-08-03: bộ cảm biến của mẫu xe (vị trí tương đối với xe); cố định như thông số xe.
 CREATE TABLE sensors (
-  id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  vehicle_version_id BIGINT UNSIGNED NOT NULL,
-  name               VARCHAR(100) NOT NULL,
-  sensor_type        ENUM('RGB_CAMERA','DEPTH_CAMERA','SEMANTIC_SEGMENTATION','INSTANCE_SEGMENTATION',
-                          'LIDAR','SEMANTIC_LIDAR','RADAR','COLLISION','OBSTACLE','LANE_INVASION') NOT NULL,
-  carla_blueprint_id VARCHAR(100) NOT NULL COMMENT 'vd: sensor.camera.rgb, sensor.lidar.ray_cast, sensor.other.radar',
-  location_x_m       DECIMAL(7,3) NOT NULL DEFAULT 0,
-  location_y_m       DECIMAL(7,3) NOT NULL DEFAULT 0,
-  location_z_m       DECIMAL(7,3) NOT NULL DEFAULT 0,
-  rotation_pitch_deg DECIMAL(7,3) NOT NULL DEFAULT 0,
-  rotation_yaw_deg   DECIMAL(7,3) NOT NULL DEFAULT 0,
-  rotation_roll_deg  DECIMAL(7,3) NOT NULL DEFAULT 0,
-  attributes_json    JSON NULL COMMENT 'Attribute đúng tên blueprint CARLA (image_size_x, fov, range, sensor_tick…)',
-  is_enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+  id                     BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  carla_vehicle_model_id BIGINT UNSIGNED NOT NULL,
+  name                   VARCHAR(100) NOT NULL,
+  sensor_type            ENUM('RGB_CAMERA','DEPTH_CAMERA','SEMANTIC_SEGMENTATION','INSTANCE_SEGMENTATION',
+                              'LIDAR','SEMANTIC_LIDAR','RADAR','COLLISION','OBSTACLE','LANE_INVASION') NOT NULL,
+  carla_blueprint_id     VARCHAR(100) NOT NULL COMMENT 'vd: sensor.camera.rgb, sensor.lidar.ray_cast, sensor.other.radar',
+  location_x_m           DECIMAL(7,3) NOT NULL DEFAULT 0,
+  location_y_m           DECIMAL(7,3) NOT NULL DEFAULT 0,
+  location_z_m           DECIMAL(7,3) NOT NULL DEFAULT 0,
+  rotation_pitch_deg     DECIMAL(7,3) NOT NULL DEFAULT 0,
+  rotation_yaw_deg       DECIMAL(7,3) NOT NULL DEFAULT 0,
+  rotation_roll_deg      DECIMAL(7,3) NOT NULL DEFAULT 0,
+  attributes_json        JSON NULL COMMENT 'Attribute đúng tên blueprint CARLA (image_size_x, fov, range, sensor_tick…)',
+  is_enabled             BOOLEAN NOT NULL DEFAULT TRUE,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_sensors_version_name (vehicle_version_id, name),
-  CONSTRAINT fk_sensors_version FOREIGN KEY (vehicle_version_id) REFERENCES vehicle_versions(id) ON DELETE CASCADE ON UPDATE RESTRICT
+  UNIQUE KEY uq_sensors_model_name (carla_vehicle_model_id, name),
+  CONSTRAINT fk_sensors_model FOREIGN KEY (carla_vehicle_model_id) REFERENCES carla_vehicle_models(id) ON DELETE CASCADE ON UPDATE RESTRICT
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
@@ -453,13 +421,13 @@ CREATE TABLE scenario_versions (
 -- 6. TỐI ƯU & REGRESSION (FE-11, FE-12) — tạo trước simulation_runs vì run trỏ tới
 -- ---------------------------------------------------------------------
 -- FE-11-01: tối ưu trên CẢ HỌ kịch bản (chống học vẹt một kịch bản), xuất phát từ một AEB version.
--- Mọi trial chạy cùng MỘT phiên bản xe và MỘT bộ mô phỏng — nếu không, điểm số các trial không so được.
+-- Mọi trial chạy cùng MỘT xe và MỘT bộ mô phỏng — nếu không, điểm số các trial không so được.
 CREATE TABLE optimization_runs (
   id                    BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   project_id            BIGINT UNSIGNED NOT NULL,
   scenario_id           BIGINT UNSIGNED NOT NULL,
   base_aeb_version_id   BIGINT UNSIGNED NOT NULL,
-  vehicle_version_id    BIGINT UNSIGNED NOT NULL,
+  carla_vehicle_model_id BIGINT UNSIGNED NOT NULL,
   simulator_version     VARCHAR(30) NOT NULL COMMENT 'vd: vehicsim-kinematic-1.0, carla-0.9.16 — như simulation_runs',
   name                  VARCHAR(150) NOT NULL,
   algorithm             ENUM('BAYESIAN_OPTIMIZATION','NSGA_II','RANDOM_SEARCH') NOT NULL,
@@ -479,12 +447,12 @@ CREATE TABLE optimization_runs (
   UNIQUE KEY uq_or_project_id (project_id, id),
   KEY idx_or_scenario (project_id, scenario_id),
   KEY idx_or_base (project_id, base_aeb_version_id),
-  KEY idx_or_vehicle (project_id, vehicle_version_id),
+  KEY idx_or_vehicle (carla_vehicle_model_id),
   KEY idx_or_creator (created_by_user_id),
   CONSTRAINT fk_or_project  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_or_scenario FOREIGN KEY (project_id, scenario_id) REFERENCES scenarios(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_or_base     FOREIGN KEY (project_id, base_aeb_version_id) REFERENCES aeb_versions(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT fk_or_vehicle  FOREIGN KEY (project_id, vehicle_version_id) REFERENCES vehicle_versions(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_or_vehicle  FOREIGN KEY (carla_vehicle_model_id) REFERENCES carla_vehicle_models(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_or_creator  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT ck_or_trials CHECK (max_trials > 0 AND (n_initial_points IS NULL OR n_initial_points <= max_trials)),
   CONSTRAINT ck_or_acquisition CHECK (acquisition_function IS NULL OR algorithm = 'BAYESIAN_OPTIMIZATION')
@@ -530,7 +498,7 @@ CREATE TABLE regression_tests (
   scenario_id              BIGINT UNSIGNED NOT NULL,
   baseline_aeb_version_id  BIGINT UNSIGNED NOT NULL,
   candidate_aeb_version_id BIGINT UNSIGNED NOT NULL,
-  vehicle_version_id       BIGINT UNSIGNED NOT NULL COMMENT 'Mọi cặp run chạy đúng phiên bản xe này',
+  carla_vehicle_model_id   BIGINT UNSIGNED NOT NULL COMMENT 'Mọi cặp run chạy đúng xe này',
   simulator_version        VARCHAR(30) NOT NULL COMMENT 'Mọi cặp run chạy đúng bộ mô phỏng này (không trộn động học với CARLA)',
   name                     VARCHAR(150) NULL,
   description              TEXT NULL,
@@ -547,14 +515,14 @@ CREATE TABLE regression_tests (
   PRIMARY KEY (id),
   UNIQUE KEY uq_rt_project_id (project_id, id),
   UNIQUE KEY uq_rt_id_candidate (id, candidate_aeb_version_id),
-  UNIQUE KEY uq_rt_run_scope (id, candidate_aeb_version_id, vehicle_version_id, simulator_version),  -- đích của fk_sr_regression
+  UNIQUE KEY uq_rt_run_scope (id, candidate_aeb_version_id, carla_vehicle_model_id, simulator_version),  -- đích của fk_sr_regression
   KEY idx_rt_scenario (project_id, scenario_id),
   KEY idx_rt_baseline (project_id, baseline_aeb_version_id),
   KEY idx_rt_candidate (project_id, candidate_aeb_version_id),
-  KEY idx_rt_vehicle (project_id, vehicle_version_id),
+  KEY idx_rt_vehicle (carla_vehicle_model_id),
   KEY idx_rt_creator (created_by_user_id),
   CONSTRAINT fk_rt_project   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT fk_rt_vehicle   FOREIGN KEY (project_id, vehicle_version_id) REFERENCES vehicle_versions(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_rt_vehicle   FOREIGN KEY (carla_vehicle_model_id) REFERENCES carla_vehicle_models(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_rt_scenario  FOREIGN KEY (project_id, scenario_id) REFERENCES scenarios(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_rt_baseline  FOREIGN KEY (project_id, baseline_aeb_version_id) REFERENCES aeb_versions(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_rt_candidate FOREIGN KEY (project_id, candidate_aeb_version_id) REFERENCES aeb_versions(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
@@ -566,13 +534,13 @@ CREATE TABLE regression_tests (
 -- ---------------------------------------------------------------------
 -- 7. MÔ PHỎNG, ĐÁNH GIÁ, LỖI (FE-07, FE-08, FE-09, FE-10)  — 5 bảng
 -- ---------------------------------------------------------------------
--- Một lần chạy một biến thể với một phiên bản xe + một AEB version + một seed; gồm luôn kết quả đánh giá AEB.
+-- Một lần chạy một biến thể với một xe + một AEB version + một seed; gồm luôn kết quả đánh giá AEB.
 CREATE TABLE simulation_runs (
   id                      BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   project_id              BIGINT UNSIGNED NOT NULL,
   scenario_id             BIGINT UNSIGNED NOT NULL COMMENT 'lặp lại có chủ đích để FK ghép ép cùng project',
   scenario_version_id     BIGINT UNSIGNED NOT NULL,
-  vehicle_version_id      BIGINT UNSIGNED NOT NULL,
+  carla_vehicle_model_id  BIGINT UNSIGNED NOT NULL,
   aeb_version_id          BIGINT UNSIGNED NOT NULL,
   simulator_type          ENUM('KINEMATIC','CARLA') NOT NULL,
   simulator_version       VARCHAR(30) NOT NULL COMMENT 'Danh tính bộ mô phỏng: vehicsim-kinematic-1.0 | carla-0.9.16; đổi logic động học thì đổi tên',
@@ -616,15 +584,15 @@ CREATE TABLE simulation_runs (
   started_at              DATETIME NULL,
   ended_at                DATETIME NULL,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_sr_replay (id, scenario_version_id, random_seed, simulator_version, vehicle_version_id),
+  UNIQUE KEY uq_sr_replay (id, scenario_version_id, random_seed, simulator_version, carla_vehicle_model_id),
   UNIQUE KEY uq_sr_pair (id, baseline_run_id, regression_test_id, scenario_version_id),
   KEY idx_sr_project_status (project_id, status),
   KEY idx_sr_scenario (project_id, scenario_id),
   KEY idx_sr_variant (scenario_id, scenario_version_id),
-  KEY idx_sr_vehicle (project_id, vehicle_version_id),
+  KEY idx_sr_vehicle (carla_vehicle_model_id),
   KEY idx_sr_aeb (project_id, aeb_version_id),
-  KEY idx_sr_baseline (baseline_run_id, scenario_version_id, random_seed, simulator_version, vehicle_version_id),
-  KEY idx_sr_regression (regression_test_id, aeb_version_id, vehicle_version_id, simulator_version),
+  KEY idx_sr_baseline (baseline_run_id, scenario_version_id, random_seed, simulator_version, carla_vehicle_model_id),
+  KEY idx_sr_regression (regression_test_id, aeb_version_id, carla_vehicle_model_id, simulator_version),
   KEY idx_sr_simulator (project_id, simulator_version),
   KEY idx_sr_trial (optimization_trial_id, aeb_version_id),
   KEY idx_sr_analysis (project_id, analysis_result_id, aeb_version_id),
@@ -633,14 +601,14 @@ CREATE TABLE simulation_runs (
   CONSTRAINT fk_sr_project    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_sr_scenario   FOREIGN KEY (project_id, scenario_id) REFERENCES scenarios(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_sr_variant    FOREIGN KEY (scenario_id, scenario_version_id) REFERENCES scenario_versions(scenario_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT fk_sr_vehicle    FOREIGN KEY (project_id, vehicle_version_id) REFERENCES vehicle_versions(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_sr_vehicle    FOREIGN KEY (carla_vehicle_model_id) REFERENCES carla_vehicle_models(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_sr_aeb        FOREIGN KEY (project_id, aeb_version_id) REFERENCES aeb_versions(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  -- Run REGRESSION chạy lại ĐÚNG biến thể + seed + bộ mô phỏng (cả phiên bản) + phiên bản xe của run baseline…
-  CONSTRAINT fk_sr_baseline   FOREIGN KEY (baseline_run_id, scenario_version_id, random_seed, simulator_version, vehicle_version_id)
-    REFERENCES simulation_runs(id, scenario_version_id, random_seed, simulator_version, vehicle_version_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  -- Run REGRESSION chạy lại ĐÚNG biến thể + seed + bộ mô phỏng (cả phiên bản) + xe của run baseline…
+  CONSTRAINT fk_sr_baseline   FOREIGN KEY (baseline_run_id, scenario_version_id, random_seed, simulator_version, carla_vehicle_model_id)
+    REFERENCES simulation_runs(id, scenario_version_id, random_seed, simulator_version, carla_vehicle_model_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   -- …với ĐÚNG candidate, xe và bộ mô phỏng mà regression test đã chốt.
-  CONSTRAINT fk_sr_regression FOREIGN KEY (regression_test_id, aeb_version_id, vehicle_version_id, simulator_version)
-    REFERENCES regression_tests(id, candidate_aeb_version_id, vehicle_version_id, simulator_version) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_sr_regression FOREIGN KEY (regression_test_id, aeb_version_id, carla_vehicle_model_id, simulator_version)
+    REFERENCES regression_tests(id, candidate_aeb_version_id, carla_vehicle_model_id, simulator_version) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_sr_trial      FOREIGN KEY (optimization_trial_id, aeb_version_id)
     REFERENCES optimization_trials(id, candidate_aeb_version_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   -- Run robustness phải cùng project và chạy ĐÚNG AEB version mà lần kiểm robustness đánh giá.
@@ -887,8 +855,10 @@ INSERT INTO aeb_parameters (code, name, category, unit, description, min_value, 
   ('JERK_LIMIT', 'Jerk Limit', 'CONTROL', 'm/s3', 'Giới hạn thay đổi gia tốc khi phanh', 5.00, 50.00, 20.00, 9),
   ('ACTUATOR_RESPONSE_TIME', 'Actuator Response Time', 'VEHICLE_DYNAMICS', 's', 'Thời gian phản hồi của cơ cấu chấp hành phanh', 0.02, 0.30, 0.10, 10);
 
-INSERT INTO carla_vehicle_models (carla_blueprint_id, display_name, length_m, width_m, height_m) VALUES
-  ('vehicle.audi.etron', 'Audi e-tron', 4.750, 1.930, 1.670);
+-- Thông số vật lý giữ đúng giá trị xe mặc định của MVP (run cũ tái lập được); chưa đo lại trên CARLA (TD-17).
+INSERT INTO carla_vehicle_models (carla_blueprint_id, display_name, length_m, width_m, height_m,
+                                  mass_kg, tire_friction, wheelbase_m, max_speed_mps, max_brake_decel_mps2) VALUES
+  ('vehicle.audi.etron', 'Audi e-tron', 4.750, 1.930, 1.670, 2100.00, 1.00, 2.950, 50.00, 9.50);
 
 INSERT INTO tech_references (ref_code, ref_type, ref_name, ref_value, unit, description, source_type, source_title, organization, publication_year) VALUES
   ('GRAV_ACCEL', 'CONSTANT', 'Standard Gravity Acceleration', 9.80665, 'm/s2', 'Gia tốc trọng trường tiêu chuẩn dùng tính tải trọng & lực phanh tối đa', 'STANDARD', 'ISO 80000-3:2019 Quantities and units - Space and time', 'ISO', 2019),
