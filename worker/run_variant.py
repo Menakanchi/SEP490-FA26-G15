@@ -33,15 +33,15 @@ vật lý. Giảm tốc ghi vào frame bị kẹp ở μ·g và số khung bị 
 
 Xe (ADR-033)
 ------------
-Blueprint và vật lý lấy từ ``vehicle.carla`` của bundle, tức từ DB (``vehicle_versions`` hoặc
-cấu hình xe đem so sánh): spawn đúng blueprint, ép khối lượng / hệ số cản / trường bánh
+Blueprint và vật lý lấy từ ``vehicle.carla`` của bundle, tức từ DB (``carla_vehicle_models``, ADR-038):
+spawn đúng blueprint, ép khối lượng / hệ số cản / trường bánh
 xe bằng ``apply_physics_control``, đọc lại sau khi xe tiếp đất rồi ghi bảng đối chiếu
 "cấu hình ↔ CARLA" vào ``case.carla.vehicle_check``. Kích thước không ép được (gắn với
 mesh); phanh tối đa chỉ ép được chiều yếu hơn (AEB không xin quá ``max_brake_decel_mps2``).
 ``--blueprint`` trên dòng lệnh vẫn thắng, để thử nhanh một xe khác.
 
-Ranh giới: file này được ``import carla`` (venv worker, Python 3.10); ``src/`` thì
-không bao giờ (``test_src_never_imports_carla``). ``carla`` chỉ được import trong
+Ranh giới: file này được ``import carla`` (venv worker, Python 3.10); lõi ``vehicsim_core`` và backend Java thì
+không bao giờ (``worker/tests``). ``carla`` chỉ được import trong
 ``run_on_carla`` để test kiểm phần hình học không cần CARLA.
 """
 
@@ -59,9 +59,9 @@ from pathlib import Path
 
 import sim_common
 
-from src.services.vehicsim.aeb_stack import DT, record_event
-from src.services.vehicsim.bundle import PHYSICS_SCALARS, WHEEL_FIELDS, RunSpec, carla_simulator
-from src.services.vehicsim.simulator import (
+from vehicsim_core.aeb_stack import DT, record_event
+from vehicsim_core.bundle import PHYSICS_SCALARS, WHEEL_FIELDS, RunSpec, carla_simulator
+from vehicsim_core.simulator import (
     CURB_SLOWDOWN_M,
     CURB_STOP_Y_M,
     MAX_DURATION_S,

@@ -87,3 +87,10 @@ graphify-out/
 # Cấu hình Claude Code riêng từng máy (hook graphify dùng đường dẫn tuyệt đối)
 .claude/
 CLAUDE.local.md
+
+# Java / Maven
+target/
+*.class
+.mvn/wrapper/maven-wrapper.jar
+src_python_backup/
+

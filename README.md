@@ -63,7 +63,7 @@ src/
   services/llm.py      cửa duy nhất tới LLM (OpenAI / DeepSeek)
 worker/                run_variant.py (JSON -> CARLA), kinematic_sim.py, follow_hero.py
 frontend/              Next.js 16 — app/ (Tổng quan, kịch bản, AEB, phân tích, kiểm định, hồ sơ)
-database/mysql/        01_schema.sql (30 bảng) + migrations/
+database/mysql/        01_schema.sql (29 bảng) + migrations/
 docs/                  vehicsim/ (kiến trúc, từ điển dữ liệu), adr/, exec-plans/
 ```
 

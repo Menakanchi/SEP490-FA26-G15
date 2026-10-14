@@ -127,7 +127,7 @@ async def test_regression_never_pairs_kinematic_with_carla(client, engineer, use
     assert len(pairs) == len(TINY_FAMILY["ego_speeds_kmh"])
     for baseline, candidate_run in pairs:
         assert baseline.simulator_version == candidate_run.simulator_version == "carla-0.9.15"
-        assert baseline.vehicle_version_id == candidate_run.vehicle_version_id
+        assert baseline.carla_vehicle_model_id == candidate_run.carla_vehicle_model_id
         assert baseline.random_seed == candidate_run.random_seed
     # Baseline động học cũ vẫn còn, chỉ không được ghép cặp.
     assert any(r.simulator_version == "vehicsim-kinematic-1.0" for r in by_id.values())

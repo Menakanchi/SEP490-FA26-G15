@@ -13,8 +13,8 @@ import argparse
 
 import sim_common
 
-from src.services.vehicsim.bundle import KINEMATIC_SIMULATOR
-from src.services.vehicsim.simulator import simulate
+from vehicsim_core.bundle import KINEMATIC_SIMULATOR
+from vehicsim_core.simulator import simulate
 
 
 def main(argv: list[str] | None = None) -> int:

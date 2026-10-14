@@ -1,8 +1,7 @@
 <#
 Start VehicSim locally on Windows:
   Docker Desktop -> MySQL + Redis (docker compose)
-  Celery worker (queue vehicsim.simulation, --pool=solo)
-  Backend  http://localhost:8001  (FastAPI)
+  Backend  http://localhost:8001  (Spring Boot; simulations run as worker/ Python child processes)
   Frontend http://localhost:3000  (Next.js dev)
 
 Each service opens in its own PowerShell window; close the window to stop it.
@@ -14,9 +13,10 @@ Usage: double-click scripts\dev-up.cmd, or
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
-$uv = (Get-Command uv -ErrorAction SilentlyContinue).Source
-if (-not $uv) { $uv = Join-Path $env:APPDATA 'Python\Python311\Scripts\uv.exe' }
-if (-not (Test-Path $uv)) { throw "uv not found. Install it with: pip install --user uv" }
+$mvnw = Join-Path $root 'mvnw.cmd'
+if (-not (Test-Path $mvnw)) { throw "mvnw.cmd not found in $root" }
+if (-not (Get-Command java -ErrorAction SilentlyContinue)) { throw 'java not found (JDK 21 required).' }
+if (-not (Get-Command python -ErrorAction SilentlyContinue)) { Write-Host 'WARNING: python not on PATH - simulations need Python >= 3.10 (set VEHICSIM_WORKER_PYTHON).' }
 
 # Run a native command silently and return success. Goes through cmd.exe because
 # Windows PowerShell 5.1 turns redirected stderr (e.g. compose warnings) into errors.
@@ -57,15 +57,11 @@ Write-Host '  MySQL + Redis ready'
 # 3. App services
 Write-Host 'Starting app services...'
 $env:PYTHONIOENCODING = 'utf-8'
-$workerRunning = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'celery -A src\.celery_app worker' }
-if ($workerRunning) { Write-Host '  skip: Celery worker already running' }
-else { Start-Window 'VehicSim worker' $root "& '$uv' run celery -A src.celery_app worker --pool=solo --loglevel=INFO -Q vehicsim.simulation" }
-
 if (Test-Port 8001) { Write-Host '  skip: port 8001 already in use (backend running?)' }
-else { Start-Window 'VehicSim backend :8001' $root "& '$uv' run uvicorn src.main:app --host 127.0.0.1 --port 8001" }
+else { Start-Window 'VehicSim backend :8001' $root "& '$mvnw' spring-boot:run" }
 
 if (Test-Port 3000) { Write-Host '  skip: port 3000 already in use (frontend running?)' }
 else { Start-Window 'VehicSim frontend :3000' (Join-Path $root 'frontend') "`$env:NEXT_PUBLIC_API_URL = 'http://localhost:8001'; npm.cmd run dev -- --port 3000" }
 
 Write-Host ''
-Write-Host 'Open http://localhost:3000 (backend health: http://localhost:8001/health)'
+Write-Host 'Open http://localhost:3000 (backend health: http://localhost:8001/health, API docs: http://localhost:8001/swagger-ui.html)'

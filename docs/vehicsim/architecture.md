@@ -31,7 +31,7 @@ mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước
 Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  FastAPI /api/v1/vehicsim/*  (vehicsim_routes.py: chỉ đổi lỗi → HTTP)
                               │
                               ▼
-                  src/services/vehicsim/*  ──SQLAlchemy Core──▶  MySQL (19/30 bảng)
+                  src/services/vehicsim/*  ──SQLAlchemy Core──▶  MySQL (19/29 bảng)
                               │ dispatch(run_ids)
                               ▼
               Redis db1 (broker) ──▶ Celery worker `vehicsim.run_simulation`
@@ -55,7 +55,7 @@ mặc định `celery`. Worker Windows chạy `--pool=solo`; worker chạy CARLA
 | File | Trách nhiệm |
 |---|---|
 | `tables.py` | Bảng SQLAlchemy Core mirror `01_schema.sql` (chỉ cột code dùng; chung `metadata` với auth) |
-| `bootstrap.py` | Workspace/project/phiên bản xe mặc định, 10 tham số AEB (`AEB_PARAMETER_SEED`), baseline v1.0 (TTC 1,5 s) |
+| `bootstrap.py` | Workspace/project mặc định (chọn sẵn xe `vehicle.audi.etron`), 10 tham số AEB (`AEB_PARAMETER_SEED`), baseline v1.0 (TTC 1,5 s) |
 | `describe.py` | Câu mô tả → LLM → IR đã kiểm; sửa ≤ 3 lần; lùi về luật khi LLM lỗi |
 | `family.py` | `FamilySpec` (lưới, giới hạn, ≤ 300 biến thể), tạo họ + bản gốc + biến thể trong một transaction |
 | `aeb_stack.py` | **Hệ AEB cần kiểm thử**, dùng chung cho mọi bộ mô phỏng: `AebParams` (10 tham số), `AebStack.step` mỗi tick = perception (độ tin cậy theo thời tiết/giờ/khoảng cách + nhiễu theo seed) → decision (TTC + hành lang) → control (trễ, actuator, tăng lực phanh). Chỉ thư viện chuẩn |
@@ -122,12 +122,13 @@ hiệu chuẩn xong (TD-17).
   riêng — quyết định của nhóm, đừng tranh luận lại.
 - **Run baseline** (`purpose = BASELINE`) và **run regression** (`REGRESSION`, có
   `regression_test_id` + `baseline_run_id`); FK composite ép run regression dùng
-  đúng biến thể + seed + bộ mô phỏng + phiên bản xe của run baseline, và đúng candidate / xe /
+  đúng biến thể + seed + bộ mô phỏng + xe của run baseline, và đúng candidate / xe /
   bộ mô phỏng mà regression test đã chốt.
 - **AEB**: `aeb_versions` (BASELINE/CANDIDATE/ACCEPTED/REJECTED/ARCHIVED; UNIQUE ép
   mỗi project đúng một BASELINE) + `aeb_parameter_values` cho đúng 10 tham số.
-- **Xe**: `vehicle_versions` (Digital Twin có phiên bản, đúng một bản đang dùng mỗi project; run giữ
-  đúng phiên bản nó đã chạy) + `carla_vehicle_models` (blueprint, kích thước từ mesh). Bộ động học đọc
+- **Xe**: `carla_vehicle_models` — danh mục xe gồm blueprint, kích thước từ mesh và thông số vật lý cố định,
+  không phiên bản, app không sửa (ADR-038); project chọn xe (`projects.carla_vehicle_model_id`), run giữ đúng
+  xe nó đã chạy. Bộ động học đọc
   dài/rộng/phanh tối đa; runner CARLA spawn `carla_blueprint_id`, ép khối lượng + hệ số cản + trọng tâm
   (`apply_physics_control`) và ghi bảng đối chiếu xe ↔ CARLA vào `telemetry_json.case.carla.vehicle_check`
   — kích thước không ép được (mesh của blueprint quyết định).
@@ -137,7 +138,7 @@ hiệu chuẩn xong (TD-17).
 - **Kết quả chấm** AEB/FCW nằm ngay trong `simulation_runs` (verdict, va chạm, min TTC, phanh oan,
   FCW…), chuỗi khung ở `telemetry_json`. Regression lưu số đếm + `regression_test_items`; bảng tổng hợp
   (`regression.summary`) tính lại từ run. Quyết định của Reviewer ở `engineering_recommendations`.
-- Schema có 30 bảng (13 FE, ADR-036, ADR-037; 5 role hệ thống, mỗi người một role, ADR-035); code đọc/ghi 19 bảng. Bảng
+- Schema có 29 bảng (13 FE, ADR-036 → ADR-038; 5 role hệ thống, mỗi người một role, ADR-035); code đọc/ghi 19 bảng. Bảng
   chưa có code, nghĩa từng cột và lệnh nâng DB cũ ở
   [database-schema.md](database-schema.md).
 
@@ -217,7 +218,7 @@ brake, …), chưa có ánh xạ từ IR người đi bộ băng ngang của Veh
 | CARLA và động học dùng chung AEB, frame, số đo | `test_runner_reuses_the_kinematic_aeb_and_result_builders` |
 | Run CARLA đi qua tiến trình con; crash/sai phiên bản chỉ hỏng run đó | `test_carla_runs_go_through_the_simulator_subprocess`, `test_simulator_failure_marks_only_that_run_failed` |
 | CLI quá giờ được xin dừng trước khi bị giết, kịp dọn CARLA | `test_hung_simulator_is_asked_to_stop_and_cleans_up` |
-| Regression không bao giờ ghép kết quả động học với CARLA, hay khác phiên bản xe (MySQL cũng ép bằng `fk_sr_baseline` / `fk_sr_regression`) | `test_regression_never_pairs_kinematic_with_carla` |
+| Regression không bao giờ ghép kết quả động học với CARLA, hay khác xe (MySQL cũng ép bằng `fk_sr_baseline` / `fk_sr_regression`) | `test_regression_never_pairs_kinematic_with_carla` |
 | Thông số xe lấy từ DB: CARLA nhận blueprint + vật lý của xe và báo rõ cái gì không ép được | `test_bundle_carries_the_main_vehicle_into_carla`, `test_db_vehicle_is_forced_into_carla_and_checked` |
 | Mọi tham số AEB được simulator dùng; seed Python khớp SQL | `test_every_seeded_parameter_is_used_by_the_simulator`, `test_python_parameter_seed_matches_sql_seed` |
 | Mọi route API `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi được, MANAGER chỉ đọc | `test_every_vehicsim_route_requires_login`, `test_viewer_can_read_but_not_write`, `test_registered_experience_user_can_run_but_manager_only_cannot` |

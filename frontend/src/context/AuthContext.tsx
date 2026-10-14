@@ -8,9 +8,10 @@ import {
   getMe,
   getStoredToken,
   postLogin,
+  postRegister,
   storeToken,
   updateMyProfile,
-  verifyRegistration,
+  type RegisterPayload,
 } from "@/services/api";
 
 /**
@@ -122,11 +123,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applySession],
   );
 
-  const completeRegistration = useCallback(
-    async (email: string, code: string, fullName: string, password: string) =>
-      applySession(
-        await verifyRegistration({ email: email.trim(), code: code.trim(), full_name: fullName.trim(), password }),
-      ),
+  const register = useCallback(
+    async (payload: RegisterPayload) => applySession(await postRegister({ ...payload, email: payload.email.trim() })),
     [applySession],
   );
 
@@ -154,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!user && !!token,
         isLoading,
         login,
-        completeRegistration,
+        register,
         changePassword,
         updateProfile,
         logout: clearSession,
