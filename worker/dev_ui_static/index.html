@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kịch bản → CARLA</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <h1>Từ mô tả kịch bản tới dữ liệu sensor CARLA</h1>
+      <p class="sub">Mô tả bằng tiếng Việt → sinh <code>.xosc</code> → chạy ScenarioRunner trên CARLA → xem radar, IMU, camera.</p>
+    </div>
+    <div class="status" id="status">đang kiểm tra…</div>
+  </header>
+  <ol class="steps" id="steps"></ol>
+
+  <!-- Bước 1 -->
+  <section class="card" id="describe">
+    <div class="card-head">
+      <div>
+        <h2>1. Mô tả kịch bản</h2>
+        <p class="sub">Mỗi dòng là một kịch bản. Nói rõ ai làm gì, tốc độ, thời tiết, loại đường — trục nào thiếu hệ thống sẽ tự điền và ghi lại là giả định.</p>
+      </div>
+    </div>
+    <textarea id="prompts" placeholder="Ví dụ: Xe máy chạy 80 km/h ở làn trái, vượt lên tạt đầu ô tô đang chạy 60 km/h rồi phanh gấp. Trời mưa, cao tốc."></textarea>
+    <div class="row" style="margin-top:8px">
+      <span class="faint">Gợi ý:</span>
+      <div class="chips" id="examples"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="big" id="generate">Sinh kịch bản</button>
+      <span class="faint" id="genHint"></span>
+    </div>
+    <div class="banner warn hide" id="keyBanner"></div>
+
+    <details style="margin-top:14px">
+      <summary>Hoặc dùng kịch bản có sẵn (không cần LLM)</summary>
+      <div class="row" style="margin-top:10px">
+        <select id="samples" class="grow"></select>
+        <button class="ghost" id="addSample">Thêm vào danh sách</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input type="file" id="upload" accept=".xosc,.xml">
+        <button class="ghost" id="addUpload">Thêm file .xosc</button>
+      </div>
+    </details>
+  </section>
+
+  <!-- Bước 2 -->
+  <section class="card" id="scenarios">
+    <div class="card-head">
+      <div>
+        <h2>2. Kịch bản đã sinh</h2>
+        <p class="sub">Mỗi kịch bản đi qua pipeline 7 bước: hiểu ý định → tìm ví dụ → LLM viết nháp → kiểm tra/sửa → biên dịch .xosc.</p>
+      </div>
+      <div class="row">
+        <label class="faint" for="view">Camera CARLA</label>
+        <select id="view">
+          <option value="chase">Bám sau ego</option>
+          <option value="bird">Nhìn từ trên xuống</option>
+          <option value="off">Không bám</option>
+        </select>
+        <label class="check"><input type="checkbox" id="camera" checked> Lưu ảnh camera</label>
+      </div>
+    </div>
+    <div id="list"><p class="faint" id="emptyList">Chưa có kịch bản nào — mô tả ở bước 1 hoặc chọn kịch bản có sẵn.</p></div>
+    <p class="faint" style="margin-top:10px">Chạy ở đây đi thẳng vào CARLA, <b>không qua cổng duyệt</b> và không ghi vào thư viện. Kịch bản sinh ra vẫn nằm ở hàng chờ duyệt của web chính (cổng 3000).</p>
+  </section>
+
+  <!-- Bước 3 -->
+  <section class="card hide" id="result">
+    <div class="card-head">
+      <div>
+        <h2>3. Kết quả chạy CARLA</h2>
+        <p class="sub" id="resTitle"></p>
+      </div>
+      <div class="row">
+        <a class="btn big" id="toSensor" href="#">Xem dữ liệu sensor →</a>
+      </div>
+    </div>
+    <div id="resBanner"></div>
+    <table id="summary" style="margin-top:10px"></table>
+    <h3>Tiêu chí ScenarioRunner</h3>
+    <table id="crit"></table>
+    <p class="faint" id="trap" style="margin-top:8px"></p>
+    <details style="margin-top:12px"><summary>Log ScenarioRunner</summary><pre id="log"></pre></details>
+    <div class="row" style="margin-top:14px">
+      <a class="btn ghost" href="#describe" id="again">← Mô tả kịch bản khác</a>
+    </div>
+  </section>
+
+  <section class="card history">
+    <h2>Các lượt chạy gần đây</h2>
+    <table id="runs" style="margin-top:8px"></table>
+  </section>
+</main>
+
+<script src="/common.js"></script>
+<script>
+const EXAMPLES = [
+  "Xe máy chạy 80 km/h ở làn trái, vượt lên tạt đầu ô tô đang chạy 60 km/h rồi phanh gấp còn 40 km/h. Trời quang, cao tốc.",
+  "Ô tô phía trước cùng làn cách 30 m bất ngờ phanh gấp khi cả hai đang chạy 70 km/h trên cao tốc, trời mưa.",
+  "Xe tải dừng hẳn giữa làn cao tốc trong sương mù, ego chạy 60 km/h phía sau.",
+  "Ô tô chạy ngược chiều trong làn của ego trên cao tốc vào ban đêm.",
+  "Xe tải ở làn bên trái lấn dần sang làn của ego trên cao tốc.",
+];
+const STEP_LABELS = {
+  queued: "Đang xếp hàng", parse_intent: "Hiểu ý định (LLM)", retrieve: "Tìm kịch bản tương tự",
+  generate_draft: "LLM viết bản nháp", validate: "Kiểm tra schema & hình học", repair_draft: "LLM sửa lỗi",
+  convert_xosc: "Biên dịch .xosc", persist_pending_sim_review: "Lưu kịch bản", done: "Xong", failed: "Thất bại",
+};
+
+const items = [];   // {key, kind: generated|sample|upload, prompt, state, ...}
+let running = false;
+let lastRunId = null;
+
+renderSteps($("#steps"), 1, 0);
+$("#examples").innerHTML = EXAMPLES.map((e, i) => `<button class="chip" data-i="${i}" title="${esc(e)}">${esc(e.slice(0, 34))}…</button>`).join("");
+$("#examples").onclick = (ev) => {
+  const i = ev.target.dataset.i; if (i === undefined) return;
+  const ta = $("#prompts"); ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + EXAMPLES[i]; ta.focus();
+};
+
+async function refreshStatus() {
+  const s = await renderStatus($("#status"));
+  if (s) $("#generate").title = s.backend_ok ? "" : "Backend chưa bật";
+  document.querySelectorAll("button[data-run]").forEach((b) => (b.disabled = running || !(s && s.carla)));
+}
+refreshStatus(); setInterval(refreshStatus, 5000);
+
+api("/api/samples").then((list) => {
+  $("#samples").innerHTML = list.map((s) => `<option value="${esc(s.name)}">${esc(s.group)} · ${esc(s.name)}</option>`).join("");
+});
+
+// --- Bước 1 → 2: sinh kịch bản -------------------------------------------
+$("#generate").onclick = async () => {
+  const prompts = $("#prompts").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (!prompts.length) { $("#genHint").textContent = "Nhập ít nhất một câu mô tả."; return; }
+  $("#genHint").textContent = ""; $("#keyBanner").classList.add("hide");
+  for (const prompt of prompts) {
+    const item = { key: crypto.randomUUID(), kind: "generated", prompt, state: "pending", step: "queued", progress: 0 };
+    items.unshift(item); draw();
+    startGeneration(item);
+  }
+  $("#prompts").value = "";
+  renderSteps($("#steps"), 2, 1, lastRunId);
+  $("#scenarios").scrollIntoView({ behavior: "smooth" });
+};
+
+async function startGeneration(item) {
+  try {
+    const r = await api("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: item.prompt }) });
+    if (r.duplicate && r.duplicate.scenario_id && !r.request_id) {
+      item.note = "Câu này đã sinh trước đó — dùng lại kịch bản cũ.";
+      return loadScenario(item, r.duplicate.scenario_id);
+    }
+    if (r.duplicate) item.note = "Câu này đã sinh trước đó — dùng lại kết quả cũ.";
+    poll(item, r.request_id);
+  } catch (e) { fail(item, e.message); }
+}
+
+async function poll(item, requestId) {
+  try {
+    const st = await api(`/api/generate/${encodeURIComponent(requestId)}`);
+    item.step = st.step; item.progress = st.progress;
+    if (st.step === "failed") return fail(item, st.error || "Sinh kịch bản thất bại", st.hint);
+    if (st.step === "done" && st.scenario) return ready(item, st.scenario);
+    draw();
+    setTimeout(() => poll(item, requestId), 1000);
+  } catch (e) { fail(item, e.message); }
+}
+
+async function loadScenario(item, scenarioId) {
+  try { ready(item, await api(`/api/scenario/${encodeURIComponent(scenarioId)}`)); } catch (e) { fail(item, e.message); }
+}
+
+function ready(item, sc) {
+  Object.assign(item, { state: sc.xosc_bytes ? "ready" : "unbuildable", scenario: sc, progress: 100, step: "done" });
+  draw();
+}
+function fail(item, error, hint) {
+  Object.assign(item, { state: "failed", error, hint });
+  if (hint) { $("#keyBanner").textContent = hint; $("#keyBanner").classList.remove("hide"); }
+  draw();
+}
+
+// --- Kịch bản có sẵn ------------------------------------------------------
+$("#addSample").onclick = () => {
+  const name = $("#samples").value; if (!name) return;
+  items.unshift({ key: crypto.randomUUID(), kind: "sample", sample: name, state: "ready", scenario: { title: name } });
+  draw(); renderSteps($("#steps"), 2, 1, lastRunId);
+};
+$("#addUpload").onclick = () => {
+  const f = $("#upload").files[0]; if (!f) return;
+  items.unshift({ key: crypto.randomUUID(), kind: "upload", file: f, state: "ready", scenario: { title: f.name } });
+  draw(); renderSteps($("#steps"), 2, 1, lastRunId);
+};
+
+// --- Vẽ danh sách bước 2 --------------------------------------------------
+function draw() {
+  $("#emptyList").classList.toggle("hide", items.length > 0);
+  const html = items.map((it) => {
+    const sc = it.scenario || {};
+    const head = it.kind === "generated"
+      ? `<div class="prompt">“${esc(it.prompt)}”</div>`
+      : `<div class="prompt">${it.kind === "sample" ? "Kịch bản mẫu trong fixtures/" : "File tải lên"}</div>`;
+    let body = "";
+    if (it.state === "pending") {
+      body = `<div class="faint" style="margin-top:6px">${esc(STEP_LABELS[it.step] || it.step)}…</div>
+              <div class="progress"><i style="width:${Math.max(5, it.progress || 0)}%"></i></div>`;
+    } else if (it.state === "failed") {
+      body = `<div class="banner bad">${esc(it.hint || it.error)}</div>${it.hint ? `<details style="margin-top:6px"><summary>Lỗi gốc</summary><pre>${esc(it.error)}</pre></details>` : ""}`;
+    } else {
+      // Assumption ở backend: {field, value, source: inferred|default, reason_vi}.
+      const assumptions = (sc.assumptions || []).map((a) => `<span class="chip warn" title="${esc(a.reason_vi || "")}">${a.source === "default" ? "mặc định" : "suy ra"}: ${esc(oddLabel(a.value))}</span>`).join("");
+      const buildable = it.state === "ready";
+      body = `
+        <div class="title" style="margin-top:6px">${esc(sc.title || "")} ${sc.scenario_id ? `<code>${esc(sc.scenario_id)}</code>` : ""}</div>
+        ${sc.description_vi ? `<div class="muted" style="font-size:14px">${esc(sc.description_vi)}</div>` : ""}
+        <div class="chips" style="margin-top:6px">${oddChips(sc.odd, sc.time_of_day)}${assumptions}</div>
+        ${it.note ? `<div class="faint" style="margin-top:6px">${esc(it.note)}</div>` : ""}
+        ${buildable ? "" : `<div class="banner warn">Tổ hợp ODD này nằm ngoài phạm vi converter (ADR-016) — không có .xosc để chạy CARLA.</div>`}
+        <div class="row" style="margin-top:10px">
+          <button data-run="${it.key}" ${buildable && !running ? "" : "disabled"}>▶ Chạy trên CARLA</button>
+          ${sc.scenario_id && buildable ? `<a class="btn ghost" href="/api/scenario/${encodeURIComponent(sc.scenario_id)}/xosc">Tải .xosc${sc.xosc_bytes ? ` (${(sc.xosc_bytes / 1024).toFixed(1)} KB)` : ""}</a>` : ""}
+          ${it.runId ? `<a class="btn ghost" href="/sensor?run=${encodeURIComponent(it.runId)}">Dữ liệu sensor lượt gần nhất →</a>` : ""}
+          ${it.running ? `<span class="warn">Đang chạy trên CARLA — nhìn cửa sổ CARLA…</span>` : ""}
+        </div>`;
+    }
+    return `<div class="scenario">${head}${body}</div>`;
+  }).join("");
+  $("#list").innerHTML = `<p class="faint ${items.length ? "hide" : ""}" id="emptyList">Chưa có kịch bản nào — mô tả ở bước 1 hoặc chọn kịch bản có sẵn.</p>` + html;
+}
+
+$("#list").onclick = async (ev) => {
+  const key = ev.target.closest("button[data-run]")?.dataset.run; if (!key || running) return;
+  const it = items.find((x) => x.key === key); if (!it) return;
+  const q = new URLSearchParams({ view: $("#view").value, camera: $("#camera").checked ? "1" : "0" });
+  let body;
+  if (it.kind === "generated") q.set("scenario_id", it.scenario.scenario_id);
+  else if (it.kind === "sample") q.set("sample", it.sample);
+  else { q.set("name", it.file.name); body = await it.file.arrayBuffer(); }
+  running = true; it.running = true; draw(); renderSteps($("#steps"), 3, 2, lastRunId);
+  try {
+    const r = await api(`/api/run?${q}`, { method: "POST", body });
+    it.runId = r.run_id; showResult(r);
+  } catch (e) {
+    $("#result").classList.remove("hide");
+    $("#resBanner").innerHTML = `<div class="banner bad">${esc(e.message)}</div>`;
+  } finally {
+    running = false; it.running = false; draw(); loadRuns(); refreshStatus();
+  }
+};
+
+// --- Bước 3 ---------------------------------------------------------------
+function unitOf(name) {
+  const n = String(name || "").toLowerCase();
+  if (n.includes("velocity") || n.includes("speed")) return "kmh";
+  if (n.includes("distance")) return "m";
+  if (n.includes("duration") || n.includes("time")) return "s";
+  return "";
+}
+function fmtVal(v, u) {
+  if (v === null || v === undefined || v === "") return "—";
+  const n = Number(v); if (!isFinite(n)) return esc(v);
+  if (u === "kmh") return (n * 3.6).toFixed(1) + " km/h";
+  if (u === "m") return n.toFixed(1) + " m";
+  if (u === "s") return n.toFixed(2) + " s";
+  return String(n);
+}
+
+function showResult(r) {
+  lastRunId = r.run_id;
+  const x = r.execution_result || {};
+  const hasSensor = !!(r.sensor_data && r.sensor_data.samples && r.sensor_data.samples.length);
+  $("#result").classList.remove("hide");
+  $("#resTitle").textContent = `${r.title || r.xosc_name} · ${r.started_at} · ${r.duration_s} s`;
+  const link = $("#toSensor");
+  link.href = `/sensor?run=${encodeURIComponent(r.run_id)}`;
+  link.setAttribute("aria-disabled", hasSensor ? "false" : "true");
+  link.title = hasSensor ? "" : "Lượt chạy hỏng hoặc không ghi được sensor";
+  $("#resBanner").innerHTML = !x.success
+    ? `<div class="banner bad">Chạy hỏng (crash / timeout / lỗi XML) — xem log bên dưới.</div>`
+    : x.had_collision
+      ? `<div class="banner ok">Chạy xong và <b>tái hiện được va chạm</b> — đây là kết quả mong muốn của kịch bản nguy hiểm.</div>`
+      : `<div class="banner info">Chạy xong, không có va chạm. Xem khe hở và TTC ở trang sensor để biết có suýt va chạm không.</div>`;
+  $("#summary").innerHTML = `
+    <tr><th>Chạy thành công</th><td>${x.success ? '<span class="ok">có</span>' : '<span class="bad">không</span>'}</td></tr>
+    <tr><th>Va chạm (CollisionTest)</th><td>${x.had_collision ? '<span class="ok">có</span>' : "không"}</td></tr>
+    <tr><th>Dữ liệu sensor</th><td>${hasSensor ? `${r.sensor_data.samples.length} mẫu · ${r.camera_frames.length} ảnh camera` : `<span class="warn">không có</span>${r.sensor_error ? " — " + esc(r.sensor_error) : ""}`}</td></tr>
+    <tr><th>Thư mục lượt chạy</th><td><code>${esc(r.run_dir)}</code></td></tr>`;
+  const cs = (r.criteria_json || {}).criteria || [];
+  $("#crit").innerHTML = cs.length
+    ? "<tr><th>Tiêu chí</th><th>Thực tế</th><th>Đạt</th></tr>" + cs.map((c) => {
+        const u = unitOf(c.name);
+        return `<tr><td>${esc(c.name)}</td><td>${fmtVal(c.actual, u)}${c.success ? "" : ` <span class="faint">(kỳ vọng ${fmtVal(c.expected, u)})</span>`}</td>
+                <td>${c.success ? '<span class="ok">✓</span>' : '<span class="warn">✗</span>'}</td></tr>`;
+      }).join("")
+    : "<tr><td>Không có tiêu chí — kịch bản chưa chạy tới nơi.</td></tr>";
+  $("#trap").innerHTML = x.sr_success_field === false && x.success
+    ? "Trường <code>success: false</code> của ScenarioRunner là AND của mọi tiêu chí — ở đây nó false vì <b>va chạm đã xảy ra</b>, tức kịch bản thành công."
+    : "";
+  $("#log").textContent = r.log || "";
+  renderSteps($("#steps"), 3, 3, r.run_id);
+  $("#result").scrollIntoView({ behavior: "smooth" });
+}
+
+async function loadRuns() {
+  const runs = await api("/api/runs").catch(() => []);
+  $("#runs").innerHTML = runs.length
+    ? "<tr><th>Lúc</th><th>Kịch bản</th><th>Kết quả</th><th></th></tr>" + runs.map((r) => `
+      <tr><td class="faint">${esc(r.started_at)}</td><td>${esc(r.title)}</td>
+      <td>${r.success ? (r.had_collision ? '<span class="ok">va chạm</span>' : "không va chạm") : '<span class="bad">hỏng</span>'}</td>
+      <td class="num"><a href="/?run=${encodeURIComponent(r.run_id)}#result">kết quả</a>${r.has_sensor ? ` · <a href="/sensor?run=${encodeURIComponent(r.run_id)}">sensor →</a>` : ""}</td></tr>`).join("")
+    : `<tr><td class="faint">Chưa có lượt chạy nào.</td></tr>`;
+}
+loadRuns();
+
+// Mở lại kết quả một lượt cũ: /?run=<id>
+const runParam = new URLSearchParams(location.search).get("run");
+if (runParam) api(`/api/runs/${encodeURIComponent(runParam)}`).then(showResult).catch(() => {});
+</script>
+</body>
+</html>

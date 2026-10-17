@@ -61,6 +61,11 @@ tay song song với scenario, hoặc đặt `SENSOR_RECORD_DIR=<dir>` (thêm
 `SENSOR_CAMERA=1`) cho `worker/runner.py`. Ánh xạ cột dữ liệu ↔ 10 tham số AEB ở
 [docs/vehicsim/aeb-parameter-ranges.md](docs/vehicsim/aeb-parameter-ranges.md).
 
+Muốn đi từ câu mô tả tới dữ liệu sensor mà không qua cổng duyệt: `WORKER_PYTHON=/usr/bin/python3
+python3 worker/dev_ui.py` rồi mở http://127.0.0.1:8765 (mô tả → sinh .xosc qua backend → chạy
+CARLA → trang sensor có ảnh camera đồng bộ). Cần backend đang chạy và API key LLM; không có
+key thì chọn kịch bản mẫu trong `fixtures/xosc/`. Mỗi lượt lưu ở `out/runs/<run_id>/`.
+
 `make demo` bật sẵn `SENSOR_RECORD_DIR=out/sensors`; worker gửi bản giảm mẫu trong
 `ExecutionResult.sensor_data` và trang `/library/<id>` vẽ ở khối "Dữ liệu sensor CARLA"
 (`frontend/src/components/SensorPanel.tsx`).
