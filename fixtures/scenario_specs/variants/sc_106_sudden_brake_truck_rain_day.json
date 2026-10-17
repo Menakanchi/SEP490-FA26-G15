@@ -1,0 +1,50 @@
+{
+  "title": "Xe tải phía trước phanh gấp khi trời mưa",
+  "odd": {
+    "road_type": "highway",
+    "weather": "rain",
+    "actor_type": "truck",
+    "maneuver": "sudden_brake",
+    "specific_type": null,
+    "specific_action": null
+  },
+  "time_of_day": "day",
+  "actors": [
+    {
+      "name": "hero",
+      "category": "car",
+      "position": {
+        "lane_offset": 0,
+        "s_offset_m": 0.0
+      },
+      "initial_speed_kmh": 60.0,
+      "is_ego": true,
+      "specific_type": null
+    },
+    {
+      "name": "adversary",
+      "category": "truck",
+      "position": {
+        "lane_offset": 0,
+        "s_offset_m": 25.0
+      },
+      "initial_speed_kmh": 60.0,
+      "is_ego": false,
+      "specific_type": null
+    }
+  ],
+  "maneuvers": [
+    {
+      "actor_name": "adversary",
+      "maneuver": "sudden_brake",
+      "trigger": {
+        "type": "distance_to_ego",
+        "value": 25.0
+      },
+      "target_speed_kmh": 0.0
+    }
+  ],
+  "duration_s": 30.0,
+  "scenario_id": "sc_106",
+  "description_vi": "Xe tải phía trước cùng làn cách 25 m, cả hai chạy 60 km/h, xe tải bất ngờ phanh gấp. Trời mưa, ban ngày, cao tốc."
+}
