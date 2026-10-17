@@ -229,7 +229,21 @@ def list_samples() -> list[dict]:
             if path.name in seen:
                 continue
             seen.add(path.name)
-            samples.append({"name": path.name, "group": rel.removeprefix("fixtures/xosc").strip("/") or "gốc"})
+            sample = {"name": path.name, "group": rel.removeprefix("fixtures/xosc").strip("/") or "gốc"}
+            # Biến thể có spec JSON cùng tên: kèm tiêu đề, mô tả, ODD để màn chạy đọc được.
+            spec_file = REPO_ROOT / "fixtures/scenario_specs" / sample["group"] / f"{path.stem}.json"
+            if spec_file.is_file():
+                try:
+                    spec = json.loads(spec_file.read_text(encoding="utf-8"))
+                    sample.update(
+                        title=spec.get("title"),
+                        description_vi=spec.get("description_vi"),
+                        odd=spec.get("odd"),
+                        time_of_day=spec.get("time_of_day"),
+                    )
+                except (OSError, json.JSONDecodeError):
+                    pass
+            samples.append(sample)
     return samples
 
 
@@ -275,6 +289,27 @@ def explain_generation_error(error: str | None) -> str | None:
             "DEEPSEEK_API_KEY) vào .env rồi khởi động lại backend. Trong lúc chờ, dùng kịch bản mẫu bên dưới."
         )
     return None
+
+
+def llm_configured(env_file: Path | None = None) -> bool:
+    """``.env`` có API key LLM thật chưa — chỉ đọc file, không gọi provider.
+
+    Dùng để chọn màn mở đầu: chưa có key thì vào thẳng phần chạy kịch bản mẫu
+    thay vì để người dùng gõ mô tả rồi mới nhận lỗi 401.
+    """
+    env_file = env_file or REPO_ROOT / ".env"
+    try:
+        lines = env_file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+    env = {}
+    for line in lines:
+        key, sep, value = line.partition("=")
+        if sep and not key.strip().startswith("#"):
+            env[key.strip()] = value.split("#", 1)[0].strip().strip('"').strip("'")
+    key_name = "DEEPSEEK_API_KEY" if env.get("LLM_PROVIDER", "openai") == "deepseek" else "OPENAI_API_KEY"
+    value = env.get(key_name, "")
+    return bool(value) and "your" not in value and not value.endswith("here")
 
 
 def scenario_brief(scenario_id: str) -> tuple[int, dict]:
@@ -341,6 +376,7 @@ class Handler(BaseHTTPRequestHandler):
                     "port": CARLA_PORT,
                     "backend": BACKEND,
                     "backend_ok": code == 200,
+                    "llm_configured": llm_configured(),
                     "busy": RUN_LOCK.locked(),
                     "sr_root": str(SR_ROOT),
                     "python": str(WORKER_PYTHON),

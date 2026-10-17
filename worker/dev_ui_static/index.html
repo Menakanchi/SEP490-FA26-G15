@@ -17,6 +17,7 @@
     <div class="status" id="status">đang kiểm tra…</div>
   </header>
   <ol class="steps" id="steps"></ol>
+  <div class="banner warn hide" id="runMode" style="margin:-4px 0 16px"></div>
 
   <!-- Bước 1 -->
   <section class="card" id="describe">
@@ -65,6 +66,7 @@
           <option value="off">Không bám</option>
         </select>
         <label class="check"><input type="checkbox" id="camera" checked> Lưu ảnh camera</label>
+        <button class="ghost" id="runAll">▶▶ Chạy lần lượt tất cả</button>
       </div>
     </div>
     <div id="list"><p class="faint" id="emptyList">Chưa có kịch bản nào — mô tả ở bước 1 hoặc chọn kịch bản có sẵn.</p></div>
@@ -119,6 +121,8 @@ let running = false;
 let lastRunId = null;
 
 renderSteps($("#steps"), 1, 0);
+let samplesList = [];
+const sampleScenario = (s) => ({ title: s.title || s.name.replace(/\.xosc$/, ""), description_vi: s.description_vi, odd: s.odd, time_of_day: s.time_of_day });
 $("#examples").innerHTML = EXAMPLES.map((e, i) => `<button class="chip" data-i="${i}" title="${esc(e)}">${esc(e.slice(0, 34))}…</button>`).join("");
 $("#examples").onclick = (ev) => {
   const i = ev.target.dataset.i; if (i === undefined) return;
@@ -129,12 +133,47 @@ async function refreshStatus() {
   const s = await renderStatus($("#status"));
   if (s) $("#generate").title = s.backend_ok ? "" : "Backend chưa bật";
   document.querySelectorAll("button[data-run]").forEach((b) => (b.disabled = running || !(s && s.carla)));
+  $("#runAll").disabled = running || !(s && s.carla);
 }
 refreshStatus(); setInterval(refreshStatus, 5000);
 
-api("/api/samples").then((list) => {
+const samplesReady = api("/api/samples").then((list) => {
+  samplesList = list;
   $("#samples").innerHTML = list.map((s) => `<option value="${esc(s.name)}">${esc(s.group)} · ${esc(s.name)}</option>`).join("");
 });
+
+// Chế độ chạy: chưa có API key LLM (hoặc mở /?mode=run) thì vào thẳng bước 2 với
+// sẵn các biến thể đã kiểm chứng, khỏi gõ mô tả rồi mới nhận lỗi 401.
+async function enterRunMode(reason) {
+  await samplesReady;
+  const variants = samplesList.filter((s) => s.group === "variants");
+  for (const s of (variants.length ? variants : samplesList).slice().reverse()) {
+    if (!items.some((it) => it.sample === s.name)) {
+      items.unshift({ key: crypto.randomUUID(), kind: "sample", sample: s.name, state: "ready", scenario: sampleScenario(s) });
+    }
+  }
+  draw();
+  $("#runMode").innerHTML = `${esc(reason)} Đã nạp sẵn ${variants.length || samplesList.length} kịch bản mẫu ở bước 2 — bấm <b>▶ Chạy trên CARLA</b>. <a href="#describe">Vẫn muốn nhập mô tả?</a>`;
+  $("#runMode").classList.remove("hide");
+  $("#describe details").open = true;
+  renderSteps($("#steps"), 2, 1, lastRunId);
+  if (!new URLSearchParams(location.search).get("run")) $("#scenarios").scrollIntoView();
+}
+(async () => {
+  const mode = new URLSearchParams(location.search).get("mode");
+  const s = await api("/api/status").catch(() => null);
+  if (mode === "run") enterRunMode("Chế độ chạy kịch bản.");
+  else if (s && !s.llm_configured) enterRunMode("Chưa có API key LLM trong .env nên chưa sinh được kịch bản từ câu mô tả.");
+})();
+
+// Chạy lần lượt mọi kịch bản sẵn sàng trong danh sách — một CARLA chỉ chạy một lượt một lúc.
+$("#runAll").onclick = async () => {
+  const queue = items.filter((it) => it.state === "ready");
+  for (const it of queue) {
+    if (running) break;
+    await runItem(it);
+  }
+};
 
 // --- Bước 1 → 2: sinh kịch bản -------------------------------------------
 $("#generate").onclick = async () => {
@@ -191,7 +230,8 @@ function fail(item, error, hint) {
 // --- Kịch bản có sẵn ------------------------------------------------------
 $("#addSample").onclick = () => {
   const name = $("#samples").value; if (!name) return;
-  items.unshift({ key: crypto.randomUUID(), kind: "sample", sample: name, state: "ready", scenario: { title: name } });
+  const s = samplesList.find((x) => x.name === name) || { name };
+  items.unshift({ key: crypto.randomUUID(), kind: "sample", sample: name, state: "ready", scenario: sampleScenario(s) });
   draw(); renderSteps($("#steps"), 2, 1, lastRunId);
 };
 $("#addUpload").onclick = () => {
@@ -207,7 +247,7 @@ function draw() {
     const sc = it.scenario || {};
     const head = it.kind === "generated"
       ? `<div class="prompt">“${esc(it.prompt)}”</div>`
-      : `<div class="prompt">${it.kind === "sample" ? "Kịch bản mẫu trong fixtures/" : "File tải lên"}</div>`;
+      : `<div class="prompt">${it.kind === "sample" ? `Kịch bản mẫu · <code>${esc(it.sample)}</code>` : "File tải lên"}</div>`;
     let body = "";
     if (it.state === "pending") {
       body = `<div class="faint" style="margin-top:6px">${esc(STEP_LABELS[it.step] || it.step)}…</div>
@@ -236,9 +276,12 @@ function draw() {
   $("#list").innerHTML = `<p class="faint ${items.length ? "hide" : ""}" id="emptyList">Chưa có kịch bản nào — mô tả ở bước 1 hoặc chọn kịch bản có sẵn.</p>` + html;
 }
 
-$("#list").onclick = async (ev) => {
+$("#list").onclick = (ev) => {
   const key = ev.target.closest("button[data-run]")?.dataset.run; if (!key || running) return;
-  const it = items.find((x) => x.key === key); if (!it) return;
+  const it = items.find((x) => x.key === key); if (it) runItem(it);
+};
+
+async function runItem(it) {
   const q = new URLSearchParams({ view: $("#view").value, camera: $("#camera").checked ? "1" : "0" });
   let body;
   if (it.kind === "generated") q.set("scenario_id", it.scenario.scenario_id);
@@ -254,7 +297,7 @@ $("#list").onclick = async (ev) => {
   } finally {
     running = false; it.running = false; draw(); loadRuns(); refreshStatus();
   }
-};
+}
 
 // --- Bước 3 ---------------------------------------------------------------
 function unitOf(name) {
