@@ -21,6 +21,7 @@ import {
   Play,
   RefreshCw,
   TrendingUp,
+  Radar,
 } from "lucide-react";
 import {
   getControllerRuns,
@@ -30,6 +31,7 @@ import {
   postTuneStep,
 } from "@/services/api";
 import ScenarioPreview from "@/components/ScenarioPreview";
+import SensorPanel from "@/components/SensorPanel";
 import type { ControllerRunsResponse, ScenarioDetail, TuningSummary } from "@/types";
 import {
   ROAD_TYPE_LABELS,
@@ -326,6 +328,21 @@ export default function ScenarioDetailPage() {
           verification={scenario.verification}
         />
       </div>
+
+      {/* ─── Sensor CARLA gắn trên ego: thứ AEB nhìn thấy, khác quỹ đạo ground truth ─── */}
+      {scenario.latest_execution_result && (
+        <div className="scenario-detail-card p-6">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-200 mb-1 flex items-center gap-2">
+            <Radar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            Dữ liệu sensor CARLA
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 max-w-3xl">
+            Radar, obstacle sensor, IMU và collision sensor gắn trên xe ego — số cảm biến đo được, là đầu vào
+            của AEB. Khối phát lại phía trên là quỹ đạo ground truth.
+          </p>
+          <SensorPanel data={scenario.latest_execution_result.sensor_data} scenarioId={scenario.scenario_id} />
+        </div>
+      )}
 
       {/* ─── Closed-loop controller evaluation ─── */}
       {scenario.status === "approved_library" && scenario.verification === "adversarial" && (

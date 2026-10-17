@@ -27,6 +27,7 @@ Usage:
 
 Biến môi trường tuỳ chọn:
   CARLA_ROOT, SR_ROOT, CARLA_PORT, CARLA_TM_PORT, WORKER_PYTHON
+  SENSOR_RECORD_DIR (mặc định out/sensors; dữ liệu sensor lên trang chi tiết), SENSOR_CAMERA=1
   (CARLA_ROOT mặc định: ~/CARLA_0.9.15, không có thì /opt/carla-simulator.
    CARLA 0.9.16: WORKER_PYTHON phải là Python 3.10 có carla==0.9.16 — xem CLAUDE.md)
   DEMO_CARLA_RES_X, DEMO_CARLA_RES_Y, DEMO_SEED=1, DEMO_ENV_FILE
@@ -282,6 +283,8 @@ if [[ "$MODE" == "full" ]]; then
             env FORGE_BACKEND="$BACKEND_URL" CARLA_HOST=127.0.0.1 \
             CARLA_PORT="$CARLA_PORT" CARLA_TM_PORT="$CARLA_TM_PORT" \
             CARLA_NO_RENDER=0 CARLA_ROOT="$CARLA_ROOT" SR_ROOT="$SR_ROOT" \
+            SENSOR_RECORD_DIR="${SENSOR_RECORD_DIR:-${REPO_ROOT}/out/sensors}" \
+            SENSOR_CAMERA="${SENSOR_CAMERA:-0}" \
             "$WORKER_PYTHON" worker/runner.py
     fi
 fi

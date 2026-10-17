@@ -92,9 +92,9 @@ POLL_INTERVAL_S = int(os.environ.get("POLL_INTERVAL_S", "5"))
 OUT_DIR = Path(os.environ.get("WORKER_OUT_DIR", str(Path(__file__).parent / "outputs")))
 
 SENSOR_RECORD_DIR = os.environ.get("SENSOR_RECORD_DIR", "")
-"""Đặt thì mỗi job gắn sensor CARLA lên ego và ghi ``<dir>/<scenario_id>-<giờ>/``
-(xem ``sensor_recorder.py``). Mặc định tắt: chỉ ghi file local, chưa gửi về backend
-vì ``ExecutionResult`` cấm trường lạ."""
+"""Đặt thì mỗi job gắn sensor CARLA lên ego, ghi đủ ``<dir>/<scenario_id>-<giờ>/`` ở máy
+worker và gửi bản giảm mẫu về backend trong ``ExecutionResult.sensor_data`` (web vẽ ở
+trang chi tiết kịch bản). Backend phải có trường đó — backend cũ trả 422."""
 SENSOR_CAMERA = os.environ.get("SENSOR_CAMERA", "0") not in ("0", "false", "no")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -249,6 +249,9 @@ def run_job(job: dict) -> dict:
 
     result = to_execution_result(job, returncode, criteria_json, error)
     attach_trajectory(result, trajectory_metrics, trajectory_points)
+    # Cùng lý do với quỹ đạo: lượt chạy hỏng thì sensor có thể đã bám actor còn sót.
+    if sensors is not None and result["success"] and sensors.payload():
+        result["sensor_data"] = sensors.payload()
     result["metrics"]["wall_clock_s"] = round(time.time() - started_at, 1)
     return result
 

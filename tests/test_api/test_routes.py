@@ -443,6 +443,45 @@ async def test_carla_result_replaces_mock_that_already_opened_library_review(cli
 
 
 @pytest.mark.asyncio
+async def test_sensor_data_from_worker_reaches_scenario_detail(client):
+    """Dữ liệu sensor CARLA đi từ worker qua job result tới payload trang chi tiết."""
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    job_id = await _approve_sim(client, sc_id)
+    sensor_data = {
+        "summary": {"radar_min_ttc_s": 0.06, "collisions": 1.0, "obstacle_min_distance_m": None},
+        "samples": [
+            {"t": 0.0, "ego_speed_ms": 8.4, "radar_ttc_s": None, "imu_accel_x_ms2": 0.1},
+            {"t": 16.8, "ego_speed_ms": 8.1, "radar_ttc_s": 0.06, "radar_depth_m": 0.5, "obstacle_distance_m": 0.0},
+        ],
+        "collisions": [{"t": 16.88, "other_actor": "vehicle.yamaha.yzf", "impulse_ns": 3323.9}],
+    }
+    payload = {
+        "scenario_id": sc_id,
+        "xosc_path": f"{sc_id}.xosc",
+        "success": True,
+        "criteria_results": [{"name": "CollisionTest", "result": "FAILURE", "actual": "1"}],
+        "sensor_data": sensor_data,
+    }
+    response = await client.post(f"/api/v1/internal/jobs/{job_id}/result", json=payload)
+    assert response.status_code == 200, response.text
+
+    detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
+    got = detail["latest_execution_result"]["sensor_data"]
+    assert got["summary"]["radar_min_ttc_s"] == 0.06
+    assert got["samples"][1]["obstacle_distance_m"] == 0.0
+    assert got["collisions"][0]["other_actor"] == "vehicle.yamaha.yzf"
+
+    # Trường lạ trong sensor_data vẫn bị chặn như mọi phần khác của hợp đồng.
+    from pydantic import ValidationError
+
+    from src.models.schemas import ExecutionResult
+
+    sensor_data["samples"][0]["lidar"] = 1
+    with pytest.raises(ValidationError):
+        ExecutionResult.model_validate(payload)
+
+
+@pytest.mark.asyncio
 async def test_collision_failure_is_recorded_as_adversarial(client):
     """`CollisionTest = FAILURE` là **tin tốt** — kịch bản dựng được nguy hiểm.
 

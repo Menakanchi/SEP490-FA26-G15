@@ -61,9 +61,19 @@ tay song song với scenario, hoặc đặt `SENSOR_RECORD_DIR=<dir>` (thêm
 `SENSOR_CAMERA=1`) cho `worker/runner.py`. Ánh xạ cột dữ liệu ↔ 10 tham số AEB ở
 [docs/vehicsim/aeb-parameter-ranges.md](docs/vehicsim/aeb-parameter-ranges.md).
 
-Hai bẫy số liệu đã gặp: nửa giây đầu ScenarioRunner đặt lại tốc độ ego (IMU ~47
-m/s²), và sau va chạm IMU đo xung lực đâm xe (~40 m/s²). `summary.json` loại cả hai
-khỏi chỉ số phanh; `frames.csv` giữ nguyên số thô.
+`make demo` bật sẵn `SENSOR_RECORD_DIR=out/sensors`; worker gửi bản giảm mẫu trong
+`ExecutionResult.sensor_data` và trang `/library/<id>` vẽ ở khối "Dữ liệu sensor CARLA"
+(`frontend/src/components/SensorPanel.tsx`).
+
+Bẫy số liệu đã gặp (đo 17/10/2026):
+
+- Giây đầu ScenarioRunner đặt lại tốc độ ego: IMU tới ~47 m/s², còn -6…-7 m/s² ở
+  0,6–0,7 s. `summary.json` bỏ 1 s đầu khỏi chỉ số phanh; `frames.csv` giữ số thô.
+- Sau va chạm IMU đo xung lực đâm xe (~40 m/s²) — tách ra `impact_peak_accel_ms2`.
+- Radar dội mặt đường ở xa lọt bộ lọc góc → lọc thêm theo độ cao điểm dội (< 0,3 m).
+- Radar thấy rào chắn/sườn đồi ở khúc cua Town04: TTC ~3 s suốt đoạn đường trống,
+  vận tốc mặt đất ~0. Tách thành "vật tĩnh" (`radar_min_ttc_static_s`), không trộn
+  vào TTC của xe tạt đầu.
 
 Ego trong `fixtures/xosc` dùng controller giữ tốc độ, **không có AEB**: lệnh brake
 trong dữ liệu là controller giữ tốc độ, không phải AEB phanh khẩn cấp.

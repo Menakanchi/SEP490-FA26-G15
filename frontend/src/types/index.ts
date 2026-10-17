@@ -407,8 +407,34 @@ export interface ExecutionResult {
   metrics: Record<string, number>;
   /** Rỗng nghĩa là không đo được quỹ đạo, không phải xe đứng yên. */
   trajectory?: TrajectoryPoint[];
+  /** Sensor CARLA gắn trên ego. Vắng mặt = lượt chạy không ghi sensor (mock hoặc worker chưa bật). */
+  sensor_data?: SensorData | null;
   ego_controller?: "constant_speed" | "behavior_agent";
   error?: string | null;
+}
+
+/** Một mẫu sensor; `null` = sensor không trả gì ở mẫu đó, không phải 0. Xem `SensorSample` ở backend. */
+export interface SensorSample {
+  t: number;
+  ego_speed_ms?: number | null;
+  brake?: number | null;
+  radar_ttc_s?: number | null;
+  radar_depth_m?: number | null;
+  radar_rel_velocity_ms?: number | null;
+  obstacle_distance_m?: number | null;
+  imu_accel_x_ms2?: number | null;
+}
+
+export interface SensorCollision {
+  t: number;
+  other_actor?: string | null;
+  impulse_ns: number;
+}
+
+export interface SensorData {
+  summary: Record<string, number | null>;
+  samples: SensorSample[];
+  collisions: SensorCollision[];
 }
 
 export interface ControllerRun {

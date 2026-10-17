@@ -1029,6 +1029,44 @@ class JobKind(StrEnum):
     CONTROLLER_EVALUATION = "controller_evaluation"
 
 
+class SensorSample(ForgeModel):
+    """Một mẫu dữ liệu sensor CARLA gắn trên ego (``worker/sensor_recorder.py``).
+
+    Khác ``TrajectoryPoint`` (ground truth): đây là thứ cảm biến **đo được**, thứ
+    một AEB thật nhìn thấy. ``None`` nghĩa là sensor không trả gì ở mẫu đó (radar
+    không thấy mục tiêu phía trước, obstacle không chạm tia), không phải bằng 0.
+    """
+
+    t: float = Field(..., ge=0.0, description="Giây kể từ tick đầu tiên thấy ego")
+    ego_speed_ms: float | None = None
+    brake: float | None = Field(None, ge=0.0, le=1.0)
+    radar_ttc_s: float | None = Field(None, description="TTC tới mục tiêu radar gần nhất phía trước")
+    radar_depth_m: float | None = None
+    radar_rel_velocity_ms: float | None = Field(None, description="Âm = đang lại gần")
+    obstacle_distance_m: float | None = None
+    imu_accel_x_ms2: float | None = Field(None, description="Gia tốc dọc; âm = giảm tốc")
+
+
+class SensorCollision(ForgeModel):
+    t: float = Field(..., ge=0.0)
+    other_actor: str | None = None
+    impulse_ns: float = Field(0.0, ge=0.0)
+
+
+class SensorData(ForgeModel):
+    """Dữ liệu sensor CARLA của một lượt chạy, đã giảm mẫu để gửi qua HTTP."""
+
+    summary: dict[str, float | None] = Field(
+        default_factory=dict,
+        description=(
+            "Số tóm tắt (``sensor_recorder.summarise``). Chỉ số phanh chỉ tính sau 0,5 s khởi tạo "
+            "và trước va chạm đầu tiên; ``impact_peak_accel_ms2`` là xung lực lúc đâm."
+        ),
+    )
+    samples: list[SensorSample] = Field(default_factory=list)
+    collisions: list[SensorCollision] = Field(default_factory=list)
+
+
 class ExecutionResult(ForgeModel):
     """Kết quả worker trả về sau khi chạy ScenarioRunner.
 
@@ -1067,6 +1105,13 @@ class ExecutionResult(ForgeModel):
         description=(
             "Quỹ đạo đo được, đã giảm mẫu để gửi qua HTTP. Rỗng nghĩa là **không đo được** "
             "(worker cũ, CARLA từ chối kết nối, scenario chết trước khi spawn) — không phải xe đứng yên."
+        ),
+    )
+    sensor_data: SensorData | None = Field(
+        None,
+        description=(
+            "Dữ liệu sensor gắn trên ego (radar, obstacle, IMU, collision). ``None`` nghĩa là lượt "
+            "chạy **không ghi sensor** (worker không bật SENSOR_RECORD_DIR, hoặc kết quả mock)."
         ),
     )
     ego_controller: EgoControllerType = EgoControllerType.SCENARIO_RUNNER_DEFAULT
