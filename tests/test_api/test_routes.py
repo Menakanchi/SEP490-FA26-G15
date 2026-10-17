@@ -418,6 +418,31 @@ async def test_execution_result_opens_library_review(client):
 
 
 @pytest.mark.asyncio
+async def test_carla_result_replaces_mock_that_already_opened_library_review(client):
+    """Ngoài pytest, approve Cổng 1 chạy Mock Kinematics và đẩy kịch bản sang
+    pending_library_review ngay. Kết quả CARLA tới sau phải được nhận — nếu trả
+    409 thì job nằm pending và worker chạy lại nó mãi."""
+    from src.services import db
+
+    sc_id = await _generate_one(client, "Xe máy tạt đầu ô tô trên đường cao tốc")
+    job_id = await _approve_sim(client, sc_id)
+    db.update_scenario_status(sc_id, "pending_library_review")  # việc post_review làm khi không chạy pytest
+
+    await _submit_result(client, sc_id, job_id, collision=True)
+
+    assert (await client.get("/api/v1/internal/jobs")).json()["jobs"] == []
+    detail = (await client.get(f"/api/v1/scenarios/{sc_id}")).json()
+    assert detail["status"] == "pending_library_review"
+    assert detail["verification"] == "adversarial"
+    assert detail["latest_execution_result"]["criteria_results"][0]["result"] == "FAILURE"
+
+    # Callback lặp lại cho job đã xong vẫn bị chặn.
+    payload = {"scenario_id": sc_id, "xosc_path": f"{sc_id}.xosc", "success": True, "criteria_results": []}
+    again = await client.post(f"/api/v1/internal/jobs/{job_id}/result", json=payload)
+    assert again.status_code == 409
+
+
+@pytest.mark.asyncio
 async def test_collision_failure_is_recorded_as_adversarial(client):
     """`CollisionTest = FAILURE` là **tin tốt** — kịch bản dựng được nguy hiểm.
 

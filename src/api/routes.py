@@ -1426,8 +1426,19 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
         return {"ok": True, "status": new_status, "job_kind": JobKind.CONTROLLER_EVALUATION.value}
 
     scenario = _scenario_or_404(body.scenario_id)
-    next_status = next_status_after_execution(ScenarioStatus(scenario["status"]))
-    if next_status is None:
+    current_status = ScenarioStatus(scenario["status"])
+    next_status = next_status_after_execution(current_status)
+    # Cổng 1 approve chạy Mock Kinematics ngay và đẩy kịch bản sang
+    # pending_library_review trước khi CARLA kịp chạy (post_review). Kết quả CARLA
+    # thật tới sau vẫn phải được nhận và thay bằng chứng mock — trả 409 ở đây để
+    # job nằm `pending` mãi và worker chạy lại nó vô hạn (gặp 17/10/2026).
+    # Callback lặp/trễ (job đã xong) vẫn bị chặn như trước.
+    replaces_mock = (
+        next_status is None
+        and current_status is ScenarioStatus.PENDING_LIBRARY_REVIEW
+        and job.get("status") in (JobStatus.PENDING.value, JobStatus.RUNNING.value)
+    )
+    if next_status is None and not replaces_mock:
         raise HTTPException(
             status_code=409,
             detail=f"Kịch bản đang ở '{scenario['status']}', không chờ kết quả mô phỏng",
@@ -1443,6 +1454,10 @@ async def submit_job_result(job_id: str, body: ExecutionResult) -> dict:
         body.criteria_results,
         min_distance_m=(body.metrics or {}).get("min_distance_m"),
     )
+    if replaces_mock:
+        db.set_verification(body.scenario_id, level)
+        logger.info("Kịch bản %s: kết quả CARLA thay kết quả mock -> %s", body.scenario_id, level.value)
+        return {"ok": True, "verification": level.value, "status": current_status.value}
     if not db.complete_simulation(body.scenario_id, level):
         raise HTTPException(status_code=409, detail="Trạng thái kịch bản đã đổi trong lúc nhận kết quả")
     logger.info("Kịch bản %s -> %s, chờ BEFORE_LIBRARY", body.scenario_id, level.value)
