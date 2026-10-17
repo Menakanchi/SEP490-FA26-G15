@@ -53,6 +53,21 @@ git -C ~/scenario_runner apply \
 WORKER_PYTHON=/usr/bin/python3 make demo   # hoặc make demo-check
 ```
 
+## Thu dữ liệu sensor từ CARLA
+
+`worker/sensor_recorder.py` gắn radar, obstacle, IMU, collision (và camera RGB nếu
+`--camera`) lên ego — toàn sensor built-in của CARLA, không gọi dịch vụ ngoài. Chạy
+tay song song với scenario, hoặc đặt `SENSOR_RECORD_DIR=<dir>` (thêm
+`SENSOR_CAMERA=1`) cho `worker/runner.py`. Ánh xạ cột dữ liệu ↔ 10 tham số AEB ở
+[docs/vehicsim/aeb-parameter-ranges.md](docs/vehicsim/aeb-parameter-ranges.md).
+
+Hai bẫy số liệu đã gặp: nửa giây đầu ScenarioRunner đặt lại tốc độ ego (IMU ~47
+m/s²), và sau va chạm IMU đo xung lực đâm xe (~40 m/s²). `summary.json` loại cả hai
+khỏi chỉ số phanh; `frames.csv` giữ nguyên số thô.
+
+Ego trong `fixtures/xosc` dùng controller giữ tốc độ, **không có AEB**: lệnh brake
+trong dữ liệu là controller giữ tốc độ, không phải AEB phanh khẩn cấp.
+
 ## Khi chạy ScenarioRunner thủ công
 
 Dùng `worker/.venv` (Python 3.10), không dùng `.venv` của backend. Thêm cả
