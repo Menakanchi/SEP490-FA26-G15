@@ -236,6 +236,7 @@ class SensorRecorder:
         self.error: str | None = None
         self.summary: dict | None = None
         self._payload: dict | None = None
+        self._t0: float | None = None
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name="sensors", daemon=True)
@@ -245,6 +246,18 @@ class SensorRecorder:
         """Chờ tới khi ego biến mất (lượt chạy kết thúc) rồi mới ghi file."""
         if self._thread is not None:
             self._thread.join(timeout=timeout_s)
+
+    def camera_frames(self) -> list[dict]:
+        """Ảnh camera đã lưu kèm thời điểm (cùng gốc thời gian với ``frames.csv``)."""
+        cam_dir = self.out_dir / "camera"
+        if self._t0 is None or not cam_dir.is_dir():
+            return []
+        frames = []
+        for png in sorted(cam_dir.glob("*.png")):
+            t = self._frame_time.get(int(png.stem))
+            if t is not None and t >= self._t0:
+                frames.append({"t": round(t - self._t0, 3), "file": png.name})
+        return frames
 
     def payload(self) -> dict | None:
         """``SensorData`` để gửi kèm ``ExecutionResult``; ``None`` nếu không ghi được gì."""
@@ -422,6 +435,7 @@ class SensorRecorder:
         if not rows:
             return
         t0 = self._frame_time.get(rows[0]["frame"], 0.0)
+        self._t0 = t0
         for c in self._collisions:
             c["sim_time_s"] = round(c["sim_time_s"] - t0, 3)
         self.out_dir.mkdir(parents=True, exist_ok=True)

@@ -148,14 +148,16 @@ function SensorChart({
 }) {
   const { yMin, yMax } = useMemo(() => {
     if (spec.clip) return { yMin: spec.clip[0], yMax: spec.clip[1] };
+    // Thang trục theo dữ liệu sau khởi tạo và trước va chạm — cùng cửa sổ với ô số liệu.
+    // Xung lực đâm xe (~-45 m/s²) vẫn vẽ nhưng bị cắt ở mép thay vì làm dẹt cả biểu đồ.
     const values = samples
-      .filter((s) => s.t >= WARMUP_S)
+      .filter((s) => s.t >= WARMUP_S && (collisionT == null || s.t < collisionT))
       .flatMap((s) => spec.series.map((se) => s[se.key]))
       .filter((v): v is number => v != null);
     const lo = Math.min(0, ...values);
     const hi = Math.max(0, ...values);
     return { yMin: lo < 0 ? -niceMax(-lo) : 0, yMax: niceMax(hi) };
-  }, [samples, spec]);
+  }, [samples, spec, collisionT]);
 
   const x = (t: number) => PAD.l + (t / tMax) * PLOT_W;
   const y = (v: number) => PAD.t + (1 - (Math.min(Math.max(v, yMin), yMax) - yMin) / (yMax - yMin)) * PLOT_H;

@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dữ liệu sensor CARLA</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <h1 id="title">Dữ liệu sensor CARLA</h1>
+      <p class="sub" id="meta"></p>
+    </div>
+    <div class="row">
+      <a class="btn ghost" href="/" id="toInput">← Màn nhập kịch bản</a>
+      <a class="btn ghost" href="/" id="toResult">← Kết quả chạy</a>
+    </div>
+  </header>
+  <ol class="steps" id="steps"></ol>
+
+  <section class="card hide" id="empty"></section>
+
+  <div id="content" class="hide">
+    <section class="card">
+      <h2>Tổng quan</h2>
+      <p class="sub" style="margin-bottom:10px">Radar, obstacle sensor, IMU, collision sensor và camera gắn trên xe ego — số cảm biến đo được, đầu vào của AEB.</p>
+      <div class="kpis" id="kpis"></div>
+      <div id="collision"></div>
+    </section>
+
+    <section class="card">
+      <div class="camera">
+        <div>
+          <img id="cam" alt="Ảnh camera RGB gắn trên ego">
+          <p class="faint" id="camCaption" style="margin-top:6px"></p>
+        </div>
+        <div>
+          <h2>Camera trước xe ego</h2>
+          <p class="sub">Rê chuột trên bất kỳ biểu đồ nào để xem ảnh camera tại đúng thời điểm đó. Mặc định hiện khung hình ngay trước va chạm.</p>
+          <div id="camEmpty" class="banner info hide">Lượt chạy này không lưu ảnh camera (bỏ chọn “Lưu ảnh camera” khi chạy).</div>
+          <table style="margin-top:12px" id="atCursor"></table>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Theo thời gian</h2>
+      <p class="sub" style="margin-bottom:10px">Bốn biểu đồ chung trục thời gian, con trỏ đồng bộ. Khoảng trống trên đường = sensor không trả gì, không phải 0. Vùng xám = 1 s khởi tạo của ScenarioRunner.</p>
+      <div class="charts" id="charts"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Bảng dữ liệu</h2>
+        <div class="row">
+          <a class="btn ghost" id="csv" href="#">Tải frames.csv (đủ mọi tick)</a>
+          <a class="btn ghost" id="xosc" href="#">Tải .xosc đã chạy</a>
+        </div>
+      </div>
+      <details><summary id="tableSummary"></summary><div style="max-height:360px;overflow:auto;margin-top:8px"><table id="table"></table></div></details>
+    </section>
+  </div>
+</main>
+
+<script src="/common.js"></script>
+<script>
+const W = 560, H = 190, PAD = { l: 40, r: 12, t: 12, b: 24 };
+const PW = W - PAD.l - PAD.r, PH = H - PAD.t - PAD.b;
+const WARMUP_S = 1;              // SUMMARY_WARMUP_S ở worker
+const STATIC_SPEED_MS = 1;       // STATIC_TARGET_SPEED_MS ở worker
+const TTC_CLIP = 6;
+
+const CHARTS = [
+  { title: "TTC radar tới mục tiêu phía trước", unit: "s", clip: [0, TTC_CLIP],
+    series: [{ key: "ttc_moving", label: "Mục tiêu chuyển động", color: "var(--s1)" },
+             { key: "ttc_static", label: "Vật tĩnh (rào, dốc, xe dừng)", color: "var(--s3)", dashed: true }],
+    refs: [{ v: 3, label: "3,0 s cận trên tiêu chuẩn" }, { v: 1.5, label: "1,5 s baseline AEB" }],
+    note: `Cắt ở ${TTC_CLIP} s. Vật tĩnh: vận tốc mặt đất < ${STATIC_SPEED_MS} m/s — nguồn phanh oan nếu AEB không lọc.` },
+  { title: "Khoảng cách tới vật phía trước", unit: "m",
+    series: [{ key: "depth_moving", label: "Radar (mục tiêu chuyển động)", color: "var(--s1)" },
+             { key: "obstacle_distance_m", label: "Obstacle sensor", color: "var(--s2)" }],
+    note: "Obstacle sensor chỉ báo khi tia dò dọc trục xe chạm actor động." },
+  { title: "Gia tốc dọc (IMU)", unit: "m/s²", zero: true,
+    series: [{ key: "imu_accel_x_ms2", label: "Gia tốc dọc", color: "var(--s1)" }],
+    note: "Âm = giảm tốc. Đỉnh lúc va chạm là xung lực đâm xe, không phải phanh." },
+  { title: "Tốc độ ego", unit: "m/s",
+    series: [{ key: "ego_speed_ms", label: "Tốc độ", color: "var(--s1)" }] },
+];
+const KPIS = [
+  ["radar_min_ttc_s", "TTC radar nhỏ nhất", "s", "Mục tiêu chuyển động"],
+  ["radar_min_ttc_static_s", "TTC tới vật tĩnh", "s", "Rào, dốc — nguy cơ phanh oan"],
+  ["obstacle_min_distance_m", "Khoảng cách nhỏ nhất", "m", "Obstacle sensor"],
+  ["max_deceleration_ms2", "Giảm tốc lớn nhất", "m/s²", "IMU, trước va chạm"],
+  ["max_abs_jerk_ms3", "Jerk lớn nhất", "m/s³", "IMU, trung bình 0,1 s"],
+  ["first_brake_time_s", "Lệnh phanh đầu tiên", "s", "Brake > 0,05"],
+  ["impact_peak_accel_ms2", "Xung lực va chạm", "m/s²", "Đỉnh IMU sau va chạm"],
+];
+
+const runId = new URLSearchParams(location.search).get("run");
+let rows = [], frames = [], collisionT = null, tMax = 1;
+const charts = [];
+
+renderSteps($("#steps"), 4, 3, runId);
+if (runId) {
+  $("#toResult").href = `/?run=${encodeURIComponent(runId)}#result`;
+  $("#csv").href = `/runs/${encodeURIComponent(runId)}/frames.csv`;
+  $("#xosc").href = `/runs/${encodeURIComponent(runId)}/scenario.xosc`;
+}
+
+function nice(v) { if (v <= 0) return 1; const p = 10 ** Math.floor(Math.log10(v)); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; }
+function nearest(list, t) { let b = null; for (const x of list) if (!b || Math.abs(x.t - t) < Math.abs(b.t - t)) b = x; return b; }
+
+function derive(samples) {
+  return samples.map((s) => {
+    const rel = s.radar_rel_velocity_ms, ego = s.ego_speed_ms;
+    const st = rel == null || ego == null ? null : Math.abs(rel + ego) < STATIC_SPEED_MS;
+    return { ...s, ttc_moving: st === false ? s.radar_ttc_s : null, ttc_static: st === true ? s.radar_ttc_s : null, depth_moving: st === false ? s.radar_depth_m : null };
+  });
+}
+
+function buildChart(spec) {
+  let yMin, yMax;
+  if (spec.clip) [yMin, yMax] = spec.clip;
+  else {
+    // Thang trục theo dữ liệu sau khởi tạo và TRƯỚC va chạm — cùng cửa sổ với ô số
+    // liệu. Xung lực đâm xe (~-45 m/s²) vẫn vẽ nhưng bị cắt ở mép, không làm dẹt cả biểu đồ.
+    const vals = rows.filter((r) => r.t >= WARMUP_S && (collisionT == null || r.t < collisionT)).flatMap((r) => spec.series.map((s) => r[s.key])).filter((v) => v != null);
+    const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+    yMin = lo < 0 ? -nice(-lo) : 0; yMax = nice(hi);
+  }
+  const x = (t) => PAD.l + (t / tMax) * PW;
+  const y = (v) => PAD.t + (1 - (Math.min(Math.max(v, yMin), yMax) - yMin) / (yMax - yMin)) * PH;
+  const ticksY = yMin < 0 ? [yMin, 0, yMax] : [yMin, (yMin + yMax) / 2, yMax];
+  const step = tMax > 20 ? 5 : tMax > 8 ? 2 : 1;
+  const ticksT = Array.from({ length: Math.floor(tMax / step) + 1 }, (_, i) => i * step);
+  const paths = spec.series.map((s) => {
+    let d = "", pen = false;
+    for (const r of rows) { const v = r[s.key]; if (v == null) { pen = false; continue; } d += `${pen ? "L" : "M"}${x(r.t).toFixed(1)},${y(v).toFixed(1)}`; pen = true; }
+    return d ? `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" ${s.dashed ? 'stroke-dasharray="5 4"' : ""}/>` : "";
+  }).join("");
+  const svg = `
+    <svg class="plot" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(spec.title)} theo thời gian">
+      <rect class="warm" x="${PAD.l}" y="${PAD.t}" width="${x(WARMUP_S) - PAD.l}" height="${PH}"/>
+      <text class="axis-text" x="${PAD.l + 3}" y="${PAD.t + PH - 4}" font-size="9">khởi tạo</text>
+      ${ticksY.map((v) => `<line class="grid-line" x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(v)}" y2="${y(v)}"/><text class="axis-text" x="${PAD.l - 6}" y="${y(v) + 3.5}" text-anchor="end">${fmt(v, Math.abs(yMax - yMin) < 5 ? 1 : 0)}</text>`).join("")}
+      ${spec.zero && yMin < 0 ? `<line x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--faint)"/>` : ""}
+      ${ticksT.map((t) => `<text class="axis-text" x="${x(t)}" y="${H - 6}" text-anchor="middle">${t}s</text>`).join("")}
+      ${(spec.refs || []).map((r) => `<line class="ref-line" x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(r.v)}" y2="${y(r.v)}"/><text class="axis-text" x="${W - PAD.r - 2}" y="${y(r.v) - 4}" text-anchor="end" font-size="9.5">${r.label}</text>`).join("")}
+      ${collisionT != null ? `<line class="hit-line" x1="${x(collisionT)}" x2="${x(collisionT)}" y1="${PAD.t}" y2="${PAD.t + PH}"/><text class="hit-text" x="${x(collisionT) - 4}" y="${PAD.t + 10}" text-anchor="end">✕ va chạm</text>` : ""}
+      ${paths}
+      <g class="cur" style="display:none"><line class="cursor" y1="${PAD.t}" y2="${PAD.t + PH}"/>${spec.series.map((s) => `<circle r="4" fill="var(--surface)" stroke="${s.color}" stroke-width="2"/>`).join("")}</g>
+      <rect x="${PAD.l}" y="${PAD.t}" width="${PW}" height="${PH}" fill="transparent"/>
+    </svg>`;
+  const el = document.createElement("figure");
+  el.className = "chart"; el.style.margin = "0";
+  el.innerHTML = `
+    <figcaption class="head"><b>${esc(spec.title)} <span class="faint">(${spec.unit})</span></b><span class="readout">Rê chuột để xem giá trị</span></figcaption>
+    ${spec.series.length > 1 ? `<div class="legend">${spec.series.map((s) => `<span><svg width="16" height="4" aria-hidden="true"><line x1="0" x2="16" y1="2" y2="2" stroke="${s.color}" stroke-width="2" ${s.dashed ? 'stroke-dasharray="4 3"' : ""}/></svg> ${esc(s.label)}</span>`).join("")}</div>` : ""}
+    ${svg}
+    ${spec.note ? `<div class="note">${esc(spec.note)}</div>` : ""}`;
+  const svgEl = el.querySelector("svg.plot");
+  svgEl.addEventListener("pointermove", (e) => {
+    const b = svgEl.getBoundingClientRect();
+    const px = ((e.clientX - b.left) / b.width) * W;
+    setCursor(Math.min(tMax, Math.max(0, ((px - PAD.l) / PW) * tMax)));
+  });
+  svgEl.addEventListener("pointerleave", () => setCursor(null));
+  return { el, spec, x, y };
+}
+
+function setCursor(t) {
+  const r = t == null ? null : nearest(rows, t);
+  for (const c of charts) {
+    const g = c.el.querySelector(".cur"), ro = c.el.querySelector(".readout");
+    if (!r) { g.style.display = "none"; ro.textContent = "Rê chuột để xem giá trị"; continue; }
+    g.style.display = "";
+    const line = g.querySelector("line"); line.setAttribute("x1", c.x(r.t)); line.setAttribute("x2", c.x(r.t));
+    g.querySelectorAll("circle").forEach((circ, i) => {
+      const v = r[c.spec.series[i].key];
+      circ.style.display = v == null ? "none" : "";
+      if (v != null) { circ.setAttribute("cx", c.x(r.t)); circ.setAttribute("cy", c.y(v)); }
+    });
+    ro.textContent = `t = ${fmt(r.t, 1)} s · ` + c.spec.series.map((s) => `${c.spec.series.length > 1 ? s.label + " " : ""}${fmt(r[s.key])}`).join(" · ");
+  }
+  showCamera(t == null ? (collisionT ?? tMax) : t, r);
+}
+
+function showCamera(t, r) {
+  r = r || nearest(rows, t);
+  if (r) $("#atCursor").innerHTML = [
+    ["Thời điểm", `${fmt(r.t, 2)} s`], ["Tốc độ ego", `${fmt(r.ego_speed_ms)} m/s (${fmt((r.ego_speed_ms ?? NaN) * 3.6, 1)} km/h)`],
+    ["Brake", fmt(r.brake)], ["TTC radar", r.ttc_moving != null ? `${fmt(r.ttc_moving)} s` : r.ttc_static != null ? `${fmt(r.ttc_static)} s (vật tĩnh)` : "—"],
+    ["Khoảng cách radar", `${fmt(r.radar_depth_m)} m`], ["Obstacle sensor", `${fmt(r.obstacle_distance_m)} m`], ["Gia tốc IMU", `${fmt(r.imu_accel_x_ms2)} m/s²`],
+  ].map(([k, v]) => `<tr><th>${k}</th><td class="num">${v}</td></tr>`).join("");
+  if (!frames.length) return;
+  // Khung gần nhất KHÔNG SAU t: ảnh phải là thứ đã xảy ra tới lúc đó.
+  let f = frames[0];
+  for (const x of frames) { if (x.t <= t + 1e-6) f = x; else break; }
+  const src = `/runs/${encodeURIComponent(runId)}/camera/${encodeURIComponent(f.file)}`;
+  if ($("#cam").getAttribute("src") !== src) $("#cam").src = src;
+  $("#camCaption").textContent = `Camera RGB trước ego · t = ${fmt(f.t, 2)} s · ${frames.length} khung hình`;
+}
+
+async function load() {
+  if (!runId) return empty("Chưa chọn lượt chạy. Quay lại màn nhập kịch bản, chạy một kịch bản rồi bấm “Xem dữ liệu sensor”.");
+  let run;
+  try { run = await api(`/api/runs/${encodeURIComponent(runId)}`); } catch (e) { return empty(e.message); }
+  $("#title").textContent = run.title || run.xosc_name || "Dữ liệu sensor CARLA";
+  $("#meta").innerHTML = `${esc(run.started_at)} · ${run.scenario_id ? `<code>${esc(run.scenario_id)}</code> · ` : ""}${esc(run.description_vi || "")}`;
+  const sd = run.sensor_data;
+  if (!sd || !sd.samples || !sd.samples.length) {
+    return empty(run.execution_result && !run.execution_result.success
+      ? "Lượt chạy hỏng nên không vẽ dữ liệu sensor (có thể đã bám nhầm actor còn sót). Xem log ở trang kết quả."
+      : `Lượt chạy này không ghi được dữ liệu sensor${run.sensor_error ? ": " + run.sensor_error : "."}`);
+  }
+  rows = derive(sd.samples);
+  frames = (run.camera_frames || []).slice().sort((a, b) => a.t - b.t);
+  tMax = Math.max(1, rows[rows.length - 1].t);
+  collisionT = sd.collisions.length ? sd.collisions[0].t : null;
+
+  $("#kpis").innerHTML = KPIS.map(([k, label, unit, hint]) => `
+    <div class="kpi" ${sd.summary[k] == null ? 'title="Không đo được ở lượt chạy này"' : ""}>
+      <div class="k">${label}</div><div class="v">${fmt(sd.summary[k])}<small>${unit}</small></div><div class="h">${hint}</div></div>`).join("");
+  const c0 = sd.collisions[0];
+  $("#collision").innerHTML = c0
+    ? `<div class="banner bad">✕ Collision sensor: <b>${sd.collisions.length}</b> sự kiện, lần đầu ở <b>${fmt(c0.t)} s</b>${c0.other_actor ? ` với ${esc(c0.other_actor)}` : ""} (xung lực ${fmt(c0.impulse_ns, 0)} N·s).</div>`
+    : `<div class="banner ok">✓ Collision sensor không ghi va chạm nào.</div>`;
+
+  for (const spec of CHARTS) { const c = buildChart(spec); charts.push(c); $("#charts").appendChild(c.el); }
+  $("#camEmpty").classList.toggle("hide", frames.length > 0);
+  $("#cam").classList.toggle("hide", frames.length === 0);
+  setCursor(null);
+
+  $("#tableSummary").textContent = `${rows.length} mẫu (đã giảm mẫu; frames.csv có đủ mọi tick)`;
+  $("#table").innerHTML = "<tr>" + ["t (s)", "Tốc độ (m/s)", "Brake", "TTC radar (s)", "Radar (m)", "Vận tốc tương đối (m/s)", "Obstacle (m)", "IMU (m/s²)"].map((h) => `<th class="num">${h}</th>`).join("") + "</tr>" +
+    rows.map((r) => `<tr>${[r.t, r.ego_speed_ms, r.brake, r.radar_ttc_s, r.radar_depth_m, r.radar_rel_velocity_ms, r.obstacle_distance_m, r.imu_accel_x_ms2].map((v) => `<td class="num">${fmt(v)}</td>`).join("")}</tr>`).join("");
+  $("#content").classList.remove("hide");
+}
+
+function empty(msg) {
+  $("#empty").innerHTML = `<h2>Chưa có dữ liệu sensor</h2><p class="sub" style="margin:6px 0 12px">${esc(msg)}</p><a class="btn" href="/">← Về màn nhập kịch bản</a>`;
+  $("#empty").classList.remove("hide");
+}
+load();
+</script>
+</body>
+</html>

@@ -1,48 +1,60 @@
-"""UI nhỏ để chạy một file .xosc bằng ScenarioRunner — công cụ dev, không phải sản phẩm.
+"""UI dev: mô tả kịch bản → sinh ``.xosc`` → chạy CARLA → xem dữ liệu sensor. Không phải sản phẩm.
 
-Mục đích: thay chuỗi lệnh dài lúc demo bằng một trang web upload file rồi bấm Chạy.
-Cũng là bản nháp của ``worker/runner.py``: chỗ map ``ExecutionResult`` ở đây
-(hàm ``to_execution_result``) chính là logic worker thật sẽ dùng.
+Bốn bước trên một trang (``worker/dev_ui_static/``):
 
-Chỉ dùng thư viện chuẩn. **Không cài thêm gì vào ``worker/.venv``** — venv đó ghim
-``carla==0.9.15`` và ``setuptools<81``, thêm dependency vào là mời gãy toolchain.
+1. **Mô tả** — câu tiếng Việt, mỗi dòng một kịch bản. Gửi sang pipeline 7 node của
+   backend (``POST /api/v1/generate``) qua proxy ở đây, nên cần backend đang chạy và
+   ``OPENAI_API_KEY``/``DEEPSEEK_API_KEY`` trong ``.env``. Không có key thì vẫn chọn
+   được kịch bản mẫu trong ``fixtures/xosc/`` hoặc tải file ``.xosc`` lên.
+2. **Kịch bản** — mỗi ``.xosc`` sinh ra kèm nhãn ODD, giả định, nút tải về.
+3. **Chạy CARLA** — ScenarioRunner + camera bám ego + ``sensor_recorder`` gắn radar,
+   obstacle, IMU, collision, camera RGB lên ego.
+4. **Dữ liệu sensor** — trang ``/sensor?run=<id>``.
 
-Chạy:
+Chạy trực tiếp ở đây **không qua cổng duyệt** và không ghi kết quả vào thư viện;
+kịch bản sinh ra vẫn nằm ở hàng chờ Cổng 1 của web chính. Mỗi lượt chạy lưu ở
+``out/runs/<run_id>/`` (log, criteria, ``sensors/frames.csv``, ảnh camera).
 
-    python worker/dev_ui.py
+Chỉ dùng thư viện chuẩn (cộng ``carla`` cho ``sensor_recorder``). **Không cài thêm gì
+vào ``worker/.venv``** — venv đó ghim ``carla==0.9.15`` và ``setuptools<81``.
 
-CARLA server vẫn phải bật riêng (nó là app GPU, UI không thay được):
+    WORKER_PYTHON=/usr/bin/python3 python3 worker/dev_ui.py     # máy CARLA 0.9.16
+    worker/.venv/bin/python worker/dev_ui.py                     # máy CARLA 0.9.15
 
-    cd ~/CARLA_0.9.15
-    __NV_PRIME_RENDER_OFFLOAD=1 __VK_LAYER_NV_optimus=NVIDIA_only \\
-        ./CarlaUE4.sh -carla-rpc-port=2000 -windowed -ResX=800 -ResY=600
-
-KHÔNG thêm ``-quality-level=Low`` — cờ đó làm server sập trên Town04, xem fixtures/README.md.
+CARLA server vẫn phải bật riêng (nó là app GPU, UI không thay được), xem CLAUDE.md.
+KHÔNG thêm ``-quality-level=Low`` — cờ đó làm server sập trên Town04.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
 import sys
-import tempfile
+import threading
 import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
+import sensor_recorder
 import sr_cli
 
 # --- Cấu hình: sửa bằng biến môi trường nếu máy khác ------------------------
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+STATIC_DIR = Path(__file__).resolve().parent / "dev_ui_static"
 CARLA_ROOT = sr_cli.default_carla_root()
 SR_ROOT = Path(os.environ.get("SR_ROOT", str(Path.home() / "scenario_runner")))
 WORKER_PYTHON = Path(os.environ.get("WORKER_PYTHON", str(REPO_ROOT / "worker/.venv/bin/python")))
 OUT_DIR = Path(os.environ.get("OUT_DIR", str(REPO_ROOT / "out")))
+RUNS_DIR = OUT_DIR / "runs"
+BACKEND = os.environ.get("FORGE_BACKEND", "http://127.0.0.1:8000").rstrip("/")
 
 CARLA_HOST = os.environ.get("CARLA_HOST", "127.0.0.1")
 CARLA_PORT = int(os.environ.get("CARLA_PORT", "2000"))
@@ -51,6 +63,12 @@ UI_PORT = int(os.environ.get("UI_PORT", "8765"))
 RUN_TIMEOUT_S = float(os.environ.get("RUN_TIMEOUT_S", "300"))
 SR_TIMEOUT_S = os.environ.get("SR_TIMEOUT_S", "60")  # Town04 to, mặc định 10s của SR hay hụt
 TM_PORT = os.environ.get("CARLA_TM_PORT", "8005")  # 8000 trùng cổng backend lúc dev, xem runner.py
+
+SAMPLE_DIRS = ("fixtures/xosc/variants", "fixtures/xosc/generated", "fixtures/xosc")
+SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+RUN_LOCK = threading.Lock()
+"""Một CARLA chỉ chạy được một kịch bản một lúc; lượt thứ hai trả 409 thay vì chen vào."""
 
 
 # --- Chạy ScenarioRunner ----------------------------------------------------
@@ -65,7 +83,7 @@ def carla_reachable() -> bool:
         return False
 
 
-def start_follower(view: str, env: dict) -> subprocess.Popen | None:
+def start_follower(view: str, env: dict, log_path: Path) -> subprocess.Popen | None:
     """Bật ``follow_hero.py`` để camera CarlaUE4 bám ego trong lúc chạy.
 
     ScenarioRunner không đụng vào spectator camera, nên nếu không có cái này thì
@@ -73,7 +91,7 @@ def start_follower(view: str, env: dict) -> subprocess.Popen | None:
     scenario không chạy, trong khi nó đang diễn ra cách đó vài trăm mét.
 
     Chạy như tiến trình riêng chứ không phải thread: ``follow_hero`` cần
-    ``import carla`` nên phải dùng python của worker, còn file này thì không.
+    ``import carla`` nên phải dùng python của worker.
     """
     if view == "off":
         return None
@@ -82,28 +100,26 @@ def start_follower(view: str, env: dict) -> subprocess.Popen | None:
         return None
     # Ghi ra file thay vì DEVNULL: follower chết câm thì triệu chứng là "camera
     # đứng im", không phân biệt được với "chưa bật". Có log mới debug được.
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    log = (OUT_DIR / "follow_hero.log").open("w", encoding="utf-8")
+    log = log_path.open("w", encoding="utf-8")
     return subprocess.Popen(
-        [
-            str(WORKER_PYTHON),
-            str(follower),
-            "--host",
-            CARLA_HOST,
-            "--port",
-            str(CARLA_PORT),
-            "--view",
-            view,
-        ],
+        [str(WORKER_PYTHON), str(follower), "--host", CARLA_HOST, "--port", str(CARLA_PORT), "--view", view],
         env=env,
         stdout=log,
         stderr=subprocess.STDOUT,
     )
 
 
-def run_scenario(xosc_path: Path, view: str = "chase") -> dict:
-    """Chạy một file .xosc, trả về log + JSON criteria (nếu có)."""
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def _slug(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", text).strip("-.")[:48] or "run"
+
+
+def run_scenario(xosc_path: Path, *, view: str = "chase", camera: bool = True, meta: dict | None = None) -> dict:
+    """Chạy một file .xosc kèm sensor, lưu mọi thứ vào ``out/runs/<run_id>/``."""
+    meta = dict(meta or {})
+    run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{_slug(meta.get('scenario_id') or xosc_path.stem)}"
+    run_dir = RUNS_DIR / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(xosc_path, run_dir / "scenario.xosc")
     started_at = time.time()
 
     env = sr_cli.scenario_runner_env(CARLA_ROOT, SR_ROOT)
@@ -113,22 +129,16 @@ def run_scenario(xosc_path: Path, view: str = "chase") -> dict:
         host=CARLA_HOST,
         port=CARLA_PORT,
         timeout_s=SR_TIMEOUT_S,
-        out_dir=OUT_DIR,
+        out_dir=run_dir,
         tm_port=TM_PORT,
     )
 
-    follower = start_follower(view, env)
+    recorder = sensor_recorder.SensorRecorder(CARLA_HOST, CARLA_PORT, run_dir / "sensors", camera=camera)
+    recorder.start()
+    follower = start_follower(view, env, run_dir / "follow_hero.log")
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(SR_ROOT),
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=RUN_TIMEOUT_S,
-        )
-        returncode, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
-        timed_out = False
+        proc = subprocess.run(cmd, cwd=str(SR_ROOT), env=env, capture_output=True, text=True, timeout=RUN_TIMEOUT_S)
+        returncode, stdout, stderr, timed_out = proc.returncode, proc.stdout, proc.stderr, False
     except subprocess.TimeoutExpired as exc:
         returncode, timed_out = -1, True
         stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
@@ -142,31 +152,35 @@ def run_scenario(xosc_path: Path, view: str = "chase") -> dict:
                 follower.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 follower.kill()
+        recorder.stop()
 
-    criteria_path, criteria_json, read_error = sr_cli.newest_criteria_json(OUT_DIR, started_at)
+    _, criteria_json, read_error = sr_cli.newest_criteria_json(run_dir, started_at)
     if read_error:
         stderr += f"\n[dev_ui] {read_error}"
-
-    log_path = OUT_DIR / "scenario_runner.log"
     log_text = f"$ {' '.join(cmd)}\n\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
-    log_path.write_text(log_text, encoding="utf-8")
+    (run_dir / "scenario_runner.log").write_text(log_text, encoding="utf-8")
 
-    follow_log = OUT_DIR / "follow_hero.log"
-    follow_text = ""
-    if view != "off" and follow_log.is_file():
-        follow_text = follow_log.read_text(encoding="utf-8", errors="replace").strip()
-
-    return {
+    execution = to_execution_result(returncode, criteria_json)
+    result = {
+        **meta,
+        "run_id": run_id,
+        "xosc_name": xosc_path.name,
+        "started_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started_at)),
+        "duration_s": round(time.time() - started_at, 1),
         "returncode": returncode,
         "timed_out": timed_out,
-        "log": log_text,
-        "log_path": str(log_path),
-        "follow_log": follow_text,
+        "execution_result": execution,
         "criteria_json": criteria_json,
-        "criteria_path": str(criteria_path) if criteria_path else None,
-        "execution_result": to_execution_result(returncode, criteria_json),
-        "duration_s": round(time.time() - started_at, 1),
+        "log": log_text,
+        "run_dir": str(run_dir),
+        # Lượt chạy hỏng thì sensor có thể đã bám actor còn sót của lượt trước —
+        # cùng lý do với `runner.attach_trajectory`. Vẫn giữ file, nhưng không vẽ.
+        "sensor_data": recorder.payload() if execution["success"] else None,
+        "sensor_error": recorder.error,
+        "camera_frames": recorder.camera_frames() if execution["success"] else [],
     }
+    (run_dir / "run.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    return result
 
 
 def to_execution_result(returncode: int, criteria_json: dict | None) -> dict:
@@ -187,249 +201,276 @@ def to_execution_result(returncode: int, criteria_json: dict | None) -> dict:
     }
 
 
-# --- Web UI -----------------------------------------------------------------
+def list_runs(limit: int = 30) -> list[dict]:
+    runs = []
+    for path in sorted(RUNS_DIR.glob("*/run.json"), reverse=True)[:limit]:
+        try:
+            r = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        execution = r.get("execution_result") or {}
+        runs.append(
+            {
+                "run_id": r.get("run_id"),
+                "title": r.get("title") or r.get("xosc_name"),
+                "started_at": r.get("started_at"),
+                "success": execution.get("success"),
+                "had_collision": execution.get("had_collision"),
+                "has_sensor": bool(r.get("sensor_data")),
+            }
+        )
+    return runs
 
-PAGE = """<!doctype html>
-<html lang="vi"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Scenario Forge — chạy .xosc</title>
-<style>
-:root{color-scheme:light dark;--bg:#fff;--fg:#111;--mut:#666;--line:#ddd;--ok:#0a7;--bad:#c33;--warn:#c80}
-@media(prefers-color-scheme:dark){:root{--bg:#111;--fg:#eee;--mut:#999;--line:#333}}
-*{box-sizing:border-box}
-body{margin:0;padding:2rem 1rem;background:var(--bg);color:var(--fg);
-  font:15px/1.6 ui-sans-serif,system-ui,"Segoe UI",sans-serif}
-main{max-width:860px;margin:0 auto}
-h1{font-size:1.35rem;margin:0 0 .25rem}
-.sub{color:var(--mut);margin:0 0 1.5rem}
-.card{border:1px solid var(--line);border-radius:10px;padding:1rem;margin-bottom:1rem}
-.row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
-.dot{width:9px;height:9px;border-radius:50%;background:var(--mut);flex:none}
-.dot.on{background:var(--ok)}.dot.off{background:var(--bad)}
-button{font:inherit;padding:.5rem 1.1rem;border-radius:8px;border:1px solid var(--line);
-  background:var(--fg);color:var(--bg);cursor:pointer}
-button:disabled{opacity:.45;cursor:not-allowed}
-input[type=file]{font:inherit;max-width:100%}
-pre{background:rgba(128,128,128,.1);padding:.8rem;border-radius:8px;overflow-x:auto;
-  font:12.5px/1.5 ui-monospace,monospace;max-height:340px;white-space:pre-wrap;word-break:break-word}
-table{border-collapse:collapse;width:100%;font-size:14px}
-th,td{text-align:left;padding:.4rem .6rem;border-bottom:1px solid var(--line)}
-th{color:var(--mut);font-weight:600}
-.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
-.note{font-size:13px;color:var(--mut);border-left:3px solid var(--line);padding-left:.8rem;margin-top:.8rem}
-code{font:12.5px ui-monospace,monospace;background:rgba(128,128,128,.14);padding:.1rem .35rem;border-radius:4px}
-.hide{display:none}
-</style></head><body><main>
 
-<h1>Chạy file <code>.xosc</code> bằng ScenarioRunner</h1>
-<p class="sub">Công cụ dev. CARLA server phải bật sẵn trên Windows.</p>
+def list_samples() -> list[dict]:
+    samples, seen = [], set()
+    for rel in SAMPLE_DIRS:
+        for path in sorted((REPO_ROOT / rel).glob("*.xosc")):
+            if path.name in seen:
+                continue
+            seen.add(path.name)
+            samples.append({"name": path.name, "group": rel.removeprefix("fixtures/xosc").strip("/") or "gốc"})
+    return samples
 
-<div class="card">
-  <div class="row"><span class="dot" id="dot"></span><span id="carla">đang kiểm tra CARLA…</span></div>
-  <div class="note" id="paths"></div>
-</div>
 
-<div class="card">
-  <div class="row">
-    <input type="file" id="file" accept=".xosc,.xml">
-    <label for="view" style="color:var(--mut)">Camera</label>
-    <select id="view">
-      <option value="chase">Bám sau ego</option>
-      <option value="bird">Nhìn từ trên xuống</option>
-      <option value="off">Không bám</option>
-    </select>
-    <button id="run" disabled>Chạy</button>
-    <span id="hint" style="color:var(--mut)"></span>
-  </div>
-  <div class="note">Mặc định dùng <code>fixtures/xosc/sample_001_cut_in.xosc</code> nếu không chọn file —
-    bấm Chạy luôn là được.<br>
-    ScenarioRunner không tự di chuyển camera của CARLA. Không bám thì cửa sổ CarlaUE4 vẫn nhìn vào chỗ
-    map được load, thấy đường trống dù kịch bản đang chạy cách đó vài trăm mét.
-    <b>Nhìn từ trên xuống</b> dễ thấy đổi làn nhất.</div>
-</div>
+def sample_path(name: str) -> Path | None:
+    if not SAFE_NAME.match(name):
+        return None
+    for rel in SAMPLE_DIRS:
+        path = REPO_ROOT / rel / name
+        if path.is_file():
+            return path
+    return None
 
-<div class="card hide" id="res">
-  <h2 style="font-size:1.05rem;margin:.2rem 0 .8rem">Kết quả</h2>
-  <table id="summary"></table>
-  <div class="note" id="trap"></div>
-  <h3 style="font-size:.95rem;margin:1.2rem 0 .4rem">Criteria</h3>
-  <table id="crit"></table>
-  <h3 style="font-size:.95rem;margin:1.2rem 0 .4rem">Log</h3>
-  <pre id="log"></pre>
-  <div id="followBox" class="hide">
-    <h3 style="font-size:.95rem;margin:1.2rem 0 .4rem">Camera bám ego</h3>
-    <pre id="followLog"></pre>
-  </div>
-</div>
 
-<script>
-const $ = s => document.querySelector(s);
-let busy = false;
+# --- Proxy tới backend Scenario Forge ---------------------------------------
 
-async function status(){
-  try{
-    const r = await (await fetch('/status')).json();
-    $('#dot').className = 'dot ' + (r.carla ? 'on':'off');
-    $('#carla').textContent = r.carla
-      ? `CARLA đang chạy — ${r.host}:${r.port}`
-      : `Không thấy CARLA ở ${r.host}:${r.port} — bật CarlaUE4.exe trước`;
-    $('#paths').innerHTML =
-      `ScenarioRunner: <code>${r.sr_root}</code><br>Python: <code>${r.python}</code><br>Output: <code>${r.out_dir}</code>`;
-    if(!busy) $('#run').disabled = !r.carla;
-  }catch(e){ $('#carla').textContent = 'không gọi được /status'; }
-}
-status(); setInterval(status, 4000);
 
-$('#run').onclick = async () => {
-  busy = true; $('#run').disabled = true; $('#hint').textContent = 'đang chạy, có thể mất vài phút…';
-  const f = $('#file').files[0];
-  const url = '/run?view=' + $('#view').value
-            + '&name=' + encodeURIComponent(f ? f.name : 'sample_001_cut_in.xosc');
-  const body = f ? await f.arrayBuffer() : new ArrayBuffer(0);
-  try{
-    const r = await (await fetch(url, {method:'POST', body})).json();
-    render(r);
-  }catch(e){
-    $('#res').classList.remove('hide'); $('#log').textContent = 'Lỗi gọi /run: ' + e;
-  }
-  busy = false; $('#hint').textContent = ''; status();
-};
+def backend(method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
+    """Gọi API backend. Proxy qua đây vì CORS của backend chỉ mở cho cổng 3000."""
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
+    req = urllib.request.Request(
+        f"{BACKEND}/api/v1{path}", data=data, method=method, headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as exc:
+        try:
+            body = json.loads(exc.read().decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            body = {}
+        return exc.code, {"error": body.get("detail") or body.get("error") or f"HTTP {exc.code}"}
+    except (urllib.error.URLError, OSError) as exc:
+        return 502, {"error": f"Không gọi được backend {BACKEND}: {exc}. Bật bằng `make demo` hoặc `make run`."}
 
-function render(r){
-  $('#res').classList.remove('hide');
-  const x = r.execution_result || {};
-  const yes = v => v ? '<span class="ok">có</span>' : '<span class="bad">không</span>';
-  $('#summary').innerHTML = `
-    <tr><th>ExecutionResult.success</th><td>${x.success ? '<span class="ok">true</span> — chạy xong, không crash'
-        : '<span class="bad">false</span> — crash / timeout / lỗi XML'}</td></tr>
-    <tr><th>had_collision</th><td>${yes(x.had_collision)} ${x.had_collision
-        ? '<span class="ok">← dựng được nguy hiểm, đây là kết quả tốt</span>' : ''}</td></tr>
-    <tr><th>Số criteria</th><td>${x.criteria_count ?? 0}</td></tr>
-    <tr><th>Thời gian</th><td>${r.duration_s}s</td></tr>
-    <tr><th>Exit code</th><td>${r.returncode}${r.timed_out ? ' (timeout)' : ''}</td></tr>
-    <tr><th>File log</th><td><code>${r.log_path}</code></td></tr>
-    <tr><th>File criteria</th><td>${r.criteria_path ? '<code>'+r.criteria_path+'</code>' : '—'}</td></tr>`;
 
-  // Đơn vị: ScenarioRunner trả về m/s cho tốc độ, m cho quãng đường, s cho thời
-  // lượng. Người đọc có trực giác về km/h chứ không có về m/s — và chính nhờ vậy
-  // một lỗi đổi đơn vị trong converter (60 m/s = 216 km/h) sẽ đập vào mắt ngay.
-  // Chỉ đổi ở TẦNG HIỂN THỊ; criteria_json giữ nguyên số gốc.
-  function unitOf(name) {
-    const n = String(name || '').toLowerCase();
-    if (n.includes('velocity') || n.includes('speed')) return 'kmh';
-    if (n.includes('distance')) return 'm';
-    if (n.includes('duration') || n.includes('time')) return 's';
-    return '';
-  }
-  function fmtVal(v, u) {
-    if (v === null || v === undefined || v === '') return '—';
-    const n = Number(v);
-    if (!isFinite(n)) return String(v);
-    if (u === 'kmh') return (n * 3.6).toFixed(1) + ' km/h';
-    if (u === 'm') return n.toFixed(1) + ' m';
-    if (u === 's') return n.toFixed(2) + ' s';
-    return String(n);
-  }
-  function rawHint(v, u) { return u === 'kmh' ? ` · gốc ${v} m/s` : ''; }
+def explain_generation_error(error: str | None) -> str | None:
+    """Lỗi 401 của provider là lỗi cấu hình, không phải lỗi câu mô tả — nói thẳng ra."""
+    if not error:
+        return None
+    if "invalid_api_key" in error or "Incorrect API key" in error or "401" in error:
+        return (
+            "Backend chưa có API key LLM hợp lệ. Điền OPENAI_API_KEY (hoặc LLM_PROVIDER=deepseek + "
+            "DEEPSEEK_API_KEY) vào .env rồi khởi động lại backend. Trong lúc chờ, dùng kịch bản mẫu bên dưới."
+        )
+    return None
 
-  const srs = x.sr_success_field;
-  $('#trap').innerHTML = srs === undefined || srs === null ? '' :
-    `<b>Bẫy:</b> JSON của ScenarioRunner có trường <code>success: ${srs}</code> —
-     nó là AND của mọi criteria, <b>không phải</b> <code>ExecutionResult.success</code>.
-     ${srs === false ? 'Ở đây <code>false</code> nghĩa là có tiêu chí không đạt — thường chính là va chạm đã xảy ra, tức kịch bản <b>thành công</b>.' : ''}`;
 
-  const cs = (r.criteria_json || {}).criteria || [];
-  $('#crit').innerHTML = cs.length
-    ? '<tr><th>Tên</th><th>Kết quả</th><th>Đạt</th></tr>' + cs.map(c => {
-        // Ngưỡng kỳ vọng chỉ hiện KHI TRƯỢT. Lúc đạt thì con số thực tế đã tự nói
-        // lên mọi thứ (211,7 m thì khỏi cần biết vạch là 50), và ba ngưỡng vệ sinh
-        // luôn-đạt chỉ làm nhiễu bảng. Trượt thì mới cần biết trượt cách vạch bao xa.
-        const u = unitOf(c.name);
-        const exp = fmtVal(c.expected, u), act = fmtVal(c.actual, u);
-        const miss = c.success ? '' : ` <span style="opacity:.65">(kỳ vọng ${exp})</span>`;
-        return `<tr><td>${c.name}</td>
-         <td title="kỳ vọng ${exp}${rawHint(c.actual, u)}">${act}${miss}</td>
-         <td>${c.success ? '<span class="ok">✓</span>' : '<span class="warn">✗</span>'}</td></tr>`;
-      }).join('')
-      + (cs.some(c => unitOf(c.name) === 'kmh')
-         ? `<tr><td colspan="3" style="opacity:.7;font-size:.85em">
-              Tốc độ đổi sang <b>km/h</b>; ScenarioRunner trả về m/s. Rê chuột lên ô kết quả để xem ngưỡng kỳ vọng và số gốc.
-            </td></tr>`
-         : '')
-    : '<tr><td>Không có criteria — kịch bản chưa chạy tới nơi</td></tr>';
+def scenario_brief(scenario_id: str) -> tuple[int, dict]:
+    code, sc = backend("GET", f"/scenarios/{quote(scenario_id)}")
+    if code != 200:
+        return code, sc
+    return 200, {
+        "scenario_id": sc.get("scenario_id"),
+        "title": sc.get("title"),
+        "description_vi": sc.get("description_vi"),
+        "odd": sc.get("odd") or {},
+        "time_of_day": sc.get("time_of_day"),
+        "assumptions": sc.get("assumptions") or [],
+        "status": sc.get("status"),
+        "xosc_bytes": len(sc.get("xosc_content") or ""),
+    }
 
-  $('#log').textContent = r.log || '';
 
-  const fl = (r.follow_log || '').trim();
-  $('#followBox').classList.toggle('hide', !fl);
-  $('#followLog').textContent = fl;
-}
-</script></main></body></html>
-"""
+# --- HTTP -------------------------------------------------------------------
 
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002 — khớp chữ ký lớp cha
         """Tắt log mỗi request cho đỡ ồn; lỗi thật vẫn trả về UI."""
 
-    def _send(self, code: int, body: bytes, ctype: str) -> None:
+    def _send(self, code: int, body: bytes, ctype: str, extra: dict | None = None) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
-    def _json(self, code: int, payload: dict) -> None:
+    def _json(self, code: int, payload: dict | list) -> None:
         self._send(code, json.dumps(payload, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
-    def do_GET(self) -> None:
+    def _static(self, name: str) -> None:
+        path = STATIC_DIR / name
+        ctype = {".html": "text/html", ".css": "text/css", ".js": "text/javascript"}.get(path.suffix, "text/plain")
+        self._send(200, path.read_bytes(), f"{ctype}; charset=utf-8", {"Cache-Control": "no-store"})
+
+    def _body(self) -> bytes:
+        length = int(self.headers.get("Content-Length") or 0)
+        return self.rfile.read(length) if length else b""
+
+    def do_GET(self) -> None:  # noqa: C901 — một bảng route phẳng dễ đọc hơn tách nhỏ
         path = urlparse(self.path).path
+        parts = [p for p in path.split("/") if p]
+
         if path == "/":
-            self._send(200, PAGE.encode(), "text/html; charset=utf-8")
-        elif path == "/status":
+            self._static("index.html")
+        elif path == "/sensor":
+            self._static("sensor.html")
+        elif len(parts) == 1 and parts[0] in {"app.css", "common.js"}:
+            self._static(parts[0])
+        elif path == "/api/status":
+            code, _ = backend("GET", "/scenarios?limit=1")
             self._json(
                 200,
                 {
                     "carla": carla_reachable(),
                     "host": CARLA_HOST,
                     "port": CARLA_PORT,
+                    "backend": BACKEND,
+                    "backend_ok": code == 200,
+                    "busy": RUN_LOCK.locked(),
                     "sr_root": str(SR_ROOT),
                     "python": str(WORKER_PYTHON),
-                    "out_dir": str(OUT_DIR),
+                    "runs_dir": str(RUNS_DIR),
                 },
             )
+        elif path == "/api/samples":
+            self._json(200, list_samples())
+        elif path == "/api/runs":
+            self._json(200, list_runs())
+        elif len(parts) == 3 and parts[:2] == ["api", "generate"]:
+            code, st = backend("GET", f"/status/{quote(parts[2])}")
+            if code == 200:
+                st["hint"] = explain_generation_error(st.get("error"))
+                if st.get("step") == "done" and st.get("scenario_id"):
+                    _, st["scenario"] = scenario_brief(st["scenario_id"])
+            self._json(code, st)
+        elif len(parts) == 3 and parts[:2] == ["api", "scenario"]:
+            self._json(*scenario_brief(parts[2]))
+        elif len(parts) == 4 and parts[:2] == ["api", "scenario"] and parts[3] == "xosc":
+            code, sc = backend("GET", f"/scenarios/{quote(parts[2])}")
+            xosc = (sc.get("xosc_content") or "") if code == 200 else ""
+            if not xosc:
+                self._json(404, {"error": "Kịch bản chưa có .xosc (ngoài phạm vi converter, ADR-016)"})
+                return
+            self._send(
+                200,
+                xosc.encode("utf-8"),
+                "application/xml; charset=utf-8",
+                {"Content-Disposition": f'attachment; filename="{_slug(parts[2])}.xosc"'},
+            )
+        elif len(parts) == 3 and parts[:2] == ["api", "runs"] and SAFE_NAME.match(parts[2]):
+            run_file = RUNS_DIR / parts[2] / "run.json"
+            if run_file.is_file():
+                self._send(200, run_file.read_bytes(), "application/json; charset=utf-8")
+            else:
+                self._json(404, {"error": "không có lượt chạy này"})
+        elif len(parts) == 4 and parts[0] == "runs" and parts[2] == "camera" and all(map(SAFE_NAME.match, parts[1:])):
+            img = RUNS_DIR / parts[1] / "sensors" / "camera" / parts[3]
+            if img.is_file():
+                self._send(200, img.read_bytes(), "image/png", {"Cache-Control": "max-age=3600"})
+            else:
+                self._json(404, {"error": "không có ảnh"})
+        elif len(parts) == 3 and parts[0] == "runs" and parts[2] in {"frames.csv", "scenario.xosc"}:
+            if not SAFE_NAME.match(parts[1]):
+                self._json(404, {"error": "not found"})
+                return
+            file = RUNS_DIR / parts[1] / ("sensors/frames.csv" if parts[2] == "frames.csv" else "scenario.xosc")
+            if file.is_file():
+                self._send(
+                    200,
+                    file.read_bytes(),
+                    "text/csv; charset=utf-8" if parts[2] == "frames.csv" else "application/xml; charset=utf-8",
+                    {"Content-Disposition": f'attachment; filename="{parts[1]}-{parts[2]}"'},
+                )
+            else:
+                self._json(404, {"error": f"lượt chạy không có {parts[2]}"})
         else:
             self._json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path != "/run":
+        query = parse_qs(parsed.query)
+
+        if parsed.path == "/api/generate":
+            try:
+                body = json.loads(self._body() or b"{}")
+            except json.JSONDecodeError:
+                self._json(400, {"error": "body không phải JSON"})
+                return
+            prompt = str(body.get("prompt") or "").strip()
+            if not prompt:
+                self._json(400, {"error": "Câu mô tả trống"})
+                return
+            self._json(*backend("POST", "/generate", {"prompt": prompt, "created_by": "dev_ui"}))
+            return
+
+        if parsed.path != "/api/run":
             self._json(404, {"error": "not found"})
             return
 
-        query = parse_qs(parsed.query)
-        length = int(self.headers.get("Content-Length") or 0)
-        data = self.rfile.read(length) if length else b""
-        name = (query.get("name") or ["upload.xosc"])[0]
         view = (query.get("view") or ["chase"])[0]
-        if view not in {"chase", "bird", "off"}:
-            view = "chase"
+        view = view if view in {"chase", "bird", "off"} else "chase"
+        camera = (query.get("camera") or ["1"])[0] != "0"
+        scenario_id = (query.get("scenario_id") or [""])[0]
+        sample = (query.get("sample") or [""])[0]
+        upload_name = (query.get("name") or ["upload.xosc"])[0]
+        data = self._body()
 
-        tmp_dir = Path(tempfile.mkdtemp(prefix="forge_xosc_"))
+        if not RUN_LOCK.acquire(blocking=False):
+            self._json(409, {"error": "CARLA đang chạy một kịch bản khác — đợi lượt đó xong."})
+            return
+        tmp_dir = RUNS_DIR / ".tmp"
         try:
-            if data:
-                xosc = tmp_dir / Path(name).name
-                xosc.write_bytes(data)
-            else:
-                xosc = REPO_ROOT / "fixtures/xosc/sample_001_cut_in.xosc"
-                if not xosc.is_file():
-                    self._json(400, {"error": f"không có file mặc định: {xosc}"})
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            if scenario_id:
+                code, sc = backend("GET", f"/scenarios/{quote(scenario_id)}")
+                if code != 200 or not sc.get("xosc_content"):
+                    self._json(400, {"error": sc.get("error") or "Kịch bản chưa có .xosc (ngoài phạm vi converter)"})
                     return
-            self._json(200, run_scenario(xosc, view=view))
+                xosc = tmp_dir / f"{_slug(scenario_id)}.xosc"
+                xosc.write_text(sc["xosc_content"], encoding="utf-8")
+                meta = {
+                    "scenario_id": scenario_id,
+                    "title": sc.get("title"),
+                    "description_vi": sc.get("description_vi"),
+                    "odd": sc.get("odd"),
+                    "source": "generated",
+                }
+            elif sample:
+                path = sample_path(sample)
+                if path is None:
+                    self._json(400, {"error": f"không có kịch bản mẫu {sample}"})
+                    return
+                xosc, meta = path, {"title": path.stem, "source": "sample"}
+            elif data:
+                xosc = tmp_dir / _slug(Path(upload_name).name)
+                xosc.write_bytes(data)
+                meta = {"title": Path(upload_name).stem, "source": "upload"}
+            else:
+                self._json(400, {"error": "Chưa chọn kịch bản để chạy"})
+                return
+            if not carla_reachable():
+                self._json(503, {"error": f"Không thấy CARLA ở {CARLA_HOST}:{CARLA_PORT} — bật CarlaUE4 trước."})
+                return
+            self._json(200, run_scenario(xosc, view=view, camera=camera, meta=meta))
         except Exception as exc:  # noqa: BLE001 — công cụ dev, trả lỗi ra UI thay vì chết câm
             self._json(500, {"error": f"{type(exc).__name__}: {exc}"})
         finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+            RUN_LOCK.release()
 
 
 def main() -> int:
@@ -447,8 +488,10 @@ def main() -> int:
         print("\nSửa bằng biến môi trường: CARLA_ROOT, SR_ROOT, WORKER_PYTHON", file=sys.stderr)
         return 1
 
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
     print(f"UI: http://127.0.0.1:{UI_PORT}")
     print(f"CARLA: {CARLA_HOST}:{CARLA_PORT} — {'đang chạy' if carla_reachable() else 'CHƯA BẬT'}")
+    print(f"Backend: {BACKEND}")
     print("Ctrl-C để dừng.")
     with ThreadingHTTPServer(("127.0.0.1", UI_PORT), Handler) as srv:
         try:
