@@ -1,0 +1,50 @@
+{
+  "title": "Xe tải làn bên lấn sang làn ego",
+  "odd": {
+    "road_type": "highway",
+    "weather": "clear",
+    "actor_type": "truck",
+    "maneuver": "lane_drift",
+    "specific_type": null,
+    "specific_action": null
+  },
+  "time_of_day": "day",
+  "actors": [
+    {
+      "name": "hero",
+      "category": "car",
+      "position": {
+        "lane_offset": 0,
+        "s_offset_m": 0.0
+      },
+      "initial_speed_kmh": 70.0,
+      "is_ego": true,
+      "specific_type": null
+    },
+    {
+      "name": "adversary",
+      "category": "truck",
+      "position": {
+        "lane_offset": -1,
+        "s_offset_m": 10.0
+      },
+      "initial_speed_kmh": 60.0,
+      "is_ego": false,
+      "specific_type": null
+    }
+  ],
+  "maneuvers": [
+    {
+      "actor_name": "adversary",
+      "maneuver": "lane_drift",
+      "trigger": {
+        "type": "distance_to_ego",
+        "value": 15.0
+      },
+      "target_speed_kmh": null
+    }
+  ],
+  "duration_s": 30.0,
+  "scenario_id": "sc_108",
+  "description_vi": "Xe tải ở làn bên trái phía trước 10 m chạy 60 km/h, lấn dần sang làn của ego đang chạy 70 km/h. Trời quang, ban ngày, cao tốc."
+}

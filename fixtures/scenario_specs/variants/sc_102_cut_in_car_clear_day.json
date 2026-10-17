@@ -1,0 +1,50 @@
+{
+  "title": "Ô tô tạt đầu rồi phanh gấp trên cao tốc",
+  "odd": {
+    "road_type": "highway",
+    "weather": "clear",
+    "actor_type": "car",
+    "maneuver": "cut_in",
+    "specific_type": null,
+    "specific_action": null
+  },
+  "time_of_day": "day",
+  "actors": [
+    {
+      "name": "hero",
+      "category": "car",
+      "position": {
+        "lane_offset": 0,
+        "s_offset_m": 0.0
+      },
+      "initial_speed_kmh": 70.0,
+      "is_ego": true,
+      "specific_type": null
+    },
+    {
+      "name": "adversary",
+      "category": "car",
+      "position": {
+        "lane_offset": -1,
+        "s_offset_m": -30.0
+      },
+      "initial_speed_kmh": 95.0,
+      "is_ego": false,
+      "specific_type": null
+    }
+  ],
+  "maneuvers": [
+    {
+      "actor_name": "adversary",
+      "maneuver": "cut_in",
+      "trigger": {
+        "type": "lead_distance",
+        "value": 9.0
+      },
+      "target_speed_kmh": 45.0
+    }
+  ],
+  "duration_s": 30.0,
+  "scenario_id": "sc_102",
+  "description_vi": "Ô tô chạy 95 km/h ở làn bên trái, vượt lên từ phía sau xe ego đang chạy 70 km/h, tạt đầu rồi phanh gấp còn 45 km/h. Trời quang, ban ngày, cao tốc."
+}

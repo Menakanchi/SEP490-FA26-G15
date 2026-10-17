@@ -1,0 +1,50 @@
+{
+  "title": "Xe phía trước phanh gấp trên cao tốc",
+  "odd": {
+    "road_type": "highway",
+    "weather": "clear",
+    "actor_type": "car",
+    "maneuver": "sudden_brake",
+    "specific_type": null,
+    "specific_action": null
+  },
+  "time_of_day": "day",
+  "actors": [
+    {
+      "name": "hero",
+      "category": "car",
+      "position": {
+        "lane_offset": 0,
+        "s_offset_m": 0.0
+      },
+      "initial_speed_kmh": 70.0,
+      "is_ego": true,
+      "specific_type": null
+    },
+    {
+      "name": "adversary",
+      "category": "car",
+      "position": {
+        "lane_offset": 0,
+        "s_offset_m": 30.0
+      },
+      "initial_speed_kmh": 70.0,
+      "is_ego": false,
+      "specific_type": null
+    }
+  ],
+  "maneuvers": [
+    {
+      "actor_name": "adversary",
+      "maneuver": "sudden_brake",
+      "trigger": {
+        "type": "distance_to_ego",
+        "value": 30.0
+      },
+      "target_speed_kmh": 0.0
+    }
+  ],
+  "duration_s": 30.0,
+  "scenario_id": "sc_105",
+  "description_vi": "Ô tô phía trước cùng làn cách 30 m, cả hai chạy 70 km/h, xe phía trước bất ngờ phanh gấp. Trời quang, ban ngày, cao tốc."
+}

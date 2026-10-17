@@ -1,0 +1,50 @@
+{
+  "title": "Ô tô chạy ngược chiều trên cao tốc ban đêm",
+  "odd": {
+    "road_type": "highway",
+    "weather": "clear",
+    "actor_type": "car",
+    "maneuver": "wrong_way",
+    "specific_type": null,
+    "specific_action": null
+  },
+  "time_of_day": "night",
+  "actors": [
+    {
+      "name": "hero",
+      "category": "car",
+      "position": {
+        "lane_offset": 0,
+        "s_offset_m": 0.0
+      },
+      "initial_speed_kmh": 60.0,
+      "is_ego": true,
+      "specific_type": null
+    },
+    {
+      "name": "adversary",
+      "category": "car",
+      "position": {
+        "lane_offset": 0,
+        "s_offset_m": 40.0
+      },
+      "initial_speed_kmh": 50.0,
+      "is_ego": false,
+      "specific_type": null
+    }
+  ],
+  "maneuvers": [
+    {
+      "actor_name": "adversary",
+      "maneuver": "wrong_way",
+      "trigger": {
+        "type": "distance_to_ego",
+        "value": 38.0
+      },
+      "target_speed_kmh": null
+    }
+  ],
+  "duration_s": 30.0,
+  "scenario_id": "sc_109",
+  "description_vi": "Ô tô chạy ngược chiều trong làn của ego, cách 40 m, tốc độ 50 km/h, ego chạy 60 km/h. Trời quang, ban đêm, cao tốc."
+}

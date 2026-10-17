@@ -1,0 +1,50 @@
+{
+  "title": "Xe máy tạt đầu ô tô lúc chạng vạng trời mưa",
+  "odd": {
+    "road_type": "highway",
+    "weather": "rain",
+    "actor_type": "motorcycle",
+    "maneuver": "cut_in",
+    "specific_type": null,
+    "specific_action": null
+  },
+  "time_of_day": "dusk",
+  "actors": [
+    {
+      "name": "hero",
+      "category": "car",
+      "position": {
+        "lane_offset": 0,
+        "s_offset_m": 0.0
+      },
+      "initial_speed_kmh": 50.0,
+      "is_ego": true,
+      "specific_type": null
+    },
+    {
+      "name": "adversary",
+      "category": "motorcycle",
+      "position": {
+        "lane_offset": -1,
+        "s_offset_m": -25.0
+      },
+      "initial_speed_kmh": 75.0,
+      "is_ego": false,
+      "specific_type": null
+    }
+  ],
+  "maneuvers": [
+    {
+      "actor_name": "adversary",
+      "maneuver": "cut_in",
+      "trigger": {
+        "type": "lead_distance",
+        "value": 8.0
+      },
+      "target_speed_kmh": 30.0
+    }
+  ],
+  "duration_s": 30.0,
+  "scenario_id": "sc_101",
+  "description_vi": "Xe máy chạy 75 km/h ở làn bên trái, vượt lên từ phía sau ô tô đang chạy 50 km/h, tạt đầu rồi phanh còn 30 km/h. Trời mưa, chạng vạng, cao tốc."
+}
