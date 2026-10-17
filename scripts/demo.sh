@@ -26,13 +26,23 @@ Usage:
   make demo-check  # chỉ kiểm tra dependency/cấu hình
 
 Biến môi trường tuỳ chọn:
-  CARLA_ROOT, SR_ROOT, CARLA_PORT, CARLA_TM_PORT
+  CARLA_ROOT, SR_ROOT, CARLA_PORT, CARLA_TM_PORT, WORKER_PYTHON
+  (CARLA_ROOT mặc định: ~/CARLA_0.9.15, không có thì /opt/carla-simulator.
+   CARLA 0.9.16: WORKER_PYTHON phải là Python 3.10 có carla==0.9.16 — xem CLAUDE.md)
   DEMO_CARLA_RES_X, DEMO_CARLA_RES_Y, DEMO_SEED=1, DEMO_ENV_FILE
 EOF
     exit 0
 fi
 
-CARLA_ROOT="${CARLA_ROOT:-${USER_DIR}/CARLA_0.9.15}"
+if [[ -z "${CARLA_ROOT:-}" ]]; then
+    CARLA_ROOT="${USER_DIR}/CARLA_0.9.15"
+    if [[ ! -x "${CARLA_ROOT}/CarlaUE4.sh" && -x /opt/carla-simulator/CarlaUE4.sh ]]; then
+        CARLA_ROOT=/opt/carla-simulator
+    fi
+fi
+# worker/.venv ghim carla==0.9.15; server 0.9.16 cần client cùng bản nên phải trỏ
+# WORKER_PYTHON sang một Python 3.10 khác đã cài carla==0.9.16.
+WORKER_PYTHON="${WORKER_PYTHON:-${REPO_ROOT}/worker/.venv/bin/python}"
 SR_ROOT="${SR_ROOT:-${USER_DIR}/scenario_runner}"
 CARLA_PORT="${CARLA_PORT:-2000}"
 CARLA_TM_PORT="${CARLA_TM_PORT:-8005}"
@@ -108,6 +118,17 @@ check_prerequisites() {
             echo "Không tìm thấy ScenarioRunner: ${SR_ROOT}/scenario_runner.py" >&2
             failed=1
         fi
+        local carla_ver=""
+        [[ -f "${CARLA_ROOT}/VERSION" ]] && carla_ver="$(tr -d '[:space:]' <"${CARLA_ROOT}/VERSION")"
+        if [[ -x "$WORKER_PYTHON" && -n "$carla_ver" ]]; then
+            local client_ver
+            client_ver="$("$WORKER_PYTHON" -c 'from importlib.metadata import version; print(version("carla"))' 2>/dev/null || true)"
+            if [[ -n "$client_ver" && "$client_ver" != "$carla_ver" ]]; then
+                echo "CARLA server ${carla_ver} nhưng ${WORKER_PYTHON} có carla==${client_ver}; đặt WORKER_PYTHON sang Python có carla==${carla_ver}." >&2
+                failed=1
+            fi
+        fi
+        echo "  CARLA_ROOT=${CARLA_ROOT}${carla_ver:+ (${carla_ver})}  WORKER_PYTHON=${WORKER_PYTHON}"
     fi
 
     if ((failed)); then
@@ -178,7 +199,7 @@ if [[ ! -d "${REPO_ROOT}/frontend/node_modules" ]]; then
     echo "Đang cài dependency frontend…"
     (cd frontend && npm ci)
 fi
-if [[ "$MODE" == "full" && ! -x "${REPO_ROOT}/worker/.venv/bin/python" ]]; then
+if [[ "$MODE" == "full" && ! -x "$WORKER_PYTHON" && "$WORKER_PYTHON" == "${REPO_ROOT}/worker/.venv/bin/python" ]]; then
     echo "Đang cài dependency worker Python 3.10…"
     uv sync --project worker --locked
 fi
@@ -233,7 +254,7 @@ if [[ "$MODE" == "full" ]]; then
     carla_ready=0
     for ((i = 1; i <= 30; i++)); do
         if PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla" \
-            "${REPO_ROOT}/worker/.venv/bin/python" -c \
+            "$WORKER_PYTHON" -c \
             "import carla; c=carla.Client('127.0.0.1', ${CARLA_PORT}); c.set_timeout(1.0); print(c.get_server_version())" \
             >/dev/null 2>&1; then
             carla_ready=1
@@ -251,7 +272,7 @@ if [[ "$MODE" == "full" ]]; then
     else
         start_service camera "$REPO_ROOT" \
             env PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla" \
-            "${REPO_ROOT}/worker/.venv/bin/python" worker/follow_hero.py
+            "$WORKER_PYTHON" worker/follow_hero.py
     fi
 
     if pgrep -f "[w]orker/runner.py" >/dev/null 2>&1; then
@@ -260,8 +281,8 @@ if [[ "$MODE" == "full" ]]; then
         start_service worker "$REPO_ROOT" \
             env FORGE_BACKEND="$BACKEND_URL" CARLA_HOST=127.0.0.1 \
             CARLA_PORT="$CARLA_PORT" CARLA_TM_PORT="$CARLA_TM_PORT" \
-            CARLA_NO_RENDER=0 \
-            "${REPO_ROOT}/worker/.venv/bin/python" worker/runner.py
+            CARLA_NO_RENDER=0 CARLA_ROOT="$CARLA_ROOT" SR_ROOT="$SR_ROOT" \
+            "$WORKER_PYTHON" worker/runner.py
     fi
 fi
 

@@ -31,6 +31,28 @@ Các thư viện hệ thống đã từng thiếu và gây lỗi `.so` khó hi�
 sudo apt install -y libomp5 libsdl2-2.0-0 libxerces-c3.2 vulkan-tools
 ```
 
+## Máy dùng CARLA 0.9.16 (`/opt/carla-simulator`)
+
+Kiểm chứng ngày 17/10/2026: CARLA 0.9.16 + ScenarioRunner v0.9.16 trên RTX 5060
+Laptop (Ubuntu, Python 3.10), đủ 6 file trong `fixtures/xosc/generated/` chạy
+xong và `cut_in`, `wrong_way` tái hiện được va chạm.
+
+- `CARLA_ROOT` tự rơi về `/opt/carla-simulator` khi không có `~/CARLA_0.9.15`
+  (`worker/sr_cli.py::default_carla_root`, `scripts/demo.sh`).
+- Client phải **cùng bản** với server. `worker/.venv` ghim `carla==0.9.15`, nên
+  trỏ `WORKER_PYTHON` sang một Python 3.10 có `carla==0.9.16` cùng các
+  dependency trong `~/scenario_runner/requirements.txt`. `make demo-check` báo
+  lỗi nếu hai bản lệch nhau.
+- ScenarioRunner v0.9.16 crash với mọi `AssignRouteAction` (kịch bản
+  `wrong_way`): `TypeError: object of type 'NoneType' has no len()` trong
+  `ChangeActorWaypoints`. Áp bản vá một lần:
+
+```bash
+git -C ~/scenario_runner apply \
+    "$PWD/worker/patches/scenario_runner-0.9.16-assign-route.patch"
+WORKER_PYTHON=/usr/bin/python3 make demo   # hoặc make demo-check
+```
+
 ## Khi chạy ScenarioRunner thủ công
 
 Dùng `worker/.venv` (Python 3.10), không dùng `.venv` của backend. Thêm cả
