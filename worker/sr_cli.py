@@ -15,6 +15,35 @@ import json
 import os
 from pathlib import Path
 
+CARLA_ROOT_CANDIDATES = (
+    Path.home() / "CARLA_0.9.15",
+    # Gói .deb / bản giải nén theo hướng dẫn chính thức của 0.9.16 nằm ở đây.
+    Path("/opt/carla-simulator"),
+)
+
+
+def default_carla_root(env: dict[str, str] | None = None, candidates: tuple[Path, ...] = CARLA_ROOT_CANDIDATES) -> Path:
+    """``CARLA_ROOT`` nếu có đặt, không thì thư mục CARLA đầu tiên tìm thấy trên máy.
+
+    Máy dev gốc dùng ``~/CARLA_0.9.15``; máy khác cài 0.9.16 vào ``/opt/carla-simulator``.
+    Không thấy gì thì vẫn trả ứng viên đầu, để thông báo lỗi trỏ về đúng chỗ mặc định.
+    """
+    env = os.environ if env is None else env
+    if env.get("CARLA_ROOT"):
+        return Path(env["CARLA_ROOT"])
+    for root in candidates:
+        if (root / "CarlaUE4.sh").is_file():
+            return root
+    return candidates[0]
+
+
+def carla_version(carla_root: Path) -> str | None:
+    """Phiên bản ghi trong ``<CARLA_ROOT>/VERSION`` (0.9.16 có file này), hoặc ``None``."""
+    try:
+        return (carla_root / "VERSION").read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
 
 def scenario_runner_env(carla_root: Path, sr_root: Path, base: dict[str, str] | None = None) -> dict[str, str]:
     """Env cho tiến trình ScenarioRunner, với ``PYTHONPATH`` đã có PythonAPI/carla.

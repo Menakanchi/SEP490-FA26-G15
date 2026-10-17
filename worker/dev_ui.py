@@ -39,7 +39,7 @@ import sr_cli
 # --- Cấu hình: sửa bằng biến môi trường nếu máy khác ------------------------
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CARLA_ROOT = Path(os.environ.get("CARLA_ROOT", str(Path.home() / "CARLA_0.9.15")))
+CARLA_ROOT = sr_cli.default_carla_root()
 SR_ROOT = Path(os.environ.get("SR_ROOT", str(Path.home() / "scenario_runner")))
 WORKER_PYTHON = Path(os.environ.get("WORKER_PYTHON", str(REPO_ROOT / "worker/.venv/bin/python")))
 OUT_DIR = Path(os.environ.get("OUT_DIR", str(REPO_ROOT / "out")))
