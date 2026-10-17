@@ -51,9 +51,14 @@ RADAR_TARGET_HALF_ANGLE_DEG = 4.0
 """Chỉ điểm radar trong nón ±4° quanh trục xe mới coi là "phía trước"; ở 50 m nón
 này rộng ~7 m — vừa đủ một làn kề, không vơ cả lề đường."""
 
+RADAR_MOUNT_Z_M = 0.7
 RADAR_MIN_ALTITUDE_DEG = -1.0
+RADAR_MIN_HIT_HEIGHT_M = 0.3
 """Bỏ điểm dội từ mặt đường. Radar gắn ở 0,7 m, mặt đường dội về ở góc âm và trông
-như một vật cản đứng yên đang lao tới với đúng tốc độ ego — TTC giả."""
+như một vật cản đứng yên đang lao tới với đúng tốc độ ego — TTC giả. Lọc theo góc
+thôi là không đủ: mặt đường cách 45 m chỉ ở -0,9° nên lọt qua, và TTC radar báo
+~2,5 s suốt đoạn đường trống (vận tốc tương đối đúng bằng -tốc độ ego, đo
+17/10/2026). Nên lọc thêm theo độ cao điểm dội: 0,7 m + depth·sin(altitude)."""
 
 MAX_PLAUSIBLE_REL_VELOCITY_MS = 70.0
 MAX_PLAUSIBLE_ACCEL_MS2 = 50.0
@@ -61,10 +66,11 @@ MAX_PLAUSIBLE_ACCEL_MS2 = 50.0
 va chạm, IMU báo tới ~190.000 m/s² còn radar báo vận tốc tương đối ~-5.600 m/s
 (đo 17/10/2026). Để lọt vào thì "giảm tốc tối đa" và "TTC nhỏ nhất" là số rác."""
 
-SUMMARY_WARMUP_S = 0.5
-"""``summary.json`` bỏ nửa giây đầu (CSV vẫn giữ). Lúc khởi tạo, ScenarioRunner đặt lại
+SUMMARY_WARMUP_S = 1.0
+"""``summary.json`` bỏ giây đầu (CSV vẫn giữ). Lúc khởi tạo, ScenarioRunner đặt lại
 tốc độ/vị trí ego: tốc độ thật tụt 8,6 → 6,6 m/s trong 0,03 s (≈ 47 m/s², đo 17/10/2026)
-và có lệnh brake ngắn — đó là khởi tạo kịch bản, không phải xe phanh."""
+và có lệnh brake ngắn — đó là khởi tạo kịch bản, không phải xe phanh. Đỉnh giảm tốc
+-6 … -7 m/s² còn rơi vào 0,58–0,68 s ở cả ba lượt cut_in, nên 0,5 s là chưa đủ."""
 
 JERK_WINDOW_S = 0.1
 """Jerk lấy đạo hàm gia tốc đã trung bình trên 0,1 s. Đạo hàm thô mỗi tick (~0,015 s)
@@ -101,6 +107,8 @@ def nearest_radar_target(detections) -> dict | None:  # noqa: ANN001 — carla.R
             continue
         if math.degrees(det.altitude) < RADAR_MIN_ALTITUDE_DEG:
             continue
+        if RADAR_MOUNT_Z_M + det.depth * math.sin(det.altitude) < RADAR_MIN_HIT_HEIGHT_M:
+            continue
         if abs(det.velocity) > MAX_PLAUSIBLE_REL_VELOCITY_MS:
             continue
         if best is None or det.depth < best.depth:
@@ -115,8 +123,25 @@ def nearest_radar_target(detections) -> dict | None:  # noqa: ANN001 — carla.R
     }
 
 
+STATIC_TARGET_SPEED_MS = 1.0
+"""Mục tiêu radar có vận tốc mặt đất (vận tốc tương đối + tốc độ ego) dưới ngưỡng này
+là **vật tĩnh**. Trên Town04, radar thấy rào chắn/sườn đồi ở khúc cua phía trước suốt
+đoạn đường trống: TTC ~3 s, vận tốc mặt đất ~0,03 m/s (đo 17/10/2026). Đó là đúng loại
+mục tiêu gây phanh oan, nên tách riêng thay vì trộn vào TTC của xe đang tạt đầu."""
+
+
+def radar_target_is_static(row: dict) -> bool | None:
+    rel, ego = row.get("radar_rel_velocity_ms"), row.get("ego_speed_ms")
+    if rel is None or ego is None:
+        return None
+    return abs(rel + ego) < STATIC_TARGET_SPEED_MS
+
+
 def summarise(rows: list[dict], collisions: list[dict]) -> dict:
     """Số tóm tắt một lượt chạy — đọc nhanh mà không mở CSV.
+
+    ``radar_min_ttc_s`` chỉ tính mục tiêu đang chuyển động; vật tĩnh ở
+    ``radar_min_ttc_static_s`` (xem ``STATIC_TARGET_SPEED_MS``).
 
     Chỉ số phanh (giảm tốc, jerk, TTC, lần phanh đầu) chỉ tính trong khoảng
     ``[SUMMARY_WARMUP_S, va chạm đầu tiên)``. Sau va chạm IMU đo xung lực đâm xe
@@ -130,7 +155,10 @@ def summarise(rows: list[dict], collisions: list[dict]) -> dict:
     def values(subset: list[dict], key: str) -> list[float]:
         return [r[key] for r in subset if r.get(key) is not None]
 
-    ttc, obstacle = values(before, "radar_ttc_s"), values(before, "obstacle_distance_m")
+    moving = [r for r in before if radar_target_is_static(r) is False]
+    static = [r for r in before if radar_target_is_static(r) is True]
+    ttc, ttc_static = values(moving, "radar_ttc_s"), values(static, "radar_ttc_s")
+    obstacle = values(before, "obstacle_distance_m")
     accel, jerk = values(before, "imu_accel_x_ms2"), values(before, "imu_jerk_ms3")
     impact = values(after, "imu_accel_x_ms2")
     first_brake = next((r["sim_time_s"] for r in before if (r.get("brake") or 0) > 0.05), None)
@@ -138,6 +166,7 @@ def summarise(rows: list[dict], collisions: list[dict]) -> dict:
         "frames": len(rows),
         "duration_s": duration,
         "radar_min_ttc_s": min(ttc) if ttc else None,
+        "radar_min_ttc_static_s": min(ttc_static) if ttc_static else None,
         "obstacle_min_distance_m": min(obstacle) if obstacle else None,
         "max_deceleration_ms2": round(-min(accel), 3) if accel and min(accel) < 0 else 0.0,
         "max_abs_jerk_ms3": round(max(abs(j) for j in jerk), 3) if jerk else None,
@@ -145,6 +174,45 @@ def summarise(rows: list[dict], collisions: list[dict]) -> dict:
         "collisions": len(collisions),
         "first_collision_time_s": t_hit,
         "impact_peak_accel_ms2": round(max(abs(a) for a in impact), 3) if impact else None,
+    }
+
+
+PAYLOAD_MAX_SAMPLES = 400
+"""Trần số mẫu gửi về backend (~20 Hz cho lượt 20 s). CSV local vẫn giữ đủ mọi tick."""
+
+SAMPLE_KEYS = (
+    "ego_speed_ms",
+    "brake",
+    "radar_ttc_s",
+    "radar_depth_m",
+    "radar_rel_velocity_ms",
+    "obstacle_distance_m",
+    "imu_accel_x_ms2",
+)
+
+
+def to_payload(rows: list[dict], collisions: list[dict], summary: dict, max_samples: int = PAYLOAD_MAX_SAMPLES) -> dict:
+    """``rows`` -> ``SensorData`` của backend (``src/models/schemas.py``), giảm mẫu đều.
+
+    ``SensorData`` cấm trường lạ, nên chỉ chép đúng các khoá đã khai — gửi thừa là
+    backend trả 422 và mất cả kết quả CARLA.
+    """
+    stride = max(1, math.ceil(len(rows) / max_samples))
+    picked = rows[::stride]
+    if rows and picked[-1] is not rows[-1]:
+        picked.append(rows[-1])
+    samples = [{"t": max(0.0, r["sim_time_s"]), **{k: r.get(k) for k in SAMPLE_KEYS}} for r in picked]
+    return {
+        "summary": {k: v for k, v in summary.items() if v is None or isinstance(v, (int, float))},
+        "samples": samples,
+        "collisions": [
+            {
+                "t": max(0.0, c["sim_time_s"]),
+                "other_actor": c.get("other_actor"),
+                "impulse_ns": c.get("impulse_ns", 0.0),
+            }
+            for c in collisions
+        ],
     }
 
 
@@ -167,6 +235,7 @@ class SensorRecorder:
         self._frame_time: dict[int, float] = {}
         self.error: str | None = None
         self.summary: dict | None = None
+        self._payload: dict | None = None
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name="sensors", daemon=True)
@@ -176,6 +245,10 @@ class SensorRecorder:
         """Chờ tới khi ego biến mất (lượt chạy kết thúc) rồi mới ghi file."""
         if self._thread is not None:
             self._thread.join(timeout=timeout_s)
+
+    def payload(self) -> dict | None:
+        """``SensorData`` để gửi kèm ``ExecutionResult``; ``None`` nếu không ghi được gì."""
+        return self._payload
 
     def stop(self, join_timeout_s: float = 10.0) -> dict | None:
         self._stop.set()
@@ -358,6 +431,7 @@ class SensorRecorder:
             writer.writerows(rows)
         (self.out_dir / "collisions.json").write_text(json.dumps(self._collisions, indent=1), encoding="utf-8")
         self.summary = summarise(rows, self._collisions)
+        self._payload = to_payload(rows, self._collisions, self.summary)
         if self.error:
             self.summary["error"] = self.error
         (self.out_dir / "summary.json").write_text(json.dumps(self.summary, indent=1), encoding="utf-8")
