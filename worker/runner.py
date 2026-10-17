@@ -38,6 +38,7 @@ import urllib.request
 from pathlib import Path
 
 import ego_controllers
+import sensor_recorder
 import sr_cli
 import trajectory
 
@@ -89,6 +90,12 @@ server song song trên một máy), nhưng bật nó thì phải đo lại trư�
 POLL_INTERVAL_S = int(os.environ.get("POLL_INTERVAL_S", "5"))
 
 OUT_DIR = Path(os.environ.get("WORKER_OUT_DIR", str(Path(__file__).parent / "outputs")))
+
+SENSOR_RECORD_DIR = os.environ.get("SENSOR_RECORD_DIR", "")
+"""Đặt thì mỗi job gắn sensor CARLA lên ego và ghi ``<dir>/<scenario_id>-<giờ>/``
+(xem ``sensor_recorder.py``). Mặc định tắt: chỉ ghi file local, chưa gửi về backend
+vì ``ExecutionResult`` cấm trường lạ."""
+SENSOR_CAMERA = os.environ.get("SENSOR_CAMERA", "0") not in ("0", "false", "no")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("worker")
@@ -202,6 +209,11 @@ def run_job(job: dict) -> dict:
     # `trajectory.summarise`.
     recorder = trajectory.TrajectoryRecorder(CARLA_HOST, CARLA_PORT)
     recorder.start()
+    sensors = None
+    if SENSOR_RECORD_DIR:
+        run_dir = Path(SENSOR_RECORD_DIR) / f"{job['scenario_id']}-{time.strftime('%Y%m%d-%H%M%S')}"
+        sensors = sensor_recorder.SensorRecorder(CARLA_HOST, CARLA_PORT, run_dir, camera=SENSOR_CAMERA)
+        sensors.start()
 
     error: str | None = None
     try:
@@ -220,6 +232,9 @@ def run_job(job: dict) -> dict:
         trajectory_metrics, trajectory_points = recorder.stop()
         if recorder.error:
             log.warning("  -> không đo được quỹ đạo: %s", recorder.error)
+        if sensors is not None:
+            summary = sensors.stop()
+            log.info("  -> sensor: %s (%s)", sensors.out_dir, summary or sensors.error or "không có dữ liệu")
 
     _, criteria_json, read_error = sr_cli.newest_criteria_json(OUT_DIR, started_at)
     error = error or read_error
