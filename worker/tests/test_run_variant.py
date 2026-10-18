@@ -15,7 +15,6 @@ import pytest
 WORKER = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(WORKER))
 import run_variant  # noqa: E402
-
 from vehicsim_core import simulator  # noqa: E402
 from vehicsim_core.bundle import WHEEL_FIELDS, read_spec  # noqa: E402
 from vehicsim_core.simulator import CURB_STOP_Y_M, PEDESTRIAN_START_Y_M, PedestrianCrossingCase  # noqa: E402

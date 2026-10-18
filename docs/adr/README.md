@@ -51,6 +51,7 @@ giữ lại). VehicSim: ADR-023 trở đi.
 | [ADR-037](ADR-037-thanh-vien-project-near-miss.md) | Chốt chỗ UC List lệch DB: `project_members` (30 bảng), lỗi `NEAR_MISS`, thông báo `FAILURE_DETECTED` / `CANDIDATE_CREATED`; Reviewer tự duyệt, mỗi người một role không đổi, bỏ UC-11 | 🕐 **Proposed 7/10** — schema, migration 005 (gộp), bộ chấm đã đổi; chưa có API thành viên |
 | [ADR-038](ADR-038-bo-phien-ban-xe-admin-tao-workspace.md) | Bỏ phiên bản xe (thông số cố định trong `carla_vehicle_models`, project chọn xe), Admin tạo workspace và gán Manager, báo cáo công việc theo project (`task_reports`); 29 bảng | 🕐 **Proposed 7/10** — schema, migration 006, code đã đổi; chưa có API workspace / báo cáo |
 | [ADR-039](ADR-039-backend-java-mo-phong-o-worker-python.md) | Backend Spring Boot (Java) cho API và nghiệp vụ; AEB + bộ mô phỏng + luật chấm ở lại `worker/vehicsim_core` (Python, chỉ thư viện chuẩn), gọi qua bundle JSON → `result.json` kèm kết quả chấm; hàng đợi là thread pool thay Celery | 🕐 **Proposed 14/10** — auth + 19 route `/vehicsim/*` đã port và đối chiếu với Python trên DB thật |
+| [ADR-040](ADR-040-rut-scope-4-tham-so-aeb-7-category.md) | Rút scope theo bản chuẩn hoá luận văn: 4 tham số AEB (6 tham số còn lại thành hằng số của lõi), 3 mục tiêu MOBO, 7 category kịch bản Euro NCAP; IR vẫn tính người đi bộ bằng m/s; 29 bảng | 🕐 **Proposed 15/10** — schema, migration 007, code đã đổi; 60/192 run của v1.3 không còn tái lập (TD-40) |
 
 ## Luật
 

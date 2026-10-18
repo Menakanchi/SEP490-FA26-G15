@@ -13,12 +13,16 @@ Chữ mô tả viết tiếng Anh vì giao diện VehicSim (Figma FE-12/14) là 
 - *Dynamics*: ma sát mặt đường có chặn mức giảm tốc được yêu cầu không.
 
 Khâu đầu tiên hỏng trong chuỗi là nguyên nhân chính (``is_primary``).
+
+``parameter_code`` là tham số AEB *chỉnh được* nghi ngờ (4 mã của ``aeb_parameters``). Nguyên nhân nằm ở hằng số cố định
+của lõi (ngưỡng phát hiện, tầm dự đoán…) thì để ``None``: không có tham số nào để chỉnh (ADR-040).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from vehicsim_core.aeb_stack import ACTUATOR_RESPONSE_TIME_S, DETECTION_CONFIDENCE_THRESHOLD, PREDICTION_HORIZON_S
 from vehicsim_core.simulator import (
     NEAR_MISS_DISTANCE_M,
     NEAR_MISS_TTC_S,
@@ -129,6 +133,7 @@ def evaluate(outcome: SimulationOutcome, params: AebParams) -> Evaluation:
         "max_deceleration_mps2": m["max_deceleration_mps2"],
         "mean_deceleration_mps2": m["mean_deceleration_mps2"],
         "max_jerk_mps3": m["max_jerk_mps3"],
+        "rms_jerk_mps3": m["rms_jerk_mps3"],
         "stopping_distance_m": m["stopping_distance_m"],
         "verdict": verdict,
     }
@@ -188,10 +193,10 @@ def _hazard_chain(outcome: SimulationOutcome, params: AebParams, ideal_t: float 
         perception = StageVerdict(
             "PERCEPTION",
             False,
-            f"Pedestrian never passed the detection threshold {params.detection_confidence_threshold:.2f} "
+            f"Pedestrian never passed the detection threshold {DETECTION_CONFIDENCE_THRESHOLD:.2f} "
             f"({case['weather'].lower().replace('_', ' ')}, {case['time_of_day'].lower()}).",
             "OBJECT_NOT_DETECTED",
-            "DETECTION_CONFIDENCE_THRESHOLD",
+            None,
         )
     elif reference_t is not None and det_t > reference_t + TIMING_TOLERANCE_S:
         perception = StageVerdict(
@@ -200,7 +205,7 @@ def _hazard_chain(outcome: SimulationOutcome, params: AebParams, ideal_t: float 
             f"Pedestrian first detected at t {det_t:.1f} s ({m['first_detection_distance_m']:.0f} m), "
             f"{det_t - reference_t:.1f} s after AEB should have fired.",
             "OBJECT_DETECTED_LATE",
-            "DETECTION_CONFIDENCE_THRESHOLD",
+            None,
         )
     else:
         dist = m["first_detection_distance_m"]
@@ -219,7 +224,7 @@ def _hazard_chain(outcome: SimulationOutcome, params: AebParams, ideal_t: float 
     a_nom = params.max_deceleration
     a_eff = m["decel_available_mps2"]
     ramp_time = a_nom / params.decel_ramp_rate if params.decel_ramp_rate else 0.0
-    t_ctrl = params.brake_activation_delay + params.actuator_response_time + ramp_time / 2
+    t_ctrl = params.brake_activation_delay + ACTUATOR_RESPONSE_TIME_S + ramp_time / 2
     needed_nominal = t_ctrl + v0 / (2 * a_nom)
     needed_actual = t_ctrl + v0 / (2 * a_eff)
     entry_ttc = next((f["ttc_gt"] for f in outcome.frames if f["ttc_gt"] is not None), None)
@@ -232,7 +237,7 @@ def _hazard_chain(outcome: SimulationOutcome, params: AebParams, ideal_t: float 
             "Pedestrian stepped into the side of the car after its front had passed the crossing; "
             "AEB only predicts the pedestrian's position for the moment the front arrives.",
             SIDE_ENTRY_CAUSE,
-            "PREDICTION_HORIZON",
+            None,
             confidence=0.6,
         )
     elif dec_t is None:
@@ -241,7 +246,7 @@ def _hazard_chain(outcome: SimulationOutcome, params: AebParams, ideal_t: float 
             False,
             "AEB never issued a brake command: the predicted path did not enter the lane in time.",
             "NO_TRIGGER",
-            "PREDICTION_HORIZON",
+            None,
         )
     elif reference_t is not None and dec_t > reference_t + TIMING_TOLERANCE_S and perception.passed:
         decision = StageVerdict(
@@ -269,7 +274,7 @@ def _hazard_chain(outcome: SimulationOutcome, params: AebParams, ideal_t: float 
             f"Pedestrian entered the path at TTC {entry_ttc:.1f} s, inside the {needed_actual:.1f} s stopping "
             f"envelope; only an earlier path prediction could have fired in time.",
             "PATH_ENTERED_LATE",
-            "PREDICTION_HORIZON",
+            None,
             confidence=0.6,
         )
     else:
@@ -284,7 +289,7 @@ def _hazard_chain(outcome: SimulationOutcome, params: AebParams, ideal_t: float 
         control = StageVerdict(
             "CONTROL",
             False,
-            f"Brake delay {params.brake_activation_delay:.2f} s + actuator {params.actuator_response_time:.2f} s + "
+            f"Brake delay {params.brake_activation_delay:.2f} s + actuator {ACTUATOR_RESPONSE_TIME_S:.2f} s + "
             f"ramp {ramp_time:.2f} s lost {t_ctrl:.2f} s of braking (limit {CONTROL_LOSS_LIMIT_S:.2f} s).",
             "SLOW_BRAKE_BUILDUP",
             "BRAKE_BUILDUP_RATE" if ramp_time / 2 >= params.brake_activation_delay else "BRAKE_ACTIVATION_DELAY",
@@ -327,7 +332,7 @@ def _false_activation_chain(outcome: SimulationOutcome, params: AebParams) -> li
             "DECISION",
             False,
             f"AEB braked at TTC {m['aeb_decision_ttc_s']:.1f} s for a pedestrian who stopped at the curb; "
-            f"the {params.prediction_horizon:.1f} s predicted path entered the lane.",
+            f"the {PREDICTION_HORIZON_S:.1f} s predicted path entered the lane.",
             "PATH_PREDICTION_TOO_CONSERVATIVE",
             "TTC_THRESHOLD",
             confidence=0.8,

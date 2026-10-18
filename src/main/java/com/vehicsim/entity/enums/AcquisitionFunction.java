@@ -1,7 +1,9 @@
 package com.vehicsim.entity.enums;
 
 public enum AcquisitionFunction {
-    EI,
-    UCB,
-    PI
+    EHVI,
+    qEHVI,
+    MESMO,
+    USEMO,
+    PAREGO
 }

@@ -14,8 +14,8 @@ import java.util.TreeSet;
 /**
  * AEB versions (FE-11, bản tối thiểu cho vòng MVP): tạo cấu hình ứng viên. Port của ``aeb.py``.
  * <p>
- * Ứng viên luôn sinh từ một version cha, chép đủ 10 tham số rồi ghi đè các giá trị được đổi — nên mọi version luôn
- * có đủ bộ tham số, và mọi giá trị phải nằm trong [min_value, max_value] của ``aeb_parameters``.
+ * Ứng viên luôn sinh từ một version cha, chép đủ 4 tham số chỉnh được rồi ghi đè các giá trị được đổi — nên mọi version
+ * luôn có đủ bộ tham số, và mọi giá trị phải nằm trong [min_value, max_value] của ``aeb_parameters``.
  */
 @Service
 public class AebService {

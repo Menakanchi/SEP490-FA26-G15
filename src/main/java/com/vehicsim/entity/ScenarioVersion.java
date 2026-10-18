@@ -1,6 +1,7 @@
 package com.vehicsim.entity;
 
 import com.vehicsim.entity.enums.ScenarioSource;
+import com.vehicsim.entity.enums.TargetType;
 import com.vehicsim.entity.enums.TimeOfDay;
 import com.vehicsim.entity.enums.ValidationStatus;
 import com.vehicsim.entity.enums.Weather;
@@ -50,28 +51,50 @@ public class ScenarioVersion {
     @Column(name = "scenario_ir_json", nullable = false, columnDefinition = "JSON")
     private String scenarioIrJson;
 
-    @Column(name = "ego_speed_kmh", precision = 6, scale = 2)
-    private BigDecimal egoSpeedKmh;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "target_type", nullable = false, length = 20)
+    @Builder.Default
+    private TargetType targetType = TargetType.VEHICLE;
+
+    @Column(name = "ego_speed_kmh", nullable = false, precision = 6, scale = 2)
+    @Builder.Default
+    private BigDecimal egoSpeedKmh = new BigDecimal("50.00");
+
+    /** Tốc độ xe mục tiêu hoặc người đi bộ, km/h (IR của họ kịch bản vẫn tính người đi bộ bằng m/s). */
+    @Column(name = "target_speed_kmh", precision = 6, scale = 2)
+    private BigDecimal targetSpeedKmh;
+
+    @Column(name = "initial_distance_m", precision = 6, scale = 2)
+    private BigDecimal initialDistanceM;
+
+    @Column(name = "lateral_overlap_pct", precision = 5, scale = 2)
+    private BigDecimal lateralOverlapPct;
+
+    @Column(name = "target_decel_mps2", precision = 5, scale = 2)
+    private BigDecimal targetDecelMps2;
 
     @Column(name = "trigger_distance_m", precision = 6, scale = 2)
     private BigDecimal triggerDistanceM;
-
-    @Column(name = "pedestrian_speed_mps", precision = 5, scale = 2)
-    private BigDecimal pedestrianSpeedMps;
 
     @Column(name = "stops_at_curb")
     private Boolean stopsAtCurb;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 20)
-    private Weather weather;
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private Weather weather = Weather.CLEAR;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "time_of_day", length = 20)
-    private TimeOfDay timeOfDay;
+    @Column(name = "time_of_day", nullable = false, length = 20)
+    @Builder.Default
+    private TimeOfDay timeOfDay = TimeOfDay.DAY;
 
     @Column(name = "road_friction", precision = 4, scale = 2)
     private BigDecimal roadFriction;
+
+    @Column(name = "max_duration_s", nullable = false, precision = 6, scale = 2)
+    @Builder.Default
+    private BigDecimal maxDurationS = new BigDecimal("15.00");
 
     @Column(name = "openscenario_version", length = 20)
     private String openscenarioVersion;

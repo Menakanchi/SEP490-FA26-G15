@@ -58,7 +58,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import sim_common
-
 from vehicsim_core.aeb_stack import DT, record_event
 from vehicsim_core.bundle import PHYSICS_SCALARS, WHEEL_FIELDS, RunSpec, carla_simulator
 from vehicsim_core.simulator import (

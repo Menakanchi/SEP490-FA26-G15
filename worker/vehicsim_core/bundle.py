@@ -23,7 +23,7 @@ import math
 import re
 from dataclasses import asdict, dataclass, field
 
-from vehicsim_core.aeb_stack import AebParams
+from vehicsim_core.aeb_stack import RETIRED_CODES, AebParams
 from vehicsim_core.simulator import PedestrianCrossingCase, SimulationOutcome, VehicleSpec
 
 VARIANT_FORMAT = "vehicsim.variant/v1"
@@ -218,6 +218,8 @@ def _read_aeb(aeb_doc, errors: list[str]) -> tuple[AebParams, str | None]:
         if key in ("label", "params"):
             continue
         code = key.upper()
+        if code in RETIRED_CODES:  # bundle cũ (10 tham số): 6 mã này nay là hằng số của lõi, bỏ qua
+            continue
         if code not in known:
             errors.append(f"tham số AEB không tồn tại: {key}")
             continue

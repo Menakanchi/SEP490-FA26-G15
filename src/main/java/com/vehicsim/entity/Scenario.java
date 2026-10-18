@@ -1,5 +1,6 @@
 package com.vehicsim.entity;
 
+import com.vehicsim.entity.enums.ScenarioCategory;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -26,6 +27,11 @@ public class Scenario {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", nullable = false)
     private Project project;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private ScenarioCategory category = ScenarioCategory.CCRS;
 
     @Column(nullable = false, length = 30)
     private String code;

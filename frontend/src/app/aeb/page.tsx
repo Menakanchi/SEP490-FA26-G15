@@ -23,8 +23,9 @@ const STATUS_LABEL: Record<VersionBrief["status"], string> = {
   ARCHIVED: "lưu trữ",
 };
 const SOURCE_LABEL: Record<string, string> = { MANUAL: "thủ công", OPTIMIZATION: "tối ưu hoá" };
-const KEY_PARAMS = ["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "DETECTION_CONFIDENCE_THRESHOLD", "MAX_DECELERATION"];
-const CATEGORY_ORDER: FailureClass[] = ["PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS"];
+// 4 tham số AEB chỉnh được (ADR-040); lỗi Perception không có tham số nào nên không có nhóm Perception ở đây.
+const KEY_PARAMS = ["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "MAX_DECELERATION", "BRAKE_BUILDUP_RATE"];
+const CATEGORY_ORDER: FailureClass[] = ["DECISION", "CONTROL", "VEHICLE_DYNAMICS"];
 
 export default function AebConfigPage() {
   const { ctx, refresh, canWrite } = useVehicSimContext();
@@ -120,7 +121,7 @@ export default function AebConfigPage() {
   );
 }
 
-/** Dòng phụ dưới tên version: số tham số khác baseline (bảng chỉ hiện 4 tham số chính). */
+/** Dòng phụ dưới tên version: số tham số khác baseline. */
 function changedNote(v: AebVersion, baseline: AebVersion | null): string {
   if (!baseline || v.id === baseline.id) return SOURCE_LABEL[v.source] ?? v.source;
   const n = Object.keys({ ...v.parameters, ...baseline.parameters }).filter((k) => v.parameters[k] !== baseline.parameters[k]).length;

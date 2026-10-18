@@ -48,14 +48,20 @@ public class OptimizationTrial {
     @Column(name = "acquisition_value", precision = 14, scale = 6)
     private BigDecimal acquisitionValue;
 
+    /** Mục tiêu 1 (cần MINIMIZE): độ êm phanh — RMS jerk, m/s3. */
+    @Column(name = "rms_jerk_mps3", precision = 8, scale = 3)
+    private BigDecimal rmsJerkMps3;
+
+    /** Mục tiêu 2 (cần MINIMIZE): vận tốc lúc va chạm, m/s. */
+    @Column(name = "impact_speed_mps", precision = 8, scale = 3)
+    private BigDecimal impactSpeedMps;
+
+    /** Mục tiêu 3 (cần MINIMIZE): quãng đường phanh dừng, m. */
+    @Column(name = "stopping_distance_m", precision = 8, scale = 3)
+    private BigDecimal stoppingDistanceM;
+
     @Column(name = "collision_rate_pct", precision = 5, scale = 2)
     private BigDecimal collisionRatePct;
-
-    @Column(name = "false_activation_rate_pct", precision = 5, scale = 2)
-    private BigDecimal falseActivationRatePct;
-
-    @Column(name = "comfort_max_jerk_mps3", precision = 8, scale = 3)
-    private BigDecimal comfortMaxJerkMps3;
 
     @Column(name = "objective_values_json", columnDefinition = "JSON")
     private String objectiveValuesJson;
