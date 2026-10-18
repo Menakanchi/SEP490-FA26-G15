@@ -1,0 +1,50 @@
+{
+  "title": "Xe tải dừng giữa làn trong sương mù ban đêm",
+  "odd": {
+    "road_type": "highway",
+    "weather": "fog",
+    "actor_type": "truck",
+    "maneuver": "stop_in_lane",
+    "specific_type": null,
+    "specific_action": null
+  },
+  "time_of_day": "night",
+  "actors": [
+    {
+      "name": "hero",
+      "category": "car",
+      "position": {
+        "lane_offset": 0,
+        "s_offset_m": 0.0
+      },
+      "initial_speed_kmh": 60.0,
+      "is_ego": true,
+      "specific_type": null
+    },
+    {
+      "name": "adversary",
+      "category": "truck",
+      "position": {
+        "lane_offset": 0,
+        "s_offset_m": 35.0
+      },
+      "initial_speed_kmh": 40.0,
+      "is_ego": false,
+      "specific_type": null
+    }
+  ],
+  "maneuvers": [
+    {
+      "actor_name": "adversary",
+      "maneuver": "stop_in_lane",
+      "trigger": {
+        "type": "distance_to_ego",
+        "value": 30.0
+      },
+      "target_speed_kmh": 0.0
+    }
+  ],
+  "duration_s": 30.0,
+  "scenario_id": "sc_112",
+  "description_vi": "Xe tải phía trước cùng làn cách 35 m chạy 40 km/h rồi dừng hẳn giữa làn, ego chạy 60 km/h. Sương mù, ban đêm, cao tốc."
+}
