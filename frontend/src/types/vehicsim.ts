@@ -427,3 +427,23 @@ export interface RecommendationDetail extends RegressionDetail {
     requested_by: string | null;
   };
 }
+
+/** ``POST /vehicsim/telemetry/evaluate`` — số đo từ ``frames.csv`` của ``worker/sensor_recorder.py`` (ADR-040). */
+export interface TelemetrySummary {
+  /** 3 mục tiêu MOBO; null = không phanh (jerk, quãng phanh) hoặc không va chạm (tốc độ va chạm). */
+  rms_jerk_mps3: number | null;
+  impact_speed_mps: number | null;
+  stopping_distance_m: number | null;
+  relative_impact_speed_mps: number | null;
+  total_frames: number;
+  duration_s: number;
+  radar_min_ttc_s: number | null;
+  obstacle_min_distance_m: number | null;
+  max_deceleration_ms2: number | null;
+  mean_deceleration_ms2: number | null;
+  max_abs_jerk_mps3: number | null;
+  first_brake_time_s: number | null;
+  collisions: number;
+  first_collision_time_s: number | null;
+  impact_peak_accel_ms2: number | null;
+}
