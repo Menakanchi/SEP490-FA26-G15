@@ -1,32 +1,27 @@
-.PHONY: run test lint format format-check typecheck check clean
+.PHONY: run test test-worker lint frontend check clean
 
-# Backend một mình. Cả hệ thống (MySQL, Redis, worker, backend :8001, frontend :3000)
-# trên Windows: scripts\dev-up.cmd.
+# Backend một mình (Spring Boot, cổng 8001, đọc .env ở thư mục gốc). Cả hệ thống (MySQL, Redis,
+# backend :8001, frontend :3000) trên Windows: scripts\dev-up.cmd.
 run:
-	uv run --locked uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+	./mvnw spring-boot:run
 
-# Cùng cờ với CI: coverage là gate, không phải báo cáo cho vui.
+# Cùng ba cổng với .github/workflows/ci.yml. Test Java và worker không cần Docker.
 test:
-	uv run --locked pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=60
+	./mvnw -B clean test
+
+test-worker:
+	python -m pytest worker/tests -q
 
 lint:
-	uv run --locked ruff check src/ tests/
+	python -m ruff check worker
 
-# `format` SỬA file. `format-check` chỉ KIỂM — đây mới là thứ CI chạy.
-format:
-	uv run --locked ruff format src/ tests/
+frontend:
+	cd frontend && npm run lint && npx tsc --noEmit && npx next build
 
-format-check:
-	uv run --locked ruff format --check src/ tests/
-
-typecheck:
-	uv run --locked mypy src/
-
-# Bản sao đúng ba bước của .github/workflows/ci.yml. `check` cũ gọi `format`
-# nên nó lặng lẽ sửa file rồi báo xanh — xanh ở máy mình mà CI vẫn đỏ.
-check: lint format-check test
+check: test test-worker lint frontend
 
 clean:
-	find . -type d -name __pycache__ -exec rm -rf {} +
+	./mvnw -q clean
+	find . -type d -name __pycache__ -not -path './frontend/*' -exec rm -rf {} +
 	find . -type d -name .pytest_cache -exec rm -rf {} +
 	find . -type d -name .ruff_cache -exec rm -rf {} +

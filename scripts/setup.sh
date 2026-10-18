@@ -5,15 +5,18 @@ set -e
 
 echo "=== VehicSim setup ==="
 
-if ! command -v uv >/dev/null 2>&1; then
-    echo "uv is required: https://docs.astral.sh/uv/getting-started/installation/" >&2
+if ! command -v java >/dev/null 2>&1; then
+    echo "Cần JDK 21: https://adoptium.net/" >&2
     exit 1
 fi
-uv sync --locked
+if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+    echo "Cần Python >= 3.10 cho worker mô phỏng (VEHICSIM_WORKER_PYTHON)." >&2
+    exit 1
+fi
 
 if [ ! -f .env ]; then
     cp .env.example .env
-    echo "Created .env — điền khoá LLM, SMTP, JWT_SECRET_KEY trước khi chạy"
+    echo "Created .env — điền khoá LLM, SMTP; đặt JWT_SECRET (bắt buộc ở production)."
 fi
 
 mkdir -p data/vehicsim
@@ -23,5 +26,6 @@ if command -v npm >/dev/null 2>&1; then
 fi
 
 echo "Xong. Bật MySQL + Redis: docker compose up -d mysql redis"
-echo "Backend: uv run uvicorn src.main:app --reload --port 8001"
+echo "Backend:  ./mvnw spring-boot:run          (Swagger: http://localhost:8001/swagger-ui.html)"
 echo "Frontend: cd frontend && NEXT_PUBLIC_API_URL=http://localhost:8001 npm run dev"
+echo "Admin:    python scripts/create_admin.py --email admin@example.com --seed"

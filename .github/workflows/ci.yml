@@ -1,37 +1,65 @@
 name: CI
 
+# Ba cổng độc lập, giống hệt `make check` / scripts/pre_push_check.sh:
+#   backend  — Spring Boot (Java 21): ./mvnw clean test
+#   worker   — lõi mô phỏng Python (chỉ thư viện chuẩn, >= 3.10): pytest + ruff
+#   frontend — Next.js: eslint, tsc, next build, npm audit (chỉ dependencies chạy thật)
+# Test Java và worker không cần MySQL / Redis / CARLA / khoá LLM.
 on:
   push:
     branches: [main]
   pull_request:
     branches: ['**']   # stacked PR cũng phải qua CI, không chỉ PR nhắm vào main
 
-jobs:
-  lint-and-test:
-    runs-on: self-hosted
+defaults:
+  run:
+    shell: bash
 
+jobs:
+  backend:
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/setup-java@v4
         with:
-          version: "0.12.2"
-          python-version: "3.11"
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build and test
+        run: ./mvnw -B clean test
 
-      - name: Install dependencies
-        run: uv sync --locked
+  worker:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"   # bản thấp nhất lõi hỗ trợ (venv CARLA)
+      - name: Install tools
+        run: python -m pip install --quiet pytest==8.* ruff==0.16.0
+      - name: Lint
+        run: python -m ruff check worker
+      - name: Test
+        run: python -m pytest worker/tests -q
 
-      - name: Lint with ruff
-        run: uv run --locked ruff check src/ tests/
-
-      - name: Check formatting
-        run: uv run --locked ruff format --check src/ tests/
-
-      - name: Run tests
-        run: >-
-          uv run --locked pytest tests/ -v --tb=short
-          --cov=src --cov-report=term-missing --cov-fail-under=60
+  frontend:
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npx next build
         env:
-          APP_ENV: test
-          OPENAI_API_KEY: test-key
+          NEXT_PUBLIC_API_URL: http://localhost:8001
+      # Chỉ dependencies chạy thật: lỗ hổng của công cụ dev (eslint…) không chặn merge.
+      - run: npm audit --omit=dev --audit-level=high

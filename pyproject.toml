@@ -40,5 +40,5 @@ package = false
 # ghi vào DB thật — chúng đã đổi tên thành `probe_*.py` nên không bị gom nữa,
 # nhưng hai dòng dưới là hàng rào thứ hai: đặt tên nhầm một lần là một lệnh
 # `pytest` vô hại tiêu tiền API.
-testpaths = ["tests"]
-norecursedirs = ["scratch", "worker", "frontend", ".venv", "data"]
+testpaths = ["worker/tests"]
+norecursedirs = ["scratch", "tests", "frontend", ".venv", "data", "src_python_backup"]
