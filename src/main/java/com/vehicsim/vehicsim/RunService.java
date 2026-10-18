@@ -1,12 +1,15 @@
 package com.vehicsim.vehicsim;
 
+import com.vehicsim.audit.AuditLog;
 import com.vehicsim.vehicsim.Vs.InvalidRequestException;
 import com.vehicsim.vehicsim.Vs.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -470,6 +473,64 @@ public class RunService {
     }
 
     // ------------------------------------------------------------------ ghi kết quả
+
+    /**
+     * Nhận ``result.json`` của một run CARLA chạy ngoài backend (vd. ``run_variant.py`` trên máy có GPU) cho run chưa có
+     * kết quả. Chỉ nhận khi:
+     * <ul>
+     *   <li>run thuộc project và là run <b>CARLA</b> — kết quả CARLA không bao giờ ghi vào run động học (luật cứng 9);</li>
+     *   <li>run đang {@code PENDING} hoặc {@code FAILED} — {@code RUNNING} đang có worker ghi, {@code COMPLETED} đã có
+     *       kết quả (ghi lần nữa sẽ nhân đôi ca lỗi / va chạm);</li>
+     *   <li>regression test chứa run (hoặc dùng run làm baseline) chưa chốt — không sửa bằng chứng sau khi đã có kết quả;</li>
+     *   <li>``result.json`` qua đúng bước kiểm như run chạy trong backend ({@link #checkResult}).</li>
+     * </ul>
+     * Khoá dòng run ({@code FOR UPDATE}) nên luồng nền không nhận run này cùng lúc. Đường dẫn artifact do client gửi bị
+     * bỏ — backend không ghi đường dẫn tới file nó không tạo.
+     */
+    @Transactional
+    public Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload) {
+        Row run = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ? FOR UPDATE", runId, projectId);
+        if (run == null) {
+            throw new NotFoundException("simulation run");
+        }
+        if (!isCarla(run.str("simulator_version"))) {
+            throw new InvalidRequestException("run " + runId + " dùng " + run.str("simulator_version")
+                    + " — chỉ nhận kết quả CARLA cho run CARLA, không ghép với bộ động học");
+        }
+        String status = run.str("status");
+        if (!"PENDING".equals(status) && !"FAILED".equals(status)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "run " + runId + " đang " + status
+                    + " — chỉ nhận kết quả cho run PENDING hoặc FAILED");
+        }
+        Object lockedTests = db.scalar("SELECT COUNT(*) FROM regression_tests t WHERE t.execution_status IN ('COMPLETED','FAILED') "
+                + "AND (t.id = ? OR t.id IN (SELECT regression_test_id FROM simulation_runs WHERE baseline_run_id = ? AND regression_test_id IS NOT NULL))",
+                run.getLong("regression_test_id"), runId);
+        if (((Number) lockedTests).longValue() > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "run " + runId + " thuộc regression test đã chốt — không sửa kết quả sau khi có verdict");
+        }
+        if (resultPayload == null) {
+            throw new InvalidRequestException("thiếu result.json");
+        }
+        Map<String, Object> result = new LinkedHashMap<>(resultPayload);
+        result.remove("artifacts");
+        try {
+            checkResult(result, run);
+        } catch (SimulatorException e) {
+            throw new InvalidRequestException(e.getMessage());
+        }
+        // Run FAILED/PENDING không có dòng con (persist chạy trong một transaction), xoá phòng hờ để không bao giờ nhân đôi.
+        db.update("DELETE FROM collision_events WHERE simulation_run_id = ?", runId);
+        db.update("DELETE FROM failures WHERE simulation_run_id = ?", runId); // root_causes xoá theo (ON DELETE CASCADE)
+        try {
+            persist(run, result);
+        } catch (ClassCastException | NullPointerException | IllegalArgumentException e) {
+            throw new InvalidRequestException("result.json sai cấu trúc: " + e.getMessage());
+        }
+        AuditLog.event("run.carla_result", "success", "user_id", userId, "run_id", runId, "previous_status", status);
+        events.publishEvent(new RunFinished(runId));
+        return Json.obj("ok", true, "run_id", runId, "status", "COMPLETED");
+    }
+
 
     /** Ghi kết quả chấm vào run + collision_events + failures + root_causes (một transaction). */
     @SuppressWarnings("unchecked")

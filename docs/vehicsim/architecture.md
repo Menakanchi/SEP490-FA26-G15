@@ -36,6 +36,18 @@ bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà 
 | 5. Cấu hình mới & chạy lại | Tạo candidate AEB → regression cùng seed | `/aeb`, `/validation/regression/new` | `POST /aeb/versions`, `GET /regression/preview`, `POST /regression` | `aeb.py`, `regression.py` |
 | 6. So sánh & quyết định | Kết quả regression → khuyến nghị → **Reviewer** Accept/Reject/Request more tests | `/validation/**` | `GET /regression/{id}`, `/recommendations/{id}`, `POST /recommendations/{id}/decision` | `regression.py`, `views.py` |
 
+Hai API phụ cho CARLA chạy ngoài backend, dùng ở trang `/analysis/carla` ("Dữ liệu CARLA",
+`frontend/src/app/analysis/carla/page.tsx`; trang tự điền mã run từ `source.run_id` của `result.json`):
+
+- `POST /runs/{id}/carla-result` — nộp `result.json` của một run **CARLA** đang `PENDING`/`FAILED`
+  (`RunService.submitCarlaResult`). Từ chối run động học (luật cứng 9), run đã `COMPLETED`/`RUNNING` (409), run của
+  regression test đã chốt (409) và `result.json` không qua `checkResult`; bỏ đường dẫn artifact client gửi. Test:
+  `CarlaResultSubmissionTest`.
+- `POST /telemetry/evaluate` — `frames.csv` + `collisions.json` của `worker/sensor_recorder.py` → số đo sensor và 3 mục
+  tiêu MOBO theo định nghĩa ADR-040, bỏ 0,5 s đầu và khung từ lúc va chạm (`TelemetryMetricsService`, chỉ tính, không
+  ghi DB). JSON trả khoá snake_case (`rms_jerk_mps3`, `impact_speed_mps`, `stopping_distance_m`…). Test:
+  `TelemetryMetricsServiceTest`.
+
 Trang `/` (Tổng quan) tính trạng thái 6 bước từ dữ liệu thật và chỉ bước tiếp theo;
 mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước ở
 `components/vehicsimFlow.ts`).
