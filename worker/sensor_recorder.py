@@ -282,8 +282,15 @@ class SensorRecorder:
             ego = world = None
             while not self._stop.is_set() and ego is None:
                 # Lấy lại world mỗi vòng: ScenarioRunner load_world() sau khi recorder bật.
-                world = client.get_world()
-                ego = self._find_ego(world)
+                # Trong lúc load map (Town10 → Town04 mất ~60 s sau khi CARLA vừa bật lại)
+                # server không trả lời và get_world() time-out — đó là chờ, không phải lỗi.
+                # Bỏ cuộc ở đây thì lượt chạy đầu tiên sau mỗi lần đổi map mất hết sensor
+                # (gặp 17/10/2026 với sc_103).
+                try:
+                    world = client.get_world()
+                    ego = self._find_ego(world)
+                except RuntimeError:
+                    ego = None
                 if ego is None:
                     time.sleep(0.2)
             if ego is None:
