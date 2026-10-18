@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 from vehicsim_core.evaluation import OUTCOME_COLLISION, OUTCOME_NEAR_MISS, OUTCOME_SAFE, evaluate
 from vehicsim_core.simulator import AebParams, PedestrianCrossingCase, simulate
 
@@ -58,11 +57,63 @@ def test_high_speed_with_low_threshold_collides_and_blames_decision():
     assert [s.stage for s in ev.chain] == ["PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS"]
 
 
-def test_night_heavy_rain_perception_failure():
-    params = AebParams(detection_confidence_threshold=0.9)
+def test_night_heavy_rain_perception_failure_has_no_tunable_parameter_to_blame():
+    """Ngưỡng phát hiện là hằng số của lõi (ADR-040): khâu Perception hỏng thì không có tham số AEB nào để chỉnh."""
+    params = AebParams()
     out = simulate(PedestrianCrossingCase(50, 30, 1.5, weather="HEAVY_RAIN", time_of_day="NIGHT"), params, seed=5)
     ev = evaluate(out, params)
     assert ev.primary_stage is not None and ev.primary_stage.stage == "PERCEPTION"
+    assert ev.primary_stage.parameter_code is None
+
+
+@pytest.mark.parametrize("build_up", [20.0, 35.0, 50.0, 100.0])
+def test_build_up_rate_above_the_jerk_cap_changes_nothing(build_up):
+    """Biên mới [5, 20] (migration 008): trên 20 tốc độ tăng lực phanh bị chặn ở JERK_LIMIT nên run cũ (mặc định 50) ≡ 20."""
+    case = PedestrianCrossingCase(60, 25, 1.5)
+    a = simulate(case, AebParams(brake_buildup_rate=20.0), seed=3)
+    b = simulate(case, AebParams(brake_buildup_rate=build_up), seed=3)
+    assert a.frames == b.frames and a.metrics == b.metrics
+
+
+def test_build_up_rate_below_the_cap_does_change_the_braking():
+    case = PedestrianCrossingCase(60, 25, 1.5)
+    soft = simulate(case, AebParams(brake_buildup_rate=5.0), seed=3)
+    hard = simulate(case, AebParams(brake_buildup_rate=20.0), seed=3)
+    assert soft.metrics["max_jerk_mps3"] < hard.metrics["max_jerk_mps3"]
+
+
+def test_brake_phase_objectives_are_defined_whenever_the_aeb_braked_even_in_a_collision():
+    """ADR-040: RMS jerk và quãng phanh dừng chỉ NULL khi không phanh; ca va chạm có giá trị (không bị bỏ khỏi trung bình)."""
+    params = AebParams(ttc_threshold=0.8)
+    hit = simulate(PedestrianCrossingCase(60, 25, 1.5), params, seed=3)
+    assert hit.metrics["collision"] and hit.metrics["brake_onset_t"] is not None
+    assert hit.metrics["rms_jerk_mps3"] > 0 and hit.metrics["stopping_distance_m"] > 0
+    # vì ego còn chạy lúc va chạm nên quãng dừng lớn hơn quãng đã đi được
+    travelled = hit.frames[-1]["ego_x"] - next(f["ego_x"] for f in hit.frames if f["t"] >= hit.metrics["brake_onset_t"] - 1e-9)
+    assert hit.metrics["stopping_distance_m"] > travelled
+
+    quiet = simulate(PedestrianCrossingCase(50, 30, 1.5, stops_at_curb=True), AebParams(ttc_threshold=0.5), seed=9)
+    if quiet.metrics["brake_onset_t"] is None:
+        assert quiet.metrics["rms_jerk_mps3"] is None and quiet.metrics["stopping_distance_m"] is None
+
+
+def test_stopping_distance_of_a_run_that_ends_stopped_is_the_distance_travelled_while_braking():
+    params = AebParams(ttc_threshold=2.0)
+    out = simulate(PedestrianCrossingCase(30, 30, 1.5), params, seed=7)
+    assert out.end_reason == "EGO_STOPPED"
+    start = next(f["ego_x"] for f in out.frames if f["t"] >= out.metrics["brake_onset_t"] - 1e-9)
+    assert out.metrics["stopping_distance_m"] == pytest.approx(out.frames[-1]["ego_x"] - start, abs=1e-3)
+    assert evaluate(out, params).aeb_result["rms_jerk_mps3"] == out.metrics["rms_jerk_mps3"]
+
+
+def test_aeb_has_exactly_the_four_tunable_parameters():
+    assert set(AebParams.__dataclass_fields__) == {
+        "ttc_threshold",
+        "brake_activation_delay",
+        "max_deceleration",
+        "brake_buildup_rate",
+    }
+    assert set(AebParams().as_codes()) == {code.upper() for code in AebParams.__dataclass_fields__}
 
 
 def test_pedestrian_stopping_at_curb_is_false_braking_not_collision():

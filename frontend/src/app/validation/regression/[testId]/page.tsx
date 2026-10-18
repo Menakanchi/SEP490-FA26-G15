@@ -17,14 +17,8 @@ const RANK: Record<OutcomeKey, number> = { SAFE: 0, NEAR_MISS: 1, COLLISION: 2 }
 const SHORT_PARAM: Record<string, string> = {
   TTC_THRESHOLD: "TTC",
   BRAKE_ACTIVATION_DELAY: "Trễ phanh",
-  DETECTION_CONFIDENCE_THRESHOLD: "Ngưỡng tin cậy",
   MAX_DECELERATION: "Giảm tốc tối đa",
-  PREDICTION_HORIZON: "Tầm dự đoán",
-  SAFETY_DISTANCE_MARGIN: "Biên an toàn",
-  RELATIVE_VELOCITY_THRESHOLD: "Vận tốc tương đối",
   BRAKE_BUILDUP_RATE: "Tăng lực phanh",
-  JERK_LIMIT: "Giới hạn jerk",
-  ACTUATOR_RESPONSE_TIME: "Actuator",
 };
 type DiffTab = "regressed" | "fixed" | "changes" | "all";
 

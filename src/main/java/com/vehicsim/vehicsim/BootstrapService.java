@@ -18,18 +18,15 @@ import java.util.Map;
 @Service
 public class BootstrapService {
 
-    /** code, name, category, unit, min, max, default, sort — phải khớp phần SEED của database/mysql/01_schema.sql. */
+    /**
+     * code, name, category, unit, min, max, default, sort — phải khớp phần SEED của database/mysql/01_schema.sql.
+     * Chỉ 4 tham số chỉnh được (ADR-040); sáu tham số còn lại của lõi AEB là hằng số trong worker, không nằm ở DB.
+     */
     private static final List<Object[]> AEB_PARAMETER_SEED = List.of(
-            new Object[]{"DETECTION_CONFIDENCE_THRESHOLD", "Detection Confidence Threshold", "PERCEPTION", "ratio", 0.30, 0.99, 0.70, 1},
-            new Object[]{"RELATIVE_VELOCITY_THRESHOLD", "Relative Velocity Threshold", "DECISION", "m/s", 0.50, 10.0, 2.0, 2},
-            new Object[]{"PREDICTION_HORIZON", "Prediction Horizon", "DECISION", "s", 0.50, 4.0, 2.0, 3},
-            new Object[]{"SAFETY_DISTANCE_MARGIN", "Safety Distance Margin", "DECISION", "m", 0.50, 5.0, 2.0, 4},
-            new Object[]{"TTC_THRESHOLD", "TTC Threshold", "DECISION", "s", 0.50, 4.0, 1.8, 5},
-            new Object[]{"BRAKE_ACTIVATION_DELAY", "Brake Activation Delay", "CONTROL", "s", 0.0, 0.5, 0.15, 6},
-            new Object[]{"MAX_DECELERATION", "Target / Max Deceleration", "VEHICLE_DYNAMICS", "m/s2", 3.0, 10.0, 8.0, 7},
-            new Object[]{"BRAKE_BUILDUP_RATE", "Brake Build-up Rate", "CONTROL", "m/s3", 10.0, 100.0, 50.0, 8},
-            new Object[]{"JERK_LIMIT", "Jerk Limit", "CONTROL", "m/s3", 5.0, 50.0, 20.0, 9},
-            new Object[]{"ACTUATOR_RESPONSE_TIME", "Actuator Response Time", "VEHICLE_DYNAMICS", "s", 0.02, 0.30, 0.10, 10});
+            new Object[]{"TTC_THRESHOLD", "TTC Threshold", "DECISION", "s", 0.50, 4.0, 1.8, 1},
+            new Object[]{"BRAKE_ACTIVATION_DELAY", "Brake Activation Delay", "CONTROL", "s", 0.0, 0.5, 0.15, 2},
+            new Object[]{"MAX_DECELERATION", "Max Deceleration", "VEHICLE_DYNAMICS", "m/s2", 3.0, 10.0, 8.0, 3},
+            new Object[]{"BRAKE_BUILDUP_RATE", "Brake Build-up Rate", "CONTROL", "m/s3", 5.0, 20.0, 20.0, 4});
 
     private static final Map<String, Double> BASELINE_OVERRIDES = Map.of("TTC_THRESHOLD", 1.5);
     private static final String DEFAULT_BLUEPRINT = "vehicle.audi.etron";

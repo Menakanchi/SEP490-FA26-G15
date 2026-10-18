@@ -23,14 +23,7 @@ const STAGE_NAME: Record<FailureClass, string> = {
   CONTROL: "Điều khiển",
   VEHICLE_DYNAMICS: "Động lực học",
 };
-const SNAPSHOT_PARAMS = [
-  "TTC_THRESHOLD",
-  "BRAKE_ACTIVATION_DELAY",
-  "MAX_DECELERATION",
-  "DETECTION_CONFIDENCE_THRESHOLD",
-  "PREDICTION_HORIZON",
-  "BRAKE_BUILDUP_RATE",
-];
+const SNAPSHOT_PARAMS = ["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "MAX_DECELERATION", "BRAKE_BUILDUP_RATE"];
 
 export default function FailureDetailPage() {
   const { runId } = useParams<{ runId: string }>();

@@ -14,7 +14,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from vehicsim_core.aeb_stack import AebParams
 from vehicsim_core.bundle import (
     VARIANT_FORMAT,
@@ -97,6 +96,27 @@ def test_aeb_override_accepts_every_documented_shape(aeb: dict) -> None:
     ir = {"ego_speed_kmh": 40, "trigger_distance_m": 20, "pedestrian_speed_mps": 1.4}
     assert read_spec(ir, aeb=aeb).params == PARAMS
     assert read_spec(ir, aeb=_bundle()).params == PARAMS  # cả một bundle khác làm file AEB
+
+
+def test_old_ten_parameter_bundle_is_still_readable_and_retired_codes_are_ignored() -> None:
+    """Bundle xuất trước ADR-040 mang đủ 10 mã: 6 mã đã rút bị bỏ qua, 4 mã còn lại vẫn đọc đúng."""
+    ir = {"ego_speed_kmh": 40, "trigger_distance_m": 20, "pedestrian_speed_mps": 1.4}
+    old = {
+        "label": "v1.1",
+        "params": {
+            "DETECTION_CONFIDENCE_THRESHOLD": 0.9,
+            "RELATIVE_VELOCITY_THRESHOLD": 2.0,
+            "PREDICTION_HORIZON": 1.5,
+            "SAFETY_DISTANCE_MARGIN": 0.5,
+            "TTC_THRESHOLD": 1.8,
+            "BRAKE_ACTIVATION_DELAY": 0.1,
+            "MAX_DECELERATION": 8.0,
+            "BRAKE_BUILDUP_RATE": 20.0,
+            "JERK_LIMIT": 20.0,
+            "ACTUATOR_RESPONSE_TIME": 0.1,
+        },
+    }
+    assert read_spec(ir, aeb=old).params == PARAMS
 
 
 def test_bad_input_lists_every_problem_at_once() -> None:

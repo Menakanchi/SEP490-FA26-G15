@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 
 import sim_common
-
 from vehicsim_core.bundle import KINEMATIC_SIMULATOR
 from vehicsim_core.simulator import simulate
 

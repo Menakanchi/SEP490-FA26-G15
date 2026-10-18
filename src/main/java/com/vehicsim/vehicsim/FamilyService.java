@@ -27,6 +27,9 @@ public class FamilyService {
     public static final String MOTIF_NAME = "Pedestrian Crossing";
     public static final String DEFAULT_MAP = "Town10HD";
     public static final int MAX_VARIANTS = 300;
+    /** Họ duy nhất của MVP là người đi bộ băng qua đường = category CP_CROSSING (Euro NCAP CPFA / CPNA / CPNCO). */
+    public static final String CATEGORY = ScenarioRules.CP_CROSSING;
+    public static final String TARGET_TYPE = ScenarioRules.PEDESTRIAN;
 
     public static final List<String> WEATHERS = List.of("CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG");
     public static final List<String> TIMES = List.of("DAY", "DUSK", "NIGHT");
@@ -51,7 +54,7 @@ public class FamilyService {
             checkAxis("ego_speeds_kmh", egoSpeedsKmh, IR_BOUNDS.get("ego_speed_kmh"));
             checkAxis("trigger_distances_m", triggerDistancesM, IR_BOUNDS.get("trigger_distance_m"));
             checkAxis("pedestrian_speeds_mps", pedestrianSpeedsMps, IR_BOUNDS.get("pedestrian_speed_mps"));
-            if (stopsAtCurb == null || stopsAtCurb.isEmpty()) {
+            if (stopsAtCurb == null || stopsAtCurb.isEmpty() || stopsAtCurb.stream().anyMatch(java.util.Objects::isNull)) {
                 throw new InvalidRequestException("stops_at_curb cần ít nhất một giá trị");
             }
             if (weathers == null || weathers.isEmpty() || weathers.stream().anyMatch(w -> !WEATHERS.contains(w))) {
@@ -66,8 +69,8 @@ public class FamilyService {
         }
 
         private static void checkAxis(String name, List<Double> values, double[] bounds) {
-            if (values == null || values.isEmpty()) {
-                throw new InvalidRequestException(name + " cần ít nhất một giá trị");
+            if (values == null || values.isEmpty() || values.stream().anyMatch(java.util.Objects::isNull)) {
+                throw new InvalidRequestException(name + " cần ít nhất một giá trị, không được để trống");
             }
             List<Double> bad = values.stream().filter(v -> v < bounds[0] || v > bounds[1]).toList();
             if (!bad.isEmpty()) {
@@ -114,6 +117,11 @@ public class FamilyService {
         }
     }
 
+    /** Tốc độ người đi bộ của một điểm lưới đổi sang km/h cho cột {@code target_speed_kmh} (IR giữ m/s). */
+    static double targetSpeedKmh(Map<String, Object> point) {
+        return Vs.round(((Number) point.get("pedestrian_speed_mps")).doubleValue() * 3.6, 2);
+    }
+
     /** Python ``f"{x:g}"`` cho thông báo lỗi (bỏ ".0" ở số nguyên). */
     static String g(double x) {
         return x == Math.rint(x) && Math.abs(x) < 1e15 ? String.valueOf((long) x) : String.valueOf(x);
@@ -140,10 +148,16 @@ public class FamilyService {
         if (db.first("SELECT id FROM projects WHERE id = ?", projectId) == null) {
             throw new NotFoundException("project");
         }
+        // Luật theo category kiểm trước khi ghi gì (DB không biết category nào cần cột nào).
+        for (Map<String, Object> point : spec.grid()) {
+            ScenarioRules.check(CATEGORY, TARGET_TYPE, new ScenarioRules.Point(
+                    ((Number) point.get("ego_speed_kmh")).doubleValue(), targetSpeedKmh(point), null, null, null,
+                    ((Number) point.get("trigger_distance_m")).doubleValue()));
+        }
         String code = nextCode(projectId);
         long scenarioId = db.insert(
-                "INSERT INTO scenarios (project_id, code, name, description, created_by_user_id, created_date, updated_at) VALUES (?,?,?,?,?,?,?)",
-                projectId, code, familyName(projectId, spec.name(), code),
+                "INSERT INTO scenarios (project_id, category, code, name, description, created_by_user_id, created_date, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                projectId, CATEGORY, code, familyName(projectId, spec.name(), code),
                 spec.description() == null || spec.description().isEmpty() ? null : spec.description(), userId, ts, ts);
 
         Map<String, Object> baseIr = Json.obj("motif", MOTIF, "parameter_space", spec.parameterSpace());
@@ -152,25 +166,30 @@ public class FamilyService {
         }
         Object llmModel = nlText.isEmpty() || origin.get("llm_model") == null || String.valueOf(origin.get("llm_model")).isEmpty()
                 ? null : origin.get("llm_model");
+        // Bản gốc giữ không gian tham số trong IR; ego / thời tiết / giờ nhận giá trị giữ chỗ (DEFAULT) của bản chuẩn.
         long baseId = db.insert(
                 "INSERT INTO scenario_versions (scenario_id, version_no, source, natural_language_input, llm_model, scenario_ir_json, "
-                        + "map_name, validation_status, status_message, created_by_user_id, created_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        + "target_type, max_duration_s, map_name, validation_status, status_message, created_by_user_id, created_date) "
+                        + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 scenarioId, 1, nlText.isEmpty() ? "MANUAL" : "NATURAL_LANGUAGE", nlText.isEmpty() ? null : nlText, llmModel,
-                baseIr, DEFAULT_MAP, "VALID",
+                baseIr, TARGET_TYPE, RunService.MAX_DURATION_S, DEFAULT_MAP, "VALID",
                 nlText.isEmpty() ? "Family definition (parameter space)" : "Family from natural-language description", userId, ts);
 
-        // Cột lọc của biến thể = đúng điểm lưới trong IR; ma sát suy từ thời tiết như bộ động học.
+        // Cột lọc của biến thể = đúng điểm lưới trong IR (IR vẫn tính bằng m/s; cột target_speed_kmh = m/s × 3,6);
+        // ma sát suy từ thời tiết như bộ động học.
         List<Object[]> rows = new ArrayList<>();
         int index = 2;
         for (Map<String, Object> ir : spec.grid()) {
-            rows.add(new Object[]{scenarioId, index++, "GENERATED", baseId, ir, ir.get("ego_speed_kmh"), ir.get("trigger_distance_m"),
-                    ir.get("pedestrian_speed_mps"), ir.get("stops_at_curb"), ir.get("weather"), ir.get("time_of_day"),
-                    Vs.WEATHER_FRICTION.getOrDefault((String) ir.get("weather"), 1.0), DEFAULT_MAP, "VALID", userId, ts});
+            rows.add(new Object[]{scenarioId, index++, "GENERATED", baseId, ir, TARGET_TYPE, ir.get("ego_speed_kmh"), targetSpeedKmh(ir),
+                    ir.get("trigger_distance_m"), ir.get("stops_at_curb"), ir.get("weather"), ir.get("time_of_day"),
+                    Vs.WEATHER_FRICTION.getOrDefault((String) ir.get("weather"), 1.0), RunService.MAX_DURATION_S, DEFAULT_MAP, "VALID",
+                    userId, ts});
         }
         db.batchInsert(
-                "INSERT INTO scenario_versions (scenario_id, version_no, source, parent_version_id, scenario_ir_json, ego_speed_kmh, "
-                        + "trigger_distance_m, pedestrian_speed_mps, stops_at_curb, weather, time_of_day, road_friction, map_name, "
-                        + "validation_status, created_by_user_id, created_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO scenario_versions (scenario_id, version_no, source, parent_version_id, scenario_ir_json, target_type, "
+                        + "ego_speed_kmh, target_speed_kmh, trigger_distance_m, stops_at_curb, weather, time_of_day, road_friction, "
+                        + "max_duration_s, map_name, validation_status, created_by_user_id, created_date) "
+                        + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 rows);
         return Json.obj("scenario_id", scenarioId, "code", code, "base_version_id", baseId, "variants", spec.variantCount());
     }

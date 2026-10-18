@@ -36,24 +36,41 @@ _TIME_CONFIDENCE = {"DAY": 0.0, "DUSK": -0.06, "NIGHT": -0.14}
 _WEATHER_POSITION_NOISE_M = {"CLEAR": 0.05, "CLOUDY": 0.06, "RAIN": 0.10, "HEAVY_RAIN": 0.16, "FOG": 0.14}
 
 
+# Sáu tham số đã rút khỏi phạm vi chỉnh được (ADR-040, migration 007): thành hằng số cố định của lõi AEB. Giữ đúng
+# giá trị mặc định cũ nên kết quả của mọi run từng dùng mặc định không đổi. Mã của chúng KHÔNG còn nằm trong
+# ``aeb_parameters``; bundle cũ có mang các mã này thì bị bỏ qua (``RETIRED_CODES``).
+DETECTION_CONFIDENCE_THRESHOLD = 0.70
+RELATIVE_VELOCITY_THRESHOLD_MPS = 2.0
+PREDICTION_HORIZON_S = 2.0
+SAFETY_DISTANCE_MARGIN_M = 2.0
+JERK_LIMIT_MPS3 = 20.0
+ACTUATOR_RESPONSE_TIME_S = 0.10
+RETIRED_CODES = frozenset(
+    {
+        "DETECTION_CONFIDENCE_THRESHOLD",
+        "RELATIVE_VELOCITY_THRESHOLD",
+        "PREDICTION_HORIZON",
+        "SAFETY_DISTANCE_MARGIN",
+        "JERK_LIMIT",
+        "ACTUATOR_RESPONSE_TIME",
+    }
+)
+
+
 @dataclass(frozen=True)
 class AebParams:
-    """10 tham số của ``aeb_parameters`` (mã ENUM trong schema)."""
+    """4 tham số chỉnh được của ``aeb_parameters`` (mã ENUM trong schema)."""
 
-    detection_confidence_threshold: float = 0.70
-    relative_velocity_threshold: float = 2.0
-    prediction_horizon: float = 2.0
-    safety_distance_margin: float = 2.0
     ttc_threshold: float = 1.5
     brake_activation_delay: float = 0.15
     max_deceleration: float = 8.0
-    brake_buildup_rate: float = 50.0
-    jerk_limit: float = 20.0
-    actuator_response_time: float = 0.10
+    # Biên [5, 20] m/s³ (migration 008): 20 = ``JERK_LIMIT_MPS3`` cố định bên dưới. Trước đây biên là [10, 100] nhưng
+    # tốc độ tăng lực phanh bị chặn ở JERK_LIMIT nên 20–100 cho cùng một kết quả; mặc định 50 cũ ≡ 20 hiện nay.
+    brake_buildup_rate: float = 20.0
 
     @classmethod
     def from_codes(cls, values: dict[str, float]) -> AebParams:
-        """``{"TTC_THRESHOLD": 1.5, ...}`` -> ``AebParams``. Mã thiếu thì giữ mặc định."""
+        """``{"TTC_THRESHOLD": 1.5, ...}`` -> ``AebParams``. Mã thiếu thì giữ mặc định; mã khác bị bỏ qua."""
         kwargs = {name: float(values[name.upper()]) for name in cls.__dataclass_fields__ if name.upper() in values}
         return cls(**kwargs)
 
@@ -69,12 +86,12 @@ class AebParams:
         đứng yên trên vỉa hè (cách tim làn 2,25 m) chỉ còn 0,28 m là "trong đường",
         và nhiễu định vị lúc mưa đủ làm AEB phanh oan gần như mọi lần.
         """
-        return 0.5 * 1.93 + 0.25 * self.safety_distance_margin
+        return 0.5 * 1.93 + 0.25 * SAFETY_DISTANCE_MARGIN_M
 
     @property
     def decel_ramp_rate(self) -> float:
         """Tốc độ tăng giảm tốc thực tế: chậm hơn trong hai giới hạn build-up và jerk."""
-        return min(self.brake_buildup_rate, self.jerk_limit)
+        return min(self.brake_buildup_rate, JERK_LIMIT_MPS3)
 
 
 @dataclass(frozen=True)
@@ -149,7 +166,7 @@ class AebStack:
             # Nhiễu rút từ rng của chính lần chạy -> tất định theo seed.
             confidence = self.base_confidence - 0.004 * max(0.0, distance - 15.0) + self.rng.gauss(0.0, 0.05)
             confidence = max(0.0, min(1.0, confidence))
-            detected = confidence >= p.detection_confidence_threshold
+            detected = confidence >= DETECTION_CONFIDENCE_THRESHOLD
             if detected:
                 perceived_y = seen_y + self.rng.gauss(0.0, self.position_noise_m)
                 self._perceived_vy_filtered = 0.6 * self._perceived_vy_filtered + 0.4 * seen_vy
@@ -166,9 +183,9 @@ class AebStack:
 
         # ---- Decision ------------------------------------------------------------
         ttc_perceived = None
-        if detected and perceived_y is not None and gap > 0 and ego_v >= p.relative_velocity_threshold:
+        if detected and perceived_y is not None and gap > 0 and ego_v >= RELATIVE_VELOCITY_THRESHOLD_MPS:
             ttc_perceived = gap / ego_v
-            lookahead = min(ttc_perceived, p.prediction_horizon)
+            lookahead = min(ttc_perceived, PREDICTION_HORIZON_S)
             predicted_y = perceived_y + self._perceived_vy_filtered * lookahead
             in_predicted_path = abs(predicted_y) <= p.corridor_half_width or (abs(perceived_y) <= p.corridor_half_width)
             if in_predicted_path:
@@ -180,7 +197,7 @@ class AebStack:
                     record_event(self.events, t, "aeb_decision", "AEB brake command", ttc_s=round(ttc_perceived, 2))
 
         # ---- Control -----------------------------------------------------------
-        if self.decision_t is not None and t >= self.decision_t + p.brake_activation_delay + p.actuator_response_time:
+        if self.decision_t is not None and t >= self.decision_t + p.brake_activation_delay + ACTUATOR_RESPONSE_TIME_S:
             if self.brake_onset_t is None:
                 self.brake_onset_t = t
                 record_event(self.events, t, "brake_onset", "Brakes engage")

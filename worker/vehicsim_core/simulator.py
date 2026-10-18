@@ -311,6 +311,37 @@ def simulate(
     )
 
 
+def brake_phase_metrics(
+    frames: list[dict], brake_onset_t: float | None, decel_available: float, dt: float = DT
+) -> tuple[float | None, float | None]:
+    """Hai mục tiêu tối ưu đo trong *pha phanh* — từ khung phanh bắt đầu tác dụng tới khung cuối (ADR-040):
+
+    - ``rms_jerk_mps3``: căn của trung bình bình phương ``Δa/dt`` trên các khung đó (bước tăng lực phanh lúc bắt đầu
+      và bước nhả lúc dừng đều tính). Độ êm phanh, càng nhỏ càng êm.
+    - ``stopping_distance_m``: quãng ego đi được từ lúc phanh tác dụng tới lúc dừng. Run kết thúc khi xe còn chạy (va
+      chạm, người đi bộ đã qua) thì cộng phần còn lại ``v²/(2·decel_available)`` — nên ca va chạm cũng có giá trị,
+      không bị bỏ khỏi trung bình (định nghĩa cũ chỉ có khi không va chạm nên "thưởng" cho cấu hình hay va chạm).
+
+    Cả hai là ``None`` khi AEB không phanh. Công thức dùng đúng các số làm tròn đã lưu trong khung / ``decel_available``
+    của số đo, để migration 008 tính lại được cho run cũ từ ``telemetry_json`` mà ra đúng số này.
+    """
+    if brake_onset_t is None or not frames:
+        return None, None
+    start = next((i for i, f in enumerate(frames) if f["t"] >= brake_onset_t - 1e-9), None)
+    if start is None:
+        return None, None
+    prev = frames[start - 1]["ego_a"] if start > 0 else 0.0
+    total, count = 0.0, 0
+    for f in frames[start:]:
+        jerk = (f["ego_a"] - prev) / dt
+        total += jerk * jerk
+        count += 1
+        prev = f["ego_a"]
+    last = frames[-1]
+    remaining = last["ego_v"] ** 2 / (2 * decel_available) if decel_available > 0 else 0.0
+    return round(math.sqrt(total / count), 3), round(last["ego_x"] - frames[start]["ego_x"] + remaining, 3)
+
+
 def _summary_metrics(
     *,
     frames: list[dict],
@@ -362,10 +393,7 @@ def _summary_metrics(
         ego_x = _at(first_detection_t, "ego_x")
         detection_distance = round(crossing_x - ego_x, 2) if ego_x is not None else None
 
-    brake_start_x = _at(brake_onset_t, "ego_x")
-    stopping_distance = None
-    if brake_start_x is not None and not collision:
-        stopping_distance = round(last["ego_x"] - brake_start_x, 3)
+    rms_jerk, stopping_distance = brake_phase_metrics(frames, brake_onset_t, round(decel_target, 3))
 
     return {
         "collision": collision,
@@ -386,6 +414,7 @@ def _summary_metrics(
         "max_deceleration_mps2": round(max_a, 3) if max_a else None,
         "mean_deceleration_mps2": None if mean_a is None else round(mean_a, 3),
         "max_jerk_mps3": round(max_jerk, 3),
+        "rms_jerk_mps3": rms_jerk,
         "stopping_distance_m": stopping_distance,
         "ego_initial_speed_mps": round(v0, 3),
         "ego_final_speed_mps": round(last["ego_v"], 3),

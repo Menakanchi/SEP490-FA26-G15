@@ -127,6 +127,10 @@ public class SimulationRun {
     @Column(name = "is_false_negative")
     private Boolean isFalseNegative;
 
+    /** Mục tiêu 1 của tối ưu: RMS jerk (m/s3). Chưa có tiến trình nào ghi cột này — xem TD-39. */
+    @Column(name = "rms_jerk_mps3", precision = 8, scale = 3)
+    private BigDecimal rmsJerkMps3;
+
     @Column(name = "impact_speed_mps", precision = 8, scale = 3)
     private BigDecimal impactSpeedMps;
 

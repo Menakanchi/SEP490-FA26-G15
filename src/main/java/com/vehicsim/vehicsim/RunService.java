@@ -50,20 +50,17 @@ public class RunService {
     private static final int STOP_GRACE_S = 15;
     private static final String COLLISION_ACTOR = "walker.pedestrian.0001";
 
-    /** Mã tham số AEB theo thứ tự trường của ``AebParams`` và giá trị mặc định của lõi (khi DB thiếu mã). */
+    /**
+     * Mã 4 tham số AEB chỉnh được theo thứ tự trường của ``AebParams`` và giá trị mặc định của lõi (khi DB thiếu mã).
+     * Sáu tham số còn lại là hằng số trong ``worker/vehicsim_core/aeb_stack.py`` — bundle không mang chúng (ADR-040).
+     */
     static final Map<String, Double> AEB_DEFAULTS = new LinkedHashMap<>();
 
     static {
-        AEB_DEFAULTS.put("DETECTION_CONFIDENCE_THRESHOLD", 0.70);
-        AEB_DEFAULTS.put("RELATIVE_VELOCITY_THRESHOLD", 2.0);
-        AEB_DEFAULTS.put("PREDICTION_HORIZON", 2.0);
-        AEB_DEFAULTS.put("SAFETY_DISTANCE_MARGIN", 2.0);
         AEB_DEFAULTS.put("TTC_THRESHOLD", 1.5);
         AEB_DEFAULTS.put("BRAKE_ACTIVATION_DELAY", 0.15);
         AEB_DEFAULTS.put("MAX_DECELERATION", 8.0);
-        AEB_DEFAULTS.put("BRAKE_BUILDUP_RATE", 50.0);
-        AEB_DEFAULTS.put("JERK_LIMIT", 20.0);
-        AEB_DEFAULTS.put("ACTUATOR_RESPONSE_TIME", 0.10);
+        AEB_DEFAULTS.put("BRAKE_BUILDUP_RATE", 20.0);
     }
 
     /** evaluation.aeb_result -> cột kết quả của simulation_runs. */
@@ -83,6 +80,7 @@ public class RunService {
         RESULT_COLUMNS.put("max_deceleration_mps2", "max_deceleration_mps2");
         RESULT_COLUMNS.put("mean_deceleration_mps2", "mean_deceleration_mps2");
         RESULT_COLUMNS.put("max_jerk_mps3", "max_jerk_mps3");
+        RESULT_COLUMNS.put("rms_jerk_mps3", "rms_jerk_mps3");
         RESULT_COLUMNS.put("stopping_distance_m", "stopping_distance_m");
     }
 

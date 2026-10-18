@@ -4,9 +4,9 @@ Tài liệu giải thích **từng bảng, từng cột** của database VehicSi
 ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệu nhóm 06/10/2026).
 
 - **Nguồn sự thật:** [database/mysql/01_schema.sql](../../database/mysql/01_schema.sql). Tài liệu này
-  chỉ giải thích; lệch nhau thì file SQL đúng. Code đọc/ghi qua bản SQLAlchemy song song ở
-  [src/services/vehicsim/tables.py](../../src/services/vehicsim/tables.py) (chỉ các bảng code dùng)
-  và [src/services/auth/users.py](../../src/services/auth/users.py) (`users`, `roles`).
+  chỉ giải thích; lệch nhau thì file SQL đúng. Code Java đọc/ghi bằng SQL thuần (`JdbcTemplate` qua `Db` / `Queries` ở
+  [src/main/java/com/vehicsim/vehicsim/](../../src/main/java/com/vehicsim/vehicsim/), JPA cho `users` / `roles`); không còn bản
+  mirror của schema để giữ đồng bộ.
 - **Vì sao 29 bảng, đổi gì so với bản 32 bảng:** [ADR-036](../adr/ADR-036-schema-29-bang.md). Bảng thứ 30
   (`project_members`), loại lỗi `NEAR_MISS` và 2 loại thông báo mới: [ADR-037](../adr/ADR-037-thanh-vien-project-near-miss.md).
   Bỏ phiên bản xe, Admin tạo workspace, báo cáo theo project (còn 29 bảng):
@@ -138,13 +138,19 @@ CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](.
 ### 3.6 Phục vụ tối ưu
 
 - **Không gian tìm kiếm:** `aeb_parameters.min_value/max_value` là biên tuyệt đối; `optimization_runs.search_space_json`
-  chọn tập con. Trial nào cũng là một `aeb_versions` đủ 10 tham số, nên đem đi regression như candidate tay.
-- **Mục tiêu (Pareto):** `optimization_trials.collision_rate_pct`, `false_activation_rate_pct`,
-  `comfort_max_jerk_mps3` — ba trục của concept (va chạm ↔ phanh oan ↔ độ êm); `score` cho BO / Random.
+  chọn tập con. Trial nào cũng là một `aeb_versions` đủ 4 tham số chỉnh được, nên đem đi regression như candidate tay.
+- **Mục tiêu (Pareto, ADR-040 §6–7):** `optimization_trials.rms_jerk_mps3`, `impact_speed_mps`, `stopping_distance_m` — ba
+  mục tiêu MOBO, cùng cực tiểu; `collision_rate_pct` là chỉ số phụ; `score` cho ParEGO / Chebyshev.
+  - *RMS jerk*: trung bình `simulation_runs.rms_jerk_mps3` của các run **có phanh** (RMS của `Δa/dt` trong pha phanh).
+  - *Vận tốc va chạm*: trung bình `impact_speed_mps` trên **mọi** run của họ, không va chạm tính 0.
+  - *Quãng phanh dừng*: trung bình `stopping_distance_m` của các run có phanh — gồm cả ca va chạm (run kết thúc khi xe còn chạy thì cộng
+    `v²/(2·decel_available)`), nên cấu hình hay va chạm không thể "đẹp" nhờ bị bỏ khỏi trung bình.
+  - *Ràng buộc mặc định* trong `objective_config_json`: va chạm không vượt baseline, phanh oan tăng ≤ 5 điểm %. Trial vi phạm có
+    `constraint_violated = TRUE` và không vào mặt Pareto. Phanh oan (`is_false_positive`) là ràng buộc, không phải trục.
 - **So được:** mọi trial dùng cùng họ kịch bản, cùng `carla_vehicle_model_id`, cùng `simulator_version` của lần
   tối ưu; seed cố định theo biến thể.
 - **Đặc trưng cho độ nhạy / SHAP:** cột lọc của biến thể (`ego_speed_kmh`, `trigger_distance_m`,
-  `pedestrian_speed_mps`, `stops_at_curb`, `weather`, `time_of_day`, `road_friction`) + 10 tham số AEB →
+  `target_speed_kmh`, `stops_at_curb`, `weather`, `time_of_day`, `road_friction`) + 4 tham số AEB →
   chỉ số kết quả trong `simulation_runs` (`collision_occurred`, `min_ttc_s`, `is_false_positive`, `max_jerk_mps3`…).
 - **Robustness:** `analysis_results` (ROBUSTNESS_VALIDATION) giữ cấu hình nhiễu ở `config_json`; mỗi mẫu là
   một run `ROBUSTNESS` ghi nhiễu đã áp vào `run_config_json`.
@@ -467,16 +473,18 @@ Bộ cảm biến của mẫu xe, cố định như thông số xe; tham số đ
 
 #### `aeb_parameters` — FE-09
 
-10 tham số AEB cố định, có biên `[min_value, max_value]` — cũng là không gian tìm kiếm của tối ưu.
+4 tham số AEB chỉnh được (ADR-040), có biên `[min_value, max_value]` — cũng là không gian tìm kiếm của tối ưu MOBO. Sáu tham số
+còn lại của lõi AEB (ngưỡng phát hiện, vận tốc tương đối, tầm dự đoán, biên an toàn, giới hạn jerk, thời gian phản hồi actuator)
+là **hằng số trong `worker/vehicsim_core/aeb_stack.py`**, không nằm ở DB và không có trong bundle.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | INT UNSIGNED | ✓ |  | PK; AI | Khoá chính. |
 | `code` | VARCHAR(50) | ✓ |  | UQ | Mã tham số; code mô phỏng đọc theo mã (`AebParams.from_codes`). |
 | `name` | VARCHAR(100) | ✓ |  |  | Tên hiển thị. |
-| `category` | ENUM | ✓ |  |  | Khâu: PERCEPTION / DECISION / CONTROL / VEHICLE_DYNAMICS — khớp 4 khâu của chuỗi nguyên nhân. Giá trị: 'PERCEPTION', 'DECISION', 'CONTROL', 'VEHICLE_DYNAMICS'. |
+| `category` | ENUM | ✓ |  |  | Khâu: DECISION / CONTROL / VEHICLE_DYNAMICS. Không có PERCEPTION: lỗi nhận thức không có tham số AEB nào để chỉnh. Giá trị: 'DECISION', 'CONTROL', 'VEHICLE_DYNAMICS'. |
 | `unit` | VARCHAR(20) | ✓ |  |  | Đơn vị. |
-| `min_value` | DECIMAL(14,6) | ✓ |  |  | Biên dưới — kiểm giá trị + không gian tìm kiếm của tối ưu |
+| `min_value` | DECIMAL(14,6) | ✓ |  |  | Biên dưới — kiểm giá trị + không gian tìm kiếm MOBO |
 | `max_value` | DECIMAL(14,6) | ✓ |  |  | Biên trên. |
 | `default_value` | DECIMAL(14,6) | ✓ |  |  | Giá trị mặc định (seed). |
 | `description` | TEXT |  |  |  | Ý nghĩa. |
@@ -497,7 +505,7 @@ Các bộ tham số AEB của project. Đúng một BASELINE; Accept = hạ base
 | `status` | ENUM | ✓ | `'CANDIDATE'` |  | `DRAFT`, `CANDIDATE`, `BASELINE` (đúng một), `ACCEPTED`, `REJECTED`, `ARCHIVED` (baseline cũ sau Accept). Giá trị: 'DRAFT', 'BASELINE', 'CANDIDATE', 'ACCEPTED', 'REJECTED', 'ARCHIVED'. |
 | `source` | ENUM | ✓ | `'MANUAL'` |  | `MANUAL` (kỹ sư) hoặc `OPTIMIZATION` (sinh từ một trial). Giá trị: 'MANUAL', 'OPTIMIZATION'. |
 | `parent_version_id` | BIGINT UNSIGNED |  |  | FK → `aeb_versions(project_id,id)` | Version cha mà candidate được sinh từ đó; cùng project (FK ghép). |
-| `notes` | TEXT |  |  |  | Kỹ sư ghi vì sao tạo version này (vd: TTC 1,8 s phanh sớm hơn) |
+| `notes` | TEXT |  |  |  | Kỹ sư ghi vì sao tạo version này (vd: TTC 1.8s phanh sớm hơn). Migration 007 ghi thêm vào đây giá trị khác mặc định của 6 tham số đã rút khỏi scope (v1.3, v5, v6, V9292) để còn truy vết. |
 | `baseline_project_key` | BIGINT UNSIGNED |  |  | UQ; GEN | **GEN**: = `project_id` khi `BASELINE` — `UNIQUE` ép một baseline mỗi project. |
 | `created_by_user_id` | BIGINT UNSIGNED | ✓ |  | FK → `users` | Người tạo. |
 | `created_date` | DATETIME | ✓ | `CURRENT_TIMESTAMP` |  | Lúc tạo. |
@@ -506,7 +514,7 @@ CHECK: `ck_aeb_versions_no`.
 
 #### `aeb_parameter_values` — FE-09
 
-Giá trị 10 tham số của từng AEB version.
+Giá trị 4 tham số của từng AEB version.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -520,12 +528,13 @@ CHECK: `ck_apv_nonneg`.
 
 #### `scenarios` — FE-05
 
-Họ kịch bản (mô típ, vd người đi bộ băng ngang). **Code dùng:** `family.py`.
+Họ kịch bản (mô típ, vd người đi bộ băng ngang), thuộc một trong 7 nhóm Euro NCAP. **Code dùng:** `FamilyService`, `ScenarioRules`.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; UQ `uq_scenarios_project_id`; AI | Khoá chính. |
 | `project_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_scenarios_code`; UQ `uq_scenarios_name`; UQ `uq_scenarios_project_id`; FK → `projects` | Project. |
+| `category` | ENUM | ✓ | `'CCRS'` | KEY `idx_scenarios_category` | 7 nhóm kịch bản Euro NCAP: `CCRS` (đứng yên), `CCRM` (đi đều), `CCRB` (phanh gấp), `CP_CROSSING` (băng qua), `CPLA` (cùng chiều), `TURNING` (rẽ cắt), `CUT_IN` (cắt làn — Euro NCAP không có giá trị chuẩn, nhóm tự đặt). MVP chỉ có `CP_CROSSING`; `FamilyService` luôn ghi tường minh. Giá trị: 'CCRS', 'CCRM', 'CCRB', 'CP_CROSSING', 'CPLA', 'TURNING', 'CUT_IN'. |
 | `code` | VARCHAR(30) | ✓ |  | UQ `uq_scenarios_code` | Mã họ trong project: `PX`, `PX2`… _S01, S02…_ |
 | `name` | VARCHAR(150) | ✓ |  | UQ `uq_scenarios_name` | Tên họ; duy nhất trong project (trùng thì `family.py` thêm ` (mã)`). |
 | `description` | TEXT |  |  |  | Mô tả. |
@@ -546,24 +555,31 @@ Bản gốc (giữ không gian tham số + câu mô tả) và các biến thể 
 | `parent_version_id` | BIGINT UNSIGNED |  |  | FK → `scenario_versions(scenario_id,id)` | Biến thể → bản gốc **cùng họ**; bản gốc `NULL` (`ck_sv_generated`). |
 | `natural_language_input` | TEXT |  |  |  | Câu mô tả gốc (FE-06) — để truy vết. |
 | `llm_model` | VARCHAR(100) |  |  |  | Model LLM đã trích IR. |
-| `scenario_ir_json` | JSON | ✓ |  |  | Bản gốc: không gian tham số; biến thể: một điểm của lưới |
-| `ego_speed_kmh` | DECIMAL(6,2) |  |  |  | Biến thể: tốc độ xe (km/h). Bản gốc `NULL`. Cột lọc + đặc trưng cho phân tích độ nhạy. |
-| `trigger_distance_m` | DECIMAL(6,2) |  |  |  | Biến thể: khoảng cách lúc người đi bộ bắt đầu đi (trigger tương đối, không theo giây). |
-| `pedestrian_speed_mps` | DECIMAL(5,2) |  |  |  | Biến thể: tốc độ người đi bộ. |
-| `stops_at_curb` | BOOLEAN |  |  |  | Biến thể: người đi bộ dừng ở lề — ca đo phanh oan. _Người đi bộ dừng ở lề — ca đo phanh oan_ |
-| `weather` | ENUM |  |  |  | Biến thể: thời tiết; runner đổi sang `carla.WeatherParameters` (`weather_parameters`). Giá trị: 'CLEAR', 'CLOUDY', 'RAIN', 'HEAVY_RAIN', 'FOG'. |
-| `time_of_day` | ENUM |  |  |  | Biến thể: thời điểm; runner đổi sang `sun_altitude_angle`. Giá trị: 'DAY', 'DUSK', 'NIGHT'. |
-| `road_friction` | DECIMAL(4,2) |  |  |  | μ mặt đường; bộ động học dùng. CARLA chưa ép được vào vật lý (TD-17), chỉ có hình ảnh mưa |
-| `openscenario_version` | VARCHAR(20) |  |  |  | Phiên bản OpenSCENARIO của `.xosc` (vd `1.2`). |
-| `openscenario_content` | LONGTEXT |  |  |  | Nội dung .xosc (FE-06-09) |
-| `opendrive_content` | LONGTEXT |  |  |  | NULL = map có sẵn của CARLA |
-| `map_name` | VARCHAR(100) |  |  |  | vd: Town10HD |
+| `scenario_ir_json` | JSON | ✓ |  |  | Bản gốc: không gian tham số; biến thể: một điểm tham số cụ thể. **IR vẫn tính người đi bộ bằng m/s** (`pedestrian_speed_mps`) — đó là hợp đồng với worker; cột `target_speed_kmh` chỉ là bản sao để lọc. |
+| `target_type` | ENUM | ✓ | `'VEHICLE'` |  | Đối tượng mục tiêu: `VEHICLE` hoặc `PEDESTRIAN` (TURNING có cả hai: CCFtap xe, CPTA người). Giá trị: 'VEHICLE', 'PEDESTRIAN'. |
+| `ego_speed_kmh` | DECIMAL(6,2) | ✓ | `50.00` |  | Tốc độ xuất phát xe ego (km/h, vd: 10–80 km/h). Cột lọc + đặc trưng cho phân tích độ nhạy. **Bản gốc** mang giá trị giữ chỗ 50 (cột NOT NULL của bản chuẩn); điểm tham số thật nằm ở biến thể / IR. |
+| `target_speed_kmh` | DECIMAL(6,2) |  |  |  | Tốc độ xe mục tiêu hoặc người đi bộ (km/h, vd: xe trước 20/50 km/h; người đi bộ 5/8 km/h). MVP: = `pedestrian_speed_mps` × 3,6 (làm tròn 2 số lẻ). |
+| `initial_distance_m` | DECIMAL(6,2) |  |  |  | Khoảng cách ban đầu giữa xe ego và đối tượng (m, vd: 12 m hoặc 40 m). |
+| `lateral_overlap_pct` | DECIMAL(5,2) |  |  |  | Độ chồng lấn / lệch ngang (%, vd: 25%, 50%, 75%, 100%). **Nghĩa còn mở (TD-41):** giao thức ghi khoảng −50%…50% nhưng định nghĩa 100% là hai đường tâm trùng nhau; CHECK chỉ chặn ngoài [−100, 100]. |
+| `target_decel_mps2` | DECIMAL(5,2) |  |  |  | Gia tốc phanh của xe phía trước, chỉ cho CCRB (m/s², −2 hoặc −6). Âm, và chỉ khi `target_type = VEHICLE` (`ck_sv_decel`). Trong file `.xosc` phải ghi thành thời gian giảm tốc (ScenarioRunner đọc `rate` như thời gian) — bộ sinh `.xosc` đổi (TD-27). |
+| `trigger_distance_m` | DECIMAL(6,2) |  |  |  | Khoảng cách kích hoạt tình huống (m, vd: người đi bộ bắt đầu đi khi xe còn cách 37.5 m); trigger tương đối, không theo giây. |
+| `stops_at_curb` | BOOLEAN |  | `FALSE` |  | Người đi bộ dừng ở mép lề đường — ca đo phanh oan (False Positive). |
+| `weather` | ENUM | ✓ | `'CLEAR'` |  | Thời tiết; runner đổi sang `carla.WeatherParameters`. Bản gốc giữ giá trị giữ chỗ. Giá trị: 'CLEAR', 'CLOUDY', 'RAIN', 'HEAVY_RAIN', 'FOG'. |
+| `time_of_day` | ENUM | ✓ | `'DAY'` |  | Thời điểm; runner đổi sang `sun_altitude_angle`. Bản gốc giữ giá trị giữ chỗ. Giá trị: 'DAY', 'DUSK', 'NIGHT'. |
+| `road_friction` | DECIMAL(4,2) |  | `1.00` |  | μ mặt đường; bộ động học dùng. CARLA chưa ép được vào vật lý (TD-17), chỉ có hình ảnh mưa |
+| `max_duration_s` | DECIMAL(6,2) | ✓ | `15.00` |  | Thời gian mô phỏng tối đa (s). Euro NCAP dùng 15 s, nhưng bộ động học chạy theo hằng số `MAX_DURATION_S = 12` (không đọc cột này) nên `FamilyService` ghi 12.00 — đúng giá trị các run đã chạy (TD-42). |
+| `openscenario_version` | VARCHAR(20) |  | `'1.0'` |  | Phiên bản OpenSCENARIO của `.xosc`. |
+| `openscenario_content` | LONGTEXT |  |  |  | Nội dung file OpenSCENARIO XML (.xosc) nạp vào ScenarioRunner (FE-06-09) |
+| `opendrive_content` | LONGTEXT |  |  |  | Nội dung file OpenDRIVE (.xodr); NULL = map có sẵn của CARLA |
+| `map_name` | VARCHAR(100) |  | `'Town01'` |  | Bản đồ CARLA LogicFile (vd: Town01, Town10HD). Mặc định của DB là Town01 (đoạn đường thẳng, theo tài liệu kịch bản) nhưng `FamilyService` ghi tường minh `Town10HD` — map đã dùng cho mọi run cũ. |
 | `validation_status` | ENUM | ✓ | `'NOT_VALIDATED'` |  | Kết quả kiểm IR / `.xosc`. Giá trị: 'NOT_VALIDATED', 'VALID', 'INVALID'. |
 | `status_message` | TEXT |  |  |  | Ghi chú tạo / lỗi kiểm. |
 | `created_by_user_id` | BIGINT UNSIGNED | ✓ |  | FK → `users` | Người tạo. |
 | `created_date` | DATETIME | ✓ | `CURRENT_TIMESTAMP` |  | Lúc tạo. |
 
-CHECK: `ck_sv_generated`.
+CHECK: `ck_sv_generated`, `ck_sv_ranges` (tốc độ / khoảng cách / thời gian dương, chồng lấn trong [−100, 100]), `ck_sv_decel`.
+
+**Luật theo category** (CCRB bắt buộc có gia tốc phanh + khoảng cách; CP_CROSSING bắt buộc tốc độ người đi bộ + cự ly kích hoạt; CCRS phải có xe mục tiêu đứng yên = 0; `target_type` phải khớp category…) không ép được ở DB vì category nằm ở bảng `scenarios`: `ScenarioRules` (Java) kiểm trước khi `FamilyService` ghi.
 
 ### 6.6 Tối ưu và regression
 
@@ -578,13 +594,13 @@ Một lần tối ưu tham số AEB trên cả họ, cố định xe và bộ m�
 | `scenario_id` | BIGINT UNSIGNED | ✓ |  | FK → `scenarios(project_id,id)` | Họ kịch bản: mọi trial chấm trên cả họ (chống học vẹt một kịch bản). |
 | `base_aeb_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `aeb_versions(project_id,id)` | AEB version xuất phát (thường là baseline). |
 | `carla_vehicle_model_id` | BIGINT UNSIGNED | ✓ |  | FK → `carla_vehicle_models` | Xe cố định cho mọi trial. |
-| `simulator_version` | VARCHAR(30) | ✓ |  |  | vd: vehicsim-kinematic-1.0, carla-0.9.16 — như simulation_runs |
+| `simulator_version` | VARCHAR(30) | ✓ |  |  | vd: vehicsim-kinematic-1.0, carla-0.9.16 |
 | `name` | VARCHAR(150) | ✓ |  |  | Tên lần tối ưu. |
-| `algorithm` | ENUM | ✓ |  |  | `BAYESIAN_OPTIMIZATION` (GP), `NSGA_II` (đa mục tiêu), `RANDOM_SEARCH`. Giá trị: 'BAYESIAN_OPTIMIZATION', 'NSGA_II', 'RANDOM_SEARCH'. |
-| `acquisition_function` | ENUM |  |  |  | Chỉ với BAYESIAN_OPTIMIZATION Giá trị: 'EI', 'UCB', 'PI'. |
+| `algorithm` | ENUM | ✓ | `'MOBO'` |  | `MOBO` (Multi-Objective Bayesian Optimization), `NSGA_II`, `RANDOM_SEARCH` (đối chứng). Giá trị: 'MOBO', 'NSGA_II', 'RANDOM_SEARCH'. |
+| `acquisition_function` | ENUM |  |  |  | Hàm thu nhận đa mục tiêu, chỉ với MOBO: Expected Hypervolume Improvement (EHVI / qEHVI), ParEGO, MESMO, USEMO. Giá trị: 'EHVI', 'qEHVI', 'MESMO', 'USEMO', 'PAREGO'. |
 | `n_initial_points` | INT UNSIGNED |  |  |  | Số điểm khởi tạo trước khi hàm thu nhận chọn điểm |
-| `search_space_json` | JSON | ✓ |  |  | Tham số AEB được tối ưu + biên, con của [min_value, max_value]; vd {"TTC_THRESHOLD":[1.2,2.5]} |
-| `objective_config_json` | JSON | ✓ |  |  | Mục tiêu (va chạm, phanh oan, độ êm) + trọng số / ràng buộc |
+| `search_space_json` | JSON | ✓ |  |  | Không gian tìm kiếm 4 tham số AEB: TTC_THRESHOLD, BRAKE_ACTIVATION_DELAY, MAX_DECELERATION, BRAKE_BUILDUP_RATE (con của [min_value, max_value]) |
+| `objective_config_json` | JSON | ✓ |  |  | Cấu hình 3 mục tiêu: Braking Comfort (RMS Jerk), Collision Mitigation (Impact Speed), Stopping Performance (Stopping Distance), kèm ràng buộc; mặc định `{"constraints": {"collision_rate_pct": {"max": "baseline"}, "false_activation_increase_pts": {"max": 5}}}` — trial vi phạm bị loại khỏi mặt Pareto |
 | `max_trials` | INT UNSIGNED | ✓ |  |  | Ngân sách số trial (kế hoạch rủi ro: 50–100 run). |
 | `random_seed` | BIGINT UNSIGNED |  |  |  | Seed của bộ tối ưu (tái lập chuỗi điểm thử). |
 | `status` | ENUM | ✓ | `'PENDING'` |  | Trạng thái chạy. Giá trị: 'PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'. |
@@ -608,12 +624,13 @@ Mỗi trial = một candidate AEB version + điểm số ba mục tiêu (trục 
 | `trial_number` | INT UNSIGNED | ✓ |  | UQ `uq_ot_run_trial` | Thứ tự trial. |
 | `candidate_aeb_version_id` | BIGINT UNSIGNED | ✓ |  | UQ; UQ `uq_ot_id_candidate`; FK → `aeb_versions(project_id,id)` | Bộ tham số thử = một AEB version (`source = OPTIMIZATION`), đem đi regression được. |
 | `sampling_source` | ENUM | ✓ | `'INITIAL_DESIGN'` |  | Điểm này từ đâu: thiết kế ban đầu, hàm thu nhận, active learning, nhập tay — màn Active learning tracker. Giá trị: 'INITIAL_DESIGN', 'ACQUISITION', 'ACTIVE_LEARNING', 'MANUAL'. |
-| `acquisition_value` | DECIMAL(14,6) |  |  |  | EI / UCB / PI lúc chọn điểm |
-| `collision_rate_pct` | DECIMAL(5,2) |  |  |  | % kịch bản trong họ có va chạm — mục tiêu an toàn (cực tiểu). |
-| `false_activation_rate_pct` | DECIMAL(5,2) |  |  |  | % kịch bản phanh oan — mục tiêu tránh phanh nhầm (cực tiểu). |
-| `comfort_max_jerk_mps3` | DECIMAL(8,3) |  |  |  | Trung bình max jerk các run có phanh |
-| `objective_values_json` | JSON |  |  |  | Mục tiêu phụ: min TTC trung vị, tốc độ va chạm… |
-| `score` | DECIMAL(18,6) |  |  |  | Mục tiêu vô hướng (BO / Random); NSGA-II dùng ba cột trên |
+| `acquisition_value` | DECIMAL(14,6) |  |  |  | Giá trị hàm thu nhận EHVI / ParEGO lúc thuật toán chọn điểm |
+| `rms_jerk_mps3` | DECIMAL(8,3) |  |  |  | Mục tiêu 1: Braking Comfort — RMS jerk (m/s³), cực tiểu; trung bình các run có phanh của họ. |
+| `impact_speed_mps` | DECIMAL(8,3) |  |  |  | Mục tiêu 2: Collision Mitigation — vận tốc va chạm (m/s), cực tiểu; trung bình trên mọi run của họ (không va chạm = 0). |
+| `stopping_distance_m` | DECIMAL(8,3) |  |  |  | Mục tiêu 3: Stopping Performance — quãng phanh dừng (m), cực tiểu; trung bình các run có phanh của họ (kể cả ca va chạm). |
+| `collision_rate_pct` | DECIMAL(5,2) |  |  |  | Tỉ lệ va chạm trên tập kịch bản (%) — chỉ số phụ. |
+| `objective_values_json` | JSON |  |  |  | Vector 3 mục tiêu [rms_jerk, impact_speed, stopping_distance] và các chỉ số phụ |
+| `score` | DECIMAL(18,6) |  |  |  | Điểm vô hướng hóa (nếu dùng ParEGO / Chebyshev) |
 | `constraint_violated` | BOOLEAN | ✓ | `FALSE` |  | Trial vi phạm ràng buộc trong `objective_config_json` (vd tỉ lệ va chạm vượt trần). |
 | `is_pareto_optimal` | BOOLEAN | ✓ | `FALSE` |  | Nằm trên Pareto front (không trial nào tốt hơn ở mọi mục tiêu). Kỹ sư chọn điểm đánh đổi. |
 | `status` | ENUM | ✓ | `'PENDING'` |  | Trạng thái; `PRUNED` = dừng sớm. Giá trị: 'PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'PRUNED'. |
@@ -688,14 +705,15 @@ Một lần chạy một biến thể × xe × AEB version × seed × bộ mô p
 | `aeb_activation_time_s` | DECIMAL(8,3) |  |  |  | Lúc AEB ra lệnh (s). |
 | `is_false_positive` | BOOLEAN |  |  |  | Phanh oan: an toàn mà vẫn phanh gấp |
 | `is_false_negative` | BOOLEAN |  |  |  | Bỏ sót: có nguy cơ mà không phanh |
-| `impact_speed_mps` | DECIMAL(8,3) |  |  |  | Tốc độ lúc va chạm (m/s); `NULL` nếu không va chạm. |
+| `rms_jerk_mps3` | DECIMAL(8,3) |  |  |  | Objective 1: RMS jerk (m/s³) trong pha phanh, từ lúc phanh tác dụng tới hết run — căn trung bình bình phương `Δa/dt` (dt = 0,05 s). `NULL` nếu không phanh. Worker ghi (`brake_phase_metrics`); run cũ tính lại ở migration 008. |
+| `impact_speed_mps` | DECIMAL(8,3) |  |  |  | Objective 2: tốc độ lúc va chạm (m/s); `NULL` nếu không va chạm (khi gộp theo họ tính 0). |
 | `min_distance_m` | DECIMAL(10,3) |  |  |  | Khoảng cách nhỏ nhất tới người đi bộ (m). |
 | `min_ttc_s` | DECIMAL(8,3) |  |  |  | TTC nhỏ nhất (s). |
 | `braking_response_time_s` | DECIMAL(8,3) |  |  |  | Từ lệnh AEB tới lúc phanh có tác dụng |
 | `max_deceleration_mps2` | DECIMAL(8,3) |  |  |  | Giảm tốc lớn nhất (m/s²). |
 | `mean_deceleration_mps2` | DECIMAL(8,3) |  |  |  | Giảm tốc trung bình khi phanh (m/s²). |
 | `max_jerk_mps3` | DECIMAL(8,3) |  |  |  | Jerk lớn nhất (m/s³) — chỉ số độ êm cho tối ưu. |
-| `stopping_distance_m` | DECIMAL(8,3) |  |  |  | Quãng phanh (m). |
+| `stopping_distance_m` | DECIMAL(8,3) |  |  |  | Objective 3: quãng từ lúc phanh tác dụng tới lúc dừng (m). Run kết thúc khi xe còn chạy (va chạm, người đi bộ đã qua) thì cộng `v²/(2·decel_available)` — nên **có cả ca va chạm**. `NULL` nếu không phanh. |
 | `telemetry_json` | JSON |  |  |  | Chuỗi khung (ego, người đi bộ, perception, TTC) cho biểu đồ / phát lại; CARLA thêm bảng đối chiếu xe |
 | `error_message` | TEXT |  |  |  | Lỗi nếu FAILED (crash, timeout, lệch phiên bản CARLA). |
 | `worker_host` | VARCHAR(150) |  |  |  | Máy worker đã chạy. |
@@ -882,8 +900,8 @@ CHECK: `ck_tech_references_value`.
 | `simulation_runs.telemetry_json` | `runs._persist` | `{"frames": [{"t", "ego_x", "ego_v", "ego_a", "ped_x", "ped_y", "ped_vy", "detected", "confidence", "perceived_y", "ttc", "ttc_gt", "fcw", "aeb"}], "events", "metrics", "crossing_x", "case", "params", "outcome", "headline", "chain": [{"stage", "passed", "summary", "cause_code", "parameter_code", "confidence"}]}`; run CARLA có thêm `case.carla` (`map`, `decel_clamped_frames`, `vehicle_check`) |
 | `regression_tests.pass_criteria_json` | `regression.create_test` | `{"criteria": {"no_new_collision": {"enabled", "required"}, "false_activation_increase_max_pts": {"enabled", "required", "value"}, …}, "scenario_set": {"old_critical", "all_variants", "old_critical_count", "variant_count"}}` |
 | `sensors.attributes_json` | (chưa có code) | Attribute blueprint đúng tên CARLA, giá trị chuỗi: `{"image_size_x": "1280", "fov": "90", "sensor_tick": "0.05"}` |
-| `optimization_runs.search_space_json` | (chưa có code) | `{"TTC_THRESHOLD": [1.2, 2.5], "BRAKE_ACTIVATION_DELAY": [0.05, 0.3]}` — trong `[min_value, max_value]` |
-| `optimization_runs.objective_config_json` | (chưa có code) | Mục tiêu + trọng số / ràng buộc, vd `{"objectives": ["collision_rate", "false_activation_rate", "comfort"], "constraints": {"collision_rate_pct": {"max": 5}}}` |
+| `optimization_runs.search_space_json` | (chưa có code) | `{"TTC_THRESHOLD": [1.2, 2.5], "BRAKE_ACTIVATION_DELAY": [0.05, 0.3]}` — chỉ 4 mã của `aeb_parameters`, trong `[min_value, max_value]` |
+| `optimization_runs.objective_config_json` | (chưa có code) | Mục tiêu + trọng số / ràng buộc, vd `{"objectives": ["rms_jerk", "impact_speed", "stopping_distance"], "constraints": {"collision_rate_pct": {"max": 5}}}` |
 | `analysis_results.config_json` / `summary_json` | (chưa có code) | Đầu vào (nhiễu, chỉ số mục tiêu, bộ lọc run) / đầu ra (xếp hạng tham số, ma trận tương tác, phân bố theo nhiễu) |
 
 Bảng tổng hợp regression (ma trận chuyển trạng thái, tỉ lệ, tiêu chí) **không lưu**: `regression.summary`
@@ -895,9 +913,9 @@ từng cặp ở `regression_test_items`.
 | Bảng | Seed |
 |---|---|
 | `roles` | 5 role (§1.1) |
-| `aeb_parameters` | 10 tham số; khớp `bootstrap.AEB_PARAMETER_SEED` (`test_python_parameter_seed_matches_sql_seed`). Baseline v1.0 dùng mặc định, riêng `TTC_THRESHOLD` = 1,5 s |
+| `aeb_parameters` | 4 tham số (`TTC_THRESHOLD` 0,5–4 s, `BRAKE_ACTIVATION_DELAY` 0–0,5 s, `MAX_DECELERATION` 3–10 m/s², `BRAKE_BUILDUP_RATE` **5–20** m/s³ vì lõi chặn ở `JERK_LIMIT` = 20); khớp `BootstrapService.AEB_PARAMETER_SEED` (`test_java_parameter_seed_matches_sql_seed`). Baseline v1.0 dùng mặc định, riêng `TTC_THRESHOLD` = 1,5 s |
 | `carla_vehicle_models` | `vehicle.audi.etron` 4,75 × 1,93 × 1,67 m |
-| `tech_references` | 6 dòng: `GRAV_ACCEL`, `AIR_DENSITY_STP`, `UNECE_R152`, `EURO_NCAP_AEB_C2C`, `ISO_22839_FCS`, `ISO_15623_TTC` |
+| `tech_references` | 7 dòng: `GRAV_ACCEL`, `AIR_DENSITY_STP`, `UNECE_R152`, `EURO_NCAP_AEB_C2C`, `EURO_NCAP_AEB_VRU`, `OPENSCENARIO_1_X`, `ISO_15623_TTC` |
 
 ## 9. Lệch và khoảng trống đã biết
 
@@ -909,16 +927,20 @@ từng cặp ở `regression_test_items`.
   CARLA; `carla_full_brake_decel_mps2` có cột nhưng bundle chưa mang sang runner (runner vẫn lấy `--full-brake-decel`).
 - **Quyết định không lưu riêng cho test hỏng:** regression `FAILED` (có run hỏng) không có khuyến nghị nên
   không Accept / Reject được — chạy lại test.
-- **Biên tham số chỉ service kiểm:** `param_value` trong `[min_value, max_value]`, đủ 10 tham số mỗi version,
-  role của thành viên workspace, EXPERIENCER không có khuyến nghị — CHECK không so được bảng khác.
+- **Biên tham số chỉ service kiểm:** `param_value` trong `[min_value, max_value]`, đủ 4 tham số mỗi version,
+  role của thành viên workspace, EXPERIENCER không có khuyến nghị, luật theo category của kịch bản (`ScenarioRules`) —
+  CHECK không so được bảng khác.
+- **Rút scope AEB (ADR-040):** run của v1.3 dùng tầm dự đoán 1,5 s và biên an toàn 0,5 m (nay là hằng số 2,0 / 2,0) nên
+  60 / 192 run đó **không còn tái lập** khi chạy lại từ JSON; kết quả đã lưu không đổi (TD-40).
+- **Bảng tối ưu còn rỗng:** `optimization_runs`, `optimization_trials`, `analysis_results` có schema và định nghĩa mục tiêu nhưng chưa có code (TD-39).
 
 ## 10. Đổi schema thì làm gì
 
 Cùng một PR (luật mềm ở `AGENTS.md`):
 
 1. Sửa [01_schema.sql](../../database/mysql/01_schema.sql).
-2. Sửa `tables.py` / `users.py` nếu code dùng bảng đó.
-3. Thêm dòng cho cột mới vào §6 tài liệu này — `test_schema_doc_covers_every_table_and_column` canh.
+2. Sửa câu SQL trong `Queries` / các service (và entity JPA của `users` / `roles`) nếu code dùng cột đó.
+3. Thêm dòng cho cột mới vào §6 tài liệu này — `RepoDocsTest#schemaDocCoversEveryTableAndColumn` canh.
 4. Thêm file đánh số vào `database/mysql/migrations/` cho DB đang chạy. Đã có:
 
 | File | Đổi gì |
@@ -929,5 +951,7 @@ Cùng một PR (luật mềm ở `AGENTS.md`):
 | `004_2026-10-06_nam-role-he-thong.sql` | 5 role hệ thống, bỏ cấu hình xe và Meomeo (ADR-035), 36 → 32 bảng |
 | `005_2026-10-06_schema-30-bang.sql` | Schema 30 bảng, giữ dữ liệu (ADR-036 + ADR-037), 32 → 30 bảng |
 | `006_2026-10-07_bo-phien-ban-xe-admin-tao-workspace.sql` | Bỏ phiên bản xe, Admin tạo workspace, báo cáo theo project (ADR-038), 30 → 29 bảng |
+| `007_2026-10-15_rut-scope-4-tham-so-aeb-7-category.sql` | Rút scope: 4 tham số AEB, 3 mục tiêu MOBO, 7 category kịch bản (ADR-040), vẫn 29 bảng |
+| `008_2026-10-15_buildup-5-20-va-dinh-nghia-muc-tieu.sql` | `BRAKE_BUILDUP_RATE` biên [5, 20]; tính lại `rms_jerk_mps3` / `stopping_distance_m` cho run cũ (ADR-040 §6–7) |
 
 Luôn sao lưu trước (`mysqldump --single-transaction`), không `docker compose down -v` trên máy người khác.
