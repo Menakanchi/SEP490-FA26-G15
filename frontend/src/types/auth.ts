@@ -48,6 +48,8 @@ export interface AuthContextType {
   login: (email: string, password: string) => Promise<User>;
   /** Đăng ký một bước: tạo tài khoản EXPERIENCER và đăng nhập luôn. */
   register: (payload: RegisterPayload) => Promise<User>;
+  /** Đăng ký 2 bước (mã OTP gửi qua email đã xin bằng `requestRegisterCode`): mã đúng thì tạo tài khoản và đăng nhập luôn. */
+  registerWithCode: (payload: { email: string; code: string; full_name: string; password: string }) => Promise<User>;
   /** Đổi mật khẩu khi đang đăng nhập; backend cấp phiên mới vì phiên cũ hết hiệu lực. */
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
   updateProfile: (fullName: string, avatarUrl?: string) => Promise<User>;

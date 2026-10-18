@@ -1,5 +1,6 @@
 package com.vehicsim.vehicsim;
 
+import com.vehicsim.audit.AuditLog;
 import com.vehicsim.vehicsim.Vs.InvalidRequestException;
 import com.vehicsim.vehicsim.Vs.NotFoundException;
 import org.springframework.context.event.EventListener;
@@ -127,7 +128,10 @@ public class RegressionService {
                     target.put("enabled", Boolean.TRUE.equals(e.getValue().get("enabled")));
                 }
                 if (e.getValue().containsKey("value") && target.containsKey("value")) {
-                    target.put("value", ((Number) e.getValue().get("value")).doubleValue());
+                    if (!(e.getValue().get("value") instanceof Number number)) {
+                        throw new InvalidRequestException("tiêu chí " + e.getKey() + ": value phải là một số");
+                    }
+                    target.put("value", number.doubleValue());
                 }
             }
         }
@@ -523,7 +527,8 @@ public class RegressionService {
             throw new InvalidRequestException("phải xác nhận quyết định dựa trên bằng chứng mô phỏng");
         }
         LocalDateTime ts = Vs.now();
-        Row test = db.first("SELECT * FROM regression_tests WHERE id = ? AND project_id = ?", testId, projectId);
+        // Khoá dòng test + khuyến nghị: hai Reviewer duyệt cùng lúc thì người thứ hai chờ rồi thấy "đã có quyết định cuối".
+        Row test = db.first("SELECT * FROM regression_tests WHERE id = ? AND project_id = ? FOR UPDATE", testId, projectId);
         if (test == null) {
             throw new NotFoundException("regression test");
         }
@@ -531,7 +536,7 @@ public class RegressionService {
         if ("PENDING".equals(exec) || "RUNNING".equals(exec)) {
             throw new InvalidRequestException("regression test chưa chạy xong");
         }
-        Row rec = recommendationFor(testId);
+        Row rec = db.first("SELECT * FROM engineering_recommendations WHERE regression_test_id = ? FOR UPDATE", testId);
         if (rec == null) {
             throw new InvalidRequestException("regression test này không có khuyến nghị để duyệt");
         }
@@ -547,7 +552,8 @@ public class RegressionService {
         // Hai test cùng baseline có thể cùng PASSED; Accept một cái sẽ đổi baseline hoặc trạng thái candidate,
         // nên cái còn lại phải chạy lại thay vì ghi đè.
         Map<Long, String> statusOf = new LinkedHashMap<>();
-        for (Row v : db.list("SELECT id, status FROM aeb_versions WHERE id IN (?, ?)", test.lng("baseline_aeb_version_id"), test.lng("candidate_aeb_version_id"))) {
+        // Khoá cả hai version: hai test khác nhau cùng baseline không thể cùng Accept.
+        for (Row v : db.list("SELECT id, status FROM aeb_versions WHERE id IN (?, ?) FOR UPDATE", test.lng("baseline_aeb_version_id"), test.lng("candidate_aeb_version_id"))) {
             statusOf.put(v.lng("id"), v.str("status"));
         }
         if ((decision.equals("ACCEPT") || decision.equals("REJECT")) && !"CANDIDATE".equals(statusOf.get(test.lng("candidate_aeb_version_id")))) {
@@ -568,6 +574,8 @@ public class RegressionService {
         db.update("UPDATE engineering_recommendations SET status = ?, reviewed_by_user_id = ?, reviewed_at = ?, review_notes = ?, "
                         + "review_conditions = ?, updated_at = ? WHERE id = ?",
                 STATUS_OF_DECISION.get(decision), userId, ts, reason.strip(), cond.isEmpty() ? null : cond, ts, rec.lng("id"));
+        AuditLog.event("regression.decide", "success", "user_id", userId, "test_id", testId, "decision", decision,
+                "candidate_aeb_version_id", test.lng("candidate_aeb_version_id"), "baseline_aeb_version_id", test.lng("baseline_aeb_version_id"));
     }
 
     public List<Map<String, Object>> parameterDiff(long baselineVersionId, long candidateVersionId) {

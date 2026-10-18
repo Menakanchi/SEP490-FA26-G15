@@ -44,10 +44,16 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request, clientIp(http)));
     }
 
-    @Operation(summary = "Đăng ký một bước", description = "Tạo tài khoản EXPERIENCER và trả về JWT như khi đăng nhập. Không xác minh email.")
+    @Operation(summary = "Chế độ đăng ký", description = "`one_step` (POST /register, dev) hoặc `otp` (POST /register/request rồi /register/verify, production). Frontend đọc để chọn đúng luồng.")
+    @GetMapping("/register/mode")
+    public Map<String, String> registrationMode() {
+        return Map.of("mode", authService.registrationMode().wire());
+    }
+
+    @Operation(summary = "Đăng ký một bước", description = "Tạo tài khoản EXPERIENCER và trả về JWT như khi đăng nhập. Không xác minh email; giới hạn tần suất theo IP. Bị đóng (403) khi chế độ đăng ký là `otp`.")
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        return ResponseEntity.ok(authService.register(request));
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request, HttpServletRequest http) {
+        return ResponseEntity.ok(authService.register(request, clientIp(http)));
     }
 
     @Operation(summary = "Đăng ký bước 1: xin mã OTP", description = "Gửi mã 6 số qua email nếu email chưa có tài khoản. Luôn trả cùng một câu.")
@@ -104,8 +110,9 @@ public class AuthController {
     }
 
     /**
-     * Sau reverse proxy / Cloudflare phải đọc header của proxy tin cậy thay vì remoteAddr — chưa làm vì
-     * hiện chưa có proxy nào trước backend.
+     * Địa chỉ client dùng cho giới hạn tần suất. Sau reverse proxy / Cloudflare, đặt {@code FORWARD_HEADERS_STRATEGY=native}
+     * để Tomcat thay {@code remoteAddr} bằng IP trong header của proxy tin cậy (TD-36); không bao giờ tự đọc
+     * {@code X-Forwarded-For} ở đây, vì kẻ gọi trực tiếp có thể điền header đó để né giới hạn.
      */
     private static String clientIp(HttpServletRequest request) {
         return request.getRemoteAddr() == null ? "unknown" : request.getRemoteAddr();

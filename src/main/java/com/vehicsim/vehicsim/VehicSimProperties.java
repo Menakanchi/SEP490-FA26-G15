@@ -15,6 +15,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param workerPython       lệnh Python chạy worker
  * @param workerDir          thư mục worker/ (tương đối với thư mục chạy backend)
  * @param recoverOnStartup   nhặt lại run PENDING / RUNNING bỏ dở khi khởi động
+ * @param writesPerWindow    số lần tạo họ / candidate / regression của MỘT người trong một cửa sổ rate-limit (chống lạm dụng khi mở đăng ký)
+ * @param maxActiveRunsPerUser số run đang chờ + đang chạy tối đa của một người
  */
 @ConfigurationProperties(prefix = "vehicsim")
 public record VehicSimProperties(
@@ -27,5 +29,7 @@ public record VehicSimProperties(
         int runConcurrency,
         String workerPython,
         String workerDir,
-        boolean recoverOnStartup) {
+        boolean recoverOnStartup,
+        int writesPerWindow,
+        int maxActiveRunsPerUser) {
 }

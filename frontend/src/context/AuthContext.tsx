@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import type { ApiUser, AuthContextType, Role, SessionResponse, User } from "@/types/auth";
 import {
   ApiError,
+  onSessionExpired,
   changeMyPassword,
   getMe,
   getStoredToken,
@@ -11,6 +12,7 @@ import {
   postRegister,
   storeToken,
   updateMyProfile,
+  verifyRegistration,
   type RegisterPayload,
 } from "@/services/api";
 
@@ -118,6 +120,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setIsLoading(false));
   }, []);
 
+  // Backend từ chối token giữa phiên (hết hạn, đã đổi mật khẩu ở máy khác): bỏ phiên, shell tự chuyển về /login.
+  useEffect(() => onSessionExpired(clearSession), [clearSession]);
+
   const login = useCallback(
     async (email: string, password: string) => applySession(await postLogin(email.trim(), password)),
     [applySession],
@@ -125,6 +130,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(
     async (payload: RegisterPayload) => applySession(await postRegister({ ...payload, email: payload.email.trim() })),
+    [applySession],
+  );
+
+  const registerWithCode = useCallback(
+    async (payload: { email: string; code: string; full_name: string; password: string }) =>
+      applySession(await verifyRegistration({ ...payload, email: payload.email.trim() })),
     [applySession],
   );
 
@@ -153,6 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         login,
         register,
+        registerWithCode,
         changePassword,
         updateProfile,
         logout: clearSession,

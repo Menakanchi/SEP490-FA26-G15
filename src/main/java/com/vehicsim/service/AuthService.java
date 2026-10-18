@@ -1,5 +1,6 @@
 package com.vehicsim.service;
 
+import com.vehicsim.audit.AuditLog;
 import com.vehicsim.config.AuthProperties;
 import com.vehicsim.dto.auth.AuthResponse;
 import com.vehicsim.dto.auth.LoginRequest;
@@ -13,7 +14,10 @@ import com.vehicsim.repository.UserRepository;
 import com.vehicsim.security.CustomUserDetails;
 import com.vehicsim.security.JwtService;
 import com.vehicsim.security.LegacyAwarePasswordEncoder;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +32,7 @@ import java.util.Locale;
  * bước xin mã luôn trả lời giống nhau dù email có tồn tại hay không, và đăng nhập sai email
  * hay sai mật khẩu đều là cùng một lỗi (email lạ vẫn tốn đủ một lần băm).
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -35,6 +40,10 @@ public class AuthService {
     private static final String INVALID_CREDENTIALS = "Email hoặc mật khẩu không đúng";
     private static final String INVALID_OTP = "Mã xác minh không đúng hoặc đã hết hạn. Vui lòng yêu cầu mã mới.";
     private static final String RATE_LIMITED = "Quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.";
+    private static final String CANNOT_REGISTER =
+            "Không thể tạo tài khoản với thông tin này. Nếu bạn đã có tài khoản, hãy đăng nhập hoặc dùng Quên mật khẩu.";
+    /** BCrypt chỉ dùng 72 byte đầu của mật khẩu — dài hơn thì phần sau bị bỏ qua mà người dùng không biết. */
+    static final int BCRYPT_MAX_BYTES = 72;
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
@@ -44,46 +53,91 @@ public class AuthService {
     private final MailService mailService;
     private final AuthProperties props;
 
+    @Value("${app.env:development}")
+    private String appEnv;
+
+    private RegistrationMode registrationMode = RegistrationMode.ONE_STEP;
+
+    @PostConstruct
+    void resolveRegistrationMode() {
+        registrationMode = RegistrationMode.resolve(props.registrationMode(), appEnv);
+        if (registrationMode == RegistrationMode.OTP && !mailService.isConfigured()) {
+            log.warn("Đăng ký bằng OTP đang bật nhưng SMTP chưa cấu hình (SMTP_USER / SMTP_PASSWORD) — không ai nhận được mã, nên không ai đăng ký được.");
+        }
+        if (registrationMode == RegistrationMode.ONE_STEP && "production".equalsIgnoreCase(appEnv)) {
+            log.warn("REGISTRATION_MODE=one_step ở production: đăng ký không xác minh email (ai cũng tạo được tài khoản bằng email không phải của mình).");
+        }
+        log.info("Chế độ đăng ký: {}", registrationMode.wire());
+    }
+
+    public RegistrationMode registrationMode() {
+        return registrationMode;
+    }
+
     // ------------------------------------------------------------------ đăng nhập
 
     @Transactional
     public AuthResponse login(LoginRequest request, String clientIp) {
         if (otpService.hitRateLimit("login_ip", clientIp, props.loginAttemptsPerIp())) {
+            AuditLog.event("auth.login", "blocked", "reason", "rate_limited_ip", "ip", clientIp);
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, RATE_LIMITED);
         }
         String email = normalize(request.getEmail());
+        // Giới hạn theo tài khoản chỉ đếm lần SAI: chặn dò mật khẩu từ nhiều IP, và email lạ bị đếm y hệt email thật
+        // (không để lộ email nào tồn tại). Đổi lại, kẻ xấu làm khoá tạm một tài khoản được trong một cửa sổ.
+        if (otpService.isRateLimited("login_acct", email, props.loginAttemptsPerAccount())) {
+            AuditLog.event("auth.login", "blocked", "reason", "rate_limited_account", "user", email, "ip", clientIp);
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, RATE_LIMITED);
+        }
         String rawPassword = request.getPassword();
 
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null) {
             passwordEncoder.matches(rawPassword, passwordEncoder.dummyHash());
+            otpService.hitRateLimit("login_acct", email, props.loginAttemptsPerAccount());
+            AuditLog.event("auth.login", "failure", "reason", "bad_credentials", "user", email, "ip", clientIp);
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS);
         }
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            otpService.hitRateLimit("login_acct", email, props.loginAttemptsPerAccount());
+            AuditLog.event("auth.login", "failure", "reason", "bad_credentials", "user", email, "ip", clientIp);
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS);
         }
         if (Boolean.FALSE.equals(user.getIsActive())) {
+            AuditLog.event("auth.login", "failure", "reason", "account_disabled", "user", email, "user_id", user.getId(), "ip", clientIp);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tài khoản đã bị khoá. Vui lòng liên hệ quản trị viên.");
         }
+        otpService.clearRateLimit("login_acct", email);
         if (passwordEncoder.upgradeEncoding(user.getPasswordHash())) {
             user.setPasswordHash(passwordEncoder.encode(rawPassword)); // hash PBKDF2 cũ -> BCrypt
         }
         user.setLastLoginAt(LocalDateTime.now());
-        return sessionFor(userRepository.save(user));
+        User saved = userRepository.save(user);
+        AuditLog.event("auth.login", "success", "user", email, "user_id", saved.getId(), "role", roleOf(saved), "ip", clientIp);
+        return sessionFor(saved);
     }
 
     // ------------------------------------------------------------------ đăng ký
 
-    /** Đăng ký một bước, không xác minh email (route {@code POST /auth/register}). */
+    /**
+     * Đăng ký một bước, không xác minh email (route {@code POST /auth/register}). Có giới hạn theo IP; email / số điện
+     * thoại trùng trả cùng một câu chung — không xác nhận tài khoản nào đã tồn tại. (Vẫn còn một "oracle": thành công
+     * nghĩa là email mới. Chống triệt để cần xác minh email qua OTP — TD-35.)
+     */
     @Transactional
-    public AuthResponse register(RegisterRequest request) {
-        String email = normalize(request.getEmail());
-        if (userRepository.existsByEmail(email)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email đã được sử dụng");
+    public AuthResponse register(RegisterRequest request, String clientIp) {
+        if (registrationMode == RegistrationMode.OTP) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Đăng ký một bước đã tắt. Hãy đăng ký bằng mã xác minh gửi qua email.");
         }
+        if (otpService.hitRateLimit("register_ip", clientIp, props.registerRequestsPerIp())) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, RATE_LIMITED);
+        }
+        requirePasswordFitsBcrypt(request.getPassword());
+        String email = normalize(request.getEmail());
         String phone = request.getPhoneNumber() == null ? null : request.getPhoneNumber().trim();
-        if (phone != null && !phone.isEmpty() && userRepository.existsByPhoneNumber(phone)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số điện thoại đã được sử dụng");
+        if (userRepository.existsByEmail(email)
+                || (phone != null && !phone.isEmpty() && userRepository.existsByPhoneNumber(phone))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, CANNOT_REGISTER);
         }
         User user = User.builder()
                 .email(email)
@@ -99,7 +153,9 @@ public class AuthService {
                 .address(request.getAddress())
                 .bio(request.getBio())
                 .build();
-        return sessionFor(userRepository.save(user));
+        User saved = userRepository.save(user);
+        AuditLog.event("auth.register", "success", "mode", "one_step", "user", email, "user_id", saved.getId(), "ip", clientIp);
+        return sessionFor(saved);
     }
 
     /** Bước 1 đăng ký: chỉ gửi mã khi email chưa có tài khoản; không gửi thì vẫn trả như đã gửi. */
@@ -119,8 +175,10 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse completeRegistration(String email, String code, String fullName, String password) {
+        requirePasswordFitsBcrypt(password);
         String normalized = normalize(email);
         if (!otpService.verify(OtpService.Purpose.REGISTER, normalized, code)) {
+            AuditLog.event("auth.register", "failure", "mode", "otp", "reason", "invalid_code", "user", normalized);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, INVALID_OTP);
         }
         if (userRepository.existsByEmail(normalized)) {
@@ -137,7 +195,9 @@ public class AuthService {
                 .firstName(names[2])
                 .lastLoginAt(LocalDateTime.now())
                 .build();
-        return sessionFor(userRepository.save(user));
+        User saved = userRepository.save(user);
+        AuditLog.event("auth.register", "success", "mode", "otp", "user", normalized, "user_id", saved.getId());
+        return sessionFor(saved);
     }
 
     // ------------------------------------------------------------------ quên mật khẩu
@@ -156,8 +216,10 @@ public class AuthService {
     /** Đổi hash mật khẩu thì pwv đổi và mọi JWT cấp trước đó hết hiệu lực. */
     @Transactional
     public void resetPassword(String email, String code, String newPassword) {
+        requirePasswordFitsBcrypt(newPassword);
         String normalized = normalize(email);
         if (!otpService.verify(OtpService.Purpose.RESET, normalized, code)) {
+            AuditLog.event("auth.password_reset", "failure", "reason", "invalid_code", "user", normalized);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, INVALID_OTP);
         }
         User user = userRepository.findByEmail(normalized).orElse(null);
@@ -166,6 +228,7 @@ public class AuthService {
         }
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+        AuditLog.event("auth.password_reset", "success", "user", normalized, "user_id", user.getId());
     }
 
     // ------------------------------------------------------------------ đã đăng nhập
@@ -192,15 +255,23 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse changePassword(String email, String oldPassword, String newPassword) {
+        requirePasswordFitsBcrypt(newPassword);
         User user = requireUser(email);
         if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
+            AuditLog.event("auth.password_change", "failure", "reason", "wrong_old_password", "user", email, "user_id", user.getId());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu hiện tại không đúng");
         }
         user.setPasswordHash(passwordEncoder.encode(newPassword));
-        return sessionFor(userRepository.save(user));
+        User saved = userRepository.save(user);
+        AuditLog.event("auth.password_change", "success", "user", email, "user_id", saved.getId());
+        return sessionFor(saved);
     }
 
     // ------------------------------------------------------------------ helpers
+
+    private static String roleOf(User user) {
+        return user.getRole() == null ? null : String.valueOf(user.getRole().getCode());
+    }
 
     private AuthResponse sessionFor(User user) {
         return AuthResponse.of(
@@ -228,6 +299,14 @@ public class AuthService {
                         .name("Experiencer")
                         .description("Người dùng độc lập tự đăng ký")
                         .build()));
+    }
+
+    /** Chặn mật khẩu dài hơn 72 byte (ký tự có dấu chiếm 2–3 byte) thay vì để BCrypt âm thầm cắt. */
+    static void requirePasswordFitsBcrypt(String password) {
+        if (password != null && password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Mật khẩu quá dài: tối đa " + BCRYPT_MAX_BYTES + " byte (ký tự có dấu chiếm 2–3 byte)");
+        }
     }
 
     private static String normalize(String email) {

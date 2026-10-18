@@ -18,7 +18,7 @@ class JwtServiceTest {
 
     @BeforeEach
     void setUp() {
-        jwt = new JwtService(new AuthProperties(60, 600, 5, 60, 5, 10, 900, ""));
+        jwt = new JwtService(new AuthProperties(60, 600, 5, 60, 5, 10, 20, 10, 900, "auto", ""));
         ReflectionTestUtils.setField(jwt, "secretKey", SECRET);
         ReflectionTestUtils.setField(jwt, "appEnv", "development");
     }

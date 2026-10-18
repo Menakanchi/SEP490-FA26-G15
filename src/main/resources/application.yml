@@ -1,5 +1,9 @@
 server:
   port: 8001
+  # IP client cho giới hạn đăng nhập / OTP (TD-36). none = lấy địa chỉ kết nối trực tiếp (không đứng sau proxy).
+  # Đứng sau reverse proxy / Cloudflare thì đặt native: Tomcat đọc X-Forwarded-For nhưng CHỈ khi kết nối đến từ proxy tin cậy
+  # (mặc định các dải IP nội bộ; chỉnh bằng SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES, tên header bằng SERVER_TOMCAT_REMOTEIP_REMOTE_IP_HEADER).
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 spring:
   application:
@@ -33,6 +37,7 @@ spring:
     properties:
       mail.smtp.auth: true
       mail.smtp.starttls.enable: true
+      mail.smtp.starttls.required: true   # không bao giờ gửi mã OTP bằng văn bản thuần
       mail.smtp.connectiontimeout: 15000
       mail.smtp.timeout: 15000
       mail.smtp.writetimeout: 15000
@@ -57,8 +62,14 @@ app:
     otp-resend-cooldown-seconds: ${OTP_RESEND_COOLDOWN_SECONDS:60}
     otp-requests-per-ip: ${OTP_REQUESTS_PER_IP:5}
     login-attempts-per-ip: ${LOGIN_ATTEMPTS_PER_IP:10}
+    login-attempts-per-account: ${LOGIN_ATTEMPTS_PER_ACCOUNT:20}   # chỉ đếm lần đăng nhập SAI vào một email
+    register-requests-per-ip: ${REGISTER_REQUESTS_PER_IP:10}
     rate-limit-window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:900}
+    registration-mode: ${REGISTRATION_MODE:auto}   # auto (production: otp, còn lại: one_step) | one_step | otp
     smtp-from-email: ${SMTP_FROM_EMAIL:}
+  # Origin của frontend được gọi API (CORS). Không dùng "*" vì token đi bằng header Authorization.
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
 
 # Vòng MVP VehicSim: mô phỏng chạy ở worker/ (Python) qua bundle JSON -> result.json. Tên biến giữ như backend cũ.
 vehicsim:
@@ -72,6 +83,8 @@ vehicsim:
   worker-python: ${VEHICSIM_WORKER_PYTHON:python}
   worker-dir: ${VEHICSIM_WORKER_DIR:worker}
   recover-on-startup: ${VEHICSIM_RECOVER_ON_STARTUP:true}
+  writes-per-window: ${VEHICSIM_WRITES_PER_WINDOW:30}                  # tạo họ / candidate / regression mỗi người
+  max-active-runs-per-user: ${VEHICSIM_MAX_ACTIVE_RUNS_PER_USER:1500}  # run PENDING + RUNNING
 
 # LLM cho bước "Sinh từ mô tả" (DeepSeek / OpenAI, cùng giao thức chat-completions).
 llm:

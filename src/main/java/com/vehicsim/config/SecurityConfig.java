@@ -4,6 +4,7 @@ import com.vehicsim.security.JwtAuthenticationFilter;
 import com.vehicsim.security.LegacyAwarePasswordEncoder;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -32,11 +33,22 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    private static final String[] API_DOC_PATHS = {"/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**"};
+
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final UserDetailsService userDetailsService;
 
+    /** Origin của frontend được gọi API; không dùng "*" (xem {@code app.cors.allowed-origins}). */
+    @Value("${app.cors.allowed-origins:http://localhost:3000,http://127.0.0.1:3000}")
+    private List<String> allowedOrigins;
+
+    @Value("${app.env:development}")
+    private String appEnv;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        // Swagger UI / OpenAPI chỉ mở ngoài production: ở production chúng bị chặn hẳn, không lộ bề mặt API.
+        boolean production = "production".equalsIgnoreCase(appEnv);
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
@@ -46,15 +58,14 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Phải đứng trước /api/v1/auth/** (permitAll) để hai route này đòi đăng nhập.
                         .requestMatchers("/api/v1/auth/me", "/api/v1/auth/password/change").authenticated()
+                        .requestMatchers(API_DOC_PATHS).access((authentication, context) ->
+                                new org.springframework.security.authorization.AuthorizationDecision(!production))
                         .requestMatchers(
                                 "/",
                                 "/api/v1/auth/**",
                                 "/api/health",
                                 "/health",
-                                "/error",
-                                "/swagger-ui.html",
-                                "/swagger-ui/**",
-                                "/v3/api-docs/**"
+                                "/error"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
@@ -67,8 +78,7 @@ public class SecurityConfig {
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
         return authProvider;
     }
@@ -93,10 +103,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.setAllowedOrigins(allowedOrigins.stream().map(String::trim).filter(o -> !o.isEmpty()).toList());
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept"));
-        configuration.setAllowCredentials(true);
+        // Token đi bằng header Authorization, không bằng cookie nên không cần cho phép credentials.
+        configuration.setAllowCredentials(false);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;

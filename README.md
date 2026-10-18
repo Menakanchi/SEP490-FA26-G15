@@ -12,31 +12,30 @@ Khuyến nghị dựa trên mô phỏng — không thay thế kiểm thử vật
 
 ## Chạy local
 
-Cần: Docker Desktop, [uv](https://docs.astral.sh/uv/), Node.js 20+.
+Cần: Docker Desktop, JDK 21, Python ≥ 3.10 (worker mô phỏng), Node.js 20+.
 
 ```bash
-cp .env.example .env          # điền khoá LLM, SMTP; JWT_SECRET_KEY bắt buộc ở production
-uv sync --locked
+cp .env.example .env          # điền khoá LLM, SMTP; JWT_SECRET bắt buộc ở production
 cd frontend && npm ci && cd ..
 ```
 
-**Windows:** `scripts\dev-up.cmd` bật MySQL + Redis (Docker), Celery worker, backend
-`http://localhost:8001`, frontend `http://localhost:3000` — mỗi dịch vụ một cửa sổ.
+**Windows:** `scripts\dev-up.cmd` bật MySQL + Redis (Docker), backend `http://localhost:8001`
+(Swagger: `/swagger-ui.html`), frontend `http://localhost:3000` — mỗi dịch vụ một cửa sổ.
 
 **Thủ công:**
 
 ```bash
 docker compose up -d mysql redis
-uv run celery -A src.celery_app worker --pool=solo -Q vehicsim.simulation   # hoặc VEHICSIM_RUN_MODE=inline
-uv run uvicorn src.main:app --reload --port 8001
+./mvnw spring-boot:run                                          # backend :8001, đọc .env
 cd frontend && NEXT_PUBLIC_API_URL=http://localhost:8001 npm run dev
 ```
 
-Tài khoản và dữ liệu mẫu:
+**Cả backend trong Docker:** `docker compose up -d --build backend` (image Java 21 + python3 cho worker).
+
+Tài khoản và dữ liệu mẫu (backend đang chạy):
 
 ```bash
-uv run python scripts/create_admin.py --email admin@example.com          # --role MANAGER cho người quản lý workspace
-uv run python scripts/seed_vehicsim.py --owner admin@example.com --demo
+python scripts/create_admin.py --email admin@example.com --seed     # --role MANAGER cho người quản lý workspace
 ```
 
 Database MySQL dựng từ `database/mysql/01_schema.sql` ở lần đầu; DB đã có thì nâng bằng file trong
@@ -45,27 +44,29 @@ Database MySQL dựng từ `database/mysql/01_schema.sql` ở lần đầu; DB �
 ## Kiểm tra
 
 ```bash
-make check                                   # ruff + format + pytest (giống CI)
+make check                                   # = ba cổng của CI: Java, worker, frontend
+./mvnw clean test                            # backend (không cần Docker)
+python -m pytest worker/tests -q             # lõi mô phỏng
 cd frontend && npm run lint && npx tsc --noEmit && npx next build
 ```
 
-Test không cần Docker (SQLite RAM + Redis giả) và chặn mọi lời gọi LLM thật trừ khi `RUN_LLM_TESTS=1`.
+Test Java và worker không cần Docker, CARLA hay khoá LLM; test Java dùng máy chủ giả thay cho LLM thật.
+`tests/` chỉ còn tài sản kiểm bộ sinh OpenSCENARIO (`test_openscenario/`, `schemas/`), chờ port sang Java (TD-27) — không nằm trong CI.
 
 ## Cấu trúc
 
 ```
-src/
-  api/                 vehicsim_routes.py, auth_routes.py  (chỉ đổi lỗi -> HTTP)
-  services/vehicsim/   vòng AEB: family, runs, simulator, aeb_stack, evaluation, regression,
-                       views, describe (câu mô tả -> Scenario IR)
-  services/auth/       đăng ký/quên mật khẩu bằng mã OTP, JWT
-  services/openscenario/  bộ sinh OpenSCENARIO 1.0 (.xosc), chưa nối API
-  services/llm.py      cửa duy nhất tới LLM (OpenAI / DeepSeek)
-worker/                run_variant.py (JSON -> CARLA), kinematic_sim.py, follow_hero.py
+src/main/java/com/vehicsim/
+  controller/ service/ security/ config/   xác thực: đăng ký / quên mật khẩu bằng OTP, JWT
+  vehicsim/                                vòng AEB: FamilyService, RunService, RegressionService, ViewsService,
+                                           DescribeService (câu mô tả -> Scenario IR), LlmService (cửa duy nhất tới LLM)
+worker/                run_variant.py (JSON -> CARLA), kinematic_sim.py, vehicsim_core/ (AEB, bộ động học, luật chấm)
 frontend/              Next.js 16 — app/ (Tổng quan, kịch bản, AEB, phân tích, kiểm định, hồ sơ)
 database/mysql/        01_schema.sql (29 bảng) + migrations/
 docs/                  vehicsim/ (kiến trúc, từ điển dữ liệu), adr/, exec-plans/
 ```
+
+Bộ sinh OpenSCENARIO (`.xosc`) chưa port sang Java (TD-27); mã cũ ở `src_python_backup/` (git bỏ qua).
 
 ## Tài liệu
 

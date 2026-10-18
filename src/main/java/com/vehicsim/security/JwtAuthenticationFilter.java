@@ -1,11 +1,13 @@
 package com.vehicsim.security;
 
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -16,6 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -53,8 +56,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }
-        } catch (Exception ignored) {
-            // Token parsing or validation failed, context remains unauthenticated
+        } catch (JwtException | IllegalArgumentException e) {
+            // Token sai, hết hạn hoặc không đọc được: bỏ qua, request vẫn chưa đăng nhập (-> 401 ở lớp bảo mật).
+            log.debug("JWT bị từ chối: {}", e.getMessage());
+        } catch (RuntimeException e) {
+            // Lỗi hạ tầng (vd. DB sập khi tra người dùng) — không được lặng lẽ biến thành "chưa đăng nhập".
+            log.warn("Lỗi khi xác thực JWT: {}", e.toString());
         }
 
         filterChain.doFilter(request, response);

@@ -59,6 +59,7 @@ public class VehicSimController {
     private final DescribeService describe;
     private final OtpService otp;
     private final BootstrapService bootstrap;
+    private final VehicSimProperties props;
 
     // ------------------------------------------------------------------ quyền
 
@@ -83,6 +84,16 @@ public class VehicSimController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ REVIEWER được Accept / Reject recommendation");
         }
         return userId(user);
+    }
+
+    /**
+     * Tạo họ / candidate / regression / chạy tốn tài nguyên (mỗi run là một tiến trình Python) và app mở đăng ký công khai
+     * (mọi người tự đăng ký đều có quyền ghi vào project chung — TD-30): giới hạn số lần theo người dùng trong cửa sổ rate-limit.
+     */
+    private void limitWrites(long userId, String bucket) {
+        if (otp.hitRateLimit("vs_" + bucket, String.valueOf(userId), props.writesPerWindow())) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Thao tác quá nhiều lần, thử lại sau ít phút");
+        }
     }
 
     private long projectId() {
@@ -137,6 +148,7 @@ public class VehicSimController {
     @PostMapping("/families")
     public ResponseEntity<Map<String, Object>> createFamily(@Valid @RequestBody FamilyRequest body, @AuthenticationPrincipal UserDetails user) {
         long uid = requireEngineer(user);
+        limitWrites(uid, "family");
         FamilyService.FamilySpec spec = new FamilyService.FamilySpec(
                 body.name() == null ? FamilyService.MOTIF_NAME : body.name(),
                 body.description() == null ? "" : body.description(),
@@ -177,6 +189,7 @@ public class VehicSimController {
     public ResponseEntity<Map<String, Object>> runFamily(@PathVariable long scenarioId, @RequestBody(required = false) RunFamilyRequest body,
                                                          @AuthenticationPrincipal UserDetails user) {
         long uid = requireEngineer(user);
+        limitWrites(uid, "run");
         List<Long> ids = runs.runFamily(projectId(), scenarioId, uid, body == null ? null : body.aebVersionId());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("queued_runs", ids.size()));
     }
@@ -198,6 +211,7 @@ public class VehicSimController {
     @PostMapping("/aeb/versions")
     public ResponseEntity<Map<String, Object>> createCandidate(@Valid @RequestBody CandidateRequest body, @AuthenticationPrincipal UserDetails user) {
         long uid = requireEngineer(user);
+        limitWrites(uid, "candidate");
         long id = aeb.createCandidate(projectId(), uid, body.parentVersionId(), body.values(), body.label(), body.notes());
         return ResponseEntity.status(HttpStatus.CREATED).body(Json.obj("id", id));
     }
@@ -262,6 +276,11 @@ public class VehicSimController {
             return "";
         }
         String s = value instanceof Boolean b ? (b ? "True" : "False") : String.valueOf(value);
+        // CSV injection: ô chữ bắt đầu bằng = + - @ (hoặc tab / CR) bị Excel hiểu là công thức. Tên họ kịch bản do người dùng đặt.
+        // Chỉ chuỗi mới bị chặn; số âm (vd. -0.5) là Number nên giữ nguyên.
+        if (value instanceof String && !s.isEmpty() && "=+-@\t\r".indexOf(s.charAt(0)) >= 0) {
+            s = "'" + s;
+        }
         return s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r") ? "\"" + s.replace("\"", "\"\"") + "\"" : s;
     }
 
@@ -313,6 +332,7 @@ public class VehicSimController {
     @PostMapping("/regression")
     public ResponseEntity<Map<String, Object>> createRegression(@Valid @RequestBody RegressionRequest body, @AuthenticationPrincipal UserDetails user) {
         long uid = requireEngineer(user);
+        limitWrites(uid, "regression");
         Map<String, Map<String, Object>> criteria = new LinkedHashMap<>();
         if (body.criteria() != null) {
             body.criteria().forEach((k, v) -> {

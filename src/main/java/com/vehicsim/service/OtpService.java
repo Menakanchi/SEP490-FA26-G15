@@ -101,6 +101,24 @@ public class OtpService {
         return count != null && count > limit;
     }
 
+    /** Chỉ đọc bộ đếm (không tăng): true = đã chạm {@code limit} trong cửa sổ hiện tại. */
+    public boolean isRateLimited(String bucket, String key, int limit) {
+        String value = redis.opsForValue().get("ratelimit:" + bucket + ":" + key);
+        if (value == null) {
+            return false;
+        }
+        try {
+            return Long.parseLong(value) >= limit;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    /** Xoá bộ đếm (vd. sau khi đăng nhập đúng thì không còn tính các lần sai trước đó). */
+    public void clearRateLimit(String bucket, String key) {
+        redis.delete("ratelimit:" + bucket + ":" + key);
+    }
+
     private String digest(Purpose purpose, String email, String code) {
         return jwtService.keyedDigest("otp:" + purpose.value() + ":" + email + ":" + code, 64);
     }

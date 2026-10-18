@@ -43,6 +43,27 @@ export function storeToken(token: string | null): void {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Hết phiên giữa chừng
+// ---------------------------------------------------------------------------
+
+const SESSION_EXPIRED_EVENT = "vehicsim:session-expired";
+
+/** Các route trả 401 vì sai thông tin đăng nhập chứ không phải vì hết phiên — không được đá người dùng ra. */
+const CREDENTIAL_PATHS = ["/auth/login", "/auth/register", "/auth/password/forgot", "/auth/password/reset"];
+
+function handleSessionExpired(): void {
+  storeToken(null);
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+}
+
+/** Gọi `callback` khi backend từ chối token đang dùng (hết hạn / đã đổi mật khẩu ở máy khác). Trả hàm huỷ đăng ký. */
+export function onSessionExpired(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener(SESSION_EXPIRED_EVENT, callback);
+  return () => window.removeEventListener(SESSION_EXPIRED_EVENT, callback);
+}
+
 /** Lỗi HTTP có mã trạng thái, để nơi gọi phân biệt 401 (hết phiên) với lỗi khác. */
 export class ApiError extends Error {
   constructor(
@@ -104,6 +125,8 @@ async function send<T>(
   });
 
   if (!res.ok) {
+    // Có gửi token mà vẫn 401 = phiên hết hạn: xoá phiên để giao diện đưa người dùng về trang đăng nhập.
+    if (res.status === 401 && token && !CREDENTIAL_PATHS.some((p) => path.startsWith(p))) handleSessionExpired();
     const bodyText = await res.text().catch(() => "");
     let messageVi = "";
     try {
@@ -147,6 +170,14 @@ async function send<T>(
 // Đăng ký và quên mật khẩu đều 2 bước: xin mã 6 số qua email, rồi gửi mã kèm
 // thông tin. Bước xin mã luôn trả cùng một câu, kể cả khi email không hợp lệ
 // với luồng đó — không dựa vào response để đoán email đã đăng ký hay chưa.
+
+/** Luồng đăng ký backend đang dùng: `otp` (xác minh email) hoặc `one_step` (không xác minh, dev). */
+export type RegistrationMode = "otp" | "one_step";
+
+export async function getRegistrationMode(): Promise<RegistrationMode> {
+  const res = await request<{ mode: RegistrationMode }>("/auth/register/mode");
+  return res.mode === "otp" ? "otp" : "one_step";
+}
 
 export async function requestRegisterCode(email: string): Promise<{ message_vi: string }> {
   return request<{ message_vi: string }>("/auth/register/request", {
