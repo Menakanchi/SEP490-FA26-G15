@@ -20,6 +20,7 @@ import type {
   RegressionPreview,
   RegressionRequest,
   ReviewDecision,
+  TelemetrySummary,
   VehicSimContextData,
 } from "@/types/vehicsim";
 
@@ -62,6 +63,15 @@ export const vehicsimApi = {
   /** JSON chạy lại đúng run này ngoài web: `worker/run_variant.py` (CARLA) hoặc `worker/kinematic_sim.py`. */
   downloadRunBundle: (runId: number) =>
     apiDownload(`/vehicsim/runs/${runId}/bundle`, `vehicsim-run-${runId}.json`),
+  /** Nộp ``result.json`` của run CARLA chạy ngoài backend (run CARLA đang PENDING/FAILED, regression chưa chốt). */
+  submitCarlaResult: (runId: number, result: unknown) =>
+    apiRequest<{ ok: boolean; run_id: number; status: string }>(`/vehicsim/runs/${runId}/carla-result`, {
+      method: "POST",
+      body: JSON.stringify(result),
+    }),
+  /** Số đo + 3 mục tiêu MOBO từ ``frames.csv`` / ``collisions.json`` của ``worker/sensor_recorder.py``. */
+  evaluateTelemetry: (body: { csv: string; collisions?: unknown[]; decel_available?: number }) =>
+    apiRequest<TelemetrySummary>("/vehicsim/telemetry/evaluate", { method: "POST", body: JSON.stringify(body) }),
 
   regressions: (status?: string) => apiRequest<RegressionList>(`/vehicsim/regression${query({ status })}`),
   regressionPreview: (scenarioId: number) =>

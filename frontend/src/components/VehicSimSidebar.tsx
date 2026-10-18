@@ -74,6 +74,7 @@ const GROUPS: Group[] = [
     prefix: "/analysis",
     children: [
       { label: "Ca lỗi", href: "/analysis/failures" },
+      { label: "Dữ liệu CARLA", href: "/analysis/carla" },
       { label: "Độ nhạy tham số", note: `${SOON} (SHAP)` },
       { label: "Tương tác tham số", note: SOON },
       { label: "Tra cứu lịch sử", note: SOON },
