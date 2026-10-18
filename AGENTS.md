@@ -3,7 +3,7 @@
 File này là **bản đồ**, không phải cẩm nang: mỗi mục chỉ nói *ở đâu* và *luật
 nào không được phá*. Chi tiết nằm ở các link. Thứ gì không có trong repo thì
 agent coi như không tồn tại — quyết định, bài học, nợ kỹ thuật phải được viết vào
-`docs/`, không để trong chat hay Google Docs. `tests/test_agent_docs.py` giữ file
+`docs/`, không để trong chat hay Google Docs. `RepoDocsTest` (Java) giữ file
 này ngắn và giữ mọi link còn sống.
 
 ## Repo này là gì
@@ -30,7 +30,9 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 [role theo workspace](docs/exec-plans/completed/2026-10-05-role-theo-workspace.md),
 [5 role hệ thống, bỏ cấu hình xe và Meomeo](docs/exec-plans/completed/2026-10-06-nam-role-he-thong.md),
 [schema 29 bảng](docs/exec-plans/completed/2026-10-07-schema-29-bang.md),
-[bỏ phiên bản xe, Admin tạo workspace](docs/exec-plans/completed/2026-10-07-bo-phien-ban-xe.md).
+[bỏ phiên bản xe, Admin tạo workspace](docs/exec-plans/completed/2026-10-07-bo-phien-ban-xe.md),
+[rút scope: 4 tham số AEB, 3 mục tiêu MOBO, 7 category](docs/exec-plans/completed/2026-10-15-rut-scope-4-tham-so-aeb.md),
+[rà soát mã nguồn và vá bảo mật / công cụ](docs/exec-plans/completed/2026-10-15-ra-soat-ma-nguon.md).
 
 ## Chạy và tự kiểm chứng
 
@@ -38,9 +40,9 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 |---|---|
 | Bật toàn bộ app (Windows) | `scripts\dev-up.cmd` — Docker (MySQL, Redis) + backend Java `:8001` + frontend `:3000`, mỗi dịch vụ một cửa sổ |
 | Chỉ backend | `./mvnw spring-boot:run` (đọc `.env` ở thư mục gốc); Swagger: `http://localhost:8001/swagger-ui.html` |
-| Tạo admin | đăng ký rồi `UPDATE users SET role_id = (SELECT id FROM roles WHERE code = 'ADMIN') WHERE email = '<email>'` |
+| Tạo admin | `python scripts/create_admin.py --email <email> --seed` (đăng ký qua API rồi đổi role bằng SQL; cần backend đang chạy) |
 | Seed project VehicSim | ADMIN gọi `POST /api/v1/vehicsim/bootstrap` (idempotent) |
-| Gate backend | `./mvnw clean test` · lõi mô phỏng: `python -m pytest worker/tests` |
+| Gate backend | `./mvnw clean test` · lõi mô phỏng: `python -m pytest worker/tests` · cả ba cổng (+ frontend): `make check`, giống `.github/workflows/ci.yml` |
 | Gate frontend (**chưa có trong CI**, chạy tay) | `cd frontend && npm run lint && npx tsc --noEmit && npx next build` |
 | Chạy một JSON tải từ web ("Tải JSON chạy CARLA") | `python worker/kinematic_sim.py <file>.json` (máy nào cũng chạy) · `worker/.venv/bin/python worker/run_variant.py <file>.json [--video]` (cần server CARLA) |
 
@@ -60,7 +62,7 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 | Cần biết | Đọc |
 |---|---|
 | Kiến trúc VehicSim: module, luồng dữ liệu, API, bất biến ↔ test | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
-| Vì sao chọn X thay vì Y | [docs/adr/README.md](docs/adr/README.md) — VehicSim: ADR-023 → ADR-038; ADR-001 → 022 là lịch sử Forge |
+| Vì sao chọn X thay vì Y | [docs/adr/README.md](docs/adr/README.md) — VehicSim: ADR-023 → ADR-040; ADR-001 → 022 là lịch sử Forge |
 | Đã làm gì, quyết định lúc nào, kiểm chứng ra sao | [docs/exec-plans/completed/](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md) |
 | Còn thiếu gì, nợ gì | [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) |
 | Schema MySQL (nguồn sự thật của DB VehicSim) | [database/mysql/01_schema.sql](database/mysql/01_schema.sql) |
@@ -71,36 +73,34 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 
 ## Luật cứng — có máy kiểm, phá là test/CI đỏ
 
-> **Sau ADR-039 (14/10):** tên test dưới đây là của bộ Python cũ. Nội dung các luật vẫn đúng với backend Java. Máy kiểm
-> hiện có: luật 6 và 8 ở `worker/tests/` (`test_java_parameter_seed_matches_sql_seed`, `test_sim_core_is_stdlib_only_and_python310`),
-> luật 4 ở worker (cùng seed → cùng khung hình). Các luật 1, 2, 3, 5, 7, 9 mới được đối chiếu bằng tay với Python trên DB thật
-> ([exec plan 14/10](docs/exec-plans/completed/2026-10-14-port-backend-java.md)), **chưa có test Java tự động** — TD-33.
+> **Sau ADR-039 (14/10) và TD-33 (15/10):** luật 1, 2, 3, 5, 7 có test Java (`src/test/java`, không cần MySQL/Redis nên chạy
+> trong CI); luật 4, 6, 8 có test ở `worker/tests/`. Còn thiếu máy kiểm Java: phần "ghép kết quả động học với CARLA" của luật 9
+> và bộ sinh `.xosc` không gọi LLM (luật 1, chờ port — TD-27). Bảng đầy đủ: [architecture.md](docs/vehicsim/architecture.md#bất-biến-và-máy-kiểm).
 
-1. Mọi lời gọi LLM đi qua `src/services/llm.py`; không import SDK provider ở chỗ khác
-   (`test_nothing_imports_the_llm_provider_directly`); bộ sinh `.xosc` không gọi LLM
-   (`test_openscenario_generator_never_calls_an_llm`).
-2. `src/` không import `carla` (`test_src_never_imports_carla`).
+1. Mọi lời gọi LLM đi qua `LlmService`; không file Java nào khác nhắc tới provider
+   (`ArchitectureRulesTest#onlyLlmServiceKnowsTheLlmProviders`); bộ sinh `.xosc` không gọi LLM (chờ port sang Java — TD-27).
+2. Backend Java và `worker/vehicsim_core/` không import `carla` (`ArchitectureRulesTest#javaBackendNeverTouchesCarlaApi`,
+   `ArchitectureRulesTest#simulationCoreNeverImportsCarla`); CARLA chỉ ở `worker/run_variant.py`.
 3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập; mỗi người một role (ADR-035): ADMIN / ENGINEER /
    EXPERIENCER được ghi, MANAGER chỉ đọc, **chỉ REVIEWER** Accept / Reject — người làm không tự duyệt
-   (`test_every_vehicsim_route_requires_login`, `test_viewer_can_read_but_not_write`,
-   `test_registered_experience_user_can_run_but_manager_only_cannot`,
-   `test_only_reviewer_decides_and_reviewer_cannot_run`). Lọc project theo workspace chưa làm — TD-30.
-4. Cùng biến thể + cùng seed ⇒ cùng kết quả mô phỏng; candidate luôn chạy lại **đúng
-   seed** của run baseline (`test_same_seed_gives_identical_run`,
-   `test_regression_pairs_same_seeds_and_accept_swaps_baseline`).
+   (`VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite`,
+   `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`). Lọc project theo workspace chưa làm — TD-30.
+4. Cùng biến thể + cùng seed ⇒ cùng kết quả mô phỏng (`test_same_seed_gives_identical_run`); candidate luôn chạy lại **đúng
+   seed** của run baseline (chưa có test Java — TD-33).
 5. Không bao giờ tự Accept: test FAILED không Accept được, quyết định cần lý do +
-   xác nhận, baseline đã đổi thì không Accept test cũ (bảng bất biến đầy đủ ở
+   xác nhận, baseline đã đổi thì không Accept test cũ (`RegressionDecisionTest`; bảng bất biến đầy đủ ở
    [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#bất-biến-và-máy-kiểm)).
-6. Tham số AEB Python khớp seed SQL (`test_python_parameter_seed_matches_sql_seed`).
+6. 4 tham số AEB chỉnh được (ADR-040): seed Java khớp seed SQL và mỗi mã là một trường của `AebParams`
+   (`test_java_parameter_seed_matches_sql_seed`, `test_every_seeded_parameter_is_used_by_the_simulator`); sáu tham số
+   còn lại là hằng số trong `aeb_stack.py`, không nằm ở DB.
 7. Không lộ email có tồn tại hay không; mã OTP lưu dạng hash, dùng một lần
-   (`tests/test_api/test_auth.py`).
+   (`AuthPrivacyTest`).
 8. Một AEB cho mọi bộ mô phỏng: logic AEB chỉ ở `src/services/vehicsim/aeb_stack.py`; lõi
    mô phỏng chỉ dùng thư viện chuẩn + cú pháp 3.10 để venv CARLA import được
    (`test_sim_core_is_stdlib_only_and_python310`,
    `test_runner_reuses_the_kinematic_aeb_and_result_builders`).
-9. Regression không bao giờ ghép kết quả động học với CARLA
-   (`test_regression_never_pairs_kinematic_with_carla`); JSON tải từ web chạy lại ra đúng
-   kết quả đã lưu (`test_exported_bundle_reproduces_the_stored_run`).
+9. Regression không bao giờ ghép kết quả động học với CARLA (chưa có test Java — TD-33); JSON tải từ web chạy lại ra đúng
+   kết quả (`test_bundle_round_trip_reproduces_the_same_run`; riêng run cũ của v1.3 không còn tái lập — TD-40).
 
 ## Luật mềm — chưa có máy kiểm, reviewer phải canh
 
@@ -113,8 +113,8 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 - Số đo từ CARLA chưa hiệu chuẩn phanh (TD-17): dùng để quan sát/đối chiếu, không ghi
   làm bằng chứng regression trong báo cáo.
 - Trigger kịch bản là tương đối (khoảng cách/TTC), không dùng thời gian tuyệt đối.
-- Đổi schema MySQL: sửa `database/mysql/01_schema.sql`, `src/services/vehicsim/tables.py` (nếu
-  code dùng bảng đó), [database-schema.md](docs/vehicsim/database-schema.md) **và** thêm file
+- Đổi schema MySQL: sửa `database/mysql/01_schema.sql`, câu SQL trong `Queries` / service (nếu
+  code dùng cột đó), [database-schema.md](docs/vehicsim/database-schema.md) **và** thêm file
   đánh số vào `database/mysql/migrations/` cho DB đang chạy — cùng một PR. Không
   `docker compose down -v` trên máy người khác.
 - Giao diện tiếng Việt, DB/API tiếng Anh: câu backend được dịch ở tầng hiển thị trong
@@ -123,6 +123,9 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
   trang không cần đăng nhập thì thêm vào `STANDALONE_PATHS`
   (`frontend/src/components/AppLayoutWrapper.tsx`).
 - `.env` không bao giờ vào git; `.env.example` chỉ chứa giá trị mẫu.
+- App mở đăng ký công khai và mọi người tự đăng ký đều ghi được vào project chung (TD-30): mọi thao tác tốn tài nguyên (tạo họ, candidate,
+  regression, chạy) phải qua hạn mức theo người dùng (`VehicSimController.limitWrites`, `RunService.checkActiveRunQuota`). CORS chỉ cho
+  origin trong `CORS_ORIGINS` (không `*`); Swagger tắt ở `APP_ENV=production`; mật khẩu tối đa 72 byte (BCrypt).
 
 ## Khi làm việc
 

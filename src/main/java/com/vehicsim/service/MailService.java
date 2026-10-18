@@ -25,6 +25,12 @@ public class MailService {
     @Value("${app.env:development}")
     private String appEnv;
 
+    /** Đã có tài khoản SMTP để gửi mã chưa. */
+    public boolean isConfigured() {
+        String username = mailSender.getUsername();
+        return username != null && !username.isBlank() && mailSender.getPassword() != null && !mailSender.getPassword().isBlank();
+    }
+
     @Async
     public void sendOtp(String toEmail, String code, OtpService.Purpose purpose) {
         boolean register = purpose == OtpService.Purpose.REGISTER;
@@ -33,7 +39,7 @@ public class MailService {
         int ttlMinutes = Math.max(1, props.otpTtlSeconds() / 60);
 
         String username = mailSender.getUsername();
-        if (username == null || username.isBlank() || mailSender.getPassword() == null || mailSender.getPassword().isBlank()) {
+        if (!isConfigured()) {
             log.warn("SMTP chưa được cấu hình (thiếu SMTP_USER / SMTP_PASSWORD) — bỏ qua gửi email tới {}", toEmail);
             if (!"production".equalsIgnoreCase(appEnv)) {
                 log.info("[DEV] Mã OTP ({}) cho {}: {}", purpose.value(), toEmail, code);

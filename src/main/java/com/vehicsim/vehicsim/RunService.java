@@ -168,6 +168,7 @@ public class RunService {
      */
     public List<Long> createRuns(long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long aebVersionId,
                                  long userId, String purpose, Long regressionTestId, Map<Long, Row> baselineRuns) {
+        checkActiveRunQuota(userId, variants.size());
         LocalDateTime ts = Vs.now();
         List<Long> ids = new ArrayList<>();
         String newRunSimulator = null;
@@ -196,6 +197,16 @@ public class RunService {
             ids.add(runId);
         }
         return ids;
+    }
+
+    /** Một người không được giữ quá nhiều run đang chờ + đang chạy (app mở đăng ký công khai, hàng đợi dùng chung). */
+    private void checkActiveRunQuota(long userId, int newRuns) {
+        long active = ((Number) db.scalar("SELECT COUNT(*) FROM simulation_runs WHERE created_by_user_id = ? AND status IN ('PENDING','RUNNING')", userId)).longValue();
+        if (active + newRuns > props.maxActiveRunsPerUser()) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,
+                    "Bạn đang có " + active + " run chờ hoặc đang chạy; thêm " + newRuns + " run nữa vượt hạn mức " + props.maxActiveRunsPerUser()
+                            + ". Đợi các run hiện tại xong rồi thử lại.");
+        }
     }
 
     /**
@@ -240,6 +251,11 @@ public class RunService {
             Map<String, Object> bundle = bundleForRun(run);
             Map<String, Object> result = runWorker(run, bundle);
             tx.executeWithoutResult(status -> persist(run, result));
+        } catch (InterruptedException e) {
+            // Tắt app giữa chừng: trả run về PENDING để lần khởi động sau nhặt lại, thay vì ghi FAILED.
+            Thread.currentThread().interrupt();
+            tx.executeWithoutResult(status -> db.update("UPDATE simulation_runs SET status = 'PENDING', started_at = NULL WHERE id = ? AND status = 'RUNNING'", runId));
+            return;
         } catch (Exception e) {
             log.error("simulation run {} failed", runId, e);
             String message = String.valueOf(e.getMessage());
@@ -374,7 +390,15 @@ public class RunService {
             pb.environment().put("PYTHONIOENCODING", "utf-8");
             Process proc = pb.start();
             int timeout = subprocessTimeoutS();
-            if (!proc.waitFor(timeout, TimeUnit.SECONDS)) {
+            boolean finished;
+            try {
+                finished = proc.waitFor(timeout, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                proc.descendants().forEach(ProcessHandle::destroyForcibly); // không để tiến trình con mồ côi khi app tắt
+                proc.destroyForcibly();
+                throw e;
+            }
+            if (!finished) {
                 stop(proc);
                 throw new SimulatorException("bộ mô phỏng vượt " + timeout + " s, đã dừng");
             }
@@ -486,7 +510,14 @@ public class RunService {
         }
 
         if (failure != null) {
-            Map<String, Object> primary = chain.stream().map(Json::asMap).filter(s -> !Boolean.TRUE.equals(s.get("passed"))).findFirst().orElse(null);
+            int primaryIndex = -1; // khâu đầu tiên hỏng = nguyên nhân chính (so theo chỉ số, không theo tham chiếu đối tượng)
+            for (int i = 0; i < chain.size(); i++) {
+                if (!Boolean.TRUE.equals(Json.asMap(chain.get(i)).get("passed"))) {
+                    primaryIndex = i;
+                    break;
+                }
+            }
+            Map<String, Object> primary = primaryIndex < 0 ? null : Json.asMap(chain.get(primaryIndex));
             long failureId = db.insert("INSERT INTO failures (simulation_run_id, failure_type, category, severity, description, detected_by, created_date) "
                             + "VALUES (?,?,?,?,?,?,?)",
                     runId, failure.get("failure_type"),
@@ -497,15 +528,15 @@ public class RunService {
             for (Row p : db.list("SELECT id, code FROM aeb_parameters")) {
                 paramIds.put(p.str("code"), p.lng("id"));
             }
-            for (Object o : chain) {
-                Map<String, Object> stage = Json.asMap(o);
+            for (int i = 0; i < chain.size(); i++) {
+                Map<String, Object> stage = Json.asMap(chain.get(i));
                 if (Boolean.TRUE.equals(stage.get("passed")) || stage.get("cause_code") == null) {
                     continue;
                 }
                 String parameterCode = stage.get("parameter_code") == null ? "" : String.valueOf(stage.get("parameter_code"));
                 db.insert("INSERT INTO root_causes (failure_id, category, cause_code, aeb_parameter_id, description, confidence, is_primary) VALUES (?,?,?,?,?,?,?)",
                         failureId, stage.get("stage"), stage.get("cause_code"), paramIds.get(parameterCode), stage.get("summary"),
-                        stage.get("confidence"), stage == primary);
+                        stage.get("confidence"), i == primaryIndex);
             }
         }
 

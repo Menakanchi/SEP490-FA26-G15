@@ -118,8 +118,29 @@ public class ViewsService {
         return falseActivation ? "FALSE_BRAKING" : Vs.classifyOutcome(collision, minTtc, minDistance);
     }
 
-    /** Mọi lần chạy có lỗi, kèm nguyên nhân chính — một dòng mỗi run. */
-    private List<Map<String, Object>> failureRows(long projectId) {
+    /**
+     * Kết quả của một ca lỗi tính ngay trong SQL, cùng luật với {@link #outcomeOf} (ngưỡng lấy từ {@link Vs}) — để đếm, lọc và
+     * phân trang không phải nạp mọi ca lỗi lên bộ nhớ (TD-44).
+     */
+    private static final String OUTCOME_SQL = "(CASE WHEN r.is_false_positive = 1 THEN 'FALSE_BRAKING' "
+            + "WHEN r.collision_occurred = 1 THEN '" + Vs.OUTCOME_COLLISION + "' "
+            + "WHEN (r.min_ttc_s IS NOT NULL AND r.min_ttc_s < " + Vs.NEAR_MISS_TTC_S + ") "
+            + "OR (r.min_distance_m IS NOT NULL AND r.min_distance_m < " + Vs.NEAR_MISS_DISTANCE_M + ") THEN '" + Vs.OUTCOME_NEAR_MISS + "' "
+            + "ELSE '" + Vs.OUTCOME_SAFE + "' END)";
+
+    private static final String WEATHER_SQL = "JSON_UNQUOTE(JSON_EXTRACT(r.run_config_json, '$.weather'))";
+
+    /** Ca lỗi trong phạm vi một project (+ lọc theo phiên bản AEB / số ngày), dùng chung cho KPI, đếm và phân trang. */
+    private static final String FAILURE_FROM = "FROM failures f "
+            + "JOIN simulation_runs r ON r.id = f.simulation_run_id "
+            + "JOIN scenarios s ON s.id = r.scenario_id "
+            + "LEFT JOIN (SELECT failure_id, category FROM root_causes WHERE is_primary = 1) pc ON pc.failure_id = f.id "
+            + "WHERE r.project_id = ?";
+
+    private static final int SIMILAR_CANDIDATES = 2000;
+
+    /** Các ca lỗi (một dòng mỗi run, kèm nguyên nhân chính) thoả `where`, mới nhất trước; `where` chỉ chứa điều kiện cố định. */
+    private List<Map<String, Object>> failureRows(String where, Integer limit, Object... args) {
         List<Row> rows = db.list(
                 "SELECT f.id AS failure_id, f.failure_type, f.severity, f.description AS failure_description, f.created_date, "
                         + "r.id AS run_id, r.purpose, r.random_seed, r.aeb_version_id, r.run_config_json, r.collision_occurred, r.min_ttc_s, "
@@ -134,7 +155,7 @@ public class ViewsService {
                         + "JOIN aeb_versions av ON av.id = r.aeb_version_id "
                         + "LEFT JOIN (SELECT failure_id, category, cause_code, description, confidence FROM root_causes WHERE is_primary = 1) pc "
                         + "ON pc.failure_id = f.id "
-                        + "WHERE r.project_id = ? ORDER BY r.id DESC", projectId);
+                        + "WHERE " + where + " ORDER BY r.id DESC, f.id DESC" + (limit == null ? "" : " LIMIT " + limit), args);
         List<Map<String, Object>> out = new ArrayList<>();
         for (Row r : rows) {
             Map<String, Object> ir = r.json("run_config_json");
@@ -168,62 +189,113 @@ public class ViewsService {
         return out;
     }
 
+    private static long count(Row row, String column) {
+        Object v = row.get(column);
+        return v instanceof Number n ? n.longValue() : 0L;
+    }
+
     public Map<String, Object> failureList(Long scenarioId, String failureClass, String outcome, String weather, Long aebVersionId,
                                            Integer days, int page, int pageSize) {
         Row project = queries.currentProject();
-        List<Map<String, Object>> rows = failureRows(project.lng("id"));
+        long projectId = project.lng("id");
 
-        List<Map<String, Object>> scoped = new ArrayList<>(rows);
+        // Phạm vi: project + phiên bản AEB + số ngày. KPI và danh sách họ đếm trên phạm vi này, còn bộ lọc của bảng thì không.
+        StringBuilder scope = new StringBuilder(FAILURE_FROM);
+        List<Object> scopeArgs = new ArrayList<>();
+        scopeArgs.add(projectId);
         if (aebVersionId != null) {
-            scoped.removeIf(r -> !aebVersionId.equals(r.get("aeb_version_id")));
+            scope.append(" AND r.aeb_version_id = ?");
+            scopeArgs.add(aebVersionId);
         }
         if (days != null && days > 0) {
-            String cutoff = Vs.iso(Vs.now().minusDays(days));
-            scoped.removeIf(r -> ((String) r.get("created_at")).compareTo(cutoff) < 0);
+            scope.append(" AND f.created_date >= ?");
+            scopeArgs.add(Vs.now().minusDays(days));
         }
 
-        String weekAgo = Vs.iso(Vs.now().minusDays(7));
         Map<String, Object> byClass = new LinkedHashMap<>();
         STAGE_ORDER.forEach(stage -> byClass.put(stage, 0));
-        for (Map<String, Object> r : scoped) {
-            Object cls = r.get("failure_class");
+        long total = 0;
+        long thisWeek = 0;
+        long collisions = 0;
+        long nearMisses = 0;
+        long falseBraking = 0;
+        List<Object> kpiArgs = new ArrayList<>();
+        kpiArgs.add(Vs.now().minusDays(7));
+        kpiArgs.addAll(scopeArgs);
+        for (Row g : db.list("SELECT pc.category AS cause_category, " + OUTCOME_SQL + " AS outcome, COUNT(*) AS n, "
+                + "SUM(f.created_date >= ?) AS this_week " + scope + " GROUP BY pc.category, " + OUTCOME_SQL, kpiArgs.toArray())) {
+            long n = count(g, "n");
+            total += n;
+            thisWeek += count(g, "this_week");
+            String o = g.str("outcome");
+            if (Vs.OUTCOME_COLLISION.equals(o)) {
+                collisions += n;
+            } else if (Vs.OUTCOME_NEAR_MISS.equals(o)) {
+                nearMisses += n;
+            } else if ("FALSE_BRAKING".equals(o)) {
+                falseBraking += n;
+            }
+            String cls = g.str("cause_category");
             if (cls != null && byClass.containsKey(cls)) {
-                byClass.merge((String) cls, 1, (a, b) -> (Integer) a + 1);
+                byClass.merge(cls, (int) n, (x, y) -> (Integer) x + (Integer) y);
             }
         }
         Map<String, Object> kpis = Json.obj(
-                "total", scoped.size(),
-                "this_week", scoped.stream().filter(r -> ((String) r.get("created_at")).compareTo(weekAgo) >= 0).count(),
-                "collisions", scoped.stream().filter(r -> Vs.OUTCOME_COLLISION.equals(r.get("outcome"))).count(),
-                "near_misses", scoped.stream().filter(r -> Vs.OUTCOME_NEAR_MISS.equals(r.get("outcome"))).count(),
-                "false_braking", scoped.stream().filter(r -> "FALSE_BRAKING".equals(r.get("outcome"))).count(),
+                "total", total,
+                "this_week", thisWeek,
+                "collisions", collisions,
+                "near_misses", nearMisses,
+                "false_braking", falseBraking,
                 "by_class", byClass);
 
-        Map<Long, Map<String, Object>> familyCounts = new LinkedHashMap<>();
-        for (Map<String, Object> r : scoped) {
-            Map<String, Object> f = familyCounts.computeIfAbsent((Long) r.get("scenario_id"),
-                    id -> Json.obj("id", id, "name", r.get("family"), "failures", 0));
-            f.put("failures", (Integer) f.get("failures") + 1);
+        // Họ có nhiều ca lỗi nhất trước; hoà thì họ có run mới hơn (đúng thứ tự xuất hiện trong danh sách mới-nhất-trước).
+        List<Map<String, Object>> familyList = new ArrayList<>();
+        for (Row f : db.list("SELECT r.scenario_id, s.name, COUNT(*) AS failures, MAX(r.id) AS last_run " + scope
+                + " GROUP BY r.scenario_id, s.name ORDER BY failures DESC, last_run DESC", scopeArgs.toArray())) {
+            familyList.add(Json.obj("id", f.lng("scenario_id"), "name", f.str("name"), "failures", (int) count(f, "failures")));
         }
 
-        List<Map<String, Object>> filtered = scoped.stream()
-                .filter(r -> scenarioId == null || scenarioId.equals(r.get("scenario_id")))
-                .filter(r -> failureClass == null || failureClass.equals(r.get("failure_class")))
-                .filter(r -> outcome == null || outcome.equals(r.get("outcome")))
-                .filter(r -> weather == null || weather.equals(r.get("weather")))
-                .toList();
+        // Bộ lọc của bảng + phân trang, tất cả ở SQL; chỉ nạp đầy đủ các dòng của trang hiện tại.
+        StringBuilder filtered = new StringBuilder(scope);
+        List<Object> filterArgs = new ArrayList<>(scopeArgs);
+        if (scenarioId != null) {
+            filtered.append(" AND r.scenario_id = ?");
+            filterArgs.add(scenarioId);
+        }
+        if (failureClass != null) {
+            filtered.append(" AND pc.category = ?");
+            filterArgs.add(failureClass);
+        }
+        if (outcome != null) {
+            filtered.append(" AND ").append(OUTCOME_SQL).append(" = ?");
+            filterArgs.add(outcome);
+        }
+        if (weather != null) {
+            filtered.append(" AND ").append(WEATHER_SQL).append(" = ?");
+            filterArgs.add(weather);
+        }
+        long matched = count(db.first("SELECT COUNT(*) AS n " + filtered, filterArgs.toArray()), "n");
+        int size = Math.max(1, pageSize);
         int p = Math.max(1, page);
-        int start = (p - 1) * pageSize;
-        List<Map<String, Object>> items = start >= filtered.size() ? List.of() : filtered.subList(start, Math.min(filtered.size(), start + pageSize));
-        List<Map<String, Object>> familyList = new ArrayList<>(familyCounts.values());
-        familyList.sort(Comparator.comparingInt(f -> -(Integer) f.get("failures"))); // sort ổn định như Python
+        List<Map<String, Object>> items = List.of();
+        long start = (long) (p - 1) * size;
+        if (start < matched) {
+            List<Object> pageArgs = new ArrayList<>(filterArgs);
+            pageArgs.add(size);
+            pageArgs.add(start);
+            List<Long> ids = db.list("SELECT f.id " + filtered + " ORDER BY r.id DESC, f.id DESC LIMIT ? OFFSET ?", pageArgs.toArray())
+                    .stream().map(r -> r.lng("id")).toList();
+            if (!ids.isEmpty()) {
+                items = failureRows("f.id IN (" + Db.placeholders(ids.size()) + ")", null, ids.toArray());
+            }
+        }
         return Json.obj(
                 "kpis", kpis,
                 "families", familyList,
-                "total", filtered.size(),
+                "total", matched,
                 "page", p,
                 "page_size", pageSize,
-                "pages", Math.max(1, (int) Math.ceil(filtered.size() / (double) pageSize)),
+                "pages", Math.max(1, (int) Math.ceil(matched / (double) size)),
                 "items", items);
     }
 
@@ -364,7 +436,7 @@ public class ViewsService {
                 "end", frames.isEmpty() ? null : frames.get(frames.size() - 1));
     }
 
-    /** Ca lỗi gần nhất theo tham số kịch bản, cùng nhóm nguyên nhân chính nếu có. */
+    /** Ca lỗi gần nhất theo tham số kịch bản, trong cùng họ (tối đa {@value #SIMILAR_CANDIDATES} ca mới nhất), ưu tiên cùng nhóm nguyên nhân chính. */
     private List<Map<String, Object>> similarFailures(long projectId, RunBundle b, int limit) {
         Map<String, Object> me = b.run().json("run_config_json");
         Object myClass = Json.asList(b.raw().get("chain")).stream().map(Json::asMap)
@@ -372,7 +444,8 @@ public class ViewsService {
         record Scored(double distance, Map<String, Object> row) {
         }
         List<Scored> scored = new ArrayList<>();
-        for (Map<String, Object> r : failureRows(projectId)) {
+        for (Map<String, Object> r : failureRows("r.project_id = ? AND r.scenario_id = ?", SIMILAR_CANDIDATES,
+                projectId, b.run().lng("scenario_id"))) {
             if (r.get("run_id").equals(b.run().lng("id"))) {
                 continue;
             }

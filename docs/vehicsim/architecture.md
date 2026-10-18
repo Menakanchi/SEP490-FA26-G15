@@ -6,9 +6,24 @@ bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà 
 ([ADR-032](../adr/ADR-032-go-scenario-forge-giu-bo-sinh-openscenario.md)).
 
 > Nguồn sự thật: schema DB là [`database/mysql/01_schema.sql`](../../database/mysql/01_schema.sql)
-> (mirror trong `src/services/vehicsim/tables.py`); lý do quyết định là ADR-023 →
-> ADR-035 trong [`docs/adr/`](../adr/README.md). Tài liệu này vênh với hai nguồn đó
+> (code Java đọc/ghi bằng SQL thuần, không có bản mirror); lý do quyết định là ADR-023 →
+> ADR-040 trong [`docs/adr/`](../adr/README.md). Tài liệu này vênh với hai nguồn đó
 > thì tài liệu này sai.
+
+> **Sau [ADR-039](../adr/ADR-039-backend-java-mo-phong-o-worker-python.md) (14/10/2026) backend là Spring Boot (Java 21)**:
+> REST, nghiệp vụ và lưu trữ ở `src/main/java/com/vehicsim/`; AEB, bộ động học và luật chấm ở lại `worker/vehicsim_core/` (Python).
+> Phần dưới còn dùng tên module Python cũ (`describe.py`, `runs.py`…); đối chiếu sang code hiện tại:
+>
+> | Tên cũ | Hiện nay |
+> |---|---|
+> | `vehicsim_routes.py` | `VehicSimController` (+ `ApiExceptionHandler`) |
+> | `describe.py`, `llm.py` | `DescribeService`, `LlmService` |
+> | `family.py` | `FamilyService`, `ScenarioRules` (luật theo category) |
+> | `aeb.py`, `bootstrap.py` | `AebService`, `BootstrapService` |
+> | `runs.py` + Celery | `RunService` + thread pool `simulationExecutor` (`VehicSimConfig`) |
+> | `regression.py` | `RegressionService` |
+> | `views.py`, `common.py`, `tables.py` | `ViewsService`, `Vs` + `Queries`, SQL thuần qua `Db` (JdbcTemplate) |
+> | `aeb_stack.py`, `simulator.py`, `bundle.py`, `evaluation.py` | không đổi, nay ở `worker/vehicsim_core/` |
 
 ## Vòng MVP 6 bước
 
@@ -28,48 +43,46 @@ mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước
 ## Sơ đồ
 
 ```
-Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  FastAPI /api/v1/vehicsim/*  (vehicsim_routes.py: chỉ đổi lỗi → HTTP)
+Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  Spring Boot /api/v1/vehicsim/*  (VehicSimController: chỉ đổi lỗi → HTTP)
                               │
                               ▼
-                  src/services/vehicsim/*  ──SQLAlchemy Core──▶  MySQL (19/29 bảng)
-                              │ dispatch(run_ids)
+                  *Service (Java)  ──JdbcTemplate──▶  MySQL (29 bảng)
+                              │ dispatch(run_ids) sau commit
                               ▼
-              Redis db1 (broker) ──▶ Celery worker `vehicsim.run_simulation`
-                                           │ execute_run(run_id) → spec_for_run() (= JSON "Tải JSON chạy CARLA")
-                                           ▼
+              thread pool `simulationExecutor` (CARLA: 1 luồng) → executeRun(run_id) → bundleForRun() (= JSON "Tải JSON chạy CARLA")
+                                           ▼  tiến trình con có timeout, bundle.json → result.json (kèm kết quả chấm)
         simulator_version = vehicsim-kinematic-1.0      simulator_version = carla-<x.y.z>
-            simulator.simulate() (trong process)            VEHICSIM_CARLA_COMMAND <bundle> --out runs/<id> --fast
-                                     │                       (tiến trình con, timeout) → result.json
+            python worker/kinematic_sim.py                  VEHICSIM_CARLA_COMMAND <bundle> --out runs/<id> --fast
+                                     │                       (worker/run_variant.py, cần server CARLA)
                                      └──────────┬───────────────────────┘
-                                                ▼  cả hai dùng chung aeb_stack.AebStack
-                        evaluation.evaluate() → ghi kết quả vào simulation_runs + collision_events/failures/root_causes(/artifacts)
-                        → regression.on_run_finished() → try_finalize()
+                                                ▼  cả hai dùng chung vehicsim_core.aeb_stack.AebStack + evaluation
+                        Java ghi result.json → simulation_runs + collision_events/failures/root_causes(/artifacts)
+                        → sự kiện RunFinished → RegressionService.tryFinalize()
 ```
 
-`VEHICSIM_RUN_MODE=inline` chạy `execute_run` ngay trong request (dùng cho test);
-mặc định `celery`. Worker Windows chạy `--pool=solo`; worker chạy CARLA trên Linux phải
-`--concurrency=1` (một server CARLA chỉ chạy một lượt một lúc).
+`VEHICSIM_RUN_MODE=inline` chạy `executeRun` ngay trong request (dùng cho test); mặc định `async` (thread pool).
+CARLA luôn 1 luồng (một server CARLA chỉ chạy một lượt một lúc). Mỗi người có hạn mức ghi và số run đang chờ + chạy
+(`VEHICSIM_WRITES_PER_WINDOW`, `VEHICSIM_MAX_ACTIVE_RUNS_PER_USER`) vì app mở đăng ký công khai.
 
 ## Bản đồ module (`src/services/vehicsim/`)
 
 | File | Trách nhiệm |
 |---|---|
-| `tables.py` | Bảng SQLAlchemy Core mirror `01_schema.sql` (chỉ cột code dùng; chung `metadata` với auth) |
-| `bootstrap.py` | Workspace/project mặc định (chọn sẵn xe `vehicle.audi.etron`), 10 tham số AEB (`AEB_PARAMETER_SEED`), baseline v1.0 (TTC 1,5 s) |
+| `tables.py` | (cũ) bảng SQLAlchemy Core mirror `01_schema.sql`; nay Java dùng SQL thuần qua `Db` / `Queries` |
+| `bootstrap.py` | Workspace/project mặc định (chọn sẵn xe `vehicle.audi.etron`), 4 tham số AEB chỉnh được (`AEB_PARAMETER_SEED`, ADR-040), baseline v1.0 (TTC 1,5 s) |
 | `describe.py` | Câu mô tả → LLM → IR đã kiểm; sửa ≤ 3 lần; lùi về luật khi LLM lỗi |
 | `family.py` | `FamilySpec` (lưới, giới hạn, ≤ 300 biến thể), tạo họ + bản gốc + biến thể trong một transaction |
-| `aeb_stack.py` | **Hệ AEB cần kiểm thử**, dùng chung cho mọi bộ mô phỏng: `AebParams` (10 tham số), `AebStack.step` mỗi tick = perception (độ tin cậy theo thời tiết/giờ/khoảng cách + nhiễu theo seed) → decision (TTC + hành lang) → control (trễ, actuator, tăng lực phanh). Chỉ thư viện chuẩn |
+| `aeb_stack.py` | **Hệ AEB cần kiểm thử**, dùng chung cho mọi bộ mô phỏng: `AebParams` (4 tham số chỉnh được; 6 tham số cũ là hằng số của lõi — ADR-040), `AebStack.step` mỗi tick = perception (độ tin cậy theo thời tiết/giờ/khoảng cách + nhiễu theo seed) → decision (TTC + hành lang) → control (trễ, actuator, tăng lực phanh). Chỉ thư viện chuẩn |
 | `simulator.py` | "Thế giới" động học tất định: xe, người đi bộ, va chạm, μ·g; `make_frame` / `MotionStats` / `build_outcome` dùng chung với CARLA. `DT = 0.05 s`, tối đa 12 s |
 | `bundle.py` | Hợp đồng JSON: `vehicsim.variant/v1` (biến thể + AEB + xe + seed) và `vehicsim.result/v1`; `read_spec` nhận cả Scenario IR trần |
-| `evaluation.py` | Kết quả `COLLISION` / `NEAR_MISS` / `SAFE`, verdict, false/missed activation, chuỗi nguyên nhân PERCEPTION → DECISION → CONTROL → VEHICLE_DYNAMICS theo ngân sách thời gian |
+| `evaluation.py` | Kết quả `COLLISION` / `NEAR_MISS` / `SAFE`, verdict, false/missed activation, chuỗi nguyên nhân PERCEPTION → DECISION → CONTROL → VEHICLE_DYNAMICS theo ngân sách thời gian (`parameter_code` chỉ là 1 trong 4 tham số chỉnh được, hoặc `null` khi nguyên nhân là hằng số cố định) |
 | `runs.py` | Tạo run (seed = `48000 + id biến thể`, bộ mô phỏng theo cấu hình hoặc chép từ run baseline), dispatch inline/Celery, `execute_run` idempotent, `spec_for_run`/`bundle_for_run`, gọi CLI CARLA bằng tiến trình con |
 | `regression.py` | Tạo test (chốt xe + bộ mô phỏng), ghép cặp, chốt verdict + `regression_test_items` + khuyến nghị, `summary` tính lại từ run, `decide`, `preview` |
 | `aeb.py` | Tạo candidate: tham số trong khoảng, phải khác version cha |
 | `views.py` | Payload đọc cho từng màn (failures, run detail, playback, regression, recommendation) |
 | `common.py` | `NotFoundError`, `InvalidRequestError`, nhãn hiển thị, `baseline_version`, `active_vehicle` |
 
-`src/celery_app.py`: app `vehicsim`, task `vehicsim.run_simulation`, queue
-`vehicsim.simulation`, `acks_late`, time limit theo `SIMULATION_TIMEOUT_S`.
+Hàng đợi chạy nền là thread pool của Spring (thay Celery, ADR-039); trần thời gian một run theo `SIMULATION_TIMEOUT_S`.
 
 `aeb_stack.py`, `simulator.py`, `bundle.py`, `evaluation.py` là **lõi mô phỏng**: chỉ thư
 viện chuẩn, cú pháp Python 3.10, vì venv CARLA của worker import thẳng chúng.
@@ -125,7 +138,7 @@ hiệu chuẩn xong (TD-17).
   đúng biến thể + seed + bộ mô phỏng + xe của run baseline, và đúng candidate / xe /
   bộ mô phỏng mà regression test đã chốt.
 - **AEB**: `aeb_versions` (BASELINE/CANDIDATE/ACCEPTED/REJECTED/ARCHIVED; UNIQUE ép
-  mỗi project đúng một BASELINE) + `aeb_parameter_values` cho đúng 10 tham số.
+  mỗi project đúng một BASELINE) + `aeb_parameter_values` cho đúng 4 tham số.
 - **Xe**: `carla_vehicle_models` — danh mục xe gồm blueprint, kích thước từ mesh và thông số vật lý cố định,
   không phiên bản, app không sửa (ADR-038); project chọn xe (`projects.carla_vehicle_model_id`), run giữ đúng
   xe nó đã chạy. Bộ động học đọc
@@ -189,7 +202,7 @@ Giữ lại từ Scenario Forge (ADR-032) cho FE-07 "Import/Export `.xosc`":
 `convert_spec_to_xosc(ScenarioSpec) -> str` sinh OpenSCENARIO 1.0 chạy được bằng ScenarioRunner
 0.9.15; `try_convert_spec` trả `(xosc, None)` hoặc `(None, ValidationIssue)` thay vì ném lỗi. Code
 thuần, tất định (cùng spec → cùng byte, kiểm bằng 6 file mẫu trong `tests/test_openscenario/goldens/`
-và XSD OpenSCENARIO 1.0), không gọi LLM (`test_openscenario_generator_never_calls_an_llm`).
+và XSD OpenSCENARIO 1.0), không gọi LLM (test Python cũ của luật này đã ngưng; viết lại khi port sang Java — TD-27).
 **Chưa nối vào API/màn hình:** đầu vào là `ScenarioSpec` (taxonomy ODD của Forge: cut-in, sudden
 brake, …), chưa có ánh xạ từ IR người đi bộ băng ngang của VehicSim — việc của FE-07.
 
@@ -197,9 +210,25 @@ brake, …), chưa có ánh xạ từ IR người đi bộ băng ngang của Veh
 
 - Đăng ký và quên mật khẩu: email → mã 6 số (TTL 600 s, tối đa 5 lần nhập sai,
   gửi lại sau 60 s, giới hạn theo IP). Mã lưu **HMAC** trong Redis, không lưu MySQL.
-- Không tiết lộ email có tồn tại: phản hồi và thời gian như nhau.
+- Không tiết lộ email có tồn tại: luồng OTP phản hồi và thời gian như nhau (gửi mail chạy nền).
+- Hai cách đăng ký, backend chọn bằng `REGISTRATION_MODE` (`auto` | `one_step` | `otp`; `GET /auth/register/mode` cho
+  frontend biết): `otp` = `POST /auth/register/request` rồi `/verify` (chỉ chủ email mới đăng ký được, cần SMTP);
+  `one_step` = `POST /auth/register` tạo tài khoản luôn, không xác minh email. `auto` chọn `otp` ở production và `one_step`
+  ở dev (chưa cần SMTP). Ở chế độ `otp` route một bước trả 403; backend cảnh báo lúc khởi động nếu `otp` mà chưa có SMTP,
+  hoặc `one_step` ở production. Giá trị lạ làm backend không khởi động (không âm thầm mở đăng ký). Máy kiểm:
+  `RegistrationModeTest`; trang `/register` của frontend đọc chế độ rồi hiện form tương ứng.
+- Giới hạn tần suất (Redis, cửa sổ `RATE_LIMIT_WINDOW_SECONDS`): đăng nhập theo IP và theo tài khoản (chỉ đếm lần sai),
+  xin OTP và đăng ký theo IP, mô tả bằng LLM theo người dùng.
+  IP lấy từ `remoteAddr`; đứng sau reverse proxy / Cloudflare thì đặt `FORWARD_HEADERS_STRATEGY=native` để Tomcat thay bằng IP trong
+  `X-Forwarded-For` — chỉ khi kết nối đến từ proxy tin cậy (`SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES`), nên không giả IP được bằng header.
+- Nhật ký thao tác (`AuditLog`, logger `audit`): `auth.login`, `auth.register`, `auth.password_reset`, `auth.password_change`,
+  `regression.decide`, mỗi sự kiện một dòng `event=… outcome=… user=… ip=…`; không bao giờ có mật khẩu, mã OTP hay token.
+- Mật khẩu 8–72 ký tự và tối đa 72 byte (BCrypt chỉ dùng 72 byte đầu).
+- CORS chỉ cho các origin trong `CORS_ORIGINS` (không `*`); Swagger UI / OpenAPI bị chặn ở production; frontend gửi header
+  bảo mật (CSP `frame-ancestors 'none'`, `X-Frame-Options`, …) và tự đăng xuất khi backend trả 401 giữa phiên.
 - JWT HS256 mang `pwv` (dấu vân tay của password hash): đổi mật khẩu là mọi phiên cũ
-  hết hiệu lực. Production không chạy nếu thiếu `JWT_SECRET_KEY`.
+  hết hiệu lực. Production (`APP_ENV=production`) không chạy nếu thiếu `JWT_SECRET`; thiếu ở dev thì dùng khoá mặc định
+  công khai và backend cảnh báo khi khởi động.
 - Vai trò (ADR-035): **mỗi người đúng một role hệ thống** (`users.role_id`) — `ADMIN`, `MANAGER` (tạo
   workspace, thêm Engineer/Reviewer; chỉ đọc phần kỹ thuật), `ENGINEER` (làm toàn bộ quy trình), `REVIEWER`
   (chỉ duyệt recommendation), `EXPERIENCER` (tự đăng ký: project cá nhân, mô phỏng, tối ưu, regression; không
@@ -208,36 +237,46 @@ brake, …), chưa có ánh xạ từ IR người đi bộ băng ngang của Veh
 
 ## Bất biến và máy kiểm
 
+Tên `test_*` là test Python ở `worker/tests/`; tên dạng LớpTest#phươngThức là test Java ở `src/test/java`. Hàng ghi "_chưa có test_ (TD-33)" là bất biến
+còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa viết lại bằng Java.
+
 | Bất biến | Máy kiểm |
 |---|---|
 | Cùng biến thể + seed ⇒ cùng kết quả; seed chỉ đổi nhiễu perception | `test_same_seed_gives_identical_run`, `test_different_seed_changes_perception_noise_only_through_rng` |
 | Người dừng ở lề ⇒ phanh oan, không phải va chạm | `test_pedestrian_stopping_at_curb_is_false_braking_not_collision` |
 | Va vào hông xe vẫn là va chạm, không bao giờ là phanh oan | `test_pedestrian_walking_into_the_side_is_a_collision_never_false_braking` |
-| Lõi mô phỏng chỉ thư viện chuẩn + cú pháp 3.10 (venv CARLA import được) | `test_sim_core_is_stdlib_only_and_python310` |
-| JSON tải từ web chạy lại ra đúng kết quả đã lưu; CLI động học = backend | `test_exported_bundle_reproduces_the_stored_run`, `test_kinematic_cli_writes_the_same_result_as_the_backend` |
+| Lõi mô phỏng chỉ thư viện chuẩn + cú pháp 3.10 (venv CARLA import được); không import CARLA | `test_sim_core_is_stdlib_only_and_python310`, `ArchitectureRulesTest#simulationCoreNeverImportsCarla` |
+| Backend Java không dùng CARLA API | `ArchitectureRulesTest#javaBackendNeverTouchesCarlaApi` |
+| JSON tải từ web chạy lại ra đúng kết quả; CLI động học = kết quả backend (run cũ của v1.3 không còn tái lập — TD-40) | `test_bundle_round_trip_reproduces_the_same_run`, `test_kinematic_cli_writes_the_same_result_as_the_backend` |
 | CARLA và động học dùng chung AEB, frame, số đo | `test_runner_reuses_the_kinematic_aeb_and_result_builders` |
-| Run CARLA đi qua tiến trình con; crash/sai phiên bản chỉ hỏng run đó | `test_carla_runs_go_through_the_simulator_subprocess`, `test_simulator_failure_marks_only_that_run_failed` |
-| CLI quá giờ được xin dừng trước khi bị giết, kịp dọn CARLA | `test_hung_simulator_is_asked_to_stop_and_cleans_up` |
-| Regression không bao giờ ghép kết quả động học với CARLA, hay khác xe (MySQL cũng ép bằng `fk_sr_baseline` / `fk_sr_regression`) | `test_regression_never_pairs_kinematic_with_carla` |
-| Thông số xe lấy từ DB: CARLA nhận blueprint + vật lý của xe và báo rõ cái gì không ép được | `test_bundle_carries_the_main_vehicle_into_carla`, `test_db_vehicle_is_forced_into_carla_and_checked` |
-| Mọi tham số AEB được simulator dùng; seed Python khớp SQL | `test_every_seeded_parameter_is_used_by_the_simulator`, `test_python_parameter_seed_matches_sql_seed` |
-| Mọi route API `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi được, MANAGER chỉ đọc | `test_every_vehicsim_route_requires_login`, `test_viewer_can_read_but_not_write`, `test_registered_experience_user_can_run_but_manager_only_cannot` |
-| Chỉ REVIEWER quyết định recommendation; người làm không tự duyệt; REVIEWER không chạy mô phỏng | `test_only_reviewer_decides_and_reviewer_cannot_run` |
-| Candidate chạy đúng seed baseline; Accept đổi baseline | `test_regression_pairs_same_seeds_and_accept_swaps_baseline` |
-| Test FAILED không Accept được | `test_failed_regression_cannot_be_accepted` |
-| Quyết định cần lý do + xác nhận | `test_decision_requires_reason_and_confirmation` |
-| Baseline đã đổi ⇒ không Accept/Reject test cũ | `test_accepting_one_candidate_blocks_stale_tests` |
-| Tham số candidate nằm trong khoảng | `test_candidate_values_must_stay_in_parameter_range` |
-| Preview khớp bộ kịch bản thật của test | `test_regression_preview_counts_match_created_test` |
-| IR đánh dấu đúng nguồn gốc; sửa có phản hồi, tối đa 3 lần | `test_llm_ir_marks_stated_inferred_and_assumed`, `test_invalid_ir_is_repaired_with_feedback`, `test_repairs_are_capped` |
-| LLM lỗi ⇒ lùi về luật; mô tả sai motif ⇒ 400 | `test_llm_failure_falls_back_to_rules`, `test_non_pedestrian_and_vague_prompts_are_rejected` |
-| Bước 1 cần quyền ghi (ENGINEER/EXPERIENCER/ADMIN) + giới hạn tần suất | `test_describe_endpoint_permissions_and_rate_limit` |
-| Họ từ mô tả giữ nguồn `NATURAL_LANGUAGE` | `test_family_from_description_keeps_nl_origin` |
-| Mọi lời gọi LLM qua `services/llm.py` | `test_nothing_imports_the_llm_provider_directly` |
-| Test không gọi LLM thật | fixture chặn trong `tests/conftest.py` |
+| Run CARLA đi qua tiến trình con; crash/sai phiên bản chỉ hỏng run đó; CLI quá giờ được xin dừng trước khi bị giết | _chưa có test_ (TD-33) |
+| Regression không bao giờ ghép kết quả động học với CARLA, hay khác xe (MySQL cũng ép bằng `fk_sr_baseline` / `fk_sr_regression`) | _chưa có test_ (TD-33) |
+| Thông số xe lấy từ DB: CARLA nhận blueprint + vật lý của xe và báo rõ cái gì không ép được | `test_db_vehicle_is_forced_into_carla_and_checked` |
+| Mọi tham số AEB được simulator dùng; seed Java khớp SQL; AEB có đúng 4 tham số chỉnh được | `test_every_seeded_parameter_is_used_by_the_simulator`, `test_java_parameter_seed_matches_sql_seed`, `test_aeb_has_exactly_the_four_tunable_parameters` |
+| Mọi route `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi được, MANAGER chỉ đọc | `VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
+| Chỉ REVIEWER quyết định recommendation; REVIEWER không chạy mô phỏng; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |
+| Người tạo khuyến nghị không tự duyệt | `RegressionDecisionTest#theAuthorOfTheRecommendationCannotApproveIt` |
+| Accept hạ baseline cũ trước rồi nâng candidate; Reject giữ baseline; Request more tests không đổi version | `RegressionDecisionTest#acceptDemotesTheOldBaselineBeforePromotingTheCandidate`, `RegressionDecisionTest#rejectMarksTheCandidateButKeepsTheBaseline`, `RegressionDecisionTest#requestingMoreTestsChangesNoVersion` |
+| Candidate chạy đúng seed baseline | _chưa có test_ (TD-33) |
+| Test FAILED không Accept được; test chưa xong không quyết định được | `RegressionDecisionTest#aFailedTestCanNeverBeAccepted`, `RegressionDecisionTest#aTestThatHasNotFinishedCannotBeDecided` |
+| Quyết định cần lý do + xác nhận; quyết định cuối không bị ghi đè | `RegressionDecisionTest#decisionNeedsAReasonAndExplicitConfirmation`, `RegressionDecisionTest#aFinalDecisionCannotBeOverwritten` |
+| Baseline đã đổi ⇒ không Accept/Reject test cũ | `RegressionDecisionTest#acceptIsRefusedWhenTheBaselineChangedSinceTheTestRan`, `RegressionDecisionTest#acceptOrRejectIsRefusedWhenTheCandidateWasAlreadyDecidedElsewhere` |
+| Tiêu chí regression bắt buộc không tắt được; kết luận (confidence) cần PASS + không ca nào xấu đi + đủ kịch bản | `RegressionRulesTest#defaultsKeepRequiredCriteriaOn`, `RegressionRulesTest#confidenceNeedsPassAndNoRegressionAndEnoughScenarios` |
+| Tham số candidate nằm trong khoảng; preview khớp bộ kịch bản thật của test | _chưa có test_ (TD-33) |
+| Luật theo category kịch bản (ADR-040) | `ScenarioRulesTest#checkThrowsInvalidRequestWithEveryProblem`, `ScenarioRulesTest#everyCategoryOfTheSchemaEnumIsKnown` |
+| IR từ LLM ngoài khoảng bị báo để sửa; LLM trả lời qua tool-call ép cấu trúc | `DescribeServiceTest#outOfRangeValuesAreReportedForRepair`, `DescribeServiceTest#llmPathParsesTheForcedToolCallAndComputesCost` |
+| LLM lỗi ⇒ lùi về luật; mô tả mơ hồ bị từ chối trước khi gọi LLM | `DescribeServiceTest#withoutApiKeyDescribeFallsBackToRulesAndSaysWhy`, `DescribeServiceTest#vagueSentencesAreRejectedBeforeAnyLlmCall` |
+| Bước 1 cần quyền ghi (ENGINEER/EXPERIENCER/ADMIN) | `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
+| Giới hạn tần suất của bước 1; họ từ mô tả giữ nguồn `NATURAL_LANGUAGE` | _chưa có test_ (TD-33) |
+| Mọi lời gọi LLM qua `LlmService`; test không gọi LLM thật (máy chủ giả) | `ArchitectureRulesTest#onlyLlmServiceKnowsTheLlmProviders`, `DescribeServiceTest` |
+| Không lộ email có tồn tại hay không; mã OTP chỉ lưu dạng hash gắn mục đích, dùng một lần | `AuthPrivacyTest#registrationCodeIsNotSentToAnEmailThatAlreadyHasAnAccount`, `AuthPrivacyTest#wrongPasswordAndUnknownEmailGiveTheSameError`, `AuthPrivacyTest#otpIsStoredOnlyAsAPurposeBoundHash`, `AuthPrivacyTest#otpWorksOnceAndOnlyWithTheRightCode` |
+| Đăng ký OTP ở production, một bước ở dev; giá trị lạ không mở đăng ký | `RegistrationModeTest` |
+| Mật khẩu ≤ 72 byte; token mất hiệu lực khi đổi mật khẩu; hash PBKDF2 cũ vẫn đăng nhập được | `AuthPasswordRuleTest`, `JwtServiceTest#changingThePasswordHashInvalidatesOldTokens`, `LegacyAwarePasswordEncoderTest` |
+| Nhật ký thao tác một dòng mỗi sự kiện, không chèn được dòng giả; mật khẩu / token không vào log | `AuditLogTest#newlinesInAValueCannotForgeASecondLogLine`, `ArchitectureRulesTest#logStatementsDoNotMentionSecretValues` |
+| Ô CSV bắt đầu bằng `=` `+` `-` `@` bị vô hiệu hoá | `HardeningTest#csvCellNeutralisesSpreadsheetFormulas` |
+| Tài liệu cho agent: ngắn, link sống, tên test có thật, từ điển dữ liệu phủ hết bảng/cột, mọi ADR trong mục lục | `RepoDocsTest` |
 
-`tests/test_agent_docs.py` bắt tên test ở bảng này phải còn tồn tại — đổi tên test
-thì sửa bảng.
+`RepoDocsTest` bắt tên test ở bảng này (và ở `AGENTS.md`) phải còn tồn tại — đổi tên test thì sửa bảng.
 
 ## Frontend
 
@@ -268,16 +307,23 @@ thì sửa bảng.
 
 | Biến | Ý nghĩa |
 |---|---|
-| `VEHICSIM_DATABASE_URL` | MySQL VehicSim + auth (`mysql+pymysql://…`) |
-| `REDIS_URL` | OTP + rate limit |
-| `CELERY_BROKER_URL` | Broker Celery (mặc định `redis://localhost:6379/1`) |
-| `VEHICSIM_RUN_MODE` | `celery` (mặc định) hoặc `inline` |
+| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | MySQL (mặc định `vehicsim` ở `localhost:3306`) |
+| `SPRING_REDIS_HOST` / `SPRING_REDIS_PORT` | Redis: OTP + rate limit |
+| `VEHICSIM_RUN_MODE` | `async` (mặc định, thread pool) hoặc `inline` |
+| `VEHICSIM_RUN_CONCURRENCY` | Số run song song của bộ động học (CARLA luôn 1) |
+| `VEHICSIM_WORKER_PYTHON`, `VEHICSIM_WORKER_DIR` | Python ≥ 3.10 và thư mục `worker/` cho tiến trình con |
 | `SIMULATION_TIMEOUT_S` | Trần thời gian một run (mặc định 120; CARLA nên 300) |
 | `VEHICSIM_SIMULATOR` | Bộ mô phỏng cho run mới: `kinematic` (mặc định) hoặc `carla` |
 | `VEHICSIM_CARLA_COMMAND` | Lệnh gọi CLI CARLA, JSON list (vd. `["…/worker/.venv/bin/python","worker/run_variant.py","--map","Town05"]`) |
 | `VEHICSIM_CARLA_VERSION` | Phiên bản server CARLA mà run mới yêu cầu (mặc định `0.9.15`) |
 | `VEHICSIM_DATA_ROOT` | Thư mục `runs/<id>/` của run CARLA (mặc định `./data/vehicsim`) |
-| `JWT_SECRET_KEY`, `ACCESS_TOKEN_TTL_MINUTES` | Phiên đăng nhập |
+| `VEHICSIM_WRITES_PER_WINDOW`, `VEHICSIM_MAX_ACTIVE_RUNS_PER_USER` | Hạn mức ghi và số run chờ + chạy của một người (mặc định 30 / 1500) |
+| `APP_ENV` | `development` (mặc định) hoặc `production` (bắt buộc `JWT_SECRET`, tắt Swagger, không log OTP) |
+| `JWT_SECRET`, `ACCESS_TOKEN_TTL_MINUTES` | Phiên đăng nhập (`JWT_SECRET`: Base64 ≥ 256 bit) |
+| `CORS_ORIGINS` | Origin của frontend được gọi API |
 | `OTP_TTL_SECONDS`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS` | Mã 6 số |
+| `REGISTRATION_MODE` | `auto` (mặc định: production → `otp`, còn lại → `one_step`), `one_step`, `otp` |
+| `FORWARD_HEADERS_STRATEGY` | `none` (mặc định) hoặc `native` khi đứng sau reverse proxy (TD-36) |
+| `RATE_LIMIT_WINDOW_SECONDS`, `LOGIN_ATTEMPTS_PER_IP`, `LOGIN_ATTEMPTS_PER_ACCOUNT`, `OTP_REQUESTS_PER_IP`, `REGISTER_REQUESTS_PER_IP` | Giới hạn tần suất xác thực |
 | `LLM_PROVIDER`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY` | Lớp LLM dùng chung (chỉ bước 1 "Sinh từ mô tả" gọi LLM) |
-| `SMTP_*` | Gửi mã qua email |
+| `SMTP_*` | Gửi mã qua email (STARTTLS bắt buộc) |

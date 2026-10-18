@@ -7,6 +7,7 @@ import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ import java.util.function.Function;
  * Đổi / đặt lại mật khẩu làm hash đổi, nên mọi token cũ không còn khớp và bị từ chối
  * (không cần bảng thu hồi). Cùng cách với backend Python.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class JwtService {
@@ -44,6 +46,11 @@ public class JwtService {
     void refuseDefaultSecretInProduction() {
         if ("production".equalsIgnoreCase(appEnv) && DEFAULT_DEV_SECRET.equals(secretKey)) {
             throw new IllegalStateException("JWT_SECRET chưa được cấu hình — bắt buộc ở production");
+        }
+        if (DEFAULT_DEV_SECRET.equals(secretKey)) {
+            // Khoá mặc định nằm công khai trong repo: ai cũng ký được token. Chỉ chấp nhận được trên máy dev.
+            log.warn("JWT_SECRET chưa đặt — đang dùng khoá mặc định CÔNG KHAI (APP_ENV={}). Chỉ dùng cho máy dev; "
+                    + "máy chủ thật phải đặt JWT_SECRET và APP_ENV=production.", appEnv);
         }
     }
 
