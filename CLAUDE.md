@@ -31,6 +31,24 @@ Các thư viện hệ thống đã từng thiếu và gây lỗi `.so` khó hi�
 sudo apt install -y libomp5 libsdl2-2.0-0 libxerces-c3.2 vulkan-tools
 ```
 
+## Máy dùng CARLA 0.9.16 trên Ubuntu (`/opt/carla-simulator`)
+
+Kiểm chứng ngày 17/10/2026: CARLA 0.9.16 + ScenarioRunner v0.9.16 trên RTX 5060 Laptop (Ubuntu, Python 3.10), chạy xong và `cut_in`, `wrong_way` tái hiện được va chạm.
+
+- `CARLA_ROOT` tự rơi về `/opt/carla-simulator` khi không có `~/CARLA_0.9.15`.
+- Client phải **cùng bản** với server (`carla==0.9.16`).
+- ScenarioRunner v0.9.16 crash với mọi `AssignRouteAction` (kịch bản `wrong_way`): `TypeError: object of type 'NoneType' has no len()` trong `ChangeActorWaypoints`. Áp bản vá một lần:
+
+```bash
+git -C ~/scenario_runner apply "$PWD/worker/patches/scenario_runner-0.9.16-assign-route.patch"
+```
+
+## Thu dữ liệu sensor từ CARLA
+
+`worker/sensor_recorder.py` gắn radar, obstacle, IMU, collision (và camera RGB nếu `--camera`) lên ego — toàn sensor built-in của CARLA, không gọi dịch vụ ngoài. Ánh xạ cột dữ liệu ↔ 4 tham số AEB chỉnh được + 6 hằng số ở [docs/vehicsim/aeb-parameter-ranges.md](docs/vehicsim/aeb-parameter-ranges.md).
+
+Hai bẫy số liệu đã gặp: nửa giây đầu ScenarioRunner đặt lại tốc độ ego (IMU ~47 m/s²), và sau va chạm IMU đo xung lực đâm xe (~40 m/s²). `summary.json` và `TelemetryMetricsService.java` loại cả hai khỏi chỉ số phanh và 3 mục tiêu MOBO; `frames.csv` giữ nguyên số thô.
+
 ## CARLA trên máy Windows dev (TrungDQ)
 
 Khác máy Ubuntu ở trên: server **0.9.16** ở `C:\Carla_package`, client là Python 3.12

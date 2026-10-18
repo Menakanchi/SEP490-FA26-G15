@@ -78,6 +78,8 @@ class VehicSimSecurityTest {
     private JwtService jwtService;
     @MockitoBean
     private UserDetailsService userDetailsService;
+    @MockitoBean
+    private TelemetryMetricsService telemetryService;
 
     private static CustomUserDetails as(RoleCode code) {
         return new CustomUserDetails(User.builder()

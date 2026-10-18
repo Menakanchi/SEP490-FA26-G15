@@ -8,7 +8,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
@@ -60,6 +62,7 @@ public class VehicSimController {
     private final OtpService otp;
     private final BootstrapService bootstrap;
     private final VehicSimProperties props;
+    private final TelemetryMetricsService telemetryService;
 
     // ------------------------------------------------------------------ quyền
 
@@ -303,6 +306,35 @@ public class VehicSimController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"vehicsim-run-" + runId + ".json\"")
                 .body(views.runVariantBundle(runId));
+    }
+
+    @Operation(summary = "Nộp result.json của run CARLA chạy ngoài backend (chỉ run CARLA đang PENDING/FAILED, regression chưa chốt)")
+    @PostMapping("/runs/{runId}/carla-result")
+    public Map<String, Object> submitCarlaResult(@PathVariable long runId, @RequestBody Map<String, Object> body, @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "carla_result");
+        return runs.submitCarlaResult(projectId(), runId, uid, body);
+    }
+
+    /**
+     * @param csv            nội dung ``frames.csv`` của ``worker/sensor_recorder.py`` (tối đa 5 MB)
+     * @param collisions     nội dung ``collisions.json`` (bỏ trống = không va chạm)
+     * @param decelAvailable giảm tốc khả dụng (m/s²) cho phần quãng phanh còn lại; mặc định 8 = MAX_DECELERATION mặc định
+     */
+    public record TelemetryRequest(
+            @NotBlank @Size(max = 5_000_000) String csv,
+            @Size(max = 1000) List<Map<String, Object>> collisions,
+            @JsonProperty("decel_available") @Positive @DecimalMax("15.0") Double decelAvailable) {
+    }
+
+    @Operation(summary = "Số đo telemetry CARLA và 3 mục tiêu MOBO (RMS jerk, vận tốc va chạm, quãng phanh — ADR-040)")
+    @PostMapping("/telemetry/evaluate")
+    public TelemetryMetricsService.TelemetrySummary evaluateTelemetry(@Valid @RequestBody TelemetryRequest body, @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "telemetry_eval");
+        List<TelemetryMetricsService.TelemetryFrame> frames = telemetryService.parseCsvFrames(body.csv());
+        return telemetryService.summarise(frames, telemetryService.parseCollisions(body.collisions()),
+                body.decelAvailable() == null ? 8.0 : body.decelAvailable());
     }
 
     // ------------------------------------------------------------------ FE-14 · Regression, recommendation, review
