@@ -1,36 +1,32 @@
+# Backend VehicSim: Spring Boot (Java 21) + worker Python (lõi mô phỏng, chỉ thư viện chuẩn).
+# Java chạy bộ mô phỏng động học như tiến trình con `python3 worker/kinematic_sim.py`, nên image cần python3.
+
 # ---- Stage 1: Build ----
-FROM ghcr.io/astral-sh/uv:0.12.2 AS uv
-FROM python:3.11-slim AS builder
+FROM eclipse-temurin:21-jdk AS build
+WORKDIR /build
+COPY .mvn .mvn
+COPY mvnw pom.xml ./
+# mvnw có thể mang CRLF khi build từ working tree Windows: bỏ \r trước khi chạy.
+RUN sed -i 's/\r$//' mvnw && chmod +x mvnw && ./mvnw -B -q dependency:go-offline
+COPY src src
+RUN ./mvnw -B -q -DskipTests package
 
+# ---- Stage 2: Runtime ----
+FROM eclipse-temurin:21-jre
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m appuser
 WORKDIR /app
-
-COPY --from=uv /uv /uvx /bin/
-COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-dev --no-install-project
-
-# ---- Stage 2: Production ----
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Copy the locked virtual environment from builder
-COPY --from=builder /app/.venv /app/.venv
-ENV PATH=/app/.venv/bin:$PATH
-
-# Security: run as non-root user
-RUN useradd -m appuser
-
-# Copy application code
-COPY . .
-
-# Create data directory with correct ownership
-RUN mkdir -p /app/data && chown -R appuser:appuser /app
-
+COPY --from=build /build/target/vehicsim-backend-1.0.0.jar app.jar
+COPY worker worker
+RUN mkdir -p data/vehicsim && chown -R appuser:appuser /app
 USER appuser
 
-EXPOSE 8000
+ENV VEHICSIM_WORKER_PYTHON=python3
+EXPOSE 8001
 
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -fsS http://localhost:8001/health || exit 1
 
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["java", "-jar", "app.jar"]

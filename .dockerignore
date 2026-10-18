@@ -1,6 +1,7 @@
 .git
 .gitignore
 .env
+.env.*
 **/.venv
 **/node_modules
 **/.next
@@ -15,6 +16,10 @@ graphify-out/
 scratch/
 .ai-log/
 worker/outputs/
+# Backend Python cũ và test của nó (đã ngưng, TD-33) không cần trong image Java.
+src_python_backup/
+tests/
+target/
 .dockerignore
 Dockerfile
 docker-compose.yml

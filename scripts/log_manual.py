@@ -19,9 +19,9 @@ Examples:
   # Quick interactive mode
   python scripts/log_manual.py
 """
+import argparse
 import os
 import sys
-import argparse
 
 from ai_log_common import append_entry, entry_id, git_identity, now_iso
 
