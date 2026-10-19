@@ -48,9 +48,12 @@ File kết quả nội bộ vẫn là `result.json` để Java kiểm metadata v
 
 ## Hợp đồng và giới hạn
 
-- Profile mới ghi `carla-0.9.16-xosc1`, khác runner trực tiếp `carla-0.9.16`; regression không ghép hai profile.
+- Profile hiện tại ghi `carla-0.9.16-xosc2`, khác runner trực tiếp `carla-0.9.16` và bản quỹ đạo lỗi `-xosc1`;
+  regression không ghép các profile. File `vehicsim.xosc/v1` cũ cần xuất lại từ web thành v2.
 - XML dùng LanePosition trên đoạn thẳng road 40/lane -4 của Town04, lấy cao độ từ map; không chiếu người đi bộ lên
   mặt phẳng sai cao độ. Dải tốc độ/khoảng cách hiện có nằm trong đoạn road đã chọn.
+- Không đặt Orientation trên LanePosition của người đi bộ: ScenarioRunner 0.9.16 dùng góc đã xoay để tính offset,
+  biến độ lệch ngang thành dịch chuyển dọc. Hướng đi được controller lấy từ hai điểm quỹ đạo ngang.
 - Một backend local dùng một server CARLA; không chạy ScenarioRunner tay song song với web trên cùng server.
 - Phanh CARLA chưa hiệu chuẩn (TD-17). Chỉ số là quan sát/đối chiếu, không phải chứng nhận an toàn hoặc bằng chứng regression chính thức.
 - Sáu category còn lại trong schema vẫn theo TD-42; không tự biến chúng thành CP_CROSSING.

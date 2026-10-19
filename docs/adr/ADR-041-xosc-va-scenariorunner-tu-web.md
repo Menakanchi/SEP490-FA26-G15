@@ -14,7 +14,8 @@ Người dùng muốn tải `.xosc` thay cho JSON chạy CARLA và khởi chạy
 - Sinh OpenSCENARIO 1.0 bằng thư viện chuẩn ở worker, không LLM. XML mô tả cảnh thật và mang seed/source/AEB/xe bằng
   ParameterDeclarations. Chỉ hỗ trợ motif IR đã có, không tự diễn giải các category chưa được mô phỏng.
 - Profile `carla-xosc` chạy ScenarioRunner, controller gọi lại AEB và bộ chấm hiện có. Runner trực tiếp và động học
-  giữ nguyên; profile mới có suffix `-xosc1` trong simulator identity nên không ghép regression với run cũ.
+  giữ nguyên; profile hiện tại có suffix `-xosc2` trong simulator identity nên không ghép regression với runner trực tiếp
+  hoặc bản `-xosc1` có lỗi hướng người đi bộ. Artifact v2 yêu cầu xuất lại file v1.
 - `.xosc` là artifact tải xuống/chạy ScenarioRunner; JSON bundle/result vẫn là giao tiếp nội bộ Java ↔ Python để
   giữ đủ metadata, kiểm seed/source và lưu kết quả bằng một luật chấm.
 - Chạy từ web chỉ dành cho role được ghi, có hạn mức. Một server CARLA chạy tuần tự. Server GPU và ScenarioRunner

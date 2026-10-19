@@ -55,7 +55,7 @@ export function CarlaRunnerPanel() {
     return () => { current = false; if (url) URL.revokeObjectURL(url); };
   }, [data, cameraFrame]);
   const ready = connection?.connected && connection.compatible && connection.scenario_runner;
-  const xoscProfile = connection?.simulator?.endsWith("-xosc1");
+  const xoscProfile = connection?.simulator?.endsWith("-xosc2");
   const familyId = family || String(ctx?.families[0]?.id ?? "");
 
   const start = async () => {

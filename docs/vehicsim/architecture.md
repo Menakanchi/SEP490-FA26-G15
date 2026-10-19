@@ -84,7 +84,8 @@ Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  S
 `VEHICSIM_RUN_MODE=inline` chạy `executeRun` ngay trong request (dùng cho test); mặc định `async` (thread pool).
 CARLA luôn 1 luồng (một server CARLA chỉ chạy một lượt một lúc); khóa trong backend cũng bảo vệ nút chạy lại CARLA
 khi cấu hình mặc định là động học. Profile `carla-xosc` sinh `scenario.xosc` trước khi gọi `run_xosc.py`; chỉ giữ
-bundle JSON làm metadata nội bộ. Identity `carla-0.9.16-xosc1` khác runner trực tiếp cũ. Mỗi người có hạn mức ghi và số run đang chờ + chạy
+bundle JSON làm metadata nội bộ. Identity `carla-0.9.16-xosc2` tách bản sửa quỹ đạo ngang khỏi `-xosc1` và runner trực tiếp cũ.
+Artifact v1 phải xuất lại thành v2; run v1 chưa chạy bị từ chối thay vì âm thầm chạy bằng quỹ đạo mới. Mỗi người có hạn mức ghi và số run đang chờ + chạy
 (`VEHICSIM_WRITES_PER_WINDOW`, `VEHICSIM_MAX_ACTIVE_RUNS_PER_USER`) vì app mở đăng ký công khai.
 
 ## Bản đồ module (`src/services/vehicsim/`)

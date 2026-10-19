@@ -2,7 +2,7 @@
 <OpenSCENARIO>
   <FileHeader revMajor="1" revMinor="0" date="2026-10-18T00:00:00" description="VehicSim CP_CROSSING" author="VehicSim" />
   <ParameterDeclarations>
-    <ParameterDeclaration name="vs_format" parameterType="string" value="vehicsim.xosc/v1" />
+    <ParameterDeclaration name="vs_format" parameterType="string" value="vehicsim.xosc/v2" />
     <ParameterDeclaration name="vs_seed" parameterType="string" value="0" />
     <ParameterDeclaration name="vs_ego_speed_kmh" parameterType="string" value="40.0" />
     <ParameterDeclaration name="vs_trigger_distance_m" parameterType="string" value="25.0" />
@@ -120,9 +120,7 @@
           <PrivateAction>
             <TeleportAction>
               <Position>
-                <LanePosition roadId="40" laneId="-4" s="61.666666666666664" offset="3.6">
-                  <Orientation type="relative" h="1.5707963267948966" />
-                </LanePosition>
+                <LanePosition roadId="40" laneId="-4" s="61.666666666666664" offset="3.6" />
               </Position>
             </TeleportAction>
           </PrivateAction>
@@ -168,16 +166,12 @@
                           <Polyline>
                             <Vertex time="0.0">
                               <Position>
-                                <LanePosition roadId="40" laneId="-4" s="61.666666666666664" offset="3.6">
-                                  <Orientation type="relative" h="1.5707963267948966" />
-                                </LanePosition>
+                                <LanePosition roadId="40" laneId="-4" s="61.666666666666664" offset="3.6" />
                               </Position>
                             </Vertex>
                             <Vertex time="2.4">
                               <Position>
-                                <LanePosition roadId="40" laneId="-4" s="61.666666666666664" offset="-3.6">
-                                  <Orientation type="relative" h="1.5707963267948966" />
-                                </LanePosition>
+                                <LanePosition roadId="40" laneId="-4" s="61.666666666666664" offset="-3.6" />
                               </Position>
                             </Vertex>
                           </Polyline>

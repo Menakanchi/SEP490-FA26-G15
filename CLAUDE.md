@@ -76,6 +76,11 @@ sau khi một lượt `run_variant.py` bị giết (Ctrl+C hai lần, đóng ter
 
 ## Khi chạy ScenarioRunner thủ công
 
+ScenarioRunner v0.9.16 tính `LanePosition.offset` sau Orientation, nên góc h=π/2 làm offset ngang bị xoay thành
+dịch chuyển dọc đường. CP_CROSSING dùng hai LanePosition không Orientation, cùng s và khác offset; controller tự quay
+người đi bộ theo waypoint. Đã đo trên Town04 ngày 19/10: trước sửa đường dọc ~7,18 m/ngang ~0; sau sửa dọc ~0/ngang ~7,19 m.
+Profile sửa lỗi là `-xosc2`, artifact `vehicsim.xosc/v2`; không dùng baseline cũ `-xosc1` để so sánh.
+
 Luồng `.xosc` mới của web dùng `worker/run_xosc.py` + `vehicsim_aeb_control.py` (ADR-041), venv Windows riêng
 `worker/.venv-carla/`; xem [hướng dẫn local](docs/vehicsim/carla-local.md). JSON vẫn dùng được với runner trực tiếp cũ.
 Tránh nạp Town05 đầy đủ trên máy Windows này khi RAM/GPU đang bận: đã làm server thoát ngày 19/10/2026;
