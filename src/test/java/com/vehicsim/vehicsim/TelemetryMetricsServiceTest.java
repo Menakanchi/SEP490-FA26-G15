@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 class TelemetryMetricsServiceTest {
@@ -193,5 +194,42 @@ class TelemetryMetricsServiceTest {
         assertThat(frames.get(0).imuJerkMs3()).isEqualTo(-5.00);
         assertThat(frames.get(0).radarTtcS()).isEqualTo(2.5);
         assertThat(frames.get(1).obstacleDistanceM()).isEqualTo(15.0);
+    }
+
+    @Test
+    void sensorOnlyFrameDoesNotBecomeAStopOrZeroImpactSpeed() {
+        // Recorder có thể ghi frame IMU/radar mà luồng lấy ground truth đã bỏ lỡ.
+        String csv = "sim_time_s,ego_speed_ms,brake,imu_accel_x_ms2\n0.5,10,1,-1\n0.6,,,-1\n0.7,9.8,1,-1\n";
+        List<TelemetryMetricsService.TelemetryFrame> frames = service.parseCsvFrames(csv);
+
+        assertThat(frames).hasSize(2);
+        assertThat(service.summarise(frames, List.of(), 8.0).stoppingDistanceM()).isEqualTo(7.983);
+        var collisions = List.of(new TelemetryMetricsService.CollisionEvent(0.65, "walker", null, null, null, null));
+        assertThat(service.calculateImpactSpeed(frames, collisions)).isEqualTo(10.0);
+    }
+
+    @Test
+    void invalidKinematicsAreSkippedButMeasuredZeroSpeedIsKept() {
+        List<TelemetryMetricsService.TelemetryFrame> frames = service.parseCsvFrames("""
+                sim_time_s,ego_speed_ms,brake
+                0.5,10,1
+                0.6,broken,1
+                ,9,1
+                NaN,8,1
+                0.7,Infinity,1
+                0.8,-1,1
+                -1,8,1
+                0.9,0,1
+                """);
+
+        assertThat(frames).extracting(TelemetryMetricsService.TelemetryFrame::egoSpeedMs).containsExactly(10.0, 0.0);
+        assertThat(service.summarise(frames, List.of(), 8.0).stoppingDistanceM()).isEqualTo(2.0);
+    }
+
+    @Test
+    void csvWithoutUsableKinematicsIsRejectedInsteadOfReportingSafeZeros() {
+        for (String csv : List.of("wrong,header\n1,2\n", "sim_time_s,ego_speed_ms\n", "sim_time_s,ego_speed_ms\n0.5,\n")) {
+            assertThatThrownBy(() -> service.parseCsvFrames(csv)).isInstanceOf(Vs.InvalidRequestException.class);
+        }
     }
 }

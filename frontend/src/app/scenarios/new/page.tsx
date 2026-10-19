@@ -201,10 +201,10 @@ export default function DescribeScenarioPage() {
             <PillButton
               className="px-4 py-2 text-[12px]"
               disabled={irErrors.length > 0}
-              title="Chạy thử IR này trên CARLA: python worker/run_variant.py scenario-ir.json (AEB mặc định v1.0)"
-              onClick={() => downloadJson(ir, "scenario-ir.json")}
+              title="Xuất OpenSCENARIO để chạy bằng ScenarioRunner và AEB mặc định"
+              onClick={() => void vehicsimApi.downloadScenarioXosc(ir).catch(e => setError(e.message))}
             >
-              Tải JSON chạy CARLA
+              Tải OpenSCENARIO (.xosc)
             </PillButton>
             <div className="flex flex-col gap-2 text-[12px] text-vehicsim-muted">
               {(Object.keys(ORIGIN_TAG) as FieldOrigin[]).map((o) => (
@@ -261,16 +261,6 @@ export default function DescribeScenarioPage() {
       )}
     </VehicSimPage>
   );
-}
-
-/** IR đang hiển thị -> file JSON mà `worker/run_variant.py` (CARLA) và `worker/kinematic_sim.py` đọc được. */
-function downloadJson(data: unknown, filename: string) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 /** Lưới quanh giá trị IR: trường nêu rõ/suy luận lấy ±1 bước, trường giả định dùng dải mặc định. */

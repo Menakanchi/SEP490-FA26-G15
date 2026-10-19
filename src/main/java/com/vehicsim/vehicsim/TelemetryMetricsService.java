@@ -2,6 +2,7 @@ package com.vehicsim.vehicsim;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import com.vehicsim.vehicsim.Vs.InvalidRequestException;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -388,7 +389,8 @@ public class TelemetryMetricsService {
     }
 
     /**
-     * Phân tích chuỗi CSV từ file ``frames.csv`` của ``sensor_recorder.py``.
+     * Phân tích chuỗi CSV từ file ``frames.csv`` của ``sensor_recorder.py``. Frame chỉ có sensor (không có tốc độ
+     * ground truth) không đủ để tính động học; bỏ frame đó thay vì tạo một lần dừng xe giả với tốc độ 0.
      */
     public List<TelemetryFrame> parseCsvFrames(String csvContent) {
         List<TelemetryFrame> list = new ArrayList<>();
@@ -396,14 +398,14 @@ public class TelemetryMetricsService {
             return list;
         }
         String[] lines = csvContent.split("\\r?\\n");
-        if (lines.length <= 1) {
-            return list;
-        }
         String headerLine = lines[0];
         String[] headers = headerLine.split(",");
         Map<String, Integer> colMap = new java.util.HashMap<>();
         for (int i = 0; i < headers.length; i++) {
             colMap.put(headers[i].trim(), i);
+        }
+        if (!colMap.containsKey("sim_time_s") || !colMap.containsKey("ego_speed_ms")) {
+            throw new InvalidRequestException("frames.csv thiếu cột sim_time_s hoặc ego_speed_ms");
         }
 
         for (int i = 1; i < lines.length; i++) {
@@ -412,8 +414,11 @@ public class TelemetryMetricsService {
                 continue;
             }
             String[] parts = line.split(",", -1);
-            double t = getDouble(parts, colMap.get("sim_time_s"), 0.0);
-            double speed = getDouble(parts, colMap.get("ego_speed_ms"), 0.0);
+            Double t = getNullableDouble(parts, colMap.get("sim_time_s"));
+            Double speed = getNullableDouble(parts, colMap.get("ego_speed_ms"));
+            if (t == null || speed == null || t < 0 || speed < 0) {
+                continue;
+            }
             Double accel = getNullableDouble(parts, colMap.get("imu_accel_x_ms2"));
             Double jerk = getNullableDouble(parts, colMap.get("imu_jerk_ms3"));
             Double brake = getNullableDouble(parts, colMap.get("brake"));
@@ -427,6 +432,9 @@ public class TelemetryMetricsService {
             Double targetV = getNullableDouble(parts, colMap.get("target_speed_ms"));
 
             list.add(new TelemetryFrame(t, speed, accel, jerk, brake, throttle, steer, radarDepth, radarRelV, radarTtc, obstacleDist, obstacleActor, targetV));
+        }
+        if (list.isEmpty()) {
+            throw new InvalidRequestException("frames.csv không có khung hợp lệ với thời gian và tốc độ ego");
         }
         return list;
     }
@@ -457,11 +465,6 @@ public class TelemetryMetricsService {
         return v instanceof Number n ? n.doubleValue() : null;
     }
 
-    private static double getDouble(String[] parts, Integer idx, double def) {
-        Double val = getNullableDouble(parts, idx);
-        return val != null ? val : def;
-    }
-
     private static Double getNullableDouble(String[] parts, Integer idx) {
         if (idx == null || idx >= parts.length) {
             return null;
@@ -471,7 +474,8 @@ public class TelemetryMetricsService {
             return null;
         }
         try {
-            return Double.parseDouble(s);
+            double value = Double.parseDouble(s);
+            return Double.isFinite(value) ? value : null;
         } catch (NumberFormatException e) {
             return null;
         }

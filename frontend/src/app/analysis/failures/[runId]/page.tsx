@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useVehicSimContext } from "@/components/VehicSimContext";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { ScenarioMap } from "@/components/ScenarioMap";
 import { TelemetryChart, type ChartMarker } from "@/components/TelemetryChart";
@@ -26,6 +27,9 @@ const STAGE_NAME: Record<FailureClass, string> = {
 const SNAPSHOT_PARAMS = ["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "MAX_DECELERATION", "BRAKE_BUILDUP_RATE"];
 
 export default function FailureDetailPage() {
+  const router = useRouter();
+  const { canWrite } = useVehicSimContext();
+  const [running, setRunning] = useState(false);
   const { runId } = useParams<{ runId: string }>();
   const [d, setD] = useState<FailureDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,11 +68,19 @@ export default function FailureDetailPage() {
             Sửa nguyên nhân
           </PillButton>
           <PillButton
-            title={`Chạy lại đúng lượt này (cùng biến thể, AEB, seed) trên CARLA: python worker/run_variant.py vehicsim-run-${runId}.json`}
-            onClick={() => void vehicsimApi.downloadRunBundle(Number(runId)).catch((e) => setError(e.message))}
+            title="Xuất OpenSCENARIO cùng biến thể, AEB, xe và seed của lượt này"
+            onClick={() => void vehicsimApi.downloadRunXosc(Number(runId)).catch((e) => setError(e.message))}
           >
-            Tải JSON chạy CARLA
+            Tải .xosc
           </PillButton>
+          <PillButton disabled={!canWrite || running} onClick={async () => {
+            setRunning(true);
+            try {
+              const run = await vehicsimApi.runOnCarla(Number(runId));
+              router.push(`/analysis/carla?run=${run.run_id}`);
+            } catch (e) { setError(e instanceof Error ? e.message : "Không chạy được CARLA"); }
+            finally { setRunning(false); }
+          }}>{running ? "Đang xếp hàng…" : "Chạy trên CARLA"}</PillButton>
           <PillButton variant="dark" href={`/analysis/failures/${runId}/playback`}>
             ▶  Phát lại
           </PillButton>

@@ -18,7 +18,7 @@ lớp LLM + một database MySQL; **mô phỏng và chấm điểm chạy ở `w
 |---|---|---|---|---|
 | VehicSim MVP (nhánh `trungdam`, 09/2026) | Vòng AEB 6 bước: mô tả → biến thể → baseline → lỗi → candidate → regression → Reviewer quyết định; mô phỏng bằng bộ động học hoặc CARLA sau một hợp đồng JSON | `src/main/java/com/vehicsim/vehicsim/` (route + nghiệp vụ), `worker/vehicsim_core/` (AEB, bộ động học, luật chấm), `worker/{run_variant,kinematic_sim,sim_common}.py`, `frontend/src/app/{page.tsx,scenarios,aeb,analysis,validation}`, `frontend/src/components/VehicSim*` | MySQL 29 bảng + Redis | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
 | Xác thực | Đăng ký/quên mật khẩu bằng mã 6 số, JWT, hồ sơ | `src/main/java/com/vehicsim/{service,controller,security,config}/`, `frontend/src/app/{login,register,forgot-password,profile}` | MySQL `users/roles` (mỗi người một role) + Redis (OTP) | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#xác-thực) |
-| Bộ sinh OpenSCENARIO (giữ từ Forge) | `ScenarioSpec` → `.xosc` tất định, chưa nối API (TD-27) | `src_python_backup/services/openscenario/` (chưa port sang Java) | — | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#bộ-sinh-openscenario-srcservicesopenscenario) |
+| OpenSCENARIO + CARLA local | IR/bundle → `.xosc` CP_CROSSING tất định → ScenarioRunner 0.9.16 + AEB dùng chung; chạy và xem sensor trên web | `worker/{openscenario_export,run_xosc,vehicsim_aeb_control}.py`, `frontend/src/app/analysis/carla/` | Artifact theo run | [CARLA local](docs/vehicsim/carla-local.md) |
 
 Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 [vòng MVP](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md),
@@ -38,13 +38,13 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 
 | Việc | Lệnh |
 |---|---|
-| Bật toàn bộ app (Windows) | `scripts\dev-up.cmd` — Docker (MySQL, Redis) + backend Java `:8001` + frontend `:3000`, mỗi dịch vụ một cửa sổ |
+| Bật toàn bộ app (Windows) | `scripts\dev-up.cmd` — Docker + Java `:8001` + frontend `:3000`; dùng `.xosc`/CARLA: `scripts\setup-carla.ps1` rồi `scripts\dev-carla.ps1 -RestartBackend` |
 | Chỉ backend | `./mvnw spring-boot:run` (đọc `.env` ở thư mục gốc); Swagger: `http://localhost:8001/swagger-ui.html` |
 | Tạo admin | `python scripts/create_admin.py --email <email> --seed` (đăng ký qua API rồi đổi role bằng SQL; cần backend đang chạy) |
 | Seed project VehicSim | ADMIN gọi `POST /api/v1/vehicsim/bootstrap` (idempotent) |
 | Gate backend | `./mvnw clean test` · lõi mô phỏng: `python -m pytest worker/tests` · cả ba cổng (+ frontend): `make check`, giống `.github/workflows/ci.yml` |
 | Gate frontend (**chưa có trong CI**, chạy tay) | `cd frontend && npm run lint && npx tsc --noEmit && npx next build` |
-| Chạy một JSON tải từ web ("Tải JSON chạy CARLA") | `python worker/kinematic_sim.py <file>.json` (máy nào cũng chạy) · `worker/.venv/bin/python worker/run_variant.py <file>.json [--video]` (cần server CARLA) |
+| Chạy artifact | `.xosc`: `worker\.venv-carla\Scripts\python worker/run_xosc.py <file>.xosc --camera`; bundle nội bộ: `python worker/kinematic_sim.py <file>.json` |
 
 - Gặp `Unresolved compilation problem` / `ClassFormatError` khi chạy backend: IDE đã ghi `.class` hỏng vào `target/` —
   chạy `./mvnw clean` rồi build lại.
@@ -75,12 +75,12 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 
 > **Sau ADR-039 (14/10) và TD-33 (15/10):** luật 1, 2, 3, 5, 7 có test Java (`src/test/java`, không cần MySQL/Redis nên chạy
 > trong CI); luật 4, 6, 8 có test ở `worker/tests/`. Còn thiếu máy kiểm Java: phần "ghép kết quả động học với CARLA" của luật 9
-> và bộ sinh `.xosc` không gọi LLM (luật 1, chờ port — TD-27). Bảng đầy đủ: [architecture.md](docs/vehicsim/architecture.md#bất-biến-và-máy-kiểm).
+> (bộ sinh `.xosc` offline đã có `test_xosc_export_is_offline_stdlib_only_and_python310`). Bảng đầy đủ: [architecture.md](docs/vehicsim/architecture.md#bất-biến-và-máy-kiểm).
 
 1. Mọi lời gọi LLM đi qua `LlmService`; không file Java nào khác nhắc tới provider
-   (`ArchitectureRulesTest#onlyLlmServiceKnowsTheLlmProviders`); bộ sinh `.xosc` không gọi LLM (chờ port sang Java — TD-27).
+   (`ArchitectureRulesTest#onlyLlmServiceKnowsTheLlmProviders`); bộ sinh `.xosc` không gọi LLM (`test_xosc_export_is_offline_stdlib_only_and_python310`).
 2. Backend Java và `worker/vehicsim_core/` không import `carla` (`ArchitectureRulesTest#javaBackendNeverTouchesCarlaApi`,
-   `ArchitectureRulesTest#simulationCoreNeverImportsCarla`); CARLA chỉ ở `worker/run_variant.py`.
+   `ArchitectureRulesTest#simulationCoreNeverImportsCarla`); CARLA chỉ ở worker (runner, controller adapter, sensor).
 3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập; mỗi người một role (ADR-035): ADMIN / ENGINEER /
    EXPERIENCER được ghi, MANAGER chỉ đọc, **chỉ REVIEWER** Accept / Reject — người làm không tự duyệt
    (`VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite`,
@@ -95,7 +95,7 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
    còn lại là hằng số trong `aeb_stack.py`, không nằm ở DB.
 7. Không lộ email có tồn tại hay không; mã OTP lưu dạng hash, dùng một lần
    (`AuthPrivacyTest`).
-8. Một AEB cho mọi bộ mô phỏng: logic AEB chỉ ở `src/services/vehicsim/aeb_stack.py`; lõi
+8. Một AEB cho mọi bộ mô phỏng: logic AEB chỉ ở `worker/vehicsim_core/aeb_stack.py`; lõi
    mô phỏng chỉ dùng thư viện chuẩn + cú pháp 3.10 để venv CARLA import được
    (`test_sim_core_is_stdlib_only_and_python310`,
    `test_runner_reuses_the_kinematic_aeb_and_result_builders`).

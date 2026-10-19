@@ -41,12 +41,21 @@ Hai API phụ cho CARLA chạy ngoài backend, dùng ở trang `/analysis/carla`
 
 - `POST /runs/{id}/carla-result` — nộp `result.json` của một run **CARLA** đang `PENDING`/`FAILED`
   (`RunService.submitCarlaResult`). Từ chối run động học (luật cứng 9), run đã `COMPLETED`/`RUNNING` (409), run của
-  regression test đã chốt (409) và `result.json` không qua `checkResult`; bỏ đường dẫn artifact client gửi. Test:
-  `CarlaResultSubmissionTest`.
+  regression test đã chốt (409) và `result.json` không qua `checkResult`; bỏ đường dẫn artifact client gửi.
+  Cả kết quả upload và kết quả worker phải có seed cùng `source.run_id/scenario_id/scenario_version_id/aeb_version_id/carla_vehicle_model_id`
+  khớp run; thiếu hoặc sai trả 400 khi upload. Lưu trong transaction rồi mới phát `RunFinished`, để regression đọc
+  kết quả đã commit bằng transaction mới. Test: `CarlaResultSubmissionTest`.
 - `POST /telemetry/evaluate` — `frames.csv` + `collisions.json` của `worker/sensor_recorder.py` → số đo sensor và 3 mục
   tiêu MOBO theo định nghĩa ADR-040, bỏ 0,5 s đầu và khung từ lúc va chạm (`TelemetryMetricsService`, chỉ tính, không
-  ghi DB). JSON trả khoá snake_case (`rms_jerk_mps3`, `impact_speed_mps`, `stopping_distance_m`…). Test:
+  ghi DB). Bỏ frame thiếu/sai thời gian hoặc tốc độ ego (kể cả NaN/Infinity/số âm), giữ tốc độ 0 đo được;
+  thiếu cột bắt buộc hoặc không còn frame hợp lệ trả 400, không sinh số 0 giả.
+  JSON trả khoá snake_case (`rms_jerk_mps3`, `impact_speed_mps`, `stopping_distance_m`…). Test:
   `TelemetryMetricsServiceTest`.
+
+Từ ADR-041, trang này có luồng chạy trực tiếp bằng OpenSCENARIO: `GET /runs/{id}/xosc`, `POST /scenarios/xosc`
+để xuất XML; `POST /runs/{id}/carla` tạo run mới giữ seed/biến thể/xe/AEB, `GET /carla/status` và `/carla/runs`
+theo dõi kết nối/hàng đợi, `/runs/{id}/carla-data` + `/carla-files/{name}` đọc sensor/ảnh đã ghi, có kiểm project và
+whitelist tên file. Các route ghi vẫn qua role và hạn mức. [Cách chạy Windows](carla-local.md).
 
 Trang `/` (Tổng quan) tính trạng thái 6 bước từ dữ liệu thật và chỉ bước tiếp theo;
 mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước ở
@@ -73,7 +82,9 @@ Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  S
 ```
 
 `VEHICSIM_RUN_MODE=inline` chạy `executeRun` ngay trong request (dùng cho test); mặc định `async` (thread pool).
-CARLA luôn 1 luồng (một server CARLA chỉ chạy một lượt một lúc). Mỗi người có hạn mức ghi và số run đang chờ + chạy
+CARLA luôn 1 luồng (một server CARLA chỉ chạy một lượt một lúc); khóa trong backend cũng bảo vệ nút chạy lại CARLA
+khi cấu hình mặc định là động học. Profile `carla-xosc` sinh `scenario.xosc` trước khi gọi `run_xosc.py`; chỉ giữ
+bundle JSON làm metadata nội bộ. Identity `carla-0.9.16-xosc1` khác runner trực tiếp cũ. Mỗi người có hạn mức ghi và số run đang chờ + chạy
 (`VEHICSIM_WRITES_PER_WINDOW`, `VEHICSIM_MAX_ACTIVE_RUNS_PER_USER`) vì app mở đăng ký công khai.
 
 ## Bản đồ module (`src/services/vehicsim/`)
@@ -210,13 +221,20 @@ Giới hạn 30 lượt / 15 phút / người (Redis) vì app public và mỗi l
 
 ## Bộ sinh OpenSCENARIO (`src/services/openscenario/`)
 
-Giữ lại từ Scenario Forge (ADR-032) cho FE-07 "Import/Export `.xosc`":
+**Đang dùng cho VehicSim (ADR-041):** `worker/openscenario_export.py` sinh XML OpenSCENARIO 1.0 từ IR hoặc bundle,
+không cần CARLA/LLM. CP_CROSSING có ego/người đi bộ, thời tiết, trigger khoảng cách, polyline băng đường và
+ParameterDeclarations cho seed/AEB/xe/source. `run_xosc.py` gọi ScenarioRunner v0.9.16 bằng file này; adapter
+`vehicsim_aeb_control.py` gọi lại `AebStack`, `build_outcome` và `evaluation`, không có bản AEB thứ hai. XML dùng
+LanePosition trên road 40/lane -4 Town04 để lấy đúng cao độ; mọi vị trí trong dải IR hiện có nằm trong đoạn thẳng.
+Golden mới được kiểm XSD bởi `OpenScenarioSchemaTest`; `worker/tests/test_openscenario_export.py` kiểm byte,
+round-trip metadata, trigger khoảng cách, dải biên và bộ sinh offline. Nút xuất có trên màn mô tả, chi tiết run và phát lại.
+
+**Converter Forge cũ chỉ để đối chiếu (ADR-032):**
 `convert_spec_to_xosc(ScenarioSpec) -> str` sinh OpenSCENARIO 1.0 chạy được bằng ScenarioRunner
 0.9.15; `try_convert_spec` trả `(xosc, None)` hoặc `(None, ValidationIssue)` thay vì ném lỗi. Code
 thuần, tất định (cùng spec → cùng byte, kiểm bằng 6 file mẫu trong `tests/test_openscenario/goldens/`
-và XSD OpenSCENARIO 1.0), không gọi LLM (test Python cũ của luật này đã ngưng; viết lại khi port sang Java — TD-27).
-**Chưa nối vào API/màn hình:** đầu vào là `ScenarioSpec` (taxonomy ODD của Forge: cut-in, sudden
-brake, …), chưa có ánh xạ từ IR người đi bộ băng ngang của VehicSim — việc của FE-07.
+và XSD OpenSCENARIO 1.0), không gọi LLM. Đầu vào `ScenarioSpec` theo taxonomy Forge (cut-in, sudden brake, …)
+không được đưa lại vào API hiện tại; không giả lập sáu category chưa hỗ trợ (TD-42).
 
 ## Xác thực
 
@@ -325,7 +343,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | `VEHICSIM_RUN_CONCURRENCY` | Số run song song của bộ động học (CARLA luôn 1) |
 | `VEHICSIM_WORKER_PYTHON`, `VEHICSIM_WORKER_DIR` | Python ≥ 3.10 và thư mục `worker/` cho tiến trình con |
 | `SIMULATION_TIMEOUT_S` | Trần thời gian một run (mặc định 120; CARLA nên 300) |
-| `VEHICSIM_SIMULATOR` | Bộ mô phỏng cho run mới: `kinematic` (mặc định) hoặc `carla` |
+| `VEHICSIM_SIMULATOR` | `kinematic` (mặc định), `carla` (runner trực tiếp cũ), `carla-xosc` (ScenarioRunner + controller AEB) |
 | `VEHICSIM_CARLA_COMMAND` | Lệnh gọi CLI CARLA, JSON list (vd. `["…/worker/.venv/bin/python","worker/run_variant.py","--map","Town05"]`) |
 | `VEHICSIM_CARLA_VERSION` | Phiên bản server CARLA mà run mới yêu cầu (mặc định `0.9.15`) |
 | `VEHICSIM_DATA_ROOT` | Thư mục `runs/<id>/` của run CARLA (mặc định `./data/vehicsim`) |

@@ -37,7 +37,7 @@ export default function ScenarioFamiliesPage() {
   }, []);
 
   // Có run đang xếp hàng/chạy → tải lại định kỳ để số liệu tự cập nhật.
-  const active = (items ?? []).some((f) => (f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0) > 0);
+  const active = (items ?? []).some((f) => (f.runs.PENDING ?? f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0) > 0);
   useEffect(() => {
     if (!active) return;
     const id = setInterval(load, 3000);
@@ -117,7 +117,7 @@ export default function ScenarioFamiliesPage() {
           <EmptyState title="Chưa có họ kịch bản nào">Tạo họ đầu tiên (ví dụ người đi bộ băng ngang) rồi chạy cơ sở để có ca lỗi.</EmptyState>
         )}
         {items?.map((f) => {
-          const pending = (f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0);
+          const pending = (f.runs.PENDING ?? f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0);
           return (
             <div key={f.id} className="flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2">
               <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">

@@ -10,6 +10,31 @@ export type ReviewDecision = "PENDING" | "ACCEPT" | "REJECT" | "REQUEST_MORE_TES
 export type Weather = "CLEAR" | "CLOUDY" | "RAIN" | "HEAVY_RAIN" | "FOG";
 export type TimeOfDay = "DAY" | "DUSK" | "NIGHT";
 
+export interface CarlaStatus {
+  configured: boolean;
+  connected: boolean;
+  compatible?: boolean;
+  scenario_runner: boolean;
+  version?: string | null;
+  simulator?: string;
+  error?: string;
+}
+
+export interface CarlaRun {
+  id: number;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  scenario_id: number;
+  aeb_version_id: number;
+  simulator_version: string;
+  error_message: string | null;
+}
+
+export interface CarlaData {
+  run_id: number;
+  summary: TelemetrySummary;
+  camera_frames: string[];
+}
+
 export interface VersionBrief {
   id: number;
   label: string;

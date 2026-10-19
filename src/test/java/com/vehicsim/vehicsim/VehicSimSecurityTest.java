@@ -178,6 +178,25 @@ class VehicSimSecurityTest {
     }
 
     @Test
+    void xoscExportAndCarlaRunRespectReadWriteRoles() throws Exception {
+        stubServices();
+        when(views.runVariantBundle(anyLong())).thenReturn(Map.of());
+        when(runs.exportXosc(any())).thenReturn("<OpenSCENARIO />");
+        for (RoleCode code : RoleCode.values()) {
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/runs/1/xosc"), code)).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/carla/status"), code)).isEqualTo(200);
+        }
+        for (RoleCode code : RoleCode.values()) {
+            boolean writer = Set.of(RoleCode.ADMIN, RoleCode.ENGINEER, RoleCode.EXPERIENCER).contains(code);
+            assertThat(statusOf(request(HttpMethod.POST, BASE + "/runs/1/carla"), code))
+                    .isEqualTo(writer ? 202 : 403);
+            assertThat(statusOf(request(HttpMethod.POST, BASE + "/scenarios/xosc")
+                    .contentType(MediaType.APPLICATION_JSON).content("{}"), code))
+                    .isEqualTo(writer ? 200 : 403);
+        }
+    }
+
+    @Test
     void onlyAdminCanBootstrap() throws Exception {
         stubServices();
         assertThat(statusOf(bootstrapData(), RoleCode.ADMIN)).isBetween(200, 299);

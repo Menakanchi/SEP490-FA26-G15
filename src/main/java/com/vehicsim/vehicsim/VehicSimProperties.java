@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Cấu hình vòng MVP (prefix {@code vehicsim}); tên biến môi trường và mặc định giữ như backend Python cũ.
  *
- * @param simulator          kinematic | carla — bộ mô phỏng cho các run MỚI
+ * @param simulator          kinematic | carla | carla-xosc — bộ mô phỏng cho các run MỚI
  * @param carlaCommand       lệnh gọi CLI CARLA, dạng JSON list, vd. ["python","worker/run_variant.py","--map","Town05"]
  * @param carlaVersion       phiên bản server CARLA mà run mới yêu cầu (server báo khác thì run FAILED)
  * @param dataRoot           thư mục chứa bundle/result/video của run CARLA

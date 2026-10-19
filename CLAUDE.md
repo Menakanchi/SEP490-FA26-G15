@@ -76,6 +76,11 @@ sau khi một lượt `run_variant.py` bị giết (Ctrl+C hai lần, đóng ter
 
 ## Khi chạy ScenarioRunner thủ công
 
+Luồng `.xosc` mới của web dùng `worker/run_xosc.py` + `vehicsim_aeb_control.py` (ADR-041), venv Windows riêng
+`worker/.venv-carla/`; xem [hướng dẫn local](docs/vehicsim/carla-local.md). JSON vẫn dùng được với runner trực tiếp cũ.
+Tránh nạp Town05 đầy đủ trên máy Windows này khi RAM/GPU đang bận: đã làm server thoát ngày 19/10/2026;
+profile mới dùng Town04 và khởi động thẳng map đó. Không đổi map trong lúc có run trên web đang chạy.
+
 Dùng để kiểm một file `.xosc` do bộ sinh OpenSCENARIO (`src/services/openscenario`, ADR-032)
 xuất ra — vòng VehicSim tự nó chạy CARLA bằng `worker/run_variant.py`, không qua ScenarioRunner.
 

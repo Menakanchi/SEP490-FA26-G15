@@ -7,7 +7,8 @@ chạm phía trước). Vòng khép kín của MVP:
 > (Perception / Decision / Control / Dynamics) → AEB candidate → regression cùng seed →
 > **kỹ sư Accept/Reject**
 
-Mô phỏng chạy bằng bộ động học tất định (máy nào cũng chạy) hoặc CARLA sau cùng một hợp đồng JSON.
+Mô phỏng chạy bằng bộ động học tất định hoặc CARLA. Web xuất OpenSCENARIO `.xosc` và chạy ScenarioRunner 0.9.16
+qua controller dùng chung lõi AEB; JSON vẫn là giao tiếp nội bộ để lưu kết quả và giữ seed/source.
 Khuyến nghị dựa trên mô phỏng — không thay thế kiểm thử vật lý hay chứng nhận an toàn.
 
 ## Chạy local
@@ -32,6 +33,16 @@ cd frontend && NEXT_PUBLIC_API_URL=http://localhost:8001 npm run dev
 
 **Cả backend trong Docker:** `docker compose up -d --build backend` (image Java 21 + python3 cho worker).
 
+**CARLA 0.9.16 trên Windows:** chuẩn bị `C:\Carla_package`, Python 3.12 rồi chạy:
+
+```powershell
+.\scripts\setup-carla.ps1                 # một lần: venv riêng + ScenarioRunner v0.9.16
+.\scripts\dev-carla.ps1 -RestartBackend  # chọn profile .xosc và bật ứng dụng local
+```
+
+Vào **Phân tích → Dữ liệu CARLA** để chọn họ, chạy, theo dõi trạng thái và xem ảnh/cảm biến; nút **Tải .xosc** có ở
+chi tiết lượt chạy và phát lại. [Hướng dẫn CARLA local](docs/vehicsim/carla-local.md).
+
 Tài khoản và dữ liệu mẫu (backend đang chạy):
 
 ```bash
@@ -51,7 +62,8 @@ cd frontend && npm run lint && npx tsc --noEmit && npx next build
 ```
 
 Test Java và worker không cần Docker, CARLA hay khoá LLM; test Java dùng máy chủ giả thay cho LLM thật.
-`tests/` chỉ còn tài sản kiểm bộ sinh OpenSCENARIO (`test_openscenario/`, `schemas/`), chờ port sang Java (TD-27) — không nằm trong CI.
+`tests/` giữ đặc tả/golden của converter Forge cũ và XSD. Bộ sinh CP_CROSSING mới được kiểm trong `worker/tests/`
+và `OpenScenarioSchemaTest` (Java), đều chạy trong CI.
 
 ## Cấu trúc
 
@@ -60,13 +72,13 @@ src/main/java/com/vehicsim/
   controller/ service/ security/ config/   xác thực: đăng ký / quên mật khẩu bằng OTP, JWT
   vehicsim/                                vòng AEB: FamilyService, RunService, RegressionService, ViewsService,
                                            DescribeService (câu mô tả -> Scenario IR), LlmService (cửa duy nhất tới LLM)
-worker/                run_variant.py (JSON -> CARLA), kinematic_sim.py, vehicsim_core/ (AEB, bộ động học, luật chấm)
+worker/                openscenario_export.py, run_xosc.py, vehicsim_aeb_control.py; run_variant.py (runner cũ), kinematic_sim.py
 frontend/              Next.js 16 — app/ (Tổng quan, kịch bản, AEB, phân tích, kiểm định, hồ sơ)
 database/mysql/        01_schema.sql (29 bảng) + migrations/
 docs/                  vehicsim/ (kiến trúc, từ điển dữ liệu), adr/, exec-plans/
 ```
 
-Bộ sinh OpenSCENARIO (`.xosc`) chưa port sang Java (TD-27); mã cũ ở `src_python_backup/` (git bỏ qua).
+Bộ sinh `.xosc` CP_CROSSING chạy ở worker, chỉ dùng thư viện chuẩn; mã converter Forge cũ vẫn chỉ để đối chiếu trong lịch sử git.
 
 ## Tài liệu
 
