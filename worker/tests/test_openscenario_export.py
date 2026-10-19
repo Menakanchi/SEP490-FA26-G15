@@ -7,9 +7,10 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import pytest
-from openscenario_export import export_xosc, read_xosc
+from openscenario_export import SIMULATOR_SUFFIX, export_xosc, read_xosc
 from run_xosc import environment, prepare_runtime
 from vehicsim_core.bundle import BundleError, read_spec
+from vehicsim_core.simulator import CURB_STOP_Y_M, PEDESTRIAN_START_Y_M
 
 IR = {"ego_speed_kmh": 40, "trigger_distance_m": 25, "pedestrian_speed_mps": 3, "weather": "RAIN", "time_of_day": "NIGHT"}
 
@@ -64,16 +65,36 @@ def test_pedestrian_movement_uses_distance_trigger_and_real_xml_actions() -> Non
     assert len(event.findall(".//FollowTrajectoryAction/Trajectory/Shape/Polyline/Vertex")) == 2
 
 
+@pytest.mark.parametrize("stops_at_curb", [False, True])
+def test_pedestrian_path_crosses_the_lane_without_rotating_its_offset(stops_at_curb: bool) -> None:
+    root = ET.fromstring(export_xosc(read_spec({**IR, "stops_at_curb": stops_at_curb})))
+    spawn = root.find("./Storyboard/Init/Actions/Private[@entityRef='pedestrian']//LanePosition")
+    route = root.findall(".//FollowTrajectoryAction/Trajectory/Shape/Polyline/Vertex/Position/LanePosition")
+    assert len(route) == 2
+    # ScenarioRunner 0.9.16 applies Orientation before offset: a 90-degree heading
+    # would turn these lateral offsets into movement along the vehicle's road.
+    positions = [spawn, *route]
+    assert all(p.find("Orientation") is None for p in positions)
+    for key in ("roadId", "laneId", "s"):
+        assert len({p.attrib[key] for p in positions}) == 1
+    assert float(spawn.attrib["offset"]) == float(route[0].attrib["offset"]) == -PEDESTRIAN_START_Y_M
+    finish_y = CURB_STOP_Y_M if stops_at_curb else -PEDESTRIAN_START_Y_M
+    assert float(route[1].attrib["offset"]) == -finish_y
+    assert float(route[1].attrib["offset"]) < float(route[0].attrib["offset"])
+    assert all(p.find("Orientation") is None for p in root.findall(".//LanePosition") if float(p.attrib["offset"]))
+
+
 def test_runtime_copy_keeps_exported_file_unchanged(tmp_path: Path) -> None:
     source, target = tmp_path / "source.xosc", tmp_path / "runtime.xosc"
     original = export_xosc(read_spec(IR))
     source.write_text(original, encoding="utf-8")
-    prepare_runtime(source, target, tmp_path, "carla-0.9.16-xosc1")
+    assert SIMULATOR_SUFFIX == "-xosc2"
+    prepare_runtime(source, target, tmp_path, "carla-0.9.16-xosc2")
     assert source.read_text(encoding="utf-8") == original
     assert read_xosc(source) == read_xosc(target)
     properties = ET.parse(target).find(".//Controller/Properties")
     assert properties.find("Property[@name='xosc_file']").attrib["value"] == str(source.resolve())
-    assert properties.find("Property[@name='simulator_version']").attrib["value"] == "carla-0.9.16-xosc1"
+    assert properties.find("Property[@name='simulator_version']").attrib["value"] == "carla-0.9.16-xosc2"
     assert "PYTHONPATH" in environment(tmp_path)
 
 
@@ -81,6 +102,13 @@ def test_unrelated_xosc_is_rejected_by_the_result_recording_adapter(tmp_path: Pa
     path = tmp_path / "other.xosc"
     path.write_text("<OpenSCENARIO><ParameterDeclarations /></OpenSCENARIO>", encoding="utf-8")
     with pytest.raises(BundleError, match="vs_format"):
+        read_xosc(path)
+
+
+def test_old_geometry_xosc_requires_reexport_instead_of_running_as_xosc2(tmp_path: Path) -> None:
+    path = tmp_path / "old.xosc"
+    path.write_text(export_xosc(read_spec(IR)).replace("vehicsim.xosc/v2", "vehicsim.xosc/v1"), encoding="utf-8")
+    with pytest.raises(BundleError, match="xuất lại từ web"):
         read_xosc(path)
 
 

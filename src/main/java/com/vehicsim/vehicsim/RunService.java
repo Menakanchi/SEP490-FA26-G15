@@ -52,6 +52,7 @@ public class RunService {
     public static final double MAX_DURATION_S = 12.0;
 
     private static final int STOP_GRACE_S = 15;
+    private static final String XOSC_SUFFIX = "-xosc2";
     private static final java.util.concurrent.locks.ReentrantLock CARLA_LOCK = new java.util.concurrent.locks.ReentrantLock();
     private static final String COLLISION_ACTOR = "walker.pedestrian.0001";
 
@@ -124,7 +125,7 @@ public class RunService {
     /** Bộ mô phỏng mà cấu hình hiện tại chọn — dùng để lọc baseline cho regression. */
     public String configuredSimulator() {
         if ("carla".equals(props.simulator()) || "carla-xosc".equals(props.simulator())) {
-            return carlaSimulator(props.carlaVersion()) + ("carla-xosc".equals(props.simulator()) ? "-xosc1" : "");
+            return carlaSimulator(props.carlaVersion()) + ("carla-xosc".equals(props.simulator()) ? XOSC_SUFFIX : "");
         }
         return KINEMATIC_SIMULATOR;
     }
@@ -259,6 +260,9 @@ public class RunService {
         }
         try {
             Row run = db.first("SELECT * FROM simulation_runs WHERE id = ?", runId);
+            if (isCarla(run.str("simulator_version")) && run.str("simulator_version").endsWith("-xosc1")) {
+                throw new SimulatorException("run CARLA dùng -xosc1 đã cũ; tạo lượt chạy mới để dùng bản sửa người đi bộ " + XOSC_SUFFIX);
+            }
             Map<String, Object> bundle = bundleForRun(run);
             Map<String, Object> result = runWorker(run, bundle);
             tx.executeWithoutResult(status -> persist(run, result));
@@ -408,7 +412,7 @@ public class RunService {
             Path logPath = folder.resolve("simulator.log");
 
             Path input = bundlePath;
-            if (carla && run.str("simulator_version").endsWith("-xosc1")) {
+            if (carla && run.str("simulator_version").endsWith(XOSC_SUFFIX)) {
                 input = folder.resolve("scenario.xosc");
                 writeXosc(bundlePath, input);
             }
@@ -544,7 +548,7 @@ public class RunService {
         }
         Row variant = new Row(Json.obj("id", source.lng("scenario_version_id"), "scenario_ir_json", Json.write(source.json("run_config_json"))));
         List<Long> ids = createRuns(projectId, source.lng("scenario_id"), List.of(variant), source.lng("carla_vehicle_model_id"),
-                source.lng("aeb_version_id"), userId, "EVALUATION", null, null, carlaSimulator(props.carlaVersion()) + "-xosc1", source.lng("random_seed"));
+                source.lng("aeb_version_id"), userId, "EVALUATION", null, null, carlaSimulator(props.carlaVersion()) + XOSC_SUFFIX, source.lng("random_seed"));
         dispatch(ids);
         return ids.getFirst();
     }

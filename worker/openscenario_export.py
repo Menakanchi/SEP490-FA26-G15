@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -17,8 +16,8 @@ from vehicsim_core.aeb_stack import AebParams
 from vehicsim_core.bundle import BundleError, RunSpec, read_spec
 from vehicsim_core.simulator import CURB_STOP_Y_M, MAX_DURATION_S, PEDESTRIAN_START_Y_M
 
-FORMAT = "vehicsim.xosc/v1"
-SIMULATOR_SUFFIX = "-xosc1"
+FORMAT = "vehicsim.xosc/v2"
+SIMULATOR_SUFFIX = "-xosc2"
 # Town04 road 40: đoạn line dài 228 m, bốn làn phải, lane -4 ngoài cùng.
 # Dùng LanePosition để ScenarioRunner lấy đúng cao độ đường (đoạn này có dốc), không đặt WorldPosition phẳng.
 ROAD_ID = "40"
@@ -35,11 +34,11 @@ def number(value: float) -> str:
     return repr(float(value))
 
 
-def position(parent: ET.Element, along: float, left: float, heading: float | None = None) -> None:
-    lane = node(node(parent, "Position"), "LanePosition", roadId=ROAD_ID, laneId=LANE_ID,
-                s=number(START_S + along), offset=number(-left))
-    if heading is not None:
-        node(lane, "Orientation", type="relative", h=number(heading))
+def position(parent: ET.Element, along: float, left: float) -> None:
+    # ScenarioRunner 0.9.16 rotates Orientation before applying lane offset.
+    # Keep the road frame here; its pedestrian controller faces the next waypoint.
+    node(node(parent, "Position"), "LanePosition", roadId=ROAD_ID, laneId=LANE_ID,
+         s=number(START_S + along), offset=number(-left))
 
 
 def speed_action(parent: ET.Element, speed: float) -> None:
@@ -136,8 +135,7 @@ def export_xosc(spec: RunSpec) -> str:
     node(overrides, "Gear", number="0", active="false")
     speed_action(hero_init, spec.case.ego_speed_kmh / 3.6)
     ped_init = node(actions, "Private", entityRef="pedestrian")
-    position(node(node(ped_init, "PrivateAction"), "TeleportAction"), spec.case.crossing_x, PEDESTRIAN_START_Y_M,
-             math.pi / 2)
+    position(node(node(ped_init, "PrivateAction"), "TeleportAction"), spec.case.crossing_x, PEDESTRIAN_START_Y_M)
     speed_action(ped_init, 0)
 
     act = node(node(storyboard, "Story", name="PedestrianCrossing"), "Act", name="Crossing")
@@ -152,7 +150,7 @@ def export_xosc(spec: RunSpec) -> str:
     polyline = node(node(trajectory, "Shape"), "Polyline")
     finish_y = CURB_STOP_Y_M if spec.case.stops_at_curb else -PEDESTRIAN_START_Y_M
     for at, left in ((0, PEDESTRIAN_START_Y_M), (abs(finish_y - PEDESTRIAN_START_Y_M) / spec.case.pedestrian_speed_mps, finish_y)):
-        position(node(polyline, "Vertex", time=number(at)), spec.case.crossing_x, left, math.pi / 2)
+        position(node(polyline, "Vertex", time=number(at)), spec.case.crossing_x, left)
     node(node(follow, "TimeReference"), "None")
     node(follow, "TrajectoryFollowingMode", followingMode="position")
     condition = node(node(node(event, "StartTrigger"), "ConditionGroup"), "Condition", name="RelativeGap", delay="0", conditionEdge="rising")
@@ -178,6 +176,8 @@ def export_xosc(spec: RunSpec) -> str:
 def read_xosc(path: Path) -> RunSpec:
     root = ET.parse(path).getroot()
     values = {p.attrib["name"].removeprefix("vs_"): p.attrib["value"] for p in root.findall("./ParameterDeclarations/ParameterDeclaration")}
+    if values.get("format") == "vehicsim.xosc/v1":
+        raise BundleError("File .xosc v1 có hướng đi bộ cũ; cần xuất lại từ web để chạy người đi bộ băng ngang đường")
     if values.get("format") != FORMAT:
         raise BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)")
     try:

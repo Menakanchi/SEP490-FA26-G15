@@ -23,6 +23,7 @@ class CarlaWebTest {
     private Db db;
     private VehicSimProperties props;
     private RunService runs;
+    private TransactionTemplate tx;
     @TempDir Path directory;
 
     @BeforeEach
@@ -39,13 +40,14 @@ class CarlaWebTest {
         when(db.first(anyString(), any(Object[].class))).thenReturn(new Row(Json.obj("id", 42L, "scenario_id", 3L,
                 "scenario_version_id", 4L, "carla_vehicle_model_id", 5L, "aeb_version_id", 6L,
                 "random_seed", 123456L, "run_config_json", Json.write(Map.of("ego_speed_kmh", 40)))));
+        tx = mock(TransactionTemplate.class);
         runs = new RunService(db, mock(Queries.class), props, mock(TaskExecutor.class), mock(ApplicationEventPublisher.class),
-                mock(TransactionTemplate.class), mock(FamilyService.class));
+                tx, mock(FamilyService.class));
     }
 
     @Test
     void xoscProfileHasADifferentIdentityFromDirectCarla() {
-        assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16-xosc1");
+        assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16-xosc2");
         when(props.simulator()).thenReturn("carla");
         assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16");
     }
@@ -54,7 +56,7 @@ class CarlaWebTest {
     void carlaReplayKeepsOriginalVariantVehicleAebAndSeedWithoutCrossSimulatorBaselineLink() {
         assertThat(runs.runOnCarla(1, 42, 7)).isEqualTo(70);
         var call = mockingDetails(db).getInvocations().stream().filter(i -> i.getMethod().getName().equals("insert")).findFirst().orElseThrow();
-        assertThat(java.util.Arrays.asList(call.getArguments()).subList(1, 8)).containsExactly(1L, 3L, 4L, 5L, 6L, "CARLA", "carla-0.9.16-xosc1");
+        assertThat(java.util.Arrays.asList(call.getArguments()).subList(1, 8)).containsExactly(1L, 3L, 4L, 5L, 6L, "CARLA", "carla-0.9.16-xosc2");
         assertThat(call.getArguments()[11]).isNull(); // baseline_run_id chỉ dành cho cặp cùng simulator
         assertThat(call.getArguments()[13]).isEqualTo(123456L);
         verify(db).first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ?", 42L, 1L);
@@ -74,6 +76,25 @@ class CarlaWebTest {
         assertThatThrownBy(() -> runs.runOnCarla(1, 42, 7)).isInstanceOf(Vs.InvalidRequestException.class)
                 .hasMessageContaining("OpenSCENARIO");
         verify(db, never()).insert(anyString(), any(Object[].class));
+    }
+
+    @Test
+    void queuedOldXoscRunFailsBeforeBuildingBundleOrLaunchingWorker() {
+        when(tx.execute(any())).thenReturn(true);
+        doAnswer(call -> {
+            java.util.function.Consumer<org.springframework.transaction.TransactionStatus> callback = call.getArgument(0);
+            callback.accept(null);
+            return null;
+        }).when(tx).executeWithoutResult(any());
+        when(db.first("SELECT * FROM simulation_runs WHERE id = ?", 42L))
+                .thenReturn(new Row(Json.obj("id", 42L, "simulator_version", "carla-0.9.16-xosc1")));
+
+        runs.executeRun(42L);
+
+        verify(db).update(eq("UPDATE simulation_runs SET status = 'FAILED', error_message = ?, ended_at = ? WHERE id = ?"),
+                contains("-xosc1"), any(), eq(42L));
+        verify(props, never()).carlaCommand();
+        verify(db, never()).scalar(anyString(), any(Object[].class));
     }
 
     @Test
