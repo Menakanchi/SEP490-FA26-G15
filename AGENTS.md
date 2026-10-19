@@ -1,138 +1,134 @@
-# AGENTS.md — bản đồ cho agent và người mới vào repo
+# AGENTS.md — bàn giao VehicSim cho thành viên và AI agent
 
-File này là **bản đồ**, không phải cẩm nang: mỗi mục chỉ nói *ở đâu* và *luật
-nào không được phá*. Chi tiết nằm ở các link. Thứ gì không có trong repo thì
-agent coi như không tồn tại — quyết định, bài học, nợ kỹ thuật phải được viết vào
-`docs/`, không để trong chat hay Google Docs. `RepoDocsTest` (Java) giữ file
-này ngắn và giữ mọi link còn sống.
+Đọc file này trước khi sửa repo. Đây là bản đồ code, điểm nối và bất biến;
+chi tiết vận hành nằm ở [CLAUDE.md](CLAUDE.md). Hướng dẫn riêng cho frontend
+nằm ở [frontend/AGENTS.md](frontend/AGENTS.md). Không suy ra tính năng đã có
+chỉ từ tên màn hình, bảng DB hoặc tài liệu kế hoạch.
 
-## Repo này là gì
+## Dự án và trạng thái hiện tại
 
-VehicSim / VSOS (SEP490-FA26-G15): nền tảng mô phỏng và tối ưu AEB/FCW — Spring Boot (Java 21) + Next.js +
-lớp LLM + một database MySQL; **mô phỏng và chấm điểm chạy ở `worker/` Python** qua bundle JSON
-([ADR-039](docs/adr/ADR-039-backend-java-mo-phong-o-worker-python.md)). Backend FastAPI cũ nằm ở
-`src_python_backup/` (gitignore, chỉ để đối chiếu). Scenario Forge, dự án gốc mà repo dựng lên từ đó, đã gỡ ngày 04/10
-([ADR-032](docs/adr/ADR-032-go-scenario-forge-giu-bo-sinh-openscenario.md)); chỉ giữ bộ sinh OpenSCENARIO.
+VehicSim / VSOS (SEP490-FA26-G15) hỗ trợ kỹ sư kiểm thử, hiệu chỉnh AEB/FCW:
+tạo tình huống giả lập phanh, phân tích lỗi, tạo candidate và kiểm chứng bằng regression.
+Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (29 bảng) + Redis + worker Python**.
+Java xử lý REST/nghiệp vụ/DB; Python chạy mô phỏng, AEB và chấm kết quả (ADR-039).
+Backend FastAPI và Scenario Forge đã gỡ; không khôi phục kiến trúc cũ khi làm tính năng mới.
 
-| Phần | Làm gì | Code chính | Lưu trữ | Đọc trước |
-|---|---|---|---|---|
-| VehicSim MVP (nhánh `trungdam`, 09/2026) | Vòng AEB 6 bước: mô tả → biến thể → baseline → lỗi → candidate → regression → Reviewer quyết định; mô phỏng bằng bộ động học hoặc CARLA sau một hợp đồng JSON | `src/main/java/com/vehicsim/vehicsim/` (route + nghiệp vụ), `worker/vehicsim_core/` (AEB, bộ động học, luật chấm), `worker/{run_variant,kinematic_sim,sim_common}.py`, `frontend/src/app/{page.tsx,scenarios,aeb,analysis,validation}`, `frontend/src/components/VehicSim*` | MySQL 29 bảng + Redis | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
-| Xác thực | Đăng ký/quên mật khẩu bằng mã 6 số, JWT, hồ sơ | `src/main/java/com/vehicsim/{service,controller,security,config}/`, `frontend/src/app/{login,register,forgot-password,profile}` | MySQL `users/roles` (mỗi người một role) + Redis (OTP) | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#xác-thực) |
-| OpenSCENARIO + CARLA local | IR/bundle → `.xosc` CP_CROSSING tất định → ScenarioRunner 0.9.16 + AEB dùng chung; chạy và xem sensor trên web | `worker/{openscenario_export,run_xosc,vehicsim_aeb_control}.py`, `frontend/src/app/analysis/carla/` | Artifact theo run | [CARLA local](docs/vehicsim/carla-local.md) |
+Luồng mục tiêu 5 màn: **Thiết kế kịch bản → Baseline → Phân tích → Tối ưu AEB → Regression/Reviewer**.
+Code đã có mô tả, sinh biến thể, baseline, phân tích, candidate thủ công và regression;
+**MOBO/Pareto/Sensitivity/Robustness chưa triển khai** (TD-39, TD-06).
+CARLA web đã có `.xosc` + ScenarioRunner 0.9.16, RGB/sensor; **chưa có API/nút hủy** (TD-37).
+Schema có 7 category nhưng mô phỏng/xuất `.xosc` hiện chỉ hỗ trợ `CP_CROSSING` (TD-42).
+Perception CARLA dùng ground truth; vật lý phanh chưa hiệu chuẩn (TD-01, TD-17).
+Hướng đi ngang đã sửa ở xosc2; hành vi `stops_at_curb` còn thiếu bước dừng (TD-47).
 
-Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
-[vòng MVP](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md),
-[JSON → CARLA](docs/exec-plans/completed/2026-10-01-carla-variant-runner.md),
-[Trợ lý dự án — đã gỡ 06/10](docs/exec-plans/completed/2026-10-02-project-assistant.md),
-[database phủ đủ chức năng](docs/exec-plans/completed/2026-10-03-database-phu-du-chuc-nang.md),
-[gỡ Scenario Forge](docs/exec-plans/completed/2026-10-04-go-scenario-forge.md),
-[cấu hình xe để so sánh](docs/exec-plans/completed/2026-10-04-cau-hinh-xe.md),
-[role theo workspace](docs/exec-plans/completed/2026-10-05-role-theo-workspace.md),
-[5 role hệ thống, bỏ cấu hình xe và Meomeo](docs/exec-plans/completed/2026-10-06-nam-role-he-thong.md),
-[schema 29 bảng](docs/exec-plans/completed/2026-10-07-schema-29-bang.md),
-[bỏ phiên bản xe, Admin tạo workspace](docs/exec-plans/completed/2026-10-07-bo-phien-ban-xe.md),
-[rút scope: 4 tham số AEB, 3 mục tiêu MOBO, 7 category](docs/exec-plans/completed/2026-10-15-rut-scope-4-tham-so-aeb.md),
-[rà soát mã nguồn và vá bảo mật / công cụ](docs/exec-plans/completed/2026-10-15-ra-soat-ma-nguon.md).
+## Năm phần bàn giao theo chức năng
 
-## Chạy và tự kiểm chứng
+Mỗi phần bao gồm UI, API/service, dữ liệu và kiểm thử. Bảng dưới là ranh giới kỹ thuật;
+tên người, deadline, tiến độ thực tế nằm trên GitHub Issues/Project.
+Chi tiết chức năng và nghiệm thu: [phân chia 5 thành viên](docs/vehicsim/phan-chia-cong-viec-5-thanh-vien.md).
 
-| Việc | Lệnh |
+| Phần / màn chính | Điểm vào frontend | Code chính | Bàn giao sang bước sau |
+|---|---|---|---|
+| 1. Thiết kế kịch bản | `/scenarios/new` | `DescribeService`, `FamilyService`, `ScenarioRules`, `LlmService` | Họ kịch bản + biến thể hợp lệ |
+| 2. Chạy baseline | `/scenarios`, `/analysis/carla` | `RunService`; `worker/openscenario_export.py`, `run_xosc.py`, `sensor_recorder.py` | Run + seed + xe/AEB/simulator + kết quả/artifact |
+| 3. Phân tích lỗi | `/analysis/failures/**` | `ViewsService`, `TelemetryMetricsService`, `worker/vehicsim_core/evaluation.py` | Tập biến thể/seed đã chốt + baseline + chỉ số/nguyên nhân |
+| 4. Tối ưu AEB | `/aeb` | `AebService` hiện chỉ tạo candidate thủ công; service/worker tối ưu cần bổ sung | Candidate + campaign/trial + mục tiêu/ràng buộc |
+| 5. Regression và phê duyệt | `/validation/**` | `RegressionService`, views/recommendation/decision | Kết quả xác minh + quyết định; baseline mới nếu Accept |
+
+Các service trên ở [src/main/java/com/vehicsim/vehicsim/](src/main/java/com/vehicsim/vehicsim/).
+Phần 2 giữ cơ chế chạy chung; phần 3 giữ cách tính chỉ số; phần 4 tìm tham số;
+phần 5 xác minh độc lập. Màn sau nhận ID và tự tải dữ liệu từ màn trước.
+Tập tối ưu/regression phải giữ cả ca an toàn để kiểm tra phanh oan.
+Phối hợp khi sửa `VehicSimController`, `Queries`, `ViewsService`, schema, API client,
+`vehicsimFlow.ts` và khung UI; không tạo cơ chế chạy/chấm điểm riêng cho từng màn.
+
+## Nguồn sự thật và tài liệu cần đọc
+
+| Cần biết | Nguồn |
 |---|---|
-| Bật toàn bộ app (Windows) | `scripts\dev-up.cmd` — Docker + Java `:8001` + frontend `:3000`; dùng `.xosc`/CARLA: `scripts\setup-carla.ps1` rồi `scripts\dev-carla.ps1 -RestartBackend` |
-| Chỉ backend | `./mvnw spring-boot:run` (đọc `.env` ở thư mục gốc); Swagger: `http://localhost:8001/swagger-ui.html` |
-| Tạo admin | `python scripts/create_admin.py --email <email> --seed` (đăng ký qua API rồi đổi role bằng SQL; cần backend đang chạy) |
-| Seed project VehicSim | ADMIN gọi `POST /api/v1/vehicsim/bootstrap` (idempotent) |
-| Gate backend | `./mvnw clean test` · lõi mô phỏng: `python -m pytest worker/tests` · cả ba cổng (+ frontend): `make check`, giống `.github/workflows/ci.yml` |
-| Gate frontend (**chưa có trong CI**, chạy tay) | `cd frontend && npm run lint && npx tsc --noEmit && npx next build` |
-| Chạy artifact | `.xosc`: `worker\.venv-carla\Scripts\python worker/run_xosc.py <file>.xosc --camera`; bundle nội bộ: `python worker/kinematic_sim.py <file>.json` |
+| Kiến trúc, API, bất biến và máy kiểm | [architecture.md](docs/vehicsim/architecture.md) — phần tên Python cũ chỉ là lịch sử; ưu tiên code Java hiện tại |
+| Schema và ý nghĩa dữ liệu | [01_schema.sql](database/mysql/01_schema.sql), [database-schema.md](docs/vehicsim/database-schema.md) |
+| Quyết định đã chốt và quy trình ADR | [ADR index](docs/adr/README.md); [ADR-039](docs/adr/ADR-039-backend-java-mo-phong-o-worker-python.md), [ADR-040](docs/adr/ADR-040-rut-scope-4-tham-so-aeb-7-category.md) |
+| CARLA local và hợp đồng `.xosc` | [carla-local.md](docs/vehicsim/carla-local.md); [bằng chứng sửa hướng đi](docs/exec-plans/completed/2026-10-19-sua-huong-nguoi-di-bo-carla.md) |
+| Bắt đầu tối ưu | [Ý tưởng FE-13](docs/vehicsim/fe13-y-tuong-tu-forge.md) — đối chiếu ADR-040; tên module/Celery/10 tham số trong lịch sử đã cũ |
+| Việc còn thiếu | [tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) |
+| Việc đã làm và bằng chứng | [completed plans](docs/exec-plans/completed/), [kế hoạch đang làm](docs/exec-plans/active/) |
 
-- Gặp `Unresolved compilation problem` / `ClassFormatError` khi chạy backend: IDE đã ghi `.class` hỏng vào `target/` —
-  chạy `./mvnw clean` rồi build lại.
-- Gọi LLM thật tốn tiền: test Java dùng máy chủ giả (`DescribeServiceTest`); đừng thêm test gọi provider thật.
-- Mô phỏng chạy ở thread pool của backend (`VEHICSIM_RUN_MODE=inline` để chạy ngay trong request khi thử), mỗi run là một
-  tiến trình `worker/kinematic_sim.py`; máy phải có Python ≥ 3.10 (`VEHICSIM_WORKER_PYTHON`).
-- Đồ thị code (graphify, tuỳ chọn, chỉ nằm trên máy dựng nó vì `graphify-out/` bị gitignore):
-  `graphify update .` dựng lại (AST, không tốn token), `graphify query "<câu hỏi>"` thay cho
-  đọc nhiều file. Không có đồ thị thì cứ đọc code như bình thường.
-- Sửa UI thì phải nhìn UI: chạy app, đăng nhập, chụp màn hình bằng trình duyệt
-  headless và so với Figma trước khi báo xong (cách làm ở exec plan §Kiểm chứng).
+Đồ thị `graphify-out/` là tùy chọn, bị gitignore; chỉ tin khi khớp code hiện tại.
+Có graph phù hợp thì `graphify query "<câu hỏi>"`; không có thì đọc code trực tiếp.
+Khi người dùng gọi `/graphify`, đọc skill graphify đã cài trước khi thực hiện.
 
-## Bản đồ tài liệu
+## Chạy và kiểm chứng
 
-| Cần biết | Đọc |
+Yêu cầu: Docker Desktop, JDK 21, Python ≥ 3.10 và Node.js 22 (khớp CI).
+CARLA Windows dùng Python 3.12/venv riêng; cấu hình mẫu ở [.env.example](.env.example).
+Các lệnh dưới chạy từ gốc repo, trừ lệnh ghi rõ frontend.
+
+| Việc | Lệnh / hành vi |
 |---|---|
-| Kiến trúc VehicSim: module, luồng dữ liệu, API, bất biến ↔ test | [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md) |
-| Vì sao chọn X thay vì Y | [docs/adr/README.md](docs/adr/README.md) — VehicSim: ADR-023 → ADR-040; ADR-001 → 022 là lịch sử Forge |
-| Đã làm gì, quyết định lúc nào, kiểm chứng ra sao | [docs/exec-plans/completed/](docs/exec-plans/completed/2026-09-30-vehicsim-mvp-loop.md) |
-| Còn thiếu gì, nợ gì | [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) |
-| Schema MySQL (nguồn sự thật của DB VehicSim) | [database/mysql/01_schema.sql](database/mysql/01_schema.sql) |
-| Từng bảng/cột nghĩa là gì, ai ghi, dữ liệu JSON, lệch đã biết | [docs/vehicsim/database-schema.md](docs/vehicsim/database-schema.md) |
-| Làm FE-13 (tối ưu, dò ranh giới lỗi, active learning) — bắt đầu từ đâu | [docs/vehicsim/fe13-y-tuong-tu-forge.md](docs/vehicsim/fe13-y-tuong-tu-forge.md) |
-| Bẫy khi chạy CARLA / ScenarioRunner thật | [CLAUDE.md](CLAUDE.md) |
-| Quy ước Next.js 16 của frontend (khác bản cũ) | [frontend/AGENTS.md](frontend/AGENTS.md) |
+| Chuẩn bị | Sao chép `.env.example` thành `.env` nếu chưa có; `cd frontend`, `npm ci`; xem [CLAUDE.md](CLAUDE.md) |
+| Toàn bộ app Windows | `scripts\dev-up.cmd` → MySQL/Redis, Java `:8001`, frontend `:3000` |
+| Chỉ backend | `.\mvnw.cmd spring-boot:run`; Swagger dev `http://localhost:8001/swagger-ui.html` |
+| CARLA Windows | `.\scripts\setup-carla.ps1` một lần; mỗi phiên `.\scripts\dev-carla.ps1 -RestartBackend` |
+| Tài khoản / seed | Backend đang chạy: `python scripts/create_admin.py --email <email> --seed`; bootstrap chỉ ADMIN |
+| Backend | `.\mvnw.cmd -B clean test` |
+| Worker | `python -m ruff check worker`; `python -m pytest worker/tests -q` |
+| Frontend | Trong `frontend`: `npm run lint`, `npx tsc --noEmit`, `npx next build` |
+| CI / tổng hợp | [ci.yml](.github/workflows/ci.yml) chạy cả ba phần; `make check` gom ba cổng; CI thêm `npm audit --omit=dev --audit-level=high` |
+| Chỉ kiểm tài liệu | `.\mvnw.cmd -B -Dtest=RepoDocsTest test` |
+| Chạy artifact `.xosc` | `worker\.venv-carla\Scripts\python.exe worker/run_xosc.py <file>.xosc --camera` |
 
-## Luật cứng — có máy kiểm, phá là test/CI đỏ
+Test Java/worker không cần Docker, CARLA hoặc khóa LLM. Không thêm test gọi provider thật.
+Nếu gặp `Unresolved compilation problem`/`ClassFormatError`, IDE có thể đã ghi class hỏng:
+chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua thread pool Java;
+`VEHICSIM_RUN_MODE=inline` dành cho thử nhanh, `VEHICSIM_WORKER_PYTHON` chọn Python.
 
-> **Sau ADR-039 (14/10) và TD-33 (15/10):** luật 1, 2, 3, 5, 7 có test Java (`src/test/java`, không cần MySQL/Redis nên chạy
-> trong CI); luật 4, 6, 8 có test ở `worker/tests/`. Còn thiếu máy kiểm Java: phần "ghép kết quả động học với CARLA" của luật 9
-> (bộ sinh `.xosc` offline đã có `test_xosc_export_is_offline_stdlib_only_and_python310`). Bảng đầy đủ: [architecture.md](docs/vehicsim/architecture.md#bất-biến-và-máy-kiểm).
+## Bất biến phải giữ khi nhận và sửa code
 
-1. Mọi lời gọi LLM đi qua `LlmService`; không file Java nào khác nhắc tới provider
-   (`ArchitectureRulesTest#onlyLlmServiceKnowsTheLlmProviders`); bộ sinh `.xosc` không gọi LLM (`test_xosc_export_is_offline_stdlib_only_and_python310`).
-2. Backend Java và `worker/vehicsim_core/` không import `carla` (`ArchitectureRulesTest#javaBackendNeverTouchesCarlaApi`,
-   `ArchitectureRulesTest#simulationCoreNeverImportsCarla`); CARLA chỉ ở worker (runner, controller adapter, sensor).
-3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập; mỗi người một role (ADR-035): ADMIN / ENGINEER /
-   EXPERIENCER được ghi, MANAGER chỉ đọc, **chỉ REVIEWER** Accept / Reject — người làm không tự duyệt
-   (`VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite`,
-   `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`). Lọc project theo workspace chưa làm — TD-30.
-4. Cùng biến thể + cùng seed ⇒ cùng kết quả mô phỏng (`test_same_seed_gives_identical_run`); candidate luôn chạy lại **đúng
-   seed** của run baseline (chưa có test Java — TD-33).
-5. Không bao giờ tự Accept: test FAILED không Accept được, quyết định cần lý do +
-   xác nhận, baseline đã đổi thì không Accept test cũ (`RegressionDecisionTest`; bảng bất biến đầy đủ ở
-   [docs/vehicsim/architecture.md](docs/vehicsim/architecture.md#bất-biến-và-máy-kiểm)).
-6. 4 tham số AEB chỉnh được (ADR-040): seed Java khớp seed SQL và mỗi mã là một trường của `AebParams`
-   (`test_java_parameter_seed_matches_sql_seed`, `test_every_seeded_parameter_is_used_by_the_simulator`); sáu tham số
-   còn lại là hằng số trong `aeb_stack.py`, không nằm ở DB.
-7. Không lộ email có tồn tại hay không; mã OTP lưu dạng hash, dùng một lần
-   (`AuthPrivacyTest`).
-8. Một AEB cho mọi bộ mô phỏng: logic AEB chỉ ở `worker/vehicsim_core/aeb_stack.py`; lõi
-   mô phỏng chỉ dùng thư viện chuẩn + cú pháp 3.10 để venv CARLA import được
-   (`test_sim_core_is_stdlib_only_and_python310`,
-   `test_runner_reuses_the_kinematic_aeb_and_result_builders`).
-9. Regression không bao giờ ghép kết quả động học với CARLA (chưa có test Java — TD-33); JSON tải từ web chạy lại ra đúng
-   kết quả (`test_bundle_round_trip_reproduces_the_same_run`; riêng run cũ của v1.3 không còn tái lập — TD-40).
+1. Mọi lời gọi LLM qua `LlmService`; bộ sinh `.xosc` offline, không dùng LLM.
+2. Java và `worker/vehicsim_core/` không import `carla`; adapter CARLA chỉ ở worker.
+3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập. Mỗi tài khoản một role:
+   ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ đọc; chỉ REVIEWER Accept/Reject.
+   Cách ly project/workspace chưa hoàn thiện (TD-30); không giả định mọi người có dữ liệu riêng.
+4. Cùng biến thể + seed phải tái lập được; candidate chạy đúng seed baseline.
+   So sánh phải cùng xe, biến thể và phiên bản simulator.
+   Không đổi tham số kịch bản và tham số AEB cùng lúc trong một lần so sánh.
+5. Không tự Accept; test FAILED không Accept; quyết định cần lý do và xác nhận.
+   Baseline đã đổi thì không Accept kết quả test cũ. Pareto không đồng nghĩa regression PASSED.
+6. Chỉ 4 tham số AEB chỉnh được theo ADR-040; seed Java/SQL khớp `AebParams`.
+   Ba mục tiêu: RMS jerk, vận tốc va chạm, quãng phanh dừng; thống nhất ràng buộc tối ưu/regression.
+7. Không lộ email tồn tại; OTP hash, dùng một lần; mật khẩu tối đa 72 byte BCrypt.
+8. Logic AEB chỉ ở `worker/vehicsim_core/aeb_stack.py`, dùng chung cho mọi bộ mô phỏng.
+   Lõi dùng thư viện chuẩn, cú pháp Python 3.10 để venv CARLA import được.
+9. Regression không ghép động học với CARLA. Bundle nội bộ tải ra phải tái lập
+   được kết quả trong phiên bản tương ứng; run cũ không tái lập xem TD-40.
 
-## Luật mềm — chưa có máy kiểm, reviewer phải canh
+Các quy tắc bổ sung (giữ số 1–9 để khớp bảng bất biến trong tài liệu kiến trúc):
 
-- Không ghi "AI đã sửa xe" hay ngụ ý chứng nhận an toàn. Khuyến nghị luôn cần Reviewer quyết định.
-- Màn/chỉ số chưa có dữ liệu thật thì để mờ kèm lý do, trả `NOT_RUN` — không vẽ
-  tick xanh giả (Robustness, Pareto, Sensitivity, Chase cam/RGB/LiDAR).
-- Tham số kịch bản và tham số AEB không đổi cùng lúc trong một lần so sánh.
-- Đổi `aeb_stack.py` hoặc `simulator.py` mà kết quả động học đổi thì phải đổi tên bộ mô
-  phỏng (`KINEMATIC_SIMULATOR` trong `bundle.py`) để run cũ không bị ghép với run mới.
-- Số đo từ CARLA chưa hiệu chuẩn phanh (TD-17): dùng để quan sát/đối chiếu, không ghi
-  làm bằng chứng regression trong báo cáo.
-- Trigger kịch bản là tương đối (khoảng cách/TTC), không dùng thời gian tuyệt đối.
-- Đổi schema MySQL: sửa `database/mysql/01_schema.sql`, câu SQL trong `Queries` / service (nếu
-  code dùng cột đó), [database-schema.md](docs/vehicsim/database-schema.md) **và** thêm file
-  đánh số vào `database/mysql/migrations/` cho DB đang chạy — cùng một PR. Không
-  `docker compose down -v` trên máy người khác.
-- Giao diện tiếng Việt, DB/API tiếng Anh: câu backend được dịch ở tầng hiển thị trong
-  `frontend/src/components/vehicsimI18n.ts` — đổi câu chữ backend thì sửa mẫu ở đó (TD-08).
-- Trang nằm thẳng trong `frontend/src/app/` và tự vào khung `VehicSimShell` (cần đăng nhập);
-  trang không cần đăng nhập thì thêm vào `STANDALONE_PATHS`
-  (`frontend/src/components/AppLayoutWrapper.tsx`).
-- `.env` không bao giờ vào git; `.env.example` chỉ chứa giá trị mẫu.
-- App mở đăng ký công khai và mọi người tự đăng ký đều ghi được vào project chung (TD-30): mọi thao tác tốn tài nguyên (tạo họ, candidate,
-  regression, chạy) phải qua hạn mức theo người dùng (`VehicSimController.limitWrites`, `RunService.checkActiveRunQuota`). CORS chỉ cho
-  origin trong `CORS_ORIGINS` (không `*`); Swagger tắt ở `APP_ENV=production`; mật khẩu tối đa 72 byte (BCrypt).
+- Đổi kết quả của `aeb_stack.py`/`simulator.py` phải đồng bộ `KINEMATIC_SIMULATOR`
+   trong `bundle.py` và `RunService` sang phiên bản mới.
+   Đổi hợp đồng/hành vi CARLA cũng phải tách identity và bảo toàn bằng chứng run cũ.
+- Trigger theo khoảng cách/TTC tương đối. Số CARLA chưa hiệu chuẩn chỉ để quan sát/đối chiếu;
+   không tuyên bố chứng nhận an toàn hoặc “AI đã sửa xe”.
+- Không có dữ liệu thật thì để mờ kèm lý do hoặc `NOT_RUN`; không tạo tick/chỉ số giả.
+- UI tiếng Việt, DB/API tiếng Anh; đổi câu backend phải cập nhật mẫu `vehicsimI18n.ts`.
+    Trang trong `frontend/src/app/` vào `VehicSimShell`; trang công khai khai báo ở `STANDALONE_PATHS`.
+- Đổi schema phải sửa `01_schema.sql`, SQL trong `Queries`/service liên quan,
+    `database-schema.md` và thêm migration đánh số trong `database/mysql/migrations/` cùng thay đổi.
+    Không xóa volume bằng `docker compose down -v`; không ghi đè DB/xe đã có run khi chưa có yêu cầu.
+- Không commit `.env`, khóa/token hoặc artifact `data/`; `.env.example` chỉ chứa giá trị mẫu.
+- Thao tác tạo họ/candidate/regression/chạy phải qua hạn mức `limitWrites`/`checkActiveRunQuota`.
+    CORS chỉ origin cấu hình, không `*`; production tắt Swagger, không ghi OTP vào log.
 
-## Khi làm việc
+Máy kiểm và phần còn thiếu ở [bảng bất biến](docs/vehicsim/architecture.md#bất-biến-và-máy-kiểm).
+`RepoDocsTest` giữ file này ≤150 dòng, link và tên test còn sống; không nới test để hợp thức hóa tài liệu.
 
-- Đổi một quyết định đã Accepted → viết ADR mới, supersede ADR cũ (luật ở
-  [docs/adr/README.md](docs/adr/README.md)).
-- Việc nhiều bước → exec plan ở `docs/exec-plans/active/`; xong thì chuyển sang
-  `completed/` kèm bằng chứng kiểm chứng.
-- Thấy nợ mà không sửa trong PR này → thêm một dòng vào
-  [tech-debt-tracker](docs/exec-plans/tech-debt-tracker.md).
-- Owner, deadline, tiến độ theo ngày → GitHub Issues/Project, không ghi vào docs.
+## Quy trình bàn giao thay đổi
+
+- Đọc hướng dẫn trong thư mục đang sửa; xem diff và thay đổi có sẵn trước khi bắt đầu.
+- Thay đổi nhiều bước có exec plan ở `docs/exec-plans/active/`; xong chuyển `completed/` kèm bằng chứng.
+- Đổi quyết định Accepted phải có ADR mới supersede; nợ chưa sửa ghi vào tech-debt tracker.
+- Kiểm tra đúng phần bị ảnh hưởng; sửa UI phải chạy app, đăng nhập, chụp màn hình và đối chiếu Figma.
+  Nếu không truy cập được thiết kế thì ghi rõ giới hạn kiểm chứng, không tuyên bố đã đối chiếu.
+- Bàn giao kèm phạm vi, API/dữ liệu thay đổi, migration nếu có, lệnh kiểm chứng và phần chưa hoàn thành.
+- Không chạm dữ liệu cá nhân, cấu hình máy hoặc thay đổi của thành viên khác ngoài phạm vi công việc.
