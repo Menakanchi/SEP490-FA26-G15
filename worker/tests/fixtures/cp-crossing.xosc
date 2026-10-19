@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="0" date="2026-10-18T00:00:00" description="VehicSim CP_CROSSING" author="VehicSim" />
+  <ParameterDeclarations>
+    <ParameterDeclaration name="vs_format" parameterType="string" value="vehicsim.xosc/v1" />
+    <ParameterDeclaration name="vs_seed" parameterType="string" value="0" />
+    <ParameterDeclaration name="vs_ego_speed_kmh" parameterType="string" value="40.0" />
+    <ParameterDeclaration name="vs_trigger_distance_m" parameterType="string" value="25.0" />
+    <ParameterDeclaration name="vs_pedestrian_speed_mps" parameterType="string" value="3.0" />
+    <ParameterDeclaration name="vs_stops_at_curb" parameterType="string" value="false" />
+    <ParameterDeclaration name="vs_weather" parameterType="string" value="RAIN" />
+    <ParameterDeclaration name="vs_time_of_day" parameterType="string" value="NIGHT" />
+    <ParameterDeclaration name="vs_friction" parameterType="string" value="" />
+    <ParameterDeclaration name="vs_vehicle_length_m" parameterType="string" value="4.75" />
+    <ParameterDeclaration name="vs_vehicle_width_m" parameterType="string" value="1.93" />
+    <ParameterDeclaration name="vs_vehicle_max_brake_decel_mps2" parameterType="string" value="9.5" />
+    <ParameterDeclaration name="vs_vehicle_name" parameterType="string" value="" />
+    <ParameterDeclaration name="vs_aeb_label" parameterType="string" value="v1.0 (mặc định)" />
+    <ParameterDeclaration name="vs_blueprint" parameterType="string" value="vehicle.audi.etron" />
+    <ParameterDeclaration name="vs_carla_configured" parameterType="string" value="false" />
+    <ParameterDeclaration name="vs_TTC_THRESHOLD" parameterType="string" value="1.5" />
+    <ParameterDeclaration name="vs_BRAKE_ACTIVATION_DELAY" parameterType="string" value="0.15" />
+    <ParameterDeclaration name="vs_MAX_DECELERATION" parameterType="string" value="8.0" />
+    <ParameterDeclaration name="vs_BRAKE_BUILDUP_RATE" parameterType="string" value="20.0" />
+    <ParameterDeclaration name="vs_done" parameterType="double" value="0" />
+  </ParameterDeclarations>
+  <CatalogLocations />
+  <RoadNetwork>
+    <LogicFile filepath="Town04" />
+    <SceneGraphFile filepath="" />
+  </RoadNetwork>
+  <Entities>
+    <ScenarioObject name="hero">
+      <Vehicle name="vehicle.audi.etron" vehicleCategory="car">
+        <ParameterDeclarations />
+        <BoundingBox>
+          <Center x="0" y="0" z="0.9" />
+          <Dimensions width="1.93" length="4.75" height="1.8" />
+        </BoundingBox>
+        <Performance maxSpeed="70" maxAcceleration="200" maxDeceleration="9.5" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" wheelDiameter="0.6" trackWidth="1.8" positionX="3.1" positionZ="0.3" />
+          <RearAxle maxSteering="0" wheelDiameter="0.6" trackWidth="1.8" positionX="0" positionZ="0.3" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="ego_vehicle" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="pedestrian">
+      <Pedestrian name="walker.pedestrian.0001" model="walker.pedestrian.0001" mass="75" pedestrianCategory="pedestrian">
+        <ParameterDeclarations />
+        <BoundingBox>
+          <Center x="0" y="0" z="0.9" />
+          <Dimensions width="0.6" length="0.6" height="1.8" />
+        </BoundingBox>
+        <Properties>
+          <Property name="type" value="simulation" />
+        </Properties>
+      </Pedestrian>
+    </ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Init>
+      <Actions>
+        <GlobalAction>
+          <EnvironmentAction>
+            <Environment name="VehicSim">
+              <TimeOfDay animation="false" dateTime="2026-10-18T00:00:00" />
+              <Weather cloudState="overcast">
+                <Sun intensity="1" azimuth="0" elevation="-0.7" />
+                <Fog visualRange="100000" />
+                <Precipitation precipitationType="rain" intensity="0.5" />
+              </Weather>
+              <RoadCondition frictionScaleFactor="0.7" />
+            </Environment>
+          </EnvironmentAction>
+        </GlobalAction>
+        <Private entityRef="hero">
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <LanePosition roadId="40" laneId="-4" s="17.625" offset="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="VehicSimAEB">
+                  <Properties>
+                    <Property name="module" value="vehicsim_aeb_control" />
+                    <Property name="xosc_file" value="" />
+                    <Property name="out_dir" value="" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle value="0" active="false" />
+                <Brake value="0" active="false" />
+                <Clutch value="0" active="false" />
+                <ParkingBrake value="0" active="false" />
+                <SteeringWheel value="0" active="false" />
+                <Gear number="0" active="false" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0" dynamicsDimension="time" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="11.11111111111111" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="pedestrian">
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <LanePosition roadId="40" laneId="-4" s="61.666666666666664" offset="3.6">
+                  <Orientation type="relative" h="1.5707963267948966" />
+                </LanePosition>
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0" dynamicsDimension="time" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="0.0" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+      </Actions>
+    </Init>
+    <Story name="PedestrianCrossing">
+      <Act name="Crossing">
+        <ManeuverGroup name="Pedestrian" maximumExecutionCount="1">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="pedestrian" />
+          </Actors>
+          <Maneuver name="Cross">
+            <Event name="StartCrossing" priority="overwrite">
+              <Action name="Walk">
+                <PrivateAction>
+                  <LongitudinalAction>
+                    <SpeedAction>
+                      <SpeedActionDynamics dynamicsShape="step" value="0" dynamicsDimension="time" />
+                      <SpeedActionTarget>
+                        <AbsoluteTargetSpeed value="3.0" />
+                      </SpeedActionTarget>
+                    </SpeedAction>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+              <Action name="CrossRoad">
+                <PrivateAction>
+                  <RoutingAction>
+                    <FollowTrajectoryAction>
+                      <Trajectory name="CrossingPath" closed="false">
+                        <Shape>
+                          <Polyline>
+                            <Vertex time="0.0">
+                              <Position>
+                                <LanePosition roadId="40" laneId="-4" s="61.666666666666664" offset="3.6">
+                                  <Orientation type="relative" h="1.5707963267948966" />
+                                </LanePosition>
+                              </Position>
+                            </Vertex>
+                            <Vertex time="2.4">
+                              <Position>
+                                <LanePosition roadId="40" laneId="-4" s="61.666666666666664" offset="-3.6">
+                                  <Orientation type="relative" h="1.5707963267948966" />
+                                </LanePosition>
+                              </Position>
+                            </Vertex>
+                          </Polyline>
+                        </Shape>
+                      </Trajectory>
+                      <TimeReference>
+                        <None />
+                      </TimeReference>
+                      <TrajectoryFollowingMode followingMode="position" />
+                    </FollowTrajectoryAction>
+                  </RoutingAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="RelativeGap" delay="0" conditionEdge="rising">
+                    <ByEntityCondition>
+                      <TriggeringEntities triggeringEntitiesRule="any">
+                        <EntityRef entityRef="hero" />
+                      </TriggeringEntities>
+                      <EntityCondition>
+                        <DistanceCondition value="27.375" freespace="false" alongRoute="false" rule="lessThan">
+                          <Position>
+                            <LanePosition roadId="40" laneId="-4" s="61.666666666666664" offset="0.0" />
+                          </Position>
+                        </DistanceCondition>
+                      </EntityCondition>
+                    </ByEntityCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="HoldMeasurement" priority="parallel">
+              <Action name="Hold">
+                <PrivateAction>
+                  <LongitudinalAction>
+                    <SpeedAction>
+                      <SpeedActionDynamics dynamicsShape="step" value="0" dynamicsDimension="time" />
+                      <SpeedActionTarget>
+                        <AbsoluteTargetSpeed value="0.0" />
+                      </SpeedActionTarget>
+                    </SpeedAction>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="HoldUntilEnd" delay="0" conditionEdge="rising">
+                    <ByValueCondition>
+                      <SimulationTimeCondition value="13.0" rule="greaterThan" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <StartTrigger>
+          <ConditionGroup>
+            <Condition name="Start" delay="0" conditionEdge="rising">
+              <ByValueCondition>
+                <SimulationTimeCondition value="0.0" rule="greaterThan" />
+              </ByValueCondition>
+            </Condition>
+          </ConditionGroup>
+        </StartTrigger>
+        <StopTrigger>
+          <ConditionGroup>
+            <Condition name="End" delay="0" conditionEdge="rising">
+              <ByValueCondition>
+                <SimulationTimeCondition value="12.0" rule="greaterThan" />
+              </ByValueCondition>
+            </Condition>
+          </ConditionGroup>
+          <ConditionGroup>
+            <Condition name="MeasurementComplete" delay="0" conditionEdge="rising">
+              <ByValueCondition>
+                <ParameterCondition parameterRef="vs_done" value="1" rule="equalTo" />
+              </ByValueCondition>
+            </Condition>
+          </ConditionGroup>
+        </StopTrigger>
+      </Act>
+    </Story>
+    <StopTrigger>
+      <ConditionGroup>
+        <Condition name="criteria_CollisionTest" delay="0" conditionEdge="rising">
+          <ByValueCondition>
+            <ParameterCondition parameterRef="" value="" rule="lessThan" />
+          </ByValueCondition>
+        </Condition>
+      </ConditionGroup>
+    </StopTrigger>
+  </Storyboard>
+</OpenSCENARIO>

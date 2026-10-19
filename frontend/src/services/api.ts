@@ -76,13 +76,21 @@ export class ApiError extends Error {
 }
 
 /** Tải file (CSV…) từ API có kèm token rồi cho trình duyệt lưu. */
-export async function apiDownload(path: string, filename: string): Promise<void> {
+export async function apiBlob(path: string, options?: RequestInit): Promise<Blob> {
   const token = getStoredToken();
+  const headers = new Headers(options?.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (options?.body) headers.set("Content-Type", "application/json");
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    ...options,
+    headers,
   });
   if (!res.ok) throw new ApiError(`API ${res.status}: ${res.statusText}`, res.status);
-  const url = URL.createObjectURL(await res.blob());
+  return res.blob();
+}
+
+export async function apiDownload(path: string, filename: string, options?: RequestInit): Promise<void> {
+  const url = URL.createObjectURL(await apiBlob(path, options));
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;

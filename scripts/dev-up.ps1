@@ -6,10 +6,12 @@ Start VehicSim locally on Windows:
 
 Each service opens in its own PowerShell window; close the window to stop it.
 Services that are already running are skipped, so running this twice is safe.
+Use -Hidden to start service windows in the background (used by dev-carla.ps1).
 Usage: double-click scripts\dev-up.cmd, or
        powershell -ExecutionPolicy Bypass -File scripts\dev-up.ps1
 (ASCII only on purpose: Windows PowerShell 5.1 misreads UTF-8 without BOM.)
 #>
+param([switch]$Hidden)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -33,7 +35,8 @@ function Start-Window([string]$title, [string]$dir, [string]$command) {
     $script = "`$host.UI.RawUI.WindowTitle = '$title'; Set-Location '$dir'; $command"
     $bytes = [System.Text.Encoding]::Unicode.GetBytes($script)
     $encoded = [Convert]::ToBase64String($bytes)
-    Start-Process powershell -WorkingDirectory $dir -ArgumentList '-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded | Out-Null
+    $serviceWindowStyle = if ($Hidden) { 'Hidden' } else { 'Normal' }
+    Start-Process powershell -WorkingDirectory $dir -WindowStyle $serviceWindowStyle -ArgumentList '-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded | Out-Null
     Write-Host "  started: $title"
 }
 

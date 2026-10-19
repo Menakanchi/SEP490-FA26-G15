@@ -73,7 +73,7 @@ app:
 
 # Vòng MVP VehicSim: mô phỏng chạy ở worker/ (Python) qua bundle JSON -> result.json. Tên biến giữ như backend cũ.
 vehicsim:
-  simulator: ${VEHICSIM_SIMULATOR:kinematic}          # kinematic | carla (carla cần VEHICSIM_CARLA_COMMAND)
+  simulator: ${VEHICSIM_SIMULATOR:kinematic}          # kinematic | carla | carla-xosc (CARLA cần VEHICSIM_CARLA_COMMAND)
   carla-command: ${VEHICSIM_CARLA_COMMAND:}           # JSON list, vd. ["python","worker/run_variant.py","--map","Town05"]
   carla-version: ${VEHICSIM_CARLA_VERSION:0.9.15}
   data-root: ${VEHICSIM_DATA_ROOT:./data/vehicsim}

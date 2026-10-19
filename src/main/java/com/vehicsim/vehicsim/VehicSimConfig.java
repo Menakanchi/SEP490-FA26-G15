@@ -16,7 +16,7 @@ public class VehicSimConfig {
     /** CARLA chỉ có một server/GPU nên luôn chạy lần lượt; bộ động học nhẹ nên chạy song song. */
     @Bean(name = "simulationExecutor")
     public TaskExecutor simulationExecutor(VehicSimProperties props) {
-        int size = "carla".equals(props.simulator()) ? 1 : Math.max(1, props.runConcurrency());
+        int size = "carla".equals(props.simulator()) || "carla-xosc".equals(props.simulator()) ? 1 : Math.max(1, props.runConcurrency());
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(size);
         executor.setMaxPoolSize(size);

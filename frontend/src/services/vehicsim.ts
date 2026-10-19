@@ -3,9 +3,12 @@
  * Mọi request đi qua `apiRequest`, nên tự mang `Authorization: Bearer`.
  */
 
-import { apiDownload, apiRequest } from "@/services/api";
+import { apiBlob, apiDownload, apiRequest } from "@/services/api";
 import type {
   AebVersion,
+  CarlaStatus,
+  CarlaRun,
+  CarlaData,
   DescribeResult,
   FailureDetail,
   FailureFilters,
@@ -60,9 +63,18 @@ export const vehicsimApi = {
   exportFailures: (filters: FailureFilters) => apiDownload(`/vehicsim/failures.csv${query(filters)}`, "failure_cases.csv"),
   run: (runId: number) => apiRequest<FailureDetail>(`/vehicsim/runs/${runId}`),
   playback: (runId: number) => apiRequest<Playback>(`/vehicsim/runs/${runId}/playback`),
-  /** JSON chạy lại đúng run này ngoài web: `worker/run_variant.py` (CARLA) hoặc `worker/kinematic_sim.py`. */
+  /** Bundle nội bộ/đường tương thích cũ; giao diện CARLA tải .xosc qua downloadRunXosc. */
   downloadRunBundle: (runId: number) =>
     apiDownload(`/vehicsim/runs/${runId}/bundle`, `vehicsim-run-${runId}.json`),
+  downloadRunXosc: (runId: number) => apiDownload(`/vehicsim/runs/${runId}/xosc`, `vehicsim-run-${runId}.xosc`),
+  downloadScenarioXosc: (ir: unknown) => apiDownload("/vehicsim/scenarios/xosc", "scenario.xosc", { method: "POST", body: JSON.stringify(ir) }),
+  runOnCarla: (runId: number) => apiRequest<{ run_id: number }>(`/vehicsim/runs/${runId}/carla`, { method: "POST" }),
+  carlaStatus: () => apiRequest<CarlaStatus>("/vehicsim/carla/status"),
+  carlaRuns: () => apiRequest<CarlaRun[]>("/vehicsim/carla/runs"),
+  carlaData: (runId: number) => apiRequest<CarlaData>(`/vehicsim/runs/${runId}/carla-data`),
+  carlaImage: (runId: number, frame: string) => apiBlob(`/vehicsim/runs/${runId}/carla-files/${frame}`),
+  downloadCarlaFile: (runId: number, name: "frames.csv" | "collisions.json") =>
+    apiDownload(`/vehicsim/runs/${runId}/carla-files/${name}`, `${runId}-${name}`),
   /** Nộp ``result.json`` của run CARLA chạy ngoài backend (run CARLA đang PENDING/FAILED, regression chưa chốt). */
   submitCarlaResult: (runId: number, result: unknown) =>
     apiRequest<{ ok: boolean; run_id: number; status: string }>(`/vehicsim/runs/${runId}/carla-result`, {

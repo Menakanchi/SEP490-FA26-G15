@@ -24,6 +24,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -306,6 +308,61 @@ public class VehicSimController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"vehicsim-run-" + runId + ".json\"")
                 .body(views.runVariantBundle(runId));
+    }
+
+    private static ResponseEntity<byte[]> xoscFile(String xml, String name) {
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/xml; charset=utf-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + ".xosc\"")
+                .body(xml.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Operation(summary = "Xuất biến thể/AEB/xe/seed của run thành OpenSCENARIO 1.0")
+    @GetMapping("/runs/{runId}/xosc")
+    public ResponseEntity<byte[]> getRunXosc(@PathVariable long runId) {
+        return xoscFile(runs.exportXosc(views.runVariantBundle(runId)), "vehicsim-run-" + runId);
+    }
+
+    @Operation(summary = "Xuất Scenario IR đang chỉnh thành .xosc để chạy thử")
+    @PostMapping("/scenarios/xosc")
+    public ResponseEntity<byte[]> exportScenarioXosc(@RequestBody Map<String, Object> body, @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "xosc_export");
+        return xoscFile(runs.exportXosc(body), "scenario");
+    }
+
+    @Operation(summary = "Chạy lại đúng biến thể/AEB/xe/seed trên CARLA qua ScenarioRunner")
+    @PostMapping("/runs/{runId}/carla")
+    public ResponseEntity<Map<String, Object>> runOnCarla(@PathVariable long runId, @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "carla_run");
+        long id = runs.runOnCarla(projectId(), runId, uid);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("run_id", id));
+    }
+
+    @Operation(summary = "Trạng thái CARLA local và ScenarioRunner")
+    @GetMapping("/carla/status")
+    public Map<String, Object> carlaStatus() {
+        return runs.carlaStatus();
+    }
+
+    @Operation(summary = "Các lượt chạy CARLA gần nhất của project")
+    @GetMapping("/carla/runs")
+    public List<Map<String, Object>> carlaRuns() {
+        return runs.carlaRuns(projectId());
+    }
+
+    @Operation(summary = "Số đo sensor và danh sách ảnh RGB đã ghi của run CARLA")
+    @GetMapping("/runs/{runId}/carla-data")
+    public Map<String, Object> carlaData(@PathVariable long runId) throws IOException {
+        return runs.carlaData(projectId(), runId, telemetryService);
+    }
+
+    @Operation(summary = "Tải frames.csv, collisions.json hoặc ảnh RGB của run CARLA")
+    @GetMapping("/runs/{runId}/carla-files/{name}")
+    public ResponseEntity<byte[]> carlaFile(@PathVariable long runId, @PathVariable String name) throws IOException {
+        var file = runs.carlaFile(projectId(), runId, name);
+        String mime = name.endsWith(".png") ? "image/png" : name.endsWith(".csv") ? "text/csv; charset=utf-8" : "application/json";
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(mime)).body(Files.readAllBytes(file));
     }
 
     @Operation(summary = "Nộp result.json của run CARLA chạy ngoài backend (chỉ run CARLA đang PENDING/FAILED, regression chưa chốt)")

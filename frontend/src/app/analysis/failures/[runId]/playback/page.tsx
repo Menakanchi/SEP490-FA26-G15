@@ -148,10 +148,10 @@ export default function PlaybackPage() {
       actions={
         <>
           <PillButton
-            title={`Xem lượt này trong cửa sổ CARLA (và quay video với --video): python worker/run_variant.py vehicsim-run-${runId}.json`}
-            onClick={() => void vehicsimApi.downloadRunBundle(Number(runId)).catch((e) => setError(e.message))}
+            title="Xuất OpenSCENARIO cùng cấu hình và seed của lượt này"
+            onClick={() => void vehicsimApi.downloadRunXosc(Number(runId)).catch((e) => setError(e.message))}
           >
-            Tải JSON chạy CARLA
+            Tải .xosc
           </PillButton>
           <PillButton
             variant="dark"

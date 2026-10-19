@@ -15,6 +15,7 @@ import { Card, CardTitle, ErrorNote, PillButton, StatCard, Tag, cx, fmt, runCode
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { TelemetrySummary } from "@/types/vehicsim";
+import { CarlaRunnerPanel } from "@/components/CarlaRunnerPanel";
 
 const RESULT_FORMAT = "vehicsim.result/v1";
 /** Khớp giới hạn của `TelemetryRequest` ở backend. */
@@ -33,7 +34,7 @@ export default function CarlaDataPage() {
     <VehicSimPage
       crumbs={[{ label: "Phân tích" }, { label: "Dữ liệu CARLA" }]}
       title="Dữ liệu CARLA"
-      subtitle="Đưa kết quả chạy CARLA trên máy khác vào VehicSim, hoặc tính số đo phanh từ dữ liệu cảm biến"
+      subtitle="Chạy OpenSCENARIO trên CARLA local, xem dữ liệu cảm biến hoặc nộp kết quả chạy từ máy khác"
     >
       <div className="flex items-start gap-[10px] rounded-[16px] bg-vehicsim-warn-bg px-4 py-3 text-[13px] text-vehicsim-ink">
         <span className="font-bold text-vehicsim-warn">!</span>
@@ -42,6 +43,7 @@ export default function CarlaDataPage() {
           bằng chứng regression. Kết quả CARLA không bao giờ được ghép với kết quả bộ động học.
         </p>
       </div>
+      <CarlaRunnerPanel />
       <SubmitResultCard canWrite={canWrite} />
       <TelemetryCard canWrite={canWrite} />
     </VehicSimPage>
@@ -111,8 +113,8 @@ function SubmitResultCard({ canWrite }: { canWrite: boolean }) {
     <Card className="flex flex-col gap-4 p-6">
       <CardTitle aside={<Tag tone="info">Run CARLA đang chờ hoặc lỗi</Tag>}>Nộp kết quả CARLA</CardTitle>
       <p className="text-[13px] leading-[1.6] text-vehicsim-muted">
-        Tải JSON của lượt chạy (nút &quot;Tải JSON chạy CARLA&quot;), chạy{" "}
-        <code className="rounded bg-vehicsim-soft px-1">python worker/run_variant.py vehicsim-run-&lt;id&gt;.json</code> trên máy có
+        Tải OpenSCENARIO của lượt chạy (nút &quot;Tải .xosc&quot;), chạy{" "}
+        <code className="rounded bg-vehicsim-soft px-1">python worker/run_xosc.py vehicsim-run-&lt;id&gt;.xosc</code> trên máy có
         CARLA, rồi chọn file <code className="rounded bg-vehicsim-soft px-1">result.json</code> vừa ghi ra. Chỉ nhận run CARLA đang
         chờ chạy hoặc đã lỗi, đúng phiên bản CARLA của run, và không thuộc regression test đã có kết luận.
       </p>

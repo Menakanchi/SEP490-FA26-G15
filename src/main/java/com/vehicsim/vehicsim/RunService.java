@@ -16,6 +16,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -33,12 +34,12 @@ import java.util.regex.Pattern;
  * Lần chạy mô phỏng: xếp hàng, thực thi, ghi kết quả (FE-08/09/11/12). Port của ``runs.py``.
  * <p>
  * Một ``simulation_runs`` = một biến thể × một xe × một AEB version × một seed × một bộ mô phỏng. Thực thi: dựng bundle
- * (``vehicsim.variant/v1``, cũng là thứ nút "Tải JSON chạy CARLA" xuất ra) -> **worker Python** -> ``result.json``
+ * (``vehicsim.variant/v1`` nội bộ, profile carla-xosc chuyển thành OpenSCENARIO) -> **worker Python** -> ``result.json``
  * (đã kèm kết quả chấm) -> ghi vào chính dòng ``simulation_runs`` + ``collision_events`` + ``failures`` + ``root_causes``
  * trong một transaction, rồi báo cho regression (nếu run thuộc một regression test).
  * <p>
  * Java không có bản AEB riêng: một AEB cho mọi bộ mô phỏng nằm ở ``worker/vehicsim_core`` (xem AGENTS.md), nên cả bộ động học
- * lẫn CARLA đều đi qua cùng một CLI nhận bundle và ghi result.
+ * lẫn CARLA đều gọi lại lõi đó và ghi cùng hợp đồng result.
  */
 @Slf4j
 @Service
@@ -51,6 +52,7 @@ public class RunService {
     public static final double MAX_DURATION_S = 12.0;
 
     private static final int STOP_GRACE_S = 15;
+    private static final java.util.concurrent.locks.ReentrantLock CARLA_LOCK = new java.util.concurrent.locks.ReentrantLock();
     private static final String COLLISION_ACTOR = "walker.pedestrian.0001";
 
     /**
@@ -121,8 +123,8 @@ public class RunService {
 
     /** Bộ mô phỏng mà cấu hình hiện tại chọn — dùng để lọc baseline cho regression. */
     public String configuredSimulator() {
-        if ("carla".equals(props.simulator())) {
-            return carlaSimulator(props.carlaVersion());
+        if ("carla".equals(props.simulator()) || "carla-xosc".equals(props.simulator())) {
+            return carlaSimulator(props.carlaVersion()) + ("carla-xosc".equals(props.simulator()) ? "-xosc1" : "");
         }
         return KINEMATIC_SIMULATOR;
     }
@@ -143,7 +145,7 @@ public class RunService {
     }
 
     String simulatorForNewRuns() {
-        if ("carla".equals(props.simulator()) && carlaCommand().isEmpty()) {
+        if (isCarla(configuredSimulator()) && carlaCommand().isEmpty()) {
             throw new InvalidRequestException("VEHICSIM_SIMULATOR=carla nhưng chưa đặt VEHICSIM_CARLA_COMMAND");
         }
         return configuredSimulator();
@@ -171,10 +173,16 @@ public class RunService {
      */
     public List<Long> createRuns(long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long aebVersionId,
                                  long userId, String purpose, Long regressionTestId, Map<Long, Row> baselineRuns) {
+        return createRuns(projectId, scenarioId, variants, vehicleModelId, aebVersionId, userId, purpose, regressionTestId, baselineRuns, null, null);
+    }
+
+    private List<Long> createRuns(long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long aebVersionId,
+                                  long userId, String purpose, Long regressionTestId, Map<Long, Row> baselineRuns,
+                                  String requestedSimulator, Long requestedSeed) {
         checkActiveRunQuota(userId, variants.size());
         LocalDateTime ts = Vs.now();
         List<Long> ids = new ArrayList<>();
-        String newRunSimulator = null;
+        String newRunSimulator = requestedSimulator;
         for (Row variant : variants) {
             Row baseline = baselineRuns == null ? null : baselineRuns.get(variant.lng("id"));
             long seed;
@@ -188,7 +196,7 @@ public class RunService {
             } else {
                 newRunSimulator = newRunSimulator != null ? newRunSimulator : simulatorForNewRuns();
                 simulator = newRunSimulator;
-                seed = seedFor(variant.lng("id"));
+                seed = requestedSeed == null ? seedFor(variant.lng("id")) : requestedSeed;
             }
             long runId = db.insert(
                     "INSERT INTO simulation_runs (project_id, scenario_id, scenario_version_id, carla_vehicle_model_id, aeb_version_id, "
@@ -367,6 +375,18 @@ public class RunService {
 
     /** Gọi CLI mô phỏng với bundle của run, đọc lại ``result.json``. Bộ động học dùng thư mục tạm, CARLA giữ thư mục run. */
     private Map<String, Object> runWorker(Row run, Map<String, Object> bundle) throws IOException, InterruptedException {
+        if (isCarla(run.str("simulator_version"))) {
+            CARLA_LOCK.lockInterruptibly();
+            try {
+                return runWorkerProcess(run, bundle);
+            } finally {
+                CARLA_LOCK.unlock();
+            }
+        }
+        return runWorkerProcess(run, bundle);
+    }
+
+    private Map<String, Object> runWorkerProcess(Row run, Map<String, Object> bundle) throws IOException, InterruptedException {
         boolean carla = isCarla(run.str("simulator_version"));
         List<String> command = new ArrayList<>();
         if (carla) {
@@ -387,7 +407,12 @@ public class RunService {
             Files.deleteIfExists(resultPath);
             Path logPath = folder.resolve("simulator.log");
 
-            command.addAll(List.of(bundlePath.toString(), "--out", folder.toString(), "--fast"));
+            Path input = bundlePath;
+            if (carla && run.str("simulator_version").endsWith("-xosc1")) {
+                input = folder.resolve("scenario.xosc");
+                writeXosc(bundlePath, input);
+            }
+            command.addAll(List.of(input.toString(), "--out", folder.toString(), "--fast"));
             ProcessBuilder pb = new ProcessBuilder(command).directory(repoRoot().toFile()).redirectErrorStream(true)
                     .redirectOutput(logPath.toFile());
             pb.environment().put("PYTHONIOENCODING", "utf-8");
@@ -413,6 +438,9 @@ public class RunService {
             if (carla) {
                 Map<String, Object> artifacts = new LinkedHashMap<>();
                 artifacts.put("result", resultPath.toString());
+                if (input.toString().endsWith(".xosc")) {
+                    artifacts.put("scenario", input.toString());
+                }
                 artifacts.putAll(Json.asMap(result.get("artifacts")).entrySet().stream()
                         .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), String.valueOf(e.getValue())), Map::putAll));
                 result.put("artifacts", artifacts);
@@ -423,6 +451,129 @@ public class RunService {
                 deleteQuietly(folder);
             }
         }
+    }
+
+    /** XML là artifact thực thi/tải xuống; bundle chỉ còn là giao tiếp nội bộ với bộ sinh Python. */
+    public String exportXosc(Map<String, Object> bundle) {
+        Path folder = null;
+        try {
+            folder = Files.createTempDirectory("vehicsim-xosc-");
+            Path input = folder.resolve("bundle.json");
+            Path output = folder.resolve("scenario.xosc");
+            Files.writeString(input, Json.write(bundle), StandardCharsets.UTF_8);
+            writeXosc(input, output);
+            return Files.readString(output, StandardCharsets.UTF_8);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new SimulatorException("Đã ngắt việc sinh OpenSCENARIO");
+        } catch (IOException e) {
+            throw new SimulatorException("Không sinh được OpenSCENARIO: " + e.getMessage());
+        } finally {
+            if (folder != null) {
+                deleteQuietly(folder);
+            }
+        }
+    }
+
+    private void writeXosc(Path input, Path output) throws IOException, InterruptedException {
+        Path log = output.resolveSibling("export.log");
+        runTool(List.of(props.workerPython(), repoRoot().resolve(props.workerDir()).resolve("openscenario_export.py").toString(),
+                input.toString(), "--out", output.toString()), log, 20);
+    }
+
+    private void runTool(List<String> command, Path log, int timeout) throws IOException, InterruptedException {
+        ProcessBuilder builder = new ProcessBuilder(command).directory(repoRoot().toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
+        builder.environment().put("PYTHONIOENCODING", "utf-8");
+        Process process = builder.start();
+        try {
+            if (!process.waitFor(timeout, TimeUnit.SECONDS)) {
+                stop(process);
+                throw new SimulatorException("Công cụ CARLA/OpenSCENARIO quá hạn " + timeout + " s");
+            }
+            if (process.exitValue() != 0) {
+                throw new InvalidRequestException("Công cụ CARLA/OpenSCENARIO: " + tail(log));
+            }
+        } catch (InterruptedException e) {
+            process.descendants().forEach(ProcessHandle::destroyForcibly);
+            process.destroyForcibly();
+            throw e;
+        }
+    }
+
+    public Map<String, Object> carlaStatus() {
+        if (carlaCommand().isEmpty()) {
+            return Json.obj("configured", false, "connected", false, "scenario_runner", false);
+        }
+        Path folder = null;
+        try {
+            folder = Files.createTempDirectory("vehicsim-carla-probe-");
+            List<String> command = new ArrayList<>(carlaCommand());
+            command.add("--status");
+            Path log = folder.resolve("status.json");
+            runTool(command, log, 15);
+            Map<String, Object> result = new LinkedHashMap<>(Json.parseMap(Files.readString(log, StandardCharsets.UTF_8)));
+            result.put("configured", true);
+            result.put("simulator", configuredSimulator());
+            return result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new SimulatorException("Đã ngắt kiểm tra CARLA");
+        } catch (IOException | RuntimeException e) {
+            return Json.obj("configured", true, "connected", false, "scenario_runner", false, "error", e.getMessage());
+        } finally {
+            if (folder != null) {
+                deleteQuietly(folder);
+            }
+        }
+    }
+
+    public List<Map<String, Object>> carlaRuns(long projectId) {
+        return db.list("SELECT id, status, scenario_id, aeb_version_id, simulator_version, error_message, queued_at FROM simulation_runs "
+                + "WHERE project_id = ? AND simulator_type = 'CARLA' ORDER BY id DESC LIMIT 30", projectId).stream().map(Row::asMap).toList();
+    }
+
+    /** Chạy lại đúng biến thể/AEB/xe/seed bằng profile mới; không gắn baseline_run_id khác simulator. */
+    @Transactional
+    public long runOnCarla(long projectId, long sourceId, long userId) {
+        Row source = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ?", sourceId, projectId);
+        if (source == null) {
+            throw new NotFoundException("simulation run");
+        }
+        if (!"carla-xosc".equals(props.simulator()) || carlaCommand().isEmpty()) {
+            throw new InvalidRequestException("Chưa chọn chế độ OpenSCENARIO/CARLA local; chạy scripts/dev-carla.ps1 -RestartBackend trước");
+        }
+        Row variant = new Row(Json.obj("id", source.lng("scenario_version_id"), "scenario_ir_json", Json.write(source.json("run_config_json"))));
+        List<Long> ids = createRuns(projectId, source.lng("scenario_id"), List.of(variant), source.lng("carla_vehicle_model_id"),
+                source.lng("aeb_version_id"), userId, "EVALUATION", null, null, carlaSimulator(props.carlaVersion()) + "-xosc1", source.lng("random_seed"));
+        dispatch(ids);
+        return ids.getFirst();
+    }
+
+    public Path carlaFile(long projectId, long runId, String name) {
+        Row run = db.first("SELECT id FROM simulation_runs WHERE id = ? AND project_id = ? AND simulator_type = 'CARLA'", runId, projectId);
+        if (run == null || !(List.of("frames.csv", "collisions.json").contains(name) || name.matches("[0-9]{8}\\.png"))) {
+            throw new NotFoundException("CARLA artifact");
+        }
+        Path path = runDir(runId).resolve("sensors").resolve(name.endsWith(".png") ? "camera/" + name : name);
+        if (!Files.isRegularFile(path)) {
+            throw new NotFoundException("CARLA artifact");
+        }
+        return path;
+    }
+
+    public Map<String, Object> carlaData(long projectId, long runId, TelemetryMetricsService telemetry) throws IOException {
+        Path csv = carlaFile(projectId, runId, "frames.csv");
+        Path collisions = carlaFile(projectId, runId, "collisions.json");
+        List<Map<String, Object>> hits = Json.parseList(Files.readString(collisions, StandardCharsets.UTF_8)).stream().map(Json::asMap).toList();
+        var summary = telemetry.summarise(telemetry.parseCsvFrames(Files.readString(csv, StandardCharsets.UTF_8)), telemetry.parseCollisions(hits), 4.6);
+        List<String> images = List.of();
+        Path camera = csv.getParent().resolve("camera");
+        if (Files.isDirectory(camera)) {
+            try (var files = Files.list(camera)) {
+                images = files.map(p -> p.getFileName().toString()).filter(n -> n.matches("[0-9]{8}\\.png")).sorted().toList();
+            }
+        }
+        return Json.obj("run_id", runId, "summary", summary, "camera_frames", images);
     }
 
     private static void checkResult(Map<String, Object> result, Row run) {
@@ -442,6 +593,25 @@ public class RunService {
         if (!simulator.equals(run.str("simulator_version"))) {
             throw new SimulatorException("run yêu cầu " + run.str("simulator_version") + " nhưng bộ mô phỏng báo " + simulator);
         }
+        checkResultId(result.get("seed"), run.getLong("random_seed"), "seed");
+        Map<String, Object> source = Json.asMap(result.get("source"));
+        for (String key : List.of("run_id", "scenario_id", "scenario_version_id", "aeb_version_id", "carla_vehicle_model_id")) {
+            checkResultId(source.get(key), run.getLong("run_id".equals(key) ? "id" : key), "source." + key);
+        }
+    }
+
+    /** Không cắt phần thập phân hoặc làm tròn ID/seed lớn khi đối chiếu JSON với BIGINT của DB. */
+    private static void checkResultId(Object actual, Long expected, String field) {
+        if (actual instanceof Number number && expected != null) {
+            try {
+                if (new BigDecimal(number.toString()).longValueExact() == expected) {
+                    return;
+                }
+            } catch (ArithmeticException | NumberFormatException ignored) {
+                // Ngoài miền BIGINT, không nguyên hoặc không hữu hạn đều không phải ID/seed hợp lệ.
+            }
+        }
+        throw new SimulatorException("result.json " + field + " không khớp run (yêu cầu " + expected + ")");
     }
 
     /** Xin dừng nhẹ nhàng; quá STOP_GRACE_S mới giết cứng cả cây tiến trình (launcher venv trên Windows có tiến trình con). */
@@ -487,46 +657,49 @@ public class RunService {
      * Khoá dòng run ({@code FOR UPDATE}) nên luồng nền không nhận run này cùng lúc. Đường dẫn artifact do client gửi bị
      * bỏ — backend không ghi đường dẫn tới file nó không tạo.
      */
-    @Transactional
     public Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload) {
-        Row run = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ? FOR UPDATE", runId, projectId);
-        if (run == null) {
-            throw new NotFoundException("simulation run");
-        }
-        if (!isCarla(run.str("simulator_version"))) {
-            throw new InvalidRequestException("run " + runId + " dùng " + run.str("simulator_version")
-                    + " — chỉ nhận kết quả CARLA cho run CARLA, không ghép với bộ động học");
-        }
-        String status = run.str("status");
-        if (!"PENDING".equals(status) && !"FAILED".equals(status)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "run " + runId + " đang " + status
-                    + " — chỉ nhận kết quả cho run PENDING hoặc FAILED");
-        }
-        Object lockedTests = db.scalar("SELECT COUNT(*) FROM regression_tests t WHERE t.execution_status IN ('COMPLETED','FAILED') "
-                + "AND (t.id = ? OR t.id IN (SELECT regression_test_id FROM simulation_runs WHERE baseline_run_id = ? AND regression_test_id IS NOT NULL))",
-                run.getLong("regression_test_id"), runId);
-        if (((Number) lockedTests).longValue() > 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "run " + runId + " thuộc regression test đã chốt — không sửa kết quả sau khi có verdict");
-        }
-        if (resultPayload == null) {
-            throw new InvalidRequestException("thiếu result.json");
-        }
-        Map<String, Object> result = new LinkedHashMap<>(resultPayload);
-        result.remove("artifacts");
-        try {
-            checkResult(result, run);
-        } catch (SimulatorException e) {
-            throw new InvalidRequestException(e.getMessage());
-        }
-        // Run FAILED/PENDING không có dòng con (persist chạy trong một transaction), xoá phòng hờ để không bao giờ nhân đôi.
-        db.update("DELETE FROM collision_events WHERE simulation_run_id = ?", runId);
-        db.update("DELETE FROM failures WHERE simulation_run_id = ?", runId); // root_causes xoá theo (ON DELETE CASCADE)
-        try {
-            persist(run, result);
-        } catch (ClassCastException | NullPointerException | IllegalArgumentException e) {
-            throw new InvalidRequestException("result.json sai cấu trúc: " + e.getMessage());
-        }
-        AuditLog.event("run.carla_result", "success", "user_id", userId, "run_id", runId, "previous_status", status);
+        Row imported = tx.execute(transaction -> {
+            Row run = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ? FOR UPDATE", runId, projectId);
+            if (run == null) {
+                throw new NotFoundException("simulation run");
+            }
+            if (!isCarla(run.str("simulator_version"))) {
+                throw new InvalidRequestException("run " + runId + " dùng " + run.str("simulator_version")
+                        + " — chỉ nhận kết quả CARLA cho run CARLA, không ghép với bộ động học");
+            }
+            String status = run.str("status");
+            if (!"PENDING".equals(status) && !"FAILED".equals(status)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "run " + runId + " đang " + status
+                        + " — chỉ nhận kết quả cho run PENDING hoặc FAILED");
+            }
+            Object lockedTests = db.scalar("SELECT COUNT(*) FROM regression_tests t WHERE t.execution_status IN ('COMPLETED','FAILED') "
+                    + "AND (t.id = ? OR t.id IN (SELECT regression_test_id FROM simulation_runs WHERE baseline_run_id = ? AND regression_test_id IS NOT NULL))",
+                    run.getLong("regression_test_id"), runId);
+            if (((Number) lockedTests).longValue() > 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "run " + runId + " thuộc regression test đã chốt — không sửa kết quả sau khi có verdict");
+            }
+            if (resultPayload == null) {
+                throw new InvalidRequestException("thiếu result.json");
+            }
+            Map<String, Object> result = new LinkedHashMap<>(resultPayload);
+            result.remove("artifacts");
+            try {
+                checkResult(result, run);
+            } catch (SimulatorException e) {
+                throw new InvalidRequestException(e.getMessage());
+            }
+            // Run FAILED/PENDING không có dòng con (persist chạy trong một transaction), xoá phòng hờ để không bao giờ nhân đôi.
+            db.update("DELETE FROM collision_events WHERE simulation_run_id = ?", runId);
+            db.update("DELETE FROM failures WHERE simulation_run_id = ?", runId); // root_causes xoá theo (ON DELETE CASCADE)
+            try {
+                persist(run, result);
+            } catch (ClassCastException | NullPointerException | IllegalArgumentException e) {
+                throw new InvalidRequestException("result.json sai cấu trúc: " + e.getMessage());
+            }
+            return run;
+        });
+        // Giống executeRun: commit xong mới cho listener đọc run bằng transaction mới, không giữ snapshot của upload.
+        AuditLog.event("run.carla_result", "success", "user_id", userId, "run_id", runId, "previous_status", imported.str("status"));
         events.publishEvent(new RunFinished(runId));
         return Json.obj("ok", true, "run_id", runId, "status", "COMPLETED");
     }
