@@ -26,6 +26,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -49,10 +52,17 @@ public class RunService {
     public static final String VARIANT_FORMAT = "vehicsim.variant/v1";
     public static final String RESULT_FORMAT = "vehicsim.result/v1";
     public static final double DT = 0.05;
+    /** Bước của profile CARLA OpenSCENARIO hiện tại (100 Hz, kế hoạch 20/10 D3); bộ động học vẫn dùng {@link #DT}. */
+    public static final double CARLA_XOSC_STEP_S = 0.01;
     public static final double MAX_DURATION_S = 12.0;
 
     private static final int STOP_GRACE_S = 15;
-    private static final String XOSC_SUFFIX = "-xosc2";
+    /** File cờ trong thư mục run: worker thấy nó thì tự dọn CARLA rồi thoát (Windows không có SIGTERM mềm cho tiến trình con). */
+    static final String STOP_FLAG = "stop.requested";
+    /** PID + thời điểm khởi động của worker CARLA, để sau khi backend chết còn tìm ra worker mồ côi. */
+    static final String PID_FILE = "worker.pid";
+    private static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase().contains("win");
+    private static final String XOSC_SUFFIX = "-xosc3";
     private static final java.util.concurrent.locks.ReentrantLock CARLA_LOCK = new java.util.concurrent.locks.ReentrantLock();
     private static final String COLLISION_ACTOR = "walker.pedestrian.0001";
 
@@ -100,6 +110,20 @@ public class RunService {
             super(message);
         }
     }
+
+    /** Người dùng hủy một run đang chạy; bị ném từ vòng chờ tiến trình và bắt ở {@link #executeRun}. */
+    static class RunCancelledException extends RuntimeException {
+        RunCancelledException() {
+            super("Cancelled by user");
+        }
+    }
+
+    /** Run mà JVM này đang giữ (từ lúc nhận tới lúc xong) và run đã bị xin hủy; cờ hủy là điểm trao đổi giữa HTTP và luồng chạy. */
+    private final Set<Long> executing = ConcurrentHashMap.newKeySet();
+    private final Set<Long> cancelRequested = ConcurrentHashMap.newKeySet();
+
+    /** Thời gian chờ worker mồ côi tự dọn trước khi giết cả cây; đặt được để test không phải chờ 15 s. */
+    int orphanGraceS = STOP_GRACE_S;
 
     private final Db db;
     private final Queries queries;
@@ -156,6 +180,11 @@ public class RunService {
         return simulator != null && simulator.startsWith("carla-");
     }
 
+    /** ``fixed_delta_seconds`` của run: bước mô phỏng theo identity simulator. */
+    static double stepFor(String simulator) {
+        return simulator != null && simulator.endsWith(XOSC_SUFFIX) ? CARLA_XOSC_STEP_S : DT;
+    }
+
     static String simulatorType(String simulator) {
         return isCarla(simulator) ? "CARLA" : "KINEMATIC";
     }
@@ -203,7 +232,7 @@ public class RunService {
                     "INSERT INTO simulation_runs (project_id, scenario_id, scenario_version_id, carla_vehicle_model_id, aeb_version_id, "
                             + "simulator_type, simulator_version, fixed_delta_seconds, max_duration_s, regression_test_id, baseline_run_id, "
                             + "purpose, random_seed, status, run_config_json, created_by_user_id, queued_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    projectId, scenarioId, variant.lng("id"), vehicleModelId, aebVersionId, simulatorType(simulator), simulator, DT,
+                    projectId, scenarioId, variant.lng("id"), vehicleModelId, aebVersionId, simulatorType(simulator), simulator, stepFor(simulator),
                     MAX_DURATION_S, regressionTestId, baseline == null ? null : baseline.lng("id"), purpose, seed, "PENDING",
                     variant.json("scenario_ir_json"), userId, ts);
             ids.add(runId);
@@ -252,16 +281,32 @@ public class RunService {
 
     /** Chạy một run. Idempotent và chống chạy đôi: chỉ luồng nào chuyển được PENDING -> RUNNING mới chạy tiếp. */
     public void executeRun(long runId) {
+        if (!executing.add(runId)) {
+            return; // dispatch trùng (recoverUnfinished + dispatch): luồng thật đang giữ run, không được xoá dấu của nó
+        }
+        // Thêm trước khi nhận: cancelRun thấy RUNNING thì luôn tìm được run trong tập này.
+        try {
+            runClaimed(runId);
+        } finally {
+            executing.remove(runId);
+            cancelRequested.remove(runId);
+        }
+    }
+
+    private void runClaimed(long runId) {
         Boolean claimed = tx.execute(status -> db.update(
                 "UPDATE simulation_runs SET status = 'RUNNING', started_at = ?, worker_host = ? WHERE id = ? AND status = 'PENDING'",
                 Vs.now(), hostName(), runId) > 0);
         if (!Boolean.TRUE.equals(claimed)) {
-            return; // đã có luồng khác nhận, đã COMPLETED, hoặc không tồn tại
+            return; // đã có luồng khác nhận, đã COMPLETED/STOPPED, hoặc không tồn tại
         }
         try {
             Row run = db.first("SELECT * FROM simulation_runs WHERE id = ?", runId);
-            if (isCarla(run.str("simulator_version")) && run.str("simulator_version").endsWith("-xosc1")) {
-                throw new SimulatorException("run CARLA dùng -xosc1 đã cũ; tạo lượt chạy mới để dùng bản sửa người đi bộ " + XOSC_SUFFIX);
+            String profile = run.str("simulator_version");
+            if (isCarla(profile) && (profile.endsWith("-xosc1") || profile.endsWith("-xosc2"))) {
+                // xosc2 là bước 0,05 s: không chạy lại bằng bộ xuất mới và không ghép với số đo 0,01 s (xosc3).
+                throw new SimulatorException("run CARLA dùng " + profile.substring(profile.lastIndexOf('-') + 1)
+                        + " đã cũ; tạo lượt chạy mới để dùng profile " + XOSC_SUFFIX);
             }
             Map<String, Object> bundle = bundleForRun(run);
             Map<String, Object> result = runWorker(run, bundle);
@@ -270,6 +315,12 @@ public class RunService {
             // Tắt app giữa chừng: trả run về PENDING để lần khởi động sau nhặt lại, thay vì ghi FAILED.
             Thread.currentThread().interrupt();
             tx.executeWithoutResult(status -> db.update("UPDATE simulation_runs SET status = 'PENDING', started_at = NULL WHERE id = ? AND status = 'RUNNING'", runId));
+            return;
+        } catch (RunCancelledException e) {
+            // Run bị hủy không có điểm hợp lệ: không persist, không báo regression (cancelRun từ chối run của regression).
+            tx.executeWithoutResult(status -> db.update(
+                    "UPDATE simulation_runs SET status = 'STOPPED', error_message = ?, ended_at = ? WHERE id = ?",
+                    e.getMessage(), Vs.now(), runId));
             return;
         } catch (Exception e) {
             log.error("simulation run {} failed", runId, e);
@@ -420,18 +471,30 @@ public class RunService {
             ProcessBuilder pb = new ProcessBuilder(command).directory(repoRoot().toFile()).redirectErrorStream(true)
                     .redirectOutput(logPath.toFile());
             pb.environment().put("PYTHONIOENCODING", "utf-8");
+            Files.deleteIfExists(folder.resolve(STOP_FLAG));
             Process proc = pb.start();
+            if (carla) {
+                recordWorker(folder, proc);
+            }
             int timeout = subprocessTimeoutS();
-            boolean finished;
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeout);
+            boolean finished = false;
             try {
-                finished = proc.waitFor(timeout, TimeUnit.SECONDS);
+                // Chờ từng nhịp ngắn để thấy yêu cầu hủy; tiến trình thoát thì dừng chờ ngay.
+                while (!finished && System.nanoTime() < deadline) {
+                    finished = proc.waitFor(500, TimeUnit.MILLISECONDS);
+                    if (!finished && cancelRequested.contains(run.lng("id"))) {
+                        stop(proc, folder, carla);
+                        throw new RunCancelledException();
+                    }
+                }
             } catch (InterruptedException e) {
                 proc.descendants().forEach(ProcessHandle::destroyForcibly); // không để tiến trình con mồ côi khi app tắt
                 proc.destroyForcibly();
                 throw e;
             }
             if (!finished) {
-                stop(proc);
+                stop(proc, folder, carla);
                 throw new SimulatorException("bộ mô phỏng vượt " + timeout + " s, đã dừng");
             }
             if (proc.exitValue() != 0 || !Files.exists(resultPath)) {
@@ -553,6 +616,48 @@ public class RunService {
         return ids.getFirst();
     }
 
+    /**
+     * Hủy một run (TD-37). PENDING thành STOPPED ngay; RUNNING chỉ hủy được khi luồng chạy nằm trong JVM này
+     * (sau khi backend khởi động lại, run RUNNING mồ côi do {@link #recoverUnfinished} xử lý). Run thuộc regression/tối ưu
+     * bị từ chối vì bộ so sánh cần đủ cặp; hủy từng run sẽ làm test không bao giờ chốt.
+     *
+     * @return {@code STOPPED} (đã hủy) hoặc {@code STOPPING} (đã xin dừng, worker đang dọn)
+     */
+    public String cancelRun(long projectId, long runId, long userId) {
+        Row run = db.first("SELECT id, status, regression_test_id, optimization_trial_id FROM simulation_runs WHERE id = ? AND project_id = ?",
+                runId, projectId);
+        if (run == null) {
+            throw new NotFoundException("simulation run");
+        }
+        if (!run.isNull("regression_test_id") || !run.isNull("optimization_trial_id")) {
+            throw new InvalidRequestException("This run belongs to a regression test or optimization and cannot be cancelled on its own");
+        }
+        String status = run.str("status");
+        if ("PENDING".equals(status)) {
+            Integer changed = tx.execute(s -> db.update(
+                    "UPDATE simulation_runs SET status = 'STOPPED', error_message = ?, ended_at = ? WHERE id = ? AND status = 'PENDING'",
+                    "Cancelled by user", Vs.now(), runId));
+            if (changed != null && changed > 0) {
+                AuditLog.event("run.cancel", "success", "user_id", userId, "run_id", runId, "previous_status", status);
+                return "STOPPED";
+            }
+            status = "RUNNING"; // vừa bị luồng chạy nhận giữa hai câu lệnh
+        }
+        if ("RUNNING".equals(status)) {
+            if (!executing.contains(runId)) {
+                // Run mồ côi (backend chết giữa run và chưa được nhặt lại): dừng worker còn sống rồi đóng run. Chờ tới
+                // orphanGraceS nên làm ngoài luồng HTTP.
+                AuditLog.event("run.cancel", "success", "user_id", userId, "run_id", runId, "previous_status", status, "orphan", true);
+                CompletableFuture.runAsync(() -> cancelOrphan(runId));
+                return "STOPPING";
+            }
+            cancelRequested.add(runId);
+            AuditLog.event("run.cancel", "success", "user_id", userId, "run_id", runId, "previous_status", status);
+            return "STOPPING";
+        }
+        throw new InvalidRequestException("Run is already " + status + "; nothing to cancel");
+    }
+
     public Path carlaFile(long projectId, long runId, String name) {
         Row run = db.first("SELECT id FROM simulation_runs WHERE id = ? AND project_id = ? AND simulator_type = 'CARLA'", runId, projectId);
         if (run == null || !(List.of("frames.csv", "collisions.json").contains(name) || name.matches("[0-9]{8}\\.png"))) {
@@ -618,10 +723,118 @@ public class RunService {
         throw new SimulatorException("result.json " + field + " không khớp run (yêu cầu " + expected + ")");
     }
 
-    /** Xin dừng nhẹ nhàng; quá STOP_GRACE_S mới giết cứng cả cây tiến trình (launcher venv trên Windows có tiến trình con). */
+    private static void recordWorker(Path folder, Process proc) {
+        try {
+            long started = proc.toHandle().info().startInstant().map(java.time.Instant::toEpochMilli).orElse(0L);
+            Files.writeString(folder.resolve(PID_FILE), Json.write(Json.obj("pid", proc.pid(), "start_epoch_ms", started)),
+                    StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.warn("không ghi được {} trong {}", PID_FILE, folder, e);
+        }
+    }
+
+    /** Worker còn sống của run, hoặc null. So cả thời điểm khởi động để không nhầm với tiến trình khác đã được tái dùng PID. */
+    static ProcessHandle liveWorker(Path folder) {
+        try {
+            Path file = folder.resolve(PID_FILE);
+            if (!Files.isRegularFile(file)) {
+                return null;
+            }
+            Map<String, Object> doc = Json.parseMap(Files.readString(file, StandardCharsets.UTF_8));
+            long pid = ((Number) doc.get("pid")).longValue();
+            long started = ((Number) doc.get("start_epoch_ms")).longValue();
+            return ProcessHandle.of(pid).filter(ProcessHandle::isAlive)
+                    .filter(h -> started != 0 && h.info().startInstant().map(i -> i.toEpochMilli() == started).orElse(false))
+                    .orElse(null);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Dừng worker mồ côi của run dưới khóa CARLA (không để run mới chạy song song khi đang dọn). */
+    private void stopOrphan(long runId) throws InterruptedException {
+        CARLA_LOCK.lockInterruptibly();
+        try {
+            stopOrphanWorker(runId);
+        } finally {
+            CARLA_LOCK.unlock();
+        }
+    }
+
+    /**
+     * Xin dừng bằng file cờ (worker tự dọn actor/chế độ đồng bộ); quá {@link #orphanGraceS} mới giết cả cây.
+     *
+     * @return true nếu tìm thấy worker còn sống
+     */
+    boolean stopOrphanWorker(long runId) throws InterruptedException {
+        Path folder = runDir(runId);
+        ProcessHandle worker = liveWorker(folder);
+        if (worker == null) {
+            return false;
+        }
+        try {
+            Files.writeString(folder.resolve(STOP_FLAG), "stop", StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.warn("không ghi được {} trong {}", STOP_FLAG, folder, e);
+        }
+        awaitDeath(worker, orphanGraceS);
+        if (worker.isAlive()) {
+            worker.descendants().forEach(ProcessHandle::destroyForcibly);
+            worker.destroyForcibly();
+            awaitDeath(worker, 5);
+        }
+        return true;
+    }
+
+    private static void awaitDeath(ProcessHandle worker, int seconds) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
+        while (worker.isAlive() && System.nanoTime() < deadline) {
+            Thread.sleep(100);
+        }
+    }
+
+    /** Hủy run RUNNING mồ côi: dừng worker còn sống rồi đóng run, không ghi điểm hợp lệ. */
+    void cancelOrphan(long runId) {
+        try {
+            stopOrphan(runId);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        } catch (RuntimeException e) {
+            log.error("không dừng được worker mồ côi của run {}", runId, e);
+            return;
+        }
+        tx.executeWithoutResult(status -> db.update(
+                "UPDATE simulation_runs SET status = 'STOPPED', error_message = ?, ended_at = ? WHERE id = ? AND status = 'RUNNING'",
+                "Cancelled by user", Vs.now(), runId));
+    }
+
+    /**
+     * Xin dừng nhẹ nhàng; quá STOP_GRACE_S mới giết cứng cả cây tiến trình (launcher venv trên Windows có tiến trình con).
+     * Worker CARLA đọc file cờ {@link #STOP_FLAG} để tự dọn actor/chế độ đồng bộ trước khi thoát. Trên Windows
+     * {@code destroy()} là giết cứng (TerminateProcess), nên với CARLA chỉ dựa vào file cờ trong thời gian chờ.
+     */
+    private static void stop(Process proc, Path folder, boolean carla) throws InterruptedException {
+        try {
+            Files.writeString(folder.resolve(STOP_FLAG), "stop", StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.warn("không ghi được {} trong {}", STOP_FLAG, folder, e);
+        }
+        if (!(WINDOWS && carla)) {
+            proc.descendants().forEach(ProcessHandle::destroy);
+            proc.destroy();
+        }
+        awaitExitOrKill(proc);
+    }
+
+    /** Công cụ ngắn không có trạng thái CARLA cần dọn (xuất .xosc): dừng ngay theo cách mặc định của hệ điều hành. */
     private static void stop(Process proc) throws InterruptedException {
         proc.descendants().forEach(ProcessHandle::destroy);
         proc.destroy();
+        awaitExitOrKill(proc);
+    }
+
+    private static void awaitExitOrKill(Process proc) throws InterruptedException {
         if (!proc.waitFor(STOP_GRACE_S, TimeUnit.SECONDS)) {
             proc.descendants().forEach(ProcessHandle::destroyForcibly);
             proc.destroyForcibly();
@@ -841,9 +1054,23 @@ public class RunService {
 
     /** Nhặt lại run bỏ dở sau khi backend khởi động lại (hàng đợi trong bộ nhớ không sống qua restart). */
     public int recoverUnfinished() {
-        // RUNNING quá lâu so với trần thời gian = tiến trình chết giữa chừng.
-        db.update("UPDATE simulation_runs SET status = 'PENDING' WHERE status = 'RUNNING' AND started_at < ?",
-                Vs.now().minusSeconds(props.simulationTimeoutS() * 2L));
+        // Chỉ gọi lúc khởi động: không luồng nào của JVM này đang giữ run, nên mọi run RUNNING đều mồ côi (backend chết giữa run).
+        // Worker mồ côi có thể còn sống (Windows không giết tiến trình con khi cha chết): dừng nó trước khi chạy lại để hai
+        // runner không tranh quyền tick của một server CARLA. Không nhận result.json mồ côi: không xác minh được worker đã
+        // hoàn tất, trong khi ba mục tiêu (RMS jerk, quãng phanh, vận tốc va chạm) phải đến từ run hợp lệ.
+        for (Row orphan : db.list("SELECT id FROM simulation_runs WHERE status = 'RUNNING'")) {
+            long id = orphan.lng("id");
+            if (executing.contains(id)) {
+                continue;
+            }
+            try {
+                stopOrphan(id);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            db.update("UPDATE simulation_runs SET status = 'PENDING', started_at = NULL WHERE id = ? AND status = 'RUNNING'", id);
+        }
         List<Long> ids = db.list("SELECT id FROM simulation_runs WHERE status = 'PENDING' ORDER BY id").stream().map(r -> r.lng("id")).toList();
         dispatch(ids);
         return ids.size();

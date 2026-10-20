@@ -69,6 +69,9 @@ export const vehicsimApi = {
   downloadRunXosc: (runId: number) => apiDownload(`/vehicsim/runs/${runId}/xosc`, `vehicsim-run-${runId}.xosc`),
   downloadScenarioXosc: (ir: unknown) => apiDownload("/vehicsim/scenarios/xosc", "scenario.xosc", { method: "POST", body: JSON.stringify(ir) }),
   runOnCarla: (runId: number) => apiRequest<{ run_id: number }>(`/vehicsim/runs/${runId}/carla`, { method: "POST" }),
+  /** Hủy run PENDING (STOPPED ngay) hoặc RUNNING (STOPPING: worker đang dọn CARLA). */
+  cancelRun: (runId: number) =>
+    apiRequest<{ run_id: number; status: "STOPPED" | "STOPPING" }>(`/vehicsim/runs/${runId}/cancel`, { method: "POST" }),
   carlaStatus: () => apiRequest<CarlaStatus>("/vehicsim/carla/status"),
   carlaRuns: () => apiRequest<CarlaRun[]>("/vehicsim/carla/runs"),
   carlaData: (runId: number) => apiRequest<CarlaData>(`/vehicsim/runs/${runId}/carla-data`),

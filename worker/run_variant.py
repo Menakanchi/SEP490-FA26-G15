@@ -190,8 +190,9 @@ class DecelMeter:
       (μ·g, giới hạn vật lý của lốp) bị kẹp và đếm vào ``clamped``.
     """
 
-    def __init__(self, limit: float, window: int = 2) -> None:
+    def __init__(self, limit: float, window: int = 2, dt: float = DT) -> None:
         self.limit = limit
+        self.dt = dt
         self.clamped = 0
         self.speeds: deque[float] = deque(maxlen=window + 1)
 
@@ -199,7 +200,7 @@ class DecelMeter:
         self.speeds.append(speed)
         if not braking or len(self.speeds) < 2:
             return 0.0
-        decel = max(0.0, (self.speeds[0] - self.speeds[-1]) / (DT * (len(self.speeds) - 1)))
+        decel = max(0.0, (self.speeds[0] - self.speeds[-1]) / (self.dt * (len(self.speeds) - 1)))
         if decel > self.limit:
             self.clamped += 1
             return self.limit

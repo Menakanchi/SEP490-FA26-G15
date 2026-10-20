@@ -88,13 +88,13 @@ def test_runtime_copy_keeps_exported_file_unchanged(tmp_path: Path) -> None:
     source, target = tmp_path / "source.xosc", tmp_path / "runtime.xosc"
     original = export_xosc(read_spec(IR))
     source.write_text(original, encoding="utf-8")
-    assert SIMULATOR_SUFFIX == "-xosc2"
-    prepare_runtime(source, target, tmp_path, "carla-0.9.16-xosc2")
+    assert SIMULATOR_SUFFIX == "-xosc3"
+    prepare_runtime(source, target, tmp_path, "carla-0.9.16-xosc3")
     assert source.read_text(encoding="utf-8") == original
     assert read_xosc(source) == read_xosc(target)
     properties = ET.parse(target).find(".//Controller/Properties")
     assert properties.find("Property[@name='xosc_file']").attrib["value"] == str(source.resolve())
-    assert properties.find("Property[@name='simulator_version']").attrib["value"] == "carla-0.9.16-xosc2"
+    assert properties.find("Property[@name='simulator_version']").attrib["value"] == "carla-0.9.16-xosc3"
     assert "PYTHONPATH" in environment(tmp_path)
 
 
@@ -107,7 +107,7 @@ def test_unrelated_xosc_is_rejected_by_the_result_recording_adapter(tmp_path: Pa
 
 def test_old_geometry_xosc_requires_reexport_instead_of_running_as_xosc2(tmp_path: Path) -> None:
     path = tmp_path / "old.xosc"
-    path.write_text(export_xosc(read_spec(IR)).replace("vehicsim.xosc/v2", "vehicsim.xosc/v1"), encoding="utf-8")
+    path.write_text(export_xosc(read_spec(IR)).replace("vehicsim.xosc/v3", "vehicsim.xosc/v1"), encoding="utf-8")
     with pytest.raises(BundleError, match="xuất lại từ web"):
         read_xosc(path)
 

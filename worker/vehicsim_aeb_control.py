@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 import carla
-from openscenario_export import read_xosc
+from openscenario_export import read_profile, read_xosc
 from run_variant import CrossingFrame, DecelMeter, apply_physics_overrides, brake_pedal
 from srunner.scenariomanager.actorcontrols.npc_vehicle_control import NpcVehicleControl
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
@@ -18,12 +18,15 @@ from srunner.scenariomanager.timer import GameTime
 from vehicsim_core.aeb_stack import record_event
 from vehicsim_core.bundle import result_document
 from vehicsim_core.evaluation import evaluate, to_document
+from vehicsim_core.filters import SPEC as JERK_FILTER_SPEC
+from vehicsim_core.filters import filtered_rms_jerk
 from vehicsim_core.simulator import (
     MAX_DURATION_S,
     PEDESTRIAN_RADIUS_M,
     PEDESTRIAN_START_Y_M,
     G,
     MotionStats,
+    brake_phase_start,
     build_outcome,
     ground_truth_ttc,
     make_frame,
@@ -36,14 +39,17 @@ class VehicsimAebControl(NpcVehicleControl):
         super().__init__(actor, args)
         options = args or {}
         self.spec = read_xosc(Path(options["xosc_file"]))
+        _, self.step_s, self.perception_period_s = read_profile(Path(options["xosc_file"]))
         self.out = Path(options["out_dir"])
         self.full_brake_decel = float(options.get("full_brake_decel", 4.6))
         self.simulator_version = options["simulator_version"]
         self.events: list[dict] = []
         self.frames: list[dict] = []
-        self.stack = new_aeb_stack(self.spec.case, self.spec.params, self.spec.seed, self.spec.vehicle, self.events)
-        self.stats = MotionStats()
-        self.meter = DecelMeter(limit=self.spec.case.road_friction * G)
+        self.stack = new_aeb_stack(self.spec.case, self.spec.params, self.spec.seed, self.spec.vehicle, self.events,
+                                   dt=self.step_s, perception_period_s=self.perception_period_s)
+        self.stats = MotionStats(dt=self.step_s)
+        # Cửa sổ đo giảm tốc giữ nguyên 0,1 s (2 tick ở 20 Hz): đúng một chu kỳ răng cưa tốc độ CARLA đã đo.
+        self.meter = DecelMeter(limit=self.spec.case.road_friction * G, window=max(2, round(0.1 / self.step_s)), dt=self.step_s)
         self.frame = None
         self.walker = None
         self.started_at = None
@@ -150,11 +156,24 @@ class VehicsimAebControl(NpcVehicleControl):
             crossing_x=self.spec.case.crossing_x,
             decel_available=min(self.spec.params.max_deceleration, self.spec.vehicle.max_brake_decel_mps2,
                                 self.spec.case.road_friction * G),
+            dt=self.step_s,
         )
+        steps = [b["t"] - a["t"] for a, b in zip(self.frames, self.frames[1:])]
+        start = brake_phase_start(self.frames, outcome.metrics["brake_onset_t"])
+        # Thực nghiệm (D3, kế hoạch 20/10): cùng tín hiệu ego_a của rms_jerk_mps3 nhưng lọc Butterworth 10 Hz trước khi đạo hàm.
+        # Không thay objective chính thức: bậc lọc/causal/nguồn gia tốc còn chờ Thành viên 3 chốt. Chỉ tính được khi bước < 0,05 s.
+        filtered = (filtered_rms_jerk([f["ego_a"] for f in self.frames], start, self.step_s, JERK_FILTER_SPEC["cutoff_hz"])
+                    if start is not None and self.step_s < 0.05 else None)
         world = self._actor.get_world()
         outcome.case["carla"] = {"map": world.get_map().name, "blueprint": self._actor.type_id,
                                  "full_brake_decel": self.full_brake_decel, "runner": "ScenarioRunner",
-                                 "decel_clamped_frames": self.meter.clamped}
+                                 "decel_clamped_frames": self.meter.clamped,
+                                 # Bước cấu hình và bước đo được từ timestamp khung thật: không coi cấu hình là đã đạt tốc độ này.
+                                 "fixed_delta_seconds": self.step_s, "perception_period_s": self.perception_period_s,
+                                 "jerk_filtered": {"status": "EXPERIMENTAL", "filter": JERK_FILTER_SPEC, "signal": "ego_a",
+                                                   "rms_jerk_mps3": None if filtered is None else round(filtered, 3)},
+                                 "measured_step_s": {"min": round(min(steps), 4), "max": round(max(steps), 4), "mean": round(sum(steps) / len(steps), 4),
+                                                     "frames": len(self.frames)} if steps else None}
         # Wrapper đã bắt tay với server và kiểm client/server cùng phiên bản trước khi chạy.
         result = result_document(self.spec, outcome, simulator=self.simulator_version,
                                  evaluation=to_document(evaluate(outcome, self.spec.params)))

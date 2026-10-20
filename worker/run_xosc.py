@@ -19,10 +19,56 @@ from xml.etree import ElementTree as ET
 
 import sensor_recorder
 import sim_common
-from openscenario_export import SIMULATOR_SUFFIX, read_xosc
+from openscenario_export import read_profile, read_xosc
 from vehicsim_core.bundle import carla_simulator
 
 WORKER = Path(__file__).resolve().parent
+STOP_FLAG = "stop.requested"  # backend ghi vào thư mục run để xin dừng (Windows không có tín hiệu mềm cho tiến trình con)
+POLL_S = 0.5
+_ACTOR_PREFIXES = ("vehicle.", "walker.", "sensor.", "controller.")
+
+
+class RunStoppedError(Exception):
+    """Backend xin dừng run này (hủy hoặc hết thời gian); đã dọn xong thì thoát EXIT_STOPPED."""
+
+
+def wait_for_exit(proc: subprocess.Popen, timeout: float, stop_flag: Path) -> int:
+    """Chờ ScenarioRunner thoát, nhưng nhìn thấy cờ dừng trong vòng ``POLL_S`` thay vì chờ hết ``timeout``."""
+    waited = 0.0
+    while True:
+        try:
+            return proc.wait(timeout=POLL_S)
+        except subprocess.TimeoutExpired:
+            waited += POLL_S
+        if stop_flag.exists():
+            raise RunStoppedError(f"Có yêu cầu dừng ({stop_flag.name})")
+        if waited >= timeout:
+            raise subprocess.TimeoutExpired(proc.args, timeout)
+
+
+def release_world(client) -> int:  # noqa: ANN001 - carla.Client
+    """Trả server về trạng thái sạch: không đồng bộ, không còn xe/người/cảm biến của lần chạy trước. Trả số actor đã xoá.
+
+    ScenarioRunner bị giết cứng (hủy, timeout, Windows ``terminate``) không kịp dọn: actor còn lại và server kẹt chế độ
+    đồng bộ chờ một tick không bao giờ đến. Một server chỉ chạy tuần tự các run của VehicSim nên xoá theo loại actor là an toàn.
+    """
+    world = client.get_world()
+    settings = world.get_settings()
+    settings.synchronous_mode = False
+    settings.fixed_delta_seconds = None
+    world.apply_settings(settings)
+    world.wait_for_tick()  # ở chế độ đồng bộ, get_actors() là ảnh cũ cho tới tick kế tiếp (đo 01/10)
+    leftovers = [a for a in world.get_actors() if a.type_id.startswith(_ACTOR_PREFIXES)]
+    # Cảm biến và controller phải dừng trước chủ của chúng.
+    for actor in sorted(leftovers, key=lambda a: not a.type_id.startswith(("sensor.", "controller."))):
+        try:
+            if actor.type_id.startswith(("sensor.", "controller.")):
+                actor.stop()
+            actor.destroy()
+        except RuntimeError:  # đã bị xoá cùng chủ
+            pass
+    client.get_trafficmanager(8005).set_synchronous_mode(False)
+    return len(leftovers)
 
 
 def environment(sr_root: Path) -> dict[str, str]:
@@ -78,29 +124,29 @@ def run(args: argparse.Namespace) -> int:
     map_name = ET.parse(args.xosc).find("./RoadNetwork/LogicFile").attrib["filepath"]
     if world.get_map().name.split("/")[-1] != map_name:
         world = client.load_world(map_name)
-    settings = world.get_settings()
-    settings.synchronous_mode = False
-    settings.fixed_delta_seconds = None
-    world.apply_settings(settings)
     out = (args.out or args.xosc.with_suffix("")).resolve()
     out.mkdir(parents=True, exist_ok=True)
     result_file = out / "result.json"
     result_file.unlink(missing_ok=True)
+    lifecycle = {"destroyed_before": release_world(client), "destroyed_after": None, "stopped": False}
+    if lifecycle["destroyed_before"]:
+        print(f"Dọn lại sau lần chạy bị ngắt: xoá {lifecycle['destroyed_before']} actor cũ.", file=sys.stderr)
     runtime = out / "scenario.runtime.xosc"
-    prepare_runtime(args.xosc, runtime, out, carla_simulator(state["version"]) + SIMULATOR_SUFFIX)
+    suffix, step_s, _ = read_profile(args.xosc)
+    prepare_runtime(args.xosc, runtime, out, carla_simulator(state["version"]) + suffix)
     env = environment(args.sr_root)
-    recorder = sensor_recorder.SensorRecorder(args.host, args.port, out / "sensors", camera=args.camera)
+    recorder = sensor_recorder.SensorRecorder(args.host, args.port, out / "sensors", camera=args.camera, step_s=step_s)
     follower = proc = None
     recorder.start()
     command = [sys.executable, str(args.sr_root / "scenario_runner.py"), "--openscenario", str(runtime),
-               "--host", args.host, "--port", str(args.port), "--timeout", "120", "--sync",
+               "--host", args.host, "--port", str(args.port), "--timeout", "120", "--sync", "--frameRate", str(round(1 / step_s)),
                "--trafficManagerPort", "8005", "--json", "--outputDir", str(out)]
     try:
         with (out / "follow_hero.log").open("w", encoding="utf-8") as camera_log, (out / "scenario_runner.log").open("w", encoding="utf-8") as log:
             follower = subprocess.Popen([sys.executable, str(WORKER / "follow_hero.py"), "--host", args.host,
                                          "--port", str(args.port), "--view", "chase"], env=env, stdout=camera_log, stderr=subprocess.STDOUT)
             proc = subprocess.Popen(command, cwd=args.sr_root, env=env, stdout=log, stderr=subprocess.STDOUT)
-            code = proc.wait(timeout=args.timeout)
+            code = wait_for_exit(proc, args.timeout, out / STOP_FLAG)
         criteria = []
         for path in out.glob("*.json"):
             doc = json.loads(path.read_text(encoding="utf-8"))
@@ -109,6 +155,9 @@ def run(args: argparse.Namespace) -> int:
         if code != 0 or not criteria or not result_file.is_file():
             result_file.unlink(missing_ok=True)
             raise RuntimeError(f"ScenarioRunner kết thúc mã {code} hoặc thiếu kết quả; xem {out / 'scenario_runner.log'}")
+    except RunStoppedError:
+        lifecycle["stopped"] = True
+        raise
     finally:
         for child in (proc, follower):
             if child is not None and child.poll() is None:
@@ -120,14 +169,12 @@ def run(args: argparse.Namespace) -> int:
                     child.wait(timeout=5)
         recorder.stop()
         try:
-            world = client.get_world()
-            settings = world.get_settings()
-            settings.synchronous_mode = False
-            settings.fixed_delta_seconds = None
-            world.apply_settings(settings)
-            client.get_trafficmanager(8005).set_synchronous_mode(False)
+            lifecycle["destroyed_after"] = release_world(client)
         except RuntimeError:
             pass
+        if lifecycle["stopped"]:
+            result_file.unlink(missing_ok=True)  # run bị dừng không có điểm hợp lệ
+        (out / "lifecycle.json").write_text(json.dumps(lifecycle), encoding="utf-8")
     print(f"Đã chạy .xosc bằng ScenarioRunner: {result_file}")
     return 0
 
@@ -162,6 +209,9 @@ def main(argv: list[str] | None = None) -> int:
         return run_variant.main(legacy)
     try:
         return run(args)
+    except RunStoppedError as exc:
+        print(str(exc), file=sys.stderr)
+        return sim_common.EXIT_STOPPED
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
         print(str(exc), file=sys.stderr)
         return sim_common.EXIT_SIMULATOR_ERROR

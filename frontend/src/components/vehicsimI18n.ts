@@ -160,6 +160,11 @@ const RULES: Rule[] = [
   [re("Rejected"), () => "Đã từ chối"],
   [re("More tests requested"), () => "Yêu cầu thêm kiểm thử"],
   [re("Blocked"), () => "Bị chặn"],
+  // --- RunService: hủy run (TD-37) ----------------------------------------------------
+  [re("Cancelled by user"), () => "Đã hủy theo yêu cầu"],
+  [re(String.raw`Run is already (\w+); nothing to cancel`), (m) => `Lượt chạy đã ở trạng thái ${m[1]}, không còn gì để hủy`],
+  [re("This run belongs to a regression test or optimization and cannot be cancelled on its own"),
+    () => "Lượt chạy thuộc kiểm thử hồi quy hoặc tối ưu nên chưa hủy riêng lẻ được"],
   // --- regression.py: tiêu chí -------------------------------------------------------
   [re("No previously safe scenario may collide"), () => "Không kịch bản an toàn nào được chuyển thành va chạm"],
   [re("Collision rate must not increase"), () => "Tỉ lệ va chạm không được tăng"],

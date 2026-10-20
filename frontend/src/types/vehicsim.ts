@@ -22,7 +22,7 @@ export interface CarlaStatus {
 
 export interface CarlaRun {
   id: number;
-  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "STOPPED";
   scenario_id: number;
   aeb_version_id: number;
   simulator_version: string;

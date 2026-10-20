@@ -16,8 +16,15 @@ from vehicsim_core.aeb_stack import AebParams
 from vehicsim_core.bundle import BundleError, RunSpec, read_spec
 from vehicsim_core.simulator import CURB_STOP_Y_M, MAX_DURATION_S, PEDESTRIAN_START_Y_M
 
-FORMAT = "vehicsim.xosc/v2"
-SIMULATOR_SUFFIX = "-xosc2"
+FORMAT = "vehicsim.xosc/v3"
+SIMULATOR_SUFFIX = "-xosc3"
+# v3: bước mô phỏng 0,01 s (100 Hz, kế hoạch 20/10 D3); perception/quyết định AEB vẫn theo chu kỳ cảm biến 0,05 s.
+STEP_S = 0.01
+PERCEPTION_PERIOD_S = 0.05
+# v2 (20 Hz) chỉ còn để chạy lại bằng chứng cũ ngoài web; backend không tạo run mới bằng profile này và không ghép với v3.
+LEGACY_FORMAT = "vehicsim.xosc/v2"
+LEGACY_SIMULATOR_SUFFIX = "-xosc2"
+LEGACY_STEP_S = 0.05
 # Town04 road 40: đoạn line dài 228 m, bốn làn phải, lane -4 ngoài cùng.
 # Dùng LanePosition để ScenarioRunner lấy đúng cao độ đường (đoạn này có dốc), không đặt WorldPosition phẳng.
 ROAD_ID = "40"
@@ -58,7 +65,7 @@ def export_xosc(spec: RunSpec) -> str:
          description="VehicSim CP_CROSSING", author="VehicSim")
     declarations = node(root, "ParameterDeclarations")
     values: dict[str, object] = {
-        "format": FORMAT, "seed": spec.seed, "ego_speed_kmh": spec.case.ego_speed_kmh,
+        "format": FORMAT, "fixed_delta_seconds": STEP_S, "perception_period_s": PERCEPTION_PERIOD_S, "seed": spec.seed, "ego_speed_kmh": spec.case.ego_speed_kmh,
         "trigger_distance_m": spec.case.trigger_distance_m, "pedestrian_speed_mps": spec.case.pedestrian_speed_mps,
         "stops_at_curb": str(spec.case.stops_at_curb).lower(), "weather": spec.case.weather,
         "time_of_day": spec.case.time_of_day, "friction": "" if spec.case.friction is None else spec.case.friction,
@@ -178,7 +185,7 @@ def read_xosc(path: Path) -> RunSpec:
     values = {p.attrib["name"].removeprefix("vs_"): p.attrib["value"] for p in root.findall("./ParameterDeclarations/ParameterDeclaration")}
     if values.get("format") == "vehicsim.xosc/v1":
         raise BundleError("File .xosc v1 có hướng đi bộ cũ; cần xuất lại từ web để chạy người đi bộ băng ngang đường")
-    if values.get("format") != FORMAT:
+    if values.get("format") not in (FORMAT, LEGACY_FORMAT):
         raise BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)")
     try:
         variant = {key: float(values[key]) for key in ("ego_speed_kmh", "trigger_distance_m", "pedestrian_speed_mps")}
@@ -201,6 +208,23 @@ def read_xosc(path: Path) -> RunSpec:
         })
     except (KeyError, ValueError) as exc:
         raise BundleError(f"Metadata .xosc không hợp lệ: {exc}") from exc
+
+
+def read_profile(path: Path) -> tuple[str, float, float]:
+    """(hậu tố identity simulator, bước mô phỏng s, chu kỳ perception s) của file .xosc theo định dạng của nó."""
+    root = ET.parse(path).getroot()
+    values = {p.attrib["name"].removeprefix("vs_"): p.attrib["value"] for p in root.findall("./ParameterDeclarations/ParameterDeclaration")}
+    if values.get("format") == LEGACY_FORMAT:
+        return LEGACY_SIMULATOR_SUFFIX, LEGACY_STEP_S, LEGACY_STEP_S
+    if values.get("format") != FORMAT:
+        raise BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)")
+    try:
+        step, period = float(values["fixed_delta_seconds"]), float(values["perception_period_s"])
+    except (KeyError, ValueError) as exc:
+        raise BundleError(f"Metadata thời gian .xosc không hợp lệ: {exc}") from exc
+    if not 0 < step <= period or abs(round(period / step) * step - period) > 1e-9:
+        raise BundleError(f"Bước {step} s và chu kỳ perception {period} s không tương thích")
+    return SIMULATOR_SUFFIX, step, period
 
 
 def main() -> None:

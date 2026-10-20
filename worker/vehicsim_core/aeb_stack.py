@@ -132,6 +132,7 @@ class AebStack:
         decel_limit: float,
         events: list[dict],
         dt: float = DT,
+        perception_period_s: float | None = None,
     ) -> None:
         self.params = params
         self.rng = random.Random(seed)
@@ -143,6 +144,14 @@ class AebStack:
         self.base_confidence = _WEATHER_CONFIDENCE.get(weather, 0.85) + _TIME_CONFIDENCE.get(time_of_day, 0.0)
         self.position_noise_m = _WEATHER_POSITION_NOISE_M.get(weather, 0.08)
         self.lag_frames = int(round(PERCEPTION_LATENCY_S / dt))
+        # Perception + quyết định chạy theo chu kỳ cảm biến (mặc định mỗi bước => hành vi cũ không đổi); lệnh phanh
+        # vẫn cập nhật mỗi bước. Nhiễu và bộ lọc dưới đây theo từng lần cảm biến, nên đổi dt không đổi thống kê của AEB.
+        period = dt if perception_period_s is None else perception_period_s
+        self._perception_every = max(1, round(period / dt))
+        if abs(self._perception_every * dt - period) > 1e-9:
+            raise ValueError(f"perception_period_s={period} không phải bội số của dt={dt}")
+        self._steps = 0
+        self._tick_view = (False, 0.0, None, None)  # (detected, confidence, perceived_y, ttc) của lần cảm biến gần nhất
 
         self.first_detection_t: float | None = None
         self.fcw_t: float | None = None
@@ -155,6 +164,31 @@ class AebStack:
     def step(self, t: float, *, gap: float, ped_y: float, ped_vy: float, ego_v: float) -> AebTick:
         p = self.params
         self._history.append((t, ped_y, ped_vy))
+        if self._steps % self._perception_every == 0:
+            self._tick_view = self._perceive_and_decide(t, gap=gap, ego_v=ego_v)
+        self._steps += 1
+        detected, confidence, perceived_y, ttc_perceived = self._tick_view
+
+        # ---- Control -----------------------------------------------------------
+        if self.decision_t is not None and t >= self.decision_t + p.brake_activation_delay + ACTUATOR_RESPONSE_TIME_S:
+            if self.brake_onset_t is None:
+                self.brake_onset_t = t
+                record_event(self.events, t, "brake_onset", "Brakes engage")
+            self.decel_cmd = min(self.decel_limit, self.decel_cmd + p.decel_ramp_rate * self.dt)
+
+        return AebTick(
+            detected=detected,
+            confidence=confidence,
+            perceived_y=perceived_y,
+            ttc=ttc_perceived,
+            decel_cmd=self.decel_cmd,
+        )
+
+    def _perceive_and_decide(
+        self, t: float, *, gap: float, ego_v: float
+    ) -> tuple[bool, float, float | None, float | None]:
+        """Một lần cảm biến: perception (dữ liệu trễ ``PERCEPTION_LATENCY_S``) rồi quyết định FCW/AEB."""
+        p = self.params
 
         # ---- Perception (dữ liệu trễ PERCEPTION_LATENCY_S) -----------------------
         _, seen_y, seen_vy = self._history[max(0, len(self._history) - 1 - self.lag_frames)]
@@ -196,17 +230,4 @@ class AebStack:
                     self.decision_t = t
                     record_event(self.events, t, "aeb_decision", "AEB brake command", ttc_s=round(ttc_perceived, 2))
 
-        # ---- Control -----------------------------------------------------------
-        if self.decision_t is not None and t >= self.decision_t + p.brake_activation_delay + ACTUATOR_RESPONSE_TIME_S:
-            if self.brake_onset_t is None:
-                self.brake_onset_t = t
-                record_event(self.events, t, "brake_onset", "Brakes engage")
-            self.decel_cmd = min(self.decel_limit, self.decel_cmd + p.decel_ramp_rate * self.dt)
-
-        return AebTick(
-            detected=detected,
-            confidence=confidence,
-            perceived_y=perceived_y,
-            ttc=ttc_perceived,
-            decel_cmd=self.decel_cmd,
-        )
+        return detected, confidence, perceived_y, ttc_perceived

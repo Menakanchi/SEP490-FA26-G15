@@ -2,7 +2,9 @@
 <OpenSCENARIO>
   <FileHeader revMajor="1" revMinor="0" date="2026-10-18T00:00:00" description="VehicSim CP_CROSSING" author="VehicSim" />
   <ParameterDeclarations>
-    <ParameterDeclaration name="vs_format" parameterType="string" value="vehicsim.xosc/v2" />
+    <ParameterDeclaration name="vs_format" parameterType="string" value="vehicsim.xosc/v3" />
+    <ParameterDeclaration name="vs_fixed_delta_seconds" parameterType="string" value="0.01" />
+    <ParameterDeclaration name="vs_perception_period_s" parameterType="string" value="0.05" />
     <ParameterDeclaration name="vs_seed" parameterType="string" value="0" />
     <ParameterDeclaration name="vs_ego_speed_kmh" parameterType="string" value="40.0" />
     <ParameterDeclaration name="vs_trigger_distance_m" parameterType="string" value="25.0" />
