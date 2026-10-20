@@ -48,6 +48,9 @@ public class RegressionService {
 
     private static final List<String> REQUIRED_CRITERIA = List.of("no_new_collision", "identical_seeds");
 
+    /** Phanh oan tăng tối đa (điểm %) mặc định của regression — cùng ràng buộc với tối ưu (ADR-040 §7, ADR-042). */
+    public static final double DEFAULT_FALSE_ACTIVATION_MAX_PTS = 5.0;
+
     private static final Map<String, String> DECISION_OF = Map.of(
             "PENDING_REVIEW", "PENDING", "ACCEPTED", "ACCEPT", "REJECTED", "REJECT", "MORE_TESTS_REQUESTED", "REQUEST_MORE_TESTS");
     private static final Map<String, String> STATUS_OF_DECISION = Map.of(
@@ -110,7 +113,7 @@ public class RegressionService {
         Map<String, Map<String, Object>> d = new LinkedHashMap<>();
         d.put("no_new_collision", Json.obj("enabled", true, "required", true));
         d.put("collision_rate_not_increase", Json.obj("enabled", true, "required", false));
-        d.put("false_activation_increase_max_pts", Json.obj("enabled", true, "required", false, "value", 0.5));
+        d.put("false_activation_increase_max_pts", Json.obj("enabled", true, "required", false, "value", DEFAULT_FALSE_ACTIVATION_MAX_PTS));
         d.put("median_min_ttc_change_min_s", Json.obj("enabled", true, "required", false, "value", -0.1));
         d.put("identical_seeds", Json.obj("enabled", true, "required", true));
         return d;
@@ -474,7 +477,7 @@ public class RegressionService {
 
         Map<String, Object> crit = Json.asMap(test.json("pass_criteria_json").get("criteria"));
         double faMax = Json.asDouble(Json.asMap(crit.get("false_activation_increase_max_pts")).get("value")) == null
-                ? 0.5 : Json.asDouble(Json.asMap(crit.get("false_activation_increase_max_pts")).get("value"));
+                ? DEFAULT_FALSE_ACTIVATION_MAX_PTS : Json.asDouble(Json.asMap(crit.get("false_activation_increase_max_pts")).get("value"));
         double ttcMin = Json.asDouble(Json.asMap(crit.get("median_min_ttc_change_min_s")).get("value")) == null
                 ? -0.1 : Json.asDouble(Json.asMap(crit.get("median_min_ttc_change_min_s")).get("value"));
 

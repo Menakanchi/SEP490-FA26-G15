@@ -60,6 +60,7 @@ public class VehicSimController {
     private final RunService runs;
     private final AebService aeb;
     private final RegressionService regression;
+    private final RegressionReportService regressionReports;
     private final DescribeService describe;
     private final OtpService otp;
     private final BootstrapService bootstrap;
@@ -440,6 +441,29 @@ public class VehicSimController {
     @GetMapping("/regression/{testId}")
     public Map<String, Object> getRegression(@PathVariable long testId) {
         return views.regressionDetail(testId);
+    }
+
+    @Operation(summary = "Tải gói kết quả của một regression đã chạy xong (JSON)")
+    @GetMapping("/regression/{testId}/export.json")
+    public ResponseEntity<Map<String, Object>> exportRegressionJson(@PathVariable long testId) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + RegressionService.testCode(testId) + ".json\"")
+                .body(regressionReports.export(testId));
+    }
+
+    @Operation(summary = "Tải gói kết quả của một regression đã chạy xong (CSV, mỗi dòng một cặp baseline–candidate)")
+    @GetMapping("/regression/{testId}/export.csv")
+    public ResponseEntity<byte[]> exportRegressionCsv(@PathVariable long testId) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv; charset=utf-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + RegressionService.testCode(testId) + ".csv\"")
+                .body(regressionReports.exportCsv(testId).getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Operation(summary = "Lịch sử quyết định của Reviewer và chuỗi baseline")
+    @GetMapping("/decisions")
+    public Map<String, Object> decisionHistory() {
+        return regressionReports.decisionHistory();
     }
 
     @Operation(summary = "Danh sách khuyến nghị kỹ thuật")

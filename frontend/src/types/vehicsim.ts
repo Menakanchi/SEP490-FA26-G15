@@ -395,6 +395,25 @@ export interface RegressionDetail {
   created_by: string | null;
   created_at: string;
   summary: RegressionSummary;
+  /** Bộ mô phỏng của test (vd. `carla-0.9.16-xosc2`); null/undefined ở bản backend cũ. */
+  simulator?: string;
+  /** Có khi test chạy trên CARLA: phanh chưa hiệu chuẩn, số chỉ để quan sát/đối chiếu (TD-17). */
+  simulator_caveat?: SimulatorCaveat | null;
+  candidate_source?: CandidateSource | null;
+}
+
+export interface SimulatorCaveat {
+  carla: boolean;
+  calibrated: boolean;
+}
+
+/** Candidate tạo thủ công hay đến từ chiến dịch tối ưu; chiến dịch/trial null khi chưa có dữ liệu tối ưu. */
+export interface CandidateSource {
+  type: "MANUAL" | "OPTIMIZATION";
+  optimization_run_id: number | null;
+  campaign_name: string | null;
+  trial_id: number | null;
+  trial_number: number | null;
 }
 
 export interface RegressionPreview {
@@ -451,6 +470,33 @@ export interface RecommendationDetail extends RegressionDetail {
     conditions: string | null;
     requested_by: string | null;
   };
+}
+
+/** ``GET /vehicsim/decisions`` — quyết định của Reviewer (mới nhất trước) và chuỗi baseline của project. */
+export interface DecisionHistory {
+  decisions: {
+    recommendation_code: string;
+    regression_code: string;
+    test_id: number;
+    baseline: string;
+    candidate: string;
+    decision: ReviewDecision;
+    reviewed_by: string | null;
+    reviewed_at: string | null;
+    reason: string | null;
+    conditions: string | null;
+  }[];
+  baselines: {
+    id: number;
+    version_no: number;
+    label: string;
+    status: "BASELINE" | "ARCHIVED";
+    /** null = baseline khởi tạo của project, không do quyết định Accept nào nâng. */
+    promoted_by: string | null;
+    promoted_at: string | null;
+    regression_code: string | null;
+    reason: string | null;
+  }[];
 }
 
 /** ``POST /vehicsim/telemetry/evaluate`` — số đo từ ``frames.csv`` của ``worker/sensor_recorder.py`` (ADR-040). */

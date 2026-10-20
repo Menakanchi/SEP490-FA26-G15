@@ -32,13 +32,16 @@ public class ViewsService {
     private final FamilyService families;
     private final RegressionService regression;
     private final RunService runs;
+    private final RegressionReportService reports;
 
-    public ViewsService(Db db, Queries queries, FamilyService families, RegressionService regression, RunService runs) {
+    public ViewsService(Db db, Queries queries, FamilyService families, RegressionService regression, RunService runs,
+                        RegressionReportService reports) {
         this.db = db;
         this.queries = queries;
         this.families = families;
         this.regression = regression;
         this.runs = runs;
+        this.reports = reports;
     }
 
     // ------------------------------------------------------------------ ngữ cảnh
@@ -532,7 +535,8 @@ public class ViewsService {
         for (Row r : db.list("SELECT status, COUNT(*) AS n FROM simulation_runs WHERE regression_test_id = ? GROUP BY status", testId)) {
             long n = r.lng("n");
             total += n;
-            if ("COMPLETED".equals(r.str("status")) || "FAILED".equals(r.str("status"))) {
+            // STOPPED (hủy) cũng là đã kết thúc: không đếm thì tiến độ kẹt dưới 100% dù test đã chuyển ERROR.
+            if ("COMPLETED".equals(r.str("status")) || "FAILED".equals(r.str("status")) || "STOPPED".equals(r.str("status"))) {
                 done += n;
             }
         }
@@ -643,6 +647,8 @@ public class ViewsService {
                 "parameter_diff", diff,
                 "pass_criteria", test.json("pass_criteria_json"),
                 "simulator", test.str("simulator_version"),
+                "simulator_caveat", RegressionReportService.simulatorCaveat(test.str("simulator_version")),
+                "candidate_source", reports.candidateSource(candidate.lng("id")),
                 "progress", progress,
                 "created_by", names.get(test.getLong("created_by_user_id")),
                 "created_at", Vs.iso(test.ts("created_date")),
