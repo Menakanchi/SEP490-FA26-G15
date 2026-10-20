@@ -908,6 +908,8 @@ Bảng tổng hợp regression (ma trận chuyển trạng thái, tỉ lệ, ti�
 tính lại từ các run đã COMPLETED (run không đổi sau khi xong), số đếm chính lưu ở `regression_tests`,
 từng cặp ở `regression_test_items`.
 
+Ngưỡng `false_activation_increase_max_pts.value` của test tạo từ ADR-042 là 5 (điểm %); test tạo trước đó giữ giá trị đã lưu (0,5). Không đổi bảng hay cột nào.
+
 ## 8. Dữ liệu seed
 
 | Bảng | Seed |

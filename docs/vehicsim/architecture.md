@@ -57,6 +57,11 @@ Từ ADR-041, trang này có luồng chạy trực tiếp bằng OpenSCENARIO: `
 theo dõi kết nối/hàng đợi, `/runs/{id}/carla-data` + `/carla-files/{name}` đọc sensor/ảnh đã ghi, có kiểm project và
 whitelist tên file. Các route ghi vẫn qua role và hạn mức. [Cách chạy Windows](carla-local.md).
 
+Màn 5 thêm ba route đọc (`RegressionReportService`, mọi role đã đăng nhập): `GET /regression/{id}/export.json` và `/export.csv` — gói kết quả
+của test đã chạy xong (manifest, tham số, tiêu chí, từng cặp run kèm seed, quyết định; không có email, CSV chống công thức) — và `GET /decisions`
+(lịch sử quyết định của Reviewer + chuỗi baseline). Chi tiết regression/khuyến nghị có thêm `candidate_source` (thủ công hay từ chiến dịch tối ưu,
+chỉ đọc `optimization_trials`) và `simulator_caveat` (test chạy trên CARLA: phanh chưa hiệu chuẩn, TD-17).
+
 Trang `/` (Tổng quan) tính trạng thái 6 bước từ dữ liệu thật và chỉ bước tiếp theo;
 mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước ở
 `components/vehicsimFlow.ts`).
@@ -191,6 +196,10 @@ Tiêu chí mặc định (`DEFAULT_CRITERIA` trong `regression.py`):
 | Median min TTC thay đổi ≥ −0,1 s | bật | có |
 | Cùng seed cho hai version (`identical_seeds`) | bật | không |
 
+> Từ [ADR-042](../adr/ADR-042-nguong-phanh-oan-regression-5-diem.md) (20/10/2026) ngưỡng phanh oan mặc định của test **mới** là 5 điểm %
+> (hằng `RegressionService.DEFAULT_FALSE_ACTIVATION_MAX_PTS`, cùng ràng buộc với tối ưu); 0,5 ở bảng trên là mặc định trước ADR-042.
+> Test đã tạo giữ ngưỡng đã lưu trong `pass_criteria_json`.
+
 Mọi tiêu chí đang bật phải qua thì verdict mới `PASSED`; trượt mà có ca tệ hơn baseline là `REGRESSED`,
 trượt tiêu chí khác là `FAILED` (giao diện gộp hai loại thành FAILED). Chốt xong thì tạo một
 `engineering_recommendations`. Chỉ **REVIEWER** được quyết định (`decide`) — Engineer / EXP tạo
@@ -294,6 +303,12 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Baseline đã đổi ⇒ không Accept/Reject test cũ | `RegressionDecisionTest#acceptIsRefusedWhenTheBaselineChangedSinceTheTestRan`, `RegressionDecisionTest#acceptOrRejectIsRefusedWhenTheCandidateWasAlreadyDecidedElsewhere` |
 | Tiêu chí regression bắt buộc không tắt được; kết luận (confidence) cần PASS + không ca nào xấu đi + đủ kịch bản | `RegressionRulesTest#defaultsKeepRequiredCriteriaOn`, `RegressionRulesTest#confidenceNeedsPassAndNoRegressionAndEnoughScenarios` |
 | Tham số candidate nằm trong khoảng; preview khớp bộ kịch bản thật của test | _chưa có test_ (TD-33) |
+| Candidate chạy đúng seed của run baseline (đã có test, bổ sung cho dòng "_chưa có test_" ở trên) | `RegressionPairingTest#aRegressionRunCopiesTheSeedOfItsBaselineRunNotTheDefaultSeed` |
+| Regression không ghép động học với CARLA, hay khác xe (đã có test, bổ sung cho dòng ở trên) | `RegressionPairingTest#aKinematicBaselineIsNeverPairedWithACarlaRunEvenWhenCarlaIsConfigured`, `RegressionPairingTest#aCarlaBaselineIsNeverPairedWithAKinematicRunEvenWhenKinematicIsConfigured`, `RegressionPairingTest#aBaselineRunOnAnotherVehicleCannotBePaired`, `RegressionPairingTest#theBaselineLookupIsScopedToTheConfiguredSimulatorAndVehicle` |
+| Preview khớp bộ kịch bản thật của test (đã có test); run bị dừng/hỏng không cho verdict | `RegressionPairingTest#thePreviewMatchesTheScenarioSetOfTheTestThatIsCreated`, `RegressionPairingTest#aStoppedRunMakesTheTestFailWithoutVerdictOrRecommendation` |
+| Ngưỡng phanh oan mặc định 5 điểm %; test cũ giữ ngưỡng đã lưu (ADR-042) | `RegressionRulesTest#defaultFalseActivationThresholdIsFivePoints`, `RegressionRulesTest#aTestStoredWithTheOldThresholdIsStillJudgedByIt` |
+| Gói xuất chỉ cho test đã xong, không email, CSV chống công thức; lịch sử baseline gồm baseline khởi tạo | `RegressionReportServiceTest#anUnfinishedTestCannotBeExported`, `RegressionReportServiceTest#theExportCarriesTheManifestPairsSeedsAndDecisionButNoEmail`, `RegressionReportServiceTest#theCsvHasOneRowPerPairAndNeutralisesFormulas`, `RegressionReportServiceTest#theHistoryListsDecisionsNewestFirstAndTheBaselineChainWithItsInitialBaseline` |
+| Route xuất / lịch sử đọc được với mọi role; tạo regression chỉ ADMIN / ENGINEER / EXPERIENCER | `VehicSimSecurityTest#regressionExportsAndDecisionHistoryAreReadOnlyForEveryRole`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
 | Luật theo category kịch bản (ADR-040) | `ScenarioRulesTest#checkThrowsInvalidRequestWithEveryProblem`, `ScenarioRulesTest#everyCategoryOfTheSchemaEnumIsKnown` |
 | IR từ LLM ngoài khoảng bị báo để sửa; LLM trả lời qua tool-call ép cấu trúc | `DescribeServiceTest#outOfRangeValuesAreReportedForRepair`, `DescribeServiceTest#llmPathParsesTheForcedToolCallAndComputesCost` |
 | LLM lỗi ⇒ lùi về luật; mô tả mơ hồ bị từ chối trước khi gọi LLM | `DescribeServiceTest#withoutApiKeyDescribeFallsBackToRulesAndSaysWhy`, `DescribeServiceTest#vagueSentencesAreRejectedBeforeAnyLlmCall` |

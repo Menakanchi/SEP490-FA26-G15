@@ -69,6 +69,8 @@ class VehicSimSecurityTest {
     @MockitoBean
     private RegressionService regression;
     @MockitoBean
+    private RegressionReportService regressionReports;
+    @MockitoBean
     private DescribeService describe;
     @MockitoBean
     private com.vehicsim.service.OtpService otp;
@@ -110,6 +112,11 @@ class VehicSimSecurityTest {
 
     private MockHttpServletRequestBuilder describeScenario() {
         return request(HttpMethod.POST, BASE + "/scenarios/describe").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"người đi bộ băng ngang\"}");
+    }
+
+    private MockHttpServletRequestBuilder createRegression() {
+        return request(HttpMethod.POST, BASE + "/regression").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"candidate_version_id\":2,\"scenario_id\":1}");
     }
 
     private MockHttpServletRequestBuilder decide() {
@@ -158,12 +165,14 @@ class VehicSimSecurityTest {
         for (RoleCode code : List.of(RoleCode.ADMIN, RoleCode.ENGINEER, RoleCode.EXPERIENCER)) {
             assertThat(statusOf(runFamily(), code)).as("%s chạy được", code).isBetween(200, 299);
             assertThat(statusOf(createCandidate(), code)).as("%s tạo candidate được", code).isBetween(200, 299);
+            assertThat(statusOf(createRegression(), code)).as("%s tạo regression được", code).isBetween(200, 299);
             assertThat(statusOf(describeScenario(), code)).as("%s mô tả được", code).isBetween(200, 299);
         }
         // MANAGER chỉ đọc; REVIEWER duyệt chứ không làm.
         for (RoleCode code : List.of(RoleCode.MANAGER, RoleCode.REVIEWER)) {
             assertThat(statusOf(runFamily(), code)).as("%s không được chạy", code).isEqualTo(403);
             assertThat(statusOf(createCandidate(), code)).as("%s không được tạo candidate", code).isEqualTo(403);
+            assertThat(statusOf(createRegression(), code)).as("%s không được tạo regression", code).isEqualTo(403);
             assertThat(statusOf(describeScenario(), code)).as("%s không được mô tả", code).isEqualTo(403);
         }
     }
@@ -193,6 +202,19 @@ class VehicSimSecurityTest {
             assertThat(statusOf(request(HttpMethod.POST, BASE + "/scenarios/xosc")
                     .contentType(MediaType.APPLICATION_JSON).content("{}"), code))
                     .isEqualTo(writer ? 200 : 403);
+        }
+    }
+
+    @Test
+    void regressionExportsAndDecisionHistoryAreReadOnlyForEveryRole() throws Exception {
+        stubServices();
+        when(regressionReports.export(anyLong())).thenReturn(Map.of());
+        when(regressionReports.exportCsv(anyLong())).thenReturn("variant\r\n");
+        when(regressionReports.decisionHistory()).thenReturn(Map.of());
+        for (RoleCode code : RoleCode.values()) {
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/regression/1/export.json"), code)).as("%s tải JSON", code).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/regression/1/export.csv"), code)).as("%s tải CSV", code).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/decisions"), code)).as("%s xem lịch sử", code).isEqualTo(200);
         }
     }
 
