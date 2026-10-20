@@ -65,6 +65,7 @@ public class VehicSimController {
     private final BootstrapService bootstrap;
     private final VehicSimProperties props;
     private final TelemetryMetricsService telemetryService;
+    private final OptimizationService optimization;
 
     // ------------------------------------------------------------------ quyền
 
@@ -470,5 +471,77 @@ public class VehicSimController {
         }
         regression.decide(projectId(), testId, uid, body.decision(), body.reason(), body.conditions(), body.confirmed());
         return views.recommendationDetail(testId);
+    }
+
+    // ------------------------------------------------------------------ MOBO AEB Optimization
+
+    public record OptimizationRequest(
+            @JsonProperty("scenario_id") @NotNull Long scenarioId,
+            @JsonProperty("base_aeb_version_id") Long baseAebVersionId,
+            @JsonProperty("max_trials") Integer maxTrials,
+            @JsonProperty("n_initial_points") Integer nInitialPoints,
+            @JsonProperty("name") @Size(max = 150) String name,
+            @JsonProperty("search_space") Map<String, Object> searchSpace,
+            @JsonProperty("objective_config") Map<String, Object> objectiveConfig) {
+    }
+
+    @Operation(summary = "Tạo và bắt đầu Optimization Run bằng MOBO")
+    @PostMapping("/optimizations")
+    public ResponseEntity<Map<String, Object>> createOptimization(
+            @Valid @RequestBody OptimizationRequest body,
+            @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "optimization");
+        String searchSpaceJson = body.searchSpace() != null ? Json.write(body.searchSpace()) : null;
+        String objectiveConfigJson = body.objectiveConfig() != null ? Json.write(body.objectiveConfig()) : null;
+
+        long runId = optimization.createAndStartRun(
+                projectId(), uid, body.scenarioId(), body.baseAebVersionId(),
+                body.maxTrials(), body.nInitialPoints(), searchSpaceJson, objectiveConfigJson, body.name());
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(Json.obj("id", runId, "status", "RUNNING"));
+    }
+
+    @Operation(summary = "Danh sách Optimization Runs")
+    @GetMapping("/optimizations")
+    public List<Map<String, Object>> listOptimizations() {
+        return optimization.listRuns(projectId());
+    }
+
+    @Operation(summary = "Chi tiết một Optimization Run")
+    @GetMapping("/optimizations/{id}")
+    public Map<String, Object> getOptimization(@PathVariable long id) {
+        return optimization.getRun(projectId(), id);
+    }
+
+    @Operation(summary = "Danh sách Optimization Trials của một Run")
+    @GetMapping("/optimizations/{id}/trials")
+    public List<Map<String, Object>> listOptimizationTrials(@PathVariable long id) {
+        return optimization.listTrials(projectId(), id);
+    }
+
+    @Operation(summary = "Lấy tập nghiệm Pareto-optimal của một Optimization Run")
+    @GetMapping("/optimizations/{id}/pareto")
+    public List<Map<String, Object>> getOptimizationPareto(@PathVariable long id) {
+        return optimization.getParetoFront(projectId(), id);
+    }
+
+    @Operation(summary = "Huỷ một Optimization Run đang chạy")
+    @PostMapping("/optimizations/{id}/cancel")
+    public Map<String, Object> cancelOptimization(@PathVariable long id, @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        optimization.cancelRun(projectId(), id, uid);
+        return Json.obj("id", id, "status", "CANCELLED");
+    }
+
+    @Operation(summary = "Chọn Pareto Candidate và chuyển sang Verification Testing (Regression Test)")
+    @PostMapping("/optimizations/{id}/select/{trialId}")
+    public Map<String, Object> selectCandidateForVerification(
+            @PathVariable long id,
+            @PathVariable long trialId,
+            @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "select_candidate");
+        return optimization.selectCandidateForVerification(projectId(), id, trialId, uid);
     }
 }
