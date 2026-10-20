@@ -3,6 +3,11 @@
 Đây là **một** cách cài đặt D3, chưa phải objective chính thức: bậc lọc, causal hay offline, khởi tạo biên và nguồn gia tốc
 còn mở ở mục 5.3 của kế hoạch (Thành viên 3 chốt). Hàm ở đây tách riêng để kết quả chạy 100 Hz ghi được số đã lọc kèm đặc tả
 bộ lọc mà không đổi ``rms_jerk_mps3`` hiện có.
+
+**Không khớp Euro NCAP.** Euro NCAP AEB/LSS VRU v4.5.1, mục 4.4.1.2, lọc gia tốc bằng "12-pole phaseless Butterworth filter with a
+cut off frequency of 10Hz" (không lệch pha). Bộ lọc dưới đây là bậc 2, chạy một chiều (causal, có trễ pha), nên số jerk đã lọc **không**
+tuân theo đặc tả đó. Cách hiểu "12-pole phaseless" (6 cực chạy xuôi rồi ngược, theo quy ước SAE J211) và việc 10 Hz áp cho mỗi lượt
+hay cho đáp ứng tổng chưa được Euro NCAP nêu, nên chưa cài. Xem docs/vehicsim/nguon-va-kiem-chung-du-lieu.md (R14, R19).
 """
 
 from __future__ import annotations

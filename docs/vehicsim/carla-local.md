@@ -57,8 +57,9 @@ File kết quả nội bộ vẫn là `result.json` để Java kiểm metadata v
   `case.carla.measured_step_s` đo từ timestamp khung thật. `simulation_runs.fixed_delta_seconds` = 0,0100 cho xosc3.
 - Perception và quyết định AEB vẫn chạy theo chu kỳ cảm biến **0,05 s**; chỉ lệnh phanh, đo và ghi dữ liệu theo 0,01 s. Nhiễu
   và bộ lọc của perception rút theo từng lần cảm biến nên đổi bước không đổi thống kê của AEB; bộ động học giữ nguyên 20 Hz.
-- RMS jerk (`Δa/dt`) ở 100 Hz **không so sánh được** với số 20 Hz. `case.carla.jerk_filtered` là số lọc Butterworth 10 Hz thực
-  nghiệm (xem exec plan 2026-10-20), chưa phải objective chính thức.
+- RMS jerk (`Δa/dt`) ở 100 Hz **không so sánh được** với số 20 Hz. `case.carla.jerk_filtered` là số lọc Butterworth 10 Hz **bậc 2 một chiều (causal)** thực
+  nghiệm (xem exec plan 2026-10-20), chưa phải objective chính thức và **không khớp** "12-pole phaseless" của Euro NCAP 4.4.1.2
+  ([sổ kiểm chứng](nguon-va-kiem-chung-du-lieu.md) R14, R19).
 - XML dùng LanePosition trên đoạn thẳng road 40/lane -4 của Town04, lấy cao độ từ map; không chiếu người đi bộ lên
   mặt phẳng sai cao độ. Dải tốc độ/khoảng cách hiện có nằm trong đoạn road đã chọn.
 - Không đặt Orientation trên LanePosition của người đi bộ: ScenarioRunner 0.9.16 dùng góc đã xoay để tính offset,
