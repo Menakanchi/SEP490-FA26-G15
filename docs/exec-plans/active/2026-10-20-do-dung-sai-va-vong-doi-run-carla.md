@@ -140,6 +140,7 @@ khoảng (min = max = 0,01); `frames.csv` 383/383 khoảng 0,01 s; ảnh camera 
 - **RMS jerk `Δa/dt` không so sánh được giữa hai tần số** (38,4 so với 20,8): đạo hàm sai phân của chuỗi lấy mẫu mịn hơn.
   Số đã lọc Butterworth 10 Hz bậc 2 (causal) trên cùng tín hiệu `ego_a` là **19,9** m/s³ ở 100 Hz, cùng bậc với số 20 Hz và với giới
   hạn tăng lực phanh `JERK_LIMIT_MPS3 = 20`. Số này ghi ở `case.carla.jerk_filtered` (trạng thái `EXPERIMENTAL`), không thay `rms_jerk_mps3`.
+  **Đính chính 20/10 (sau khi đọc Euro NCAP v4.5.1 mục 4.4.1.2):** bộ lọc này là bậc 2 một chiều, còn Euro NCAP ghi "12-pole phaseless" (không lệch pha); hai bộ lọc cho kết quả khác nhau và nhóm chưa chốt cách hiểu. Xem [sổ kiểm chứng](../../vehicsim/nguon-va-kiem-chung-du-lieu.md) R14, R19, M3.
 
 **Việc cần Thành viên 3 / nhóm chốt trước khi coi 100 Hz là hoàn chỉnh theo D3:**
 1. Bậc lọc, causal hay offline, khởi tạo biên, nguồn gia tốc (`ego_a` do `DecelMeter` tính từ tốc độ, hay IMU, hay ground truth) và

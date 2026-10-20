@@ -135,6 +135,17 @@ Lưu giới hạn tìm kiếm thực tế trong campaign, không chỉ dựa và
 Theo PDF, đặc tả mốc phanh dựa vào gia tốc đã lọc và các ngưỡng −0,3/−1 m/s².
 Nhóm phải làm rõ chiều vượt ngưỡng, đoạn phanh được chọn và xử lý nhiều lần phanh bằng ví dụ tín hiệu;
 không chỉ sao chép câu mô tả thành điều kiện rời rạc.
+
+**Nguồn đã đối chiếu (20/10/2026, [sổ kiểm chứng](nguon-va-kiem-chung-du-lieu.md) mục R14, R15, R19, M2, M3).** Các yêu cầu đo trong D3 trùng với
+Euro NCAP AEB/LSS VRU Test Protocol v4.5.1: mục 4.1.1 lấy mẫu ít nhất 100 Hz; 4.4.1.1 vị trí và vận tốc **không lọc**; 4.4.1.2 gia tốc lọc
+*"12-pole phaseless Butterworth filter with a cut off frequency of 10Hz"*; mục 2 định nghĩa T_AEB là điểm dữ liệu cuối cùng mà gia tốc đã lọc
+xuống dưới −1 m/s², rồi lùi về lúc gia tốc vượt −0,3 m/s². Điều này trả lời chiều vượt ngưỡng nhưng **chưa trả lời** các điểm sau, và chúng
+vẫn do Thành viên 3 chốt:
+- Euro NCAP chỉ lọc **gia tốc** và không định nghĩa jerk hay RMS jerk; RMS jerk là định nghĩa của nhóm (ADR-040).
+- Euro NCAP không giải thích "12-pole phaseless" (quy ước SAE J211 hiểu "4-pole phaseless" là bộ lọc 2 cực chạy xuôi rồi ngược) và không nói
+  10 Hz áp cho mỗi lượt hay cho đáp ứng tổng.
+- T_AEB là mốc **khi chấm**; `brake_onset_t` của lõi AEB (mở cửa sổ RMS jerk) là thời điểm lệnh phanh có hiệu lực, định nghĩa khác.
+  Phải chốt dùng mốc nào cho cửa sổ phanh.
 Chốt nguồn gia tốc dùng để chấm objective và cách đối chiếu IMU–ground truth; không để worker và Java
 ngầm dùng hai nguồn khác nhau cho cùng một tên chỉ số.
 

@@ -9,6 +9,9 @@ candidate được đổi); **6 tham số còn lại là hằng số** của lõ
 | **Chỉnh được (4)** | 5 TTC Threshold, 6 Brake Activation Delay, 7 Max Deceleration, 8 Brake Build-up Rate | bảng `aeb_parameters` + `aeb_parameter_values` (seed: `BootstrapService.java`, khớp `01_schema.sql`) |
 | **Hằng số (6)** | 1 Detection Confidence 0,70 · 2 Relative Velocity 2,0 m/s · 3 Prediction Horizon 2,0 s · 4 Safety Distance Margin 2,0 m · 9 Jerk Limit 20 m/s³ · 10 Actuator Response Time 0,10 s | `worker/vehicsim_core/aeb_stack.py` — không nằm trong DB, không có trong bundle |
 
+> **Kiểm chứng nguồn (20/10/2026):** từng khẳng định dưới đây đã được mở lại trong văn bản gốc và ghi mức bằng chứng ở
+> [sổ kiểm chứng](nguon-va-kiem-chung-du-lieu.md). Các chỗ **đã sửa** vì sai nguồn được đánh dấu "Đính chính 20/10".
+
 Với 4 tham số chỉnh được, nguồn bên dưới là căn cứ cho **biên tối ưu**. Với 6 hằng số, nguồn là căn cứ cho
 **giá trị cố định** đang chọn. Mục cuối đối chiếu nghiên cứu với code hiện tại.
 
@@ -22,14 +25,14 @@ Với 4 tham số chỉnh được, nguồn bên dưới là căn cứ cho **bi�
 | # | Tham số | Range nghiên cứu | Nguồn chính | Mức chứng minh |
 |---|---|---|---|---|
 | 1 | Detection Confidence Threshold | 0.2 – 0.7 | Safe Perception (2022); PointPillars adaptive threshold (2024) | Ghép từ paper perception |
-| 2 | Relative Velocity Threshold | 10 – 70 km/h | UN R152, UN R131 (qua MLIT Nhật) | Lấy từ dải test của tiêu chuẩn |
+| 2 | Relative Velocity Threshold | 10 – 60 km/h đã xác minh (R152); "10 – 70" chưa xác minh | UN R152; UN R131 | R152 đọc trực tiếp; số của MLIT/R131 chưa tìm thấy |
 | 3 | Prediction Horizon | 0.5 – 5 s | Maschke 2024 (VW); luận văn JKU (NMPC) | Ghép, độ tin cậy thấp |
 | 4 | Safety Distance Margin (d0) | 1 – 5 m | Mazda / Berkeley (Seiler 1998) | Chỉ có giá trị 5 m, cận dưới là đề xuất |
 | 5 | TTC Threshold | 0.6 – 3.0 s | Lai 2024; Maschke 2024; UN R131; GB/T 39901-2021 | Có range trực tiếp |
 | 6 | Brake Activation Delay | 0.1 – 0.5 s | Mazda, Honda (Seiler 1998); Maschke 2024; Taylor 2024 | Có range trực tiếp |
 | 7 | Target/Max Deceleration | 3 – 10 m/s² | Maschke 2024; EU 347/2012; Mazda, Honda; Fei 2024 (μ) | Có range trực tiếp |
 | 8 | Brake Build-up Rate | 12 m/s³ (quét 5 – 50) | Maschke 2024; Chen 2023 (EHB) | Giá trị đơn, range là suy luận |
-| 9 | Jerk Limit | 1 – 12 m/s³ | Nghiên cứu comfort (arXiv 2112.09074); ISO 15622; Maschke 2024 | Ghép comfort và vật lý |
+| 9 | Jerk Limit | 1 – 12 m/s³ | Nghiên cứu comfort (arXiv 2112.09074); ISO 22179 theo arXiv 2011.06553; Maschke 2024 | Ghép comfort và vật lý |
 | 10 | Actuator Response Time | 0.12 – 0.2 s | Maschke 2024; Chen 2023 (EHB) | Có range trực tiếp |
 
 ## Perception
@@ -58,14 +61,17 @@ bộ tối ưu cần cân bằng.
 Không paper nào định nghĩa "ngưỡng vận tốc tương đối" như một tham số AEB. Range này
 lấy từ dải vận tốc mà tiêu chuẩn bắt buộc AEB phải hoạt động.
 
-- **UN R152** (xe con M1/N1), theo bản tóm tắt của Bộ Giao thông Nhật (MLIT): không
-  được va chạm với xe đứng yên khi chạy 40 km/h, và với xe đang chạy 20 km/h khi xe
-  test chạy 60 km/h (chênh lệch 40 km/h).
-- **UN R131** sửa đổi (xe tải, xe buýt), theo MLIT: phải hoạt động từ 10 km/h đến vận
-  tốc tối đa. Bài test xe đang chạy dùng 90 km/h so với 20 km/h (chênh lệch 70 km/h).
+- **UN R152** (xe con M1/N1), đọc trực tiếp trong Công báo EU (bản dịch tiếng Tây Ban Nha): hệ thống phải hoạt động
+  trong dải **10 – 60 km/h** (đoạn 5.2.1.3) và **20 – 60 km/h** với người đi bộ (5.2.2.3). Bản hợp nhất 2020 thử xe đứng yên
+  ở 20, 42 và 60 km/h; xe chạy 30 và 60 km/h với mục tiêu 20 km/h (chênh 10 và 40 km/h).
+- **UN R131** (xe tải, xe buýt), bản gốc hiệu lực 13/02/2014: hệ thống phải hoạt động từ **15 km/h** (đoạn 5.2.3); bài thử
+  bắt đầu ở 80 ± 2 km/h với mục tiêu 12 hoặc 67 km/h (Phụ lục 3). Chuỗi sửa đổi 02 (công bố 21/02/2023) nêu dải 10–100 km/h theo
+  trích đoạn tìm kiếm, chưa đọc bản văn.
+- **Đính chính 20/10:** các con số "10 km/h", "90 so với 20 km/h (chênh 70 km/h)" trong bản tóm tắt MLIT **không có** trong
+  văn bản R131 đã đọc; do đó cận trên 70 km/h **chưa xác minh**.
 
-**Luận cứ:** cận dưới 10 km/h là ngưỡng kích hoạt thấp nhất tiêu chuẩn yêu cầu; cận
-trên 70 km/h là chênh lệch vận tốc lớn nhất trong bài test chính thức.
+**Luận cứ:** cận dưới 10 km/h là ngưỡng kích hoạt thấp nhất của R152 xe con. Cận trên được xác minh là 60 km/h (R152);
+con số 70 km/h chưa có nguồn.
 
 > Liên quan: sai số đo vận tốc của radar có σ = 0.1 km/h (Maschke 2024). Đây là mức
 > nhiễu, không phải ngưỡng.
@@ -116,12 +122,16 @@ nhóm, dựa trên việc các thuật toán hiện đại dừng cách vật c�
 |---|---|---|
 | Maschke et al. 2024 (VW) | TTC ≤ 1.5 s: phanh tối đa 3 m/s²; TTC ≤ 0.6 s: tới 10 m/s² | Cận dưới 0.6 s |
 | Lai et al. 2024, WEVJ | > 2 s không kích hoạt; 1.6–2 s phanh nhẹ; 0.7–1.6 s phanh vừa; < 0.7 s phanh toàn phần; ngưỡng chuyển PDF 2.6 s | Các mốc ở giữa |
-| UN R131 (xe tải, xe buýt), theo giải trình của Úc | Phanh khẩn cấp không được bắt đầu khi TTC > 3.0 s | Cận trên 3.0 s |
-| GB/T 39901-2021 (xe con, Trung Quốc) | Phanh khẩn cấp không được bắt đầu sớm hơn 3 s trước va chạm | Cận trên 3.0 s |
+| UN R131, đoạn 6.4.5 và 6.5.4 (xe tải, xe buýt; đọc trực tiếp) | *"The emergency braking phase shall not start before a TTC equal to or less than 3,0 seconds."* | Cận trên 3.0 s (xe nặng) |
+| Quy định (EU) 347/2012, Phụ lục II 2.4.4 và 2.5.4 (xe nặng; bản Công báo tiếng Tây Ban Nha) | Phanh khẩn cấp không bắt đầu cho tới khi TTC ≤ 3 s | Cận trên 3.0 s (xe nặng) |
+| GB/T 39901-2021 (xe con, Trung Quốc) | Phanh khẩn cấp không sớm hơn 3 s trước va chạm | **Chỉ nguồn thứ cấp** (chưa mở được bản văn; đã bị GB 39901-2025 thay) |
 
 **Luận cứ:** dưới 0.6 s thì giảm tốc tối đa của xe con không còn đủ để tránh va chạm
-ở tốc độ thường gặp. Trên 3.0 s thì phanh khẩn cấp bị tiêu chuẩn cấm, vì rủi ro phanh
+ở tốc độ thường gặp. Trên 3.0 s thì phanh khẩn cấp bị cấm **đối với xe nặng** (R131, EU 347/2012), vì rủi ro phanh
 nhầm khi tài xế vẫn còn đủ thời gian tự xử lý.
+
+> **Đính chính 20/10:** UN R152 (xe con) **không có** quy tắc này: TTC chỉ xuất hiện ở định nghĩa (2.12) và một điều kiện thử.
+> Với xe con, cận 3.0 s chỉ dựa vào GB/T 39901-2021 (nguồn thứ cấp) và việc áp dụng tương tự từ xe nặng. Khi trình bày phải nói rõ.
 
 **Gợi ý thiết kế:** nếu AEB của nhóm có nhiều tầng như Lai 2024, tối ưu từng ngưỡng
 con trong [0.6, 3.0] với ràng buộc ngưỡng tầng sau nhỏ hơn tầng trước.
@@ -146,7 +156,8 @@ toán kinh điển. Số liệu Taylor là tổng thời gian nhận diện + qu
 ### 7. Target/Max Deceleration: 3 – 10 m/s²
 
 - **Maschke et al. 2024:** tầng 1 giới hạn 3 m/s², tầng 2 giới hạn 10 m/s².
-- **Quy định EU 347/2012:** pha phanh khẩn cấp bắt đầu khi AEBS yêu cầu ít nhất 4 m/s².
+- **Quy định EU 347/2012 và UN R131 (xe nặng):** pha phanh khẩn cấp bắt đầu khi AEBS yêu cầu ít nhất 4 m/s².
+  **UN R152 (xe con, đoạn 5.2.1.2 và 5.2.2.2):** lệnh phanh tới hệ thống phanh phải đạt ít nhất **5,0 m/s²** (*Đính chính 20/10*).
 - **Seiler et al. 1998:** Mazda giả định 6 m/s² (xe sau) và 8 m/s² (xe trước); Honda
   giả định 7.8 m/s².
 - **Fei et al. 2024**, *Electronics*: giảm tốc tối đa B = μ·g. Paper mô phỏng μ từ 0.1
@@ -167,20 +178,22 @@ theo μ·g.
   tới mục tiêu trong vòng 0.2 s.
 
 **Luận cứ:** cận trên 50 m/s³ là suy luận của nhóm: nếu phanh đạt khoảng 9–10 m/s²
-trong 0.2 s (Chen 2023) thì tốc độ tăng là khoảng 45–50 m/s³. Cận dưới 5 m/s³ lấy theo
-giới hạn ISO 15622 cho ACC (mục 9).
+trong 0.2 s (Chen 2023) thì tốc độ tăng là khoảng 45–50 m/s³. Cận dưới 5 m/s³ ban đầu
+lấy theo giới hạn "ISO 15622" cho ACC (mục 9); sau 20/10 nguồn này **không còn xác minh được** (bài báo gốc nêu ISO 22179), nên
+cận dưới là lựa chọn của nhóm.
 
 ### 9. Jerk Limit: 1 – 12 m/s³ (hằng số 20 m/s³)
 
 - **Nghiên cứu driving simulator về cảnh báo va chạm người đi bộ** (arXiv 2112.09074):
   jerk ±1 m/s³ là thoải mái, ±2 m/s³ là chấp nhận được, vượt ±2 m/s³ bị xếp vào mức
   không an toàn.
-- **ISO 15622 (ACC)**, theo *Stress Testing Method* (arXiv 2011.06553): gradient giảm
-  tốc trung bình không vượt 2.5 m/s³ khi trên 20 m/s và 5 m/s³ khi dưới 5 m/s.
+- **Giới hạn gradient giảm tốc của ACC**, theo *Stress Testing Method* (arXiv 2011.06553): trung bình không vượt 2.5 m/s³ khi
+  trên 20 m/s và 5 m/s³ khi dưới 5 m/s. *Đính chính 20/10:* bài báo gắn quan hệ giảm tốc–jerk–tốc độ với **ISO 22179** [33], không nêu
+  ISO 15622; chưa đọc được bản ISO nên không khẳng định tiêu chuẩn nào chứa hai con số này.
 - **Maschke et al. 2024:** hệ phanh khẩn cấp cho phép tới 12 m/s³.
 
 **Luận cứ:** jerk là trade-off giữa êm ái và an toàn. Cận dưới 1 m/s³ là ngưỡng thoải
-mái; 2.5–5 m/s³ là giới hạn cho hệ thống không khẩn cấp (ACC); cận trên 12 m/s³ là mức
+mái; 2.5–5 m/s³ là giới hạn cho hệ thống không khẩn cấp (ACC, theo bài báo trên); cận trên 12 m/s³ là mức
 hệ phanh khẩn cấp thật. AEB không có giới hạn jerk theo tiêu chuẩn, nên tối ưu trong cả
 khoảng là hợp lý.
 
@@ -213,7 +226,7 @@ TTC = 1,5 s). Đổi biên thì sửa cùng lúc `BootstrapService.java`, `01_sc
 
 | # | Tham số | Code hiện tại | Nghiên cứu | Nhận xét |
 |---|---|---|---|---|
-| 5 | TTC Threshold | 0.5 – 4.0 s, mặc định 1.8, baseline 1.5 | 0.6 – 3.0 s | **Cận trên 4.0 s vượt mức UN R131 / GB/T 39901 cấm (> 3 s)** |
+| 5 | TTC Threshold | 0.5 – 4.0 s, mặc định 1.8, baseline 1.5 | 0.6 – 3.0 s | **Cận trên 4.0 s vượt mức 3 s của UN R131 / EU 347/2012 (xe nặng)**; với xe con chỉ có nguồn thứ cấp (GB/T 39901) |
 | 6 | Brake Activation Delay | 0.0 – 0.5 s, mặc định 0.15 | 0.1 – 0.5 s | Cận dưới 0 s phi thực tế |
 | 7 | Max Deceleration | 3 – 10 m/s², mặc định 8 | 3 – 10 m/s² | Khớp |
 | 8 | Brake Build-up Rate | 5 – 20 m/s³, mặc định 20 (migration 008) | 12 (quét 5 – 50) | Chặn ở 20 vì lõi giới hạn tốc độ tăng lực phanh bằng Jerk Limit cố định 20 |
@@ -227,7 +240,7 @@ TTC = 1,5 s). Đổi biên thì sửa cùng lúc `BootstrapService.java`, `01_sc
 | 2 | Relative Velocity | 2.0 m/s (7.2 km/h) | 10 – 70 km/h | Thấp hơn ngưỡng kích hoạt thấp nhất của tiêu chuẩn |
 | 3 | Prediction Horizon | 2.0 s | 0.5 – 5 s | Khớp (horizon MPC thường dùng) |
 | 4 | Safety Distance Margin | 2.0 m | 1 – 5 m | Khớp |
-| 9 | Jerk Limit | 20 m/s³ | 1 – 12 m/s³ | **Vượt mức hệ phanh khẩn cấp thật (12)** |
+| 9 | Jerk Limit | 20 m/s³ | 1 – 12 m/s³ | **Vượt mức 12 m/s³ của mô hình phanh khẩn cấp trong Maschke 2024** (giá trị mô hình của một hãng, không phải giới hạn tiêu chuẩn) |
 | 10 | Actuator Response Time | 0.10 s | 0.12 – 0.2 s | Thấp hơn cận dưới |
 
 ## Thu dữ liệu từ CARLA cho các tham số này
