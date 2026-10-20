@@ -48,8 +48,17 @@ File kết quả nội bộ vẫn là `result.json` để Java kiểm metadata v
 
 ## Hợp đồng và giới hạn
 
-- Profile hiện tại ghi `carla-0.9.16-xosc2`, khác runner trực tiếp `carla-0.9.16` và bản quỹ đạo lỗi `-xosc1`;
-  regression không ghép các profile. File `vehicsim.xosc/v1` cũ cần xuất lại từ web thành v2.
+- Profile hiện tại ghi `carla-0.9.16-xosc3` (định dạng `vehicsim.xosc/v3`, bước **0,01 s = 100 Hz**), khác runner trực tiếp
+  `carla-0.9.16`, bản 20 Hz `-xosc2` và bản quỹ đạo lỗi `-xosc1`; regression không ghép các profile. File v1 cần xuất lại từ web.
+  Backend không còn chạy lại run `-xosc1`/`-xosc2` (báo FAILED, tạo lượt mới); `run_xosc.py` vẫn chạy được file v2 ở 20 Hz
+  ngoài web để tái lập bằng chứng cũ, kèm identity `-xosc2`.
+- Bước thời gian nằm trong file `.xosc` (`vs_fixed_delta_seconds`, `vs_perception_period_s`); `run_xosc.py` truyền
+  `--frameRate 100` cho ScenarioRunner, controller/recorder/`DecelMeter` dùng cùng bước và `result.json` ghi
+  `case.carla.measured_step_s` đo từ timestamp khung thật. `simulation_runs.fixed_delta_seconds` = 0,0100 cho xosc3.
+- Perception và quyết định AEB vẫn chạy theo chu kỳ cảm biến **0,05 s**; chỉ lệnh phanh, đo và ghi dữ liệu theo 0,01 s. Nhiễu
+  và bộ lọc của perception rút theo từng lần cảm biến nên đổi bước không đổi thống kê của AEB; bộ động học giữ nguyên 20 Hz.
+- RMS jerk (`Δa/dt`) ở 100 Hz **không so sánh được** với số 20 Hz. `case.carla.jerk_filtered` là số lọc Butterworth 10 Hz thực
+  nghiệm (xem exec plan 2026-10-20), chưa phải objective chính thức.
 - XML dùng LanePosition trên đoạn thẳng road 40/lane -4 của Town04, lấy cao độ từ map; không chiếu người đi bộ lên
   mặt phẳng sai cao độ. Dải tốc độ/khoảng cách hiện có nằm trong đoạn road đã chọn.
 - Không đặt Orientation trên LanePosition của người đi bộ: ScenarioRunner 0.9.16 dùng góc đã xoay để tính offset,
@@ -60,3 +69,22 @@ File kết quả nội bộ vẫn là `result.json` để Java kiểm metadata v
 
 API: `GET /runs/{id}/xosc`, `POST /scenarios/xosc`, `POST /runs/{id}/carla`, `GET /carla/status`, `GET /carla/runs`,
 `GET /runs/{id}/carla-data`, `GET /runs/{id}/carla-files/{name}` dưới tiền tố `/api/v1/vehicsim`.
+
+### Hủy, timeout và dọn world
+
+- `POST /runs/{id}/cancel`: run PENDING thành STOPPED ngay; run RUNNING chỉ hủy được khi luồng chạy thuộc backend đang chạy
+  (sau khi backend khởi động lại, run mồ côi do `recoverUnfinished` xử lý). Run của regression/tối ưu bị từ chối vì bộ so sánh
+  cần đủ cặp. Run bị hủy không có điểm hợp lệ và không ghi `result.json`. Nút **Hủy** ở `/analysis/carla`.
+- Backend bị giết giữa run: worker CARLA mồ côi vẫn sống (Windows không giết tiến trình con khi cha chết). Backend ghi `worker.pid`
+  (PID + thời điểm khởi động, để không nhầm PID bị tái dùng) vào thư mục run. Lúc khởi động mọi run RUNNING là mồ côi: backend
+  dừng worker còn sống bằng `stop.requested` (quá 15 s mới giết cả cây), rồi đưa run về PENDING để **chạy lại từ đầu**; không
+  nhận `result.json` mồ côi. `Hủy` trên run mồ côi (khi `VEHICSIM_RECOVER_ON_STARTUP=false`) dừng worker rồi đóng run STOPPED.
+  Giả định một backend cho mỗi DB: nhiều backend chung DB sẽ dừng nhầm worker của nhau.
+- Backend ghi file cờ `stop.requested` vào thư mục run, hoặc ghi khi hết thời gian; `run_xosc.py` thấy cờ trong 0,5 s thì dừng
+  ScenarioRunner, dọn world rồi thoát mã 4. Windows không có tín hiệu mềm cho tiến trình con (`Process.destroy()` là giết cứng),
+  nên cờ là đường dừng duy nhất trong 15 giây ân hạn trước khi giết cả cây tiến trình.
+- `run_xosc.py` đưa server về không đồng bộ và xoá actor `vehicle.* walker.* sensor.* controller.*` **trước và sau** mỗi run.
+  Số actor đã xoá ghi trong `lifecycle.json` (`destroyed_before` khác 0 nghĩa là lần trước bị ngắt giữa chừng).
+  Một server chỉ dành cho run của VehicSim; đừng dùng chung với thử nghiệm tay có xe/người đang chạy.
+- Chạy tay vào thư mục đã từng bị dừng: xoá `stop.requested` cũ trước, nếu không run dừng ngay.
+
