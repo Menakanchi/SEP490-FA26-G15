@@ -5,10 +5,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, CardTitle, ErrorNote, PillButton, StatCard, Tag, runCode } from "@/components/VehicSimUi";
+import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { CarlaData, CarlaRun, CarlaStatus } from "@/types/vehicsim";
 
-const statusLabel = { PENDING: "Đang chờ", RUNNING: "Đang chạy", COMPLETED: "Hoàn thành", FAILED: "Lỗi thực thi" };
+const statusLabel = { PENDING: "Đang chờ", RUNNING: "Đang chạy", COMPLETED: "Hoàn thành", FAILED: "Lỗi thực thi", STOPPED: "Đã hủy" };
 
 export function CarlaRunnerPanel() {
   const { ctx, canWrite } = useVehicSimContext();
@@ -20,6 +21,7 @@ export function CarlaRunnerPanel() {
   const [frame, setFrame] = useState(0);
   const [image, setImage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [cancelling, setCancelling] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const loadRuns = useCallback(() => vehicsimApi.carlaRuns().then(rows => { setRuns(rows); return rows; }), []);
   const checkConnection = useCallback(() => vehicsimApi.carlaStatus().then(setConnection), []);
@@ -55,7 +57,7 @@ export function CarlaRunnerPanel() {
     return () => { current = false; if (url) URL.revokeObjectURL(url); };
   }, [data, cameraFrame]);
   const ready = connection?.connected && connection.compatible && connection.scenario_runner;
-  const xoscProfile = connection?.simulator?.endsWith("-xosc2");
+  const xoscProfile = connection?.simulator?.endsWith("-xosc3");
   const familyId = family || String(ctx?.families[0]?.id ?? "");
 
   const start = async () => {
@@ -68,6 +70,15 @@ export function CarlaRunnerPanel() {
       if (queued) { setSelected(queued.id); setData(null); setImage(null); }
     } catch (e) { setError(e instanceof Error ? e.message : "Không chạy được CARLA"); }
     finally { setBusy(false); }
+  };
+
+  const cancel = async (runId: number) => {
+    setCancelling(prev => new Set(prev).add(runId)); setError(null);
+    try {
+      await vehicsimApi.cancelRun(runId);
+      await loadRuns();
+    } catch (e) { setError(e instanceof Error ? vi(e.message) : "Không hủy được lượt chạy"); }
+    finally { setCancelling(prev => { const next = new Set(prev); next.delete(runId); return next; }); }
   };
 
   return (
@@ -106,8 +117,14 @@ export function CarlaRunnerPanel() {
               <button className="font-semibold text-vehicsim-decision" disabled={run.status !== "COMPLETED"}
                 onClick={() => { if (selected !== run.id) { setSelected(run.id); setData(null); setImage(null); setError(null); } }}>Xem cảm biến</button>
               {run.status === "COMPLETED" && <Link href={`/analysis/failures/${run.id}/playback`}>Phát lại</Link>}
+              {(run.status === "PENDING" || run.status === "RUNNING") && (
+                <button className="font-semibold text-vehicsim-danger" disabled={!canWrite || cancelling.has(run.id)}
+                  aria-label={`Hủy lượt chạy ${runCode(run.id)}`} onClick={() => void cancel(run.id)}>
+                  {cancelling.has(run.id) ? "Đang hủy…" : "Hủy"}
+                </button>
+              )}
             </span>
-            {run.error_message && <p className="w-full break-words text-vehicsim-danger">{run.error_message}</p>}
+            {run.error_message && <p className="w-full break-words text-vehicsim-danger">{vi(run.error_message)}</p>}
           </div>
         ))}
       </div>

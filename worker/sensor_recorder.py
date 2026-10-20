@@ -73,6 +73,7 @@ JERK_WINDOW_S = 0.1
 khuếch đại nhiễu IMU ±0,16 m/s² lên hàng trăm m/s³ dù xe không phanh."""
 
 CAMERA_EVERY_N_FRAMES = 5
+CAMERA_REF_STEP_S = 0.05  # bước mô phỏng mà hằng số trên được hiệu chỉnh; bước nhỏ hơn thì lưu ảnh theo cùng khoảng thời gian
 
 FRAME_COLUMNS = [
     "frame",
@@ -153,10 +154,11 @@ def summarise(rows: list[dict], collisions: list[dict]) -> dict:
 class SensorRecorder:
     """Gắn sensor lên ego trong một thread riêng; ``stop()`` gỡ sensor và ghi file."""
 
-    def __init__(self, host: str, port: int, out_dir: Path, *, camera: bool = False) -> None:
+    def __init__(self, host: str, port: int, out_dir: Path, *, camera: bool = False, step_s: float = CAMERA_REF_STEP_S) -> None:
         self._host, self._port = host, int(port)
         self.out_dir = Path(out_dir)
         self._camera = camera
+        self._camera_every = max(1, round(CAMERA_EVERY_N_FRAMES * CAMERA_REF_STEP_S / step_s))
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -315,7 +317,7 @@ class SensorRecorder:
             )
 
     def _on_camera(self, image) -> None:  # noqa: ANN001
-        if image.frame % CAMERA_EVERY_N_FRAMES == 0:
+        if image.frame % self._camera_every == 0:
             image.save_to_disk(str(self.out_dir / "camera" / f"{image.frame:08d}.png"))
 
     # -- ghi file -----------------------------------------------------------

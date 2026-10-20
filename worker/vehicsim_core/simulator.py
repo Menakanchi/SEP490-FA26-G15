@@ -92,9 +92,16 @@ class SimulationOutcome:
 
 
 def new_aeb_stack(
-    case: PedestrianCrossingCase, params: AebParams, seed: int, vehicle: VehicleSpec, events: list[dict]
+    case: PedestrianCrossingCase,
+    params: AebParams,
+    seed: int,
+    vehicle: VehicleSpec,
+    events: list[dict],
+    *,
+    dt: float = DT,
+    perception_period_s: float | None = None,
 ) -> AebStack:
-    """AEB cho một lần chạy — cùng cách dựng ở mọi bộ mô phỏng."""
+    """AEB cho một lần chạy — cùng cách dựng ở mọi bộ mô phỏng. Mặc định giữ hành vi 20 Hz của bộ động học."""
     return AebStack(
         params,
         seed=seed,
@@ -103,6 +110,8 @@ def new_aeb_stack(
         vehicle_length_m=vehicle.length_m,
         decel_limit=min(params.max_deceleration, vehicle.max_brake_decel_mps2),
         events=events,
+        dt=dt,
+        perception_period_s=perception_period_s,
     )
 
 
@@ -175,6 +184,7 @@ def build_outcome(
     end_reason: str,
     crossing_x: float,
     decel_available: float,
+    dt: float = DT,
 ) -> SimulationOutcome:
     metrics = _summary_metrics(
         frames=frames,
@@ -190,6 +200,7 @@ def build_outcome(
         max_jerk=stats.max_jerk,
         v0=case.ego_speed_kmh / 3.6,
         decel_target=decel_available,
+        dt=dt,
     )
     return SimulationOutcome(
         end_reason=end_reason,
@@ -311,6 +322,13 @@ def simulate(
     )
 
 
+def brake_phase_start(frames: list[dict], brake_onset_t: float | None) -> int | None:
+    """Chỉ số khung đầu tiên mà phanh đã tác dụng; ``None`` nếu AEB không phanh."""
+    if brake_onset_t is None or not frames:
+        return None
+    return next((i for i, f in enumerate(frames) if f["t"] >= brake_onset_t - 1e-9), None)
+
+
 def brake_phase_metrics(
     frames: list[dict], brake_onset_t: float | None, decel_available: float, dt: float = DT
 ) -> tuple[float | None, float | None]:
@@ -325,9 +343,7 @@ def brake_phase_metrics(
     Cả hai là ``None`` khi AEB không phanh. Công thức dùng đúng các số làm tròn đã lưu trong khung / ``decel_available``
     của số đo, để migration 008 tính lại được cho run cũ từ ``telemetry_json`` mà ra đúng số này.
     """
-    if brake_onset_t is None or not frames:
-        return None, None
-    start = next((i for i, f in enumerate(frames) if f["t"] >= brake_onset_t - 1e-9), None)
+    start = brake_phase_start(frames, brake_onset_t)
     if start is None:
         return None, None
     prev = frames[start - 1]["ego_a"] if start > 0 else 0.0
@@ -357,6 +373,7 @@ def _summary_metrics(
     max_jerk: float,
     v0: float,
     decel_target: float,
+    dt: float = DT,
 ) -> dict:
     half_w = vehicle.width_m / 2
     min_distance = math.inf
@@ -393,7 +410,7 @@ def _summary_metrics(
         ego_x = _at(first_detection_t, "ego_x")
         detection_distance = round(crossing_x - ego_x, 2) if ego_x is not None else None
 
-    rms_jerk, stopping_distance = brake_phase_metrics(frames, brake_onset_t, round(decel_target, 3))
+    rms_jerk, stopping_distance = brake_phase_metrics(frames, brake_onset_t, round(decel_target, 3), dt)
 
     return {
         "collision": collision,
