@@ -22,6 +22,16 @@ from srunner.scenariomanager.timer import GameTime
 class VehicsimAebControl(NpcVehicleControl):
     def __init__(self, actor, args=None):  # noqa: ANN001 - interface ScenarioRunner
         super().__init__(actor, args)
+        # NpcVehicleControl.run_step tự apply_control lệnh của LocalPlanner; actor.get_control() sau đó trả lệnh của TICK TRƯỚC (CARLA chỉ cập nhật khi tick),
+        # nên giữ lại đúng lệnh planner vừa tính trong tick này để lấy góc lái hiện tại.
+        self._planned = None
+        planner_step = self._local_planner.run_step
+
+        def capture(*a, **kw):  # noqa: ANN002, ANN003 - bọc nguyên chữ ký LocalPlanner.run_step
+            self._planned = planner_step(*a, **kw)
+            return self._planned
+
+        self._local_planner.run_step = capture
         options = args or {}
         self.out = Path(options["out_dir"])
         self.bridge = Bridge(self.out / "bridge.log")
@@ -90,8 +100,11 @@ class VehicsimAebControl(NpcVehicleControl):
                 self._actor.disable_constant_velocity()
                 self.cruising = False
         # ScenarioRunner lo bám làn; quyết định phanh đến từ lõi Java, không dùng BehaviorAgent để né nguy hiểm.
+        self._planned = None
         super().run_step()
-        control = self._actor.get_control()
+        if self._planned is None:  # actor vừa mất giữa tick: NpcVehicleControl đã thoát sớm
+            return
+        control = self._planned
         control.throttle = 0.0
         control.brake = reply["pedal"] if reply["braking"] else 0.0
         if not reply["braking"] and not self.cruising and self._target_speed > 0:

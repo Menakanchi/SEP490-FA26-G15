@@ -44,7 +44,12 @@ tải xuống không bị sửa. Module controller phải đi cùng repo; contro
 
 File kết quả nội bộ vẫn là `result.json` để Java kiểm metadata và lưu cùng một luật chấm. Thư mục mỗi run có:
 `scenario.xosc`, `scenario.runtime.xosc`, `result.json`, log ScenarioRunner, `sensors/frames.csv`, `collisions.json` và
-`sensors/camera/*.png`. Không có livestream/video giả: nếu không ghi camera thì giao diện nói rõ không có ảnh.
+`sensors/camera/*.png`, cùng `core/vsos-core.jar` (bản lõi Java chụp lúc bắt đầu run; `lifecycle.json` ghi SHA-256 của nó, nên `mvnw clean`
+giữa run không làm hỏng run). Không có livestream/video giả: nếu không ghi camera thì giao diện nói rõ không có ảnh.
+
+`scenario_runner.log` có dòng `ERROR: failed to destroy actor <id> : … not found` ngay sau `Destroying ego vehicle <id>` ở mọi run:
+lỗi của ScenarioRunner 0.9.16 (`ScenarioManager.cleanup` đã xoá ego qua `CarlaDataProvider.cleanup`, rồi `ScenarioRunner._cleanup` xoá lần nữa).
+Vô hại, không phải dấu hiệu run hỏng.
 
 ## Hợp đồng và giới hạn
 

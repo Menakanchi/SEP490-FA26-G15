@@ -41,7 +41,9 @@ Các việc 1–5 của phần "Chạy baseline" trong [kế hoạch 20/10](../.
 
 ## Cầu nối (thiết kế để chốt ở M3)
 
-- Gói đóng: lõi không phụ thuộc Spring/DB; có test kiến trúc. JVM chạy từ `target/classes` hay jar mỏng do Maven dựng: chọn ở M3 (jar mỏng chịu `mvnw clean` tốt hơn).
+- Gói đóng: lõi không phụ thuộc Spring/DB; có test kiến trúc. **Đã chọn (21/10):** mỗi run `run_xosc.py` chụp gói `com/vehicsim/core` từ `target/classes`
+  thành `<run>/core/vsos-core.jar` (`bridge.snapshot_core`) và mọi JVM của run dùng jar đó; `lifecycle.json` ghi `core.sha256`. Không cần bước Maven riêng,
+  `mvnw clean`/IDE ghi class lỗi giữa run không ảnh hưởng run đang chạy, và jar nằm trong thư mục run nên Windows khóa file không chặn build.
 - Java và classpath truyền qua biến môi trường (như `VEHICSIM_WORKER_PYTHON`); `run_xosc.py` độc lập vẫn chạy được.
 - Bắt tay phiên bản giao thức + phiên bản lõi để lớp cũ báo lỗi rõ. Một yêu cầu một đáp án, hạn chót mỗi tick, flush từng dòng; EOF ⇒ Java thoát.
 - Đứt ống/timeout ⇒ run lỗi, không về giá trị mặc định. stderr của Java ghi vào log trong thư mục run.
@@ -137,6 +139,34 @@ tương ứng (`SimulatorBehaviorTest`, `FiltersBehaviorTest`, `CarlaSessionLogi
 | `BridgeMain kinematic` trên bundle fixture | `result.json` hợp lệ, `engine = vsos-core-java/1` |
 
 Chưa kiểm lại trên CARLA 0.9.16 thật sau M5 (máy làm M5 không có CARLA); bằng chứng CARLA vẫn là của M3.
+
+### Rà code CARLA sau M3–M5 (21/10/2026)
+
+Rà toàn bộ đường CARLA rồi sửa từng mục; mỗi mục kiểm trên CARLA 0.9.16 thật (Town04, file `hz100-20261020/scenario.xosc`; dữ liệu
+`data/claude-check-20261021*`, ngoài git). Run kiểm đầu tiên trùng bằng chứng M3: FCW/quyết định/phanh 1,95/2,25/2,50 s, quãng dừng 10,203 m,
+RMS jerk 38,387, 381 khung bước 0,01 s, jerk lọc 19,918.
+
+- **Chụp lõi theo run** (mục "Cầu nối"). Dời `target/classes/com/vehicsim/core` đi khi `BridgeMain` đang chạy → run thoát 0, kết quả trùng run thường.
+  Test: `test_snapshot_core_packs_only_the_core_package`, `test_snapshot_core_refuses_missing_or_ambiguous_sources`, `test_a_run_keeps_working_after_target_classes_disappears`.
+- **Giảm tốc phanh 100% theo xe (xoá TD-32).** `carla_vehicle_models.carla_full_brake_decel_mps2` → `RunService.carlaVehicle` → bundle
+  `vehicle.carla.full_brake_decel_mps2` (`Bundle` kiểm (0, 15]) → `.xosc` `vs_full_brake_decel_mps2` → `Xosc.read` → `CarlaSession.open`; thuộc tính controller
+  `full_brake_decel` vẫn ghi đè được. Xe chưa đo (NULL, gồm xe seed): XML trùng từng byte bản cũ (golden + parity xanh), vẫn 4,6. Trang "Dữ liệu CARLA" ngoại suy
+  quãng phanh bằng cùng số đo. Kiểm thật: `.xosc` gắn 9,2 → `result.json` ghi 9,2, bàn đạp nhẹ hơn: dừng 3,89 s (3,80), quãng dừng 11,21 m (10,203),
+  khoảng cách nhỏ nhất 2,741 m (3,578). Test: `XoscExportTest.measuredFullBrakeDecelTravelsFromBundleToTheCarlaController`, `implausibleFullBrakeDecelIsRejected`.
+- **Góc lái đúng tick.** `vehicsim_aeb_control.py` lấy lệnh LocalPlanner vừa tính trong tick thay vì `actor.get_control()` (CARLA trả lệnh tick trước).
+  `test_brake_override_keeps_this_ticks_steering` (trượt với bản cũ: lái 0,0 thay vì 0,1). Kiểm thật: thời điểm/chỉ số giữ nguyên, RMS jerk 38,387 → 38,390,
+  trong nhiễu chạy lặp 100 Hz (sd 0,061, khoảng 0,194; [đo dung sai](2026-10-20-do-dung-sai-va-vong-doi-run-carla.md)) nên **giữ** định danh `-xosc3`.
+- **Log ScenarioRunner đúng thứ tự.** `run_xosc.environment` đặt `PYTHONUNBUFFERED=1`. Dòng `failed to destroy actor <ego> : not found` là ScenarioRunner xoá ego
+  hai lần (`ScenarioManager.cleanup` rồi `ScenarioRunner._cleanup`), vô hại; ghi ở `carla-local.md`. Đã loại bằng thử thật hai giả thuyết: Traffic Manager
+  dựng trước ở `release_world`, và cảm biến va chạm bị xoá theo xe.
+- **Chế độ `carla` đã gỡ được chặn sớm.** Sau M5 `run_xosc.py` từ chối bundle JSON nhưng backend vẫn tạo run `carla-<x.y.z>` ở `VEHICSIM_SIMULATOR=carla`.
+  Nay `simulatorForNewRuns` từ chối và run cũ chưa chạy của profile đó báo lỗi trước khi gọi worker
+  (`CarlaWebTest.removedDirectRunnerModeCannotCreateNewRuns`, `queuedDirectRunnerRunFailsBeforeLaunchingWorker`).
+- **Image backend không còn Python.** `Dockerfile` bỏ `python3`, `COPY worker`, `VEHICSIM_WORKER_PYTHON` (comment đã ghi worker không vào image);
+  `.dockerignore` thêm `worker/`. `docker build` đầy đủ qua; image chỉ có JRE 21 + `app.jar` + `curl`, chạy bằng `appuser`.
+- CLAUDE.md §6 còn ghi artifact `v2`/`-xosc2`: sửa thành `v3`/`-xosc3`. TD-34 viết lại theo cơ chế `stop.requested` (còn đúng cho nhánh tắt backend).
+- Kiểm trên CARLA thật sau M5, đúng cờ backend (`--camera --fast`): thoát 0 (66 s), 16 ảnh, `bridge.log` trống, không sót actor; FCW/quyết định/phanh
+  1,95/2,25/2,50 s, quãng dừng 10,318 m, khoảng cách nhỏ nhất 3,481 m, RMS jerk 38,365 — trong dải chạy lặp 100 Hz.
 
 ## Trạng thái bàn giao (cuối ngày 21/10/2026)
 

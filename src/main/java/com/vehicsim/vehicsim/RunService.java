@@ -2,6 +2,7 @@ package com.vehicsim.vehicsim;
 
 import com.vehicsim.audit.AuditLog;
 import com.vehicsim.core.Bundle;
+import com.vehicsim.core.CarlaSession;
 import com.vehicsim.core.Evaluation;
 import com.vehicsim.core.SimulationOutcome;
 import com.vehicsim.core.Simulator;
@@ -175,6 +176,9 @@ public class RunService {
     }
 
     String simulatorForNewRuns() {
+        if ("carla".equals(props.simulator())) {
+            throw new InvalidRequestException("VEHICSIM_SIMULATOR=carla (runner JSON trực tiếp) đã gỡ ở ADR-042: dùng carla-xosc (scripts/dev-carla.ps1)");
+        }
         if (isCarla(configuredSimulator()) && carlaCommand().isEmpty()) {
             throw new InvalidRequestException("VEHICSIM_SIMULATOR=carla nhưng chưa đặt VEHICSIM_CARLA_COMMAND");
         }
@@ -313,6 +317,11 @@ public class RunService {
                 throw new SimulatorException("run CARLA dùng " + profile.substring(profile.lastIndexOf('-') + 1)
                         + " đã cũ; tạo lượt chạy mới để dùng profile " + XOSC_SUFFIX);
             }
+            if (isCarla(profile) && !profile.endsWith(XOSC_SUFFIX)) {
+                // Runner CARLA trực tiếp nhận bundle JSON (run_variant.py) đã gỡ ở ADR-042: run_xosc.py từ chối JSON, nên báo rõ trước khi gọi worker.
+                throw new SimulatorException("run CARLA dùng runner JSON trực tiếp (" + profile + ") đã gỡ ở ADR-042; tạo lượt chạy mới để dùng profile "
+                        + XOSC_SUFFIX);
+            }
             Map<String, Object> bundle = bundleForRun(run);
             Map<String, Object> result = runWorker(run, bundle);
             tx.executeWithoutResult(status -> persist(run, result));
@@ -411,7 +420,11 @@ public class RunService {
         if (row.dbl("wheelbase_m") != null) {
             dimensions.put("wheelbase_m", row.dbl("wheelbase_m"));
         }
-        return Json.obj("blueprint", row.str("carla_blueprint_id"), "physics", physics, "dimensions", dimensions);
+        Map<String, Object> carla = Json.obj("blueprint", row.str("carla_blueprint_id"), "physics", physics, "dimensions", dimensions);
+        if (row.dbl("carla_full_brake_decel_mps2") != null) {  // đo trên CARLA (TD-17); chưa đo thì controller dùng mặc định
+            carla.put(Bundle.FULL_BRAKE_DECEL, row.dbl("carla_full_brake_decel_mps2"));
+        }
+        return carla;
     }
 
     // ------------------------------------------------------------------ gọi worker
@@ -670,7 +683,11 @@ public class RunService {
         Path csv = carlaFile(projectId, runId, "frames.csv");
         Path collisions = carlaFile(projectId, runId, "collisions.json");
         List<Map<String, Object>> hits = Json.parseList(Files.readString(collisions, StandardCharsets.UTF_8)).stream().map(Json::asMap).toList();
-        var summary = telemetry.summarise(telemetry.parseCsvFrames(Files.readString(csv, StandardCharsets.UTF_8)), telemetry.parseCollisions(hits), 4.6);
+        // Quãng phanh còn lại được ngoại suy bằng đúng mức phanh 100% mà controller đã dùng cho xe này.
+        Object measured = db.scalar("SELECT m.carla_full_brake_decel_mps2 FROM simulation_runs r JOIN carla_vehicle_models m ON m.id = r.carla_vehicle_model_id "
+                + "WHERE r.id = ? AND r.project_id = ?", runId, projectId);
+        double fullBrake = measured instanceof Number n ? n.doubleValue() : CarlaSession.DEFAULT_FULL_BRAKE_DECEL;
+        var summary = telemetry.summarise(telemetry.parseCsvFrames(Files.readString(csv, StandardCharsets.UTF_8)), telemetry.parseCollisions(hits), fullBrake);
         List<String> images = List.of();
         Path camera = csv.getParent().resolve("camera");
         if (Files.isDirectory(camera)) {

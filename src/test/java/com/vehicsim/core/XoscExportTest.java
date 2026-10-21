@@ -86,6 +86,32 @@ class XoscExportTest {
     }
 
     @Test
+    void measuredFullBrakeDecelTravelsFromBundleToTheCarlaController() {
+        Map<String, Object> measured = Map.of("blueprint", "vehicle.audi.etron", "full_brake_decel_mps2", 5.2);
+        Map<String, Object> doc = Map.of("variant", ir(), "vehicle", Map.of("length_m", 4.9, "width_m", 1.93, "max_brake_decel_mps2", 8, "carla", measured));
+        Bundle.RunSpec spec = Bundle.readSpec(doc);
+        String xml = XoscExport.export(spec);
+        assertThat(xml).contains("name=\"vs_full_brake_decel_mps2\" parameterType=\"string\" value=\"5.2\"");
+        assertThat(Xosc.read(xml)).isEqualTo(spec);
+        assertThat(CarlaSession.fullBrakeDecel(null, Xosc.read(xml).vehicleCarla())).isEqualTo(5.2);
+        assertThat(CarlaSession.fullBrakeDecel(4.0, Xosc.read(xml).vehicleCarla())).isEqualTo(4.0);  // thuộc tính controller vẫn ghi đè được
+
+        // Xe chưa đo: không có tham số mới, XML giữ nguyên bản cũ, controller dùng mặc định.
+        Bundle.RunSpec unmeasured = Bundle.readSpec(Map.of("variant", ir(), "vehicle", Map.of("length_m", 4.9, "width_m", 1.93, "max_brake_decel_mps2", 8,
+                "carla", Map.of("blueprint", "vehicle.audi.etron"))));
+        assertThat(XoscExport.export(unmeasured)).doesNotContain("full_brake_decel");
+        assertThat(CarlaSession.fullBrakeDecel(null, unmeasured.vehicleCarla())).isEqualTo(CarlaSession.DEFAULT_FULL_BRAKE_DECEL);
+    }
+
+    @ParameterizedTest
+    @ValueSource(doubles = {0.0, -1.0, 15.5})
+    void implausibleFullBrakeDecelIsRejected(double value) {
+        Map<String, Object> doc = Map.of("variant", ir(), "vehicle", Map.of("length_m", 4.9, "width_m", 1.93, "max_brake_decel_mps2", 8,
+                "carla", Map.of("blueprint", "vehicle.audi.etron", "full_brake_decel_mps2", value)));
+        assertThatThrownBy(() -> Bundle.readSpec(doc)).isInstanceOf(Bundle.BundleError.class).hasMessageContaining("full_brake_decel_mps2");
+    }
+
+    @Test
     void pedestrianMovementUsesDistanceTriggerAndRealXmlActions() throws Exception {
         Document doc = dom(XoscExport.export(Bundle.readSpec(ir())));
         assertThat(nodes(doc, "/OpenSCENARIO/Entities/ScenarioObject[@name='hero']/Vehicle").getLength()).isEqualTo(1);

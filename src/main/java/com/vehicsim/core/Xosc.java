@@ -215,6 +215,9 @@ public final class Xosc {
                     }
                 }
                 carla.put("dimensions", dimensions);
+                if (values.containsKey(Bundle.FULL_BRAKE_DECEL)) {
+                    carla.put(Bundle.FULL_BRAKE_DECEL, num(values, Bundle.FULL_BRAKE_DECEL));
+                }
             }
             vehicle.put("carla", carla);
 

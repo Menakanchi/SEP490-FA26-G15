@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -50,6 +53,50 @@ def test_a_dead_java_process_is_an_error_not_a_default(xosc: Path, tmp_path: Pat
     with pytest.raises(bridge.BridgeError):
         session.request("open", timeout=2.0, xosc=str(xosc), out_dir=str(tmp_path), simulator_version="x")
     session.close()
+
+
+def _fake_classes(root: Path) -> Path:
+    for name in ("com/vehicsim/core/bridge/BridgeMain.class", "com/vehicsim/core/AebStack.class", "com/vehicsim/vehicsim/RunService.class"):
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_bytes(b"\xca\xfe\xba\xbe" + name.encode())
+    return root
+
+
+def test_snapshot_core_packs_only_the_core_package(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("VEHICSIM_CORE_CLASSPATH", str(_fake_classes(tmp_path / "classes")))
+    core = bridge.snapshot_core(tmp_path / "run" / "core" / "vsos-core.jar")
+    with zipfile.ZipFile(tmp_path / "run" / "core" / "vsos-core.jar") as jar:
+        assert sorted(jar.namelist()) == ["com/vehicsim/core/AebStack.class", "com/vehicsim/core/bridge/BridgeMain.class"]  # không kéo theo backend
+    assert core["classes"] == 2 and len(core["sha256"]) == 64 and core["jar"] == "vsos-core.jar"
+    assert not list((tmp_path / "run" / "core").glob("*.partial"))
+
+
+def test_snapshot_core_refuses_missing_or_ambiguous_sources(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("VEHICSIM_CORE_CLASSPATH", str(tmp_path / "empty"))
+    with pytest.raises(bridge.BridgeError, match="mvnw.cmd compile"):
+        bridge.snapshot_core(tmp_path / "core.jar")
+    monkeypatch.setenv("VEHICSIM_CORE_CLASSPATH", os.pathsep.join((str(tmp_path / "a"), str(tmp_path / "b"))))
+    with pytest.raises(bridge.BridgeError, match="nhiều mục"):
+        bridge.snapshot_core(tmp_path / "core.jar")
+    assert not (tmp_path / "core.jar").exists()
+
+
+@needs_core
+def test_a_run_keeps_working_after_target_classes_disappears(monkeypatch: pytest.MonkeyPatch, xosc: Path, tmp_path: Path) -> None:
+    """Mục đích của snapshot: mvnw clean giữa run không được làm hỏng run đó."""
+    classes = tmp_path / "classes"
+    shutil.copytree(CORE_CLASSES.parents[4] / "com" / "vehicsim" / "core", classes / "com" / "vehicsim" / "core")
+    monkeypatch.setenv("VEHICSIM_CORE_CLASSPATH", str(classes))
+    jar = tmp_path / "run" / "core" / "vsos-core.jar"
+    bridge.snapshot_core(jar)
+    shutil.rmtree(classes)  # như mvnw clean
+    monkeypatch.setenv("VEHICSIM_CORE_CLASSPATH", str(jar))
+    assert bridge.xosc_info(xosc)["suffix"] == "-xosc3"
+    session = bridge.Bridge(tmp_path / "bridge.log")
+    try:
+        assert session.core
+    finally:
+        session.close()
 
 
 def test_missing_java_or_classes_are_reported_clearly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

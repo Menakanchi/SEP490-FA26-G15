@@ -143,8 +143,9 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 
 - Đường web hiện tại: bộ xuất Java (`XoscExport`) → `.xosc` → `run_xosc.py` → ScenarioRunner → `vehicsim_aeb_control.py`
   (chỉ đọc trạng thái CARLA, áp bàn đạp) → cầu nối `vsos-bridge/1` → cùng `AebStack` và luật chấm của lõi Java.
-- Artifact hiện tại là `vehicsim.xosc/v2`, profile `carla-0.9.16-xosc2`.
-  File v1 phải xuất lại từ web; không ghép baseline `-xosc1`, runner trực tiếp `carla-0.9.16` và `-xosc2`.
+  Mỗi run chụp lõi thành `core/vsos-core.jar` riêng, nên `mvnw clean` giữa run không làm hỏng run đó.
+- Artifact hiện tại là `vehicsim.xosc/v3`, profile `carla-0.9.16-xosc3` (bước 0,01 s). File v1 phải xuất lại từ web;
+  không ghép baseline `-xosc1`, `-xosc2` (20 Hz), runner trực tiếp `carla-0.9.16` và `-xosc3`.
 - `.xosc` là đầu vào mô phỏng. JSON vẫn là hợp đồng nội bộ/result; không đổi đuôi JSON thành XML hoặc bỏ metadata seed/source.
   Runner CARLA trực tiếp nhận bundle JSON (`run_variant.py`) đã gỡ ở ADR-042; `run_xosc.py` từ chối `.json`. Chạy lại bundle bằng
   bộ động học: `java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic <file>` (cần `mvnw compile`).
@@ -163,7 +164,7 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 
 1. **Quỹ đạo người đi bộ:** ScenarioRunner 0.9.16 áp Orientation trước `LanePosition.offset`.
    Thêm `h=π/2` xoay offset ngang thành dịch chuyển dọc. CP_CROSSING dùng hai điểm cùng `s`, khác offset,
-   không đặt Orientation; controller tự quay theo waypoint. Bản xosc2 đã sửa và kiểm CARLA thật ngày 19/10/2026.
+   không đặt Orientation; controller tự quay theo waypoint. Sửa từ xosc2, kiểm CARLA thật ngày 19/10/2026; xosc3 giữ nguyên hình học.
 2. **Phạm vi map:** bộ xuất hiện dùng Town04 road 40/lane -4 và lấy cao độ theo map.
    Không thay bằng WorldPosition phẳng hay đổi road/map mà chưa kiểm hình học, cao độ và dải tham số.
 3. **Dừng ở lề chưa hoàn chỉnh (TD-47):** PedestrianControl có thể tiếp tục đi sau waypoint cuối.

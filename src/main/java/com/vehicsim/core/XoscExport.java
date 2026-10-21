@@ -125,6 +125,9 @@ public final class XoscExport {
                 }
             }
         }
+        if (spec.vehicleCarla().get(Bundle.FULL_BRAKE_DECEL) != null) {  // chỉ khi xe đã đo: xe chưa đo giữ nguyên XML cũ từng byte
+            values.put(Bundle.FULL_BRAKE_DECEL, spec.vehicleCarla().get(Bundle.FULL_BRAKE_DECEL));
+        }
         // string giữ nguyên BIGINT/seed, không đi qua float của ParameterRef trong ScenarioRunner.
         for (Map.Entry<String, Object> e : values.entrySet()) {
             node(declarations, "ParameterDeclaration", "name", "vs_" + e.getKey(), "parameterType", "string", "value", valueText(e.getValue()));

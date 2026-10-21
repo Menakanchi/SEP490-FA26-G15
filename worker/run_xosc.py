@@ -116,6 +116,9 @@ def environment(sr_root: Path) -> dict[str, str]:
     carla_root = Path(env.get("CARLA_ROOT", "C:/Carla_package" if os.name == "nt" else "/opt/carla-simulator"))
     env["PYTHONPATH"] = os.pathsep.join((str(WORKER), str(carla_root / "PythonAPI/carla"), str(sr_root), env.get("PYTHONPATH", "")))
     env["PYTHONIOENCODING"] = "utf-8"
+    # print() của ScenarioRunner bị đệm khi ghi ra file còn log C++ của CARLA thì không: thiếu dòng này, scenario_runner.log đảo thứ tự
+    # (vd. "failed to destroy actor" hiện trước "Preparing scenario" dù xảy ra lúc dọn dẹp cuối run).
+    env["PYTHONUNBUFFERED"] = "1"
     return env
 
 
@@ -151,6 +154,12 @@ def prepare_runtime(source: Path, target: Path, out: Path, simulator: str) -> No
 
 
 def run(args: argparse.Namespace) -> int:
+    out = (args.out or args.xosc.with_suffix("")).resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    # Mọi lần gọi Java của run này (kể cả controller trong tiến trình ScenarioRunner, thừa hưởng biến môi trường) dùng một jar chụp sẵn,
+    # không đọc target/classes mà mvnw clean/IDE có thể xoá giữa chừng.
+    core = bridge.snapshot_core(out / "core" / "vsos-core.jar")
+    os.environ["VEHICSIM_CORE_CLASSPATH"] = str(out / "core" / core["jar"])
     # Lõi Java đọc và kiểm file (không nhận XML ngoài hợp đồng/không rõ metadata vào đường ghi kết quả) và cho biết profile thời gian.
     info = bridge.xosc_info(args.xosc)
     state = probe(args.host, args.port, args.sr_root)
@@ -165,11 +174,9 @@ def run(args: argparse.Namespace) -> int:
     map_name = ET.parse(args.xosc).find("./RoadNetwork/LogicFile").attrib["filepath"]
     if world.get_map().name.split("/")[-1] != map_name:
         world = client.load_world(map_name)
-    out = (args.out or args.xosc.with_suffix("")).resolve()
-    out.mkdir(parents=True, exist_ok=True)
     result_file = out / "result.json"
     result_file.unlink(missing_ok=True)
-    lifecycle = {"destroyed_before": release_world(client), "destroyed_after": None, "stopped": False}
+    lifecycle = {"destroyed_before": release_world(client), "destroyed_after": None, "stopped": False, "core": core}
     if lifecycle["destroyed_before"]:
         print(f"Dọn lại sau lần chạy bị ngắt: xoá {lifecycle['destroyed_before']} actor cũ.", file=sys.stderr)
     runtime = out / "scenario.runtime.xosc"

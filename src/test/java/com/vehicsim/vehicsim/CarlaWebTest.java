@@ -93,11 +93,25 @@ class CarlaWebTest {
     void queuedOldXoscRunFailsBeforeBuildingBundleOrLaunchingWorker() {
         for (String old : List.of("xosc1", "xosc2")) {
             reset(db);
-            queuedRunWithProfileFailsBeforeLaunchingWorker(old);
+            queuedRunWithProfileFailsBeforeLaunchingWorker("carla-0.9.16-" + old, old);
         }
     }
 
-    private void queuedRunWithProfileFailsBeforeLaunchingWorker(String old) {
+    /** ADR-042 gỡ runner JSON trực tiếp (run_variant.py): run cũ của profile đó báo rõ thay vì đưa bundle JSON cho run_xosc.py. */
+    @Test
+    void queuedDirectRunnerRunFailsBeforeLaunchingWorker() {
+        queuedRunWithProfileFailsBeforeLaunchingWorker("carla-0.9.16", "runner JSON trực tiếp");
+    }
+
+    @Test
+    void removedDirectRunnerModeCannotCreateNewRuns() {
+        when(props.simulator()).thenReturn("carla");
+        assertThatThrownBy(runs::simulatorForNewRuns).isInstanceOf(Vs.InvalidRequestException.class).hasMessageContaining("carla-xosc");
+        when(props.simulator()).thenReturn("carla-xosc");
+        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc3");
+    }
+
+    private void queuedRunWithProfileFailsBeforeLaunchingWorker(String profile, String expectedReason) {
         when(tx.execute(any())).thenReturn(true);
         doAnswer(call -> {
             java.util.function.Consumer<org.springframework.transaction.TransactionStatus> callback = call.getArgument(0);
@@ -105,12 +119,12 @@ class CarlaWebTest {
             return null;
         }).when(tx).executeWithoutResult(any());
         when(db.first("SELECT * FROM simulation_runs WHERE id = ?", 42L))
-                .thenReturn(new Row(Json.obj("id", 42L, "simulator_version", "carla-0.9.16-" + old)));
+                .thenReturn(new Row(Json.obj("id", 42L, "simulator_version", profile)));
 
         runs.executeRun(42L);
 
         verify(db).update(eq("UPDATE simulation_runs SET status = 'FAILED', error_message = ?, ended_at = ? WHERE id = ?"),
-                contains(old), any(), eq(42L));
+                contains(expectedReason), any(), eq(42L));
         verify(props, never()).carlaCommand();
         verify(db, never()).scalar(anyString(), any(Object[].class));
     }

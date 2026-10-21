@@ -139,9 +139,9 @@ Kết quả nằm ở thư mục cùng tên file JSON (`--out` để đổi). Th
 AEB FAIL), `2` = đầu vào sai (JSON sai in đủ mọi lỗi; `run_xosc.py` từ chối `.json`), `3` = CARLA lỗi kết nối/spawn, `4` = bị yêu cầu dừng.
 
 Chạy cả batch trên CARLA: đặt `VEHICSIM_SIMULATOR=carla-xosc` và `VEHICSIM_CARLA_COMMAND` trên
-máy có server CARLA. Quá giờ, worker gửi CTRL_BREAK/SIGTERM cho cả nhóm tiến trình, chờ
-`STOP_GRACE_S` (15 s) để CLI xoá actor và trả CARLA về chế độ không đồng bộ, rồi mới giết;
-CLI bị giết cứng thì lần chạy sau tự xoá actor `vehicsim_*` sót lại. Run regression luôn chép bộ mô phỏng của run baseline; đổi cấu
+máy có server CARLA (`scripts\dev-carla.ps1 -RestartBackend` tự đặt). Chế độ `carla` (runner JSON trực tiếp) đã gỡ: backend từ chối tạo run mới
+và báo lỗi run cũ chưa chạy của profile đó trước khi gọi worker. Hủy/quá giờ: backend ghi `stop.requested`, `run_xosc.py` dừng ScenarioRunner
+và dọn world, quá `STOP_GRACE_S` (15 s) mới giết cả cây; bị giết cứng thì lần chạy sau tự xoá actor sót lại. Run regression luôn chép bộ mô phỏng của run baseline; đổi cấu
 hình sang CARLA thì regression tự dựng baseline CARLA mới, không ghép với baseline động học.
 
 Đo thật trên CARLA 0.9.16 (01/10/2026, exec plan
@@ -285,6 +285,9 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Run CARLA đi qua tiến trình con; crash/sai phiên bản chỉ hỏng run đó; CLI quá giờ được xin dừng trước khi bị giết | _chưa có test_ (TD-33) |
 | Regression không bao giờ ghép kết quả động học với CARLA, hay khác xe (MySQL cũng ép bằng `fk_sr_baseline` / `fk_sr_regression`) | _chưa có test_ (TD-33) |
 | Thông số vật lý xe lấy từ DB được áp vào xe CARLA; trường lạ hay số bánh sai bị từ chối (bảng đối chiếu `vehicle_check` của runner trực tiếp đã gỡ cùng `run_variant.py`) | `test_apply_physics_overrides_sets_scalars_com_and_wheels`, `test_apply_physics_overrides_refuses_unknown_fields_and_wheel_count_mismatch` |
+| Giảm tốc phanh 100% đo được của xe (`carla_full_brake_decel_mps2`) đi từ DB qua bundle và `.xosc` tới controller; chưa đo thì 4,6 m/s² và XML giữ nguyên | `XoscExportTest#measuredFullBrakeDecelTravelsFromBundleToTheCarlaController`, `XoscExportTest#implausibleFullBrakeDecelIsRejected` |
+| Cầu nối CARLA không bịa kết quả: lỗi/đứt ống là run lỗi; Java thoát khi stdin đóng; mỗi run dùng jar lõi chụp riêng nên `mvnw clean` giữa run vô hại | `BridgeProtocolTest#theProcessExitsWhenStdinClosesAndWritesNoResult`, `test_a_dead_java_process_is_an_error_not_a_default`, `test_a_run_keeps_working_after_target_classes_disappears` |
+| Adapter CARLA áp góc lái của chính tick đó (không dùng `get_control()` của tick trước) và phanh/ga do lõi Java quyết định | `test_brake_override_keeps_this_ticks_steering` |
 | Mọi tham số AEB được simulator dùng; seed Java khớp SQL; AEB có đúng 4 tham số chỉnh được | `AebParameterSeedTest#everySeededParameterIsUsedByTheSimulator`, `AebParameterSeedTest#javaParameterSeedMatchesSqlSeed`, `SimulatorBehaviorTest#aebHasExactlyTheFourTunableParameters` |
 | Mọi route `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi được, MANAGER chỉ đọc | `VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
 | Chỉ REVIEWER quyết định recommendation; REVIEWER không chạy mô phỏng; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |

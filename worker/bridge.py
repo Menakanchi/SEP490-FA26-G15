@@ -12,20 +12,26 @@ Mỗi dòng stdin là một yêu cầu JSON, mỗi yêu cầu có đúng một d
 
 Java và classpath lấy từ ``VEHICSIM_JAVA`` (mặc định ``java`` trên PATH) và ``VEHICSIM_CORE_CLASSPATH`` (mặc định ``<repo>/target/classes``,
 cần ``mvnw compile`` trước). ``run_xosc.py`` độc lập vẫn chạy được: không cần backend đang chạy.
+
+``run_xosc.py`` không cho JVM đọc thẳng ``target/classes``: mỗi run chụp lõi thành jar riêng trong thư mục run (``snapshot_core``), nên ``mvnw clean``
+hay IDE ghi class lỗi giữa chừng không làm hỏng run đang chạy, và run giữ đúng bản lõi đã dùng.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import queue
 import shutil
 import subprocess
 import threading
+import zipfile
 from pathlib import Path
 
 PROTOCOL = "vsos-bridge/1"
 MAIN_CLASS = "com.vehicsim.core.bridge.BridgeMain"
+CORE_PACKAGE = "com/vehicsim/core"  # lõi chỉ dùng JDK (CoreIsolationTest), nên một jar chỉ chứa gói này là đủ chạy
 ROOT = Path(__file__).resolve().parent.parent
 HELLO_TIMEOUT_S = 30.0  # gồm cả thời gian khởi động JVM
 OPEN_TIMEOUT_S = 30.0
@@ -46,6 +52,40 @@ def java_command() -> list[str]:
         raise BridgeError(f"chưa có lõi Java tại {classpath}: chạy `.\\mvnw.cmd compile` (hoặc đặt VEHICSIM_CORE_CLASSPATH)")
     # SerialGC + Xshare: khởi động nhanh; tiến trình nhỏ, sống đúng bằng một run.
     return [java, "-XX:+UseSerialGC", "-Xshare:auto", "-cp", classpath, MAIN_CLASS]
+
+
+def snapshot_core(dest: Path) -> dict:
+    """Chụp lõi Java hiện tại thành ``dest`` (jar) để một run dùng từ đầu tới cuối. Trả ``{"jar", "sha256", "classes"}``.
+
+    Nguồn là ``VEHICSIM_CORE_CLASSPATH`` (một thư mục class hoặc một jar) hoặc ``<repo>/target/classes``. Classpath nhiều mục thì không chụp được:
+    báo lỗi thay vì lặng lẽ chạy trên thư mục có thể bị ``mvnw clean`` xoá.
+    """
+    source = Path(os.environ.get("VEHICSIM_CORE_CLASSPATH") or ROOT / "target" / "classes")
+    if os.pathsep in str(source):
+        raise BridgeError(f"VEHICSIM_CORE_CLASSPATH có nhiều mục ({source}); đặt một thư mục class hoặc một jar")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    partial = dest.with_name(dest.name + ".partial")
+    try:
+        if source.is_file():
+            shutil.copyfile(source, partial)
+        else:
+            package = source / CORE_PACKAGE
+            if not (package / "bridge" / "BridgeMain.class").is_file():
+                raise BridgeError(f"chưa có lõi Java tại {source}: chạy `.\\mvnw.cmd compile` (hoặc đặt VEHICSIM_CORE_CLASSPATH)")
+            # Một file biến mất giữa chừng (mvnw clean đúng lúc này) làm write() ném OSError: run báo lỗi, không chạy trên jar thiếu class.
+            with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED) as jar:
+                for path in sorted(package.rglob("*.class")):
+                    jar.write(path, path.relative_to(source).as_posix())
+        with zipfile.ZipFile(partial) as jar:
+            names = jar.namelist()
+        if f"{CORE_PACKAGE}/bridge/BridgeMain.class" not in names:
+            raise BridgeError(f"jar lõi {source} thiếu {MAIN_CLASS}")
+        os.replace(partial, dest)
+    except OSError as exc:
+        raise BridgeError(f"không chụp được lõi Java từ {source}: {exc}") from exc
+    finally:
+        partial.unlink(missing_ok=True)
+    return {"jar": dest.name, "sha256": hashlib.sha256(dest.read_bytes()).hexdigest(), "classes": sum(n.endswith(".class") for n in names)}
 
 
 def xosc_info(xosc: Path, timeout: float = 30.0) -> dict:
