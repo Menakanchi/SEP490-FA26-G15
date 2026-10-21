@@ -1,24 +1,31 @@
 package com.vehicsim.vehicsim;
 
+import com.vehicsim.dto.RegressionRecords.CandidateRun;
+import com.vehicsim.dto.RegressionRecords.RunResult;
+import com.vehicsim.dto.RegressionResponses.CriterionResult;
+import com.vehicsim.dto.RegressionResponses.PairResult;
+import com.vehicsim.dto.RegressionResponses.RegressionSummary;
+import com.vehicsim.exception.RegressionExceptions.InvalidCriteriaException;
+import com.vehicsim.service.RegressionCodes;
+import com.vehicsim.service.RegressionCriteria;
+import com.vehicsim.service.RegressionService;
+import com.vehicsim.service.RegressionSummarizer;
 import com.vehicsim.vehicsim.Vs.InvalidRequestException;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongFunction;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.ArgumentMatchers.startsWith;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class RegressionRulesTest {
 
     @Test
     void defaultsKeepRequiredCriteriaOn() {
-        Map<String, Map<String, Object>> merged = RegressionService.mergeCriteria(Map.of(
+        Map<String, Map<String, Object>> merged = RegressionCriteria.merge(Map.of(
                 "no_new_collision", Map.of("enabled", false),
                 "false_activation_increase_max_pts", Map.of("enabled", false, "value", 2)));
         assertEquals(true, merged.get("no_new_collision").get("enabled"), "tiêu chí bắt buộc không tắt được");
@@ -30,7 +37,7 @@ class RegressionRulesTest {
     @Test
     void defaultFalseActivationThresholdIsFivePoints() {
         assertEquals(5.0, RegressionService.DEFAULT_FALSE_ACTIVATION_MAX_PTS);
-        Map<String, Map<String, Object>> merged = RegressionService.mergeCriteria(null);
+        Map<String, Map<String, Object>> merged = RegressionCriteria.merge(null);
         assertEquals(5.0, merged.get("false_activation_increase_max_pts").get("value"));
         assertEquals(true, merged.get("false_activation_increase_max_pts").get("enabled"));
         // Va chạm mới vẫn bắt buộc và không có ngưỡng: đổi ngưỡng phanh oan không nới nó (ADR-042).
@@ -46,83 +53,64 @@ class RegressionRulesTest {
     }
 
     private static boolean falseActivationCriterionPassed(double storedThreshold) {
-        Map<String, Object> summary = summaryOf(storedThreshold, i -> result(2000 + i, i == 1));
-        return criterionPassed(summary, "false_activation_increase_max_pts");
-    }
-
-    private static boolean criterionPassed(Map<String, Object> summary, String key) {
-        return Json.asList(summary.get("criteria")).stream().map(Json::asMap)
-                .filter(c -> key.equals(c.get("key")))
-                .allMatch(c -> Boolean.TRUE.equals(c.get("passed")));
+        RegressionSummary summary = summaryOf(storedThreshold, i -> result(2000 + i, i == 1, 5.0, 10.0));
+        return summary.criteria().stream().filter(c -> "false_activation_increase_max_pts".equals(c.key())).allMatch(CriterionResult::passed);
     }
 
     /** Summary của một test 40 cặp đã chạy xong: baseline đều an toàn, không phanh oan; candidate do {@code candidate} dựng. */
-    private static Map<String, Object> summaryOf(double storedThreshold, java.util.function.LongFunction<Row> candidate) {
-        Db db = mock(Db.class);
-        RegressionService service = new RegressionService(db, mock(Queries.class), mock(FamilyService.class), mock(RunService.class),
-                mock(org.springframework.transaction.support.TransactionTemplate.class));
-        Map<String, Map<String, Object>> criteria = RegressionService.mergeCriteria(
-                Map.of("false_activation_increase_max_pts", Map.of("value", storedThreshold)));
-        Row test = new Row(Json.obj("id", 30L, "scenario_id", 20L, "execution_status", "COMPLETED",
-                "pass_criteria_json", Json.write(Json.obj("criteria", criteria))));
-        List<Row> candidateRuns = new ArrayList<>();
-        List<Row> versions = new ArrayList<>();
-        List<Row> results = new ArrayList<>();
+    private static RegressionSummary summaryOf(double storedThreshold, LongFunction<RunResult> candidate) {
+        Map<String, Object> criteria = new LinkedHashMap<>(RegressionCriteria.merge(
+                Map.of("false_activation_increase_max_pts", Map.of("value", storedThreshold))));
+        List<CandidateRun> candidateRuns = new ArrayList<>();
+        Map<Long, Row> versions = new LinkedHashMap<>();
+        Map<Long, RunResult> results = new LinkedHashMap<>();
         for (long i = 1; i <= 40; i++) {
-            candidateRuns.add(new Row(Json.obj("id", 2000 + i, "scenario_version_id", i, "baseline_run_id", 1000 + i)));
-            versions.add(new Row(Json.obj("id", i, "version_no", i)));
-            results.add(result(1000 + i, false));
-            results.add(candidate.apply(i));
+            candidateRuns.add(new CandidateRun(2000 + i, i, 1000 + i));
+            versions.put(i, new Row(Json.obj("id", i, "version_no", i)));
+            results.put(1000 + i, result(1000 + i, false, 5.0, 10.0));
+            results.put(2000 + i, candidate.apply(i));
         }
-        when(db.list(contains("FROM simulation_runs WHERE regression_test_id = ?"), any(Object[].class))).thenReturn(candidateRuns);
-        when(db.list(startsWith("SELECT * FROM scenario_versions"), any(Object[].class))).thenReturn(versions);
-        when(db.list(startsWith("SELECT id, status, collision_occurred"), any(Object[].class))).thenReturn(results);
-        when(db.first(startsWith("SELECT * FROM scenarios"), any(Object[].class))).thenReturn(new Row(Json.obj("id", 20L, "code", "SC-A", "name", "Họ A")));
-        return service.summary(test);
+        Row scenario = new Row(Json.obj("id", 20L, "code", "SC-A", "name", "Họ A"));
+        return RegressionSummarizer.summarize(criteria, scenario, versions, candidateRuns, results);
     }
 
-    private static Row result(long id, boolean falseActivation) {
-        return new Row(Json.obj("id", id, "status", "COMPLETED", "collision_occurred", false, "min_ttc_s", 3.0, "min_distance_m", 5.0,
-                "is_false_positive", falseActivation, "verdict", "PASS", "rms_jerk_mps3", 5.0, "stopping_distance_m", 10.0));
+    private static RunResult result(long id, boolean falseActivation, Double rmsJerk, Double stoppingDistance) {
+        return new RunResult(id, "COMPLETED", false, 3.0, 5.0, null, falseActivation, "PASS", rmsJerk, stoppingDistance);
     }
 
     @Test
     void objectivesAreShownPerPairButNeverDecideTheVerdict() {
         // Candidate phanh giật hơn và dừng xa hơn ở mọi cặp nhưng không đổi kết quả: mọi tiêu chí vẫn đạt.
-        Map<String, Object> summary = summaryOf(RegressionService.DEFAULT_FALSE_ACTIVATION_MAX_PTS, i -> new Row(Json.obj(
-                "id", 2000 + i, "status", "COMPLETED", "collision_occurred", false, "min_ttc_s", 3.0, "min_distance_m", 5.0,
-                "is_false_positive", false, "verdict", "PASS", "rms_jerk_mps3", 12.0, "stopping_distance_m", null)));
+        RegressionSummary summary = summaryOf(RegressionService.DEFAULT_FALSE_ACTIVATION_MAX_PTS, i -> result(2000 + i, false, 12.0, null));
 
-        assertTrue(Json.asList(summary.get("criteria")).stream().map(Json::asMap)
-                .filter(c -> Boolean.TRUE.equals(c.get("enabled"))).allMatch(c -> Boolean.TRUE.equals(c.get("passed"))));
-        assertFalse(Json.asList(summary.get("criteria")).stream().map(Json::asMap)
-                .anyMatch(c -> String.valueOf(c.get("key")).contains("jerk") || String.valueOf(c.get("key")).contains("stopping")),
+        assertEquals("PASSED", RegressionSummarizer.verdict(summary));
+        assertFalse(summary.criteria().stream().anyMatch(c -> c.key().contains("jerk") || c.key().contains("stopping")),
                 "objective không phải tiêu chí");
-        Map<String, Object> pair = Json.asMap(Json.asList(summary.get("pairs")).get(0));
-        assertEquals(5.0, pair.get("baseline_rms_jerk_mps3"));
-        assertEquals(12.0, pair.get("candidate_rms_jerk_mps3"));
-        assertEquals(10.0, pair.get("baseline_stopping_distance_m"));
-        assertNull(pair.get("candidate_stopping_distance_m"), "không phanh = NULL, không bịa 0");
-        assertNull(pair.get("candidate_impact_speed_mps"), "không va chạm = NULL");
+        PairResult pair = summary.pairs().get(0);
+        assertEquals(5.0, pair.baselineRmsJerkMps3());
+        assertEquals(12.0, pair.candidateRmsJerkMps3());
+        assertEquals(10.0, pair.baselineStoppingDistanceM());
+        assertNull(pair.candidateStoppingDistanceM(), "không phanh = NULL, không bịa 0");
+        assertNull(pair.candidateImpactSpeedMps(), "không va chạm = NULL");
     }
 
     @Test
     void unknownCriterionIsRejected() {
-        assertThrows(InvalidRequestException.class, () -> RegressionService.mergeCriteria(Map.of("nope", Map.of("enabled", true))));
+        assertThrows(InvalidCriteriaException.class, () -> RegressionCriteria.merge(Map.of("nope", Map.of("enabled", true))));
     }
 
     @Test
     void confidenceNeedsPassAndNoRegressionAndEnoughScenarios() {
-        assertEquals("High", RegressionService.confidence(true, Map.of("regressed", 0, "scenarios", 20)));
-        assertEquals("Medium", RegressionService.confidence(true, Map.of("regressed", 0, "scenarios", 19)));
-        assertEquals("Medium", RegressionService.confidence(true, Map.of("regressed", 1, "scenarios", 50)));
-        assertEquals("Low", RegressionService.confidence(false, Map.of("regressed", 0, "scenarios", 50)));
+        assertEquals("High", RegressionCriteria.confidence(true, 0, 20));
+        assertEquals("Medium", RegressionCriteria.confidence(true, 0, 19));
+        assertEquals("Medium", RegressionCriteria.confidence(true, 1, 50));
+        assertEquals("Low", RegressionCriteria.confidence(false, 0, 50));
     }
 
     @Test
     void codes() {
-        assertEquals("RT-004", RegressionService.testCode(4));
-        assertEquals("REC-012", RegressionService.recommendationCode(12));
+        assertEquals("RT-004", RegressionCodes.testCode(4));
+        assertEquals("REC-012", RegressionCodes.recommendationCode(12));
     }
 
     @Test

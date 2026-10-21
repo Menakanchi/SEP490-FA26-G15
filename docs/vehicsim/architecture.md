@@ -69,6 +69,16 @@ ADR-040 của hai run, đọc thẳng từ cột worker đã ghi — chỉ để
 (chờ bộ chỉ số chung). Manifest gói JSON có thêm `dt_s`, `max_duration_s`, xe, `bundle_schema`, `code_version` (null) và đường tải `.xosc` từng run.
 Run baseline STOPPED không còn được ghép làm baseline (trước chỉ loại FAILED).
 
+Tái cấu trúc 21/10/2026 (không đổi API / JSON / DB — 28 phản hồi API so trước/sau giống hệt): code của màn 5 xếp theo tầng như phần
+đăng nhập, không còn nằm trong gói `vehicsim/`. `controller/RegressionController` (route `/regression/**`, `/recommendations/**`,
+`/decisions`, cùng tiền tố `/api/v1/vehicsim`); `service/RegressionService` (tạo test, xem trước, ghép cặp, chốt kết quả),
+`ReviewDecisionService` (Reviewer quyết định), `RegressionReportService` (gói xuất, lịch sử, nguồn candidate), `RegressionViewService`
+(payload các màn, chuyển ra từ `ViewsService`), `RegressionSummarizer` / `RegressionCriteria` / `RegressionCodes` (hàm thuần);
+`repository/RegressionRepository` (mọi câu SQL của màn 5, SQL thuần qua `Db`, không JPA); `dto/RegressionRequests`, `RegressionResponses`
+(record, JSON snake_case qua `@JsonNaming`), `RegressionRecords` (dòng DB nội bộ); `exception/RegressionExceptions` (lớp con của
+`Vs.InvalidRequestException`, vẫn trả 400). Luật role / hạn mức của mọi controller VehicSim nằm ở `vehicsim/VehicSimAccess`.
+Các phần khác có thể chuyển dần theo cùng mẫu.
+
 Trang `/` (Tổng quan) tính trạng thái 6 bước từ dữ liệu thật và chỉ bước tiếp theo;
 mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước ở
 `components/vehicsimFlow.ts`).

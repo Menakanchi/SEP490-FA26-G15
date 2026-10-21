@@ -254,7 +254,7 @@ ngân sách/hủy được tôn trọng; không tự ghi đè baseline hoặc t�
 - Xuất gói tham số JSON/CSV có đơn vị, bảng trước/sau, regression, XOSC, quyết định và manifest.
   JSON cho tham số/kết quả vẫn cần; XOSC dùng mô tả kịch bản chạy CARLA.
 
-**Điểm vào code:** [RegressionService](../../src/main/java/com/vehicsim/vehicsim/RegressionService.java),
+**Điểm vào code:** [RegressionService](../../src/main/java/com/vehicsim/service/RegressionService.java),
 [ViewsService](../../src/main/java/com/vehicsim/vehicsim/ViewsService.java),
 [controller](../../src/main/java/com/vehicsim/vehicsim/VehicSimController.java).
 

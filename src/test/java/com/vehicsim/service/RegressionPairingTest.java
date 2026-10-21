@@ -1,5 +1,18 @@
-package com.vehicsim.vehicsim;
+package com.vehicsim.service;
 
+import com.vehicsim.dto.RegressionRecords.ScenarioSet;
+import com.vehicsim.dto.RegressionResponses.PreviewVariant;
+import com.vehicsim.dto.RegressionResponses.RegressionPreviewResponse;
+import com.vehicsim.exception.RegressionExceptions.InvalidScenarioSetException;
+import com.vehicsim.repository.RegressionRepository;
+import com.vehicsim.vehicsim.Db;
+import com.vehicsim.vehicsim.FamilyService;
+import com.vehicsim.vehicsim.Json;
+import com.vehicsim.vehicsim.Queries;
+import com.vehicsim.vehicsim.Row;
+import com.vehicsim.vehicsim.RunService;
+import com.vehicsim.vehicsim.VehicSimProperties;
+import com.vehicsim.vehicsim.Vs;
 import com.vehicsim.vehicsim.Vs.InvalidRequestException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,7 +23,6 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -31,7 +43,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * Luật cứng 4 và 9 (AGENTS.md): candidate chạy đúng seed của baseline; regression không ghép động học với CARLA hay khác xe;
- * preview khớp bộ kịch bản thật của test; run hỏng / bị dừng không bao giờ cho verdict PASSED (TD-33). Logic thật, {@link Db} giả.
+ * preview khớp bộ kịch bản thật của test; run hỏng / bị dừng không bao giờ cho verdict PASSED (TD-33). Service và repository thật,
+ * {@link Db} giả — các luật ghép cặp nằm ngay trong SQL của repository nên kiểm ở tầng này.
  */
 class RegressionPairingTest {
 
@@ -143,7 +156,7 @@ class RegressionPairingTest {
     // ------------------------------------------------------------------ RegressionService.createTest / preview
 
     private RegressionService service(RunService runs, Queries queries, FamilyService families) {
-        return new RegressionService(db, queries, families, runs, mock(TransactionTemplate.class));
+        return new RegressionService(new RegressionRepository(db), queries, families, runs, mock(TransactionTemplate.class));
     }
 
     /** Họ có 3 biến thể 101..103; baseline đã chạy 101 (có lỗi) và 102, chưa chạy 103. */
@@ -161,8 +174,21 @@ class RegressionPairingTest {
                         "simulator_version", RunService.KINEMATIC_SIMULATOR, "carla_vehicle_model_id", VEHICLE),
                 row("id", 1002L, "scenario_version_id", 102L, "status", "COMPLETED", "random_seed", 48_102L,
                         "simulator_version", RunService.KINEMATIC_SIMULATOR, "carla_vehicle_model_id", VEHICLE)));
-        when(db.list(startsWith("SELECT r.scenario_version_id FROM simulation_runs r JOIN failures"), any(Object[].class)))
+        when(db.list(contains("JOIN failures"), any(Object[].class)))
                 .thenReturn(List.of(row("scenario_version_id", 101L)));
+    }
+
+    /** Bộ kịch bản mà createTest ghi vào pass_criteria_json (đối số thứ 8 của INSERT regression_tests). */
+    @SuppressWarnings("unchecked")
+    private static ScenarioSet storedScenarioSet(Object[] insert) {
+        return (ScenarioSet) ((Map<String, Object>) insert[8]).get("scenario_set");
+    }
+
+    /** Một dòng regression_tests đủ cột NOT NULL. */
+    private static Row testRow(String executionStatus) {
+        return row("id", TEST, "project_id", PROJECT, "scenario_id", SCENARIO, "baseline_aeb_version_id", BASELINE,
+                "candidate_aeb_version_id", CANDIDATE, "carla_vehicle_model_id", VEHICLE, "simulator_version", RunService.KINEMATIC_SIMULATOR,
+                "execution_status", executionStatus, "verdict", "PENDING", "created_by_user_id", USER, "pass_criteria_json", "{}");
     }
 
     @Test
@@ -242,7 +268,6 @@ class RegressionPairingTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void thePreviewMatchesTheScenarioSetOfTheTestThatIsCreated() {
         Queries queries = mock(Queries.class);
         FamilyService families = mock(FamilyService.class);
@@ -258,14 +283,13 @@ class RegressionPairingTest {
         when(db.list(contains("FROM simulation_runs WHERE id IN"), any(Object[].class))).thenReturn(List.of());
         RegressionService service = service(runs, queries, families);
 
-        Map<String, Object> preview = service.preview(PROJECT, SCENARIO);
+        RegressionPreviewResponse preview = service.preview(PROJECT, SCENARIO);
         service.createTest(PROJECT, USER, CANDIDATE, SCENARIO, true, true, null, null);
 
-        Map<String, Object> passCriteria = (Map<String, Object>) inserts.get(0)[8];
-        Map<String, Object> scenarioSet = Json.asMap(passCriteria.get("scenario_set"));
-        assertThat(scenarioSet.get("variant_count")).isEqualTo(preview.get("variant_count")).isEqualTo(3);
-        assertThat(scenarioSet.get("old_critical_count")).isEqualTo(preview.get("old_critical_count")).isEqualTo(1);
-        assertThat(preview.get("baseline_runs_existing")).isEqualTo(2);
+        ScenarioSet scenarioSet = storedScenarioSet(inserts.get(0));
+        assertThat(scenarioSet.variantCount()).isEqualTo(preview.variantCount()).isEqualTo(3);
+        assertThat(scenarioSet.oldCriticalCount()).isEqualTo(preview.oldCriticalCount()).isEqualTo(1);
+        assertThat(preview.baselineRunsExisting()).isEqualTo(2);
     }
 
     @Test
@@ -275,10 +299,10 @@ class RegressionPairingTest {
         RunService runs = mock(RunService.class);
         arrangeFamily(queries, families);
         when(runs.configuredSimulator()).thenReturn(RunService.KINEMATIC_SIMULATOR);
-        when(db.list(startsWith("SELECT r.scenario_version_id FROM simulation_runs r JOIN failures"), any(Object[].class))).thenReturn(List.of());
+        when(db.list(contains("JOIN failures"), any(Object[].class))).thenReturn(List.of());
 
         assertThatThrownBy(() -> service(runs, queries, families).createTest(PROJECT, USER, CANDIDATE, SCENARIO, true, false, null, null))
-                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("rỗng");
+                .isInstanceOf(InvalidScenarioSetException.class).hasMessageContaining("rỗng");
         verify(db, never()).insert(startsWith("INSERT INTO regression_tests"), any(Object[].class));
     }
 
@@ -300,30 +324,32 @@ class RegressionPairingTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void aHandPickedSetRunsExactlyThoseVariantsInFamilyOrderAndIsRecorded() {
         List<Object[]> inserts = new ArrayList<>();
         RegressionService service = arrangeCustom(inserts);
 
         service.createTest(PROJECT, USER, CANDIDATE, SCENARIO, true, true, null, null, List.of(102L, 101L, 102L));
 
-        Map<String, Object> scenarioSet = Json.asMap(((Map<String, Object>) inserts.get(0)[8]).get("scenario_set"));
-        assertThat(scenarioSet).containsEntry("mode", "custom").containsEntry("variant_count", 2)
-                .containsEntry("old_critical", false).containsEntry("all_variants", false);
-        assertThat(scenarioSet.get("variant_ids")).isEqualTo(List.of(101L, 102L));
-        assertThat(scenarioSet.get("safe_count")).as("102 đã chạy baseline và không có lỗi").isEqualTo(1L);
+        ScenarioSet scenarioSet = storedScenarioSet(inserts.get(0));
+        assertThat(scenarioSet.mode()).isEqualTo("custom");
+        assertThat(scenarioSet.variantCount()).isEqualTo(2);
+        assertThat(scenarioSet.oldCritical()).isFalse();
+        assertThat(scenarioSet.allVariants()).isFalse();
+        assertThat(scenarioSet.variantIds()).isEqualTo(List.of(101L, 102L));
+        assertThat(scenarioSet.safeCount()).as("102 đã chạy baseline và không có lỗi").isEqualTo(1L);
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void withoutVariantIdsTheOldSelectionIsKept() {
         List<Object[]> inserts = new ArrayList<>();
         RegressionService service = arrangeCustom(inserts);
 
         service.createTest(PROJECT, USER, CANDIDATE, SCENARIO, true, false, null, null);
 
-        Map<String, Object> scenarioSet = Json.asMap(((Map<String, Object>) inserts.get(0)[8]).get("scenario_set"));
-        assertThat(scenarioSet).containsEntry("mode", "old_critical").containsEntry("variant_count", 1).containsEntry("variant_ids", null);
+        ScenarioSet scenarioSet = storedScenarioSet(inserts.get(0));
+        assertThat(scenarioSet.mode()).isEqualTo("old_critical");
+        assertThat(scenarioSet.variantCount()).isEqualTo(1);
+        assertThat(scenarioSet.variantIds()).isNull();
     }
 
     @Test
@@ -331,14 +357,13 @@ class RegressionPairingTest {
         RegressionService service = arrangeCustom(new ArrayList<>());
 
         assertThatThrownBy(() -> service.createTest(PROJECT, USER, CANDIDATE, SCENARIO, true, true, null, null, List.of()))
-                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("rỗng");
+                .isInstanceOf(InvalidScenarioSetException.class).hasMessageContaining("rỗng");
         assertThatThrownBy(() -> service.createTest(PROJECT, USER, CANDIDATE, SCENARIO, true, true, null, null, List.of(101L, 999L)))
-                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("999");
+                .isInstanceOf(InvalidScenarioSetException.class).hasMessageContaining("999");
         verify(db, never()).insert(startsWith("INSERT INTO regression_tests"), any(Object[].class));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void thePreviewOfAHandPickedSetMatchesTheTestAndListsTheVariants() {
         List<Object[]> inserts = new ArrayList<>();
         RegressionService service = arrangeCustom(inserts);
@@ -346,21 +371,23 @@ class RegressionPairingTest {
                 row("id", 1001L, "status", "COMPLETED", "collision_occurred", true),
                 row("id", 1002L, "status", "COMPLETED", "collision_occurred", false, "min_ttc_s", 3.0, "min_distance_m", 6.0)));
 
-        Map<String, Object> preview = service.preview(PROJECT, SCENARIO, List.of(102L, 103L), true);
+        RegressionPreviewResponse preview = service.preview(PROJECT, SCENARIO, List.of(102L, 103L), true);
         service.createTest(PROJECT, USER, CANDIDATE, SCENARIO, true, true, null, null, List.of(102L, 103L));
 
-        Map<String, Object> scenarioSet = Json.asMap(((Map<String, Object>) inserts.get(0)[8]).get("scenario_set"));
-        assertThat(preview.get("selected_count")).isEqualTo(scenarioSet.get("variant_count")).isEqualTo(2);
-        assertThat(preview.get("selected_safe_count")).isEqualTo(scenarioSet.get("safe_count")).isEqualTo(1L);
-        assertThat(preview.get("selected_old_critical_count")).isEqualTo(0L);
-        assertThat(preview.get("selected_baseline_runs_existing")).as("103 chưa có baseline, sẽ chạy thêm").isEqualTo(1L);
-        List<Map<String, Object>> variants = (List<Map<String, Object>>) preview.get("variants");
-        assertThat(variants).extracting(v -> v.get("id")).containsExactly(101L, 102L, 103L);
-        assertThat(variants.get(0)).containsEntry("old_critical", true).containsEntry("baseline_outcome", Vs.OUTCOME_COLLISION);
-        assertThat(variants.get(1)).containsEntry("old_critical", false).containsEntry("baseline_outcome", Vs.OUTCOME_SAFE);
-        assertThat(variants.get(2).get("baseline_outcome")).as("chưa có run baseline").isNull();
-        assertThat(variants).extracting(v -> v.get("safe")).containsExactly(false, true, false);
-        assertThat(variants).extracting(v -> v.get("has_baseline_run")).containsExactly(true, true, false);
+        ScenarioSet scenarioSet = storedScenarioSet(inserts.get(0));
+        assertThat(preview.selectedCount()).isEqualTo(scenarioSet.variantCount()).isEqualTo(2);
+        assertThat(preview.selectedSafeCount()).isEqualTo(scenarioSet.safeCount()).isEqualTo(1L);
+        assertThat(preview.selectedOldCriticalCount()).isEqualTo(0L);
+        assertThat(preview.selectedBaselineRunsExisting()).as("103 chưa có baseline, sẽ chạy thêm").isEqualTo(1L);
+        List<PreviewVariant> variants = preview.variants();
+        assertThat(variants).extracting(PreviewVariant::id).containsExactly(101L, 102L, 103L);
+        assertThat(variants.get(0).oldCritical()).isTrue();
+        assertThat(variants.get(0).baselineOutcome()).isEqualTo(Vs.OUTCOME_COLLISION);
+        assertThat(variants.get(1).oldCritical()).isFalse();
+        assertThat(variants.get(1).baselineOutcome()).isEqualTo(Vs.OUTCOME_SAFE);
+        assertThat(variants.get(2).baselineOutcome()).as("chưa có run baseline").isNull();
+        assertThat(variants).extracting(PreviewVariant::safe).containsExactly(false, true, false);
+        assertThat(variants).extracting(PreviewVariant::hasBaselineRun).containsExactly(true, true, false);
     }
 
     // ------------------------------------------------------------------ tryFinalize: run hỏng / bị dừng
@@ -373,9 +400,9 @@ class RegressionPairingTest {
             ((Consumer<TransactionStatus>) inv.getArgument(0)).accept(null);
             return null;
         }).when(tx).executeWithoutResult(any());
-        RegressionService service = new RegressionService(db, mock(Queries.class), mock(FamilyService.class), mock(RunService.class), tx);
-        Map<String, Object> test = new LinkedHashMap<>(Map.of("id", TEST, "execution_status", "RUNNING", "project_id", PROJECT));
-        when(db.first(startsWith("SELECT * FROM regression_tests"), any(Object[].class))).thenReturn(new Row(test));
+        RegressionService service = new RegressionService(new RegressionRepository(db), mock(Queries.class), mock(FamilyService.class),
+                mock(RunService.class), tx);
+        when(db.first(startsWith("SELECT * FROM regression_tests"), any(Object[].class))).thenReturn(testRow("RUNNING"));
         when(db.list(contains("FROM simulation_runs WHERE regression_test_id = ?"), any(Object[].class))).thenReturn(List.of(
                 row("id", 2001L, "scenario_version_id", 101L, "status", "STOPPED", "baseline_run_id", 1001L)));
         when(db.list(startsWith("SELECT id, status, collision_occurred"), any(Object[].class))).thenReturn(List.of(
@@ -397,9 +424,9 @@ class RegressionPairingTest {
             ((Consumer<TransactionStatus>) inv.getArgument(0)).accept(null);
             return null;
         }).when(tx).executeWithoutResult(any());
-        RegressionService service = new RegressionService(db, mock(Queries.class), mock(FamilyService.class), mock(RunService.class), tx);
-        when(db.first(startsWith("SELECT * FROM regression_tests"), any(Object[].class)))
-                .thenReturn(row("id", TEST, "execution_status", "RUNNING", "project_id", PROJECT));
+        RegressionService service = new RegressionService(new RegressionRepository(db), mock(Queries.class), mock(FamilyService.class),
+                mock(RunService.class), tx);
+        when(db.first(startsWith("SELECT * FROM regression_tests"), any(Object[].class))).thenReturn(testRow("RUNNING"));
         when(db.list(contains("FROM simulation_runs WHERE regression_test_id = ?"), any(Object[].class))).thenReturn(List.of(
                 row("id", 2001L, "scenario_version_id", 101L, "status", "PENDING", "baseline_run_id", 1001L)));
         when(db.list(startsWith("SELECT id, status, collision_occurred"), any(Object[].class))).thenReturn(List.of(
