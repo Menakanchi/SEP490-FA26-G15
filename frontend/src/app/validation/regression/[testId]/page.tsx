@@ -7,7 +7,7 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, OutcomeBadge, PillButton, StatusBadge, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import { vi, viSummary } from "@/components/vehicsimI18n";
-import { CandidateSourceTag, CarlaCaveat } from "@/components/RegressionNotes";
+import { CandidateSourceTag, CarlaCaveat, PairObjectivesTable } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OutcomeKey, Pair, ParamDiff, RegressionDetail } from "@/types/vehicsim";
 
@@ -104,7 +104,7 @@ export default function RegressionResultsPage() {
       }
       subtitle={
         d &&
-        `AEB ${d.baseline.label} (cơ sở) → ${d.candidate.label} (ứng viên) · ${d.family} · ${d.pass_criteria.scenario_set.variant_count} kịch bản · cùng seed · chạy ${fmt.date(d.created_at)}${d.created_by ? ` bởi ${d.created_by}` : ""}`
+        `AEB ${d.baseline.label} (cơ sở) → ${d.candidate.label} (ứng viên) · ${d.family} · ${d.pass_criteria.scenario_set.variant_count} kịch bản${d.pass_criteria.scenario_set.mode === "custom" ? " chọn tay" : ""} · cùng seed · chạy ${fmt.date(d.created_at)}${d.created_by ? ` bởi ${d.created_by}` : ""}`
       }
       actions={
         d && (
@@ -293,6 +293,8 @@ export default function RegressionResultsPage() {
                   )}
                 </div>
               </section>
+
+              <PairObjectivesTable pairs={pairs} baselineLabel={d.baseline.label} candidateLabel={d.candidate.label} />
             </>
           )}
 

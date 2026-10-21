@@ -46,6 +46,18 @@ class RegressionRulesTest {
     }
 
     private static boolean falseActivationCriterionPassed(double storedThreshold) {
+        Map<String, Object> summary = summaryOf(storedThreshold, i -> result(2000 + i, i == 1));
+        return criterionPassed(summary, "false_activation_increase_max_pts");
+    }
+
+    private static boolean criterionPassed(Map<String, Object> summary, String key) {
+        return Json.asList(summary.get("criteria")).stream().map(Json::asMap)
+                .filter(c -> key.equals(c.get("key")))
+                .allMatch(c -> Boolean.TRUE.equals(c.get("passed")));
+    }
+
+    /** Summary của một test 40 cặp đã chạy xong: baseline đều an toàn, không phanh oan; candidate do {@code candidate} dựng. */
+    private static Map<String, Object> summaryOf(double storedThreshold, java.util.function.LongFunction<Row> candidate) {
         Db db = mock(Db.class);
         RegressionService service = new RegressionService(db, mock(Queries.class), mock(FamilyService.class), mock(RunService.class),
                 mock(org.springframework.transaction.support.TransactionTemplate.class));
@@ -60,22 +72,38 @@ class RegressionRulesTest {
             candidateRuns.add(new Row(Json.obj("id", 2000 + i, "scenario_version_id", i, "baseline_run_id", 1000 + i)));
             versions.add(new Row(Json.obj("id", i, "version_no", i)));
             results.add(result(1000 + i, false));
-            results.add(result(2000 + i, i == 1));
+            results.add(candidate.apply(i));
         }
         when(db.list(contains("FROM simulation_runs WHERE regression_test_id = ?"), any(Object[].class))).thenReturn(candidateRuns);
         when(db.list(startsWith("SELECT * FROM scenario_versions"), any(Object[].class))).thenReturn(versions);
         when(db.list(startsWith("SELECT id, status, collision_occurred"), any(Object[].class))).thenReturn(results);
         when(db.first(startsWith("SELECT * FROM scenarios"), any(Object[].class))).thenReturn(new Row(Json.obj("id", 20L, "code", "SC-A", "name", "Họ A")));
-
-        Map<String, Object> summary = service.summary(test);
-        return Json.asList(summary.get("criteria")).stream().map(Json::asMap)
-                .filter(c -> "false_activation_increase_max_pts".equals(c.get("key")))
-                .allMatch(c -> Boolean.TRUE.equals(c.get("passed")));
+        return service.summary(test);
     }
 
     private static Row result(long id, boolean falseActivation) {
         return new Row(Json.obj("id", id, "status", "COMPLETED", "collision_occurred", false, "min_ttc_s", 3.0, "min_distance_m", 5.0,
-                "is_false_positive", falseActivation, "verdict", "PASS"));
+                "is_false_positive", falseActivation, "verdict", "PASS", "rms_jerk_mps3", 5.0, "stopping_distance_m", 10.0));
+    }
+
+    @Test
+    void objectivesAreShownPerPairButNeverDecideTheVerdict() {
+        // Candidate phanh giật hơn và dừng xa hơn ở mọi cặp nhưng không đổi kết quả: mọi tiêu chí vẫn đạt.
+        Map<String, Object> summary = summaryOf(RegressionService.DEFAULT_FALSE_ACTIVATION_MAX_PTS, i -> new Row(Json.obj(
+                "id", 2000 + i, "status", "COMPLETED", "collision_occurred", false, "min_ttc_s", 3.0, "min_distance_m", 5.0,
+                "is_false_positive", false, "verdict", "PASS", "rms_jerk_mps3", 12.0, "stopping_distance_m", null)));
+
+        assertTrue(Json.asList(summary.get("criteria")).stream().map(Json::asMap)
+                .filter(c -> Boolean.TRUE.equals(c.get("enabled"))).allMatch(c -> Boolean.TRUE.equals(c.get("passed"))));
+        assertFalse(Json.asList(summary.get("criteria")).stream().map(Json::asMap)
+                .anyMatch(c -> String.valueOf(c.get("key")).contains("jerk") || String.valueOf(c.get("key")).contains("stopping")),
+                "objective không phải tiêu chí");
+        Map<String, Object> pair = Json.asMap(Json.asList(summary.get("pairs")).get(0));
+        assertEquals(5.0, pair.get("baseline_rms_jerk_mps3"));
+        assertEquals(12.0, pair.get("candidate_rms_jerk_mps3"));
+        assertEquals(10.0, pair.get("baseline_stopping_distance_m"));
+        assertNull(pair.get("candidate_stopping_distance_m"), "không phanh = NULL, không bịa 0");
+        assertNull(pair.get("candidate_impact_speed_mps"), "không va chạm = NULL");
     }
 
     @Test

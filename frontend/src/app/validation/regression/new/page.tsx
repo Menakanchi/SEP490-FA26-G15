@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { Checkbox, ErrorNote, PillButton, Tag, Toggle, cx } from "@/components/VehicSimUi";
+import { Checkbox, ErrorNote, OutcomeBadge, PillButton, Tag, Toggle, cx } from "@/components/VehicSimUi";
+import { viSummary } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { RegressionPreview } from "@/types/vehicsim";
 
@@ -39,6 +40,9 @@ function NewRegressionForm() {
   const [scenarioId, setScenarioId] = useState<number | null>(null);
   const [oldCritical, setOldCritical] = useState(true);
   const [allVariants, setAllVariants] = useState(true);
+  // Tập chọn tay (vd. tập xác minh do màn Phân tích chốt, truyền qua ?variants=): thay cho hai lựa chọn trên.
+  const [custom, setCustom] = useState(false);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
   const [criteria, setCriteria] = useState<CriterionState>(initialCriteria);
   const [preview, setPreview] = useState<RegressionPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,24 +53,47 @@ function NewRegressionForm() {
   const candidate = candidates.find((v) => v.id === candidateId) ?? null;
   const familyName = ctx?.families.find((f) => f.id === scenarioId)?.name ?? "—";
 
-  // Chọn sẵn candidate (từ ?candidate= của trang AEB) và họ kịch bản đầu tiên.
+  // Chọn sẵn candidate (từ ?candidate= của trang AEB), họ kịch bản (?scenario=, mặc định họ đầu tiên) và tập chọn tay (?variants=).
   useEffect(() => {
     if (!ctx) return;
     const wanted = Number(params.get("candidate"));
+    const wantedScenario = Number(params.get("scenario"));
     // eslint-disable-next-line react-hooks/set-state-in-effect -- giá trị mặc định khi ngữ cảnh vừa tải xong
     setCandidateId((cur) => cur ?? (candidates.find((v) => v.id === wanted) ?? candidates[0])?.id ?? null);
-    setScenarioId((cur) => cur ?? ctx.families[0]?.id ?? null);
+    setScenarioId((cur) => cur ?? (ctx.families.find((f) => f.id === wantedScenario) ?? ctx.families[0])?.id ?? null);
+    const ids = (params.get("variants") ?? "").split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0);
+    if (ids.length) {
+      setCustom(true);
+      setPicked(new Set(ids));
+    }
   }, [ctx, candidates, params]);
 
   useEffect(() => {
     if (scenarioId === null) return;
-    vehicsimApi.regressionPreview(scenarioId)
+    vehicsimApi.regressionPreview(scenarioId, true)
       .then(setPreview)
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được số liệu bộ kịch bản"));
   }, [scenarioId]);
 
-  const scenarios = !preview ? 0 : allVariants ? preview.variant_count : oldCritical ? preview.old_critical_count : 0;
-  const extraBaseline = preview && allVariants ? Math.max(0, preview.variant_count - preview.baseline_runs_existing) : 0;
+  // Chỉ giữ id thuộc họ đang chọn (id lạ từ URL hoặc của họ cũ bị bỏ, backend cũng từ chối id ngoài họ).
+  const pickedVariants = useMemo(() => (preview?.variants ?? []).filter((v) => picked.has(v.id)), [preview, picked]);
+  const pickedSafe = pickedVariants.filter((v) => v.safe).length;
+  const scenarios = !preview
+    ? 0
+    : custom
+      ? pickedVariants.length
+      : allVariants
+        ? preview.variant_count
+        : oldCritical
+          ? preview.old_critical_count
+          : 0;
+  const extraBaseline = !preview
+    ? 0
+    : custom
+      ? pickedVariants.filter((v) => !v.has_baseline_run).length
+      : allVariants
+        ? Math.max(0, preview.variant_count - preview.baseline_runs_existing)
+        : 0;
   const simulations = scenarios + extraBaseline;
   const ready = canWrite && !!candidate && !!baseline && scenarioId !== null && scenarios > 0 && !submitting;
 
@@ -80,6 +107,7 @@ function NewRegressionForm() {
         scenario_id: scenarioId,
         include_old_critical: oldCritical,
         include_all_variants: allVariants,
+        ...(custom ? { variant_ids: pickedVariants.map((v) => v.id) } : {}),
         criteria: Object.fromEntries(
           CRITERIA.map((c) => [c.key, { enabled: criteria[c.key].enabled, ...(criteria[c.key].value !== undefined ? { value: criteria[c.key].value } : {}) }]),
         ),
@@ -154,6 +182,7 @@ function NewRegressionForm() {
                 value={scenarioId ?? ""}
                 onChange={(e) => {
                   setPreview(null);
+                  setPicked(new Set());
                   setScenarioId(e.target.value ? Number(e.target.value) : null);
                 }}
                 className="h-[42px] w-full rounded-[12px] border border-solid border-vehicsim-line-strong bg-white px-[14px] text-[14px] font-medium text-vehicsim-ink"
@@ -167,7 +196,9 @@ function NewRegressionForm() {
               </select>
             </Field>
             <SetOption
-              checked={oldCritical}
+              checked={oldCritical && !custom}
+              disabled={custom}
+              disabledHint="Đang dùng tập chọn tay"
               onChange={setOldCritical}
               title="Kịch bản nguy hiểm cũ"
               detail={`Mọi biến thể mà ${baseline ? `AEB ${baseline.label}` : "bản cơ sở"} từng lỗi hoặc suýt va chạm`}
@@ -175,13 +206,37 @@ function NewRegressionForm() {
               count={preview?.old_critical_count}
             />
             <SetOption
-              checked={allVariants}
+              checked={allVariants && !custom}
+              disabled={custom}
+              disabledHint="Đang dùng tập chọn tay"
               onChange={setAllVariants}
               title="Toàn bộ biến thể của họ"
               detail={`Mọi biến thể đã sinh của ${familyName}, gồm cả ca nguy hiểm · cùng seed với các lượt chạy cơ sở`}
               tag="Họ kịch bản"
               count={preview?.variant_count}
             />
+            <SetOption
+              checked={custom}
+              onChange={setCustom}
+              title="Chọn biến thể cụ thể"
+              detail="Chỉ chạy các biến thể được chọn, ví dụ tập xác minh đã chốt ở màn Phân tích · cùng seed với các lượt chạy cơ sở"
+              tag="Chọn tay"
+              count={custom ? pickedVariants.length : undefined}
+            />
+            {custom && preview?.variants && (
+              <VariantPicker
+                variants={preview.variants}
+                picked={picked}
+                onChange={setPicked}
+              />
+            )}
+            {custom && pickedVariants.length > 0 && pickedSafe === 0 && (
+              <p className="flex gap-[10px] rounded-[14px] bg-vehicsim-warn-bg px-4 py-3 text-[13px] leading-[1.5] text-vehicsim-ink">
+                <span className="font-bold text-vehicsim-warn">!</span>
+                Tập đã chọn không có ca nào trước đây an toàn, nên không kiểm được ứng viên có gây phanh oan hay làm xấu ca đang tốt hay không.
+                Nên thêm vài biến thể an toàn.
+              </p>
+            )}
             <SetOption
               checked={false}
               disabled
@@ -242,7 +297,8 @@ function NewRegressionForm() {
             }
           />
           <SummaryRow label="Lượt chạy cơ sở dùng lại" value={preview ? String(Math.min(scenarios, preview.baseline_runs_existing)) : "—"} />
-          <SummaryRow label="Bộ mô phỏng" value="Động học 1.0 · Celery" />
+          <SummaryRow label="Bộ mô phỏng" value={simulatorLabel(preview?.simulator)} />
+          {custom && <SummaryRow label="Ca trước đây an toàn" value={String(pickedSafe)} />}
           <div className="flex flex-col gap-2 pt-1">
             <span className="text-[13px] font-medium text-vehicsim-muted">Theo họ kịch bản</span>
             <div className="flex items-center justify-between text-[13px] font-medium text-vehicsim-ink">
@@ -295,6 +351,7 @@ function SetOption({
   checked,
   onChange,
   disabled,
+  disabledHint,
   title,
   detail,
   tag,
@@ -303,6 +360,7 @@ function SetOption({
   checked: boolean;
   onChange?: (v: boolean) => void;
   disabled?: boolean;
+  disabledHint?: string;
   title: string;
   detail: string;
   tag: string;
@@ -315,7 +373,7 @@ function SetOption({
         checked ? "border-vehicsim-ink" : "border-vehicsim-line",
         disabled && "opacity-50",
       )}
-      title={disabled ? "Chưa có trong MVP" : undefined}
+      title={disabled ? (disabledHint ?? "Chưa có trong MVP") : undefined}
     >
       {disabled ? <span className="size-4 shrink-0 rounded-[4px] border border-solid border-vehicsim-check" /> : <Checkbox checked={checked} label={title} onChange={(v) => onChange?.(v)} />}
       <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
@@ -333,6 +391,64 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-3 border-b border-solid border-vehicsim-line py-[9px] text-[13px]">
       <span className="font-medium text-vehicsim-muted">{label}</span>
       <span className="text-right font-bold text-vehicsim-ink">{value}</span>
+    </div>
+  );
+}
+
+/** Nhãn bộ mô phỏng của test sắp tạo; regression luôn chạy cùng bộ mô phỏng với run baseline được ghép. */
+function simulatorLabel(simulator?: string): string {
+  if (!simulator) return "—";
+  return simulator.startsWith("carla-") ? `CARLA (${simulator}) · chưa hiệu chuẩn phanh` : `Động học (${simulator})`;
+}
+
+function VariantPicker({
+  variants,
+  picked,
+  onChange,
+}: {
+  variants: NonNullable<RegressionPreview["variants"]>;
+  picked: Set<number>;
+  onChange: (next: Set<number>) => void;
+}) {
+  const toggle = (id: number, on: boolean) => {
+    const next = new Set(picked);
+    if (on) next.add(id);
+    else next.delete(id);
+    onChange(next);
+  };
+  const pickWhere = (pred: (v: (typeof variants)[number]) => boolean) => onChange(new Set(variants.filter(pred).map((v) => v.id)));
+  return (
+    <div className="flex flex-col gap-2 rounded-[14px] border border-solid border-vehicsim-line p-3">
+      <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold">
+        <button type="button" onClick={() => pickWhere(() => true)} className="rounded-full bg-vehicsim-soft px-3 py-[6px] text-vehicsim-ink">
+          Chọn tất cả
+        </button>
+        <button type="button" onClick={() => pickWhere((v) => v.old_critical)} className="rounded-full bg-vehicsim-soft px-3 py-[6px] text-vehicsim-ink">
+          Ca lỗi cũ
+        </button>
+        <button type="button" onClick={() => pickWhere((v) => v.old_critical || v.safe)} className="rounded-full bg-vehicsim-soft px-3 py-[6px] text-vehicsim-ink">
+          Ca lỗi cũ + ca an toàn
+        </button>
+        <button type="button" onClick={() => onChange(new Set())} className="rounded-full px-3 py-[6px] text-vehicsim-muted">
+          Bỏ chọn
+        </button>
+      </div>
+      <div className="flex max-h-[320px] flex-col overflow-y-auto">
+        {variants.map((v) => (
+          <label key={v.id} className="flex min-h-[40px] items-center gap-3 border-b border-solid border-vehicsim-line py-1 last:border-b-0">
+            <Checkbox checked={picked.has(v.id)} label={v.label} onChange={(on) => toggle(v.id, on)} />
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="text-[13px] font-semibold text-vehicsim-ink">{v.label}</span>
+              <span className="truncate text-[12px] text-vehicsim-faint">{viSummary(v.summary)}</span>
+            </span>
+            {v.baseline_outcome ? (
+              <OutcomeBadge outcome={v.baseline_outcome === "SAFE" && v.baseline_false_activation ? "FALSE_BRAKING" : v.baseline_outcome} size="sm" />
+            ) : (
+              <span className="text-[12px] text-vehicsim-faint">{v.has_baseline_run ? "cơ sở đang chạy" : "chưa chạy cơ sở"}</span>
+            )}
+          </label>
+        ))}
+      </div>
     </div>
   );
 }

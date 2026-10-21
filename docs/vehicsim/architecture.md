@@ -62,6 +62,13 @@ của test đã chạy xong (manifest, tham số, tiêu chí, từng cặp run k
 (lịch sử quyết định của Reviewer + chuỗi baseline). Chi tiết regression/khuyến nghị có thêm `candidate_source` (thủ công hay từ chiến dịch tối ưu,
 chỉ đọc `optimization_trials`) và `simulator_caveat` (test chạy trên CARLA: phanh chưa hiệu chuẩn, TD-17).
 
+Đợt 2 (21/10/2026): `POST /regression` nhận `variant_ids` tùy chọn (tập biến thể chọn tay, ghi `scenario_set.mode = "custom"`); không gửi thì
+giữ cách chọn theo `include_old_critical` / `include_all_variants`. `GET /regression/preview` nhận thêm `variant_ids` và `include_variants`
+(trả danh sách biến thể, ca lỗi cũ, ca trước đây an toàn, bộ mô phỏng sẽ dùng). Mỗi cặp trong chi tiết regression và gói xuất có ba mục tiêu
+ADR-040 của hai run, đọc thẳng từ cột worker đã ghi — chỉ để Engineer / Reviewer xem, không vào tiêu chí; chưa có trung bình theo tập
+(chờ bộ chỉ số chung). Manifest gói JSON có thêm `dt_s`, `max_duration_s`, xe, `bundle_schema`, `code_version` (null) và đường tải `.xosc` từng run.
+Run baseline STOPPED không còn được ghép làm baseline (trước chỉ loại FAILED).
+
 Trang `/` (Tổng quan) tính trạng thái 6 bước từ dữ liệu thật và chỉ bước tiếp theo;
 mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước ở
 `components/vehicsimFlow.ts`).
@@ -309,6 +316,9 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Ngưỡng phanh oan mặc định 5 điểm %; test cũ giữ ngưỡng đã lưu (ADR-042) | `RegressionRulesTest#defaultFalseActivationThresholdIsFivePoints`, `RegressionRulesTest#aTestStoredWithTheOldThresholdIsStillJudgedByIt` |
 | Gói xuất chỉ cho test đã xong, không email, CSV chống công thức; lịch sử baseline gồm baseline khởi tạo | `RegressionReportServiceTest#anUnfinishedTestCannotBeExported`, `RegressionReportServiceTest#theExportCarriesTheManifestPairsSeedsAndDecisionButNoEmail`, `RegressionReportServiceTest#theCsvHasOneRowPerPairAndNeutralisesFormulas`, `RegressionReportServiceTest#theHistoryListsDecisionsNewestFirstAndTheBaselineChainWithItsInitialBaseline` |
 | Route xuất / lịch sử đọc được với mọi role; tạo regression chỉ ADMIN / ENGINEER / EXPERIENCER | `VehicSimSecurityTest#regressionExportsAndDecisionHistoryAreReadOnlyForEveryRole`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
+| Run baseline FAILED / STOPPED không bao giờ được ghép làm baseline của regression | `RegressionPairingTest#aStoppedOrFailedBaselineRunIsNeverReusedAsTheBaseline` |
+| Tập biến thể chọn tay: đúng các biến thể đã chọn, phải thuộc họ và không rỗng, preview khớp test; không gửi thì như cũ | `RegressionPairingTest#aHandPickedSetRunsExactlyThoseVariantsInFamilyOrderAndIsRecorded`, `RegressionPairingTest#aHandPickedSetMustBeNonEmptyAndBelongToTheFamily`, `RegressionPairingTest#thePreviewOfAHandPickedSetMatchesTheTestAndListsTheVariants`, `RegressionPairingTest#withoutVariantIdsTheOldSelectionIsKept` |
+| Ba mục tiêu ADR-040 hiện theo từng cặp nhưng không quyết định verdict; NULL giữ nguyên, không thành 0 | `RegressionRulesTest#objectivesAreShownPerPairButNeverDecideTheVerdict` |
 | Luật theo category kịch bản (ADR-040) | `ScenarioRulesTest#checkThrowsInvalidRequestWithEveryProblem`, `ScenarioRulesTest#everyCategoryOfTheSchemaEnumIsKnown` |
 | IR từ LLM ngoài khoảng bị báo để sửa; LLM trả lời qua tool-call ép cấu trúc | `DescribeServiceTest#outOfRangeValuesAreReportedForRepair`, `DescribeServiceTest#llmPathParsesTheForcedToolCallAndComputesCost` |
 | LLM lỗi ⇒ lùi về luật; mô tả mơ hồ bị từ chối trước khi gọi LLM | `DescribeServiceTest#withoutApiKeyDescribeFallsBackToRulesAndSaysWhy`, `DescribeServiceTest#vagueSentencesAreRejectedBeforeAnyLlmCall` |

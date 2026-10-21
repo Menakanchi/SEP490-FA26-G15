@@ -7,7 +7,7 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton, RECOMMENDATION_STATUS, RecommendationBadge, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
-import { CandidateSourceTag, CarlaCaveat } from "@/components/RegressionNotes";
+import { CandidateSourceTag, CarlaCaveat, PairObjectivesTable } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { ParamDiff, RecommendationDetail } from "@/types/vehicsim";
 
@@ -203,6 +203,9 @@ export default function RecommendationPage() {
             </section>
           </div>
         </div>
+      )}
+      {r && !running && r.summary.pairs && (
+        <PairObjectivesTable pairs={r.summary.pairs} baselineLabel={r.baseline.label} candidateLabel={r.candidate.label} />
       )}
     </VehicSimPage>
   );
