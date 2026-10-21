@@ -2,7 +2,7 @@ name: CI
 
 # Ba cổng độc lập, giống hệt `make check` / scripts/pre_push_check.sh:
 #   backend  — Spring Boot (Java 21): ./mvnw clean test
-#   worker   — lõi mô phỏng Python (chỉ thư viện chuẩn, >= 3.10): pytest + ruff
+#   worker   — adapter CARLA Python (ADR-042; lõi AEB đã ở Java): biên dịch lõi rồi pytest + ruff
 #   frontend — Next.js: eslint, tsc, next build, npm audit (chỉ dependencies chạy thật)
 # Test Java và worker không cần MySQL / Redis / CARLA / khoá LLM.
 on:
@@ -32,9 +32,16 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4   # adapter gọi lõi Java qua cầu nối: test cầu nối cần target/classes
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Compile the Java core
+        run: ./mvnw -B -q compile
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"   # bản thấp nhất lõi hỗ trợ (venv CARLA)
+          python-version: "3.10"   # bản thấp nhất adapter hỗ trợ (venv CARLA)
       - name: Install tools
         run: python -m pip install --quiet pytest==8.* ruff==0.16.0
       - name: Lint

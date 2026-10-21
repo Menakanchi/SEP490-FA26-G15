@@ -8,6 +8,12 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $repoRoot 'worker\.venv-carla\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $python)) { throw 'Run scripts\setup-carla.ps1 first.' }
 if (-not (Test-Path -LiteralPath (Join-Path $ScenarioRunnerRoot 'scenario_runner.py'))) { throw 'ScenarioRunner is missing. Run scripts\setup-carla.ps1.' }
+# Controller Python gọi lõi Java qua cầu nối (ADR-042): cần lõi đã biên dịch. Thiếu thì biên dịch một lần.
+$core = Join-Path $repoRoot 'target\classes\com\vehicsim\core\bridge\BridgeMain.class'
+if (-not (Test-Path -LiteralPath $core)) {
+    & (Join-Path $repoRoot 'mvnw.cmd') -q -B compile
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $core)) { throw 'Could not compile the Java core (mvnw compile).' }
+}
 $env:CARLA_ROOT = $CarlaRoot
 $env:SR_ROOT = $ScenarioRunnerRoot
 $env:VEHICSIM_WORKER_PYTHON = $python

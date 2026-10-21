@@ -1,6 +1,11 @@
 package com.vehicsim.vehicsim;
 
 import com.vehicsim.audit.AuditLog;
+import com.vehicsim.core.Bundle;
+import com.vehicsim.core.Evaluation;
+import com.vehicsim.core.SimulationOutcome;
+import com.vehicsim.core.Simulator;
+import com.vehicsim.core.XoscExport;
 import com.vehicsim.vehicsim.Vs.InvalidRequestException;
 import com.vehicsim.vehicsim.Vs.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -41,8 +46,8 @@ import java.util.regex.Pattern;
  * (đã kèm kết quả chấm) -> ghi vào chính dòng ``simulation_runs`` + ``collision_events`` + ``failures`` + ``root_causes``
  * trong một transaction, rồi báo cho regression (nếu run thuộc một regression test).
  * <p>
- * Java không có bản AEB riêng: một AEB cho mọi bộ mô phỏng nằm ở ``worker/vehicsim_core`` (xem AGENTS.md), nên cả bộ động học
- * lẫn CARLA đều gọi lại lõi đó và ghi cùng hợp đồng result.
+ * Lõi AEB, bộ mô phỏng động học và luật chấm nằm ở ``com.vehicsim.core`` (ADR-042): bộ động học chạy ngay trong tiến trình
+ * này; CARLA chạy ở worker Python (adapter mỏng) và dùng cùng lõi đó. Hai đường ghi cùng hợp đồng result.
  */
 @Slf4j
 @Service
@@ -438,114 +443,105 @@ public class RunService {
                 CARLA_LOCK.unlock();
             }
         }
-        return runWorkerProcess(run, bundle);
+        return runKinematic(run, bundle);
+    }
+
+    /**
+     * Bộ động học chạy trong tiến trình (ADR-042): cùng bundle → cùng kết quả như bản Python đã sinh các run cũ (kiểm bằng fixture
+     * ``KinematicParityTest``), nên giữ nguyên định danh {@link #KINEMATIC_SIMULATOR}. Một lần chạy mất vài ms; hủy được kiểm trước khi chạy.
+     */
+    Map<String, Object> runKinematic(Row run, Map<String, Object> bundle) {
+        if (cancelRequested.contains(run.lng("id"))) {
+            throw new RunCancelledException();
+        }
+        Bundle.RunSpec spec;
+        try {
+            spec = Bundle.readSpec(bundle);
+        } catch (Bundle.BundleError e) {
+            throw new SimulatorException("Không đọc được đầu vào: " + e.getMessage());
+        }
+        SimulationOutcome outcome = Simulator.simulate(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle());
+        Map<String, Object> document = Bundle.resultDocument(spec, outcome, KINEMATIC_SIMULATOR, null,
+                Evaluation.evaluate(outcome, spec.params()).toDocument());
+        document.put("engine", Bundle.ENGINE);
+        Map<String, Object> result = Json.parseMap(Json.write(document)); // cùng kiểu dữ liệu như khi đọc result.json từ worker
+        checkResult(result, run);
+        return result;
     }
 
     private Map<String, Object> runWorkerProcess(Row run, Map<String, Object> bundle) throws IOException, InterruptedException {
-        boolean carla = isCarla(run.str("simulator_version"));
-        List<String> command = new ArrayList<>();
-        if (carla) {
-            command.addAll(carlaCommand());
-            if (command.isEmpty()) {
-                throw new SimulatorException("run cần CARLA nhưng máy này chưa đặt VEHICSIM_CARLA_COMMAND");
-            }
-        } else {
-            command.add(props.workerPython());
-            command.add(repoRoot().resolve(props.workerDir()).resolve("kinematic_sim.py").toString());
+        List<String> command = new ArrayList<>(carlaCommand());
+        if (command.isEmpty()) {
+            throw new SimulatorException("run cần CARLA nhưng máy này chưa đặt VEHICSIM_CARLA_COMMAND");
         }
-        Path folder = carla ? runDir(run.lng("id")) : Files.createTempDirectory("vehicsim-run-" + run.lng("id") + "-");
+        Path folder = runDir(run.lng("id"));
         Files.createDirectories(folder);
-        try {
-            Path bundlePath = folder.resolve("bundle.json");
-            Files.writeString(bundlePath, Json.write(bundle), StandardCharsets.UTF_8);
-            Path resultPath = folder.resolve("result.json");
-            Files.deleteIfExists(resultPath);
-            Path logPath = folder.resolve("simulator.log");
+        Path bundlePath = folder.resolve("bundle.json");
+        Files.writeString(bundlePath, Json.write(bundle), StandardCharsets.UTF_8);
+        Path resultPath = folder.resolve("result.json");
+        Files.deleteIfExists(resultPath);
+        Path logPath = folder.resolve("simulator.log");
 
-            Path input = bundlePath;
-            if (carla && run.str("simulator_version").endsWith(XOSC_SUFFIX)) {
-                input = folder.resolve("scenario.xosc");
-                writeXosc(bundlePath, input);
-            }
-            command.addAll(List.of(input.toString(), "--out", folder.toString(), "--fast"));
-            ProcessBuilder pb = new ProcessBuilder(command).directory(repoRoot().toFile()).redirectErrorStream(true)
-                    .redirectOutput(logPath.toFile());
-            pb.environment().put("PYTHONIOENCODING", "utf-8");
-            Files.deleteIfExists(folder.resolve(STOP_FLAG));
-            Process proc = pb.start();
-            if (carla) {
-                recordWorker(folder, proc);
-            }
-            int timeout = subprocessTimeoutS();
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeout);
-            boolean finished = false;
-            try {
-                // Chờ từng nhịp ngắn để thấy yêu cầu hủy; tiến trình thoát thì dừng chờ ngay.
-                while (!finished && System.nanoTime() < deadline) {
-                    finished = proc.waitFor(500, TimeUnit.MILLISECONDS);
-                    if (!finished && cancelRequested.contains(run.lng("id"))) {
-                        stop(proc, folder, carla);
-                        throw new RunCancelledException();
-                    }
-                }
-            } catch (InterruptedException e) {
-                proc.descendants().forEach(ProcessHandle::destroyForcibly); // không để tiến trình con mồ côi khi app tắt
-                proc.destroyForcibly();
-                throw e;
-            }
-            if (!finished) {
-                stop(proc, folder, carla);
-                throw new SimulatorException("bộ mô phỏng vượt " + timeout + " s, đã dừng");
-            }
-            if (proc.exitValue() != 0 || !Files.exists(resultPath)) {
-                throw new SimulatorException("bộ mô phỏng thoát mã " + proc.exitValue() + ": " + tail(logPath));
-            }
-            Map<String, Object> result = Json.parseMap(Files.readString(resultPath, StandardCharsets.UTF_8));
-            checkResult(result, run);
-            if (carla) {
-                Map<String, Object> artifacts = new LinkedHashMap<>();
-                artifacts.put("result", resultPath.toString());
-                if (input.toString().endsWith(".xosc")) {
-                    artifacts.put("scenario", input.toString());
-                }
-                artifacts.putAll(Json.asMap(result.get("artifacts")).entrySet().stream()
-                        .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), String.valueOf(e.getValue())), Map::putAll));
-                result.put("artifacts", artifacts);
-            }
-            return result;
-        } finally {
-            if (!carla) {
-                deleteQuietly(folder);
-            }
+        Path input = bundlePath;
+        if (run.str("simulator_version").endsWith(XOSC_SUFFIX)) {
+            input = folder.resolve("scenario.xosc");
+            Files.writeString(input, xosc(bundle), StandardCharsets.UTF_8);
         }
-    }
-
-    /** XML là artifact thực thi/tải xuống; bundle chỉ còn là giao tiếp nội bộ với bộ sinh Python. */
-    public String exportXosc(Map<String, Object> bundle) {
-        Path folder = null;
+        command.addAll(List.of(input.toString(), "--out", folder.toString(), "--fast"));
+        ProcessBuilder pb = new ProcessBuilder(command).directory(repoRoot().toFile()).redirectErrorStream(true)
+                .redirectOutput(logPath.toFile());
+        pb.environment().put("PYTHONIOENCODING", "utf-8");
+        Files.deleteIfExists(folder.resolve(STOP_FLAG));
+        Process proc = pb.start();
+        recordWorker(folder, proc);
+        int timeout = subprocessTimeoutS();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeout);
+        boolean finished = false;
         try {
-            folder = Files.createTempDirectory("vehicsim-xosc-");
-            Path input = folder.resolve("bundle.json");
-            Path output = folder.resolve("scenario.xosc");
-            Files.writeString(input, Json.write(bundle), StandardCharsets.UTF_8);
-            writeXosc(input, output);
-            return Files.readString(output, StandardCharsets.UTF_8);
+            // Chờ từng nhịp ngắn để thấy yêu cầu hủy; tiến trình thoát thì dừng chờ ngay.
+            while (!finished && System.nanoTime() < deadline) {
+                finished = proc.waitFor(500, TimeUnit.MILLISECONDS);
+                if (!finished && cancelRequested.contains(run.lng("id"))) {
+                    stop(proc, folder, true);
+                    throw new RunCancelledException();
+                }
+            }
         } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new SimulatorException("Đã ngắt việc sinh OpenSCENARIO");
-        } catch (IOException e) {
-            throw new SimulatorException("Không sinh được OpenSCENARIO: " + e.getMessage());
-        } finally {
-            if (folder != null) {
-                deleteQuietly(folder);
-            }
+            proc.descendants().forEach(ProcessHandle::destroyForcibly); // không để tiến trình con mồ côi khi app tắt
+            proc.destroyForcibly();
+            throw e;
         }
+        if (!finished) {
+            stop(proc, folder, true);
+            throw new SimulatorException("bộ mô phỏng vượt " + timeout + " s, đã dừng");
+        }
+        if (proc.exitValue() != 0 || !Files.exists(resultPath)) {
+            throw new SimulatorException("bộ mô phỏng thoát mã " + proc.exitValue() + ": " + tail(logPath));
+        }
+        Map<String, Object> result = Json.parseMap(Files.readString(resultPath, StandardCharsets.UTF_8));
+        checkResult(result, run);
+        Map<String, Object> artifacts = new LinkedHashMap<>();
+        artifacts.put("result", resultPath.toString());
+        if (input.toString().endsWith(".xosc")) {
+            artifacts.put("scenario", input.toString());
+        }
+        artifacts.putAll(Json.asMap(result.get("artifacts")).entrySet().stream()
+                .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), String.valueOf(e.getValue())), Map::putAll));
+        result.put("artifacts", artifacts);
+        return result;
     }
 
-    private void writeXosc(Path input, Path output) throws IOException, InterruptedException {
-        Path log = output.resolveSibling("export.log");
-        runTool(List.of(props.workerPython(), repoRoot().resolve(props.workerDir()).resolve("openscenario_export.py").toString(),
-                input.toString(), "--out", output.toString()), log, 20);
+    /** XML là artifact thực thi/tải xuống; bundle chỉ là giao tiếp nội bộ. Sinh trong tiến trình bằng lõi Java (ADR-042), cùng từng byte với bản Python cũ. */
+    public String exportXosc(Map<String, Object> bundle) {
+        return xosc(bundle);
+    }
+
+    private static String xosc(Map<String, Object> bundle) {
+        try {
+            return XoscExport.export(Bundle.readSpec(bundle));
+        } catch (Bundle.BundleError e) {
+            throw new InvalidRequestException("Không sinh được OpenSCENARIO: " + e.getMessage());
+        }
     }
 
     private void runTool(List<String> command, Path log, int timeout) throws IOException, InterruptedException {

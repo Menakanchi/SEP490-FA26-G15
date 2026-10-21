@@ -12,15 +12,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+import bridge
 import sensor_recorder
 import sim_common
-from openscenario_export import read_profile, read_xosc
-from vehicsim_core.bundle import carla_simulator
 
 WORKER = Path(__file__).resolve().parent
 STOP_FLAG = "stop.requested"  # backend ghi vào thư mục run để xin dừng (Windows không có tín hiệu mềm cho tiến trình con)
@@ -44,6 +44,12 @@ def wait_for_exit(proc: subprocess.Popen, timeout: float, stop_flag: Path) -> in
             raise RunStoppedError(f"Có yêu cầu dừng ({stop_flag.name})")
         if waited >= timeout:
             raise subprocess.TimeoutExpired(proc.args, timeout)
+
+
+def carla_simulator(version: str) -> str:
+    """``"0.9.16"`` hoặc ``"0.9.16-12-gabc"`` (``client.get_server_version()``) -> ``"carla-0.9.16"``; trùng ``Bundle.carlaSimulator`` của lõi Java."""
+    match = re.match(r"\d+\.\d+\.\d+", version.strip())
+    return f"carla-{match.group(0) if match else version.strip()}"[:30]
 
 
 def release_world(client) -> int:  # noqa: ANN001 - carla.Client
@@ -111,7 +117,8 @@ def prepare_runtime(source: Path, target: Path, out: Path, simulator: str) -> No
 
 
 def run(args: argparse.Namespace) -> int:
-    read_xosc(args.xosc)  # không nhận XML ngoài hợp đồng/không rõ metadata vào đường ghi kết quả
+    # Lõi Java đọc và kiểm file (không nhận XML ngoài hợp đồng/không rõ metadata vào đường ghi kết quả) và cho biết profile thời gian.
+    info = bridge.xosc_info(args.xosc)
     state = probe(args.host, args.port, args.sr_root)
     if not state["connected"] or not state.get("compatible") or not state["scenario_runner"]:
         raise RuntimeError(f"Môi trường CARLA chưa sẵn sàng: {json.dumps(state, ensure_ascii=False)}")
@@ -132,7 +139,7 @@ def run(args: argparse.Namespace) -> int:
     if lifecycle["destroyed_before"]:
         print(f"Dọn lại sau lần chạy bị ngắt: xoá {lifecycle['destroyed_before']} actor cũ.", file=sys.stderr)
     runtime = out / "scenario.runtime.xosc"
-    suffix, step_s, _ = read_profile(args.xosc)
+    suffix, step_s = info["suffix"], info["step_s"]
     prepare_runtime(args.xosc, runtime, out, carla_simulator(state["version"]) + suffix)
     env = environment(args.sr_root)
     recorder = sensor_recorder.SensorRecorder(args.host, args.port, out / "sensors", camera=args.camera, step_s=step_s)

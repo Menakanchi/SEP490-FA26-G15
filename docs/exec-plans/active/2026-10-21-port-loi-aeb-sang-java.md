@@ -1,0 +1,136 @@
+# Port lõi AEB, mô phỏng và chấm điểm sang Java (21/10/2026)
+
+**Trạng thái:** đang làm. Quyết định ở [ADR-042](../../adr/ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (Proposed).
+Các việc 1–5 của phần "Chạy baseline" trong [kế hoạch 20/10](../../vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md)
+(perception từ radar, định nghĩa pha phanh, đọc physics, AEB tắt, chạy lặp) làm **sau** khi port, trực tiếp bằng Java.
+
+## Quyết định của chủ dự án (21/10/2026)
+
+- Phạm vi: tất cả logic thuần (AEB stack, bộ mô phỏng động học, luật chấm, bộ lọc, bundle, xuất `.xosc`). Lớp gọi API `carla` ở lại Python.
+- Cầu nối: tiến trình Java con qua stdin/stdout JSON từng dòng, một tiến trình cho mỗi run CARLA.
+- Thứ tự: port lõi trước (đối chiếu bằng fixture sinh từ Python và một run CARLA thật), rồi làm việc 1–5 bằng Java.
+
+## Quy tắc trong lúc port
+
+- **Python đã commit là bản chuẩn.** Không sửa logic Python trong lúc port. Gặp lỗi Python: tái hiện y nguyên ở Java để giữ parity, ghi vào mục
+  "Lỗi Python phát hiện khi port", sửa sau bằng định danh mới.
+- Không đổi định nghĩa chỉ số khi port. Sai khác ở một trường đã lưu ⇒ đổi `KINEMATIC_SIMULATOR` và `RunService`, không sửa số cho khớp.
+- Không định tuyến web sang Java cho đến khi đạt parity **và** run CARLA thật qua cầu nối.
+- Không commit nếu chưa được yêu cầu; thay đổi của người khác trong `git status` (AGENTS.md, CLAUDE.md, tài liệu phân chia, `api.ts`, `.codex/`) giữ nguyên.
+
+## Mốc
+
+| Mốc | Nội dung | Điều kiện đạt |
+|---|---|---|
+| M0 | ADR-042, kế hoạch này, hoàn tác sửa Python dở, sinh fixture từ Python | Fixture + hash golden 1296 ca ghi lại; `RepoDocsTest` xanh |
+| M1 | Lõi Java: RNG tương thích CPython, làm tròn kiểu Python, `AebParams`, `AebStack`, bộ động học, `evaluation`, bộ lọc, `bundle` | Test parity xanh trên toàn bộ fixture; `mvnw -B clean test` xanh |
+| M2 | Bộ động học chạy trong tiến trình qua `RunService`; quyết định định danh simulator | Run web kinematic cho cùng kết quả; hủy ngắt được luồng |
+| M3 | Cầu nối stdio `vsos-bridge/1`, controller Python mỏng, test vòng đời, run 1584 trên CARLA thật | Thời điểm quyết định/phanh trùng tham chiếu 100 Hz; không sót tiến trình `java` khi hủy/timeout/giết cứng |
+| M4 | Port bộ xuất `.xosc` (phải trước việc 1 và 5 vì cả hai thêm tham số xosc) | Hash `.xosc` trùng bản Python trên các bundle mẫu |
+| M5 | Xóa AEB/mô phỏng/chấm điểm Python; viết lại luật cứng 2 và 8; test kiến trúc cấm AEB dưới `worker/` | `AGENTS.md` ≤ 150 dòng, `RepoDocsTest` xanh |
+| Sau | Việc 1, 2, 4, 5 bằng Java; việc 3 (chạy lặp) cuối cùng trên profile cuối | Theo kế hoạch 20/10 |
+
+## Bẫy parity đã biết (phải có test trước khi viết lõi)
+
+1. **RNG.** Python dùng `random.Random(seed)` và `rng.gauss`. Phải port MT19937 và cách CPython gieo từ số nguyên (giá trị tuyệt đối, tách khối 32 bit,
+   `init_by_array`), `random()` 53 bit và `gauss` có nhớ giá trị thứ hai. Kiểm bằng chuỗi sinh từ Python cho seed nhỏ, 48846, lớn hơn 2^32, 2^63−1 và âm.
+2. **`round(x, n)`.** Python làm tròn giá trị nhị phân đúng, hòa thì chẵn. `Math.round(x * 10^n) / 10^n` sai ở ca hòa và do sai số nhân. Dùng
+   `BigDecimal(x).setScale(n, HALF_EVEN)` và chứng minh bằng ca hòa sinh từ Python.
+3. **libm.** `sin/cos/log/tan/hypot` có thể lệch 1 ulp giữa Java và CPython. Làm tròn che hầu hết, nhưng giá trị sát ngưỡng có thể đổi quyết định; fixture phải phủ ca sát ngưỡng.
+4. **So sánh số thực.** So theo số, không so chuỗi (Python in `1e-05`, Java in `1.0E-5`).
+
+## Cầu nối (thiết kế để chốt ở M3)
+
+- Gói đóng: lõi không phụ thuộc Spring/DB; có test kiến trúc. JVM chạy từ `target/classes` hay jar mỏng do Maven dựng: chọn ở M3 (jar mỏng chịu `mvnw clean` tốt hơn).
+- Java và classpath truyền qua biến môi trường (như `VEHICSIM_WORKER_PYTHON`); `run_xosc.py` độc lập vẫn chạy được.
+- Bắt tay phiên bản giao thức + phiên bản lõi để lớp cũ báo lỗi rõ. Một yêu cầu một đáp án, hạn chót mỗi tick, flush từng dòng; EOF ⇒ Java thoát.
+- Đứt ống/timeout ⇒ run lỗi, không về giá trị mặc định. stderr của Java ghi vào log trong thư mục run.
+- Java là cháu của `run_xosc`: kiểm hủy, timeout và giết cứng không để lại `java` mồ côi hay server kẹt đồng bộ.
+- `result.json`: Java sở hữu trạng thái AEB, frames, sự kiện, chỉ số và ghi đúng hợp đồng cũ; Python gửi quan sát thô. Ghi phiên bản lõi vào `result.json`
+  để phân biệt run Java và Python kể cả khi định danh simulator không đổi.
+
+## Nhật ký bằng chứng
+
+### M0 (21/10/2026)
+
+- Hoàn tác sửa Python dở: `git checkout worker/vehicsim_core/aeb_stack.py`; thiết kế bộ theo dõi radar giữ ngoài repo làm ghi chú.
+- Hash golden bộ động học (1296 ca = 3 tốc độ × 3 khoảng kích hoạt × 2 tốc độ đi bộ × {dừng ở lề, không} × 3 thời tiết × 2 thời điểm × 3 seed × 2 bộ tham số):
+  `fdf360dbd2720e6b2a6259117eacd82001901c7304dc9c29ed52173bb7c1027c`, giống hệt trước và sau khi hoàn tác.
+
+### M1 (21/10/2026): lõi Java `com.vehicsim.core`
+
+Đã port 1:1: `Py` (round/format/hypot/repr kiểu CPython), `PyRandom` (MT19937 + `gauss`), `AebParams`, `VehicleSpec`, `CrossingCase`, `AebStack`,
+`Simulator`, `Evaluation`, `Filters`, `Bundle`. Không sửa dòng Python nào.
+
+| Kiểm | Kết quả |
+|---|---|
+| Chuỗi `random()` theo 16 seed (gồm 2^63−1 và âm) | khớp từng bit |
+| `gauss` (cos/sin/log) | 36/≈700 giá trị lệch bit cuối (≤ 4 ulp); **không** ảnh hưởng số lưu |
+| `round(x, n)` 2.000+ ca (hòa nhị phân, −0.0), `f"{x:.nf}"`, `{x:g}`, `hypot` 3.200 cặp, `tan` | khớp tuyệt đối |
+| 238 ca fixture (đủ COLLISION/EGO_STOPPED/TARGET_CLEARED/TIMEOUT): mọi khung, sự kiện, chỉ số, kết quả chấm | **0 sai khác** |
+| Cả lưới 1296 ca (đối chiếu rộng, ngoài repo, `-Dvsos.parity.full=...`) | **0 sai khác** |
+| 50 tài liệu bundle (19 hợp lệ, 31 lỗi): `read_spec`, `make_bundle`, `result_document`, đúng từng câu thông báo | khớp |
+| Bộ lọc Butterworth và RMS jerk đã lọc | khớp từng bit |
+| Kiểm test không rỗng: đổi seed Java +1 | test báo hàng chục sai khác |
+| `mvnw -B clean test` | 146 test, 0 lỗi (1 bỏ qua: đối chiếu rộng) |
+
+Hệ quả cho định danh: parity chính xác ⇒ **giữ nguyên** `KINEMATIC_SIMULATOR = vehicsim-kinematic-1.0`; không cần đổi `RunService`.
+Cửa ngõ: lõi chỉ chạy được khi `mvnw` có JDK 21; test cô lập `CoreIsolationTest` cấm lõi import Spring/DB/carla/phần còn lại của backend.
+
+### M2 (21/10/2026): bộ động học chạy trong tiến trình
+
+`RunService.runKinematic` gọi `Bundle.readSpec` → `Simulator.simulate` → `Evaluation.evaluate` → `Bundle.resultDocument` (kèm khóa `engine = vsos-core-java/1`), rồi qua `checkResult`
+như cũ. Giữ định danh `vehicsim-kinematic-1.0` (parity chính xác). `KinematicInProcessTest` (4 test). Hủy kiểm trước khi chạy (một lần chạy vài ms).
+
+### M4 (21/10/2026): bộ xuất và bộ đọc `.xosc`
+
+`Xosc` (đọc `vs_*`, profile) và `XoscExport` (xuất): XML **trùng từng byte** với `export_xosc` của Python trên 18 spec; đọc/profile khớp 30 file gồm cả file lỗi và thông báo.
+`RunService.exportXosc` và nhánh ghi `scenario.xosc` dùng bộ xuất Java; `openscenario_export.py` không còn được gọi từ backend.
+
+### M3 (21/10/2026): cầu nối CARLA `vsos-bridge/1`
+
+Java: `MiniJson` (JSON chỉ dùng JDK, ghi kiểu Python), `CrossingFrame`, `DecelMeter` (+ bàn đạp), `CarlaSession` (toàn bộ logic controller cũ: khung tọa độ, đo giảm tốc, AEB, điều kiện
+kết thúc, ghi `result.json`), `bridge.BridgeMain` (chế độ `session`, `info`, `kinematic`), `bridge.KinematicCli` (chạy lại bundle bằng Java, thay `kinematic_sim.py`).
+Python còn lại là adapter: `worker/bridge.py` (client JVM con), `vehicsim_aeb_control.py` (chỉ đọc trạng thái CARLA, gửi, áp bàn đạp), `carla_physics.py`, `run_xosc.py` (dùng `bridge.xosc_info`).
+Chạy Java: `VEHICSIM_JAVA` (mặc định `java`), classpath `VEHICSIM_CORE_CLASSPATH` (mặc định `target/classes`, cần `mvnw compile`; `dev-carla.ps1` tự biên dịch nếu thiếu).
+
+**Bằng chứng trên CARLA 0.9.16 thật** (Town04, file `data/hz100-20261020/scenario.xosc`: 40 km/h, kích hoạt 25 m, người đi bộ 3 m/s, seed 48846, AEB mặc định; dữ liệu ở `data/bridge-m3/`, ngoài git):
+
+| Chỉ số | Qua cầu nối Java (n = 10) | 10 lần Python tham chiếu 100 Hz |
+|---|---|---|
+| Quyết định AEB / bắt đầu phanh / FCW | 2,25 / 2,50 / 1,95 s ở 9 lần; **một lần 2,30 / 2,55** (xem dưới) | 2,25 / 2,50 / 1,95 s ở 10/10 |
+| Quãng dừng (m) | 10,203–10,345 (lần 2,30 s: 10,323) | 10,203–10,378 |
+| RMS jerk `Δa/dt` (m/s³) | 38,209–38,389 (lần 2,30 s: 38,450) | 38,206–38,400 |
+| Khoảng cách tối thiểu (m) | 3,455–3,578 (lần 2,30 s: 3,008) | 3,426–3,578 |
+| Bước đo | đúng 0,01 s trên mọi khung (381–382 khung) | như vậy |
+| Jerk đã lọc 10 Hz (thực nghiệm) | 19,918 (run đầu) = bản tham chiếu `final100` | 19,918 |
+
+- Quan sát chưa giải thích được: **một** lần chạy (ngay sau lần giết cứng đầu tiên) quyết định muộn 0,05 s (một chu kỳ perception). Lần giết cứng thứ hai và lần hủy mềm đều cho 2,25 s, các lần chạy sau đó cũng vậy. Chưa có cách tách "hiệu ứng CARLA" khỏi "hiệu ứng cầu nối" cho một mẫu; đưa vào việc 3 (chạy lặp) với n lớn hơn.
+- Vòng đời: hủy bằng `stop.requested` → `lifecycle.json {stopped:true}`, không `result.json`, không `java` sót. Giết cứng `run_xosc` + ScenarioRunner + `follow_hero` (không kill `java`) → `java` tự thoát vì stdin đóng, không `result.json`;
+  lần chạy kế dọn 8 actor và cho kết quả hợp lệ.
+- Sửa trong lúc làm: lúc đầu Java ghi `result.json` dở dang khi stdin đóng; bỏ vì run bị ngắt không được có điểm hợp lệ (`BridgeProtocolTest.theProcessExitsWhenStdinClosesAndWritesNoResult`).
+
+## Trạng thái bàn giao (cuối ngày 21/10/2026)
+
+Đã xong và có test: M0–M4. `mvnw -B clean test`: 218 test (1 bỏ qua: đối chiếu rộng `-Dvsos.parity.full`); `pytest worker/tests`: 112; `ruff` sạch. **Chưa commit M5**: lõi Python vẫn còn song song (không còn được backend hay controller dùng).
+
+**Việc còn lại, theo thứ tự**
+
+1. **M5 — xóa lõi Python.** Xóa `worker/vehicsim_core/`, `kinematic_sim.py`, `sim_common.py`, `openscenario_export.py`, `run_variant.py` (runner CARLA trực tiếp đời cũ; nhánh `.json` của `run_xosc.py` đổi thành báo lỗi rõ;
+   chạy lại bằng chứng `carla-0.9.16` trực tiếp/`-xosc1`/`-xosc2` lấy từ git history), và các test Python của chúng (hành vi đã chuyển sang Java: `SimulatorBehaviorTest`, `FiltersBehaviorTest`, `CarlaSessionLogicTest`,
+   `XoscExportTest`, `KinematicCliTest`, `AebParameterSeedTest`; còn thiếu test Python cho `prepare_runtime` của `run_xosc.py`: viết lại dùng fixture XML). Thêm test kiến trúc cấm logic AEB dưới `worker/`
+   (đã có bản đầu `test_no_aeb_logic_lives_in_the_python_worker`). Viết lại luật cứng 2 và 8 trong `AGENTS.md`/`CLAUDE.md` (giữ ≤ 150 dòng, sửa tên test Python đã xóa mà `RepoDocsTest` kiểm), sửa chú thích trong
+   `VehicSimController` (lệnh chạy lại bundle: `java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic <file>`), `RunService`, `architecture.md`, `carla-local.md`, `ADR-039` (đánh dấu bị ADR-042 thay thế khi ADR-042 được duyệt).
+   Sau M5 sinh lại fixture parity **không còn khả thi** (lõi Python bị xóa): ghi commit cuối còn lõi Python vào `src/test/resources/parity/README`.
+2. **Việc 1 (perception từ radar)**, 3. **việc 2 (định nghĩa nguồn gia tốc và pha phanh; nhóm tự định nghĩa, viết ADR Proposed trước)**, 4. **việc 4 (đọc lại physics)**, 5. **việc 5 (AEB tắt, chế độ rõ ràng trong xosc/result,
+   không bao giờ thành baseline regression)**, rồi **việc 3 (chạy lặp)** trên profile cuối. Tất cả bằng Java; những việc đổi hành vi CARLA đi cùng bump `-xosc3` → `-xosc4` (chạm `RunService.XOSC_SUFFIX`, `stepFor`, nhánh từ chối run cũ,
+   `Xosc.SIMULATOR_SUFFIX`, `CarlaRunnerPanel.tsx:60`, `CarlaWebTest`). Thiết kế radar đã được rà (Doppler không phân biệt người băng ngang với vật tĩnh; khởi tạo track bằng phần dư Doppler, bám bằng cổng vị trí; radar riêng toàn FOV,
+   không dùng radar ±4° của recorder; ghi `perception_source` và sai số perceived−ground truth; một run âm tính phải cho thấy AEB không quyết định khi mục tiêu ngoài FOV). Bản phác thiết kế cũ ở ngoài repo, viết lại bằng Java.
+3. Chưa nối web → DB cho việc 5 (cần cột mới ⇒ quy trình schema đầy đủ: `01_schema.sql`, `Queries`, `database-schema.md`, migration; hỏi chủ dự án trước).
+
+**Cách chạy lại bằng chứng** (cần JDK 21, CARLA 0.9.16 ở `C:\Carla_package`, `scripts\setup-carla.ps1` đã chạy): `mvnw compile`; bật server (`CarlaUE4.exe /Game/Carla/Maps/Town04 -windowed -ResX=800 -ResY=600 -quality-level=Low`);
+`worker\.venv-carla\Scripts\python.exe worker\run_xosc.py <file.xosc> --out <thư mục>`.
+
+## Lỗi Python phát hiện khi port
+
+(chưa có)
