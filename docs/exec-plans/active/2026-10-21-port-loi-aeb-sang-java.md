@@ -1,6 +1,6 @@
 # Port lõi AEB, mô phỏng và chấm điểm sang Java (21/10/2026)
 
-**Trạng thái:** đang làm. Quyết định ở [ADR-042](../../adr/ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (Proposed).
+**Trạng thái:** đang làm (M0–M5 xong; còn việc 1–5 của kế hoạch 20/10). Quyết định ở [ADR-042](../../adr/ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (Proposed).
 Các việc 1–5 của phần "Chạy baseline" trong [kế hoạch 20/10](../../vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md)
 (perception từ radar, định nghĩa pha phanh, đọc physics, AEB tắt, chạy lặp) làm **sau** khi port, trực tiếp bằng Java.
 
@@ -110,23 +110,45 @@ Chạy Java: `VEHICSIM_JAVA` (mặc định `java`), classpath `VEHICSIM_CORE_CL
   lần chạy kế dọn 8 actor và cho kết quả hợp lệ.
 - Sửa trong lúc làm: lúc đầu Java ghi `result.json` dở dang khi stdin đóng; bỏ vì run bị ngắt không được có điểm hợp lệ (`BridgeProtocolTest.theProcessExitsWhenStdinClosesAndWritesNoResult`).
 
+### M5 (21/10/2026): xóa lõi Python
+
+Đã xóa bằng `git rm` (khôi phục được từ commit `601280352730146943df37629a62ebf00971e42d`, commit cuối còn lõi Python):
+`worker/vehicsim_core/` (6 file), `kinematic_sim.py`, `sim_common.py`, `openscenario_export.py`, `run_variant.py` và 6 file test Python
+(`test_run_variant`, `test_simulator`, `test_filters`, `test_openscenario_export`, `test_sim_contract`, `test_step_100hz`). Hành vi của chúng đã có test Java
+tương ứng (`SimulatorBehaviorTest`, `FiltersBehaviorTest`, `CarlaSessionLogicTest`, `XoscExportTest`, `KinematicCliTest`, `AebParameterSeedTest`).
+
+- `run_xosc.py` tự giữ hàm dừng/mã thoát (2 = đầu vào sai, 3 = lỗi simulator, 4 = bị dừng); `.json` bị từ chối mã 2 kèm lệnh `BridgeMain kinematic`.
+  Backend chỉ đưa `.json` cho runner khi `simulator_version` không có hậu tố `-xosc3` (profile `carla` trực tiếp đời cũ); nay các run đó báo lỗi rõ.
+- Test mới: `worker/tests/test_run_xosc.py` (bản sao runtime, controller thiếu, mã thoát, tín hiệu dừng) trên fixture `.xosc` do bộ xuất Java sinh.
+- Luật cứng 8 thành test: `ArchitectureRulesTest#pythonWorkerHoldsNoAebLogic`, `#thePythonCoreStaysDeleted` và bản Python `test_no_aeb_logic_lives_in_the_python_worker`.
+  Kiểm không rỗng: chạy khi lõi Python còn thì đúng hai test Java này đỏ. `thePythonCoreStaysDeleted` chỉ tính file `.py`, vì thư mục `worker/vehicsim_core/`
+  còn lại với `__pycache__` (gitignore) trên máy từng chạy lõi cũ; lỗi này lộ ra khi chạy trên repo thật, không lộ trên bản sao sạch.
+- Tài liệu: `AGENTS.md` (137 dòng) luật 2 và 8, `CLAUDE.md`, `architecture.md` (bảng máy kiểm trỏ test Java), `carla-local.md`, `aeb-parameter-ranges.md`,
+  `database-schema.md`, `README.md`, link trong kế hoạch 20/10, `src/test/resources/parity/README.md`.
+- Mất theo `run_variant.py`: bảng đối chiếu xe `vehicle_check` (ADR-033), `weather_parameters`, dựng cảnh trực tiếp. Web và Java không đọc chúng.
+  Cần lại thì lấy từ git history; chưa có việc nào trong kế hoạch dùng đến.
+
+| Kiểm (repo thật, sau khi xóa) | Kết quả |
+|---|---|
+| `mvnw -B clean test` | 219 test, 0 lỗi, 1 bỏ qua (đối chiếu rộng) |
+| `pytest worker/tests` | 28 qua (trước 112: phần còn lại đã chuyển thành test Java) |
+| `ruff check worker` | Sạch |
+| `run_xosc.py x.json`, `--status` không có CARLA, không tham số | mã 2 kèm thông báo; JSON `connected:false`; mã 2 |
+| `BridgeMain kinematic` trên bundle fixture | `result.json` hợp lệ, `engine = vsos-core-java/1` |
+
+Chưa kiểm lại trên CARLA 0.9.16 thật sau M5 (máy làm M5 không có CARLA); bằng chứng CARLA vẫn là của M3.
+
 ## Trạng thái bàn giao (cuối ngày 21/10/2026)
 
-Đã xong và có test: M0–M4. `mvnw -B clean test`: 218 test (1 bỏ qua: đối chiếu rộng `-Dvsos.parity.full`); `pytest worker/tests`: 112; `ruff` sạch. **Chưa commit M5**: lõi Python vẫn còn song song (không còn được backend hay controller dùng).
+Đã xong và có test: M0–M5. `mvnw -B clean test`: 219 test (1 bỏ qua: đối chiếu rộng `-Dvsos.parity.full`); `pytest worker/tests`: 28; `ruff` sạch. Lõi Python đã xóa (mục M5 ở trên); chưa kiểm lại trên CARLA thật sau M5.
 
 **Việc còn lại, theo thứ tự**
 
-1. **M5 — xóa lõi Python.** Xóa `worker/vehicsim_core/`, `kinematic_sim.py`, `sim_common.py`, `openscenario_export.py`, `run_variant.py` (runner CARLA trực tiếp đời cũ; nhánh `.json` của `run_xosc.py` đổi thành báo lỗi rõ;
-   chạy lại bằng chứng `carla-0.9.16` trực tiếp/`-xosc1`/`-xosc2` lấy từ git history), và các test Python của chúng (hành vi đã chuyển sang Java: `SimulatorBehaviorTest`, `FiltersBehaviorTest`, `CarlaSessionLogicTest`,
-   `XoscExportTest`, `KinematicCliTest`, `AebParameterSeedTest`; còn thiếu test Python cho `prepare_runtime` của `run_xosc.py`: viết lại dùng fixture XML). Thêm test kiến trúc cấm logic AEB dưới `worker/`
-   (đã có bản đầu `test_no_aeb_logic_lives_in_the_python_worker`). Viết lại luật cứng 2 và 8 trong `AGENTS.md`/`CLAUDE.md` (giữ ≤ 150 dòng, sửa tên test Python đã xóa mà `RepoDocsTest` kiểm), sửa chú thích trong
-   `VehicSimController` (lệnh chạy lại bundle: `java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic <file>`), `RunService`, `architecture.md`, `carla-local.md`, `ADR-039` (đánh dấu bị ADR-042 thay thế khi ADR-042 được duyệt).
-   Sau M5 sinh lại fixture parity **không còn khả thi** (lõi Python bị xóa): ghi commit cuối còn lõi Python vào `src/test/resources/parity/README`.
-2. **Việc 1 (perception từ radar)**, 3. **việc 2 (định nghĩa nguồn gia tốc và pha phanh; nhóm tự định nghĩa, viết ADR Proposed trước)**, 4. **việc 4 (đọc lại physics)**, 5. **việc 5 (AEB tắt, chế độ rõ ràng trong xosc/result,
+1. **Việc 1 (perception từ radar)**, **việc 2 (định nghĩa nguồn gia tốc và pha phanh; nhóm tự định nghĩa, viết ADR Proposed trước)**, 4. **việc 4 (đọc lại physics)**, 5. **việc 5 (AEB tắt, chế độ rõ ràng trong xosc/result,
    không bao giờ thành baseline regression)**, rồi **việc 3 (chạy lặp)** trên profile cuối. Tất cả bằng Java; những việc đổi hành vi CARLA đi cùng bump `-xosc3` → `-xosc4` (chạm `RunService.XOSC_SUFFIX`, `stepFor`, nhánh từ chối run cũ,
    `Xosc.SIMULATOR_SUFFIX`, `CarlaRunnerPanel.tsx:60`, `CarlaWebTest`). Thiết kế radar đã được rà (Doppler không phân biệt người băng ngang với vật tĩnh; khởi tạo track bằng phần dư Doppler, bám bằng cổng vị trí; radar riêng toàn FOV,
    không dùng radar ±4° của recorder; ghi `perception_source` và sai số perceived−ground truth; một run âm tính phải cho thấy AEB không quyết định khi mục tiêu ngoài FOV). Bản phác thiết kế cũ ở ngoài repo, viết lại bằng Java.
-3. Chưa nối web → DB cho việc 5 (cần cột mới ⇒ quy trình schema đầy đủ: `01_schema.sql`, `Queries`, `database-schema.md`, migration; hỏi chủ dự án trước).
+2. Chưa nối web → DB cho việc 5 (cần cột mới ⇒ quy trình schema đầy đủ: `01_schema.sql`, `Queries`, `database-schema.md`, migration; hỏi chủ dự án trước).
 
 **Cách chạy lại bằng chứng** (cần JDK 21, CARLA 0.9.16 ở `C:\Carla_package`, `scripts\setup-carla.ps1` đã chạy): `mvnw compile`; bật server (`CarlaUE4.exe /Game/Carla/Maps/Town04 -windowed -ResX=800 -ResY=600 -quality-level=Low`);
 `worker\.venv-carla\Scripts\python.exe worker\run_xosc.py <file.xosc> --out <thư mục>`.

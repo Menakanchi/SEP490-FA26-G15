@@ -76,7 +76,8 @@ def test_no_aeb_logic_lives_in_the_python_worker() -> None:
 
 def test_the_python_core_is_gone() -> None:
     worker = bridge.ROOT / "worker"
-    assert not (worker / "vehicsim_core").exists()
+    # Thư mục có thể còn lại chỉ với __pycache__ (bị gitignore) trên máy từng chạy lõi cũ: chỉ file .py mới là vi phạm.
+    assert list((worker / "vehicsim_core").rglob("*.py")) == []
     for name in ("kinematic_sim.py", "sim_common.py", "openscenario_export.py", "run_variant.py"):
         assert not (worker / name).exists(), f"{name} đã thuộc về lõi Java và phải ở lại git history"
 

@@ -88,8 +88,10 @@ class ArchitectureRulesTest {
 
     /** Lõi Python đã chuyển sang Java ở M5 và chỉ còn trong git history; không được khôi phục song song (hai bản AEB sẽ lệch nhau). */
     @Test
-    void thePythonCoreStaysDeleted() {
-        assertThat(WORKER.resolve("vehicsim_core")).doesNotExist();
+    void thePythonCoreStaysDeleted() throws IOException {
+        // Thư mục có thể còn lại chỉ với __pycache__ (bị gitignore) trên máy từng chạy lõi cũ: chỉ file .py mới là vi phạm.
+        Path core = WORKER.resolve("vehicsim_core");
+        assertThat(Files.isDirectory(core) ? files(core, ".py") : List.<Path>of()).as("worker/vehicsim_core/*.py").isEmpty();
         for (String name : List.of("kinematic_sim.py", "sim_common.py", "openscenario_export.py", "run_variant.py")) {
             assertThat(WORKER.resolve(name)).as(name).doesNotExist();
         }
