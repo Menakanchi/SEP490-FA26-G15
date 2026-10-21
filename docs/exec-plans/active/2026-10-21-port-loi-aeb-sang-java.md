@@ -1,6 +1,6 @@
 # Port lõi AEB, mô phỏng và chấm điểm sang Java (21/10/2026)
 
-**Trạng thái:** đang làm (M0–M5 xong; còn việc 1–5 của kế hoạch 20/10). Quyết định ở [ADR-042](../../adr/ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (Proposed).
+**Trạng thái:** đang làm (M0–M5 xong; còn việc 1–5 của kế hoạch 20/10). Quyết định ở [ADR-042](../../adr/ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (Accepted 21/10/2026).
 Các việc 1–5 của phần "Chạy baseline" trong [kế hoạch 20/10](../../vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md)
 (perception từ radar, định nghĩa pha phanh, đọc physics, AEB tắt, chạy lặp) làm **sau** khi port, trực tiếp bằng Java.
 

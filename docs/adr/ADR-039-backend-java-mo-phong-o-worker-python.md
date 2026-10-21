@@ -2,6 +2,9 @@
 
 **Trạng thái:** Proposed 14/10/2026 (TrungDQ, nhánh `trungdam`; code + kiểm chứng ở
 [exec plan 14/10](../exec-plans/completed/2026-10-14-port-backend-java.md))
+**Một phần bị thay thế bởi [ADR-042](ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (Accepted 21/10/2026):** quyết định giữ AEB, bộ mô phỏng và
+luật chấm ở worker Python không còn hiệu lực — lõi nay ở Java (`com.vehicsim.core`). Phần còn lại (Java lo REST/nghiệp vụ/lưu trữ, thread pool thay
+Celery, mật khẩu/JWT) không bị ảnh hưởng.
 **Phạm vi:** thay phần "FastAPI + Celery" của kiến trúc VehicSim (ADR-023 → ADR-038). Không đổi schema, hợp đồng JSON
 của worker (ADR-027), 5 role (ADR-035) hay luật regression.
 

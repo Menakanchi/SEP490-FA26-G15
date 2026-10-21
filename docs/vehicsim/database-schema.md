@@ -16,7 +16,7 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
   có mặt ở đây. Bảng cột ở §6 được sinh từ file SQL ngày 07/10/2026; về sau đổi cột thì sửa tay §6.
 - MySQL `vehicsim` là **database duy nhất** của hệ thống. Ngoài MySQL: mã OTP và rate limit ở Redis
   (TTL); cấu hình hệ thống (LLM key, CARLA host) ở `.env`; nhật ký thao tác ở file log; quyền theo
-  role kiểm ở FastAPI.
+  role kiểm ở Spring Security.
 
 ## 1. Tổng quan
 
