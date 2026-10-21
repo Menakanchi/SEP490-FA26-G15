@@ -87,8 +87,10 @@ export const vehicsimApi = {
     apiRequest<TelemetrySummary>("/vehicsim/telemetry/evaluate", { method: "POST", body: JSON.stringify(body) }),
 
   regressions: (status?: string) => apiRequest<RegressionList>(`/vehicsim/regression${query({ status })}`),
-  regressionPreview: (scenarioId: number) =>
-    apiRequest<RegressionPreview>(`/vehicsim/regression/preview${query({ scenario_id: scenarioId })}`),
+  regressionPreview: (scenarioId: number, includeVariants = false) =>
+    apiRequest<RegressionPreview>(
+      `/vehicsim/regression/preview${query({ scenario_id: scenarioId, include_variants: includeVariants ? "true" : undefined })}`,
+    ),
   createRegression: (body: RegressionRequest) =>
     apiRequest<{ id: number; code: string }>("/vehicsim/regression", { method: "POST", body: JSON.stringify(body) }),
   regression: (id: number) => apiRequest<RegressionDetail>(`/vehicsim/regression/${id}`),

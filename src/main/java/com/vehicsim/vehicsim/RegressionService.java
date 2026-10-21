@@ -145,7 +145,7 @@ public class RegressionService {
     }
 
     /**
-     * Run baseline mới nhất (không phải run regression, không FAILED) của mỗi biến thể. Chỉ lấy run của bộ mô phỏng đang cấu hình
+     * Run baseline mới nhất (không phải run regression, không FAILED / STOPPED) của mỗi biến thể. Chỉ lấy run của bộ mô phỏng đang cấu hình
      * và của xe đang dùng: đổi sang CARLA (hay đổi xe) thì regression dựng baseline mới, không bao giờ ghép candidate CARLA với
      * baseline động học hay với xe khác.
      */
@@ -160,7 +160,7 @@ public class RegressionService {
         args.add(runs.configuredSimulator());
         args.add(queries.activeVehicle(baseline.lng("project_id")).lng("id"));
         for (Row r : db.list("SELECT " + RUN_LIGHT_COLUMNS + " FROM simulation_runs WHERE aeb_version_id = ? AND scenario_version_id IN ("
-                + Db.placeholders(variantIds.size()) + ") AND purpose IN ('BASELINE','EVALUATION') AND status != 'FAILED' "
+                + Db.placeholders(variantIds.size()) + ") AND purpose IN ('BASELINE','EVALUATION') AND status NOT IN ('FAILED','STOPPED') "
                 + "AND simulator_version = ? AND carla_vehicle_model_id = ? ORDER BY id", args.toArray())) {
             out.put(r.lng("scenario_version_id"), r); // id tăng dần -> giữ run mới nhất
         }
@@ -188,6 +188,14 @@ public class RegressionService {
 
     /** Số liệu khung "Run summary" của màn 15 — cùng cách chọn bộ kịch bản với {@link #createTest}. */
     public Map<String, Object> preview(long projectId, long scenarioId) {
+        return preview(projectId, scenarioId, null, false);
+    }
+
+    /**
+     * Như {@link #preview(long, long)}, thêm phần tập chọn tay: {@code variantIds} khác null thì trả số biến thể / ca lỗi cũ / ca an toàn
+     * của đúng tập đó (cùng luật kiểm với {@link #createTest}); {@code includeVariants} thì trả danh sách biến thể để màn tạo test chọn.
+     */
+    public Map<String, Object> preview(long projectId, long scenarioId, List<Long> variantIds, boolean includeVariants) {
         Row baseline = queries.baselineVersion(projectId);
         if (baseline == null) {
             throw new InvalidRequestException("project chưa có baseline");
@@ -197,21 +205,84 @@ public class RegressionService {
             throw new NotFoundException("scenario family");
         }
         List<Row> variants = families.variantsOf(families.latestBaseVersionId(scenarioId));
-        List<Long> variantIds = variants.stream().map(v -> v.lng("id")).toList();
-        return Json.obj(
+        List<Long> familyIds = variants.stream().map(v -> v.lng("id")).toList();
+        Map<Long, Row> baselineRuns = latestBaselineRuns(baseline, familyIds);
+        Set<Long> critical = criticalVariantIds(baseline, familyIds);
+        Map<String, Object> out = Json.obj(
                 "scenario_id", scenarioId,
                 "family", scenario.str("name"),
                 "baseline", Vs.versionLabel(baseline),
+                "simulator", runs.configuredSimulator(),
                 "variant_count", variants.size(),
-                "old_critical_count", criticalVariantIds(baseline, variantIds).size(),
+                "old_critical_count", critical.size(),
                 // Biến thể đã có run baseline thì dùng lại, chỉ phần còn thiếu phải chạy thêm.
-                "baseline_runs_existing", latestBaselineRuns(baseline, variantIds).size());
+                "baseline_runs_existing", baselineRuns.size());
+        if (variantIds != null) {
+            List<Long> ids = selectVariants(variants, variantIds).stream().map(v -> v.lng("id")).toList();
+            out.put("selected_count", ids.size());
+            out.put("selected_old_critical_count", ids.stream().filter(critical::contains).count());
+            out.put("selected_safe_count", safeCount(ids, baselineRuns, critical));
+            out.put("selected_baseline_runs_existing", ids.stream().filter(baselineRuns::containsKey).count());
+        }
+        if (includeVariants) {
+            Map<Long, Map<String, Object>> results = runResults(baselineRuns.values().stream().map(r -> r.lng("id")).toList());
+            List<Map<String, Object>> list = new ArrayList<>();
+            for (Row v : variants) {
+                Row run = baselineRuns.get(v.lng("id"));
+                Map<String, Object> res = run == null ? null : results.get(run.lng("id"));
+                list.add(Json.obj(
+                        "id", v.lng("id"),
+                        "label", Vs.variantLabel(scenario.str("code"), v.lng("version_no")),
+                        "summary", Vs.variantSummary(v.json("scenario_ir_json")),
+                        // null = chưa có run baseline cùng bộ mô phỏng + xe (sẽ được chạy thêm khi tạo test).
+                        "baseline_outcome", res == null ? null : res.get("outcome"),
+                        "baseline_false_activation", res == null ? null : res.get("false_activation"),
+                        "has_baseline_run", run != null,
+                        "safe", safeCount(List.of(v.lng("id")), baselineRuns, critical) == 1,
+                        "old_critical", critical.contains(v.lng("id"))));
+            }
+            out.put("variants", list);
+        }
+        return out;
+    }
+
+    /**
+     * Tập chọn tay: id phải thuộc bộ biến thể hiện tại của họ; bỏ id trùng; giữ thứ tự của họ (version_no) để báo cáo ổn định.
+     * Không chặn tập thiếu ca an toàn — màn tạo test cảnh báo; số ca an toàn được ghi vào {@code scenario_set.safe_count} của test.
+     */
+    static List<Row> selectVariants(List<Row> variants, List<Long> variantIds) {
+        if (variantIds.isEmpty()) {
+            throw new InvalidRequestException("tập biến thể chọn tay đang rỗng");
+        }
+        Set<Long> wanted = new LinkedHashSet<>(variantIds);
+        Set<Long> known = new LinkedHashSet<>(variants.stream().map(v -> v.lng("id")).toList());
+        List<Long> unknown = wanted.stream().filter(id -> !known.contains(id)).toList();
+        if (!unknown.isEmpty()) {
+            throw new InvalidRequestException("biến thể không thuộc bộ biến thể hiện tại của họ kịch bản: " + unknown);
+        }
+        return variants.stream().filter(v -> wanted.contains(v.lng("id"))).toList();
+    }
+
+    /** Ca "trước đây an toàn": đã có run baseline COMPLETED và baseline không ghi nhận lỗi — dùng để phát hiện phanh oan / xấu đi. */
+    private static long safeCount(List<Long> ids, Map<Long, Row> baselineRuns, Set<Long> critical) {
+        return ids.stream().filter(id -> baselineRuns.containsKey(id) && "COMPLETED".equals(baselineRuns.get(id).str("status"))
+                && !critical.contains(id)).count();
     }
 
     @Transactional
     public long createTest(long projectId, long userId, long candidateVersionId, long scenarioId, boolean includeOldCritical,
                            boolean includeAllVariants, Map<String, Map<String, Object>> criteria, String name) {
-        if (!(includeOldCritical || includeAllVariants)) {
+        return createTest(projectId, userId, candidateVersionId, scenarioId, includeOldCritical, includeAllVariants, criteria, name, null);
+    }
+
+    /**
+     * {@code variantIds} khác null: chạy đúng tập biến thể chọn tay (vd. tập xác minh do phần phân tích chốt) thay cho hai lựa chọn
+     * "ca lỗi cũ" / "toàn bộ biến thể"; null giữ nguyên cách chọn cũ.
+     */
+    @Transactional
+    public long createTest(long projectId, long userId, long candidateVersionId, long scenarioId, boolean includeOldCritical,
+                           boolean includeAllVariants, Map<String, Map<String, Object>> criteria, String name, List<Long> variantIds) {
+        if (variantIds == null && !(includeOldCritical || includeAllVariants)) {
             throw new InvalidRequestException("chọn ít nhất một bộ kịch bản");
         }
         Map<String, Map<String, Object>> merged = mergeCriteria(criteria);
@@ -233,12 +304,14 @@ public class RegressionService {
 
         Row vehicle = queries.activeVehicle(projectId);
         List<Row> variants = families.variantsOf(families.latestBaseVersionId(scenarioId));
-        List<Long> variantIds = variants.stream().map(v -> v.lng("id")).toList();
-        Map<Long, Row> baselineRuns = latestBaselineRuns(baseline, variantIds);
+        List<Long> familyIds = variants.stream().map(v -> v.lng("id")).toList();
+        Map<Long, Row> baselineRuns = latestBaselineRuns(baseline, familyIds);
         List<Long> completed = baselineRuns.values().stream().filter(r -> "COMPLETED".equals(r.str("status"))).map(r -> r.lng("id")).toList();
         Set<Long> critical = failedVariantIds(completed);
 
-        List<Row> selected = includeAllVariants ? variants : variants.stream().filter(v -> critical.contains(v.lng("id"))).toList();
+        List<Row> selected = variantIds != null ? selectVariants(variants, variantIds)
+                : includeAllVariants ? variants : variants.stream().filter(v -> critical.contains(v.lng("id"))).toList();
+        List<Long> selectedIds = selected.stream().map(v -> v.lng("id")).toList();
         if (selected.isEmpty()) {
             throw new InvalidRequestException("bộ kịch bản được chọn đang rỗng (chưa có ca lỗi nào của baseline)");
         }
@@ -249,8 +322,12 @@ public class RegressionService {
                         + "simulator_version, name, pass_criteria_json, execution_status, verdict, total_scenarios, created_by_user_id, created_date) "
                         + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 projectId, scenarioId, baseline.lng("id"), candidate.lng("id"), vehicle.lng("id"), runs.configuredSimulator(), testName,
-                Json.obj("criteria", merged, "scenario_set", Json.obj("old_critical", includeOldCritical, "all_variants", includeAllVariants,
-                        "old_critical_count", critical.size(), "variant_count", selected.size())),
+                Json.obj("criteria", merged, "scenario_set", Json.obj(
+                        "mode", variantIds != null ? "custom" : includeAllVariants ? "all_variants" : "old_critical",
+                        "old_critical", variantIds == null && includeOldCritical, "all_variants", variantIds == null && includeAllVariants,
+                        "old_critical_count", critical.size(), "variant_count", selected.size(),
+                        "variant_ids", variantIds == null ? null : selectedIds,
+                        "safe_count", safeCount(selectedIds, baselineRuns, critical))),
                 "RUNNING", "PENDING", selected.size(), userId, Vs.now());
 
         List<Row> missing = selected.stream().filter(v -> !baselineRuns.containsKey(v.lng("id"))).toList();
@@ -296,8 +373,9 @@ public class RegressionService {
         if (distinct.isEmpty()) {
             return out;
         }
-        for (Row r : db.list("SELECT id, status, collision_occurred, min_ttc_s, min_distance_m, impact_speed_mps, is_false_positive, verdict "
-                + "FROM simulation_runs WHERE id IN (" + Db.placeholders(distinct.size()) + ")", distinct.toArray())) {
+        // rms_jerk_mps3 / stopping_distance_m: số đo từng run do worker ghi (ADR-040); chỉ để hiển thị, không vào tiêu chí.
+        for (Row r : db.list("SELECT id, status, collision_occurred, min_ttc_s, min_distance_m, impact_speed_mps, is_false_positive, verdict, "
+                + "rms_jerk_mps3, stopping_distance_m FROM simulation_runs WHERE id IN (" + Db.placeholders(distinct.size()) + ")", distinct.toArray())) {
             Map<String, Object> d = Json.obj(
                     "status", r.str("status"),
                     "collision", r.bool("collision_occurred"),
@@ -305,7 +383,9 @@ public class RegressionService {
                     "min_distance_m", r.dbl("min_distance_m"),
                     "impact_speed_mps", r.dbl("impact_speed_mps"),
                     "false_activation", r.bool("is_false_positive"),
-                    "verdict", r.str("verdict"));
+                    "verdict", r.str("verdict"),
+                    "rms_jerk_mps3", r.dbl("rms_jerk_mps3"),
+                    "stopping_distance_m", r.dbl("stopping_distance_m"));
             if ("COMPLETED".equals(r.str("status"))) {
                 d.put("outcome", Vs.classifyOutcome(r.bool("collision_occurred"), r.dbl("min_ttc_s"), r.dbl("min_distance_m")));
             }
@@ -459,7 +539,15 @@ public class RegressionService {
                     "candidate_false_activation", cRes.get("false_activation"),
                     "min_ttc_delta_s", ttcDelta,
                     "candidate_impact_kmh", impact == null ? null : Vs.round(impact * 3.6, 1),
-                    "change", change));
+                    "change", change,
+                    // Ba mục tiêu ADR-040 của từng run, đọc thẳng từ cột worker đã ghi (NULL = không phanh / không va chạm).
+                    // Chưa gộp theo tập: cách gộp thuộc bộ chỉ số chung của phần phân tích.
+                    "baseline_rms_jerk_mps3", bRes.get("rms_jerk_mps3"),
+                    "candidate_rms_jerk_mps3", cRes.get("rms_jerk_mps3"),
+                    "baseline_impact_speed_mps", bRes.get("impact_speed_mps"),
+                    "candidate_impact_speed_mps", cRes.get("impact_speed_mps"),
+                    "baseline_stopping_distance_m", bRes.get("stopping_distance_m"),
+                    "candidate_stopping_distance_m", cRes.get("stopping_distance_m")));
         }
 
         int n = pairs.size();

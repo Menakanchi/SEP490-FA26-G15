@@ -403,7 +403,9 @@ public class VehicSimController {
             @JsonProperty("include_old_critical") Boolean includeOldCritical,
             @JsonProperty("include_all_variants") Boolean includeAllVariants,
             Map<String, Map<String, Object>> criteria,
-            @Size(max = 150) String name) {
+            @Size(max = 150) String name,
+            // Tập biến thể chọn tay (tùy chọn); không gửi thì giữ cách chọn theo hai cờ ở trên.
+            @JsonProperty("variant_ids") @Size(max = 300) List<Long> variantIds) {
     }
 
     @Operation(summary = "Danh sách regression test")
@@ -414,8 +416,13 @@ public class VehicSimController {
 
     @Operation(summary = "Số liệu khung Run summary trước khi tạo regression")
     @GetMapping("/regression/preview")
-    public Map<String, Object> previewRegression(@RequestParam(name = "scenario_id") long scenarioId) {
-        return regression.preview(projectId(), scenarioId);
+    public Map<String, Object> previewRegression(@RequestParam(name = "scenario_id") long scenarioId,
+                                                 @RequestParam(name = "variant_ids", required = false) List<Long> variantIds,
+                                                 @RequestParam(name = "include_variants", defaultValue = "false") boolean includeVariants) {
+        if (variantIds != null && variantIds.size() > 300) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "variant_ids tối đa 300 biến thể");
+        }
+        return regression.preview(projectId(), scenarioId, variantIds, includeVariants);
     }
 
     @Operation(summary = "Tạo regression test: candidate vs baseline trên một họ kịch bản")
@@ -433,7 +440,7 @@ public class VehicSimController {
         }
         long id = regression.createTest(projectId(), uid, body.candidateVersionId(), body.scenarioId(),
                 body.includeOldCritical() == null || body.includeOldCritical(), body.includeAllVariants() == null || body.includeAllVariants(),
-                criteria, body.name());
+                criteria, body.name(), body.variantIds());
         return ResponseEntity.status(HttpStatus.CREATED).body(Json.obj("id", id, "code", RegressionService.testCode(id)));
     }
 

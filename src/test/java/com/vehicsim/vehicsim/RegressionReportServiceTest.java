@@ -90,9 +90,11 @@ class RegressionReportServiceTest {
         when(db.first(startsWith("SELECT * FROM aeb_versions"), any(Object[].class))).thenAnswer(inv ->
                 row("id", inv.getArguments()[1], "label", ((Long) inv.getArguments()[1]) == BASELINE ? "v1.0" : "v1.1"));
         when(db.first(startsWith("SELECT * FROM scenarios"), any(Object[].class))).thenReturn(row("id", 20L, "code", "SC-A", "name", "Họ A"));
-        when(db.first(startsWith("SELECT carla_blueprint_id"), any(Object[].class))).thenReturn(row("carla_blueprint_id", "vehicle.audi.etron", "display_name", "Audi e-tron"));
+        when(db.first(startsWith("SELECT carla_blueprint_id"), any(Object[].class))).thenReturn(row("carla_blueprint_id", "vehicle.audi.etron",
+                "display_name", "Audi e-tron", "mass_kg", 2595.0, "max_brake_decel_mps2", 8.0));
         when(db.first(contains("optimization_trials"), any(Object[].class))).thenReturn(row("source", "MANUAL"));
-        when(db.list(startsWith("SELECT id, random_seed FROM simulation_runs"), any(Object[].class))).thenReturn(List.of(row("id", 2001L, "random_seed", 48_101L)));
+        when(db.list(startsWith("SELECT id, random_seed, fixed_delta_seconds"), any(Object[].class))).thenReturn(List.of(
+                row("id", 2001L, "random_seed", 48_101L, "fixed_delta_seconds", 0.05, "max_duration_s", 12.0)));
         when(regression.recommendationFor(TEST)).thenReturn(row("status", "ACCEPTED", "reviewed_by_user_id", 9L,
                 "reviewed_at", LocalDateTime.of(2026, 10, 20, 10, 0), "review_notes", "đủ bằng chứng", "review_conditions", "theo dõi thêm"));
         when(queries.displayNames(any())).thenReturn(Map.of(5L, "Kỹ Sư A", 9L, "Người Duyệt B"));
@@ -104,7 +106,9 @@ class RegressionReportServiceTest {
                 "median_min_ttc", Json.obj("baseline", 0.4, "candidate", 1.2, "delta", 0.8),
                 "pairs", List.of(Json.obj("variant_id", 101L, "label", variantLabel, "baseline_run_id", 1001L, "candidate_run_id", 2001L,
                         "baseline_outcome", "COLLISION", "candidate_outcome", "SAFE", "change", "fixed",
-                        "baseline_false_activation", false, "candidate_false_activation", false, "min_ttc_delta_s", 0.8))));
+                        "baseline_false_activation", false, "candidate_false_activation", false, "min_ttc_delta_s", 0.8,
+                        "baseline_rms_jerk_mps3", 9.1, "candidate_rms_jerk_mps3", 6.4, "baseline_impact_speed_mps", 3.2,
+                        "candidate_impact_speed_mps", null, "baseline_stopping_distance_m", 14.0, "candidate_stopping_distance_m", 12.5))));
     }
 
     @Test
@@ -128,9 +132,15 @@ class RegressionReportServiceTest {
         assertThat((Map<String, Object>) manifest.get("simulator_caveat")).containsEntry("calibrated", false);
         assertThat((Map<String, Object>) manifest.get("vehicle")).containsEntry("carla_blueprint_id", "vehicle.audi.etron");
         assertThat(manifest.get("created_by")).isEqualTo("Kỹ Sư A");
+        assertThat(manifest).containsEntry("dt_s", 0.05).containsEntry("max_duration_s", 12.0)
+                .containsEntry("bundle_schema", RunService.VARIANT_FORMAT).containsEntry("code_version", null);
+        assertThat((Map<String, Object>) manifest.get("vehicle")).containsEntry("mass_kg", 2595.0).containsEntry("max_brake_decel_mps2", 8.0);
         List<Map<String, Object>> pairs = (List<Map<String, Object>>) data.get("pairs");
         assertThat(pairs).hasSize(1);
-        assertThat(pairs.get(0)).containsEntry("seed", 48_101L).containsEntry("baseline_run_id", 1001L).containsEntry("candidate_run_id", 2001L);
+        assertThat(pairs.get(0)).containsEntry("seed", 48_101L).containsEntry("baseline_run_id", 1001L).containsEntry("candidate_run_id", 2001L)
+                .containsEntry("baseline_xosc_url", "/api/v1/vehicsim/runs/1001/xosc").containsEntry("candidate_xosc_url", "/api/v1/vehicsim/runs/2001/xosc")
+                .containsEntry("baseline_rms_jerk_mps3", 9.1).containsEntry("candidate_rms_jerk_mps3", 6.4)
+                .containsEntry("candidate_impact_speed_mps", null).containsEntry("candidate_stopping_distance_m", 12.5);
         Map<String, Object> decision = (Map<String, Object>) data.get("decision");
         assertThat(decision).containsEntry("status", "ACCEPT").containsEntry("reviewed_by", "Người Duyệt B")
                 .containsEntry("reason", "đủ bằng chứng").containsEntry("conditions", "theo dõi thêm");
@@ -146,7 +156,9 @@ class RegressionReportServiceTest {
         String[] lines = csv.split("\r\n");
         assertThat(lines).hasSize(2);
         assertThat(lines[0]).startsWith("variant,baseline_run_id,candidate_run_id,seed");
-        assertThat(lines[1]).startsWith("\"'=HYPERLINK(\"\"http://x\"\")\",1001,2001,48101,COLLISION,SAFE,fixed,False,False,0.8");
+        assertThat(lines[0]).endsWith("baseline_stopping_distance_m,candidate_stopping_distance_m");
+        // Không va chạm (NULL) là ô rỗng, không phải 0.
+        assertThat(lines[1]).isEqualTo("\"'=HYPERLINK(\"\"http://x\"\")\",1001,2001,48101,COLLISION,SAFE,fixed,False,False,0.8,9.1,6.4,3.2,,14.0,12.5");
     }
 
     // ------------------------------------------------------------------ lịch sử
