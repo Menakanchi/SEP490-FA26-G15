@@ -114,7 +114,7 @@ CHECK `purpose = X ⇔ cột liên kết có giá trị`, cộng FK ghép với 
 ### 3.4 Danh tính bộ mô phỏng (`simulator_version`)
 
 `simulation_runs.simulator_version` ghi **chính xác** bộ mô phỏng: `vehicsim-kinematic-1.0` (bộ động học,
-đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `bundle.py`) hoặc `carla-<x.y.z>` (từ
+đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc3` (`carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
 `client.get_server_version()`). `simulator_type` (KINEMATIC / CARLA) chỉ để lọc; CHECK ép hai cột khớp.
 Vì `simulator_version` nằm trong `fk_sr_baseline`, MySQL **không cho** ghép động học với CARLA, hay
 CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](../adr/ADR-027-bo-mo-phong-cam-duoc-hop-dong-json.md)).
@@ -127,7 +127,7 @@ CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](.
 | Kích thước | `carla_vehicle_models.length_m/width_m/height_m` | `actor.bounding_box.extent × 2` — gắn mesh, chỉ đối chiếu |
 | Vật lý ép được | `carla_vehicle_models.mass_kg`, `drag_coefficient`, `center_of_mass_*_m` | `VehiclePhysicsControl` qua `apply_physics_control` |
 | Bánh xe | `carla_vehicle_models.tire_friction`, `max_brake_torque_nm` | `WheelPhysicsControl` — đo thấy chưa đổi quãng phanh (TD-17), chưa gửi |
-| Phanh thực đo | `carla_vehicle_models.carla_full_brake_decel_mps2` | Giảm tốc khi phanh 100% — runner đổi giảm tốc AEB → bàn đạp (`--full-brake-decel`) |
+| Phanh thực đo | `carla_vehicle_models.carla_full_brake_decel_mps2` | Giảm tốc khi phanh 100% — controller CARLA đổi giảm tốc AEB → bàn đạp (qua `.xosc`; NULL = 4,6 m/s²) |
 | Cảm biến | `sensors.carla_blueprint_id`, `location_*`, `rotation_*`, `attributes_json` | `sensor.*` blueprint + `carla.Transform` + `set_attribute` |
 | Thời tiết | `scenario_versions.weather`, `time_of_day` | `carla.WeatherParameters` (do ScenarioRunner đọc từ `Environment` trong `.xosc`, `XoscExport`) |
 | Map | `scenario_versions.map_name` (dự kiến), `simulation_runs.map_name` (thực nạp) | `client.load_world` / `world.get_map().name` |
@@ -444,7 +444,7 @@ Danh mục xe: blueprint CARLA + kích thước + **thông số vật lý cố �
 | `wheelbase_m` | DECIMAL(5,3) |  |  |  | Đối chiếu với vị trí bánh của blueprint. |
 | `max_speed_mps` | DECIMAL(6,2) |  |  |  | Tốc độ tối đa (m/s) — đối chiếu, không ép vào CARLA. |
 | `max_brake_decel_mps2` | DECIMAL(5,2) | ✓ |  |  | Giới hạn phanh của xe — bộ động học dùng; AEB không xin quá mức này. |
-| `carla_full_brake_decel_mps2` | DECIMAL(5,2) |  |  |  | Đo trên CARLA: giảm tốc khi phanh 100% — runner đổi giảm tốc AEB ra bàn đạp (TD-17, TD-32). |
+| `carla_full_brake_decel_mps2` | DECIMAL(5,2) |  |  |  | Đo trên CARLA: giảm tốc khi phanh 100% — controller CARLA đổi giảm tốc AEB ra bàn đạp; NULL = mặc định 4,6 (TD-17). |
 | `is_supported` | BOOLEAN | ✓ | `TRUE` |  | Còn cho project chọn xe này không. |
 
 CHECK: `ck_cvm_dims`, `ck_cvm_wheels`, `ck_cvm_physics`, `ck_cvm_center_of_mass`.
@@ -924,7 +924,8 @@ từng cặp ở `regression_test_items`.
 - **Bảng chưa có code:** cộng tác (`workspace_*`, `notifications`), `sensors`, tối ưu, `analysis_results`,
   `tech_references` — có schema, chưa có API / màn.
 - **Phanh CARLA chưa hiệu chuẩn (TD-17):** `tire_friction`, `max_brake_torque_nm`, `road_friction` chưa vào vật lý
-  CARLA; `carla_full_brake_decel_mps2` có cột nhưng bundle chưa mang sang runner (runner vẫn lấy `--full-brake-decel`).
+  CARLA. `carla_full_brake_decel_mps2` (từ 21/10) đi theo bundle `vehicle.carla.full_brake_decel_mps2` → `.xosc` `vs_full_brake_decel_mps2`
+  → controller; còn NULL (chưa đo) thì controller dùng 4,6 m/s².
 - **Quyết định không lưu riêng cho test hỏng:** regression `FAILED` (có run hỏng) không có khuyến nghị nên
   không Accept / Reject được — chạy lại test.
 - **Biên tham số chỉ service kiểm:** `param_value` trong `[min_value, max_value]`, đủ 4 tham số mỗi version,

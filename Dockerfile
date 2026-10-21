@@ -14,16 +14,14 @@ RUN ./mvnw -B -q -DskipTests package
 # ---- Stage 2: Runtime ----
 FROM eclipse-temurin:21-jre
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 curl \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m appuser
 WORKDIR /app
 COPY --from=build /build/target/vehicsim-backend-1.0.0.jar app.jar
-COPY worker worker
 RUN mkdir -p data/vehicsim && chown -R appuser:appuser /app
 USER appuser
 
-ENV VEHICSIM_WORKER_PYTHON=python3
 EXPOSE 8001
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

@@ -39,6 +39,11 @@ public final class Bundle {
     private static final Set<String> WHEEL_FIELDS = Set.of("tire_friction", "max_brake_torque", "max_handbrake_torque", "max_steer_angle", "radius",
             "damping_rate", "long_stiff_value", "lat_stiff_value", "lat_stiff_max_load");
     private static final Set<String> CONFIG_DIMENSIONS = Set.of("height_m", "wheelbase_m");
+    /**
+     * {@code vehicle.carla.full_brake_decel_mps2}: giảm tốc đo được khi phanh 100% trên CARLA cho xe này ({@code carla_vehicle_models.carla_full_brake_decel_mps2},
+     * TD-17). Controller dùng nó đổi lệnh giảm tốc AEB ra bàn đạp; thiếu thì {@link CarlaSession#DEFAULT_FULL_BRAKE_DECEL}.
+     */
+    public static final String FULL_BRAKE_DECEL = "full_brake_decel_mps2";
     private static final Pattern VERSION = Pattern.compile("^\\d+\\.\\d+\\.\\d+");
 
     private Bundle() {
@@ -282,8 +287,16 @@ public final class Bundle {
             return out;
         }
         for (Object key : carlaDoc.keySet()) {
-            if (!Set.of("blueprint", "physics", "dimensions").contains(key)) {
+            if (!Set.of("blueprint", "physics", "dimensions", FULL_BRAKE_DECEL).contains(key)) {
                 errors.add("vehicle.carla." + key + " không tồn tại");
+            }
+        }
+        if (carlaDoc.get(FULL_BRAKE_DECEL) != null) {
+            Double full = number(carlaDoc, FULL_BRAKE_DECEL, errors, true);
+            if (full != null && full > 0 && full <= 15) {
+                out.put(FULL_BRAKE_DECEL, full);
+            } else if (full != null) {
+                errors.add("vehicle.carla." + FULL_BRAKE_DECEL + " phải trong (0, 15] m/s²");
             }
         }
         Object blueprint = carlaDoc.get("blueprint");

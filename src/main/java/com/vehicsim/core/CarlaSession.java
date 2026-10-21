@@ -55,10 +55,21 @@ public final class CarlaSession {
         this.meter = new DecelMeter(spec.caseSpec().roadFriction() * Simulator.G, Math.max(2, (int) Py.round(0.1 / stepS)), stepS);
     }
 
+    /**
+     * @param fullBrakeDecel ghi đè giảm tốc khi phanh 100% (thuộc tính controller); null thì lấy số đo của xe trong {@code .xosc}
+     *                       ({@link Bundle#FULL_BRAKE_DECEL}), xe chưa đo thì {@link #DEFAULT_FULL_BRAKE_DECEL}
+     */
     public static CarlaSession open(Path xoscFile, Path outDir, String simulatorVersion, Double fullBrakeDecel) {
         Bundle.RunSpec spec = Xosc.read(xoscFile);
         Xosc.Profile profile = Xosc.profile(xoscFile);
-        return new CarlaSession(spec, profile, simulatorVersion, outDir, fullBrakeDecel != null ? fullBrakeDecel : DEFAULT_FULL_BRAKE_DECEL);
+        return new CarlaSession(spec, profile, simulatorVersion, outDir, fullBrakeDecel(fullBrakeDecel, spec.vehicleCarla()));
+    }
+
+    static double fullBrakeDecel(Double override, Map<String, Object> vehicleCarla) {
+        if (override != null) {
+            return override;
+        }
+        return vehicleCarla.get(Bundle.FULL_BRAKE_DECEL) instanceof Number measured ? measured.doubleValue() : DEFAULT_FULL_BRAKE_DECEL;
     }
 
     public Bundle.RunSpec spec() {

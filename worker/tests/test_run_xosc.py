@@ -48,8 +48,10 @@ def test_xosc_without_the_vehicsim_controller_is_rejected(tmp_path: Path) -> Non
 
 
 def test_environment_puts_worker_and_scenario_runner_on_the_python_path(tmp_path: Path) -> None:
-    paths = run_xosc.environment(tmp_path)["PYTHONPATH"].split(os.pathsep)
+    env = run_xosc.environment(tmp_path)
+    paths = env["PYTHONPATH"].split(os.pathsep)
     assert str(run_xosc.WORKER) in paths and str(tmp_path) in paths
+    assert env["PYTHONUNBUFFERED"] == "1"  # scenario_runner.log đúng thứ tự thời gian (print Python không bị đệm sau log C++ CARLA)
 
 
 def test_legacy_json_jobs_fail_clearly_instead_of_running_a_removed_runner(
