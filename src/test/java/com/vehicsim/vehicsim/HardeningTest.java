@@ -47,10 +47,10 @@ class HardeningTest {
 
     @Test
     void regressionCriterionValueMustBeANumber() {
-        assertThatThrownBy(() -> RegressionService.mergeCriteria(Map.of(
+        assertThatThrownBy(() -> com.vehicsim.service.RegressionCriteria.merge(Map.of(
                 "false_activation_increase_max_pts", Map.of("value", "nhieu"))))
                 .isInstanceOf(InvalidRequestException.class).hasMessageContaining("false_activation_increase_max_pts");
-        var merged = RegressionService.mergeCriteria(Map.of("false_activation_increase_max_pts", Map.of("value", 1)));
+        var merged = com.vehicsim.service.RegressionCriteria.merge(Map.of("false_activation_increase_max_pts", Map.of("value", 1)));
         assertThat(merged.get("false_activation_increase_max_pts").get("value")).isEqualTo(1.0);
     }
 }

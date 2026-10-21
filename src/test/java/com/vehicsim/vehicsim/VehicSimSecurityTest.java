@@ -1,11 +1,16 @@
 package com.vehicsim.vehicsim;
 
 import com.vehicsim.config.SecurityConfig;
+import com.vehicsim.controller.RegressionController;
 import com.vehicsim.entity.Role;
 import com.vehicsim.entity.User;
 import com.vehicsim.entity.enums.RoleCode;
 import com.vehicsim.security.CustomUserDetails;
 import com.vehicsim.security.JwtService;
+import com.vehicsim.service.RegressionReportService;
+import com.vehicsim.service.RegressionService;
+import com.vehicsim.service.RegressionViewService;
+import com.vehicsim.service.ReviewDecisionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -36,11 +41,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Luật cứng 3 (AGENTS.md): mọi route {@code /api/v1/vehicsim/*} cần đăng nhập; ADMIN / ENGINEER / EXPERIENCER ghi được,
- * MANAGER chỉ đọc, chỉ REVIEWER Accept / Reject. Chạy với bộ lọc bảo mật thật ({@link SecurityConfig}) và controller thật,
+ * MANAGER chỉ đọc, chỉ REVIEWER Accept / Reject. Chạy với bộ lọc bảo mật thật ({@link SecurityConfig}), hai controller thật
+ * ({@link VehicSimController} và {@link RegressionController} của màn 5) cùng luật quyền thật ({@link VehicSimAccess}),
  * service giả — không cần MySQL / Redis nên chạy được trong CI (TD-33).
  */
-@WebMvcTest(VehicSimController.class)
-@Import(SecurityConfig.class)
+@WebMvcTest({VehicSimController.class, RegressionController.class})
+@Import({SecurityConfig.class, VehicSimAccess.class})
 class VehicSimSecurityTest {
 
     private static final String BASE = "/api/v1/vehicsim";
@@ -70,6 +76,10 @@ class VehicSimSecurityTest {
     private RegressionService regression;
     @MockitoBean
     private RegressionReportService regressionReports;
+    @MockitoBean
+    private RegressionViewService regressionViews;
+    @MockitoBean
+    private ReviewDecisionService reviewDecisions;
     @MockitoBean
     private DescribeService describe;
     @MockitoBean
@@ -208,9 +218,7 @@ class VehicSimSecurityTest {
     @Test
     void regressionExportsAndDecisionHistoryAreReadOnlyForEveryRole() throws Exception {
         stubServices();
-        when(regressionReports.export(anyLong())).thenReturn(Map.of());
         when(regressionReports.exportCsv(anyLong())).thenReturn("variant\r\n");
-        when(regressionReports.decisionHistory()).thenReturn(Map.of());
         for (RoleCode code : RoleCode.values()) {
             assertThat(statusOf(request(HttpMethod.GET, BASE + "/regression/1/export.json"), code)).as("%s tải JSON", code).isEqualTo(200);
             assertThat(statusOf(request(HttpMethod.GET, BASE + "/regression/1/export.csv"), code)).as("%s tải CSV", code).isEqualTo(200);

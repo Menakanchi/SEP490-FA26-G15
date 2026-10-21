@@ -2,7 +2,6 @@ package com.vehicsim.vehicsim;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.vehicsim.config.OpenApiConfig;
-import com.vehicsim.security.CustomUserDetails;
 import com.vehicsim.service.OtpService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -29,7 +28,6 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * HTTP cho vòng MVP VehicSim: {@code /api/v1/vehicsim/*} (port của ``vehicsim_routes.py``).
@@ -45,8 +43,6 @@ import java.util.Set;
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class VehicSimController {
 
-    private static final Set<String> WRITE_ROLES = Set.of("ADMIN", "ENGINEER", "EXPERIENCER");
-    private static final Set<String> DECIDE_ROLES = Set.of("REVIEWER");
     /** Mỗi lượt mô tả tốn tiền LLM và app là public: giới hạn theo người dùng trong cửa sổ rate-limit (mặc định 15 phút). */
     private static final int DESCRIBE_LIMIT_PER_WINDOW = 30;
 
@@ -59,37 +55,27 @@ public class VehicSimController {
     private final FamilyService families;
     private final RunService runs;
     private final AebService aeb;
-    private final RegressionService regression;
-    private final RegressionReportService regressionReports;
     private final DescribeService describe;
     private final OtpService otp;
     private final BootstrapService bootstrap;
     private final VehicSimProperties props;
     private final TelemetryMetricsService telemetryService;
+    private final VehicSimAccess access;
 
     // ------------------------------------------------------------------ quyền
 
+    // Luật role và hạn mức nằm ở VehicSimAccess, dùng chung với RegressionController; các hàm dưới chỉ chuyển tiếp.
+
     private static long userId(UserDetails user) {
-        return ((CustomUserDetails) user).getUser().getId();
+        return VehicSimAccess.userId(user);
     }
 
     private static String roleOf(UserDetails user) {
-        return ((CustomUserDetails) user).getUser().getRole().getCode().name();
+        return VehicSimAccess.roleOf(user);
     }
 
     private static long requireEngineer(UserDetails user) {
-        if (!WRITE_ROLES.contains(roleOf(user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cần quyền ENGINEER, EXPERIENCER hoặc ADMIN để thực hiện thao tác này");
-        }
-        return userId(user);
-    }
-
-    /** Chỉ Reviewer duyệt: Engineer không tự duyệt việc mình làm, EXP không có recommendation (ADR-035). */
-    private static long requireReviewer(UserDetails user) {
-        if (!DECIDE_ROLES.contains(roleOf(user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ REVIEWER được Accept / Reject recommendation");
-        }
-        return userId(user);
+        return VehicSimAccess.requireEngineer(user);
     }
 
     /**
@@ -97,13 +83,11 @@ public class VehicSimController {
      * (mọi người tự đăng ký đều có quyền ghi vào project chung — TD-30): giới hạn số lần theo người dùng trong cửa sổ rate-limit.
      */
     private void limitWrites(long userId, String bucket) {
-        if (otp.hitRateLimit("vs_" + bucket, String.valueOf(userId), props.writesPerWindow())) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Thao tác quá nhiều lần, thử lại sau ít phút");
-        }
+        access.limitWrites(userId, bucket);
     }
 
     private long projectId() {
-        return ((Number) ((Map<?, ?>) views.context().get("project")).get("id")).longValue();
+        return access.projectId();
     }
 
     @Operation(summary = "Khởi tạo dữ liệu mặc định (workspace, project, xe, baseline AEB v1.0)",
@@ -277,7 +261,7 @@ public class VehicSimController {
     }
 
     /** Như ``csv.writer`` (QUOTE_MINIMAL): bao dấu nháy khi có dấu phẩy / nháy / xuống dòng; None -> rỗng; bool -> True/False. */
-    static String csvCell(Object value) {
+    public static String csvCell(Object value) {
         if (value == null) {
             return "";
         }
@@ -395,111 +379,5 @@ public class VehicSimController {
                 body.decelAvailable() == null ? 8.0 : body.decelAvailable());
     }
 
-    // ------------------------------------------------------------------ FE-14 · Regression, recommendation, review
-
-    public record RegressionRequest(
-            @JsonProperty("candidate_version_id") @NotNull Long candidateVersionId,
-            @JsonProperty("scenario_id") @NotNull Long scenarioId,
-            @JsonProperty("include_old_critical") Boolean includeOldCritical,
-            @JsonProperty("include_all_variants") Boolean includeAllVariants,
-            Map<String, Map<String, Object>> criteria,
-            @Size(max = 150) String name,
-            // Tập biến thể chọn tay (tùy chọn); không gửi thì giữ cách chọn theo hai cờ ở trên.
-            @JsonProperty("variant_ids") @Size(max = 300) List<Long> variantIds) {
-    }
-
-    @Operation(summary = "Danh sách regression test")
-    @GetMapping("/regression")
-    public Map<String, Object> listRegression(@RequestParam(name = "status", required = false) String status) {
-        return views.regressionList(status);
-    }
-
-    @Operation(summary = "Số liệu khung Run summary trước khi tạo regression")
-    @GetMapping("/regression/preview")
-    public Map<String, Object> previewRegression(@RequestParam(name = "scenario_id") long scenarioId,
-                                                 @RequestParam(name = "variant_ids", required = false) List<Long> variantIds,
-                                                 @RequestParam(name = "include_variants", defaultValue = "false") boolean includeVariants) {
-        if (variantIds != null && variantIds.size() > 300) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "variant_ids tối đa 300 biến thể");
-        }
-        return regression.preview(projectId(), scenarioId, variantIds, includeVariants);
-    }
-
-    @Operation(summary = "Tạo regression test: candidate vs baseline trên một họ kịch bản")
-    @PostMapping("/regression")
-    public ResponseEntity<Map<String, Object>> createRegression(@Valid @RequestBody RegressionRequest body, @AuthenticationPrincipal UserDetails user) {
-        long uid = requireEngineer(user);
-        limitWrites(uid, "regression");
-        Map<String, Map<String, Object>> criteria = new LinkedHashMap<>();
-        if (body.criteria() != null) {
-            body.criteria().forEach((k, v) -> {
-                Map<String, Object> cleaned = new LinkedHashMap<>(v);
-                cleaned.values().removeIf(java.util.Objects::isNull); // như exclude_none
-                criteria.put(k, cleaned);
-            });
-        }
-        long id = regression.createTest(projectId(), uid, body.candidateVersionId(), body.scenarioId(),
-                body.includeOldCritical() == null || body.includeOldCritical(), body.includeAllVariants() == null || body.includeAllVariants(),
-                criteria, body.name(), body.variantIds());
-        return ResponseEntity.status(HttpStatus.CREATED).body(Json.obj("id", id, "code", RegressionService.testCode(id)));
-    }
-
-    @Operation(summary = "Chi tiết một regression test")
-    @GetMapping("/regression/{testId}")
-    public Map<String, Object> getRegression(@PathVariable long testId) {
-        return views.regressionDetail(testId);
-    }
-
-    @Operation(summary = "Tải gói kết quả của một regression đã chạy xong (JSON)")
-    @GetMapping("/regression/{testId}/export.json")
-    public ResponseEntity<Map<String, Object>> exportRegressionJson(@PathVariable long testId) {
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + RegressionService.testCode(testId) + ".json\"")
-                .body(regressionReports.export(testId));
-    }
-
-    @Operation(summary = "Tải gói kết quả của một regression đã chạy xong (CSV, mỗi dòng một cặp baseline–candidate)")
-    @GetMapping("/regression/{testId}/export.csv")
-    public ResponseEntity<byte[]> exportRegressionCsv(@PathVariable long testId) {
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType("text/csv; charset=utf-8"))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + RegressionService.testCode(testId) + ".csv\"")
-                .body(regressionReports.exportCsv(testId).getBytes(StandardCharsets.UTF_8));
-    }
-
-    @Operation(summary = "Lịch sử quyết định của Reviewer và chuỗi baseline")
-    @GetMapping("/decisions")
-    public Map<String, Object> decisionHistory() {
-        return regressionReports.decisionHistory();
-    }
-
-    @Operation(summary = "Danh sách khuyến nghị kỹ thuật")
-    @GetMapping("/recommendations")
-    public List<Map<String, Object>> listRecommendations() {
-        return views.recommendations();
-    }
-
-    @Operation(summary = "Chi tiết một khuyến nghị")
-    @GetMapping("/recommendations/{testId}")
-    public Map<String, Object> getRecommendation(@PathVariable long testId) {
-        return views.recommendationDetail(testId);
-    }
-
-    public record DecisionRequest(
-            @NotBlank String decision,
-            @NotBlank @Size(max = 4000) String reason,
-            @Size(max = 4000) String conditions,
-            @NotNull Boolean confirmed) {
-    }
-
-    @Operation(summary = "Reviewer Accept / Reject / yêu cầu thêm test", description = "Chỉ role REVIEWER; người tạo khuyến nghị không tự duyệt.")
-    @PostMapping("/recommendations/{testId}/decision")
-    public Map<String, Object> decide(@PathVariable long testId, @Valid @RequestBody DecisionRequest body, @AuthenticationPrincipal UserDetails user) {
-        long uid = requireReviewer(user);
-        if (!Set.of("ACCEPT", "REJECT", "REQUEST_MORE_TESTS").contains(body.decision())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "decision phải thuộc [ACCEPT, REJECT, REQUEST_MORE_TESTS]");
-        }
-        regression.decide(projectId(), testId, uid, body.decision(), body.reason(), body.conditions(), body.confirmed());
-        return views.recommendationDetail(testId);
-    }
+    // FE-14 · Regression, khuyến nghị, quyết định Reviewer: route ở com.vehicsim.controller.RegressionController.
 }
