@@ -129,7 +129,7 @@ CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](.
 | Bánh xe | `carla_vehicle_models.tire_friction`, `max_brake_torque_nm` | `WheelPhysicsControl` — đo thấy chưa đổi quãng phanh (TD-17), chưa gửi |
 | Phanh thực đo | `carla_vehicle_models.carla_full_brake_decel_mps2` | Giảm tốc khi phanh 100% — runner đổi giảm tốc AEB → bàn đạp (`--full-brake-decel`) |
 | Cảm biến | `sensors.carla_blueprint_id`, `location_*`, `rotation_*`, `attributes_json` | `sensor.*` blueprint + `carla.Transform` + `set_attribute` |
-| Thời tiết | `scenario_versions.weather`, `time_of_day` | `carla.WeatherParameters` (`run_variant.weather_parameters`) |
+| Thời tiết | `scenario_versions.weather`, `time_of_day` | `carla.WeatherParameters` (do ScenarioRunner đọc từ `Environment` trong `.xosc`, `XoscExport`) |
 | Map | `scenario_versions.map_name` (dự kiến), `simulation_runs.map_name` (thực nạp) | `client.load_world` / `world.get_map().name` |
 | Bước mô phỏng | `simulation_runs.fixed_delta_seconds` | `WorldSettings.synchronous_mode = True`, `fixed_delta_seconds` |
 | Người đi bộ | `collision_events.other_actor_type_id` | `walker.pedestrian.0001` |
@@ -475,7 +475,7 @@ Bộ cảm biến của mẫu xe, cố định như thông số xe; tham số đ
 
 4 tham số AEB chỉnh được (ADR-040), có biên `[min_value, max_value]` — cũng là không gian tìm kiếm của tối ưu MOBO. Sáu tham số
 còn lại của lõi AEB (ngưỡng phát hiện, vận tốc tương đối, tầm dự đoán, biên an toàn, giới hạn jerk, thời gian phản hồi actuator)
-là **hằng số trong `worker/vehicsim_core/aeb_stack.py`**, không nằm ở DB và không có trong bundle.
+là **hằng số trong `com.vehicsim.core.AebStack`**, không nằm ở DB và không có trong bundle.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|

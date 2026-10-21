@@ -1,7 +1,7 @@
 # OpenSCENARIO và CARLA 0.9.16 trên Windows
 
 Web xuất `.xosc` OpenSCENARIO 1.0 và gọi ScenarioRunner để chạy trên máy Windows đang chạy backend.
-Controller dùng lại `AebStack`/bộ chấm Python hiện có. Cửa sổ CARLA bám theo xe; web xem ảnh RGB và số đo sau khi run xong.
+Controller Python chỉ đọc trạng thái CARLA và áp bàn đạp; `AebStack` và bộ chấm của lõi Java quyết định qua cầu nối `vsos-bridge/1`. Cửa sổ CARLA bám theo xe; web xem ảnh RGB và số đo sau khi run xong.
 Phạm vi hiện tại là **CP_CROSSING** (người đi bộ băng ngang hoặc dừng ở lề), đúng IR mà web đang hỗ trợ.
 
 ## Chuẩn bị một lần

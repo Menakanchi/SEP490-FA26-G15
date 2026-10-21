@@ -185,7 +185,7 @@ Những việc dưới đây là chi tiết thiết kế còn mở, không đư�
 **Điểm vào code:** [FamilyService](../../src/main/java/com/vehicsim/vehicsim/FamilyService.java),
 [ScenarioRules](../../src/main/java/com/vehicsim/vehicsim/ScenarioRules.java),
 [controller](../../src/main/java/com/vehicsim/vehicsim/VehicSimController.java),
-[exporter](../../worker/openscenario_export.py).
+[exporter](../../src/main/java/com/vehicsim/core/XoscExport.java).
 
 **Bàn giao:** snapshot kịch bản/biến thể, seed, xe và môi trường cho thành viên 2/3.
 **Nghiệm thu:** target đi đúng hướng và hành vi; đầu vào không hỗ trợ bị từ chối rõ;
@@ -206,7 +206,7 @@ thay kịch bản tạo phiên bản mới; tập đã chốt vẫn giữ ca an 
 
 **Điểm vào code:** [RunService](../../src/main/java/com/vehicsim/vehicsim/RunService.java),
 [run_xosc](../../worker/run_xosc.py), [controller CARLA](../../worker/vehicsim_aeb_control.py),
-[sensor recorder](../../worker/sensor_recorder.py), [lõi AEB](../../worker/vehicsim_core/aeb_stack.py).
+[sensor recorder](../../worker/sensor_recorder.py), [lõi AEB](../../src/main/java/com/vehicsim/core/AebStack.java).
 
 **Bàn giao:** run/artifact với sensor, ground truth, frame/timestamp, physics thực tế và metadata đầy đủ.
 **Nghiệm thu:** chứng minh AEB dùng perception từ sensor; dữ liệu chấm truy được về ground truth;
@@ -225,7 +225,7 @@ chạy lặp nằm trong dung sai đã chốt; hủy/timeout không làm bẩn l
 
 **Điểm vào code:** [TelemetryMetricsService](../../src/main/java/com/vehicsim/vehicsim/TelemetryMetricsService.java),
 [ViewsService](../../src/main/java/com/vehicsim/vehicsim/ViewsService.java),
-[evaluation](../../worker/vehicsim_core/evaluation.py), [simulator](../../worker/vehicsim_core/simulator.py).
+[evaluation](../../src/main/java/com/vehicsim/core/Evaluation.java), [simulator](../../src/main/java/com/vehicsim/core/Simulator.java).
 
 **Bàn giao:** hợp đồng chỉ số có phiên bản, kết quả phân tích và snapshot tập thử cho thành viên 4/5.
 **Nghiệm thu:** đúng trên tín hiệu mẫu; xử lý được đứng yên, băng ngang, giảm tốc, không phanh,

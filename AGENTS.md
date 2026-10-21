@@ -9,8 +9,9 @@ chỉ từ tên màn hình, bảng DB hoặc tài liệu kế hoạch.
 
 VehicSim / VSOS (SEP490-FA26-G15) hỗ trợ kỹ sư kiểm thử, hiệu chỉnh AEB/FCW:
 tạo tình huống giả lập phanh, phân tích lỗi, tạo candidate và kiểm chứng bằng regression.
-Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (29 bảng) + Redis + worker Python**.
-Java xử lý REST/nghiệp vụ/DB; Python chạy mô phỏng, AEB và chấm kết quả (ADR-039).
+Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (29 bảng) + Redis + adapter CARLA Python**.
+Java xử lý REST/nghiệp vụ/DB và lõi AEB, mô phỏng, chấm điểm (`com.vehicsim.core`, ADR-042);
+Python `worker/` chỉ gọi API CARLA và nói chuyện với lõi Java qua cầu nối stdio `vsos-bridge/1`.
 Backend FastAPI và Scenario Forge đã gỡ; không khôi phục kiến trúc cũ khi làm tính năng mới.
 
 Luồng mục tiêu 5 màn: **Thiết kế kịch bản → Baseline → Phân tích → Tối ưu AEB → Regression/Reviewer**.
@@ -30,8 +31,8 @@ Chi tiết chức năng và nghiệm thu: [phân chia 5 thành viên](docs/vehic
 | Phần / màn chính | Điểm vào frontend | Code chính | Bàn giao sang bước sau |
 |---|---|---|---|
 | 1. Thiết kế kịch bản | `/scenarios/new` | `DescribeService`, `FamilyService`, `ScenarioRules`, `LlmService` | Họ kịch bản + biến thể hợp lệ |
-| 2. Chạy baseline | `/scenarios`, `/analysis/carla` | `RunService`; `worker/openscenario_export.py`, `run_xosc.py`, `sensor_recorder.py` | Run + seed + xe/AEB/simulator + kết quả/artifact |
-| 3. Phân tích lỗi | `/analysis/failures/**` | `ViewsService`, `TelemetryMetricsService`, `worker/vehicsim_core/evaluation.py` | Tập biến thể/seed đã chốt + baseline + chỉ số/nguyên nhân |
+| 2. Chạy baseline | `/scenarios`, `/analysis/carla` | `RunService`, `core/XoscExport`; `worker/run_xosc.py`, `sensor_recorder.py` | Run + seed + xe/AEB/simulator + kết quả/artifact |
+| 3. Phân tích lỗi | `/analysis/failures/**` | `ViewsService`, `TelemetryMetricsService`, `core/Evaluation` | Tập biến thể/seed đã chốt + baseline + chỉ số/nguyên nhân |
 | 4. Tối ưu AEB | `/aeb` | `AebService` hiện chỉ tạo candidate thủ công; service/worker tối ưu cần bổ sung | Candidate + campaign/trial + mục tiêu/ràng buộc |
 | 5. Regression và phê duyệt | `/validation/**` | `RegressionService`, views/recommendation/decision | Kết quả xác minh + quyết định; baseline mới nếu Accept |
 
@@ -87,7 +88,7 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
 ## Bất biến phải giữ khi nhận và sửa code
 
 1. Mọi lời gọi LLM qua `LlmService`; bộ sinh `.xosc` offline, không dùng LLM.
-2. Java và `worker/vehicsim_core/` không import `carla`; adapter CARLA chỉ ở worker.
+2. Java, kể cả lõi `com.vehicsim.core`, không import `carla`; lời gọi API CARLA chỉ ở adapter trong `worker/`.
 3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập. Mỗi tài khoản một role:
    ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ đọc; chỉ REVIEWER Accept/Reject.
    Cách ly project/workspace chưa hoàn thiện (TD-30); không giả định mọi người có dữ liệu riêng.
@@ -99,8 +100,9 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
 6. Chỉ 4 tham số AEB chỉnh được theo ADR-040; seed Java/SQL khớp `AebParams`.
    Ba mục tiêu: RMS jerk, vận tốc va chạm, quãng phanh dừng; thống nhất ràng buộc tối ưu/regression.
 7. Không lộ email tồn tại; OTP hash, dùng một lần; mật khẩu tối đa 72 byte BCrypt.
-8. Logic AEB chỉ ở `worker/vehicsim_core/aeb_stack.py`, dùng chung cho mọi bộ mô phỏng.
-   Lõi dùng thư viện chuẩn, cú pháp Python 3.10 để venv CARLA import được.
+8. Logic AEB, bộ mô phỏng và luật chấm chỉ ở `com.vehicsim.core` (`AebStack`, `Simulator`, `Evaluation`), dùng chung cho
+   bộ động học và CARLA qua cầu nối; `worker/` không chứa logic AEB (`ArchitectureRulesTest#pythonWorkerHoldsNoAebLogic`).
+   Lõi chỉ dùng JDK (`CoreIsolationTest`) và khớp kết quả Python cũ theo fixture ở `src/test/resources/parity`.
 9. Regression không ghép động học với CARLA. Bundle nội bộ tải ra phải tái lập
    được kết quả trong phiên bản tương ứng; run cũ không tái lập xem TD-40.
 

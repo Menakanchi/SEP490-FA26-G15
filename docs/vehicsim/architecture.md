@@ -11,7 +11,8 @@ bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà 
 > thì tài liệu này sai.
 
 > **Sau [ADR-039](../adr/ADR-039-backend-java-mo-phong-o-worker-python.md) (14/10/2026) backend là Spring Boot (Java 21)**:
-> REST, nghiệp vụ và lưu trữ ở `src/main/java/com/vehicsim/`; AEB, bộ động học và luật chấm ở lại `worker/vehicsim_core/` (Python).
+> REST, nghiệp vụ và lưu trữ ở `src/main/java/com/vehicsim/vehicsim/`. Sau [ADR-042](../adr/ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (21/10/2026)
+> AEB, bộ động học, luật chấm, bộ lọc, hợp đồng bundle và bộ xuất `.xosc` cũng ở Java (`src/main/java/com/vehicsim/core/`); `worker/` chỉ còn adapter CARLA.
 > Phần dưới còn dùng tên module Python cũ (`describe.py`, `runs.py`…); đối chiếu sang code hiện tại:
 >
 > | Tên cũ | Hiện nay |
@@ -23,7 +24,7 @@ bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà 
 > | `runs.py` + Celery | `RunService` + thread pool `simulationExecutor` (`VehicSimConfig`) |
 > | `regression.py` | `RegressionService` |
 > | `views.py`, `common.py`, `tables.py` | `ViewsService`, `Vs` + `Queries`, SQL thuần qua `Db` (JdbcTemplate) |
-> | `aeb_stack.py`, `simulator.py`, `bundle.py`, `evaluation.py` | không đổi, nay ở `worker/vehicsim_core/` |
+> | `aeb_stack.py`, `simulator.py`, `bundle.py`, `evaluation.py`, `openscenario_export.py` | `core/AebStack`, `Simulator`, `Bundle`, `Evaluation` (+ `Filters`), `XoscExport` — port 1:1, khớp fixture ở `src/test/resources/parity` |
 
 ## Vòng MVP 6 bước
 
@@ -71,12 +72,12 @@ Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  S
                               │ dispatch(run_ids) sau commit
                               ▼
               thread pool `simulationExecutor` (CARLA: 1 luồng) → executeRun(run_id) → bundleForRun() (= JSON "Tải JSON chạy CARLA")
-                                           ▼  tiến trình con có timeout, bundle.json → result.json (kèm kết quả chấm)
+                                           ▼  CARLA: tiến trình con có timeout, scenario.xosc → result.json (kèm kết quả chấm); động học: gọi thẳng lõi Java
         simulator_version = vehicsim-kinematic-1.0      simulator_version = carla-<x.y.z>
-            python worker/kinematic_sim.py                  VEHICSIM_CARLA_COMMAND <bundle> --out runs/<id> --fast
-                                     │                       (worker/run_variant.py, cần server CARLA)
+            trong tiến trình Java (core.Simulator)          VEHICSIM_CARLA_COMMAND <scenario.xosc> --out runs/<id> --fast
+                                     │                       (worker/run_xosc.py, cần server CARLA)
                                      └──────────┬───────────────────────┘
-                                                ▼  cả hai dùng chung vehicsim_core.aeb_stack.AebStack + evaluation
+                                                ▼  cả hai dùng chung com.vehicsim.core.AebStack + Evaluation (CARLA qua cầu nối stdio)
                         Java ghi result.json → simulation_runs + collision_events/failures/root_causes(/artifacts)
                         → sự kiện RunFinished → RegressionService.tryFinalize()
 ```
@@ -108,37 +109,37 @@ Run `-xosc1`/`-xosc2` chưa chạy bị từ chối thay vì âm thầm chạy b
 
 Hàng đợi chạy nền là thread pool của Spring (thay Celery, ADR-039); trần thời gian một run theo `SIMULATION_TIMEOUT_S`.
 
-`aeb_stack.py`, `simulator.py`, `bundle.py`, `evaluation.py` là **lõi mô phỏng**: chỉ thư
-viện chuẩn, cú pháp Python 3.10, vì venv CARLA của worker import thẳng chúng.
+Các lớp `AebStack`, `Simulator`, `Bundle`, `Evaluation` trong `com.vehicsim.core` là **lõi mô phỏng**: chỉ dùng JDK, không
+phụ thuộc Spring/DB (`CoreIsolationTest`). Worker Python không import lõi mà gọi qua cầu nối `vsos-bridge/1`.
 
 ## Bộ mô phỏng: động học và CARLA
 
 Hai bộ mô phỏng thay thế nhau sau một hợp đồng (ADR-027). Cả hai nhận **cùng file
 JSON**, dùng **cùng `AebStack`**, ghi **cùng `result.json`**, được chấm bằng **cùng
-`evaluation.py`**:
+`Evaluation`** (Java):
 
-| | Động học (`worker/kinematic_sim.py`, hoặc trong process) | CARLA (`worker/run_variant.py`) |
+| | Động học (`core.Simulator`, trong tiến trình Java) | CARLA (`worker/run_xosc.py` + cầu nối) |
 |---|---|---|
 | Chạy ở đâu | Máy nào cũng được, < 1 s/run | Máy có server CARLA (venv worker, `carla` khớp phiên bản server) |
 | Vật lý | Điểm khối, giảm tốc tức thì theo lệnh, μ·g | Xe/lốp/va chạm của CARLA; người đi bộ tăng tốc dần |
 | Perception | Mô hình tổng hợp trên ground truth | Như bên trái (chưa đọc camera/LiDAR) |
-| Cảnh | Không có hình | Đoạn làn thẳng tự tìm trên map đang mở, camera bám xe, `--video` |
+| Cảnh | Không có hình | Town04 road 40/lane -4 từ `.xosc`, camera bám xe (`--camera`) |
 | Dùng khi | Dev, test tự động, batch nhanh, dự phòng khi demo | Xem tận mắt, quay video, đối chiếu |
 
 Chạy tay một JSON tải từ web (nút **"Tải JSON chạy CARLA"** ở màn Chi tiết lỗi /
 Phát lại, hoặc Scenario IR ở màn Sinh từ mô tả):
 
 ```bash
-python worker/kinematic_sim.py vehicsim-run-42.json                      # khớp kết quả trên web
-worker/.venv/bin/python worker/run_variant.py vehicsim-run-42.json --video # CARLA, xem trong cửa sổ CARLA
-python worker/kinematic_sim.py scenario-ir.json --aeb aeb_v1.2.json --seed 7
+java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic vehicsim-run-42.json   # khớp kết quả trên web (cần mvnw compile)
+worker/.venv-carla/Scripts/python worker/run_xosc.py vehicsim-run-42.xosc --camera            # CARLA, file .xosc tải từ run CARLA
+java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic scenario-ir.json --aeb aeb_v1.2.json --seed 7
 ```
 
 Kết quả nằm ở thư mục cùng tên file JSON (`--out` để đổi). Thoát `0` = chạy xong (dù
-AEB FAIL), `2` = JSON sai (in đủ mọi lỗi), `3` = CARLA lỗi kết nối/spawn.
+AEB FAIL), `2` = đầu vào sai (JSON sai in đủ mọi lỗi; `run_xosc.py` từ chối `.json`), `3` = CARLA lỗi kết nối/spawn, `4` = bị yêu cầu dừng.
 
-Chạy cả batch trên CARLA: đặt `VEHICSIM_SIMULATOR=carla` và `VEHICSIM_CARLA_COMMAND` trên
-máy chạy worker Celery. Quá giờ, worker gửi CTRL_BREAK/SIGTERM cho cả nhóm tiến trình, chờ
+Chạy cả batch trên CARLA: đặt `VEHICSIM_SIMULATOR=carla-xosc` và `VEHICSIM_CARLA_COMMAND` trên
+máy có server CARLA. Quá giờ, worker gửi CTRL_BREAK/SIGTERM cho cả nhóm tiến trình, chờ
 `STOP_GRACE_S` (15 s) để CLI xoá actor và trả CARLA về chế độ không đồng bộ, rồi mới giết;
 CLI bị giết cứng thì lần chạy sau tự xoá actor `vehicsim_*` sót lại. Run regression luôn chép bộ mô phỏng của run baseline; đổi cấu
 hình sang CARLA thì regression tự dựng baseline CARLA mới, không ghép với baseline động học.
@@ -222,12 +223,12 @@ Giới hạn 30 lượt / 15 phút / người (Redis) vì app public và mỗi l
 
 ## Bộ sinh OpenSCENARIO (`src/services/openscenario/`)
 
-**Đang dùng cho VehicSim (ADR-041):** `worker/openscenario_export.py` sinh XML OpenSCENARIO 1.0 từ IR hoặc bundle,
+**Đang dùng cho VehicSim (ADR-041, ADR-042):** `core/XoscExport` (Java; bản Python cũ đã gỡ) sinh XML OpenSCENARIO 1.0 từ IR hoặc bundle,
 không cần CARLA/LLM. CP_CROSSING có ego/người đi bộ, thời tiết, trigger khoảng cách, polyline băng đường và
 ParameterDeclarations cho seed/AEB/xe/source. `run_xosc.py` gọi ScenarioRunner v0.9.16 bằng file này; adapter
-`vehicsim_aeb_control.py` gọi lại `AebStack`, `build_outcome` và `evaluation`, không có bản AEB thứ hai. XML dùng
+`vehicsim_aeb_control.py` chỉ đọc trạng thái CARLA và gửi cho lõi Java qua cầu nối, không có bản AEB thứ hai. XML dùng
 LanePosition trên road 40/lane -4 Town04 để lấy đúng cao độ; mọi vị trí trong dải IR hiện có nằm trong đoạn thẳng.
-Golden mới được kiểm XSD bởi `OpenScenarioSchemaTest`; `worker/tests/test_openscenario_export.py` kiểm byte,
+Golden mới được kiểm XSD bởi `OpenScenarioSchemaTest`; `XoscExportTest` và `XoscReadParityTest` kiểm byte (trùng bản Python cũ),
 round-trip metadata, trigger khoảng cách, dải biên và bộ sinh offline. Nút xuất có trên màn mô tả, chi tiết run và phát lại.
 
 **Converter Forge cũ chỉ để đối chiếu (ADR-032):**
@@ -273,17 +274,18 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 
 | Bất biến | Máy kiểm |
 |---|---|
-| Cùng biến thể + seed ⇒ cùng kết quả; seed chỉ đổi nhiễu perception | `test_same_seed_gives_identical_run`, `test_different_seed_changes_perception_noise_only_through_rng` |
-| Người dừng ở lề ⇒ phanh oan, không phải va chạm | `test_pedestrian_stopping_at_curb_is_false_braking_not_collision` |
-| Va vào hông xe vẫn là va chạm, không bao giờ là phanh oan | `test_pedestrian_walking_into_the_side_is_a_collision_never_false_braking` |
-| Lõi mô phỏng chỉ thư viện chuẩn + cú pháp 3.10 (venv CARLA import được); không import CARLA | `test_sim_core_is_stdlib_only_and_python310`, `ArchitectureRulesTest#simulationCoreNeverImportsCarla` |
-| Backend Java không dùng CARLA API | `ArchitectureRulesTest#javaBackendNeverTouchesCarlaApi` |
-| JSON tải từ web chạy lại ra đúng kết quả; CLI động học = kết quả backend (run cũ của v1.3 không còn tái lập — TD-40) | `test_bundle_round_trip_reproduces_the_same_run`, `test_kinematic_cli_writes_the_same_result_as_the_backend` |
-| CARLA và động học dùng chung AEB, frame, số đo | `test_runner_reuses_the_kinematic_aeb_and_result_builders` |
+| Cùng biến thể + seed ⇒ cùng kết quả; seed chỉ đổi nhiễu perception | `SimulatorBehaviorTest#sameSeedGivesIdenticalRun`, `SimulatorBehaviorTest#differentSeedChangesPerceptionNoiseOnlyThroughTheRng` |
+| Người dừng ở lề ⇒ phanh oan, không phải va chạm | `SimulatorBehaviorTest#pedestrianStoppingAtTheCurbIsFalseBrakingNotCollision` |
+| Va vào hông xe vẫn là va chạm, không bao giờ là phanh oan | `SimulatorBehaviorTest#pedestrianWalkingIntoTheSideIsACollisionNeverFalseBraking` |
+| Lõi mô phỏng chỉ dùng JDK, không phụ thuộc Spring/DB/phần còn lại của backend | `CoreIsolationTest#coreImportsNothingFromSpringDatabaseOrTheRestOfTheBackend` |
+| Backend Java, kể cả lõi, không dùng CARLA API | `ArchitectureRulesTest#javaBackendNeverTouchesCarlaApi` |
+| Logic AEB, mô phỏng, chấm điểm chỉ ở `com.vehicsim.core`; `worker/` không có bản thứ hai và lõi Python không quay lại | `ArchitectureRulesTest#pythonWorkerHoldsNoAebLogic`, `ArchitectureRulesTest#thePythonCoreStaysDeleted`, `test_no_aeb_logic_lives_in_the_python_worker` |
+| JSON tải từ web chạy lại ra đúng kết quả; CLI động học = kết quả backend (run cũ của v1.3 không còn tái lập — TD-40) | `KinematicCliTest#writesTheSameResultAsTheBackendAndSummarisesIt`, `KinematicInProcessTest#producesTheSameResultAsCallingTheCoreAndCarriesTheEngineVersion` |
+| CARLA và động học dùng chung một AEB; profile 100 Hz ra cùng quyết định với bộ 20 Hz trên cùng thế giới | `CarlaSessionLogicTest#decisionsMatchThe20HzStackOnTheSameWorld`, `CarlaSessionLogicTest#defaultStackIsUnchangedForTheKinematicSimulator` |
 | Run CARLA đi qua tiến trình con; crash/sai phiên bản chỉ hỏng run đó; CLI quá giờ được xin dừng trước khi bị giết | _chưa có test_ (TD-33) |
 | Regression không bao giờ ghép kết quả động học với CARLA, hay khác xe (MySQL cũng ép bằng `fk_sr_baseline` / `fk_sr_regression`) | _chưa có test_ (TD-33) |
-| Thông số xe lấy từ DB: CARLA nhận blueprint + vật lý của xe và báo rõ cái gì không ép được | `test_db_vehicle_is_forced_into_carla_and_checked` |
-| Mọi tham số AEB được simulator dùng; seed Java khớp SQL; AEB có đúng 4 tham số chỉnh được | `test_every_seeded_parameter_is_used_by_the_simulator`, `test_java_parameter_seed_matches_sql_seed`, `test_aeb_has_exactly_the_four_tunable_parameters` |
+| Thông số vật lý xe lấy từ DB được áp vào xe CARLA; trường lạ hay số bánh sai bị từ chối (bảng đối chiếu `vehicle_check` của runner trực tiếp đã gỡ cùng `run_variant.py`) | `test_apply_physics_overrides_sets_scalars_com_and_wheels`, `test_apply_physics_overrides_refuses_unknown_fields_and_wheel_count_mismatch` |
+| Mọi tham số AEB được simulator dùng; seed Java khớp SQL; AEB có đúng 4 tham số chỉnh được | `AebParameterSeedTest#everySeededParameterIsUsedByTheSimulator`, `AebParameterSeedTest#javaParameterSeedMatchesSqlSeed`, `SimulatorBehaviorTest#aebHasExactlyTheFourTunableParameters` |
 | Mọi route `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi được, MANAGER chỉ đọc | `VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
 | Chỉ REVIEWER quyết định recommendation; REVIEWER không chạy mô phỏng; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |
 | Người tạo khuyến nghị không tự duyệt | `RegressionDecisionTest#theAuthorOfTheRecommendationCannotApproveIt` |
@@ -344,8 +346,8 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | `VEHICSIM_RUN_CONCURRENCY` | Số run song song của bộ động học (CARLA luôn 1) |
 | `VEHICSIM_WORKER_PYTHON`, `VEHICSIM_WORKER_DIR` | Python ≥ 3.10 và thư mục `worker/` cho tiến trình con |
 | `SIMULATION_TIMEOUT_S` | Trần thời gian một run (mặc định 120; CARLA nên 300) |
-| `VEHICSIM_SIMULATOR` | `kinematic` (mặc định), `carla` (runner trực tiếp cũ), `carla-xosc` (ScenarioRunner + controller AEB) |
-| `VEHICSIM_CARLA_COMMAND` | Lệnh gọi CLI CARLA, JSON list (vd. `["…/worker/.venv/bin/python","worker/run_variant.py","--map","Town05"]`) |
+| `VEHICSIM_SIMULATOR` | `kinematic` (mặc định), `carla` (runner trực tiếp cũ, đã gỡ ở ADR-042), `carla-xosc` (ScenarioRunner + controller AEB) |
+| `VEHICSIM_CARLA_COMMAND` | Lệnh gọi CLI CARLA, JSON list (vd. `["…/worker/.venv-carla/Scripts/python.exe","worker/run_xosc.py","--camera"]`) |
 | `VEHICSIM_CARLA_VERSION` | Phiên bản server CARLA mà run mới yêu cầu (mặc định `0.9.15`) |
 | `VEHICSIM_DATA_ROOT` | Thư mục `runs/<id>/` của run CARLA (mặc định `./data/vehicsim`) |
 | `VEHICSIM_WRITES_PER_WINDOW`, `VEHICSIM_MAX_ACTIVE_RUNS_PER_USER` | Hạn mức ghi và số run chờ + chạy của một người (mặc định 30 / 1500) |

@@ -1,5 +1,5 @@
-# Backend VehicSim: Spring Boot (Java 21) + worker Python (lõi mô phỏng, chỉ thư viện chuẩn).
-# Java chạy bộ mô phỏng động học như tiến trình con `python3 worker/kinematic_sim.py`, nên image cần python3.
+# Backend VehicSim: Spring Boot (Java 21). Bộ mô phỏng động học chạy trong tiến trình Java (lõi com.vehicsim.core, ADR-042);
+# worker/ chỉ là adapter CARLA, chạy trên máy có CARLA chứ không trong image này.
 
 # ---- Stage 1: Build ----
 FROM eclipse-temurin:21-jdk AS build

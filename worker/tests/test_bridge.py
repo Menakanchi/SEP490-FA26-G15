@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,16 +11,6 @@ import pytest
 
 CORE_CLASSES = bridge.ROOT / "target" / "classes" / "com" / "vehicsim" / "core" / "bridge" / "BridgeMain.class"
 needs_core = pytest.mark.skipif(not CORE_CLASSES.is_file(), reason="chưa có lõi Java đã biên dịch (target/classes): chạy mvnw compile")
-FIXTURE = bridge.ROOT / "src" / "test" / "resources" / "parity" / "xosc.json"
-
-
-@pytest.fixture
-def xosc(tmp_path: Path) -> Path:
-    """Một file .xosc do bộ xuất (đã đối chiếu từng byte với bản Python cũ) sinh ra."""
-    entries = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    path = tmp_path / "scenario.xosc"
-    path.write_text(next(e["xml"] for e in entries if e["name"] == "export 0"), encoding="utf-8")
-    return path
 
 
 @needs_core
@@ -70,12 +59,26 @@ def test_missing_java_or_classes_are_reported_clearly(monkeypatch: pytest.Monkey
         bridge.java_command()
 
 
+AEB_LOGIC_MARKERS = ("AebStack", "ttc_threshold", "decel_cmd =", "brake_pedal(", "DecelMeter", "CrossingFrame", "evaluate(")
+
+
 def test_no_aeb_logic_lives_in_the_python_worker() -> None:
-    """Luật 8 mới (ADR-042): logic AEB chỉ ở com.vehicsim.core.AebStack; worker/ chỉ còn adapter CARLA."""
-    adapter = (bridge.ROOT / "worker" / "vehicsim_aeb_control.py").read_text(encoding="utf-8")
-    for marker in ("AebStack", "ttc_threshold", "decel_cmd =", "brake_pedal(", "DecelMeter", "CrossingFrame", "evaluate("):
-        assert marker not in adapter, f"vehicsim_aeb_control.py không được chứa logic AEB: {marker}"
-    assert "import vehicsim_core" not in adapter and "from vehicsim_core" not in adapter
+    """Luật 8 (ADR-042): logic AEB, mô phỏng và chấm điểm chỉ ở ``com.vehicsim.core``; ``worker/`` chỉ còn adapter CARLA."""
+    worker = bridge.ROOT / "worker"
+    modules = sorted(worker.glob("*.py"))
+    assert (worker / "vehicsim_aeb_control.py") in modules
+    for module in modules:
+        text = module.read_text(encoding="utf-8")
+        for marker in AEB_LOGIC_MARKERS:
+            assert marker not in text, f"{module.name} không được chứa logic AEB: {marker}"
+        assert "vehicsim_core" not in text, f"{module.name} còn tham chiếu lõi Python đã xóa (vehicsim_core)"
+
+
+def test_the_python_core_is_gone() -> None:
+    worker = bridge.ROOT / "worker"
+    assert not (worker / "vehicsim_core").exists()
+    for name in ("kinematic_sim.py", "sim_common.py", "openscenario_export.py", "run_variant.py"):
+        assert not (worker / name).exists(), f"{name} đã thuộc về lõi Java và phải ở lại git history"
 
 
 def test_apply_physics_overrides_sets_scalars_com_and_wheels() -> None:

@@ -3,8 +3,8 @@
 ``trajectory.TrajectoryRecorder`` đọc **ground truth** (``get_location``/``get_velocity``):
 đúng tuyệt đối nhưng không phải thứ một AEB thật nhìn thấy. File này ghi thứ cảm biến
 **đo được**, để so với ground truth. Theo ADR-040 lõi AEB có 4 tham số chỉnh được (TTC Threshold,
-Brake Activation Delay, Max Deceleration, Brake Build-up Rate) và 6 hằng số trong ``vehicsim_core/aeb_stack.py``
-(``docs/vehicsim/aeb-parameter-ranges.md``):
+Brake Activation Delay, Max Deceleration, Brake Build-up Rate) và 6 hằng số trong lõi AEB Java
+(``com.vehicsim.core``; ``docs/vehicsim/aeb-parameter-ranges.md``):
 
 ====================  ===================================  ======================  ==========================
 Sensor CARLA          Ghi gì                               Tham số chỉnh được      Hằng số liên quan

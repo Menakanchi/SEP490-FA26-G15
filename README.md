@@ -57,12 +57,12 @@ Database MySQL dựng từ `database/mysql/01_schema.sql` ở lần đầu; DB �
 ```bash
 make check                                   # = ba cổng của CI: Java, worker, frontend
 ./mvnw clean test                            # backend (không cần Docker)
-python -m pytest worker/tests -q             # lõi mô phỏng
+python -m pytest worker/tests -q             # adapter CARLA (cần mvnw compile cho test cầu nối)
 cd frontend && npm run lint && npx tsc --noEmit && npx next build
 ```
 
 Test Java và worker không cần Docker, CARLA hay khoá LLM; test Java dùng máy chủ giả thay cho LLM thật.
-`tests/` giữ đặc tả/golden của converter Forge cũ và XSD. Bộ sinh CP_CROSSING mới được kiểm trong `worker/tests/`
+`tests/` giữ đặc tả/golden của converter Forge cũ và XSD. Bộ sinh CP_CROSSING mới được kiểm trong `XoscExportTest`
 và `OpenScenarioSchemaTest` (Java), đều chạy trong CI.
 
 ## Cấu trúc
@@ -72,7 +72,8 @@ src/main/java/com/vehicsim/
   controller/ service/ security/ config/   xác thực: đăng ký / quên mật khẩu bằng OTP, JWT
   vehicsim/                                vòng AEB: FamilyService, RunService, RegressionService, ViewsService,
                                            DescribeService (câu mô tả -> Scenario IR), LlmService (cửa duy nhất tới LLM)
-worker/                openscenario_export.py, run_xosc.py, vehicsim_aeb_control.py; run_variant.py (runner cũ), kinematic_sim.py
+  core/                                    lõi AEB, bộ động học, luật chấm, bộ xuất .xosc (chỉ dùng JDK; ADR-042)
+worker/                run_xosc.py, vehicsim_aeb_control.py, sensor_recorder.py — adapter CARLA, không chứa logic AEB
 frontend/              Next.js 16 — app/ (Tổng quan, kịch bản, AEB, phân tích, kiểm định, hồ sơ)
 database/mysql/        01_schema.sql (29 bảng) + migrations/
 docs/                  vehicsim/ (kiến trúc, từ điển dữ liệu), adr/, exec-plans/

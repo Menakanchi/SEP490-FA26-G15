@@ -285,7 +285,7 @@ xuất được về biến thể, xe, seed, phiên bản AEB và phiên bản b
    hiệu chuẩn phanh không dùng làm bằng chứng regression trong báo cáo.
    **Đã thay bởi quyết định D1 ngày 20/10:** trial MOBO được chấm bằng CARLA; bộ động học chỉ còn dùng kiểm tra
    phát triển. Xem [kế hoạch sửa theo PDF](ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md).
-8. Logic AEB tiếp tục dùng chung trong `worker/vehicsim_core/`; không viết
+8. Logic AEB tiếp tục dùng chung trong lõi Java `com.vehicsim.core` (ADR-042); không viết
    phiên bản AEB riêng cho tối ưu hay CARLA.
 9. Mọi lời gọi LLM qua `LlmService`; bộ sinh `.xosc` hoạt động offline.
 10. Các thao tác chạy, tối ưu và regression phải tuân thủ quyền và hạn mức tài nguyên.

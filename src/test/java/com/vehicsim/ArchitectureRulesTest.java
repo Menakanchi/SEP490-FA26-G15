@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
@@ -13,13 +14,17 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Bất biến kiến trúc ép bằng CI thay vì bằng luật trong tài liệu (luật cứng 1 và 8 của AGENTS.md; TD-33).
+ * Bất biến kiến trúc ép bằng CI thay vì bằng luật trong tài liệu (luật cứng 1, 2 và 8 của AGENTS.md; TD-33).
  * Quét thẳng mã nguồn nên không cần Spring, MySQL hay Redis.
  */
 class ArchitectureRulesTest {
 
     private static final Path JAVA = Path.of("src/main/java");
-    private static final Path WORKER_CORE = Path.of("worker/vehicsim_core");
+    private static final Path WORKER = Path.of("worker");
+
+    /** Dấu hiệu của logic AEB/mô phỏng/chấm điểm; chỉ {@code com.vehicsim.core} được chứa (ADR-042). Giữ khớp {@code worker/tests/test_bridge.py}. */
+    private static final List<String> AEB_LOGIC_MARKERS =
+            List.of("AebStack", "ttc_threshold", "decel_cmd =", "brake_pedal(", "DecelMeter", "CrossingFrame", "evaluate(");
 
     private static List<Path> files(Path root, String suffix) throws IOException {
         try (Stream<Path> s = Files.walk(root)) {
@@ -44,7 +49,7 @@ class ArchitectureRulesTest {
         assertThat(offenders).as("chỉ LlmService được nhắc tới provider LLM").isEmpty();
     }
 
-    /** Luật 8: lõi mô phỏng chỉ dùng thư viện chuẩn và không bao giờ import CARLA (CARLA chỉ ở {@code worker/run_variant.py}). */
+    /** Luật 2: lõi Java và backend không import CARLA; lời gọi API {@code carla} chỉ ở adapter Python trong {@code worker/}. */
     @Test
     void javaBackendNeverTouchesCarlaApi() throws IOException {
         Pattern carlaImport = Pattern.compile("^\\s*import\\s+carla\\b", Pattern.MULTILINE | Pattern.CASE_INSENSITIVE);
@@ -58,17 +63,36 @@ class ArchitectureRulesTest {
         assertThat(offenders).isEmpty();
     }
 
+    /** Luật 8: logic AEB, bộ mô phỏng và luật chấm chỉ ở {@code com.vehicsim.core}; {@code worker/} chỉ còn adapter CARLA. */
     @Test
-    void simulationCoreNeverImportsCarla() throws IOException {
-        Pattern carlaImport = Pattern.compile("^\\s*(import|from)\\s+carla\\b", Pattern.MULTILINE);
-        List<String> offenders = files(WORKER_CORE, ".py").stream().filter(p -> {
-            try {
-                return carlaImport.matcher(Files.readString(p)).find();
-            } catch (IOException e) {
-                throw new IllegalStateException(e);
+    void pythonWorkerHoldsNoAebLogic() throws IOException {
+        List<Path> modules;
+        try (Stream<Path> s = Files.list(WORKER)) { // chỉ các module ngay trong worker/: không vào tests/ hay venv .venv-carla
+            modules = s.filter(p -> p.toString().endsWith(".py")).sorted().toList();
+        }
+        assertThat(modules).as("adapter CARLA phải còn trong worker/").contains(WORKER.resolve("vehicsim_aeb_control.py"));
+        List<String> offenders = new ArrayList<>();
+        for (Path py : modules) {
+            String text = Files.readString(py);
+            for (String marker : AEB_LOGIC_MARKERS) {
+                if (text.contains(marker)) {
+                    offenders.add(py + ": " + marker);
+                }
             }
-        }).map(Path::toString).toList();
-        assertThat(offenders).as("worker/vehicsim_core không được import carla").isEmpty();
+            if (text.contains("vehicsim_core")) {
+                offenders.add(py + ": tham chiếu lõi Python đã xóa (vehicsim_core)");
+            }
+        }
+        assertThat(offenders).as("worker/*.py không được chứa logic AEB").isEmpty();
+    }
+
+    /** Lõi Python đã chuyển sang Java ở M5 và chỉ còn trong git history; không được khôi phục song song (hai bản AEB sẽ lệch nhau). */
+    @Test
+    void thePythonCoreStaysDeleted() {
+        assertThat(WORKER.resolve("vehicsim_core")).doesNotExist();
+        for (String name : List.of("kinematic_sim.py", "sim_common.py", "openscenario_export.py", "run_variant.py")) {
+            assertThat(WORKER.resolve(name)).as(name).doesNotExist();
+        }
     }
 
     /** Mật khẩu / OTP / token không được vào câu log: mọi {@code log.xxx(...)} trong mã nguồn không chứa các từ khoá đó làm tham số. */

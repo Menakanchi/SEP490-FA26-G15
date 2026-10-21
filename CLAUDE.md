@@ -7,7 +7,8 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 
 ## 1. Hiểu đúng trạng thái bàn giao
 
-- Backend hiện tại là Spring Boot Java 21; frontend Next.js; mô phỏng/AEB/chấm điểm ở Python `worker/`.
+- Backend hiện tại là Spring Boot Java 21; frontend Next.js; AEB/mô phỏng/chấm điểm ở lõi Java `com.vehicsim.core` (ADR-042);
+  Python `worker/` chỉ còn adapter CARLA (ScenarioRunner, sensor, áp bàn đạp).
   MySQL là database nghiệp vụ duy nhất; Redis phục vụ OTP và giới hạn tần suất. Không khởi động FastAPI/Celery cũ.
 - Đã có: mô tả → sinh biến thể → baseline → phân tích lỗi → candidate chỉnh tay → regression → Reviewer quyết định.
 - Đã có: xuất `.xosc` và chạy ScenarioRunner/CARLA 0.9.16 từ web, ghi kết quả và ảnh/cảm biến theo từng run.
@@ -25,7 +26,7 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 
 ## 2. Dựng máy Windows lần đầu
 
-Cài Git, Docker Desktop, **JDK 21**, **Node.js 22** (khớp CI), Python ≥ 3.10 cho bộ động học.
+Cài Git, Docker Desktop, **JDK 21**, **Node.js 22** (khớp CI), Python ≥ 3.10 cho adapter CARLA và `pytest` của worker.
 CARLA trên Windows cần thêm **Python 3.12** và CARLA server 0.9.16; venv riêng ở phần 5.
 Maven dùng wrapper trong repo, không bắt buộc cài Maven toàn cục.
 
@@ -91,7 +92,7 @@ web tại `http://localhost:3000`. Swagger chỉ có ngoài production.
 Sau khi sửa `.env` hoặc đổi Python/profile, khởi động lại đúng backend của repo; không dừng tiến trình lạ đang giữ cổng.
 
 - Bộ động học: dùng terminal mới, đặt `VEHICSIM_SIMULATOR=kinematic` trong `.env`, rồi bật app.
-  Đặt `VEHICSIM_WORKER_PYTHON` nếu lệnh `python` không trỏ Python ≥ 3.10 mong muốn.
+  Bộ động học chạy ngay trong tiến trình Java, không cần Python.
 - Backend riêng: `.\mvnw.cmd spring-boot:run`; Docker riêng: `docker compose up -d mysql redis`.
 - CARLA `.xosc`: dùng phần 5 để script đặt đúng môi trường và khởi động lại backend.
 - `Unresolved compilation problem`/`ClassFormatError`: IDE có thể đã ghi `.class` lỗi vào `target/`;
@@ -140,12 +141,13 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 
 ## 6. Hợp đồng artifact và cách hiểu kết quả
 
-- Đường web hiện tại: `openscenario_export.py` → `.xosc` → `run_xosc.py` → ScenarioRunner →
-  `vehicsim_aeb_control.py` → cùng `AebStack` và luật chấm của dự án.
+- Đường web hiện tại: bộ xuất Java (`XoscExport`) → `.xosc` → `run_xosc.py` → ScenarioRunner → `vehicsim_aeb_control.py`
+  (chỉ đọc trạng thái CARLA, áp bàn đạp) → cầu nối `vsos-bridge/1` → cùng `AebStack` và luật chấm của lõi Java.
 - Artifact hiện tại là `vehicsim.xosc/v2`, profile `carla-0.9.16-xosc2`.
   File v1 phải xuất lại từ web; không ghép baseline `-xosc1`, runner trực tiếp `carla-0.9.16` và `-xosc2`.
 - `.xosc` là đầu vào mô phỏng. JSON vẫn là hợp đồng nội bộ/result; không đổi đuôi JSON thành XML hoặc bỏ metadata seed/source.
-  `run_variant.py` nhận bundle JSON là đường cũ, không phải đường ScenarioRunner hiện tại của web.
+  Runner CARLA trực tiếp nhận bundle JSON (`run_variant.py`) đã gỡ ở ADR-042; `run_xosc.py` từ chối `.json`. Chạy lại bundle bằng
+  bộ động học: `java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic <file>` (cần `mvnw compile`).
 - File tải xuống `scenario.xosc` được giữ nguyên; wrapper tạo `scenario.runtime.xosc` để gắn đường dẫn controller local.
   Một run còn có `result.json`, `scenario_runner.log`, `follow_hero.log` và thư mục sensor.
 - Xem CSV/ảnh trong `sensors/frames.csv`, `collisions.json`, `summary.json`, `camera/*.png`
