@@ -36,7 +36,7 @@ def test_extreme_parameters_stay_inside_the_straight_road(speed: int, distance: 
 
 
 def test_xosc_matches_the_schema_checked_golden() -> None:
-    assert export_xosc(read_spec(IR)) == (Path(__file__).parent / "fixtures/cp-crossing.xosc").read_text(encoding="utf-8")
+    assert export_xosc(read_spec(IR)) == (Path(__file__).parents[2] / "src/test/resources/golden/cp-crossing.xosc").read_text(encoding="utf-8")
 
 
 def test_round_trip_preserves_seed_source_aeb_vehicle_and_escaped_labels(tmp_path: Path) -> None:
