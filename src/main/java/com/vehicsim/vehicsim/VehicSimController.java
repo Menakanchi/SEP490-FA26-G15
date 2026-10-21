@@ -301,7 +301,7 @@ public class VehicSimController {
         return views.playback(runId);
     }
 
-    /** File JSON chạy lại đúng run này ngoài web: ``worker/run_variant.py`` (CARLA) hoặc ``kinematic_sim.py``. */
+    /** File JSON chạy lại đúng run này ngoài web: ``java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic <file>`` (ADR-042). */
     @Operation(summary = "Tải bundle JSON để chạy lại run này bằng worker")
     @GetMapping("/runs/{runId}/bundle")
     public ResponseEntity<Map<String, Object>> getRunBundle(@PathVariable long runId) {

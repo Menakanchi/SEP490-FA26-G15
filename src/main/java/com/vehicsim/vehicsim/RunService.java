@@ -73,7 +73,7 @@ public class RunService {
 
     /**
      * Mã 4 tham số AEB chỉnh được theo thứ tự trường của ``AebParams`` và giá trị mặc định của lõi (khi DB thiếu mã).
-     * Sáu tham số còn lại là hằng số trong ``worker/vehicsim_core/aeb_stack.py`` — bundle không mang chúng (ADR-040).
+     * Sáu tham số còn lại là hằng số trong ``com.vehicsim.core.AebStack`` — bundle không mang chúng (ADR-040).
      */
     static final Map<String, Double> AEB_DEFAULTS = new LinkedHashMap<>();
 
@@ -858,7 +858,7 @@ public class RunService {
     // ------------------------------------------------------------------ ghi kết quả
 
     /**
-     * Nhận ``result.json`` của một run CARLA chạy ngoài backend (vd. ``run_variant.py`` trên máy có GPU) cho run chưa có
+     * Nhận ``result.json`` của một run CARLA chạy ngoài backend (vd. ``worker/run_xosc.py`` trên máy có GPU) cho run chưa có
      * kết quả. Chỉ nhận khi:
      * <ul>
      *   <li>run thuộc project và là run <b>CARLA</b> — kết quả CARLA không bao giờ ghi vào run động học (luật cứng 9);</li>

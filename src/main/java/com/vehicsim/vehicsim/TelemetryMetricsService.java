@@ -11,7 +11,7 @@ import java.util.Map;
 
 /**
  * Số đo từ dữ liệu sensor CARLA (``frames.csv`` + ``collisions.json`` của ``worker/sensor_recorder.py``) và 3 mục tiêu
- * MOBO, cùng định nghĩa ADR-040 mà bộ động học dùng (``worker/vehicsim_core/simulator.py::brake_phase_metrics``):
+ * MOBO, cùng định nghĩa ADR-040 mà bộ động học dùng (``com.vehicsim.core.Simulator#brakePhaseMetrics``):
  * <ol>
  *   <li><b>RMS jerk</b> (độ êm, m/s³): căn trung bình bình phương jerk trong <i>pha phanh</i>. NULL nếu không phanh.</li>
  *   <li><b>Vận tốc va chạm</b> (m/s): tốc độ ego lúc va chạm. NULL nếu không va chạm — khi gộp theo họ tính 0.</li>

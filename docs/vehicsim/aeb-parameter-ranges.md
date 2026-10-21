@@ -231,8 +231,8 @@ TTC = 1,5 s). Đổi biên thì sửa cùng lúc `BootstrapService.java`, `01_sc
 | 7 | Max Deceleration | 3 – 10 m/s², mặc định 8 | 3 – 10 m/s² | Khớp |
 | 8 | Brake Build-up Rate | 5 – 20 m/s³, mặc định 20 (migration 008) | 12 (quét 5 – 50) | Chặn ở 20 vì lõi giới hạn tốc độ tăng lực phanh bằng Jerk Limit cố định 20 |
 
-**6 hằng số.** Giá trị trong `worker/vehicsim_core/aeb_stack.py`. Đổi một hằng số làm kết quả động học đổi, nên phải
-đổi tên bộ mô phỏng (`KINEMATIC_SIMULATOR` trong `bundle.py`) để run cũ không bị ghép với run mới.
+**6 hằng số.** Giá trị trong `src/main/java/com/vehicsim/core/AebStack.java`. Đổi một hằng số làm kết quả động học đổi, nên phải
+đổi tên bộ mô phỏng (`KINEMATIC_SIMULATOR` trong `Bundle.java`) để run cũ không bị ghép với run mới.
 
 | # | Tham số | Hằng số | Nghiên cứu | Nhận xét |
 |---|---|---|---|---|
@@ -259,9 +259,9 @@ ngoài) lên xe ego và ghi `frames.csv` mỗi tick:
 
 Hằng số 1 là thứ duy nhất cần thành phần ngoài CARLA: CARLA không có sensor "phát hiện vật thể kèm confidence". Phải
 chạy một mô hình nhận diện trên ảnh camera (chạy local trên GPU, không phải API ngoài), hoặc mô phỏng confidence như bộ
-động học đang làm (`worker/vehicsim_core/aeb_stack.py`).
+động học đang làm (`AebStack.java`).
 
 Ba mục tiêu MOBO tính từ `frames.csv` + `collisions.json` ở `TelemetryMetricsService.java`
 (`POST /api/v1/vehicsim/telemetry/evaluate`), cùng định nghĩa ADR-040 mà bộ động học dùng
-(`worker/vehicsim_core/simulator.py::brake_phase_metrics`). Riêng với CARLA, khung từ lúc va chạm trở đi bị loại vì IMU
+(`Simulator#brakePhaseMetrics`). Riêng với CARLA, khung từ lúc va chạm trở đi bị loại vì IMU
 đo xung lực đâm xe chứ không phải phanh.

@@ -3,8 +3,8 @@
     worker/.venv-carla/Scripts/python worker/run_xosc.py scenario.xosc --out data/run
     worker/.venv-carla/Scripts/python worker/run_xosc.py --status
 
-CARLA server bật riêng; SR_ROOT mặc định ~/scenario_runner. JSON cũ vẫn chuyển cho run_variant.py,
-để các run của profile CARLA trực tiếp không bị âm thầm đổi bộ thực thi.
+CARLA server bật riêng; SR_ROOT mặc định ~/scenario_runner. Chỉ nhận .xosc do web xuất; logic AEB, chấm điểm và đọc
+file nằm ở lõi Java (ADR-042), file này chỉ điều phối ScenarioRunner và dọn server CARLA.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -20,12 +21,45 @@ from xml.etree import ElementTree as ET
 
 import bridge
 import sensor_recorder
-import sim_common
 
 WORKER = Path(__file__).resolve().parent
 STOP_FLAG = "stop.requested"  # backend ghi vào thư mục run để xin dừng (Windows không có tín hiệu mềm cho tiến trình con)
 POLL_S = 0.5
 _ACTOR_PREFIXES = ("vehicle.", "walker.", "sensor.", "controller.")
+
+# Chạy xong thì thoát 0 kể cả khi AEB FAIL (đó là kết quả kiểm thử, không phải lỗi). Khác 0 nghĩa là không có kết quả để đọc.
+EXIT_BAD_INPUT = 2
+EXIT_SIMULATOR_ERROR = 3
+EXIT_STOPPED = 4  # bị yêu cầu dừng (hủy hoặc hết thời gian) — đã dọn dẹp xong mới thoát
+
+LEGACY_JSON_MESSAGE = (
+    "run_xosc.py chỉ chạy file .xosc: runner CARLA trực tiếp (bundle .json) đã gỡ ở ADR-042. Xuất lại .xosc từ web; "
+    "chạy lại bundle bằng bộ động học: java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic <file>"
+)
+
+
+def install_stop_handlers() -> None:
+    """SIGTERM (Linux) / CTRL_BREAK (Windows) -> ``SystemExit`` để các khối ``finally`` kịp chạy.
+
+    Backend dừng worker quá hạn bằng các tín hiệu này trước khi giết cứng. Nếu bị giết cứng giữa chừng, CARLA giữ lại
+    xe/người đi bộ/cảm biến và kẹt ở chế độ đồng bộ — đã tái hiện trên 0.9.16 ngày 01/10/2026.
+    """
+
+    def _stop(signum, _frame) -> None:
+        raise SystemExit(EXIT_STOPPED)
+
+    for name in ("SIGTERM", "SIGBREAK"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), _stop)
+
+
+def _console_safe() -> None:
+    # Console Windows (cp1252) không in được "·", "²", chữ Việt -> thay ký tự thay vì chết.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
 
 class RunStoppedError(Exception):
@@ -187,7 +221,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    sim_common._console_safe()
+    _console_safe()
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("xosc", type=Path, nargs="?")
     parser.add_argument("--out", type=Path)
@@ -199,29 +233,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fast", action="store_true", help="tương thích hợp đồng worker; ScenarioRunner dùng sync tick")
     parser.add_argument("--status", action="store_true")
     args = parser.parse_args(argv)
-    sim_common.install_stop_handlers()
+    install_stop_handlers()
     if args.status:
         print(json.dumps(probe(args.host, args.port, args.sr_root), ensure_ascii=False))
         return 0
     if args.xosc is None:
         parser.error("cần file .xosc hoặc --status")
     if args.xosc.suffix.lower() == ".json":
-        import run_variant
-
-        legacy = [str(args.xosc), "--host", args.host, "--port", str(args.port)]
-        if args.out:
-            legacy += ["--out", str(args.out)]
-        if args.fast:
-            legacy.append("--fast")
-        return run_variant.main(legacy)
+        print(LEGACY_JSON_MESSAGE, file=sys.stderr)
+        return EXIT_BAD_INPUT
     try:
         return run(args)
     except RunStoppedError as exc:
         print(str(exc), file=sys.stderr)
-        return sim_common.EXIT_STOPPED
+        return EXIT_STOPPED
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
         print(str(exc), file=sys.stderr)
-        return sim_common.EXIT_SIMULATOR_ERROR
+        return EXIT_SIMULATOR_ERROR
 
 
 if __name__ == "__main__":

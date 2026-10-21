@@ -2,7 +2,7 @@
 
 /**
  * Dữ liệu CARLA chạy ngoài backend:
- *  1. Nộp `result.json` của `worker/run_variant.py` cho một run CARLA đang chờ / lỗi (`POST /runs/{id}/carla-result`).
+ *  1. Nộp `result.json` của `worker/run_xosc.py` cho một run CARLA đang chờ / lỗi (`POST /runs/{id}/carla-result`).
  *  2. Đánh giá `frames.csv` + `collisions.json` của `worker/sensor_recorder.py` (`POST /telemetry/evaluate`, ADR-040).
  * Backend kiểm mọi luật (đúng simulator, run chưa có kết quả, regression chưa chốt); trang chỉ đọc file và hiện kết quả.
  */
