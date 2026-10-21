@@ -1,5 +1,5 @@
 /**
- * API Client — Kết nối FastAPI Backend
+ * API Client — Kết nối backend Spring Boot (Java)
  *
  * Base URL đọc từ env `NEXT_PUBLIC_API_URL`, mặc định `http://localhost:8001/api/v1` (cổng backend Java).
  */

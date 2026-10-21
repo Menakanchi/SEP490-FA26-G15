@@ -1,11 +1,11 @@
 # ADR-042 — Lõi AEB, mô phỏng và chấm điểm chuyển sang Java; Python chỉ còn lớp CARLA mỏng
 
-**Trạng thái:** Proposed 21/10/2026 (TrungDQ, nhánh `trungdam`; kế hoạch và bằng chứng ở
+**Trạng thái:** Accepted 21/10/2026 (chủ dự án duyệt; đề xuất bởi TrungDQ, nhánh `trungdam`; kế hoạch và bằng chứng ở
 [exec plan 21/10](../exec-plans/active/2026-10-21-port-loi-aeb-sang-java.md))
 **Phạm vi:** thay phần "mô phỏng + chấm điểm ở lại worker Python" của [ADR-039](ADR-039-backend-java-mo-phong-o-worker-python.md).
 Các phần còn lại của ADR-039 giữ nguyên (Java lo REST/nghiệp vụ/lưu trữ, thread pool thay Celery, mật khẩu/JWT).
 Không đổi schema, hợp đồng JSON `result.json` (ADR-027), 5 role (ADR-035), luật regression (ADR-025) hay phạm vi tham số (ADR-040).
-ADR-039 chỉ đổi trạng thái sang *Superseded* khi ADR này được duyệt.
+Vì ADR này đã được duyệt, phần "mô phỏng + chấm điểm ở lại worker Python" của ADR-039 bị thay thế từ 21/10/2026 (ADR-039 đánh dấu một phần, không phải toàn bộ).
 
 ## Bối cảnh
 

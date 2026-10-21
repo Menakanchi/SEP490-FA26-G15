@@ -242,7 +242,7 @@ function NewRegressionForm() {
             }
           />
           <SummaryRow label="Lượt chạy cơ sở dùng lại" value={preview ? String(Math.min(scenarios, preview.baseline_runs_existing)) : "—"} />
-          <SummaryRow label="Bộ mô phỏng" value="Động học 1.0 · Celery" />
+          <SummaryRow label="Bộ mô phỏng" value="Động học 1.0" />
           <div className="flex flex-col gap-2 pt-1">
             <span className="text-[13px] font-medium text-vehicsim-muted">Theo họ kịch bản</span>
             <div className="flex items-center justify-between text-[13px] font-medium text-vehicsim-ink">
