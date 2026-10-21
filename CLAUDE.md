@@ -16,6 +16,9 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 - Phạm vi, điểm nối và nghiệm thu của từng phần nằm trong
   [phân chia 5 thành viên](docs/vehicsim/phan-chia-cong-viec-5-thanh-vien.md).
   Tên người, deadline và tiến độ theo GitHub Issues/Project; không ghi tiến độ cá nhân vào file này.
+- [Kế hoạch sửa theo PDF ngày 20/10](docs/vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md) chốt 5 quyết định
+  (D1–D5: trial MOBO chấm bằng CARLA, gia tốc có hướng, 100 Hz + lọc 10 Hz, Engineer chọn/Reviewer duyệt, giữ ca an toàn).
+  Chỗ nào khác bản phân chia thì theo kế hoạch này; đây là việc cần làm, không phải tính năng đã có.
 - Phần tối ưu và regression cần chốt chung cấu hình tiêu chí: ADR-040 mô tả phanh oan tăng ≤ 5 điểm %,
   `RegressionService` hiện mặc định 0,5 điểm % và bắt buộc không va chạm mới (TD-48).
   Không tự đổi ngưỡng khi nhận bàn giao; candidate thuộc Pareto vẫn cần kiểm thử xác minh.
@@ -39,7 +42,8 @@ Pop-Location
   Khi chưa dùng LLM/SMTP, bỏ giá trị mẫu ở các khóa đó và để trống. Không có khóa LLM thì bước mô tả dùng bộ luật dự phòng.
 - Chạy backend trực tiếp dùng MySQL/Redis tại `localhost`; backend trong Docker dùng hostname service `mysql`/`redis`.
   Khi đổi `MYSQL_USER`/`MYSQL_PASSWORD`, cập nhật cả `SPRING_DATASOURCE_USERNAME`/`SPRING_DATASOURCE_PASSWORD` tương ứng.
-- Nếu chạy frontend thủ công, tạo `frontend/.env.local` với nội dung mẫu dưới đây. Repo hiện chưa có file mẫu frontend riêng:
+- Frontend mặc định gọi `http://localhost:8001` (`frontend/src/services/api.ts`). Chỉ khi backend ở địa chỉ khác mới
+  cần tạo `frontend/.env.local` (repo chưa có file mẫu frontend riêng), ví dụ:
 
 ```dotenv
 NEXT_PUBLIC_API_URL=http://localhost:8001

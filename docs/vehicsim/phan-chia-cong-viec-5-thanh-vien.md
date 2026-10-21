@@ -283,6 +283,8 @@ xuất được về biến thể, xe, seed, phiên bản AEB và phiên bản b
 7. Tối ưu hàng loạt bằng bộ động học hiện có; CARLA dùng kiểm tra bổ sung và
    quan sát. Kết quả hai bộ mô phỏng được lưu và so sánh riêng. Số đo CARLA chưa
    hiệu chuẩn phanh không dùng làm bằng chứng regression trong báo cáo.
+   **Đã thay bởi quyết định D1 ngày 20/10:** trial MOBO được chấm bằng CARLA; bộ động học chỉ còn dùng kiểm tra
+   phát triển. Xem [kế hoạch sửa theo PDF](ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md).
 8. Logic AEB tiếp tục dùng chung trong `worker/vehicsim_core/`; không viết
    phiên bản AEB riêng cho tối ưu hay CARLA.
 9. Mọi lời gọi LLM qua `LlmService`; bộ sinh `.xosc` hoạt động offline.

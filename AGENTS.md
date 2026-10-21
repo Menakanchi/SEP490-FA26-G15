@@ -51,6 +51,7 @@ Phối hợp khi sửa `VehicSimController`, `Queries`, `ViewsService`, schema, 
 | Quyết định đã chốt và quy trình ADR | [ADR index](docs/adr/README.md); [ADR-039](docs/adr/ADR-039-backend-java-mo-phong-o-worker-python.md), [ADR-040](docs/adr/ADR-040-rut-scope-4-tham-so-aeb-7-category.md) |
 | CARLA local và hợp đồng `.xosc` | [carla-local.md](docs/vehicsim/carla-local.md); [bằng chứng sửa hướng đi](docs/exec-plans/completed/2026-10-19-sua-huong-nguoi-di-bo-carla.md) |
 | Bắt đầu tối ưu | [Ý tưởng FE-13](docs/vehicsim/fe13-y-tuong-tu-forge.md) — đối chiếu ADR-040; tên module/Celery/10 tham số trong lịch sử đã cũ |
+| Kế hoạch sửa theo PDF (20/10): MOBO đánh giá bằng CARLA, 100 Hz, hợp đồng chỉ số | [kế hoạch 20/10](docs/vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md) — mới hơn bản phân chia ở điểm khác nhau; chưa phải tính năng đã có |
 | Việc còn thiếu | [tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) |
 | Việc đã làm và bằng chứng | [completed plans](docs/exec-plans/completed/), [kế hoạch đang làm](docs/exec-plans/active/) |
 

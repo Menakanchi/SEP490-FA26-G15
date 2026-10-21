@@ -1,13 +1,13 @@
 /**
  * API Client — Kết nối FastAPI Backend
  *
- * Base URL đọc từ env `NEXT_PUBLIC_API_URL`, mặc định `http://localhost:8000/api/v1`.
+ * Base URL đọc từ env `NEXT_PUBLIC_API_URL`, mặc định `http://localhost:8001/api/v1` (cổng backend Java).
  */
 
 import type { ApiUser, SessionResponse } from "@/types/auth";
 
 const getBaseUrl = (): string => {
-  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
   const trimmed = rawBaseUrl.replace(/\/+$/, "");
   return trimmed.endsWith("/api/v1") ? trimmed : `${trimmed}/api/v1`;
 };
