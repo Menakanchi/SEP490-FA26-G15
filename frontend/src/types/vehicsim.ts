@@ -472,3 +472,56 @@ export interface TelemetrySummary {
   first_collision_time_s: number | null;
   impact_peak_accel_ms2: number | null;
 }
+
+// ---------------------------------------------------------------------------
+// Tối ưu hoá AEB đa mục tiêu (MOBO) - FE-13 / ADR-040
+// ---------------------------------------------------------------------------
+
+export type OptimizationStatus = "PENDING" | "RUNNING" | "COMPLETED" | "CANCELLED" | "FAILED";
+
+export interface OptimizationRun {
+  id: number;
+  project_id: number;
+  scenario_id: number;
+  name: string;
+  algorithm: string;
+  status: OptimizationStatus;
+  max_trials: number;
+  completed_trials: number;
+  pareto_count: number;
+  started_at: string | null;
+  finished_at: string | null;
+  error_message: string | null;
+  search_space?: Record<string, [number, number]>;
+  objective_config?: Record<string, unknown>;
+}
+
+export interface OptimizationTrial {
+  id: number;
+  trial_number: number;
+  candidate_aeb_version_id: number;
+  sampling_source: string;
+  acquisition_value: number | null;
+  rms_jerk_mps3: number | null;
+  impact_speed_mps: number | null;
+  stopping_distance_m: number | null;
+  collision_rate_pct: number | null;
+  constraint_violated: boolean;
+  is_pareto_optimal: boolean;
+  status: string;
+  parameters: Record<string, number>;
+}
+
+export interface OptimizationSelectionResult {
+  optimization_run_id: number;
+  trial_id: number;
+  candidate_aeb_version_id: number;
+  parameters: Record<string, number>;
+  objectives: {
+    rms_jerk_mps3: number;
+    impact_speed_mps: number;
+    stopping_distance_m: number;
+  };
+  regression_test_id: number;
+  status: string;
+}

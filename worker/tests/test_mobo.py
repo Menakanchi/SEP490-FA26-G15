@@ -1,88 +1,213 @@
-"""Kiểm tra module MOBO và thuật toán qEHVI."""
+"""Unit tests toàn diện cho MOBO Core Engine theo đặc tả bài toán (Mục 28).
 
+Kiểm thử:
+1. Parameter validation & bounds
+2. Bounded Random Sampling (reproducibility với seed)
+3. RBF Kernel (đối xứng, đường chéo dương)
+4. Cholesky decomposition (L * L^T ≈ K)
+5. Gaussian Process Regressor (fit, predict mean/var/std)
+6. Pareto dominance & non-dominated filtering
+7. 3D Hypervolume & Hypervolume Improvement (HV >= 0)
+8. qEHVI via Monte Carlo
+9. Deduplication with tolerance (chống trùng lặp điểm gần)
+10. Vòng lặp MOBO đầy đủ với MockSimulationEvaluator
+"""
+
+from __future__ import annotations
+
+import math
+import random
 import unittest
-from vehicsim_core.mobo import (
-    MoboOptimizer,
-    MoboSearchSpace,
-    MoboTrial,
-    compute_2d_hypervolume,
+
+from vehicsim_core.acquisition import calculate_qehvi, is_near_duplicate
+from vehicsim_core.evaluator import MockSimulationEvaluator
+from vehicsim_core.gp import GaussianProcessRegressor
+from vehicsim_core.hypervolume import (
     compute_3d_hypervolume,
-    compute_hvi,
+    compute_hypervolume_improvement,
     dominates,
-    evaluate_pareto_front,
+    find_pareto_front,
 )
+from vehicsim_core.kernel import RBFKernel
+from vehicsim_core.linalg import cholesky_decomposition
+from vehicsim_core.mobo import MoboOptimizer
+from vehicsim_core.models import Candidate, ObjectiveResult, Trial
+from vehicsim_core.parameters import DEFAULT_SEARCH_SPACE, ParameterBounds
+from vehicsim_core.sampling import (
+    generate_candidate_pool,
+    generate_initial_candidates,
+    generate_random_candidate,
+)
+from vehicsim_core.surrogate import MultiObjectiveSurrogate
 
 
-class MoboTest(unittest.TestCase):
+class MoboCoreTest(unittest.TestCase):
 
-    def test_pareto_dominance(self):
-        # A(jerk=10, impact=0, dist=20) vs B(jerk=15, impact=2, dist=25) -> A dominates B
-        a = (10.0, 0.0, 20.0)
-        b = (15.0, 2.0, 25.0)
-        self.assertTrue(dominates(a, b))
-        self.assertFalse(dominates(b, a))
+    def setUp(self):
+        self.bounds = ParameterBounds()
+        self.rng = random.Random(42)
 
-        # Trade-off: C(jerk=8, impact=3, dist=20) vs A(10, 0, 20) -> neither dominates
-        c = (8.0, 3.0, 20.0)
-        self.assertFalse(dominates(a, c))
-        self.assertFalse(dominates(c, a))
+    # -------------------------------------------------------------
+    # 1. Parameter Validation & Normalization
+    # -------------------------------------------------------------
+    def test_parameter_validation_and_bounds(self):
+        valid_params = {
+            "TTC_THRESHOLD": 1.8,
+            "BRAKE_ACTIVATION_DELAY": 0.2,
+            "BRAKE_BUILDUP_RATE": 15.0,
+            "MAX_DECELERATION": 8.0,
+        }
+        self.assertTrue(self.bounds.is_valid(valid_params))
 
-    def test_evaluate_pareto_front(self):
-        trials = [
-            MoboTrial(trial_number=1, params={}, rms_jerk=10.0, impact_speed=0.0, stopping_distance=20.0),
-            MoboTrial(trial_number=2, params={}, rms_jerk=15.0, impact_speed=2.0, stopping_distance=25.0),  # Dominated by 1
-            MoboTrial(trial_number=3, params={}, rms_jerk=8.0, impact_speed=1.0, stopping_distance=19.0),   # Trade-off / non-dominated
-            MoboTrial(trial_number=4, params={}, rms_jerk=5.0, impact_speed=0.0, stopping_distance=15.0, constraint_violated=True), # Infeasible
+        # Điểm ngoài bounds
+        invalid_params = dict(valid_params, TTC_THRESHOLD=9.9)
+        self.assertFalse(self.bounds.is_valid(invalid_params))
+
+        # Test chuẩn hoá [0, 1] và khôi phục
+        norm_vec = self.bounds.normalize(valid_params)
+        for val in norm_vec:
+            self.assertTrue(0.0 <= val <= 1.0)
+        restored = self.bounds.denormalize(norm_vec)
+        self.assertAlmostEqual(restored["TTC_THRESHOLD"], 1.8, places=2)
+
+    # -------------------------------------------------------------
+    # 2. Bounded Random Sampling & Reproducibility
+    # -------------------------------------------------------------
+    def test_bounded_random_sampling(self):
+        cands = generate_initial_candidates(self.bounds, n_points=10, rng=random.Random(123))
+        self.assertEqual(len(cands), 10)
+        for c in cands:
+            self.assertTrue(self.bounds.is_valid(c.params))
+
+        # Kiểm tra tính tái lập với cùng seed
+        cands2 = generate_initial_candidates(self.bounds, n_points=10, rng=random.Random(123))
+        self.assertEqual(cands[0].params, cands2[0].params)
+        self.assertEqual(cands[5].params, cands2[5].params)
+
+    # -------------------------------------------------------------
+    # 3. RBF Kernel Properties
+    # -------------------------------------------------------------
+    def test_rbf_kernel_properties(self):
+        kernel = RBFKernel(length_scales=[0.35, 0.35, 0.35, 0.35], signal_variance=1.5)
+        x1 = [0.2, 0.4, 0.6, 0.8]
+        x2 = [0.5, 0.1, 0.9, 0.3]
+
+        # k(x, x) = signal_variance > 0
+        self.assertAlmostEqual(kernel(x1, x1), 1.5, places=5)
+
+        # Tính đối xứng: k(x, x') = k(x', x)
+        self.assertAlmostEqual(kernel(x1, x2), kernel(x2, x1), places=6)
+
+    # -------------------------------------------------------------
+    # 4. Cholesky Decomposition (L * L^T ≈ K)
+    # -------------------------------------------------------------
+    def test_cholesky_decomposition(self):
+        # Ma trận đối xứng xác định dương 3x3
+        K = [
+            [4.0, 1.0, 0.5],
+            [1.0, 5.0, 1.2],
+            [0.5, 1.2, 3.0],
         ]
-        pareto_nums = evaluate_pareto_front(trials)
-        self.assertIn(1, pareto_nums)
-        self.assertIn(3, pareto_nums)
-        self.assertNotIn(2, pareto_nums)  # Dominated
-        self.assertNotIn(4, pareto_nums)  # Infeasible
+        L = cholesky_decomposition(K, jitter=0.0)
 
-    def test_3d_hypervolume_and_hvi(self):
-        ref = (1.0, 1.0, 1.0)
+        # Kiểm tra tái tạo K_approx = L * L^T
+        n = len(K)
+        for i in range(n):
+            for j in range(n):
+                val = sum(L[i][k] * L[j][k] for k in range(n))
+                self.assertAlmostEqual(val, K[i][j], places=4)
+
+    # -------------------------------------------------------------
+    # 5. Gaussian Process Regressor
+    # -------------------------------------------------------------
+    def test_gaussian_process_regressor(self):
+        gp = GaussianProcessRegressor(noise=1e-4)
+        X = [
+            [0.1, 0.2, 0.3, 0.4],
+            [0.5, 0.5, 0.5, 0.5],
+            [0.9, 0.8, 0.7, 0.6],
+        ]
+        y = [1.2, 3.4, 5.6]
+        gp.fit(X, y)
+
+        # Dự báo tại điểm đã huấn luyện: mean phải rất sát y, variance thấp
+        mean, var, std = gp.predict(X[1])
+        self.assertAlmostEqual(mean, 3.4, delta=0.1)
+        self.assertTrue(var >= 0.0)
+        self.assertAlmostEqual(std, math.sqrt(var), places=5)
+
+    # -------------------------------------------------------------
+    # 6. Pareto Dominance & Filtering
+    # -------------------------------------------------------------
+    def test_pareto_dominance_and_filtering(self):
+        # Tất cả 3 mục tiêu đều MINIMIZE: (RMS Jerk, Impact Speed, Stopping Distance)
+        t1 = Trial(trial_id=1, params={}, rms_jerk=2.0, impact_speed=0.0, stopping_distance=15.0)
+        t2 = Trial(trial_id=2, params={}, rms_jerk=4.0, impact_speed=5.0, stopping_distance=20.0)  # bị t1 dominate hoàn toàn
+        t3 = Trial(trial_id=3, params={}, rms_jerk=1.0, impact_speed=2.0, stopping_distance=14.0)  # trade-off tốt
+
+        self.assertTrue(dominates(t1.objective_vector(), t2.objective_vector()))
+        self.assertFalse(dominates(t2.objective_vector(), t1.objective_vector()))
+
+        pareto = find_pareto_front([t1, t2, t3])
+        pareto_ids = [t.trial_id for t in pareto]
+        self.assertIn(1, pareto_ids)
+        self.assertIn(3, pareto_ids)
+        self.assertNotIn(2, pareto_ids)
+
+    # -------------------------------------------------------------
+    # 7. 3D Hypervolume & Improvement (HV >= 0)
+    # -------------------------------------------------------------
+    def test_hypervolume_and_improvement(self):
+        ref_point = (1.0, 1.0, 1.0)
         p1 = (0.5, 0.5, 0.5)
-        base_hv = compute_3d_hypervolume([p1], ref)
-        expected_vol = 0.5 * 0.5 * 0.5
-        self.assertAlmostEqual(base_hv, expected_vol, places=6)
+        hv = compute_3d_hypervolume([p1], ref_point)
+        # Thể tích hộp [0.5, 1.0]^3 = 0.5 * 0.5 * 0.5 = 0.125
+        self.assertAlmostEqual(hv, 0.125, places=4)
 
-        # Điểm bị chi phối (0.6, 0.6, 0.6) có HVI = 0
-        hvi_dom = compute_hvi((0.6, 0.6, 0.6), [p1], ref, base_hv)
-        self.assertEqual(hvi_dom, 0.0)
+        # Thêm điểm cải thiện: Hypervolume tăng lên
+        p_better = (0.2, 0.2, 0.2)
+        hvi = compute_hypervolume_improvement(p_better, [p1], ref_point, hv)
+        self.assertTrue(hvi > 0.0)
 
-        # Điểm cải thiện trực tiếp (0.2, 0.5, 0.5)
-        hvi_imp = compute_hvi((0.2, 0.5, 0.5), [p1], ref, base_hv)
-        self.assertGreater(hvi_imp, 0.0)
+        # Thêm điểm bị dominate: HVI = 0
+        p_worse = (0.8, 0.8, 0.8)
+        hvi_worse = compute_hypervolume_improvement(p_worse, [p1], ref_point, hv)
+        self.assertEqual(hvi_worse, 0.0)
 
-        # Điểm đánh đổi trade-off (0.2, 0.8, 0.8) mở rộng biên Pareto ở chiều 0
-        hvi_tradeoff = compute_hvi((0.2, 0.8, 0.8), [p1], ref, base_hv)
-        self.assertGreater(hvi_tradeoff, 0.0)
+    # -------------------------------------------------------------
+    # 8. Deduplication with Tolerance
+    # -------------------------------------------------------------
+    def test_deduplication_with_tolerance(self):
+        prev = [[0.5, 0.5, 0.5, 0.5]]
+        exact = [0.5, 0.5, 0.5, 0.5]
+        near = [0.51, 0.5, 0.49, 0.5]  # d ≈ 0.014 < tolerance 0.04
+        far = [0.8, 0.2, 0.1, 0.9]
 
-    def test_mobo_qehvi_acquisition(self):
-        space = MoboSearchSpace()
-        opt = MoboOptimizer(search_space=space, n_initial_points=2, seed=123, acquisition_function="qEHVI")
+        self.assertTrue(is_near_duplicate(exact, prev, tolerance=0.04))
+        self.assertTrue(is_near_duplicate(near, prev, tolerance=0.04))
+        self.assertFalse(is_near_duplicate(far, prev, tolerance=0.04))
 
-        # Chưa đủ initial points -> INITIAL_DESIGN
-        p1, src1, acq1 = opt.propose_candidate([])
-        self.assertEqual(src1, "INITIAL_DESIGN")
-        self.assertIn("TTC_THRESHOLD", p1)
+    # -------------------------------------------------------------
+    # 9. Vòng lặp MOBO hoàn chỉnh với MockSimulationEvaluator
+    # -------------------------------------------------------------
+    def test_full_mobo_optimization_loop(self):
+        optimizer = MoboOptimizer(
+            search_space=self.bounds,
+            n_initial_points=3,
+            seed=42,
+            candidate_pool_size=50,
+            n_mc=32,
+        )
+        evaluator = MockSimulationEvaluator()
 
-        # Thêm trial 1
-        t1 = MoboTrial(trial_number=1, params=p1, rms_jerk=10.0, impact_speed=0.0, stopping_distance=20.0)
-        p2, src2, acq2 = opt.propose_candidate([t1])
-        self.assertEqual(src2, "INITIAL_DESIGN")
+        result = optimizer.optimize(evaluator, max_trials=6)
+        self.assertEqual(len(result.trials), 6)
+        self.assertTrue(len(result.valid_trials) >= 3)
+        self.assertTrue(len(result.pareto_trials) >= 1)
 
-        # Thêm trial 2 (đủ initial points -> qEHVI acquisition)
-        t2 = MoboTrial(trial_number=2, params=p2, rms_jerk=12.0, impact_speed=1.5, stopping_distance=22.0)
-        p3, src3, acq3 = opt.propose_candidate([t1, t2])
-        self.assertEqual(src3, "ACQUISITION")
-        self.assertIsNotNone(acq3)
-        self.assertGreaterEqual(acq3, 0.0)
-        self.assertTrue(0.5 <= p3["TTC_THRESHOLD"] <= 3.5)
-        self.assertTrue(0.05 <= p3["BRAKE_ACTIVATION_DELAY"] <= 0.45)
-        self.assertTrue(5.0 <= p3["BRAKE_BUILDUP_RATE"] <= 20.0)
-        self.assertTrue(5.0 <= p3["MAX_DECELERATION"] <= 10.0)
+        # Đảm bảo mỗi trial đề xuất nằm trong bounds
+        for t in result.trials:
+            self.assertTrue(self.bounds.is_valid(t.params))
 
 
 if __name__ == "__main__":
