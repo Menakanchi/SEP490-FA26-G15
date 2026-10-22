@@ -44,6 +44,8 @@ import org.springframework.stereotype.Service;
 
 
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 
 
@@ -604,7 +606,7 @@ public class OptimizationService {
 
 
 
-            executor.execute(() -> executeOptimization(runId));
+            startAfterCommit(runId);
 
 
 
@@ -1338,6 +1340,20 @@ public class OptimizationService {
         result.put("acquisition_value", proposal.acquisitionValue());
         result.put("pareto_trial_numbers", proposal.paretoTrialNumbers());
         return result;
+    }
+
+    /** Chỉ giao việc cho executor sau khi transaction tạo run đã commit; nếu không luồng nền có thể không thấy dòng vừa insert và bỏ qua run. */
+    private void startAfterCommit(long runId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    executor.execute(() -> executeOptimization(runId));
+                }
+            });
+        } else {
+            executor.execute(() -> executeOptimization(runId));
+        }
     }
 
     private double round(double val, int decimals) {
