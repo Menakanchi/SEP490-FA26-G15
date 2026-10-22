@@ -91,7 +91,7 @@ API: `GET /runs/{id}/xosc`, `POST /scenarios/xosc`, `POST /runs/{id}/carla`, `GE
   [exec plan 22/10](../exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md).
 - Thí nghiệm 4 xe (sedan, SUV, van, truck; PDF §10.1): `worker\.venv-carla\Scripts\python.exe worker\vehicle_study.py --out data\vehicle-study`
   → `vehicle_study.json` và `vehicle_study.md`. Mỗi xe đọc physics thực dùng, phanh hết lực ở ma sát lốp mặc định và giảm, rồi kiểm tăng khối lượng /
-  giảm mô-men phanh thì quãng dừng phải tăng. Dựng trên `measure_brake.py`, cùng điều kiện chạy (tự tick, server rảnh), không ghi DB. Chưa chạy trên CARLA thật.
+  giảm mô-men phanh thì quãng dừng phải tăng. Dựng trên `measure_brake.py`, cùng điều kiện chạy (tự tick, server rảnh), không ghi DB. Đã chạy trên CARLA thật 22/10, kết quả ở exec plan 22/10 mục 6.
 
 ### Hủy, timeout và dọn world
 

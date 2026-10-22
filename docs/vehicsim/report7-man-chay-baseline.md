@@ -394,7 +394,7 @@ Chi tiết cột và ý nghĩa: [database-schema.md](database-schema.md). Cách 
 
 ## 4. Test case
 
-Quy ước: **Tự động** là test có trong repo (`mvnw -B clean test` 236 test, `pytest worker/tests` 38 test, cả hai không cần CARLA).
+Quy ước: **Tự động** là test có trong repo (`mvnw -B clean test` 236 test, `pytest worker/tests` 52 test, cả hai không cần server CARLA).
 **Thủ công** cần máy có CARLA 0.9.16; cột cuối chỉ ghi bằng chứng đã có trong repo, ô "điền khi nghiệm thu" nghĩa là chưa có biên bản.
 
 ### 4.1. Test tự động
@@ -467,6 +467,6 @@ Các mục này nằm ngoài những gì tài liệu trên mô tả là "đã c�
 | Hiệu chuẩn phanh | Đo e-tron 4,67 m/s²; chưa ghi `carla_full_brake_decel_mps2` vào DB | Người quản lý dữ liệu xe |
 | AEB tắt | Chưa code; cắt bàn đạp thôi chưa đủ vì quãng dừng, thời điểm phanh, jerk tính theo quyết định của AEB | Thành viên 3, 5 định nghĩa chỉ số |
 | Ca dừng ở lề (TD-47) | `PedestrianControl` đi tiếp sau waypoint cuối; chưa dùng làm bằng chứng phanh oan | Người 1 |
-| Phạm vi xe | Chỉ `audi.etron` được đo và kiểm `physics_check`; DB có một xe. Công cụ `worker/vehicle_study.py` cho 4 xe đã có và có test, **chưa chạy trên CARLA** ([exec plan 22/10](../exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md) mục 6) | Người 2 chạy trên máy CARLA |
+| Phạm vi xe | DB có một xe (`audi.etron`), chỉ xe này kiểm `physics_check` trong run thật. `worker/vehicle_study.py` đã đo phanh trên CARLA thật cho 4 xe + e-tron: đo được, lặp lại được, đổi ma sát/khối lượng/mô-men đều đúng chiều ([exec plan 22/10](../exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md) mục 6). Chưa thêm xe nào vào DB | Nhóm chọn xe; người quản lý dữ liệu xe |
 | Loại kịch bản | Chỉ `CP_CROSSING` (TD-42) | Nhóm |
 | Hủy cho regression | Run của regression chỉ dừng theo cả test | Người 5 |

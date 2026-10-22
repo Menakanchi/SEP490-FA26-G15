@@ -14,7 +14,7 @@ dữ liệu ở `data/` (ngoài git).
 | 3. Chạy lặp, dung sai | Có công cụ; n=5 trên ca dừng, ca va chạm, ca an toàn; **đề xuất dung sai** chờ thành viên 3, 5 chốt | mục 3 |
 | 4. Đọc lại physics | Xong: `physics_applied` (21/10) + `physics_check` so yêu cầu ↔ thực áp (22/10) | mục 4 |
 | 5. AEB tắt | **Chưa code** — đề xuất, chờ định nghĩa chỉ số (mục 5) | — |
-| 6. Thí nghiệm 4 xe (PDF §10.1) | Công cụ `worker/vehicle_study.py` xong, 14 test; **chưa chạy trên CARLA** | mục 6 |
+| 6. Thí nghiệm 4 xe (PDF §10.1) | Xong: `worker/vehicle_study.py`, 14 test; chạy CARLA thật 22/10 trên 4 xe + e-tron, cả ba phép đổi physics đúng chiều | mục 6 |
 | TD-34 tắt backend giữa run | Xong: ghi cờ dừng trước, chờ `STOP_GRACE_S` rồi mới giết; xoá TD-34 | `CarlaWebTest.shuttingDownMidRunAsksTheWorkerToCleanUpBeforeKillingIt` |
 | Report 7 (use case, sơ đồ, test case) | Bản nháp xong; các ô "điền khi nghiệm thu" cần chạy tay | [report7-man-chay-baseline.md](../../vehicsim/report7-man-chay-baseline.md) |
 
@@ -122,7 +122,7 @@ Lý do chưa code (22/10): cắt bàn đạp thôi chưa đủ. `Simulator.build
 bàn đạp; `result.json` ghi `aeb_mode`; regression/tối ưu từ chối run `OFF` làm baseline; đổi identity profile. Cần thành viên 3, 5 chốt: baseline đo "AEB hiện tại",
 "AEB tắt" hay cả hai; có cần cột DB (quy trình schema đầy đủ) hay chỉ trong `.xosc`/`result.json`.
 
-## 6. Thí nghiệm 4 xe (PDF §10.1) — công cụ sẵn sàng, chưa chạy
+## 6. Thí nghiệm 4 xe (PDF §10.1) — đã chạy trên CARLA thật 22/10
 
 PDF phương pháp §10.1 (bước 2–6) cần số đo thật trên 4 loại xe trước khi nói xe nào dùng được. Mới đo `audi.etron`; DB seed đúng một xe.
 `worker/vehicle_study.py` làm bước đó bằng một lệnh, dựng trên `measure_brake.measure_once` (đã kiểm trên CARLA thật ở mục 2):
@@ -138,18 +138,40 @@ phân biệt được với dao động), `WRONG_DIRECTION`. Ghi `vehicle_study.
 
 Điều công cụ **không** làm: ghi DB hay đổi `carla_vehicle_models`; bước 5 của PDF (radar so với ground truth — đã có ở chế độ chạy bóng, mục 1); bước 7
 (`FollowLeadingVehicle` với AEB tắt/mặc định — loại kịch bản chưa có, TD-42; AEB tắt — mục 5). Ngưỡng lặp lại được 3% và các tỷ lệ đổi physics là đề xuất, nhóm chốt sau.
-Dự báo cần kiểm: TD-17 ghi đổi ma sát lốp/mô-men phanh không có tác dụng ở 0.9.16 (e-tron), nên rất có thể hai nhóm đó ra `NO_EFFECT` — đó là kết quả cần đưa vào báo cáo,
-không phải lỗi công cụ. Một xe lỗi (blueprint không có, CARLA từ chối) được ghi lại, không chặn các xe còn lại; mã thoát 3 nếu có xe không đo được.
+Dự báo trước khi chạy: TD-17 ghi đổi ma sát lốp/mô-men phanh không có tác dụng ở 0.9.16 (e-tron), nên có thể hai nhóm đó ra `NO_EFFECT` (kết quả thật ở dưới: dự báo sai). Một xe lỗi (blueprint không có, CARLA từ chối) được ghi lại, không chặn các xe còn lại; mã thoát 3 nếu có xe không đo được.
 
 Kiểm thử: `worker/tests/test_vehicle_study.py` (14 test) dùng xe giả và module `carla` giả, kèm thử đột biến (đảo chiều, bỏ lọc dải ngắn, số thiếu thành 0, bỏ phát hiện
-không lặp lại, ép sai bánh) để chắc test bắt được lỗi. **Chưa chạy trên CARLA**: các lệnh CARLA mới nhất là lời gọi `measure_once` đã kiểm và phần ép physics theo
-danh sách bánh (`apply_physics_overrides` có test với danh sách bánh; chưa có bằng chứng đã chạy dạng này trên server thật).
+không lặp lại, ép sai bánh) để chắc test bắt được lỗi.
 
-Bảng kết quả cần điền sau khi chạy (số liệu thật từ `vehicle_study.md`; không điền từ suy đoán):
+### Kết quả trên CARLA thật (22/10)
+
+CARLA 0.9.16 Windows, Town04 road 40 / lane -4, đồng bộ 0,01 s; phanh 100% từ 50 km/h, không AEB; 3 lần mỗi nhóm (mặc định của công cụ). Lệnh trên cho 4 xe
+(`data\vehicle-study`), thêm `--blueprints vehicle.audi.etron` cho xe hiện có trong DB (`data\vehicle-study-etron`). Mã thoát 0, mọi lần đo đều dừng hẳn.
+Physics trong `physics_applied` đọc lại đúng giá trị đã ép (khối lượng ×1,3; ma sát lốp 3,5 → 1,75; mô-men phanh mỗi bánh ×0,5).
 
 | Xe | Số bánh | Khối lượng (kg) | Giảm tốc đạt được (m/s²) | Quãng dừng (m) | Lặp lại được? | Kết luận |
 |---|---|---|---|---|---|---|
-| Sedan | … | … | … | … | … | … |
-| SUV | … | … | … | … | … | … |
-| Van | … | … | … | … | … | … |
-| Truck | … | … | … | … | … | … |
+| Sedan (`tesla.model3`) | 4 | 1845 | 3,56 | 23,66 | Có (dải 0,00) | Đo được; ba phép đổi physics đúng chiều |
+| SUV (`nissan.patrol_2021`) | 4 | 2355 | 6,01 | 13,97 | Có (dải 0,00) | Đo được; ba phép đổi physics đúng chiều |
+| Van (`mercedes.sprinter`) | 4 | 3000 | 5,69 | 14,55 | Có (dải 0,00) | Đo được; ba phép đổi physics đúng chiều |
+| Truck (`carlamotors.european_hgv`) | 6 | 7000 | 1,77 | 44,83 | Có (dải 0,00) | Đo được; ba phép đổi physics đúng chiều |
+| e-tron (`audi.etron`, xe trong DB) | 4 | 2370 | 4,08 | 20,05 | Có (dải 0,00) | Đo được; ba phép đổi physics đúng chiều |
+
+Quãng dừng (m) khi đổi physics:
+
+| Xe | Gốc | Ma sát lốp ×0,5 | Khối lượng ×1,3 | Mô-men phanh ×0,5 |
+|---|---|---|---|---|
+| Sedan | 23,66 | 25,78 | 31,50 | 61,95 |
+| SUV | 13,97 | 17,05 | 17,99 | 33,12 |
+| Van | 14,55 | 17,33 | 18,68 | 34,70 |
+| Truck | 44,83 | 46,31 | 62,65 | 114,42 |
+| e-tron | 20,05 | 22,20 | 26,57 | 48,58 |
+
+Nhận xét:
+- **Dự báo ở trên sai:** đổi ma sát lốp và mô-men phanh **có** tác dụng trên cả 5 xe, kể cả e-tron. Kết luận "không có tác dụng" của TD-17 (đo 01/10) không còn đúng
+  với cách ép theo từng bánh hiện tại; đã ghi vào TD-17. Chưa kiểm lại vì sao lần đo 01/10 cho kết quả khác.
+- Ba lần đo mỗi nhóm trùng nhau tuyệt đối (dải 0,00): ở chế độ đồng bộ, phép phanh không có nguồn ngẫu nhiên. Tiêu chí "lặp lại được" vì vậy chưa nói gì về dao động
+  khi chạy qua ScenarioRunner (mục 3 đo dao động đó).
+- Giảm tốc khác nhau nhiều giữa các xe (1,77–6,01 m/s²) và đều thấp hơn mức xe thật phanh hết lực (~8–9 m/s²): số CARLA vẫn chỉ để quan sát/đối chiếu (TD-17).
+  e-tron 4,08 m/s² ở khối lượng mặc định 2370 kg, khớp chiều với 4,67 m/s² đo ở mục 2 khi ép 2100 kg.
+- Truck có dải đo giảm tốc dài nhất (3,7 s), SUV/Van ngắn nhất (~1,0 s, vẫn trên ngưỡng 0,5 s).
