@@ -16,6 +16,9 @@ import type {
   FailureList,
   FamilyItem,
   FamilyRequest,
+  OptimizationRun,
+  OptimizationSelectionResult,
+  OptimizationTrial,
   Playback,
   RecommendationDetail,
   RecommendationItem,
@@ -113,5 +116,22 @@ export const vehicsimApi = {
       body: JSON.stringify(body),
     }),
 
-  /** Trợ lý dự án — chỉ đọc; trả lời từ dữ liệu project + tài liệu repo, kèm nguồn. */
+  // Tối ưu hoá AEB đa mục tiêu (MOBO) - FE-13
+  optimizationRuns: () => apiRequest<OptimizationRun[]>("/vehicsim/optimizations"),
+  optimizationRun: (id: number) => apiRequest<OptimizationRun>(`/vehicsim/optimizations/${id}`),
+  optimizationTrials: (id: number) => apiRequest<OptimizationTrial[]>(`/vehicsim/optimizations/${id}/trials`),
+  optimizationPareto: (id: number) => apiRequest<OptimizationTrial[]>(`/vehicsim/optimizations/${id}/pareto`),
+  createOptimization: (body: {
+    scenario_id: number;
+    base_aeb_version_id?: number;
+    max_trials?: number;
+    n_initial_points?: number;
+    name?: string;
+    search_space?: Record<string, [number, number]>;
+    objective_config?: Record<string, unknown>;
+  }) => apiRequest<{ id: number; status: string }>("/vehicsim/optimizations", { method: "POST", body: JSON.stringify(body) }),
+  cancelOptimization: (id: number) =>
+    apiRequest<{ id: number; status: string }>(`/vehicsim/optimizations/${id}/cancel`, { method: "POST" }),
+  selectOptimizationCandidate: (runId: number, trialId: number) =>
+    apiRequest<OptimizationSelectionResult>(`/vehicsim/optimizations/${runId}/select/${trialId}`, { method: "POST" }),
 };
