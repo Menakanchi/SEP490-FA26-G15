@@ -52,6 +52,7 @@ public class VehicSimController {
             "root_cause", "impact_kmh", "min_ttc_s", "config", "created_at");
 
     private final ViewsService views;
+    private final AnalysisService analysis;
     private final FamilyService families;
     private final RunService runs;
     private final AebService aeb;
@@ -237,6 +238,68 @@ public class VehicSimController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "page phải ≥ 1 và page_size trong khoảng 1–100");
         }
         return views.failureList(scenarioId, failureClass, outcome, weather, aebVersionId, days, page, pageSize);
+    }
+
+    @Operation(summary = "Snapshot baseline của một họ kịch bản để bàn giao từ phân tích")
+    @GetMapping("/analysis/dataset")
+    public Map<String, Object> analysisDataset(@RequestParam(name = "scenario_id") long scenarioId) {
+        return views.analysisDataset(scenarioId);
+    }
+
+    @GetMapping("/analysis/runs")
+    public Map<String,Object> analysisRuns(
+            @RequestParam(name="scenario_id",required=false) Long scenarioId,
+            @RequestParam(name="variant_id",required=false) Long variantId,
+            @RequestParam(name="aeb_version_id",required=false) Long baselineId,
+            @RequestParam(name="vehicle_id",required=false) Long vehicleId,
+            @RequestParam(required=false) String simulator, @RequestParam(required=false) String weather,
+            @RequestParam(name="time_of_day",required=false) String timeOfDay,
+            @RequestParam(required=false) String status,
+            @RequestParam(name="failure_class",required=false) String failureClass,
+            @RequestParam(defaultValue="1") int page,
+            @RequestParam(name="page_size",defaultValue="30") int pageSize) {
+        if (page < 1 || pageSize < 1 || pageSize > 100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid analysis pagination");
+        return analysis.dashboard(new AnalysisService.Filters(scenarioId,variantId,baselineId,vehicleId,
+                simulator,weather,timeOfDay,status,failureClass),page,pageSize);
+    }
+
+    @GetMapping("/analysis/runs/{runId}")
+    public Map<String,Object> analysisInspection(@PathVariable long runId) { return analysis.inspection(runId); }
+
+    public record AnalysisSelectionBody(
+            @JsonProperty("scenario_id") @Positive long scenarioId,
+            @JsonProperty("baseline_id") @Positive long baselineId,
+            @JsonProperty("optimization_run_ids") @NotNull @Size(min=1,max=500) List<Long> optimization,
+            @JsonProperty("validation_run_ids") @NotNull @Size(min=1,max=500) List<Long> validation,
+            @JsonProperty("run_revisions") @NotNull @Size(max=1000) Map<String,String> revisions) {}
+
+    @PostMapping("/analysis/selections")
+    public Map<String,Object> saveAnalysisSelection(@AuthenticationPrincipal UserDetails user,
+                                                    @Valid @RequestBody AnalysisSelectionBody body) {
+        long uid = requireEngineer(user); limitWrites(uid,"analysis_dataset");
+        return analysis.freeze(new AnalysisService.Selection(body.scenarioId(),body.baselineId(),body.optimization(),body.validation(),body.revisions()),uid);
+    }
+
+    @GetMapping("/analysis/datasets/{datasetId}/handoff")
+    public Map<String,Object> analysisHandoff(@PathVariable long datasetId) { return analysis.handoff(datasetId); }
+
+    public record FreezeDatasetBody(
+            @JsonProperty("scenario_id") @NotNull @Positive Long scenarioId,
+            @JsonProperty("preview_token") @NotBlank @Size(min = 64, max = 64) String previewToken) {}
+
+    @Operation(summary = "Lưu bất biến tập baseline đã xem, gồm cả ca an toàn và dữ liệu chưa chạy")
+    @PostMapping("/analysis/datasets")
+    public Map<String, Object> freezeDataset(@AuthenticationPrincipal UserDetails user,
+                                             @Valid @RequestBody FreezeDatasetBody body) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "analysis_dataset");
+        return views.freezeAnalysisDataset(body.scenarioId(), body.previewToken(), uid);
+    }
+
+    @Operation(summary = "Đọc tập baseline đã lưu theo ID")
+    @GetMapping("/analysis/datasets/{datasetId}")
+    public Map<String, Object> savedDataset(@PathVariable long datasetId) {
+        return views.savedAnalysisDataset(datasetId);
     }
 
     @Operation(summary = "Xuất ca lỗi ra CSV")

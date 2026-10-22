@@ -3,6 +3,12 @@ package com.vehicsim.vehicsim;
 import com.vehicsim.service.RegressionService;
 import com.vehicsim.vehicsim.Vs.NotFoundException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -211,6 +217,11 @@ public class ViewsService {
             scopeArgs.add(Vs.now().minusDays(days));
         }
 
+        if (scenarioId != null) { scope.append(" AND r.scenario_id = ?"); scopeArgs.add(scenarioId); }
+        if (failureClass != null) { scope.append(" AND pc.category = ?"); scopeArgs.add(failureClass); }
+        if (outcome != null) { scope.append(" AND ").append(OUTCOME_SQL).append(" = ?"); scopeArgs.add(outcome); }
+        if (weather != null) { scope.append(" AND ").append(WEATHER_SQL).append(" = ?"); scopeArgs.add(weather); }
+
         Map<String, Object> byClass = new LinkedHashMap<>();
         STAGE_ORDER.forEach(stage -> byClass.put(stage, 0));
         long total = 0;
@@ -333,6 +344,8 @@ public class ViewsService {
         Row vehicle = b.vehicle();
         return Json.obj(
                 "run_id", run.lng("id"),
+                "evaluation_valid", com.vehicsim.core.AnalysisMetrics.valid(AnalysisService.sample(run))
+                        && com.vehicsim.core.AnalysisMetrics.evidenceComplete(List.of(AnalysisService.sample(run))),
                 "purpose", run.str("purpose"),
                 "status", run.str("status"),
                 "seed", run.getLong("random_seed"),
@@ -351,6 +364,167 @@ public class ViewsService {
                 "failure_type", b.failure() == null ? null : b.failure().str("failure_type"),
                 "failure_class", primary == null ? null : primary.get("stage"),
                 "headline", raw.get("headline") == null ? "" : raw.get("headline"));
+    }
+
+    /** Kết quả phân loại của run, giữ riêng trường hợp dữ liệu không đủ để kết luận. */
+    private static String analysisOutcome(Row run) {
+        if (run.boolOrNull("is_false_positive") == null || run.boolOrNull("collision_occurred") == null) return "UNCLASSIFIED";
+        if (run.bool("is_false_positive")) return "FALSE_BRAKING";
+        if (run.bool("collision_occurred")) return "COLLISION";
+        return Vs.classifyOutcome(false, run.dbl("min_ttc_s"), run.dbl("min_distance_m"));
+    }
+
+    private static String analysisClassificationStatus(Row run) {
+        return run.str("verdict") == null || run.boolOrNull("collision_occurred") == null
+                || run.boolOrNull("is_false_positive") == null || run.boolOrNull("is_false_negative") == null
+                ? "INCOMPLETE" : "CLASSIFIED";
+    }
+
+    /**
+     * Baseline snapshot cho màn phân tích: một dòng mỗi biến thể trong họ, kể cả biến thể an toàn chưa có run.
+     * Chỉ chọn run baseline đã hoàn tất cùng AEB baseline, xe và bộ mô phỏng của baseline tham chiếu.
+     */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Map<String, Object> analysisDataset(long scenarioId) {
+        Row project = queries.currentProject();
+        long projectId = project.lng("id");
+        Row scenario = db.first("SELECT * FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, projectId);
+        if (scenario == null) {
+            throw new NotFoundException("scenario");
+        }
+        Row baseline = queries.baselineVersion(projectId);
+        if (baseline == null) {
+            throw new NotFoundException("AEB baseline");
+        }
+        Row reference = db.first(
+                "SELECT carla_vehicle_model_id, simulator_version, COUNT(*) AS completed_runs "
+                        + "FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND aeb_version_id = ? "
+                        + "AND purpose = 'BASELINE' AND status = 'COMPLETED' "
+                        + "AND scenario_version_id IN (SELECT id FROM scenario_versions WHERE scenario_id = simulation_runs.scenario_id AND source = 'GENERATED') "
+                        + "GROUP BY carla_vehicle_model_id, simulator_version ORDER BY completed_runs DESC, carla_vehicle_model_id, simulator_version LIMIT 1",
+                projectId, scenarioId, baseline.lng("id"));
+
+        List<Map<String, Object>> variants = new ArrayList<>();
+        if (reference != null) {
+            long vehicleId = reference.lng("carla_vehicle_model_id");
+            String simulator = reference.str("simulator_version");
+            for (Row variant : db.list("SELECT id, version_no, source, scenario_ir_json FROM scenario_versions "
+                    + "WHERE scenario_id = ? AND source = 'GENERATED' ORDER BY version_no", scenarioId)) {
+                Row run = db.first("SELECT id, random_seed, simulator_type, simulator_version, carla_vehicle_model_id, "
+                                + "status, verdict, end_reason, collision_occurred, is_false_positive, is_false_negative, "
+                                + "rms_jerk_mps3, impact_speed_mps, stopping_distance_m, min_distance_m, min_ttc_s, "
+                                + "max_deceleration_mps2, mean_deceleration_mps2, aeb_activation_time_s "
+                                + "FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND scenario_version_id = ? "
+                                + "AND aeb_version_id = ? AND purpose = 'BASELINE' AND status = 'COMPLETED' "
+                                + "AND carla_vehicle_model_id = ? AND simulator_version = ? "
+                                + "ORDER BY id DESC LIMIT 1",
+                        projectId, scenarioId, variant.lng("id"), baseline.lng("id"), vehicleId, simulator);
+                Map<String, Object> ir = variant.json("scenario_ir_json");
+                Map<String, Object> metrics = run == null ? null : Json.obj(
+                        "verdict", run.str("verdict"), "end_reason", run.str("end_reason"),
+                        "collision_occurred", run.boolOrNull("collision_occurred"),
+                        "false_activation", run.boolOrNull("is_false_positive"), "missed_activation", run.boolOrNull("is_false_negative"),
+                        "outcome", analysisOutcome(run),
+                        "classification_status", analysisClassificationStatus(run),
+
+                        "rms_jerk_mps3", run.dbl("rms_jerk_mps3"), "impact_speed_mps", run.dbl("impact_speed_mps"),
+                        "stopping_distance_m", run.dbl("stopping_distance_m"), "min_distance_m", run.dbl("min_distance_m"),
+                        "min_ttc_s", run.dbl("min_ttc_s"), "max_deceleration_mps2", run.dbl("max_deceleration_mps2"),
+                        "mean_deceleration_mps2", run.dbl("mean_deceleration_mps2"), "aeb_activation_time_s", run.dbl("aeb_activation_time_s"));
+                variants.add(Json.obj(
+                        "scenario_version_id", variant.lng("id"), "version_no", variant.lng("version_no"),
+                        "source", variant.str("source"), "summary", Vs.variantSummary(ir),
+                        "ego_speed_kmh", ir.get("ego_speed_kmh"), "trigger_distance_m", ir.get("trigger_distance_m"),
+                        "pedestrian_speed_mps", ir.get("pedestrian_speed_mps"), "stops_at_curb", ir.get("stops_at_curb"),
+                        "weather", ir.get("weather"), "time_of_day", ir.get("time_of_day"),
+                        "status", run == null ? "NOT_RUN" : "COMPLETED",
+                        "run_id", run == null ? null : run.lng("id"), "seed", run == null ? null : run.getLong("random_seed"),
+                        "metrics", metrics));
+            }
+        } else {
+            for (Row variant : db.list("SELECT id, version_no, source, scenario_ir_json FROM scenario_versions WHERE scenario_id = ? AND source = 'GENERATED' ORDER BY version_no", scenarioId)) {
+                Map<String, Object> ir = variant.json("scenario_ir_json");
+                variants.add(Json.obj(
+                        "scenario_version_id", variant.lng("id"), "version_no", variant.lng("version_no"),
+                        "source", variant.str("source"), "summary", Vs.variantSummary(ir),
+                        "ego_speed_kmh", ir.get("ego_speed_kmh"), "trigger_distance_m", ir.get("trigger_distance_m"),
+                        "pedestrian_speed_mps", ir.get("pedestrian_speed_mps"), "stops_at_curb", ir.get("stops_at_curb"),
+                        "weather", ir.get("weather"), "time_of_day", ir.get("time_of_day"),
+                        "status", "NOT_RUN", "run_id", null, "seed", null, "metrics", null));
+            }
+        }
+        long completed = variants.stream().filter(v -> "COMPLETED".equals(v.get("status"))).count();
+        long classified = variants.stream().filter(v -> {
+            Object metrics = v.get("metrics");
+            return metrics instanceof Map<?, ?> m && "CLASSIFIED".equals(m.get("classification_status"));
+        }).count();
+        long failed = variants.stream().filter(v -> {
+            Object metrics = v.get("metrics");
+            return metrics instanceof Map<?, ?> m && "CLASSIFIED".equals(m.get("classification_status"))
+                    && ("COLLISION".equals(m.get("outcome")) || "NEAR_MISS".equals(m.get("outcome")) || "FALSE_BRAKING".equals(m.get("outcome"))
+                    || Boolean.TRUE.equals(m.get("missed_activation")) || "FAIL".equals(m.get("verdict")));
+        }).count();
+        long unclassified = completed - classified;
+        Map<String, Object> snapshot = Json.obj(
+                "schema", "vehicsim.analysis-dataset/v1",
+                "metric_policy", "AS_STORED",
+                "scenario", Json.obj("id", scenarioId, "code", scenario.str("code"), "name", scenario.str("name"), "category", scenario.str("category")),
+                "baseline", Json.obj("id", baseline.lng("id"), "label", Vs.versionLabel(baseline)),
+                "reference", reference == null ? null : Json.obj(
+                        "vehicle_id", reference.lng("carla_vehicle_model_id"), "simulator", reference.str("simulator_version")),
+                "counts", Json.obj("total", variants.size(), "completed", completed, "not_run", variants.size() - completed,
+                        "classified", classified, "unclassified", unclassified, "failures", failed, "safe", classified - failed),
+                "variants", variants);
+        snapshot.put("preview_token", datasetToken(snapshot));
+        return snapshot;
+    }
+
+    private static String datasetToken(Map<String, Object> snapshot) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(Json.write(snapshot).getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Freeze exactly the preview the user reviewed; never replace an existing snapshot. */
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    public Map<String, Object> freezeAnalysisDataset(long scenarioId, String previewToken, long userId) {
+        Map<String, Object> snapshot = analysisDataset(scenarioId);
+        if (!java.util.Objects.equals(previewToken, snapshot.get("preview_token"))) {
+            throw new Vs.InvalidRequestException("Baseline data changed; refresh the analysis dataset before saving");
+        }
+        long projectId = queries.currentProject().lng("id");
+        long baselineId = ((Number) Json.asMap(snapshot.get("baseline")).get("id")).longValue();
+        long id = db.insert("INSERT INTO analysis_results "
+                        + "(project_id, analysis_type, method, scenario_id, aeb_version_id, title, config_json, summary_json, status, created_by_user_id) "
+                        + "VALUES (?, 'BASELINE_DATASET', 'IMMUTABLE_SNAPSHOT', ?, ?, ?, ?, ?, 'COMPLETED', ?)",
+                projectId, scenarioId, baselineId, "Baseline analysis dataset",
+                Json.obj("schema", "vehicsim.analysis-dataset/v1", "preview_token", previewToken,
+                        "metric_policy", "AS_STORED", "selection", "ALL_FAMILY_VARIANTS"),
+                snapshot, userId);
+        Map<String, Object> out = new LinkedHashMap<>(snapshot);
+        out.put("id", id);
+        out.put("baseline_current", true);
+        return out;
+    }
+
+    /** Load stored run IDs/seeds/metrics, never rebuild them from the current baseline. */
+    @Transactional(readOnly = true)
+    public Map<String, Object> savedAnalysisDataset(long datasetId) {
+        long projectId = queries.currentProject().lng("id");
+        Row saved = db.first("SELECT id, aeb_version_id, summary_json, created_date FROM analysis_results "
+                + "WHERE id = ? AND project_id = ? AND analysis_type = 'BASELINE_DATASET' AND status = 'COMPLETED'",
+                datasetId, projectId);
+        if (saved == null) throw new NotFoundException("analysis dataset");
+        Map<String, Object> out = new LinkedHashMap<>(saved.json("summary_json"));
+        Row current = queries.baselineVersion(projectId);
+        out.put("id", saved.lng("id"));
+        out.put("baseline_current", current != null
+                && java.util.Objects.equals(current.getLong("id"), saved.getLong("aeb_version_id")));
+        out.put("created_at", Vs.iso(saved.ts("created_date")));
+        return out;
     }
 
     public Map<String, Object> failureDetail(long runId) {
@@ -373,8 +547,10 @@ public class ViewsService {
         List<Map<String, Object>> telemetry = new ArrayList<>();
         for (Object o : frames) {
             Map<String, Object> f = Json.asMap(o);
-            telemetry.add(Json.obj("t", f.get("t"), "ttc", f.get("ttc") != null ? f.get("ttc") : f.get("ttc_gt"),
-                    "speed_kmh", Vs.round(((Number) f.get("ego_v")).doubleValue() * 3.6, 2)));
+            if (!(f.get("t") instanceof Number time) || !Double.isFinite(time.doubleValue())) continue;
+            Double velocity = Json.asDouble(f.get("ego_v"));
+            telemetry.add(Json.obj("t", f.get("t"), "ttc", f.get("ttc"),
+                    "speed_kmh", velocity == null || !Double.isFinite(velocity) ? null : Vs.round(velocity * 3.6, 2)));
         }
         Double impact = run.dbl("impact_speed_mps");
         List<Map<String, Object>> configuration = new ArrayList<>();
@@ -394,11 +570,27 @@ public class ViewsService {
                 "fcw_t", run.dbl("fcw_time_s"),
                 "brake_onset_t", m.get("brake_onset_t"),
                 "max_deceleration_mps2", run.dbl("max_deceleration_mps2"),
+                "mean_deceleration_mps2", run.dbl("mean_deceleration_mps2"),
+                "rms_jerk_mps3", run.dbl("rms_jerk_mps3"),
+                "impact_speed_mps", impact,
                 "stopping_distance_m", run.dbl("stopping_distance_m"),
+                "metric_source", "SIMULATOR_RESULT",
                 "false_activation", run.bool("is_false_positive"),
                 "missed_activation", run.bool("is_false_negative")));
         out.put("chain", chain);
         out.put("chain_confidence", rootConfidence);
+        out.put("stage_evidence", List.of(
+                Json.obj("stage","PERCEPTION","values",Json.obj("first_detection_t",run.dbl("first_detection_time_s"),
+                        "first_detection_distance_m",run.dbl("first_detection_distance_m"))),
+                Json.obj("stage","DECISION","values",Json.obj("decision_t",run.dbl("aeb_activation_time_s"),
+                        "decision_ttc_s",m.get("aeb_decision_ttc_s"))),
+                Json.obj("stage","CONTROL","values",Json.obj("brake_onset_t",m.get("brake_onset_t"),
+                        "response_time_s",run.dbl("braking_response_time_s"))),
+                Json.obj("stage","VEHICLE_DYNAMICS","values",Json.obj("max_deceleration_mps2",run.dbl("max_deceleration_mps2"),
+                        "road_friction",caseDoc.get("road_friction")))));
+        out.put("evidence_policy","RULE_BASED_HYPOTHESIS_NOT_CAUSAL_PROOF");
+        out.put("evaluation_version",com.vehicsim.core.AnalysisMetrics.VERSION);
+
         out.put("configuration", configuration);
         Object weather = ir.get("weather");
         Object tod = ir.get("time_of_day");
@@ -411,11 +603,17 @@ public class ViewsService {
                 "time_of_day", Vs.TIME_LABELS.getOrDefault(tod == null ? "" : tod.toString(), tod == null ? null : tod.toString()),
                 "road_friction", caseDoc.get("road_friction")));
         out.put("ttc_threshold_s", params.get("TTC_THRESHOLD"));
+        out.put("motion_telemetry", com.vehicsim.core.RecordedTelemetry.project(frames, Json.asDouble(raw.get("crossing_x"))));
         out.put("telemetry", telemetry);
         out.put("events", raw.get("events") == null ? List.of() : raw.get("events"));
         out.put("scene", scene(raw, b.vehicle()));
         out.put("similar", similar);
         return out;
+    }
+
+    /** Display only: preserve unknown values and distinguish GT from perceived TTC. */
+    static List<Map<String, Object>> motionTelemetry(List<Object> frames) {
+        return com.vehicsim.core.RecordedTelemetry.project(frames, null);
     }
 
     private Map<String, Object> scene(Map<String, Object> raw, Row vehicle) {
@@ -511,7 +709,12 @@ public class ViewsService {
         Double simulated = b.run().dbl("simulated_duration_s");
         Map<String, Object> out = new LinkedHashMap<>(header(b));
         out.put("related_runs", related);
-        out.put("duration_s", simulated == null ? 0.0 : simulated);
+        out.put("motion_telemetry", com.vehicsim.core.RecordedTelemetry.project(Json.asList(raw.get("frames")), Json.asDouble(raw.get("crossing_x"))));
+        out.put("source","RECORDED_SIMULATOR_RESULT");
+
+        List<Object> recorded = Json.asList(raw.get("frames"));
+        Double lastTime = recorded.isEmpty() ? null : Json.asDouble(Json.asMap(recorded.get(recorded.size()-1)).get("t"));
+        out.put("duration_s", lastTime != null ? lastTime : simulated == null ? 0.0 : simulated);
         out.put("frames", raw.get("frames") == null ? List.of() : raw.get("frames"));
         out.put("events", raw.get("events") == null ? List.of() : raw.get("events"));
         out.put("crossing_x", raw.get("crossing_x"));

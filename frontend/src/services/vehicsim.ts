@@ -6,6 +6,7 @@
 import { apiBlob, apiDownload, apiRequest } from "@/services/api";
 import type {
   AebVersion,
+  AnalysisDataset,
   CarlaStatus,
   CarlaRun,
   CarlaData,
@@ -41,6 +42,12 @@ function query(params: object): string {
 }
 
 export const vehicsimApi = {
+  analysisRuns: (filters: import("@/types/vehicsim").AnalysisFilters, page = 1) =>
+    apiRequest<import("@/types/vehicsim").AnalysisDashboardData>(`/vehicsim/analysis/runs${query({...filters,page,page_size:30})}`),
+  analysisInspection: (id: number) => apiRequest<{run: import("@/types/vehicsim").AnalysisRun; detail: FailureDetail | null}>(`/vehicsim/analysis/runs/${id}`),
+  createAnalysisSelection: (body: {scenario_id: number; baseline_id: number; optimization_run_ids: number[]; validation_run_ids: number[]; run_revisions: Record<string,string>}) =>
+    apiRequest<import("@/types/vehicsim").AnalysisSelection>("/vehicsim/analysis/selections",{method:"POST",body:JSON.stringify(body)}),
+  analysisHandoff: (id: number) => apiRequest<import("@/types/vehicsim").AnalysisSelection>(`/vehicsim/analysis/datasets/${id}/handoff`),
   context: () => apiRequest<VehicSimContextData>("/vehicsim/context"),
 
   describe: (text: string) =>
@@ -67,6 +74,14 @@ export const vehicsimApi = {
 
   failures: (filters: FailureFilters, page = 1, pageSize = 20) =>
     apiRequest<FailureList>(`/vehicsim/failures${query({ ...filters, page, page_size: pageSize })}`),
+  analysisDataset: (scenarioId: number) =>
+    apiRequest<AnalysisDataset>(`/vehicsim/analysis/dataset${query({ scenario_id: scenarioId })}`),
+  freezeAnalysisDataset: (scenarioId: number, previewToken: string) =>
+    apiRequest<AnalysisDataset>("/vehicsim/analysis/datasets", {
+      method: "POST", body: JSON.stringify({ scenario_id: scenarioId, preview_token: previewToken }),
+    }),
+  savedAnalysisDataset: (datasetId: number) =>
+    apiRequest<AnalysisDataset>(`/vehicsim/analysis/datasets/${datasetId}`),
   exportFailures: (filters: FailureFilters) => apiDownload(`/vehicsim/failures.csv${query(filters)}`, "failure_cases.csv"),
   run: (runId: number) => apiRequest<FailureDetail>(`/vehicsim/runs/${runId}`),
   playback: (runId: number) => apiRequest<Playback>(`/vehicsim/runs/${runId}/playback`),

@@ -64,6 +64,19 @@ type Rule = [RegExp, (m: RegExpMatchArray) => string];
 const re = (pattern: string) => new RegExp(`^${pattern}$`);
 
 const RULES: Rule[] = [
+  [re("Analysis selection repeats a variant and seed"), () => "Chỉ chọn một run cho mỗi cặp biến thể và seed để tránh đếm lặp."],
+  [re("Analysis preview changed; reload source runs"), () => "Dữ liệu đã thay đổi. Hãy tải lại và kiểm tra các run trước khi chốt."],
+  [re("Invalid analysis selection"), () => "Lựa chọn tập dữ liệu không hợp lệ."],
+  [re("Analysis sets overlap(?: by variant)?"), () => "Tập tối ưu và xác minh không được trùng biến thể."],
+  [re("Analysis baseline changed"), () => "Baseline đã thay đổi. Hãy chốt tập mới."],
+  [re("Each analysis set must retain safe cases"), () => "Mỗi tập phải giữ ít nhất một ca an toàn."],
+  [re("Analysis selection mixes vehicle or simulator identities"), () => "Các run phải cùng xe, simulator và bước thời gian."],
+  [re("Analysis optimization objectives are incomplete"), () => "Tập tối ưu chưa đủ số đo hợp lệ cho ba objective."],
+  [re("Analysis selection contains invalid runs or missing telemetry"), () => "Tập chứa run không hợp lệ hoặc thiếu telemetry."],
+  [re("Analysis selection belongs to another baseline or scenario"), () => "Các run phải cùng họ và baseline đã chọn."],
+  [re("Legacy analysis dataset requires a new selection"), () => "Dataset cũ chưa chia tập. Hãy chốt tập tối ưu và xác minh mới."],
+  [re("Analysis source runs (?:changed or telemetry is missing|are unavailable)"), () => "Run nguồn đã thay đổi hoặc thiếu artifact. Không thể bàn giao tập này."],
+  [re("Baseline data changed; refresh the analysis dataset before saving"), () => "Dữ liệu baseline đã thay đổi. Hãy xem lại tập phân tích trước khi lưu."],
   // --- evaluation.py: tiêu đề -------------------------------------------------------
   [re(String.raw`AEB braked for a pedestrian who stopped at the curb\.`), () => "AEB phanh dù người đi bộ đã dừng ở lề đường."],
   [re(String.raw`AEB handled the crossing safely\.`), () => "AEB xử lý an toàn tình huống người đi bộ băng ngang."],

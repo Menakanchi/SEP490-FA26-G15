@@ -32,7 +32,7 @@ Chi tiết chức năng và nghiệm thu: [phân chia 5 thành viên](docs/vehic
 |---|---|---|---|
 | 1. Thiết kế kịch bản | `/scenarios/new` | `DescribeService`, `FamilyService`, `ScenarioRules`, `LlmService` | Họ kịch bản + biến thể hợp lệ |
 | 2. Chạy baseline | `/scenarios`, `/analysis/carla` | `RunService`, `core/XoscExport`; `worker/run_xosc.py`, `sensor_recorder.py` | Run + seed + xe/AEB/simulator + kết quả/artifact |
-| 3. Phân tích lỗi | `/analysis/failures/**` | `ViewsService`, `TelemetryMetricsService`, `core/Evaluation` | Tập biến thể/seed đã chốt + baseline + chỉ số/nguyên nhân |
+| 3. Phân tích lỗi | `/analysis/failures/**` | `AnalysisService`, `ViewsService`, `core/AnalysisMetrics` | Dataset v2: tập tối ưu/xác minh + baseline/seed + chỉ số/nguyên nhân |
 | 4. Tối ưu AEB | `/aeb` | `AebService` hiện chỉ tạo candidate thủ công; service/worker tối ưu cần bổ sung | Candidate + campaign/trial + mục tiêu/ràng buộc |
 | 5. Regression và phê duyệt | `/validation/**` | `RegressionController`, `RegressionService`, `ReviewDecisionService`, `RegressionRepository` | Kết quả xác minh + quyết định; baseline mới nếu Accept |
 
