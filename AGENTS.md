@@ -34,9 +34,10 @@ Chi tiết chức năng và nghiệm thu: [phân chia 5 thành viên](docs/vehic
 | 2. Chạy baseline | `/scenarios`, `/analysis/carla` | `RunService`, `core/XoscExport`; `worker/run_xosc.py`, `sensor_recorder.py` | Run + seed + xe/AEB/simulator + kết quả/artifact |
 | 3. Phân tích lỗi | `/analysis/failures/**` | `ViewsService`, `TelemetryMetricsService`, `core/Evaluation` | Tập biến thể/seed đã chốt + baseline + chỉ số/nguyên nhân |
 | 4. Tối ưu AEB | `/aeb` | `AebService` hiện chỉ tạo candidate thủ công; service/worker tối ưu cần bổ sung | Candidate + campaign/trial + mục tiêu/ràng buộc |
-| 5. Regression và phê duyệt | `/validation/**` | `RegressionService`, views/recommendation/decision | Kết quả xác minh + quyết định; baseline mới nếu Accept |
+| 5. Regression và phê duyệt | `/validation/**` | `RegressionController`, `RegressionService`, `ReviewDecisionService`, `RegressionRepository` | Kết quả xác minh + quyết định; baseline mới nếu Accept |
 
-Các service trên ở [src/main/java/com/vehicsim/vehicsim/](src/main/java/com/vehicsim/vehicsim/).
+Phần 1–4 ở [src/main/java/com/vehicsim/vehicsim/](src/main/java/com/vehicsim/vehicsim/); phần 5 tách theo tầng: `controller/`, `service/Regression*`,
+`service/ReviewDecisionService`, `repository/RegressionRepository`, `dto/Regression*` (dùng chung luật role/hạn mức qua `VehicSimAccess`).
 Phần 2 giữ cơ chế chạy chung; phần 3 giữ cách tính chỉ số; phần 4 tìm tham số;
 phần 5 xác minh độc lập. Màn sau nhận ID và tự tải dữ liệu từ màn trước.
 Tập tối ưu/regression phải giữ cả ca an toàn để kiểm tra phanh oan.

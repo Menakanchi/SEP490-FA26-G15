@@ -1,11 +1,16 @@
 package com.vehicsim.vehicsim;
 
 import com.vehicsim.config.SecurityConfig;
+import com.vehicsim.controller.RegressionController;
 import com.vehicsim.entity.Role;
 import com.vehicsim.entity.User;
 import com.vehicsim.entity.enums.RoleCode;
 import com.vehicsim.security.CustomUserDetails;
 import com.vehicsim.security.JwtService;
+import com.vehicsim.service.RegressionReportService;
+import com.vehicsim.service.RegressionService;
+import com.vehicsim.service.RegressionViewService;
+import com.vehicsim.service.ReviewDecisionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -36,11 +41,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Luật cứng 3 (AGENTS.md): mọi route {@code /api/v1/vehicsim/*} cần đăng nhập; ADMIN / ENGINEER / EXPERIENCER ghi được,
- * MANAGER chỉ đọc, chỉ REVIEWER Accept / Reject. Chạy với bộ lọc bảo mật thật ({@link SecurityConfig}) và controller thật,
+ * MANAGER chỉ đọc, chỉ REVIEWER Accept / Reject. Chạy với bộ lọc bảo mật thật ({@link SecurityConfig}), hai controller thật
+ * ({@link VehicSimController} và {@link RegressionController} của màn 5) cùng luật quyền thật ({@link VehicSimAccess}),
  * service giả — không cần MySQL / Redis nên chạy được trong CI (TD-33).
  */
-@WebMvcTest(VehicSimController.class)
-@Import(SecurityConfig.class)
+@WebMvcTest({VehicSimController.class, RegressionController.class})
+@Import({SecurityConfig.class, VehicSimAccess.class})
 class VehicSimSecurityTest {
 
     private static final String BASE = "/api/v1/vehicsim";
@@ -68,6 +74,12 @@ class VehicSimSecurityTest {
     private AebService aeb;
     @MockitoBean
     private RegressionService regression;
+    @MockitoBean
+    private RegressionReportService regressionReports;
+    @MockitoBean
+    private RegressionViewService regressionViews;
+    @MockitoBean
+    private ReviewDecisionService reviewDecisions;
     @MockitoBean
     private DescribeService describe;
     @MockitoBean
@@ -110,6 +122,11 @@ class VehicSimSecurityTest {
 
     private MockHttpServletRequestBuilder describeScenario() {
         return request(HttpMethod.POST, BASE + "/scenarios/describe").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"người đi bộ băng ngang\"}");
+    }
+
+    private MockHttpServletRequestBuilder createRegression() {
+        return request(HttpMethod.POST, BASE + "/regression").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"candidate_version_id\":2,\"scenario_id\":1}");
     }
 
     private MockHttpServletRequestBuilder decide() {
@@ -158,12 +175,14 @@ class VehicSimSecurityTest {
         for (RoleCode code : List.of(RoleCode.ADMIN, RoleCode.ENGINEER, RoleCode.EXPERIENCER)) {
             assertThat(statusOf(runFamily(), code)).as("%s chạy được", code).isBetween(200, 299);
             assertThat(statusOf(createCandidate(), code)).as("%s tạo candidate được", code).isBetween(200, 299);
+            assertThat(statusOf(createRegression(), code)).as("%s tạo regression được", code).isBetween(200, 299);
             assertThat(statusOf(describeScenario(), code)).as("%s mô tả được", code).isBetween(200, 299);
         }
         // MANAGER chỉ đọc; REVIEWER duyệt chứ không làm.
         for (RoleCode code : List.of(RoleCode.MANAGER, RoleCode.REVIEWER)) {
             assertThat(statusOf(runFamily(), code)).as("%s không được chạy", code).isEqualTo(403);
             assertThat(statusOf(createCandidate(), code)).as("%s không được tạo candidate", code).isEqualTo(403);
+            assertThat(statusOf(createRegression(), code)).as("%s không được tạo regression", code).isEqualTo(403);
             assertThat(statusOf(describeScenario(), code)).as("%s không được mô tả", code).isEqualTo(403);
         }
     }
@@ -193,6 +212,17 @@ class VehicSimSecurityTest {
             assertThat(statusOf(request(HttpMethod.POST, BASE + "/scenarios/xosc")
                     .contentType(MediaType.APPLICATION_JSON).content("{}"), code))
                     .isEqualTo(writer ? 200 : 403);
+        }
+    }
+
+    @Test
+    void regressionExportsAndDecisionHistoryAreReadOnlyForEveryRole() throws Exception {
+        stubServices();
+        when(regressionReports.exportCsv(anyLong())).thenReturn("variant\r\n");
+        for (RoleCode code : RoleCode.values()) {
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/regression/1/export.json"), code)).as("%s tải JSON", code).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/regression/1/export.csv"), code)).as("%s tải CSV", code).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/decisions"), code)).as("%s xem lịch sử", code).isEqualTo(200);
         }
     }
 

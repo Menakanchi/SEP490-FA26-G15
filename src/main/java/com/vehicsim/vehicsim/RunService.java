@@ -185,7 +185,7 @@ public class RunService {
         return configuredSimulator();
     }
 
-    static boolean isCarla(String simulator) {
+    public static boolean isCarla(String simulator) {
         return simulator != null && simulator.startsWith("carla-");
     }
 
@@ -199,7 +199,7 @@ public class RunService {
     }
 
     /** Seed ổn định theo biến thể: chạy lại cùng biến thể luôn cùng nhiễu perception. */
-    static long seedFor(long scenarioVersionId) {
+    public static long seedFor(long scenarioVersionId) {
         return 48_000 + scenarioVersionId;
     }
 

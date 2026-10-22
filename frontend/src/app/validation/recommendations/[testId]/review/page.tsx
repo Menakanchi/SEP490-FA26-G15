@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Checkbox, ErrorNote, PillButton, RECOMMENDATION_STATUS, ROLE_LABELS, Toggle, cx, fmt, initials, paramValue } from "@/components/VehicSimUi";
+import { CarlaCaveat } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { RecommendationDetail, ReviewDecision } from "@/types/vehicsim";
 
@@ -19,7 +20,7 @@ export default function ReviewPage() {
   const { refresh, canDecide } = useVehicSimContext();
   const [r, setR] = useState<RecommendationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [checks, setChecks] = useState<boolean[]>([false, false, false, false]);
+  const [checks, setChecks] = useState<boolean[]>([false, false, false, false, false]);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [reason, setReason] = useState("");
   const [conditions, setConditions] = useState("");
@@ -37,7 +38,7 @@ export default function ReviewPage() {
 
   if (!r) {
     return (
-      <VehicSimPage crumbs={[{ label: "Kiểm định" }, { label: "Khuyến nghị", href: "/validation/recommendations" }, { label: "Duyệt" }]} title="Duyệt">
+      <VehicSimPage step={6} crumbs={[{ label: "Kiểm định" }, { label: "Khuyến nghị", href: "/validation/recommendations" }, { label: "Duyệt" }]} title="Duyệt">
         <ErrorNote message={error} />
       </VehicSimPage>
     );
@@ -89,9 +90,13 @@ export default function ReviewPage() {
       )}
     </>,
     <>Tôi hiểu rằng bằng chứng độ bền vững, Pareto và độ nhạy chưa được chạy cho ứng viên này</>,
+    // Chỉ khi regression chạy trên CARLA: Reviewer phải xác nhận đã đọc cảnh báo (backend không chặn, vẫn cho Accept — TD-17).
+    ...(r.simulator_caveat?.carla && !r.simulator_caveat.calibrated
+      ? [<>Tôi hiểu rằng số CARLA chưa hiệu chuẩn phanh, chỉ để quan sát và đối chiếu, không phải chứng nhận an toàn</>]
+      : []),
   ];
   const ready =
-    canDecide && !final && !running && !!decision && checks.every(Boolean) && reason.trim().length > 0 && confirmed && !submitting &&
+    canDecide && !final && !running && !!decision && checks.slice(0, checklist.length).every(Boolean) && reason.trim().length > 0 && confirmed && !submitting &&
     !(decision === "ACCEPT" && acceptBlock) && !(decision === "REJECT" && rejectBlock);
 
   const submit = async () => {
@@ -166,6 +171,7 @@ export default function ReviewPage() {
       <ErrorNote message={error} />
       {final && <ErrorNote message={`Khuyến nghị này đã có quyết định cuối (${RECOMMENDATION_STATUS[r.recommendation_status].label}).`} />}
       {!canDecide && <ErrorNote message="Chỉ Người duyệt (REVIEWER) được ra quyết định; người làm không tự duyệt việc của mình." />}
+      <CarlaCaveat caveat={r.simulator_caveat} />
 
       <div className="flex w-full items-start gap-4">
         <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
