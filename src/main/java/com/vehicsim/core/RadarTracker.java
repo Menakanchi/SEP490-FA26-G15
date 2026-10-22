@@ -90,7 +90,8 @@ public final class RadarTracker {
         c.put("alpha", ALPHA);
         c.put("beta", BETA);
         c.put("velocity_window_s", VELOCITY_WINDOW_S);
-        c.put("velocity_min_samples", VELOCITY_MIN_SAMPLES);        c.put("confirm_s", CONFIRM_S);
+        c.put("velocity_min_samples", VELOCITY_MIN_SAMPLES);
+        c.put("confirm_s", CONFIRM_S);
         c.put("lost_s", LOST_S);
         return c;
     }
