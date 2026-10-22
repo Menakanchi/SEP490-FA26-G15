@@ -37,7 +37,7 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 | 5 | Kịch bản | `scenarios`, `scenario_versions` | Có |
 | 6 | Tối ưu & regression | `optimization_runs`, `optimization_trials`, `regression_tests` | `regression_tests` |
 | 7 | Mô phỏng, đánh giá, lỗi | `simulation_runs`, `simulation_artifacts`, `collision_events`, `failures`, `root_causes` | Có |
-| 8 | Phân tích, kết quả regression, khuyến nghị | `analysis_results`, `regression_test_items`, `engineering_recommendations` | Có, trừ `analysis_results` |
+| 8 | Phân tích, kết quả regression, khuyến nghị | `analysis_results`, `regression_test_items`, `engineering_recommendations` | Có; analysis_results mới dùng BASELINE_DATASET |
 | 9 | Tri thức kỹ thuật | `tech_references` | Chưa |
 
 Bảng chưa có code là thiết kế trước theo FE (0 dòng); màn hình / API đến ở các demo sau.
@@ -798,13 +798,31 @@ CHECK: `ck_rc_confidence`.
 
 #### `analysis_results` — FE-10-04/05, FE-11-03/05
 
-Gộp các phân tích: độ nhạy (correlation / RF / SHAP), tương tác tham số, kiểm robustness dưới nhiễu, theo dõi active learning. Đầu vào ở `config_json`, đầu ra ở `summary_json`. Chưa có code.
+Loại `BASELINE_DATASET` lưu tập phân tích bất biến cho bàn giao màn 3 → 4/5 (migration 009).
+`method = IMMUTABLE_SNAPSHOT`, `status = COMPLETED`; `scenario_id` và `aeb_version_id` ghi họ/baseline nguồn.
+`config_json` ghi schema, token bản xem trước, chính sách `AS_STORED` và phạm vi toàn bộ họ.
+`summary_json` giữ snapshot `vehicsim.analysis-dataset/v1`: biến thể, run ID, seed, xe/simulator,
+chỉ số đã lưu, ca an toàn/lỗi/chưa phân loại và `NOT_RUN`. Không tính lại hay ghi đè số cũ.
+GET theo ID đọc JSON đã lưu, không chọn lại run; cờ `baseline_current` được tính riêng.
+Không có API sửa/xóa snapshot. v1 là archive; chưa đủ điều kiện bàn giao.
+
+JSON v2 (`vehicsim.analysis-dataset/v2`) dùng cùng bảng/method, không cần migration mới:
+`config_json` ghi schema và evaluation; `summary_json` giữ baseline, scenario, reference xe/simulator/dt,
+`runs`, `optimization_run_ids`, `validation_run_ids`, objective từng tập và `manifests`.
+Hai tập không trùng biến thể, mỗi tập giữ ca an toàn; mỗi cặp biến thể/seed chỉ chọn một run.
+Tập giữ nhiều seed khác nhau nếu nguồn có; mọi run phải cùng baseline/họ/xe/simulator/dt.
+API kiểm revision lúc lưu và digest artifact/config chuẩn hóa MySQL JSON lúc bàn giao.
+Hợp đồng tổng hợp: `adr040-stored-aggregation/1`; không chấm lại số đo lịch sử.
+Chi tiết nguồn/giới hạn: [hợp đồng phân tích](analysis-metrics-contract.md).
+
+
+Gộp các phân tích: độ nhạy (correlation / RF / SHAP), tương tác tham số, kiểm robustness dưới nhiễu, theo dõi active learning. Đầu vào ở `config_json`, đầu ra ở `summary_json`. Các loại phân tích thuật toán này chưa có code; BASELINE_DATASET đã có.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; UQ `uq_ar_project_id_aeb`; AI | Khoá chính. |
 | `project_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_ar_project_id_aeb`; FK → `scenarios(project_id,id)`; FK → `projects`; FK → `aeb_versions(project_id,id)`; FK → `optimization_runs(project_id,id)` | Project. |
-| `analysis_type` | ENUM | ✓ |  |  | Độ nhạy, tương tác tham số, kiểm robustness, theo dõi active learning. Giá trị: 'SENSITIVITY', 'INTERACTION', 'ROBUSTNESS_VALIDATION', 'ACTIVE_LEARNING_TRACKER'. |
+| `analysis_type` | ENUM | ✓ |  |  | Độ nhạy, tương tác tham số, kiểm robustness, theo dõi active learning. Giá trị: 'SENSITIVITY', 'INTERACTION', 'ROBUSTNESS_VALIDATION', 'ACTIVE_LEARNING_TRACKER', 'BASELINE_DATASET'. |
 | `method` | VARCHAR(50) |  |  |  | CORRELATION, RANDOM_FOREST, SHAP, PERTURBATION… |
 | `scenario_id` | BIGINT UNSIGNED |  |  | FK → `scenarios(project_id,id)` | Họ kịch bản được phân tích (NULL = cả project) |
 | `aeb_version_id` | BIGINT UNSIGNED |  |  | UQ `uq_ar_project_id_aeb`; FK → `aeb_versions(project_id,id)` | Bắt buộc với ROBUSTNESS_VALIDATION: cấu hình được kiểm |
@@ -902,7 +920,7 @@ CHECK: `ck_tech_references_value`.
 | `sensors.attributes_json` | (chưa có code) | Attribute blueprint đúng tên CARLA, giá trị chuỗi: `{"image_size_x": "1280", "fov": "90", "sensor_tick": "0.05"}` |
 | `optimization_runs.search_space_json` | (chưa có code) | `{"TTC_THRESHOLD": [1.2, 2.5], "BRAKE_ACTIVATION_DELAY": [0.05, 0.3]}` — chỉ 4 mã của `aeb_parameters`, trong `[min_value, max_value]` |
 | `optimization_runs.objective_config_json` | (chưa có code) | Mục tiêu + trọng số / ràng buộc, vd `{"objectives": ["rms_jerk", "impact_speed", "stopping_distance"], "constraints": {"collision_rate_pct": {"max": 5}}}` |
-| `analysis_results.config_json` / `summary_json` | (chưa có code) | Đầu vào (nhiễu, chỉ số mục tiêu, bộ lọc run) / đầu ra (xếp hạng tham số, ma trận tương tác, phân bố theo nhiễu) |
+| `analysis_results.config_json` / `summary_json` | ViewsService cho BASELINE_DATASET; các loại khác chưa có | Đầu vào (nhiễu, chỉ số mục tiêu, bộ lọc run) / đầu ra (xếp hạng tham số, ma trận tương tác, phân bố theo nhiễu) |
 
 Bảng tổng hợp regression (ma trận chuyển trạng thái, tỉ lệ, tiêu chí) **không lưu**: `regression.summary`
 tính lại từ các run đã COMPLETED (run không đổi sau khi xong), số đếm chính lưu ở `regression_tests`,
@@ -924,7 +942,7 @@ Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critica
 
 - **Một project:** MVP vẫn chạy trên project ACTIVE đầu tiên, chưa lọc theo workspace / thành viên, chưa có API
   `project_members` (TD-30).
-- **Bảng chưa có code:** cộng tác (`workspace_*`, `notifications`), `sensors`, tối ưu, `analysis_results`,
+- **Bảng chưa có code:** cộng tác (`workspace_*`, `notifications`), `sensors`, tối ưu, các loại phân tích thuật toán trong `analysis_results`,
   `tech_references` — có schema, chưa có API / màn.
 - **Phanh CARLA chưa hiệu chuẩn (TD-17):** `tire_friction`, `max_brake_torque_nm`, `road_friction` chưa vào vật lý
   CARLA. `carla_full_brake_decel_mps2` (từ 21/10) đi theo bundle `vehicle.carla.full_brake_decel_mps2` → `.xosc` `vs_full_brake_decel_mps2`
@@ -936,7 +954,7 @@ Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critica
   CHECK không so được bảng khác.
 - **Rút scope AEB (ADR-040):** run của v1.3 dùng tầm dự đoán 1,5 s và biên an toàn 0,5 m (nay là hằng số 2,0 / 2,0) nên
   60 / 192 run đó **không còn tái lập** khi chạy lại từ JSON; kết quả đã lưu không đổi (TD-40).
-- **Bảng tối ưu còn rỗng:** `optimization_runs`, `optimization_trials`, `analysis_results` có schema và định nghĩa mục tiêu nhưng chưa có code (TD-39).
+- **Bảng tối ưu còn rỗng:** `optimization_runs`, `optimization_trials` và các loại phân tích thuật toán có schema nhưng chưa có code (TD-39); BASELINE_DATASET đã được lưu trong analysis_results.
 
 ## 10. Đổi schema thì làm gì
 
@@ -959,3 +977,5 @@ Cùng một PR (luật mềm ở `AGENTS.md`):
 | `008_2026-10-15_buildup-5-20-va-dinh-nghia-muc-tieu.sql` | `BRAKE_BUILDUP_RATE` biên [5, 20]; tính lại `rms_jerk_mps3` / `stopping_distance_m` cho run cũ (ADR-040 §6–7) |
 
 Luôn sao lưu trước (`mysqldump --single-transaction`), không `docker compose down -v` trên máy người khác.
+
+Tập baseline chỉ lấy scenario_versions.source = GENERATED; bản gốc chứa không gian tham số không phải ca chạy (TD-43). UI cho chọn cả họ không có lỗi.

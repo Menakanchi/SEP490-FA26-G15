@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { AnalysisSelectionSummary } from "@/components/AnalysisSelectionSummary";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import {
@@ -13,9 +15,11 @@ import {
   fmt,
   paramValue,
 } from "@/components/VehicSimUi";
+import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type {
   AebVersion,
+  AnalysisSelection,
   FailureClass,
   OptimizationRun,
   OptimizationTrial,
@@ -46,6 +50,12 @@ const CATEGORY_ORDER: FailureClass[] = ["DECISION", "CONTROL", "VEHICLE_DYNAMICS
 export default function AebConfigPage() {
   const { ctx, refresh, canWrite } = useVehicSimContext();
   const [activeTab, setActiveTab] = useState<"mobo" | "manual" | "versions">("mobo");
+  const searchParams = useSearchParams();
+  const scenarioId = Number(searchParams.get("scenario_id"));
+  const datasetParam = searchParams.get("dataset_id");
+  const datasetId = Number(datasetParam);
+  const [dataset, setDataset] = useState<AnalysisSelection | null>(null);
+  const [datasetError, setDatasetError] = useState<string | null>(null);
   const [versions, setVersions] = useState<AebVersion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ id: number; label: string } | null>(null);
@@ -57,6 +67,28 @@ export default function AebConfigPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách phiên bản AEB"));
   }, []);
   useEffect(load, [load]);
+  useEffect(() => {
+    let active = true;
+    const loadDataset = async () => {
+      setDataset(null);
+      setDatasetError(null);
+      if (datasetParam !== null && (!Number.isSafeInteger(datasetId) || datasetId <= 0)) {
+        setDatasetError("Mã tập phân tích không hợp lệ.");
+        return;
+      }
+      if (datasetParam === null && (!Number.isSafeInteger(scenarioId) || scenarioId <= 0)) return;
+      try {
+        const snapshot = datasetParam !== null
+          ? await vehicsimApi.analysisHandoff(datasetId)
+          : null;
+        if (active) setDataset(snapshot);
+      } catch (err) {
+        if (active) setDatasetError(vi(err instanceof Error ? err.message : "Không tải được tập phân tích"));
+      }
+    };
+    void loadDataset();
+    return () => { active = false; };
+  }, [scenarioId, datasetId, datasetParam]);
 
   const catalog = useMemo(() => new Map((ctx?.parameters ?? []).map((p) => [p.code, p])), [ctx]);
   const baseline = versions?.find((v) => v.status === "BASELINE") ?? null;
@@ -68,8 +100,9 @@ export default function AebConfigPage() {
       title="Cấu hình & Tối ưu hoá AEB"
       subtitle="Hiệu chỉnh 4 tham số AEB: chạy thuật toán tối ưu đa mục tiêu Bayes (MOBO/qEHVI) hoặc điều chỉnh thủ công, sau đó chuyển sang kiểm thử hồi quy."
     >
-      <ErrorNote message={error} />
-
+      <ErrorNote message={error ?? datasetError} />
+      {dataset && <AnalysisSelectionSummary dataset={dataset} />}
+      {dataset && <p className="text-[12px] text-vehicsim-muted">Tập phân tích đã chốt được chuyển sang bước này; MOBO hiện chạy trên toàn họ kịch bản, chưa lọc theo tập.</p>}
       {created && (
         <div className="flex items-center justify-between gap-4 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok shadow-sm">
           <span>Đã tạo ứng viên AEB {created.label}. Bước tiếp theo: chạy kiểm thử hồi quy so với bản cơ sở.</span>

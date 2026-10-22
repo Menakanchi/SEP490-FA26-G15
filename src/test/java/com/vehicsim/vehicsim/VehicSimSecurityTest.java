@@ -67,6 +67,8 @@ class VehicSimSecurityTest {
     @MockitoBean
     private ViewsService views;
     @MockitoBean
+    private AnalysisService analysis;
+    @MockitoBean
     private FamilyService families;
     @MockitoBean
     private RunService runs;
@@ -104,6 +106,7 @@ class VehicSimSecurityTest {
 
     private void stubServices() {
         when(views.context()).thenReturn(Map.of("project", Map.of("id", 1L)));
+        when(views.analysisDataset(1L)).thenReturn(Map.of("scenario", Map.of("id", 1L)));
         when(runs.runFamily(anyLong(), anyLong(), anyLong(), any())).thenReturn(List.of());
     }
 
@@ -111,6 +114,42 @@ class VehicSimSecurityTest {
 
     private MockHttpServletRequestBuilder read() {
         return request(HttpMethod.GET, BASE + "/context");
+    }
+
+    private MockHttpServletRequestBuilder analysisDataset() {
+        return request(HttpMethod.GET, BASE + "/analysis/dataset?scenario_id=1");
+    }
+
+    private MockHttpServletRequestBuilder selection() {
+        return request(HttpMethod.POST, BASE + "/analysis/selections").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"scenario_id\":1,\"baseline_id\":1,\"optimization_run_ids\":[1],\"validation_run_ids\":[2],\"run_revisions\":{}}");
+    }
+    @Test void analysisSelectionAndReadEndpointsRespectRoles() throws Exception {
+        for(RoleCode code: RoleCode.values()) {
+            assertThat(statusOf(request(HttpMethod.GET,BASE+"/analysis/runs"),code)).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET,BASE+"/analysis/datasets/1/handoff"),code)).isEqualTo(200);
+        }
+        for(RoleCode code:List.of(RoleCode.ADMIN,RoleCode.ENGINEER,RoleCode.EXPERIENCER))
+            assertThat(statusOf(selection(),code)).isBetween(200,299);
+        for(RoleCode code:List.of(RoleCode.MANAGER,RoleCode.REVIEWER))
+            assertThat(statusOf(selection(),code)).isEqualTo(403);
+    }
+    private MockHttpServletRequestBuilder saveDataset() {
+        return request(HttpMethod.POST, BASE + "/analysis/datasets").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"scenario_id\":1,\"preview_token\":\"" + "a".repeat(64) + "\"}");
+    }
+
+    @Test
+    void datasetSnapshotNeedsWriteRoleAndHonoursQuota() throws Exception {
+        for (RoleCode code : List.of(RoleCode.ADMIN, RoleCode.ENGINEER, RoleCode.EXPERIENCER)) {
+            assertThat(statusOf(saveDataset(), code)).isBetween(200, 299);
+        }
+        for (RoleCode code : List.of(RoleCode.MANAGER, RoleCode.REVIEWER)) {
+            assertThat(statusOf(saveDataset(), code)).isEqualTo(403);
+        }
+        when(otp.hitRateLimit(org.mockito.ArgumentMatchers.eq("vs_analysis_dataset"), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(true);
+        assertThat(statusOf(saveDataset(), RoleCode.ENGINEER)).isEqualTo(429);
     }
 
     private MockHttpServletRequestBuilder runFamily() {
@@ -173,6 +212,7 @@ class VehicSimSecurityTest {
         stubServices();
         for (RoleCode code : RoleCode.values()) {
             assertThat(statusOf(read(), code)).as("%s đọc được", code).isEqualTo(200);
+            assertThat(statusOf(analysisDataset(), code)).as("%s đọc tập phân tích được", code).isEqualTo(200);
         }
         for (RoleCode code : List.of(RoleCode.ADMIN, RoleCode.ENGINEER, RoleCode.EXPERIENCER)) {
             assertThat(statusOf(runFamily(), code)).as("%s chạy được", code).isBetween(200, 299);

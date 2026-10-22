@@ -155,6 +155,51 @@ export interface FailureItem {
   created_at: string;
 }
 
+export interface AnalysisDataset {
+  schema: "vehicsim.analysis-dataset/v1";
+  metric_policy: "AS_STORED";
+  preview_token: string;
+  id?: number;
+  baseline_current?: boolean;
+  created_at?: string | null;
+  scenario: { id: number; code: string; name: string; category: string };
+  baseline: { id: number; label: string };
+  reference: { vehicle_id: number; simulator: string } | null;
+  counts: { total: number; completed: number; not_run: number; classified: number; unclassified: number; failures: number; safe: number };
+  variants: {
+    scenario_version_id: number;
+    version_no: number;
+    source: string;
+    summary: string;
+    ego_speed_kmh: number | null;
+    trigger_distance_m: number | null;
+    pedestrian_speed_mps: number | null;
+    stops_at_curb: boolean | null;
+    weather: string | null;
+    time_of_day: string | null;
+    status: "COMPLETED" | "NOT_RUN";
+    run_id: number | null;
+    seed: number | null;
+    metrics: {
+      verdict: "PASS" | "FAIL" | null;
+      classification_status: "CLASSIFIED" | "INCOMPLETE";
+      outcome: "SAFE" | "NEAR_MISS" | "COLLISION" | "FALSE_BRAKING" | "UNCLASSIFIED";
+      end_reason: string | null;
+      collision_occurred: boolean | null;
+      false_activation: boolean | null;
+      missed_activation: boolean | null;
+      rms_jerk_mps3: number | null;
+      impact_speed_mps: number | null;
+      stopping_distance_m: number | null;
+      min_distance_m: number | null;
+      min_ttc_s: number | null;
+      max_deceleration_mps2: number | null;
+      mean_deceleration_mps2: number | null;
+      aeb_activation_time_s: number | null;
+    } | null;
+  }[];
+}
+
 export interface FailureList {
   kpis: {
     total: number;
@@ -215,6 +260,7 @@ export interface Frame {
 }
 
 export interface RunHeader {
+  evaluation_valid?: boolean;
   run_id: number;
   purpose: string;
   status: string;
@@ -236,7 +282,27 @@ export interface RunHeader {
   headline: string;
 }
 
+export interface MotionTelemetryPoint {
+  jerk_mps3?: number | null;
+  crossing_distance_m?: number | null;
+  motion_state?: string;
+  derived_source?: string;
+  t: number;
+  ego_x_m: number | null;
+  ego_speed_mps: number | null;
+  ego_accel_mps2: number | null;
+  target_x_m: number | null;
+  target_y_m: number | null;
+  target_vy_mps: number | null;
+  perceived_y_m: number | null;
+  ttc_perceived_s: number | null;
+  ttc_gt_s: number | null;
+}
+
 export interface FailureDetail extends RunHeader {
+  motion_telemetry: MotionTelemetryPoint[];
+  stage_evidence?: {stage: string; values: Record<string,number | null>}[];
+  evaluation_version?: string;
   metrics: {
     impact_speed_kmh: number | null;
     min_distance_m: number | null;
@@ -249,6 +315,9 @@ export interface FailureDetail extends RunHeader {
     brake_onset_t: number | null;
     max_deceleration_mps2: number | null;
     stopping_distance_m: number | null;
+    rms_jerk_mps3: number | null;
+    impact_speed_mps: number | null;
+    metric_source: "SIMULATOR_RESULT";
     false_activation: boolean;
     missed_activation: boolean;
   };
@@ -265,7 +334,7 @@ export interface FailureDetail extends RunHeader {
     road_friction: number;
   };
   ttc_threshold_s: number | null;
-  telemetry: { t: number; ttc: number | null; speed_kmh: number }[];
+  telemetry: { t: number; ttc: number | null; speed_kmh: number | null }[];
   events: SimEvent[];
   scene: {
     crossing_x: number;
@@ -279,6 +348,7 @@ export interface FailureDetail extends RunHeader {
 }
 
 export interface Playback extends RunHeader {
+  motion_telemetry?: MotionTelemetryPoint[];
   duration_s: number;
   frames: Frame[];
   events: SimEvent[];
@@ -612,4 +682,40 @@ export interface OptimizationSelectionResult {
   };
   regression_test_id: number;
   status: string;
+}
+
+export interface AnalysisRun {
+  revision: string; run_id: number; scenario_id: number; scenario_version_id: number; version_no: number;
+  family: string; variant: string; seed: number; baseline_id: number; vehicle_id: number;
+  simulator: string; dt: number; status: string; outcome: string; weather: string | null;
+  time_of_day: string | null; failure_class: string | null; error: string | null;
+  end_reason: string | null; trace_available: boolean; created_at: string | null;
+  metrics: { rms_jerk_mps3: number | null; impact_speed_mps: number | null; stopping_distance_m: number | null };
+}
+export interface ObjectiveAggregate {
+  version: string; invalid_runs: number;
+  rms_jerk_mps3: ObjectiveValue; impact_speed_mps: ObjectiveValue; stopping_distance_m: ObjectiveValue;
+}
+export interface ObjectiveValue {
+  value: number | null; samples: number; missing: number; notApplicable: number;
+  unit: string; status: "VALID" | "INCOMPLETE" | "NOT_APPLICABLE";
+}
+export interface AnalysisDashboardData {
+  total: number; page: number; page_size: number; counts: Record<string,number>;
+  items: AnalysisRun[]; evaluation_version: string;
+  objective_groups: {identity: string; simulator: string; baseline_id: number; vehicle_id: number;
+    objectives: ObjectiveAggregate; carla_observational_only: boolean }[];
+}
+export interface AnalysisSelection {
+  schema: "vehicsim.analysis-dataset/v2"; id: number; baseline_current: boolean; handoff_ready: boolean;
+  scenario: {id: number; code: string; name: string; category: string};
+  baseline: {id: number; label: string};
+  reference: {vehicle_id: number; simulator: string; dt: number};
+  runs: AnalysisRun[]; optimization_run_ids: number[]; validation_run_ids: number[];
+  optimization_objectives: ObjectiveAggregate; validation_objectives: ObjectiveAggregate;
+  evaluation: {version: string; carla_observational_only: boolean};
+}
+export interface AnalysisFilters {
+  scenario_id?: number; variant_id?: number; aeb_version_id?: number; vehicle_id?: number;
+  simulator?: string; weather?: string; time_of_day?: string; status?: string; failure_class?: string;
 }

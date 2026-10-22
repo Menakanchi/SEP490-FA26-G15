@@ -193,11 +193,9 @@ export default function ScenarioFamiliesPage() {
                     {busy === f.id ? "Đang xếp hàng…" : "Chạy cơ sở"}
                   </PillButton>
                 )}
-                {(f.runs.COMPLETED ?? 0) > 0 && (
                   <Link href={`/analysis/failures?scenario_id=${f.id}`} className="text-[12px] font-semibold text-vehicsim-decision hover:underline">
                     Tiếp tục: Phân tích kết quả →
                   </Link>
-                )}
               </span>
             </div>
           );

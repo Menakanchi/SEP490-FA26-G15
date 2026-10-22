@@ -745,7 +745,7 @@ CREATE TABLE root_causes (
 CREATE TABLE analysis_results (
   id                       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   project_id               BIGINT UNSIGNED NOT NULL,
-  analysis_type            ENUM('SENSITIVITY','INTERACTION','ROBUSTNESS_VALIDATION','ACTIVE_LEARNING_TRACKER') NOT NULL,
+  analysis_type            ENUM('SENSITIVITY','INTERACTION','ROBUSTNESS_VALIDATION','ACTIVE_LEARNING_TRACKER','BASELINE_DATASET') NOT NULL,
   method                   VARCHAR(50) NULL COMMENT 'CORRELATION, RANDOM_FOREST, SHAP, PERTURBATION…',
   scenario_id              BIGINT UNSIGNED NULL COMMENT 'Họ kịch bản được phân tích (NULL = cả project)',
   aeb_version_id           BIGINT UNSIGNED NULL COMMENT 'Bắt buộc với ROBUSTNESS_VALIDATION: cấu hình được kiểm',
