@@ -10,8 +10,8 @@ import React from "react";
 
 const W = 706;
 const H = 330;
-const L = 36;
-const R = 682;
+const L = 62;
+const R = 680;
 const TOP = 34;
 const BOTTOM = 300;
 
@@ -22,17 +22,18 @@ export interface ChartMarker {
 }
 
 interface Props {
-  points: { t: number; ttc: number | null; speed_kmh: number }[];
+  cursor?: number;
+  points: { t: number; ttc: number | null; speed_kmh: number | null }[];
   threshold: number | null;
   markers: ChartMarker[];
   shade?: [number, number] | null;
   impactT?: number | null;
 }
 
-export function TelemetryChart({ points, threshold, markers, shade, impactT }: Props) {
-  const tMax = Math.max(0.5, Math.ceil((points[points.length - 1]?.t ?? 1) * 2) / 2);
+export function TelemetryChart({ points, threshold, markers, shade, impactT, cursor }: Props) {
+  const tMax = Math.max(0.01, points[points.length - 1]?.t ?? 1);
   const ttcMax = 5;
-  const vMax = Math.max(70, Math.ceil(Math.max(...points.map((p) => p.speed_kmh), 0) / 14) * 14);
+  const vMax = Math.max(70, Math.ceil(Math.max(...points.map((p) => p.speed_kmh ?? 0), 0) / 14) * 14);
   const x = (t: number) => L + (t / tMax) * (R - L);
   const yTtc = (v: number) => BOTTOM - (Math.min(v, ttcMax) / ttcMax) * (BOTTOM - TOP);
   const ySpd = (v: number) => BOTTOM - (v / vMax) * (BOTTOM - TOP);
@@ -46,8 +47,14 @@ export function TelemetryChart({ points, threshold, markers, shade, impactT }: P
     } else current.push(`${x(p.t).toFixed(1)},${yTtc(p.ttc).toFixed(1)}`);
   }
   if (current.length) ttcSegments.push(current);
-  const speedLine = points.map((p) => `${x(p.t).toFixed(1)},${ySpd(p.speed_kmh).toFixed(1)}`).join(" ");
-  const ticks = Array.from({ length: Math.round(tMax / 0.5) + 1 }, (_, i) => i * 0.5);
+  const speedSegments: string[][]=[];
+  let speedSegment:string[]=[];
+  for(const p of points) {
+    if(p.speed_kmh===null) { if(speedSegment.length)speedSegments.push(speedSegment);speedSegment=[]; }
+    else speedSegment.push(`${x(p.t)},${ySpd(p.speed_kmh)}`);
+  }
+  if(speedSegment.length)speedSegments.push(speedSegment);
+  const ticks = Array.from({ length: 5 }, (_, i) => tMax * i / 4);
   const impactPoint = impactT != null ? points.find((p) => p.t >= impactT - 1e-6) : undefined;
 
   return (
@@ -66,7 +73,7 @@ export function TelemetryChart({ points, threshold, markers, shade, impactT }: P
         ))}
         {ticks.map((t) => (
           <text key={t} x={x(t) - 8} y={322} fontSize={11} fontWeight={500} fill="var(--color-vehicsim-faint)">
-            {`${t}s`}
+            {`${t.toFixed(2)}s`}
           </text>
         ))}
         {shade && shade[1] > shade[0] && (
@@ -81,8 +88,9 @@ export function TelemetryChart({ points, threshold, markers, shade, impactT }: P
         {ttcSegments.map((seg, i) =>
           seg.length > 1 ? <polyline key={i} points={seg.join(" ")} fill="none" stroke="var(--color-vehicsim-ink)" strokeWidth={2} /> : null,
         )}
-        <polyline points={speedLine} fill="none" stroke="var(--color-vehicsim-decision)" strokeWidth={2.5} />
-        {impactPoint && <circle cx={x(impactPoint.t)} cy={ySpd(impactPoint.speed_kmh)} r={5} fill="var(--color-vehicsim-danger)" />}
+        {speedSegments.map((segment,index)=><polyline key={index} points={segment.join(" ")} fill="none" stroke="var(--color-vehicsim-decision)" strokeWidth={2.5} />)}
+        {cursor !== undefined && <line x1={x(cursor)} x2={x(cursor)} y1={TOP} y2={BOTTOM} stroke="var(--color-vehicsim-ink)" strokeWidth={2}/>}
+        {impactPoint?.speed_kmh != null && <circle cx={x(impactPoint.t)} cy={ySpd(impactPoint.speed_kmh)} r={5} fill="var(--color-vehicsim-danger)" />}
       </svg>
       {markers.map((m) => (
         <span

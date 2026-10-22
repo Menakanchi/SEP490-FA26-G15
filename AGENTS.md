@@ -22,7 +22,28 @@ Việc đã làm cho VehicSim MVP, theo thứ tự và kèm bằng chứng:
 
 ## Chạy và tự kiểm chứng
 
+<<<<<<< Updated upstream
 | Việc | Lệnh |
+=======
+| Phần / màn chính | Điểm vào frontend | Code chính | Bàn giao sang bước sau |
+|---|---|---|---|
+| 1. Thiết kế kịch bản | `/scenarios/new` | `DescribeService`, `FamilyService`, `ScenarioRules`, `LlmService` | Họ kịch bản + biến thể hợp lệ |
+| 2. Chạy baseline | `/scenarios`, `/analysis/carla` | `RunService`, `core/XoscExport`; `worker/run_xosc.py`, `sensor_recorder.py` | Run + seed + xe/AEB/simulator + kết quả/artifact |
+| 3. Phân tích lỗi | `/analysis/failures/**` | `AnalysisService`, `ViewsService`, `core/AnalysisMetrics` | Dataset v2: tập tối ưu/xác minh + baseline/seed + chỉ số/nguyên nhân |
+| 4. Tối ưu AEB | `/aeb` | `AebService` hiện chỉ tạo candidate thủ công; service/worker tối ưu cần bổ sung | Candidate + campaign/trial + mục tiêu/ràng buộc |
+| 5. Regression và phê duyệt | `/validation/**` | `RegressionService`, views/recommendation/decision | Kết quả xác minh + quyết định; baseline mới nếu Accept |
+
+Các service trên ở [src/main/java/com/vehicsim/vehicsim/](src/main/java/com/vehicsim/vehicsim/).
+Phần 2 giữ cơ chế chạy chung; phần 3 giữ cách tính chỉ số; phần 4 tìm tham số;
+phần 5 xác minh độc lập. Màn sau nhận ID và tự tải dữ liệu từ màn trước.
+Tập tối ưu/regression phải giữ cả ca an toàn để kiểm tra phanh oan.
+Phối hợp khi sửa `VehicSimController`, `Queries`, `ViewsService`, schema, API client,
+`vehicsimFlow.ts` và khung UI; không tạo cơ chế chạy/chấm điểm riêng cho từng màn.
+
+## Nguồn sự thật và tài liệu cần đọc
+
+| Cần biết | Nguồn |
+>>>>>>> Stashed changes
 |---|---|
 | Bật toàn bộ app (Windows) | `scripts\dev-up.cmd` — Docker (MySQL, Redis) + Celery worker + backend `:8001` + frontend `:3000`, mỗi dịch vụ một cửa sổ |
 | Tạo admin | `uv run python scripts/create_admin.py --email <email>` |

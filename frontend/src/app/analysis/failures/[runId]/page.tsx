@@ -2,14 +2,20 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+<<<<<<< Updated upstream
 import { useParams } from "next/navigation";
+=======
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useVehicSimContext } from "@/components/VehicSimContext";
+>>>>>>> Stashed changes
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { ScenarioMap } from "@/components/ScenarioMap";
+import { MotionTelemetryChart } from "@/components/MotionTelemetryChart";
 import { TelemetryChart, type ChartMarker } from "@/components/TelemetryChart";
 import { ErrorNote, OutcomeBadge, PillButton, cx, fmt, paramValue, runCode } from "@/components/VehicSimUi";
 import { vi, viSummary, viTime, viWeather } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { ChainStage, FailureClass, FailureDetail } from "@/types/vehicsim";
+import type { AnalysisRun, ChainStage, FailureClass, FailureDetail } from "@/types/vehicsim";
 
 const CLASS_TITLE: Record<FailureClass, string> = {
   PERCEPTION: "Lỗi nhận thức",
@@ -33,17 +39,30 @@ const SNAPSHOT_PARAMS = [
 ];
 
 export default function FailureDetailPage() {
+<<<<<<< Updated upstream
+=======
+  const router = useRouter();
+  const { canWrite } = useVehicSimContext();
+  const [inspection,setInspection]=useState<AnalysisRun|null>(null);
+  const params=useSearchParams();
+  const initialCursor=Number(params.get("t"))||0;
+  const [cursor,setCursor]=useState(initialCursor);
+  const [running, setRunning] = useState(false);
+>>>>>>> Stashed changes
   const { runId } = useParams<{ runId: string }>();
   const [d, setD] = useState<FailureDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    vehicsimApi.run(Number(runId))
-      .then(setD)
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được lượt chạy"));
-  }, [runId]);
+    let active=true;
+    vehicsimApi.analysisInspection(Number(runId))
+      .then(value=>{if(active){setInspection(value.run);setD(value.detail);setCursor(Math.max(0,Math.min(initialCursor,value.detail?.telemetry.at(-1)?.t??0)));}})
+      .catch((err) => {if(active)setError(err instanceof Error ? err.message : "Không tải được lượt chạy");});
+    return ()=>{active=false;};
+  }, [runId,initialCursor]);
 
   const derived = useMemo(() => (d ? derive(d) : null), [d]);
+  const currentPoint=d?.motion_telemetry?.filter(p=>p.t<=cursor).at(-1);
   const code = runCode(Number(runId));
 
   return (
@@ -52,7 +71,7 @@ export default function FailureDetailPage() {
       crumbs={[{ label: "Phân tích" }, { label: "Ca lỗi", href: "/analysis/failures" }, { label: `Lượt chạy ${code}` }]}
       title={`Lượt chạy ${code}`}
       badges={
-        d && (
+        d && d.evaluation_valid !== false && (
           <>
             <span className="[&>span]:px-3 [&>span]:py-[6px] [&>span]:text-[13px]">
               <OutcomeBadge outcome={d.outcome} />
@@ -70,22 +89,58 @@ export default function FailureDetailPage() {
           <PillButton disabled title="Sửa nhãn nguyên nhân (màn 05) chưa có trong đợt MVP">
             Sửa nguyên nhân
           </PillButton>
+<<<<<<< Updated upstream
           <PillButton variant="dark" href={`/analysis/failures/${runId}/playback`}>
+=======
+          <PillButton
+            title="Xuất OpenSCENARIO cùng biến thể, AEB, xe và seed của lượt này"
+            onClick={() => void vehicsimApi.downloadRunXosc(Number(runId)).catch((e) => setError(e.message))}
+          >
+            Tải .xosc
+          </PillButton>
+          <PillButton disabled={!canWrite || running} onClick={async () => {
+            setRunning(true);
+            try {
+              const run = await vehicsimApi.runOnCarla(Number(runId));
+              router.push(`/analysis/carla?run=${run.run_id}`);
+            } catch (e) { setError(e instanceof Error ? e.message : "Không chạy được CARLA"); }
+            finally { setRunning(false); }
+          }}>{running ? "Đang xếp hàng…" : "Chạy trên CARLA"}</PillButton>
+          <PillButton variant="dark" disabled={!inspection?.trace_available || inspection.status!=="COMPLETED"} href={`/analysis/failures/${runId}/playback`}>
+>>>>>>> Stashed changes
             ▶  Phát lại
           </PillButton>
         </>
       }
     >
       <ErrorNote message={error} />
+      {inspection && !d && <section className="rounded-[20px] bg-white p-6 space-y-3">
+        <h2 className="font-bold">Run #{inspection.run_id} · {inspection.status}</h2>
+        <p>{inspection.family} · {inspection.variant} · seed {inspection.seed} · xe #{inspection.vehicle_id} · baseline #{inspection.baseline_id}</p>
+        <p>{inspection.simulator} · {inspection.end_reason ?? "Chưa có kết quả"}</p>
+        <p role="status">Không có kết quả AEB hợp lệ để kết luận an toàn hoặc tính objective.</p>
+        {inspection.error && <p role="alert">{inspection.error}</p>}
+      </section>}
+      {d && <section className="rounded-[16px] bg-white p-4 text-[12px]">
+        <label>Thời gian phân tích: {cursor.toFixed(2)} s · {({STATIONARY:"Đứng yên",ACCELERATING:"Nhanh dần",DECELERATING:"Chậm dần",STEADY:"Tốc độ gần đều",UNKNOWN:"Chưa xác định"} as Record<string,string>)[currentPoint?.motion_state??"UNKNOWN"]}
+          <input aria-label="Thời gian phân tích" type="range" className="block w-full" min={0} max={d.telemetry.at(-1)?.t ?? 0} step={0.01} value={cursor} onChange={e=>setCursor(Number(e.target.value))}/>
+        </label>
+        <Link className="underline" href={`/analysis/failures/${runId}/playback?t=${cursor}`}>Mở playback tại thời điểm đang xem</Link>
+      </section>}
       {d && derived && (
         <>
           <section className="flex w-full items-start gap-6 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
             <div className="flex w-[340px] shrink-0 flex-col gap-[18px]">
               <span className="text-[11px] font-semibold tracking-[0.88px] text-vehicsim-faint">ĐIỀU GÌ ĐÃ XẢY RA</span>
-              <p className="text-[24px] font-extrabold leading-[1.25] tracking-[-0.48px] text-vehicsim-ink">{vi(d.headline)}</p>
+              <p className="text-[24px] font-extrabold leading-[1.25] tracking-[-0.48px] text-vehicsim-ink">{d.evaluation_valid===false?"Run chưa đủ điều kiện để kết luận kết quả AEB.":vi(d.headline)}</p>
               <div className="grid grid-cols-2 gap-[10px]">
-                <Fact label="Tốc độ va chạm" value={fmt.kmh(d.metrics.impact_speed_kmh)} danger={!!d.metrics.impact_speed_kmh} />
+                <Fact label="Tốc độ va chạm" value={fmt.kmh(d.metrics.impact_speed_kmh)} danger={d.metrics.impact_speed_kmh !== null && d.metrics.impact_speed_kmh > 0} />
                 <Fact label="Khoảng cách nhỏ nhất" value={fmt.m(d.metrics.min_distance_m)} danger={(d.metrics.min_distance_m ?? 1) <= 0.05} />
+                <Fact label="RMS jerk" value={d.metrics.rms_jerk_mps3 === null ? "Chưa đo" : `${d.metrics.rms_jerk_mps3.toFixed(2)} m/s³`} />
+                <Fact label="Quãng phanh" value={fmt.m(d.metrics.stopping_distance_m)} />
+                <Fact label="Giảm tốc cực đại" value={d.metrics.max_deceleration_mps2 === null ? "Chưa đo" : `${d.metrics.max_deceleration_mps2.toFixed(2)} m/s²`} />
+                <Fact label="Nguồn chỉ số" value={d.metrics.metric_source === "SIMULATOR_RESULT" ? "Kết quả run đã lưu" : "Chưa xác định"} />
+                <p className="col-span-2 text-[10px] text-vehicsim-faint">Chỉ số cùng đơn vị SI từ kết quả của bộ mô phỏng đang ghi trên run. CARLA chưa hiệu chuẩn phanh; không dùng các số CARLA làm bằng chứng regression.</p>
                 <Fact
                   label="Phát hiện lần đầu"
                   value={
@@ -105,21 +160,21 @@ export default function FailureDetailPage() {
               </div>
             </div>
             <div className="min-w-0 flex-1">
-              <ScenarioMap
+              {d.scene.path.length>0 && typeof d.scene.crossing_x==="number" ? <ScenarioMap
                 crossingX={d.scene.crossing_x}
                 vehicleLengthM={d.scene.vehicle_length_m}
                 vehicleWidthM={d.scene.vehicle_width_m}
                 path={d.scene.path}
                 pedY={d.scene.path.map((p) => p.ped_y)}
-                egoX={d.scene.end?.ego_x ?? 0}
-                pedYNow={d.scene.end?.ped_y ?? 0}
+                egoX={currentPoint?.ego_x_m ?? d.scene.end?.ego_x ?? 0}
+                pedYNow={currentPoint?.target_y_m ?? d.scene.end?.ped_y ?? 0}
                 aebX={derived.aebX}
                 detectionX={derived.detectionX}
                 collision={d.outcome === "COLLISION"}
                 egoLabel={`Xe ${d.vehicle} · ${d.environment.ego_speed_kmh} km/h`}
                 pedestrianLabel={`Người đi bộ · ${d.environment.pedestrian_speed_mps} m/s`}
                 labels={derived.mapLabels}
-              />
+              /> : <p>Không đủ tọa độ để dựng cảnh.</p>}
             </div>
           </section>
 
@@ -129,7 +184,7 @@ export default function FailureDetailPage() {
                 <h2 className="text-[18px] font-bold text-vehicsim-ink">Chuỗi nguyên nhân gốc</h2>
                 {d.chain.length > 0 && (
                   <span className="rounded-full bg-vehicsim-soft px-[10px] py-[5px] text-[12px] font-medium text-vehicsim-muted">
-                    Tự động phân loại{d.chain_confidence !== null ? ` · độ tin cậy ${d.chain_confidence.toFixed(2)}` : ""}
+                    Nhận định theo luật{d.chain_confidence !== null ? ` · độ tin cậy ${d.chain_confidence.toFixed(2)}` : ""}
                   </span>
                 )}
               </div>
@@ -138,7 +193,7 @@ export default function FailureDetailPage() {
               </span>
             </div>
             {d.chain.length === 0 ? (
-              <p className="text-[13px] text-vehicsim-muted">Không có lỗi: mọi khâu đạt chuẩn và xe không chạm người đi bộ.</p>
+              <p className="text-[13px] text-vehicsim-muted">Run không có chuỗi nhận định để hiển thị. Xem kết quả và dữ liệu nguồn trước khi kết luận.</p>
             ) : (
               <div className="flex w-full items-stretch gap-[10px]">
                 {d.chain.map((stage, i) => (
@@ -170,12 +225,13 @@ export default function FailureDetailPage() {
                 <div className="flex items-center justify-between">
                   <h2 className="text-[16px] font-bold text-vehicsim-ink">Dữ liệu đo</h2>
                   <div className="flex items-center gap-[14px] text-[12px] font-medium text-vehicsim-muted">
-                    <Legend color="bg-vehicsim-ink" label="TTC (s)" />
+                    <Legend color="bg-vehicsim-ink" label="TTC nhận thức (s)" />
                     <Legend color="bg-vehicsim-decision" label="Tốc độ (km/h)" />
                     {d.ttc_threshold_s !== null && <Legend color="bg-vehicsim-amber" label={`Ngưỡng ${d.ttc_threshold_s} s`} />}
                   </div>
                 </div>
                 <TelemetryChart
+                  cursor={cursor}
                   points={d.telemetry}
                   threshold={d.ttc_threshold_s}
                   markers={derived.markers}
@@ -195,6 +251,17 @@ export default function FailureDetailPage() {
                   </div>
                 )}
               </section>
+
+              <section className="rounded-[20px] bg-white p-5 space-y-3">
+                <h2 className="font-bold">Bằng chứng và giới hạn nhận định</h2>
+                <p className="text-[12px] text-vehicsim-muted">Chuỗi nguyên nhân là giả thuyết theo luật đánh giá, không chứng minh quan hệ nhân quả. Điểm confidence là điểm của luật, không phải xác suất đã hiệu chuẩn.</p>
+                {d.stage_evidence?.map(e=><div key={e.stage} className="text-[12px]"><strong>{STAGE_NAME[e.stage as FailureClass]??e.stage}</strong>
+                  <p>{Object.values(e.values).some(v=>v!==null)?"Có số đo để đối chiếu; nhận định vẫn cần kiểm tra.":"Không đủ số đo để đối chiếu."}</p>
+                  {Object.entries(e.values).map(([key,value])=><span key={key} className="mr-3">{({first_detection_t:"Phát hiện (s)",first_detection_distance_m:"Cự ly phát hiện (m)",decision_t:"Quyết định (s)",decision_ttc_s:"TTC quyết định (s)",brake_onset_t:"Phanh có hiệu lực (s)",response_time_s:"Trễ phanh (s)",max_deceleration_mps2:"Giảm tốc cực đại (m/s²)",road_friction:"Hệ số ma sát"} as Record<string,string>)[key]??key}: {value===null?"Không khả dụng":value}</span>)}
+                </div>)}
+              </section>
+
+              <MotionTelemetryChart points={d.motion_telemetry ?? []} markers={derived.markers} cursor={cursor} />
 
               <section className="flex w-full flex-col gap-[10px] rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
                 <h2 className="text-[16px] font-bold text-vehicsim-ink">Ca lỗi tương tự</h2>

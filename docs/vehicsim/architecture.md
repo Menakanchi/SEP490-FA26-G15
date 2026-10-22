@@ -115,6 +115,32 @@ Chỉ hỗ trợ motif người đi bộ băng ngang (kể cả ca dừng ở l�
 Giới hạn 30 lượt / 15 phút / người (Redis) vì app public và mỗi lượt tốn tiền.
 Graph 7 node của Forge **không** được dùng ở đây — xem ADR-026.
 
+## Tập baseline bàn giao từ màn phân tích (22/10/2026)
+
+- `GET /analysis/dataset?scenario_id=...` xem trước các biến thể GENERATED của một họ.
+  Chọn nhóm xe/simulator có nhiều baseline run hoàn tất nhất; hòa thì sắp theo ID xe/simulator.
+  Mỗi biến thể lấy run hoàn tất mới nhất của baseline hiện tại trong nhóm đó; giữ ca an toàn và NOT_RUN.
+- `POST /analysis/datasets` nhận `scenario_id` và `preview_token`; quyền ghi + limitWrites,
+  transaction REPEATABLE_READ và kiểm token để không lưu nhầm preview đã thay đổi.
+- `GET /analysis/datasets/{id}` đọc snapshot cùng project, không chọn lại run; trả
+  `baseline_current` riêng để cảnh báo baseline đã đổi. UI bàn giao `/aeb?dataset_id=...`.
+- Snapshot lưu trong `analysis_results` với loại BASELINE_DATASET, method IMMUTABLE_SNAPSHOT;
+  schema JSON `vehicsim.analysis-dataset/v1`, chỉ số AS_STORED. DB cũ cần migration 009.
+- Chi tiết run bổ sung `motion_telemetry` từ các trường đã lưu; TTC nhận thức và GT tách riêng.
+  Biểu đồ TTC chính không thay TTC nhận thức bị thiếu bằng TTC ground truth.
+- Dashboard `GET /analysis/runs` đọc mọi trạng thái baseline; KPI và items dùng cùng scope.
+  Chi tiết `GET /analysis/runs/{id}` giữ riêng run kỹ thuật chưa có kết quả.
+- `POST /analysis/selections` lưu v2 với hai tập độc lập theo biến thể, mỗi tập giữ ca an toàn.
+  `GET /analysis/datasets/{id}/handoff` chặn v1/cũ/thiếu artifact hoặc source thay đổi;
+  /aeb chỉ nhận dữ liệu đã kiểm, không chạy optimizer/candidate.
+- Bộ tổng hợp JDK-only `core/AnalysisMetrics` được dashboard và snapshot dùng chung.
+  Chốt ngày 22/10: giữ công thức legacy, không đổi số đo lịch sử; hợp đồng
+  [analysis-metrics-contract.md](analysis-metrics-contract.md) ghi rõ nguồn và giới hạn.
+- Sensor CARLA tính lại vẫn là nguồn khác; hợp đồng pha phanh/bộ lọc/impact mới còn mở.
+  Không dùng snapshot để khẳng định đã có MOBO hay đủ bằng chứng phê duyệt.
+- Kiểm chứng: AnalysisDatasetTest, AnalysisSnapshotTest, VehicSimSecurityTest.
+  UI smoke cuối dùng backend/MySQL test thật; xem [bàn giao phần 3](../exec-plans/completed/2026-10-22-hoan-thien-phan-3.md).
+
 ## Xác thực
 
 - Đăng ký và quên mật khẩu: email → mã 6 số (TTL 600 s, tối đa 5 lần nhập sai,

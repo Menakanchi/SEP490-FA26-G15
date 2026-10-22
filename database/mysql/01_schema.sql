@@ -617,6 +617,7 @@ CREATE TABLE regression_tests (
   aeb_system_id            BIGINT UNSIGNED NOT NULL,         -- lặp lại có chủ đích: ép baseline + candidate cùng một AEB system
   baseline_aeb_version_id  BIGINT UNSIGNED NOT NULL,
   candidate_aeb_version_id BIGINT UNSIGNED NOT NULL,
+<<<<<<< Updated upstream
   scenario_id              BIGINT UNSIGNED NOT NULL,         -- cả họ: so baseline vs candidate trên mọi biến thể
   base_scenario_version_id BIGINT UNSIGNED NOT NULL,         -- bản gốc; bộ biến thể = scenario_versions có parent_version_id = cột này
   -- Từng cặp run nằm ở simulation_runs (regression_test_id + baseline_run_id).
@@ -628,6 +629,284 @@ CREATE TABLE regression_tests (
   -- REQUEST_MORE_TESTS: kỹ sư gửi lại kèm yêu cầu thêm kịch bản (màn 18 Figma).
   review_decision          ENUM('PENDING','ACCEPT','REJECT','REQUEST_MORE_TESTS') NOT NULL DEFAULT 'PENDING',
   reviewed_by              BIGINT UNSIGNED NULL,
+=======
+  carla_vehicle_model_id   BIGINT UNSIGNED NOT NULL COMMENT 'Mọi cặp run chạy đúng xe này',
+  simulator_version        VARCHAR(30) NOT NULL COMMENT 'Mọi cặp run chạy đúng bộ mô phỏng này',
+  name                     VARCHAR(150) NULL,
+  description              TEXT NULL,
+  pass_criteria_json       JSON NOT NULL COMMENT 'vd: không va chạm mới, RMS Jerk không tăng quá 10%, stopping distance cải thiện',
+  execution_status         ENUM('PENDING','RUNNING','COMPLETED','FAILED','CANCELLED') NOT NULL DEFAULT 'PENDING',
+  verdict                  ENUM('PENDING','PASSED','REGRESSED','FAILED') NOT NULL DEFAULT 'PENDING'
+                           COMMENT 'PASSED = đạt mọi tiêu chí; REGRESSED = có ca baseline đạt mà candidate trượt; FAILED = trượt tiêu chí khác',
+  total_scenarios          INT UNSIGNED NOT NULL DEFAULT 0,
+  fixed_scenarios          INT UNSIGNED NOT NULL DEFAULT 0,
+  regressed_scenarios      INT UNSIGNED NOT NULL DEFAULT 0,
+  created_by_user_id       BIGINT UNSIGNED NOT NULL,
+  created_date             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at              DATETIME NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_rt_project_id (project_id, id),
+  UNIQUE KEY uq_rt_id_candidate (id, candidate_aeb_version_id),
+  UNIQUE KEY uq_rt_run_scope (id, candidate_aeb_version_id, carla_vehicle_model_id, simulator_version),  -- đích của fk_sr_regression
+  KEY idx_rt_scenario (project_id, scenario_id),
+  KEY idx_rt_baseline (project_id, baseline_aeb_version_id),
+  KEY idx_rt_candidate (project_id, candidate_aeb_version_id),
+  KEY idx_rt_vehicle (carla_vehicle_model_id),
+  KEY idx_rt_creator (created_by_user_id),
+  CONSTRAINT fk_rt_project   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_rt_vehicle   FOREIGN KEY (carla_vehicle_model_id) REFERENCES carla_vehicle_models(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_rt_scenario  FOREIGN KEY (project_id, scenario_id) REFERENCES scenarios(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_rt_baseline  FOREIGN KEY (project_id, baseline_aeb_version_id) REFERENCES aeb_versions(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_rt_candidate FOREIGN KEY (project_id, candidate_aeb_version_id) REFERENCES aeb_versions(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_rt_creator   FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT ck_rt_distinct CHECK (baseline_aeb_version_id <> candidate_aeb_version_id),
+  CONSTRAINT ck_rt_verdict  CHECK (verdict = 'PENDING' OR execution_status = 'COMPLETED')
+) ENGINE=InnoDB;
+
+-- FE-12-03: kết quả từng kịch bản trong regression.
+CREATE TABLE regression_test_items (
+  id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  regression_test_id  BIGINT UNSIGNED NOT NULL,
+  scenario_version_id BIGINT UNSIGNED NOT NULL,
+  baseline_run_id     BIGINT UNSIGNED NOT NULL,
+  candidate_run_id    BIGINT UNSIGNED NOT NULL,
+  baseline_outcome    ENUM('SAFE','NEAR_MISS','COLLISION') NULL,
+  candidate_outcome   ENUM('SAFE','NEAR_MISS','COLLISION') NULL,
+  change_type         ENUM('FIXED','REGRESSED','UNCHANGED') NULL,
+  is_regression       BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Baseline đạt mà candidate trượt',
+  notes               TEXT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_rti_test_variant (regression_test_id, scenario_version_id),
+  UNIQUE KEY uq_rti_candidate (candidate_run_id),
+  KEY idx_rti_pair (candidate_run_id, baseline_run_id, regression_test_id, scenario_version_id),
+  KEY idx_rti_variant (scenario_version_id),
+  KEY idx_rti_baseline (baseline_run_id),
+  CONSTRAINT fk_rti_test FOREIGN KEY (regression_test_id) REFERENCES regression_tests(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+  CONSTRAINT fk_rti_pair FOREIGN KEY (candidate_run_id, baseline_run_id, regression_test_id, scenario_version_id)
+    REFERENCES simulation_runs(id, baseline_run_id, regression_test_id, scenario_version_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_rti_baseline FOREIGN KEY (baseline_run_id) REFERENCES simulation_runs(id) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 7. MÔ PHỎNG, ĐÁNH GIÁ, LỖI (FE-07, FE-08, FE-09, FE-10)  — 5 bảng
+-- ---------------------------------------------------------------------
+-- Một lần chạy một biến thể với một xe + một AEB version + một seed; gồm luôn kết quả đo 3 objective và telemetry.
+CREATE TABLE simulation_runs (
+  id                         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  project_id                 BIGINT UNSIGNED NOT NULL,
+  scenario_id                BIGINT UNSIGNED NOT NULL COMMENT 'lặp lại có chủ đích để FK ghép ép cùng project',
+  scenario_version_id        BIGINT UNSIGNED NOT NULL,
+  carla_vehicle_model_id     BIGINT UNSIGNED NOT NULL,
+  aeb_version_id             BIGINT UNSIGNED NOT NULL,
+  simulator_type             ENUM('KINEMATIC','CARLA') NOT NULL,
+  simulator_version          VARCHAR(30) NOT NULL COMMENT 'Danh tính bộ mô phỏng: vehicsim-kinematic-1.0 | carla-0.9.16',
+  map_name                   VARCHAR(100) NULL COMMENT 'Map CARLA thực nạp (world.get_map().name); NULL với động học',
+  fixed_delta_seconds        DECIMAL(6,4) NOT NULL DEFAULT 0.0500 COMMENT 'Bước mô phỏng (synchronous_mode)',
+  max_duration_s             DECIMAL(8,2) NULL COMMENT 'Hết giờ mô phỏng thì end_reason = TIMEOUT',
+  purpose                    ENUM('BASELINE','EVALUATION','OPTIMIZATION','REGRESSION','ROBUSTNESS') NOT NULL,
+  status                     ENUM('PENDING','RUNNING','PAUSED','COMPLETED','FAILED','STOPPED') NOT NULL DEFAULT 'PENDING',
+  random_seed                BIGINT UNSIGNED NOT NULL,
+  baseline_run_id            BIGINT UNSIGNED NULL COMMENT 'Run REGRESSION chạy lại đúng biến thể + seed + bộ mô phỏng + xe của run này',
+  regression_test_id         BIGINT UNSIGNED NULL,
+  optimization_trial_id      BIGINT UNSIGNED NULL,
+  analysis_result_id         BIGINT UNSIGNED NULL COMMENT 'Run ROBUSTNESS thuộc lần kiểm robustness nào (FE-11-05)',
+  run_config_json            JSON NULL COMMENT 'Bản chụp tham số biến thể lúc chạy (+ nhiễu nếu ROBUSTNESS)',
+  -- Kết quả đánh giá AEB (FE-09-05) & 3 Metrics cốt lõi:
+  verdict                    ENUM('PASS','FAIL') NULL,
+  end_reason                 ENUM('TARGET_CLEARED','EGO_STOPPED','COLLISION','TIMEOUT','ERROR') NULL,
+  simulated_duration_s       DECIMAL(9,3) NULL,
+  collision_occurred         BOOLEAN NULL,
+  first_detection_time_s     DECIMAL(8,3) NULL COMMENT 'Perception phát hiện đối tượng lần đầu (độ trễ phát hiện)',
+  first_detection_distance_m DECIMAL(8,3) NULL,
+  fcw_activated              BOOLEAN NULL COMMENT 'FCW đã cảnh báo',
+  fcw_time_s                 DECIMAL(8,3) NULL,
+  aeb_activated              BOOLEAN NULL,
+  aeb_activation_time_s      DECIMAL(8,3) NULL,
+  is_false_positive          BOOLEAN NULL COMMENT 'Phanh oan: an toàn mà vẫn phanh gấp',
+  is_false_negative          BOOLEAN NULL COMMENT 'Bỏ sót: có nguy cơ mà không phanh',
+  -- 3 METRIC CHO 3 OBJECTIVES:
+  rms_jerk_mps3              DECIMAL(8,3) NULL COMMENT 'Objective 1: RMS Jerk (m/s3) trong pha phanh, từ lúc phanh tác dụng tới hết run (Braking Comfort); NULL nếu không phanh',
+  impact_speed_mps           DECIMAL(8,3) NULL COMMENT 'Objective 2: Vận tốc lúc va chạm (m/s) (Collision Mitigation); NULL nếu không va chạm — khi gộp theo họ tính 0',
+  stopping_distance_m        DECIMAL(8,3) NULL COMMENT 'Objective 3: Quãng từ lúc phanh tác dụng tới lúc dừng (m); run kết thúc khi xe còn chạy thì cộng v²/(2·decel_available), nên có cả ca va chạm; NULL nếu không phanh (Stopping Performance)',
+  min_distance_m             DECIMAL(10,3) NULL,
+  min_ttc_s                  DECIMAL(8,3) NULL,
+  braking_response_time_s    DECIMAL(8,3) NULL COMMENT 'Từ lệnh AEB tới lúc phanh có tác dụng thực tế',
+  max_deceleration_mps2      DECIMAL(8,3) NULL,
+  mean_deceleration_mps2     DECIMAL(8,3) NULL,
+  max_jerk_mps3              DECIMAL(8,3) NULL,
+  telemetry_json             JSON NULL COMMENT 'Chuỗi khung (ego, target, perception, TTC) cho biểu đồ / phát lại',
+  error_message              TEXT NULL,
+  worker_host                VARCHAR(150) NULL,
+  created_by_user_id         BIGINT UNSIGNED NOT NULL,
+  queued_at                  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at                 DATETIME NULL,
+  ended_at                   DATETIME NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_sr_replay (id, scenario_version_id, random_seed, simulator_version, carla_vehicle_model_id),
+  UNIQUE KEY uq_sr_pair (id, baseline_run_id, regression_test_id, scenario_version_id),
+  KEY idx_sr_project_status (project_id, status),
+  KEY idx_sr_scenario (project_id, scenario_id),
+  KEY idx_sr_variant (scenario_id, scenario_version_id),
+  KEY idx_sr_vehicle (carla_vehicle_model_id),
+  KEY idx_sr_aeb (project_id, aeb_version_id),
+  KEY idx_sr_baseline (baseline_run_id, scenario_version_id, random_seed, simulator_version, carla_vehicle_model_id),
+  KEY idx_sr_regression (regression_test_id, aeb_version_id, carla_vehicle_model_id, simulator_version),
+  KEY idx_sr_simulator (project_id, simulator_version),
+  KEY idx_sr_trial (optimization_trial_id, aeb_version_id),
+  KEY idx_sr_analysis (project_id, analysis_result_id, aeb_version_id),
+  KEY idx_sr_purpose (purpose, status),
+  KEY idx_sr_creator (created_by_user_id),
+  CONSTRAINT fk_sr_project    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_sr_scenario   FOREIGN KEY (project_id, scenario_id) REFERENCES scenarios(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_sr_variant    FOREIGN KEY (scenario_id, scenario_version_id) REFERENCES scenario_versions(scenario_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_sr_vehicle    FOREIGN KEY (carla_vehicle_model_id) REFERENCES carla_vehicle_models(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_sr_aeb        FOREIGN KEY (project_id, aeb_version_id) REFERENCES aeb_versions(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_sr_baseline   FOREIGN KEY (baseline_run_id, scenario_version_id, random_seed, simulator_version, carla_vehicle_model_id)
+    REFERENCES simulation_runs(id, scenario_version_id, random_seed, simulator_version, carla_vehicle_model_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_sr_regression FOREIGN KEY (regression_test_id, aeb_version_id, carla_vehicle_model_id, simulator_version)
+    REFERENCES regression_tests(id, candidate_aeb_version_id, carla_vehicle_model_id, simulator_version) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_sr_trial      FOREIGN KEY (optimization_trial_id, aeb_version_id)
+    REFERENCES optimization_trials(id, candidate_aeb_version_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_sr_analysis   FOREIGN KEY (project_id, analysis_result_id, aeb_version_id)
+    REFERENCES analysis_results(project_id, id, aeb_version_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_sr_creator   FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT ck_sr_simulator  CHECK ((simulator_type = 'CARLA') = (simulator_version LIKE 'carla-%')
+                                     AND (simulator_type = 'CARLA' OR map_name IS NULL)
+                                     AND fixed_delta_seconds > 0),
+  CONSTRAINT ck_sr_regression CHECK ((purpose = 'REGRESSION') = (regression_test_id IS NOT NULL AND baseline_run_id IS NOT NULL)),
+  CONSTRAINT ck_sr_trial      CHECK ((purpose = 'OPTIMIZATION') = (optimization_trial_id IS NOT NULL)),
+  CONSTRAINT ck_sr_robustness CHECK ((purpose = 'ROBUSTNESS') = (analysis_result_id IS NOT NULL)),
+  CONSTRAINT ck_sr_result     CHECK (status <> 'COMPLETED' OR (verdict IS NOT NULL AND collision_occurred IS NOT NULL))
+) ENGINE=InnoDB;
+
+-- FE-08: file lớn của run (video, log, dữ liệu cảm biến, ground truth).
+CREATE TABLE simulation_artifacts (
+  id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  simulation_run_id BIGINT UNSIGNED NOT NULL,
+  sensor_id         BIGINT UNSIGNED NULL COMMENT 'Cảm biến sinh ra file (SENSOR_OUTPUT)',
+  artifact_type     ENUM('VIDEO_MP4','TELEMETRY','SENSOR_OUTPUT','GROUND_TRUTH','LOG','RESULT_FILE','XOSC') NOT NULL,
+  file_name         VARCHAR(255)  NOT NULL,
+  storage_url       VARCHAR(1024) NOT NULL,
+  mime_type         VARCHAR(100)  NULL,
+  file_size_bytes   BIGINT UNSIGNED NULL,
+  created_date      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_sa_run_type (simulation_run_id, artifact_type),
+  KEY idx_sa_sensor (sensor_id),
+  CONSTRAINT fk_sa_run    FOREIGN KEY (simulation_run_id) REFERENCES simulation_runs(id) ON DELETE CASCADE  ON UPDATE RESTRICT,
+  CONSTRAINT fk_sa_sensor FOREIGN KEY (sensor_id)         REFERENCES sensors(id)         ON DELETE SET NULL ON UPDATE RESTRICT
+) ENGINE=InnoDB;
+
+-- Va chạm thô từ carla.CollisionEvent + số đã tính.
+CREATE TABLE collision_events (
+  id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  simulation_run_id   BIGINT UNSIGNED NOT NULL,
+  frame               INT UNSIGNED NOT NULL,
+  simulation_time_s   DECIMAL(10,3) NOT NULL,
+  other_actor_type_id VARCHAR(100) NULL COMMENT 'vd: walker.pedestrian.0001',
+  collision_type      ENUM('FRONT','SIDE','REAR','OTHER') NOT NULL DEFAULT 'FRONT',
+  impact_speed_mps    DECIMAL(8,3) NULL,
+  normal_impulse_x    DECIMAL(12,4) NULL,
+  normal_impulse_y    DECIMAL(12,4) NULL,
+  normal_impulse_z    DECIMAL(12,4) NULL,
+  location_x_m        DECIMAL(10,3) NULL,
+  location_y_m        DECIMAL(10,3) NULL,
+  location_z_m        DECIMAL(10,3) NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ce_run_frame (simulation_run_id, frame, other_actor_type_id),
+  CONSTRAINT fk_ce_run FOREIGN KEY (simulation_run_id) REFERENCES simulation_runs(id) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE=InnoDB;
+
+-- FE-10-01/02: ca lỗi của một run, phân vào 4 khâu; kỹ sư sửa nhãn được.
+CREATE TABLE failures (
+  id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  simulation_run_id  BIGINT UNSIGNED NOT NULL,
+  failure_type       ENUM('COLLISION','NEAR_MISS','MISSED_BRAKING','LATE_BRAKING','FALSE_BRAKING','HIGH_IMPACT_SPEED',
+                          'INSUFFICIENT_STOPPING_DISTANCE') NOT NULL,
+  category           ENUM('PERCEPTION','DECISION','CONTROL','VEHICLE_DYNAMICS') NOT NULL,
+  severity           ENUM('LOW','MEDIUM','HIGH','CRITICAL') NOT NULL,
+  description        TEXT NOT NULL,
+  detected_by        ENUM('AUTO','MANUAL') NOT NULL DEFAULT 'AUTO',
+  labeled_by_user_id BIGINT UNSIGNED NULL COMMENT 'Kỹ sư sửa nhãn',
+  labeled_at         DATETIME NULL,
+  created_date       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_failures_run_type (simulation_run_id, failure_type),
+  KEY idx_failures_category (category, severity),
+  KEY idx_failures_labeler (labeled_by_user_id),
+  CONSTRAINT fk_failures_run     FOREIGN KEY (simulation_run_id)  REFERENCES simulation_runs(id) ON DELETE CASCADE  ON UPDATE RESTRICT,
+  CONSTRAINT fk_failures_labeler FOREIGN KEY (labeled_by_user_id) REFERENCES users(id)           ON DELETE SET NULL ON UPDATE RESTRICT
+) ENGINE=InnoDB;
+
+-- FE-10-02: chuỗi nguyên nhân theo khâu, nối tới 1 trong 4 tham số AEB nghi ngờ.
+CREATE TABLE root_causes (
+  id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  failure_id       BIGINT UNSIGNED NOT NULL,
+  category         ENUM('PERCEPTION','DECISION','CONTROL','VEHICLE_DYNAMICS') NOT NULL,
+  cause_code       VARCHAR(64) NOT NULL COMMENT 'vd: TRIGGERED_TOO_LATE, BRAKE_DELAY_TOO_HIGH',
+  description      TEXT NOT NULL,
+  aeb_parameter_id INT UNSIGNED NULL,
+  confidence       DECIMAL(4,3) NULL,
+  is_primary       BOOLEAN NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_rc_failure_code (failure_id, cause_code),
+  KEY idx_rc_param (aeb_parameter_id),
+  CONSTRAINT fk_rc_failure FOREIGN KEY (failure_id)       REFERENCES failures(id)       ON DELETE CASCADE  ON UPDATE RESTRICT,
+  CONSTRAINT fk_rc_param   FOREIGN KEY (aeb_parameter_id) REFERENCES aeb_parameters(id) ON DELETE SET NULL ON UPDATE RESTRICT,
+  CONSTRAINT ck_rc_confidence CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1)
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 8. PHÂN TÍCH, KẾT QUẢ REGRESSION, KHUYẾN NGHỊ (FE-10, FE-11, FE-12)  — 3 bảng
+-- ---------------------------------------------------------------------
+CREATE TABLE analysis_results (
+  id                       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  project_id               BIGINT UNSIGNED NOT NULL,
+  analysis_type            ENUM('SENSITIVITY','INTERACTION','ROBUSTNESS_VALIDATION','ACTIVE_LEARNING_TRACKER','BASELINE_DATASET') NOT NULL,
+  method                   VARCHAR(50) NULL COMMENT 'CORRELATION, RANDOM_FOREST, SHAP, PERTURBATION…',
+  scenario_id              BIGINT UNSIGNED NULL COMMENT 'Họ kịch bản được phân tích (NULL = cả project)',
+  aeb_version_id           BIGINT UNSIGNED NULL COMMENT 'Bắt buộc với ROBUSTNESS_VALIDATION: cấu hình được kiểm',
+  optimization_run_id      BIGINT UNSIGNED NULL COMMENT 'Bắt buộc với ACTIVE_LEARNING_TRACKER',
+  title                    VARCHAR(255) NOT NULL,
+  config_json              JSON NULL COMMENT 'Đầu vào: chỉ số mục tiêu, bộ lọc run; robustness: nhiễu (ma sát 0,6–0,9, trễ phanh 0,15–0,30 s, latency…), số mẫu / biến thể',
+  summary_json             JSON NOT NULL COMMENT 'Đầu ra: xếp hạng tham số, ma trận tương tác, phân bố theo nhiễu…',
+  pass_rate                DECIMAL(5,2) NULL COMMENT '% mẫu đạt (robustness)',
+  worst_case_run_id        BIGINT UNSIGNED NULL,
+  status                   ENUM('PENDING','RUNNING','COMPLETED','FAILED') NOT NULL DEFAULT 'PENDING',
+  created_by_user_id       BIGINT UNSIGNED NOT NULL,
+  created_date             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ar_project_id_aeb (project_id, id, aeb_version_id),  -- đích của fk_sr_analysis
+  KEY idx_ar_project_type (project_id, analysis_type),
+  KEY idx_ar_scenario (project_id, scenario_id),
+  KEY idx_ar_aeb (project_id, aeb_version_id),
+  KEY idx_ar_opt (project_id, optimization_run_id),
+  KEY idx_ar_worst (worst_case_run_id),
+  KEY idx_ar_creator (created_by_user_id),
+  CONSTRAINT fk_ar_project  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_ar_scenario FOREIGN KEY (project_id, scenario_id) REFERENCES scenarios(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_ar_aeb      FOREIGN KEY (project_id, aeb_version_id) REFERENCES aeb_versions(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_ar_opt      FOREIGN KEY (project_id, optimization_run_id) REFERENCES optimization_runs(project_id, id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_ar_worst    FOREIGN KEY (worst_case_run_id) REFERENCES simulation_runs(id) ON DELETE SET NULL ON UPDATE RESTRICT,
+  CONSTRAINT fk_ar_creator  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT ck_ar_robustness CHECK (analysis_type <> 'ROBUSTNESS_VALIDATION' OR aeb_version_id IS NOT NULL),
+  CONSTRAINT ck_ar_active     CHECK (analysis_type <> 'ACTIVE_LEARNING_TRACKER' OR optimization_run_id IS NOT NULL),
+  CONSTRAINT ck_ar_pass_rate  CHECK (pass_rate IS NULL OR pass_rate BETWEEN 0 AND 100)
+) ENGINE=InnoDB;
+
+-- FE-12-04/05: một khuyến nghị cho một regression; Reviewer ACCEPT / REJECT.
+CREATE TABLE engineering_recommendations (
+  id                       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  project_id               BIGINT UNSIGNED NOT NULL,
+  regression_test_id       BIGINT UNSIGNED NOT NULL,
+  candidate_aeb_version_id BIGINT UNSIGNED NOT NULL,
+  optimization_run_id      BIGINT UNSIGNED NULL,
+  content                  TEXT NOT NULL COMMENT 'Kết luận kỹ thuật & đề xuất lựa chọn cấu hình Pareto tốt nhất',
+  confidence               ENUM('HIGH','MEDIUM','LOW') NULL,
+  status                   ENUM('PENDING_REVIEW','ACCEPTED','REJECTED','MORE_TESTS_REQUESTED') NOT NULL DEFAULT 'PENDING_REVIEW',
+  created_by_user_id       BIGINT UNSIGNED NOT NULL,
+  reviewed_by_user_id      BIGINT UNSIGNED NULL,
+>>>>>>> Stashed changes
   reviewed_at              DATETIME NULL,
   review_note              TEXT NULL,                        -- lý do (bắt buộc khi quyết định)
   review_conditions        TEXT NULL,                        -- điều kiện / việc cần làm tiếp sau quyết định
