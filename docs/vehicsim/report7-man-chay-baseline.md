@@ -1,6 +1,7 @@
 # Report 7 — Màn "Chạy baseline": đặc tả use case, thiết kế và test case
 
 **Người phụ trách:** Thành viên 2 (Trung). **Trạng thái:** bản nháp 22/10/2026, đối chiếu code tại commit `37403a0` (nhánh `trungdam`).
+Bản tiếng Anh cho Report 7: [report7-baseline-screen-en.md](report7-baseline-screen-en.md); sửa bản này thì sửa cả bản kia.
 Tài liệu mô tả **code đang chạy**; phần chưa làm và phần chờ nhóm quyết định nằm ở [mục 6](#6-giới-hạn-và-phần-chưa-làm), không tính là tính năng đã có.
 
 Nguồn tiêu chí nghiệm thu: [phân chia 5 thành viên](phan-chia-cong-viec-5-thanh-vien.md) §4 và
@@ -424,7 +425,7 @@ Quy ước: **Tự động** là test có trong repo (`mvnw -B clean test` 236 t
 | TC-A21 | Worker dọn world: xóa actor sót đúng thứ tự, trả server về không đồng bộ; dừng bằng cờ trong < 5 giây; hết hạn không cờ thì báo timeout | `test_run_xosc_lifecycle.py` (6 test), `test_run_xosc.py` | UC-03, UC-07, BR-08 |
 | TC-A22 | `run_xosc.py` từ chối `.json`, map mã thoát 2/3/4, đổi tín hiệu dừng thành thoát sạch | `test_run_xosc.py` | BR-09 |
 | TC-A23 | Recorder cảm biến: TTC mục tiêu gần nhất, bỏ phản xạ mặt đường và xung khởi tạo, tóm tắt phanh/va chạm | `test_sensor_recorder.py` (4 test) | UC-05 |
-| TC-A24 | Công cụ chạy lặp và đo phanh: thống kê không biến thiếu số thành 0 | `test_repeat_xosc.py`, `test_measure_brake.py` | Việc 3, 4 (kế hoạch 20/10) |
+| TC-A24 | Công cụ chạy lặp, đo phanh và thí nghiệm xe: thống kê không biến thiếu số thành 0 | `test_repeat_xosc.py`, `test_measure_brake.py`, `test_vehicle_study.py` | Việc 3, 4 (kế hoạch 20/10) |
 
 ### 4.2. Test thủ công trên CARLA / giao diện
 
@@ -440,6 +441,7 @@ Quy ước: **Tự động** là test có trong repo (`mvnw -B clean test` 236 t
 | TC-M08 | Chạy lặp trên profile hiện tại | `repeat_xosc.py scenario.xosc --runs 5` cho ca dừng, ca va chạm, ca an toàn | Sự kiện rời rạc trùng tuyệt đối; số liên tục trong dung sai đề xuất ở mục 6 | [exec plan 22/10](../exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md) mục 3 (n = 5 mỗi ca) |
 | TC-M09 | Hình học người đi bộ trên CARLA | Chạy `.xosc` CP_CROSSING, quan sát hoặc đọc `frames.csv` | Người đi bộ băng ngang vuông góc làn, không trôi dọc theo đường | [bằng chứng sửa hướng đi](../exec-plans/completed/2026-10-19-sua-huong-nguoi-di-bo-carla.md) |
 | TC-M10 | Bàn giao sang màn Phân tích | Bấm **Tiếp tục: Phân tích kết quả →** | `/analysis/failures?scenario_id=…` mở với họ đã chọn; request đầu tiên đã lọc theo họ | Điền khi nghiệm thu |
+| TC-M11 | Phanh của nhiều xe trên CARLA | `vehicle_study.py --out data\vehicle-study` (+ `--blueprints vehicle.audi.etron`) | Xe nào cũng dừng; chạy lặp trùng nhau; giảm ma sát lốp, tăng khối lượng, giảm mô-men phanh đều làm quãng dừng dài ra | [exec plan 22/10](../exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md) mục 6 (5 xe, cả ba phép đổi đúng chiều) |
 
 ## 5. Truy vết tiêu chí nghiệm thu
 
