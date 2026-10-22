@@ -1531,7 +1531,7 @@ public class OptimizationService {
 
 
 
-        // Fallback: Latin Hypercube / Uniform sampling trong khoảng chuẩn
+        // Fallback: Bounded Random Sampling trong khoảng chuẩn
 
 
 
