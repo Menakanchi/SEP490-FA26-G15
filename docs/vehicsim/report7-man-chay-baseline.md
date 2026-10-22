@@ -467,6 +467,6 @@ Các mục này nằm ngoài những gì tài liệu trên mô tả là "đã c�
 | Hiệu chuẩn phanh | Đo e-tron 4,67 m/s²; chưa ghi `carla_full_brake_decel_mps2` vào DB | Người quản lý dữ liệu xe |
 | AEB tắt | Chưa code; cắt bàn đạp thôi chưa đủ vì quãng dừng, thời điểm phanh, jerk tính theo quyết định của AEB | Thành viên 3, 5 định nghĩa chỉ số |
 | Ca dừng ở lề (TD-47) | `PedestrianControl` đi tiếp sau waypoint cuối; chưa dùng làm bằng chứng phanh oan | Người 1 |
-| Phạm vi xe | Chỉ `audi.etron` được đo và kiểm `physics_check`; DB có một xe | Người 2 |
+| Phạm vi xe | Chỉ `audi.etron` được đo và kiểm `physics_check`; DB có một xe. Công cụ `worker/vehicle_study.py` cho 4 xe đã có và có test, **chưa chạy trên CARLA** ([exec plan 22/10](../exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md) mục 6) | Người 2 chạy trên máy CARLA |
 | Loại kịch bản | Chỉ `CP_CROSSING` (TD-42) | Nhóm |
 | Hủy cho regression | Run của regression chỉ dừng theo cả test | Người 5 |

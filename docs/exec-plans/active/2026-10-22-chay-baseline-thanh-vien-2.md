@@ -14,6 +14,7 @@ dữ liệu ở `data/` (ngoài git).
 | 3. Chạy lặp, dung sai | Có công cụ; n=5 trên ca dừng, ca va chạm, ca an toàn; **đề xuất dung sai** chờ thành viên 3, 5 chốt | mục 3 |
 | 4. Đọc lại physics | Xong: `physics_applied` (21/10) + `physics_check` so yêu cầu ↔ thực áp (22/10) | mục 4 |
 | 5. AEB tắt | **Chưa code** — đề xuất, chờ định nghĩa chỉ số (mục 5) | — |
+| 6. Thí nghiệm 4 xe (PDF §10.1) | Công cụ `worker/vehicle_study.py` xong, 14 test; **chưa chạy trên CARLA** | mục 6 |
 | TD-34 tắt backend giữa run | Xong: ghi cờ dừng trước, chờ `STOP_GRACE_S` rồi mới giết; xoá TD-34 | `CarlaWebTest.shuttingDownMidRunAsksTheWorkerToCleanUpBeforeKillingIt` |
 | Report 7 (use case, sơ đồ, test case) | Bản nháp xong; các ô "điền khi nghiệm thu" cần chạy tay | [report7-man-chay-baseline.md](../../vehicsim/report7-man-chay-baseline.md) |
 
@@ -120,3 +121,35 @@ Lý do chưa code (22/10): cắt bàn đạp thôi chưa đủ. `Simulator.build
 `EGO_STOPPED` từ `brakeOnsetT`/quyết định của stack; ở chế độ tắt các số đó sẽ mang nghĩa sai nếu không định nghĩa lại. Phương án đề xuất: tham số `.xosc` `vs_aeb_mode = ON|OFF`; ở `OFF`, `CarlaSession` vẫn chạy perception/quyết định để ghi "AEB lẽ ra làm gì" nhưng không áp
 bàn đạp; `result.json` ghi `aeb_mode`; regression/tối ưu từ chối run `OFF` làm baseline; đổi identity profile. Cần thành viên 3, 5 chốt: baseline đo "AEB hiện tại",
 "AEB tắt" hay cả hai; có cần cột DB (quy trình schema đầy đủ) hay chỉ trong `.xosc`/`result.json`.
+
+## 6. Thí nghiệm 4 xe (PDF §10.1) — công cụ sẵn sàng, chưa chạy
+
+PDF phương pháp §10.1 (bước 2–6) cần số đo thật trên 4 loại xe trước khi nói xe nào dùng được. Mới đo `audi.etron`; DB seed đúng một xe.
+`worker/vehicle_study.py` làm bước đó bằng một lệnh, dựng trên `measure_brake.measure_once` (đã kiểm trên CARLA thật ở mục 2):
+
+```
+worker\.venv-carla\Scripts\python.exe worker\vehicle_study.py --out data\vehicle-study [--speed 50] [--repeats 3]
+```
+
+Mỗi xe (`tesla.model3`, `nissan.patrol_2021`, `mercedes.sprinter`, `carlamotors.european_hgv`): đọc physics thực dùng (số bánh, khối lượng); phanh hết lực, không
+AEB, `--repeats` lần ở physics mặc định; rồi ba nhóm đổi physics, mỗi nhóm `--repeats` lần: ma sát lốp ×0,5, khối lượng ×1,3, mô-men phanh ×0,5 (ép theo từng
+bánh để giữ chênh lệch trước/sau). Quãng dừng dự kiến **tăng** ở cả ba. Phán quyết từng nhóm: `OK` (tăng vượt dao động chạy lặp), `NO_EFFECT` (không
+phân biệt được với dao động), `WRONG_DIRECTION`. Ghi `vehicle_study.json` và `vehicle_study.md` (bảng đúng cột của PDF + bảng kiểm chiều).
+
+Điều công cụ **không** làm: ghi DB hay đổi `carla_vehicle_models`; bước 5 của PDF (radar so với ground truth — đã có ở chế độ chạy bóng, mục 1); bước 7
+(`FollowLeadingVehicle` với AEB tắt/mặc định — loại kịch bản chưa có, TD-42; AEB tắt — mục 5). Ngưỡng lặp lại được 3% và các tỷ lệ đổi physics là đề xuất, nhóm chốt sau.
+Dự báo cần kiểm: TD-17 ghi đổi ma sát lốp/mô-men phanh không có tác dụng ở 0.9.16 (e-tron), nên rất có thể hai nhóm đó ra `NO_EFFECT` — đó là kết quả cần đưa vào báo cáo,
+không phải lỗi công cụ. Một xe lỗi (blueprint không có, CARLA từ chối) được ghi lại, không chặn các xe còn lại; mã thoát 3 nếu có xe không đo được.
+
+Kiểm thử: `worker/tests/test_vehicle_study.py` (14 test) dùng xe giả và module `carla` giả, kèm thử đột biến (đảo chiều, bỏ lọc dải ngắn, số thiếu thành 0, bỏ phát hiện
+không lặp lại, ép sai bánh) để chắc test bắt được lỗi. **Chưa chạy trên CARLA**: các lệnh CARLA mới nhất là lời gọi `measure_once` đã kiểm và phần ép physics theo
+danh sách bánh (`apply_physics_overrides` có test với danh sách bánh; chưa có bằng chứng đã chạy dạng này trên server thật).
+
+Bảng kết quả cần điền sau khi chạy (số liệu thật từ `vehicle_study.md`; không điền từ suy đoán):
+
+| Xe | Số bánh | Khối lượng (kg) | Giảm tốc đạt được (m/s²) | Quãng dừng (m) | Lặp lại được? | Kết luận |
+|---|---|---|---|---|---|---|
+| Sedan | … | … | … | … | … | … |
+| SUV | … | … | … | … | … | … |
+| Van | … | … | … | … | … | … |
+| Truck | … | … | … | … | … | … |
