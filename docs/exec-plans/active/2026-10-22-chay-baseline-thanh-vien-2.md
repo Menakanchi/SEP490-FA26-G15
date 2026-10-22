@@ -15,6 +15,7 @@ dữ liệu ở `data/` (ngoài git).
 | 4. Đọc lại physics | Xong: `physics_applied` (21/10) + `physics_check` so yêu cầu ↔ thực áp (22/10) | mục 4 |
 | 5. AEB tắt | **Chưa code** — đề xuất, chờ định nghĩa chỉ số (mục 5) | — |
 | TD-34 tắt backend giữa run | Xong: ghi cờ dừng trước, chờ `STOP_GRACE_S` rồi mới giết; xoá TD-34 | `CarlaWebTest.shuttingDownMidRunAsksTheWorkerToCleanUpBeforeKillingIt` |
+| Report 7 (use case, sơ đồ, test case) | Bản nháp xong; các ô "điền khi nghiệm thu" cần chạy tay | [report7-man-chay-baseline.md](../../vehicsim/report7-man-chay-baseline.md) |
 
 ## 1. Perception từ radar — chạy bóng (ADR-043 giai đoạn 1)
 
