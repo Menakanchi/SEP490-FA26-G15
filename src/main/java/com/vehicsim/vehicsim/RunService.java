@@ -520,8 +520,7 @@ public class RunService {
                 }
             }
         } catch (InterruptedException e) {
-            proc.descendants().forEach(ProcessHandle::destroyForcibly); // không để tiến trình con mồ côi khi app tắt
-            proc.destroyForcibly();
+            stopOnShutdown(proc, folder); // không để tiến trình con mồ côi khi app tắt, nhưng cho nó dọn CARLA trước (TD-34)
             throw e;
         }
         if (!finished) {
@@ -665,6 +664,34 @@ public class RunService {
             return "STOPPING";
         }
         throw new InvalidRequestException("Run is already " + status + "; nothing to cancel");
+    }
+
+    /**
+     * Hủy mọi run đang chờ/đang chạy của một họ kịch bản bằng đúng {@link #cancelRun} cho từng run. Bỏ qua run của regression/tối ưu
+     * (chúng chỉ dừng theo cả test). Hủy run chờ trước để luồng chạy không kịp nhận chúng; run vừa xong giữa chừng thì bỏ qua.
+     *
+     * @return số run {@code stopped} (đã hủy ngay) và {@code stopping} (đang chạy, đã xin dừng)
+     */
+    public Map<String, Object> cancelFamilyRuns(long projectId, long scenarioId, long userId) {
+        if (db.first("SELECT id FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, projectId) == null) {
+            throw new NotFoundException("scenario family");
+        }
+        List<Row> active = db.list("SELECT id FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND status IN ('PENDING','RUNNING') "
+                + "AND regression_test_id IS NULL AND optimization_trial_id IS NULL ORDER BY (status = 'RUNNING'), id", projectId, scenarioId);
+        int stopped = 0;
+        int stopping = 0;
+        for (Row r : active) {
+            try {
+                if ("STOPPED".equals(cancelRun(projectId, r.lng("id"), userId))) {
+                    stopped++;
+                } else {
+                    stopping++;
+                }
+            } catch (InvalidRequestException e) {
+                // run vừa chạy xong giữa lúc liệt kê và lúc hủy: không còn gì để hủy
+            }
+        }
+        return Json.obj("scenario_id", scenarioId, "stopped", stopped, "stopping", stopping);
     }
 
     public Path carlaFile(long projectId, long runId, String name) {
@@ -838,6 +865,34 @@ public class RunService {
             proc.destroy();
         }
         awaitExitOrKill(proc);
+    }
+
+    /**
+     * Backend bị tắt giữa run (luồng chạy bị interrupt, TD-34): ghi cờ {@link #STOP_FLAG} <b>trước tiên</b> — kể cả khi JVM thoát trước khi chờ xong,
+     * worker vẫn thấy cờ trong 0,5 s và tự dọn world thay vì để CARLA kẹt chế độ đồng bộ — rồi chờ tối đa {@link #STOP_GRACE_S} mới giết cả cây.
+     * Giữ lại trạng thái interrupt cho nơi gọi.
+     */
+    static void stopOnShutdown(Process proc, Path folder) {
+        try {
+            Files.writeString(folder.resolve(STOP_FLAG), "stop", StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.warn("không ghi được {} trong {}", STOP_FLAG, folder, e);
+        }
+        boolean interrupted = Thread.interrupted(); // waitFor ném ngay nếu cờ interrupt còn bật
+        try {
+            if (!proc.waitFor(STOP_GRACE_S, TimeUnit.SECONDS)) {
+                proc.descendants().forEach(ProcessHandle::destroyForcibly);
+                proc.destroyForcibly();
+            }
+        } catch (InterruptedException again) {
+            proc.descendants().forEach(ProcessHandle::destroyForcibly);
+            proc.destroyForcibly();
+            interrupted = true;
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     /** Công cụ ngắn không có trạng thái CARLA cần dọn (xuất .xosc): dừng ngay theo cách mặc định của hệ điều hành. */

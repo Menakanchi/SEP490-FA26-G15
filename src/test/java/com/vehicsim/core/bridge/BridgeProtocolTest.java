@@ -76,6 +76,77 @@ class BridgeProtocolTest {
         return file;
     }
 
+    /**
+     * Thế giới tổng hợp như {@link #aSyntheticCrossingRunsThroughTheProtocolAndWritesResultJson}; {@code withRadar} gửi thêm điểm radar có vận tốc xuyên tâm
+     * đúng hình học (hai điểm trên thân người, một cột đèn tĩnh). Trả {@code outcome} của {@code result.json}.
+     */
+    private Map<String, Object> runCrossing(Path dir, boolean withRadar) throws IOException, InterruptedException {
+        CrossingCase c = new CrossingCase(50, 22, 3.0, false, "CLEAR", "DAY", null);
+        Files.createDirectories(dir);
+        Path xosc = writeXosc(dir, c);
+        start("session");
+        call(map("op", "hello", "protocol", BridgeMain.PROTOCOL));
+        Path out = dir.resolve("out");
+        call(map("op", "open", "xosc", xosc.toString(), "out_dir", out.toString(), "simulator_version", "carla-0.9.16-xosc3"));
+        call(map("op", "init", "ego", map("fwd", List.of(1.0, 0.0), "right", List.of(0.0, 1.0)), "walker", List.of(0.0, 3.6), "front_offset", 0.0,
+                "carla", map("map", "Town04", "blueprint", "vehicle.audi.etron")));
+        double dt = 0.01;
+        double v = c.egoSpeedKmh() / 3.6;
+        double gap = c.crossingX();
+        double pedLeft = -3.6;
+        double pedVLeft = 0.0;
+        String finished = null;
+        for (double t = 0.0; t < 14.0 && finished == null; t += dt) {
+            double time = Math.round(t * 1000.0) / 1000.0;
+            if (pedVLeft == 0.0 && gap <= c.triggerDistanceM()) {
+                pedVLeft = c.pedestrianSpeedMps();
+            }
+            pedLeft += pedVLeft * dt;
+            Map<String, Object> step = map("op", "step", "t", time,
+                    "ego", map("loc", List.of(-gap, 0.0), "fwd", List.of(1.0, 0.0), "vel", List.of(v, 0.0)),
+                    "ped", map("loc", List.of(0.0, -pedLeft), "vel", List.of(0.0, -pedVLeft)), "walker_hit", false);
+            if (withRadar) {
+                step.put("radar", List.of(radarPoint(gap - 0.1, pedLeft + 0.2, -v, pedVLeft), radarPoint(gap + 0.1, pedLeft - 0.2, -v, pedVLeft),
+                        radarPoint(gap + 15.0, 6.0, -v, 0.0)));
+            }
+            Map<String, Object> reply = call(step);
+            if (Boolean.TRUE.equals(reply.get("skip"))) {
+                continue;
+            }
+            finished = (String) reply.get("finished");
+            v = Math.max(0.0, v - ((Number) reply.get("pedal")).doubleValue() * 4.6 * dt);
+            gap -= v * dt;
+        }
+        to.close();
+        process.waitFor(10, TimeUnit.SECONDS);
+        return castMap(MiniJson.parseObject(Files.readString(out.resolve("result.json"), StandardCharsets.UTF_8)).get("outcome"));
+    }
+
+    /** [depth, azimuth, altitude, velocity] của một điểm ở (forward, left) với vận tốc tương đối (vF, vL); azimuth dương = phải như CARLA. */
+    private static List<Double> radarPoint(double forward, double left, double vF, double vL) {
+        double depth = Math.hypot(forward, left);
+        return List.of(depth, Math.atan2(-left, forward), Math.toRadians(2.0), (vF * forward + vL * left) / depth * Math.cos(Math.toRadians(2.0)));
+    }
+
+    @Test
+    void radarShadowIsMeasuredButNeverChangesTheRealRun(@TempDir Path dir) throws Exception {
+        Map<String, Object> plain = runCrossing(dir.resolve("plain"), false);
+        Map<String, Object> shadowed = runCrossing(dir.resolve("radar"), true);
+
+        Map<String, Object> carlaPlain = castMap(castMap(plain.get("case")).get("carla"));
+        Map<String, Object> carlaShadow = castMap(castMap(shadowed.get("case")).get("carla"));
+        assertThat(carlaPlain).as("không gửi radar thì không có khối chạy bóng (run cũ giữ nguyên)").doesNotContainKey("perception_shadow");
+        Map<String, Object> shadow = castMap(carlaShadow.remove("perception_shadow"));
+        // AEB thật không phụ thuộc radar: khung, sự kiện, chỉ số, lý do kết thúc trùng từng trường.
+        assertThat(shadowed).isEqualTo(plain);
+
+        assertThat(shadow).containsEntry("status", "SHADOW").containsEntry("source", "radar");
+        assertThat(((Number) shadow.get("frames_detected_in_view")).intValue()).isGreaterThan(50);
+        assertThat(((Number) shadow.get("frames_far_from_target")).intValue()).as("không bám nhầm cột đèn").isZero();
+        assertThat(((Number) shadow.get("mean_abs_err_left_m")).doubleValue()).isLessThan(0.3);
+        assertThat(shadow.get("aeb_decision_t")).as("AEB bóng (radar) cũng quyết định phanh ở ca nguy cơ").isNotNull();
+    }
+
     @Test
     void handshakeRejectsAForeignProtocolAndAcceptsTheRightOne(@TempDir Path dir) throws IOException {
         start("session");
@@ -112,8 +183,9 @@ class BridgeProtocolTest {
         assertThat(castMap(open.get("constants"))).containsEntry("pedestrian_start_y_m", -3.6).containsEntry("max_duration_s", 12.0);
 
         // Khung tọa độ trùng hệ thế giới: gốc (0,0), tiến +x, "phải" = +y => left = -y. Người đi bộ bắt đầu ở (0, 3.6)... gốc = (0, 3.6 + 1 * -3.6) = (0,0).
+        Map<String, Object> applied = map("mass", 2490.0, "drag_coefficient", 0.3, "wheelbase_m", 2.93);
         assertThat(call(map("op", "init", "ego", map("fwd", List.of(1.0, 0.0), "right", List.of(0.0, 1.0)), "walker", List.of(0.0, 3.6), "front_offset", 0.0,
-                "carla", map("map", "Town04", "blueprint", "vehicle.audi.etron")))).containsEntry("ok", true);
+                "carla", map("map", "Town04", "blueprint", "vehicle.audi.etron", "physics", applied)))).containsEntry("ok", true);
 
         double dt = 0.01;
         double v = c.egoSpeedKmh() / 3.6;
@@ -159,6 +231,8 @@ class BridgeProtocolTest {
         Map<String, Object> carla = castMap(castMap(outcome.get("case")).get("carla"));
         assertThat(carla).containsEntry("map", "Town04").containsEntry("runner", "ScenarioRunner").containsEntry("fixed_delta_seconds", 0.01)
                 .containsEntry("perception_period_s", 0.05);
+        // Thông số CARLA đọc lại sau khi ép (adapter gửi kèm init) được ghi nguyên vào kết quả để đối chiếu với thông số đã yêu cầu.
+        assertThat(castMap(carla.get("physics_applied"))).containsEntry("mass", 2490.0).containsEntry("wheelbase_m", 2.93);
         Map<String, Object> measured = castMap(carla.get("measured_step_s"));
         assertThat(((Number) measured.get("min")).doubleValue()).isEqualTo(0.01);
         assertThat(((Number) measured.get("max")).doubleValue()).isEqualTo(0.01);
@@ -201,6 +275,25 @@ class BridgeProtocolTest {
         start("info", bad.toString());
         assertThat(process.waitFor(10, TimeUnit.SECONDS)).isTrue();
         assertThat(process.exitValue()).isEqualTo(BridgeMain.EXIT_BAD_INPUT);
+    }
+
+    @Test
+    void exportModeWritesAXoscThatInfoReadsBackOrFailsWithExitCodeTwo(@TempDir Path dir) throws IOException, InterruptedException {
+        Path ir = dir.resolve("ir.json");
+        Files.writeString(ir, "{\"ego_speed_kmh\":40,\"trigger_distance_m\":25,\"pedestrian_speed_mps\":3,\"weather\":\"CLEAR\",\"time_of_day\":\"DAY\",\"seed\":7}");
+        Path xosc = dir.resolve("out.xosc");
+        start("export", ir.toString(), xosc.toString());
+        assertThat(MiniJson.parseObject(from.readLine())).containsEntry("ok", true);
+        assertThat(process.waitFor(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(process.exitValue()).isZero();
+        start("info", xosc.toString());
+        assertThat(MiniJson.parseObject(from.readLine())).containsEntry("suffix", "-xosc3");
+
+        Files.writeString(ir, "{\"ego_speed_kmh\":\"fast\"}");
+        start("export", ir.toString(), dir.resolve("bad.xosc").toString());
+        assertThat(process.waitFor(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(process.exitValue()).isEqualTo(BridgeMain.EXIT_BAD_INPUT);
+        assertThat(dir.resolve("bad.xosc")).doesNotExist();
     }
 
     @SuppressWarnings("unchecked")

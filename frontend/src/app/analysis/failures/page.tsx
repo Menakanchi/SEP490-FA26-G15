@@ -41,14 +41,24 @@ export default function FailureCasesPage() {
   const [hidden, setHidden] = useState<Set<OptionalColumn>>(new Set());
   const [columnsOpen, setColumnsOpen] = useState(false);
 
+  // Đến từ màn chạy baseline ("Tiếp tục: Phân tích kết quả"): chọn sẵn đúng họ kịch bản, không bắt người dùng chọn lại.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get("scenario_id"));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- đọc query một lần sau khi mount
+    if (Number.isInteger(id) && id > 0) setFilters((prev) => ({ ...prev, scenario_id: id }));
+    setReady(true);
+  }, []);
+
   const load = useCallback(async () => {
+    if (!ready) return;
     try {
       setData(await vehicsimApi.failures(filters, page, PAGE_SIZE));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không tải được danh sách lỗi");
     }
-  }, [filters, page]);
+  }, [filters, page, ready]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- tải lại khi bộ lọc / trang đổi

@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.within;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -146,5 +147,30 @@ class CarlaSessionLogicTest {
     @Test
     void periodMustBeAMultipleOfTheStep() {
         assertThatThrownBy(() -> stack(0.01, 0.025)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("bội số");
+    }
+
+    @Test
+    void physicsCheckFlagsAForcedFieldThatDidNotStickAndReportsMeshDifferencesSeparately() {
+        // Số đọc lại thật của e-tron 21/10: khối lượng khớp, mesh cao 1,649 (DB 1,67), cơ sở 2,896 (DB 2,95).
+        Map<String, Object> carla = Map.of("physics", Map.of("mass", 2100.0, "drag_coefficient", 0.3),
+                "dimensions", Map.of("height_m", 1.67, "wheelbase_m", 2.95));
+        VehicleSpec vehicle = new VehicleSpec(4.90, 1.94, 9.0);
+        Map<String, Object> applied = Map.of("mass", 2100.0, "drag_coefficient", 0.30000001192, "length_m", 4.87, "width_m", 1.93,
+                "height_m", 1.649, "wheelbase_m", 2.896);
+
+        Map<String, Object> ok = CarlaSession.physicsCheck(carla, vehicle, applied);
+        assertThat(ok.get("forced_ok")).isEqualTo(true);
+        assertThat(ok.get("dimensions_ok")).isEqualTo(false); // cơ sở lệch 0,054 m > 0,05
+        assertThat(rows(ok)).extracting(r -> r.get("field")).containsExactly("mass", "drag_coefficient", "length_m", "width_m", "height_m", "wheelbase_m");
+
+        Map<String, Object> bad = CarlaSession.physicsCheck(carla, vehicle, Map.of("mass", 1800.0, "drag_coefficient", 0.3));
+        assertThat(bad.get("forced_ok")).isEqualTo(false);
+        assertThat(bad.get("dimensions_ok")).isEqualTo(true); // thiếu số đọc lại: ghi dòng nhưng không coi là lệch
+        assertThat(rows(bad).get(0)).containsEntry("delta", -300.0).containsEntry("ok", false);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> rows(Map<String, Object> check) {
+        return (List<Map<String, Object>>) check.get("fields");
     }
 }

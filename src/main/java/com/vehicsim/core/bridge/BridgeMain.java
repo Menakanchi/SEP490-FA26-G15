@@ -3,6 +3,7 @@ package com.vehicsim.core.bridge;
 import com.vehicsim.core.Bundle;
 import com.vehicsim.core.CarlaSession;
 import com.vehicsim.core.MiniJson;
+import com.vehicsim.core.RadarTracker;
 import com.vehicsim.core.Simulator;
 import com.vehicsim.core.Xosc;
 import java.io.BufferedReader;
@@ -34,6 +35,8 @@ import java.util.Map;
  * <p>Chế độ {@code kinematic <bundle.json> [--aeb f] [--seed n] [--out dir]}: chạy lại một bundle bằng bộ động học (xem {@link KinematicCli}).</p>
  *
  * <p>Chế độ {@code info <file.xosc>}: in một dòng JSON {@code {suffix, step_s, perception_period_s}}; lỗi thì ghi stderr và thoát mã 2.</p>
+ *
+ * <p>Chế độ {@code export <ir-hoặc-bundle.json> <ra.xosc>}: xuất {@code .xosc} offline (cùng {@code XoscExport} của web); lỗi đầu vào thoát mã 2.</p>
  */
 public final class BridgeMain {
 
@@ -45,7 +48,7 @@ public final class BridgeMain {
 
     public static void main(String[] args) throws IOException {
         if (args.length == 0) {
-            System.err.println("cách dùng: BridgeMain session | info <file.xosc>");
+            System.err.println("cách dùng: BridgeMain session | info <file.xosc> | export <ir.json> <ra.xosc> | kinematic <bundle.json>");
             System.exit(EXIT_BAD_INPUT);
         }
         // stdout chỉ cho giao thức: chuyển mọi System.out vô tình sang stderr.
@@ -67,6 +70,21 @@ public final class BridgeMain {
                     Xosc.read(Path.of(args[1])); // không nhận XML ngoài hợp đồng/thiếu metadata vào đường ghi kết quả
                     reply(protocol, map("suffix", p.suffix(), "step_s", p.stepS(), "perception_period_s", p.perceptionPeriodS()));
                 } catch (Bundle.BundleError e) {
+                    System.err.println(e.getMessage());
+                    System.exit(EXIT_BAD_INPUT);
+                }
+            }
+            case "export" -> {
+                // Xuất .xosc offline từ Scenario IR hoặc bundle (không cần backend): dùng cho đo/kiểm trên CARLA nhiều ca.
+                if (args.length < 3) {
+                    System.err.println("cách dùng: BridgeMain export <ir-hoặc-bundle.json> <ra.xosc>");
+                    System.exit(EXIT_BAD_INPUT);
+                }
+                try {
+                    Bundle.RunSpec spec = Bundle.readSpec(MiniJson.parseObject(java.nio.file.Files.readString(Path.of(args[1]), StandardCharsets.UTF_8)));
+                    java.nio.file.Files.writeString(Path.of(args[2]), com.vehicsim.core.XoscExport.export(spec), StandardCharsets.UTF_8);
+                    reply(protocol, map("ok", true, "xosc", args[2]));
+                } catch (IllegalArgumentException e) { // gồm Bundle.BundleError và JSON sai
                     System.err.println(e.getMessage());
                     System.exit(EXIT_BAD_INPUT);
                 }
@@ -120,6 +138,7 @@ public final class BridgeMain {
                                 "profile", map("suffix", p.suffix(), "step_s", p.stepS(), "perception_period_s", p.perceptionPeriodS()),
                                 "vehicle", map("length_m", session.spec().vehicle().lengthM(), "width_m", session.spec().vehicle().widthM()),
                                 "physics", physics,
+                                "radar", RadarTracker.sensorAttributes(),
                                 "constants", map("pedestrian_start_y_m", Simulator.PEDESTRIAN_START_Y_M, "max_duration_s", Simulator.MAX_DURATION_S));
                     }
                     case "init" -> {
@@ -134,7 +153,7 @@ public final class BridgeMain {
                         Map<String, Object> ego = castMap(request.get("ego"));
                         Map<String, Object> ped = castMap(request.get("ped"));
                         CarlaSession.Tick tick = session.step(num(request.get("t")), vec(ego.get("loc")), vec(ego.get("fwd")), vec(ego.get("vel")),
-                                vec(ped.get("loc")), vec(ped.get("vel")), Boolean.TRUE.equals(request.get("walker_hit")));
+                                vec(ped.get("loc")), vec(ped.get("vel")), Boolean.TRUE.equals(request.get("walker_hit")), radar(request.get("radar")));
                         reply = map("ok", true, "skip", tick.skip(), "braking", tick.braking(), "decel_cmd", tick.decelCmd(), "pedal", tick.pedal(),
                                 "finished", tick.finished(), "result", tick.finished() != null ? session.resultPath().toString() : null);
                     }
@@ -183,6 +202,24 @@ public final class BridgeMain {
             throw new IllegalArgumentException("cần số, nhận " + v);
         }
         return n.doubleValue();
+    }
+
+    /** {@code radar}: danh sách {@code [depth, azimuth, altitude, velocity]} (ADR-043); thiếu khoá = adapter không gắn radar → {@code null}. */
+    private static List<RadarTracker.Point> radar(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (!(v instanceof List<?> list)) {
+            throw new IllegalArgumentException("radar phải là danh sách điểm, nhận " + v);
+        }
+        List<RadarTracker.Point> points = new java.util.ArrayList<>(list.size());
+        for (Object item : list) {
+            if (!(item instanceof List<?> p) || p.size() != 4) {
+                throw new IllegalArgumentException("điểm radar cần [depth, azimuth, altitude, velocity], nhận " + item);
+            }
+            points.add(new RadarTracker.Point(num(p.get(0)), num(p.get(1)), num(p.get(2)), num(p.get(3))));
+        }
+        return points;
     }
 
     private static double[] vec(Object v) {

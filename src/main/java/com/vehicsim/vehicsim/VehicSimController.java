@@ -348,6 +348,14 @@ public class VehicSimController {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("run_id", runId, "status", status));
     }
 
+    @Operation(summary = "Hủy mọi run đang chờ/đang chạy của một họ kịch bản (bỏ qua run của regression/tối ưu)")
+    @PostMapping("/families/{scenarioId}/cancel")
+    public ResponseEntity<Map<String, Object>> cancelFamilyRuns(@PathVariable long scenarioId, @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "run_cancel");
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(runs.cancelFamilyRuns(projectId(), scenarioId, uid));
+    }
+
     @Operation(summary = "Trạng thái CARLA local và ScenarioRunner")
     @GetMapping("/carla/status")
     public Map<String, Object> carlaStatus() {

@@ -33,6 +33,13 @@ public final class CarlaSession {
     private final AebStack stack;
     private final Simulator.MotionStats stats;
     private final DecelMeter meter;
+    // Chạy bóng perception từ radar (ADR-043 giai đoạn 1): AEB thật vẫn dùng ground truth; bản bóng chỉ để đo, không điều khiển xe.
+    private final RadarTracker tracker = new RadarTracker();
+    private final List<Map<String, Object>> shadowEvents = new ArrayList<>();
+    private final AebStack shadow;
+    private final ShadowStats shadowStats = new ShadowStats();
+    private boolean radarSeen;
+    private Map<String, Object> firstOffTarget;
 
     private CrossingFrame frame;
     private double frontOffset;
@@ -50,6 +57,7 @@ public final class CarlaSession {
         this.fullBrakeDecel = fullBrakeDecel;
         this.stepS = profile.stepS();
         this.stack = Simulator.newAebStack(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle(), events, stepS, profile.perceptionPeriodS());
+        this.shadow = Simulator.newAebStack(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle(), shadowEvents, stepS, profile.perceptionPeriodS());
         this.stats = new Simulator.MotionStats(stepS);
         // Cửa sổ đo giảm tốc giữ nguyên 0,1 s (2 tick ở 20 Hz): đúng một chu kỳ răng cưa tốc độ CARLA đã đo.
         this.meter = new DecelMeter(spec.caseSpec().roadFriction() * Simulator.G, Math.max(2, (int) Py.round(0.1 / stepS)), stepS);
@@ -70,6 +78,71 @@ public final class CarlaSession {
             return override;
         }
         return vehicleCarla.get(Bundle.FULL_BRAKE_DECEL) instanceof Number measured ? measured.doubleValue() : DEFAULT_FULL_BRAKE_DECEL;
+    }
+
+    /** Sai số tương đối chấp nhận cho trường đã ép (khối lượng, hệ số cản, trọng tâm): CARLA lưu float32. */
+    static final double FORCED_RELATIVE_TOLERANCE = 1e-3;
+    /** Lệch kích thước mesh so với DB coi là đáng kể (m): mesh của blueprint cố định, runner không ép được kích thước. */
+    static final double DIMENSION_TOLERANCE_M = 0.05;
+
+    /**
+     * So thông số xe đã yêu cầu (DB → {@code .xosc}) với thông số CARLA đọc lại sau khi ép (kế hoạch 20/10 việc 4). Trường ép được phải khớp; kích thước chỉ
+     * báo lệch vì mesh cố định. Chỉ ghi nhận để kỹ sư biết xe trong CARLA khác xe trong DB bao nhiêu, không chặn run và không sửa số.
+     */
+    static Map<String, Object> physicsCheck(Map<String, Object> vehicleCarla, VehicleSpec vehicle, Map<?, ?> applied) {
+        List<Map<String, Object>> fields = new ArrayList<>();
+        boolean forcedOk = true;
+        boolean dimensionsOk = true;
+        Map<?, ?> physics = vehicleCarla.get("physics") instanceof Map<?, ?> p ? p : Map.of();
+        for (String key : List.of("mass", "drag_coefficient")) {
+            forcedOk &= compare(fields, key, physics.get(key), applied.get(key), true);
+        }
+        if (physics.get("center_of_mass") instanceof Map<?, ?> com && applied.get("center_of_mass") instanceof Map<?, ?> got) {
+            for (String axis : List.of("x", "y", "z")) {
+                forcedOk &= compare(fields, "center_of_mass_" + axis, com.get(axis), got.get(axis), true);
+            }
+        }
+        Map<?, ?> dims = vehicleCarla.get("dimensions") instanceof Map<?, ?> d ? d : Map.of();
+        dimensionsOk &= compare(fields, "length_m", vehicle.lengthM(), applied.get("length_m"), false);
+        dimensionsOk &= compare(fields, "width_m", vehicle.widthM(), applied.get("width_m"), false);
+        for (String key : List.of("height_m", "wheelbase_m")) {
+            dimensionsOk &= compare(fields, key, dims.get(key), applied.get(key), false);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("forced_ok", forcedOk);
+        out.put("dimensions_ok", dimensionsOk);
+        out.put("dimension_tolerance_m", DIMENSION_TOLERANCE_M);
+        out.put("fields", fields);
+        return out;
+    }
+
+    /** Thêm một dòng so sánh; thiếu một trong hai số thì ghi lại nhưng không tính là lệch. */
+    private static boolean compare(List<Map<String, Object>> fields, String name, Object requested, Object applied, boolean forced) {
+        if (!(requested instanceof Number r) || !(applied instanceof Number a)) {
+            if (requested != null || applied != null) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("field", name);
+                row.put("requested", requested);
+                row.put("applied", applied);
+                row.put("forced", forced);
+                row.put("ok", null);
+                fields.add(row);
+            }
+            return true;
+        }
+        double delta = a.doubleValue() - r.doubleValue();
+        boolean ok = forced
+                ? Math.abs(delta) <= FORCED_RELATIVE_TOLERANCE * Math.max(1.0, Math.abs(r.doubleValue()))
+                : Math.abs(delta) <= DIMENSION_TOLERANCE_M;
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("field", name);
+        row.put("requested", r.doubleValue());
+        row.put("applied", Py.round(a.doubleValue(), 4));
+        row.put("delta", Py.round(delta, 4));
+        row.put("forced", forced);
+        row.put("ok", ok);
+        fields.add(row);
+        return ok;
     }
 
     public Bundle.RunSpec spec() {
@@ -106,6 +179,15 @@ public final class CarlaSession {
     }
 
     public Tick step(double t, double[] egoLoc, double[] egoForward, double[] egoVel, double[] pedLoc, double[] pedVel, boolean walkerCollision) {
+        return step(t, egoLoc, egoForward, egoVel, pedLoc, pedVel, walkerCollision, null);
+    }
+
+    /**
+     * @param radar điểm thô của radar 90° gắn mũi xe ở lần đo mới nhất (ADR-043); {@code null} = adapter không gắn radar, bỏ qua chạy bóng.
+     *              Chỉ dùng cho bản bóng: quyết định AEB thật và mọi số đã lưu không phụ thuộc tham số này.
+     */
+    public Tick step(double t, double[] egoLoc, double[] egoForward, double[] egoVel, double[] pedLoc, double[] pedVel, boolean walkerCollision,
+                     List<RadarTracker.Point> radar) {
         if (frame == null) {
             throw new IllegalStateException("step trước init");
         }
@@ -136,6 +218,10 @@ public final class CarlaSession {
 
         double pedAlong = frame.along(pedLoc[0], pedLoc[1]);
         double egoY = frame.left(egoLoc[0], egoLoc[1]);
+        if (radar != null) {
+            radarSeen = true;
+            shadowStep(t, gap, egoV, pedAlong + gap, pedY - egoY, pedVy, egoY, radar);
+        }
         double radius = Simulator.PEDESTRIAN_RADIUS_M;
         boolean overlap = pedAlong - radius <= -gap && pedAlong + radius >= -gap - spec.vehicle().lengthM()
                 && Math.abs(pedY - egoY) <= spec.vehicle().widthM() / 2 + radius;
@@ -155,6 +241,95 @@ public final class CarlaSession {
             finish(finished);
         }
         return new Tick(false, braking, tick.decelCmd(), pedal, finished);
+    }
+
+    /**
+     * Một tick chạy bóng: bộ bám radar → {@link AebStack#stepMeasured} của bản bóng, rồi so với ground truth.
+     *
+     * @param gtForward khoảng dọc thật từ mũi xe tới người đi bộ; {@code gtLeft} vị trí ngang thật so với trục xe; {@code gtVLeft} vận tốc ngang thật
+     */
+    private void shadowStep(double t, double gap, double egoV, double gtForward, double gtLeft, double gtVLeft, double egoY, List<RadarTracker.Point> radar) {
+        RadarTracker.Estimate e = tracker.update(t, egoV, radar);
+        boolean detected = e.tracked() && e.confidence() >= AebStack.DETECTION_CONFIDENCE_THRESHOLD;
+        shadow.stepMeasured(t, detected ? e.forward() : gap, egoV, detected, e.confidence(), e.left() + egoY, e.vLeft());
+        boolean inView = gtForward > 0 && Math.hypot(gtForward, gtLeft) <= RadarTracker.RANGE_M
+                && Math.abs(Math.toDegrees(Math.atan2(gtLeft, gtForward))) <= RadarTracker.FOV_DEG / 2;
+        shadowStats.add(inView, detected, e.forward() - gtForward, e.left() - gtLeft, e.vLeft() - gtVLeft);
+        if (detected && firstOffTarget == null && Math.hypot(e.forward() - gtForward, e.left() - gtLeft) > RadarTracker.GATE_M * 2) {
+            // Chẩn đoán track bám nhầm (ca an toàn c6, 22/10): ghi lần đầu để biết vật bị bám nằm đâu so với xe và người đi bộ.
+            Map<String, Object> d = new LinkedHashMap<>();
+            d.put("t", t);
+            d.put("ego_v_mps", Py.round(egoV, 3));
+            d.put("track_forward_m", Py.round(e.forward(), 2));
+            d.put("track_left_m", Py.round(e.left(), 2));
+            d.put("track_v_left_mps", Py.round(e.vLeft(), 2));
+            d.put("pedestrian_forward_m", Py.round(gtForward, 2));
+            d.put("pedestrian_left_m", Py.round(gtLeft, 2));
+            d.put("points", radar.size());
+            firstOffTarget = d;
+        }
+    }
+
+    /** Sai số perception bóng so với ground truth, cộng dồn qua các tick. */
+    private static final class ShadowStats {
+        private int inView;
+        private int detectedInView;
+        private int detectedOutOfView;
+        private int far;
+        private final double[] sumAbs = new double[3];
+        private final double[] maxAbs = new double[3];
+
+        void add(boolean inView, boolean detected, double errForward, double errLeft, double errVLeft) {
+            if (inView) {
+                this.inView++;
+            }
+            if (!detected) {
+                return;
+            }
+            if (!inView) {
+                detectedOutOfView++;
+                return;
+            }
+            detectedInView++;
+            double[] err = {Math.abs(errForward), Math.abs(errLeft), Math.abs(errVLeft)};
+            if (Math.hypot(errForward, errLeft) > RadarTracker.GATE_M * 2) {
+                far++; // track bám sai vật (không phải người đi bộ)
+            }
+            for (int i = 0; i < 3; i++) {
+                sumAbs[i] += err[i];
+                maxAbs[i] = Math.max(maxAbs[i], err[i]);
+            }
+        }
+
+        Map<String, Object> toMap() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("frames_target_in_view", inView);
+            m.put("frames_detected_in_view", detectedInView);
+            m.put("frames_detected_out_of_view", detectedOutOfView);
+            m.put("frames_far_from_target", far);
+            String[] names = {"forward_m", "left_m", "v_left_mps"};
+            for (int i = 0; i < 3; i++) {
+                m.put("mean_abs_err_" + names[i], detectedInView == 0 ? null : Py.round(sumAbs[i] / detectedInView, 3));
+                m.put("max_abs_err_" + names[i], detectedInView == 0 ? null : Py.round(maxAbs[i], 3));
+            }
+            return m;
+        }
+    }
+
+    private Map<String, Object> shadowDocument() {
+        Map<String, Object> doc = new LinkedHashMap<>();
+        doc.put("status", "SHADOW");
+        doc.put("source", "radar");
+        doc.put("adr", "ADR-043");
+        doc.put("tracker", RadarTracker.constants());
+        doc.put("first_detection_t", shadow.firstDetectionT());
+        doc.put("ground_truth_first_detection_t", stack.firstDetectionT());
+        doc.put("fcw_t", shadow.fcwT());
+        doc.put("aeb_decision_t", shadow.decisionT());
+        doc.put("ground_truth_aeb_decision_t", stack.decisionT());
+        doc.putAll(shadowStats.toMap());
+        doc.put("first_off_target", firstOffTarget);
+        return doc;
     }
 
     /** Ghi {@code result.json}. Gọi lại sau khi đã kết thúc, hoặc khi chưa có khung nào, là không làm gì (như {@code _finish} của bản Python). */
@@ -202,6 +377,13 @@ public final class CarlaSession {
         Map<String, Object> carla = new LinkedHashMap<>();
         carla.put("map", carlaInfo.get("map"));
         carla.put("blueprint", carlaInfo.get("blueprint"));
+        if (carlaInfo.get("physics") != null) {
+            // Thông số CARLA thực sự áp cho xe (đọc lại sau khi ép, kế hoạch 20/10 việc 4) — đối chiếu với thông số xe đã yêu cầu.
+            carla.put("physics_applied", carlaInfo.get("physics"));
+            if (carlaInfo.get("physics") instanceof Map<?, ?> applied) {
+                carla.put("physics_check", physicsCheck(spec.vehicleCarla(), spec.vehicle(), applied));
+            }
+        }
         carla.put("full_brake_decel", fullBrakeDecel);
         carla.put("runner", "ScenarioRunner");
         carla.put("decel_clamped_frames", meter.clamped());
@@ -210,6 +392,9 @@ public final class CarlaSession {
         carla.put("perception_period_s", profile.perceptionPeriodS());
         carla.put("jerk_filtered", jerk);
         carla.put("measured_step_s", measured);
+        if (radarSeen) {  // adapter không gắn radar (run cũ, test) thì không có khối này — kết quả giữ nguyên như trước ADR-043
+            carla.put("perception_shadow", shadowDocument());
+        }
         outcome.caseDoc().put("carla", carla);
 
         Map<String, Object> result = Bundle.resultDocument(spec, outcome, simulatorVersion, null, Evaluation.evaluate(outcome, spec.params()).toDocument());

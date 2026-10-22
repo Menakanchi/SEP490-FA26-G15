@@ -168,6 +168,21 @@ RMS jerk 38,387, 381 khung bước 0,01 s, jerk lọc 19,918.
 - Kiểm trên CARLA thật sau M5, đúng cờ backend (`--camera --fast`): thoát 0 (66 s), 16 ảnh, `bridge.log` trống, không sót actor; FCW/quyết định/phanh
   1,95/2,25/2,50 s, quãng dừng 10,318 m, khoảng cách nhỏ nhất 3,481 m, RMS jerk 38,365 — trong dải chạy lặp 100 Hz.
 
+### Màn chạy baseline: lỗ hổng so với phân chia §4 và kế hoạch 20/10 (21/10/2026)
+
+- **Chuyển sang màn 3 không nhập lại.** `/scenarios` và panel CARLA có "Tiếp tục: Phân tích kết quả →" tới `/analysis/failures?scenario_id=<id>`;
+  màn lỗi đọc `scenario_id` từ URL trước lần tải đầu (trước đó chỉ có link "Failures" không mang họ).
+- **Hiện bộ mô phỏng sẽ dùng.** `GET /context` thêm `simulator` (= `RunService.configuredSimulator()`); `/scenarios` có dải "Chạy cơ sở sẽ dùng:
+  xe · AEB · bộ mô phỏng", panel CARLA ghi "Lượt mới chạy bằng …".
+- **Hủy cả họ + đếm run đã hủy.** `POST /families/{id}/cancel` → `RunService.cancelFamilyRuns` gọi `cancelRun` cho từng run (run chờ trước, bỏ qua
+  regression/tối ưu; họ ngoài project → 404). `/scenarios` có nút "Hủy N lượt" khi có run chờ/chạy và đếm STOPPED.
+  Test: `CarlaWebTest.cancellingAFamilyStopsEachActiveBaselineRunThroughTheSingleRunRules`, `cancellingAFamilyOfAnotherProjectIsNotFoundAndTouchesNothing`.
+- **Đọc lại physics (kế hoạch 20/10, việc 4 — phần ghi nhận).** Controller gửi `physics_snapshot` của xe CARLA trong `init`; `CarlaSession` ghi
+  `case.carla.physics_applied` (`BridgeProtocolTest.aSyntheticCrossingRunsThroughTheProtocolAndWritesResultJson`). CARLA thật: e-tron khối lượng 2100 kg
+  khớp yêu cầu; chiều cao mesh 1,649 m (DB 1,67), chiều dài cơ sở 2,896 m (DB 2,95). Chưa tự so sánh/cảnh báo lệch — để thành viên 3 hiển thị.
+- UI kiểm bằng Edge headless (tài khoản thử, đã xoá): dải thông tin "Xe Audi e-tron · AEB v1.0 · Bộ động học (vehicsim-kinematic-1.0)", "43 đã hủy",
+  nút "Tiếp tục" → `?scenario_id=14`, mọi request danh sách lỗi đều mang `scenario_id=14`; không lỗi console/API.
+
 ## Trạng thái bàn giao (cuối ngày 21/10/2026)
 
 Đã xong và có test: M0–M5. `mvnw -B clean test`: 219 test (1 bỏ qua: đối chiếu rộng `-Dvsos.parity.full`); `pytest worker/tests`: 28; `ruff` sạch. Lõi Python đã xóa (mục M5 ở trên); chưa kiểm lại trên CARLA thật sau M5.

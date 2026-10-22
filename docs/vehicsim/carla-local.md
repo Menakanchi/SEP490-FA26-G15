@@ -76,11 +76,30 @@ Vô hại, không phải dấu hiệu run hỏng.
 API: `GET /runs/{id}/xosc`, `POST /scenarios/xosc`, `POST /runs/{id}/carla`, `GET /carla/status`, `GET /carla/runs`,
 `GET /runs/{id}/carla-data`, `GET /runs/{id}/carla-files/{name}` dưới tiền tố `/api/v1/vehicsim`.
 
+### Radar chạy bóng, chạy lặp và đo phanh (22/10)
+
+- Mỗi run gắn thêm radar 90°/80 m ở mũi xe; `RadarTracker` (Java) bám người đi bộ và một `AebStack` bóng quyết định theo radar. `result.json` có
+  `case.carla.perception_shadow` (thời điểm phát hiện/FCW/quyết định theo radar so với ground truth, sai số vị trí/vận tốc). **AEB thật vẫn dùng ground truth**
+  (ADR-043 giai đoạn 1); quyết định và mọi chỉ số đã lưu không đổi.
+- Xuất `.xosc` offline từ IR/bundle để đo nhiều ca không cần backend: `java -cp target/classes com.vehicsim.core.bridge.BridgeMain export <ir.json> <ra.xosc>`
+  (cùng `XoscExport` của web; file này không gắn run trong DB nên không dùng để nộp kết quả).
+- `case.carla.physics_check`: so thông số xe yêu cầu với số CARLA đọc lại; trường ép được phải khớp (`forced_ok`), kích thước mesh chỉ báo lệch > 0,05 m
+  (`dimensions_ok`). Không chặn run.
+- Chạy lặp: `worker\.venv-carla\Scripts\python.exe worker\repeat_xosc.py <file>.xosc --runs 5 --out data\repeat-…` → `repeat_summary.json`.
+- Đo phanh 100% của một xe: `worker\.venv-carla\Scripts\python.exe worker\measure_brake.py --blueprint vehicle.audi.etron --mass 2100 --out data\brake-…`
+  (tự tick, chỉ chạy khi server rảnh). Chỉ ghi file đo, không ghi DB. Số đo và quyết định ở
+  [exec plan 22/10](../exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md).
+
 ### Hủy, timeout và dọn world
 
 - `POST /runs/{id}/cancel`: run PENDING thành STOPPED ngay; run RUNNING chỉ hủy được khi luồng chạy thuộc backend đang chạy
   (sau khi backend khởi động lại, run mồ côi do `recoverUnfinished` xử lý). Run của regression/tối ưu bị từ chối vì bộ so sánh
   cần đủ cặp. Run bị hủy không có điểm hợp lệ và không ghi `result.json`. Nút **Hủy** ở `/analysis/carla`.
+- `POST /families/{id}/cancel`: hủy mọi run đang chờ/đang chạy của một họ bằng đúng luật trên cho từng run (run chờ trước, bỏ qua
+  run của regression/tối ưu), trả `{stopped, stopping}`. Nút **Hủy N lượt** ở `/scenarios` và panel CARLA.
+- `result.json` ghi `outcome.case.carla.physics_applied`: thông số CARLA thực sự áp cho xe (đọc lại sau khi ép: khối lượng, trọng tâm,
+  từng bánh, kích thước mesh, chiều dài cơ sở), để đối chiếu với thông số xe trong DB. Đo 21/10 với e-tron: khối lượng khớp 2100 kg,
+  nhưng chiều cao mesh 1,649 m (DB 1,67) và chiều dài cơ sở 2,896 m (DB 2,95).
 - Backend bị giết giữa run: worker CARLA mồ côi vẫn sống (Windows không giết tiến trình con khi cha chết). Backend ghi `worker.pid`
   (PID + thời điểm khởi động, để không nhầm PID bị tái dùng) vào thư mục run. Lúc khởi động mọi run RUNNING là mồ côi: backend
   dừng worker còn sống bằng `stop.requested` (quá 15 s mới giết cả cây), rồi đưa run về PENDING để **chạy lại từ đầu**; không

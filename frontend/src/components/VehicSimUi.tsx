@@ -352,6 +352,15 @@ export function initials(name: string): string {
   return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "U";
 }
 
+/** Định danh bộ mô phỏng → nhãn cho người dùng; luôn kèm định danh gốc để đối chiếu với run đã lưu. */
+export function simulatorLabel(simulator: string | null | undefined): string {
+  if (!simulator) return "—";
+  if (simulator.startsWith("vehicsim-kinematic")) return `Bộ động học (${simulator})`;
+  const carla = simulator.match(/^carla-(\d+\.\d+\.\d+)(-xosc\d+)?$/);
+  if (carla) return `CARLA ${carla[1]}${carla[2] ? " · OpenSCENARIO" : " · runner cũ"} (${simulator})`;
+  return simulator;
+}
+
 /** Mã run hiển thị như Figma: #1023. */
 export function runCode(id: number): string {
   return `#${String(id).padStart(4, "0")}`;
