@@ -17,14 +17,21 @@ await fs.mkdir(output,{recursive:true});
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
 try {
  const page=await browser.newPage({viewport:{width:1440,height:1080}});
+ page.setDefaultNavigationTimeout(120000);
+ page.setDefaultTimeout(120000);
  const errors=[], unauthorizedWrites=[];
  page.on("pageerror",e=>errors.push(e.message));
  page.on("request",request=>{
    if(request.method()==="POST" && /\/(aeb\/versions|optimization)/.test(new URL(request.url()).pathname))
      unauthorizedWrites.push(request.url());
  });
- const base="http://127.0.0.1:3100";
+ const base="http://localhost:3100";
  await page.goto(base+"/login");
+ // In dev the server HTML may precede hydration; wait for React's form handler before submitting.
+ await page.waitForFunction(()=>{
+   const form=document.querySelector("form");
+   return form && Object.keys(form).some(key=>key.startsWith("__reactProps")&&typeof form[key]?.onSubmit==="function");
+ });
  await page.locator('input[type="email"]').fill("analysis-integration@example.invalid");
  await page.locator('input[type="password"]').fill("Analysis-test-only-2026!");
  await page.getByRole("button",{name:"Đăng nhập",exact:true}).click();
@@ -33,6 +40,13 @@ try {
  await page.locator(`a[href="/analysis/failures?scenario_id=${evidence.scenario_id}"]`).click();
  await page.waitForURL("**/analysis/failures?scenario_id="+evidence.scenario_id);
  await page.getByRole("heading",{name:"Phân tích baseline",exact:true}).waitFor();
+
+ // The moved legacy lookup must retain the family selected on the baseline screen.
+ const legacyResponse=page.waitForResponse(r=>r.url().includes("/api/v1/vehicsim/failures?")&&r.status()===200);
+ await page.getByRole("button",{name:"Tra cứu ca lỗi",exact:true}).click();
+ assert.equal(new URL((await legacyResponse).url()).searchParams.get("scenario_id"),String(evidence.scenario_id));
+ await page.getByRole("heading",{name:"Tra cứu ca lỗi",exact:true}).waitFor();
+ await page.getByRole("button",{name:"Kết quả baseline",exact:true}).click();
  await page.getByLabel("Trạng thái",{exact:true}).selectOption("FAILED");
  await page.getByText("Chưa có run baseline phù hợp.",{exact:false}).waitFor();
  await page.getByLabel("Trạng thái",{exact:true}).selectOption("");
@@ -77,6 +91,8 @@ try {
  await page.getByLabel("Tín hiệu",{exact:true}).selectOption("jerk_mps3");
  await page.getByRole("img",{name:/Jerk từ gia tốc đã lưu/}).waitFor();
  await page.getByRole("heading",{name:"Bằng chứng và giới hạn nhận định",exact:true}).waitFor();
+ await page.getByRole("button",{name:"Tải .xosc",exact:true}).waitFor();
+ await page.getByRole("button",{name:"Chạy trên CARLA",exact:true}).waitFor();
  await page.screenshot({path:path.join(output,"03-detail-jerk-evidence.png"),fullPage:true});
  await page.getByRole("link",{name:"Mở playback tại thời điểm đang xem",exact:true}).click();
  await page.waitForURL("**/playback?t=1.25");
@@ -92,8 +108,15 @@ try {
  await playback.press("ArrowRight");
  assert(Number(await playback.inputValue())>0);
  await page.screenshot({path:path.join(output,"04-playback-synchronized.png"),fullPage:true});
+ // A direct playback link without ?t retains trungdam's AEB-event/end focus.
+ const playbackResponse=page.waitForResponse(r=>new URL(r.url()).pathname.endsWith("/vehicsim/runs/"+runId+"/playback")&&r.status()===200);
+ await page.goto(base+`/analysis/failures/${runId}/playback`);
+ const recordedPlayback=await (await playbackResponse).json();
+ await page.getByRole("slider",{name:"Thời gian playback",exact:true}).waitFor();
+ const expectedFocus=recordedPlayback.events.find(event=>event.kind==="aeb_decision")?.t??recordedPlayback.duration_s;
+ assert(Math.abs(Number(await page.getByRole("slider",{name:"Thời gian playback",exact:true}).inputValue())-expectedFocus)<=0.011);
  assert.deepEqual(errors,[]);
  assert.deepEqual(unauthorizedWrites,[]);
- console.log("PASS: real login, filtered baseline KPI, paginated split selection, AEB ID handoff, jerk/evidence, seek/play/pause and shared time cursor.");
+ console.log("PASS: real login, scoped legacy lookup, filtered baseline KPI, paginated split selection, AEB ID handoff, jerk/evidence, CARLA actions, seek/play/pause, upstream default focus and shared time cursor.");
  console.log("Screenshots:",output);
 } finally {await browser.close();}

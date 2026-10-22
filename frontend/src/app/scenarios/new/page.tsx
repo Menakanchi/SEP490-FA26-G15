@@ -198,6 +198,14 @@ export default function DescribeScenarioPage() {
             <pre className="overflow-x-auto rounded-[12px] bg-vehicsim-ink px-4 py-3 font-mono text-[12px] leading-[1.6] text-white">
               {JSON.stringify(ir, null, 2)}
             </pre>
+            <PillButton
+              className="px-4 py-2 text-[12px]"
+              disabled={irErrors.length > 0}
+              title="Xuất OpenSCENARIO để chạy bằng ScenarioRunner và AEB mặc định"
+              onClick={() => void vehicsimApi.downloadScenarioXosc(ir).catch(e => setError(e.message))}
+            >
+              Tải OpenSCENARIO (.xosc)
+            </PillButton>
             <div className="flex flex-col gap-2 text-[12px] text-vehicsim-muted">
               {(Object.keys(ORIGIN_TAG) as FieldOrigin[]).map((o) => (
                 <span key={o} className="flex items-center gap-2">

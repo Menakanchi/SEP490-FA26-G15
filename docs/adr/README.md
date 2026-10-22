@@ -1,11 +1,14 @@
 # Nhật ký quyết định kiến trúc (ADR)
 
-Mỗi file là **một quyết định**: chọn X thay vì Y, và vì sao. Theo mẫu ở `docs/guide/chapter-03.md`
-(Bối cảnh · Các lựa chọn · Quyết định · Lý do · Hệ quả).
+Mỗi file là **một quyết định**: chọn X thay vì Y, và vì sao (Bối cảnh · Các lựa chọn · Quyết định ·
+Lý do · Hệ quả). Đáng ghi ADR: lựa chọn framework, database, LLM provider, kiến trúc, cách deploy.
 
-**Nguồn của yêu cầu này:** `docs/guide/chapter-03.md` — chương kiến trúc đặt mục tiêu "ít nhất 2–3 ADR cho các quyết định quan trọng" (dòng 678) và liệt kê thứ đáng ghi ADR: *lựa chọn framework, database, LLM provider, architecture pattern, deployment strategy* (dòng 660).
-
-ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chương 9). Nó là **bằng chứng cho PLO1** (kiến trúc) và là chỗ dựa cho Deliverable #3 (Architecture Diagram) — không phải một mục nộp riêng.
+**ADR-001 → ADR-022 là lịch sử của Scenario Forge** — dự án gốc mà repo dựng lên từ đó, đã gỡ ngày
+04/10/2026 ([ADR-032](ADR-032-go-scenario-forge-giu-bo-sinh-openscenario.md)). File và thư mục chúng
+nhắc tới (`ARCHITECTURE.md`, `docs/guide/`, `eval/`, `fixtures/`…) chỉ còn trong lịch sử git. Vẫn còn
+hiệu lực với VehicSim: ADR-001 (`src/` không `import carla`), ADR-002 (venv riêng cho worker CARLA),
+ADR-005 (chỉ CARLA) và ADR-010/012/016/020 (thiết kế bộ sinh `.xosc` được
+giữ lại). VehicSim: ADR-023 trở đi.
 
 | ADR | Quyết định | Trạng thái |
 |---|---|---|
@@ -35,6 +38,24 @@ ADR **không** nằm trong 10 deliverables mà ban tổ chức yêu cầu (chư�
 | [ADR-024](ADR-024-vehicsim-mysql-redis-tach-khoi-sqlite-forge.md) | VehicSim + tài khoản trên MySQL 27 bảng, Redis cho OTP/rate limit/Celery; Forge giữ SQLite; biến thể = `scenario_versions` | 🕐 **Proposed 30/9** |
 | [ADR-025](ADR-025-cong-regression-cung-seed-khong-tu-accept.md) | Regression so từng cặp cùng seed; không bao giờ tự Accept; chặn quyết định trên baseline đã đổi | 🕐 **Proposed 30/9** |
 | [ADR-026](ADR-026-mo-ta-sang-ir-dung-lop-llm-chung.md) | Bước 1 câu mô tả → Scenario IR dùng lớp LLM chung, không qua graph 7 node | 🕐 **Proposed 30/9** |
+| [ADR-027](ADR-027-bo-mo-phong-cam-duoc-hop-dong-json.md) | Bộ mô phỏng cắm được: JSON chung, AEB dùng chung, CARLA chạy bằng tiến trình con; không ghép cặp khác simulator | 🕐 **Proposed 1/10** |
+| [ADR-028](ADR-028-tro-ly-du-an-rag-chi-doc.md) | Trợ lý dự án: RAG chỉ đọc trên dữ liệu project + tài liệu repo, vector trong bảng MySQL `knowledge_chunks` | ⛔ **Superseded by ADR-035** (6/10) — bỏ Meomeo Agent |
+| [ADR-029](ADR-029-tro-ly-react-cong-cu-chi-doc-guardrails.md) | Meomeo Agent: ReAct với 9 công cụ chỉ đọc + guardrails bảo vệ người dùng, chống prompt injection | ⛔ **Superseded by ADR-035** (6/10) — bỏ Meomeo Agent |
+| [ADR-030](ADR-030-bo-viewer-them-expert-va-forum.md) | Bỏ role VIEWER; thêm EXPERT; một forum AEB chung — bài của ENGINEER chờ ADMIN/EXPERT duyệt, comment không duyệt | ⛔ **Superseded by ADR-034** (5/10) — role đổi, forum bỏ |
+| [ADR-031](ADR-031-database-phu-du-chuc-nang.md) | Database phủ FE-01 → FE-14: 36 bảng (+8), một xe không phiên bản (thêm xe = clone từ CARLA), migration SQL đánh số | ⛔ **Superseded by ADR-036** (7/10) — schema 29 bảng; giữ migration SQL đánh số |
+| [ADR-032](ADR-032-go-scenario-forge-giu-bo-sinh-openscenario.md) | Gỡ Scenario Forge (graph 7 node, SQLite, 8 trang, worker ScenarioRunner); giữ bộ sinh OpenSCENARIO ở `src/services/openscenario/`; một database duy nhất | 🕐 **Proposed 4/10** |
+| [ADR-033](ADR-033-cau-hinh-xe-de-so-sanh.md) | Cấu hình xe chỉ để so sánh (38 bảng); DB lái blueprint + vật lý xe vào CARLA, bảng đối chiếu cấu hình ↔ CARLA | ⛔ **Superseded by ADR-035** (6/10) — bỏ cấu hình xe; giữ việc ép xe chính vào CARLA |
+| [ADR-034](ADR-034-role-he-thong-va-role-trong-workspace.md) | Role hệ thống ADMIN / MANAGER / EXPERIENCE (EXP, tự đăng ký = EXPERIENCE), role trong workspace ENGINEER / REVIEWER (Reviewer duyệt bước 6), project cá nhân không thuộc workspace; bỏ forum (36 bảng) | ⛔ **Superseded by ADR-035** (6/10) — 5 role hệ thống, mỗi người một role |
+| [ADR-035](ADR-035-nam-role-he-thong-bo-cau-hinh-xe-va-meomeo.md) | 5 role hệ thống ADMIN / MANAGER / ENGINEER / REVIEWER / EXPERIENCE, mỗi người một role (`users.role_id`); chỉ REVIEWER duyệt, EXP không có recommendation; bỏ cấu hình xe so sánh và Meomeo Agent (32 bảng) | 🕐 **Proposed 6/10** — quyền API đã làm, lọc theo workspace chưa (TD-30); phần schema thay bởi ADR-036, role tự đăng ký đổi mã thành EXPERIENCER |
+| [ADR-036](ADR-036-schema-29-bang.md) | Schema 29 bảng theo 13 FE: gộp bảng 1:1, phiên bản xe + hiệu chuẩn, khuyến nghị tách khỏi regression, cộng tác workspace, `tech_references`; DB ép regression cùng seed + biến thể + xe + bộ mô phỏng; field khớp CARLA 0.9.16 và đủ cho tối ưu (Pareto, robustness) | 🕐 **Proposed 7/10** — schema, migration 005, code đã chuyển; phiên bản xe và xin / duyệt workspace thay bởi ADR-038 |
+| [ADR-037](ADR-037-thanh-vien-project-near-miss.md) | Chốt chỗ UC List lệch DB: `project_members` (30 bảng), lỗi `NEAR_MISS`, thông báo `FAILURE_DETECTED` / `CANDIDATE_CREATED`; Reviewer tự duyệt, mỗi người một role không đổi, bỏ UC-11 | 🕐 **Proposed 7/10** — schema, migration 005 (gộp), bộ chấm đã đổi; chưa có API thành viên |
+| [ADR-038](ADR-038-bo-phien-ban-xe-admin-tao-workspace.md) | Bỏ phiên bản xe (thông số cố định trong `carla_vehicle_models`, project chọn xe), Admin tạo workspace và gán Manager, báo cáo công việc theo project (`task_reports`); 29 bảng | 🕐 **Proposed 7/10** — schema, migration 006, code đã đổi; chưa có API workspace / báo cáo |
+| [ADR-039](ADR-039-backend-java-mo-phong-o-worker-python.md) | Backend Spring Boot (Java) cho API và nghiệp vụ; AEB + bộ mô phỏng + luật chấm ở lại `worker/vehicsim_core` (Python, chỉ thư viện chuẩn), gọi qua bundle JSON → `result.json` kèm kết quả chấm; hàng đợi là thread pool thay Celery | 🕐 **Proposed 14/10** — auth + 19 route `/vehicsim/*` đã port và đối chiếu với Python trên DB thật. ⛔ Phần AEB/mô phỏng/chấm điểm ở worker Python **Superseded by ADR-042** (21/10) |
+| [ADR-040](ADR-040-rut-scope-4-tham-so-aeb-7-category.md) | Rút scope theo bản chuẩn hoá luận văn: 4 tham số AEB (6 tham số còn lại thành hằng số của lõi), 3 mục tiêu MOBO, 7 category kịch bản Euro NCAP; IR vẫn tính người đi bộ bằng m/s; 29 bảng | 🕐 **Proposed 15/10** — schema, migration 007, code đã đổi; 60/192 run của v1.3 không còn tái lập (TD-40) |
+| [ADR-041](ADR-041-xosc-va-scenariorunner-tu-web.md) | Xuất OpenSCENARIO và chạy ScenarioRunner + AEB dùng chung từ web trên CARLA 0.9.16 local | Proposed 18/10 |
+| [ADR-042](ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) | Lõi AEB, mô phỏng, luật chấm chuyển sang Java (`com.vehicsim.core`); Python chỉ còn adapter CARLA, gọi Java qua tiến trình con stdin/stdout; thay phần mô phỏng của ADR-039 | ✅ **Accepted 21/10** — M0–M5 xong; parity bit-chính-xác với Python trên 1296 ca, lõi Python đã xóa |
+| [ADR-043](ADR-043-perception-tu-radar-chay-bong-truoc.md) | Perception AEB trên CARLA lấy từ radar 90° + bộ bám `RadarTracker` ở Java; giai đoạn 1 chạy bóng (AEB vẫn dùng ground truth, ghi sai số), giai đoạn 2 đổi đầu vào và lên `-xosc4` khi đạt ngưỡng | 🕐 **Proposed 22/10** |
+| [ADR-044](ADR-044-nguong-phanh-oan-regression-5-diem.md) | Ngưỡng phanh oan mặc định của regression đổi 0,5 → 5 điểm %, cùng một hằng với ràng buộc tối ưu (TD-48); test đã tạo giữ ngưỡng đã lưu | 🕐 **Proposed 20/10** |
 
 ## Luật
 

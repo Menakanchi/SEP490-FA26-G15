@@ -8,8 +8,9 @@ import { MVP_STEPS } from "@/components/vehicsimFlow";
 interface AuthCardProps {
   title: string;
   subtitle: string;
-  backHref: string;
-  backLabel: string;
+  /** Không có `backHref` lẫn `onBack` thì không hiện nút quay lại (vd. trang đăng nhập). */
+  backHref?: string;
+  backLabel?: string;
   /** Có thì nút quay lại gọi hàm này (vd. về bước trước) thay vì chuyển trang. */
   onBack?: () => void;
   /** Nhãn tiến trình nhỏ phía trên tiêu đề, vd. "Bước 1/2". */
@@ -69,11 +70,11 @@ export function AuthCard({ title, subtitle, backHref, backLabel, onBack, stepLab
             <button type="button" onClick={onBack} className={backClass}>
               ← {backLabel}
             </button>
-          ) : (
+          ) : backHref ? (
             <Link href={backHref} className={backClass}>
               ← {backLabel}
             </Link>
-          )}
+          ) : null}
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 lg:hidden">

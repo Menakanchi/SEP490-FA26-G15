@@ -341,13 +341,24 @@ export const fmt = {
 
 export const ROLE_LABELS: Record<string, string> = {
   admin: "Quản trị viên",
-  engineer: "Kỹ sư kiểm định",
-  viewer: "Người xem",
+  manager: "Quản lý workspace",
+  engineer: "Kỹ sư",
+  reviewer: "Người duyệt",
+  experience: "Người trải nghiệm (EXP)",
 };
 
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "U";
+}
+
+/** Định danh bộ mô phỏng → nhãn cho người dùng; luôn kèm định danh gốc để đối chiếu với run đã lưu. */
+export function simulatorLabel(simulator: string | null | undefined): string {
+  if (!simulator) return "—";
+  if (simulator.startsWith("vehicsim-kinematic")) return `Bộ động học (${simulator})`;
+  const carla = simulator.match(/^carla-(\d+\.\d+\.\d+)(-xosc\d+)?$/);
+  if (carla) return `CARLA ${carla[1]}${carla[2] ? " · OpenSCENARIO" : " · runner cũ"} (${simulator})`;
+  return simulator;
 }
 
 /** Mã run hiển thị như Figma: #1023. */

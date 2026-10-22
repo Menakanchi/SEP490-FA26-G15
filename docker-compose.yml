@@ -1,19 +1,19 @@
-version: "3.8"
-
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8001:8001"
     env_file:
       - .env
     # Trong mạng compose, MySQL/Redis có hostname là tên service, không phải
-    # localhost như trong .env (dùng khi chạy uvicorn trực tiếp trên máy).
+    # localhost như trong .env (dùng khi chạy backend trực tiếp trên máy).
     environment:
-      VEHICSIM_DATABASE_URL: mysql+pymysql://${MYSQL_USER:-vehicsim}:${MYSQL_PASSWORD:-vehicsim}@mysql:3306/vehicsim
-      REDIS_URL: redis://redis:6379/0
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/vehicsim?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-vehicsim}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-vehicsim}
+      SPRING_REDIS_HOST: redis
     depends_on:
       mysql:
         condition: service_healthy
@@ -22,16 +22,12 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    # Healthcheck khai báo trong Dockerfile (curl /health).
 
-  # Schema VehicSim (27 bảng) — database/mysql/*.sql chỉ chạy khi volume còn
-  # rỗng. Đổi schema xong phải `docker compose down -v` rồi dựng lại.
-  # Hiện chỉ phần xác thực (src/services/auth) đọc DB này; phần còn lại của
-  # backend vẫn dùng DATABASE_URL (SQLite) của Forge.
+  # Schema VehicSim (29 bảng): database/mysql/01_schema.sql chỉ chạy khi volume
+  # còn rỗng (lần dựng đầu); thư mục migrations/ bên trong bị entrypoint bỏ qua.
+  # DB đã có dữ liệu thì nâng bằng file trong database/mysql/migrations/ — KHÔNG
+  # `docker compose down -v` (mất tài khoản và dữ liệu). Đây là database duy nhất.
   mysql:
     image: mysql:8.4
     environment:
@@ -53,7 +49,7 @@ services:
 
   # Mã OTP 6 số (đăng ký / quên mật khẩu), bộ đếm nhập sai và giới hạn tần
   # suất. Không bật lưu xuống đĩa: mọi key đều sống vài phút, mất khi restart
-  # chỉ khiến người dùng phải xin mã mới. Sau này Celery dùng chung làm broker.
+  # chỉ khiến người dùng phải xin mã mới.
   redis:
     image: redis:7.4-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]

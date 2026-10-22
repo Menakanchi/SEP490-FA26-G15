@@ -44,7 +44,8 @@ const CLASS_SHORT: Record<FailureClass, string> = {
 export default function PlaybackPage() {
   const { runId } = useParams<{ runId: string }>();
   const params=useSearchParams();
-  const initialTime=Number(params.get("t"));
+  const initialTimeParam=params.get("t");
+  const initialTime=initialTimeParam===null?Number.NaN:Number(initialTimeParam);
   const [pb, setPb] = useState<Playback | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [t, setT] = useState(0);
@@ -58,7 +59,7 @@ export default function PlaybackPage() {
       .then((data) => {
         setPb(data);
         // Mở ở sự kiện AEB (hoặc cuối lần chạy) như ảnh chụp của Figma.
-        const focus = Number.isFinite(initialTime) && initialTime >= 0 ? Math.min(initialTime,data.duration_s) : data.events.find((e) => e.kind === "aeb_decision")?.t ?? 0;
+        const focus = Number.isFinite(initialTime) && initialTime >= 0 ? Math.min(initialTime,data.duration_s) : data.events.find((e) => e.kind === "aeb_decision")?.t ?? data.duration_s;
         setT(focus);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được dữ liệu phát lại"));
@@ -149,8 +150,11 @@ export default function PlaybackPage() {
       subtitle="Phát lại ca lỗi từng khung hình. So sánh thực tế (ground truth) với những gì khâu nhận thức ghi nhận."
       actions={
         <>
-          <PillButton disabled title="Xuất clip cần bản ghi camera từ CARLA — chưa có với simulator động học">
-            Xuất clip
+          <PillButton
+            title="Xuất OpenSCENARIO cùng cấu hình và seed của lượt này"
+            onClick={() => void vehicsimApi.downloadRunXosc(Number(runId)).catch((e) => setError(e.message))}
+          >
+            Tải .xosc
           </PillButton>
           <PillButton
             variant="dark"

@@ -159,7 +159,7 @@ export default function ForgotPasswordPage() {
             type="password"
             required
             minLength={MIN_PASSWORD_LENGTH}
-            maxLength={128}
+            maxLength={72}
             autoComplete="new-password"
             className={inputClass}
             placeholder={`Ít nhất ${MIN_PASSWORD_LENGTH} ký tự`}

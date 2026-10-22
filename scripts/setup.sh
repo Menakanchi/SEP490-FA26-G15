@@ -1,24 +1,31 @@
 #!/bin/bash
-# Setup script cho AI20K project
+# Cài môi trường VehicSim lần đầu (Linux/macOS/Git Bash). Windows: scripts\dev-up.cmd để chạy.
 
 set -e
 
-echo "=== AI20K Project Setup ==="
+echo "=== VehicSim setup ==="
 
-# Check uv and install the locked backend environment
-if ! command -v uv >/dev/null 2>&1; then
-    echo "uv is required: https://docs.astral.sh/uv/getting-started/installation/" >&2
+if ! command -v java >/dev/null 2>&1; then
+    echo "Cần JDK 21: https://adoptium.net/" >&2
     exit 1
 fi
-uv sync --locked
-
-# Create .env if not exists
-if [ ! -f .env ]; then
-    cp .env.example .env
-    echo "Created .env — please edit with your API keys"
+if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+    echo "Cần Python >= 3.10 cho worker mô phỏng (VEHICSIM_WORKER_PYTHON)." >&2
+    exit 1
 fi
 
-# Create data directories
-mkdir -p data/chroma
+if [ ! -f .env ]; then
+    cp .env.example .env
+    echo "Created .env — điền khoá LLM, SMTP; đặt JWT_SECRET (bắt buộc ở production)."
+fi
 
-echo "Setup complete! Run: uv run uvicorn src.main:app --reload"
+mkdir -p data/vehicsim
+
+if command -v npm >/dev/null 2>&1; then
+    (cd frontend && npm ci)
+fi
+
+echo "Xong. Bật MySQL + Redis: docker compose up -d mysql redis"
+echo "Backend:  ./mvnw spring-boot:run          (Swagger: http://localhost:8001/swagger-ui.html)"
+echo "Frontend: cd frontend && NEXT_PUBLIC_API_URL=http://localhost:8001 npm run dev"
+echo "Admin:    python scripts/create_admin.py --email admin@example.com --seed"

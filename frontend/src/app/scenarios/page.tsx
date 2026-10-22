@@ -5,12 +5,13 @@ import Link from "next/link";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { FamilyForm } from "@/components/FamilyForm";
-import { EmptyState, ErrorNote, PillButton, Tag, cx, fmt } from "@/components/VehicSimUi";
+import { EmptyState, ErrorNote, PillButton, Tag, cx, fmt, simulatorLabel } from "@/components/VehicSimUi";
+import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { FamilyItem } from "@/types/vehicsim";
 
 export default function ScenarioFamiliesPage() {
-  const { refresh, canWrite } = useVehicSimContext();
+  const { ctx, refresh, canWrite } = useVehicSimContext();
   const [items, setItems] = useState<FamilyItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -37,7 +38,7 @@ export default function ScenarioFamiliesPage() {
   }, []);
 
   // Có run đang xếp hàng/chạy → tải lại định kỳ để số liệu tự cập nhật.
-  const active = (items ?? []).some((f) => (f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0) > 0);
+  const active = (items ?? []).some((f) => (f.runs.PENDING ?? f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0) > 0);
   useEffect(() => {
     if (!active) return;
     const id = setInterval(load, 3000);
@@ -53,6 +54,20 @@ export default function ScenarioFamiliesPage() {
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không chạy được cơ sở");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const cancelFamily = async (f: FamilyItem) => {
+    setBusy(f.id);
+    setError(null);
+    try {
+      const res = await vehicsimApi.cancelFamily(f.id);
+      setNotice(`${f.code}: đã hủy ${res.stopped} lượt đang chờ${res.stopping ? `, đang dừng ${res.stopping} lượt đang chạy` : ""}.`);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? vi(err.message) : "Không hủy được lượt chạy");
     } finally {
       setBusy(null);
     }
@@ -100,6 +115,15 @@ export default function ScenarioFamiliesPage() {
         />
       )}
 
+      {ctx && (
+        <p className="flex flex-wrap gap-x-5 gap-y-1 rounded-[16px] border border-solid border-vehicsim-line bg-white px-4 py-3 text-[13px] text-vehicsim-muted">
+          <span className="font-semibold text-vehicsim-ink">Chạy cơ sở sẽ dùng:</span>
+          <span>Xe <b className="text-vehicsim-ink">{ctx.vehicle?.name ?? "—"}</b></span>
+          <span>AEB <b className="text-vehicsim-ink">{ctx.system.baseline?.label ?? "chưa có bản cơ sở"}</b></span>
+          <span>Bộ mô phỏng <b className="text-vehicsim-ink">{simulatorLabel(ctx.simulator)}</b></span>
+        </p>
+      )}
+
       <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
         <div className="flex items-center px-5 py-4">
           <span className="text-[15px] font-bold text-vehicsim-ink">{items ? `${items.length} ${items.length === 1 ? "family" : "families"}` : "…"}</span>
@@ -117,7 +141,7 @@ export default function ScenarioFamiliesPage() {
           <EmptyState title="Chưa có họ kịch bản nào">Tạo họ đầu tiên (ví dụ người đi bộ băng ngang) rồi chạy cơ sở để có ca lỗi.</EmptyState>
         )}
         {items?.map((f) => {
-          const pending = (f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0);
+          const pending = (f.runs.PENDING ?? f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0);
           return (
             <div key={f.id} className="flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2">
               <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
@@ -140,6 +164,7 @@ export default function ScenarioFamiliesPage() {
                 </span>
                 {pending > 0 && <span className="font-semibold text-vehicsim-decision">{pending} đang chờ / đang chạy…</span>}
                 {(f.runs.FAILED ?? 0) > 0 && <span className="text-vehicsim-danger">{f.runs.FAILED} lỗi</span>}
+                {(f.runs.STOPPED ?? 0) > 0 && <span>{f.runs.STOPPED} đã hủy</span>}
               </span>
               <span className="flex w-[110px] flex-col">
                 <span className={cx("text-[13px] font-semibold", f.failures ? "text-vehicsim-danger" : "text-vehicsim-faint")}>
@@ -148,18 +173,29 @@ export default function ScenarioFamiliesPage() {
                 {f.baseline && <span className="text-[11px] text-vehicsim-faint">AEB {f.baseline}</span>}
               </span>
               <span className="w-[110px] text-[12px] text-vehicsim-faint">{fmt.date(f.created_at)}</span>
-              <span className="flex w-[180px] items-center justify-end gap-3">
-                <Link href={`/analysis/failures?scenario_id=${f.id}`} className="text-[12px] font-semibold text-vehicsim-decision hover:underline">
-                  Phân tích →
-                </Link>
-                <PillButton
-                  className="px-3 py-[6px] text-[12px]"
-                  onClick={() => runBaseline(f)}
-                  disabled={!canWrite || busy === f.id || pending > 0}
-                  title="Chạy mọi biến thể với bản cơ sở AEB hiện hành"
-                >
-                  {busy === f.id ? "Đang xếp hàng…" : "Chạy cơ sở"}
-                </PillButton>
+              <span className="flex w-[180px] flex-col items-end gap-1">
+                {pending > 0 ? (
+                  <PillButton
+                    className="px-3 py-[6px] text-[12px] text-vehicsim-danger"
+                    onClick={() => cancelFamily(f)}
+                    disabled={!canWrite || busy === f.id}
+                    title="Hủy mọi lượt đang chờ/đang chạy của họ này (lượt của regression không bị đụng)"
+                  >
+                    {busy === f.id ? "Đang hủy…" : `Hủy ${pending} lượt`}
+                  </PillButton>
+                ) : (
+                  <PillButton
+                    className="px-3 py-[6px] text-[12px]"
+                    onClick={() => runBaseline(f)}
+                    disabled={!canWrite || busy === f.id}
+                    title="Chạy mọi biến thể với bản cơ sở AEB hiện hành"
+                  >
+                    {busy === f.id ? "Đang xếp hàng…" : "Chạy cơ sở"}
+                  </PillButton>
+                )}
+                  <Link href={`/analysis/failures?scenario_id=${f.id}`} className="text-[12px] font-semibold text-vehicsim-decision hover:underline">
+                    Tiếp tục: Phân tích kết quả →
+                  </Link>
               </span>
             </div>
           );

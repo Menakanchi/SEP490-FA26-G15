@@ -6,18 +6,21 @@ import { useRouter } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { EmptyState, ErrorNote, FilterSelect, RECOMMENDATION_STATUS, RecommendationBadge, StatCard, cx, fmt } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { RecommendationItem, RecommendationStatus } from "@/types/vehicsim";
+import type { DecisionHistory, RecommendationItem, RecommendationStatus } from "@/types/vehicsim";
 
 export default function RecommendationsPage() {
   const router = useRouter();
   const [items, setItems] = useState<RecommendationItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<RecommendationStatus | "">("");
+  const [history, setHistory] = useState<DecisionHistory | null>(null);
 
   useEffect(() => {
     vehicsimApi.recommendations()
       .then(setItems)
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách khuyến nghị"));
+    // Lịch sử chỉ để tham khảo: lỗi tải không chặn danh sách khuyến nghị.
+    vehicsimApi.decisionHistory().then(setHistory).catch(() => setHistory(null));
   }, []);
 
   const visible = useMemo(() => (items ?? []).filter((i) => !status || i.status === status), [items, status]);
@@ -110,6 +113,54 @@ export default function RecommendationsPage() {
           );
         })}
       </section>
+
+      {history && (
+        <div className="flex w-full items-start gap-4">
+          <section className="flex min-w-0 flex-1 flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+            <h2 className="text-[15px] font-bold text-vehicsim-ink">Lịch sử quyết định</h2>
+            {history.decisions.length === 0 ? (
+              <p className="text-[13px] text-vehicsim-muted">Chưa có quyết định nào của Người duyệt.</p>
+            ) : (
+              history.decisions.map((d) => (
+                <Link
+                  key={d.recommendation_code}
+                  href={`/validation/recommendations/${d.test_id}`}
+                  className="flex flex-col gap-1 border-b border-solid border-vehicsim-line pb-3 last:border-b-0 last:pb-0"
+                >
+                  <span className="flex items-center gap-2 text-[13px] font-bold text-vehicsim-ink">
+                    {d.recommendation_code}
+                    <RecommendationBadge status={d.decision} />
+                    <span className="font-normal text-vehicsim-faint">{d.baseline} → {d.candidate}</span>
+                  </span>
+                  <span className="text-[12px] text-vehicsim-muted">
+                    {d.reviewed_by ?? "—"}
+                    {d.reviewed_at ? ` · ${fmt.date(d.reviewed_at)}` : ""}
+                    {d.reason ? ` · ${d.reason}` : ""}
+                  </span>
+                </Link>
+              ))
+            )}
+          </section>
+          <section className="flex w-[360px] shrink-0 flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+            <h2 className="text-[15px] font-bold text-vehicsim-ink">Chuỗi bản cơ sở</h2>
+            {history.baselines.map((b) => (
+              <div key={b.id} className="flex flex-col gap-1 border-b border-solid border-vehicsim-line pb-3 last:border-b-0 last:pb-0">
+                <span className="flex items-center gap-2 text-[13px] font-bold text-vehicsim-ink">
+                  {b.label}
+                  <span className={cx("text-[11px] font-semibold", b.status === "BASELINE" ? "text-vehicsim-ok" : "text-vehicsim-faint")}>
+                    {b.status === "BASELINE" ? "hiện hành" : "đã lưu trữ"}
+                  </span>
+                </span>
+                <span className="text-[12px] text-vehicsim-muted">
+                  {b.promoted_by
+                    ? `Được ${b.promoted_by} chấp nhận${b.promoted_at ? ` ngày ${fmt.date(b.promoted_at)}` : ""}${b.regression_code ? ` (${b.regression_code})` : ""}`
+                    : "Bản cơ sở khởi tạo của dự án"}
+                </span>
+              </div>
+            ))}
+          </section>
+        </div>
+      )}
     </VehicSimPage>
   );
 }

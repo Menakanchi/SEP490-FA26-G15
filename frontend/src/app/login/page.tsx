@@ -33,8 +33,6 @@ export default function LoginPage() {
     <AuthCard
       title="Đăng nhập"
       subtitle="Tiếp tục vòng kiểm thử AEB / FCW của bạn trên VehicSim."
-      backHref="/landing"
-      backLabel="Trang giới thiệu"
       error={errorMsg}
       footer={
         <>

@@ -144,7 +144,7 @@ function ProfileContent() {
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 font-sans text-slate-900 dark:text-slate-100">
+    <div className="max-w-6xl mx-auto space-y-6 px-8 py-8 font-sans text-slate-900 dark:text-slate-100">
       {/* Toast Notification */}
       {toast && (
         <div
@@ -353,6 +353,7 @@ function ProfileContent() {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
+                  maxLength={72}
                   placeholder={`Ít nhất ${MIN_PASSWORD_LENGTH} ký tự`}
                   className="w-full px-4 py-2.5 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   required

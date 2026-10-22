@@ -3,16 +3,14 @@
  * Mọi request đi qua `apiRequest`, nên tự mang `Authorization: Bearer`.
  */
 
-import { apiDownload, apiRequest } from "@/services/api";
+import { apiBlob, apiDownload, apiRequest } from "@/services/api";
 import type {
   AebVersion,
-<<<<<<< Updated upstream
-=======
   AnalysisDataset,
   CarlaStatus,
   CarlaRun,
   CarlaData,
->>>>>>> Stashed changes
+  DecisionHistory,
   DescribeResult,
   FailureDetail,
   FailureFilters,
@@ -27,6 +25,7 @@ import type {
   RegressionPreview,
   RegressionRequest,
   ReviewDecision,
+  TelemetrySummary,
   VehicSimContextData,
 } from "@/types/vehicsim";
 
@@ -57,6 +56,9 @@ export const vehicsimApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** Hủy mọi run đang chờ/đang chạy của họ (run của regression/tối ưu không bị đụng). */
+  cancelFamily: (scenarioId: number) =>
+    apiRequest<{ scenario_id: number; stopped: number; stopping: number }>(`/vehicsim/families/${scenarioId}/cancel`, { method: "POST" }),
   runFamily: (scenarioId: number, aebVersionId?: number) =>
     apiRequest<{ queued_runs: number }>(`/vehicsim/families/${scenarioId}/run`, {
       method: "POST",
@@ -80,13 +82,43 @@ export const vehicsimApi = {
   exportFailures: (filters: FailureFilters) => apiDownload(`/vehicsim/failures.csv${query(filters)}`, "failure_cases.csv"),
   run: (runId: number) => apiRequest<FailureDetail>(`/vehicsim/runs/${runId}`),
   playback: (runId: number) => apiRequest<Playback>(`/vehicsim/runs/${runId}/playback`),
+  /** Bundle nội bộ/đường tương thích cũ; giao diện CARLA tải .xosc qua downloadRunXosc. */
+  downloadRunBundle: (runId: number) =>
+    apiDownload(`/vehicsim/runs/${runId}/bundle`, `vehicsim-run-${runId}.json`),
+  downloadRunXosc: (runId: number) => apiDownload(`/vehicsim/runs/${runId}/xosc`, `vehicsim-run-${runId}.xosc`),
+  downloadScenarioXosc: (ir: unknown) => apiDownload("/vehicsim/scenarios/xosc", "scenario.xosc", { method: "POST", body: JSON.stringify(ir) }),
+  runOnCarla: (runId: number) => apiRequest<{ run_id: number }>(`/vehicsim/runs/${runId}/carla`, { method: "POST" }),
+  /** Hủy run PENDING (STOPPED ngay) hoặc RUNNING (STOPPING: worker đang dọn CARLA). */
+  cancelRun: (runId: number) =>
+    apiRequest<{ run_id: number; status: "STOPPED" | "STOPPING" }>(`/vehicsim/runs/${runId}/cancel`, { method: "POST" }),
+  carlaStatus: () => apiRequest<CarlaStatus>("/vehicsim/carla/status"),
+  carlaRuns: () => apiRequest<CarlaRun[]>("/vehicsim/carla/runs"),
+  carlaData: (runId: number) => apiRequest<CarlaData>(`/vehicsim/runs/${runId}/carla-data`),
+  carlaImage: (runId: number, frame: string) => apiBlob(`/vehicsim/runs/${runId}/carla-files/${frame}`),
+  downloadCarlaFile: (runId: number, name: "frames.csv" | "collisions.json") =>
+    apiDownload(`/vehicsim/runs/${runId}/carla-files/${name}`, `${runId}-${name}`),
+  /** Nộp ``result.json`` của run CARLA chạy ngoài backend (run CARLA đang PENDING/FAILED, regression chưa chốt). */
+  submitCarlaResult: (runId: number, result: unknown) =>
+    apiRequest<{ ok: boolean; run_id: number; status: string }>(`/vehicsim/runs/${runId}/carla-result`, {
+      method: "POST",
+      body: JSON.stringify(result),
+    }),
+  /** Số đo + 3 mục tiêu MOBO từ ``frames.csv`` / ``collisions.json`` của ``worker/sensor_recorder.py``. */
+  evaluateTelemetry: (body: { csv: string; collisions?: unknown[]; decel_available?: number }) =>
+    apiRequest<TelemetrySummary>("/vehicsim/telemetry/evaluate", { method: "POST", body: JSON.stringify(body) }),
 
   regressions: (status?: string) => apiRequest<RegressionList>(`/vehicsim/regression${query({ status })}`),
-  regressionPreview: (scenarioId: number) =>
-    apiRequest<RegressionPreview>(`/vehicsim/regression/preview${query({ scenario_id: scenarioId })}`),
+  regressionPreview: (scenarioId: number, includeVariants = false) =>
+    apiRequest<RegressionPreview>(
+      `/vehicsim/regression/preview${query({ scenario_id: scenarioId, include_variants: includeVariants ? "true" : undefined })}`,
+    ),
   createRegression: (body: RegressionRequest) =>
     apiRequest<{ id: number; code: string }>("/vehicsim/regression", { method: "POST", body: JSON.stringify(body) }),
   regression: (id: number) => apiRequest<RegressionDetail>(`/vehicsim/regression/${id}`),
+  /** Gói kết quả của test đã chạy xong: JSON (manifest + cặp run + quyết định) hoặc CSV (mỗi dòng một cặp). */
+  exportRegression: (id: number, format: "json" | "csv") =>
+    apiDownload(`/vehicsim/regression/${id}/export.${format}`, `RT-${String(id).padStart(3, "0")}.${format}`),
+  decisionHistory: () => apiRequest<DecisionHistory>("/vehicsim/decisions"),
 
   recommendations: () => apiRequest<RecommendationItem[]>("/vehicsim/recommendations"),
   recommendation: (id: number) => apiRequest<RecommendationDetail>(`/vehicsim/recommendations/${id}`),
@@ -95,4 +127,6 @@ export const vehicsimApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  /** Trợ lý dự án — chỉ đọc; trả lời từ dữ liệu project + tài liệu repo, kèm nguồn. */
 };
