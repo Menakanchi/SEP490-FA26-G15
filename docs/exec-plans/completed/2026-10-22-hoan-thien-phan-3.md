@@ -28,7 +28,7 @@ Không tự khởi chạy tối ưu, tạo candidate hoặc quyết định Revi
 | Bộ chỉ số | DONE theo lựa chọn legacy | AnalysisMetrics JDK-only dùng chung, version adr040-stored-aggregation/1, NULL/NOT_APPLICABLE/missing tách khỏi zero objective. |
 | Dataset | DONE | v2 chia hai tập không trùng variant, giữ safe, nhiều seed khác nhau, cấm lặp variant/seed, khóa identity và revision/digest. |
 | Bàn giao 2→3→4 | DONE | Link scenario_id kể cả họ an toàn; chốt dataset_id, revalidate trước chuyển và tại /aeb. |
-| Protocol CARLA mới | NOT DONE / ngoài quyết định lần này | Nguồn gia tốc, phaseless Butterworth, impact vector còn mở, TD-49. |
+| Protocol CARLA mới | NOT DONE / ngoài quyết định lần này | Nguồn gia tốc, phaseless Butterworth, impact vector còn mở, TD-51. |
 | Kiểm chứng CARLA/Figma | BLOCKED bởi môi trường | CARLA không lắng nghe cổng 2000; chưa có kênh truy cập thiết kế Figma. |
 
 ## Hợp đồng và API

@@ -1,5 +1,6 @@
 package com.vehicsim.vehicsim;
 
+import com.vehicsim.service.RegressionService;
 import com.vehicsim.vehicsim.Vs.NotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -9,7 +10,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -29,9 +29,6 @@ public class ViewsService {
 
     private static final List<String> STAGE_ORDER = List.of("PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS");
     private static final String AEB_SYSTEM_NAME = "AEB";
-    private static final List<String> KEY_PARAMS = List.of("TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "DETECTION_CONFIDENCE_THRESHOLD", "MAX_DECELERATION");
-    private static final Map<String, String> REVIEW_LABELS = Map.of(
-            "PENDING", "Awaiting review", "ACCEPT", "Accepted", "REJECT", "Rejected", "REQUEST_MORE_TESTS", "More tests requested");
 
     private final Db db;
     private final Queries queries;
@@ -68,6 +65,8 @@ public class ViewsService {
                 "project", Json.obj("id", project.lng("id"), "name", project.str("name")),
                 "workspace", workspace == null ? null : Json.obj("id", workspace.lng("id"), "name", workspace.str("name")),
                 "vehicle", Json.obj("id", vehicle.lng("id"), "name", vehicleName),
+                // Bộ mô phỏng mà run MỚI sẽ dùng (màn chạy baseline hiện ra trước khi bấm chạy).
+                "simulator", runs.configuredSimulator(),
                 "system", Json.obj("id", project.lng("id"), "name", AEB_SYSTEM_NAME, "baseline", baseline == null ? null : versionBrief(baseline)),
                 "versions", versions.stream().map(this::versionBrief).toList(),
                 "families", fams.stream().map(f -> Json.obj("id", f.lng("id"), "code", f.str("code"), "name", f.str("name"))).toList(),
@@ -727,242 +726,5 @@ public class ViewsService {
         return out;
     }
 
-    // ------------------------------------------------------------------ 16 · Regression list · 04 · Regression results
-
-    private Map<String, Object> progress(long testId) {
-        long done = 0;
-        long total = 0;
-        for (Row r : db.list("SELECT status, COUNT(*) AS n FROM simulation_runs WHERE regression_test_id = ? GROUP BY status", testId)) {
-            long n = r.lng("n");
-            total += n;
-            if ("COMPLETED".equals(r.str("status")) || "FAILED".equals(r.str("status"))) {
-                done += n;
-            }
-        }
-        return Json.obj("done", done, "total", total);
-    }
-
-    private Map<Long, Row> recommendationsByTest(List<Long> testIds) {
-        Map<Long, Row> out = new LinkedHashMap<>();
-        if (testIds.isEmpty()) {
-            return out;
-        }
-        for (Row r : db.list("SELECT * FROM engineering_recommendations WHERE regression_test_id IN (" + Db.placeholders(testIds.size()) + ")", testIds.toArray())) {
-            out.put(r.lng("regression_test_id"), r);
-        }
-        return out;
-    }
-
-    public Map<String, Object> regressionList(String status) {
-        Row project = queries.currentProject();
-        List<Row> tests = db.list("SELECT * FROM regression_tests WHERE project_id = ? ORDER BY id DESC", project.lng("id"));
-        Map<Long, Row> versions = new LinkedHashMap<>();
-        queries.versions(project.lng("id"), false).forEach(v -> versions.put(v.lng("id"), v));
-        Map<Long, Row> recs = recommendationsByTest(tests.stream().map(t -> t.lng("id")).toList());
-        Map<Long, String> names = queries.displayNames(tests.stream().map(t -> t.getLong("created_by_user_id")).toList());
-
-        List<Map<String, Object>> items = new ArrayList<>();
-        for (Row x : tests) {
-            boolean done = "COMPLETED".equals(x.str("execution_status"));
-            Object variantCount = Json.asMap(x.json("pass_criteria_json").get("scenario_set")).get("variant_count");
-            items.add(Json.obj(
-                    "id", x.lng("id"),
-                    "code", RegressionService.testCode(x.lng("id")),
-                    "name", x.str("name"),
-                    "baseline", Vs.versionLabel(versions.get(x.lng("baseline_aeb_version_id"))),
-                    "candidate", Vs.versionLabel(versions.get(x.lng("candidate_aeb_version_id"))),
-                    "candidate_version_id", x.lng("candidate_aeb_version_id"),
-                    "status", RegressionService.displayStatus(x),
-                    "review_decision", RegressionService.displayDecision(recs.get(x.lng("id"))),
-                    "scenarios", variantCount,
-                    "progress", progress(x.lng("id")),
-                    "fixed", done ? x.getLong("fixed_scenarios") : null,
-                    "regressed", done ? x.getLong("regressed_scenarios") : null,
-                    "created_by", names.get(x.getLong("created_by_user_id")),
-                    "created_at", Vs.iso(x.ts("created_date"))));
-        }
-        List<Map<String, Object>> filtered = items.stream().filter(i -> status == null || status.equals(i.get("status"))).toList();
-        Map<String, Object> running = items.stream().filter(i -> "RUNNING".equals(i.get("status"))).findFirst().orElse(null);
-        Object runningProgress = null;
-        if (running != null) {
-            Map<String, Object> rp = new LinkedHashMap<>();
-            rp.put("code", running.get("code"));
-            rp.putAll(Json.asMap(running.get("progress")));
-            runningProgress = rp;
-        }
-        return Json.obj(
-                "kpis", Json.obj(
-                        "total", items.size(),
-                        "passed", items.stream().filter(i -> "PASSED".equals(i.get("status"))).count(),
-                        "failed", items.stream().filter(i -> "FAILED".equals(i.get("status"))).count(),
-                        "running", items.stream().filter(i -> "RUNNING".equals(i.get("status"))).count(),
-                        "running_progress", runningProgress,
-                        "since", items.isEmpty() ? null : items.get(items.size() - 1).get("created_at")),
-                "items", filtered);
-    }
-
-    private Row test(long projectId, long testId) {
-        Row test = db.first("SELECT * FROM regression_tests WHERE id = ? AND project_id = ?", testId, projectId);
-        if (test == null) {
-            throw new NotFoundException("regression test");
-        }
-        return test;
-    }
-
-    public Map<String, Object> regressionDetail(long testId) {
-        Row project = queries.currentProject();
-        Row test = test(project.lng("id"), testId);
-        Row baseline = db.first("SELECT * FROM aeb_versions WHERE id = ?", test.lng("baseline_aeb_version_id"));
-        Row candidate = db.first("SELECT * FROM aeb_versions WHERE id = ?", test.lng("candidate_aeb_version_id"));
-        List<Map<String, Object>> diff = regression.parameterDiff(baseline.lng("id"), candidate.lng("id"));
-        Row scenario = db.first("SELECT * FROM scenarios WHERE id = ?", test.lng("scenario_id"));
-        Map<Long, String> names = queries.displayNames(List.of(test.lng("created_by_user_id")));
-        Map<String, Object> progress = progress(test.lng("id"));
-        Row rec = regression.recommendationFor(test.lng("id"));
-        Map<String, Object> summary = regression.summary(test);
-
-        Map<String, Map<String, Object>> byCode = new LinkedHashMap<>();
-        diff.forEach(d -> byCode.put((String) d.get("code"), d));
-        List<Map<String, Object>> keyParameters = new ArrayList<>();
-        for (String c : KEY_PARAMS) {
-            Map<String, Object> d = byCode.get(c);
-            if (d != null) {
-                keyParameters.add(Json.obj("code", d.get("code"), "name", d.get("name"), "unit", d.get("unit"),
-                        "baseline", d.get("baseline"), "candidate", d.get("candidate"), "changed", d.get("changed")));
-            }
-        }
-        return Json.obj(
-                "id", test.lng("id"),
-                "code", RegressionService.testCode(test.lng("id")),
-                "recommendation_code", RegressionService.recommendationCode(test.lng("id")),
-                "name", test.str("name"),
-                "status", RegressionService.displayStatus(test),
-                "review_decision", RegressionService.displayDecision(rec),
-                "family", scenario.str("name"),
-                "scenario_id", scenario.lng("id"),
-                "baseline", Json.obj("id", baseline.lng("id"), "label", Vs.versionLabel(baseline), "status", baseline.str("status")),
-                "candidate", Json.obj("id", candidate.lng("id"), "label", Vs.versionLabel(candidate), "status", candidate.str("status")),
-                "key_parameters", keyParameters,
-                "parameter_diff", diff,
-                "pass_criteria", test.json("pass_criteria_json"),
-                "simulator", test.str("simulator_version"),
-                "progress", progress,
-                "created_by", names.get(test.getLong("created_by_user_id")),
-                "created_at", Vs.iso(test.ts("created_date")),
-                "summary", summary);
-    }
-
-    // ------------------------------------------------------------------ 17 · Recommendation · 18 · Review
-
-    private static String recommendationStatus(Row test, Row rec) {
-        if ("FAILED".equals(RegressionService.displayStatus(test))) {
-            return "BLOCKED";
-        }
-        return RegressionService.displayDecision(rec);
-    }
-
-    public List<Map<String, Object>> recommendations() {
-        Row project = queries.currentProject();
-        List<Row> tests = db.list("SELECT * FROM regression_tests WHERE project_id = ? AND execution_status = 'COMPLETED' ORDER BY id DESC", project.lng("id"));
-        Map<Long, Row> versions = new LinkedHashMap<>();
-        queries.versions(project.lng("id"), false).forEach(v -> versions.put(v.lng("id"), v));
-        Map<Long, Row> recs = recommendationsByTest(tests.stream().map(t -> t.lng("id")).toList());
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Row x : tests) {
-            Map<String, Object> summary = regression.summary(x);
-            Row rec = recs.get(x.lng("id"));
-            LocalDateTime createdAt = rec != null ? rec.ts("updated_at") : x.ts("finished_at") != null ? x.ts("finished_at") : x.ts("created_date");
-            out.add(Json.obj(
-                    "id", x.lng("id"),
-                    "code", RegressionService.recommendationCode(x.lng("id")),
-                    "regression_code", RegressionService.testCode(x.lng("id")),
-                    "baseline", Vs.versionLabel(versions.get(x.lng("baseline_aeb_version_id"))),
-                    "candidate", Vs.versionLabel(versions.get(x.lng("candidate_aeb_version_id"))),
-                    "status", recommendationStatus(x, rec),
-                    "rates", summary.getOrDefault("rates", Map.of()),
-                    "counts", summary.getOrDefault("counts", Map.of()),
-                    "created_at", Vs.iso(createdAt)));
-        }
-        return out;
-    }
-
-    public Map<String, Object> recommendationDetail(long testId) {
-        Map<String, Object> detail = regressionDetail(testId);
-        Row project = queries.currentProject();
-        Row test = test(project.lng("id"), testId);
-        Row rec = regression.recommendationFor(testId);
-        List<Long> nameIds = new ArrayList<>();
-        nameIds.add(test.getLong("created_by_user_id"));
-        nameIds.add(rec == null ? null : rec.getLong("reviewed_by_user_id"));
-        Map<Long, String> names = queries.displayNames(nameIds);
-
-        Map<String, Object> summary = detail.get("summary") instanceof Map ? Json.asMap(detail.get("summary")) : Map.of();
-        Map<String, Object> rates = Json.asMap(summary.get("rates"));
-        Map<String, Object> counts = Json.asMap(summary.get("counts"));
-        Map<String, Object> ttc = Json.asMap(summary.get("median_min_ttc"));
-        List<Map<String, Object>> changed = Json.asList(detail.get("parameter_diff")).stream().map(Json::asMap)
-                .filter(d -> Boolean.TRUE.equals(d.get("changed"))).toList();
-
-        List<String> tradeoffs = new ArrayList<>();
-        if (!rates.isEmpty() && dbl(rates, "false_activation_candidate_pct") > dbl(rates, "false_activation_baseline_pct")) {
-            tradeoffs.add(String.format(java.util.Locale.ROOT, "False activation rises from %.1f%% to %.1f%% (pedestrians who stop at the curb).",
-                    pyFixed(dbl(rates, "false_activation_baseline_pct"), 1), pyFixed(dbl(rates, "false_activation_candidate_pct"), 1)));
-        }
-        long regressions = counts.get("regressed") instanceof Number n ? n.longValue() : 0;
-        if (regressions > 0) {
-            tradeoffs.add(regressions + " scenario(s) get worse than on the baseline.");
-        }
-        if (!rates.isEmpty() && dbl(rates, "collision_candidate_pct") > 0) {
-            tradeoffs.add(String.format(java.util.Locale.ROOT, "%.1f%% of scenarios still end in a collision — mostly late dart-outs that no threshold can stop in time.",
-                    pyFixed(dbl(rates, "collision_candidate_pct"), 1)));
-        }
-
-        boolean passed = "PASSED".equals(detail.get("status"));
-        String status = recommendationStatus(test, rec);
-        String decision = RegressionService.displayDecision(rec);
-        Map<String, Object> out = new LinkedHashMap<>(detail);
-        out.put("recommendation_status", status);
-        out.put("recommendation_status_label", "BLOCKED".equals(status) ? "Blocked" : REVIEW_LABELS.get(decision));
-        out.put("changed_parameters", changed);
-        out.put("expected_effect", Json.obj(
-                "collision_rate", listOf(rates.get("collision_baseline_pct"), rates.get("collision_candidate_pct")),
-                "false_activation", listOf(rates.get("false_activation_baseline_pct"), rates.get("false_activation_candidate_pct")),
-                "median_min_ttc", listOf(ttc.get("baseline"), ttc.get("candidate")),
-                "fixed", counts.get("fixed"),
-                "regressed", regressions));
-        out.put("tradeoffs", tradeoffs);
-        out.put("confidence", RegressionService.confidence(passed, counts));
-        out.put("evidence", List.of(
-                Json.obj("key", "regression", "title", "Regression " + detail.get("code"), "status", passed ? "PASS" : "FAIL",
-                        "detail", regressions + " regressions · " + (counts.get("fixed") == null ? 0 : counts.get("fixed")) + " fixed"),
-                // FE-13 chưa làm: nói rõ là chưa chạy, không vẽ tick xanh giả.
-                Json.obj("key", "robustness", "title", "Robustness validation", "status", "NOT_RUN", "detail", "FE-13 — not run yet"),
-                Json.obj("key", "pareto", "title", "Pareto front", "status", "NOT_RUN", "detail", "FE-13 — not run yet"),
-                Json.obj("key", "sensitivity", "title", "Sensitivity analysis", "status", "NOT_RUN", "detail", "FE-12 — not run yet")));
-        out.put("review", Json.obj(
-                "decision", decision,
-                "reviewed_by", rec == null ? null : names.get(rec.getLong("reviewed_by_user_id")),
-                "reviewed_at", rec != null && rec.ts("reviewed_at") != null ? Vs.iso(rec.ts("reviewed_at")) : null,
-                "note", rec == null ? null : rec.str("review_notes"),
-                "conditions", rec == null ? null : rec.str("review_conditions"),
-                "requested_by", names.get(test.getLong("created_by_user_id"))));
-        return out;
-    }
-
-    private static List<Object> listOf(Object a, Object b) {
-        List<Object> l = new ArrayList<>();
-        l.add(a);
-        l.add(b);
-        return l;
-    }
-
-    private static double dbl(Map<String, Object> m, String key) {
-        Object v = m.get(key);
-        return v instanceof Number n ? n.doubleValue() : 0.0;
-    }
-
-    /** Làm tròn half-even như ``f"{x:.1f}"`` rồi để ``%.1f`` chỉ còn việc in. */
-    private static double pyFixed(double x, int digits) {
-        return Vs.round(x, digits);
-    }
+    // Màn regression / khuyến nghị (16, 04, 17, 18): com.vehicsim.service.RegressionViewService.
 }

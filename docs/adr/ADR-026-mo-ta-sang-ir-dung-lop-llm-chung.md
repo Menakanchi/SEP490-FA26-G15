@@ -30,14 +30,15 @@ gốc `NATURAL_LANGUAGE` với câu gốc, model và IR. Chỉ ENGINEER/ADMIN g�
 ## Lý do
 
 - Tránh đi vòng qua `.xosc` và taxonomy không có motif cần dùng.
-- Không thêm node gọi LLM vào graph Forge (graph giữ đúng 3 node LLM —
-  `test_only_three_nodes_are_allowed_to_call_an_llm`).
+- Không thêm node gọi LLM vào graph Forge (graph giữ đúng 3 node LLM — test
+  "only three nodes are allowed to call an LLM"; graph và test này đã gỡ cùng Forge, ADR-032).
 - Vẫn một cửa cho provider: `test_nothing_imports_the_llm_provider_directly`.
 
 ## Hệ quả
 
 - `ARCHITECTURE.md` nói "chỉ 3 node được gọi LLM" — đúng cho graph, nhưng repo có caller
-  ngoài graph (`services/campaign.py`, `services/vehicsim/describe.py`); cần sửa câu chữ (TD-05).
+  ngoài graph (`services/campaign.py`, `services/vehicsim/describe.py`); cần sửa câu chữ (TD-05 —
+  đã hết khi gỡ Forge, ADR-032).
 - Test luôn mock `src.services.llm.call_with_escalation` (fixture chặn LLM thật vẫn hiệu
   lực vì `describe.py` gọi qua tên module).
 - IR mới chỉ biểu diễn một motif; chi tiết khác đi vào `notes` (TD-14).

@@ -7,6 +7,7 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton, RECOMMENDATION_STATUS, RecommendationBadge, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
+import { CandidateSourceTag, CarlaCaveat, PairObjectivesTable } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { ParamDiff, RecommendationDetail } from "@/types/vehicsim";
 
@@ -15,7 +16,7 @@ const CONFIDENCE_LABEL = { High: "Cao", Medium: "Trung bình", Low: "Thấp" } a
 
 export default function RecommendationPage() {
   const { testId } = useParams<{ testId: string }>();
-  const { canWrite } = useVehicSimContext();
+  const { canDecide } = useVehicSimContext();
   const [r, setR] = useState<RecommendationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,9 +48,9 @@ export default function RecommendationPage() {
             </PillButton>
             <PillButton
               variant="dark"
-              href={!final && !running && canWrite ? `/validation/recommendations/${r.id}/review` : undefined}
-              disabled={final || running || !canWrite}
-              title={!canWrite ? "Tài khoản người xem chỉ có quyền xem" : final ? "Đã có quyết định cuối" : undefined}
+              href={!final && !running && canDecide ? `/validation/recommendations/${r.id}/review` : undefined}
+              disabled={final || running || !canDecide}
+              title={!canDecide ? "Chỉ Người duyệt (REVIEWER) được ra quyết định" : final ? "Đã có quyết định cuối" : undefined}
               className="print:hidden"
             >
               Duyệt quyết định →
@@ -61,6 +62,12 @@ export default function RecommendationPage() {
       <ErrorNote message={error} />
       {r && running && (
         <ErrorNote message={`Kiểm thử hồi quy ${r.code} vẫn đang chạy — khuyến nghị sẽ có khi mọi cặp lượt chạy hoàn tất.`} />
+      )}
+      {r && !running && <CarlaCaveat caveat={r.simulator_caveat} />}
+      {r && !running && r.candidate_source && (
+        <div className="flex items-center gap-2 text-[13px] text-vehicsim-muted">
+          Nguồn ứng viên: <CandidateSourceTag source={r.candidate_source} />
+        </div>
       )}
       {r && !running && effect && (
         <div className="flex w-full items-start gap-4">
@@ -196,6 +203,9 @@ export default function RecommendationPage() {
             </section>
           </div>
         </div>
+      )}
+      {r && !running && r.summary.pairs && (
+        <PairObjectivesTable pairs={r.summary.pairs} baselineLabel={r.baseline.label} candidateLabel={r.candidate.label} />
       )}
     </VehicSimPage>
   );

@@ -30,10 +30,10 @@ const OPTIONAL_COLUMNS = ["impact", "ttc", "config"] as const;
 type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
 const COLUMN_LABELS: Record<OptionalColumn, string> = { impact: "Tốc độ va chạm", ttc: "TTC nhỏ nhất", config: "Cấu hình" };
 
-export function LegacyFailureCases() {
+export function LegacyFailureCases({ initialScenario }: { initialScenario?: number }) {
   const router=useRouter();
   const { ctx } = useVehicSimContext();
-  const [filters, setFilters] = useState<FailureFilters>({});
+  const [filters, setFilters] = useState<FailureFilters>({ scenario_id: initialScenario });
   const [page, setPage] = useState(1);
   const [data, setData] = useState<FailureList | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +83,9 @@ export function LegacyFailureCases() {
       actions={
         <>
           <PillButton onClick={() => void vehicsimApi.exportFailures(filters).catch((e) => setError(e.message))}>Xuất CSV</PillButton>
+          <PillButton variant="dark" disabled title="Optimization (FE-13) chưa có trong đợt MVP">
+            Tối ưu các ca đã chọn ({selected.size})
+          </PillButton>
 
         </>
       }

@@ -11,6 +11,6 @@ export default function AnalysisPage() {
       <button className={tab==="baseline" ? "font-bold underline" : ""} onClick={()=>setTab("baseline")}>Kết quả baseline</button>
       <button className={tab==="failures" ? "font-bold underline" : ""} onClick={()=>setTab("failures")}>Tra cứu ca lỗi</button>
     </nav>
-    {tab==="baseline" ? <BaselineAnalysisDashboard key={params.toString()} initialScenario={Number(params.get("scenario_id")) || undefined} /> : <LegacyFailureCases />}
+    {tab==="baseline" ? <BaselineAnalysisDashboard key={params.toString()} initialScenario={Number(params.get("scenario_id")) || undefined} /> : <LegacyFailureCases key={params.toString()} initialScenario={Number(params.get("scenario_id")) || undefined} />}
   </div>;
 }

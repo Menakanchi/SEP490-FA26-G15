@@ -2,12 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-<<<<<<< Updated upstream
-import { useParams } from "next/navigation";
-=======
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useVehicSimContext } from "@/components/VehicSimContext";
->>>>>>> Stashed changes
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { ScenarioMap } from "@/components/ScenarioMap";
 import { MotionTelemetryChart } from "@/components/MotionTelemetryChart";
@@ -29,18 +25,9 @@ const STAGE_NAME: Record<FailureClass, string> = {
   CONTROL: "Điều khiển",
   VEHICLE_DYNAMICS: "Động lực học",
 };
-const SNAPSHOT_PARAMS = [
-  "TTC_THRESHOLD",
-  "BRAKE_ACTIVATION_DELAY",
-  "MAX_DECELERATION",
-  "DETECTION_CONFIDENCE_THRESHOLD",
-  "PREDICTION_HORIZON",
-  "BRAKE_BUILDUP_RATE",
-];
+const SNAPSHOT_PARAMS = ["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "MAX_DECELERATION", "BRAKE_BUILDUP_RATE"];
 
 export default function FailureDetailPage() {
-<<<<<<< Updated upstream
-=======
   const router = useRouter();
   const { canWrite } = useVehicSimContext();
   const [inspection,setInspection]=useState<AnalysisRun|null>(null);
@@ -48,7 +35,6 @@ export default function FailureDetailPage() {
   const initialCursor=Number(params.get("t"))||0;
   const [cursor,setCursor]=useState(initialCursor);
   const [running, setRunning] = useState(false);
->>>>>>> Stashed changes
   const { runId } = useParams<{ runId: string }>();
   const [d, setD] = useState<FailureDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,9 +75,6 @@ export default function FailureDetailPage() {
           <PillButton disabled title="Sửa nhãn nguyên nhân (màn 05) chưa có trong đợt MVP">
             Sửa nguyên nhân
           </PillButton>
-<<<<<<< Updated upstream
-          <PillButton variant="dark" href={`/analysis/failures/${runId}/playback`}>
-=======
           <PillButton
             title="Xuất OpenSCENARIO cùng biến thể, AEB, xe và seed của lượt này"
             onClick={() => void vehicsimApi.downloadRunXosc(Number(runId)).catch((e) => setError(e.message))}
@@ -107,7 +90,6 @@ export default function FailureDetailPage() {
             finally { setRunning(false); }
           }}>{running ? "Đang xếp hàng…" : "Chạy trên CARLA"}</PillButton>
           <PillButton variant="dark" disabled={!inspection?.trace_available || inspection.status!=="COMPLETED"} href={`/analysis/failures/${runId}/playback`}>
->>>>>>> Stashed changes
             ▶  Phát lại
           </PillButton>
         </>

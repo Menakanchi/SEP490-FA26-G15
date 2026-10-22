@@ -10,6 +10,31 @@ export type ReviewDecision = "PENDING" | "ACCEPT" | "REJECT" | "REQUEST_MORE_TES
 export type Weather = "CLEAR" | "CLOUDY" | "RAIN" | "HEAVY_RAIN" | "FOG";
 export type TimeOfDay = "DAY" | "DUSK" | "NIGHT";
 
+export interface CarlaStatus {
+  configured: boolean;
+  connected: boolean;
+  compatible?: boolean;
+  scenario_runner: boolean;
+  version?: string | null;
+  simulator?: string;
+  error?: string;
+}
+
+export interface CarlaRun {
+  id: number;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "STOPPED";
+  scenario_id: number;
+  aeb_version_id: number;
+  simulator_version: string;
+  error_message: string | null;
+}
+
+export interface CarlaData {
+  run_id: number;
+  summary: TelemetrySummary;
+  camera_frames: string[];
+}
+
 export interface VersionBrief {
   id: number;
   label: string;
@@ -35,6 +60,8 @@ export interface VehicSimContextData {
   project: { id: number; name: string };
   workspace: { id: number; name: string } | null;
   vehicle: { id: number; name: string } | null;
+  /** Bộ mô phỏng run MỚI sẽ dùng, vd. `vehicsim-kinematic-1.0` hoặc `carla-0.9.16-xosc3`. */
+  simulator: string;
   system: { id: number; name: string; baseline: VersionBrief | null };
   versions: VersionBrief[];
   families: { id: number; code: string; name: string }[];
@@ -381,6 +408,16 @@ export interface Pair {
   min_ttc_delta_s: number | null;
   candidate_impact_kmh: number | null;
   change: "fixed" | "regressed" | "unchanged";
+  /**
+   * Ba mục tiêu ADR-040 của từng run, đọc thẳng từ worker (chưa gộp theo tập). null = không phanh (jerk, quãng phanh)
+   * hoặc không va chạm (tốc độ va chạm). Optional vì backend cũ không trả.
+   */
+  baseline_rms_jerk_mps3?: number | null;
+  candidate_rms_jerk_mps3?: number | null;
+  baseline_impact_speed_mps?: number | null;
+  candidate_impact_speed_mps?: number | null;
+  baseline_stopping_distance_m?: number | null;
+  candidate_stopping_distance_m?: number | null;
 }
 
 export interface Criterion {
@@ -434,12 +471,41 @@ export interface RegressionDetail {
   parameter_diff: ParamDiff[];
   pass_criteria: {
     criteria: Record<string, { enabled: boolean; required: boolean; value?: number }>;
-    scenario_set: { old_critical: boolean; all_variants: boolean; old_critical_count: number; variant_count: number };
+    scenario_set: {
+      old_critical: boolean;
+      all_variants: boolean;
+      old_critical_count: number;
+      variant_count: number;
+      /** Có từ đợt 2: cách chọn tập; test cũ không có (coi như theo hai cờ ở trên). */
+      mode?: "old_critical" | "all_variants" | "custom";
+      variant_ids?: number[] | null;
+      /** Số ca trước đây an toàn trong tập lúc tạo test. */
+      safe_count?: number;
+    };
   };
   progress: { done: number; total: number };
   created_by: string | null;
   created_at: string;
   summary: RegressionSummary;
+  /** Bộ mô phỏng của test (vd. `carla-0.9.16-xosc2`); null/undefined ở bản backend cũ. */
+  simulator?: string;
+  /** Có khi test chạy trên CARLA: phanh chưa hiệu chuẩn, số chỉ để quan sát/đối chiếu (TD-17). */
+  simulator_caveat?: SimulatorCaveat | null;
+  candidate_source?: CandidateSource | null;
+}
+
+export interface SimulatorCaveat {
+  carla: boolean;
+  calibrated: boolean;
+}
+
+/** Candidate tạo thủ công hay đến từ chiến dịch tối ưu; chiến dịch/trial null khi chưa có dữ liệu tối ưu. */
+export interface CandidateSource {
+  type: "MANUAL" | "OPTIMIZATION";
+  optimization_run_id: number | null;
+  campaign_name: string | null;
+  trial_id: number | null;
+  trial_number: number | null;
 }
 
 export interface RegressionPreview {
@@ -449,6 +515,24 @@ export interface RegressionPreview {
   variant_count: number;
   old_critical_count: number;
   baseline_runs_existing: number;
+  /** Bộ mô phỏng mà test mới sẽ chạy (cấu hình backend), vd. `vehicsim-kinematic-1.0` hoặc `carla-0.9.16-xosc2`. */
+  simulator?: string;
+  /** Có khi gọi với `include_variants=true`: danh sách biến thể để chọn tay. */
+  variants?: PreviewVariant[];
+}
+
+export interface PreviewVariant {
+  id: number;
+  label: string;
+  summary: string;
+  /** null = chưa có run baseline hoàn tất cùng bộ mô phỏng + xe. */
+  baseline_outcome: OutcomeKey | null;
+  baseline_false_activation: boolean | null;
+  /** Đã có run baseline (kể cả đang chờ) — có thì dùng lại, không thì chạy thêm khi tạo test. */
+  has_baseline_run: boolean;
+  /** Trước đây an toàn: baseline chạy xong và không ghi nhận lỗi — cần có trong tập để kiểm phanh oan / xấu đi. */
+  safe: boolean;
+  old_critical: boolean;
 }
 
 export interface RegressionRequest {
@@ -458,6 +542,8 @@ export interface RegressionRequest {
   include_all_variants: boolean;
   criteria: Record<string, { enabled?: boolean; value?: number }>;
   name?: string;
+  /** Tập biến thể chọn tay; có thì thay cho hai cờ include_*. */
+  variant_ids?: number[];
 }
 
 export type RecommendationStatus = ReviewDecision | "BLOCKED";
@@ -497,8 +583,33 @@ export interface RecommendationDetail extends RegressionDetail {
     requested_by: string | null;
   };
 }
-<<<<<<< Updated upstream
-=======
+
+/** ``GET /vehicsim/decisions`` — quyết định của Reviewer (mới nhất trước) và chuỗi baseline của project. */
+export interface DecisionHistory {
+  decisions: {
+    recommendation_code: string;
+    regression_code: string;
+    test_id: number;
+    baseline: string;
+    candidate: string;
+    decision: ReviewDecision;
+    reviewed_by: string | null;
+    reviewed_at: string | null;
+    reason: string | null;
+    conditions: string | null;
+  }[];
+  baselines: {
+    id: number;
+    version_no: number;
+    label: string;
+    status: "BASELINE" | "ARCHIVED";
+    /** null = baseline khởi tạo của project, không do quyết định Accept nào nâng. */
+    promoted_by: string | null;
+    promoted_at: string | null;
+    regression_code: string | null;
+    reason: string | null;
+  }[];
+}
 
 /** ``POST /vehicsim/telemetry/evaluate`` — số đo từ ``frames.csv`` của ``worker/sensor_recorder.py`` (ADR-040). */
 export interface TelemetrySummary {
@@ -556,4 +667,3 @@ export interface AnalysisFilters {
   scenario_id?: number; variant_id?: number; aeb_version_id?: number; vehicle_id?: number;
   simulator?: string; weather?: string; time_of_day?: string; status?: string; failure_class?: string;
 }
->>>>>>> Stashed changes

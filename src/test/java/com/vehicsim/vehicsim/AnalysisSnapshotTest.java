@@ -1,5 +1,7 @@
 package com.vehicsim.vehicsim;
 
+import com.vehicsim.service.RegressionService;
+
 import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;

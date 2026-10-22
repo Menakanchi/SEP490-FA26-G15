@@ -4,13 +4,16 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import type { ApiUser, AuthContextType, Role, SessionResponse, User } from "@/types/auth";
 import {
   ApiError,
+  onSessionExpired,
   changeMyPassword,
   getMe,
   getStoredToken,
   postLogin,
+  postRegister,
   storeToken,
   updateMyProfile,
   verifyRegistration,
+  type RegisterPayload,
 } from "@/services/api";
 
 /**
@@ -43,12 +46,17 @@ function writeAvatar(userId: number | string, dataUrl: string | undefined): void
   }
 }
 
-/** Một user có thể mang nhiều role; trang được chia theo role cao nhất. */
-export function primaryRole(roles: string[]): Role {
-  if (roles.includes("ADMIN")) return "admin";
-  if (roles.includes("ENGINEER")) return "engineer";
-  if (roles.includes("VIEWER")) return "viewer";
-  return "guest";
+const ROLE_BY_CODE: Record<string, Role> = {
+  ADMIN: "admin",
+  MANAGER: "manager",
+  ENGINEER: "engineer",
+  REVIEWER: "reviewer",
+  EXPERIENCER: "experience",
+};
+
+/** Mỗi user đúng một role hệ thống (ADR-035). */
+export function toRole(code: string): Role {
+  return ROLE_BY_CODE[code] ?? "guest";
 }
 
 function toUser(api: ApiUser): User {
@@ -58,9 +66,8 @@ function toUser(api: ApiUser): User {
     full_name: api.full_name,
     email: api.email,
     username: api.email,
-    roles: api.roles,
-    role: primaryRole(api.roles),
-    status: "active",
+    roleCode: api.role,
+    role: toRole(api.role),
     avatar_url: readAvatar(api.id),
   };
 }
@@ -113,16 +120,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setIsLoading(false));
   }, []);
 
+  // Backend từ chối token giữa phiên (hết hạn, đã đổi mật khẩu ở máy khác): bỏ phiên, shell tự chuyển về /login.
+  useEffect(() => onSessionExpired(clearSession), [clearSession]);
+
   const login = useCallback(
     async (email: string, password: string) => applySession(await postLogin(email.trim(), password)),
     [applySession],
   );
 
-  const completeRegistration = useCallback(
-    async (email: string, code: string, fullName: string, password: string) =>
-      applySession(
-        await verifyRegistration({ email: email.trim(), code: code.trim(), full_name: fullName.trim(), password }),
-      ),
+  const register = useCallback(
+    async (payload: RegisterPayload) => applySession(await postRegister({ ...payload, email: payload.email.trim() })),
+    [applySession],
+  );
+
+  const registerWithCode = useCallback(
+    async (payload: { email: string; code: string; full_name: string; password: string }) =>
+      applySession(await verifyRegistration({ ...payload, email: payload.email.trim() })),
     [applySession],
   );
 
@@ -150,7 +163,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!user && !!token,
         isLoading,
         login,
-        completeRegistration,
+        register,
+        registerWithCode,
         changePassword,
         updateProfile,
         logout: clearSession,
@@ -171,6 +185,6 @@ export function useAuth(): AuthContextType {
 
 /** Trang đích sau khi đăng nhập, theo role. */
 export function homeFor(role: Role): string {
-  void role; // mọi vai trò vào VehicSim; quyền ghi do backend + `canWrite` quyết định
+  void role; // mọi vai trò vào VehicSim; quyền ghi / duyệt do backend + `canWrite` / `canDecide` quyết định
   return "/";
 }

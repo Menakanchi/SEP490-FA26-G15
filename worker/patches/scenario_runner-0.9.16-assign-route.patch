@@ -1,0 +1,13 @@
+diff --git a/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py b/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py
+index c126ff9..2ace83f 100644
+--- a/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py
++++ b/srunner/scenariomanager/scenarioatomics/atomic_behaviors.py
+@@ -770,7 +770,7 @@ class ChangeActorWaypoints(AtomicBehavior):
+         self._times = times
+         self._is_osc1 = is_osc1
+ 
+-        if len(self._waypoints) != len(self._times):
++        if self._times is not None and len(self._waypoints) != len(self._times):
+             raise ValueError("Both 'waypoints' and 'times' must have the same length")
+ 
+     def initialise(self):

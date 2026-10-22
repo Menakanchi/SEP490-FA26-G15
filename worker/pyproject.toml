@@ -1,7 +1,7 @@
 [project]
 name = "scenario-forge-worker"
 version = "0.1.0"
-description = "CARLA ScenarioRunner worker for Scenario Forge"
+description = "CARLA-side adapter for VehicSim: run_xosc.py runs exported .xosc through ScenarioRunner; AEB logic lives in the Java core (ADR-042)"
 requires-python = ">=3.10,<3.11"
 dependencies = [
     "antlr4-python3-runtime==4.10",

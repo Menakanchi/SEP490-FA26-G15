@@ -1,6 +1,7 @@
 .git
 .gitignore
 .env
+.env.*
 **/.venv
 **/node_modules
 **/.next
@@ -8,12 +9,19 @@ __pycache__
 *.pyc
 .pytest_cache
 .ruff_cache
-docs/
-presentation/
-eval/
+# Dữ liệu và run của máy dev không lên image; frontend deploy riêng (Vercel).
+data/
+frontend/
+graphify-out/
+scratch/
 .ai-log/
 worker/outputs/
-*.md
+# Adapter CARLA (Python) chạy ngoài container; image backend không cần worker/ (ADR-042), kể cả venv CARLA lớn.
+worker/
+# Backend Python cũ và test của nó (đã ngưng, TD-33) không cần trong image Java.
+src_python_backup/
+tests/
+target/
 .dockerignore
 Dockerfile
 docker-compose.yml

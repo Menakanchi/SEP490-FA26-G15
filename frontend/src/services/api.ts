@@ -1,33 +1,13 @@
 /**
- * API Client — Kết nối FastAPI Backend
+ * API Client — Kết nối backend Spring Boot (Java)
  *
- * Base URL đọc từ env `NEXT_PUBLIC_API_URL`, mặc định `http://localhost:8000/api/v1`.
+ * Base URL đọc từ env `NEXT_PUBLIC_API_URL`, mặc định `http://localhost:8001/api/v1` (cổng backend Java).
  */
 
-import type {
-  GenerationStatus,
-  ReviewRequest,
-  ReviewResponse,
-  ScenarioDetail,
-  ScenarioItem,
-  ScenarioStatus,
-  ODDPayload,
-  QualityReport,
-  ControllerRunsResponse,
-
-  CampaignDetail,
-  CampaignControllerBatchResponse,
-  CampaignControllerSummary,
-  CampaignReviewResponse,
-  CampaignSummary,
-  LabelQueueItem,
-  TuningSummary,
-  TuneStepResponse,
-} from "@/types";
-import type { ApiUser, SessionResponse, User } from "@/types/auth";
+import type { ApiUser, SessionResponse } from "@/types/auth";
 
 const getBaseUrl = (): string => {
-  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
   const trimmed = rawBaseUrl.replace(/\/+$/, "");
   return trimmed.endsWith("/api/v1") ? trimmed : `${trimmed}/api/v1`;
 };
@@ -63,6 +43,27 @@ export function storeToken(token: string | null): void {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Hết phiên giữa chừng
+// ---------------------------------------------------------------------------
+
+const SESSION_EXPIRED_EVENT = "vehicsim:session-expired";
+
+/** Các route trả 401 vì sai thông tin đăng nhập chứ không phải vì hết phiên — không được đá người dùng ra. */
+const CREDENTIAL_PATHS = ["/auth/login", "/auth/register", "/auth/password/forgot", "/auth/password/reset"];
+
+function handleSessionExpired(): void {
+  storeToken(null);
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+}
+
+/** Gọi `callback` khi backend từ chối token đang dùng (hết hạn / đã đổi mật khẩu ở máy khác). Trả hàm huỷ đăng ký. */
+export function onSessionExpired(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener(SESSION_EXPIRED_EVENT, callback);
+  return () => window.removeEventListener(SESSION_EXPIRED_EVENT, callback);
+}
+
 /** Lỗi HTTP có mã trạng thái, để nơi gọi phân biệt 401 (hết phiên) với lỗi khác. */
 export class ApiError extends Error {
   constructor(
@@ -75,13 +76,21 @@ export class ApiError extends Error {
 }
 
 /** Tải file (CSV…) từ API có kèm token rồi cho trình duyệt lưu. */
-export async function apiDownload(path: string, filename: string): Promise<void> {
+export async function apiBlob(path: string, options?: RequestInit): Promise<Blob> {
   const token = getStoredToken();
+  const headers = new Headers(options?.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (options?.body) headers.set("Content-Type", "application/json");
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    ...options,
+    headers,
   });
   if (!res.ok) throw new ApiError(`API ${res.status}: ${res.statusText}`, res.status);
-  const url = URL.createObjectURL(await res.blob());
+  return res.blob();
+}
+
+export async function apiDownload(path: string, filename: string, options?: RequestInit): Promise<void> {
+  const url = URL.createObjectURL(await apiBlob(path, options));
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
@@ -91,7 +100,25 @@ export async function apiDownload(path: string, filename: string): Promise<void>
 
 export { request as apiRequest };
 
-async function request<T>(
+/**
+ * GET giống hệt (cùng đường dẫn, cùng token) đang bay thì dùng chung một lời gọi. Trang tổng quan có nhiều component
+ * cùng cần `/vehicsim/context`, `/vehicsim/families`… và React Strict Mode (dev) chạy effect hai lần — nếu không gom,
+ * mỗi API bị gọi 2–4 lần và backend làm lại cùng một truy vấn. Chỉ gom khi lời gọi còn đang chạy, không cache.
+ */
+const inflightGets = new Map<string, Promise<unknown>>();
+
+function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const method = (options?.method ?? "GET").toUpperCase();
+  if (method !== "GET" || options?.body) return send<T>(path, options);
+  const key = `${getStoredToken() ?? ""}|${path}`;
+  const running = inflightGets.get(key);
+  if (running) return running as Promise<T>;
+  const call = send<T>(path, options).finally(() => inflightGets.delete(key));
+  inflightGets.set(key, call);
+  return call;
+}
+
+async function send<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
@@ -106,6 +133,8 @@ async function request<T>(
   });
 
   if (!res.ok) {
+    // Có gửi token mà vẫn 401 = phiên hết hạn: xoá phiên để giao diện đưa người dùng về trang đăng nhập.
+    if (res.status === 401 && token && !CREDENTIAL_PATHS.some((p) => path.startsWith(p))) handleSessionExpired();
     const bodyText = await res.text().catch(() => "");
     let messageVi = "";
     try {
@@ -143,278 +172,20 @@ async function request<T>(
 }
 
 // ---------------------------------------------------------------------------
-// POST /generate — Gửi prompt sinh kịch bản
-// ---------------------------------------------------------------------------
-
-export interface GeneratePayload {
-  prompt: string;
-  limit?: number;
-  created_by?: string;
-  force_generate?: boolean;
-  validation_mode?: "static" | "sim";
-}
-
-export interface GenerateDuplicateMatch {
-  scenario_id?: string | null;
-  scenario_status?: ScenarioStatus | null;
-  title?: string | null;
-  reason?: string | null;
-  request_status?: string | null;
-}
-
-export interface GenerateResponse {
-  request_id: string | null;
-  duplicate?: GenerateDuplicateMatch | null;
-}
-
-export async function postGenerate(
-  payload: GeneratePayload,
-): Promise<GenerateResponse> {
-  return request<GenerateResponse>("/scenarios/generate", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// GET /status/{id} — Polling trạng thái sinh
-// ---------------------------------------------------------------------------
-
-export async function getStatus(requestId: string): Promise<GenerationStatus> {
-  return request<GenerationStatus>(`/status/${encodeURIComponent(requestId)}`);
-}
-
-// ---------------------------------------------------------------------------
-// POST /scenarios/{id}/review hoặc POST /review — Gửi quyết định duyệt
-// ---------------------------------------------------------------------------
-
-export async function postReview(
-  payloadOrId: ReviewRequest | string,
-  maybePayload?: Partial<ReviewRequest>,
-): Promise<ReviewResponse> {
-  const payload: ReviewRequest =
-    typeof payloadOrId === "string"
-      ? ({ scenario_id: payloadOrId, ...maybePayload } as ReviewRequest)
-      : payloadOrId;
-
-  const scenarioId = payload.scenario_id || (typeof payloadOrId === "string" ? payloadOrId : "");
-  const notes = (payload as unknown as Record<string, unknown>).notes;
-  const cleanBody: Record<string, unknown> = {
-    scenario_id: scenarioId,
-    gate: payload.gate,
-    approved: Boolean(payload.approved),
-    reviewer: payload.reviewer || "Reviewer",
-    reason: payload.reason || (typeof notes === "string" ? notes : "") || "",
-  };
-
-  if (payload.force_simulate) {
-    cleanBody.force_simulate = true;
-  }
-  if (payload.force_intent_override) {
-    cleanBody.force_intent_override = true;
-  }
-
-  return request<ReviewResponse>(`/scenarios/${encodeURIComponent(scenarioId)}/review`, {
-    method: "POST",
-    body: JSON.stringify(cleanBody),
-  });
-}
-
-export const reviewScenario = postReview;
-
-// ---------------------------------------------------------------------------
-// GET /library/search — Danh sách kịch bản (có lọc ODD & keyword)
-// ---------------------------------------------------------------------------
-
-export interface GetScenariosParams {
-  search?: string;
-  odd?: ODDPayload;
-  scope?: "public" | "me" | "all";
-  user?: string;
-  reviewQueue?: boolean;
-  page?: number;
-  limit?: number;
-}
-
-export async function getScenarios(
-  params?: GetScenariosParams,
-): Promise<{ items: ScenarioItem[]; total: number }> {
-  const query = new URLSearchParams();
-
-  if (params?.search) query.set("search", params.search);
-  if (params?.scope) query.set("scope", params.scope);
-  if (params?.user) query.set("user", params.user);
-  if (params?.reviewQueue) query.set("review_queue", "true");
-  if (params?.page) query.set("page", String(params.page));
-  if (params?.limit) query.set("limit", String(params.limit));
-
-  if (params?.odd) {
-    for (const [key, val] of Object.entries(params.odd)) {
-      if (val) query.set(key, val);
-    }
-  }
-
-  const qs = query.toString();
-  return request<{ items: ScenarioItem[]; total: number }>(
-    `/library/search${qs ? `?${qs}` : ""}`,
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Draft & CRUD API
-// ---------------------------------------------------------------------------
-
-export interface DraftPayload {
-  title?: string;
-  description_vi: string;
-  odd?: ODDPayload;
-  spec?: Record<string, unknown>;
-  xosc_content?: string;
-  created_by?: string;
-}
-
-export async function postDraftScenario(
-  payload: DraftPayload,
-): Promise<{ ok: boolean; scenario_id: string; scenario: ScenarioDetail }> {
-  return request<{ ok: boolean; scenario_id: string; scenario: ScenarioDetail }>(
-    "/scenarios/draft",
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-  );
-}
-
-export async function updateScenario(
-  id: string,
-  payload: Partial<ScenarioDetail> & { user?: string },
-): Promise<{ ok: boolean; scenario: ScenarioDetail }> {
-  return request<{ ok: boolean; scenario: ScenarioDetail }>(
-    `/scenarios/${encodeURIComponent(id)}`,
-    {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    },
-  );
-}
-
-export async function deleteScenario(
-  id: string,
-  user?: string,
-): Promise<{ ok: boolean; scenario_id: string }> {
-  const query = user ? `?user=${encodeURIComponent(user)}` : "";
-  return request<{ ok: boolean; scenario_id: string }>(
-    `/scenarios/${encodeURIComponent(id)}${query}`,
-    {
-      method: "DELETE",
-    },
-  );
-}
-
-export async function submitScenario(
-  id: string,
-): Promise<{ ok: boolean; scenario_id: string; status: string }> {
-  return request<{ ok: boolean; scenario_id: string; status: string }>(
-    `/scenarios/${encodeURIComponent(id)}/submit`,
-    {
-      method: "POST",
-    },
-  );
-}
-
-// ---------------------------------------------------------------------------
-// GET /scenarios/{id} — Chi tiết kịch bản
-// ---------------------------------------------------------------------------
-
-export async function getScenarioById(
-  id: string,
-): Promise<ScenarioDetail> {
-  return request<ScenarioDetail>(
-    `/scenarios/${encodeURIComponent(id)}`,
-  );
-}
-
-export async function getControllerRuns(
-  id: string,
-): Promise<ControllerRunsResponse> {
-  return request<ControllerRunsResponse>(
-    `/scenarios/${encodeURIComponent(id)}/controller-runs`,
-  );
-}
-
-export async function postControllerRun(
-  id: string,
-): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>(
-    `/scenarios/${encodeURIComponent(id)}/controller-runs`,
-    { method: "POST" },
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Dò biến thể tới hạn — POST sinh một bước, GET tóm tắt kết quả đã chạy
-// ---------------------------------------------------------------------------
-
-export async function getTuningSummary(id: string): Promise<TuningSummary> {
-  return request<TuningSummary>(`/scenarios/${encodeURIComponent(id)}/tune`);
-}
-
-export async function postTuneStep(id: string): Promise<TuneStepResponse> {
-  return request<TuneStepResponse>(
-    `/scenarios/${encodeURIComponent(id)}/tune`,
-    { method: "POST" },
-  );
-}
-
-// ---------------------------------------------------------------------------
-// GET /scenarios/{id}/xosc — Tải file .xosc kèm status gate (HTTP 403)
-// ---------------------------------------------------------------------------
-
-export async function downloadXosc(id: string): Promise<string> {
-  const res = await fetch(`${BASE_URL}/scenarios/${encodeURIComponent(id)}/xosc`);
-  if (!res.ok) {
-    const bodyText = await res.text().catch(() => "");
-    let messageVi = "";
-    try {
-      const json = JSON.parse(bodyText);
-      messageVi = json.detail || json.message_vi || "";
-    } catch {
-      messageVi = bodyText;
-    }
-    throw new Error(messageVi || `Chặn tải file .xosc (Mã lỗi ${res.status})`);
-  }
-  return res.text();
-}
-
-// ---------------------------------------------------------------------------
-// POST /scenarios/{id}/complete-simulation — Manual Simulation Verification
-// ---------------------------------------------------------------------------
-
-export interface CompleteSimulationPayload {
-  passed: boolean;
-  notes?: string;
-}
-
-export async function completeSimulation(
-  scenarioId: string,
-  payload: CompleteSimulationPayload,
-): Promise<{ ok: boolean; scenario_id: string; status: ScenarioStatus }> {
-  return request<{ ok: boolean; scenario_id: string; status: ScenarioStatus }>(
-    `/scenarios/${encodeURIComponent(scenarioId)}/complete-simulation`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Auth Endpoints
 // ---------------------------------------------------------------------------
 
 // Đăng ký và quên mật khẩu đều 2 bước: xin mã 6 số qua email, rồi gửi mã kèm
 // thông tin. Bước xin mã luôn trả cùng một câu, kể cả khi email không hợp lệ
 // với luồng đó — không dựa vào response để đoán email đã đăng ký hay chưa.
+
+/** Luồng đăng ký backend đang dùng: `otp` (xác minh email) hoặc `one_step` (không xác minh, dev). */
+export type RegistrationMode = "otp" | "one_step";
+
+export async function getRegistrationMode(): Promise<RegistrationMode> {
+  const res = await request<{ mode: RegistrationMode }>("/auth/register/mode");
+  return res.mode === "otp" ? "otp" : "one_step";
+}
 
 export async function requestRegisterCode(email: string): Promise<{ message_vi: string }> {
   return request<{ message_vi: string }>("/auth/register/request", {
@@ -430,6 +201,26 @@ export async function verifyRegistration(payload: {
   password: string;
 }): Promise<SessionResponse> {
   return request<SessionResponse>("/auth/register/verify", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Đăng ký một bước của backend Java (`POST /auth/register`): tạo tài khoản EXPERIENCER và cấp phiên luôn. */
+export interface RegisterPayload {
+  email: string;
+  password: string;
+  lastName: string;
+  middleName?: string;
+  firstName: string;
+  dateOfBirth?: string; // yyyy-MM-dd
+  gender?: "MALE" | "FEMALE" | "OTHER";
+  phoneNumber?: string;
+  address?: string;
+}
+
+export async function postRegister(payload: RegisterPayload): Promise<SessionResponse> {
+  return request<SessionResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -477,164 +268,5 @@ export async function changeMyPassword(oldPassword: string, newPassword: string)
   return request<SessionResponse>("/auth/password/change", {
     method: "POST",
     body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Admin Subsystem Endpoints
-// ---------------------------------------------------------------------------
-
-export interface AdminStats {
-  users: {
-    total: number;
-    creator: number;
-    reviewer: number;
-    admin: number;
-    pending_approval: number;
-  };
-  scenarios: {
-    total: number;
-    draft: number;
-    pending_sim_review: number;
-    simulation_queued: number;
-    pending_library_review: number;
-    approved_library: number;
-    approved_sim: number;
-    rejected: number;
-  };
-}
-
-export async function getAdminStats(): Promise<AdminStats> {
-  return request<AdminStats>("/admin/stats");
-}
-
-export async function getPendingReviewers(): Promise<User[]> {
-  return request<User[]>("/admin/pending-reviewers");
-}
-
-export async function getAdminUsers(params?: { role?: string; status?: string }): Promise<User[]> {
-  const query = new URLSearchParams();
-  if (params?.role) query.append("role", params.role);
-  if (params?.status) query.append("status", params.status);
-  const qs = query.toString() ? `?${query.toString()}` : "";
-  return request<User[]>(`/admin/users${qs}`);
-}
-
-export async function createAdminUser(
-  payload: Partial<User> & { password?: string; reason?: string },
-): Promise<{ ok: boolean; user: User }> {
-  return request<{ ok: boolean; user: User }>("/admin/users", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function updateAdminUser(
-  username: string,
-  payload: Partial<User> & { password?: string; reason?: string },
-): Promise<{ ok: boolean; user: User }> {
-  return request<{ ok: boolean; user: User }>(`/admin/users/${encodeURIComponent(username)}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function deleteAdminUser(username: string): Promise<{ ok: boolean; username: string }> {
-  return request<{ ok: boolean; username: string }>(`/admin/users/${encodeURIComponent(username)}`, {
-    method: "DELETE",
-  });
-}
-
-export async function approveReviewer(
-  username: string,
-): Promise<{ ok: boolean; user: User & { temp_password?: string; email_sent?: boolean } }> {
-  return request<{ ok: boolean; user: User & { temp_password?: string; email_sent?: boolean } }>(
-    `/admin/users/${encodeURIComponent(username)}/approve`,
-    {
-      method: "POST",
-    },
-  );
-}
-
-export async function rejectReviewer(username: string): Promise<{ ok: boolean; user: User }> {
-  return request<{ ok: boolean; user: User }>(`/admin/users/${encodeURIComponent(username)}/reject`, {
-    method: "POST",
-  });
-}
-
-
-// ---------------------------------------------------------------------------
-// GET /metrics/quality — báo cáo M1/M2/M3
-// ---------------------------------------------------------------------------
-
-export async function getQualityReport(): Promise<QualityReport> {
-  return request<QualityReport>("/metrics/quality");
-}
-
-
-// ---------------------------------------------------------------------------
-// /campaigns — chiến dịch ODD (chế độ nâng cao)
-// ---------------------------------------------------------------------------
-
-export async function createCampaign(body: {
-  cells: Array<Record<string, string>>;
-  per_cell: number;
-  max_scenarios: number;
-  created_by: string;
-}): Promise<{ campaign_id: string; planned: number }> {
-  return request("/campaigns", { method: "POST", body: JSON.stringify(body) });
-}
-
-export async function listCampaigns(): Promise<CampaignSummary[]> {
-  const data = await request<{ campaigns: CampaignSummary[] }>("/campaigns");
-  return data.campaigns;
-}
-
-export async function getCampaign(id: string): Promise<CampaignDetail> {
-  return request<CampaignDetail>(`/campaigns/${encodeURIComponent(id)}`);
-}
-
-export async function stopCampaign(id: string): Promise<{ ok: boolean }> {
-  return request(`/campaigns/${encodeURIComponent(id)}/stop`, { method: "POST" });
-}
-
-export async function reviewCampaign(
-  id: string,
-  body: { reviewer: string; approved?: boolean; reason?: string; force_simulate?: boolean },
-): Promise<CampaignReviewResponse> {
-  return request<CampaignReviewResponse>(`/campaigns/${encodeURIComponent(id)}/review`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-export async function createCampaignControllerRuns(id: string): Promise<CampaignControllerBatchResponse> {
-  return request<CampaignControllerBatchResponse>(`/campaigns/${encodeURIComponent(id)}/controller-runs`, {
-    method: "POST",
-  });
-}
-
-export async function getCampaignControllerRuns(id: string): Promise<CampaignControllerSummary> {
-  return request<CampaignControllerSummary>(`/campaigns/${encodeURIComponent(id)}/controller-runs`);
-}
-
-
-// ---------------------------------------------------------------------------
-// Chấm ý định bằng người — hợp thức hoá mức L4
-// ---------------------------------------------------------------------------
-
-export async function getLabelQueue(labeller: string): Promise<{ items: LabelQueueItem[]; count: number }> {
-  return request<{ items: LabelQueueItem[]; count: number }>(
-    `/intent-labels/queue?labeller=${encodeURIComponent(labeller)}`,
-  );
-}
-
-export async function submitIntentLabel(
-  scenarioId: string,
-  body: { label: "correct" | "wrong" | "unsure"; reason: string; labeller: string },
-): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>(`/scenarios/${scenarioId}/intent-label`, {
-    method: "POST",
-    body: JSON.stringify(body),
   });
 }

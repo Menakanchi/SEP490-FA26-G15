@@ -1,16 +1,14 @@
 /**
  * Auth Data Types — VehicSim
  *
- * Backend (`/api/v1/auth/*`) trả `roles` dạng mã MySQL: ADMIN / ENGINEER / VIEWER.
- * Frontend quy về MỘT `Role` để chia trang (xem `primaryRole` trong AuthContext):
- *   ADMIN -> "admin" · ENGINEER -> "engineer" · VIEWER -> "viewer".
- * "creator" / "reviewer" còn lại từ Forge cũ — không tài khoản mới nào mang chúng,
- * nhưng trang quản lý user cũ (/admin, SQLite) vẫn hiển thị các giá trị này.
+ * Backend (`/api/v1/auth/*`) trả `role` — đúng MỘT mã role hệ thống MySQL (ADR-035):
+ * ADMIN / MANAGER / ENGINEER / REVIEWER / EXPERIENCER (người tự đăng ký).
+ * Frontend quy về `Role` chữ thường để chia trang (xem `toRole` trong AuthContext).
  */
 
-export type Role = "admin" | "engineer" | "viewer" | "reviewer" | "creator" | "guest";
-export type UserRole = Role;
-export type UserStatus = "active" | "pending" | "pending_approval" | "inactive" | "rejected";
+import type { RegisterPayload } from "@/services/api";
+
+export type Role = "admin" | "manager" | "engineer" | "reviewer" | "experience" | "guest";
 
 /** Người dùng đang đăng nhập, đã quy đổi từ `ApiUser`. */
 export interface User {
@@ -20,16 +18,10 @@ export interface User {
   avatar_url?: string;
   email: string;
   role: Role;
-  /** Mã role gốc từ backend (ADMIN / ENGINEER / VIEWER). */
-  roles?: string[];
-  /**
-   * Định danh cho các API Forge cũ (`created_by`, `reviewer`, ...). Tài khoản
-   * VehicSim không có username riêng nên đây chính là email.
-   */
+  /** Mã role gốc từ backend (ADMIN / MANAGER / ENGINEER / REVIEWER / EXPERIENCER). */
+  roleCode?: string;
+  /** Tên hiển thị dự phòng. Tài khoản VehicSim không có username riêng nên đây chính là email. */
   username: string;
-  status?: UserStatus;
-  reason?: string;
-  created_at?: string;
 }
 
 /** Hình dạng user mà backend `/auth/*` trả về. */
@@ -37,7 +29,7 @@ export interface ApiUser {
   id: number;
   email: string;
   full_name: string;
-  roles: string[];
+  role: string;
 }
 
 export interface SessionResponse {
@@ -54,8 +46,10 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<User>;
-  /** Bước 2 của đăng ký: mã 6 số + họ tên + mật khẩu -> tài khoản + phiên. */
-  completeRegistration: (email: string, code: string, fullName: string, password: string) => Promise<User>;
+  /** Đăng ký một bước: tạo tài khoản EXPERIENCER và đăng nhập luôn. */
+  register: (payload: RegisterPayload) => Promise<User>;
+  /** Đăng ký 2 bước (mã OTP gửi qua email đã xin bằng `requestRegisterCode`): mã đúng thì tạo tài khoản và đăng nhập luôn. */
+  registerWithCode: (payload: { email: string; code: string; full_name: string; password: string }) => Promise<User>;
   /** Đổi mật khẩu khi đang đăng nhập; backend cấp phiên mới vì phiên cũ hết hiệu lực. */
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
   updateProfile: (fullName: string, avatarUrl?: string) => Promise<User>;

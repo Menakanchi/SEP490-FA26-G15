@@ -1,0 +1,17 @@
+# Windows/Python 3.12, isolated from the legacy CARLA 0.9.15 environment.
+carla==0.9.16
+setuptools<81
+py-trees==0.8.3
+numpy>=1.26,<3
+networkx==3.4.2
+shapely==2.1.1
+xmlschema==1.0.18
+ephem
+tabulate
+six
+simple-watchdog-timer
+antlr4-python3-runtime==4.10
+graphviz
+psutil
+matplotlib
+pygame==2.6.1

@@ -34,7 +34,7 @@ export const MVP_STEPS: FlowStep[] = [
     n: 3,
     title: "Chạy cơ sở",
     short: "Chạy cơ sở",
-    detail: "Chạy mọi biến thể với bản cơ sở AEB qua hàng đợi Celery",
+    detail: "Chạy mọi biến thể với bản cơ sở AEB qua hàng đợi chạy nền",
     feature: "FE-08 · FE-11",
     href: "/scenarios",
   },
