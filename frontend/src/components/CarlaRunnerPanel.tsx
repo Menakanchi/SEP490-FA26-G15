@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { Card, CardTitle, ErrorNote, PillButton, StatCard, Tag, runCode } from "@/components/VehicSimUi";
+import { Card, CardTitle, ErrorNote, PillButton, StatCard, Tag, runCode, simulatorLabel } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { CarlaData, CarlaRun, CarlaStatus } from "@/types/vehicsim";
@@ -72,6 +72,19 @@ export function CarlaRunnerPanel() {
     finally { setBusy(false); }
   };
 
+  const familyRuns = runs?.filter(run => run.scenario_id === Number(familyId)) ?? [];
+  const familyActive = familyRuns.filter(run => run.status === "PENDING" || run.status === "RUNNING").length;
+  const familyDone = familyRuns.some(run => run.status === "COMPLETED");
+
+  const cancelFamily = async () => {
+    setBusy(true); setError(null);
+    try {
+      await vehicsimApi.cancelFamily(Number(familyId));
+      await loadRuns();
+    } catch (e) { setError(e instanceof Error ? vi(e.message) : "Không hủy được lượt chạy"); }
+    finally { setBusy(false); }
+  };
+
   const cancel = async (runId: number) => {
     setCancelling(prev => new Set(prev).add(runId)); setError(null);
     try {
@@ -100,7 +113,23 @@ export function CarlaRunnerPanel() {
           {busy ? "Đang xếp hàng…" : "Chạy trên CARLA"}
         </PillButton>
         <PillButton onClick={() => void Promise.all([checkConnection(), loadRuns()]).catch(e => setError(e.message))}>Kiểm tra kết nối</PillButton>
+        {familyActive > 0 && (
+          <PillButton className="text-vehicsim-danger" disabled={!canWrite || busy} onClick={() => void cancelFamily()}
+            title="Hủy mọi lượt đang chờ/đang chạy của họ này">
+            Hủy {familyActive} lượt của họ
+          </PillButton>
+        )}
+        {familyDone && (
+          <PillButton href={`/analysis/failures?scenario_id=${familyId}`}>Tiếp tục: Phân tích kết quả →</PillButton>
+        )}
       </div>
+      {connection?.simulator && (
+        <p className="text-[12px] text-vehicsim-muted">
+          Lượt mới chạy bằng <b className="text-vehicsim-ink">{simulatorLabel(connection.simulator)}</b>
+          {ctx?.vehicle && <> · xe <b className="text-vehicsim-ink">{ctx.vehicle.name}</b></>}
+          {ctx?.system.baseline && <> · AEB <b className="text-vehicsim-ink">{ctx.system.baseline.label}</b></>}
+        </p>
+      )}
       {connection && !connection.configured && <p className="text-[12px] text-vehicsim-warn">Máy chủ chưa cấu hình CARLA local. Dùng cấu hình khởi động CARLA của dự án.</p>}
       {connection?.configured && !xoscProfile && <p className="text-[12px] text-vehicsim-warn">Hệ thống chưa chọn chế độ OpenSCENARIO cho các lượt chạy mới.</p>}
       {connection?.connected && connection.compatible === false && <ErrorNote message="Phiên bản Python client và CARLA server chưa khớp." />}

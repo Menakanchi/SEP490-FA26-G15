@@ -48,6 +48,9 @@ export const vehicsimApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** Hủy mọi run đang chờ/đang chạy của họ (run của regression/tối ưu không bị đụng). */
+  cancelFamily: (scenarioId: number) =>
+    apiRequest<{ scenario_id: number; stopped: number; stopping: number }>(`/vehicsim/families/${scenarioId}/cancel`, { method: "POST" }),
   runFamily: (scenarioId: number, aebVersionId?: number) =>
     apiRequest<{ queued_runs: number }>(`/vehicsim/families/${scenarioId}/run`, {
       method: "POST",

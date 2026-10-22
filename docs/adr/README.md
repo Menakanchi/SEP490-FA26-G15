@@ -54,6 +54,7 @@ giữ lại). VehicSim: ADR-023 trở đi.
 | [ADR-040](ADR-040-rut-scope-4-tham-so-aeb-7-category.md) | Rút scope theo bản chuẩn hoá luận văn: 4 tham số AEB (6 tham số còn lại thành hằng số của lõi), 3 mục tiêu MOBO, 7 category kịch bản Euro NCAP; IR vẫn tính người đi bộ bằng m/s; 29 bảng | 🕐 **Proposed 15/10** — schema, migration 007, code đã đổi; 60/192 run của v1.3 không còn tái lập (TD-40) |
 | [ADR-041](ADR-041-xosc-va-scenariorunner-tu-web.md) | Xuất OpenSCENARIO và chạy ScenarioRunner + AEB dùng chung từ web trên CARLA 0.9.16 local | Proposed 18/10 |
 | [ADR-042](ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) | Lõi AEB, mô phỏng, luật chấm chuyển sang Java (`com.vehicsim.core`); Python chỉ còn adapter CARLA, gọi Java qua tiến trình con stdin/stdout; thay phần mô phỏng của ADR-039 | ✅ **Accepted 21/10** — M0–M5 xong; parity bit-chính-xác với Python trên 1296 ca, lõi Python đã xóa |
+| [ADR-043](ADR-043-perception-tu-radar-chay-bong-truoc.md) | Perception AEB trên CARLA lấy từ radar 90° + bộ bám `RadarTracker` ở Java; giai đoạn 1 chạy bóng (AEB vẫn dùng ground truth, ghi sai số), giai đoạn 2 đổi đầu vào và lên `-xosc4` khi đạt ngưỡng | 🕐 **Proposed 22/10** |
 
 ## Luật
 

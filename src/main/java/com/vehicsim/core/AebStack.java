@@ -106,15 +106,42 @@ public final class AebStack {
         return brakeOnsetT;
     }
 
-    /** Gọi đúng một lần mỗi khung, theo thứ tự thời gian. */
+    /** Gọi đúng một lần mỗi khung, theo thứ tự thời gian. Perception là mô hình tổng hợp trên ground truth ({@code pedY}, {@code pedVy}). */
     public AebTick step(double t, double gap, double pedY, double pedVy, double egoV) {
         history.add(new double[] {t, pedY, pedVy});
         if (steps % perceptionEvery == 0) {
             tickView = perceiveAndDecide(t, gap, egoV);
         }
         steps++;
+        return control(t);
+    }
 
-        // ---- Control ---------------------------------------------------------------
+    /**
+     * Như {@link #step} nhưng perception là thứ cảm biến <b>đo được</b> (ADR-043, vd. {@code RadarTracker}): bỏ mô hình tổng hợp, độ trễ và nhiễu theo
+     * seed; quyết định và điều khiển dùng đúng cùng code. Gọi đúng một lần mỗi khung; chỉ quyết định ở các khung cảm biến như {@link #step}.
+     *
+     * @param gap          khoảng dọc đo được từ mũi xe tới mục tiêu (m)
+     * @param perceivedY   vị trí ngang đo được của mục tiêu trong khung giao cắt (m, trái dương); bỏ qua khi {@code detected = false}
+     * @param perceivedVy  vận tốc ngang đã lọc của mục tiêu (m/s)
+     */
+    public AebTick stepMeasured(double t, double gap, double egoV, boolean detected, double confidence, double perceivedY, double perceivedVy) {
+        if (steps % perceptionEvery == 0) {
+            if (detected) {
+                perceivedVyFiltered = perceivedVy;
+                if (firstDetectionT == null) {
+                    firstDetectionT = t;
+                    Events.record(events, t, "detection", "First detection · conf " + Py.fixed(confidence, 2),
+                            "distance_m", Py.round(Py.hypot(gap, perceivedY), 1), "confidence", Py.round(confidence, 2));
+                }
+            }
+            tickView = decide(t, gap, egoV, detected, confidence, detected ? perceivedY : null);
+        }
+        steps++;
+        return control(t);
+    }
+
+    // ---- Control ---------------------------------------------------------------
+    private AebTick control(double t) {
         if (decisionT != null && t >= decisionT + params.brakeActivationDelay() + ACTUATOR_RESPONSE_TIME_S) {
             if (brakeOnsetT == null) {
                 brakeOnsetT = t;
@@ -127,8 +154,6 @@ public final class AebStack {
 
     /** Một lần cảm biến: perception (dữ liệu trễ {@code PERCEPTION_LATENCY_S}) rồi quyết định FCW/AEB. */
     private View perceiveAndDecide(double t, double gap, double egoV) {
-        AebParams p = params;
-
         // ---- Perception (dữ liệu trễ PERCEPTION_LATENCY_S) ---------------------------
         double[] seen = history.get(Math.max(0, history.size() - 1 - lagFrames));
         double seenY = seen[1];
@@ -153,6 +178,12 @@ public final class AebStack {
             }
         }
 
+        return decide(t, gap, egoV, detected, confidence, perceivedY);
+    }
+
+    /** Quyết định FCW/AEB từ thứ perception thấy được — dùng chung cho mô hình tổng hợp và cảm biến đo được. */
+    private View decide(double t, double gap, double egoV, boolean detected, double confidence, Double perceivedY) {
+        AebParams p = params;
         // ---- Decision ----------------------------------------------------------------
         Double ttcPerceived = null;
         if (detected && perceivedY != null && gap > 0 && egoV >= RELATIVE_VELOCITY_THRESHOLD_MPS) {

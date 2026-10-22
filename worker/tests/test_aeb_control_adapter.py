@@ -68,9 +68,12 @@ class FakeNpcVehicleControl:
 class FakeBridge:
     def __init__(self, log) -> None:  # noqa: ANN001
         self.requests: list[str] = []
+        self.steps: list[dict] = []
 
     def request(self, op: str, timeout: float = 10.0, **fields) -> dict:
         self.requests.append(op)
+        if op == "step":
+            self.steps.append(fields)
         if op == "open":
             return {"physics": {}, "constants": {"pedestrian_start_y_m": -3.6}}
         return {"skip": False, "decel_cmd": 3.0, "braking": True, "pedal": 0.6, "finished": None}
@@ -120,3 +123,18 @@ def test_brake_override_keeps_this_ticks_steering(adapter, tmp_path) -> None:  #
         assert last.steer == pytest.approx(0.1 * tick), "lệnh lái phải là lệnh planner vừa tính ở tick này, không phải tick trước"
         assert (last.throttle, last.brake) == (0.0, 0.6)  # phanh/ga do lõi Java quyết định
         ego.tick()
+    assert all("radar" not in step for step in ctrl.bridge.steps), "lõi không yêu cầu radar thì step giữ nguyên như trước ADR-043"
+
+
+def test_radar_points_of_the_latest_measurement_are_forwarded_raw(adapter, tmp_path) -> None:  # noqa: ANN001
+    module, clock = adapter
+    ctrl = module.VehicsimAebControl(FakeVehicle(), {"out_dir": str(tmp_path), "xosc_file": "x.xosc", "simulator_version": "carla-0.9.16-xosc3"})
+    ctrl.initialized, ctrl.started_at = True, 0.0
+    ctrl.walker = SimpleNamespace(get_location=lambda: SimpleNamespace(x=20.0, y=-3.6), get_velocity=lambda: SimpleNamespace(x=0.0, y=1.0))
+    ctrl.radar = object()  # đã gắn cảm biến; điểm đến qua callback
+    clock.t = 0.01
+    ctrl.run_step()  # chưa có lần đo nào: gửi danh sách rỗng, không bịa điểm
+    ctrl._radar_points = [[22.5, -0.15, 0.03, -10.6]]
+    clock.t = 0.02
+    ctrl.run_step()
+    assert [s["radar"] for s in ctrl.bridge.steps] == [[], [[22.5, -0.15, 0.03, -10.6]]]

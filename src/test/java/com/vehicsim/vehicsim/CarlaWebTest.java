@@ -209,6 +209,36 @@ class CarlaWebTest {
         }
     }
 
+    /** Giả worker CARLA: canh file cờ dừng như run_xosc.py, thấy cờ thì "dọn" rồi tự thoát mã 0. */
+    public static final class FlagWatcher {
+        public static void main(String[] args) throws Exception {
+            Path flag = Path.of(args[0]).resolve(RunService.STOP_FLAG);
+            for (int i = 0; i < 1200 && !Files.exists(flag); i++) {
+                Thread.sleep(50);
+            }
+            System.exit(Files.exists(flag) ? 0 : 7);
+        }
+    }
+
+    @Test
+    void shuttingDownMidRunAsksTheWorkerToCleanUpBeforeKillingIt() throws Exception {
+        Path folder = Files.createDirectories(directory.resolve("runs/42"));
+        Process worker = new ProcessBuilder(System.getProperty("java.home") + "/bin/java", "-cp", System.getProperty("java.class.path"),
+                FlagWatcher.class.getName(), folder.toString()).start();
+        try {
+            Thread.currentThread().interrupt(); // như luồng chạy bị interrupt khi Spring tắt
+            RunService.stopOnShutdown(worker, folder);
+
+            assertThat(folder.resolve(RunService.STOP_FLAG)).exists();
+            assertThat(worker.isAlive()).isFalse();
+            assertThat(worker.exitValue()).as("worker tự thoát sau khi thấy cờ, không bị giết cứng").isZero();
+            assertThat(Thread.interrupted()).as("giữ trạng thái interrupt cho Spring").isTrue();
+        } finally {
+            Thread.interrupted();
+            worker.destroyForcibly();
+        }
+    }
+
     @Test
     void aPidThatNoLongerMatchesTheRecordedStartTimeIsNotTreatedAsOurWorker() throws Exception {
         Process other = new ProcessBuilder(System.getProperty("java.home") + "/bin/java", "-cp", System.getProperty("java.class.path"),
@@ -267,6 +297,30 @@ class CarlaWebTest {
         stubCancelLookup("PENDING", 9L);
         assertThatThrownBy(() -> runs.cancelRun(1, 42, 7)).isInstanceOf(Vs.InvalidRequestException.class)
                 .hasMessageContaining("regression test");
+        verify(db, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test
+    void cancellingAFamilyStopsEachActiveBaselineRunThroughTheSingleRunRules() {
+        stubCancelLookup("PENDING", null);
+        when(db.update(anyString(), any(Object[].class))).thenReturn(1);
+        when(db.list(anyString(), any(Object[].class))).thenReturn(List.of(new Row(Json.obj("id", 41L)), new Row(Json.obj("id", 42L))));
+
+        Map<String, Object> reply = runs.cancelFamilyRuns(1, 3, 7);
+
+        assertThat(reply).containsEntry("stopped", 2).containsEntry("stopping", 0).containsEntry("scenario_id", 3L);
+        // Chỉ run của chính họ, đang chờ/chạy, không thuộc regression/tối ưu; run chờ được hủy trước run đang chạy.
+        verify(db).list(argThat((String sql) -> sql.contains("scenario_id = ?") && sql.contains("status IN ('PENDING','RUNNING')")
+                && sql.contains("regression_test_id IS NULL") && sql.contains("optimization_trial_id IS NULL")
+                && sql.contains("ORDER BY (status = 'RUNNING')")), eq(1L), eq(3L));
+        verify(db, times(2)).update(startsWith("UPDATE simulation_runs SET status = 'STOPPED'"), any(Object[].class));
+    }
+
+    @Test
+    void cancellingAFamilyOfAnotherProjectIsNotFoundAndTouchesNothing() {
+        when(db.first(startsWith("SELECT id FROM scenarios"), any(Object[].class))).thenReturn(null);
+        assertThatThrownBy(() -> runs.cancelFamilyRuns(2, 3, 7)).isInstanceOf(Vs.NotFoundException.class);
+        verify(db, never()).list(anyString(), any(Object[].class));
         verify(db, never()).update(anyString(), any(Object[].class));
     }
 

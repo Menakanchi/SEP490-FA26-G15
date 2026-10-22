@@ -13,7 +13,7 @@ from pathlib import Path
 
 import carla
 from bridge import Bridge, BridgeError
-from carla_physics import apply_physics_overrides
+from carla_physics import apply_physics_overrides, physics_snapshot
 from srunner.scenariomanager.actorcontrols.npc_vehicle_control import NpcVehicleControl
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.timer import GameTime
@@ -49,6 +49,10 @@ class VehicsimAebControl(NpcVehicleControl):
             self.bridge.close(grace_s=2.0)
             raise
         self.pedestrian_start_y = opened["constants"]["pedestrian_start_y_m"]
+        # Radar chạy bóng (ADR-043): thuộc tính lấy từ lõi Java; ở đây chỉ gắn cảm biến và chuyển điểm thô, không lọc/bám.
+        self.radar_attributes = opened.get("radar") or {}
+        self.radar = None
+        self._radar_points: list[list[float]] | None = None
         self.walker = None
         self.started_at = None
         self.initialized = False
@@ -69,8 +73,19 @@ class VehicsimAebControl(NpcVehicleControl):
         self.started_at = GameTime.get_time()
         self.sensor = world.spawn_actor(world.get_blueprint_library().find("sensor.other.collision"), carla.Transform(), attach_to=self._actor)
         self.sensor.listen(lambda event: self.collision_types.append(event.other_actor.type_id))
+        if self.radar_attributes:
+            radar_bp = world.get_blueprint_library().find("sensor.other.radar")
+            for key, value in self.radar_attributes.items():
+                radar_bp.set_attribute(key, str(value))
+            self.radar = world.spawn_actor(radar_bp, carla.Transform(carla.Location(x=front_offset + 0.1, z=1.0)), attach_to=self._actor)
+            # Callback chạy ở luồng cảm biến: gán cả danh sách một lần (nguyên tử trong CPython), run_step đọc lần đo mới nhất.
+            self.radar.listen(lambda data: setattr(self, "_radar_points",
+                                                   [[round(d.depth, 3), round(d.azimuth, 5), round(d.altitude, 5), round(d.velocity, 3)] for d in data]))
+        # Đọc lại thông số CARLA thực sự áp cho xe (sau khi ép ở __init__ và đã qua vài tick), ghi vào result.json để đối chiếu.
+        applied = physics_snapshot(self._actor.get_physics_control(), self._actor.bounding_box.extent)
         self.bridge.request("init", ego={"fwd": [forward.x, forward.y], "right": [right.x, right.y]}, walker=[location.x, location.y],
-                            front_offset=front_offset, carla={"map": world.get_map().name, "blueprint": self._actor.type_id})
+                            front_offset=front_offset,
+                            carla={"map": world.get_map().name, "blueprint": self._actor.type_id, "physics": applied})
         self.initialized = True
         return True
 
@@ -87,11 +102,12 @@ class VehicsimAebControl(NpcVehicleControl):
         transform, velocity = self._actor.get_transform(), self._actor.get_velocity()
         forward = transform.get_forward_vector()
         location, ped_velocity = self.walker.get_location(), self.walker.get_velocity()
+        extra = {"radar": self._radar_points or []} if self.radar is not None else {}
         reply = self.bridge.request(
             "step", t=t,
             ego={"loc": [transform.location.x, transform.location.y], "fwd": [forward.x, forward.y], "vel": [velocity.x, velocity.y]},
             ped={"loc": [location.x, location.y], "vel": [ped_velocity.x, ped_velocity.y]},
-            walker_hit=any(name.startswith("walker.") for name in self.collision_types))
+            walker_hit=any(name.startswith("walker.") for name in self.collision_types), **extra)
         if reply["skip"]:  # cùng tick đã xử lý
             return
         if reply["decel_cmd"] > 0:  # AEB đang yêu cầu phanh: thôi giữ tốc độ không đổi
@@ -125,12 +141,13 @@ class VehicsimAebControl(NpcVehicleControl):
                         pass  # không có kết quả hợp lệ thì run.py báo lỗi; không tự bịa kết quả
                 if self.cruising:
                     self._actor.disable_constant_velocity()
-            if self.sensor is not None:
-                try:
-                    self.sensor.stop()
-                    self.sensor.destroy()
-                except RuntimeError:
-                    pass
+            for sensor in (self.sensor, self.radar):
+                if sensor is not None:
+                    try:
+                        sensor.stop()
+                        sensor.destroy()
+                    except RuntimeError:
+                        pass
         finally:
             self.bridge.close()
         super().reset()

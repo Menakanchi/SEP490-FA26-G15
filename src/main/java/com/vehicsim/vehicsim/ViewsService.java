@@ -62,6 +62,8 @@ public class ViewsService {
                 "project", Json.obj("id", project.lng("id"), "name", project.str("name")),
                 "workspace", workspace == null ? null : Json.obj("id", workspace.lng("id"), "name", workspace.str("name")),
                 "vehicle", Json.obj("id", vehicle.lng("id"), "name", vehicleName),
+                // Bộ mô phỏng mà run MỚI sẽ dùng (màn chạy baseline hiện ra trước khi bấm chạy).
+                "simulator", runs.configuredSimulator(),
                 "system", Json.obj("id", project.lng("id"), "name", AEB_SYSTEM_NAME, "baseline", baseline == null ? null : versionBrief(baseline)),
                 "versions", versions.stream().map(this::versionBrief).toList(),
                 "families", fams.stream().map(f -> Json.obj("id", f.lng("id"), "code", f.str("code"), "name", f.str("name"))).toList(),
