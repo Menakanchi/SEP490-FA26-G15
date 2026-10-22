@@ -30,6 +30,11 @@ public class AebService {
 
     @Transactional
     public long createCandidate(long projectId, long userId, long parentVersionId, Map<String, Double> values, String label, String notes) {
+        return createCandidate(projectId, userId, parentVersionId, values, label, notes, "MANUAL");
+    }
+
+    @Transactional
+    public long createCandidate(long projectId, long userId, long parentVersionId, Map<String, Double> values, String label, String notes, String source) {
         Row parent = db.first("SELECT * FROM aeb_versions WHERE id = ? AND project_id = ?", parentVersionId, projectId);
         if (parent == null) {
             throw new NotFoundException("parent AEB version");
@@ -62,10 +67,11 @@ public class AebService {
         long nextNumber = (max == null ? 0 : ((Number) max).longValue()) + 1;
         String cleanLabel = label == null ? "" : label.strip();
         String cleanNotes = notes == null ? "" : notes.strip();
+        String actualSource = (source == null || source.isBlank()) ? "MANUAL" : source.strip().toUpperCase();
         long versionId = db.insert(
                 "INSERT INTO aeb_versions (project_id, version_no, label, source, status, parent_version_id, notes, created_by_user_id, created_date) "
                         + "VALUES (?,?,?,?,?,?,?,?,?)",
-                projectId, nextNumber, cleanLabel.isEmpty() ? "v" + nextNumber : cleanLabel, "MANUAL", "CANDIDATE", parent.lng("id"),
+                projectId, nextNumber, cleanLabel.isEmpty() ? "v" + nextNumber : cleanLabel, actualSource, "CANDIDATE", parent.lng("id"),
                 cleanNotes.isEmpty() ? null : cleanNotes, userId, Vs.now());
         List<Object[]> rows = new ArrayList<>();
         for (Map.Entry<String, Double> e : merged.entrySet()) {

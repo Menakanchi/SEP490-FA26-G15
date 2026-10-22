@@ -212,11 +212,16 @@ public class RunService {
      */
     public List<Long> createRuns(long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long aebVersionId,
                                  long userId, String purpose, Long regressionTestId, Map<Long, Row> baselineRuns) {
-        return createRuns(projectId, scenarioId, variants, vehicleModelId, aebVersionId, userId, purpose, regressionTestId, baselineRuns, null, null);
+        return createRuns(projectId, scenarioId, variants, vehicleModelId, aebVersionId, userId, purpose, regressionTestId, null, baselineRuns, null, null);
+    }
+
+    public List<Long> createOptimizationRuns(long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long aebVersionId,
+                                             long userId, long optimizationTrialId, Map<Long, Row> baselineRuns) {
+        return createRuns(projectId, scenarioId, variants, vehicleModelId, aebVersionId, userId, "OPTIMIZATION", null, optimizationTrialId, baselineRuns, null, null);
     }
 
     private List<Long> createRuns(long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long aebVersionId,
-                                  long userId, String purpose, Long regressionTestId, Map<Long, Row> baselineRuns,
+                                  long userId, String purpose, Long regressionTestId, Long optimizationTrialId, Map<Long, Row> baselineRuns,
                                   String requestedSimulator, Long requestedSeed) {
         checkActiveRunQuota(userId, variants.size());
         LocalDateTime ts = Vs.now();
@@ -240,9 +245,9 @@ public class RunService {
             long runId = db.insert(
                     "INSERT INTO simulation_runs (project_id, scenario_id, scenario_version_id, carla_vehicle_model_id, aeb_version_id, "
                             + "simulator_type, simulator_version, fixed_delta_seconds, max_duration_s, regression_test_id, baseline_run_id, "
-                            + "purpose, random_seed, status, run_config_json, created_by_user_id, queued_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            + "optimization_trial_id, purpose, random_seed, status, run_config_json, created_by_user_id, queued_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     projectId, scenarioId, variant.lng("id"), vehicleModelId, aebVersionId, simulatorType(simulator), simulator, stepFor(simulator),
-                    MAX_DURATION_S, regressionTestId, baseline == null ? null : baseline.lng("id"), purpose, seed, "PENDING",
+                    MAX_DURATION_S, regressionTestId, baseline == null ? null : baseline.lng("id"), optimizationTrialId, purpose, seed, "PENDING",
                     variant.json("scenario_ir_json"), userId, ts);
             ids.add(runId);
         }
@@ -619,7 +624,7 @@ public class RunService {
         }
         Row variant = new Row(Json.obj("id", source.lng("scenario_version_id"), "scenario_ir_json", Json.write(source.json("run_config_json"))));
         List<Long> ids = createRuns(projectId, source.lng("scenario_id"), List.of(variant), source.lng("carla_vehicle_model_id"),
-                source.lng("aeb_version_id"), userId, "EVALUATION", null, null, carlaSimulator(props.carlaVersion()) + XOSC_SUFFIX, source.lng("random_seed"));
+                source.lng("aeb_version_id"), userId, "EVALUATION", null, null, null, carlaSimulator(props.carlaVersion()) + XOSC_SUFFIX, source.lng("random_seed"));
         dispatch(ids);
         return ids.getFirst();
     }

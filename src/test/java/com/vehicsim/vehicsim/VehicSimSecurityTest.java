@@ -73,6 +73,8 @@ class VehicSimSecurityTest {
     @MockitoBean
     private AebService aeb;
     @MockitoBean
+    private OptimizationService optimization;
+    @MockitoBean
     private RegressionService regression;
     @MockitoBean
     private RegressionReportService regressionReports;

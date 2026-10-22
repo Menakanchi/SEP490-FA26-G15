@@ -61,7 +61,8 @@ class CarlaWebTest {
         assertThat(java.util.Arrays.asList(call.getArguments()).subList(1, 8)).containsExactly(1L, 3L, 4L, 5L, 6L, "CARLA", "carla-0.9.16-xosc3");
         assertThat(call.getArguments()[8]).isEqualTo(0.01); // xosc3 chạy ở 100 Hz, ghi đúng vào fixed_delta_seconds
         assertThat(call.getArguments()[11]).isNull(); // baseline_run_id chỉ dành cho cặp cùng simulator
-        assertThat(call.getArguments()[13]).isEqualTo(123456L);
+        assertThat(call.getArguments()[12]).isNull(); // optimization_trial_id: replay không thuộc trial tối ưu nào
+        assertThat(call.getArguments()[14]).isEqualTo(123456L);
         verify(db).first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ?", 42L, 1L);
     }
 

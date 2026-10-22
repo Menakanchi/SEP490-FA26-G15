@@ -1,0 +1,319 @@
+{
+ "initial": {
+  "payload": {
+   "n_initial_points": 5,
+   "seed": 42,
+   "trials": [
+    {
+     "trial_number": 1,
+     "params": {
+      "TTC_THRESHOLD": 1.471,
+      "BRAKE_ACTIVATION_DELAY": 0.11,
+      "BRAKE_BUILDUP_RATE": 14.764,
+      "MAX_DECELERATION": 5.362
+     },
+     "rms_jerk": 8.425,
+     "impact_speed": 2.142,
+     "stopping_distance": 11.058,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 2,
+     "params": {
+      "TTC_THRESHOLD": 2.108,
+      "BRAKE_ACTIVATION_DELAY": 0.196,
+      "BRAKE_BUILDUP_RATE": 5.87,
+      "MAX_DECELERATION": 7.537
+     },
+     "rms_jerk": 5.761,
+     "impact_speed": 0.0,
+     "stopping_distance": 11.649,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 3,
+     "params": {
+      "TTC_THRESHOLD": 0.612,
+      "BRAKE_ACTIVATION_DELAY": 0.223,
+      "BRAKE_BUILDUP_RATE": 6.048,
+      "MAX_DECELERATION": 5.454
+     },
+     "rms_jerk": 4.98,
+     "impact_speed": 10.33,
+     "stopping_distance": 8.0,
+     "constraint_violated": false
+    }
+   ]
+  },
+  "expected": {
+   "proposed_params": {
+    "TTC_THRESHOLD": 2.418,
+    "BRAKE_ACTIVATION_DELAY": 0.06,
+    "BRAKE_BUILDUP_RATE": 9.125,
+    "MAX_DECELERATION": 6.116
+   },
+   "sampling_source": "INITIAL_DESIGN",
+   "acquisition_value": null,
+   "pareto_trial_numbers": [
+    1,
+    2,
+    3
+   ]
+  }
+ },
+ "acq": {
+  "payload": {
+   "n_initial_points": 5,
+   "seed": 42,
+   "trials": [
+    {
+     "trial_number": 1,
+     "params": {
+      "TTC_THRESHOLD": 1.471,
+      "BRAKE_ACTIVATION_DELAY": 0.11,
+      "BRAKE_BUILDUP_RATE": 14.764,
+      "MAX_DECELERATION": 5.362
+     },
+     "rms_jerk": 8.425,
+     "impact_speed": 2.142,
+     "stopping_distance": 11.058,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 2,
+     "params": {
+      "TTC_THRESHOLD": 2.108,
+      "BRAKE_ACTIVATION_DELAY": 0.196,
+      "BRAKE_BUILDUP_RATE": 5.87,
+      "MAX_DECELERATION": 7.537
+     },
+     "rms_jerk": 5.761,
+     "impact_speed": 0.0,
+     "stopping_distance": 11.649,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 3,
+     "params": {
+      "TTC_THRESHOLD": 0.612,
+      "BRAKE_ACTIVATION_DELAY": 0.223,
+      "BRAKE_BUILDUP_RATE": 6.048,
+      "MAX_DECELERATION": 5.454
+     },
+     "rms_jerk": 4.98,
+     "impact_speed": 10.33,
+     "stopping_distance": 8.0,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 4,
+     "params": {
+      "TTC_THRESHOLD": 1.774,
+      "BRAKE_ACTIVATION_DELAY": 0.381,
+      "BRAKE_BUILDUP_RATE": 6.857,
+      "MAX_DECELERATION": 6.116
+     },
+     "rms_jerk": 4.709,
+     "impact_speed": 1.267,
+     "stopping_distance": 11.592,
+     "constraint_violated": true
+    },
+    {
+     "trial_number": 5,
+     "params": {
+      "TTC_THRESHOLD": 2.382,
+      "BRAKE_ACTIVATION_DELAY": 0.429,
+      "BRAKE_BUILDUP_RATE": 13.657,
+      "MAX_DECELERATION": 6.983
+     },
+     "rms_jerk": 6.553,
+     "impact_speed": 0.0,
+     "stopping_distance": 13.243,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 6,
+     "params": {
+      "TTC_THRESHOLD": 1.202,
+      "BRAKE_ACTIVATION_DELAY": 0.24,
+      "BRAKE_BUILDUP_RATE": 19.352,
+      "MAX_DECELERATION": 9.77
+     },
+     "rms_jerk": 9.493,
+     "impact_speed": 2.007,
+     "stopping_distance": 8.0,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 7,
+     "params": {
+      "TTC_THRESHOLD": 3.206,
+      "BRAKE_ACTIVATION_DELAY": 0.082,
+      "BRAKE_BUILDUP_RATE": 5.496,
+      "MAX_DECELERATION": 8.795
+     },
+     "rms_jerk": 7.8,
+     "impact_speed": 0.0,
+     "stopping_distance": 14.908,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 8,
+     "params": {
+      "TTC_THRESHOLD": 2.221,
+      "BRAKE_ACTIVATION_DELAY": 0.431,
+      "BRAKE_BUILDUP_RATE": 5.336,
+      "MAX_DECELERATION": 9.501
+     },
+     "rms_jerk": 5.224,
+     "impact_speed": 0.0,
+     "stopping_distance": 10.333,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 9,
+     "params": {
+      "TTC_THRESHOLD": 3.408,
+      "BRAKE_ACTIVATION_DELAY": 0.09,
+      "BRAKE_BUILDUP_RATE": 19.945,
+      "MAX_DECELERATION": 7.534
+     },
+     "rms_jerk": 10.818,
+     "impact_speed": 0.0,
+     "stopping_distance": 16.851,
+     "constraint_violated": false
+    }
+   ]
+  },
+  "expected": {
+   "proposed_params": {
+    "TTC_THRESHOLD": 0.825,
+    "BRAKE_ACTIVATION_DELAY": 0.144,
+    "BRAKE_BUILDUP_RATE": 5.375,
+    "MAX_DECELERATION": 9.421
+   },
+   "sampling_source": "ACQUISITION",
+   "acquisition_value": 1.496078,
+   "pareto_trial_numbers": [
+    3,
+    6,
+    8
+   ]
+  }
+ },
+ "acq_seed": {
+  "payload": {
+   "n_initial_points": 4,
+   "seed": 42,
+   "trials": [
+    {
+     "trial_number": 1,
+     "params": {
+      "TTC_THRESHOLD": 1.471,
+      "BRAKE_ACTIVATION_DELAY": 0.11,
+      "BRAKE_BUILDUP_RATE": 14.764,
+      "MAX_DECELERATION": 5.362
+     },
+     "rms_jerk": 8.425,
+     "impact_speed": 2.142,
+     "stopping_distance": 11.058,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 2,
+     "params": {
+      "TTC_THRESHOLD": 2.108,
+      "BRAKE_ACTIVATION_DELAY": 0.196,
+      "BRAKE_BUILDUP_RATE": 5.87,
+      "MAX_DECELERATION": 7.537
+     },
+     "rms_jerk": 5.761,
+     "impact_speed": 0.0,
+     "stopping_distance": 11.649,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 3,
+     "params": {
+      "TTC_THRESHOLD": 0.612,
+      "BRAKE_ACTIVATION_DELAY": 0.223,
+      "BRAKE_BUILDUP_RATE": 6.048,
+      "MAX_DECELERATION": 5.454
+     },
+     "rms_jerk": 4.98,
+     "impact_speed": 10.33,
+     "stopping_distance": 8.0,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 4,
+     "params": {
+      "TTC_THRESHOLD": 1.774,
+      "BRAKE_ACTIVATION_DELAY": 0.381,
+      "BRAKE_BUILDUP_RATE": 6.857,
+      "MAX_DECELERATION": 6.116
+     },
+     "rms_jerk": 4.709,
+     "impact_speed": 1.267,
+     "stopping_distance": 11.592,
+     "constraint_violated": true
+    },
+    {
+     "trial_number": 5,
+     "params": {
+      "TTC_THRESHOLD": 2.382,
+      "BRAKE_ACTIVATION_DELAY": 0.429,
+      "BRAKE_BUILDUP_RATE": 13.657,
+      "MAX_DECELERATION": 6.983
+     },
+     "rms_jerk": 6.553,
+     "impact_speed": 0.0,
+     "stopping_distance": 13.243,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 6,
+     "params": {
+      "TTC_THRESHOLD": 1.202,
+      "BRAKE_ACTIVATION_DELAY": 0.24,
+      "BRAKE_BUILDUP_RATE": 19.352,
+      "MAX_DECELERATION": 9.77
+     },
+     "rms_jerk": 9.493,
+     "impact_speed": 2.007,
+     "stopping_distance": 8.0,
+     "constraint_violated": false
+    },
+    {
+     "trial_number": 7,
+     "params": {
+      "TTC_THRESHOLD": 3.206,
+      "BRAKE_ACTIVATION_DELAY": 0.082,
+      "BRAKE_BUILDUP_RATE": 5.496,
+      "MAX_DECELERATION": 8.795
+     },
+     "rms_jerk": 7.8,
+     "impact_speed": 0.0,
+     "stopping_distance": 14.908,
+     "constraint_violated": false
+    }
+   ]
+  },
+  "expected": {
+   "proposed_params": {
+    "TTC_THRESHOLD": 2.862,
+    "BRAKE_ACTIVATION_DELAY": 0.093,
+    "BRAKE_BUILDUP_RATE": 18.083,
+    "MAX_DECELERATION": 9.293
+   },
+   "sampling_source": "ACQUISITION",
+   "acquisition_value": 1.48915,
+   "pareto_trial_numbers": [
+    1,
+    2,
+    3,
+    6
+   ]
+  }
+ }
+}
