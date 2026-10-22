@@ -908,6 +908,9 @@ Bảng tổng hợp regression (ma trận chuyển trạng thái, tỉ lệ, ti�
 tính lại từ các run đã COMPLETED (run không đổi sau khi xong), số đếm chính lưu ở `regression_tests`,
 từng cặp ở `regression_test_items`.
 
+Ngưỡng `false_activation_increase_max_pts.value` của test tạo từ ADR-044 là 5 (điểm %); test tạo trước đó giữ giá trị đã lưu (0,5). Không đổi bảng hay cột nào.
+Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critical` / `all_variants` / `custom`), `variant_ids` (danh sách khi chọn tay, còn lại `null`) và `safe_count` (số ca trước đây an toàn trong tập lúc tạo); test cũ không có các khoá này. Không đổi bảng hay cột nào.
+
 ## 8. Dữ liệu seed
 
 | Bảng | Seed |

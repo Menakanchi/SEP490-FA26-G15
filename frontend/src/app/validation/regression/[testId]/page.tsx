@@ -7,6 +7,7 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, OutcomeBadge, PillButton, StatusBadge, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import { vi, viSummary } from "@/components/vehicsimI18n";
+import { CandidateSourceTag, CarlaCaveat, PairObjectivesTable } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OutcomeKey, Pair, ParamDiff, RegressionDetail } from "@/types/vehicsim";
 
@@ -50,6 +51,10 @@ export default function RegressionResultsPage() {
     const id = setInterval(load, POLL_MS);
     return () => clearInterval(id);
   }, [running, load]);
+
+  const exportPackage = (format: "json" | "csv") => {
+    vehicsimApi.exportRegression(Number(testId), format).catch((err) => setError(err instanceof Error ? err.message : "Không tải được gói kết quả"));
+  };
 
   const s = d?.summary;
   const counts = s?.counts;
@@ -99,11 +104,17 @@ export default function RegressionResultsPage() {
       }
       subtitle={
         d &&
-        `AEB ${d.baseline.label} (cơ sở) → ${d.candidate.label} (ứng viên) · ${d.family} · ${d.pass_criteria.scenario_set.variant_count} kịch bản · cùng seed · chạy ${fmt.date(d.created_at)}${d.created_by ? ` bởi ${d.created_by}` : ""}`
+        `AEB ${d.baseline.label} (cơ sở) → ${d.candidate.label} (ứng viên) · ${d.family} · ${d.pass_criteria.scenario_set.variant_count} kịch bản${d.pass_criteria.scenario_set.mode === "custom" ? " chọn tay" : ""} · cùng seed · chạy ${fmt.date(d.created_at)}${d.created_by ? ` bởi ${d.created_by}` : ""}`
       }
       actions={
         d && (
           <>
+            {d.status === "PASSED" || d.status === "FAILED" ? (
+              <>
+                <PillButton onClick={() => exportPackage("json")}>Tải JSON</PillButton>
+                <PillButton onClick={() => exportPackage("csv")}>Tải CSV</PillButton>
+              </>
+            ) : null}
             <PillButton
               href={firstInteresting ? `/analysis/failures/${firstInteresting.candidate_run_id}/playback` : undefined}
               disabled={!firstInteresting}
@@ -125,6 +136,12 @@ export default function RegressionResultsPage() {
       {d && (
         <>
           <Banner d={d} failedCriteria={failedCriteria.map((c) => vi(c.label))} />
+          <CarlaCaveat caveat={d.simulator_caveat} />
+          {d.candidate_source && (
+            <div className="flex items-center gap-2 text-[13px] text-vehicsim-muted">
+              Nguồn ứng viên: <CandidateSourceTag source={d.candidate_source} />
+            </div>
+          )}
 
           <div className="flex w-full items-center gap-4">
             <VersionCard title={`AEB ${d.baseline.label}`} tag="Cơ sở" params={cardParams} side="baseline" />
@@ -276,6 +293,8 @@ export default function RegressionResultsPage() {
                   )}
                 </div>
               </section>
+
+              <PairObjectivesTable pairs={pairs} baselineLabel={d.baseline.label} candidateLabel={d.candidate.label} />
             </>
           )}
 

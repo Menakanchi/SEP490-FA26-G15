@@ -23,6 +23,9 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 - Phần tối ưu và regression cần chốt chung cấu hình tiêu chí: ADR-040 mô tả phanh oan tăng ≤ 5 điểm %,
   `RegressionService` hiện mặc định 0,5 điểm % và bắt buộc không va chạm mới (TD-48).
   Không tự đổi ngưỡng khi nhận bàn giao; candidate thuộc Pareto vẫn cần kiểm thử xác minh.
+  Cập nhật 20/10/2026: test regression mới mặc định 5 điểm % (hằng `RegressionCriteria.DEFAULT_FALSE_ACTIVATION_MAX_PTS`, `RegressionService` giữ tên cũ làm bí danh;
+  [ADR-044](docs/adr/ADR-044-nguong-phanh-oan-regression-5-diem.md)). ADR này mới ở trạng thái **Proposed**: cần Người 4 (tối ưu) và nhóm xác nhận trước khi coi là quyết định chung.
+  Test đã tạo giữ ngưỡng đã lưu, nên "0,5 điểm %" ở trên là trước thay đổi này.
 
 ## 2. Dựng máy Windows lần đầu
 

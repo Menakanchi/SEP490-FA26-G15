@@ -55,6 +55,7 @@ giữ lại). VehicSim: ADR-023 trở đi.
 | [ADR-041](ADR-041-xosc-va-scenariorunner-tu-web.md) | Xuất OpenSCENARIO và chạy ScenarioRunner + AEB dùng chung từ web trên CARLA 0.9.16 local | Proposed 18/10 |
 | [ADR-042](ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) | Lõi AEB, mô phỏng, luật chấm chuyển sang Java (`com.vehicsim.core`); Python chỉ còn adapter CARLA, gọi Java qua tiến trình con stdin/stdout; thay phần mô phỏng của ADR-039 | ✅ **Accepted 21/10** — M0–M5 xong; parity bit-chính-xác với Python trên 1296 ca, lõi Python đã xóa |
 | [ADR-043](ADR-043-perception-tu-radar-chay-bong-truoc.md) | Perception AEB trên CARLA lấy từ radar 90° + bộ bám `RadarTracker` ở Java; giai đoạn 1 chạy bóng (AEB vẫn dùng ground truth, ghi sai số), giai đoạn 2 đổi đầu vào và lên `-xosc4` khi đạt ngưỡng | 🕐 **Proposed 22/10** |
+| [ADR-044](ADR-044-nguong-phanh-oan-regression-5-diem.md) | Ngưỡng phanh oan mặc định của regression đổi 0,5 → 5 điểm %, cùng một hằng với ràng buộc tối ưu (TD-48); test đã tạo giữ ngưỡng đã lưu | 🕐 **Proposed 20/10** |
 
 ## Luật
 
