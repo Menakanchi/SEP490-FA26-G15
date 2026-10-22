@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
+import { MotionTelemetryChart } from "@/components/MotionTelemetryChart";
 import { ScenarioMap } from "@/components/ScenarioMap";
 import { ErrorNote, OutcomeBadge, PillButton, cx, runCode } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
@@ -42,6 +43,8 @@ const CLASS_SHORT: Record<FailureClass, string> = {
 
 export default function PlaybackPage() {
   const { runId } = useParams<{ runId: string }>();
+  const params=useSearchParams();
+  const initialTime=Number(params.get("t"));
   const [pb, setPb] = useState<Playback | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [t, setT] = useState(0);
@@ -55,14 +58,13 @@ export default function PlaybackPage() {
       .then((data) => {
         setPb(data);
         // Mở ở sự kiện AEB (hoặc cuối lần chạy) như ảnh chụp của Figma.
-        const focus = data.events.find((e) => e.kind === "aeb_decision")?.t ?? data.duration_s;
+        const focus = Number.isFinite(initialTime) && initialTime >= 0 ? Math.min(initialTime,data.duration_s) : data.events.find((e) => e.kind === "aeb_decision")?.t ?? 0;
         setT(focus);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được dữ liệu phát lại"));
-  }, [runId]);
+  }, [runId,initialTime]);
 
   const events = useMemo(() => (pb ? withTtcEvent(pb) : []), [pb]);
-  const peakDecel = useMemo(() => (pb ? Math.max(0, ...pb.frames.filter((f) => f.aeb).map((f) => -f.ego_a)) : 0), [pb]);
   const frame = useMemo(() => (pb ? frameAt(pb.frames, t) : null), [pb, t]);
 
   useEffect(() => {
@@ -130,7 +132,7 @@ export default function PlaybackPage() {
       ]}
       title={`Phát lại · Lượt chạy ${code}`}
       badges={
-        pb && (
+        pb && pb.evaluation_valid !== false && (
           <>
             <span className="[&>span]:px-3 [&>span]:py-[6px] [&>span]:text-[13px]">
               <OutcomeBadge outcome={pb.outcome} />
@@ -162,6 +164,8 @@ export default function PlaybackPage() {
       }
     >
       <ErrorNote message={error} />
+      {pb?.evaluation_valid===false&&<p role="status">Dữ liệu run chưa đủ điều kiện để kết luận AEB. Playback chỉ hiển thị dữ liệu đã ghi.</p>}
+      {pb && !frame && <p role="status">Không có frame telemetry hợp lệ để phát lại.</p>}
       {pb && frame && (
         <div className="flex w-full items-start gap-4">
           <div className="flex min-w-0 flex-1 flex-col gap-4">
@@ -276,6 +280,11 @@ export default function PlaybackPage() {
                   ))}
                 </div>
               </div>
+              <label className="text-[12px]">Thời gian playback
+                <input aria-label="Thời gian playback" type="range" min={0} max={pb.duration_s} step={0.01} value={t} className="block w-full" onChange={e=>{setPlaying(false);setT(Number(e.target.value));}}/>
+              </label>
+              <MotionTelemetryChart points={pb.motion_telemetry??[]} markers={events.map(e=>({t:e.t,label:vi(e.label),color:EVENT_COLOR[e.kind]??"gray"}))} cursor={t}/>
+              <PillButton href={`/analysis/failures/${runId}?t=${t}`}>Xem phân tích run</PillButton>
               <Timeline duration={pb.duration_s} t={t} events={events} onSeek={(x) => { setPlaying(false); setT(x); }} />
             </section>
           </div>
@@ -289,15 +298,15 @@ export default function PlaybackPage() {
                 )}
               </div>
               <Stat label="Tốc độ xe ego" value={`${(frame.ego_v * 3.6).toFixed(1)} km/h`} />
-              <Stat label="Khoảng cách tới người đi bộ" value={distance === null ? "—" : `${distance.toFixed(1)} m`} />
+              <Stat label="Khoảng cách tới vạch băng qua" value={distance === null ? "—" : `${distance.toFixed(1)} m`} />
               <Stat
                 label="TTC"
                 value={frame.ttc === null ? "—" : `${frame.ttc.toFixed(1)} s`}
                 tone={frame.ttc !== null && pb.ttc_threshold_s !== null && frame.ttc <= pb.ttc_threshold_s ? "danger" : undefined}
               />
               <Stat
-                label="Lệnh phanh"
-                value={brakeText(frame, peakDecel)}
+                label="Giảm tốc đã ghi (không phải lệnh phanh)"
+                value={Number.isFinite(frame.ego_a)?`${Math.max(0,-frame.ego_a).toFixed(2)} m/s²`:"Không khả dụng"}
                 tone={frame.aeb ? "info" : undefined}
               />
               <Stat label="Độ tin cậy phát hiện" value={frame.detected ? frame.confidence.toFixed(2) : "chưa phát hiện"} />
@@ -417,13 +426,6 @@ function Timeline({ duration, t, events, onSeek }: { duration: number; t: number
       <span className="absolute top-[34px] size-[18px] -translate-x-1/2 rounded-full border-[3px] border-solid border-vehicsim-ink bg-white" style={{ left: pct(t) }} />
     </div>
   );
-}
-
-/** Lệnh phanh: đang ramp thì hiện "hiện tại → mức đạt tối đa" như Figma (0 → 8.0 m/s²). */
-function brakeText(f: Frame, peak: number): string {
-  if (!f.aeb) return "0 m/s²";
-  const cur = Math.max(0, -f.ego_a);
-  return peak - cur > 0.05 ? `${cur.toFixed(1)} → ${peak.toFixed(1)} m/s²` : `${cur.toFixed(1)} m/s²`;
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "danger" | "info" }) {

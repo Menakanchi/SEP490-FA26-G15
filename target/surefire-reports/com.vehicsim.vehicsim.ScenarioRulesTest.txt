@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.vehicsim.vehicsim.ScenarioRulesTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.085 s -- in com.vehicsim.vehicsim.ScenarioRulesTest

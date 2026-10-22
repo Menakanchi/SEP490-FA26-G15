@@ -149,11 +149,9 @@ export default function ScenarioFamiliesPage() {
               </span>
               <span className="w-[110px] text-[12px] text-vehicsim-faint">{fmt.date(f.created_at)}</span>
               <span className="flex w-[180px] items-center justify-end gap-3">
-                {f.failures > 0 && (
-                  <Link href="/analysis/failures" className="text-[12px] font-semibold text-vehicsim-decision hover:underline">
-                    Failures
-                  </Link>
-                )}
+                <Link href={`/analysis/failures?scenario_id=${f.id}`} className="text-[12px] font-semibold text-vehicsim-decision hover:underline">
+                  Phân tích →
+                </Link>
                 <PillButton
                   className="px-3 py-[6px] text-[12px]"
                   onClick={() => runBaseline(f)}

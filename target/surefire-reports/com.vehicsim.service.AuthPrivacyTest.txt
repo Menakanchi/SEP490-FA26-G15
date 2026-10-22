@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.vehicsim.service.AuthPrivacyTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.093 s -- in com.vehicsim.service.AuthPrivacyTest
