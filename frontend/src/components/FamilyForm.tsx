@@ -4,8 +4,26 @@ import React, { useState } from "react";
 import { PillButton, Toggle, cx } from "@/components/VehicSimUi";
 import type { FamilyRequest, TimeOfDay, Weather } from "@/types/vehicsim";
 
-/** Khớp `FamilySpec.validate` / `MAX_VARIANTS` trong src/services/vehicsim/family.py. */
+/** Khớp `FamilyService.MAX_VARIANTS` (backend Java). */
 export const MAX_VARIANTS = 300;
+/** Khớp `Simulator.MAX_DURATION_S` / `Simulator.LEAD_TIME_S` của lõi Java (dùng chung bộ động học và `.xosc`). */
+const MAX_DURATION_S = 12;
+const LEAD_TIME_S = 1.5;
+
+/**
+ * Cặp (tốc độ, khoảng cách kích hoạt) mà xe chạy đều không tới vạch băng ngang trước khi hết thời gian mô phỏng — run sẽ TIMEOUT mà xe
+ * chưa gặp người đi bộ. Cùng công thức với `FamilySpec.unreachablePairs`; backend cũng từ chối.
+ */
+export function unreachablePairs(speedsKmh: number[], distancesM: number[]): { speed: number; distance: number; arrival: number }[] {
+  const out: { speed: number; distance: number; arrival: number }[] = [];
+  for (const speed of [...speedsKmh].sort((a, b) => a - b)) {
+    for (const distance of [...distancesM].sort((a, b) => a - b)) {
+      const arrival = distance / (speed / 3.6) + LEAD_TIME_S;
+      if (arrival >= MAX_DURATION_S) out.push({ speed, distance, arrival });
+    }
+  }
+  return out;
+}
 export const AXES = [
   { key: "ego_speeds_kmh", label: "Tốc độ xe ego", unit: "km/h", min: 10, max: 130, fallback: [40, 50, 60, 70] },
   { key: "trigger_distances_m", label: "Khoảng cách kích hoạt", unit: "m", min: 5, max: 80, fallback: [20, 30, 40] },
@@ -76,7 +94,10 @@ export function FamilyForm({
   };
   const errors = AXES.map(axisError);
   const count = AXES.reduce((n, a) => n * parsed[a.key].length, 1) * stops.length * weathers.length * times.length;
-  const valid = name.trim() && errors.every((e) => !e) && stops.length && weathers.length && times.length && count <= MAX_VARIANTS;
+  const late =
+    errors[0] || errors[1] ? [] : unreachablePairs(parsed.ego_speeds_kmh, parsed.trigger_distances_m);
+  const valid =
+    name.trim() && errors.every((e) => !e) && !late.length && stops.length && weathers.length && times.length && count <= MAX_VARIANTS;
 
   const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((x) => x !== value) : [...list, value]);
 
@@ -113,6 +134,17 @@ export function FamilyForm({
         <ChipGroup label="Thời tiết" options={WEATHERS} selected={weathers} onToggle={(v) => setWeathers((prev) => toggle(prev, v))} />
         <ChipGroup label="Thời điểm" options={TIMES} selected={times} onToggle={(v) => setTimes((prev) => toggle(prev, v))} />
       </div>
+      {late.length > 0 && (
+        <div role="alert" className="rounded-[14px] border border-solid border-vehicsim-danger/30 bg-vehicsim-danger-bg px-4 py-3 text-[12px] leading-[1.5] text-vehicsim-danger">
+          <b>{late.length} cặp tốc độ / khoảng cách không chạy được:</b> xe tới vạch băng ngang sau {MAX_DURATION_S} s mô phỏng nên run sẽ hết
+          giờ trước khi gặp người đi bộ —{" "}
+          {late
+            .slice(0, 5)
+            .map((p) => `${p.speed} km/h + ${p.distance} m (${p.arrival.toFixed(1)} s)`)
+            .join("; ")}
+          {late.length > 5 ? ` và ${late.length - 5} cặp khác` : ""}. Tăng tốc độ xe hoặc giảm khoảng cách kích hoạt.
+        </div>
+      )}
       <div className="flex items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-4">
         <label className="flex items-center gap-3 text-[13px] text-vehicsim-ink">
           <Toggle on={runBaseline} onChange={setRunBaseline} label="Chạy cơ sở" />

@@ -16,6 +16,12 @@ export function CarlaRunnerPanel() {
   const [connection, setConnection] = useState<CarlaStatus | null>(null);
   const [runs, setRuns] = useState<CarlaRun[] | null>(null);
   const [family, setFamily] = useState("");
+  // Được bàn giao từ màn thiết kế (/analysis/carla?family=<id>): chọn sẵn đúng họ.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("family");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- đọc query một lần sau khi mount
+    if (id && /^\d+$/.test(id)) setFamily(id);
+  }, []);
   const [selected, setSelected] = useState<number | null>(null);
   const [data, setData] = useState<CarlaData | null>(null);
   const [frame, setFrame] = useState(0);
