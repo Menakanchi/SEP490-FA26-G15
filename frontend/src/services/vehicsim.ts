@@ -30,6 +30,10 @@ import type {
   ReviewDecision,
   TelemetrySummary,
   VehicSimContextData,
+  WorkspaceDetail,
+  WorkspaceMember,
+  WorkspaceMemberCandidate,
+  WorkspaceSummary,
 } from "@/types/vehicsim";
 
 function query(params: object): string {
@@ -149,4 +153,16 @@ export const vehicsimApi = {
     apiRequest<{ id: number; status: string }>(`/vehicsim/optimizations/${id}/cancel`, { method: "POST" }),
   selectOptimizationCandidate: (runId: number, trialId: number) =>
     apiRequest<OptimizationSelectionResult>(`/vehicsim/optimizations/${runId}/select/${trialId}`, { method: "POST" }),
+
+  // Quản lý workspace (Manager / Admin) — M1…M5
+  workspaces: () => apiRequest<WorkspaceSummary[]>("/vehicsim/workspaces"),
+  workspace: (id: number) => apiRequest<WorkspaceDetail>(`/vehicsim/workspaces/${id}`),
+  workspaceMembers: (id: number) => apiRequest<WorkspaceMember[]>(`/vehicsim/workspaces/${id}/members`),
+  workspaceMemberCandidates: (id: number, q: string) =>
+    apiRequest<WorkspaceMemberCandidate[]>(`/vehicsim/workspaces/${id}/member-candidates${query({ q })}`),
+  addWorkspaceMember: (id: number, userId: number) =>
+    apiRequest<WorkspaceMember>(`/vehicsim/workspaces/${id}/members`, { method: "POST", body: JSON.stringify({ user_id: userId }) }),
+  /** Bớt thành viên; người đó tự rời mọi project của workspace. */
+  removeWorkspaceMember: (id: number, userId: number) =>
+    apiRequest<{ user_id: number; removed_project_memberships: number }>(`/vehicsim/workspaces/${id}/members/${userId}`, { method: "DELETE" }),
 };

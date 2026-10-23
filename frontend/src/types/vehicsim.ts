@@ -719,3 +719,21 @@ export interface AnalysisFilters {
   scenario_id?: number; variant_id?: number; aeb_version_id?: number; vehicle_id?: number;
   simulator?: string; weather?: string; time_of_day?: string; status?: string; failure_class?: string;
 }
+
+// Quản lý workspace (Manager — M1…M5), khớp com.vehicsim.dto.WorkspaceDtos
+export interface WorkspaceUserRef { id: number; full_name: string; email: string }
+export type WorkspaceStatus = "ACTIVE" | "ARCHIVED";
+export interface WorkspaceSummary {
+  id: number; name: string; description: string | null; status: WorkspaceStatus; manager: WorkspaceUserRef;
+  member_count: number; project_count: number; created_date: string;
+}
+export interface WorkspaceProject {
+  id: number; name: string; status: "ACTIVE" | "ARCHIVED"; owner: WorkspaceUserRef; member_count: number; created_date: string;
+}
+export interface WorkspaceDetail { workspace: WorkspaceSummary; projects: WorkspaceProject[] }
+export type WorkspaceMemberRole = "ENGINEER" | "REVIEWER";
+export interface WorkspaceMember {
+  user_id: number; full_name: string; email: string; role: WorkspaceMemberRole; is_active: boolean; joined_at: string;
+  added_by: WorkspaceUserRef | null; project_count: number; owned_project_count: number;
+}
+export interface WorkspaceMemberCandidate { user_id: number; full_name: string; email: string; role: WorkspaceMemberRole }
