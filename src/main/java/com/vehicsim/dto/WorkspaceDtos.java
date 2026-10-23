@@ -12,8 +12,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Body và kết quả của các route quản lý workspace (Manager — M1…M7): xem workspace mình quản lý, thành viên, thêm / bớt
- * ENGINEER và REVIEWER, giao và theo dõi task. JSON snake_case giữ cùng quy ước với {@code frontend/src/services/vehicsim.ts}.
+ * Body và kết quả của các route quản lý workspace (Manager — M1…M9): xem workspace mình quản lý, thành viên, thêm / bớt
+ * ENGINEER và REVIEWER, giao và theo dõi task, duyệt báo cáo công việc. JSON snake_case giữ cùng quy ước với {@code frontend/src/services/vehicsim.ts}.
  */
 public final class WorkspaceDtos {
 
@@ -37,6 +37,7 @@ public final class WorkspaceDtos {
             UserRef manager,
             @JsonProperty("member_count") int memberCount,
             @JsonProperty("project_count") int projectCount,
+            @JsonProperty("pending_report_count") int pendingReportCount,
             @JsonProperty("created_date") LocalDateTime createdDate) {
     }
 
@@ -122,5 +123,31 @@ public final class WorkspaceDtos {
             @JsonProperty("report_count") int reportCount,
             @JsonProperty("created_date") LocalDateTime createdDate,
             @JsonProperty("updated_at") LocalDateTime updatedAt) {
+    }
+
+    /** Task rút gọn gắn với báo cáo. */
+    public record TaskRef(long id, String title) {
+    }
+
+    /** Một báo cáo công việc theo project (M8). {@code SUBMITTED} = chờ Manager duyệt; đã duyệt thì có người duyệt, lúc duyệt, nhận xét. */
+    public record ReportItem(
+            long id,
+            ProjectRef project,
+            TaskRef task,
+            @JsonProperty("submitted_by") UserRef submittedBy,
+            String title,
+            String content,
+            @JsonProperty("attachment_url") String attachmentUrl,
+            String status,
+            @JsonProperty("reviewed_by") UserRef reviewedBy,
+            @JsonProperty("reviewed_at") LocalDateTime reviewedAt,
+            @JsonProperty("review_note") String reviewNote,
+            @JsonProperty("created_date") LocalDateTime createdDate) {
+    }
+
+    /** {@code POST /workspaces/{id}/reports/{reportId}/decision} (M9): APPROVED / REJECTED; từ chối phải ghi nhận xét. */
+    public record ReportDecisionRequest(
+            @NotBlank(message = "Chọn APPROVED hoặc REJECTED") String decision,
+            @Size(max = 4000, message = "Nhận xét tối đa 4000 ký tự") String note) {
     }
 }

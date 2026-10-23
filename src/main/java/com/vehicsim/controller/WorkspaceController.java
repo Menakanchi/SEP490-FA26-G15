@@ -5,10 +5,13 @@ import com.vehicsim.dto.WorkspaceDtos.AddMemberRequest;
 import com.vehicsim.dto.WorkspaceDtos.MemberCandidate;
 import com.vehicsim.dto.WorkspaceDtos.MemberItem;
 import com.vehicsim.dto.WorkspaceDtos.RemoveMemberResult;
+import com.vehicsim.dto.WorkspaceDtos.ReportDecisionRequest;
+import com.vehicsim.dto.WorkspaceDtos.ReportItem;
 import com.vehicsim.dto.WorkspaceDtos.TaskItem;
 import com.vehicsim.dto.WorkspaceDtos.TaskRequest;
 import com.vehicsim.dto.WorkspaceDtos.WorkspaceDetail;
 import com.vehicsim.dto.WorkspaceDtos.WorkspaceSummary;
+import com.vehicsim.service.WorkspaceReportService;
 import com.vehicsim.service.WorkspaceService;
 import com.vehicsim.service.WorkspaceTaskService;
 import com.vehicsim.vehicsim.VehicSimAccess;
@@ -35,19 +38,20 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * HTTP của màn quản lý workspace (Manager — M1…M7, {@code /api/v1/vehicsim/workspaces/...}). Mọi route cần MANAGER hoặc ADMIN
+ * HTTP của màn quản lý workspace (Manager — M1…M9, {@code /api/v1/vehicsim/workspaces/...}). Mọi route cần MANAGER hoặc ADMIN
  * (luật ở {@link VehicSimAccess}); Manager chỉ thấy workspace mình được gán. Lớp này chỉ nhận request; nghiệp vụ ở
- * {@link WorkspaceService} / {@link WorkspaceTaskService}, lỗi đổi thành mã HTTP ở ApiExceptionHandler.
+ * {@link WorkspaceService} / {@link WorkspaceTaskService} / {@link WorkspaceReportService}, lỗi đổi thành mã HTTP ở ApiExceptionHandler.
  */
 @RestController
 @RequestMapping("/api/v1/vehicsim")
 @RequiredArgsConstructor
-@Tag(name = "VehicSim · Workspace", description = "Manager xem workspace, project, thành viên; thêm / bớt Engineer và Reviewer; giao task")
+@Tag(name = "VehicSim · Workspace", description = "Manager xem workspace, project, thành viên; thêm / bớt Engineer và Reviewer; giao task; duyệt báo cáo")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class WorkspaceController {
 
     private final WorkspaceService workspaces;
     private final WorkspaceTaskService tasks;
+    private final WorkspaceReportService reports;
     private final VehicSimAccess access;
 
     @Operation(summary = "M1 — Workspace tôi quản lý (ADMIN: mọi workspace)")
@@ -137,5 +141,26 @@ public class WorkspaceController {
         tasks.delete(uid, VehicSimAccess.roleOf(user), workspaceId, taskId);
         // Trả thân JSON (không 204): client chung frontend/src/services/api.ts luôn đọc res.json().
         return Map.of("task_id", taskId);
+    }
+
+    // ------------------------------------------------------------------ báo cáo (M8, M9)
+
+    @Operation(summary = "M8 — Báo cáo công việc của các project trong workspace (lọc theo trạng thái, project)")
+    @GetMapping("/workspaces/{workspaceId}/reports")
+    public List<ReportItem> listReports(@PathVariable long workspaceId,
+                                        @RequestParam(name = "status", required = false) String status,
+                                        @RequestParam(name = "project_id", required = false) Long projectId,
+                                        @AuthenticationPrincipal UserDetails user) {
+        long uid = VehicSimAccess.requireWorkspaceManager(user);
+        return reports.list(uid, VehicSimAccess.roleOf(user), workspaceId, status, projectId);
+    }
+
+    @Operation(summary = "M9 — Duyệt (APPROVED) hoặc từ chối (REJECTED, bắt buộc nhận xét) báo cáo đang chờ")
+    @PostMapping("/workspaces/{workspaceId}/reports/{reportId}/decision")
+    public ReportItem decideReport(@PathVariable long workspaceId, @PathVariable long reportId, @Valid @RequestBody ReportDecisionRequest body,
+                                   @AuthenticationPrincipal UserDetails user) {
+        long uid = VehicSimAccess.requireWorkspaceManager(user);
+        access.limitWrites(uid, "workspace_report");
+        return reports.decide(uid, VehicSimAccess.roleOf(user), workspaceId, reportId, body.decision(), body.note());
     }
 }

@@ -8,6 +8,7 @@ import com.vehicsim.entity.enums.RoleCode;
 import com.vehicsim.security.CustomUserDetails;
 import com.vehicsim.security.JwtService;
 import com.vehicsim.service.OtpService;
+import com.vehicsim.service.WorkspaceReportService;
 import com.vehicsim.service.WorkspaceService;
 import com.vehicsim.service.WorkspaceTaskService;
 import org.junit.jupiter.api.Test;
@@ -61,6 +62,8 @@ class WorkspaceSecurityTest {
     @MockitoBean
     private WorkspaceTaskService tasks;
     @MockitoBean
+    private WorkspaceReportService reports;
+    @MockitoBean
     private ViewsService views;
     @MockitoBean
     private OtpService otp;
@@ -87,7 +90,13 @@ class WorkspaceSecurityTest {
                 request(HttpMethod.GET, BASE + "/1/tasks?status=TODO"),
                 createTask(),
                 request(HttpMethod.PUT, BASE + "/1/tasks/3").contentType(MediaType.APPLICATION_JSON).content(TASK),
-                request(HttpMethod.DELETE, BASE + "/1/tasks/3"));
+                request(HttpMethod.DELETE, BASE + "/1/tasks/3"),
+                request(HttpMethod.GET, BASE + "/1/reports?status=SUBMITTED"),
+                decideReport("{\"decision\":\"APPROVED\"}"));
+    }
+
+    private static MockHttpServletRequestBuilder decideReport(String body) {
+        return request(HttpMethod.POST, BASE + "/1/reports/4/decision").contentType(MediaType.APPLICATION_JSON).content(body);
     }
 
     private static final String TASK = "{\"title\":\"Chạy lại họ PX2\",\"priority\":\"HIGH\"}";
@@ -144,5 +153,14 @@ class WorkspaceSecurityTest {
         when(otp.hitRateLimit(eq("vs_workspace_task"), any(), anyInt())).thenReturn(true);
         assertThat(statusOf(createTask(), RoleCode.MANAGER)).isEqualTo(429);
         assertThat(statusOf(request(HttpMethod.DELETE, BASE + "/1/tasks/3"), RoleCode.MANAGER)).isEqualTo(429);
+    }
+
+    @Test
+    void reportDecisionValidatesBodyAndHonoursWriteQuota() throws Exception {
+        assertThat(statusOf(decideReport("{}"), RoleCode.MANAGER)).isEqualTo(400);
+        assertThat(statusOf(decideReport("{\"decision\":\"REJECTED\",\"note\":\"" + "x".repeat(4001) + "\"}"), RoleCode.MANAGER))
+                .isEqualTo(400);
+        when(otp.hitRateLimit(eq("vs_workspace_report"), any(), anyInt())).thenReturn(true);
+        assertThat(statusOf(decideReport("{\"decision\":\"APPROVED\"}"), RoleCode.MANAGER)).isEqualTo(429);
     }
 }

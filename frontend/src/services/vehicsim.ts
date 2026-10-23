@@ -33,6 +33,7 @@ import type {
   WorkspaceDetail,
   WorkspaceMember,
   WorkspaceMemberCandidate,
+  WorkspaceReport,
   WorkspaceSummary,
   WorkspaceTask,
   WorkspaceTaskRequest,
@@ -179,4 +180,12 @@ export const vehicsimApi = {
     apiRequest<WorkspaceTask>(`/vehicsim/workspaces/${id}/tasks/${taskId}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteWorkspaceTask: (id: number, taskId: number) =>
     apiRequest<{ task_id: number }>(`/vehicsim/workspaces/${id}/tasks/${taskId}`, { method: "DELETE" }),
+  workspaceReports: (id: number, filters: { status?: string; project_id?: number } = {}) =>
+    apiRequest<WorkspaceReport[]>(`/vehicsim/workspaces/${id}/reports${query(filters)}`),
+  /** Duyệt / từ chối báo cáo đang chờ; từ chối phải có nhận xét. */
+  decideWorkspaceReport: (id: number, reportId: number, decision: "APPROVED" | "REJECTED", note: string | null) =>
+    apiRequest<WorkspaceReport>(`/vehicsim/workspaces/${id}/reports/${reportId}/decision`, {
+      method: "POST",
+      body: JSON.stringify({ decision, note }),
+    }),
 };

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { EmptyState, ErrorNote, StatCard, Tag, fmt } from "@/components/VehicSimUi";
+import { EmptyState, ErrorNote, StatCard, Tag, cx, fmt } from "@/components/VehicSimUi";
 import { WORKSPACE_ROLES } from "@/components/workspaceAccess";
 import { useAuth } from "@/context/AuthContext";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -56,6 +56,7 @@ export default function WorkspacesPage() {
               <span className="w-[200px]">Quản lý</span>
               <span className="w-[110px]">Thành viên</span>
               <span className="w-[90px]">Project</span>
+              <span className="w-[130px]">Báo cáo chờ duyệt</span>
               <span className="w-[110px]">Trạng thái</span>
               <span className="w-[100px]">Ngày tạo</span>
               <span className="w-[60px]" />
@@ -78,6 +79,9 @@ export default function WorkspacesPage() {
                 <span className="w-[200px] truncate pr-3 text-[13px] text-vehicsim-muted">{w.manager.full_name}</span>
                 <span className="w-[110px] text-[13px] font-semibold text-vehicsim-ink">{w.member_count}</span>
                 <span className="w-[90px] text-[13px] font-semibold text-vehicsim-ink">{w.project_count}</span>
+                <span className={cx("w-[130px] text-[13px] font-semibold", w.pending_report_count ? "text-vehicsim-warn" : "text-vehicsim-faint")}>
+                  {w.pending_report_count}
+                </span>
                 <span className="w-[110px]">
                   <Tag tone={w.status === "ACTIVE" ? "ok" : "neutral"}>{w.status === "ACTIVE" ? "Hoạt động" : "Đã lưu trữ"}</Tag>
                 </span>
