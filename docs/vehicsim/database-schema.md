@@ -284,8 +284,9 @@ Tài khoản. Mỗi người **đúng một role** (`role_id`). Tự đăng ký 
 #### `workspaces` — FE-03
 
 Nhóm làm việc. **Admin tạo và gán thẳng một MANAGER** quản lý — không có bước xin / duyệt (ADR-038). Manager xem
-được mọi thành viên của workspace mình (kiểm ở API). **Code dùng:** seed (`bootstrap.py`) tạo một workspace ACTIVE;
-màn quản lý chưa có.
+được mọi thành viên của workspace mình (kiểm ở API). **Code dùng:** seed (`BootstrapService`) tạo một workspace ACTIVE;
+`WorkspaceRepository` đọc cho màn `/workspace` của Manager (Manager chỉ thấy workspace có `manager_id` của mình, ADMIN thấy tất cả).
+Chưa có API Admin tạo workspace / gán Manager.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -300,7 +301,7 @@ màn quản lý chưa có.
 
 #### `workspace_members` — FE-03
 
-Engineer / Reviewer thuộc workspace nào, do Manager thêm. Chưa có code (TD-30).
+Engineer / Reviewer thuộc workspace nào, do Manager thêm. **Code dùng:** `WorkspaceService` thêm / bớt (chỉ tài khoản ENGINEER / REVIEWER đang hoạt động; workspace ARCHIVED không đổi; chủ project trong workspace chưa bớt được). Thành viên chưa lọc dữ liệu người đó thấy (TD-30).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
