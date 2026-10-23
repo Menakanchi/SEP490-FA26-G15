@@ -734,6 +734,17 @@ export interface WorkspaceDetail { workspace: WorkspaceSummary; projects: Worksp
 export type WorkspaceMemberRole = "ENGINEER" | "REVIEWER";
 export interface WorkspaceMember {
   user_id: number; full_name: string; email: string; role: WorkspaceMemberRole; is_active: boolean; joined_at: string;
-  added_by: WorkspaceUserRef | null; project_count: number; owned_project_count: number;
+  added_by: WorkspaceUserRef | null; project_count: number; owned_project_count: number; open_task_count: number;
 }
 export interface WorkspaceMemberCandidate { user_id: number; full_name: string; email: string; role: WorkspaceMemberRole }
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type TaskStatus = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+export interface WorkspaceTask {
+  id: number; title: string; description: string | null; priority: TaskPriority; status: TaskStatus; progress_pct: number;
+  assignee: WorkspaceUserRef | null; project: { id: number; name: string } | null; created_by: WorkspaceUserRef;
+  due_date: string | null; overdue: boolean; report_count: number; created_date: string; updated_at: string;
+}
+export interface WorkspaceTaskRequest {
+  title: string; description: string | null; priority: TaskPriority; status: TaskStatus; progress_pct: number;
+  assignee_id: number | null; project_id: number | null; due_date: string | null;
+}

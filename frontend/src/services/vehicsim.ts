@@ -34,6 +34,8 @@ import type {
   WorkspaceMember,
   WorkspaceMemberCandidate,
   WorkspaceSummary,
+  WorkspaceTask,
+  WorkspaceTaskRequest,
 } from "@/types/vehicsim";
 
 function query(params: object): string {
@@ -164,5 +166,17 @@ export const vehicsimApi = {
     apiRequest<WorkspaceMember>(`/vehicsim/workspaces/${id}/members`, { method: "POST", body: JSON.stringify({ user_id: userId }) }),
   /** Bớt thành viên; người đó tự rời mọi project của workspace. */
   removeWorkspaceMember: (id: number, userId: number) =>
-    apiRequest<{ user_id: number; removed_project_memberships: number }>(`/vehicsim/workspaces/${id}/members/${userId}`, { method: "DELETE" }),
+    apiRequest<{ user_id: number; removed_project_memberships: number; unassigned_tasks: number }>(
+      `/vehicsim/workspaces/${id}/members/${userId}`,
+      { method: "DELETE" },
+    ),
+  /** Task của workspace; `assignee_id = 0` là chưa giao ai. */
+  workspaceTasks: (id: number, filters: { status?: string; assignee_id?: number } = {}) =>
+    apiRequest<WorkspaceTask[]>(`/vehicsim/workspaces/${id}/tasks${query(filters)}`),
+  createWorkspaceTask: (id: number, body: WorkspaceTaskRequest) =>
+    apiRequest<WorkspaceTask>(`/vehicsim/workspaces/${id}/tasks`, { method: "POST", body: JSON.stringify(body) }),
+  updateWorkspaceTask: (id: number, taskId: number, body: WorkspaceTaskRequest) =>
+    apiRequest<WorkspaceTask>(`/vehicsim/workspaces/${id}/tasks/${taskId}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteWorkspaceTask: (id: number, taskId: number) =>
+    apiRequest<{ task_id: number }>(`/vehicsim/workspaces/${id}/tasks/${taskId}`, { method: "DELETE" }),
 };

@@ -12,8 +12,8 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 /**
- * Mọi câu SQL của màn quản lý workspace (Manager — M1…M5). SQL thuần qua {@link Db} như phần còn lại của VehicSim; tham gia
- * transaction của service gọi nó. Tên ghép theo thứ tự họ – đệm – tên ({@code CONCAT_WS} bỏ qua đệm NULL).
+ * Câu SQL của màn quản lý workspace: workspace, project, thành viên (Manager — M1…M5; task ở {@link WorkspaceTaskRepository}).
+ * SQL thuần qua {@link Db} như phần còn lại của VehicSim; tham gia transaction của service gọi nó. Tên ghép theo thứ tự họ – đệm – tên ({@code CONCAT_WS} bỏ qua đệm NULL).
  */
 @Repository
 public class WorkspaceRepository {
@@ -80,7 +80,9 @@ public class WorkspaceRepository {
                        (SELECT COUNT(*) FROM project_members pm
                          WHERE pm.workspace_id = wm.workspace_id AND pm.user_id = u.id) AS project_count,
                        (SELECT COUNT(*) FROM projects p
-                         WHERE p.workspace_id = wm.workspace_id AND p.created_by_user_id = u.id) AS owned_project_count
+                         WHERE p.workspace_id = wm.workspace_id AND p.created_by_user_id = u.id) AS owned_project_count,
+                       (SELECT COUNT(*) FROM workspace_tasks t
+                         WHERE t.workspace_id = wm.workspace_id AND t.assigned_to_user_id = u.id AND t.status <> 'DONE') AS open_task_count
                   FROM workspace_members wm
                   JOIN users u ON u.id = wm.user_id
                   JOIN roles r ON r.id = u.role_id
@@ -91,7 +93,7 @@ public class WorkspaceRepository {
                 .map(r -> new MemberItem(r.lng("user_id"), r.str("full_name"), r.str("email"), r.str("role"), r.bool("is_active"),
                         r.ts("joined_at"),
                         r.isNull("added_by_id") ? null : new UserRef(r.lng("added_by_id"), r.str("added_by_name"), r.str("added_by_email")),
-                        (int) r.lng("project_count"), (int) r.lng("owned_project_count")))
+                        (int) r.lng("project_count"), (int) r.lng("owned_project_count"), (int) r.lng("open_task_count")))
                 .toList();
     }
 
@@ -148,6 +150,14 @@ public class WorkspaceRepository {
     /** Xoá dòng thành viên; {@code project_members} của người đó trong workspace bị xoá theo (FK CASCADE). Trả số dòng đã xoá. */
     public int removeMember(long workspaceId, long userId) {
         return db.update("DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?", workspaceId, userId);
+    }
+
+    /** Gỡ người nhận khỏi task chưa DONE của người này trong workspace (khi bớt thành viên). Trả số task đã gỡ. */
+    public int unassignOpenTasks(long workspaceId, long userId) {
+        return db.update("""
+                UPDATE workspace_tasks SET assigned_to_user_id = NULL
+                 WHERE workspace_id = ? AND assigned_to_user_id = ? AND status <> 'DONE'
+                """, workspaceId, userId);
     }
 
     private WorkspaceSummary toSummary(Row r) {

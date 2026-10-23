@@ -49,7 +49,7 @@ class WorkspaceServiceTest {
     }
 
     private static MemberItem member(long userId) {
-        return new MemberItem(userId, "Kỹ Sư", "e@example.com", "ENGINEER", true, LocalDateTime.now(), null, 0, 0);
+        return new MemberItem(userId, "Kỹ Sư", "e@example.com", "ENGINEER", true, LocalDateTime.now(), null, 0, 0, 0);
     }
 
     // ------------------------------------------------------------------ M1–M3: phạm vi xem
@@ -145,14 +145,17 @@ class WorkspaceServiceTest {
     // ------------------------------------------------------------------ M5: bớt
 
     @Test
-    void removingAMemberReportsTheProjectsTheyLeave() {
+    void removingAMemberReportsTheProjectsTheyLeaveAndUnassignsTheirOpenTasks() {
         when(repo.isMember(WS, ENGINEER)).thenReturn(true);
         when(repo.ownedProjectNames(WS, ENGINEER)).thenReturn(List.of());
         when(repo.projectMembershipCount(WS, ENGINEER)).thenReturn(2);
+        when(repo.unassignOpenTasks(WS, ENGINEER)).thenReturn(3);
 
         RemoveMemberResult result = service.removeMember(MANAGER, "MANAGER", WS, ENGINEER);
 
         assertThat(result.removedProjectMemberships()).isEqualTo(2);
+        assertThat(result.unassignedTasks()).isEqualTo(3);
+        verify(repo).unassignOpenTasks(WS, ENGINEER);
         verify(repo).removeMember(WS, ENGINEER);
     }
 
@@ -164,6 +167,7 @@ class WorkspaceServiceTest {
         assertThatThrownBy(() -> service.removeMember(MANAGER, "MANAGER", WS, ENGINEER))
                 .isInstanceOf(InvalidRequestException.class).hasMessageContaining("VF8 AEB MVP");
         verify(repo, never()).removeMember(anyLong(), anyLong());
+        verify(repo, never()).unassignOpenTasks(anyLong(), anyLong());
     }
 
     @Test

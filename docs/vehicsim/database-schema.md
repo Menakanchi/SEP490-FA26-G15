@@ -343,7 +343,7 @@ Thông báo cho từng người. Chưa có code.
 
 #### `workspace_tasks` — FE-03-07, FE-13
 
-Task Manager giao cho Engineer / Reviewer. Chưa có code.
+Task Manager giao cho Engineer / Reviewer. **Code dùng:** `WorkspaceTaskService` (màn `/workspace/{id}/tasks`): chỉ giao cho thành viên đang hoạt động, project phải thuộc workspace và ACTIVE, hạn mới không ở quá khứ, `DONE` thì `progress_pct = 100`; task có báo cáo không xoá (FK `fk_tr_task` CASCADE sẽ xoá báo cáo) và không đổi `project_id` (FK ghép chặn); bớt thành viên thì task chưa DONE của họ về `assigned_to_user_id = NULL`. Người được giao chưa tự cập nhật tiến độ.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|

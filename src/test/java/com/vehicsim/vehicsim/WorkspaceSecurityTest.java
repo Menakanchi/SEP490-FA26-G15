@@ -9,6 +9,7 @@ import com.vehicsim.security.CustomUserDetails;
 import com.vehicsim.security.JwtService;
 import com.vehicsim.service.OtpService;
 import com.vehicsim.service.WorkspaceService;
+import com.vehicsim.service.WorkspaceTaskService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -58,6 +59,8 @@ class WorkspaceSecurityTest {
     @MockitoBean
     private WorkspaceService workspaces;
     @MockitoBean
+    private WorkspaceTaskService tasks;
+    @MockitoBean
     private ViewsService views;
     @MockitoBean
     private OtpService otp;
@@ -80,7 +83,17 @@ class WorkspaceSecurityTest {
                 request(HttpMethod.GET, BASE + "/1/members"),
                 request(HttpMethod.GET, BASE + "/1/member-candidates?q=a"),
                 addMember(),
-                request(HttpMethod.DELETE, BASE + "/1/members/2"));
+                request(HttpMethod.DELETE, BASE + "/1/members/2"),
+                request(HttpMethod.GET, BASE + "/1/tasks?status=TODO"),
+                createTask(),
+                request(HttpMethod.PUT, BASE + "/1/tasks/3").contentType(MediaType.APPLICATION_JSON).content(TASK),
+                request(HttpMethod.DELETE, BASE + "/1/tasks/3"));
+    }
+
+    private static final String TASK = "{\"title\":\"Chạy lại họ PX2\",\"priority\":\"HIGH\"}";
+
+    private static MockHttpServletRequestBuilder createTask() {
+        return request(HttpMethod.POST, BASE + "/1/tasks").contentType(MediaType.APPLICATION_JSON).content(TASK);
     }
 
     private static MockHttpServletRequestBuilder addMember() {
@@ -119,5 +132,17 @@ class WorkspaceSecurityTest {
         when(otp.hitRateLimit(eq("vs_workspace_member"), any(), anyInt())).thenReturn(true);
         assertThat(statusOf(addMember(), RoleCode.MANAGER)).isEqualTo(429);
         assertThat(statusOf(request(HttpMethod.DELETE, BASE + "/1/members/2"), RoleCode.MANAGER)).isEqualTo(429);
+    }
+
+    @Test
+    void taskBodyIsValidatedAndTaskWritesHonourQuota() throws Exception {
+        for (String body : List.of("{}", "{\"title\":\"  \"}", "{\"title\":\"x\",\"progress_pct\":101}",
+                "{\"title\":\"" + "x".repeat(256) + "\"}", "{\"title\":\"x\",\"due_date\":\"không-phải-ngày\"}")) {
+            assertThat(statusOf(request(HttpMethod.POST, BASE + "/1/tasks").contentType(MediaType.APPLICATION_JSON).content(body),
+                    RoleCode.MANAGER)).as(body).isEqualTo(400);
+        }
+        when(otp.hitRateLimit(eq("vs_workspace_task"), any(), anyInt())).thenReturn(true);
+        assertThat(statusOf(createTask(), RoleCode.MANAGER)).isEqualTo(429);
+        assertThat(statusOf(request(HttpMethod.DELETE, BASE + "/1/tasks/3"), RoleCode.MANAGER)).isEqualTo(429);
     }
 }

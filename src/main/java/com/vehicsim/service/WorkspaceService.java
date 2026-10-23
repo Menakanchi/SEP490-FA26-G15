@@ -88,8 +88,8 @@ public class WorkspaceService {
     }
 
     /**
-     * M5: bớt một thành viên. Người đó tự rời mọi project của workspace (FK CASCADE). Người đang làm chủ project trong workspace thì
-     * chưa bớt được — chưa có luồng chuyển chủ project, bớt đi sẽ để project mồ côi trong workspace.
+     * M5: bớt một thành viên. Người đó tự rời mọi project của workspace (FK CASCADE) và task chưa xong của họ về "chưa giao".
+     * Người đang làm chủ project trong workspace thì chưa bớt được — chưa có luồng chuyển chủ project, bớt đi sẽ để project mồ côi.
      */
     @Transactional
     public RemoveMemberResult removeMember(long userId, String role, long workspaceId, long memberUserId) {
@@ -104,13 +104,16 @@ public class WorkspaceService {
                     + String.join(", ", owned) + "); chưa bớt khỏi workspace được");
         }
         int projects = repo.projectMembershipCount(workspaceId, memberUserId);
+        // Task đã DONE giữ người làm để còn lịch sử; task chưa xong về "chưa giao" để Manager giao lại.
+        int tasks = repo.unassignOpenTasks(workspaceId, memberUserId);
         repo.removeMember(workspaceId, memberUserId);
         AuditLog.event("workspace.member_remove", "success", "workspace_id", workspaceId, "user_id", memberUserId, "by", userId,
-                "projects", projects);
-        return new RemoveMemberResult(memberUserId, projects);
+                "projects", projects, "unassigned_tasks", tasks);
+        return new RemoveMemberResult(memberUserId, projects, tasks);
     }
 
-    private WorkspaceSummary requireAccessible(long userId, String role, long workspaceId) {
+    /** Workspace mà người này được quản lý (Manager được gán hoặc ADMIN); không thì 404. Dùng chung với {@link WorkspaceTaskService}. */
+    public WorkspaceSummary requireAccessible(long userId, String role, long workspaceId) {
         WorkspaceSummary ws = repo.find(workspaceId);
         if (ws == null || (!isAdmin(role) && ws.manager().id() != userId)) {
             throw new NotFoundException("workspace");
@@ -118,9 +121,9 @@ public class WorkspaceService {
         return ws;
     }
 
-    private static void requireActive(WorkspaceSummary ws) {
+    static void requireActive(WorkspaceSummary ws) {
         if (!"ACTIVE".equals(ws.status())) {
-            throw new InvalidRequestException("Workspace đã lưu trữ, không đổi thành viên được");
+            throw new InvalidRequestException("Workspace đã lưu trữ, không thay đổi được");
         }
     }
 
