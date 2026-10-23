@@ -106,7 +106,7 @@ class WorkspaceSecurityTest {
     }
 
     private static MockHttpServletRequestBuilder addMember() {
-        return request(HttpMethod.POST, BASE + "/1/members").contentType(MediaType.APPLICATION_JSON).content("{\"user_id\":2}");
+        return request(HttpMethod.POST, BASE + "/1/members").contentType(MediaType.APPLICATION_JSON).content("{\"user_id\":2,\"role\":\"ENGINEER\"}");
     }
 
     private int statusOf(MockHttpServletRequestBuilder builder, RoleCode code) throws Exception {
@@ -137,6 +137,9 @@ class WorkspaceSecurityTest {
     @Test
     void addMemberValidatesBodyAndHonoursWriteQuota() throws Exception {
         assertThat(statusOf(request(HttpMethod.POST, BASE + "/1/members").contentType(MediaType.APPLICATION_JSON).content("{}"),
+                RoleCode.MANAGER)).isEqualTo(400);
+        // Thiếu vai trò cấp cho người được thêm (ADR-045).
+        assertThat(statusOf(request(HttpMethod.POST, BASE + "/1/members").contentType(MediaType.APPLICATION_JSON).content("{\"user_id\":2}"),
                 RoleCode.MANAGER)).isEqualTo(400);
         when(otp.hitRateLimit(eq("vs_workspace_member"), any(), anyInt())).thenReturn(true);
         assertThat(statusOf(addMember(), RoleCode.MANAGER)).isEqualTo(429);

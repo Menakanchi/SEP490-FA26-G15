@@ -34,6 +34,7 @@ import type {
   WorkspaceDetail,
   WorkspaceMember,
   WorkspaceMemberCandidate,
+  WorkspaceMemberRole,
   WorkspaceReport,
   WorkspaceSummary,
   WorkspaceTask,
@@ -164,11 +165,15 @@ export const vehicsimApi = {
   workspaceMembers: (id: number) => apiRequest<WorkspaceMember[]>(`/vehicsim/workspaces/${id}/members`),
   workspaceMemberCandidates: (id: number, q: string) =>
     apiRequest<WorkspaceMemberCandidate[]>(`/vehicsim/workspaces/${id}/member-candidates${query({ q })}`),
-  addWorkspaceMember: (id: number, userId: number) =>
-    apiRequest<WorkspaceMember>(`/vehicsim/workspaces/${id}/members`, { method: "POST", body: JSON.stringify({ user_id: userId }) }),
-  /** Bớt thành viên; người đó tự rời mọi project của workspace. */
+  /** Thêm một tài khoản EXPERIENCER và cấp role cho người đó (ADR-045). */
+  addWorkspaceMember: (id: number, userId: number, role: WorkspaceMemberRole) =>
+    apiRequest<WorkspaceMember>(`/vehicsim/workspaces/${id}/members`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId, role }),
+    }),
+  /** Bớt thành viên; người đó tự rời mọi project của workspace, role đã cấp về EXPERIENCER nếu không còn workspace nào. */
   removeWorkspaceMember: (id: number, userId: number) =>
-    apiRequest<{ user_id: number; removed_project_memberships: number; unassigned_tasks: number }>(
+    apiRequest<{ user_id: number; removed_project_memberships: number; unassigned_tasks: number; role_reverted: boolean }>(
       `/vehicsim/workspaces/${id}/members/${userId}`,
       { method: "DELETE" },
     ),

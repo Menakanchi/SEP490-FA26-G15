@@ -10,16 +10,19 @@ import com.vehicsim.vehicsim.Vs.InvalidRequestException;
 import com.vehicsim.vehicsim.Vs.NotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.never;
@@ -28,8 +31,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Luật quản lý workspace (M1…M5, ADR-035 / ADR-038): Manager chỉ thấy workspace mình được gán (khác thì 404), ADMIN thấy tất cả;
- * chỉ thêm ENGINEER / REVIEWER đang hoạt động; workspace lưu trữ không đổi thành viên; chủ project chưa bớt được.
+ * Luật quản lý workspace (M1…M5, ADR-035 / ADR-038 / ADR-045): Manager chỉ thấy workspace mình được gán (khác thì 404), ADMIN thấy
+ * tất cả; chỉ thêm tài khoản EXPERIENCER đang hoạt động và cấp role ENGINEER / REVIEWER cho người đó; bớt khỏi workspace cuối cùng
+ * thì role đã cấp trả về EXPERIENCER; workspace lưu trữ không đổi thành viên; chủ project chưa bớt được.
  */
 class WorkspaceServiceTest {
 
@@ -75,9 +79,10 @@ class WorkspaceServiceTest {
     void anotherManagersWorkspaceLooksLikeItDoesNotExist() {
         assertThatThrownBy(() -> service.detail(OTHER_MANAGER, "MANAGER", WS)).isInstanceOf(NotFoundException.class);
         assertThatThrownBy(() -> service.members(OTHER_MANAGER, "MANAGER", WS)).isInstanceOf(NotFoundException.class);
-        assertThatThrownBy(() -> service.addMember(OTHER_MANAGER, "MANAGER", WS, ENGINEER)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.addMember(OTHER_MANAGER, "MANAGER", WS, ENGINEER, "ENGINEER")).isInstanceOf(NotFoundException.class);
         assertThatThrownBy(() -> service.removeMember(OTHER_MANAGER, "MANAGER", WS, ENGINEER)).isInstanceOf(NotFoundException.class);
-        verify(repo, never()).addMember(anyLong(), anyLong(), anyLong());
+        verify(repo, never()).addMember(anyLong(), anyLong(), anyLong(), any());
+        verify(repo, never()).setRole(anyLong(), anyString());
         verify(repo, never()).removeMember(anyLong(), anyLong());
     }
 
@@ -103,52 +108,68 @@ class WorkspaceServiceTest {
     // ------------------------------------------------------------------ M4: thêm
 
     @Test
-    void addsAnActiveEngineerOrReviewerAndRecordsWhoAddedThem() {
-        for (String role : List.of("ENGINEER", "REVIEWER")) {
-            when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", role, true));
+    void addingAnExperiencerGrantsTheChosenRoleAndRecordsIt() {
+        for (String granted : List.of("ENGINEER", "REVIEWER")) {
+            when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", "EXPERIENCER", true));
             when(repo.membersOf(WS)).thenReturn(List.of(member(ENGINEER)));
 
-            assertThat(service.addMember(MANAGER, "MANAGER", WS, ENGINEER).userId()).isEqualTo(ENGINEER);
+            assertThat(service.addMember(MANAGER, "MANAGER", WS, ENGINEER, granted).userId()).isEqualTo(ENGINEER);
+
+            InOrder order = inOrder(repo);
+            order.verify(repo).setRole(ENGINEER, granted);
+            order.verify(repo).addMember(WS, ENGINEER, MANAGER, granted);
         }
-        verify(repo, times(2)).addMember(WS, ENGINEER, MANAGER);
-        verify(notifications, times(2)).notify(eq(ENGINEER),
-                eq(MANAGER), eq(WS), eq("MEMBER_ADDED"),
-                contains("AEB Pedestrian"), anyString(),
-                eq("WORKSPACE"), eq(WS));
+        verify(notifications).notify(eq(ENGINEER), eq(MANAGER), eq(WS), eq("MEMBER_ADDED"), contains("AEB Pedestrian"),
+                contains("vai trò Kỹ sư"), eq("WORKSPACE"), eq(WS));
+        verify(notifications).notify(eq(ENGINEER), eq(MANAGER), eq(WS), eq("MEMBER_ADDED"), contains("AEB Pedestrian"),
+                contains("vai trò Người duyệt"), eq("WORKSPACE"), eq(WS));
     }
 
     @Test
-    void onlyEngineersAndReviewersCanJoin() {
-        for (String role : List.of("ADMIN", "MANAGER", "EXPERIENCER")) {
-            when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "x@example.com", role, true));
-            assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, ENGINEER))
-                    .as("%s không vào workspace", role).isInstanceOf(InvalidRequestException.class).hasMessageContaining(role);
+    void theGrantedRoleMustBeEngineerOrReviewer() {
+        when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "x@example.com", "EXPERIENCER", true));
+        for (String granted : java.util.Arrays.asList(null, "", "ADMIN", "MANAGER", "EXPERIENCER", "engineer")) {
+            assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, ENGINEER, granted))
+                    .as("cấp role %s", granted).isInstanceOf(InvalidRequestException.class).hasMessageContaining("Chọn vai trò");
         }
-        verify(repo, never()).addMember(anyLong(), anyLong(), anyLong());
+        verify(repo, never()).setRole(anyLong(), anyString());
+        verify(repo, never()).addMember(anyLong(), anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void onlySelfSignupAccountsCanJoin() {
+        for (String role : List.of("ADMIN", "MANAGER", "ENGINEER", "REVIEWER")) {
+            when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "x@example.com", role, true));
+            assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, ENGINEER, "ENGINEER"))
+                    .as("%s không thêm được", role).isInstanceOf(InvalidRequestException.class).hasMessageContaining(role);
+        }
+        verify(repo, never()).setRole(anyLong(), anyString());
+        verify(repo, never()).addMember(anyLong(), anyLong(), anyLong(), any());
         verifyNoInteractions(notifications);
     }
 
     @Test
     void lockedUnknownOrExistingMembersAreRefused() {
-        when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", "ENGINEER", false));
-        assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, ENGINEER)).hasMessageContaining("khoá");
+        when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", "EXPERIENCER", false));
+        assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, ENGINEER, "ENGINEER")).hasMessageContaining("khoá");
 
-        assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, 404L)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, 404L, "ENGINEER")).isInstanceOf(NotFoundException.class);
 
         when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", "ENGINEER", true));
         when(repo.isMember(WS, ENGINEER)).thenReturn(true);
-        assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, ENGINEER)).hasMessageContaining("đã là thành viên");
+        assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, ENGINEER, "ENGINEER")).hasMessageContaining("đã là thành viên");
 
-        verify(repo, never()).addMember(anyLong(), anyLong(), anyLong());
+        verify(repo, never()).setRole(anyLong(), anyString());
+        verify(repo, never()).addMember(anyLong(), anyLong(), anyLong(), any());
     }
 
     @Test
     void archivedWorkspaceMembershipIsFrozen() {
         when(repo.find(WS)).thenReturn(workspace("ARCHIVED"));
-        when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", "ENGINEER", true));
+        when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", "EXPERIENCER", true));
         when(repo.isMember(WS, ENGINEER)).thenReturn(true);
 
-        assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, ENGINEER)).hasMessageContaining("lưu trữ");
+        assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, ENGINEER, "ENGINEER")).hasMessageContaining("lưu trữ");
         assertThatThrownBy(() -> service.removeMember(MANAGER, "MANAGER", WS, ENGINEER)).hasMessageContaining("lưu trữ");
         // Vẫn xem được workspace đã lưu trữ.
         assertThat(service.members(MANAGER, "MANAGER", WS)).isEmpty();
@@ -167,11 +188,50 @@ class WorkspaceServiceTest {
 
         assertThat(result.removedProjectMemberships()).isEqualTo(2);
         assertThat(result.unassignedTasks()).isEqualTo(3);
+        assertThat(result.roleReverted()).as("role do Admin cấp (granted_role NULL) giữ nguyên").isFalse();
         verify(repo).unassignOpenTasks(WS, ENGINEER);
         verify(repo).removeMember(WS, ENGINEER);
+        verify(repo, never()).setRole(anyLong(), anyString());
         verify(notifications).notify(eq(ENGINEER), eq(MANAGER),
                 eq(WS), eq("SYSTEM"), anyString(),
                 contains("3 task"), eq("WORKSPACE"), eq(WS));
+    }
+
+    @Test
+    void leavingTheLastWorkspaceTurnsAGrantedRoleBackIntoExperiencer() {
+        when(repo.isMember(WS, ENGINEER)).thenReturn(true);
+        when(repo.ownedProjectNames(WS, ENGINEER)).thenReturn(List.of());
+        when(repo.grantedRole(WS, ENGINEER)).thenReturn("REVIEWER");
+        when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", "REVIEWER", true));
+        when(repo.workspaceCount(ENGINEER)).thenReturn(0);
+
+        assertThat(service.removeMember(MANAGER, "MANAGER", WS, ENGINEER).roleReverted()).isTrue();
+
+        InOrder order = inOrder(repo);
+        order.verify(repo).grantedRole(WS, ENGINEER);
+        order.verify(repo).removeMember(WS, ENGINEER);
+        order.verify(repo).setRole(ENGINEER, "EXPERIENCER");
+        verify(notifications).notify(eq(ENGINEER), eq(MANAGER), eq(WS), eq("SYSTEM"), anyString(),
+                contains("Experiencer"), eq("WORKSPACE"), eq(WS));
+    }
+
+    @Test
+    void aGrantedRoleIsKeptWhileStillInAnotherWorkspaceOrAfterAdminChangedIt() {
+        when(repo.isMember(WS, ENGINEER)).thenReturn(true);
+        when(repo.ownedProjectNames(WS, ENGINEER)).thenReturn(List.of());
+        when(repo.grantedRole(WS, ENGINEER)).thenReturn("ENGINEER");
+
+        // Còn ở workspace khác.
+        when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", "ENGINEER", true));
+        when(repo.workspaceCount(ENGINEER)).thenReturn(1);
+        assertThat(service.removeMember(MANAGER, "MANAGER", WS, ENGINEER).roleReverted()).isFalse();
+
+        // Admin đã đổi role khác sau khi thêm: không ghi đè quyết định của Admin.
+        when(repo.workspaceCount(ENGINEER)).thenReturn(0);
+        when(repo.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", "MANAGER", true));
+        assertThat(service.removeMember(MANAGER, "MANAGER", WS, ENGINEER).roleReverted()).isFalse();
+
+        verify(repo, never()).setRole(anyLong(), anyString());
     }
 
     @Test

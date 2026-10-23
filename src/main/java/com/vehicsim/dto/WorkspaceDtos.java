@@ -13,15 +13,17 @@ import java.util.List;
 
 /**
  * Body và kết quả của các route quản lý workspace (Manager — M1…M9): xem workspace mình quản lý, thành viên, thêm / bớt
- * ENGINEER và REVIEWER, giao và theo dõi task, duyệt báo cáo công việc. JSON snake_case giữ cùng quy ước với {@code frontend/src/services/vehicsim.ts}.
+ * thành viên (cấp role ENGINEER / REVIEWER khi thêm), giao và theo dõi task, duyệt báo cáo công việc. JSON snake_case giữ cùng quy ước với {@code frontend/src/services/vehicsim.ts}.
  */
 public final class WorkspaceDtos {
 
     private WorkspaceDtos() {
     }
 
-    /** {@code POST /workspaces/{id}/members}: thêm một người đã có tài khoản ENGINEER / REVIEWER. */
-    public record AddMemberRequest(@JsonProperty("user_id") @NotNull Long userId) {
+    /** {@code POST /workspaces/{id}/members}: thêm một tài khoản EXPERIENCER và cấp role ENGINEER / REVIEWER cho người đó (ADR-045). */
+    public record AddMemberRequest(
+            @JsonProperty("user_id") @NotNull Long userId,
+            @NotBlank(message = "Chọn vai trò ENGINEER hoặc REVIEWER cho người được thêm") String role) {
     }
 
     /** Người dùng rút gọn: Manager của workspace, người đã thêm thành viên, chủ project. */
@@ -69,7 +71,7 @@ public final class WorkspaceDtos {
             @JsonProperty("open_task_count") int openTaskCount) {
     }
 
-    /** Người có thể thêm vào workspace (M4): tài khoản đang hoạt động, role ENGINEER / REVIEWER, chưa là thành viên. */
+    /** Người có thể thêm vào workspace (M4): tài khoản EXPERIENCER đang hoạt động, chưa là thành viên; role cấp lúc thêm. */
     public record MemberCandidate(
             @JsonProperty("user_id") long userId,
             @JsonProperty("full_name") String fullName,
@@ -78,13 +80,14 @@ public final class WorkspaceDtos {
     }
 
     /**
-     * Kết quả bớt thành viên (M5): số project người đó bị rời theo (CASCADE {@code project_members}) và số task chưa xong được gỡ người
-     * nhận (task đã DONE giữ tên người làm để còn lịch sử).
+     * Kết quả bớt thành viên (M5): số project người đó bị rời theo (CASCADE {@code project_members}), số task chưa xong được gỡ người
+     * nhận (task đã DONE giữ tên người làm để còn lịch sử) và người đó có bị trả role về EXPERIENCER không (ADR-045).
      */
     public record RemoveMemberResult(
             @JsonProperty("user_id") long userId,
             @JsonProperty("removed_project_memberships") int removedProjectMemberships,
-            @JsonProperty("unassigned_tasks") int unassignedTasks) {
+            @JsonProperty("unassigned_tasks") int unassignedTasks,
+            @JsonProperty("role_reverted") boolean roleReverted) {
     }
 
     /**

@@ -100,8 +100,8 @@ public class WorkspaceRepository {
     }
 
     /**
-     * Người thêm được: đang hoạt động, role ENGINEER / REVIEWER, chưa ở workspace này; lọc theo email hoặc tên chứa {@code q}
-     * (bỏ trống = tất cả). Tối đa {@code limit} người.
+     * Người thêm được: tài khoản tự đăng ký (EXPERIENCER) đang hoạt động, chưa ở workspace này (ADR-045); lọc theo email hoặc tên
+     * chứa {@code q} (bỏ trống = tất cả). Tối đa {@code limit} người.
      */
     public List<MemberCandidate> candidatesFor(long workspaceId, String q, int limit) {
         String like = "%" + (q == null ? "" : q.trim().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")) + "%";
@@ -110,7 +110,7 @@ public class WorkspaceRepository {
                   FROM users u
                   JOIN roles r ON r.id = u.role_id
                  WHERE u.is_active = TRUE
-                   AND r.code IN ('ENGINEER', 'REVIEWER')
+                   AND r.code = 'EXPERIENCER'
                    AND NOT EXISTS (SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = ? AND wm.user_id = u.id)
                    AND (u.email LIKE ? OR %s LIKE ?)
                  ORDER BY u.email
@@ -134,8 +134,27 @@ public class WorkspaceRepository {
         return db.first("SELECT 1 AS x FROM workspace_members WHERE workspace_id = ? AND user_id = ?", workspaceId, userId) != null;
     }
 
-    public void addMember(long workspaceId, long userId, long addedBy) {
-        db.insert("INSERT INTO workspace_members (workspace_id, user_id, added_by_user_id) VALUES (?,?,?)", workspaceId, userId, addedBy);
+    /** {@code grantedRole}: role cấp lúc thêm (ADR-045), để bớt khỏi workspace cuối cùng thì trả về EXPERIENCER; null = role có từ trước. */
+    public void addMember(long workspaceId, long userId, long addedBy, String grantedRole) {
+        db.insert("INSERT INTO workspace_members (workspace_id, user_id, added_by_user_id, granted_role) VALUES (?,?,?,?)",
+                workspaceId, userId, addedBy, grantedRole);
+    }
+
+    /** Role được cấp khi thêm người này vào workspace, hoặc null nếu role có từ trước (Admin cấp). */
+    public String grantedRole(long workspaceId, long userId) {
+        Row r = db.first("SELECT granted_role FROM workspace_members WHERE workspace_id = ? AND user_id = ?", workspaceId, userId);
+        return r == null ? null : r.str("granted_role");
+    }
+
+    /** Số workspace người này đang là thành viên. */
+    public int workspaceCount(long userId) {
+        Object n = db.scalar("SELECT COUNT(*) FROM workspace_members WHERE user_id = ?", userId);
+        return n == null ? 0 : ((Number) n).intValue();
+    }
+
+    /** Đổi role hệ thống của tài khoản ({@code users.role_id}); có hiệu lực từ request kế tiếp vì role đọc lại từ DB mỗi request. */
+    public void setRole(long userId, String roleCode) {
+        db.update("UPDATE users SET role_id = (SELECT id FROM roles WHERE code = ?) WHERE id = ?", roleCode, userId);
     }
 
     /** Tên các project người này đang làm chủ trong workspace. */

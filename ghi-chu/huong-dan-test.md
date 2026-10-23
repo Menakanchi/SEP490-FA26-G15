@@ -18,9 +18,10 @@ Branch: `feature/manager-workspace`. Thắc mắc chưa chốt: xem [thac-mac-co
 | `manager@example.com` | MANAGER | Quản lý workspace "AEB Pedestrian" (id 1) |
 | `manager2@example.com` | MANAGER | Workspace "Nhóm thử nghiệm B" — kiểm cách ly |
 | `eng1@example.com` | ENGINEER | Màn 1, nhận task / thông báo |
-| `eng2@example.com` | ENGINEER | Thành viên workspace 1 |
+| `eng2@example.com` | ENGINEER | Thành viên workspace 1 (chủ project, không bớt được) |
 | `rev1@example.com` | REVIEWER | Thành viên workspace 1 |
-| `exp1@example.com` | EXPERIENCER | Không thêm vào workspace được |
+| `exp1@example.com` | EXPERIENCER | Tài khoản tự đăng ký — thêm vào workspace và cấp vai trò |
+| `exp2@example.com` | EXPERIENCER | Như exp1 |
 | `admin@example.com` | ADMIN | Thấy mọi workspace |
 
 ### Tự khởi động lại (khi đã tắt máy)
@@ -58,6 +59,7 @@ services:
 |---|---|
 | Backend báo `Unresolved compilation problem` | IDE ghi `.class` lỗi; chạy lại với `clean compile` (lệnh trên đã có) |
 | Đăng nhập / API trả 429 "quá nhiều yêu cầu" khi đổi tài khoản liên tục | Git Bash: `MSYS_NO_PATHCONV=1 docker exec sep490-fa26-g15-redis-1 sh -c 'redis-cli --scan --pattern "ratelimit:*" \| xargs -r redis-cli del'` |
+| Bớt nhầm `rev1` / `eng1` (role do Admin cấp) và cần đưa lại | Git Bash: `MSYS_NO_PATHCONV=1 docker exec -e MYSQL_PWD=vehicsim_root sep490-fa26-g15-mysql-1 mysql -uroot vehicsim -e "INSERT INTO workspace_members (workspace_id, user_id, added_by_user_id) SELECT 1, u.id, m.id FROM users u, users m WHERE u.email='rev1@example.com' AND m.email='manager@example.com'"` |
 | Màn duyệt báo cáo rỗng | App chưa có luồng nộp báo cáo — chèn báo cáo mẫu bằng SQL (mục 2.B bước 0) |
 
 ---
@@ -126,9 +128,11 @@ SQL
 | ☐ | 1 | Sidebar có mục **Workspace** → bấm vào | Chỉ thấy "AEB Pedestrian"; **không** thấy "Nhóm thử nghiệm B" (của manager2); có cột task mở, báo cáo chờ duyệt |
 | ☐ | 2 | Mở "AEB Pedestrian" | Thấy 2 project (VF8 AEB MVP, Đánh giá VF9 ban đêm) và danh sách thành viên (eng1, eng2, rev1) |
 | ☐ | 3 | Nút **Bớt** ở dòng chủ project | Bị khoá (không bớt được chủ project) |
-| ☐ | 4 | Bớt `eng2` → xác nhận | eng2 biến mất; báo số project rời / task chuyển về "chưa giao" |
-| ☐ | 5 | Ô tìm thành viên gõ `eng` / `exp` | Tìm ra eng2 (thêm được); **không** ra exp1 (EXPERIENCER) hay người đã là thành viên |
-| ☐ | 6 | Thêm lại `eng2` | Thêm thành công, eng2 quay lại danh sách |
+| ☐ | 4 | Bấm **Bớt** ở dòng `rev1` → đọc hộp xác nhận → bấm **Huỷ** | Hộp báo 3 task chưa xong sẽ chuyển về "chưa giao"; Huỷ thì không đổi gì. (Đừng bớt thật: rev1 do Admin cấp role, không thêm lại qua màn này được) |
+| ☐ | 5 | Bấm **+ Thêm thành viên** (góc phải khung "Thành viên") | Khung tìm mở ngay trên bảng, tự liệt kê **chỉ tài khoản Experiencer** (exp1, exp2); không ra Kỹ sư / Người duyệt sẵn có |
+| ☐ | 6 | Ở dòng exp1: nút **Thêm** đang khoá → chọn vai trò **Người duyệt** → Thêm | Nút mở khi đã chọn vai trò; thêm xong exp1 vào bảng với vai trò "Người duyệt" |
+| ☐ | 6a | Đăng nhập `exp1` (tab ẩn danh) | Chuông có thông báo "… với vai trò Người duyệt. Đăng nhập lại …"; sau khi đăng nhập lại menu theo vai trò Người duyệt |
+| ☐ | 6b | Quay lại tài khoản Manager/Admin, **Bớt** exp1 | Thông báo có "tài khoản trở lại Experiencer"; bấm Tìm lại thấy exp1 trong danh sách thêm được |
 
 **B2. Giao và theo dõi task (M6–M7)**
 

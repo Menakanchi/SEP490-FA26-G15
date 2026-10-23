@@ -736,7 +736,8 @@ export interface WorkspaceMember {
   user_id: number; full_name: string; email: string; role: WorkspaceMemberRole; is_active: boolean; joined_at: string;
   added_by: WorkspaceUserRef | null; project_count: number; owned_project_count: number; open_task_count: number;
 }
-export interface WorkspaceMemberCandidate { user_id: number; full_name: string; email: string; role: WorkspaceMemberRole }
+/** Người thêm được: tài khoản tự đăng ký (EXPERIENCER); role ENGINEER / REVIEWER chọn lúc thêm (ADR-045). */
+export interface WorkspaceMemberCandidate { user_id: number; full_name: string; email: string; role: "EXPERIENCER" }
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
 export interface WorkspaceTask {
