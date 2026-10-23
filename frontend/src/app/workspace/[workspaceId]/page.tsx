@@ -83,7 +83,8 @@ export default function WorkspaceDetailPage() {
   const remove = async (m: WorkspaceMember) => {
     const ok = window.confirm(
       `Bớt ${m.full_name} khỏi workspace?` +
-        (m.project_count ? `\nNgười này sẽ tự rời ${m.project_count} project của workspace.` : ""),
+        (m.project_count ? `\nNgười này sẽ tự rời ${m.project_count} project của workspace.` : "") +
+        (m.open_task_count ? `\n${m.open_task_count} task chưa xong của họ sẽ chuyển về “chưa giao”.` : ""),
     );
     if (!ok) return;
     setBusy(m.user_id);
@@ -91,10 +92,11 @@ export default function WorkspaceDetailPage() {
     setNotice(null);
     try {
       const r = await vehicsimApi.removeWorkspaceMember(id, m.user_id);
-      setNotice(
-        `Đã bớt ${m.full_name} khỏi workspace` +
-          (r.removed_project_memberships ? `, rời ${r.removed_project_memberships} project.` : "."),
-      );
+      const parts = [
+        r.removed_project_memberships ? `rời ${r.removed_project_memberships} project` : "",
+        r.unassigned_tasks ? `${r.unassigned_tasks} task chưa xong chuyển về “chưa giao”` : "",
+      ].filter(Boolean);
+      setNotice(`Đã bớt ${m.full_name} khỏi workspace${parts.length ? `; ${parts.join(", ")}` : ""}.`);
       setCandidates(null);
       await load();
     } catch (err) {
@@ -114,6 +116,7 @@ export default function WorkspaceDetailPage() {
       title={ws?.name ?? "Workspace"}
       badges={ws && <Tag tone={active ? "ok" : "neutral"}>{active ? "Hoạt động" : "Đã lưu trữ"}</Tag>}
       subtitle={ws ? `${(ws.description || "Chưa có mô tả").replace(/[.\s]+$/, "")}. Quản lý: ${ws.manager.full_name}.` : undefined}
+      actions={allowed && ws ? <PillButton href={`/workspace/${id}/tasks`}>Task của workspace →</PillButton> : undefined}
     >
       {!allowed ? (
         <EmptyState title="Chỉ Quản lý workspace hoặc Quản trị viên được vào màn này" />
@@ -146,6 +149,7 @@ export default function WorkspaceDetailPage() {
                 <span className="min-w-0 flex-1">Người dùng</span>
                 <span className="w-[130px]">Vai trò</span>
                 <span className="w-[90px]">Project</span>
+                <span className="w-[90px]">Task mở</span>
                 <span className="w-[180px]">Thêm bởi</span>
                 <span className="w-[100px]">Ngày vào</span>
                 <span className="w-[90px]" />
@@ -171,6 +175,7 @@ export default function WorkspaceDetailPage() {
                       {m.project_count}
                       {owner && <span className="text-vehicsim-faint"> · chủ {m.owned_project_count}</span>}
                     </span>
+                    <span className="w-[90px] text-[13px] text-vehicsim-ink">{m.open_task_count}</span>
                     <span className="w-[180px] truncate pr-3 text-[13px] text-vehicsim-muted">{m.added_by?.full_name ?? "—"}</span>
                     <span className="w-[100px] text-[13px] text-vehicsim-faint">{fmt.date(m.joined_at)}</span>
                     <span className="flex w-[90px] justify-end">
