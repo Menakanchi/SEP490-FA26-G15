@@ -83,14 +83,14 @@ public class WorkspaceController {
         return workspaces.candidates(uid, VehicSimAccess.roleOf(user), workspaceId, q);
     }
 
-    @Operation(summary = "M4 — Thêm ENGINEER / REVIEWER vào workspace")
+    @Operation(summary = "M4 — Thêm tài khoản EXPERIENCER vào workspace và cấp role ENGINEER / REVIEWER")
     @PostMapping("/workspaces/{workspaceId}/members")
     public ResponseEntity<MemberItem> addMember(@PathVariable long workspaceId, @Valid @RequestBody AddMemberRequest body,
                                                 @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireWorkspaceManager(user);
         access.limitWrites(uid, "workspace_member");
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(workspaces.addMember(uid, VehicSimAccess.roleOf(user), workspaceId, body.userId()));
+                .body(workspaces.addMember(uid, VehicSimAccess.roleOf(user), workspaceId, body.userId(), body.role()));
     }
 
     @Operation(summary = "M5 — Bớt thành viên khỏi workspace (tự rời mọi project của workspace)")

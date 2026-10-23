@@ -88,6 +88,8 @@ CREATE TABLE workspace_members (
   workspace_id     BIGINT UNSIGNED NOT NULL,
   user_id          BIGINT UNSIGNED NOT NULL,
   added_by_user_id BIGINT UNSIGNED NULL,
+  granted_role     ENUM('ENGINEER','REVIEWER') NULL
+                   COMMENT 'Role cấp khi thêm tài khoản EXPERIENCER (ADR-045); NULL = role có từ trước. Rời workspace cuối cùng thì về EXPERIENCER',
   joined_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_workspace_members (workspace_id, user_id),

@@ -47,10 +47,10 @@ Bảng chưa có code là thiết kế trước theo FE (0 dòng); màn hình / 
 | Role | Được làm |
 |---|---|
 | ADMIN | Quản trị user / role, tạo workspace và gán Manager (ADR-038), quản lý `tech_references` |
-| MANAGER | Quản lý workspace được Admin gán: xem mọi thành viên, thêm Engineer / Reviewer, giao task, duyệt báo cáo của các project. Không làm kỹ thuật, không tạo project, không duyệt khuyến nghị |
+| MANAGER | Quản lý workspace được Admin gán: xem mọi thành viên, thêm tài khoản Experiencer và cấp role Engineer / Reviewer cho người đó (ADR-045), giao task, duyệt báo cáo của các project. Không làm kỹ thuật, không tạo project, không duyệt khuyến nghị |
 | ENGINEER | Toàn bộ quy trình kỹ thuật trong project của workspace (xe, kịch bản, mô phỏng, tối ưu, regression) |
 | REVIEWER | Xem kết quả, Accept / Reject khuyến nghị — quyết định cuối, không cần Manager (ADR-037). Không chạy mô phỏng |
-| EXPERIENCER | Người tự đăng ký: project cá nhân, chạy tới tối ưu + regression; **không có** khuyến nghị / duyệt |
+| EXPERIENCER | Người tự đăng ký: project cá nhân, chạy tới tối ưu + regression; **không có** khuyến nghị / duyệt. Được thêm vào workspace thì thành Engineer / Reviewer, rời workspace cuối cùng thì trở lại Experiencer (ADR-045) |
 
 Quyền xem thành viên (kiểm ở API, ADR-038): Manager xem mọi thành viên workspace mình quản lý; trong project chỉ
 owner và thành viên của chính project đó xem được danh sách thành viên — không xem được thành viên project khác.
@@ -301,14 +301,15 @@ Chưa có API Admin tạo workspace / gán Manager.
 
 #### `workspace_members` — FE-03
 
-Engineer / Reviewer thuộc workspace nào, do Manager thêm. **Code dùng:** `WorkspaceService` thêm / bớt (chỉ tài khoản ENGINEER / REVIEWER đang hoạt động; workspace ARCHIVED không đổi; chủ project trong workspace chưa bớt được). Thành viên chưa lọc dữ liệu người đó thấy (TD-30).
+Engineer / Reviewer thuộc workspace nào, do Manager thêm. **Code dùng:** `WorkspaceService` thêm / bớt (ADR-045: chỉ thêm tài khoản tự đăng ký EXPERIENCER đang hoạt động, Manager / Admin chọn role ENGINEER / REVIEWER và `users.role_id` đổi theo; bớt khỏi workspace cuối cùng thì role đã cấp trả về EXPERIENCER; workspace ARCHIVED không đổi; chủ project trong workspace chưa bớt được). Thành viên chưa lọc dữ liệu người đó thấy (TD-30).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; AI | Khoá chính. |
 | `workspace_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_workspace_members`; FK → `workspaces` | Workspace. |
-| `user_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_workspace_members`; FK → `users` | Thành viên. Service chỉ cho thêm người mang ENGINEER / REVIEWER. |
+| `user_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_workspace_members`; FK → `users` | Thành viên. Service chỉ cho thêm tài khoản EXPERIENCER và cấp role lúc thêm (ADR-045). |
 | `added_by_user_id` | BIGINT UNSIGNED |  |  | FK → `users` | Manager đã thêm. |
+| `granted_role` | ENUM |  | NULL |  | Role cấp lúc thêm (ADR-045, migration 010); NULL = role có từ trước (Admin cấp). Bớt khỏi workspace cuối cùng mà role vẫn là giá trị này thì service trả về EXPERIENCER. Giá trị: 'ENGINEER', 'REVIEWER'. |
 | `joined_at` | DATETIME | ✓ | `CURRENT_TIMESTAMP` |  | Lúc được thêm. |
 
 #### `workspace_messages` — FE-03-06

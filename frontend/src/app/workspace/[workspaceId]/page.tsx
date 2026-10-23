@@ -19,7 +19,7 @@ function RoleTag({ role }: { role: WorkspaceMemberRole }) {
   return <Tag tone={r.tone}>{r.label}</Tag>;
 }
 
-/** M2 — chi tiết workspace và project; M3 — thành viên; M4 — thêm; M5 — bớt. */
+/** M2 — chi tiết workspace và project; M3 — thành viên; M4 — thêm tài khoản Experiencer và cấp vai trò (ADR-045); M5 — bớt. */
 export default function WorkspaceDetailPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const id = Number(workspaceId);
@@ -32,8 +32,10 @@ export default function WorkspaceDetailPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
 
+  const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [candidates, setCandidates] = useState<WorkspaceMemberCandidate[] | null>(null);
+  const [picked, setPicked] = useState<Record<number, WorkspaceMemberRole>>({});
   const [searching, setSearching] = useState(false);
 
   const load = useCallback(async () => {
@@ -51,12 +53,12 @@ export default function WorkspaceDetailPage() {
     if (allowed) void load();
   }, [allowed, load]);
 
-  const search = async (e?: React.FormEvent) => {
+  const search = async (e?: React.FormEvent, q = query) => {
     e?.preventDefault();
     setSearching(true);
     setError(null);
     try {
-      setCandidates(await vehicsimApi.workspaceMemberCandidates(id, query.trim()));
+      setCandidates(await vehicsimApi.workspaceMemberCandidates(id, q.trim()));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không tìm được người dùng");
     } finally {
@@ -65,12 +67,14 @@ export default function WorkspaceDetailPage() {
   };
 
   const add = async (c: WorkspaceMemberCandidate) => {
+    const role = picked[c.user_id];
+    if (!role) return;
     setBusy(c.user_id);
     setError(null);
     setNotice(null);
     try {
-      await vehicsimApi.addWorkspaceMember(id, c.user_id);
-      setNotice(`Đã thêm ${c.full_name} (${MEMBER_ROLE[c.role]?.label ?? c.role}) vào workspace.`);
+      await vehicsimApi.addWorkspaceMember(id, c.user_id, role);
+      setNotice(`Đã thêm ${c.full_name} vào workspace với vai trò ${MEMBER_ROLE[role].label}.`);
       setCandidates((list) => (list ?? []).filter((x) => x.user_id !== c.user_id));
       await load();
     } catch (err) {
@@ -78,6 +82,17 @@ export default function WorkspaceDetailPage() {
     } finally {
       setBusy(null);
     }
+  };
+
+  /** Mở khung thêm ngay trên bảng thành viên và liệt kê luôn những người thêm được (ô tìm trống = tất cả). */
+  const toggleAdding = () => {
+    if (adding) {
+      setAdding(false);
+      return;
+    }
+    setAdding(true);
+    setQuery("");
+    void search(undefined, "");
   };
 
   const remove = async (m: WorkspaceMember) => {
@@ -95,6 +110,7 @@ export default function WorkspaceDetailPage() {
       const parts = [
         r.removed_project_memberships ? `rời ${r.removed_project_memberships} project` : "",
         r.unassigned_tasks ? `${r.unassigned_tasks} task chưa xong chuyển về “chưa giao”` : "",
+        r.role_reverted ? "tài khoản trở lại Experiencer" : "",
       ].filter(Boolean);
       setNotice(`Đã bớt ${m.full_name} khỏi workspace${parts.length ? `; ${parts.join(", ")}` : ""}.`);
       setCandidates(null);
@@ -150,9 +166,90 @@ export default function WorkspaceDetailPage() {
           </div>
 
           <Card className="flex flex-col gap-4 p-5">
-            <CardTitle aside={<span className="text-[12px] text-vehicsim-faint">{members ? `${members.length} người` : "…"}</span>}>
+            <CardTitle
+              aside={
+                <span className="flex items-center gap-3">
+                  <span className="text-[12px] text-vehicsim-faint">{members ? `${members.length} người` : "…"}</span>
+                  <PillButton
+                    variant={adding ? "light" : "dark"}
+                    className="px-4 py-2"
+                    disabled={!active}
+                    title={!active ? "Workspace đã lưu trữ, không thêm được thành viên" : undefined}
+                    aria-expanded={adding}
+                    onClick={toggleAdding}
+                  >
+                    {adding ? "Đóng" : "+ Thêm thành viên"}
+                  </PillButton>
+                </span>
+              }
+            >
               Thành viên
             </CardTitle>
+            {active && adding && (
+              <div className="flex flex-col gap-3 rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-soft p-4">
+                <p className="text-[13px] text-vehicsim-muted">
+                  Chỉ thêm được tài khoản tự đăng ký (Experiencer) đang hoạt động. Chọn vai trò cho từng người: tài khoản đổi sang vai trò đó,
+                  và trở lại Experiencer khi bị bớt khỏi workspace cuối cùng.
+                </p>
+                <form onSubmit={search} className="flex items-center gap-2">
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    maxLength={100}
+                    autoFocus
+                    placeholder="Tìm theo email hoặc tên (để trống: tất cả)"
+                    aria-label="Tìm người dùng theo email hoặc tên"
+                    className="w-[360px] rounded-full border border-solid border-vehicsim-line bg-white px-[14px] py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                  />
+                  <PillButton type="submit" disabled={searching}>
+                    {searching ? "Đang tìm…" : "Tìm"}
+                  </PillButton>
+                </form>
+                {candidates && candidates.length === 0 && (
+                  <p className="text-[13px] text-vehicsim-faint">Không còn tài khoản Experiencer nào khớp và chưa ở workspace.</p>
+                )}
+                {candidates && candidates.length > 0 && (
+                  <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line bg-white">
+                    {candidates.map((c) => (
+                      <div key={c.user_id} className="flex h-[52px] items-center border-b border-solid border-vehicsim-line px-4 last:border-b-0">
+                        <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
+                          <span className="truncate text-[13px] font-bold text-vehicsim-ink">{c.full_name}</span>
+                          <span className="truncate text-[12px] text-vehicsim-faint">{c.email}</span>
+                        </span>
+                        <Tag tone="neutral">Experiencer</Tag>
+                        <select
+                          value={picked[c.user_id] ?? ""}
+                          onChange={(e) => setPicked((p) => ({ ...p, [c.user_id]: e.target.value as WorkspaceMemberRole }))}
+                          aria-label={`Vai trò cấp cho ${c.full_name}`}
+                          className="mx-3 w-[150px] rounded-full border border-solid border-vehicsim-line bg-white px-3 py-2 text-[13px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                        >
+                          <option value="" disabled>
+                            Chọn vai trò…
+                          </option>
+                          {(Object.keys(MEMBER_ROLE) as WorkspaceMemberRole[]).map((r) => (
+                            <option key={r} value={r}>
+                              {MEMBER_ROLE[r].label}
+                            </option>
+                          ))}
+                        </select>
+                        <PillButton
+                          variant="dark"
+                          className="px-4 py-2"
+                          disabled={busy !== null || !picked[c.user_id]}
+                          title={!picked[c.user_id] ? "Chọn vai trò trước khi thêm" : undefined}
+                          onClick={() => add(c)}
+                        >
+                          {busy === c.user_id ? "Đang thêm…" : "Thêm"}
+                        </PillButton>
+                      </div>
+                    ))}
+                    {candidates.length >= 20 && (
+                      <p className="px-4 py-2 text-[12px] text-vehicsim-faint">Hiện 20 người đầu; gõ thêm để lọc.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line">
               <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-4 text-[11px] font-semibold uppercase text-vehicsim-faint">
                 <span className="min-w-0 flex-1">Người dùng</span>
@@ -164,7 +261,7 @@ export default function WorkspaceDetailPage() {
                 <span className="w-[90px]" />
               </div>
               {members && members.length === 0 && (
-                <EmptyState title="Workspace chưa có thành viên">Tìm Kỹ sư hoặc Người duyệt ở khung bên dưới để thêm.</EmptyState>
+                <EmptyState title="Workspace chưa có thành viên">Bấm “+ Thêm thành viên” để tìm tài khoản và cấp vai trò.</EmptyState>
               )}
               {(members ?? []).map((m) => {
                 const owner = m.owned_project_count > 0;
@@ -203,52 +300,6 @@ export default function WorkspaceDetailPage() {
               })}
             </div>
           </Card>
-
-          {active && (
-            <Card className="flex flex-col gap-4 p-5">
-              <CardTitle>Thêm thành viên</CardTitle>
-              <p className="text-[13px] text-vehicsim-muted">
-                Chỉ thêm được tài khoản Kỹ sư hoặc Người duyệt đang hoạt động. Role do Quản trị viên cấp, không đổi theo workspace.
-              </p>
-              <form onSubmit={search} className="flex items-center gap-2">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  maxLength={100}
-                  placeholder="Tìm theo email hoặc tên (để trống: tất cả)"
-                  aria-label="Tìm người dùng theo email hoặc tên"
-                  className="w-[360px] rounded-full border border-solid border-vehicsim-line bg-white px-[14px] py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
-                />
-                <PillButton type="submit" disabled={searching}>
-                  {searching ? "Đang tìm…" : "Tìm"}
-                </PillButton>
-              </form>
-              {candidates && candidates.length === 0 && (
-                <p className="text-[13px] text-vehicsim-faint">Không còn Kỹ sư / Người duyệt nào khớp và chưa ở workspace.</p>
-              )}
-              {candidates && candidates.length > 0 && (
-                <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line">
-                  {candidates.map((c) => (
-                    <div key={c.user_id} className="flex h-[52px] items-center border-b border-solid border-vehicsim-line px-4 last:border-b-0">
-                      <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
-                        <span className="truncate text-[13px] font-bold text-vehicsim-ink">{c.full_name}</span>
-                        <span className="truncate text-[12px] text-vehicsim-faint">{c.email}</span>
-                      </span>
-                      <span className="w-[130px]">
-                        <RoleTag role={c.role} />
-                      </span>
-                      <PillButton variant="dark" className="px-4 py-2" disabled={busy !== null} onClick={() => add(c)}>
-                        {busy === c.user_id ? "Đang thêm…" : "Thêm"}
-                      </PillButton>
-                    </div>
-                  ))}
-                  {candidates.length >= 20 && (
-                    <p className="px-4 py-2 text-[12px] text-vehicsim-faint">Hiện 20 người đầu; gõ thêm để lọc.</p>
-                  )}
-                </div>
-              )}
-            </Card>
-          )}
 
           <Card className="flex flex-col gap-4 p-5">
             <CardTitle>Project trong workspace</CardTitle>
