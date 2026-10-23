@@ -44,7 +44,7 @@ class WorkspaceServiceTest {
     }
 
     private static WorkspaceSummary workspace(String status) {
-        return new WorkspaceSummary(WS, "AEB Pedestrian", null, status, new UserRef(MANAGER, "Quản Lý", "m@example.com"), 1, 1,
+        return new WorkspaceSummary(WS, "AEB Pedestrian", null, status, new UserRef(MANAGER, "Quản Lý", "m@example.com"), 1, 1, 0,
                 LocalDateTime.now());
     }
 

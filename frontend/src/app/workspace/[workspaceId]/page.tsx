@@ -116,7 +116,16 @@ export default function WorkspaceDetailPage() {
       title={ws?.name ?? "Workspace"}
       badges={ws && <Tag tone={active ? "ok" : "neutral"}>{active ? "Hoạt động" : "Đã lưu trữ"}</Tag>}
       subtitle={ws ? `${(ws.description || "Chưa có mô tả").replace(/[.\s]+$/, "")}. Quản lý: ${ws.manager.full_name}.` : undefined}
-      actions={allowed && ws ? <PillButton href={`/workspace/${id}/tasks`}>Task của workspace →</PillButton> : undefined}
+      actions={
+        allowed && ws ? (
+          <>
+            <PillButton href={`/workspace/${id}/reports`}>
+              Báo cáo{ws.pending_report_count ? ` (${ws.pending_report_count} chờ duyệt)` : ""} →
+            </PillButton>
+            <PillButton href={`/workspace/${id}/tasks`}>Task của workspace →</PillButton>
+          </>
+        ) : undefined
+      }
     >
       {!allowed ? (
         <EmptyState title="Chỉ Quản lý workspace hoặc Quản trị viên được vào màn này" />

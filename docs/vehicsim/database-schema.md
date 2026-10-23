@@ -366,7 +366,7 @@ CHECK: `ck_wt_progress`.
 #### `task_reports` — FE-13
 
 Báo cáo công việc gửi **theo từng project**; Manager của workspace chứa project duyệt (ADR-038). Gắn với một task
-thì tuỳ chọn, nhưng task đó phải thuộc đúng project của báo cáo. Chưa có code.
+thì tuỳ chọn, nhưng task đó phải thuộc đúng project của báo cáo. **Code dùng:** `WorkspaceReportService` (màn `/workspace/{id}/reports`): Manager / ADMIN xem và duyệt; chỉ `SUBMITTED` mới duyệt được, một lần; `REJECTED` bắt buộc `review_note`; UPDATE có điều kiện `status = 'SUBMITTED'` nên hai người duyệt cùng lúc thì người sau nhận lỗi. Chưa có luồng nộp báo cáo.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|

@@ -24,7 +24,9 @@ public class WorkspaceRepository {
             SELECT w.id, w.name, w.description, w.status, w.created_date,
                    m.id AS manager_id, %s AS manager_name, m.email AS manager_email,
                    (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count,
-                   (SELECT COUNT(*) FROM projects p WHERE p.workspace_id = w.id) AS project_count
+                   (SELECT COUNT(*) FROM projects p WHERE p.workspace_id = w.id) AS project_count,
+                   (SELECT COUNT(*) FROM task_reports r JOIN projects rp ON rp.id = r.project_id
+                     WHERE rp.workspace_id = w.id AND r.status = 'SUBMITTED') AS pending_report_count
               FROM workspaces w
               JOIN users m ON m.id = w.manager_id
             """.formatted(FULL_NAME.formatted("m"));
@@ -163,7 +165,7 @@ public class WorkspaceRepository {
     private WorkspaceSummary toSummary(Row r) {
         return new WorkspaceSummary(r.lng("id"), r.str("name"), r.str("description"), r.str("status"),
                 new UserRef(r.lng("manager_id"), r.str("manager_name"), r.str("manager_email")),
-                (int) r.lng("member_count"), (int) r.lng("project_count"), r.ts("created_date"));
+                (int) r.lng("member_count"), (int) r.lng("project_count"), (int) r.lng("pending_report_count"), r.ts("created_date"));
     }
 
     /** Tài khoản rút gọn để service kiểm điều kiện thêm thành viên. */

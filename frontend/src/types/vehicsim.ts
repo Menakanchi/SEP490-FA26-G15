@@ -725,7 +725,7 @@ export interface WorkspaceUserRef { id: number; full_name: string; email: string
 export type WorkspaceStatus = "ACTIVE" | "ARCHIVED";
 export interface WorkspaceSummary {
   id: number; name: string; description: string | null; status: WorkspaceStatus; manager: WorkspaceUserRef;
-  member_count: number; project_count: number; created_date: string;
+  member_count: number; project_count: number; pending_report_count: number; created_date: string;
 }
 export interface WorkspaceProject {
   id: number; name: string; status: "ACTIVE" | "ARCHIVED"; owner: WorkspaceUserRef; member_count: number; created_date: string;
@@ -747,4 +747,10 @@ export interface WorkspaceTask {
 export interface WorkspaceTaskRequest {
   title: string; description: string | null; priority: TaskPriority; status: TaskStatus; progress_pct: number;
   assignee_id: number | null; project_id: number | null; due_date: string | null;
+}
+export type ReportStatus = "SUBMITTED" | "APPROVED" | "REJECTED";
+export interface WorkspaceReport {
+  id: number; project: { id: number; name: string }; task: { id: number; title: string } | null; submitted_by: WorkspaceUserRef;
+  title: string; content: string; attachment_url: string | null; status: ReportStatus;
+  reviewed_by: WorkspaceUserRef | null; reviewed_at: string | null; review_note: string | null; created_date: string;
 }
