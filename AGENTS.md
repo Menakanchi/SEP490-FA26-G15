@@ -20,7 +20,7 @@ Code đã có mô tả, sinh biến thể, baseline, phân tích, candidate th�
 CARLA web đã có `.xosc` + ScenarioRunner 0.9.16, RGB/sensor; **chưa có API/nút hủy** (TD-37).
 Schema có 7 category nhưng mô phỏng/xuất `.xosc` hiện chỉ hỗ trợ `CP_CROSSING` (TD-42).
 Perception CARLA dùng ground truth; vật lý phanh chưa hiệu chuẩn (TD-01, TD-17).
-Hướng đi ngang đã sửa ở xosc2; hành vi `stops_at_curb` còn thiếu bước dừng (TD-47).
+Hướng đi ngang đã sửa ở xosc2; người "dừng ở lề" đứng lại ở lề từ xosc4 (23/10/2026, kiểm CARLA thật).
 
 ## Năm phần bàn giao theo chức năng
 

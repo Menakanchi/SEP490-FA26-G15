@@ -60,7 +60,7 @@ export interface VehicSimContextData {
   project: { id: number; name: string };
   workspace: { id: number; name: string } | null;
   vehicle: { id: number; name: string } | null;
-  /** Bộ mô phỏng run MỚI sẽ dùng, vd. `vehicsim-kinematic-1.0` hoặc `carla-0.9.16-xosc3`. */
+  /** Bộ mô phỏng run MỚI sẽ dùng, vd. `vehicsim-kinematic-1.0` hoặc `carla-0.9.16-xosc4`. */
   simulator: string;
   system: { id: number; name: string; baseline: VersionBrief | null };
   versions: VersionBrief[];

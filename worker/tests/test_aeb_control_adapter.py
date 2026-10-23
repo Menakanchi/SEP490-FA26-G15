@@ -111,7 +111,7 @@ def adapter(monkeypatch: pytest.MonkeyPatch):  # noqa: ANN201
 def test_brake_override_keeps_this_ticks_steering(adapter, tmp_path) -> None:  # noqa: ANN001
     module, clock = adapter
     ego = FakeVehicle()
-    ctrl = module.VehicsimAebControl(ego, {"out_dir": str(tmp_path), "xosc_file": "x.xosc", "simulator_version": "carla-0.9.16-xosc3"})
+    ctrl = module.VehicsimAebControl(ego, {"out_dir": str(tmp_path), "xosc_file": "x.xosc", "simulator_version": "carla-0.9.16-xosc4"})
     # Bỏ qua _initialize (cần world CARLA): đặt sẵn trạng thái sau khi đã thấy người đi bộ.
     ctrl.initialized, ctrl.started_at = True, 0.0
     ctrl.walker = SimpleNamespace(get_location=lambda: SimpleNamespace(x=20.0, y=-3.6), get_velocity=lambda: SimpleNamespace(x=0.0, y=1.0))
@@ -128,7 +128,7 @@ def test_brake_override_keeps_this_ticks_steering(adapter, tmp_path) -> None:  #
 
 def test_radar_points_of_the_latest_measurement_are_forwarded_raw(adapter, tmp_path) -> None:  # noqa: ANN001
     module, clock = adapter
-    ctrl = module.VehicsimAebControl(FakeVehicle(), {"out_dir": str(tmp_path), "xosc_file": "x.xosc", "simulator_version": "carla-0.9.16-xosc3"})
+    ctrl = module.VehicsimAebControl(FakeVehicle(), {"out_dir": str(tmp_path), "xosc_file": "x.xosc", "simulator_version": "carla-0.9.16-xosc4"})
     ctrl.initialized, ctrl.started_at = True, 0.0
     ctrl.walker = SimpleNamespace(get_location=lambda: SimpleNamespace(x=20.0, y=-3.6), get_velocity=lambda: SimpleNamespace(x=0.0, y=1.0))
     ctrl.radar = object()  # đã gắn cảm biến; điểm đến qua callback

@@ -140,21 +140,53 @@ class XoscExportTest {
         double start = -Simulator.PEDESTRIAN_START_Y_M;
         assertThat(Double.parseDouble(spawn.getAttribute("offset"))).isEqualTo(start);
         assertThat(Double.parseDouble(positions.get(1).getAttribute("offset"))).isEqualTo(start);
-        double finish = stopsAtCurb ? Simulator.CURB_STOP_Y_M : -Simulator.PEDESTRIAN_START_Y_M;
-        assertThat(Double.parseDouble(positions.get(2).getAttribute("offset"))).isEqualTo(-finish);
+        // Dừng ở lề: waypoint cuối quá lề đúng bán kính "đã tới" của PedestrianControl, trừ quãng trượt sau khi đặt tốc độ 0 (TD-47).
+        double finish = stopsAtCurb
+                ? Simulator.CURB_STOP_Y_M + XoscExport.SR_WALKER_ARRIVAL_RADIUS_M - 3 * XoscExport.CARLA_WALKER_STOP_LAG_S
+                : -Simulator.PEDESTRIAN_START_Y_M;
+        assertThat(Double.parseDouble(positions.get(2).getAttribute("offset"))).isCloseTo(-finish, org.assertj.core.data.Offset.offset(1e-9));
         assertThat(Double.parseDouble(positions.get(2).getAttribute("offset"))).isLessThan(Double.parseDouble(positions.get(1).getAttribute("offset")));
     }
 
     @Test
-    void v3ProfileIs100HzWithSensorPeriodPerception() {
+    void stopAtCurbHoldsThePedestrianWhenTheCrossingRouteEnds() throws Exception {
+        Document doc = dom(XoscExport.export(Bundle.readSpec(ir("stops_at_curb", true))));
+        Element stand = (Element) nodes(doc, "//Event[@name='StopAtCurb']").item(0);
+        assertThat(stand).as("ca dừng ở lề có event StopAtCurb").isNotNull();
+        assertThat(stand.getAttribute("priority")).as("song song: không dừng HoldMeasurement đang giữ Act mở").isEqualTo("parallel");
+        assertThat(((Element) nodes(doc, "//Event[@name='StopAtCurb']//AbsoluteTargetSpeed").item(0)).getAttribute("value")).isEqualTo("0.0");
+        Element state = (Element) nodes(doc, "//Event[@name='StopAtCurb']/StartTrigger//StoryboardElementStateCondition").item(0);
+        assertThat(state.getAttribute("storyboardElementType")).isEqualTo("action");
+        assertThat(state.getAttribute("storyboardElementRef")).isEqualTo("CrossRoad");
+        assertThat(state.getAttribute("state")).isEqualTo("endTransition");
+        assertThat(nodes(doc, "//Action[@name='CrossRoad']").getLength()).as("tên action được tham chiếu phải có thật").isEqualTo(1);
+    }
+
+    /** Golden {@code cp-crossing.xosc} (ca băng ngang) chỉ đổi {@code vs_format} v3 → v4 nên {@link #xmlMatchesTheSchemaCheckedGolden} giữ XML cũ. */
+    @Test
+    void crossingCasesHaveNoStopEvent() throws Exception {
+        String xml = XoscExport.export(Bundle.readSpec(ir("stops_at_curb", false)));
+        assertThat(nodes(dom(xml), "//Event[@name='StopAtCurb']").getLength()).isZero();
+    }
+
+    @Test
+    void v3FileStillReadsWithItsOwnIdentity() {
+        Bundle.RunSpec spec = Bundle.readSpec(ir());
+        String v3 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.PREVIOUS_FORMAT);
+        assertThat(Xosc.profile(v3)).isEqualTo(new Xosc.Profile("-xosc3", 0.01, 0.05));
+        assertThat(Xosc.read(v3)).isEqualTo(spec);
+    }
+
+    @Test
+    void currentProfileIs100HzWithSensorPeriodPerception() {
         Xosc.Profile p = Xosc.profile(XoscExport.export(Bundle.readSpec(ir())));
-        assertThat(p).isEqualTo(new Xosc.Profile("-xosc3", 0.01, 0.05));
+        assertThat(p).isEqualTo(new Xosc.Profile("-xosc4", 0.01, 0.05));
     }
 
     @Test
     void v2FileStillRunsAs20HzWithItsOwnIdentity() {
         Bundle.RunSpec spec = Bundle.readSpec(ir());
-        String old = XoscExport.export(spec).replace("vehicsim.xosc/v3", Xosc.LEGACY_FORMAT);
+        String old = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.LEGACY_FORMAT);
         assertThat(Xosc.profile(old)).isEqualTo(new Xosc.Profile("-xosc2", 0.05, 0.05));
         assertThat(Xosc.read(old)).isEqualTo(spec);
     }
@@ -171,7 +203,7 @@ class XoscExportTest {
     @Test
     void unrelatedOrOldGeometryXoscIsRejectedInsteadOfRunningAsXosc2() {
         assertThatThrownBy(() -> Xosc.read("<OpenSCENARIO><ParameterDeclarations /></OpenSCENARIO>")).isInstanceOf(Bundle.BundleError.class).hasMessageContaining("vs_format");
-        String v1 = XoscExport.export(Bundle.readSpec(ir())).replace("vehicsim.xosc/v3", "vehicsim.xosc/v1");
+        String v1 = XoscExport.export(Bundle.readSpec(ir())).replace(Xosc.FORMAT, "vehicsim.xosc/v1");
         assertThatThrownBy(() -> Xosc.read(v1)).isInstanceOf(Bundle.BundleError.class).hasMessageContaining("xuất lại từ web");
     }
 }
