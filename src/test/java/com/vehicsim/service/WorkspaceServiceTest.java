@@ -17,9 +17,14 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -34,12 +39,14 @@ class WorkspaceServiceTest {
     private static final long ENGINEER = 20L;
 
     private WorkspaceRepository repo;
+    private NotificationService notifications;
     private WorkspaceService service;
 
     @BeforeEach
     void setUp() {
         repo = mock(WorkspaceRepository.class);
-        service = new WorkspaceService(repo);
+        notifications = mock(NotificationService.class);
+        service = new WorkspaceService(repo, notifications);
         when(repo.find(WS)).thenReturn(workspace("ACTIVE"));
     }
 
@@ -83,7 +90,7 @@ class WorkspaceServiceTest {
     void ownerAndAdminCanReadTheWorkspace() {
         assertThat(service.detail(MANAGER, "MANAGER", WS).workspace().id()).isEqualTo(WS);
         assertThat(service.detail(1L, "ADMIN", WS).workspace().id()).isEqualTo(WS);
-        verify(repo, org.mockito.Mockito.times(2)).projectsOf(WS);
+        verify(repo, times(2)).projectsOf(WS);
     }
 
     @Test
@@ -103,7 +110,11 @@ class WorkspaceServiceTest {
 
             assertThat(service.addMember(MANAGER, "MANAGER", WS, ENGINEER).userId()).isEqualTo(ENGINEER);
         }
-        verify(repo, org.mockito.Mockito.times(2)).addMember(WS, ENGINEER, MANAGER);
+        verify(repo, times(2)).addMember(WS, ENGINEER, MANAGER);
+        verify(notifications, times(2)).notify(eq(ENGINEER),
+                eq(MANAGER), eq(WS), eq("MEMBER_ADDED"),
+                contains("AEB Pedestrian"), anyString(),
+                eq("WORKSPACE"), eq(WS));
     }
 
     @Test
@@ -114,6 +125,7 @@ class WorkspaceServiceTest {
                     .as("%s không vào workspace", role).isInstanceOf(InvalidRequestException.class).hasMessageContaining(role);
         }
         verify(repo, never()).addMember(anyLong(), anyLong(), anyLong());
+        verifyNoInteractions(notifications);
     }
 
     @Test
@@ -157,6 +169,9 @@ class WorkspaceServiceTest {
         assertThat(result.unassignedTasks()).isEqualTo(3);
         verify(repo).unassignOpenTasks(WS, ENGINEER);
         verify(repo).removeMember(WS, ENGINEER);
+        verify(notifications).notify(eq(ENGINEER), eq(MANAGER),
+                eq(WS), eq("SYSTEM"), anyString(),
+                contains("3 task"), eq("WORKSPACE"), eq(WS));
     }
 
     @Test

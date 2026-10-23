@@ -19,9 +19,11 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -37,12 +39,14 @@ class WorkspaceReportServiceTest {
     private WorkspaceRepository workspaceRepo;
     private WorkspaceReportRepository reports;
     private WorkspaceReportService service;
+    private NotificationService notifications;
 
     @BeforeEach
     void setUp() {
         workspaceRepo = mock(WorkspaceRepository.class);
         reports = mock(WorkspaceReportRepository.class);
-        service = new WorkspaceReportService(new WorkspaceService(workspaceRepo), reports);
+        notifications = mock(NotificationService.class);
+        service = new WorkspaceReportService(new WorkspaceService(workspaceRepo, notifications), reports, notifications);
         when(workspaceRepo.find(WS)).thenReturn(workspace("ACTIVE"));
         when(reports.find(WS, REPORT)).thenReturn(report("SUBMITTED"));
         when(reports.decide(anyLong(), anyString(), anyLong(), any(), any())).thenReturn(true);
@@ -72,6 +76,9 @@ class WorkspaceReportServiceTest {
         assertThatThrownBy(() -> service.decide(MANAGER, "MANAGER", WS, REPORT, "REJECTED", " ")).hasMessageContaining("nhận xét");
         service.decide(MANAGER, "MANAGER", WS, REPORT, "REJECTED", "Thiếu số liệu ca an toàn");
         verify(reports).decide(eq(REPORT), eq("REJECTED"), eq(MANAGER), eq("Thiếu số liệu ca an toàn"), any());
+        // Người nộp được báo kết quả kèm nhận xét.
+        verify(notifications).notify(eq(20L), eq(MANAGER), eq(WS), eq("SYSTEM"), eq("Báo cáo “Tuần 43” bị từ chối"),
+                contains("Thiếu số liệu ca an toàn"), eq("REPORT"), eq(REPORT));
     }
 
     @Test
@@ -94,6 +101,7 @@ class WorkspaceReportServiceTest {
         when(reports.decide(anyLong(), anyString(), anyLong(), any(), any())).thenReturn(false);
         assertThatThrownBy(() -> service.decide(MANAGER, "MANAGER", WS, REPORT, "APPROVED", null))
                 .isInstanceOf(InvalidRequestException.class).hasMessageContaining("người khác duyệt");
+        verifyNoInteractions(notifications);
     }
 
     @Test

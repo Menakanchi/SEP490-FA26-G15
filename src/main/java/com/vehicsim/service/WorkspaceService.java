@@ -31,9 +31,11 @@ public class WorkspaceService {
     static final int CANDIDATE_LIMIT = 20;
 
     private final WorkspaceRepository repo;
+    private final NotificationService notifications;
 
-    public WorkspaceService(WorkspaceRepository repo) {
+    public WorkspaceService(WorkspaceRepository repo, NotificationService notifications) {
         this.repo = repo;
+        this.notifications = notifications;
     }
 
     /** M1: Manager thấy workspace mình quản lý; ADMIN thấy tất cả. */
@@ -82,6 +84,8 @@ public class WorkspaceService {
             throw new InvalidRequestException("Người này đã là thành viên của workspace");
         }
         repo.addMember(workspaceId, memberUserId, userId);
+        notifications.notify(memberUserId, userId, workspaceId, "MEMBER_ADDED", "Bạn được thêm vào workspace " + ws.name(),
+                "Quản lý " + ws.manager().fullName() + " đã thêm bạn vào workspace " + ws.name() + ".", "WORKSPACE", workspaceId);
         AuditLog.event("workspace.member_add", "success", "workspace_id", workspaceId, "user_id", memberUserId, "by", userId);
         return repo.membersOf(workspaceId).stream().filter(m -> m.userId() == memberUserId).findFirst()
                 .orElseThrow(() -> new IllegalStateException("thành viên vừa thêm không đọc lại được"));
@@ -107,6 +111,11 @@ public class WorkspaceService {
         // Task đã DONE giữ người làm để còn lịch sử; task chưa xong về "chưa giao" để Manager giao lại.
         int tasks = repo.unassignOpenTasks(workspaceId, memberUserId);
         repo.removeMember(workspaceId, memberUserId);
+        // Bảng không có loại "rời workspace" riêng nên dùng SYSTEM.
+        notifications.notify(memberUserId, userId, workspaceId, "SYSTEM", "Bạn không còn ở workspace " + ws.name(),
+                "Bạn đã được bớt khỏi workspace " + ws.name() + "."
+                        + (tasks > 0 ? " " + tasks + " task chưa xong của bạn đã chuyển về chưa giao." : ""),
+                "WORKSPACE", workspaceId);
         AuditLog.event("workspace.member_remove", "success", "workspace_id", workspaceId, "user_id", memberUserId, "by", userId,
                 "projects", projects, "unassigned_tasks", tasks);
         return new RemoveMemberResult(memberUserId, projects, tasks);

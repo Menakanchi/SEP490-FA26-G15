@@ -13,7 +13,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -25,7 +27,8 @@ import java.util.Objects;
  * project được (FK ghép {@code task_reports(task_id, project_id)} chặn). Giữ nguyên giá trị cũ thì không bị kiểm lại — task gắn project
  * nay đã lưu trữ hoặc đã quá hạn vẫn sửa được các trường khác. Workspace ARCHIVED chỉ xem.
  * <p>
- * Chưa làm: người được giao tự cập nhật tiến độ (UC của Engineer / Reviewer) và thông báo {@code TASK_ASSIGNED} (M10).
+ * Giao (hoặc đổi người nhận) thì báo {@code TASK_ASSIGNED} cho người nhận. Chưa làm: người được giao tự cập nhật tiến độ (UC của
+ * Engineer / Reviewer).
  */
 @Service
 public class WorkspaceTaskService {
@@ -33,15 +36,20 @@ public class WorkspaceTaskService {
     /** Theo thứ tự hiển thị (thông báo lỗi liệt kê đúng thứ tự này). */
     public static final List<String> PRIORITIES = List.of("LOW", "MEDIUM", "HIGH", "URGENT");
     public static final List<String> STATUSES = List.of("TODO", "IN_PROGRESS", "REVIEW", "DONE");
+    /** Tên tiếng Việt của độ ưu tiên, dùng trong nội dung thông báo. */
+    private static final Map<String, String> PRIORITY_LABELS = Map.of("LOW", "thấp", "MEDIUM", "trung bình", "HIGH", "cao", "URGENT", "khẩn");
 
     private final WorkspaceService workspaces;
     private final WorkspaceRepository members;
     private final WorkspaceTaskRepository tasks;
+    private final NotificationService notifications;
 
-    public WorkspaceTaskService(WorkspaceService workspaces, WorkspaceRepository members, WorkspaceTaskRepository tasks) {
+    public WorkspaceTaskService(WorkspaceService workspaces, WorkspaceRepository members, WorkspaceTaskRepository tasks,
+                                NotificationService notifications) {
         this.workspaces = workspaces;
         this.members = members;
         this.tasks = tasks;
+        this.notifications = notifications;
     }
 
     /** M7: task của workspace, lọc tuỳ chọn theo trạng thái và người nhận ({@code assigneeId = 0} = chưa giao ai). */
@@ -63,6 +71,7 @@ public class WorkspaceTaskService {
         long id = tasks.insert(workspaceId, f.projectId, f.title, f.description, f.priority, f.status, f.progress, f.assigneeId, userId,
                 f.dueDate);
         AuditLog.event("workspace.task_create", "success", "workspace_id", workspaceId, "task_id", id, "by", userId);
+        notifyAssigned(ws, userId, id, f);
         return tasks.find(workspaceId, id);
     }
 
@@ -77,6 +86,10 @@ public class WorkspaceTaskService {
         }
         Fields f = validate(workspaceId, body, current);
         tasks.update(workspaceId, taskId, f.projectId, f.title, f.description, f.priority, f.status, f.progress, f.assigneeId, f.dueDate);
+        Long previousAssignee = current.assignee() == null ? null : current.assignee().id();
+        if (!Objects.equals(previousAssignee, f.assigneeId)) {
+            notifyAssigned(ws, userId, taskId, f);
+        }
         AuditLog.event("workspace.task_update", "success", "workspace_id", workspaceId, "task_id", taskId, "by", userId,
                 "status", f.status);
         return tasks.find(workspaceId, taskId);
@@ -97,6 +110,17 @@ public class WorkspaceTaskService {
         }
         tasks.delete(workspaceId, taskId);
         AuditLog.event("workspace.task_delete", "success", "workspace_id", workspaceId, "task_id", taskId, "by", userId);
+    }
+
+    /** Báo cho người vừa được giao task (tạo mới có người nhận, hoặc đổi sang người nhận khác). */
+    private void notifyAssigned(WorkspaceSummary ws, long actorId, long taskId, Fields f) {
+        if (f.assigneeId == null) {
+            return;
+        }
+        notifications.notify(f.assigneeId, actorId, ws.id(), "TASK_ASSIGNED", "Bạn được giao task: " + f.title,
+                "Workspace " + ws.name() + " · ưu tiên " + PRIORITY_LABELS.get(f.priority)
+                        + (f.dueDate == null ? "" : " · hạn " + f.dueDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))) + ".",
+                "TASK", taskId);
     }
 
     /** Kiểm và chuẩn hoá body; {@code current} null khi tạo mới. */

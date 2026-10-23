@@ -326,7 +326,7 @@ Kênh chat của workspace. Chưa có code.
 
 #### `notifications` — FE-03-08
 
-Thông báo cho từng người. Chưa có code.
+Thông báo cho từng người. **Code dùng:** `NotificationService` (chuông ở thanh trên, `/api/v1/vehicsim/notifications`): mỗi người chỉ đọc / đánh dấu thông báo của mình. Đang ghi: `MEMBER_ADDED` (Manager thêm thành viên), `TASK_ASSIGNED` (giao hoặc đổi người nhận task), `SYSTEM` cho bớt thành viên và kết quả duyệt báo cáo (enum chưa có loại riêng). Chưa ghi: `REPORT_SUBMITTED`, `WORKSPACE_ASSIGNED`, các loại của luồng mô phỏng / regression.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
