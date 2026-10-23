@@ -754,3 +754,8 @@ export interface WorkspaceReport {
   title: string; content: string; attachment_url: string | null; status: ReportStatus;
   reviewed_by: WorkspaceUserRef | null; reviewed_at: string | null; review_note: string | null; created_date: string;
 }
+export interface NotificationItem {
+  id: number; type: string; title: string; content: string; reference_type: string | null; reference_id: number | null;
+  workspace_id: number | null; workspace_name: string | null; is_read: boolean; created_date: string;
+}
+export interface NotificationList { items: NotificationItem[]; unread_count: number }

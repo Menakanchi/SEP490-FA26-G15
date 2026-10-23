@@ -17,6 +17,7 @@ import type {
   FailureList,
   FamilyItem,
   FamilyRequest,
+  NotificationList,
   OptimizationRun,
   OptimizationSelectionResult,
   OptimizationTrial,
@@ -188,4 +189,11 @@ export const vehicsimApi = {
       method: "POST",
       body: JSON.stringify({ decision, note }),
     }),
+
+  // Thông báo của người đang đăng nhập (M10)
+  notifications: (unreadOnly = false, limit = 20) =>
+    apiRequest<NotificationList>(`/vehicsim/notifications${query({ unread_only: unreadOnly ? "true" : undefined, limit })}`),
+  markNotificationRead: (id: number) =>
+    apiRequest<{ unread_count: number }>(`/vehicsim/notifications/${id}/read`, { method: "POST" }),
+  markAllNotificationsRead: () => apiRequest<{ unread_count: number }>("/vehicsim/notifications/read-all", { method: "POST" }),
 };

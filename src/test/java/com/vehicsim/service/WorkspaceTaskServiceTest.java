@@ -25,8 +25,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -46,13 +48,15 @@ class WorkspaceTaskServiceTest {
     private WorkspaceRepository members;
     private WorkspaceTaskRepository tasks;
     private WorkspaceTaskService service;
+    private NotificationService notifications;
 
     @BeforeEach
     void setUp() {
         members = mock(WorkspaceRepository.class);
         tasks = mock(WorkspaceTaskRepository.class);
-        workspaces = new WorkspaceService(members);
-        service = new WorkspaceTaskService(workspaces, members, tasks);
+        notifications = mock(NotificationService.class);
+        workspaces = new WorkspaceService(members, notifications);
+        service = new WorkspaceTaskService(workspaces, members, tasks, notifications);
         when(members.find(WS)).thenReturn(workspace("ACTIVE"));
         when(members.isMember(WS, ENGINEER)).thenReturn(true);
         when(members.findUser(ENGINEER)).thenReturn(new UserAccount(ENGINEER, "e@example.com", "ENGINEER", true));
@@ -85,12 +89,28 @@ class WorkspaceTaskServiceTest {
 
         verify(tasks).insert(WS, PROJECT, "Chạy lại họ PX2", "ghi chú", "MEDIUM", "TODO", 0, ENGINEER, MANAGER, LocalDate.now().plusDays(3));
         verify(tasks).find(WS, TASK);
+        String due = LocalDate.now().plusDays(3).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+        verify(notifications).notify(eq(ENGINEER), eq(MANAGER), eq(WS), eq("TASK_ASSIGNED"), eq("Bạn được giao task: Chạy lại họ PX2"),
+                eq("Workspace AEB Pedestrian · ưu tiên trung bình · hạn " + due + "."), eq("TASK"), eq(TASK));
+    }
+
+    @Test
+    void reassigningNotifiesTheNewAssigneeOnlyWhenTheAssigneeChanges() {
+        when(tasks.find(WS, TASK)).thenReturn(existing(null, null, null, 0));
+        service.update(MANAGER, "MANAGER", WS, TASK, req("IN_PROGRESS", 50, ENGINEER, null, null));
+        verify(notifications).notify(eq(ENGINEER), eq(MANAGER), eq(WS), eq("TASK_ASSIGNED"), anyString(), anyString(), eq("TASK"), eq(TASK));
+
+        when(tasks.find(WS, TASK)).thenReturn(existing(ENGINEER, null, null, 0));
+        service.update(MANAGER, "MANAGER", WS, TASK, req("REVIEW", 80, ENGINEER, null, null));
+        service.update(MANAGER, "MANAGER", WS, TASK, req("REVIEW", 80, null, null, null));
+        verify(notifications, times(1)).notify(anyLong(), anyLong(), any(), anyString(), anyString(), anyString(), any(), any());
     }
 
     @Test
     void taskWithoutAssigneeProjectOrDueDateIsAllowed() {
         service.create(MANAGER, "MANAGER", WS, req(null, null, null, null, null));
         verify(tasks).insert(eq(WS), isNull(), anyString(), anyString(), eq("HIGH"), eq("TODO"), eq(0), isNull(), eq(MANAGER), isNull());
+        verifyNoInteractions(notifications);
     }
 
     @Test

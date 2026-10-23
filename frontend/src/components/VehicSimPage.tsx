@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { FlowBar } from "@/components/FlowBar";
+import { NotificationBell } from "@/components/NotificationBell";
 
 export type Crumb = { label: string; href?: string };
 
@@ -76,8 +77,7 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
               className="w-[200px] rounded-full border border-solid border-vehicsim-line bg-white px-[14px] py-2 text-[12px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
             />
           </form>
-          {/* eslint-disable-next-line @next/next/no-img-element -- nút thông báo SVG từ Figma */}
-          <img alt="" src="/vehicsim/notify.svg" width={34} height={34} className="size-[34px]" />
+          <NotificationBell />
         </div>
       </div>
 
