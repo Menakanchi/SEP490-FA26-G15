@@ -16,6 +16,13 @@ public final class XoscExport {
     private static final String ROAD_ID = "40";
     private static final String LANE_ID = "-4";
     private static final double START_S = 20.0;
+    /** {@code PedestrianControl.run_step} (ScenarioRunner 0.9.16) bỏ waypoint khi còn cách dưới 1,0 m theo mặt phẳng ngang. */
+    static final double SR_WALKER_ARRIVAL_RADIUS_M = 1.0;
+    /**
+     * Người đi bộ trên CARLA 0.9.16 còn đi thêm khoảng v × 0,07 s sau khi bị đặt tốc độ 0 (đo 23/10/2026: 0,8 / 1,5 / 3 m/s trượt
+     * 0,04 / 0,10 / 0,21 m), nên điểm dừng lùi lại đúng đoạn đó.
+     */
+    static final double CARLA_WALKER_STOP_LAG_S = 0.07;
 
     private XoscExport() {
     }
@@ -62,6 +69,17 @@ public final class XoscExport {
     private static void timeTrigger(El parent, String tag, String name, double at) {
         El condition = node(node(node(parent, tag), "ConditionGroup"), "Condition", "name", name, "delay", "0", "conditionEdge", "rising");
         node(node(condition, "ByValueCondition"), "SimulationTimeCondition", "value", number(at), "rule", "greaterThan");
+    }
+
+    /** StartTrigger "xe đã vào trong khoảng kích hoạt của điểm băng ngang", trễ {@code delay} giây. */
+    private static void relativeGapTrigger(El event, String name, double delay, CrossingCase c, VehicleSpec vehicle) {
+        El condition = node(node(node(event, "StartTrigger"), "ConditionGroup"), "Condition", "name", name, "delay",
+                delay == 0 ? "0" : number(delay), "conditionEdge", "rising");
+        El byEntity = node(condition, "ByEntityCondition");
+        node(node(byEntity, "TriggeringEntities", "triggeringEntitiesRule", "any"), "EntityRef", "entityRef", "hero");
+        El distance = node(node(byEntity, "EntityCondition"), "DistanceCondition", "value", number(c.triggerDistanceM() + vehicle.lengthM() / 2),
+                "freespace", "false", "alongRoute", "false", "rule", "lessThan");
+        position(distance, c.crossingX(), 0);
     }
 
     private static String valueText(Object value) {
@@ -207,19 +225,29 @@ public final class XoscExport {
         El follow = node(routing, "FollowTrajectoryAction");
         El trajectory = node(follow, "Trajectory", "name", "CrossingPath", "closed", "false");
         El polyline = node(node(trajectory, "Shape"), "Polyline");
-        double finishY = c.stopsAtCurb() ? Simulator.CURB_STOP_Y_M : -Simulator.PEDESTRIAN_START_Y_M;
+        // Dừng ở lề: waypoint cuối đặt quá lề đúng bán kính "đã tới" của PedestrianControl, để action CrossRoad kết thúc khi người đi bộ
+        // tới lề (TD-47, xem StopAtCurb bên dưới). Người đi bộ không tới điểm này vì bị đặt tốc độ 0 ngay khi action kết thúc.
+        double finishY = c.stopsAtCurb()
+                ? Simulator.CURB_STOP_Y_M + SR_WALKER_ARRIVAL_RADIUS_M - c.pedestrianSpeedMps() * CARLA_WALKER_STOP_LAG_S
+                : -Simulator.PEDESTRIAN_START_Y_M;
         double[][] vertices = {{0, Simulator.PEDESTRIAN_START_Y_M}, {Math.abs(finishY - Simulator.PEDESTRIAN_START_Y_M) / c.pedestrianSpeedMps(), finishY}};
         for (double[] vertex : vertices) {
             position(node(polyline, "Vertex", "time", number(vertex[0])), c.crossingX(), vertex[1]);
         }
         node(node(follow, "TimeReference"), "None");
         node(follow, "TrajectoryFollowingMode", "followingMode", "position");
-        El condition = node(node(node(event, "StartTrigger"), "ConditionGroup"), "Condition", "name", "RelativeGap", "delay", "0", "conditionEdge", "rising");
-        El byEntity = node(condition, "ByEntityCondition");
-        node(node(byEntity, "TriggeringEntities", "triggeringEntitiesRule", "any"), "EntityRef", "entityRef", "hero");
-        El distance = node(node(byEntity, "EntityCondition"), "DistanceCondition", "value", number(c.triggerDistanceM() + vehicle.lengthM() / 2),
-                "freespace", "false", "alongRoute", "false", "rule", "lessThan");
-        position(distance, c.crossingX(), 0);
+        relativeGapTrigger(event, "RelativeGap", 0, c, vehicle);
+        if (c.stopsAtCurb()) {
+            // TD-47: PedestrianControl của ScenarioRunner 0.9.16 đi tiếp theo hướng cũ sau waypoint cuối, nên người "dừng ở lề" từng
+            // bước vào làn ego. Khi action CrossRoad kết thúc (người đi bộ tới lề), đặt tốc độ 0 và giữ tới hết kịch bản. Không dùng
+            // delay của Condition: ScenarioRunner tính delay từ lúc bắt đầu kiểm điều kiện, không phải từ lúc điều kiện đúng.
+            El stand = node(maneuver, "Event", "name", "StopAtCurb", "priority", "parallel");
+            speedAction(node(stand, "Action", "name", "Stand"), 0);
+            El reached = node(node(node(stand, "StartTrigger"), "ConditionGroup"), "Condition", "name", "ReachedCurb", "delay", "0",
+                    "conditionEdge", "rising");
+            node(node(reached, "ByValueCondition"), "StoryboardElementStateCondition", "storyboardElementType", "action",
+                    "storyboardElementRef", "CrossRoad", "state", "endTransition");
+        }
         // Event chưa kết thúc giữ Act mở, không kết thúc scenario ngay khi người đi bộ đi hết route.
         El hold = node(maneuver, "Event", "name", "HoldMeasurement", "priority", "parallel");
         speedAction(node(hold, "Action", "name", "Hold"), 0);
@@ -227,7 +255,7 @@ public final class XoscExport {
         timeTrigger(act, "StartTrigger", "Start", 0);
         timeTrigger(act, "StopTrigger", "End", Simulator.MAX_DURATION_S);
         El stop = act.children.stream().filter(e -> e.tag.equals("StopTrigger")).findFirst().orElseThrow();
-        condition = node(node(stop, "ConditionGroup"), "Condition", "name", "MeasurementComplete", "delay", "0", "conditionEdge", "rising");
+        El condition = node(node(stop, "ConditionGroup"), "Condition", "name", "MeasurementComplete", "delay", "0", "conditionEdge", "rising");
         node(node(condition, "ByValueCondition"), "ParameterCondition", "parameterRef", "vs_done", "value", "1", "rule", "equalTo");
         condition = node(node(node(storyboard, "StopTrigger"), "ConditionGroup"), "Condition", "name", "criteria_CollisionTest", "delay", "0",
                 "conditionEdge", "rising");

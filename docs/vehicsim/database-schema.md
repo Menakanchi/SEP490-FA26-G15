@@ -114,7 +114,7 @@ CHECK `purpose = X ⇔ cột liên kết có giá trị`, cộng FK ghép với 
 ### 3.4 Danh tính bộ mô phỏng (`simulator_version`)
 
 `simulation_runs.simulator_version` ghi **chính xác** bộ mô phỏng: `vehicsim-kinematic-1.0` (bộ động học,
-đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc3` (`carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
+đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc4` (run cũ còn `-xosc1/2/3`; `carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
 `client.get_server_version()`). `simulator_type` (KINEMATIC / CARLA) chỉ để lọc; CHECK ép hai cột khớp.
 Vì `simulator_version` nằm trong `fk_sr_baseline`, MySQL **không cho** ghép động học với CARLA, hay
 CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](../adr/ADR-027-bo-mo-phong-cam-duoc-hop-dong-json.md)).

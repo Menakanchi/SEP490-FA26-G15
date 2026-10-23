@@ -19,7 +19,7 @@ def test_carla_simulator_name_ignores_build_suffix() -> None:
 def test_runtime_copy_keeps_exported_file_unchanged(xosc: Path, tmp_path: Path) -> None:
     target, out = tmp_path / "runtime.xosc", tmp_path / "out"
     original = xosc.read_text(encoding="utf-8")
-    run_xosc.prepare_runtime(xosc, target, out, "carla-0.9.16-xosc3")
+    run_xosc.prepare_runtime(xosc, target, out, "carla-0.9.16-xosc4")
     assert xosc.read_text(encoding="utf-8") == original  # file tải xuống giữ nguyên, chỉ bản runtime được gắn đường dẫn
     source, runtime = ET.parse(xosc), ET.parse(target)
     assert [p.attrib for p in source.iterfind(".//ParameterDeclaration")] == [p.attrib for p in runtime.iterfind(".//ParameterDeclaration")]
@@ -28,22 +28,22 @@ def test_runtime_copy_keeps_exported_file_unchanged(xosc: Path, tmp_path: Path) 
     assert values["module"] == str(run_xosc.WORKER / "vehicsim_aeb_control.py")
     assert values["xosc_file"] == str(xosc.resolve())
     assert values["out_dir"] == str(out.resolve())
-    assert values["simulator_version"] == "carla-0.9.16-xosc3"
+    assert values["simulator_version"] == "carla-0.9.16-xosc4"
 
 
 def test_runtime_copy_overwrites_stale_controller_properties(xosc: Path, tmp_path: Path) -> None:
     first, second = tmp_path / "a.xosc", tmp_path / "b.xosc"
     run_xosc.prepare_runtime(xosc, first, tmp_path, "carla-0.9.16-xosc2")
-    run_xosc.prepare_runtime(first, second, tmp_path, "carla-0.9.16-xosc3")
+    run_xosc.prepare_runtime(first, second, tmp_path, "carla-0.9.16-xosc4")
     properties = ET.parse(second).find(".//Controller[@name='VehicSimAEB']/Properties")
-    assert [p.attrib["value"] for p in properties.iterfind("Property[@name='simulator_version']")] == ["carla-0.9.16-xosc3"]
+    assert [p.attrib["value"] for p in properties.iterfind("Property[@name='simulator_version']")] == ["carla-0.9.16-xosc4"]
 
 
 def test_xosc_without_the_vehicsim_controller_is_rejected(tmp_path: Path) -> None:
     other = tmp_path / "other.xosc"
     other.write_text("<OpenSCENARIO><ParameterDeclarations /></OpenSCENARIO>", encoding="utf-8")
     with pytest.raises(ValueError, match="controller AEB"):
-        run_xosc.prepare_runtime(other, tmp_path / "runtime.xosc", tmp_path, "carla-0.9.16-xosc3")
+        run_xosc.prepare_runtime(other, tmp_path / "runtime.xosc", tmp_path, "carla-0.9.16-xosc4")
     assert not (tmp_path / "runtime.xosc").exists()
 
 

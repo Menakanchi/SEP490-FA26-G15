@@ -6,6 +6,7 @@ import com.vehicsim.core.CarlaSession;
 import com.vehicsim.core.Evaluation;
 import com.vehicsim.core.SimulationOutcome;
 import com.vehicsim.core.Simulator;
+import com.vehicsim.core.Xosc;
 import com.vehicsim.core.XoscExport;
 import com.vehicsim.vehicsim.Vs.InvalidRequestException;
 import com.vehicsim.vehicsim.Vs.NotFoundException;
@@ -68,7 +69,7 @@ public class RunService {
     /** PID + thời điểm khởi động của worker CARLA, để sau khi backend chết còn tìm ra worker mồ côi. */
     static final String PID_FILE = "worker.pid";
     private static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase().contains("win");
-    private static final String XOSC_SUFFIX = "-xosc3";
+    private static final String XOSC_SUFFIX = Xosc.SIMULATOR_SUFFIX;
     private static final java.util.concurrent.locks.ReentrantLock CARLA_LOCK = new java.util.concurrent.locks.ReentrantLock();
     private static final String COLLISION_ACTOR = "walker.pedestrian.0001";
 
@@ -191,7 +192,8 @@ public class RunService {
 
     /** ``fixed_delta_seconds`` của run: bước mô phỏng theo identity simulator. */
     static double stepFor(String simulator) {
-        return simulator != null && simulator.endsWith(XOSC_SUFFIX) ? CARLA_XOSC_STEP_S : DT;
+        return simulator != null && (simulator.endsWith(XOSC_SUFFIX) || simulator.endsWith(Xosc.PREVIOUS_SIMULATOR_SUFFIX))
+                ? CARLA_XOSC_STEP_S : DT;
     }
 
     static String simulatorType(String simulator) {
@@ -317,8 +319,8 @@ public class RunService {
         try {
             Row run = db.first("SELECT * FROM simulation_runs WHERE id = ?", runId);
             String profile = run.str("simulator_version");
-            if (isCarla(profile) && (profile.endsWith("-xosc1") || profile.endsWith("-xosc2"))) {
-                // xosc2 là bước 0,05 s: không chạy lại bằng bộ xuất mới và không ghép với số đo 0,01 s (xosc3).
+            if (isCarla(profile) && (profile.endsWith("-xosc1") || profile.endsWith("-xosc2") || profile.endsWith(Xosc.PREVIOUS_SIMULATOR_SUFFIX))) {
+                // xosc2 là bước 0,05 s; xosc3 có người "dừng ở lề" đi vào làn (TD-47): không chạy lại bằng bộ xuất mới, không ghép với xosc4.
                 throw new SimulatorException("run CARLA dùng " + profile.substring(profile.lastIndexOf('-') + 1)
                         + " đã cũ; tạo lượt chạy mới để dùng profile " + XOSC_SUFFIX);
             }

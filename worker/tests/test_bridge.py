@@ -18,7 +18,7 @@ needs_core = pytest.mark.skipif(not CORE_CLASSES.is_file(), reason="chưa có l�
 
 @needs_core
 def test_xosc_info_reports_the_time_profile(xosc: Path) -> None:
-    assert bridge.xosc_info(xosc) == {"suffix": "-xosc3", "step_s": 0.01, "perception_period_s": 0.05}
+    assert bridge.xosc_info(xosc) == {"suffix": "-xosc4", "step_s": 0.01, "perception_period_s": 0.05}
 
 
 @needs_core
@@ -34,8 +34,8 @@ def test_session_handshake_open_and_clean_shutdown(xosc: Path, tmp_path: Path) -
     session = bridge.Bridge(tmp_path / "bridge.log")
     try:
         assert session.core
-        opened = session.request("open", timeout=bridge.OPEN_TIMEOUT_S, xosc=str(xosc), out_dir=str(tmp_path / "out"), simulator_version="carla-0.9.16-xosc3")
-        assert opened["profile"] == {"suffix": "-xosc3", "step_s": 0.01, "perception_period_s": 0.05}
+        opened = session.request("open", timeout=bridge.OPEN_TIMEOUT_S, xosc=str(xosc), out_dir=str(tmp_path / "out"), simulator_version="carla-0.9.16-xosc4")
+        assert opened["profile"] == {"suffix": "-xosc4", "step_s": 0.01, "perception_period_s": 0.05}
         assert opened["constants"]["pedestrian_start_y_m"] == -3.6
         with pytest.raises(bridge.BridgeError, match="Java báo lỗi cho step"):
             session.request("step", t=0.0)  # chưa init: lỗi giao thức, không phải kết quả giả
@@ -91,7 +91,7 @@ def test_a_run_keeps_working_after_target_classes_disappears(monkeypatch: pytest
     bridge.snapshot_core(jar)
     shutil.rmtree(classes)  # như mvnw clean
     monkeypatch.setenv("VEHICSIM_CORE_CLASSPATH", str(jar))
-    assert bridge.xosc_info(xosc)["suffix"] == "-xosc3"
+    assert bridge.xosc_info(xosc)["suffix"] == "-xosc4"
     session = bridge.Bridge(tmp_path / "bridge.log")
     try:
         assert session.core
