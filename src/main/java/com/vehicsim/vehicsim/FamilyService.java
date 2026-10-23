@@ -1,5 +1,6 @@
 package com.vehicsim.vehicsim;
 
+import com.vehicsim.core.Simulator;
 import com.vehicsim.vehicsim.Vs.InvalidRequestException;
 import com.vehicsim.vehicsim.Vs.NotFoundException;
 import org.springframework.stereotype.Service;
@@ -66,6 +67,31 @@ public class FamilyService {
             if (variantCount() > MAX_VARIANTS) {
                 throw new InvalidRequestException(variantCount() + " biến thể vượt trần " + MAX_VARIANTS);
             }
+            List<String> late = unreachablePairs();
+            if (!late.isEmpty()) {
+                throw new InvalidRequestException("Xe không tới được điểm băng ngang trong " + g(Simulator.MAX_DURATION_S)
+                        + " s mô phỏng (cần khoảng cách kích hoạt / tốc độ xe + " + g(Simulator.LEAD_TIME_S) + " s < " + g(Simulator.MAX_DURATION_S)
+                        + " s): " + String.join("; ", late.subList(0, Math.min(5, late.size())))
+                        + (late.size() > 5 ? " và " + (late.size() - 5) + " cặp khác" : "")
+                        + ". Tăng tốc độ xe hoặc giảm khoảng cách kích hoạt.");
+            }
+        }
+
+        /**
+         * Cặp (tốc độ xe, khoảng cách kích hoạt) mà xe chạy đều không tới vạch băng ngang trước khi hết thời gian mô phỏng: run kết thúc
+         * TIMEOUT mà xe chưa gặp người đi bộ, kết quả vô nghĩa. Cùng hằng số với bộ động học và bộ xuất .xosc (StopTrigger).
+         */
+        public List<String> unreachablePairs() {
+            List<String> out = new ArrayList<>();
+            for (double speed : new TreeSet<>(egoSpeedsKmh)) {
+                for (double dist : new TreeSet<>(triggerDistancesM)) {
+                    double arrival = arrivalSeconds(speed, dist);
+                    if (arrival >= Simulator.MAX_DURATION_S) {
+                        out.add(g(speed) + " km/h + " + g(dist) + " m (tới vạch sau " + String.format(java.util.Locale.ROOT, "%.1f", arrival) + " s)");
+                    }
+                }
+            }
+            return out;
         }
 
         private static void checkAxis(String name, List<Double> values, double[] bounds) {
@@ -115,6 +141,11 @@ public class FamilyService {
                     "weather", new ArrayList<>(new LinkedHashSet<>(weathers)),
                     "time_of_day", new ArrayList<>(new LinkedHashSet<>(timesOfDay)));
         }
+    }
+
+    /** Giây từ đầu run tới khi mũi xe tới vạch băng ngang nếu chạy đều: {@code CrossingCase.crossingX() / v}. */
+    static double arrivalSeconds(double egoSpeedKmh, double triggerDistanceM) {
+        return triggerDistanceM / (egoSpeedKmh / 3.6) + Simulator.LEAD_TIME_S;
     }
 
     /** Tốc độ người đi bộ của một điểm lưới đổi sang km/h cho cột {@code target_speed_kmh} (IR giữ m/s). */
