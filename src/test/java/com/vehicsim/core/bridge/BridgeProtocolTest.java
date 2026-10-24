@@ -87,7 +87,7 @@ class BridgeProtocolTest {
         start("session");
         call(map("op", "hello", "protocol", BridgeMain.PROTOCOL));
         Path out = dir.resolve("out");
-        call(map("op", "open", "xosc", xosc.toString(), "out_dir", out.toString(), "simulator_version", "carla-0.9.16-xosc3"));
+        call(map("op", "open", "xosc", xosc.toString(), "out_dir", out.toString(), "simulator_version", "carla-0.9.16-xosc4"));
         call(map("op", "init", "ego", map("fwd", List.of(1.0, 0.0), "right", List.of(0.0, 1.0)), "walker", List.of(0.0, 3.6), "front_offset", 0.0,
                 "carla", map("map", "Town04", "blueprint", "vehicle.audi.etron")));
         double dt = 0.01;
@@ -176,10 +176,10 @@ class BridgeProtocolTest {
         start("session");
         call(map("op", "hello", "protocol", BridgeMain.PROTOCOL));
         Path out = dir.resolve("out");
-        Map<String, Object> open = call(map("op", "open", "xosc", xosc.toString(), "out_dir", out.toString(), "simulator_version", "carla-0.9.16-xosc3"));
+        Map<String, Object> open = call(map("op", "open", "xosc", xosc.toString(), "out_dir", out.toString(), "simulator_version", "carla-0.9.16-xosc4"));
         assertThat(open).containsEntry("ok", true);
         Map<String, Object> profile = castMap(open.get("profile"));
-        assertThat(profile).containsEntry("suffix", "-xosc3").containsEntry("step_s", 0.01).containsEntry("perception_period_s", 0.05);
+        assertThat(profile).containsEntry("suffix", "-xosc4").containsEntry("step_s", 0.01).containsEntry("perception_period_s", 0.05);
         assertThat(castMap(open.get("constants"))).containsEntry("pedestrian_start_y_m", -3.6).containsEntry("max_duration_s", 12.0);
 
         // Khung tọa độ trùng hệ thế giới: gốc (0,0), tiến +x, "phải" = +y => left = -y. Người đi bộ bắt đầu ở (0, 3.6)... gốc = (0, 3.6 + 1 * -3.6) = (0,0).
@@ -223,7 +223,7 @@ class BridgeProtocolTest {
         Path resultFile = out.resolve("result.json");
         assertThat(resultFile).exists();
         Map<String, Object> result = MiniJson.parseObject(Files.readString(resultFile, StandardCharsets.UTF_8));
-        assertThat(result).containsEntry("format", Bundle.RESULT_FORMAT).containsEntry("simulator", "carla-0.9.16-xosc3").containsEntry("engine", Bundle.ENGINE)
+        assertThat(result).containsEntry("format", Bundle.RESULT_FORMAT).containsEntry("simulator", "carla-0.9.16-xosc4").containsEntry("engine", Bundle.ENGINE)
                 .containsKey("evaluation");
         assertThat(((Number) result.get("seed")).longValue()).isEqualTo(48846L);
         Map<String, Object> outcome = castMap(result.get("outcome"));
@@ -251,7 +251,7 @@ class BridgeProtocolTest {
         start("session");
         call(map("op", "hello", "protocol", BridgeMain.PROTOCOL));
         Path out = dir.resolve("out");
-        call(map("op", "open", "xosc", writeXosc(dir, c).toString(), "out_dir", out.toString(), "simulator_version", "carla-0.9.16-xosc3"));
+        call(map("op", "open", "xosc", writeXosc(dir, c).toString(), "out_dir", out.toString(), "simulator_version", "carla-0.9.16-xosc4"));
         call(map("op", "init", "ego", map("fwd", List.of(1.0, 0.0), "right", List.of(0.0, 1.0)), "walker", List.of(0.0, 3.6), "front_offset", 0.0,
                 "carla", map("map", "Town04", "blueprint", "vehicle.audi.etron")));
         call(map("op", "step", "t", 0.0, "ego", map("loc", List.of(-c.crossingX(), 0.0), "fwd", List.of(1.0, 0.0), "vel", List.of(13.9, 0.0)),
@@ -266,7 +266,7 @@ class BridgeProtocolTest {
     void infoModePrintsTheProfileOrFailsWithExitCodeTwo(@TempDir Path dir) throws IOException, InterruptedException {
         start("info", writeXosc(dir, new CrossingCase(50, 22, 3.0, false, "CLEAR", "DAY", null)).toString());
         Map<String, Object> info = MiniJson.parseObject(from.readLine());
-        assertThat(info).containsEntry("suffix", "-xosc3").containsEntry("step_s", 0.01).containsEntry("perception_period_s", 0.05);
+        assertThat(info).containsEntry("suffix", "-xosc4").containsEntry("step_s", 0.01).containsEntry("perception_period_s", 0.05);
         assertThat(process.waitFor(10, TimeUnit.SECONDS)).isTrue();
         assertThat(process.exitValue()).isZero();
 
@@ -287,7 +287,7 @@ class BridgeProtocolTest {
         assertThat(process.waitFor(10, TimeUnit.SECONDS)).isTrue();
         assertThat(process.exitValue()).isZero();
         start("info", xosc.toString());
-        assertThat(MiniJson.parseObject(from.readLine())).containsEntry("suffix", "-xosc3");
+        assertThat(MiniJson.parseObject(from.readLine())).containsEntry("suffix", "-xosc4");
 
         Files.writeString(ir, "{\"ego_speed_kmh\":\"fast\"}");
         start("export", ir.toString(), dir.resolve("bad.xosc").toString());

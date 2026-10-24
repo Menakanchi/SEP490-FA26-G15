@@ -27,10 +27,20 @@ import org.xml.sax.SAXException;
  */
 public final class Xosc {
 
-    public static final String FORMAT = "vehicsim.xosc/v3";
-    public static final String SIMULATOR_SUFFIX = "-xosc3";
-    /** v3: bước mô phỏng 0,01 s (100 Hz, kế hoạch 20/10 D3); perception/quyết định AEB vẫn theo chu kỳ cảm biến 0,05 s. */
+    /**
+     * v4 (23/10/2026, TD-47): như v3 nhưng ca "dừng ở lề" có event {@code StopAtCurb} nên người đi bộ đứng lại ở lề thay vì bước vào
+     * làn ego. Ca băng ngang ghi XML giống v3 trừ {@code vs_format}; đổi identity vì kết quả CARLA của ca dừng ở lề đổi.
+     */
+    public static final String FORMAT = "vehicsim.xosc/v4";
+    public static final String SIMULATOR_SUFFIX = "-xosc4";
+    /** Bước mô phỏng 0,01 s (100 Hz, kế hoạch 20/10 D3, từ v3); perception/quyết định AEB vẫn theo chu kỳ cảm biến 0,05 s. */
     public static final double STEP_S = 0.01;
+    /**
+     * v3 chỉ còn để chạy lại bằng chứng cũ ngoài web: cùng bước 0,01 s nhưng người "dừng ở lề" đi tiếp vào làn (TD-47). Backend không
+     * tạo / chạy lại run bằng profile này và không ghép với v4.
+     */
+    public static final String PREVIOUS_FORMAT = "vehicsim.xosc/v3";
+    public static final String PREVIOUS_SIMULATOR_SUFFIX = "-xosc3";
     public static final double PERCEPTION_PERIOD_S = 0.05;
     /** v2 (20 Hz) chỉ còn để chạy lại bằng chứng cũ ngoài web; backend không tạo run mới bằng profile này và không ghép với v3. */
     public static final String LEGACY_FORMAT = "vehicsim.xosc/v2";
@@ -150,7 +160,7 @@ public final class Xosc {
         if ("vehicsim.xosc/v1".equals(format)) {
             throw new Bundle.BundleError("File .xosc v1 có hướng đi bộ cũ; cần xuất lại từ web để chạy người đi bộ băng ngang đường");
         }
-        if (!FORMAT.equals(format) && !LEGACY_FORMAT.equals(format)) {
+        if (!FORMAT.equals(format) && !PREVIOUS_FORMAT.equals(format) && !LEGACY_FORMAT.equals(format)) {
             throw new Bundle.BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)");
         }
         try {
@@ -242,7 +252,9 @@ public final class Xosc {
         if (LEGACY_FORMAT.equals(values.get("format"))) {
             return new Profile(LEGACY_SIMULATOR_SUFFIX, LEGACY_STEP_S, LEGACY_STEP_S);
         }
-        if (!FORMAT.equals(values.get("format"))) {
+        String suffix = FORMAT.equals(values.get("format")) ? SIMULATOR_SUFFIX
+                : PREVIOUS_FORMAT.equals(values.get("format")) ? PREVIOUS_SIMULATOR_SUFFIX : null;
+        if (suffix == null) {
             throw new Bundle.BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)");
         }
         double step;
@@ -256,6 +268,6 @@ public final class Xosc {
         if (!(0 < step && step <= period) || Math.abs(Py.round(period / step) * step - period) > 1e-9) {
             throw new Bundle.BundleError("Bước " + Py.reprFloat(step) + " s và chu kỳ perception " + Py.reprFloat(period) + " s không tương thích");
         }
-        return new Profile(SIMULATOR_SUFFIX, step, period);
+        return new Profile(suffix, step, period);
     }
 }

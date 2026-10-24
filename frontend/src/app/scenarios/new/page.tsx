@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { useRouter } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { AXES, FamilyForm, TIMES, WEATHERS, type FamilyInitial } from "@/components/FamilyForm";
@@ -31,7 +30,6 @@ const ORIGIN_TAG: Record<FieldOrigin, { label: string; tone: "ok" | "info" | "wa
 };
 
 export default function DescribeScenarioPage() {
-  const router = useRouter();
   const { refresh, canWrite } = useVehicSimContext();
   const [text, setText] = useState("");
   const [extracting, setExtracting] = useState(false);
@@ -43,6 +41,8 @@ export default function DescribeScenarioPage() {
   const [origins, setOrigins] = useState<Partial<Record<DescribeKey, FieldOrigin>>>({});
   const [grid, setGrid] = useState<{ key: number; initial: FamilyInitial } | null>(null);
   const [irDirty, setIrDirty] = useState(false);
+  // Họ vừa tạo: hiện khung bàn giao sang màn 2 thay vì tự chuyển trang.
+  const [created, setCreated] = useState<{ scenario_id: number; code: string; variants: number; queued_runs?: number } | null>(null);
 
   const extract = async () => {
     setExtracting(true);
@@ -224,7 +224,41 @@ export default function DescribeScenarioPage() {
         </div>
       )}
 
-      {result && grid && (
+      {created && (
+        <section
+          role="status"
+          className="flex flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-ok/30 bg-vehicsim-ok-bg p-6 shadow-vehicsim-card"
+        >
+          <div className="flex flex-col gap-1">
+            <h2 className="text-[17px] font-bold text-vehicsim-ok">Đã tạo họ kịch bản {created.code}</h2>
+            <p className="text-[13px] text-vehicsim-ink">
+              {created.variants} biến thể
+              {created.queued_runs
+                ? ` · đã xếp ${created.queued_runs} lượt chạy cơ sở — theo dõi tiến độ ở màn Chạy baseline.`
+                : " · chưa chạy cơ sở — bấm “Chạy cơ sở” ở màn Chạy baseline."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <PillButton variant="dark" href={`/scenarios?family=${created.scenario_id}`}>
+              Tiếp tục: Chạy baseline →
+            </PillButton>
+            <PillButton href={`/analysis/carla?family=${created.scenario_id}`}>Chạy trên CARLA</PillButton>
+            <PillButton
+              onClick={() => {
+                setCreated(null);
+                setResult(null);
+                setIr(null);
+                setGrid(null);
+                setText("");
+              }}
+            >
+              Tạo họ khác
+            </PillButton>
+          </div>
+        </section>
+      )}
+
+      {result && grid && !created && (
         <FamilyForm
           key={grid.key}
           title="2 · Không gian biến thể"
@@ -251,9 +285,10 @@ export default function DescribeScenarioPage() {
                 },
               });
               await refresh();
-              router.push(`/scenarios?created=${res.code}&variants=${res.variants}&queued=${res.queued_runs ?? 0}`);
+              setCreated(res);
             } catch (err) {
               setError(err instanceof Error ? err.message : "Không tạo được họ kịch bản");
+            } finally {
               setCreating(false);
             }
           }}

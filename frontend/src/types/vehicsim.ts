@@ -60,7 +60,7 @@ export interface VehicSimContextData {
   project: { id: number; name: string };
   workspace: { id: number; name: string } | null;
   vehicle: { id: number; name: string } | null;
-  /** Bộ mô phỏng run MỚI sẽ dùng, vd. `vehicsim-kinematic-1.0` hoặc `carla-0.9.16-xosc3`. */
+  /** Bộ mô phỏng run MỚI sẽ dùng, vd. `vehicsim-kinematic-1.0` hoặc `carla-0.9.16-xosc4`. */
   simulator: string;
   system: { id: number; name: string; baseline: VersionBrief | null };
   versions: VersionBrief[];
@@ -719,3 +719,44 @@ export interface AnalysisFilters {
   scenario_id?: number; variant_id?: number; aeb_version_id?: number; vehicle_id?: number;
   simulator?: string; weather?: string; time_of_day?: string; status?: string; failure_class?: string;
 }
+
+// Quản lý workspace (Manager — M1…M5), khớp com.vehicsim.dto.WorkspaceDtos
+export interface WorkspaceUserRef { id: number; full_name: string; email: string }
+export type WorkspaceStatus = "ACTIVE" | "ARCHIVED";
+export interface WorkspaceSummary {
+  id: number; name: string; description: string | null; status: WorkspaceStatus; manager: WorkspaceUserRef;
+  member_count: number; project_count: number; pending_report_count: number; created_date: string;
+}
+export interface WorkspaceProject {
+  id: number; name: string; status: "ACTIVE" | "ARCHIVED"; owner: WorkspaceUserRef; member_count: number; created_date: string;
+}
+export interface WorkspaceDetail { workspace: WorkspaceSummary; projects: WorkspaceProject[] }
+export type WorkspaceMemberRole = "ENGINEER" | "REVIEWER";
+export interface WorkspaceMember {
+  user_id: number; full_name: string; email: string; role: WorkspaceMemberRole; is_active: boolean; joined_at: string;
+  added_by: WorkspaceUserRef | null; project_count: number; owned_project_count: number; open_task_count: number;
+}
+/** Người thêm được: tài khoản tự đăng ký (EXPERIENCER); role ENGINEER / REVIEWER chọn lúc thêm (ADR-045). */
+export interface WorkspaceMemberCandidate { user_id: number; full_name: string; email: string; role: "EXPERIENCER" }
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type TaskStatus = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+export interface WorkspaceTask {
+  id: number; title: string; description: string | null; priority: TaskPriority; status: TaskStatus; progress_pct: number;
+  assignee: WorkspaceUserRef | null; project: { id: number; name: string } | null; created_by: WorkspaceUserRef;
+  due_date: string | null; overdue: boolean; report_count: number; created_date: string; updated_at: string;
+}
+export interface WorkspaceTaskRequest {
+  title: string; description: string | null; priority: TaskPriority; status: TaskStatus; progress_pct: number;
+  assignee_id: number | null; project_id: number | null; due_date: string | null;
+}
+export type ReportStatus = "SUBMITTED" | "APPROVED" | "REJECTED";
+export interface WorkspaceReport {
+  id: number; project: { id: number; name: string }; task: { id: number; title: string } | null; submitted_by: WorkspaceUserRef;
+  title: string; content: string; attachment_url: string | null; status: ReportStatus;
+  reviewed_by: WorkspaceUserRef | null; reviewed_at: string | null; review_note: string | null; created_date: string;
+}
+export interface NotificationItem {
+  id: number; type: string; title: string; content: string; reference_type: string | null; reference_id: number | null;
+  workspace_id: number | null; workspace_name: string | null; is_read: boolean; created_date: string;
+}
+export interface NotificationList { items: NotificationItem[]; unread_count: number }

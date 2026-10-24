@@ -47,10 +47,10 @@ Bảng chưa có code là thiết kế trước theo FE (0 dòng); màn hình / 
 | Role | Được làm |
 |---|---|
 | ADMIN | Quản trị user / role, tạo workspace và gán Manager (ADR-038), quản lý `tech_references` |
-| MANAGER | Quản lý workspace được Admin gán: xem mọi thành viên, thêm Engineer / Reviewer, giao task, duyệt báo cáo của các project. Không làm kỹ thuật, không tạo project, không duyệt khuyến nghị |
+| MANAGER | Quản lý workspace được Admin gán: xem mọi thành viên, thêm tài khoản Experiencer và cấp role Engineer / Reviewer cho người đó (ADR-045), giao task, duyệt báo cáo của các project. Không làm kỹ thuật, không tạo project, không duyệt khuyến nghị |
 | ENGINEER | Toàn bộ quy trình kỹ thuật trong project của workspace (xe, kịch bản, mô phỏng, tối ưu, regression) |
 | REVIEWER | Xem kết quả, Accept / Reject khuyến nghị — quyết định cuối, không cần Manager (ADR-037). Không chạy mô phỏng |
-| EXPERIENCER | Người tự đăng ký: project cá nhân, chạy tới tối ưu + regression; **không có** khuyến nghị / duyệt |
+| EXPERIENCER | Người tự đăng ký: project cá nhân, chạy tới tối ưu + regression; **không có** khuyến nghị / duyệt. Được thêm vào workspace thì thành Engineer / Reviewer, rời workspace cuối cùng thì trở lại Experiencer (ADR-045) |
 
 Quyền xem thành viên (kiểm ở API, ADR-038): Manager xem mọi thành viên workspace mình quản lý; trong project chỉ
 owner và thành viên của chính project đó xem được danh sách thành viên — không xem được thành viên project khác.
@@ -114,7 +114,7 @@ CHECK `purpose = X ⇔ cột liên kết có giá trị`, cộng FK ghép với 
 ### 3.4 Danh tính bộ mô phỏng (`simulator_version`)
 
 `simulation_runs.simulator_version` ghi **chính xác** bộ mô phỏng: `vehicsim-kinematic-1.0` (bộ động học,
-đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc3` (`carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
+đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc4` (run cũ còn `-xosc1/2/3`; `carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
 `client.get_server_version()`). `simulator_type` (KINEMATIC / CARLA) chỉ để lọc; CHECK ép hai cột khớp.
 Vì `simulator_version` nằm trong `fk_sr_baseline`, MySQL **không cho** ghép động học với CARLA, hay
 CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](../adr/ADR-027-bo-mo-phong-cam-duoc-hop-dong-json.md)).
@@ -284,8 +284,9 @@ Tài khoản. Mỗi người **đúng một role** (`role_id`). Tự đăng ký 
 #### `workspaces` — FE-03
 
 Nhóm làm việc. **Admin tạo và gán thẳng một MANAGER** quản lý — không có bước xin / duyệt (ADR-038). Manager xem
-được mọi thành viên của workspace mình (kiểm ở API). **Code dùng:** seed (`bootstrap.py`) tạo một workspace ACTIVE;
-màn quản lý chưa có.
+được mọi thành viên của workspace mình (kiểm ở API). **Code dùng:** seed (`BootstrapService`) tạo một workspace ACTIVE;
+`WorkspaceRepository` đọc cho màn `/workspace` của Manager (Manager chỉ thấy workspace có `manager_id` của mình, ADMIN thấy tất cả).
+Chưa có API Admin tạo workspace / gán Manager.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -300,14 +301,15 @@ màn quản lý chưa có.
 
 #### `workspace_members` — FE-03
 
-Engineer / Reviewer thuộc workspace nào, do Manager thêm. Chưa có code (TD-30).
+Engineer / Reviewer thuộc workspace nào, do Manager thêm. **Code dùng:** `WorkspaceService` thêm / bớt (ADR-045: chỉ thêm tài khoản tự đăng ký EXPERIENCER đang hoạt động, Manager / Admin chọn role ENGINEER / REVIEWER và `users.role_id` đổi theo; bớt khỏi workspace cuối cùng thì role đã cấp trả về EXPERIENCER; workspace ARCHIVED không đổi; chủ project trong workspace chưa bớt được). Thành viên chưa lọc dữ liệu người đó thấy (TD-30).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; AI | Khoá chính. |
 | `workspace_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_workspace_members`; FK → `workspaces` | Workspace. |
-| `user_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_workspace_members`; FK → `users` | Thành viên. Service chỉ cho thêm người mang ENGINEER / REVIEWER. |
+| `user_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_workspace_members`; FK → `users` | Thành viên. Service chỉ cho thêm tài khoản EXPERIENCER và cấp role lúc thêm (ADR-045). |
 | `added_by_user_id` | BIGINT UNSIGNED |  |  | FK → `users` | Manager đã thêm. |
+| `granted_role` | ENUM |  | NULL |  | Role cấp lúc thêm (ADR-045, migration 010); NULL = role có từ trước (Admin cấp). Bớt khỏi workspace cuối cùng mà role vẫn là giá trị này thì service trả về EXPERIENCER. Giá trị: 'ENGINEER', 'REVIEWER'. |
 | `joined_at` | DATETIME | ✓ | `CURRENT_TIMESTAMP` |  | Lúc được thêm. |
 
 #### `workspace_messages` — FE-03-06
@@ -325,7 +327,7 @@ Kênh chat của workspace. Chưa có code.
 
 #### `notifications` — FE-03-08
 
-Thông báo cho từng người. Chưa có code.
+Thông báo cho từng người. **Code dùng:** `NotificationService` (chuông ở thanh trên, `/api/v1/vehicsim/notifications`): mỗi người chỉ đọc / đánh dấu thông báo của mình. Đang ghi: `MEMBER_ADDED` (Manager thêm thành viên), `TASK_ASSIGNED` (giao hoặc đổi người nhận task), `SYSTEM` cho bớt thành viên và kết quả duyệt báo cáo (enum chưa có loại riêng). Chưa ghi: `REPORT_SUBMITTED`, `WORKSPACE_ASSIGNED`, các loại của luồng mô phỏng / regression.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -342,7 +344,7 @@ Thông báo cho từng người. Chưa có code.
 
 #### `workspace_tasks` — FE-03-07, FE-13
 
-Task Manager giao cho Engineer / Reviewer. Chưa có code.
+Task Manager giao cho Engineer / Reviewer. **Code dùng:** `WorkspaceTaskService` (màn `/workspace/{id}/tasks`): chỉ giao cho thành viên đang hoạt động, project phải thuộc workspace và ACTIVE, hạn mới không ở quá khứ, `DONE` thì `progress_pct = 100`; task có báo cáo không xoá (FK `fk_tr_task` CASCADE sẽ xoá báo cáo) và không đổi `project_id` (FK ghép chặn); bớt thành viên thì task chưa DONE của họ về `assigned_to_user_id = NULL`. Người được giao chưa tự cập nhật tiến độ.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -365,7 +367,7 @@ CHECK: `ck_wt_progress`.
 #### `task_reports` — FE-13
 
 Báo cáo công việc gửi **theo từng project**; Manager của workspace chứa project duyệt (ADR-038). Gắn với một task
-thì tuỳ chọn, nhưng task đó phải thuộc đúng project của báo cáo. Chưa có code.
+thì tuỳ chọn, nhưng task đó phải thuộc đúng project của báo cáo. **Code dùng:** `WorkspaceReportService` (màn `/workspace/{id}/reports`): Manager / ADMIN xem và duyệt; chỉ `SUBMITTED` mới duyệt được, một lần; `REJECTED` bắt buộc `review_note`; UPDATE có điều kiện `status = 'SUBMITTED'` nên hai người duyệt cùng lúc thì người sau nhận lỗi. Chưa có luồng nộp báo cáo.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|

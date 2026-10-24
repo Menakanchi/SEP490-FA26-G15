@@ -63,22 +63,41 @@ class XoscReadParityTest {
         assertThat(specErr).isGreaterThan(5);
     }
 
-    /** {@code export_xosc} của Python và {@link XoscExport#export} của Java ghi cùng từng byte cho mọi spec trong fixture. */
+    /**
+     * {@code export_xosc} của Python (v3) và {@link XoscExport#export} của Java (v4) ghi cùng từng byte cho ca băng ngang, trừ
+     * {@code vs_format}. Ca dừng ở lề đổi có chủ đích ở v4 (TD-47: waypoint cuối + event StopAtCurb) nên so với
+     * {@code xosc_v4_stops_at_curb.json}, sinh từ bộ xuất Java ngày 23/10/2026 sau khi kiểm trên CARLA thật.
+     */
     @SuppressWarnings("unchecked")
     @Test
     void exportIsByteIdenticalToPython() throws IOException {
         List<Map<String, Object>> entries = PyCompatTest.fixture("xosc.json", new TypeReference<>() { });
+        Map<String, String> curbV4 = new LinkedHashMap<>();
+        for (Map<String, Object> row : PyCompatTest.fixture("xosc_v4_stops_at_curb.json", new TypeReference<List<Map<String, Object>>>() { })) {
+            curbV4.put((String) row.get("name"), (String) row.get("xml"));
+        }
         int exported = 0;
+        int curb = 0;
         for (Map<String, Object> e : entries) {
-            if (!((String) e.get("name")).startsWith("export ")) {
+            String name = (String) e.get("name");
+            if (!name.startsWith("export ")) {
                 continue;
             }
             Long seedOverride = e.get("seed_override") == null ? null : ((Number) e.get("seed_override")).longValue();
             Bundle.RunSpec spec = Bundle.readSpec(e.get("bundle"), (Map<String, Object>) e.get("aeb_override"), seedOverride);
-            assertThat(XoscExport.export(spec)).as(String.valueOf(e.get("name"))).isEqualTo(e.get("xml"));
+            String expected;
+            if (spec.caseSpec().stopsAtCurb()) {
+                expected = curbV4.get(name);
+                assertThat(expected).as(name + " có trong xosc_v4_stops_at_curb.json").isNotNull();
+                curb++;
+            } else {
+                expected = ((String) e.get("xml")).replace(Xosc.PREVIOUS_FORMAT, Xosc.FORMAT);
+            }
+            assertThat(XoscExport.export(spec)).as(name).isEqualTo(expected);
             exported++;
         }
         assertThat(exported).isGreaterThan(15);
+        assertThat(curb).as("mọi ca dừng ở lề trong fixture Java đều được dùng").isEqualTo(curbV4.size()).isPositive();
     }
 
     @Test

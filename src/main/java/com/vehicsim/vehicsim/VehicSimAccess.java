@@ -22,6 +22,7 @@ public class VehicSimAccess {
 
     private static final Set<String> WRITE_ROLES = Set.of("ADMIN", "ENGINEER", "EXPERIENCER");
     private static final Set<String> DECIDE_ROLES = Set.of("REVIEWER");
+    private static final Set<String> WORKSPACE_ADMIN_ROLES = Set.of("MANAGER", "ADMIN");
 
     private final OtpService otp;
     private final VehicSimProperties props;
@@ -53,6 +54,17 @@ public class VehicSimAccess {
     public static long requireReviewer(UserDetails user) {
         if (!DECIDE_ROLES.contains(roleOf(user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ REVIEWER được Accept / Reject recommendation");
+        }
+        return userId(user);
+    }
+
+    /**
+     * Quản lý workspace (xem thành viên, thêm / bớt ENGINEER, REVIEWER): MANAGER hoặc ADMIN; còn lại 403 (ADR-035, ADR-038).
+     * "Đúng workspace của mình" kiểm ở {@code WorkspaceService}. Trả id người dùng.
+     */
+    public static long requireWorkspaceManager(UserDetails user) {
+        if (!WORKSPACE_ADMIN_ROLES.contains(roleOf(user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cần quyền MANAGER hoặc ADMIN để quản lý workspace");
         }
         return userId(user);
     }

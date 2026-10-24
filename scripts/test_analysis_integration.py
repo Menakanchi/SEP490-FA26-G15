@@ -51,7 +51,7 @@ def main():
     family = call("/vehicsim/families", {
         "name": "Analysis integration CP crossing",
         "ego_speeds_kmh": [20, 40, 60],
-        "trigger_distances_m": [15, 30, 60],
+        "trigger_distances_m": [15, 30, 50],  # 20 km/h + 60 m không tới vạch trong 12 s (FamilySpec.unreachablePairs)
         "pedestrian_speeds_mps": [1.4],
         "stops_at_curb": [False, True],
         "weathers": ["CLEAR"], "times_of_day": ["DAY"], "run_baseline": True,

@@ -147,8 +147,9 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 - Đường web hiện tại: bộ xuất Java (`XoscExport`) → `.xosc` → `run_xosc.py` → ScenarioRunner → `vehicsim_aeb_control.py`
   (chỉ đọc trạng thái CARLA, áp bàn đạp) → cầu nối `vsos-bridge/1` → cùng `AebStack` và luật chấm của lõi Java.
   Mỗi run chụp lõi thành `core/vsos-core.jar` riêng, nên `mvnw clean` giữa run không làm hỏng run đó.
-- Artifact hiện tại là `vehicsim.xosc/v3`, profile `carla-0.9.16-xosc3` (bước 0,01 s). File v1 phải xuất lại từ web;
-  không ghép baseline `-xosc1`, `-xosc2` (20 Hz), runner trực tiếp `carla-0.9.16` và `-xosc3`.
+- Artifact hiện tại là `vehicsim.xosc/v4`, profile `carla-0.9.16-xosc4` (bước 0,01 s; v4 = v3 + người "dừng ở lề" đứng lại, TD-47).
+  File v1 phải xuất lại từ web; không ghép baseline `-xosc1`, `-xosc2` (20 Hz), `-xosc3` (người dừng ở lề đi vào làn), runner trực
+  tiếp `carla-0.9.16` và `-xosc4`. Backend không chạy lại run `-xosc1`/`-xosc2`/`-xosc3`; `run_xosc.py` vẫn chạy file v2/v3 ngoài web.
 - `.xosc` là đầu vào mô phỏng. JSON vẫn là hợp đồng nội bộ/result; không đổi đuôi JSON thành XML hoặc bỏ metadata seed/source.
   Runner CARLA trực tiếp nhận bundle JSON (`run_variant.py`) đã gỡ ở ADR-042; `run_xosc.py` từ chối `.json`. Chạy lại bundle bằng
   bộ động học: `java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic <file>` (cần `mvnw compile`).
@@ -167,11 +168,13 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 
 1. **Quỹ đạo người đi bộ:** ScenarioRunner 0.9.16 áp Orientation trước `LanePosition.offset`.
    Thêm `h=π/2` xoay offset ngang thành dịch chuyển dọc. CP_CROSSING dùng hai điểm cùng `s`, khác offset,
-   không đặt Orientation; controller tự quay theo waypoint. Sửa từ xosc2, kiểm CARLA thật ngày 19/10/2026; xosc3 giữ nguyên hình học.
+   không đặt Orientation; controller tự quay theo waypoint. Sửa từ xosc2, kiểm CARLA thật ngày 19/10/2026; xosc3/xosc4 giữ nguyên hình học băng ngang.
 2. **Phạm vi map:** bộ xuất hiện dùng Town04 road 40/lane -4 và lấy cao độ theo map.
    Không thay bằng WorldPosition phẳng hay đổi road/map mà chưa kiểm hình học, cao độ và dải tham số.
-3. **Dừng ở lề chưa hoàn chỉnh (TD-47):** PedestrianControl có thể tiếp tục đi sau waypoint cuối.
-   Hướng băng ngang đã sửa; hành vi `stops_at_curb` chưa đủ để dùng làm bằng chứng phanh oan.
+3. **Dừng ở lề (sửa ở xosc4):** PedestrianControl bỏ waypoint khi còn cách < 1,0 m rồi đi tiếp theo hướng cũ. Bộ xuất đặt
+   waypoint cuối quá lề đúng 1,0 m trừ v × 0,07 s (quãng trượt đo được), và event `StopAtCurb` đặt tốc độ 0 khi action `CrossRoad`
+   kết thúc (`StoryboardElementStateCondition`). Đừng thay bằng `delay` của Condition (ScenarioRunner tính delay từ lúc bắt đầu kiểm,
+   không phải từ lúc điều kiện đúng) hay `ReachPositionCondition` (khoảng cách 3D, lệch độ cao tâm người đi bộ ~0,9 m).
 4. **Phanh chưa hiệu chuẩn (TD-17):** CARLA có động lực học khác bộ động học. Số CARLA dùng quan sát/đối chiếu,
    không sửa số để khớp và không đưa vào báo cáo như bằng chứng regression hoặc chứng nhận an toàn.
 5. **Sensor khởi tạo/va chạm:** 0,5 giây đầu có xung do đặt lại vị trí/tốc độ; sau va chạm IMU đo xung lực đâm.
