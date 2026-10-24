@@ -87,7 +87,8 @@ So sánh hiệu quả AEB phải ghép hai run baseline/candidate có cùng đi�
 Các nợ liên quan đã có trong [tech-debt tracker](../exec-plans/tech-debt-tracker.md):
 TD-01, TD-06, TD-17, TD-30, TD-37, TD-39, TD-40, TD-42, TD-47, TD-48.
 Đặc biệt TD-47: người đi bộ “dừng ở lề” chưa có hành vi dừng hoàn chỉnh; phải sửa trước khi dùng
-loại ca này làm bằng chứng đo phanh oan.
+loại ca này làm bằng chứng đo phanh oan. **Cập nhật 23/10/2026:** đã sửa ở `vehicsim.xosc/v4` (`-xosc4`), xem
+[exec plan TD-47](../exec-plans/completed/2026-10-23-sua-dung-o-le-td47.md); run `-xosc3` cũ của ca này không dùng làm bằng chứng.
 
 ## 5. Hợp đồng kỹ thuật phải thống nhất trước khi triển khai thuật toán
 

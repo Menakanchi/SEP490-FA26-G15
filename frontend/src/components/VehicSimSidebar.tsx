@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { ROLE_LABELS, initials } from "@/components/VehicSimUi";
+import { WORKSPACE_ROLES } from "@/components/workspaceAccess";
 
 /**
  * Sidebar VehicSim theo Figma "VehicSim — FE-12/13/14 UI (Trung)".
@@ -21,6 +22,8 @@ type Group = {
   exact?: boolean;
   children?: Child[];
   note?: string;
+  /** Chỉ hiện với các mã role này (bỏ trống = mọi role). */
+  roles?: string[];
 };
 
 const svgIcon = (src: string) => (
@@ -47,6 +50,15 @@ const barsIcon = (
     <span className="absolute left-[7.3px] top-[6px] h-[10.5px] w-[3.4px] rounded-[1px] bg-vehicsim-muted" />
     <span className="absolute left-[12.6px] top-[2px] h-[14.5px] w-[3.4px] rounded-[1px] bg-vehicsim-muted" />
   </span>
+);
+
+const peopleIcon = (
+  <svg aria-hidden width={18} height={18} viewBox="0 0 18 18" fill="none" className="block size-[18px] text-vehicsim-muted">
+    <circle cx="6.5" cy="6" r="2.6" stroke="currentColor" strokeWidth="1.6" />
+    <path d="M1.8 15c.5-2.6 2.4-4 4.7-4s4.2 1.4 4.7 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    <circle cx="12.6" cy="6.6" r="2.1" stroke="currentColor" strokeWidth="1.6" />
+    <path d="M12.4 10.9c2 .1 3.4 1.3 3.8 3.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
 );
 
 const SOON = "Chưa có trong đợt MVP";
@@ -92,6 +104,14 @@ const GROUPS: Group[] = [
       { label: "Kho tri thức", note: SOON },
     ],
   },
+  {
+    key: "workspace",
+    label: "Workspace",
+    icon: peopleIcon,
+    href: "/workspace",
+    prefix: "/workspace",
+    roles: WORKSPACE_ROLES,
+  },
   { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), note: `${SOON} (FE-10)` },
 ];
 
@@ -109,7 +129,7 @@ export function VehicSimSidebar() {
       </Link>
 
       <nav className="flex flex-col gap-[2px]">
-        {GROUPS.map((g) => {
+        {GROUPS.filter((g) => !g.roles || g.roles.includes(user?.roleCode ?? "")).map((g) => {
           const open = !!g.prefix && (g.exact ? pathname === g.prefix : pathname.startsWith(g.prefix));
           const header = (
             <span

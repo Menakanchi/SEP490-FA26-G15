@@ -17,6 +17,8 @@ export default function ScenarioFamiliesPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [busy, setBusy] = useState<number | "create" | null>(null);
+  // Họ vừa được bàn giao từ màn thiết kế (?family=<id>) hoặc vừa tạo bằng form: tô sáng và cuộn tới dòng của nó.
+  const [focusId, setFocusId] = useState<number | null>(null);
 
   const load = useCallback(() => {
     vehicsimApi.families()
@@ -35,7 +37,15 @@ export default function ScenarioFamiliesPage() {
       const queued = Number(q.get("queued") || 0);
       setNotice(`Đã tạo ${q.get("created")} từ mô tả với ${q.get("variants")} biến thể${queued ? `, đã xếp ${queued} lượt chạy cơ sở` : ""}.`);
     }
+    const family = Number(q.get("family"));
+    if (Number.isInteger(family) && family > 0) setFocusId(family);
   }, []);
+
+  const focused = focusId ? (items ?? []).find((f) => f.id === focusId) : undefined;
+  useEffect(() => {
+    if (!focused) return;
+    document.getElementById(`family-${focused.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [focused]);
 
   // Có run đang xếp hàng/chạy → tải lại định kỳ để số liệu tự cập nhật.
   const active = (items ?? []).some((f) => (f.runs.PENDING ?? f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0) > 0);
@@ -92,6 +102,19 @@ export default function ScenarioFamiliesPage() {
     >
       <ErrorNote message={error} />
       {notice && <p className="rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">{notice}</p>}
+      {focused && !notice && (
+        <p className="rounded-[16px] bg-vehicsim-decision-bg px-4 py-3 text-[13px] text-vehicsim-decision">
+          {focused.code} · {focused.name}:{" "}
+          {(focused.runs.PENDING ?? 0) + (focused.runs.RUNNING ?? 0) > 0
+            ? "các lượt chạy cơ sở đang chạy — số liệu tự cập nhật bên dưới."
+            : (focused.runs.COMPLETED ?? 0) > 0
+              ? "đã có kết quả chạy cơ sở — bấm “Tiếp tục: Phân tích kết quả”."
+              : "chưa chạy cơ sở — bấm “Chạy cơ sở” ở dòng được tô sáng."}
+        </p>
+      )}
+      {focusId && items && !focused && (
+        <ErrorNote message={`Không tìm thấy họ kịch bản #${focusId} trong project hiện tại.`} />
+      )}
       {formOpen && (
         <FamilyForm
           busy={busy === "create"}
@@ -104,6 +127,7 @@ export default function ScenarioFamiliesPage() {
                 `Đã tạo ${res.code} với ${res.variants} biến thể${res.queued_runs ? ` và xếp ${res.queued_runs} lượt chạy cơ sở` : ""}.`,
               );
               setFormOpen(false);
+              setFocusId(res.scenario_id);
               load();
               await refresh();
             } catch (err) {
@@ -143,7 +167,14 @@ export default function ScenarioFamiliesPage() {
         {items?.map((f) => {
           const pending = (f.runs.PENDING ?? f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0);
           return (
-            <div key={f.id} className="flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2">
+            <div
+              key={f.id}
+              id={`family-${f.id}`}
+              className={cx(
+                "flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2",
+                f.id === focusId && "bg-vehicsim-decision-bg/50 ring-2 ring-inset ring-vehicsim-decision/40",
+              )}
+            >
               <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
                 <span className="text-[13px] font-bold text-vehicsim-ink">
                   {f.code} <span className="font-semibold">· {f.name}</span>

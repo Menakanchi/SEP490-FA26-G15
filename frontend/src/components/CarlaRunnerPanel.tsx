@@ -16,6 +16,12 @@ export function CarlaRunnerPanel() {
   const [connection, setConnection] = useState<CarlaStatus | null>(null);
   const [runs, setRuns] = useState<CarlaRun[] | null>(null);
   const [family, setFamily] = useState("");
+  // Được bàn giao từ màn thiết kế (/analysis/carla?family=<id>): chọn sẵn đúng họ.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("family");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- đọc query một lần sau khi mount
+    if (id && /^\d+$/.test(id)) setFamily(id);
+  }, []);
   const [selected, setSelected] = useState<number | null>(null);
   const [data, setData] = useState<CarlaData | null>(null);
   const [frame, setFrame] = useState(0);
@@ -57,7 +63,8 @@ export function CarlaRunnerPanel() {
     return () => { current = false; if (url) URL.revokeObjectURL(url); };
   }, [data, cameraFrame]);
   const ready = connection?.connected && connection.compatible && connection.scenario_runner;
-  const xoscProfile = connection?.simulator?.endsWith("-xosc3");
+  // Backend chỉ cấu hình profile .xosc hiện hành cho run mới (hiện -xosc4); không gắn số phiên bản ở đây để đổi profile không khoá nút.
+  const xoscProfile = /-xosc\d+$/.test(connection?.simulator ?? "");
   const familyId = family || String(ctx?.families[0]?.id ?? "");
 
   const start = async () => {

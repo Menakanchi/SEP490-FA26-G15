@@ -17,6 +17,7 @@ import type {
   FailureList,
   FamilyItem,
   FamilyRequest,
+  NotificationList,
   OptimizationRun,
   OptimizationSelectionResult,
   OptimizationTrial,
@@ -30,6 +31,14 @@ import type {
   ReviewDecision,
   TelemetrySummary,
   VehicSimContextData,
+  WorkspaceDetail,
+  WorkspaceMember,
+  WorkspaceMemberCandidate,
+  WorkspaceMemberRole,
+  WorkspaceReport,
+  WorkspaceSummary,
+  WorkspaceTask,
+  WorkspaceTaskRequest,
 } from "@/types/vehicsim";
 
 function query(params: object): string {
@@ -149,4 +158,47 @@ export const vehicsimApi = {
     apiRequest<{ id: number; status: string }>(`/vehicsim/optimizations/${id}/cancel`, { method: "POST" }),
   selectOptimizationCandidate: (runId: number, trialId: number) =>
     apiRequest<OptimizationSelectionResult>(`/vehicsim/optimizations/${runId}/select/${trialId}`, { method: "POST" }),
+
+  // Quản lý workspace (Manager / Admin) — M1…M5
+  workspaces: () => apiRequest<WorkspaceSummary[]>("/vehicsim/workspaces"),
+  workspace: (id: number) => apiRequest<WorkspaceDetail>(`/vehicsim/workspaces/${id}`),
+  workspaceMembers: (id: number) => apiRequest<WorkspaceMember[]>(`/vehicsim/workspaces/${id}/members`),
+  workspaceMemberCandidates: (id: number, q: string) =>
+    apiRequest<WorkspaceMemberCandidate[]>(`/vehicsim/workspaces/${id}/member-candidates${query({ q })}`),
+  /** Thêm một tài khoản EXPERIENCER và cấp role cho người đó (ADR-045). */
+  addWorkspaceMember: (id: number, userId: number, role: WorkspaceMemberRole) =>
+    apiRequest<WorkspaceMember>(`/vehicsim/workspaces/${id}/members`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId, role }),
+    }),
+  /** Bớt thành viên; người đó tự rời mọi project của workspace, role đã cấp về EXPERIENCER nếu không còn workspace nào. */
+  removeWorkspaceMember: (id: number, userId: number) =>
+    apiRequest<{ user_id: number; removed_project_memberships: number; unassigned_tasks: number; role_reverted: boolean }>(
+      `/vehicsim/workspaces/${id}/members/${userId}`,
+      { method: "DELETE" },
+    ),
+  /** Task của workspace; `assignee_id = 0` là chưa giao ai. */
+  workspaceTasks: (id: number, filters: { status?: string; assignee_id?: number } = {}) =>
+    apiRequest<WorkspaceTask[]>(`/vehicsim/workspaces/${id}/tasks${query(filters)}`),
+  createWorkspaceTask: (id: number, body: WorkspaceTaskRequest) =>
+    apiRequest<WorkspaceTask>(`/vehicsim/workspaces/${id}/tasks`, { method: "POST", body: JSON.stringify(body) }),
+  updateWorkspaceTask: (id: number, taskId: number, body: WorkspaceTaskRequest) =>
+    apiRequest<WorkspaceTask>(`/vehicsim/workspaces/${id}/tasks/${taskId}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteWorkspaceTask: (id: number, taskId: number) =>
+    apiRequest<{ task_id: number }>(`/vehicsim/workspaces/${id}/tasks/${taskId}`, { method: "DELETE" }),
+  workspaceReports: (id: number, filters: { status?: string; project_id?: number } = {}) =>
+    apiRequest<WorkspaceReport[]>(`/vehicsim/workspaces/${id}/reports${query(filters)}`),
+  /** Duyệt / từ chối báo cáo đang chờ; từ chối phải có nhận xét. */
+  decideWorkspaceReport: (id: number, reportId: number, decision: "APPROVED" | "REJECTED", note: string | null) =>
+    apiRequest<WorkspaceReport>(`/vehicsim/workspaces/${id}/reports/${reportId}/decision`, {
+      method: "POST",
+      body: JSON.stringify({ decision, note }),
+    }),
+
+  // Thông báo của người đang đăng nhập (M10)
+  notifications: (unreadOnly = false, limit = 20) =>
+    apiRequest<NotificationList>(`/vehicsim/notifications${query({ unread_only: unreadOnly ? "true" : undefined, limit })}`),
+  markNotificationRead: (id: number) =>
+    apiRequest<{ unread_count: number }>(`/vehicsim/notifications/${id}/read`, { method: "POST" }),
+  markAllNotificationsRead: () => apiRequest<{ unread_count: number }>("/vehicsim/notifications/read-all", { method: "POST" }),
 };
