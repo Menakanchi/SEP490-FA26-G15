@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { ScenarioCategoryPicker } from "@/components/ScenarioCategoryPicker";
 import { PillButton, Toggle, cx } from "@/components/VehicSimUi";
 import type { FamilyRequest, TimeOfDay, Weather } from "@/types/vehicsim";
 
@@ -116,6 +117,7 @@ export function FamilyForm({
         </span>
       </div>
       {hint && <p className="-mt-2 text-[12px] leading-[1.5] text-vehicsim-muted">{hint}</p>}
+      <ScenarioCategoryPicker />
       <div className="grid grid-cols-2 gap-4">
         <TextField label="Tên họ kịch bản" value={name} onChange={setName} disabled={lockName} />
         <TextField label="Mô tả (không bắt buộc)" value={description} onChange={setDescription} placeholder="vd. Trẻ em lao ra giữa hai xe đỗ" />

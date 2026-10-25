@@ -131,6 +131,9 @@ Câu 3 do Chu quyết; bất biến repo đã bắt tập tối ưu/regression g
    thực tế; đổi lên 15 s sẽ phải đổi identity. Category mới đọc theo cột (mặc định 15 s).
 4. **Đề xuất:** hiện category khác, để mờ kèm nhãn "chưa hỗ trợ".
 
+> **Đã làm 25/10 (Chi) — mục 4:** `ScenarioCategoryPicker` trong `FamilyForm` (form nhập tay, "Sinh từ mô tả", sửa họ): CP_CROSSING chọn sẵn,
+> 6 nhóm còn lại mờ, không chọn được, nhãn "chưa hỗ trợ" + chú thích. Mở nhóm mới thì đổi `supported` cùng lúc với backend.
+
 ### A5. Dọn dẹp
 
 1. **Quyết định:** sửa `FamilyService.DEFAULT_MAP` thành `Town04` cho dòng mới; dữ liệu cũ để nguyên
