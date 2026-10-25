@@ -89,7 +89,8 @@ public class ViewsService {
             List<Row> bases = families.baseVersions(f.lng("id"));
             Row base = bases.get(bases.size() - 1);
             long baseId = base.lng("id");
-            List<Long> variantIds = families.variantIdsOf(baseId);
+            List<Row> variantRows = families.variantsOf(baseId);
+            List<Long> variantIds = variantRows.stream().map(v -> v.lng("id")).toList();
             // Lượt chạy của bộ biến thể hiện hành; bản cũ xem ở /families/{id}/versions.
             Map<String, Object> runStats = runStatsOf(f.lng("id"), baseId);
             // Đếm theo baseline hiện hành, không cộng lỗi của các run regression của candidate.
@@ -97,7 +98,7 @@ public class ViewsService {
             out.add(Json.obj(
                     "id", f.lng("id"), "code", f.str("code"), "name", f.str("name"), "description", f.str("description"),
                     "version", bases.size(), "version_count", bases.size(), "base_version_id", baseId,
-                    "variants", variantIds.size(),
+                    "variants", variantIds.size(), "risk_counts", FamilyService.riskCounts(variantRows),
                     "parameter_space", Json.asMap(base.json("scenario_ir_json").get("parameter_space")),
                     "runs", runStats, "failures", failing,
                     "baseline", baseline == null ? null : Vs.versionLabel(baseline),
@@ -131,10 +132,51 @@ public class ViewsService {
             out.add(Json.obj("version", i + 1, "base_version_id", b.lng("id"), "source", b.str("source"),
                     "current", i == bases.size() - 1,
                     "parameter_space", Json.asMap(b.json("scenario_ir_json").get("parameter_space")),
-                    "variants", families.variantIdsOf(b.lng("id")).size(), "runs", runStatsOf(scenarioId, b.lng("id")),
+                    "variants", families.variantIdsOf(b.lng("id")).size(), "risk_counts", FamilyService.riskCounts(families.variantsOf(b.lng("id"))),
+                    "runs", runStatsOf(scenarioId, b.lng("id")),
                     "created_by", creator == null ? null : creator.str("name"), "created_at", Vs.iso(b.ts("created_date"))));
         }
         return out;
+    }
+
+    /**
+     * Biến thể của một bản (mặc định bản hiện hành) kèm nhãn tập thử (task 5): nhãn đang dùng, nhãn tự suy và có phải sửa tay không.
+     */
+    public Map<String, Object> familyVariants(long scenarioId, Long baseVersionId) {
+        Row project = queries.currentProject();
+        Row scenario = db.first("SELECT id, code FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, project.lng("id"));
+        if (scenario == null) {
+            throw new NotFoundException("scenario");
+        }
+        List<Row> bases = families.baseVersions(scenarioId);
+        int index = baseIndex(bases, baseVersionId);
+        List<Row> rows = families.variantsOf(bases.get(index).lng("id"));
+        List<Map<String, Object>> variants = new ArrayList<>();
+        for (Row v : rows) {
+            Map<String, Object> ir = v.json("scenario_ir_json");
+            variants.add(Json.obj("scenario_version_id", v.lng("id"), "version_no", v.lng("version_no"), "summary", Vs.variantSummary(ir),
+                    "ego_speed_kmh", ir.get("ego_speed_kmh"), "trigger_distance_m", ir.get("trigger_distance_m"),
+                    "pedestrian_speed_mps", ir.get("pedestrian_speed_mps"), "stops_at_curb", ir.get("stops_at_curb"),
+                    "weather", ir.get("weather"), "time_of_day", ir.get("time_of_day"),
+                    "risk_label", FamilyService.riskLabel(ir), "auto_label", FamilyService.autoRiskLabel(ir),
+                    "manual", FamilyService.riskLabelManual(ir)));
+        }
+        return Json.obj("scenario_id", scenarioId, "code", scenario.str("code"), "version", index + 1,
+                "base_version_id", bases.get(index).lng("id"), "current", index == bases.size() - 1,
+                "risk_counts", FamilyService.riskCounts(rows), "variants", variants);
+    }
+
+    /** Vị trí bản gốc {@code baseVersionId} trong danh sách bản của họ (null = bản mới nhất); không thuộc họ thì 404. */
+    private static int baseIndex(List<Row> bases, Long baseVersionId) {
+        if (baseVersionId == null) {
+            return bases.size() - 1;
+        }
+        for (int i = 0; i < bases.size(); i++) {
+            if (bases.get(i).lng("id") == baseVersionId) {
+                return i;
+            }
+        }
+        throw new NotFoundException("scenario base version");
     }
 
     public List<Map<String, Object>> aebVersions() {
@@ -430,18 +472,7 @@ public class ViewsService {
             throw new NotFoundException("scenario");
         }
         List<Row> bases = families.baseVersions(scenarioId);
-        int versionIndex = bases.size() - 1;
-        if (baseVersionId != null) {
-            versionIndex = -1;
-            for (int i = 0; i < bases.size(); i++) {
-                if (bases.get(i).lng("id") == baseVersionId) {
-                    versionIndex = i;
-                }
-            }
-            if (versionIndex < 0) {
-                throw new NotFoundException("scenario base version");
-            }
-        }
+        int versionIndex = baseIndex(bases, baseVersionId);
         long baseId = bases.get(versionIndex).lng("id");
         Row baseline = queries.baselineVersion(projectId);
         if (baseline == null) {
@@ -488,6 +519,7 @@ public class ViewsService {
                         "ego_speed_kmh", ir.get("ego_speed_kmh"), "trigger_distance_m", ir.get("trigger_distance_m"),
                         "pedestrian_speed_mps", ir.get("pedestrian_speed_mps"), "stops_at_curb", ir.get("stops_at_curb"),
                         "weather", ir.get("weather"), "time_of_day", ir.get("time_of_day"),
+                        "risk_label", FamilyService.riskLabel(ir),
                         "status", run == null ? "NOT_RUN" : "COMPLETED",
                         "run_id", run == null ? null : run.lng("id"), "seed", run == null ? null : run.getLong("random_seed"),
                         "metrics", metrics));
@@ -501,6 +533,7 @@ public class ViewsService {
                         "ego_speed_kmh", ir.get("ego_speed_kmh"), "trigger_distance_m", ir.get("trigger_distance_m"),
                         "pedestrian_speed_mps", ir.get("pedestrian_speed_mps"), "stops_at_curb", ir.get("stops_at_curb"),
                         "weather", ir.get("weather"), "time_of_day", ir.get("time_of_day"),
+                        "risk_label", FamilyService.riskLabel(ir),
                         "status", "NOT_RUN", "run_id", null, "seed", null, "metrics", null));
             }
         }
@@ -524,6 +557,9 @@ public class ViewsService {
                 "baseline", Json.obj("id", baseline.lng("id"), "label", Vs.versionLabel(baseline)),
                 "reference", reference == null ? null : Json.obj(
                         "vehicle_id", reference.lng("carla_vehicle_model_id"), "simulator", reference.str("simulator_version")),
+                "risk_counts", Json.obj(FamilyService.RISK_DANGEROUS,
+                        variants.stream().filter(v -> FamilyService.RISK_DANGEROUS.equals(v.get("risk_label"))).count(),
+                        FamilyService.RISK_SAFE, variants.stream().filter(v -> FamilyService.RISK_SAFE.equals(v.get("risk_label"))).count()),
                 "counts", Json.obj("total", variants.size(), "completed", completed, "not_run", variants.size() - completed,
                         "classified", classified, "unclassified", unclassified, "failures", failed, "safe", classified - failed),
                 "variants", variants);

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
@@ -8,7 +8,7 @@ import { FamilyForm } from "@/components/FamilyForm";
 import { EmptyState, ErrorNote, PillButton, Tag, cx, fmt, simulatorLabel } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { FamilyItem, FamilyVersion, TimeOfDay, Weather } from "@/types/vehicsim";
+import type { FamilyItem, FamilyVariantList, FamilyVersion, RiskLabel, TimeOfDay, Weather } from "@/types/vehicsim";
 
 export default function ScenarioFamiliesPage() {
   const { ctx, refresh, canWrite } = useVehicSimContext();
@@ -23,6 +23,10 @@ export default function ScenarioFamiliesPage() {
   const [editing, setEditing] = useState<FamilyItem | null>(null);
   const [versions, setVersions] = useState<Record<number, FamilyVersion[]>>({});
   const [viewing, setViewing] = useState<Record<number, number>>({});
+  // Danh sách biến thể + nhãn tập thử (task 5) của họ đang mở, theo bản đang xem.
+  const [openVariants, setOpenVariants] = useState<number | null>(null);
+  const [variantList, setVariantList] = useState<FamilyVariantList | null>(null);
+  const [labelBusy, setLabelBusy] = useState<number | null>(null);
 
   const load = useCallback(() => {
     vehicsimApi.families()
@@ -87,6 +91,43 @@ export default function ScenarioFamiliesPage() {
       setViewing((prev) => ({ ...prev, [f.id]: version }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không tải được lịch sử bản");
+    }
+  };
+
+  // Bản đang xem của họ đang mở danh sách biến thể (undefined = bản hiện hành).
+  const openBase = openVariants
+    ? versions[openVariants]?.find((v) => v.version === viewing[openVariants])?.base_version_id
+    : undefined;
+  useEffect(() => {
+    if (!openVariants) return;
+    let alive = true;
+    vehicsimApi
+      .familyVariants(openVariants, openBase)
+      .then((list) => alive && setVariantList(list))
+      .catch((err) => alive && setError(err instanceof Error ? err.message : "Không tải được biến thể"));
+    return () => {
+      alive = false;
+    };
+  }, [openVariants, openBase]);
+
+  const toggleVariants = (f: FamilyItem) => {
+    setVariantList(null);
+    setOpenVariants((cur) => (cur === f.id ? null : f.id));
+  };
+
+  const changeLabel = async (f: FamilyItem, variantId: number, label: RiskLabel | "AUTO") => {
+    setLabelBusy(variantId);
+    setError(null);
+    try {
+      await vehicsimApi.setRiskLabel(f.id, variantId, label);
+      setVariantList(await vehicsimApi.familyVariants(f.id, openBase));
+      setVersions((prev) => without(prev, f.id));
+      setViewing((prev) => without(prev, f.id));
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không đổi được nhãn");
+    } finally {
+      setLabelBusy(null);
     }
   };
 
@@ -239,8 +280,8 @@ export default function ScenarioFamiliesPage() {
           const old = viewing[f.id] ? versions[f.id]?.find((v) => v.version === viewing[f.id]) : undefined;
           const shown = old ?? f;
           return (
+            <Fragment key={f.id}>
             <div
-              key={f.id}
               id={`family-${f.id}`}
               className={cx(
                 "flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2",
@@ -280,7 +321,24 @@ export default function ScenarioFamiliesPage() {
                   </Tag>
                 ))}
               </span>
-              <span className="w-[90px] text-[13px] font-semibold text-vehicsim-ink">{shown.variants}</span>
+              <span className="flex w-[90px] flex-col gap-[2px] text-[13px] font-semibold text-vehicsim-ink">
+                {shown.variants}
+                {shown.risk_counts && (
+                  <span className="text-[11px] font-normal leading-[1.3] text-vehicsim-muted">
+                    <span className="text-vehicsim-danger">{shown.risk_counts.DANGEROUS} nguy hiểm</span>
+                    <br />
+                    <span className="text-vehicsim-ok">{shown.risk_counts.SAFE} an toàn</span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => toggleVariants(f)}
+                  aria-expanded={openVariants === f.id}
+                  className="self-start text-[11px] font-semibold text-vehicsim-decision hover:underline"
+                >
+                  {openVariants === f.id ? "Ẩn nhãn ▴" : "Gắn nhãn ▾"}
+                </button>
+              </span>
               <span className="flex w-[160px] flex-col text-[12px] text-vehicsim-muted">
                 <span>
                   <b className="text-vehicsim-ink">{shown.runs.COMPLETED ?? 0}</b> đã xong
@@ -342,10 +400,83 @@ export default function ScenarioFamiliesPage() {
                 </Link>
               </span>
             </div>
+            {openVariants === f.id && (
+              <VariantLabels
+                list={variantList?.scenario_id === f.id ? variantList : null}
+                canWrite={canWrite}
+                busy={labelBusy}
+                onChange={(variantId, label) => changeLabel(f, variantId, label)}
+              />
+            )}
+            </Fragment>
           );
         })}
       </section>
     </VehicSimPage>
+  );
+}
+
+const RISK: Record<RiskLabel, { label: string; tone: "danger" | "ok" }> = {
+  DANGEROUS: { label: "Nguy hiểm", tone: "danger" },
+  SAFE: { label: "An toàn", tone: "ok" },
+};
+
+/** Danh sách biến thể của bản đang xem với nhãn tập thử: nhãn tự suy (dừng ở lề = an toàn) hoặc sửa tay. */
+function VariantLabels({
+  list,
+  canWrite,
+  busy,
+  onChange,
+}: {
+  list: FamilyVariantList | null;
+  canWrite: boolean;
+  busy: number | null;
+  onChange: (variantId: number, label: RiskLabel | "AUTO") => void;
+}) {
+  return (
+    <div className="border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 py-4">
+      <p className="mb-3 text-[12px] leading-[1.5] text-vehicsim-muted">
+        Nhãn tập thử dùng để chọn dữ liệu cho tối ưu và regression (giữ đủ ca an toàn để đo phanh oan); không đổi cách chấm kết quả
+        của lượt chạy. Mặc định tự suy: người đi bộ <b>dừng ở lề</b> → an toàn, <b>băng qua làn</b> → nguy hiểm.
+        {list && !list.current && <> Đang xem bản cũ v{list.version}.</>}
+      </p>
+      {!list ? (
+        <p className="text-[12px] text-vehicsim-faint">Đang tải biến thể…</p>
+      ) : (
+        <div className="max-h-[360px] overflow-y-auto rounded-[14px] border border-solid border-vehicsim-line bg-white">
+          {list.variants.map((v) => (
+            <div
+              key={v.scenario_version_id}
+              data-variant={v.scenario_version_id}
+              className="flex h-[44px] items-center border-b border-solid border-vehicsim-line px-4 text-[12px] last:border-b-0"
+            >
+              <span className="w-[60px] font-semibold text-vehicsim-faint">#{v.version_no}</span>
+              <span className="min-w-0 flex-1 truncate text-vehicsim-ink">
+                {v.ego_speed_kmh} km/h · kích hoạt {v.trigger_distance_m} m · người đi bộ {v.pedestrian_speed_mps} m/s ·{" "}
+                {v.stops_at_curb ? "dừng ở lề" : "băng qua"} · {v.weather} · {v.time_of_day}
+              </span>
+              <span className="flex w-[110px] justify-center">
+                <Tag tone={RISK[v.risk_label].tone} className="px-2 py-[2px] text-[10px]">
+                  {RISK[v.risk_label].label}
+                  {v.manual ? " · sửa tay" : ""}
+                </Tag>
+              </span>
+              <select
+                value={v.manual ? v.risk_label : "AUTO"}
+                disabled={!canWrite || busy !== null}
+                onChange={(e) => onChange(v.scenario_version_id, e.target.value as RiskLabel | "AUTO")}
+                aria-label={`Nhãn biến thể #${v.version_no}`}
+                className="w-[170px] rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 py-[5px] text-[12px] text-vehicsim-ink disabled:opacity-50"
+              >
+                <option value="AUTO">Tự suy ({RISK[v.auto_label].label.toLowerCase()})</option>
+                <option value="DANGEROUS">Nguy hiểm</option>
+                <option value="SAFE">An toàn</option>
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -84,6 +84,38 @@ export interface FamilyItem {
   version: number;
   version_count: number;
   base_version_id: number;
+  /** Số biến thể của bản hiện hành theo nhãn tập thử (task 5). */
+  risk_counts: RiskCounts;
+}
+
+/** Nhãn tập thử của biến thể: DANGEROUS = AEB phải phanh, SAFE = AEB không nên phanh. Chỉ để chọn tập dữ liệu. */
+export type RiskLabel = "DANGEROUS" | "SAFE";
+export type RiskCounts = Record<RiskLabel, number>;
+
+/** `GET /families/{id}/variants` — một biến thể kèm nhãn đang dùng, nhãn tự suy và có phải sửa tay không. */
+export interface FamilyVariant {
+  scenario_version_id: number;
+  version_no: number;
+  summary: string;
+  ego_speed_kmh: number;
+  trigger_distance_m: number;
+  pedestrian_speed_mps: number;
+  stops_at_curb: boolean;
+  weather: string;
+  time_of_day: string;
+  risk_label: RiskLabel;
+  auto_label: RiskLabel;
+  manual: boolean;
+}
+
+export interface FamilyVariantList {
+  scenario_id: number;
+  code: string;
+  version: number;
+  base_version_id: number;
+  current: boolean;
+  risk_counts: RiskCounts;
+  variants: FamilyVariant[];
 }
 
 /** `GET /families/{id}/versions` — một bản của họ kịch bản; bản cuối (`current`) là hiện hành. */
@@ -94,6 +126,7 @@ export interface FamilyVersion {
   current: boolean;
   parameter_space: Record<string, (number | boolean | string)[]>;
   variants: number;
+  risk_counts: RiskCounts;
   runs: Record<string, number>;
   created_by: string | null;
   created_at: string;
@@ -183,6 +216,8 @@ export interface AnalysisDataset {
   baseline: { id: number; label: string };
   reference: { vehicle_id: number; simulator: string } | null;
   counts: { total: number; completed: number; not_run: number; classified: number; unclassified: number; failures: number; safe: number };
+  /** Số biến thể theo nhãn tập thử của bản đang xem (task 5). */
+  risk_counts?: RiskCounts;
   variants: {
     scenario_version_id: number;
     version_no: number;
@@ -194,6 +229,8 @@ export interface AnalysisDataset {
     stops_at_curb: boolean | null;
     weather: string | null;
     time_of_day: string | null;
+    /** Nhãn tập thử của biến thể (task 5). */
+    risk_label?: RiskLabel;
     status: "COMPLETED" | "NOT_RUN";
     run_id: number | null;
     seed: number | null;

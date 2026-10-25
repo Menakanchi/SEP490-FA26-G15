@@ -17,9 +17,11 @@ import type {
   FailureList,
   FamilyItem,
   FamilyRequest,
+  FamilyVariantList,
   FamilyVersion,
   NotificationList,
   OptimizationRun,
+  RiskLabel,
   OptimizationSelectionResult,
   OptimizationTrial,
   Playback,
@@ -76,6 +78,15 @@ export const vehicsimApi = {
       { method: "POST", body: JSON.stringify(body) },
     ),
   familyVersions: (scenarioId: number) => apiRequest<FamilyVersion[]>(`/vehicsim/families/${scenarioId}/versions`),
+  /** Biến thể của một bản (bỏ trống = bản hiện hành) kèm nhãn tập thử. */
+  familyVariants: (scenarioId: number, baseVersionId?: number) =>
+    apiRequest<FamilyVariantList>(`/vehicsim/families/${scenarioId}/variants${query({ base_version_id: baseVersionId })}`),
+  /** Sửa tay nhãn tập thử; "AUTO" quay về nhãn tự suy. */
+  setRiskLabel: (scenarioId: number, variantId: number, label: RiskLabel | "AUTO") =>
+    apiRequest<{ scenario_version_id: number; risk_label: RiskLabel; auto_label: RiskLabel; manual: boolean }>(
+      `/vehicsim/families/${scenarioId}/variants/${variantId}/risk-label`,
+      { method: "PUT", body: JSON.stringify({ label }) },
+    ),
   /** Hủy mọi run đang chờ/đang chạy của họ (run của regression/tối ưu không bị đụng). */
   cancelFamily: (scenarioId: number) =>
     apiRequest<{ scenario_id: number; stopped: number; stopping: number }>(`/vehicsim/families/${scenarioId}/cancel`, { method: "POST" }),

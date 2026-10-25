@@ -31,6 +31,15 @@ public class FamilyService {
     /** Map CARLA mà bộ xuất .xosc nạp ({@code XoscExport}, Town04 road 40); run ghi map thật nạp vào {@code simulation_runs.map_name}. */
     public static final String DEFAULT_MAP = "Town04";
     public static final int MAX_VARIANTS = 300;
+    /**
+     * Nhãn tập thử của biến thể (task 5): DANGEROUS = AEB phải phanh, SAFE = AEB không nên phanh. Chỉ dùng để chọn tập dữ liệu
+     * (giữ đủ ca an toàn khi tối ưu / regression); không đổi cách chấm phanh oan / phanh sót của run.
+     */
+    public static final String RISK_DANGEROUS = "DANGEROUS";
+    public static final String RISK_SAFE = "SAFE";
+    /** Bỏ nhãn sửa tay, quay về nhãn tự suy. */
+    public static final String RISK_AUTO = "AUTO";
+
     /** Tốc độ người đi bộ lớn nhất đã đo trên CARLA (TD-47); xem {@link #IR_BOUNDS}. */
     public static final double MAX_PEDESTRIAN_SPEED_MPS = 6.0;
     /** Họ duy nhất của MVP là người đi bộ băng qua đường = category CP_CROSSING (Euro NCAP CPFA / CPNA / CPNCO). */
@@ -151,6 +160,28 @@ public class FamilyService {
         }
     }
 
+    /** Nhãn tự suy từ hành vi người đi bộ: dừng ở lề → SAFE (phanh là phanh oan), băng qua làn → DANGEROUS. */
+    public static String autoRiskLabel(Map<String, Object> ir) {
+        return Boolean.TRUE.equals(ir.get("stops_at_curb")) ? RISK_SAFE : RISK_DANGEROUS;
+    }
+
+    /** Nhãn đang dùng: nhãn sửa tay ({@code scenario_ir_json.risk_label}) nếu có, không thì nhãn tự suy. */
+    public static String riskLabel(Map<String, Object> ir) {
+        Object manual = ir.get("risk_label");
+        return RISK_SAFE.equals(manual) || RISK_DANGEROUS.equals(manual) ? (String) manual : autoRiskLabel(ir);
+    }
+
+    public static boolean riskLabelManual(Map<String, Object> ir) {
+        Object manual = ir.get("risk_label");
+        return RISK_SAFE.equals(manual) || RISK_DANGEROUS.equals(manual);
+    }
+
+    /** Số biến thể theo nhãn, luôn đủ hai khoá. */
+    public static Map<String, Object> riskCounts(List<Row> variants) {
+        long safe = variants.stream().filter(v -> RISK_SAFE.equals(riskLabel(v.json("scenario_ir_json")))).count();
+        return Json.obj(RISK_DANGEROUS, variants.size() - safe, RISK_SAFE, safe);
+    }
+
     /** Giây từ đầu run tới khi mũi xe tới vạch băng ngang nếu chạy đều: {@code CrossingCase.crossingX() / v}. */
     static double arrivalSeconds(double egoSpeedKmh, double triggerDistanceM) {
         return triggerDistanceM / (egoSpeedKmh / 3.6) + Simulator.LEAD_TIME_S;
@@ -205,6 +236,30 @@ public class FamilyService {
                 userId, ts);
         insertVariants(scenarioId, 2, baseId, spec, userId, ts);
         return Json.obj("scenario_id", scenarioId, "code", code, "base_version_id", baseId, "version", 1, "variants", spec.variantCount());
+    }
+
+    /**
+     * Sửa tay nhãn tập thử của một biến thể (DANGEROUS / SAFE), hoặc AUTO để quay về nhãn tự suy. Nhãn nằm trong
+     * {@code scenario_ir_json} nên run tạo sau đó chép theo vào {@code run_config_json}; run đã có giữ cấu hình lúc chạy.
+     */
+    @Transactional
+    public Map<String, Object> setRiskLabel(long projectId, long scenarioId, long variantId, String label) {
+        if (!List.of(RISK_DANGEROUS, RISK_SAFE, RISK_AUTO).contains(label)) {
+            throw new InvalidRequestException("Nhãn phải là " + RISK_DANGEROUS + ", " + RISK_SAFE + " hoặc " + RISK_AUTO);
+        }
+        Row variant = db.first("SELECT v.id FROM scenario_versions v JOIN scenarios s ON s.id = v.scenario_id "
+                + "WHERE v.id = ? AND v.scenario_id = ? AND s.project_id = ? AND v.source = 'GENERATED'", variantId, scenarioId, projectId);
+        if (variant == null) {
+            throw new NotFoundException("variant");
+        }
+        if (RISK_AUTO.equals(label)) {
+            db.update("UPDATE scenario_versions SET scenario_ir_json = JSON_REMOVE(scenario_ir_json, '$.risk_label') WHERE id = ?", variantId);
+        } else {
+            db.update("UPDATE scenario_versions SET scenario_ir_json = JSON_SET(scenario_ir_json, '$.risk_label', ?) WHERE id = ?", label, variantId);
+        }
+        Map<String, Object> ir = db.first("SELECT scenario_ir_json FROM scenario_versions WHERE id = ?", variantId).json("scenario_ir_json");
+        return Json.obj("scenario_version_id", variantId, "risk_label", riskLabel(ir), "auto_label", autoRiskLabel(ir),
+                "manual", riskLabelManual(ir));
     }
 
     /** Run chưa xong của họ: còn run thì chưa cho tạo bản mới (kết quả đang chạy thuộc bộ biến thể cũ). */

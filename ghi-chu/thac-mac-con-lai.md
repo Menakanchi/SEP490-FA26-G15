@@ -112,6 +112,10 @@ Chưa sửa code cho mục nào dưới đây.
 **Đề xuất:** đồng ý đề xuất trong bảng — tự suy làm mặc định, cho sửa tay, lưu trong `scenario_ir_json`.
 Câu 3 do Chu quyết; bất biến repo đã bắt tập tối ưu/regression giữ ca an toàn, chỉ cần chốt tỉ lệ tối thiểu.
 
+> **Đã làm 25/10 (Chi) — câu 1, 2:** nhãn tự suy (dừng ở lề = an toàn, băng qua = nguy hiểm), sửa tay ở `/scenarios` ("Gắn nhãn"),
+> lưu `scenario_ir_json.risk_label`; API `GET /families/{id}/variants`, `PUT …/variants/{vid}/risk-label`; `/families` và dataset phân tích
+> có `risk_label` / `risk_counts`. Chi tiết: [exec plan](../docs/exec-plans/completed/2026-10-25-man-1-nhan-tap-thu.md). Câu 3 (tỉ lệ, cách dùng) vẫn chờ Chu.
+
 ### A3. Hướng xuất phát người đi bộ
 
 1. **Đề xuất:** để sau Demo. Đổi hình học → identity `-xosc5` + chạy lại toàn bộ baseline + chạy CARLA thật;

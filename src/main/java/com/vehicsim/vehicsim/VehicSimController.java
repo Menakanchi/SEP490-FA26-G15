@@ -1,6 +1,7 @@
 package com.vehicsim.vehicsim;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.vehicsim.audit.AuditLog;
 import com.vehicsim.config.OpenApiConfig;
 import com.vehicsim.service.OtpService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -182,6 +183,27 @@ public class VehicSimController {
     @GetMapping("/families/{scenarioId}/versions")
     public List<Map<String, Object>> familyVersions(@PathVariable long scenarioId) {
         return views.familyVersions(scenarioId);
+    }
+
+    @Operation(summary = "Biến thể của một bản họ kịch bản kèm nhãn tập thử (nguy hiểm / an toàn)")
+    @GetMapping("/families/{scenarioId}/variants")
+    public Map<String, Object> familyVariants(@PathVariable long scenarioId,
+                                              @RequestParam(name = "base_version_id", required = false) Long baseVersionId) {
+        return views.familyVariants(scenarioId, baseVersionId);
+    }
+
+    public record RiskLabelRequest(@NotBlank String label) {
+    }
+
+    @Operation(summary = "Sửa tay nhãn tập thử của biến thể: DANGEROUS / SAFE, hoặc AUTO để quay về nhãn tự suy")
+    @PutMapping("/families/{scenarioId}/variants/{variantId}/risk-label")
+    public Map<String, Object> setRiskLabel(@PathVariable long scenarioId, @PathVariable long variantId,
+                                            @Valid @RequestBody RiskLabelRequest body, @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "family");
+        Map<String, Object> out = families.setRiskLabel(projectId(), scenarioId, variantId, body.label());
+        AuditLog.event("scenario.risk_label", "success", "variant_id", variantId, "label", body.label(), "by", uid);
+        return out;
     }
 
     public record DescribeRequest(@NotBlank @Size(max = 2000) String text) {

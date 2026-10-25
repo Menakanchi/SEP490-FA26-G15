@@ -56,6 +56,9 @@ class AnalysisDatasetTest {
         assertThat(Json.asMap(old.get("scenario"))).containsEntry("version", 1).containsEntry("base_version_id", 5L);
         assertThat(Json.asList(old.get("variants"))).extracting(v -> Json.asMap(v).get("scenario_version_id")).containsExactly(11L, 12L);
         assertThat(old.get("preview_token")).isNotEqualTo(current.get("preview_token"));
+        // Nhãn tập thử (task 5) theo từng biến thể và tổng của bản đang xem.
+        assertThat(Json.asList(old.get("variants"))).extracting(v -> Json.asMap(v).get("risk_label")).containsExactly("DANGEROUS", "SAFE");
+        assertThat(Json.asMap(old.get("risk_counts"))).containsEntry("DANGEROUS", 1L).containsEntry("SAFE", 1L);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.analysisDataset(8L, 99L)).isInstanceOf(Vs.NotFoundException.class);
     }
