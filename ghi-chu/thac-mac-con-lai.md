@@ -143,6 +143,9 @@ Câu 3 do Chu quyết; bất biến repo đã bắt tập tối ưu/regression g
 3, 4. Đã biết.
 5. **Đề xuất (Chi):** hạ giới hạn trên tốc độ người đi bộ trong `FamilyService` từ 8 xuống 6 m/s; muốn giữ 8 m/s thì cần số đo CARLA.
 
+> **Đã làm 25/10 (Chi chốt):** tạo họ / trích xuất mô tả / form nhận tối đa 6 m/s (`FamilyService.MAX_PEDESTRIAN_SPEED_MPS`);
+> `Bundle` vẫn nhận tới 8 m/s để run cũ chạy lại / xuất `.xosc` được.
+
 ### C. Role Manager (đề xuất, cả nhóm chốt)
 
 - C1, C2, C3 giao Tu (FE-04/FE-10 workspace/admin); **C3 làm trước** vì thiếu nó máy mới không dùng được màn Manager.

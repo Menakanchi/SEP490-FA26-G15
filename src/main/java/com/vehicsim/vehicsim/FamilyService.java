@@ -31,17 +31,22 @@ public class FamilyService {
     /** Map CARLA mà bộ xuất .xosc nạp ({@code XoscExport}, Town04 road 40); run ghi map thật nạp vào {@code simulation_runs.map_name}. */
     public static final String DEFAULT_MAP = "Town04";
     public static final int MAX_VARIANTS = 300;
+    /** Tốc độ người đi bộ lớn nhất đã đo trên CARLA (TD-47); xem {@link #IR_BOUNDS}. */
+    public static final double MAX_PEDESTRIAN_SPEED_MPS = 6.0;
     /** Họ duy nhất của MVP là người đi bộ băng qua đường = category CP_CROSSING (Euro NCAP CPFA / CPNA / CPNCO). */
     public static final String CATEGORY = ScenarioRules.CP_CROSSING;
     public static final String TARGET_TYPE = ScenarioRules.PEDESTRIAN;
 
     public static final List<String> WEATHERS = List.of("CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG");
     public static final List<String> TIMES = List.of("DAY", "DUSK", "NIGHT");
-    /** Khớp {@code Bundle} — biến thể ngoài khoảng này không dựng được họ kịch bản. */
+    /**
+     * Khoảng nhận khi tạo họ / trích xuất mô tả. Người đi bộ tối đa 6 m/s: hành vi trên CARLA mới đo tới 6 m/s (TD-47, 23/10/2026), nên
+     * chưa cho tạo biến thể nhanh hơn. {@code Bundle} vẫn nhận tới 8 m/s để run cũ chạy lại / xuất .xosc được.
+     */
     public static final Map<String, double[]> IR_BOUNDS = Map.of(
             "ego_speed_kmh", new double[]{10.0, 130.0},
             "trigger_distance_m", new double[]{5.0, 80.0},
-            "pedestrian_speed_mps", new double[]{0.5, 8.0});
+            "pedestrian_speed_mps", new double[]{0.5, MAX_PEDESTRIAN_SPEED_MPS});
 
     /** Không gian tham số. Mỗi trục là danh sách giá trị; biến thể = tích Descartes. */
     public record FamilySpec(

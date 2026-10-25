@@ -27,7 +27,8 @@ export function unreachablePairs(speedsKmh: number[], distancesM: number[]): { s
 export const AXES = [
   { key: "ego_speeds_kmh", label: "Tốc độ xe ego", unit: "km/h", min: 10, max: 130, fallback: [40, 50, 60, 70] },
   { key: "trigger_distances_m", label: "Khoảng cách kích hoạt", unit: "m", min: 5, max: 80, fallback: [20, 30, 40] },
-  { key: "pedestrian_speeds_mps", label: "Tốc độ người đi bộ", unit: "m/s", min: 0.5, max: 8, fallback: [1.5, 3] },
+  // 6 m/s: tốc độ lớn nhất đã đo hành vi trên CARLA (FamilyService.MAX_PEDESTRIAN_SPEED_MPS).
+  { key: "pedestrian_speeds_mps", label: "Tốc độ người đi bộ", unit: "m/s", min: 0.5, max: 6, fallback: [1.5, 3] },
 ] as const;
 export type AxisKey = (typeof AXES)[number]["key"];
 export const WEATHERS: { value: Weather; label: string }[] = [

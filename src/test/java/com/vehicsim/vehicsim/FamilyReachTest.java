@@ -40,6 +40,25 @@ class FamilyReachTest {
         assertThatThrownBy(s::validate).hasMessageContaining("và 4 cặp khác");
     }
 
+    /** Người đi bộ tối đa 6 m/s khi tạo họ / trích xuất (mới đo tới 6 m/s trên CARLA); run cũ tới 8 m/s vẫn đọc lại được qua Bundle. */
+    @Test
+    void pedestrianSpeedIsCappedAtTheFastestSpeedMeasuredOnCarla() {
+        FamilyService.FamilySpec ok = new FamilyService.FamilySpec("x", "", List.of(40.0), List.of(20.0), List.of(0.5, 6.0), List.of(false),
+                List.of("CLEAR"), List.of("DAY"));
+        ok.validate();
+        FamilyService.FamilySpec fast = new FamilyService.FamilySpec("x", "", List.of(40.0), List.of(20.0), List.of(1.5, 6.5), List.of(false),
+                List.of("CLEAR"), List.of("DAY"));
+        assertThatThrownBy(fast::validate).isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("pedestrian_speeds_mps ngoài khoảng [0.5, 6]").hasMessageContaining("6.5");
+
+        Map<String, Object> described = new LinkedHashMap<>(Map.of("ego_speed_kmh", 40.0, "trigger_distance_m", 20.0, "pedestrian_speed_mps", 7.0,
+                "inferred_fields", List.of()));
+        assertThat(DescribeService.check(described)).anySatisfy(issue -> assertThat(issue).contains("Tốc độ người đi bộ = 7 m/s"));
+
+        Map<String, Object> oldRun = new LinkedHashMap<>(Map.of("ego_speed_kmh", 40.0, "trigger_distance_m", 20.0, "pedestrian_speed_mps", 8.0));
+        assertThat(Bundle.readSpec(oldRun).caseSpec()).as("run cũ 8 m/s vẫn dựng lại được").isNotNull();
+    }
+
     @Test
     void defaultFormRangesAreAllReachable() {
         assertThat(spec(List.of(40.0, 50.0, 60.0, 70.0), List.of(20.0, 30.0, 40.0)).unreachablePairs()).isEmpty();
