@@ -34,6 +34,8 @@ import type {
   ReviewDecision,
   TelemetrySummary,
   VehicSimContextData,
+  VehicleDetail,
+  VehicleSummary,
   WorkspaceDetail,
   WorkspaceMember,
   WorkspaceMemberCandidate,
@@ -61,6 +63,10 @@ export const vehicsimApi = {
     apiRequest<import("@/types/vehicsim").AnalysisSelection>("/vehicsim/analysis/selections",{method:"POST",body:JSON.stringify(body)}),
   analysisHandoff: (id: number) => apiRequest<import("@/types/vehicsim").AnalysisSelection>(`/vehicsim/analysis/datasets/${id}/handoff`),
   context: () => apiRequest<VehicSimContextData>("/vehicsim/context"),
+
+  // Phương tiện: danh mục mẫu xe CARLA, chỉ đọc
+  vehicles: () => apiRequest<VehicleSummary[]>("/vehicsim/vehicles"),
+  vehicle: (id: number) => apiRequest<VehicleDetail>(`/vehicsim/vehicles/${id}`),
 
   describe: (text: string) =>
     apiRequest<DescribeResult>("/vehicsim/scenarios/describe", { method: "POST", body: JSON.stringify({ text }) }),

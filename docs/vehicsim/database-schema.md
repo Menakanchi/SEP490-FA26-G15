@@ -424,8 +424,12 @@ Chỉ owner và thành viên của project này xem được danh sách thành v
 
 Danh mục xe: blueprint CARLA + kích thước + **thông số vật lý cố định**. Không có phiên bản, app không cho sửa
 (ADR-038); run, regression, tối ưu trỏ thẳng vào đây nên run cũ luôn tái lập đúng xe. Seed `vehicle.audi.etron`
-(cỡ VF8; CARLA không có VinFast) với thông số của xe MVP cũ — chưa đo lại trên CARLA (TD-17). **Code dùng:**
-`common.active_vehicle` / `vehicle_by_id`, `runs.carla_vehicle` (→ khối `vehicle.carla` của bundle).
+(cỡ VF8; CARLA không có VinFast) với thông số của xe MVP cũ — chưa đo lại trên CARLA (TD-17). Migration 011 thêm
+`vehicle.tesla.model3`, `vehicle.nissan.patrol_2021`, `vehicle.mercedes.sprinter`, `vehicle.carlamotors.european_hgv`: physics
+mặc định CARLA 0.9.16 đọc bằng `worker/vehicle_catalog.py`, `carla_full_brake_decel_mps2` đo bằng `worker/vehicle_study.py`,
+`max_brake_decel_mps2` = 9,5 như e-tron; xe tải `is_supported = FALSE` (chỉ để xem). **Code dùng:**
+`Queries.vehicleById`, `RunService.carlaVehicle` (→ khối `vehicle.carla` của bundle), `VehicleCatalogService` (màn
+"Phương tiện", chỉ đọc).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -435,7 +439,7 @@ Danh mục xe: blueprint CARLA + kích thước + **thông số vật lý cố �
 | `length_m` | DECIMAL(6,3) | ✓ |  |  | Dài (m), đọc từ `bounding_box.extent.x × 2` — gắn với mesh, không ép được. |
 | `width_m` | DECIMAL(6,3) | ✓ |  |  | Rộng (m), từ bounding box. Bộ động học dùng để biết người đi bộ có nằm trên đường đi của xe không. |
 | `height_m` | DECIMAL(6,3) | ✓ |  |  | Cao (m), từ bounding box; runner đối chiếu. |
-| `num_wheels` | TINYINT UNSIGNED | ✓ | `4` |  | Số bánh (2 hoặc 4). |
+| `num_wheels` | TINYINT UNSIGNED | ✓ | `4` |  | Số bánh (2, 4 hoặc 6 — xe tải, migration 011). |
 | `mass_kg` | DECIMAL(8,2) | ✓ |  |  | VehiclePhysicsControl.mass — runner luôn ép. |
 | `drag_coefficient` | DECIMAL(4,3) |  |  |  | VehiclePhysicsControl.drag_coefficient |
 | `center_of_mass_x_m` | DECIMAL(6,3) |  |  |  | VehiclePhysicsControl.center_of_mass (m, so với gốc actor); đủ x/y/z hoặc để trống cả ba (`ck_cvm_center_of_mass`). |
@@ -977,6 +981,7 @@ Cùng một PR (luật mềm ở `AGENTS.md`):
 | `006_2026-10-07_bo-phien-ban-xe-admin-tao-workspace.sql` | Bỏ phiên bản xe, Admin tạo workspace, báo cáo theo project (ADR-038), 30 → 29 bảng |
 | `007_2026-10-15_rut-scope-4-tham-so-aeb-7-category.sql` | Rút scope: 4 tham số AEB, 3 mục tiêu MOBO, 7 category kịch bản (ADR-040), vẫn 29 bảng |
 | `008_2026-10-15_buildup-5-20-va-dinh-nghia-muc-tieu.sql` | `BRAKE_BUILDUP_RATE` biên [5, 20]; tính lại `rms_jerk_mps3` / `stopping_distance_m` cho run cũ (ADR-040 §6–7) |
+| `011_2026-10-26_them-mau-xe-carla.sql` | `ck_cvm_wheels` nhận 6 bánh; thêm 4 mẫu xe CARLA (Model 3, Patrol, Sprinter, xe tải chỉ để xem), không sửa e-tron |
 
 Luôn sao lưu trước (`mysqldump --single-transaction`), không `docker compose down -v` trên máy người khác.
 

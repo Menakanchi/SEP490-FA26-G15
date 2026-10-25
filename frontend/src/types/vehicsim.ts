@@ -814,3 +814,28 @@ export interface NotificationItem {
   workspace_id: number | null; workspace_name: string | null; is_read: boolean; created_date: string;
 }
 export interface NotificationList { items: NotificationItem[]; unread_count: number }
+
+// Màn "Phương tiện" (FE-04-01/02): danh mục mẫu xe CARLA, chỉ đọc. Số đo thiếu là null, không phải 0.
+export interface VehicleSummary {
+  id: number; name: string; carla_blueprint_id: string;
+  length_m: number; width_m: number; height_m: number; num_wheels: number; mass_kg: number;
+  /** Giới hạn phanh của bộ động học (m/s²). */
+  max_brake_decel_mps2: number;
+  /** Giảm tốc phanh 100% đo trên CARLA (m/s²); null = chưa đo. */
+  carla_full_brake_decel_mps2: number | null;
+  is_supported: boolean; in_use: boolean; run_count: number;
+}
+export interface VehicleSensor {
+  id: number; name: string; sensor_type: string; carla_blueprint_id: string;
+  location_m: { x: number; y: number; z: number }; rotation_deg: { pitch: number; yaw: number; roll: number };
+  attributes: Record<string, unknown>; is_enabled: boolean;
+}
+export interface VehicleUsage { simulator_type: "KINEMATIC" | "CARLA"; simulator_version: string; runs: number; last_run_at: string | null }
+export interface VehicleDetail extends VehicleSummary {
+  physics: {
+    drag_coefficient: number | null; center_of_mass_m: { x: number; y: number; z: number } | null;
+    tire_friction: number | null; max_brake_torque_nm: number | null; wheelbase_m: number | null; max_speed_mps: number | null;
+  };
+  sensors: VehicleSensor[];
+  usage: VehicleUsage[];
+}

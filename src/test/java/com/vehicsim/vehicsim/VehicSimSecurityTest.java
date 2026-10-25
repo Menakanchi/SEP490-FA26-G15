@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * ({@link VehicSimController} và {@link RegressionController} của màn 5) cùng luật quyền thật ({@link VehicSimAccess}),
  * service giả — không cần MySQL / Redis nên chạy được trong CI (TD-33).
  */
-@WebMvcTest({VehicSimController.class, RegressionController.class})
+@WebMvcTest({VehicSimController.class, RegressionController.class, VehicleController.class})
 @Import({SecurityConfig.class, VehicSimAccess.class})
 class VehicSimSecurityTest {
 
@@ -96,6 +96,8 @@ class VehicSimSecurityTest {
     private UserDetailsService userDetailsService;
     @MockitoBean
     private TelemetryMetricsService telemetryService;
+    @MockitoBean
+    private VehicleCatalogService vehicles;
 
     private static CustomUserDetails as(RoleCode code) {
         return new CustomUserDetails(User.builder()
@@ -205,6 +207,16 @@ class VehicSimSecurityTest {
 
     private int statusOf(MockHttpServletRequestBuilder builder, RoleCode code) throws Exception {
         return mvc.perform(builder.with(user(as(code)))).andReturn().getResponse().getStatus();
+    }
+
+    @Test
+    void everyRoleCanBrowseTheVehicleCatalog() throws Exception {
+        stubServices();
+        when(vehicles.detail(1L, 1L)).thenReturn(Map.of("id", 1L));
+        for (RoleCode code : RoleCode.values()) {
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles"), code)).as("%s xem danh sách xe", code).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles/1"), code)).as("%s xem chi tiết xe", code).isEqualTo(200);
+        }
     }
 
     @Test
