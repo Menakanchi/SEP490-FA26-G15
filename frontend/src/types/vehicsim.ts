@@ -80,6 +80,23 @@ export interface FamilyItem {
   failures: number;
   baseline: string | null;
   created_at: string;
+  /** Bản hiện hành (v1, v2…): sửa họ tạo bản gốc mới; `variants`, `runs`, `parameter_space` là của bản này. */
+  version: number;
+  version_count: number;
+  base_version_id: number;
+}
+
+/** `GET /families/{id}/versions` — một bản của họ kịch bản; bản cuối (`current`) là hiện hành. */
+export interface FamilyVersion {
+  version: number;
+  base_version_id: number;
+  source: string;
+  current: boolean;
+  parameter_space: Record<string, (number | boolean | string)[]>;
+  variants: number;
+  runs: Record<string, number>;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface FamilyRequest {
@@ -110,7 +127,7 @@ export interface DescribedIr {
   time_of_day: TimeOfDay;
 }
 
-/** `POST /api/v1/vehicsim/scenarios/describe` — src/services/vehicsim/describe.py. */
+/** `POST /api/v1/vehicsim/scenarios/describe` — `DescribeService` (Java). */
 export interface DescribeResult {
   motif: string;
   source: "llm" | "rules";

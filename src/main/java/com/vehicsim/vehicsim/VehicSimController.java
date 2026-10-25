@@ -160,6 +160,30 @@ public class VehicSimController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    @Operation(summary = "Sửa họ: tạo bản gốc mới (v2, v3…) với không gian tham số mới; bản cũ và run của nó giữ nguyên")
+    @PostMapping("/families/{scenarioId}/versions")
+    public ResponseEntity<Map<String, Object>> createFamilyVersion(@PathVariable long scenarioId, @Valid @RequestBody FamilyRequest body,
+                                                                   @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "family");
+        // Tên họ không đổi theo bản (UNIQUE theo project); chỉ không gian tham số và mô tả.
+        FamilyService.FamilySpec spec = new FamilyService.FamilySpec(FamilyService.MOTIF_NAME,
+                body.description() == null ? "" : body.description(),
+                body.egoSpeedsKmh(), body.triggerDistancesM(), body.pedestrianSpeedsMps(), body.stopsAtCurb(), body.weathers(), body.timesOfDay());
+        long pid = projectId();
+        Map<String, Object> created = families.createVersion(pid, scenarioId, spec, uid);
+        if (body.runBaseline() == null || body.runBaseline()) {
+            created.put("queued_runs", runs.runFamily(pid, scenarioId, uid, null).size());
+        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    @Operation(summary = "Lịch sử bản của họ kịch bản (v1, v2…), bản cuối là hiện hành")
+    @GetMapping("/families/{scenarioId}/versions")
+    public List<Map<String, Object>> familyVersions(@PathVariable long scenarioId) {
+        return views.familyVersions(scenarioId);
+    }
+
     public record DescribeRequest(@NotBlank @Size(max = 2000) String text) {
     }
 
@@ -242,8 +266,9 @@ public class VehicSimController {
 
     @Operation(summary = "Snapshot baseline của một họ kịch bản để bàn giao từ phân tích")
     @GetMapping("/analysis/dataset")
-    public Map<String, Object> analysisDataset(@RequestParam(name = "scenario_id") long scenarioId) {
-        return views.analysisDataset(scenarioId);
+    public Map<String, Object> analysisDataset(@RequestParam(name = "scenario_id") long scenarioId,
+                                               @RequestParam(name = "base_version_id", required = false) Long baseVersionId) {
+        return views.analysisDataset(scenarioId, baseVersionId);
     }
 
     @GetMapping("/analysis/runs")

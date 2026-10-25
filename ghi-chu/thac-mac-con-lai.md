@@ -103,6 +103,10 @@ Chưa sửa code cho mục nào dưới đây.
 4. **Quyết định:** chặn sửa khi họ còn run PENDING/RUNNING (chưa có nút hủy — TD-37).
 5. **Đề xuất (Chu, Tu):** hồi quy ghép theo `scenario_version_id` nên vẫn đúng; báo cáo ghi thêm số version.
 
+> **Đã làm 25/10 (Chi) — mục 1–4:** `POST/GET /families/{id}/versions`, `/families` đếm theo bản hiện hành, dataset phân tích theo bản,
+> `/scenarios` có ô chọn bản + nút "Sửa → bản mới". Chi tiết: [exec plan](../docs/exec-plans/completed/2026-10-25-man-1-phien-ban-ho-kich-ban.md).
+> Mục 5 và dashboard run của màn 3 (`AnalysisService`, còn liệt kê run mọi bản) để Chu / Tu.
+
 ### A2. Nhãn ca nguy hiểm / an toàn
 
 **Đề xuất:** đồng ý đề xuất trong bảng — tự suy làm mặc định, cho sửa tay, lưu trong `scenario_ir_json`.
@@ -128,6 +132,8 @@ Câu 3 do Chu quyết; bất biến repo đã bắt tập tối ưu/regression g
 1. **Quyết định:** sửa `FamilyService.DEFAULT_MAP` thành `Town04` cho dòng mới; dữ liệu cũ để nguyên
    (`simulation_runs.map_name` đã ghi map CARLA thật nạp, đó mới là nguồn đúng).
 2. **Đề xuất:** giữ nguyên, luôn lọc `source = 'GENERATED'` (code hiện đã lọc vậy).
+
+> **Đã làm 25/10 (Chi) — mục 1:** `DEFAULT_MAP = "Town04"`; bỏ comment trỏ `describe.py` / `family.py`.
 
 ### B. Phát sinh
 

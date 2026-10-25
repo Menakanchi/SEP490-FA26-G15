@@ -16,17 +16,20 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * Họ kịch bản "người đi bộ băng qua đường" (FE-07, bản tối thiểu cho vòng MVP). Port của ``family.py``.
+ * Họ kịch bản "người đi bộ băng qua đường" (FE-07, bản tối thiểu cho vòng MVP).
  * <p>
- * Một họ = một dòng ``scenarios`` + một bản gốc (``scenario_versions`` source MANUAL / NATURAL_LANGUAGE, giữ không
- * gian tham số trong ``scenario_ir_json``) + các biến thể dạng lưới (source GENERATED, ``parent_version_id`` = bản gốc).
+ * Một họ = một dòng ``scenarios`` + một hay nhiều bản gốc (``scenario_versions`` source MANUAL / NATURAL_LANGUAGE, giữ không
+ * gian tham số trong ``scenario_ir_json``) + các biến thể dạng lưới của từng bản gốc (source GENERATED, ``parent_version_id`` =
+ * bản gốc). Sửa họ không sửa đè: tạo bản gốc mới với bộ biến thể mới (v2, v3…), bản cũ và run của nó giữ nguyên để baseline
+ * cũ vẫn tái lập được; bộ biến thể đang dùng là con của bản gốc mới nhất.
  */
 @Service
 public class FamilyService {
 
     public static final String MOTIF = "pedestrian_crossing";
     public static final String MOTIF_NAME = "Pedestrian Crossing";
-    public static final String DEFAULT_MAP = "Town10HD";
+    /** Map CARLA mà bộ xuất .xosc nạp ({@code XoscExport}, Town04 road 40); run ghi map thật nạp vào {@code simulation_runs.map_name}. */
+    public static final String DEFAULT_MAP = "Town04";
     public static final int MAX_VARIANTS = 300;
     /** Họ duy nhất của MVP là người đi bộ băng qua đường = category CP_CROSSING (Euro NCAP CPFA / CPNA / CPNCO). */
     public static final String CATEGORY = ScenarioRules.CP_CROSSING;
@@ -34,7 +37,7 @@ public class FamilyService {
 
     public static final List<String> WEATHERS = List.of("CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG");
     public static final List<String> TIMES = List.of("DAY", "DUSK", "NIGHT");
-    /** Khớp ``bundle.IR_BOUNDS`` của worker — biến thể ngoài khoảng này không dựng được họ kịch bản. */
+    /** Khớp {@code Bundle} — biến thể ngoài khoảng này không dựng được họ kịch bản. */
     public static final Map<String, double[]> IR_BOUNDS = Map.of(
             "ego_speed_kmh", new double[]{10.0, 130.0},
             "trigger_distance_m", new double[]{5.0, 80.0},
@@ -179,12 +182,7 @@ public class FamilyService {
         if (db.first("SELECT id FROM projects WHERE id = ?", projectId) == null) {
             throw new NotFoundException("project");
         }
-        // Luật theo category kiểm trước khi ghi gì (DB không biết category nào cần cột nào).
-        for (Map<String, Object> point : spec.grid()) {
-            ScenarioRules.check(CATEGORY, TARGET_TYPE, new ScenarioRules.Point(
-                    ((Number) point.get("ego_speed_kmh")).doubleValue(), targetSpeedKmh(point), null, null, null,
-                    ((Number) point.get("trigger_distance_m")).doubleValue()));
-        }
+        checkRules(spec);
         String code = nextCode(projectId);
         long scenarioId = db.insert(
                 "INSERT INTO scenarios (project_id, category, code, name, description, created_by_user_id, created_date, updated_at) VALUES (?,?,?,?,?,?,?,?)",
@@ -197,19 +195,95 @@ public class FamilyService {
         }
         Object llmModel = nlText.isEmpty() || origin.get("llm_model") == null || String.valueOf(origin.get("llm_model")).isEmpty()
                 ? null : origin.get("llm_model");
-        // Bản gốc giữ không gian tham số trong IR; ego / thời tiết / giờ nhận giá trị giữ chỗ (DEFAULT) của bản chuẩn.
-        long baseId = db.insert(
+        long baseId = insertBase(scenarioId, 1, nlText.isEmpty() ? "MANUAL" : "NATURAL_LANGUAGE", nlText.isEmpty() ? null : nlText,
+                llmModel, baseIr, nlText.isEmpty() ? "Family definition (parameter space)" : "Family from natural-language description",
+                userId, ts);
+        insertVariants(scenarioId, 2, baseId, spec, userId, ts);
+        return Json.obj("scenario_id", scenarioId, "code", code, "base_version_id", baseId, "version", 1, "variants", spec.variantCount());
+    }
+
+    /** Run chưa xong của họ: còn run thì chưa cho tạo bản mới (kết quả đang chạy thuộc bộ biến thể cũ). */
+    static final List<String> UNFINISHED_RUN_STATUSES = List.of("PENDING", "RUNNING", "PAUSED");
+
+    /**
+     * Sửa họ = tạo bản gốc mới (v2, v3…) với không gian tham số mới và bộ biến thể mới, trong **một** transaction. Bản cũ, biến thể
+     * cũ và run của chúng giữ nguyên (baseline cũ vẫn tái lập được); từ đây chạy cơ sở / regression / tối ưu dùng bộ biến thể mới
+     * vì chúng đều lấy {@link #latestBaseVersionId}. Chặn khi họ còn run chưa xong hoặc không gian tham số không đổi.
+     */
+    @Transactional
+    public Map<String, Object> createVersion(long projectId, long scenarioId, FamilySpec spec, long userId) {
+        spec.validate();
+        // Khoá dòng họ: hai người sửa cùng lúc không lấy trùng version_no.
+        Row scenario = db.first("SELECT id, code FROM scenarios WHERE id = ? AND project_id = ? FOR UPDATE", scenarioId, projectId);
+        if (scenario == null) {
+            throw new NotFoundException("scenario");
+        }
+        String code = scenario.str("code");
+        Object unfinished = db.scalar("SELECT COUNT(*) FROM simulation_runs WHERE scenario_id = ? AND status IN ('"
+                + String.join("','", UNFINISHED_RUN_STATUSES) + "')", scenarioId);
+        long busy = unfinished == null ? 0 : ((Number) unfinished).longValue();
+        if (busy > 0) {
+            throw new InvalidRequestException("Họ " + code + " còn " + busy + " lượt chạy đang chờ / đang chạy; đợi chạy xong hoặc hủy rồi mới sửa");
+        }
+        Row current = db.first("SELECT scenario_ir_json FROM scenario_versions WHERE id = ?", latestBaseVersionId(scenarioId));
+        if (sameSpace(spec.parameterSpace(), Json.asMap(current.json("scenario_ir_json").get("parameter_space")))) {
+            throw new InvalidRequestException("Không gian tham số không đổi so với bản hiện hành; sửa ít nhất một giá trị rồi mới tạo bản mới");
+        }
+        checkRules(spec);
+        LocalDateTime ts = Vs.now();
+        Object maxNo = db.scalar("SELECT MAX(version_no) FROM scenario_versions WHERE scenario_id = ?", scenarioId);
+        int next = (maxNo == null ? 0 : ((Number) maxNo).intValue()) + 1;
+        long baseId = insertBase(scenarioId, next, "MANUAL", null, null, Json.obj("motif", MOTIF, "parameter_space", spec.parameterSpace()),
+                "Edited parameter space (new family version)", userId, ts);
+        insertVariants(scenarioId, next + 1, baseId, spec, userId, ts);
+        if (spec.description() != null && !spec.description().isBlank()) {
+            db.update("UPDATE scenarios SET description = ?, updated_at = ? WHERE id = ?", spec.description().strip(), ts, scenarioId);
+        } else {
+            db.update("UPDATE scenarios SET updated_at = ? WHERE id = ?", ts, scenarioId);
+        }
+        return Json.obj("scenario_id", scenarioId, "code", code, "base_version_id", baseId, "version", baseVersions(scenarioId).size(),
+                "variants", spec.variantCount());
+    }
+
+    /** So hai không gian tham số theo giá trị (JSON đọc lại có thể trả 40 thay vì 40.0). */
+    static boolean sameSpace(Map<String, Object> a, Map<String, Object> b) {
+        return normalized(a).equals(normalized(b));
+    }
+
+    private static Map<String, List<Object>> normalized(Map<String, Object> space) {
+        Map<String, List<Object>> out = new java.util.TreeMap<>();
+        space.forEach((axis, values) -> out.put(axis, Json.asList(values).stream()
+                .map(v -> v instanceof Number n ? (Object) n.doubleValue() : v).toList()));
+        return out;
+    }
+
+    /** Luật theo category kiểm trước khi ghi gì (DB không biết category nào cần cột nào). */
+    private static void checkRules(FamilySpec spec) {
+        for (Map<String, Object> point : spec.grid()) {
+            ScenarioRules.check(CATEGORY, TARGET_TYPE, new ScenarioRules.Point(
+                    ((Number) point.get("ego_speed_kmh")).doubleValue(), targetSpeedKmh(point), null, null, null,
+                    ((Number) point.get("trigger_distance_m")).doubleValue()));
+        }
+    }
+
+    /** Bản gốc giữ không gian tham số trong IR; ego / thời tiết / giờ nhận giá trị giữ chỗ (DEFAULT) của bản chuẩn (TD-43). */
+    private long insertBase(long scenarioId, int versionNo, String source, String nlText, Object llmModel, Map<String, Object> baseIr,
+                            String statusMessage, long userId, LocalDateTime ts) {
+        return db.insert(
                 "INSERT INTO scenario_versions (scenario_id, version_no, source, natural_language_input, llm_model, scenario_ir_json, "
                         + "target_type, max_duration_s, map_name, validation_status, status_message, created_by_user_id, created_date) "
                         + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                scenarioId, 1, nlText.isEmpty() ? "MANUAL" : "NATURAL_LANGUAGE", nlText.isEmpty() ? null : nlText, llmModel,
-                baseIr, TARGET_TYPE, RunService.MAX_DURATION_S, DEFAULT_MAP, "VALID",
-                nlText.isEmpty() ? "Family definition (parameter space)" : "Family from natural-language description", userId, ts);
+                scenarioId, versionNo, source, nlText, llmModel, baseIr, TARGET_TYPE, RunService.MAX_DURATION_S, DEFAULT_MAP, "VALID",
+                statusMessage, userId, ts);
+    }
 
-        // Cột lọc của biến thể = đúng điểm lưới trong IR (IR vẫn tính bằng m/s; cột target_speed_kmh = m/s × 3,6);
-        // ma sát suy từ thời tiết như bộ động học.
+    /**
+     * Cột lọc của biến thể = đúng điểm lưới trong IR (IR vẫn tính bằng m/s; cột target_speed_kmh = m/s × 3,6); ma sát suy từ thời
+     * tiết như bộ động học. {@code version_no} nối tiếp từ {@code firstNo}.
+     */
+    private void insertVariants(long scenarioId, int firstNo, long baseId, FamilySpec spec, long userId, LocalDateTime ts) {
         List<Object[]> rows = new ArrayList<>();
-        int index = 2;
+        int index = firstNo;
         for (Map<String, Object> ir : spec.grid()) {
             rows.add(new Object[]{scenarioId, index++, "GENERATED", baseId, ir, TARGET_TYPE, ir.get("ego_speed_kmh"), targetSpeedKmh(ir),
                     ir.get("trigger_distance_m"), ir.get("stops_at_curb"), ir.get("weather"), ir.get("time_of_day"),
@@ -222,7 +296,6 @@ public class FamilyService {
                         + "max_duration_s, map_name, validation_status, created_by_user_id, created_date) "
                         + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 rows);
-        return Json.obj("scenario_id", scenarioId, "code", code, "base_version_id", baseId, "variants", spec.variantCount());
     }
 
     private String nextCode(long projectId) {
@@ -249,6 +322,11 @@ public class FamilyService {
         }
         boolean taken = db.first("SELECT id FROM scenarios WHERE project_id = ? AND name = ?", projectId, name) != null;
         return taken ? (name.length() > 140 ? name.substring(0, 140) : name) + " (" + code + ")" : name;
+    }
+
+    /** Các bản gốc của họ theo thứ tự tạo: phần tử thứ i là bản v(i+1). */
+    public List<Row> baseVersions(long scenarioId) {
+        return db.list("SELECT * FROM scenario_versions WHERE scenario_id = ? AND source != 'GENERATED' ORDER BY id", scenarioId);
     }
 
     /** Bản gốc mới nhất của họ — bộ biến thể đang dùng là con của nó. */

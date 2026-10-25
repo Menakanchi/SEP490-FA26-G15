@@ -67,12 +67,17 @@ export function FamilyForm({
   initial,
   title = "Họ kịch bản mới · Người đi bộ băng ngang",
   hint,
+  submitLabel = "Tạo họ kịch bản",
+  lockName = false,
 }: {
   busy: boolean;
   onSubmit: (body: FamilyBody) => void;
   initial?: FamilyInitial;
   title?: string;
   hint?: React.ReactNode;
+  submitLabel?: string;
+  /** Sửa họ (tạo bản mới): tên họ giữ nguyên, chỉ đổi không gian tham số và mô tả. */
+  lockName?: boolean;
 }) {
   const [name, setName] = useState(initial?.name ?? "Người đi bộ băng ngang");
   const [description, setDescription] = useState(initial?.description ?? "");
@@ -111,7 +116,7 @@ export function FamilyForm({
       </div>
       {hint && <p className="-mt-2 text-[12px] leading-[1.5] text-vehicsim-muted">{hint}</p>}
       <div className="grid grid-cols-2 gap-4">
-        <TextField label="Tên họ kịch bản" value={name} onChange={setName} />
+        <TextField label="Tên họ kịch bản" value={name} onChange={setName} disabled={lockName} />
         <TextField label="Mô tả (không bắt buộc)" value={description} onChange={setDescription} placeholder="vd. Trẻ em lao ra giữa hai xe đỗ" />
         {AXES.map((a, i) => (
           <TextField
@@ -167,7 +172,7 @@ export function FamilyForm({
             })
           }
         >
-          {busy ? "Đang tạo…" : "Tạo họ kịch bản"}
+          {busy ? "Đang tạo…" : submitLabel}
         </PillButton>
       </div>
     </section>
@@ -180,12 +185,14 @@ function TextField({
   onChange,
   placeholder,
   error,
+  disabled,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   error?: string | null;
+  disabled?: boolean;
 }) {
   return (
     <label className="flex flex-col gap-[6px]">
@@ -194,8 +201,9 @@ function TextField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        disabled={disabled}
         className={cx(
-          "h-[42px] rounded-[12px] border border-solid px-[14px] text-[14px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong",
+          "h-[42px] rounded-[12px] border border-solid px-[14px] text-[14px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong disabled:bg-vehicsim-soft disabled:text-vehicsim-muted",
           error ? "border-vehicsim-danger" : "border-vehicsim-line-strong",
         )}
       />

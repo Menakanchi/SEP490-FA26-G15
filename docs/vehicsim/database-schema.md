@@ -546,13 +546,13 @@ Họ kịch bản (mô típ, vd người đi bộ băng ngang), thuộc một tr
 
 #### `scenario_versions` — FE-05/06
 
-Bản gốc (giữ không gian tham số + câu mô tả) và các biến thể lưới (giữ một điểm + cột lọc). **Code dùng:** `family.py`, `runs.spec_for_run` (ma sát).
+Bản gốc (giữ không gian tham số + câu mô tả) và các biến thể lưới (giữ một điểm + cột lọc). Sửa họ không sửa đè: `FamilyService.createVersion` thêm bản gốc mới (v2, v3… theo thứ tự `id` của các bản gốc) với bộ biến thể mới; bộ đang dùng là con của bản gốc mới nhất (`latestBaseVersionId`), bản cũ và run của nó giữ nguyên. **Code dùng:** `FamilyService`, `ViewsService` (`/families`, `/families/{id}/versions`, dataset phân tích theo bản), `RunService` (ma sát).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; UQ `uq_sv_scenario_id`; AI | Khoá chính. |
 | `scenario_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sv_no`; UQ `uq_sv_scenario_id`; FK → `scenarios`; FK → `scenario_versions(scenario_id,id)` | Họ kịch bản. |
-| `version_no` | INT UNSIGNED | ✓ |  | UQ `uq_sv_no` | Số trong họ: 1 = bản gốc, 2… = biến thể (nhãn `PX-002`). |
+| `version_no` | INT UNSIGNED | ✓ |  | UQ `uq_sv_no` | Số trong họ, tăng dần qua mọi bản: 1 = bản gốc đầu, 2… = biến thể (nhãn `PX-002`); bản gốc mới (sửa họ) và biến thể của nó nối tiếp số lớn nhất. |
 | `source` | ENUM | ✓ |  |  | Bản gốc `NATURAL_LANGUAGE` / `MANUAL` / `IMPORTED_XOSC`; biến thể `GENERATED`. Giá trị: 'NATURAL_LANGUAGE', 'MANUAL', 'IMPORTED_XOSC', 'GENERATED'. |
 | `parent_version_id` | BIGINT UNSIGNED |  |  | FK → `scenario_versions(scenario_id,id)` | Biến thể → bản gốc **cùng họ**; bản gốc `NULL` (`ck_sv_generated`). |
 | `natural_language_input` | TEXT |  |  |  | Câu mô tả gốc (FE-06) — để truy vết. |
@@ -573,7 +573,7 @@ Bản gốc (giữ không gian tham số + câu mô tả) và các biến thể 
 | `openscenario_version` | VARCHAR(20) |  | `'1.0'` |  | Phiên bản OpenSCENARIO của `.xosc`. |
 | `openscenario_content` | LONGTEXT |  |  |  | Nội dung file OpenSCENARIO XML (.xosc) nạp vào ScenarioRunner (FE-06-09) |
 | `opendrive_content` | LONGTEXT |  |  |  | Nội dung file OpenDRIVE (.xodr); NULL = map có sẵn của CARLA |
-| `map_name` | VARCHAR(100) |  | `'Town01'` |  | Bản đồ CARLA LogicFile (vd: Town01, Town10HD). Mặc định của DB là Town01 (đoạn đường thẳng, theo tài liệu kịch bản) nhưng `FamilyService` ghi tường minh `Town10HD` — map đã dùng cho mọi run cũ. |
+| `map_name` | VARCHAR(100) |  | `'Town01'` |  | Bản đồ CARLA LogicFile (vd: Town01, Town10HD). Mặc định của DB là Town01 (đoạn đường thẳng, theo tài liệu kịch bản) nhưng `FamilyService` ghi tường minh `Town04` — map mà bộ xuất `.xosc` nạp (từ 25/10/2026; dòng cũ giữ `Town10HD`). Map thật của từng run nằm ở `simulation_runs.map_name`. |
 | `validation_status` | ENUM | ✓ | `'NOT_VALIDATED'` |  | Kết quả kiểm IR / `.xosc`. Giá trị: 'NOT_VALIDATED', 'VALID', 'INVALID'. |
 | `status_message` | TEXT |  |  |  | Ghi chú tạo / lỗi kiểm. |
 | `created_by_user_id` | BIGINT UNSIGNED | ✓ |  | FK → `users` | Người tạo. |
