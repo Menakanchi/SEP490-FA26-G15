@@ -86,3 +86,66 @@ Run baseline gắn với `scenario_version_id` của **từng biến thể**.
 |---|---|---|
 | 1 | Merge `feature/manager-workspace` vào `trungdam` bằng PR hay để Trung tự merge? | Mở PR để Trung review (branch không xung đột, chỉ đi trước 6 commit) |
 | 2 | Code màn 1 của Chi trên `chi`, `feature/carla-0.9.16-local` (kiến trúc Python cũ, chậm 46+ commit) xử lý sao? | Không merge; chỉ giữ `aeb-mobo-optimization.md` cho Phuong nếu cần |
+
+---
+
+## E. Trả lời của Trung (25/10/2026)
+
+Mục có "Trung" ở cột "Ai chốt" là **quyết định**. Mục cần người khác / cả nhóm là **đề xuất của Trung**, chờ người đó chốt.
+Chưa sửa code cho mục nào dưới đây.
+
+### A1. Phiên bản kịch bản
+
+1. **Quyết định:** tạo bản gốc mới (v2, v3…), không sửa đè — sửa đè làm hỏng tái lập baseline (bất biến 4).
+2. **Quyết định:** sinh biến thể mới → `scenario_version_id` mới → chạy baseline mới. Không ghép theo IR.
+3. **Quyết định:** màn 2 mặc định hiện bản gốc mới nhất, có ô chọn bản cũ. Cần thêm điều kiện
+   `parent_version_id = <bản gốc đang chọn>` vào truy vấn biến thể của họ trong `ViewsService` (hiện lọc theo cả họ).
+4. **Quyết định:** chặn sửa khi họ còn run PENDING/RUNNING (chưa có nút hủy — TD-37).
+5. **Đề xuất (Chu, Tu):** hồi quy ghép theo `scenario_version_id` nên vẫn đúng; báo cáo ghi thêm số version.
+
+### A2. Nhãn ca nguy hiểm / an toàn
+
+**Đề xuất:** đồng ý đề xuất trong bảng — tự suy làm mặc định, cho sửa tay, lưu trong `scenario_ir_json`.
+Câu 3 do Chu quyết; bất biến repo đã bắt tập tối ưu/regression giữ ca an toàn, chỉ cần chốt tỉ lệ tối thiểu.
+
+### A3. Hướng xuất phát người đi bộ
+
+1. **Đề xuất:** để sau Demo. Đổi hình học → identity `-xosc5` + chạy lại toàn bộ baseline + chạy CARLA thật;
+   vừa chuyển xosc4, làm ngay là chạy lại hai lần.
+2. Nếu làm thì bắt buộc chạy CARLA thật (quy tắc repo).
+3. **Đề xuất:** ngoài phạm vi Demo.
+
+### A4. Mở rộng category
+
+1. **Đề xuất:** CCRS trước.
+2. **Đề xuất:** chốt TD-41 theo Euro NCAP (−50…50 %, 100 % = hai đường tâm trùng nhau) và sửa CHECK DB cho khớp, trước khi làm CCR*.
+3. **Quyết định (TD-42):** CP_CROSSING giữ 12 s — hằng `MAX_DURATION_S = 12` đã được ghi vào cột của mọi run nên dữ liệu khớp
+   thực tế; đổi lên 15 s sẽ phải đổi identity. Category mới đọc theo cột (mặc định 15 s).
+4. **Đề xuất:** hiện category khác, để mờ kèm nhãn "chưa hỗ trợ".
+
+### A5. Dọn dẹp
+
+1. **Quyết định:** sửa `FamilyService.DEFAULT_MAP` thành `Town04` cho dòng mới; dữ liệu cũ để nguyên
+   (`simulation_runs.map_name` đã ghi map CARLA thật nạp, đó mới là nguồn đúng).
+2. **Đề xuất:** giữ nguyên, luôn lọc `source = 'GENERATED'` (code hiện đã lọc vậy).
+
+### B. Phát sinh
+
+1. **Đồng ý:** cần chạy lại baseline CARLA bằng `-xosc4` (Trung làm, cần bật CARLA).
+2. **Đồng ý, và rộng hơn:** cả `report7-man-chay-baseline.md` và `report7-baseline-screen-en.md` còn ghi identity
+   `carla-0.9.16-xosc3` (bảng định danh, BR-05) và TD-47 là giới hạn → cập nhật sang xosc4.
+3, 4. Đã biết.
+5. **Đề xuất (Chi):** hạ giới hạn trên tốc độ người đi bộ trong `FamilyService` từ 8 xuống 6 m/s; muốn giữ 8 m/s thì cần số đo CARLA.
+
+### C. Role Manager (đề xuất, cả nhóm chốt)
+
+- C1, C2, C3 giao Tu (FE-04/FE-10 workspace/admin); **C3 làm trước** vì thiếu nó máy mới không dùng được màn Manager.
+- C4 (TD-30): để sau Demo — mọi API phải nhận `project_id`.
+- C5: Trung nối `SIMULATION_*` trong `RunService`; Chu nối `REGRESSION_DONE`/`FAILURE_DETECTED`.
+- C6: giữ hỏi lại 60 s cho Demo.
+- C7: người phụ trách UI vẽ frame Figma; trước khi có, ghi rõ "chưa đối chiếu Figma".
+
+### D. Quy trình
+
+1. **Đã xong:** Trung merge `feature/manager-workspace` vào `trungdam` và push ngày 24/10 (commit `02c8973`).
+2. **Đồng ý:** không merge `chi`, `feature/carla-0.9.16-local` (kiến trúc Python cũ đã gỡ ở ADR-042).
