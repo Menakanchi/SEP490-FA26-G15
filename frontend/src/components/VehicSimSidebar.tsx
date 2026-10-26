@@ -65,7 +65,7 @@ const SOON = "Chưa có trong đợt MVP";
 
 const GROUPS: Group[] = [
   { key: "dashboard", label: "Tổng quan", icon: gridIcon, href: "/", prefix: "/", exact: true },
-  { key: "vehicles", label: "Phương tiện", icon: svgIcon("/vehicsim/icon-car.svg"), note: `${SOON} (FE-05)` },
+  { key: "vehicles", label: "Phương tiện", icon: svgIcon("/vehicsim/icon-car.svg"), href: "/vehicles", prefix: "/vehicles" },
   {
     key: "scenarios",
     label: "Kịch bản",

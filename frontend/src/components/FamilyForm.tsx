@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { ScenarioCategoryPicker } from "@/components/ScenarioCategoryPicker";
 import { PillButton, Toggle, cx } from "@/components/VehicSimUi";
 import type { FamilyRequest, TimeOfDay, Weather } from "@/types/vehicsim";
 
@@ -27,7 +28,8 @@ export function unreachablePairs(speedsKmh: number[], distancesM: number[]): { s
 export const AXES = [
   { key: "ego_speeds_kmh", label: "Tốc độ xe ego", unit: "km/h", min: 10, max: 130, fallback: [40, 50, 60, 70] },
   { key: "trigger_distances_m", label: "Khoảng cách kích hoạt", unit: "m", min: 5, max: 80, fallback: [20, 30, 40] },
-  { key: "pedestrian_speeds_mps", label: "Tốc độ người đi bộ", unit: "m/s", min: 0.5, max: 8, fallback: [1.5, 3] },
+  // 6 m/s: tốc độ lớn nhất đã đo hành vi trên CARLA (FamilyService.MAX_PEDESTRIAN_SPEED_MPS).
+  { key: "pedestrian_speeds_mps", label: "Tốc độ người đi bộ", unit: "m/s", min: 0.5, max: 6, fallback: [1.5, 3] },
 ] as const;
 export type AxisKey = (typeof AXES)[number]["key"];
 export const WEATHERS: { value: Weather; label: string }[] = [
@@ -67,12 +69,17 @@ export function FamilyForm({
   initial,
   title = "Họ kịch bản mới · Người đi bộ băng ngang",
   hint,
+  submitLabel = "Tạo họ kịch bản",
+  lockName = false,
 }: {
   busy: boolean;
   onSubmit: (body: FamilyBody) => void;
   initial?: FamilyInitial;
   title?: string;
   hint?: React.ReactNode;
+  submitLabel?: string;
+  /** Sửa họ (tạo bản mới): tên họ giữ nguyên, chỉ đổi không gian tham số và mô tả. */
+  lockName?: boolean;
 }) {
   const [name, setName] = useState(initial?.name ?? "Người đi bộ băng ngang");
   const [description, setDescription] = useState(initial?.description ?? "");
@@ -110,8 +117,9 @@ export function FamilyForm({
         </span>
       </div>
       {hint && <p className="-mt-2 text-[12px] leading-[1.5] text-vehicsim-muted">{hint}</p>}
+      <ScenarioCategoryPicker />
       <div className="grid grid-cols-2 gap-4">
-        <TextField label="Tên họ kịch bản" value={name} onChange={setName} />
+        <TextField label="Tên họ kịch bản" value={name} onChange={setName} disabled={lockName} />
         <TextField label="Mô tả (không bắt buộc)" value={description} onChange={setDescription} placeholder="vd. Trẻ em lao ra giữa hai xe đỗ" />
         {AXES.map((a, i) => (
           <TextField
@@ -167,7 +175,7 @@ export function FamilyForm({
             })
           }
         >
-          {busy ? "Đang tạo…" : "Tạo họ kịch bản"}
+          {busy ? "Đang tạo…" : submitLabel}
         </PillButton>
       </div>
     </section>
@@ -180,12 +188,14 @@ function TextField({
   onChange,
   placeholder,
   error,
+  disabled,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   error?: string | null;
+  disabled?: boolean;
 }) {
   return (
     <label className="flex flex-col gap-[6px]">
@@ -194,8 +204,9 @@ function TextField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        disabled={disabled}
         className={cx(
-          "h-[42px] rounded-[12px] border border-solid px-[14px] text-[14px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong",
+          "h-[42px] rounded-[12px] border border-solid px-[14px] text-[14px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong disabled:bg-vehicsim-soft disabled:text-vehicsim-muted",
           error ? "border-vehicsim-danger" : "border-vehicsim-line-strong",
         )}
       />

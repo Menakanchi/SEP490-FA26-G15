@@ -21,12 +21,13 @@ class AnalysisDatasetTest {
     private Db db;
     private Queries queries;
     private ViewsService service;
+    private FamilyService families;
 
     @BeforeEach
     void setUp() {
         db = mock(Db.class);
         queries = mock(Queries.class);
-        FamilyService families = mock(FamilyService.class);
+        families = mock(FamilyService.class);
         RegressionService regression = mock(RegressionService.class);
         RunService runs = mock(RunService.class);
         service = new ViewsService(db, queries, families, regression, runs);
@@ -35,13 +36,38 @@ class AnalysisDatasetTest {
         when(queries.baselineVersion(1L)).thenReturn(new Row(Json.obj("id", 4L, "version_no", 1L, "label", "v1.0")));
         when(db.first(eq("SELECT * FROM scenarios WHERE id = ? AND project_id = ?"), eq(8L), eq(1L)))
                 .thenReturn(new Row(Json.obj("id", 8L, "project_id", 1L, "code", "PX", "name", "Crossing", "category", "CP_CROSSING")));
+        // Họ có hai bản gốc: 5 (v1) và 7 (v2, hiện hành).
+        when(families.baseVersions(8L)).thenReturn(List.of(new Row(Json.obj("id", 5L)), new Row(Json.obj("id", 7L))));
+    }
+
+    @Test
+    void snapshotOnlyTakesVariantsOfTheChosenFamilyVersion() {
+        when(db.first(startsWith("SELECT carla_vehicle_model_id, simulator_version"), any(Object[].class))).thenReturn(null);
+        when(db.list(startsWith("SELECT id, version_no, source, scenario_ir_json FROM scenario_versions WHERE parent_version_id = ? ORDER BY version_no"), eq(7L)))
+                .thenReturn(List.of(variant(21L, 9L, "GENERATED", false)));
+        when(db.list(startsWith("SELECT id, version_no, source, scenario_ir_json FROM scenario_versions WHERE parent_version_id = ? ORDER BY version_no"), eq(5L)))
+                .thenReturn(List.of(variant(11L, 2L, "GENERATED", false), variant(12L, 3L, "GENERATED", true)));
+
+        Map<String, Object> current = service.analysisDataset(8L);
+        assertThat(Json.asMap(current.get("scenario"))).containsEntry("version", 2).containsEntry("base_version_id", 7L);
+        assertThat(Json.asList(current.get("variants"))).extracting(v -> Json.asMap(v).get("scenario_version_id")).containsExactly(21L);
+
+        Map<String, Object> old = service.analysisDataset(8L, 5L);
+        assertThat(Json.asMap(old.get("scenario"))).containsEntry("version", 1).containsEntry("base_version_id", 5L);
+        assertThat(Json.asList(old.get("variants"))).extracting(v -> Json.asMap(v).get("scenario_version_id")).containsExactly(11L, 12L);
+        assertThat(old.get("preview_token")).isNotEqualTo(current.get("preview_token"));
+        // Nhãn tập thử (task 5) theo từng biến thể và tổng của bản đang xem.
+        assertThat(Json.asList(old.get("variants"))).extracting(v -> Json.asMap(v).get("risk_label")).containsExactly("DANGEROUS", "SAFE");
+        assertThat(Json.asMap(old.get("risk_counts"))).containsEntry("DANGEROUS", 1L).containsEntry("SAFE", 1L);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.analysisDataset(8L, 99L)).isInstanceOf(Vs.NotFoundException.class);
     }
 
     @Test
     void snapshotKeepsSafeVariantsAndMarksMissingRunsNotRun() {
         when(db.first(startsWith("SELECT carla_vehicle_model_id, simulator_version"), any(Object[].class)))
                 .thenReturn(new Row(Json.obj("carla_vehicle_model_id", 3L, "simulator_version", "vehicsim-kinematic-1.0", "completed_runs", 1L)));
-        when(db.list(startsWith("SELECT id, version_no, source, scenario_ir_json FROM scenario_versions WHERE scenario_id = ? AND source = 'GENERATED' ORDER BY version_no"), eq(8L)))
+        when(db.list(startsWith("SELECT id, version_no, source, scenario_ir_json FROM scenario_versions WHERE parent_version_id = ? ORDER BY version_no"), eq(7L)))
                 .thenReturn(List.of(
                         variant(11L, 1L, "GENERATED", false),
                         variant(12L, 2L, "GENERATED", true),
@@ -71,7 +97,7 @@ class AnalysisDatasetTest {
     @Test
     void snapshotWithoutCompletedBaselineRunReturnsNotRunRowsAndNoMetrics() {
         when(db.first(startsWith("SELECT carla_vehicle_model_id, simulator_version"), any(Object[].class))).thenReturn(null);
-        when(db.list(startsWith("SELECT id, version_no, source, scenario_ir_json FROM scenario_versions WHERE scenario_id = ? AND source = 'GENERATED' ORDER BY version_no"), eq(8L)))
+        when(db.list(startsWith("SELECT id, version_no, source, scenario_ir_json FROM scenario_versions WHERE parent_version_id = ? ORDER BY version_no"), eq(7L)))
                 .thenReturn(List.of(variant(11L, 1L, "GENERATED", false)));
 
         Map<String, Object> snapshot = service.analysisDataset(8L);
@@ -87,7 +113,7 @@ class AnalysisDatasetTest {
     void nearMissIsNotCountedAsSafeEvenWhenTheRunVerdictIsPass() {
         when(db.first(startsWith("SELECT carla_vehicle_model_id, simulator_version"), any(Object[].class)))
                 .thenReturn(new Row(Json.obj("carla_vehicle_model_id", 3L, "simulator_version", "vehicsim-kinematic-1.0")));
-        when(db.list(startsWith("SELECT id, version_no, source, scenario_ir_json FROM scenario_versions WHERE scenario_id = ? AND source = 'GENERATED' ORDER BY version_no"), eq(8L)))
+        when(db.list(startsWith("SELECT id, version_no, source, scenario_ir_json FROM scenario_versions WHERE parent_version_id = ? ORDER BY version_no"), eq(7L)))
                 .thenReturn(List.of(variant(11L, 1L, "GENERATED", false)));
         Map<String, Object> data = new java.util.LinkedHashMap<>(run(101L, 48011L, false, "PASS").asMap());
         data.put("min_ttc_s", 0.5);

@@ -263,7 +263,7 @@ CREATE TABLE carla_vehicle_models (
   PRIMARY KEY (id),
   UNIQUE KEY uq_cvm_blueprint (carla_blueprint_id),
   CONSTRAINT ck_cvm_dims   CHECK (length_m > 0 AND width_m > 0 AND height_m > 0),
-  CONSTRAINT ck_cvm_wheels CHECK (num_wheels IN (2, 4)),
+  CONSTRAINT ck_cvm_wheels CHECK (num_wheels IN (2, 4, 6)),
   CONSTRAINT ck_cvm_physics CHECK (mass_kg > 0 AND max_brake_decel_mps2 > 0
                                    AND (max_speed_mps IS NULL OR max_speed_mps > 0)
                                    AND (max_brake_torque_nm IS NULL OR max_brake_torque_nm > 0)
@@ -865,6 +865,16 @@ INSERT INTO aeb_parameters (code, name, category, unit, description, min_value, 
 INSERT INTO carla_vehicle_models (carla_blueprint_id, display_name, length_m, width_m, height_m,
                                   mass_kg, tire_friction, wheelbase_m, max_speed_mps, max_brake_decel_mps2) VALUES
   ('vehicle.audi.etron', 'Audi e-tron', 4.750, 1.930, 1.670, 2100.00, 1.00, 2.950, 50.00, 9.50);
+
+-- 4 mẫu xe CARLA 0.9.16 (migration 011): physics mặc định đọc bằng worker/vehicle_catalog.py, phanh 100% đo bằng worker/vehicle_study.py.
+-- max_brake_decel_mps2 = 9,5 như e-tron (giới hạn của bộ động học, TD-17); xe tải chỉ để xem (is_supported = FALSE).
+INSERT INTO carla_vehicle_models (carla_blueprint_id, display_name, length_m, width_m, height_m, num_wheels, mass_kg, drag_coefficient,
+                                  center_of_mass_x_m, center_of_mass_y_m, center_of_mass_z_m, tire_friction, max_brake_torque_nm,
+                                  wheelbase_m, max_speed_mps, max_brake_decel_mps2, carla_full_brake_decel_mps2, is_supported) VALUES
+  ('vehicle.tesla.model3', 'Tesla Model 3', 4.792, 2.163, 1.488, 4, 1845.00, 0.150, 0.450, 0.000, -0.300, 3.50, 700.00, 3.002, NULL, 9.50, 3.56, TRUE),
+  ('vehicle.nissan.patrol_2021', 'Nissan Patrol 2021', 5.566, 2.150, 2.045, 4, 2355.00, 0.300, 0.600, 0.000, -0.500, 3.50, 1500.00, 3.276, NULL, 9.50, 6.01, TRUE),
+  ('vehicle.mercedes.sprinter', 'Mercedes Sprinter', 5.915, 1.988, 2.561, 4, 3000.00, 0.500, 0.600, 0.000, -0.800, 3.50, 1500.00, 3.658, NULL, 9.50, 5.69, TRUE),
+  ('vehicle.carlamotors.european_hgv', 'CarlaMotors European HGV', 7.936, 2.891, 3.462, 6, 7000.00, 0.300, 0.800, 0.000, -1.200, 3.50, 1500.00, 3.823, NULL, 9.50, 1.77, FALSE);
 
 -- Tri thức kỹ thuật & tiêu chuẩn Euro NCAP, OpenSCENARIO:
 INSERT INTO tech_references (ref_code, ref_type, ref_name, ref_value, unit, description, source_type, source_title, organization, publication_year) VALUES

@@ -15,11 +15,12 @@ const EXAMPLES = [
 ];
 const MAX_TEXT = 2000;
 
-/** Khớp BOUNDS trong src/services/vehicsim/describe.py (và FamilySpec.validate). */
+/** Khớp `DescribeService` và `FamilyService.IR_BOUNDS` (FamilySpec.validate) ở backend Java. */
 const NUMERIC: { key: Extract<DescribeKey, "ego_speed_kmh" | "trigger_distance_m" | "pedestrian_speed_mps">; min: number; max: number; step: number }[] = [
   { key: "ego_speed_kmh", min: 10, max: 130, step: 1 },
   { key: "trigger_distance_m", min: 5, max: 80, step: 1 },
-  { key: "pedestrian_speed_mps", min: 0.5, max: 8, step: 0.1 },
+  // 6 m/s: tốc độ lớn nhất đã đo hành vi trên CARLA (FamilyService.MAX_PEDESTRIAN_SPEED_MPS).
+  { key: "pedestrian_speed_mps", min: 0.5, max: 6, step: 0.1 },
 ];
 
 const ORIGIN_TAG: Record<FieldOrigin, { label: string; tone: "ok" | "info" | "warn" | "dark" }> = {

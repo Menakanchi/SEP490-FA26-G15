@@ -424,8 +424,12 @@ Chỉ owner và thành viên của project này xem được danh sách thành v
 
 Danh mục xe: blueprint CARLA + kích thước + **thông số vật lý cố định**. Không có phiên bản, app không cho sửa
 (ADR-038); run, regression, tối ưu trỏ thẳng vào đây nên run cũ luôn tái lập đúng xe. Seed `vehicle.audi.etron`
-(cỡ VF8; CARLA không có VinFast) với thông số của xe MVP cũ — chưa đo lại trên CARLA (TD-17). **Code dùng:**
-`common.active_vehicle` / `vehicle_by_id`, `runs.carla_vehicle` (→ khối `vehicle.carla` của bundle).
+(cỡ VF8; CARLA không có VinFast) với thông số của xe MVP cũ — chưa đo lại trên CARLA (TD-17). Migration 011 thêm
+`vehicle.tesla.model3`, `vehicle.nissan.patrol_2021`, `vehicle.mercedes.sprinter`, `vehicle.carlamotors.european_hgv`: physics
+mặc định CARLA 0.9.16 đọc bằng `worker/vehicle_catalog.py`, `carla_full_brake_decel_mps2` đo bằng `worker/vehicle_study.py`,
+`max_brake_decel_mps2` = 9,5 như e-tron; xe tải `is_supported = FALSE` (chỉ để xem). **Code dùng:**
+`Queries.vehicleById`, `RunService.carlaVehicle` (→ khối `vehicle.carla` của bundle), `VehicleCatalogService` (màn
+"Phương tiện", chỉ đọc).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -435,7 +439,7 @@ Danh mục xe: blueprint CARLA + kích thước + **thông số vật lý cố �
 | `length_m` | DECIMAL(6,3) | ✓ |  |  | Dài (m), đọc từ `bounding_box.extent.x × 2` — gắn với mesh, không ép được. |
 | `width_m` | DECIMAL(6,3) | ✓ |  |  | Rộng (m), từ bounding box. Bộ động học dùng để biết người đi bộ có nằm trên đường đi của xe không. |
 | `height_m` | DECIMAL(6,3) | ✓ |  |  | Cao (m), từ bounding box; runner đối chiếu. |
-| `num_wheels` | TINYINT UNSIGNED | ✓ | `4` |  | Số bánh (2 hoặc 4). |
+| `num_wheels` | TINYINT UNSIGNED | ✓ | `4` |  | Số bánh (2, 4 hoặc 6 — xe tải, migration 011). |
 | `mass_kg` | DECIMAL(8,2) | ✓ |  |  | VehiclePhysicsControl.mass — runner luôn ép. |
 | `drag_coefficient` | DECIMAL(4,3) |  |  |  | VehiclePhysicsControl.drag_coefficient |
 | `center_of_mass_x_m` | DECIMAL(6,3) |  |  |  | VehiclePhysicsControl.center_of_mass (m, so với gốc actor); đủ x/y/z hoặc để trống cả ba (`ck_cvm_center_of_mass`). |
@@ -546,13 +550,13 @@ Họ kịch bản (mô típ, vd người đi bộ băng ngang), thuộc một tr
 
 #### `scenario_versions` — FE-05/06
 
-Bản gốc (giữ không gian tham số + câu mô tả) và các biến thể lưới (giữ một điểm + cột lọc). **Code dùng:** `family.py`, `runs.spec_for_run` (ma sát).
+Bản gốc (giữ không gian tham số + câu mô tả) và các biến thể lưới (giữ một điểm + cột lọc). Sửa họ không sửa đè: `FamilyService.createVersion` thêm bản gốc mới (v2, v3… theo thứ tự `id` của các bản gốc) với bộ biến thể mới; bộ đang dùng là con của bản gốc mới nhất (`latestBaseVersionId`), bản cũ và run của nó giữ nguyên. **Code dùng:** `FamilyService`, `ViewsService` (`/families`, `/families/{id}/versions`, dataset phân tích theo bản), `RunService` (ma sát).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; UQ `uq_sv_scenario_id`; AI | Khoá chính. |
 | `scenario_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sv_no`; UQ `uq_sv_scenario_id`; FK → `scenarios`; FK → `scenario_versions(scenario_id,id)` | Họ kịch bản. |
-| `version_no` | INT UNSIGNED | ✓ |  | UQ `uq_sv_no` | Số trong họ: 1 = bản gốc, 2… = biến thể (nhãn `PX-002`). |
+| `version_no` | INT UNSIGNED | ✓ |  | UQ `uq_sv_no` | Số trong họ, tăng dần qua mọi bản: 1 = bản gốc đầu, 2… = biến thể (nhãn `PX-002`); bản gốc mới (sửa họ) và biến thể của nó nối tiếp số lớn nhất. |
 | `source` | ENUM | ✓ |  |  | Bản gốc `NATURAL_LANGUAGE` / `MANUAL` / `IMPORTED_XOSC`; biến thể `GENERATED`. Giá trị: 'NATURAL_LANGUAGE', 'MANUAL', 'IMPORTED_XOSC', 'GENERATED'. |
 | `parent_version_id` | BIGINT UNSIGNED |  |  | FK → `scenario_versions(scenario_id,id)` | Biến thể → bản gốc **cùng họ**; bản gốc `NULL` (`ck_sv_generated`). |
 | `natural_language_input` | TEXT |  |  |  | Câu mô tả gốc (FE-06) — để truy vết. |
@@ -573,7 +577,7 @@ Bản gốc (giữ không gian tham số + câu mô tả) và các biến thể 
 | `openscenario_version` | VARCHAR(20) |  | `'1.0'` |  | Phiên bản OpenSCENARIO của `.xosc`. |
 | `openscenario_content` | LONGTEXT |  |  |  | Nội dung file OpenSCENARIO XML (.xosc) nạp vào ScenarioRunner (FE-06-09) |
 | `opendrive_content` | LONGTEXT |  |  |  | Nội dung file OpenDRIVE (.xodr); NULL = map có sẵn của CARLA |
-| `map_name` | VARCHAR(100) |  | `'Town01'` |  | Bản đồ CARLA LogicFile (vd: Town01, Town10HD). Mặc định của DB là Town01 (đoạn đường thẳng, theo tài liệu kịch bản) nhưng `FamilyService` ghi tường minh `Town10HD` — map đã dùng cho mọi run cũ. |
+| `map_name` | VARCHAR(100) |  | `'Town01'` |  | Bản đồ CARLA LogicFile (vd: Town01, Town10HD). Mặc định của DB là Town01 (đoạn đường thẳng, theo tài liệu kịch bản) nhưng `FamilyService` ghi tường minh `Town04` — map mà bộ xuất `.xosc` nạp (từ 25/10/2026; dòng cũ giữ `Town10HD`). Map thật của từng run nằm ở `simulation_runs.map_name`. |
 | `validation_status` | ENUM | ✓ | `'NOT_VALIDATED'` |  | Kết quả kiểm IR / `.xosc`. Giá trị: 'NOT_VALIDATED', 'VALID', 'INVALID'. |
 | `status_message` | TEXT |  |  |  | Ghi chú tạo / lỗi kiểm. |
 | `created_by_user_id` | BIGINT UNSIGNED | ✓ |  | FK → `users` | Người tạo. |
@@ -977,6 +981,7 @@ Cùng một PR (luật mềm ở `AGENTS.md`):
 | `006_2026-10-07_bo-phien-ban-xe-admin-tao-workspace.sql` | Bỏ phiên bản xe, Admin tạo workspace, báo cáo theo project (ADR-038), 30 → 29 bảng |
 | `007_2026-10-15_rut-scope-4-tham-so-aeb-7-category.sql` | Rút scope: 4 tham số AEB, 3 mục tiêu MOBO, 7 category kịch bản (ADR-040), vẫn 29 bảng |
 | `008_2026-10-15_buildup-5-20-va-dinh-nghia-muc-tieu.sql` | `BRAKE_BUILDUP_RATE` biên [5, 20]; tính lại `rms_jerk_mps3` / `stopping_distance_m` cho run cũ (ADR-040 §6–7) |
+| `011_2026-10-26_them-mau-xe-carla.sql` | `ck_cvm_wheels` nhận 6 bánh; thêm 4 mẫu xe CARLA (Model 3, Patrol, Sprinter, xe tải chỉ để xem), không sửa e-tron |
 
 Luôn sao lưu trước (`mysqldump --single-transaction`), không `docker compose down -v` trên máy người khác.
 

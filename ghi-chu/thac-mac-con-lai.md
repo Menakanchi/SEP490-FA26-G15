@@ -103,10 +103,18 @@ Chưa sửa code cho mục nào dưới đây.
 4. **Quyết định:** chặn sửa khi họ còn run PENDING/RUNNING (chưa có nút hủy — TD-37).
 5. **Đề xuất (Chu, Tu):** hồi quy ghép theo `scenario_version_id` nên vẫn đúng; báo cáo ghi thêm số version.
 
+> **Đã làm 25/10 (Chi) — mục 1–4:** `POST/GET /families/{id}/versions`, `/families` đếm theo bản hiện hành, dataset phân tích theo bản,
+> `/scenarios` có ô chọn bản + nút "Sửa → bản mới". Chi tiết: [exec plan](../docs/exec-plans/completed/2026-10-25-man-1-phien-ban-ho-kich-ban.md).
+> Mục 5 và dashboard run của màn 3 (`AnalysisService`, còn liệt kê run mọi bản) để Chu / Tu.
+
 ### A2. Nhãn ca nguy hiểm / an toàn
 
 **Đề xuất:** đồng ý đề xuất trong bảng — tự suy làm mặc định, cho sửa tay, lưu trong `scenario_ir_json`.
 Câu 3 do Chu quyết; bất biến repo đã bắt tập tối ưu/regression giữ ca an toàn, chỉ cần chốt tỉ lệ tối thiểu.
+
+> **Đã làm 25/10 (Chi) — câu 1, 2:** nhãn tự suy (dừng ở lề = an toàn, băng qua = nguy hiểm), sửa tay ở `/scenarios` ("Gắn nhãn"),
+> lưu `scenario_ir_json.risk_label`; API `GET /families/{id}/variants`, `PUT …/variants/{vid}/risk-label`; `/families` và dataset phân tích
+> có `risk_label` / `risk_counts`. Chi tiết: [exec plan](../docs/exec-plans/completed/2026-10-25-man-1-nhan-tap-thu.md). Câu 3 (tỉ lệ, cách dùng) vẫn chờ Chu.
 
 ### A3. Hướng xuất phát người đi bộ
 
@@ -123,11 +131,16 @@ Câu 3 do Chu quyết; bất biến repo đã bắt tập tối ưu/regression g
    thực tế; đổi lên 15 s sẽ phải đổi identity. Category mới đọc theo cột (mặc định 15 s).
 4. **Đề xuất:** hiện category khác, để mờ kèm nhãn "chưa hỗ trợ".
 
+> **Đã làm 25/10 (Chi) — mục 4:** `ScenarioCategoryPicker` trong `FamilyForm` (form nhập tay, "Sinh từ mô tả", sửa họ): CP_CROSSING chọn sẵn,
+> 6 nhóm còn lại mờ, không chọn được, nhãn "chưa hỗ trợ" + chú thích. Mở nhóm mới thì đổi `supported` cùng lúc với backend.
+
 ### A5. Dọn dẹp
 
 1. **Quyết định:** sửa `FamilyService.DEFAULT_MAP` thành `Town04` cho dòng mới; dữ liệu cũ để nguyên
    (`simulation_runs.map_name` đã ghi map CARLA thật nạp, đó mới là nguồn đúng).
 2. **Đề xuất:** giữ nguyên, luôn lọc `source = 'GENERATED'` (code hiện đã lọc vậy).
+
+> **Đã làm 25/10 (Chi) — mục 1:** `DEFAULT_MAP = "Town04"`; bỏ comment trỏ `describe.py` / `family.py`.
 
 ### B. Phát sinh
 
@@ -136,6 +149,9 @@ Câu 3 do Chu quyết; bất biến repo đã bắt tập tối ưu/regression g
    `carla-0.9.16-xosc3` (bảng định danh, BR-05) và TD-47 là giới hạn → cập nhật sang xosc4.
 3, 4. Đã biết.
 5. **Đề xuất (Chi):** hạ giới hạn trên tốc độ người đi bộ trong `FamilyService` từ 8 xuống 6 m/s; muốn giữ 8 m/s thì cần số đo CARLA.
+
+> **Đã làm 25/10 (Chi chốt):** tạo họ / trích xuất mô tả / form nhận tối đa 6 m/s (`FamilyService.MAX_PEDESTRIAN_SPEED_MPS`);
+> `Bundle` vẫn nhận tới 8 m/s để run cũ chạy lại / xuất `.xosc` được.
 
 ### C. Role Manager (đề xuất, cả nhóm chốt)
 

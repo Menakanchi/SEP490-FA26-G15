@@ -80,6 +80,56 @@ export interface FamilyItem {
   failures: number;
   baseline: string | null;
   created_at: string;
+  /** Bản hiện hành (v1, v2…): sửa họ tạo bản gốc mới; `variants`, `runs`, `parameter_space` là của bản này. */
+  version: number;
+  version_count: number;
+  base_version_id: number;
+  /** Số biến thể của bản hiện hành theo nhãn tập thử (task 5). */
+  risk_counts: RiskCounts;
+}
+
+/** Nhãn tập thử của biến thể: DANGEROUS = AEB phải phanh, SAFE = AEB không nên phanh. Chỉ để chọn tập dữ liệu. */
+export type RiskLabel = "DANGEROUS" | "SAFE";
+export type RiskCounts = Record<RiskLabel, number>;
+
+/** `GET /families/{id}/variants` — một biến thể kèm nhãn đang dùng, nhãn tự suy và có phải sửa tay không. */
+export interface FamilyVariant {
+  scenario_version_id: number;
+  version_no: number;
+  summary: string;
+  ego_speed_kmh: number;
+  trigger_distance_m: number;
+  pedestrian_speed_mps: number;
+  stops_at_curb: boolean;
+  weather: string;
+  time_of_day: string;
+  risk_label: RiskLabel;
+  auto_label: RiskLabel;
+  manual: boolean;
+}
+
+export interface FamilyVariantList {
+  scenario_id: number;
+  code: string;
+  version: number;
+  base_version_id: number;
+  current: boolean;
+  risk_counts: RiskCounts;
+  variants: FamilyVariant[];
+}
+
+/** `GET /families/{id}/versions` — một bản của họ kịch bản; bản cuối (`current`) là hiện hành. */
+export interface FamilyVersion {
+  version: number;
+  base_version_id: number;
+  source: string;
+  current: boolean;
+  parameter_space: Record<string, (number | boolean | string)[]>;
+  variants: number;
+  risk_counts: RiskCounts;
+  runs: Record<string, number>;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface FamilyRequest {
@@ -110,7 +160,7 @@ export interface DescribedIr {
   time_of_day: TimeOfDay;
 }
 
-/** `POST /api/v1/vehicsim/scenarios/describe` — src/services/vehicsim/describe.py. */
+/** `POST /api/v1/vehicsim/scenarios/describe` — `DescribeService` (Java). */
 export interface DescribeResult {
   motif: string;
   source: "llm" | "rules";
@@ -166,6 +216,8 @@ export interface AnalysisDataset {
   baseline: { id: number; label: string };
   reference: { vehicle_id: number; simulator: string } | null;
   counts: { total: number; completed: number; not_run: number; classified: number; unclassified: number; failures: number; safe: number };
+  /** Số biến thể theo nhãn tập thử của bản đang xem (task 5). */
+  risk_counts?: RiskCounts;
   variants: {
     scenario_version_id: number;
     version_no: number;
@@ -177,6 +229,8 @@ export interface AnalysisDataset {
     stops_at_curb: boolean | null;
     weather: string | null;
     time_of_day: string | null;
+    /** Nhãn tập thử của biến thể (task 5). */
+    risk_label?: RiskLabel;
     status: "COMPLETED" | "NOT_RUN";
     run_id: number | null;
     seed: number | null;
@@ -760,3 +814,28 @@ export interface NotificationItem {
   workspace_id: number | null; workspace_name: string | null; is_read: boolean; created_date: string;
 }
 export interface NotificationList { items: NotificationItem[]; unread_count: number }
+
+// Màn "Phương tiện" (FE-04-01/02): danh mục mẫu xe CARLA, chỉ đọc. Số đo thiếu là null, không phải 0.
+export interface VehicleSummary {
+  id: number; name: string; carla_blueprint_id: string;
+  length_m: number; width_m: number; height_m: number; num_wheels: number; mass_kg: number;
+  /** Giới hạn phanh của bộ động học (m/s²). */
+  max_brake_decel_mps2: number;
+  /** Giảm tốc phanh 100% đo trên CARLA (m/s²); null = chưa đo. */
+  carla_full_brake_decel_mps2: number | null;
+  is_supported: boolean; in_use: boolean; run_count: number;
+}
+export interface VehicleSensor {
+  id: number; name: string; sensor_type: string; carla_blueprint_id: string;
+  location_m: { x: number; y: number; z: number }; rotation_deg: { pitch: number; yaw: number; roll: number };
+  attributes: Record<string, unknown>; is_enabled: boolean;
+}
+export interface VehicleUsage { simulator_type: "KINEMATIC" | "CARLA"; simulator_version: string; runs: number; last_run_at: string | null }
+export interface VehicleDetail extends VehicleSummary {
+  physics: {
+    drag_coefficient: number | null; center_of_mass_m: { x: number; y: number; z: number } | null;
+    tire_friction: number | null; max_brake_torque_nm: number | null; wheelbase_m: number | null; max_speed_mps: number | null;
+  };
+  sensors: VehicleSensor[];
+  usage: VehicleUsage[];
+}

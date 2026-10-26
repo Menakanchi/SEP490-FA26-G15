@@ -15,7 +15,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Bước 1 của vòng MVP: câu mô tả tiếng Việt → LLM → Scenario IR (FE-06). Port của ``describe.py``.
+ * Bước 1 của vòng MVP: câu mô tả tiếng Việt → LLM → Scenario IR (FE-06).
  * <ul>
  *   <li>{@link #isTooVagueToGenerate} chặn câu rác trước khi tốn một lượt LLM;</li>
  *   <li>LLM hỏng thì lùi về trích xuất bằng luật ({@link #ruleBased}) — không bao giờ bịa số;</li>

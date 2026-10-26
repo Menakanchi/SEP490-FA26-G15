@@ -17,8 +17,11 @@ import type {
   FailureList,
   FamilyItem,
   FamilyRequest,
+  FamilyVariantList,
+  FamilyVersion,
   NotificationList,
   OptimizationRun,
+  RiskLabel,
   OptimizationSelectionResult,
   OptimizationTrial,
   Playback,
@@ -31,6 +34,8 @@ import type {
   ReviewDecision,
   TelemetrySummary,
   VehicSimContextData,
+  VehicleDetail,
+  VehicleSummary,
   WorkspaceDetail,
   WorkspaceMember,
   WorkspaceMemberCandidate,
@@ -59,6 +64,10 @@ export const vehicsimApi = {
   analysisHandoff: (id: number) => apiRequest<import("@/types/vehicsim").AnalysisSelection>(`/vehicsim/analysis/datasets/${id}/handoff`),
   context: () => apiRequest<VehicSimContextData>("/vehicsim/context"),
 
+  // Phương tiện: danh mục mẫu xe CARLA, chỉ đọc
+  vehicles: () => apiRequest<VehicleSummary[]>("/vehicsim/vehicles"),
+  vehicle: (id: number) => apiRequest<VehicleDetail>(`/vehicsim/vehicles/${id}`),
+
   describe: (text: string) =>
     apiRequest<DescribeResult>("/vehicsim/scenarios/describe", { method: "POST", body: JSON.stringify({ text }) }),
 
@@ -68,6 +77,22 @@ export const vehicsimApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** Sửa họ: tạo bản gốc mới (v2, v3…) với không gian tham số mới; bản cũ và run của nó giữ nguyên. */
+  createFamilyVersion: (scenarioId: number, body: FamilyRequest) =>
+    apiRequest<{ scenario_id: number; code: string; version: number; variants: number; queued_runs?: number }>(
+      `/vehicsim/families/${scenarioId}/versions`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  familyVersions: (scenarioId: number) => apiRequest<FamilyVersion[]>(`/vehicsim/families/${scenarioId}/versions`),
+  /** Biến thể của một bản (bỏ trống = bản hiện hành) kèm nhãn tập thử. */
+  familyVariants: (scenarioId: number, baseVersionId?: number) =>
+    apiRequest<FamilyVariantList>(`/vehicsim/families/${scenarioId}/variants${query({ base_version_id: baseVersionId })}`),
+  /** Sửa tay nhãn tập thử; "AUTO" quay về nhãn tự suy. */
+  setRiskLabel: (scenarioId: number, variantId: number, label: RiskLabel | "AUTO") =>
+    apiRequest<{ scenario_version_id: number; risk_label: RiskLabel; auto_label: RiskLabel; manual: boolean }>(
+      `/vehicsim/families/${scenarioId}/variants/${variantId}/risk-label`,
+      { method: "PUT", body: JSON.stringify({ label }) },
+    ),
   /** Hủy mọi run đang chờ/đang chạy của họ (run của regression/tối ưu không bị đụng). */
   cancelFamily: (scenarioId: number) =>
     apiRequest<{ scenario_id: number; stopped: number; stopping: number }>(`/vehicsim/families/${scenarioId}/cancel`, { method: "POST" }),
@@ -83,8 +108,9 @@ export const vehicsimApi = {
 
   failures: (filters: FailureFilters, page = 1, pageSize = 20) =>
     apiRequest<FailureList>(`/vehicsim/failures${query({ ...filters, page, page_size: pageSize })}`),
-  analysisDataset: (scenarioId: number) =>
-    apiRequest<AnalysisDataset>(`/vehicsim/analysis/dataset${query({ scenario_id: scenarioId })}`),
+  /** `baseVersionId`: bản gốc của họ cần xem (bỏ trống = bản hiện hành). */
+  analysisDataset: (scenarioId: number, baseVersionId?: number) =>
+    apiRequest<AnalysisDataset>(`/vehicsim/analysis/dataset${query({ scenario_id: scenarioId, base_version_id: baseVersionId })}`),
   freezeAnalysisDataset: (scenarioId: number, previewToken: string) =>
     apiRequest<AnalysisDataset>("/vehicsim/analysis/datasets", {
       method: "POST", body: JSON.stringify({ scenario_id: scenarioId, preview_token: previewToken }),

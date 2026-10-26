@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
@@ -8,7 +8,7 @@ import { FamilyForm } from "@/components/FamilyForm";
 import { EmptyState, ErrorNote, PillButton, Tag, cx, fmt, simulatorLabel } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { FamilyItem } from "@/types/vehicsim";
+import type { FamilyItem, FamilyVariantList, FamilyVersion, RiskLabel, TimeOfDay, Weather } from "@/types/vehicsim";
 
 export default function ScenarioFamiliesPage() {
   const { ctx, refresh, canWrite } = useVehicSimContext();
@@ -19,6 +19,14 @@ export default function ScenarioFamiliesPage() {
   const [busy, setBusy] = useState<number | "create" | null>(null);
   // Họ vừa được bàn giao từ màn thiết kế (?family=<id>) hoặc vừa tạo bằng form: tô sáng và cuộn tới dòng của nó.
   const [focusId, setFocusId] = useState<number | null>(null);
+  // Sửa họ = tạo bản gốc mới (task 4): họ đang sửa, lịch sử bản đã tải, bản cũ đang xem của từng họ (chỉ xem).
+  const [editing, setEditing] = useState<FamilyItem | null>(null);
+  const [versions, setVersions] = useState<Record<number, FamilyVersion[]>>({});
+  const [viewing, setViewing] = useState<Record<number, number>>({});
+  // Danh sách biến thể + nhãn tập thử (task 5) của họ đang mở, theo bản đang xem.
+  const [openVariants, setOpenVariants] = useState<number | null>(null);
+  const [variantList, setVariantList] = useState<FamilyVariantList | null>(null);
+  const [labelBusy, setLabelBusy] = useState<number | null>(null);
 
   const load = useCallback(() => {
     vehicsimApi.families()
@@ -69,6 +77,66 @@ export default function ScenarioFamiliesPage() {
     }
   };
 
+  const pickVersion = async (f: FamilyItem, version: number) => {
+    if (version === f.version) {
+      setViewing((prev) => without(prev, f.id));
+      return;
+    }
+    setError(null);
+    try {
+      if (!versions[f.id]) {
+        const list = await vehicsimApi.familyVersions(f.id);
+        setVersions((prev) => ({ ...prev, [f.id]: list }));
+      }
+      setViewing((prev) => ({ ...prev, [f.id]: version }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không tải được lịch sử bản");
+    }
+  };
+
+  // Bản đang xem của họ đang mở danh sách biến thể (undefined = bản hiện hành).
+  const openBase = openVariants
+    ? versions[openVariants]?.find((v) => v.version === viewing[openVariants])?.base_version_id
+    : undefined;
+  useEffect(() => {
+    if (!openVariants) return;
+    let alive = true;
+    vehicsimApi
+      .familyVariants(openVariants, openBase)
+      .then((list) => alive && setVariantList(list))
+      .catch((err) => alive && setError(err instanceof Error ? err.message : "Không tải được biến thể"));
+    return () => {
+      alive = false;
+    };
+  }, [openVariants, openBase]);
+
+  const toggleVariants = (f: FamilyItem) => {
+    setVariantList(null);
+    setOpenVariants((cur) => (cur === f.id ? null : f.id));
+  };
+
+  const changeLabel = async (f: FamilyItem, variantId: number, label: RiskLabel | "AUTO") => {
+    setLabelBusy(variantId);
+    setError(null);
+    try {
+      await vehicsimApi.setRiskLabel(f.id, variantId, label);
+      setVariantList(await vehicsimApi.familyVariants(f.id, openBase));
+      setVersions((prev) => without(prev, f.id));
+      setViewing((prev) => without(prev, f.id));
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không đổi được nhãn");
+    } finally {
+      setLabelBusy(null);
+    }
+  };
+
+  const startEdit = (f: FamilyItem) => {
+    setFormOpen(false);
+    setEditing(f);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const cancelFamily = async (f: FamilyItem) => {
     setBusy(f.id);
     setError(null);
@@ -114,6 +182,48 @@ export default function ScenarioFamiliesPage() {
       )}
       {focusId && items && !focused && (
         <ErrorNote message={`Không tìm thấy họ kịch bản #${focusId} trong project hiện tại.`} />
+      )}
+      {editing && (
+        <div className="flex flex-col gap-2">
+          <FamilyForm
+            key={`${editing.id}-v${editing.version}`}
+            busy={busy === "create"}
+            title={`Sửa ${editing.code} · tạo bản v${editing.version + 1}`}
+            hint={
+              <>
+                Bản v{editing.version} cùng các lượt chạy của nó giữ nguyên để baseline cũ vẫn tái lập được. Bản v{editing.version + 1} có
+                bộ biến thể mới và cần chạy cơ sở lại; từ đây chạy cơ sở, regression và tối ưu dùng bản mới.
+              </>
+            }
+            submitLabel={`Tạo bản v${editing.version + 1}`}
+            lockName
+            initial={initialFrom(editing)}
+            onSubmit={async (body) => {
+              const f = editing;
+              setBusy("create");
+              setError(null);
+              try {
+                const res = await vehicsimApi.createFamilyVersion(f.id, body);
+                setNotice(
+                  `Đã tạo ${res.code} v${res.version} với ${res.variants} biến thể${res.queued_runs ? ` và xếp ${res.queued_runs} lượt chạy cơ sở` : ""}.`,
+                );
+                setEditing(null);
+                setFocusId(f.id);
+                setVersions((prev) => without(prev, f.id));
+                setViewing((prev) => without(prev, f.id));
+                load();
+                await refresh();
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Không tạo được bản mới");
+              } finally {
+                setBusy(null);
+              }
+            }}
+          />
+          <button type="button" onClick={() => setEditing(null)} className="self-end text-[12px] font-semibold text-vehicsim-muted hover:underline">
+            Huỷ sửa
+          </button>
+        </div>
       )}
       {formOpen && (
         <FamilyForm
@@ -165,10 +275,13 @@ export default function ScenarioFamiliesPage() {
           <EmptyState title="Chưa có họ kịch bản nào">Tạo họ đầu tiên (ví dụ người đi bộ băng ngang) rồi chạy cơ sở để có ca lỗi.</EmptyState>
         )}
         {items?.map((f) => {
-          const pending = (f.runs.PENDING ?? f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0);
+          const pending = (f.runs.PENDING ?? f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0) + (f.runs.PAUSED ?? 0);
+          // Đang xem bản cũ: cột tham số / biến thể / lượt chạy lấy của bản đó, chỉ xem.
+          const old = viewing[f.id] ? versions[f.id]?.find((v) => v.version === viewing[f.id]) : undefined;
+          const shown = old ?? f;
           return (
+            <Fragment key={f.id}>
             <div
-              key={f.id}
               id={`family-${f.id}`}
               className={cx(
                 "flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2",
@@ -179,31 +292,74 @@ export default function ScenarioFamiliesPage() {
                 <span className="text-[13px] font-bold text-vehicsim-ink">
                   {f.code} <span className="font-semibold">· {f.name}</span>
                 </span>
+                <span className="flex flex-wrap items-center gap-1">
+                  {f.version_count > 1 ? (
+                    <select
+                      value={viewing[f.id] ?? f.version}
+                      onChange={(e) => pickVersion(f, Number(e.target.value))}
+                      aria-label={`Bản của ${f.code}`}
+                      className="rounded-full border border-solid border-vehicsim-line-strong bg-white px-2 py-[2px] text-[11px] font-semibold text-vehicsim-ink"
+                    >
+                      {Array.from({ length: f.version_count }, (_, i) => f.version_count - i).map((v) => (
+                        <option key={v} value={v}>
+                          v{v}
+                          {v === f.version ? " · hiện hành" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Tag className="px-2 py-[2px] text-[10px]">v{f.version}</Tag>
+                  )}
+                  {old && <Tag tone="warn" className="px-2 py-[2px] text-[10px]">bản cũ · chỉ xem</Tag>}
+                </span>
                 {f.description && <span className="truncate text-[12px] text-vehicsim-faint">{f.description}</span>}
               </span>
               <span className="flex w-[310px] flex-wrap gap-1 pr-3">
-                {Object.entries(f.parameter_space).map(([axis, values]) => (
+                {Object.entries(shown.parameter_space).map(([axis, values]) => (
                   <Tag key={axis} className="px-2 py-[3px] text-[10px]">
                     {axisLabel(axis)}: {values.map((v) => (typeof v === "boolean" ? (v ? "dừng" : "băng qua") : String(v))).join(" / ")}
                   </Tag>
                 ))}
               </span>
-              <span className="w-[90px] text-[13px] font-semibold text-vehicsim-ink">{f.variants}</span>
+              <span className="flex w-[90px] flex-col gap-[2px] text-[13px] font-semibold text-vehicsim-ink">
+                {shown.variants}
+                {shown.risk_counts && (
+                  <span className="text-[11px] font-normal leading-[1.3] text-vehicsim-muted">
+                    <span className="text-vehicsim-danger">{shown.risk_counts.DANGEROUS} nguy hiểm</span>
+                    <br />
+                    <span className="text-vehicsim-ok">{shown.risk_counts.SAFE} an toàn</span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => toggleVariants(f)}
+                  aria-expanded={openVariants === f.id}
+                  className="self-start text-[11px] font-semibold text-vehicsim-decision hover:underline"
+                >
+                  {openVariants === f.id ? "Ẩn nhãn ▴" : "Gắn nhãn ▾"}
+                </button>
+              </span>
               <span className="flex w-[160px] flex-col text-[12px] text-vehicsim-muted">
                 <span>
-                  <b className="text-vehicsim-ink">{f.runs.COMPLETED ?? 0}</b> đã xong
+                  <b className="text-vehicsim-ink">{shown.runs.COMPLETED ?? 0}</b> đã xong
                 </span>
-                {pending > 0 && <span className="font-semibold text-vehicsim-decision">{pending} đang chờ / đang chạy…</span>}
-                {(f.runs.FAILED ?? 0) > 0 && <span className="text-vehicsim-danger">{f.runs.FAILED} lỗi</span>}
-                {(f.runs.STOPPED ?? 0) > 0 && <span>{f.runs.STOPPED} đã hủy</span>}
+                {!old && pending > 0 && <span className="font-semibold text-vehicsim-decision">{pending} đang chờ / đang chạy…</span>}
+                {(shown.runs.FAILED ?? 0) > 0 && <span className="text-vehicsim-danger">{shown.runs.FAILED} lỗi</span>}
+                {(shown.runs.STOPPED ?? 0) > 0 && <span>{shown.runs.STOPPED} đã hủy</span>}
               </span>
               <span className="flex w-[110px] flex-col">
-                <span className={cx("text-[13px] font-semibold", f.failures ? "text-vehicsim-danger" : "text-vehicsim-faint")}>
-                  {f.failures} / {f.variants}
-                </span>
-                {f.baseline && <span className="text-[11px] text-vehicsim-faint">AEB {f.baseline}</span>}
+                {old ? (
+                  <span className="text-[12px] text-vehicsim-faint" title="Lỗi trên bản cơ sở chỉ tính cho bản hiện hành">—</span>
+                ) : (
+                  <>
+                    <span className={cx("text-[13px] font-semibold", f.failures ? "text-vehicsim-danger" : "text-vehicsim-faint")}>
+                      {f.failures} / {f.variants}
+                    </span>
+                    {f.baseline && <span className="text-[11px] text-vehicsim-faint">AEB {f.baseline}</span>}
+                  </>
+                )}
               </span>
-              <span className="w-[110px] text-[12px] text-vehicsim-faint">{fmt.date(f.created_at)}</span>
+              <span className="w-[110px] text-[12px] text-vehicsim-faint">{fmt.date(old ? old.created_at : f.created_at)}</span>
               <span className="flex w-[180px] flex-col items-end gap-1">
                 {pending > 0 ? (
                   <PillButton
@@ -224,16 +380,125 @@ export default function ScenarioFamiliesPage() {
                     {busy === f.id ? "Đang xếp hàng…" : "Chạy cơ sở"}
                   </PillButton>
                 )}
-                  <Link href={`/analysis/failures?scenario_id=${f.id}`} className="text-[12px] font-semibold text-vehicsim-decision hover:underline">
-                    Tiếp tục: Phân tích kết quả →
-                  </Link>
+                <button
+                  type="button"
+                  onClick={() => startEdit(f)}
+                  disabled={!canWrite || pending > 0 || busy !== null}
+                  title={
+                    !canWrite
+                      ? "Tài khoản người xem chỉ có quyền xem"
+                      : pending > 0
+                        ? "Họ còn lượt chạy đang chờ / đang chạy — đợi xong hoặc hủy rồi mới sửa"
+                        : `Tạo bản v${f.version + 1}; bản v${f.version} và lượt chạy của nó giữ nguyên`
+                  }
+                  className="text-[12px] font-semibold text-vehicsim-ink hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:no-underline"
+                >
+                  Sửa → bản v{f.version + 1}
+                </button>
+                <Link href={`/analysis/failures?scenario_id=${f.id}`} className="text-[12px] font-semibold text-vehicsim-decision hover:underline">
+                  Tiếp tục: Phân tích kết quả →
+                </Link>
               </span>
             </div>
+            {openVariants === f.id && (
+              <VariantLabels
+                list={variantList?.scenario_id === f.id ? variantList : null}
+                canWrite={canWrite}
+                busy={labelBusy}
+                onChange={(variantId, label) => changeLabel(f, variantId, label)}
+              />
+            )}
+            </Fragment>
           );
         })}
       </section>
     </VehicSimPage>
   );
+}
+
+const RISK: Record<RiskLabel, { label: string; tone: "danger" | "ok" }> = {
+  DANGEROUS: { label: "Nguy hiểm", tone: "danger" },
+  SAFE: { label: "An toàn", tone: "ok" },
+};
+
+/** Danh sách biến thể của bản đang xem với nhãn tập thử: nhãn tự suy (dừng ở lề = an toàn) hoặc sửa tay. */
+function VariantLabels({
+  list,
+  canWrite,
+  busy,
+  onChange,
+}: {
+  list: FamilyVariantList | null;
+  canWrite: boolean;
+  busy: number | null;
+  onChange: (variantId: number, label: RiskLabel | "AUTO") => void;
+}) {
+  return (
+    <div className="border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 py-4">
+      <p className="mb-3 text-[12px] leading-[1.5] text-vehicsim-muted">
+        Nhãn tập thử dùng để chọn dữ liệu cho tối ưu và regression (giữ đủ ca an toàn để đo phanh oan); không đổi cách chấm kết quả
+        của lượt chạy. Mặc định tự suy: người đi bộ <b>dừng ở lề</b> → an toàn, <b>băng qua làn</b> → nguy hiểm.
+        {list && !list.current && <> Đang xem bản cũ v{list.version}.</>}
+      </p>
+      {!list ? (
+        <p className="text-[12px] text-vehicsim-faint">Đang tải biến thể…</p>
+      ) : (
+        <div className="max-h-[360px] overflow-y-auto rounded-[14px] border border-solid border-vehicsim-line bg-white">
+          {list.variants.map((v) => (
+            <div
+              key={v.scenario_version_id}
+              data-variant={v.scenario_version_id}
+              className="flex h-[44px] items-center border-b border-solid border-vehicsim-line px-4 text-[12px] last:border-b-0"
+            >
+              <span className="w-[60px] font-semibold text-vehicsim-faint">#{v.version_no}</span>
+              <span className="min-w-0 flex-1 truncate text-vehicsim-ink">
+                {v.ego_speed_kmh} km/h · kích hoạt {v.trigger_distance_m} m · người đi bộ {v.pedestrian_speed_mps} m/s ·{" "}
+                {v.stops_at_curb ? "dừng ở lề" : "băng qua"} · {v.weather} · {v.time_of_day}
+              </span>
+              <span className="flex w-[110px] justify-center">
+                <Tag tone={RISK[v.risk_label].tone} className="px-2 py-[2px] text-[10px]">
+                  {RISK[v.risk_label].label}
+                  {v.manual ? " · sửa tay" : ""}
+                </Tag>
+              </span>
+              <select
+                value={v.manual ? v.risk_label : "AUTO"}
+                disabled={!canWrite || busy !== null}
+                onChange={(e) => onChange(v.scenario_version_id, e.target.value as RiskLabel | "AUTO")}
+                aria-label={`Nhãn biến thể #${v.version_no}`}
+                className="w-[170px] rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 py-[5px] text-[12px] text-vehicsim-ink disabled:opacity-50"
+              >
+                <option value="AUTO">Tự suy ({RISK[v.auto_label].label.toLowerCase()})</option>
+                <option value="DANGEROUS">Nguy hiểm</option>
+                <option value="SAFE">An toàn</option>
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function without<T>(map: Record<number, T>, key: number): Record<number, T> {
+  const next = { ...map };
+  delete next[key];
+  return next;
+}
+
+/** Không gian tham số hiện hành của họ → giá trị ban đầu của form sửa. */
+function initialFrom(f: FamilyItem) {
+  const ps = f.parameter_space;
+  return {
+    name: f.name,
+    description: f.description ?? "",
+    ego_speeds_kmh: (ps.ego_speed_kmh ?? []) as number[],
+    trigger_distances_m: (ps.trigger_distance_m ?? []) as number[],
+    pedestrian_speeds_mps: (ps.pedestrian_speed_mps ?? []) as number[],
+    stops_at_curb: (ps.stops_at_curb ?? []) as boolean[],
+    weathers: (ps.weather ?? []) as Weather[],
+    times_of_day: (ps.time_of_day ?? []) as TimeOfDay[],
+  };
 }
 
 function axisLabel(axis: string): string {

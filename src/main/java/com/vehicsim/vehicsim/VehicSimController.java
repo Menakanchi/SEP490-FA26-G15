@@ -1,6 +1,7 @@
 package com.vehicsim.vehicsim;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.vehicsim.audit.AuditLog;
 import com.vehicsim.config.OpenApiConfig;
 import com.vehicsim.service.OtpService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -160,6 +161,51 @@ public class VehicSimController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    @Operation(summary = "Sửa họ: tạo bản gốc mới (v2, v3…) với không gian tham số mới; bản cũ và run của nó giữ nguyên")
+    @PostMapping("/families/{scenarioId}/versions")
+    public ResponseEntity<Map<String, Object>> createFamilyVersion(@PathVariable long scenarioId, @Valid @RequestBody FamilyRequest body,
+                                                                   @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "family");
+        // Tên họ không đổi theo bản (UNIQUE theo project); chỉ không gian tham số và mô tả.
+        FamilyService.FamilySpec spec = new FamilyService.FamilySpec(FamilyService.MOTIF_NAME,
+                body.description() == null ? "" : body.description(),
+                body.egoSpeedsKmh(), body.triggerDistancesM(), body.pedestrianSpeedsMps(), body.stopsAtCurb(), body.weathers(), body.timesOfDay());
+        long pid = projectId();
+        Map<String, Object> created = families.createVersion(pid, scenarioId, spec, uid);
+        if (body.runBaseline() == null || body.runBaseline()) {
+            created.put("queued_runs", runs.runFamily(pid, scenarioId, uid, null).size());
+        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    @Operation(summary = "Lịch sử bản của họ kịch bản (v1, v2…), bản cuối là hiện hành")
+    @GetMapping("/families/{scenarioId}/versions")
+    public List<Map<String, Object>> familyVersions(@PathVariable long scenarioId) {
+        return views.familyVersions(scenarioId);
+    }
+
+    @Operation(summary = "Biến thể của một bản họ kịch bản kèm nhãn tập thử (nguy hiểm / an toàn)")
+    @GetMapping("/families/{scenarioId}/variants")
+    public Map<String, Object> familyVariants(@PathVariable long scenarioId,
+                                              @RequestParam(name = "base_version_id", required = false) Long baseVersionId) {
+        return views.familyVariants(scenarioId, baseVersionId);
+    }
+
+    public record RiskLabelRequest(@NotBlank String label) {
+    }
+
+    @Operation(summary = "Sửa tay nhãn tập thử của biến thể: DANGEROUS / SAFE, hoặc AUTO để quay về nhãn tự suy")
+    @PutMapping("/families/{scenarioId}/variants/{variantId}/risk-label")
+    public Map<String, Object> setRiskLabel(@PathVariable long scenarioId, @PathVariable long variantId,
+                                            @Valid @RequestBody RiskLabelRequest body, @AuthenticationPrincipal UserDetails user) {
+        long uid = requireEngineer(user);
+        limitWrites(uid, "family");
+        Map<String, Object> out = families.setRiskLabel(projectId(), scenarioId, variantId, body.label());
+        AuditLog.event("scenario.risk_label", "success", "variant_id", variantId, "label", body.label(), "by", uid);
+        return out;
+    }
+
     public record DescribeRequest(@NotBlank @Size(max = 2000) String text) {
     }
 
@@ -242,8 +288,9 @@ public class VehicSimController {
 
     @Operation(summary = "Snapshot baseline của một họ kịch bản để bàn giao từ phân tích")
     @GetMapping("/analysis/dataset")
-    public Map<String, Object> analysisDataset(@RequestParam(name = "scenario_id") long scenarioId) {
-        return views.analysisDataset(scenarioId);
+    public Map<String, Object> analysisDataset(@RequestParam(name = "scenario_id") long scenarioId,
+                                               @RequestParam(name = "base_version_id", required = false) Long baseVersionId) {
+        return views.analysisDataset(scenarioId, baseVersionId);
     }
 
     @GetMapping("/analysis/runs")
