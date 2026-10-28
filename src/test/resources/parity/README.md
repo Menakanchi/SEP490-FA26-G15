@@ -8,7 +8,8 @@ Các file `*.json` / `kinematic.json.gz` ở đây là kết quả của lõi **
 
 - Không sửa tay fixture. Hành vi Java đổi (có chủ đích) thì đổi định danh simulator, ghi vào exec plan và cập nhật test, đừng
   sửa số cho khớp.
-- `generate_from_python.py` chỉ chạy được trên commit trên (hoặc commit cũ hơn còn `worker/vehicsim_core`), không chạy được ở nhánh hiện tại:
+- `generate_from_python.py` đã xóa khỏi nhánh hiện tại (26/10/2026); nó chỉ chạy được trên commit trên (hoặc commit cũ hơn còn
+  `worker/vehicsim_core`), nơi file vẫn còn:
 
   ```bash
   git worktree add ../vsos-python-core 601280352730146943df37629a62ebf00971e42d

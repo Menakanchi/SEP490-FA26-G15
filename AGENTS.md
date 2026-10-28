@@ -73,7 +73,7 @@ Các lệnh dưới chạy từ gốc repo, trừ lệnh ghi rõ frontend.
 | Toàn bộ app Windows | `scripts\dev-up.cmd` → MySQL/Redis, Java `:8001`, frontend `:3000` |
 | Chỉ backend | `.\mvnw.cmd spring-boot:run`; Swagger dev `http://localhost:8001/swagger-ui.html` |
 | CARLA Windows | `.\scripts\setup-carla.ps1` một lần; mỗi phiên `.\scripts\dev-carla.ps1 -RestartBackend` |
-| Tài khoản / seed | Backend đang chạy: `python scripts/create_admin.py --email <email> --seed`; bootstrap chỉ ADMIN |
+| Tài khoản / seed | Backend đang chạy: `java -cp target/classes scripts/CreateAdmin.java --email <email> --seed`; bootstrap chỉ ADMIN |
 | Backend | `.\mvnw.cmd -B clean test` |
 | Worker | `python -m ruff check worker`; `python -m pytest worker/tests -q` |
 | Frontend | Trong `frontend`: `npm run lint`, `npx tsc --noEmit`, `npx next build` |

@@ -46,7 +46,7 @@ chi tiết lượt chạy và phát lại. [Hướng dẫn CARLA local](docs/veh
 Tài khoản và dữ liệu mẫu (backend đang chạy):
 
 ```bash
-python scripts/create_admin.py --email admin@example.com --seed     # --role MANAGER cho người quản lý workspace
+java -cp target/classes scripts/CreateAdmin.java --email admin@example.com --seed     # --role MANAGER cho người quản lý workspace
 ```
 
 Database MySQL dựng từ `database/mysql/01_schema.sql` ở lần đầu; DB đã có thì nâng bằng file trong

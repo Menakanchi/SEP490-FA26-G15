@@ -316,7 +316,7 @@ không được đưa lại vào API hiện tại; không giả lập sáu categ
 - Vai trò (ADR-035): **mỗi người đúng một role hệ thống** (`users.role_id`) — `ADMIN`, `MANAGER` (tạo
   workspace, thêm Engineer/Reviewer; chỉ đọc phần kỹ thuật), `ENGINEER` (làm toàn bộ quy trình), `REVIEWER`
   (chỉ duyệt recommendation), `EXPERIENCER` (tự đăng ký: project cá nhân, mô phỏng, tối ưu, regression; không
-  recommendation, không duyệt). Role khác EXPERIENCER do Admin cấp bằng `scripts/create_admin.py --role …`
+  recommendation, không duyệt). Role khác EXPERIENCER do Admin cấp bằng `scripts/CreateAdmin.java --role …`
   (API quản lý user là TD-28). Lọc project theo workspace chưa làm (TD-30). App **public** nên giữ tự đăng ký.
 
 ## Bất biến và máy kiểm

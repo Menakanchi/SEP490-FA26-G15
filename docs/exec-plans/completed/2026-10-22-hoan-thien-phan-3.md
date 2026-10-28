@@ -105,7 +105,7 @@ Danh sách tổng hợp phần kế thừa và phần hoàn thiện; chưa tạo
 - [frontend/src/services/vehicsim.ts](../../../frontend/src/services/vehicsim.ts)
 - [frontend/src/types/vehicsim.ts](../../../frontend/src/types/vehicsim.ts)
 - [frontend/tests/analysis-ui-smoke.mjs](../../../frontend/tests/analysis-ui-smoke.mjs)
-- [scripts/test_analysis_integration.py](../../../scripts/test_analysis_integration.py)
+- [scripts/IntegrationSmoke.java](../../../scripts/IntegrationSmoke.java) (chế độ `analysis`; bản Python `test_analysis_integration.py` đã port sang Java ngày 26/10)
 - [src/main/java/com/vehicsim/core/AnalysisMetrics.java](../../../src/main/java/com/vehicsim/core/AnalysisMetrics.java)
 - [src/main/java/com/vehicsim/core/RecordedTelemetry.java](../../../src/main/java/com/vehicsim/core/RecordedTelemetry.java)
 - [src/main/java/com/vehicsim/entity/enums/AnalysisType.java](../../../src/main/java/com/vehicsim/entity/enums/AnalysisType.java)

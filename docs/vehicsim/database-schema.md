@@ -231,7 +231,7 @@ erDiagram
 | Bước | Màn / lệnh | Module ghi | Bảng được ghi |
 |---|---|---|---|
 | 0. Khởi tạo | `scripts/seed_vehicsim.py` | `vehicsim/bootstrap.py` | `aeb_parameters`, `carla_vehicle_models` (nếu thiếu, kèm thông số vật lý), `workspaces` (ACTIVE), `projects` (chọn sẵn xe), `aeb_versions` (v1.0 BASELINE), `aeb_parameter_values` |
-| — Tài khoản | Đăng ký / đăng nhập; `scripts/create_admin.py --role …` | `services/auth/users.py` | `users` (tự đăng ký = EXPERIENCER) |
+| — Tài khoản | Đăng ký / đăng nhập; `scripts/CreateAdmin.java --role …` | `services/auth/users.py` | `users` (tự đăng ký = EXPERIENCER) |
 | 1. Mô tả → biến thể | Kịch bản mới | `describe.py` (LLM) → `family.py` | `scenarios`, `scenario_versions` (bản gốc + biến thể có cột lọc) |
 | 2. Chạy baseline | Chạy họ | `runs.py` | `simulation_runs` (`PENDING → RUNNING → COMPLETED/FAILED`, kết quả ghi vào chính dòng), `collision_events`, `failures` + `root_causes`, `simulation_artifacts` |
 | 3. Phân tích lỗi | Ca lỗi, phát lại | `views.py` (chỉ đọc) | — đọc `failures`, `root_causes`, `simulation_runs.telemetry_json` |
@@ -257,7 +257,7 @@ Danh mục 5 role hệ thống (seed). Không có màn CRUD — bảng tra cứu
 
 #### `users` — FE-01/02/03
 
-Tài khoản. Mỗi người **đúng một role** (`role_id`). Tự đăng ký = EXPERIENCER; role khác do Admin cấp (hiện qua `scripts/create_admin.py`, TD-28). Không xoá cứng: khoá bằng `is_active`. **Code dùng:** `services/auth/users.py`.
+Tài khoản. Mỗi người **đúng một role** (`role_id`). Tự đăng ký = EXPERIENCER; role khác do Admin cấp (hiện qua `scripts/CreateAdmin.java`, TD-28). Không xoá cứng: khoá bằng `is_active`. **Code dùng:** `services/auth/users.py`.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|

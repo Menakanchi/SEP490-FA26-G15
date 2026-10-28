@@ -71,12 +71,12 @@ DB mới dựng từ schema hiện tại không cần chạy lại toàn bộ l�
 Khi backend đang chạy, tạo tài khoản dev và dữ liệu mặc định:
 
 ```powershell
-python scripts/create_admin.py --email admin@example.com --seed
-python scripts/create_admin.py --email engineer@example.com --role ENGINEER
-python scripts/create_admin.py --email reviewer@example.com --role REVIEWER
+java -cp target/classes scripts/CreateAdmin.java --email admin@example.com --seed
+java -cp target/classes scripts/CreateAdmin.java --email engineer@example.com --role ENGINEER
+java -cp target/classes scripts/CreateAdmin.java --email reviewer@example.com --role REVIEWER
 ```
 
-Script hỏi mật khẩu, đăng ký qua API rồi đổi role bằng SQL qua service Docker `mysql` của repo.
+Chương trình (chạy bằng source-file mode của JDK 21, cần `target/classes` từ `mvnw compile`) hỏi mật khẩu, đăng ký qua API rồi đổi role bằng SQL qua service Docker `mysql` của repo.
 `--seed` cần ADMIN và gọi bootstrap idempotent. Dùng email riêng của nhóm khi thực hiện trên máy thật.
 Nếu đã đăng nhập trước khi đổi role, đăng xuất/đăng nhập lại để nhận token mới.
 
