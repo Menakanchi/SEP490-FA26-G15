@@ -4,7 +4,7 @@ Các file `*.json` / `kinematic.json.gz` ở đây là kết quả của lõi **
 `openscenario_export.py`), dùng làm sự thật tham chiếu cho port Java `com.vehicsim.core`. Test đối chiếu:
 `PyCompatTest`, `KinematicParityTest`, `BundleParityTest`, `FiltersParityTest`, `XoscReadParityTest`, `XoscExportTest`.
 
-**Lõi Python đã xóa ở mốc M5. Commit cuối cùng còn lõi Python: `601280352730146943df37629a62ebf00971e42d`.**
+**Lõi Python đã xóa ở mốc M5. Commit cuối cùng còn lõi Python: `6af5ed2ad5275eba9c029499711e637ad801448e`.**
 
 - Không sửa tay fixture. Hành vi Java đổi (có chủ đích) thì đổi định danh simulator, ghi vào exec plan và cập nhật test, đừng
   sửa số cho khớp.
@@ -12,7 +12,7 @@ Các file `*.json` / `kinematic.json.gz` ở đây là kết quả của lõi **
   `worker/vehicsim_core`), nơi file vẫn còn:
 
   ```bash
-  git worktree add ../vsos-python-core 601280352730146943df37629a62ebf00971e42d
+  git worktree add ../vsos-python-core 6af5ed2ad5275eba9c029499711e637ad801448e
   (cd ../vsos-python-core && python src/test/resources/parity/generate_from_python.py)
   ```
 

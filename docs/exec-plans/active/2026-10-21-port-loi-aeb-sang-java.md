@@ -114,7 +114,7 @@ Chạy Java: `VEHICSIM_JAVA` (mặc định `java`), classpath `VEHICSIM_CORE_CL
 
 ### M5 (21/10/2026): xóa lõi Python
 
-Đã xóa bằng `git rm` (khôi phục được từ commit `601280352730146943df37629a62ebf00971e42d`, commit cuối còn lõi Python):
+Đã xóa bằng `git rm` (khôi phục được từ commit `6af5ed2ad5275eba9c029499711e637ad801448e`, commit cuối còn lõi Python):
 `worker/vehicsim_core/` (6 file), `kinematic_sim.py`, `sim_common.py`, `openscenario_export.py`, `run_variant.py` và 6 file test Python
 (`test_run_variant`, `test_simulator`, `test_filters`, `test_openscenario_export`, `test_sim_contract`, `test_step_100hz`). Hành vi của chúng đã có test Java
 tương ứng (`SimulatorBehaviorTest`, `FiltersBehaviorTest`, `CarlaSessionLogicTest`, `XoscExportTest`, `KinematicCliTest`, `AebParameterSeedTest`).
