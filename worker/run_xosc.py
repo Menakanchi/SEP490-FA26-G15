@@ -34,7 +34,7 @@ EXIT_STOPPED = 4  # bị yêu cầu dừng (hủy hoặc hết thời gian) — 
 
 LEGACY_JSON_MESSAGE = (
     "run_xosc.py chỉ chạy file .xosc: runner CARLA trực tiếp (bundle .json) đã gỡ ở ADR-042. Xuất lại .xosc từ web; "
-    "chạy lại bundle bằng bộ động học: java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic <file>"
+    "chạy lại bundle bằng bộ động học: java -cp target/classes com.vsos.core.bridge.BridgeMain kinematic <file>"
 )
 
 

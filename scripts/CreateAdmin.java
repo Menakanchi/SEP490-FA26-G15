@@ -1,4 +1,4 @@
-import com.vehicsim.core.MiniJson;
+import com.vsos.core.common.MiniJson;
 
 import java.io.BufferedReader;
 import java.io.IOException;

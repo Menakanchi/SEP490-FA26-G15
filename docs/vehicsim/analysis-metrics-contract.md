@@ -2,7 +2,7 @@
 
 Phiên bản tổng hợp: `adr040-stored-aggregation/1`. Người dùng chốt ngày 22/10/2026:
 giữ công thức ADR-040 cho run cũ, chuẩn hóa tổng hợp và truy xuất. Không tái chấm run lịch sử.
-Code dùng chung: [AnalysisMetrics](../../src/main/java/com/vehicsim/core/AnalysisMetrics.java).
+Code dùng chung: [AnalysisMetrics](../../src/main/java/com/vsos/core/evaluation/AnalysisMetrics.java).
 
 ## Số đo từng run và nguồn
 

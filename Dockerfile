@@ -1,4 +1,4 @@
-# Backend VehicSim: Spring Boot (Java 21). Bộ mô phỏng động học chạy trong tiến trình Java (lõi com.vehicsim.core, ADR-042);
+# Backend VehicSim: Spring Boot (Java 21). Bộ mô phỏng động học chạy trong tiến trình Java (lõi com.vsos.core, ADR-042);
 # worker/ chỉ là adapter CARLA, chạy trên máy có CARLA chứ không trong image này.
 
 # ---- Stage 1: Build ----

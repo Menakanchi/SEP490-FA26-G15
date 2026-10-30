@@ -20,7 +20,7 @@ dữ liệu ở `data/` (ngoài git).
 
 ## 1. Perception từ radar — chạy bóng (ADR-043 giai đoạn 1)
 
-Thay đổi: `com.vehicsim.core.RadarTracker` (bộ bám, chỉ JDK); `AebStack.stepMeasured` (perception đo được, dùng chung code quyết định/điều khiển — tách hàm
+Thay đổi: `com.vsos.core.aeb.RadarTracker` (bộ bám, chỉ JDK); `AebStack.stepMeasured` (perception đo được, dùng chung code quyết định/điều khiển — tách hàm
 không đổi phép tính nào của đường ground truth, `KinematicParityTest` xanh); `CarlaSession` chạy một `AebStack` bóng nạp từ radar và ghi
 `case.carla.perception_shadow`; cầu nối nhận `radar` mỗi `step`, `open` trả thuộc tính radar (một nguồn); adapter gắn radar 90°/80 m/40 000 điểm/s ở mũi xe
 và chỉ chuyển điểm thô. Test: `RadarTrackerTest` (5), `BridgeProtocolTest.radarShadowIsMeasuredButNeverChangesTheRealRun` (kết quả thật trùng từng trường

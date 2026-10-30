@@ -81,7 +81,7 @@ API: `GET /runs/{id}/xosc`, `POST /scenarios/xosc`, `POST /runs/{id}/carla`, `GE
 - Mỗi run gắn thêm radar 90°/80 m ở mũi xe; `RadarTracker` (Java) bám người đi bộ và một `AebStack` bóng quyết định theo radar. `result.json` có
   `case.carla.perception_shadow` (thời điểm phát hiện/FCW/quyết định theo radar so với ground truth, sai số vị trí/vận tốc). **AEB thật vẫn dùng ground truth**
   (ADR-043 giai đoạn 1); quyết định và mọi chỉ số đã lưu không đổi.
-- Xuất `.xosc` offline từ IR/bundle để đo nhiều ca không cần backend: `java -cp target/classes com.vehicsim.core.bridge.BridgeMain export <ir.json> <ra.xosc>`
+- Xuất `.xosc` offline từ IR/bundle để đo nhiều ca không cần backend: `java -cp target/classes com.vsos.core.bridge.BridgeMain export <ir.json> <ra.xosc>`
   (cùng `XoscExport` của web; file này không gắn run trong DB nên không dùng để nộp kết quả).
 - `case.carla.physics_check`: so thông số xe yêu cầu với số CARLA đọc lại; trường ép được phải khớp (`forced_ok`), kích thước mesh chỉ báo lệch > 0,05 m
   (`dimensions_ok`). Không chặn run.

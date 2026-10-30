@@ -68,11 +68,12 @@ và `OpenScenarioSchemaTest` (Java), đều chạy trong CI.
 ## Cấu trúc
 
 ```
-src/main/java/com/vehicsim/
-  controller/ service/ security/ config/   xác thực: đăng ký / quên mật khẩu bằng OTP, JWT
-  vehicsim/                                vòng AEB: FamilyService, RunService, RegressionService, ViewsService,
-                                           DescribeService (câu mô tả -> Scenario IR), LlmService (cửa duy nhất tới LLM)
-  core/                                    lõi AEB, bộ động học, luật chấm, bộ xuất .xosc (chỉ dùng JDK; ADR-042)
+src/main/java/com/vsos/                  quy tắc gói: docs/vehicsim/quy-tac-dat-ten.md
+  backend/<tầng>/<chức năng>/              controller, service, repository, entity, dto, exception theo chức năng
+                                           (auth, workspace, scenario, simulation, analysis, aeb, optimization, regression…);
+                                           config/ security/ common/ dùng chung; LlmService (cửa duy nhất tới LLM) ở service/common
+  core/                                    lõi AEB (aeb/), bộ động học (simulation/), luật chấm (evaluation/), .xosc (xosc/),
+                                           cầu nối (bridge/), MOBO (mobo/) — chỉ dùng JDK; ADR-042
 worker/                run_xosc.py, vehicsim_aeb_control.py, sensor_recorder.py — adapter CARLA, không chứa logic AEB
 frontend/              Next.js 16 — app/ (Tổng quan, kịch bản, AEB, phân tích, kiểm định, hồ sơ)
 database/mysql/        01_schema.sql (29 bảng) + migrations/

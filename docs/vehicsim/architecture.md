@@ -11,19 +11,19 @@ bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà 
 > thì tài liệu này sai.
 
 > **Sau [ADR-039](../adr/ADR-039-backend-java-mo-phong-o-worker-python.md) (14/10/2026) backend là Spring Boot (Java 21)**:
-> REST, nghiệp vụ và lưu trữ ở `src/main/java/com/vehicsim/vehicsim/`. Sau [ADR-042](../adr/ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (21/10/2026)
-> AEB, bộ động học, luật chấm, bộ lọc, hợp đồng bundle và bộ xuất `.xosc` cũng ở Java (`src/main/java/com/vehicsim/core/`); `worker/` chỉ còn adapter CARLA.
+> REST, nghiệp vụ và lưu trữ ở `src/main/java/com/vsos/backend/`. Sau [ADR-042](../adr/ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (21/10/2026)
+> AEB, bộ động học, luật chấm, bộ lọc, hợp đồng bundle và bộ xuất `.xosc` cũng ở Java (`src/main/java/com/vsos/core/`); `worker/` chỉ còn adapter CARLA.
 > Phần dưới còn dùng tên module Python cũ (`describe.py`, `runs.py`…); đối chiếu sang code hiện tại:
 >
 > | Tên cũ | Hiện nay |
 > |---|---|
-> | `vehicsim_routes.py` | `VehicSimController` (+ `ApiExceptionHandler`) |
+> | `vehicsim_routes.py` | `ScenarioController`, `SimulationController`, `AnalysisController`, `AebController`, `OptimizationController`, `SystemController` (+ `ApiExceptionHandler`) |
 > | `describe.py`, `llm.py` | `DescribeService`, `LlmService` |
 > | `family.py` | `FamilyService`, `ScenarioRules` (luật theo category) |
 > | `aeb.py`, `bootstrap.py` | `AebService`, `BootstrapService` |
 > | `runs.py` + Celery | `RunService` + thread pool `simulationExecutor` (`VehicSimConfig`) |
 > | `regression.py` | `RegressionService` |
-> | `views.py`, `common.py`, `tables.py` | `ViewsService`, `Vs` + `Queries`, SQL thuần qua `Db` (JdbcTemplate) |
+> | `views.py`, `common.py`, `tables.py` | `SystemViewService`, `ScenarioViewService`, `AebViewService`, `AnalysisViewService`, `SimulationViewService`; `Vs` + `Queries`, SQL thuần qua `Db` (JdbcTemplate) |
 > | `aeb_stack.py`, `simulator.py`, `bundle.py`, `evaluation.py`, `openscenario_export.py` | `core/AebStack`, `Simulator`, `Bundle`, `Evaluation` (+ `Filters`), `XoscExport` — port 1:1, khớp fixture ở `src/test/resources/parity` |
 
 ## Vòng MVP 6 bước
@@ -87,7 +87,7 @@ mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước
 ## Sơ đồ
 
 ```
-Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  Spring Boot /api/v1/vehicsim/*  (VehicSimController: chỉ đổi lỗi → HTTP)
+Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  Spring Boot /api/v1/vehicsim/*  (controller/<chức năng>: chỉ đổi lỗi → HTTP)
                               │
                               ▼
                   *Service (Java)  ──JdbcTemplate──▶  MySQL (29 bảng)
@@ -99,7 +99,7 @@ Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  S
             trong tiến trình Java (core.Simulator)          VEHICSIM_CARLA_COMMAND <scenario.xosc> --out runs/<id> --fast
                                      │                       (worker/run_xosc.py, cần server CARLA)
                                      └──────────┬───────────────────────┘
-                                                ▼  cả hai dùng chung com.vehicsim.core.AebStack + Evaluation (CARLA qua cầu nối stdio)
+                                                ▼  cả hai dùng chung com.vsos.core.aeb.AebStack + Evaluation (CARLA qua cầu nối stdio)
                         Java ghi result.json → simulation_runs + collision_events/failures/root_causes(/artifacts)
                         → sự kiện RunFinished → RegressionService.tryFinalize()
 ```
@@ -131,7 +131,7 @@ Run `-xosc1`/`-xosc2`/`-xosc3` chưa chạy bị từ chối thay vì âm thầm
 
 Hàng đợi chạy nền là thread pool của Spring (thay Celery, ADR-039); trần thời gian một run theo `SIMULATION_TIMEOUT_S`.
 
-Các lớp `AebStack`, `Simulator`, `Bundle`, `Evaluation` trong `com.vehicsim.core` là **lõi mô phỏng**: chỉ dùng JDK, không
+Các lớp `AebStack`, `Simulator`, `Bundle`, `Evaluation` trong `com.vsos.core` là **lõi mô phỏng**: chỉ dùng JDK, không
 phụ thuộc Spring/DB (`CoreIsolationTest`). Worker Python không import lõi mà gọi qua cầu nối `vsos-bridge/1`.
 
 ## Bộ mô phỏng: động học và CARLA
@@ -152,9 +152,9 @@ Chạy tay một JSON tải từ web (nút **"Tải JSON chạy CARLA"** ở mà
 Phát lại, hoặc Scenario IR ở màn Sinh từ mô tả):
 
 ```bash
-java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic vehicsim-run-42.json   # khớp kết quả trên web (cần mvnw compile)
+java -cp target/classes com.vsos.core.bridge.BridgeMain kinematic vehicsim-run-42.json   # khớp kết quả trên web (cần mvnw compile)
 worker/.venv-carla/Scripts/python worker/run_xosc.py vehicsim-run-42.xosc --camera            # CARLA, file .xosc tải từ run CARLA
-java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic scenario-ir.json --aeb aeb_v1.2.json --seed 7
+java -cp target/classes com.vsos.core.bridge.BridgeMain kinematic scenario-ir.json --aeb aeb_v1.2.json --seed 7
 ```
 
 Kết quả nằm ở thư mục cùng tên file JSON (`--out` để đổi). Thoát `0` = chạy xong (dù
@@ -331,7 +331,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Va vào hông xe vẫn là va chạm, không bao giờ là phanh oan | `SimulatorBehaviorTest#pedestrianWalkingIntoTheSideIsACollisionNeverFalseBraking` |
 | Lõi mô phỏng chỉ dùng JDK, không phụ thuộc Spring/DB/phần còn lại của backend | `CoreIsolationTest#coreImportsNothingFromSpringDatabaseOrTheRestOfTheBackend` |
 | Backend Java, kể cả lõi, không dùng CARLA API | `ArchitectureRulesTest#javaBackendNeverTouchesCarlaApi` |
-| Logic AEB, mô phỏng, chấm điểm chỉ ở `com.vehicsim.core`; `worker/` không có bản thứ hai và lõi Python không quay lại | `ArchitectureRulesTest#pythonWorkerHoldsNoAebLogic`, `ArchitectureRulesTest#thePythonCoreStaysDeleted`, `test_no_aeb_logic_lives_in_the_python_worker` |
+| Logic AEB, mô phỏng, chấm điểm chỉ ở `com.vsos.core`; `worker/` không có bản thứ hai và lõi Python không quay lại | `ArchitectureRulesTest#pythonWorkerHoldsNoAebLogic`, `ArchitectureRulesTest#thePythonCoreStaysDeleted`, `test_no_aeb_logic_lives_in_the_python_worker` |
 | JSON tải từ web chạy lại ra đúng kết quả; CLI động học = kết quả backend (run cũ của v1.3 không còn tái lập — TD-40) | `KinematicCliTest#writesTheSameResultAsTheBackendAndSummarisesIt`, `KinematicInProcessTest#producesTheSameResultAsCallingTheCoreAndCarriesTheEngineVersion` |
 | CARLA và động học dùng chung một AEB; profile 100 Hz ra cùng quyết định với bộ 20 Hz trên cùng thế giới | `CarlaSessionLogicTest#decisionsMatchThe20HzStackOnTheSameWorld`, `CarlaSessionLogicTest#defaultStackIsUnchangedForTheKinematicSimulator` |
 | Run CARLA đi qua tiến trình con; crash/sai phiên bản chỉ hỏng run đó; CLI quá giờ được xin dừng trước khi bị giết | _chưa có test_ (TD-33) |

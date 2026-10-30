@@ -7,7 +7,7 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 
 ## 1. Hiểu đúng trạng thái bàn giao
 
-- Backend hiện tại là Spring Boot Java 21; frontend Next.js; AEB/mô phỏng/chấm điểm ở lõi Java `com.vehicsim.core` (ADR-042);
+- Backend hiện tại là Spring Boot Java 21; frontend Next.js; AEB/mô phỏng/chấm điểm ở lõi Java `com.vsos.core` (ADR-042);
   Python `worker/` chỉ còn adapter CARLA (ScenarioRunner, sensor, áp bàn đạp).
   MySQL là database nghiệp vụ duy nhất; Redis phục vụ OTP và giới hạn tần suất. Không khởi động FastAPI/Celery cũ.
 - Đã có: mô tả → sinh biến thể → baseline → phân tích lỗi → candidate chỉnh tay → regression → Reviewer quyết định.
@@ -152,7 +152,7 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
   tiếp `carla-0.9.16` và `-xosc4`. Backend không chạy lại run `-xosc1`/`-xosc2`/`-xosc3`; `run_xosc.py` vẫn chạy file v2/v3 ngoài web.
 - `.xosc` là đầu vào mô phỏng. JSON vẫn là hợp đồng nội bộ/result; không đổi đuôi JSON thành XML hoặc bỏ metadata seed/source.
   Runner CARLA trực tiếp nhận bundle JSON (`run_variant.py`) đã gỡ ở ADR-042; `run_xosc.py` từ chối `.json`. Chạy lại bundle bằng
-  bộ động học: `java -cp target/classes com.vehicsim.core.bridge.BridgeMain kinematic <file>` (cần `mvnw compile`).
+  bộ động học: `java -cp target/classes com.vsos.core.bridge.BridgeMain kinematic <file>` (cần `mvnw compile`).
 - File tải xuống `scenario.xosc` được giữ nguyên; wrapper tạo `scenario.runtime.xosc` để gắn đường dẫn controller local.
   Một run còn có `result.json`, `scenario_runner.log`, `follow_hero.log` và thư mục sensor.
 - Xem CSV/ảnh trong `sensors/frames.csv`, `collisions.json`, `summary.json`, `camera/*.png`

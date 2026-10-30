@@ -10,7 +10,7 @@ chỉ từ tên màn hình, bảng DB hoặc tài liệu kế hoạch.
 VehicSim / VSOS (SEP490-FA26-G15) hỗ trợ kỹ sư kiểm thử, hiệu chỉnh AEB/FCW:
 tạo tình huống giả lập phanh, phân tích lỗi, tạo candidate và kiểm chứng bằng regression.
 Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (29 bảng) + Redis + adapter CARLA Python**.
-Java xử lý REST/nghiệp vụ/DB và lõi AEB, mô phỏng, chấm điểm (`com.vehicsim.core`, ADR-042);
+Java xử lý REST/nghiệp vụ/DB và lõi AEB, mô phỏng, chấm điểm (`com.vsos.core`, ADR-042);
 Python `worker/` chỉ gọi API CARLA và nói chuyện với lõi Java qua cầu nối stdio `vsos-bridge/1`.
 Backend FastAPI và Scenario Forge đã gỡ; không khôi phục kiến trúc cũ khi làm tính năng mới.
 
@@ -31,17 +31,17 @@ Chi tiết chức năng và nghiệm thu: [phân chia 5 thành viên](docs/vehic
 | Phần / màn chính | Điểm vào frontend | Code chính | Bàn giao sang bước sau |
 |---|---|---|---|
 | 1. Thiết kế kịch bản | `/scenarios/new` | `DescribeService`, `FamilyService`, `ScenarioRules`, `LlmService` | Họ kịch bản + biến thể hợp lệ |
-| 2. Chạy baseline | `/scenarios`, `/analysis/carla` | `RunService`, `core/XoscExport`; `worker/run_xosc.py`, `sensor_recorder.py` | Run + seed + xe/AEB/simulator + kết quả/artifact |
-| 3. Phân tích lỗi | `/analysis/failures/**` | `AnalysisService`, `ViewsService`, `core/AnalysisMetrics` | Dataset v2: tập tối ưu/xác minh + baseline/seed + chỉ số/nguyên nhân |
+| 2. Chạy baseline | `/scenarios`, `/analysis/carla` | `RunService`, `core/xosc/XoscExport`; `worker/run_xosc.py`, `sensor_recorder.py` | Run + seed + xe/AEB/simulator + kết quả/artifact |
+| 3. Phân tích lỗi | `/analysis/failures/**` | `AnalysisService`, `AnalysisViewService`, `core/evaluation/AnalysisMetrics` | Dataset v2: tập tối ưu/xác minh + baseline/seed + chỉ số/nguyên nhân |
 | 4. Tối ưu AEB | `/aeb` | `AebService` hiện chỉ tạo candidate thủ công; service/worker tối ưu cần bổ sung | Candidate + campaign/trial + mục tiêu/ràng buộc |
 | 5. Regression và phê duyệt | `/validation/**` | `RegressionController`, `RegressionService`, `ReviewDecisionService`, `RegressionRepository` | Kết quả xác minh + quyết định; baseline mới nếu Accept |
 
-Phần 1–4 ở [src/main/java/com/vehicsim/vehicsim/](src/main/java/com/vehicsim/vehicsim/); phần 5 tách theo tầng: `controller/`, `service/Regression*`,
-`service/ReviewDecisionService`, `repository/RegressionRepository`, `dto/Regression*` (dùng chung luật role/hạn mức qua `VehicSimAccess`).
+Code ở [src/main/java/com/vsos/backend/](src/main/java/com/vsos/backend/), chia `<tầng>/<chức năng>` theo
+[quy tắc đặt tên](docs/vehicsim/quy-tac-dat-ten.md); mọi controller dùng chung luật role/hạn mức qua `security/VehicSimAccess`.
 Phần 2 giữ cơ chế chạy chung; phần 3 giữ cách tính chỉ số; phần 4 tìm tham số;
 phần 5 xác minh độc lập. Màn sau nhận ID và tự tải dữ liệu từ màn trước.
 Tập tối ưu/regression phải giữ cả ca an toàn để kiểm tra phanh oan.
-Phối hợp khi sửa `VehicSimController`, `Queries`, `ViewsService`, schema, API client,
+Phối hợp khi sửa `controller/*`, `Queries`, các `*ViewService`, schema, API client,
 `vehicsimFlow.ts` và khung UI; không tạo cơ chế chạy/chấm điểm riêng cho từng màn.
 
 ## Nguồn sự thật và tài liệu cần đọc
@@ -89,7 +89,7 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
 ## Bất biến phải giữ khi nhận và sửa code
 
 1. Mọi lời gọi LLM qua `LlmService`; bộ sinh `.xosc` offline, không dùng LLM.
-2. Java, kể cả lõi `com.vehicsim.core`, không import `carla`; lời gọi API CARLA chỉ ở adapter trong `worker/`.
+2. Java, kể cả lõi `com.vsos.core`, không import `carla`; lời gọi API CARLA chỉ ở adapter trong `worker/`.
 3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập. Mỗi tài khoản một role:
    ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ đọc; chỉ REVIEWER Accept/Reject.
    Cách ly project/workspace chưa hoàn thiện (TD-30); không giả định mọi người có dữ liệu riêng.
@@ -101,7 +101,7 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
 6. Chỉ 4 tham số AEB chỉnh được theo ADR-040; seed Java/SQL khớp `AebParams`.
    Ba mục tiêu: RMS jerk, vận tốc va chạm, quãng phanh dừng; thống nhất ràng buộc tối ưu/regression.
 7. Không lộ email tồn tại; OTP hash, dùng một lần; mật khẩu tối đa 72 byte BCrypt.
-8. Logic AEB, bộ mô phỏng và luật chấm chỉ ở `com.vehicsim.core` (`AebStack`, `Simulator`, `Evaluation`), dùng chung cho
+8. Logic AEB, bộ mô phỏng và luật chấm chỉ ở `com.vsos.core` (`AebStack`, `Simulator`, `Evaluation`), dùng chung cho
    bộ động học và CARLA qua cầu nối; `worker/` không chứa logic AEB (`ArchitectureRulesTest#pythonWorkerHoldsNoAebLogic`).
    Lõi chỉ dùng JDK (`CoreIsolationTest`) và khớp kết quả Python cũ theo fixture ở `src/test/resources/parity`.
 9. Regression không ghép động học với CARLA. Bundle nội bộ tải ra phải tái lập

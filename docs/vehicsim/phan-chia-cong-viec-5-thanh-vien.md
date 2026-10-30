@@ -140,7 +140,7 @@ Giải thích baseline đang hoạt động như thế nào và chuẩn bị d�
 
 ### Xử lý và dữ liệu
 
-- Phụ trách dữ liệu phân tích trong `ViewsService`, `TelemetryMetricsService`
+- Phụ trách dữ liệu phân tích trong `AnalysisViewService`, `TelemetryMetricsService`
   và phần đánh giá kết quả liên quan.
 - Chuẩn hóa cách tính, đơn vị và cách tổng hợp chỉ số để màn 4 và 5 dùng chung.
 - Chuẩn bị tập biến thể đã chốt cho tối ưu và tập kiểm thử xác minh.
@@ -285,7 +285,7 @@ xuất được về biến thể, xe, seed, phiên bản AEB và phiên bản b
    hiệu chuẩn phanh không dùng làm bằng chứng regression trong báo cáo.
    **Đã thay bởi quyết định D1 ngày 20/10:** trial MOBO được chấm bằng CARLA; bộ động học chỉ còn dùng kiểm tra
    phát triển. Xem [kế hoạch sửa theo PDF](ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md).
-8. Logic AEB tiếp tục dùng chung trong lõi Java `com.vehicsim.core` (ADR-042); không viết
+8. Logic AEB tiếp tục dùng chung trong lõi Java `com.vsos.core` (ADR-042); không viết
    phiên bản AEB riêng cho tối ưu hay CARLA.
 9. Mọi lời gọi LLM qua `LlmService`; bộ sinh `.xosc` hoạt động offline.
 10. Các thao tác chạy, tối ưu và regression phải tuân thủ quyền và hạn mức tài nguyên.

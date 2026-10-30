@@ -1,7 +1,7 @@
 """Controller ScenarioRunner cho ego: lớp CARLA mỏng, KHÔNG có logic AEB (ADR-042).
 
 Mỗi tick: đọc trạng thái CARLA (ego, người đi bộ, va chạm), gửi cho lõi Java qua ``bridge.Bridge``, nhận lệnh phanh và áp vào xe. Khung tọa độ, đo giảm tốc, AEB,
-bàn đạp phanh, điều kiện kết thúc, chấm điểm và ghi ``result.json`` đều ở ``com.vehicsim.core`` (xem ``bridge.py``).
+bàn đạp phanh, điều kiện kết thúc, chấm điểm và ghi ``result.json`` đều ở ``com.vsos.core`` (xem ``bridge.py``).
 
 Module/class name tuân theo ActorControl của ScenarioRunner: vehicsim_aeb_control -> VehicsimAebControl.
 Chỉ được import trong tiến trình ScenarioRunner có CARLA, không ở backend hoặc lõi mô phỏng.

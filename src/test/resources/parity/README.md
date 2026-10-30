@@ -1,7 +1,7 @@
 # Fixture parity Python → Java (ADR-042)
 
 Các file `*.json` / `kinematic.json.gz` ở đây là kết quả của lõi **Python cũ** (`worker/vehicsim_core/`, `kinematic_sim.py`,
-`openscenario_export.py`), dùng làm sự thật tham chiếu cho port Java `com.vehicsim.core`. Test đối chiếu:
+`openscenario_export.py`), dùng làm sự thật tham chiếu cho port Java `com.vsos.core`. Test đối chiếu:
 `PyCompatTest`, `KinematicParityTest`, `BundleParityTest`, `FiltersParityTest`, `XoscReadParityTest`, `XoscExportTest`.
 
 **Lõi Python đã xóa ở mốc M5. Commit cuối cùng còn lõi Python: `6af5ed2ad5275eba9c029499711e637ad801448e`.**
