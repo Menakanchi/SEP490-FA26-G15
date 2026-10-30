@@ -1,5 +1,9 @@
 # VehicSim (VSOS) — SEP490-FA26-G15
 
+> **Bắt buộc sau khi pull (30/10/2026):** gói Java đổi từ `com.vehicsim` sang `com.vsos`. Trước khi code tiếp, đọc
+> [hướng dẫn cập nhật](docs/vehicsim/huong-dan-cap-nhat-sau-doi-ten-goi.md) và tra mục 7 của
+> [quy tắc đặt tên](docs/vehicsim/quy-tac-dat-ten.md) để đổi `package`/`import`.
+
 Nền tảng web mô phỏng, kiểm thử và tối ưu **AEB** (phanh khẩn cấp tự động) và **FCW** (cảnh báo va
 chạm phía trước). Vòng khép kín của MVP:
 

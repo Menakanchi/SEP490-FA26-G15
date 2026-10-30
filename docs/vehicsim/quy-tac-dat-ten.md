@@ -1,6 +1,7 @@
 # Quy tắc đặt tên code base VSOS
 
-Trạng thái: **đã áp dụng cho backend và lõi** trên nhánh `refactor/package-naming` (TrungDQ, 30/10/2026), chờ nhóm duyệt và merge.
+Trạng thái: **đã chốt và áp dụng** cho backend và lõi (nhóm đồng ý gốc `com.vsos`, 30/10/2026; TrungDQ thực hiện).
+Ai pull code sau thay đổi này làm theo [hướng dẫn cập nhật](huong-dan-cap-nhat-sau-doi-ten-goi.md).
 Theo yêu cầu của thầy trong buổi họp:
 tên gói phải theo quy tắc `VSOS.Backend.Controllers.<tên gói>.<gói nhỏ hơn>`, tức là đi từ hệ thống → tầng → chức năng → phần nhỏ hơn.
 
@@ -133,7 +134,7 @@ Git: nhánh `feature/<chức năng>-<mô tả ngắn>` hoặc nhánh cá nhân �
 
 ## 6. Lộ trình chuyển đổi
 
-Bước 2–4 đã làm ngày 30/10/2026 (không đổi logic, không đổi URL API). Còn lại: nhóm duyệt (bước 1) và bước 5.
+Bước 1–4 đã xong ngày 30/10/2026 (không đổi logic, không đổi URL API). Còn lại bước 5.
 
 1. Nhóm chốt tài liệu này (gốc `com.vsos`, danh sách gói 1.2).
 2. Đổi gốc `com.vehicsim` → `com.vsos.backend` và `com.vehicsim.core` → `com.vsos.core`. Phải sửa cùng lúc:

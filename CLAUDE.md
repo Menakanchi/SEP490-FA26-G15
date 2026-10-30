@@ -5,6 +5,10 @@
 Đọc [AGENTS.md](AGENTS.md) trước để biết bản đồ code và các bất biến. File này bổ sung cách dựng máy,
 kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chung cho thành viên và trợ lý lập trình.
 
+> **Bắt buộc sau khi pull (30/10/2026):** gói Java đổi từ `com.vehicsim` sang `com.vsos`. Trước khi code tiếp, đọc
+> [hướng dẫn cập nhật](docs/vehicsim/huong-dan-cap-nhat-sau-doi-ten-goi.md) và tra mục 7 của
+> [quy tắc đặt tên](docs/vehicsim/quy-tac-dat-ten.md) để đổi `package`/`import`.
+
 ## 1. Hiểu đúng trạng thái bàn giao
 
 - Backend hiện tại là Spring Boot Java 21; frontend Next.js; AEB/mô phỏng/chấm điểm ở lõi Java `com.vsos.core` (ADR-042);

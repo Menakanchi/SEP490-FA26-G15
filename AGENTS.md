@@ -5,6 +5,10 @@ chi tiết vận hành nằm ở [CLAUDE.md](CLAUDE.md). Hướng dẫn riêng c
 nằm ở [frontend/AGENTS.md](frontend/AGENTS.md). Không suy ra tính năng đã có
 chỉ từ tên màn hình, bảng DB hoặc tài liệu kế hoạch.
 
+> **Bắt buộc sau khi pull (30/10/2026):** gói Java đổi từ `com.vehicsim` sang `com.vsos`. Trước khi code tiếp, đọc
+> [hướng dẫn cập nhật](docs/vehicsim/huong-dan-cap-nhat-sau-doi-ten-goi.md) và tra mục 7 của
+> [quy tắc đặt tên](docs/vehicsim/quy-tac-dat-ten.md) để đổi `package`/`import`.
+
 ## Dự án và trạng thái hiện tại
 
 VehicSim / VSOS (SEP490-FA26-G15) hỗ trợ kỹ sư kiểm thử, hiệu chỉnh AEB/FCW:

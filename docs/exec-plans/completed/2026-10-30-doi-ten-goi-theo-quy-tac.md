@@ -33,5 +33,7 @@ Theo yêu cầu của thầy (họp 30/10): gói đi từ hệ thống → tần
 
 - Chưa chạy một run CARLA thật sau khi đổi tên lớp cầu nối (CLAUDE.md yêu cầu với thay đổi chạm CARLA). Cần chạy
   `scripts\dev-carla.ps1 -RestartBackend` rồi một họ nhỏ trên **Phân tích → Dữ liệu CARLA** trước khi merge.
-- Nhánh đang mở của thành viên khác sẽ xung đột ở `package`/`import`; tra bảng mục 7 của quy tắc để sửa khi merge.
+- Nhóm đã đồng ý gốc `com.vsos` (30/10). Thành viên pull về làm theo
+  [hướng dẫn cập nhật](../../vehicsim/huong-dan-cap-nhat-sau-doi-ten-goi.md) (tra mục 7 để đổi import);
+  thông báo đặt ở đầu `AGENTS.md`, `CLAUDE.md`, `README.md`.
 - Frontend chưa gom component theo chức năng (bước 5 của lộ trình).
