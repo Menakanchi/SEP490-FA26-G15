@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { ROLE_LABELS, initials } from "@/components/VehicSimUi";
 import { WORKSPACE_ROLES } from "@/components/workspaceAccess";
-import { JourneyNav, ProjectSwitcher } from "@/components/project/ProjectShell";
+import { JourneyNav, PersonalProjectsLink, ProjectSwitcher } from "@/components/project/ProjectShell";
 
 /**
  * Sidebar VehicSim theo Figma "VehicSim — FE-12/13/14 UI (Trung)".
@@ -192,6 +192,7 @@ export function VehicSimSidebar() {
             </div>
           );
         })}
+        <PersonalProjectsLink />
       </nav>
       )}
 

@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useId, useRef, useState, type RefObject 
 import Link from "next/link";
 import { Archive, ArchiveRestore, Check, Ellipsis, Loader2, Settings, Trash2, TriangleAlert, X } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
+import { Card, ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { JourneyStatus, ProjectItem } from "@/types/vehicsim";
 
@@ -204,6 +204,52 @@ export function ToastStack({ messages }: { messages: ToastMessage[] }) {
   );
 }
 
+export const TERMS = {
+  baseline: "Cấu hình AEB đang dùng làm mốc. Mọi ứng viên được so với nó trên cùng tình huống và cùng seed.",
+  variant: "Một tình huống cụ thể trong họ kịch bản: một tốc độ xe, một khoảng cách người bước ra, một điều kiện thời tiết.",
+  seed: "Số khởi tạo ngẫu nhiên. Cùng biến thể và cùng seed thì mô phỏng lặp lại y hệt, nên so sánh mới công bằng.",
+  ttc: "Time-to-collision: số giây còn lại trước khi va chạm nếu không ai đổi tốc độ. Càng nhỏ càng nguy hiểm.",
+  falseBraking: "AEB phanh khi không cần, ví dụ người đi bộ đã dừng ở lề. Phanh oan nhiều làm xe khó chịu và kém tin cậy.",
+  candidate: "Bộ tham số AEB mới được tạo từ baseline để thử. Chỉ dùng thay baseline khi đã đạt kiểm chứng.",
+  verification: "Chạy lại đúng các tình huống với ứng viên, cùng seed, rồi so từng cặp với baseline.",
+} as const;
+
+export function Term({ children, tip }: { children: React.ReactNode; tip: string }) {
+  const id = useId();
+  return (
+    <span className="group relative inline-block">
+      <span
+        tabIndex={0}
+        aria-describedby={id}
+        className="cursor-help rounded-sm underline decoration-dotted underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-vehicsim-line-strong"
+      >
+        {children}
+      </span>
+      <span
+        id={id}
+        role="tooltip"
+        className="pointer-events-none invisible absolute bottom-full left-1/2 z-30 mb-2 w-64 -translate-x-1/2 rounded-[10px] bg-vehicsim-ink px-3 py-2 text-left text-[13px] font-normal leading-[1.45] text-white opacity-0 transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100 motion-reduce:transition-none"
+      >
+        {tip}
+      </span>
+    </span>
+  );
+}
+
+export function OpenProjectCard({ project, purpose }: { project: ProjectItem; purpose: string }) {
+  const { openProject } = useVehicSimContext();
+  return (
+    <Card className="flex items-center justify-between gap-4 p-5">
+      <p className="text-[14px] text-vehicsim-muted">
+        Bạn đang mở project khác. Mở “{project.name}” để {purpose}.
+      </p>
+      <PillButton variant="dark" onClick={() => openProject(project.id)}>
+        Mở project này
+      </PillButton>
+    </Card>
+  );
+}
+
 export type ProjectAction = "archive" | "unarchive" | "delete";
 
 const COPY: Record<ProjectAction, { title: string; body: string; confirm: string; done: string }> = {
@@ -340,7 +386,7 @@ export function ProjectMenu({ project, onAction, limitReason }: { project: Proje
       </button>
       {open && (
         <div role="menu" className="absolute right-0 top-[calc(100%+6px)] z-40 flex w-[240px] flex-col gap-[2px] rounded-[14px] border border-solid border-vehicsim-line bg-white p-2 shadow-vehicsim-card">
-          <Link role="menuitem" href={`/projects/${project.id}/edit`} onClick={close} className={cx(itemCls, "text-vehicsim-ink hover:bg-vehicsim-soft")}>
+          <Link role="menuitem" href={`/projects/${project.id}/settings`} onClick={close} className={cx(itemCls, "text-vehicsim-ink hover:bg-vehicsim-soft")}>
             <Settings className="size-4" /> Cài đặt project
           </Link>
           {project.status === "ACTIVE" ? (

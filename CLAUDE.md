@@ -87,8 +87,9 @@ Nếu đã đăng nhập trước khi đổi role, đăng xuất/đăng nhập l
 - Tự đăng ký nhận EXPERIENCER. ADMIN/ENGINEER/EXPERIENCER được thao tác tạo/chạy theo hạn mức.
 - EXPERIENCER làm việc trong project cá nhân: tạo ở "Project của tôi" (`/projects`, tối đa 3 đang hoạt động), frontend gửi project
   đang mở qua header `X-VehicSim-Project`. Role khác vẫn dùng project nhóm do bootstrap tạo
-  ([exec plan](docs/exec-plans/active/2026-10-31-experiencer-project-ca-nhan.md)).
+  ([exec plan](docs/exec-plans/active/2026-10-31-experiencer-project-ca-nhan.md)). Được nâng role thì project cá nhân chỉ còn xem được.
 - MANAGER đọc dữ liệu. REVIEWER đọc và là role duy nhất được Accept/Reject; ADMIN cũng không thay quyền Reviewer.
+  Ngoại lệ: trong project cá nhân, chủ project tự chọn ứng viên đạt kiểm chứng làm baseline (ADR-046, Proposed).
 - API nghiệp vụ dùng tiền tố `/api/v1/vehicsim` và Bearer token. ADMIN có thể seed bằng `POST /api/v1/vehicsim/bootstrap`.
 - Development mặc định đăng ký trực tiếp; OTP không có SMTP được ghi log ngoài production.
   Không dùng các thiết lập dev này cho môi trường công khai.

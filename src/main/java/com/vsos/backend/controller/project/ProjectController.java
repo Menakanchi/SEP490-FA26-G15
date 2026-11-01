@@ -1,6 +1,7 @@
 package com.vsos.backend.controller.project;
 
 import com.vsos.backend.config.OpenApiConfig;
+import com.vsos.backend.dto.project.ProjectDtos.AdoptRequest;
 import com.vsos.backend.dto.project.ProjectDtos.DeleteProjectRequest;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectItem;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectJourney;
@@ -31,7 +32,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/vehicsim/projects")
 @RequiredArgsConstructor
-@Tag(name = "VehicSim · Project", description = "Project cá nhân của Experiencer")
+@Tag(name = "VehicSim · Project", description = "Project cá nhân: Experiencer quản lý và làm việc; chủ project đã đổi role chỉ xem")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class ProjectController {
 
@@ -41,7 +42,7 @@ public class ProjectController {
     @Operation(summary = "Danh sách project cá nhân và hạn mức project đang hoạt động")
     @GetMapping
     public ProjectList list(@AuthenticationPrincipal UserDetails user) {
-        return projects.list(VehicSimAccess.requireExperiencer(user));
+        return projects.list(VehicSimAccess.userId(user));
     }
 
     @Operation(summary = "Xe chọn được khi tạo hoặc sửa project")
@@ -61,13 +62,20 @@ public class ProjectController {
     @Operation(summary = "Chi tiết project cá nhân")
     @GetMapping("/{projectId}")
     public ProjectItem get(@PathVariable long projectId, @AuthenticationPrincipal UserDetails user) {
-        return projects.get(VehicSimAccess.requireExperiencer(user), projectId);
+        return projects.get(VehicSimAccess.userId(user), projectId);
     }
 
     @Operation(summary = "Hành trình 5 bước của project: trạng thái từng bước, bước tiếp theo và số liệu tóm tắt")
     @GetMapping("/{projectId}/journey")
     public ProjectJourney journey(@PathVariable long projectId, @AuthenticationPrincipal UserDetails user) {
-        return projects.journey(VehicSimAccess.requireExperiencer(user), projectId);
+        return projects.journey(VehicSimAccess.userId(user), projectId);
+    }
+
+    @Operation(summary = "Dùng ứng viên đã đạt kiểm chứng làm baseline của project, mở vòng cải tiến tiếp theo")
+    @PostMapping("/{projectId}/regressions/{testId}/adopt")
+    public ProjectJourney adopt(@PathVariable long projectId, @PathVariable long testId, @RequestBody AdoptRequest body,
+                                @AuthenticationPrincipal UserDetails user) {
+        return projects.adopt(writer(user), projectId, testId, body);
     }
 
     @Operation(summary = "Sửa tên, mô tả hoặc xe (xe chỉ đổi được khi chưa có lượt chạy)")

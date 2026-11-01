@@ -1,6 +1,7 @@
 # 31/10/2026 — Project cá nhân cho EXPERIENCER
 
-**Trạng thái:** Luồng 1 và Luồng 2 **đã code và kiểm chứng** (31/10/2026); Luồng 3–5 chưa làm.
+**Trạng thái:** Luồng 1–2 **đã code và kiểm chứng** (31/10/2026). Luồng 3 và phần đổi role của Luồng 5 đã code (01/11/2026, chưa
+chạy app thật); Luồng 4 đã rà code, còn kiểm bằng hai tài khoản; thông báo của Luồng 5 chờ quyết định (mục 8).
 Phần TD-30 dành riêng cho role EXPERIENCER ([tech-debt-tracker](../tech-debt-tracker.md)). Người làm, deadline theo GitHub Issues/Project.
 Mỗi luồng là một việc EXPERIENCER làm được trọn vẹn từ giao diện tới DB, có kịch bản demo và merge riêng được.
 
@@ -27,7 +28,7 @@ Role khác không đổi hành vi; điều kiện duy nhất với họ: không 
 | Q4 | Project mới có gì sẵn | Xe chọn từ danh mục (mặc định Audi e-tron) + baseline AEB v1.0 như bootstrap (TTC 1,5 s) |
 | Q5 | Lưu trữ và xoá | 2 trạng thái `ACTIVE ⇄ ARCHIVED` + **xoá vĩnh viễn** có gõ tên xác nhận. Không có thùng rác vì không thêm cột/trạng thái vào DB |
 | Q6 | Dữ liệu EXPERIENCER đã tạo trong project chung | Giữ nguyên, không chuyển |
-| Q7 | EXPERIENCER được nâng role | Chưa làm (Luồng 5) |
+| Q7 | EXPERIENCER được nâng role | Project cá nhân còn nguyên, chủ project đọc được danh sách / chi tiết / hành trình nhưng không mở để làm việc (01/11/2026) |
 | Q8 | Báo lỗi | Mỗi tình huống một **tên lỗi** riêng (enum `ProjectError`), thân lỗi `{"code": "<TÊN>", "detail": "<câu tiếng Việt có số liệu>"}` (mục 6) |
 
 ## 4. Nghiệp vụ
@@ -68,7 +69,7 @@ nên không phải thêm kiểm "chỉ đọc" vào từng route ghi của các 
 - **BR-08** Khi tải ngữ cảnh, frontend lưu id project đang mở; project đó bị xoá/lưu trữ/không còn của mình thì tự bỏ chọn, mở project
   hoạt động gần nhất và báo cho người dùng.
 
-## 5. API (`/api/v1/vehicsim/projects`, chỉ EXPERIENCER)
+## 5. API (`/api/v1/vehicsim/projects`)
 
 | Route | UC |
 |---|---|
@@ -79,6 +80,11 @@ nên không phải thêm kiểm "chỉ đọc" vào từng route ghi của các 
 | `PATCH /projects/{projectId}` `{name?, description?, carla_vehicle_model_id?}` | P04 |
 | `POST /projects/{projectId}/archive`, `POST /projects/{projectId}/unarchive` | P05 |
 | `DELETE /projects/{projectId}` `{confirm_name}` → 204 | P06 |
+| `GET /projects/{projectId}/journey` | Hành trình 5 bước ([exec plan hành trình](2026-11-01-hanh-trinh-experiencer.md)) |
+| `POST /projects/{projectId}/regressions/{testId}/adopt` `{reason, confirmed}` → hành trình mới | Dùng ứng viên đạt kiểm chứng làm baseline (ADR-046) |
+
+`GET /projects`, `GET /projects/{projectId}` và `/journey` mở cho mọi role nhưng chỉ trả project cá nhân của chính người gọi (chủ project
+đã được nâng role vẫn xem được); các route còn lại chỉ EXPERIENCER.
 
 `ProjectItem`: `id, name, description, status, vehicle_id, vehicle_name, baseline_label, family_count, run_count, regression_count,
 has_running_work, created_date, updated_at`. Mọi route khác của VehicSim nhận header `X-VehicSim-Project` (UC-P07).
@@ -90,7 +96,7 @@ Thân lỗi: `{"code": "NAME_DUPLICATE", "detail": "Bạn đã có project tên 
 
 | Tên | HTTP | Khi nào | Giao diện |
 |---|---|---|---|
-| `EXPERIENCER_ONLY` | 403 | Role khác gọi API project cá nhân | Hiện câu lỗi |
+| `EXPERIENCER_ONLY` | 403 | Role khác gọi API ghi / xe chọn được của project cá nhân | Hiện câu lỗi |
 | `NO_PROJECT_OPEN` | 409 | EXPERIENCER chưa có project `ACTIVE` mà vào màn làm việc | Màn "Chưa có project" + nút tạo |
 | `PROJECT_NOT_FOUND` | 404 | Id không có hoặc header không phải số | Tự bỏ chọn, mở project gần nhất, báo |
 | `PROJECT_NOT_YOURS` | 403 | Project của người khác hoặc project nhóm | Như trên |
@@ -104,6 +110,10 @@ Thân lỗi: `{"code": "NAME_DUPLICATE", "detail": "Bạn đã có project tên 
 | `VEHICLE_NOT_FOUND` | 400 | Xe không có hoặc không được hỗ trợ | Dưới ô Xe |
 | `VEHICLE_LOCKED` | 409 | Đổi xe khi đã có lượt chạy | Ô Xe bị khoá kèm lý do |
 | `CONFIRM_NAME_MISMATCH` | 400 | Xoá vĩnh viễn gõ sai tên | Nút xoá bị khoá tới khi gõ đúng |
+| `REASON_REQUIRED`, `CONFIRM_REQUIRED` | 400 | Chọn baseline thiếu lý do / chưa xác nhận | Nút trong hộp thoại bị khoá tới khi đủ |
+| `TEST_NOT_FOUND` | 404 | Lần kiểm chứng không thuộc project | Hiện câu lỗi |
+| `TEST_NOT_FINISHED`, `TEST_NOT_PASSED` | 409 | Kiểm chứng chưa xong / không đạt | Không hiện nút chọn baseline |
+| `CANDIDATE_ALREADY_DECIDED`, `BASELINE_CHANGED` | 409 | Ứng viên đã thành baseline / baseline đổi sau lần kiểm chứng | Màn kết luận nói rõ lý do |
 
 Lỗi giới hạn tần suất (429) và lỗi chung khác giữ định dạng cũ `{"detail": ...}`.
 
@@ -144,9 +154,9 @@ Lỗi giới hạn tần suất (429) và lỗi chung khác giữ định dạng
 |---|---|---|
 | **1** | Quản lý project: tạo, xem, sửa, lưu trữ, bỏ lưu trữ, xoá vĩnh viễn | **Xong 31/10/2026** |
 | **2** | Mở project → thiết kế kịch bản → chạy baseline → xem kết quả, chỉ trong project của mình | **Xong 31/10/2026** |
-| 3 | Phân tích → candidate → tối ưu → regression, tự đọc kết quả, không qua Reviewer | Chưa làm |
-| 4 | Riêng tư: route đọc theo id không lộ dữ liệu người khác; link sai project được giải thích | Chưa làm |
-| 5 | Được nâng role không mất project; nhận thông báo khi lô chạy / regression xong | Chưa làm |
+| 3 | Phân tích → candidate → tối ưu → regression, tự đọc kết quả, không qua Reviewer | **Đã code 01/11/2026**, chưa chạy app thật |
+| 4 | Riêng tư: route đọc theo id không lộ dữ liệu người khác; link sai project được giải thích | Đã rà code; còn kiểm hai tài khoản |
+| 5 | Được nâng role không mất project; nhận thông báo khi lô chạy / regression xong | Đổi role **đã code**; thông báo chờ quyết định |
 
 ### Luồng 1 — Quản lý project cá nhân (xong)
 
@@ -161,13 +171,22 @@ project B không thấy họ của A; ENGINEER vẫn ở project nhóm và khôn
 đã có run → `VEHICLE_LOCKED`; lưu trữ A → mở hoặc ghi vào A → `PROJECT_ARCHIVED`, không header thì mở project hoạt động gần nhất;
 xoá vĩnh viễn A → không còn dòng `projects/scenarios/simulation_runs/aeb_versions` nào của A; project nhóm còn nguyên.
 
-### Luồng 3 — Phân tích tới regression không qua Reviewer
+### Luồng 3 — Phân tích tới regression không qua Reviewer (đã code 01/11/2026)
 
-1. `RegressionService`: project cá nhân (`workspace_id IS NULL`) không gọi `insertRecommendation`; test service.
-2. `RegressionViewService` trả `recommendation_available: false`; frontend ẩn "Khuyến nghị" với EXPERIENCER, `vehicsimFlow.ts` đổi nhãn bước 5.
-3. Demo: chọn ca lỗi → tập phân tích → candidate → regression trong project cá nhân; xoá vĩnh viễn project có regression thật.
+1. Đã có sẵn từ trước: `RegressionService.createRecommendation` bỏ qua project không thuộc workspace. Chưa có test riêng; không thêm vì
+   đó là code phần 5 (đề nghị người phụ trách phần 5 bổ sung).
+2. Không sửa backend phần 5: trang `/validation/regression/[testId]` rẽ nhánh theo `isExperiencer` (project cá nhân chỉ EXPERIENCER mở
+   được) — bỏ "Mở khuyến nghị", câu "cần kỹ sư quyết định", thay bằng "Xem kết luận" dẫn tới màn Kết luận vòng.
+3. Khép vòng: chủ project tự chọn ứng viên `PASSED` làm baseline (`ProjectService.adopt`, ADR-046).
+4. Còn lại: demo trên app thật (chọn ca lỗi → candidate → regression → chọn baseline → vòng 2); xoá vĩnh viễn project có regression thật.
 
 ### Luồng 4 — Riêng tư
+
+Rà code 01/11/2026: run, bundle, xosc, playback, carla-data/files, dataset, handoff, family versions / variants, regression,
+recommendation, optimization / trial đều lọc theo project hiện hành; `findTest(testId)` không kèm project chỉ dùng ở luồng nền,
+`findVersion(versionId)` chỉ gọi sau khi đã lấy test theo project. Chưa thấy chỗ cần sửa backend. Chạy thật 01/11/2026: exp2 đọc
+project, hành trình, regression của exp1 và gửi header project của exp1 đều bị chặn
+([bằng chứng](2026-11-01-hanh-trinh-experiencer.md#12-kiểm-chứng)). Còn lại:
 
 1. Rà từng route đọc theo id (`/runs/{id}`, `/regression/{id}`, `/optimizations/{id}`, `/analysis/datasets/{id}`…) xem đã lọc `project_id`
    chưa; chú ý hàm tra theo id không kèm project (`RegressionRepository.findTest(testId)`, `findVersion(versionId)`).
@@ -175,8 +194,12 @@ xoá vĩnh viễn A → không còn dòng `projects/scenarios/simulation_runs/ae
 
 ### Luồng 5 — Đổi role và thông báo
 
-1. Chủ project không còn là EXPERIENCER: danh sách chỉ xem; trở lại EXPERIENCER thì dùng tiếp.
-2. Thông báo khi lô chạy / regression xong (`NotificationService.notify`).
+1. Đã code 01/11/2026: chủ project không còn là EXPERIENCER đọc được `/projects`, trang chủ project và hành trình (chỉ xem, không có
+   nút mở / sửa / lưu trữ); sidebar của role khác có mục "Project cá nhân (n)" chỉ khi người đó có project. Trở lại EXPERIENCER thì
+   dùng tiếp như cũ.
+2. Chờ quyết định: thông báo khi lô chạy / regression xong. Muốn ghi đúng lúc phải móc vào `RunService` (phần 2) và
+   `RegressionService` (phần 5); cách không đụng code người khác là bộ quét định kỳ trong gói `project`, cần bật `@EnableScheduling`
+   cho cả app. `NotificationService.notify` hiện bỏ qua khi người nhận là người làm, nên cần thêm hàm báo cho chính chủ.
 
 ## 9. Rủi ro và giới hạn còn lại
 
@@ -184,8 +207,8 @@ xoá vĩnh viễn A → không còn dòng `projects/scenarios/simulation_runs/ae
 |---|---|
 | Hai request tạo cùng lúc có thể vượt hạn mức 1 project | Kiểm rồi mới ghi, không khoá; trùng tên thì `uq_projects_personal_name` chặn (409 chung) |
 | Không có thùng rác | Xoá là vĩnh viễn; bù lại bằng gõ tên xác nhận và chặn khi còn việc chạy |
-| Regression trong project cá nhân vẫn sinh khuyến nghị | Luồng 3 |
-| Route đọc theo id chưa rà hết | Luồng 4 |
+| Chốt chặn khuyến nghị cho project cá nhân chưa có test riêng | Code phần 5; đề nghị người phụ trách bổ sung |
+| Route đọc theo id mới rà bằng code | Luồng 4: còn kiểm bằng hai tài khoản trên app thật |
 | Xoá thư mục run CARLA | Kiểm bằng `ProjectServiceTest`; run động học không tạo thư mục; chưa xoá thử run CARLA thật |
 | `currentProject()` gọi ngoài request | `ProjectScope` là bean request; đã grep: chỉ service xem/ghi theo request gọi, luồng nền không gọi |
 | Figma | Không có khung Figma cho màn Project; giao diện theo thành phần `VehicSimUi` sẵn có, chưa đối chiếu thiết kế |
@@ -207,3 +230,4 @@ xoá vĩnh viễn A → không còn dòng `projects/scenarios/simulation_runs/ae
 | 31/10/2026 | Góp ý: chỉ tập trung EXPERIENCER; Luồng 1 là quản lý project; lỗi phải có tên rõ ràng thay vì chỉ 404/403 |
 | 31/10/2026 | Góp ý: **không sửa database của nhóm** → bỏ migration, bỏ thùng rác/bia mộ, project lưu trữ không mở được; rút gọn lỗi còn enum tên + câu tiếng Việt, bỏ mã `PRJ-xxx`/`SYS-xxx`, bỏ gói `exception/common` |
 | 31/10/2026 | Code và kiểm chứng Luồng 1, Luồng 2 (mục 10) |
+| 01/11/2026 | Góp ý: hạn chế đụng màn của thành viên khác — không sửa phần 1; phần 4 chỉ đọc `?tab=`; phần 5 chỉ rẽ nhánh frontend theo role. Code Luồng 3 (kèm ADR-046) và phần đổi role của Luồng 5; thông báo để chờ quyết định |

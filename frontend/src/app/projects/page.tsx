@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
+import { EmptyState, ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
 import { NewProjectCard, ProjectCard } from "@/components/project/ProjectHome";
 import { Welcome } from "@/components/project/ProjectShell";
 import { useProjectActions } from "@/components/project/ProjectUi";
@@ -20,7 +20,7 @@ const TABS: { status: ProjectStatus; label: string }[] = [
 /** Project của tôi: trang đầu của EXPERIENCER sau khi đăng nhập. Chưa có project nào thì hiện màn chào mừng. */
 export default function ListProjectPage() {
   const router = useRouter();
-  const { ctx, openProject } = useVehicSimContext();
+  const { ctx, openProject, isExperiencer } = useVehicSimContext();
   const [list, setList] = useState<ProjectList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<ProjectStatus>("ACTIVE");
@@ -39,7 +39,7 @@ export default function ListProjectPage() {
     void reload();
   }, [reload]);
 
-  if (list && list.items.length === 0) return <Welcome />;
+  if (list && list.items.length === 0 && isExperiencer) return <Welcome />;
 
   const full = !!list && list.active_count >= list.active_limit;
   const limitReason = list && full ? `Đã có ${list.active_count}/${list.active_limit} project đang hoạt động; lưu trữ hoặc xoá bớt trước.` : undefined;
@@ -51,9 +51,14 @@ export default function ListProjectPage() {
     <VehicSimPage
       crumbs={[{ label: "Project của tôi" }]}
       title="Project của tôi"
-      subtitle="Mỗi project là một câu hỏi thử nghiệm về AEB, đi qua 5 bước từ kịch bản tới kiểm chứng. Chọn một project để làm tiếp."
+      subtitle={
+        isExperiencer
+          ? "Mỗi project là một câu hỏi thử nghiệm về AEB, đi qua 5 bước từ kịch bản tới kiểm chứng. Chọn một project để làm tiếp."
+          : "Project cá nhân tạo khi bạn còn là Experiencer. Tài khoản đã đổi role nên chỉ xem được, không mở để làm việc."
+      }
       actions={
-        list && (
+        list &&
+        isExperiencer && (
           <>
             <div className="flex flex-col items-end gap-1" aria-label={`${list.active_count}/${list.active_limit} project đang hoạt động`}>
               <div className="flex gap-1">
@@ -93,6 +98,8 @@ export default function ListProjectPage() {
         ))}
       </div>
 
+      {list && list.items.length === 0 && <EmptyState title="Bạn không có project cá nhân nào" />}
+
       {!list ? (
         !error && (
           <div className="flex justify-center py-16">
@@ -105,13 +112,14 @@ export default function ListProjectPage() {
             <ProjectCard
               key={p.id}
               project={p}
-              opened={ctx?.project.id === p.id}
+              opened={isExperiencer && ctx?.project.id === p.id}
+              readOnly={!isExperiencer}
               limitReason={limitReason}
               onContinue={(href) => go(p.id, href)}
               onAction={(kind) => actions.start(kind, p)}
             />
           ))}
-          {tab === "ACTIVE" && !full && <NewProjectCard remaining={list.active_limit - list.active_count} />}
+          {tab === "ACTIVE" && !full && isExperiencer && <NewProjectCard remaining={list.active_limit - list.active_count} />}
           {visible.length === 0 && tab === "ARCHIVED" && <p className="col-span-3 py-10 text-center text-[14px] text-vehicsim-muted">Không có project lưu trữ.</p>}
         </div>
       )}

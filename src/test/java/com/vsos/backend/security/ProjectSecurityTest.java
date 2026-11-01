@@ -83,13 +83,15 @@ class ProjectSecurityTest {
         return json(HttpMethod.POST, "", "{\"name\":\"Thử AEB\"}");
     }
 
-    private static List<MockHttpServletRequestBuilder> routes() {
+    private static List<MockHttpServletRequestBuilder> reads() {
+        return List.of(request(HttpMethod.GET, BASE), request(HttpMethod.GET, BASE + "/1"), request(HttpMethod.GET, BASE + "/1/journey"));
+    }
+
+    private static List<MockHttpServletRequestBuilder> experiencerOnly() {
         return List.of(
-                request(HttpMethod.GET, BASE),
                 request(HttpMethod.GET, BASE + "/vehicle-options"),
                 create(),
-                request(HttpMethod.GET, BASE + "/1"),
-                request(HttpMethod.GET, BASE + "/1/journey"),
+                json(HttpMethod.POST, "/1/regressions/2/adopt", "{\"reason\":\"Đạt\",\"confirmed\":true}"),
                 json(HttpMethod.PATCH, "/1", "{\"name\":\"Mới\"}"),
                 request(HttpMethod.POST, BASE + "/1/archive"),
                 request(HttpMethod.POST, BASE + "/1/unarchive"),
@@ -102,15 +104,24 @@ class ProjectSecurityTest {
 
     @Test
     void everyProjectRouteRequiresLogin() throws Exception {
-        for (MockHttpServletRequestBuilder route : routes()) {
+        for (MockHttpServletRequestBuilder route : List.of(reads(), experiencerOnly()).stream().flatMap(List::stream).toList()) {
             assertThat(statusOf(route, null)).isEqualTo(401);
         }
     }
 
     @Test
-    void onlyExperiencersReachPersonalProjects() throws Exception {
+    void ownersWhoChangedRoleStillReadTheirPersonalProjects() throws Exception {
         for (RoleCode code : RoleCode.values()) {
-            for (MockHttpServletRequestBuilder route : routes()) {
+            for (MockHttpServletRequestBuilder route : reads()) {
+                assertThat(statusOf(route, code)).isEqualTo(200);
+            }
+        }
+    }
+
+    @Test
+    void onlyExperiencersManageAndWorkInPersonalProjects() throws Exception {
+        for (RoleCode code : RoleCode.values()) {
+            for (MockHttpServletRequestBuilder route : experiencerOnly()) {
                 if (code == RoleCode.EXPERIENCER) {
                     assertThat(statusOf(route, code)).isBetween(200, 299);
                 } else {

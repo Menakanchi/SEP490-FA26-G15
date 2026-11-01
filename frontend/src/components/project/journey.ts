@@ -42,20 +42,20 @@ export function statusOf(journey: ProjectJourney, key: JourneyStepKey): JourneyS
 
 /** Nơi làm bước đó trong project đang mở. */
 export function stepHref(key: JourneyStepKey, journey: ProjectJourney): string {
-  const c = journey.counts;
+  const home = `/projects/${journey.project_id}`;
+  const last = journey.counts.last_regression_id;
   switch (key) {
     case "SCENARIO":
-      return c.variants > 0 ? "/scenarios" : `/projects/${journey.project_id}/start`;
+      return `${home}/start`;
     case "BASELINE":
       return "/scenarios";
     case "RESULTS":
-      return "/analysis/failures";
+      return `${home}/results`;
     case "IMPROVE":
-      return "/aeb";
+      return `${home}/improve`;
     case "VERIFY":
-      return statusOf(journey, "VERIFY") === "TODO" || c.last_regression_id === null
-        ? "/validation/regression/new"
-        : `/validation/regression/${c.last_regression_id}`;
+      if (statusOf(journey, "VERIFY") === "RUNNING") return "/validation/regression";
+      return last === null ? "/validation/regression/new" : `${home}/rounds/${last}`;
   }
 }
 
@@ -70,7 +70,7 @@ export function stepSummary(key: JourneyStepKey, journey: ProjectJourney): strin
       if (c.variants === 0) return "Cần kịch bản trước";
       if (status === "RUNNING") return `Đang chạy · ${c.baseline_completed}/${c.variants} biến thể xong`;
       if (status === "FAILED") return `${c.baseline_failed} lượt chạy lỗi · ${c.baseline_completed}/${c.variants} xong`;
-      return `${c.baseline_completed}/${c.variants} biến thể đã chạy`;
+      return `${c.baseline_completed}/${c.variants} biến thể đã chạy${c.families_baseline_pending > 0 ? ` · ${c.families_baseline_pending} họ chưa chạy` : ""}`;
     case "RESULTS":
       if (c.baseline_completed === 0) return "Cần chạy baseline trước";
       return `${c.collisions} va chạm · ${c.near_misses} suýt va chạm · ${c.false_activations} phanh oan`;
@@ -101,8 +101,8 @@ export function nextAction(journey: ProjectJourney): NextAction {
     return {
       key: null,
       title: `Vòng ${journey.round} đã xong`,
-      detail: `Lần kiểm chứng gần nhất ${c.last_verdict ? VERDICT_LABEL[c.last_verdict] : "đã có kết quả"}. Thử một ứng viên khác để cải thiện thêm.`,
-      cta: "Xem kết quả kiểm chứng",
+      detail: `Lần kiểm chứng gần nhất ${c.last_verdict ? VERDICT_LABEL[c.last_verdict] : "đã có kết quả"}. Xem kết luận để chọn ứng viên cho vòng sau hoặc thử ứng viên khác.`,
+      cta: "Xem kết luận vòng",
       href: stepHref("VERIFY", journey),
     };
   }
@@ -150,9 +150,11 @@ export function newlyDone(before: ProjectJourney | null, after: ProjectJourney):
   return done?.key ?? null;
 }
 
+const PROJECT_PAGES: Record<string, JourneyStepKey> = { start: "SCENARIO", results: "RESULTS", improve: "IMPROVE", rounds: "VERIFY" };
+
 /** Bước của đường dẫn hiện tại, khớp dài nhất thắng (/scenarios/new thuộc bước 1, /scenarios thuộc bước 2). */
 export function stepOfPath(pathname: string, projectId: number | null): JourneyStepKey | null {
-  if (projectId !== null && pathname.startsWith(`/projects/${projectId}/start`)) return "SCENARIO";
+  if (projectId !== null && pathname.startsWith(`/projects/${projectId}/`)) return PROJECT_PAGES[pathname.split("/")[3]] ?? null;
   let best: { key: JourneyStepKey; length: number } | null = null;
   for (const step of JOURNEY_STEPS) {
     for (const path of step.paths) {

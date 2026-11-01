@@ -7,7 +7,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Repository
 @RequiredArgsConstructor
@@ -87,19 +89,25 @@ public class ProjectRepository {
         return db.first("""
                 SELECT b.id AS baseline_id, COALESCE(NULLIF(b.label, ''), CONCAT('v', b.version_no)) AS baseline_label,
                        (SELECT COUNT(*) FROM aeb_versions v WHERE v.project_id = p.id AND v.status IN ('BASELINE','ARCHIVED')) AS rounds,
-                       (SELECT COUNT(*) FROM aeb_versions v WHERE v.project_id = p.id AND v.parent_version_id IS NOT NULL) AS candidates,
+                       (SELECT COUNT(*) FROM aeb_versions v WHERE v.project_id = p.id AND v.parent_version_id = b.id) AS candidates,
                        (SELECT COUNT(*) FROM scenarios s WHERE s.project_id = p.id) AS families,
                        (SELECT COUNT(*) FROM analysis_results a
-                         WHERE a.project_id = p.id AND a.analysis_type = 'BASELINE_DATASET' AND a.status = 'COMPLETED') AS datasets,
-                       (SELECT COUNT(*) FROM optimization_runs o WHERE o.project_id = p.id AND o.status IN ('PENDING','RUNNING'))
+                         WHERE a.project_id = p.id AND a.aeb_version_id = b.id AND a.analysis_type = 'BASELINE_DATASET'
+                           AND a.status = 'COMPLETED') AS datasets,
+                       (SELECT COUNT(*) FROM optimization_runs o
+                         WHERE o.project_id = p.id AND o.base_aeb_version_id = b.id AND o.status IN ('PENDING','RUNNING'))
                          AS optimizations_running,
-                       (SELECT COUNT(*) FROM regression_tests t WHERE t.project_id = p.id AND t.execution_status IN ('PENDING','RUNNING'))
+                       (SELECT COUNT(*) FROM regression_tests t
+                         WHERE t.project_id = p.id AND t.baseline_aeb_version_id = b.id AND t.execution_status IN ('PENDING','RUNNING'))
                          AS regressions_running,
-                       (SELECT COUNT(*) FROM regression_tests t WHERE t.project_id = p.id AND t.execution_status = 'COMPLETED')
+                       (SELECT COUNT(*) FROM regression_tests t
+                         WHERE t.project_id = p.id AND t.baseline_aeb_version_id = b.id AND t.execution_status = 'COMPLETED')
                          AS regressions_completed,
-                       (SELECT t.id FROM regression_tests t WHERE t.project_id = p.id AND t.execution_status = 'COMPLETED'
+                       (SELECT t.id FROM regression_tests t
+                         WHERE t.project_id = p.id AND t.baseline_aeb_version_id = b.id AND t.execution_status = 'COMPLETED'
                          ORDER BY t.id DESC LIMIT 1) AS last_regression_id,
-                       (SELECT t.verdict FROM regression_tests t WHERE t.project_id = p.id AND t.execution_status = 'COMPLETED'
+                       (SELECT t.verdict FROM regression_tests t
+                         WHERE t.project_id = p.id AND t.baseline_aeb_version_id = b.id AND t.execution_status = 'COMPLETED'
                          ORDER BY t.id DESC LIMIT 1) AS last_verdict,
                        GREATEST(p.updated_at,
                                 COALESCE((SELECT MAX(COALESCE(r.ended_at, r.queued_at)) FROM simulation_runs r WHERE r.project_id = p.id),
@@ -113,13 +121,15 @@ public class ProjectRepository {
                 """, projectId);
     }
 
-    public List<Long> currentVariantIds(long projectId) {
-        return db.list("""
-                SELECT v.id FROM scenario_versions v JOIN scenarios s ON s.id = v.scenario_id
+    public Map<Long, Long> currentVariantFamilies(long projectId) {
+        Map<Long, Long> out = new HashMap<>();
+        db.list("""
+                SELECT v.id, s.id AS scenario_id FROM scenario_versions v JOIN scenarios s ON s.id = v.scenario_id
                  WHERE s.project_id = ?
                    AND v.parent_version_id = (SELECT MAX(b.id) FROM scenario_versions b
                                                WHERE b.scenario_id = s.id AND b.source <> 'GENERATED')
-                """, projectId).stream().map(r -> r.lng("id")).toList();
+                """, projectId).forEach(r -> out.put(r.lng("id"), r.lng("scenario_id")));
+        return out;
     }
 
     public List<Row> latestBaselineRuns(long projectId, long baselineVersionId) {
@@ -157,6 +167,10 @@ public class ProjectRepository {
 
     public void setStatus(long projectId, String status, LocalDateTime now) {
         db.update("UPDATE projects SET status = ?, updated_at = ? WHERE id = ?", status, now, projectId);
+    }
+
+    public void appendVersionNote(long versionId, String note) {
+        db.update("UPDATE aeb_versions SET notes = CONCAT_WS(?, NULLIF(notes, ''), ?) WHERE id = ?", "\n\n", note, versionId);
     }
 
     public List<Long> runIds(long projectId) {

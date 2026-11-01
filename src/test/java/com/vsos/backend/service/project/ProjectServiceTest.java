@@ -1,5 +1,6 @@
 package com.vsos.backend.service.project;
 
+import com.vsos.backend.dto.project.ProjectDtos.AdoptRequest;
 import com.vsos.backend.dto.project.ProjectDtos.JourneyCounts;
 import com.vsos.backend.dto.project.ProjectDtos.JourneyStatus;
 import com.vsos.backend.dto.project.ProjectDtos.JourneyStep;
@@ -7,10 +8,12 @@ import com.vsos.backend.dto.project.ProjectDtos.JourneyStepKey;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectItem;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectJourney;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectRequest;
+import com.vsos.backend.dto.regression.RegressionRecords.RegressionTestRow;
 import com.vsos.backend.exception.project.ProjectError;
 import com.vsos.backend.exception.project.ProjectException;
 import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.repository.project.ProjectRepository;
+import com.vsos.backend.repository.regression.RegressionRepository;
 import com.vsos.backend.service.simulation.RunService;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +38,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -46,16 +50,20 @@ class ProjectServiceTest {
     private static final long PROJECT = 21L;
     private static final long VEHICLE = 1L;
     private static final long BASELINE = 5L;
+    private static final long CANDIDATE = 6L;
+    private static final long TEST = 31L;
 
     private ProjectRepository projects;
     private RunService runs;
+    private RegressionRepository regressions;
     private ProjectService service;
 
     @BeforeEach
     void setUp() {
         projects = mock(ProjectRepository.class);
         runs = mock(RunService.class);
-        service = new ProjectService(projects, runs);
+        regressions = mock(RegressionRepository.class);
+        service = new ProjectService(projects, runs, regressions);
         when(projects.supportedVehicle(isNull())).thenReturn(VEHICLE);
         when(projects.supportedVehicle(VEHICLE)).thenReturn(VEHICLE);
         when(projects.journeySummary(anyLong())).thenReturn(summary());
@@ -226,8 +234,9 @@ class ProjectServiceTest {
 
     private static JourneyCounts counts(int variants, int completed, int running, int failed, int datasets, int candidates,
                                         int optimizationsRunning, int regressionsRunning, int regressionsCompleted) {
-        return new JourneyCounts(variants > 0 ? 1 : 0, variants, completed, running, failed, completed, 0, 0, 0, datasets, candidates,
-                optimizationsRunning, regressionsRunning, regressionsCompleted, null, null);
+        int familiesDone = variants > 0 && completed == variants ? 1 : 0;
+        return new JourneyCounts(variants > 0 ? 1 : 0, variants, completed, running, failed, familiesDone, (variants > 0 ? 1 : 0) - familiesDone,
+                completed, 0, 0, 0, datasets, candidates, optimizationsRunning, regressionsRunning, regressionsCompleted, null, null);
     }
 
     @Test
@@ -245,6 +254,22 @@ class ProjectServiceTest {
         assertThat(statuses(counts(4, 3, 0, 1, 0, 0, 0, 0, 0))).containsEntry(JourneyStepKey.BASELINE, FAILED);
         assertThat(statuses(counts(4, 4, 0, 0, 0, 0, 0, 0, 0))).containsEntry(JourneyStepKey.SCENARIO, DONE)
                 .containsEntry(JourneyStepKey.BASELINE, DONE).containsEntry(JourneyStepKey.RESULTS, TODO);
+    }
+
+    @Test
+    void addingAFamilyLaterKeepsTheBaselineStepDoneAndListsTheFamilyAsPending() {
+        Map<Long, Long> twoFamilies = Map.of(1L, 1L, 2L, 1L, 3L, 2L);
+        List<Row> firstFamilyDone = List.of(run(1, "COMPLETED", false, 4.0, false), run(2, "COMPLETED", false, 4.0, false));
+
+        JourneyCounts counts = ProjectService.count(summary("families", 2L, "candidates", 1L), twoFamilies, firstFamilyDone);
+
+        assertThat(counts.familiesBaselineDone()).isEqualTo(1);
+        assertThat(counts.familiesBaselinePending()).isEqualTo(1);
+        assertThat(statuses(counts)).containsEntry(JourneyStepKey.BASELINE, DONE).containsEntry(JourneyStepKey.IMPROVE, DONE);
+
+        List<Row> secondFamilyRunning = List.of(firstFamilyDone.get(0), firstFamilyDone.get(1), run(3, "RUNNING", false, null, false));
+        assertThat(statuses(ProjectService.count(summary("families", 2L), twoFamilies, secondFamilyRunning)))
+                .containsEntry(JourneyStepKey.BASELINE, RUNNING);
     }
 
     @Test
@@ -274,7 +299,7 @@ class ProjectServiceTest {
                 run(5, "FAILED", false, null, false),
                 run(99, "COMPLETED", true, 0.1, false));
 
-        JourneyCounts counts = ProjectService.count(summary("families", 1L), List.of(1L, 2L, 3L, 4L, 5L), runs);
+        JourneyCounts counts = ProjectService.count(summary("families", 1L), Map.of(1L, 1L, 2L, 1L, 3L, 1L, 4L, 1L, 5L, 1L), runs);
 
         assertThat(counts.variants()).isEqualTo(5);
         assertThat(counts.baselineCompleted()).isEqualTo(3);
@@ -290,7 +315,7 @@ class ProjectServiceTest {
     void onlyTheOwnerReadsTheJourney() {
         when(projects.row(PROJECT)).thenReturn(project("ACTIVE"));
         when(projects.journeySummary(PROJECT)).thenReturn(summary("families", 1L));
-        when(projects.currentVariantIds(PROJECT)).thenReturn(List.of(1L));
+        when(projects.currentVariantFamilies(PROJECT)).thenReturn(Map.of(1L, 1L));
         when(projects.latestBaselineRuns(PROJECT, BASELINE)).thenReturn(List.of(run(1, "COMPLETED", false, 4.0, false)));
 
         ProjectJourney journey = service.journey(OWNER, PROJECT);
@@ -299,5 +324,71 @@ class ProjectServiceTest {
         assertThat(journey.baselineLabel()).isEqualTo("v1.0");
         assertThat(journey.next()).isEqualTo(JourneyStepKey.RESULTS);
         assertError(() -> service.journey(OWNER + 1, PROJECT), ProjectError.PROJECT_NOT_YOURS, "Project #21 không phải project cá nhân của bạn.");
+    }
+
+    // ------------------------------------------------------------------ dùng ứng viên làm baseline
+
+    private static RegressionTestRow test(String executionStatus, String verdict) {
+        return new RegressionTestRow(TEST, PROJECT, 3L, BASELINE, CANDIDATE, VEHICLE, "kinematic", "Kiểm chứng v2", Map.of(), executionStatus,
+                verdict, 6L, 0L, OWNER, LocalDateTime.of(2026, 11, 1, 9, 0), null);
+    }
+
+    private void givenAdoptable(String executionStatus, String verdict, String baselineStatus, String candidateStatus) {
+        given(project("ACTIVE"));
+        when(regressions.lockTest(PROJECT, TEST)).thenReturn(test(executionStatus, verdict));
+        when(regressions.lockVersionStatuses(BASELINE, CANDIDATE)).thenReturn(Map.of(BASELINE, baselineStatus, CANDIDATE, candidateStatus));
+        when(regressions.versionsById(BASELINE, CANDIDATE)).thenReturn(Map.of(
+                BASELINE, new Row(Map.of("label", "v1.0", "version_no", 1)), CANDIDATE, new Row(Map.of("label", "v2", "version_no", 2))));
+    }
+
+    private static AdoptRequest adopt() {
+        return new AdoptRequest("  Sửa 6 ca, không ca nào xấu đi  ", true);
+    }
+
+    @Test
+    void aPassedCandidateBecomesTheBaselineWithTheReasonKept() {
+        givenAdoptable("COMPLETED", "PASSED", "BASELINE", "CANDIDATE");
+
+        service.adopt(OWNER, PROJECT, TEST, adopt());
+
+        var order = inOrder(regressions, projects);
+        order.verify(regressions).archiveVersion(BASELINE);
+        order.verify(regressions).promoteToBaseline(CANDIDATE);
+        order.verify(projects).appendVersionNote(CANDIDATE, "Dùng làm baseline thay v1.0 sau kiểm chứng RT-031: Sửa 6 ca, không ca nào xấu đi");
+        verify(regressions, never()).insertRecommendation(anyLong(), anyLong(), anyLong(), anyString(), any(), anyLong());
+    }
+
+    @Test
+    void adoptingNeedsAReasonAConfirmationAndAFinishedPassedTest() {
+        givenAdoptable("RUNNING", null, "BASELINE", "CANDIDATE");
+
+        assertError(() -> service.adopt(OWNER, PROJECT, TEST, new AdoptRequest(" ", true)), ProjectError.REASON_REQUIRED,
+                "Ghi lý do chọn ứng viên này làm baseline.");
+        assertError(() -> service.adopt(OWNER, PROJECT, TEST, new AdoptRequest("Đạt", null)), ProjectError.CONFIRM_REQUIRED,
+                "Xác nhận bạn đã xem kết quả kiểm chứng trước khi đổi baseline.");
+        assertError(() -> service.adopt(OWNER, PROJECT, 404L, adopt()), ProjectError.TEST_NOT_FOUND,
+                "Không tìm thấy lần kiểm chứng #404 trong project này.");
+        assertError(() -> service.adopt(OWNER, PROJECT, TEST, adopt()), ProjectError.TEST_NOT_FINISHED, "Lần kiểm chứng #31 chưa chạy xong.");
+
+        givenAdoptable("COMPLETED", "REGRESSED", "BASELINE", "CANDIDATE");
+        assertError(() -> service.adopt(OWNER, PROJECT, TEST, adopt()), ProjectError.TEST_NOT_PASSED,
+                "Ứng viên v2 chưa đạt tiêu chí kiểm chứng nên không dùng làm baseline được.");
+        verify(regressions, never()).promoteToBaseline(anyLong());
+    }
+
+    @Test
+    void anOutdatedTestOrADecidedCandidateCannotChangeTheBaseline() {
+        givenAdoptable("COMPLETED", "PASSED", "ARCHIVED", "CANDIDATE");
+        assertError(() -> service.adopt(OWNER, PROJECT, TEST, adopt()), ProjectError.BASELINE_CHANGED,
+                "Baseline v1.0 đã được thay sau lần kiểm chứng này. Hãy kiểm chứng lại với baseline hiện hành.");
+
+        givenAdoptable("COMPLETED", "PASSED", "BASELINE", "BASELINE");
+        assertError(() -> service.adopt(OWNER, PROJECT, TEST, adopt()), ProjectError.CANDIDATE_ALREADY_DECIDED,
+                "Ứng viên v2 đã được xử lý trước đó.");
+
+        given(project("ARCHIVED"));
+        assertError(() -> service.adopt(OWNER, PROJECT, TEST, adopt()), ProjectError.PROJECT_ARCHIVED,
+                "Project “Thử AEB” đang lưu trữ. Bỏ lưu trữ để mở lại.");
+        verify(regressions, never()).archiveVersion(anyLong());
     }
 }

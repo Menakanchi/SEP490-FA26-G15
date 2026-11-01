@@ -154,16 +154,14 @@ export function ProjectGate({ children }: { children: React.ReactNode }) {
   );
 }
 
-const HIDDEN_PREFIXES = ["/projects", "/profile"];
-
 /** Thanh 5 bước ở đầu màn làm việc của EXPERIENCER: bước nào xong, đang ở bước nào và nút đi tiếp. */
 export function JourneyBar() {
   const pathname = usePathname();
   const { ctx } = useVehicSimContext();
   const { journey } = useJourney();
-  if (!ctx || HIDDEN_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return null;
+  const here = ctx ? stepOfPath(pathname, ctx.project.id) : null;
+  if (!ctx || (here === null && OPEN_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)))) return null;
 
-  const here = stepOfPath(pathname, ctx.project.id);
   const next = journey ? nextAction(journey) : null;
 
   return (
@@ -282,6 +280,21 @@ export function JourneyNav() {
       <NavLink href="/vehicles" icon={<Car className="size-[18px]" />} label="Phương tiện" active={pathname.startsWith("/vehicles")} />
     </nav>
   );
+}
+
+export function PersonalProjectsLink() {
+  const pathname = usePathname();
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    vehicsimApi
+      .projects()
+      .then((list) => setCount(list.items.length))
+      .catch(() => setCount(0));
+  }, []);
+
+  if (count === 0) return null;
+  return <NavLink href="/projects" icon={<FolderOpen className="size-[18px]" />} label={`Project cá nhân (${count})`} active={pathname.startsWith("/projects")} />;
 }
 
 type Option = { id: number; name: string };

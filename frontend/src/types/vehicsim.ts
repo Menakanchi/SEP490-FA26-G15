@@ -107,6 +107,8 @@ export interface JourneyCounts {
   baseline_completed: number;
   baseline_running: number;
   baseline_failed: number;
+  families_baseline_done: number;
+  families_baseline_pending: number;
   safe: number;
   near_misses: number;
   collisions: number;

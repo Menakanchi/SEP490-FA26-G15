@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, CircleCheck, MessageSquareText, SlidersHorizontal, Sparkles } from "lucide-react";
@@ -8,9 +8,9 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, ErrorNote, PillButton, Tag, cx } from "@/components/VehicSimUi";
 import { STARTER_OPTIONS, STARTER_VARIANTS, splitDescription, starterFamily, type StarterCondition } from "@/components/project/journey";
-import { useJourney } from "@/components/project/ProjectJourneyContext";
+import { useJourney, useProjectItem } from "@/components/project/ProjectJourneyContext";
+import { OpenProjectCard } from "@/components/project/ProjectUi";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { ProjectItem } from "@/types/vehicsim";
 
 function WayCard({
   icon,
@@ -40,32 +40,18 @@ function WayCard({
   );
 }
 
-/** Đầu bước ① (M2): project đã tạo xong, chọn cách thiết kế kịch bản đầu tiên. */
+/** Bước ① (M2): chọn cách thiết kế kịch bản, cho họ đầu tiên hoặc thêm họ mới khi quay lại. */
 export default function StartScenarioPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const id = Number(projectId);
   const created = useSearchParams().get("created") === "1";
   const router = useRouter();
-  const { ctx, canWrite, openProject } = useVehicSimContext();
+  const { canWrite } = useVehicSimContext();
   const { refresh } = useJourney();
-  const opened = ctx?.project.id === id;
-  const [project, setProject] = useState<ProjectItem | null>(null);
+  const { project, opened, error: loadError } = useProjectItem(id);
   const [condition, setCondition] = useState<StarterCondition>("DAY");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(
-    () =>
-      vehicsimApi
-        .project(id)
-        .then(setProject)
-        .catch((err) => setError(err instanceof Error ? err.message : "Không tải được project")),
-    [id],
-  );
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const startWithSample = async () => {
     setBusy(true);
@@ -81,6 +67,7 @@ export default function StartScenarioPage() {
   };
 
   const goal = splitDescription(project?.description).goal;
+  const families = project?.journey.counts.families ?? 0;
   const blocked = !opened ? "Mở project này trước khi thiết kế kịch bản" : !canWrite ? "Tài khoản không có quyền tạo kịch bản" : undefined;
 
   return (
@@ -90,12 +77,20 @@ export default function StartScenarioPage() {
         { label: project?.name ?? "…", href: `/projects/${id}` },
         { label: "Thiết kế kịch bản" },
       ]}
-      title="① Thiết kế kịch bản đầu tiên"
-      subtitle="Kịch bản là tập tình huống người đi bộ băng ngang với nhiều tốc độ, khoảng cách và điều kiện. Chọn một cách để bắt đầu."
+      title={families > 0 ? "① Thêm kịch bản" : "① Thiết kế kịch bản đầu tiên"}
+      subtitle={
+        families > 0
+          ? `Project đã có ${families} họ kịch bản. Thêm họ mới để thử điều kiện khác; họ mới cần chạy baseline trước khi so sánh.`
+          : "Kịch bản là tập tình huống người đi bộ băng ngang với nhiều tốc độ, khoảng cách và điều kiện. Chọn một cách để bắt đầu."
+      }
       actions={
-        <Link href={`/projects/${id}`} className="text-[14px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink hover:underline">
-          Để sau, về trang chủ project
-        </Link>
+        families > 0 && opened ? (
+          <PillButton href="/scenarios">Xem các họ kịch bản</PillButton>
+        ) : (
+          <Link href={`/projects/${id}`} className="text-[14px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink hover:underline">
+            Để sau, về trang chủ project
+          </Link>
+        )
       }
     >
       {created && project && (
@@ -113,22 +108,15 @@ export default function StartScenarioPage() {
         </p>
       )}
 
-      {project && !opened && (
-        <Card className="flex items-center justify-between gap-4 p-5">
-          <p className="text-[14px] text-vehicsim-muted">Bạn đang mở project khác. Mở “{project.name}” để thiết kế kịch bản cho nó.</p>
-          <PillButton variant="dark" onClick={() => openProject(id)}>
-            Mở project này
-          </PillButton>
-        </Card>
-      )}
+      {project && !opened && <OpenProjectCard project={project} purpose="thiết kế kịch bản cho nó" />}
 
-      <ErrorNote message={error} />
+      <ErrorNote message={error ?? loadError} />
 
       <div className="flex w-full items-stretch gap-5">
         <WayCard
           icon={<Sparkles className="size-5" />}
           title="Dùng kịch bản mẫu"
-          badge="Khuyên dùng · ~1 phút"
+          badge={families > 0 ? "~1 phút" : "Khuyên dùng · ~1 phút"}
           detail={`Người đi bộ bước ra trước xe ở ${STARTER_VARIANTS} tình huống, gồm cả ca người dừng ở lề. Baseline chạy ngay để bạn thấy kết quả.`}
         >
           <div role="radiogroup" aria-label="Điều kiện của kịch bản mẫu" className="flex flex-wrap gap-2">

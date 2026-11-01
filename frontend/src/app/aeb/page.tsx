@@ -49,8 +49,11 @@ const CATEGORY_ORDER: FailureClass[] = ["DECISION", "CONTROL", "VEHICLE_DYNAMICS
 
 export default function AebConfigPage() {
   const { ctx, refresh, canWrite } = useVehicSimContext();
-  const [activeTab, setActiveTab] = useState<"mobo" | "manual" | "versions">("mobo");
   const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<"mobo" | "manual" | "versions">(() => {
+    const tab = searchParams.get("tab");
+    return tab === "manual" || tab === "versions" ? tab : "mobo";
+  });
   const scenarioId = Number(searchParams.get("scenario_id"));
   const datasetParam = searchParams.get("dataset_id");
   const datasetId = Number(datasetParam);

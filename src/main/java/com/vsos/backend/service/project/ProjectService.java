@@ -2,6 +2,7 @@ package com.vsos.backend.service.project;
 
 import com.vsos.backend.common.Vs;
 import com.vsos.backend.common.audit.AuditLog;
+import com.vsos.backend.dto.project.ProjectDtos.AdoptRequest;
 import com.vsos.backend.dto.project.ProjectDtos.JourneyCounts;
 import com.vsos.backend.dto.project.ProjectDtos.JourneyStatus;
 import com.vsos.backend.dto.project.ProjectDtos.JourneyStep;
@@ -11,18 +12,23 @@ import com.vsos.backend.dto.project.ProjectDtos.ProjectJourney;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectList;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectRequest;
 import com.vsos.backend.dto.project.ProjectDtos.VehicleOption;
+import com.vsos.backend.dto.regression.RegressionRecords.RegressionTestRow;
 import com.vsos.backend.exception.project.ProjectException;
 import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.repository.project.ProjectRepository;
+import com.vsos.backend.repository.regression.RegressionRepository;
+import com.vsos.backend.service.regression.RegressionCodes;
 import com.vsos.backend.service.simulation.RunService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.FileSystemUtils;
 
 import java.io.IOException;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -45,9 +51,11 @@ public class ProjectService {
     private static final String ARCHIVED = "ARCHIVED";
     private static final Set<String> RUN_ACTIVE = Set.of("PENDING", "RUNNING", "PAUSED");
     private static final Set<String> RUN_FAILED = Set.of("FAILED", "STOPPED");
+    private static final Set<String> TEST_ACTIVE = Set.of("PENDING", "RUNNING");
 
     private final ProjectRepository projects;
     private final RunService runs;
+    private final RegressionRepository regressions;
 
     public static void requireOwner(Row project, Object projectId, long userId) {
         if (project == null) {
@@ -135,6 +143,49 @@ public class ProjectService {
         AuditLog.event("project.delete", "success", "project_id", projectId, "runs", runIds.size(), "by", userId);
     }
 
+    @Transactional
+    public ProjectJourney adopt(long userId, long projectId, long testId, AdoptRequest body) {
+        Row project = owned(userId, projectId);
+        if (ARCHIVED.equals(project.str("status"))) {
+            throw new ProjectException(PROJECT_ARCHIVED, project.str("name"));
+        }
+        String reason = body.reason() == null ? "" : body.reason().strip();
+        if (reason.isEmpty()) {
+            throw new ProjectException(REASON_REQUIRED);
+        }
+        if (!Boolean.TRUE.equals(body.confirmed())) {
+            throw new ProjectException(CONFIRM_REQUIRED);
+        }
+        RegressionTestRow test = regressions.lockTest(projectId, testId);
+        if (test == null) {
+            throw new ProjectException(TEST_NOT_FOUND, testId);
+        }
+        if (TEST_ACTIVE.contains(test.executionStatus())) {
+            throw new ProjectException(TEST_NOT_FINISHED, testId);
+        }
+        long baselineId = test.baselineVersionId();
+        long candidateId = test.candidateVersionId();
+        Map<Long, String> statusOf = regressions.lockVersionStatuses(baselineId, candidateId);
+        Map<Long, Row> versions = regressions.versionsById(baselineId, candidateId);
+        String baseline = Vs.versionLabel(versions.get(baselineId));
+        String candidate = Vs.versionLabel(versions.get(candidateId));
+        if (!test.completed() || !"PASSED".equals(test.verdict())) {
+            throw new ProjectException(TEST_NOT_PASSED, candidate);
+        }
+        if (!"CANDIDATE".equals(statusOf.get(candidateId))) {
+            throw new ProjectException(CANDIDATE_ALREADY_DECIDED, candidate);
+        }
+        if (!"BASELINE".equals(statusOf.get(baselineId))) {
+            throw new ProjectException(BASELINE_CHANGED, baseline);
+        }
+        regressions.archiveVersion(baselineId);
+        regressions.promoteToBaseline(candidateId);
+        projects.appendVersionNote(candidateId, "Dùng làm baseline thay " + baseline + " sau kiểm chứng " + RegressionCodes.testCode(testId) + ": " + reason);
+        AuditLog.event("project.adopt", "success", "project_id", projectId, "test_id", testId, "candidate_aeb_version_id", candidateId,
+                "baseline_aeb_version_id", baselineId, "by", userId);
+        return journeyOf(projectId);
+    }
+
     private Row owned(long userId, long projectId) {
         Row project = projects.find(projectId);
         requireOwner(project, projectId, userId);
@@ -212,22 +263,20 @@ public class ProjectService {
                 p.ts("created_date"), p.ts("updated_at"), journeyOf(p.lng("id")));
     }
 
-    // ------------------------------------------------------------------ hành trình 5 bước
-
     private ProjectJourney journeyOf(long projectId) {
         Row summary = projects.journeySummary(projectId);
         Long baselineId = summary.getLong("baseline_id");
         List<Row> baselineRuns = baselineId == null ? List.of() : projects.latestBaselineRuns(projectId, baselineId);
-        JourneyCounts counts = count(summary, projects.currentVariantIds(projectId), baselineRuns);
+        JourneyCounts counts = count(summary, projects.currentVariantFamilies(projectId), baselineRuns);
         List<JourneyStep> steps = steps(counts);
         return new ProjectJourney(projectId, Math.max(1, summary.getInt("rounds")), summary.str("baseline_label"), steps, next(steps),
                 counts, summary.ts("last_activity_at"));
     }
 
-    /** Số liệu hành trình; kết quả baseline chỉ tính run mới nhất của từng biến thể thuộc bản hiện hành, phân loại bằng {@link Vs#classifyOutcome}. */
-    static JourneyCounts count(Row summary, List<Long> variantIds, List<Row> baselineRuns) {
-        Set<Long> variants = new HashSet<>(variantIds);
-        int completed = 0;
+    static JourneyCounts count(Row summary, Map<Long, Long> familyOfVariant, List<Row> baselineRuns) {
+        Map<Long, Integer> variantsPerFamily = new HashMap<>();
+        Map<Long, Integer> completedPerFamily = new HashMap<>();
+        familyOfVariant.values().forEach(family -> variantsPerFamily.merge(family, 1, Integer::sum));
         int running = 0;
         int failed = 0;
         int safe = 0;
@@ -235,7 +284,8 @@ public class ProjectService {
         int collisions = 0;
         int falseActivations = 0;
         for (Row run : baselineRuns) {
-            if (!variants.contains(run.lng("scenario_version_id"))) {
+            Long family = familyOfVariant.get(run.lng("scenario_version_id"));
+            if (family == null) {
                 continue;
             }
             String status = run.str("status");
@@ -244,7 +294,7 @@ public class ProjectService {
             } else if (RUN_FAILED.contains(status)) {
                 failed++;
             } else if ("COMPLETED".equals(status)) {
-                completed++;
+                completedPerFamily.merge(family, 1, Integer::sum);
                 if (run.bool("is_false_positive")) {
                     falseActivations++;
                 }
@@ -255,13 +305,15 @@ public class ProjectService {
                 }
             }
         }
-        return new JourneyCounts(summary.getInt("families"), variants.size(), completed, running, failed, safe, nearMisses, collisions,
-                falseActivations, summary.getInt("datasets"), summary.getInt("candidates"), summary.getInt("optimizations_running"),
-                summary.getInt("regressions_running"), summary.getInt("regressions_completed"), summary.getLong("last_regression_id"),
-                summary.str("last_verdict"));
+        int completed = completedPerFamily.values().stream().mapToInt(Integer::intValue).sum();
+        int familiesDone = (int) variantsPerFamily.entrySet().stream()
+                .filter(e -> e.getValue().equals(completedPerFamily.get(e.getKey()))).count();
+        return new JourneyCounts(summary.getInt("families"), familyOfVariant.size(), completed, running, failed, familiesDone,
+                variantsPerFamily.size() - familiesDone, safe, nearMisses, collisions, falseActivations, summary.getInt("datasets"),
+                summary.getInt("candidates"), summary.getInt("optimizations_running"), summary.getInt("regressions_running"),
+                summary.getInt("regressions_completed"), summary.getLong("last_regression_id"), summary.str("last_verdict"));
     }
 
-    /** Việc đang chạy không bao giờ tính là xong; "Kết quả" xong khi người dùng đã sang bước sau. */
     static List<JourneyStep> steps(JourneyCounts c) {
         boolean laterWork = c.datasets() + c.candidates() + c.optimizationsRunning() + c.regressionsRunning() + c.regressionsCompleted() > 0;
         return List.of(
@@ -280,7 +332,7 @@ public class ProjectService {
         if (c.baselineRunning() > 0) {
             return RUNNING;
         }
-        if (c.variants() > 0 && c.baselineCompleted() == c.variants()) {
+        if (c.familiesBaselineDone() > 0) {
             return DONE;
         }
         return c.baselineFailed() > 0 ? FAILED : TODO;

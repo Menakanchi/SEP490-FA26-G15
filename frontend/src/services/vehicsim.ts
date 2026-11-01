@@ -81,6 +81,11 @@ export const vehicsimApi = {
   unarchiveProject: (id: number) => apiRequest<ProjectItem>(`/vehicsim/projects/${id}/unarchive`, { method: "POST" }),
   deleteProject: (id: number, confirmName: string) =>
     apiRequest<void>(`/vehicsim/projects/${id}`, { method: "DELETE", body: JSON.stringify({ confirm_name: confirmName }) }),
+  adoptCandidate: (id: number, testId: number, reason: string) =>
+    apiRequest<ProjectJourney>(`/vehicsim/projects/${id}/regressions/${testId}/adopt`, {
+      method: "POST",
+      body: JSON.stringify({ reason, confirmed: true }),
+    }),
 
   // Phương tiện: danh mục mẫu xe CARLA, chỉ đọc
   vehicles: () => apiRequest<VehicleSummary[]>("/vehicsim/vehicles"),

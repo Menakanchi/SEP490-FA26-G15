@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { newlyDone } from "@/components/project/journey";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { JourneyStepKey, ProjectJourney } from "@/types/vehicsim";
+import type { JourneyStepKey, ProjectItem, ProjectJourney } from "@/types/vehicsim";
 
 const POLL_MS = 3000;
 
@@ -56,6 +56,27 @@ export function useProjectJourney(
   }, [running, refresh]);
 
   return { journey, error, refresh };
+}
+
+export function useProjectItem(projectId: number) {
+  const { ctx } = useVehicSimContext();
+  const [project, setProject] = useState<ProjectItem | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(
+    () =>
+      vehicsimApi
+        .project(projectId)
+        .then(setProject)
+        .catch((err) => setError(err instanceof Error ? err.message : "Không tải được project")),
+    [projectId],
+  );
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  return { project, error, reload, opened: ctx?.project.id === projectId };
 }
 
 interface JourneyContextValue extends JourneyState {

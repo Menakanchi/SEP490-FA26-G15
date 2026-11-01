@@ -13,12 +13,14 @@ import type { ProjectItem, ProjectJourney } from "@/types/vehicsim";
 export function ProjectCard({
   project,
   opened,
+  readOnly,
   limitReason,
   onContinue,
   onAction,
 }: {
   project: ProjectItem;
   opened: boolean;
+  readOnly?: boolean;
   limitReason?: string;
   onContinue: (href: string) => void;
   onAction: (kind: ProjectAction) => void;
@@ -43,7 +45,7 @@ export function ProjectCard({
             {project.has_running_work && <Tag tone="warn">Đang chạy</Tag>}
           </span>
         </div>
-        <ProjectMenu project={project} onAction={onAction} limitReason={limitReason} />
+        {!readOnly && <ProjectMenu project={project} onAction={onAction} limitReason={limitReason} />}
       </div>
 
       <p className="line-clamp-2 min-h-[42px] text-[14px] leading-[1.5] text-vehicsim-muted">{goal || "Chưa ghi mục tiêu thử nghiệm."}</p>
@@ -63,7 +65,9 @@ export function ProjectCard({
       </div>
 
       <div className="mt-auto flex items-center justify-between gap-3 border-t border-solid border-vehicsim-line pt-4">
-        {active ? (
+        {readOnly ? (
+          <span className="text-[13px] font-semibold text-vehicsim-muted">Chỉ xem</span>
+        ) : active ? (
           <button
             type="button"
             onClick={() => onContinue(next.href)}
@@ -113,6 +117,7 @@ export function NextStepCard({ journey, opened, onGo }: { journey: ProjectJourne
   const c = journey.counts;
   const running = action.key === "BASELINE" && statusOf(journey, "BASELINE") === "RUNNING" && c.variants > 0;
   const progress = running ? Math.round((c.baseline_completed / c.variants) * 100) : null;
+  const pending = action.key !== "BASELINE" && c.families_baseline_pending > 0;
 
   return (
     <section aria-labelledby="next-step-title" className="flex w-full items-center gap-8 rounded-[24px] bg-vehicsim-ink p-7 text-white shadow-vehicsim-card">
@@ -141,6 +146,11 @@ export function NextStepCard({ journey, opened, onGo }: { journey: ProjectJourne
             </span>
           </div>
         )}
+        {pending && (
+          <button type="button" onClick={() => onGo("/scenarios")} className="mt-1 w-fit text-[14px] font-semibold text-white underline-offset-4 hover:underline">
+            {c.families_baseline_pending} họ kịch bản mới chưa chạy baseline · Chạy ngay →
+          </button>
+        )}
       </div>
       <button
         type="button"
@@ -165,7 +175,7 @@ export function JourneyTimeline({ journey, onGo, disabled }: { journey: ProjectJ
         {JOURNEY_STEPS.map((step, i) => {
           const status = statusOf(journey, step.key);
           const isNext = journey.next === step.key;
-          const later = i > nextIndex;
+          const later = i > nextIndex && status === "TODO";
           const last = i === JOURNEY_STEPS.length - 1;
           const label = status === "DONE" ? "Xem lại" : status === "RUNNING" ? "Xem tiến độ" : isNext ? "Làm bước này" : "Mở";
           return (

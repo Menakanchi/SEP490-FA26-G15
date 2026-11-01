@@ -16,6 +16,9 @@ public final class ProjectDtos {
     public record DeleteProjectRequest(@JsonProperty("confirm_name") String confirmName) {
     }
 
+    public record AdoptRequest(String reason, Boolean confirmed) {
+    }
+
     public record VehicleOption(
             long id,
             String name,
@@ -39,6 +42,8 @@ public final class ProjectDtos {
             @JsonProperty("baseline_completed") int baselineCompleted,
             @JsonProperty("baseline_running") int baselineRunning,
             @JsonProperty("baseline_failed") int baselineFailed,
+            @JsonProperty("families_baseline_done") int familiesBaselineDone,
+            @JsonProperty("families_baseline_pending") int familiesBaselinePending,
             int safe,
             @JsonProperty("near_misses") int nearMisses,
             int collisions,

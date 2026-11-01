@@ -102,6 +102,7 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
    Không đổi tham số kịch bản và tham số AEB cùng lúc trong một lần so sánh.
 5. Không tự Accept; test FAILED không Accept; quyết định cần lý do và xác nhận.
    Baseline đã đổi thì không Accept kết quả test cũ. Pareto không đồng nghĩa regression PASSED.
+   Project cá nhân không có Reviewer: chủ project tự chọn baseline theo đúng các điều kiện này (ADR-046, Proposed).
 6. Chỉ 4 tham số AEB chỉnh được theo ADR-040; seed Java/SQL khớp `AebParams`.
    Ba mục tiêu: RMS jerk, vận tốc va chạm, quãng phanh dừng; thống nhất ràng buộc tối ưu/regression.
 7. Không lộ email tồn tại; OTP hash, dùng một lần; mật khẩu tối đa 72 byte BCrypt.

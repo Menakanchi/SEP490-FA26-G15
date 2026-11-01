@@ -1,6 +1,7 @@
 # 01/11/2026 — Hành trình trải nghiệm cho EXPERIENCER (thiết kế lại giao diện)
 
-**Trạng thái:** đã code giai đoạn 0 (một phần), A và B (01/11/2026) — **chưa xem giao diện thật** (mục 13); C, D, E chưa làm. Tiếp nối [project cá nhân cho EXPERIENCER](2026-10-31-experiencer-project-ca-nhan.md)
+**Trạng thái:** đã code giai đoạn 0 (một phần), A, B, C, D và E (01/11/2026); đã chạy xuyên luồng trên MySQL thật và chụp giao diện
+(mục 12). Còn: ADR-046 chờ nhóm duyệt, thông báo (Luồng 5 của exec plan 31/10), thanh hành trình ở màn 1024 px, đối chiếu Figma. Tiếp nối [project cá nhân cho EXPERIENCER](2026-10-31-experiencer-project-ca-nhan.md)
 (Luồng 1–2 đã xong). Người làm, deadline theo GitHub Issues/Project.
 
 ## 1. Vấn đề hiện tại
@@ -48,11 +49,14 @@ Người tự đăng ký vào hệ thống thấy giao diện của kỹ sư, kh
 | Đến | Đây là gì, mất bao lâu | M0 Chào mừng | Có project `ACTIVE` | Tạo project đầu tiên |
 | Tạo project | Project này để thử gì, dùng xe nào | M1: Thông tin → Phương tiện → Xác nhận | Project tạo xong (có xe + AEB gốc v1.0) | Thiết kế kịch bản (M2) |
 | ① Kịch bản | Tình huống nguy hiểm trông thế nào | M2 chọn cách, rồi mẫu / `/scenarios/new` / nhập tay | Có ≥ 1 họ có biến thể | Chạy baseline |
-| ② Baseline | AEB hiện tại có phanh kịp không | `/scenarios` + tiến độ trên M3 | Một họ có đủ run `COMPLETED` cho mọi biến thể bản hiện hành với baseline hiện tại | Xem kết quả |
+| ② Baseline | AEB hiện tại có phanh kịp không | `/scenarios` + tiến độ trên M3 | Có ≥ 1 họ có đủ run `COMPLETED` cho mọi biến thể bản hiện hành với baseline hiện tại; họ thêm sau hiện "N họ chưa chạy", không kéo bước về | Xem kết quả |
 | ③ Kết quả | Ca nào hỏng, vì sao | M4 (+ `/analysis/failures/**` cho chi tiết) | Đã chốt tập phân tích, hoặc bước ④/⑤ đã bắt đầu | Cải tiến AEB |
 | ④ Cải tiến | Đổi tham số nào | M5 → `/aeb` (tự chỉnh hoặc MOBO) | Có ≥ 1 ứng viên `CANDIDATE` hoặc trial MOBO hoàn tất | Kiểm chứng |
 | ⑤ Kiểm chứng | Ứng viên có tốt hơn thật không | `/validation/regression/new`, `/validation/regression/[testId]` | Có regression `COMPLETED` | Xem kết luận |
-| Khép vòng | Dùng ứng viên này chưa | M6 | Theo quyết định D-UX1 (mục 10) | Bắt đầu vòng 2 |
+| Khép vòng | Dùng ứng viên này chưa | M6 | Chủ project chọn ứng viên `PASSED` làm baseline (D-UX1, ADR-046) | Bắt đầu vòng 2 |
+
+Mọi bước luôn mở được, kể cả bước trước: link bước ① luôn tới M2 (thêm họ mới), bước đã xong không bị làm mờ. Số đếm ③–⑤ tính theo
+baseline hiện hành, nên đổi baseline thì các bước ②–⑤ bắt đầu lại ở vòng mới.
 
 Đang chạy (run / tối ưu / regression `PENDING`, `RUNNING`) thì bước đó ở trạng thái **Đang chạy** với tiến độ, không tính là xong.
 
@@ -68,11 +72,11 @@ Người tự đăng ký vào hệ thống thấy giao diện của kỹ sư, kh
 | M5 | Chọn cách cải tiến | `/projects/[projectId]/improve` | Mới |
 | M6 | Kết luận vòng | `/projects/[projectId]/rounds/[testId]` | Mới |
 | M7 | Project của tôi (dạng thẻ) | `/projects` | Làm lại |
-| M8 | Cài đặt project (sửa + vùng nguy hiểm) | `/projects/[projectId]/settings` (thay `/edit`) | Làm lại |
+| M8 | Cài đặt project (sửa + vùng nguy hiểm) | `/projects/[projectId]/settings` (đã thay `/edit`) | Làm lại |
 | K1 | Sidebar hành trình | `VehicSimSidebar` khi role EXPERIENCER | Khung |
 | K2 | Thanh hành trình | `VehicSimPage` thay `FlowBar` khi role EXPERIENCER | Khung |
 | K3 | Chip "Project" ở thanh trên | `VehicSimPage` | Khung |
-| K4 | Thuật ngữ có chú thích, ngăn "Giải thích" | `components/project/Term.tsx` | Khung |
+| K4 | Thuật ngữ có chú thích | `Term`, `TERMS` trong `components/project/ProjectUi.tsx` | Khung |
 | K5 | Modal, Toast, menu "⋯" chuẩn | `components/project/` | Khung |
 
 ## 6. Chi tiết màn
@@ -305,7 +309,10 @@ GET /api/v1/vehicsim/projects/{projectId}/journey      (chỉ chủ project, nh�
 
 - `status` ∈ `TODO | RUNNING | DONE | FAILED`; luật "xong" theo bảng mục 4. Đếm kết quả bằng cột kết quả sẵn có của `simulation_runs`, cùng định nghĩa với
   phần 3; run lỗi/huỷ không tính là an toàn.
-- `ProjectItem` thêm `journey_summary: {done: 2, current: "RESULTS", running: false}` cho thẻ M7 (truy vấn con trong `ProjectRepository.SELECT`).
+- `ProjectItem` mang kèm `journey` đầy đủ cho thẻ M7 (đã làm).
+- `counts` có thêm `families_baseline_done` / `families_baseline_pending`; ứng viên, tập phân tích, tối ưu, regression chỉ đếm theo
+  baseline hiện hành (vòng).
+- `POST /projects/{projectId}/regressions/{testId}/adopt` `{reason, confirmed}` → hành trình mới (ADR-046).
 - Test: `ProjectServiceTest` thêm các trạng thái: project trống, đang chạy, có run lỗi, có regression hoàn tất.
 - Kịch bản mẫu (D-UX2, đề xuất phía client, chỉ chạy khi người dùng bấm "Dùng mẫu" ở M2 — không chạy lúc tạo project): gọi `createFamily` với `FamilyRequest` mẫu cố định
   (`components/project/starter.ts`, kiểm theo `ScenarioRules`) và `runFamily`. Không thêm API mới, dùng lại hạn mức sẵn có.
@@ -317,9 +324,10 @@ GET /api/v1/vehicsim/projects/{projectId}/journey      (chỉ chủ project, nh�
 | `components/VehicSimPage.tsx` | EXPERIENCER: `JourneyBar` thay `FlowBar`, chip "Project" thay "Không gian" | Khung chung |
 | `components/VehicSimSidebar.tsx` | EXPERIENCER: dùng `JourneySidebarNav` | Khung chung |
 | `app/page.tsx` | EXPERIENCER: chuyển tới `/projects/{id}` | Khung chung |
-| `app/scenarios/new/page.tsx` | Sau khi tạo họ, nút chính "Chạy baseline ngay" | Phần 1 |
-| `app/aeb/page.tsx` | Đọc `?tab=manual|mobo` để mở đúng tab | Phần 4 |
-| `app/validation/regression/[testId]/page.tsx` | EXPERIENCER: "Xem kết luận" (M6) thay nút duyệt; ẩn câu "cần kỹ sư quyết định" | Phần 5 |
+| `app/aeb/page.tsx` | Đọc `?tab=manual|mobo|versions` để mở đúng tab (đã làm) | Phần 4 |
+| `app/validation/regression/[testId]/page.tsx` | EXPERIENCER: "Xem kết luận" (M6) thay "Mở khuyến nghị" / "Duyệt ngay"; ẩn câu "cần kỹ sư quyết định" (đã làm, chỉ frontend) | Phần 5 |
+
+Bỏ điểm chạm `app/scenarios/new/page.tsx` (phần 1): thẻ "Bước tiếp theo" trên M3 đã có nút chạy baseline.
 
 Code mới đặt trong `frontend/src/components/project/` và `frontend/src/app/projects/**`; các file trên chỉ thêm nhánh theo role.
 
@@ -352,32 +360,7 @@ Mỗi giai đoạn là một PR riêng merge được; giai đoạn A là nền,
 | 01/11/2026 | Lập kế hoạch từ rà code: hành trình rải 5 khu menu, cụt sau regression, màn đầu sơ sài; chọn hướng "lớp hành trình bọc ngoài" |
 | 01/11/2026 | Góp ý: tạo project chỉ khai báo thông tin (tên, mục tiêu, ghi chú, xe) và xong trọn vẹn rồi mới sang kịch bản → M1 thành Thông tin → Phương tiện → Xác nhận; bỏ "cách bắt đầu" khỏi M1; M2 thành màn chọn cách thiết kế kịch bản ở đầu bước ①; tiến độ baseline mẫu chuyển lên M3 |
 | 01/11/2026 | Triển khai A–B với đề xuất mặc định của D-UX2 (mẫu ở client), D-UX3 (sidebar riêng, bỏ hẳn menu kỹ sư; mục "Project của tôi" của menu kỹ sư gỡ vì thừa), D-UX4 (hub `/projects/[id]`). D-UX1 chưa chốt nên vòng kết thúc ở "Xem kết quả kiểm chứng" |
-
-## 13. Tiến độ triển khai
-
-| Giai đoạn | Đã làm | Còn lại |
-|---|---|---|
-| 0 | Project đang mở lưu theo tab (`sessionStorage`, `localStorage` chỉ làm giá trị mở đầu cho tab mới); xoá khi hết phiên | Chụp hiện trạng; chốt D-UX1 |
-| A | `GET /projects/{id}/journey` (`ProjectJourneyService`, luật trạng thái là hàm thuần, kết quả baseline dùng `Vs.classifyOutcome`); sidebar hành trình + menu đổi project; thanh hành trình và chip "Project" trong `VehicSimPage`; trang chủ project M3 (thẻ bước tiếp theo, dòng thời gian 5 bước, menu "⋯"); `/` → M3; `Modal`, `ToastStack`, thông báo khi một bước vừa xong | — |
-| B | M0 chào mừng (`RoadScene`), M1 tạo project 3 bước (`ProjectWizard`, mục tiêu + ghi chú gộp vào `description`), M2 chọn cách thiết kế kịch bản + kịch bản mẫu 12 biến thể chạy baseline ngay | M8 (form sửa còn hiện nguyên `description`) |
-| C, D, E | — | Theo mục 9 |
-
-Thông số xe trên thẻ chọn xe lấy từ `carla_vehicle_models` qua `vehicle-options` (thêm 4 trường, không đổi schema).
-
-**Gọn file (01/11/2026):** backend chỉ còn `ProjectService` (hành trình gộp vào; `ProjectItem` mang kèm `journey`), test gộp vào
-`ProjectServiceTest`. Frontend `components/project/` còn 6 file theo vai trò:
-
-| File | Chứa |
-|---|---|
-| `journey.ts` | Logic thuần: 5 bước, câu chữ, đường dẫn, mục tiêu/ghi chú trong `description`, `timeAgo`, họ kịch bản mẫu |
-| `ProjectJourneyContext.tsx` | Tải hành trình, thăm dò khi đang chạy, provider cho project đang mở |
-| `ProjectUi.tsx` | Avatar, dấu trạng thái bước, `Modal`, `ToastStack`, menu "⋯", hộp thoại lưu trữ / xoá |
-| `ProjectShell.tsx` | Mảnh cắm vào khung chung: cổng + màn chào mừng, thanh hành trình, menu hành trình, nút đổi project, `/` → `/projects` |
-| `ProjectHome.tsx` | Thẻ project (danh sách), thẻ "Bước tiếp theo", dòng thời gian 5 bước |
-| `ProjectForms.tsx` | Tạo project 3 bước và Cài đặt project (M8), dùng chung ô thông tin và thẻ chọn xe |
-
-**Trang đích:** EXPERIENCER đăng nhập / đăng ký xong vào `/projects` (`homeFor`); `/` cũng chuyển về đó. "Project của tôi" (M7) làm sớm
-dạng thẻ có tiến độ 5 bước và nút "Tiếp tục"; chưa có project nào thì hiện màn chào mừng.
+| 01/11/2026 | Chốt theo đề xuất: D-UX1 = có (ADR-046; định lưu lý do ở dòng `engineering_recommendations` ACCEPTED nhưng chạy MySQL thật bị `ck_er_no_self_review` chặn, nên lý do nối vào `aeb_versions.notes`); D-J1 bước ② xong khi ≥ 1 họ chạy đủ; D-J2 M2 luôn mở được để thêm họ; hạn chế đụng màn người khác (bỏ chạm phần 1, phần 5 chỉ frontend). Triển khai C, D, E |
 
 ## 12. Kiểm chứng
 
@@ -389,6 +372,51 @@ dạng thẻ có tiến độ 5 bước và nút "Tiếp tục"; chưa có proje
 - Đăng nhập ENGINEER / REVIEWER: giao diện không đổi.
 - Không có khung Figma cho các màn này: dựng khung trước khi code giai đoạn B; nếu không làm được thì ghi rõ giới hạn đối chiếu.
 
-Đã chạy 01/11/2026 sau giai đoạn A–B: `.\mvnw.cmd -B test` 430 test, 0 lỗi, 1 bỏ qua (thêm `ProjectJourneyServiceTest` 6 test, route
-`/journey` trong `ProjectSecurityTest`); `npx tsc --noEmit`, `npm run lint`, `npx next build` sạch. **Chưa chạy app để xem giao diện**
+Đã chạy 01/11/2026 sau giai đoạn A–B: `.\mvnw.cmd -B test` 430 test, 0 lỗi, 1 bỏ qua (6 test hành trình, nay nằm trong
+`ProjectServiceTest`; route `/journey` trong `ProjectSecurityTest`); `npx tsc --noEmit`, `npm run lint`, `npx next build` sạch. **Chưa chạy app để xem giao diện**
 (Docker Desktop tắt) và chưa đối chiếu Figma — phải làm trước khi merge.
+
+Đã chạy 01/11/2026 sau giai đoạn C–E:
+
+- `.\mvnw.cmd -B clean test`: 435 test, 0 lỗi, 1 bỏ qua. Frontend: `npm run lint`, `npx tsc --noEmit`, `npx next build` sạch.
+- Xuyên luồng qua API trên MySQL 8.4 + Redis dùng một lần (dựng từ `01_schema.sql`, cổng riêng, đã xoá sau khi kiểm; không chạm DB
+  nhóm), bộ động học: **24/24 bước đúng** — project trống ở bước ①; họ mẫu 12 biến thể chạy baseline → bước ② xong; thêm họ sau không
+  kéo bước ② về (1 họ chưa chạy); dữ liệu M4/M5; ứng viên TTC 2,0 s bị chặn (sửa 2 ca nhưng thêm 1 ca phanh oan) → `TEST_NOT_PASSED`;
+  ứng viên giảm tốc 10 m/s² + trễ 0 s `PASSED` → thiếu lý do `REASON_REQUIRED`, người khác `PROJECT_NOT_YOURS`, chọn đúng → vòng 2,
+  ứng viên `BASELINE`, v1.0 `ARCHIVED`, lý do nằm trong ghi chú phiên bản, không có dòng `engineering_recommendations`; chọn lại →
+  `CANDIDATE_ALREADY_DECIDED`; exp2 đọc project / hành trình / regression của exp1 đều bị chặn.
+- Lần chạy đầu phát hiện `ck_er_no_self_review` chặn cách lưu lý do ban đầu (lỗi 500, transaction rollback, baseline nguyên vẹn) → đổi
+  sang ghi chú phiên bản (ADR-046). Unit test dùng mock không bắt được lỗi này.
+- Giao diện (Edge headless, 1280 px, không lỗi trang): trang chủ project vòng 2, ① Thêm kịch bản, ③ kết quả (lưới, 3 ca tệ nhất, phát
+  lại), ④ cải tiến (gợi ý nhóm nguyên nhân), M6 (đạt, đã là baseline), trang regression của EXPERIENCER ("Xem kết luận"), Cài đặt + vùng
+  nguy hiểm, `/aeb?tab=manual`. Tài khoản đã đổi sang ENGINEER: `/projects` chỉ xem + mục sidebar "Project cá nhân (1)"; ENGINEER không
+  có project cá nhân: sidebar không đổi. 1024 px: nội dung không vỡ, nhưng thanh hành trình phải cuộn ngang mới thấy bước ④⑤.
+- Chưa đối chiếu Figma (không có khung cho các màn này); chưa kiểm hết bằng bàn phím.
+
+## 13. Tiến độ triển khai
+
+| Giai đoạn | Đã làm | Còn lại |
+|---|---|---|
+| 0 | Project đang mở lưu theo tab (`sessionStorage`, `localStorage` chỉ làm giá trị mở đầu cho tab mới); xoá khi hết phiên | Chụp hiện trạng; chốt D-UX1 |
+| A | `GET /projects/{id}/journey` (`ProjectJourneyService`, luật trạng thái là hàm thuần, kết quả baseline dùng `Vs.classifyOutcome`); sidebar hành trình + menu đổi project; thanh hành trình và chip "Project" trong `VehicSimPage`; trang chủ project M3 (thẻ bước tiếp theo, dòng thời gian 5 bước, menu "⋯"); `/` → M3; `Modal`, `ToastStack`, thông báo khi một bước vừa xong | — |
+| B | M0 chào mừng (`RoadScene`), M1 tạo project 3 bước (`ProjectWizard`, mục tiêu + ghi chú gộp vào `description`), M2 chọn cách thiết kế kịch bản + kịch bản mẫu 12 biến thể chạy baseline ngay | M8 (form sửa còn hiện nguyên `description`) |
+| C | M4 `/projects/[id]/results` (dùng `analysisDataset` + `failures` của phần 3, không tự tính chỉ số; lưới tốc độ × khoảng cách; 3 ca tệ nhất kèm phát lại); M5 `/projects/[id]/improve` (gợi ý nhóm nguyên nhân từ `failures.kpis.by_class`, hai lối vào `/aeb?tab=`); `aeb/page.tsx` đọc `?tab=` | Xác nhận với người phụ trách phần 4 trạng thái thật của MOBO trước khi demo |
+| D | `POST /projects/{id}/regressions/{testId}/adopt` (`ProjectService.adopt`, 7 lỗi mới trong `ProjectError`); hành trình đếm theo baseline hiện hành; M6 `/projects/[id]/rounds/[testId]` (kết luận, 4 số, tham số đã đổi, hộp thoại lý do + xác nhận); trang regression rẽ nhánh EXPERIENCER | ADR-046 cần nhóm duyệt |
+| E | M8 `/settings` + vùng nguy hiểm; `Term`; chủ project đã đổi role xem chỉ đọc; thanh hành trình hiện ở M2, M4, M5, M6 | Bàn phím và màn 1024 px kiểm trên app thật |
+
+Thông số xe trên thẻ chọn xe lấy từ `carla_vehicle_models` qua `vehicle-options` (thêm 4 trường, không đổi schema).
+
+**Gọn file (01/11/2026):** backend chỉ còn `ProjectService` (hành trình gộp vào; `ProjectItem` mang kèm `journey`), test gộp vào
+`ProjectServiceTest`. Frontend `components/project/` còn 6 file theo vai trò:
+
+| File | Chứa |
+|---|---|
+| `journey.ts` | Logic thuần: 5 bước, câu chữ, đường dẫn, mục tiêu/ghi chú trong `description`, `timeAgo`, họ kịch bản mẫu |
+| `ProjectJourneyContext.tsx` | Tải hành trình, thăm dò khi đang chạy, provider cho project đang mở, `useProjectItem` |
+| `ProjectUi.tsx` | Avatar, dấu trạng thái bước, `Modal`, `ToastStack`, `Term`, thẻ "Mở project này", menu "⋯", hộp thoại lưu trữ / xoá |
+| `ProjectShell.tsx` | Mảnh cắm vào khung chung: cổng + màn chào mừng, thanh hành trình, menu hành trình, nút đổi project, mục "Project cá nhân" cho role khác, `/` → `/projects` |
+| `ProjectHome.tsx` | Thẻ project (danh sách, có chế độ chỉ xem), thẻ "Bước tiếp theo" (kèm nhắc họ chưa chạy baseline), dòng thời gian 5 bước |
+| `ProjectForms.tsx` | Tạo project 3 bước và Cài đặt project (M8), dùng chung ô thông tin và thẻ chọn xe |
+
+**Trang đích:** EXPERIENCER đăng nhập / đăng ký xong vào `/projects` (`homeFor`); `/` cũng chuyển về đó. "Project của tôi" (M7) làm sớm
+dạng thẻ có tiến độ 5 bước và nút "Tiếp tục"; chưa có project nào thì hiện màn chào mừng.

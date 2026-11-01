@@ -28,7 +28,14 @@ public enum ProjectError {
     DESCRIPTION_TOO_LONG(BAD_REQUEST, "Mô tả tối đa %d ký tự (đang có %d)."),
     VEHICLE_NOT_FOUND(BAD_REQUEST, "Xe #%s không có trong danh mục hoặc chưa được hỗ trợ."),
     VEHICLE_LOCKED(CONFLICT, "Project đã có %d lượt chạy bằng %s nên không đổi được xe. Tạo project mới để thử xe khác."),
-    CONFIRM_NAME_MISMATCH(BAD_REQUEST, "Gõ đúng “%s” để xác nhận xoá vĩnh viễn.");
+    CONFIRM_NAME_MISMATCH(BAD_REQUEST, "Gõ đúng “%s” để xác nhận xoá vĩnh viễn."),
+    REASON_REQUIRED(BAD_REQUEST, "Ghi lý do chọn ứng viên này làm baseline."),
+    CONFIRM_REQUIRED(BAD_REQUEST, "Xác nhận bạn đã xem kết quả kiểm chứng trước khi đổi baseline."),
+    TEST_NOT_FOUND(NOT_FOUND, "Không tìm thấy lần kiểm chứng #%s trong project này."),
+    TEST_NOT_FINISHED(CONFLICT, "Lần kiểm chứng #%s chưa chạy xong."),
+    TEST_NOT_PASSED(CONFLICT, "Ứng viên %s chưa đạt tiêu chí kiểm chứng nên không dùng làm baseline được."),
+    CANDIDATE_ALREADY_DECIDED(CONFLICT, "Ứng viên %s đã được xử lý trước đó."),
+    BASELINE_CHANGED(CONFLICT, "Baseline %s đã được thay sau lần kiểm chứng này. Hãy kiểm chứng lại với baseline hiện hành.");
 
     private final HttpStatus status;
     private final String message;
