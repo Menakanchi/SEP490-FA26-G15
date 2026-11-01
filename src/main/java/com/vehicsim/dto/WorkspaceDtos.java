@@ -153,4 +153,34 @@ public final class WorkspaceDtos {
             @NotBlank(message = "Chọn APPROVED hoặc REJECTED") String decision,
             @Size(max = 4000, message = "Nhận xét tối đa 4000 ký tự") String note) {
     }
+    /** Cập nhật tiến độ / trạng thái task của kỹ sư (FE-03). */
+    public record TaskStatusUpdateRequest(
+            @NotBlank(message = "Trạng thái không được để trống") String status,
+            @JsonProperty("progress_pct") @Min(value = 0, message = "Tiến độ từ 0 đến 100")
+            @Max(value = 100, message = "Tiến độ từ 0 đến 100") Integer progressPct) {
+    }
+
+    /** Kỹ sư / người duyệt nộp báo cáo công việc (FE-14). */
+    public record SubmitReportRequest(
+            @NotBlank(message = "Tiêu đề báo cáo không được để trống") @Size(max = 255, message = "Tiêu đề tối đa 255 ký tự") String title,
+            @NotBlank(message = "Nội dung báo cáo không được để trống") @Size(max = 50000, message = "Nội dung tối đa 50000 ký tự") String content,
+            @JsonProperty("task_id") Long taskId,
+            @JsonProperty("project_id") Long projectId,
+            @JsonProperty("attachment_url") @Size(max = 1024, message = "Đường dẫn đính kèm tối đa 1024 ký tự") String attachmentUrl) {
+    }
+
+    /** Tin nhắn trao đổi kỹ thuật trong workspace (FE-03 chat). */
+    public record ChatMessage(
+            long id,
+            @JsonProperty("workspace_id") long workspaceId,
+            UserRef sender,
+            @JsonProperty("message_text") String messageText,
+            @JsonProperty("created_date") LocalDateTime createdDate,
+            @JsonProperty("edited_at") LocalDateTime editedAt) {
+    }
+
+    /** Gửi tin nhắn mới vào kênh workspace. */
+    public record SendChatMessageRequest(
+            @NotBlank(message = "Nội dung tin nhắn không được để trống") @Size(max = 2000, message = "Nội dung tối đa 2000 ký tự") String message) {
+    }
 }

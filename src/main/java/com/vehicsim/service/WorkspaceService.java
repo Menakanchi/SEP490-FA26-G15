@@ -6,6 +6,8 @@ import com.vehicsim.dto.WorkspaceDtos.MemberItem;
 import com.vehicsim.dto.WorkspaceDtos.RemoveMemberResult;
 import com.vehicsim.dto.WorkspaceDtos.WorkspaceDetail;
 import com.vehicsim.dto.WorkspaceDtos.WorkspaceSummary;
+import com.vehicsim.dto.WorkspaceDtos.ChatMessage;
+import com.vehicsim.dto.WorkspaceDtos.UserRef;
 import com.vehicsim.repository.WorkspaceRepository;
 import com.vehicsim.repository.WorkspaceRepository.UserAccount;
 import com.vehicsim.vehicsim.Vs.InvalidRequestException;
@@ -161,5 +163,49 @@ public class WorkspaceService {
 
     private static boolean isAdmin(String role) {
         return "ADMIN".equals(role);
+    }
+    /** Danh sách workspace người dùng tham gia (Manager: managed, Engineer/Reviewer: member). */
+    public List<WorkspaceSummary> listMyWorkspaces(long userId, String role) {
+        if (isAdmin(role)) {
+            return repo.listAll();
+        }
+        if ("MANAGER".equals(role)) {
+            return repo.listManagedBy(userId);
+        }
+        return repo.listForMember(userId);
+    }
+
+    /** Lấy tin nhắn trao đổi trong workspace (FE-03). */
+    public List<ChatMessage> listMessages(long userId, String role, long workspaceId, int limit) {
+        WorkspaceSummary ws = repo.find(workspaceId);
+        if (ws == null || (!isAdmin(role) && !repo.isMemberOrManager(workspaceId, userId))) {
+            throw new NotFoundException("workspace");
+        }
+        return repo.listMessages(workspaceId, Math.min(Math.max(limit, 1), 200));
+    }
+
+    /** Gửi tin nhắn trao đổi trong workspace (FE-03). */
+    @Transactional
+    public ChatMessage sendMessage(long userId, String role, long workspaceId, String messageText) {
+        WorkspaceSummary ws = repo.find(workspaceId);
+        if (ws == null || (!isAdmin(role) && !repo.isMemberOrManager(workspaceId, userId))) {
+            throw new NotFoundException("workspace");
+        }
+        requireActive(ws);
+        String text = messageText == null ? "" : messageText.trim();
+        if (text.isEmpty()) {
+            throw new InvalidRequestException("Nội dung tin nhắn không được để trống");
+        }
+        if (text.length() > 2000) {
+            throw new InvalidRequestException("Nội dung tin nhắn tối đa 2000 ký tự");
+        }
+        long id = repo.insertMessage(workspaceId, userId, text);
+        return new ChatMessage(id, workspaceId,
+                repo.membersOf(workspaceId).stream()
+                        .filter(m -> m.userId() == userId)
+                        .findFirst()
+                        .map(m -> new UserRef(m.userId(), m.fullName(), m.email()))
+                        .orElse(new UserRef(ws.manager().id(), ws.manager().fullName(), ws.manager().email())),
+                text, java.time.LocalDateTime.now(), null);
     }
 }

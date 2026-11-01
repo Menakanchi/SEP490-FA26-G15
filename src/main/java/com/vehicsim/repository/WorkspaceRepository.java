@@ -5,6 +5,7 @@ import com.vehicsim.dto.WorkspaceDtos.MemberItem;
 import com.vehicsim.dto.WorkspaceDtos.ProjectItem;
 import com.vehicsim.dto.WorkspaceDtos.UserRef;
 import com.vehicsim.dto.WorkspaceDtos.WorkspaceSummary;
+import com.vehicsim.dto.WorkspaceDtos.ChatMessage;
 import com.vehicsim.vehicsim.Db;
 import com.vehicsim.vehicsim.Row;
 import org.springframework.stereotype.Repository;
@@ -189,5 +190,51 @@ public class WorkspaceRepository {
 
     /** Tài khoản rút gọn để service kiểm điều kiện thêm thành viên. */
     public record UserAccount(long id, String email, String role, boolean active) {
+    }
+    /** Workspace mà người này tham gia với tư cách thành viên (ENGINEER / REVIEWER). */
+    public List<WorkspaceSummary> listForMember(long memberUserId) {
+        return db.list(SUMMARY_SELECT + """
+                 WHERE EXISTS (SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = w.id AND wm.user_id = ?)
+                 ORDER BY w.id DESC
+                """, memberUserId).stream().map(this::toSummary).toList();
+    }
+
+    /** Kiểm tra xem người dùng có phải là Manager hoặc thành viên của workspace không. */
+    public boolean isMemberOrManager(long workspaceId, long userId) {
+        return db.first("""
+                SELECT 1 AS x FROM workspaces w
+                 WHERE w.id = ? AND (w.manager_id = ? OR EXISTS (
+                       SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = w.id AND wm.user_id = ?
+                 ))
+                """, workspaceId, userId, userId) != null;
+    }
+
+    /** Lấy danh sách tin nhắn trao đổi kỹ thuật của workspace. */
+    public List<ChatMessage> listMessages(long workspaceId, int limit) {
+        return db.list("""
+                SELECT m.id, m.workspace_id, m.message_text, m.created_date, m.edited_at,
+                       u.id AS sender_id, %s AS sender_name, u.email AS sender_email
+                  FROM workspace_messages m
+                  JOIN users u ON u.id = m.sender_id
+                 WHERE m.workspace_id = ?
+                 ORDER BY m.created_date ASC, m.id ASC
+                 LIMIT ?
+                """.formatted(FULL_NAME.formatted("u")), workspaceId, limit).stream()
+                .map(r -> new ChatMessage(
+                        r.lng("id"),
+                        r.lng("workspace_id"),
+                        new UserRef(r.lng("sender_id"), r.str("sender_name"), r.str("sender_email")),
+                        r.str("message_text"),
+                        r.ts("created_date"),
+                        r.ts("edited_at")
+                )).toList();
+    }
+
+    /** Gửi tin nhắn mới vào kênh trao đổi của workspace. */
+    public long insertMessage(long workspaceId, long senderId, String messageText) {
+        return db.insert("""
+                INSERT INTO workspace_messages (workspace_id, sender_id, message_text)
+                VALUES (?, ?, ?)
+                """, workspaceId, senderId, messageText);
     }
 }

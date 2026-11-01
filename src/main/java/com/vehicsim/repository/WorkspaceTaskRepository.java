@@ -119,4 +119,39 @@ public class WorkspaceTaskRepository {
         }
         return ((java.sql.Date) value).toLocalDate();
     }
+    /** Task theo id (không giới hạn workspace_id). */
+    public TaskItem findById(long taskId) {
+        Row row = db.first(SELECT + " WHERE t.id = ?", taskId);
+        return row == null ? null : toItem(row);
+    }
+
+    /** Danh sách task được giao cho một người dùng. */
+    public List<TaskItem> listForAssignee(long assigneeId, String status, Long projectId) {
+        StringBuilder sql = new StringBuilder(SELECT).append(" WHERE t.assigned_to_user_id = ?");
+        List<Object> args = new ArrayList<>(List.of(assigneeId));
+        if (status != null) {
+            sql.append(" AND t.status = ?");
+            args.add(status);
+        }
+        if (projectId != null) {
+            sql.append(" AND t.project_id = ?");
+            args.add(projectId);
+        }
+        sql.append("""
+                 ORDER BY t.status = 'DONE',
+                          FIELD(t.priority, 'URGENT', 'HIGH', 'MEDIUM', 'LOW'),
+                          t.due_date IS NULL, t.due_date,
+                          t.id DESC
+                """);
+        return db.list(sql.toString(), args.toArray()).stream().map(WorkspaceTaskRepository::toItem).toList();
+    }
+
+    /** Cập nhật tiến độ và trạng thái của task. */
+    public void updateStatus(long taskId, String status, int progressPct) {
+        db.update("""
+                UPDATE workspace_tasks
+                   SET status = ?, progress_pct = ?
+                 WHERE id = ?
+                """, status, progressPct, taskId);
+    }
 }

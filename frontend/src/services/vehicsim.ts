@@ -44,6 +44,10 @@ import type {
   WorkspaceSummary,
   WorkspaceTask,
   WorkspaceTaskRequest,
+  SendChatMessageRequest,
+  SubmitReportRequest,
+  TaskStatusUpdateRequest,
+  WorkspaceChatMessage,
 } from "@/types/vehicsim";
 
 function query(params: object): string {
@@ -219,6 +223,32 @@ export const vehicsimApi = {
     apiRequest<WorkspaceReport>(`/vehicsim/workspaces/${id}/reports/${reportId}/decision`, {
       method: "POST",
       body: JSON.stringify({ decision, note }),
+    }),
+
+  // Kỹ sư: task, báo cáo, trao đổi kỹ thuật (FE-03, FE-14)
+  myWorkspaces: () => apiRequest<WorkspaceSummary[]>("/vehicsim/my-workspaces"),
+  myTasks: (filters: { status?: string; project_id?: number } = {}) =>
+    apiRequest<WorkspaceTask[]>(`/vehicsim/my-tasks${query(filters)}`),
+  getTask: (taskId: number) => apiRequest<WorkspaceTask>(`/vehicsim/tasks/${taskId}`),
+  updateTaskStatus: (taskId: number, body: TaskStatusUpdateRequest) =>
+    apiRequest<WorkspaceTask>(`/vehicsim/tasks/${taskId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  submitReport: (body: SubmitReportRequest) =>
+    apiRequest<WorkspaceReport>("/vehicsim/reports", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  myReports: (filters: { status?: string; project_id?: number } = {}) =>
+    apiRequest<WorkspaceReport[]>(`/vehicsim/my-reports${query(filters)}`),
+  getReport: (reportId: number) => apiRequest<WorkspaceReport>(`/vehicsim/reports/${reportId}`),
+  workspaceMessages: (workspaceId: number, limit = 50) =>
+    apiRequest<WorkspaceChatMessage[]>(`/vehicsim/workspaces/${workspaceId}/messages${query({ limit })}`),
+  sendWorkspaceMessage: (workspaceId: number, body: SendChatMessageRequest) =>
+    apiRequest<WorkspaceChatMessage>(`/vehicsim/workspaces/${workspaceId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
 
   // Thông báo của người đang đăng nhập (M10)

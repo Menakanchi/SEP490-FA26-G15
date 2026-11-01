@@ -81,4 +81,33 @@ public class WorkspaceReportRepository {
                 r.isNull("reviewer_id") ? null : new UserRef(r.lng("reviewer_id"), r.str("reviewer_name"), r.str("reviewer_email")),
                 r.ts("reviewed_at"), r.str("review_note"), r.ts("created_date"));
     }
+    /** Nộp báo cáo công việc mới. */
+    public long insert(long projectId, Long taskId, long submitterId, String title, String content, String attachmentUrl) {
+        return db.insert("""
+                INSERT INTO task_reports (project_id, task_id, submitted_by_user_id, report_title, report_content, attachment_url, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'SUBMITTED')
+                """, projectId, taskId, submitterId, title, content, attachmentUrl);
+    }
+
+    /** Báo cáo theo id. */
+    public ReportItem findById(long reportId) {
+        Row row = db.first(SELECT + " WHERE r.id = ?", reportId);
+        return row == null ? null : toItem(row);
+    }
+
+    /** Danh sách báo cáo do người dùng này nộp. */
+    public List<ReportItem> listForSubmitter(long submitterId, String status, Long projectId) {
+        StringBuilder sql = new StringBuilder(SELECT).append(" WHERE r.submitted_by_user_id = ?");
+        List<Object> args = new ArrayList<>(List.of(submitterId));
+        if (status != null) {
+            sql.append(" AND r.status = ?");
+            args.add(status);
+        }
+        if (projectId != null) {
+            sql.append(" AND r.project_id = ?");
+            args.add(projectId);
+        }
+        sql.append(" ORDER BY r.status <> 'SUBMITTED', r.created_date DESC, r.id DESC");
+        return db.list(sql.toString(), args.toArray()).stream().map(WorkspaceReportRepository::toItem).toList();
+    }
 }
