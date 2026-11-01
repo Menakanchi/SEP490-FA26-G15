@@ -6,10 +6,8 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Map;
 import java.util.Set;
 import com.vsos.backend.config.VehicSimProperties;
-import com.vsos.backend.service.system.SystemViewService;
 
 /**
  * Kiểm quyền và hạn mức dùng chung cho mọi controller {@code /api/v1/vehicsim/*} (các controller của {@code com.vsos.backend} và {@code RegressionController}):
@@ -24,15 +22,16 @@ public class VehicSimAccess {
     private static final Set<String> WRITE_ROLES = Set.of("ADMIN", "ENGINEER", "EXPERIENCER");
     private static final Set<String> DECIDE_ROLES = Set.of("REVIEWER");
     private static final Set<String> WORKSPACE_ADMIN_ROLES = Set.of("MANAGER", "ADMIN");
+    private static final Set<String> WORKSPACE_MEMBER_ROLES = Set.of("ENGINEER", "REVIEWER");
 
     private final OtpService otp;
     private final VehicSimProperties props;
-    private final SystemViewService views;
+    private final ProjectAccess projects;
 
-    public VehicSimAccess(OtpService otp, VehicSimProperties props, SystemViewService views) {
+    public VehicSimAccess(OtpService otp, VehicSimProperties props, ProjectAccess projects) {
         this.otp = otp;
         this.props = props;
-        this.views = views;
+        this.projects = projects;
     }
 
     public static long userId(UserDetails user) {
@@ -71,6 +70,17 @@ public class VehicSimAccess {
     }
 
     /**
+     * Việc của thành viên workspace (task được giao, nộp báo cáo — UC-21, UC-64, UC-66): ENGINEER hoặc REVIEWER; còn lại 403.
+     * "Đúng workspace mình là thành viên" kiểm ở {@code MemberWorkService}. Trả id người dùng.
+     */
+    public static long requireWorkspaceMember(UserDetails user) {
+        if (!WORKSPACE_MEMBER_ROLES.contains(roleOf(user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ ENGINEER hoặc REVIEWER có task và báo cáo công việc");
+        }
+        return userId(user);
+    }
+
+    /**
      * Tạo họ / candidate / regression / chạy tốn tài nguyên (mỗi run là một tiến trình Python) và app mở đăng ký công khai
      * (mọi người tự đăng ký đều có quyền ghi vào project chung — TD-30): giới hạn số lần theo người dùng trong cửa sổ rate-limit.
      */
@@ -82,6 +92,6 @@ public class VehicSimAccess {
 
     /** Project hiện tại (MVP một project ACTIVE mặc định). */
     public long projectId() {
-        return ((Number) ((Map<?, ?>) views.context().get("project")).get("id")).longValue();
+        return projects.currentProject().lng("id");
     }
 }

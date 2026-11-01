@@ -33,7 +33,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import com.vsos.backend.config.VehicSimProperties;
-import com.vsos.backend.service.system.SystemViewService;
+
 
 /**
  * Quyền của màn quản lý workspace qua bộ lọc bảo mật thật: chưa đăng nhập 401; chỉ MANAGER / ADMIN vào được, ENGINEER / REVIEWER /
@@ -64,7 +64,7 @@ class WorkspaceSecurityTest {
     @MockitoBean
     private WorkspaceReportService reports;
     @MockitoBean
-    private SystemViewService views;
+    private ProjectAccess projects;
     @MockitoBean
     private OtpService otp;
     @MockitoBean

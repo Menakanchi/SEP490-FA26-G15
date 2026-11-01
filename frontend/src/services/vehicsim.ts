@@ -19,6 +19,9 @@ import type {
   FamilyRequest,
   FamilyVariantList,
   FamilyVersion,
+  MemberTaskStatus,
+  MyTask,
+  MyWork,
   NotificationList,
   OptimizationRun,
   RiskLabel,
@@ -31,6 +34,7 @@ import type {
   RegressionList,
   RegressionPreview,
   RegressionRequest,
+  ReportSubmitRequest,
   ReviewDecision,
   TelemetrySummary,
   VehicSimContextData,
@@ -63,6 +67,7 @@ export const vehicsimApi = {
     apiRequest<import("@/types/vehicsim").AnalysisSelection>("/vehicsim/analysis/selections",{method:"POST",body:JSON.stringify(body)}),
   analysisHandoff: (id: number) => apiRequest<import("@/types/vehicsim").AnalysisSelection>(`/vehicsim/analysis/datasets/${id}/handoff`),
   context: () => apiRequest<VehicSimContextData>("/vehicsim/context"),
+  reviewerProjects: () => apiRequest<VehicSimContextData["reviewer_projects"]>("/vehicsim/reviewer/projects"),
 
   // Phương tiện: danh mục mẫu xe CARLA, chỉ đọc
   vehicles: () => apiRequest<VehicleSummary[]>("/vehicsim/vehicles"),
@@ -220,6 +225,16 @@ export const vehicsimApi = {
       method: "POST",
       body: JSON.stringify({ decision, note }),
     }),
+
+  // Nhiệm vụ & báo cáo của thành viên (Engineer / Reviewer)
+  myWork: () => apiRequest<MyWork>("/vehicsim/my/work"),
+  updateMyTaskProgress: (taskId: number, status: MemberTaskStatus, progressPct: number) =>
+    apiRequest<MyTask>(`/vehicsim/my/tasks/${taskId}/progress`, {
+      method: "PUT",
+      body: JSON.stringify({ status, progress_pct: progressPct }),
+    }),
+  submitMyReport: (body: ReportSubmitRequest) =>
+    apiRequest<WorkspaceReport>("/vehicsim/my/reports", { method: "POST", body: JSON.stringify(body) }),
 
   // Thông báo của người đang đăng nhập (M10)
   notifications: (unreadOnly = false, limit = 20) =>

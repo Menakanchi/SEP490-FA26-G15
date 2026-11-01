@@ -2,8 +2,10 @@ package com.vsos.backend.repository.workspace;
 
 import com.vsos.backend.dto.workspace.WorkspaceDtos.MemberCandidate;
 import com.vsos.backend.dto.workspace.WorkspaceDtos.MemberItem;
+import com.vsos.backend.dto.workspace.WorkspaceDtos.MyProject;
 import com.vsos.backend.dto.workspace.WorkspaceDtos.ProjectItem;
 import com.vsos.backend.dto.workspace.WorkspaceDtos.UserRef;
+import com.vsos.backend.dto.workspace.WorkspaceDtos.WorkspaceRef;
 import com.vsos.backend.dto.workspace.WorkspaceDtos.WorkspaceSummary;
 import com.vsos.backend.repository.common.Db;
 import com.vsos.backend.repository.common.Row;
@@ -128,6 +130,20 @@ public class WorkspaceRepository {
                  WHERE u.id = ?
                 """, userId);
         return r == null ? null : new UserAccount(r.lng("id"), r.str("email"), r.str("role"), r.bool("is_active"));
+    }
+
+    /** Project ACTIVE trong các workspace ACTIVE mà người này là thành viên (nơi họ nộp được báo cáo), theo tên workspace rồi tên project. */
+    public List<MyProject> memberProjects(long userId) {
+        return db.list("""
+                SELECT p.id, p.name, w.id AS ws_id, w.name AS ws_name, w.status AS ws_status
+                  FROM projects p
+                  JOIN workspaces w ON w.id = p.workspace_id
+                  JOIN workspace_members m ON m.workspace_id = w.id AND m.user_id = ?
+                 WHERE p.status = 'ACTIVE' AND w.status = 'ACTIVE'
+                 ORDER BY w.name, p.name
+                """, userId).stream()
+                .map(r -> new MyProject(r.lng("id"), r.str("name"), new WorkspaceRef(r.lng("ws_id"), r.str("ws_name"), r.str("ws_status"))))
+                .toList();
     }
 
     public boolean isMember(long workspaceId, long userId) {

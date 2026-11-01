@@ -3,6 +3,7 @@ package com.vsos.backend.service.scenario;
 import com.vsos.backend.service.regression.RegressionService;
 import com.vsos.backend.common.Vs.NotFoundException;
 import org.springframework.stereotype.Service;
+import com.vsos.backend.security.ProjectAccess;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,18 +21,20 @@ public class ScenarioViewService {
 
     private final Db db;
     private final Queries queries;
+    private final ProjectAccess projects;
     private final FamilyService families;
     private final RegressionService regression;
 
-    public ScenarioViewService(Db db, Queries queries, FamilyService families, RegressionService regression) {
+    public ScenarioViewService(Db db, Queries queries, FamilyService families, RegressionService regression, ProjectAccess projects) {
         this.db = db;
         this.queries = queries;
+        this.projects = projects;
         this.families = families;
         this.regression = regression;
     }
 
     public List<Map<String, Object>> families() {
-        Row project = queries.currentProject();
+        Row project = projects.currentProject();
         Row baseline = queries.baselineVersion(project.lng("id"));
         List<Map<String, Object>> out = new ArrayList<>();
         for (Row f : db.list("SELECT * FROM scenarios WHERE project_id = ?", project.lng("id"))) {
@@ -68,7 +71,7 @@ public class ScenarioViewService {
 
     /** Lịch sử bản của một họ (task 4): v1, v2… với không gian tham số, số biến thể và lượt chạy của từng bản; bản cuối là hiện hành. */
     public List<Map<String, Object>> familyVersions(long scenarioId) {
-        Row project = queries.currentProject();
+        Row project = projects.currentProject();
         if (db.first("SELECT id FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, project.lng("id")) == null) {
             throw new NotFoundException("scenario");
         }
@@ -92,7 +95,7 @@ public class ScenarioViewService {
      * Biến thể của một bản (mặc định bản hiện hành) kèm nhãn tập thử (task 5): nhãn đang dùng, nhãn tự suy và có phải sửa tay không.
      */
     public Map<String, Object> familyVariants(long scenarioId, Long baseVersionId) {
-        Row project = queries.currentProject();
+        Row project = projects.currentProject();
         Row scenario = db.first("SELECT id, code FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, project.lng("id"));
         if (scenario == null) {
             throw new NotFoundException("scenario");

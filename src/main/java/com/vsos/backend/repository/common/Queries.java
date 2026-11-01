@@ -21,8 +21,8 @@ public class Queries {
         this.db = db;
     }
 
-    /** MVP chỉ có một project ACTIVE mặc định (TD-30: chưa lọc theo workspace). */
-    public Row currentProject() {
+    /** Truy vấn project ACTIVE mặc định cho những luồng gọi tường minh (TD-30). Không đọc HTTP/đăng nhập. */
+    public Row defaultProject() {
         Row project = db.first("SELECT * FROM projects WHERE status = 'ACTIVE' ORDER BY id LIMIT 1");
         if (project == null) {
             throw new NotFoundException("project — ADMIN gọi POST /api/v1/vehicsim/bootstrap để tạo project mặc định");

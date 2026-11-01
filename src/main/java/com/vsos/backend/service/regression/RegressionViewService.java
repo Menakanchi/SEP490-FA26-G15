@@ -27,6 +27,7 @@ import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.common.Vs;
 import com.vsos.backend.common.Vs.NotFoundException;
 import org.springframework.stereotype.Service;
+import com.vsos.backend.security.ProjectAccess;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -48,12 +49,14 @@ public class RegressionViewService {
 
     private final RegressionRepository repo;
     private final Queries queries;
+    private final ProjectAccess projects;
     private final RegressionService regression;
     private final RegressionReportService reports;
 
-    public RegressionViewService(RegressionRepository repo, Queries queries, RegressionService regression, RegressionReportService reports) {
+    public RegressionViewService(RegressionRepository repo, Queries queries, RegressionService regression, RegressionReportService reports, ProjectAccess projects) {
         this.repo = repo;
         this.queries = queries;
+        this.projects = projects;
         this.regression = regression;
         this.reports = reports;
     }
@@ -80,7 +83,7 @@ public class RegressionViewService {
     }
 
     public RegressionListResponse regressionList(String status) {
-        long projectId = queries.currentProject().lng("id");
+        long projectId = projects.currentProject().lng("id");
         List<RegressionTestRow> tests = repo.listTests(projectId);
         Map<Long, Row> versions = versionsOf(projectId);
         Map<Long, RecommendationRow> recs = repo.recommendationsByTest(tests.stream().map(RegressionTestRow::id).toList());
@@ -130,7 +133,7 @@ public class RegressionViewService {
     }
 
     public RegressionDetailResponse regressionDetail(long testId) {
-        return regressionDetail(test(queries.currentProject().lng("id"), testId));
+        return regressionDetail(test(projects.currentProject().lng("id"), testId));
     }
 
     private RegressionDetailResponse regressionDetail(RegressionTestRow test) {
@@ -176,7 +179,7 @@ public class RegressionViewService {
     // ------------------------------------------------------------------ 17 · khuyến nghị · 18 · duyệt
 
     public List<RecommendationListItem> recommendations() {
-        long projectId = queries.currentProject().lng("id");
+        long projectId = projects.currentProject().lng("id");
         List<RegressionTestRow> tests = repo.listCompletedTests(projectId);
         Map<Long, Row> versions = versionsOf(projectId);
         Map<Long, RecommendationRow> recs = repo.recommendationsByTest(tests.stream().map(RegressionTestRow::id).toList());
@@ -200,7 +203,7 @@ public class RegressionViewService {
     }
 
     public RecommendationDetailResponse recommendationDetail(long testId) {
-        RegressionTestRow test = test(queries.currentProject().lng("id"), testId);
+        RegressionTestRow test = test(projects.currentProject().lng("id"), testId);
         RegressionDetailResponse detail = regressionDetail(test);
         RecommendationRow rec = regression.recommendationFor(testId);
         List<Long> nameIds = new ArrayList<>();

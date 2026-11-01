@@ -2,6 +2,7 @@ package com.vsos.backend.service.simulation;
 
 import com.vsos.backend.common.Vs.NotFoundException;
 import org.springframework.stereotype.Service;
+import com.vsos.backend.security.ProjectAccess;
 
 import java.util.Map;
 import com.vsos.backend.common.Json;
@@ -16,17 +17,19 @@ public class SimulationViewService {
 
     private final Db db;
     private final Queries queries;
+    private final ProjectAccess projects;
     private final RunService runs;
 
-    public SimulationViewService(Db db, Queries queries, RunService runs) {
+    public SimulationViewService(Db db, Queries queries, RunService runs, ProjectAccess projects) {
         this.db = db;
         this.queries = queries;
+        this.projects = projects;
         this.runs = runs;
     }
 
     /** JSON của nút "Tải JSON chạy CARLA" — đúng đầu vào backend đưa cho bộ mô phỏng (ADR-027). */
     public Map<String, Object> runVariantBundle(long runId) {
-        Row project = queries.currentProject();
+        Row project = projects.currentProject();
         Row run = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ?", runId, project.lng("id"));
         if (run == null) {
             throw new NotFoundException("simulation run");

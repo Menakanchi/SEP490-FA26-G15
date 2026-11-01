@@ -57,6 +57,8 @@ export interface ParameterDef {
 }
 
 export interface VehicSimContextData {
+  reviewer_projects: { id: number; name: string; workspace_name: string; can_decide: boolean }[];
+  reviewer_can_decide: boolean;
   project: { id: number; name: string };
   workspace: { id: number; name: string } | null;
   vehicle: { id: number; name: string } | null;
@@ -641,6 +643,9 @@ export interface RecommendationDetail extends RegressionDetail {
 /** ``GET /vehicsim/decisions`` — quyết định của Reviewer (mới nhất trước) và chuỗi baseline của project. */
 export interface DecisionHistory {
   decisions: {
+    id: number;
+    reviewed_by_user_id: number;
+    source: "REVIEW" | "LEGACY_SNAPSHOT";
     recommendation_code: string;
     regression_code: string;
     test_id: number;
@@ -808,6 +813,16 @@ export interface WorkspaceReport {
   id: number; project: { id: number; name: string }; task: { id: number; title: string } | null; submitted_by: WorkspaceUserRef;
   title: string; content: string; attachment_url: string | null; status: ReportStatus;
   reviewed_by: WorkspaceUserRef | null; reviewed_at: string | null; review_note: string | null; created_date: string;
+}
+// "Nhiệm vụ & báo cáo" phía thành viên (Engineer / Reviewer): GET /my/work, PUT /my/tasks/{id}/progress, POST /my/reports.
+export interface WorkspaceRef { id: number; name: string; status: WorkspaceStatus }
+export interface MyTask { workspace: WorkspaceRef; task: WorkspaceTask }
+export interface MyProject { id: number; name: string; workspace: WorkspaceRef }
+export interface MyWork { tasks: MyTask[]; reports: WorkspaceReport[]; projects: MyProject[] }
+/** Người được giao tự đặt TODO / IN_PROGRESS / REVIEW; DONE do Manager xác nhận. */
+export type MemberTaskStatus = Exclude<TaskStatus, "DONE">;
+export interface ReportSubmitRequest {
+  project_id: number; task_id: number | null; title: string; content: string; attachment_url: string | null;
 }
 export interface NotificationItem {
   id: number; type: string; title: string; content: string; reference_type: string | null; reference_id: number | null;

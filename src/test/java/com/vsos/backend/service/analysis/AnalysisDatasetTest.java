@@ -19,11 +19,13 @@ import com.vsos.backend.common.Json;
 import com.vsos.backend.common.Vs;
 import com.vsos.backend.repository.common.Db;
 import com.vsos.backend.repository.common.Queries;
+import com.vsos.backend.security.ProjectAccess;
 import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.service.scenario.FamilyService;
 import com.vsos.backend.service.simulation.RunService;
 
 class AnalysisDatasetTest {
+    private final ProjectAccess projects = mock(ProjectAccess.class);
 
     private Db db;
     private Queries queries;
@@ -37,9 +39,9 @@ class AnalysisDatasetTest {
         families = mock(FamilyService.class);
         RegressionService regression = mock(RegressionService.class);
         RunService runs = mock(RunService.class);
-        service = new AnalysisViewService(db, queries, families);
+        service = new AnalysisViewService(db, queries, families, projects);
 
-        when(queries.currentProject()).thenReturn(new Row(Json.obj("id", 1L)));
+        when(projects.currentProject()).thenReturn(new Row(Json.obj("id", 1L)));
         when(queries.baselineVersion(1L)).thenReturn(new Row(Json.obj("id", 4L, "version_no", 1L, "label", "v1.0")));
         when(db.first(eq("SELECT * FROM scenarios WHERE id = ? AND project_id = ?"), eq(8L), eq(1L)))
                 .thenReturn(new Row(Json.obj("id", 8L, "project_id", 1L, "code", "PX", "name", "Crossing", "category", "CP_CROSSING")));

@@ -1,6 +1,7 @@
 package com.vsos.backend.service.aeb;
 
 import org.springframework.stereotype.Service;
+import com.vsos.backend.security.ProjectAccess;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,13 +17,15 @@ import com.vsos.backend.service.system.SystemViewService;
 public class AebViewService {
 
     private final Queries queries;
+    private final ProjectAccess projects;
 
-    public AebViewService(Queries queries) {
+    public AebViewService(Queries queries, ProjectAccess projects) {
         this.queries = queries;
+        this.projects = projects;
     }
 
     public List<Map<String, Object>> aebVersions() {
-        Row project = queries.currentProject();
+        Row project = projects.currentProject();
         List<Map<String, Object>> out = new ArrayList<>();
         for (Row v : queries.versions(project.lng("id"), true)) {
             Map<String, Object> m = versionBrief(v);

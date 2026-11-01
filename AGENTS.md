@@ -13,7 +13,7 @@ chỉ từ tên màn hình, bảng DB hoặc tài liệu kế hoạch.
 
 VehicSim / VSOS (SEP490-FA26-G15) hỗ trợ kỹ sư kiểm thử, hiệu chỉnh AEB/FCW:
 tạo tình huống giả lập phanh, phân tích lỗi, tạo candidate và kiểm chứng bằng regression.
-Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (29 bảng) + Redis + adapter CARLA Python**.
+Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (schema nhánh 30 bảng, ADR-046 Proposed) + Redis + adapter CARLA Python**.
 Java xử lý REST/nghiệp vụ/DB và lõi AEB, mô phỏng, chấm điểm (`com.vsos.core`, ADR-042);
 Python `worker/` chỉ gọi API CARLA và nói chuyện với lõi Java qua cầu nối stdio `vsos-bridge/1`.
 Backend FastAPI và Scenario Forge đã gỡ; không khôi phục kiến trúc cũ khi làm tính năng mới.
@@ -96,7 +96,8 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
 2. Java, kể cả lõi `com.vsos.core`, không import `carla`; lời gọi API CARLA chỉ ở adapter trong `worker/`.
 3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập. Mỗi tài khoản một role:
    ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ đọc; chỉ REVIEWER Accept/Reject.
-   Cách ly project/workspace chưa hoàn thiện (TD-30); không giả định mọi người có dữ liệu riêng.
+   Cách ly project/workspace chưa hoàn thiện (TD-30); riêng Reviewer chỉ thấy và duyệt regression của project thuộc workspace
+   mình là thành viên (`ReviewerScope`). Không giả định mọi người có dữ liệu riêng.
 4. Cùng biến thể + seed phải tái lập được; candidate chạy đúng seed baseline.
    So sánh phải cùng xe, biến thể và phiên bản simulator.
    Không đổi tham số kịch bản và tham số AEB cùng lúc trong một lần so sánh.

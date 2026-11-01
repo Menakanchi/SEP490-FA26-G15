@@ -153,4 +153,38 @@ public final class WorkspaceDtos {
             @NotBlank(message = "Chọn APPROVED hoặc REJECTED") String decision,
             @Size(max = 4000, message = "Nhận xét tối đa 4000 ký tự") String note) {
     }
+
+    // ------------------------------------------------------------------ phía thành viên (UC-21, UC-64, UC-66, UC-68)
+
+    /** Workspace rút gọn gắn với task / project của thành viên. */
+    public record WorkspaceRef(long id, String name, String status) {
+    }
+
+    /** Task được giao cho tôi, kèm workspace chứa nó. */
+    public record MyTaskItem(WorkspaceRef workspace, TaskItem task) {
+    }
+
+    /** Project ACTIVE trong workspace ACTIVE mà tôi là thành viên: nơi nộp được báo cáo. */
+    public record MyProject(long id, String name, WorkspaceRef workspace) {
+    }
+
+    /** {@code GET /my/work}: task được giao, báo cáo đã nộp và project nộp được báo cáo của người đang đăng nhập. */
+    public record MyWork(List<MyTaskItem> tasks, List<ReportItem> reports, List<MyProject> projects) {
+    }
+
+    /** {@code PUT /my/tasks/{taskId}/progress}: người được giao cập nhật trạng thái (trừ DONE — Manager xác nhận) và tiến độ. */
+    public record TaskProgressRequest(
+            @NotBlank(message = "Chọn trạng thái task") String status,
+            @JsonProperty("progress_pct") @NotNull(message = "Nhập tiến độ") @Min(value = 0, message = "Tiến độ từ 0 đến 100")
+            @Max(value = 100, message = "Tiến độ từ 0 đến 100") Integer progressPct) {
+    }
+
+    /** {@code POST /my/reports}: nộp báo cáo công việc cho một project; gắn task (của tôi, cùng project) nếu có. */
+    public record ReportSubmitRequest(
+            @JsonProperty("project_id") @NotNull(message = "Chọn project") Long projectId,
+            @JsonProperty("task_id") Long taskId,
+            @NotBlank(message = "Tiêu đề báo cáo không được để trống") @Size(max = 255, message = "Tiêu đề tối đa 255 ký tự") String title,
+            @NotBlank(message = "Nội dung báo cáo không được để trống") @Size(max = 10000, message = "Nội dung tối đa 10000 ký tự") String content,
+            @JsonProperty("attachment_url") @Size(max = 1024, message = "Đường dẫn đính kèm tối đa 1024 ký tự") String attachmentUrl) {
+    }
 }

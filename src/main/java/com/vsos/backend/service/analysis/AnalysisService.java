@@ -2,6 +2,7 @@ package com.vsos.backend.service.analysis;
 
 import com.vsos.core.evaluation.AnalysisMetrics;
 import org.springframework.stereotype.Service;
+import com.vsos.backend.security.ProjectAccess;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Isolation;
 
@@ -18,9 +19,11 @@ import com.vsos.backend.repository.common.Row;
 public class AnalysisService {
     private final Db db;
     private final Queries queries;
+    private final ProjectAccess projects;
     private final AnalysisViewService views;
-    public AnalysisService(Db db, Queries queries, AnalysisViewService views) {
-        this.db = db; this.queries = queries; this.views = views;
+    public AnalysisService(Db db, Queries queries, AnalysisViewService views, ProjectAccess projects) {
+        this.db = db; this.queries = queries;
+        this.projects = projects; this.views = views;
     }
     // Scalar projection: dashboard never fetches the whole telemetry for every run.
     static final String SELECT = "SELECT r.id, r.scenario_id, r.scenario_version_id, r.aeb_version_id, "
@@ -90,7 +93,7 @@ public class AnalysisService {
     }
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Map<String, Object> dashboard(Filters filters, int page, int pageSize) {
-        long projectId = queries.currentProject().lng("id");
+        long projectId = projects.currentProject().lng("id");
         StringBuilder sql = new StringBuilder(SELECT);
         List<Object> args = new ArrayList<>(List.of(projectId));
         condition(sql,args,"r.scenario_id",filters.scenarioId());
@@ -126,7 +129,7 @@ public class AnalysisService {
     @Transactional(readOnly = true)
     public Map<String,Object> inspection(long runId) {
         List<Row> found = db.list(SELECT.replace(" AND r.purpose = 'BASELINE'", "")
-                + " AND r.id = ?", queries.currentProject().lng("id"), runId);
+                + " AND r.id = ?", projects.currentProject().lng("id"), runId);
         if (found.isEmpty()) throw new NotFoundException("baseline run");
         Row row = found.get(0);
         return Json.obj("run", item(row), "detail", "COMPLETED".equals(row.str("status")) ? views.failureDetail(runId) : null);
@@ -149,7 +152,7 @@ public class AnalysisService {
         List<Long> optimization = ids(body.optimization()), validation = ids(body.validation());
         List<Long> all = new ArrayList<>(optimization); all.addAll(validation);
         if (new HashSet<>(all).size() != all.size()) throw new InvalidRequestException("Analysis sets overlap");
-        long projectId = queries.currentProject().lng("id");
+        long projectId = projects.currentProject().lng("id");
         Row baseline = queries.baselineVersion(projectId);
         if (baseline == null || baseline.lng("id") != body.baselineId())
             throw new InvalidRequestException("Analysis baseline changed");
@@ -263,7 +266,7 @@ public class AnalysisService {
         if (!Boolean.TRUE.equals(saved.get("baseline_current"))) throw new InvalidRequestException("Analysis baseline changed");
         List<Long> ids = Json.asList(saved.get("runs")).stream().map(Json::asMap)
                 .map(row -> ((Number)row.get("run_id")).longValue()).toList();
-        List<Row> current = selected(ids,queries.currentProject().lng("id"));
+        List<Row> current = selected(ids,projects.currentProject().lng("id"));
         if (current.size() != ids.size()) throw new InvalidRequestException("Analysis source runs are unavailable");
         for (Row row : current) {
             Map<String,Object> recorded = Json.asList(saved.get("runs")).stream().map(Json::asMap)
@@ -275,7 +278,7 @@ public class AnalysisService {
         for (Object value : Json.asList(saved.get("manifests"))) {
             Map<String,Object> manifest = Json.asMap(value);
             Row source = db.first("SELECT telemetry_json, run_config_json FROM simulation_runs WHERE id = ? AND project_id = ?",
-                    ((Number)manifest.get("run_id")).longValue(), queries.currentProject().lng("id"));
+                    ((Number)manifest.get("run_id")).longValue(), projects.currentProject().lng("id"));
             if (source == null || !Objects.equals(manifest.get("artifact_digest"),digest(source.json("telemetry_json")))
                     || !Objects.equals(manifest.get("config_digest"),digest(source.json("run_config_json"))))
                 throw new InvalidRequestException("Analysis source runs changed or telemetry is missing");

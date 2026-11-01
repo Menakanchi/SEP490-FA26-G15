@@ -31,7 +31,7 @@ function ContextChip({ label, value }: { label: string; value?: string | null })
 
 /** Khung một trang VehicSim: thanh trên (breadcrumb + chip ngữ cảnh + tìm kiếm) và tiêu đề trang. */
 export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, children }: VehicSimPageProps) {
-  const { ctx, error } = useVehicSimContext();
+  const { ctx, error, canResetProject, selectProject } = useVehicSimContext();
   const router = useRouter();
   const [search, setSearch] = useState("");
 
@@ -84,6 +84,28 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
       {error && (
         <div role="alert" className="rounded-[16px] border border-solid border-vehicsim-danger/30 bg-vehicsim-danger-bg px-4 py-3 text-[13px] text-vehicsim-danger">
           {error}
+          {canResetProject && <button type="button" onClick={() => selectProject(null)} className="ml-3 font-semibold underline">Chọn lại project</button>}
+        </div>
+      )}
+
+      {!!ctx?.reviewer_projects.length && (
+        <div className="flex flex-wrap items-center gap-3 text-[13px] print:hidden">
+          <label className="flex items-center gap-2 font-semibold">
+            Project đang xem
+            <select
+              aria-label="Project đang xem"
+              value={ctx.project.id}
+              className="max-w-[420px] rounded-full border border-vehicsim-line bg-white px-4 py-2"
+              onChange={(e) => {
+                selectProject(Number(e.target.value));
+              }}
+            >
+              {ctx.reviewer_projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.workspace_name} · {p.name}{p.can_decide ? "" : " (chỉ xem)"}</option>
+              ))}
+            </select>
+          </label>
+          {!ctx.reviewer_can_decide && <span className="text-vehicsim-warn">Project hoặc workspace đã lưu trữ — chỉ xem lịch sử.</span>}
         </div>
       )}
 

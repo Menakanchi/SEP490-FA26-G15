@@ -19,6 +19,30 @@ const BASE_URL = getBaseUrl();
 // ---------------------------------------------------------------------------
 
 const ACCESS_TOKEN_KEY = "vehicsim_access_token";
+const REVIEW_PROJECT_KEY = "vehicsim_reviewer_project";
+let selectedReviewerProject: number | null | undefined;
+
+export function selectReviewerProject(id: number | null): void {
+  selectedReviewerProject = id;
+  if (typeof window === "undefined") return;
+  try {
+    if (id === null) sessionStorage.removeItem(REVIEW_PROJECT_KEY);
+    else sessionStorage.setItem(REVIEW_PROJECT_KEY, String(id));
+  } catch { /* Vẫn chốt project trong bộ nhớ khi trình duyệt chặn storage. */ }
+}
+
+function reviewerProjectHeader(path: string): Record<string, string> {
+  if (typeof window === "undefined" || !path.startsWith("/vehicsim/")) return {};
+  if (selectedReviewerProject === undefined) {
+    try {
+      const stored = Number(sessionStorage.getItem(REVIEW_PROJECT_KEY));
+      selectedReviewerProject = Number.isSafeInteger(stored) && stored > 0 ? stored : null;
+    } catch {
+      selectedReviewerProject = null;
+    }
+  }
+  return selectedReviewerProject ? { "X-VehicSim-Project": String(selectedReviewerProject) } : {};
+}
 
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -29,9 +53,10 @@ export function getStoredToken(): string | null {
   }
 }
 
-export function storeToken(token: string | null): void {
+export function storeToken(token: string | null, preserveProject = false): void {
   if (typeof window === "undefined") return;
   try {
+    if (!token || (!preserveProject && token !== getStoredToken())) selectReviewerProject(null);
     if (token) localStorage.setItem(ACCESS_TOKEN_KEY, token);
     else localStorage.removeItem(ACCESS_TOKEN_KEY);
   } catch {
@@ -79,6 +104,7 @@ export class ApiError extends Error {
 export async function apiBlob(path: string, options?: RequestInit): Promise<Blob> {
   const token = getStoredToken();
   const headers = new Headers(options?.headers);
+  for (const [key, value] of Object.entries(reviewerProjectHeader(path))) headers.set(key, value);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (options?.body) headers.set("Content-Type", "application/json");
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -110,7 +136,7 @@ const inflightGets = new Map<string, Promise<unknown>>();
 function request<T>(path: string, options?: RequestInit): Promise<T> {
   const method = (options?.method ?? "GET").toUpperCase();
   if (method !== "GET" || options?.body) return send<T>(path, options);
-  const key = `${getStoredToken() ?? ""}|${path}`;
+  const key = `${getStoredToken() ?? ""}|${JSON.stringify(reviewerProjectHeader(path))}|${path}`;
   const running = inflightGets.get(key);
   if (running) return running as Promise<T>;
   const call = send<T>(path, options).finally(() => inflightGets.delete(key));
@@ -128,6 +154,7 @@ async function send<T>(
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...reviewerProjectHeader(path),
       ...(options?.headers ?? {}),
     },
   });

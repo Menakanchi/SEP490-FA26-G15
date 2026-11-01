@@ -31,7 +31,10 @@ import java.util.TreeSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
@@ -127,6 +130,8 @@ class VehicSimSecurityTest {
     private TelemetryMetricsService telemetryService;
     @MockitoBean
     private VehicleCatalogService vehicles;
+    @MockitoBean
+    private ProjectAccess projects;
 
     private static CustomUserDetails as(RoleCode code) {
         return new CustomUserDetails(User.builder()
@@ -139,6 +144,9 @@ class VehicSimSecurityTest {
         when(views.context()).thenReturn(Map.of("project", Map.of("id", 1L)));
         when(analysisViews.analysisDataset(1L)).thenReturn(Map.of("scenario", Map.of("id", 1L)));
         when(runs.runFamily(anyLong(), anyLong(), anyLong(), any())).thenReturn(List.of());
+        when(projects.hasProject()).thenReturn(true);
+        when(projects.currentProject()).thenReturn(new com.vsos.backend.repository.common.Row(Map.of("id", 1L)));
+        when(projects.explicitProjectId()).thenReturn(1L);
     }
 
     // ---- các thao tác mẫu, mỗi cái kèm đúng một kiểu quyền
@@ -213,6 +221,16 @@ class VehicSimSecurityTest {
     // ---- luật
 
     @Test
+    void onlyReviewerCanDiscoverProjectsWithoutResolvingTheSelectedProject() throws Exception {
+        for (RoleCode code : RoleCode.values()) {
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/reviewer/projects"), code))
+                    .isEqualTo(code == RoleCode.REVIEWER ? 200 : 403);
+        }
+        verify(views).reviewerProjects();
+        verify(projects, never()).currentProject();
+    }
+
+    @Test
     void everyVehicsimRouteRequiresLogin() throws Exception {
         int checked = 0;
         for (RequestMappingInfo info : handlerMapping.getHandlerMethods().keySet()) {
@@ -277,6 +295,26 @@ class VehicSimSecurityTest {
         for (RoleCode code : List.of(RoleCode.ADMIN, RoleCode.MANAGER, RoleCode.ENGINEER, RoleCode.EXPERIENCER)) {
             assertThat(statusOf(decide(), code)).as("%s không được duyệt", code).isEqualTo(403);
         }
+    }
+
+    /** Reviewer ngoài workspace của project: danh sách rỗng, chi tiết / tải / quyết định 404 — không lộ là có regression. */
+    @Test
+    void reviewerOutsideTheProjectWorkspaceSeesNoRegressionAndCannotDecide() throws Exception {
+        stubServices();
+        when(projects.hasProject()).thenReturn(false);
+        for (String path : List.of("/recommendations", "/regression", "/decisions")) {
+            assertThat(statusOf(request(HttpMethod.GET, BASE + path), RoleCode.REVIEWER)).as(path).isEqualTo(200);
+        }
+        assertThat(mvc.perform(request(HttpMethod.GET, BASE + "/recommendations").with(user(as(RoleCode.REVIEWER))))
+                .andReturn().getResponse().getContentAsString()).isEqualTo("[]");
+        for (String path : List.of("/recommendations/1", "/regression/1", "/regression/1/export.json", "/regression/1/export.csv",
+                "/regression/preview?scenario_id=1&include_variants=true")) {
+            assertThat(statusOf(request(HttpMethod.GET, BASE + path), RoleCode.REVIEWER)).as(path).isEqualTo(404);
+        }
+        assertThat(statusOf(decide(), RoleCode.REVIEWER)).isEqualTo(404);
+        verify(regressionViews, never()).recommendations();
+        verify(regression, never()).preview(anyLong(), anyLong(), any(), anyBoolean());
+        verify(reviewDecisions, never()).decide(anyLong(), anyLong(), anyLong(), any(), any(), any(), anyBoolean());
     }
 
     @Test

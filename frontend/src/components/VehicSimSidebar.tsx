@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { ROLE_LABELS, initials } from "@/components/VehicSimUi";
-import { WORKSPACE_ROLES } from "@/components/workspaceAccess";
+import { MEMBER_ROLES, WORKSPACE_ROLES } from "@/components/workspaceAccess";
 
 /**
  * Sidebar VehicSim theo Figma "VehicSim — FE-12/13/14 UI (Trung)".
@@ -61,6 +61,13 @@ const peopleIcon = (
   </svg>
 );
 
+const taskIcon = (
+  <svg aria-hidden width={18} height={18} viewBox="0 0 18 18" fill="none" className="block size-[18px] text-vehicsim-muted">
+    <rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" strokeWidth="1.6" />
+    <path d="M6 9.2l2 2 4-4.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 const SOON = "Chưa có trong đợt MVP";
 
 const GROUPS: Group[] = [
@@ -101,6 +108,7 @@ const GROUPS: Group[] = [
     children: [
       { label: "Kiểm thử hồi quy", href: "/validation/regression" },
       { label: "Khuyến nghị", href: "/validation/recommendations" },
+      { label: "Lịch sử quyết định", href: "/validation/decisions" },
       { label: "Kho tri thức", note: SOON },
     ],
   },
@@ -111,6 +119,14 @@ const GROUPS: Group[] = [
     href: "/workspace",
     prefix: "/workspace",
     roles: WORKSPACE_ROLES,
+  },
+  {
+    key: "my-work",
+    label: "Nhiệm vụ & báo cáo",
+    icon: taskIcon,
+    href: "/my-work",
+    prefix: "/my-work",
+    roles: MEMBER_ROLES,
   },
   { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), note: `${SOON} (FE-10)` },
 ];

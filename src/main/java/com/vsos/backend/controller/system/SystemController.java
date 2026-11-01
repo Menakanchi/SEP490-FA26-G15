@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
+import java.util.List;
 import com.vsos.backend.security.VehicSimAccess;
 import com.vsos.backend.service.system.BootstrapService;
 import com.vsos.backend.service.system.SystemViewService;
@@ -47,5 +48,12 @@ public class SystemController {
     @GetMapping("/context")
     public Map<String, Object> context() {
         return views.context();
+    }
+
+    @Operation(summary = "Project Reviewer còn được xem, kể cả project/workspace lưu trữ")
+    @GetMapping("/reviewer/projects")
+    public List<Map<String, Object>> reviewerProjects(@AuthenticationPrincipal UserDetails user) {
+        VehicSimAccess.requireReviewer(user);
+        return views.reviewerProjects();
     }
 }

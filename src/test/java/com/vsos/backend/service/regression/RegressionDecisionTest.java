@@ -5,6 +5,7 @@ import com.vsos.backend.dto.regression.RegressionRecords.RegressionTestRow;
 import com.vsos.backend.exception.regression.RegressionExceptions.DecisionNotAllowedException;
 import com.vsos.backend.exception.regression.RegressionExceptions.TestNotFinishedException;
 import com.vsos.backend.repository.regression.RegressionRepository;
+import com.vsos.backend.repository.common.Row;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -55,6 +56,8 @@ class RegressionDecisionTest {
     }
 
     private void arrange() {
+        when(repo.lockReviewAccess(PROJECT, REVIEWER)).thenReturn(new Row(Map.of("project_status", "ACTIVE", "workspace_status", "ACTIVE")));
+        when(repo.lockReviewAccess(PROJECT, CREATOR)).thenReturn(new Row(Map.of("project_status", "ACTIVE", "workspace_status", "ACTIVE")));
         when(repo.lockTest(PROJECT, TEST)).thenReturn(new RegressionTestRow(TEST, PROJECT, 20L, BASELINE, CANDIDATE, 3L, "vehicsim-kinematic-1.0",
                 "t", Map.of(), executionStatus, verdict, 0L, 0L, CREATOR, null, null));
         when(repo.lockRecommendation(TEST)).thenReturn(new RecommendationRow(77L, TEST, CANDIDATE, recommendationStatus, CREATOR, null, null,
@@ -72,7 +75,7 @@ class RegressionDecisionTest {
         verify(repo, never()).archiveVersion(anyLong());
         verify(repo, never()).promoteToBaseline(anyLong());
         verify(repo, never()).rejectVersion(anyLong());
-        verify(repo, never()).saveReview(anyLong(), anyString(), anyLong(), any(), any());
+        verify(repo, never()).saveReview(anyLong(), anyString(), anyString(), anyLong(), any(), any());
     }
 
     @Test
@@ -129,7 +132,7 @@ class RegressionDecisionTest {
         InOrder order = inOrder(repo);
         order.verify(repo).archiveVersion(BASELINE);
         order.verify(repo).promoteToBaseline(CANDIDATE);
-        order.verify(repo).saveReview(eq(77L), eq("ACCEPTED"), eq(REVIEWER), eq("đủ bằng chứng"), any());
+        order.verify(repo).saveReview(eq(77L), eq("ACCEPTED"), eq("ACCEPT"), eq(REVIEWER), eq("đủ bằng chứng"), any());
     }
 
     @Test
@@ -146,6 +149,23 @@ class RegressionDecisionTest {
         verify(repo, never()).archiveVersion(anyLong());
         verify(repo, never()).promoteToBaseline(anyLong());
         verify(repo, never()).rejectVersion(anyLong());
-        verify(repo).saveReview(eq(77L), eq("MORE_TESTS_REQUESTED"), eq(REVIEWER), eq("cần thêm ca"), any());
+        verify(repo).saveReview(eq(77L), eq("MORE_TESTS_REQUESTED"), eq("REQUEST_MORE_TESTS"), eq(REVIEWER), eq("cần thêm ca"), any());
+    }
+
+    @Test
+    void revokedMembershipAndArchivedProjectsOrWorkspacesCannotBeDecided() {
+        for (String field : java.util.List.of("workspace_status", "project_status")) {
+            arrange();
+            Map<String, Object> state = new LinkedHashMap<>(Map.of("project_status", "ACTIVE", "workspace_status", "ACTIVE"));
+            state.put(field, "ARCHIVED");
+            when(repo.lockReviewAccess(PROJECT, REVIEWER)).thenReturn(new Row(state));
+            assertThatThrownBy(() -> service.decide(PROJECT, TEST, REVIEWER, "ACCEPT", "x", null, true))
+                    .isInstanceOf(DecisionNotAllowedException.class).hasMessageContaining("lưu trữ");
+        }
+        when(repo.lockReviewAccess(PROJECT, REVIEWER)).thenReturn(null);
+        assertThatThrownBy(() -> service.decide(PROJECT, TEST, REVIEWER, "ACCEPT", "x", null, true))
+                .isInstanceOf(com.vsos.backend.common.Vs.NotFoundException.class);
+        verify(repo, never()).saveReview(anyLong(), anyString(), anyString(), anyLong(), any(), any());
+        verify(repo, never()).promoteToBaseline(anyLong());
     }
 }

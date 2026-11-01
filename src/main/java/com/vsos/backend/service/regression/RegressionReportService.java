@@ -29,6 +29,7 @@ import com.vsos.backend.common.Csv;
 import com.vsos.backend.common.Vs;
 import com.vsos.backend.common.Vs.NotFoundException;
 import org.springframework.stereotype.Service;
+import com.vsos.backend.security.ProjectAccess;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -59,11 +60,13 @@ public class RegressionReportService {
 
     private final RegressionRepository repo;
     private final Queries queries;
+    private final ProjectAccess projects;
     private final RegressionService regression;
 
-    public RegressionReportService(RegressionRepository repo, Queries queries, RegressionService regression) {
+    public RegressionReportService(RegressionRepository repo, Queries queries, RegressionService regression, ProjectAccess projects) {
         this.repo = repo;
         this.queries = queries;
+        this.projects = projects;
         this.regression = regression;
     }
 
@@ -82,7 +85,7 @@ public class RegressionReportService {
     // ------------------------------------------------------------------ gói kết quả
 
     private RegressionTestRow completedTest(long testId) {
-        RegressionTestRow test = repo.findTest(queries.currentProject().lng("id"), testId);
+        RegressionTestRow test = repo.findTest(projects.currentProject().lng("id"), testId);
         if (test == null) {
             throw new NotFoundException("regression test");
         }
@@ -174,11 +177,10 @@ public class RegressionReportService {
     // ------------------------------------------------------------------ lịch sử quyết định / chuỗi baseline
 
     public DecisionHistory decisionHistory() {
-        long projectId = queries.currentProject().lng("id");
+        long projectId = projects.currentProject().lng("id");
         Map<Long, Row> versions = new LinkedHashMap<>();
         queries.versions(projectId, false).forEach(v -> versions.put(v.lng("id"), v));
         List<DecidedRecommendation> decided = repo.decidedRecommendations(projectId);
-        Map<Long, String> names = queries.displayNames(decided.stream().map(DecidedRecommendation::reviewedBy).toList());
 
         List<DecisionItem> decisions = new ArrayList<>();
         Map<Long, DecisionItem> promotions = new LinkedHashMap<>();
@@ -189,13 +191,13 @@ public class RegressionReportService {
                     d.testId(),
                     label(versions, d.baselineVersionId()),
                     label(versions, d.candidateVersionId()),
-                    RegressionCodes.decisionOf(d.status()),
-                    names.get(d.reviewedBy()),
+                    d.decision(),
+                    d.reviewerName(),
                     d.reviewedAt() == null ? null : Vs.iso(d.reviewedAt()),
                     d.reviewNotes(),
-                    d.reviewConditions());
+                    d.reviewConditions(), d.decisionId(), d.reviewedBy(), d.source());
             decisions.add(item);
-            if ("ACCEPTED".equals(d.status())) {
+            if ("ACCEPT".equals(d.decision())) {
                 promotions.put(d.candidateVersionId(), item);
             }
         }
