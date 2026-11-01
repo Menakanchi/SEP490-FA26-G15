@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { ROLE_LABELS, initials } from "@/components/VehicSimUi";
 import { WORKSPACE_ROLES } from "@/components/workspaceAccess";
+import { JourneyNav, ProjectSwitcher } from "@/components/project/ProjectShell";
 
 /**
  * Sidebar VehicSim theo Figma "VehicSim — FE-12/13/14 UI (Trung)".
@@ -128,6 +129,12 @@ export function VehicSimSidebar() {
         <span className="text-[19px] font-extrabold tracking-[-0.38px] text-vehicsim-ink">VehicSim</span>
       </Link>
 
+      {user?.roleCode === "EXPERIENCER" ? (
+        <>
+          <ProjectSwitcher />
+          <JourneyNav />
+        </>
+      ) : (
       <nav className="flex flex-col gap-[2px]">
         {GROUPS.filter((g) => !g.roles || g.roles.includes(user?.roleCode ?? "")).map((g) => {
           const open = !!g.prefix && (g.exact ? pathname === g.prefix : pathname.startsWith(g.prefix));
@@ -186,6 +193,7 @@ export function VehicSimSidebar() {
           );
         })}
       </nav>
+      )}
 
       <div className="flex-1" />
 

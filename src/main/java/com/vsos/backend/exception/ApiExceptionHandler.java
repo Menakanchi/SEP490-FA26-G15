@@ -1,6 +1,7 @@
 package com.vsos.backend.exception;
 
 import com.vsos.backend.common.Vs;
+import com.vsos.backend.exception.project.ProjectException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.RedisConnectionFailureException;
@@ -34,6 +35,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static ResponseEntity<Map<String, String>> detail(HttpStatusCode status, String message) {
         return ResponseEntity.status(status).body(Map.of("detail", message));
+    }
+
+    @ExceptionHandler(ProjectException.class)
+    public ResponseEntity<Map<String, String>> handleProject(ProjectException e) {
+        return ResponseEntity.status(e.getError().getStatus()).body(Map.of("code", e.getError().name(), "detail", e.getMessage()));
     }
 
     @ExceptionHandler(ResponseStatusException.class)

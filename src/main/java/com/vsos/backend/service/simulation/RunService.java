@@ -447,7 +447,7 @@ public class RunService {
         return Path.of(System.getProperty("user.dir"));
     }
 
-    Path runDir(long runId) {
+    public Path runDir(long runId) {
         Path root = Path.of(props.dataRoot());
         if (!root.isAbsolute()) {
             root = repoRoot().resolve(root);

@@ -30,7 +30,7 @@ public class SystemViewService {
 
     public Map<String, Object> context() {
         Row project = queries.currentProject();
-        Row workspace = db.first("SELECT * FROM workspaces WHERE id = ?", project.lng("workspace_id"));
+        Row workspace = db.first("SELECT * FROM workspaces WHERE id = ?", project.getLong("workspace_id"));
         Row vehicle = queries.activeVehicle(project.lng("id"));
         List<Row> versions = queries.versions(project.lng("id"), false);
         Row baseline = versions.stream().filter(v -> "BASELINE".equals(v.str("status"))).findFirst().orElse(null);

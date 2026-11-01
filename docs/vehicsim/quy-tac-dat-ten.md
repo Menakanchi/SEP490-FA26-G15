@@ -42,6 +42,7 @@ Cột FE theo bảng §1.7 cũ. Bảng FE trong Report 7 đã đổi (có FE-15)
 | `auth` | Đăng nhập, đăng ký, OTP, quên / đổi mật khẩu | FE-01 |
 | `user` | Quản lý người dùng, role, hồ sơ cá nhân | FE-02, FE-03 |
 | `workspace` | Workspace, thành viên, task, báo cáo task | FE-04 |
+| `project` | Project cá nhân của EXPERIENCER: tạo, sửa, lưu trữ, xoá, project đang mở | FE-04 |
 | `notification` | Thông báo trong ứng dụng | FE-04 |
 | `vehicle` | Danh mục mẫu xe CARLA, cảm biến | FE-05 |
 | `scenario` | Mô tả → Scenario IR, họ kịch bản, phiên bản, biến thể, `.xosc` | FE-06, FE-07 |

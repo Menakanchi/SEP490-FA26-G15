@@ -317,7 +317,21 @@ không được đưa lại vào API hiện tại; không giả lập sáu categ
   workspace, thêm Engineer/Reviewer; chỉ đọc phần kỹ thuật), `ENGINEER` (làm toàn bộ quy trình), `REVIEWER`
   (chỉ duyệt recommendation), `EXPERIENCER` (tự đăng ký: project cá nhân, mô phỏng, tối ưu, regression; không
   recommendation, không duyệt). Role khác EXPERIENCER do Admin cấp bằng `scripts/CreateAdmin.java --role …`
-  (API quản lý user là TD-28). Lọc project theo workspace chưa làm (TD-30). App **public** nên giữ tự đăng ký.
+  (API quản lý user là TD-28). EXPERIENCER làm việc trong project cá nhân (mục dưới); role khác vẫn dùng chung project nhóm,
+  lọc project theo workspace chưa làm (TD-30). App **public** nên giữ tự đăng ký.
+
+## Project cá nhân của EXPERIENCER (31/10/2026)
+
+- Không đổi schema: project cá nhân là `projects.workspace_id IS NULL`, trạng thái `ACTIVE`/`ARCHIVED`; tên duy nhất theo người nhờ
+  `uq_projects_personal_name`. Chi tiết nghiệp vụ, lộ trình và bằng chứng ở
+  [exec plan](../exec-plans/active/2026-10-31-experiencer-project-ca-nhan.md).
+- API `/api/v1/vehicsim/projects` (`ProjectController`, chỉ EXPERIENCER): danh sách + hạn mức 3 project hoạt động, xe chọn được, tạo
+  (kèm baseline AEB v1.0), xem, sửa, lưu trữ / bỏ lưu trữ, xoá vĩnh viễn (gõ đúng tên; xoá dữ liệu con trong một transaction rồi xoá
+  thư mục run).
+- Project đang mở: frontend gửi header `X-VehicSim-Project`; `security/ProjectScope` (bean theo request) chọn project cho
+  `Queries.currentProject()`. EXPERIENCER chỉ mở được project `ACTIVE` của mình, không gửi header thì mở project hoạt động cập nhật gần
+  nhất; role khác bỏ qua header và giữ project nhóm `ACTIVE` đầu tiên.
+- Lỗi project trả `{"code": "<TÊN_LỖI>", "detail": "<câu tiếng Việt>"}` (`exception/project/ProjectError`); lỗi khác giữ `{"detail"}`.
 
 ## Bất biến và máy kiểm
 
@@ -345,6 +359,9 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Mọi tham số AEB được simulator dùng; seed Java khớp SQL; AEB có đúng 4 tham số chỉnh được | `AebParameterSeedTest#everySeededParameterIsUsedByTheSimulator`, `AebParameterSeedTest#javaParameterSeedMatchesSqlSeed`, `SimulatorBehaviorTest#aebHasExactlyTheFourTunableParameters` |
 | Mọi route `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi được, MANAGER chỉ đọc | `VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
 | Chỉ REVIEWER quyết định recommendation; REVIEWER không chạy mô phỏng; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |
+| EXPERIENCER chỉ mở project `ACTIVE` của chính mình (project người khác, project nhóm, project lưu trữ bị chặn); role khác bỏ qua header, giữ project nhóm | `ProjectScopeTest#theHeaderMustPointToAnActiveProjectOfTheExperiencer`, `ProjectScopeTest#otherRolesKeepTheTeamProjectAndIgnoreTheHeader` |
+| API project cá nhân chỉ cho EXPERIENCER, cần đăng nhập, ghi qua hạn mức; lỗi mang tên lỗi và câu tiếng Việt | `ProjectSecurityTest#onlyExperiencersReachPersonalProjects`, `ProjectSecurityTest#writesHonourTheQuotaButReadsDoNot`, `ProjectSecurityTest#projectErrorsCarryTheirNameAndVietnameseDetail` |
+| Tối đa 3 project hoạt động; có lượt chạy thì không đổi xe; còn việc chạy thì không lưu trữ / xoá; xoá vĩnh viễn phải gõ đúng tên | `ProjectServiceTest#theActiveLimitBlocksCreateAndUnarchive`, `ProjectServiceTest#theVehicleIsLockedOnceTheProjectHasRuns`, `ProjectServiceTest#runningWorkBlocksArchiveAndDelete`, `ProjectServiceTest#deleteNeedsTheExactNameThenRemovesRowsAndRunFolders` |
 | Người tạo khuyến nghị không tự duyệt | `RegressionDecisionTest#theAuthorOfTheRecommendationCannotApproveIt` |
 | Accept hạ baseline cũ trước rồi nâng candidate; Reject giữ baseline; Request more tests không đổi version | `RegressionDecisionTest#acceptDemotesTheOldBaselineBeforePromotingTheCandidate`, `RegressionDecisionTest#rejectMarksTheCandidateButKeepsTheBaseline`, `RegressionDecisionTest#requestingMoreTestsChangesNoVersion` |
 | Candidate chạy đúng seed baseline | _chưa có test_ (TD-33) |

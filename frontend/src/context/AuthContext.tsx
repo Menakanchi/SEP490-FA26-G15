@@ -10,6 +10,7 @@ import {
   getStoredToken,
   postLogin,
   postRegister,
+  setSelectedProjectId,
   storeToken,
   updateMyProfile,
   verifyRegistration,
@@ -89,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearSession = useCallback(() => {
     storeToken(null);
+    setSelectedProjectId(null);
     setToken(null);
     setUser(null);
   }, []);
@@ -185,6 +187,6 @@ export function useAuth(): AuthContextType {
 
 /** Trang đích sau khi đăng nhập, theo role. */
 export function homeFor(role: Role): string {
-  void role; // mọi vai trò vào VehicSim; quyền ghi / duyệt do backend + `canWrite` / `canDecide` quyết định
-  return "/";
+  // EXPERIENCER bắt đầu từ danh sách project cá nhân; role khác vào dashboard. Quyền ghi / duyệt do backend + `canWrite` / `canDecide` quyết định.
+  return role === "experience" ? "/projects" : "/";
 }

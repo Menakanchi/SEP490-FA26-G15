@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { FlowBar } from "@/components/FlowBar";
+import { JourneyBar } from "@/components/project/ProjectShell";
 import { NotificationBell } from "@/components/NotificationBell";
 
 export type Crumb = { label: string; href?: string };
@@ -31,7 +32,7 @@ function ContextChip({ label, value }: { label: string; value?: string | null })
 
 /** Khung một trang VehicSim: thanh trên (breadcrumb + chip ngữ cảnh + tìm kiếm) và tiêu đề trang. */
 export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, children }: VehicSimPageProps) {
-  const { ctx, error } = useVehicSimContext();
+  const { ctx, error, isExperiencer } = useVehicSimContext();
   const router = useRouter();
   const [search, setSearch] = useState("");
 
@@ -62,7 +63,11 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
           })}
         </nav>
         <div className="flex items-center gap-2">
-          <ContextChip label="Không gian" value={ctx?.workspace?.name} />
+          {isExperiencer ? (
+            <ContextChip label="Project" value={ctx?.project.name} />
+          ) : (
+            <ContextChip label="Không gian" value={ctx?.workspace?.name} />
+          )}
           <ContextChip label="Phương tiện" value={ctx?.vehicle?.name} />
           <ContextChip
             label="Hệ thống"
@@ -87,7 +92,7 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
         </div>
       )}
 
-      {step !== undefined && <FlowBar active={Array.isArray(step) ? step : [step]} />}
+      {isExperiencer ? <JourneyBar /> : step !== undefined && <FlowBar active={Array.isArray(step) ? step : [step]} />}
 
       <div className="flex items-end justify-between gap-6">
         <div className="flex flex-col gap-[10px]">
