@@ -3,7 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { ApiError, setSelectedProjectId } from "@/services/api";
+import { ApiError, getSelectedProjectId, setSelectedProjectId } from "@/services/api";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { VehicSimContextData as Ctx } from "@/types/vehicsim";
 
@@ -16,24 +16,14 @@ interface VehicSimContextValue {
   /** Chỉ REVIEWER được Accept / Reject recommendation (ADR-035). */
   canDecide: boolean;
   isExperiencer: boolean;
-  needsProject: boolean;
+  choosing: boolean;
   projectNotice: string | null;
   clearProjectNotice: () => void;
   openProject: (id: number | null, target?: string) => void;
 }
 
 const WRITE_ROLES = ["ADMIN", "ENGINEER", "EXPERIENCER"];
-const LOST_PROJECT = ["PROJECT_NOT_FOUND", "PROJECT_NOT_YOURS", "PROJECT_ARCHIVED"];
-
-async function loadContext(): Promise<{ ctx: Ctx; notice: string | null }> {
-  try {
-    return { ctx: await vehicsimApi.context(), notice: null };
-  } catch (err) {
-    if (!(err instanceof ApiError) || !LOST_PROJECT.includes(err.code ?? "")) throw err;
-    setSelectedProjectId(null);
-    return { ctx: await vehicsimApi.context(), notice: err.message };
-  }
-}
+const LOST_PROJECT = ["PROJECT_NOT_FOUND", "PROJECT_NOT_YOURS", "PROJECT_ARCHIVED", "NO_PROJECT_OPEN"];
 
 const VehicSimCtx = createContext<VehicSimContextValue>({
   ctx: null,
@@ -42,7 +32,7 @@ const VehicSimCtx = createContext<VehicSimContextValue>({
   canWrite: false,
   canDecide: false,
   isExperiencer: false,
-  needsProject: false,
+  choosing: false,
   projectNotice: null,
   clearProjectNotice: () => {},
   openProject: () => {},
@@ -53,30 +43,39 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
   const router = useRouter();
   const [ctx, setCtx] = useState<Ctx | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [needsProject, setNeedsProject] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const [projectNotice, setProjectNotice] = useState<string | null>(null);
   const latest = useRef(0);
   const { user } = useAuth();
-  const isExperiencer = user?.roleCode === "EXPERIENCER";
+  const role = user?.roleCode;
+  const isExperiencer = role === "EXPERIENCER";
   const canWrite = WRITE_ROLES.includes(user?.roleCode ?? "");
   const canDecide = user?.roleCode === "REVIEWER";
 
   const refresh = useCallback(async () => {
     const call = ++latest.current;
+    if (isExperiencer && !getSelectedProjectId()) {
+      setCtx(null);
+      setChoosing(true);
+      setError(null);
+      return;
+    }
     try {
-      const loaded = await loadContext();
+      const loaded = await vehicsimApi.context();
       if (call !== latest.current) return;
-      if (isExperiencer) setSelectedProjectId(loaded.ctx.project.id);
-      if (loaded.notice) setProjectNotice(loaded.notice);
-      setCtx(loaded.ctx);
-      setNeedsProject(false);
+      setCtx(loaded);
+      setChoosing(false);
       setError(null);
     } catch (err) {
       if (call !== latest.current) return;
-      const noProject = err instanceof ApiError && err.code === "NO_PROJECT_OPEN";
-      if (noProject) setCtx(null);
-      setNeedsProject(noProject);
-      setError(noProject ? null : err instanceof Error ? err.message : "Không tải được ngữ cảnh VehicSim");
+      if (isExperiencer && err instanceof ApiError && LOST_PROJECT.includes(err.code ?? "")) {
+        setSelectedProjectId(null);
+        setCtx(null);
+        setChoosing(true);
+        setProjectNotice(err.message);
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Không tải được ngữ cảnh VehicSim");
     }
   }, [isExperiencer]);
 
@@ -95,12 +94,12 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- tải ngữ cảnh một lần khi vào khu VehicSim
-    void refresh();
-  }, [refresh]);
+    if (role) void refresh();
+  }, [refresh, role]);
 
   return (
     <VehicSimCtx.Provider
-      value={{ ctx, error, refresh, canWrite, canDecide, isExperiencer, needsProject, projectNotice, clearProjectNotice, openProject }}
+      value={{ ctx, error, refresh, canWrite, canDecide, isExperiencer, choosing, projectNotice, clearProjectNotice, openProject }}
     >
       {children}
     </VehicSimCtx.Provider>

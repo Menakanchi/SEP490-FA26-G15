@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useId, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
-import { Archive, ArchiveRestore, Check, Ellipsis, Loader2, Settings, Trash2, TriangleAlert, X } from "lucide-react";
+import { Archive, ArchiveRestore, Ellipsis, Loader2, Settings, Trash2, TriangleAlert, X } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -40,28 +40,27 @@ export function ProjectAvatar({ id, name, size = "md" }: { id: number; name: str
   );
 }
 
-const LABEL: Record<JourneyStatus, string> = { DONE: "Đã xong", RUNNING: "Đang chạy", FAILED: "Có lỗi", TODO: "Chưa làm" };
-
-/** Dấu trạng thái một bước: xong (xanh), đang chạy (xoay), lỗi (đỏ), bước tiếp theo (đen) hoặc chưa làm (xám). */
 export function StepStatusIcon({ status, n, current, size = "md" }: { status: JourneyStatus; n: number; current?: boolean; size?: "sm" | "md" }) {
   const box = size === "sm" ? "size-[22px] text-[11px]" : "size-9 text-[14px]";
   const icon = size === "sm" ? "size-3" : "size-4";
+  const label = status === "RUNNING" ? "đang chạy" : status === "FAILED" ? "có lượt chạy lỗi" : current ? "gợi ý làm tiếp" : "";
   return (
     <span
       role="img"
-      aria-label={`Bước ${n}: ${current && status === "TODO" ? "bước tiếp theo" : LABEL[status]}`}
+      aria-label={`Bước ${n}${label && `: ${label}`}`}
       className={cx(
         "flex shrink-0 items-center justify-center rounded-full font-bold",
         box,
-        status === "DONE" && "bg-vehicsim-ok text-white",
-        status === "RUNNING" && "bg-vehicsim-decision-bg text-vehicsim-decision",
-        status === "FAILED" && "bg-vehicsim-danger-bg text-vehicsim-danger",
-        status === "TODO" && (current ? "bg-vehicsim-ink text-white" : "border border-solid border-vehicsim-line-strong bg-white text-vehicsim-muted"),
+        status === "RUNNING"
+          ? "bg-vehicsim-decision-bg text-vehicsim-decision"
+          : status === "FAILED"
+            ? "bg-vehicsim-danger-bg text-vehicsim-danger"
+            : current
+              ? "bg-vehicsim-ink text-white"
+              : "border border-solid border-vehicsim-line-strong bg-white text-vehicsim-ink",
       )}
     >
-      {status === "DONE" ? (
-        <Check className={icon} strokeWidth={3} />
-      ) : status === "RUNNING" ? (
+      {status === "RUNNING" ? (
         <Loader2 className={cx(icon, "motion-safe:animate-spin")} />
       ) : status === "FAILED" ? (
         <TriangleAlert className={icon} />
@@ -276,7 +275,7 @@ const COPY: Record<ProjectAction, { title: string; body: string; confirm: string
 const RUN = { archive: vehicsimApi.archiveProject, unarchive: vehicsimApi.unarchiveProject };
 
 export function useProjectActions(onDone: (kind: ProjectAction) => void | Promise<void>) {
-  const { ctx, needsProject, refresh, openProject } = useVehicSimContext();
+  const { ctx, openProject } = useVehicSimContext();
   const [action, setAction] = useState<{ kind: ProjectAction; project: ProjectItem } | null>(null);
   const [confirmName, setConfirmName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -301,7 +300,6 @@ export function useProjectActions(onDone: (kind: ProjectAction) => void | Promis
       setAction(null);
       setNotice(`${COPY[kind].done} “${project.name}”.`);
       if (project.id === ctx?.project.id && kind !== "unarchive") openProject(null);
-      else if (needsProject) await refresh();
       await onDone(kind);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Thao tác không thành công");
@@ -361,7 +359,7 @@ export function useProjectActions(onDone: (kind: ProjectAction) => void | Promis
 const itemCls = "flex w-full items-center gap-3 rounded-[10px] px-3 py-2 text-left text-[14px] font-medium disabled:cursor-not-allowed disabled:opacity-50";
 
 /** Menu "⋯" của một project: cài đặt và các thao tác vòng đời, để chúng không chiếm chỗ trên màn chính. */
-export function ProjectMenu({ project, onAction, limitReason }: { project: ProjectItem; onAction: (kind: ProjectAction) => void; limitReason?: string }) {
+export function ProjectMenu({ project, onAction }: { project: ProjectItem; onAction: (kind: ProjectAction) => void }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -394,7 +392,7 @@ export function ProjectMenu({ project, onAction, limitReason }: { project: Proje
               <Archive className="size-4" /> Lưu trữ
             </button>
           ) : (
-            <button type="button" role="menuitem" disabled={!!limitReason} title={limitReason} onClick={() => run("unarchive")} className={cx(itemCls, "text-vehicsim-ink hover:bg-vehicsim-soft")}>
+            <button type="button" role="menuitem" onClick={() => run("unarchive")} className={cx(itemCls, "text-vehicsim-ink hover:bg-vehicsim-soft")}>
               <ArchiveRestore className="size-4" /> Bỏ lưu trữ
             </button>
           )}

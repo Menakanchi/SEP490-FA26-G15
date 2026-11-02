@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -39,10 +40,12 @@ public class ProjectController {
     private final ProjectService projects;
     private final VehicSimAccess access;
 
-    @Operation(summary = "Danh sách project cá nhân và hạn mức project đang hoạt động")
+    @Operation(summary = "Danh sách project cá nhân theo trạng thái, tìm theo tên, phân trang")
     @GetMapping
-    public ProjectList list(@AuthenticationPrincipal UserDetails user) {
-        return projects.list(VehicSimAccess.userId(user));
+    public ProjectList list(@RequestParam(defaultValue = "ACTIVE") String status, @RequestParam(defaultValue = "") String q,
+                            @RequestParam(defaultValue = "1") int page, @RequestParam(name = "page_size", defaultValue = "9") int pageSize,
+                            @AuthenticationPrincipal UserDetails user) {
+        return projects.list(VehicSimAccess.userId(user), status, q, page, pageSize);
     }
 
     @Operation(summary = "Xe chọn được khi tạo hoặc sửa project")

@@ -29,6 +29,7 @@ import type {
   ProjectJourney,
   ProjectList,
   ProjectRequest,
+  ProjectStatus,
   RecommendationDetail,
   RecommendationItem,
   RegressionDetail,
@@ -69,7 +70,8 @@ export const vehicsimApi = {
   analysisHandoff: (id: number) => apiRequest<import("@/types/vehicsim").AnalysisSelection>(`/vehicsim/analysis/datasets/${id}/handoff`),
   context: () => apiRequest<VehicSimContextData>("/vehicsim/context"),
 
-  projects: () => apiRequest<ProjectList>("/vehicsim/projects"),
+  projects: (params: { status?: ProjectStatus; q?: string; page?: number; pageSize?: number } = {}) =>
+    apiRequest<ProjectList>(`/vehicsim/projects${query({ status: params.status, q: params.q || undefined, page: params.page, page_size: params.pageSize })}`),
   project: (id: number) => apiRequest<ProjectItem>(`/vehicsim/projects/${id}`),
   projectJourney: (id: number) => apiRequest<ProjectJourney>(`/vehicsim/projects/${id}/journey`),
   projectVehicles: () => apiRequest<VehicleOption[]>("/vehicsim/projects/vehicle-options"),

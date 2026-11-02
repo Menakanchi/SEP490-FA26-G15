@@ -3,17 +3,17 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowRight, Car, Check, ChevronDown, ChevronRight, FolderOpen, House, Loader2, Plus } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronRight, FolderOpen, Loader2, Plus } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { cx } from "@/components/VehicSimUi";
-import { JOURNEY_STEPS, STEP_NUMBER, nextAction, stepDefinition, stepHref, stepOfPath, stepSummary, statusOf } from "@/components/project/journey";
+import { FINISHED_TEXT, JOURNEY_STEPS, nextAction, stepHref, stepOfPath, statusOf } from "@/components/project/journey";
 import { useJourney } from "@/components/project/ProjectJourneyContext";
 import { ProjectAvatar, StepStatusIcon, ToastStack, useDismiss, type ToastMessage } from "@/components/project/ProjectUi";
 import { vehicsimApi } from "@/services/vehicsim";
 
 /*
  * Các mảnh project cắm vào khung chung của app khi người dùng là EXPERIENCER: cổng khu làm việc và màn chào mừng,
- * thanh hành trình đầu trang, menu hành trình và nút đổi project trên sidebar.
+ * thanh hành trình đầu trang và nút đổi project trên sidebar.
  */
 
 /** Minh hoạ tình huống người đi bộ băng ngang: xe tiến tới vạch qua đường, người bước ra, AEB phanh. Chỉ trang trí. */
@@ -107,43 +107,75 @@ export function Welcome() {
 
 const OPEN_PATHS = ["/projects", "/profile"];
 
+const OTHER_ROLE_PATHS = [
+  { prefix: "/validation/recommendations", title: "Project cá nhân không có khuyến nghị", detail: "Bạn tự xem kết luận kiểm chứng và tự chọn ứng viên làm baseline ở màn Kết luận vòng." },
+  { prefix: "/workspace", title: "Workspace dành cho Manager", detail: "Tài khoản Experiencer làm việc trong project cá nhân của mình." },
+];
+
+function OtherRolePage({ title, detail, href, cta }: { title: string; detail: string; href: string; cta: string }) {
+  return (
+    <div className="flex flex-1 items-center justify-center p-9">
+      <div className="flex max-w-[520px] flex-col items-start gap-4 rounded-[24px] border border-solid border-vehicsim-line bg-white p-8 shadow-vehicsim-card">
+        <h1 className="text-[22px] font-bold text-vehicsim-ink">{title}</h1>
+        <p className="text-[15px] leading-[1.55] text-vehicsim-muted">{detail}</p>
+        <Link href={href} className="flex items-center gap-2 rounded-full bg-vehicsim-ink px-5 py-3 text-[14px] font-semibold text-white hover:bg-black/80">
+          {cta}
+          <ArrowRight aria-hidden className="size-4" />
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 /**
- * Cổng của khu làm việc: EXPERIENCER chưa có project đang hoạt động thì thấy màn chào mừng (trừ các trang quản lý project / hồ sơ);
- * role khác đi thẳng vào nội dung như cũ. Cũng là nơi hiện thông báo đổi project và mốc hành trình vừa xong.
+ * Cổng của khu làm việc: EXPERIENCER chưa chọn project thì được đưa về "Project của tôi" (trừ các trang quản lý project / hồ sơ);
+ * role khác đi thẳng vào nội dung như cũ. Cũng là nơi hiện thông báo về project và việc vừa chạy xong.
  */
 export function ProjectGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { ctx, error, isExperiencer, needsProject, projectNotice, clearProjectNotice } = useVehicSimContext();
-  const { journey, milestone, clearMilestone } = useJourney();
+  const router = useRouter();
+  const { ctx, error, isExperiencer, choosing, projectNotice, clearProjectNotice } = useVehicSimContext();
+  const { journey, finished, clearFinished } = useJourney();
   const open = !isExperiencer || pathname === "/" || OPEN_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  const otherRole = isExperiencer ? OTHER_ROLE_PATHS.find((p) => pathname.startsWith(p.prefix)) : undefined;
+  const last = journey?.counts.last_regression_id ?? null;
+  const mustChoose = choosing && !open;
+
+  useEffect(() => {
+    if (mustChoose) router.replace("/projects");
+  }, [mustChoose, router]);
 
   const toasts: ToastMessage[] = [];
   if (projectNotice) {
     toasts.push({
       id: "project-notice",
       tone: "warn",
-      text: `${projectNotice} Đã chuyển sang project đang hoạt động gần nhất của bạn.`,
+      text: `${projectNotice} Chọn một project để tiếp tục.`,
       onClose: clearProjectNotice,
     });
   }
-  if (milestone && journey) {
-    const step = stepDefinition(milestone);
+  if (finished && journey) {
     const next = nextAction(journey);
     toasts.push({
-      id: `milestone-${milestone}`,
+      id: `finished-${finished}`,
       tone: "ok",
-      text: `Xong bước ${STEP_NUMBER[step.n - 1]} ${step.title}.`,
-      action: { label: `Tiếp: ${next.cta} →`, href: next.href },
-      onClose: clearMilestone,
+      text: FINISHED_TEXT[finished] ?? "",
+      action: { label: `${next.cta} →`, href: next.href },
+      onClose: clearFinished,
     });
   }
 
   return (
     <main key={open ? "open" : (ctx?.project.id ?? "none")} className="flex min-w-0 flex-1">
-      {open || ctx || error ? (
+      {otherRole ? (
+        <OtherRolePage
+          title={otherRole.title}
+          detail={otherRole.detail}
+          href={ctx && last !== null ? `/projects/${ctx.project.id}/rounds/${last}` : ctx ? `/projects/${ctx.project.id}` : "/projects"}
+          cta={ctx && last !== null ? "Mở Kết luận vòng" : ctx ? "Về trang chủ project" : "Về Project của tôi"}
+        />
+      ) : open || ctx || error ? (
         children
-      ) : needsProject ? (
-        <Welcome />
       ) : (
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="size-6 animate-spin text-vehicsim-muted" />
@@ -197,7 +229,7 @@ export function JourneyBar() {
       </ol>
       {next && next.key === here && next.href === pathname ? (
         <span className="shrink-0 rounded-full bg-vehicsim-decision-bg px-4 py-[10px] text-[13px] font-semibold text-vehicsim-decision">
-          Bạn đang ở bước tiếp theo
+          Bạn đang ở bước gợi ý
         </span>
       ) : (
         next && (
@@ -214,96 +246,13 @@ export function JourneyBar() {
   );
 }
 
-function NavLink({ href, icon, label, active }: { href: string; icon: React.ReactNode; label: string; active: boolean }) {
-  return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={cx(
-        "flex items-center gap-3 rounded-[12px] px-3 py-[9px] text-[14px]",
-        active ? "bg-vehicsim-bg font-bold text-vehicsim-ink" : "font-medium text-vehicsim-muted hover:bg-vehicsim-soft",
-      )}
-    >
-      <span className="flex size-[18px] items-center justify-center">{icon}</span>
-      {label}
-    </Link>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <span className="px-3 pb-1 pt-3 text-[11px] font-bold uppercase tracking-[0.6px] text-vehicsim-muted">{children}</span>;
-}
-
-/** Menu của EXPERIENCER: trang chủ project, 5 bước hành trình kèm trạng thái thật, rồi các mục chung. */
-export function JourneyNav() {
-  const pathname = usePathname();
-  const { ctx } = useVehicSimContext();
-  const { journey } = useJourney();
-  const projectId = ctx?.project.id ?? null;
-  const here = stepOfPath(pathname, projectId);
-  const home = projectId !== null ? `/projects/${projectId}` : null;
-
-  return (
-    <nav aria-label="Menu project" className="flex flex-col gap-[2px]">
-      {home && <NavLink href={home} icon={<House className="size-[18px]" />} label="Trang chủ project" active={pathname === home} />}
-
-      {journey && (
-        <>
-          <SectionLabel>Hành trình · vòng {journey.round}</SectionLabel>
-          <ol className="flex flex-col gap-[2px]">
-            {JOURNEY_STEPS.map((step) => {
-              const active = here === step.key;
-              return (
-                <li key={step.key}>
-                  <Link
-                    href={stepHref(step.key, journey)}
-                    aria-current={active ? "page" : undefined}
-                    className={cx("flex items-center gap-3 rounded-[12px] px-3 py-2", active ? "bg-vehicsim-bg" : "hover:bg-vehicsim-soft")}
-                  >
-                    <StepStatusIcon status={statusOf(journey, step.key)} n={step.n} current={journey.next === step.key} size="sm" />
-                    <span className="flex min-w-0 flex-col">
-                      <span className={cx("text-[14px]", active ? "font-bold text-vehicsim-ink" : "font-semibold text-vehicsim-ink")}>
-                        {step.title}
-                      </span>
-                      <span className="truncate text-[12px] text-vehicsim-muted">{stepSummary(step.key, journey)}</span>
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ol>
-        </>
-      )}
-
-      <SectionLabel>Khác</SectionLabel>
-      <NavLink href="/projects" icon={<FolderOpen className="size-[18px]" />} label="Project của tôi" active={pathname === "/projects" || pathname === "/projects/new"} />
-      <NavLink href="/vehicles" icon={<Car className="size-[18px]" />} label="Phương tiện" active={pathname.startsWith("/vehicles")} />
-    </nav>
-  );
-}
-
-export function PersonalProjectsLink() {
-  const pathname = usePathname();
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    vehicsimApi
-      .projects()
-      .then((list) => setCount(list.items.length))
-      .catch(() => setCount(0));
-  }, []);
-
-  if (count === 0) return null;
-  return <NavLink href="/projects" icon={<FolderOpen className="size-[18px]" />} label={`Project cá nhân (${count})`} active={pathname.startsWith("/projects")} />;
-}
-
 type Option = { id: number; name: string };
 
 const itemCls = "flex items-center gap-3 rounded-[10px] px-2 py-2 text-left text-[14px] hover:bg-vehicsim-soft";
 
 /** Nút project đang mở trên sidebar; mở ra menu đổi project, quản lý và tạo mới. */
 export function ProjectSwitcher() {
-  const { ctx, needsProject, openProject } = useVehicSimContext();
+  const { ctx, choosing, openProject } = useVehicSimContext();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Option[] | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -314,8 +263,8 @@ export function ProjectSwitcher() {
   useEffect(() => {
     if (!open) return;
     vehicsimApi
-      .projects()
-      .then((list) => setItems(list.items.filter((p) => p.status === "ACTIVE")))
+      .projects({ status: "ACTIVE", pageSize: 50 })
+      .then((list) => setItems(list.items))
       .catch(() => setItems([]));
   }, [open]);
 
@@ -337,7 +286,7 @@ export function ProjectSwitcher() {
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-[11px] font-semibold uppercase tracking-[0.6px] text-vehicsim-muted">Project đang mở</span>
           <span className="truncate text-[14px] font-bold text-vehicsim-ink">
-            {current?.name ?? (needsProject ? "Chưa có project" : "Đang tải…")}
+            {current?.name ?? (choosing ? "Chưa chọn project" : "Đang tải…")}
           </span>
         </span>
         <ChevronDown aria-hidden className={cx("size-4 shrink-0 text-vehicsim-muted transition", open && "rotate-180")} />

@@ -16,21 +16,14 @@ export default function AddProjectPage() {
   const router = useRouter();
   const { openProject } = useVehicSimContext();
   const [vehicles, setVehicles] = useState<VehicleOption[] | null>(null);
-  const [limitReached, setLimitReached] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
-    Promise.all([vehicsimApi.projectVehicles(), vehicsimApi.projects()])
-      .then(([options, list]) => {
-        setVehicles(options);
-        if (list.active_count >= list.active_limit) {
-          setLimitReached(
-            `Bạn đã có ${list.active_count}/${list.active_limit} project đang hoạt động. Lưu trữ hoặc xoá bớt ở “Project của tôi” trước khi tạo mới.`,
-          );
-        }
-      })
+    vehicsimApi
+      .projectVehicles()
+      .then(setVehicles)
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Không tải được dữ liệu để tạo project"));
   }, []);
 
@@ -62,7 +55,6 @@ export default function AddProjectPage() {
           vehicles={vehicles}
           busy={busy}
           error={error}
-          limitReached={limitReached}
           onSubmit={(values) => void create(values)}
           onCancel={() => router.push("/projects")}
         />

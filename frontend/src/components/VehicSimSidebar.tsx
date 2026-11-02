@@ -1,11 +1,19 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { FolderOpen, House, Settings } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ROLE_LABELS, initials } from "@/components/VehicSimUi";
 import { WORKSPACE_ROLES } from "@/components/workspaceAccess";
-import { JourneyNav, PersonalProjectsLink, ProjectSwitcher } from "@/components/project/ProjectShell";
+import { stepSummary, statusOf } from "@/components/project/journey";
+import { useJourney } from "@/components/project/ProjectJourneyContext";
+import { ProjectSwitcher } from "@/components/project/ProjectShell";
+import { StepStatusIcon } from "@/components/project/ProjectUi";
+import { vehicsimApi } from "@/services/vehicsim";
+import type { JourneyStepKey } from "@/types/vehicsim";
 
 /**
  * Sidebar VehicSim theo Figma "VehicSim — FE-12/13/14 UI (Trung)".
@@ -25,6 +33,8 @@ type Group = {
   note?: string;
   /** Chỉ hiện với các mã role này (bỏ trống = mọi role). */
   roles?: string[];
+  hint?: string;
+  active?: boolean;
 };
 
 const svgIcon = (src: string) => (
@@ -116,8 +126,163 @@ const GROUPS: Group[] = [
   { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), note: `${SOON} (FE-10)` },
 ];
 
-export function VehicSimSidebar() {
+const lucideIcon = (Icon: typeof House) => <Icon aria-hidden className="size-[18px] text-vehicsim-muted" />;
+
+function matches(href: string | undefined, pathname: string, search: URLSearchParams): boolean {
+  if (!href) return false;
+  const [path, query] = href.split("?");
+  if (pathname !== path && !pathname.startsWith(`${path}/`)) return false;
+  return !query || [...new URLSearchParams(query)].every(([key, value]) => search.get(key) === value);
+}
+
+function NavGroups({ groups }: { groups: Group[] }) {
   const pathname = usePathname();
+  const search = useSearchParams();
+  const best = groups
+    .flatMap((g) => g.children ?? [])
+    .filter((c) => matches(c.href, pathname, search))
+    .sort((x, y) => (y.href?.length ?? 0) - (x.href?.length ?? 0))[0];
+
+  return (
+    <nav className="flex flex-col gap-[2px]">
+      {groups.map((g) => {
+        const here = g.active ?? (!!g.prefix && (g.exact ? pathname === g.prefix : pathname.startsWith(g.prefix)));
+        const expanded = here || (!!best && !!g.children?.includes(best));
+        const header = (
+          <span
+            className={`flex w-full items-center gap-3 rounded-[12px] px-3 py-[9px] ${expanded ? "bg-vehicsim-bg" : ""} ${
+              g.note ? "opacity-55" : "hover:bg-vehicsim-soft"
+            }`}
+          >
+            {g.icon}
+            {g.hint ? (
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className={`text-[14px] ${expanded ? "font-bold" : "font-semibold"} text-vehicsim-ink`}>{g.label}</span>
+                <span className="truncate text-[12px] text-vehicsim-muted">{g.hint}</span>
+              </span>
+            ) : (
+              <span className={`flex-1 text-[14px] ${expanded ? "font-bold text-vehicsim-ink" : "font-medium text-vehicsim-muted"}`}>
+                {g.label}
+              </span>
+            )}
+            {(g.children || g.href || g.note) && (
+              <span className={`font-semibold ${expanded ? "text-[13px] text-vehicsim-ink" : "text-[16px] text-vehicsim-faint"}`}>
+                {expanded ? "▾" : "›"}
+              </span>
+            )}
+          </span>
+        );
+        const target = g.href ?? g.children?.find((c) => c.href)?.href;
+        return (
+          <div key={g.key} className="flex flex-col gap-[2px]">
+            {g.note ? (
+              <span title={g.note} className="cursor-not-allowed">
+                {header}
+              </span>
+            ) : target ? (
+              <Link href={target} aria-current={here ? "page" : undefined}>
+                {header}
+              </Link>
+            ) : (
+              <span className="cursor-not-allowed">{header}</span>
+            )}
+            {expanded && g.children && (
+              <div className="flex pb-1 pl-5 pt-[2px]">
+                <div className="flex min-w-0 flex-1 flex-col gap-[2px] border-l-[1.5px] border-solid border-vehicsim-line pl-[10px]">
+                  {g.children.map((c) => {
+                    const active = best === c;
+                    const cls = `flex w-full items-center rounded-full px-3 py-2 text-[13px] ${
+                      active ? "bg-vehicsim-ink font-semibold text-white" : "font-medium text-vehicsim-muted"
+                    }`;
+                    return c.href ? (
+                      <Link key={c.label} href={c.href} aria-current={active ? "page" : undefined} className={`${cls} ${active ? "" : "hover:bg-vehicsim-soft"}`}>
+                        {c.label}
+                      </Link>
+                    ) : (
+                      <span key={c.label} title={c.note} className={`${cls} cursor-not-allowed opacity-55`}>
+                        {c.label}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+function TeamNav({ role }: { role: string }) {
+  const [personal, setPersonal] = useState(0);
+
+  useEffect(() => {
+    vehicsimApi
+      .projects()
+      .then((list) => setPersonal(list.active_count + list.archived_count))
+      .catch(() => setPersonal(0));
+  }, []);
+
+  const groups = GROUPS.filter((g) => !g.roles || g.roles.includes(role));
+  const personalGroup: Group = { key: "personal", label: `Project cá nhân (${personal})`, icon: lucideIcon(FolderOpen), href: "/projects", prefix: "/projects" };
+  return <NavGroups groups={personal > 0 ? [...groups, personalGroup] : groups} />;
+}
+
+function ExperiencerNav() {
+  const pathname = usePathname();
+  const { ctx } = useVehicSimContext();
+  const { journey } = useJourney();
+  const id = ctx?.project.id ?? null;
+  const common: Group[] = [
+    { key: "vehicles", label: "Phương tiện", icon: svgIcon("/vehicsim/icon-car.svg"), href: "/vehicles", prefix: "/vehicles" },
+    { key: "projects", label: "Project của tôi", icon: lucideIcon(FolderOpen), href: "/projects", active: pathname === "/projects" || pathname === "/projects/new" },
+  ];
+  if (id === null) return <NavGroups groups={common} />;
+
+  const home = `/projects/${id}`;
+  const last = journey?.counts.last_regression_id ?? null;
+  const step = (key: JourneyStepKey, n: number, label: string, children: Child[], active?: boolean): Group => ({
+    key,
+    label,
+    active,
+    icon: journey ? <StepStatusIcon status={statusOf(journey, key)} n={n} current={journey.next === key} size="sm" /> : null,
+    hint: journey ? stepSummary(key, journey) : undefined,
+    children,
+  });
+  const groups: Group[] = [
+    { key: "home", label: "Trang chủ project", icon: lucideIcon(House), href: home, active: pathname === home },
+    step("SCENARIO", 1, "Thiết kế kịch bản", [
+      { label: "Kịch bản mẫu", href: `${home}/start` },
+      { label: "Sinh từ mô tả", href: "/scenarios/new" },
+      { label: "Nhập tham số", href: "/scenarios?new=1" },
+    ]),
+    step("BASELINE", 2, "Chạy baseline", [
+      { label: "Họ kịch bản & chạy baseline", href: "/scenarios" },
+      { label: "Dữ liệu CARLA", href: "/analysis/carla" },
+    ]),
+    step("RESULTS", 3, "Xem kết quả", [
+      { label: "Tóm tắt kết quả", href: `${home}/results` },
+      { label: "Phân tích chi tiết", href: "/analysis/failures" },
+    ]),
+    step("IMPROVE", 4, "Cải tiến AEB", [
+      { label: "Chọn cách cải tiến", href: `${home}/improve` },
+      { label: "Tối ưu tự động (MOBO)", href: "/aeb" },
+      { label: "Chỉnh tay", href: "/aeb?tab=manual" },
+      { label: "Phiên bản AEB", href: "/aeb?tab=versions" },
+    ]),
+    step("VERIFY", 5, "Kiểm chứng", [
+      { label: "Kiểm thử hồi quy", href: "/validation/regression" },
+      { label: "Tạo kiểm thử", href: "/validation/regression/new" },
+      ...(last === null ? [] : [{ label: "Kết luận vòng", href: `${home}/rounds/${last}` }]),
+    ], pathname.startsWith(`${home}/rounds/`) || undefined),
+    ...common,
+    { key: "settings", label: "Cài đặt project", icon: lucideIcon(Settings), href: `${home}/settings`, active: pathname === `${home}/settings` },
+  ];
+  return <NavGroups groups={groups} />;
+}
+
+export function VehicSimSidebar() {
   const router = useRouter();
   const { user, logout } = useAuth();
 
@@ -132,68 +297,10 @@ export function VehicSimSidebar() {
       {user?.roleCode === "EXPERIENCER" ? (
         <>
           <ProjectSwitcher />
-          <JourneyNav />
+          <ExperiencerNav />
         </>
       ) : (
-      <nav className="flex flex-col gap-[2px]">
-        {GROUPS.filter((g) => !g.roles || g.roles.includes(user?.roleCode ?? "")).map((g) => {
-          const open = !!g.prefix && (g.exact ? pathname === g.prefix : pathname.startsWith(g.prefix));
-          const header = (
-            <span
-              className={`flex w-full items-center gap-3 rounded-[12px] px-3 py-[9px] ${open ? "bg-vehicsim-bg" : ""} ${
-                g.note ? "opacity-55" : "hover:bg-vehicsim-soft"
-              }`}
-            >
-              {g.icon}
-              <span className={`flex-1 text-[14px] ${open ? "font-bold text-vehicsim-ink" : "font-medium text-vehicsim-muted"}`}>
-                {g.label}
-              </span>
-              {(g.children || g.href || g.note) && (
-                <span className={`font-semibold ${open ? "text-[13px] text-vehicsim-ink" : "text-[16px] text-vehicsim-faint"}`}>
-                  {open ? "▾" : "›"}
-                </span>
-              )}
-            </span>
-          );
-          const target = g.href ?? g.children?.find((c) => c.href)?.href;
-          return (
-            <div key={g.key} className="flex flex-col gap-[2px]">
-              {g.note || !target ? (
-                <span title={g.note} className="cursor-not-allowed">
-                  {header}
-                </span>
-              ) : (
-                <Link href={target}>{header}</Link>
-              )}
-              {open && g.children && (
-                <div className="flex pb-1 pl-5 pt-[2px]">
-                  <div className="flex flex-1 flex-col gap-[2px] border-l-[1.5px] border-solid border-vehicsim-line pl-[10px]">
-                    {g.children.map((c, _i, all) => {
-                      // Mục con khớp dài nhất mới sáng: /scenarios/new không làm sáng /scenarios.
-                      const matches = (href?: string) => !!href && (pathname === href || pathname.startsWith(`${href}/`));
-                      const best = all.filter((x) => matches(x.href)).sort((x, y) => (y.href?.length ?? 0) - (x.href?.length ?? 0))[0];
-                      const active = best === c;
-                      const cls = `flex w-full items-center rounded-full px-3 py-2 text-[13px] ${
-                        active ? "bg-vehicsim-ink font-semibold text-white" : "font-medium text-vehicsim-muted"
-                      }`;
-                      return c.href ? (
-                        <Link key={c.label} href={c.href} className={`${cls} ${active ? "" : "hover:bg-vehicsim-soft"}`}>
-                          {c.label}
-                        </Link>
-                      ) : (
-                        <span key={c.label} title={c.note} className={`${cls} cursor-not-allowed opacity-55`}>
-                          {c.label}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        <PersonalProjectsLink />
-      </nav>
+        <TeamNav role={user?.roleCode ?? ""} />
       )}
 
       <div className="flex-1" />

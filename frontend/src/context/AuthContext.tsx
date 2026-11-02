@@ -125,20 +125,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Backend từ chối token giữa phiên (hết hạn, đã đổi mật khẩu ở máy khác): bỏ phiên, shell tự chuyển về /login.
   useEffect(() => onSessionExpired(clearSession), [clearSession]);
 
-  const login = useCallback(
-    async (email: string, password: string) => applySession(await postLogin(email.trim(), password)),
+  const startSession = useCallback(
+    (session: Parameters<typeof applySession>[0]) => {
+      setSelectedProjectId(null);
+      return applySession(session);
+    },
     [applySession],
   );
 
+  const login = useCallback(
+    async (email: string, password: string) => startSession(await postLogin(email.trim(), password)),
+    [startSession],
+  );
+
   const register = useCallback(
-    async (payload: RegisterPayload) => applySession(await postRegister({ ...payload, email: payload.email.trim() })),
-    [applySession],
+    async (payload: RegisterPayload) => startSession(await postRegister({ ...payload, email: payload.email.trim() })),
+    [startSession],
   );
 
   const registerWithCode = useCallback(
     async (payload: { email: string; code: string; full_name: string; password: string }) =>
-      applySession(await verifyRegistration({ ...payload, email: payload.email.trim() })),
-    [applySession],
+      startSession(await verifyRegistration({ ...payload, email: payload.email.trim() })),
+    [startSession],
   );
 
   const changePassword = useCallback(

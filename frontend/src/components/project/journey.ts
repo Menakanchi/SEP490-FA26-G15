@@ -5,7 +5,7 @@ import type { FamilyRequest, JourneyCounts, JourneyStatus, JourneyStepKey, Proje
  * định dạng thời gian và họ kịch bản mẫu.
  */
 
-export interface StepDefinition {
+interface StepDefinition {
   key: JourneyStepKey;
   n: number;
   title: string;
@@ -17,7 +17,7 @@ export interface StepDefinition {
 
 export const JOURNEY_STEPS: StepDefinition[] = [
   { key: "SCENARIO", n: 1, title: "Thiết kế kịch bản", short: "Kịch bản", question: "Tình huống nguy hiểm nào cần thử?", paths: ["/scenarios/new"] },
-  { key: "BASELINE", n: 2, title: "Chạy baseline", short: "Baseline", question: "AEB hiện tại có phanh kịp không?", paths: ["/scenarios"] },
+  { key: "BASELINE", n: 2, title: "Chạy baseline", short: "Baseline", question: "AEB hiện tại có phanh kịp không?", paths: ["/scenarios", "/analysis/carla"] },
   { key: "RESULTS", n: 3, title: "Xem kết quả", short: "Kết quả", question: "Ca nào va chạm và vì sao?", paths: ["/analysis"] },
   { key: "IMPROVE", n: 4, title: "Cải tiến AEB", short: "Cải tiến", question: "Đổi tham số nào để tốt hơn?", paths: ["/aeb"] },
   { key: "VERIFY", n: 5, title: "Kiểm chứng", short: "Kiểm chứng", question: "Ứng viên có tốt hơn thật không?", paths: ["/validation"] },
@@ -76,7 +76,10 @@ export function stepSummary(key: JourneyStepKey, journey: ProjectJourney): strin
       return `${c.collisions} va chạm · ${c.near_misses} suýt va chạm · ${c.false_activations} phanh oan`;
     case "IMPROVE":
       if (status === "RUNNING") return "Đang tối ưu tự động…";
-      return c.candidates > 0 ? `${c.candidates} ứng viên AEB` : "Chưa có ứng viên";
+      return (
+        [c.candidates > 0 && `${c.candidates} ứng viên tự chỉnh`, c.optimizations > 0 && `${c.optimizations} đợt tối ưu`].filter(Boolean).join(" · ") ||
+        "Chưa có ứng viên"
+      );
     case "VERIFY":
       if (status === "RUNNING") return "Đang chạy kiểm chứng…";
       if (c.regressions_completed === 0) return "Chưa kiểm chứng";
@@ -84,7 +87,7 @@ export function stepSummary(key: JourneyStepKey, journey: ProjectJourney): strin
   }
 }
 
-export interface NextAction {
+interface NextAction {
   key: JourneyStepKey | null;
   title: string;
   detail: string;
@@ -92,7 +95,7 @@ export interface NextAction {
   href: string;
 }
 
-/** Nội dung thẻ "Bước tiếp theo": luôn có đúng một việc nên làm, kể cả khi vòng đã xong. */
+/** Nội dung thẻ gợi ý: luôn có đúng một việc nên làm tiếp. */
 export function nextAction(journey: ProjectJourney): NextAction {
   const c = journey.counts;
   const baseline = journey.baseline_label ?? "gốc";
@@ -100,7 +103,7 @@ export function nextAction(journey: ProjectJourney): NextAction {
   if (key === null) {
     return {
       key: null,
-      title: `Vòng ${journey.round} đã xong`,
+      title: `Đã kiểm chứng ở vòng ${journey.round}`,
       detail: `Lần kiểm chứng gần nhất ${c.last_verdict ? VERDICT_LABEL[c.last_verdict] : "đã có kết quả"}. Xem kết luận để chọn ứng viên cho vòng sau hoặc thử ứng viên khác.`,
       cta: "Xem kết luận vòng",
       href: stepHref("VERIFY", journey),
@@ -143,11 +146,16 @@ export function nextAction(journey: ProjectJourney): NextAction {
   }
 }
 
-/** Bước vừa chuyển sang xong giữa hai lần tải, để báo cho người dùng. */
-export function newlyDone(before: ProjectJourney | null, after: ProjectJourney): JourneyStepKey | null {
+export const FINISHED_TEXT: Partial<Record<JourneyStepKey, string>> = {
+  BASELINE: "Baseline đã chạy xong.",
+  IMPROVE: "Đợt tối ưu tự động đã kết thúc.",
+  VERIFY: "Kiểm chứng đã chạy xong.",
+};
+
+export function finishedWork(before: ProjectJourney | null, after: ProjectJourney): JourneyStepKey | null {
   if (!before || before.project_id !== after.project_id) return null;
-  const done = after.steps.find((s) => s.status === "DONE" && statusOf(before, s.key) !== "DONE");
-  return done?.key ?? null;
+  const finished = after.steps.find((s) => s.status !== "RUNNING" && statusOf(before, s.key) === "RUNNING" && FINISHED_TEXT[s.key]);
+  return finished?.key ?? null;
 }
 
 const PROJECT_PAGES: Record<string, JourneyStepKey> = { start: "SCENARIO", results: "RESULTS", improve: "IMPROVE", rounds: "VERIFY" };
@@ -172,7 +180,7 @@ export function stepOfPath(pathname: string, projectId: number | null): JourneyS
  */
 const GOAL_PREFIX = "Mục tiêu: ";
 
-export interface ProjectBrief {
+interface ProjectBrief {
   goal: string;
   note: string;
 }

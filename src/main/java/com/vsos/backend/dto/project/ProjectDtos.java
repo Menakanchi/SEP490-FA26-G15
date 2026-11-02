@@ -50,6 +50,7 @@ public final class ProjectDtos {
             @JsonProperty("false_activations") int falseActivations,
             int datasets,
             int candidates,
+            int optimizations,
             @JsonProperty("optimizations_running") int optimizationsRunning,
             @JsonProperty("regressions_running") int regressionsRunning,
             @JsonProperty("regressions_completed") int regressionsCompleted,
@@ -86,7 +87,10 @@ public final class ProjectDtos {
 
     public record ProjectList(
             List<ProjectItem> items,
+            int total,
+            int page,
+            @JsonProperty("page_size") int pageSize,
             @JsonProperty("active_count") int activeCount,
-            @JsonProperty("active_limit") int activeLimit) {
+            @JsonProperty("archived_count") int archivedCount) {
     }
 }

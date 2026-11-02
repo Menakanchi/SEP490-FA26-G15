@@ -24,7 +24,7 @@ Role khác không đổi hành vi; điều kiện duy nhất với họ: không 
 |---|---|---|
 | Q1 | Frontend báo project đang mở bằng cách nào? | Header `X-VehicSim-Project: <id>` trên mọi request; không gửi thì mở project `ACTIVE` cập nhật gần nhất. Role khác: backend bỏ qua header, chạy như cũ (project nhóm `ACTIVE` đầu tiên) |
 | Q2 | EXPERIENCER thấy gì? | Chỉ project cá nhân của mình (bảng 4.1) |
-| Q3 | Hạn mức | Tối đa 3 project `ACTIVE` (`ProjectService.MAX_ACTIVE`); mọi thao tác ghi qua `limitWrites(uid, "project")` |
+| Q3 | Hạn mức | Không giới hạn số project (02/11/2026, trước đó tối đa 3 `ACTIVE`); mọi thao tác ghi vẫn qua `limitWrites(uid, "project")` |
 | Q4 | Project mới có gì sẵn | Xe chọn từ danh mục (mặc định Audi e-tron) + baseline AEB v1.0 như bootstrap (TTC 1,5 s) |
 | Q5 | Lưu trữ và xoá | 2 trạng thái `ACTIVE ⇄ ARCHIVED` + **xoá vĩnh viễn** có gõ tên xác nhận. Không có thùng rác vì không thêm cột/trạng thái vào DB |
 | Q6 | Dữ liệu EXPERIENCER đã tạo trong project chung | Giữ nguyên, không chuyển |
@@ -48,7 +48,7 @@ nên không phải thêm kiểm "chỉ đọc" vào từng route ghi của các 
 
 | UC | Tên | Màn hình | Luồng |
 |---|---|---|---|
-| UC-P01 | Danh sách project của tôi + hạn mức | `/projects` | 1 |
+| UC-P01 | Danh sách project của tôi: tab theo trạng thái, tìm theo tên, phân trang | `/projects` | 1 |
 | UC-P02 | Tạo project | `/projects/new` | 1 |
 | UC-P03 | Xem chi tiết | `/projects/[projectId]` | 1 |
 | UC-P04 | Sửa tên, mô tả, xe | `/projects/[projectId]/edit` | 1 |
@@ -59,7 +59,8 @@ nên không phải thêm kiểm "chỉ đọc" vào từng route ghi của các 
 ### 4.3 Quy tắc
 
 - **BR-01** Chỉ EXPERIENCER dùng API project cá nhân; chỉ chủ project thấy và thao tác.
-- **BR-02** Hạn mức chỉ đếm project `ACTIVE`; tạo mới và bỏ lưu trữ đều kiểm.
+- **BR-02** Không giới hạn số project (02/11/2026). Đăng nhập xong EXPERIENCER vào "Project của tôi" và chưa mở project nào; chỉ khi bấm
+  "Tiếp tục" / "Mở" mới vào làm việc. Mở thẳng màn làm việc khi chưa chọn thì được đưa về `/projects`.
 - **BR-03** Tên: bỏ khoảng trắng đầu/cuối, 1–150 ký tự, không ký tự điều khiển; không trùng (không phân biệt hoa thường, theo collation DB)
   trong project cá nhân của cùng người. Mô tả tối đa 2.000 ký tự.
 - **BR-04** Chỉ đổi được xe khi project chưa có lượt chạy nào.
@@ -73,7 +74,7 @@ nên không phải thêm kiểm "chỉ đọc" vào từng route ghi của các 
 
 | Route | UC |
 |---|---|
-| `GET /projects` → `{items, active_count, active_limit}` | P01 |
+| `GET /projects?status=ACTIVE\|ARCHIVED&q=&page=1&page_size=9` → `{items, total, page, page_size, active_count, archived_count}` (`page_size` ≤ 50) | P01 |
 | `GET /projects/vehicle-options` → `[{id, name, is_default}]` | P02, P04 |
 | `POST /projects` `{name, description?, carla_vehicle_model_id?}` → 201 | P02 |
 | `GET /projects/{projectId}` | P03 |
@@ -101,7 +102,6 @@ Thân lỗi: `{"code": "NAME_DUPLICATE", "detail": "Bạn đã có project tên 
 | `PROJECT_NOT_FOUND` | 404 | Id không có hoặc header không phải số | Tự bỏ chọn, mở project gần nhất, báo |
 | `PROJECT_NOT_YOURS` | 403 | Project của người khác hoặc project nhóm | Như trên |
 | `PROJECT_ARCHIVED` | 409 | Mở project đang lưu trữ | Như trên |
-| `PROJECT_LIMIT_REACHED` | 409 | Tạo / bỏ lưu trữ khi đã đủ 3 project hoạt động | Nút bị khoá kèm lý do |
 | `PROJECT_BUSY` | 409 | Lưu trữ / xoá khi còn việc đang chạy | Nút bị khoá kèm lý do |
 | `ALREADY_ARCHIVED`, `NOT_ARCHIVED` | 409 | Lưu trữ lại / bỏ lưu trữ project đang hoạt động | Hiện câu lỗi |
 | `NAME_REQUIRED`, `NAME_TOO_LONG`, `NAME_INVALID` | 400 | Tên trống / quá 150 ký tự / có ký tự điều khiển | Dưới ô Tên |
@@ -160,7 +160,7 @@ Lỗi giới hạn tần suất (429) và lỗi chung khác giữ định dạng
 
 ### Luồng 1 — Quản lý project cá nhân (xong)
 
-Demo đã chạy (mục 10): tên trống/quá dài/trùng → lỗi dưới ô; tạo 3 project → tạo thứ 4 bị `PROJECT_LIMIT_REACHED`; sửa tên, đổi xe khi
+Demo đã chạy (mục 10, lúc còn hạn mức 3 project — đã bỏ 02/11/2026): tên trống/quá dài/trùng → lỗi dưới ô; tạo 3 project → tạo thứ 4 bị `PROJECT_LIMIT_REACHED`; sửa tên, đổi xe khi
 chưa có run; lưu trữ → tạo được thêm; bỏ lưu trữ khi đủ 3 → `PROJECT_LIMIT_REACHED`; xoá gõ sai tên → `CONFIRM_NAME_MISMATCH`, gõ đúng
 → biến mất (`PROJECT_NOT_FOUND`); exp2 xem/sửa project của exp1 → `PROJECT_NOT_YOURS`; ENGINEER gọi API → `EXPERIENCER_ONLY`.
 
@@ -230,4 +230,5 @@ project, hành trình, regression của exp1 và gửi header project của exp1
 | 31/10/2026 | Góp ý: chỉ tập trung EXPERIENCER; Luồng 1 là quản lý project; lỗi phải có tên rõ ràng thay vì chỉ 404/403 |
 | 31/10/2026 | Góp ý: **không sửa database của nhóm** → bỏ migration, bỏ thùng rác/bia mộ, project lưu trữ không mở được; rút gọn lỗi còn enum tên + câu tiếng Việt, bỏ mã `PRJ-xxx`/`SYS-xxx`, bỏ gói `exception/common` |
 | 31/10/2026 | Code và kiểm chứng Luồng 1, Luồng 2 (mục 10) |
+| 02/11/2026 | Góp ý: bỏ giới hạn 3 project; danh sách có tab trạng thái, tìm theo tên, phân trang; đăng nhập xong chọn project mới vào làm việc (không tự mở project gần nhất). `PROJECT_LIMIT_REACHED` gỡ khỏi `ProjectError` |
 | 01/11/2026 | Góp ý: hạn chế đụng màn của thành viên khác — không sửa phần 1; phần 4 chỉ đọc `?tab=`; phần 5 chỉ rẽ nhánh frontend theo role. Code Luồng 3 (kèm ADR-046) và phần đổi role của Luồng 5; thông báo để chờ quyết định |

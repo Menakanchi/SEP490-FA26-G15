@@ -3,7 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { newlyDone } from "@/components/project/journey";
+import { finishedWork } from "@/components/project/journey";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { JourneyStepKey, ProjectItem, ProjectJourney } from "@/types/vehicsim";
 
@@ -80,27 +80,27 @@ export function useProjectItem(projectId: number) {
 }
 
 interface JourneyContextValue extends JourneyState {
-  milestone: JourneyStepKey | null;
-  clearMilestone: () => void;
+  finished: JourneyStepKey | null;
+  clearFinished: () => void;
 }
 
 const JourneyCtx = createContext<JourneyContextValue>({
   journey: null,
   error: null,
   refresh: async () => {},
-  milestone: null,
-  clearMilestone: () => {},
+  finished: null,
+  clearFinished: () => {},
 });
 
 /** Hành trình của project đang mở, dùng chung cho sidebar, thanh hành trình và trang chủ project. Chỉ tải với EXPERIENCER. */
 export function ProjectJourneyProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { ctx, isExperiencer } = useVehicSimContext();
-  const [milestone, setMilestone] = useState<JourneyStepKey | null>(null);
+  const [finished, setFinished] = useState<JourneyStepKey | null>(null);
   const projectId = isExperiencer && ctx ? ctx.project.id : null;
   const onLoaded = useCallback((before: ProjectJourney | null, after: ProjectJourney) => {
-    const done = newlyDone(before, after);
-    if (done) setMilestone(done);
+    const key = finishedWork(before, after);
+    if (key) setFinished(key);
   }, []);
   const state = useProjectJourney(projectId, onLoaded);
   const { refresh } = state;
@@ -109,9 +109,9 @@ export function ProjectJourneyProvider({ children }: { children: React.ReactNode
     void refresh();
   }, [pathname, refresh]);
 
-  const clearMilestone = useCallback(() => setMilestone(null), []);
+  const clearFinished = useCallback(() => setFinished(null), []);
 
-  return <JourneyCtx.Provider value={{ ...state, milestone, clearMilestone }}>{children}</JourneyCtx.Provider>;
+  return <JourneyCtx.Provider value={{ ...state, finished, clearFinished }}>{children}</JourneyCtx.Provider>;
 }
 
 export function useJourney(): JourneyContextValue {

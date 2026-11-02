@@ -35,7 +35,7 @@ export default function NewRegressionPage() {
 function NewRegressionForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const { ctx, canWrite } = useVehicSimContext();
+  const { ctx, canWrite, isExperiencer } = useVehicSimContext();
   const [candidateId, setCandidateId] = useState<number | null>(null);
   const [scenarioId, setScenarioId] = useState<number | null>(null);
   const [oldCritical, setOldCritical] = useState(true);
@@ -125,7 +125,7 @@ function NewRegressionForm() {
       step={5}
       crumbs={[{ label: "Kiểm định" }, { label: "Kiểm thử hồi quy", href: "/validation/regression" }, { label: "Kiểm thử mới" }]}
       title="Tạo kiểm thử hồi quy"
-      subtitle="Chạy lại các kịch bản nguy hiểm cũ và các biến thể trên cả hai phiên bản trước khi ứng viên được khuyến nghị."
+      subtitle={`Chạy lại các kịch bản nguy hiểm cũ và các biến thể trên cả hai phiên bản trước khi ứng viên được ${isExperiencer ? "dùng làm baseline" : "khuyến nghị"}.`}
       actions={
         <>
           <PillButton href="/validation/regression">Huỷ</PillButton>
@@ -317,7 +317,7 @@ function NewRegressionForm() {
           </div>
           <p className="mt-2 flex gap-2 rounded-[12px] bg-vehicsim-decision-bg px-4 py-3 text-[12px] leading-[1.5] text-vehicsim-muted">
             <span className="mt-[6px] size-[6px] shrink-0 rounded-full bg-vehicsim-decision" />
-            Ứng viên trượt một tiêu chí bắt buộc sẽ tự động bị chặn khỏi khuyến nghị. Bản cơ sở và ứng viên luôn chạy mỗi biến thể với
+            Ứng viên trượt một tiêu chí bắt buộc sẽ tự động {isExperiencer ? "không dùng làm baseline được" : "bị chặn khỏi khuyến nghị"}. Bản cơ sở và ứng viên luôn chạy mỗi biến thể với
             cùng một seed ngẫu nhiên.
           </p>
         </aside>

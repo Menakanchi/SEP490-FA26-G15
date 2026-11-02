@@ -17,7 +17,6 @@ public enum ProjectError {
     PROJECT_NOT_FOUND(NOT_FOUND, "Không tìm thấy project #%s."),
     PROJECT_NOT_YOURS(FORBIDDEN, "Project #%s không phải project cá nhân của bạn."),
     PROJECT_ARCHIVED(CONFLICT, "Project “%s” đang lưu trữ. Bỏ lưu trữ để mở lại."),
-    PROJECT_LIMIT_REACHED(CONFLICT, "Bạn đã có %d/%d project đang hoạt động. Lưu trữ hoặc xoá bớt trước."),
     PROJECT_BUSY(CONFLICT, "Project “%s” còn %d việc đang chờ hoặc đang chạy. Đợi xong hoặc huỷ rồi thử lại."),
     ALREADY_ARCHIVED(CONFLICT, "Project “%s” đã ở trạng thái lưu trữ."),
     NOT_ARCHIVED(CONFLICT, "Project “%s” đang hoạt động, không cần bỏ lưu trữ."),

@@ -84,7 +84,7 @@ export default function ProjectSettingsPage() {
             <h2 className="text-[17px] font-bold text-vehicsim-danger">Vùng nguy hiểm</h2>
             <DangerRow
               title={active ? "Lưu trữ project" : "Bỏ lưu trữ project"}
-              detail={active ? "Project lưu trữ không mở để làm việc được và không tính vào hạn mức 3 project đang hoạt động." : "Mở lại project để tiếp tục hành trình."}
+              detail={active ? "Project lưu trữ chuyển sang tab Lưu trữ và không mở để làm việc được cho tới khi bỏ lưu trữ." : "Mở lại project để tiếp tục hành trình."}
               action={active ? "Lưu trữ" : "Bỏ lưu trữ"}
               disabled={active ? busyReason : undefined}
               onClick={() => actions.start(active ? "archive" : "unarchive", project)}

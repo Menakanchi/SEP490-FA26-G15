@@ -38,9 +38,18 @@ public class ProjectRepository {
         return db.first(SELECT + " WHERE p.id = ?", projectId);
     }
 
-    public List<Row> listPersonal(long ownerId) {
-        return db.list(SELECT + " WHERE p.workspace_id IS NULL AND p.created_by_user_id = ? ORDER BY p.updated_at DESC, p.id DESC",
-                ownerId);
+    private static final String PERSONAL = " WHERE p.workspace_id IS NULL AND p.created_by_user_id = ? AND p.status = ? AND p.name LIKE ?";
+
+    public List<Row> pagePersonal(long ownerId, String status, String query, int limit, int offset) {
+        return db.list(SELECT + PERSONAL + " ORDER BY p.updated_at DESC, p.id DESC LIMIT ? OFFSET ?", ownerId, status, like(query), limit, offset);
+    }
+
+    public int countPersonal(long ownerId, String status, String query) {
+        return ((Number) db.scalar("SELECT COUNT(*) FROM projects p" + PERSONAL, ownerId, status, like(query))).intValue();
+    }
+
+    private static String like(String query) {
+        return "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
     }
 
     public Row row(long projectId) {
@@ -56,11 +65,6 @@ public class ProjectRepository {
 
     public Row firstActiveTeamProject() {
         return db.first("SELECT * FROM projects WHERE workspace_id IS NOT NULL AND status = 'ACTIVE' ORDER BY id LIMIT 1");
-    }
-
-    public int countActivePersonal(long ownerId) {
-        return ((Number) db.scalar("SELECT COUNT(*) FROM projects WHERE workspace_id IS NULL AND created_by_user_id = ? AND status = 'ACTIVE'",
-                ownerId)).intValue();
     }
 
     public String existingName(long ownerId, String name, long exceptProjectId) {
@@ -89,7 +93,10 @@ public class ProjectRepository {
         return db.first("""
                 SELECT b.id AS baseline_id, COALESCE(NULLIF(b.label, ''), CONCAT('v', b.version_no)) AS baseline_label,
                        (SELECT COUNT(*) FROM aeb_versions v WHERE v.project_id = p.id AND v.status IN ('BASELINE','ARCHIVED')) AS rounds,
-                       (SELECT COUNT(*) FROM aeb_versions v WHERE v.project_id = p.id AND v.parent_version_id = b.id) AS candidates,
+                       (SELECT COUNT(*) FROM aeb_versions v
+                         WHERE v.project_id = p.id AND v.parent_version_id = b.id AND v.source <> 'OPTIMIZATION') AS candidates,
+                       (SELECT COUNT(*) FROM optimization_runs o
+                         WHERE o.project_id = p.id AND o.base_aeb_version_id = b.id AND o.status = 'COMPLETED') AS optimizations,
                        (SELECT COUNT(*) FROM scenarios s WHERE s.project_id = p.id) AS families,
                        (SELECT COUNT(*) FROM analysis_results a
                          WHERE a.project_id = p.id AND a.aeb_version_id = b.id AND a.analysis_type = 'BASELINE_DATASET'
@@ -132,15 +139,15 @@ public class ProjectRepository {
         return out;
     }
 
-    public List<Row> latestBaselineRuns(long projectId, long baselineVersionId) {
+    public List<Row> latestBaselineRuns(long projectId, long baselineVersionId, String simulatorVersion) {
         return db.list("""
                 SELECT r.scenario_version_id, r.status, r.collision_occurred, r.min_ttc_s, r.min_distance_m, r.is_false_positive
                   FROM simulation_runs r
-                 WHERE r.project_id = ? AND r.purpose = 'BASELINE' AND r.aeb_version_id = ?
+                 WHERE r.project_id = ? AND r.purpose = 'BASELINE' AND r.aeb_version_id = ? AND r.simulator_version = ?
                    AND r.id = (SELECT MAX(x.id) FROM simulation_runs x
-                                WHERE x.project_id = r.project_id AND x.purpose = 'BASELINE'
-                                  AND x.aeb_version_id = r.aeb_version_id AND x.scenario_version_id = r.scenario_version_id)
-                """, projectId, baselineVersionId);
+                                WHERE x.project_id = r.project_id AND x.purpose = 'BASELINE' AND x.aeb_version_id = r.aeb_version_id
+                                  AND x.simulator_version = r.simulator_version AND x.scenario_version_id = r.scenario_version_id)
+                """, projectId, baselineVersionId, simulatorVersion);
     }
 
     @Transactional

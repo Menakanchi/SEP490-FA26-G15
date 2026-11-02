@@ -325,11 +325,12 @@ không được đưa lại vào API hiện tại; không giả lập sáu categ
 - Không đổi schema: project cá nhân là `projects.workspace_id IS NULL`, trạng thái `ACTIVE`/`ARCHIVED`; tên duy nhất theo người nhờ
   `uq_projects_personal_name`. Chi tiết nghiệp vụ, lộ trình và bằng chứng ở
   [exec plan](../exec-plans/active/2026-10-31-experiencer-project-ca-nhan.md).
-- API `/api/v1/vehicsim/projects` (`ProjectController`): EXPERIENCER quản lý danh sách + hạn mức 3 project hoạt động, xe chọn được, tạo
+- API `/api/v1/vehicsim/projects` (`ProjectController`): EXPERIENCER quản lý danh sách (`?status=ACTIVE|ARCHIVED&q=&page=&page_size=`, không giới hạn số project), xe chọn được, tạo
   (kèm baseline AEB v1.0), xem, sửa, lưu trữ / bỏ lưu trữ, xoá vĩnh viễn (gõ đúng tên; xoá dữ liệu con trong một transaction rồi xoá
   thư mục run). Chủ project đã được nâng role vẫn đọc được danh sách, chi tiết và hành trình của mình (chỉ xem).
 - Hành trình 5 bước: `GET /projects/{id}/journey` suy trạng thái từ dữ liệu, đếm theo baseline hiện hành (vòng). Bước ② xong khi có
-  ≥ 1 họ chạy đủ baseline; họ thêm sau hiện thành "chưa chạy" chứ không kéo bước ② về. `POST /projects/{id}/regressions/{testId}/adopt`
+  ≥ 1 họ chạy đủ baseline của bộ mô phỏng đang cấu hình; họ thêm sau hiện thành "chưa chạy" chứ không kéo bước ② về. Trạng thái chỉ dùng
+  để chọn bước gợi ý; giao diện không hiện dấu "đã xong". `POST /projects/{id}/regressions/{testId}/adopt`
   đổi baseline sang ứng viên đạt kiểm chứng (ADR-046) và mở vòng mới.
 - Project đang mở: frontend gửi header `X-VehicSim-Project`; `security/ProjectScope` (bean theo request) chọn project cho
   `Queries.currentProject()`. EXPERIENCER chỉ mở được project `ACTIVE` của mình, không gửi header thì mở project hoạt động cập nhật gần
@@ -365,8 +366,8 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | EXPERIENCER chỉ mở project `ACTIVE` của chính mình (project người khác, project nhóm, project lưu trữ bị chặn); role khác bỏ qua header, giữ project nhóm | `ProjectScopeTest#theHeaderMustPointToAnActiveProjectOfTheExperiencer`, `ProjectScopeTest#otherRolesKeepTheTeamProjectAndIgnoreTheHeader` |
 | API project cá nhân cần đăng nhập; quản lý / làm việc chỉ EXPERIENCER, chủ project đã đổi role chỉ đọc; ghi qua hạn mức; lỗi mang tên lỗi và câu tiếng Việt | `ProjectSecurityTest#onlyExperiencersManageAndWorkInPersonalProjects`, `ProjectSecurityTest#ownersWhoChangedRoleStillReadTheirPersonalProjects`, `ProjectSecurityTest#writesHonourTheQuotaButReadsDoNot`, `ProjectSecurityTest#projectErrorsCarryTheirNameAndVietnameseDetail` |
 | Project cá nhân: chỉ chủ project chọn ứng viên làm baseline, chỉ khi test PASSED, baseline chưa đổi, ứng viên chưa quyết định, có lý do và xác nhận (ADR-046) | `ProjectServiceTest#aPassedCandidateBecomesTheBaselineWithTheReasonKept`, `ProjectServiceTest#adoptingNeedsAReasonAConfirmationAndAFinishedPassedTest`, `ProjectServiceTest#anOutdatedTestOrADecidedCandidateCannotChangeTheBaseline` |
-| Hành trình: bước đang chạy không tính là xong; thêm họ kịch bản sau không kéo bước baseline đã xong về | `ProjectServiceTest#theBaselineIsDoneOnlyWhenEveryCurrentVariantHasACompletedRun`, `ProjectServiceTest#addingAFamilyLaterKeepsTheBaselineStepDoneAndListsTheFamilyAsPending` |
-| Tối đa 3 project hoạt động; có lượt chạy thì không đổi xe; còn việc chạy thì không lưu trữ / xoá; xoá vĩnh viễn phải gõ đúng tên | `ProjectServiceTest#theActiveLimitBlocksCreateAndUnarchive`, `ProjectServiceTest#theVehicleIsLockedOnceTheProjectHasRuns`, `ProjectServiceTest#runningWorkBlocksArchiveAndDelete`, `ProjectServiceTest#deleteNeedsTheExactNameThenRemovesRowsAndRunFolders` |
+| Hành trình: bước đang chạy không tính là xong; thêm họ kịch bản sau không kéo bước baseline về; chỉ đếm run của bộ mô phỏng đang cấu hình | `ProjectServiceTest#theBaselineIsDoneOnlyWhenEveryCurrentVariantHasACompletedRun`, `ProjectServiceTest#addingAFamilyLaterKeepsTheBaselineStepDoneAndListsTheFamilyAsPending`, `ProjectServiceTest#onlyTheOwnerReadsTheJourneyCountedOnTheConfiguredSimulator` |
+| Không giới hạn số project; danh sách theo trạng thái, tìm theo tên, phân trang; có lượt chạy thì không đổi xe; còn việc chạy thì không lưu trữ / xoá; xoá vĩnh viễn phải gõ đúng tên | `ProjectServiceTest#thereIsNoLimitOnHowManyProjectsAreActive`, `ProjectServiceTest#theListIsPagedPerStatusAndSearchedByName`, `ProjectServiceTest#theVehicleIsLockedOnceTheProjectHasRuns`, `ProjectServiceTest#runningWorkBlocksArchiveAndDelete`, `ProjectServiceTest#deleteNeedsTheExactNameThenRemovesRowsAndRunFolders` |
 | Người tạo khuyến nghị không tự duyệt | `RegressionDecisionTest#theAuthorOfTheRecommendationCannotApproveIt` |
 | Accept hạ baseline cũ trước rồi nâng candidate; Reject giữ baseline; Request more tests không đổi version | `RegressionDecisionTest#acceptDemotesTheOldBaselineBeforePromotingTheCandidate`, `RegressionDecisionTest#rejectMarksTheCandidateButKeepsTheBaseline`, `RegressionDecisionTest#requestingMoreTestsChangesNoVersion` |
 | Candidate chạy đúng seed baseline | _chưa có test_ (TD-33) |

@@ -43,7 +43,7 @@ import static com.vsos.backend.exception.project.ProjectError.*;
 @RequiredArgsConstructor
 public class ProjectService {
 
-    public static final int MAX_ACTIVE = 3;
+    public static final int PAGE_SIZE_MAX = 50;
     public static final int NAME_MAX = 150;
     public static final int DESCRIPTION_MAX = 2000;
 
@@ -66,9 +66,17 @@ public class ProjectService {
         }
     }
 
-    public ProjectList list(long userId) {
-        List<ProjectItem> items = projects.listPersonal(userId).stream().map(this::toItem).toList();
-        return new ProjectList(items, projects.countActivePersonal(userId), MAX_ACTIVE);
+    public ProjectList list(long userId, String status, String query, int page, int pageSize) {
+        if (!ACTIVE.equals(status) && !ARCHIVED.equals(status)) {
+            throw new Vs.InvalidRequestException("status phải là ACTIVE hoặc ARCHIVED");
+        }
+        if (page < 1 || pageSize < 1 || pageSize > PAGE_SIZE_MAX) {
+            throw new Vs.InvalidRequestException("page phải ≥ 1 và page_size trong khoảng 1–" + PAGE_SIZE_MAX);
+        }
+        String q = query == null ? "" : query.strip();
+        List<ProjectItem> items = projects.pagePersonal(userId, status, q, pageSize, (page - 1) * pageSize).stream().map(this::toItem).toList();
+        return new ProjectList(items, projects.countPersonal(userId, status, q), page, pageSize, projects.countPersonal(userId, ACTIVE, q),
+                projects.countPersonal(userId, ARCHIVED, q));
     }
 
     public List<VehicleOption> vehicles() {
@@ -91,7 +99,6 @@ public class ProjectService {
         String name = validName(userId, body.name(), 0);
         String description = validDescription(body.description());
         long vehicleId = supportedVehicle(body.vehicleId());
-        requireFreeSlot(userId);
         long projectId = projects.insert(name, description, userId, vehicleId, Vs.now());
         AuditLog.event("project.create", "success", "project_id", projectId, "by", userId);
         return get(userId, projectId);
@@ -126,7 +133,6 @@ public class ProjectService {
         if (ACTIVE.equals(project.str("status"))) {
             throw new ProjectException(NOT_ARCHIVED, project.str("name"));
         }
-        requireFreeSlot(userId);
         return changeStatus(userId, projectId, ACTIVE);
     }
 
@@ -234,13 +240,6 @@ public class ProjectService {
         return vehicleId;
     }
 
-    private void requireFreeSlot(long userId) {
-        int active = projects.countActivePersonal(userId);
-        if (active >= MAX_ACTIVE) {
-            throw new ProjectException(PROJECT_LIMIT_REACHED, active, MAX_ACTIVE);
-        }
-    }
-
     private static void requireIdle(Row project) {
         long work = project.lng("running_work");
         if (work > 0) {
@@ -266,7 +265,7 @@ public class ProjectService {
     private ProjectJourney journeyOf(long projectId) {
         Row summary = projects.journeySummary(projectId);
         Long baselineId = summary.getLong("baseline_id");
-        List<Row> baselineRuns = baselineId == null ? List.of() : projects.latestBaselineRuns(projectId, baselineId);
+        List<Row> baselineRuns = baselineId == null ? List.of() : projects.latestBaselineRuns(projectId, baselineId, runs.configuredSimulator());
         JourneyCounts counts = count(summary, projects.currentVariantFamilies(projectId), baselineRuns);
         List<JourneyStep> steps = steps(counts);
         return new ProjectJourney(projectId, Math.max(1, summary.getInt("rounds")), summary.str("baseline_label"), steps, next(steps),
@@ -310,17 +309,18 @@ public class ProjectService {
                 .filter(e -> e.getValue().equals(completedPerFamily.get(e.getKey()))).count();
         return new JourneyCounts(summary.getInt("families"), familyOfVariant.size(), completed, running, failed, familiesDone,
                 variantsPerFamily.size() - familiesDone, safe, nearMisses, collisions, falseActivations, summary.getInt("datasets"),
-                summary.getInt("candidates"), summary.getInt("optimizations_running"), summary.getInt("regressions_running"),
+                summary.getInt("candidates"), summary.getInt("optimizations"), summary.getInt("optimizations_running"), summary.getInt("regressions_running"),
                 summary.getInt("regressions_completed"), summary.getLong("last_regression_id"), summary.str("last_verdict"));
     }
 
     static List<JourneyStep> steps(JourneyCounts c) {
-        boolean laterWork = c.datasets() + c.candidates() + c.optimizationsRunning() + c.regressionsRunning() + c.regressionsCompleted() > 0;
+        boolean improved = c.candidates() + c.optimizations() > 0;
+        boolean laterWork = improved || c.datasets() + c.optimizationsRunning() + c.regressionsRunning() + c.regressionsCompleted() > 0;
         return List.of(
                 new JourneyStep(JourneyStepKey.SCENARIO, c.variants() > 0 ? DONE : TODO),
                 new JourneyStep(JourneyStepKey.BASELINE, baselineStatus(c)),
                 new JourneyStep(JourneyStepKey.RESULTS, laterWork ? DONE : TODO),
-                new JourneyStep(JourneyStepKey.IMPROVE, c.optimizationsRunning() > 0 ? RUNNING : c.candidates() > 0 ? DONE : TODO),
+                new JourneyStep(JourneyStepKey.IMPROVE, c.optimizationsRunning() > 0 ? RUNNING : improved ? DONE : TODO),
                 new JourneyStep(JourneyStepKey.VERIFY, c.regressionsRunning() > 0 ? RUNNING : c.regressionsCompleted() > 0 ? DONE : TODO));
     }
 

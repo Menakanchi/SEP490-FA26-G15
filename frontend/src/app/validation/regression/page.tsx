@@ -13,7 +13,8 @@ const POLL_MS = 3000;
 
 export default function RegressionListPage() {
   const router = useRouter();
-  const { canWrite } = useVehicSimContext();
+  const { canWrite, ctx, isExperiencer } = useVehicSimContext();
+  const conclusion = (testId: number) => (isExperiencer && ctx ? `/projects/${ctx.project.id}/rounds/${testId}` : `/validation/recommendations/${testId}`);
   const [data, setData] = useState<RegressionList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<RegressionStatus | "">("");
@@ -55,7 +56,11 @@ export default function RegressionListPage() {
       step={6}
       crumbs={[{ label: "Kiểm định" }, { label: "Kiểm thử hồi quy" }]}
       title="Kiểm thử hồi quy"
-      subtitle="Mọi cấu hình ứng viên đều được chạy lại và so với bản cơ sở trước khi trở thành khuyến nghị."
+      subtitle={
+        isExperiencer
+          ? "Mọi ứng viên đều được chạy lại và so với baseline trước khi được dùng làm baseline mới."
+          : "Mọi cấu hình ứng viên đều được chạy lại và so với bản cơ sở trước khi trở thành khuyến nghị."
+      }
       actions={
         <PillButton
           variant="dark"
@@ -168,8 +173,8 @@ export default function RegressionListPage() {
                   Xem
                 </Link>
                 {i.status === "PASSED" && (
-                  <Link href={`/validation/recommendations/${i.id}`} className="text-vehicsim-decision hover:underline">
-                    Khuyến nghị
+                  <Link href={conclusion(i.id)} className="text-vehicsim-decision hover:underline">
+                    {isExperiencer ? "Kết luận" : "Khuyến nghị"}
                   </Link>
                 )}
               </span>

@@ -59,6 +59,9 @@ Mọi bước luôn mở được, kể cả bước trước: link bước ① 
 baseline hiện hành, nên đổi baseline thì các bước ②–⑤ bắt đầu lại ở vòng mới.
 
 Đang chạy (run / tối ưu / regression `PENDING`, `RUNNING`) thì bước đó ở trạng thái **Đang chạy** với tiến độ, không tính là xong.
+Cột "Xong khi" chỉ dùng bên trong để chọn bước gợi ý; giao diện không hiện dấu "đã xong" (02/11/2026) vì người dùng luôn có thể thêm họ
+mới và đi lại từ đầu. Mỗi bước hiện số thứ tự kèm số liệu thật; chỉ có hai dấu hiệu: đang chạy và gợi ý làm tiếp. Bước ② chỉ đếm run
+của bộ mô phỏng đang cấu hình, cùng luật ghép của regression.
 
 ## 5. Sơ đồ màn
 
@@ -139,7 +142,6 @@ Tạo project là khai báo **project này để làm gì**, xong trọn vẹn r
   xe → `carla_vehicle_model_id`. Không thêm cột.
 - Chip mục tiêu chỉ điền sẵn câu mục tiêu, sửa được; không ngầm quyết định kịch bản.
 - Kiểm tra ngay khi rời ô (tên trống, quá dài); lỗi từ backend theo `code` hiện dưới đúng ô và quay về đúng bước chứa ô đó.
-- Hết hạn mức: báo ngay ở bước 1, nút chính đổi thành "Mở Project của tôi".
 - Bấm "Tạo project": mở project vừa tạo rồi chuyển tới M2.
 
 ### M2 — Bắt đầu bước ①: thiết kế kịch bản
@@ -260,20 +262,26 @@ Form sửa hiện có (`ProjectForm`) + "Vùng nguy hiểm" viền đỏ ở cu�
  VehicSim
  [(T) Thử AEB ban đêm   ▾]     ← menu: các project hoạt động, Quản lý, + Tạo
  ⌂ Trang chủ project
- HÀNH TRÌNH
-   ✓ ① Kịch bản
-   ✓ ② Chạy baseline
-   ● ③ Kết quả
-   ○ ④ Cải tiến AEB
-   ○ ⑤ Kiểm chứng
- KHÁC
-   Project của tôi
+ (1) Thiết kế kịch bản ▾        2 họ · 24 biến thể      ← mỗi bước là một mục có dropdown
+       Kịch bản mẫu · Sinh từ mô tả · Nhập tham số
+ (2) Chạy baseline ›            ⟳ đang chạy 14/24
+       Họ kịch bản & chạy baseline · Dữ liệu CARLA
+ (3) Xem kết quả ›              2 va chạm · 2 phanh oan  ← gợi ý làm tiếp (số nền đen)
+       Tóm tắt kết quả · Phân tích chi tiết
+ (4) Cải tiến AEB ›             1 ứng viên tự chỉnh
+       Chọn cách cải tiến · Tối ưu tự động (MOBO) · Chỉnh tay · Phiên bản AEB
+ (5) Kiểm chứng ›               1 lần · lần cuối đạt
+       Kiểm thử hồi quy · Tạo kiểm thử · Kết luận vòng
    Phương tiện
-   Công cụ nâng cao ▸   (Phân tích chi tiết, Dữ liệu CARLA, Phiên bản AEB)
+   Project của tôi
+   Cài đặt project
  (avatar) Tên · Experiencer
 ```
 
-Ẩn các mục "Chưa có trong đợt MVP", "Khuyến nghị", mã FE.
+Cùng bộ vẽ nhóm/dropdown với sidebar của các role khác (`NavGroups` trong `VehicSimSidebar.tsx`). Năm bước là năm mục, dưới tên là
+số liệu thật, không có dấu "xong"; chỉ một mục con khớp dài nhất trên cả sidebar được tô (xét cả `?tab=` của `/aeb`) và chỉ bước chứa
+nó mở ra. Ẩn "Khuyến nghị", "Workspace", "Quản trị" và các mục "Chưa có trong đợt
+MVP"; mở thẳng `/validation/recommendations/**` hoặc `/workspace/**` thì `ProjectGate` hiện thẻ giải thích kèm nút về Kết luận vòng.
 
 ### K2, K3 — Thanh hành trình và chip project
 
@@ -324,8 +332,10 @@ GET /api/v1/vehicsim/projects/{projectId}/journey      (chỉ chủ project, nh�
 | `components/VehicSimPage.tsx` | EXPERIENCER: `JourneyBar` thay `FlowBar`, chip "Project" thay "Không gian" | Khung chung |
 | `components/VehicSimSidebar.tsx` | EXPERIENCER: dùng `JourneySidebarNav` | Khung chung |
 | `app/page.tsx` | EXPERIENCER: chuyển tới `/projects/{id}` | Khung chung |
-| `app/aeb/page.tsx` | Đọc `?tab=manual|mobo|versions` để mở đúng tab (đã làm) | Phần 4 |
+| `app/aeb/page.tsx` | Tab đi theo `?tab=manual|versions` (mặc định MOBO), bấm tab cập nhật URL (đã làm) | Phần 4 |
 | `app/validation/regression/[testId]/page.tsx` | EXPERIENCER: "Xem kết luận" (M6) thay "Mở khuyến nghị" / "Duyệt ngay"; ẩn câu "cần kỹ sư quyết định" (đã làm, chỉ frontend) | Phần 5 |
+| `app/validation/regression/page.tsx`, `app/validation/regression/new/page.tsx` | EXPERIENCER: link "Kết luận" thay "Khuyến nghị", câu chữ không nhắc khuyến nghị (đã làm, chỉ frontend) | Phần 5 |
+| `components/VehicSimSidebar.tsx` | Tách bộ vẽ nhóm `NavGroups` dùng chung; nhóm của EXPERIENCER; giao diện role khác không đổi (đã làm) | Khung chung |
 
 Bỏ điểm chạm `app/scenarios/new/page.tsx` (phần 1): thẻ "Bước tiếp theo" trên M3 đã có nút chạy baseline.
 
@@ -350,7 +360,7 @@ Mỗi giai đoạn là một PR riêng merge được; giai đoạn A là nền,
 |---|---|---|
 | D-UX1 | EXPERIENCER có tự dùng ứng viên ĐẠT làm baseline trong project cá nhân? | Có, chỉ khi regression PASSED và baseline chưa đổi, bắt nhập lý do + xác nhận; cần ADR vì khác bất biến "chỉ REVIEWER Accept" (áp cho project nhóm) |
 | D-UX2 | Có kịch bản mẫu ở đầu bước ① không, tạo ở client hay backend? | Có, ở client bằng API sẵn có (mục 7); không gắn vào form tạo project |
-| D-UX3 | Sidebar EXPERIENCER bỏ hẳn menu kỹ sư? | Bỏ, gom vào "Công cụ nâng cao" thu gọn |
+| D-UX3 | Sidebar EXPERIENCER bỏ hẳn menu kỹ sư? | Không bỏ: cùng các nhóm chức năng có dropdown như kỹ sư, lọc mục EXPERIENCER không dùng được (02/11/2026) |
 | D-UX4 | Hub ở `/projects/[id]` hay `/`? | `/projects/[id]`; `/` chuyển hướng cho EXPERIENCER |
 
 ## 11. Nhật ký quyết định
@@ -360,6 +370,8 @@ Mỗi giai đoạn là một PR riêng merge được; giai đoạn A là nền,
 | 01/11/2026 | Lập kế hoạch từ rà code: hành trình rải 5 khu menu, cụt sau regression, màn đầu sơ sài; chọn hướng "lớp hành trình bọc ngoài" |
 | 01/11/2026 | Góp ý: tạo project chỉ khai báo thông tin (tên, mục tiêu, ghi chú, xe) và xong trọn vẹn rồi mới sang kịch bản → M1 thành Thông tin → Phương tiện → Xác nhận; bỏ "cách bắt đầu" khỏi M1; M2 thành màn chọn cách thiết kế kịch bản ở đầu bước ①; tiến độ baseline mẫu chuyển lên M3 |
 | 01/11/2026 | Triển khai A–B với đề xuất mặc định của D-UX2 (mẫu ở client), D-UX3 (sidebar riêng, bỏ hẳn menu kỹ sư; mục "Project của tôi" của menu kỹ sư gỡ vì thừa), D-UX4 (hub `/projects/[id]`). D-UX1 chưa chốt nên vòng kết thúc ở "Xem kết quả kiểm chứng" |
+| 02/11/2026 | Góp ý: bỏ dấu ✓ "đã xong" (Cách A: số liệu thật + gợi ý); sidebar EXPERIENCER đủ chức năng có dropdown như các role khác; ẩn mục chưa có trong MVP |
+| 02/11/2026 | Góp ý: không tách nhóm Hành trình và nhóm chức năng; mỗi bước của hành trình là một mục, dropdown ra các trang của bước đó |
 | 01/11/2026 | Chốt theo đề xuất: D-UX1 = có (ADR-046; định lưu lý do ở dòng `engineering_recommendations` ACCEPTED nhưng chạy MySQL thật bị `ck_er_no_self_review` chặn, nên lý do nối vào `aeb_versions.notes`); D-J1 bước ② xong khi ≥ 1 họ chạy đủ; D-J2 M2 luôn mở được để thêm họ; hạn chế đụng màn người khác (bỏ chạm phần 1, phần 5 chỉ frontend). Triển khai C, D, E |
 
 ## 12. Kiểm chứng
@@ -393,6 +405,21 @@ Mỗi giai đoạn là một PR riêng merge được; giai đoạn A là nền,
   có project cá nhân: sidebar không đổi. 1024 px: nội dung không vỡ, nhưng thanh hành trình phải cuộn ngang mới thấy bước ④⑤.
 - Chưa đối chiếu Figma (không có khung cho các màn này); chưa kiểm hết bằng bàn phím.
 
+Đã chạy 02/11/2026 sau giai đoạn F:
+
+- `.\mvnw.cmd -B clean test`: 436 test, 0 lỗi, 1 bỏ qua. Frontend `npm run lint`, `npx tsc --noEmit`, `npx next build` sạch.
+- Xuyên luồng API (MySQL/Redis dùng một lần, đã xoá): vẫn 24/24 bước đúng.
+- Sidebar EXPERIENCER theo bước (Edge headless): trình duyệt tự bấm 18 đường dẫn lấy từ sidebar — 0 lỗi trang, 0 lỗi API; mỗi trang
+  chỉ một mục con được tô và chỉ bước chứa nó mở ra (kể cả `/scenarios/new` so với `/scenarios`, `/aeb?tab=manual|versions`,
+  `/projects/{id}/rounds/{test}` của vòng cũ). Sidebar ENGINEER chụp lại giống trước khi sửa.
+  `/validation/recommendations` với EXPERIENCER hiện thẻ "Project cá nhân không có khuyến nghị".
+- MOBO bằng EXPERIENCER: tạo đợt 6 rồi 20 trial trên họ 12 biến thể → chạy xong, nhưng 20/20 trial vi phạm ràng buộc nên Pareto rỗng.
+  Baseline 1/12 va chạm, 3/12 phanh oan; với 12 biến thể, thêm 1 ca phanh oan là +8,33 điểm % > 5, nên ràng buộc thực chất là "không
+  thêm ca phanh oan nào", trong khi trial chủ yếu tăng TTC. Ứng viên tay giảm tốc 10 m/s² + trễ 0 s vẫn đạt regression, tức có điểm
+  hợp lệ mà thuật toán chưa tìm ra. Đã báo người phụ trách phần 4; không sửa `OptimizationService`.
+- Mỗi trial MOBO là một phiên bản `CANDIDATE` (nguồn `OPTIMIZATION`): hành trình đếm riêng "ứng viên tự chỉnh" (bỏ trial) và "đợt
+  tối ưu đã xong", tránh hiện "20 ứng viên" khi chưa có phương án hợp lệ.
+
 ## 13. Tiến độ triển khai
 
 | Giai đoạn | Đã làm | Còn lại |
@@ -403,6 +430,7 @@ Mỗi giai đoạn là một PR riêng merge được; giai đoạn A là nền,
 | C | M4 `/projects/[id]/results` (dùng `analysisDataset` + `failures` của phần 3, không tự tính chỉ số; lưới tốc độ × khoảng cách; 3 ca tệ nhất kèm phát lại); M5 `/projects/[id]/improve` (gợi ý nhóm nguyên nhân từ `failures.kpis.by_class`, hai lối vào `/aeb?tab=`); `aeb/page.tsx` đọc `?tab=` | Xác nhận với người phụ trách phần 4 trạng thái thật của MOBO trước khi demo |
 | D | `POST /projects/{id}/regressions/{testId}/adopt` (`ProjectService.adopt`, 7 lỗi mới trong `ProjectError`); hành trình đếm theo baseline hiện hành; M6 `/projects/[id]/rounds/[testId]` (kết luận, 4 số, tham số đã đổi, hộp thoại lý do + xác nhận); trang regression rẽ nhánh EXPERIENCER | ADR-046 cần nhóm duyệt |
 | E | M8 `/settings` + vùng nguy hiểm; `Term`; chủ project đã đổi role xem chỉ đọc; thanh hành trình hiện ở M2, M4, M5, M6 | Bàn phím và màn 1024 px kiểm trên app thật |
+| F (02/11) | Bỏ dấu "đã xong" khỏi sidebar, thanh hành trình, trang chủ, thẻ project; thông báo khi baseline / tối ưu / kiểm chứng vừa chạy xong thay cho "Xong bước"; sidebar EXPERIENCER đủ nhóm chức năng (dùng chung `NavGroups`, gỡ `JourneyNav` / `PersonalProjectsLink` trùng lặp ở `ProjectShell`); `/aeb` đổi tab theo URL; chặn trang khuyến nghị / workspace; câu chữ EXPERIENCER ở danh sách và màn tạo regression; M4 "Xem ảnh camera" cho run CARLA; bước ② lọc theo bộ mô phỏng | Đã chạy app thật và thử MOBO (mục 12) |
 
 Thông số xe trên thẻ chọn xe lấy từ `carla_vehicle_models` qua `vehicle-options` (thêm 4 trường, không đổi schema).
 

@@ -226,14 +226,12 @@ export function ProjectWizard({
   vehicles,
   busy,
   error,
-  limitReached,
   onSubmit,
   onCancel,
 }: {
   vehicles: VehicleOption[];
   busy: boolean;
   error: unknown;
-  limitReached: string | null;
   onSubmit: (values: ProjectValues) => void;
   onCancel: () => void;
 }) {
@@ -264,7 +262,7 @@ export function ProjectWizard({
       if (!invalid.name && !invalid.description) setStep(1);
     } else if (step === 1) {
       if (vehicle) setStep(2);
-    } else if (!busy && !limitReached) {
+    } else if (!busy) {
       onSubmit(values);
     }
   };
@@ -272,7 +270,6 @@ export function ProjectWizard({
   return (
     <form onSubmit={submit} className="flex w-full flex-col gap-6">
       <Stepper step={step} />
-      {limitReached && <ErrorNote message={limitReached} />}
       <div className="flex w-full items-start gap-6">
         <Card className="flex min-w-0 flex-1 flex-col gap-6 p-7">
           <ErrorNote message={generalError(error)} />
@@ -322,7 +319,7 @@ export function ProjectWizard({
                 <ArrowLeft aria-hidden className="size-4" /> Quay lại
               </PillButton>
             )}
-            <PillButton type="submit" variant="dark" disabled={busy || (step === 2 && !!limitReached)}>
+            <PillButton type="submit" variant="dark" disabled={busy}>
               {step < 2 ? "Tiếp" : busy ? "Đang tạo…" : "Tạo project"}
               {!busy && <ArrowRight aria-hidden className="size-4" />}
             </PillButton>

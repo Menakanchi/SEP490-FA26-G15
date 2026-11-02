@@ -77,8 +77,11 @@ export interface ProjectItem {
 
 export interface ProjectList {
   items: ProjectItem[];
+  total: number;
+  page: number;
+  page_size: number;
   active_count: number;
-  active_limit: number;
+  archived_count: number;
 }
 
 export interface ProjectRequest {
@@ -115,6 +118,7 @@ export interface JourneyCounts {
   false_activations: number;
   datasets: number;
   candidates: number;
+  optimizations: number;
   optimizations_running: number;
   regressions_running: number;
   regressions_completed: number;

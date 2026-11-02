@@ -7,10 +7,12 @@ import com.vsos.backend.dto.project.ProjectDtos.JourneyStep;
 import com.vsos.backend.dto.project.ProjectDtos.JourneyStepKey;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectItem;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectJourney;
+import com.vsos.backend.dto.project.ProjectDtos.ProjectList;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectRequest;
 import com.vsos.backend.dto.regression.RegressionRecords.RegressionTestRow;
 import com.vsos.backend.exception.project.ProjectError;
 import com.vsos.backend.exception.project.ProjectException;
+import com.vsos.backend.common.Vs;
 import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.repository.project.ProjectRepository;
 import com.vsos.backend.repository.regression.RegressionRepository;
@@ -52,6 +54,7 @@ class ProjectServiceTest {
     private static final long BASELINE = 5L;
     private static final long CANDIDATE = 6L;
     private static final long TEST = 31L;
+    private static final String SIMULATOR = "vehicsim-kinematic-1.0";
 
     private ProjectRepository projects;
     private RunService runs;
@@ -64,6 +67,7 @@ class ProjectServiceTest {
         runs = mock(RunService.class);
         regressions = mock(RegressionRepository.class);
         service = new ProjectService(projects, runs, regressions);
+        when(runs.configuredSimulator()).thenReturn(SIMULATOR);
         when(projects.supportedVehicle(isNull())).thenReturn(VEHICLE);
         when(projects.supportedVehicle(VEHICLE)).thenReturn(VEHICLE);
         when(projects.journeySummary(anyLong())).thenReturn(summary());
@@ -126,15 +130,32 @@ class ProjectServiceTest {
     }
 
     @Test
-    void theActiveLimitBlocksCreateAndUnarchive() {
-        when(projects.countActivePersonal(OWNER)).thenReturn(ProjectService.MAX_ACTIVE);
-        given(project("ARCHIVED"));
+    void theListIsPagedPerStatusAndSearchedByName() {
+        when(projects.pagePersonal(OWNER, "ARCHIVED", "aeb", 9, 18)).thenReturn(List.of(project("ARCHIVED")));
+        when(projects.countPersonal(OWNER, "ARCHIVED", "aeb")).thenReturn(19);
+        when(projects.countPersonal(OWNER, "ACTIVE", "aeb")).thenReturn(4);
 
-        assertError(() -> service.create(OWNER, new ProjectRequest("Mới", null, null)), ProjectError.PROJECT_LIMIT_REACHED,
-                "Bạn đã có 3/3 project đang hoạt động. Lưu trữ hoặc xoá bớt trước.");
-        assertError(() -> service.unarchive(OWNER, PROJECT), ProjectError.PROJECT_LIMIT_REACHED,
-                "Bạn đã có 3/3 project đang hoạt động. Lưu trữ hoặc xoá bớt trước.");
-        verify(projects, never()).setStatus(anyLong(), anyString(), any());
+        ProjectList list = service.list(OWNER, "ARCHIVED", "  aeb ", 3, 9);
+
+        assertThat(list.items()).extracting(ProjectItem::id).containsExactly(PROJECT);
+        assertThat(list.total()).isEqualTo(19);
+        assertThat(list.activeCount()).isEqualTo(4);
+        assertThat(list.archivedCount()).isEqualTo(19);
+        assertThatThrownBy(() -> service.list(OWNER, "DELETED", "", 1, 9)).isInstanceOf(Vs.InvalidRequestException.class);
+        assertThatThrownBy(() -> service.list(OWNER, "ACTIVE", "", 0, 9)).isInstanceOf(Vs.InvalidRequestException.class);
+        assertThatThrownBy(() -> service.list(OWNER, "ACTIVE", "", 1, ProjectService.PAGE_SIZE_MAX + 1)).isInstanceOf(Vs.InvalidRequestException.class);
+    }
+
+    @Test
+    void thereIsNoLimitOnHowManyProjectsAreActive() {
+        when(projects.insert(eq("Thêm"), isNull(), eq(OWNER), eq(VEHICLE), any())).thenReturn(PROJECT);
+        given(project("ACTIVE"));
+
+        service.create(OWNER, new ProjectRequest("Thêm", null, null));
+
+        given(project("ARCHIVED"));
+        service.unarchive(OWNER, PROJECT);
+        verify(projects).setStatus(eq(PROJECT), eq("ACTIVE"), any());
     }
 
     @Test
@@ -205,7 +226,7 @@ class ProjectServiceTest {
 
     private static Row summary(Object... overrides) {
         Map<String, Object> values = new HashMap<>(Map.of("baseline_id", BASELINE, "baseline_label", "v1.0", "rounds", 1L, "candidates", 0L,
-                "families", 0L, "datasets", 0L, "optimizations_running", 0L, "regressions_running", 0L, "regressions_completed", 0L));
+                "families", 0L, "datasets", 0L, "optimizations", 0L, "optimizations_running", 0L, "regressions_running", 0L, "regressions_completed", 0L));
         values.put("last_activity_at", LocalDateTime.of(2026, 11, 1, 9, 0));
         for (int i = 0; i < overrides.length; i += 2) {
             values.put((String) overrides[i], overrides[i + 1]);
@@ -236,7 +257,7 @@ class ProjectServiceTest {
                                         int optimizationsRunning, int regressionsRunning, int regressionsCompleted) {
         int familiesDone = variants > 0 && completed == variants ? 1 : 0;
         return new JourneyCounts(variants > 0 ? 1 : 0, variants, completed, running, failed, familiesDone, (variants > 0 ? 1 : 0) - familiesDone,
-                completed, 0, 0, 0, datasets, candidates, optimizationsRunning, regressionsRunning, regressionsCompleted, null, null);
+                completed, 0, 0, 0, datasets, candidates, 0, optimizationsRunning, regressionsRunning, regressionsCompleted, null, null);
     }
 
     @Test
@@ -282,6 +303,17 @@ class ProjectServiceTest {
     }
 
     @Test
+    void aFinishedOptimizationRunCountsAsImprovementWithoutCountingItsTrialsAsCandidates() {
+        JourneyCounts counts = ProjectService.count(summary("families", 1L, "optimizations", 1L), Map.of(1L, 1L),
+                List.of(run(1, "COMPLETED", false, 4.0, false)));
+
+        assertThat(counts.candidates()).isZero();
+        assertThat(counts.optimizations()).isEqualTo(1);
+        assertThat(statuses(counts)).containsEntry(JourneyStepKey.RESULTS, DONE).containsEntry(JourneyStepKey.IMPROVE, DONE)
+                .containsEntry(JourneyStepKey.VERIFY, TODO);
+    }
+
+    @Test
     void aFinishedRoundHasNoNextStep() {
         List<JourneyStep> steps = ProjectService.steps(counts(4, 4, 0, 0, 0, 1, 0, 0, 1));
 
@@ -312,11 +344,11 @@ class ProjectServiceTest {
     }
 
     @Test
-    void onlyTheOwnerReadsTheJourney() {
+    void onlyTheOwnerReadsTheJourneyCountedOnTheConfiguredSimulator() {
         when(projects.row(PROJECT)).thenReturn(project("ACTIVE"));
         when(projects.journeySummary(PROJECT)).thenReturn(summary("families", 1L));
         when(projects.currentVariantFamilies(PROJECT)).thenReturn(Map.of(1L, 1L));
-        when(projects.latestBaselineRuns(PROJECT, BASELINE)).thenReturn(List.of(run(1, "COMPLETED", false, 4.0, false)));
+        when(projects.latestBaselineRuns(PROJECT, BASELINE, SIMULATOR)).thenReturn(List.of(run(1, "COMPLETED", false, 4.0, false)));
 
         ProjectJourney journey = service.journey(OWNER, PROJECT);
 
