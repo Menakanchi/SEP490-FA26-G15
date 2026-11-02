@@ -221,8 +221,8 @@ Tiêu chí mặc định (`DEFAULT_CRITERIA` trong `regression.py`):
 
 Mọi tiêu chí đang bật phải qua thì verdict mới `PASSED`; trượt mà có ca tệ hơn baseline là `REGRESSED`,
 trượt tiêu chí khác là `FAILED` (giao diện gộp hai loại thành FAILED). Chốt xong thì tạo một
-`engineering_recommendations`. Chỉ **REVIEWER** được quyết định (`decide`) — Engineer / EXP tạo
-regression nhưng không tự duyệt (DB còn chặn người duyệt = người tạo); project cá nhân của EXP không
+`engineering_recommendations`. Chỉ **REVIEWER** được quyết định (`decide`). Theo [ADR-048](../adr/ADR-048-reviewer-chay-regression-de-kiem-tra.md), Reviewer cũng được tạo/chạy
+regression trong workspace của mình; người tạo khuyến nghị không tự duyệt (kể cả Reviewer tạo test); project cá nhân của EXP không
 có recommendation.
 Quyết định cần lý do
 và xác nhận; Accept chỉ khi test `PASSED`, baseline của test vẫn là BASELINE hiện hành
@@ -316,7 +316,7 @@ không được đưa lại vào API hiện tại; không giả lập sáu categ
   công khai và backend cảnh báo khi khởi động.
 - Vai trò (ADR-035): **mỗi người đúng một role hệ thống** (`users.role_id`) — `ADMIN`, `MANAGER` (tạo
   workspace, thêm Engineer/Reviewer; chỉ đọc phần kỹ thuật), `ENGINEER` (làm toàn bộ quy trình), `REVIEWER`
-  (chỉ duyệt recommendation), `EXPERIENCER` (tự đăng ký: project cá nhân, mô phỏng, tối ưu, regression; không
+  (đọc, chạy regression và duyệt recommendation theo ADR-048), `EXPERIENCER` (tự đăng ký: project cá nhân, mô phỏng, tối ưu, regression; không
   recommendation, không duyệt). Role khác EXPERIENCER do Admin cấp bằng `scripts/CreateAdmin.java --role …`
   (API quản lý user là TD-28). Riêng Reviewer đã lọc project theo membership workspace theo đề xuất
   [ADR-047](../adr/ADR-047-pham-vi-workspace-reviewer.md); role khác còn TD-30. App **public** nên giữ tự đăng ký.
@@ -331,9 +331,10 @@ Snapshot cũ có `source=LEGACY_SNAPSHOT`, `confirmed=null`, không dựng lại
 `ProjectAccess` request scope đọc principal/header và resolve một lần qua `ReviewerScope.project` theo
 `workspace_members`. Reviewer chọn project bằng `X-VehicSim-Project`; context trả `reviewer_projects`,
 `reviewer_can_decide` và cho phép `vehicle=null`. Frontend chờ context, chốt ID trước khi mount màn con;
-JSON, tải file và POST quyết định dùng cùng ID. Đổi mật khẩu giữ project; đăng nhập khác/đăng xuất xóa lựa chọn.
-POST quyết định thiếu header trả 400. Ngoài scope: list rỗng, chi tiết/tải/quyết định 404; project/workspace
-lưu trữ chỉ đọc. Membership/trạng thái được kiểm lại và khóa trong transaction quyết định.
+JSON, tải file, POST regression và POST quyết định dùng cùng ID. Đổi mật khẩu giữ project; đăng nhập khác/đăng xuất xóa lựa chọn.
+Reviewer tạo regression hoặc quyết định thiếu header trả 400. Ngoài scope: list rỗng, chi tiết/tải/chạy/quyết định 404; project/workspace
+lưu trữ chỉ đọc. Membership/trạng thái được kiểm lại và khóa trong transaction tạo regression hoặc quyết định.
+Quyền frontend `canRunRegression` mở riêng nút/form cho Reviewer; `canWrite` vẫn chỉ dành ADMIN/ENGINEER/EXPERIENCER.
 `GET /api/v1/vehicsim/reviewer/projects` chỉ cho REVIEWER, không phụ thuộc lựa chọn đang lỗi.
 Lỗi context không tự đổi project; nút chọn lại chỉ hiện khi Reviewer còn project hợp lệ. Role khác giữ
 context tốt gần nhất khi refresh lỗi. `Queries` không đọc HTTP/security; job nền nhận project ID tường minh.
@@ -373,7 +374,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Adapter CARLA áp góc lái của chính tick đó (không dùng `get_control()` của tick trước) và phanh/ga do lõi Java quyết định | `test_brake_override_keeps_this_ticks_steering` |
 | Mọi tham số AEB được simulator dùng; seed Java khớp SQL; AEB có đúng 4 tham số chỉnh được | `AebParameterSeedTest#everySeededParameterIsUsedByTheSimulator`, `AebParameterSeedTest#javaParameterSeedMatchesSqlSeed`, `SimulatorBehaviorTest#aebHasExactlyTheFourTunableParameters` |
 | Mọi route `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi được, MANAGER chỉ đọc | `VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
-| Chỉ REVIEWER quyết định recommendation; REVIEWER không chạy mô phỏng; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |
+| Chỉ REVIEWER quyết định recommendation; REVIEWER được chạy regression, không ghi kịch bản/candidate/baseline độc lập; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#reviewerCanRunRegressionWithoutGainingScenarioOrCandidateWrites`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |
 | Người tạo khuyến nghị không tự duyệt | `RegressionDecisionTest#theAuthorOfTheRecommendationCannotApproveIt` |
 | Accept hạ baseline cũ trước rồi nâng candidate; Reject giữ baseline; Request more tests không đổi version | `RegressionDecisionTest#acceptDemotesTheOldBaselineBeforePromotingTheCandidate`, `RegressionDecisionTest#rejectMarksTheCandidateButKeepsTheBaseline`, `RegressionDecisionTest#requestingMoreTestsChangesNoVersion` |
 | Candidate chạy đúng seed baseline | _chưa có test_ (TD-33) |
@@ -387,7 +388,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Preview khớp bộ kịch bản thật của test (đã có test); run bị dừng/hỏng không cho verdict | `RegressionPairingTest#thePreviewMatchesTheScenarioSetOfTheTestThatIsCreated`, `RegressionPairingTest#aStoppedRunMakesTheTestFailWithoutVerdictOrRecommendation` |
 | Ngưỡng phanh oan mặc định 5 điểm %; test cũ giữ ngưỡng đã lưu (ADR-044) | `RegressionRulesTest#defaultFalseActivationThresholdIsFivePoints`, `RegressionRulesTest#aTestStoredWithTheOldThresholdIsStillJudgedByIt` |
 | Gói xuất chỉ cho test đã xong, không email, CSV chống công thức; lịch sử baseline gồm baseline khởi tạo | `RegressionReportServiceTest#anUnfinishedTestCannotBeExported`, `RegressionReportServiceTest#theExportCarriesTheManifestPairsSeedsAndDecisionButNoEmail`, `RegressionReportServiceTest#theCsvHasOneRowPerPairAndNeutralisesFormulas`, `RegressionReportServiceTest#theHistoryListsDecisionsNewestFirstAndTheBaselineChainWithItsInitialBaseline` |
-| Route xuất / lịch sử đọc được với mọi role; tạo regression chỉ ADMIN / ENGINEER / EXPERIENCER | `VehicSimSecurityTest#regressionExportsAndDecisionHistoryAreReadOnlyForEveryRole`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
+| Route xuất / lịch sử đọc được với mọi role; ADMIN / ENGINEER / EXPERIENCER tạo regression như cũ; REVIEWER cần project tường minh, membership và trạng thái ACTIVE | `VehicSimSecurityTest#regressionExportsAndDecisionHistoryAreReadOnlyForEveryRole`, `VehicSimSecurityTest#reviewerRegressionRequiresAnExplicitProjectAndHonoursWriteQuota`, `RegressionPairingTest#reviewerRegressionCannotStartWithoutMembershipOrInArchivedProjectsAndWorkspaces` |
 | Run baseline FAILED / STOPPED không bao giờ được ghép làm baseline của regression | `RegressionPairingTest#aStoppedOrFailedBaselineRunIsNeverReusedAsTheBaseline` |
 | Tập biến thể chọn tay: đúng các biến thể đã chọn, phải thuộc họ và không rỗng, preview khớp test; không gửi thì như cũ | `RegressionPairingTest#aHandPickedSetRunsExactlyThoseVariantsInFamilyOrderAndIsRecorded`, `RegressionPairingTest#aHandPickedSetMustBeNonEmptyAndBelongToTheFamily`, `RegressionPairingTest#thePreviewOfAHandPickedSetMatchesTheTestAndListsTheVariants`, `RegressionPairingTest#withoutVariantIdsTheOldSelectionIsKept` |
 | Ba mục tiêu ADR-040 hiện theo từng cặp nhưng không quyết định verdict; NULL giữ nguyên, không thành 0 | `RegressionRulesTest#objectivesAreShownPerPairButNeverDecideTheVerdict` |

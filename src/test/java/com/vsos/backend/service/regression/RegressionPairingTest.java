@@ -225,6 +225,41 @@ class RegressionPairingTest {
     }
 
     @Test
+    void reviewerRegressionUsesTheSamePairingAndDispatchAfterCheckingActiveMembership() {
+        Queries queries = mock(Queries.class);
+        FamilyService families = mock(FamilyService.class);
+        RunService runs = mock(RunService.class);
+        arrangeFamily(queries, families);
+        when(runs.configuredSimulator()).thenReturn(RunService.KINEMATIC_SIMULATOR);
+        when(db.first(contains("FOR SHARE"), eq(PROJECT), eq(USER)))
+                .thenReturn(row("project_status", "ACTIVE", "workspace_status", "ACTIVE"));
+        when(db.insert(startsWith("INSERT INTO regression_tests"), any(Object[].class))).thenReturn(TEST);
+        when(runs.createRuns(eq(PROJECT), eq(SCENARIO), any(), eq(VEHICLE), eq(CANDIDATE), eq(USER), eq("REGRESSION"), eq(TEST), any()))
+                .thenReturn(List.of(2001L));
+
+        long id = service(runs, queries, families).createTestAsReviewer(PROJECT, USER, CANDIDATE, SCENARIO,
+                false, false, null, "Reviewer verification", List.of(101L));
+
+        assertThat(id).isEqualTo(TEST);
+        verify(db).first(contains("FOR SHARE"), eq(PROJECT), eq(USER));
+        verify(runs).dispatch(List.of(2001L));
+    }
+
+    @Test
+    void reviewerRegressionCannotStartWithoutMembershipOrInArchivedProjectsAndWorkspaces() {
+        RunService runs = mock(RunService.class);
+        RegressionService service = service(runs, mock(Queries.class), mock(FamilyService.class));
+        for (Row scope : new Row[]{null, row("project_status", "ARCHIVED", "workspace_status", "ACTIVE"),
+                row("project_status", "ACTIVE", "workspace_status", "ARCHIVED")}) {
+            when(db.first(contains("FOR SHARE"), eq(PROJECT), eq(USER))).thenReturn(scope);
+            assertThatThrownBy(() -> service.createTestAsReviewer(PROJECT, USER, CANDIDATE, SCENARIO, true, true, null, null, null))
+                    .isInstanceOf(scope == null ? Vs.NotFoundException.class : InvalidRequestException.class);
+        }
+        verify(db, never()).insert(any(), any(Object[].class));
+        verify(runs, never()).dispatch(any());
+    }
+
+    @Test
     void theBaselineLookupIsScopedToTheConfiguredSimulatorAndVehicle() {
         Queries queries = mock(Queries.class);
         FamilyService families = mock(FamilyService.class);

@@ -13,7 +13,7 @@ const POLL_MS = 3000;
 
 export default function RegressionListPage() {
   const router = useRouter();
-  const { canWrite } = useVehicSimContext();
+  const { canRunRegression } = useVehicSimContext();
   const [data, setData] = useState<RegressionList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<RegressionStatus | "">("");
@@ -59,9 +59,9 @@ export default function RegressionListPage() {
       actions={
         <PillButton
           variant="dark"
-          href={canWrite ? "/validation/regression/new" : undefined}
-          disabled={!canWrite}
-          title={canWrite ? undefined : "Tài khoản người xem chỉ có quyền xem"}
+          href={canRunRegression ? "/validation/regression/new" : undefined}
+          disabled={!canRunRegression}
+          title={canRunRegression ? undefined : "Project hiện tại không cho phép chạy kiểm thử hồi quy"}
         >
           + Tạo kiểm thử hồi quy
         </PillButton>

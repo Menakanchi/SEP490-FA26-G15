@@ -13,8 +13,8 @@ import com.vsos.backend.config.VehicSimProperties;
  * Kiểm quyền và hạn mức dùng chung cho mọi controller {@code /api/v1/vehicsim/*} (các controller của {@code com.vsos.backend} và {@code RegressionController}):
  * một chỗ duy nhất giữ luật role (ADR-035), để tách route ra controller khác không sinh ra bản luật thứ hai.
  * <p>
- * Mỗi người đúng một role hệ thống: tạo / chạy / candidate / regression cần ENGINEER, EXPERIENCER hoặc ADMIN; Accept / Reject chỉ
- * REVIEWER; MANAGER chỉ đọc. Tạm thời (TD-30) app vẫn chạy trên một project, chưa lọc theo workspace.
+ * Tạo kịch bản / baseline / candidate cần ENGINEER, EXPERIENCER hoặc ADMIN; REVIEWER được chạy regression trong workspace của mình
+ * và Accept / Reject (ADR-048); MANAGER chỉ đọc phần kỹ thuật. Phạm vi các role khác còn theo TD-30.
  */
 @Component
 public class VehicSimAccess {
@@ -42,12 +42,17 @@ public class VehicSimAccess {
         return ((CustomUserDetails) user).getUser().getRole().getCode().name();
     }
 
-    /** Thao tác ghi (tạo / chạy / candidate / regression): ADMIN, ENGINEER, EXPERIENCER; còn lại 403. Trả id người dùng. */
+    /** Thao tác ghi kỹ thuật: ADMIN, ENGINEER, EXPERIENCER; quyền chạy regression kiểm riêng. Trả id người dùng. */
     public static long requireEngineer(UserDetails user) {
         if (!WRITE_ROLES.contains(roleOf(user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cần quyền ENGINEER, EXPERIENCER hoặc ADMIN để thực hiện thao tác này");
         }
         return userId(user);
+    }
+
+    /** ADR-048: Reviewer được chạy regression để kiểm tra; không mở các quyền ghi kỹ thuật khác. */
+    public static long requireRegressionRunner(UserDetails user) {
+        return "REVIEWER".equals(roleOf(user)) ? userId(user) : requireEngineer(user);
     }
 
     /** Chỉ Reviewer duyệt: Engineer không tự duyệt việc mình làm, EXP không có recommendation (ADR-035). Trả id người dùng. */

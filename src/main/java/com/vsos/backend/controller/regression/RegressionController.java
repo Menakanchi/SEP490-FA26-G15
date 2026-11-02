@@ -48,8 +48,8 @@ import java.util.Objects;
 
 /**
  * HTTP của màn 5: regression test, khuyến nghị, quyết định Reviewer, gói xuất và lịch sử ({@code /api/v1/vehicsim/...}, cùng tiền tố
- * với các controller VehicSim). Đọc: mọi role đã đăng nhập; tạo regression: ADMIN / ENGINEER / EXPERIENCER; quyết định: chỉ REVIEWER
- * (luật ở {@link VehicSimAccess}). Reviewer chỉ thấy và duyệt regression của project thuộc workspace mình là thành viên
+ * với các controller VehicSim). Đọc: mọi role đã đăng nhập; tạo regression: ADMIN / ENGINEER / EXPERIENCER / REVIEWER; quyết định: chỉ REVIEWER
+ * (luật ở {@link VehicSimAccess}). Reviewer chỉ thấy, chạy và duyệt regression của project thuộc workspace mình là thành viên
  * ({@link ProjectAccess}); ngoài phạm vi thì danh sách rỗng, chi tiết / quyết định trả 404. Lớp này chỉ nhận request; nghiệp vụ ở các service, lỗi đổi thành mã HTTP ở ApiExceptionHandler.
  */
 @RestController
@@ -107,7 +107,10 @@ public class RegressionController {
     @PostMapping("/regression")
     public ResponseEntity<CreateRegressionResponse> createRegression(@Valid @RequestBody CreateRegressionRequest body,
                                                                      @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireEngineer(user);
+        long uid = VehicSimAccess.requireRegressionRunner(user);
+        boolean reviewer = "REVIEWER".equals(VehicSimAccess.roleOf(user));
+        if (reviewer) requireVisible();
+        long projectId = reviewer ? projects.explicitProjectId() : access.projectId();
         access.limitWrites(uid, "regression");
         Map<String, Map<String, Object>> criteria = new LinkedHashMap<>();
         if (body.criteria() != null) {
@@ -117,9 +120,13 @@ public class RegressionController {
                 criteria.put(k, cleaned);
             });
         }
-        long id = regression.createTest(access.projectId(), uid, body.candidateVersionId(), body.scenarioId(),
-                body.includeOldCritical() == null || body.includeOldCritical(), body.includeAllVariants() == null || body.includeAllVariants(),
-                criteria, body.name(), body.variantIds());
+        long id = reviewer
+                ? regression.createTestAsReviewer(projectId, uid, body.candidateVersionId(), body.scenarioId(),
+                        body.includeOldCritical() == null || body.includeOldCritical(), body.includeAllVariants() == null || body.includeAllVariants(),
+                        criteria, body.name(), body.variantIds())
+                : regression.createTest(projectId, uid, body.candidateVersionId(), body.scenarioId(),
+                        body.includeOldCritical() == null || body.includeOldCritical(), body.includeAllVariants() == null || body.includeAllVariants(),
+                        criteria, body.name(), body.variantIds());
         return ResponseEntity.status(HttpStatus.CREATED).body(new CreateRegressionResponse(id, RegressionCodes.testCode(id)));
     }
 

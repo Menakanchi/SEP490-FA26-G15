@@ -59,6 +59,7 @@ giữ lại). VehicSim: ADR-023 trở đi.
 | [ADR-045](ADR-045-manager-cap-role-khi-them-thanh-vien.md) | Manager / Admin chỉ thêm tài khoản EXPERIENCER vào workspace và chọn role ENGINEER / REVIEWER cho người đó (`users.role_id` đổi theo, ghi `workspace_members.granted_role`); rời workspace cuối cùng thì về EXPERIENCER | 🕐 **Proposed 23/10** — thay phần "Ai cấp" ENGINEER / REVIEWER của ADR-035 |
 | [ADR-046](ADR-046-lich-su-quyet-dinh-reviewer.md) | Đề xuất append lịch sử quyết định Reviewer, 29 → 30 bảng; migration 012 | 🕐 **Proposed 1/11** — giữ trên nhánh để nhóm duyệt sau, chưa áp DB dev |
 | [ADR-047](ADR-047-pham-vi-workspace-reviewer.md) | Reviewer chỉ đọc/duyệt project thuộc workspace mình còn membership; project tường minh, lưu trữ chỉ đọc | 🕐 **Proposed 1/11** — triển khai theo yêu cầu, chờ nhóm duyệt |
+| [ADR-048](ADR-048-reviewer-chay-regression-de-kiem-tra.md) | Reviewer được đọc, chạy regression trong workspace của mình và duyệt; không tự duyệt test mình tạo | ✅ **Accepted 2/11** — theo yêu cầu người dùng; thay phần quyền Reviewer của ADR-035, bổ sung ADR-047 |
 
 ## Luật
 

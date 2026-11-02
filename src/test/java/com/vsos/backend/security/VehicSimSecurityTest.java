@@ -33,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -279,13 +280,35 @@ class VehicSimSecurityTest {
             assertThat(statusOf(createRegression(), code)).as("%s tạo regression được", code).isBetween(200, 299);
             assertThat(statusOf(describeScenario(), code)).as("%s mô tả được", code).isBetween(200, 299);
         }
-        // MANAGER chỉ đọc; REVIEWER duyệt chứ không làm.
+        // MANAGER chỉ đọc; REVIEWER chỉ được chạy regression, không có quyền ghi kỹ thuật khác.
         for (RoleCode code : List.of(RoleCode.MANAGER, RoleCode.REVIEWER)) {
             assertThat(statusOf(runFamily(), code)).as("%s không được chạy", code).isEqualTo(403);
             assertThat(statusOf(createCandidate(), code)).as("%s không được tạo candidate", code).isEqualTo(403);
-            assertThat(statusOf(createRegression(), code)).as("%s không được tạo regression", code).isEqualTo(403);
+            assertThat(statusOf(createRegression(), code)).as("%s chạy regression", code).isEqualTo(code == RoleCode.REVIEWER ? 201 : 403);
             assertThat(statusOf(describeScenario(), code)).as("%s không được mô tả", code).isEqualTo(403);
         }
+    }
+
+    @Test
+    void reviewerCanRunRegressionWithoutGainingScenarioOrCandidateWrites() throws Exception {
+        stubServices();
+        when(projects.explicitProjectId()).thenReturn(42L);
+        assertThat(statusOf(createRegression().header(ProjectAccess.PROJECT_HEADER, "42"), RoleCode.REVIEWER)).isEqualTo(201);
+        verify(regression).createTestAsReviewer(eq(42L), eq(7L), eq(2L), eq(1L), eq(true), eq(true), any(), any(), any());
+        verify(regression, never()).createTest(anyLong(), anyLong(), anyLong(), anyLong(), anyBoolean(), anyBoolean(), any(), any(), any());
+        assertThat(statusOf(runFamily(), RoleCode.REVIEWER)).isEqualTo(403);
+        assertThat(statusOf(createCandidate(), RoleCode.REVIEWER)).isEqualTo(403);
+        assertThat(statusOf(describeScenario(), RoleCode.REVIEWER)).isEqualTo(403);
+    }
+
+    @Test
+    void reviewerRegressionRequiresAnExplicitProjectAndHonoursWriteQuota() throws Exception {
+        stubServices();
+        when(otp.hitRateLimit(eq("vs_regression"), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(true);
+        assertThat(statusOf(createRegression(), RoleCode.REVIEWER)).isEqualTo(429);
+        when(projects.explicitProjectId()).thenThrow(new com.vsos.backend.common.Vs.InvalidRequestException("Cần chọn project"));
+        assertThat(statusOf(createRegression(), RoleCode.REVIEWER)).isEqualTo(400);
+        verify(regression, never()).createTestAsReviewer(anyLong(), anyLong(), anyLong(), anyLong(), anyBoolean(), anyBoolean(), any(), any(), any());
     }
 
     @Test
@@ -312,9 +335,11 @@ class VehicSimSecurityTest {
             assertThat(statusOf(request(HttpMethod.GET, BASE + path), RoleCode.REVIEWER)).as(path).isEqualTo(404);
         }
         assertThat(statusOf(decide(), RoleCode.REVIEWER)).isEqualTo(404);
+        assertThat(statusOf(createRegression(), RoleCode.REVIEWER)).isEqualTo(404);
         verify(regressionViews, never()).recommendations();
         verify(regression, never()).preview(anyLong(), anyLong(), any(), anyBoolean());
         verify(reviewDecisions, never()).decide(anyLong(), anyLong(), anyLong(), any(), any(), any(), anyBoolean());
+        verify(regression, never()).createTestAsReviewer(anyLong(), anyLong(), anyLong(), anyLong(), anyBoolean(), anyBoolean(), any(), any(), any());
     }
 
     @Test

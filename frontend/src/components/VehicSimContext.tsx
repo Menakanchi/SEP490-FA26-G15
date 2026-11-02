@@ -15,6 +15,8 @@ interface VehicSimContextValue {
   selectProject: (id: number | null) => void;
   /** ENGINEER, EXPERIENCER (người tự đăng ký) và ADMIN được tạo / chạy / regression (backend cũng trả 403). */
   canWrite: boolean;
+  /** Quyền chạy regression riêng; Reviewer cần project/workspace ACTIVE trong phạm vi membership. */
+  canRunRegression: boolean;
   /** REVIEWER được duyệt khi project và workspace còn ACTIVE; backend kiểm lại trong transaction. */
   canDecide: boolean;
 }
@@ -28,6 +30,7 @@ const VehicSimCtx = createContext<VehicSimContextValue>({
   refresh: async () => {},
   selectProject: () => {},
   canWrite: false,
+  canRunRegression: false,
   canDecide: false,
 });
 
@@ -43,6 +46,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
   const isReviewer = user?.roleCode === "REVIEWER";
   const canWrite = WRITE_ROLES.includes(user?.roleCode ?? "");
   const canDecide = isReviewer && !error && ready && ctx?.reviewer_can_decide === true;
+  const canRunRegression = canWrite || canDecide;
 
   const refresh = useCallback(async () => {
     const version = ++requestVersion.current;
@@ -86,7 +90,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
   };
 
   return (
-    <VehicSimCtx.Provider value={{ ctx, error, canResetProject, refresh, selectProject, canWrite, canDecide }}>
+    <VehicSimCtx.Provider value={{ ctx, error, canResetProject, refresh, selectProject, canWrite, canRunRegression, canDecide }}>
       {ready ? children : <div role="status" className="flex flex-1 items-center justify-center p-8 text-[14px]">Đang tải project…</div>}
     </VehicSimCtx.Provider>
   );

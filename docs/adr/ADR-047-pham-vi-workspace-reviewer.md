@@ -1,7 +1,7 @@
 # ADR-047 — Phạm vi project của Reviewer theo workspace
 
 **Trạng thái:** Proposed 01/11/2026 — đã triển khai theo yêu cầu người dùng trên nhánh, chờ nhóm duyệt.
-**Phạm vi đề xuất thay thế:** phần đọc dữ liệu kỹ thuật chung của REVIEWER trong ADR-035; không mở quyền tạo/chạy regression và không thay phạm vi role khác (TD-30).
+**Phạm vi đề xuất thay thế:** phần đọc dữ liệu kỹ thuật chung của REVIEWER trong ADR-035; không thay phạm vi role khác (TD-30). Quyền tạo/chạy regression được bổ sung theo [ADR-048](ADR-048-reviewer-chay-regression-de-kiem-tra.md) ngày 02/11.
 
 ## Vấn đề
 

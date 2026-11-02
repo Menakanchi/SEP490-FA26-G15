@@ -48,7 +48,7 @@ function ago(iso: string | null | undefined, now: number): string {
  */
 export function ReviewerHome() {
   const { user } = useAuth();
-  const { canDecide } = useVehicSimContext();
+  const { canDecide, canRunRegression } = useVehicSimContext();
   const [recs, setRecs] = useState<RecommendationItem[] | null>(null);
   const [regressions, setRegressions] = useState<RegressionList | null>(null);
   const [history, setHistory] = useState<DecisionHistory | null>(null);
@@ -95,9 +95,10 @@ export function ReviewerHome() {
       crumbs={[{ label: "Tổng quan" }]}
       title={firstName ? `Chào ${firstName}` : "Tổng quan"}
       badges={<Tag tone="info">Người duyệt</Tag>}
-      subtitle="Kiểm tra kết quả kiểm thử hồi quy rồi chấp nhận hoặc từ chối khuyến nghị. Bạn không tạo hay sửa kịch bản; mỗi quyết định cần lý do và xác nhận."
+      subtitle="Đọc kết quả, chạy kiểm thử hồi quy để kiểm tra và chấp nhận hoặc từ chối khuyến nghị. Mỗi quyết định cần lý do và xác nhận."
       actions={
         <>
+          <PillButton href={canRunRegression ? "/validation/regression/new" : undefined} disabled={!canRunRegression}>Chạy kiểm thử hồi quy</PillButton>
           {next && canDecide ? (
             <PillButton variant="dark" href={`/validation/recommendations/${next.id}/review`}>
               Duyệt khuyến nghị tiếp theo →
