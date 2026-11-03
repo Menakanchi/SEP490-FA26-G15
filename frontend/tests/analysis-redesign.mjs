@@ -12,7 +12,7 @@ import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
 const fixtures=JSON.parse(gunzipSync(await fs.readFile(path.join(root,"src/test/resources/parity/kinematic.json.gz"))));
-const output=path.join(root,"data/analysis-batch1-ui");await fs.mkdir(output,{recursive:true});
+const output=path.join(root,"data/analysis-batch2-ui");await fs.mkdir(output,{recursive:true});
 const version="adr040-stored-aggregation/1";
 const cases=fixtures.filter(c=>c.evaluation.outcome!=="TIMEOUT").slice(0,45);
 const runs=cases.map((c,i)=>({revision:`fixture-${i}`,run_id:1000+i,scenario_id:1,scenario_version_id:100+i,version_no:i+1,family:"CP Crossing · Fixture kiểm thử UI",variant:`CP-${String(i+1).padStart(3,"0")}`,seed:c.seed,baseline_id:1,vehicle_id:1,simulator:"vehicsim-kinematic-1.0",dt:0.05,status:"COMPLETED",outcome:c.evaluation.aeb_result.false_activation?"FALSE_BRAKING":c.evaluation.outcome,weather:c.case.weather,time_of_day:c.case.time_of_day,failure_class:c.evaluation.chain.find(s=>!s.passed)?.stage??null,error:null,end_reason:c.outcome.end_reason,trace_available:true,created_at:"2026-11-03T08:00:00",metrics:{rms_jerk_mps3:c.outcome.metrics.rms_jerk_mps3,impact_speed_mps:c.outcome.metrics.impact_speed_mps,stopping_distance_m:c.outcome.metrics.stopping_distance_m}}));
@@ -32,7 +32,7 @@ function aggregate(list){
   out[key]={value:values.length?values.reduce((a,b)=>a+b,0)/values.length:null,samples:values.length,missing:0,notApplicable:list.length-values.length,unit,status:values.length?"VALID":"NOT_APPLICABLE"};
  }return out;
 }
-let role="ENGINEER", mode="normal", saved=null, playbackOverride=null, detailOverride=null;
+let role="ENGINEER", mode="normal", saved=null, playbackOverride=null, detailOverride=null, dashboardOverride=null, lastDashboard=null;
 const writes=[],requests=[];
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
 try {
@@ -55,10 +55,12 @@ try {
    if(mode==="error")return reply({detail:"Fixture network failure"},503);
    if(mode==="forbidden")return reply({detail:"Forbidden"},403);
    if(mode==="slow")await new Promise(resolve=>setTimeout(resolve,800));
+   if(dashboardOverride)return reply(dashboardOverride);
    let rows=mode==="empty"?[]:[...runs].reverse();
    for(const [key,value] of url.searchParams){if(["scenario_id","status","weather","time_of_day","failure_class"].includes(key))rows=rows.filter(r=>String(r[key])===value);}
    const page=Number(url.searchParams.get("page")),size=Number(url.searchParams.get("page_size"));
-   return reply({total:rows.length,page,page_size:size,items:rows.slice((page-1)*size,page*size),counts:Object.fromEntries([...new Set(rows.map(r=>r.outcome))].map(key=>[key,rows.filter(r=>r.outcome===key).length])),objective_groups:rows.length?[{identity:"fixture",simulator:runs[0].simulator,baseline_id:1,vehicle_id:1,objectives:aggregate(rows),carla_observational_only:false}]:[],evaluation_version:version});
+   lastDashboard={total:rows.length,page,page_size:size,items:rows.slice((page-1)*size,page*size),counts:Object.fromEntries(["SAFE","COLLISION","FALSE_BRAKING","NEAR_MISS","MISSED_BRAKING","OTHER_FAILURE","ERROR","CANCELLED","TIMEOUT","INCOMPLETE","NOT_FINISHED"].map(key=>[key,rows.filter(r=>r.outcome===key).length])),objective_groups:rows.length?[{identity:"fixture",simulator:runs[0].simulator,baseline_id:1,vehicle_id:1,objectives:aggregate(rows),carla_observational_only:false}]:[],evaluation_version:version};
+   return reply(lastDashboard);
   }
   const inspection=p.match(/^\/vehicsim\/analysis\/runs\/(\d+)$/);
   if(inspection)return reply({run:runs.find(r=>r.run_id===Number(inspection[1])),detail:detailOverride??detailFor(Number(inspection[1]))});
@@ -80,6 +82,50 @@ try {
   await page.screenshot({path:path.join(output,`overview-${width}.png`),fullPage:true});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Overview overflow ${width}`);
  }
+ // Batch 2: overview reads full-scope aggregates, keeps source identities and missing values.
+ const originalDashboard=structuredClone(lastDashboard), originalGroup=originalDashboard.objective_groups[0];
+ const carlaGroup={...structuredClone(originalGroup),identity:"1|1|carla-0.9.16-xosc4|0.01",simulator:"carla-0.9.16-xosc4",carla_observational_only:true};
+ carlaGroup.objectives.rms_jerk_mps3={...carlaGroup.objectives.rms_jerk_mps3,value:12.345};
+ carlaGroup.objectives.impact_speed_mps={...carlaGroup.objectives.impact_speed_mps,value:null,status:"INCOMPLETE",missing:3};
+ const otherDtGroup={...structuredClone(carlaGroup),identity:"1|1|carla-0.9.16-xosc4|0.02"};
+ otherDtGroup.objectives.rms_jerk_mps3.value=98.765;
+ dashboardOverride={...structuredClone(originalDashboard),total:250,counts:{SAFE:200,COLLISION:12,FALSE_BRAKING:8,NEAR_MISS:10,MISSED_BRAKING:0,OTHER_FAILURE:0,ERROR:7,TIMEOUT:0,CANCELLED:0,INCOMPLETE:8,NOT_FINISHED:5},objective_groups:[originalGroup,carlaGroup,otherDtGroup]};
+ await page.reload();
+ const overview=page.getByRole("region",{name:"Tổng quan baseline",exact:true});
+ await overview.getByRole("article",{name:"KPI Tổng lượt chạy",exact:true}).getByText("250",{exact:true}).waitFor();
+ assert.match(await overview.getByRole("article",{name:"KPI An toàn",exact:true}).innerText(),/200[\s\S]*80%/);
+ assert.match(await overview.getByRole("region",{name:"Trạng thái kỹ thuật và dữ liệu",exact:true}).innerText(),/Lỗi kỹ thuật[\s\S]*7/);
+ assert.equal(await overview.getByRole("progressbar").count(),6);
+ const groups=overview.locator("details[data-simulator]");assert.equal(await groups.count(),3);
+ assert.equal(await groups.first().getAttribute("data-simulator"),"carla-0.9.16-xosc4");
+ assert.match(await groups.first().innerText(),/12\.345/);
+ assert.match(await groups.first().locator("strong").nth(1).innerText(),/—/);
+ await groups.nth(1).locator("summary").click();
+ assert.match(await groups.nth(1).innerText(),/98\.765/);
+ assert.match(await groups.nth(1).innerText(),/0\.02/);
+ for(const [width,height] of [[1920,1080],[1366,768],[1024,768]]){
+  await page.setViewportSize({width,height});await page.evaluate(()=>window.scrollTo({top:0,left:0,behavior:"instant"}));await page.screenshot({path:path.join(output,`overview-mixed-${width}.png`),fullPage:true});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Overview mixed overflow ${width}`);
+ }
+ const profileResponse=page.waitForResponse(response=>response.url().includes("/analysis/runs?")&&new URL(response.url()).searchParams.get("simulator")==="carla-0.9.16-xosc4");
+ await groups.first().getByRole("button",{name:"Lọc profile này",exact:true}).click();
+ await page.waitForURL(url=>url.searchParams.get("simulator")==="carla-0.9.16-xosc4");
+ await profileResponse;
+ assert.equal(new URL(page.url()).searchParams.get("scenario_id"),"1");
+ dashboardOverride={...dashboardOverride,counts:{...dashboardOverride.counts,SAFE:undefined}};
+ await page.reload();await overview.getByRole("article",{name:"KPI An toàn",exact:true}).getByText("Chưa có số liệu từ API",{exact:true}).waitFor();
+ assert.equal((await overview.getByRole("article",{name:"KPI An toàn",exact:true}).locator("strong").innerText()).trim(),"—");
+ assert.equal(await overview.getByRole("progressbar",{name:"An toàn",exact:true}).count(),0);
+ dashboardOverride={...originalDashboard,total:0,counts:Object.fromEntries(Object.keys(originalDashboard.counts).map(key=>[key,0])),items:[],objective_groups:[]};
+ await page.reload();await overview.getByRole("heading",{name:"Chưa có run baseline phù hợp.",exact:true}).waitFor();
+ assert.equal(await overview.getByRole("progressbar").count(),0);
+ assert.equal((await overview.getByRole("article",{name:"KPI An toàn",exact:true}).locator("strong").innerText()).trim(),"0");
+ dashboardOverride=null;mode="slow";await page.goto(base+"/analysis/failures?scenario_id=1");
+ await overview.getByRole("status").waitFor();assert.equal(await overview.getByRole("progressbar").count(),0);
+ mode="error";await page.reload();await page.getByRole("alert").waitFor();
+ assert.equal(await overview.getByRole("progressbar").count(),0);
+ mode="normal";await page.getByRole("button",{name:"Thử tải lại",exact:true}).click();
+ await overview.getByRole("progressbar",{name:"An toàn",exact:true}).waitFor();
  await page.getByRole("navigation",{name:"Chế độ phân tích"}).getByRole("link",{name:"Lượt chạy",exact:true}).click();
  await page.getByRole("table").locator("tbody tr").first().waitFor();
  await page.getByLabel("Số dòng mỗi trang").selectOption("10");
@@ -182,6 +228,6 @@ try {
  mode="normal";role="MANAGER";await page.reload();await page.getByRole("table").locator("tbody tr").first().waitFor();
  assert(await page.locator('select[aria-label^="Tập của run"]').first().isDisabled());
  assert.deepEqual(errors,[]);assert.equal(writes.length,1);assert(!writes.some(w=>/optimizations|aeb\/versions|regression/.test(w.path)));
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["overview","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","batch1 API-only metrics/events and missing data","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["overview","batch2 full-scope KPI/source identities/partial-zero-loading-error/retry","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","batch1 API-only metrics/events and missing data","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
  console.log("PASS: browser fixture UI checks; live backend/authentication/database/CARLA/Figma NOT verified. Screenshots:",output);
 } finally {await browser.close();}

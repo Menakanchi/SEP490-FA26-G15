@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { ErrorNote, PillButton, StatCard } from "@/components/VehicSimUi";
-import { AnalysisSelectionSummary, ObjectiveSummary } from "@/components/AnalysisSelectionSummary";
+import { ErrorNote, PillButton } from "@/components/VehicSimUi";
+import { AnalysisSelectionSummary } from "@/components/AnalysisSelectionSummary";
+import { AnalysisOverview } from "@/components/analysis/AnalysisOverview";
 import { LegacyFailureCases } from "@/components/LegacyFailureCases";
 import { AnalysisBadge, AnalysisLoading, AnalysisNav, AnalysisPager, analysisError, analysisLabel, eligible, metric } from "@/components/analysisUi";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -17,8 +18,6 @@ type Chosen = { run: AnalysisRun; role: "OPTIMIZATION" | "VALIDATION" };
 type Draft = { key: string; chosen: Record<number, Chosen> };
 const FILTER_KEYS = ["scenario_id", "variant_id", "aeb_version_id", "vehicle_id", "simulator", "weather", "time_of_day", "status", "failure_class"] as const;
 const numericKeys = new Set(["scenario_id", "variant_id", "aeb_version_id", "vehicle_id"]);
-const OUTCOMES = ["SAFE", "COLLISION", "FALSE_BRAKING", "NEAR_MISS", "MISSED_BRAKING", "OTHER_FAILURE", "ERROR", "CANCELLED", "TIMEOUT", "INCOMPLETE", "NOT_FINISHED"];
-const color = (key: string) => key === "SAFE" ? "var(--color-vehicsim-ok)" : key === "COLLISION" ? "var(--color-vehicsim-danger)" : ["ERROR", "CANCELLED", "TIMEOUT", "INCOMPLETE", "NOT_FINISHED"].includes(key) ? "var(--color-vehicsim-muted)" : "var(--color-vehicsim-warn)";
 const positive = (value: string | null, fallback: number) => value && /^\d+$/.test(value) && Number(value) > 0 && Number.isSafeInteger(Number(value)) ? Number(value) : fallback;
 
 export function BaselineAnalysisDashboard() {
@@ -182,26 +181,7 @@ export function BaselineAnalysisDashboard() {
       </div></details>
       <p className="analysis-caption">Thống kê và danh sách dùng cùng bộ lọc. Đổi bộ lọc giữ nguyên tập đã chọn.</p>
     </section>}
-    {view === "overview" && <>
-      <div className="analysis-kpis">
-        <StatCard label="Tổng lượt chạy" value={data?.total ?? "—"} note="Theo phạm vi đang lọc" />
-        <StatCard label="An toàn" value={data ? data.counts.SAFE ?? 0 : "—"} note="Kết quả AEB hợp lệ" tone="ok" />
-        <StatCard label="Va chạm" value={data ? data.counts.COLLISION ?? 0 : "—"} note="Cần phân tích bằng chứng" tone="danger" />
-        <StatCard label="Phanh oan" value={data ? data.counts.FALSE_BRAKING ?? 0 : "—"} note="Giữ ca an toàn khi chọn tập" tone="warn" />
-      </div>
-      {loading && <AnalysisLoading />}
-      {data && <div className="analysis-columns">
-        <section className="analysis-panel"><h2>Phân bố kết quả</h2><p className="analysis-caption mb-3">{data.total} lượt chạy trong bộ lọc hiện tại. Lỗi kỹ thuật được hiển thị riêng.</p>
-          {OUTCOMES.map(key => <div key={key} className="analysis-chart-row"><span>{analysisLabel(key)}</span><progress aria-label={analysisLabel(key)} max={Math.max(1, data.total)} value={data.counts[key] ?? 0} style={{ "--bar-color": color(key) } as CSSProperties} /><span className="text-right tabular-nums">{data.counts[key] ?? 0} <small className="text-vehicsim-muted">{data.total ? `${Math.round(100 * (data.counts[key] ?? 0) / data.total)}%` : "—"}</small></span></div>)}
-        </section>
-        <section className="analysis-panel space-y-4"><h2>Ba mục tiêu theo cấu hình chạy</h2><p className="analysis-caption">Giữ riêng baseline, xe, simulator và dt. Giá trị thiếu hiển thị —; không thay bằng 0.</p>
-          {data.objective_groups.length === 0 && <p className="analysis-caption">Chưa có nhóm kết quả phù hợp.</p>}
-          {data.objective_groups.map(group => <details key={group.identity} open={data.objective_groups.length === 1} className="border-t border-vehicsim-line pt-3"><summary className="cursor-pointer text-[12px] font-semibold">{group.simulator} · baseline #{group.baseline_id} · xe #{group.vehicle_id}</summary><div className="mt-4 space-y-3"><ObjectiveSummary value={group.objectives} /><p className="analysis-caption">Hợp đồng {group.objectives.version}. Quãng phanh có thể gồm phần ngoại suy.{group.carla_observational_only ? " CARLA chưa hiệu chuẩn phanh; chỉ để quan sát/đối chiếu." : ""}</p></div></details>)}
-          <PillButton onClick={() => update({ view: "runs" })}>Khám phá lượt chạy →</PillButton>
-        </section>
-      </div>}
-      {data?.total === 0 && <div className="analysis-panel analysis-state"><h2>Chưa có run baseline phù hợp.</h2><p>Thử bỏ bộ lọc hoặc <Link className="text-vehicsim-decision underline" href="/scenarios">chạy baseline ở màn kịch bản</Link>.</p></div>}
-    </>}
+    {view === "overview" && <AnalysisOverview data={data} loading={loading} hasError={Boolean(error)} onOpenRuns={() => update({ view: "runs" })} onFilterSimulator={simulator => update({ simulator }, true)} />}
     {(view === "runs" || view === "dataset") && <>
       {view === "dataset" && <div className="analysis-columns">
         <section className="analysis-panel space-y-4"><div className="analysis-toolbar"><div><h2>1. Lựa chọn đã giữ trong phiên</h2><p className="analysis-caption">{opt.length} run tối ưu · {val.length} run xác minh</p></div><PillButton onClick={() => update({ view: "runs" })}>Thêm lượt chạy</PillButton></div>
