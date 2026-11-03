@@ -1,5 +1,7 @@
 package com.vsos.backend.security;
 
+import com.vsos.backend.exception.project.ProjectError;
+import com.vsos.backend.exception.project.ProjectException;
 import com.vsos.backend.service.auth.OtpService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -16,7 +18,8 @@ import com.vsos.backend.service.system.SystemViewService;
  * một chỗ duy nhất giữ luật role (ADR-035), để tách route ra controller khác không sinh ra bản luật thứ hai.
  * <p>
  * Mỗi người đúng một role hệ thống: tạo / chạy / candidate / regression cần ENGINEER, EXPERIENCER hoặc ADMIN; Accept / Reject chỉ
- * REVIEWER; MANAGER chỉ đọc. Tạm thời (TD-30) app vẫn chạy trên một project, chưa lọc theo workspace.
+ * REVIEWER; MANAGER chỉ đọc. EXPERIENCER làm việc trong project cá nhân đang mở ({@link ProjectScope}); role khác tạm thời
+ * vẫn chạy trên một project chung, chưa lọc theo workspace (TD-30).
  */
 @Component
 public class VehicSimAccess {
@@ -55,6 +58,13 @@ public class VehicSimAccess {
     public static long requireReviewer(UserDetails user) {
         if (!DECIDE_ROLES.contains(roleOf(user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ REVIEWER được Accept / Reject recommendation");
+        }
+        return userId(user);
+    }
+
+    public static long requireExperiencer(UserDetails user) {
+        if (!"EXPERIENCER".equals(roleOf(user))) {
+            throw new ProjectException(ProjectError.EXPERIENCER_ONLY);
         }
         return userId(user);
     }

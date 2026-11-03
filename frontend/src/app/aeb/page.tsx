@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AnalysisSelectionSummary } from "@/components/AnalysisSelectionSummary";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
@@ -49,8 +49,18 @@ const CATEGORY_ORDER: FailureClass[] = ["DECISION", "CONTROL", "VEHICLE_DYNAMICS
 
 export default function AebConfigPage() {
   const { ctx, refresh, canWrite } = useVehicSimContext();
-  const [activeTab, setActiveTab] = useState<"mobo" | "manual" | "versions">("mobo");
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const tabParam = searchParams.get("tab");
+  const activeTab = tabParam === "manual" || tabParam === "versions" ? tabParam : "mobo";
+  const setActiveTab = (tab: "mobo" | "manual" | "versions") => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === "mobo") params.delete("tab");
+    else params.set("tab", tab);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
   const scenarioId = Number(searchParams.get("scenario_id"));
   const datasetParam = searchParams.get("dataset_id");
   const datasetId = Number(datasetParam);
@@ -830,6 +840,7 @@ function CandidateForm({
   parameters: ParameterDef[];
   onCreated: (id: number, label: string) => void;
 }) {
+  const { isExperiencer } = useVehicSimContext();
   const parents = versions.filter((v) => v.status !== "REJECTED");
   const [parentId, setParentId] = useState<number>(() => (versions.find((v) => v.status === "BASELINE") ?? versions[0]).id);
   const parent = versions.find((v) => v.id === parentId) ?? versions[0];
@@ -945,7 +956,9 @@ function CandidateForm({
 
       <div className="flex items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-4">
         <p className="text-[12px] text-vehicsim-muted">
-          Ứng viên mới chưa ảnh hưởng bản cơ sở cho tới khi qua kiểm thử hồi quy và được kỹ sư chấp nhận.
+          {isExperiencer
+            ? "Ứng viên mới chưa ảnh hưởng bản cơ sở cho tới khi qua kiểm thử hồi quy và bạn chọn dùng nó làm baseline."
+            : "Ứng viên mới chưa ảnh hưởng bản cơ sở cho tới khi qua kiểm thử hồi quy và được kỹ sư chấp nhận."}
         </p>
         <PillButton variant="dark" onClick={submit} disabled={busy || changed.length === 0 || invalid.length > 0}>
           {busy ? "Đang tạo…" : "Tạo ứng viên"}

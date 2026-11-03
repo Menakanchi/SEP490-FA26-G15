@@ -1,6 +1,7 @@
 package com.vsos.backend.repository.common;
 
 import com.vsos.backend.common.Vs.NotFoundException;
+import com.vsos.backend.security.ProjectScope;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -16,18 +17,15 @@ import java.util.stream.Collectors;
 public class Queries {
 
     private final Db db;
+    private final ProjectScope scope;
 
-    public Queries(Db db) {
+    public Queries(Db db, ProjectScope scope) {
         this.db = db;
+        this.scope = scope;
     }
 
-    /** MVP chỉ có một project ACTIVE mặc định (TD-30: chưa lọc theo workspace). */
     public Row currentProject() {
-        Row project = db.first("SELECT * FROM projects WHERE status = 'ACTIVE' ORDER BY id LIMIT 1");
-        if (project == null) {
-            throw new NotFoundException("project — ADMIN gọi POST /api/v1/vehicsim/bootstrap để tạo project mặc định");
-        }
-        return project;
+        return scope.current();
     }
 
     public List<Row> versions(long projectId, boolean newestFirst) {

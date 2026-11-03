@@ -237,7 +237,7 @@ erDiagram
 | 3. Phân tích lỗi | Ca lỗi, phát lại | `views.py` (chỉ đọc) | — đọc `failures`, `root_causes`, `simulation_runs.telemetry_json` |
 | 4. Candidate | Cấu hình AEB | `aeb.py` | `aeb_versions` (CANDIDATE), `aeb_parameter_values` (kiểm `[min, max]`) |
 | 5. Regression | Kiểm định | `regression.py` + `runs.py` | `regression_tests` (chốt xe + bộ mô phỏng), `simulation_runs` (REGRESSION); khi chốt: `regression_test_items`, `engineering_recommendations` |
-| 6. Quyết định (chỉ REVIEWER) | Khuyến nghị → Review | `regression.decide` | `engineering_recommendations`; Accept: baseline cũ `ARCHIVED`, candidate `BASELINE`; Reject: candidate `REJECTED` |
+| 6. Quyết định (chỉ REVIEWER) | Khuyến nghị → Review | `regression.decide` | `engineering_recommendations`; Accept: baseline cũ `ARCHIVED`, candidate `BASELINE`; Reject: candidate `REJECTED`. Project cá nhân: chủ project tự chọn (`ProjectService.adopt`, ADR-046), cùng cách đổi trạng thái `aeb_versions`; không ghi `engineering_recommendations` (`ck_er_no_self_review`), lý do nối vào `aeb_versions.notes` |
 
 ## 6. Từ điển từng bảng
 

@@ -6,6 +6,8 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { VehicSimContextProvider } from "@/components/VehicSimContext";
 import { VehicSimSidebar } from "@/components/VehicSimSidebar";
+import { ProjectGate } from "@/components/project/ProjectShell";
+import { ProjectJourneyProvider } from "@/components/project/ProjectJourneyContext";
 import { jakarta } from "@/components/vehicsimFonts";
 
 /**
@@ -31,8 +33,10 @@ export function VehicSimShell({ children }: { children: React.ReactNode }) {
   return (
     <div className={`${jakarta.className} flex min-h-screen w-full bg-vehicsim-bg text-vehicsim-ink`}>
       <VehicSimContextProvider>
-        <VehicSimSidebar />
-        <main className="flex min-w-0 flex-1">{children}</main>
+        <ProjectJourneyProvider>
+          <VehicSimSidebar />
+          <ProjectGate>{children}</ProjectGate>
+        </ProjectJourneyProvider>
       </VehicSimContextProvider>
     </div>
   );

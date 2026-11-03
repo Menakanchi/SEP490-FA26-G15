@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { MVP_STEPS, type FlowStep } from "@/components/vehicsimFlow";
+import { ExperiencerHome } from "@/components/project/ProjectShell";
 import { ErrorNote, PillButton, StatCard, Tag, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { FamilyItem, RecommendationItem, RegressionList } from "@/types/vehicsim";
@@ -17,11 +18,16 @@ interface StepView {
   actions: { label: string; href: string; primary?: boolean }[];
 }
 
+export default function HomePage() {
+  const { isExperiencer } = useVehicSimContext();
+  return isExperiencer ? <ExperiencerHome /> : <MvpLoopPage />;
+}
+
 /**
  * Dashboard = vòng MVP 6 bước. Trạng thái mỗi bước lấy từ dữ liệu thật; bước
  * chưa xong đầu tiên là "bước tiếp theo" và được tô nổi.
  */
-export default function MvpLoopPage() {
+function MvpLoopPage() {
   const { user } = useAuth();
   const { ctx } = useVehicSimContext();
   const [families, setFamilies] = useState<FamilyItem[] | null>(null);

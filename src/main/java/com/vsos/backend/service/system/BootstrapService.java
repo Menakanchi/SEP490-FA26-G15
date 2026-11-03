@@ -59,7 +59,7 @@ public class BootstrapService {
     public Map<String, Object> ensureDefaultProject(long ownerUserId) {
         LocalDateTime ts = Vs.now();
         seedCatalogsIfMissing();
-        Row existing = db.first("SELECT id FROM projects ORDER BY id LIMIT 1");
+        Row existing = db.first("SELECT id FROM projects WHERE workspace_id IS NOT NULL ORDER BY id LIMIT 1");
         if (existing != null) {
             return Json.obj("project_id", existing.lng("id"), "created", false);
         }

@@ -25,6 +25,11 @@ import type {
   OptimizationSelectionResult,
   OptimizationTrial,
   Playback,
+  ProjectItem,
+  ProjectJourney,
+  ProjectList,
+  ProjectRequest,
+  ProjectStatus,
   RecommendationDetail,
   RecommendationItem,
   RegressionDetail,
@@ -35,6 +40,7 @@ import type {
   TelemetrySummary,
   VehicSimContextData,
   VehicleDetail,
+  VehicleOption,
   VehicleSummary,
   WorkspaceDetail,
   WorkspaceMember,
@@ -67,6 +73,25 @@ export const vehicsimApi = {
     apiRequest<import("@/types/vehicsim").AnalysisSelection>("/vehicsim/analysis/selections",{method:"POST",body:JSON.stringify(body)}),
   analysisHandoff: (id: number) => apiRequest<import("@/types/vehicsim").AnalysisSelection>(`/vehicsim/analysis/datasets/${id}/handoff`),
   context: () => apiRequest<VehicSimContextData>("/vehicsim/context"),
+
+  projects: (params: { status?: ProjectStatus; q?: string; page?: number; pageSize?: number } = {}) =>
+    apiRequest<ProjectList>(`/vehicsim/projects${query({ status: params.status, q: params.q || undefined, page: params.page, page_size: params.pageSize })}`),
+  project: (id: number) => apiRequest<ProjectItem>(`/vehicsim/projects/${id}`),
+  projectJourney: (id: number) => apiRequest<ProjectJourney>(`/vehicsim/projects/${id}/journey`),
+  projectVehicles: () => apiRequest<VehicleOption[]>("/vehicsim/projects/vehicle-options"),
+  createProject: (body: ProjectRequest) =>
+    apiRequest<ProjectItem>("/vehicsim/projects", { method: "POST", body: JSON.stringify(body) }),
+  updateProject: (id: number, body: ProjectRequest) =>
+    apiRequest<ProjectItem>(`/vehicsim/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  archiveProject: (id: number) => apiRequest<ProjectItem>(`/vehicsim/projects/${id}/archive`, { method: "POST" }),
+  unarchiveProject: (id: number) => apiRequest<ProjectItem>(`/vehicsim/projects/${id}/unarchive`, { method: "POST" }),
+  deleteProject: (id: number, confirmName: string) =>
+    apiRequest<void>(`/vehicsim/projects/${id}`, { method: "DELETE", body: JSON.stringify({ confirm_name: confirmName }) }),
+  adoptCandidate: (id: number, testId: number, reason: string) =>
+    apiRequest<ProjectJourney>(`/vehicsim/projects/${id}/regressions/${testId}/adopt`, {
+      method: "POST",
+      body: JSON.stringify({ reason, confirmed: true }),
+    }),
 
   // Phương tiện: danh mục mẫu xe CARLA, chỉ đọc
   vehicles: () => apiRequest<VehicleSummary[]>("/vehicsim/vehicles"),

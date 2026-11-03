@@ -96,12 +96,13 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
 2. Java, kể cả lõi `com.vsos.core`, không import `carla`; lời gọi API CARLA chỉ ở adapter trong `worker/`.
 3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập. Mỗi tài khoản một role:
    ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ đọc; chỉ REVIEWER Accept/Reject.
-   Cách ly project/workspace chưa hoàn thiện (TD-30); không giả định mọi người có dữ liệu riêng.
+   EXPERIENCER làm việc trong project cá nhân (header `X-VehicSim-Project`, `ProjectScope`); role khác vẫn chung project nhóm (TD-30).
 4. Cùng biến thể + seed phải tái lập được; candidate chạy đúng seed baseline.
    So sánh phải cùng xe, biến thể và phiên bản simulator.
    Không đổi tham số kịch bản và tham số AEB cùng lúc trong một lần so sánh.
 5. Không tự Accept; test FAILED không Accept; quyết định cần lý do và xác nhận.
    Baseline đã đổi thì không Accept kết quả test cũ. Pareto không đồng nghĩa regression PASSED.
+   Project cá nhân không có Reviewer: chủ project tự chọn baseline theo đúng các điều kiện này (ADR-046, Proposed).
 6. Chỉ 4 tham số AEB chỉnh được theo ADR-040; seed Java/SQL khớp `AebParams`.
    Ba mục tiêu: RMS jerk, vận tốc va chạm, quãng phanh dừng; thống nhất ràng buộc tối ưu/regression.
 7. Không lộ email tồn tại; OTP hash, dùng một lần; mật khẩu tối đa 72 byte BCrypt.

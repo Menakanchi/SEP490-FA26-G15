@@ -25,7 +25,8 @@ type DiffTab = "regressed" | "fixed" | "changes" | "all";
 
 export default function RegressionResultsPage() {
   const { testId } = useParams<{ testId: string }>();
-  const { refresh } = useVehicSimContext();
+  const { refresh, ctx, isExperiencer } = useVehicSimContext();
+  const conclusion = isExperiencer && ctx ? `/projects/${ctx.project.id}/rounds/${testId}` : null;
   const [d, setD] = useState<RegressionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<DiffTab>("changes");
@@ -123,10 +124,10 @@ export default function RegressionResultsPage() {
             </PillButton>
             <PillButton
               variant="dark"
-              href={!running ? `/validation/recommendations/${d.id}` : undefined}
+              href={running ? undefined : (conclusion ?? `/validation/recommendations/${d.id}`)}
               disabled={running}
             >
-              Mở khuyến nghị
+              {conclusion ? "Xem kết luận" : "Mở khuyến nghị"}
             </PillButton>
           </>
         )
@@ -135,7 +136,7 @@ export default function RegressionResultsPage() {
       <ErrorNote message={error} />
       {d && (
         <>
-          <Banner d={d} failedCriteria={failedCriteria.map((c) => vi(c.label))} />
+          <Banner d={d} failedCriteria={failedCriteria.map((c) => vi(c.label))} conclusion={conclusion} />
           <CarlaCaveat caveat={d.simulator_caveat} />
           {d.candidate_source && (
             <div className="flex items-center gap-2 text-[13px] text-vehicsim-muted">
@@ -305,7 +306,7 @@ export default function RegressionResultsPage() {
   );
 }
 
-function Banner({ d, failedCriteria }: { d: RegressionDetail; failedCriteria: string[] }) {
+function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failedCriteria: string[]; conclusion: string | null }) {
   const counts = d.summary.counts;
   if (d.status === "FAILED") {
     return (
@@ -320,7 +321,7 @@ function Banner({ d, failedCriteria }: { d: RegressionDetail; failedCriteria: st
           </p>
         </div>
         <Tag tone="danger" className="border border-solid border-vehicsim-danger/40 bg-white px-3 py-[6px] text-[12px]">
-          Khuyến nghị bị chặn
+          {conclusion ? "Không đạt" : "Khuyến nghị bị chặn"}
         </Tag>
       </div>
     );
@@ -331,15 +332,23 @@ function Banner({ d, failedCriteria }: { d: RegressionDetail; failedCriteria: st
       <div className="flex items-center gap-4 rounded-[20px] border border-solid border-vehicsim-ok/30 bg-vehicsim-ok-bg px-5 py-4">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-vehicsim-ok text-[16px] font-bold text-white">✓</span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="text-[17px] font-bold text-vehicsim-ink">Đủ điều kiện để khuyến nghị</p>
+          <p className="text-[17px] font-bold text-vehicsim-ink">{conclusion ? "Ứng viên đạt mọi tiêu chí" : "Đủ điều kiện để khuyến nghị"}</p>
           <p className="text-[13px] leading-[1.5] text-vehicsim-muted">
-            Mọi tiêu chí bắt buộc đều đạt trên {counts?.scenarios ?? 0} cặp kịch bản. Ứng viên vẫn cần kỹ sư quyết định — không bao giờ
-            được tự động chấp nhận.
+            Mọi tiêu chí bắt buộc đều đạt trên {counts?.scenarios ?? 0} cặp kịch bản.{" "}
+            {conclusion
+              ? "Kết quả mô phỏng, không phải chứng nhận an toàn."
+              : "Ứng viên vẫn cần kỹ sư quyết định — không bao giờ được tự động chấp nhận."}
           </p>
         </div>
-        <PillButton variant={decided ? "light" : "dark"} href={`/validation/recommendations/${d.id}${decided ? "" : "/review"}`}>
-          {decided ? "Xem quyết định" : "Duyệt ngay"}
-        </PillButton>
+        {conclusion ? (
+          <PillButton variant="dark" href={conclusion}>
+            Xem kết luận
+          </PillButton>
+        ) : (
+          <PillButton variant={decided ? "light" : "dark"} href={`/validation/recommendations/${d.id}${decided ? "" : "/review"}`}>
+            {decided ? "Xem quyết định" : "Duyệt ngay"}
+          </PillButton>
+        )}
       </div>
     );
   }

@@ -56,6 +56,86 @@ export interface ParameterDef {
   default_value: number;
 }
 
+export type ProjectStatus = "ACTIVE" | "ARCHIVED";
+
+export interface ProjectItem {
+  id: number;
+  name: string;
+  description: string | null;
+  status: ProjectStatus;
+  vehicle_id: number | null;
+  vehicle_name: string | null;
+  baseline_label: string | null;
+  family_count: number;
+  run_count: number;
+  regression_count: number;
+  has_running_work: boolean;
+  created_date: string;
+  updated_at: string;
+  journey: ProjectJourney;
+}
+
+export interface ProjectList {
+  items: ProjectItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  active_count: number;
+  archived_count: number;
+}
+
+export interface ProjectRequest {
+  name?: string;
+  description?: string;
+  carla_vehicle_model_id?: number;
+}
+
+export interface VehicleOption {
+  id: number;
+  name: string;
+  is_default: boolean;
+  length_m: number | null;
+  width_m: number | null;
+  mass_kg: number | null;
+  max_brake_decel_mps2: number | null;
+}
+
+/** Hành trình 5 bước của một project cá nhân (`GET /projects/{id}/journey`, khớp `ProjectDtos.ProjectJourney`). */
+export type JourneyStepKey = "SCENARIO" | "BASELINE" | "RESULTS" | "IMPROVE" | "VERIFY";
+export type JourneyStatus = "TODO" | "RUNNING" | "DONE" | "FAILED";
+
+export interface JourneyCounts {
+  families: number;
+  variants: number;
+  baseline_completed: number;
+  baseline_running: number;
+  baseline_failed: number;
+  families_baseline_done: number;
+  families_baseline_pending: number;
+  safe: number;
+  near_misses: number;
+  collisions: number;
+  false_activations: number;
+  datasets: number;
+  candidates: number;
+  optimizations: number;
+  optimizations_running: number;
+  regressions_running: number;
+  regressions_completed: number;
+  last_regression_id: number | null;
+  last_verdict: "PENDING" | "PASSED" | "REGRESSED" | "FAILED" | null;
+}
+
+export interface ProjectJourney {
+  project_id: number;
+  round: number;
+  baseline_label: string | null;
+  steps: { key: JourneyStepKey; status: JourneyStatus }[];
+  next: JourneyStepKey | null;
+  counts: JourneyCounts;
+  last_activity_at: string | null;
+}
+
 export interface VehicSimContextData {
   project: { id: number; name: string };
   workspace: { id: number; name: string } | null;

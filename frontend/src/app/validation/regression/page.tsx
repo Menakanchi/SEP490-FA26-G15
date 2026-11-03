@@ -5,20 +5,24 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { EmptyState, ErrorNote, FilterSelect, PillButton, REGRESSION_STATUS, StatCard, StatusBadge, cx, fmt } from "@/components/VehicSimUi";
+import { EmptyState, ErrorNote, FilterSelect, Pagination, PillButton, REGRESSION_STATUS, StatCard, StatusBadge, cx, fmt } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { RegressionList, RegressionStatus } from "@/types/vehicsim";
 
 const POLL_MS = 3000;
+const PAGE_SIZE = 10;
 
 export default function RegressionListPage() {
   const router = useRouter();
-  const { canWrite } = useVehicSimContext();
+  const { canWrite, ctx, isExperiencer } = useVehicSimContext();
+  const createCandidateHref = isExperiencer && ctx ? `/projects/${ctx.project.id}/improve` : "/aeb";
+  const conclusion = (testId: number) => (isExperiencer && ctx ? `/projects/${ctx.project.id}/rounds/${testId}` : `/validation/recommendations/${testId}`);
   const [data, setData] = useState<RegressionList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<RegressionStatus | "">("");
   const [baseline, setBaseline] = useState("");
   const [author, setAuthor] = useState("");
+  const [page, setPage] = useState(1);
 
   const load = useCallback(() => {
     vehicsimApi.regressions()
@@ -46,6 +50,16 @@ export default function RegressionListPage() {
       ),
     [data, status, baseline, author],
   );
+  // API trả cả danh sách (KPI tính trên toàn bộ) và bộ lọc lọc tại chỗ, nên phân trang cũng làm ở trình duyệt.
+  // Kẹp trang hiện tại khi danh sách ngắn lại (lọc, hoặc lượt hỏi lại định kỳ trả ít mục hơn).
+  const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const current = Math.min(page, pages);
+  const offset = (current - 1) * PAGE_SIZE;
+  const shown = items.slice(offset, offset + PAGE_SIZE);
+  const filtered = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v);
+    setPage(1);
+  };
   const uniq = (xs: (string | null)[]) => [...new Set(xs.filter((x): x is string => !!x))].map((x) => ({ value: x, label: x }));
   const passedRegressions = (data?.items ?? []).filter((i) => i.status === "PASSED").reduce((n, i) => n + (i.regressed ?? 0), 0);
   const rp = data?.kpis.running_progress;
@@ -55,7 +69,11 @@ export default function RegressionListPage() {
       step={6}
       crumbs={[{ label: "Kiểm định" }, { label: "Kiểm thử hồi quy" }]}
       title="Kiểm thử hồi quy"
-      subtitle="Mọi cấu hình ứng viên đều được chạy lại và so với bản cơ sở trước khi trở thành khuyến nghị."
+      subtitle={
+        isExperiencer
+          ? "Mọi ứng viên đều được chạy lại và so với baseline trước khi được dùng làm baseline mới."
+          : "Mọi cấu hình ứng viên đều được chạy lại và so với bản cơ sở trước khi trở thành khuyến nghị."
+      }
       actions={
         <PillButton
           variant="dark"
@@ -99,10 +117,10 @@ export default function RegressionListPage() {
             label="Trạng thái"
             value={status}
             options={(Object.keys(REGRESSION_STATUS) as RegressionStatus[]).map((s) => ({ value: s, label: REGRESSION_STATUS[s].label }))}
-            onChange={setStatus}
+            onChange={filtered(setStatus)}
           />
-          <FilterSelect<string> label="Bản cơ sở" value={baseline} options={uniq((data?.items ?? []).map((i) => i.baseline))} onChange={setBaseline} />
-          <FilterSelect<string> label="Người tạo" value={author} options={uniq((data?.items ?? []).map((i) => i.created_by))} onChange={setAuthor} />
+          <FilterSelect<string> label="Bản cơ sở" value={baseline} options={uniq((data?.items ?? []).map((i) => i.baseline))} onChange={filtered(setBaseline)} />
+          <FilterSelect<string> label="Người tạo" value={author} options={uniq((data?.items ?? []).map((i) => i.created_by))} onChange={filtered(setAuthor)} />
         </div>
 
         <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
@@ -117,13 +135,24 @@ export default function RegressionListPage() {
         </div>
 
         {data && items.length === 0 && (
-          <EmptyState title={data.items.length ? "Không có kiểm thử nào khớp bộ lọc" : "Chưa có kiểm thử hồi quy"}>
-            Tạo một cấu hình AEB ứng viên ở mục <Link href="/aeb" className="font-semibold underline">AEB</Link>, rồi chạy kiểm thử hồi quy
-            để so với bản cơ sở trên cùng bộ biến thể và cùng seed.
-          </EmptyState>
+          data.items.length ? (
+            <EmptyState
+              title="Không có kiểm thử nào khớp bộ lọc"
+              action={
+                <PillButton onClick={() => [setStatus, setBaseline, setAuthor].forEach((set) => set(""))}>Xoá bộ lọc</PillButton>
+              }
+            />
+          ) : (
+            <EmptyState
+              title="Chưa có kiểm thử hồi quy"
+              action={canWrite && <PillButton href={createCandidateHref}>Tạo ứng viên</PillButton>}
+            >
+              Tạo một cấu hình AEB ứng viên, rồi chạy kiểm thử hồi quy để so với bản cơ sở trên cùng bộ biến thể và cùng seed.
+            </EmptyState>
+          )
         )}
 
-        {items.map((i) => {
+        {shown.map((i) => {
           const running = i.status === "RUNNING" || i.status === "PENDING";
           return (
             <div
@@ -168,8 +197,8 @@ export default function RegressionListPage() {
                   Xem
                 </Link>
                 {i.status === "PASSED" && (
-                  <Link href={`/validation/recommendations/${i.id}`} className="text-vehicsim-decision hover:underline">
-                    Khuyến nghị
+                  <Link href={conclusion(i.id)} className="text-vehicsim-decision hover:underline">
+                    {isExperiencer ? "Kết luận" : "Khuyến nghị"}
                   </Link>
                 )}
               </span>
@@ -177,10 +206,16 @@ export default function RegressionListPage() {
           );
         })}
 
-        <p className="px-5 py-4 text-[12px] text-vehicsim-faint">
-          Hiển thị {items.length} / {data?.items.length ?? 0} · Kiểm thử chạy ngay khi được tạo nên không sửa hay xoá được
-          sau đó.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <p className="text-[12px] text-vehicsim-muted">
+            <span className="tabular-nums">
+              {items.length ? `${offset + 1}–${offset + shown.length}` : "0"} trong {items.length} kiểm thử
+              {data && items.length !== data.items.length && ` (lọc từ ${data.items.length})`}
+            </span>
+            {" · "}Kiểm thử chạy ngay khi được tạo nên không sửa hay xoá được sau đó.
+          </p>
+          {pages > 1 && <Pagination page={current} pages={pages} onPage={setPage} />}
+        </div>
       </section>
     </VehicSimPage>
   );

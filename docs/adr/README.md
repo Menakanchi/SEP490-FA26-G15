@@ -57,6 +57,7 @@ giữ lại). VehicSim: ADR-023 trở đi.
 | [ADR-043](ADR-043-perception-tu-radar-chay-bong-truoc.md) | Perception AEB trên CARLA lấy từ radar 90° + bộ bám `RadarTracker` ở Java; giai đoạn 1 chạy bóng (AEB vẫn dùng ground truth, ghi sai số), giai đoạn 2 đổi đầu vào và lên `-xosc4` khi đạt ngưỡng | 🕐 **Proposed 22/10** |
 | [ADR-044](ADR-044-nguong-phanh-oan-regression-5-diem.md) | Ngưỡng phanh oan mặc định của regression đổi 0,5 → 5 điểm %, cùng một hằng với ràng buộc tối ưu (TD-48); test đã tạo giữ ngưỡng đã lưu | 🕐 **Proposed 20/10** |
 | [ADR-045](ADR-045-manager-cap-role-khi-them-thanh-vien.md) | Manager / Admin chỉ thêm tài khoản EXPERIENCER vào workspace và chọn role ENGINEER / REVIEWER cho người đó (`users.role_id` đổi theo, ghi `workspace_members.granted_role`); rời workspace cuối cùng thì về EXPERIENCER | 🕐 **Proposed 23/10** — thay phần "Ai cấp" ENGINEER / REVIEWER của ADR-035 |
+| [ADR-046](ADR-046-experiencer-tu-chon-baseline-trong-project-ca-nhan.md) | Trong project cá nhân, chủ project (EXPERIENCER) tự chọn ứng viên regression PASSED làm baseline, cùng điều kiện như Accept của Reviewer, bắt lý do + xác nhận; lý do nối vào ghi chú phiên bản AEB (DB chặn tự duyệt ở `engineering_recommendations`) | 🕐 **Proposed 01/11** — bổ sung bất biến 5 và ADR-035 cho project cá nhân |
 
 ## Luật
 

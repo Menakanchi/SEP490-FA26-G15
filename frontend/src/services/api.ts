@@ -39,6 +39,42 @@ export function storeToken(token: string | null): void {
   }
 }
 
+const PROJECT_KEY = "vehicsim_project";
+export const PROJECT_HEADER = "X-VehicSim-Project";
+
+/**
+ * Project đang mở thuộc về từng tab (sessionStorage) để hai tab mở hai project không ghi nhầm vào nhau;
+ * localStorage chỉ giữ lựa chọn gần nhất làm giá trị mở đầu cho tab mới.
+ */
+export function getSelectedProjectId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return sessionStorage.getItem(PROJECT_KEY) ?? localStorage.getItem(PROJECT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setSelectedProjectId(id: number | null): void {
+  try {
+    for (const store of [sessionStorage, localStorage]) {
+      if (id) store.setItem(PROJECT_KEY, String(id));
+      else store.removeItem(PROJECT_KEY);
+    }
+  } catch {
+    return;
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getStoredToken();
+  const project = getSelectedProjectId();
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(project ? { [PROJECT_HEADER]: project } : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -54,6 +90,7 @@ const CREDENTIAL_PATHS = ["/auth/login", "/auth/register", "/auth/password/forgo
 
 function handleSessionExpired(): void {
   storeToken(null);
+  setSelectedProjectId(null);
   if (typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
 }
 
@@ -69,6 +106,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -77,9 +115,8 @@ export class ApiError extends Error {
 
 /** Tải file (CSV…) từ API có kèm token rồi cho trình duyệt lưu. */
 export async function apiBlob(path: string, options?: RequestInit): Promise<Blob> {
-  const token = getStoredToken();
   const headers = new Headers(options?.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  Object.entries(authHeaders()).forEach(([name, value]) => headers.set(name, value));
   if (options?.body) headers.set("Content-Type", "application/json");
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -110,7 +147,7 @@ const inflightGets = new Map<string, Promise<unknown>>();
 function request<T>(path: string, options?: RequestInit): Promise<T> {
   const method = (options?.method ?? "GET").toUpperCase();
   if (method !== "GET" || options?.body) return send<T>(path, options);
-  const key = `${getStoredToken() ?? ""}|${path}`;
+  const key = `${getStoredToken() ?? ""}|${getSelectedProjectId() ?? ""}|${path}`;
   const running = inflightGets.get(key);
   if (running) return running as Promise<T>;
   const call = send<T>(path, options).finally(() => inflightGets.delete(key));
@@ -127,7 +164,7 @@ async function send<T>(
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...authHeaders(),
       ...(options?.headers ?? {}),
     },
   });
@@ -137,8 +174,10 @@ async function send<T>(
     if (res.status === 401 && token && !CREDENTIAL_PATHS.some((p) => path.startsWith(p))) handleSessionExpired();
     const bodyText = await res.text().catch(() => "");
     let messageVi = "";
+    let code: string | undefined;
     try {
       const json = JSON.parse(bodyText);
+      if (typeof json.code === "string") code = json.code;
       if (typeof json.detail === "string") {
         messageVi = json.detail;
       } else if (Array.isArray(json.detail)) {
@@ -165,9 +204,11 @@ async function send<T>(
     throw new ApiError(
       messageVi || `API ${res.status}: ${res.statusText}`,
       res.status,
+      code,
     );
   }
 
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
