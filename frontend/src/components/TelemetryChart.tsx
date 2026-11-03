@@ -1,111 +1,71 @@
 "use client";
 
-/**
- * Biểu đồ telemetry của màn 02: TTC (đen, trục trái), tốc độ (xanh, trục phải),
- * ngưỡng TTC (cam đứt nét), các mốc sự kiện dọc và vùng trễ kích hoạt tô đỏ nhạt.
- * Toạ độ và màu theo khối "Chart" của Figma (646 × 266 trong khung 706 × 330).
- */
-
-import React from "react";
-
-const W = 706;
-const H = 330;
-const L = 62;
-const R = 680;
-const TOP = 34;
-const BOTTOM = 300;
-
-export interface ChartMarker {
-  t: number;
-  label: string;
-  color: string;
-}
-
+/** Display recorded TTC/speed on independent axes; never calculate AEB metrics. */
+const W = 706, H = 330, L = 62, R = 644, TOP = 34, BOTTOM = 296;
+export interface ChartMarker { t: number; label: string; color: string }
+interface Point { t: number; ttc: number | null; speed_kmh: number | null }
 interface Props {
-  cursor?: number;
-  points: { t: number; ttc: number | null; speed_kmh: number | null }[];
-  threshold: number | null;
-  markers: ChartMarker[];
-  shade?: [number, number] | null;
-  impactT?: number | null;
+  cursor?: number; points: Point[]; threshold: number | null; markers: ChartMarker[];
+  shade?: [number, number] | null; impactT?: number | null;
 }
+const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
-export function TelemetryChart({ points: rawPoints, threshold, markers, shade, impactT, cursor }: Props) {
-  const points=rawPoints.filter(point=>Number.isFinite(point.t));
-  if(!points.length)return <p className="py-8 text-center text-[13px] text-vehicsim-muted">Run chưa có telemetry để vẽ biểu đồ.</p>;
-  const tMax = Math.max(0.01, points[points.length - 1]?.t ?? 1);
-  const ttcMax = 5;
-  const vMax = Math.max(70, Math.ceil(Math.max(...points.map((p) => Number.isFinite(p.speed_kmh) ? p.speed_kmh! : 0), 0) / 14) * 14);
-  const x = (t: number) => L + (t / tMax) * (R - L);
-  const yTtc = (v: number) => BOTTOM - (Math.min(v, ttcMax) / ttcMax) * (BOTTOM - TOP);
-  const ySpd = (v: number) => BOTTOM - (v / vMax) * (BOTTOM - TOP);
-
-  const ttcSegments: string[][] = [];
-  let current: string[] = [];
-  for (const p of points) {
-    if (p.ttc === null || !Number.isFinite(p.ttc)) {
-      if (current.length) ttcSegments.push(current);
-      current = [];
-    } else current.push(`${x(p.t).toFixed(1)},${yTtc(p.ttc).toFixed(1)}`);
-  }
-  if (current.length) ttcSegments.push(current);
-  const speedSegments: string[][]=[];
-  let speedSegment:string[]=[];
-  for(const p of points) {
-    if(p.speed_kmh===null || !Number.isFinite(p.speed_kmh)) { if(speedSegment.length)speedSegments.push(speedSegment);speedSegment=[]; }
-    else speedSegment.push(`${x(p.t)},${ySpd(p.speed_kmh)}`);
-  }
-  if(speedSegment.length)speedSegments.push(speedSegment);
-  const ticks = Array.from({ length: 5 }, (_, i) => tMax * i / 4);
-  const impactPoint = impactT != null ? points.find((p) => p.t >= impactT - 1e-6) : undefined;
-
-  return (
-    <div className="relative h-[330px] w-full">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full" role="img" aria-label="TTC nhận thức (s) và tốc độ xe (km/h) theo thời gian (s)">
-        <title>TTC nhận thức (s), trục trái; tốc độ xe (km/h), trục phải; thời gian (s)</title>
-        <text x={L} y={29} fontSize={10} fill="var(--color-vehicsim-muted)">TTC (s), giới hạn hiển thị 5 s</text>
-        <text x={R} y={29} textAnchor="end" fontSize={10} fill="var(--color-vehicsim-decision)">Tốc độ (km/h)</text>
-        {[0, 1, 2, 3, 4, 5].map((v) => (
-          <g key={v}>
-            <rect x={L} y={yTtc(v)} width={R - L} height={1} fill="var(--color-vehicsim-line)" />
-            <text x={18} y={yTtc(v) + 4} fontSize={11} fontWeight={500} fill="var(--color-vehicsim-faint)">
-              {v}
-            </text>
-            <text x={690} y={yTtc(v) + 4} fontSize={11} fontWeight={500} fill="var(--color-vehicsim-decision)">
-              {Math.round((vMax * v) / 5)}
-            </text>
-          </g>
-        ))}
-        {ticks.map((t) => (
-          <text key={t} x={x(t) - 8} y={322} fontSize={11} fontWeight={500} fill="var(--color-vehicsim-faint)">
-            {`${t.toFixed(2)}s`}
-          </text>
-        ))}
-        {shade && shade[1] > shade[0] && (
-          <rect x={x(shade[0])} y={TOP} width={x(shade[1]) - x(shade[0])} height={BOTTOM - TOP} fill="rgba(229,72,77,0.07)" />
-        )}
-        {threshold !== null && (
-          <line x1={L} x2={R} y1={yTtc(threshold)} y2={yTtc(threshold)} stroke="var(--color-vehicsim-amber)" strokeWidth={1.5} strokeDasharray="5 4" />
-        )}
-        {markers.map((m) => (
-          <line key={m.label} x1={x(m.t)} x2={x(m.t)} y1={TOP - 6} y2={BOTTOM} stroke={m.color} strokeWidth={1.2} strokeDasharray="4 3" />
-        ))}
-        {ttcSegments.map((seg, i) =>
-          seg.length > 1 ? <polyline key={i} points={seg.join(" ")} fill="none" stroke="var(--color-vehicsim-ink)" strokeWidth={2} /> : null,
-        )}
-        {speedSegments.map((segment,index)=><polyline key={index} points={segment.join(" ")} fill="none" stroke="var(--color-vehicsim-decision)" strokeWidth={2.5} />)}
-        {cursor !== undefined && <line x1={x(cursor)} x2={x(cursor)} y1={TOP} y2={BOTTOM} stroke="var(--color-vehicsim-ink)" strokeWidth={2}/>}
-        {impactPoint?.speed_kmh != null && <circle cx={x(impactPoint.t)} cy={ySpd(impactPoint.speed_kmh)} r={5} fill="var(--color-vehicsim-danger)" />}
-      </svg>
-      {markers.map((m) => (
-        <span
-          key={m.label}
-          className="absolute -translate-x-1/2 whitespace-nowrap rounded-full border border-solid border-vehicsim-line bg-white px-[7px] py-[3px] text-[10px] font-semibold"
-          style={{ left: `${(x(m.t) / W) * 100}%`, top: 4, color: m.color }}
-        >
-          {m.label}
-        </span>
-      ))}
+export function TelemetryChart({ points, threshold, markers, shade, impactT, cursor }: Props) {
+  const timed = points.filter(point => finite(point.t) && point.t >= 0);
+  if (!timed.length || !timed.some(point => finite(point.ttc) || finite(point.speed_kmh)))
+    return <p className="py-8 text-center text-[13px] text-vehicsim-muted">Run chưa có telemetry để vẽ biểu đồ.</p>;
+  const tMax = timed.reduce((max, point) => Math.max(max, point.t), 0.01);
+  const ttcLow = timed.reduce((min, point) => finite(point.ttc) ? Math.min(min, point.ttc) : min, 0);
+  const ttcHigh = timed.reduce((max, point) => finite(point.ttc) ? Math.max(max, point.ttc) : max, finite(threshold) ? Math.max(5, threshold) : 5);
+  const speedLow = timed.reduce((min, point) => finite(point.speed_kmh) ? Math.min(min, point.speed_kmh) : min, 0);
+  const speedHigh = timed.reduce((max, point) => finite(point.speed_kmh) ? Math.max(max, point.speed_kmh) : max, 1);
+  const x = (t: number) => L + t / tMax * (R - L);
+  const yTtc = (value: number) => BOTTOM - (value - ttcLow) / (ttcHigh - ttcLow) * (BOTTOM - TOP);
+  const ySpeed = (value: number) => BOTTOM - (value - speedLow) / (speedHigh - speedLow) * (BOTTOM - TOP);
+  const segments = (field: "ttc" | "speed_kmh", y: (value: number) => number) => {
+    const lines: string[][] = [];
+    let line: string[] = [], last: number | null = null;
+    for (const point of points) {
+      const value = point[field];
+      if (!finite(point.t) || point.t < 0 || !finite(value)) {
+        if (line.length) lines.push(line);
+        line = []; last = null; continue;
+      }
+      if (last !== null && point.t <= last) { if (line.length) lines.push(line); line = []; }
+      line.push(`${x(point.t)},${y(value)}`); last = point.t;
+    }
+    if (line.length) lines.push(line);
+    return lines;
+  };
+  const visibleMarkers = markers.filter(marker => finite(marker.t) && marker.t >= 0 && marker.t <= tMax);
+  // Only mark the collision sample when this timestamp is actually present.
+  const impactPoint = finite(impactT) ? timed.find(point => point.t === impactT && finite(point.speed_kmh)) : undefined;
+  return <div className="space-y-3">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="TTC nhận thức (s) và tốc độ xe (km/h) theo thời gian (s)">
+      <title>TTC nhận thức (s), trục trái; tốc độ xe (km/h), trục phải; thời gian (s)</title>
+      <text x={L} y={20} fontSize={11} fill="var(--color-vehicsim-muted)">TTC (s)</text>
+      <text x={R} y={20} textAnchor="end" fontSize={11} fill="var(--color-vehicsim-decision)">Tốc độ (km/h)</text>
+      {Array.from({ length: 6 }, (_, i) => {
+        const ratio = i / 5, y = BOTTOM - ratio * (BOTTOM - TOP);
+        return <g key={i}>
+          <line x1={L} x2={R} y1={y} y2={y} stroke="var(--color-vehicsim-line)" />
+          <text x={L - 10} y={y + 4} textAnchor="end" fontSize={11} fill="var(--color-vehicsim-muted)">{(ttcLow + ratio * (ttcHigh - ttcLow)).toFixed(1)}</text>
+          <text x={R + 10} y={y + 4} fontSize={11} fill="var(--color-vehicsim-decision)">{(speedLow + ratio * (speedHigh - speedLow)).toFixed(1)}</text>
+        </g>;
+      })}
+      {Array.from({ length: 5 }, (_, i) => <text key={i} x={x(tMax * i / 4)} y={322} textAnchor="middle" fontSize={11} fill="var(--color-vehicsim-muted)">{(tMax * i / 4).toFixed(2)} s</text>)}
+      {shade && finite(shade[0]) && finite(shade[1]) && shade[1] > shade[0] && <rect x={x(shade[0])} y={TOP} width={x(shade[1]) - x(shade[0])} height={BOTTOM - TOP} fill="rgba(229,72,77,0.07)" />}
+      {finite(threshold) && <line x1={L} x2={R} y1={yTtc(threshold)} y2={yTtc(threshold)} stroke="var(--color-vehicsim-amber)" strokeWidth={1.5} strokeDasharray="5 4"><title>Ngưỡng TTC cấu hình: {threshold} s</title></line>}
+      {visibleMarkers.map((marker, i) => <line key={i} x1={x(marker.t)} x2={x(marker.t)} y1={TOP} y2={BOTTOM} stroke={marker.color} strokeDasharray="4 3"><title>{marker.label}: {marker.t} s</title></line>)}
+      {([ ["ttc", yTtc, "var(--color-vehicsim-ink)"], ["speed_kmh", ySpeed, "var(--color-vehicsim-decision)"] ] as const).map(([field, y, color]) =>
+        segments(field, y).map((line, i) => line.length === 1
+          ? <circle key={`${field}-${i}`} data-signal={field} cx={Number(line[0].split(",")[0])} cy={Number(line[0].split(",")[1])} r={3} fill={color} />
+          : <polyline key={`${field}-${i}`} data-signal={field} points={line.join(" ")} fill="none" stroke={color} strokeWidth={2} />))}
+      {finite(cursor) && cursor >= 0 && cursor <= tMax && <line x1={x(cursor)} x2={x(cursor)} y1={TOP} y2={BOTTOM} stroke="var(--color-vehicsim-ink)" strokeWidth={2}><title>Thời gian đang xem: {cursor} s</title></line>}
+      {impactPoint && finite(impactPoint.speed_kmh) && <circle cx={x(impactPoint.t)} cy={ySpeed(impactPoint.speed_kmh)} r={5} fill="var(--color-vehicsim-danger)" />}
+    </svg>
+    <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px]" aria-label="Mốc đã ghi trên biểu đồ">
+      {visibleMarkers.map((marker, i) => <span key={i} style={{ color: marker.color }}><span>{marker.label}</span> · {marker.t.toFixed(2)} s</span>)}
     </div>
-  );
+  </div>;
 }

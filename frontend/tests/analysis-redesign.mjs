@@ -12,7 +12,7 @@ import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
 const fixtures=JSON.parse(gunzipSync(await fs.readFile(path.join(root,"src/test/resources/parity/kinematic.json.gz"))));
-const output=path.join(root,"data/analysis-batch3-ui");await fs.mkdir(output,{recursive:true});
+const output=path.join(root,"data/analysis-batch4-ui");await fs.mkdir(output,{recursive:true});
 const version="adr040-stored-aggregation/1";
 const cases=fixtures.filter(c=>c.evaluation.outcome!=="TIMEOUT").slice(0,45);
 const runs=cases.map((c,i)=>({revision:`fixture-${i}`,run_id:1000+i,scenario_id:1,scenario_version_id:100+i,version_no:i+1,family:"CP Crossing · Fixture kiểm thử UI",variant:`CP-${String(i+1).padStart(3,"0")}`,seed:c.seed,baseline_id:1,vehicle_id:1,simulator:"vehicsim-kinematic-1.0",dt:0.05,status:"COMPLETED",outcome:c.evaluation.aeb_result.false_activation?"FALSE_BRAKING":c.evaluation.outcome,weather:c.case.weather,time_of_day:c.case.time_of_day,failure_class:c.evaluation.chain.find(s=>!s.passed)?.stage??null,error:null,end_reason:c.outcome.end_reason,trace_available:true,created_at:"2026-11-03T08:00:00",metrics:{rms_jerk_mps3:c.outcome.metrics.rms_jerk_mps3,impact_speed_mps:c.outcome.metrics.impact_speed_mps,stopping_distance_m:c.outcome.metrics.stopping_distance_m}}));
@@ -32,7 +32,7 @@ function aggregate(list){
   out[key]={value:values.length?values.reduce((a,b)=>a+b,0)/values.length:null,samples:values.length,missing:0,notApplicable:list.length-values.length,unit,status:values.length?"VALID":"NOT_APPLICABLE"};
  }return out;
 }
-let role="ENGINEER", mode="normal", saved=null, playbackOverride=null, detailOverride=null, dashboardOverride=null, lastDashboard=null;
+let role="ENGINEER", mode="normal", saved=null, playbackOverride=null, detailOverride=null, dashboardOverride=null, lastDashboard=null, inspectionOverride=null, inspectionMode="normal";
 const writes=[],requests=[];
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
 try {
@@ -63,7 +63,13 @@ try {
    return reply(lastDashboard);
   }
   const inspection=p.match(/^\/vehicsim\/analysis\/runs\/(\d+)$/);
-  if(inspection)return reply({run:runs.find(r=>r.run_id===Number(inspection[1])),detail:detailOverride??detailFor(Number(inspection[1]))});
+  if(inspection){
+   if(inspectionMode==="slow")await new Promise(resolve=>setTimeout(resolve,800));
+   if(inspectionMode==="error")return reply({detail:"Fixture detail failure"},503);
+   if(inspectionMode==="forbidden")return reply({detail:"Forbidden"},403);
+   if(inspectionMode==="notfound")return reply({detail:"Fixture run not found"},404);
+   return reply(inspectionOverride??{run:runs.find(r=>r.run_id===Number(inspection[1])),detail:detailOverride??detailFor(Number(inspection[1]))});
+  }
   const playback=p.match(/^\/vehicsim\/runs\/(\d+)\/playback$/);
   if(playback){const id=Number(playback[1]),d=detailFor(id),o=caseFor(id).outcome;return reply(playbackOverride??{...d,...o,motion_telemetry:d.motion_telemetry,vehicle_length_m:4.8,vehicle_width_m:2,lane_width_m:3.5,ttc_threshold_s:1.5,related_runs:[]});}
   if(p==="/vehicsim/failures"){
@@ -182,7 +188,7 @@ try {
  await page.waitForURL(rowActionReturn);assert.equal(page.url(),rowActionReturn);
  // Native browser Back also restores table state.
  await explorerRows.first().getByRole("link",{name:/^Chi tiết run/}).click();
- await page.getByRole("button",{name:"Tổng quan & cấu hình",exact:true}).waitFor();
+ await page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true}).waitFor();
  await page.goBack();await explorerRows.first().waitFor();assert.equal(page.url(),rowActionReturn);
  await page.getByRole("button",{name:"Bỏ bộ lọc Trạng thái: Hoàn tất",exact:true}).click();
  await page.waitForURL(url=>!url.searchParams.has("status")&&!url.searchParams.has("page"));
@@ -225,14 +231,14 @@ try {
  await page.waitForURL(url=>!url.searchParams.has("q"));
  const runLink=page.getByRole("table").locator("tbody tr a").first(),backUrl=page.url();
  await runLink.click();
- await page.getByRole("button",{name:"Tổng quan & cấu hình",exact:true}).waitFor();
+ await page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true}).waitFor();
  await page.screenshot({path:path.join(output,"detail-summary-tablet.png"),fullPage:true});
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Detail tablet overflow");
- await page.getByRole("button",{name:"Telemetry & chỉ số",exact:true}).click();
+ await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).click();
  await page.getByLabel("Tín hiệu",{exact:true}).selectOption("jerk_mps3");
  await page.getByRole("img",{name:/Jerk từ gia tốc/}).waitFor();
  await page.screenshot({path:path.join(output,"detail-telemetry-tablet.png"),fullPage:true});
- await page.getByRole("button",{name:"Nguyên nhân & bằng chứng",exact:true}).click();
+ await page.getByRole("tab",{name:"Nguyên nhân & bằng chứng",exact:true}).click();
  await page.getByRole("heading",{name:"Bằng chứng và giới hạn nhận định",exact:true}).waitFor();
  await page.screenshot({path:path.join(output,"detail-evidence-tablet.png"),fullPage:true});
  await page.getByRole("link",{name:"← Về danh sách đang xem",exact:true}).click();
@@ -303,18 +309,136 @@ try {
  await page.goto(base+`/analysis/failures/${id}?section=telemetry`);
  await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
  assert.equal(await page.getByText("Mốc TTC từ backend",{exact:true}).count(),0);
- assert.equal(await page.getByText(/Trễ kích hoạt/).count(),0);
- await page.getByText("Bằng chứng do backend cung cấp",{exact:false}).last().waitFor();
+ assert.equal(await page.getByRole("tabpanel",{name:"Telemetry & chỉ số",exact:true}).getByText(/Trễ kích hoạt/).count(),0);
+ await page.getByRole("tabpanel",{name:"Telemetry & chỉ số",exact:true}).getByText("Bằng chứng do backend cung cấp",{exact:false}).waitFor();
  detailOverride={...detailOverride,events:[{t:0.75,kind:"ttc_below",label:"Mốc TTC do API ghi"}]};
  await page.reload();await page.getByText("Mốc TTC từ backend",{exact:true}).waitFor();
  playbackOverride=null;detailOverride=null;
+ // Batch 4: distinct saved objectives, telemetry and derived signals must not overwrite each other.
+ const baseRun=runs.find(r=>r.run_id===id);
+ const sentinelDetail={...detailFor(id),simulator:"carla-0.9.16-xosc4",evaluation_version:version,
+  metrics:{...detailFor(id).metrics,rms_jerk_mps3:77.777,impact_speed_mps:0,stopping_distance_m:null,first_detection_t:0,aeb_activation_t:null,fcw_t:null,brake_onset_t:null},
+  events:[],telemetry:[{t:0,ttc:12,speed_kmh:36},{t:0.5,ttc:null,speed_kmh:null},{t:1,ttc:8,speed_kmh:0},{t:1.5,ttc:0,speed_kmh:-3},{t:2,ttc:4,speed_kmh:6}],
+  motion_telemetry:[0,0.5,1,1.5,2].map((t,i)=>({t,ego_x_m:i,ego_speed_mps:100+i,ego_accel_mps2:i===0?1.25:-2,target_x_m:10,target_y_m:-1,target_vy_mps:0,perceived_y_m:null,ttc_perceived_s:null,ttc_gt_s:42,jerk_mps3:500,crossing_distance_m:i===1?null:777.7,motion_state:"STEADY",derived_source:"RECORDED_GT_FINITE_DIFFERENCE"}))};
+ inspectionOverride={run:{...baseRun,simulator:"carla-0.9.16-xosc4",dt:0.01},detail:sentinelDetail};
+ const preservedReturn="/analysis/failures?view=runs&scenario_id=1&page=2&page_size=10&q=CP&sort=impact";
+ const detailUrl=base+`/analysis/failures/${id}?returnTo=${encodeURIComponent(preservedReturn)}`;
+ await page.goto(detailUrl);
+ const savedSummary=page.getByRole("region",{name:"Kết quả và chỉ số run",exact:true});
+ const valueIn=(scope,label)=>scope.locator(`[aria-label="${label}"] dd`);
+ await savedSummary.waitFor();
+ assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.78 m/s³");
+ assert.equal((await valueIn(savedSummary,"Tốc độ va chạm").innerText()).trim(),"0.00 m/s");
+ assert.equal((await valueIn(savedSummary,"Quãng phanh").innerText()).trim(),"—");
+ const identity=page.getByRole("region",{name:"Danh tính và nguồn dữ liệu run",exact:true});
+ assert.match(await identity.innerText(),/carla-0.9.16-xosc4[\s\S]*dt 0.01/);
+ assert.match(await identity.innerText(),/chưa hiệu chuẩn/);
+ assert.equal(await page.getByRole("tabpanel").count(),1,"Only the selected panel is exposed");
+ const inspectionRequests=()=>requests.filter(url=>/\/analysis\/runs\/\d+$/.test(url.pathname)).length;
+ const beforeExploration=inspectionRequests();
+ const summaryTab=page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true});
+ await summaryTab.focus();await summaryTab.press("ArrowRight");
+ await page.waitForURL(url=>url.searchParams.get("section")==="telemetry");
+ assert.equal(await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).getAttribute("aria-selected"),"true");
+ await page.getByLabel("Tín hiệu",{exact:true}).selectOption("jerk_mps3");
+ await page.waitForURL(url=>url.searchParams.get("signal")==="jerk_mps3");
+ const readouts=page.getByRole("region",{name:"Số đo tại thời gian đang xem",exact:true});
+ assert.equal((await valueIn(readouts,"Gia tốc ego tại khung").innerText()).trim(),"1.25");
+ assert.equal((await valueIn(readouts,"Khoảng cách tới vạch tại khung").innerText()).trim(),"777.70");
+ assert.match(await page.getByLabel("Số đo tín hiệu đang chọn",{exact:true}).innerText(),/500.000 m\/s³/);
+ const combined=page.getByRole("img",{name:"TTC nhận thức (s) và tốc độ xe (km/h) theo thời gian (s)",exact:true});
+ assert.equal(await combined.locator('circle[data-signal="ttc"]').count(),1,"A single recorded sample remains visible before a gap");
+ assert.equal(await combined.locator('polyline[data-signal="ttc"]').count(),1,"Missing TTC splits the series");
+ assert.equal(Number(await combined.locator('circle[data-signal="ttc"]').getAttribute("cy")),34);
+ const afterGap=await combined.locator('polyline[data-signal="ttc"]').getAttribute("points");
+ assert(Number(afterGap.split(" ")[0].split(",")[1])>34,"TTC 8 is below TTC 12; values are not clamped to 5 s");
+ const timeSlider=page.getByRole("slider",{name:"Thời gian phân tích",exact:true});
+ await timeSlider.focus();await timeSlider.press("End");
+ await page.waitForURL(url=>url.searchParams.get("t")==="2");
+ assert.equal((await valueIn(readouts,"Gia tốc ego tại khung").innerText()).trim(),"-2.00");
+ assert.equal(inspectionRequests(),beforeExploration,"Changing tab/time/signal must not refetch inspection");
+ assert.equal(new URL(page.url()).searchParams.get("returnTo"),preservedReturn);
+ assert.match(await page.getByRole("region",{name:"Mốc thời gian phân tích",exact:true}).innerText(),/Trạng thái từ API: Tốc độ gần đều/,"Use stored motion state even when acceleration has a different sign");
+ await page.reload();await readouts.waitFor();
+ assert.equal(await page.getByLabel("Tín hiệu",{exact:true}).inputValue(),"jerk_mps3");
+ assert.equal(Number(await timeSlider.inputValue()),2);
+ for(const [width,height] of [[1920,1080],[1366,768],[1024,768]]){
+  await page.setViewportSize({width,height});await page.screenshot({path:path.join(output,`detail-recorded-telemetry-${width}.png`),fullPage:true});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Detail telemetry overflow ${width}`);
+  await page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true}).click();await savedSummary.waitFor();
+  await page.screenshot({path:path.join(output,`detail-recorded-summary-${width}.png`),fullPage:true});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Detail summary overflow ${width}`);
+  assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.78 m/s³","Signal exploration must not recompute objective RMS jerk");
+  await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).click();await readouts.waitFor();
+ }
+ await page.goto(detailUrl+"&section=telemetry&t=0.75&signal=ttc_perceived_s");await readouts.waitFor();
+ assert.equal((await valueIn(readouts,"TTC nhận thức tại khung").innerText()).trim(),"—");
+ assert.equal((await valueIn(readouts,"Tốc độ tại khung").innerText()).trim(),"—");
+ assert.equal((await valueIn(readouts,"Khoảng cách tới vạch tại khung").innerText()).trim(),"—");
+ assert.match(await readouts.innerText(),/Telemetry: 0.50 s/);
+ assert.match(await page.getByLabel("Số đo tín hiệu đang chọn",{exact:true}).innerText(),/— s/);
+ await page.getByLabel("Tín hiệu",{exact:true}).selectOption("ttc_gt_s");
+ await page.waitForURL(url=>url.searchParams.get("signal")==="ttc_gt_s");
+ assert.match(await page.getByLabel("Số đo tín hiệu đang chọn",{exact:true}).innerText(),/42.000 s/);
+ await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).focus();
+ await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).press("End");
+ await page.getByRole("heading",{name:"Bằng chứng và giới hạn nhận định",exact:true}).waitFor();
+ await page.getByRole("tab",{name:"Nguyên nhân & bằng chứng",exact:true}).press("Home");await savedSummary.waitFor();
+ // Empty telemetry keeps stored metrics, disables the cursor and does not draw fallback values.
+ inspectionOverride={...inspectionOverride,detail:{...sentinelDetail,telemetry:[],motion_telemetry:[],scene:{...sentinelDetail.scene,path:[],end:null}}};
+ await page.goto(detailUrl+"&section=telemetry&t=999&signal=invalid");await readouts.waitFor();
+ assert(await timeSlider.isDisabled());assert.equal(Number(await timeSlider.inputValue()),0);
+ assert.equal(await combined.count(),0);assert.equal(await page.getByRole("img",{name:/Gia tốc ego.*theo thời gian/}).count(),0);
+ assert.equal(await page.getByLabel("Tín hiệu",{exact:true}).inputValue(),"ego_accel_mps2");
+ assert.equal((await valueIn(readouts,"Gia tốc ego tại khung").innerText()).trim(),"—");
+ await page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true}).click();await savedSummary.waitFor();
+ await page.getByText("Không đủ tọa độ hoặc kích thước xe tại khung này để dựng cảnh.",{exact:true}).waitFor();
+ assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.78 m/s³");
+ // Repeated/decreasing timestamps break paths instead of connecting them backwards.
+ inspectionOverride={...inspectionOverride,detail:{...sentinelDetail,
+  telemetry:[{t:0,ttc:7,speed_kmh:0},{t:1,ttc:null,speed_kmh:null},{t:2,ttc:8,speed_kmh:1},{t:1,ttc:6,speed_kmh:2},{t:3,ttc:5,speed_kmh:3}],
+  motion_telemetry:[0,0.5,1,0.75,2].map((t,i)=>({...sentinelDetail.motion_telemetry[i],t,ego_accel_mps2:[1.25,null,-2,3,0][i]}))}};
+ await page.goto(detailUrl+"&section=telemetry&t=999");await combined.waitFor();
+ assert.equal(Number(await timeSlider.inputValue()),3);
+ assert.equal(await combined.locator('[data-signal="ttc"]').count(),3);
+ const motionGapChart=page.getByRole("img",{name:"Gia tốc ego (m/s²) theo thời gian (s)",exact:true});
+ assert.equal(await motionGapChart.locator("circle").count(),2);
+ assert.equal(await motionGapChart.locator("polyline").count(),1,"Motion chart also splits missing and decreasing timestamps");
+ assert.equal((await valueIn(readouts,"Gia tốc ego tại khung").innerText()).trim(),"0.00");
+ inspectionOverride={run:{...baseRun,status:"RUNNING",trace_available:false,outcome:"NOT_FINISHED"},detail:null};
+ await page.goto(detailUrl);await page.getByRole("region",{name:"Run chưa có kết quả phân tích",exact:true}).waitFor();
+ assert.equal(await page.getByRole("tab").count(),0);
+ assert.equal(await savedSummary.count(),0);assert.equal(await timeSlider.count(),0);
+ assert.equal(await page.getByRole("link",{name:"▶ Phát lại",exact:true}).count(),0);
+ inspectionOverride={run:baseRun,detail:{...sentinelDetail,evaluation_valid:false,outcome:"SAFE"}};
+ await page.reload();await page.getByText("Run chưa có kết quả AEB hợp lệ; không dùng các số hiện có để kết luận an toàn.",{exact:true}).waitFor();
+ assert.equal(await page.getByText("An toàn",{exact:true}).count(),0);
+ // Moving between runs must hide the previous run while loading a new inspection.
+ inspectionOverride=null;detailOverride={...sentinelDetail,similar:[{run_id:id===1000?1001:1000,variant:"Khác run",summary:"Fixture chuyển run",similarity_pct:50}]};
+ await page.goto(detailUrl);await savedSummary.waitFor();
+ detailOverride=null;inspectionMode="slow";
+ await page.getByRole("region",{name:"Ca lỗi tương tự",exact:true}).getByRole("link").click();
+ await page.getByRole("status").filter({hasText:"Đang tải dữ liệu phân tích"}).waitFor();
+ assert.equal(await savedSummary.count(),0,"Previous run metrics disappear during navigation");
+ await savedSummary.waitFor();inspectionMode="normal";
+ for(const nextMode of ["error","forbidden","notfound"]){
+  inspectionMode=nextMode;await page.goto(detailUrl);await page.getByRole("alert").waitFor();
+  assert.equal(await page.getByRole("tab").count(),0);assert.equal(await savedSummary.count(),0);
+ }
+ inspectionMode="normal";await page.getByRole("button",{name:"Thử tải lại",exact:true}).click();await savedSummary.waitFor();
+ inspectionOverride=null;detailOverride=null;
+
  await page.goto(base+"/analysis/failures?view=failures&scenario_id=1");await page.getByRole("heading",{name:"Tra cứu ca lỗi",exact:true}).waitFor();await page.getByRole("table").locator("tbody tr").first().waitFor();
  await page.screenshot({path:path.join(output,"failures-tablet.png"),fullPage:true});
  assert(requests.some(u=>u.pathname.endsWith("/failures")&&u.searchParams.get("scenario_id")==="1"));
  for(const nextMode of ["slow","empty","error","forbidden"]){mode=nextMode;await page.goto(base+"/analysis/failures?view=runs");if(mode==="slow")await page.getByRole("status").filter({hasText:"Đang tải dữ liệu phân tích"}).waitFor();else if(mode==="empty")await page.getByText("Chưa có run baseline phù hợp.",{exact:true}).waitFor();else await page.getByRole("alert").waitFor();await page.screenshot({path:path.join(output,`state-${mode}.png`),fullPage:true});}
  mode="normal";role="MANAGER";await page.reload();await page.getByRole("table").locator("tbody tr").first().waitFor();
  assert(await page.locator('select[aria-label^="Tập của run"]').first().isDisabled());
+ await page.goto(base+`/analysis/failures/${id}?section=telemetry`);await page.getByRole("region",{name:"Danh tính và nguồn dữ liệu run",exact:true}).waitFor();
+ assert(await page.getByRole("button",{name:"Chạy trên CARLA",exact:true}).isDisabled());
+ assert(await page.getByRole("button",{name:"Tải .xosc",exact:true}).isEnabled());
+ await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
  assert.deepEqual(errors,[]);assert.equal(writes.length,1);assert(!writes.some(w=>/optimizations|aeb\/versions|regression/.test(w.path)));
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["batch3 row actions/detail/playback/browser-back URL restoration; filter chips/reset; last-page clamp; page-size reset; local sort null/zero/ties; trimmed search/reload; missing-telemetry restrictions; sticky column/overflow", "overview","batch2 full-scope KPI/source identities/partial-zero-loading-error/retry","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","batch1 API-only metrics/events and missing data","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["batch4 detail source/metrics/tabs/keyboard; URL time/signal/return/reload without refetch; recorded null-zero-signed samples; no GT fallback or objective recomputation; gaps/non-monotonic timestamps; TTC above 5; loading/run navigation/empty/invalid/error/403/404/retry; responsive screenshots", "batch3 row actions/detail/playback/browser-back URL restoration; filter chips/reset; last-page clamp; page-size reset; local sort null/zero/ties; trimmed search/reload; missing-telemetry restrictions; sticky column/overflow", "overview","batch2 full-scope KPI/source identities/partial-zero-loading-error/retry","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","batch1 API-only metrics/events and missing data","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
  console.log("PASS: browser fixture UI checks; live backend/authentication/database/CARLA/Figma NOT verified. Screenshots:",output);
 } finally {await browser.close();}
