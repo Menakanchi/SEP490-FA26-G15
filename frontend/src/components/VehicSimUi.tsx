@@ -276,11 +276,12 @@ export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChang
   );
 }
 
-export function EmptyState({ title, children }: { title: string; children?: React.ReactNode }) {
+export function EmptyState({ title, children, action }: { title: string; children?: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
       <p className="text-[15px] font-bold text-vehicsim-ink">{title}</p>
-      {children && <div className="max-w-[460px] text-[13px] text-vehicsim-muted">{children}</div>}
+      {children && <div className="max-w-[460px] text-[13px] leading-[1.5] text-vehicsim-muted">{children}</div>}
+      {action && <div className="mt-1 flex flex-wrap items-center justify-center gap-2">{action}</div>}
     </div>
   );
 }
@@ -299,27 +300,34 @@ export function Pagination({ page, pages, onPage }: { page: number; pages: numbe
   const nums = new Set<number>([1, pages, page - 1, page, page + 1].filter((n) => n >= 1 && n <= pages));
   const sorted = [...nums].sort((a, b) => a - b);
   const btn = "flex size-8 items-center justify-center rounded-[16px] text-[12px] font-semibold";
+  const idle = "border border-solid border-vehicsim-line bg-white text-vehicsim-ink hover:bg-vehicsim-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white";
   return (
-    <div className="flex items-center gap-[6px]">
-      <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)} className={cx(btn, "border border-solid border-vehicsim-line bg-white text-vehicsim-ink disabled:opacity-40")}>
-        ‹
+    <nav aria-label="Phân trang" className="flex items-center gap-[6px]">
+      <button type="button" aria-label="Trang trước" disabled={page <= 1} onClick={() => onPage(page - 1)} className={cx(btn, idle)}>
+        <span aria-hidden>‹</span>
       </button>
       {sorted.map((n, i) => (
         <React.Fragment key={n}>
-          {i > 0 && n - sorted[i - 1] > 1 && <span className={cx(btn, "border border-solid border-vehicsim-line bg-white text-vehicsim-ink")}>…</span>}
+          {i > 0 && n - sorted[i - 1] > 1 && (
+            <span aria-hidden className={cx(btn, "text-vehicsim-muted")}>
+              …
+            </span>
+          )}
           <button
             type="button"
+            aria-label={`Trang ${n}`}
+            aria-current={n === page ? "page" : undefined}
             onClick={() => onPage(n)}
-            className={cx(btn, n === page ? "bg-vehicsim-ink text-white" : "border border-solid border-vehicsim-line bg-white text-vehicsim-ink")}
+            className={cx(btn, "tabular-nums", n === page ? "bg-vehicsim-ink text-white" : idle)}
           >
             {n}
           </button>
         </React.Fragment>
       ))}
-      <button type="button" disabled={page >= pages} onClick={() => onPage(page + 1)} className={cx(btn, "border border-solid border-vehicsim-line bg-white text-vehicsim-ink disabled:opacity-40")}>
-        ›
+      <button type="button" aria-label="Trang sau" disabled={page >= pages} onClick={() => onPage(page + 1)} className={cx(btn, idle)}>
+        <span aria-hidden>›</span>
       </button>
-    </div>
+    </nav>
   );
 }
 
