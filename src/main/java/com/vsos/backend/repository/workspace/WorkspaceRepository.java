@@ -126,7 +126,7 @@ public class WorkspaceRepository {
         Row r = db.first("""
                 SELECT u.id, u.email, u.is_active, r.code AS role
                   FROM users u JOIN roles r ON r.id = u.role_id
-                 WHERE u.id = ?
+                 WHERE u.id = ? FOR UPDATE
                 """, userId);
         return r == null ? null : new UserAccount(r.lng("id"), r.str("email"), r.str("role"), r.bool("is_active"));
     }
@@ -155,7 +155,7 @@ public class WorkspaceRepository {
 
     /** Đổi role hệ thống của tài khoản ({@code users.role_id}); có hiệu lực từ request kế tiếp vì role đọc lại từ DB mỗi request. */
     public void setRole(long userId, String roleCode) {
-        db.update("UPDATE users SET role_id = (SELECT id FROM roles WHERE code = ?) WHERE id = ?", roleCode, userId);
+        db.update("UPDATE users SET role_id = (SELECT id FROM roles WHERE code = ?), auth_version = auth_version + 1 WHERE id = ?", roleCode, userId);
     }
 
     /** Tên các project người này đang làm chủ trong workspace. */

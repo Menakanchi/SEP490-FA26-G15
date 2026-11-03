@@ -123,7 +123,7 @@ const GROUPS: Group[] = [
     prefix: "/workspace",
     roles: WORKSPACE_ROLES,
   },
-  { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), note: `${SOON} (FE-10)` },
+  { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), prefix: "/admin", roles: ["ADMIN"], children: [{ label: "Tài khoản", href: "/admin/users" }, { label: "Workspace", href: "/admin/workspaces" }, { label: "Tài liệu kỹ thuật", href: "/admin/tech-references" }] },
 ];
 
 const lucideIcon = (Icon: typeof House) => <Icon aria-hidden className="size-[18px] text-vehicsim-muted" />;
@@ -282,12 +282,12 @@ function ExperiencerNav() {
   return <NavGroups groups={groups} />;
 }
 
-export function VehicSimSidebar() {
+export function VehicSimSidebar({ hideOnMobile = false }: { hideOnMobile?: boolean }) {
   const router = useRouter();
   const { user, logout } = useAuth();
 
   return (
-    <aside className="sticky top-0 flex print:hidden h-screen w-[248px] shrink-0 flex-col gap-[22px] overflow-y-auto border-r border-solid border-vehicsim-line bg-white px-4 py-6">
+    <aside className={`${hideOnMobile ? "hidden md:flex" : "flex"} sticky top-0 print:hidden h-screen w-[248px] shrink-0 flex-col gap-[22px] overflow-y-auto border-r border-solid border-vehicsim-line bg-white px-4 py-6`}>
       <Link href="/" className="flex items-center gap-[10px] px-2">
         {/* eslint-disable-next-line @next/next/no-img-element -- logo SVG từ Figma */}
         <img alt="" src="/vehicsim/logo.svg" width={28} height={28} className="size-7" />

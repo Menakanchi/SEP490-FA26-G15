@@ -38,6 +38,17 @@ public class VehicSimAccess {
         this.views = views;
     }
 
+    public static long requireAdmin(UserDetails user) {
+        if (user == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Chưa đăng nhập");
+        if (!"ADMIN".equals(roleOf(user))) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ ADMIN được quản trị hệ thống");
+        return userId(user);
+    }
+
+    public static long requireMemberManager(UserDetails user) {
+        if (!"MANAGER".equals(roleOf(user))) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ MANAGER quản lý thành viên workspace");
+        return userId(user);
+    }
+
     public static long userId(UserDetails user) {
         return ((CustomUserDetails) user).getUser().getId();
     }
@@ -70,7 +81,7 @@ public class VehicSimAccess {
     }
 
     /**
-     * Quản lý workspace (xem thành viên, thêm / bớt ENGINEER, REVIEWER): MANAGER hoặc ADMIN; còn lại 403 (ADR-035, ADR-038).
+     * Đọc workspace / task / report: MANAGER hoặc ADMIN; ghi thành viên dùng requireMemberManager.
      * "Đúng workspace của mình" kiểm ở {@code WorkspaceService}. Trả id người dùng.
      */
     public static long requireWorkspaceManager(UserDetails user) {

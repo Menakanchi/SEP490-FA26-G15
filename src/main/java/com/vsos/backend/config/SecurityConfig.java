@@ -57,6 +57,7 @@ public class SecurityConfig {
                         .authenticationEntryPoint((req, res, e) -> writeJson(res, 401, "Chưa đăng nhập hoặc phiên đăng nhập đã hết hạn"))
                         .accessDeniedHandler((req, res, e) -> writeJson(res, 403, "Bạn không có quyền thực hiện thao tác này")))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/v1/vehicsim/admin/**").hasRole("ADMIN")
                         // Phải đứng trước /api/v1/auth/** (permitAll) để hai route này đòi đăng nhập.
                         .requestMatchers("/api/v1/auth/me", "/api/v1/auth/password/change").authenticated()
                         .requestMatchers(API_DOC_PATHS).access((authentication, context) ->

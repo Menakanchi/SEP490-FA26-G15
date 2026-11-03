@@ -87,7 +87,7 @@ public class WorkspaceController {
     @PostMapping("/workspaces/{workspaceId}/members")
     public ResponseEntity<MemberItem> addMember(@PathVariable long workspaceId, @Valid @RequestBody AddMemberRequest body,
                                                 @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
+        long uid = VehicSimAccess.requireMemberManager(user);
         access.limitWrites(uid, "workspace_member");
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(workspaces.addMember(uid, VehicSimAccess.roleOf(user), workspaceId, body.userId(), body.role()));
@@ -97,7 +97,7 @@ public class WorkspaceController {
     @DeleteMapping("/workspaces/{workspaceId}/members/{memberUserId}")
     public RemoveMemberResult removeMember(@PathVariable long workspaceId, @PathVariable long memberUserId,
                                            @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
+        long uid = VehicSimAccess.requireMemberManager(user);
         access.limitWrites(uid, "workspace_member");
         return workspaces.removeMember(uid, VehicSimAccess.roleOf(user), workspaceId, memberUserId);
     }

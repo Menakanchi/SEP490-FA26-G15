@@ -11,8 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
  * Thông báo theo người nhận (M10 — FE-03-08). Mọi role đọc được thông báo của chính mình; không ai đọc / đánh dấu của người khác.
  * <p>
  * Ghi thông báo ({@link #notify}) chạy trong transaction của thao tác gây ra nó: thao tác lỗi thì không có thông báo. Không tự báo cho
- * chính người làm. Nơi đang ghi: Manager thêm / bớt thành viên, giao task, duyệt / từ chối báo cáo. Chưa ghi: {@code REPORT_SUBMITTED} và
- * {@code WORKSPACE_ASSIGNED} (chưa có luồng nộp báo cáo / Admin gán Manager), thông báo của luồng mô phỏng / regression ({@code SIMULATION_*},
+ * chính người làm. Nơi đang ghi: Admin giao workspace (WORKSPACE_ASSIGNED), Manager thêm / bớt thành viên, giao task, duyệt / từ chối báo cáo. Chưa ghi: {@code REPORT_SUBMITTED} và
+ * thông báo của luồng mô phỏng / regression ({@code SIMULATION_*},
  * {@code RECOMMENDATION_*}, {@code FAILURE_DETECTED}, {@code CANDIDATE_CREATED}).
  */
 @Service

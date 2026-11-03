@@ -44,7 +44,7 @@ export default function WorkspacesPage() {
       }
     >
       {!allowed ? (
-        <EmptyState title="Bạn chưa có quyền truy cập khu vực workspace" />
+        <EmptyState title="Bạn chưa có quyền truy cập khu vực workspace. Quản trị viên sử dụng mục Quản trị → Workspace." />
       ) : (
         <>
           <ErrorNote message={error} />

@@ -11,7 +11,8 @@ import com.vsos.backend.entity.user.User;
 
 @Entity
 @Table(name = "workspaces", uniqueConstraints = {
-        @UniqueConstraint(name = "uq_workspaces_manager_name", columnNames = {"manager_id", "name"})
+        @UniqueConstraint(name = "uq_workspaces_manager_name", columnNames = {"manager_id", "name"}),
+        @UniqueConstraint(name = "uq_workspaces_name", columnNames = {"name"})
 })
 @Getter
 @Setter

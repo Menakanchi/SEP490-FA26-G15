@@ -36,6 +36,7 @@ CREATE TABLE roles (
 
 -- Mỗi người đúng MỘT role (role_id). Tự đăng ký = EXPERIENCER; role khác do Admin cấp.
 CREATE TABLE users (
+  auth_version BIGINT UNSIGNED NOT NULL DEFAULT 0,
   id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   email         VARCHAR(255)  NOT NULL,
   password_hash VARCHAR(255)  NOT NULL,
@@ -76,6 +77,7 @@ CREATE TABLE workspaces (
   updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_workspaces_manager_name (manager_id, name),
+  UNIQUE KEY uq_workspaces_name (name),
   KEY idx_workspaces_status (status),
   KEY idx_workspaces_creator (created_by_user_id),
   CONSTRAINT fk_workspaces_manager FOREIGN KEY (manager_id)         REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
@@ -838,6 +840,7 @@ CREATE TABLE tech_references (
   updated_at       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_tech_references_code (ref_code),
+  UNIQUE KEY uq_tech_references_kind_name (ref_type, ref_name),
   KEY idx_tech_references_type (ref_type, is_active),
   CONSTRAINT ck_tech_references_value CHECK (ref_value IS NULL OR ref_type = 'CONSTANT')
 ) ENGINE=InnoDB;

@@ -50,6 +50,23 @@ class JwtServiceTest {
     }
 
     @Test
+    void authVersionChangeInvalidatesTokensEvenAfterAccountIsUnlocked() {
+        var principal = user("hash-1", true);
+        String old = jwt.generateToken(principal);
+        principal.getUser().setAuthVersion(2L);
+        assertFalse(jwt.isTokenValid(old, principal));
+        assertTrue(jwt.isTokenValid(jwt.generateToken(principal), principal));
+    }
+
+    @Test
+    void expiredTokensAreRejected() {
+        var expired = new JwtService(new AuthProperties(-1, 600, 5, 60, 5, 10, 20, 10, 900, "auto", ""));
+        ReflectionTestUtils.setField(expired, "secretKey", SECRET);
+        String token = expired.generateToken(user("hash-1", true));
+        assertThrows(io.jsonwebtoken.ExpiredJwtException.class, () -> jwt.isTokenValid(token, user("hash-1", true)));
+    }
+
+    @Test
     void productionRefusesTheBuiltInSecret() {
         ReflectionTestUtils.setField(jwt, "appEnv", "production");
         assertThrows(IllegalStateException.class, () -> ReflectionTestUtils.invokeMethod(jwt, "refuseDefaultSecretInProduction"));

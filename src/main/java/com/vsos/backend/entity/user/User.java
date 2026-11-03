@@ -36,6 +36,10 @@ public class User {
     @Builder.Default
     private Boolean isActive = true;
 
+    @Column(name = "auth_version", nullable = false)
+    @Builder.Default
+    private Long authVersion = 0L;
+
     @Column(name = "last_login_at")
     private LocalDateTime lastLoginAt;
 

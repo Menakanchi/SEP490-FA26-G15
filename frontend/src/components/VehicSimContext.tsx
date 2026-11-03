@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError, getSelectedProjectId, setSelectedProjectId } from "@/services/api";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -49,6 +49,7 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
   const { user } = useAuth();
   const role = user?.roleCode;
   const isExperiencer = role === "EXPERIENCER";
+  const adminPage = usePathname().startsWith("/admin");
   const canWrite = WRITE_ROLES.includes(user?.roleCode ?? "");
   const canDecide = user?.roleCode === "REVIEWER";
 
@@ -94,8 +95,8 @@ export function VehicSimContextProvider({ children }: { children: React.ReactNod
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- tải ngữ cảnh một lần khi vào khu VehicSim
-    if (role) void refresh();
-  }, [refresh, role]);
+    if (role && !adminPage) void refresh();
+  }, [refresh, role, adminPage]);
 
   return (
     <VehicSimCtx.Provider

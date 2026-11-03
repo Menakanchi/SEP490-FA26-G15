@@ -72,6 +72,7 @@ public class JwtService {
         return Jwts.builder()
                 .subject(userDetails.getUsername())
                 .claim("type", "access")
+                .claim("av", authVersion(userDetails))
                 .claim(CLAIM_PWV, passwordFingerprint(userDetails.getPassword()))
                 .issuedAt(new Date(now))
                 .expiration(new Date(now + expiresInSeconds() * 1000))
@@ -86,7 +87,9 @@ public class JwtService {
             return false;
         }
         String pwv = claims.get(CLAIM_PWV, String.class);
-        return userDetails.isEnabled()
+        Number av = claims.get("av", Number.class);
+        return (av == null ? 0L : av.longValue()) == authVersion(userDetails)
+                && userDetails.isEnabled()
                 && claims.getSubject().equals(userDetails.getUsername())
                 && claims.getExpiration().after(new Date())
                 && pwv != null
@@ -105,6 +108,12 @@ public class JwtService {
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    private static long authVersion(UserDetails user) {
+        if (user instanceof CustomUserDetails custom && custom.getUser().getAuthVersion() != null)
+            return custom.getUser().getAuthVersion();
+        return 0L;
     }
 
     private String passwordFingerprint(String passwordHash) {
