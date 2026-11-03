@@ -41,7 +41,7 @@ Các việc 1–5 của phần "Chạy baseline" trong [kế hoạch 20/10](../.
 
 ## Cầu nối (thiết kế để chốt ở M3)
 
-- Gói đóng: lõi không phụ thuộc Spring/DB; có test kiến trúc. **Đã chọn (21/10):** mỗi run `run_xosc.py` chụp gói `com/vehicsim/core` từ `target/classes`
+- Gói đóng: lõi không phụ thuộc Spring/DB; có test kiến trúc. **Đã chọn (21/10):** mỗi run `run_xosc.py` chụp gói `com/vsos/core` từ `target/classes`
   thành `<run>/core/vsos-core.jar` (`bridge.snapshot_core`) và mọi JVM của run dùng jar đó; `lifecycle.json` ghi `core.sha256`. Không cần bước Maven riêng,
   `mvnw clean`/IDE ghi class lỗi giữa run không ảnh hưởng run đang chạy, và jar nằm trong thư mục run nên Windows khóa file không chặn build.
 - Java và classpath truyền qua biến môi trường (như `VEHICSIM_WORKER_PYTHON`); `run_xosc.py` độc lập vẫn chạy được.
@@ -59,7 +59,7 @@ Các việc 1–5 của phần "Chạy baseline" trong [kế hoạch 20/10](../.
 - Hash golden bộ động học (1296 ca = 3 tốc độ × 3 khoảng kích hoạt × 2 tốc độ đi bộ × {dừng ở lề, không} × 3 thời tiết × 2 thời điểm × 3 seed × 2 bộ tham số):
   `fdf360dbd2720e6b2a6259117eacd82001901c7304dc9c29ed52173bb7c1027c`, giống hệt trước và sau khi hoàn tác.
 
-### M1 (21/10/2026): lõi Java `com.vehicsim.core`
+### M1 (21/10/2026): lõi Java `com.vsos.core`
 
 Đã port 1:1: `Py` (round/format/hypot/repr kiểu CPython), `PyRandom` (MT19937 + `gauss`), `AebParams`, `VehicleSpec`, `CrossingCase`, `AebStack`,
 `Simulator`, `Evaluation`, `Filters`, `Bundle`. Không sửa dòng Python nào.
@@ -146,7 +146,7 @@ Rà toàn bộ đường CARLA rồi sửa từng mục; mỗi mục kiểm trê
 `data/claude-check-20261021*`, ngoài git). Run kiểm đầu tiên trùng bằng chứng M3: FCW/quyết định/phanh 1,95/2,25/2,50 s, quãng dừng 10,203 m,
 RMS jerk 38,387, 381 khung bước 0,01 s, jerk lọc 19,918.
 
-- **Chụp lõi theo run** (mục "Cầu nối"). Dời `target/classes/com/vehicsim/core` đi khi `BridgeMain` đang chạy → run thoát 0, kết quả trùng run thường.
+- **Chụp lõi theo run** (mục "Cầu nối"). Dời `target/classes/com/vsos/core` đi khi `BridgeMain` đang chạy → run thoát 0, kết quả trùng run thường.
   Test: `test_snapshot_core_packs_only_the_core_package`, `test_snapshot_core_refuses_missing_or_ambiguous_sources`, `test_a_run_keeps_working_after_target_classes_disappears`.
 - **Giảm tốc phanh 100% theo xe (xoá TD-32).** `carla_vehicle_models.carla_full_brake_decel_mps2` → `RunService.carlaVehicle` → bundle
   `vehicle.carla.full_brake_decel_mps2` (`Bundle` kiểm (0, 15]) → `.xosc` `vs_full_brake_decel_mps2` → `Xosc.read` → `CarlaSession.open`; thuộc tính controller

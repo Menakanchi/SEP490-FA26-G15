@@ -774,7 +774,7 @@ export interface AnalysisFilters {
   simulator?: string; weather?: string; time_of_day?: string; status?: string; failure_class?: string;
 }
 
-// Quản lý workspace (Manager — M1…M5), khớp com.vehicsim.dto.WorkspaceDtos
+// Quản lý workspace (Manager — M1…M5), khớp com.vsos.backend.dto.workspace.WorkspaceDtos
 export interface WorkspaceUserRef { id: number; full_name: string; email: string }
 export type WorkspaceStatus = "ACTIVE" | "ARCHIVED";
 export interface WorkspaceSummary {

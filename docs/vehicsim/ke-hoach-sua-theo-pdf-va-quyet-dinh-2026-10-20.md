@@ -183,10 +183,10 @@ Những việc dưới đây là chi tiết thiết kế còn mở, không đư�
 - Phối hợp thành viên 2 ánh xạ đúng đơn vị/hướng sang XOSC; xử lý hành vi dừng ở lề trước khi dùng để chấm.
 - Nếu mở rộng chọn map/ego/target hoặc nhập XOSC, phải kiểm khả năng chạy thực tế và báo lỗi đầu vào rõ ràng.
 
-**Điểm vào code:** [FamilyService](../../src/main/java/com/vehicsim/vehicsim/FamilyService.java),
-[ScenarioRules](../../src/main/java/com/vehicsim/vehicsim/ScenarioRules.java),
-[controller](../../src/main/java/com/vehicsim/vehicsim/VehicSimController.java),
-[exporter](../../src/main/java/com/vehicsim/core/XoscExport.java).
+**Điểm vào code:** [FamilyService](../../src/main/java/com/vsos/backend/service/scenario/FamilyService.java),
+[ScenarioRules](../../src/main/java/com/vsos/backend/service/scenario/ScenarioRules.java),
+[controller](../../src/main/java/com/vsos/backend/controller/simulation/SimulationController.java),
+[exporter](../../src/main/java/com/vsos/core/xosc/XoscExport.java).
 
 **Bàn giao:** snapshot kịch bản/biến thể, seed, xe và môi trường cho thành viên 2/3.
 **Nghiệm thu:** target đi đúng hướng và hành vi; đầu vào không hỗ trợ bị từ chối rõ;
@@ -205,9 +205,9 @@ thay kịch bản tạo phiên bản mới; tập đã chốt vẫn giữ ca an 
 - Bổ sung hủy, timeout, giải phóng actor/sensor và trạng thái job nhất quán; không để run hủy có điểm hợp lệ.
 - Đọc lại physics đã áp dụng, đo khả năng phanh và ghi phạm vi xe được kiểm chứng.
 
-**Điểm vào code:** [RunService](../../src/main/java/com/vehicsim/vehicsim/RunService.java),
+**Điểm vào code:** [RunService](../../src/main/java/com/vsos/backend/service/simulation/RunService.java),
 [run_xosc](../../worker/run_xosc.py), [controller CARLA](../../worker/vehicsim_aeb_control.py),
-[sensor recorder](../../worker/sensor_recorder.py), [lõi AEB](../../src/main/java/com/vehicsim/core/AebStack.java).
+[sensor recorder](../../worker/sensor_recorder.py), [lõi AEB](../../src/main/java/com/vsos/core/aeb/AebStack.java).
 
 **Bàn giao:** run/artifact với sensor, ground truth, frame/timestamp, physics thực tế và metadata đầy đủ.
 **Nghiệm thu:** chứng minh AEB dùng perception từ sensor; dữ liệu chấm truy được về ground truth;
@@ -224,9 +224,9 @@ chạy lặp nằm trong dung sai đã chốt; hủy/timeout không làm bẩn l
 - Phân tích sai số perception tách khỏi đánh giá hiệu quả phanh; chuẩn bị tập tối ưu và tập xác minh
   có ca an toàn, có phiên bản và không âm thầm đổi trong chiến dịch.
 
-**Điểm vào code:** [TelemetryMetricsService](../../src/main/java/com/vehicsim/vehicsim/TelemetryMetricsService.java),
-[ViewsService](../../src/main/java/com/vehicsim/vehicsim/ViewsService.java),
-[evaluation](../../src/main/java/com/vehicsim/core/Evaluation.java), [simulator](../../src/main/java/com/vehicsim/core/Simulator.java).
+**Điểm vào code:** [TelemetryMetricsService](../../src/main/java/com/vsos/backend/service/simulation/TelemetryMetricsService.java),
+[AnalysisViewService](../../src/main/java/com/vsos/backend/service/analysis/AnalysisViewService.java),
+[evaluation](../../src/main/java/com/vsos/core/evaluation/Evaluation.java), [simulator](../../src/main/java/com/vsos/core/simulation/Simulator.java).
 
 **Bàn giao:** hợp đồng chỉ số có phiên bản, kết quả phân tích và snapshot tập thử cho thành viên 4/5.
 **Nghiệm thu:** đúng trên tín hiệu mẫu; xử lý được đứng yên, băng ngang, giảm tốc, không phanh,
@@ -245,7 +245,7 @@ va chạm và timeout; cùng artifact/cấu hình cho cùng kết quả ở các
   Có thể trình bày lựa chọn ưu tiên va chạm thấp, độ êm hoặc cân bằng theo quy tắc công khai.
 - Không hứa luôn cải thiện. Nếu không có candidate khả thi, báo đúng và giữ baseline.
 
-**Điểm vào code:** [AebService](../../src/main/java/com/vehicsim/vehicsim/AebService.java),
+**Điểm vào code:** [AebService](../../src/main/java/com/vsos/backend/service/aeb/AebService.java),
 [schema campaign/trial](../../database/mysql/01_schema.sql), [worker](../../worker/).
 Service/worker tối ưu còn phải bổ sung; tên module mới chưa được quyết định trong tài liệu này.
 
@@ -266,9 +266,9 @@ ngân sách/hủy được tôn trọng; không tự ghi đè baseline hoặc t�
 - Xuất gói tham số JSON/CSV có đơn vị, bảng trước/sau, regression, XOSC, quyết định và manifest.
   JSON cho tham số/kết quả vẫn cần; XOSC dùng mô tả kịch bản chạy CARLA.
 
-**Điểm vào code:** [RegressionService](../../src/main/java/com/vehicsim/service/RegressionService.java),
-[ViewsService](../../src/main/java/com/vehicsim/vehicsim/ViewsService.java),
-[controller](../../src/main/java/com/vehicsim/vehicsim/VehicSimController.java).
+**Điểm vào code:** [RegressionService](../../src/main/java/com/vsos/backend/service/regression/RegressionService.java),
+[AnalysisViewService](../../src/main/java/com/vsos/backend/service/analysis/AnalysisViewService.java),
+[controller](../../src/main/java/com/vsos/backend/controller/simulation/SimulationController.java).
 
 **Bàn giao:** báo cáo xác minh, quyết định có thể truy vết và baseline mới khi được Accept hợp lệ.
 **Nghiệm thu:** Engineer không gọi API Accept được; FAILED hoặc baseline đã đổi bị chặn;
