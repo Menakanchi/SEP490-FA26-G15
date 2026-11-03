@@ -8,9 +8,10 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton } from "@/components/VehicSimUi";
 import { AnalysisSelectionSummary } from "@/components/AnalysisSelectionSummary";
+import { AnalysisRunExplorer } from "@/components/analysis/AnalysisRunExplorer";
 import { AnalysisOverview } from "@/components/analysis/AnalysisOverview";
 import { LegacyFailureCases } from "@/components/LegacyFailureCases";
-import { AnalysisBadge, AnalysisLoading, AnalysisNav, AnalysisPager, analysisError, analysisLabel, eligible, metric } from "@/components/analysisUi";
+import { AnalysisBadge, AnalysisNav, AnalysisPager, analysisError, analysisLabel, eligible } from "@/components/analysisUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AnalysisDashboardData, AnalysisFilters, AnalysisRun, AnalysisSelection } from "@/types/vehicsim";
 
@@ -146,10 +147,16 @@ export function BaselineAnalysisDashboard() {
     finally { setBusy(false); }
   }
   const search = params.get("q") ?? "", sort = params.get("sort") ?? "newest";
-  const rows = (data?.items ?? []).filter(run => `${run.run_id} ${run.family} ${run.variant} ${run.seed}`.toLocaleLowerCase("vi").includes(search.toLocaleLowerCase("vi")));
-  if (sort === "oldest") rows.sort((a, b) => a.run_id - b.run_id);
-  if (sort === "impact") rows.sort((a, b) => (b.metrics.impact_speed_mps ?? -Infinity) - (a.metrics.impact_speed_mps ?? -Infinity));
-  if (sort === "jerk") rows.sort((a, b) => (b.metrics.rms_jerk_mps3 ?? -Infinity) - (a.metrics.rms_jerk_mps3 ?? -Infinity));
+  const filterLabels: Record<typeof FILTER_KEYS[number], string> = {
+    scenario_id: "Họ", variant_id: "Biến thể", aeb_version_id: "Baseline", vehicle_id: "Xe",
+    simulator: "Simulator", weather: "Thời tiết", time_of_day: "Thời điểm", status: "Trạng thái", failure_class: "Khâu lỗi",
+  };
+  const activeFilters = FILTER_KEYS.filter(key => filters[key] !== undefined).map(key => {
+    const value = filters[key];
+    const label = key === "scenario_id" ? ctx?.families.find(f => f.id === value)?.name
+      : key === "aeb_version_id" ? ctx?.versions.find(v => v.id === value)?.label : undefined;
+    return { key, label: `${filterLabels[key]}: ${label ?? analysisLabel(String(value))}` };
+  });
   const returnTo = `/analysis/failures?${params}`;
   const runHref = (id: number) => `/analysis/failures/${id}?returnTo=${encodeURIComponent(returnTo)}`;
   const roleField = (run: AnalysisRun) => <select aria-label={`Tập của run ${run.run_id}`} title={!eligible(run) ? "Run cần hoàn tất, có telemetry và kết quả hợp lệ" : undefined}
@@ -194,16 +201,11 @@ export function BaselineAnalysisDashboard() {
           <div className="flex flex-wrap gap-3"><PillButton variant="dark" disabled={!canSave || busy} onClick={() => void save()}>{busy ? "Đang xử lý…" : "Chốt hai tập dữ liệu"}</PillButton><PillButton disabled={!selection.length || busy} onClick={() => { setDraft({ key: storageKey, chosen: {} }); setSaved(null); update({dataset_id:undefined}); }}>Bỏ lựa chọn</PillButton></div>
         </section>
       </div>}
-      {view === "runs" && <section className="analysis-panel space-y-4">
-        <div className="analysis-toolbar"><div><h2>Lượt chạy baseline</h2><p className="analysis-caption">Mở run để xem bằng chứng; gán tập để chuẩn bị bàn giao.</p></div><PillButton onClick={() => update({ view: "dataset" })}>Rà soát lựa chọn ({selection.length})</PillButton></div>
-        <div className="analysis-toolbar"><label>Tìm trong trang hiện tại <input aria-label="Tìm trong trang hiện tại" placeholder="Mã run, họ, biến thể, seed…" value={search} onChange={e => update({ q: e.target.value })} /></label><label>Sắp xếp trong trang <select aria-label="Sắp xếp trong trang" value={sort} onChange={e => update({ sort: e.target.value })}><option value="newest">Run mới trước</option><option value="oldest">Run cũ trước</option><option value="impact">Tốc độ va chạm giảm dần</option><option value="jerk">RMS jerk giảm dần</option></select></label></div>
-        <p className="analysis-caption">Tìm và sắp xếp áp dụng cho tối đa {size} run của trang này; bộ lọc phía trên áp dụng cho toàn bộ danh sách.</p>
-        {loading ? <AnalysisLoading /> : data && <>
-          <div className="analysis-table-wrap"><table className="analysis-table"><caption className="sr-only">Lượt chạy baseline, seed, chỉ số và lựa chọn tập</caption><thead><tr>{["Run / biến thể", "Điều kiện / cấu hình", "Trạng thái / kết quả", "RMS jerk (m/s³)", "Va chạm (m/s)", "Quãng phanh (m)", "Tập dữ liệu"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{rows.map(run => <tr key={run.run_id}><td><Link href={runHref(run.run_id)}>#{run.run_id} · {run.variant}</Link><small>{run.family}</small><small>Seed {run.seed}</small></td><td>Baseline #{run.baseline_id} · xe #{run.vehicle_id}<small>{run.simulator} · dt {run.dt} s</small><small>{analysisLabel(run.weather)} · {analysisLabel(run.time_of_day)}</small></td><td><div className="flex flex-wrap gap-1"><AnalysisBadge value={run.status} /><AnalysisBadge value={run.outcome} /></div>{!run.trace_available && <small>Thiếu telemetry</small>}{run.failure_class && <small>{analysisLabel(run.failure_class)}</small>}{run.error && <small className="max-w-60" title={run.error}>{run.error}</small>}</td><td className="numeric">{metric(run.metrics.rms_jerk_mps3)}</td><td className="numeric">{metric(run.metrics.impact_speed_mps)}</td><td className="numeric">{metric(run.metrics.stopping_distance_m)}</td><td>{roleField(run)}</td></tr>)}</tbody></table></div>
-          {rows.length === 0 && <div className="analysis-state"><strong>{data.total === 0 ? "Chưa có run baseline phù hợp." : "Không có kết quả tìm trong trang này."}</strong><p>{data.total === 0 ? "Thử bỏ bộ lọc hoặc chạy baseline ở màn Kịch bản." : "Thử từ khóa khác hoặc chuyển trang. Bộ lọc toàn danh sách nằm phía trên."}</p></div>}
-          <AnalysisPager page={page} size={size} total={data.total} loading={loading} onPage={value => update({ page: value })} onSize={value => update({ page_size: value }, true)} />
-        </>}
-      </section>}
+      {view === "runs" && <AnalysisRunExplorer data={data} loading={loading} hasError={Boolean(error)} page={page} size={size}
+        search={search} sort={sort} returnTo={returnTo} selectionCount={selection.length} activeFilters={activeFilters}
+        onRemoveFilter={key => update({ [key]: undefined }, true)} onSearch={q => update({ q })} onSort={sort => update({ sort })}
+        onPage={page => update({ page })} onSize={page_size => update({ page_size }, true)} onOpenDataset={() => update({ view: "dataset" })}
+        renderSelection={roleField} isSelected={run => Boolean(chosen[run.run_id])} />}
       {view === "dataset" && saved && <><div className="analysis-panel"><h2>3. Snapshot đã được máy chủ lưu</h2><p className="analysis-caption">Kiểm tra lại baseline và bằng chứng trước khi chuyển sang màn tối ưu.</p></div><AnalysisSelectionSummary dataset={saved} returnTo={returnTo} /><div><PillButton variant="dark" disabled={busy} onClick={() => void proceed()}>Tiếp tục: Tối ưu AEB →</PillButton></div></>}
     </>}
   </VehicSimPage>;
