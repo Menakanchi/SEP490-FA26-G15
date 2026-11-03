@@ -28,4 +28,4 @@ fi
 echo "Xong. Bật MySQL + Redis: docker compose up -d mysql redis"
 echo "Backend:  ./mvnw spring-boot:run          (Swagger: http://localhost:8001/swagger-ui.html)"
 echo "Frontend: cd frontend && NEXT_PUBLIC_API_URL=http://localhost:8001 npm run dev"
-echo "Admin:    python scripts/create_admin.py --email admin@example.com --seed"
+echo "Admin:    java -cp target/classes scripts/CreateAdmin.java --email admin@example.com --seed"

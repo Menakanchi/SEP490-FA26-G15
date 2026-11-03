@@ -2,7 +2,7 @@
 
 Lõi (AEB, khung tọa độ, đo giảm tốc, bàn đạp phanh, chấm điểm, ``result.json``) chạy trong một tiến trình Java con của controller:
 
-    java -cp target/classes com.vehicsim.core.bridge.BridgeMain session
+    java -cp target/classes com.vsos.core.bridge.BridgeMain session
 
 Mỗi dòng stdin là một yêu cầu JSON, mỗi yêu cầu có đúng một dòng trả lời. Quy tắc:
 
@@ -25,13 +25,14 @@ import os
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 import zipfile
 from pathlib import Path
 
 PROTOCOL = "vsos-bridge/1"
-MAIN_CLASS = "com.vehicsim.core.bridge.BridgeMain"
-CORE_PACKAGE = "com/vehicsim/core"  # lõi chỉ dùng JDK (CoreIsolationTest), nên một jar chỉ chứa gói này là đủ chạy
+MAIN_CLASS = "com.vsos.core.bridge.BridgeMain"
+CORE_PACKAGE = "com/vsos/core"  # lõi chỉ dùng JDK (CoreIsolationTest), nên một jar chỉ chứa gói này là đủ chạy
 ROOT = Path(__file__).resolve().parent.parent
 HELLO_TIMEOUT_S = 30.0  # gồm cả thời gian khởi động JVM
 OPEN_TIMEOUT_S = 30.0
@@ -44,7 +45,13 @@ class BridgeError(RuntimeError):
 
 
 def java_command() -> list[str]:
-    java = os.environ.get("VEHICSIM_JAVA") or shutil.which("java")
+    java = os.environ.get("VEHICSIM_JAVA")
+    if not java and "JAVA_HOME" in os.environ:
+        candidate = Path(os.environ["JAVA_HOME"]) / "bin" / ("java.exe" if sys.platform == "win32" else "java")
+        if candidate.is_file():
+            java = str(candidate)
+    if not java:
+        java = shutil.which("java")
     if not java:
         raise BridgeError("không tìm thấy Java: cài JDK 21 hoặc đặt VEHICSIM_JAVA")
     classpath = os.environ.get("VEHICSIM_CORE_CLASSPATH") or str(ROOT / "target" / "classes")

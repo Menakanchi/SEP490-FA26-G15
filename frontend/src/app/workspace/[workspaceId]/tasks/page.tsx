@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, PillButton, StatCard, Tag, cx } from "@/components/VehicSimUi";
-import { WORKSPACE_ROLES } from "@/components/workspaceAccess";
+import { WORKSPACE_ROLES, WORKSPACE_MANAGER_ROLES } from "@/components/workspaceAccess";
 import { useAuth } from "@/context/AuthContext";
 import { vehicsimApi } from "@/services/vehicsim";
 import type {
@@ -86,6 +86,13 @@ export default function WorkspaceTasksPage() {
   const id = Number(workspaceId);
   const { user } = useAuth();
   const allowed = WORKSPACE_ROLES.includes(user?.roleCode ?? "");
+  const isManagerOrAdmin = WORKSPACE_MANAGER_ROLES.includes(user?.roleCode ?? "");
+
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [statusModalTask, setStatusModalTask] = useState<WorkspaceTask | null>(null);
+  const [modalStatus, setModalStatus] = useState<TaskStatus>("IN_PROGRESS");
+  const [modalProgress, setModalProgress] = useState<number>(0);
+  const [modalSaving, setModalSaving] = useState(false);
 
   const [detail, setDetail] = useState<WorkspaceDetail | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
@@ -128,9 +135,10 @@ export default function WorkspaceTasksPage() {
       (tasks ?? []).filter(
         (t) =>
           (!status || t.status === status) &&
+          (!onlyMine || t.assignee?.id === user?.id) &&
           (!assignee || (assignee === "0" ? t.assignee === null : String(t.assignee?.id) === assignee)),
       ),
-    [tasks, status, assignee],
+    [tasks, status, assignee, onlyMine, user?.id],
   );
   const open = (tasks ?? []).filter((t) => t.status !== "DONE");
   const editingTask = typeof editing === "number" ? (tasks ?? []).find((t) => t.id === editing) : undefined;
@@ -172,16 +180,59 @@ export default function WorkspaceTasksPage() {
   };
 
   const quickStatus = async (t: WorkspaceTask, next: TaskStatus) => {
+    if (t.status === next) return;
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      await vehicsimApi.updateWorkspaceTask(id, t.id, { ...toRequest(t), status: next });
+      const nextProgress = next === "DONE" ? 100 : t.progress_pct;
+      if (isManagerOrAdmin) {
+        const body = { ...toRequest(t), status: next, progress_pct: nextProgress };
+        await vehicsimApi.updateWorkspaceTask(id, t.id, body);
+      } else {
+        await vehicsimApi.updateTaskStatus(t.id, { status: next, progress_pct: nextProgress });
+      }
+      setNotice(`Đã đổi trạng thái task #${t.id} thành “${STATUS[next].label}”.`);
       await loadTasks();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không đổi được trạng thái");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleOpenStatusModal = (t: WorkspaceTask) => {
+    setStatusModalTask(t);
+    setModalStatus(t.status);
+    setModalProgress(t.progress_pct);
+  };
+
+  const saveProgressModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!statusModalTask) return;
+    setModalSaving(true);
+    setError(null);
+    try {
+      const p = modalStatus === "DONE" ? 100 : modalProgress;
+      if (isManagerOrAdmin) {
+        await vehicsimApi.updateWorkspaceTask(id, statusModalTask.id, {
+          ...toRequest(statusModalTask),
+          status: modalStatus,
+          progress_pct: p,
+        });
+      } else {
+        await vehicsimApi.updateTaskStatus(statusModalTask.id, {
+          status: modalStatus,
+          progress_pct: p,
+        });
+      }
+      setNotice(`Đã cập nhật tiến độ task #${statusModalTask.id} (${p}%, ${STATUS[modalStatus].label}).`);
+      setStatusModalTask(null);
+      await loadTasks();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không cập nhật được tiến độ");
+    } finally {
+      setModalSaving(false);
     }
   };
 
@@ -218,7 +269,7 @@ export default function WorkspaceTasksPage() {
       badges={ws && !active && <Tag tone="neutral">Workspace đã lưu trữ — chỉ xem</Tag>}
       subtitle={allowed ? "Giao việc cho Kỹ sư và Người duyệt trong workspace, theo dõi trạng thái, tiến độ và hạn." : undefined}
       actions={
-        allowed && active && editing === null ? (
+        allowed && active && editing === null && isManagerOrAdmin ? (
           <PillButton variant="dark" onClick={startNew}>
             + Giao task
           </PillButton>
@@ -376,6 +427,18 @@ export default function WorkspaceTasksPage() {
                 options={[{ value: "0", label: "Chưa giao" }, ...members.map((m) => ({ value: String(m.user_id), label: m.full_name }))]}
                 onChange={setAssignee}
               />
+              <button
+                type="button"
+                onClick={() => setOnlyMine((v) => !v)}
+                className={cx(
+                  "rounded-full px-3 py-[5px] text-[12px] font-semibold border border-solid transition-colors",
+                  onlyMine
+                    ? "bg-vehicsim-ink text-white border-vehicsim-ink"
+                    : "bg-white text-vehicsim-ink border-vehicsim-line hover:bg-vehicsim-soft"
+                )}
+              >
+                {onlyMine ? "✓ Task của tôi" : "Task của tôi"}
+              </button>
             </div>
             <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
               <span className="min-w-0 flex-1">Task</span>
@@ -449,33 +512,92 @@ export default function WorkspaceTasksPage() {
                 </span>
                 <span className="flex w-[110px] justify-end gap-1">
                   {active && (
-                    <>
+                    isManagerOrAdmin ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => startEdit(t)}
+                          className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-decision hover:bg-vehicsim-soft disabled:opacity-40"
+                        >
+                          Sửa
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy || t.report_count > 0}
+                          title={t.report_count > 0 ? "Task đã có báo cáo, không xoá được" : undefined}
+                          onClick={() => remove(t)}
+                          className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-danger hover:bg-vehicsim-danger-bg disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Xoá
+                        </button>
+                      </>
+                    ) : t.assignee?.id === user?.id ? (
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => startEdit(t)}
+                        onClick={() => handleOpenStatusModal(t)}
                         className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-decision hover:bg-vehicsim-soft disabled:opacity-40"
                       >
-                        Sửa
+                        Tiến độ
                       </button>
-                      <button
-                        type="button"
-                        disabled={busy || t.report_count > 0}
-                        title={t.report_count > 0 ? "Task đã có báo cáo, không xoá được" : undefined}
-                        onClick={() => remove(t)}
-                        className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-danger hover:bg-vehicsim-danger-bg disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Xoá
-                      </button>
-                    </>
+                    ) : null
                   )}
                 </span>
               </div>
             ))}
           </section>
           <p className="text-[12px] text-vehicsim-faint">
-            Người được giao chưa tự cập nhật tiến độ trên màn của họ; Quản lý cập nhật tại đây.
+            Kỹ sư và người được giao có thể chọn trạng thái và cập nhật tiến độ task của mình.
           </p>
+
+          {statusModalTask && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+              <div className="w-full max-w-[480px] rounded-[20px] bg-white p-6 shadow-2xl border border-solid border-vehicsim-line">
+                <form onSubmit={saveProgressModal} className="flex flex-col gap-4">
+                  <h3 className="text-[16px] font-bold text-vehicsim-ink">Cập nhật tiến độ task #{statusModalTask.id}</h3>
+                  <p className="text-[13px] text-vehicsim-muted font-medium">{statusModalTask.title}</p>
+                  
+                  <Field label="Trạng thái">
+                    <select
+                      value={modalStatus}
+                      onChange={(e) => {
+                        const s = e.target.value as TaskStatus;
+                        setModalStatus(s);
+                        if (s === "DONE") setModalProgress(100);
+                      }}
+                      className={inputCls}
+                    >
+                      {STATUSES.map((s) => (
+                        <option key={s} value={s}>{STATUS[s].label}</option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label={`Tiến độ hoàn thành: ${modalProgress}%`}>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={modalProgress}
+                      disabled={modalStatus === "DONE"}
+                      onChange={(e) => setModalProgress(Number(e.target.value))}
+                      className="w-full cursor-pointer accent-vehicsim-ink"
+                    />
+                  </Field>
+
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-solid border-vehicsim-line">
+                    <PillButton type="button" variant="light" onClick={() => setStatusModalTask(null)}>
+                      Huỷ
+                    </PillButton>
+                    <PillButton type="submit" variant="dark" disabled={modalSaving}>
+                      {modalSaving ? "Đang lưu…" : "Cập nhật"}
+                    </PillButton>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </>
       )}
     </VehicSimPage>

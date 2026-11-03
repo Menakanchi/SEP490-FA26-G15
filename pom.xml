@@ -9,7 +9,7 @@
         <version>3.5.16</version>
         <relativePath/>
     </parent>
-    <groupId>com.vehicsim</groupId>
+    <groupId>com.vsos</groupId>
     <artifactId>vehicsim-backend</artifactId>
     <version>1.0.0</version>
     <name>vehicsim-backend</name>

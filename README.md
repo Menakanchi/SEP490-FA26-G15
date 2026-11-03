@@ -1,5 +1,9 @@
 # VehicSim (VSOS) — SEP490-FA26-G15
 
+> **Bắt buộc sau khi pull (30/10/2026):** gói Java đổi từ `com.vehicsim` sang `com.vsos`. Trước khi code tiếp, đọc
+> [hướng dẫn cập nhật](docs/vehicsim/huong-dan-cap-nhat-sau-doi-ten-goi.md) và tra mục 7 của
+> [quy tắc đặt tên](docs/vehicsim/quy-tac-dat-ten.md) để đổi `package`/`import`.
+
 Nền tảng web mô phỏng, kiểm thử và tối ưu **AEB** (phanh khẩn cấp tự động) và **FCW** (cảnh báo va
 chạm phía trước). Vòng khép kín của MVP:
 
@@ -46,7 +50,7 @@ chi tiết lượt chạy và phát lại. [Hướng dẫn CARLA local](docs/veh
 Tài khoản và dữ liệu mẫu (backend đang chạy):
 
 ```bash
-python scripts/create_admin.py --email admin@example.com --seed     # --role MANAGER cho người quản lý workspace
+java -cp target/classes scripts/CreateAdmin.java --email admin@example.com --seed     # --role MANAGER cho người quản lý workspace
 ```
 
 Database MySQL dựng từ `database/mysql/01_schema.sql` ở lần đầu; DB đã có thì nâng bằng file trong
@@ -68,11 +72,12 @@ và `OpenScenarioSchemaTest` (Java), đều chạy trong CI.
 ## Cấu trúc
 
 ```
-src/main/java/com/vehicsim/
-  controller/ service/ security/ config/   xác thực: đăng ký / quên mật khẩu bằng OTP, JWT
-  vehicsim/                                vòng AEB: FamilyService, RunService, RegressionService, ViewsService,
-                                           DescribeService (câu mô tả -> Scenario IR), LlmService (cửa duy nhất tới LLM)
-  core/                                    lõi AEB, bộ động học, luật chấm, bộ xuất .xosc (chỉ dùng JDK; ADR-042)
+src/main/java/com/vsos/                  quy tắc gói: docs/vehicsim/quy-tac-dat-ten.md
+  backend/<tầng>/<chức năng>/              controller, service, repository, entity, dto, exception theo chức năng
+                                           (auth, workspace, scenario, simulation, analysis, aeb, optimization, regression…);
+                                           config/ security/ common/ dùng chung; LlmService (cửa duy nhất tới LLM) ở service/common
+  core/                                    lõi AEB (aeb/), bộ động học (simulation/), luật chấm (evaluation/), .xosc (xosc/),
+                                           cầu nối (bridge/), MOBO (mobo/) — chỉ dùng JDK; ADR-042
 worker/                run_xosc.py, vehicsim_aeb_control.py, sensor_recorder.py — adapter CARLA, không chứa logic AEB
 frontend/              Next.js 16 — app/ (Tổng quan, kịch bản, AEB, phân tích, kiểm định, hồ sơ)
 database/mysql/        01_schema.sql (29 bảng) + migrations/

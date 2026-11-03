@@ -5,7 +5,7 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 
 - **Nguồn sự thật:** [database/mysql/01_schema.sql](../../database/mysql/01_schema.sql). Tài liệu này
   chỉ giải thích; lệch nhau thì file SQL đúng. Code Java đọc/ghi bằng SQL thuần (`JdbcTemplate` qua `Db` / `Queries` ở
-  [src/main/java/com/vehicsim/vehicsim/](../../src/main/java/com/vehicsim/vehicsim/), JPA cho `users` / `roles`); không còn bản
+  [src/main/java/com/vsos/backend/](../../src/main/java/com/vsos/backend/), JPA cho `users` / `roles`); không còn bản
   mirror của schema để giữ đồng bộ.
 - **Vì sao 29 bảng, đổi gì so với bản 32 bảng:** [ADR-036](../adr/ADR-036-schema-29-bang.md). Bảng thứ 30
   (`project_members`), loại lỗi `NEAR_MISS` và 2 loại thông báo mới: [ADR-037](../adr/ADR-037-thanh-vien-project-near-miss.md).
@@ -231,7 +231,7 @@ erDiagram
 | Bước | Màn / lệnh | Module ghi | Bảng được ghi |
 |---|---|---|---|
 | 0. Khởi tạo | `scripts/seed_vehicsim.py` | `vehicsim/bootstrap.py` | `aeb_parameters`, `carla_vehicle_models` (nếu thiếu, kèm thông số vật lý), `workspaces` (ACTIVE), `projects` (chọn sẵn xe), `aeb_versions` (v1.0 BASELINE), `aeb_parameter_values` |
-| — Tài khoản | Đăng ký / đăng nhập; `scripts/create_admin.py --role …` | `services/auth/users.py` | `users` (tự đăng ký = EXPERIENCER) |
+| — Tài khoản | Đăng ký / đăng nhập; `scripts/CreateAdmin.java --role …` | `services/auth/users.py` | `users` (tự đăng ký = EXPERIENCER) |
 | 1. Mô tả → biến thể | Kịch bản mới | `describe.py` (LLM) → `family.py` | `scenarios`, `scenario_versions` (bản gốc + biến thể có cột lọc) |
 | 2. Chạy baseline | Chạy họ | `runs.py` | `simulation_runs` (`PENDING → RUNNING → COMPLETED/FAILED`, kết quả ghi vào chính dòng), `collision_events`, `failures` + `root_causes`, `simulation_artifacts` |
 | 3. Phân tích lỗi | Ca lỗi, phát lại | `views.py` (chỉ đọc) | — đọc `failures`, `root_causes`, `simulation_runs.telemetry_json` |
@@ -257,7 +257,7 @@ Danh mục 5 role hệ thống (seed). Không có màn CRUD — bảng tra cứu
 
 #### `users` — FE-01/02/03
 
-Tài khoản. Mỗi người **đúng một role** (`role_id`). Tự đăng ký = EXPERIENCER; role khác do Admin cấp (hiện qua `scripts/create_admin.py`, TD-28). Không xoá cứng: khoá bằng `is_active`. **Code dùng:** `services/auth/users.py`.
+Tài khoản. Mỗi người **đúng một role** (`role_id`). Tự đăng ký = EXPERIENCER; role khác do Admin cấp (hiện qua `scripts/CreateAdmin.java`, TD-28). Không xoá cứng: khoá bằng `is_active`. **Code dùng:** `services/auth/users.py`.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -481,7 +481,7 @@ Bộ cảm biến của mẫu xe, cố định như thông số xe; tham số đ
 
 4 tham số AEB chỉnh được (ADR-040), có biên `[min_value, max_value]` — cũng là không gian tìm kiếm của tối ưu MOBO. Sáu tham số
 còn lại của lõi AEB (ngưỡng phát hiện, vận tốc tương đối, tầm dự đoán, biên an toàn, giới hạn jerk, thời gian phản hồi actuator)
-là **hằng số trong `com.vehicsim.core.AebStack`**, không nằm ở DB và không có trong bundle.
+là **hằng số trong `com.vsos.core.aeb.AebStack`**, không nằm ở DB và không có trong bundle.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -550,7 +550,7 @@ Họ kịch bản (mô típ, vd người đi bộ băng ngang), thuộc một tr
 
 #### `scenario_versions` — FE-05/06
 
-Bản gốc (giữ không gian tham số + câu mô tả) và các biến thể lưới (giữ một điểm + cột lọc). Sửa họ không sửa đè: `FamilyService.createVersion` thêm bản gốc mới (v2, v3… theo thứ tự `id` của các bản gốc) với bộ biến thể mới; bộ đang dùng là con của bản gốc mới nhất (`latestBaseVersionId`), bản cũ và run của nó giữ nguyên. **Code dùng:** `FamilyService`, `ViewsService` (`/families`, `/families/{id}/versions`, dataset phân tích theo bản), `RunService` (ma sát).
+Bản gốc (giữ không gian tham số + câu mô tả) và các biến thể lưới (giữ một điểm + cột lọc). Sửa họ không sửa đè: `FamilyService.createVersion` thêm bản gốc mới (v2, v3… theo thứ tự `id` của các bản gốc) với bộ biến thể mới; bộ đang dùng là con của bản gốc mới nhất (`latestBaseVersionId`), bản cũ và run của nó giữ nguyên. **Code dùng:** `FamilyService`, `ScenarioViewService` / `AnalysisViewService` (`/families`, `/families/{id}/versions`, dataset phân tích theo bản), `RunService` (ma sát).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -926,7 +926,7 @@ CHECK: `ck_tech_references_value`.
 | `sensors.attributes_json` | (chưa có code) | Attribute blueprint đúng tên CARLA, giá trị chuỗi: `{"image_size_x": "1280", "fov": "90", "sensor_tick": "0.05"}` |
 | `optimization_runs.search_space_json` | (chưa có code) | `{"TTC_THRESHOLD": [1.2, 2.5], "BRAKE_ACTIVATION_DELAY": [0.05, 0.3]}` — chỉ 4 mã của `aeb_parameters`, trong `[min_value, max_value]` |
 | `optimization_runs.objective_config_json` | (chưa có code) | Mục tiêu + trọng số / ràng buộc, vd `{"objectives": ["rms_jerk", "impact_speed", "stopping_distance"], "constraints": {"collision_rate_pct": {"max": 5}}}` |
-| `analysis_results.config_json` / `summary_json` | ViewsService cho BASELINE_DATASET; các loại khác chưa có | Đầu vào (nhiễu, chỉ số mục tiêu, bộ lọc run) / đầu ra (xếp hạng tham số, ma trận tương tác, phân bố theo nhiễu) |
+| `analysis_results.config_json` / `summary_json` | AnalysisViewService cho BASELINE_DATASET; các loại khác chưa có | Đầu vào (nhiễu, chỉ số mục tiêu, bộ lọc run) / đầu ra (xếp hạng tham số, ma trận tương tác, phân bố theo nhiễu) |
 
 Bảng tổng hợp regression (ma trận chuyển trạng thái, tỉ lệ, tiêu chí) **không lưu**: `regression.summary`
 tính lại từ các run đã COMPLETED (run không đổi sau khi xong), số đếm chính lưu ở `regression_tests`,

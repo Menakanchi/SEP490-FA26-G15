@@ -1,6 +1,6 @@
 <#
 Start VehicSim locally on Windows:
-  Docker Desktop -> MySQL + Redis (docker compose)
+  MySQL + Redis (native services or docker compose fallback)
   Backend  http://localhost:8001  (Spring Boot; simulations run as worker/ Python child processes)
   Frontend http://localhost:3000  (Next.js dev)
 
@@ -40,22 +40,35 @@ function Start-Window([string]$title, [string]$dir, [string]$command) {
     Write-Host "  started: $title"
 }
 
-# 1. Docker Desktop
-if (-not (Test-Quiet 'docker info')) {
-    Write-Host 'Starting Docker Desktop...'
-    Start-Process (Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe')
-    $deadline = (Get-Date).AddMinutes(4)
-    do { Start-Sleep -Seconds 2 } until ((Test-Quiet 'docker info') -or (Get-Date) -gt $deadline)
-    if (-not (Test-Quiet 'docker info')) { throw 'Docker did not start within 4 minutes.' }
+# 1 & 2. MySQL + Redis (native or Docker Desktop)
+$hasNativeMysql = Test-Port 3306
+if (-not (Test-Port 6379)) {
+    if (Get-Command redis-server -ErrorAction SilentlyContinue) {
+        Write-Host 'Starting local Redis server...'
+        Start-Process redis-server -ArgumentList '--port 6379' -WindowStyle Hidden
+        Start-Sleep -Seconds 2
+    }
 }
+$hasNativeRedis = Test-Port 6379
 
-# 2. MySQL + Redis
-Write-Host 'Starting MySQL + Redis...'
-$compose = "docker compose -f `"$(Join-Path $root 'docker-compose.yml')`""
-if (-not (Test-Quiet "$compose up -d mysql redis")) { throw 'docker compose up failed.' }
-$deadline = (Get-Date).AddMinutes(2)
-do { Start-Sleep -Seconds 2 } until ((Test-Quiet "$compose exec -T mysql mysqladmin ping -h 127.0.0.1 --silent") -or (Get-Date) -gt $deadline)
-Write-Host '  MySQL + Redis ready'
+if (-not ($hasNativeMysql -and $hasNativeRedis)) {
+    if (-not (Test-Quiet 'docker info')) {
+        Write-Host 'Starting Docker Desktop...'
+        Start-Process (Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe')
+        $deadline = (Get-Date).AddMinutes(4)
+        do { Start-Sleep -Seconds 2 } until ((Test-Quiet 'docker info') -or (Get-Date) -gt $deadline)
+        if (-not (Test-Quiet 'docker info')) { throw 'Docker did not start within 4 minutes.' }
+    }
+
+    Write-Host 'Starting MySQL + Redis via Docker...'
+    $compose = "docker compose -f `"$(Join-Path $root 'docker-compose.yml')`""
+    if (-not (Test-Quiet "$compose up -d mysql redis")) { throw 'docker compose up failed.' }
+    $deadline = (Get-Date).AddMinutes(2)
+    do { Start-Sleep -Seconds 2 } until ((Test-Quiet "$compose exec -T mysql mysqladmin ping -h 127.0.0.1 --silent") -or (Get-Date) -gt $deadline)
+    Write-Host '  MySQL + Redis ready'
+} else {
+    Write-Host '  MySQL + Redis ready (native)'
+}
 
 # 3. App services
 Write-Host 'Starting app services...'

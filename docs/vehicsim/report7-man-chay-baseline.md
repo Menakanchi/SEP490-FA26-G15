@@ -139,7 +139,7 @@ flowchart LR
 
 | ID | Quy tắc | Nơi thực hiện |
 |---|---|---|
-| BR-01 | Chỉ `ADMIN`/`ENGINEER`/`EXPERIENCER` chạy và hủy; vai trò khác `403` | `VehicSimController.requireEngineer` |
+| BR-01 | Chỉ `ADMIN`/`ENGINEER`/`EXPERIENCER` chạy và hủy; vai trò khác `403` | `VehicSimAccess.requireEngineer` |
 | BR-02 | Mỗi người tối đa `VEHICSIM_MAX_ACTIVE_RUNS_PER_USER` (mặc định 1500) run chờ + đang chạy; số thao tác ghi trong cửa sổ giới hạn theo nhóm `run`, `carla_run`, `run_cancel` → `429` | `RunService.checkActiveRunQuota`, `limitWrites` |
 | BR-03 | Seed ổn định `48000 + scenario_version_id`; replay CARLA giữ seed, xe, AEB của run gốc | `RunService.seedFor`, `runOnCarla` |
 | BR-04 | Một run cho mỗi biến thể; xe = xe đang dùng; AEB = baseline (mục đích `BASELINE`) hoặc phiên bản chỉ định (`EVALUATION`) | `RunService.runFamily` |
@@ -159,10 +159,10 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  FE["Frontend Next.js<br/>/scenarios, /analysis/carla"] -->|"REST /api/v1/vehicsim"| C["VehicSimController"]
+  FE["Frontend Next.js<br/>/scenarios, /analysis/carla"] -->|"REST /api/v1/vehicsim"| C["SimulationController"]
   C --> RS["RunService"]
   RS -->|"JdbcTemplate"| DB[("MySQL<br/>simulation_runs, artifacts,<br/>failures, root_causes")]
-  RS -->|"trong tiến trình"| K["Lõi Java com.vehicsim.core<br/>Simulator, Evaluation, XoscExport"]
+  RS -->|"trong tiến trình"| K["Lõi Java com.vsos.core<br/>Simulator, Evaluation, XoscExport"]
   RS -->|"tiến trình con có timeout"| RX["worker/run_xosc.py"]
   RX --> SR["ScenarioRunner 0.9.16"]
   SR --> CT["vehicsim_aeb_control.py<br/>controller mỏng"]
@@ -175,7 +175,7 @@ flowchart LR
 
 ```mermaid
 classDiagram
-  class VehicSimController {
+  class SimulationController {
     +runFamily(scenarioId, body)
     +runOnCarla(runId)
     +cancelRun(runId)
@@ -245,7 +245,7 @@ classDiagram
   class CarlaPhysics {
     <<python carla_physics.py>>
   }
-  VehicSimController --> RunService
+  SimulationController --> RunService
   RunService --> VehicSimProperties
   RunService --> FamilyService
   RunService ..> Bundle
@@ -276,7 +276,7 @@ sequenceDiagram
   autonumber
   actor U as Engineer
   participant FE as Web /scenarios
-  participant C as VehicSimController
+  participant C as SimulationController
   participant RS as RunService
   participant DB as MySQL
   participant X as simulationExecutor
@@ -340,7 +340,7 @@ sequenceDiagram
 sequenceDiagram
   autonumber
   actor U as Engineer
-  participant C as VehicSimController
+  participant C as SimulationController
   participant RS as RunService
   participant DB as MySQL
   participant W as Luồng đang chạy run

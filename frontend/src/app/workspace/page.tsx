@@ -4,25 +4,27 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { EmptyState, ErrorNote, StatCard, Tag, cx, fmt } from "@/components/VehicSimUi";
-import { WORKSPACE_ROLES } from "@/components/workspaceAccess";
+import { WORKSPACE_ROLES, WORKSPACE_MANAGER_ROLES } from "@/components/workspaceAccess";
 import { useAuth } from "@/context/AuthContext";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { WorkspaceSummary } from "@/types/vehicsim";
 
-/** M1 — Workspace tôi quản lý (ADMIN thấy mọi workspace). */
+/** M1 — Workspace (ADMIN/MANAGER quản lý; ENGINEER/REVIEWER xem workspace tham gia). */
 export default function WorkspacesPage() {
   const router = useRouter();
   const { user } = useAuth();
   const allowed = WORKSPACE_ROLES.includes(user?.roleCode ?? "");
+  const isManagerOrAdmin = WORKSPACE_MANAGER_ROLES.includes(user?.roleCode ?? "");
   const [items, setItems] = useState<WorkspaceSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!allowed) return;
-    vehicsimApi.workspaces()
+    const fetcher = isManagerOrAdmin ? vehicsimApi.workspaces : vehicsimApi.myWorkspaces;
+    fetcher()
       .then(setItems)
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách workspace"));
-  }, [allowed]);
+  }, [allowed, isManagerOrAdmin]);
 
   const members = (items ?? []).reduce((n, w) => n + w.member_count, 0);
   const projects = (items ?? []).reduce((n, w) => n + w.project_count, 0);
@@ -36,11 +38,13 @@ export default function WorkspacesPage() {
           ? undefined
           : user?.roleCode === "ADMIN"
           ? "Mọi workspace trong hệ thống. Chọn một workspace để xem project và quản lý thành viên."
-          : "Các workspace Quản trị viên đã giao cho bạn quản lý. Chọn một workspace để xem project và quản lý thành viên."
+          : user?.roleCode === "MANAGER"
+          ? "Các workspace Quản trị viên đã giao cho bạn quản lý. Chọn một workspace để xem project và quản lý thành viên."
+          : "Các workspace bạn đang tham gia. Chọn một workspace để xem task, dự án, báo cáo và trao đổi kỹ thuật."
       }
     >
       {!allowed ? (
-        <EmptyState title="Chỉ Quản lý workspace hoặc Quản trị viên được vào màn này" />
+        <EmptyState title="Bạn chưa có quyền truy cập khu vực workspace" />
       ) : (
         <>
           <ErrorNote message={error} />
@@ -62,8 +66,10 @@ export default function WorkspacesPage() {
               <span className="w-[60px]" />
             </div>
             {items && items.length === 0 && (
-              <EmptyState title="Bạn chưa được giao workspace nào">
-                Quản trị viên tạo workspace và gán Quản lý. Khi được gán, workspace sẽ hiện ở đây.
+              <EmptyState title={isManagerOrAdmin ? "Bạn chưa được giao workspace nào" : "Bạn chưa tham gia workspace nào"}>
+                {isManagerOrAdmin
+                  ? "Quản trị viên tạo workspace và gán Quản lý. Khi được gán, workspace sẽ hiện ở đây."
+                  : "Quản lý workspace sẽ thêm bạn vào workspace để phân công task và dự án."}
               </EmptyState>
             )}
             {(items ?? []).map((w) => (

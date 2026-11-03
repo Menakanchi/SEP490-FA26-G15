@@ -3,11 +3,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { Card, CardTitle, EmptyState, ErrorNote, PillButton, StatCard, Tag, fmt } from "@/components/VehicSimUi";
-import { WORKSPACE_ROLES } from "@/components/workspaceAccess";
+import { Card, CardTitle, EmptyState, ErrorNote, PillButton, StatCard, Tag, fmt, cx } from "@/components/VehicSimUi";
+import { WORKSPACE_ROLES, WORKSPACE_MANAGER_ROLES } from "@/components/workspaceAccess";
 import { useAuth } from "@/context/AuthContext";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { WorkspaceDetail, WorkspaceMember, WorkspaceMemberCandidate, WorkspaceMemberRole } from "@/types/vehicsim";
+import type { WorkspaceDetail, WorkspaceMember, WorkspaceMemberCandidate, WorkspaceMemberRole, WorkspaceChatMessage } from "@/types/vehicsim";
 
 const MEMBER_ROLE: Record<WorkspaceMemberRole, { label: string; tone: "info" | "warn" }> = {
   ENGINEER: { label: "Kỹ sư", tone: "info" },
@@ -25,6 +25,11 @@ export default function WorkspaceDetailPage() {
   const id = Number(workspaceId);
   const { user } = useAuth();
   const allowed = WORKSPACE_ROLES.includes(user?.roleCode ?? "");
+  const isManagerOrAdmin = WORKSPACE_MANAGER_ROLES.includes(user?.roleCode ?? "");
+
+  const [messages, setMessages] = useState<WorkspaceChatMessage[]>([]);
+  const [chatText, setChatText] = useState("");
+  const [sendingChat, setSendingChat] = useState(false);
 
   const [detail, setDetail] = useState<WorkspaceDetail | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[] | null>(null);
@@ -40,9 +45,14 @@ export default function WorkspaceDetailPage() {
 
   const load = useCallback(async () => {
     try {
-      const [d, m] = await Promise.all([vehicsimApi.workspace(id), vehicsimApi.workspaceMembers(id)]);
+      const [d, m, msgs] = await Promise.all([
+        vehicsimApi.workspace(id),
+        vehicsimApi.workspaceMembers(id),
+        vehicsimApi.workspaceMessages(id).catch(() => [] as WorkspaceChatMessage[])
+      ]);
       setDetail(d);
       setMembers(m);
+      setMessages(msgs);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không tải được workspace");
     }
@@ -93,6 +103,21 @@ export default function WorkspaceDetailPage() {
     setAdding(true);
     setQuery("");
     void search(undefined, "");
+  };
+
+  const handleSendChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatText.trim() || sendingChat) return;
+    setSendingChat(true);
+    try {
+      const sent = await vehicsimApi.sendWorkspaceMessage(id, { message: chatText.trim() });
+      setMessages((prev) => [...prev, sent]);
+      setChatText("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không gửi được tin nhắn");
+    } finally {
+      setSendingChat(false);
+    }
   };
 
   const remove = async (m: WorkspaceMember) => {
@@ -170,16 +195,18 @@ export default function WorkspaceDetailPage() {
               aside={
                 <span className="flex items-center gap-3">
                   <span className="text-[12px] text-vehicsim-faint">{members ? `${members.length} người` : "…"}</span>
-                  <PillButton
-                    variant={adding ? "light" : "dark"}
-                    className="px-4 py-2"
-                    disabled={!active}
-                    title={!active ? "Workspace đã lưu trữ, không thêm được thành viên" : undefined}
-                    aria-expanded={adding}
-                    onClick={toggleAdding}
-                  >
-                    {adding ? "Đóng" : "+ Thêm thành viên"}
-                  </PillButton>
+                  {isManagerOrAdmin && (
+                    <PillButton
+                      variant={adding ? "light" : "dark"}
+                      className="px-4 py-2"
+                      disabled={!active}
+                      title={!active ? "Workspace đã lưu trữ, không thêm được thành viên" : undefined}
+                      aria-expanded={adding}
+                      onClick={toggleAdding}
+                    >
+                      {adding ? "Đóng" : "+ Thêm thành viên"}
+                    </PillButton>
+                  )}
                 </span>
               }
             >
@@ -285,15 +312,19 @@ export default function WorkspaceDetailPage() {
                     <span className="w-[180px] truncate pr-3 text-[13px] text-vehicsim-muted">{m.added_by?.full_name ?? "—"}</span>
                     <span className="w-[100px] text-[13px] text-vehicsim-faint">{fmt.date(m.joined_at)}</span>
                     <span className="flex w-[90px] justify-end">
-                      <button
-                        type="button"
-                        disabled={!active || owner || busy !== null}
-                        title={owner ? "Đang là chủ project trong workspace, chưa bớt được" : !active ? "Workspace đã lưu trữ" : undefined}
-                        onClick={() => remove(m)}
-                        className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-danger hover:bg-vehicsim-danger-bg disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {busy === m.user_id ? "…" : "Bớt"}
-                      </button>
+                      {isManagerOrAdmin ? (
+                        <button
+                          type="button"
+                          disabled={!active || owner || busy !== null}
+                          title={owner ? "Đang là chủ project trong workspace, chưa bớt được" : !active ? "Workspace đã lưu trữ" : undefined}
+                          onClick={() => remove(m)}
+                          className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-danger hover:bg-vehicsim-danger-bg disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {busy === m.user_id ? "…" : "Bớt"}
+                        </button>
+                      ) : (
+                        <span className="text-[12px] text-vehicsim-faint">Thành viên</span>
+                      )}
                     </span>
                   </div>
                 );
@@ -327,6 +358,57 @@ export default function WorkspaceDetailPage() {
               ))}
             </div>
           </Card>
+          <Card className="flex flex-col gap-4 p-5">
+            <CardTitle aside={<span className="text-[12px] text-vehicsim-faint">{messages.length} trao đổi</span>}>
+              Trao đổi kỹ thuật (Workspace Chat)
+            </CardTitle>
+            <div className="flex flex-col gap-3 rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-soft p-4">
+              <div className="flex max-h-[360px] min-h-[140px] flex-col gap-3 overflow-y-auto pr-1">
+                {messages.length === 0 ? (
+                  <p className="text-center text-[13px] text-vehicsim-faint py-6">
+                    Chưa có tin nhắn nào trong kênh. Hãy gửi tin nhắn để bắt đầu trao đổi kỹ thuật với team.
+                  </p>
+                ) : (
+                  messages.map((msg) => {
+                    const isMe = String(msg.sender.id) === String(user?.id);
+                    return (
+                      <div
+                        key={msg.id}
+                        className={cx(
+                          "flex flex-col rounded-[12px] p-3 max-w-[85%]",
+                          isMe
+                            ? "self-end bg-vehicsim-decision/10 border border-vehicsim-decision/30 text-vehicsim-ink"
+                            : "self-start bg-white border border-vehicsim-line text-vehicsim-ink"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 text-[11px] text-vehicsim-muted font-medium mb-1">
+                          <span className="font-bold text-vehicsim-ink">{msg.sender.full_name}</span>
+                          <span>·</span>
+                          <span>{fmt.date(msg.created_date)}</span>
+                        </div>
+                        <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{msg.message_text}</p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              {active && (
+                <form onSubmit={handleSendChat} className="flex items-center gap-2 pt-2 border-t border-solid border-vehicsim-line">
+                  <input
+                    value={chatText}
+                    onChange={(e) => setChatText(e.target.value)}
+                    maxLength={2000}
+                    placeholder="Nhập nội dung trao đổi kỹ thuật (kịch bản, kết quả CARLA, tối ưu AEB...)..."
+                    className="flex-1 rounded-full border border-solid border-vehicsim-line bg-white px-4 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                  />
+                  <PillButton type="submit" variant="dark" disabled={sendingChat || !chatText.trim()}>
+                    {sendingChat ? "Đang gửi…" : "Gửi"}
+                  </PillButton>
+                </form>
+              )}
+            </div>
+          </Card>
+
         </>
       )}
     </VehicSimPage>

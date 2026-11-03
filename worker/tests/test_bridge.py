@@ -12,7 +12,7 @@ import bridge
 import carla_physics
 import pytest
 
-CORE_CLASSES = bridge.ROOT / "target" / "classes" / "com" / "vehicsim" / "core" / "bridge" / "BridgeMain.class"
+CORE_CLASSES = bridge.ROOT / "target" / "classes" / "com" / "vsos" / "core" / "bridge" / "BridgeMain.class"
 needs_core = pytest.mark.skipif(not CORE_CLASSES.is_file(), reason="chưa có lõi Java đã biên dịch (target/classes): chạy mvnw compile")
 
 
@@ -56,7 +56,7 @@ def test_a_dead_java_process_is_an_error_not_a_default(xosc: Path, tmp_path: Pat
 
 
 def _fake_classes(root: Path) -> Path:
-    for name in ("com/vehicsim/core/bridge/BridgeMain.class", "com/vehicsim/core/AebStack.class", "com/vehicsim/vehicsim/RunService.class"):
+    for name in ("com/vsos/core/bridge/BridgeMain.class", "com/vsos/core/aeb/AebStack.class", "com/vsos/backend/service/simulation/RunService.class"):
         (root / name).parent.mkdir(parents=True, exist_ok=True)
         (root / name).write_bytes(b"\xca\xfe\xba\xbe" + name.encode())
     return root
@@ -66,7 +66,7 @@ def test_snapshot_core_packs_only_the_core_package(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("VEHICSIM_CORE_CLASSPATH", str(_fake_classes(tmp_path / "classes")))
     core = bridge.snapshot_core(tmp_path / "run" / "core" / "vsos-core.jar")
     with zipfile.ZipFile(tmp_path / "run" / "core" / "vsos-core.jar") as jar:
-        assert sorted(jar.namelist()) == ["com/vehicsim/core/AebStack.class", "com/vehicsim/core/bridge/BridgeMain.class"]  # không kéo theo backend
+        assert sorted(jar.namelist()) == ["com/vsos/core/aeb/AebStack.class", "com/vsos/core/bridge/BridgeMain.class"]  # không kéo theo backend
     assert core["classes"] == 2 and len(core["sha256"]) == 64 and core["jar"] == "vsos-core.jar"
     assert not list((tmp_path / "run" / "core").glob("*.partial"))
 
@@ -85,7 +85,7 @@ def test_snapshot_core_refuses_missing_or_ambiguous_sources(monkeypatch: pytest.
 def test_a_run_keeps_working_after_target_classes_disappears(monkeypatch: pytest.MonkeyPatch, xosc: Path, tmp_path: Path) -> None:
     """Mục đích của snapshot: mvnw clean giữa run không được làm hỏng run đó."""
     classes = tmp_path / "classes"
-    shutil.copytree(CORE_CLASSES.parents[4] / "com" / "vehicsim" / "core", classes / "com" / "vehicsim" / "core")
+    shutil.copytree(CORE_CLASSES.parents[4] / "com" / "vsos" / "core", classes / "com" / "vsos" / "core")
     monkeypatch.setenv("VEHICSIM_CORE_CLASSPATH", str(classes))
     jar = tmp_path / "run" / "core" / "vsos-core.jar"
     bridge.snapshot_core(jar)
@@ -110,7 +110,7 @@ AEB_LOGIC_MARKERS = ("AebStack", "ttc_threshold", "decel_cmd =", "brake_pedal(",
 
 
 def test_no_aeb_logic_lives_in_the_python_worker() -> None:
-    """Luật 8 (ADR-042): logic AEB, mô phỏng và chấm điểm chỉ ở ``com.vehicsim.core``; ``worker/`` chỉ còn adapter CARLA."""
+    """Luật 8 (ADR-042): logic AEB, mô phỏng và chấm điểm chỉ ở ``com.vsos.core``; ``worker/`` chỉ còn adapter CARLA."""
     worker = bridge.ROOT / "worker"
     modules = sorted(worker.glob("*.py"))
     assert (worker / "vehicsim_aeb_control.py") in modules

@@ -774,7 +774,7 @@ export interface AnalysisFilters {
   simulator?: string; weather?: string; time_of_day?: string; status?: string; failure_class?: string;
 }
 
-// Quản lý workspace (Manager — M1…M5), khớp com.vehicsim.dto.WorkspaceDtos
+// Quản lý workspace (Manager — M1…M5), khớp com.vsos.backend.dto.workspace.WorkspaceDtos
 export interface WorkspaceUserRef { id: number; full_name: string; email: string }
 export type WorkspaceStatus = "ACTIVE" | "ARCHIVED";
 export interface WorkspaceSummary {
@@ -838,4 +838,31 @@ export interface VehicleDetail extends VehicleSummary {
   };
   sensors: VehicleSensor[];
   usage: VehicleUsage[];
+}
+
+// FE-03 & FE-14: Kỹ sư tương tác task, nộp báo cáo, chat workspace
+export interface TaskStatusUpdateRequest {
+  status: TaskStatus;
+  progress_pct: number;
+}
+
+export interface SubmitReportRequest {
+  title: string;
+  content: string;
+  task_id?: number | null;
+  project_id?: number | null;
+  attachment_url?: string | null;
+}
+
+export interface WorkspaceChatMessage {
+  id: number;
+  workspace_id: number;
+  sender: WorkspaceUserRef;
+  message_text: string;
+  created_date: string;
+  edited_at: string | null;
+}
+
+export interface SendChatMessageRequest {
+  message: string;
 }

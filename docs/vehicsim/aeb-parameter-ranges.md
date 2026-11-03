@@ -231,7 +231,7 @@ TTC = 1,5 s). Đổi biên thì sửa cùng lúc `BootstrapService.java`, `01_sc
 | 7 | Max Deceleration | 3 – 10 m/s², mặc định 8 | 3 – 10 m/s² | Khớp |
 | 8 | Brake Build-up Rate | 5 – 20 m/s³, mặc định 20 (migration 008) | 12 (quét 5 – 50) | Chặn ở 20 vì lõi giới hạn tốc độ tăng lực phanh bằng Jerk Limit cố định 20 |
 
-**6 hằng số.** Giá trị trong `src/main/java/com/vehicsim/core/AebStack.java`. Đổi một hằng số làm kết quả động học đổi, nên phải
+**6 hằng số.** Giá trị trong `src/main/java/com/vsos/core/aeb/AebStack.java`. Đổi một hằng số làm kết quả động học đổi, nên phải
 đổi tên bộ mô phỏng (`KINEMATIC_SIMULATOR` trong `Bundle.java`) để run cũ không bị ghép với run mới.
 
 | # | Tham số | Hằng số | Nghiên cứu | Nhận xét |
