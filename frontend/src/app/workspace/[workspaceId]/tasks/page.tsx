@@ -226,7 +226,7 @@ export default function WorkspaceTasksPage() {
       }
     >
       {!allowed ? (
-        <EmptyState title="Chỉ Quản lý workspace hoặc Quản trị viên được vào màn này" />
+        <EmptyState title="Chỉ Quản lý workspace được vào màn này. Quản trị viên sử dụng mục Quản trị → Workspace." />
       ) : (
         <>
           <ErrorNote message={error} />

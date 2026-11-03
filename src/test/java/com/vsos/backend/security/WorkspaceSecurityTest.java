@@ -125,7 +125,9 @@ class WorkspaceSecurityTest {
         for (RoleCode code : RoleCode.values()) {
             for (MockHttpServletRequestBuilder route : routes()) {
                 int status = statusOf(route, code);
-                if (MANAGERS.contains(code)) {
+                boolean memberWrite = route.buildRequest(new org.springframework.mock.web.MockServletContext()).getMethod().matches("POST|DELETE")
+                        && route.buildRequest(new org.springframework.mock.web.MockServletContext()).getRequestURI().contains("/members");
+                if (MANAGERS.contains(code) && !(code == RoleCode.ADMIN && memberWrite)) {
                     assertThat(status).as("%s được vào", code).isBetween(200, 299);
                 } else {
                     assertThat(status).as("%s bị chặn", code).isEqualTo(403);

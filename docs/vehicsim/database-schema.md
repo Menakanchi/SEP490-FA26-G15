@@ -266,6 +266,7 @@ Tài khoản. Mỗi người **đúng một role** (`role_id`). Tự đăng ký 
 | `password_hash` | VARCHAR(255) | ✓ |  |  | Hash mật khẩu (`salt:hash`), không bao giờ trả ra API. |
 | `role_id` | INT UNSIGNED | ✓ |  | FK → `roles` | Role duy nhất của người này. _Mỗi người đúng 1 role; tự đăng ký = EXPERIENCER_ |
 | `is_active` | BOOLEAN | ✓ | `TRUE` |  | `FALSE` = Admin vô hiệu hoá: không đăng nhập được, dữ liệu giữ nguyên. _ADMIN khóa/mở user; không xóa cứng để giữ lịch sử_ |
+| `auth_version` | BIGINT UNSIGNED | ✓ |  | 0 | Phiên bản xác thực; tăng khi đổi quyền/email/khóa để thu hồi JWT cũ. |
 | `last_login_at` | DATETIME |  |  |  | Lần đăng nhập gần nhất. |
 | `last_name` | VARCHAR(80) | ✓ |  |  | Họ (từ đầu của họ tên). Tên một từ thì để chuỗi rỗng. |
 | `middle_name` | VARCHAR(80) |  |  |  | Tên đệm (các từ giữa), có thể trống. |
@@ -986,3 +987,12 @@ Cùng một PR (luật mềm ở `AGENTS.md`):
 Luôn sao lưu trước (`mysqldump --single-transaction`), không `docker compose down -v` trên máy người khác.
 
 Tập baseline chỉ lấy scenario_versions.source = GENERATED; bản gốc chứa không gian tham số không phải ca chạy (TD-43). UI cho chọn cả họ không có lỗi.
+
+## Admin integrity (migration 012, 02/11/2026)
+
+- users.auth_version: BIGINT UNSIGNED default 0. Admin đổi email/role/active hoặc Manager cấp/trả role làm tăng phiên bản. JWT av phải khớp DB; phiên cũ thiếu av được coi là 0. Khóa rồi mở lại không khôi phục token cũ.
+- workspaces.name unique toàn hệ thống, bổ sung uq_workspaces_name; giữ unique(manager_id,name) cũ để tương thích entity.
+- tech_references unique(ref_type,ref_name) theo BR-11; ref_code vẫn unique riêng.
+- Migration 012 dừng nếu có tên trùng, không xóa/đổi dữ liệu cũ. Kiểm SHOW CREATE TABLE khi tiếp tục sau lỗi vì MySQL DDL auto-commit.
+- API Admin chỉ ghi name/description/manager_id của workspace; không có cấu hình chung trong schema. Manager được chọn phải MANAGER đang hoạt động, thông báo WORKSPACE_ASSIGNED cùng transaction.
+- Chặn đổi role/khóa khi còn quản lý workspace kể cả ARCHIVED; chặn đổi role khi còn workspace membership/project sở hữu/task mở. Không tự di chuyển dữ liệu để đổi quyền.

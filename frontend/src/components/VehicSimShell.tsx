@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { VehicSimContextProvider } from "@/components/VehicSimContext";
@@ -15,6 +15,7 @@ import { jakarta } from "@/components/vehicsimFonts";
 export function VehicSimShell({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const adminPage = usePathname().startsWith("/admin");
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.replace("/login");
@@ -31,7 +32,7 @@ export function VehicSimShell({ children }: { children: React.ReactNode }) {
   return (
     <div className={`${jakarta.className} flex min-h-screen w-full bg-vehicsim-bg text-vehicsim-ink`}>
       <VehicSimContextProvider>
-        <VehicSimSidebar />
+        <VehicSimSidebar hideOnMobile={adminPage} />
         <main className="flex min-w-0 flex-1">{children}</main>
       </VehicSimContextProvider>
     </div>
