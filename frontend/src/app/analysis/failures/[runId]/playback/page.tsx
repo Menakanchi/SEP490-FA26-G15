@@ -13,7 +13,7 @@ import type { FailureClass, Frame, Playback, SimEvent } from "@/types/vehicsim";
 
 const SPEEDS = [0.25, 0.5, 1, 2] as const;
 const VIEWS = ["Nhìn từ trên", "Camera bám đuôi", "Camera RGB", "LiDAR"] as const;
-const LAYERS = ["Thực tế (GT)", "Nhận thức", "Vùng TTC", "Quỹ đạo"] as const;
+const LAYERS = ["Thực tế (GT)", "Nhận thức", "Quỹ đạo"] as const;
 type Layer = (typeof LAYERS)[number];
 
 const EVENT_COLOR: Record<string, string> = {
@@ -73,7 +73,7 @@ export default function PlaybackPage() {
     return ()=>{active=false;};
   }, [runId,initialTime,refresh]);
 
-  const events = useMemo(() => (pb ? withTtcEvent(pb) : []), [pb]);
+  const events = useMemo(() => [...(pb?.events ?? [])].sort((a, b) => a.t - b.t), [pb]);
   const frame = useMemo(() => (pb ? frameAt(pb.frames, t) : null), [pb, t]);
 
   useEffect(() => {
@@ -126,9 +126,9 @@ export default function PlaybackPage() {
   const detT = events.find((e) => e.kind === "detection")?.t;
   const xAt = (time: number | undefined) => (time === undefined || !pb || time > t ? null : frameAt(pb.frames, time)?.ego_x ?? null);
   const status = frame ? frameStatus(frame, t, events) : null;
-  const distance = frame && pb ? Math.max(0, pb.crossing_x - frame.ego_x) : null;
-  const ttcZone: [number, number] | null =
-    frame && pb?.ttc_threshold_s ? [frame.ego_x, frame.ego_x + frame.ego_v * pb.ttc_threshold_s] : null;
+  // Use the backend projection for this exact recorded frame; missing API data stays missing.
+  const motionPoint = frame ? pb?.motion_telemetry?.find(point => point.t === frame.t) : undefined;
+  const distance = motionPoint?.crossing_distance_m;
 
   return (
     <VehicSimPage
@@ -155,7 +155,7 @@ export default function PlaybackPage() {
           </>
         )
       }
-      subtitle="Phát lại ca lỗi từng khung hình. So sánh thực tế (ground truth) với những gì khâu nhận thức ghi nhận."
+      subtitle={pb ? `Nguồn API: ${pb.simulator ?? "Chưa có danh tính simulator"}. Phát lại các khung đã ghi; không dự đoán chuyển động tại frontend.` : "Đang đọc dữ liệu phát lại từ API."}
       actions={
         <>
           <PillButton
@@ -178,7 +178,7 @@ export default function PlaybackPage() {
       <ErrorNote message={error} />
       {error && <div><button className="analysis-button" onClick={()=>setRefresh(x=>x+1)}>Thử tải lại</button></div>}
       {!pb && !error && <AnalysisLoading />}
-      <p className="analysis-caption">Cảnh dựng từ tọa độ đã ghi, không phải video cảm biến. Chọn sự kiện để tua đến bằng chứng; timeline và biểu đồ dùng cùng timestamp.</p>
+      <p className="analysis-caption">Cảnh dựng từ tọa độ API, không phải video cảm biến. Sự kiện và chỉ số dùng kết quả backend; thiếu dữ liệu hiển thị —. Gia tốc/jerk trong kết quả run có thể do lõi xử lý, không mặc định là số đo IMU trực tiếp.</p>
       {pb?.evaluation_valid===false&&<p role="status">Dữ liệu run chưa đủ điều kiện để kết luận AEB. Playback chỉ hiển thị dữ liệu đã ghi.</p>}
       {pb && !frame && <p role="status">Không có frame telemetry hợp lệ để phát lại.</p>}
       {pb && frame && (
@@ -232,9 +232,7 @@ export default function PlaybackPage() {
                   collision={t >= (events.find((e) => e.kind === "collision")?.t ?? Infinity)}
                   showGroundTruth={layers.has("Thực tế (GT)")}
                   showPerception={layers.has("Nhận thức")}
-                  showTtcZone={layers.has("Vùng TTC")}
                   showTrajectories={layers.has("Quỹ đạo")}
-                  ttcZoneX={ttcZone}
                   egoLabelAbove
                   groundTruthColor="var(--color-vehicsim-ok)"
                   perceptionColor="var(--color-vehicsim-perception)"
@@ -244,17 +242,13 @@ export default function PlaybackPage() {
                       ? [{ x: pb.crossing_x - 4, y: 68, text: `người đi bộ · tin cậy ${frame.confidence.toFixed(2)}`, color: "var(--color-vehicsim-perception)" }]
                       : []),
                     ...(layers.has("Thực tế (GT)")
-                      ? [{ x: pb.crossing_x + 1, y: 196, text: `GT · ${Math.abs(frame.ped_vy).toFixed(1)} m/s`, color: "var(--color-vehicsim-ok)" }]
-                      : []),
-                    ...(layers.has("Vùng TTC") && frame.ttc !== null
-                      ? [{ x: frame.ego_x + 2, y: 196, text: `Vùng TTC · ${frame.ttc.toFixed(1)} s`, color: "var(--color-vehicsim-danger)" }]
+                      ? [{ x: pb.crossing_x + 1, y: 196, text: `GT vY · ${frame.ped_vy.toFixed(1)} m/s`, color: "var(--color-vehicsim-ok)" }]
                       : []),
                   ]}
                 />
                 <div className="absolute left-[14px] top-[14px] flex items-center gap-[14px] rounded-[12px] bg-white px-3 py-2 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
                   <LegendDash color="bg-vehicsim-ok" label="Thực tế (GT)" />
                   <LegendDash color="bg-vehicsim-perception" label="Nhận thức" />
-                  <LegendDash color="bg-vehicsim-danger" label="Vùng TTC" />
                   <LegendDash color="bg-vehicsim-decision" label="Quỹ đạo xe" />
                 </div>
               </div>
@@ -315,22 +309,20 @@ export default function PlaybackPage() {
                 )}
               </div>
               <Stat label="Tốc độ xe ego" value={`${(frame.ego_v * 3.6).toFixed(1)} km/h`} />
-              <Stat label="Khoảng cách tới vạch băng qua" value={distance === null ? "—" : `${distance.toFixed(1)} m`} />
+              <Stat label="Khoảng cách tới vạch băng qua" value={distance == null || !Number.isFinite(distance) ? "—" : `${distance.toFixed(1)} m`} />
               <Stat
                 label="TTC"
                 value={frame.ttc === null ? "—" : `${frame.ttc.toFixed(1)} s`}
                 tone={frame.ttc !== null && pb.ttc_threshold_s !== null && frame.ttc <= pb.ttc_threshold_s ? "danger" : undefined}
               />
               <Stat
-                label="Giảm tốc đã ghi (không phải lệnh phanh)"
-                value={Number.isFinite(frame.ego_a)?`${Math.max(0,-frame.ego_a).toFixed(2)} m/s²`:"Không khả dụng"}
+                label="Gia tốc ego đã ghi"
+                value={frame.ego_a != null && Number.isFinite(frame.ego_a) ? `${frame.ego_a.toFixed(2)} m/s²` : "Không khả dụng"}
                 tone={frame.aeb ? "info" : undefined}
               />
               <Stat label="Độ tin cậy phát hiện" value={frame.detected ? frame.confidence.toFixed(2) : "chưa phát hiện"} />
-              <Stat
-                label="Lệch vị trí GT – nhận thức"
-                value={frame.perceived_y === null ? "—" : `Δ ${Math.abs(frame.perceived_y - frame.ped_y).toFixed(2)} m`}
-              />
+              <Stat label="Vị trí target Y (GT)" value={frame.ped_y != null && Number.isFinite(frame.ped_y) ? `${frame.ped_y.toFixed(2)} m` : "—"} />
+              <Stat label="Vị trí nhận thức Y" value={frame.perceived_y != null && Number.isFinite(frame.perceived_y) ? `${frame.perceived_y.toFixed(2)} m` : "—"} />
             </section>
 
             <section className="flex w-full flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
@@ -359,14 +351,6 @@ export default function PlaybackPage() {
   );
 }
 
-function withTtcEvent(pb: Playback): SimEvent[] {
-  const events = [...pb.events];
-  const thr = pb.ttc_threshold_s;
-  const below = thr === null ? undefined : pb.frames.find((f) => f.ttc !== null && f.ttc <= thr);
-  if (below && thr !== null) events.push({ t: below.t, kind: "ttc_below", label: `TTC xuống dưới ${thr} s` });
-  return events.sort((a, b) => a.t - b.t);
-}
-
 function frameAt(frames: Frame[], t: number): Frame | null {
   if (!frames.length) return null;
   let lo = 0;
@@ -386,11 +370,12 @@ function currentEvent(events: SimEvent[], t: number): SimEvent | undefined {
 function frameStatus(f: Frame, t: number, events: SimEvent[]) {
   const collision = events.find((e) => e.kind === "collision");
   if (collision && t >= collision.t - 1e-6) return { label: "VA CHẠM", cls: "bg-vehicsim-danger-bg text-vehicsim-danger" };
-  if (f.aeb && f.ego_v < 0.05) return { label: "ĐÃ DỪNG", cls: "bg-vehicsim-ok-bg text-vehicsim-ok" };
+  const stopped = events.find(e => e.kind === "stopped");
+  if (stopped && t >= stopped.t - 1e-6) return { label: "ĐÃ DỪNG", cls: "bg-vehicsim-ok-bg text-vehicsim-ok" };
   if (f.aeb) return { label: "AEB ĐANG PHANH", cls: "bg-vehicsim-decision-bg text-vehicsim-decision" };
   if (f.fcw) return { label: "CẢNH BÁO FCW", cls: "bg-vehicsim-warn-bg text-vehicsim-warn" };
   if (f.detected) return { label: "ĐANG BÁM", cls: "bg-vehicsim-perception-bg text-vehicsim-perception" };
-  return { label: "ĐANG CHẠY", cls: "bg-vehicsim-soft text-vehicsim-muted" };
+  return { label: "CHƯA CÓ CỜ AEB/FCW", cls: "bg-vehicsim-soft text-vehicsim-muted" };
 }
 
 function Timeline({ duration, t, events, onSeek }: { duration: number; t: number; events: SimEvent[]; onSeek: (t: number) => void }) {

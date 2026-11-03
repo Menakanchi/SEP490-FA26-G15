@@ -12,7 +12,7 @@ import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
 const fixtures=JSON.parse(gunzipSync(await fs.readFile(path.join(root,"src/test/resources/parity/kinematic.json.gz"))));
-const output=path.join(root,"data/analysis-redesign-ui");await fs.mkdir(output,{recursive:true});
+const output=path.join(root,"data/analysis-batch1-ui");await fs.mkdir(output,{recursive:true});
 const version="adr040-stored-aggregation/1";
 const cases=fixtures.filter(c=>c.evaluation.outcome!=="TIMEOUT").slice(0,45);
 const runs=cases.map((c,i)=>({revision:`fixture-${i}`,run_id:1000+i,scenario_id:1,scenario_version_id:100+i,version_no:i+1,family:"CP Crossing · Fixture kiểm thử UI",variant:`CP-${String(i+1).padStart(3,"0")}`,seed:c.seed,baseline_id:1,vehicle_id:1,simulator:"vehicsim-kinematic-1.0",dt:0.05,status:"COMPLETED",outcome:c.evaluation.aeb_result.false_activation?"FALSE_BRAKING":c.evaluation.outcome,weather:c.case.weather,time_of_day:c.case.time_of_day,failure_class:c.evaluation.chain.find(s=>!s.passed)?.stage??null,error:null,end_reason:c.outcome.end_reason,trace_available:true,created_at:"2026-11-03T08:00:00",metrics:{rms_jerk_mps3:c.outcome.metrics.rms_jerk_mps3,impact_speed_mps:c.outcome.metrics.impact_speed_mps,stopping_distance_m:c.outcome.metrics.stopping_distance_m}}));
@@ -32,7 +32,7 @@ function aggregate(list){
   out[key]={value:values.length?values.reduce((a,b)=>a+b,0)/values.length:null,samples:values.length,missing:0,notApplicable:list.length-values.length,unit,status:values.length?"VALID":"NOT_APPLICABLE"};
  }return out;
 }
-let role="ENGINEER", mode="normal", saved=null;
+let role="ENGINEER", mode="normal", saved=null, playbackOverride=null, detailOverride=null;
 const writes=[],requests=[];
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
 try {
@@ -61,9 +61,9 @@ try {
    return reply({total:rows.length,page,page_size:size,items:rows.slice((page-1)*size,page*size),counts:Object.fromEntries([...new Set(rows.map(r=>r.outcome))].map(key=>[key,rows.filter(r=>r.outcome===key).length])),objective_groups:rows.length?[{identity:"fixture",simulator:runs[0].simulator,baseline_id:1,vehicle_id:1,objectives:aggregate(rows),carla_observational_only:false}]:[],evaluation_version:version});
   }
   const inspection=p.match(/^\/vehicsim\/analysis\/runs\/(\d+)$/);
-  if(inspection)return reply({run:runs.find(r=>r.run_id===Number(inspection[1])),detail:detailFor(Number(inspection[1]))});
+  if(inspection)return reply({run:runs.find(r=>r.run_id===Number(inspection[1])),detail:detailOverride??detailFor(Number(inspection[1]))});
   const playback=p.match(/^\/vehicsim\/runs\/(\d+)\/playback$/);
-  if(playback){const id=Number(playback[1]),d=detailFor(id),o=caseFor(id).outcome;return reply({...d,...o,motion_telemetry:d.motion_telemetry,vehicle_length_m:4.8,vehicle_width_m:2,lane_width_m:3.5,ttc_threshold_s:1.5,related_runs:[]});}
+  if(playback){const id=Number(playback[1]),d=detailFor(id),o=caseFor(id).outcome;return reply(playbackOverride??{...d,...o,motion_telemetry:d.motion_telemetry,vehicle_length_m:4.8,vehicle_width_m:2,lane_width_m:3.5,ttc_threshold_s:1.5,related_runs:[]});}
   if(p==="/vehicsim/failures"){
    const rows=runs.filter(r=>r.outcome!=="SAFE").slice(0,20).map(r=>({...r,summary:"Parity fixture",root_cause:caseFor(r.run_id).evaluation.headline,impact_kmh:r.metrics.impact_speed_mps==null?null:r.metrics.impact_speed_mps*3.6,min_ttc_s:caseFor(r.run_id).outcome.metrics.min_ttc_s,config:"v1.0"}));
    return reply({items:rows,total:rows.length,page:1,page_size:20,pages:1,families:[],kpis:{total:rows.length,this_week:0,collisions:rows.filter(r=>r.outcome==="COLLISION").length,near_misses:rows.filter(r=>r.outcome==="NEAR_MISS").length,false_braking:rows.filter(r=>r.outcome==="FALSE_BRAKING").length,by_class:{PERCEPTION:0,DECISION:rows.length,CONTROL:0,VEHICLE_DYNAMICS:0}}});
@@ -146,6 +146,35 @@ try {
  await page.getByRole("button",{name:"Tốc độ phát 2 lần",exact:true}).click();
  await page.screenshot({path:path.join(output,"playback-tablet.png"),fullPage:true});
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Playback tablet overflow");
+ // Batch 1: intentionally contrasting fixture values prove the API is authoritative.
+ // The CARLA identity here is fixture metadata, not a claim of live CARLA verification.
+ const apiDetail=detailFor(id),recorded=caseFor(id).outcome;
+ playbackOverride={...apiDetail,...recorded,simulator:"carla-0.9.16-xosc4",frames:recorded.frames.map(f=>({...f,ego_v:0,ego_a:1.25,aeb:true,ttc:0.1})),events:[{t:0,kind:"aeb_decision",label:"Lệnh AEB đã ghi"}],motion_telemetry:apiDetail.motion_telemetry.map(p=>({...p,crossing_distance_m:777.7})),vehicle_length_m:4.8,vehicle_width_m:2,lane_width_m:3.5,ttc_threshold_s:1.5,related_runs:[]};
+ const playbackUrl=base+`/analysis/failures/${id}/playback?t=0`;
+ await page.goto(playbackUrl);await page.getByRole("slider",{name:"Thời gian playback",exact:true}).waitFor();
+ await page.getByText(/Nguồn API: carla-0.9.16-xosc4/).waitFor();
+ const fact=label=>page.getByText(label,{exact:true}).locator("..");
+ assert.match(await fact("Khoảng cách tới vạch băng qua").innerText(),/777\.7 m/);
+ assert.match(await fact("Gia tốc ego đã ghi").innerText(),/1\.25 m\/s²/);
+ assert.equal(await page.getByText("ĐÃ DỪNG",{exact:true}).count(),0,"Zero speed must not invent a stopped event");
+ assert.equal(await page.getByText("Vùng TTC",{exact:true}).count(),0);
+ assert.equal(await page.getByText("Lệch vị trí GT – nhận thức",{exact:true}).count(),0);
+ assert.equal(await page.getByRole("button",{name:/TTC xuống dưới/}).count(),0,"Low TTC must not fabricate an event");
+ await page.screenshot({path:path.join(output,"batch1-api-playback.png"),fullPage:true});
+ playbackOverride={...playbackOverride,motion_telemetry:undefined,events:[...playbackOverride.events,{t:0,kind:"stopped",label:"Xe dừng theo API"},{t:0.75,kind:"ttc_below",label:"Mốc TTC do API ghi"}]};
+ await page.goto(playbackUrl);await page.getByRole("slider",{name:"Thời gian playback",exact:true}).waitFor();
+ assert.match(await fact("Khoảng cách tới vạch băng qua").innerText(),/—/);
+ await page.getByText("ĐÃ DỪNG",{exact:true}).waitFor();
+ await page.getByRole("button",{name:/Mốc TTC do API ghi/}).waitFor();
+ detailOverride={...apiDetail,simulator:"carla-0.9.16-xosc4",events:[],telemetry:apiDetail.telemetry.map(p=>({...p,ttc:0.1})),chain:[{stage:"DECISION",passed:false,summary:"Bằng chứng do backend cung cấp",parameter_code:null,cause_code:null,confidence:0.5}]};
+ await page.goto(base+`/analysis/failures/${id}?section=telemetry`);
+ await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
+ assert.equal(await page.getByText("Mốc TTC từ backend",{exact:true}).count(),0);
+ assert.equal(await page.getByText(/Trễ kích hoạt/).count(),0);
+ await page.getByText("Bằng chứng do backend cung cấp",{exact:false}).last().waitFor();
+ detailOverride={...detailOverride,events:[{t:0.75,kind:"ttc_below",label:"Mốc TTC do API ghi"}]};
+ await page.reload();await page.getByText("Mốc TTC từ backend",{exact:true}).waitFor();
+ playbackOverride=null;detailOverride=null;
  await page.goto(base+"/analysis/failures?view=failures&scenario_id=1");await page.getByRole("heading",{name:"Tra cứu ca lỗi",exact:true}).waitFor();await page.getByRole("table").locator("tbody tr").first().waitFor();
  await page.screenshot({path:path.join(output,"failures-tablet.png"),fullPage:true});
  assert(requests.some(u=>u.pathname.endsWith("/failures")&&u.searchParams.get("scenario_id")==="1"));
@@ -153,6 +182,6 @@ try {
  mode="normal";role="MANAGER";await page.reload();await page.getByRole("table").locator("tbody tr").first().waitFor();
  assert(await page.locator('select[aria-label^="Tập của run"]').first().isDisabled());
  assert.deepEqual(errors,[]);assert.equal(writes.length,1);assert(!writes.some(w=>/optimizations|aeb\/versions|regression/.test(w.path)));
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["overview","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["overview","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","batch1 API-only metrics/events and missing data","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
  console.log("PASS: browser fixture UI checks; live backend/authentication/database/CARLA/Figma NOT verified. Screenshots:",output);
 } finally {await browser.close();}

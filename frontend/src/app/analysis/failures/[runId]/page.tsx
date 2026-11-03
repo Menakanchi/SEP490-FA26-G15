@@ -75,7 +75,7 @@ export default function FailureDetailPage() {
       }
       subtitle={
         d &&
-        `${d.family} · ${viSummary(d.summary)}  —  kịch bản ${d.variant} · seed ${d.seed} · ${d.vehicle} · AEB ${d.config} · ${fmt.date(d.date)}`
+        `${d.family} · ${viSummary(d.summary)}  —  kịch bản ${d.variant} · seed ${d.seed} · ${d.vehicle} · AEB ${d.config} · ${d.simulator ?? "Chưa có danh tính simulator"} · ${fmt.date(d.date)}`
       }
       actions={
         <>
@@ -222,7 +222,6 @@ export default function FailureDetailPage() {
                   points={d.telemetry}
                   threshold={d.ttc_threshold_s}
                   markers={derived.markers}
-                  shade={derived.shade}
                   impactT={derived.impactT}
                 />
                 {derived.note && (
@@ -279,21 +278,18 @@ export default function FailureDetailPage() {
 
 function derive(d: FailureDetail) {
   const at = (t: number | null) => (t === null ? null : d.scene.path.find((p) => p.t >= t - 1e-6)?.x ?? null);
-  const threshold = d.ttc_threshold_s;
-  const belowT = threshold === null ? null : d.telemetry.find((p) => p.ttc !== null && p.ttc <= threshold)?.t ?? null;
+  const belowT = d.events.find(event => event.kind === "ttc_below")?.t ?? null;
   const impactT = d.events.find((e) => e.kind === "collision")?.t ?? null;
   const stoppedT = d.events.find((e) => e.kind === "stopped")?.t ?? null;
 
   const markers: ChartMarker[] = [];
   if (d.metrics.first_detection_t !== null) markers.push({ t: d.metrics.first_detection_t, label: "Phát hiện", color: "var(--color-vehicsim-perception)" });
-  if (belowT !== null) markers.push({ t: belowT, label: `TTC < ${threshold} s`, color: "var(--color-vehicsim-warn)" });
+  if (belowT !== null) markers.push({ t: belowT, label: "Mốc TTC từ backend", color: "var(--color-vehicsim-warn)" });
   if (d.metrics.aeb_activation_t !== null) markers.push({ t: d.metrics.aeb_activation_t, label: "AEB kích hoạt", color: "var(--color-vehicsim-decision)" });
   if (impactT !== null) markers.push({ t: impactT, label: "Va chạm", color: "var(--color-vehicsim-danger)" });
   else if (stoppedT !== null) markers.push({ t: stoppedT, label: "Dừng", color: "var(--color-vehicsim-ok)" });
 
   const aebT = d.metrics.aeb_activation_t;
-  const delay = belowT !== null && aebT !== null ? aebT - belowT : null;
-  const shade: [number, number] | null = delay !== null && delay > 0.05 ? [belowT as number, aebT as number] : null;
 
   const implicated = new Set(d.chain.filter((s) => !s.passed && s.parameter_code).map((s) => s.parameter_code as string));
   const byCode = new Map(d.configuration.map((p) => [p.code, p]));
@@ -301,9 +297,7 @@ function derive(d: FailureDetail) {
   const snapshot = codes.map((c) => byCode.get(c)).filter((p): p is NonNullable<typeof p> => !!p);
 
   const failing = d.chain.find((s) => !s.passed);
-  const note = failing
-    ? `${shade ? `Trễ kích hoạt ${delay!.toFixed(1)} s (vùng tô). ` : ""}${vi(failing.summary)}`
-    : null;
+  const note = failing ? vi(failing.summary) : null;
 
   const mapLabels = [];
   const detX = at(d.metrics.first_detection_t);
@@ -314,7 +308,7 @@ function derive(d: FailureDetail) {
   if (impactT !== null && d.metrics.impact_speed_kmh !== null)
     mapLabels.push({ x: d.scene.crossing_x + 2, y: 190, text: `Va chạm · ${d.metrics.impact_speed_kmh.toFixed(1)} km/h`, color: "var(--color-vehicsim-danger)" });
 
-  return { markers, shade, impactT, implicated, snapshot, note, detectionX: detX, aebX, mapLabels };
+  return { markers, impactT, implicated, snapshot, note, detectionX: detX, aebX, mapLabels };
 }
 
 function ClassHeadline({ value }: { value: FailureClass }) {
