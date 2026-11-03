@@ -85,7 +85,7 @@ const GROUPS: Group[] = [
     icon: svgIcon("/vehicsim/icon-search.svg"),
     prefix: "/analysis",
     children: [
-      { label: "Ca lỗi", href: "/analysis/failures" },
+      { label: "Kết quả & phân tích", href: "/analysis/failures" },
       { label: "Dữ liệu CARLA", href: "/analysis/carla" },
       { label: "Độ nhạy tham số", note: `${SOON} (SHAP)` },
       { label: "Tương tác tham số", note: SOON },

@@ -56,8 +56,8 @@ function query(params: object): string {
 }
 
 export const vehicsimApi = {
-  analysisRuns: (filters: import("@/types/vehicsim").AnalysisFilters, page = 1) =>
-    apiRequest<import("@/types/vehicsim").AnalysisDashboardData>(`/vehicsim/analysis/runs${query({...filters,page,page_size:30})}`),
+  analysisRuns: (filters: import("@/types/vehicsim").AnalysisFilters, page = 1, pageSize = 30) =>
+    apiRequest<import("@/types/vehicsim").AnalysisDashboardData>(`/vehicsim/analysis/runs${query({...filters,page,page_size:pageSize})}`),
   analysisInspection: (id: number) => apiRequest<{run: import("@/types/vehicsim").AnalysisRun; detail: FailureDetail | null}>(`/vehicsim/analysis/runs/${id}`),
   createAnalysisSelection: (body: {scenario_id: number; baseline_id: number; optimization_run_ids: number[]; validation_run_ids: number[]; run_revisions: Record<string,string>}) =>
     apiRequest<import("@/types/vehicsim").AnalysisSelection>("/vehicsim/analysis/selections",{method:"POST",body:JSON.stringify(body)}),

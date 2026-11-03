@@ -43,15 +43,15 @@ try {
 
  // The moved legacy lookup must retain the family selected on the baseline screen.
  const legacyResponse=page.waitForResponse(r=>r.url().includes("/api/v1/vehicsim/failures?")&&r.status()===200);
- await page.getByRole("button",{name:"Tra cứu ca lỗi",exact:true}).click();
+ await page.getByRole("navigation",{name:"Chế độ phân tích"}).getByRole("link",{name:"Tra cứu ca lỗi",exact:true}).click();
  assert.equal(new URL((await legacyResponse).url()).searchParams.get("scenario_id"),String(evidence.scenario_id));
  await page.getByRole("heading",{name:"Tra cứu ca lỗi",exact:true}).waitFor();
- await page.getByRole("button",{name:"Kết quả baseline",exact:true}).click();
+ await page.getByRole("navigation",{name:"Chế độ phân tích"}).getByRole("link",{name:"Lượt chạy",exact:true}).click();
  await page.getByLabel("Trạng thái",{exact:true}).selectOption("FAILED");
  await page.getByText("Chưa có run baseline phù hợp.",{exact:false}).waitFor();
  await page.getByLabel("Trạng thái",{exact:true}).selectOption("");
  await page.getByRole("table").locator("tbody tr").first().waitFor();
- await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).waitFor();
+
  await page.screenshot({path:path.join(output,"01-baseline-dashboard.png"),fullPage:true});
 
  // Gather selections across pages; choices must survive pagination.
@@ -72,6 +72,7 @@ try {
    }
    assert(found,`Run ${selection.id} was not available in the paginated dashboard`);
  }
+ await page.getByRole("navigation",{name:"Chế độ phân tích"}).getByRole("link",{name:/Tập bàn giao/}).click();
  const response=page.waitForResponse(r=>r.url().endsWith("/api/v1/vehicsim/analysis/selections")&&r.request().method()==="POST");
  await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).click();
  const saved=await (await response).json();
@@ -88,14 +89,16 @@ try {
  const slider=page.getByRole("slider",{name:"Thời gian phân tích",exact:true});
  await slider.waitFor();
  assert.equal(Number(await slider.inputValue()),1.25);
+ await page.getByRole("button",{name:"Telemetry & chỉ số",exact:true}).click();
  await page.getByLabel("Tín hiệu",{exact:true}).selectOption("jerk_mps3");
  await page.getByRole("img",{name:/Jerk từ gia tốc đã lưu/}).waitFor();
+ await page.getByRole("button",{name:"Nguyên nhân & bằng chứng",exact:true}).click();
  await page.getByRole("heading",{name:"Bằng chứng và giới hạn nhận định",exact:true}).waitFor();
  await page.getByRole("button",{name:"Tải .xosc",exact:true}).waitFor();
  await page.getByRole("button",{name:"Chạy trên CARLA",exact:true}).waitFor();
  await page.screenshot({path:path.join(output,"03-detail-jerk-evidence.png"),fullPage:true});
  await page.getByRole("link",{name:"Mở playback tại thời điểm đang xem",exact:true}).click();
- await page.waitForURL("**/playback?t=1.25");
+ await page.waitForURL(url=>url.pathname.endsWith("/playback")&&url.searchParams.get("t")==="1.25");
  const playback=page.getByRole("slider",{name:"Thời gian playback",exact:true});
  await playback.waitFor();
  assert.equal(Number(await playback.inputValue()),1.25);

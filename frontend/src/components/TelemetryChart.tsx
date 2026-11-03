@@ -30,10 +30,12 @@ interface Props {
   impactT?: number | null;
 }
 
-export function TelemetryChart({ points, threshold, markers, shade, impactT, cursor }: Props) {
+export function TelemetryChart({ points: rawPoints, threshold, markers, shade, impactT, cursor }: Props) {
+  const points=rawPoints.filter(point=>Number.isFinite(point.t));
+  if(!points.length)return <p className="py-8 text-center text-[13px] text-vehicsim-muted">Run chưa có telemetry để vẽ biểu đồ.</p>;
   const tMax = Math.max(0.01, points[points.length - 1]?.t ?? 1);
   const ttcMax = 5;
-  const vMax = Math.max(70, Math.ceil(Math.max(...points.map((p) => p.speed_kmh ?? 0), 0) / 14) * 14);
+  const vMax = Math.max(70, Math.ceil(Math.max(...points.map((p) => Number.isFinite(p.speed_kmh) ? p.speed_kmh! : 0), 0) / 14) * 14);
   const x = (t: number) => L + (t / tMax) * (R - L);
   const yTtc = (v: number) => BOTTOM - (Math.min(v, ttcMax) / ttcMax) * (BOTTOM - TOP);
   const ySpd = (v: number) => BOTTOM - (v / vMax) * (BOTTOM - TOP);
@@ -41,7 +43,7 @@ export function TelemetryChart({ points, threshold, markers, shade, impactT, cur
   const ttcSegments: string[][] = [];
   let current: string[] = [];
   for (const p of points) {
-    if (p.ttc === null) {
+    if (p.ttc === null || !Number.isFinite(p.ttc)) {
       if (current.length) ttcSegments.push(current);
       current = [];
     } else current.push(`${x(p.t).toFixed(1)},${yTtc(p.ttc).toFixed(1)}`);
@@ -50,7 +52,7 @@ export function TelemetryChart({ points, threshold, markers, shade, impactT, cur
   const speedSegments: string[][]=[];
   let speedSegment:string[]=[];
   for(const p of points) {
-    if(p.speed_kmh===null) { if(speedSegment.length)speedSegments.push(speedSegment);speedSegment=[]; }
+    if(p.speed_kmh===null || !Number.isFinite(p.speed_kmh)) { if(speedSegment.length)speedSegments.push(speedSegment);speedSegment=[]; }
     else speedSegment.push(`${x(p.t)},${ySpd(p.speed_kmh)}`);
   }
   if(speedSegment.length)speedSegments.push(speedSegment);
@@ -59,7 +61,10 @@ export function TelemetryChart({ points, threshold, markers, shade, impactT, cur
 
   return (
     <div className="relative h-[330px] w-full">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full" aria-label="Telemetry chart">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full" role="img" aria-label="TTC nhận thức (s) và tốc độ xe (km/h) theo thời gian (s)">
+        <title>TTC nhận thức (s), trục trái; tốc độ xe (km/h), trục phải; thời gian (s)</title>
+        <text x={L} y={29} fontSize={10} fill="var(--color-vehicsim-muted)">TTC (s), giới hạn hiển thị 5 s</text>
+        <text x={R} y={29} textAnchor="end" fontSize={10} fill="var(--color-vehicsim-decision)">Tốc độ (km/h)</text>
         {[0, 1, 2, 3, 4, 5].map((v) => (
           <g key={v}>
             <rect x={L} y={yTtc(v)} width={R - L} height={1} fill="var(--color-vehicsim-line)" />

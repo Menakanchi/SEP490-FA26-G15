@@ -7,6 +7,7 @@ import { MotionTelemetryChart } from "@/components/MotionTelemetryChart";
 import { ScenarioMap } from "@/components/ScenarioMap";
 import { ErrorNote, OutcomeBadge, PillButton, cx, runCode } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
+import { AnalysisLoading, analysisError, analysisReturn } from "@/components/analysisUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { FailureClass, Frame, Playback, SimEvent } from "@/types/vehicsim";
 
@@ -44,9 +45,13 @@ const CLASS_SHORT: Record<FailureClass, string> = {
 export default function PlaybackPage() {
   const { runId } = useParams<{ runId: string }>();
   const params=useSearchParams();
+  const returnTo=analysisReturn(params.get("returnTo"));
+  const returnQuery=`returnTo=${encodeURIComponent(returnTo)}`;
+  const [refresh,setRefresh]=useState(0);
   const initialTimeParam=params.get("t");
   const initialTime=initialTimeParam===null?Number.NaN:Number(initialTimeParam);
-  const [pb, setPb] = useState<Playback | null>(null);
+  const [loaded,setLoaded]=useState<{id:string;data:Playback}|null>(null);
+  const pb=loaded?.id===runId?loaded.data:null;
   const [error, setError] = useState<string | null>(null);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -55,15 +60,18 @@ export default function PlaybackPage() {
   const last = useRef<number | null>(null);
 
   useEffect(() => {
+    let active=true;
     vehicsimApi.playback(Number(runId))
       .then((data) => {
-        setPb(data);
+        if(!active)return;
+        setLoaded({id:runId,data});setError(null);setPlaying(false);
         // Mở ở sự kiện AEB (hoặc cuối lần chạy) như ảnh chụp của Figma.
         const focus = Number.isFinite(initialTime) && initialTime >= 0 ? Math.min(initialTime,data.duration_s) : data.events.find((e) => e.kind === "aeb_decision")?.t ?? data.duration_s;
         setT(focus);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được dữ liệu phát lại"));
-  }, [runId,initialTime]);
+      .catch((err) => {if(active)setError(analysisError(err));});
+    return ()=>{active=false;};
+  }, [runId,initialTime,refresh]);
 
   const events = useMemo(() => (pb ? withTtcEvent(pb) : []), [pb]);
   const frame = useMemo(() => (pb ? frameAt(pb.frames, t) : null), [pb, t]);
@@ -127,8 +135,8 @@ export default function PlaybackPage() {
       step={4}
       crumbs={[
         { label: "Phân tích" },
-        { label: "Ca lỗi", href: "/analysis/failures" },
-        { label: `Lượt chạy ${code}`, href: `/analysis/failures/${runId}` },
+        { label: "Danh sách phân tích", href: returnTo },
+        { label: `Lượt chạy ${code}`, href: `/analysis/failures/${runId}?${returnQuery}` },
         { label: "Phát lại" },
       ]}
       title={`Phát lại · Lượt chạy ${code}`}
@@ -160,21 +168,24 @@ export default function PlaybackPage() {
             variant="dark"
             href={compareWith ? `/analysis/failures/${compareWith.run_id}/playback` : undefined}
             disabled={!compareWith}
-            title={compareWith ? `Mở cùng biến thể chạy với AEB ${compareWith.config}` : "Chưa có lượt chạy nào khác của biến thể này"}
+            title={compareWith ? `Mở cùng biến thể với AEB ${compareWith.config}; cần đối chiếu seed, xe và simulator trước khi so sánh` : "Chưa có lượt chạy nào khác của biến thể này"}
           >
-            {compareWith ? `So sánh với ${compareWith.config}` : "So sánh"}
+            {compareWith ? `Mở run AEB ${compareWith.config}` : "Run liên quan"}
           </PillButton>
         </>
       }
     >
       <ErrorNote message={error} />
+      {error && <div><button className="analysis-button" onClick={()=>setRefresh(x=>x+1)}>Thử tải lại</button></div>}
+      {!pb && !error && <AnalysisLoading />}
+      <p className="analysis-caption">Cảnh dựng từ tọa độ đã ghi, không phải video cảm biến. Chọn sự kiện để tua đến bằng chứng; timeline và biểu đồ dùng cùng timestamp.</p>
       {pb?.evaluation_valid===false&&<p role="status">Dữ liệu run chưa đủ điều kiện để kết luận AEB. Playback chỉ hiển thị dữ liệu đã ghi.</p>}
       {pb && !frame && <p role="status">Không có frame telemetry hợp lệ để phát lại.</p>}
       {pb && frame && (
-        <div className="flex w-full items-start gap-4">
+        <div className="analysis-playback-body flex w-full items-start gap-4">
           <div className="flex min-w-0 flex-1 flex-col gap-4">
             <section className="flex w-full flex-col gap-[14px] rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex gap-1 rounded-full bg-vehicsim-soft p-1">
                   {VIEWS.map((v, i) => (
                     <span
@@ -189,9 +200,9 @@ export default function PlaybackPage() {
                     </span>
                   ))}
                 </div>
-                <div className="flex items-center gap-[10px]">
+                <div className="flex flex-wrap items-center gap-[10px]">
                   {LAYERS.map((layer) => (
-                    <button key={layer} type="button" onClick={() => toggle(layer)} className="flex items-center gap-[6px]">
+                    <button key={layer} type="button" aria-pressed={layers.has(layer)} onClick={() => toggle(layer)} className="flex items-center gap-[6px]">
                       <span
                         className={cx(
                           "flex size-[18px] shrink-0 items-center justify-center rounded-[5px] text-[11px] font-bold text-white",
@@ -250,7 +261,7 @@ export default function PlaybackPage() {
             </section>
 
             <section className="flex w-full flex-col gap-[14px] rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
-              <div className="flex items-center gap-[14px]">
+              <div className="flex flex-wrap items-center gap-[14px]">
                 <button
                   type="button"
                   aria-label={playing ? "Tạm dừng" : "Phát"}
@@ -262,10 +273,10 @@ export default function PlaybackPage() {
                 >
                   {playing ? "❚❚" : "▶"}
                 </button>
-                <PillButton className="px-[14px] py-2 text-[12px]" onClick={() => jump(-1)}>
+                <PillButton disabled={!events.some(e=>e.t<t-1e-3)} className="px-[14px] py-2 text-[12px]" onClick={() => jump(-1)}>
                   ‹ Sự kiện trước
                 </PillButton>
-                <PillButton className="px-[14px] py-2 text-[12px]" onClick={() => jump(1)}>
+                <PillButton disabled={!events.some(e=>e.t>t+1e-3)} className="px-[14px] py-2 text-[12px]" onClick={() => jump(1)}>
                   Sự kiện sau ›
                 </PillButton>
                 <span className="flex-1 text-center text-[15px] font-bold text-vehicsim-ink">
@@ -276,6 +287,8 @@ export default function PlaybackPage() {
                     <button
                       key={s}
                       type="button"
+                      aria-label={`Tốc độ phát ${s} lần`}
+                      aria-pressed={s === speed}
                       onClick={() => setSpeed(s)}
                       className={cx("rounded-full px-[14px] py-[7px] text-[12px] font-semibold", s === speed ? "bg-vehicsim-ink text-white" : "text-vehicsim-muted")}
                     >
@@ -288,7 +301,7 @@ export default function PlaybackPage() {
                 <input aria-label="Thời gian playback" type="range" min={0} max={pb.duration_s} step={0.01} value={t} className="block w-full" onChange={e=>{setPlaying(false);setT(Number(e.target.value));}}/>
               </label>
               <MotionTelemetryChart points={pb.motion_telemetry??[]} markers={events.map(e=>({t:e.t,label:vi(e.label),color:EVENT_COLOR[e.kind]??"gray"}))} cursor={t}/>
-              <PillButton href={`/analysis/failures/${runId}?t=${t}`}>Xem phân tích run</PillButton>
+              <PillButton href={`/analysis/failures/${runId}?t=${t}&${returnQuery}`}>Xem phân tích run</PillButton>
               <Timeline duration={pb.duration_s} t={t} events={events} onSeek={(x) => { setPlaying(false); setT(x); }} />
             </section>
           </div>
@@ -322,6 +335,7 @@ export default function PlaybackPage() {
 
             <section className="flex w-full flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
               <h2 className="text-[16px] font-bold text-vehicsim-ink">Nhật ký sự kiện</h2>
+              {!events.length && <p className="analysis-caption">Run không có sự kiện được ghi.</p>}
               {events.map((e) => {
                 const current = currentEvent(events, t)?.label === e.label;
                 return (
@@ -381,7 +395,7 @@ function frameStatus(f: Frame, t: number, events: SimEvent[]) {
 
 function Timeline({ duration, t, events, onSeek }: { duration: number; t: number; events: SimEvent[]; onSeek: (t: number) => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  const pct = (x: number) => `${(Math.min(Math.max(x, 0), duration) / duration) * 100}%`;
+  const pct = (x: number) => `${(Math.min(Math.max(x, 0), duration) / Math.max(duration,0.01)) * 100}%`;
   const labelled = events.filter((e) => EVENT_SHORT[e.kind] || e.kind === "ttc_below");
   // Sự kiện gần như cùng lúc (FCW + AEB + TTC↓) gộp thành một nhãn; các nhãn xen kẽ 2 hàng.
   const groups: { t: number; items: SimEvent[] }[] = [];
