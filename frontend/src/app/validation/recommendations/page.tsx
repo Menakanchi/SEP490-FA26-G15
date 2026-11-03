@@ -123,7 +123,7 @@ export default function RecommendationsPage() {
             ) : (
               history.decisions.map((d) => (
                 <Link
-                  key={d.recommendation_code}
+                  key={d.id}
                   href={`/validation/recommendations/${d.test_id}`}
                   className="flex flex-col gap-1 border-b border-solid border-vehicsim-line pb-3 last:border-b-0 last:pb-0"
                 >

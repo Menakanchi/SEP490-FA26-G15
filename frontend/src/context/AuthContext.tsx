@@ -80,8 +80,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const applySession = useCallback((session: SessionResponse): User => {
-    storeToken(session.access_token);
+  const applySession = useCallback((session: SessionResponse, preserveProject = false): User => {
+    storeToken(session.access_token, preserveProject);
     const nextUser = toUser(session.user);
     setToken(session.access_token);
     setUser(nextUser);
@@ -151,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const changePassword = useCallback(
     async (oldPassword: string, newPassword: string) => {
-      applySession(await changeMyPassword(oldPassword, newPassword));
+      applySession(await changeMyPassword(oldPassword, newPassword), true);
     },
     [applySession],
   );

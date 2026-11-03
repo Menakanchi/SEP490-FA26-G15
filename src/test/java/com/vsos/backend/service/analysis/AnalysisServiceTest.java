@@ -8,14 +8,16 @@ import static org.mockito.ArgumentMatchers.*;
 import com.vsos.backend.common.Json;
 import com.vsos.backend.repository.common.Db;
 import com.vsos.backend.repository.common.Queries;
+import com.vsos.backend.security.ProjectAccess;
 import com.vsos.backend.repository.common.Row;
 
 class AnalysisServiceTest {
+    private final ProjectAccess projects = mock(ProjectAccess.class);
     Db db=mock(Db.class); Queries queries=mock(Queries.class); AnalysisViewService views=mock(AnalysisViewService.class);
-    AnalysisService service=new AnalysisService(db,queries,views);
+    AnalysisService service=new AnalysisService(db,queries,views,projects);
     List<Row> rows;
     @BeforeEach void setup() {
-        when(queries.currentProject()).thenReturn(new Row(Json.obj("id",1L)));
+        when(projects.currentProject()).thenReturn(new Row(Json.obj("id",1L)));
         when(queries.baselineVersion(1L)).thenReturn(new Row(Json.obj("id",4L,"label","v1","version_no",1L)));
         rows=List.of(row(1,11),row(2,12),row(3,13),row(4,14));
         when(db.list(startsWith(AnalysisService.SELECT),any(Object[].class))).thenReturn(rows);

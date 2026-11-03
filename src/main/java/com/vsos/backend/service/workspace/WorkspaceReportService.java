@@ -24,8 +24,8 @@ import com.vsos.backend.service.notification.NotificationService;
  * Luật: chỉ báo cáo còn SUBMITTED mới duyệt được, quyết định là cuối (không duyệt lại); từ chối phải có nhận xét để người nộp biết sửa gì;
  * hai người duyệt cùng lúc thì người sau nhận lỗi thay vì ghi đè. Workspace ARCHIVED chỉ xem.
  * <p>
- * Duyệt xong thì báo cho người nộp ({@link NotificationService}). Chưa làm: Engineer / Reviewer nộp báo cáo (UC của họ) và thông báo
- * {@code REPORT_SUBMITTED} cho Manager.
+ * Duyệt xong thì báo cho người nộp ({@link NotificationService}). Engineer / Reviewer nộp báo cáo (kèm thông báo {@code REPORT_SUBMITTED}
+ * cho Manager) ở {@link MemberWorkService}.
  */
 @Service
 public class WorkspaceReportService {

@@ -28,8 +28,8 @@ import com.vsos.backend.service.notification.NotificationService;
  * project được (FK ghép {@code task_reports(task_id, project_id)} chặn). Giữ nguyên giá trị cũ thì không bị kiểm lại — task gắn project
  * nay đã lưu trữ hoặc đã quá hạn vẫn sửa được các trường khác. Workspace ARCHIVED chỉ xem.
  * <p>
- * Giao (hoặc đổi người nhận) thì báo {@code TASK_ASSIGNED} cho người nhận. Chưa làm: người được giao tự cập nhật tiến độ (UC của
- * Engineer / Reviewer).
+ * Giao (hoặc đổi người nhận) thì báo {@code TASK_ASSIGNED} cho người nhận. Người được giao tự cập nhật tiến độ (trừ DONE) ở
+ * {@link MemberWorkService}.
  */
 @Service
 public class WorkspaceTaskService {

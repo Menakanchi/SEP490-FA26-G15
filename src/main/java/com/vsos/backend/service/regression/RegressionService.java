@@ -18,6 +18,7 @@ import com.vsos.backend.repository.common.Queries;
 import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.service.simulation.RunService;
 import com.vsos.backend.common.Vs;
+import com.vsos.backend.common.Vs.InvalidRequestException;
 import com.vsos.backend.common.Vs.NotFoundException;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -174,6 +175,18 @@ public class RegressionService {
     }
 
     // ------------------------------------------------------------------ tạo test
+
+    /** ADR-049: giữ khoá membership/project/workspace đến khi tạo test và run đã commit. */
+    @Transactional
+    public long createTestAsReviewer(long projectId, long userId, long candidateVersionId, long scenarioId, boolean includeOldCritical,
+                                     boolean includeAllVariants, Map<String, Map<String, Object>> criteria, String name, List<Long> variantIds) {
+        Row scope = repo.lockReviewAccess(projectId, userId);
+        if (scope == null) throw new NotFoundException("project");
+        if (!"ACTIVE".equals(scope.str("project_status")) || !"ACTIVE".equals(scope.str("workspace_status"))) {
+            throw new InvalidRequestException("Project hoặc workspace đã lưu trữ, chỉ được xem lịch sử");
+        }
+        return createTest(projectId, userId, candidateVersionId, scenarioId, includeOldCritical, includeAllVariants, criteria, name, variantIds);
+    }
 
     @Transactional
     public long createTest(long projectId, long userId, long candidateVersionId, long scenarioId, boolean includeOldCritical,

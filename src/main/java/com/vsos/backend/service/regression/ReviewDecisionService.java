@@ -6,6 +6,7 @@ import com.vsos.backend.dto.regression.RegressionRecords.RegressionTestRow;
 import com.vsos.backend.exception.regression.RegressionExceptions.DecisionNotAllowedException;
 import com.vsos.backend.exception.regression.RegressionExceptions.TestNotFinishedException;
 import com.vsos.backend.repository.regression.RegressionRepository;
+import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.common.Vs.NotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,12 @@ public class ReviewDecisionService {
         }
         if (!confirmed) {
             throw new DecisionNotAllowedException("phải xác nhận quyết định dựa trên bằng chứng mô phỏng");
+        }
+        // Giữ khoá membership/project/workspace trong cùng transaction: bớt thành viên hoặc lưu trữ không đua với duyệt.
+        Row scope = repo.lockReviewAccess(projectId, userId);
+        if (scope == null) throw new NotFoundException("regression test");
+        if (!"ACTIVE".equals(scope.str("project_status")) || !"ACTIVE".equals(scope.str("workspace_status"))) {
+            throw new DecisionNotAllowedException("Project hoặc workspace đã lưu trữ, chỉ được xem lịch sử");
         }
         // Khoá dòng test + khuyến nghị: hai Reviewer duyệt cùng lúc thì người thứ hai chờ rồi thấy "đã có quyết định cuối".
         RegressionTestRow test = repo.lockTest(projectId, testId);
@@ -76,7 +83,7 @@ public class ReviewDecisionService {
             repo.rejectVersion(test.candidateVersionId());
         }
         String cond = conditions == null ? "" : conditions.strip();
-        repo.saveReview(rec.id(), RegressionCodes.statusOfDecision(decision), userId, reason.strip(), cond.isEmpty() ? null : cond);
+        repo.saveReview(rec.id(), RegressionCodes.statusOfDecision(decision), decision, userId, reason.strip(), cond.isEmpty() ? null : cond);
         AuditLog.event("regression.decide", "success", "user_id", userId, "test_id", testId, "decision", decision,
                 "candidate_aeb_version_id", test.candidateVersionId(), "baseline_aeb_version_id", test.baselineVersionId());
     }

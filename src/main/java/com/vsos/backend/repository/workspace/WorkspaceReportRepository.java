@@ -54,6 +54,12 @@ public class WorkspaceReportRepository {
         return db.list(sql.toString(), args.toArray()).stream().map(WorkspaceReportRepository::toItem).toList();
     }
 
+    /** Báo cáo người này đã nộp ở mọi workspace: chờ duyệt trước, rồi mới nhất trước. */
+    public List<ReportItem> listSubmittedBy(long userId) {
+        return db.list(SELECT + " WHERE r.submitted_by_user_id = ? ORDER BY r.status <> 'SUBMITTED', r.created_date DESC, r.id DESC", userId)
+                .stream().map(WorkspaceReportRepository::toItem).toList();
+    }
+
     /** Báo cáo thuộc workspace, hoặc null. */
     public ReportItem find(long workspaceId, long reportId) {
         Row row = db.first(SELECT + " WHERE p.workspace_id = ? AND r.id = ?", workspaceId, reportId);

@@ -20,6 +20,7 @@ import com.vsos.backend.exception.regression.RegressionExceptions.TestNotFinishe
 import com.vsos.backend.repository.regression.RegressionRepository;
 import com.vsos.backend.common.Json;
 import com.vsos.backend.repository.common.Queries;
+import com.vsos.backend.security.ProjectAccess;
 import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.service.simulation.RunService;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +39,7 @@ import static org.mockito.Mockito.when;
 
 /** Gói xuất, cảnh báo bộ mô phỏng và lịch sử quyết định của màn 5: chỉ đọc, không email, không số giả. Repository giả. */
 class RegressionReportServiceTest {
+    private final ProjectAccess projects = mock(ProjectAccess.class);
 
     private static final long PROJECT = 1L;
     private static final long TEST = 30L;
@@ -54,8 +56,8 @@ class RegressionReportServiceTest {
         repo = mock(RegressionRepository.class);
         queries = mock(Queries.class);
         regression = mock(RegressionService.class);
-        reports = new RegressionReportService(repo, queries, regression);
-        when(queries.currentProject()).thenReturn(row("id", PROJECT));
+        reports = new RegressionReportService(repo, queries, regression, projects);
+        when(projects.currentProject()).thenReturn(row("id", PROJECT));
     }
 
     private static Row row(Object... keyValues) {
@@ -163,14 +165,18 @@ class RegressionReportServiceTest {
                 row("id", 11L, "version_no", 2L, "label", "v1.1", "status", "BASELINE"),
                 row("id", 12L, "version_no", 3L, "label", "v1.2", "status", "REJECTED")));
         when(repo.decidedRecommendations(PROJECT)).thenReturn(List.of(
-                new DecidedRecommendation(31L, 12L, 11L, "REJECTED", 9L, LocalDateTime.of(2026, 10, 21, 9, 0), "không đạt", null),
-                new DecidedRecommendation(30L, 11L, 10L, "ACCEPTED", 9L, LocalDateTime.of(2026, 10, 20, 10, 0), "đủ bằng chứng", null)));
+                new DecidedRecommendation(31L, 12L, 11L, "REJECT", 9L, LocalDateTime.of(2026, 10, 21, 9, 0), "không đạt", null, 3L, "Người Duyệt B", "REVIEW"),
+                new DecidedRecommendation(30L, 11L, 10L, "ACCEPT", 9L, LocalDateTime.of(2026, 10, 20, 10, 0), "đủ bằng chứng", null, 2L, "Người Duyệt B", "REVIEW"),
+                new DecidedRecommendation(30L, 11L, 10L, "REQUEST_MORE_TESTS", 8L, LocalDateTime.of(2026, 10, 19, 10, 0), "thêm ca", null, 1L, "Tên chụp lúc duyệt", "LEGACY_SNAPSHOT")));
         when(queries.displayNames(any())).thenReturn(Map.of(9L, "Người Duyệt B"));
 
         DecisionHistory history = reports.decisionHistory();
 
-        assertThat(history.decisions()).extracting(d -> d.regressionCode()).containsExactly("RT-031", "RT-030");
-        assertThat(history.decisions()).extracting(d -> d.decision()).containsExactly("REJECT", "ACCEPT");
+        assertThat(history.decisions()).extracting(d -> d.regressionCode()).containsExactly("RT-031", "RT-030", "RT-030");
+        assertThat(history.decisions()).extracting(d -> d.decision()).containsExactly("REJECT", "ACCEPT", "REQUEST_MORE_TESTS");
+        assertThat(history.decisions()).extracting(d -> d.id()).containsExactly(3L, 2L, 1L);
+        assertThat(history.decisions().get(2).reviewedBy()).isEqualTo("Tên chụp lúc duyệt");
+        assertThat(history.decisions().get(2).reviewedByUserId()).isEqualTo(8L);
         assertThat(history.decisions().get(1).baseline()).isEqualTo("v1.0");
         assertThat(history.decisions().get(1).candidate()).isEqualTo("v1.1");
         assertThat(history.baselines()).extracting(b -> b.label()).containsExactly("v1.0", "v1.1");

@@ -1,6 +1,7 @@
 package com.vsos.backend.service.system;
 
 import org.springframework.stereotype.Service;
+import com.vsos.backend.security.ProjectAccess;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,18 +21,20 @@ public class SystemViewService {
 
     private final Db db;
     private final Queries queries;
+    private final ProjectAccess projects;
     private final RunService runs;
 
-    public SystemViewService(Db db, Queries queries, RunService runs) {
+    public SystemViewService(Db db, Queries queries, RunService runs, ProjectAccess projects) {
         this.db = db;
         this.queries = queries;
+        this.projects = projects;
         this.runs = runs;
     }
 
     public Map<String, Object> context() {
-        Row project = queries.currentProject();
-        Row workspace = db.first("SELECT * FROM workspaces WHERE id = ?", project.getLong("workspace_id"));
-        Row vehicle = queries.activeVehicle(project.lng("id"));
+        Row project = projects.currentProject();
+        Row workspace = project.isNull("workspace_id") ? null : db.first("SELECT * FROM workspaces WHERE id = ?", project.lng("workspace_id"));
+        Row vehicle = project.isNull("carla_vehicle_model_id") ? null : queries.activeVehicle(project.lng("id"));
         List<Row> versions = queries.versions(project.lng("id"), false);
         Row baseline = versions.stream().filter(v -> "BASELINE".equals(v.str("status"))).findFirst().orElse(null);
         List<Row> fams = db.list("SELECT * FROM scenarios WHERE project_id = ? ORDER BY id", project.lng("id"));
@@ -41,12 +44,14 @@ public class SystemViewService {
             parameters.add(Json.obj("code", p.str("code"), "name", p.str("name"), "category", p.str("category"), "unit", p.str("unit"),
                     "min_value", p.dbl("min_value"), "max_value", p.dbl("max_value"), "default_value", p.dbl("default_value")));
         }
-        String vehicleName = vehicle.str("display_name") != null && !vehicle.str("display_name").isEmpty()
+        String vehicleName = vehicle == null ? null : vehicle.str("display_name") != null && !vehicle.str("display_name").isEmpty()
                 ? vehicle.str("display_name") : vehicle.str("carla_blueprint_id");
         return Json.obj(
                 "project", Json.obj("id", project.lng("id"), "name", project.str("name")),
+                "reviewer_projects", reviewerProjects(),
+                "reviewer_can_decide", "ACTIVE".equals(project.str("status")) && workspace != null && "ACTIVE".equals(workspace.str("status")),
                 "workspace", workspace == null ? null : Json.obj("id", workspace.lng("id"), "name", workspace.str("name")),
-                "vehicle", Json.obj("id", vehicle.lng("id"), "name", vehicleName),
+                "vehicle", vehicle == null ? null : Json.obj("id", vehicle.lng("id"), "name", vehicleName),
                 // Bộ mô phỏng mà run MỚI sẽ dùng (màn chạy baseline hiện ra trước khi bấm chạy).
                 "simulator", runs.configuredSimulator(),
                 "system", Json.obj("id", project.lng("id"), "name", AEB_SYSTEM_NAME,
@@ -54,5 +59,12 @@ public class SystemViewService {
                 "versions", versions.stream().map(AebViewService::versionBrief).toList(),
                 "families", fams.stream().map(f -> Json.obj("id", f.lng("id"), "code", f.str("code"), "name", f.str("name"))).toList(),
                 "parameters", parameters);
+    }
+
+    /** Không cần project đang chọn còn hợp lệ để Reviewer tự chọn lại sau khi mất membership. */
+    public List<Map<String, Object>> reviewerProjects() {
+        return projects.reviewerProjects().stream().map(p -> Json.obj(
+                "id", p.lng("id"), "name", p.str("name"), "workspace_name", p.str("workspace_name"),
+                "can_decide", "ACTIVE".equals(p.str("status")) && "ACTIVE".equals(p.str("workspace_status")))).toList();
     }
 }

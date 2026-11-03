@@ -1,7 +1,6 @@
 package com.vsos.backend.repository.common;
 
 import com.vsos.backend.common.Vs.NotFoundException;
-import com.vsos.backend.security.ProjectScope;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -17,15 +16,9 @@ import java.util.stream.Collectors;
 public class Queries {
 
     private final Db db;
-    private final ProjectScope scope;
 
-    public Queries(Db db, ProjectScope scope) {
+    public Queries(Db db) {
         this.db = db;
-        this.scope = scope;
-    }
-
-    public Row currentProject() {
-        return scope.current();
     }
 
     public List<Row> versions(long projectId, boolean newestFirst) {

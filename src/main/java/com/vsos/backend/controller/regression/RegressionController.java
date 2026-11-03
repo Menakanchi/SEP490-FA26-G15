@@ -9,6 +9,7 @@ import com.vsos.backend.dto.regression.RegressionResponses.RecommendationDetailR
 import com.vsos.backend.dto.regression.RegressionResponses.RecommendationListItem;
 import com.vsos.backend.dto.regression.RegressionResponses.RegressionDetailResponse;
 import com.vsos.backend.dto.regression.RegressionResponses.RegressionExport;
+import com.vsos.backend.dto.regression.RegressionResponses.RegressionKpis;
 import com.vsos.backend.dto.regression.RegressionResponses.RegressionListResponse;
 import com.vsos.backend.dto.regression.RegressionResponses.RegressionPreviewResponse;
 import com.vsos.backend.service.regression.RegressionCodes;
@@ -16,6 +17,8 @@ import com.vsos.backend.service.regression.RegressionReportService;
 import com.vsos.backend.service.regression.RegressionService;
 import com.vsos.backend.service.regression.RegressionViewService;
 import com.vsos.backend.service.regression.ReviewDecisionService;
+import com.vsos.backend.common.Vs.NotFoundException;
+import com.vsos.backend.security.ProjectAccess;
 import com.vsos.backend.security.VehicSimAccess;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -45,8 +48,9 @@ import java.util.Objects;
 
 /**
  * HTTP của màn 5: regression test, khuyến nghị, quyết định Reviewer, gói xuất và lịch sử ({@code /api/v1/vehicsim/...}, cùng tiền tố
- * với các controller VehicSim). Đọc: mọi role đã đăng nhập; tạo regression: ADMIN / ENGINEER / EXPERIENCER; quyết định: chỉ REVIEWER
- * (luật ở {@link VehicSimAccess}). Lớp này chỉ nhận request; nghiệp vụ ở các service, lỗi đổi thành mã HTTP ở ApiExceptionHandler.
+ * với các controller VehicSim). Đọc: mọi role đã đăng nhập; tạo regression: ADMIN / ENGINEER / EXPERIENCER / REVIEWER; quyết định: chỉ REVIEWER
+ * (luật ở {@link VehicSimAccess}). Reviewer chỉ thấy, chạy và duyệt regression của project thuộc workspace mình là thành viên
+ * ({@link ProjectAccess}); ngoài phạm vi thì danh sách rỗng, chi tiết / quyết định trả 404. Lớp này chỉ nhận request; nghiệp vụ ở các service, lỗi đổi thành mã HTTP ở ApiExceptionHandler.
  */
 @RestController
 @RequestMapping("/api/v1/vehicsim")
@@ -60,12 +64,29 @@ public class RegressionController {
     private final RegressionReportService reports;
     private final RegressionViewService views;
     private final VehicSimAccess access;
+    private final ProjectAccess projects;
+
+    /** Reviewer ngoài workspace của project hiện hành: coi như project không có regression nào. */
+    private boolean hidden() {
+        return !projects.hasProject();
+    }
+
+    /** Chi tiết / tải / quyết định một test: Reviewer ngoài workspace nhận 404 như test không tồn tại. */
+    private void requireVisible() {
+        if (hidden()) {
+            throw new NotFoundException("regression test");
+        }
+    }
 
     // ------------------------------------------------------------------ regression test
 
     @Operation(summary = "Danh sách regression test")
     @GetMapping("/regression")
-    public RegressionListResponse listRegression(@RequestParam(name = "status", required = false) String status) {
+    public RegressionListResponse listRegression(@RequestParam(name = "status", required = false) String status,
+                                                 @AuthenticationPrincipal UserDetails user) {
+        if (hidden()) {
+            return new RegressionListResponse(new RegressionKpis(0, 0, 0, 0, null, null), List.of());
+        }
         return views.regressionList(status);
     }
 
@@ -73,7 +94,9 @@ public class RegressionController {
     @GetMapping("/regression/preview")
     public RegressionPreviewResponse previewRegression(@RequestParam(name = "scenario_id") long scenarioId,
                                                        @RequestParam(name = "variant_ids", required = false) List<Long> variantIds,
-                                                       @RequestParam(name = "include_variants", defaultValue = "false") boolean includeVariants) {
+                                                       @RequestParam(name = "include_variants", defaultValue = "false") boolean includeVariants,
+                                                       @AuthenticationPrincipal UserDetails user) {
+        requireVisible();
         if (variantIds != null && variantIds.size() > 300) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "variant_ids tối đa 300 biến thể");
         }
@@ -84,7 +107,10 @@ public class RegressionController {
     @PostMapping("/regression")
     public ResponseEntity<CreateRegressionResponse> createRegression(@Valid @RequestBody CreateRegressionRequest body,
                                                                      @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireEngineer(user);
+        long uid = VehicSimAccess.requireRegressionRunner(user);
+        boolean reviewer = "REVIEWER".equals(VehicSimAccess.roleOf(user));
+        if (reviewer) requireVisible();
+        long projectId = reviewer ? projects.explicitProjectId() : access.projectId();
         access.limitWrites(uid, "regression");
         Map<String, Map<String, Object>> criteria = new LinkedHashMap<>();
         if (body.criteria() != null) {
@@ -94,15 +120,20 @@ public class RegressionController {
                 criteria.put(k, cleaned);
             });
         }
-        long id = regression.createTest(access.projectId(), uid, body.candidateVersionId(), body.scenarioId(),
-                body.includeOldCritical() == null || body.includeOldCritical(), body.includeAllVariants() == null || body.includeAllVariants(),
-                criteria, body.name(), body.variantIds());
+        long id = reviewer
+                ? regression.createTestAsReviewer(projectId, uid, body.candidateVersionId(), body.scenarioId(),
+                        body.includeOldCritical() == null || body.includeOldCritical(), body.includeAllVariants() == null || body.includeAllVariants(),
+                        criteria, body.name(), body.variantIds())
+                : regression.createTest(projectId, uid, body.candidateVersionId(), body.scenarioId(),
+                        body.includeOldCritical() == null || body.includeOldCritical(), body.includeAllVariants() == null || body.includeAllVariants(),
+                        criteria, body.name(), body.variantIds());
         return ResponseEntity.status(HttpStatus.CREATED).body(new CreateRegressionResponse(id, RegressionCodes.testCode(id)));
     }
 
     @Operation(summary = "Chi tiết một regression test")
     @GetMapping("/regression/{testId}")
-    public RegressionDetailResponse getRegression(@PathVariable long testId) {
+    public RegressionDetailResponse getRegression(@PathVariable long testId, @AuthenticationPrincipal UserDetails user) {
+        requireVisible();
         return views.regressionDetail(testId);
     }
 
@@ -110,7 +141,8 @@ public class RegressionController {
 
     @Operation(summary = "Tải gói kết quả của một regression đã chạy xong (JSON)")
     @GetMapping("/regression/{testId}/export.json")
-    public ResponseEntity<RegressionExport> exportRegressionJson(@PathVariable long testId) {
+    public ResponseEntity<RegressionExport> exportRegressionJson(@PathVariable long testId, @AuthenticationPrincipal UserDetails user) {
+        requireVisible();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + RegressionCodes.testCode(testId) + ".json\"")
                 .body(reports.export(testId));
@@ -118,7 +150,8 @@ public class RegressionController {
 
     @Operation(summary = "Tải gói kết quả của một regression đã chạy xong (CSV, mỗi dòng một cặp baseline–candidate)")
     @GetMapping("/regression/{testId}/export.csv")
-    public ResponseEntity<byte[]> exportRegressionCsv(@PathVariable long testId) {
+    public ResponseEntity<byte[]> exportRegressionCsv(@PathVariable long testId, @AuthenticationPrincipal UserDetails user) {
+        requireVisible();
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv; charset=utf-8"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + RegressionCodes.testCode(testId) + ".csv\"")
@@ -127,7 +160,10 @@ public class RegressionController {
 
     @Operation(summary = "Lịch sử quyết định của Reviewer và chuỗi baseline")
     @GetMapping("/decisions")
-    public DecisionHistory decisionHistory() {
+    public DecisionHistory decisionHistory(@AuthenticationPrincipal UserDetails user) {
+        if (hidden()) {
+            return new DecisionHistory(List.of(), List.of());
+        }
         return reports.decisionHistory();
     }
 
@@ -135,25 +171,31 @@ public class RegressionController {
 
     @Operation(summary = "Danh sách khuyến nghị kỹ thuật")
     @GetMapping("/recommendations")
-    public List<RecommendationListItem> listRecommendations() {
+    public List<RecommendationListItem> listRecommendations(@AuthenticationPrincipal UserDetails user) {
+        if (hidden()) {
+            return List.of();
+        }
         return views.recommendations();
     }
 
     @Operation(summary = "Chi tiết một khuyến nghị")
     @GetMapping("/recommendations/{testId}")
-    public RecommendationDetailResponse getRecommendation(@PathVariable long testId) {
+    public RecommendationDetailResponse getRecommendation(@PathVariable long testId, @AuthenticationPrincipal UserDetails user) {
+        requireVisible();
         return views.recommendationDetail(testId);
     }
 
-    @Operation(summary = "Reviewer Accept / Reject / yêu cầu thêm test", description = "Chỉ role REVIEWER; người tạo khuyến nghị không tự duyệt.")
+    @Operation(summary = "Reviewer Accept / Reject / yêu cầu thêm test",
+            description = "Chỉ role REVIEWER là thành viên workspace của project; người tạo khuyến nghị không tự duyệt.")
     @PostMapping("/recommendations/{testId}/decision")
     public RecommendationDetailResponse decide(@PathVariable long testId, @Valid @RequestBody DecisionRequest body,
                                                @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireReviewer(user);
+        requireVisible();
         if (!RegressionCodes.DECISIONS.contains(body.decision())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "decision phải thuộc [ACCEPT, REJECT, REQUEST_MORE_TESTS]");
         }
-        decisions.decide(access.projectId(), testId, uid, body.decision(), body.reason(), body.conditions(), body.confirmed());
+        decisions.decide(projects.explicitProjectId(), testId, uid, body.decision(), body.reason(), body.conditions(), body.confirmed());
         return views.recommendationDetail(testId);
     }
 }

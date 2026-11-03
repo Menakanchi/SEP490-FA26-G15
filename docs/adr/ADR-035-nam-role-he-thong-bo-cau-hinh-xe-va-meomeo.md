@@ -1,6 +1,7 @@
 # ADR-035 — 5 role hệ thống, mỗi người một role; bỏ cấu hình xe để so sánh và Meomeo Agent
 
 **Trạng thái:** Proposed 06/10/2026 (TrungDQ, nhánh `trungdam`; DB + phân quyền API đã làm, lọc theo workspace chưa — TD-30)
+**Quyền Reviewer được thay thế một phần bởi [ADR-049](ADR-049-reviewer-chay-regression-de-kiem-tra.md):** từ 02/11 được chạy regression để kiểm tra, vẫn không tự duyệt khuyến nghị mình tạo.
 **Phạm vi:** FE-01, FE-02, FE-04, FE-05, FE-14. **Thay** ADR-034 (role theo workspace), ADR-033 (cấu hình xe để
 so sánh), ADR-028 và ADR-029 (Meomeo Agent).
 

@@ -71,11 +71,14 @@ public final class RegressionRecords {
             long testId,
             long candidateVersionId,
             long baselineVersionId,
-            String status,
+            String decision,
             Long reviewedBy,
             LocalDateTime reviewedAt,
             String reviewNotes,
-            String reviewConditions) {
+            String reviewConditions,
+            long decisionId,
+            String reviewerName,
+            String source) {
     }
 
     /** Run REGRESSION của một test và run baseline nó được ghép (cùng biến thể + seed + xe + bộ mô phỏng). */

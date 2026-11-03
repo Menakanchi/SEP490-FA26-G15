@@ -7,6 +7,7 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { MVP_STEPS, type FlowStep } from "@/components/vehicsimFlow";
 import { ExperiencerHome } from "@/components/project/ProjectShell";
 import { ErrorNote, PillButton, StatCard, Tag, cx } from "@/components/VehicSimUi";
+import { ReviewerHome } from "@/components/reviewer/ReviewerHome";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { FamilyItem, RecommendationItem, RegressionList } from "@/types/vehicsim";
 
@@ -18,8 +19,11 @@ interface StepView {
   actions: { label: string; href: string; primary?: boolean }[];
 }
 
+/** Trang chủ theo role: REVIEWER có hàng đợi duyệt riêng, EXPERIENCER có project cá nhân, các role khác thấy vòng MVP. */
 export default function HomePage() {
+  const { user } = useAuth();
   const { isExperiencer } = useVehicSimContext();
+  if (user?.roleCode === "REVIEWER") return <ReviewerHome />;
   return isExperiencer ? <ExperiencerHome /> : <MvpLoopPage />;
 }
 

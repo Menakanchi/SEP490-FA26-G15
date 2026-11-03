@@ -90,7 +90,7 @@ mỗi màn có thanh tiến trình (`components/FlowBar.tsx`, danh sách bước
 Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  Spring Boot /api/v1/vehicsim/*  (controller/<chức năng>: chỉ đổi lỗi → HTTP)
                               │
                               ▼
-                  *Service (Java)  ──JdbcTemplate──▶  MySQL (29 bảng)
+                  *Service (Java)  ──JdbcTemplate──▶  MySQL (schema nhánh 30 bảng đề xuất; DB dev chưa áp 012)
                               │ dispatch(run_ids) sau commit
                               ▼
               thread pool `simulationExecutor` (CARLA: 1 luồng) → executeRun(run_id) → bundleForRun() (= JSON "Tải JSON chạy CARLA")
@@ -198,9 +198,10 @@ hiệu chuẩn xong (TD-17).
 - **Kết quả chấm** AEB/FCW nằm ngay trong `simulation_runs` (verdict, va chạm, min TTC, phanh oan,
   FCW…), chuỗi khung ở `telemetry_json`. Regression lưu số đếm + `regression_test_items`; bảng tổng hợp
   (`regression.summary`) tính lại từ run. Quyết định của Reviewer ở `engineering_recommendations`.
-- Schema có 29 bảng (13 FE, ADR-036 → ADR-038; 5 role hệ thống, mỗi người một role, ADR-035); code đọc/ghi 19 bảng. Bảng
-  chưa có code, nghĩa từng cột và lệnh nâng DB cũ ở
-  [database-schema.md](database-schema.md).
+- Schema trên nhánh đề xuất 30 bảng: ADR-047 thêm `recommendation_decisions` vào 29 bảng của ADR-036/038.
+  ADR-047 còn Proposed; người dùng chọn giữ code để nhóm duyệt; migration 013 (đánh số sau 012 admin-integrity của nhánh team).
+  Code duyệt/lịch sử trên nhánh cần bảng mới; không chạy code này với DB dev chưa nâng cấp.
+  Ý nghĩa từng cột và cách nâng/rollback ở [database-schema.md](database-schema.md).
 
 ## Regression và quyết định
 
@@ -220,9 +221,9 @@ Tiêu chí mặc định (`DEFAULT_CRITERIA` trong `regression.py`):
 
 Mọi tiêu chí đang bật phải qua thì verdict mới `PASSED`; trượt mà có ca tệ hơn baseline là `REGRESSED`,
 trượt tiêu chí khác là `FAILED` (giao diện gộp hai loại thành FAILED). Chốt xong thì tạo một
-`engineering_recommendations`. Chỉ **REVIEWER** được quyết định (`decide`) — Engineer / EXP tạo
-regression nhưng không tự duyệt (DB còn chặn người duyệt = người tạo); project cá nhân của EXP không
-có recommendation chờ duyệt: chủ project tự chọn ứng viên `PASSED` làm baseline theo cùng điều kiện dưới đây (ADR-046).
+`engineering_recommendations`. Chỉ **REVIEWER** được quyết định (`decide`). Theo [ADR-049](../adr/ADR-049-reviewer-chay-regression-de-kiem-tra.md), Reviewer cũng được tạo/chạy
+regression trong workspace của mình; người tạo khuyến nghị không tự duyệt (kể cả Reviewer tạo test; DB còn chặn người duyệt = người tạo);
+project cá nhân của EXP không có recommendation chờ duyệt: chủ project tự chọn ứng viên `PASSED` làm baseline theo cùng điều kiện dưới đây (ADR-046).
 Quyết định cần lý do
 và xác nhận; Accept chỉ khi test `PASSED`, baseline của test vẫn là BASELINE hiện hành
 và candidate vẫn là CANDIDATE. Accept: hạ baseline cũ `ARCHIVED` **trước**, rồi nâng
@@ -315,10 +316,10 @@ không được đưa lại vào API hiện tại; không giả lập sáu categ
   công khai và backend cảnh báo khi khởi động.
 - Vai trò (ADR-035): **mỗi người đúng một role hệ thống** (`users.role_id`) — `ADMIN`, `MANAGER` (tạo
   workspace, thêm Engineer/Reviewer; chỉ đọc phần kỹ thuật), `ENGINEER` (làm toàn bộ quy trình), `REVIEWER`
-  (chỉ duyệt recommendation), `EXPERIENCER` (tự đăng ký: project cá nhân, mô phỏng, tối ưu, regression; không
+  (đọc, chạy regression và duyệt recommendation theo ADR-049), `EXPERIENCER` (tự đăng ký: project cá nhân, mô phỏng, tối ưu, regression; không
   recommendation, không duyệt). Role khác EXPERIENCER do Admin cấp bằng `scripts/CreateAdmin.java --role …`
-  (API quản lý user là TD-28). EXPERIENCER làm việc trong project cá nhân (mục dưới); role khác vẫn dùng chung project nhóm,
-  lọc project theo workspace chưa làm (TD-30). App **public** nên giữ tự đăng ký.
+  (API quản lý user là TD-28). EXPERIENCER làm việc trong project cá nhân (mục dưới); Reviewer lọc project theo membership workspace
+  ([ADR-048](../adr/ADR-048-pham-vi-workspace-reviewer.md)); role khác vẫn dùng chung project nhóm (TD-30). App **public** nên giữ tự đăng ký.
 
 ## Project cá nhân của EXPERIENCER (31/10/2026)
 
@@ -333,9 +334,37 @@ không được đưa lại vào API hiện tại; không giả lập sáu categ
   để chọn bước gợi ý; giao diện không hiện dấu "đã xong". `POST /projects/{id}/regressions/{testId}/adopt`
   đổi baseline sang ứng viên đạt kiểm chứng (ADR-046) và mở vòng mới.
 - Project đang mở: frontend gửi header `X-VehicSim-Project`; `security/ProjectScope` (bean theo request) chọn project cho
-  `Queries.currentProject()`. EXPERIENCER chỉ mở được project `ACTIVE` của mình, không gửi header thì mở project hoạt động cập nhật gần
+  `ProjectAccess.currentProject()` (Reviewer đi qua `ReviewerScope`, mục dưới). EXPERIENCER chỉ mở được project `ACTIVE` của mình, không gửi header thì mở project hoạt động cập nhật gần
   nhất; role khác bỏ qua header và giữ project nhóm `ACTIVE` đầu tiên.
 - Lỗi project trả `{"code": "<TÊN_LỖI>", "detail": "<câu tiếng Việt>"}` (`exception/project/ProjectError`); lỗi khác giữ `{"detail"}`.
+
+## Trang chủ Reviewer, công việc và phạm vi dữ liệu (UC-62/UC-63)
+
+Trang `/` dùng `ReviewerHome` cho REVIEWER; `/validation/decisions` xem từng sự kiện duyệt và chuỗi baseline.
+`GET /api/v1/vehicsim/decisions` đọc `recommendation_decisions`; quyết định mới append metadata
+người duyệt, thời điểm, lý do, điều kiện và xác nhận cùng transaction cập nhật trạng thái/baseline.
+Snapshot cũ có `source=LEGACY_SNAPSHOT`, `confirmed=null`, không dựng lại lịch sử đã bị ghi đè (ADR-047).
+
+`ProjectAccess` request scope đọc principal/header và resolve một lần qua `ReviewerScope.project` theo
+`workspace_members`. Reviewer chọn project bằng `X-VehicSim-Project`; context trả `reviewer_projects`,
+`reviewer_can_decide` và cho phép `vehicle=null`. Frontend chờ context, chốt ID trước khi mount màn con;
+JSON, tải file, POST regression và POST quyết định dùng cùng ID. Đổi mật khẩu giữ project; đăng nhập khác/đăng xuất xóa lựa chọn.
+Reviewer tạo regression hoặc quyết định thiếu header trả 400. Ngoài scope: list rỗng, chi tiết/tải/chạy/quyết định 404; project/workspace
+lưu trữ chỉ đọc. Membership/trạng thái được kiểm lại và khóa trong transaction tạo regression hoặc quyết định.
+Quyền frontend `canRunRegression` mở riêng nút/form cho Reviewer; `canWrite` vẫn chỉ dành ADMIN/ENGINEER/EXPERIENCER.
+`GET /api/v1/vehicsim/reviewer/projects` chỉ cho REVIEWER, không phụ thuộc lựa chọn đang lỗi.
+Lỗi context không tự đổi project; nút chọn lại chỉ hiện khi Reviewer còn project hợp lệ. Role khác giữ
+context tốt gần nhất khi refresh lỗi. `Queries` không đọc HTTP/security; job nền nhận project ID tường minh.
+
+ENGINEER/REVIEWER dùng `/my-work`: `GET /api/v1/vehicsim/my/work`, `PUT /my/tasks/{id}/progress`,
+`POST /my/reports` (hai route sau cùng prefix `/api/v1/vehicsim`). Chỉ người được giao cập nhật tiến độ;
+DONE do Manager xác nhận; workspace/project lưu trữ khóa cập nhật. Báo cáo chỉ nhận project ACTIVE trong
+workspace ACTIVE mình còn membership, task của mình cùng project, link HTTP(S); Manager nhận thông báo.
+Lưu một task giữ nháp task khác, đóng/mở form giữ nháp, `/my-work?report=new` mở sẵn form báo cáo.
+
+Máy kiểm: `ReviewerScopeTest`, `VehicSimSecurityTest`, `SystemViewServiceTest`, `MemberWorkServiceTest`,
+`MemberWorkSecurityTest`, `RegressionDecisionTest`, `RegressionRepositoryTest`, `RegressionReportServiceTest`;
+test client `frontend/tests/reviewer-project.test.mjs` kiểm project qua token rotation và tải file.
 
 ## Bất biến và máy kiểm
 
@@ -368,6 +397,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Project cá nhân: chỉ chủ project chọn ứng viên làm baseline, chỉ khi test PASSED, baseline chưa đổi, ứng viên chưa quyết định, có lý do và xác nhận (ADR-046) | `ProjectServiceTest#aPassedCandidateBecomesTheBaselineWithTheReasonKept`, `ProjectServiceTest#adoptingNeedsAReasonAConfirmationAndAFinishedPassedTest`, `ProjectServiceTest#anOutdatedTestOrADecidedCandidateCannotChangeTheBaseline` |
 | Hành trình: bước đang chạy không tính là xong; thêm họ kịch bản sau không kéo bước baseline về; chỉ đếm run của bộ mô phỏng đang cấu hình | `ProjectServiceTest#theBaselineIsDoneOnlyWhenEveryCurrentVariantHasACompletedRun`, `ProjectServiceTest#addingAFamilyLaterKeepsTheBaselineStepDoneAndListsTheFamilyAsPending`, `ProjectServiceTest#onlyTheOwnerReadsTheJourneyCountedOnTheConfiguredSimulator` |
 | Không giới hạn số project; danh sách theo trạng thái, tìm theo tên, phân trang; có lượt chạy thì không đổi xe; còn việc chạy thì không lưu trữ / xoá; xoá vĩnh viễn phải gõ đúng tên | `ProjectServiceTest#thereIsNoLimitOnHowManyProjectsAreActive`, `ProjectServiceTest#theListIsPagedPerStatusAndSearchedByName`, `ProjectServiceTest#theVehicleIsLockedOnceTheProjectHasRuns`, `ProjectServiceTest#runningWorkBlocksArchiveAndDelete`, `ProjectServiceTest#deleteNeedsTheExactNameThenRemovesRowsAndRunFolders` |
+| Chỉ REVIEWER quyết định recommendation; REVIEWER được chạy regression, không ghi kịch bản/candidate/baseline độc lập; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#reviewerCanRunRegressionWithoutGainingScenarioOrCandidateWrites`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |
 | Người tạo khuyến nghị không tự duyệt | `RegressionDecisionTest#theAuthorOfTheRecommendationCannotApproveIt` |
 | Accept hạ baseline cũ trước rồi nâng candidate; Reject giữ baseline; Request more tests không đổi version | `RegressionDecisionTest#acceptDemotesTheOldBaselineBeforePromotingTheCandidate`, `RegressionDecisionTest#rejectMarksTheCandidateButKeepsTheBaseline`, `RegressionDecisionTest#requestingMoreTestsChangesNoVersion` |
 | Candidate chạy đúng seed baseline | _chưa có test_ (TD-33) |
@@ -381,7 +411,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Preview khớp bộ kịch bản thật của test (đã có test); run bị dừng/hỏng không cho verdict | `RegressionPairingTest#thePreviewMatchesTheScenarioSetOfTheTestThatIsCreated`, `RegressionPairingTest#aStoppedRunMakesTheTestFailWithoutVerdictOrRecommendation` |
 | Ngưỡng phanh oan mặc định 5 điểm %; test cũ giữ ngưỡng đã lưu (ADR-044) | `RegressionRulesTest#defaultFalseActivationThresholdIsFivePoints`, `RegressionRulesTest#aTestStoredWithTheOldThresholdIsStillJudgedByIt` |
 | Gói xuất chỉ cho test đã xong, không email, CSV chống công thức; lịch sử baseline gồm baseline khởi tạo | `RegressionReportServiceTest#anUnfinishedTestCannotBeExported`, `RegressionReportServiceTest#theExportCarriesTheManifestPairsSeedsAndDecisionButNoEmail`, `RegressionReportServiceTest#theCsvHasOneRowPerPairAndNeutralisesFormulas`, `RegressionReportServiceTest#theHistoryListsDecisionsNewestFirstAndTheBaselineChainWithItsInitialBaseline` |
-| Route xuất / lịch sử đọc được với mọi role; tạo regression chỉ ADMIN / ENGINEER / EXPERIENCER | `VehicSimSecurityTest#regressionExportsAndDecisionHistoryAreReadOnlyForEveryRole`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
+| Route xuất / lịch sử đọc được với mọi role; ADMIN / ENGINEER / EXPERIENCER tạo regression như cũ; REVIEWER cần project tường minh, membership và trạng thái ACTIVE | `VehicSimSecurityTest#regressionExportsAndDecisionHistoryAreReadOnlyForEveryRole`, `VehicSimSecurityTest#reviewerRegressionRequiresAnExplicitProjectAndHonoursWriteQuota`, `RegressionPairingTest#reviewerRegressionCannotStartWithoutMembershipOrInArchivedProjectsAndWorkspaces` |
 | Run baseline FAILED / STOPPED không bao giờ được ghép làm baseline của regression | `RegressionPairingTest#aStoppedOrFailedBaselineRunIsNeverReusedAsTheBaseline` |
 | Tập biến thể chọn tay: đúng các biến thể đã chọn, phải thuộc họ và không rỗng, preview khớp test; không gửi thì như cũ | `RegressionPairingTest#aHandPickedSetRunsExactlyThoseVariantsInFamilyOrderAndIsRecorded`, `RegressionPairingTest#aHandPickedSetMustBeNonEmptyAndBelongToTheFamily`, `RegressionPairingTest#thePreviewOfAHandPickedSetMatchesTheTestAndListsTheVariants`, `RegressionPairingTest#withoutVariantIdsTheOldSelectionIsKept` |
 | Ba mục tiêu ADR-040 hiện theo từng cặp nhưng không quyết định verdict; NULL giữ nguyên, không thành 0 | `RegressionRulesTest#objectivesAreShownPerPairButNeverDecideTheVerdict` |

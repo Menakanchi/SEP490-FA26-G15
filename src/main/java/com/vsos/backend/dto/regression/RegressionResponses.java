@@ -327,7 +327,8 @@ public final class RegressionResponses {
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record DecisionItem(String recommendationCode, String regressionCode, long testId, String baseline, String candidate,
-                               String decision, String reviewedBy, String reviewedAt, String reason, String conditions) {
+                               String decision, String reviewedBy, String reviewedAt, String reason, String conditions,
+                               long id, long reviewedByUserId, String source) {
     }
 
     /** {@code promoted_by} null = baseline khởi tạo của project, không do quyết định Accept nào nâng. */

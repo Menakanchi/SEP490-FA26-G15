@@ -35,7 +35,7 @@ export default function NewRegressionPage() {
 function NewRegressionForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const { ctx, canWrite, isExperiencer } = useVehicSimContext();
+  const { ctx, canWrite, canRunRegression, isExperiencer } = useVehicSimContext();
   const [candidateId, setCandidateId] = useState<number | null>(null);
   const [scenarioId, setScenarioId] = useState<number | null>(null);
   const [oldCritical, setOldCritical] = useState(true);
@@ -98,7 +98,7 @@ function NewRegressionForm() {
         ? Math.max(0, preview.variant_count - preview.baseline_runs_existing)
         : 0;
   const simulations = scenarios + extraBaseline;
-  const ready = canWrite && !!candidate && !!baseline && scenarioId !== null && scenarios > 0 && !submitting;
+  const ready = canRunRegression && !!candidate && !!baseline && scenarioId !== null && scenarios > 0 && !submitting;
 
   const submit = async () => {
     if (!ready || !candidate || scenarioId === null) return;
@@ -136,7 +136,7 @@ function NewRegressionForm() {
             variant="dark"
             onClick={submit}
             disabled={!ready}
-            title={!canWrite ? "Tài khoản người xem chỉ có quyền xem" : noCandidate ? "Cần tạo ứng viên trước" : undefined}
+            title={!canRunRegression ? "Project hiện tại không cho phép chạy kiểm thử hồi quy" : noCandidate ? "Cần tạo ứng viên trước" : undefined}
           >
             {submitting ? "Đang khởi chạy…" : "Chạy kiểm thử hồi quy"}
           </PillButton>
@@ -144,6 +144,7 @@ function NewRegressionForm() {
       }
     >
       <ErrorNote message={error} />
+      <p className="text-[12px] text-vehicsim-muted">Người tạo kiểm thử không tự duyệt khuyến nghị của kiểm thử đó.</p>
       <div className="flex w-full items-start gap-4">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <FormCard title="Phiên bản">

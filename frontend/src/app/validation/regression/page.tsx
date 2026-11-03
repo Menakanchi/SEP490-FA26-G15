@@ -14,7 +14,7 @@ const PAGE_SIZE = 10;
 
 export default function RegressionListPage() {
   const router = useRouter();
-  const { canWrite, ctx, isExperiencer } = useVehicSimContext();
+  const { canWrite, canRunRegression, ctx, isExperiencer } = useVehicSimContext();
   const createCandidateHref = isExperiencer && ctx ? `/projects/${ctx.project.id}/improve` : "/aeb";
   const conclusion = (testId: number) => (isExperiencer && ctx ? `/projects/${ctx.project.id}/rounds/${testId}` : `/validation/recommendations/${testId}`);
   const [data, setData] = useState<RegressionList | null>(null);
@@ -77,9 +77,9 @@ export default function RegressionListPage() {
       actions={
         <PillButton
           variant="dark"
-          href={canWrite ? "/validation/regression/new" : undefined}
-          disabled={!canWrite}
-          title={canWrite ? undefined : "Tài khoản người xem chỉ có quyền xem"}
+          href={canRunRegression ? "/validation/regression/new" : undefined}
+          disabled={!canRunRegression}
+          title={canRunRegression ? undefined : "Project hiện tại không cho phép chạy kiểm thử hồi quy"}
         >
           + Tạo kiểm thử hồi quy
         </PillButton>

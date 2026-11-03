@@ -66,6 +66,8 @@ class EngineerWorkspaceSecurityTest {
     private JwtService jwtService;
     @MockitoBean
     private UserDetailsService userDetailsService;
+    @MockitoBean
+    private ProjectAccess projectAccess;
 
     private static CustomUserDetails as(RoleCode code) {
         return new CustomUserDetails(User.builder()

@@ -46,6 +46,16 @@ public class RegressionRepository {
         this.db = db;
     }
 
+    /** Quyền quyết định được đọc và khoá trong transaction nghiệp vụ, không chỉ ở HTTP. */
+    public Row lockReviewAccess(long projectId, long userId) {
+        return db.first("""
+                SELECT p.status AS project_status, w.status AS workspace_status
+                  FROM projects p JOIN workspaces w ON w.id = p.workspace_id
+                  JOIN workspace_members m ON m.workspace_id = w.id
+                 WHERE p.id = ? AND m.user_id = ? FOR SHARE
+                """, projectId, userId);
+    }
+
     // ------------------------------------------------------------------ regression_tests
 
     /** Test thuộc project, hoặc null. */
@@ -168,8 +178,14 @@ public class RegressionRepository {
     }
 
     /** Ghi quyết định của Reviewer: trạng thái mới, người duyệt, lý do, điều kiện (null nếu không có). */
-    public void saveReview(long recommendationId, String status, long reviewerId, String notes, String conditions) {
+    public void saveReview(long recommendationId, String status, String decision, long reviewerId, String notes, String conditions) {
         var ts = Vs.now();
+        db.insert("""
+                INSERT INTO recommendation_decisions
+                    (recommendation_id, decision, reviewed_by_user_id, reviewer_name, reviewed_at, reason, review_conditions, confirmed, source)
+                SELECT ?, ?, u.id, CONCAT_WS(' ', u.last_name, u.middle_name, u.first_name), ?, ?, ?, TRUE, 'REVIEW'
+                  FROM users u WHERE u.id = ?
+                """, recommendationId, decision, ts, notes, conditions, reviewerId);
         db.update("""
                 UPDATE engineering_recommendations
                    SET status = ?, reviewed_by_user_id = ?, reviewed_at = ?, review_notes = ?, review_conditions = ?, updated_at = ?
@@ -180,15 +196,16 @@ public class RegressionRepository {
     /** Khuyến nghị đã có quyết định của project, mới nhất trước, kèm baseline của test. */
     public List<DecidedRecommendation> decidedRecommendations(long projectId) {
         return db.list("""
-                SELECT er.regression_test_id, er.candidate_aeb_version_id, er.status, er.reviewed_by_user_id, er.reviewed_at,
-                       er.review_notes, er.review_conditions, rt.baseline_aeb_version_id
-                  FROM engineering_recommendations er
+                SELECT d.id AS decision_id, er.regression_test_id, er.candidate_aeb_version_id, d.decision,
+                       d.reviewed_by_user_id, d.reviewer_name, d.reviewed_at, d.reason, d.review_conditions, d.source, rt.baseline_aeb_version_id
+                  FROM recommendation_decisions d
+                  JOIN engineering_recommendations er ON er.id = d.recommendation_id
                   JOIN regression_tests rt ON rt.id = er.regression_test_id
-                 WHERE er.project_id = ? AND er.status <> 'PENDING_REVIEW'
-                 ORDER BY er.reviewed_at DESC, er.id DESC
+                 WHERE er.project_id = ?
+                 ORDER BY d.reviewed_at DESC, d.id DESC
                 """, projectId).stream().map(r -> new DecidedRecommendation(r.lng("regression_test_id"), r.lng("candidate_aeb_version_id"),
-                r.lng("baseline_aeb_version_id"), r.str("status"), r.getLong("reviewed_by_user_id"), r.ts("reviewed_at"),
-                r.str("review_notes"), r.str("review_conditions"))).toList();
+                r.lng("baseline_aeb_version_id"), r.str("decision"), r.getLong("reviewed_by_user_id"), r.ts("reviewed_at"),
+                r.str("reason"), r.str("review_conditions"), r.lng("decision_id"), r.str("reviewer_name"), r.str("source"))).toList();
     }
 
     /** Project thuộc workspace thì mới có khuyến nghị (project cá nhân của EXP không có — ADR-035). */

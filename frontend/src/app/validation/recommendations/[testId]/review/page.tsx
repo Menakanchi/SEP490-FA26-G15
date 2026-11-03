@@ -13,11 +13,12 @@ import type { RecommendationDetail, ReviewDecision } from "@/types/vehicsim";
 
 type Decision = Exclude<ReviewDecision, "PENDING">;
 
+/** Luồng duyệt UC-62/UC-63 dùng project đã chốt và quyền backend theo workspace (ADR-048). */
 export default function ReviewPage() {
   const { testId } = useParams<{ testId: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const { refresh, canDecide } = useVehicSimContext();
+  const { ctx, refresh, canDecide } = useVehicSimContext();
   const [r, setR] = useState<RecommendationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checks, setChecks] = useState<boolean[]>([false, false, false, false, false]);
@@ -170,7 +171,9 @@ export default function ReviewPage() {
     >
       <ErrorNote message={error} />
       {final && <ErrorNote message={`Khuyến nghị này đã có quyết định cuối (${RECOMMENDATION_STATUS[r.recommendation_status].label}).`} />}
-      {!canDecide && <ErrorNote message="Chỉ Người duyệt (REVIEWER) được ra quyết định; người làm không tự duyệt việc của mình." />}
+      {!canDecide && <ErrorNote message={user?.roleCode === "REVIEWER"
+        ? ctx?.reviewer_can_decide === false ? "Project hoặc workspace đã lưu trữ, chỉ được xem lịch sử." : "Đang kiểm tra quyền của project."
+        : "Chỉ Người duyệt (REVIEWER) được ra quyết định; người làm không tự duyệt việc của mình."} />}
       <CarlaCaveat caveat={r.simulator_caveat} />
 
       <div className="flex w-full items-start gap-4">

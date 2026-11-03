@@ -1,8 +1,9 @@
 -- =====================================================================
--- VehicSim — MySQL 8.4 schema (29 bảng) — bản chuẩn hóa Scope luận văn & Đồ án tốt nghiệp
+-- VehicSim — MySQL 8.4 schema (30 bảng) — bản chuẩn hóa Scope luận văn & Đồ án tốt nghiệp
+-- Bảng lịch sử thứ 30 thuộc ADR-047 Proposed (migration 013).
 -- Phạm vi kỹ thuật: 4 tham số AEB + 3 mục tiêu MOBO + 7 Category kịch bản Euro NCAP
 -- Từ điển dữ liệu (nghĩa từng cột, ai ghi, JSON): docs/vehicsim/database-schema.md
--- DB đã tạo từ bản cũ hơn: chạy các file trong database/mysql/migrations/ theo thứ tự (mới nhất: 007)
+-- DB đã tạo từ bản cũ hơn: chạy các file trong database/mysql/migrations/ theo thứ tự (mới nhất: 013)
 -- Backend: Java Spring Boot 3 (Java 17/21) + Spring Data JPA / Redis · Simulator: CARLA 0.9.16 + bộ động học
 -- Charset: utf8mb4 / utf8mb4_0900_ai_ci · Yêu cầu MySQL >= 8.0.16 (CHECK có hiệu lực)
 --
@@ -744,7 +745,7 @@ CREATE TABLE root_causes (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 8. PHÂN TÍCH, KẾT QUẢ REGRESSION, KHUYẾN NGHỊ (FE-10, FE-11, FE-12)  — 3 bảng
+-- 8. PHÂN TÍCH, KẾT QUẢ REGRESSION, KHUYẾN NGHỊ (FE-10, FE-11, FE-12)  — 3 bảng (gồm lịch sử Reviewer đề xuất)
 -- ---------------------------------------------------------------------
 CREATE TABLE analysis_results (
   id                       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -813,6 +814,26 @@ CREATE TABLE engineering_recommendations (
   CONSTRAINT fk_er_reviewer  FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT ck_er_decision CHECK ((status = 'PENDING_REVIEW') = (reviewed_by_user_id IS NULL AND reviewed_at IS NULL)),
   CONSTRAINT ck_er_no_self_review CHECK (reviewed_by_user_id IS NULL OR reviewed_by_user_id <> created_by_user_id)
+) ENGINE=InnoDB;
+
+-- Lịch sử Reviewer — đề xuất ADR-047, chờ nhóm chốt.
+CREATE TABLE recommendation_decisions (
+  id                   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  recommendation_id    BIGINT UNSIGNED NOT NULL,
+  decision             ENUM('ACCEPT','REJECT','REQUEST_MORE_TESTS') NOT NULL,
+  reviewed_by_user_id   BIGINT UNSIGNED NOT NULL,
+  reviewer_name        VARCHAR(255) NOT NULL COMMENT 'Tên hiển thị chụp lúc quyết định hoặc lúc backfill',
+  reviewed_at          DATETIME NOT NULL,
+  reason               TEXT NULL,
+  review_conditions    TEXT NULL,
+  confirmed            BOOLEAN NULL COMMENT 'NULL = dữ liệu cũ không lưu bằng chứng xác nhận',
+  source               ENUM('REVIEW','LEGACY_SNAPSHOT') NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_rd_recommendation_time (recommendation_id, reviewed_at, id),
+  KEY idx_rd_reviewer (reviewed_by_user_id),
+  CONSTRAINT fk_rd_recommendation FOREIGN KEY (recommendation_id) REFERENCES engineering_recommendations(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_rd_reviewer FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT ck_rd_evidence CHECK (source = 'LEGACY_SNAPSHOT' OR (confirmed IS NOT NULL AND confirmed = TRUE AND reason IS NOT NULL AND CHAR_LENGTH(TRIM(reason)) > 0))
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------

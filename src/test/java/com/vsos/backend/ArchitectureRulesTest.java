@@ -19,6 +19,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ArchitectureRulesTest {
 
+    @Test
+    void repositoriesNeverResolveHttpOrAuthenticationContext() throws IOException {
+        for (Path path : files(JAVA.resolve("com/vsos/backend/repository"), ".java")) {
+            assertThat(Files.readString(path)).as(path.toString())
+                    .doesNotContain("org.springframework.security", "org.springframework.web", "jakarta.servlet", "com.vsos.backend.security", "com.vsos.backend.service");
+        }
+    }
+
     private static final Path JAVA = Path.of("src/main/java");
     private static final Path WORKER = Path.of("worker");
 
