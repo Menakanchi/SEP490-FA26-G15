@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { vehicsimApi } from "@/services/vehicsim";
 import type {
   TaskPriority,
+  MemberTaskStatus,
   TaskStatus,
   WorkspaceDetail,
   WorkspaceMember,
@@ -29,6 +30,8 @@ const PRIORITY: Record<TaskPriority, { label: string; tone: "neutral" | "info" |
   URGENT: { label: "Khẩn", tone: "danger" },
 };
 const STATUSES = Object.keys(STATUS) as TaskStatus[];
+/** Người được giao tự đặt các trạng thái này; DONE do Manager xác nhận. */
+const MEMBER_STATUSES = STATUSES.filter((s): s is MemberTaskStatus => s !== "DONE");
 const PRIORITIES = Object.keys(PRIORITY) as TaskPriority[];
 
 /** Ngày hôm nay theo giờ máy, dạng yyyy-MM-dd cho ô chọn ngày. */
@@ -190,7 +193,7 @@ export default function WorkspaceTasksPage() {
         const body = { ...toRequest(t), status: next, progress_pct: nextProgress };
         await vehicsimApi.updateWorkspaceTask(id, t.id, body);
       } else {
-        await vehicsimApi.updateTaskStatus(t.id, { status: next, progress_pct: nextProgress });
+        await vehicsimApi.updateMyTaskProgress(t.id, next as MemberTaskStatus, nextProgress);
       }
       setNotice(`Đã đổi trạng thái task #${t.id} thành “${STATUS[next].label}”.`);
       await loadTasks();
@@ -221,10 +224,7 @@ export default function WorkspaceTasksPage() {
           progress_pct: p,
         });
       } else {
-        await vehicsimApi.updateTaskStatus(statusModalTask.id, {
-          status: modalStatus,
-          progress_pct: p,
-        });
+        await vehicsimApi.updateMyTaskProgress(statusModalTask.id, modalStatus as MemberTaskStatus, p);
       }
       setNotice(`Đã cập nhật tiến độ task #${statusModalTask.id} (${p}%, ${STATUS[modalStatus].label}).`);
       setStatusModalTask(null);
@@ -479,7 +479,7 @@ export default function WorkspaceTasksPage() {
                   <Tag tone={PRIORITY[t.priority].tone}>{PRIORITY[t.priority].label}</Tag>
                 </span>
                 <span className="w-[150px] pr-3">
-                  {active ? (
+                  {active && (isManagerOrAdmin || t.status !== "DONE") ? (
                     <select
                       aria-label={`Trạng thái của ${t.title}`}
                       value={t.status}
@@ -487,7 +487,7 @@ export default function WorkspaceTasksPage() {
                       onChange={(e) => quickStatus(t, e.target.value as TaskStatus)}
                       className="w-full cursor-pointer rounded-full border border-solid border-vehicsim-line bg-white px-3 py-[5px] text-[12px] font-semibold text-vehicsim-ink disabled:opacity-50"
                     >
-                      {STATUSES.map((s) => (
+                      {(isManagerOrAdmin ? STATUSES : MEMBER_STATUSES).map((s) => (
                         <option key={s} value={s}>
                           {STATUS[s].label}
                         </option>
@@ -568,7 +568,7 @@ export default function WorkspaceTasksPage() {
                       }}
                       className={inputCls}
                     >
-                      {STATUSES.map((s) => (
+                      {(isManagerOrAdmin ? STATUSES : MEMBER_STATUSES).map((s) => (
                         <option key={s} value={s}>{STATUS[s].label}</option>
                       ))}
                     </select>

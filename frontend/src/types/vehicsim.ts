@@ -935,20 +935,7 @@ export interface VehicleDetail extends VehicleSummary {
   usage: VehicleUsage[];
 }
 
-// FE-03 & FE-14: Kỹ sư tương tác task, nộp báo cáo, chat workspace
-export interface TaskStatusUpdateRequest {
-  status: TaskStatus;
-  progress_pct: number;
-}
-
-export interface SubmitReportRequest {
-  title: string;
-  content: string;
-  task_id?: number | null;
-  project_id?: number | null;
-  attachment_url?: string | null;
-}
-
+// FE-03: chat workspace
 export interface WorkspaceChatMessage {
   id: number;
   workspace_id: number;

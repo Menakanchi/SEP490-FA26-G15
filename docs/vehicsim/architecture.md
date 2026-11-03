@@ -356,7 +356,16 @@ Quyền frontend `canRunRegression` mở riêng nút/form cho Reviewer; `canWrit
 Lỗi context không tự đổi project; nút chọn lại chỉ hiện khi Reviewer còn project hợp lệ. Role khác giữ
 context tốt gần nhất khi refresh lỗi. `Queries` không đọc HTTP/security; job nền nhận project ID tường minh.
 
-ENGINEER/REVIEWER dùng `/my-work`: `GET /api/v1/vehicsim/my/work`, `PUT /my/tasks/{id}/progress`,
+Quyền workspace (03/11/2026): mọi route workspace cần MANAGER / ENGINEER / REVIEWER (`VehicSimAccess.requireWorkspaceRole`);
+ADMIN quản trị workspace ở `/admin`, EXPERIENCER không vào. Xem workspace, thành viên, chat: Manager được gán hoặc thành viên
+(`WorkspaceService.requireMemberOrManager`, ngoài phạm vi 404). Task và báo cáo của người khác chỉ người được giao / người nộp
+và Manager của workspace xem: danh sách `/workspaces/{id}/tasks|reports` lọc về của mình với thành viên, `GET /tasks/{id}` và
+`GET /reports/{id}` trả 404 cho người khác; `/my-tasks`, `/my-reports` chỉ trong workspace còn membership. Danh sách workspace
+quản lý, thêm / bớt thành viên, giao / sửa / xoá task, duyệt báo cáo chỉ MANAGER được gán (`requireMemberManager`).
+`EngineerWorkspaceController` giữ `/my-workspaces`, `/my-tasks`, `/my-reports`, chi tiết task / báo cáo và chat; cập nhật tiến độ và
+nộp báo cáo chỉ còn ở `/my/...` bên dưới (route `PATCH|PUT /tasks/{id}/status`, `POST /reports` trùng đã gỡ).
+
+`/my-work`: `GET /api/v1/vehicsim/my/work`, `PUT /my/tasks/{id}/progress`,
 `POST /my/reports` (hai route sau cùng prefix `/api/v1/vehicsim`). Chỉ người được giao cập nhật tiến độ;
 DONE do Manager xác nhận; workspace/project lưu trữ khóa cập nhật. Báo cáo chỉ nhận project ACTIVE trong
 workspace ACTIVE mình còn membership, task của mình cùng project, link HTTP(S); Manager nhận thông báo.

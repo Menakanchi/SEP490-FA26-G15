@@ -53,14 +53,17 @@ public class WorkspaceTaskService {
         this.notifications = notifications;
     }
 
-    /** M7: task của workspace, lọc tuỳ chọn theo trạng thái và người nhận ({@code assigneeId = 0} = chưa giao ai). */
-    public List<TaskItem> list(long userId, String role, long workspaceId, String status, Long assigneeId) {
-        workspaces.requireAccessible(userId, role, workspaceId);
+    /**
+     * M7: task của workspace, lọc tuỳ chọn theo trạng thái và người nhận ({@code assigneeId = 0} = chưa giao ai). Manager của workspace
+     * thấy mọi task; thành viên chỉ thấy task giao cho chính mình (bỏ qua bộ lọc người nhận).
+     */
+    public List<TaskItem> list(long userId, long workspaceId, String status, Long assigneeId) {
+        WorkspaceSummary ws = workspaces.requireMemberOrManager(userId, workspaceId);
         String s = blankToNull(status);
         if (s != null && !STATUSES.contains(s)) {
             throw new InvalidRequestException("Trạng thái phải thuộc " + STATUSES);
         }
-        return tasks.list(workspaceId, s, assigneeId);
+        return tasks.list(workspaceId, s, WorkspaceService.isManagerOf(ws, userId) ? assigneeId : Long.valueOf(userId));
     }
 
     /** M6: giao task mới. */
@@ -192,51 +195,27 @@ public class WorkspaceTaskService {
     private record Fields(String title, String description, String priority, String status, int progress, Long assigneeId,
                           Long projectId, LocalDate dueDate) {
     }
-    /** Lấy chi tiết một task (FE-03). */
-    public TaskItem getTask(long userId, String role, long taskId) {
-        TaskItem t = tasks.findById(taskId);
+    /** Chi tiết một task: chỉ người được giao (còn là thành viên) và Manager của workspace; người khác nhận 404. */
+    public TaskItem getTask(long userId, long taskId) {
+        Long workspaceId = tasks.workspaceOf(taskId);
+        TaskItem t = workspaceId == null ? null : tasks.find(workspaceId, taskId);
         if (t == null) {
+            throw new NotFoundException("task");
+        }
+        WorkspaceSummary ws = workspaces.requireMemberOrManager(userId, workspaceId);
+        boolean assignee = t.assignee() != null && t.assignee().id() == userId;
+        if (!assignee && !WorkspaceService.isManagerOf(ws, userId)) {
             throw new NotFoundException("task");
         }
         return t;
     }
 
     /** Danh sách task được giao cho người dùng hiện tại (FE-03, FE-14). */
-    public List<TaskItem> listMyTasks(long userId, String role, String status, Long projectId) {
+    public List<TaskItem> listMyTasks(long userId, String status, Long projectId) {
         String s = blankToNull(status);
         if (s != null && !STATUSES.contains(s)) {
             throw new InvalidRequestException("Trạng thái phải thuộc " + STATUSES);
         }
         return tasks.listForAssignee(userId, s, projectId);
-    }
-
-    /** Kỹ sư cập nhật tiến độ / trạng thái task được giao cho mình (FE-03). */
-    @Transactional
-    public TaskItem updateStatus(long userId, String role, long taskId, String status, Integer progressPct) {
-        TaskItem current = tasks.findById(taskId);
-        if (current == null) {
-            throw new NotFoundException("task");
-        }
-        boolean isAssignee = current.assignee() != null && current.assignee().id() == userId;
-        boolean isAdmin = "ADMIN".equals(role);
-        boolean isManager = "MANAGER".equals(role);
-        if (!isAssignee && !isAdmin && !isManager) {
-            throw new InvalidRequestException("Bạn chỉ có thể cập nhật trạng thái của task được giao cho mình");
-        }
-        String s = blankToNull(status);
-        if (s == null || !STATUSES.contains(s)) {
-            throw new InvalidRequestException("Trạng thái phải thuộc " + STATUSES);
-        }
-        int progress = progressPct != null ? progressPct : current.progressPct();
-        if (progress < 0 || progress > 100) {
-            throw new InvalidRequestException("Tiến độ từ 0 đến 100");
-        }
-        if ("DONE".equals(s)) {
-            progress = 100;
-        }
-        tasks.updateStatus(taskId, s, progress);
-        AuditLog.event("workspace.task_status_update", "success", "task_id", taskId, "by", userId,
-                "status", s, "progress", progress);
-        return tasks.findById(taskId);
     }
 }

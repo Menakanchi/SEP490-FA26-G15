@@ -51,14 +51,14 @@ public class WorkspaceService {
     }
 
     /** M2: thông tin workspace và các project bên trong. */
-    public WorkspaceDetail detail(long userId, String role, long workspaceId) {
-        WorkspaceSummary ws = requireAccessible(userId, role, workspaceId);
+    public WorkspaceDetail detail(long userId, long workspaceId) {
+        WorkspaceSummary ws = requireMemberOrManager(userId, workspaceId);
         return new WorkspaceDetail(ws, repo.projectsOf(workspaceId));
     }
 
     /** M3: mọi thành viên của workspace. */
-    public List<MemberItem> members(long userId, String role, long workspaceId) {
-        requireAccessible(userId, role, workspaceId);
+    public List<MemberItem> members(long userId, long workspaceId) {
+        requireMemberOrManager(userId, workspaceId);
         return repo.membersOf(workspaceId);
     }
 
@@ -148,6 +148,20 @@ public class WorkspaceService {
     }
 
     /** Workspace mà người này được quản lý (Manager được gán hoặc ADMIN); không thì 404. Dùng chung với {@link WorkspaceTaskService}. */
+    /** Workspace mà người này là Manager được gán hoặc thành viên; không thì 404 (không lộ workspace của người khác). */
+    public WorkspaceSummary requireMemberOrManager(long userId, long workspaceId) {
+        WorkspaceSummary ws = repo.find(workspaceId);
+        if (ws == null || !(ws.manager().id() == userId || repo.isMember(workspaceId, userId))) {
+            throw new NotFoundException("workspace");
+        }
+        return ws;
+    }
+
+    /** Người này có phải Manager được gán của workspace không. */
+    public static boolean isManagerOf(WorkspaceSummary ws, long userId) {
+        return ws.manager().id() == userId;
+    }
+
     public WorkspaceSummary requireAccessible(long userId, String role, long workspaceId) {
         WorkspaceSummary ws = repo.find(workspaceId);
         if (ws == null || (!isAdmin(role) && ws.manager().id() != userId)) {
@@ -167,9 +181,6 @@ public class WorkspaceService {
     }
     /** Danh sách workspace người dùng tham gia (Manager: managed, Engineer/Reviewer: member). */
     public List<WorkspaceSummary> listMyWorkspaces(long userId, String role) {
-        if (isAdmin(role)) {
-            return repo.listAll();
-        }
         if ("MANAGER".equals(role)) {
             return repo.listManagedBy(userId);
         }
@@ -177,21 +188,15 @@ public class WorkspaceService {
     }
 
     /** Lấy tin nhắn trao đổi trong workspace (FE-03). */
-    public List<ChatMessage> listMessages(long userId, String role, long workspaceId, int limit) {
-        WorkspaceSummary ws = repo.find(workspaceId);
-        if (ws == null || (!isAdmin(role) && !repo.isMemberOrManager(workspaceId, userId))) {
-            throw new NotFoundException("workspace");
-        }
+    public List<ChatMessage> listMessages(long userId, long workspaceId, int limit) {
+        requireMemberOrManager(userId, workspaceId);
         return repo.listMessages(workspaceId, Math.min(Math.max(limit, 1), 200));
     }
 
     /** Gửi tin nhắn trao đổi trong workspace (FE-03). */
     @Transactional
-    public ChatMessage sendMessage(long userId, String role, long workspaceId, String messageText) {
-        WorkspaceSummary ws = repo.find(workspaceId);
-        if (ws == null || (!isAdmin(role) && !repo.isMemberOrManager(workspaceId, userId))) {
-            throw new NotFoundException("workspace");
-        }
+    public ChatMessage sendMessage(long userId, long workspaceId, String messageText) {
+        WorkspaceSummary ws = requireMemberOrManager(userId, workspaceId);
         requireActive(ws);
         String text = messageText == null ? "" : messageText.trim();
         if (text.isEmpty()) {

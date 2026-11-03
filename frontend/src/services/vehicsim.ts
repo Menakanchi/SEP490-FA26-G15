@@ -55,8 +55,6 @@ import type {
   WorkspaceTask,
   WorkspaceTaskRequest,
   SendChatMessageRequest,
-  SubmitReportRequest,
-  TaskStatusUpdateRequest,
   WorkspaceChatMessage,
 } from "@/types/vehicsim";
 
@@ -260,16 +258,6 @@ export const vehicsimApi = {
   myTasks: (filters: { status?: string; project_id?: number } = {}) =>
     apiRequest<WorkspaceTask[]>(`/vehicsim/my-tasks${query(filters)}`),
   getTask: (taskId: number) => apiRequest<WorkspaceTask>(`/vehicsim/tasks/${taskId}`),
-  updateTaskStatus: (taskId: number, body: TaskStatusUpdateRequest) =>
-    apiRequest<WorkspaceTask>(`/vehicsim/tasks/${taskId}/status`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    }),
-  submitReport: (body: SubmitReportRequest) =>
-    apiRequest<WorkspaceReport>("/vehicsim/reports", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
   myReports: (filters: { status?: string; project_id?: number } = {}) =>
     apiRequest<WorkspaceReport[]>(`/vehicsim/my-reports${query(filters)}`),
   getReport: (reportId: number) => apiRequest<WorkspaceReport>(`/vehicsim/reports/${reportId}`),

@@ -26,8 +26,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * HTTP của "Nhiệm vụ & báo cáo" phía thành viên workspace ({@code /api/v1/vehicsim/my/...}): ENGINEER / REVIEWER xem task được giao,
- * cập nhật tiến độ, nộp báo cáo (luật role ở {@link VehicSimAccess#requireWorkspaceMember}). Nghiệp vụ ở {@link MemberWorkService}.
+ * HTTP của "Nhiệm vụ & báo cáo" ({@code /api/v1/vehicsim/my/...}): xem task được giao, cập nhật tiến độ, nộp báo cáo. Role MANAGER /
+ * ENGINEER / REVIEWER ({@link VehicSimAccess#requireWorkspaceRole}); chỉ người được giao sửa tiến độ, chỉ thành viên workspace nộp báo
+ * cáo vào project của workspace đó, Manager nhận thông báo. Nghiệp vụ ở {@link MemberWorkService}.
  */
 @RestController
 @RequestMapping("/api/v1/vehicsim/my")
@@ -42,14 +43,14 @@ public class MemberWorkController {
     @Operation(summary = "Task được giao, báo cáo đã nộp và project nộp được báo cáo của tôi")
     @GetMapping("/work")
     public MyWork myWork(@AuthenticationPrincipal UserDetails user) {
-        return work.myWork(VehicSimAccess.requireWorkspaceMember(user));
+        return work.myWork(VehicSimAccess.requireWorkspaceRole(user));
     }
 
     @Operation(summary = "Cập nhật trạng thái (TODO / IN_PROGRESS / REVIEW) và tiến độ task được giao cho tôi")
     @PutMapping("/tasks/{taskId}/progress")
     public MyTaskItem updateProgress(@PathVariable long taskId, @Valid @RequestBody TaskProgressRequest body,
                                      @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceMember(user);
+        long uid = VehicSimAccess.requireWorkspaceRole(user);
         access.limitWrites(uid, "workspace_task");
         return work.updateProgress(uid, taskId, body);
     }
@@ -57,7 +58,7 @@ public class MemberWorkController {
     @Operation(summary = "Nộp báo cáo công việc cho một project trong workspace của tôi")
     @PostMapping("/reports")
     public ResponseEntity<ReportItem> submitReport(@Valid @RequestBody ReportSubmitRequest body, @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceMember(user);
+        long uid = VehicSimAccess.requireWorkspaceRole(user);
         access.limitWrites(uid, "workspace_report");
         return ResponseEntity.status(HttpStatus.CREATED).body(work.submitReport(uid, body));
     }

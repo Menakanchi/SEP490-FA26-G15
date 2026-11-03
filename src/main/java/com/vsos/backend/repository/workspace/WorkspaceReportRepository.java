@@ -95,15 +95,24 @@ public class WorkspaceReportRepository {
                 """, projectId, taskId, submitterId, title, content, attachmentUrl);
     }
 
+    /** Workspace chứa báo cáo (qua project), hoặc null. */
+    public Long workspaceOf(long reportId) {
+        Object id = db.scalar("SELECT p.workspace_id FROM task_reports r JOIN projects p ON p.id = r.project_id WHERE r.id = ?", reportId);
+        return id == null ? null : ((Number) id).longValue();
+    }
+
     /** Báo cáo theo id. */
     public ReportItem findById(long reportId) {
         Row row = db.first(SELECT + " WHERE r.id = ?", reportId);
         return row == null ? null : toItem(row);
     }
 
-    /** Danh sách báo cáo do người dùng này nộp. */
+    /** Báo cáo người dùng này đã nộp, chỉ trong workspace người đó còn là thành viên. */
     public List<ReportItem> listForSubmitter(long submitterId, String status, Long projectId) {
-        StringBuilder sql = new StringBuilder(SELECT).append(" WHERE r.submitted_by_user_id = ?");
+        StringBuilder sql = new StringBuilder(SELECT).append("""
+                 WHERE r.submitted_by_user_id = ?
+                   AND EXISTS (SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = p.workspace_id AND wm.user_id = r.submitted_by_user_id)
+                """);
         List<Object> args = new ArrayList<>(List.of(submitterId));
         if (status != null) {
             sql.append(" AND r.status = ?");

@@ -36,15 +36,16 @@ import com.vsos.backend.config.VehicSimProperties;
 
 
 /**
- * Quyền của màn quản lý workspace qua bộ lọc bảo mật thật: chưa đăng nhập 401; chỉ MANAGER / ADMIN vào được, ENGINEER / REVIEWER /
- * EXPERIENCER bị 403 ở mọi route; thêm / bớt thành viên chịu hạn mức ghi. Service giả — không cần MySQL / Redis.
+ * Quyền của workspace qua bộ lọc bảo mật thật: chưa đăng nhập 401; xem workspace / thành viên / task / báo cáo cho MANAGER, ENGINEER,
+ * REVIEWER (từng bản ghi lọc ở service); danh sách workspace quản lý, quản lý thành viên, giao / sửa / xoá task, duyệt báo cáo chỉ
+ * MANAGER; ADMIN / EXPERIENCER bị 403 ở mọi route; ghi chịu hạn mức. Service giả — không cần MySQL / Redis.
  */
 @WebMvcTest(WorkspaceController.class)
 @Import({SecurityConfig.class, VehicSimAccess.class})
 class WorkspaceSecurityTest {
 
     private static final String BASE = "/api/v1/vehicsim/workspaces";
-    private static final Set<RoleCode> MANAGERS = Set.of(RoleCode.MANAGER, RoleCode.ADMIN);
+    private static final Set<RoleCode> WORKSPACE_ROLES = Set.of(RoleCode.MANAGER, RoleCode.ENGINEER, RoleCode.REVIEWER);
 
     @TestConfiguration
     static class PropsConfig {
@@ -121,16 +122,17 @@ class WorkspaceSecurityTest {
     }
 
     @Test
-    void onlyManagersAndAdminsCanManageWorkspaces() throws Exception {
+    void membersReadTheirWorkspaceButOnlyTheManagerManagesIt() throws Exception {
         for (RoleCode code : RoleCode.values()) {
             for (MockHttpServletRequestBuilder route : routes()) {
+                var built = route.buildRequest(new org.springframework.mock.web.MockServletContext());
+                boolean memberRead = "GET".equals(built.getMethod()) && built.getRequestURI().matches(BASE + "/1(/members|/tasks|/reports)?");
+                boolean allowed = memberRead ? WORKSPACE_ROLES.contains(code) : code == RoleCode.MANAGER;
                 int status = statusOf(route, code);
-                boolean memberWrite = route.buildRequest(new org.springframework.mock.web.MockServletContext()).getMethod().matches("POST|DELETE")
-                        && route.buildRequest(new org.springframework.mock.web.MockServletContext()).getRequestURI().contains("/members");
-                if (MANAGERS.contains(code) && !(code == RoleCode.ADMIN && memberWrite)) {
-                    assertThat(status).as("%s được vào", code).isBetween(200, 299);
+                if (allowed) {
+                    assertThat(status).as("%s %s được vào", code, built.getRequestURI()).isBetween(200, 299);
                 } else {
-                    assertThat(status).as("%s bị chặn", code).isEqualTo(403);
+                    assertThat(status).as("%s %s bị chặn", code, built.getRequestURI()).isEqualTo(403);
                 }
             }
         }

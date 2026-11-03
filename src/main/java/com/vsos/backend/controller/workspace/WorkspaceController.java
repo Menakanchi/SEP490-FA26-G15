@@ -38,8 +38,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * HTTP của màn quản lý workspace (Manager — M1…M9, {@code /api/v1/vehicsim/workspaces/...}). Mọi route cần MANAGER hoặc ADMIN
- * (luật ở {@link VehicSimAccess}); Manager chỉ thấy workspace mình được gán. Lớp này chỉ nhận request; nghiệp vụ ở
+ * HTTP của workspace (M1…M9, {@code /api/v1/vehicsim/workspaces/...}). Xem workspace, thành viên, task, báo cáo: MANAGER / ENGINEER /
+ * REVIEWER là Manager hoặc thành viên của workspace đó; thành viên chỉ thấy task giao cho mình và báo cáo mình nộp. Quản lý thành viên,
+ * giao / sửa / xoá task, duyệt báo cáo: chỉ MANAGER được gán (luật role ở {@link VehicSimAccess}). Lớp này chỉ nhận request; nghiệp vụ ở
  * {@link WorkspaceService} / {@link WorkspaceTaskService} / {@link WorkspaceReportService}, lỗi đổi thành mã HTTP ở ApiExceptionHandler.
  */
 @RestController
@@ -54,32 +55,30 @@ public class WorkspaceController {
     private final WorkspaceReportService reports;
     private final VehicSimAccess access;
 
-    @Operation(summary = "M1 — Workspace tôi quản lý (ADMIN: mọi workspace)")
+    @Operation(summary = "M1 — Workspace tôi quản lý")
     @GetMapping("/workspaces")
     public List<WorkspaceSummary> list(@AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
+        long uid = VehicSimAccess.requireMemberManager(user);
         return workspaces.listWorkspaces(uid, VehicSimAccess.roleOf(user));
     }
 
     @Operation(summary = "M2 — Chi tiết workspace và các project bên trong")
     @GetMapping("/workspaces/{workspaceId}")
     public WorkspaceDetail detail(@PathVariable long workspaceId, @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
-        return workspaces.detail(uid, VehicSimAccess.roleOf(user), workspaceId);
+        return workspaces.detail(VehicSimAccess.requireWorkspaceRole(user), workspaceId);
     }
 
     @Operation(summary = "M3 — Thành viên của workspace")
     @GetMapping("/workspaces/{workspaceId}/members")
     public List<MemberItem> members(@PathVariable long workspaceId, @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
-        return workspaces.members(uid, VehicSimAccess.roleOf(user), workspaceId);
+        return workspaces.members(VehicSimAccess.requireWorkspaceRole(user), workspaceId);
     }
 
     @Operation(summary = "M4 — Tài khoản ENGINEER / REVIEWER có thể thêm (lọc theo email hoặc tên)")
     @GetMapping("/workspaces/{workspaceId}/member-candidates")
     public List<MemberCandidate> candidates(@PathVariable long workspaceId, @RequestParam(name = "q", required = false) String q,
                                             @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
+        long uid = VehicSimAccess.requireMemberManager(user);
         return workspaces.candidates(uid, VehicSimAccess.roleOf(user), workspaceId, q);
     }
 
@@ -104,21 +103,20 @@ public class WorkspaceController {
 
     // ------------------------------------------------------------------ task (M6, M7)
 
-    @Operation(summary = "M7 — Task của workspace (lọc theo trạng thái, người nhận; assignee_id=0 là chưa giao)")
+    @Operation(summary = "M7 — Task của workspace (Manager: mọi task, lọc theo người nhận, assignee_id=0 là chưa giao; thành viên: task của mình)")
     @GetMapping("/workspaces/{workspaceId}/tasks")
     public List<TaskItem> listTasks(@PathVariable long workspaceId,
                                     @RequestParam(name = "status", required = false) String status,
                                     @RequestParam(name = "assignee_id", required = false) Long assigneeId,
                                     @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
-        return tasks.list(uid, VehicSimAccess.roleOf(user), workspaceId, status, assigneeId);
+        return tasks.list(VehicSimAccess.requireWorkspaceRole(user), workspaceId, status, assigneeId);
     }
 
     @Operation(summary = "M6 — Giao task mới")
     @PostMapping("/workspaces/{workspaceId}/tasks")
     public ResponseEntity<TaskItem> createTask(@PathVariable long workspaceId, @Valid @RequestBody TaskRequest body,
                                                @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
+        long uid = VehicSimAccess.requireMemberManager(user);
         access.limitWrites(uid, "workspace_task");
         return ResponseEntity.status(HttpStatus.CREATED).body(tasks.create(uid, VehicSimAccess.roleOf(user), workspaceId, body));
     }
@@ -127,7 +125,7 @@ public class WorkspaceController {
     @PutMapping("/workspaces/{workspaceId}/tasks/{taskId}")
     public TaskItem updateTask(@PathVariable long workspaceId, @PathVariable long taskId, @Valid @RequestBody TaskRequest body,
                                @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
+        long uid = VehicSimAccess.requireMemberManager(user);
         access.limitWrites(uid, "workspace_task");
         return tasks.update(uid, VehicSimAccess.roleOf(user), workspaceId, taskId, body);
     }
@@ -136,7 +134,7 @@ public class WorkspaceController {
     @DeleteMapping("/workspaces/{workspaceId}/tasks/{taskId}")
     public Map<String, Long> deleteTask(@PathVariable long workspaceId, @PathVariable long taskId,
                                         @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
+        long uid = VehicSimAccess.requireMemberManager(user);
         access.limitWrites(uid, "workspace_task");
         tasks.delete(uid, VehicSimAccess.roleOf(user), workspaceId, taskId);
         // Trả thân JSON (không 204): client chung frontend/src/services/api.ts luôn đọc res.json().
@@ -145,21 +143,20 @@ public class WorkspaceController {
 
     // ------------------------------------------------------------------ báo cáo (M8, M9)
 
-    @Operation(summary = "M8 — Báo cáo công việc của các project trong workspace (lọc theo trạng thái, project)")
+    @Operation(summary = "M8 — Báo cáo công việc trong workspace (Manager: mọi báo cáo; thành viên: báo cáo của mình)")
     @GetMapping("/workspaces/{workspaceId}/reports")
     public List<ReportItem> listReports(@PathVariable long workspaceId,
                                         @RequestParam(name = "status", required = false) String status,
                                         @RequestParam(name = "project_id", required = false) Long projectId,
                                         @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
-        return reports.list(uid, VehicSimAccess.roleOf(user), workspaceId, status, projectId);
+        return reports.list(VehicSimAccess.requireWorkspaceRole(user), workspaceId, status, projectId);
     }
 
     @Operation(summary = "M9 — Duyệt (APPROVED) hoặc từ chối (REJECTED, bắt buộc nhận xét) báo cáo đang chờ")
     @PostMapping("/workspaces/{workspaceId}/reports/{reportId}/decision")
     public ReportItem decideReport(@PathVariable long workspaceId, @PathVariable long reportId, @Valid @RequestBody ReportDecisionRequest body,
                                    @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireWorkspaceManager(user);
+        long uid = VehicSimAccess.requireMemberManager(user);
         access.limitWrites(uid, "workspace_report");
         return reports.decide(uid, VehicSimAccess.roleOf(user), workspaceId, reportId, body.decision(), body.note());
     }

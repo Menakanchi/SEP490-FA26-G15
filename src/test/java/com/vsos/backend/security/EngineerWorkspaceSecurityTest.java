@@ -88,25 +88,24 @@ class EngineerWorkspaceSecurityTest {
     }
 
     @Test
-    void engineerCanAccessTasksReportsAndChat() throws Exception {
-        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-tasks"), RoleCode.ENGINEER)).isEqualTo(200);
-        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-workspaces"), RoleCode.ENGINEER)).isEqualTo(200);
-        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-reports"), RoleCode.ENGINEER)).isEqualTo(200);
-        assertThat(statusOf(request(HttpMethod.GET, BASE + "/workspaces/1/messages"), RoleCode.ENGINEER)).isEqualTo(200);
-
-        // Status update
-        String updateStatusJson = "{\"status\":\"IN_PROGRESS\",\"progress_pct\":50}";
-        assertThat(statusOf(request(HttpMethod.PATCH, BASE + "/tasks/10/status")
-                .contentType(MediaType.APPLICATION_JSON).content(updateStatusJson), RoleCode.ENGINEER)).isEqualTo(200);
-
-        // Submit report
-        String submitReportJson = "{\"title\":\"Báo cáo thử nghiệm\",\"content\":\"Đã chạy simulation test\",\"project_id\":1}";
-        assertThat(statusOf(request(HttpMethod.POST, BASE + "/reports")
-                .contentType(MediaType.APPLICATION_JSON).content(submitReportJson), RoleCode.ENGINEER)).isEqualTo(201);
-
-        // Send chat
+    void onlyManagersEngineersAndReviewersUseTheWorkspaceRoutes() throws Exception {
         String chatJson = "{\"message\":\"Xin chào team\"}";
-        assertThat(statusOf(request(HttpMethod.POST, BASE + "/workspaces/1/messages")
-                .contentType(MediaType.APPLICATION_JSON).content(chatJson), RoleCode.ENGINEER)).isEqualTo(201);
+        for (RoleCode code : RoleCode.values()) {
+            boolean allowed = code == RoleCode.MANAGER || code == RoleCode.ENGINEER || code == RoleCode.REVIEWER;
+            for (String path : new String[]{"/my-workspaces", "/my-tasks", "/my-reports", "/tasks/10", "/reports/20", "/workspaces/1/messages"}) {
+                assertThat(statusOf(request(HttpMethod.GET, BASE + path), code)).as("%s GET %s", code, path).isEqualTo(allowed ? 200 : 403);
+            }
+            assertThat(statusOf(request(HttpMethod.POST, BASE + "/workspaces/1/messages")
+                    .contentType(MediaType.APPLICATION_JSON).content(chatJson), code)).as("%s chat", code).isEqualTo(allowed ? 201 : 403);
+        }
+    }
+
+    @Test
+    void duplicateStatusAndReportRoutesAreGone() throws Exception {
+        String body = "{\"status\":\"IN_PROGRESS\",\"progress_pct\":50}";
+        assertThat(statusOf(request(HttpMethod.PATCH, BASE + "/tasks/10/status")
+                .contentType(MediaType.APPLICATION_JSON).content(body), RoleCode.ENGINEER)).isIn(404, 405);
+        assertThat(statusOf(request(HttpMethod.POST, BASE + "/reports")
+                .contentType(MediaType.APPLICATION_JSON).content("{}"), RoleCode.ENGINEER)).isIn(404, 405);
     }
 }

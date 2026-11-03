@@ -25,8 +25,7 @@ public class VehicSimAccess {
 
     private static final Set<String> WRITE_ROLES = Set.of("ADMIN", "ENGINEER", "EXPERIENCER");
     private static final Set<String> DECIDE_ROLES = Set.of("REVIEWER");
-    private static final Set<String> WORKSPACE_ADMIN_ROLES = Set.of("MANAGER", "ADMIN");
-    private static final Set<String> WORKSPACE_MEMBER_ROLES = Set.of("ENGINEER", "REVIEWER");
+    private static final Set<String> WORKSPACE_ROLES = Set.of("MANAGER", "ENGINEER", "REVIEWER");
 
     private final OtpService otp;
     private final VehicSimProperties props;
@@ -44,8 +43,9 @@ public class VehicSimAccess {
         return userId(user);
     }
 
+    /** Quản lý workspace (thành viên, giao / sửa / xoá task, duyệt báo cáo): chỉ MANAGER; "đúng workspace mình quản lý" kiểm ở service. */
     public static long requireMemberManager(UserDetails user) {
-        if (!"MANAGER".equals(roleOf(user))) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ MANAGER quản lý thành viên workspace");
+        if (!"MANAGER".equals(roleOf(user))) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ Quản lý workspace được thực hiện thao tác này");
         return userId(user);
     }
 
@@ -86,23 +86,13 @@ public class VehicSimAccess {
     }
 
     /**
-     * Đọc workspace / task / report: MANAGER hoặc ADMIN; ghi thành viên dùng requireMemberManager.
-     * "Đúng workspace của mình" kiểm ở {@code WorkspaceService}. Trả id người dùng.
+     * Khu workspace (xem workspace / thành viên, task, báo cáo, chat): MANAGER, ENGINEER, REVIEWER; role khác 403. Từng bản ghi kiểm ở
+     * service: thành viên / Manager của workspace; task, báo cáo của người khác chỉ người được giao / người nộp và Manager nhận được xem.
+     * Thao tác quản lý (thêm / bớt thành viên, giao / sửa / xoá task, duyệt báo cáo) dùng {@link #requireMemberManager}. Trả id người dùng.
      */
-    public static long requireWorkspaceManager(UserDetails user) {
-        if (!WORKSPACE_ADMIN_ROLES.contains(roleOf(user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cần quyền MANAGER hoặc ADMIN để quản lý workspace");
-        }
-        return userId(user);
-    }
-
-    /**
-     * Việc của thành viên workspace (task được giao, nộp báo cáo — UC-21, UC-64, UC-66): ENGINEER hoặc REVIEWER; còn lại 403.
-     * "Đúng workspace mình là thành viên" kiểm ở {@code MemberWorkService}. Trả id người dùng.
-     */
-    public static long requireWorkspaceMember(UserDetails user) {
-        if (!WORKSPACE_MEMBER_ROLES.contains(roleOf(user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ ENGINEER hoặc REVIEWER có task và báo cáo công việc");
+    public static long requireWorkspaceRole(UserDetails user) {
+        if (!WORKSPACE_ROLES.contains(roleOf(user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ Quản lý, Kỹ sư hoặc Người duyệt của workspace được dùng chức năng này");
         }
         return userId(user);
     }

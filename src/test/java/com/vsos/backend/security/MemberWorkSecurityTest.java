@@ -34,15 +34,15 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 /**
- * Quyền của "Nhiệm vụ & báo cáo" phía thành viên qua bộ lọc bảo mật thật: chưa đăng nhập 401; chỉ ENGINEER / REVIEWER vào được,
- * ADMIN / MANAGER / EXPERIENCER bị 403; body được kiểm và ghi chịu hạn mức. Service giả — không cần MySQL / Redis.
+ * Quyền của "Nhiệm vụ & báo cáo" qua bộ lọc bảo mật thật: chưa đăng nhập 401; MANAGER / ENGINEER / REVIEWER vào được (người được giao,
+ * thành viên kiểm ở service), ADMIN / EXPERIENCER bị 403; body được kiểm và ghi chịu hạn mức. Service giả — không cần MySQL / Redis.
  */
 @WebMvcTest(MemberWorkController.class)
 @Import({SecurityConfig.class, VehicSimAccess.class})
 class MemberWorkSecurityTest {
 
     private static final String BASE = "/api/v1/vehicsim/my";
-    private static final Set<RoleCode> MEMBERS = Set.of(RoleCode.ENGINEER, RoleCode.REVIEWER);
+    private static final Set<RoleCode> MEMBERS = Set.of(RoleCode.MANAGER, RoleCode.ENGINEER, RoleCode.REVIEWER);
     private static final String PROGRESS = "{\"status\":\"IN_PROGRESS\",\"progress_pct\":40}";
     private static final String REPORT = "{\"project_id\":2,\"title\":\"Tuần 44\",\"content\":\"Đã chạy lại họ PX2\"}";
 
@@ -99,7 +99,7 @@ class MemberWorkSecurityTest {
     }
 
     @Test
-    void onlyEngineersAndReviewersHaveTasksAndReports() throws Exception {
+    void onlyWorkspaceRolesHaveTasksAndReports() throws Exception {
         for (RoleCode code : RoleCode.values()) {
             for (MockHttpServletRequestBuilder route : routes()) {
                 int status = statusOf(route, code);

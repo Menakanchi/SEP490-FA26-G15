@@ -81,15 +81,15 @@ export default function WorkspaceReportsPage() {
 
   const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!repTitle.trim() || !repContent.trim() || submittingLoading) return;
+    if (!repTitle.trim() || !repContent.trim() || !repProjectId || submittingLoading) return;
     setSubmittingLoading(true);
     setError(null);
     try {
-      await vehicsimApi.submitReport({
+      await vehicsimApi.submitMyReport({
+        project_id: repProjectId,
+        task_id: repTaskId,
         title: repTitle.trim(),
         content: repContent.trim(),
-        task_id: repTaskId,
-        project_id: repProjectId,
         attachment_url: repAttachment.trim() || null,
       });
       setNotice(`Đã nộp báo cáo “${repTitle.trim()}” thành công.`);

@@ -215,15 +215,6 @@ public class WorkspaceRepository {
                 """, memberUserId).stream().map(this::toSummary).toList();
     }
 
-    /** Kiểm tra xem người dùng có phải là Manager hoặc thành viên của workspace không. */
-    public boolean isMemberOrManager(long workspaceId, long userId) {
-        return db.first("""
-                SELECT 1 AS x FROM workspaces w
-                 WHERE w.id = ? AND (w.manager_id = ? OR EXISTS (
-                       SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = w.id AND wm.user_id = ?
-                 ))
-                """, workspaceId, userId, userId) != null;
-    }
 
     /** Lấy danh sách tin nhắn trao đổi kỹ thuật của workspace. */
     public List<ChatMessage> listMessages(long workspaceId, int limit) {

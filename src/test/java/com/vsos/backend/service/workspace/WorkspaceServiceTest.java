@@ -78,8 +78,8 @@ class WorkspaceServiceTest {
 
     @Test
     void anotherManagersWorkspaceLooksLikeItDoesNotExist() {
-        assertThatThrownBy(() -> service.detail(OTHER_MANAGER, "MANAGER", WS)).isInstanceOf(NotFoundException.class);
-        assertThatThrownBy(() -> service.members(OTHER_MANAGER, "MANAGER", WS)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.detail(OTHER_MANAGER, WS)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.members(OTHER_MANAGER, WS)).isInstanceOf(NotFoundException.class);
         assertThatThrownBy(() -> service.addMember(OTHER_MANAGER, "MANAGER", WS, ENGINEER, "ENGINEER")).isInstanceOf(NotFoundException.class);
         assertThatThrownBy(() -> service.removeMember(OTHER_MANAGER, "MANAGER", WS, ENGINEER)).isInstanceOf(NotFoundException.class);
         verify(repo, never()).addMember(anyLong(), anyLong(), anyLong(), any());
@@ -89,13 +89,17 @@ class WorkspaceServiceTest {
 
     @Test
     void missingWorkspaceIsNotFound() {
-        assertThatThrownBy(() -> service.detail(MANAGER, "MANAGER", 99L)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.detail(MANAGER, 99L)).isInstanceOf(NotFoundException.class);
     }
 
     @Test
-    void ownerAndAdminCanReadTheWorkspace() {
-        assertThat(service.detail(MANAGER, "MANAGER", WS).workspace().id()).isEqualTo(WS);
-        assertThat(service.detail(1L, "ADMIN", WS).workspace().id()).isEqualTo(WS);
+    void managerAndMembersReadTheWorkspaceButOutsidersDoNot() {
+        when(repo.isMember(WS, ENGINEER)).thenReturn(true);
+        assertThat(service.detail(MANAGER, WS).workspace().id()).isEqualTo(WS);
+        assertThat(service.detail(ENGINEER, WS).workspace().id()).isEqualTo(WS);
+        assertThat(service.members(ENGINEER, WS)).isEmpty();
+        assertThatThrownBy(() -> service.detail(1L, WS)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.members(1L, WS)).isInstanceOf(NotFoundException.class);
         verify(repo, times(2)).projectsOf(WS);
     }
 
@@ -173,7 +177,7 @@ class WorkspaceServiceTest {
         assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, ENGINEER, "ENGINEER")).hasMessageContaining("lưu trữ");
         assertThatThrownBy(() -> service.removeMember(MANAGER, "MANAGER", WS, ENGINEER)).hasMessageContaining("lưu trữ");
         // Vẫn xem được workspace đã lưu trữ.
-        assertThat(service.members(MANAGER, "MANAGER", WS)).isEmpty();
+        assertThat(service.members(MANAGER, WS)).isEmpty();
     }
 
     // ------------------------------------------------------------------ M5: bớt
