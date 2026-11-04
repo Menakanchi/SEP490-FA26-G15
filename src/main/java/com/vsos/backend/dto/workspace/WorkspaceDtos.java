@@ -182,7 +182,16 @@ public final class WorkspaceDtos {
             @JsonProperty("attachment_url") @Size(max = 1024, message = "Đường dẫn đính kèm tối đa 1024 ký tự") String attachmentUrl) {
     }
 
-    /** Tin nhắn trao đổi kỹ thuật trong workspace (FE-03 chat). */
+    /**
+     * Tin nhắn trao đổi kỹ thuật trong workspace (FE-03 chat).
+     *
+     * @param id mã định danh tin nhắn
+     * @param workspaceId mã không gian làm việc
+     * @param sender thông tin thành viên gửi tin nhắn
+     * @param messageText nội dung văn bản của tin nhắn
+     * @param createdDate thời điểm tin nhắn được gửi
+     * @param editedAt thời điểm chỉnh sửa lần cuối (nếu có)
+     */
     public record ChatMessage(
             long id,
             @JsonProperty("workspace_id") long workspaceId,
