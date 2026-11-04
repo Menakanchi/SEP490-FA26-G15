@@ -112,7 +112,7 @@ export default function FailureDetailPage() {
         <AnalysisRunTelemetry detail={d} markers={markers} cursor={cursor} signal={signal} onSignal={signal => update({ signal })} />
       </div>
       <div id="run-panel-evidence" role="tabpanel" aria-labelledby="run-tab-evidence" tabIndex={0} hidden={section !== "evidence"}>
-        <AnalysisRunEvidence detail={d} />
+        <AnalysisRunEvidence detail={d} returnTo={returnTo} playbackAvailable={canPlayback} />
       </div>
     </>}
   </VehicSimPage>;

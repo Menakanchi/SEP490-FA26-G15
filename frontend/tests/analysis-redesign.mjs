@@ -12,7 +12,7 @@ import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
 const fixtures=JSON.parse(gunzipSync(await fs.readFile(path.join(root,"src/test/resources/parity/kinematic.json.gz"))));
-const output=path.join(root,"data/analysis-batch5-ui");await fs.mkdir(output,{recursive:true});
+const output=path.join(root,"data/analysis-batch6-ui");await fs.mkdir(output,{recursive:true});
 const version="adr040-stored-aggregation/1";
 const cases=fixtures.filter(c=>c.evaluation.outcome!=="TIMEOUT").slice(0,45);
 const runs=cases.map((c,i)=>({revision:`fixture-${i}`,run_id:1000+i,scenario_id:1,scenario_version_id:100+i,version_no:i+1,family:"CP Crossing · Fixture kiểm thử UI",variant:`CP-${String(i+1).padStart(3,"0")}`,seed:c.seed,baseline_id:1,vehicle_id:1,simulator:"vehicsim-kinematic-1.0",dt:0.05,status:"COMPLETED",outcome:c.evaluation.aeb_result.false_activation?"FALSE_BRAKING":c.evaluation.outcome,weather:c.case.weather,time_of_day:c.case.time_of_day,failure_class:c.evaluation.chain.find(s=>!s.passed)?.stage??null,error:null,end_reason:c.outcome.end_reason,trace_available:true,created_at:"2026-11-03T08:00:00",metrics:{rms_jerk_mps3:c.outcome.metrics.rms_jerk_mps3,impact_speed_mps:c.outcome.metrics.impact_speed_mps,stopping_distance_m:c.outcome.metrics.stopping_distance_m}}));
@@ -32,7 +32,7 @@ function aggregate(list){
   out[key]={value:values.length?values.reduce((a,b)=>a+b,0)/values.length:null,samples:values.length,missing:0,notApplicable:list.length-values.length,unit,status:values.length?"VALID":"NOT_APPLICABLE"};
  }return out;
 }
-let role="ENGINEER", mode="normal", saved=null, playbackOverride=null, detailOverride=null, dashboardOverride=null, lastDashboard=null, inspectionOverride=null, inspectionMode="normal", playbackMode="normal";
+let role="ENGINEER", mode="normal", saved=null, playbackOverride=null, detailOverride=null, dashboardOverride=null, lastDashboard=null, inspectionOverride=null, inspectionMode="normal", playbackMode="normal", failureMode="normal", failureOverride=null, lastFailures=null;
 const writes=[],requests=[];
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
 try {
@@ -78,9 +78,17 @@ try {
    if(playbackMode==="notfound")return reply({detail:"Fixture playback not found"},404);
    const id=Number(playback[1]),d=detailFor(id),o=caseFor(id).outcome;return reply(playbackOverride??{...d,...o,motion_telemetry:d.motion_telemetry,vehicle_length_m:4.8,vehicle_width_m:2,lane_width_m:3.5,ttc_threshold_s:1.5,related_runs:[]});
   }
+  if(p==="/vehicsim/failures.csv")return route.fulfill({status:200,contentType:"text/csv",headers:{"Content-Disposition":'attachment; filename="failure_cases.csv"'},body:"run_id,cause_code\n1000,FIXTURE_ONLY\n"});
   if(p==="/vehicsim/failures"){
-   const rows=runs.filter(r=>r.outcome!=="SAFE").slice(0,20).map(r=>({...r,summary:"Parity fixture",root_cause:caseFor(r.run_id).evaluation.headline,impact_kmh:r.metrics.impact_speed_mps==null?null:r.metrics.impact_speed_mps*3.6,min_ttc_s:caseFor(r.run_id).outcome.metrics.min_ttc_s,config:"v1.0"}));
-   return reply({items:rows,total:rows.length,page:1,page_size:20,pages:1,families:[],kpis:{total:rows.length,this_week:0,collisions:rows.filter(r=>r.outcome==="COLLISION").length,near_misses:rows.filter(r=>r.outcome==="NEAR_MISS").length,false_braking:rows.filter(r=>r.outcome==="FALSE_BRAKING").length,by_class:{PERCEPTION:0,DECISION:rows.length,CONTROL:0,VEHICLE_DYNAMICS:0}}});
+   if(failureMode==="slow")await new Promise(resolve=>setTimeout(resolve,800));
+   if(failureMode==="error")return reply({detail:"Fixture failure list error"},503);
+   if(failureMode==="forbidden")return reply({detail:"Forbidden"},403);
+   if(failureOverride)return reply(failureOverride);
+   let rows=failureMode==="empty"?[]:runs.filter(r=>r.outcome!=="SAFE").map(r=>{const d=detailFor(r.run_id),primary=d.chain.find(s=>s.stage===d.failure_class);return {...r,failure_id:r.run_id+50000,summary:"Parity fixture",root_cause:caseFor(r.run_id).evaluation.headline,cause_code:primary?.cause_code??null,confidence:primary?.confidence??null,impact_kmh:r.metrics.impact_speed_mps==null?null:r.metrics.impact_speed_mps*3.6,min_ttc_s:caseFor(r.run_id).outcome.metrics.min_ttc_s,config:"v1.0",aeb_version_id:1,purpose:"BASELINE"};});
+   for(const key of ["scenario_id","failure_class","outcome","weather","aeb_version_id"]){const value=url.searchParams.get(key);if(value)rows=rows.filter(r=>String(r[key])===value);}
+   const page=Number(url.searchParams.get("page")),size=Number(url.searchParams.get("page_size"));
+   lastFailures={items:rows.slice((page-1)*size,page*size),total:rows.length,page,page_size:size,pages:Math.max(1,Math.ceil(rows.length/size)),families:[],kpis:{total:rows.length,this_week:0,collisions:rows.filter(r=>r.outcome==="COLLISION").length,near_misses:rows.filter(r=>r.outcome==="NEAR_MISS").length,false_braking:rows.filter(r=>r.outcome==="FALSE_BRAKING").length,by_class:Object.fromEntries(["PERCEPTION","DECISION","CONTROL","VEHICLE_DYNAMICS"].map(stage=>[stage,rows.filter(r=>r.failure_class===stage).length]))}};
+   return reply(lastFailures);
   }
   return reply({detail:`Unhandled fixture path ${p}`},404);
  });
@@ -538,9 +546,147 @@ try {
  inspectionMode="normal";await page.getByRole("button",{name:"Thử tải lại",exact:true}).click();await savedSummary.waitFor();
  inspectionOverride=null;detailOverride=null;
 
- await page.goto(base+"/analysis/failures?view=failures&scenario_id=1");await page.getByRole("heading",{name:"Tra cứu ca lỗi",exact:true}).waitFor();await page.getByRole("table").locator("tbody tr").first().waitFor();
- await page.screenshot({path:path.join(output,"failures-tablet.png"),fullPage:true});
- assert(requests.some(u=>u.pathname.endsWith("/failures")&&u.searchParams.get("scenario_id")==="1"));
+ // Batch 6: server totals, page-local search, independent failure filters and source evidence.
+ const failureUrl=base+"/analysis/failures?view=failures&scenario_id=1&page=2&q=baseline&sort=impact&f_size=10";
+ const failureRows=page.locator("tr[data-failure-run]");
+ const failureCount=()=>requests.filter(u=>u.pathname.endsWith("/failures")).length;
+ const failureKpi=page.getByRole("article",{name:"KPI Tổng số ca lỗi",exact:true});
+ await page.goto(failureUrl);await failureRows.first().waitFor();
+ const originalFailures=structuredClone(lastFailures);
+ assert(originalFailures.total>10,"Fixture exercises server pagination");
+ assert.equal(await failureRows.count(),10);
+ assert.equal(requests.filter(u=>u.pathname.endsWith("/failures")).at(-1).searchParams.get("scenario_id"),"1");
+ await page.getByRole("button",{name:"Trang sau",exact:true}).click();
+ await page.waitForURL(u=>u.searchParams.get("f_page")==="2");await failureRows.first().waitFor();
+ assert.equal(new URL(page.url()).searchParams.get("page"),"2","Baseline pagination stays independent");
+ await page.getByLabel("Số dòng mỗi trang",{exact:true}).selectOption("20");
+ await page.waitForURL(u=>u.searchParams.get("f_size")==="20"&&!u.searchParams.has("f_page"));await failureRows.first().waitFor();
+ await page.goto(failureUrl+"&f_page=999");
+ await page.waitForURL(u=>u.searchParams.get("f_page")===String(originalFailures.pages));await failureRows.first().waitFor();
+ for(const invalid of ["Infinity","1.5","-1"]){await page.goto(failureUrl+`&f_page=${invalid}`);await failureRows.first().waitFor();assert.equal(requests.filter(u=>u.pathname.endsWith("/failures")).at(-1).searchParams.get("page"),"1");}
+ const failureBoundary=structuredClone(originalFailures.items.slice(0,2));
+ Object.assign(failureBoundary[0],{failure_class:null,confidence:0,cause_code:"FIXTURE_ZERO",root_cause:"Nhận định bằng không từ API",impact_kmh:0,min_ttc_s:0});
+ Object.assign(failureBoundary[1],{root_cause:"",confidence:null,cause_code:null,impact_kmh:null,min_ttc_s:null});
+ failureOverride={...originalFailures,items:failureBoundary,total:250,pages:25,kpis:{total:250,this_week:0,collisions:200,near_misses:40,false_braking:10,by_class:{PERCEPTION:0,DECISION:220,CONTROL:undefined,VEHICLE_DYNAMICS:10}}};
+ await page.goto(failureUrl);await failureKpi.getByText("250",{exact:true}).waitFor();
+ const stageRegion=page.getByRole("region",{name:"Phân bố khâu nguyên nhân",exact:true});
+ assert.equal(await stageRegion.getByRole("progressbar").count(),3);
+ assert.equal(await stageRegion.getByRole("progressbar",{name:"Số ca Nhận thức",exact:true}).getAttribute("value"),"0");
+ assert.equal(await stageRegion.getByRole("progressbar",{name:"Số ca Điều khiển",exact:true}).count(),0);
+ assert.match(await page.getByRole("button",{name:"Lọc khâu Điều khiển",exact:true}).innerText(),/—/);
+ await failureRows.first().getByText("Chưa có khâu nhận định",{exact:true}).waitFor();
+ assert.equal(await failureRows.first().getByText("Biên an toàn",{exact:true}).count(),0);
+ assert.match(await failureRows.first().innerText(),/Điểm luật: 0\.00/);
+ assert.equal((await failureRows.first().locator("td.numeric").first().innerText()).trim(),"0.0");
+ assert.equal((await failureRows.nth(1).locator("td.numeric").first().innerText()).trim(),"—");
+ const beforeFailureSearch=failureCount();
+ await page.getByLabel("Tìm trong trang ca lỗi",{exact:true}).fill("  fixture_zero  ");
+ await page.waitForFunction(()=>document.querySelectorAll("tr[data-failure-run]").length===1);
+ assert.equal(failureCount(),beforeFailureSearch,"Failure search never fetches a global list");
+ await page.getByLabel("Tìm trong trang ca lỗi",{exact:true}).fill("không tồn tại");
+ await page.getByText("Không có kết quả tìm trong trang ca lỗi.",{exact:true}).waitFor();
+ await page.getByRole("button",{name:"Xóa tìm kiếm ca lỗi",exact:true}).click();
+ await page.waitForFunction(()=>document.querySelectorAll("tr[data-failure-run]").length===2);
+ for(const [width,height] of [[1920,1080],[1366,768],[1024,768]]){
+  await page.setViewportSize({width,height});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Failure explorer overflow ${width}`);
+  const tableRegion=page.getByRole("region",{name:"Bảng ca lỗi, cuộn ngang để xem thêm",exact:true});
+  await tableRegion.focus();await tableRegion.evaluate(el=>{el.scrollLeft=el.scrollWidth;});
+  const pinned=await failureRows.first().locator("td").first().evaluate(td=>({left:td.getBoundingClientRect().left,region:td.closest('[role="region"]').getBoundingClientRect().left}));
+  assert(Math.abs(pinned.left-pinned.region)<3,"Failure identity stays visible while scrolling");
+  await tableRegion.evaluate(el=>{el.scrollLeft=0;});
+  await page.screenshot({path:path.join(output,`failures-${width}.png`),fullPage:true});
+ }
+ await page.getByLabel("Khâu chính",{exact:true}).selectOption("DECISION");
+ await page.waitForURL(u=>u.searchParams.get("f_class")==="DECISION");await failureRows.first().waitFor();
+ await page.getByLabel("Kết quả AEB",{exact:true}).selectOption("COLLISION");
+ await page.waitForURL(u=>u.searchParams.get("f_outcome")==="COLLISION");await failureRows.first().waitFor();
+ await page.getByLabel("Thời tiết",{exact:true}).selectOption("RAIN");
+ await page.waitForURL(u=>u.searchParams.get("f_weather")==="RAIN");await failureRows.first().waitFor();
+ await page.getByLabel("Cấu hình AEB",{exact:true}).selectOption("1");
+ await page.waitForURL(u=>u.searchParams.get("f_aeb")==="1");await failureRows.first().waitFor();
+ await page.getByLabel("Khoảng thời gian",{exact:true}).selectOption("30");
+ await page.waitForURL(u=>u.searchParams.get("f_days")==="30");await failureRows.first().waitFor();
+ const filteredRequest=requests.filter(u=>u.pathname.endsWith("/failures")).at(-1);
+ for(const [key,value] of Object.entries({scenario_id:"1",failure_class:"DECISION",outcome:"COLLISION",weather:"RAIN",aeb_version_id:"1",days:"30"}))assert.equal(filteredRequest.searchParams.get(key),value);
+ assert.equal(new URL(page.url()).searchParams.get("q"),"baseline");
+ await page.getByLabel("Tìm trong trang ca lỗi",{exact:true}).fill("FIXTURE_ZERO");
+ await page.waitForFunction(()=>document.querySelectorAll("tr[data-failure-run]").length===1);
+ const downloadEvent=page.waitForEvent("download");await page.getByRole("button",{name:"Xuất CSV",exact:true}).click();
+ const failureDownload=await downloadEvent;assert.equal(failureDownload.suggestedFilename(),"failure_cases.csv");
+ const csvQuery=requests.filter(u=>u.pathname.endsWith("/failures.csv")).at(-1).searchParams;
+ for(const [key,value] of Object.entries({scenario_id:"1",failure_class:"DECISION",outcome:"COLLISION",weather:"RAIN",aeb_version_id:"1",days:"30"}))assert.equal(csvQuery.get(key),value);
+ for(const key of ["q","f_q","page","page_size"])assert(!csvQuery.has(key),`CSV ignores ${key}`);
+ const failureReturn=new URL(page.url()).pathname+new URL(page.url()).search;
+ const failureId=failureBoundary[0].run_id;
+ for(const section of ["evidence","telemetry","playback"]){
+  const link=page.getByRole("link",{name:`${section==="evidence"?"Bằng chứng":section==="telemetry"?"Telemetry":"Playback"} run ${failureId}`,exact:true});
+  const target=new URL(await link.getAttribute("href"),base);assert.equal(target.searchParams.get("returnTo"),failureReturn);
+  if(section!=="playback")assert.equal(target.searchParams.get("section"),section);
+ }
+ await page.getByRole("link",{name:`Bằng chứng run ${failureId}`,exact:true}).click();
+ await page.getByRole("heading",{name:"Bằng chứng và giới hạn nhận định",exact:true}).waitFor();
+ await page.getByRole("link",{name:"← Về danh sách đang xem",exact:true}).click();
+ await page.waitForURL(base+failureReturn);await failureRows.first().waitFor();
+ assert.equal(await page.getByLabel("Tìm trong trang ca lỗi",{exact:true}).inputValue(),"FIXTURE_ZERO");
+ await page.getByRole("button",{name:"Bỏ bộ lọc Khâu: Quyết định",exact:true}).click();
+ await page.waitForURL(u=>!u.searchParams.has("f_class"));await failureRows.first().waitFor();
+ assert.equal(new URL(page.url()).searchParams.get("f_outcome"),"COLLISION");
+ await page.getByRole("button",{name:"Xóa bộ lọc ca lỗi",exact:true}).click();
+ await page.waitForURL(u=>u.searchParams.get("f_scenario")===""&&!u.searchParams.has("f_outcome"));await failureRows.first().waitFor();
+ assert.equal(requests.filter(u=>u.pathname.endsWith("/failures")).at(-1).searchParams.get("scenario_id"),null,"Empty family overrides inherited baseline family");
+ await page.reload();await failureRows.first().waitFor();assert.equal(await page.getByLabel("Họ kịch bản",{exact:true}).inputValue(),"");
+ await page.goto(failureUrl+"&f_days=14&f_aeb=88&f_scenario=99");await failureRows.first().waitFor();
+ assert.equal(await page.getByLabel("Khoảng thời gian",{exact:true}).inputValue(),"14");
+ assert.equal(await page.getByLabel("Cấu hình AEB",{exact:true}).inputValue(),"88");
+ assert.equal(await page.getByLabel("Họ kịch bản",{exact:true}).inputValue(),"99");
+ failureOverride=null;failureMode="slow";await page.goto(failureUrl);
+ await page.getByRole("status").filter({hasText:"Đang tải dữ liệu phân tích"}).waitFor();
+ assert.equal(await failureRows.count(),0);assert.equal(await stageRegion.getByRole("progressbar").count(),0);
+ assert.equal((await failureKpi.locator("dd").innerText()).trim(),"—");
+ await failureRows.first().waitFor();failureMode="error";await page.reload();await page.getByRole("alert").waitFor();
+ assert.equal(await failureRows.count(),0);assert(await page.getByRole("button",{name:"Xuất CSV",exact:true}).isDisabled());
+ failureMode="forbidden";await page.reload();await page.getByRole("alert").getByText(/Bạn không có quyền/).waitFor();
+ failureMode="normal";await page.getByRole("button",{name:"Thử tải lại",exact:true}).click();await failureRows.first().waitFor();
+ failureMode="empty";await page.reload();await page.getByText("Không có ca lỗi nào với bộ lọc này.",{exact:true}).waitFor();
+ assert.equal((await failureKpi.locator("dd").innerText()).trim(),"0");assert.equal(await stageRegion.getByRole("progressbar").count(),0);
+ failureMode="normal";
+ // Explicit API cause remains primary even when an earlier stage fails; no probability or inference.
+ const evidenceDetail=detailFor(id);
+ const evidenceStages=["PERCEPTION","DECISION","CONTROL","VEHICLE_DYNAMICS"].map((stage,i)=>({stage,passed:i===0?false:i===2?null:true,summary:`Nhận định khâu ${stage} từ API`,confidence:i===0?0:null,cause_code:i===0?"FIXTURE_CAUSE_ZERO":null,parameter_code:i===0?"TTC_THRESHOLD":null}));
+ detailOverride={...evidenceDetail,failure_class:"DECISION",chain:evidenceStages,chain_confidence:0,evaluation_version:"fixture-rule-v6",stage_evidence:[{stage:"PERCEPTION",values:{first_detection_t:0,first_detection_distance_m:0}},{stage:"DECISION",values:{decision_t:999,decision_ttc_s:null}},{stage:"VEHICLE_DYNAMICS",values:{road_friction:null,max_deceleration_mps2:null}},{stage:"UNKNOWN_API_STAGE",values:{opaque_metric:7}}]};
+ const evidenceReturn="/analysis/failures?view=failures&scenario_id=1&f_page=2&f_size=10&f_weather=RAIN&f_q=CP";
+ const evidenceUrl=base+`/analysis/failures/${id}?section=evidence&signal=speed&returnTo=${encodeURIComponent(evidenceReturn)}`;
+ await page.goto(evidenceUrl);await page.getByRole("heading",{name:"Bằng chứng và giới hạn nhận định",exact:true}).waitFor();
+ const primaryCause=page.getByLabel("Nhận định chính từ backend",{exact:true});
+ assert.equal(await primaryCause.locator("h3").innerText(),"Quyết định");assert.match(await primaryCause.innerText(),/0\.00/);
+ const perceptionEvidence=page.getByRole("article",{name:"Khâu Nhận thức",exact:true});
+ const decisionEvidence=page.getByRole("article",{name:"Khâu Quyết định",exact:true});
+ assert.match(await perceptionEvidence.innerText(),/FIXTURE_CAUSE_ZERO/);assert.match(await perceptionEvidence.innerText(),/0\.000 s/);
+ assert.match(await perceptionEvidence.innerText(),/Ngưỡng TTC/);assert.equal(await perceptionEvidence.locator("input,select").count(),0);
+ assert.match(await page.getByRole("article",{name:"Khâu Điều khiển",exact:true}).innerText(),/Chưa có kết luận/);
+ assert.match(await page.getByRole("article",{name:"Khâu Động lực học",exact:true}).innerText(),/Chưa có số đo để đối chiếu/);
+ assert.equal(await decisionEvidence.getByRole("link").count(),0,"Out-of-range stage time cannot seek to a different recorded sample");
+ await page.getByRole("region",{name:"Số đo chưa có nhận định",exact:true}).getByText("opaque_metric",{exact:true}).waitFor();
+ const evidenceLink=perceptionEvidence.getByRole("link",{name:"Xem telemetry khâu Nhận thức tại 0.00 s",exact:true});
+ const evidenceTarget=new URL(await evidenceLink.getAttribute("href"),base);
+ assert.equal(evidenceTarget.searchParams.get("t"),"0");assert.equal(evidenceTarget.searchParams.get("signal"),"speed");assert.equal(evidenceTarget.searchParams.get("returnTo"),evidenceReturn);
+ for(const [width,height] of [[1920,1080],[1366,768],[1024,768]]){await page.setViewportSize({width,height});await page.screenshot({path:path.join(output,`evidence-${width}.png`),fullPage:true});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Evidence overflow ${width}`);}
+ const beforeEvidenceSeek=requests.filter(u=>u.pathname.endsWith(`/analysis/runs/${id}`)).length;
+ await evidenceLink.click();await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
+ assert.equal(new URL(page.url()).searchParams.get("t"),"0");
+ assert.equal(requests.filter(u=>u.pathname.endsWith(`/analysis/runs/${id}`)).length,beforeEvidenceSeek,"Evidence seek uses the same loaded run");
+ await page.getByRole("tab",{name:"Nguyên nhân & bằng chứng",exact:true}).click();
+ await perceptionEvidence.getByRole("link",{name:"Playback khâu Nhận thức tại 0.00 s",exact:true}).click();
+ await page.waitForURL(u=>u.pathname.endsWith("/playback"));assert.equal(new URL(page.url()).searchParams.get("returnTo"),evidenceReturn);assert.equal(new URL(page.url()).searchParams.get("t"),"0");
+ inspectionOverride={run:{...runs.find(r=>r.run_id===id),trace_available:false},detail:detailOverride};
+ await page.goto(evidenceUrl);await perceptionEvidence.waitFor();assert.equal(await perceptionEvidence.getByRole("link",{name:/^Playback khâu/}).count(),0);
+ inspectionOverride=null;
+ detailOverride={...detailOverride,failure_class:null,chain:[],chain_confidence:null};
+ await page.goto(evidenceUrl);await primaryCause.getByText("Chưa có khâu chính từ backend.",{exact:true}).waitFor();
+ assert.equal(await page.getByRole("region",{name:"Chuỗi nhận định và số đo",exact:true}).getByRole("article").count(),0);
+ await page.getByRole("region",{name:"Số đo chưa có nhận định",exact:true}).getByText("opaque_metric",{exact:true}).waitFor();
+ detailOverride=null;
  for(const nextMode of ["slow","empty","error","forbidden"]){mode=nextMode;await page.goto(base+"/analysis/failures?view=runs");if(mode==="slow")await page.getByRole("status").filter({hasText:"Đang tải dữ liệu phân tích"}).waitFor();else if(mode==="empty")await page.getByText("Chưa có run baseline phù hợp.",{exact:true}).waitFor();else await page.getByRole("alert").waitFor();await page.screenshot({path:path.join(output,`state-${mode}.png`),fullPage:true});}
  mode="normal";role="MANAGER";await page.reload();await page.getByRole("table").locator("tbody tr").first().waitFor();
  assert(await page.locator('select[aria-label^="Tập của run"]').first().isDisabled());
@@ -549,6 +695,6 @@ try {
  assert(await page.getByRole("button",{name:"Tải .xosc",exact:true}).isEnabled());
  await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
  assert.deepEqual(errors,[]);assert.equal(writes.length,1);assert(!writes.some(w=>/optimizations|aeb\/versions|regression/.test(w.path)));
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["batch5 single keyboard timeline/markers; duplicate event identity; play-pause-restart/rates; exact recorded frame/projection and no inference; paused URL/reload/detail signal/return; layers; partial/invalid/empty data; run change/loading/503/403/404/retry; responsive screenshots", "batch4 detail source/metrics/tabs/keyboard; URL time/signal/return/reload without refetch; recorded null-zero-signed samples; no GT fallback or objective recomputation; gaps/non-monotonic timestamps; TTC above 5; loading/run navigation/empty/invalid/error/403/404/retry; responsive screenshots", "batch3 row actions/detail/playback/browser-back URL restoration; filter chips/reset; last-page clamp; page-size reset; local sort null/zero/ties; trimmed search/reload; missing-telemetry restrictions; sticky column/overflow", "overview","batch2 full-scope KPI/source identities/partial-zero-loading-error/retry","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","batch1 API-only metrics/events and missing data","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["batch6 failure full-scope server statistics/partial-zero; filter chips/reset/inherited scope; CSV server filters; local search; pagination/invalid URLs; evidence primary identity/raw scores/unknown evidence/partial-zero; recorded-time telemetry/playback links and return; missing trace; loading/error/403/retry; responsive screenshots", "batch5 single keyboard timeline/markers; duplicate event identity; play-pause-restart/rates; exact recorded frame/projection and no inference; paused URL/reload/detail signal/return; layers; partial/invalid/empty data; run change/loading/503/403/404/retry; responsive screenshots", "batch4 detail source/metrics/tabs/keyboard; URL time/signal/return/reload without refetch; recorded null-zero-signed samples; no GT fallback or objective recomputation; gaps/non-monotonic timestamps; TTC above 5; loading/run navigation/empty/invalid/error/403/404/retry; responsive screenshots", "batch3 row actions/detail/playback/browser-back URL restoration; filter chips/reset; last-page clamp; page-size reset; local sort null/zero/ties; trimmed search/reload; missing-telemetry restrictions; sticky column/overflow", "overview","batch2 full-scope KPI/source identities/partial-zero-loading-error/retry","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","batch1 API-only metrics/events and missing data","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
  console.log("PASS: browser fixture UI checks; live backend/authentication/database/CARLA/Figma NOT verified. Screenshots:",output);
 } finally {await browser.close();}
