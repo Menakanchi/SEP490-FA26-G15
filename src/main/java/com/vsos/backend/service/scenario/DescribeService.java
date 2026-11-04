@@ -284,7 +284,13 @@ public class DescribeService {
         return new LlmOutcome(ir, MAX_REPAIRS, issues, cost, calls, escalated);
     }
 
-    /** Câu mô tả → IR đầy đủ (điền giả định) + nguồn gốc từng trường. */
+    /**
+     * Trích xuất câu mô tả ngôn ngữ tự nhiên thành bộ thông số Scenario IR đầy đủ.
+     * Tự động bổ sung các trường giả định và lưu vết nguồn gốc của từng tham số.
+     *
+     * @param rawText đoạn văn bản mô tả kịch bản của người dùng
+     * @return Map chứa Scenario IR cùng metadata phân tích
+     */
     public Map<String, Object> describe(String rawText) {
         String text = rawText == null ? "" : rawText.strip();
         if (isTooVagueToGenerate(text)) {
