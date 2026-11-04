@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { AdminWorkspacesTable } from "./AdminWorkspacesTable";
 import { AdminUserEditor } from "./AdminUserEditor";
 import { AdminUsersTable } from "./AdminUsersTable";
 import { AuthGate } from "@/components/AuthGate";
@@ -59,7 +60,9 @@ function message(error: unknown) { return error instanceof Error ? error.message
 export function AdminManagement({ resource }: { resource: AdminResource }) {
   return <AuthGate allowedRoles={["admin"]}>{resource === "users"
     ? <Suspense fallback={<p role="status">Đang tải dữ liệu tài khoản…</p>}><AdminUsersTable renderEditor={props => <AdminUserEditor {...props} />} /></Suspense>
-    : <Management key={resource} resource={resource} />}</AuthGate>;
+    : resource === "workspaces"
+      ? <Suspense fallback={<p role="status">Đang tải dữ liệu workspace…</p>}><AdminWorkspacesTable /></Suspense>
+      : <Management key={resource} resource={resource} />}</AuthGate>;
 }
 function Management({ resource }: { resource: AdminResource }) {
   const { user } = useAuth();

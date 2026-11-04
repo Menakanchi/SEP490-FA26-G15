@@ -119,7 +119,7 @@ try{
   assert.equal(await region().getByText("Đã khóa",{exact:true}).count(),0);
   const scoped=page.url();await page.reload();await ready();assert.equal(page.url(),scoped);
   assert.equal(await frame.getByLabel("Từ khóa tìm kiếm",{exact:true}).inputValue(),"Fixture");
-  await page.getByRole("navigation",{name:"Quản trị hệ thống",exact:true}).filter({visible:true}).getByRole("link",{name:/^Workspace/}).click();await frame.getByRole("table").waitFor();
+  await page.getByRole("navigation",{name:"Quản trị hệ thống",exact:true}).filter({visible:true}).getByRole("link",{name:/^Workspace/}).click();await frame.getByRole("region",{name:"Bảng workspace, cuộn ngang",exact:true}).waitFor();
   await page.goBack();await ready();assert.equal(page.url(),scoped);
   await frame.getByRole("button",{name:"Bỏ lọc vai trò",exact:true}).click();await ready();assert.equal(query().role,undefined);
   await page.goBack();await ready();assert.equal(query().role,"ENGINEER");await page.goForward();await ready();assert.equal(query().role,undefined);

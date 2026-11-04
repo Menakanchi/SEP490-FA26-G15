@@ -45,6 +45,7 @@ try {
       if(mode==="error")return reply({detail:"Fixture: không tải được dữ liệu"},503);
       if(mode==="slow")await new Promise(resolve=>setTimeout(resolve,1200));
       const page=Number(url.searchParams.get("page")||1);
+      if(resource==="users"&&url.searchParams.get("role")==="MANAGER")return reply({items:[{...user,id:workspace.manager_id,full_name:workspace.manager_name,email:workspace.manager_email,role:"MANAGER"}],total:1,page,page_size:20});
       const items=mode==="empty"?[]:resource==="users"?Array.from({length:4},(_,i)=>({...row,id:row.id+i+(page-1)*20,full_name:i===1?"Tên tài khoản dài để kiểm tra bố cục và khoảng cách trong bảng":row.full_name,email:i===1?"email-very-long-for-layout-checks-ui-fixture-only@example.invalid":row.email})):resource==="workspaces"?[row,{...row,id:202,name:"Workspace lưu trữ",status:"ARCHIVED"}]:[row,{...row,id:402,ref_code:"UI-REF-002",ref_name:"Tiêu chuẩn kiểm thử",ref_type:"STANDARD",ref_value:null,is_active:false}];
       return reply({items,total:mode==="empty"?0:resource==="users"?24:items.length,page,page_size:20});
     }
@@ -99,7 +100,7 @@ try {
     // Existing Add/Editor remains reachable and Escape does not send mutations.
     await frame.getByRole("button",{name:"Thêm mới",exact:true}).click();
     const dialog=page.getByRole("dialog",{name:`Thêm mới · ${title}`,exact:true});await dialog.waitFor();
-    if(resource==="workspaces")await dialog.getByRole("status").filter({hasText:"Tối đa 100"}).waitFor();
+    if(resource==="workspaces")await dialog.getByRole("radiogroup",{name:"Kết quả tìm Manager",exact:true}).waitFor();
     await page.keyboard.press("Escape");await dialog.waitFor({state:"hidden"});
   }
   assert.equal(writes.length,0);
@@ -147,7 +148,7 @@ try {
       mode=state;await page.goto(base+`/admin/${resource}`);
       await frame.getByRole("heading",{level:1,name:title,exact:true}).waitFor();
       if(state==="slow")await frame.getByRole("status").filter({hasText:"Đang tải dữ liệu"}).waitFor();
-      else if(state==="empty")await frame.getByText(resource==="users"?"Chưa có tài khoản":"Không có dữ liệu phù hợp.",{exact:true}).waitFor();
+      else if(state==="empty")await frame.getByText(resource==="users"?"Chưa có tài khoản":resource==="workspaces"?"Chưa có workspace":"Không có dữ liệu phù hợp.",{exact:true}).waitFor();
       else await frame.getByRole("alert").filter({hasText:state==="error"?"Fixture: không tải được":"Fixture: không có quyền"}).waitFor();
       assert.equal(await frame.getByRole("link",{name:"Hồ sơ / Mật khẩu",exact:true}).isVisible(),true);
       if(state==="error"){
