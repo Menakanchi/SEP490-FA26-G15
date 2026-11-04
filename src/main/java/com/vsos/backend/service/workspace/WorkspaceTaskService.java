@@ -192,7 +192,14 @@ public class WorkspaceTaskService {
     private record Fields(String title, String description, String priority, String status, int progress, Long assigneeId,
                           Long projectId, LocalDate dueDate) {
     }
-    /** Lấy chi tiết một task (FE-03). */
+    /**
+     * Lấy thông tin chi tiết một nhiệm vụ theo mã định danh (FE-03).
+     *
+     * @param userId mã định danh người dùng yêu cầu
+     * @param role vai trò người dùng
+     * @param taskId mã định danh của task
+     * @return đối tượng chi tiết task
+     */
     public TaskItem getTask(long userId, String role, long taskId) {
         TaskItem t = tasks.findById(taskId);
         if (t == null) {
