@@ -165,7 +165,15 @@ public final class WorkspaceDtos {
             @Max(value = 100, message = "Tiến độ từ 0 đến 100") Integer progressPct) {
     }
 
-    /** Kỹ sư / người duyệt nộp báo cáo công việc (FE-14). */
+    /**
+     * Kỹ sư / người duyệt nộp báo cáo công việc (FE-14).
+     *
+     * @param title tiêu đề vắn tắt của báo cáo công việc
+     * @param content nội dung chi tiết quá trình và kết quả thực hiện
+     * @param taskId mã nhiệm vụ liên quan (tuỳ chọn)
+     * @param projectId mã dự án liên quan (tuỳ chọn)
+     * @param attachmentUrl liên kết tài liệu hoặc artifact đính kèm (tuỳ chọn)
+     */
     public record SubmitReportRequest(
             @NotBlank(message = "Tiêu đề báo cáo không được để trống") @Size(max = 255, message = "Tiêu đề tối đa 255 ký tự") String title,
             @NotBlank(message = "Nội dung báo cáo không được để trống") @Size(max = 50000, message = "Nội dung tối đa 50000 ký tự") String content,
