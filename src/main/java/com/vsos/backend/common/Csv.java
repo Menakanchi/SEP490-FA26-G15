@@ -6,7 +6,12 @@ public final class Csv {
     private Csv() {
     }
 
-    /** Như ``csv.writer`` (QUOTE_MINIMAL): bao dấu nháy khi có dấu phẩy / nháy / xuống dòng; None -> rỗng; bool -> True/False. */
+    /**
+     * Định dạng một ô giá trị theo chuẩn CSV an toàn (QUOTE_MINIMAL), phòng chống CSV Injection.
+     *
+     * @param value đối tượng dữ liệu cần định dạng
+     * @return chuỗi đã được bao dấu nháy hoặc escape chuẩn xác
+     */
     public static String cell(Object value) {
         if (value == null) {
             return "";
