@@ -1,5 +1,7 @@
 package com.vsos.backend.service.regression;
 
+import com.vsos.backend.common.Json;
+import com.vsos.backend.common.Vs;
 import com.vsos.backend.dto.regression.RegressionRecords.CandidateRun;
 import com.vsos.backend.dto.regression.RegressionRecords.RunResult;
 import com.vsos.backend.dto.regression.RegressionResponses.Counts;
@@ -9,9 +11,7 @@ import com.vsos.backend.dto.regression.RegressionResponses.MedianTtc;
 import com.vsos.backend.dto.regression.RegressionResponses.PairResult;
 import com.vsos.backend.dto.regression.RegressionResponses.Rates;
 import com.vsos.backend.dto.regression.RegressionResponses.RegressionSummary;
-import com.vsos.backend.common.Json;
 import com.vsos.backend.repository.common.Row;
-import com.vsos.backend.common.Vs;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -27,16 +27,8 @@ import static com.vsos.backend.service.regression.RegressionCriteria.IDENTICAL_S
 import static com.vsos.backend.service.regression.RegressionCriteria.MEDIAN_MIN_TTC_CHANGE_MIN_S;
 import static com.vsos.backend.service.regression.RegressionCriteria.NO_NEW_COLLISION;
 
-/**
- * So từng cặp baseline – candidate, tính ma trận chuyển trạng thái, tỉ lệ, tiêu chí và verdict của một regression test. Hàm thuần
- * (không đụng DB): dữ liệu do {@link RegressionService} đọc sẵn qua repository, nên logic chấm test được trực tiếp.
- */
 public final class RegressionSummarizer {
 
-    private RegressionSummarizer() {
-    }
-
-    /** Mức độ xấu của kết quả: candidate có rank cao hơn baseline là xấu đi. */
     private static final Map<String, Integer> RANK = new LinkedHashMap<>();
 
     static {
@@ -45,13 +37,9 @@ public final class RegressionSummarizer {
         RANK.put(Vs.OUTCOME_COLLISION, 2);
     }
 
-    /**
-     * @param storedCriteria  tiêu chí đã lưu của test ({@code pass_criteria_json.criteria})
-     * @param scenario        họ kịch bản của test
-     * @param versions        {id: biến thể} của các cặp
-     * @param candidateRuns   run REGRESSION của test kèm run baseline được ghép
-     * @param results         số đo của mọi run trong các cặp (đều đã COMPLETED)
-     */
+    private RegressionSummarizer() {
+    }
+
     public static RegressionSummary summarize(Map<String, Object> storedCriteria, Row scenario, Map<Long, Row> versions,
                                               List<CandidateRun> candidateRuns, Map<Long, RunResult> results) {
         Map<String, Map<String, Integer>> transitions = new LinkedHashMap<>();
@@ -90,7 +78,6 @@ public final class RegressionSummarizer {
                 criterion(storedCriteria, COLLISION_RATE_NOT_INCREASE, collisionC <= collisionB, Vs.round(collisionC - collisionB, 2)),
                 criterion(storedCriteria, FALSE_ACTIVATION_INCREASE_MAX_PTS, faC - faB <= faMax + 1e-9, Vs.round(faC - faB, 2)),
                 criterion(storedCriteria, MEDIAN_MIN_TTC_CHANGE_MIN_S, medianTtcDelta == null || medianTtcDelta >= ttcMin - 1e-9, medianTtcDelta),
-                // FK fk_sr_baseline ép seed trùng ở MySQL; ở đây kiểm lại cho có bằng chứng trong kết quả.
                 criterion(storedCriteria, IDENTICAL_SEEDS, true, "enforced"));
 
         int fixed = (int) pairs.stream().filter(p -> "fixed".equals(p.change())).count();
@@ -107,7 +94,6 @@ public final class RegressionSummarizer {
                 null);
     }
 
-    /** PASSED khi mọi tiêu chí đang bật đều đạt; trượt mà có ca xấu đi là REGRESSED; trượt tiêu chí khác là FAILED. */
     public static String verdict(RegressionSummary summary) {
         boolean allPassed = summary.criteria().stream().filter(c -> Boolean.TRUE.equals(c.enabled())).allMatch(CriterionResult::passed);
         return allPassed ? "PASSED" : summary.counts().regressed() > 0 ? "REGRESSED" : "FAILED";
@@ -135,8 +121,6 @@ public final class RegressionSummarizer {
                 ttcDelta,
                 cand.impactSpeedMps() == null ? null : Vs.round(cand.impactSpeedMps() * 3.6, 1),
                 worse ? "regressed" : better ? "fixed" : "unchanged",
-                // Ba mục tiêu ADR-040 của từng run, đọc thẳng từ cột worker đã ghi (null = không phanh / không va chạm).
-                // Chưa gộp theo tập: cách gộp thuộc bộ chỉ số chung của phần phân tích.
                 b.rmsJerkMps3(),
                 cand.rmsJerkMps3(),
                 b.impactSpeedMps(),
