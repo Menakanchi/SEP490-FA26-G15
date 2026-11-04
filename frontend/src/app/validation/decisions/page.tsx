@@ -136,7 +136,7 @@ export default function DecisionHistoryPage() {
             <span className="w-[100px] text-[13px] text-vehicsim-faint">{fmt.date(d.reviewed_at)}</span>
             <span className="flex w-[100px] justify-end">
               <span className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision group-hover:border-vehicsim-decision group-hover:bg-vehicsim-decision group-hover:text-white transition shadow-sm">
-                Chi tiết →
+                Chi tiết
               </span>
             </span>
           </Link>

@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowRight, Check, ChevronDown, ChevronRight, FolderOpen, Loader2, Plus } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FolderOpen, Loader2, Plus } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { cx } from "@/components/VehicSimUi";
 import { FINISHED_TEXT, JOURNEY_STEPS, nextAction, stepHref, stepOfPath, statusOf } from "@/components/project/journey";
@@ -79,7 +79,7 @@ export function Welcome() {
               className="flex items-center gap-2 rounded-full bg-vehicsim-ink px-6 py-[14px] text-[15px] font-semibold text-white hover:bg-black/80"
             >
               Tạo project đầu tiên
-              <ArrowRight aria-hidden className="size-4" />
+              
             </Link>
             <Link href="/projects" className="text-[14px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink hover:underline">
               Mở lại project đã lưu trữ
@@ -120,7 +120,7 @@ function OtherRolePage({ title, detail, href, cta }: { title: string; detail: st
         <p className="text-[15px] leading-[1.55] text-vehicsim-muted">{detail}</p>
         <Link href={href} className="flex items-center gap-2 rounded-full bg-vehicsim-ink px-5 py-3 text-[14px] font-semibold text-white hover:bg-black/80">
           {cta}
-          <ArrowRight aria-hidden className="size-4" />
+          
         </Link>
       </div>
     </div>
@@ -160,7 +160,7 @@ export function ProjectGate({ children }: { children: React.ReactNode }) {
       id: `finished-${finished}`,
       tone: "ok",
       text: FINISHED_TEXT[finished] ?? "",
-      action: { label: `${next.cta} →`, href: next.href },
+      action: { label: next.cta, href: next.href },
       onClose: clearFinished,
     });
   }
@@ -238,7 +238,7 @@ export function JourneyBar() {
             className="flex shrink-0 items-center gap-2 rounded-full bg-vehicsim-ink px-4 py-[10px] text-[13px] font-semibold text-white hover:bg-black/80"
           >
             Tiếp: {next.cta}
-            <ArrowRight aria-hidden className="size-4" />
+            
           </Link>
         )
       )}

@@ -2,7 +2,7 @@
 
 import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronDown, ChevronUp, Pencil, Play, X } from "lucide-react";
+import { Pencil, Play, X } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { FamilyForm } from "@/components/FamilyForm";
@@ -169,7 +169,7 @@ export default function ScenarioFamiliesPage() {
             {formOpen ? "Đóng form" : "+ Nhập tay"}
           </PillButton>
           <PillButton variant="dark" href={canWrite ? "/scenarios/new" : undefined} disabled={!canWrite}>
-            Sinh từ mô tả →
+            Sinh từ mô tả
           </PillButton>
         </>
       }
@@ -394,10 +394,9 @@ export default function ScenarioFamiliesPage() {
                 <Link
                   href={`/analysis/failures?scenario_id=${f.id}`}
                   title="Chuyển sang phân tích kết quả ca lỗi"
-                  className="inline-flex h-8 w-full items-center justify-center gap-1 rounded-full border border-solid border-vehicsim-decision/40 bg-vehicsim-decision-bg px-2 text-[12px] font-semibold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition"
+                  className="inline-flex h-8 w-full items-center justify-center rounded-full border border-solid border-vehicsim-decision/40 bg-vehicsim-decision-bg px-2 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition"
                 >
                   <span className="truncate">Phân tích</span>
-                  <ArrowRight className="size-3.5 shrink-0" />
                 </Link>
 
                 <button
@@ -405,23 +404,13 @@ export default function ScenarioFamiliesPage() {
                   onClick={() => toggleVariants(f)}
                   aria-expanded={openVariants === f.id}
                   className={cx(
-                    "inline-flex h-8 w-full items-center justify-center gap-1 rounded-full border border-solid px-2 text-[11.5px] font-semibold transition",
+                    "inline-flex h-8 w-full items-center justify-center rounded-full border border-solid px-2 text-[11.5px] font-semibold transition",
                     openVariants === f.id
                       ? "border-vehicsim-ink bg-vehicsim-ink text-white"
                       : "border-vehicsim-line-strong bg-vehicsim-soft text-vehicsim-ink hover:bg-vehicsim-line hover:border-vehicsim-line-strong",
                   )}
                 >
-                  {openVariants === f.id ? (
-                    <>
-                      <ChevronUp className="size-3.5 shrink-0" />
-                      <span className="truncate">Đóng biến thể</span>
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="size-3.5 shrink-0" />
-                      <span className="truncate">Xem biến thể</span>
-                    </>
-                  )}
+                  <span className="truncate">{openVariants === f.id ? "Đóng biến thể" : "Xem biến thể"}</span>
                 </button>
 
                 <button

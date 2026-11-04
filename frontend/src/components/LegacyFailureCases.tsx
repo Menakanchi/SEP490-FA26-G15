@@ -370,14 +370,14 @@ export function LegacyFailureCases({
                   title="Phát lại mô phỏng"
                   className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-2.5 text-[11px] font-bold text-vehicsim-ink hover:border-vehicsim-ink hover:bg-vehicsim-soft transition shadow-sm"
                 >
-                  ▶ Xem
+                  Xem phát lại
                 </Link>
                 <Link
                   href={`/analysis/failures/${item.run_id}`}
                   title="Chi tiết ca lỗi"
                   className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[11px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
                 >
-                  Chi tiết →
+                  Chi tiết
                 </Link>
               </span>
             </div>

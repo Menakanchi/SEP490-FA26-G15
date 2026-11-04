@@ -132,7 +132,7 @@ export default function AebConfigPage() {
         <div className="flex items-center justify-between gap-4 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok shadow-sm">
           <span>Đã tạo ứng viên AEB {created.label}. Bước tiếp theo: chạy kiểm thử hồi quy so với bản cơ sở.</span>
           <PillButton variant="dark" className="px-4 py-2 text-[12px]" href={`/validation/regression/new?candidate=${created.id}`}>
-            Chạy kiểm thử hồi quy →
+            Chạy kiểm thử hồi quy
           </PillButton>
         </div>
       )}
@@ -282,7 +282,7 @@ export default function AebConfigPage() {
                           href={`/validation/regression/new?candidate=${v.id}`}
                           className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
                         >
-                          Kiểm thử hồi quy →
+                          Kiểm thử hồi quy
                         </Link>
                       )}
                     </span>
@@ -469,7 +469,7 @@ function MoboOptimizationSection({
             className="px-4 py-2 text-[12px]"
             href={`/validation/regression/${selectionResult.regressionTestId}`}
           >
-            Mở bài kiểm thử hồi quy →
+            Mở bài kiểm thử hồi quy
           </PillButton>
         </div>
       )}
@@ -677,7 +677,7 @@ function MoboOptimizationSection({
                     ? "bg-vehicsim-ink text-white"
                     : "border border-solid border-vehicsim-line-strong bg-white text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white"
                 )}>
-                  {isSelected ? "Đang xem ▼" : "Chi tiết →"}
+                  {isSelected ? "Đang xem" : "Chi tiết"}
                 </span>
               </span>
             </div>
@@ -790,7 +790,7 @@ function MoboOptimizationSection({
                             onClick={() => handleSelectCandidate(t.id)}
                             className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-ink px-4 text-[12px] font-bold text-white transition hover:bg-black/80 disabled:opacity-40 shadow-sm"
                           >
-                            {selectingTrialId === t.id ? "Đang chọn…" : "Chọn ứng viên này →"}
+                            {selectingTrialId === t.id ? "Đang chọn…" : "Chọn ứng viên"}
                           </button>
                         </td>
                       </tr>

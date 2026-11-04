@@ -100,7 +100,7 @@ export function BaselineAnalysisDashboard({
           <PillButton onClick={() => setRefresh((x) => x + 1)}>Tải lại kết quả</PillButton>
           {activeScenarioId && (
             <PillButton variant="dark" href={`/aeb?scenario_id=${activeScenarioId}&tab=mobo`}>
-              Tối ưu kịch bản này ➔
+              Tối ưu kịch bản này
             </PillButton>
           )}
         </div>
@@ -263,7 +263,7 @@ export function BaselineAnalysisDashboard({
           </div>
           {activeScenarioId && (
             <PillButton variant="dark" href={`/aeb?scenario_id=${activeScenarioId}&tab=mobo`}>
-              Tối ưu kịch bản {currentFamily?.code ?? ""} ➔
+              Tối ưu kịch bản {currentFamily?.code ?? ""}
             </PillButton>
           )}
         </div>
@@ -304,7 +304,7 @@ export function BaselineAnalysisDashboard({
                       href={`/analysis/failures/${run.run_id}`}
                       className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[11px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
                     >
-                      Chi tiết →
+                      Chi tiết
                     </Link>
                   </td>
                 </tr>
@@ -347,7 +347,7 @@ export function BaselineAnalysisDashboard({
           </div>
           {activeScenarioId && (
             <PillButton variant="dark" href={`/aeb?scenario_id=${activeScenarioId}&tab=mobo`}>
-              Bắt đầu tối ưu kịch bản {currentFamily?.code ?? ""} ➔
+              Bắt đầu tối ưu kịch bản {currentFamily?.code ?? ""}
             </PillButton>
           )}
         </div>

@@ -171,7 +171,7 @@ export default function FailureDetailPage() {
                 )}
               </div>
               <span title="Sửa nhãn (màn 05) chưa có trong đợt MVP" className="cursor-not-allowed text-[13px] font-semibold text-vehicsim-decision opacity-50">
-                Sửa nhãn →
+                Sửa nhãn
               </span>
             </div>
             {d.chain.length === 0 ? (
@@ -227,7 +227,7 @@ export default function FailureDetailPage() {
                     <p className="flex-1 text-[12px] font-medium text-vehicsim-ink">
                       {derived.note}{" "}
                       <Link href="/aeb" className="font-semibold text-vehicsim-decision hover:underline">
-                        Tạo cấu hình ứng viên ở mục AEB →
+                        Tạo cấu hình ứng viên ở mục AEB
                       </Link>
                     </p>
                   </div>

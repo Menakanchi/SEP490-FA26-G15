@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { Card, Tag, cx } from "@/components/VehicSimUi";
 import { JOURNEY_STEPS, STEP_NUMBER, nextAction, splitDescription, stepDefinition, stepHref, stepSummary, statusOf, timeAgo } from "@/components/project/journey";
 import { ProjectAvatar, ProjectMenu, StepStatusIcon, type ProjectAction } from "@/components/project/ProjectUi";
@@ -66,7 +65,7 @@ export function ProjectCard({
             className="flex items-center gap-2 rounded-full bg-vehicsim-ink px-4 py-[10px] text-[13px] font-semibold text-white hover:bg-black/80"
           >
             {next.key ? `Tiếp tục: ${next.cta}` : next.cta}
-            <ArrowRight aria-hidden className="size-4" />
+            
           </button>
         ) : (
           <button
@@ -122,7 +121,7 @@ export function NextStepCard({ journey, opened, onGo }: { journey: ProjectJourne
         )}
         {pending && (
           <button type="button" onClick={() => onGo("/scenarios")} className="mt-1 w-fit text-[14px] font-semibold text-white underline-offset-4 hover:underline">
-            {c.families_baseline_pending} họ kịch bản mới chưa chạy baseline · Chạy ngay →
+            {c.families_baseline_pending} họ kịch bản mới chưa chạy baseline · Chạy ngay
           </button>
         )}
       </div>
@@ -132,7 +131,7 @@ export function NextStepCard({ journey, opened, onGo }: { journey: ProjectJourne
         className="flex shrink-0 items-center gap-2 rounded-full bg-white px-6 py-[14px] text-[15px] font-bold text-vehicsim-ink hover:bg-white/90"
       >
         {opened ? action.cta : "Mở project và tiếp tục"}
-        <ArrowRight aria-hidden className="size-4" />
+        
       </button>
     </section>
   );

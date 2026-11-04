@@ -241,7 +241,7 @@ export default function DescribeScenarioPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <PillButton variant="dark" href={`/scenarios?family=${created.scenario_id}`}>
-              Tiếp tục: Chạy baseline →
+              Tiếp tục: Chạy baseline
             </PillButton>
             <PillButton href={`/analysis/carla?family=${created.scenario_id}`}>Chạy trên CARLA</PillButton>
             <PillButton

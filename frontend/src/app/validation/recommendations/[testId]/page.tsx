@@ -53,7 +53,7 @@ export default function RecommendationPage() {
               title={!canDecide ? "Chỉ Người duyệt (REVIEWER) được ra quyết định" : final ? "Đã có quyết định cuối" : undefined}
               className="print:hidden"
             >
-              Duyệt quyết định →
+              Duyệt quyết định
             </PillButton>
           </>
         )

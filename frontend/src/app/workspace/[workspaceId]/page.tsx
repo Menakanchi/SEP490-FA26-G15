@@ -161,9 +161,9 @@ export default function WorkspaceDetailPage() {
         allowed && ws ? (
           <>
             <PillButton href={`/workspace/${id}/reports`}>
-              Báo cáo{ws.pending_report_count ? ` (${ws.pending_report_count} chờ duyệt)` : ""} →
+              Báo cáo{ws.pending_report_count ? ` (${ws.pending_report_count} chờ duyệt)` : ""}
             </PillButton>
-            <PillButton href={`/workspace/${id}/tasks`}>Task của workspace →</PillButton>
+            <PillButton href={`/workspace/${id}/tasks`}>Task của workspace</PillButton>
           </>
         ) : undefined
       }

@@ -197,14 +197,14 @@ export default function RegressionListPage() {
                   href={`/validation/regression/${i.id}`}
                   className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
                 >
-                  Chi tiết →
+                  Chi tiết
                 </Link>
                 {i.status === "PASSED" && (
                   <Link
                     href={conclusion(i.id)}
                     className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-decision px-3 text-[12px] font-bold text-white hover:bg-vehicsim-decision/90 transition shadow-sm"
                   >
-                    {isExperiencer ? "Kết luận ➔" : "Khuyến nghị ➔"}
+                    {isExperiencer ? "Kết luận" : "Khuyến nghị"}
                   </Link>
                 )}
               </span>

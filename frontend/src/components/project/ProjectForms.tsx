@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useId, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Lock } from "lucide-react";
+import { Check, Lock } from "lucide-react";
 import { Card, ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
 import { composeDescription } from "@/components/project/journey";
 import { ProjectAvatar } from "@/components/project/ProjectUi";
@@ -365,12 +365,12 @@ export function ProjectWizard({
               </PillButton>
             ) : (
               <PillButton onClick={() => setStep((s) => (s - 1) as WizardStep)} disabled={busy}>
-                <ArrowLeft aria-hidden className="size-4" /> Quay lại
+                Quay lại
               </PillButton>
             )}
             <PillButton type="submit" variant="dark" disabled={busy}>
               {step < 2 ? "Tiếp" : busy ? "Đang tạo…" : "Tạo project"}
-              {!busy && <ArrowRight aria-hidden className="size-4" />}
+              
             </PillButton>
           </div>
         </Card>

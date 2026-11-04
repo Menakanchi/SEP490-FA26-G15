@@ -127,7 +127,7 @@ export function CarlaRunnerPanel() {
           </PillButton>
         )}
         {familyDone && (
-          <PillButton href={`/analysis/failures?scenario_id=${familyId}`}>Tiếp tục: Phân tích kết quả →</PillButton>
+          <PillButton href={`/analysis/failures?scenario_id=${familyId}`}>Tiếp tục: Phân tích kết quả</PillButton>
         )}
       </div>
       {connection?.simulator && (

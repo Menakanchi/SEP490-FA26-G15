@@ -101,7 +101,7 @@ export function ReviewerHome() {
           <PillButton href={canRunRegression ? "/validation/regression/new" : undefined} disabled={!canRunRegression}>Chạy kiểm thử hồi quy</PillButton>
           {next && canDecide ? (
             <PillButton variant="dark" href={`/validation/recommendations/${next.id}/review`}>
-              Duyệt khuyến nghị tiếp theo →
+              Duyệt khuyến nghị tiếp theo
             </PillButton>
           ) : (
             <PillButton href="/validation/recommendations">Tất cả khuyến nghị</PillButton>
@@ -144,7 +144,7 @@ export function ReviewerHome() {
               <CardTitle
                 aside={
                   <Link href="/validation/recommendations" className="text-[12px] font-semibold text-vehicsim-decision">
-                    Tất cả khuyến nghị →
+                    Tất cả khuyến nghị
                   </Link>
                 }
               >
@@ -206,7 +206,7 @@ export function ReviewerHome() {
             <CardTitle
               aside={
                 <Link href="/my-work" className="text-[12px] font-semibold text-vehicsim-decision">
-                  Tất cả →
+                  Tất cả
                 </Link>
               }
             >
@@ -254,7 +254,7 @@ export function ReviewerHome() {
             <CardTitle
               aside={
                 <Link href="/validation/decisions" className="text-[12px] font-semibold text-vehicsim-decision">
-                  Tất cả →
+                  Tất cả
                 </Link>
               }
             >

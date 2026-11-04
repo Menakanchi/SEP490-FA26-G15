@@ -73,11 +73,11 @@ function MvpLoopPage() {
       actions={
         next ? (
           <PillButton variant="dark" href={next.actions[0].href}>
-            Tiếp tục: bước {next.step.n} →
+            Tiếp tục: bước {next.step.n}
           </PillButton>
         ) : views ? (
           <PillButton variant="dark" href="/aeb">
-            Bắt đầu vòng mới →
+            Bắt đầu vòng mới
           </PillButton>
         ) : null
       }

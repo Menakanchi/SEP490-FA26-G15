@@ -98,7 +98,7 @@ export default function VehiclesPage() {
                 href={`/vehicles/${v.id}`}
                 className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
               >
-                Chi tiết →
+                Chi tiết
               </Link>
             </span>
           </div>
