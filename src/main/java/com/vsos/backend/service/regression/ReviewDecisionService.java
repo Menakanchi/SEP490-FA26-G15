@@ -1,23 +1,18 @@
 package com.vsos.backend.service.regression;
 
+import com.vsos.backend.common.Vs.NotFoundException;
 import com.vsos.backend.common.audit.AuditLog;
 import com.vsos.backend.dto.regression.RegressionRecords.RecommendationRow;
 import com.vsos.backend.dto.regression.RegressionRecords.RegressionTestRow;
 import com.vsos.backend.exception.regression.RegressionExceptions.DecisionNotAllowedException;
 import com.vsos.backend.exception.regression.RegressionExceptions.TestNotFinishedException;
-import com.vsos.backend.repository.regression.RegressionRepository;
 import com.vsos.backend.repository.common.Row;
-import com.vsos.backend.common.Vs.NotFoundException;
+import com.vsos.backend.repository.regression.RegressionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 
-/**
- * Quyết định của Reviewer trên khuyến nghị: Accept / Reject / Request more tests (luật cứng 5 trong AGENTS.md, ADR-025).
- * Không bao giờ tự Accept: cần lý do và xác nhận; test không PASSED không Accept được; người tạo khuyến nghị không tự duyệt;
- * baseline đã đổi hoặc candidate đã được quyết định ở test khác thì phải chạy lại regression. Quyền REVIEWER kiểm ở controller.
- */
 @Service
 public class ReviewDecisionService {
 
@@ -38,13 +33,13 @@ public class ReviewDecisionService {
         if (!confirmed) {
             throw new DecisionNotAllowedException("phải xác nhận quyết định dựa trên bằng chứng mô phỏng");
         }
-        // Giữ khoá membership/project/workspace trong cùng transaction: bớt thành viên hoặc lưu trữ không đua với duyệt.
+
         Row scope = repo.lockReviewAccess(projectId, userId);
         if (scope == null) throw new NotFoundException("regression test");
         if (!"ACTIVE".equals(scope.str("project_status")) || !"ACTIVE".equals(scope.str("workspace_status"))) {
             throw new DecisionNotAllowedException("Project hoặc workspace đã lưu trữ, chỉ được xem lịch sử");
         }
-        // Khoá dòng test + khuyến nghị: hai Reviewer duyệt cùng lúc thì người thứ hai chờ rồi thấy "đã có quyết định cuối".
+
         RegressionTestRow test = repo.lockTest(projectId, testId);
         if (test == null) {
             throw new NotFoundException("regression test");
@@ -65,8 +60,7 @@ public class ReviewDecisionService {
         if ("ACCEPT".equals(decision) && !"PASSED".equals(test.verdict())) {
             throw new DecisionNotAllowedException("không thể Accept: ứng viên chưa qua regression test");
         }
-        // Hai test cùng baseline có thể cùng PASSED; Accept một cái sẽ đổi baseline hoặc trạng thái candidate,
-        // nên cái còn lại phải chạy lại thay vì ghi đè. Khoá cả hai version: hai test khác nhau cùng baseline không thể cùng Accept.
+
         Map<Long, String> statusOf = repo.lockVersionStatuses(test.baselineVersionId(), test.candidateVersionId());
         if ((decision.equals("ACCEPT") || decision.equals("REJECT")) && !"CANDIDATE".equals(statusOf.get(test.candidateVersionId()))) {
             throw new DecisionNotAllowedException("candidate này đã được quyết định ở một regression test khác");
@@ -76,7 +70,6 @@ public class ReviewDecisionService {
         }
 
         if ("ACCEPT".equals(decision)) {
-            // Một project chỉ có một BASELINE (uq_aeb_versions_one_baseline): hạ bản cũ TRƯỚC.
             repo.archiveVersion(test.baselineVersionId());
             repo.promoteToBaseline(test.candidateVersionId());
         } else if ("REJECT".equals(decision)) {
