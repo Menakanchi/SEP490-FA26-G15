@@ -30,6 +30,7 @@ import threading
 import zipfile
 from pathlib import Path
 
+# Phiên bản giao thức cầu nối stdio giữa tiến trình Python và JVM
 PROTOCOL = "vsos-bridge/1"
 MAIN_CLASS = "com.vsos.core.bridge.BridgeMain"
 CORE_PACKAGE = "com/vsos/core"  # lõi chỉ dùng JDK (CoreIsolationTest), nên một jar chỉ chứa gói này là đủ chạy
