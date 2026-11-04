@@ -12,7 +12,7 @@ import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
 const fixtures=JSON.parse(gunzipSync(await fs.readFile(path.join(root,"src/test/resources/parity/kinematic.json.gz"))));
-const output=path.join(root,"data/analysis-batch6-ui");await fs.mkdir(output,{recursive:true});
+const output=path.join(root,"data/analysis-batch7-ui");await fs.mkdir(output,{recursive:true});
 const version="adr040-stored-aggregation/1";
 const cases=fixtures.filter(c=>c.evaluation.outcome!=="TIMEOUT").slice(0,45);
 const runs=cases.map((c,i)=>({revision:`fixture-${i}`,run_id:1000+i,scenario_id:1,scenario_version_id:100+i,version_no:i+1,family:"CP Crossing · Fixture kiểm thử UI",variant:`CP-${String(i+1).padStart(3,"0")}`,seed:c.seed,baseline_id:1,vehicle_id:1,simulator:"vehicsim-kinematic-1.0",dt:0.05,status:"COMPLETED",outcome:c.evaluation.aeb_result.false_activation?"FALSE_BRAKING":c.evaluation.outcome,weather:c.case.weather,time_of_day:c.case.time_of_day,failure_class:c.evaluation.chain.find(s=>!s.passed)?.stage??null,error:null,end_reason:c.outcome.end_reason,trace_available:true,created_at:"2026-11-03T08:00:00",metrics:{rms_jerk_mps3:c.outcome.metrics.rms_jerk_mps3,impact_speed_mps:c.outcome.metrics.impact_speed_mps,stopping_distance_m:c.outcome.metrics.stopping_distance_m}}));
@@ -32,7 +32,7 @@ function aggregate(list){
   out[key]={value:values.length?values.reduce((a,b)=>a+b,0)/values.length:null,samples:values.length,missing:0,notApplicable:list.length-values.length,unit,status:values.length?"VALID":"NOT_APPLICABLE"};
  }return out;
 }
-let role="ENGINEER", mode="normal", saved=null, playbackOverride=null, detailOverride=null, dashboardOverride=null, lastDashboard=null, inspectionOverride=null, inspectionMode="normal", playbackMode="normal", failureMode="normal", failureOverride=null, lastFailures=null;
+let role="ENGINEER", mode="normal", saved=null, playbackOverride=null, detailOverride=null, dashboardOverride=null, lastDashboard=null, inspectionOverride=null, inspectionMode="normal", playbackMode="normal", failureMode="normal", failureOverride=null, lastFailures=null, selectionMode="normal", snapshotMode="normal", handoffMode="normal", snapshotOverride=null;
 const writes=[],requests=[];
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
 try {
@@ -48,9 +48,25 @@ try {
   if(p==="/vehicsim/aeb/versions"||p==="/vehicsim/optimizations")return reply([]);
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
   if(p==="/vehicsim/analysis/selections"){
+   if(selectionMode==="stale")return reply({detail:"Analysis preview changed; reload source runs"},409);
+   if(selectionMode==="slow")await new Promise(resolve=>setTimeout(resolve,800));
    const body=request.postDataJSON();saved={schema:"vehicsim.analysis-dataset/v2",id:9001,baseline_current:true,handoff_ready:true,scenario:{id:1,code:"CP",name:runs[0].family,category:"CP_CROSSING"},baseline:{id:1,label:"v1.0"},reference:{vehicle_id:1,simulator:runs[0].simulator,dt:0.05},runs:runs.filter(r=>[...body.optimization_run_ids,...body.validation_run_ids].includes(r.run_id)),...body,evaluation:{version,carla_observational_only:false},optimization_objectives:aggregate(runs.filter(r=>body.optimization_run_ids.includes(r.run_id))),validation_objectives:aggregate(runs.filter(r=>body.validation_run_ids.includes(r.run_id)))};return reply(saved);
   }
-  if(p.startsWith("/vehicsim/analysis/datasets/"))return reply(saved??{},saved?200:404);
+  const datasetPath=p.match(/^\/vehicsim\/analysis\/datasets\/(\d+)(\/handoff)?$/);
+  if(datasetPath){
+   if(datasetPath[2]){
+    if(handoffMode==="slow")await new Promise(resolve=>setTimeout(resolve,800));
+    if(handoffMode==="changed")return reply({detail:"Analysis source runs changed or telemetry is missing"},409);
+    if(handoffMode==="baseline")return reply({detail:"Analysis baseline changed"},409);
+    if(handoffMode==="forbidden")return reply({detail:"Forbidden"},403);
+    return reply(saved?{...saved,handoff_ready:handoffMode!=="notready"}: {},saved?200:404);
+   }
+   if(snapshotMode==="slow")await new Promise(resolve=>setTimeout(resolve,800));
+   if(snapshotMode==="error")return reply({detail:"Fixture snapshot failure"},503);
+   if(snapshotMode==="forbidden")return reply({detail:"Forbidden"},403);
+   if(snapshotMode==="notfound")return reply({detail:"Fixture dataset not found"},404);
+   return reply(snapshotOverride??(saved?{...saved,id:Number(datasetPath[1]),handoff_ready:undefined}:{}),saved?200:404);
+  }
   if(p==="/vehicsim/analysis/runs"){
    if(mode==="error")return reply({detail:"Fixture network failure"},503);
    if(mode==="forbidden")return reply({detail:"Forbidden"},403);
@@ -687,6 +703,108 @@ try {
  assert.equal(await page.getByRole("region",{name:"Chuỗi nhận định và số đo",exact:true}).getByRole("article").count(),0);
  await page.getByRole("region",{name:"Số đo chưa có nhận định",exact:true}).getByText("opaque_metric",{exact:true}).waitFor();
  detailOverride=null;
+ // Batch 7: draft metadata and immutable snapshot are separate, with recoverable server checks.
+ const draftKey=`vehicsim.analysis.selection.v1:${user.id}:${context.project.id}`;
+ const datasetUrl=base+"/analysis/failures?view=dataset&scenario_id=1&page=2&page_size=10&q=baseline&sort=impact";
+ const snapshotUrl=datasetUrl+"&dataset_id=9001";
+ const draftRows=page.locator("tr[data-draft-run]");
+ const optimizationDraft=page.getByRole("region",{name:"Tập tối ưu trong bản nháp",exact:true});
+ const validationDraft=page.getByRole("region",{name:"Tập xác minh trong bản nháp",exact:true});
+ const snapshotRegion=page.getByRole("region",{name:"Snapshot và bàn giao",exact:true});
+ const checkRegion=page.getByRole("region",{name:"Kiểm tra bản nháp",exact:true});
+ const setDraft=async chosen=>{await page.evaluate(({key,chosen})=>sessionStorage.setItem(key,JSON.stringify(chosen)),{key:draftKey,chosen});await page.goto(datasetUrl);await page.getByRole("heading",{name:"Bản nháp đang chọn",exact:true}).waitFor();};
+ const originalDraft=Object.fromEntries(safe.map((run,i)=>[run.run_id,{run:structuredClone(run),role:i?"VALIDATION":"OPTIMIZATION"}]));
+ await setDraft(originalDraft);await draftRows.first().waitFor();
+ assert(await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).isEnabled());
+ assert.equal(await optimizationDraft.locator("tbody tr").count(),1);assert.equal(await validationDraft.locator("tbody tr").count(),1);
+ const beforeDraftSearch=requests.filter(u=>u.pathname.endsWith("/analysis/runs")).length;
+ await page.getByLabel("Tìm trong bản nháp",{exact:true}).fill(`  ${safe[0].variant.toLowerCase()}  `);
+ await page.waitForFunction(()=>document.querySelectorAll("tr[data-draft-run]").length===1);
+ assert.equal(requests.filter(u=>u.pathname.endsWith("/analysis/runs")).length,beforeDraftSearch,"Draft review never loads the baseline page");
+ const draftReturn=page.url();await optimizationDraft.getByRole("link",{name:`Chi tiết run đã chọn ${safe[0].run_id}`,exact:true}).click();
+ await page.getByRole("link",{name:"← Về danh sách đang xem",exact:true}).click();await page.waitForURL(draftReturn);await draftRows.first().waitFor();
+ assert.equal(await page.getByLabel("Tìm trong bản nháp",{exact:true}).inputValue(),`  ${safe[0].variant.toLowerCase()}  `);
+ await page.getByRole("button",{name:"Xóa tìm kiếm bản nháp",exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll("tr[data-draft-run]").length===2);
+ const zeroDraft=structuredClone(originalDraft);zeroDraft[safe[0].run_id].run.metrics={rms_jerk_mps3:0,impact_speed_mps:null,stopping_distance_m:0};
+ await setDraft(zeroDraft);await optimizationDraft.locator("summary").click();
+ assert.match(await optimizationDraft.locator("dl").innerText(),/0\.000[\s\S]*—[\s\S]*0\.000/);
+ const violations=[
+  [draft=>{draft[safe[1].run_id].run.scenario_version_id=draft[safe[0].run_id].run.scenario_version_id;},"Không trùng biến thể giữa hai tập; không lặp biến thể/seed"],
+  [draft=>{draft[safe[1].run_id].run.vehicle_id=88;},"Cùng họ, baseline, xe, simulator và bước thời gian"],
+  [draft=>{draft[safe[1].run_id].run.dt=0.01;},"Cùng họ, baseline, xe, simulator và bước thời gian"],
+  [draft=>{draft[safe[1].run_id].run.simulator="carla-0.9.16-xosc4";},"Cùng họ, baseline, xe, simulator và bước thời gian"],
+  [draft=>{draft[safe[1].run_id].run.outcome="COLLISION";},"Mỗi tập giữ ít nhất một ca an toàn"],
+  [draft=>{for(const item of Object.values(draft))item.run.baseline_id=88;},"Baseline của lựa chọn khớp ngữ cảnh hiện hành"],
+  [draft=>{draft[safe[1].run_id].run.trace_available=false;},"Run hoàn tất, có telemetry và revision"],
+ ];
+ for(const [mutate,label] of violations){const chosen=structuredClone(originalDraft);mutate(chosen);await setDraft(chosen);await draftRows.first().waitFor();assert(await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).isDisabled());assert.equal(await checkRegion.getByText(label,{exact:true}).locator("../..").getAttribute("data-passed"),"false");}
+ assert(await page.getByLabel(`Tập của run ${safe[1].run_id}`,{exact:true}).isDisabled());
+ await page.getByRole("button",{name:`Bỏ run ${safe[1].run_id} khỏi bản nháp`,exact:true}).click();
+ await page.waitForFunction(()=>document.querySelectorAll("tr[data-draft-run]").length===1);
+ const repeated=structuredClone(originalDraft),repeatId=80001;
+ repeated[repeatId]={run:{...structuredClone(safe[0]),run_id:repeatId},role:"OPTIMIZATION"};
+ await setDraft(repeated);await draftRows.first().waitFor();assert(await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).isDisabled());
+ const limitDraft={};for(let index=0;index<501;index++){const run={...structuredClone(safe[0]),run_id:50000+index,scenario_version_id:60000+index,seed:index,variant:`LIMIT-${index}`};limitDraft[run.run_id]={run,role:"OPTIMIZATION"};}limitDraft[safe[1].run_id]=originalDraft[safe[1].run_id];
+ await setDraft(limitDraft);await draftRows.first().waitFor();assert(await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).isDisabled());
+ assert.equal(await checkRegion.getByText("Mỗi tập có từ 1 đến 500 run",{exact:true}).locator("../..").getAttribute("data-passed"),"false");
+ await optimizationDraft.getByRole("button",{name:"Trang sau",exact:true}).click();await optimizationDraft.getByText("Trang 2 / 51",{exact:true}).waitFor();
+ await optimizationDraft.getByLabel("Số dòng mỗi trang",{exact:true}).selectOption("20");await optimizationDraft.getByText("Trang 1 / 26",{exact:true}).waitFor();
+ delete limitDraft[50500];await setDraft(limitDraft);await draftRows.first().waitFor();assert(await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).isEnabled());
+ // Freeze failures retain selection; retry posts only IDs and source revisions.
+ await setDraft(originalDraft);await draftRows.first().waitFor();selectionMode="stale";
+ await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).click();
+ await checkRegion.getByRole("alert").getByText(/Dữ liệu đã thay đổi/).waitFor();assert.equal(await draftRows.count(),2);
+ assert.equal(new URL(page.url()).searchParams.get("dataset_id"),null);
+ selectionMode="slow";await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).click();
+ await page.getByRole("button",{name:"Đang chốt hai tập…",exact:true}).waitFor();
+ assert(await page.getByRole("button",{name:"Bỏ lựa chọn",exact:true}).isDisabled());
+ assert(await page.getByLabel(`Tập của run ${safe[0].run_id}`,{exact:true}).isDisabled());
+ await page.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();selectionMode="normal";
+ assert.equal(writes.length,3);assert.deepEqual(writes[2].body,writes[0].body,"Retry freezes the original IDs and revisions, without client metrics");
+ assert.equal((await checkRegion.getByRole("alert").count()),0);
+ for(const [width,height] of [[1920,1080],[1366,768],[1024,768]]){
+  await page.setViewportSize({width,height});
+  for(const group of [optimizationDraft,validationDraft]){
+   const bounds=await group.locator("tbody tr").first().locator("td").last().evaluate(td=>({right:td.getBoundingClientRect().right,limit:td.closest('[role="region"]').getBoundingClientRect().right}));
+   assert(bounds.right<=bounds.limit+2,`Draft role/removal actions stay visible at ${width}`);
+  }
+  await page.screenshot({path:path.join(output,`dataset-ready-${width}.png`),fullPage:true});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Dataset overflow ${width}`);
+ }
+ // A saved read intentionally has no handoff_ready flag. Handoff revalidates on the server.
+ await page.reload();await page.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();
+ assert(await page.getByRole("button",{name:"Tiếp tục: Tối ưu AEB →",exact:true}).isEnabled());
+ for(const nextMode of ["changed","baseline","forbidden","notready"]){handoffMode=nextMode;await page.getByRole("button",{name:"Tiếp tục: Tối ưu AEB →",exact:true}).click();await snapshotRegion.getByRole("alert").waitFor();assert.equal(new URL(page.url()).pathname,"/analysis/failures");assert.equal(await draftRows.count(),2);}
+ handoffMode="slow";await page.getByRole("button",{name:"Tiếp tục: Tối ưu AEB →",exact:true}).click();await page.getByRole("button",{name:"Đang kiểm tra bàn giao…",exact:true}).waitFor();
+ assert(await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).isDisabled());
+ await page.waitForURL("**/aeb?dataset_id=9001");await page.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();handoffMode="normal";
+ assert.deepEqual(writes.map(w=>w.path),Array(3).fill("/vehicsim/analysis/selections"),"Handoff never starts optimizer or regression");
+ // Read failures retry the snapshot endpoint, not the baseline list; changing IDs hides old data.
+ for(const nextMode of ["error","forbidden","notfound"]){snapshotMode=nextMode;await page.goto(snapshotUrl);await snapshotRegion.getByRole("alert").waitFor();assert.equal(await page.getByRole("heading",{name:/Tập đã chốt #9001/}).count(),0);snapshotMode="normal";await snapshotRegion.getByRole("button",{name:"Thử tải lại tập đã chốt",exact:true}).click();await page.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();}
+ snapshotMode="slow";await page.evaluate(()=>{const url=new URL(location.href);url.searchParams.set("dataset_id","9002");history.replaceState(null,"",url);});
+ await snapshotRegion.getByRole("status").filter({hasText:"Đang tải dữ liệu phân tích"}).waitFor();assert.equal(await page.getByRole("heading",{name:/Tập đã chốt #9001/}).count(),0);
+ snapshotMode="normal";await page.evaluate(()=>{const url=new URL(location.href);url.searchParams.set("dataset_id","9001");history.replaceState(null,"",url);});
+ await page.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();
+ await page.waitForTimeout(850);assert.equal(await page.getByRole("heading",{name:/Tập đã chốt #9002/}).count(),0,"Late old response cannot replace current snapshot");
+ snapshotOverride={...saved,baseline_current:false};await page.reload();await page.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();assert(await page.getByRole("button",{name:"Tiếp tục: Tối ưu AEB →",exact:true}).isDisabled());
+ snapshotOverride={schema:"vehicsim.analysis-dataset/v1",id:9001};await page.reload();await snapshotRegion.getByRole("alert").getByText(/Tập dữ liệu cũ/).waitFor();assert.equal(await page.getByRole("button",{name:"Tiếp tục: Tối ưu AEB →",exact:true}).count(),0);
+ snapshotOverride=null;
+ for(const invalid of ["0","-1","Infinity","1.5","abc"]){const before=requests.filter(u=>u.pathname.includes("/analysis/datasets/")).length;await page.goto(datasetUrl+`&dataset_id=${invalid}`);await snapshotRegion.getByRole("alert").getByText("Mã tập phân tích không hợp lệ.",{exact:true}).waitFor();assert.equal(requests.filter(u=>u.pathname.includes("/analysis/datasets/")).length,before);}
+ await page.goto(snapshotUrl);await page.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();
+ await page.getByLabel(`Tập của run ${safe[0].run_id}`,{exact:true}).selectOption("VALIDATION");
+ await page.waitForURL(u=>!u.searchParams.has("dataset_id"));await validationDraft.locator("tbody tr").nth(1).waitFor();
+ assert.equal(saved.optimization_run_ids[0],safe[0].run_id,"Editing draft preserves immutable snapshot");
+ assert.equal(await page.getByRole("heading",{name:/Tập đã chốt #9001/}).count(),0);
+ await page.getByRole("button",{name:"Bỏ lựa chọn",exact:true}).click();await page.getByText("Chưa có run trong bản nháp.",{exact:true}).waitFor();
+ await page.reload();await page.getByText("Chưa có run trong bản nháp.",{exact:true}).waitFor();
+ await page.goto(snapshotUrl);await page.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();assert.equal(await draftRows.count(),0,"Snapshot can be read with an empty draft");
+ await page.evaluate(key=>sessionStorage.setItem(key,"{invalid json"),draftKey);await page.goto(datasetUrl);await page.getByRole("status").getByText(/Không khôi phục được lựa chọn/).waitFor();
+ await setDraft({...originalDraft,broken:{role:"OPTIMIZATION",run:{run_id:"broken"}}});await page.getByRole("status").getByText(/Một số lựa chọn trong phiên/).waitFor();assert.equal(await draftRows.count(),2);
+ context.project.id=999998;await page.reload();await page.getByText("Chưa có run trong bản nháp.",{exact:true}).waitFor();context.project.id=999999;await page.reload();await draftRows.first().waitFor();assert.equal(await draftRows.count(),2,"Draft remains scoped to the fixture account/project");
+ role="MANAGER";await page.goto(snapshotUrl);await page.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();
+ assert(await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).isDisabled());assert(await page.getByRole("button",{name:"Bỏ lựa chọn",exact:true}).isDisabled());
+ assert(await page.getByLabel(`Tập của run ${safe[0].run_id}`,{exact:true}).isDisabled());assert(await page.getByRole("button",{name:`Bỏ run ${safe[0].run_id} khỏi bản nháp`,exact:true}).isDisabled());
+ assert(await page.getByRole("button",{name:"Tiếp tục: Tối ưu AEB →",exact:true}).isEnabled(),"Read-only role may follow the existing GET handoff");
+ role="ENGINEER";
  for(const nextMode of ["slow","empty","error","forbidden"]){mode=nextMode;await page.goto(base+"/analysis/failures?view=runs");if(mode==="slow")await page.getByRole("status").filter({hasText:"Đang tải dữ liệu phân tích"}).waitFor();else if(mode==="empty")await page.getByText("Chưa có run baseline phù hợp.",{exact:true}).waitFor();else await page.getByRole("alert").waitFor();await page.screenshot({path:path.join(output,`state-${mode}.png`),fullPage:true});}
  mode="normal";role="MANAGER";await page.reload();await page.getByRole("table").locator("tbody tr").first().waitFor();
  assert(await page.locator('select[aria-label^="Tập của run"]').first().isDisabled());
@@ -694,7 +812,7 @@ try {
  assert(await page.getByRole("button",{name:"Chạy trên CARLA",exact:true}).isDisabled());
  assert(await page.getByRole("button",{name:"Tải .xosc",exact:true}).isEnabled());
  await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
- assert.deepEqual(errors,[]);assert.equal(writes.length,1);assert(!writes.some(w=>/optimizations|aeb\/versions|regression/.test(w.path)));
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["batch6 failure full-scope server statistics/partial-zero; filter chips/reset/inherited scope; CSV server filters; local search; pagination/invalid URLs; evidence primary identity/raw scores/unknown evidence/partial-zero; recorded-time telemetry/playback links and return; missing trace; loading/error/403/retry; responsive screenshots", "batch5 single keyboard timeline/markers; duplicate event identity; play-pause-restart/rates; exact recorded frame/projection and no inference; paused URL/reload/detail signal/return; layers; partial/invalid/empty data; run change/loading/503/403/404/retry; responsive screenshots", "batch4 detail source/metrics/tabs/keyboard; URL time/signal/return/reload without refetch; recorded null-zero-signed samples; no GT fallback or objective recomputation; gaps/non-monotonic timestamps; TTC above 5; loading/run navigation/empty/invalid/error/403/404/retry; responsive screenshots", "batch3 row actions/detail/playback/browser-back URL restoration; filter chips/reset; last-page clamp; page-size reset; local sort null/zero/ties; trimmed search/reload; missing-telemetry restrictions; sticky column/overflow", "overview","batch2 full-scope KPI/source identities/partial-zero-loading-error/retry","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","batch1 API-only metrics/events and missing data","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
+ assert.deepEqual(errors,[]);assert.equal(writes.length,3);assert(!writes.some(w=>/optimizations|aeb\/versions|regression/.test(w.path)));
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["batch7 draft/snapshot separation; safe cases/source/overlap/duplicate/eligibility/baseline/500-limit metadata; page-local draft search/return/role transfer/removal/paging; cache corruption/project scope; freeze stale revision/busy/retry unchanged payload; snapshot URL/legacy/503/403/404/retry/loading/race/current baseline; handoff rejection/response validation/retry/by ID/no optimizer mutations; empty draft/read-only; responsive screenshots", "batch6 failure full-scope server statistics/partial-zero; filter chips/reset/inherited scope; CSV server filters; local search; pagination/invalid URLs; evidence primary identity/raw scores/unknown evidence/partial-zero; recorded-time telemetry/playback links and return; missing trace; loading/error/403/retry; responsive screenshots", "batch5 single keyboard timeline/markers; duplicate event identity; play-pause-restart/rates; exact recorded frame/projection and no inference; paused URL/reload/detail signal/return; layers; partial/invalid/empty data; run change/loading/503/403/404/retry; responsive screenshots", "batch4 detail source/metrics/tabs/keyboard; URL time/signal/return/reload without refetch; recorded null-zero-signed samples; no GT fallback or objective recomputation; gaps/non-monotonic timestamps; TTC above 5; loading/run navigation/empty/invalid/error/403/404/retry; responsive screenshots", "batch3 row actions/detail/playback/browser-back URL restoration; filter chips/reset; last-page clamp; page-size reset; local sort null/zero/ties; trimmed search/reload; missing-telemetry restrictions; sticky column/overflow", "overview","batch2 full-scope KPI/source identities/partial-zero-loading-error/retry","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","batch1 API-only metrics/events and missing data","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
  console.log("PASS: browser fixture UI checks; live backend/authentication/database/CARLA/Figma NOT verified. Screenshots:",output);
 } finally {await browser.close();}
