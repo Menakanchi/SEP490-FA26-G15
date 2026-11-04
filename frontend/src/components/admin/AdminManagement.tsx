@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { AdminUsersTable } from "./AdminUsersTable";
 import { AuthGate } from "@/components/AuthGate";
 import { Card, Tag } from "@/components/VehicSimUi";
 import { useAuth } from "@/context/AuthContext";
@@ -55,7 +56,9 @@ function active(value: AdminRow[string]) { return value === true || value === 1;
 function message(error: unknown) { return error instanceof Error ? error.message : "Không thực hiện được thao tác. Hãy thử lại."; }
 
 export function AdminManagement({ resource }: { resource: AdminResource }) {
-  return <AuthGate allowedRoles={["admin"]}><Management key={resource} resource={resource} /></AuthGate>;
+  return <AuthGate allowedRoles={["admin"]}>{resource === "users"
+    ? <Suspense fallback={<p role="status">Đang tải dữ liệu tài khoản…</p>}><AdminUsersTable renderEditor={props => <Editor resource="users" {...props} />} /></Suspense>
+    : <Management key={resource} resource={resource} />}</AuthGate>;
 }
 function Management({ resource }: { resource: AdminResource }) {
   const { user } = useAuth();

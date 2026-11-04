@@ -127,7 +127,7 @@ try {
   assert.equal(requests.filter(r=>r.path==="/vehicsim/admin/users").at(-1).query.page_size,"20");
 
   // PUT confirmation is still required; a rejected fixture save keeps editor values and shows no success.
-  await frame.getByRole("button",{name:"Chỉnh sửa",exact:true}).first().click();
+  await frame.getByRole("button",{name:/^Chỉnh sửa tài khoản /}).first().click();
   const editor=page.getByRole("dialog",{name:"Chỉnh sửa · Tài khoản",exact:true});await editor.waitFor();
   await editor.getByLabel("Tên *",{exact:true}).fill("Giữ dữ liệu nhập");
   await editor.getByRole("button",{name:"Lưu thay đổi",exact:true}).click();
@@ -146,7 +146,7 @@ try {
       mode=state;await page.goto(base+`/admin/${resource}`);
       await frame.getByRole("heading",{level:1,name:title,exact:true}).waitFor();
       if(state==="slow")await frame.getByRole("status").filter({hasText:"Đang tải dữ liệu"}).waitFor();
-      else if(state==="empty")await frame.getByText("Không có dữ liệu phù hợp.",{exact:true}).waitFor();
+      else if(state==="empty")await frame.getByText(resource==="users"?"Chưa có tài khoản":"Không có dữ liệu phù hợp.",{exact:true}).waitFor();
       else await frame.getByRole("alert").filter({hasText:state==="error"?"Fixture: không tải được":"Fixture: không có quyền"}).waitFor();
       assert.equal(await frame.getByRole("link",{name:"Hồ sơ / Mật khẩu",exact:true}).isVisible(),true);
       if(state==="error"){
