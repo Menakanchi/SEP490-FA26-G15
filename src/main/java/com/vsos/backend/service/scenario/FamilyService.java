@@ -62,7 +62,10 @@ public class FamilyService {
             "trigger_distance_m", new double[]{5.0, 80.0},
             "pedestrian_speed_mps", new double[]{0.5, MAX_PEDESTRIAN_SPEED_MPS});
 
-    /** Không gian tham số. Mỗi trục là danh sách giá trị; biến thể = tích Descartes. */
+    /**
+     * Không gian tham số của họ kịch bản. Mỗi trục là một danh sách giá trị rời rạc;
+     * toàn bộ các biến thể hợp lệ được sinh ra từ tích Descartes (Cartesian grid).
+     */
     public record FamilySpec(
             String name,
             String description,
