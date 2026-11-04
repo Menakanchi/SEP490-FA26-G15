@@ -1,0 +1,41 @@
+.dashboard { display: flex; min-width: 0; flex-direction: column; gap: 28px; }
+.sectionHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.dashboard h2 { margin: 0; color: #1e293b; font-size: 16px; font-weight: 700; line-height: 1.5; }
+.sectionHeader p { margin-top: 4px; color: #64748b; font-size: 12px; line-height: 1.6; }
+.refresh { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 9px 14px; border: 1px solid #dce3ee; border-radius: 10px; background: #fff; color: #334155; font-size: 12px; font-weight: 650; cursor: pointer; }
+.refresh:hover:enabled { border-color: #a5b4cf; background: #f8fafc; }
+.refresh:disabled { color: #64748b; cursor: wait; }
+.status { min-height: 20px; margin: 12px 0 16px; color: #64748b; font-size: 12px; line-height: 1.7; }
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.card { display: flex; min-width: 0; flex-direction: column; padding: 22px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; box-shadow: 0 3px 14px #0f172a04; }
+.cardHeader { display: flex; align-items: center; gap: 12px; }
+.icon { display: grid; flex-shrink: 0; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: #edf4ff; color: #1e40af; }
+.card h3 { color: #334155; font-size: 14px; font-weight: 650; }
+.value { margin-top: 20px; overflow-wrap: anywhere; color: #0f172a; font-size: clamp(24px, 2.4vw, 36px); font-weight: 750; line-height: 1.25; letter-spacing: -.6px; font-variant-numeric: tabular-nums; }
+.scope { margin-top: 8px; color: #64748b; font-size: 11px; line-height: 1.6; }
+.feedback { flex: 1; min-height: 42px; padding: 12px 0; color: #64748b; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.feedback [role="alert"] { color: #b91c1c; }
+.action { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; margin-top: 8px; padding-top: 12px; border-top: 1px solid #e2e8f0; color: #1e40af; font-size: 12px; font-weight: 650; }
+.action:hover { text-decoration: underline; }
+.guide { display: grid; grid-template-columns: minmax(200px, .8fr) minmax(0, 1.6fr); gap: 28px; padding: 26px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; }
+.eyebrow { margin: 0 0 8px; color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; }
+.guideIntro > p:last-child { max-width: 42ch; margin-top: 10px; color: #64748b; font-size: 12px; line-height: 1.8; }
+.steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin: 0; padding: 0; list-style: none; }
+.steps li { display: flex; align-items: flex-start; gap: 12px; }
+.stepNumber { display: grid; flex-shrink: 0; place-items: center; width: 28px; height: 28px; border: 1px solid #e2e8f0; border-radius: 9px; color: #64748b; font-size: 10px; font-weight: 700; }
+.steps h3 { color: #334155; font-size: 12px; font-weight: 650; line-height: 1.6; }
+.steps p { margin-top: 6px; color: #64748b; font-size: 12px; line-height: 1.8; }
+.steps a { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; margin-top: 8px; color: #1e40af; font-size: 12px; font-weight: 650; }
+.steps a:hover { text-decoration: underline; }
+@media (max-width: 1199px) {
+  .guide { grid-template-columns: 1fr; }
+  .guideIntro > p:last-child { max-width: none; }
+}
+@media (max-width: 699px) {
+  .cards { grid-template-columns: 1fr; gap: 14px; }
+  .card { padding: 20px; }
+  .value { font-size: 32px; }
+  .feedback { min-height: 24px; }
+  .guide { padding: 20px; gap: 22px; }
+  .steps { grid-template-columns: 1fr; }
+}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, BookOpen, Building2, ChevronDown, ChevronRight, LogOut, ShieldCheck, UserRound, Users } from "lucide-react";
+import { ArrowLeft, BookOpen, Building2, ChevronDown, ChevronRight, LayoutDashboard, LogOut, ShieldCheck, UserRound, Users } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { NotificationBell } from "@/components/NotificationBell";
 import { initials } from "@/components/VehicSimUi";
@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import styles from "./AdminShell.module.css";
 
 const sections = [
+  { href: "/admin", title: "Tổng quan quản trị", caption: "Số liệu và truy cập nhanh", description: "Theo dõi các danh mục quản trị và mở chức năng bạn cần xử lý.", icon: LayoutDashboard },
   { href: "/admin/users", title: "Tài khoản", caption: "Người dùng và vai trò", description: "Quản lý thông tin, vai trò và trạng thái hoạt động của tài khoản.", icon: Users },
   { href: "/admin/workspaces", title: "Workspace", caption: "Không gian và người quản lý", description: "Quản lý workspace và phân công Manager phụ trách.", icon: Building2 },
   { href: "/admin/tech-references", title: "Tài liệu kỹ thuật", caption: "Danh mục và nguồn tham khảo", description: "Quản lý nguyên lý, hằng số, tiêu chuẩn và các nguồn tham khảo kỹ thuật.", icon: BookOpen },
@@ -66,7 +67,10 @@ function Frame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const section = sections.find(item => item.href === pathname);
   return <div className={styles.frame} data-admin-frame>
-    <a className={styles.skipLink} href="#admin-content">Đến nội dung quản trị</a>
+    <a className={styles.skipLink} href="#admin-content" onClick={event => {
+      event.preventDefault();
+      document.getElementById("admin-content")?.focus();
+    }}>Đến nội dung quản trị</a>
     <header className={styles.topbar}>
       <nav aria-label="Đường dẫn" className={styles.breadcrumb}>
         <ol><li><Link href="/admin">Quản trị hệ thống</Link></li>
