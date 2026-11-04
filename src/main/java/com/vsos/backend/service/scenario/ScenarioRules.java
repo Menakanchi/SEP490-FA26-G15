@@ -28,6 +28,7 @@ public final class ScenarioRules {
     public static final String VEHICLE = "VEHICLE";
     public static final String PEDESTRIAN = "PEDESTRIAN";
 
+    /** Danh sách 7 nhóm kịch bản kiểm thử theo tiêu chuẩn an toàn Euro NCAP. */
     public static final List<String> CATEGORIES = List.of(CCRS, CCRM, CCRB, CP_CROSSING, CPLA, TURNING, CUT_IN);
 
     /** Loại đối tượng mục tiêu hợp lệ theo category; TURNING gồm cả xe (CCFtap) lẫn người đi bộ (CPTA). */
