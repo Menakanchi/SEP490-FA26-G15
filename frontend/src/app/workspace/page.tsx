@@ -55,7 +55,7 @@ export default function WorkspacesPage() {
           </div>
 
           <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
-            <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+            <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
               <span className="min-w-0 flex-1">Workspace</span>
               <span className="w-[200px]">Quản lý</span>
               <span className="w-[110px]">Thành viên</span>

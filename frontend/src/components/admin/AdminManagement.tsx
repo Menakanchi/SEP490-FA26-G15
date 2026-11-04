@@ -122,7 +122,7 @@ function Management({ resource }: { resource: AdminResource }) {
     {notice && <p role="status" className="rounded-xl bg-green-50 p-4 text-green-800">{notice}</p>}
     <Card className="overflow-hidden">
       {loading ? <p role="status" className="p-8">Đang tải dữ liệu…</p> : data && <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm"><thead className="bg-vehicsim-soft"><tr>
+        <table className="w-full text-left text-sm"><thead className="bg-vehicsim-soft text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink"><tr>
           {columns[resource].map(([key, label]) => <th key={key} className="whitespace-nowrap p-4">{label}</th>)}<th className="p-4">Thao tác</th>
         </tr></thead><tbody>
           {data.items.length === 0 && <tr><td colSpan={columns[resource].length + 1} className="p-8 text-center text-vehicsim-muted">Không có dữ liệu phù hợp.</td></tr>}

@@ -123,7 +123,7 @@ export default function RegressionListPage() {
           <FilterSelect<string> label="Người tạo" value={author} options={uniq((data?.items ?? []).map((i) => i.created_by))} onChange={filtered(setAuthor)} />
         </div>
 
-        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
           <span className="min-w-0 flex-1">Kiểm thử</span>
           <span className="w-[156px]">Phiên bản</span>
           <span className="w-[98px]">Kịch bản</span>
@@ -131,7 +131,7 @@ export default function RegressionListPage() {
           <span className="w-[136px]">Sửa / Xấu đi</span>
           <span className="w-[106px]">Người tạo</span>
           <span className="w-[96px]">Ngày</span>
-          <span className="w-[112px]" />
+          <span className="w-[180px] text-right pr-2">Thao tác</span>
         </div>
 
         {data && items.length === 0 && (
@@ -192,13 +192,19 @@ export default function RegressionListPage() {
               </span>
               <span className="w-[106px] truncate text-[13px] text-vehicsim-ink">{i.created_by ?? "—"}</span>
               <span className="w-[96px] text-[13px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
-              <span className="flex w-[112px] items-center justify-end gap-3 text-[12px] font-semibold" onClick={(e) => e.stopPropagation()}>
-                <Link href={`/validation/regression/${i.id}`} className="text-vehicsim-decision hover:underline">
-                  Xem
+              <span className="flex w-[180px] items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                <Link
+                  href={`/validation/regression/${i.id}`}
+                  className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
+                >
+                  Chi tiết →
                 </Link>
                 {i.status === "PASSED" && (
-                  <Link href={conclusion(i.id)} className="text-vehicsim-decision hover:underline">
-                    {isExperiencer ? "Kết luận" : "Khuyến nghị"}
+                  <Link
+                    href={conclusion(i.id)}
+                    className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-decision px-3 text-[12px] font-bold text-white hover:bg-vehicsim-decision/90 transition shadow-sm"
+                  >
+                    {isExperiencer ? "Kết luận ➔" : "Khuyến nghị ➔"}
                   </Link>
                 )}
               </span>

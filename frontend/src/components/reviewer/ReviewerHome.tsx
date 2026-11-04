@@ -151,7 +151,7 @@ export function ReviewerHome() {
                 Hàng đợi duyệt
               </CardTitle>
             </div>
-            <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+            <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
               <span className="w-[90px]">Mã</span>
               <span className="min-w-0 flex-1">Ứng viên AEB</span>
               <span className="w-[130px]">Hồi quy</span>

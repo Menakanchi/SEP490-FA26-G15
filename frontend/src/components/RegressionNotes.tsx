@@ -84,7 +84,7 @@ export function PairObjectivesTable({ pairs, baselineLabel, candidateLabel }: { 
           ước lượng (ADR-040). Chưa có trung bình theo tập: chờ bộ chỉ số chung.
         </p>
       </div>
-      <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+      <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
         <span className="min-w-0 flex-1">Kịch bản</span>
         {OBJECTIVES.map((o) => (
           <span key={o.key} className="w-[170px]">

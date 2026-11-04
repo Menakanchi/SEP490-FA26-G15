@@ -105,7 +105,7 @@ export function NotificationBell() {
         onClick={toggle}
         aria-label={unread ? `Thông báo: ${unread} chưa đọc` : "Thông báo"}
         aria-expanded={open}
-        className="relative flex size-[34px] items-center justify-center rounded-full border border-solid border-vehicsim-line bg-white hover:bg-vehicsim-soft"
+        className="relative flex size-8 items-center justify-center rounded-full border border-solid border-vehicsim-line bg-white shadow-sm hover:bg-vehicsim-soft transition"
       >
         <svg aria-hidden width={16} height={16} viewBox="0 0 16 16" fill="none" className="text-vehicsim-muted">
           <path

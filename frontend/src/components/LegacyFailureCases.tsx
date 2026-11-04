@@ -30,7 +30,15 @@ const OPTIONAL_COLUMNS = ["impact", "ttc", "config"] as const;
 type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
 const COLUMN_LABELS: Record<OptionalColumn, string> = { impact: "Tốc độ va chạm", ttc: "TTC nhỏ nhất", config: "Cấu hình" };
 
-export function LegacyFailureCases({ initialScenario }: { initialScenario?: number }) {
+export function LegacyFailureCases({
+  initialScenario,
+  activeTab = "failures",
+  onTabChange,
+}: {
+  initialScenario?: number;
+  activeTab?: "baseline" | "failures";
+  onTabChange?: (tab: "baseline" | "failures") => void;
+}) {
   const router=useRouter();
   const { ctx } = useVehicSimContext();
   const [filters, setFilters] = useState<FailureFilters>({ scenario_id: initialScenario });
@@ -77,8 +85,8 @@ export function LegacyFailureCases({ initialScenario }: { initialScenario?: numb
   return (
     <VehicSimPage
       step={4}
-      crumbs={[{ label: "Phân tích" }, { label: "Ca lỗi" }]}
-      title="Tra cứu ca lỗi"
+      crumbs={[{ label: "Kịch bản", href: "/scenarios" }, { label: "Phân tích kết quả" }]}
+      title="Phân tích kết quả baseline"
       subtitle="Mọi lượt mô phỏng thất bại hoặc suýt va chạm, phân loại theo khâu hỏng trong chuỗi AEB."
       actions={
         <>
@@ -91,6 +99,38 @@ export function LegacyFailureCases({ initialScenario }: { initialScenario?: numb
       }
     >
       <ErrorNote message={error} />
+
+      {/* Điều hướng chuyển chế độ (Tabs) */}
+      <div className="flex items-center gap-2 border-b border-solid border-vehicsim-line pb-1">
+        <button
+          type="button"
+          onClick={() => onTabChange?.("baseline")}
+          className={cx(
+            "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
+            activeTab === "baseline"
+              ? "border-b-2 border-vehicsim-ink bg-white text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
+              : "text-vehicsim-muted hover:text-vehicsim-ink",
+          )}
+        >
+          <span>Kết quả baseline & Bàn giao</span>
+          <span className="rounded-full bg-vehicsim-decision-bg px-2 py-[2px] text-[11px] font-semibold text-vehicsim-decision">
+            Dataset v2
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onTabChange?.("failures")}
+          className={cx(
+            "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
+            activeTab === "failures"
+              ? "border-b-2 border-vehicsim-ink bg-white text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
+              : "text-vehicsim-muted hover:text-vehicsim-ink",
+          )}
+        >
+          <span>Tra cứu ca lỗi chi tiết</span>
+        </button>
+      </div>
 
 
       <div className="flex items-start gap-4">
@@ -246,7 +286,7 @@ export function LegacyFailureCases({ initialScenario }: { initialScenario?: numb
           </div>
         </div>
 
-        <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+        <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
           <span className="w-7" />
           <span className="w-[78px]">Lượt chạy</span>
           <span className="w-[210px]">Kịch bản</span>
@@ -256,7 +296,7 @@ export function LegacyFailureCases({ initialScenario }: { initialScenario?: numb
           {show("impact") && <span className="w-[86px]">Va chạm ở</span>}
           {show("ttc") && <span className="w-[76px]">TTC min</span>}
           {show("config") && <span className="w-[78px]">Cấu hình</span>}
-          <span className="w-16" />
+          <span className="w-[140px] text-right pr-2">Thao tác</span>
         </div>
 
         {data && data.items.length === 0 && (
@@ -324,16 +364,20 @@ export function LegacyFailureCases({ initialScenario }: { initialScenario?: numb
                   <span className="rounded-full bg-vehicsim-soft px-[10px] py-[5px] text-[12px] font-medium text-vehicsim-muted">{item.config}</span>
                 </span>
               )}
-              <span className="flex w-16 items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <span className="flex w-[140px] items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                 <Link
                   href={`/analysis/failures/${item.run_id}/playback`}
-                  title="Phát lại"
-                  className="flex size-[30px] items-center justify-center rounded-[15px] border border-solid border-vehicsim-line bg-white text-[10px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft"
+                  title="Phát lại mô phỏng"
+                  className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-2.5 text-[11px] font-bold text-vehicsim-ink hover:border-vehicsim-ink hover:bg-vehicsim-soft transition shadow-sm"
                 >
-                  ▶
+                  ▶ Xem
                 </Link>
-                <Link href={`/analysis/failures/${item.run_id}`} title="Chi tiết" className="text-[16px] font-bold text-vehicsim-faint hover:text-vehicsim-ink">
-                  ⋯
+                <Link
+                  href={`/analysis/failures/${item.run_id}`}
+                  title="Chi tiết ca lỗi"
+                  className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[11px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
+                >
+                  Chi tiết →
                 </Link>
               </span>
             </div>

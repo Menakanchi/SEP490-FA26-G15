@@ -90,7 +90,7 @@ const GROUPS: Group[] = [
     icon: svgIcon("/vehicsim/icon-route.svg"),
     prefix: "/scenarios",
     children: [
-      { label: "Họ kịch bản", href: "/scenarios" },
+      { label: "Danh sách họ kịch bản", href: "/scenarios" },
       // FE-06: câu mô tả → LLM → Scenario IR (dùng lại hạ tầng LLM của Generator cũ).
       { label: "Sinh từ mô tả", href: "/scenarios/new" },
     ],

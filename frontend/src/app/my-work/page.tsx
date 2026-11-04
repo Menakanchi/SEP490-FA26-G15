@@ -3,7 +3,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { Card, CardTitle, EmptyState, ErrorNote, PillButton, StatCard, Tag, cx, fmt } from "@/components/VehicSimUi";
+import { Card, CardTitle, EmptyState, ErrorNote, Pagination, PillButton, StatCard, Tag, cx, fmt } from "@/components/VehicSimUi";
 import { MEMBER_ROLES } from "@/components/workspaceAccess";
 import { useAuth } from "@/context/AuthContext";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -110,6 +110,14 @@ function MyWorkContent() {
   const inReview = tasks.filter((t) => t.task.status === "REVIEW").length;
   const pendingReports = (work?.reports ?? []).filter((r) => r.status === "SUBMITTED").length;
   const projectTasks = tasks.filter((t) => draft.projectId !== "" && t.task.project?.id === draft.projectId);
+
+  const [taskPage, setTaskPage] = useState(1);
+  const taskTotal = tasks.length;
+  const taskPageSize = 8;
+  const taskPages = Math.max(1, Math.ceil(taskTotal / taskPageSize));
+  const currentTaskPage = Math.min(taskPage, taskPages);
+  const taskOffset = (currentTaskPage - 1) * taskPageSize;
+  const shownTasks = tasks.slice(taskOffset, taskOffset + taskPageSize);
 
   const draftOf = (t: MyTask) =>
     drafts[t.task.id] ?? { status: (t.task.status === "DONE" ? "REVIEW" : t.task.status) as MemberTaskStatus, progress: t.task.progress_pct };
@@ -304,13 +312,13 @@ function MyWorkContent() {
             <div className="px-5 pb-3 pt-5">
               <CardTitle>{work ? `${tasks.length} task được giao` : "Task được giao"}</CardTitle>
             </div>
-            <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+            <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
               <span className="min-w-0 flex-1">Task</span>
               <span className="w-[100px]">Ưu tiên</span>
               <span className="w-[100px]">Hạn</span>
               <span className="w-[160px]">Trạng thái</span>
               <span className="w-[130px]">Tiến độ</span>
-              <span className="w-[170px]" />
+              <span className="w-[170px] text-right pr-2">Thao tác</span>
             </div>
             {work && tasks.length === 0 && (
               <EmptyState title={work.projects.length ? "Chưa có task nào được giao cho bạn" : "Bạn chưa là thành viên workspace nào"}>
@@ -319,7 +327,7 @@ function MyWorkContent() {
                   : "Quản lý workspace thêm bạn vào workspace và cấp vai trò; sau đó task và project của workspace hiện ở đây."}
               </EmptyState>
             )}
-            {tasks.map((t) => {
+            {shownTasks.map((t) => {
               const d = draftOf(t);
               const done = t.task.status === "DONE";
               const editable = !done && t.workspace.status === "ACTIVE" && (!t.task.project || work?.projects.some((p) => p.id === t.task.project?.id));
@@ -395,6 +403,14 @@ function MyWorkContent() {
                 </div>
               );
             })}
+            {taskTotal > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-t border-solid border-vehicsim-line">
+                <span className="text-[12px] text-vehicsim-muted">
+                  Hiển thị {taskOffset + 1}–{Math.min(taskOffset + taskPageSize, taskTotal)} trên {taskTotal} nhiệm vụ
+                </span>
+                {taskPages > 1 && <Pagination page={currentTaskPage} pages={taskPages} onPage={setTaskPage} />}
+              </div>
+            )}
           </Card>
 
           <Card className="overflow-hidden">

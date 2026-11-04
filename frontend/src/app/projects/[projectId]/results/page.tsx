@@ -63,7 +63,7 @@ function OutcomeGrid({ variants }: { variants: Variant[] }) {
       <table className="border-separate border-spacing-1 text-[13px]">
         <thead>
           <tr>
-            <th scope="col" className="px-2 text-left font-semibold text-vehicsim-muted">
+            <th scope="col" className="px-2 text-left font-bold text-vehicsim-ink">
               Khoảng cách \ Tốc độ
             </th>
             {speeds.map((s) => (

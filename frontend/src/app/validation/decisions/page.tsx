@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, RecommendationBadge, StatCard, cx, fmt } from "@/components/VehicSimUi";
+import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, Pagination, RecommendationBadge, StatCard, cx, fmt } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { DecisionHistory, ReviewDecision } from "@/types/vehicsim";
 
@@ -31,6 +31,7 @@ export default function DecisionHistoryPage() {
   }, []);
 
   const all = useMemo(() => history?.decisions ?? [], [history]);
+  const [page, setPage] = useState(1);
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return all.filter(
@@ -43,11 +44,27 @@ export default function DecisionHistoryPage() {
   }, [all, decision, q]);
   const count = (s: Decided) => all.filter((d) => d.decision === s).length;
 
+  const PAGE_SIZE = 8;
+  const total = visible.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const current = Math.min(page, pages);
+  const offset = (current - 1) * PAGE_SIZE;
+  const shown = visible.slice(offset, offset + PAGE_SIZE);
+
+  const handleDecisionChange = (d: Decided | "") => {
+    setDecision(d);
+    setPage(1);
+  };
+  const handleQueryChange = (val: string) => {
+    setQ(val);
+    setPage(1);
+  };
+
   return (
     <VehicSimPage
       crumbs={[{ label: "Kiểm định" }, { label: "Lịch sử quyết định" }]}
       title="Lịch sử quyết định"
-      subtitle="Từng lần quyết định kèm người duyệt và lý do được lưu riêng. Chấp nhận hoặc từ chối là quyết định cuối; yêu cầu thêm kiểm thử giữ khuyến nghị mở. Dữ liệu cũ chỉ giữ được quyết định gần nhất trước khi có lịch sử."
+      subtitle="Lịch sử quyết định duyệt khuyến nghị AEB và chuỗi bản cơ sở của dự án."
     >
       <ErrorNote message={error} />
       <div className="flex w-full items-stretch gap-4">
@@ -67,22 +84,23 @@ export default function DecisionHistoryPage() {
         <div className="min-w-[1050px]">
         <div className="flex items-center gap-2 px-5 py-4">
           <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{history ? `${visible.length} quyết định` : "…"}</span>
-          <FilterSelect<Decided> label="Quyết định" value={decision} options={DECISIONS} onChange={setDecision} />
+          <FilterSelect<Decided> label="Quyết định" value={decision} options={DECISIONS} onChange={handleDecisionChange} />
           <input
             aria-label="Tìm theo mã, phiên bản, người duyệt hoặc lý do"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => handleQueryChange(e.target.value)}
             placeholder="Tìm mã, phiên bản, người duyệt, lý do…"
             className="ml-auto w-[280px] rounded-full border border-solid border-vehicsim-line bg-white px-4 py-[7px] text-[12px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
           />
         </div>
-        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
           <span className="w-[110px]">Khuyến nghị</span>
           <span className="w-[170px]">Phiên bản</span>
           <span className="w-[190px]">Quyết định</span>
           <span className="min-w-0 flex-1">Lý do</span>
           <span className="w-[150px]">Người duyệt</span>
           <span className="w-[100px]">Ngày</span>
+          <span className="w-[100px] text-right pr-2">Thao tác</span>
         </div>
         {history && visible.length === 0 && (
           <EmptyState title={all.length ? "Không có quyết định nào khớp bộ lọc" : "Chưa có quyết định nào"}>
@@ -93,11 +111,11 @@ export default function DecisionHistoryPage() {
             .
           </EmptyState>
         )}
-        {visible.map((d) => (
+        {shown.map((d) => (
           <Link
             key={d.id}
             href={`/validation/recommendations/${d.test_id}`}
-            className="flex min-h-[58px] items-center border-b border-solid border-vehicsim-line px-5 py-2 last:border-b-0 hover:bg-vehicsim-row"
+            className="group flex min-h-[58px] items-center border-b border-solid border-vehicsim-line px-5 py-2 last:border-b-0 hover:bg-vehicsim-row"
           >
             <span className="flex w-[110px] flex-col gap-[2px]">
               <span className="text-[13px] font-bold text-vehicsim-ink">{d.recommendation_code}</span>
@@ -116,8 +134,22 @@ export default function DecisionHistoryPage() {
             </span>
             <span className="w-[150px] truncate text-[13px] text-vehicsim-muted">{d.reviewed_by ?? "—"}</span>
             <span className="w-[100px] text-[13px] text-vehicsim-faint">{fmt.date(d.reviewed_at)}</span>
+            <span className="flex w-[100px] justify-end">
+              <span className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision group-hover:border-vehicsim-decision group-hover:bg-vehicsim-decision group-hover:text-white transition shadow-sm">
+                Chi tiết →
+              </span>
+            </span>
           </Link>
         ))}
+
+        {total > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <span className="text-[12px] text-vehicsim-muted">
+              Hiển thị {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} trên {total} quyết định
+            </span>
+            {pages > 1 && <Pagination page={current} pages={pages} onPage={setPage} />}
+          </div>
+        )}
         </div>
       </Card>
 

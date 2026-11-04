@@ -20,7 +20,7 @@ export function AnalysisSelectionSummary({dataset}: {dataset: AnalysisSelection}
    {dataset.evaluation.carla_observational_only && <p className="text-vehicsim-warn text-[12px]">CARLA chỉ phục vụ quan sát/đối chiếu; chưa hiệu chuẩn phanh và chưa tương đương với số động học.</p>}
    <ObjectiveSummary value={dataset.optimization_objectives} />
    <div className="max-h-60 overflow-auto"><table className="w-full text-left text-[12px]">
-     <thead><tr>{["Run / biến thể","Seed","Tập","Kết quả"].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead>
+     <thead className="bg-vehicsim-soft text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink"><tr>{["Run / biến thể","Seed","Tập","Kết quả"].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead>
      <tbody>{dataset.runs.map(run=><tr key={run.run_id} className="border-t border-vehicsim-line">
        <td className="p-2"><Link className="underline" href={`/analysis/failures/${run.run_id}`}>#{run.run_id} · {run.variant}</Link></td>
        <td>{run.seed}</td><td>{dataset.optimization_run_ids.includes(run.run_id)?"Tối ưu":"Xác minh"}</td><td>{run.outcome}</td>
