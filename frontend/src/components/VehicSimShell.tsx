@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { VehicSimContextProvider } from "@/components/VehicSimContext";
+import { AdminSidebar } from "@/components/admin/AdminShell";
 import { VehicSimSidebar } from "@/components/VehicSimSidebar";
 import { jakarta } from "@/components/vehicsimFonts";
 
@@ -13,7 +14,7 @@ import { jakarta } from "@/components/vehicsimFonts";
  * theo Figma + ngữ cảnh dùng chung. `AppLayoutWrapper` gọi nó cho các URL VehicSim.
  */
 export function VehicSimShell({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, role } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const adminPage = pathname.startsWith("/admin");
@@ -44,7 +45,7 @@ export function VehicSimShell({ children }: { children: React.ReactNode }) {
             <VehicSimSidebar />
           </details>
           <div className="analysis-desktop-menu"><VehicSimSidebar /></div>
-        </> : <VehicSimSidebar hideOnMobile={adminPage} />}
+        </> : adminPage && role === "admin" ? <AdminSidebar /> : <VehicSimSidebar hideOnMobile={adminPage} />}
         <main className="flex min-w-0 flex-1">{children}</main>
       </VehicSimContextProvider>
     </div>

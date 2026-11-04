@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AuthGate } from "@/components/AuthGate";
 import { Card, Tag } from "@/components/VehicSimUi";
-import { NotificationBell } from "@/components/NotificationBell";
 import { useAuth } from "@/context/AuthContext";
 import { adminApi, type AdminPageData, type AdminResource, type AdminRow } from "@/services/admin";
 
@@ -89,15 +87,7 @@ function Management({ resource }: { resource: AdminResource }) {
   const saved = () => { setEditor(undefined); setNotice("Đã lưu thành công."); setLoading(true); setRevision(n => n + 1); };
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / 20));
 
-  return <div className="flex min-w-0 flex-1 flex-col gap-6 p-4 md:p-8">
-    <header className="flex flex-wrap items-center justify-between gap-4">
-      <div><p className="text-sm text-vehicsim-muted">Quản trị hệ thống</p><h1 className="text-2xl font-bold">{titles[resource]}</h1></div>
-      <div className="flex items-center gap-3"><Link href="/profile" className="text-sm underline">Hồ sơ / Mật khẩu</Link><NotificationBell /></div>
-    </header>
-    <nav aria-label="Quản trị" className="flex flex-wrap gap-2">
-      {(Object.keys(titles) as AdminResource[]).map(key => <Link key={key} href={`/admin/${key}`} aria-current={resource === key ? "page" : undefined}
-        className={resource === key ? primaryClass : buttonClass}>{titles[key]}</Link>)}
-    </nav>
+  return <div className="flex min-w-0 flex-col gap-6">
     <Card className="p-4">
       <div className="flex flex-wrap items-end gap-3">
         <form onSubmit={e => { e.preventDefault(); change({ q: search.trim(), page: 1 }); }} className="flex min-w-0 flex-1 basis-full items-end gap-2 sm:basis-auto">
