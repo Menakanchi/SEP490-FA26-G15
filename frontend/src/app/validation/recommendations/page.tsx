@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { EmptyState, ErrorNote, FilterSelect, RECOMMENDATION_STATUS, RecommendationBadge, StatCard, cx, fmt } from "@/components/VehicSimUi";
+import { BaselineEntry } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { DecisionHistory, RecommendationItem, RecommendationStatus } from "@/types/vehicsim";
 
@@ -19,7 +20,6 @@ export default function RecommendationsPage() {
     vehicsimApi.recommendations()
       .then(setItems)
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách khuyến nghị"));
-    // Lịch sử chỉ để tham khảo: lỗi tải không chặn danh sách khuyến nghị.
     vehicsimApi.decisionHistory().then(setHistory).catch(() => setHistory(null));
   }, []);
 
@@ -31,7 +31,7 @@ export default function RecommendationsPage() {
       step={6}
       crumbs={[{ label: "Kiểm định" }, { label: "Khuyến nghị" }]}
       title="Khuyến nghị"
-      subtitle="Mỗi kiểm thử hồi quy chạy xong trở thành một khuyến nghị kỹ thuật. Chỉ kỹ sư mới được chấp nhận — không gì được áp dụng tự động."
+      subtitle="Mỗi kiểm thử hồi quy chạy xong trở thành một khuyến nghị kỹ thuật. Chỉ Người duyệt (Reviewer) mới được chấp nhận — không gì được áp dụng tự động."
     >
       <ErrorNote message={error} />
       <div className="flex w-full items-stretch gap-4">
@@ -145,17 +145,7 @@ export default function RecommendationsPage() {
             <h2 className="text-[15px] font-bold text-vehicsim-ink">Chuỗi bản cơ sở</h2>
             {history.baselines.map((b) => (
               <div key={b.id} className="flex flex-col gap-1 border-b border-solid border-vehicsim-line pb-3 last:border-b-0 last:pb-0">
-                <span className="flex items-center gap-2 text-[13px] font-bold text-vehicsim-ink">
-                  {b.label}
-                  <span className={cx("text-[11px] font-semibold", b.status === "BASELINE" ? "text-vehicsim-ok" : "text-vehicsim-faint")}>
-                    {b.status === "BASELINE" ? "hiện hành" : "đã lưu trữ"}
-                  </span>
-                </span>
-                <span className="text-[12px] text-vehicsim-muted">
-                  {b.promoted_by
-                    ? `Được ${b.promoted_by} chấp nhận${b.promoted_at ? ` ngày ${fmt.date(b.promoted_at)}` : ""}${b.regression_code ? ` (${b.regression_code})` : ""}`
-                    : "Bản cơ sở khởi tạo của dự án"}
-                </span>
+                <BaselineEntry baseline={b} />
               </div>
             ))}
           </section>

@@ -3,7 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, RecommendationBadge, StatCard, cx, fmt } from "@/components/VehicSimUi";
+import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, RecommendationBadge, StatCard, fmt } from "@/components/VehicSimUi";
+import { BaselineEntry } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { DecisionHistory, ReviewDecision } from "@/types/vehicsim";
 
@@ -14,10 +15,6 @@ const DECISIONS: { value: Decided; label: string }[] = [
   { value: "REQUEST_MORE_TESTS", label: "Yêu cầu thêm kiểm thử" },
 ];
 
-/**
- * Lịch sử quyết định của Người duyệt (mới nhất trước) và chuỗi bản cơ sở của project: mỗi lần Accept nâng ứng viên thành bản cơ sở
- * mới. Chỉ đọc `GET /vehicsim/decisions`; quyết định mới làm ở màn duyệt khuyến nghị.
- */
 export default function DecisionHistoryPage() {
   const [history, setHistory] = useState<DecisionHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -129,17 +126,7 @@ export default function DecisionHistoryPage() {
           ) : (
             history.baselines.map((b) => (
               <div key={b.id} className="flex flex-col gap-1 rounded-[14px] bg-vehicsim-soft px-4 py-3">
-                <span className="flex items-center gap-2 text-[13px] font-bold text-vehicsim-ink">
-                  {b.label}
-                  <span className={cx("text-[11px] font-semibold", b.status === "BASELINE" ? "text-vehicsim-ok" : "text-vehicsim-faint")}>
-                    {b.status === "BASELINE" ? "hiện hành" : "đã lưu trữ"}
-                  </span>
-                </span>
-                <span className="text-[12px] text-vehicsim-muted">
-                  {b.promoted_by
-                    ? `Được ${b.promoted_by} chấp nhận${b.promoted_at ? ` ngày ${fmt.date(b.promoted_at)}` : ""}${b.regression_code ? ` (${b.regression_code})` : ""}`
-                    : "Bản cơ sở khởi tạo của dự án"}
-                </span>
+                <BaselineEntry baseline={b} />
               </div>
             ))
           )}
