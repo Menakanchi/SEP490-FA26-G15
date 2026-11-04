@@ -10,6 +10,7 @@ export type ReviewDecision = "PENDING" | "ACCEPT" | "REJECT" | "REQUEST_MORE_TES
 export type Weather = "CLEAR" | "CLOUDY" | "RAIN" | "HEAVY_RAIN" | "FOG";
 export type TimeOfDay = "DAY" | "DUSK" | "NIGHT";
 
+/** Trạng thái kết nối và khả năng tương thích của hệ thống giả lập CARLA. */
 export interface CarlaStatus {
   configured: boolean;
   connected: boolean;
