@@ -104,6 +104,7 @@ export default function AebConfigPage() {
 
   const catalog = useMemo(() => new Map((ctx?.parameters ?? []).map((p) => [p.code, p])), [ctx]);
   const baseline = versions?.find((v) => v.status === "BASELINE") ?? null;
+  const targetFamily = ctx?.families?.find((f) => f.id === scenarioId) ?? null;
 
   return (
     <VehicSimPage
@@ -113,8 +114,20 @@ export default function AebConfigPage() {
       subtitle="Hiệu chỉnh 4 tham số AEB: chạy thuật toán tối ưu đa mục tiêu Bayes (MOBO/qEHVI) hoặc điều chỉnh thủ công, sau đó chuyển sang kiểm thử hồi quy."
     >
       <ErrorNote message={error ?? datasetError} />
+      {targetFamily && (
+        <div className="flex items-center justify-between gap-3 rounded-[16px] border border-solid border-vehicsim-decision/20 bg-vehicsim-decision-bg px-4 py-3 text-[13px] text-vehicsim-decision shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="size-2 rounded-full bg-vehicsim-decision" />
+            <span>
+              Đang tối ưu hoá thuật toán AEB trên toàn bộ không gian biến thể của kịch bản <strong>{targetFamily.code} · {targetFamily.name}</strong>.
+            </span>
+          </div>
+          <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-vehicsim-decision shadow-sm">
+            Tối ưu toàn kịch bản
+          </span>
+        </div>
+      )}
       {dataset && <AnalysisSelectionSummary dataset={dataset} />}
-      {dataset && <p className="text-[12px] text-vehicsim-muted">Tập phân tích đã chốt được chuyển sang bước này; MOBO hiện chạy trên toàn họ kịch bản, chưa lọc theo tập.</p>}
       {created && (
         <div className="flex items-center justify-between gap-4 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok shadow-sm">
           <span>Đã tạo ứng viên AEB {created.label}. Bước tiếp theo: chạy kiểm thử hồi quy so với bản cơ sở.</span>
@@ -177,6 +190,7 @@ export default function AebConfigPage() {
         <MoboOptimizationSection
           canWrite={canWrite}
           baselineId={baseline?.id ?? null}
+          initialScenarioId={Number.isSafeInteger(scenarioId) && scenarioId > 0 ? scenarioId : undefined}
           onCandidateSelected={async (candId, candLabel) => {
             setCreated({ id: candId, label: candLabel });
             load();
@@ -298,10 +312,12 @@ export default function AebConfigPage() {
 function MoboOptimizationSection({
   canWrite,
   baselineId,
+  initialScenarioId,
   onCandidateSelected,
 }: {
   canWrite: boolean;
   baselineId: number | null;
+  initialScenarioId?: number;
   onCandidateSelected: (candidateId: number, label: string) => void;
 }) {
   const { ctx } = useVehicSimContext();
@@ -312,7 +328,7 @@ function MoboOptimizationSection({
   const [paretoTrials, setParetoTrials] = useState<OptimizationTrial[] | null>(null);
 
   // Form state
-  const [scenarioId, setScenarioId] = useState<number | "">("");
+  const [scenarioId, setScenarioId] = useState<number | "">(initialScenarioId ?? "");
   const [name, setName] = useState("");
   const [maxTrials, setMaxTrials] = useState(10);
   const [nInitialPoints, setNInitialPoints] = useState(3);
@@ -322,12 +338,12 @@ function MoboOptimizationSection({
   const [selectionResult, setSelectionResult] = useState<{ regressionTestId: number; trialId: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Chọn mặc định kịch bản đầu tiên
+  // Chọn mặc định kịch bản đầu tiên hoặc initialScenarioId
   useEffect(() => {
     if (!ctx?.families?.length) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- giá trị mặc định khi kịch bản tải xong
-    setScenarioId((cur) => (cur === "" ? ctx.families[0].id : cur));
-  }, [ctx]);
+    setScenarioId((cur) => (cur === "" ? (initialScenarioId && ctx.families.some(f => f.id === initialScenarioId) ? initialScenarioId : ctx.families[0].id) : cur));
+  }, [ctx, initialScenarioId]);
 
   // Tải danh sách đợt tối ưu
   const loadRuns = useCallback(() => {
