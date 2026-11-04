@@ -157,7 +157,14 @@ public class WorkspaceReportService {
         return reports.findById(reportId);
     }
 
-    /** Lấy chi tiết một báo cáo công việc (FE-14). */
+    /**
+     * Lấy thông tin chi tiết của một báo cáo công việc đã nộp (FE-14).
+     *
+     * @param userId mã định danh người dùng yêu cầu
+     * @param role vai trò người dùng trong hệ thống
+     * @param reportId mã định danh của báo cáo
+     * @return chi tiết báo cáo công việc
+     */
     public ReportItem getReport(long userId, String role, long reportId) {
         ReportItem r = reports.findById(reportId);
         if (r == null) {
