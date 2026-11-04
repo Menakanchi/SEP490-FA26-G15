@@ -120,6 +120,13 @@ public class EngineerWorkspaceController {
         return patchTaskStatus(taskId, body, user);
     }
 
+    /**
+     * Nộp báo cáo công việc gắn với nhiệm vụ hoặc project cho quản lý phê duyệt.
+     *
+     * @param body nội dung báo cáo nộp kèm liên kết đính kèm nếu có
+     * @param user thông tin kỹ sư đăng nộp
+     * @return thông tin báo cáo đã nộp kèm trạng thái SUBMITTED
+     */
     @Operation(summary = "FE-14 — Kỹ sư nộp báo cáo công việc gắn với task / project")
     @PostMapping("/reports")
     public ResponseEntity<ReportItem> submitReport(@Valid @RequestBody SubmitReportRequest body,
