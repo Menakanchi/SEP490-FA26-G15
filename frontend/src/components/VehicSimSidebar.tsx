@@ -166,7 +166,7 @@ function NavGroups({ groups }: { groups: Group[] }) {
         const expanded = here || (!!best && !!g.children?.includes(best));
         const header = (
           <span
-            className={`flex w-full items-center gap-3 rounded-md px-2.5 py-2 ${expanded ? "bg-vehicsim-bg" : ""} ${
+            className={`flex w-full items-center gap-3 rounded-[12px] px-3 py-[9px] ${expanded ? "bg-vehicsim-bg" : ""} ${
               g.note ? "opacity-55" : "hover:bg-vehicsim-soft"
             }`}
           >
@@ -207,7 +207,7 @@ function NavGroups({ groups }: { groups: Group[] }) {
                 <div className="flex min-w-0 flex-1 flex-col gap-[2px] border-l-[1.5px] border-solid border-vehicsim-line pl-[10px]">
                   {g.children.map((c) => {
                     const active = best === c;
-                    const cls = `flex w-full items-center rounded-md px-2.5 py-1.5 text-[13px] ${
+                    const cls = `flex w-full items-center rounded-full px-3 py-2 text-[13px] ${
                       active ? "bg-vehicsim-ink font-semibold text-white" : "font-medium text-vehicsim-muted"
                     }`;
                     return c.href ? (

@@ -109,10 +109,10 @@ export function FamilyForm({
   const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((x) => x !== value) : [...list, value]);
 
   return (
-    <section className="flex flex-col gap-5 rounded-lg border border-solid border-vehicsim-line bg-white p-5 shadow-2xs">
+    <section className="flex flex-col gap-5 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
       <div className="flex items-center justify-between">
         <h2 className="text-[17px] font-bold text-vehicsim-ink">{title}</h2>
-        <span className={cx("rounded px-2.5 py-1 text-[12px] font-medium", count > MAX_VARIANTS ? "bg-vehicsim-danger-bg text-vehicsim-danger" : "bg-vehicsim-soft text-vehicsim-ink")}>
+        <span className={cx("rounded-full px-3 py-[6px] text-[12px] font-semibold", count > MAX_VARIANTS ? "bg-vehicsim-danger-bg text-vehicsim-danger" : "bg-vehicsim-soft text-vehicsim-ink")}>
           {count} biến thể {count > MAX_VARIANTS ? `(tối đa ${MAX_VARIANTS})` : ""}
         </span>
       </div>
@@ -143,7 +143,7 @@ export function FamilyForm({
         <ChipGroup label="Thời điểm" options={TIMES} selected={times} onToggle={(v) => setTimes((prev) => toggle(prev, v))} />
       </div>
       {late.length > 0 && (
-        <div role="alert" className="rounded-md border border-solid border-vehicsim-danger/30 bg-vehicsim-danger-bg px-3.5 py-2 text-[12px] leading-[1.5] text-vehicsim-danger">
+        <div role="alert" className="rounded-[14px] border border-solid border-vehicsim-danger/30 bg-vehicsim-danger-bg px-4 py-3 text-[12px] leading-[1.5] text-vehicsim-danger">
           <b>{late.length} cặp tốc độ / khoảng cách không chạy được:</b> xe tới vạch băng ngang sau {MAX_DURATION_S} s mô phỏng nên run sẽ hết
           giờ trước khi gặp người đi bộ —{" "}
           {late
@@ -206,7 +206,7 @@ function TextField({
         placeholder={placeholder}
         disabled={disabled}
         className={cx(
-          "h-[42px] rounded-md border border-solid px-3 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong disabled:bg-vehicsim-soft disabled:text-vehicsim-muted",
+          "h-[42px] rounded-[12px] border border-solid px-[14px] text-[14px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong disabled:bg-vehicsim-soft disabled:text-vehicsim-muted",
           error ? "border-vehicsim-danger" : "border-vehicsim-line-strong",
         )}
       />
@@ -239,7 +239,7 @@ function ChipGroup<T extends string | boolean>({
               aria-pressed={on}
               onClick={() => onToggle(o.value)}
               className={cx(
-                "rounded-md border border-solid px-2.5 py-1 text-[12px] font-medium shadow-2xs",
+                "rounded-full border border-solid px-3 py-[7px] text-[12px] font-semibold",
                 on ? "border-vehicsim-ink bg-vehicsim-ink text-white" : "border-vehicsim-line-strong bg-white text-vehicsim-muted hover:bg-vehicsim-soft",
               )}
             >

@@ -35,7 +35,7 @@ export function ScenarioCategoryPicker({ value = "CP_CROSSING" }: { value?: stri
               disabled={!c.supported}
               title={c.supported ? `${c.label} (${c.protocol})` : UNSUPPORTED_HINT}
               className={cx(
-                "flex items-center gap-2 rounded-md border border-solid px-2.5 py-1.5 text-[12px] font-medium shadow-2xs",
+                "flex items-center gap-2 rounded-full border border-solid px-3 py-[7px] text-[12px] font-semibold",
                 on
                   ? "border-vehicsim-ink bg-vehicsim-ink text-white"
                   : "border-vehicsim-line-strong bg-white text-vehicsim-muted",
@@ -45,7 +45,7 @@ export function ScenarioCategoryPicker({ value = "CP_CROSSING" }: { value?: stri
               {c.label}
               <span className={cx("text-[10px] font-normal", on ? "text-white/70" : "text-vehicsim-faint")}>{c.protocol}</span>
               {!c.supported && (
-                <span className="rounded bg-vehicsim-soft px-1.5 py-0.5 text-[10px] font-semibold text-vehicsim-faint">
+                <span className="rounded-full bg-vehicsim-soft px-[6px] py-[1px] text-[10px] font-semibold text-vehicsim-faint">
                   chưa hỗ trợ
                 </span>
               )}

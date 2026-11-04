@@ -19,7 +19,7 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
 
 export function Card({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <section className={cx("rounded-lg border border-solid border-vehicsim-line bg-white shadow-2xs", className)}>
+    <section className={cx("rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card", className)}>
       {children}
     </section>
   );
@@ -28,7 +28,7 @@ export function Card({ className, children }: { className?: string; children: Re
 export function CardTitle({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <h2 className="text-[15px] font-bold text-vehicsim-ink">{children}</h2>
+      <h2 className="text-[17px] font-bold text-vehicsim-ink">{children}</h2>
       {aside}
     </div>
   );
@@ -48,9 +48,9 @@ export function StatCard({
   valueClass?: string;
 }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-[10px] self-stretch rounded-lg border border-solid border-vehicsim-line bg-white p-4 shadow-2xs">
+    <div className="flex min-w-0 flex-1 flex-col gap-[10px] self-stretch rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
       <span className="text-[13px] font-medium text-vehicsim-muted">{label}</span>
-      <span className={cx("text-[26px] font-extrabold tracking-tight tabular-nums text-vehicsim-ink", valueClass)}>{value}</span>
+      <span className={cx("text-[34px] font-extrabold tracking-[-0.68px] text-vehicsim-ink", valueClass)}>{value}</span>
       {note !== undefined && note !== null && <Tag tone={tone}>{note}</Tag>}
     </div>
   );
@@ -77,7 +77,7 @@ export function Tag({
   return (
     <span
       className={cx(
-        "inline-flex w-fit items-center gap-[6px] whitespace-nowrap rounded px-2 py-0.5 text-[11px] font-medium leading-normal",
+        "inline-flex w-fit items-center gap-[6px] whitespace-nowrap rounded-full px-[10px] py-[5px] text-[11px] font-semibold",
         TONES[tone],
         className,
       )}
@@ -103,7 +103,7 @@ export function OutcomeBadge({ outcome, size = "md" }: { outcome: Outcome | Outc
   return (
     <span
       className={cx(
-        "inline-flex w-fit items-center gap-[6px] whitespace-nowrap rounded px-2 py-0.5 font-medium leading-normal",
+        "inline-flex w-fit items-center gap-[6px] whitespace-nowrap rounded-full px-[10px] py-[5px] font-semibold",
         size === "sm" ? "text-[11px]" : "text-[12px]",
         s.cls,
       )}
@@ -112,7 +112,7 @@ export function OutcomeBadge({ outcome, size = "md" }: { outcome: Outcome | Outc
         // eslint-disable-next-line @next/next/no-img-element -- chấm màu SVG từ Figma
         <img alt="" src={s.dot} width={6} height={6} className="size-[6px]" />
       ) : (
-        <span className="size-[6px] rounded-sm bg-current" />
+        <span className="size-[6px] rounded-full bg-current" />
       )}
       {s.label}
     </span>
@@ -130,7 +130,7 @@ export function ClassBadge({ value }: { value: FailureClass | null }) {
   if (!value) return <Tag>Biên an toàn</Tag>;
   const s = CLASS_STYLE[value];
   return (
-    <span className={cx("inline-flex w-fit items-center whitespace-nowrap rounded px-2 py-0.5 text-[11px] font-medium leading-normal", s.cls)}>
+    <span className={cx("inline-flex w-fit items-center whitespace-nowrap rounded-full px-[10px] py-[5px] text-[12px] font-semibold", s.cls)}>
       {s.label}
     </span>
   );
@@ -147,8 +147,8 @@ export const REGRESSION_STATUS: Record<RegressionStatus, { label: string; cls: s
 export function StatusBadge({ status, suffix }: { status: RegressionStatus; suffix?: string }) {
   const s = REGRESSION_STATUS[status];
   return (
-    <span className={cx("inline-flex w-fit items-center gap-[6px] whitespace-nowrap rounded px-2 py-0.5 text-[11px] font-medium leading-normal", s.cls)}>
-      <span className="size-[6px] rounded-sm bg-current" />
+    <span className={cx("inline-flex w-fit items-center gap-[6px] whitespace-nowrap rounded-full px-[10px] py-[5px] text-[12px] font-semibold", s.cls)}>
+      <span className="size-[6px] rounded-full bg-current" />
       {s.label}
       {suffix}
     </span>
@@ -166,8 +166,8 @@ export const RECOMMENDATION_STATUS: Record<RecommendationStatus, { label: string
 export function RecommendationBadge({ status, className }: { status: RecommendationStatus; className?: string }) {
   const s = RECOMMENDATION_STATUS[status];
   return (
-    <span className={cx("inline-flex w-fit items-center gap-[6px] whitespace-nowrap rounded px-2 py-0.5 text-[11px] font-medium leading-normal", s.cls, className)}>
-      <span className="size-[6px] rounded-sm bg-current" />
+    <span className={cx("inline-flex w-fit items-center gap-[6px] whitespace-nowrap rounded-full px-[10px] py-[5px] text-[12px] font-semibold", s.cls, className)}>
+      <span className="size-[6px] rounded-full bg-current" />
       {s.label}
     </span>
   );
@@ -186,9 +186,9 @@ type ButtonProps = {
 
 export function PillButton({ variant = "light", href, children, className, ...rest }: ButtonProps) {
   const cls = cx(
-    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-3.5 py-2 text-[13px] font-medium transition shadow-2xs disabled:cursor-not-allowed disabled:opacity-50",
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-5 py-3 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
     variant === "dark"
-      ? "bg-vehicsim-ink text-white hover:bg-neutral-800"
+      ? "bg-vehicsim-ink text-white hover:bg-black/80"
       : "border border-solid border-vehicsim-line-strong bg-white text-vehicsim-ink hover:bg-vehicsim-soft",
     className,
   );
@@ -218,7 +218,7 @@ export function FilterSelect<T extends string>({
   onChange: (value: T | "") => void;
 }) {
   return (
-    <label className="relative inline-flex items-center rounded-md border border-solid border-vehicsim-line bg-white px-2.5 py-1 text-[12px] font-medium text-vehicsim-ink hover:bg-vehicsim-soft">
+    <label className="relative inline-flex items-center rounded-full border border-solid border-vehicsim-line bg-white px-3 py-[6px] text-[12px] font-medium text-vehicsim-ink hover:bg-vehicsim-soft">
       <span>
         {label}: {options.find((o) => o.value === value)?.label ?? "Tất cả"} ▾
       </span>
@@ -289,7 +289,7 @@ export function EmptyState({ title, children, action }: { title: string; childre
 export function ErrorNote({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <div role="alert" className="rounded-md border border-solid border-vehicsim-danger/30 bg-vehicsim-danger-bg px-3.5 py-2 text-[12px] font-medium text-vehicsim-danger">
+    <div role="alert" className="rounded-[16px] border border-solid border-vehicsim-danger/30 bg-vehicsim-danger-bg px-4 py-3 text-[13px] text-vehicsim-danger">
       {message}
     </div>
   );
@@ -299,7 +299,7 @@ export function ErrorNote({ message }: { message: string | null }) {
 export function Pagination({ page, pages, onPage }: { page: number; pages: number; onPage: (p: number) => void }) {
   const nums = new Set<number>([1, pages, page - 1, page, page + 1].filter((n) => n >= 1 && n <= pages));
   const sorted = [...nums].sort((a, b) => a - b);
-  const btn = "flex size-7 items-center justify-center rounded-md text-[12px] font-medium";
+  const btn = "flex size-8 items-center justify-center rounded-[16px] text-[12px] font-semibold";
   const idle = "border border-solid border-vehicsim-line bg-white text-vehicsim-ink hover:bg-vehicsim-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white";
   return (
     <nav aria-label="Phân trang" className="flex items-center gap-[6px]">
