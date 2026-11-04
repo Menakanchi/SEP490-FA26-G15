@@ -177,6 +177,15 @@ public class WorkspaceService {
     }
 
     /** Lấy tin nhắn trao đổi trong workspace (FE-03). */
+    /**
+     * Lấy danh sách tin nhắn trong kênh thảo luận của workspace.
+     *
+     * @param userId mã người dùng yêu cầu
+     * @param role vai trò người dùng
+     * @param workspaceId mã không gian làm việc
+     * @param limit số lượng tin nhắn tối đa
+     * @return danh sách các tin nhắn trao đổi
+     */
     public List<ChatMessage> listMessages(long userId, String role, long workspaceId, int limit) {
         WorkspaceSummary ws = repo.find(workspaceId);
         if (ws == null || (!isAdmin(role) && !repo.isMemberOrManager(workspaceId, userId))) {
