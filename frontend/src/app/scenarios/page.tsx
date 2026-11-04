@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Fragment, useCallback, useEffect, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
@@ -49,9 +49,11 @@ export default function ScenarioFamiliesPage() {
     if (Number.isInteger(family) && family > 0) setFocusId(family);
   }, []);
 
+  const scrolledRef = useRef(false);
   const focused = focusId ? (items ?? []).find((f) => f.id === focusId) : undefined;
   useEffect(() => {
-    if (!focused) return;
+    if (!focused || scrolledRef.current) return;
+    scrolledRef.current = true;
     document.getElementById(`family-${focused.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [focused]);
 
