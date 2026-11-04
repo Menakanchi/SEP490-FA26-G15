@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Building2, UserRound, X } from "lucide-react";
 import { adminApi, type AdminPageData, type AdminRow } from "@/services/admin";
 import { workspaceCount, workspaceDate, WORKSPACE_STATUSES } from "./adminWorkspacesQuery";
-import styles from "./AdminUserEditor.module.css";
+import styles from "./AdminEditor.module.css";
+import { useAdminDialog } from "./useAdminDialog";
 import workspace from "./AdminWorkspaces.module.css";
 
 type Body = { name: string; description: string | null; manager_id: number };
@@ -21,7 +22,7 @@ export function AdminWorkspaceEditor({ row, returnFocusTo, onCancel, onSaved }: 
   const [phase, setPhase] = useState<Phase>("form"), [pending, setPending] = useState<Body | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({}), [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const saveLock = useRef(false), dialogRef = useRef<HTMLDialogElement>(null);
+  const saveLock = useRef(false);
   const nameRef = useRef<HTMLInputElement>(null), errorRef = useRef<HTMLDivElement>(null), backRef = useRef<HTMLButtonElement>(null), keepRef = useRef<HTMLButtonElement>(null), closeRef = useRef<HTMLButtonElement>(null);
   const managerSearchRef = useRef<HTMLInputElement>(null);
   const [managerSearch, setManagerSearch] = useState("");
@@ -39,11 +40,7 @@ export function AdminWorkspaceEditor({ row, returnFocusTo, onCancel, onSaved }: 
     { label: "Manager phụ trách", before: managerLabel(initialManager), after: managerLabel(selected), changed: initial.manager_id !== after.manager_id },
   ].filter(change => !row || change.changed);
 
-  useEffect(() => {
-    const opener = returnFocusTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null), dialog = dialogRef.current;
-    dialog?.showModal();
-    return () => { dialog?.close(); if (opener?.isConnected) opener.focus(); };
-  }, [returnFocusTo]);
+  const dialog = useAdminDialog({ returnFocusTo, onEscape: escape });
   useEffect(() => {
     if (phase === "review") backRef.current?.focus();
     else if (phase === "discard") keepRef.current?.focus();
@@ -93,13 +90,7 @@ export function AdminWorkspaceEditor({ row, returnFocusTo, onCancel, onSaved }: 
     finally { saveLock.current = false; setBusy(false); }
   }
 
-  return <dialog ref={dialogRef} className={styles.dialog} aria-modal="true" aria-labelledby="admin-workspace-title" aria-describedby="admin-workspace-target" onCancel={event => { event.preventDefault(); escape(); }} onKeyDownCapture={event => {
-    if (event.key === "Tab") {
-      const elements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button, input, textarea, select, [tabindex]")).filter(element => element.tabIndex >= 0 && !element.matches(":disabled") && element.getClientRects().length > 0);
-      const first = elements[0], last = elements.at(-1);
-      if (first && last && ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last))) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
-    } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); escape(); }
-  }}>
+  return <dialog {...dialog} className={styles.dialog} aria-modal="true" aria-busy={busy} aria-labelledby="admin-workspace-title" aria-describedby="admin-workspace-target">
     <div className={styles.shell}>
       <header className={styles.header}><div><p className={styles.eyebrow}>QUẢN LÝ WORKSPACE</p><h2 id="admin-workspace-title">{readOnly ? "Chi tiết" : row ? "Chỉnh sửa" : "Thêm mới"} · Workspace</h2><p id="admin-workspace-target">{row ? String(row.name) + " · ID #" + row.id : "Tạo không gian làm việc và giao cho một Manager đang hoạt động."}</p></div><button type="button" className={styles.close} aria-label="Đóng biểu mẫu" disabled={busy} onClick={close}><X size={19} aria-hidden="true" /></button></header>
       <div className={styles.body}>

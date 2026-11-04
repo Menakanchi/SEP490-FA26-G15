@@ -148,7 +148,7 @@ try {
       mode=state;await page.goto(base+`/admin/${resource}`);
       await frame.getByRole("heading",{level:1,name:title,exact:true}).waitFor();
       if(state==="slow")await frame.getByRole("status").filter({hasText:"Đang tải dữ liệu"}).waitFor();
-      else if(state==="empty")await frame.getByText(resource==="users"?"Chưa có tài khoản":resource==="workspaces"?"Chưa có workspace":"Không có dữ liệu phù hợp.",{exact:true}).waitFor();
+      else if(state==="empty")await frame.getByText(resource==="users"?"Chưa có tài khoản":resource==="workspaces"?"Chưa có workspace":"Chưa có tài liệu kỹ thuật",{exact:true}).waitFor();
       else await frame.getByRole("alert").filter({hasText:state==="error"?"Fixture: không tải được":"Fixture: không có quyền"}).waitFor();
       assert.equal(await frame.getByRole("link",{name:"Hồ sơ / Mật khẩu",exact:true}).isVisible(),true);
       if(state==="error"){

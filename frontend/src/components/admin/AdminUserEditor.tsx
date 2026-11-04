@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Eye, EyeOff, ShieldCheck, UserRound, X } from "lucide-react";
 import { adminApi, type AdminRow } from "@/services/admin";
 import { USER_ROLES } from "./adminUsersQuery";
-import styles from "./AdminUserEditor.module.css";
+import styles from "./AdminEditor.module.css";
+import { useAdminDialog } from "./useAdminDialog";
 
 type Values = { email: string; last_name: string; middle_name: string; first_name: string; role: string; password: string; is_active: boolean };
 type UserBody = Omit<Values, "middle_name" | "password"> & { middle_name: string | null; password?: string };
@@ -44,7 +45,7 @@ export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const dialogRef = useRef<HTMLDialogElement>(null), formRef = useRef<HTMLFormElement>(null), errorRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null), errorRef = useRef<HTMLDivElement>(null);
   const firstRef = useRef<HTMLInputElement>(null), reviewBackRef = useRef<HTMLButtonElement>(null), keepRef = useRef<HTMLButtonElement>(null);
   const saveLock = useRef(false);
   const self = !!row && String(row.id) === actorId;
@@ -58,12 +59,10 @@ export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved
   ].filter(change => !row || change.before !== change.after);
   const emailChanged = !!row && before.email !== after.email, roleChanged = !!row && before.role !== after.role, statusChanged = !!row && before.is_active !== after.is_active;
 
-  useEffect(() => {
-    const opener = returnFocusTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-    const dialog = dialogRef.current;
-    dialog?.showModal();
-    return () => { dialog?.close(); if (opener?.isConnected) opener.focus(); };
-  }, [returnFocusTo]);
+  const dialog = useAdminDialog({ returnFocusTo, onEscape: () => {
+    if (saveLock.current) return;
+    if (phase !== "form") setPhase("form"); else requestClose();
+  } });
   useEffect(() => {
     if (phase === "review") reviewBackRef.current?.focus();
     else if (phase === "discard") keepRef.current?.focus();
@@ -112,27 +111,7 @@ export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved
     finally { saveLock.current = false; setBusy(false); }
   }
 
-  return <dialog ref={dialogRef} className={styles.dialog} aria-modal="true" aria-labelledby="admin-user-title" aria-describedby="admin-user-target" onCancel={event => {
-    event.preventDefault();
-    if (saveLock.current) return;
-    if (phase !== "form") setPhase("form"); else requestClose();
-  }} onKeyDownCapture={event => {
-    if (event.key === "Tab") {
-      const elements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button, input, select, [tabindex]"))
-        .filter(element => element.tabIndex >= 0 && !element.matches(":disabled") && element.getClientRects().length > 0);
-      const first = elements[0], last = elements.at(-1);
-      if (first && last && ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last))) {
-        event.preventDefault();
-        (event.shiftKey ? last : first).focus();
-      }
-      return;
-    }
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (saveLock.current) return;
-    if (phase !== "form") setPhase("form"); else requestClose();
-  }}>
+  return <dialog {...dialog} className={styles.dialog} aria-modal="true" aria-busy={busy} aria-labelledby="admin-user-title" aria-describedby="admin-user-target">
     <div className={styles.shell}>
       <header className={styles.header}><div><p className={styles.eyebrow}>QUẢN LÝ TÀI KHOẢN</p><h2 id="admin-user-title">{row ? "Chỉnh sửa" : "Thêm mới"} · Tài khoản</h2><p id="admin-user-target">{row ? `${row.full_name || row.email} · ${row.email} · ID #${row.id}` : "Tạo tài khoản nội bộ và chọn vai trò trong hệ thống."}</p></div><button type="button" className={styles.close} aria-label="Đóng biểu mẫu" disabled={busy} onClick={requestClose}><X size={19} aria-hidden="true" /></button></header>
       <div className={styles.body}>

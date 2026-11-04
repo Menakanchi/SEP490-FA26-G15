@@ -6,7 +6,7 @@ import { Building2, Plus, RefreshCw, Search, X } from "lucide-react";
 import { adminApi, type AdminPageData, type AdminRow } from "@/services/admin";
 import { AdminWorkspaceEditor } from "./AdminWorkspaceEditor";
 import { workspaceCount, workspaceDate, readWorkspaceQuery, workspaceListUrl, workspaceQueryParams, WORKSPACE_PAGE_SIZES, WORKSPACE_SORTS, WORKSPACE_STATUSES, type WorkspaceListQuery } from "./adminWorkspacesQuery";
-import styles from "./AdminUsersTable.module.css";
+import styles from "./AdminTable.module.css";
 import workspace from "./AdminWorkspaces.module.css";
 
 const message = (error: unknown) => error instanceof Error ? error.message : "Không thực hiện được thao tác. Hãy thử lại.";
@@ -33,12 +33,12 @@ export function AdminWorkspacesTable() {
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / query.page_size));
 
   useEffect(() => {
-    if (raw !== canonical && new URLSearchParams(window.location.search).toString() === raw) window.history.replaceState(null, "", "/admin/workspaces" + (canonical ? "?" + canonical : ""));
+    if (window.location.pathname === "/admin/workspaces" && raw !== canonical && new URLSearchParams(window.location.search).toString() === raw) window.history.replaceState(null, "", "/admin/workspaces" + (canonical ? "?" + canonical : ""));
   }, [raw, canonical]);
   useEffect(() => {
     let live = true;
     const requested = readWorkspaceQuery(new URLSearchParams(request));
-    const isCurrent = () => live && workspaceQueryParams(readWorkspaceQuery(new URLSearchParams(window.location.search)), true).toString() === request;
+    const isCurrent = () => live && window.location.pathname === "/admin/workspaces" && workspaceQueryParams(readWorkspaceQuery(new URLSearchParams(window.location.search)), true).toString() === request;
     adminApi.list("workspaces", new URLSearchParams(request)).then(response => {
       if (!isCurrent()) return;
       if (!response || !Array.isArray(response.items) || !Number.isSafeInteger(response.total) || response.total < 0 || response.page !== requested.page || response.page_size !== requested.page_size || response.items.length > requested.page_size || response.items.length > response.total || response.items.some(row => !row || !Number.isSafeInteger(row.id) || row.id <= 0)) throw new Error("Dữ liệu danh sách không hợp lệ. Hãy thử tải lại.");
@@ -56,7 +56,7 @@ export function AdminWorkspacesTable() {
   function reset() { change({ q: "", status: "", page: 1 }); }
   async function edit(id: number) {
     const token = ++sequence.current, scope = request;
-    const isCurrent = () => token === sequence.current && workspaceQueryParams(readWorkspaceQuery(new URLSearchParams(window.location.search)), true).toString() === scope;
+    const isCurrent = () => token === sequence.current && window.location.pathname === "/admin/workspaces" && workspaceQueryParams(readWorkspaceQuery(new URLSearchParams(window.location.search)), true).toString() === scope;
     setOpeningId(id); setActionError(""); setNotice("");
     try {
       const row = await adminApi.detail("workspaces", id);
@@ -67,7 +67,7 @@ export function AdminWorkspacesTable() {
     finally { if (token === sequence.current) setOpeningId(null); }
   }
   function saved() { setEditor(undefined); setNotice("Đã lưu workspace thành công."); setRevision(value => value + 1); }
-  return <div className={styles.users}>
+  return <div className={styles.list}>
     <section aria-labelledby="admin-workspaces-list-title" className={styles.filters}>
       <div className={styles.listHeader}><div><h2 id="admin-workspaces-list-title">Danh sách workspace</h2><p>Tra cứu workspace và Manager phụ trách. Workspace đã lưu trữ chỉ được xem.</p></div><button className={styles.primary} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); setEditor(null); setActionError(""); setNotice(""); }}><Plus size={16} aria-hidden="true" />Thêm mới</button></div>
       <div className={styles.toolbar + " " + workspace.toolbar}>

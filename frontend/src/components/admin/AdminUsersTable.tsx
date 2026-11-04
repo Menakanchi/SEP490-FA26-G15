@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { initials } from "@/components/VehicSimUi";
 import { adminApi, type AdminPageData, type AdminRow } from "@/services/admin";
 import { readUserQuery, userListUrl, userQueryParams, USER_PAGE_SIZES, USER_ROLES, USER_SORTS, USER_STATUSES, type UserListQuery } from "./adminUsersQuery";
-import styles from "./AdminUsersTable.module.css";
+import styles from "./AdminTable.module.css";
 
 type EditorProps = { row: AdminRow | null; actorId?: string; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: () => void };
 type Result = { key: string; data?: AdminPageData; error?: string };
@@ -48,7 +48,7 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
   const filtered = !!(query.q || query.role || query.status);
 
   useEffect(() => {
-    if (raw !== canonical && new URLSearchParams(window.location.search).toString() === raw) {
+    if (window.location.pathname === "/admin/users" && raw !== canonical && new URLSearchParams(window.location.search).toString() === raw) {
       window.history.replaceState(null, "", `/admin/users${canonical ? `?${canonical}` : ""}`);
     }
   }, [raw, canonical]);
@@ -56,7 +56,7 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
   useEffect(() => {
     let live = true;
     const params = new URLSearchParams(request), requested = readUserQuery(params);
-    const isCurrent = () => live && userQueryParams(readUserQuery(new URLSearchParams(window.location.search)), true).toString() === request;
+    const isCurrent = () => live && window.location.pathname === "/admin/users" && userQueryParams(readUserQuery(new URLSearchParams(window.location.search)), true).toString() === request;
     adminApi.list("users", params).then(response => {
       if (!isCurrent()) return;
       if (!response || !Array.isArray(response.items) || !Number.isSafeInteger(response.total) || response.total < 0 || response.page !== requested.page || response.page_size !== requested.page_size || response.items.length > requested.page_size || response.items.length > response.total || response.items.some(row => !row || !Number.isSafeInteger(row.id) || row.id <= 0)) throw new Error("Dữ liệu danh sách không hợp lệ. Hãy thử tải lại.");
@@ -80,7 +80,7 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
   async function edit(id: number) {
     setOpeningId(id); setActionError(""); setNotice("");
     const sequence = ++detailSequence.current, scope = request;
-    const current = () => sequence === detailSequence.current && userQueryParams(readUserQuery(new URLSearchParams(window.location.search)), true).toString() === scope;
+    const current = () => sequence === detailSequence.current && window.location.pathname === "/admin/users" && userQueryParams(readUserQuery(new URLSearchParams(window.location.search)), true).toString() === scope;
     try {
       const detail = await adminApi.detail("users", id);
       if (!current()) return;
@@ -92,7 +92,7 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
   }
   function saved() { setEditor(undefined); setNotice("Đã lưu thành công."); setRevision(value => value + 1); }
 
-  return <div className={styles.users}>
+  return <div className={styles.list}>
     <section aria-labelledby="admin-users-list-title" className={styles.filters}>
       <div className={styles.listHeader}><div><h2 id="admin-users-list-title">Danh sách tài khoản</h2><p>Tra cứu người dùng theo tên, email, vai trò và trạng thái.</p></div><button className={styles.primary} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); setEditor(null); setNotice(""); setActionError(""); }}><Plus size={16} aria-hidden="true" />Thêm mới</button></div>
       <div className={styles.toolbar}>

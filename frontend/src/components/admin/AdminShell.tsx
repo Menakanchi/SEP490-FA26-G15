@@ -8,6 +8,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { initials } from "@/components/VehicSimUi";
 import { useAuth } from "@/context/AuthContext";
 import styles from "./AdminShell.module.css";
+import tokens from "./AdminTokens.module.css";
 
 const sections = [
   { href: "/admin", title: "Tổng quan quản trị", caption: "Số liệu và truy cập nhanh", description: "Theo dõi các danh mục quản trị và mở chức năng bạn cần xử lý.", icon: LayoutDashboard },
@@ -47,7 +48,7 @@ function AdminExitLinks() {
 export function AdminSidebar() {
   const { role } = useAuth();
   if (role !== "admin") return null;
-  return <aside aria-label="Khu vực quản trị" className={styles.sidebar}>
+  return <aside aria-label="Khu vực quản trị" className={styles.sidebar + " " + tokens.scope}>
     <Link href="/admin" className={styles.brand}>
       {/* eslint-disable-next-line @next/next/no-img-element -- existing static product logo */}
       <img src="/vehicsim/logo.svg" alt="" width={32} height={32} />
@@ -66,7 +67,7 @@ export function AdminFrame({ children }: { children: React.ReactNode }) {
 function Frame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const section = sections.find(item => item.href === pathname);
-  return <div className={styles.frame} data-admin-frame>
+  return <div className={styles.frame + " " + tokens.scope} data-admin-frame>
     <a className={styles.skipLink} href="#admin-content" onClick={event => {
       event.preventDefault();
       document.getElementById("admin-content")?.focus();
