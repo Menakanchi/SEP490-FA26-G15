@@ -18,7 +18,9 @@ public final class Vs {
     private Vs() {
     }
 
-    /** Bản ghi không tồn tại (hoặc không thuộc project) — HTTP 404. */
+    /**
+     * Ngoại lệ ném ra khi tài nguyên không tồn tại hoặc không thuộc quyền truy cập — ánh xạ HTTP 404.
+     */
     public static class NotFoundException extends RuntimeException {
         public NotFoundException(String what) {
             super(what);
