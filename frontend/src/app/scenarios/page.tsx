@@ -175,9 +175,9 @@ export default function ScenarioFamiliesPage() {
       }
     >
       <ErrorNote message={error} />
-      {notice && <p className="rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">{notice}</p>}
+      {notice && <p className="rounded-md bg-vehicsim-ok-bg px-3.5 py-2 text-[12px] font-medium text-vehicsim-ok">{notice}</p>}
       {focused && !notice && (
-        <p className="rounded-[16px] bg-vehicsim-decision-bg px-4 py-3 text-[13px] text-vehicsim-decision">
+        <p className="rounded-md bg-vehicsim-decision-bg px-3.5 py-2 text-[12px] font-medium text-vehicsim-decision">
           {focused.code} · {focused.name}:{" "}
           {(focused.runs.PENDING ?? 0) + (focused.runs.RUNNING ?? 0) > 0
             ? "các lượt chạy cơ sở đang chạy — số liệu tự cập nhật bên dưới."
@@ -264,7 +264,7 @@ export default function ScenarioFamiliesPage() {
         </p>
       )}
 
-      <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
+      <section className="overflow-hidden rounded-lg border border-solid border-vehicsim-line bg-white shadow-2xs">
         <div className="flex items-center px-5 py-4">
           <span className="text-[15px] font-bold text-vehicsim-ink">{items ? `${items.length} ${items.length === 1 ? "family" : "families"}` : "…"}</span>
         </div>
@@ -304,7 +304,7 @@ export default function ScenarioFamiliesPage() {
                       value={viewing[f.id] ?? f.version}
                       onChange={(e) => pickVersion(f, Number(e.target.value))}
                       aria-label={`Bản của ${f.code}`}
-                      className="rounded-full border border-solid border-vehicsim-line-strong bg-white px-2 py-[2px] text-[11px] font-semibold text-vehicsim-ink"
+                      className="rounded border border-solid border-vehicsim-line-strong bg-white px-2 py-[2px] text-[11px] font-medium text-vehicsim-ink"
                     >
                       {Array.from({ length: f.version_count }, (_, i) => f.version_count - i).map((v) => (
                         <option key={v} value={v}>
@@ -394,7 +394,7 @@ export default function ScenarioFamiliesPage() {
                 <Link
                   href={`/analysis/failures?scenario_id=${f.id}`}
                   title="Chuyển sang phân tích kết quả ca lỗi"
-                  className="inline-flex h-8 w-full items-center justify-center rounded-full border border-solid border-vehicsim-decision/40 bg-vehicsim-decision-bg px-2 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition"
+                  className="inline-flex h-8 w-full items-center justify-center rounded-md border border-solid border-vehicsim-decision/40 bg-vehicsim-decision-bg px-2.5 text-[12px] font-medium text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-2xs"
                 >
                   <span className="truncate">Phân tích</span>
                 </Link>
@@ -404,7 +404,7 @@ export default function ScenarioFamiliesPage() {
                   onClick={() => toggleVariants(f)}
                   aria-expanded={openVariants === f.id}
                   className={cx(
-                    "inline-flex h-8 w-full items-center justify-center rounded-full border border-solid px-2 text-[11.5px] font-semibold transition",
+                    "inline-flex h-8 w-full items-center justify-center rounded-md border border-solid px-2.5 text-[11.5px] font-medium transition shadow-2xs",
                     openVariants === f.id
                       ? "border-vehicsim-ink bg-vehicsim-ink text-white"
                       : "border-vehicsim-line-strong bg-vehicsim-soft text-vehicsim-ink hover:bg-vehicsim-line hover:border-vehicsim-line-strong",

@@ -129,7 +129,7 @@ export default function AebConfigPage() {
       )}
       {dataset && <AnalysisSelectionSummary dataset={dataset} />}
       {created && (
-        <div className="flex items-center justify-between gap-4 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok shadow-sm">
+        <div className="flex items-center justify-between gap-4 rounded-md bg-vehicsim-ok-bg px-3.5 py-2 text-[12px] font-medium text-vehicsim-ok shadow-sm">
           <span>Đã tạo ứng viên AEB {created.label}. Bước tiếp theo: chạy kiểm thử hồi quy so với bản cơ sở.</span>
           <PillButton variant="dark" className="px-4 py-2 text-[12px]" href={`/validation/regression/new?candidate=${created.id}`}>
             Chạy kiểm thử hồi quy
@@ -222,7 +222,7 @@ export default function AebConfigPage() {
 
       {/* Tab 3: Danh sách tất cả phiên bản AEB */}
       {activeTab === "versions" && (
-        <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
+        <section className="overflow-hidden rounded-lg border border-solid border-vehicsim-line bg-white shadow-2xs">
           <div className="flex items-center px-5 py-4">
             <span className="text-[15px] font-bold text-vehicsim-ink">{versions ? `${versions.length} phiên bản` : "…"}</span>
           </div>
@@ -280,7 +280,7 @@ export default function AebConfigPage() {
                       {v.status === "CANDIDATE" && canWrite && (
                         <Link
                           href={`/validation/regression/new?candidate=${v.id}`}
-                          className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
+                          className="inline-flex h-8 items-center justify-center rounded-md border border-solid border-vehicsim-line-strong bg-white px-2.5 py-1 text-[12px] font-medium text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-2xs"
                         >
                           Kiểm thử hồi quy
                         </Link>
@@ -483,7 +483,7 @@ function MoboOptimizationSection({
               Thuật toán Bayesian đa mục tiêu sử dụng mô hình thay thế Gaussian Process và hàm thu thập qEHVI để dò tìm bộ tham số Pareto tối ưu.
             </p>
           </div>
-          <span className="rounded-full bg-vehicsim-soft px-3 py-[6px] text-[12px] font-semibold text-vehicsim-ink">
+          <span className="rounded bg-vehicsim-soft px-2.5 py-1 text-[11px] font-medium text-vehicsim-ink">
             4 Tham số · 3 Mục tiêu
           </span>
         </div>
@@ -495,7 +495,7 @@ function MoboOptimizationSection({
               <select
                 value={scenarioId}
                 onChange={(e) => setScenarioId(e.target.value ? Number(e.target.value) : "")}
-                className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong bg-white px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                className="h-[42px] rounded-md border border-solid border-vehicsim-line-strong bg-white px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
               >
                 {(ctx?.families ?? []).length === 0 && <option value="">Chưa có kịch bản</option>}
                 {(ctx?.families ?? []).map((f) => (
@@ -512,7 +512,7 @@ function MoboOptimizationSection({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="vd. MOBO CP_CROSSING đợt 1"
-                className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                className="h-[42px] rounded-md border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
               />
             </label>
 
@@ -524,7 +524,7 @@ function MoboOptimizationSection({
                 max={50}
                 value={maxTrials}
                 onChange={(e) => setMaxTrials(Number(e.target.value))}
-                className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                className="h-[42px] rounded-md border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
               />
             </label>
 
@@ -536,14 +536,14 @@ function MoboOptimizationSection({
                 max={15}
                 value={nInitialPoints}
                 onChange={(e) => setNInitialPoints(Number(e.target.value))}
-                className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                className="h-[42px] rounded-md border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
               />
             </label>
           </div>
 
           {/* Không gian tham số và Mục tiêu thu thập */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="flex flex-col gap-2 rounded-[16px] border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-4">
+            <div className="flex flex-col gap-2 rounded-md border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-3">
               <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
                 Không gian tham số tìm kiếm (Search Space)
               </span>
@@ -563,7 +563,7 @@ function MoboOptimizationSection({
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 rounded-[16px] border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-4">
+            <div className="flex flex-col gap-2 rounded-md border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-3">
               <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
                 3 Mục tiêu tối ưu hoá đồng thời (Cực tiểu hoá)
               </span>
@@ -596,7 +596,7 @@ function MoboOptimizationSection({
       </section>
 
       {/* Lịch sử các đợt chạy MOBO */}
-      <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
+      <section className="overflow-hidden rounded-lg border border-solid border-vehicsim-line bg-white shadow-2xs">
         <div className="flex items-center justify-between px-5 py-4">
           <span className="text-[15px] font-bold text-vehicsim-ink">
             {runs ? `${runs.length} đợt tối ưu hoá` : "Đang tải danh sách đợt tối ưu…"}
@@ -652,7 +652,7 @@ function MoboOptimizationSection({
                 {r.completed_trials} / {r.max_trials} lượt
               </span>
               <span className="w-[120px]">
-                <span className="inline-flex items-center rounded-full bg-vehicsim-decision-bg px-2.5 py-1 text-[11px] font-bold text-vehicsim-decision">
+                <span className="inline-flex items-center rounded bg-vehicsim-decision-bg px-2 py-0.5 text-[11px] font-medium text-vehicsim-decision">
                   {r.pareto_count} nghiệm
                 </span>
               </span>
@@ -666,13 +666,13 @@ function MoboOptimizationSection({
                       handleCancelRun(r.id);
                     }}
                     disabled={cancelling}
-                    className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-danger px-3 text-[11px] font-bold text-vehicsim-danger hover:bg-vehicsim-danger-bg transition"
+                    className="inline-flex h-8 items-center justify-center rounded-md border border-solid border-vehicsim-danger px-2.5 py-1 text-[11px] font-medium text-vehicsim-danger hover:bg-vehicsim-danger-bg transition shadow-2xs"
                   >
                     Dừng đợt chạy
                   </button>
                 )}
                 <span className={cx(
-                  "inline-flex h-8 items-center justify-center rounded-full px-3 text-[12px] font-bold transition shadow-sm",
+                  "inline-flex h-8 items-center justify-center rounded-md px-2.5 py-1 text-[12px] font-medium transition shadow-2xs",
                   isSelected
                     ? "bg-vehicsim-ink text-white"
                     : "border border-solid border-vehicsim-line-strong bg-white text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white"
@@ -788,7 +788,7 @@ function MoboOptimizationSection({
                             type="button"
                             disabled={selectingTrialId !== null || !canWrite}
                             onClick={() => handleSelectCandidate(t.id)}
-                            className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-ink px-4 text-[12px] font-bold text-white transition hover:bg-black/80 disabled:opacity-40 shadow-sm"
+                            className="inline-flex h-8 items-center justify-center rounded-md bg-vehicsim-ink px-3 text-[12px] font-medium text-white transition hover:bg-neutral-800 disabled:opacity-40 shadow-2xs"
                           >
                             {selectingTrialId === t.id ? "Đang chọn…" : "Chọn ứng viên"}
                           </button>
@@ -927,7 +927,7 @@ function CandidateForm({
     <section className="flex flex-col gap-5 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
       <div className="flex items-center justify-between">
         <h2 className="text-[17px] font-bold text-vehicsim-ink">Cấu hình ứng viên mới</h2>
-        <span className="rounded-full bg-vehicsim-soft px-3 py-[6px] text-[12px] font-semibold text-vehicsim-ink">
+        <span className="rounded bg-vehicsim-soft px-2.5 py-1 text-[11px] font-medium text-vehicsim-ink">
           {changed.length} tham số đã đổi
         </span>
       </div>
@@ -941,7 +941,7 @@ function CandidateForm({
               setParentId(Number(e.target.value));
               setValues({});
             }}
-            className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong bg-white px-[14px] text-[14px] text-vehicsim-ink"
+            className="h-[42px] rounded-md border border-solid border-vehicsim-line-strong bg-white px-[14px] text-[14px] text-vehicsim-ink"
           >
             {parents.map((v) => (
               <option key={v.id} value={v.id}>
@@ -1030,7 +1030,7 @@ function Input({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+        className="h-[42px] rounded-md border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
       />
     </label>
   );

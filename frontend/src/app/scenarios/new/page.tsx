@@ -84,7 +84,7 @@ export default function DescribeScenarioPage() {
     >
       <ErrorNote message={error} />
 
-      <section className="flex flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+      <section className="flex flex-col gap-4 rounded-lg border border-solid border-vehicsim-line bg-white p-5 shadow-2xs">
         <div className="flex items-center justify-between">
           <h2 className="text-[17px] font-bold text-vehicsim-ink">1 · Mô tả tình huống</h2>
           <span className="text-[12px] text-vehicsim-faint">
@@ -105,7 +105,7 @@ export default function DescribeScenarioPage() {
               key={ex}
               type="button"
               onClick={() => setText(ex)}
-              className="max-w-[420px] truncate rounded-full border border-solid border-vehicsim-line bg-vehicsim-soft px-3 py-[6px] text-left text-[12px] text-vehicsim-muted hover:bg-vehicsim-line"
+              className="max-w-[420px] truncate rounded-md border border-solid border-vehicsim-line bg-vehicsim-soft px-2.5 py-1 text-left text-[12px] text-vehicsim-muted hover:bg-vehicsim-line"
               title={ex}
             >
               {ex}
@@ -129,7 +129,7 @@ export default function DescribeScenarioPage() {
 
       {result && ir && (
         <div className="flex w-full items-start gap-4">
-          <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+          <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-lg border border-solid border-vehicsim-line bg-white p-5 shadow-2xs">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-[17px] font-bold text-vehicsim-ink">Scenario IR · {result.title}</h2>
               <SourceBadge result={result} />
@@ -149,7 +149,7 @@ export default function DescribeScenarioPage() {
                       step={n.step}
                       value={Number.isNaN(ir[n.key]) ? "" : ir[n.key]}
                       onChange={(e) => edit(n.key, e.target.value === "" ? Number.NaN : Number(e.target.value))}
-                      className="h-9 w-[110px] rounded-[10px] border border-solid border-vehicsim-line-strong px-3 text-right text-[14px] font-semibold text-vehicsim-ink focus:border-vehicsim-ink focus:outline-none"
+                      className="h-9 w-[110px] rounded-md border border-solid border-vehicsim-line-strong px-3 text-right text-[14px] font-semibold text-vehicsim-ink focus:border-vehicsim-ink focus:outline-none"
                     />
                     <span className="w-10 text-[12px] text-vehicsim-muted">{f?.unit}</span>
                   </IrRow>
@@ -173,12 +173,12 @@ export default function DescribeScenarioPage() {
               </IrRow>
             </div>
             {result.notes && (
-              <p className="rounded-[14px] bg-vehicsim-soft px-4 py-3 text-[12px] leading-[1.5] text-vehicsim-muted">
+              <p className="rounded-md bg-vehicsim-soft px-4 py-3 text-[12px] leading-[1.5] text-vehicsim-muted">
                 <b className="text-vehicsim-ink">Chưa biểu diễn được trong IR của MVP:</b> {result.notes}
               </p>
             )}
             {irDirty && (
-              <div className="flex items-center justify-between gap-3 rounded-[14px] bg-vehicsim-decision-bg px-4 py-3 text-[12px] text-vehicsim-decision">
+              <div className="flex items-center justify-between gap-3 rounded-md bg-vehicsim-decision-bg px-4 py-3 text-[12px] text-vehicsim-decision">
                 <span>IR đã sửa. Dựng lại lưới biến thể để áp dụng (các chỉnh sửa trong form bên dưới sẽ bị thay).</span>
                 <PillButton
                   className="px-4 py-2 text-[12px]"
@@ -194,9 +194,9 @@ export default function DescribeScenarioPage() {
             )}
           </section>
 
-          <aside className="flex w-[330px] shrink-0 flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+          <aside className="flex w-[330px] shrink-0 flex-col gap-3 rounded-lg border border-solid border-vehicsim-line bg-white p-4 shadow-2xs">
             <span className="text-[11px] font-semibold uppercase tracking-[0.6px] text-vehicsim-faint">Scenario IR (JSON)</span>
-            <pre className="overflow-x-auto rounded-[12px] bg-vehicsim-ink px-4 py-3 font-mono text-[12px] leading-[1.6] text-white">
+            <pre className="overflow-x-auto rounded-md bg-vehicsim-ink px-4 py-3 font-mono text-[12px] leading-[1.6] text-white">
               {JSON.stringify(ir, null, 2)}
             </pre>
             <PillButton
@@ -353,7 +353,7 @@ function Select<T extends string>({ value, options, onChange }: { value: T; opti
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as T)}
-      className="h-9 w-[160px] rounded-[10px] border border-solid border-vehicsim-line-strong bg-white px-3 text-[14px] font-medium text-vehicsim-ink focus:border-vehicsim-ink focus:outline-none"
+      className="h-9 w-[160px] rounded-md border border-solid border-vehicsim-line-strong bg-white px-3 text-[14px] font-medium text-vehicsim-ink focus:border-vehicsim-ink focus:outline-none"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>

@@ -146,14 +146,12 @@ export default function RegressionResultsPage() {
 
           <div className="flex w-full items-center gap-4">
             <VersionCard title={`AEB ${d.baseline.label}`} tag="Cơ sở" params={cardParams} side="baseline" />
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-solid border-vehicsim-line bg-white text-[15px] font-bold text-vehicsim-ink">
-              →
-            </span>
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-solid border-vehicsim-line bg-vehicsim-soft text-[11px] font-bold uppercase tracking-wider text-vehicsim-muted">vs</span>
             <VersionCard title={`AEB ${d.candidate.label}`} tag="Ứng viên" params={cardParams} side="candidate" dark />
           </div>
 
           {running && (
-            <section className="flex flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+            <section className="flex flex-col gap-3 rounded-lg border border-solid border-vehicsim-line bg-white p-4 shadow-2xs">
               <div className="flex items-center justify-between text-[14px] font-semibold text-vehicsim-ink">
                 <span>Đang chạy các cặp mô phỏng…</span>
                 <span>
@@ -191,7 +189,7 @@ export default function RegressionResultsPage() {
 
               <div className="flex w-full items-stretch gap-4">
                 {s.transitions && <Transitions transitions={s.transitions} baseline={d.baseline.label} candidate={d.candidate.label} />}
-                <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+                <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-lg border border-solid border-vehicsim-line bg-white p-4 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-bold text-vehicsim-ink">Theo họ kịch bản</h2>
                     <span className="text-[11px] font-medium text-vehicsim-faint">◂ xấu đi · được sửa ▸</span>
@@ -243,10 +241,10 @@ export default function RegressionResultsPage() {
                 </section>
               </div>
 
-              <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
+              <section className="overflow-hidden rounded-lg border border-solid border-vehicsim-line bg-white shadow-2xs">
                 <div className="flex items-center justify-between px-5 py-4">
                   <h2 className="text-[17px] font-bold text-vehicsim-ink">Khác biệt theo kịch bản</h2>
-                  <div className="flex gap-1 rounded-full bg-vehicsim-soft p-1">
+                  <div className="flex gap-1 rounded-md border border-vehicsim-line bg-vehicsim-soft p-0.5">
                     {(
                       [
                         ["regressed", `Xấu đi (${counts.regressed})`],
@@ -262,7 +260,7 @@ export default function RegressionResultsPage() {
                           setTab(key);
                           setShown(20);
                         }}
-                        className={cx("rounded-full px-[14px] py-[7px] text-[12px] font-semibold", tab === key ? "bg-vehicsim-ink text-white" : "text-vehicsim-muted")}
+                        className={cx("rounded px-2.5 py-1 text-[12px] font-medium", tab === key ? "bg-vehicsim-ink text-white" : "text-vehicsim-muted")}
                       >
                         {label}
                       </button>
@@ -362,7 +360,7 @@ function VersionCard({ title, tag, params, side, dark }: { title: string; tag: s
   return (
     <section
       className={cx(
-        "flex min-w-0 flex-1 flex-col gap-3 rounded-[20px] bg-white p-5",
+        "flex min-w-0 flex-1 flex-col gap-3 rounded-lg bg-white p-4 shadow-2xs",
         dark ? "border-2 border-solid border-vehicsim-ink" : "border border-solid border-vehicsim-line shadow-vehicsim-card",
       )}
     >
@@ -374,7 +372,7 @@ function VersionCard({ title, tag, params, side, dark }: { title: string; tag: s
         {params.map((p) => {
           const highlight = side === "candidate" && p.changed;
           return (
-            <div key={p.code} className={cx("flex min-w-0 flex-1 flex-col gap-1 rounded-[10px] px-3 py-2", highlight ? "bg-vehicsim-decision-bg" : "bg-vehicsim-soft")}>
+            <div key={p.code} className={cx("flex min-w-0 flex-1 flex-col gap-1 rounded-md px-3 py-2", highlight ? "bg-vehicsim-decision-bg" : "bg-vehicsim-soft")}>
               <span className={cx("truncate text-[11px] font-medium", highlight ? "text-vehicsim-decision" : "text-vehicsim-faint")}>{SHORT_PARAM[p.code] ?? p.name}</span>
               <span className={cx("text-[14px] font-bold", highlight ? "text-vehicsim-decision" : "text-vehicsim-ink")}>{paramValue(p[side], p.unit)}</span>
             </div>
@@ -387,7 +385,7 @@ function VersionCard({ title, tag, params, side, dark }: { title: string; tag: s
 
 function Kpi({ label, value, note, tone = "text-vehicsim-ink", small }: { label: string; value: React.ReactNode; note: string; tone?: string; small?: boolean }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+    <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-lg border border-solid border-vehicsim-line bg-white p-4 shadow-2xs">
       <span className="text-[13px] font-medium text-vehicsim-muted">{label}</span>
       <span className={cx("whitespace-nowrap font-extrabold tracking-[-0.6px]", small ? "text-[22px] leading-[40px]" : "text-[34px]", tone)}>{value}</span>
       <span className="text-[12px] text-vehicsim-faint">{note}</span>
@@ -405,7 +403,7 @@ function Transitions({
   candidate: string;
 }) {
   return (
-    <section className="flex w-[430px] shrink-0 flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+    <section className="flex w-[430px] shrink-0 flex-col gap-3 rounded-lg border border-solid border-vehicsim-line bg-white p-4 shadow-2xs">
       <h2 className="text-[17px] font-bold text-vehicsim-ink">Chuyển đổi kết quả</h2>
       <p className="text-[12px] text-vehicsim-faint">
         Hàng: cơ sở {baseline} · Cột: ứng viên {candidate}
@@ -479,7 +477,7 @@ function DiffRow({ p }: { p: Pair }) {
       <span className="flex w-[100px] justify-end">
         <Link
           href={`/analysis/failures/${p.candidate_run_id}/playback`}
-          className="rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 py-[6px] text-[12px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft"
+          className="rounded-md border border-solid border-vehicsim-line-strong bg-white px-2.5 py-1 text-[12px] font-medium text-vehicsim-ink hover:bg-vehicsim-soft shadow-2xs"
         >
           ▶ So sánh
         </Link>

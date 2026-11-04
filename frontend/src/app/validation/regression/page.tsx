@@ -110,7 +110,7 @@ export default function RegressionListPage() {
         />
       </div>
 
-      <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
+      <section className="overflow-hidden rounded-lg border border-solid border-vehicsim-line bg-white shadow-2xs">
         <div className="flex items-center gap-2 px-5 py-4">
           <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{data ? `${items.length} kiểm thử` : "…"}</span>
           <FilterSelect<RegressionStatus>
@@ -195,14 +195,14 @@ export default function RegressionListPage() {
               <span className="flex w-[180px] items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                 <Link
                   href={`/validation/regression/${i.id}`}
-                  className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
+                  className="inline-flex h-8 items-center justify-center rounded-md border border-solid border-vehicsim-line-strong bg-white px-2.5 py-1 text-[12px] font-medium text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-2xs"
                 >
                   Chi tiết
                 </Link>
                 {i.status === "PASSED" && (
                   <Link
                     href={conclusion(i.id)}
-                    className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-decision px-3 text-[12px] font-bold text-white hover:bg-vehicsim-decision/90 transition shadow-sm"
+                    className="inline-flex h-8 items-center justify-center rounded-md bg-vehicsim-decision px-2.5 py-1 text-[12px] font-medium text-white hover:bg-vehicsim-decision/90 transition shadow-2xs"
                   >
                     {isExperiencer ? "Kết luận" : "Khuyến nghị"}
                   </Link>

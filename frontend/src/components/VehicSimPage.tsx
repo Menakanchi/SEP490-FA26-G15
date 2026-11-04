@@ -23,7 +23,7 @@ interface VehicSimPageProps {
 
 function ContextChip({ label, value }: { label: string; value?: string | null }) {
   return (
-    <span className="flex items-center gap-[6px] whitespace-nowrap rounded-full border border-solid border-vehicsim-line bg-white px-3 py-[7px] text-[12px]">
+    <span className="flex items-center gap-[6px] whitespace-nowrap rounded-md border border-solid border-vehicsim-line bg-white px-2.5 py-1 text-[12px] shadow-2xs">
       <span className="font-medium text-vehicsim-faint">{label}</span>
       <span className="font-semibold text-vehicsim-ink">{value ?? "—"}</span>
     </span>
@@ -79,7 +79,7 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm lượt chạy, vd. #1023"
               aria-label="Tìm theo mã lượt chạy, ví dụ #1023"
-              className="w-[200px] rounded-full border border-solid border-vehicsim-line bg-white px-[14px] py-2 text-[12px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+              className="w-[200px] rounded-md border border-solid border-vehicsim-line bg-white px-3 py-1.5 text-[12px] shadow-2xs text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
             />
           </form>
           <NotificationBell />
@@ -87,7 +87,7 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
       </div>
 
       {error && (
-        <div role="alert" className="rounded-[16px] border border-solid border-vehicsim-danger/30 bg-vehicsim-danger-bg px-4 py-3 text-[13px] text-vehicsim-danger">
+        <div role="alert" className="rounded-md border border-solid border-vehicsim-danger/30 bg-vehicsim-danger-bg px-3.5 py-2 text-[12px] font-medium text-vehicsim-danger">
           {error}
           {canResetProject && <button type="button" onClick={() => selectProject(null)} className="ml-3 font-semibold underline">Chọn lại project</button>}
         </div>

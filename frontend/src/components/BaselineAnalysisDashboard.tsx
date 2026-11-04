@@ -114,7 +114,7 @@ export function BaselineAnalysisDashboard({
           type="button"
           onClick={() => onTabChange?.("baseline")}
           className={cx(
-            "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
+            "flex items-center gap-2 rounded-t-md px-4 py-2 text-[13px] font-semibold transition",
             activeTab === "baseline"
               ? "border-b-2 border-vehicsim-ink bg-white text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
               : "text-vehicsim-muted hover:text-vehicsim-ink",
@@ -127,7 +127,7 @@ export function BaselineAnalysisDashboard({
           type="button"
           onClick={() => onTabChange?.("failures")}
           className={cx(
-            "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
+            "flex items-center gap-2 rounded-t-md px-4 py-2 text-[13px] font-semibold transition",
             activeTab === "failures"
               ? "border-b-2 border-vehicsim-ink bg-white text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
               : "text-vehicsim-muted hover:text-vehicsim-ink",
@@ -137,12 +137,12 @@ export function BaselineAnalysisDashboard({
         </button>
       </div>
 
-      <section aria-label="Bộ lọc baseline" className="grid grid-cols-2 xl:grid-cols-5 gap-3 rounded-[20px] bg-white p-5 shadow-vehicsim-card">
+      <section aria-label="Bộ lọc baseline" className="grid grid-cols-2 xl:grid-cols-5 gap-3 rounded-lg bg-white p-4 border border-vehicsim-line shadow-2xs">
         <label className="text-[12px] font-semibold text-vehicsim-muted">
           Họ kịch bản
           <select
             aria-label="Họ kịch bản"
-            className="mt-1 block w-full rounded-xl border border-vehicsim-line p-2 text-[13px] text-vehicsim-ink"
+            className="mt-1 block w-full rounded-md border border-vehicsim-line-strong px-2.5 py-1.5 text-[12px] text-vehicsim-ink shadow-2xs"
             value={filters.scenario_id ?? ""}
             onChange={(e) => change("scenario_id", e.target.value)}
           >
@@ -158,7 +158,7 @@ export function BaselineAnalysisDashboard({
           Phiên bản baseline
           <select
             aria-label="Phiên bản baseline"
-            className="mt-1 block w-full rounded-xl border border-vehicsim-line p-2 text-[13px] text-vehicsim-ink"
+            className="mt-1 block w-full rounded-md border border-vehicsim-line-strong px-2.5 py-1.5 text-[12px] text-vehicsim-ink shadow-2xs"
             value={filters.aeb_version_id ?? ""}
             onChange={(e) => change("aeb_version_id", e.target.value)}
           >
@@ -182,7 +182,7 @@ export function BaselineAnalysisDashboard({
             {label}
             <select
               aria-label={label}
-              className="mt-1 block w-full rounded-xl border border-vehicsim-line p-2 text-[13px] text-vehicsim-ink"
+              className="mt-1 block w-full rounded-md border border-vehicsim-line-strong px-2.5 py-1.5 text-[12px] text-vehicsim-ink shadow-2xs"
               value={filters[key] ?? ""}
               onChange={(e) => change(key, e.target.value)}
             >
@@ -208,7 +208,7 @@ export function BaselineAnalysisDashboard({
               aria-label={label}
               type={key === "simulator" ? "text" : "number"}
               min={1}
-              className="mt-1 block w-full rounded-xl border border-vehicsim-line p-2 text-[13px] text-vehicsim-ink"
+              className="mt-1 block w-full rounded-md border border-vehicsim-line-strong px-2.5 py-1.5 text-[12px] text-vehicsim-ink shadow-2xs"
               value={filters[key] ?? ""}
               onChange={(e) => change(key, e.target.value)}
             />
@@ -238,7 +238,7 @@ export function BaselineAnalysisDashboard({
       </div>
 
       {data?.objective_groups.map((group) => (
-        <section key={group.identity} className="rounded-[20px] bg-white p-5 space-y-2 shadow-vehicsim-card">
+        <section key={group.identity} className="rounded-lg bg-white p-4 space-y-2 border border-vehicsim-line shadow-2xs">
           <h2 className="text-[13px] font-bold text-vehicsim-ink">
             {group.simulator} · baseline #{group.baseline_id} · xe #{group.vehicle_id}
           </h2>
@@ -251,7 +251,7 @@ export function BaselineAnalysisDashboard({
       ))}
 
       {/* Danh sách các lượt chạy của kịch bản */}
-      <section className="rounded-[20px] bg-white p-5 space-y-4 shadow-vehicsim-card">
+      <section className="rounded-lg bg-white p-4 space-y-3 border border-vehicsim-line shadow-2xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-[15px] font-bold text-vehicsim-ink">
@@ -268,7 +268,7 @@ export function BaselineAnalysisDashboard({
           )}
         </div>
 
-        <div className="overflow-x-auto rounded-[14px] border border-solid border-vehicsim-line">
+        <div className="overflow-x-auto rounded-md border border-solid border-vehicsim-line">
           <table className="w-full min-w-[900px] text-[12px] text-left">
             <thead className="bg-vehicsim-soft text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
               <tr>
@@ -302,7 +302,7 @@ export function BaselineAnalysisDashboard({
                   <td className="p-3 text-right pr-4">
                     <Link
                       href={`/analysis/failures/${run.run_id}`}
-                      className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[11px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
+                      className="inline-flex h-8 items-center justify-center rounded-md border border-solid border-vehicsim-line-strong bg-white px-2.5 py-1 text-[11px] font-medium text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-2xs"
                     >
                       Chi tiết
                     </Link>

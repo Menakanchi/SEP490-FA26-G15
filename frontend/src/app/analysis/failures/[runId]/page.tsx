@@ -160,12 +160,12 @@ export default function FailureDetailPage() {
             </div>
           </section>
 
-          <section className="flex w-full flex-col gap-[18px] rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
+          <section className="flex w-full flex-col gap-[18px] rounded-lg border border-solid border-vehicsim-line bg-white p-4 shadow-2xs">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-[10px]">
                 <h2 className="text-[18px] font-bold text-vehicsim-ink">Chuỗi nguyên nhân gốc</h2>
                 {d.chain.length > 0 && (
-                  <span className="rounded-full bg-vehicsim-soft px-[10px] py-[5px] text-[12px] font-medium text-vehicsim-muted">
+                  <span className="rounded bg-vehicsim-soft px-2 py-0.5 text-[11px] font-medium text-vehicsim-muted">
                     Nhận định theo luật{d.chain_confidence !== null ? ` · độ tin cậy ${d.chain_confidence.toFixed(2)}` : ""}
                   </span>
                 )}
@@ -189,7 +189,7 @@ export default function FailureDetailPage() {
           </section>
 
           <div className="flex w-full items-start gap-4">
-            <section className="flex w-[340px] shrink-0 flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
+            <section className="flex w-[340px] shrink-0 flex-col gap-3 rounded-lg border border-solid border-vehicsim-line bg-white p-4 shadow-2xs">
               <h2 className="text-[16px] font-bold text-vehicsim-ink">Cấu hình lúc chạy</h2>
               {derived.snapshot.map((p) => (
                 <Row key={p.code} label={p.name} value={paramValue(p.value, p.unit)} highlight={derived.implicated.has(p.code)} />
@@ -203,7 +203,7 @@ export default function FailureDetailPage() {
             </section>
 
             <div className="flex min-w-0 flex-1 flex-col gap-4">
-              <section className="flex w-full flex-col gap-[14px] rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
+              <section className="flex w-full flex-col gap-[14px] rounded-lg border border-solid border-vehicsim-line bg-white p-4 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <h2 className="text-[16px] font-bold text-vehicsim-ink">Dữ liệu đo</h2>
                   <div className="flex items-center gap-[14px] text-[12px] font-medium text-vehicsim-muted">
@@ -221,7 +221,7 @@ export default function FailureDetailPage() {
                   impactT={derived.impactT}
                 />
                 {derived.note && (
-                  <div className="flex items-center gap-[10px] rounded-[14px] bg-vehicsim-fail-card px-[14px] py-3">
+                  <div className="flex items-center gap-[10px] rounded-md bg-vehicsim-fail-card px-3 py-2 border border-vehicsim-danger/20">
                     {/* eslint-disable-next-line @next/next/no-img-element -- chấm màu SVG từ Figma */}
                     <img alt="" src="/vehicsim/dot-collision.svg" width={8} height={8} className="size-2" />
                     <p className="flex-1 text-[12px] font-medium text-vehicsim-ink">
@@ -234,7 +234,7 @@ export default function FailureDetailPage() {
                 )}
               </section>
 
-              <section className="rounded-[20px] bg-white p-5 space-y-3">
+              <section className="rounded-lg bg-white p-4 space-y-2 border border-vehicsim-line shadow-2xs">
                 <h2 className="font-bold">Bằng chứng và giới hạn nhận định</h2>
                 <p className="text-[12px] text-vehicsim-muted">Chuỗi nguyên nhân là giả thuyết theo luật đánh giá, không chứng minh quan hệ nhân quả. Điểm confidence là điểm của luật, không phải xác suất đã hiệu chuẩn.</p>
                 {d.stage_evidence?.map(e=><div key={e.stage} className="text-[12px]"><strong>{STAGE_NAME[e.stage as FailureClass]??e.stage}</strong>
@@ -245,7 +245,7 @@ export default function FailureDetailPage() {
 
               <MotionTelemetryChart points={d.motion_telemetry ?? []} markers={derived.markers} cursor={cursor} />
 
-              <section className="flex w-full flex-col gap-[10px] rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
+              <section className="flex w-full flex-col gap-[10px] rounded-lg border border-solid border-vehicsim-line bg-white p-4 shadow-2xs">
                 <h2 className="text-[16px] font-bold text-vehicsim-ink">Ca lỗi tương tự</h2>
                 {d.similar.length === 0 && <p className="text-[12px] text-vehicsim-muted">Chưa có ca lỗi nào khác.</p>}
                 {d.similar.map((s) => (
