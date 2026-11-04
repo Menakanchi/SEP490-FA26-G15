@@ -153,7 +153,12 @@ public final class WorkspaceDtos {
             @NotBlank(message = "Chọn APPROVED hoặc REJECTED") String decision,
             @Size(max = 4000, message = "Nhận xét tối đa 4000 ký tự") String note) {
     }
-    /** Cập nhật tiến độ / trạng thái task của kỹ sư (FE-03). */
+    /**
+     * Cập nhật tiến độ / trạng thái task của kỹ sư (FE-03).
+     *
+     * @param status trạng thái mới của nhiệm vụ (TODO, IN_PROGRESS, REVIEW, DONE)
+     * @param progressPct tỷ lệ phần trăm hoàn thành từ 0 đến 100
+     */
     public record TaskStatusUpdateRequest(
             @NotBlank(message = "Trạng thái không được để trống") String status,
             @JsonProperty("progress_pct") @Min(value = 0, message = "Tiến độ từ 0 đến 100")
