@@ -107,4 +107,17 @@ class EngineerWorkspaceSecurityTest {
         assertThat(statusOf(request(HttpMethod.POST, BASE + "/workspaces/1/messages")
                 .contentType(MediaType.APPLICATION_JSON).content(chatJson), RoleCode.ENGINEER)).isEqualTo(201);
     }
+
+    @Test
+    void reviewerCanAlsoAccessTasksAndReports() throws Exception {
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-tasks"), RoleCode.REVIEWER)).isEqualTo(200);
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-workspaces"), RoleCode.REVIEWER)).isEqualTo(200);
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-reports"), RoleCode.REVIEWER)).isEqualTo(200);
+    }
+
+    @Test
+    void adminCanAccessEngineerEndpoints() throws Exception {
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-tasks"), RoleCode.ADMIN)).isEqualTo(200);
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-workspaces"), RoleCode.ADMIN)).isEqualTo(200);
+    }
 }
