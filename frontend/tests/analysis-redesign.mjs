@@ -12,7 +12,7 @@ import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
 const fixtures=JSON.parse(gunzipSync(await fs.readFile(path.join(root,"src/test/resources/parity/kinematic.json.gz"))));
-const output=path.join(root,"data/analysis-batch4-ui");await fs.mkdir(output,{recursive:true});
+const output=path.join(root,"data/analysis-batch5-ui");await fs.mkdir(output,{recursive:true});
 const version="adr040-stored-aggregation/1";
 const cases=fixtures.filter(c=>c.evaluation.outcome!=="TIMEOUT").slice(0,45);
 const runs=cases.map((c,i)=>({revision:`fixture-${i}`,run_id:1000+i,scenario_id:1,scenario_version_id:100+i,version_no:i+1,family:"CP Crossing · Fixture kiểm thử UI",variant:`CP-${String(i+1).padStart(3,"0")}`,seed:c.seed,baseline_id:1,vehicle_id:1,simulator:"vehicsim-kinematic-1.0",dt:0.05,status:"COMPLETED",outcome:c.evaluation.aeb_result.false_activation?"FALSE_BRAKING":c.evaluation.outcome,weather:c.case.weather,time_of_day:c.case.time_of_day,failure_class:c.evaluation.chain.find(s=>!s.passed)?.stage??null,error:null,end_reason:c.outcome.end_reason,trace_available:true,created_at:"2026-11-03T08:00:00",metrics:{rms_jerk_mps3:c.outcome.metrics.rms_jerk_mps3,impact_speed_mps:c.outcome.metrics.impact_speed_mps,stopping_distance_m:c.outcome.metrics.stopping_distance_m}}));
@@ -32,7 +32,7 @@ function aggregate(list){
   out[key]={value:values.length?values.reduce((a,b)=>a+b,0)/values.length:null,samples:values.length,missing:0,notApplicable:list.length-values.length,unit,status:values.length?"VALID":"NOT_APPLICABLE"};
  }return out;
 }
-let role="ENGINEER", mode="normal", saved=null, playbackOverride=null, detailOverride=null, dashboardOverride=null, lastDashboard=null, inspectionOverride=null, inspectionMode="normal";
+let role="ENGINEER", mode="normal", saved=null, playbackOverride=null, detailOverride=null, dashboardOverride=null, lastDashboard=null, inspectionOverride=null, inspectionMode="normal", playbackMode="normal";
 const writes=[],requests=[];
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
 try {
@@ -71,7 +71,13 @@ try {
    return reply(inspectionOverride??{run:runs.find(r=>r.run_id===Number(inspection[1])),detail:detailOverride??detailFor(Number(inspection[1]))});
   }
   const playback=p.match(/^\/vehicsim\/runs\/(\d+)\/playback$/);
-  if(playback){const id=Number(playback[1]),d=detailFor(id),o=caseFor(id).outcome;return reply(playbackOverride??{...d,...o,motion_telemetry:d.motion_telemetry,vehicle_length_m:4.8,vehicle_width_m:2,lane_width_m:3.5,ttc_threshold_s:1.5,related_runs:[]});}
+  if(playback){
+   if(playbackMode==="slow")await new Promise(resolve=>setTimeout(resolve,800));
+   if(playbackMode==="error")return reply({detail:"Fixture playback failure"},503);
+   if(playbackMode==="forbidden")return reply({detail:"Forbidden"},403);
+   if(playbackMode==="notfound")return reply({detail:"Fixture playback not found"},404);
+   const id=Number(playback[1]),d=detailFor(id),o=caseFor(id).outcome;return reply(playbackOverride??{...d,...o,motion_telemetry:d.motion_telemetry,vehicle_length_m:4.8,vehicle_width_m:2,lane_width_m:3.5,ttc_threshold_s:1.5,related_runs:[]});
+  }
   if(p==="/vehicsim/failures"){
    const rows=runs.filter(r=>r.outcome!=="SAFE").slice(0,20).map(r=>({...r,summary:"Parity fixture",root_cause:caseFor(r.run_id).evaluation.headline,impact_kmh:r.metrics.impact_speed_mps==null?null:r.metrics.impact_speed_mps*3.6,min_ttc_s:caseFor(r.run_id).outcome.metrics.min_ttc_s,config:"v1.0"}));
    return reply({items:rows,total:rows.length,page:1,page_size:20,pages:1,families:[],kpis:{total:rows.length,this_week:0,collisions:rows.filter(r=>r.outcome==="COLLISION").length,near_misses:rows.filter(r=>r.outcome==="NEAR_MISS").length,false_braking:rows.filter(r=>r.outcome==="FALSE_BRAKING").length,by_class:{PERCEPTION:0,DECISION:rows.length,CONTROL:0,VEHICLE_DYNAMICS:0}}});
@@ -304,7 +310,7 @@ try {
  await page.goto(playbackUrl);await page.getByRole("slider",{name:"Thời gian playback",exact:true}).waitFor();
  assert.match(await fact("Khoảng cách tới vạch băng qua").innerText(),/—/);
  await page.getByText("ĐÃ DỪNG",{exact:true}).waitFor();
- await page.getByRole("button",{name:/Mốc TTC do API ghi/}).waitFor();
+ await page.getByRole("region",{name:"Nhật ký sự kiện",exact:true}).getByRole("button",{name:/Mốc TTC do API ghi/}).waitFor();
  detailOverride={...apiDetail,simulator:"carla-0.9.16-xosc4",events:[],telemetry:apiDetail.telemetry.map(p=>({...p,ttc:0.1})),chain:[{stage:"DECISION",passed:false,summary:"Bằng chứng do backend cung cấp",parameter_code:null,cause_code:null,confidence:0.5}]};
  await page.goto(base+`/analysis/failures/${id}?section=telemetry`);
  await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
@@ -314,6 +320,110 @@ try {
  detailOverride={...detailOverride,events:[{t:0.75,kind:"ttc_below",label:"Mốc TTC do API ghi"}]};
  await page.reload();await page.getByText("Mốc TTC từ backend",{exact:true}).waitFor();
  playbackOverride=null;detailOverride=null;
+ // Batch 5: playback controls, recorded frames/events, paused URL and source boundaries.
+ const pbReturn="/analysis/failures?view=runs&scenario_id=1&page=2&page_size=10&q=CP&sort=impact";
+ const pbUrl=base+`/analysis/failures/${id}/playback?returnTo=${encodeURIComponent(pbReturn)}`;
+ const playbackFrames=[0,0.5,1,1.5,2].map((t,i)=>({...recorded.frames[0],t,ego_x:i,ego_v:i===1?0:10,ego_a:i===1?-1.25:1.25,ped_y:-1,perceived_y:null,confidence:null,ttc:i===1?null:0.1,ttc_gt:42,aeb:i===1,fcw:false,detected:false}));
+ const playbackEvents=[{t:1.5,kind:"custom",label:"Nhãn trùng"},{t:0,kind:"gt_start",label:"Bắt đầu đã ghi"},{t:0.5,kind:"detection",label:"Nhãn trùng"},{t:0.51,kind:"fcw",label:"Cảnh báo đã ghi"},{t:1,kind:"aeb_decision",label:"Lệnh AEB đã ghi"},{t:1.51,kind:"extension",label:"Mốc mở rộng API"},{t:1.75,kind:"stopped",label:"Xe dừng theo API"}];
+ const playbackMotion=playbackFrames.map((f,i)=>({...apiDetail.motion_telemetry[0],t:f.t,ego_x_m:f.ego_x,ego_speed_mps:f.ego_v,ego_accel_mps2:f.ego_a,ttc_perceived_s:f.ttc,ttc_gt_s:42,crossing_distance_m:[101,777.7,null,888.8,999.9][i]}));
+ const pbFixture={...apiDetail,...recorded,simulator:"carla-0.9.16-xosc4",duration_s:2,frames:playbackFrames,events:playbackEvents,motion_telemetry:playbackMotion,vehicle_length_m:4.8,vehicle_width_m:2,lane_width_m:3.5,ttc_threshold_s:1.5,related_runs:[]};
+ playbackOverride=pbFixture;
+ await page.goto(pbUrl+"&t=0.75&signal=crossing_distance_m");await slider.waitFor();
+ const player=page.getByRole("region",{name:"Điều khiển playback",exact:true});
+ const log=page.getByRole("region",{name:"Nhật ký sự kiện",exact:true});
+ const pbFacts=page.getByRole("region",{name:"Số đo khung playback",exact:true});
+ const pbScene=page.getByRole("region",{name:"Cảnh playback đã ghi",exact:true});
+ const pbValue=label=>pbFacts.getByText(label,{exact:true}).locator("..");
+ assert.equal(await page.getByRole("slider").count(),1,"Playback exposes a single named native timeline");
+ assert.match(await pbFacts.innerText(),/Khung 0.50 s · cursor 0.75 s/);
+ assert.match(await pbValue("Khoảng cách tới vạch băng qua").innerText(),/777.7 m/);
+ assert.match(await pbValue("Gia tốc ego đã ghi").innerText(),/-1.25 m\/s²/);
+ assert.match(await pbValue("TTC nhận thức").innerText(),/—/);
+ assert.match(await pbValue("TTC ground truth").innerText(),/42.00 s/);
+ assert.equal(await page.getByText("ĐÃ DỪNG",{exact:true}).count(),0);
+ assert.equal(await log.getByRole("button").count(),7,"All recorded event identities survive sorting/grouping");
+ assert.equal(await pbScene.getByRole("button",{name:"Camera RGB",exact:true}).count(),0);
+ await pbScene.getByText(/Camera\/RGB và LiDAR chưa được đồng bộ/).waitFor();
+ const playbackRequests=()=>requests.filter(url=>/\/runs\/\d+\/playback$/.test(url.pathname)).length;
+ const beforePlaybackActions=playbackRequests();
+ await log.getByRole("button",{name:/Nhãn trùng · 0.50 s/}).click();await page.waitForURL(url=>url.searchParams.get("t")==="0.5");
+ assert.equal(await log.locator('[aria-current="step"]').count(),1);
+ assert.match(await log.locator('[aria-current="step"]').getAttribute("aria-label"),/0.50 s/);
+ await log.getByRole("button",{name:/Nhãn trùng · 1.50 s/}).click();await page.waitForURL(url=>url.searchParams.get("t")==="1.5");
+ assert.equal(await log.locator('[aria-current="step"]').count(),1,"Repeated labels must not highlight multiple records");
+ assert.match(await log.locator('[aria-current="step"]').getAttribute("aria-label"),/1.50 s/);
+ await player.getByRole("button",{name:"‹ Sự kiện trước",exact:true}).click();await page.waitForURL(url=>url.searchParams.get("t")==="1");
+ await player.getByRole("button",{name:"Sự kiện sau ›",exact:true}).click();await page.waitForURL(url=>url.searchParams.get("t")==="1.5");
+ const grouped=player.getByRole("button",{name:/^Mốc 0.50 s:/});
+ assert.match(await grouped.getAttribute("aria-label"),/Nhãn trùng; Cảnh báo đã ghi/);
+ await grouped.click();await page.waitForURL(url=>url.searchParams.get("t")==="0.5");
+ assert.equal(Number(await slider.inputValue()),0.5,"Marker click seeks the recorded time without parent-track bubbling");
+ await pbScene.getByRole("button",{name:"Nhận thức",exact:true}).click();assert.equal(await pbScene.getByRole("button",{name:"Nhận thức",exact:true}).getAttribute("aria-pressed"),"false");
+ await pbScene.getByRole("button",{name:"Nhận thức",exact:true}).click();
+ await page.getByLabel("Tín hiệu",{exact:true}).selectOption("ego_accel_mps2");await page.waitForURL(url=>url.searchParams.get("signal")==="ego_accel_mps2");
+ await page.getByRole("button",{name:"Tốc độ phát 2 lần",exact:true}).click();await page.waitForURL(url=>url.searchParams.get("rate")==="2");
+ await slider.focus();await slider.press("Home");await page.waitForURL(url=>url.searchParams.get("t")==="0");
+ await slider.press("ArrowRight");await page.waitForURL(url=>Number(url.searchParams.get("t"))>0);
+ await page.getByRole("button",{name:"Phát",exact:true}).click();
+ await page.waitForFunction(()=>Number(document.querySelector('[aria-label="Thời gian playback"]').value)>0.1);
+ await page.getByRole("button",{name:"Tạm dừng",exact:true}).click();
+ await page.waitForFunction(()=>Math.abs(Number(new URL(location.href).searchParams.get("t"))-Number(document.querySelector('[aria-label="Thời gian playback"]').value))<0.011);
+ assert.equal(playbackRequests(),beforePlaybackActions,"Seek/play/pause/rate/layers/signal must not reload the playback API");
+ await slider.focus();await slider.press("End");await page.waitForURL(url=>url.searchParams.get("t")==="2");
+ await page.getByText("ĐÃ DỪNG",{exact:true}).waitFor();
+ await page.reload();await slider.waitFor();assert.equal(Number(await slider.inputValue()),2);
+ assert.equal(await page.getByRole("button",{name:"Tốc độ phát 2 lần",exact:true}).getAttribute("aria-pressed"),"true");
+ assert.equal(await page.getByLabel("Tín hiệu",{exact:true}).inputValue(),"ego_accel_mps2");
+ await page.getByRole("button",{name:"Phát",exact:true}).click();
+ await page.waitForFunction(()=>Number(document.querySelector('[aria-label="Thời gian playback"]').value)<1.5);
+ await page.getByRole("button",{name:"Tạm dừng",exact:true}).click();
+ await page.getByRole("link",{name:"Xem phân tích run",exact:true}).click();
+ await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
+ assert.equal(new URL(page.url()).searchParams.get("returnTo"),pbReturn);
+ assert.equal(new URL(page.url()).searchParams.get("signal"),"ego_accel_mps2");
+ await page.getByLabel("Tín hiệu",{exact:true}).selectOption("crossing_distance_m");
+ await page.getByRole("link",{name:"Mở playback tại thời điểm đang xem",exact:true}).click();await slider.waitFor();
+ assert.equal(await page.getByLabel("Tín hiệu",{exact:true}).inputValue(),"crossing_distance_m","Detail-to-playback retains selected signal");
+ assert.equal(new URL(page.url()).searchParams.get("returnTo"),pbReturn);
+ for(const [width,height] of [[1920,1080],[1366,768],[1024,768]]){
+  await page.setViewportSize({width,height});await page.screenshot({path:path.join(output,`playback-recorded-${width}.png`),fullPage:true});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Playback recorded overflow ${width}`);
+ }
+ // The projection must match the frame timestamp exactly; scene coordinates cannot fill the distance.
+ playbackOverride={...pbFixture,motion_telemetry:playbackMotion.map(p=>({...p,t:p.t===0.5?0.5001:p.t}))};
+ await page.goto(pbUrl+"&t=0.75");await pbFacts.waitFor();assert.match(await pbValue("Khoảng cách tới vạch băng qua").innerText(),/—/);
+ // No frames and a partial single frame remain inspectable without invented coordinates or numbers.
+ playbackOverride={...pbFixture,frames:[],motion_telemetry:[],events:[]};await page.goto(pbUrl);await player.waitFor();
+ await page.getByText("Không có frame telemetry hợp lệ để phát lại.",{exact:true}).waitFor();assert(await slider.isDisabled());
+ assert(await page.getByRole("button",{name:"Phát",exact:true}).isDisabled());assert.match(await pbValue("Tốc độ xe ego").innerText(),/—/);
+ playbackOverride={...pbFixture,duration_s:0,frames:[{...playbackFrames[0],ego_v:null,ego_a:null,ego_x:null,ped_y:null,ttc:null,ttc_gt:null}],motion_telemetry:undefined,events:[]};
+ await page.goto(pbUrl+"&t=99");await pbFacts.waitFor();assert.equal(Number(await slider.inputValue()),0);
+ await page.getByText("Khung này chưa đủ tọa độ hoặc kích thước xe để dựng cảnh.",{exact:true}).waitFor();
+ assert.match(await pbValue("Gia tốc ego đã ghi").innerText(),/—/);assert(await slider.isDisabled());
+ playbackOverride={...pbFixture,duration_s:null};await page.goto(pbUrl);await player.waitFor();
+ await page.getByText("Thời lượng từ API không hợp lệ. Chưa thể phát lại.",{exact:true}).waitFor();assert(await slider.isDisabled());
+ playbackOverride={...pbFixture,outcome:"MISSED_BRAKING",frames:[playbackFrames[1],{...playbackFrames[0],t:null},{...playbackFrames[0],t:-1},{...playbackFrames[0],t:99},playbackFrames[0]],events:[playbackEvents[0],{t:99,kind:"out",label:"Ngoài khoảng"},{t:null,kind:"bad",label:"Không timestamp"},{t:-1,kind:"bad",label:"Âm"},playbackEvents[1]]};
+ await page.goto(pbUrl+"&t=99");await pbFacts.waitFor();assert.equal(Number(await slider.inputValue()),2);
+ await page.getByText("Bỏ sót phanh",{exact:true}).waitFor();await page.getByText("3 khung có timestamp không hợp lệ hoặc nằm ngoài khoảng phát.",{exact:true}).waitFor();
+ await log.getByText("3 sự kiện có timestamp không hợp lệ hoặc nằm ngoài khoảng phát.",{exact:true}).waitFor();
+ assert.equal(await log.getByRole("button").count(),2);assert.match(await pbFacts.innerText(),/Khung 0.50 s · cursor 2.00 s/);
+ playbackOverride={...pbFixture,evaluation_valid:false,outcome:"SAFE"};await page.goto(pbUrl+"&t=-1");await player.waitFor();assert.equal(Number(await slider.inputValue()),0);
+ assert.equal(await page.getByText("An toàn",{exact:true}).count(),0);
+ const relatedId=id===1000?1001:1000;
+ playbackOverride={...pbFixture,related_runs:[{run_id:relatedId,config:"v2-fixture",purpose:"BASELINE",outcome:"SAFE"}]};
+ await page.goto(pbUrl+"&t=0.5");await pbFacts.waitFor();
+ await page.getByRole("button",{name:"Phát",exact:true}).click();playbackOverride=null;playbackMode="slow";
+ await page.getByRole("link",{name:"Mở run liên quan · AEB v2-fixture",exact:true}).click();
+ await page.getByRole("status").filter({hasText:"Đang tải dữ liệu phân tích"}).waitFor();assert.equal(await pbFacts.count(),0);
+ assert.equal(new URL(page.url()).searchParams.get("returnTo"),pbReturn);
+ await pbFacts.waitFor();await page.getByRole("button",{name:"Phát",exact:true}).waitFor();playbackMode="normal";
+ for(const nextMode of ["error","forbidden","notfound"]){
+  playbackMode=nextMode;await page.goto(pbUrl);await page.getByRole("alert").waitFor();assert.equal(await player.count(),0);assert.equal(await pbFacts.count(),0);
+ }
+ playbackMode="normal";await page.getByRole("button",{name:"Thử tải lại",exact:true}).click();await player.waitFor();
+ await page.getByRole("link",{name:"← Về danh sách đang xem",exact:true}).click();await page.waitForURL(base+pbReturn);
+ playbackOverride=null;
+
  // Batch 4: distinct saved objectives, telemetry and derived signals must not overwrite each other.
  const baseRun=runs.find(r=>r.run_id===id);
  const sentinelDetail={...detailFor(id),simulator:"carla-0.9.16-xosc4",evaluation_version:version,
@@ -439,6 +549,6 @@ try {
  assert(await page.getByRole("button",{name:"Tải .xosc",exact:true}).isEnabled());
  await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
  assert.deepEqual(errors,[]);assert.equal(writes.length,1);assert(!writes.some(w=>/optimizations|aeb\/versions|regression/.test(w.path)));
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["batch4 detail source/metrics/tabs/keyboard; URL time/signal/return/reload without refetch; recorded null-zero-signed samples; no GT fallback or objective recomputation; gaps/non-monotonic timestamps; TTC above 5; loading/run navigation/empty/invalid/error/403/404/retry; responsive screenshots", "batch3 row actions/detail/playback/browser-back URL restoration; filter chips/reset; last-page clamp; page-size reset; local sort null/zero/ties; trimmed search/reload; missing-telemetry restrictions; sticky column/overflow", "overview","batch2 full-scope KPI/source identities/partial-zero-loading-error/retry","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","batch1 API-only metrics/events and missing data","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports:[[1920,1080],[1366,768],[1024,768]],checks:["batch5 single keyboard timeline/markers; duplicate event identity; play-pause-restart/rates; exact recorded frame/projection and no inference; paused URL/reload/detail signal/return; layers; partial/invalid/empty data; run change/loading/503/403/404/retry; responsive screenshots", "batch4 detail source/metrics/tabs/keyboard; URL time/signal/return/reload without refetch; recorded null-zero-signed samples; no GT fallback or objective recomputation; gaps/non-monotonic timestamps; TTC above 5; loading/run navigation/empty/invalid/error/403/404/retry; responsive screenshots", "batch3 row actions/detail/playback/browser-back URL restoration; filter chips/reset; last-page clamp; page-size reset; local sort null/zero/ties; trimmed search/reload; missing-telemetry restrictions; sticky column/overflow", "overview","batch2 full-scope KPI/source identities/partial-zero-loading-error/retry","URL filters/page/search/sort","detail return","selection persistence","freeze payload/revisions","saved archive reload","AEB ID handoff and shared summary","playback seek/play/pause/speed","batch1 API-only metrics/events and missing data","failure family scope","loading/empty/error/403","read-only role","no unrelated mutations"],screenshots:output,liveBackendVerified:false,figmaVerified:false},null,2));
  console.log("PASS: browser fixture UI checks; live backend/authentication/database/CARLA/Figma NOT verified. Screenshots:",output);
 } finally {await browser.close();}

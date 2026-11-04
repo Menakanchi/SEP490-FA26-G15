@@ -40,7 +40,7 @@ export default function FailureDetailPage() {
   const requestedTime = Number(params.get("t"));
   const cursor = range ? Math.max(range.min, Math.min(range.max, finite(requestedTime) && requestedTime >= 0 ? requestedTime : range.min)) : 0;
   const canPlayback = Boolean(inspection?.trace_available && inspection.status === "COMPLETED");
-  const playbackHref = `/analysis/failures/${runId}/playback?t=${cursor}&returnTo=${encodeURIComponent(returnTo)}`;
+  const playbackHref = `/analysis/failures/${runId}/playback?t=${cursor}&signal=${signal}&returnTo=${encodeURIComponent(returnTo)}`;
   const markers = d ? runMarkers(d) : [];
 
   useEffect(() => {
