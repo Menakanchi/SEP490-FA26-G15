@@ -155,6 +155,14 @@ public class EngineerWorkspaceController {
         return reports.getReport(uid, role, reportId);
     }
 
+    /**
+     * Đọc các tin nhắn trao đổi trong kênh thảo luận nội bộ của không gian làm việc.
+     *
+     * @param workspaceId mã không gian làm việc
+     * @param limit số lượng tin nhắn tối đa cần lấy
+     * @param user thông tin người dùng đăng nhập
+     * @return danh sách các tin nhắn trao đổi
+     */
     @Operation(summary = "FE-03 — Tin nhắn trao đổi trong workspace")
     @GetMapping("/workspaces/{workspaceId}/messages")
     public List<ChatMessage> listMessages(@PathVariable long workspaceId,
