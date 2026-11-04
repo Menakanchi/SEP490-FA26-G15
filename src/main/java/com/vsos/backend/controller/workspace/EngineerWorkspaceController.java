@@ -53,6 +53,12 @@ public class EngineerWorkspaceController {
     private final WorkspaceReportService reports;
     private final VehicSimAccess access;
 
+    /**
+     * Lấy danh sách toàn bộ workspace mà tài khoản kỹ sư hiện tại có quyền truy cập.
+     *
+     * @param user thông tin định danh người dùng đăng nhập
+     * @return danh sách tóm tắt các workspace phù hợp
+     */
     @Operation(summary = "FE-03 — Danh sách workspace tôi tham gia (ADMIN: tất cả; MANAGER: quản lý; ENGINEER/REVIEWER: thành viên)")
     @GetMapping("/my-workspaces")
     public List<WorkspaceSummary> myWorkspaces(@AuthenticationPrincipal UserDetails user) {
