@@ -32,7 +32,10 @@ public final class XoscExport {
     private XoscExport() {
     }
 
-    /** Phần tử XML tối thiểu, đủ để ghi giống {@code xml.etree.ElementTree} của Python (thuộc tính giữ thứ tự chèn, " />" cho phần tử rỗng). */
+    /**
+     * Phần tử XML tối thiểu, được thiết kế để xuất định dạng ASAM OpenSCENARIO 1.0 chính xác từng byte.
+     * Các thuộc tính giữ nguyên thứ tự chèn, hỗ trợ thẻ tự đóng cho phần tử rỗng.
+     */
     private static final class El {
         final String tag;
         final Map<String, String> attrs = new LinkedHashMap<>();
