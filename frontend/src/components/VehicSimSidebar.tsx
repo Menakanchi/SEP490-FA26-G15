@@ -142,7 +142,7 @@ export function VehicSimSidebar({ hideOnMobile = false }: { hideOnMobile?: boole
                 {g.label}
               </span>
               {(g.children || g.href || g.note) && (
-                <span className={`font-semibold ${open ? "text-[13px] text-vehicsim-ink" : "text-[16px] text-vehicsim-faint"}`}>
+                <span aria-hidden="true" className={`font-semibold ${open ? "text-[13px] text-vehicsim-ink" : "text-[16px] text-vehicsim-faint"}`}>
                   {open ? "▾" : "›"}
                 </span>
               )}
@@ -202,6 +202,7 @@ export function VehicSimSidebar({ hideOnMobile = false }: { hideOnMobile?: boole
         <button
           type="button"
           title="Đăng xuất"
+          aria-label="Đăng xuất"
           onClick={() => {
             logout();
             router.push("/login");

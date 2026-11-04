@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AnalysisBadge, AnalysisLoading, AnalysisPager, analysisLabel, metric } from "@/components/analysisUi";
+import { AnalysisBadge, AnalysisLoading, AnalysisPager, AnalysisTableRegion, analysisLabel, metric } from "@/components/analysisUi";
 import { vi, viSummary } from "@/components/vehicsimI18n";
 import { runCode } from "@/components/VehicSimUi";
 import type { FailureFilters, FailureList } from "@/types/vehicsim";
@@ -69,7 +69,7 @@ export function AnalysisFailureExplorer({ data, loading, hasError, filters, page
       <p className="analysis-caption">Tìm kiếm áp dụng trong tối đa {size} ca của trang đang tải. CSV áp dụng bộ lọc máy chủ, bỏ qua tìm kiếm và trang đang xem.</p>
       {loading ? <AnalysisLoading /> : hasError ? <div className="analysis-state">Chưa tải được ca lỗi. Dùng nút “Thử tải lại” phía trên.</div> : data && <>
         <div className={styles.summary}><p role="status">Hiển thị <strong>{rows.length}</strong> / {data.items.length} ca trong trang · <strong>{count(data.total)}</strong> ca khớp bộ lọc</p><span className="analysis-caption">Mới nhất trước · —: chưa có số đo</span></div>
-        {rows.length > 0 ? <div className={styles.tableWrap} role="region" aria-label="Bảng ca lỗi, cuộn ngang để xem thêm" tabIndex={0}><table className={`analysis-table ${styles.table}`}>
+        {rows.length > 0 ? <AnalysisTableRegion className={styles.tableWrap} label="Bảng ca lỗi, cuộn ngang để xem thêm"><table className={`analysis-table ${styles.table}`}>
           <caption className="sr-only">Ca lỗi, nhận định chính, điểm luật và bằng chứng từ API</caption>
           <thead><tr>{["Run / biến thể", "Kết quả / khâu chính", "Nhận định theo luật", "Va chạm (km/h)", "TTC min (s)", "Cấu hình / điều kiện", "Bằng chứng"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
           <tbody>{rows.map((item, index) => <tr key={`${item.failure_id ?? item.run_id}-${index}`} data-failure-run={item.run_id}>
@@ -80,7 +80,7 @@ export function AnalysisFailureExplorer({ data, loading, hasError, filters, page
             <td className={styles.context}>{item.config || "—"}<small>{analysisLabel(item.weather ?? null)} · {analysisLabel(item.time_of_day ?? null)}</small></td>
             <td><div className={styles.actions}><Link href={href(item.run_id, "evidence")} aria-label={`Bằng chứng run ${item.run_id}`}>Nguyên nhân →</Link><Link href={href(item.run_id, "telemetry")} aria-label={`Telemetry run ${item.run_id}`}>Telemetry →</Link><Link href={href(item.run_id, "playback")} aria-label={`Playback run ${item.run_id}`}>Playback ↗</Link></div></td>
           </tr>)}</tbody>
-        </table></div> : <div className="analysis-state"><strong>{data.total === 0 ? "Không có ca lỗi nào với bộ lọc này." : "Không có kết quả tìm trong trang ca lỗi."}</strong><p>{data.total === 0 ? "Thử mở rộng bộ lọc hoặc xem ca an toàn trong mục Lượt chạy." : "Thử từ khóa khác hoặc chuyển trang."}</p>{search && <button className="analysis-button" onClick={() => onUpdate({ f_q: "" }, false)}>Hiện toàn bộ trang ca lỗi</button>}</div>}
+        </table></AnalysisTableRegion> : <div className="analysis-state"><strong>{data.total === 0 ? "Không có ca lỗi nào với bộ lọc này." : "Không có kết quả tìm trong trang ca lỗi."}</strong><p>{data.total === 0 ? "Thử mở rộng bộ lọc hoặc xem ca an toàn trong mục Lượt chạy." : "Thử từ khóa khác hoặc chuyển trang."}</p>{search && <button className="analysis-button" onClick={() => onUpdate({ f_q: "" }, false)}>Hiện toàn bộ trang ca lỗi</button>}</div>}
         {rows.length > 0 && <p className="analysis-caption">Cuộn ngang để xem thêm nhận định và chỉ số. Điểm luật không phải xác suất đã hiệu chuẩn.</p>}
         <AnalysisPager page={page} size={size} total={data.total} onPage={value => onUpdate({ f_page: value }, false)} onSize={value => onUpdate({ f_size: value })} />
       </>}

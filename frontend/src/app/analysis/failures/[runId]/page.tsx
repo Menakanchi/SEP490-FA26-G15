@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { ErrorNote, PillButton, fmt, runCode } from "@/components/VehicSimUi";
-import { AnalysisBadge, AnalysisLoading, analysisError, analysisLabel, analysisReturn } from "@/components/analysisUi";
+import { AnalysisBadge, AnalysisLoading, analysisError, analysisLabel, analysisReturn, analysisRunId } from "@/components/analysisUi";
 import { MOTION_SIGNALS, type MotionSignal } from "@/components/MotionTelemetryChart";
 import { AnalysisRunSummary } from "@/components/analysis/AnalysisRunSummary";
 import { AnalysisRunTimeline, AnalysisRunTelemetry } from "@/components/analysis/AnalysisRunTelemetry";
@@ -23,16 +23,17 @@ export default function FailureDetailPage() {
   const router = useRouter();
   const { canWrite } = useVehicSimContext();
   const { runId } = useParams<{ runId: string }>();
+  const validId = analysisRunId(runId);
   const params = useSearchParams();
   const [refresh, setRefresh] = useState(0);
   const requestKey = `${runId}:${refresh}`;
   const [result, setResult] = useState<{ key: string; data: Inspection | null; error: string | null } | null>(null);
   const [running, setRunning] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const loading = result?.key !== requestKey;
+  const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
+  const loading = validId !== null && result?.key !== requestKey;
   const inspection = result?.key === requestKey ? result.data?.run : null;
   const d = result?.key === requestKey ? result.data?.detail : null;
-  const error = result?.key === requestKey ? result.error : null;
+  const error = validId === null ? "Mã lượt chạy không hợp lệ." : result?.key === requestKey ? result.error : null;
   const section = SECTIONS.some(([key]) => key === params.get("section")) ? params.get("section")! : "summary";
   const signal = (MOTION_SIGNALS.some(item => item.key === params.get("signal")) ? params.get("signal") : "ego_accel_mps2") as MotionSignal;
   const returnTo = analysisReturn(params.get("returnTo"));
@@ -44,12 +45,13 @@ export default function FailureDetailPage() {
   const markers = d ? runMarkers(d) : [];
 
   useEffect(() => {
+    if (validId === null) return;
     let active = true;
-    vehicsimApi.analysisInspection(Number(runId))
+    vehicsimApi.analysisInspection(validId)
       .then(data => { if (active) setResult({ key: requestKey, data, error: null }); })
       .catch(err => { if (active) setResult({ key: requestKey, data: null, error: analysisError(err) }); });
     return () => { active = false; };
-  }, [runId, requestKey]);
+  }, [runId, validId, requestKey]);
 
   function update(values: Record<string, string | number>) {
     const next = new URLSearchParams(window.location.search);
@@ -63,22 +65,22 @@ export default function FailureDetailPage() {
     event.preventDefault(); update({ section: SECTIONS[next][0] });
     document.getElementById(`run-tab-${SECTIONS[next][0]}`)?.focus();
   }
-  return <VehicSimPage step={4} title={`Lượt chạy ${runCode(Number(runId))}`}
-    crumbs={[{ label: "Phân tích" }, { label: "Danh sách phân tích", href: returnTo }, { label: `Lượt chạy ${runCode(Number(runId))}` }]}
+  return <VehicSimPage step={4} title={validId === null ? "Lượt chạy không hợp lệ" : `Lượt chạy ${runCode(validId)}`}
+    crumbs={[{ label: "Phân tích" }, { label: "Danh sách phân tích", href: returnTo }, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}` }]}
     subtitle={inspection ? `${inspection.family} · ${inspection.variant} · seed ${inspection.seed}` : "Chi tiết và telemetry từ kết quả run đã lưu."}
     badges={inspection && <><AnalysisBadge value={inspection.status} />{d && d.evaluation_valid !== false && <AnalysisBadge value={d.outcome} />}{d?.failure_class && <AnalysisBadge value={d.failure_class} />}</>}
     actions={<>
       <PillButton disabled={!inspection} title="Xuất OpenSCENARIO cùng biến thể, AEB, xe và seed của lượt này"
-        onClick={() => { setActionError(null); void vehicsimApi.downloadRunXosc(Number(runId)).catch(err => setActionError(analysisError(err))); }}>Tải .xosc</PillButton>
+        onClick={() => { setActionError(null); void vehicsimApi.downloadRunXosc(Number(runId)).catch(err => setActionError({ id: runId, message: analysisError(err) })); }}>Tải .xosc</PillButton>
       <PillButton disabled={!inspection || !canWrite || running} onClick={async () => {
         setRunning(true); setActionError(null);
         try { const run = await vehicsimApi.runOnCarla(Number(runId)); router.push(`/analysis/carla?run=${run.run_id}`); }
-        catch (err) { setActionError(analysisError(err)); } finally { setRunning(false); }
+        catch (err) { setActionError({ id: runId, message: analysisError(err) }); } finally { setRunning(false); }
       }}>{running ? "Đang xếp hàng…" : "Chạy trên CARLA"}</PillButton>
       {canPlayback ? <PillButton variant="dark" href={playbackHref}>▶ Phát lại</PillButton> : <PillButton variant="dark" disabled title="Run cần hoàn tất và có telemetry">▶ Phát lại</PillButton>}
     </>}>
     <div><Link className="text-[13px] font-semibold text-vehicsim-decision" href={returnTo}>← Về danh sách đang xem</Link></div>
-    <ErrorNote message={error ?? actionError} />
+    <ErrorNote message={error ?? (actionError?.id === runId ? actionError.message : null)} />
     {error && <div><button className="analysis-button" onClick={() => setRefresh(value => value + 1)}>Thử tải lại</button></div>}
     {loading && <AnalysisLoading />}
     {inspection && <section className={`analysis-panel ${styles.stack}`} aria-label="Danh tính và nguồn dữ liệu run">

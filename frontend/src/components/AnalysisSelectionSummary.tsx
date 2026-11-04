@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { AnalysisBadge } from "@/components/analysisUi";
+import { AnalysisBadge, AnalysisTableRegion } from "@/components/analysisUi";
 import { PillButton } from "@/components/VehicSimUi";
 import type { AnalysisSelection, ObjectiveAggregate } from "@/types/vehicsim";
 export function ObjectiveSummary({value}: {value: ObjectiveAggregate}) {
@@ -26,14 +26,14 @@ export function AnalysisSelectionSummary({dataset,returnTo}: {dataset: AnalysisS
    {dataset.evaluation.carla_observational_only && <p className="text-vehicsim-warn text-[12px]">CARLA chỉ phục vụ quan sát/đối chiếu; chưa hiệu chuẩn phanh và chưa tương đương với số động học.</p>}
    <div className="rounded-xl bg-vehicsim-soft p-4 space-y-3"><h3 className="text-[13px] font-bold">Mục tiêu của tập tối ưu</h3><ObjectiveSummary value={dataset.optimization_objectives} /></div>
    <details className="rounded-xl border border-vehicsim-line p-4"><summary className="text-[13px] font-semibold cursor-pointer">Chỉ số của tập xác minh</summary><div className="mt-4"><ObjectiveSummary value={dataset.validation_objectives} /></div></details>
-   <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-[12px]">
+   <AnalysisTableRegion label="Bảng run và seed trong snapshot, cuộn ngang"><table className="w-full min-w-[560px] text-left text-[12px]">
      <caption className="sr-only">Bằng chứng run và seed trong snapshot đã chốt</caption>
      <thead className="bg-vehicsim-soft text-vehicsim-muted"><tr>{["Run / biến thể","Seed","Tập","Kết quả"].map(x=><th scope="col" className="p-3" key={x}>{x}</th>)}</tr></thead>
      <tbody>{dataset.runs.slice((page-1)*20,page*20).map(run=><tr key={run.run_id} className="border-t border-vehicsim-line">
        <td className="p-3"><Link className="text-vehicsim-decision underline" href={`/analysis/failures/${run.run_id}${returnTo?`?returnTo=${encodeURIComponent(returnTo)}`:""}`}>#{run.run_id} · {run.variant}</Link></td>
        <td className="p-3 tabular-nums">{run.seed}</td><td className="p-3">{dataset.optimization_run_ids.includes(run.run_id)?"Tối ưu":"Xác minh"}</td><td className="p-3"><AnalysisBadge value={run.outcome}/></td>
      </tr>)}</tbody>
-   </table></div>
-   {pages>1&&<div className="flex flex-wrap items-center justify-between gap-3 text-[12px]"><span>Trang {page} / {pages} · {dataset.runs.length} run trong snapshot</span><div className="flex gap-2"><PillButton disabled={page<=1} onClick={()=>setPage(page-1)}>Trang trước snapshot</PillButton><PillButton disabled={page>=pages} onClick={()=>setPage(page+1)}>Trang sau snapshot</PillButton></div></div>}
+   </table></AnalysisTableRegion>
+   {pages>1&&<nav aria-label="Phân trang snapshot" className="flex flex-wrap items-center justify-between gap-3 text-[12px]"><span>Trang {page} / {pages} · {dataset.runs.length} run trong snapshot</span><div className="flex gap-2"><PillButton disabled={page<=1} onClick={()=>setPage(page-1)}>Trang trước snapshot</PillButton><PillButton disabled={page>=pages} onClick={()=>setPage(page+1)}>Trang sau snapshot</PillButton></div></nav>}
  </section>;
 }

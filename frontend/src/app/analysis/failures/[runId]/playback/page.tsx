@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { MotionTelemetryChart, MOTION_SIGNALS, type MotionSignal } from "@/components/MotionTelemetryChart";
 import { ErrorNote, PillButton, runCode } from "@/components/VehicSimUi";
-import { AnalysisBadge, AnalysisLoading, analysisError, analysisReturn } from "@/components/analysisUi";
+import { AnalysisBadge, AnalysisLoading, analysisError, analysisReturn, analysisRunId } from "@/components/analysisUi";
 import { PlaybackScene, PlaybackFacts } from "@/components/analysis/AnalysisPlaybackScene";
 import { PlaybackTimeline, PlaybackEvents } from "@/components/analysis/AnalysisPlaybackTimeline";
 import { PLAYBACK_LAYERS, PLAYBACK_SPEEDS, eventName, eventColor, playbackPresentation, type PlaybackLayer, type PlaybackSpeed } from "@/components/analysis/playbackPresentation";
@@ -20,6 +20,7 @@ type Result = { key: string; data: Playback | null; view: ReturnType<typeof play
 
 export default function PlaybackPage() {
   const { runId } = useParams<{ runId: string }>();
+  const validId = analysisRunId(runId);
   const params = useSearchParams();
   const returnTo = analysisReturn(params.get("returnTo"));
   const returnQuery = `returnTo=${encodeURIComponent(returnTo)}`;
@@ -30,8 +31,8 @@ export default function PlaybackPage() {
   const current = result?.key === requestKey ? result : null;
   const pb = current?.data ?? null;
   const view = current?.view;
-  const error = current?.error ?? null;
-  const loading = result?.key !== requestKey;
+  const error = validId === null ? "Mã lượt chạy không hợp lệ." : current?.error ?? null;
+  const loading = validId !== null && result?.key !== requestKey;
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -50,8 +51,9 @@ export default function PlaybackPage() {
   }, [runId]);
 
   useEffect(() => {
+    if (validId === null) return;
     let active = true;
-    vehicsimApi.playback(Number(runId)).then(data => {
+    vehicsimApi.playback(validId).then(data => {
       if (!active) return;
       const prepared = playbackPresentation(data);
       const query = new URLSearchParams(window.location.search);
@@ -63,7 +65,7 @@ export default function PlaybackPage() {
       setSpeed(PLAYBACK_SPEEDS.includes(rate as PlaybackSpeed) ? rate as PlaybackSpeed : 0.5);
     }).catch(err => { if (active) setResult({ key: requestKey, data: null, view: null, error: analysisError(err) }); });
     return () => { active = false; };
-  }, [runId, requestKey]);
+  }, [runId, validId, requestKey]);
 
   useEffect(() => {
     if (!playing || !pb) return;
@@ -116,8 +118,8 @@ export default function PlaybackPage() {
   const related = pb?.related_runs?.find(run => run.config !== pb.config);
   const detailHref = `/analysis/failures/${runId}?section=telemetry&t=${t}&signal=${signal}&${returnQuery}`;
   const enabled = Boolean(view?.durationValid && frames.length);
-  return <VehicSimPage step={4} title={`Phát lại · Lượt chạy ${runCode(Number(runId))}`}
-    crumbs={[{ label: "Phân tích" }, { label: "Danh sách phân tích", href: returnTo }, { label: `Lượt chạy ${runCode(Number(runId))}`, href: detailHref }, { label: "Phát lại" }]}
+  return <VehicSimPage step={4} title={validId === null ? "Lượt chạy không hợp lệ" : `Phát lại · Lượt chạy ${runCode(validId)}`}
+    crumbs={[{ label: "Phân tích" }, { label: "Danh sách phân tích", href: returnTo }, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}`, href: detailHref }, { label: "Phát lại" }]}
     badges={pb && <><AnalysisBadge value={pb.status} />{pb.evaluation_valid !== false && <AnalysisBadge value={pb.outcome} />}{pb.failure_class && <AnalysisBadge value={pb.failure_class} />}</>}
     subtitle={pb ? `Nguồn API: ${pb.simulator ?? "Chưa có danh tính simulator"}. Phát lại khung đã ghi.` : "Đang đọc dữ liệu phát lại từ API."}
     actions={<>

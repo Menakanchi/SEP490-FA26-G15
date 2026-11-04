@@ -15,7 +15,9 @@ import { jakarta } from "@/components/vehicsimFonts";
 export function VehicSimShell({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
-  const adminPage = usePathname().startsWith("/admin");
+  const pathname = usePathname();
+  const adminPage = pathname.startsWith("/admin");
+  const analysisPage = pathname === "/analysis/failures" || pathname.startsWith("/analysis/failures/");
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.replace("/login");
@@ -30,9 +32,19 @@ export function VehicSimShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className={`${jakarta.className} flex min-h-screen w-full bg-vehicsim-bg text-vehicsim-ink`}>
+    <div data-analysis-shell={analysisPage || undefined} className={`${jakarta.className} flex min-h-screen w-full bg-vehicsim-bg text-vehicsim-ink`}>
       <VehicSimContextProvider>
-        <VehicSimSidebar hideOnMobile={adminPage} />
+        {analysisPage ? <>
+          <details className="analysis-mobile-menu" onClick={event => {
+            if ((event.target as Element).closest("a")) event.currentTarget.open = false;
+          }} onKeyDown={event => {
+            if (event.key === "Escape") { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); }
+          }}>
+            <summary>Menu VehicSim</summary>
+            <VehicSimSidebar />
+          </details>
+          <div className="analysis-desktop-menu"><VehicSimSidebar /></div>
+        </> : <VehicSimSidebar hideOnMobile={adminPage} />}
         <main className="flex min-w-0 flex-1">{children}</main>
       </VehicSimContextProvider>
     </div>

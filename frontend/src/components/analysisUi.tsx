@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { ApiError } from "@/services/api";
 import { vi } from "@/components/vehicsimI18n";
 import type { AnalysisRun } from "@/types/vehicsim";
+
+export { analysisRunId } from "./analysis/analysisRouteTitles";
 
 export const ANALYSIS_LABELS: Record<string, string> = {
   CLEAR: "Trời quang", CLOUDY: "Nhiều mây", RAIN: "Mưa", HEAVY_RAIN: "Mưa lớn", FOG: "Sương mù",
@@ -38,19 +41,23 @@ export function AnalysisNav({ view, count = 0 }: { view: string; count?: number 
   })}</nav>;
 }
 export function AnalysisLoading() {
-  return <div role="status" className="analysis-state"><span className="inline-block size-5 animate-spin rounded-full border-2 border-vehicsim-line-strong border-t-vehicsim-decision" /><p>Đang tải dữ liệu phân tích…</p></div>;
+  return <div role="status" className="analysis-state"><span aria-hidden="true" className="analysis-loading-spinner inline-block size-5 animate-spin rounded-full border-2 border-vehicsim-line-strong border-t-vehicsim-decision" /><p>Đang tải dữ liệu phân tích…</p></div>;
 }
-export function AnalysisPager({ page, size, total, loading, onPage, onSize }: { page: number; size: number; total: number; loading?: boolean; onPage: (page: number) => void; onSize: (size: number) => void }) {
+/** Scroll and focus behavior shared by run, failure, draft and snapshot tables. */
+export function AnalysisTableRegion({ label, className = "", children }: { label: string; className?: string; children: ReactNode }) {
+  return <div className={`analysis-table-wrap min-w-0 max-w-full overflow-x-auto ${className}`} role="region" aria-label={label} tabIndex={0}>{children}</div>;
+}
+export function AnalysisPager({ page, size, total, loading, label = "Phân trang kết quả", onPage, onSize }: { page: number; size: number; total: number; loading?: boolean; label?: string; onPage: (page: number) => void; onSize: (size: number) => void }) {
   const pages = Math.max(1, Math.ceil(total / size));
-  return <div className="analysis-toolbar border-t border-vehicsim-line pt-4">
+  return <nav aria-label={label} className="analysis-toolbar border-t border-vehicsim-line pt-4">
     <span className="text-[12px] text-vehicsim-muted" aria-live="polite">{total ? `${(page - 1) * size + 1}–${Math.min(page * size, total)} / ${total} bản ghi` : "0 bản ghi"}</span>
     <div className="flex flex-wrap items-center gap-3 text-[12px]">
-      <label>Số dòng <select aria-label="Số dòng mỗi trang" value={size} onChange={e => onSize(Number(e.target.value))}>{[10, 20, 30, 50].map(n => <option key={n}>{n}</option>)}</select></label>
+      <label>Số dòng <select aria-label="Số dòng mỗi trang" disabled={loading} value={size} onChange={e => onSize(Number(e.target.value))}>{[10, 20, 30, 50].map(n => <option key={n}>{n}</option>)}</select></label>
       <button type="button" className="analysis-button" disabled={loading || page <= 1} onClick={() => onPage(page - 1)}>Trang trước</button>
       <span>Trang {page} / {pages}</span>
       <button type="button" className="analysis-button" disabled={loading || page >= pages} onClick={() => onPage(page + 1)}>Trang sau</button>
     </div>
-  </div>;
+  </nav>;
 }
 export function analysisReturn(value: string | null) {
   return value?.startsWith("/analysis/failures?") ? value : "/analysis/failures?view=runs";

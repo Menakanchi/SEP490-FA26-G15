@@ -7,6 +7,7 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton } from "@/components/VehicSimUi";
 import { AnalysisDatasetPreparation } from "@/components/analysis/AnalysisDatasetPreparation";
+import { analysisListTitle } from "@/components/analysis/analysisRouteTitles";
 import { restoreSelection, selectionChecks, type ChosenRun } from "@/components/analysis/analysisSelectionData";
 import { AnalysisRunExplorer } from "@/components/analysis/AnalysisRunExplorer";
 import { AnalysisOverview } from "@/components/analysis/AnalysisOverview";
@@ -63,7 +64,8 @@ export function BaselineAnalysisDashboard() {
       if (value === "" || value === undefined) next.delete(key); else next.set(key, String(value));
     }
     if (resetPage) next.delete("page");
-    window.history.replaceState(null, "", `/analysis/failures?${next}`);
+    if (values.view !== undefined) router.replace(`/analysis/failures?${next}`, { scroll: false });
+    else window.history.replaceState(null, "", `/analysis/failures?${next}`);
   }
   useEffect(() => {
     if (view === "failures" || view === "dataset") return;
@@ -171,7 +173,7 @@ export function BaselineAnalysisDashboard() {
     disabled={!canWrite || busy || !storageKey || draft?.key !== storageKey || !eligible(run)} value={chosen[run.run_id]?.role ?? ""} onChange={e => assign(run, e.target.value)}>
     <option value="">Không chọn</option><option value="OPTIMIZATION">Tối ưu</option><option value="VALIDATION">Xác minh</option>
   </select>;
-  const title = view === "overview" ? "Phân tích baseline" : view === "runs" ? "Khám phá lượt chạy" : "Chuẩn bị tập bàn giao";
+  const title = analysisListTitle(view);
   const nav = <AnalysisNav view={view} count={selection.length} />;
   if (view === "failures") return <LegacyFailureCases initialScenario={filters.scenario_id} navigation={nav} />;
   return <VehicSimPage step={4} title={title} crumbs={[{ label: "Phân tích" }, { label: view === "overview" ? "Tổng quan baseline" : view === "runs" ? "Lượt chạy" : "Tập bàn giao" }]}

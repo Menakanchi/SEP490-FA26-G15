@@ -89,7 +89,7 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
 
       {step !== undefined && <FlowBar active={Array.isArray(step) ? step : [step]} />}
 
-      <div className="flex items-end justify-between gap-6">
+      <div className="vehicsim-page-heading flex items-end justify-between gap-6">
         <div className="flex flex-col gap-[10px]">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-[40px] font-extrabold leading-[1.1] tracking-[-1.2px] text-vehicsim-ink">{title}</h1>
@@ -97,7 +97,7 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
           </div>
           {subtitle && <p className="max-w-[640px] text-[15px] leading-[1.5] text-vehicsim-muted">{subtitle}</p>}
         </div>
-        {actions && <div className="flex shrink-0 items-center gap-[10px]">{actions}</div>}
+        {actions && <div className="vehicsim-page-actions flex shrink-0 items-center gap-[10px]">{actions}</div>}
       </div>
 
       {children}

@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { AnalysisBadge, AnalysisLoading, AnalysisPager, analysisLabel, metric } from "@/components/analysisUi";
+import { AnalysisBadge, AnalysisLoading, AnalysisPager, AnalysisTableRegion, analysisLabel, metric } from "@/components/analysisUi";
 import type { AnalysisDashboardData, AnalysisRun } from "@/types/vehicsim";
 import styles from "./AnalysisRunExplorer.module.css";
 
@@ -78,7 +78,7 @@ export function AnalysisRunExplorer({ data, loading, hasError, page, size, searc
         <p role="status">Hiển thị <strong>{rows.length}</strong> / {data.items.length} run trong trang · <strong>{data.total}</strong> run khớp bộ lọc</p>
         <span>—: chưa có số đo · Chỉ số theo API</span>
       </div>
-      {rows.length > 0 ? <div className={styles.tableWrap} role="region" aria-label="Bảng lượt chạy baseline, cuộn ngang để xem thêm" tabIndex={0}>
+      {rows.length > 0 ? <AnalysisTableRegion className={styles.tableWrap} label="Bảng lượt chạy baseline, cuộn ngang để xem thêm">
         <table className={`analysis-table ${styles.table}`}>
           <caption className="sr-only">Lượt chạy baseline, seed, cấu hình, trạng thái, chỉ số từ API và thao tác</caption>
           <thead><tr>
@@ -102,7 +102,7 @@ export function AnalysisRunExplorer({ data, loading, hasError, page, size, searc
             </div></td>
           </tr>)}</tbody>
         </table>
-      </div> : <div className="analysis-state">
+      </AnalysisTableRegion> : <div className="analysis-state">
         <strong>{data.total === 0 ? "Chưa có run baseline phù hợp." : "Không có kết quả tìm trong trang này."}</strong>
         <p>{data.total === 0 ? "Thử bỏ bộ lọc hoặc chạy baseline ở màn Kịch bản." : "Thử từ khóa khác hoặc chuyển trang. Bộ lọc toàn danh sách nằm phía trên."}</p>
         {search && <button className="analysis-button" onClick={() => onSearch("")}>Hiện toàn bộ trang này</button>}
