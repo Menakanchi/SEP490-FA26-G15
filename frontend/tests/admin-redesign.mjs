@@ -39,7 +39,7 @@ try {
       if(!match){unexpected.push(p);return reply({detail:"Unknown fixture"},404);}
       const resource=match[1],id=match[2];
       const row=resource==="users"?user:resource==="workspaces"?workspace:reference;
-      if(id)return reply(row);
+      if(id)return reply({...row,id:Number(id)});
       if(mode==="expired")return reply({detail:"Fixture: phiên đã hết hạn"},401);
       if(mode==="forbidden")return reply({detail:"Fixture: không có quyền"},403);
       if(mode==="error")return reply({detail:"Fixture: không tải được dữ liệu"},503);
@@ -139,6 +139,7 @@ try {
   assert.equal(writes[0].body.first_name,"Giữ dữ liệu nhập");
   assert.equal(await frame.getByText("Đã lưu thành công.",{exact:true}).count(),0);
   await editor.getByRole("button",{name:"Hủy",exact:true}).click();
+  await editor.getByRole("button",{name:"Bỏ thay đổi",exact:true}).click();
 
   // Frame/navigation must remain usable independently of each resource's loading/data/error states.
   for(const [resource,title] of sections){

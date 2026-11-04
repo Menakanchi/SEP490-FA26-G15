@@ -1,0 +1,66 @@
+.dialog { width: calc(100% - 32px); max-width: 780px; max-height: calc(100dvh - 32px); margin: auto; padding: 0; overflow: hidden; border: 1px solid #dce3ee; border-radius: 18px; background: #fff; color: #1e293b; box-shadow: 0 24px 80px #0f172a33; }
+.dialog::backdrop { background: #0f172a80; }
+.shell { display: flex; max-height: calc(100dvh - 34px); flex-direction: column; }
+.header { display: flex; flex-shrink: 0; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 26px; border-bottom: 1px solid #e2e8f0; background: #fff; }
+.eyebrow { margin-bottom: 7px; color: #64748b; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; }
+.header h2 { font-size: 20px; font-weight: 750; line-height: 1.5; }
+.header p:last-child { margin-top: 7px; color: #64748b; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.close { display: grid; flex-shrink: 0; place-items: center; width: 36px; height: 36px; border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; color: #64748b; cursor: pointer; }
+.close:hover:enabled { background: #f1f5f9; }
+.body { min-height: 0; padding: 24px 26px; overflow-y: auto; overscroll-behavior: contain; }
+.body h3 { margin-bottom: 8px; font-size: 16px; font-weight: 700; }
+.description { color: #475569; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; margin-bottom: 24px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; }
+.summary dt { color: #64748b; font-size: 10px; }
+.summary dd { margin-top: 6px; color: #334155; font-size: 11px; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.fieldset { min-width: 0; margin-bottom: 24px; border: 0; }
+.fieldset legend { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: #334155; font-size: 14px; font-weight: 700; }
+.hint { margin-top: 7px; color: #64748b; font-size: 11px; line-height: 1.8; }
+.fields { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; margin-top: 16px; }
+.wide { grid-column: 1 / -1; }
+.fieldset label:not(.status) { display: block; margin-bottom: 7px; color: #334155; font-size: 12px; font-weight: 600; }
+.fieldset input:not([type="checkbox"]), .fieldset select { width: 100%; min-height: 42px; padding: 9px 12px; border: 1px solid #dce3ee; border-radius: 9px; background: #fff; color: #334155; font-size: 13px; }
+.fieldset :is(input,select):disabled { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
+.fieldset [aria-invalid="true"] { border-color: #dc2626; }
+.fieldError { margin-top: 5px; color: #b91c1c; font-size: 11px; line-height: 1.7; }
+.fieldError:empty { display: none; }
+.password { display: flex; align-items: center; gap: 8px; }
+.password input { min-width: 0; flex: 1; }
+.password button { display: grid; flex-shrink: 0; place-items: center; width: 42px; height: 42px; border: 1px solid #dce3ee; border-radius: 9px; color: #475569; cursor: pointer; }
+.status { display: flex; align-items: flex-start; gap: 12px; margin-top: 18px; padding: 14px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; cursor: pointer; }
+.status input { width: 17px; height: 17px; margin-top: 2px; accent-color: #2563eb; }
+.status strong { display: block; color: #334155; font-size: 12px; font-weight: 650; }
+.status small { display: block; margin-top: 5px; color: #64748b; font-size: 11px; line-height: 1.7; }
+.note { margin-top: 16px; padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 9px; background: #f8fafc; color: #64748b; font-size: 11px; line-height: 1.8; }
+.error { margin-bottom: 20px; padding: 13px 16px; border: 1px solid #fecaca; border-radius: 10px; background: #fef2f2; color: #b91c1c; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.reviewTable { max-width: 100%; margin-top: 20px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 10px; }
+.reviewTable table { width: 100%; border-collapse: collapse; text-align: left; table-layout: fixed; }
+.reviewTable th, .reviewTable td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #475569; font-size: 12px; line-height: 1.7; vertical-align: top; overflow-wrap: anywhere; }
+.reviewTable thead th { background: #f8fafc; color: #64748b; font-size: 11px; font-weight: 650; }
+.reviewTable tbody th { color: #334155; font-weight: 600; }
+.reviewTable tr:last-child :is(th,td) { border-bottom: 0; }
+.impact { margin-top: 18px; padding: 16px; border: 1px solid #fde68a; border-radius: 10px; background: #fffbeb; color: #92400e; font-size: 12px; line-height: 1.8; }
+.impact strong { font-weight: 700; }
+.impact ul { margin: 8px 0 0; padding-left: 18px; list-style: disc; }
+.footer { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; padding: 16px 26px; border-top: 1px solid #e2e8f0; background: #fff; }
+.footerHint { flex: 1; color: #64748b; font-size: 11px; line-height: 1.7; }
+.button, .primary, .danger { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 9px 15px; border: 1px solid #dce3ee; border-radius: 9px; background: #fff; color: #334155; font-size: 12px; font-weight: 650; cursor: pointer; }
+.primary { border-color: #111827; background: #111827; color: #fff; }
+.danger { border-color: #b91c1c; background: #b91c1c; color: #fff; }
+.button:hover:enabled { background: #f1f5f9; }
+.primary:hover:enabled { background: #334155; }
+.danger:hover:enabled { background: #991b1b; }
+.dialog button:disabled { opacity: .55; cursor: default; }
+.dialog :is(input,select,button,[tabindex]):focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+@media (max-width: 639px) {
+  .dialog { width: calc(100% - 20px); max-height: calc(100dvh - 20px); border-radius: 14px; }
+  .shell { max-height: calc(100dvh - 22px); }
+  .header { padding: 18px; }
+  .header h2 { font-size: 18px; }
+  .body { padding: 18px; }
+  .fields { grid-template-columns: 1fr; }
+  .summary { grid-template-columns: 1fr; gap: 12px; }
+  .footer { padding: 14px 18px; }
+  .footerHint { flex-basis: 100%; }
+  .reviewTable th, .reviewTable td { padding: 9px; font-size: 11px; }
+}

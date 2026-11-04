@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, RefreshCw, Search, Users, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -9,7 +9,7 @@ import { adminApi, type AdminPageData, type AdminRow } from "@/services/admin";
 import { readUserQuery, userListUrl, userQueryParams, USER_PAGE_SIZES, USER_ROLES, USER_SORTS, USER_STATUSES, type UserListQuery } from "./adminUsersQuery";
 import styles from "./AdminUsersTable.module.css";
 
-type EditorProps = { row: AdminRow | null; actorId?: string; onCancel: () => void; onSaved: () => void };
+type EditorProps = { row: AdminRow | null; actorId?: string; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: () => void };
 type Result = { key: string; data?: AdminPageData; error?: string };
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Không thực hiện được thao tác. Hãy thử lại.";
 
@@ -35,6 +35,9 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
   const [result, setResult] = useState<Result>({ key: "" });
   const [revision, setRevision] = useState(0);
   const [editor, setEditor] = useState<AdminRow | null | undefined>(undefined);
+  const detailSequence = useRef(0);
+  const [returnFocusTo, setReturnFocusTo] = useState<HTMLButtonElement | null>(null);
+  useEffect(() => () => { detailSequence.current++; }, []);
   const [openingId, setOpeningId] = useState<number | null>(null);
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
@@ -76,15 +79,22 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
   function reset() { change({ q: "", role: "", status: "", page: 1 }); }
   async function edit(id: number) {
     setOpeningId(id); setActionError(""); setNotice("");
-    try { setEditor(await adminApi.detail("users", id)); }
-    catch (error) { setActionError(errorMessage(error)); }
-    finally { setOpeningId(null); }
+    const sequence = ++detailSequence.current, scope = request;
+    const current = () => sequence === detailSequence.current && userQueryParams(readUserQuery(new URLSearchParams(window.location.search)), true).toString() === scope;
+    try {
+      const detail = await adminApi.detail("users", id);
+      if (!current()) return;
+      if (!detail || detail.id !== id || typeof detail.email !== "string" || typeof detail.last_name !== "string" || typeof detail.first_name !== "string" || !Object.hasOwn(USER_ROLES, String(detail.role)) || ![true, false, 0, 1].includes(detail.is_active as boolean | number)) throw new Error("Thông tin tài khoản không khớp hoặc không đầy đủ. Hãy tải lại danh sách.");
+      setEditor(detail);
+    }
+    catch (error) { if (current()) setActionError(errorMessage(error)); }
+    finally { if (sequence === detailSequence.current) setOpeningId(null); }
   }
   function saved() { setEditor(undefined); setNotice("Đã lưu thành công."); setRevision(value => value + 1); }
 
   return <div className={styles.users}>
     <section aria-labelledby="admin-users-list-title" className={styles.filters}>
-      <div className={styles.listHeader}><div><h2 id="admin-users-list-title">Danh sách tài khoản</h2><p>Tra cứu người dùng theo tên, email, vai trò và trạng thái.</p></div><button className={styles.primary} onClick={() => { setEditor(null); setNotice(""); setActionError(""); }}><Plus size={16} aria-hidden="true" />Thêm mới</button></div>
+      <div className={styles.listHeader}><div><h2 id="admin-users-list-title">Danh sách tài khoản</h2><p>Tra cứu người dùng theo tên, email, vai trò và trạng thái.</p></div><button className={styles.primary} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); setEditor(null); setNotice(""); setActionError(""); }}><Plus size={16} aria-hidden="true" />Thêm mới</button></div>
       <div className={styles.toolbar}>
         <SearchForm key={query.q} value={query.q} onSearch={q => change({ q, page: 1 })} />
         <label><span id="admin-users-status-label">Trạng thái</span><select aria-labelledby="admin-users-status-label" value={query.status} onChange={event => change({ status: event.target.value, page: 1 })}><option value="">Tất cả trạng thái</option>{Object.entries(USER_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -114,7 +124,7 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
                 <td><span className={styles.role}>{USER_ROLES[String(row.role)] ?? String(row.role ?? "Chưa rõ")}</span></td>
                 <td><span className={`${styles.status} ${enabled ? styles.active : styles.inactive}`}>{enabled ? "Đang hoạt động" : disabled ? "Đã khóa" : "Chưa rõ"}</span></td>
                 <td><CreatedDate value={row.created_date} /></td>
-                <td className={styles.actions}><button className={styles.button} aria-label={`Chỉnh sửa tài khoản ${email}`} disabled={openingId !== null} onClick={() => void edit(row.id)}>{openingId === row.id ? "Đang mở…" : "Chỉnh sửa"}</button></td>
+                <td className={styles.actions}><button className={styles.button} aria-label={`Chỉnh sửa tài khoản ${email}`} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); void edit(row.id); }}>{openingId === row.id ? "Đang mở…" : "Chỉnh sửa"}</button></td>
               </tr>;
             })}
           </tbody></table>
@@ -126,6 +136,6 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
         </div>
       </>}
     </section>
-    {editor !== undefined && renderEditor({ row: editor, actorId: user?.id, onCancel: () => setEditor(undefined), onSaved: saved })}
+    {editor !== undefined && renderEditor({ row: editor, actorId: user?.id, returnFocusTo, onCancel: () => setEditor(undefined), onSaved: saved })}
   </div>;
 }

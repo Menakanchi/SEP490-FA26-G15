@@ -8,6 +8,7 @@
 .button:hover:enabled { background: #f1f5f9; border-color: #a5b4cf; }
 .button:disabled { color: #64748b; background: #f8fafc; opacity: .6; cursor: default; }
 .primary { border-color: #111827; background: #111827; color: #fff; }
+.primary:disabled { opacity: .55; cursor: wait; }
 .primary:hover { background: #334155; }
 .toolbar { display: grid; grid-template-columns: minmax(240px, 1.7fr) repeat(2, minmax(130px, 1fr)) minmax(130px, .9fr); align-items: end; gap: 14px; margin-top: 22px; }
 .toolbar label, .search > label { display: block; min-width: 0; color: #475569; font-size: 12px; font-weight: 600; }
