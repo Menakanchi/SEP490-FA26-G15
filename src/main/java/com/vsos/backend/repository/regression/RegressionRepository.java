@@ -1,5 +1,7 @@
 package com.vsos.backend.repository.regression;
 
+import com.vsos.backend.common.Json;
+import com.vsos.backend.common.Vs;
 import com.vsos.backend.dto.regression.RegressionRecords.CandidateRun;
 import com.vsos.backend.dto.regression.RegressionRecords.DecidedRecommendation;
 import com.vsos.backend.dto.regression.RegressionRecords.RecommendationRow;
@@ -11,9 +13,7 @@ import com.vsos.backend.dto.regression.RegressionRecords.VehicleInfo;
 import com.vsos.backend.dto.regression.RegressionResponses.CandidateSource;
 import com.vsos.backend.dto.regression.RegressionResponses.PairResult;
 import com.vsos.backend.repository.common.Db;
-import com.vsos.backend.common.Json;
 import com.vsos.backend.repository.common.Row;
-import com.vsos.backend.common.Vs;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -23,20 +23,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Mọi câu SQL của regression / khuyến nghị / quyết định Reviewer (màn 5). Service chỉ gọi hàm có tên theo nghiệp vụ, không ghép SQL.
- * <p>
- * SQL thuần qua {@link Db} (JdbcTemplate) như phần còn lại của VehicSim, không dùng JPA: có cột JSON, khoá {@code FOR UPDATE}
- * khi Reviewer duyệt, và câu UPDATE có điều kiện trạng thái để hai worker xong cùng lúc không cùng chốt một test.
- * Tham gia transaction của service gọi nó; lớp này không mở transaction riêng.
- */
 @Repository
 public class RegressionRepository {
 
-    /**
-     * Cột của simulation_runs mà logic ghép cặp cần. Không dùng SELECT *: mỗi run mang {@code telemetry_json} ~20 KB (toàn bộ khung
-     * hình), và các màn họ kịch bản / khuyến nghị đọc hàng trăm run mỗi lần mở.
-     */
     private static final String RUN_LIGHT_COLUMNS =
             "id, scenario_version_id, status, random_seed, simulator_version, carla_vehicle_model_id, baseline_run_id, regression_test_id";
 
@@ -46,39 +35,22 @@ public class RegressionRepository {
         this.db = db;
     }
 
-    /** Quyền quyết định được đọc và khoá trong transaction nghiệp vụ, không chỉ ở HTTP. */
-    public Row lockReviewAccess(long projectId, long userId) {
-        return db.first("""
-                SELECT p.status AS project_status, w.status AS workspace_status
-                  FROM projects p JOIN workspaces w ON w.id = p.workspace_id
-                  JOIN workspace_members m ON m.workspace_id = w.id
-                 WHERE p.id = ? AND m.user_id = ? FOR SHARE
-                """, projectId, userId);
-    }
-
-    // ------------------------------------------------------------------ regression_tests
-
-    /** Test thuộc project, hoặc null. */
     public RegressionTestRow findTest(long projectId, long testId) {
         return toTest(db.first("SELECT * FROM regression_tests WHERE id = ? AND project_id = ?", testId, projectId));
     }
 
-    /** Test theo id (luồng nền khi run xong, không có ngữ cảnh project), hoặc null. */
     public RegressionTestRow findTest(long testId) {
         return toTest(db.first("SELECT * FROM regression_tests WHERE id = ?", testId));
     }
 
-    /** Khoá dòng test tới hết transaction: hai Reviewer duyệt cùng lúc thì người thứ hai chờ rồi thấy trạng thái mới. */
     public RegressionTestRow lockTest(long projectId, long testId) {
         return toTest(db.first("SELECT * FROM regression_tests WHERE id = ? AND project_id = ? FOR UPDATE", testId, projectId));
     }
 
-    /** Mọi test của project, mới nhất trước. */
     public List<RegressionTestRow> listTests(long projectId) {
         return db.list("SELECT * FROM regression_tests WHERE project_id = ? ORDER BY id DESC", projectId).stream().map(this::toTest).toList();
     }
 
-    /** Test đã chạy xong (có khuyến nghị), mới nhất trước. */
     public List<RegressionTestRow> listCompletedTests(long projectId) {
         return db.list("""
                 SELECT * FROM regression_tests
@@ -87,7 +59,6 @@ public class RegressionRepository {
                 """, projectId).stream().map(this::toTest).toList();
     }
 
-    /** Test mới ở trạng thái RUNNING, verdict PENDING; trả id. */
     public long insertTest(long projectId, long scenarioId, long baselineVersionId, long candidateVersionId, long vehicleModelId,
                            String simulatorVersion, String name, Map<String, Map<String, Object>> criteria, ScenarioSet scenarioSet,
                            int totalScenarios, long userId) {
@@ -102,7 +73,6 @@ public class RegressionRepository {
                 Json.obj("criteria", criteria, "scenario_set", scenarioSet), "RUNNING", "PENDING", totalScenarios, userId, Vs.now());
     }
 
-    /** Có run hỏng / bị dừng: test FAILED, không verdict. False nếu test đã không còn RUNNING. */
     public boolean markFailed(long testId) {
         return db.update("""
                 UPDATE regression_tests
@@ -111,10 +81,6 @@ public class RegressionRepository {
                 """, Vs.now(), testId) == 1;
     }
 
-    /**
-     * Chốt test với verdict và số đếm. Điều kiện {@code execution_status = 'RUNNING'}: hai worker xong cùng lúc thì chỉ một bên ghi
-     * được — bên thua nhận false và không tạo khuyến nghị lần hai.
-     */
     public boolean markCompleted(long testId, String verdict, int scenarios, int fixed, int regressed) {
         return db.update("""
                 UPDATE regression_tests
@@ -124,9 +90,6 @@ public class RegressionRepository {
                 """, verdict, scenarios, fixed, regressed, Vs.now(), testId) == 1;
     }
 
-    // ------------------------------------------------------------------ regression_test_items
-
-    /** Một dòng mỗi cặp đã so; {@code is_regression} = cặp xấu đi. */
     public void insertItems(long testId, List<PairResult> pairs) {
         List<Object[]> rows = new ArrayList<>();
         for (PairResult p : pairs) {
@@ -141,18 +104,14 @@ public class RegressionRepository {
                 """, rows);
     }
 
-    // ------------------------------------------------------------------ engineering_recommendations
-
     public RecommendationRow findRecommendation(long testId) {
         return toRecommendation(db.first("SELECT * FROM engineering_recommendations WHERE regression_test_id = ?", testId));
     }
 
-    /** Khoá khuyến nghị cùng với test khi Reviewer duyệt. */
     public RecommendationRow lockRecommendation(long testId) {
         return toRecommendation(db.first("SELECT * FROM engineering_recommendations WHERE regression_test_id = ? FOR UPDATE", testId));
     }
 
-    /** {test_id: khuyến nghị} cho các test cho trước (test chưa có khuyến nghị thì vắng mặt). */
     public Map<Long, RecommendationRow> recommendationsByTest(List<Long> testIds) {
         Map<Long, RecommendationRow> out = new LinkedHashMap<>();
         if (testIds.isEmpty()) {
@@ -165,7 +124,6 @@ public class RegressionRepository {
         return out;
     }
 
-    /** Khuyến nghị mới chờ Reviewer (PENDING_REVIEW). */
     public void insertRecommendation(long projectId, long testId, long candidateVersionId, String content, String confidence, long createdBy) {
         var ts = Vs.now();
         db.insert("""
@@ -177,7 +135,6 @@ public class RegressionRepository {
                 projectId, testId, candidateVersionId, content, confidence, "PENDING_REVIEW", createdBy, ts, ts);
     }
 
-    /** Ghi quyết định của Reviewer: trạng thái mới, người duyệt, lý do, điều kiện (null nếu không có). */
     public void saveReview(long recommendationId, String status, String decision, long reviewerId, String notes, String conditions) {
         var ts = Vs.now();
         db.insert("""
@@ -193,7 +150,6 @@ public class RegressionRepository {
                 """, status, reviewerId, ts, notes, conditions, ts, recommendationId);
     }
 
-    /** Khuyến nghị đã có quyết định của project, mới nhất trước, kèm baseline của test. */
     public List<DecidedRecommendation> decidedRecommendations(long projectId) {
         return db.list("""
                 SELECT d.id AS decision_id, er.regression_test_id, er.candidate_aeb_version_id, d.decision,
@@ -208,14 +164,6 @@ public class RegressionRepository {
                 r.str("reason"), r.str("review_conditions"), r.lng("decision_id"), r.str("reviewer_name"), r.str("source"))).toList();
     }
 
-    /** Project thuộc workspace thì mới có khuyến nghị (project cá nhân của EXP không có — ADR-035). */
-    public boolean projectInWorkspace(long projectId) {
-        return db.scalar("SELECT workspace_id FROM projects WHERE id = ?", projectId) != null;
-    }
-
-    // ------------------------------------------------------------------ aeb_versions (trạng thái do Reviewer đổi)
-
-    /** Version thuộc project, hoặc null. */
     public Row findVersion(long projectId, long versionId) {
         return db.first("SELECT * FROM aeb_versions WHERE id = ? AND project_id = ?", versionId, projectId);
     }
@@ -224,7 +172,6 @@ public class RegressionRepository {
         return db.first("SELECT * FROM aeb_versions WHERE id = ?", versionId);
     }
 
-    /** {id: version} của baseline và candidate một test. */
     public Map<Long, Row> versionsById(long baselineVersionId, long candidateVersionId) {
         Map<Long, Row> out = new LinkedHashMap<>();
         for (Row v : db.list("SELECT * FROM aeb_versions WHERE id IN (?, ?)", baselineVersionId, candidateVersionId)) {
@@ -233,7 +180,6 @@ public class RegressionRepository {
         return out;
     }
 
-    /** Khoá cả hai version tới hết transaction: hai test khác nhau cùng baseline không thể cùng Accept. Trả {id: status}. */
     public Map<Long, String> lockVersionStatuses(long baselineVersionId, long candidateVersionId) {
         Map<Long, String> out = new LinkedHashMap<>();
         for (Row v : db.list("SELECT id, status FROM aeb_versions WHERE id IN (?, ?) FOR UPDATE", baselineVersionId, candidateVersionId)) {
@@ -242,7 +188,6 @@ public class RegressionRepository {
         return out;
     }
 
-    /** Baseline cũ thôi hiện hành. Phải chạy TRƯỚC {@link #promoteToBaseline}: mỗi project chỉ một BASELINE (uq_aeb_versions_one_baseline). */
     public void archiveVersion(long versionId) {
         db.update("UPDATE aeb_versions SET status = 'ARCHIVED' WHERE id = ?", versionId);
     }
@@ -255,10 +200,6 @@ public class RegressionRepository {
         db.update("UPDATE aeb_versions SET status = 'REJECTED' WHERE id = ?", versionId);
     }
 
-    /**
-     * Candidate tạo tay hay từ chiến dịch tối ưu: chỉ đọc {@code optimization_trials.candidate_aeb_version_id} (UNIQUE). Chưa có
-     * chiến dịch thì các trường chiến dịch null; version không tồn tại thì null.
-     */
     public CandidateSource candidateSource(long versionId) {
         Row r = db.first("""
                 SELECT v.source, t.id AS trial_id, t.trial_number, t.optimization_run_id, o.name AS campaign_name
@@ -271,13 +212,6 @@ public class RegressionRepository {
                 r.getLong("trial_id"), r.getInt("trial_number"));
     }
 
-    // ------------------------------------------------------------------ simulation_runs
-
-    /**
-     * Run baseline mới nhất (BASELINE / EVALUATION, không FAILED / STOPPED) của mỗi biến thể, chỉ của đúng bộ mô phỏng và xe cho
-     * trước: đổi sang CARLA (hay đổi xe) thì regression dựng baseline mới, không ghép candidate với baseline khác bộ mô phỏng / xe.
-     * Trả {scenario_version_id: run}; id tăng dần nên giữ run mới nhất.
-     */
     public Map<Long, Row> latestBaselineRuns(long baselineVersionId, List<Long> variantIds, String simulatorVersion, long vehicleModelId) {
         Map<Long, Row> out = new LinkedHashMap<>();
         if (variantIds.isEmpty()) {
@@ -296,7 +230,6 @@ public class RegressionRepository {
         return out;
     }
 
-    /** Biến thể của các run cho trước mà run đó có ghi nhận lỗi (bảng failures). */
     public Set<Long> variantsWithFailures(List<Long> runIds) {
         Set<Long> out = new LinkedHashSet<>();
         if (runIds.isEmpty()) {
@@ -312,7 +245,6 @@ public class RegressionRepository {
         return out;
     }
 
-    /** Run (cột nhẹ) theo id — run baseline vừa tạo thêm, để ghép cặp. */
     public List<Row> runsByIds(List<Long> runIds) {
         if (runIds.isEmpty()) {
             return List.of();
@@ -320,12 +252,10 @@ public class RegressionRepository {
         return db.list("SELECT " + RUN_LIGHT_COLUMNS + " FROM simulation_runs WHERE id IN (" + Db.placeholders(runIds.size()) + ")", runIds.toArray());
     }
 
-    /** Run (cột nhẹ) theo id, hoặc null. */
     public Row findRun(long runId) {
         return db.first("SELECT " + RUN_LIGHT_COLUMNS + " FROM simulation_runs WHERE id = ?", runId);
     }
 
-    /** Các test dùng run này làm baseline của ít nhất một cặp. */
     public List<Long> testsUsingBaselineRun(long runId) {
         return db.list("""
                 SELECT DISTINCT regression_test_id
@@ -334,13 +264,11 @@ public class RegressionRepository {
                 """, runId).stream().map(r -> r.lng("regression_test_id")).toList();
     }
 
-    /** Run REGRESSION của test cùng run baseline được ghép. */
     public List<CandidateRun> candidateRuns(long testId) {
         return db.list("SELECT " + RUN_LIGHT_COLUMNS + " FROM simulation_runs WHERE regression_test_id = ?", testId).stream()
                 .map(r -> new CandidateRun(r.lng("id"), r.lng("scenario_version_id"), r.lng("baseline_run_id"))).toList();
     }
 
-    /** {run_id: số đo} — rms_jerk / stopping_distance là số đo ADR-040 do worker ghi; chỉ để hiển thị, không vào tiêu chí. */
     public Map<Long, RunResult> runResults(List<Long> runIds) {
         Map<Long, RunResult> out = new LinkedHashMap<>();
         List<Long> distinct = runIds.stream().distinct().toList();
@@ -359,7 +287,6 @@ public class RegressionRepository {
         return out;
     }
 
-    /** {status: số run} của các run REGRESSION trong test — cho thanh tiến độ. */
     public Map<String, Long> runCountsByStatus(long testId) {
         Map<String, Long> out = new LinkedHashMap<>();
         for (Row r : db.list("SELECT status, COUNT(*) AS n FROM simulation_runs WHERE regression_test_id = ? GROUP BY status", testId)) {
@@ -368,7 +295,6 @@ public class RegressionRepository {
         return out;
     }
 
-    /** {run_id: seed + bước thời gian}, theo id tăng dần — cho manifest gói xuất. */
     public Map<Long, RunInfo> runInfo(List<Long> runIds) {
         Map<Long, RunInfo> out = new LinkedHashMap<>();
         if (runIds.isEmpty()) {
@@ -381,9 +307,6 @@ public class RegressionRepository {
         return out;
     }
 
-    // ------------------------------------------------------------------ họ kịch bản, biến thể, xe
-
-    /** Họ kịch bản thuộc project, hoặc null. */
     public Row findScenario(long projectId, long scenarioId) {
         return db.first("SELECT * FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, projectId);
     }
@@ -392,7 +315,6 @@ public class RegressionRepository {
         return db.first("SELECT * FROM scenarios WHERE id = ?", scenarioId);
     }
 
-    /** {id: biến thể} — nhãn, tóm tắt và thứ tự version_no của từng cặp. */
     public Map<Long, Row> scenarioVersions(List<Long> versionIds) {
         Map<Long, Row> out = new LinkedHashMap<>();
         if (versionIds.isEmpty()) {
@@ -404,14 +326,24 @@ public class RegressionRepository {
         return out;
     }
 
-    /** Blueprint + vật lý chính của xe cho manifest, hoặc null. */
     public VehicleInfo vehicleInfo(long vehicleModelId) {
         Row r = db.first("SELECT carla_blueprint_id, display_name, mass_kg, max_brake_decel_mps2 FROM carla_vehicle_models WHERE id = ?",
                 vehicleModelId);
         return r == null ? null : new VehicleInfo(r.str("carla_blueprint_id"), r.str("display_name"), r.dbl("mass_kg"), r.dbl("max_brake_decel_mps2"));
     }
 
-    // ------------------------------------------------------------------ đổi Row -> record
+    public Row lockReviewAccess(long projectId, long userId) {
+        return db.first("""
+                SELECT p.status AS project_status, w.status AS workspace_status
+                  FROM projects p JOIN workspaces w ON w.id = p.workspace_id
+                  JOIN workspace_members m ON m.workspace_id = w.id
+                 WHERE p.id = ? AND m.user_id = ? FOR SHARE
+                """, projectId, userId);
+    }
+
+    public boolean projectInWorkspace(long projectId) {
+        return db.scalar("SELECT workspace_id FROM projects WHERE id = ?", projectId) != null;
+    }
 
     private RegressionTestRow toTest(Row r) {
         if (r == null) {
