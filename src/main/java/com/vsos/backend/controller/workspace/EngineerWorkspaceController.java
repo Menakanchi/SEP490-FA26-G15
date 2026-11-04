@@ -67,6 +67,14 @@ public class EngineerWorkspaceController {
         return workspaces.listMyWorkspaces(uid, role);
     }
 
+    /**
+     * Lấy danh sách nhiệm vụ (tasks) được giao cho kỹ sư đăng nhập, hỗ trợ lọc theo trạng thái và project.
+     *
+     * @param status trạng thái task cần lọc (TODO, IN_PROGRESS, REVIEW, DONE)
+     * @param projectId mã project liên quan (tuỳ chọn)
+     * @param user thông tin người dùng đang đăng nhập
+     * @return danh sách các task phù hợp
+     */
     @Operation(summary = "FE-03 / FE-14 — Danh sách task được giao cho tôi (lọc theo trạng thái, project)")
     @GetMapping({"/my-tasks", "/tasks"})
     public List<TaskItem> myTasks(@RequestParam(name = "status", required = false) String status,
