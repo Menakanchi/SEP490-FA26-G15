@@ -93,6 +93,14 @@ public class EngineerWorkspaceController {
         return tasks.getTask(uid, role, taskId);
     }
 
+    /**
+     * Cập nhật tiến độ hoàn thành và trạng thái của một nhiệm vụ được giao cho kỹ sư.
+     *
+     * @param taskId mã định danh task
+     * @param body thông tin cập nhật gồm trạng thái và phần trăm tiến độ
+     * @param user thông tin người dùng đang đăng nhập
+     * @return thông tin task sau khi cập nhật
+     */
     @Operation(summary = "FE-03 — Kỹ sư cập nhật tiến độ và trạng thái task được giao")
     @PatchMapping("/tasks/{taskId}/status")
     public TaskItem patchTaskStatus(@PathVariable long taskId,
