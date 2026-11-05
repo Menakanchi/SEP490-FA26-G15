@@ -35,6 +35,7 @@ import java.util.Map;
 import com.vsos.backend.security.VehicSimAccess;
 import com.vsos.backend.service.scenario.DescribeService;
 import com.vsos.backend.service.scenario.FamilyService;
+import com.vsos.backend.service.scenario.ScenarioRules;
 import com.vsos.backend.service.scenario.ScenarioViewService;
 import com.vsos.backend.service.simulation.RunService;
 
@@ -66,17 +67,51 @@ public class ScenarioController {
             Map<String, Object> described) {
     }
 
+    /**
+     * {@code category} trống = CP_CROSSING (giữ hợp đồng cũ). Người đi bộ cần trigger/pedestrian/stops_at_curb; nhóm xe phía trước
+     * (CCRS/CCRM/CCRB, ADR-050) cần target_speeds/initial_distances, CCRB thêm target_decels — thiếu trục nào thì 400 ở {@code validate}.
+     */
     public record FamilyRequest(
             @Size(min = 1, max = 200) String name,
             @Size(max = 2000) String description,
+            @Size(max = 20) String category,
             @JsonProperty("ego_speeds_kmh") @NotNull @Size(min = 1, max = 20) List<Double> egoSpeedsKmh,
-            @JsonProperty("trigger_distances_m") @NotNull @Size(min = 1, max = 20) List<Double> triggerDistancesM,
-            @JsonProperty("pedestrian_speeds_mps") @NotNull @Size(min = 1, max = 20) List<Double> pedestrianSpeedsMps,
-            @JsonProperty("stops_at_curb") @NotNull @Size(min = 1, max = 2) List<Boolean> stopsAtCurb,
+            @JsonProperty("trigger_distances_m") @Size(min = 1, max = 20) List<Double> triggerDistancesM,
+            @JsonProperty("pedestrian_speeds_mps") @Size(min = 1, max = 20) List<Double> pedestrianSpeedsMps,
+            @JsonProperty("stops_at_curb") @Size(min = 1, max = 2) List<Boolean> stopsAtCurb,
+            @JsonProperty("target_speeds_kmh") @Size(min = 1, max = 20) List<Double> targetSpeedsKmh,
+            @JsonProperty("initial_distances_m") @Size(min = 1, max = 20) List<Double> initialDistancesM,
+            @JsonProperty("target_decels_mps2") @Size(max = 20) List<Double> targetDecelsMps2,
+            @JsonProperty("lateral_overlaps_pct") @Size(max = 20) List<Double> lateralOverlapsPct,
             @NotNull @Size(min = 1) List<String> weathers,
             @JsonProperty("times_of_day") @NotNull @Size(min = 1) List<String> timesOfDay,
             @JsonProperty("run_baseline") Boolean runBaseline,
             @Valid FamilyOrigin origin) {
+
+        boolean leadVehicle() {
+            return category != null && !category.isBlank() && !ScenarioRules.CP_CROSSING.equals(category);
+        }
+    }
+
+    /** Request → định nghĩa họ. Category chưa có bộ mô phỏng thì từ chối rõ ràng thay vì lưu họ không chạy được. */
+    static FamilyService.FamilyDefinition spec(FamilyRequest body, String name) {
+        String description = body.description() == null ? "" : body.description();
+        if (body.leadVehicle()) {
+            if (!ScenarioRules.SIMULATED.contains(body.category())) {
+                throw new com.vsos.backend.common.Vs.InvalidRequestException("Category " + body.category() + " chưa có bộ mô phỏng; hiện chạy được "
+                        + ScenarioRules.SIMULATED);
+            }
+            return new FamilyService.LeadFamilySpec(name == null ? "" : name, description, body.category(), body.egoSpeedsKmh(), body.targetSpeedsKmh(),
+                    body.initialDistancesM(), body.targetDecelsMps2(), body.lateralOverlapsPct(), body.weathers(), body.timesOfDay());
+        }
+        return new FamilyService.FamilySpec(name == null ? FamilyService.MOTIF_NAME : name, description,
+                body.egoSpeedsKmh(), body.triggerDistancesM(), body.pedestrianSpeedsMps(), body.stopsAtCurb(), body.weathers(), body.timesOfDay());
+    }
+
+    @Operation(summary = "Danh mục 7 category Euro NCAP và category nào đã chạy được (bộ động học / CARLA)")
+    @GetMapping("/scenario-categories")
+    public List<Map<String, Object>> scenarioCategories() {
+        return ScenarioRules.catalog();
     }
 
     @Operation(summary = "Danh sách họ kịch bản")
@@ -90,10 +125,7 @@ public class ScenarioController {
     public ResponseEntity<Map<String, Object>> createFamily(@Valid @RequestBody FamilyRequest body, @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "family");
-        FamilyService.FamilySpec spec = new FamilyService.FamilySpec(
-                body.name() == null ? FamilyService.MOTIF_NAME : body.name(),
-                body.description() == null ? "" : body.description(),
-                body.egoSpeedsKmh(), body.triggerDistancesM(), body.pedestrianSpeedsMps(), body.stopsAtCurb(), body.weathers(), body.timesOfDay());
+        FamilyService.FamilyDefinition spec = spec(body, body.name());
         Map<String, Object> origin = null;
         if (body.origin() != null) {
             origin = new LinkedHashMap<>();
@@ -116,9 +148,7 @@ public class ScenarioController {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "family");
         // Tên họ không đổi theo bản (UNIQUE theo project); chỉ không gian tham số và mô tả.
-        FamilyService.FamilySpec spec = new FamilyService.FamilySpec(FamilyService.MOTIF_NAME,
-                body.description() == null ? "" : body.description(),
-                body.egoSpeedsKmh(), body.triggerDistancesM(), body.pedestrianSpeedsMps(), body.stopsAtCurb(), body.weathers(), body.timesOfDay());
+        FamilyService.FamilyDefinition spec = spec(body, body.leadVehicle() ? "" : FamilyService.MOTIF_NAME);
         long pid = access.projectId();
         Map<String, Object> created = families.createVersion(pid, scenarioId, spec, uid);
         if (body.runBaseline() == null || body.runBaseline()) {

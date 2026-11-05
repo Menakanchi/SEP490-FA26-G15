@@ -535,6 +535,12 @@ function initialFrom(f: FamilyItem) {
     trigger_distances_m: (ps.trigger_distance_m ?? []) as number[],
     pedestrian_speeds_mps: (ps.pedestrian_speed_mps ?? []) as number[],
     stops_at_curb: (ps.stops_at_curb ?? []) as boolean[],
+    // Họ xe phía trước (ADR-050): sửa họ giữ nguyên category, nạp lại các trục của nó.
+    category: f.category,
+    target_speeds_kmh: (ps.target_speed_kmh ?? undefined) as number[] | undefined,
+    initial_distances_m: (ps.initial_distance_m ?? undefined) as number[] | undefined,
+    target_decels_mps2: (ps.target_decel_mps2 ?? undefined) as number[] | undefined,
+    lateral_overlaps_pct: (ps.lateral_overlap_pct ?? undefined) as number[] | undefined,
     weathers: (ps.weather ?? []) as Weather[],
     times_of_day: (ps.time_of_day ?? []) as TimeOfDay[],
   };

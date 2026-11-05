@@ -30,6 +30,25 @@ public final class ScenarioRules {
 
     public static final List<String> CATEGORIES = List.of(CCRS, CCRM, CCRB, CP_CROSSING, CPLA, TURNING, CUT_IN);
 
+    /** Category đã có bộ mô phỏng động học (ADR-050). Nhóm còn lại mới có trong schema (TD-42). */
+    public static final List<String> SIMULATED = List.of(CP_CROSSING, CCRS, CCRM, CCRB);
+    /** Category đã có bộ xuất .xosc + runner CARLA. */
+    public static final List<String> CARLA_READY = List.of(CP_CROSSING);
+
+    /** Danh mục category cho giao diện: mã, đối tượng mục tiêu, có chạy được không — nguồn duy nhất thay cho cờ gán cứng ở frontend. */
+    public static List<Map<String, Object>> catalog() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (String code : CATEGORIES) {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("code", code);
+            row.put("target_types", List.copyOf(new java.util.TreeSet<>(TARGET_TYPES.get(code))));
+            row.put("supported", SIMULATED.contains(code));
+            row.put("simulators", CARLA_READY.contains(code) ? List.of("KINEMATIC", "CARLA") : SIMULATED.contains(code) ? List.of("KINEMATIC") : List.of());
+            out.add(row);
+        }
+        return out;
+    }
+
     /** Loại đối tượng mục tiêu hợp lệ theo category; TURNING gồm cả xe (CCFtap) lẫn người đi bộ (CPTA). */
     private static final Map<String, Set<String>> TARGET_TYPES = Map.of(
             CCRS, Set.of(VEHICLE),

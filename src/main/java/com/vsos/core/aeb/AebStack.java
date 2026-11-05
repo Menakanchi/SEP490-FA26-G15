@@ -56,6 +56,9 @@ public final class AebStack {
     private double decelCmd;
     private final List<double[]> history = new ArrayList<>(); // (t, ped_y, ped_vy) cho độ trễ perception
     private double perceivedVyFiltered;
+    // Mục tiêu có vận tốc dọc / bề ngang (xe phía trước, ADR-050). Người đi bộ: cả hai = 0 → phép tính y hệt bản cũ.
+    private double targetVx;
+    private double targetHalfWidth;
 
     private record View(boolean detected, double confidence, Double perceivedY, Double ttc) {
     }
@@ -110,6 +113,21 @@ public final class AebStack {
 
     /** Gọi đúng một lần mỗi khung, theo thứ tự thời gian. Perception là mô hình tổng hợp trên ground truth ({@code pedY}, {@code pedVy}). */
     public AebTick step(double t, double gap, double pedY, double pedVy, double egoV) {
+        return stepTarget(t, gap, pedY, pedVy, egoV, 0.0, 0.0);
+    }
+
+    /**
+     * Như {@link #step} cho mục tiêu có vận tốc dọc (ADR-050): TTC = gap / (egoV − targetVx), và mục tiêu "trong đường đi" khi mép gần của nó
+     * ({@code |y| − targetHalfWidth}) lọt vào hành lang. {@code targetVx = 0}, {@code targetHalfWidth = 0} cho đúng phép tính của người đi bộ.
+     *
+     * @param targetVx        vận tốc dọc của mục tiêu (m/s, cùng chiều ego dương)
+     * @param targetHalfWidth nửa bề ngang mục tiêu (m)
+     */
+    public AebTick stepTarget(double t, double gap, double targetY, double targetVy, double egoV, double targetVx, double targetHalfWidth) {
+        this.targetVx = targetVx;
+        this.targetHalfWidth = targetHalfWidth;
+        double pedY = targetY;
+        double pedVy = targetVy;
         history.add(new double[] {t, pedY, pedVy});
         if (steps % perceptionEvery == 0) {
             tickView = perceiveAndDecide(t, gap, egoV);
@@ -188,11 +206,13 @@ public final class AebStack {
         AebParams p = params;
         // ---- Decision ----------------------------------------------------------------
         Double ttcPerceived = null;
-        if (detected && perceivedY != null && gap > 0 && egoV >= RELATIVE_VELOCITY_THRESHOLD_MPS) {
-            ttcPerceived = gap / egoV;
+        double closing = egoV - targetVx; // người đi bộ: targetVx = 0 → đúng egoV
+        if (detected && perceivedY != null && gap > 0 && closing >= RELATIVE_VELOCITY_THRESHOLD_MPS) {
+            ttcPerceived = gap / closing;
             double lookahead = Math.min(ttcPerceived, PREDICTION_HORIZON_S);
             double predictedY = perceivedY + perceivedVyFiltered * lookahead;
-            boolean inPredictedPath = Math.abs(predictedY) <= p.corridorHalfWidth() || Math.abs(perceivedY) <= p.corridorHalfWidth();
+            boolean inPredictedPath = Math.abs(predictedY) - targetHalfWidth <= p.corridorHalfWidth()
+                    || Math.abs(perceivedY) - targetHalfWidth <= p.corridorHalfWidth();
             if (inPredictedPath) {
                 if (fcwT == null && ttcPerceived <= p.ttcThreshold() + FCW_LEAD_S) {
                     fcwT = t;

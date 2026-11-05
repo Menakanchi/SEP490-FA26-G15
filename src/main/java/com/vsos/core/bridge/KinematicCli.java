@@ -4,7 +4,6 @@ import com.vsos.core.evaluation.Evaluation;
 import com.vsos.core.common.MiniJson;
 import com.vsos.core.common.Py;
 import com.vsos.core.simulation.SimulationOutcome;
-import com.vsos.core.simulation.Simulator;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -65,7 +64,7 @@ public final class KinematicCli {
             return BridgeMain.EXIT_BAD_INPUT;
         }
 
-        SimulationOutcome outcome = Simulator.simulate(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle());
+        SimulationOutcome outcome = Bundle.simulateKinematic(spec);
         Evaluation.Result ev = Evaluation.evaluate(outcome, spec.params());
         Map<String, Object> result = Bundle.resultDocument(spec, outcome, Bundle.KINEMATIC_SIMULATOR, null, ev.toDocument());
         result.put("engine", Bundle.ENGINE);

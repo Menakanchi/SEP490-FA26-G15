@@ -22,7 +22,7 @@ Luồng mục tiêu 5 màn: **Thiết kế kịch bản → Baseline → Phân t
 Code đã có mô tả, sinh biến thể, baseline, phân tích, candidate thủ công và regression;
 **MOBO/Pareto/Sensitivity/Robustness chưa triển khai** (TD-39, TD-06).
 CARLA web đã có `.xosc` + ScenarioRunner 0.9.16, RGB/sensor; **chưa có API/nút hủy** (TD-37).
-Schema có 7 category nhưng mô phỏng/xuất `.xosc` hiện chỉ hỗ trợ `CP_CROSSING` (TD-42).
+Schema có 7 category; bộ động học chạy `CP_CROSSING` và CCRs/CCRm/CCRb (ADR-050, Proposed), `.xosc`/CARLA chỉ `CP_CROSSING` (TD-42).
 Perception CARLA dùng ground truth; vật lý phanh chưa hiệu chuẩn (TD-01, TD-17).
 Hướng đi ngang đã sửa ở xosc2; người "dừng ở lề" đứng lại ở lề từ xosc4 (23/10/2026, kiểm CARLA thật).
 

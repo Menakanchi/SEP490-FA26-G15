@@ -77,6 +77,18 @@ public final class Evaluation {
         }
     }
 
+    /** Danh từ gọi mục tiêu trong câu chấm: người đi bộ (mặc định, giữ nguyên câu cũ) hoặc xe phía trước (ADR-050). */
+    private record Target(String cap, String low, boolean vehicle) {
+    }
+
+    private static final Target PEDESTRIAN = new Target("Pedestrian", "pedestrian", false);
+    private static final Target LEAD_VEHICLE = new Target("Lead vehicle", "lead vehicle", true);
+
+    private static Target target(SimulationOutcome outcome) {
+        Object category = outcome.caseDoc() == null ? null : outcome.caseDoc().get("category");
+        return category != null && com.vsos.core.simulation.LeadVehicleCase.CATEGORIES.contains(category.toString()) ? LEAD_VEHICLE : PEDESTRIAN;
+    }
+
     private static Double d(Map<String, Object> m, String key) {
         return m.get(key) instanceof Number n ? n.doubleValue() : null;
     }
@@ -117,7 +129,8 @@ public final class Evaluation {
         String kind = classifyOutcome(m);
         boolean triggered = m.get("aeb_decision_t") != null;
         // Va chạm luôn là có mối nguy — kể cả khi người đi bộ bước vào HÔNG xe sau khi mũi xe đã qua vạch.
-        boolean hazard = b(m, "pedestrian_entered_path") || b(m, "collision");
+        boolean hazard = b(m, "pedestrian_entered_path") || b(m, "target_entered_path") || b(m, "collision");
+        Target who = target(outcome);
         boolean falseActivation = triggered && !hazard;
         Double idealT = idealTriggerT(outcome, params);
         boolean missedActivation = hazard && idealT != null && !triggered;
@@ -148,11 +161,12 @@ public final class Evaluation {
             failure.put("severity", "MEDIUM");
             failure.put("detected_at_s", m.get("aeb_decision_t"));
             failure.put("description", chain.get(1).summary());
-            return new Result(kind, verdict, aeb, failure, chain, "AEB braked for a pedestrian who stopped at the curb.");
+            return new Result(kind, verdict, aeb, failure, chain, who.vehicle() ? "AEB braked for a vehicle that stayed outside the ego path."
+                    : "AEB braked for a pedestrian who stopped at the curb.");
         }
 
         if (kind.equals(OUTCOME_SAFE) && !missedActivation) {
-            return new Result(kind, verdict, aeb, null, List.of(), "AEB handled the crossing safely.");
+            return new Result(kind, verdict, aeb, null, List.of(), who.vehicle() ? "AEB handled the lead vehicle safely." : "AEB handled the crossing safely.");
         }
 
         List<StageVerdict> chain = hazardChain(outcome, params, idealT);
@@ -193,7 +207,7 @@ public final class Evaluation {
         failure.put("severity", severity);
         failure.put("detected_at_s", detectedAt);
         failure.put("description", description != null && !description.isEmpty() ? description : "Hazard reproduced without a single failing stage.");
-        return new Result(kind, verdict, aeb, failure, chain, headline(chain, m, idealT));
+        return new Result(kind, verdict, aeb, failure, chain, headline(chain, m, idealT, who));
     }
 
     private static List<StageVerdict> hazardChain(SimulationOutcome outcome, AebParams params, Double idealT) {
@@ -203,22 +217,23 @@ public final class Evaluation {
         Double detT = d(m, "first_detection_t");
         Double decT = d(m, "aeb_decision_t");
         Double referenceT = idealT != null ? idealT : d(m, "gt_in_path_t");
+        Target who = target(outcome);
 
         // -- Perception ----------------------------------------------------------------
         StageVerdict perception;
         if (detT == null) {
-            perception = StageVerdict.fail("PERCEPTION", "Pedestrian never passed the detection threshold " + Py.fixed(AebStack.DETECTION_CONFIDENCE_THRESHOLD, 2)
+            perception = StageVerdict.fail("PERCEPTION", who.cap() + " never passed the detection threshold " + Py.fixed(AebStack.DETECTION_CONFIDENCE_THRESHOLD, 2)
                     + " (" + String.valueOf(c.get("weather")).toLowerCase(Locale.ROOT).replace('_', ' ') + ", "
                     + String.valueOf(c.get("time_of_day")).toLowerCase(Locale.ROOT) + ").", "OBJECT_NOT_DETECTED", null);
         } else if (referenceT != null && detT > referenceT + TIMING_TOLERANCE_S) {
-            perception = StageVerdict.fail("PERCEPTION", "Pedestrian first detected at t " + Py.fixed(detT, 1) + " s ("
+            perception = StageVerdict.fail("PERCEPTION", who.cap() + " first detected at t " + Py.fixed(detT, 1) + " s ("
                     + Py.fixed(d(m, "first_detection_distance_m"), 0) + " m), " + Py.fixed(detT - referenceT, 1) + " s after AEB should have fired.",
                     "OBJECT_DETECTED_LATE", null);
         } else {
             Double dist = d(m, "first_detection_distance_m");
             perception = StageVerdict.pass("PERCEPTION", dist != null
-                    ? "Pedestrian detected at t " + Py.fixed(detT, 1) + " s (" + Py.fixed(dist, 0) + " m) with latency 0.1 s."
-                    : "Pedestrian detected at t " + Py.fixed(detT, 1) + " s.");
+                    ? who.cap() + " detected at t " + Py.fixed(detT, 1) + " s (" + Py.fixed(dist, 0) + " m) with latency 0.1 s."
+                    : who.cap() + " detected at t " + Py.fixed(detT, 1) + " s.");
         }
 
         // -- Ngân sách thời gian để dừng ------------------------------------------------
@@ -238,7 +253,7 @@ public final class Evaluation {
 
         // -- Decision ------------------------------------------------------------------
         StageVerdict decision;
-        if (b(m, "collision") && entryTtc == null) {
+        if (b(m, "collision") && entryTtc == null && !who.vehicle()) {
             decision = StageVerdict.fail("DECISION", "Pedestrian stepped into the side of the car after its front had passed the crossing; "
                     + "AEB only predicts the pedestrian's position for the moment the front arrives.", SIDE_ENTRY_CAUSE, null, 0.6);
         } else if (decT == null) {
@@ -250,7 +265,7 @@ public final class Evaluation {
             decision = StageVerdict.fail("DECISION", "TTC threshold " + Py.fixed(params.ttcThreshold(), 1) + " s is below the " + Py.fixed(neededNominal, 1)
                     + " s needed to stop from " + Py.fixed(v0 * 3.6, 0) + " km/h.", "THRESHOLD_TOO_LOW", "TTC_THRESHOLD", 0.85);
         } else if (entryTtc != null && entryTtc < neededActual && orZero(d(m, "aeb_decision_ttc_s")) < neededActual) {
-            decision = StageVerdict.fail("DECISION", "Pedestrian entered the path at TTC " + Py.fixed(entryTtc, 1) + " s, inside the " + Py.fixed(neededActual, 1)
+            decision = StageVerdict.fail("DECISION", who.cap() + " entered the path at TTC " + Py.fixed(entryTtc, 1) + " s, inside the " + Py.fixed(neededActual, 1)
                     + " s stopping envelope; only an earlier path prediction could have fired in time.", "PATH_ENTERED_LATE", null, 0.6);
         } else {
             decision = StageVerdict.pass("DECISION", "Brake command at TTC " + Py.fixed(d(m, "aeb_decision_ttc_s"), 1) + " s, within the "
@@ -285,6 +300,14 @@ public final class Evaluation {
 
     private static List<StageVerdict> falseActivationChain(SimulationOutcome outcome, AebParams params) {
         Map<String, Object> m = outcome.metrics();
+        if (target(outcome).vehicle()) {
+            return List.of(
+                    StageVerdict.pass("PERCEPTION", "Lead vehicle detected and tracked correctly."),
+                    StageVerdict.fail("DECISION", "AEB braked at TTC " + Py.fixed(d(m, "aeb_decision_ttc_s"), 1) + " s for a vehicle whose edge stayed outside "
+                            + "the ego path; the safety corridor reached into the neighbouring lane.", "PATH_PREDICTION_TOO_CONSERVATIVE", "TTC_THRESHOLD", 0.7),
+                    StageVerdict.pass("CONTROL", "Braking executed as commanded."),
+                    StageVerdict.pass("VEHICLE_DYNAMICS", "Vehicle dynamics nominal."));
+        }
         return List.of(
                 StageVerdict.pass("PERCEPTION", "Pedestrian detected and tracked correctly."),
                 StageVerdict.fail("DECISION", "AEB braked at TTC " + Py.fixed(d(m, "aeb_decision_ttc_s"), 1) + " s for a pedestrian who stopped at the curb; the "
@@ -293,24 +316,24 @@ public final class Evaluation {
                 StageVerdict.pass("VEHICLE_DYNAMICS", "Vehicle dynamics nominal."));
     }
 
-    private static String headline(List<StageVerdict> chain, Map<String, Object> m, Double idealT) {
+    private static String headline(List<StageVerdict> chain, Map<String, Object> m, Double idealT, Target who) {
         StageVerdict primary = chain.stream().filter(s -> !s.passed()).findFirst().orElse(null);
         if (primary == null) {
-            return b(m, "collision") ? "Every stage met its spec, yet the pedestrian was reached."
+            return b(m, "collision") ? "Every stage met its spec, yet the " + who.low() + " was reached."
                     : "AEB stopped in time, but with less margin than the near-miss limit.";
         }
         switch (primary.stage()) {
             case "PERCEPTION":
-                return "The pedestrian was detected too late for AEB to stop.";
+                return "The " + who.low() + " was detected too late for AEB to stop.";
             case "DECISION": {
                 if (SIDE_ENTRY_CAUSE.equals(primary.causeCode())) {
                     return "The pedestrian walked into the side of the car; AEB only checks the moment the front arrives.";
                 }
                 Double decT = d(m, "aeb_decision_t");
                 if (decT != null && idealT != null && decT > idealT) {
-                    return "The pedestrian was detected in time, but AEB activated " + Py.fixed(decT - idealT, 1) + " s too late.";
+                    return "The " + who.low() + " was detected in time, but AEB activated " + Py.fixed(decT - idealT, 1) + " s too late.";
                 }
-                return "The pedestrian was detected in time, but the TTC threshold left too little room to stop.";
+                return "The " + who.low() + " was detected in time, but the TTC threshold left too little room to stop.";
             }
             case "CONTROL":
                 return "AEB fired in time, but braking built up too slowly.";

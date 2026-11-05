@@ -96,7 +96,7 @@ public final class XoscExport {
     }
 
     public static String export(Bundle.RunSpec spec) {
-        CrossingCase c = spec.caseSpec();
+        CrossingCase c = spec.requireCrossing("Bộ xuất .xosc");
         VehicleSpec vehicle = spec.vehicle();
         El root = new El("OpenSCENARIO");
         node(root, "FileHeader", "revMajor", "1", "revMinor", "0", "date", "2026-10-18T00:00:00", "description", "VehicSim CP_CROSSING", "author", "VehicSim");

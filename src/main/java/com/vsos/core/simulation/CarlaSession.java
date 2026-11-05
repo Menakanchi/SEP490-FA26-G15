@@ -222,7 +222,7 @@ public final class CarlaSession {
         }
         double pedal = braking ? DecelMeter.brakePedal(tick.decelCmd(), decel, fullBrakeDecel) : 0.0;
         stats.add(decel);
-        CrossingCase c = spec.caseSpec();
+        CrossingCase c = spec.requireCrossing("Runner CARLA");
         frames.add(Simulator.makeFrame(t, c.crossingX() - gap, egoV, decel, c.crossingX(), pedY, pedVy, tick,
                 Simulator.groundTruthTtc(gap, pedY, egoV, spec.vehicle()), stack));
 
@@ -347,7 +347,7 @@ public final class CarlaSession {
         if (endReason != null || frames.isEmpty()) {
             return;
         }
-        CrossingCase c = spec.caseSpec();
+        CrossingCase c = spec.requireCrossing("Runner CARLA");
         double decelAvailable = Math.min(Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), c.roadFriction() * Simulator.G);
         SimulationOutcome outcome = Simulator.buildOutcome(c, spec.params(), spec.vehicle(), stack, stats, frames, events, reason, c.crossingX(),
                 decelAvailable, stepS);

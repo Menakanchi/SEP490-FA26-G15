@@ -104,6 +104,13 @@ public final class Vs {
         Object speed = ir.get("ego_speed_kmh");
         double kmh = speed instanceof Number n ? n.doubleValue() : 0.0;
         StringBuilder sb = new StringBuilder(time).append(" · ").append(weather).append(" · ").append(fmt0(kmh)).append(" km/h");
+        if (ir.get("category") != null && ir.get("target_speed_kmh") instanceof Number target) {
+            // Xe phía trước (ADR-050): "· CCRB lead 50 km/h at 40 m"
+            sb.append(" · ").append(ir.get("category")).append(" lead ").append(fmt0(target.doubleValue())).append(" km/h");
+            if (ir.get("initial_distance_m") instanceof Number d) {
+                sb.append(" at ").append(fmt0(d.doubleValue())).append(" m");
+            }
+        }
         if (Boolean.TRUE.equals(ir.get("stops_at_curb"))) {
             sb.append(" · stops at curb");
         }
