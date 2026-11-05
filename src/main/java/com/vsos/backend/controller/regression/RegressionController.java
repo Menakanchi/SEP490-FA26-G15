@@ -1,5 +1,6 @@
 package com.vsos.backend.controller.regression;
 
+import com.vsos.backend.common.Vs.NotFoundException;
 import com.vsos.backend.config.OpenApiConfig;
 import com.vsos.backend.dto.regression.RegressionRequests.CreateRegressionRequest;
 import com.vsos.backend.dto.regression.RegressionRequests.DecisionRequest;
@@ -12,14 +13,13 @@ import com.vsos.backend.dto.regression.RegressionResponses.RegressionExport;
 import com.vsos.backend.dto.regression.RegressionResponses.RegressionKpis;
 import com.vsos.backend.dto.regression.RegressionResponses.RegressionListResponse;
 import com.vsos.backend.dto.regression.RegressionResponses.RegressionPreviewResponse;
+import com.vsos.backend.security.ProjectAccess;
+import com.vsos.backend.security.VehicSimAccess;
 import com.vsos.backend.service.regression.RegressionCodes;
 import com.vsos.backend.service.regression.RegressionReportService;
 import com.vsos.backend.service.regression.RegressionService;
 import com.vsos.backend.service.regression.RegressionViewService;
 import com.vsos.backend.service.regression.ReviewDecisionService;
-import com.vsos.backend.common.Vs.NotFoundException;
-import com.vsos.backend.security.ProjectAccess;
-import com.vsos.backend.security.VehicSimAccess;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -46,12 +46,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * HTTP của màn 5: regression test, khuyến nghị, quyết định Reviewer, gói xuất và lịch sử ({@code /api/v1/vehicsim/...}, cùng tiền tố
- * với các controller VehicSim). Đọc: mọi role đã đăng nhập; tạo regression: ADMIN / ENGINEER / EXPERIENCER / REVIEWER; quyết định: chỉ REVIEWER
- * (luật ở {@link VehicSimAccess}). Reviewer chỉ thấy, chạy và duyệt regression của project thuộc workspace mình là thành viên
- * ({@link ProjectAccess}); ngoài phạm vi thì danh sách rỗng, chi tiết / quyết định trả 404. Lớp này chỉ nhận request; nghiệp vụ ở các service, lỗi đổi thành mã HTTP ở ApiExceptionHandler.
- */
 @RestController
 @RequestMapping("/api/v1/vehicsim")
 @RequiredArgsConstructor
@@ -65,20 +59,6 @@ public class RegressionController {
     private final RegressionViewService views;
     private final VehicSimAccess access;
     private final ProjectAccess projects;
-
-    /** Reviewer ngoài workspace của project hiện hành: coi như project không có regression nào. */
-    private boolean hidden() {
-        return !projects.hasProject();
-    }
-
-    /** Chi tiết / tải / quyết định một test: Reviewer ngoài workspace nhận 404 như test không tồn tại. */
-    private void requireVisible() {
-        if (hidden()) {
-            throw new NotFoundException("regression test");
-        }
-    }
-
-    // ------------------------------------------------------------------ regression test
 
     @Operation(summary = "Danh sách regression test")
     @GetMapping("/regression")
@@ -112,21 +92,15 @@ public class RegressionController {
         if (reviewer) requireVisible();
         long projectId = reviewer ? projects.explicitProjectId() : access.projectId();
         access.limitWrites(uid, "regression");
-        Map<String, Map<String, Object>> criteria = new LinkedHashMap<>();
-        if (body.criteria() != null) {
-            body.criteria().forEach((k, v) -> {
-                Map<String, Object> cleaned = new LinkedHashMap<>(v);
-                cleaned.values().removeIf(Objects::isNull); // như exclude_none
-                criteria.put(k, cleaned);
-            });
-        }
+
+        boolean includeOldCritical = body.includeOldCritical() == null || body.includeOldCritical();
+        boolean includeAllVariants = body.includeAllVariants() == null || body.includeAllVariants();
+        Map<String, Map<String, Object>> criteria = cleanCriteria(body.criteria());
         long id = reviewer
                 ? regression.createTestAsReviewer(projectId, uid, body.candidateVersionId(), body.scenarioId(),
-                        body.includeOldCritical() == null || body.includeOldCritical(), body.includeAllVariants() == null || body.includeAllVariants(),
-                        criteria, body.name(), body.variantIds())
+                        includeOldCritical, includeAllVariants, criteria, body.name(), body.variantIds())
                 : regression.createTest(projectId, uid, body.candidateVersionId(), body.scenarioId(),
-                        body.includeOldCritical() == null || body.includeOldCritical(), body.includeAllVariants() == null || body.includeAllVariants(),
-                        criteria, body.name(), body.variantIds());
+                        includeOldCritical, includeAllVariants, criteria, body.name(), body.variantIds());
         return ResponseEntity.status(HttpStatus.CREATED).body(new CreateRegressionResponse(id, RegressionCodes.testCode(id)));
     }
 
@@ -136,8 +110,6 @@ public class RegressionController {
         requireVisible();
         return views.regressionDetail(testId);
     }
-
-    // ------------------------------------------------------------------ gói xuất, lịch sử
 
     @Operation(summary = "Tải gói kết quả của một regression đã chạy xong (JSON)")
     @GetMapping("/regression/{testId}/export.json")
@@ -167,8 +139,6 @@ public class RegressionController {
         return reports.decisionHistory();
     }
 
-    // ------------------------------------------------------------------ khuyến nghị, quyết định
-
     @Operation(summary = "Danh sách khuyến nghị kỹ thuật")
     @GetMapping("/recommendations")
     public List<RecommendationListItem> listRecommendations(@AuthenticationPrincipal UserDetails user) {
@@ -197,5 +167,27 @@ public class RegressionController {
         }
         decisions.decide(projects.explicitProjectId(), testId, uid, body.decision(), body.reason(), body.conditions(), body.confirmed());
         return views.recommendationDetail(testId);
+    }
+
+    private boolean hidden() {
+        return !projects.hasProject();
+    }
+
+    private void requireVisible() {
+        if (hidden()) {
+            throw new NotFoundException("regression test");
+        }
+    }
+
+    private static Map<String, Map<String, Object>> cleanCriteria(Map<String, Map<String, Object>> raw) {
+        Map<String, Map<String, Object>> criteria = new LinkedHashMap<>();
+        if (raw != null) {
+            raw.forEach((key, value) -> {
+                Map<String, Object> cleaned = new LinkedHashMap<>(value);
+                cleaned.values().removeIf(Objects::isNull);
+                criteria.put(key, cleaned);
+            });
+        }
+        return criteria;
     }
 }

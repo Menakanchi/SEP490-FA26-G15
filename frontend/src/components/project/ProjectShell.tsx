@@ -2,14 +2,16 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Check, ChevronDown, ChevronRight, FolderOpen, Loader2, Plus } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { cx } from "@/components/VehicSimUi";
 import { FINISHED_TEXT, JOURNEY_STEPS, nextAction, stepHref, stepOfPath, statusOf } from "@/components/project/journey";
 import { useJourney } from "@/components/project/ProjectJourneyContext";
-import { ProjectAvatar, StepStatusIcon, ToastStack, useDismiss, type ToastMessage } from "@/components/project/ProjectUi";
+import { PROJECT_CONTEXT_CLASS, ProjectAvatar, ProjectIdentity, StepStatusIcon, ToastStack, useDismiss, type ToastMessage } from "@/components/project/ProjectUi";
+import { teamJourneyLinks } from "@/components/vehicsimFlow";
 import { vehicsimApi } from "@/services/vehicsim";
+import type { JourneyStatus } from "@/types/vehicsim";
 
 /*
  * Các mảnh project cắm vào khung chung của app khi người dùng là EXPERIENCER: cổng khu làm việc và màn chào mừng,
@@ -79,7 +81,6 @@ export function Welcome() {
               className="flex items-center gap-2 rounded-full bg-vehicsim-ink px-6 py-[14px] text-[15px] font-semibold text-white hover:bg-black/80"
             >
               Tạo project đầu tiên
-              
             </Link>
             <Link href="/projects" className="text-[14px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink hover:underline">
               Mở lại project đã lưu trữ
@@ -105,7 +106,7 @@ export function Welcome() {
   );
 }
 
-const OPEN_PATHS = ["/projects", "/profile"];
+const OPEN_PATHS = ["/projects", "/profile", "/admin"];
 
 const OTHER_ROLE_PATHS = [
   { prefix: "/validation/recommendations", title: "Project cá nhân không có khuyến nghị", detail: "Bạn tự xem kết luận kiểm chứng và tự chọn ứng viên làm baseline ở màn Kết luận vòng." },
@@ -120,7 +121,6 @@ function OtherRolePage({ title, detail, href, cta }: { title: string; detail: st
         <p className="text-[15px] leading-[1.55] text-vehicsim-muted">{detail}</p>
         <Link href={href} className="flex items-center gap-2 rounded-full bg-vehicsim-ink px-5 py-3 text-[14px] font-semibold text-white hover:bg-black/80">
           {cta}
-          
         </Link>
       </div>
     </div>
@@ -189,59 +189,99 @@ export function ProjectGate({ children }: { children: React.ReactNode }) {
 /** Thanh 5 bước ở đầu màn làm việc của EXPERIENCER: bước nào xong, đang ở bước nào và nút đi tiếp. */
 export function JourneyBar() {
   const pathname = usePathname();
+  const search = useSearchParams();
   const { ctx } = useVehicSimContext();
   const { journey } = useJourney();
-  const here = ctx ? stepOfPath(pathname, ctx.project.id) : null;
+  const here = pathname === "/scenarios" && search.get("new") === "1" ? "SCENARIO" : stepOfPath(pathname, ctx?.project.id ?? null);
   if (!ctx || (here === null && OPEN_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)))) return null;
 
   const next = journey ? nextAction(journey) : null;
 
   return (
+    <JourneyStrip
+      name={ctx.project.name}
+      home={`/projects/${ctx.project.id}`}
+      steps={JOURNEY_STEPS.map((step) => ({
+        ...step,
+        status: journey ? statusOf(journey, step.key) : "TODO",
+        href: journey ? stepHref(step.key, journey) : "#",
+        active: here === step.key,
+        current: journey?.next === step.key,
+      }))}
+    >
+      {next && next.key === here && next.href === pathname ? (
+        <span className="shrink-0 rounded-full bg-vehicsim-decision-bg px-4 py-[10px] text-[13px] font-semibold text-vehicsim-decision">
+          Bạn đang ở bước gợi ý
+        </span>
+      ) : next && (
+        <Link
+          href={next.href}
+          className="flex shrink-0 items-center gap-2 rounded-full bg-vehicsim-ink px-4 py-[10px] text-[13px] font-semibold text-white hover:bg-black/80"
+        >
+          Tiếp: {next.cta}
+        </Link>
+      )}
+    </JourneyStrip>
+  );
+}
+
+export function TeamJourneyBar({ reviewer }: { reviewer: boolean }) {
+  const { ctx } = useVehicSimContext();
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const here = (reviewer && pathname.startsWith("/scenarios/")) || (pathname === "/scenarios" && (reviewer || search.get("new") === "1"))
+    ? "SCENARIO"
+    : stepOfPath(pathname, null);
+  if (!ctx || !here) return null;
+
+  const links = teamJourneyLinks(reviewer);
+  return <JourneyStrip
+    name={ctx.project.name}
+    home="/"
+    steps={JOURNEY_STEPS.map((step) => ({
+      ...step,
+      href: links[step.key][0].href,
+      active: here === step.key,
+      status: "TODO",
+    }))}
+  />;
+}
+
+function JourneyStrip({ name, home, steps, children }: {
+  name: string;
+  home: string;
+  steps: { n: number; short: string; href: string; active: boolean; status: JourneyStatus; current?: boolean }[];
+  children?: React.ReactNode;
+}) {
+  return (
     <nav
       aria-label="Hành trình project"
-      className="flex w-full items-center gap-3 rounded-[18px] border border-solid border-vehicsim-line bg-white p-2 pl-4 shadow-vehicsim-card print:hidden"
+      className="flex w-full min-w-0 flex-wrap items-center gap-2 rounded-[18px] border border-solid border-vehicsim-line bg-white p-2 shadow-vehicsim-card sm:px-4 print:hidden"
     >
-      <Link href={`/projects/${ctx.project.id}`} className="max-w-[200px] shrink-0 truncate text-[13px] font-bold text-vehicsim-ink hover:underline">
-        {ctx.project.name}
+      <Link href={home} title={name} className="max-w-[200px] shrink-0 truncate px-2 text-[13px] font-bold text-vehicsim-ink hover:underline">
+        {name}
       </Link>
-      <span aria-hidden className="h-5 w-px shrink-0 bg-vehicsim-line-strong" />
-      <ol className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        {JOURNEY_STEPS.map((step, i) => {
-          const status = journey ? statusOf(journey, step.key) : "TODO";
-          const active = here === step.key;
+      <ol className="flex min-w-0 basis-full items-center gap-1 overflow-x-auto p-1 lg:flex-1">
+        {steps.map(({ n, short, href, status, active, current }, i) => {
           return (
-            <li key={step.key} className="flex shrink-0 items-center gap-1">
+            <li key={n} className="flex shrink-0 items-center gap-1">
               {i > 0 && <ChevronRight aria-hidden className="size-4 text-vehicsim-line-strong" />}
               <Link
-                href={journey ? stepHref(step.key, journey) : "#"}
+                href={href}
                 aria-current={active ? "step" : undefined}
                 className={cx(
                   "flex items-center gap-2 rounded-full py-[6px] pl-[6px] pr-3 text-[13px] font-semibold",
                   active ? "bg-vehicsim-soft text-vehicsim-ink ring-1 ring-vehicsim-line-strong" : "text-vehicsim-muted hover:bg-vehicsim-soft",
                 )}
               >
-                <StepStatusIcon status={status} n={step.n} current={journey?.next === step.key} size="sm" />
-                {step.short}
+                <StepStatusIcon status={status} n={n} current={current} size="sm" />
+                {short}
               </Link>
             </li>
           );
         })}
       </ol>
-      {next && next.key === here && next.href === pathname ? (
-        <span className="shrink-0 rounded-full bg-vehicsim-decision-bg px-4 py-[10px] text-[13px] font-semibold text-vehicsim-decision">
-          Bạn đang ở bước gợi ý
-        </span>
-      ) : (
-        next && (
-          <Link
-            href={next.href}
-            className="flex shrink-0 items-center gap-2 rounded-full bg-vehicsim-ink px-4 py-[10px] text-[13px] font-semibold text-white hover:bg-black/80"
-          >
-            Tiếp: {next.cta}
-            
-          </Link>
-        )
-      )}
+      {children}
     </nav>
   );
 }
@@ -280,15 +320,10 @@ export function ProjectSwitcher() {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 rounded-[14px] border border-solid border-vehicsim-line bg-white px-3 py-[10px] text-left hover:bg-vehicsim-soft"
+        className={cx(PROJECT_CONTEXT_CLASS, "flex w-full items-center gap-3 text-left hover:bg-vehicsim-soft")}
       >
-        {current ? <ProjectAvatar id={current.id} name={current.name} /> : <FolderOpen className="size-5 text-vehicsim-muted" />}
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.6px] text-vehicsim-muted">Project đang mở</span>
-          <span className="truncate text-[14px] font-bold text-vehicsim-ink">
-            {current?.name ?? (choosing ? "Chưa chọn project" : "Đang tải…")}
-          </span>
-        </span>
+        {!current && <FolderOpen className="size-5 text-vehicsim-muted" />}
+        <ProjectIdentity project={current} label="Project đang mở" fallback={choosing ? "Chưa chọn project" : "Đang tải…"} />
         <ChevronDown aria-hidden className={cx("size-4 shrink-0 text-vehicsim-muted transition", open && "rotate-180")} />
       </button>
 

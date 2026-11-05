@@ -5,8 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { EmptyState, ErrorNote, FilterSelect, Pagination, RECOMMENDATION_STATUS, RecommendationBadge, StatCard, cx, fmt } from "@/components/VehicSimUi";
+import { BaselineEntry } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { DecisionHistory, RecommendationItem, RecommendationStatus } from "@/types/vehicsim";
+
+const PAGE_SIZE = 8;
 
 export default function RecommendationsPage() {
   const router = useRouter();
@@ -14,37 +17,28 @@ export default function RecommendationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<RecommendationStatus | "">("");
   const [history, setHistory] = useState<DecisionHistory | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     vehicsimApi.recommendations()
       .then(setItems)
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách khuyến nghị"));
-    // Lịch sử chỉ để tham khảo: lỗi tải không chặn danh sách khuyến nghị.
     vehicsimApi.decisionHistory().then(setHistory).catch(() => setHistory(null));
   }, []);
 
-  const [page, setPage] = useState(1);
   const visible = useMemo(() => (items ?? []).filter((i) => !status || i.status === status), [items, status]);
   const count = (s: RecommendationStatus) => (items ?? []).filter((i) => i.status === s).length;
-
-  const PAGE_SIZE = 8;
-  const total = visible.length;
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const current = Math.min(page, pages);
   const offset = (current - 1) * PAGE_SIZE;
   const shown = visible.slice(offset, offset + PAGE_SIZE);
-
-  const handleStatusChange = (s: RecommendationStatus | "") => {
-    setStatus(s);
-    setPage(1);
-  };
 
   return (
     <VehicSimPage
       step={6}
       crumbs={[{ label: "Kiểm định" }, { label: "Khuyến nghị" }]}
       title="Khuyến nghị"
-      subtitle="Mỗi kiểm thử hồi quy chạy xong trở thành một khuyến nghị kỹ thuật. Chỉ kỹ sư mới được chấp nhận — không gì được áp dụng tự động."
+      subtitle="Mỗi kiểm thử hồi quy chạy xong trở thành một khuyến nghị kỹ thuật. Chỉ Người duyệt (Reviewer) mới được chấp nhận — không gì được áp dụng tự động."
     >
       <ErrorNote message={error} />
       <div className="flex w-full items-stretch gap-4">
@@ -61,7 +55,10 @@ export default function RecommendationsPage() {
             label="Trạng thái"
             value={status}
             options={(Object.keys(RECOMMENDATION_STATUS) as RecommendationStatus[]).map((s) => ({ value: s, label: RECOMMENDATION_STATUS[s].label }))}
-            onChange={handleStatusChange}
+            onChange={(value) => {
+              setStatus(value);
+              setPage(1);
+            }}
           />
         </div>
         <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
@@ -71,7 +68,7 @@ export default function RecommendationsPage() {
           <span className="w-[170px]">Tỉ lệ va chạm</span>
           <span className="w-[120px]">Sửa / Xấu đi</span>
           <span className="w-[100px]">Ngày</span>
-          <span className="w-[110px] text-right pr-2">Thao tác</span>
+          <span className="w-[100px] text-right">Thao tác</span>
         </div>
         {items && visible.length === 0 && (
           <EmptyState title={items.length ? "Không có khuyến nghị nào khớp bộ lọc" : "Chưa có khuyến nghị"}>
@@ -121,22 +118,18 @@ export default function RecommendationsPage() {
                 )}
               </span>
               <span className="w-[100px] text-[13px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
-              <span className="flex w-[110px] justify-end" onClick={(e) => e.stopPropagation()}>
-                <Link
-                  href={`/validation/recommendations/${i.id}`}
-                  className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
-                >
+              <span className="flex w-[100px] justify-end" onClick={(event) => event.stopPropagation()}>
+                <Link href={`/validation/recommendations/${i.id}`} className="text-[12px] font-semibold text-vehicsim-decision hover:underline">
                   Chi tiết
                 </Link>
               </span>
             </div>
           );
         })}
-
-        {total > 0 && (
+        {visible.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
             <span className="text-[12px] text-vehicsim-muted">
-              Hiển thị {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} trên {total} khuyến nghị
+              Hiển thị {offset + 1}–{offset + shown.length} trên {visible.length} khuyến nghị
             </span>
             {pages > 1 && <Pagination page={current} pages={pages} onPage={setPage} />}
           </div>
@@ -174,17 +167,7 @@ export default function RecommendationsPage() {
             <h2 className="text-[15px] font-bold text-vehicsim-ink">Chuỗi bản cơ sở</h2>
             {history.baselines.map((b) => (
               <div key={b.id} className="flex flex-col gap-1 border-b border-solid border-vehicsim-line pb-3 last:border-b-0 last:pb-0">
-                <span className="flex items-center gap-2 text-[13px] font-bold text-vehicsim-ink">
-                  {b.label}
-                  <span className={cx("text-[11px] font-semibold", b.status === "BASELINE" ? "text-vehicsim-ok" : "text-vehicsim-faint")}>
-                    {b.status === "BASELINE" ? "hiện hành" : "đã lưu trữ"}
-                  </span>
-                </span>
-                <span className="text-[12px] text-vehicsim-muted">
-                  {b.promoted_by
-                    ? `Được ${b.promoted_by} chấp nhận${b.promoted_at ? ` ngày ${fmt.date(b.promoted_at)}` : ""}${b.regression_code ? ` (${b.regression_code})` : ""}`
-                    : "Bản cơ sở khởi tạo của dự án"}
-                </span>
+                <BaselineEntry baseline={b} />
               </div>
             ))}
           </section>

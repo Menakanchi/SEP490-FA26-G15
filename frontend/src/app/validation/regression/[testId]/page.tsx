@@ -36,7 +36,6 @@ export default function RegressionResultsPage() {
     vehicsimApi.regression(Number(testId))
       .then((data) => {
         setD((prev) => {
-          // Test vừa chạy xong → làm mới ngữ cảnh (KPI, danh sách version) ở sidebar/chip.
           if (prev && prev.status === "RUNNING" && data.status !== "RUNNING") void refresh();
           return data;
         });
@@ -70,13 +69,11 @@ export default function RegressionResultsPage() {
           : tab === "changes"
             ? pairs.filter((p) => p.change !== "unchanged")
             : pairs;
-    // Regression lên đầu, rồi các ca sửa được, rồi theo mức cải thiện TTC.
     const order = { regressed: 0, fixed: 1, unchanged: 2 } as const;
     return [...list].sort((a, b) => order[a.change] - order[b.change] || (b.min_ttc_delta_s ?? 0) - (a.min_ttc_delta_s ?? 0));
   }, [pairs, tab]);
   const firstInteresting = pairs.find((p) => p.change === "regressed") ?? changed[0];
   const failedCriteria = (s?.criteria ?? []).filter((c) => c.enabled && !c.passed);
-  // Tham số đổi lên trước (để kỹ sư thấy hết thay đổi), rồi bù tham số chính cho đủ 4 ô.
   const cardParams = useMemo(() => {
     if (!d) return [];
     const changedParams = d.parameter_diff.filter((p) => p.changed);
@@ -315,9 +312,10 @@ function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failed
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <p className="text-[17px] font-bold text-vehicsim-ink">Không đủ điều kiện để chấp nhận</p>
           <p className="text-[13px] leading-[1.5] text-vehicsim-muted">
-            {d.candidate.label} sửa được {counts?.fixed ?? 0} kịch bản nhưng làm {counts?.regressed ?? 0} kịch bản từng đạt bị xấu đi.
-            Tiêu chí trượt: {failedCriteria.join("; ") || "—"}. Ứng viên làm xấu đi kịch bản cũ không bao giờ được tự động
-            chấp nhận.
+            {counts?.regressed
+              ? `${d.candidate.label} sửa được ${counts.fixed} kịch bản nhưng làm ${counts.regressed} kịch bản từng đạt bị xấu đi.`
+              : `${d.candidate.label} sửa được ${counts?.fixed ?? 0} kịch bản, không làm kịch bản nào xấu đi nhưng chưa đạt đủ tiêu chí.`}{" "}
+            Tiêu chí trượt: {failedCriteria.join("; ") || "—"}. Ứng viên không đạt kiểm thử hồi quy không thể được chấp nhận.
           </p>
         </div>
         <Tag tone="danger" className="border border-solid border-vehicsim-danger/40 bg-white px-3 py-[6px] text-[12px]">
@@ -337,7 +335,7 @@ function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failed
             Mọi tiêu chí bắt buộc đều đạt trên {counts?.scenarios ?? 0} cặp kịch bản.{" "}
             {conclusion
               ? "Kết quả mô phỏng, không phải chứng nhận an toàn."
-              : "Ứng viên vẫn cần kỹ sư quyết định — không bao giờ được tự động chấp nhận."}
+              : "Ứng viên vẫn cần Người duyệt (Reviewer) quyết định — không bao giờ được tự động chấp nhận."}
           </p>
         </div>
         {conclusion ? (
@@ -489,7 +487,6 @@ function DiffRow({ p }: { p: Pair }) {
 }
 
 function PairOutcome({ outcome, falseActivation }: { outcome: OutcomeKey; falseActivation: boolean }) {
-  // SAFE nhưng phanh oan vẫn là FAIL: hiện như "False braking" để cột trước/sau khớp verdict.
   return <OutcomeBadge outcome={outcome === "SAFE" && falseActivation ? "FALSE_BRAKING" : outcome} size="sm" />;
 }
 

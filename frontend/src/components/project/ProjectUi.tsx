@@ -40,6 +40,24 @@ export function ProjectAvatar({ id, name, size = "md" }: { id: number; name: str
   );
 }
 
+export const PROJECT_CONTEXT_CLASS = "rounded-[14px] border border-solid border-vehicsim-line bg-white px-3 py-[10px]";
+
+export function ProjectIdentity({ project, label, fallback }: {
+  project?: { id: number; name: string };
+  label: string;
+  fallback: string;
+}) {
+  return (
+    <>
+      {project && <ProjectAvatar id={project.id} name={project.name} />}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.6px] text-vehicsim-muted">{label}</span>
+        <span className="truncate text-[14px] font-bold text-vehicsim-ink" title={project?.name}>{project?.name ?? fallback}</span>
+      </span>
+    </>
+  );
+}
+
 export function StepStatusIcon({ status, n, current, size = "md" }: { status: JourneyStatus; n: number; current?: boolean; size?: "sm" | "md" }) {
   const box = size === "sm" ? "size-[22px] text-[11px]" : "size-9 text-[14px]";
   const icon = size === "sm" ? "size-3" : "size-4";

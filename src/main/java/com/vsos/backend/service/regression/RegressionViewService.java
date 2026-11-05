@@ -1,5 +1,8 @@
 package com.vsos.backend.service.regression;
 
+import com.vsos.backend.common.Json;
+import com.vsos.backend.common.Vs;
+import com.vsos.backend.common.Vs.NotFoundException;
 import com.vsos.backend.dto.regression.RegressionRecords.RecommendationRow;
 import com.vsos.backend.dto.regression.RegressionRecords.RegressionTestRow;
 import com.vsos.backend.dto.regression.RegressionResponses.Counts;
@@ -20,14 +23,12 @@ import com.vsos.backend.dto.regression.RegressionResponses.RegressionSummary;
 import com.vsos.backend.dto.regression.RegressionResponses.ReviewInfo;
 import com.vsos.backend.dto.regression.RegressionResponses.RunningProgress;
 import com.vsos.backend.dto.regression.RegressionResponses.VersionRef;
-import com.vsos.backend.repository.regression.RegressionRepository;
-import com.vsos.backend.common.Json;
 import com.vsos.backend.repository.common.Queries;
 import com.vsos.backend.repository.common.Row;
-import com.vsos.backend.common.Vs;
-import com.vsos.backend.common.Vs.NotFoundException;
-import org.springframework.stereotype.Service;
+import com.vsos.backend.repository.regression.RegressionRepository;
 import com.vsos.backend.security.ProjectAccess;
+import com.vsos.core.aeb.AebParams;
+import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -37,15 +38,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Dữ liệu cho các màn regression và khuyến nghị (16 danh sách, 04 kết quả, 17 khuyến nghị, 18 duyệt). Chuyển ra từ {@code ViewsService};
- * dạng JSON giữ nguyên (khoá snake_case) để frontend không phải đổi.
- */
 @Service
 public class RegressionViewService {
 
-    /** Tham số hiện trên thẻ phiên bản ở màn kết quả (tham số không còn trong danh mục thì bỏ qua). */
-    private static final List<String> KEY_PARAMS = List.of("TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "DETECTION_CONFIDENCE_THRESHOLD", "MAX_DECELERATION");
+    private static final List<String> KEY_PARAMS = AebParams.CODES;
 
     private final RegressionRepository repo;
     private final Queries queries;
@@ -59,27 +55,6 @@ public class RegressionViewService {
         this.projects = projects;
         this.regression = regression;
         this.reports = reports;
-    }
-
-    // ------------------------------------------------------------------ 16 · danh sách regression
-
-    /** Tiến độ run REGRESSION: COMPLETED / FAILED / STOPPED đều là đã kết thúc (không đếm STOPPED thì thanh kẹt dưới 100%). */
-    private Progress progress(long testId) {
-        long done = 0;
-        long total = 0;
-        for (Map.Entry<String, Long> e : repo.runCountsByStatus(testId).entrySet()) {
-            total += e.getValue();
-            if ("COMPLETED".equals(e.getKey()) || "FAILED".equals(e.getKey()) || "STOPPED".equals(e.getKey())) {
-                done += e.getValue();
-            }
-        }
-        return new Progress(done, total);
-    }
-
-    private Map<Long, Row> versionsOf(long projectId) {
-        Map<Long, Row> versions = new LinkedHashMap<>();
-        queries.versions(projectId, false).forEach(v -> versions.put(v.lng("id"), v));
-        return versions;
     }
 
     public RegressionListResponse regressionList(String status) {
@@ -122,61 +97,9 @@ public class RegressionViewService {
                 filtered);
     }
 
-    // ------------------------------------------------------------------ 04 · kết quả một regression
-
-    private RegressionTestRow test(long projectId, long testId) {
-        RegressionTestRow test = repo.findTest(projectId, testId);
-        if (test == null) {
-            throw new NotFoundException("regression test");
-        }
-        return test;
-    }
-
     public RegressionDetailResponse regressionDetail(long testId) {
         return regressionDetail(test(projects.currentProject().lng("id"), testId));
     }
-
-    private RegressionDetailResponse regressionDetail(RegressionTestRow test) {
-        Row baseline = repo.findVersion(test.baselineVersionId());
-        Row candidate = repo.findVersion(test.candidateVersionId());
-        List<ParameterDiff> diff = regression.parameterDiff(test.baselineVersionId(), test.candidateVersionId());
-        Row scenario = repo.findScenario(test.scenarioId());
-        Map<Long, String> names = queries.displayNames(List.of(test.createdBy()));
-        RecommendationRow rec = regression.recommendationFor(test.id());
-
-        Map<String, ParameterDiff> byCode = new LinkedHashMap<>();
-        diff.forEach(d -> byCode.put(d.code(), d));
-        List<KeyParameter> keyParameters = new ArrayList<>();
-        for (String code : KEY_PARAMS) {
-            ParameterDiff d = byCode.get(code);
-            if (d != null) {
-                keyParameters.add(new KeyParameter(d.code(), d.name(), d.unit(), d.baseline(), d.candidate(), d.changed()));
-            }
-        }
-        return new RegressionDetailResponse(
-                test.id(),
-                RegressionCodes.testCode(test.id()),
-                RegressionCodes.recommendationCode(test.id()),
-                test.name(),
-                RegressionCodes.displayStatus(test),
-                RegressionCodes.displayDecision(rec),
-                scenario.str("name"),
-                scenario.lng("id"),
-                new VersionRef(baseline.lng("id"), Vs.versionLabel(baseline), baseline.str("status")),
-                new VersionRef(candidate.lng("id"), Vs.versionLabel(candidate), candidate.str("status")),
-                keyParameters,
-                diff,
-                test.passCriteria(),
-                test.simulatorVersion(),
-                RegressionReportService.simulatorCaveat(test.simulatorVersion()),
-                reports.candidateSource(candidate.lng("id")),
-                progress(test.id()),
-                names.get(test.createdBy()),
-                Vs.iso(test.createdDate()),
-                regression.summary(test));
-    }
-
-    // ------------------------------------------------------------------ 17 · khuyến nghị · 18 · duyệt
 
     public List<RecommendationListItem> recommendations() {
         long projectId = projects.currentProject().lng("id");
@@ -238,7 +161,6 @@ public class RegressionViewService {
                 List.of(
                         new Evidence("regression", "Regression " + detail.code(), passed ? "PASS" : "FAIL",
                                 regressions + " regressions · " + (fixed == null ? 0 : fixed) + " fixed"),
-                        // FE-13 chưa làm: nói rõ là chưa chạy, không vẽ tick xanh giả.
                         new Evidence("robustness", "Robustness validation", "NOT_RUN", "FE-13 — not run yet"),
                         new Evidence("pareto", "Pareto front", "NOT_RUN", "FE-13 — not run yet"),
                         new Evidence("sensitivity", "Sensitivity analysis", "NOT_RUN", "FE-12 — not run yet")),
@@ -251,7 +173,72 @@ public class RegressionViewService {
                         names.get(test.createdBy())));
     }
 
-    /** Câu tiếng Anh (frontend dịch qua vehicsimI18n): phanh oan tăng, số ca xấu đi, tỉ lệ còn va chạm. */
+    private RegressionDetailResponse regressionDetail(RegressionTestRow test) {
+        Row baseline = repo.findVersion(test.baselineVersionId());
+        Row candidate = repo.findVersion(test.candidateVersionId());
+        List<ParameterDiff> diff = regression.parameterDiff(test.baselineVersionId(), test.candidateVersionId());
+        Row scenario = repo.findScenario(test.scenarioId());
+        Map<Long, String> names = queries.displayNames(List.of(test.createdBy()));
+        RecommendationRow rec = regression.recommendationFor(test.id());
+
+        Map<String, ParameterDiff> byCode = new LinkedHashMap<>();
+        diff.forEach(d -> byCode.put(d.code(), d));
+        List<KeyParameter> keyParameters = new ArrayList<>();
+        for (String code : KEY_PARAMS) {
+            ParameterDiff d = byCode.get(code);
+            if (d != null) {
+                keyParameters.add(new KeyParameter(d.code(), d.name(), d.unit(), d.baseline(), d.candidate(), d.changed()));
+            }
+        }
+        return new RegressionDetailResponse(
+                test.id(),
+                RegressionCodes.testCode(test.id()),
+                RegressionCodes.recommendationCode(test.id()),
+                test.name(),
+                RegressionCodes.displayStatus(test),
+                RegressionCodes.displayDecision(rec),
+                scenario.str("name"),
+                scenario.lng("id"),
+                new VersionRef(baseline.lng("id"), Vs.versionLabel(baseline), baseline.str("status")),
+                new VersionRef(candidate.lng("id"), Vs.versionLabel(candidate), candidate.str("status")),
+                keyParameters,
+                diff,
+                test.passCriteria(),
+                test.simulatorVersion(),
+                RegressionReportService.simulatorCaveat(test.simulatorVersion()),
+                reports.candidateSource(candidate.lng("id")),
+                progress(test.id()),
+                names.get(test.createdBy()),
+                Vs.iso(test.createdDate()),
+                regression.summary(test));
+    }
+
+    private RegressionTestRow test(long projectId, long testId) {
+        RegressionTestRow test = repo.findTest(projectId, testId);
+        if (test == null) {
+            throw new NotFoundException("regression test");
+        }
+        return test;
+    }
+
+    private Progress progress(long testId) {
+        long done = 0;
+        long total = 0;
+        for (Map.Entry<String, Long> e : repo.runCountsByStatus(testId).entrySet()) {
+            total += e.getValue();
+            if ("COMPLETED".equals(e.getKey()) || "FAILED".equals(e.getKey()) || "STOPPED".equals(e.getKey())) {
+                done += e.getValue();
+            }
+        }
+        return new Progress(done, total);
+    }
+
+    private Map<Long, Row> versionsOf(long projectId) {
+        Map<Long, Row> versions = new LinkedHashMap<>();
+        queries.versions(projectId, false).forEach(v -> versions.put(v.lng("id"), v));
+        return versions;
+    }
+
     private static List<String> tradeoffs(Rates rates, long regressions) {
         List<String> out = new ArrayList<>();
         if (rates != null && rates.falseActivationCandidatePct() > rates.falseActivationBaselinePct()) {

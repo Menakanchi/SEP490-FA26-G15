@@ -1,12 +1,11 @@
 import React from "react";
 import Link from "next/link";
 import { Tag, cx, fmt } from "@/components/VehicSimUi";
-import type { CandidateSource, Pair, SimulatorCaveat } from "@/types/vehicsim";
+import type { CandidateSource, DecisionHistory, Pair, SimulatorCaveat } from "@/types/vehicsim";
 
 export const CARLA_CAVEAT_TEXT =
   "Kết quả này chạy trên CARLA khi phanh của xe chưa được hiệu chuẩn (TD-17): số liệu chỉ để quan sát và đối chiếu, không phải chứng nhận an toàn.";
 
-/** Banner khi regression chạy trên CARLA; không hiện gì với bộ động học. */
 export function CarlaCaveat({ caveat }: { caveat?: SimulatorCaveat | null }) {
   if (!caveat?.carla || caveat.calibrated) return null;
   return (
@@ -17,7 +16,6 @@ export function CarlaCaveat({ caveat }: { caveat?: SimulatorCaveat | null }) {
   );
 }
 
-/** Mô tả nguồn của candidate: thủ công, hoặc chiến dịch/trial tối ưu (chỉ đọc; chưa có dữ liệu tối ưu thì chỉ ghi "tối ưu hoá"). */
 export function candidateSourceText(source?: CandidateSource | null): string | null {
   if (!source) return null;
   if (source.type !== "OPTIMIZATION") return "Tạo thủ công";
@@ -34,7 +32,6 @@ export function CandidateSourceTag({ source }: { source?: CandidateSource | null
 
 type ObjectiveKey = "rms_jerk_mps3" | "impact_speed_mps" | "stopping_distance_m";
 
-/** Ba mục tiêu ADR-040; `none` là nghĩa của null ở từng mục (không phanh / không va chạm), không phải thiếu dữ liệu. */
 const OBJECTIVES: { key: ObjectiveKey; label: string; unit: string; none: string }[] = [
   { key: "rms_jerk_mps3", label: "RMS jerk", unit: "m/s³", none: "không phanh" },
   { key: "impact_speed_mps", label: "Tốc độ va chạm", unit: "m/s", none: "không va chạm" },
@@ -48,7 +45,6 @@ function objectiveValue(p: Pair, side: "baseline" | "candidate", key: ObjectiveK
 function ObjectiveCell({ p, objective }: { p: Pair; objective: (typeof OBJECTIVES)[number] }) {
   const b = objectiveValue(p, "baseline", objective.key);
   const c = objectiveValue(p, "candidate", objective.key);
-  // Tốc độ va chạm: không va chạm nghĩa là 0 khi so sánh (ADR-040); hai mục còn lại chỉ so khi cả hai run có số đo.
   const asNumber = (v: number | null | undefined) => (v == null && objective.key === "impact_speed_mps" ? 0 : v);
   const bn = asNumber(b);
   const cn = asNumber(c);
@@ -56,7 +52,6 @@ function ObjectiveCell({ p, objective }: { p: Pair; objective: (typeof OBJECTIVE
   const show = (v: number | null | undefined) => (v == null ? <span className="text-vehicsim-faint">{objective.none}</span> : fmt.num(v, 2));
   return (
     <span className={cx("w-[170px] text-[12px] font-semibold", tone)}>
-      {/* Cả hai run cùng không có số đo (không phanh / không va chạm): ghi một lần thay vì "x → x". */}
       {b == null && c == null ? show(b) : (
         <>
           {show(b)} → {show(c)}
@@ -66,13 +61,8 @@ function ObjectiveCell({ p, objective }: { p: Pair; objective: (typeof OBJECTIVE
   );
 }
 
-/**
- * Ba mục tiêu ADR-040 theo từng cặp baseline → candidate, đọc thẳng số worker ghi cho từng run. Chỉ để tham khảo: không vào tiêu chí
- * nên không đổi kết quả đạt/không đạt. Chưa có trung bình theo tập (chờ bộ chỉ số chung của phần phân tích).
- */
 export function PairObjectivesTable({ pairs, baselineLabel, candidateLabel }: { pairs: Pair[]; baselineLabel: string; candidateLabel: string }) {
   const [shown, setShown] = React.useState(10);
-  // Backend cũ không trả số đo → không vẽ bảng rỗng giả.
   const withData = pairs.filter((p) => OBJECTIVES.some((o) => objectiveValue(p, "baseline", o.key) !== undefined));
   if (!withData.length) return null;
   return (
@@ -113,5 +103,23 @@ export function PairObjectivesTable({ pairs, baselineLabel, candidateLabel }: { 
         )}
       </div>
     </section>
+  );
+}
+
+export function BaselineEntry({ baseline: b }: { baseline: DecisionHistory["baselines"][number] }) {
+  return (
+    <>
+      <span className="flex items-center gap-2 text-[13px] font-bold text-vehicsim-ink">
+        {b.label}
+        <span className={cx("text-[11px] font-semibold", b.status === "BASELINE" ? "text-vehicsim-ok" : "text-vehicsim-faint")}>
+          {b.status === "BASELINE" ? "hiện hành" : "đã lưu trữ"}
+        </span>
+      </span>
+      <span className="text-[12px] text-vehicsim-muted">
+        {b.promoted_by
+          ? `Được ${b.promoted_by} chấp nhận${b.promoted_at ? ` ngày ${fmt.date(b.promoted_at)}` : ""}${b.regression_code ? ` (${b.regression_code})` : ""}`
+          : "Bản cơ sở khởi tạo của dự án"}
+      </span>
+    </>
   );
 }

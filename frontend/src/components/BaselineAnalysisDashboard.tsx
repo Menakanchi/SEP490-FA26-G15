@@ -1,357 +1,228 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { ErrorNote, PillButton, StatCard, cx } from "@/components/VehicSimUi";
-import { ObjectiveSummary } from "@/components/AnalysisSelectionSummary";
+import { ErrorNote, PillButton } from "@/components/VehicSimUi";
+import { AnalysisDatasetPreparation } from "@/components/analysis/AnalysisDatasetPreparation";
+import { analysisListTitle } from "@/components/analysis/analysisRouteTitles";
+import { restoreSelection, selectionChecks, type ChosenRun } from "@/components/analysis/analysisSelectionData";
+import { AnalysisRunExplorer } from "@/components/analysis/AnalysisRunExplorer";
+import { AnalysisOverview } from "@/components/analysis/AnalysisOverview";
+import { LegacyFailureCases } from "@/components/LegacyFailureCases";
+import { AnalysisNav, analysisError, analysisLabel, eligible } from "@/components/analysisUi";
 import { vehicsimApi } from "@/services/vehicsim";
-import { vi } from "@/components/vehicsimI18n";
-import type { AnalysisDashboardData, AnalysisFilters } from "@/types/vehicsim";
+import type { AnalysisDashboardData, AnalysisFilters, AnalysisRun, AnalysisSelection } from "@/types/vehicsim";
 
-const LABELS: Record<string, string> = {
-  CLEAR: "Trời quang",
-  CLOUDY: "Nhiều mây",
-  RAIN: "Mưa",
-  HEAVY_RAIN: "Mưa lớn",
-  FOG: "Sương mù",
-  DAY: "Ban ngày",
-  DUSK: "Chạng vạng",
-  NIGHT: "Ban đêm",
-  PERCEPTION: "Nhận thức",
-  DECISION: "Quyết định",
-  CONTROL: "Điều khiển",
-  VEHICLE_DYNAMICS: "Động lực học",
-  SAFE: "An toàn",
-  COLLISION: "Va chạm",
-  FALSE_BRAKING: "Phanh oan",
-  NEAR_MISS: "Suýt va chạm",
-  MISSED_BRAKING: "Bỏ sót",
-  OTHER_FAILURE: "Lỗi AEB khác",
-  ERROR: "Lỗi kỹ thuật",
-  CANCELLED: "Đã hủy",
-  TIMEOUT: "Hết giờ",
-  INCOMPLETE: "Thiếu dữ liệu",
-  NOT_FINISHED: "Chưa hoàn tất",
-  PENDING: "Đang chờ",
-  RUNNING: "Đang chạy",
-  PAUSED: "Tạm dừng",
-  COMPLETED: "Hoàn tất",
-  FAILED: "Lỗi",
-  STOPPED: "Đã hủy",
-};
+type Draft = { key: string; chosen: Record<number, ChosenRun>; notice?: string };
+const FILTER_KEYS = ["scenario_id", "variant_id", "aeb_version_id", "vehicle_id", "simulator", "weather", "time_of_day", "status", "failure_class"] as const;
+const numericKeys = new Set(["scenario_id", "variant_id", "aeb_version_id", "vehicle_id"]);
+const positive = (value: string | null, fallback: number) => value && /^\d+$/.test(value) && Number(value) > 0 && Number.isSafeInteger(Number(value)) ? Number(value) : fallback;
 
-export function BaselineAnalysisDashboard({
-  initialScenario,
-  activeTab = "baseline",
-  onTabChange,
-}: {
-  initialScenario?: number;
-  activeTab?: "baseline" | "failures";
-  onTabChange?: (tab: "baseline" | "failures") => void;
-}) {
-  const { ctx } = useVehicSimContext();
-  const [filters, setFilters] = useState<AnalysisFilters>({ scenario_id: initialScenario });
-  const [page, setPage] = useState(1);
-  const [data, setData] = useState<AnalysisDashboardData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export function BaselineAnalysisDashboard() {
+  const { ctx, canWrite } = useVehicSimContext();
+  const { user } = useAuth();
+  const router = useRouter();
+  const params = useSearchParams();
+  const view = ["runs", "failures", "dataset"].includes(params.get("view") ?? "") ? params.get("view")! : "overview";
+  const page = positive(params.get("page"), 1);
+  const size = [10, 20, 30, 50].includes(Number(params.get("page_size"))) ? Number(params.get("page_size")) : 30;
+  const filters: AnalysisFilters = {};
+  for (const key of FILTER_KEYS) {
+    const raw = params.get(key);
+    if (raw) Object.assign(filters, { [key]: numericKeys.has(key) ? positive(raw, 0) || undefined : raw });
+  }
+  const filterKey = JSON.stringify(filters);
+  const [result, setResult] = useState<{ key: string; data: AnalysisDashboardData | null; error: string | null } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [operation, setOperation] = useState<"save" | "handoff" | null>(null);
+  const busy = operation !== null;
+  const [operationError, setOperationError] = useState<{ scope: string; message: string; kind: "save" | "handoff" } | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const rawDatasetId = params.get("dataset_id"), savedId = positive(rawDatasetId, 0);
+  const [snapshotRefresh, setSnapshotRefresh] = useState(0);
+  const [snapshotResult, setSnapshotResult] = useState<{ key: string; data: AnalysisSelection | null; error: string | null } | null>(null);
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const storageKey = user?.id && ctx?.project.id ? `vehicsim.analysis.selection.v1:${user.id}:${ctx.project.id}` : "";
+  const draftReady = Boolean(storageKey && draft?.key === storageKey);
+  const chosen = draft?.key === storageKey ? draft.chosen : {};
+  const snapshotKey = `${storageKey}:${rawDatasetId}:${snapshotRefresh}`;
+  const saved = snapshotResult?.key === snapshotKey ? snapshotResult.data : null;
+  const snapshotLoading = rawDatasetId !== null && savedId > 0 && snapshotResult?.key !== snapshotKey;
+  const snapshotError = rawDatasetId !== null && !savedId ? "Mã tập phân tích không hợp lệ."
+    : snapshotResult?.key === snapshotKey ? snapshotResult.error : null;
+  const requestKey = `${filterKey}:${page}:${size}:${refresh}`;
+  const loading = (view === "overview" || view === "runs") && result?.key !== requestKey;
+  const data = result?.key === requestKey ? result.data : null;
+  const error = result?.key === requestKey ? result.error : null;
 
+  function update(values: Record<string, string | number | undefined>, resetPage = false) {
+    const next = new URLSearchParams(window.location.search);
+    for (const [key, value] of Object.entries(values)) {
+      if (value === "" || value === undefined) next.delete(key); else next.set(key, String(value));
+    }
+    if (resetPage) next.delete("page");
+    if (values.view !== undefined) router.replace(`/analysis/failures?${next}`, { scroll: false });
+    else window.history.replaceState(null, "", `/analysis/failures?${next}`);
+  }
   useEffect(() => {
+    if (view === "failures" || view === "dataset") return;
     let active = true;
-    vehicsimApi
-      .analysisRuns(filters, page)
-      .then((value) => {
-        if (active) {
-          setData(value);
-          setError(null);
+    vehicsimApi.analysisRuns(JSON.parse(filterKey) as AnalysisFilters, page, size)
+      .then(value => {
+        if (!active) return;
+        const last = Math.max(1, Math.ceil(value.total / size));
+        if (page > last) {
+          const next = new URLSearchParams(window.location.search); next.set("page", String(last));
+          router.replace(`/analysis/failures?${next}`, { scroll: false }); return;
         }
+        setResult({ key: requestKey, data: value, error: null });
       })
-      .catch((e) => {
-        if (active) {
-          setData(null);
-          setError(vi(e.message));
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [filters, page, refresh]);
-
-  const change = (key: keyof AnalysisFilters, value: string) => {
-    setPage(1);
-    setData(null);
-    const numeric = ["scenario_id", "variant_id", "aeb_version_id", "vehicle_id"].includes(key);
-    setFilters((old) => ({ ...old, [key]: value ? (numeric ? Number(value) : value) : undefined }));
+      .catch(e => { if (active) setResult({ key: requestKey, data: null, error: analysisError(e) }); });
+    return () => { active = false; };
+  }, [filterKey, page, size, refresh, requestKey, router, view]);
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const { chosen: restored, discarded } = restoreSelection(JSON.parse(sessionStorage.getItem(storageKey) ?? "{}"));
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the account/project scoped draft after hydration
+      setDraft({ key: storageKey, chosen: restored, notice: discarded ? "Một số lựa chọn trong phiên bị thiếu metadata nên không khôi phục được. Hãy chọn lại các run đó." : undefined });
+    } catch {
+      setDraft({ key: storageKey, chosen: {}, notice: "Không khôi phục được lựa chọn trong phiên. Hãy chọn lại các run cần bàn giao." });
+    }
+  }, [storageKey]);
+  useEffect(() => {
+    if (!storageKey || draft?.key !== storageKey) return;
+    try { sessionStorage.setItem(storageKey, JSON.stringify(draft.chosen)); }
+    catch {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- storage errors must be visible before leaving the page
+      setDraftNotice("Trình duyệt không lưu được lựa chọn trong phiên; lựa chọn chỉ giữ khi bạn còn ở trang này.");
+    }
+  }, [draft, storageKey]);
+  useEffect(() => {
+    if (!savedId || !storageKey) return;
+    let active = true;
+    vehicsimApi.savedAnalysisDataset(savedId).then(value => {
+      if (!active) return;
+      if ((value as unknown as { schema?: string }).schema !== "vehicsim.analysis-dataset/v2")
+        throw new Error("Tập dữ liệu cũ chưa có hai tập độc lập. Hãy chọn và chốt lại trước khi bàn giao.");
+      if (value.id !== savedId) throw new Error("Mã tập máy chủ trả về không khớp yêu cầu. Hãy thử tải lại.");
+      setSnapshotResult({ key: snapshotKey, data: value as unknown as AnalysisSelection, error: null });
+    }).catch(err => { if (active) setSnapshotResult({ key: snapshotKey, data: null, error: analysisError(err) }); });
+    return () => { active = false; };
+  }, [savedId, storageKey, snapshotKey]);
+  const selection = Object.values(chosen), opt = selection.filter(item => item.role === "OPTIMIZATION"), val = selection.filter(item => item.role === "VALIDATION");
+  const checks = selectionChecks(selection, ctx?.system.baseline?.id);
+  const draftScope = `${storageKey}:${JSON.stringify(selection)}`;
+  const mutationError = operationError && operationError.scope === (operationError.kind === "save" ? draftScope : snapshotKey) ? operationError.message : null;
+  const canSave = canWrite && draftReady && checks.every(check => check.ok);
+  function assign(run: AnalysisRun, role: string) {
+    if (!canWrite || busy || !draftReady || (role && (!eligible(run) || !["OPTIMIZATION", "VALIDATION"].includes(role)))) return;
+    setSnapshotResult(null); setOperationError(null);
+    if (rawDatasetId !== null) update({ dataset_id: undefined });
+    setDraft(old => {
+      const next = { ...(old?.key === storageKey ? old.chosen : {}) };
+      if (!role) delete next[run.run_id]; else next[run.run_id] = { run, role: role as ChosenRun["role"] };
+      return { key: storageKey, chosen: next };
+    });
+  }
+  async function save() {
+    if (!canSave || busy) return;
+    setOperation("save"); setOperationError(null);
+    try {
+      const value = await vehicsimApi.createAnalysisSelection({ scenario_id: selection[0].run.scenario_id, baseline_id: selection[0].run.baseline_id,
+        optimization_run_ids: opt.map(x => x.run.run_id), validation_run_ids: val.map(x => x.run.run_id),
+        run_revisions: Object.fromEntries(selection.map(x => [String(x.run.run_id), x.run.revision])) });
+      setSnapshotResult({ key: `${storageKey}:${value.id}:${snapshotRefresh}`, data: value, error: null });
+      update({ dataset_id: value.id });
+    } catch (err) { setOperationError({ scope: draftScope, kind: "save", message: analysisError(err) }); }
+    finally { setOperation(null); }
+  }
+  async function proceed() {
+    if (!saved || saved.baseline_current !== true || busy) return;
+    setOperation("handoff"); setOperationError(null);
+    try {
+      const verified = await vehicsimApi.analysisHandoff(saved.id);
+      if (verified.id !== saved.id || verified.schema !== "vehicsim.analysis-dataset/v2" || verified.baseline_current !== true || verified.handoff_ready !== true)
+        throw new Error("Máy chủ chưa xác nhận tập dữ liệu đủ điều kiện bàn giao. Hãy tải lại tập đã chốt.");
+      if (positive(new URLSearchParams(window.location.search).get("dataset_id"), 0) === saved.id)
+        router.push(`/aeb?dataset_id=${saved.id}`);
+    } catch (err) { setOperationError({ scope: snapshotKey, kind: "handoff", message: analysisError(err) }); }
+    finally { setOperation(null); }
+  }
+  function clearDraft() {
+    if (!canWrite || busy || !draftReady) return;
+    setDraft({ key: storageKey, chosen: {} }); setSnapshotResult(null); setOperationError(null);
+    update({ dataset_id: undefined });
+  }
+  const search = params.get("q") ?? "", sort = params.get("sort") ?? "newest";
+  const filterLabels: Record<typeof FILTER_KEYS[number], string> = {
+    scenario_id: "Họ", variant_id: "Biến thể", aeb_version_id: "Baseline", vehicle_id: "Xe",
+    simulator: "Simulator", weather: "Thời tiết", time_of_day: "Thời điểm", status: "Trạng thái", failure_class: "Khâu lỗi",
   };
-
-  const activeScenarioId = filters.scenario_id ?? ctx?.families?.[0]?.id;
-  const currentFamily = ctx?.families?.find((f) => f.id === activeScenarioId);
-
-  return (
-    <VehicSimPage
-      step={4}
-      title="Phân tích kết quả baseline"
-      crumbs={[{ label: "Kịch bản", href: "/scenarios" }, { label: "Phân tích kết quả" }]}
-      subtitle="Thống kê hiệu năng phanh theo kịch bản. Chuyển sang tối ưu AEB trực tiếp trên toàn bộ không gian biến thể của kịch bản."
-      actions={
-        <div className="flex items-center gap-2">
-          <PillButton onClick={() => setRefresh((x) => x + 1)}>Tải lại kết quả</PillButton>
-          {activeScenarioId && (
-            <PillButton variant="dark" href={`/aeb?scenario_id=${activeScenarioId}&tab=mobo`}>
-              Tối ưu kịch bản này
-            </PillButton>
-          )}
-        </div>
-      }
-    >
-      <ErrorNote message={error} />
-
-      {/* Điều hướng chuyển chế độ (Tabs) */}
-      <div className="flex items-center gap-2 border-b border-solid border-vehicsim-line pb-1">
-        <button
-          type="button"
-          onClick={() => onTabChange?.("baseline")}
-          className={cx(
-            "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
-            activeTab === "baseline"
-              ? "border-b-2 border-vehicsim-ink bg-white text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
-              : "text-vehicsim-muted hover:text-vehicsim-ink",
-          )}
-        >
-          <span>Kết quả baseline & Đánh giá</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onTabChange?.("failures")}
-          className={cx(
-            "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
-            activeTab === "failures"
-              ? "border-b-2 border-vehicsim-ink bg-white text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
-              : "text-vehicsim-muted hover:text-vehicsim-ink",
-          )}
-        >
-          <span>Tra cứu ca lỗi chi tiết</span>
-        </button>
-      </div>
-
-      <section aria-label="Bộ lọc baseline" className="grid grid-cols-2 xl:grid-cols-5 gap-3 rounded-[20px] bg-white p-5 shadow-vehicsim-card">
-        <label className="text-[12px] font-semibold text-vehicsim-muted">
-          Họ kịch bản
-          <select
-            aria-label="Họ kịch bản"
-            className="mt-1 block w-full rounded-xl border border-vehicsim-line p-2 text-[13px] text-vehicsim-ink"
-            value={filters.scenario_id ?? ""}
-            onChange={(e) => change("scenario_id", e.target.value)}
-          >
-            <option value="">Tất cả kịch bản</option>
-            {ctx?.families.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.code} · {f.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-[12px] font-semibold text-vehicsim-muted">
-          Phiên bản baseline
-          <select
-            aria-label="Phiên bản baseline"
-            className="mt-1 block w-full rounded-xl border border-vehicsim-line p-2 text-[13px] text-vehicsim-ink"
-            value={filters.aeb_version_id ?? ""}
-            onChange={(e) => change("aeb_version_id", e.target.value)}
-          >
-            <option value="">Tất cả phiên bản</option>
-            {ctx?.versions.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {(
-          [
-            ["status", "Trạng thái", ["PENDING", "RUNNING", "PAUSED", "COMPLETED", "FAILED", "STOPPED"]],
-            ["weather", "Thời tiết", ["CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG"]],
-            ["time_of_day", "Thời điểm", ["DAY", "DUSK", "NIGHT"]],
-            ["failure_class", "Khâu lỗi", ["PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS"]],
-          ] as const
-        ).map(([key, label, values]) => (
-          <label key={key} className="text-[12px] font-semibold text-vehicsim-muted">
-            {label}
-            <select
-              aria-label={label}
-              className="mt-1 block w-full rounded-xl border border-vehicsim-line p-2 text-[13px] text-vehicsim-ink"
-              value={filters[key] ?? ""}
-              onChange={(e) => change(key, e.target.value)}
-            >
-              <option value="">Tất cả</option>
-              {values.map((value) => (
-                <option key={value} value={value}>
-                  {LABELS[value] ?? vi(value)}
-                </option>
-              ))}
-            </select>
-          </label>
-        ))}
-        {(
-          [
-            ["variant_id", "ID biến thể"],
-            ["vehicle_id", "ID xe"],
-            ["simulator", "Phiên bản simulator"],
-          ] as const
-        ).map(([key, label]) => (
-          <label key={key} className="text-[12px] font-semibold text-vehicsim-muted">
-            {label}
-            <input
-              aria-label={label}
-              type={key === "simulator" ? "text" : "number"}
-              min={1}
-              className="mt-1 block w-full rounded-xl border border-vehicsim-line p-2 text-[13px] text-vehicsim-ink"
-              value={filters[key] ?? ""}
-              onChange={(e) => change(key, e.target.value)}
-            />
-          </label>
-        ))}
-      </section>
-
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        <StatCard label="Tổng lượt chạy" value={data?.total ?? "—"} />
-        {(
-          [
-            "SAFE",
-            "COLLISION",
-            "FALSE_BRAKING",
-            "NEAR_MISS",
-            "MISSED_BRAKING",
-            "OTHER_FAILURE",
-            "ERROR",
-            "CANCELLED",
-            "TIMEOUT",
-            "INCOMPLETE",
-            "NOT_FINISHED",
-          ] as const
-        ).map((key) => (
-          <StatCard key={key} label={LABELS[key]} value={data ? data.counts[key] ?? 0 : "—"} />
-        ))}
-      </div>
-
-      {data?.objective_groups.map((group) => (
-        <section key={group.identity} className="rounded-[20px] bg-white p-5 space-y-2 shadow-vehicsim-card">
-          <h2 className="text-[13px] font-bold text-vehicsim-ink">
-            {group.simulator} · baseline #{group.baseline_id} · xe #{group.vehicle_id}
-          </h2>
-          <ObjectiveSummary value={group.objectives} />
-          <p className="text-[11px] text-vehicsim-muted">
-            Hợp đồng {group.objectives.version}. Chỉ tổng hợp cùng identity; run lỗi/thiếu làm objective không đầy đủ.
-            {group.carla_observational_only ? " CARLA chỉ phục vụ quan sát; chưa tương đương với số động học." : ""}
-          </p>
-        </section>
-      ))}
-
-      {/* Danh sách các lượt chạy của kịch bản */}
-      <section className="rounded-[20px] bg-white p-5 space-y-4 shadow-vehicsim-card">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-[15px] font-bold text-vehicsim-ink">
-              Danh sách các lượt chạy mô phỏng {data ? `(${data.total})` : ""}
-            </h2>
-            <p className="text-[12px] text-vehicsim-muted">
-              Kết quả chi tiết từng lượt chạy với cấu hình AEB cơ sở (Baseline). Bạn có thể xem chi tiết từng ca lỗi hoặc chuyển ngay sang tối ưu hoá toàn bộ kịch bản.
-            </p>
-          </div>
-          {activeScenarioId && (
-            <PillButton variant="dark" href={`/aeb?scenario_id=${activeScenarioId}&tab=mobo`}>
-              Tối ưu kịch bản {currentFamily?.code ?? ""}
-            </PillButton>
-          )}
-        </div>
-
-        <div className="overflow-x-auto rounded-[14px] border border-solid border-vehicsim-line">
-          <table className="w-full min-w-[900px] text-[12px] text-left">
-            <thead className="bg-vehicsim-soft text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-              <tr>
-                <th className="p-3">Run / biến thể</th>
-                <th className="p-3">Seed</th>
-                <th className="p-3">Baseline / xe</th>
-                <th className="p-3">Simulator</th>
-                <th className="p-3">Trạng thái / kết quả</th>
-                <th className="p-3 text-right pr-4">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-solid divide-vehicsim-line bg-white">
-              {data?.items.map((run) => (
-                <tr key={run.run_id} className="hover:bg-vehicsim-row">
-                  <td className="p-3">
-                    <Link className="font-bold text-vehicsim-decision hover:underline" href={`/analysis/failures/${run.run_id}`}>
-                      #{run.run_id} · {run.variant}
-                    </Link>
-                    <span className="block text-[11px] text-vehicsim-faint">{run.family}</span>
-                  </td>
-                  <td className="p-3 font-mono">{run.seed}</td>
-                  <td className="p-3 font-medium">
-                    #{run.baseline_id} / #{run.vehicle_id}
-                  </td>
-                  <td className="p-3">{run.simulator}</td>
-                  <td className="p-3">
-                    <span className="font-semibold text-vehicsim-ink">{LABELS[run.status] ?? run.status}</span>
-                    <span className="block text-[11px] text-vehicsim-muted">{LABELS[run.outcome] ?? run.outcome}</span>
-                    {!run.trace_available && <span className="text-[11px] font-semibold text-vehicsim-warn">Thiếu telemetry</span>}
-                  </td>
-                  <td className="p-3 text-right pr-4">
-                    <Link
-                      href={`/analysis/failures/${run.run_id}`}
-                      className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[11px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
-                    >
-                      Chi tiết
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {data?.total === 0 && (
-          <p className="py-6 text-center text-[13px] text-vehicsim-muted">
-            Chưa có lượt chạy baseline phù hợp.{" "}
-            <Link href="/scenarios" className="font-semibold text-vehicsim-decision underline">
-              Chạy baseline ở màn kịch bản
-            </Link>
-            .
-          </p>
+  const activeFilters = FILTER_KEYS.filter(key => filters[key] !== undefined).map(key => {
+    const value = filters[key];
+    const label = key === "scenario_id" ? ctx?.families.find(f => f.id === value)?.name
+      : key === "aeb_version_id" ? ctx?.versions.find(v => v.id === value)?.label : undefined;
+    return { key, label: `${filterLabels[key]}: ${label ?? analysisLabel(String(value))}` };
+  });
+  const returnTo = `/analysis/failures?${params}`;
+  const roleField = (run: AnalysisRun) => <select aria-label={`Tập của run ${run.run_id}`} title={!eligible(run) ? "Run cần hoàn tất, có telemetry và kết quả hợp lệ" : undefined}
+    disabled={!canWrite || busy || !storageKey || draft?.key !== storageKey || !eligible(run)} value={chosen[run.run_id]?.role ?? ""} onChange={e => assign(run, e.target.value)}>
+    <option value="">Không chọn</option><option value="OPTIMIZATION">Tối ưu</option><option value="VALIDATION">Xác minh</option>
+  </select>;
+  const title = analysisListTitle(view);
+  const nav = <AnalysisNav view={view} count={selection.length} />;
+  const optimizationFamily = filters.scenario_id === undefined
+    ? ctx?.families[0]
+    : ctx?.families.find(f => f.id === filters.scenario_id);
+  if (view === "failures") return <LegacyFailureCases initialScenario={filters.scenario_id} navigation={nav} />;
+  return <VehicSimPage step={4} title={title} crumbs={[{ label: "Phân tích" }, { label: view === "overview" ? "Tổng quan baseline" : view === "runs" ? "Lượt chạy" : "Tập bàn giao" }]}
+    subtitle={view === "dataset" ? "Rà soát hai tập độc lập, giữ ca an toàn và chốt bằng chứng trước khi bàn giao." : "Từ kết quả mô phỏng đến bằng chứng kỹ thuật và tập dữ liệu cho bước tối ưu AEB."}
+    actions={view === "dataset" ? (
+      <PillButton disabled={!savedId || snapshotLoading || busy} onClick={() => setSnapshotRefresh(value => value + 1)}>Tải lại tập đã chốt</PillButton>
+    ) : (
+      <>
+        <PillButton disabled={loading} onClick={() => setRefresh(x => x + 1)}>Tải lại kết quả</PillButton>
+        {canWrite && optimizationFamily && (
+          <PillButton variant="dark" href={`/aeb?scenario_id=${optimizationFamily.id}&tab=mobo`}>
+            Tối ưu toàn họ {optimizationFamily.code}
+          </PillButton>
         )}
-
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-          <span className="text-[12px] text-vehicsim-muted">
-            Hiển thị trang {page} / {Math.max(1, Math.ceil((data?.total ?? 0) / 30))} (30 lượt chạy/trang)
-          </span>
-          <div className="flex gap-2 items-center">
-            <PillButton disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Trang trước
-            </PillButton>
-            <PillButton disabled={!data || page * 30 >= data.total} onClick={() => setPage((p) => p + 1)}>
-              Trang sau
-            </PillButton>
-          </div>
-        </div>
-
-        {/* Banner điều hướng sang Tối ưu AEB toàn kịch bản */}
-        <div className="flex items-center justify-between rounded-[16px] bg-vehicsim-soft/70 p-4 border border-solid border-vehicsim-line">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[13px] font-bold text-vehicsim-ink">Sẵn sàng tối ưu hoá thông số AEB?</span>
-            <span className="text-[12px] text-vehicsim-muted">
-              Thuật toán Bayesian MOBO sẽ tự động tìm kiếm bộ 4 tham số tối ưu (TTC, độ trễ, lực phanh, độ êm) trên toàn bộ biến thể của kịch bản {currentFamily?.code ?? ""}.
-            </span>
-          </div>
-          {activeScenarioId && (
-            <PillButton variant="dark" href={`/aeb?scenario_id=${activeScenarioId}&tab=mobo`}>
-              Bắt đầu tối ưu kịch bản {currentFamily?.code ?? ""}
-            </PillButton>
-          )}
-        </div>
-      </section>
-    </VehicSimPage>
-  );
+      </>
+    )}>
+    {nav}
+    {view !== "dataset" && <ErrorNote message={error} />}
+    {view !== "dataset" && error && <div><button className="analysis-button" onClick={() => setRefresh(x => x + 1)}>Thử tải lại</button></div>}
+    {draftReady && (draft?.notice || draftNotice) && <p role="status" className="analysis-caption">{draft?.notice || draftNotice}</p>}
+    {!canWrite && <p className="analysis-caption">Bạn đang ở chế độ chỉ đọc. Chốt tập dữ liệu yêu cầu quyền ghi.</p>}
+    {selection.length > 0 && view !== "dataset" && <div className="analysis-selection-bar"><span><strong>{selection.length}</strong> run đã chọn · {opt.length} tối ưu · {val.length} xác minh</span><button className="analysis-button" onClick={() => update({ view: "dataset" })}>Rà soát tập bàn giao →</button></div>}
+    {view !== "dataset" && <section className="analysis-panel space-y-4" aria-label="Bộ lọc baseline">
+      <div className="analysis-toolbar"><h2>Phạm vi phân tích</h2><button className="analysis-button" onClick={() => update(Object.fromEntries(FILTER_KEYS.map(key => [key, undefined])), true)}>Xóa bộ lọc</button></div>
+      <div className="analysis-filters">
+        <label>Họ kịch bản<select aria-label="Họ kịch bản" value={filters.scenario_id ?? ""} onChange={e => update({ scenario_id: e.target.value }, true)}><option value="">Tất cả họ</option>{ctx?.families.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
+        <label>Phiên bản baseline<select aria-label="Phiên bản baseline" value={filters.aeb_version_id ?? ""} onChange={e => update({ aeb_version_id: e.target.value }, true)}><option value="">Tất cả</option>{ctx?.versions.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}</select></label>
+        {([["status", "Trạng thái", ["PENDING", "RUNNING", "PAUSED", "COMPLETED", "FAILED", "STOPPED"]], ["failure_class", "Khâu lỗi", ["PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS"]]] as const).map(([key, label, values]) => <label key={key}>{label}<select aria-label={label} value={filters[key] ?? ""} onChange={e => update({ [key]: e.target.value }, true)}><option value="">Tất cả</option>{values.map(value => <option key={value} value={value}>{analysisLabel(value)}</option>)}</select></label>)}
+      </div>
+      <details open={Boolean(filters.weather || filters.time_of_day || filters.variant_id || filters.vehicle_id || filters.simulator)}><summary className="cursor-pointer text-[12px] font-semibold text-vehicsim-decision">Điều kiện chạy và bộ lọc nâng cao</summary><div className="analysis-filters mt-4">
+        {([["weather", "Thời tiết", ["CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG"]], ["time_of_day", "Thời điểm", ["DAY", "DUSK", "NIGHT"]]] as const).map(([key, label, values]) => <label key={key}>{label}<select value={filters[key] ?? ""} onChange={e => update({ [key]: e.target.value }, true)}><option value="">Tất cả</option>{values.map(value => <option key={value} value={value}>{analysisLabel(value)}</option>)}</select></label>)}
+        {([["variant_id", "ID biến thể"], ["vehicle_id", "ID xe"], ["simulator", "Phiên bản simulator"]] as const).map(([key, label]) => <label key={key}>{label}<input type={key === "simulator" ? "text" : "number"} min={1} value={filters[key] ?? ""} onChange={e => update({ [key]: e.target.value }, true)} /></label>)}
+      </div></details>
+      <p className="analysis-caption">Thống kê và danh sách dùng cùng bộ lọc. Đổi bộ lọc giữ nguyên tập đã chọn.</p>
+    </section>}
+    {view === "overview" && <AnalysisOverview data={data} loading={loading} hasError={Boolean(error)} onOpenRuns={() => update({ view: "runs" })} onFilterSimulator={simulator => update({ simulator }, true)} />}
+    {view === "dataset" && <AnalysisDatasetPreparation selection={selection} checks={checks} ready={draftReady} canWrite={canWrite} canSave={canSave}
+      operation={operation} operationError={mutationError} errorKind={operationError?.kind ?? null}
+      snapshotId={savedId} hasSnapshot={rawDatasetId !== null} snapshot={saved} snapshotLoading={snapshotLoading} snapshotError={snapshotError}
+      search={params.get("d_q") ?? ""} returnTo={returnTo} renderSelection={roleField}
+      onSearch={d_q => update({ d_q })} onOpenRuns={() => update({ view: "runs" })} onRemove={run => assign(run, "")}
+      onClear={clearDraft} onSave={() => void save()} onProceed={() => void proceed()} onRetrySnapshot={() => setSnapshotRefresh(value => value + 1)} />}
+      {view === "runs" && <AnalysisRunExplorer data={data} loading={loading} hasError={Boolean(error)} page={page} size={size}
+        search={search} sort={sort} returnTo={returnTo} selectionCount={selection.length} activeFilters={activeFilters}
+        onRemoveFilter={key => update({ [key]: undefined }, true)} onSearch={q => update({ q })} onSort={sort => update({ sort })}
+        onPage={page => update({ page })} onSize={page_size => update({ page_size }, true)} onOpenDataset={() => update({ view: "dataset" })}
+        renderSelection={roleField} isSelected={run => Boolean(chosen[run.run_id])} />}
+  </VehicSimPage>;
 }

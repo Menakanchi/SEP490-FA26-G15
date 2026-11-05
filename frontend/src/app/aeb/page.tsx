@@ -119,7 +119,7 @@ export default function AebConfigPage() {
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-vehicsim-decision" />
             <span>
-              Đang tối ưu hoá thuật toán AEB trên toàn bộ không gian biến thể của kịch bản <strong>{targetFamily.code} · {targetFamily.name}</strong>.
+              Chuẩn bị tối ưu AEB trên toàn bộ biến thể của họ kịch bản <strong>{targetFamily.code} · {targetFamily.name}</strong>.
             </span>
           </div>
           <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-vehicsim-decision shadow-sm">
@@ -128,6 +128,7 @@ export default function AebConfigPage() {
         </div>
       )}
       {dataset && <AnalysisSelectionSummary dataset={dataset} />}
+      {dataset && <p className="text-[12px] text-vehicsim-muted">Tập phân tích đã chốt được chuyển sang bước này. MOBO hiện chạy trên toàn họ kịch bản.</p>}
       {created && (
         <div className="flex items-center justify-between gap-4 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok shadow-sm">
           <span>Đã tạo ứng viên AEB {created.label}. Bước tiếp theo: chạy kiểm thử hồi quy so với bản cơ sở.</span>

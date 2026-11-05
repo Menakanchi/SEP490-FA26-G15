@@ -1,3 +1,26 @@
+import type { JourneyStepKey } from "@/types/vehicsim";
+
+/** Lối vào trên sidebar và thanh hành trình của project nhóm. */
+export function teamJourneyLinks(reviewer: boolean): Record<JourneyStepKey, { label: string; href: string }[]> {
+  return {
+    SCENARIO: reviewer ? [{ label: "Họ kịch bản", href: "/scenarios" }] : [
+      { label: "Sinh từ mô tả", href: "/scenarios/new" },
+      { label: "Nhập tham số", href: "/scenarios?new=1" },
+    ],
+    BASELINE: [
+      ...(!reviewer ? [{ label: "Họ kịch bản & chạy baseline", href: "/scenarios" }] : []),
+      { label: "Dữ liệu CARLA", href: "/analysis/carla" },
+    ],
+    RESULTS: [{ label: "Kết quả & phân tích", href: "/analysis/failures" }],
+    IMPROVE: [{ label: "Phiên bản AEB", href: "/aeb" }],
+    VERIFY: [
+      { label: "Kiểm thử hồi quy", href: "/validation/regression" },
+      { label: "Khuyến nghị", href: "/validation/recommendations" },
+      { label: "Lịch sử quyết định", href: "/validation/decisions" },
+    ],
+  };
+}
+
 /**
  * Vòng MVP 6 bước của VehicSim (kế hoạch MVP của nhóm, motif người đi bộ băng
  * ngang). Dùng chung cho panel đăng nhập, trang Dashboard và thanh tiến trình.

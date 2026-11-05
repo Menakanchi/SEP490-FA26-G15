@@ -13,7 +13,6 @@ import type { RecommendationDetail, ReviewDecision } from "@/types/vehicsim";
 
 type Decision = Exclude<ReviewDecision, "PENDING">;
 
-/** Luồng duyệt UC-62/UC-63 dùng project đã chốt và quyền backend theo workspace (ADR-048). */
 export default function ReviewPage() {
   const { testId } = useParams<{ testId: string }>();
   const router = useRouter();
@@ -49,7 +48,6 @@ export default function ReviewPage() {
   const rates = r.summary.rates;
   const final = r.review.decision === "ACCEPT" || r.review.decision === "REJECT";
   const running = r.status === "RUNNING" || r.status === "PENDING";
-  // Khớp các chặn trong regression.decide: chỉ Accept khi test PASSED, baseline còn hiện hành, candidate chưa được quyết.
   const acceptBlock =
     r.status !== "PASSED"
       ? "Kiểm thử hồi quy không đạt — ứng viên làm xấu đi kịch bản không bao giờ được chấp nhận"
@@ -91,7 +89,6 @@ export default function ReviewPage() {
       )}
     </>,
     <>Tôi hiểu rằng bằng chứng độ bền vững, Pareto và độ nhạy chưa được chạy cho ứng viên này</>,
-    // Chỉ khi regression chạy trên CARLA: Reviewer phải xác nhận đã đọc cảnh báo (backend không chặn, vẫn cho Accept — TD-17).
     ...(r.simulator_caveat?.carla && !r.simulator_caveat.calibrated
       ? [<>Tôi hiểu rằng số CARLA chưa hiệu chuẩn phanh, chỉ để quan sát và đối chiếu, không phải chứng nhận an toàn</>]
       : []),

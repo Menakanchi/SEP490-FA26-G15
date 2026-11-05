@@ -10,7 +10,6 @@ import { viSummary } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { RegressionPreview } from "@/types/vehicsim";
 
-/** Khớp `defaultCriteria` / `CRITERIA_LABELS` trong RegressionService.java. */
 const CRITERIA = [
   { key: "no_new_collision", label: "Không kịch bản an toàn nào được chuyển thành va chạm", required: true },
   { key: "collision_rate_not_increase", label: "Tỉ lệ va chạm không được tăng", required: false },
@@ -40,7 +39,6 @@ function NewRegressionForm() {
   const [scenarioId, setScenarioId] = useState<number | null>(null);
   const [oldCritical, setOldCritical] = useState(true);
   const [allVariants, setAllVariants] = useState(true);
-  // Tập chọn tay (vd. tập xác minh do màn Phân tích chốt, truyền qua ?variants=): thay cho hai lựa chọn trên.
   const [custom, setCustom] = useState(false);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [criteria, setCriteria] = useState<CriterionState>(initialCriteria);
@@ -52,11 +50,9 @@ function NewRegressionForm() {
   const candidates = useMemo(() => (ctx?.versions ?? []).filter((v) => v.status === "CANDIDATE"), [ctx]);
   const candidate = candidates.find((v) => v.id === candidateId) ?? null;
   const familyName = ctx?.families.find((f) => f.id === scenarioId)?.name ?? "—";
-  // Experiencer tạo ứng viên ở bước ④ của project; role khác ở trang AEB.
   const createCandidateHref = isExperiencer && ctx ? `/projects/${ctx.project.id}/improve` : "/aeb";
   const noCandidate = !!ctx && candidates.length === 0;
 
-  // Chọn sẵn candidate (từ ?candidate= của trang AEB), họ kịch bản (?scenario=, mặc định họ đầu tiên) và tập chọn tay (?variants=).
   useEffect(() => {
     if (!ctx) return;
     const wanted = Number(params.get("candidate"));
@@ -78,7 +74,6 @@ function NewRegressionForm() {
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được số liệu bộ kịch bản"));
   }, [scenarioId]);
 
-  // Chỉ giữ id thuộc họ đang chọn (id lạ từ URL hoặc của họ cũ bị bỏ, backend cũng từ chối id ngoài họ).
   const pickedVariants = useMemo(() => (preview?.variants ?? []).filter((v) => picked.has(v.id)), [preview, picked]);
   const pickedSafe = pickedVariants.filter((v) => v.safe).length;
   const scenarios = !preview
@@ -415,7 +410,6 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Nhãn bộ mô phỏng của test sắp tạo; regression luôn chạy cùng bộ mô phỏng với run baseline được ghép. */
 function simulatorLabel(simulator?: string): string {
   if (!simulator) return "—";
   return simulator.startsWith("carla-") ? `CARLA (${simulator}) · chưa hiệu chuẩn phanh` : `Động học (${simulator})`;

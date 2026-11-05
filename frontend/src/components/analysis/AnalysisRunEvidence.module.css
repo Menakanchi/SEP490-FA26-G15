@@ -1,0 +1,30 @@
+.stack { display:flex; flex-direction:column; gap:18px; min-width:0; }
+.stack h2 { font-size:18px; font-weight:700; color:var(--color-vehicsim-ink); }
+.stack h3 { font-size:15px; font-weight:700; }
+.primary { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:24px; padding:18px; border-radius:14px; background:var(--color-vehicsim-soft); }
+.primary h3 { margin:6px 0; }
+.primary p, .card > p { font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
+.meta { display:flex; gap:24px; }
+.meta dt, .facts dt { font-size:12px; color:var(--color-vehicsim-muted); }
+.meta dd { font-weight:700; font-size:14px; margin-top:6px; overflow-wrap:anywhere; }
+.grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.card { display:flex; flex-direction:column; gap:14px; min-width:0; padding:20px; border:1px solid var(--color-vehicsim-line); border-radius:18px; background:white; }
+.selected { border-color:var(--color-vehicsim-decision); box-shadow:inset 3px 0 var(--color-vehicsim-decision); }
+.header { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px; }
+.header h3 { display:flex; gap:8px; align-items:center; }
+.number { display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:var(--color-vehicsim-soft); font-size:12px; }
+.failed,.passed,.unknown { border-radius:20px; padding:4px 8px; font-size:11px; font-weight:600; }
+.failed { background:var(--color-vehicsim-danger-bg); color:var(--color-vehicsim-danger); }
+.passed { background:var(--color-vehicsim-ok-bg); color:var(--color-vehicsim-ok); }
+.unknown { background:var(--color-vehicsim-soft); color:var(--color-vehicsim-muted); }
+.primaryLabel { font-size:11px; color:var(--color-vehicsim-decision); }
+.facts { display:grid; gap:10px; }
+.facts > div { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
+.facts dd { font-size:13px; overflow-wrap:anywhere; }
+.facts small { display:block; color:var(--color-vehicsim-muted); font-size:11px; margin-top:3px; }
+.measurements { border-top:1px solid var(--color-vehicsim-line); padding-top:14px; display:flex; flex-direction:column; gap:10px; }
+.measurements h4 { font-size:12px; font-weight:700; }
+.links { display:flex; flex-wrap:wrap; gap:12px; font-size:12px; font-weight:600; color:var(--color-vehicsim-decision); }
+.links a:hover { text-decoration:underline; }
+@media(max-width:1100px) { .primary { grid-template-columns:1fr; } }
+@media(max-width:800px) { .grid { grid-template-columns:1fr; } .meta { flex-wrap:wrap; } }
