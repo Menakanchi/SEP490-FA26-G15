@@ -35,7 +35,6 @@ export default function RegressionListPage() {
 
   useEffect(load, [load]);
 
-  // Test đang chạy → hỏi lại định kỳ để thanh tiến độ và KPI tự cập nhật.
   const running = data?.kpis.running ?? 0;
   useEffect(() => {
     if (!running) return;
@@ -50,8 +49,6 @@ export default function RegressionListPage() {
       ),
     [data, status, baseline, author],
   );
-  // API trả cả danh sách (KPI tính trên toàn bộ) và bộ lọc lọc tại chỗ, nên phân trang cũng làm ở trình duyệt.
-  // Kẹp trang hiện tại khi danh sách ngắn lại (lọc, hoặc lượt hỏi lại định kỳ trả ít mục hơn).
   const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
   const current = Math.min(page, pages);
   const offset = (current - 1) * PAGE_SIZE;
