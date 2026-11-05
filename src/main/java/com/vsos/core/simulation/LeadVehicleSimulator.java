@@ -97,14 +97,26 @@ public final class LeadVehicleSimulator {
         }
 
         double decelAvailable = Math.min(Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()), frictionLimit);
-        Map<String, Object> metrics = summaryMetrics(frames, endReason.equals("COLLISION"), targetY, halfSum, vehicle, stack, stats, v0, decelAvailable,
-                impactRelative);
+        return buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, targetY, LeadVehicleCase.TARGET_LENGTH_M, halfSum, v0,
+                decelAvailable, impactRelative, AebStack.DT);
+    }
+
+    /**
+     * Phần "ghi kết quả" dùng chung với runner CARLA (như {@link Simulator#buildOutcome} của người đi bộ): {@code targetY} là độ lệch ngang mục tiêu so
+     * với ego, {@code targetLength} chiều dài mục tiêu (CARLA lấy từ bounding box thật), {@code halfSum} nửa bề ngang ego + nửa bề ngang mục tiêu.
+     */
+    public static SimulationOutcome buildOutcome(LeadVehicleCase c, AebParams params, VehicleSpec vehicle, AebStack stack, Simulator.MotionStats stats,
+                                                 List<Frame> frames, List<Map<String, Object>> events, String endReason, double targetY, double targetLength,
+                                                 double halfSum, double v0, double decelAvailable, double impactRelative, double dt) {
+        Map<String, Object> metrics = summaryMetrics(frames, endReason.equals("COLLISION"), targetY, targetLength, halfSum, vehicle, stack, stats, v0,
+                decelAvailable, impactRelative, dt);
         return new SimulationOutcome(endReason, frames.isEmpty() ? 0.0 : Py.round(frames.get(frames.size() - 1).t(), 3), frames, events, metrics,
                 Py.round(c.initialDistanceM(), 3), params.asDict(), c.asDict());
     }
 
-    private static Map<String, Object> summaryMetrics(List<Frame> frames, boolean collision, double targetY, double halfSum, VehicleSpec vehicle,
-                                                      AebStack stack, Simulator.MotionStats stats, double v0, double decelTarget, double impactRelative) {
+    private static Map<String, Object> summaryMetrics(List<Frame> frames, boolean collision, double targetY, double targetLength, double halfSum,
+                                                      VehicleSpec vehicle, AebStack stack, Simulator.MotionStats stats, double v0, double decelTarget,
+                                                      double impactRelative, double dt) {
         double minDistance = Double.POSITIVE_INFINITY;
         Double minTtc = null;
         Double gtInPathT = null;
@@ -112,7 +124,7 @@ public final class LeadVehicleSimulator {
         for (Frame f : frames) {
             double front = f.egoX();
             double rear = f.egoX() - vehicle.lengthM();
-            double targetFront = f.pedX() + LeadVehicleCase.TARGET_LENGTH_M;
+            double targetFront = f.pedX() + targetLength;
             double dx = front < f.pedX() ? f.pedX() - front : rear > targetFront ? rear - targetFront : 0.0;
             minDistance = Math.min(minDistance, Py.hypot(dx, dy));
             if (f.ttcGt() != null) {
@@ -147,7 +159,7 @@ public final class LeadVehicleSimulator {
                 }
             }
         }
-        Double[] phase = Simulator.brakePhaseMetrics(frames, stack.brakeOnsetT(), Py.round(decelTarget, 3), AebStack.DT);
+        Double[] phase = Simulator.brakePhaseMetrics(frames, stack.brakeOnsetT(), Py.round(decelTarget, 3), dt);
 
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("collision", collision);

@@ -7,6 +7,7 @@ import java.util.Map;
 import com.vsos.core.bridge.Bundle;
 import com.vsos.core.common.Py;
 import com.vsos.core.simulation.CrossingCase;
+import com.vsos.core.simulation.LeadVehicleCase;
 import com.vsos.core.simulation.Simulator;
 import com.vsos.core.simulation.VehicleSpec;
 
@@ -21,6 +22,10 @@ public final class XoscExport {
     private static final String ROAD_ID = "40";
     private static final String LANE_ID = "-4";
     private static final double START_S = 20.0;
+    /** Chiều dài đoạn line của road 40; xe mục tiêu CCR phải nằm trọn trong đoạn này suốt run (ADR-050). */
+    static final double ROAD_LENGTH_M = 228.0;
+    /** Blueprint xe mục tiêu CCR — sedan cỡ mục tiêu GVT; kích thước thật lấy từ bounding box CARLA lúc chạy. */
+    public static final String LEAD_BLUEPRINT = "vehicle.toyota.prius";
     /** {@code PedestrianControl.run_step} (ScenarioRunner 0.9.16) bỏ waypoint khi còn cách dưới 1,0 m theo mặt phẳng ngang. */
     static final double SR_WALKER_ARRIVAL_RADIUS_M = 1.0;
     /**
@@ -96,6 +101,9 @@ public final class XoscExport {
     }
 
     public static String export(Bundle.RunSpec spec) {
+        if (spec.leadCase() != null) {
+            return exportLead(spec);
+        }
         CrossingCase c = spec.requireCrossing("Bộ xuất .xosc");
         VehicleSpec vehicle = spec.vehicle();
         El root = new El("OpenSCENARIO");
@@ -113,6 +121,29 @@ public final class XoscExport {
         values.put("weather", c.weather());
         values.put("time_of_day", c.timeOfDay());
         values.put("friction", c.friction() == null ? "" : c.friction());
+        vehicleAndSource(values, spec);
+
+        declare(declarations, values);
+        El entities = header(root, values, vehicle);
+        El pedestrian = node(node(entities, "ScenarioObject", "name", "pedestrian"), "Pedestrian", "name", "walker.pedestrian.0001",
+                "model", "walker.pedestrian.0001", "mass", "75", "pedestrianCategory", "pedestrian");
+        node(pedestrian, "ParameterDeclarations");
+        El box = node(pedestrian, "BoundingBox");
+        node(box, "Center", "x", "0", "y", "0", "z", "0.9");
+        node(box, "Dimensions", "width", "0.6", "length", "0.6", "height", "1.8");
+        node(node(pedestrian, "Properties"), "Property", "name", "type", "value", "simulation");
+
+        El storyboard = node(root, "Storyboard");
+        El actions = initActions(storyboard, c.weather(), c.timeOfDay(), c.roadFriction(), vehicle, c.egoSpeedKmh());
+        El pedInit = node(actions, "Private", "entityRef", "pedestrian");
+        position(node(node(pedInit, "PrivateAction"), "TeleportAction"), c.crossingX(), Simulator.PEDESTRIAN_START_Y_M);
+        speedAction(pedInit, 0);
+        return crossingStory(root, storyboard, c, vehicle);
+    }
+
+    /** Phần tham số xe / AEB / nguồn — chung cho mọi category, giữ đúng thứ tự cũ để XML người đi bộ không đổi từng byte. */
+    private static void vehicleAndSource(Map<String, Object> values, Bundle.RunSpec spec) {
+        VehicleSpec vehicle = spec.vehicle();
         values.put("vehicle_length_m", vehicle.lengthM());
         values.put("vehicle_width_m", vehicle.widthM());
         values.put("vehicle_max_brake_decel_mps2", vehicle.maxBrakeDecelMps2());
@@ -151,11 +182,18 @@ public final class XoscExport {
         if (spec.vehicleCarla().get(Bundle.FULL_BRAKE_DECEL) != null) {  // chỉ khi xe đã đo: xe chưa đo giữ nguyên XML cũ từng byte
             values.put(Bundle.FULL_BRAKE_DECEL, spec.vehicleCarla().get(Bundle.FULL_BRAKE_DECEL));
         }
+    }
+
+    private static void declare(El declarations, Map<String, Object> values) {
         // string giữ nguyên BIGINT/seed, không đi qua float của ParameterRef trong ScenarioRunner.
         for (Map.Entry<String, Object> e : values.entrySet()) {
             node(declarations, "ParameterDeclaration", "name", "vs_" + e.getKey(), "parameterType", "string", "value", valueText(e.getValue()));
         }
         node(declarations, "ParameterDeclaration", "name", "vs_done", "parameterType", "double", "value", "0");
+    }
+
+    /** CatalogLocations, RoadNetwork và entity ego "hero"; trả về {@code Entities} để thêm mục tiêu. */
+    private static El header(El root, Map<String, Object> values, VehicleSpec vehicle) {
         node(root, "CatalogLocations");
         El network = node(root, "RoadNetwork");
         node(network, "LogicFile", "filepath", "Town04");
@@ -174,34 +212,30 @@ public final class XoscExport {
                     "positionZ", "0.3");
         }
         node(node(ego, "Properties"), "Property", "name", "type", "value", "ego_vehicle");
-        El pedestrian = node(node(entities, "ScenarioObject", "name", "pedestrian"), "Pedestrian", "name", "walker.pedestrian.0001",
-                "model", "walker.pedestrian.0001", "mass", "75", "pedestrianCategory", "pedestrian");
-        node(pedestrian, "ParameterDeclarations");
-        box = node(pedestrian, "BoundingBox");
-        node(box, "Center", "x", "0", "y", "0", "z", "0.9");
-        node(box, "Dimensions", "width", "0.6", "length", "0.6", "height", "1.8");
-        node(node(pedestrian, "Properties"), "Property", "name", "type", "value", "simulation");
+        return entities;
+    }
 
-        El storyboard = node(root, "Storyboard");
+    /** Init: môi trường + ego (vị trí, controller AEB, tốc độ đầu). Trả về {@code Actions} để thêm Private của mục tiêu. */
+    private static El initActions(El storyboard, String weatherName, String timeOfDay, double roadFriction, VehicleSpec vehicle, double egoSpeedKmh) {
         El actions = node(node(storyboard, "Init"), "Actions");
         El environment = node(node(node(actions, "GlobalAction"), "EnvironmentAction"), "Environment", "name", "VehicSim");
-        int hour = switch (c.timeOfDay()) {
+        int hour = switch (timeOfDay) {
             case "DAY" -> 12;
             case "DUSK" -> 18;
             default -> 0;
         };
-        double elevation = switch (c.timeOfDay()) {
+        double elevation = switch (timeOfDay) {
             case "DAY" -> 1.05;
             case "DUSK" -> 0.07;
             default -> -0.7;
         };
         node(environment, "TimeOfDay", "animation", "false", "dateTime", String.format("2026-10-18T%02d:00:00", hour));
-        El weather = node(environment, "Weather", "cloudState", c.weather().equals("CLEAR") ? "free" : "overcast");
+        El weather = node(environment, "Weather", "cloudState", weatherName.equals("CLEAR") ? "free" : "overcast");
         node(weather, "Sun", "intensity", "1", "azimuth", "0", "elevation", number(elevation));
-        node(weather, "Fog", "visualRange", c.weather().equals("FOG") ? "30" : "100000");
-        String rain = c.weather().equals("RAIN") ? "0.5" : c.weather().equals("HEAVY_RAIN") ? "1" : "0";
+        node(weather, "Fog", "visualRange", weatherName.equals("FOG") ? "30" : "100000");
+        String rain = weatherName.equals("RAIN") ? "0.5" : weatherName.equals("HEAVY_RAIN") ? "1" : "0";
         node(weather, "Precipitation", "precipitationType", rain.equals("0") ? "dry" : "rain", "intensity", rain);
-        node(environment, "RoadCondition", "frictionScaleFactor", number(c.roadFriction()));
+        node(environment, "RoadCondition", "frictionScaleFactor", number(roadFriction));
         El heroInit = node(actions, "Private", "entityRef", "hero");
         position(node(node(heroInit, "PrivateAction"), "TeleportAction"), -vehicle.lengthM() / 2, 0);
         El controllerAction = node(node(heroInit, "PrivateAction"), "ControllerAction");
@@ -215,11 +249,11 @@ public final class XoscExport {
             node(overrides, control, "value", "0", "active", "false");
         }
         node(overrides, "Gear", "number", "0", "active", "false");
-        speedAction(heroInit, c.egoSpeedKmh() / 3.6);
-        El pedInit = node(actions, "Private", "entityRef", "pedestrian");
-        position(node(node(pedInit, "PrivateAction"), "TeleportAction"), c.crossingX(), Simulator.PEDESTRIAN_START_Y_M);
-        speedAction(pedInit, 0);
+        speedAction(heroInit, egoSpeedKmh / 3.6);
+        return actions;
+    }
 
+    private static String crossingStory(El root, El storyboard, CrossingCase c, VehicleSpec vehicle) {
         El act = node(node(storyboard, "Story", "name", "PedestrianCrossing"), "Act", "name", "Crossing");
         El group = node(act, "ManeuverGroup", "name", "Pedestrian", "maximumExecutionCount", "1");
         node(node(group, "Actors", "selectTriggeringEntities", "false"), "EntityRef", "entityRef", "pedestrian");
@@ -253,6 +287,11 @@ public final class XoscExport {
             node(node(reached, "ByValueCondition"), "StoryboardElementStateCondition", "storyboardElementType", "action",
                     "storyboardElementRef", "CrossRoad", "state", "endTransition");
         }
+        return finishStory(root, storyboard, act, maneuver);
+    }
+
+    /** Event giữ Act mở tới khi lõi báo đo xong ({@code vs_done}) hoặc hết giờ; rồi ghi XML. */
+    private static String finishStory(El root, El storyboard, El act, El maneuver) {
         // Event chưa kết thúc giữ Act mở, không kết thúc scenario ngay khi người đi bộ đi hết route.
         El hold = node(maneuver, "Event", "name", "HoldMeasurement", "priority", "parallel");
         speedAction(node(hold, "Action", "name", "Hold"), 0);
@@ -269,6 +308,81 @@ public final class XoscExport {
         StringBuilder out = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         serialize(out, root, 0);
         return out.append('\n').toString();
+    }
+
+    /**
+     * Nhóm xe phía trước CCRs / CCRm / CCRb (ADR-050): xe mục tiêu {@code lead} cùng chiều trên road 40, lệch ngang theo độ chồng lấn. Vận tốc xe mục
+     * tiêu do controller {@code vehicsim_lead_control} giữ đúng profile của bộ động học (chạy đều, CCRb phanh đều từ {@code TARGET_BRAKE_START_S});
+     * ScenarioRunner chỉ đặt được tốc độ đích, không đặt được mức giảm tốc.
+     */
+    static String exportLead(Bundle.RunSpec spec) {
+        LeadVehicleCase c = spec.leadCase();
+        VehicleSpec vehicle = spec.vehicle();
+        double targetV = c.targetSpeedKmh() / 3.6;
+        double end = START_S + c.initialDistanceM() + LeadVehicleCase.TARGET_LENGTH_M + targetV * Simulator.MAX_DURATION_S;
+        if (end > ROAD_LENGTH_M - 5) {
+            throw new Bundle.BundleError("Xe phía trước đi ra khỏi đoạn road 40 (dài " + Py.g(ROAD_LENGTH_M) + " m) trong " + Py.g(Simulator.MAX_DURATION_S)
+                    + " s: khoảng cách ban đầu + quãng xe trước chạy = " + Py.g(Math.round(end - START_S)) + " m; giảm khoảng cách hoặc tốc độ xe trước");
+        }
+        El root = new El("OpenSCENARIO");
+        node(root, "FileHeader", "revMajor", "1", "revMinor", "0", "date", "2026-11-05T00:00:00", "description", "VehicSim " + c.category(), "author", "VehicSim");
+        El declarations = node(root, "ParameterDeclarations");
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("format", Xosc.FORMAT);
+        values.put("fixed_delta_seconds", Xosc.STEP_S);
+        values.put("perception_period_s", Xosc.PERCEPTION_PERIOD_S);
+        values.put("seed", spec.seed());
+        values.put("category", c.category());
+        values.put("ego_speed_kmh", c.egoSpeedKmh());
+        values.put("target_speed_kmh", c.targetSpeedKmh());
+        values.put("initial_distance_m", c.initialDistanceM());
+        values.put("target_decel_mps2", c.targetDecelMps2() == null ? "" : c.targetDecelMps2());
+        values.put("lateral_overlap_pct", c.lateralOverlapPct() == null ? "" : c.lateralOverlapPct());
+        values.put("weather", c.weather());
+        values.put("time_of_day", c.timeOfDay());
+        values.put("friction", c.friction() == null ? "" : c.friction());
+        vehicleAndSource(values, spec);
+        declare(declarations, values);
+        El entities = header(root, values, vehicle);
+        El lead = node(node(entities, "ScenarioObject", "name", "lead"), "Vehicle", "name", LEAD_BLUEPRINT, "vehicleCategory", "car");
+        node(lead, "ParameterDeclarations");
+        El box = node(lead, "BoundingBox");
+        node(box, "Center", "x", "0", "y", "0", "z", "0.75");
+        node(box, "Dimensions", "width", number(LeadVehicleCase.TARGET_WIDTH_M), "length", number(LeadVehicleCase.TARGET_LENGTH_M), "height", "1.5");
+        node(lead, "Performance", "maxSpeed", "70", "maxAcceleration", "200", "maxDeceleration", "20");
+        El axles = node(lead, "Axles");
+        for (String name : List.of("FrontAxle", "RearAxle")) {
+            boolean front = name.equals("FrontAxle");
+            node(axles, name, "maxSteering", front ? "0.5" : "0", "wheelDiameter", "0.6", "trackWidth", "1.8", "positionX", front ? "2.8" : "0",
+                    "positionZ", "0.3");
+        }
+        node(node(lead, "Properties"), "Property", "name", "type", "value", "simulation");
+
+        El storyboard = node(root, "Storyboard");
+        El actions = initActions(storyboard, c.weather(), c.timeOfDay(), c.roadFriction(), vehicle, c.egoSpeedKmh());
+        El leadInit = node(actions, "Private", "entityRef", "lead");
+        position(node(node(leadInit, "PrivateAction"), "TeleportAction"), c.initialDistanceM() + LeadVehicleCase.TARGET_LENGTH_M / 2,
+                c.lateralOffsetM(vehicle.widthM()));
+        El controllerAction = node(node(leadInit, "PrivateAction"), "ControllerAction");
+        El controller = node(node(controllerAction, "AssignControllerAction"), "Controller", "name", "VehicSimLead");
+        El properties = node(controller, "Properties");
+        node(properties, "Property", "name", "module", "value", "vehicsim_lead_control");
+        node(properties, "Property", "name", "speed_mps", "value", number(targetV));
+        node(properties, "Property", "name", "decel_mps2", "value", number(LeadVehicleCase.CCRB.equals(c.category()) && c.targetDecelMps2() != null
+                ? c.targetDecelMps2() : 0.0));
+        node(properties, "Property", "name", "brake_start_s", "value", number(LeadVehicleCase.TARGET_BRAKE_START_S));
+        El overrides = node(controllerAction, "OverrideControllerValueAction");
+        for (String control : List.of("Throttle", "Brake", "Clutch", "ParkingBrake", "SteeringWheel")) {
+            node(overrides, control, "value", "0", "active", "false");
+        }
+        node(overrides, "Gear", "number", "0", "active", "false");
+        speedAction(leadInit, targetV);
+
+        El act = node(node(storyboard, "Story", "name", "LeadVehicle"), "Act", "name", "Approach");
+        El group = node(act, "ManeuverGroup", "name", "Lead", "maximumExecutionCount", "1");
+        node(node(group, "Actors", "selectTriggeringEntities", "false"), "EntityRef", "entityRef", "lead");
+        El maneuver = node(group, "Maneuver", "name", "Drive");
+        return finishStory(root, storyboard, act, maneuver);
     }
 
     /** Như {@code ET.indent(root, space="  ")} rồi {@code ET.tostring(root, encoding="unicode")}. */

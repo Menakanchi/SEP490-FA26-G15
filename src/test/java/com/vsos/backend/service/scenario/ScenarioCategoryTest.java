@@ -67,7 +67,7 @@ class ScenarioCategoryTest {
         ScenarioRules.catalog().forEach(row -> byCode.put((String) row.get("code"), row));
         assertThat(byCode).hasSize(7);
         assertThat(byCode.get("CP_CROSSING").get("simulators")).isEqualTo(List.of("KINEMATIC", "CARLA"));
-        assertThat(byCode.get("CCRB").get("simulators")).isEqualTo(List.of("KINEMATIC"));
+        assertThat(byCode.get("CCRB").get("simulators")).isEqualTo(List.of("KINEMATIC", "CARLA"));
         assertThat(byCode.get("CUT_IN").get("supported")).isEqualTo(false);
     }
 

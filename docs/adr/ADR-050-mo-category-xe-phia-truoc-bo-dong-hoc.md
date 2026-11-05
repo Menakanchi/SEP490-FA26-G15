@@ -1,4 +1,4 @@
-# ADR-050 — Bỏ gán cứng CP_CROSSING; mở nhóm xe phía trước CCRs / CCRm / CCRb trên bộ động học
+# ADR-050 — Bỏ gán cứng CP_CROSSING; mở nhóm xe phía trước CCRs / CCRm / CCRb trên bộ động học và CARLA
 
 **Trạng thái:** Proposed 05/11/2026 — làm theo yêu cầu của chủ dự án trên nhánh `feature/scenario-categories`; chờ thành viên 1, 2, 3 duyệt
 (hợp đồng IR, phần mở rộng AEB, định nghĩa chỉ số) trước khi merge.
@@ -27,8 +27,14 @@ dạng nhưng chỉ đổi được tham số của một tình huống.
 3. **Bundle mang category.** Biến thể CCR có khóa `category` + `target_speed_kmh`, `initial_distance_m`, `target_decel_mps2` (CCRB),
    `lateral_overlap_pct`; biến thể người đi bộ giữ đúng dạng cũ (không thêm khóa). `Bundle.RunSpec` thêm `leadCase` với constructor 8
    tham số cũ giữ nguyên; `Bundle.simulateKinematic` chọn "thế giới" theo category.
-4. **CARLA chưa hỗ trợ nhóm CCR.** `XoscExport` và `CarlaSession` gọi `RunSpec.requireCrossing`, báo lỗi rõ; `RunService` từ chối
-   xếp run CARLA cho họ CCR trước khi vào hàng đợi. Bước xuất `.xosc` / ScenarioRunner cho CCR giao thành viên 2 (TD-42 còn mở).
+4. **CARLA cho nhóm CCR.** `XoscExport.exportLead` sinh `.xosc` (cùng `vehicsim.xosc/v4`, thêm `vs_category` và trường CCR) với xe mục tiêu
+   `lead` (`vehicle.toyota.prius`) đặt trước ego trên Town04 road 40, lệch ngang theo độ chồng lấn. ScenarioRunner chỉ đặt được tốc độ đích
+   (PID của xe quyết định mức giảm tốc), nên xe mục tiêu do controller `worker/vehicsim_lead_control.py` giữ đúng profile của bộ động học
+   (chạy đều; CCRb giảm đều từ 1,0 s) — giống mục tiêu mềm do robot kéo ở Euro NCAP; controller này không chứa logic AEB.
+   `CarlaSession` đọc vị trí / vận tốc actor `lead` qua cùng cầu nối (`open` trả `target.kind`, `init` nhận `target_size`), tính khoảng cách
+   tới đuôi xe theo bounding box thật, dùng `AebStack.stepTarget` và `LeadVehicleSimulator.buildOutcome`; `case.carla.target` ghi blueprint,
+   kích thước và khoảng cách ban đầu đo được. Bộ xuất từ chối ca mà xe mục tiêu chạy ra khỏi đoạn road 40 (228 m) trong 12 s;
+   `RunService` kiểm trước khi xếp run CARLA. Chưa chạy bóng radar cho xe (bộ bám ADR-043 viết cho người đi bộ).
 5. **Hình học và nghĩa của độ chồng lấn (TD-41, nghĩa của VehicSim).** Tim xe mục tiêu lệch `(100 − overlap)/100 × bề ngang ego`:
    100 thẳng hàng, 50 chồng nửa xe, 0 hai mép vừa chạm, −100 lệch hẳn một bề ngang (làn bên). Xe mục tiêu cố định 4,5 × 1,8 m;
    CCRb bắt đầu phanh sau 1,0 s. Nhãn tập thử tự suy: overlap > 0 → DANGEROUS, ≤ 0 → SAFE (ca đo phanh oan, thay cho "dừng ở lề").
@@ -48,9 +54,11 @@ dạng nhưng chỉ đổi được tham số của một tình huống.
 - Số CCR là của bộ động học (perception tổng hợp, chưa hiệu chuẩn phanh — TD-01, TD-17): dùng để so sánh tương đối như CP_CROSSING,
   không phải chứng nhận Euro NCAP.
 - CPLA, TURNING, CUT_IN vẫn chỉ có trong schema (TD-42).
+- `.xosc` người đi bộ không đổi từng byte (`XoscExportTest`, golden `cp-crossing.xosc`), identity `-xosc4` giữ nguyên.
 
 ## Kiểm chứng
 
 `LeadVehicleSimulatorTest` (tất định, TTC theo tốc độ tiếp cận, va chạm khi kích hoạt muộn, xe làn bên không phanh, CCRb phanh, bundle
-CCR khứ hồi và bị bộ xuất `.xosc` từ chối, bundle người đi bộ giữ dạng cũ); `ScenarioCategoryTest` (lưới / luật `LeadFamilySpec`, danh
+CCR khứ hồi, bundle người đi bộ giữ dạng cũ); `CarlaLeadVehicleTest` (`.xosc` CCR đọc lại đúng case, từ chối ca ra khỏi road 40,
+`CarlaSession` với xe mục tiêu: CCRb ghi đúng kết quả / sự kiện, xe làn bên không phanh); `ScenarioCategoryTest` (lưới / luật `LeadFamilySpec`, danh
 mục category, nhận diện category bằng luật, mô tả CCR không cần LLM). Toàn bộ test Java cũ, kể cả các test parity, giữ nguyên kết quả.

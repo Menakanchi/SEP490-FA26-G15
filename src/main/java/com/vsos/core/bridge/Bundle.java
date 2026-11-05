@@ -86,6 +86,18 @@ public final class Bundle {
             this(caseSpec, params, vehicle, seed, aebLabel, vehicleName, source, vehicleCarla, null);
         }
 
+        public String weather() {
+            return leadCase != null ? leadCase.weather() : caseSpec.weather();
+        }
+
+        public String timeOfDay() {
+            return leadCase != null ? leadCase.timeOfDay() : caseSpec.timeOfDay();
+        }
+
+        public double roadFriction() {
+            return leadCase != null ? leadCase.roadFriction() : caseSpec.roadFriction();
+        }
+
         /** Category Euro NCAP của biến thể. */
         public String category() {
             return leadCase != null ? leadCase.category() : CROSSING_CATEGORY;

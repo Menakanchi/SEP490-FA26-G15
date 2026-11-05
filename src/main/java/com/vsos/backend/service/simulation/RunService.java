@@ -253,8 +253,8 @@ public class RunService {
             }
             Object category = variant.json("scenario_ir_json").get("category");
             if (isCarla(simulator) && category != null && LeadVehicleCase.CATEGORIES.contains(category.toString())) {
-                // ADR-050: nhóm xe phía trước chưa có bộ xuất .xosc / runner CARLA; báo trước khi xếp hàng thay vì để run FAILED.
-                throw new InvalidRequestException("Category " + category + " hiện chỉ chạy trên bộ động học; CARLA chưa hỗ trợ (ADR-050)");
+                // ADR-050: xe phía trước phải nằm trọn trong đoạn road 40 của Town04; kiểm bằng chính bộ xuất .xosc trước khi xếp hàng.
+                xosc(Json.obj("variant", variantForBundle(variant.json("scenario_ir_json"), null), "seed", 0));
             }
             long runId = db.insert(
                     "INSERT INTO simulation_runs (project_id, scenario_id, scenario_version_id, carla_vehicle_model_id, aeb_version_id, "

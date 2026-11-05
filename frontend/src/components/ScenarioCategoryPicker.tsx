@@ -18,7 +18,7 @@ export const SCENARIO_CATEGORIES: { code: ScenarioCategory; label: string; proto
 ];
 
 const UNSUPPORTED_HINT = "Chưa hỗ trợ: chưa có bộ mô phỏng cho loại này (TD-42).";
-const KINEMATIC_ONLY_HINT = "Chạy trên bộ động học; CARLA chưa hỗ trợ loại này (ADR-050).";
+const KINEMATIC_ONLY_HINT = "Chỉ chạy trên bộ động học; CARLA chưa hỗ trợ loại này.";
 
 /** Chọn loại kịch bản; loại chưa có bộ mô phỏng hiện mờ. `locked` = sửa họ đã có (một họ một category). */
 export function ScenarioCategoryPicker({
@@ -52,7 +52,7 @@ export function ScenarioCategoryPicker({
         {SCENARIO_CATEGORIES.map((c) => {
           const on = c.code === value;
           const supported = catalog?.[c.code]?.supported ?? c.supported;
-          const carla = catalog?.[c.code]?.carla ?? c.code === "CP_CROSSING";
+          const carla = catalog?.[c.code]?.carla ?? c.supported;
           const disabled = !supported || (locked && !on) || !onChange;
           return (
             <button

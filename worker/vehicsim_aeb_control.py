@@ -1,6 +1,6 @@
 """Controller ScenarioRunner cho ego: lớp CARLA mỏng, KHÔNG có logic AEB (ADR-042).
 
-Mỗi tick: đọc trạng thái CARLA (ego, người đi bộ, va chạm), gửi cho lõi Java qua ``bridge.Bridge``, nhận lệnh phanh và áp vào xe. Khung tọa độ, đo giảm tốc, AEB,
+Mỗi tick: đọc trạng thái CARLA (ego, mục tiêu — người đi bộ hoặc xe phía trước ``lead`` theo ADR-050 — va chạm), gửi cho lõi Java qua ``bridge.Bridge``, nhận lệnh phanh và áp vào xe. Khung tọa độ, đo giảm tốc, AEB,
 bàn đạp phanh, điều kiện kết thúc, chấm điểm và ghi ``result.json`` đều ở ``com.vsos.core`` (xem ``bridge.py``).
 
 Module/class name tuân theo ActorControl của ScenarioRunner: vehicsim_aeb_control -> VehicsimAebControl.
@@ -49,6 +49,10 @@ class VehicsimAebControl(NpcVehicleControl):
             self.bridge.close(grace_s=2.0)
             raise
         self.pedestrian_start_y = opened["constants"]["pedestrian_start_y_m"]
+        # Lõi Java cho biết mục tiêu là người đi bộ hay xe phía trước và role_name của actor trong .xosc.
+        target = opened.get("target") or {"kind": "pedestrian", "role": "pedestrian"}
+        self.target_vehicle = target["kind"] == "vehicle"
+        self.target_role = target["role"]
         # Radar chạy bóng (ADR-043): thuộc tính lấy từ lõi Java; ở đây chỉ gắn cảm biến và chuyển điểm thô, không lọc/bám.
         self.radar_attributes = opened.get("radar") or {}
         self.radar = None
@@ -63,7 +67,8 @@ class VehicsimAebControl(NpcVehicleControl):
 
     def _initialize(self) -> bool:
         world = self._actor.get_world()
-        self.walker = next((a for a in world.get_actors().filter("walker.*") if a.attributes.get("role_name") == "pedestrian"), None)
+        pattern = "vehicle.*" if self.target_vehicle else "walker.*"
+        self.walker = next((a for a in world.get_actors().filter(pattern) if a.attributes.get("role_name") == self.target_role), None)
         if self.walker is None:
             return False
         transform = self._actor.get_transform()
@@ -83,9 +88,14 @@ class VehicsimAebControl(NpcVehicleControl):
                                                    [[round(d.depth, 3), round(d.azimuth, 5), round(d.altitude, 5), round(d.velocity, 3)] for d in data]))
         # Đọc lại thông số CARLA thực sự áp cho xe (sau khi ép ở __init__ và đã qua vài tick), ghi vào result.json để đối chiếu.
         applied = physics_snapshot(self._actor.get_physics_control(), self._actor.bounding_box.extent)
+        target = {}
+        if self.target_vehicle:  # kích thước thật của xe mục tiêu theo bounding box; tâm bbox có thể lệch gốc actor
+            box = self.walker.bounding_box
+            target = {"target_size": [box.extent.x * 2, box.extent.y * 2], "target_center_offset": box.location.x}
         self.bridge.request("init", ego={"fwd": [forward.x, forward.y], "right": [right.x, right.y]}, walker=[location.x, location.y],
                             front_offset=front_offset,
-                            carla={"map": world.get_map().name, "blueprint": self._actor.type_id, "physics": applied})
+                            carla={"map": world.get_map().name, "blueprint": self._actor.type_id, "physics": applied,
+                                   "target_blueprint": self.walker.type_id}, **target)
         self.initialized = True
         return True
 
@@ -107,7 +117,8 @@ class VehicsimAebControl(NpcVehicleControl):
             "step", t=t,
             ego={"loc": [transform.location.x, transform.location.y], "fwd": [forward.x, forward.y], "vel": [velocity.x, velocity.y]},
             ped={"loc": [location.x, location.y], "vel": [ped_velocity.x, ped_velocity.y]},
-            walker_hit=any(name.startswith("walker.") for name in self.collision_types), **extra)
+            walker_hit=any(name.startswith("walker.") for name in self.collision_types),
+            target_hit=self.target_vehicle and any(name.startswith("vehicle.") for name in self.collision_types), **extra)
         if reply["skip"]:  # cùng tick đã xử lý
             return
         if reply["decel_cmd"] > 0:  # AEB đang yêu cầu phanh: thôi giữ tốc độ không đổi

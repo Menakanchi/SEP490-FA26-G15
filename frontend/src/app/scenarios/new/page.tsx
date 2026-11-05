@@ -143,7 +143,7 @@ export default function DescribeScenarioPage() {
         </div>
         <div className="flex items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-4">
           <p className="text-[12px] leading-[1.5] text-vehicsim-muted">
-            Chạy được: người đi bộ băng ngang và xe phía trước đứng yên / chạy chậm / phanh gấp (bộ động học). Chưa lưu gì cho tới khi bạn bấm
+            Chạy được: người đi bộ băng ngang và xe phía trước đứng yên / chạy chậm / phanh gấp (bộ động học và CARLA). Chưa lưu gì cho tới khi bạn bấm
             “Tạo họ kịch bản” ở bước 2.
           </p>
           <PillButton
@@ -236,12 +236,8 @@ export default function DescribeScenarioPage() {
             </pre>
             <PillButton
               className="px-4 py-2 text-[12px]"
-              disabled={irErrors.length > 0 || lead}
-              title={
-                lead
-                  ? "Nhóm xe phía trước chưa có bộ xuất OpenSCENARIO — chỉ chạy trên bộ động học (ADR-050)"
-                  : "Xuất OpenSCENARIO để chạy bằng ScenarioRunner và AEB mặc định"
-              }
+              disabled={irErrors.length > 0}
+              title="Xuất OpenSCENARIO để chạy bằng ScenarioRunner và AEB mặc định"
               onClick={() => void vehicsimApi.downloadScenarioXosc(ir).catch(e => setError(e.message))}
             >
               Tải OpenSCENARIO (.xosc)
@@ -282,7 +278,7 @@ export default function DescribeScenarioPage() {
             <PillButton variant="dark" href={`/scenarios?family=${created.scenario_id}`}>
               Tiếp tục: Chạy baseline
             </PillButton>
-            {!lead && <PillButton href={`/analysis/carla?family=${created.scenario_id}`}>Chạy trên CARLA</PillButton>}
+            <PillButton href={`/analysis/carla?family=${created.scenario_id}`}>Chạy trên CARLA</PillButton>
             <PillButton
               onClick={() => {
                 setCreated(null);

@@ -105,7 +105,7 @@ class LeadVehicleSimulatorTest {
     }
 
     @Test
-    void bundleRoundTripsALeadVehicleVariantAndCarlaPathsRefuseIt() {
+    void bundleRoundTripsALeadVehicleVariantAndExportsItForCarla() {
         Map<String, Object> variant = new LinkedHashMap<>();
         variant.put("category", "CCRB");
         variant.put("ego_speed_kmh", 60.0);
@@ -123,7 +123,7 @@ class LeadVehicleSimulatorTest {
         Bundle.RunSpec again = Bundle.readSpec(Bundle.makeBundle(spec));
         assertThat(again.leadCase()).isEqualTo(spec.leadCase());
         assertThat(Bundle.simulateKinematic(spec).asDict()).isEqualTo(Bundle.simulateKinematic(again).asDict());
-        assertThatThrownBy(() -> XoscExport.export(spec)).isInstanceOf(Bundle.BundleError.class).hasMessageContaining("CCRB");
+        assertThat(XoscExport.export(spec)).contains("vs_category").contains("CCRB"); // ADR-050: CARLA có xe mục tiêu
     }
 
     @Test

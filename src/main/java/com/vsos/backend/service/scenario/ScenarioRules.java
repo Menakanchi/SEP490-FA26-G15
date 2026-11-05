@@ -32,8 +32,8 @@ public final class ScenarioRules {
 
     /** Category đã có bộ mô phỏng động học (ADR-050). Nhóm còn lại mới có trong schema (TD-42). */
     public static final List<String> SIMULATED = List.of(CP_CROSSING, CCRS, CCRM, CCRB);
-    /** Category đã có bộ xuất .xosc + runner CARLA. */
-    public static final List<String> CARLA_READY = List.of(CP_CROSSING);
+    /** Category đã có bộ xuất .xosc + runner CARLA (CCR*: ADR-050, xe mục tiêu chạy theo profile của bộ động học). */
+    public static final List<String> CARLA_READY = List.of(CP_CROSSING, CCRS, CCRM, CCRB);
 
     /** Danh mục category cho giao diện: mã, đối tượng mục tiêu, có chạy được không — nguồn duy nhất thay cho cờ gán cứng ở frontend. */
     public static List<Map<String, Object>> catalog() {

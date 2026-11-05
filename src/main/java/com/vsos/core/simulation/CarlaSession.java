@@ -53,6 +53,15 @@ public final class CarlaSession {
 
     private CrossingFrame frame;
     private double frontOffset;
+    // Xe phía trước (ADR-050): kích thước thật của xe mục tiêu (bounding box CARLA), độ lệch tâm bbox so với gốc actor, mốc mũi ego lúc đầu.
+    private double targetLength = LeadVehicleCase.TARGET_LENGTH_M;
+    private double targetWidth = LeadVehicleCase.TARGET_WIDTH_M;
+    private double targetCenterOffset;
+    private Double egoFront0;
+    private Double lastTargetY;
+    private double peakTargetSpeed;
+    private boolean targetBraking;
+    private double impactRelative;
     private Map<String, Object> carlaInfo = Map.of();
     private boolean pedStarted;
     private boolean braking;
@@ -66,11 +75,25 @@ public final class CarlaSession {
         this.outDir = outDir;
         this.fullBrakeDecel = fullBrakeDecel;
         this.stepS = profile.stepS();
-        this.stack = Simulator.newAebStack(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle(), events, stepS, profile.perceptionPeriodS());
-        this.shadow = Simulator.newAebStack(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle(), shadowEvents, stepS, profile.perceptionPeriodS());
+        this.stack = newStack(spec, events, stepS, profile.perceptionPeriodS());
+        this.shadow = newStack(spec, shadowEvents, stepS, profile.perceptionPeriodS());
         this.stats = new Simulator.MotionStats(stepS);
         // Cửa sổ đo giảm tốc giữ nguyên 0,1 s (2 tick ở 20 Hz): đúng một chu kỳ răng cưa tốc độ CARLA đã đo.
-        this.meter = new DecelMeter(spec.caseSpec().roadFriction() * Simulator.G, Math.max(2, (int) Py.round(0.1 / stepS)), stepS);
+        this.meter = new DecelMeter(spec.roadFriction() * Simulator.G, Math.max(2, (int) Py.round(0.1 / stepS)), stepS);
+    }
+
+    /** Cùng cách dựng AEB như {@link Simulator#newAebStack}, đọc thời tiết / giờ từ spec để dùng được cho cả nhóm xe phía trước. */
+    private static AebStack newStack(Bundle.RunSpec spec, List<Map<String, Object>> events, double stepS, Double perceptionPeriodS) {
+        if (spec.leadCase() == null) {
+            return Simulator.newAebStack(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle(), events, stepS, perceptionPeriodS);
+        }
+        return new AebStack(spec.params(), spec.seed(), spec.weather(), spec.timeOfDay(), spec.vehicle().lengthM(),
+                Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), events, stepS, perceptionPeriodS);
+    }
+
+    /** Mục tiêu là xe phía trước (CCRs/CCRm/CCRb)? */
+    public boolean leadVehicle() {
+        return spec.leadCase() != null;
     }
 
     /**
@@ -178,10 +201,33 @@ public final class CarlaSession {
      * @param carla thông tin chỉ CARLA biết (tên map, blueprint), ghi vào {@code case.carla} của kết quả
      */
     public void init(double[] egoForward, double[] egoRight, double[] walker, double frontOffset, Map<String, Object> carla) {
+        if (leadVehicle()) {
+            initLead(egoForward, egoRight, walker, frontOffset, carla, null, 0.0);
+            return;
+        }
         double startY = Simulator.PEDESTRIAN_START_Y_M;
         this.frame = new CrossingFrame(walker[0] + egoRight[0] * startY, walker[1] + egoRight[1] * startY, egoForward[0], egoForward[1], egoRight[0], egoRight[1]);
         this.frontOffset = frontOffset;
         this.carlaInfo = carla;
+    }
+
+    /**
+     * Xe phía trước (ADR-050): gốc khung = điểm trên tim làn ego ngang với tâm xe mục tiêu lúc đầu (dịch vị trí xe mục tiêu sang phải đúng độ lệch ngang
+     * đã đặt). {@code targetSize} = [dài, rộng] bounding box CARLA (null = kích thước mặc định), {@code centerOffset} = tâm bbox lệch trước gốc actor.
+     */
+    public void initLead(double[] egoForward, double[] egoRight, double[] target, double frontOffset, Map<String, Object> carla, double[] targetSize,
+                         double centerOffset) {
+        double offset = spec.leadCase().lateralOffsetM(spec.vehicle().widthM());
+        double cx = target[0] + egoForward[0] * centerOffset;
+        double cy = target[1] + egoForward[1] * centerOffset;
+        this.frame = new CrossingFrame(cx + egoRight[0] * offset, cy + egoRight[1] * offset, egoForward[0], egoForward[1], egoRight[0], egoRight[1]);
+        this.frontOffset = frontOffset;
+        this.carlaInfo = carla;
+        if (targetSize != null && targetSize.length == 2 && targetSize[0] > 0 && targetSize[1] > 0) {
+            this.targetLength = targetSize[0];
+            this.targetWidth = targetSize[1];
+        }
+        this.targetCenterOffset = centerOffset;
     }
 
     /** Kết quả của một tick: {@code skip} = cùng tick đã xử lý; {@code finished} = lý do kết thúc nếu run vừa kết thúc ở tick này. */
@@ -206,6 +252,9 @@ public final class CarlaSession {
         }
         if (!frames.isEmpty() && t <= frames.get(frames.size() - 1).t()) {
             return new Tick(true, braking, 0.0, 0.0, null);
+        }
+        if (leadVehicle()) {
+            return leadStep(t, egoLoc, egoForward, egoVel, pedLoc, pedVel, walkerCollision);
         }
         double gap = -frame.along(egoLoc[0] + egoForward[0] * frontOffset, egoLoc[1] + egoForward[1] * frontOffset);
         double egoV = Math.max(0.0, frame.velocityAlong(egoVel[0], egoVel[1]));
@@ -243,6 +292,65 @@ public final class CarlaSession {
             AebStack.Events.record(events, t, "stopped", "Ego stopped", "gap_m", Py.round(gap, 2));
             finished = "EGO_STOPPED";
         } else if (-gap - spec.vehicle().lengthM() > pedAlong + 1.0) {
+            finished = "TARGET_CLEARED";
+        } else if (t >= Simulator.MAX_DURATION_S - 0.1) {
+            finished = "TIMEOUT";
+        }
+        if (finished != null) {
+            finish(finished);
+        }
+        return new Tick(false, braking, tick.decelCmd(), pedal, finished);
+    }
+
+    /**
+     * Một tick với xe phía trước: khoảng cách tới đuôi xe mục tiêu, TTC theo tốc độ tiếp cận ({@link AebStack#stepTarget}), va chạm khi hai hình hộp chồng
+     * nhau hoặc cảm biến va chạm báo trúng xe. Chưa chạy bóng radar cho xe (bộ bám ADR-043 viết cho người đi bộ).
+     */
+    private Tick leadStep(double t, double[] egoLoc, double[] egoForward, double[] egoVel, double[] targetLoc, double[] targetVel, boolean targetHit) {
+        LeadVehicleCase c = spec.leadCase();
+        double egoFront = frame.along(egoLoc[0] + egoForward[0] * frontOffset, egoLoc[1] + egoForward[1] * frontOffset);
+        if (egoFront0 == null) {
+            egoFront0 = egoFront;
+        }
+        double targetCenter = frame.along(targetLoc[0] + egoForward[0] * targetCenterOffset, targetLoc[1] + egoForward[1] * targetCenterOffset);
+        double targetRear = targetCenter - targetLength / 2;
+        double gap = targetRear - egoFront;
+        double egoV = Math.max(0.0, frame.velocityAlong(egoVel[0], egoVel[1]));
+        double targetV = Math.max(0.0, frame.velocityAlong(targetVel[0], targetVel[1]));
+        double egoY = frame.left(egoLoc[0], egoLoc[1]);
+        double targetY = frame.left(targetLoc[0], targetLoc[1]) - egoY; // lệch ngang so với ego
+        lastTargetY = targetY;
+        // Tick đầu CARLA chưa áp vận tốc (xe đứng yên): so với vận tốc lớn nhất đã thấy, không phải khung đầu.
+        peakTargetSpeed = Math.max(peakTargetSpeed, targetV);
+        if (!targetBraking && LeadVehicleCase.CCRB.equals(c.category()) && peakTargetSpeed > 0.5 && peakTargetSpeed - targetV > 0.3) {
+            targetBraking = true;
+            AebStack.Events.record(events, t, "gt_start", "Lead vehicle brakes · " + Py.fixed(c.targetDecelMps2() == null ? 0.0 : c.targetDecelMps2(), 1) + " m/s²");
+        }
+        double halfSum = spec.vehicle().widthM() / 2 + targetWidth / 2;
+        boolean inPath = Math.abs(targetY) < halfSum;
+        double closing = egoV - targetV;
+        double decel = meter.update(egoV, braking);
+        AebTick tick = stack.stepTarget(t, gap, targetY, 0.0, egoV, targetV, targetWidth / 2);
+        if (tick.decelCmd() > 0) {
+            braking = true;
+        }
+        double pedal = braking ? DecelMeter.brakePedal(tick.decelCmd(), decel, fullBrakeDecel) : 0.0;
+        stats.add(decel);
+        Double ttcGt = inPath && gap > 0 && closing > 0.1 ? gap / closing : null;
+        frames.add(Simulator.makeFrame(t, egoFront - egoFront0, egoV, decel, targetRear - egoFront0, targetY, 0.0, tick, ttcGt, stack));
+
+        double egoRear = egoFront - spec.vehicle().lengthM();
+        boolean overlap = inPath && egoFront >= targetRear && egoRear <= targetRear + targetLength;
+        String finished = null;
+        if (overlap || targetHit) {
+            impactRelative = Math.max(0.0, closing);
+            AebStack.Events.record(events, t, "collision", "Collision · " + Py.fixed(egoV * 3.6, 1) + " km/h", "impact_speed_mps", Py.round(egoV, 3),
+                    "relative_impact_speed_mps", Py.round(impactRelative, 3));
+            finished = "COLLISION";
+        } else if (egoV <= 0.05 && stack.decisionT() != null) {
+            AebStack.Events.record(events, t, "stopped", "Ego stopped", "gap_m", Py.round(gap, 2));
+            finished = "EGO_STOPPED";
+        } else if (egoRear > targetRear + targetLength + 1.0) {
             finished = "TARGET_CLEARED";
         } else if (t >= Simulator.MAX_DURATION_S - 0.1) {
             finished = "TIMEOUT";
@@ -347,10 +455,17 @@ public final class CarlaSession {
         if (endReason != null || frames.isEmpty()) {
             return;
         }
-        CrossingCase c = spec.requireCrossing("Runner CARLA");
-        double decelAvailable = Math.min(Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), c.roadFriction() * Simulator.G);
-        SimulationOutcome outcome = Simulator.buildOutcome(c, spec.params(), spec.vehicle(), stack, stats, frames, events, reason, c.crossingX(),
-                decelAvailable, stepS);
+        double decelAvailable = Math.min(Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), spec.roadFriction() * Simulator.G);
+        SimulationOutcome outcome;
+        if (leadVehicle()) {
+            double halfSum = spec.vehicle().widthM() / 2 + targetWidth / 2;
+            outcome = LeadVehicleSimulator.buildOutcome(spec.leadCase(), spec.params(), spec.vehicle(), stack, stats, frames, events, reason,
+                    lastTargetY == null ? 0.0 : lastTargetY, targetLength, halfSum, spec.leadCase().egoSpeedKmh() / 3.6, decelAvailable, impactRelative,
+                    stepS); // như người đi bộ: tốc độ đầu theo kịch bản (khung đầu CARLA ego còn đứng yên)
+        } else {
+            CrossingCase c = spec.requireCrossing("Runner CARLA");
+            outcome = Simulator.buildOutcome(c, spec.params(), spec.vehicle(), stack, stats, frames, events, reason, c.crossingX(), decelAvailable, stepS);
+        }
         List<Double> egoA = new ArrayList<>(frames.size());
         List<Double> times = new ArrayList<>(frames.size());
         for (Frame f : frames) {
@@ -395,6 +510,16 @@ public final class CarlaSession {
             }
         }
         carla.put("full_brake_decel", fullBrakeDecel);
+        if (leadVehicle()) {
+            // Xe mục tiêu thật trong CARLA (blueprint cố định, kích thước theo mesh) và khoảng cách ban đầu đo được ở khung đầu.
+            Map<String, Object> target = new LinkedHashMap<>();
+            target.put("length_m", Py.round(targetLength, 3));
+            target.put("width_m", Py.round(targetWidth, 3));
+            target.put("initial_gap_m", Py.round(frames.get(0).pedX() - frames.get(0).egoX(), 3));
+            target.put("controller", "vehicsim_lead_control");
+            target.put("blueprint", carlaInfo.get("target_blueprint"));
+            carla.put("target", target);
+        }
         carla.put("runner", "ScenarioRunner");
         carla.put("decel_clamped_frames", meter.clamped());
         // Bước cấu hình và bước đo được từ timestamp khung thật: không coi cấu hình là đã đạt tốc độ này.

@@ -168,11 +168,24 @@ public final class Xosc {
         }
         try {
             Map<String, Object> variant = new LinkedHashMap<>();
-            for (String key : List.of("ego_speed_kmh", "trigger_distance_m", "pedestrian_speed_mps")) {
-                variant.put(key, num(values, key));
+            if (values.containsKey("category")) {
+                // Xe phía trước (ADR-050): trường rỗng = không đặt (decel ngoài CCRb, overlap mặc định 100).
+                variant.put("category", values.get("category"));
+                for (String key : List.of("ego_speed_kmh", "target_speed_kmh", "initial_distance_m")) {
+                    variant.put(key, num(values, key));
+                }
+                for (String key : List.of("target_decel_mps2", "lateral_overlap_pct")) {
+                    variant.put(key, need(values, key).isEmpty() ? null : (Object) num(values, key));
+                }
+            } else {
+                for (String key : List.of("ego_speed_kmh", "trigger_distance_m", "pedestrian_speed_mps")) {
+                    variant.put(key, num(values, key));
+                }
             }
             variant.put("friction", need(values, "friction").isEmpty() ? null : (Object) num(values, "friction"));
-            variant.put("stops_at_curb", need(values, "stops_at_curb").equals("true"));
+            if (!values.containsKey("category")) {
+                variant.put("stops_at_curb", need(values, "stops_at_curb").equals("true"));
+            }
             variant.put("weather", need(values, "weather"));
             variant.put("time_of_day", need(values, "time_of_day"));
 
