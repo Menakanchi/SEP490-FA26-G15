@@ -103,7 +103,7 @@ const GROUPS: Group[] = [
     icon: svgIcon("/vehicsim/icon-search.svg"),
     prefix: "/analysis",
     children: [
-      { label: "Ca lỗi", href: "/analysis/failures" },
+      { label: "Kết quả & phân tích", href: "/analysis/failures" },
       { label: "Dữ liệu CARLA", href: "/analysis/carla" },
       { label: "Độ nhạy tham số", note: `${SOON} (SHAP)` },
       { label: "Tương tác tham số", note: SOON },
@@ -139,7 +139,7 @@ const GROUPS: Group[] = [
     prefix: "/my-work",
     roles: MEMBER_ROLES,
   },
-  { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), prefix: "/admin", roles: ["ADMIN"], children: [{ label: "Tài khoản", href: "/admin/users" }, { label: "Workspace", href: "/admin/workspaces" }, { label: "Tài liệu kỹ thuật", href: "/admin/tech-references" }] },
+  { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), prefix: "/admin", roles: ["ADMIN"], children: [{ label: "Tổng quan quản trị", href: "/admin" }, { label: "Tài khoản", href: "/admin/users" }, { label: "Workspace", href: "/admin/workspaces" }, { label: "Tài liệu kỹ thuật", href: "/admin/tech-references" }] },
 ];
 
 const lucideIcon = (Icon: typeof House) => <Icon aria-hidden className="size-[18px] text-vehicsim-muted" />;
@@ -182,7 +182,7 @@ function NavGroups({ groups }: { groups: Group[] }) {
               </span>
             )}
             {(g.children || g.href || g.note) && (
-              <span className={`font-semibold ${expanded ? "text-[13px] text-vehicsim-ink" : "text-[16px] text-vehicsim-faint"}`}>
+              <span aria-hidden="true" className={`font-semibold ${expanded ? "text-[13px] text-vehicsim-ink" : "text-[16px] text-vehicsim-faint"}`}>
                 {expanded ? "▾" : "›"}
               </span>
             )}
@@ -334,6 +334,7 @@ export function VehicSimSidebar({ hideOnMobile = false }: { hideOnMobile?: boole
         <button
           type="button"
           title="Đăng xuất"
+          aria-label="Đăng xuất"
           onClick={() => {
             logout();
             router.push("/login");

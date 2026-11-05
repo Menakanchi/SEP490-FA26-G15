@@ -1,373 +1,72 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import {useRouter} from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import {
-  CLASS_STYLE,
-  Checkbox,
-  ClassBadge,
-  EmptyState,
-  ErrorNote,
-  FilterSelect,
-  OutcomeBadge,
-  Pagination,
-  PillButton,
-  StatCard,
-  cx,
-  fmt,
-  runCode,
-} from "@/components/VehicSimUi";
-import { vi, viSummary } from "@/components/vehicsimI18n";
+import { ErrorNote, PillButton } from "@/components/VehicSimUi";
+import { analysisError } from "@/components/analysisUi";
+import { AnalysisFailureExplorer } from "@/components/analysis/AnalysisFailureExplorer";
+import { positiveId } from "@/components/analysis/analysisFailurePresentation";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { FailureClass, FailureFilters, FailureList, Outcome, Weather } from "@/types/vehicsim";
+import type { FailureFilters, FailureList } from "@/types/vehicsim";
 
-const PAGE_SIZE = 7;
-const CLASS_ORDER: FailureClass[] = ["PERCEPTION", "DECISION", "CONTROL", "VEHICLE_DYNAMICS"];
-const OPTIONAL_COLUMNS = ["impact", "ttc", "config"] as const;
-type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
-const COLUMN_LABELS: Record<OptionalColumn, string> = { impact: "Tốc độ va chạm", ttc: "TTC nhỏ nhất", config: "Cấu hình" };
-
-export function LegacyFailureCases({ initialScenario }: { initialScenario?: number }) {
-  const router=useRouter();
+export function LegacyFailureCases({ initialScenario, navigation }: { initialScenario?: number; navigation?: ReactNode }) {
   const { ctx } = useVehicSimContext();
-  const [filters, setFilters] = useState<FailureFilters>({ scenario_id: initialScenario });
-  const [page, setPage] = useState(1);
-  const [data, setData] = useState<FailureList | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [hidden, setHidden] = useState<Set<OptionalColumn>>(new Set());
-  const [columnsOpen, setColumnsOpen] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      setData(await vehicsimApi.failures(filters, page, PAGE_SIZE));
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không tải được danh sách lỗi");
-    }
-  }, [filters, page]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- tải lại khi bộ lọc / trang đổi
-    void load();
-  }, [load]);
-
-  const setFilter = <K extends keyof FailureFilters>(key: K, value: FailureFilters[K] | "") => {
-    setPage(1);
-    setFilters((prev) => ({ ...prev, [key]: value === "" ? undefined : value }));
+  const router = useRouter(), params = useSearchParams();
+  const page = positiveId(params.get("f_page"), 1);
+  const size = [10, 20, 30, 50].includes(Number(params.get("f_size"))) ? Number(params.get("f_size")) : 20;
+  const filters: FailureFilters = {
+    // An explicit empty f_scenario means all families, even with an inherited baseline scope.
+    scenario_id: params.has("f_scenario") ? positiveId(params.get("f_scenario")) || undefined : initialScenario,
+    failure_class: (params.get("f_class") || undefined) as FailureFilters["failure_class"],
+    outcome: (params.get("f_outcome") || undefined) as FailureFilters["outcome"],
+    weather: (params.get("f_weather") || undefined) as FailureFilters["weather"],
+    aeb_version_id: positiveId(params.get("f_aeb")) || undefined, days: positiveId(params.get("f_days")) || undefined,
   };
-
-  // Include families with only safe runs: the failures endpoint cannot list them.
-  const analysisFamilies = [
-    ...(data?.families ?? []),
-    ...(ctx?.families ?? []).filter((family) => !data?.families.some((f) => f.id === family.id))
-      .map((family) => ({ ...family, failures: 0 })),
-  ];
-  const k = data?.kpis;
-  const classTotal = k ? CLASS_ORDER.reduce((sum, c) => sum + k.by_class[c], 0) : 0;
-  const versionOptions = useMemo(
-    () => (ctx?.versions ?? []).map((v) => ({ value: String(v.id), label: `AEB ${v.label}` })),
-    [ctx],
-  );
-  const show = (c: OptionalColumn) => !hidden.has(c);
-
-  return (
-    <VehicSimPage
-      step={4}
-      crumbs={[{ label: "Phân tích" }, { label: "Ca lỗi" }]}
-      title="Tra cứu ca lỗi"
-      subtitle="Mọi lượt mô phỏng thất bại hoặc suýt va chạm, phân loại theo khâu hỏng trong chuỗi AEB."
-      actions={
-        <>
-          <PillButton onClick={() => void vehicsimApi.exportFailures(filters).catch((e) => setError(e.message))}>Xuất CSV</PillButton>
-          <PillButton variant="dark" disabled title="Optimization (FE-13) chưa có trong đợt MVP">
-            Tối ưu các ca đã chọn ({selected.size})
-          </PillButton>
-
-        </>
+  const filterKey = JSON.stringify(filters);
+  const [refresh, setRefresh] = useState(0);
+  const requestKey = `${filterKey}:${page}:${size}:${refresh}`;
+  const [result, setResult] = useState<{ key: string; data: FailureList | null; error: string | null } | null>(null);
+  const [exportError, setExportError] = useState<{ scope: string; message: string } | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const data = result?.key === requestKey ? result.data : null;
+  const loading = result?.key !== requestKey;
+  const error = result?.key === requestKey ? result.error : null;
+  function update(values: Record<string, string | number>, reset = true) {
+    const next = new URLSearchParams(window.location.search);
+    for (const [key, value] of Object.entries(values)) {
+      if (value === "" && key !== "f_scenario") next.delete(key); else next.set(key, String(value));
+    }
+    if (reset) next.delete("f_page");
+    window.history.replaceState(null, "", `/analysis/failures?${next}`);
+  }
+  useEffect(() => {
+    let active = true;
+    vehicsimApi.failures(JSON.parse(filterKey) as FailureFilters, page, size).then(value => {
+      if (!active) return;
+      const last = positiveId(String(value.pages), 1);
+      if (page > last) {
+        const next = new URLSearchParams(window.location.search); next.set("f_page", String(last));
+        router.replace(`/analysis/failures?${next}`, { scroll: false }); return;
       }
-    >
-      <ErrorNote message={error} />
-
-
-      <div className="flex items-start gap-4">
-        <StatCard
-          label="Tổng số ca lỗi"
-          value={k?.total ?? "—"}
-          note={k ? `+${k.this_week} trong tuần` : undefined}
-          tone="danger"
-        />
-        <StatCard
-          label="Va chạm"
-          value={k?.collisions ?? "—"}
-          note={k && k.total ? `${Math.round((100 * k.collisions) / k.total)}% số ca lỗi` : undefined}
-          tone="danger"
-        />
-        <StatCard
-          label="Suýt va chạm"
-          value={k?.near_misses ?? "—"}
-          note={k ? (k.false_braking ? `+${k.false_braking} phanh nhầm` : "TTC nhỏ nhất < 1.0 s") : undefined}
-          tone="warn"
-        />
-        <div className="flex min-w-0 flex-1 flex-col gap-3 self-stretch rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
-          <span className="text-[13px] font-medium text-vehicsim-muted">Theo nhóm lỗi</span>
-          <div className="flex h-[10px] w-full overflow-hidden rounded-full bg-vehicsim-soft">
-            {k &&
-              CLASS_ORDER.map((c) =>
-                k.by_class[c] ? (
-                  <div key={c} className={cx("h-[10px]", CLASS_STYLE[c].bar)} style={{ flex: `${k.by_class[c]} 0 0` }} />
-                ) : null,
-              )}
-          </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-[6px]">
-            {CLASS_ORDER.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setFilter("failure_class", filters.failure_class === c ? "" : c)}
-                className={cx(
-                  "flex items-center gap-[6px] text-left text-[12px] font-medium",
-                  filters.failure_class === c ? "text-vehicsim-ink underline" : "text-vehicsim-muted",
-                )}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element -- chấm màu SVG từ Figma */}
-                <img alt="" src={CLASS_STYLE[c].dot} width={8} height={8} className="size-2" />
-                {CLASS_STYLE[c].label} {k?.by_class[c] ?? 0}
-              </button>
-            ))}
-          </div>
-          {k && classTotal < k.total && (
-            <span className="text-[11px] text-vehicsim-faint">{k.total - classTotal} ca không có khâu hỏng (biên an toàn mỏng)</span>
-          )}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3 overflow-x-auto pb-1">
-        <FamilyChip active={!filters.scenario_id} label="Tất cả họ kịch bản" count={k?.total} onClick={() => setFilter("scenario_id", "")} />
-        {analysisFamilies.map((f) => (
-          <FamilyChip
-            key={f.id}
-            active={filters.scenario_id === f.id}
-            label={f.name}
-            count={f.failures}
-            onClick={() => setFilter("scenario_id", f.id)}
-          />
-        ))}
-        <Link
-          href="/scenarios"
-          title="Họ kịch bản"
-          className="flex size-10 shrink-0 items-center justify-center rounded-[20px] border border-solid border-vehicsim-line bg-white text-[16px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft"
-        >
-          →
-        </Link>
-      </div>
-
-      <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
-        <div className="flex items-center justify-between gap-3 px-5 py-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{data ? `${data.total} ca lỗi` : "…"}</span>
-            <FilterSelect<FailureClass>
-              label="Nhóm lỗi"
-              value={filters.failure_class ?? ""}
-              options={CLASS_ORDER.map((c) => ({ value: c, label: CLASS_STYLE[c].label }))}
-              onChange={(v) => setFilter("failure_class", v)}
-            />
-            <FilterSelect<Exclude<Outcome, "SAFE">>
-              label="Kết quả"
-              value={filters.outcome ?? ""}
-              options={[
-                { value: "COLLISION", label: "Va chạm" },
-                { value: "NEAR_MISS", label: "Suýt va chạm" },
-                { value: "FALSE_BRAKING", label: "Phanh nhầm" },
-              ]}
-              onChange={(v) => setFilter("outcome", v)}
-            />
-            <FilterSelect<Weather>
-              label="Thời tiết"
-              value={filters.weather ?? ""}
-              options={[
-                { value: "CLEAR", label: "Trời quang" },
-                { value: "CLOUDY", label: "Nhiều mây" },
-                { value: "RAIN", label: "Mưa" },
-                { value: "HEAVY_RAIN", label: "Mưa to" },
-                { value: "FOG", label: "Sương mù" },
-              ]}
-              onChange={(v) => setFilter("weather", v)}
-            />
-            <FilterSelect<string>
-              label="Cấu hình"
-              value={filters.aeb_version_id ? String(filters.aeb_version_id) : ""}
-              options={versionOptions}
-              onChange={(v) => setFilter("aeb_version_id", v ? Number(v) : "")}
-            />
-            <FilterSelect<string>
-              label="Thời gian"
-              value={filters.days ? String(filters.days) : ""}
-              options={[
-                { value: "7", label: "7 ngày qua" },
-                { value: "30", label: "30 ngày qua" },
-                { value: "90", label: "90 ngày qua" },
-              ]}
-              onChange={(v) => setFilter("days", v ? Number(v) : "")}
-            />
-          </div>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setColumnsOpen((o) => !o)}
-              className="rounded-full border border-solid border-vehicsim-line-strong bg-white px-[14px] py-2 text-[12px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft"
-            >
-              Cột hiển thị
-            </button>
-            {columnsOpen && (
-              <div className="absolute right-0 top-11 z-10 flex w-44 flex-col gap-2 rounded-[16px] border border-solid border-vehicsim-line bg-white p-3 shadow-vehicsim-card">
-                {OPTIONAL_COLUMNS.map((c) => (
-                  <label key={c} className="flex items-center gap-2 text-[12px] font-medium text-vehicsim-ink">
-                    <Checkbox
-                      checked={show(c)}
-                      label={COLUMN_LABELS[c]}
-                      onChange={(v) =>
-                        setHidden((prev) => {
-                          const next = new Set(prev);
-                          if (v) next.delete(c);
-                          else next.add(c);
-                          return next;
-                        })
-                      }
-                    />
-                    {COLUMN_LABELS[c]}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
-          <span className="w-7" />
-          <span className="w-[78px]">Lượt chạy</span>
-          <span className="w-[210px]">Kịch bản</span>
-          <span className="w-[120px]">Kết quả</span>
-          <span className="w-[132px]">Nhóm lỗi</span>
-          <span className="min-w-0 flex-1">Nguyên nhân gốc</span>
-          {show("impact") && <span className="w-[86px]">Va chạm ở</span>}
-          {show("ttc") && <span className="w-[76px]">TTC min</span>}
-          {show("config") && <span className="w-[78px]">Cấu hình</span>}
-          <span className="w-16" />
-        </div>
-
-        {data && data.items.length === 0 && (
-          <EmptyState title="Không có ca lỗi nào với bộ lọc này">
-            Chạy cơ sở cho một họ kịch bản ở mục <Link href="/scenarios" className="font-semibold underline">Kịch bản</Link> để có dữ liệu.
-          </EmptyState>
-        )}
-
-        {data?.items.map((item) => {
-          const isSelected = selected.has(item.run_id);
-          return (
-            <div
-              key={item.run_id}
-              onClick={() => router.push(`/analysis/failures/${item.run_id}`)}
-              className={cx(
-                "flex h-[58px] cursor-pointer items-center border-b border-solid border-vehicsim-line px-5 hover:bg-vehicsim-row",
-                isSelected ? "bg-vehicsim-row" : "bg-white",
-              )}
-            >
-              <span className="w-7" onClick={(e) => e.stopPropagation()}>
-                <Checkbox
-                  checked={isSelected}
-                  label={`Select run ${item.run_id}`}
-                  onChange={(v) =>
-                    setSelected((prev) => {
-                      const next = new Set(prev);
-                      if (v) next.add(item.run_id);
-                      else next.delete(item.run_id);
-                      return next;
-                    })
-                  }
-                />
-              </span>
-              <span className="w-[78px] text-[13px] font-semibold text-vehicsim-ink">{runCode(item.run_id)}</span>
-              <span className="flex w-[210px] flex-col gap-[2px] pr-3">
-                <span className="truncate text-[13px] font-semibold text-vehicsim-ink">
-                  {item.family} <span className="font-medium text-vehicsim-faint">· {item.variant}</span>
-                </span>
-                <span className="truncate text-[12px] text-vehicsim-faint">{viSummary(item.summary)}</span>
-              </span>
-              <span className="w-[120px]">
-                <OutcomeBadge outcome={item.outcome} />
-              </span>
-              <span className="w-[132px]">
-                <ClassBadge value={item.failure_class} />
-              </span>
-              <span className="line-clamp-2 min-w-0 flex-1 pr-3 text-[13px] text-vehicsim-muted">{vi(item.root_cause)}</span>
-              {show("impact") && (
-                <span className={cx("w-[86px] text-[13px] font-medium", item.impact_kmh ? "text-vehicsim-ink" : "text-vehicsim-faint")}>
-                  {item.impact_kmh ? fmt.kmh(item.impact_kmh) : "—"}
-                </span>
-              )}
-              {show("ttc") && (
-                <span
-                  className={cx(
-                    "w-[76px] text-[13px] font-semibold",
-                    item.min_ttc_s !== null && item.min_ttc_s <= 0.05 ? "text-vehicsim-danger" : "text-vehicsim-ink",
-                  )}
-                >
-                  {fmt.s(item.min_ttc_s)}
-                </span>
-              )}
-              {show("config") && (
-                <span className="w-[78px]">
-                  <span className="rounded-full bg-vehicsim-soft px-[10px] py-[5px] text-[12px] font-medium text-vehicsim-muted">{item.config}</span>
-                </span>
-              )}
-              <span className="flex w-16 items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                <Link
-                  href={`/analysis/failures/${item.run_id}/playback`}
-                  title="Phát lại"
-                  className="flex size-[30px] items-center justify-center rounded-[15px] border border-solid border-vehicsim-line bg-white text-[10px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft"
-                >
-                  ▶
-                </Link>
-                <Link href={`/analysis/failures/${item.run_id}`} title="Chi tiết" className="text-[16px] font-bold text-vehicsim-faint hover:text-vehicsim-ink">
-                  ⋯
-                </Link>
-              </span>
-            </div>
-          );
-        })}
-
-        {data && data.total > 0 && (
-          <div className="flex items-center justify-between px-5 py-[14px]">
-            <span className="text-[13px] font-medium text-vehicsim-faint">
-              Hiển thị {(data.page - 1) * data.page_size + 1}–{Math.min(data.page * data.page_size, data.total)} / {data.total}
-              {selected.size > 0 && `  ·  đã chọn ${selected.size}`}
-            </span>
-            <Pagination page={data.page} pages={data.pages} onPage={setPage} />
-          </div>
-        )}
-      </section>
-    </VehicSimPage>
-  );
-}
-
-function FamilyChip({ active, label, count, onClick }: { active: boolean; label: string; count?: number; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cx(
-        "flex shrink-0 flex-col items-start gap-[2px] whitespace-nowrap rounded-[16px] bg-white px-[18px] py-3 text-left",
-        active
-          ? "border-[1.5px] border-solid border-vehicsim-ink drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]"
-          : "border border-solid border-vehicsim-line hover:bg-vehicsim-soft",
-      )}
-    >
-      <span className={cx("text-[13px] font-semibold", active ? "text-vehicsim-ink" : "text-vehicsim-muted")}>{label}</span>
-      <span className="text-[12px] text-vehicsim-faint">{count ?? 0} ca lỗi</span>
-    </button>
-  );
+      setResult({ key: requestKey, data: value, error: null });
+    }).catch(err => { if (active) setResult({ key: requestKey, data: null, error: analysisError(err) }); });
+    return () => { active = false; };
+  }, [filterKey, page, size, requestKey, router]);
+  async function exportCsv() {
+    if (exporting || loading || !data || error) return;
+    setExporting(true); setExportError(null);
+    try { await vehicsimApi.exportFailures(filters); }
+    catch (err) { setExportError({ scope: filterKey, message: analysisError(err) }); }
+    finally { setExporting(false); }
+  }
+  return <VehicSimPage step={4} crumbs={[{ label: "Phân tích" }, { label: "Ca lỗi" }]} title="Tra cứu ca lỗi"
+    subtitle="Đọc nhận định theo luật, đối chiếu số đo và mở bằng chứng của từng lượt chạy."
+    actions={<PillButton disabled={exporting || loading || !data || Boolean(error)} onClick={() => void exportCsv()}>{exporting ? "Đang xuất…" : "Xuất CSV"}</PillButton>}>
+    {navigation}<ErrorNote message={error ?? (exportError?.scope === filterKey ? exportError.message : null)} />
+    {error && <div><button className="analysis-button" onClick={() => setRefresh(value => value + 1)}>Thử tải lại</button></div>}
+    <AnalysisFailureExplorer data={data} loading={loading} hasError={Boolean(error)} filters={filters} page={page} size={size}
+      search={params.get("f_q") ?? ""} returnTo={`/analysis/failures?${params}`} families={ctx?.families ?? []} versions={ctx?.versions ?? []} onUpdate={update} />
+  </VehicSimPage>;
 }
