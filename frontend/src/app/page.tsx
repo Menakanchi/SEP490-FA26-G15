@@ -6,6 +6,8 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { MVP_STEPS, type FlowStep } from "@/components/vehicsimFlow";
 import { ExperiencerHome } from "@/components/project/ProjectShell";
+import { JourneyList, NextActionCard } from "@/components/project/ProjectHome";
+import { JOURNEY_STEPS } from "@/components/project/journey";
 import { ErrorNote, PillButton, StatCard, Tag, cx } from "@/components/VehicSimUi";
 import { ReviewerHome } from "@/components/reviewer/ReviewerHome";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -15,6 +17,7 @@ type State = "done" | "current" | "todo";
 interface StepView {
   step: FlowStep;
   done: boolean;
+  running?: boolean;
   status: string;
   actions: { label: string; href: string; primary?: boolean }[];
 }
@@ -33,11 +36,12 @@ export default function HomePage() {
  */
 function MvpLoopPage() {
   const { user } = useAuth();
-  const { ctx } = useVehicSimContext();
+  const { ctx, error: contextError } = useVehicSimContext();
   const [families, setFamilies] = useState<FamilyItem[] | null>(null);
   const [regressions, setRegressions] = useState<RegressionList | null>(null);
   const [recs, setRecs] = useState<RecommendationItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const engineer = user?.roleCode === "ENGINEER";
 
   useEffect(() => {
     Promise.all([vehicsimApi.families(), vehicsimApi.regressions(), vehicsimApi.recommendations()])
@@ -49,8 +53,9 @@ function MvpLoopPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được trạng thái vòng MVP"));
   }, []);
 
+  const candidates = ctx?.versions.filter((v) => v.parent_version_id !== null).length ?? 0;
   const loaded = families && regressions && recs && ctx;
-  const views = loaded ? buildSteps(families, regressions, recs, ctx.versions.filter((v) => v.parent_version_id !== null).length, ctx.system.baseline?.label) : null;
+  const views = loaded ? buildSteps(families, regressions, recs, candidates, ctx.system.baseline?.label) : null;
   const currentIdx = views ? views.findIndex((v) => !v.done) : -1;
   const next = views && currentIdx >= 0 ? views[currentIdx] : null;
   const firstName = (user?.full_name || user?.name || "").trim().split(/\s+/).pop();
@@ -58,20 +63,27 @@ function MvpLoopPage() {
   const variants = (families ?? []).reduce((n, f) => n + f.variants, 0);
   const failing = (families ?? []).reduce((n, f) => n + f.failures, 0);
   const pendingReviews = (recs ?? []).filter((r) => r.status === "PENDING").length;
+  const engineerSteps = engineer && views && regressions ? buildEngineerSteps(views, candidates, regressions.kpis) : null;
+  const nextEngineerStep = engineerSteps?.findIndex((v) => !v.done) ?? -1;
+  const focusIndex = nextEngineerStep < 0 ? JOURNEY_STEPS.length - 1 : nextEngineerStep;
+  const focus = engineerSteps?.[focusIndex];
 
   return (
     <VehicSimPage
       crumbs={[{ label: "Tổng quan" }]}
       title={firstName ? `Chào ${firstName}` : "Tổng quan"}
+      badges={engineer ? <Tag tone="info">Kỹ sư</Tag> : undefined}
       subtitle={
-        views
-          ? next
-            ? `Vòng MVP trên motif người đi bộ băng ngang. Bước tiếp theo: ${next.step.n} · ${next.step.title}.`
-            : "Vòng MVP đã khép kín. Tạo một cấu hình AEB khác để bắt đầu vòng mới."
-          : "Đang tải trạng thái vòng MVP…"
+        engineer
+          ? "Thiết kế kịch bản, phân tích lỗi và kiểm chứng cấu hình AEB của project."
+          : views
+            ? next
+              ? `Vòng MVP trên motif người đi bộ băng ngang. Bước tiếp theo: ${next.step.n} · ${next.step.title}.`
+              : "Vòng MVP đã khép kín. Tạo một cấu hình AEB khác để bắt đầu vòng mới."
+            : "Đang tải trạng thái vòng MVP…"
       }
       actions={
-        next ? (
+        engineer ? null : next ? (
           <PillButton variant="dark" href={next.actions[0].href}>
             Tiếp tục: bước {next.step.n} →
           </PillButton>
@@ -84,7 +96,16 @@ function MvpLoopPage() {
     >
       <ErrorNote message={error} />
 
-      <div className="flex w-full items-stretch gap-4">
+      {focus && (
+        <NextActionCard
+          eyebrow={nextEngineerStep === -1 ? "Kết quả kiểm chứng" : `Gợi ý tiếp theo · bước ${nextEngineerStep + 1}`}
+          title={JOURNEY_STEPS[focusIndex].title}
+          detail={focus.status}
+          action={focus.actions[0]}
+        />
+      )}
+
+      <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Biến thể kịch bản" value={families ? variants : "…"} note={`${families?.length ?? 0} họ kịch bản`} />
         <StatCard
           label="Lỗi trên bản cơ sở"
@@ -99,7 +120,7 @@ function MvpLoopPage() {
           note={regressions ? `${regressions.kpis.passed} đạt · ${regressions.kpis.failed} không đạt` : undefined}
         />
         <StatCard
-          label="Chờ kỹ sư duyệt"
+          label="Chờ Người duyệt"
           value={recs ? pendingReviews : "…"}
           valueClass={pendingReviews ? "text-vehicsim-warn" : undefined}
           tone={pendingReviews ? "warn" : "neutral"}
@@ -107,19 +128,80 @@ function MvpLoopPage() {
         />
       </div>
 
-      <div className="grid w-full grid-cols-3 gap-4">
-        {(views ?? MVP_STEPS.map((step) => ({ step, done: false, status: "…", actions: [] }))).map((v, i) => {
-          const state: State = v.done ? "done" : i === currentIdx ? "current" : "todo";
-          return <StepCard key={v.step.n} view={v} state={state} />;
-        })}
-      </div>
+      {engineer ? (
+        engineerSteps ? (
+          <JourneyList
+            title="Hành trình project"
+            rows={engineerSteps.map((v, i) => ({
+              key: JOURNEY_STEPS[i].key,
+              status: v.running ? "RUNNING" : v.done ? "DONE" : "TODO",
+              current: i === nextEngineerStep,
+              summary: v.status,
+              action: (
+                <div className="flex flex-wrap gap-2">
+                  {v.actions.map((a) => (
+                    <PillButton key={a.label} variant={a.primary && i === nextEngineerStep ? "dark" : "light"} href={a.href} className="px-4 py-2">
+                      {a.label}
+                    </PillButton>
+                  ))}
+                </div>
+              ),
+            }))}
+          />
+        ) : !error && !contextError && <p role="status" className="text-[14px] text-vehicsim-muted">Đang tải hành trình project…</p>
+      ) : (
+        <div className="grid w-full grid-cols-3 gap-4">
+          {(views ?? MVP_STEPS.map((step) => ({ step, done: false, status: "…", actions: [] }))).map((v, i) => {
+            const state: State = v.done ? "done" : i === currentIdx ? "current" : "todo";
+            return <StepCard key={v.step.n} view={v} state={state} />;
+          })}
+        </div>
+      )}
 
       <p className="text-[12px] leading-[1.6] text-vehicsim-faint">
         Bộ mô phỏng động học hoặc CARLA qua OpenSCENARIO (.xosc) · mỗi biến thể chạy với seed cố định nên bản cơ sở và ứng viên so được
-        từng cặp. Khuyến nghị chỉ dựa trên mô phỏng, luôn cần kỹ sư quyết định.
+        từng cặp. Người duyệt ra quyết định dựa trên kết quả mô phỏng.
       </p>
     </VehicSimPage>
   );
+}
+
+function buildEngineerSteps(
+  [scenario, variants, baseline, results, improve, verify]: StepView[],
+  candidates: number,
+  { total, running }: RegressionList["kpis"],
+) {
+  const regressionAction = running
+    ? { label: "Xem tiến độ hồi quy", href: "/validation/regression" }
+    : total
+      ? { label: "Xem khuyến nghị", href: "/validation/recommendations" }
+      : { label: "Chạy kiểm thử hồi quy", href: "/validation/regression/new" };
+  return [
+    {
+      ...scenario,
+      done: scenario.done && variants.done,
+      status: `${scenario.status} · ${variants.status}`,
+      actions: scenario.done && !variants.done ? variants.actions : scenario.actions,
+    },
+    baseline,
+    results,
+    {
+      ...improve,
+      done: candidates > 0,
+      status: candidates ? `${candidates} cấu hình ứng viên` : "Chưa có cấu hình ứng viên",
+      actions: [{ label: candidates ? "Xem cấu hình AEB" : "Tạo ứng viên", href: "/aeb", primary: true }],
+    },
+    {
+      ...verify,
+      done: total > 0 && !running,
+      running: running > 0,
+      status: running ? `${running} kiểm thử đang chạy` : total ? `${total} kiểm thử · ${verify.status}` : "Chưa chạy kiểm thử hồi quy",
+      actions: [
+        { ...regressionAction, primary: true },
+        ...(!running ? [{ label: "Kiểm thử hồi quy", href: "/validation/regression" }] : []),
+      ],
+    },
+  ];
 }
 
 function buildSteps(
@@ -131,7 +213,7 @@ function buildSteps(
 ): StepView[] {
   const variants = families.reduce((n, f) => n + f.variants, 0);
   const failing = families.reduce((n, f) => n + f.failures, 0);
-  const queued = families.reduce((n, f) => n + (f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0), 0);
+  const queued = families.reduce((n, f) => n + (f.runs.PENDING ?? f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0), 0);
   const baselineDone = families.some((f) => f.variants > 0 && (f.runs.COMPLETED ?? 0) >= f.variants);
   const tests = regressions.items.length;
   const decided = regressions.items.filter((t) => t.review_decision !== "PENDING").length;
@@ -157,12 +239,13 @@ function buildSteps(
     {
       step: s3,
       done: baselineDone,
+      running: queued > 0,
       status: queued
         ? `Đang chạy ${queued} run…`
         : baselineDone
           ? `Bản cơ sở AEB ${baselineLabel ?? ""} đã chạy xong`
           : "Chưa chạy cơ sở",
-      actions: [{ label: "Chạy cơ sở", href: s3.href, primary: true }],
+      actions: [{ label: queued ? "Xem tiến độ baseline" : "Chạy baseline", href: s3.href, primary: true }],
     },
     {
       step: s4,

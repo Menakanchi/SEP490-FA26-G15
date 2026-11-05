@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { FlowBar } from "@/components/FlowBar";
-import { JourneyBar } from "@/components/project/ProjectShell";
+import { JourneyBar, TeamJourneyBar } from "@/components/project/ProjectShell";
 import { NotificationBell } from "@/components/NotificationBell";
+import { useAuth } from "@/context/AuthContext";
 
 export type Crumb = { label: string; href?: string };
 
@@ -23,9 +24,9 @@ interface VehicSimPageProps {
 
 function ContextChip({ label, value }: { label: string; value?: string | null }) {
   return (
-    <span className="flex items-center gap-[6px] whitespace-nowrap rounded-full border border-solid border-vehicsim-line bg-white px-3 py-[7px] text-[12px]">
-      <span className="font-medium text-vehicsim-faint">{label}</span>
-      <span className="font-semibold text-vehicsim-ink">{value ?? "—"}</span>
+    <span className="flex max-w-full min-w-0 items-center gap-[6px] whitespace-nowrap rounded-full border border-solid border-vehicsim-line bg-white px-3 py-[7px] text-[12px]">
+      <span className="shrink-0 font-medium text-vehicsim-faint">{label}</span>
+      <span className="truncate font-semibold text-vehicsim-ink" title={value ?? undefined}>{value ?? "—"}</span>
     </span>
   );
 }
@@ -33,6 +34,8 @@ function ContextChip({ label, value }: { label: string; value?: string | null })
 /** Khung một trang VehicSim: thanh trên (breadcrumb + chip ngữ cảnh + tìm kiếm) và tiêu đề trang. */
 export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, children }: VehicSimPageProps) {
   const { ctx, error, isExperiencer, canResetProject, selectProject } = useVehicSimContext();
+  const { user } = useAuth();
+  const reviewer = user?.roleCode === "REVIEWER";
   const router = useRouter();
   const [search, setSearch] = useState("");
 
@@ -43,9 +46,9 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
   };
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-6 px-9 pb-10 pt-[22px]">
-      <div className="flex items-center justify-between gap-4 print:hidden">
-        <nav className="flex items-center gap-2 whitespace-nowrap text-[13px]">
+    <div className="flex min-w-0 flex-1 flex-col gap-6 px-4 pb-10 pt-[22px] sm:px-6 xl:px-9">
+      <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
+        <nav className="flex min-w-0 flex-wrap items-center gap-2 break-words text-[13px]">
           {crumbs.map((c, i) => {
             const last = i === crumbs.length - 1;
             return (
@@ -62,7 +65,7 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
             );
           })}
         </nav>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {isExperiencer ? (
             <ContextChip label="Project" value={ctx?.project.name} />
           ) : (
@@ -93,38 +96,25 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
         </div>
       )}
 
-      {!!ctx?.reviewer_projects.length && (
-        <div className="flex flex-wrap items-center gap-3 text-[13px] print:hidden">
-          <label className="flex items-center gap-2 font-semibold">
-            Project đang xem
-            <select
-              aria-label="Project đang xem"
-              value={ctx.project.id}
-              className="max-w-[420px] rounded-full border border-vehicsim-line bg-white px-4 py-2"
-              onChange={(e) => {
-                selectProject(Number(e.target.value));
-              }}
-            >
-              {ctx.reviewer_projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.workspace_name} · {p.name}{p.can_decide ? "" : " (chỉ xem)"}</option>
-              ))}
-            </select>
-          </label>
-          {!ctx.reviewer_can_decide && <span className="text-vehicsim-warn">Project hoặc workspace đã lưu trữ — chỉ xem lịch sử.</span>}
-        </div>
+      {reviewer && ctx && !ctx.reviewer_can_decide && (
+        <p className="rounded-[14px] bg-vehicsim-warn-bg px-4 py-3 text-[13px] text-vehicsim-warn">
+          Project hoặc workspace đã lưu trữ. Bạn có thể xem lịch sử.
+        </p>
       )}
 
-      {isExperiencer ? <JourneyBar /> : step !== undefined && <FlowBar active={Array.isArray(step) ? step : [step]} />}
+      {isExperiencer ? <JourneyBar /> : reviewer || user?.roleCode === "ENGINEER"
+        ? <TeamJourneyBar reviewer={reviewer} />
+        : step !== undefined && <FlowBar active={Array.isArray(step) ? step : [step]} />}
 
-      <div className="vehicsim-page-heading flex items-end justify-between gap-6">
-        <div className="flex flex-col gap-[10px]">
+      <div className="vehicsim-page-heading flex flex-wrap items-end justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-[10px]">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-[40px] font-extrabold leading-[1.1] tracking-[-1.2px] text-vehicsim-ink">{title}</h1>
+            <h1 className="min-w-0 break-words text-[30px] font-extrabold leading-[1.1] tracking-[-1.2px] text-vehicsim-ink sm:text-[40px]">{title}</h1>
             {badges}
           </div>
           {subtitle && <p className="max-w-[640px] text-[15px] leading-[1.5] text-vehicsim-muted">{subtitle}</p>}
         </div>
-        {actions && <div className="vehicsim-page-actions flex shrink-0 items-center gap-[10px]">{actions}</div>}
+        {actions && <div className="vehicsim-page-actions flex min-w-0 flex-wrap items-center gap-[10px]">{actions}</div>}
       </div>
 
       {children}
