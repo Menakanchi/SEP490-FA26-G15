@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../.."),output=path.join(root,"data/admin-batch4-ui");
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../.."),output=path.resolve(root,process.env.ADMIN_UI_OUTPUT||"data/admin-batch4-ui");
 await fs.mkdir(output,{recursive:true});
 const base=process.env.ADMIN_UI_URL||"http://localhost:3100";
 const actor={id:999999,email:"self-form@example.invalid",full_name:"Admin Fixture",role:"ADMIN"};
@@ -116,11 +116,15 @@ try{
  await dialog().getByRole("button",{name:"Đang lưu…",exact:true}).waitFor();assert.equal(writes.length,beforeCreate+1);
  await page.keyboard.press("Escape");assert.equal(await dialog().isVisible(),true);assert.equal(await dialog().getByRole("button",{name:"Đóng biểu mẫu",exact:true}).isDisabled(),true);assert.equal(await dialog().getByRole("button",{name:"Quay lại",exact:true}).isDisabled(),true);
  release("save");await dialog().waitFor({state:"hidden"});await ready();await frame.getByText("Nguyễn Thị Fixture",{exact:true}).waitFor();
+ const createdFeedback=frame.getByRole("status").filter({hasText:"Đã lưu thành công."});
+ assert((await createdFeedback.innerText()).includes("new-form@example.invalid"));assert(await createdFeedback.evaluate(el=>el===document.activeElement));
+ await shot("create-success-390");
  const creation=writes.at(-1);assert.equal(creation.method,"POST");assert.equal(creation.body.email,"new-form@example.invalid");assert.equal(creation.body.password,password);assert.equal(creation.body.is_active,true);
  assert.deepEqual(Object.keys(creation.body).sort(),["email","first_name","is_active","last_name","middle_name","password","role"]);
 
  await page.setViewportSize({width:1366,height:768});await open(users[1].email);
  assert.equal(await dialog().getByRole("button",{name:"Lưu thay đổi",exact:true}).isDisabled(),true);
+ assert.equal(await dialog().getByText("Ngày tạo",{exact:true}).count(),1);
  assert.equal(await dialog().getByLabel("Mật khẩu ban đầu *",{exact:true}).count(),0);await shot("edit-details-1366");
  for(let i=0;i<18;i++){await page.keyboard.press("Tab");assert.equal(await dialog().evaluate(el=>el.contains(document.activeElement)),true);}
  await page.keyboard.press("Shift+Tab");assert.equal(await dialog().evaluate(el=>el.contains(document.activeElement)),true);

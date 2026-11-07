@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
-const output=path.join(root,"data/admin-batch3-ui");await fs.mkdir(output,{recursive:true});
+const output=path.resolve(root,process.env.ADMIN_UI_OUTPUT||"data/admin-batch3-ui");await fs.mkdir(output,{recursive:true});
 const base=process.env.ADMIN_UI_URL||"http://localhost:3100";
 const roles=["ADMIN","MANAGER","ENGINEER","REVIEWER","EXPERIENCER"];
 const actor={id:999999,email:"self-admin@example.invalid",full_name:"Admin Fixture",role:"ADMIN"};
@@ -97,6 +97,8 @@ try{
   assert.equal(await frame.getByRole("button",{name:"Trước",exact:true}).isDisabled(),true);
   assert.equal(await frame.getByText("Bạn",{exact:true}).count(),1);
   assert.equal(await frame.getByRole("columnheader",{name:"Tài khoản",exact:true}).count(),1);
+  assert.equal(await region().getByRole("columnheader").count(),4);
+  assert.equal(await region().getByRole("columnheader",{name:"Ngày tạo",exact:true}).count(),0);
   for(const [width,height] of [[1920,1080],[1366,768],[768,1024],[390,844]]){
     await page.setViewportSize({width,height});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     await shot(`users-${width}`);
@@ -169,6 +171,11 @@ try{
   await dialog.getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await dialog.waitFor({state:"hidden"});await ready();
   assert.equal(page.url(),beforeEdit);assert.equal(await editButton().count(),0);assert.equal(target.is_active,false);assert.equal(writes.length,2);
   await frame.getByText("Đã lưu thành công.",{exact:true}).waitFor();assert.equal(await rowButtons().count(),7);
+  assert.equal(await frame.getByRole("status").filter({hasText:"Đã lưu thành công."}).evaluate(el=>el===document.activeElement),true,"Successful save must retain a keyboard focus destination when the edited row leaves the filter");
+  const feedback=frame.getByRole("status").filter({hasText:"Đã lưu thành công."});
+  assert((await feedback.innerText()).includes(target.email));
+  await feedback.getByText("Bộ lọc được giữ nguyên; tài khoản không còn khớp sẽ không xuất hiện trong kết quả.",{exact:true}).waitFor();
+  await shot("saved-filtered-1366");
   await frame.getByRole("button",{name:"Thêm mới",exact:true}).click();await page.getByRole("dialog",{name:"Thêm mới · Tài khoản",exact:true}).waitFor();await page.keyboard.press("Escape");assert.equal(writes.length,2);
   await goto("?role=ADMIN");await frame.getByRole("button",{name:`Chỉnh sửa tài khoản ${actor.email}`,exact:true}).click();await dialog.waitFor();
   assert.equal(await dialog.getByRole("combobox",{name:/^Vai trò/}).isDisabled(),true);assert.equal(await dialog.getByLabel("Tài khoản đang hoạt động",{exact:true}).isDisabled(),true);await page.keyboard.press("Escape");
@@ -179,6 +186,6 @@ try{
   role="ADMIN";mode="expired";await page.goto(base+"/admin/users");await page.waitForURL(base+"/login");assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);
   const before=readCount();await page.goto(base+"/admin/users");await page.waitForURL(base+"/login");assert.equal(readCount(),before);
   assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);
-  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["fixture login; actual server search/filter/email sort/page sizes and row counts","URL reload/sidebar return/Back/Forward/chip reset/normalization/page clamp","four responsive widths; named scroll region keyboard and sticky actions","old response error ignored; loading/empty/503/403/network/malformed/retry with no stale actions","detail loading/error/target identity; unchanged Editor cancel/confirmation/error preservation/server success","self role/status guard; four forbidden roles and 401/guest","only two deliberate fixture PUTs; no real writes"],liveBackendVerified:false,figmaVerified:false},null,2));
+  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["fixture login; actual server search/filter/email sort/page sizes and row counts","URL reload/sidebar return/Back/Forward/chip reset/normalization/page clamp","four essential columns; four responsive widths; named scroll region keyboard and sticky actions","success focus and target identity even when the saved account leaves an active filter","old response error ignored; loading/empty/503/403/network/malformed/retry with no stale actions","detail loading/error/target identity; unchanged Editor cancel/confirmation/error preservation/server success","self role/status guard; four forbidden roles and 401/guest","only two deliberate fixture PUTs; no real writes"],liveBackendVerified:false,figmaVerified:false},null,2));
   console.log(`PASS users table: ${screenshots.length} screenshots; browser HTTP fixtures only. Live backend/auth/DB/Figma NOT verified.`);
 }finally{for(const item of pending)item.resolve();await browser.close();}

@@ -36,7 +36,7 @@ function createdDate(row: AdminRow) {
   return date && !Number.isNaN(date.getTime()) ? date.toLocaleString("vi-VN") : "—";
 }
 
-export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved }: { row: AdminRow | null; actorId?: string; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: () => void }) {
+export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved }: { row: AdminRow | null; actorId?: string; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: (email: string) => void }) {
   const [initial] = useState(() => fromRow(row));
   const [values, setValues] = useState(initial);
   const [phase, setPhase] = useState<Phase>("form");
@@ -106,7 +106,7 @@ export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved
   async function save() {
     if (saveLock.current || !pending) return;
     saveLock.current = true; setBusy(true); setError("");
-    try { await adminApi.save("users", row?.id ?? null, pending); onSaved(); }
+    try { await adminApi.save("users", row?.id ?? null, pending); onSaved(pending.email); }
     catch (err) { setError(err instanceof Error ? err.message : "Không thực hiện được thao tác. Hãy thử lại."); setPending(null); setPhase("form"); }
     finally { saveLock.current = false; setBusy(false); }
   }

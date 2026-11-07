@@ -1,0 +1,4 @@
+.table.table table { min-width: 680px; }
+.feedback strong { font-weight: 600; }
+.feedback span { display: block; margin-top: var(--admin-space-1); }
+.feedback:focus { outline: 3px solid var(--admin-focus); outline-offset: 3px; }

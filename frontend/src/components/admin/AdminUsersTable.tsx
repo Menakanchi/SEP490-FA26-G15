@@ -8,8 +8,9 @@ import { initials } from "@/components/VehicSimUi";
 import { adminApi, type AdminPageData, type AdminRow } from "@/services/admin";
 import { readUserQuery, userListUrl, userQueryParams, USER_PAGE_SIZES, USER_ROLES, USER_SORTS, USER_STATUSES, type UserListQuery } from "./adminUsersQuery";
 import styles from "./AdminTable.module.css";
+import userStyles from "./AdminUsers.module.css";
 
-type EditorProps = { row: AdminRow | null; actorId?: string; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: () => void };
+type EditorProps = { row: AdminRow | null; actorId?: string; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: (email: string) => void };
 type Result = { key: string; data?: AdminPageData; error?: string };
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Không thực hiện được thao tác. Hãy thử lại.";
 
@@ -21,11 +22,6 @@ function SearchForm({ value, onSearch }: { value: string; onSearch: (q: string) 
   </form>;
 }
 
-function CreatedDate({ value }: { value: AdminRow[string] }) {
-  const date = typeof value === "string" || typeof value === "number" ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return <span className={styles.muted}>—</span>;
-  return <time dateTime={date.toISOString()}><span>{date.toLocaleDateString("vi-VN")}</span><small>{date.toLocaleTimeString("vi-VN")}</small></time>;
-}
 
 export function AdminUsersTable({ renderEditor }: { renderEditor: (props: EditorProps) => ReactNode }) {
   const { user } = useAuth();
@@ -41,11 +37,14 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
   const [openingId, setOpeningId] = useState<number | null>(null);
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
+  const noticeRef = useRef<HTMLParagraphElement>(null);
   const key = `${request}|${revision}`;
   const current = result.key === key ? result : null;
   const loading = !current, data = current?.data;
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / query.page_size));
   const filtered = !!(query.q || query.role || query.status);
+
+  useEffect(() => { if (notice) noticeRef.current?.focus(); }, [notice]);
 
   useEffect(() => {
     if (window.location.pathname === "/admin/users" && raw !== canonical && new URLSearchParams(window.location.search).toString() === raw) {
@@ -90,7 +89,7 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
     catch (error) { if (current()) setActionError(errorMessage(error)); }
     finally { if (sequence === detailSequence.current) setOpeningId(null); }
   }
-  function saved() { setEditor(undefined); setNotice("Đã lưu thành công."); setRevision(value => value + 1); }
+  function saved(email: string) { setEditor(undefined); setNotice(email); setRevision(value => value + 1); }
 
   return <div className={styles.list}>
     <section aria-labelledby="admin-users-list-title" className={styles.filters}>
@@ -109,13 +108,13 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
       </div>}
     </section>
     {actionError && <p role="alert" className={styles.error}>{actionError}</p>}
-    {notice && <p role="status" className={styles.success}>{notice}</p>}
+    {notice && <p ref={noticeRef} tabIndex={-1} role="status" className={styles.success + " " + userStyles.feedback}><strong>Đã lưu thành công.</strong><span>Tài khoản: {notice}</span>{filtered && <span>Bộ lọc được giữ nguyên; tài khoản không còn khớp sẽ không xuất hiện trong kết quả.</span>}</p>}
     <section aria-labelledby="admin-users-results-title" className={styles.results}>
       <div className={styles.resultsHeader}><h2 id="admin-users-results-title">Kết quả tra cứu</h2><button className={styles.button} disabled={loading} onClick={() => { setActionError(""); setRevision(value => value + 1); }}><RefreshCw size={14} aria-hidden="true" />Làm mới danh sách</button></div>
       {loading ? <p role="status" className={styles.state}>Đang tải dữ liệu tài khoản…</p> : current?.error ? <div role="alert" className={styles.error}><p>{current.error}</p><button className={styles.button} onClick={() => setRevision(value => value + 1)}>Thử lại</button></div> : data && <>
         <p className={styles.scrollHint}>Cuộn ngang khi cần để xem đầy đủ các cột.</p>
-        <div className={styles.tableRegion} role="region" aria-label="Bảng tài khoản, cuộn ngang" tabIndex={0}>
-          <table><caption className={styles.srOnly}>Danh sách tài khoản theo bộ lọc hiện tại</caption><thead><tr><th scope="col">Tài khoản</th><th scope="col">Vai trò</th><th scope="col">Trạng thái</th><th scope="col">Ngày tạo</th><th scope="col" className={styles.actions}>Thao tác</th></tr></thead><tbody>
+        <div className={styles.tableRegion + " " + userStyles.table} role="region" aria-label="Bảng tài khoản, cuộn ngang" tabIndex={0}>
+          <table><caption className={styles.srOnly}>Danh sách tài khoản theo bộ lọc hiện tại</caption><thead><tr><th scope="col">Tài khoản</th><th scope="col">Vai trò</th><th scope="col">Trạng thái</th><th scope="col" className={styles.actions}>Thao tác</th></tr></thead><tbody>
             {data.items.map(row => {
               const name = String(row.full_name || row.email || `Tài khoản #${row.id}`), email = String(row.email ?? "—");
               const enabled = row.is_active === true || row.is_active === 1, disabled = row.is_active === false || row.is_active === 0;
@@ -123,7 +122,6 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
                 <th scope="row"><div className={styles.identity}><span className={styles.avatar} aria-hidden="true">{initials(name)}</span><span><span className={styles.name}>{name}{String(row.id) === user?.id && <small className={styles.you}>Bạn</small>}</span><span className={styles.email}>{email}</span></span></div></th>
                 <td><span className={styles.role}>{USER_ROLES[String(row.role)] ?? String(row.role ?? "Chưa rõ")}</span></td>
                 <td><span className={`${styles.status} ${enabled ? styles.active : styles.inactive}`}>{enabled ? "Đang hoạt động" : disabled ? "Đã khóa" : "Chưa rõ"}</span></td>
-                <td><CreatedDate value={row.created_date} /></td>
                 <td className={styles.actions}><button className={styles.button} aria-label={`Chỉnh sửa tài khoản ${email}`} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); void edit(row.id); }}>{openingId === row.id ? "Đang mở…" : "Chỉnh sửa"}</button></td>
               </tr>;
             })}
