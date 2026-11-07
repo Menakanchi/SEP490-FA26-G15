@@ -1,7 +1,7 @@
 # ADR-050 — Bỏ gán cứng CP_CROSSING; mở nhóm xe phía trước CCRs / CCRm / CCRb trên bộ động học và CARLA
 
-**Trạng thái:** Proposed 05/11/2026 — làm theo yêu cầu của chủ dự án trên nhánh `feature/scenario-categories`; chờ thành viên 1, 2, 3 duyệt
-(hợp đồng IR, phần mở rộng AEB, định nghĩa chỉ số) trước khi merge.
+**Trạng thái:** Accepted 07/11/2026 — chủ dự án chốt, không chờ duyệt riêng của thành viên 1, 2, 3 (Proposed 05/11/2026; merge vào `main` ở
+commit `126e0ec`). Hợp đồng IR, phần mở rộng AEB và định nghĩa chỉ số CCR theo đúng mục Quyết định dưới đây; đổi ý thì viết ADR mới.
 **Liên quan:** bổ sung [ADR-040](ADR-040-rut-scope-4-tham-so-aeb-7-category.md) (7 category, chỉ CP_CROSSING chạy được) và
 [ADR-042](ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (một lõi AEB dùng chung); giải một phần TD-42, chốt tạm nghĩa TD-41.
 

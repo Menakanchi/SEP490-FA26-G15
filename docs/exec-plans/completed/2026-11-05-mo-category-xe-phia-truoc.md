@@ -1,7 +1,7 @@
 # 05/11/2026 — Bỏ gán cứng CP_CROSSING, mở nhóm xe phía trước CCRs / CCRm / CCRb
 
-**Trạng thái:** bước 0, 1, 2 đã code trên nhánh `feature/scenario-categories` (chưa merge); bước 3 chưa làm. Quyết định ở
-[ADR-050](../../adr/ADR-050-mo-category-xe-phia-truoc-bo-dong-hoc.md) (Proposed). Người làm, deadline theo GitHub Issues/Project.
+**Trạng thái:** xong bước 0, 1, 2 — merge vào `main` 07/11/2026 (commit `126e0ec`). Bước 3 (CPLA, TURNING, CUT_IN) và playback vẽ xe mục tiêu
+chuyển sang TD-42. Quyết định ở [ADR-050](../../adr/ADR-050-mo-category-xe-phia-truoc-bo-dong-hoc.md) (Accepted 07/11/2026).
 
 ## Vì sao
 
@@ -18,7 +18,7 @@ bộ bị từ chối, 6/7 category trong schema không chạy được.
 | 3. CPLA, TURNING, CUT_IN | Quỹ đạo ngang / giao lộ | Chưa |
 | Playback vẽ xe mục tiêu | API `scene.target_kind` đã có; màn vẽ xe chờ nhánh thiết kế lại phân tích (`chuvv`) merge | Chưa — thành viên 3 |
 
-## Điểm nối với các thành viên (cần duyệt trước khi merge)
+## Điểm nối với các thành viên (thông báo sau khi merge)
 
 - **Thành viên 1 (kịch bản):** hợp đồng IR mới (`category`, trục CCR trong `FamilyRequest`), prompt / schema LLM, luật nhận diện.
 - **Thành viên 2 (chạy, `.xosc`, CARLA):** `AebStack.stepTarget`; hai dòng `requireCrossing` trong `XoscExport` / `CarlaSession`;
