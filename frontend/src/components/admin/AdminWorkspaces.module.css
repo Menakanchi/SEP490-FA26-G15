@@ -1,5 +1,8 @@
 .toolbar.toolbar { grid-template-columns: minmax(240px, 1.8fr) repeat(2, minmax(150px, 1fr)); }
-.table table { min-width: 1050px; }
+.table.table table { min-width: 880px; }
+.counts span { display: block; line-height: 1.8; white-space: nowrap; }
+.feedback strong, .feedback span { display: block; }
+.feedback:focus { outline: 3px solid var(--admin-focus, #2563eb); outline-offset: 3px; }
 .manager { min-width: 200px; max-width: 290px; overflow-wrap: anywhere; }
 .textarea { display: block; width: 100%; min-height: 100px; padding: var(--admin-space-3); border: 1px solid var(--admin-input-line, #dce3ee); border-radius: var(--admin-control-radius); background: var(--admin-surface, #fff); color: var(--admin-text, #334155); font-size: var(--admin-font-body); line-height: 1.8; resize: vertical; }
 .managerSearch { display: flex; flex-wrap: wrap; align-items: end; gap: var(--admin-space-2); margin-top: var(--admin-space-4); }

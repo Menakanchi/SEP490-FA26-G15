@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Building2, Plus, RefreshCw, Search, X } from "lucide-react";
 import { adminApi, type AdminPageData, type AdminRow } from "@/services/admin";
 import { AdminWorkspaceEditor } from "./AdminWorkspaceEditor";
-import { workspaceCount, workspaceDate, readWorkspaceQuery, workspaceListUrl, workspaceQueryParams, WORKSPACE_PAGE_SIZES, WORKSPACE_SORTS, WORKSPACE_STATUSES, type WorkspaceListQuery } from "./adminWorkspacesQuery";
+import { workspaceCount, readWorkspaceQuery, workspaceListUrl, workspaceQueryParams, WORKSPACE_PAGE_SIZES, WORKSPACE_SORTS, WORKSPACE_STATUSES, type WorkspaceListQuery } from "./adminWorkspacesQuery";
 import styles from "./AdminTable.module.css";
 import workspace from "./AdminWorkspaces.module.css";
 
@@ -28,9 +28,17 @@ export function AdminWorkspacesTable() {
   const sequence = useRef(0);
   useEffect(() => () => { sequence.current++; }, []);
   const [actionError, setActionError] = useState(""), [notice, setNotice] = useState("");
+  const noticeRef = useRef<HTMLParagraphElement>(null);
   const key = request + "|" + revision, current = result.key === key ? result : null;
   const loading = !current, data = current?.data, filtered = !!(query.q || query.status);
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / query.page_size));
+
+  useEffect(() => {
+    if (notice && !loading) {
+      noticeRef.current?.focus({ preventScroll: true });
+      noticeRef.current?.scrollIntoView({ block: "center", behavior: "instant" });
+    }
+  }, [notice, loading]);
 
   useEffect(() => {
     if (window.location.pathname === "/admin/workspaces" && raw !== canonical && new URLSearchParams(window.location.search).toString() === raw) window.history.replaceState(null, "", "/admin/workspaces" + (canonical ? "?" + canonical : ""));
@@ -66,7 +74,7 @@ export function AdminWorkspacesTable() {
     } catch (error) { if (isCurrent()) setActionError(message(error)); }
     finally { if (token === sequence.current) setOpeningId(null); }
   }
-  function saved() { setEditor(undefined); setNotice("Đã lưu workspace thành công."); setRevision(value => value + 1); }
+  function saved(name: string) { setEditor(undefined); setNotice(name); setRevision(value => value + 1); }
   return <div className={styles.list}>
     <section aria-labelledby="admin-workspaces-list-title" className={styles.filters}>
       <div className={styles.listHeader}><div><h2 id="admin-workspaces-list-title">Danh sách workspace</h2><p>Tra cứu workspace và Manager phụ trách. Workspace đã lưu trữ chỉ được xem.</p></div><button className={styles.primary} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); setEditor(null); setActionError(""); setNotice(""); }}><Plus size={16} aria-hidden="true" />Thêm mới</button></div>
@@ -77,14 +85,14 @@ export function AdminWorkspacesTable() {
       </div>
       {filtered && <div className={styles.chips} aria-label="Bộ lọc đang áp dụng">{query.q && <button onClick={() => change({ q: "", page: 1 })} aria-label={"Bỏ tìm kiếm: " + query.q}>Tìm: {query.q}<X size={13} aria-hidden="true" /></button>}{query.status && <button onClick={() => change({ status: "", page: 1 })} aria-label="Bỏ lọc trạng thái">{WORKSPACE_STATUSES[query.status]}<X size={13} aria-hidden="true" /></button>}<button className={styles.reset} onClick={reset}>Xóa bộ lọc</button></div>}
     </section>
-    {actionError && <p role="alert" className={styles.error}>{actionError}</p>}{notice && <p role="status" className={styles.success}>{notice}</p>}
+    {actionError && <p role="alert" className={styles.error}>{actionError}</p>}{notice && <p ref={noticeRef} tabIndex={-1} role="status" className={styles.success + " " + workspace.feedback}><strong>Đã lưu workspace thành công.</strong><span>Workspace: {notice}</span>{filtered && <span>Bộ lọc được giữ nguyên; workspace không còn khớp sẽ không xuất hiện trong kết quả.</span>}</p>}
     <section aria-labelledby="admin-workspaces-results-title" className={styles.results}>
       <div className={styles.resultsHeader}><h2 id="admin-workspaces-results-title">Kết quả tra cứu</h2><button className={styles.button} disabled={loading} onClick={() => { setActionError(""); setRevision(value => value + 1); }}><RefreshCw size={14} aria-hidden="true" />Làm mới danh sách</button></div>
       {loading ? <p role="status" className={styles.state}>Đang tải dữ liệu workspace…</p> : current?.error ? <div role="alert" className={styles.error}><p>{current.error}</p><button className={styles.button} onClick={() => setRevision(value => value + 1)}>Thử lại</button></div> : data && <>
         <p className={styles.scrollHint}>Cuộn ngang khi cần để xem đầy đủ các cột.</p>
         <div className={styles.tableRegion + " " + workspace.table} role="region" aria-label="Bảng workspace, cuộn ngang" tabIndex={0}>
-          <table><caption className={styles.srOnly}>Danh sách workspace theo bộ lọc hiện tại</caption><thead><tr>{["Workspace", "Manager phụ trách", "Thành viên", "Project", "Trạng thái", "Ngày tạo"].map(label => <th scope="col" key={label}>{label}</th>)}<th scope="col" className={styles.actions}>Thao tác</th></tr></thead><tbody>
-            {data.items.map(row => <tr key={row.id}><th scope="row"><span className={styles.name}>{String(row.name || "Workspace #" + row.id)}</span><small className={styles.email}>ID #{row.id}</small></th><td className={workspace.manager}><span className={styles.name}>{String(row.manager_name || "Manager #" + row.manager_id)}</span><span className={styles.email}>{String(row.manager_email ?? "—")}</span></td><td>{workspaceCount(row.member_count)}</td><td>{workspaceCount(row.project_count)}</td><td><span className={styles.status + " " + (row.status === "ACTIVE" ? styles.active : styles.inactive)}>{WORKSPACE_STATUSES[String(row.status)] ?? "Chưa rõ"}</span></td><td>{workspaceDate(row.created_date)}</td><td className={styles.actions}><button className={styles.button} disabled={openingId !== null} aria-label={(row.status === "ARCHIVED" ? "Xem chi tiết workspace " : "Chỉnh sửa workspace ") + row.name} onClick={event => { setReturnFocusTo(event.currentTarget); void edit(row.id); }}>{openingId === row.id ? "Đang mở…" : row.status === "ARCHIVED" ? "Xem chi tiết" : "Chỉnh sửa"}</button></td></tr>)}
+          <table><caption className={styles.srOnly}>Danh sách workspace theo bộ lọc hiện tại</caption><thead><tr>{["Workspace", "Manager phụ trách", "Thành viên / Project", "Trạng thái"].map(label => <th scope="col" key={label}>{label}</th>)}<th scope="col" className={styles.actions}>Thao tác</th></tr></thead><tbody>
+            {data.items.map(row => <tr key={row.id}><th scope="row"><span className={styles.name}>{String(row.name || "Workspace #" + row.id)}</span><small className={styles.email}>ID #{row.id}</small></th><td className={workspace.manager}><span className={styles.name}>{String(row.manager_name || "Manager #" + row.manager_id)}</span><span className={styles.email}>{String(row.manager_email ?? "—")}</span></td><td className={workspace.counts}><span>{workspaceCount(row.member_count)} thành viên</span><span>{workspaceCount(row.project_count)} project</span></td><td><span className={styles.status + " " + (row.status === "ACTIVE" ? styles.active : styles.inactive)}>{WORKSPACE_STATUSES[String(row.status)] ?? "Chưa rõ"}</span></td><td className={styles.actions}><button className={styles.button} disabled={openingId !== null} aria-label={(row.status === "ARCHIVED" ? "Xem chi tiết workspace " : "Chỉnh sửa workspace ") + row.name} onClick={event => { setReturnFocusTo(event.currentTarget); void edit(row.id); }}>{openingId === row.id ? "Đang mở…" : row.status === "ARCHIVED" ? "Xem chi tiết" : "Chỉnh sửa"}</button></td></tr>)}
           </tbody></table>
         </div>
         {data.items.length === 0 && <div className={styles.empty}><Building2 size={28} aria-hidden="true" /><h3>{data.total > 0 ? "Trang này chưa có workspace" : filtered ? "Không có dữ liệu phù hợp." : "Chưa có workspace"}</h3><p>{data.total > 0 ? "Danh sách có thể vừa thay đổi. Hãy làm mới để kiểm tra lại." : filtered ? "Thử từ khóa khác hoặc xóa bộ lọc để mở rộng kết quả." : "Tạo workspace và giao cho một Manager đang hoạt động."}</p>{filtered && <button className={styles.button} onClick={reset}>Xóa bộ lọc</button>}</div>}
