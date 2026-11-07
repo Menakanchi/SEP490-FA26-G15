@@ -63,6 +63,7 @@ try{
  const page=await context.newPage();page.setDefaultTimeout(15000);page.on("pageerror",error=>errors.push(error.message));
  const frame=page.locator("[data-admin-frame]");
  const dialog=()=>page.getByRole("dialog",{name:/^(Chỉnh sửa|Thêm mới) · Tài khoản$/});
+ const roleHelp=()=>dialog().locator("#admin-user-role-help");
  const ready=()=>frame.getByRole("region",{name:"Bảng tài khoản, cuộn ngang",exact:true}).waitFor();
  const open=async email=>{await frame.getByRole("button",{name:"Chỉnh sửa tài khoản "+email,exact:true}).click();await dialog().waitFor();};
  const add=async()=>{await frame.getByRole("button",{name:"Thêm mới",exact:true}).click();await dialog().waitFor();};
@@ -83,6 +84,23 @@ try{
  assert.equal(await dialog().getByLabel("Email *",{exact:true}).evaluate(el=>el===document.activeElement),true);
  assert.equal(await dialog().getByLabel("Vai trò *",{exact:true}).inputValue(),"MANAGER");
  assert.equal(await dialog().getByLabel("Tài khoản đang hoạt động",{exact:true}).isDisabled(),true);
+ const beforeRoleHelp={reads:reads.length,writes:writes.length};
+ assert.deepEqual((await dialog().getByLabel("Vai trò *",{exact:true}).locator("option").evaluateAll(nodes=>nodes.map(n=>n.value))).sort(),["ADMIN","ENGINEER","EXPERIENCER","MANAGER","REVIEWER"]);
+ for(const [code,positive,limit] of [
+  ["ADMIN","Quản trị tài khoản","Không duyệt khuyến nghị hoặc thêm/bớt thành viên workspace"],
+  ["MANAGER","Quản lý thành viên","Chỉ đọc phần kỹ thuật"],
+  ["ENGINEER","chạy regression","Không duyệt khuyến nghị"],
+  ["REVIEWER","chấp nhận/từ chối khuyến nghị","Không chạy mô phỏng hoặc tạo candidate"],
+  ["EXPERIENCER","Tài khoản tự đăng ký","Không duyệt khuyến nghị"]
+ ]){
+  await dialog().getByLabel("Vai trò *",{exact:true}).selectOption(code);
+  const text=await roleHelp().innerText();assert(text.includes("một vai trò hệ thống"));assert(text.includes(positive));assert(text.includes(limit));
+  assert.equal(await roleHelp().getAttribute("aria-live"),"polite");
+  if(code==="ADMIN"||code==="MANAGER"){await roleHelp().scrollIntoViewIfNeeded();await shot("role-help-"+code.toLowerCase()+"-1366");}
+ }
+ await dialog().getByLabel("Vai trò *",{exact:true}).selectOption("MANAGER");
+ assert.deepEqual({reads:reads.length,writes:writes.length},beforeRoleHelp,"Reading role help does not call permission APIs or save changes");
+ await dialog().getByLabel("Email *",{exact:true}).scrollIntoViewIfNeeded();
  for(const [width,height] of [[1920,1080],[1366,768],[768,1024],[390,844]]){
   await page.setViewportSize({width,height});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   const bounds=await dialog().boundingBox();assert.ok(bounds.x>=0&&bounds.y>=0&&bounds.x+bounds.width<=width&&bounds.y+bounds.height<=height);
@@ -102,6 +120,7 @@ try{
  assert.equal(writes.length,0);assert.equal((await dialog().innerText()).includes(password),false);assert.equal(await dialog().getByLabel("Mật khẩu ban đầu *",{exact:true}).count(),0);
  assert.equal(await dialog().getByRole("button",{name:"Quay lại",exact:true}).evaluate(el=>el===document.activeElement),true);
  await shot("create-review-390");
+ await dialog().getByRole("region",{name:"Quyền của vai trò Kỹ sư",exact:true}).getByText(/Không duyệt khuyến nghị/).waitFor();
  await page.keyboard.press("Escape");assert.equal(await dialog().getByLabel("Mật khẩu ban đầu *",{exact:true}).inputValue(),password);
  await page.keyboard.press("Escape");await dialog().getByRole("heading",{name:"Bỏ thay đổi chưa lưu?",exact:true}).waitFor();
  assert.equal(await dialog().getByRole("button",{name:"Tiếp tục chỉnh sửa",exact:true}).evaluate(el=>el===document.activeElement),true);await shot("discard-390");
@@ -137,6 +156,11 @@ try{
  await open(users[1].email);await dialog().getByLabel("Vai trò *",{exact:true}).selectOption("REVIEWER");await dialog().getByLabel("Tài khoản đang hoạt động",{exact:true}).uncheck();
  await confirmEdit();await dialog().getByText("Tài khoản sẽ không thể đăng nhập sau khi bị khóa.",{exact:true}).waitFor();
  const review=dialog().getByRole("region",{name:"Nội dung xác nhận tài khoản",exact:true});assert.equal((await review.innerText()).includes("Kỹ sư"),true);assert.equal((await review.innerText()).includes("Người duyệt"),true);
+ const roleReview=dialog().getByRole("region",{name:"Quyền của vai trò Người duyệt",exact:true});
+ await roleReview.getByText(/chấp nhận\/từ chối khuyến nghị/).waitFor();
+ await roleReview.getByText("Các quyền này chỉ sử dụng được khi tài khoản ở trạng thái hoạt động.",{exact:true}).waitFor();
+ await dialog().getByText("Vai trò mới có hiệu lực ở cấp hệ thống, không chỉ trong một workspace.",{exact:true}).waitFor();
+ await roleReview.scrollIntoViewIfNeeded();
  await shot("role-lock-review-1366");await page.setViewportSize({width:390,height:844});await shot("role-lock-review-390");
  saveMode="dependency";await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await dialog().getByRole("alert").filter({hasText:"Chuyển toàn bộ workspace"}).waitFor();
  assert.equal(await dialog().getByLabel("Vai trò *",{exact:true}).inputValue(),"REVIEWER");assert.equal(await dialog().getByLabel("Tài khoản đang hoạt động",{exact:true}).isChecked(),false);assert.equal(users[1].is_active,true);
@@ -155,6 +179,7 @@ try{
  const late=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith("/users/102"));release("detail");await late;assert.equal(await dialog().count(),0);detailMode="normal";
  await page.goto(base+"/admin/users");await ready();await page.setViewportSize({width:1366,height:768});await open(actor.email);
  assert.equal(await dialog().getByLabel("Vai trò *",{exact:true}).isDisabled(),true);assert.equal(await dialog().getByLabel("Tài khoản đang hoạt động",{exact:true}).isDisabled(),true);
+ assert((await roleHelp().innerText()).includes("Bạn không thể tự đổi vai trò hoặc khóa tài khoản của mình."));
  await dialog().getByLabel("Email *",{exact:true}).fill("self-new@example.invalid");await confirmEdit();await dialog().getByText("Phiên hiện tại của bạn sẽ hết hiệu lực. Hãy đăng nhập lại bằng email mới.",{exact:true}).waitFor();await shot("self-email-review-1366");
  await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await page.waitForURL(base+"/login");assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);
  revoked=false;
@@ -164,6 +189,6 @@ try{
   await page.evaluate(()=>localStorage.removeItem("vehicsim_access_token"));await page.goto(base+"/login");
  }
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["fixture login, create fields/defaults/inline validation/UTF8 72-byte boundary","password visibility; review redacts password; exact normalized create payload","dirty Escape/cancel keep/discard and focus return; native modal Tab trap","explicit target and before-after; name-only vs role/lock/unlock/self-email consequences","ref double-submit lock and busy close/Escape prevention","409/400 dependency/403/429/network error retains fields; only server success closes and refetches","no password on update; self role/status disabled; expired self-email session","mismatched/stale detail rejected; Add disabled while opening","four non-Admin roles cannot open form; no real API writes"],fixtureWriteCount:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["fixture login, create fields/defaults/inline validation/UTF8 72-byte boundary","password visibility; review redacts password; exact normalized create payload","dirty Escape/cancel keep/discard and focus return; native modal Tab trap","explicit target and before-after; name-only vs role/lock/unlock/self-email consequences","five role explanations, system scope, unchanged options/no permission APIs, create/edit review and locked account semantics","ref double-submit lock and busy close/Escape prevention","409/400 dependency/403/429/network error retains fields; only server success closes and refetches","no password on update; self role/status disabled; expired self-email session","mismatched/stale detail rejected; Add disabled while opening","four non-Admin roles cannot open form; no real API writes"],fixtureWriteCount:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
  console.log("PASS user forms: "+screenshots.length+" screenshots; browser HTTP fixtures only. Live backend/auth/DB/Figma NOT verified.");
 }finally{for(const item of pending)item.resolve();await browser.close();}
