@@ -1,15 +1,54 @@
 .scope {
+  /* Scoped foundations: inherited by Admin content, including native dialogs. */
   --admin-ink: #1e293b;
   --admin-text: #334155;
   --admin-secondary: #475569;
   --admin-muted: #64748b;
   --admin-line: #e2e8f0;
-  --admin-input-line: #dce3ee;
+  --admin-input-line: #7c8ba1;
   --admin-surface: #fff;
+  --admin-canvas: #f7f9fc;
   --admin-soft: #f8fafc;
   --admin-hover: #f1f5f9;
   --admin-focus: #2563eb;
   --admin-primary: #111827;
+  --admin-accent: #1e40af;
+  --admin-accent-bg: #eff6ff;
+  --admin-accent-line: #bfdbfe;
+  --admin-success: #166534;
+  --admin-success-bg: #f0fdf4;
+  --admin-success-line: #bbf7d0;
   --admin-danger: #b91c1c;
-  --admin-control-radius: 9px;
+  --admin-danger-hover: #991b1b;
+  --admin-danger-bg: #fef2f2;
+  --admin-danger-line: #fecaca;
+  --admin-warning: #92400e;
+  --admin-warning-bg: #fffbeb;
+  --admin-warning-line: #fde68a;
+  --admin-font-caption: 12px;
+  --admin-font-control: 13px;
+  --admin-font-body: 14px;
+  --admin-font-section: 16px;
+  --admin-font-dialog-title: 20px;
+  --admin-font-page-title: clamp(24px, 2.2vw, 30px);
+  --admin-space-1: 4px;
+  --admin-space-2: 8px;
+  --admin-space-3: 12px;
+  --admin-space-4: 16px;
+  --admin-space-5: 20px;
+  --admin-space-6: 24px;
+  --admin-space-8: 32px;
+  --admin-radius-small: 6px;
+  --admin-control-radius: 10px;
+  --admin-panel-radius: 16px;
+  --admin-control-height: 40px;
+  --admin-sidebar-width: 248px;
+  --admin-content-width: 1480px;
+  --admin-disabled-opacity: .55;
+  color: var(--admin-ink);
+  font-size: var(--admin-font-body);
+  line-height: 1.6;
+}
+@media (max-width: 639px) {
+  .scope { --admin-control-height: 44px; }
 }

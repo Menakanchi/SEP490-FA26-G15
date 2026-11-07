@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const output = path.join(root, "data/admin-batch1-ui");
+const output = path.resolve(root, process.env.ADMIN_UI_OUTPUT || "data/admin-batch1-ui");
 await fs.mkdir(output, { recursive: true });
 const base = process.env.ADMIN_UI_URL || "http://localhost:3100";
 const viewports = [[1920,1080],[1366,768],[768,1024],[390,844]];
@@ -84,6 +84,13 @@ try {
         await page.locator("summary").focus();await page.keyboard.press("Enter");
       }
       const nav=visibleNav();assert.equal(await nav.count(),1);
+      const add=frame.getByRole("button",{name:"Thêm mới",exact:true});
+      assert.equal(await add.evaluate(el=>getComputedStyle(el).fontSize),"13px");
+      assert(await add.evaluate(el=>el.getBoundingClientRect().height)>=(width<640?44:40),"Shared control height");
+      assert.equal(await frame.locator("h2").first().evaluate(el=>getComputedStyle(el).fontSize),"16px");
+      await nav.locator('[aria-current="page"]').focus();
+      assert.equal(await nav.locator('[aria-current="page"]').evaluate(el=>getComputedStyle(el).outlineWidth),"3px","Visible keyboard focus");
+
       assert.equal(await nav.getByRole("link").count(),4);
       assert.equal(await nav.locator('[aria-current="page"]').innerText(),`${title}\n${resource==="users"?"Người dùng và vai trò":resource==="workspaces"?"Không gian và người quản lý":"Danh mục và nguồn tham khảo"}`);
       assert.equal(await page.getByRole("link",{name:"Tổng quan VehicSim",exact:true}).filter({visible:true}).count(),1);
@@ -101,6 +108,10 @@ try {
     await frame.getByRole("button",{name:"Thêm mới",exact:true}).click();
     const dialog=page.getByRole("dialog",{name:`Thêm mới · ${title}`,exact:true});await dialog.waitFor();
     if(resource==="workspaces")await dialog.getByRole("radiogroup",{name:"Kết quả tìm Manager",exact:true}).waitFor();
+    assert.equal(await dialog.locator("input").first().evaluate(el=>getComputedStyle(el).fontSize),"14px");
+    assert.equal(await dialog.locator("h2").evaluate(el=>getComputedStyle(el).fontSize),"20px","List typography must not override modal titles");
+    assert.equal(await dialog.evaluate(el=>getComputedStyle(el).getPropertyValue("--admin-control-height").trim()),"44px","Native dialog inherits mobile foundations");
+
     await page.keyboard.press("Escape");await dialog.waitFor({state:"hidden"});
   }
   assert.equal(writes.length,0);
@@ -188,6 +199,6 @@ try {
   await page.getByRole("button",{name:"Đăng xuất",exact:true}).filter({visible:true}).click();await page.waitForURL(base+"/login");
   assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);
   assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);
-  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports,screenshots,checks:["fixture login remains /admin/users and /admin overview","three routes, unique h1, breadcrumbs, metadata, active nav","desktop/tablet/mobile and no document overflow","native menu keyboard/Escape/client navigation/history","skip link focus and notification popup bounds","existing editor open/cancel, PUT confirmation/error preserves values","server search/pagination remains connected","loading/empty/503/403/retry","profile exit restores global shell","four non-Admin roles denied on all resources without Admin API reads","expired token, unauthenticated redirect, mobile logout"],adminWrites:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
+  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports,screenshots,checks:["fixture login remains /admin/users and /admin overview","three routes, unique h1, breadcrumbs, metadata, active nav","shared typography/control dimensions, visible focus, dialog token inheritance","desktop/tablet/mobile and no document overflow","native menu keyboard/Escape/client navigation/history","skip link focus and notification popup bounds","existing editor open/cancel, PUT confirmation/error preserves values","server search/pagination remains connected","loading/empty/503/403/retry","profile exit restores global shell","four non-Admin roles denied on all resources without Admin API reads","expired token, unauthenticated redirect, mobile logout"],adminWrites:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
   console.log(`PASS Admin batch 1: ${screenshots.length} screenshots; browser HTTP fixtures only. Live backend/auth/DB/Figma NOT verified.`);
 } finally {await browser.close();}
