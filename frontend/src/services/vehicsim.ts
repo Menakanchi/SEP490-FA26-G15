@@ -16,6 +16,7 @@ import type {
   FailureFilters,
   FailureList,
   FamilyItem,
+  ScenarioCategoryInfo,
   FamilyRequest,
   FamilyVariantList,
   FamilyVersion,
@@ -104,6 +105,8 @@ export const vehicsimApi = {
     apiRequest<DescribeResult>("/vehicsim/scenarios/describe", { method: "POST", body: JSON.stringify({ text }) }),
 
   families: () => apiRequest<FamilyItem[]>("/vehicsim/families"),
+  /** Danh mục category và category nào đã chạy được (ADR-050). */
+  scenarioCategories: () => apiRequest<ScenarioCategoryInfo[]>("/vehicsim/scenario-categories"),
   createFamily: (body: FamilyRequest) =>
     apiRequest<{ scenario_id: number; code: string; variants: number; queued_runs?: number }>("/vehicsim/families", {
       method: "POST",

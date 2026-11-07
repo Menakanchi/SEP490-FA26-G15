@@ -26,8 +26,11 @@ import java.util.Map;
  * <ul>
  *   <li>{@code hello} → bắt tay: giao thức và phiên bản lõi.</li>
  *   <li>{@code open} {@code {xosc, out_dir, simulator_version, full_brake_decel?}} → profile thời gian, kích thước xe, vật lý xe cần ép, hằng số khung.</li>
- *   <li>{@code init} {@code {ego:{fwd,right}, walker:[x,y], front_offset, carla:{map,blueprint}}} → đặt gốc khung tọa độ.</li>
- *   <li>{@code step} {@code {t, ego:{loc,fwd,vel}, ped:{loc,vel}, walker_hit}} → {@code {skip, braking, decel_cmd, pedal, finished, result}}.</li>
+ *   <li>{@code init} {@code {ego:{fwd,right}, walker:[x,y], front_offset, carla:{map,blueprint}}} → đặt gốc khung tọa độ. Xe phía trước (ADR-050,
+ *   {@code open} trả {@code target.kind = "vehicle"}): {@code walker} là vị trí actor {@code lead}, thêm {@code target_size:[dài,rộng]} và
+ *   {@code target_center_offset} (tâm bbox lệch trước gốc actor).</li>
+ *   <li>{@code step} {@code {t, ego:{loc,fwd,vel}, ped:{loc,vel}, walker_hit}} → {@code {skip, braking, decel_cmd, pedal, finished, result}}. Xe phía trước:
+ *   {@code ped} là trạng thái actor {@code lead}, va chạm với xe báo qua {@code target_hit}.</li>
  *   <li>{@code finish} {@code {reason}} → ghi {@code result.json} nếu chưa ghi. {@code quit} → thoát.</li>
  * </ul>
  *
@@ -138,13 +141,20 @@ public final class BridgeMain {
                                 "vehicle", map("length_m", session.spec().vehicle().lengthM(), "width_m", session.spec().vehicle().widthM()),
                                 "physics", physics,
                                 "radar", RadarTracker.sensorAttributes(),
+                                "target", session.leadVehicle() ? map("kind", "vehicle", "role", "lead") : map("kind", "pedestrian", "role", "pedestrian"),
                                 "constants", map("pedestrian_start_y_m", Simulator.PEDESTRIAN_START_Y_M, "max_duration_s", Simulator.MAX_DURATION_S));
                     }
                     case "init" -> {
                         requireSession(session);
                         Map<String, Object> ego = castMap(request.get("ego"));
-                        session.init(vec(ego.get("fwd")), vec(ego.get("right")), vec(request.get("walker")), num(request.get("front_offset")),
-                                castMap(request.get("carla")));
+                        if (session.leadVehicle()) {
+                            session.initLead(vec(ego.get("fwd")), vec(ego.get("right")), vec(request.get("walker")), num(request.get("front_offset")),
+                                    castMap(request.get("carla")), request.get("target_size") == null ? null : vec(request.get("target_size")),
+                                    request.get("target_center_offset") instanceof Number n ? n.doubleValue() : 0.0);
+                        } else {
+                            session.init(vec(ego.get("fwd")), vec(ego.get("right")), vec(request.get("walker")), num(request.get("front_offset")),
+                                    castMap(request.get("carla")));
+                        }
                         reply = map("ok", true);
                     }
                     case "step" -> {
@@ -152,7 +162,8 @@ public final class BridgeMain {
                         Map<String, Object> ego = castMap(request.get("ego"));
                         Map<String, Object> ped = castMap(request.get("ped"));
                         CarlaSession.Tick tick = session.step(num(request.get("t")), vec(ego.get("loc")), vec(ego.get("fwd")), vec(ego.get("vel")),
-                                vec(ped.get("loc")), vec(ped.get("vel")), Boolean.TRUE.equals(request.get("walker_hit")), radar(request.get("radar")));
+                                vec(ped.get("loc")), vec(ped.get("vel")),
+                                Boolean.TRUE.equals(request.get("walker_hit")) || Boolean.TRUE.equals(request.get("target_hit")), radar(request.get("radar")));
                         reply = map("ok", true, "skip", tick.skip(), "braking", tick.braking(), "decel_cmd", tick.decelCmd(), "pedal", tick.pedal(),
                                 "finished", tick.finished(), "result", tick.finished() != null ? session.resultPath().toString() : null);
                     }

@@ -6,22 +6,43 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { AXES, FamilyForm, TIMES, WEATHERS, type FamilyInitial } from "@/components/FamilyForm";
 import { ErrorNote, PillButton, Tag, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { DescribeKey, DescribeResult, DescribedIr, FieldOrigin, TimeOfDay, Weather } from "@/types/vehicsim";
+import { LEAD_AXES } from "@/components/FamilyForm";
+import { LEAD_CATEGORIES, type DescribeKey, type DescribeResult, type DescribedIr, type FieldOrigin, type TimeOfDay, type Weather } from "@/types/vehicsim";
 
 const EXAMPLES = [
   "Xe VF8 chạy 60 km/h ban đêm trời mưa, một người đi bộ lao ra từ lề phải khi xe còn cách 25 m",
   "Ban ngày trời quang, xe chạy 40 km/h, người đi bộ đi chậm sang đường khi xe cách khoảng 20 m",
   "Lúc chạng vạng, xe chạy 50 km/h, người đi bộ đứng ở mép đường rồi dừng lại, không sang đường",
+  "Xe chạy 60 km/h, xe tải phía trước đang chạy 40 km/h thì phanh gấp 6 m/s2, cách 20 m, trời mưa",
+  "Ban đêm, ô tô chạy 50 km/h, xe phía trước đang đứng yên cách 30 m",
 ];
 const MAX_TEXT = 2000;
 
+type NumericKey = Extract<
+  DescribeKey,
+  "ego_speed_kmh" | "trigger_distance_m" | "pedestrian_speed_mps" | "target_speed_kmh" | "initial_distance_m" | "target_decel_mps2" | "lateral_overlap_pct"
+>;
 /** Khớp `DescribeService` và `FamilyService.IR_BOUNDS` (FamilySpec.validate) ở backend Java. */
-const NUMERIC: { key: Extract<DescribeKey, "ego_speed_kmh" | "trigger_distance_m" | "pedestrian_speed_mps">; min: number; max: number; step: number }[] = [
+const NUMERIC: { key: NumericKey; min: number; max: number; step: number }[] = [
   { key: "ego_speed_kmh", min: 10, max: 130, step: 1 },
   { key: "trigger_distance_m", min: 5, max: 80, step: 1 },
   // 6 m/s: tốc độ lớn nhất đã đo hành vi trên CARLA (FamilyService.MAX_PEDESTRIAN_SPEED_MPS).
   { key: "pedestrian_speed_mps", min: 0.5, max: 6, step: 0.1 },
 ];
+/** Nhóm xe phía trước (ADR-050) — khớp `Bundle.LEAD_BOUNDS`. */
+const LEAD_NUMERIC: { key: NumericKey; min: number; max: number; step: number }[] = [
+  { key: "ego_speed_kmh", min: 10, max: 130, step: 1 },
+  { key: "target_speed_kmh", min: 0, max: 120, step: 1 },
+  { key: "initial_distance_m", min: 2, max: 200, step: 1 },
+  { key: "target_decel_mps2", min: -10, max: -0.5, step: 0.5 },
+  { key: "lateral_overlap_pct", min: -100, max: 100, step: 5 },
+];
+const CATEGORY_TITLES: Record<string, string> = {
+  CP_CROSSING: "Người đi bộ băng ngang",
+  CCRS: "Xe phía trước đứng yên (CCRs)",
+  CCRM: "Xe phía trước chạy chậm (CCRm)",
+  CCRB: "Xe phía trước phanh gấp (CCRb)",
+};
 
 const ORIGIN_TAG: Record<FieldOrigin, { label: string; tone: "ok" | "info" | "warn" | "dark" }> = {
   stated: { label: "Có trong câu", tone: "ok" },
@@ -70,8 +91,16 @@ export default function DescribeScenarioPage() {
     setIrDirty(true);
   };
 
+  const lead = !!ir?.category && LEAD_CATEGORIES.includes(ir.category);
+  // Trường số hiện trên màn theo category; CCRb mới có mức phanh của xe trước.
+  const numeric = lead ? LEAD_NUMERIC.filter((n) => n.key !== "target_decel_mps2" || ir?.category === "CCRB") : NUMERIC;
   const irErrors = ir
-    ? NUMERIC.filter((n) => Number.isNaN(ir[n.key]) || ir[n.key] < n.min || ir[n.key] > n.max).map((n) => n.key)
+    ? numeric
+        .filter((n) => {
+          const v = ir[n.key] ?? Number.NaN;
+          return Number.isNaN(v) || v < n.min || v > n.max;
+        })
+        .map((n) => n.key)
     : [];
 
   return (
@@ -114,7 +143,8 @@ export default function DescribeScenarioPage() {
         </div>
         <div className="flex items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-4">
           <p className="text-[12px] leading-[1.5] text-vehicsim-muted">
-            MVP hỗ trợ motif người đi bộ băng ngang. Chưa lưu gì cho tới khi bạn bấm “Tạo họ kịch bản” ở bước 2.
+            Chạy được: người đi bộ băng ngang và xe phía trước đứng yên / chạy chậm / phanh gấp (bộ động học và CARLA). Chưa lưu gì cho tới khi bạn bấm
+            “Tạo họ kịch bản” ở bước 2.
           </p>
           <PillButton
             variant="dark"
@@ -131,14 +161,17 @@ export default function DescribeScenarioPage() {
         <div className="flex w-full items-start gap-4">
           <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-[17px] font-bold text-vehicsim-ink">Scenario IR · {result.title}</h2>
+              <h2 className="text-[17px] font-bold text-vehicsim-ink">
+                Scenario IR · {result.title}
+                {result.category && <span className="ml-2 text-[12px] font-semibold text-vehicsim-muted">{CATEGORY_TITLES[result.category] ?? result.category}</span>}
+              </h2>
               <SourceBadge result={result} />
             </div>
             {result.issues.length > 0 && (
               <ErrorNote message={`LLM chưa tự sửa hết sau ${result.repairs} lần: ${result.issues.join("; ")}. Hãy sửa tay bên dưới.`} />
             )}
             <div className="flex flex-col">
-              {NUMERIC.map((n) => {
+              {numeric.map((n) => {
                 const f = result.fields.find((x) => x.key === n.key);
                 return (
                   <IrRow key={n.key} label={f?.label ?? n.key} origin={origins[n.key]} error={irErrors.includes(n.key) ? `${n.min}–${n.max}` : null}>
@@ -147,7 +180,7 @@ export default function DescribeScenarioPage() {
                       min={n.min}
                       max={n.max}
                       step={n.step}
-                      value={Number.isNaN(ir[n.key]) ? "" : ir[n.key]}
+                      value={ir[n.key] === undefined || Number.isNaN(ir[n.key]) ? "" : ir[n.key]}
                       onChange={(e) => edit(n.key, e.target.value === "" ? Number.NaN : Number(e.target.value))}
                       className="h-9 w-[110px] rounded-[10px] border border-solid border-vehicsim-line-strong px-3 text-right text-[14px] font-semibold text-vehicsim-ink focus:border-vehicsim-ink focus:outline-none"
                     />
@@ -155,16 +188,18 @@ export default function DescribeScenarioPage() {
                   </IrRow>
                 );
               })}
-              <IrRow label="Người đi bộ dừng ở lề" origin={origins.stops_at_curb}>
-                <Segmented
-                  value={ir.stops_at_curb ? "yes" : "no"}
-                  options={[
-                    { value: "no", label: "Băng qua" },
-                    { value: "yes", label: "Dừng ở lề" },
-                  ]}
-                  onChange={(v) => edit("stops_at_curb", v === "yes")}
-                />
-              </IrRow>
+              {!lead && (
+                <IrRow label="Người đi bộ dừng ở lề" origin={origins.stops_at_curb}>
+                  <Segmented
+                    value={ir.stops_at_curb ? "yes" : "no"}
+                    options={[
+                      { value: "no", label: "Băng qua" },
+                      { value: "yes", label: "Dừng ở lề" },
+                    ]}
+                    onChange={(v) => edit("stops_at_curb", v === "yes")}
+                  />
+                </IrRow>
+              )}
               <IrRow label="Thời tiết" origin={origins.weather}>
                 <Select value={ir.weather} options={WEATHERS} onChange={(v) => edit("weather", v as Weather)} />
               </IrRow>
@@ -265,7 +300,11 @@ export default function DescribeScenarioPage() {
           title="2 · Không gian biến thể"
           initial={grid.initial}
           busy={creating}
-          hint="Lưới dựng quanh giá trị IR (±1 bước); trường giả định dùng dải mặc định. Luôn gồm cả ca người đi bộ dừng ở lề để đo phanh oan (quy tắc MVP)."
+          hint={
+            lead
+              ? "Lưới dựng quanh giá trị IR (±1 bước); trường giả định dùng dải mặc định. Luôn gồm thêm ca xe ở làn bên (chồng lấn −100 %) để đo phanh oan."
+              : "Lưới dựng quanh giá trị IR (±1 bước); trường giả định dùng dải mặc định. Luôn gồm cả ca người đi bộ dừng ở lề để đo phanh oan (quy tắc MVP)."
+          }
           onSubmit={async (body) => {
             setCreating(true);
             setError(null);
@@ -303,6 +342,27 @@ export default function DescribeScenarioPage() {
 function gridFromIr(ir: DescribedIr, origins: Partial<Record<DescribeKey, FieldOrigin>>, title: string, text: string): FamilyInitial {
   const around = (v: number, step: number, lo: number, hi: number, digits: number) =>
     [...new Set([v - step, v, v + step].map((x) => Number(x.toFixed(digits))).filter((x) => x >= lo && x <= hi))].sort((a, b) => a - b);
+  if (ir.category && LEAD_CATEGORIES.includes(ir.category)) {
+    const axis = (key: (typeof LEAD_AXES)[number]["key"]) => LEAD_AXES.find((a) => a.key === key)!;
+    const leadPick = (key: DescribeKey, axisKey: (typeof LEAD_AXES)[number]["key"], step: number, digits: number, value: number | undefined) => {
+      const a = axis(axisKey);
+      return origins[key] === "assumed" || value === undefined ? [...a.fallback] : around(value, step, a.min, a.max, digits);
+    };
+    const overlap = ir.lateral_overlap_pct ?? 100;
+    return {
+      name: title,
+      description: text.slice(0, 2000),
+      category: ir.category,
+      ego_speeds_kmh: leadPick("ego_speed_kmh", "ego_speeds_kmh", 10, 0, ir.ego_speed_kmh),
+      // CCRs giữ đúng 0; CCRm lấy ±5 km/h quanh giá trị IR nhưng vẫn chậm hơn ego.
+      target_speeds_kmh: ir.category === "CCRS" ? [0] : leadPick("target_speed_kmh", "target_speeds_kmh", 5, 0, ir.target_speed_kmh),
+      initial_distances_m: leadPick("initial_distance_m", "initial_distances_m", 10, 0, ir.initial_distance_m),
+      target_decels_mps2: ir.category === "CCRB" ? leadPick("target_decel_mps2", "target_decels_mps2", 2, 1, ir.target_decel_mps2) : undefined,
+      lateral_overlaps_pct: [...new Set([overlap, -100])],
+      weathers: [ir.weather],
+      times_of_day: [ir.time_of_day],
+    };
+  }
   const pick = (key: DescribeKey, axis: number, step: number, digits: number, value: number) => {
     const a = AXES[axis];
     return origins[key] === "assumed" ? [...a.fallback] : around(value, step, a.min, a.max, digits);
@@ -311,8 +371,8 @@ function gridFromIr(ir: DescribedIr, origins: Partial<Record<DescribeKey, FieldO
     name: title,
     description: text.slice(0, 2000),
     ego_speeds_kmh: pick("ego_speed_kmh", 0, 10, 0, ir.ego_speed_kmh),
-    trigger_distances_m: pick("trigger_distance_m", 1, 10, 0, ir.trigger_distance_m),
-    pedestrian_speeds_mps: pick("pedestrian_speed_mps", 2, 0.5, 1, ir.pedestrian_speed_mps),
+    trigger_distances_m: pick("trigger_distance_m", 1, 10, 0, ir.trigger_distance_m ?? Number.NaN),
+    pedestrian_speeds_mps: pick("pedestrian_speed_mps", 2, 0.5, 1, ir.pedestrian_speed_mps ?? Number.NaN),
     stops_at_curb: [false, true],
     weathers: [ir.weather],
     times_of_day: [ir.time_of_day],
