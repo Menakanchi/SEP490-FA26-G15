@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, BookOpen, Building2, ChevronDown, ChevronRight, LayoutDashboard, LogOut, ShieldCheck, UserRound, Users } from "lucide-react";
+import { ArrowLeft, BookOpen, Building2, ChevronDown, ChevronRight, LogOut, ShieldCheck, UserRound, Users } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { NotificationBell } from "@/components/NotificationBell";
 import { initials } from "@/components/VehicSimUi";
@@ -11,7 +11,6 @@ import styles from "./AdminShell.module.css";
 import tokens from "./AdminTokens.module.css";
 
 const sections = [
-  { href: "/admin", title: "Tổng quan quản trị", caption: "Số liệu và truy cập nhanh", description: "Theo dõi các danh mục quản trị và mở chức năng bạn cần xử lý.", icon: LayoutDashboard },
   { href: "/admin/users", title: "Tài khoản", caption: "Người dùng và vai trò", description: "Quản lý thông tin, vai trò và trạng thái hoạt động của tài khoản.", icon: Users },
   { href: "/admin/workspaces", title: "Workspace", caption: "Không gian và người quản lý", description: "Quản lý workspace và phân công Manager phụ trách.", icon: Building2 },
   { href: "/admin/tech-references", title: "Tài liệu kỹ thuật", caption: "Danh mục và nguồn tham khảo", description: "Quản lý nguyên lý, hằng số, tiêu chuẩn và các nguồn tham khảo kỹ thuật.", icon: BookOpen },

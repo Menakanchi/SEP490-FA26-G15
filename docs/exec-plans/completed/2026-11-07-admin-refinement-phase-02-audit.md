@@ -29,7 +29,7 @@ chỉ mô tả baseline. Vì vậy, UC và trách nhiệm dưới đây truy t�
 chưa chứng nhận khớp đặc tả gốc. Không tự đặt BR/FR ID hoặc coi ADR Proposed là Accepted.
 Không có Figma Admin để đối chiếu; audit này dựa trên source, không phải usability study.
 
-Điểm truy vết: [Dashboard](../../../frontend/src/components/admin/AdminDashboard.tsx),
+Điểm truy vết: [Entrypoint hiện tại sau Phase 04](../../../frontend/src/app/admin/page.tsx),
 [Shell](../../../frontend/src/components/admin/AdminShell.tsx),
 [Controller](../../../src/main/java/com/vsos/backend/controller/system/AdminController.java),
 [Service](../../../src/main/java/com/vsos/backend/service/system/AdminService.java),

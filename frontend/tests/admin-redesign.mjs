@@ -67,7 +67,7 @@ try {
   await page.getByLabel("Mật khẩu",{exact:true}).fill("Browser-fixture-only-12");
   await page.getByRole("button",{name:"Đăng nhập",exact:true}).click();await ready("Tài khoản");
   assert.equal(new URL(page.url()).pathname,"/admin/users");
-  await page.goto(base+"/admin");await frame.getByRole("heading",{level:1,name:"Tổng quan quản trị",exact:true}).waitFor();assert.equal(new URL(page.url()).pathname,"/admin");
+  await page.goto(base+"/admin");await ready("Tài khoản");assert.equal(new URL(page.url()).pathname,"/admin/users");
 
   for(const [resource,title] of sections){
     await page.goto(base+`/admin/${resource}`);await ready(title);
@@ -91,7 +91,7 @@ try {
       await nav.locator('[aria-current="page"]').focus();
       assert.equal(await nav.locator('[aria-current="page"]').evaluate(el=>getComputedStyle(el).outlineWidth),"3px","Visible keyboard focus");
 
-      assert.equal(await nav.getByRole("link").count(),4);
+      assert.equal(await nav.getByRole("link").count(),3);
       assert.equal(await nav.locator('[aria-current="page"]').innerText(),`${title}\n${resource==="users"?"Người dùng và vai trò":resource==="workspaces"?"Không gian và người quản lý":"Danh mục và nguồn tham khảo"}`);
       assert.equal(await page.getByRole("link",{name:"Tổng quan VehicSim",exact:true}).filter({visible:true}).count(),1);
       assert.equal(await page.getByRole("button",{name:"Đăng xuất",exact:true}).filter({visible:true}).count(),1);
@@ -199,6 +199,6 @@ try {
   await page.getByRole("button",{name:"Đăng xuất",exact:true}).filter({visible:true}).click();await page.waitForURL(base+"/login");
   assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);
   assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);
-  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports,screenshots,checks:["fixture login remains /admin/users and /admin overview","three routes, unique h1, breadcrumbs, metadata, active nav","shared typography/control dimensions, visible focus, dialog token inheritance","desktop/tablet/mobile and no document overflow","native menu keyboard/Escape/client navigation/history","skip link focus and notification popup bounds","existing editor open/cancel, PUT confirmation/error preserves values","server search/pagination remains connected","loading/empty/503/403/retry","profile exit restores global shell","four non-Admin roles denied on all resources without Admin API reads","expired token, unauthenticated redirect, mobile logout"],adminWrites:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
+  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports,screenshots,checks:["fixture login and legacy /admin entry both lead to /admin/users","three routes, unique h1, breadcrumbs, metadata, active nav","shared typography/control dimensions, visible focus, dialog token inheritance","desktop/tablet/mobile and no document overflow","native menu keyboard/Escape/client navigation/history","skip link focus and notification popup bounds","existing editor open/cancel, PUT confirmation/error preserves values","server search/pagination remains connected","loading/empty/503/403/retry","profile exit restores global shell","four non-Admin roles denied on all resources without Admin API reads","expired token, unauthenticated redirect, mobile logout"],adminWrites:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
   console.log(`PASS Admin batch 1: ${screenshots.length} screenshots; browser HTTP fixtures only. Live backend/auth/DB/Figma NOT verified.`);
 } finally {await browser.close();}

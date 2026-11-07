@@ -1,6 +1,6 @@
-import type { Metadata } from "next";
-import { AdminDashboard } from "@/components/admin/AdminDashboard";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: { absolute: "Tổng quan quản trị | Quản trị VehicSim" } };
-
-export default function AdminPage() { return <AdminDashboard />; }
+/** Keep existing Admin bookmarks pointed at the primary administration workflow. */
+export default function AdminPage() {
+  redirect("/admin/users");
+}
