@@ -135,6 +135,17 @@ public final class CarlaSession {
                 forcedOk &= compare(fields, "center_of_mass_" + axis, com.get(axis), got.get(axis), true);
             }
         }
+        if (physics.get("wheels") instanceof Map<?, ?> wheels && wheels.get("max_brake_torque") != null) {
+            // ADR-051: mô-men phanh đã hiệu chuẩn phải tới được mọi bánh; thiếu thì CARLA phanh như xe chưa hiệu chuẩn (~4 m/s², TD-17).
+            List<?> got = applied.get("wheels") instanceof List<?> l ? l : List.of();
+            if (got.isEmpty()) {
+                forcedOk &= compare(fields, "wheel_max_brake_torque", wheels.get("max_brake_torque"), null, true);
+            }
+            for (int i = 0; i < got.size(); i++) {
+                Object value = got.get(i) instanceof Map<?, ?> wheel ? wheel.get("max_brake_torque") : null;
+                forcedOk &= compare(fields, "wheel_" + i + "_max_brake_torque", wheels.get("max_brake_torque"), value, true);
+            }
+        }
         Map<?, ?> dims = vehicleCarla.get("dimensions") instanceof Map<?, ?> d ? d : Map.of();
         dimensionsOk &= compare(fields, "length_m", vehicle.lengthM(), applied.get("length_m"), false);
         dimensionsOk &= compare(fields, "width_m", vehicle.widthM(), applied.get("width_m"), false);

@@ -63,7 +63,7 @@ export function CarlaRunnerPanel() {
     return () => { current = false; if (url) URL.revokeObjectURL(url); };
   }, [data, cameraFrame]);
   const ready = connection?.connected && connection.compatible && connection.scenario_runner;
-  // Backend chỉ cấu hình profile .xosc hiện hành cho run mới (hiện -xosc4); không gắn số phiên bản ở đây để đổi profile không khoá nút.
+  // Backend chỉ cấu hình profile .xosc hiện hành cho run mới (hiện -xosc5); không gắn số phiên bản ở đây để đổi profile không khoá nút.
   const xoscProfile = /-xosc\d+$/.test(connection?.simulator ?? "");
   const familyId = family || String(ctx?.families[0]?.id ?? "");
 

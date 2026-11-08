@@ -2,6 +2,10 @@
 
     worker/.venv-carla/Scripts/python worker/measure_brake.py --blueprint vehicle.audi.etron --mass 2100 --speeds 30 40 50 60 --out data/brake-etron
 
+Hiệu chuẩn mô-men phanh (ADR-051): ``--brake-torque 2400`` ép ``max_brake_torque`` mọi bánh như lúc chạy thật với xe có
+``carla_vehicle_models.max_brake_torque_nm``; ``--pedals 0.5 0.8 1.0`` đo thêm các mức bàn đạp để kiểm bàn đạp có tuyến tính không
+(controller đổi giảm tốc AEB ra bàn đạp theo tỷ lệ với giảm tốc phanh 100%).
+
 Đặt xe trên đoạn thẳng Town04 road 40 / lane -4 (cùng đoạn bộ xuất ``.xosc`` dùng), giữ tốc độ đều, rồi phanh 100% và ghi tốc độ mỗi tick
 (chế độ đồng bộ 0,01 s, do công cụ tự tick — chỉ chạy khi server rảnh, không chạy song song với web/ScenarioRunner). Giảm tốc đo trên dải
 từ 95% tốc độ đầu xuống ``LOW_SPEED_MPS``: dưới mức đó CARLA dừng gần như tức thì (21–27 m/s², TD-17) nên không đại diện cho bàn đạp.
@@ -46,7 +50,30 @@ def stopping_distance(samples: list[tuple[float, float]]) -> float:
     return round(sum((t1 - t0) * (v0 + v1) / 2 for (t0, v0), (t1, v1) in zip(samples, samples[1:])), 3)
 
 
-def measure_once(world, carla, blueprint: str, physics: dict, speed_kmh: float) -> dict:  # noqa: ANN001
+def physics_for(mass: float | None, brake_torque: float | None) -> dict:
+    """Physics ép cho phép đo — cùng dạng backend đưa vào bundle (``wheels`` là một object cho mọi bánh)."""
+    physics: dict = {}
+    if mass:
+        physics["mass"] = mass
+    if brake_torque:
+        physics["wheels"] = {"max_brake_torque": brake_torque}
+    return physics
+
+
+def pedal_linearity(rows: list[dict]) -> list[dict]:
+    """Mỗi tốc độ: giảm tốc ở từng mức bàn đạp chia cho giảm tốc ở bàn đạp 1,0. Tuyến tính thì tỷ lệ ≈ mức bàn đạp."""
+    full = {r["speed_kmh"]: r["decel_mps2"] for r in rows if r.get("pedal", 1.0) == 1.0 and r.get("decel_mps2")}
+    out = []
+    for r in rows:
+        pedal = r.get("pedal", 1.0)
+        if pedal == 1.0 or not r.get("decel_mps2") or r["speed_kmh"] not in full:
+            continue
+        ratio = r["decel_mps2"] / full[r["speed_kmh"]]
+        out.append({"speed_kmh": r["speed_kmh"], "pedal": pedal, "decel_ratio": round(ratio, 3), "error": round(ratio - pedal, 3)})
+    return out
+
+
+def measure_once(world, carla, blueprint: str, physics: dict, speed_kmh: float, pedal: float = 1.0) -> dict:  # noqa: ANN001
     carla_map = world.get_map()
     waypoint = carla_map.get_waypoint_xodr(ROAD_ID, LANE_ID, START_S)
     transform = waypoint.transform
@@ -64,7 +91,7 @@ def measure_once(world, carla, blueprint: str, physics: dict, speed_kmh: float) 
         for _ in range(int(SETTLE_S / STEP_S)):
             world.tick()
         vehicle.disable_constant_velocity()
-        vehicle.apply_control(carla.VehicleControl(throttle=0.0, brake=1.0))
+        vehicle.apply_control(carla.VehicleControl(throttle=0.0, brake=pedal))
         start = world.get_snapshot().timestamp.elapsed_seconds
         samples = []
         for _ in range(int(MAX_BRAKE_S / STEP_S)):
@@ -72,11 +99,11 @@ def measure_once(world, carla, blueprint: str, physics: dict, speed_kmh: float) 
             vel = vehicle.get_velocity()
             speed = (vel.x ** 2 + vel.y ** 2) ** 0.5
             samples.append((world.get_snapshot().timestamp.elapsed_seconds - start, speed))
-            vehicle.apply_control(carla.VehicleControl(throttle=0.0, brake=1.0))
+            vehicle.apply_control(carla.VehicleControl(throttle=0.0, brake=pedal))
             if speed < 0.05:
                 break
         v0 = samples[0][1] if samples else 0.0
-        return {"speed_kmh": speed_kmh, "v0_mps": round(v0, 3), **decel_from_samples(samples, v0),
+        return {"speed_kmh": speed_kmh, "pedal": pedal, "v0_mps": round(v0, 3), **decel_from_samples(samples, v0),
                 "stopping_distance_m": stopping_distance(samples), "stopped": bool(samples and samples[-1][1] < 0.05),
                 "physics_applied": physics_snapshot(vehicle.get_physics_control(), vehicle.bounding_box.extent)}
     finally:
@@ -89,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--blueprint", default="vehicle.audi.etron")
     parser.add_argument("--mass", type=float, help="khối lượng xe trong DB (kg) — ép như lúc chạy thật")
     parser.add_argument("--speeds", type=float, nargs="+", default=[30.0, 40.0, 50.0, 60.0])
+    parser.add_argument("--brake-torque", type=float, help="max_brake_torque mọi bánh (N·m) — ép như xe đã hiệu chuẩn (ADR-051)")
+    parser.add_argument("--pedals", type=float, nargs="+", default=[1.0], help="các mức bàn đạp cần đo; 1,0 luôn được đo")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=2000)
@@ -104,26 +133,34 @@ def main(argv: list[str] | None = None) -> int:
     settings = world.get_settings()
     settings.synchronous_mode, settings.fixed_delta_seconds = True, STEP_S
     world.apply_settings(settings)
-    physics = {"mass": args.mass} if args.mass else {}
+    if not all(0 < p <= 1 for p in args.pedals):
+        parser.error("--pedals phải trong (0, 1]")
+    pedals = sorted(set(args.pedals) | {1.0})
+    physics = physics_for(args.mass, args.brake_torque)
     rows = []
     try:
-        for speed in args.speeds:
-            row = measure_once(world, carla, args.blueprint, physics, speed)
-            rows.append(row)
-            print(f"{speed:5.0f} km/h: giảm tốc {row['decel_mps2']} m/s² (dải {row.get('from_mps')}→{row.get('to_mps')} m/s), "
-                  f"quãng dừng {row['stopping_distance_m']} m")
+        for pedal in pedals:
+            for speed in args.speeds:
+                row = measure_once(world, carla, args.blueprint, physics, speed, pedal)
+                rows.append(row)
+                print(f"bàn đạp {pedal:.2f}, {speed:5.0f} km/h: giảm tốc {row['decel_mps2']} m/s² (dải {row.get('from_mps')}→{row.get('to_mps')} m/s), "
+                      f"quãng dừng {row['stopping_distance_m']} m")
     finally:
         run_xosc.release_world(client)
-    measured = [r["decel_mps2"] for r in rows if r["decel_mps2"] is not None and r.get("duration_s", 0) >= MIN_BAND_S]
-    excluded = [{"speed_kmh": r["speed_kmh"], "duration_s": r.get("duration_s")} for r in rows
+    full_rows = [r for r in rows if r["pedal"] == 1.0]
+    measured = [r["decel_mps2"] for r in full_rows if r["decel_mps2"] is not None and r.get("duration_s", 0) >= MIN_BAND_S]
+    excluded = [{"speed_kmh": r["speed_kmh"], "duration_s": r.get("duration_s")} for r in full_rows
                 if r["decel_mps2"] is None or r.get("duration_s", 0) < MIN_BAND_S]
-    report = {"blueprint": args.blueprint, "mass_kg": args.mass, "server": client.get_server_version(), "step_s": STEP_S,
-              "low_speed_cutoff_mps": LOW_SPEED_MPS, "min_band_s": MIN_BAND_S, "excluded_short_band": excluded, "rows": rows,
+    report = {"blueprint": args.blueprint, "mass_kg": args.mass, "brake_torque_nm": args.brake_torque, "server": client.get_server_version(),
+              "step_s": STEP_S, "low_speed_cutoff_mps": LOW_SPEED_MPS, "min_band_s": MIN_BAND_S, "excluded_short_band": excluded, "rows": rows,
+              "pedal_linearity": pedal_linearity(rows),
               "proposed_full_brake_decel_mps2": round(statistics.fmean(measured), 2) if measured else None,
               "spread_mps2": round(max(measured) - min(measured), 3) if measured else None}
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "brake_measurement.json").write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"Đề xuất carla_full_brake_decel_mps2 = {report['proposed_full_brake_decel_mps2']} (chênh giữa các tốc độ {report['spread_mps2']})")
+    for item in report["pedal_linearity"]:
+        print(f"  bàn đạp {item['pedal']:.2f} ở {item['speed_kmh']:.0f} km/h: {item['decel_ratio']} × phanh 100% (lệch {item['error']:+})")
     return 0 if measured else 3
 
 

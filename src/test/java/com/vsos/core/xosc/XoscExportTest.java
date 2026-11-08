@@ -173,17 +173,49 @@ class XoscExportTest {
     }
 
     @Test
-    void v3FileStillReadsWithItsOwnIdentity() {
+    void v3AndV4FilesStillReadWithTheirOwnIdentity() {
         Bundle.RunSpec spec = Bundle.readSpec(ir());
-        String v3 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.PREVIOUS_FORMAT);
+        String v4 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.PREVIOUS_FORMAT);
+        assertThat(Xosc.profile(v4)).isEqualTo(new Xosc.Profile("-xosc4", 0.01, 0.05));
+        assertThat(Xosc.read(v4)).isEqualTo(spec);
+        String v3 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V3_FORMAT);
         assertThat(Xosc.profile(v3)).isEqualTo(new Xosc.Profile("-xosc3", 0.01, 0.05));
         assertThat(Xosc.read(v3)).isEqualTo(spec);
+    }
+
+    /** Bundle một xe CARLA với {@code physics.wheels} cho trước. */
+    private static Map<String, Object> withWheels(Object wheels) {
+        Map<String, Object> physics = new LinkedHashMap<>(Map.of("mass", 2100.0));
+        if (wheels != null) {
+            physics.put("wheels", wheels);
+        }
+        Map<String, Object> carla = Map.of("blueprint", "vehicle.audi.etron", "physics", physics, "full_brake_decel_mps2", 9.5);
+        return Map.of("variant", ir(), "vehicle", Map.of("length_m", 4.75, "width_m", 1.93, "max_brake_decel_mps2", 9.5, "carla", carla), "seed", 7);
+    }
+
+    /** ADR-051: mô-men phanh đã hiệu chuẩn đi qua .xosc và đọc lại đúng; xe chưa hiệu chuẩn không có tham số này. */
+    @Test
+    void calibratedBrakeTorqueRoundTripsThroughXosc() {
+        Bundle.RunSpec spec = Bundle.readSpec(withWheels(Map.of("max_brake_torque", 2400.0)));
+        String xml = XoscExport.export(spec);
+        assertThat(xml).contains("name=\"vs_physics_wheel_max_brake_torque\" parameterType=\"string\" value=\"2400.0\"");
+        assertThat(Xosc.read(xml)).isEqualTo(spec);
+        assertThat(XoscExport.export(Bundle.readSpec(withWheels(null)))).doesNotContain("max_brake_torque");
+    }
+
+    @Test
+    void perWheelOrOtherWheelFieldsAreRejectedInsteadOfDropped() {
+        Map<String, Object> wheel = Map.of("max_brake_torque", 2400.0);
+        for (Object wheels : List.of(List.of(wheel, wheel, wheel, wheel), Map.of("max_brake_torque", 2400.0, "tire_friction", 3.5))) {
+            Bundle.RunSpec spec = Bundle.readSpec(withWheels(wheels));
+            assertThatThrownBy(() -> XoscExport.export(spec)).isInstanceOf(Bundle.BundleError.class).hasMessageContaining("max_brake_torque");
+        }
     }
 
     @Test
     void currentProfileIs100HzWithSensorPeriodPerception() {
         Xosc.Profile p = Xosc.profile(XoscExport.export(Bundle.readSpec(ir())));
-        assertThat(p).isEqualTo(new Xosc.Profile("-xosc4", 0.01, 0.05));
+        assertThat(p).isEqualTo(new Xosc.Profile("-xosc5", 0.01, 0.05));
     }
 
     @Test

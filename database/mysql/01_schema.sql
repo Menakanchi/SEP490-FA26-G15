@@ -885,10 +885,12 @@ INSERT INTO aeb_parameters (code, name, category, unit, description, min_value, 
   ('MAX_DECELERATION',        'Max Deceleration',        'VEHICLE_DYNAMICS', 'm/s2', 'Giới hạn giảm tốc tối đa mà bộ AEB được yêu cầu', 3.00,  10.00,   8.00,  3),
   ('BRAKE_BUILDUP_RATE',      'Brake Build-up Rate',      'CONTROL',          'm/s3', 'Tốc độ tăng lực phanh (build-up rate), tối đa 20 = JERK_LIMIT cố định của lõi AEB',  5.00,  20.00,  20.00,  4);
 
--- Thông số xe Audi e-tron mặc định trong CARLA:
+-- Thông số xe Audi e-tron mặc định trong CARLA. Mô-men phanh 1800 N·m và phanh 100% 9,13 m/s²: hiệu chuẩn 08/11/2026
+-- (ADR-051, migration 014) để CARLA phanh hết cỡ gần đúng max_brake_decel_mps2.
 INSERT INTO carla_vehicle_models (carla_blueprint_id, display_name, length_m, width_m, height_m,
-                                  mass_kg, tire_friction, wheelbase_m, max_speed_mps, max_brake_decel_mps2) VALUES
-  ('vehicle.audi.etron', 'Audi e-tron', 4.750, 1.930, 1.670, 2100.00, 1.00, 2.950, 50.00, 9.50);
+                                  mass_kg, tire_friction, max_brake_torque_nm, wheelbase_m, max_speed_mps, max_brake_decel_mps2,
+                                  carla_full_brake_decel_mps2) VALUES
+  ('vehicle.audi.etron', 'Audi e-tron', 4.750, 1.930, 1.670, 2100.00, 1.00, 1800.00, 2.950, 50.00, 9.50, 9.13);
 
 -- 4 mẫu xe CARLA 0.9.16 (migration 011): physics mặc định đọc bằng worker/vehicle_catalog.py, phanh 100% đo bằng worker/vehicle_study.py.
 -- max_brake_decel_mps2 = 9,5 như e-tron (giới hạn của bộ động học, TD-17); xe tải chỉ để xem (is_supported = FALSE).

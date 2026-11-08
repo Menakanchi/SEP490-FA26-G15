@@ -62,6 +62,7 @@ giữ lại). VehicSim: ADR-023 trở đi.
 | [ADR-048](ADR-048-pham-vi-workspace-reviewer.md) | Reviewer chỉ đọc/duyệt project thuộc workspace mình còn membership; project tường minh, lưu trữ chỉ đọc | 🕐 **Proposed 1/11** — triển khai theo yêu cầu, chờ nhóm duyệt |
 | [ADR-049](ADR-049-reviewer-chay-regression-de-kiem-tra.md) | Reviewer được đọc, chạy regression trong workspace của mình và duyệt; không tự duyệt test mình tạo | ✅ **Accepted 2/11** — theo yêu cầu người dùng; thay phần quyền Reviewer của ADR-035, bổ sung ADR-048 |
 | [ADR-050](ADR-050-mo-category-xe-phia-truoc-bo-dong-hoc.md) | Bỏ gán cứng CP_CROSSING; category đi theo họ kịch bản; mở CCRs/CCRm/CCRb trên bộ động học và CARLA bằng phần mở rộng không đổi kết quả người đi bộ | ✅ **Accepted 7/11** — chủ dự án chốt; bổ sung ADR-040, ADR-042 |
+| [ADR-051](ADR-051-hieu-chuan-phanh-carla-xosc5.md) | Hiệu chuẩn phanh CARLA: mô-men phanh của xe đi qua `.xosc` v5 (e-tron 1800 N·m → phanh 100% ~9,5 m/s²); identity `-xosc5` tách run phanh cũ | ✅ **Accepted 8/11** — chủ dự án duyệt; giải phần lớn TD-17 |
 
 ## Luật
 

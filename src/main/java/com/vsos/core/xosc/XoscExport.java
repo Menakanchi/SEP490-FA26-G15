@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import com.vsos.core.bridge.Bundle;
 import com.vsos.core.common.Py;
 import com.vsos.core.simulation.CrossingCase;
@@ -182,6 +183,24 @@ public final class XoscExport {
         if (spec.vehicleCarla().get(Bundle.FULL_BRAKE_DECEL) != null) {  // chỉ khi xe đã đo: xe chưa đo giữ nguyên XML cũ từng byte
             values.put(Bundle.FULL_BRAKE_DECEL, spec.vehicleCarla().get(Bundle.FULL_BRAKE_DECEL));
         }
+        Object torque = wheelBrakeTorque(physics.get("wheels"));
+        if (torque != null) {  // chỉ khi xe đã hiệu chuẩn (ADR-051): xe chưa hiệu chuẩn giữ nguyên XML từng byte trừ vs_format
+            values.put(Xosc.WHEEL_BRAKE_TORQUE, torque);
+        }
+    }
+
+    /**
+     * Mô-men phanh mọi bánh từ {@code physics.wheels}. {@code .xosc} chỉ mang được một giá trị chung cho mọi bánh, nên danh sách theo từng bánh hay
+     * trường bánh khác bị từ chối thay vì bỏ lặng lẽ (CARLA sẽ chạy xe khác với xe đã yêu cầu).
+     */
+    static Object wheelBrakeTorque(Object wheels) {
+        if (wheels == null) {
+            return null;
+        }
+        if (!(wheels instanceof Map<?, ?> w) || !w.keySet().equals(Set.of("max_brake_torque"))) {
+            throw new Bundle.BundleError("Bộ xuất .xosc chỉ mang được physics.wheels = {max_brake_torque} (một giá trị cho mọi bánh)");
+        }
+        return w.get("max_brake_torque");
     }
 
     private static void declare(El declarations, Map<String, Object> values) {

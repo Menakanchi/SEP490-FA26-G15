@@ -53,13 +53,17 @@ Vô hại, không phải dấu hiệu run hỏng.
 
 ## Hợp đồng và giới hạn
 
-- Profile hiện tại ghi `carla-0.9.16-xosc4` (định dạng `vehicsim.xosc/v4`, bước **0,01 s = 100 Hz**), khác runner trực tiếp
-  `carla-0.9.16`, bản v3 `-xosc3` (người "dừng ở lề" đi tiếp vào làn — TD-47), bản 20 Hz `-xosc2` và bản quỹ đạo lỗi `-xosc1`;
-  regression không ghép các profile. File v1 cần xuất lại từ web. Backend không còn chạy lại run `-xosc1`/`-xosc2`/`-xosc3`
-  (báo FAILED, tạo lượt mới); `run_xosc.py` vẫn chạy được file v2 (20 Hz) / v3 ngoài web để tái lập bằng chứng cũ, kèm identity của nó.
+- Profile hiện tại ghi `carla-0.9.16-xosc5` (định dạng `vehicsim.xosc/v5`, bước **0,01 s = 100 Hz**, mô-men phanh đã hiệu chuẩn — ADR-051),
+  khác runner trực tiếp `carla-0.9.16`, bản v4 `-xosc4` (phanh CARLA chưa hiệu chuẩn, ~4,6 m/s² — TD-17), bản v3 `-xosc3` (người "dừng ở lề"
+  đi tiếp vào làn — TD-47), bản 20 Hz `-xosc2` và bản quỹ đạo lỗi `-xosc1`; regression không ghép các profile. File v1 cần xuất lại từ web.
+  Backend không còn chạy lại run `-xosc1`…`-xosc4` (báo FAILED, tạo lượt mới); `run_xosc.py` vẫn chạy được file v2 (20 Hz) / v3 / v4 ngoài
+  web để tái lập bằng chứng cũ, kèm identity của nó.
+- Hiệu chuẩn phanh (ADR-051): xe có `carla_vehicle_models.max_brake_torque_nm` được ép mô-men đó cho mọi bánh; e-tron 1800 N·m cho phanh
+  100% ~9,5 m/s² ở 40–70 km/h. Đo xe khác bằng `worker/measure_brake.py --mass <kg> --brake-torque <N·m> --pedals 0.5 0.85 1.0`.
+  Dưới ~6 m/s CARLA vẫn dừng gần như tức thì và ma sát lốp không giới hạn lực phanh (TD-17 còn mở phần này).
 - Bước thời gian nằm trong file `.xosc` (`vs_fixed_delta_seconds`, `vs_perception_period_s`); `run_xosc.py` truyền
   `--frameRate 100` cho ScenarioRunner, controller/recorder/`DecelMeter` dùng cùng bước và `result.json` ghi
-  `case.carla.measured_step_s` đo từ timestamp khung thật. `simulation_runs.fixed_delta_seconds` = 0,0100 cho xosc3 và xosc4.
+  `case.carla.measured_step_s` đo từ timestamp khung thật. `simulation_runs.fixed_delta_seconds` = 0,0100 cho xosc3, xosc4 và xosc5.
 - Perception và quyết định AEB vẫn chạy theo chu kỳ cảm biến **0,05 s**; chỉ lệnh phanh, đo và ghi dữ liệu theo 0,01 s. Nhiễu
   và bộ lọc của perception rút theo từng lần cảm biến nên đổi bước không đổi thống kê của AEB; bộ động học giữ nguyên 20 Hz.
 - RMS jerk (`Δa/dt`) ở 100 Hz **không so sánh được** với số 20 Hz. `case.carla.jerk_filtered` là số lọc Butterworth 10 Hz **bậc 2 một chiều (causal)** thực
