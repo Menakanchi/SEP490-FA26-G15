@@ -123,7 +123,7 @@ export default function ListProjectPage() {
         <EmptyState title={search ? `Không có project nào khớp “${search}”` : tab === "ACTIVE" ? "Không có project đang hoạt động" : "Không có project lưu trữ"} />
       ) : (
         <>
-          <div className="grid w-full grid-cols-3 gap-5">
+          <div className="grid w-full grid-cols-1 gap-5 lg:grid-cols-2 2xl:grid-cols-3">
             {list.items.map((p) => (
               <ProjectCard
                 key={p.id}

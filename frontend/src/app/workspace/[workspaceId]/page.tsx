@@ -161,9 +161,9 @@ export default function WorkspaceDetailPage() {
         allowed && ws ? (
           <>
             <PillButton href={`/workspace/${id}/reports`}>
-              Báo cáo{ws.pending_report_count ? ` (${ws.pending_report_count} chờ duyệt)` : ""} →
+              Báo cáo{ws.pending_report_count ? ` (${ws.pending_report_count} chờ duyệt)` : ""}
             </PillButton>
-            <PillButton href={`/workspace/${id}/tasks`}>Task của workspace →</PillButton>
+            <PillButton href={`/workspace/${id}/tasks`}>Task của workspace</PillButton>
           </>
         ) : undefined
       }
@@ -278,7 +278,7 @@ export default function WorkspaceDetailPage() {
               </div>
             )}
             <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line">
-              <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-4 text-[11px] font-semibold uppercase text-vehicsim-faint">
+              <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-4 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
                 <span className="min-w-0 flex-1">Người dùng</span>
                 <span className="w-[130px]">Vai trò</span>
                 <span className="w-[90px]">Project</span>
@@ -335,7 +335,7 @@ export default function WorkspaceDetailPage() {
           <Card className="flex flex-col gap-4 p-5">
             <CardTitle>Project trong workspace</CardTitle>
             <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line">
-              <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-4 text-[11px] font-semibold uppercase text-vehicsim-faint">
+              <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-4 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
                 <span className="min-w-0 flex-1">Project</span>
                 <span className="w-[200px]">Chủ project</span>
                 <span className="w-[110px]">Thành viên</span>

@@ -1,0 +1,19 @@
+.toolbar.toolbar { grid-template-columns: minmax(240px, 1.8fr) repeat(2, minmax(150px, 1fr)); }
+.table table { min-width: 1050px; }
+.manager { min-width: 200px; max-width: 290px; overflow-wrap: anywhere; }
+.textarea { display: block; width: 100%; min-height: 100px; padding: 12px; border: 1px solid var(--admin-input-line, #dce3ee); border-radius: var(--admin-control-radius, 9px); background: var(--admin-surface, #fff); color: var(--admin-text, #334155); font-size: 13px; line-height: 1.8; resize: vertical; }
+.managerSearch { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 16px; }
+.managerSearch > div { flex: 1; min-width: 180px; }
+.managerChoices { display: flex; max-height: 230px; flex-direction: column; gap: 8px; margin-top: 12px; overflow: auto; }
+.managerChoices label.managerChoice { display: flex; align-items: start; gap: 10px; padding: 12px; border: 1px solid var(--admin-line, #e2e8f0); border-radius: var(--admin-control-radius, 9px); background: var(--admin-surface, #fff); cursor: pointer; }
+.managerChoice:has(input:checked) { border-color: var(--admin-focus, #2563eb); background: #eff6ff; }
+.managerChoices .managerChoice input[type="radio"] { min-height: 17px; padding: 0; flex-shrink: 0; width: 17px; height: 17px; margin-top: 3px; accent-color: var(--admin-focus, #2563eb); }
+.managerChoice span { min-width: 0; color: var(--admin-text, #334155); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.managerChoice small { display: block; color: var(--admin-muted, #64748b); font-size: 11px; }
+.managerPages { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; color: var(--admin-muted, #64748b); font-size: 11px; }
+.managerPages > div { display: flex; gap: 8px; }
+.details { margin-top: 20px; color: var(--admin-secondary, #475569); font-size: 12px; line-height: 1.8; }
+.details dt { margin-top: 14px; color: var(--admin-muted, #64748b); font-size: 11px; }
+.details dd { margin-top: 5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 1279px) { .toolbar.toolbar { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 639px) { .toolbar.toolbar { grid-template-columns: 1fr; } }

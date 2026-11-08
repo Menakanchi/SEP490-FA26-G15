@@ -2,10 +2,10 @@ package com.vsos.backend.service.simulation;
 
 import com.vsos.backend.common.audit.AuditLog;
 import com.vsos.core.bridge.Bundle;
+import com.vsos.core.simulation.LeadVehicleCase;
 import com.vsos.core.simulation.CarlaSession;
 import com.vsos.core.evaluation.Evaluation;
 import com.vsos.core.simulation.SimulationOutcome;
-import com.vsos.core.simulation.Simulator;
 import com.vsos.core.xosc.Xosc;
 import com.vsos.core.xosc.XoscExport;
 import com.vsos.backend.common.Vs.InvalidRequestException;
@@ -251,6 +251,11 @@ public class RunService {
                 simulator = newRunSimulator;
                 seed = requestedSeed == null ? seedFor(variant.lng("id")) : requestedSeed;
             }
+            Object category = variant.json("scenario_ir_json").get("category");
+            if (isCarla(simulator) && category != null && LeadVehicleCase.CATEGORIES.contains(category.toString())) {
+                // ADR-050: xe phía trước phải nằm trọn trong đoạn road 40 của Town04; kiểm bằng chính bộ xuất .xosc trước khi xếp hàng.
+                xosc(Json.obj("variant", variantForBundle(variant.json("scenario_ir_json"), null), "seed", 0));
+            }
             long runId = db.insert(
                     "INSERT INTO simulation_runs (project_id, scenario_id, scenario_version_id, carla_vehicle_model_id, aeb_version_id, "
                             + "simulator_type, simulator_version, fixed_delta_seconds, max_duration_s, regression_test_id, baseline_run_id, "
@@ -383,14 +388,7 @@ public class RunService {
         Map<String, Object> params = new LinkedHashMap<>();
         AEB_DEFAULTS.forEach((code, def) -> params.put(code, codes.getOrDefault(code, def)));
 
-        Map<String, Object> variant = Json.obj(
-                "ego_speed_kmh", ((Number) ir.get("ego_speed_kmh")).doubleValue(),
-                "trigger_distance_m", ((Number) ir.get("trigger_distance_m")).doubleValue(),
-                "pedestrian_speed_mps", ((Number) ir.get("pedestrian_speed_mps")).doubleValue(),
-                "stops_at_curb", Boolean.TRUE.equals(ir.get("stops_at_curb")),
-                "weather", ir.getOrDefault("weather", "CLEAR"),
-                "time_of_day", ir.getOrDefault("time_of_day", "DAY"),
-                "friction", friction == null ? null : ((Number) friction).doubleValue());
+        Map<String, Object> variant = variantForBundle(ir, friction);
 
         Map<String, Object> vehicleDoc = Json.obj(
                 "name", vehicle.str("display_name") != null && !vehicle.str("display_name").isEmpty()
@@ -415,6 +413,34 @@ public class RunService {
                 "vehicle", vehicleDoc,
                 "seed", run.lng("random_seed"),
                 "source", source);
+    }
+
+    /**
+     * Phần {@code variant} của bundle từ cấu hình run. Biến thể người đi bộ giữ nguyên dạng cũ (không thêm khóa nào, bundle cũ tái lập y hệt);
+     * biến thể xe phía trước (ADR-050) mang {@code category} và các trường của nó.
+     */
+    static Map<String, Object> variantForBundle(Map<String, Object> ir, Object friction) {
+        Object category = ir.get("category");
+        if (category != null && LeadVehicleCase.CATEGORIES.contains(category.toString())) {
+            return Json.obj(
+                    "category", category.toString(),
+                    "ego_speed_kmh", ((Number) ir.get("ego_speed_kmh")).doubleValue(),
+                    "target_speed_kmh", ((Number) ir.get("target_speed_kmh")).doubleValue(),
+                    "initial_distance_m", ((Number) ir.get("initial_distance_m")).doubleValue(),
+                    "target_decel_mps2", ir.get("target_decel_mps2") instanceof Number n ? n.doubleValue() : null,
+                    "lateral_overlap_pct", ir.get("lateral_overlap_pct") instanceof Number n ? n.doubleValue() : null,
+                    "weather", ir.getOrDefault("weather", "CLEAR"),
+                    "time_of_day", ir.getOrDefault("time_of_day", "DAY"),
+                    "friction", friction == null ? null : ((Number) friction).doubleValue());
+        }
+        return Json.obj(
+                "ego_speed_kmh", ((Number) ir.get("ego_speed_kmh")).doubleValue(),
+                "trigger_distance_m", ((Number) ir.get("trigger_distance_m")).doubleValue(),
+                "pedestrian_speed_mps", ((Number) ir.get("pedestrian_speed_mps")).doubleValue(),
+                "stops_at_curb", Boolean.TRUE.equals(ir.get("stops_at_curb")),
+                "weather", ir.getOrDefault("weather", "CLEAR"),
+                "time_of_day", ir.getOrDefault("time_of_day", "DAY"),
+                "friction", friction == null ? null : ((Number) friction).doubleValue());
     }
 
     /**
@@ -487,7 +513,7 @@ public class RunService {
         } catch (Bundle.BundleError e) {
             throw new SimulatorException("Không đọc được đầu vào: " + e.getMessage());
         }
-        SimulationOutcome outcome = Simulator.simulate(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle());
+        SimulationOutcome outcome = Bundle.simulateKinematic(spec);
         Map<String, Object> document = Bundle.resultDocument(spec, outcome, KINEMATIC_SIMULATOR, null,
                 Evaluation.evaluate(outcome, spec.params()).toDocument());
         document.put("engine", Bundle.ENGINE);

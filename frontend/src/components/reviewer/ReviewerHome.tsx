@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { VehicSimPage } from "@/components/VehicSimPage";
+import { NextActionCard } from "@/components/project/ProjectHome";
 import { Card, CardTitle, EmptyState, ErrorNote, PillButton, RecommendationBadge, StatCard, Tag, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { DecisionHistory, MyWork, RecommendationItem, RegressionList, TaskStatus } from "@/types/vehicsim";
@@ -43,7 +44,7 @@ function ago(iso: string | null | undefined, now: number): string {
 }
 
 /**
- * UC-62 / UC-63 — Trang chủ REVIEWER (thiết kế Figma "Reviewer" 6:1435): hàng đợi khuyến nghị, số quyết định 30 ngày,
+ * UC-62 / UC-63 — Trang chủ REVIEWER: hàng đợi khuyến nghị, số quyết định 30 ngày,
  * so sánh từng cặp run của khuyến nghị đầu hàng và các quyết định gần đây. Chỉ đọc API có sẵn; quyết định vẫn làm ở màn duyệt.
  */
 export function ReviewerHome() {
@@ -99,20 +100,26 @@ export function ReviewerHome() {
       actions={
         <>
           <PillButton href={canRunRegression ? "/validation/regression/new" : undefined} disabled={!canRunRegression}>Chạy kiểm thử hồi quy</PillButton>
-          {next && canDecide ? (
-            <PillButton variant="dark" href={`/validation/recommendations/${next.id}/review`}>
-              Duyệt khuyến nghị tiếp theo →
-            </PillButton>
-          ) : (
-            <PillButton href="/validation/recommendations">Tất cả khuyến nghị</PillButton>
-          )}
           <PillButton href="/my-work?report=new">Nộp báo cáo</PillButton>
         </>
       }
     >
       <ErrorNote message={error ?? (historyError ? "Không tải được lịch sử quyết định; số liệu chấp nhận và từ chối chưa có." : null)} />
 
-      <div className="flex w-full items-stretch gap-4">
+      {recs && (
+        <NextActionCard
+          eyebrow={canDecide ? "Gợi ý tiếp theo · kiểm chứng" : "Kiểm chứng · chỉ xem"}
+          title={focus ? `Khuyến nghị ${focus.code}` : "Theo dõi kết quả kiểm chứng"}
+          detail={focus ? `${focus.baseline} → ${focus.candidate} · ${focus.regression_code}` : "Hàng đợi đang trống. Mở danh sách để xem các khuyến nghị của project."}
+          action={next && canDecide
+            ? { label: "Duyệt khuyến nghị tiếp theo", href: `/validation/recommendations/${next.id}/review` }
+            : focus
+              ? { label: "Xem khuyến nghị", href: `/validation/recommendations/${focus.id}` }
+              : { label: "Tất cả khuyến nghị", href: "/validation/recommendations" }}
+        />
+      )}
+
+      <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Chờ duyệt"
           value={recs ? pending.length : error ? "—" : "…"}
@@ -137,27 +144,19 @@ export function ReviewerHome() {
         />
       </div>
 
-      <div className="flex w-full items-start gap-4">
+      <div className="flex w-full flex-col items-start gap-4 xl:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <Card className="overflow-hidden">
             <div className="px-5 pb-3 pt-5">
               <CardTitle
                 aside={
                   <Link href="/validation/recommendations" className="text-[12px] font-semibold text-vehicsim-decision">
-                    Tất cả khuyến nghị →
+                    Tất cả khuyến nghị
                   </Link>
                 }
               >
                 Hàng đợi duyệt
               </CardTitle>
-            </div>
-            <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
-              <span className="w-[90px]">Mã</span>
-              <span className="min-w-0 flex-1">Ứng viên AEB</span>
-              <span className="w-[130px]">Hồi quy</span>
-              <span className="w-[150px]">Người tạo</span>
-              <span className="w-[80px]">Chờ</span>
-              <span className="w-[80px]" />
             </div>
             {recs && queue.length === 0 && (
               <EmptyState title="Không có khuyến nghị nào chờ duyệt">
@@ -168,31 +167,29 @@ export function ReviewerHome() {
                 chạy xong.
               </EmptyState>
             )}
-            {queue.slice(0, QUEUE_ROWS).map((r) => {
-              const isBlocked = r.status === "BLOCKED";
-              const href = isBlocked || !canDecide ? `/validation/recommendations/${r.id}` : `/validation/recommendations/${r.id}/review`;
-              return (
-                <div key={r.id} className="flex h-[58px] items-center border-b border-solid border-vehicsim-line px-5 last:border-b-0">
-                  <span className="w-[90px] text-[13px] font-bold text-vehicsim-ink">{r.code}</span>
-                  <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
-                    <span className="truncate text-[13px] font-semibold text-vehicsim-ink">
-                      {r.baseline} → {r.candidate}
-                    </span>
-                    <span className="truncate text-[12px] text-vehicsim-faint">từ {r.regression_code}</span>
-                  </span>
-                  <span className="w-[130px]">
-                    <Tag tone={isBlocked ? "danger" : "ok"}>{isBlocked ? "Không đạt" : "Đạt"}</Tag>
-                  </span>
-                  <span className="w-[150px] truncate pr-3 text-[13px] text-vehicsim-muted">{creators.get(r.id) ?? "—"}</span>
-                  <span className="w-[80px] text-[13px] text-vehicsim-muted">{ago(r.created_at, now)}</span>
-                  <span className="flex w-[80px] justify-end">
+            <ul className="divide-y divide-vehicsim-line">
+              {queue.slice(0, QUEUE_ROWS).map((r) => {
+                const isBlocked = r.status === "BLOCKED";
+                const href = isBlocked || !canDecide ? `/validation/recommendations/${r.id}` : `/validation/recommendations/${r.id}/review`;
+                return (
+                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                    <div className="flex min-w-0 flex-1 basis-[190px] flex-col gap-1">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="text-[14px] font-bold text-vehicsim-ink">{r.code}</span>
+                        <Tag tone={isBlocked ? "danger" : "ok"}>{isBlocked ? "Hồi quy không đạt" : "Hồi quy đạt"}</Tag>
+                      </span>
+                      <span className="break-words text-[13px] font-semibold text-vehicsim-ink">{r.baseline} → {r.candidate}</span>
+                      <span className="text-[12px] text-vehicsim-muted">
+                        {r.regression_code} · {creators.get(r.id) ?? "Chưa rõ người tạo"} · {ago(r.created_at, now)}
+                      </span>
+                    </div>
                     <PillButton href={href} className="px-4 py-2 text-[12px]">
-                    {isBlocked || !canDecide ? "Xem" : "Duyệt"}
+                      {isBlocked || !canDecide ? "Xem" : "Duyệt"}
                     </PillButton>
-                  </span>
-                </div>
-              );
-            })}
+                  </li>
+                );
+              })}
+            </ul>
             {queue.length > QUEUE_ROWS && (
               <p className="px-5 py-3 text-[12px] text-vehicsim-faint">và {queue.length - QUEUE_ROWS} khuyến nghị khác trong danh sách đầy đủ.</p>
             )}
@@ -201,12 +198,12 @@ export function ReviewerHome() {
           {focus && <PairComparison rec={focus} />}
         </div>
 
-        <div className="flex w-[380px] shrink-0 flex-col gap-4">
+        <div className="flex w-full shrink-0 flex-col gap-4 xl:w-[300px] 2xl:w-[360px]">
           <Card className="flex flex-col gap-3 p-5">
             <CardTitle
               aside={
                 <Link href="/my-work" className="text-[12px] font-semibold text-vehicsim-decision">
-                  Tất cả →
+                  Tất cả
                 </Link>
               }
             >
@@ -254,7 +251,7 @@ export function ReviewerHome() {
             <CardTitle
               aside={
                 <Link href="/validation/decisions" className="text-[12px] font-semibold text-vehicsim-decision">
-                  Tất cả →
+                  Tất cả
                 </Link>
               }
             >
@@ -288,7 +285,7 @@ export function ReviewerHome() {
       </div>
 
       <p className="text-[12px] leading-[1.6] text-vehicsim-faint">
-        Khuyến nghị chỉ dựa trên mô phỏng. Việc chấp nhận là quyết định của kỹ sư, không phải chứng nhận an toàn.
+        Người duyệt ra quyết định dựa trên kết quả mô phỏng.
       </p>
     </VehicSimPage>
   );
@@ -310,7 +307,7 @@ function PairComparison({ rec }: { rec: RecommendationItem }) {
       <CardTitle aside={<Tag>Chỉ xem hồi quy</Tag>}>So sánh từng cặp run — {rec.code}</CardTitle>
       {counts ? (
         <>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {cells.map((c) => (
               <div key={c.label} className="flex flex-col gap-1 rounded-[14px] bg-vehicsim-soft px-4 py-3">
                 <span className="text-[12px] font-medium text-vehicsim-muted">{c.label}</span>

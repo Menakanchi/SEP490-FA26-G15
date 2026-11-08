@@ -9,6 +9,7 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import {
   CLASS_STYLE,
   ErrorNote,
+  Pagination,
   PillButton,
   Tag,
   cx,
@@ -69,6 +70,7 @@ export default function AebConfigPage() {
   const [versions, setVersions] = useState<AebVersion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ id: number; label: string } | null>(null);
+  const [versionPage, setVersionPage] = useState(1);
 
   const load = useCallback(() => {
     vehicsimApi
@@ -102,6 +104,7 @@ export default function AebConfigPage() {
 
   const catalog = useMemo(() => new Map((ctx?.parameters ?? []).map((p) => [p.code, p])), [ctx]);
   const baseline = versions?.find((v) => v.status === "BASELINE") ?? null;
+  const targetFamily = ctx?.families?.find((f) => f.id === scenarioId) ?? null;
 
   return (
     <VehicSimPage
@@ -111,13 +114,26 @@ export default function AebConfigPage() {
       subtitle="Hiệu chỉnh 4 tham số AEB: chạy thuật toán tối ưu đa mục tiêu Bayes (MOBO/qEHVI) hoặc điều chỉnh thủ công, sau đó chuyển sang kiểm thử hồi quy."
     >
       <ErrorNote message={error ?? datasetError} />
+      {targetFamily && (
+        <div className="flex items-center justify-between gap-3 rounded-[16px] border border-solid border-vehicsim-decision/20 bg-vehicsim-decision-bg px-4 py-3 text-[13px] text-vehicsim-decision shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="size-2 rounded-full bg-vehicsim-decision" />
+            <span>
+              Chuẩn bị tối ưu AEB trên toàn bộ biến thể của họ kịch bản <strong>{targetFamily.code} · {targetFamily.name}</strong>.
+            </span>
+          </div>
+          <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-vehicsim-decision shadow-sm">
+            Tối ưu toàn kịch bản
+          </span>
+        </div>
+      )}
       {dataset && <AnalysisSelectionSummary dataset={dataset} />}
-      {dataset && <p className="text-[12px] text-vehicsim-muted">Tập phân tích đã chốt được chuyển sang bước này; MOBO hiện chạy trên toàn họ kịch bản, chưa lọc theo tập.</p>}
+      {dataset && <p className="text-[12px] text-vehicsim-muted">Tập phân tích đã chốt được chuyển sang bước này. MOBO hiện chạy trên toàn họ kịch bản.</p>}
       {created && (
         <div className="flex items-center justify-between gap-4 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok shadow-sm">
           <span>Đã tạo ứng viên AEB {created.label}. Bước tiếp theo: chạy kiểm thử hồi quy so với bản cơ sở.</span>
           <PillButton variant="dark" className="px-4 py-2 text-[12px]" href={`/validation/regression/new?candidate=${created.id}`}>
-            Chạy kiểm thử hồi quy →
+            Chạy kiểm thử hồi quy
           </PillButton>
         </div>
       )}
@@ -175,6 +191,7 @@ export default function AebConfigPage() {
         <MoboOptimizationSection
           canWrite={canWrite}
           baselineId={baseline?.id ?? null}
+          initialScenarioId={Number.isSafeInteger(scenarioId) && scenarioId > 0 ? scenarioId : undefined}
           onCandidateSelected={async (candId, candLabel) => {
             setCreated({ id: candId, label: candLabel });
             load();
@@ -210,7 +227,7 @@ export default function AebConfigPage() {
           <div className="flex items-center px-5 py-4">
             <span className="text-[15px] font-bold text-vehicsim-ink">{versions ? `${versions.length} phiên bản` : "…"}</span>
           </div>
-          <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+          <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
             <span className="w-[120px]">Phiên bản</span>
             <span className="w-[120px]">Trạng thái</span>
             {KEY_PARAMS.map((code) => (
@@ -220,48 +237,69 @@ export default function AebConfigPage() {
             ))}
             <span className="min-w-0 flex-1">Ghi chú</span>
             <span className="w-[96px]">Ngày tạo</span>
-            <span className="w-[110px]" />
+            <span className="w-[160px] text-right pr-2">Thao tác</span>
           </div>
-          {versions?.map((v) => (
-            <div
-              key={v.id}
-              className={cx(
-                "flex min-h-[56px] items-center border-b border-solid border-vehicsim-line px-5 py-2",
-                v.status === "BASELINE" && "bg-vehicsim-row",
-              )}
-            >
-              <span className="flex w-[120px] flex-col">
-                <span className="text-[13px] font-bold text-vehicsim-ink">AEB {v.label}</span>
-                <span className="text-[11px] text-vehicsim-faint">{changedNote(v, baseline)}</span>
-              </span>
-              <span className="w-[120px]">
-                <Tag tone={STATUS_TONE[v.status]}>{STATUS_LABEL[v.status]}</Tag>
-              </span>
-              {KEY_PARAMS.map((code) => {
-                const differs = baseline && v.id !== baseline.id && v.parameters[code] !== baseline.parameters[code];
-                return (
-                  <span
-                    key={code}
-                    className={cx("w-[120px] text-[13px]", differs ? "font-bold text-vehicsim-decision" : "text-vehicsim-ink")}
+          {(() => {
+            const vTotal = versions?.length ?? 0;
+            const vPageSize = 8;
+            const vPages = Math.max(1, Math.ceil(vTotal / vPageSize));
+            const vCurrent = Math.min(versionPage, vPages);
+            const vOffset = (vCurrent - 1) * vPageSize;
+            const shownVersions = versions?.slice(vOffset, vOffset + vPageSize) ?? [];
+
+            return (
+              <>
+                {shownVersions.map((v) => (
+                  <div
+                    key={v.id}
+                    className={cx(
+                      "flex min-h-[56px] items-center border-b border-solid border-vehicsim-line px-5 py-2",
+                      v.status === "BASELINE" && "bg-vehicsim-row",
+                    )}
                   >
-                    {paramValue(v.parameters[code], catalog.get(code)?.unit ?? "")}
-                  </span>
-                );
-              })}
-              <span className="min-w-0 flex-1 truncate pr-3 text-[12px] text-vehicsim-muted">{v.notes ?? "—"}</span>
-              <span className="w-[96px] text-[12px] text-vehicsim-faint">{fmt.date(v.created_at)}</span>
-              <span className="flex w-[110px] justify-end">
-                {v.status === "CANDIDATE" && canWrite && (
-                  <Link
-                    href={`/validation/regression/new?candidate=${v.id}`}
-                    className="text-[12px] font-semibold text-vehicsim-decision hover:underline"
-                  >
-                    Kiểm thử hồi quy →
-                  </Link>
+                    <span className="flex w-[120px] flex-col">
+                      <span className="text-[13px] font-bold text-vehicsim-ink">AEB {v.label}</span>
+                      <span className="text-[11px] text-vehicsim-faint">{changedNote(v, baseline)}</span>
+                    </span>
+                    <span className="w-[120px]">
+                      <Tag tone={STATUS_TONE[v.status]}>{STATUS_LABEL[v.status]}</Tag>
+                    </span>
+                    {KEY_PARAMS.map((code) => {
+                      const differs = baseline && v.id !== baseline.id && v.parameters[code] !== baseline.parameters[code];
+                      return (
+                        <span
+                          key={code}
+                          className={cx("w-[120px] text-[13px]", differs ? "font-bold text-vehicsim-decision" : "text-vehicsim-ink")}
+                        >
+                          {paramValue(v.parameters[code], catalog.get(code)?.unit ?? "")}
+                        </span>
+                      );
+                    })}
+                    <span className="min-w-0 flex-1 truncate pr-3 text-[12px] text-vehicsim-muted">{v.notes ?? "—"}</span>
+                    <span className="w-[96px] text-[12px] text-vehicsim-faint">{fmt.date(v.created_at)}</span>
+                    <span className="flex w-[160px] justify-end" onClick={(e) => e.stopPropagation()}>
+                      {v.status === "CANDIDATE" && canWrite && (
+                        <Link
+                          href={`/validation/regression/new?candidate=${v.id}`}
+                          className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
+                        >
+                          Kiểm thử hồi quy
+                        </Link>
+                      )}
+                    </span>
+                  </div>
+                ))}
+                {vTotal > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-t border-solid border-vehicsim-line">
+                    <span className="text-[12px] text-vehicsim-muted">
+                      Hiển thị {vOffset + 1}–{Math.min(vOffset + vPageSize, vTotal)} trên {vTotal} phiên bản
+                    </span>
+                    {vPages > 1 && <Pagination page={vCurrent} pages={vPages} onPage={setVersionPage} />}
+                  </div>
                 )}
-              </span>
-            </div>
-          ))}
+              </>
+            );
+          })()}
         </section>
       )}
     </VehicSimPage>
@@ -275,10 +313,12 @@ export default function AebConfigPage() {
 function MoboOptimizationSection({
   canWrite,
   baselineId,
+  initialScenarioId,
   onCandidateSelected,
 }: {
   canWrite: boolean;
   baselineId: number | null;
+  initialScenarioId?: number;
   onCandidateSelected: (candidateId: number, label: string) => void;
 }) {
   const { ctx } = useVehicSimContext();
@@ -289,7 +329,7 @@ function MoboOptimizationSection({
   const [paretoTrials, setParetoTrials] = useState<OptimizationTrial[] | null>(null);
 
   // Form state
-  const [scenarioId, setScenarioId] = useState<number | "">("");
+  const [scenarioId, setScenarioId] = useState<number | "">(initialScenarioId ?? "");
   const [name, setName] = useState("");
   const [maxTrials, setMaxTrials] = useState(10);
   const [nInitialPoints, setNInitialPoints] = useState(3);
@@ -299,12 +339,12 @@ function MoboOptimizationSection({
   const [selectionResult, setSelectionResult] = useState<{ regressionTestId: number; trialId: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Chọn mặc định kịch bản đầu tiên
+  // Chọn mặc định kịch bản đầu tiên hoặc initialScenarioId
   useEffect(() => {
     if (!ctx?.families?.length) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- giá trị mặc định khi kịch bản tải xong
-    setScenarioId((cur) => (cur === "" ? ctx.families[0].id : cur));
-  }, [ctx]);
+    setScenarioId((cur) => (cur === "" ? (initialScenarioId && ctx.families.some(f => f.id === initialScenarioId) ? initialScenarioId : ctx.families[0].id) : cur));
+  }, [ctx, initialScenarioId]);
 
   // Tải danh sách đợt tối ưu
   const loadRuns = useCallback(() => {
@@ -430,7 +470,7 @@ function MoboOptimizationSection({
             className="px-4 py-2 text-[12px]"
             href={`/validation/regression/${selectionResult.regressionTestId}`}
           >
-            Mở bài kiểm thử hồi quy →
+            Mở bài kiểm thử hồi quy
           </PillButton>
         </div>
       )}
@@ -564,14 +604,14 @@ function MoboOptimizationSection({
           </span>
         </div>
 
-        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
           <span className="w-[80px]">Mã run</span>
           <span className="w-[220px]">Tên đợt chạy</span>
           <span className="w-[120px]">Trạng thái</span>
           <span className="w-[140px]">Tiến độ trials</span>
           <span className="w-[120px]">Nghiệm Pareto</span>
           <span className="w-[120px]">Thời gian</span>
-          <span className="min-w-0 flex-1 text-right">Thao tác</span>
+          <span className="min-w-0 flex-1 text-right pr-2">Thao tác</span>
         </div>
 
         {runs?.length === 0 && (
@@ -618,7 +658,7 @@ function MoboOptimizationSection({
                 </span>
               </span>
               <span className="w-[120px] text-[12px] text-vehicsim-faint">{fmt.date(r.started_at)}</span>
-              <span className="flex min-w-0 flex-1 justify-end gap-2">
+              <span className="flex min-w-0 flex-1 justify-end items-center gap-2">
                 {isRunning && canWrite && (
                   <button
                     type="button"
@@ -627,13 +667,18 @@ function MoboOptimizationSection({
                       handleCancelRun(r.id);
                     }}
                     disabled={cancelling}
-                    className="rounded-full border border-solid border-vehicsim-danger px-3 py-1 text-[11px] font-semibold text-vehicsim-danger hover:bg-vehicsim-danger-bg"
+                    className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-danger px-3 text-[11px] font-bold text-vehicsim-danger hover:bg-vehicsim-danger-bg transition"
                   >
                     Dừng đợt chạy
                   </button>
                 )}
-                <span className="text-[12px] font-bold text-vehicsim-decision">
-                  {isSelected ? "Đang xem ▼" : "Xem chi tiết →"}
+                <span className={cx(
+                  "inline-flex h-8 items-center justify-center rounded-full px-3 text-[12px] font-bold transition shadow-sm",
+                  isSelected
+                    ? "bg-vehicsim-ink text-white"
+                    : "border border-solid border-vehicsim-line-strong bg-white text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white"
+                )}>
+                  {isSelected ? "Đang xem" : "Chi tiết"}
                 </span>
               </span>
             </div>
@@ -698,7 +743,7 @@ function MoboOptimizationSection({
 
             <div className="overflow-x-auto rounded-[14px] border border-solid border-vehicsim-line">
               <table className="w-full text-left text-[13px]">
-                <thead className="bg-vehicsim-soft text-[11px] font-semibold uppercase text-vehicsim-faint">
+                <thead className="bg-vehicsim-soft text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
                   <tr>
                     <th className="px-4 py-3">Trial #</th>
                     <th className="px-4 py-3">TTC (s)</th>
@@ -744,9 +789,9 @@ function MoboOptimizationSection({
                             type="button"
                             disabled={selectingTrialId !== null || !canWrite}
                             onClick={() => handleSelectCandidate(t.id)}
-                            className="rounded-full bg-vehicsim-ink px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-black/80 disabled:opacity-40"
+                            className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-ink px-4 text-[12px] font-bold text-white transition hover:bg-black/80 disabled:opacity-40 shadow-sm"
                           >
-                            {selectingTrialId === t.id ? "Đang chọn…" : "Chọn ứng viên này →"}
+                            {selectingTrialId === t.id ? "Đang chọn…" : "Chọn ứng viên"}
                           </button>
                         </td>
                       </tr>
@@ -762,7 +807,7 @@ function MoboOptimizationSection({
             <h4 className="text-[15px] font-bold text-vehicsim-ink">Lịch sử toàn bộ {trials?.length ?? 0} Trials</h4>
             <div className="max-h-[320px] overflow-y-auto rounded-[14px] border border-solid border-vehicsim-line">
               <table className="w-full text-left text-[12px]">
-                <thead className="sticky top-0 bg-vehicsim-soft text-[11px] font-semibold uppercase text-vehicsim-faint">
+                <thead className="sticky top-0 bg-vehicsim-soft text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
                   <tr>
                     <th className="px-3 py-2">#</th>
                     <th className="px-3 py-2">Nguồn sinh</th>

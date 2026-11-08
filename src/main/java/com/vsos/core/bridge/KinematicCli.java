@@ -4,7 +4,6 @@ import com.vsos.core.evaluation.Evaluation;
 import com.vsos.core.common.MiniJson;
 import com.vsos.core.common.Py;
 import com.vsos.core.simulation.SimulationOutcome;
-import com.vsos.core.simulation.Simulator;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -65,7 +64,7 @@ public final class KinematicCli {
             return BridgeMain.EXIT_BAD_INPUT;
         }
 
-        SimulationOutcome outcome = Simulator.simulate(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle());
+        SimulationOutcome outcome = Bundle.simulateKinematic(spec);
         Evaluation.Result ev = Evaluation.evaluate(outcome, spec.params());
         Map<String, Object> result = Bundle.resultDocument(spec, outcome, Bundle.KINEMATIC_SIMULATOR, null, ev.toDocument());
         result.put("engine", Bundle.ENGINE);
@@ -82,8 +81,16 @@ public final class KinematicCli {
         Map<String, Object> m = outcome.metrics();
         var c = spec.caseSpec();
         out.println("Bộ mô phỏng : " + Bundle.KINEMATIC_SIMULATOR);
-        out.println("Biến thể    : " + Py.g(c.egoSpeedKmh()) + " km/h, kích hoạt " + Py.g(c.triggerDistanceM()) + " m, người đi bộ " + Py.g(c.pedestrianSpeedMps())
-                + " m/s" + (c.stopsAtCurb() ? " (dừng ở lề)" : "") + ", " + c.weather() + "/" + c.timeOfDay() + ", seed " + spec.seed());
+        if (spec.leadCase() != null) { // xe phía trước (ADR-050)
+            var l = spec.leadCase();
+            out.println("Biến thể    : " + l.category() + " · ego " + Py.g(l.egoSpeedKmh()) + " km/h, xe trước " + Py.g(l.targetSpeedKmh()) + " km/h cách "
+                    + Py.g(l.initialDistanceM()) + " m" + (l.targetDecelMps2() == null ? "" : ", phanh " + Py.g(l.targetDecelMps2()) + " m/s²")
+                    + ", chồng lấn " + Py.g(l.overlapPct()) + " %, " + l.weather() + "/" + l.timeOfDay() + ", seed " + spec.seed());
+        } else {
+            out.println("Biến thể    : " + Py.g(c.egoSpeedKmh()) + " km/h, kích hoạt " + Py.g(c.triggerDistanceM()) + " m, người đi bộ "
+                    + Py.g(c.pedestrianSpeedMps()) + " m/s" + (c.stopsAtCurb() ? " (dừng ở lề)" : "") + ", " + c.weather() + "/" + c.timeOfDay()
+                    + ", seed " + spec.seed());
+        }
         out.println("AEB         : " + (Bundle.truthy(spec.aebLabel()) ? spec.aebLabel() : "(không tên)") + " · TTC " + Py.g(spec.params().ttcThreshold()) + " s");
         out.println("Kết quả     : " + ev.verdict() + " · " + ev.outcome() + " · kết thúc " + outcome.endReason() + " sau " + Py.g(outcome.durationS()) + " s");
         if (Boolean.TRUE.equals(m.get("collision"))) {

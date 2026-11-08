@@ -150,11 +150,25 @@ export interface VehicSimContextData {
   parameters: ParameterDef[];
 }
 
+/** 7 nhóm kịch bản Euro NCAP (`scenarios.category`). */
+export type ScenarioCategory = "CCRS" | "CCRM" | "CCRB" | "CP_CROSSING" | "CPLA" | "TURNING" | "CUT_IN";
+/** Nhóm "xe phía trước cùng làn" chạy trên bộ động học (ADR-050). */
+export const LEAD_CATEGORIES: ScenarioCategory[] = ["CCRS", "CCRM", "CCRB"];
+
+/** `GET /scenario-categories` — `ScenarioRules.catalog()`: category nào đã có bộ mô phỏng. */
+export interface ScenarioCategoryInfo {
+  code: ScenarioCategory;
+  target_types: string[];
+  supported: boolean;
+  simulators: ("KINEMATIC" | "CARLA")[];
+}
+
 export interface FamilyItem {
   id: number;
   code: string;
   name: string;
   description: string | null;
+  category?: ScenarioCategory;
   variants: number;
   parameter_space: Record<string, (number | boolean | string)[]>;
   runs: Record<string, number>;
@@ -217,10 +231,16 @@ export interface FamilyVersion {
 export interface FamilyRequest {
   name: string;
   description?: string;
+  /** Trống = CP_CROSSING. Nhóm xe phía trước dùng các trục target/initial/decel/overlap thay cho trục người đi bộ. */
+  category?: ScenarioCategory;
   ego_speeds_kmh: number[];
-  trigger_distances_m: number[];
-  pedestrian_speeds_mps: number[];
-  stops_at_curb: boolean[];
+  trigger_distances_m?: number[];
+  pedestrian_speeds_mps?: number[];
+  stops_at_curb?: boolean[];
+  target_speeds_kmh?: number[];
+  initial_distances_m?: number[];
+  target_decels_mps2?: number[];
+  lateral_overlaps_pct?: number[];
   weathers: Weather[];
   times_of_day: TimeOfDay[];
   run_baseline: boolean;
@@ -228,16 +248,32 @@ export interface FamilyRequest {
   origin?: { natural_language_input: string; llm_model?: string | null; described?: Record<string, unknown> };
 }
 
-export type DescribeKey = "ego_speed_kmh" | "trigger_distance_m" | "pedestrian_speed_mps" | "stops_at_curb" | "weather" | "time_of_day";
+export type DescribeKey =
+  | "ego_speed_kmh"
+  | "trigger_distance_m"
+  | "pedestrian_speed_mps"
+  | "stops_at_curb"
+  | "target_speed_kmh"
+  | "initial_distance_m"
+  | "target_decel_mps2"
+  | "lateral_overlap_pct"
+  | "weather"
+  | "time_of_day";
 /** Nguồn gốc giá trị: câu nói rõ / suy từ từ ngữ / giá trị mặc định / người dùng sửa tay. */
 export type FieldOrigin = "stated" | "inferred" | "assumed" | "edited";
 
 export interface DescribedIr {
   motif: string;
+  /** Có ở nhóm xe phía trước; IR người đi bộ không mang khóa này. */
+  category?: ScenarioCategory;
   ego_speed_kmh: number;
-  trigger_distance_m: number;
-  pedestrian_speed_mps: number;
-  stops_at_curb: boolean;
+  trigger_distance_m?: number;
+  pedestrian_speed_mps?: number;
+  stops_at_curb?: boolean;
+  target_speed_kmh?: number;
+  initial_distance_m?: number;
+  target_decel_mps2?: number;
+  lateral_overlap_pct?: number;
   weather: Weather;
   time_of_day: TimeOfDay;
 }
@@ -245,6 +281,7 @@ export interface DescribedIr {
 /** `POST /api/v1/vehicsim/scenarios/describe` — `DescribeService` (Java). */
 export interface DescribeResult {
   motif: string;
+  category?: ScenarioCategory;
   source: "llm" | "rules";
   model: string | null;
   llm_error: string | null;

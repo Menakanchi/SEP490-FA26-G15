@@ -150,6 +150,10 @@ def prepare_runtime(source: Path, target: Path, out: Path, simulator: str) -> No
         if prop is None:
             prop = ET.SubElement(properties, "Property", name=name)
         prop.set("value", value)
+    # Xe phía trước (ADR-050): controller của xe mục tiêu nằm cạnh controller AEB trong worker/.
+    lead = tree.find(".//Controller[@name='VehicSimLead']/Properties/Property[@name='module']")
+    if lead is not None:
+        lead.set("value", str(WORKER / "vehicsim_lead_control.py"))
     tree.write(target, encoding="utf-8", xml_declaration=True)
 
 

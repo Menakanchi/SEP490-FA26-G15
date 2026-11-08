@@ -98,13 +98,13 @@ export default function ViewProjectDetailPage() {
       {project && journey ? (
         <>
           {workable && <NextStepCard journey={journey} opened={opened} onGo={go} />}
-          <div className="flex w-full items-start gap-5">
+          <div className="flex w-full flex-col items-stretch gap-5 xl:flex-row xl:items-start">
             <JourneyTimeline
               journey={journey}
               onGo={go}
               disabled={!isExperiencer ? "Chỉ xem: tài khoản không còn là Experiencer" : active ? undefined : "Bỏ lưu trữ để mở các bước"}
             />
-            <Card className="flex w-[340px] shrink-0 flex-col gap-2 p-6">
+            <Card className="flex w-full shrink-0 flex-col gap-2 p-6 xl:w-[300px] 2xl:w-[340px]">
               <h2 className="text-[17px] font-bold text-vehicsim-ink">Thông tin</h2>
               <div className="flex flex-col">
                 <InfoRow label="Phương tiện">{project.vehicle_name ?? "—"}</InfoRow>

@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, CircleCheck, MessageSquareText, SlidersHorizontal, Sparkles } from "lucide-react";
+import { CircleCheck, MessageSquareText, SlidersHorizontal, Sparkles } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, ErrorNote, PillButton, Tag, cx } from "@/components/VehicSimUi";
@@ -138,7 +138,7 @@ export default function StartScenarioPage() {
           </div>
           <PillButton variant="dark" disabled={busy || !!blocked} title={blocked} onClick={() => void startWithSample()}>
             {busy ? "Đang tạo và chạy…" : "Dùng mẫu này"}
-            {!busy && <ArrowRight aria-hidden className="size-4" />}
+            
           </PillButton>
         </WayCard>
 
@@ -149,7 +149,7 @@ export default function StartScenarioPage() {
         >
           <PillButton href={opened ? "/scenarios/new" : undefined} disabled={!!blocked} title={blocked}>
             Mô tả tình huống
-            <ArrowRight aria-hidden className="size-4" />
+            
           </PillButton>
         </WayCard>
 
@@ -160,7 +160,7 @@ export default function StartScenarioPage() {
         >
           <PillButton href={opened ? "/scenarios?new=1" : undefined} disabled={!!blocked} title={blocked}>
             Nhập tham số
-            <ArrowRight aria-hidden className="size-4" />
+            
           </PillButton>
         </WayCard>
       </div>

@@ -6,12 +6,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FolderOpen, House, Settings } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { ROLE_LABELS, initials } from "@/components/VehicSimUi";
+import { ROLE_LABELS, cx, initials } from "@/components/VehicSimUi";
 import { MEMBER_ROLES, WORKSPACE_ROLES } from "@/components/workspaceAccess";
-import { stepSummary, statusOf } from "@/components/project/journey";
+import { JOURNEY_STEPS, stepSummary, statusOf } from "@/components/project/journey";
 import { useJourney } from "@/components/project/ProjectJourneyContext";
 import { ProjectSwitcher } from "@/components/project/ProjectShell";
-import { StepStatusIcon } from "@/components/project/ProjectUi";
+import { PROJECT_CONTEXT_CLASS, ProjectIdentity, StepStatusIcon } from "@/components/project/ProjectUi";
+import { teamJourneyLinks } from "@/components/vehicsimFlow";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { JourneyStepKey } from "@/types/vehicsim";
 
@@ -90,7 +91,7 @@ const GROUPS: Group[] = [
     icon: svgIcon("/vehicsim/icon-route.svg"),
     prefix: "/scenarios",
     children: [
-      { label: "Họ kịch bản", href: "/scenarios" },
+      { label: "Danh sách họ kịch bản", href: "/scenarios" },
       // FE-06: câu mô tả → LLM → Scenario IR (dùng lại hạ tầng LLM của Generator cũ).
       { label: "Sinh từ mô tả", href: "/scenarios/new" },
     ],
@@ -103,7 +104,7 @@ const GROUPS: Group[] = [
     icon: svgIcon("/vehicsim/icon-search.svg"),
     prefix: "/analysis",
     children: [
-      { label: "Ca lỗi", href: "/analysis/failures" },
+      { label: "Kết quả & phân tích", href: "/analysis/failures" },
       { label: "Dữ liệu CARLA", href: "/analysis/carla" },
       { label: "Độ nhạy tham số", note: `${SOON} (SHAP)` },
       { label: "Tương tác tham số", note: SOON },
@@ -139,7 +140,7 @@ const GROUPS: Group[] = [
     prefix: "/my-work",
     roles: MEMBER_ROLES,
   },
-  { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), prefix: "/admin", roles: ["ADMIN"], children: [{ label: "Tài khoản", href: "/admin/users" }, { label: "Workspace", href: "/admin/workspaces" }, { label: "Tài liệu kỹ thuật", href: "/admin/tech-references" }] },
+  { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), prefix: "/admin", roles: ["ADMIN"], children: [{ label: "Tổng quan quản trị", href: "/admin" }, { label: "Tài khoản", href: "/admin/users" }, { label: "Workspace", href: "/admin/workspaces" }, { label: "Tài liệu kỹ thuật", href: "/admin/tech-references" }] },
 ];
 
 const lucideIcon = (Icon: typeof House) => <Icon aria-hidden className="size-[18px] text-vehicsim-muted" />;
@@ -182,7 +183,7 @@ function NavGroups({ groups }: { groups: Group[] }) {
               </span>
             )}
             {(g.children || g.href || g.note) && (
-              <span className={`font-semibold ${expanded ? "text-[13px] text-vehicsim-ink" : "text-[16px] text-vehicsim-faint"}`}>
+              <span aria-hidden="true" className={`font-semibold ${expanded ? "text-[13px] text-vehicsim-ink" : "text-[16px] text-vehicsim-faint"}`}>
                 {expanded ? "▾" : "›"}
               </span>
             )}
@@ -241,8 +242,49 @@ function TeamNav({ role }: { role: string }) {
   }, []);
 
   const groups = GROUPS.filter((g) => !g.roles || g.roles.includes(role));
+  const reviewer = role === "REVIEWER";
+  const team = reviewer || role === "ENGINEER";
+  const stepLinks = teamJourneyLinks(reviewer);
+  const steps: Group[] = JOURNEY_STEPS.map(({ key, n, title }) => ({
+    key,
+    label: title,
+    icon: <StepStatusIcon status="TODO" n={n} size="sm" />,
+    children: stepLinks[key],
+  }));
+  const navigation = team ? [
+    ...groups.filter((g) => g.key === "dashboard"),
+    ...steps,
+    ...groups.filter((g) => ["vehicles", "workspace", "my-work"].includes(g.key)),
+  ] : groups;
   const personalGroup: Group = { key: "personal", label: `Project cá nhân (${personal})`, icon: lucideIcon(FolderOpen), href: "/projects", prefix: "/projects" };
-  return <NavGroups groups={personal > 0 ? [...groups, personalGroup] : groups} />;
+  return <NavGroups groups={personal > 0 ? [...navigation, personalGroup] : navigation} />;
+}
+
+function TeamProjectContext({ reviewer }: { reviewer: boolean }) {
+  const { ctx, selectProject } = useVehicSimContext();
+  if (!ctx) return null;
+
+  return (
+    <div className={cx(PROJECT_CONTEXT_CLASS, "flex flex-col gap-2")}>
+      <div className="flex items-center gap-3">
+        <ProjectIdentity project={ctx.project} label="Project đang mở" fallback="Chưa có project" />
+      </div>
+      {reviewer && ctx.reviewer_projects.length > 1 && (
+        <select
+          aria-label="Project đang xem"
+          value={ctx.project.id}
+          className="w-full rounded-full border border-vehicsim-line-strong bg-white px-2 py-2 text-[12px]"
+          onChange={(event) => selectProject(Number(event.target.value))}
+        >
+          {ctx.reviewer_projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.workspace_name} · {project.name}{project.can_decide ? "" : " (chỉ xem)"}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
 }
 
 function ExperiencerNav() {
@@ -298,12 +340,16 @@ function ExperiencerNav() {
   return <NavGroups groups={groups} />;
 }
 
-export function VehicSimSidebar({ hideOnMobile = false }: { hideOnMobile?: boolean }) {
+export function VehicSimSidebar({ hideOnMobile = false, mobile = false }: { hideOnMobile?: boolean; mobile?: boolean }) {
   const router = useRouter();
   const { user, logout } = useAuth();
 
   return (
-    <aside className={`${hideOnMobile ? "hidden md:flex" : "flex"} sticky top-0 print:hidden h-screen w-[248px] shrink-0 flex-col gap-[22px] overflow-y-auto border-r border-solid border-vehicsim-line bg-white px-4 py-6`}>
+    <aside className={cx(
+      "shrink-0 flex-col gap-[22px] bg-white px-4 py-6 print:hidden",
+      mobile ? "flex w-full" : "sticky top-0 h-screen w-[248px] overflow-y-auto border-r border-solid border-vehicsim-line",
+      !mobile && (hideOnMobile ? "hidden md:flex" : "flex"),
+    )}>
       <Link href="/" className="flex items-center gap-[10px] px-2">
         {/* eslint-disable-next-line @next/next/no-img-element -- logo SVG từ Figma */}
         <img alt="" src="/vehicsim/logo.svg" width={28} height={28} className="size-7" />
@@ -316,10 +362,13 @@ export function VehicSimSidebar({ hideOnMobile = false }: { hideOnMobile?: boole
           <ExperiencerNav />
         </>
       ) : (
-        <TeamNav role={user?.roleCode ?? ""} />
+        <>
+          {(user?.roleCode === "ENGINEER" || user?.roleCode === "REVIEWER") && <TeamProjectContext reviewer={user.roleCode === "REVIEWER"} />}
+          <TeamNav role={user?.roleCode ?? ""} />
+        </>
       )}
 
-      <div className="flex-1" />
+      {!mobile && <div className="flex-1" />}
 
       <div className="flex items-center gap-[10px] rounded-[16px] bg-vehicsim-soft p-3">
         <Link href="/profile" title="Hồ sơ cá nhân" className="flex min-w-0 flex-1 items-center gap-[10px] rounded-[12px] hover:opacity-80">
@@ -334,6 +383,7 @@ export function VehicSimSidebar({ hideOnMobile = false }: { hideOnMobile?: boole
         <button
           type="button"
           title="Đăng xuất"
+          aria-label="Đăng xuất"
           onClick={() => {
             logout();
             router.push("/login");

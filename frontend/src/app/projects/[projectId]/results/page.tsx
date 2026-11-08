@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { ArrowRight, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, ClassBadge, EmptyState, ErrorNote, PillButton, StatCard, cx, fmt, simulatorLabel } from "@/components/VehicSimUi";
@@ -63,7 +63,7 @@ function OutcomeGrid({ variants }: { variants: Variant[] }) {
       <table className="border-separate border-spacing-1 text-[13px]">
         <thead>
           <tr>
-            <th scope="col" className="px-2 text-left font-semibold text-vehicsim-muted">
+            <th scope="col" className="px-2 text-left font-bold text-vehicsim-ink">
               Khoảng cách \ Tốc độ
             </th>
             {speeds.map((s) => (
@@ -212,7 +212,7 @@ export default function ProjectResultsPage() {
       {opened && families.length === 0 && (
         <EmptyState title="Chưa có kịch bản">
           <Link href={`/projects/${id}/start`} className="font-semibold text-vehicsim-ink hover:underline">
-            Thiết kế kịch bản trước →
+            Thiết kế kịch bản trước
           </Link>
         </EmptyState>
       )}
@@ -220,7 +220,7 @@ export default function ProjectResultsPage() {
       {dataset && dataset.counts.completed === 0 && (
         <EmptyState title="Họ này chưa chạy baseline">
           <Link href="/scenarios" className="font-semibold text-vehicsim-ink hover:underline">
-            Chạy baseline ở danh sách họ kịch bản →
+            Chạy baseline ở danh sách họ kịch bản
           </Link>
         </EmptyState>
       )}
@@ -237,7 +237,7 @@ export default function ProjectResultsPage() {
             <p className="text-[14px] text-vehicsim-muted">
               {dataset.counts.not_run} tình huống chưa có kết quả baseline nên không được tính.{" "}
               <Link href="/scenarios" className="font-semibold text-vehicsim-ink hover:underline">
-                Chạy nốt →
+                Chạy nốt
               </Link>
             </p>
           )}
@@ -268,10 +268,10 @@ export default function ProjectResultsPage() {
 
           <div className="flex items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-5">
             <Link href={`/analysis/failures?scenario_id=${scenarioId}`} className="text-[14px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink hover:underline">
-              Phân tích chi tiết (công cụ kỹ sư) →
+              Phân tích chi tiết (công cụ kỹ sư)
             </Link>
             <PillButton variant="dark" href={`/projects/${id}/improve`}>
-              Tiếp: Cải tiến AEB <ArrowRight aria-hidden className="size-4" />
+              Tiếp: Cải tiến AEB 
             </PillButton>
           </div>
         </>

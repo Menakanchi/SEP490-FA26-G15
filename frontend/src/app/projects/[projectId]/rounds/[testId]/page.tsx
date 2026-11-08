@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowRight, CircleCheck, TriangleAlert } from "lucide-react";
+import { CircleCheck, TriangleAlert } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { Card, ErrorNote, PillButton, StatCard, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
@@ -184,7 +184,7 @@ export default function ProjectRoundPage() {
               </PillButton>
               {adoptable && (
                 <PillButton variant="dark" onClick={() => setAdopting(true)}>
-                  Dùng {d.candidate.label} làm baseline cho vòng sau <ArrowRight aria-hidden className="size-4" />
+                  Dùng {d.candidate.label} làm baseline cho vòng sau 
                 </PillButton>
               )}
             </div>

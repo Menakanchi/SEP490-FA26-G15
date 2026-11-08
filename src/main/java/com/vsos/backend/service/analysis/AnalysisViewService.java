@@ -549,6 +549,11 @@ public class AnalysisViewService {
                 "trigger_distance_m", ir.get("trigger_distance_m"),
                 "pedestrian_speed_mps", ir.get("pedestrian_speed_mps"),
                 "stops_at_curb", ir.get("stops_at_curb"),
+                "category", ir.getOrDefault("category", "CP_CROSSING"),
+                "target_speed_kmh", ir.get("target_speed_kmh"),
+                "initial_distance_m", ir.get("initial_distance_m"),
+                "target_decel_mps2", ir.get("target_decel_mps2"),
+                "lateral_overlap_pct", ir.get("lateral_overlap_pct"),
                 "weather", Vs.WEATHER_LABELS.getOrDefault(weather == null ? "" : weather.toString(), weather == null ? null : weather.toString()),
                 "time_of_day", Vs.TIME_LABELS.getOrDefault(tod == null ? "" : tod.toString(), tod == null ? null : tod.toString()),
                 "road_friction", caseDoc.get("road_friction")));
@@ -574,8 +579,14 @@ public class AnalysisViewService {
             Map<String, Object> f = Json.asMap(frames.get(i));
             path.add(Json.obj("t", f.get("t"), "x", f.get("ego_x"), "ped_y", f.get("ped_y")));
         }
+        Object category = Json.asMap(raw.get("case")).get("category");
+        boolean lead = category != null && com.vsos.core.simulation.LeadVehicleCase.CATEGORIES.contains(category.toString());
         return Json.obj(
                 "crossing_x", raw.get("crossing_x"),
+                // ADR-050: mục tiêu là xe phía trước thì ped_x/ped_y của khung là đuôi/tim xe mục tiêu, kích thước cố định.
+                "target_kind", lead ? "LEAD_VEHICLE" : "PEDESTRIAN",
+                "target_length_m", lead ? com.vsos.core.simulation.LeadVehicleCase.TARGET_LENGTH_M : null,
+                "target_width_m", lead ? com.vsos.core.simulation.LeadVehicleCase.TARGET_WIDTH_M : null,
                 "lane_width_m", Vs.LANE_WIDTH_M,
                 "vehicle_length_m", vehicle.dbl("length_m"),
                 "vehicle_width_m", vehicle.dbl("width_m"),

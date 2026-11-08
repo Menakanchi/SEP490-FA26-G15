@@ -170,7 +170,7 @@ function SubmitResultCard({ canWrite }: { canWrite: boolean }) {
         <div className="flex items-center gap-3 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">
           <span className="font-semibold">Đã lưu kết quả CARLA cho lượt {runCode(done)}.</span>
           <Link href={`/analysis/failures/${done}`} className="font-semibold text-vehicsim-decision hover:underline">
-            Xem chi tiết →
+            Xem chi tiết
           </Link>
         </div>
       )}

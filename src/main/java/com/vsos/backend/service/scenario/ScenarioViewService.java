@@ -48,7 +48,7 @@ public class ScenarioViewService {
             // Đếm theo baseline hiện hành, không cộng lỗi của các run regression của candidate.
             int failing = baseline == null ? 0 : regression.criticalVariantIds(baseline, variantIds).size();
             out.add(Json.obj(
-                    "id", f.lng("id"), "code", f.str("code"), "name", f.str("name"), "description", f.str("description"),
+                    "id", f.lng("id"), "code", f.str("code"), "name", f.str("name"), "description", f.str("description"), "category", f.str("category"),
                     "version", bases.size(), "version_count", bases.size(), "base_version_id", baseId,
                     "variants", variantIds.size(), "risk_counts", FamilyService.riskCounts(variantRows),
                     "parameter_space", Json.asMap(base.json("scenario_ir_json").get("parameter_space")),
@@ -109,6 +109,9 @@ public class ScenarioViewService {
             variants.add(Json.obj("scenario_version_id", v.lng("id"), "version_no", v.lng("version_no"), "summary", Vs.variantSummary(ir),
                     "ego_speed_kmh", ir.get("ego_speed_kmh"), "trigger_distance_m", ir.get("trigger_distance_m"),
                     "pedestrian_speed_mps", ir.get("pedestrian_speed_mps"), "stops_at_curb", ir.get("stops_at_curb"),
+                    "category", ir.getOrDefault("category", ScenarioRules.CP_CROSSING), "target_speed_kmh", ir.get("target_speed_kmh"),
+                    "initial_distance_m", ir.get("initial_distance_m"), "target_decel_mps2", ir.get("target_decel_mps2"),
+                    "lateral_overlap_pct", ir.get("lateral_overlap_pct"),
                     "weather", ir.get("weather"), "time_of_day", ir.get("time_of_day"),
                     "risk_label", FamilyService.riskLabel(ir), "auto_label", FamilyService.autoRiskLabel(ir),
                     "manual", FamilyService.riskLabelManual(ir)));

@@ -24,13 +24,22 @@ import com.vsos.backend.service.common.LlmService;
  *   <li>LLM hỏng thì lùi về trích xuất bằng luật ({@link #ruleBased}) — không bao giờ bịa số;</li>
  *   <li>IR sai thì cho LLM sửa tối đa {@value #MAX_REPAIRS} lần; mọi giá trị không có trong câu được liệt kê rõ là *giả định*.</li>
  * </ul>
- * Không dựng ODD/xosc: MVP chỉ có motif người đi bộ băng ngang.
+ * Nhận diện category Euro NCAP (ADR-050): người đi bộ băng ngang và xe phía trước CCRs/CCRm/CCRb dựng được họ kịch bản; nhóm còn lại
+ * (CPLA, TURNING, CUT_IN) được gọi đúng tên nhưng báo "chưa hỗ trợ" thay vì "không phải người đi bộ".
  */
 @Slf4j
 @Service
 public class DescribeService {
 
     static final String MOTIF = "pedestrian_crossing";
+    static final String LEAD_MOTIF = FamilyService.LEAD_MOTIF;
+    static final List<String> CATEGORIES = ScenarioRules.CATEGORIES;
+    /** Tên tiếng Việt của category cho thông báo. */
+    static final Map<String, String> CATEGORY_LABELS = Json.obj(
+            "CP_CROSSING", "người đi bộ băng ngang", "CCRS", "xe phía trước đứng yên", "CCRM", "xe phía trước chạy chậm hơn",
+            "CCRB", "xe phía trước phanh gấp", "CPLA", "người đi bộ đi dọc cùng chiều", "TURNING", "xe rẽ cắt hướng", "CUT_IN", "xe cắt vào làn")
+            .entrySet().stream().collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -> String.valueOf(e.getValue()), (a, b) -> a,
+                    LinkedHashMap::new));
     static final int MAX_REPAIRS = 3;
     static final String TOO_VAGUE_MESSAGE = "Mô tả kịch bản quá ngắn hoặc không đủ thông tin kịch bản giao thông.";
 
@@ -41,6 +50,29 @@ public class DescribeService {
             "stops_at_curb", false, "weather", "CLEAR", "time_of_day", "DAY");
     /** key -> {nhãn, đơn vị}, theo thứ tự hiển thị. */
     private static final Map<String, String[]> FIELD_META = new LinkedHashMap<>();
+
+    /** Trường của nhóm xe phía trước (ADR-050), theo thứ tự hiển thị. */
+    private static final Map<String, String[]> LEAD_FIELD_META = new LinkedHashMap<>();
+    private static final Map<String, double[]> LEAD_BOUNDS = com.vsos.core.bridge.Bundle.LEAD_BOUNDS;
+
+    static {
+        LEAD_FIELD_META.put("ego_speed_kmh", new String[]{"Tốc độ xe ego", "km/h"});
+        LEAD_FIELD_META.put("target_speed_kmh", new String[]{"Tốc độ xe phía trước", "km/h"});
+        LEAD_FIELD_META.put("initial_distance_m", new String[]{"Khoảng cách ban đầu", "m"});
+        LEAD_FIELD_META.put("target_decel_mps2", new String[]{"Gia tốc phanh xe phía trước", "m/s²"});
+        LEAD_FIELD_META.put("lateral_overlap_pct", new String[]{"Độ chồng lấn ngang", "%"});
+        LEAD_FIELD_META.put("weather", new String[]{"Thời tiết", ""});
+        LEAD_FIELD_META.put("time_of_day", new String[]{"Thời điểm", ""});
+    }
+
+    /** Giá trị giả định của nhóm xe phía trước khi câu không nói tới (theo khoảng thử Euro NCAP, làm tròn). */
+    static Map<String, Object> leadDefaults(String category) {
+        return Json.obj("ego_speed_kmh", 50.0,
+                "target_speed_kmh", "CCRM".equals(category) ? 20.0 : "CCRB".equals(category) ? 50.0 : 0.0,
+                "initial_distance_m", "CCRB".equals(category) ? 12.0 : 40.0,
+                "target_decel_mps2", "CCRB".equals(category) ? -6.0 : null,
+                "lateral_overlap_pct", 100.0, "weather", "CLEAR", "time_of_day", "DAY");
+    }
 
     static {
         FIELD_META.put("ego_speed_kmh", new String[]{"Tốc độ xe ego", "km/h"});
@@ -53,7 +85,15 @@ public class DescribeService {
 
     static final String SYSTEM_PROMPT = """
             Bạn trích xuất Scenario IR cho VehicSim — nền tảng kiểm thử hệ thống phanh khẩn cấp (AEB).
-            MVP chỉ có MỘT motif: xe ego chạy thẳng, người đi bộ băng ngang đường phía trước (kiểu Euro NCAP CPNA).
+            Trước hết xác định category Euro NCAP của tình huống (trường category):
+            - CP_CROSSING: người đi bộ băng ngang hoặc đứng ở mép đường phía trước xe (kiểu CPNA).
+            - CCRS: xe phía trước cùng làn đang đứng yên / đỗ / chết máy.
+            - CCRM: xe phía trước cùng làn chạy chậm hơn xe ego.
+            - CCRB: xe phía trước cùng làn đang chạy thì phanh gấp.
+            - CPLA: người đi bộ đi dọc đường cùng chiều xe. TURNING: xe rẽ cắt ngang hướng đi. CUT_IN: xe khác cắt / chen vào làn.
+            Người đi bộ dùng các trường trigger_distance_m, pedestrian_speed_mps, stops_at_curb.
+            Xe phía trước dùng target_speed_kmh (km/h; CCRS = 0), initial_distance_m (khoảng cách ban đầu, chỉ lấy khi có con số),
+            target_decel_mps2 (CCRB, số âm, m/s²), lateral_overlap_pct (100 = thẳng hàng, 50 = lệch nửa xe, ≤ 0 = xe ở làn bên).
 
             Quy tắc:
             1. Chỉ điền giá trị mà câu mô tả NÓI RÕ hoặc suy ra trực tiếp từ từ ngữ. Không bịa. Trường nào câu không nhắc thì để null.
@@ -64,16 +104,18 @@ public class DescribeService {
             4. weather: trời quang/nắng → CLEAR, nhiều mây/âm u → CLOUDY, mưa/mưa nhỏ → RAIN, mưa to/mưa lớn/giông → HEAVY_RAIN, sương mù → FOG.
                time_of_day: ban ngày → DAY, chạng vạng/hoàng hôn/sáng sớm → DUSK, ban đêm/buổi tối → NIGHT.
             5. stops_at_curb: người đi bộ dừng lại ở mép đường/lề, đứng chờ, không bước vào làn → true; băng qua/sang đường/lao ra → false.
-            6. is_pedestrian_crossing = false CHỈ khi tình huống không có người đi bộ ở mép đường / trên đường phía trước xe
-               (vd. xe máy tạt đầu, ô tô cắt làn). Người đi bộ đứng hoặc dừng ở mép đường, không sang đường, VẪN là motif này
-               (is_pedestrian_crossing=true, stops_at_curb=true) — đây là ca bắt buộc để đo phanh oan.
+            6. is_pedestrian_crossing = true khi và chỉ khi category = CP_CROSSING. Người đi bộ đứng hoặc dừng ở mép đường, không sang
+               đường, VẪN là CP_CROSSING (stops_at_curb=true) — đây là ca bắt buộc để đo phanh oan.
             7. Chi tiết không biểu diễn được (xe đỗ che khuất, nhiều người, đường cong...) ghi ngắn vào notes.
 
             Ví dụ: "Xe VF8 chạy 60 km/h ban đêm trời mưa, một người đi bộ lao ra từ lề phải khi xe còn cách 25 m"
             → is_pedestrian_crossing=true, ego_speed_kmh=60, trigger_distance_m=25, pedestrian_speed_mps=3.0, stops_at_curb=false,
               weather=RAIN, time_of_day=NIGHT, inferred_fields=["pedestrian_speed_mps"].
             Ví dụ: "Người đi bộ đứng ở mép đường rồi dừng lại, không sang đường; xe chạy 40 km/h"
-            → is_pedestrian_crossing=true, ego_speed_kmh=40, stops_at_curb=true, các trường còn lại null.""";
+            → is_pedestrian_crossing=true, ego_speed_kmh=40, stops_at_curb=true, các trường còn lại null.
+            Ví dụ: "Xe chạy 60 km/h, xe tải phía trước đang chạy 40 km/h thì phanh gấp 6 m/s², cách 20 m, trời mưa"
+            → category=CCRB, is_pedestrian_crossing=false, ego_speed_kmh=60, target_speed_kmh=40, target_decel_mps2=-6, initial_distance_m=20,
+              weather=RAIN, các trường còn lại null.""";
 
     private final LlmService llm;
 
@@ -93,6 +135,7 @@ public class DescribeService {
         props.put("is_pedestrian_crossing", Json.obj("type", "boolean", "description",
                 "True nếu có xe ego và người đi bộ băng ngang hoặc đứng ở mép đường phía trước — kể cả khi người đi bộ dừng lại ở lề, "
                         + "không sang đường (đó là biến thể stops_at_curb=true của cùng motif)."));
+        props.put("category", Json.obj("enum", CATEGORIES, "description", "Category Euro NCAP của tình huống."));
         props.put("title", Json.obj("type", List.of("string", "null"), "description", "Tên ngắn gọn tiếng Việt cho kịch bản, tối đa 80 ký tự."));
         props.put("ego_speed_kmh", Json.obj("type", List.of("number", "null"), "description", "Tốc độ xe ego, km/h."));
         props.put("trigger_distance_m", Json.obj("type", List.of("number", "null"), "description",
@@ -100,6 +143,12 @@ public class DescribeService {
         props.put("pedestrian_speed_mps", Json.obj("type", List.of("number", "null"), "description", "Tốc độ người đi bộ, m/s."));
         props.put("stops_at_curb", Json.obj("type", List.of("boolean", "null"), "description",
                 "True nếu người đi bộ dừng lại ở mép đường/lề, không đi vào làn xe."));
+        props.put("target_speed_kmh", Json.obj("type", List.of("number", "null"), "description", "Tốc độ xe phía trước, km/h (CCRS = 0)."));
+        props.put("initial_distance_m", Json.obj("type", List.of("number", "null"), "description",
+                "Khoảng cách ban đầu từ mũi xe ego tới đuôi xe phía trước, mét."));
+        props.put("target_decel_mps2", Json.obj("type", List.of("number", "null"), "description", "CCRB: gia tốc phanh của xe phía trước, số âm, m/s²."));
+        props.put("lateral_overlap_pct", Json.obj("type", List.of("number", "null"), "description",
+                "Độ chồng lấn ngang với xe ego, % (100 thẳng hàng, ≤ 0 xe ở làn bên)."));
         List<Object> weathers = new ArrayList<>(FamilyService.WEATHERS);
         weathers.add(null);
         List<Object> times = new ArrayList<>(FamilyService.TIMES);
@@ -110,7 +159,7 @@ public class DescribeService {
                 "Tên các trường suy ra từ từ ngữ định tính (vd. 'chạy' → tốc độ), không có con số trong câu."));
         props.put("notes", Json.obj("type", List.of("string", "null"), "description",
                 "Chi tiết trong câu mà IR của MVP không biểu diễn được (xe khác, đường cong...)."));
-        return Json.obj("type", "object", "properties", props, "required", List.of("is_pedestrian_crossing"));
+        return Json.obj("type", "object", "properties", props, "required", List.of("category", "is_pedestrian_crossing"));
     }
 
     // ------------------------------------------------------------------ kiểm tra IR
@@ -119,12 +168,24 @@ public class DescribeService {
     static Map<String, Object> validate(Map<String, Object> raw, List<String> issues) {
         Map<String, Object> ir = new LinkedHashMap<>();
         Object crossing = raw.get("is_pedestrian_crossing");
-        if (!(crossing instanceof Boolean)) {
-            issues.add("is_pedestrian_crossing: Field required");
+        Object category = raw.get("category");
+        if (category != null && !CATEGORIES.contains(String.valueOf(category))) {
+            issues.add("category: Input should be " + CATEGORIES);
+            category = null;
         }
-        ir.put("is_pedestrian_crossing", Boolean.TRUE.equals(crossing));
+        if (category == null && crossing instanceof Boolean b) {
+            category = b ? ScenarioRules.CP_CROSSING : null; // IR kiểu cũ chỉ có cờ người đi bộ
+        }
+        if (category == null && !(crossing instanceof Boolean)) {
+            issues.add("is_pedestrian_crossing: Field required");
+        } else if (category == null) {
+            issues.add("category: Field required");
+        }
+        ir.put("category", category == null ? null : String.valueOf(category));
+        ir.put("is_pedestrian_crossing", ScenarioRules.CP_CROSSING.equals(ir.get("category")) || Boolean.TRUE.equals(crossing) && category == null);
         ir.put("title", raw.get("title") == null ? null : String.valueOf(raw.get("title")));
-        for (String key : List.of("ego_speed_kmh", "trigger_distance_m", "pedestrian_speed_mps")) {
+        for (String key : List.of("ego_speed_kmh", "trigger_distance_m", "pedestrian_speed_mps", "target_speed_kmh", "initial_distance_m",
+                "target_decel_mps2", "lateral_overlap_pct")) {
             Object v = raw.get(key);
             if (v != null && !(v instanceof Number)) {
                 issues.add(key + ": Input should be a valid number");
@@ -159,22 +220,58 @@ public class DescribeService {
     /** Lỗi khiến IR không dựng được họ kịch bản (rỗng = hợp lệ). */
     static List<String> check(Map<String, Object> ir) {
         List<String> issues = new ArrayList<>();
-        for (Map.Entry<String, double[]> b : BOUNDS.entrySet()) {
+        boolean lead = isLead(ir);
+        Map<String, double[]> bounds = lead ? LEAD_BOUNDS : BOUNDS;
+        Map<String, String[]> metas = lead ? LEAD_FIELD_META : FIELD_META;
+        for (Map.Entry<String, double[]> b : bounds.entrySet()) {
             Double value = (Double) ir.get(b.getKey());
             if (value != null && (value < b.getValue()[0] || value > b.getValue()[1])) {
-                String[] meta = FIELD_META.get(b.getKey());
+                String[] meta = metas.get(b.getKey());
                 issues.add((meta[0] + " = " + FamilyService.g(value) + " " + meta[1] + " nằm ngoài khoảng [" + FamilyService.g(b.getValue()[0]) + ", "
                         + FamilyService.g(b.getValue()[1]) + "] " + meta[1]).strip());
             }
         }
-        List<String> unknown = Json.asList(ir.get("inferred_fields")).stream().map(String::valueOf).filter(f -> !FIELD_META.containsKey(f)).toList();
+        List<String> unknown = Json.asList(ir.get("inferred_fields")).stream().map(String::valueOf)
+                .filter(f -> !FIELD_META.containsKey(f) && !LEAD_FIELD_META.containsKey(f)).toList();
         if (!unknown.isEmpty()) {
             issues.add("inferred_fields có tên trường không tồn tại: " + unknown);
         }
         return issues;
     }
 
+    static boolean isLead(Map<String, Object> ir) {
+        return ir.get("category") != null && com.vsos.core.simulation.LeadVehicleCase.CATEGORIES.contains(String.valueOf(ir.get("category")));
+    }
+
     // ------------------------------------------------------------------ đường lui bằng luật
+
+    /** Category theo từ khoá (văn bản đã bỏ dấu). Người đi bộ băng ngang ưu tiên như trước; {@code null} = không nhận ra. */
+    static String ruleCategory(String t) {
+        boolean pedestrian = has("nguoi\\s+di\\s+bo|nguoi\\s+qua\\s+duong|bo\\s+hanh|khach\\s+bo\\s+hanh", t);
+        if (pedestrian) {
+            return has("di\\s+doc|cung\\s+chieu|di\\s+ven\\s+duong|di\\s+men\\s+duong", t) && !has("bang\\s+qua|sang\\s+duong|qua\\s+duong", t)
+                    ? "CPLA" : ScenarioRules.CP_CROSSING;
+        }
+        if (has("cat\\s+(vao\\s+)?lan|chen\\s+(vao\\s+)?lan|tat\\s+dau|lan\\s+sang\\s+lan|danh\\s+lai\\s+vao", t)) {
+            return "CUT_IN";
+        }
+        if (has("\\bre\\s+(trai|phai)|queo|cat\\s+mat|cat\\s+ngang\\s+(dau|huong)", t)) {
+            return "TURNING";
+        }
+        if (has("xe\\s+(o\\s+)?(phia\\s+)?truoc|xe\\s+dang\\s+truoc|xe\\s+dau\\s+phia\\s+truoc|xe\\s+(tai|con|buyt|khach)\\s+(o\\s+)?(phia\\s+)?truoc", t)) {
+            if (has("phanh\\s+(gap|dot\\s+ngot|manh|khan\\s+cap)|thang\\s+gap|dung\\s+dot\\s+ngot", t)) {
+                return "CCRB";
+            }
+            if (has("dung\\s+yen|dang\\s+dung|dung\\s+do|do\\s+(xe|ben|giua|tren)|\\bdo\\s+lai|chet\\s+may|hong\\s+xe|xe\\s+hong", t)) {
+                return "CCRS";
+            }
+            if (has("chay\\s+cham|di\\s+cham|chay\\s+deu|dang\\s+chay|chay\\s+voi", t)) {
+                return "CCRM";
+            }
+            return "CCRS";
+        }
+        return null;
+    }
 
     private static String plain(String text) {
         String s = Normalizer.normalize(text.toLowerCase(), Normalizer.Form.NFD).replace("đ", "d");
@@ -233,7 +330,9 @@ public class DescribeService {
             stops = false;
         }
         Map<String, Object> ir = new LinkedHashMap<>();
+        String category = ruleCategory(t);
         ir.put("is_pedestrian_crossing", has("nguoi\\s+di\\s+bo|nguoi\\s+qua\\s+duong|bo\\s+hanh|khach\\s+bo\\s+hanh", t));
+        ir.put("category", category);
         ir.put("title", null);
         ir.put("ego_speed_kmh", num(NUM + "\\s*km\\s*/?\\s*h", t));
         // "m" đứng riêng (không phải m/s, km, mm): "cách 25 m", "25m"
@@ -242,9 +341,32 @@ public class DescribeService {
         ir.put("stops_at_curb", stops);
         ir.put("weather", weather);
         ir.put("time_of_day", timeOfDay);
+        if (category != null && com.vsos.core.simulation.LeadVehicleCase.CATEGORIES.contains(category)) {
+            // Xe phía trước: số km/h thứ nhất là ego, thứ hai là xe trước; "cách N m" là khoảng cách ban đầu; "N m/s2" là mức phanh.
+            List<Double> speeds = nums(NUM + "\\s*km\\s*/?\\s*h", t);
+            ir.put("ego_speed_kmh", speeds.isEmpty() ? null : speeds.get(0));
+            ir.put("target_speed_kmh", "CCRS".equals(category) ? Double.valueOf(0.0) : speeds.size() > 1 ? speeds.get(1) : null);
+            ir.put("initial_distance_m", ir.get("trigger_distance_m"));
+            ir.put("trigger_distance_m", null);
+            Double decel = num(NUM + "\\s*m\\s*/\\s*s\\s*(?:2|²|\\^2)", t);
+            ir.put("target_decel_mps2", "CCRB".equals(category) && decel != null ? -Math.abs(decel) : null);
+            ir.put("pedestrian_speed_mps", null);
+            ir.put("stops_at_curb", null);
+            ir.put("lateral_overlap_pct", has("lan\\s+ben|lan\\s+canh|lan\\s+khac", t) ? Double.valueOf(-100.0) : null);
+            inferred.clear();
+        }
         ir.put("inferred_fields", inferred);
         ir.put("notes", null);
         return ir;
+    }
+
+    private static List<Double> nums(String pattern, String text) {
+        List<Double> out = new ArrayList<>();
+        Matcher m = Pattern.compile(pattern).matcher(text);
+        while (m.find()) {
+            out.add(Double.parseDouble(m.group(1).replace(",", ".")));
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ gọi LLM + vòng sửa
@@ -315,9 +437,20 @@ public class DescribeService {
             llmError = msg.length() > 300 ? msg.substring(0, 300) : msg;
         }
 
-        if (!Boolean.TRUE.equals(ir.get("is_pedestrian_crossing"))) {
-            throw new InvalidRequestException("Mô tả không phải tình huống người đi bộ băng ngang — MVP hiện chỉ hỗ trợ motif này. "
-                    + "Hãy mô tả xe gặp người đi bộ đi ra đường phía trước.");
+        Object category = ir.get("category");
+        if (category == null && Boolean.TRUE.equals(ir.get("is_pedestrian_crossing"))) {
+            category = ScenarioRules.CP_CROSSING;
+        }
+        if (category == null) {
+            throw new InvalidRequestException("Không nhận ra loại tình huống trong mô tả. Hiện chạy được: người đi bộ băng ngang, xe phía trước đứng yên, "
+                    + "chạy chậm hoặc phanh gấp — hãy mô tả xe ego gặp một trong các đối tượng đó.");
+        }
+        if (!ScenarioRules.SIMULATED.contains(category.toString())) {
+            throw new InvalidRequestException("Đã nhận diện là " + category + " (" + CATEGORY_LABELS.get(category.toString()) + ") — loại này chưa có bộ mô phỏng. "
+                    + "Hiện chạy được: người đi bộ băng ngang, xe phía trước đứng yên / chạy chậm / phanh gấp.");
+        }
+        if (isLead(ir)) {
+            return describeLead(category.toString(), ir, source, model, llmError, repairs, issues, cost, llmCalls);
         }
 
         Set<String> inferred = new LinkedHashSet<>(Json.asList(ir.get("inferred_fields")).stream().map(String::valueOf).toList());
@@ -343,12 +476,62 @@ public class DescribeService {
         title = title.length() > 80 ? title.substring(0, 80) : title;
         return Json.obj(
                 "motif", MOTIF,
+                "category", ScenarioRules.CP_CROSSING,
                 "source", source,
                 "model", model,
                 "llm_error", llmError,
                 "repairs", repairs,
                 "issues", issues,
                 "title", title.isEmpty() ? "Người đi bộ băng ngang" : title,
+                "notes", ir.get("notes"),
+                "ir", irOut,
+                "fields", fields,
+                "assumed", assumed,
+                "cost_usd", Vs.round(cost, 9),
+                "llm_calls", llmCalls,
+                "weathers", FamilyService.WEATHERS,
+                "times", FamilyService.TIMES);
+    }
+
+    /** Kết quả mô tả cho nhóm xe phía trước (ADR-050): cùng hình dạng với người đi bộ, thêm {@code category}. */
+    private Map<String, Object> describeLead(String category, Map<String, Object> ir, String source, String model, String llmError, int repairs,
+                                             List<String> issues, double cost, int llmCalls) {
+        Set<String> inferred = new LinkedHashSet<>(Json.asList(ir.get("inferred_fields")).stream().map(String::valueOf).toList());
+        Map<String, Object> defaults = leadDefaults(category);
+        List<Map<String, Object>> fields = new ArrayList<>();
+        Map<String, Object> values = new LinkedHashMap<>();
+        List<String> assumed = new ArrayList<>();
+        for (Map.Entry<String, String[]> meta : LEAD_FIELD_META.entrySet()) {
+            String key = meta.getKey();
+            if (key.equals("target_decel_mps2") && !"CCRB".equals(category)) {
+                continue;
+            }
+            Object value = key.equals("target_speed_kmh") && "CCRS".equals(category) ? Double.valueOf(0.0) : ir.get(key);
+            String origin = inferred.contains(key) && value != null ? "inferred" : "stated";
+            if (value == null) {
+                value = defaults.get(key);
+                origin = "assumed";
+                assumed.add(key);
+            }
+            values.put(key, value);
+            fields.add(Json.obj("key", key, "label", meta.getValue()[0], "value", value, "unit", meta.getValue()[1], "origin", origin));
+        }
+        Map<String, Object> irOut = new LinkedHashMap<>();
+        irOut.put("motif", LEAD_MOTIF);
+        irOut.put("category", category);
+        irOut.putAll(values);
+        String title = ir.get("title") == null ? "" : String.valueOf(ir.get("title")).strip();
+        title = title.length() > 80 ? title.substring(0, 80) : title;
+        String label = CATEGORY_LABELS.get(category);
+        return Json.obj(
+                "motif", LEAD_MOTIF,
+                "category", category,
+                "source", source,
+                "model", model,
+                "llm_error", llmError,
+                "repairs", repairs,
+                "issues", issues,
+                "title", title.isEmpty() ? Character.toUpperCase(label.charAt(0)) + label.substring(1) : title,
                 "notes", ir.get("notes"),
                 "ir", irOut,
                 "fields", fields,

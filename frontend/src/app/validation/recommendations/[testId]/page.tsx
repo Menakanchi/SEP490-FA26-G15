@@ -53,7 +53,7 @@ export default function RecommendationPage() {
               title={!canDecide ? "Chỉ Người duyệt (REVIEWER) được ra quyết định" : final ? "Đã có quyết định cuối" : undefined}
               className="print:hidden"
             >
-              Duyệt quyết định →
+              Duyệt quyết định
             </PillButton>
           </>
         )
@@ -74,7 +74,7 @@ export default function RecommendationPage() {
           <section className="flex min-w-0 flex-1 flex-col gap-5 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
             <h2 className="text-[17px] font-bold text-vehicsim-ink">Thay đổi được khuyến nghị</h2>
             <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line">
-              <div className="flex h-10 items-center bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+              <div className="flex h-10 items-center bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
                 <span className="min-w-0 flex-1">Tham số</span>
                 <span className="w-[110px]">Hiện tại</span>
                 <span className="w-[110px]">Ứng viên</span>

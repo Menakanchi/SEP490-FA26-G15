@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowRight, SlidersHorizontal, Sparkles } from "lucide-react";
+import { SlidersHorizontal, Sparkles } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { CLASS_STYLE, Card, ErrorNote, PillButton, paramValue } from "@/components/VehicSimUi";
@@ -21,7 +21,7 @@ function WayCard({ icon, title, effort, detail, cta, href }: { icon: React.React
         <p className="text-[14px] leading-[1.55] text-vehicsim-muted">{detail}</p>
       </div>
       <PillButton variant="dark" href={href} disabled={!href} className="mt-auto w-fit">
-        {cta} <ArrowRight aria-hidden className="size-4" />
+        {cta} 
       </PillButton>
     </Card>
   );

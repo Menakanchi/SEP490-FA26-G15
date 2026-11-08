@@ -3,12 +3,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, RecommendationBadge, StatCard, fmt } from "@/components/VehicSimUi";
+import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, Pagination, RecommendationBadge, StatCard, fmt } from "@/components/VehicSimUi";
 import { BaselineEntry } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { DecisionHistory, ReviewDecision } from "@/types/vehicsim";
 
 type Decided = Exclude<ReviewDecision, "PENDING">;
+const PAGE_SIZE = 8;
 const DECISIONS: { value: Decided; label: string }[] = [
   { value: "ACCEPT", label: "Chấp nhận" },
   { value: "REJECT", label: "Từ chối" },
@@ -20,6 +21,7 @@ export default function DecisionHistoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [decision, setDecision] = useState<Decided | "">("");
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     vehicsimApi.decisionHistory()
@@ -39,6 +41,10 @@ export default function DecisionHistoryPage() {
     );
   }, [all, decision, q]);
   const count = (s: Decided) => all.filter((d) => d.decision === s).length;
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const current = Math.min(page, pages);
+  const offset = (current - 1) * PAGE_SIZE;
+  const shown = visible.slice(offset, offset + PAGE_SIZE);
 
   return (
     <VehicSimPage
@@ -64,22 +70,29 @@ export default function DecisionHistoryPage() {
         <div className="min-w-[1050px]">
         <div className="flex items-center gap-2 px-5 py-4">
           <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{history ? `${visible.length} quyết định` : "…"}</span>
-          <FilterSelect<Decided> label="Quyết định" value={decision} options={DECISIONS} onChange={setDecision} />
+          <FilterSelect<Decided> label="Quyết định" value={decision} options={DECISIONS} onChange={(value) => {
+            setDecision(value);
+            setPage(1);
+          }} />
           <input
             aria-label="Tìm theo mã, phiên bản, người duyệt hoặc lý do"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
             placeholder="Tìm mã, phiên bản, người duyệt, lý do…"
             className="ml-auto w-[280px] rounded-full border border-solid border-vehicsim-line bg-white px-4 py-[7px] text-[12px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
           />
         </div>
-        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
           <span className="w-[110px]">Khuyến nghị</span>
           <span className="w-[170px]">Phiên bản</span>
           <span className="w-[190px]">Quyết định</span>
           <span className="min-w-0 flex-1">Lý do</span>
           <span className="w-[150px]">Người duyệt</span>
           <span className="w-[100px]">Ngày</span>
+          <span className="w-[100px] text-right">Thao tác</span>
         </div>
         {history && visible.length === 0 && (
           <EmptyState title={all.length ? "Không có quyết định nào khớp bộ lọc" : "Chưa có quyết định nào"}>
@@ -90,7 +103,7 @@ export default function DecisionHistoryPage() {
             .
           </EmptyState>
         )}
-        {visible.map((d) => (
+        {shown.map((d) => (
           <Link
             key={d.id}
             href={`/validation/recommendations/${d.test_id}`}
@@ -113,9 +126,18 @@ export default function DecisionHistoryPage() {
             </span>
             <span className="w-[150px] truncate text-[13px] text-vehicsim-muted">{d.reviewed_by ?? "—"}</span>
             <span className="w-[100px] text-[13px] text-vehicsim-faint">{fmt.date(d.reviewed_at)}</span>
+            <span className="w-[100px] text-right text-[12px] font-semibold text-vehicsim-decision">Chi tiết</span>
           </Link>
         ))}
         </div>
+        {visible.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <span className="text-[12px] text-vehicsim-muted">
+              Hiển thị {offset + 1}–{offset + shown.length} trên {visible.length} quyết định
+            </span>
+            {pages > 1 && <Pagination page={current} pages={pages} onPage={setPage} />}
+          </div>
+        )}
       </Card>
 
       <Card className="flex flex-col gap-3 p-5">

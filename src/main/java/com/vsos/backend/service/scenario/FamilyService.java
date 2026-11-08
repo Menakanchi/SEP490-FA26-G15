@@ -1,5 +1,6 @@
 package com.vsos.backend.service.scenario;
 
+import com.vsos.core.simulation.LeadVehicleCase;
 import com.vsos.core.simulation.Simulator;
 import com.vsos.backend.common.Vs.InvalidRequestException;
 import com.vsos.backend.common.Vs.NotFoundException;
@@ -21,7 +22,8 @@ import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.service.simulation.RunService;
 
 /**
- * Họ kịch bản "người đi bộ băng qua đường" (FE-07, bản tối thiểu cho vòng MVP).
+ * Họ kịch bản (FE-07): người đi bộ băng qua đường ({@link FamilySpec}) hoặc xe phía trước cùng làn CCRs/CCRm/CCRb ({@link LeadFamilySpec},
+ * ADR-050). Category lấy từ định nghĩa họ, không còn gán cứng.
  * <p>
  * Một họ = một dòng ``scenarios`` + một hay nhiều bản gốc (``scenario_versions`` source MANUAL / NATURAL_LANGUAGE, giữ không
  * gian tham số trong ``scenario_ir_json``) + các biến thể dạng lưới của từng bản gốc (source GENERATED, ``parent_version_id`` =
@@ -47,9 +49,33 @@ public class FamilyService {
 
     /** Tốc độ người đi bộ lớn nhất đã đo trên CARLA (TD-47); xem {@link #IR_BOUNDS}. */
     public static final double MAX_PEDESTRIAN_SPEED_MPS = 6.0;
-    /** Họ duy nhất của MVP là người đi bộ băng qua đường = category CP_CROSSING (Euro NCAP CPFA / CPNA / CPNCO). */
+    /** Category của họ người đi bộ (Euro NCAP CPFA / CPNA / CPNCO); nhóm xe phía trước xem {@link LeadFamilySpec}. */
     public static final String CATEGORY = ScenarioRules.CP_CROSSING;
     public static final String TARGET_TYPE = ScenarioRules.PEDESTRIAN;
+    public static final String LEAD_MOTIF = "lead_vehicle";
+    public static final String LEAD_MOTIF_NAME = "Lead Vehicle";
+
+    /** Định nghĩa một họ kịch bản: category + không gian tham số. Mỗi điểm lưới là IR của một biến thể. */
+    public interface FamilyDefinition {
+        String name();
+
+        String description();
+
+        String category();
+
+        String targetType();
+
+        void validate();
+
+        int variantCount();
+
+        List<Map<String, Object>> grid();
+
+        Map<String, Object> parameterSpace();
+
+        /** Điểm lưới → tham số cho {@link ScenarioRules} (đơn vị km/h, m, m/s²). */
+        ScenarioRules.Point rulePoint(Map<String, Object> point);
+    }
 
     public static final List<String> WEATHERS = List.of("CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG");
     public static final List<String> TIMES = List.of("DAY", "DUSK", "NIGHT");
@@ -71,7 +97,23 @@ public class FamilyService {
             List<Double> pedestrianSpeedsMps,
             List<Boolean> stopsAtCurb,
             List<String> weathers,
-            List<String> timesOfDay) {
+            List<String> timesOfDay) implements FamilyDefinition {
+
+        @Override
+        public String category() {
+            return CATEGORY;
+        }
+
+        @Override
+        public String targetType() {
+            return TARGET_TYPE;
+        }
+
+        @Override
+        public ScenarioRules.Point rulePoint(Map<String, Object> point) {
+            return new ScenarioRules.Point(((Number) point.get("ego_speed_kmh")).doubleValue(), targetSpeedKmh(point), null, null, null,
+                    ((Number) point.get("trigger_distance_m")).doubleValue());
+        }
 
         public void validate() {
             checkAxis("ego_speeds_kmh", egoSpeedsKmh, IR_BOUNDS.get("ego_speed_kmh"));
@@ -116,7 +158,7 @@ public class FamilyService {
             return out;
         }
 
-        private static void checkAxis(String name, List<Double> values, double[] bounds) {
+        static void checkAxis(String name, List<Double> values, double[] bounds) {
             if (values == null || values.isEmpty() || values.stream().anyMatch(java.util.Objects::isNull)) {
                 throw new InvalidRequestException(name + " cần ít nhất một giá trị, không được để trống");
             }
@@ -165,8 +207,199 @@ public class FamilyService {
         }
     }
 
-    /** Nhãn tự suy từ hành vi người đi bộ: dừng ở lề → SAFE (phanh là phanh oan), băng qua làn → DANGEROUS. */
+    /**
+     * Họ "xe phía trước cùng làn" (ADR-050): CCRS (đứng yên), CCRM (chạy chậm hơn), CCRB (đang chạy rồi phanh gấp). Chỉ bộ động học chạy được.
+     * {@code lateralOverlapsPct} trống = [100] (chồng hết); giá trị ≤ 0 là xe ở làn bên — ca đo phanh oan.
+     */
+    public record LeadFamilySpec(
+            String name,
+            String description,
+            String category,
+            List<Double> egoSpeedsKmh,
+            List<Double> targetSpeedsKmh,
+            List<Double> initialDistancesM,
+            List<Double> targetDecelsMps2,
+            List<Double> lateralOverlapsPct,
+            List<String> weathers,
+            List<String> timesOfDay) implements FamilyDefinition {
+
+        public static final Map<String, double[]> BOUNDS = com.vsos.core.bridge.Bundle.LEAD_BOUNDS;
+
+        @Override
+        public String targetType() {
+            return ScenarioRules.VEHICLE;
+        }
+
+        private boolean braking() {
+            return LeadVehicleCase.CCRB.equals(category);
+        }
+
+        private List<Double> overlaps() {
+            return lateralOverlapsPct == null || lateralOverlapsPct.isEmpty() ? List.of(100.0) : lateralOverlapsPct;
+        }
+
+        private List<Double> decels() {
+            return braking() ? targetDecelsMps2 : java.util.Collections.singletonList(null);
+        }
+
+        @Override
+        public void validate() {
+            if (!LeadVehicleCase.CATEGORIES.contains(category)) {
+                throw new InvalidRequestException("category của họ xe phía trước phải thuộc " + LeadVehicleCase.CATEGORIES + ", nhận " + category);
+            }
+            FamilySpec.checkAxis("ego_speeds_kmh", egoSpeedsKmh, BOUNDS.get("ego_speed_kmh"));
+            FamilySpec.checkAxis("target_speeds_kmh", targetSpeedsKmh, BOUNDS.get("target_speed_kmh"));
+            FamilySpec.checkAxis("initial_distances_m", initialDistancesM, BOUNDS.get("initial_distance_m"));
+            if (braking()) {
+                FamilySpec.checkAxis("target_decels_mps2", targetDecelsMps2, BOUNDS.get("target_decel_mps2"));
+            } else if (targetDecelsMps2 != null && !targetDecelsMps2.isEmpty()) {
+                throw new InvalidRequestException("target_decels_mps2 chỉ dùng cho CCRB (xe phía trước phanh gấp)");
+            }
+            FamilySpec.checkAxis("lateral_overlaps_pct", overlaps(), BOUNDS.get("lateral_overlap_pct"));
+            if (weathers == null || weathers.isEmpty() || weathers.stream().anyMatch(w -> !WEATHERS.contains(w))) {
+                throw new InvalidRequestException("weathers phải thuộc " + WEATHERS);
+            }
+            if (timesOfDay == null || timesOfDay.isEmpty() || timesOfDay.stream().anyMatch(x -> !TIMES.contains(x))) {
+                throw new InvalidRequestException("times_of_day phải thuộc " + TIMES);
+            }
+            switch (category) {
+                case LeadVehicleCase.CCRS -> {
+                    if (targetSpeedsKmh.stream().anyMatch(v -> v != 0.0)) {
+                        throw new InvalidRequestException("CCRS: xe phía trước đứng yên, target_speeds_kmh chỉ được là 0");
+                    }
+                }
+                case LeadVehicleCase.CCRM -> {
+                    double slowestEgo = egoSpeedsKmh.stream().mapToDouble(Double::doubleValue).min().orElse(0);
+                    double fastestTarget = targetSpeedsKmh.stream().mapToDouble(Double::doubleValue).max().orElse(0);
+                    if (fastestTarget >= slowestEgo) {
+                        throw new InvalidRequestException("CCRM: mọi tốc độ xe ego phải lớn hơn mọi tốc độ xe phía trước (ego chậm nhất "
+                                + g(slowestEgo) + " km/h, xe trước nhanh nhất " + g(fastestTarget) + " km/h)");
+                    }
+                }
+                default -> { // CCRB
+                    if (targetSpeedsKmh.stream().anyMatch(v -> v <= 0.0)) {
+                        throw new InvalidRequestException("CCRB: xe phía trước phải đang chạy (target_speeds_kmh > 0) rồi mới phanh");
+                    }
+                }
+            }
+            if (variantCount() > MAX_VARIANTS) {
+                throw new InvalidRequestException(variantCount() + " biến thể vượt trần " + MAX_VARIANTS);
+            }
+            List<String> late = unreachable();
+            if (!late.isEmpty()) {
+                throw new InvalidRequestException("Xe ego không đuổi kịp xe phía trước trong " + g(Simulator.MAX_DURATION_S) + " s mô phỏng: "
+                        + String.join("; ", late.subList(0, Math.min(5, late.size()))) + (late.size() > 5 ? " và " + (late.size() - 5) + " tổ hợp khác" : "")
+                        + ". Giảm khoảng cách ban đầu hoặc tăng chênh lệch tốc độ.");
+            }
+        }
+
+        /**
+         * Tổ hợp mà ego chạy đều không chạm đuôi xe trước trước khi hết thời gian mô phỏng (run TIMEOUT vô nghĩa). CCRB tính khi xe trước đã
+         * dừng hẳn: quãng đuổi = khoảng cách + quãng xe trước đi được tới lúc dừng.
+         */
+        public List<String> unreachable() {
+            List<String> out = new ArrayList<>();
+            for (double ego : new TreeSet<>(egoSpeedsKmh)) {
+                for (double target : new TreeSet<>(targetSpeedsKmh)) {
+                    for (double dist : new TreeSet<>(initialDistancesM)) {
+                        for (Double decel : decels()) {
+                            double seconds = catchUpSeconds(ego, target, dist, decel);
+                            if (seconds >= Simulator.MAX_DURATION_S) {
+                                out.add(g(ego) + "/" + g(target) + " km/h cách " + g(dist) + " m" + (decel == null ? "" : ", phanh " + g(decel) + " m/s²")
+                                        + (Double.isInfinite(seconds) ? " (không bao giờ tới)" : " (tới sau " + String.format(java.util.Locale.ROOT, "%.1f", seconds) + " s)"));
+                            }
+                        }
+                    }
+                }
+            }
+            return out;
+        }
+
+        static double catchUpSeconds(double egoKmh, double targetKmh, double distanceM, Double decelMps2) {
+            double ego = egoKmh / 3.6;
+            double target = targetKmh / 3.6;
+            if (decelMps2 == null || decelMps2 >= 0) {
+                return ego > target ? distanceM / (ego - target) : Double.POSITIVE_INFINITY;
+            }
+            double brakeStart = LeadVehicleCase.TARGET_BRAKE_START_S;
+            double targetTravel = target * brakeStart + target * target / (2 * -decelMps2);
+            return (distanceM + targetTravel) / ego; // chặn trên: coi như xe trước dừng ngay từ đầu quãng đuổi
+        }
+
+        @Override
+        public int variantCount() {
+            return new TreeSet<>(egoSpeedsKmh).size() * new TreeSet<>(targetSpeedsKmh).size() * new TreeSet<>(initialDistancesM).size()
+                    * (braking() ? new TreeSet<>(targetDecelsMps2).size() : 1) * new TreeSet<>(overlaps()).size()
+                    * new LinkedHashSet<>(weathers).size() * new LinkedHashSet<>(timesOfDay).size();
+        }
+
+        @Override
+        public List<Map<String, Object>> grid() {
+            List<Map<String, Object>> out = new ArrayList<>();
+            List<Double> decelAxis = braking() ? new ArrayList<>(new TreeSet<>(targetDecelsMps2)) : decels();
+            for (double ego : new TreeSet<>(egoSpeedsKmh)) {
+                for (double target : new TreeSet<>(targetSpeedsKmh)) {
+                    for (double dist : new TreeSet<>(initialDistancesM)) {
+                        for (Double decel : decelAxis) {
+                            for (double overlap : new TreeSet<>(overlaps())) {
+                                for (String weather : new LinkedHashSet<>(weathers)) {
+                                    for (String tod : new LinkedHashSet<>(timesOfDay)) {
+                                        Map<String, Object> ir = Json.obj("motif", LEAD_MOTIF, "category", category, "ego_speed_kmh", ego,
+                                                "target_speed_kmh", target, "initial_distance_m", dist);
+                                        if (decel != null) {
+                                            ir.put("target_decel_mps2", decel);
+                                        }
+                                        ir.put("lateral_overlap_pct", overlap);
+                                        ir.put("weather", weather);
+                                        ir.put("time_of_day", tod);
+                                        out.add(ir);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return out;
+        }
+
+        @Override
+        public Map<String, Object> parameterSpace() {
+            Map<String, Object> space = Json.obj(
+                    "ego_speed_kmh", new ArrayList<>(new TreeSet<>(egoSpeedsKmh)),
+                    "target_speed_kmh", new ArrayList<>(new TreeSet<>(targetSpeedsKmh)),
+                    "initial_distance_m", new ArrayList<>(new TreeSet<>(initialDistancesM)));
+            if (braking()) {
+                space.put("target_decel_mps2", new ArrayList<>(new TreeSet<>(targetDecelsMps2)));
+            }
+            space.put("lateral_overlap_pct", new ArrayList<>(new TreeSet<>(overlaps())));
+            space.put("weather", new ArrayList<>(new LinkedHashSet<>(weathers)));
+            space.put("time_of_day", new ArrayList<>(new LinkedHashSet<>(timesOfDay)));
+            return space;
+        }
+
+        @Override
+        public ScenarioRules.Point rulePoint(Map<String, Object> point) {
+            return new ScenarioRules.Point(((Number) point.get("ego_speed_kmh")).doubleValue(), ((Number) point.get("target_speed_kmh")).doubleValue(),
+                    ((Number) point.get("initial_distance_m")).doubleValue(), ((Number) point.get("lateral_overlap_pct")).doubleValue(),
+                    point.get("target_decel_mps2") instanceof Number n ? n.doubleValue() : null, null);
+        }
+    }
+
+    /** Biến thể thuộc nhóm xe phía trước (ADR-050)? */
+    public static boolean isLeadVehicle(Map<String, Object> ir) {
+        Object category = ir.get("category");
+        return category != null && LeadVehicleCase.CATEGORIES.contains(category.toString());
+    }
+
+    /**
+     * Nhãn tự suy. Người đi bộ: dừng ở lề → SAFE (phanh là phanh oan), băng qua làn → DANGEROUS. Xe phía trước: còn chồng lấn với xe ego
+     * ({@code lateral_overlap_pct} > 0) → DANGEROUS, ở làn bên (≤ 0) → SAFE.
+     */
     public static String autoRiskLabel(Map<String, Object> ir) {
+        if (isLeadVehicle(ir)) {
+            return !(ir.get("lateral_overlap_pct") instanceof Number n) || n.doubleValue() > 0 ? RISK_DANGEROUS : RISK_SAFE;
+        }
         return Boolean.TRUE.equals(ir.get("stops_at_curb")) ? RISK_SAFE : RISK_DANGEROUS;
     }
 
@@ -213,7 +446,7 @@ public class FamilyService {
      * ``origin`` (từ bước 1 "Sinh từ mô tả"): natural_language_input, llm_model, described.
      */
     @Transactional
-    public Map<String, Object> createFamily(long projectId, FamilySpec spec, long userId, Map<String, Object> origin) {
+    public Map<String, Object> createFamily(long projectId, FamilyDefinition spec, long userId, Map<String, Object> origin) {
         spec.validate();
         String nlText = origin == null ? "" : String.valueOf(origin.getOrDefault("natural_language_input", "")).trim();
         if ("null".equals(nlText)) {
@@ -227,17 +460,17 @@ public class FamilyService {
         String code = nextCode(projectId);
         long scenarioId = db.insert(
                 "INSERT INTO scenarios (project_id, category, code, name, description, created_by_user_id, created_date, updated_at) VALUES (?,?,?,?,?,?,?,?)",
-                projectId, CATEGORY, code, familyName(projectId, spec.name(), code),
+                projectId, spec.category(), code, familyName(projectId, spec.name(), code, spec),
                 spec.description() == null || spec.description().isEmpty() ? null : spec.description(), userId, ts, ts);
 
-        Map<String, Object> baseIr = Json.obj("motif", MOTIF, "parameter_space", spec.parameterSpace());
+        Map<String, Object> baseIr = baseIr(spec);
         if (!nlText.isEmpty() && origin.get("described") != null) {
             baseIr.put("described", origin.get("described"));
         }
         Object llmModel = nlText.isEmpty() || origin.get("llm_model") == null || String.valueOf(origin.get("llm_model")).isEmpty()
                 ? null : origin.get("llm_model");
         long baseId = insertBase(scenarioId, 1, nlText.isEmpty() ? "MANUAL" : "NATURAL_LANGUAGE", nlText.isEmpty() ? null : nlText,
-                llmModel, baseIr, nlText.isEmpty() ? "Family definition (parameter space)" : "Family from natural-language description",
+                llmModel, baseIr, spec.targetType(), nlText.isEmpty() ? "Family definition (parameter space)" : "Family from natural-language description",
                 userId, ts);
         insertVariants(scenarioId, 2, baseId, spec, userId, ts);
         return Json.obj("scenario_id", scenarioId, "code", code, "base_version_id", baseId, "version", 1, "variants", spec.variantCount());
@@ -276,12 +509,18 @@ public class FamilyService {
      * vì chúng đều lấy {@link #latestBaseVersionId}. Chặn khi họ còn run chưa xong hoặc không gian tham số không đổi.
      */
     @Transactional
-    public Map<String, Object> createVersion(long projectId, long scenarioId, FamilySpec spec, long userId) {
+    public Map<String, Object> createVersion(long projectId, long scenarioId, FamilyDefinition spec, long userId) {
         spec.validate();
         // Khoá dòng họ: hai người sửa cùng lúc không lấy trùng version_no.
         Row scenario = db.first("SELECT id, code FROM scenarios WHERE id = ? AND project_id = ? FOR UPDATE", scenarioId, projectId);
         if (scenario == null) {
             throw new NotFoundException("scenario");
+        }
+        Object category = db.scalar("SELECT category FROM scenarios WHERE id = ?", scenarioId);
+        if (category != null && !spec.category().equals(category.toString())) {
+            // Một họ = một category (ADR-050): regression / tối ưu chỉ so cùng loại tình huống.
+            throw new InvalidRequestException("Họ " + scenario.str("code") + " thuộc category " + category + "; bản mới phải cùng category, nhận "
+                    + spec.category());
         }
         String code = scenario.str("code");
         Object unfinished = db.scalar("SELECT COUNT(*) FROM simulation_runs WHERE scenario_id = ? AND status IN ('"
@@ -298,7 +537,7 @@ public class FamilyService {
         LocalDateTime ts = Vs.now();
         Object maxNo = db.scalar("SELECT MAX(version_no) FROM scenario_versions WHERE scenario_id = ?", scenarioId);
         int next = (maxNo == null ? 0 : ((Number) maxNo).intValue()) + 1;
-        long baseId = insertBase(scenarioId, next, "MANUAL", null, null, Json.obj("motif", MOTIF, "parameter_space", spec.parameterSpace()),
+        long baseId = insertBase(scenarioId, next, "MANUAL", null, null, baseIr(spec), spec.targetType(),
                 "Edited parameter space (new family version)", userId, ts);
         insertVariants(scenarioId, next + 1, baseId, spec, userId, ts);
         if (spec.description() != null && !spec.description().isBlank()) {
@@ -323,22 +562,28 @@ public class FamilyService {
     }
 
     /** Luật theo category kiểm trước khi ghi gì (DB không biết category nào cần cột nào). */
-    private static void checkRules(FamilySpec spec) {
+    private static void checkRules(FamilyDefinition spec) {
         for (Map<String, Object> point : spec.grid()) {
-            ScenarioRules.check(CATEGORY, TARGET_TYPE, new ScenarioRules.Point(
-                    ((Number) point.get("ego_speed_kmh")).doubleValue(), targetSpeedKmh(point), null, null, null,
-                    ((Number) point.get("trigger_distance_m")).doubleValue()));
+            ScenarioRules.check(spec.category(), spec.targetType(), spec.rulePoint(point));
         }
+    }
+
+    /** IR của bản gốc. Họ người đi bộ giữ đúng dạng cũ {motif, parameter_space}; họ khác thêm category. */
+    private static Map<String, Object> baseIr(FamilyDefinition spec) {
+        if (spec instanceof LeadFamilySpec) {
+            return Json.obj("motif", LEAD_MOTIF, "category", spec.category(), "parameter_space", spec.parameterSpace());
+        }
+        return Json.obj("motif", MOTIF, "parameter_space", spec.parameterSpace());
     }
 
     /** Bản gốc giữ không gian tham số trong IR; ego / thời tiết / giờ nhận giá trị giữ chỗ (DEFAULT) của bản chuẩn (TD-43). */
     private long insertBase(long scenarioId, int versionNo, String source, String nlText, Object llmModel, Map<String, Object> baseIr,
-                            String statusMessage, long userId, LocalDateTime ts) {
+                            String targetType, String statusMessage, long userId, LocalDateTime ts) {
         return db.insert(
                 "INSERT INTO scenario_versions (scenario_id, version_no, source, natural_language_input, llm_model, scenario_ir_json, "
                         + "target_type, max_duration_s, map_name, validation_status, status_message, created_by_user_id, created_date) "
                         + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                scenarioId, versionNo, source, nlText, llmModel, baseIr, TARGET_TYPE, RunService.MAX_DURATION_S, DEFAULT_MAP, "VALID",
+                scenarioId, versionNo, source, nlText, llmModel, baseIr, targetType, RunService.MAX_DURATION_S, DEFAULT_MAP, "VALID",
                 statusMessage, userId, ts);
     }
 
@@ -346,7 +591,11 @@ public class FamilyService {
      * Cột lọc của biến thể = đúng điểm lưới trong IR (IR vẫn tính bằng m/s; cột target_speed_kmh = m/s × 3,6); ma sát suy từ thời
      * tiết như bộ động học. {@code version_no} nối tiếp từ {@code firstNo}.
      */
-    private void insertVariants(long scenarioId, int firstNo, long baseId, FamilySpec spec, long userId, LocalDateTime ts) {
+    private void insertVariants(long scenarioId, int firstNo, long baseId, FamilyDefinition spec, long userId, LocalDateTime ts) {
+        if (spec instanceof LeadFamilySpec) {
+            insertLeadVariants(scenarioId, firstNo, baseId, spec, userId, ts);
+            return;
+        }
         List<Object[]> rows = new ArrayList<>();
         int index = firstNo;
         for (Map<String, Object> ir : spec.grid()) {
@@ -360,6 +609,23 @@ public class FamilyService {
                         + "ego_speed_kmh, target_speed_kmh, trigger_distance_m, stops_at_curb, weather, time_of_day, road_friction, "
                         + "max_duration_s, map_name, validation_status, created_by_user_id, created_date) "
                         + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                rows);
+    }
+
+    /** Biến thể xe phía trước: cột target/initial/overlap/decel lấy thẳng từ điểm lưới; trigger_distance_m, stops_at_curb để NULL. */
+    private void insertLeadVariants(long scenarioId, int firstNo, long baseId, FamilyDefinition spec, long userId, LocalDateTime ts) {
+        List<Object[]> rows = new ArrayList<>();
+        int index = firstNo;
+        for (Map<String, Object> ir : spec.grid()) {
+            rows.add(new Object[]{scenarioId, index++, "GENERATED", baseId, ir, spec.targetType(), ir.get("ego_speed_kmh"), ir.get("target_speed_kmh"),
+                    ir.get("initial_distance_m"), ir.get("lateral_overlap_pct"), ir.get("target_decel_mps2"), ir.get("weather"), ir.get("time_of_day"),
+                    Vs.WEATHER_FRICTION.getOrDefault((String) ir.get("weather"), 1.0), RunService.MAX_DURATION_S, DEFAULT_MAP, "VALID", userId, ts});
+        }
+        db.batchInsert(
+                "INSERT INTO scenario_versions (scenario_id, version_no, source, parent_version_id, scenario_ir_json, target_type, "
+                        + "ego_speed_kmh, target_speed_kmh, initial_distance_m, lateral_overlap_pct, target_decel_mps2, stops_at_curb, weather, time_of_day, "
+                        + "road_friction, max_duration_s, map_name, validation_status, created_by_user_id, created_date) "
+                        + "VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?)",
                 rows);
     }
 
@@ -379,11 +645,11 @@ public class FamilyService {
     }
 
     /** ``scenarios`` UNIQUE (project_id, name): tên đã có thì thêm mã họ, như migration 005. */
-    private String familyName(long projectId, String rawName, String code) {
+    private String familyName(long projectId, String rawName, String code, FamilyDefinition spec) {
         String name = rawName == null ? "" : rawName.strip();
         name = name.length() > 150 ? name.substring(0, 150) : name;
         if (name.isEmpty()) {
-            name = MOTIF_NAME;
+            name = spec instanceof LeadFamilySpec ? LEAD_MOTIF_NAME + " " + spec.category() : MOTIF_NAME;
         }
         boolean taken = db.first("SELECT id FROM scenarios WHERE project_id = ? AND name = ?", projectId, name) != null;
         return taken ? (name.length() > 140 ? name.substring(0, 140) : name) + " (" + code + ")" : name;

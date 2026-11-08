@@ -4,10 +4,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { EmptyState, ErrorNote, FilterSelect, RECOMMENDATION_STATUS, RecommendationBadge, StatCard, cx, fmt } from "@/components/VehicSimUi";
+import { EmptyState, ErrorNote, FilterSelect, Pagination, RECOMMENDATION_STATUS, RecommendationBadge, StatCard, cx, fmt } from "@/components/VehicSimUi";
 import { BaselineEntry } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { DecisionHistory, RecommendationItem, RecommendationStatus } from "@/types/vehicsim";
+
+const PAGE_SIZE = 8;
 
 export default function RecommendationsPage() {
   const router = useRouter();
@@ -15,6 +17,7 @@ export default function RecommendationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<RecommendationStatus | "">("");
   const [history, setHistory] = useState<DecisionHistory | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     vehicsimApi.recommendations()
@@ -25,6 +28,10 @@ export default function RecommendationsPage() {
 
   const visible = useMemo(() => (items ?? []).filter((i) => !status || i.status === status), [items, status]);
   const count = (s: RecommendationStatus) => (items ?? []).filter((i) => i.status === s).length;
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const current = Math.min(page, pages);
+  const offset = (current - 1) * PAGE_SIZE;
+  const shown = visible.slice(offset, offset + PAGE_SIZE);
 
   return (
     <VehicSimPage
@@ -48,17 +55,20 @@ export default function RecommendationsPage() {
             label="Trạng thái"
             value={status}
             options={(Object.keys(RECOMMENDATION_STATUS) as RecommendationStatus[]).map((s) => ({ value: s, label: RECOMMENDATION_STATUS[s].label }))}
-            onChange={setStatus}
+            onChange={(value) => {
+              setStatus(value);
+              setPage(1);
+            }}
           />
         </div>
-        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
+        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
           <span className="min-w-0 flex-1">Khuyến nghị</span>
           <span className="w-[150px]">Phiên bản</span>
           <span className="w-[180px]">Trạng thái</span>
           <span className="w-[170px]">Tỉ lệ va chạm</span>
           <span className="w-[120px]">Sửa / Xấu đi</span>
           <span className="w-[100px]">Ngày</span>
-          <span className="w-[70px]" />
+          <span className="w-[100px] text-right">Thao tác</span>
         </div>
         {items && visible.length === 0 && (
           <EmptyState title={items.length ? "Không có khuyến nghị nào khớp bộ lọc" : "Chưa có khuyến nghị"}>
@@ -69,7 +79,7 @@ export default function RecommendationsPage() {
             chạy xong.
           </EmptyState>
         )}
-        {visible.map((i) => {
+        {shown.map((i) => {
           const rates = "collision_baseline_pct" in i.rates ? i.rates : null;
           const counts = "fixed" in i.counts ? i.counts : null;
           return (
@@ -108,10 +118,22 @@ export default function RecommendationsPage() {
                 )}
               </span>
               <span className="w-[100px] text-[13px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
-              <span className="flex w-[70px] justify-end text-[12px] font-semibold text-vehicsim-decision">Xem</span>
+              <span className="flex w-[100px] justify-end" onClick={(event) => event.stopPropagation()}>
+                <Link href={`/validation/recommendations/${i.id}`} className="text-[12px] font-semibold text-vehicsim-decision hover:underline">
+                  Chi tiết
+                </Link>
+              </span>
             </div>
           );
         })}
+        {visible.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <span className="text-[12px] text-vehicsim-muted">
+              Hiển thị {offset + 1}–{offset + shown.length} trên {visible.length} khuyến nghị
+            </span>
+            {pages > 1 && <Pagination page={current} pages={pages} onPage={setPage} />}
+          </div>
+        )}
       </section>
 
       {history && (
