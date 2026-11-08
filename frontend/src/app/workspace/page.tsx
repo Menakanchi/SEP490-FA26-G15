@@ -28,6 +28,7 @@ export default function WorkspacesPage() {
 
   const members = (items ?? []).reduce((n, w) => n + w.member_count, 0);
   const projects = (items ?? []).reduce((n, w) => n + w.project_count, 0);
+  const pendingReports = (items ?? []).reduce((n, w) => n + w.pending_report_count, 0);
 
   return (
     <VehicSimPage
@@ -52,6 +53,9 @@ export default function WorkspacesPage() {
             <StatCard label="Workspace" value={items ? items.length : "…"} />
             <StatCard label="Thành viên" value={items ? members : "…"} note="Kỹ sư và Người duyệt" />
             <StatCard label="Project" value={items ? projects : "…"} note="trong các workspace" />
+            {isManagerOrAdmin && (
+              <StatCard label="Báo cáo chờ duyệt" value={items ? pendingReports : "…"} tone={pendingReports ? "warn" : undefined} />
+            )}
           </div>
 
           <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">

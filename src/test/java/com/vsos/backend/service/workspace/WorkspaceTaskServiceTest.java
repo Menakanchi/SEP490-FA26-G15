@@ -56,7 +56,7 @@ class WorkspaceTaskServiceTest {
         members = mock(WorkspaceRepository.class);
         tasks = mock(WorkspaceTaskRepository.class);
         notifications = mock(NotificationService.class);
-        workspaces = new WorkspaceService(members, notifications);
+        workspaces = new WorkspaceService(members, notifications, mock(WorkspaceChatHub.class));
         service = new WorkspaceTaskService(workspaces, members, tasks, notifications);
         when(members.find(WS)).thenReturn(workspace("ACTIVE"));
         when(members.isMember(WS, ENGINEER)).thenReturn(true);

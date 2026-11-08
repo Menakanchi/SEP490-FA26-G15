@@ -14,6 +14,7 @@ import com.vsos.backend.common.Vs.InvalidRequestException;
 import com.vsos.backend.common.Vs.NotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.Map;
@@ -35,14 +36,19 @@ public class WorkspaceService {
     /** Role của tài khoản tự đăng ký — người duy nhất thêm được vào workspace, và role trả về khi rời workspace cuối cùng. */
     public static final String SELF_SIGNUP_ROLE = "EXPERIENCER";
     private static final Map<String, String> ROLE_LABEL = Map.of("ENGINEER", "Kỹ sư", "REVIEWER", "Người duyệt");
-    static final int CANDIDATE_LIMIT = 20;
+    /** Độ dài email tối đa (RFC 5321); dài hơn chắc chắn không phải email. */
+    static final int EMAIL_MAX = 254;
+    /** Hình dạng email tối thiểu (có phần trước @, tên miền có dấu chấm); chuỗi khác không đem đi hỏi DB. */
+    private static final java.util.regex.Pattern EMAIL_SHAPE = java.util.regex.Pattern.compile("[^@\\s]+@[^@\\s]+\\.[^@\\s]+");
 
     private final WorkspaceRepository repo;
     private final NotificationService notifications;
+    private final WorkspaceChatHub chat;
 
-    public WorkspaceService(WorkspaceRepository repo, NotificationService notifications) {
+    public WorkspaceService(WorkspaceRepository repo, NotificationService notifications, WorkspaceChatHub chat) {
         this.repo = repo;
         this.notifications = notifications;
+        this.chat = chat;
     }
 
     /** M1: Manager thấy workspace mình quản lý; ADMIN thấy tất cả. */
@@ -62,13 +68,21 @@ public class WorkspaceService {
         return repo.membersOf(workspaceId);
     }
 
-    /** M4 (bước chọn người): tài khoản EXPERIENCER đang hoạt động, chưa ở workspace, lọc theo email / tên. */
+    /**
+     * M4 (bước chọn người): tìm tài khoản EXPERIENCER đang hoạt động, chưa ở workspace, theo EMAIL ĐÚNG HOÀN TOÀN. Để trống hoặc
+     * không giống email thì trả danh sách rỗng (không bao giờ liệt kê người dùng), khớp một phần cũng không ra: nếu cho dò theo
+     * tên hay một phần email thì Manager lấy được toàn bộ email người tự đăng ký.
+     */
     public List<MemberCandidate> candidates(long userId, String role, long workspaceId, String q) {
         requireAccessible(userId, role, workspaceId);
-        if (q != null && q.length() > 100) {
-            throw new InvalidRequestException("Từ khoá tìm kiếm tối đa 100 ký tự");
+        String email = q == null ? "" : q.trim();
+        if (email.length() > EMAIL_MAX) {
+            throw new InvalidRequestException("Email tối đa " + EMAIL_MAX + " ký tự");
         }
-        return repo.candidatesFor(workspaceId, q, CANDIDATE_LIMIT);
+        if (!EMAIL_SHAPE.matcher(email).matches()) {
+            return List.of();
+        }
+        return repo.candidateByEmail(workspaceId, email);
     }
 
     /**
@@ -131,6 +145,7 @@ public class WorkspaceService {
         int tasks = repo.unassignOpenTasks(workspaceId, memberUserId);
         String granted = repo.grantedRole(workspaceId, memberUserId);
         repo.removeMember(workspaceId, memberUserId);
+        chat.disconnect(workspaceId, memberUserId);
         UserAccount account = repo.findUser(memberUserId);
         boolean reverted = granted != null && repo.workspaceCount(memberUserId) == 0 && account != null && granted.equals(account.role());
         if (reverted) {
@@ -187,10 +202,48 @@ public class WorkspaceService {
         return repo.listForMember(userId);
     }
 
-    /** Lấy tin nhắn trao đổi trong workspace (FE-03). */
-    public List<ChatMessage> listMessages(long userId, long workspaceId, int limit) {
+    /**
+     * Tin nhắn trao đổi trong workspace (FE-03): không mốc thì {@code limit} tin mới nhất; {@code afterId} chỉ tin gửi sau tin đó
+     * (tải bù khi nối lại kênh realtime); {@code beforeId} tin ngay trước tin đó (xem tin cũ hơn). Chỉ Manager được gán hoặc
+     * thành viên; người ngoài 404.
+     */
+    public List<ChatMessage> listMessages(long userId, long workspaceId, int limit, Long afterId, Long beforeId) {
         requireMemberOrManager(userId, workspaceId);
-        return repo.listMessages(workspaceId, Math.min(Math.max(limit, 1), 200));
+        if ((afterId != null && afterId < 0) || (beforeId != null && beforeId < 1)) {
+            throw new InvalidRequestException("Mốc tin nhắn không hợp lệ");
+        }
+        if (afterId != null && beforeId != null) {
+            throw new InvalidRequestException("Chỉ chọn một mốc: tin mới hơn (after) hoặc tin cũ hơn (before)");
+        }
+        return repo.listMessages(workspaceId, Math.min(Math.max(limit, 1), 200), afterId, beforeId);
+    }
+
+    /**
+     * Manager được gán sửa tên và mô tả workspace còn ACTIVE (FE-03 Edit Workspace). Manager của workspace khác nhận 404 như
+     * khi xem; đổi Manager hay lưu trữ vẫn là việc của Admin. Tên unique toàn hệ thống (migration 012).
+     */
+    @Transactional
+    public WorkspaceSummary updateInfo(long userId, String role, long workspaceId, String name, String description) {
+        WorkspaceSummary ws = requireAccessible(userId, role, workspaceId);
+        requireActive(ws);
+        String cleanName = name == null ? "" : name.trim();
+        if (cleanName.isEmpty()) {
+            throw new InvalidRequestException("Tên workspace không được để trống");
+        }
+        if (cleanName.length() > 150) {
+            throw new InvalidRequestException("Tên workspace tối đa 150 ký tự");
+        }
+        String cleanDescription = description == null || description.isBlank() ? null : description.trim();
+        if (cleanDescription != null && cleanDescription.length() > 10000) {
+            throw new InvalidRequestException("Mô tả tối đa 10000 ký tự");
+        }
+        if (repo.nameTaken(cleanName, workspaceId)) {
+            throw new InvalidRequestException("Tên workspace đã được sử dụng");
+        }
+        repo.updateInfo(workspaceId, cleanName, cleanDescription);
+        AuditLog.event("workspace.update_info", "success", "workspace_id", workspaceId, "by", userId,
+                "renamed", !cleanName.equals(ws.name()));
+        return repo.find(workspaceId);
     }
 
     /** Gửi tin nhắn trao đổi trong workspace (FE-03). */
@@ -206,12 +259,23 @@ public class WorkspaceService {
             throw new InvalidRequestException("Nội dung tin nhắn tối đa 2000 ký tự");
         }
         long id = repo.insertMessage(workspaceId, userId, text);
-        return new ChatMessage(id, workspaceId,
+        ChatMessage sent = new ChatMessage(id, workspaceId,
                 repo.membersOf(workspaceId).stream()
                         .filter(m -> m.userId() == userId)
                         .findFirst()
                         .map(m -> new UserRef(m.userId(), m.fullName(), m.email()))
                         .orElse(new UserRef(ws.manager().id(), ws.manager().fullName(), ws.manager().email())),
                 text, java.time.LocalDateTime.now(), null);
+        chat.publish(sent);
+        return sent;
+    }
+
+    /**
+     * Mở kênh chat realtime (SSE) của workspace cho Manager được gán hoặc thành viên; người ngoài 404 như khi đọc tin.
+     * Kênh tự đóng sau một thời gian để client nối lại và được kiểm quyền lần nữa ({@link WorkspaceChatHub}).
+     */
+    public SseEmitter openChatStream(long userId, long workspaceId) {
+        requireMemberOrManager(userId, workspaceId);
+        return chat.subscribe(workspaceId, userId);
     }
 }

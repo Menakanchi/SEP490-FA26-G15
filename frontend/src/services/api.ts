@@ -201,47 +201,99 @@ async function send<T>(
     },
   });
 
-  if (!res.ok) {
-    // Có gửi token mà vẫn 401 = phiên hết hạn: xoá phiên để giao diện đưa người dùng về trang đăng nhập.
-    if (res.status === 401 && token && !CREDENTIAL_PATHS.some((p) => path.startsWith(p))) handleSessionExpired();
-    const bodyText = await res.text().catch(() => "");
-    let messageVi = "";
-    let code: string | undefined;
-    try {
-      const json = JSON.parse(bodyText);
-      if (typeof json.code === "string") code = json.code;
-      if (typeof json.detail === "string") {
-        messageVi = json.detail;
-      } else if (Array.isArray(json.detail)) {
-        messageVi = json.detail
-          .map((d: Record<string, unknown> | string) => {
-            if (typeof d === "string") return d;
-            if (d && typeof d === "object") {
-              const locArr = (d as { loc?: unknown[] }).loc;
-              const field = Array.isArray(locArr) ? locArr.slice(1).join(".") : "";
-              const msg = (d as { msg?: string }).msg || JSON.stringify(d);
-              return field ? `${field}: ${msg}` : msg;
-            }
-            return String(d);
-          })
-          .join("; ");
-      } else if (json.detail && typeof json.detail === "object") {
-        messageVi = json.detail.msg || json.detail.message || JSON.stringify(json.detail);
-      } else {
-        messageVi = json.message_vi || json.message || "";
-      }
-    } catch {
-      messageVi = typeof bodyText === "string" ? bodyText : "";
-    }
-    throw new ApiError(
-      messageVi || `API ${res.status}: ${res.statusText}`,
-      res.status,
-      code,
-    );
-  }
+  if (!res.ok) throw await apiErrorFrom(res, path, token);
 
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+/** Đổi response lỗi thành {@link ApiError} (câu tiếng Việt của backend); 401 khi có token = hết phiên. */
+async function apiErrorFrom(res: Response, path: string, token: string | null): Promise<ApiError> {
+  // Có gửi token mà vẫn 401 = phiên hết hạn: xoá phiên để giao diện đưa người dùng về trang đăng nhập.
+  if (res.status === 401 && token && !CREDENTIAL_PATHS.some((p) => path.startsWith(p))) handleSessionExpired();
+  const bodyText = await res.text().catch(() => "");
+  let messageVi = "";
+  let code: string | undefined;
+  try {
+    const json = JSON.parse(bodyText);
+    if (typeof json.code === "string") code = json.code;
+    if (typeof json.detail === "string") {
+      messageVi = json.detail;
+    } else if (Array.isArray(json.detail)) {
+      messageVi = json.detail
+        .map((d: Record<string, unknown> | string) => {
+          if (typeof d === "string") return d;
+          if (d && typeof d === "object") {
+            const locArr = (d as { loc?: unknown[] }).loc;
+            const field = Array.isArray(locArr) ? locArr.slice(1).join(".") : "";
+            const msg = (d as { msg?: string }).msg || JSON.stringify(d);
+            return field ? `${field}: ${msg}` : msg;
+          }
+          return String(d);
+        })
+        .join("; ");
+    } else if (json.detail && typeof json.detail === "object") {
+      messageVi = json.detail.msg || json.detail.message || JSON.stringify(json.detail);
+    } else {
+      messageVi = json.message_vi || json.message || "";
+    }
+  } catch {
+    messageVi = typeof bodyText === "string" ? bodyText : "";
+  }
+  return new ApiError(
+    messageVi || `API ${res.status}: ${res.statusText}`,
+    res.status,
+    code,
+  );
+}
+
+/**
+ * Mở một kênh Server-Sent Events có kèm token (EventSource của trình duyệt không gửi được header `Authorization`, còn đặt
+ * token lên URL thì lộ vào log). Gọi `onEvent(tên, data)` cho từng sự kiện; promise kết thúc khi server đóng kênh, ném
+ * {@link ApiError} khi server từ chối, và dừng khi `signal` bị huỷ. Dòng comment (`:ping`) chỉ giữ kết nối, bị bỏ qua.
+ */
+export async function apiEventStream(
+  path: string,
+  onEvent: (event: string, data: string) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const token = getStoredToken();
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: { Accept: "text/event-stream, application/json", ...authHeaders(path) },
+    cache: "no-store",
+    signal,
+  });
+  if (!res.ok) throw await apiErrorFrom(res, path, token);
+  if (!res.body) throw new ApiError("Trình duyệt không đọc được kênh realtime", 0);
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      buffer += value;
+      buffer = buffer.replace(/\r\n?/g, "\n");
+      let end: number;
+      while ((end = buffer.indexOf("\n\n")) >= 0) {
+        const frame = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        let event = "message";
+        const data: string[] = [];
+        for (const line of frame.split("\n")) {
+          if (!line || line.startsWith(":")) continue;
+          const colon = line.indexOf(":");
+          const field = colon < 0 ? line : line.slice(0, colon);
+          let val = colon < 0 ? "" : line.slice(colon + 1);
+          if (val.startsWith(" ")) val = val.slice(1);
+          if (field === "event") event = val;
+          else if (field === "data") data.push(val);
+        }
+        if (data.length) onEvent(event, data.join("\n"));
+      }
+    }
+  } finally {
+    reader.cancel().catch(() => undefined);
+  }
 }
 
 // ---------------------------------------------------------------------------

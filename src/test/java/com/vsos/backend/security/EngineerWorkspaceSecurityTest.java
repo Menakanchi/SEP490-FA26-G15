@@ -25,6 +25,8 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -85,6 +87,34 @@ class EngineerWorkspaceSecurityTest {
         assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-tasks"), null)).isEqualTo(401);
         assertThat(statusOf(request(HttpMethod.GET, BASE + "/my-reports"), null)).isEqualTo(401);
         assertThat(statusOf(request(HttpMethod.GET, BASE + "/workspaces/1/messages"), null)).isEqualTo(401);
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/workspaces/1/messages/stream"), null)).isEqualTo(401);
+    }
+
+    @Test
+    void theRealtimeStreamStaysOpenAndItsAsyncDispatchIsNotBlocked() throws Exception {
+        SseEmitter emitter = new SseEmitter(60_000L);
+        org.mockito.Mockito.when(workspaces.openChatStream(7L, 1L)).thenReturn(emitter);
+        // Đăng nhập qua đúng bộ lọc JWT như app thật (không dùng user() — nó lưu phiên vào request nên che mất lỗi lượt ASYNC).
+        CustomUserDetails engineer = as(RoleCode.ENGINEER);
+        org.mockito.Mockito.when(jwtService.extractUsername("tok")).thenReturn(engineer.getUsername());
+        org.mockito.Mockito.when(userDetailsService.loadUserByUsername(engineer.getUsername())).thenReturn(engineer);
+        org.mockito.Mockito.when(jwtService.isTokenValid("tok", engineer)).thenReturn(true);
+
+        MvcResult opened = mvc.perform(request(HttpMethod.GET, BASE + "/workspaces/1/messages/stream")
+                        .accept(MediaType.TEXT_EVENT_STREAM, MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer tok"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted())
+                .andReturn();
+        assertThat(opened.getResponse().getHeader("X-Accel-Buffering")).isEqualTo("no");
+
+        emitter.send(SseEmitter.event().name("message").id("5").data("{\"id\":5}"));
+        emitter.complete();
+        // Lượt ASYNC sau khi kênh đóng: không có JWT chạy lại, vẫn không được biến thành 401/403.
+        var finished = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch(opened))
+                .andReturn().getResponse();
+        assertThat(finished.getStatus()).isEqualTo(200);
+        assertThat(finished.getContentType()).startsWith(MediaType.TEXT_EVENT_STREAM_VALUE);
+        assertThat(finished.getContentAsString()).contains("event:message").contains("id:5");
     }
 
     @Test
@@ -92,7 +122,8 @@ class EngineerWorkspaceSecurityTest {
         String chatJson = "{\"message\":\"Xin chào team\"}";
         for (RoleCode code : RoleCode.values()) {
             boolean allowed = code == RoleCode.MANAGER || code == RoleCode.ENGINEER || code == RoleCode.REVIEWER;
-            for (String path : new String[]{"/my-workspaces", "/my-tasks", "/my-reports", "/tasks/10", "/reports/20", "/workspaces/1/messages"}) {
+            for (String path : new String[]{"/my-workspaces", "/my-tasks", "/my-reports", "/tasks/10", "/reports/20", "/workspaces/1/messages",
+                    "/workspaces/1/messages/stream"}) {
                 assertThat(statusOf(request(HttpMethod.GET, BASE + path), code)).as("%s GET %s", code, path).isEqualTo(allowed ? 200 : 403);
             }
             assertThat(statusOf(request(HttpMethod.POST, BASE + "/workspaces/1/messages")

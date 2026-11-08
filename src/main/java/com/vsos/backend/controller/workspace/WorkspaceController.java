@@ -9,6 +9,7 @@ import com.vsos.backend.dto.workspace.WorkspaceDtos.ReportDecisionRequest;
 import com.vsos.backend.dto.workspace.WorkspaceDtos.ReportItem;
 import com.vsos.backend.dto.workspace.WorkspaceDtos.TaskItem;
 import com.vsos.backend.dto.workspace.WorkspaceDtos.TaskRequest;
+import com.vsos.backend.dto.workspace.WorkspaceDtos.UpdateWorkspaceRequest;
 import com.vsos.backend.dto.workspace.WorkspaceDtos.WorkspaceDetail;
 import com.vsos.backend.dto.workspace.WorkspaceDtos.WorkspaceSummary;
 import com.vsos.backend.service.workspace.WorkspaceReportService;
@@ -68,17 +69,28 @@ public class WorkspaceController {
         return workspaces.detail(VehicSimAccess.requireWorkspaceRole(user), workspaceId);
     }
 
+    @Operation(summary = "M2 — Manager được gán sửa tên và mô tả workspace (đổi Manager / lưu trữ ở Quản trị)")
+    @PutMapping("/workspaces/{workspaceId}")
+    public WorkspaceSummary updateInfo(@PathVariable long workspaceId, @Valid @RequestBody UpdateWorkspaceRequest body,
+                                       @AuthenticationPrincipal UserDetails user) {
+        long uid = VehicSimAccess.requireMemberManager(user);
+        access.limitWrites(uid, "workspace_update");
+        return workspaces.updateInfo(uid, VehicSimAccess.roleOf(user), workspaceId, body.name(), body.description());
+    }
+
     @Operation(summary = "M3 — Thành viên của workspace")
     @GetMapping("/workspaces/{workspaceId}/members")
     public List<MemberItem> members(@PathVariable long workspaceId, @AuthenticationPrincipal UserDetails user) {
         return workspaces.members(VehicSimAccess.requireWorkspaceRole(user), workspaceId);
     }
 
-    @Operation(summary = "M4 — Tài khoản ENGINEER / REVIEWER có thể thêm (lọc theo email hoặc tên)")
+    @Operation(summary = "M4 — Tìm tài khoản EXPERIENCER để thêm, chỉ theo email đúng hoàn toàn (trống hoặc khớp một phần: danh sách rỗng)")
     @GetMapping("/workspaces/{workspaceId}/member-candidates")
     public List<MemberCandidate> candidates(@PathVariable long workspaceId, @RequestParam(name = "q", required = false) String q,
                                             @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireMemberManager(user);
+        // Hạn mức riêng để không dùng route này dò từng email.
+        access.limitWrites(uid, "workspace_member_search");
         return workspaces.candidates(uid, VehicSimAccess.roleOf(user), workspaceId, q);
     }
 
