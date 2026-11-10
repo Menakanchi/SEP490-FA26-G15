@@ -130,7 +130,7 @@ function InfoFields({
               onClick={() => onChange({ goal: p.goal })}
               className={cx(
                 "rounded-full px-4 py-2 text-[13px] font-semibold",
-                values.goal === p.goal ? "bg-vehicsim-ink text-white" : "border border-solid border-vehicsim-line-strong text-vehicsim-ink hover:bg-vehicsim-soft",
+                values.goal === p.goal ? "bg-vehicsim-primary text-white" : "border border-solid border-vehicsim-line-strong text-vehicsim-ink hover:bg-vehicsim-soft",
               )}
             >
               {p.label}
@@ -206,7 +206,7 @@ function VehicleCards({
               key={v.id}
               className={cx(
                 "relative flex cursor-pointer flex-col gap-2 rounded-[16px] border-2 border-solid p-4 has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-vehicsim-decision has-[input:focus-visible]:ring-offset-2 has-[input:disabled]:cursor-not-allowed has-[input:disabled]:opacity-50",
-                selected ? "border-vehicsim-ink bg-vehicsim-soft" : "border-vehicsim-line hover:border-vehicsim-line-strong",
+                selected ? "border-vehicsim-primary bg-vehicsim-soft" : "border-vehicsim-line hover:border-vehicsim-line-strong",
               )}
             >
               <input
@@ -227,7 +227,7 @@ function VehicleCards({
                 aria-hidden
                 className={cx(
                   "absolute right-4 top-4 flex size-5 items-center justify-center rounded-full",
-                  selected ? "bg-vehicsim-ink text-white" : "border-2 border-solid border-vehicsim-line-strong bg-white",
+                  selected ? "bg-vehicsim-primary text-white" : "border-2 border-solid border-vehicsim-line-strong bg-vehicsim-surface",
                 )}
               >
                 {selected && <Check className="size-3" strokeWidth={3} />}
@@ -247,11 +247,11 @@ function Stepper({ step }: { step: WizardStep }) {
     <ol aria-label="Các bước tạo project" className="flex items-center gap-3">
       {WIZARD_STEPS.map((label, i) => (
         <li key={label} aria-current={i === step ? "step" : undefined} className="flex items-center gap-3">
-          {i > 0 && <span aria-hidden className={cx("h-[2px] w-10 rounded-full", i <= step ? "bg-vehicsim-ink" : "bg-vehicsim-line-strong")} />}
+          {i > 0 && <span aria-hidden className={cx("h-[2px] w-10 rounded-full", i <= step ? "bg-vehicsim-primary" : "bg-vehicsim-line-strong")} />}
           <span
             className={cx(
               "flex size-8 items-center justify-center rounded-full text-[13px] font-bold",
-              i < step ? "bg-vehicsim-ok text-white" : i === step ? "bg-vehicsim-ink text-white" : "border border-solid border-vehicsim-line-strong text-vehicsim-muted",
+              i < step ? "bg-vehicsim-ok text-white" : i === step ? "bg-vehicsim-primary text-white" : "border border-solid border-vehicsim-line-strong text-vehicsim-muted",
             )}
           >
             {i < step ? <Check className="size-4" strokeWidth={3} /> : i + 1}
@@ -378,7 +378,7 @@ export function ProjectWizard({
         <Card className="flex w-[320px] shrink-0 flex-col gap-4 p-6">
           <span className="text-[12px] font-bold uppercase tracking-[0.6px] text-vehicsim-muted">Xem trước</span>
           <div className="flex items-center gap-3">
-            <ProjectAvatar id={0} name={values.name.trim() || "?"} />
+            <ProjectAvatar name={values.name.trim() || "?"} />
             <span className="min-w-0 truncate text-[16px] font-bold text-vehicsim-ink">{values.name.trim() || "Tên project"}</span>
           </div>
           <p className="text-[14px] leading-[1.55] text-vehicsim-muted">{values.goal.trim() || "Mục tiêu thử nghiệm sẽ hiện ở đây và trên trang chủ project."}</p>
@@ -412,7 +412,7 @@ export function SettingsSection({
     <section
       aria-labelledby={id}
       className={cx(
-        "@container rounded-[20px] border border-solid bg-white p-7 shadow-vehicsim-card",
+        "@container rounded-xl border border-solid bg-vehicsim-surface p-7",
         tone === "danger" ? "border-vehicsim-danger/25" : "border-vehicsim-line",
       )}
     >
@@ -487,7 +487,7 @@ export function ProjectSettingsForm({
         />
       </SettingsSection>
 
-      <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white/95 py-3 pl-6 pr-3 shadow-vehicsim-card backdrop-blur">
+      <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface py-3 pl-6 pr-3">
         <span aria-live="polite" className="flex items-center gap-2 text-[13px] font-medium text-vehicsim-muted">
           {dirty ? (
             <>

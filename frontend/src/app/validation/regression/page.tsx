@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { EmptyState, ErrorNote, FilterSelect, Pagination, PillButton, REGRESSION_STATUS, StatCard, StatusBadge, cx, fmt } from "@/components/VehicSimUi";
+import { EmptyState, ErrorNote, FilterSelect, Pagination, PillButton, REGRESSION_STATUS, StatCard, StatusBadge, cx, fmt, TableScroll } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { RegressionList, RegressionStatus } from "@/types/vehicsim";
 
@@ -84,7 +84,7 @@ export default function RegressionListPage() {
     >
       <ErrorNote message={error} />
 
-      <div className="flex w-full items-stretch gap-4">
+      <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
           label="Tổng số"
           value={data?.kpis.total ?? "…"}
@@ -107,7 +107,7 @@ export default function RegressionListPage() {
         />
       </div>
 
-      <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
+      <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
         <div className="flex items-center gap-2 px-5 py-4">
           <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{data ? `${items.length} kiểm thử` : "…"}</span>
           <FilterSelect<RegressionStatus>
@@ -120,16 +120,6 @@ export default function RegressionListPage() {
           <FilterSelect<string> label="Người tạo" value={author} options={uniq((data?.items ?? []).map((i) => i.created_by))} onChange={filtered(setAuthor)} />
         </div>
 
-        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-          <span className="min-w-0 flex-1">Kiểm thử</span>
-          <span className="w-[156px]">Phiên bản</span>
-          <span className="w-[98px]">Kịch bản</span>
-          <span className="w-[116px]">Trạng thái</span>
-          <span className="w-[136px]">Sửa / Xấu đi</span>
-          <span className="w-[106px]">Người tạo</span>
-          <span className="w-[96px]">Ngày</span>
-          <span className="w-[180px] text-right pr-2">Thao tác</span>
-        </div>
 
         {data && items.length === 0 && (
           data.items.length ? (
@@ -149,66 +139,80 @@ export default function RegressionListPage() {
           )
         )}
 
-        {shown.map((i) => {
-          const running = i.status === "RUNNING" || i.status === "PENDING";
-          return (
-            <div
-              key={i.id}
-              onClick={() => router.push(`/validation/regression/${i.id}`)}
-              className={cx("flex h-[58px] cursor-pointer items-center border-b border-solid border-vehicsim-line px-5 hover:bg-vehicsim-row", running && "bg-vehicsim-row")}
-            >
-              <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
-                <span className="text-[13px] font-bold text-vehicsim-ink">{i.code}</span>
-                <span className="truncate text-[12px] text-vehicsim-faint">{i.name}</span>
-              </span>
-              <span className="w-[156px] text-[13px] font-semibold text-vehicsim-ink">
-                {i.baseline} → {i.candidate}
-              </span>
-              <span className="w-[98px] text-[13px] text-vehicsim-ink">
-                {running ? `${i.progress.done} / ${i.progress.total}` : i.scenarios ?? i.progress.total}
-              </span>
-              <span className="w-[116px]">
-                <StatusBadge status={i.status} />
-              </span>
-              <span className="flex w-[136px] items-center gap-[6px]">
-                {i.fixed === null ? (
-                  <span className="text-[13px] text-vehicsim-faint">—</span>
-                ) : (
-                  <>
-                    <span className="rounded-full bg-vehicsim-ok-bg px-2 py-[3px] text-[11px] font-semibold text-vehicsim-ok">+{i.fixed}</span>
-                    <span
-                      className={cx(
-                        "rounded-full px-2 py-[3px] text-[11px] font-semibold",
-                        i.regressed ? "bg-vehicsim-danger-bg text-vehicsim-danger" : "bg-vehicsim-soft text-vehicsim-muted",
-                      )}
-                    >
-                      {i.regressed ? `−${i.regressed}` : "0"}
-                    </span>
-                  </>
-                )}
-              </span>
-              <span className="w-[106px] truncate text-[13px] text-vehicsim-ink">{i.created_by ?? "—"}</span>
-              <span className="w-[96px] text-[13px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
-              <span className="flex w-[180px] items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                <Link
-                  href={`/validation/regression/${i.id}`}
-                  className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
-                >
-                  Chi tiết
-                </Link>
-                {i.status === "PASSED" && (
-                  <Link
-                    href={conclusion(i.id)}
-                    className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-decision px-3 text-[12px] font-bold text-white hover:bg-vehicsim-decision/90 transition shadow-sm"
-                  >
-                    {isExperiencer ? "Kết luận" : "Khuyến nghị"}
-                  </Link>
-                )}
-              </span>
+        {shown.length > 0 && (
+          <TableScroll label="Bảng kiểm thử hồi quy" minWidth={1040}>
+            <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
+              <span className="min-w-0 flex-1">Kiểm thử</span>
+              <span className="w-[156px]">Phiên bản</span>
+              <span className="w-[98px]">Kịch bản</span>
+              <span className="w-[116px]">Trạng thái</span>
+              <span className="w-[136px]">Sửa / Xấu đi</span>
+              <span className="w-[106px]">Người tạo</span>
+              <span className="w-[96px]">Ngày</span>
+              <span className="w-[180px] text-right pr-2">Thao tác</span>
             </div>
-          );
-        })}
+            {shown.map((i) => {
+              const running = i.status === "RUNNING" || i.status === "PENDING";
+              return (
+                <div
+                  key={i.id}
+                  onClick={() => router.push(`/validation/regression/${i.id}`)}
+                  className={cx("flex h-[58px] cursor-pointer items-center border-b border-solid border-vehicsim-line px-5 hover:bg-vehicsim-row", running && "bg-vehicsim-row")}
+                >
+                  <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
+                    <span className="text-[13px] font-bold text-vehicsim-ink">{i.code}</span>
+                    <span className="truncate text-[12px] text-vehicsim-faint">{i.name}</span>
+                  </span>
+                  <span className="w-[156px] text-[13px] font-semibold text-vehicsim-ink">
+                    {i.baseline} → {i.candidate}
+                  </span>
+                  <span className="w-[98px] text-[13px] text-vehicsim-ink">
+                    {running ? `${i.progress.done} / ${i.progress.total}` : i.scenarios ?? i.progress.total}
+                  </span>
+                  <span className="w-[116px]">
+                    <StatusBadge status={i.status} />
+                  </span>
+                  <span className="flex w-[136px] items-center gap-[6px]">
+                    {i.fixed === null ? (
+                      <span className="text-[13px] text-vehicsim-faint">—</span>
+                    ) : (
+                      <>
+                        <span className="rounded-full bg-vehicsim-ok-bg px-2 py-[3px] text-[11px] font-semibold text-vehicsim-ok">+{i.fixed}</span>
+                        <span
+                          className={cx(
+                            "rounded-full px-2 py-[3px] text-[11px] font-semibold",
+                            i.regressed ? "bg-vehicsim-danger-bg text-vehicsim-danger" : "bg-vehicsim-soft text-vehicsim-muted",
+                          )}
+                        >
+                          {i.regressed ? `−${i.regressed}` : "0"}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  <span className="w-[106px] truncate text-[13px] text-vehicsim-ink">{i.created_by ?? "—"}</span>
+                  <span className="w-[96px] text-[13px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
+                  <span className="flex w-[180px] items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <Link
+                      href={`/validation/regression/${i.id}`}
+                      className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
+                    >
+                      Chi tiết
+                    </Link>
+                    {i.status === "PASSED" && (
+                      <Link
+                        href={conclusion(i.id)}
+                        className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-decision px-3 text-[12px] font-bold text-white hover:bg-vehicsim-decision/90 transition shadow-sm"
+                      >
+                        {isExperiencer ? "Kết luận" : "Khuyến nghị"}
+                      </Link>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
 
+          </TableScroll>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <p className="text-[12px] text-vehicsim-muted">
             <span className="tabular-nums">

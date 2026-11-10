@@ -1,14 +1,15 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { MVP_STEPS, type FlowStep } from "@/components/vehicsimFlow";
 import { ExperiencerHome } from "@/components/project/ProjectShell";
-import { JourneyList, NextActionCard } from "@/components/project/ProjectHome";
+import { JourneyList } from "@/components/project/ProjectHome";
 import { JOURNEY_STEPS } from "@/components/project/journey";
-import { ErrorNote, PillButton, StatCard, Tag, cx } from "@/components/VehicSimUi";
+import { Card, CardTitle, ErrorNote, PillButton, StatCard, Tag, cx } from "@/components/VehicSimUi";
 import { ReviewerHome } from "@/components/reviewer/ReviewerHome";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { FamilyItem, RecommendationItem, RegressionList } from "@/types/vehicsim";
@@ -65,17 +66,33 @@ function MvpLoopPage() {
   const pendingReviews = (recs ?? []).filter((r) => r.status === "PENDING").length;
   const engineerSteps = engineer && views && regressions ? buildEngineerSteps(views, candidates, regressions.kpis) : null;
   const nextEngineerStep = engineerSteps?.findIndex((v) => !v.done) ?? -1;
-  const focusIndex = nextEngineerStep < 0 ? JOURNEY_STEPS.length - 1 : nextEngineerStep;
-  const focus = engineerSteps?.[focusIndex];
+  const baseline = ctx?.system.baseline;
+  const metrics = (
+    <div className={cx("grid w-full gap-3", engineer ? "grid-cols-2 sm:grid-cols-3" : "sm:grid-cols-2 xl:grid-cols-4")}>
+      <StatCard label="Biến thể kịch bản" value={families ? variants : error ? "—" : "…"} note={families ? `${families.length} họ kịch bản` : undefined} />
+      {!engineer && <StatCard
+        label="Lỗi trên bản cơ sở"
+        value={families && baseline ? failing : "—"}
+        valueClass={failing ? "text-vehicsim-danger" : undefined}
+        tone={failing ? "danger" : "neutral"}
+        note={baseline ? `AEB ${baseline.label}` : "Chưa có bản cơ sở"}
+      />}
+      <StatCard
+        label="Kiểm thử hồi quy"
+        value={regressions ? regressions.kpis.total : error ? "—" : "…"}
+        note={regressions ? `${regressions.kpis.passed} đạt · ${regressions.kpis.failed} không đạt` : undefined}
+      />
+      <StatCard label="Khuyến nghị chờ duyệt" value={recs ? pendingReviews : error ? "—" : "…"} />
+    </div>
+  );
 
   return (
     <VehicSimPage
       crumbs={[{ label: "Tổng quan" }]}
-      title={firstName ? `Chào ${firstName}` : "Tổng quan"}
-      badges={engineer ? <Tag tone="info">Kỹ sư</Tag> : undefined}
+      title={engineer ? ctx?.project.name ?? "Tổng quan dự án" : firstName ? `Chào ${firstName}` : "Tổng quan"}
       subtitle={
         engineer
-          ? "Thiết kế kịch bản, phân tích lỗi và kiểm chứng cấu hình AEB của project."
+          ? "Kết quả mô phỏng và tiến độ kiểm thử AEB/FCW."
           : views
             ? next
               ? `Vòng MVP trên motif người đi bộ băng ngang. Bước tiếp theo: ${next.step.n} · ${next.step.title}.`
@@ -96,66 +113,65 @@ function MvpLoopPage() {
     >
       <ErrorNote message={error} />
 
-      {focus && (
-        <NextActionCard
-          eyebrow={nextEngineerStep === -1 ? "Kết quả kiểm chứng" : `Gợi ý tiếp theo · bước ${nextEngineerStep + 1}`}
-          title={JOURNEY_STEPS[focusIndex].title}
-          detail={focus.status}
-          action={focus.actions[0]}
-        />
-      )}
-
-      <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Biến thể kịch bản" value={families ? variants : "…"} note={`${families?.length ?? 0} họ kịch bản`} />
-        <StatCard
-          label="Lỗi trên bản cơ sở"
-          value={families ? failing : "…"}
-          valueClass={failing ? "text-vehicsim-danger" : undefined}
-          tone={failing ? "danger" : "neutral"}
-          note={ctx?.system.baseline ? `AEB ${ctx.system.baseline.label}` : "chưa có baseline"}
-        />
-        <StatCard
-          label="Kiểm thử hồi quy"
-          value={regressions ? regressions.kpis.total : "…"}
-          note={regressions ? `${regressions.kpis.passed} đạt · ${regressions.kpis.failed} không đạt` : undefined}
-        />
-        <StatCard
-          label="Chờ Người duyệt"
-          value={recs ? pendingReviews : "…"}
-          valueClass={pendingReviews ? "text-vehicsim-warn" : undefined}
-          tone={pendingReviews ? "warn" : "neutral"}
-          note="khuyến nghị"
-        />
-      </div>
-
       {engineer ? (
-        engineerSteps ? (
-          <JourneyList
-            title="Hành trình project"
-            rows={engineerSteps.map((v, i) => ({
-              key: JOURNEY_STEPS[i].key,
-              status: v.running ? "RUNNING" : v.done ? "DONE" : "TODO",
-              current: i === nextEngineerStep,
-              summary: v.status,
-              action: (
-                <div className="flex flex-wrap gap-2">
-                  {v.actions.map((a) => (
-                    <PillButton key={a.label} variant={a.primary && i === nextEngineerStep ? "dark" : "light"} href={a.href} className="px-4 py-2">
-                      {a.label}
-                    </PillButton>
-                  ))}
-                </div>
-              ),
-            }))}
-          />
-        ) : !error && !contextError && <p role="status" className="text-[14px] text-vehicsim-muted">Đang tải hành trình project…</p>
-      ) : (
-        <div className="grid w-full grid-cols-3 gap-4">
-          {(views ?? MVP_STEPS.map((step) => ({ step, done: false, status: "…", actions: [] }))).map((v, i) => {
-            const state: State = v.done ? "done" : i === currentIdx ? "current" : "todo";
-            return <StepCard key={v.step.n} view={v} state={state} />;
-          })}
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <Card className="flex flex-col gap-4 p-5">
+              <CardTitle aside={<Link href="/analysis/failures" className="text-right text-[13px] font-semibold text-vehicsim-primary hover:underline">Mở phân tích</Link>}>
+                Kết quả bản cơ sở
+              </CardTitle>
+              {error || contextError ? <p className="text-sm text-vehicsim-muted">Không tải được kết quả bản cơ sở.</p>
+                : !families || !ctx ? <p role="status" className="text-sm text-vehicsim-muted">Đang tải kết quả bản cơ sở…</p>
+                : !baseline ? <p className="text-sm text-vehicsim-muted">Dự án chưa có cấu hình AEB làm bản cơ sở.</p>
+                : families.length === 0 ? <p className="text-sm text-vehicsim-muted">Chưa có họ kịch bản để chạy thử.</p>
+                : failing === 0 ? <p className="text-sm text-vehicsim-muted">Chưa ghi nhận biến thể có lỗi trên bản cơ sở hiện hành.</p>
+                : <>
+                    <p className="text-sm text-vehicsim-muted">
+                      <strong className="mr-2 text-2xl font-bold tabular-nums text-vehicsim-danger">{failing}</strong>
+                      biến thể có lỗi trên bản cơ sở hiện hành
+                    </p>
+                    <ul className="divide-y divide-vehicsim-line border-t border-vehicsim-line">
+                      {families.filter((family) => family.failures > 0).slice(0, 3).map((family) => (
+                        <li key={family.id}>
+                          <Link href={`/analysis/failures?view=failures&f_scenario=${family.id}&f_aeb=${baseline.id}`}
+                            className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2.5 text-sm font-semibold hover:text-vehicsim-primary hover:underline">
+                            <span className="min-w-0 break-words">{family.name}</span>
+                            <span className="text-xs font-medium text-vehicsim-danger">{family.failures} lỗi</span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </>}
+            </Card>
+            {metrics}
+          </div>
+          {engineerSteps ? (
+            <JourneyList
+              title="Quy trình kiểm thử"
+              rows={engineerSteps.map((v, i) => ({
+                key: JOURNEY_STEPS[i].key,
+                status: v.running ? "RUNNING" : v.done ? "DONE" : "TODO",
+                current: i === nextEngineerStep,
+                summary: v.status,
+                action: v.actions.map((a) => (
+                  a.primary && i === nextEngineerStep
+                    ? <PillButton key={a.label} variant="dark" href={a.href}>{a.label}</PillButton>
+                    : <Link key={a.label} href={a.href} className="inline-flex min-h-11 items-center text-[13px] font-semibold text-vehicsim-primary hover:underline">{a.label}</Link>
+                )),
+              }))}
+            />
+          ) : !error && !contextError && <p role="status" className="text-sm text-vehicsim-muted">Đang tải quy trình kiểm thử…</p>}
         </div>
+      ) : (
+        <>
+          {metrics}
+          <div className="grid w-full gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {(views ?? MVP_STEPS.map((step) => ({ step, done: false, status: "…", actions: [] }))).map((v, i) => {
+              const state: State = v.done ? "done" : i === currentIdx ? "current" : "todo";
+              return <StepCard key={v.step.n} view={v} state={state} />;
+            })}
+          </div>
+        </>
       )}
 
       <p className="text-[12px] leading-[1.6] text-vehicsim-faint">
@@ -291,15 +307,15 @@ function StepCard({ view, state }: { view: StepView; state: State }) {
   return (
     <section
       className={cx(
-        "flex flex-col gap-3 rounded-[20px] bg-white p-5",
-        state === "current" ? "border-2 border-solid border-vehicsim-ink shadow-vehicsim-card" : "border border-solid border-vehicsim-line shadow-vehicsim-card",
+        "flex flex-col gap-3 rounded-xl bg-vehicsim-surface p-5",
+        state === "current" ? "border-2 border-solid border-vehicsim-primary" : "border border-solid border-vehicsim-line",
       )}
     >
       <div className="flex items-center justify-between">
         <span
           className={cx(
             "flex size-8 items-center justify-center rounded-full text-[13px] font-bold",
-            state === "done" ? "bg-vehicsim-ok text-white" : state === "current" ? "bg-vehicsim-ink text-white" : "bg-vehicsim-soft text-vehicsim-muted",
+            state === "done" ? "bg-vehicsim-ok text-white" : state === "current" ? "bg-vehicsim-primary text-white" : "bg-vehicsim-soft text-vehicsim-muted",
           )}
         >
           {state === "done" ? "✓" : step.n}

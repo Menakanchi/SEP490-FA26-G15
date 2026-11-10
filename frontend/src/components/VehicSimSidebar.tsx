@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { FolderOpen, House, Settings } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderOpen, House, LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { ROLE_LABELS, cx, initials } from "@/components/VehicSimUi";
+import { cx } from "@/components/VehicSimUi";
 import { MEMBER_ROLES, WORKSPACE_ROLES } from "@/components/workspaceAccess";
 import { JOURNEY_STEPS, stepSummary, statusOf } from "@/components/project/journey";
 import { useJourney } from "@/components/project/ProjectJourneyContext";
@@ -17,7 +17,7 @@ import { vehicsimApi } from "@/services/vehicsim";
 import type { JourneyStepKey } from "@/types/vehicsim";
 
 /**
- * Sidebar VehicSim theo Figma "VehicSim — FE-12/13/14 UI (Trung)".
+ * Điều hướng theo project và vai trò của tài khoản.
  * Mục chưa có trong đợt MVP hiển thị mờ, không bấm được, có chú thích lý do.
  */
 
@@ -161,13 +161,13 @@ function NavGroups({ groups }: { groups: Group[] }) {
     .sort((x, y) => (y.href?.length ?? 0) - (x.href?.length ?? 0))[0];
 
   return (
-    <nav className="flex flex-col gap-[2px]">
+    <nav aria-label="Điều hướng VehicSim" className="flex flex-col gap-0.5">
       {groups.map((g) => {
         const here = g.active ?? (!!g.prefix && (g.exact ? pathname === g.prefix : pathname.startsWith(g.prefix)));
         const expanded = here || (!!best && !!g.children?.includes(best));
         const header = (
           <span
-            className={`flex w-full items-center gap-3 rounded-[12px] px-3 py-[9px] ${expanded ? "bg-vehicsim-bg" : ""} ${
+            className={`flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 ${expanded ? "bg-vehicsim-primary-bg" : ""} ${
               g.note ? "opacity-55" : "hover:bg-vehicsim-soft"
             }`}
           >
@@ -178,20 +178,25 @@ function NavGroups({ groups }: { groups: Group[] }) {
                 <span className="truncate text-[12px] text-vehicsim-muted">{g.hint}</span>
               </span>
             ) : (
-              <span className={`flex-1 text-[14px] ${expanded ? "font-bold text-vehicsim-ink" : "font-medium text-vehicsim-muted"}`}>
+              <span className={`flex-1 text-[13px] ${expanded ? "font-bold text-vehicsim-primary" : "font-medium text-vehicsim-ink"}`}>
                 {g.label}
               </span>
             )}
-            {(g.children || g.href || g.note) && (
-              <span aria-hidden="true" className={`font-semibold ${expanded ? "text-[13px] text-vehicsim-ink" : "text-[16px] text-vehicsim-faint"}`}>
-                {expanded ? "▾" : "›"}
-              </span>
+            {g.children && (
+              expanded
+                ? <ChevronDown aria-hidden className="size-3.5 shrink-0 text-vehicsim-primary" />
+                : <ChevronRight aria-hidden className="size-3.5 shrink-0 text-vehicsim-faint" />
             )}
           </span>
         );
         const target = g.href ?? g.children?.find((c) => c.href)?.href;
         return (
           <div key={g.key} className="flex flex-col gap-[2px]">
+            {(g.key === "SCENARIO" || (g.key === "vehicles" && groups.some((item) => item.key === "SCENARIO"))) && (
+              <p className="mt-2 border-t border-vehicsim-line px-2.5 pb-0.5 pt-2.5 text-xs font-semibold text-vehicsim-muted">
+                {g.key === "SCENARIO" ? "Quy trình kiểm thử" : "Quản lý dự án"}
+              </p>
+            )}
             {g.note ? (
               <span title={g.note} className="cursor-not-allowed">
                 {header}
@@ -208,8 +213,8 @@ function NavGroups({ groups }: { groups: Group[] }) {
                 <div className="flex min-w-0 flex-1 flex-col gap-[2px] border-l-[1.5px] border-solid border-vehicsim-line pl-[10px]">
                   {g.children.map((c) => {
                     const active = best === c;
-                    const cls = `flex w-full items-center rounded-full px-3 py-2 text-[13px] ${
-                      active ? "bg-vehicsim-ink font-semibold text-white" : "font-medium text-vehicsim-muted"
+                    const cls = `flex w-full items-center rounded-md px-3 py-2 text-[13px] ${
+                      active ? "bg-vehicsim-primary-bg font-semibold text-vehicsim-primary" : "font-medium text-vehicsim-muted"
                     }`;
                     return c.href ? (
                       <Link key={c.label} href={c.href} aria-current={active ? "page" : undefined} className={`${cls} ${active ? "" : "hover:bg-vehicsim-soft"}`}>
@@ -273,7 +278,7 @@ function TeamProjectContext({ reviewer }: { reviewer: boolean }) {
         <select
           aria-label="Project đang xem"
           value={ctx.project.id}
-          className="w-full rounded-full border border-vehicsim-line-strong bg-white px-2 py-2 text-[12px]"
+          className="w-full rounded-lg border border-vehicsim-line-strong bg-vehicsim-surface px-2 py-2 text-[12px]"
           onChange={(event) => selectProject(Number(event.target.value))}
         >
           {ctx.reviewer_projects.map((project) => (
@@ -340,22 +345,12 @@ function ExperiencerNav() {
   return <NavGroups groups={groups} />;
 }
 
-export function VehicSimSidebar({ hideOnMobile = false, mobile = false }: { hideOnMobile?: boolean; mobile?: boolean }) {
+export function VehicSimSidebar() {
   const router = useRouter();
   const { user, logout } = useAuth();
 
   return (
-    <aside className={cx(
-      "shrink-0 flex-col gap-[22px] bg-white px-4 py-6 print:hidden",
-      mobile ? "flex w-full" : "sticky top-0 h-screen w-[248px] overflow-y-auto border-r border-solid border-vehicsim-line",
-      !mobile && (hideOnMobile ? "hidden md:flex" : "flex"),
-    )}>
-      <Link href="/" className="flex items-center gap-[10px] px-2">
-        {/* eslint-disable-next-line @next/next/no-img-element -- logo SVG từ Figma */}
-        <img alt="" src="/vehicsim/logo.svg" width={28} height={28} className="size-7" />
-        <span className="text-[19px] font-extrabold tracking-[-0.38px] text-vehicsim-ink">VehicSim</span>
-      </Link>
-
+    <aside className="flex flex-col gap-4 px-4 py-5 lg:sticky lg:top-0 lg:max-h-dvh lg:overflow-y-auto">
       {user?.roleCode === "EXPERIENCER" ? (
         <>
           <ProjectSwitcher />
@@ -368,18 +363,7 @@ export function VehicSimSidebar({ hideOnMobile = false, mobile = false }: { hide
         </>
       )}
 
-      {!mobile && <div className="flex-1" />}
-
-      <div className="flex items-center gap-[10px] rounded-[16px] bg-vehicsim-soft p-3">
-        <Link href="/profile" title="Hồ sơ cá nhân" className="flex min-w-0 flex-1 items-center gap-[10px] rounded-[12px] hover:opacity-80">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-[16px] bg-vehicsim-avatar text-[12px] font-bold text-vehicsim-decision">
-            {initials(user?.full_name || user?.name || "U")}
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-            <span className="truncate text-[13px] font-semibold text-vehicsim-ink">{user?.full_name || user?.name}</span>
-            <span className="truncate text-[12px] text-vehicsim-faint">{ROLE_LABELS[user?.role ?? ""] ?? user?.role}</span>
-          </span>
-        </Link>
+      <div className="border-t border-vehicsim-line pt-2">
         <button
           type="button"
           title="Đăng xuất"
@@ -388,9 +372,10 @@ export function VehicSimSidebar({ hideOnMobile = false, mobile = false }: { hide
             logout();
             router.push("/login");
           }}
-          className="shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold text-vehicsim-faint hover:bg-white hover:text-vehicsim-ink"
+          className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-medium text-vehicsim-muted hover:bg-vehicsim-soft hover:text-vehicsim-ink"
         >
-          ⎋
+          <LogOut aria-hidden className="size-4" />
+          Đăng xuất
         </button>
       </div>
     </aside>

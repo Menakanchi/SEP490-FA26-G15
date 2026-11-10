@@ -1,14 +1,8 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppLayoutWrapper } from "@/components/AppLayoutWrapper";
 import { AuthProvider } from "@/context/AuthContext";
-import { ThemeProvider } from "@/context/ThemeContext";
-
-const inter = Inter({
-  variable: "--font-sans",
-  subsets: ["latin", "vietnamese"],
-});
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
@@ -21,8 +15,6 @@ export const metadata: Metadata = {
     "Mô tả kịch bản → sinh biến thể → mô phỏng → phân tích lỗi → kiểm định hồi quy; kỹ sư quyết định mọi thay đổi cấu hình AEB.",
 };
 
-const themeInitializationScript = `(function(){try{var t=localStorage.getItem("forge_theme");document.documentElement.classList.toggle("dark",t==="dark")}catch(e){}})()`;
-
 /**
  * Extension trình duyệt (Bitdefender: `bis_skin_checked`, `bis_register`, `__processed_*`;
  * Grammarly; ColorZilla) chèn thuộc tính vào HTML **trước khi React hydrate**, nên dev overlay báo
@@ -30,7 +22,7 @@ const themeInitializationScript = `(function(){try{var t=localStorage.getItem("f
  * một cấp, không phủ được các `div` sâu bên trong. Script này chạy lúc đọc `<head>`, gỡ đúng các
  * thuộc tính đó (kể cả cái chèn sau) và tự dừng 5 giây sau `load`, khi React đã hydrate xong.
  *
- * Riêng hai thẻ `<script>` dưới đây có `suppressHydrationWarning` vì có extension (vd. Urban VPN)
+ * Thẻ `<script>` dưới đây có `suppressHydrationWarning` vì có extension (vd. Urban VPN)
  * xoá rỗng nội dung script inline sau khi chạy và gắn `bis_use` — React thấy `__html` server là ""
  * và báo lệch. Script đã chạy xong rồi, React cũng không bao giờ vá lại script, nên bỏ qua là đúng.
  */
@@ -49,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="vi"
-      className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${jetbrainsMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>
@@ -57,17 +49,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           dangerouslySetInnerHTML={{ __html: stripExtensionAttributesScript }}
           suppressHydrationWarning
         />
-        <script
-          dangerouslySetInnerHTML={{ __html: themeInitializationScript }}
-          suppressHydrationWarning
-        />
       </head>
-      <body className="min-h-full flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
-        <ThemeProvider>
-          <AuthProvider>
-            <AppLayoutWrapper>{children}</AppLayoutWrapper>
-          </AuthProvider>
-        </ThemeProvider>
+      <body className="flex min-h-dvh bg-vehicsim-bg text-vehicsim-ink">
+        <AuthProvider>
+          <AppLayoutWrapper>{children}</AppLayoutWrapper>
+        </AuthProvider>
       </body>
     </html>
   );

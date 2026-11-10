@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useId, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
-import { Archive, ArchiveRestore, Ellipsis, Loader2, Settings, Trash2, TriangleAlert, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Ellipsis, Loader2, Settings, Trash2, TriangleAlert, X } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -13,23 +13,14 @@ import type { JourneyStatus, ProjectItem } from "@/types/vehicsim";
  * và hộp thoại lưu trữ / xoá project.
  */
 
-const PALETTE = [
-  "bg-vehicsim-decision-bg text-vehicsim-decision",
-  "bg-vehicsim-perception-bg text-vehicsim-perception",
-  "bg-vehicsim-dynamics-bg text-vehicsim-dynamics",
-  "bg-vehicsim-control-bg text-vehicsim-control",
-  "bg-vehicsim-ok-bg text-vehicsim-ok",
-];
-
-/** Chữ cái đầu của tên project trên nền màu cố định theo id, để nhận ra project trong danh sách và menu. */
-export function ProjectAvatar({ id, name, size = "md" }: { id: number; name: string; size?: "sm" | "md" | "lg" }) {
+/** Chữ cái đầu của tên project trong danh sách và menu. */
+export function ProjectAvatar({ name, size = "md" }: { name: string; size?: "sm" | "md" | "lg" }) {
   const letter = [...name.trim()][0]?.toUpperCase() ?? "?";
   return (
     <span
       aria-hidden
       className={cx(
-        "flex shrink-0 items-center justify-center rounded-[10px] font-extrabold",
-        PALETTE[Math.abs(id) % PALETTE.length],
+        "flex shrink-0 items-center justify-center rounded-lg bg-vehicsim-primary-bg font-bold text-vehicsim-primary",
         size === "sm" && "size-7 text-[12px]",
         size === "md" && "size-9 text-[15px]",
         size === "lg" && "size-12 rounded-[14px] text-[20px]",
@@ -40,19 +31,19 @@ export function ProjectAvatar({ id, name, size = "md" }: { id: number; name: str
   );
 }
 
-export const PROJECT_CONTEXT_CLASS = "rounded-[14px] border border-solid border-vehicsim-line bg-white px-3 py-[10px]";
+export const PROJECT_CONTEXT_CLASS = "rounded-lg border border-vehicsim-line bg-vehicsim-row px-3 py-2.5";
 
 export function ProjectIdentity({ project, label, fallback }: {
-  project?: { id: number; name: string };
+  project?: { name: string };
   label: string;
   fallback: string;
 }) {
   return (
     <>
-      {project && <ProjectAvatar id={project.id} name={project.name} />}
+      {project && <ProjectAvatar name={project.name} />}
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.6px] text-vehicsim-muted">{label}</span>
-        <span className="truncate text-[14px] font-bold text-vehicsim-ink" title={project?.name}>{project?.name ?? fallback}</span>
+        <span className="text-xs font-medium text-vehicsim-muted">{label}</span>
+        <span className="line-clamp-2 break-words text-[14px] font-bold text-vehicsim-ink" title={project?.name}>{project?.name ?? fallback}</span>
       </span>
     </>
   );
@@ -61,7 +52,7 @@ export function ProjectIdentity({ project, label, fallback }: {
 export function StepStatusIcon({ status, n, current, size = "md" }: { status: JourneyStatus; n: number; current?: boolean; size?: "sm" | "md" }) {
   const box = size === "sm" ? "size-[22px] text-[11px]" : "size-9 text-[14px]";
   const icon = size === "sm" ? "size-3" : "size-4";
-  const label = status === "RUNNING" ? "đang chạy" : status === "FAILED" ? "có lượt chạy lỗi" : current ? "gợi ý làm tiếp" : "";
+  const label = status === "RUNNING" ? "đang chạy" : status === "FAILED" ? "có lượt chạy lỗi" : current ? "gợi ý làm tiếp" : status === "DONE" ? "đã hoàn thành" : "";
   return (
     <span
       role="img"
@@ -74,8 +65,10 @@ export function StepStatusIcon({ status, n, current, size = "md" }: { status: Jo
           : status === "FAILED"
             ? "bg-vehicsim-danger-bg text-vehicsim-danger"
             : current
-              ? "bg-vehicsim-ink text-white"
-              : "border border-solid border-vehicsim-line-strong bg-white text-vehicsim-ink",
+              ? "bg-vehicsim-primary text-white"
+              : status === "DONE"
+                ? "bg-vehicsim-primary-bg text-vehicsim-primary"
+                : "border border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-ink",
       )}
     >
       {status === "RUNNING" ? (
@@ -83,7 +76,7 @@ export function StepStatusIcon({ status, n, current, size = "md" }: { status: Jo
       ) : status === "FAILED" ? (
         <TriangleAlert className={icon} />
       ) : (
-        n
+        status === "DONE" && !current ? <Check className={icon} /> : n
       )}
     </span>
   );
@@ -171,7 +164,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="flex w-full max-w-[480px] flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[480px] flex-col gap-4 overflow-y-auto rounded-xl border border-vehicsim-line bg-vehicsim-surface p-4 shadow-vehicsim-card sm:p-6"
       >
         <h2 id={titleId} className="text-[18px] font-bold text-vehicsim-ink">
           {title}
@@ -199,7 +192,7 @@ export function ToastStack({ messages }: { messages: ToastMessage[] }) {
         <div
           key={m.id}
           className={cx(
-            "flex items-start gap-3 rounded-[16px] border border-solid bg-white px-4 py-3 text-[14px] shadow-vehicsim-card",
+            "flex items-start gap-3 rounded-[16px] border border-solid bg-vehicsim-surface px-4 py-3 text-[14px] shadow-vehicsim-card",
             m.tone === "ok" ? "border-vehicsim-ok/30" : "border-vehicsim-warn/30",
           )}
         >
@@ -359,7 +352,7 @@ export function useProjectActions(onDone: (kind: ProjectAction) => void | Promis
                 disabled={busy || blocked}
                 className={cx(
                   "rounded-full px-5 py-3 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50",
-                  action.kind === "delete" ? "bg-vehicsim-danger hover:opacity-90" : "bg-vehicsim-ink hover:bg-black/80",
+                  action.kind === "delete" ? "bg-vehicsim-danger hover:opacity-90" : "bg-vehicsim-primary hover:bg-vehicsim-primary-hover",
                 )}
               >
                 {busy ? "Đang xử lý…" : copy.confirm}
@@ -396,12 +389,12 @@ export function ProjectMenu({ project, onAction }: { project: ProjectItem; onAct
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex size-11 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white text-vehicsim-ink hover:bg-vehicsim-soft"
+        className="flex size-11 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-ink hover:bg-vehicsim-soft"
       >
         <Ellipsis className="size-5" />
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 top-[calc(100%+6px)] z-40 flex w-[240px] flex-col gap-[2px] rounded-[14px] border border-solid border-vehicsim-line bg-white p-2 shadow-vehicsim-card">
+        <div role="menu" className="absolute right-0 top-[calc(100%+6px)] z-40 flex w-[240px] flex-col gap-[2px] rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface p-2 shadow-vehicsim-card">
           <Link role="menuitem" href={`/projects/${project.id}/settings`} onClick={close} className={cx(itemCls, "text-vehicsim-ink hover:bg-vehicsim-soft")}>
             <Settings className="size-4" /> Cài đặt project
           </Link>

@@ -20,6 +20,15 @@ public final class WorkspaceDtos {
     private WorkspaceDtos() {
     }
 
+    /**
+     * {@code PUT /workspaces/{id}}: Manager được gán sửa tên và mô tả workspace. Đổi Manager hoặc trạng thái vẫn ở Quản trị
+     * ({@code /admin/workspaces}); độ dài khớp cột {@code workspaces.name} (150) và giới hạn mô tả của màn Admin.
+     */
+    public record UpdateWorkspaceRequest(
+            @NotBlank(message = "Tên workspace không được để trống") @Size(max = 150, message = "Tên workspace tối đa 150 ký tự") String name,
+            @Size(max = 10000, message = "Mô tả tối đa 10000 ký tự") String description) {
+    }
+
     /** {@code POST /workspaces/{id}/members}: thêm một tài khoản EXPERIENCER và cấp role ENGINEER / REVIEWER cho người đó (ADR-045). */
     public record AddMemberRequest(
             @JsonProperty("user_id") @NotNull Long userId,

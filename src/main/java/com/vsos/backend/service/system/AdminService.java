@@ -1,5 +1,6 @@
 package com.vsos.backend.service.system;
 
+import com.vsos.backend.service.workspace.WorkspaceChatHub;
 import com.vsos.backend.common.Vs.InvalidRequestException;
 import com.vsos.backend.common.Vs.NotFoundException;
 import com.vsos.backend.common.audit.AuditLog;
@@ -22,8 +23,9 @@ public class AdminService {
     private final AdminRepository repo;
     private final LegacyAwarePasswordEncoder passwords;
     private final NotificationService notifications;
-    public AdminService(AdminRepository repo,LegacyAwarePasswordEncoder passwords,NotificationService notifications) {
-        this.repo=repo; this.passwords=passwords; this.notifications=notifications;
+    private final WorkspaceChatHub chat;
+    public AdminService(AdminRepository repo,LegacyAwarePasswordEncoder passwords,NotificationService notifications,WorkspaceChatHub chat) {
+        this.repo=repo; this.passwords=passwords; this.notifications=notifications; this.chat=chat;
     }
 
     @Transactional(readOnly=true)
@@ -77,6 +79,7 @@ public class AdminService {
         boolean revoke=roleChanged || old.bool("is_active")!=b.isActive() || !email.equals(old.str("email"));
         repo.updateUser(id,email,b.lastName().trim(),clean(b.middleName()),b.firstName().trim(),
                 b.role().name(),b.isActive(),revoke);
+        if(revoke) chat.disconnectUser(id);
         audit("user_update",actor,id);
         return detail("users",id);
     }
@@ -99,7 +102,10 @@ public class AdminService {
         String name=b.name().trim();
         if(repo.workspaceNameExists(name,id)) throw invalid("Tên workspace đã được sử dụng");
         repo.updateWorkspace(id,name,clean(b.description()),b.managerId());
-        if(old.lng("manager_id")!=b.managerId()) assigned(actor,id,b.managerId(),name);
+        if(old.lng("manager_id")!=b.managerId()) {
+            assigned(actor,id,b.managerId(),name);
+            chat.disconnect(id,old.lng("manager_id"));
+        }
         audit("workspace_update",actor,id);
         return detail("workspaces",id);
     }

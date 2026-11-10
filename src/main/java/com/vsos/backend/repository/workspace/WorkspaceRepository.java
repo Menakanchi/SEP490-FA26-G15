@@ -103,11 +103,11 @@ public class WorkspaceRepository {
     }
 
     /**
-     * Người thêm được: tài khoản tự đăng ký (EXPERIENCER) đang hoạt động, chưa ở workspace này (ADR-045); lọc theo email hoặc tên
-     * chứa {@code q} (bỏ trống = tất cả). Tối đa {@code limit} người.
+     * Người thêm được: tài khoản tự đăng ký (EXPERIENCER) đang hoạt động, chưa ở workspace này (ADR-045), có email TRÙNG KHỚP
+     * HOÀN TOÀN với {@code email} (không phân biệt hoa thường). Không khớp một phần: Manager không liệt kê hay dò danh sách
+     * người dùng được, chỉ xác nhận được email mà mình đã biết. Tối đa một người (email là duy nhất).
      */
-    public List<MemberCandidate> candidatesFor(long workspaceId, String q, int limit) {
-        String like = "%" + (q == null ? "" : q.trim().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")) + "%";
+    public List<MemberCandidate> candidateByEmail(long workspaceId, String email) {
         return db.list("""
                 SELECT u.id AS user_id, %s AS full_name, u.email, r.code AS role
                   FROM users u
@@ -115,10 +115,9 @@ public class WorkspaceRepository {
                  WHERE u.is_active = TRUE
                    AND r.code = 'EXPERIENCER'
                    AND NOT EXISTS (SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = ? AND wm.user_id = u.id)
-                   AND (u.email LIKE ? OR %s LIKE ?)
-                 ORDER BY u.email
-                 LIMIT ?
-                """.formatted(FULL_NAME.formatted("u"), FULL_NAME.formatted("u")), workspaceId, like, like, limit).stream()
+                   AND LOWER(u.email) = LOWER(?)
+                 LIMIT 1
+                """.formatted(FULL_NAME.formatted("u")), workspaceId, email).stream()
                 .map(r -> new MemberCandidate(r.lng("user_id"), r.str("full_name"), r.str("email"), r.str("role")))
                 .toList();
     }
@@ -216,17 +215,42 @@ public class WorkspaceRepository {
     }
 
 
-    /** Lấy danh sách tin nhắn trao đổi kỹ thuật của workspace. */
-    public List<ChatMessage> listMessages(long workspaceId, int limit) {
-        return db.list("""
+    /** Tên workspace đã có ở workspace khác chưa (cột {@code name} unique toàn hệ thống, migration 012). */
+    public boolean nameTaken(String name, long exceptWorkspaceId) {
+        return db.first("SELECT 1 FROM workspaces WHERE name = ? AND id <> ? LIMIT 1", name, exceptWorkspaceId) != null;
+    }
+
+    /** Đổi tên và mô tả; không đụng Manager, trạng thái hay người tạo. */
+    public void updateInfo(long workspaceId, String name, String description) {
+        db.update("UPDATE workspaces SET name = ?, description = ? WHERE id = ?", name, description, workspaceId);
+    }
+
+    /**
+     * Tin nhắn của workspace, cũ trước mới sau; id tự tăng nên thứ tự id là thứ tự gửi.
+     * <ul>
+     *   <li>không mốc: {@code limit} tin mới nhất (lần mở kênh);</li>
+     *   <li>{@code afterId}: tối đa {@code limit} tin có id lớn hơn (tải bù khi nối lại kênh realtime);</li>
+     *   <li>{@code beforeId}: {@code limit} tin ngay trước tin đó (nút "Xem tin cũ hơn").</li>
+     * </ul>
+     * Service bảo đảm không truyền cả hai mốc.
+     */
+    public List<ChatMessage> listMessages(long workspaceId, int limit, Long afterId, Long beforeId) {
+        String select = """
                 SELECT m.id, m.workspace_id, m.message_text, m.created_date, m.edited_at,
                        u.id AS sender_id, %s AS sender_name, u.email AS sender_email
                   FROM workspace_messages m
                   JOIN users u ON u.id = m.sender_id
-                 WHERE m.workspace_id = ?
-                 ORDER BY m.created_date ASC, m.id ASC
-                 LIMIT ?
-                """.formatted(FULL_NAME.formatted("u")), workspaceId, limit).stream()
+                 WHERE m.workspace_id = ?""".formatted(FULL_NAME.formatted("u"));
+        List<Row> rows;
+        if (afterId != null) {
+            rows = db.list(select + " AND m.id > ? ORDER BY m.id ASC LIMIT ?", workspaceId, afterId, limit);
+        } else if (beforeId != null) {
+            rows = db.list("SELECT * FROM (" + select + " AND m.id < ? ORDER BY m.id DESC LIMIT ?) older ORDER BY id ASC",
+                    workspaceId, beforeId, limit);
+        } else {
+            rows = db.list("SELECT * FROM (" + select + " ORDER BY m.id DESC LIMIT ?) latest ORDER BY id ASC", workspaceId, limit);
+        }
+        return rows.stream()
                 .map(r -> new ChatMessage(
                         r.lng("id"),
                         r.lng("workspace_id"),

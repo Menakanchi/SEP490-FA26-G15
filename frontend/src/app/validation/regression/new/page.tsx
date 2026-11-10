@@ -140,7 +140,7 @@ function NewRegressionForm() {
     >
       <ErrorNote message={error} />
       <p className="text-[12px] text-vehicsim-muted">Người tạo kiểm thử không tự duyệt khuyến nghị của kiểm thử đó.</p>
-      <div className="flex w-full items-start gap-4">
+      <div className="flex w-full flex-col gap-4 xl:flex-row xl:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <FormCard title="Phiên bản">
             <div className="flex items-end gap-3">
@@ -155,7 +155,7 @@ function NewRegressionForm() {
                   value={candidateId ?? ""}
                   onChange={(e) => setCandidateId(e.target.value ? Number(e.target.value) : null)}
                   disabled={noCandidate}
-                  className="h-[42px] w-full rounded-[12px] border border-solid border-vehicsim-line-strong bg-white px-[14px] text-[14px] font-medium text-vehicsim-ink"
+                  className="h-[42px] w-full rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-[14px] text-[14px] font-medium text-vehicsim-ink"
                 >
                   {candidates.length === 0 && <option value="">Chưa có phiên bản ứng viên</option>}
                   {candidates.map((v) => (
@@ -169,7 +169,7 @@ function NewRegressionForm() {
             </div>
             {noCandidate && (
               <div className="flex flex-wrap items-center gap-4 rounded-[14px] border border-dashed border-vehicsim-line-strong bg-vehicsim-soft p-4">
-                <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-white text-vehicsim-ink shadow-vehicsim-soft">
+                <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-vehicsim-surface text-vehicsim-ink">
                   <SlidersHorizontal className="size-5" />
                 </span>
                 <div className="flex min-w-0 flex-1 basis-[240px] flex-col gap-1">
@@ -200,7 +200,7 @@ function NewRegressionForm() {
                   setPicked(new Set());
                   setScenarioId(e.target.value ? Number(e.target.value) : null);
                 }}
-                className="h-[42px] w-full rounded-[12px] border border-solid border-vehicsim-line-strong bg-white px-[14px] text-[14px] font-medium text-vehicsim-ink"
+                className="h-[42px] w-full rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-[14px] text-[14px] font-medium text-vehicsim-ink"
               >
                 {(ctx?.families ?? []).length === 0 && <option value="">Chưa có họ kịch bản</option>}
                 {ctx?.families.map((f) => (
@@ -301,7 +301,7 @@ function NewRegressionForm() {
           </FormCard>
         </div>
 
-        <aside className="flex w-[330px] shrink-0 flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+        <aside className="flex w-full shrink-0 flex-col xl:w-[330px] gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
           <span className="text-[11px] font-semibold uppercase tracking-[0.6px] text-vehicsim-faint">Tóm tắt lượt chạy</span>
           <SummaryRow label="Phiên bản" value={baseline && candidate ? `${baseline.label} → ${candidate.label}` : "—"} />
           <SummaryRow label="Kịch bản" value={String(scenarios)} />
@@ -321,7 +321,7 @@ function NewRegressionForm() {
               <span className="font-bold">{scenarios}</span>
             </div>
             <div className="h-[5px] w-full rounded-[3px] bg-vehicsim-line">
-              <div className="h-[5px] rounded-[3px] bg-vehicsim-ink" style={{ width: scenarios ? "100%" : "0%" }} />
+              <div className="h-[5px] rounded-[3px] bg-vehicsim-primary" style={{ width: scenarios ? "100%" : "0%" }} />
             </div>
             {preview && (
               <div className="flex items-center justify-between text-[12px] text-vehicsim-muted">
@@ -343,7 +343,7 @@ function NewRegressionForm() {
 
 function FormCard({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="flex w-full flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+    <section className="flex w-full flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-[17px] font-bold text-vehicsim-ink">{title}</h2>
         {aside}
@@ -385,7 +385,7 @@ function SetOption({
     <div
       className={cx(
         "flex items-center gap-3 rounded-[14px] border border-solid px-4 py-3",
-        checked ? "border-vehicsim-ink" : "border-vehicsim-line",
+        checked ? "border-vehicsim-primary" : "border-vehicsim-line",
         disabled && "opacity-50",
       )}
       title={disabled ? (disabledHint ?? "Chưa có trong MVP") : undefined}

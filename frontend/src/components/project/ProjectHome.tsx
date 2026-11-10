@@ -31,7 +31,7 @@ export function ProjectCard({
   return (
     <Card className={cx("flex flex-col gap-4 p-5", opened && "ring-2 ring-vehicsim-decision/40")}>
       <div className="flex items-start gap-3">
-        <ProjectAvatar id={project.id} name={project.name} />
+        <ProjectAvatar name={project.name} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <Link href={`/projects/${project.id}`} className="truncate text-[16px] font-bold text-vehicsim-ink hover:underline">
             {project.name}
@@ -63,7 +63,7 @@ export function ProjectCard({
           <button
             type="button"
             onClick={() => onContinue(next.href)}
-            className="flex items-center gap-2 rounded-full bg-vehicsim-ink px-4 py-[10px] text-[13px] font-semibold text-white hover:bg-black/80"
+            className="flex min-h-11 items-center gap-2 rounded-lg bg-vehicsim-primary px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-vehicsim-primary-hover"
           >
             {next.key ? `Tiếp tục: ${next.cta}` : next.cta}
           </button>
@@ -86,22 +86,20 @@ export function ProjectCard({
 
 type NextAction = { label: string } & ({ href: string; onClick?: never } | { href?: never; onClick: () => void });
 
-export function NextActionCard({ eyebrow, title, detail, action, children }: {
-  eyebrow: string;
+export function NextActionCard({ title, detail, action, children }: {
   title: string;
   detail: string;
   action: NextAction;
   children?: ReactNode;
 }) {
   return (
-    <section aria-labelledby="next-step-title" className="flex w-full flex-col items-start gap-5 rounded-[24px] bg-vehicsim-ink p-5 text-white shadow-vehicsim-card lg:flex-row lg:items-center lg:gap-8 lg:p-7">
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <span className="text-[12px] font-bold uppercase tracking-[0.8px] text-white/70">{eyebrow}</span>
-        <h2 id="next-step-title" className="text-[26px] font-extrabold leading-[1.2] tracking-[-0.5px]">{title}</h2>
-        <p className="max-w-[640px] text-[15px] leading-[1.55] text-white/85">{detail}</p>
+    <section aria-labelledby="next-step-title" className="flex w-full flex-col items-start gap-4 rounded-xl border border-vehicsim-line bg-vehicsim-primary-bg p-5">
+      <div className="flex w-full min-w-0 flex-col gap-2">
+        <h2 id="next-step-title" className="text-[17px] font-bold text-vehicsim-ink">{title}</h2>
+        <p className="max-w-[640px] text-sm leading-relaxed text-vehicsim-muted">{detail}</p>
         {children}
       </div>
-      <PillButton href={action.href} onClick={action.onClick} className="max-w-full shrink-0">
+      <PillButton variant="dark" href={action.href} onClick={action.onClick} className="max-w-full">
         <span className="whitespace-normal">{action.label}</span>
       </PillButton>
     </section>
@@ -118,8 +116,7 @@ export function NextStepCard({ journey, opened, onGo }: { journey: ProjectJourne
 
   return (
     <NextActionCard
-      eyebrow={`Gợi ý tiếp theo · vòng ${journey.round}`}
-      title={action.title}
+      title={action.key ? stepDefinition(action.key).title : action.title}
       detail={action.detail}
       action={{ label: opened ? action.cta : "Mở project và tiếp tục", onClick: () => onGo(action.href) }}
     >
@@ -131,9 +128,9 @@ export function NextStepCard({ journey, opened, onGo }: { journey: ProjectJourne
               aria-valuenow={c.baseline_completed}
               aria-valuemin={0}
               aria-valuemax={c.variants}
-              className="h-2 flex-1 overflow-hidden rounded-full bg-white/20"
+              className="h-2 flex-1 overflow-hidden rounded-full bg-vehicsim-line-strong"
             >
-              <div className="h-full rounded-full bg-white transition-[width] duration-500" style={{ width: `${progress}%` }} />
+              <div className="h-full rounded-full bg-vehicsim-primary motion-safe:transition-[width] motion-safe:duration-500" style={{ width: `${progress}%` }} />
             </div>
             <span className="text-[13px] font-semibold tabular-nums">
               {c.baseline_completed}/{c.variants}
@@ -141,7 +138,7 @@ export function NextStepCard({ journey, opened, onGo }: { journey: ProjectJourne
           </div>
         )}
         {pending && (
-          <button type="button" onClick={() => onGo("/scenarios")} className="mt-1 w-fit text-[14px] font-semibold text-white underline-offset-4 hover:underline">
+          <button type="button" onClick={() => onGo("/scenarios")} className="mt-1 w-fit text-sm font-semibold text-vehicsim-primary underline-offset-4 hover:underline">
             {c.families_baseline_pending} họ kịch bản mới chưa chạy baseline · Chạy ngay
           </button>
         )}
@@ -150,7 +147,7 @@ export function NextStepCard({ journey, opened, onGo }: { journey: ProjectJourne
 }
 
 /** Năm bước của vòng hiện tại theo thứ tự: trạng thái thật, số liệu và lối vào từng bước. */
-export function JourneyTimeline({ journey, onGo, disabled }: { journey: ProjectJourney; onGo: (href: string) => void; disabled?: string }) {
+export function JourneyTimeline({ journey, onGo, disabled, showNextAction }: { journey: ProjectJourney; onGo: (href: string) => void; disabled?: string; showNextAction?: boolean }) {
   const rows = JOURNEY_STEPS.map((step) => {
     const status = statusOf(journey, step.key);
     const current = journey.next === step.key;
@@ -159,45 +156,39 @@ export function JourneyTimeline({ journey, onGo, disabled }: { journey: ProjectJ
       status,
       current,
       summary: stepSummary(step.key, journey),
-      action: (
-        <PillButton variant={current ? "dark" : "light"} disabled={!!disabled} title={disabled}
-          onClick={() => onGo(stepHref(step.key, journey))} className="shrink-0 px-4 py-2">
+      action: current && showNextAction ? null : (
+        <button type="button" disabled={!!disabled} title={disabled} aria-label={`Mở bước ${step.title.toLowerCase()}`}
+          onClick={() => onGo(stepHref(step.key, journey))}
+          className="min-h-11 text-[13px] font-semibold text-vehicsim-primary hover:underline disabled:cursor-not-allowed disabled:text-vehicsim-faint">
           {status === "RUNNING" ? "Xem tiến độ" : current ? "Làm bước này" : "Mở"}
-        </PillButton>
+        </button>
       ),
     };
   });
 
-  return <JourneyList title={`Hành trình · vòng ${journey.round}`} rows={rows} />;
+  return <JourneyList title={`Quy trình kiểm thử · vòng ${journey.round}`} rows={rows} />;
 }
 
 type JourneyRow = { key: JourneyStepKey; status: JourneyStatus; current: boolean; summary: string; action: ReactNode };
 
 export function JourneyList({ title, rows }: { title: string; rows: JourneyRow[] }) {
   return (
-    <Card className="flex min-w-0 flex-1 flex-col gap-5 p-6">
+    <Card className="flex min-w-0 flex-1 flex-col gap-3 p-5">
       <h2 className="text-[17px] font-bold text-vehicsim-ink">{title}</h2>
-      <ol className="flex flex-col">
-        {rows.map((row, i) => {
+      <ol className="divide-y divide-vehicsim-line">
+        {rows.map((row) => {
           const step = stepDefinition(row.key);
-          const last = i === rows.length - 1;
           return (
-            <li key={step.key} className="flex gap-4">
-              <div className="flex flex-col items-center">
-                <StepStatusIcon status={row.status} n={step.n} current={row.current} />
-                {!last && <span aria-hidden className="my-1 w-[2px] flex-1 rounded-full bg-vehicsim-line" />}
-              </div>
-              <div className={cx("flex min-w-0 flex-1 flex-wrap items-start justify-between gap-3", !last && "pb-6")}>
-                <div className="flex min-w-0 flex-col gap-1">
-                  <span className="text-[16px] font-bold text-vehicsim-ink">
-                    {STEP_NUMBER[i]} {step.title}
-                  </span>
-                  <span className="text-[14px] text-vehicsim-muted">{step.question}</span>
-                  <span className={cx("text-[14px] font-semibold", row.status === "FAILED" ? "text-vehicsim-danger" : "text-vehicsim-ink")}>
+            <li key={step.key} aria-current={row.current ? "step" : undefined} className="flex gap-3 py-3 first:pt-0 last:pb-0">
+              <StepStatusIcon status={row.status} n={step.n} current={row.current} size="sm" />
+              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <div className="flex min-w-0 flex-1 basis-40 flex-col gap-1">
+                  <span className={cx("text-sm font-bold", row.current ? "text-vehicsim-primary" : "text-vehicsim-ink")}>{step.title}</span>
+                  <span className={cx("break-words text-[13px]", row.status === "FAILED" ? "text-vehicsim-danger" : "text-vehicsim-muted")}>
                     {row.summary}
                   </span>
                 </div>
-                {row.action}
+                {row.action && <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{row.action}</div>}
               </div>
             </li>
           );

@@ -91,7 +91,7 @@ export default function ListProjectPage() {
               onClick={() => changeTab(t.status)}
               className={cx(
                 "rounded-full px-4 py-2 text-[14px] font-semibold",
-                tab === t.status ? "bg-vehicsim-ink text-white" : "text-vehicsim-muted hover:bg-white",
+                tab === t.status ? "bg-vehicsim-primary text-white" : "text-vehicsim-muted hover:bg-vehicsim-surface",
               )}
             >
               {t.label} ({list ? t.count(list) : "…"})
@@ -99,7 +99,7 @@ export default function ListProjectPage() {
           ))}
         </div>
         <form role="search" onSubmit={submitSearch} className="flex items-center gap-2">
-          <label className="flex h-10 w-[280px] items-center gap-2 rounded-full border border-solid border-vehicsim-line-strong bg-white px-4">
+          <label className="flex h-10 w-[280px] items-center gap-2 rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-4">
             <Search aria-hidden className="size-4 shrink-0 text-vehicsim-muted" />
             <input
               value={query}

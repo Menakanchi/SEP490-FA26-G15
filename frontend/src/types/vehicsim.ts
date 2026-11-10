@@ -985,3 +985,9 @@ export interface WorkspaceChatMessage {
 export interface SendChatMessageRequest {
   message: string;
 }
+
+/** `PUT /workspaces/{id}`: tên (≤ 150 ký tự, không trùng) và mô tả (≤ 10000 ký tự, trống = xoá). */
+export interface UpdateWorkspaceRequest {
+  name: string;
+  description: string | null;
+}

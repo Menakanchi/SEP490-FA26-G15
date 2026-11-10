@@ -152,7 +152,7 @@ function SubmitResultCard({ canWrite }: { canWrite: boolean }) {
               onChange={(e) => setRunId(e.target.value)}
               inputMode="numeric"
               placeholder="vd. 42"
-              className="w-[140px] rounded-full border border-solid border-vehicsim-line-strong bg-white px-4 py-[10px] text-[13px] font-semibold text-vehicsim-ink"
+              className="w-[140px] rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-4 py-[10px] text-[13px] font-semibold text-vehicsim-ink"
             />
           </label>
           <PillButton variant="dark" disabled={!canWrite || busy || id === null || !doc.evaluation} onClick={() => void submit()}>
@@ -266,7 +266,7 @@ function TelemetryCard({ canWrite }: { canWrite: boolean }) {
             inputMode="decimal"
             title="Dùng để ước phần quãng phanh còn lại nếu lượt chạy kết thúc khi xe chưa dừng; mặc định 8 = MAX_DECELERATION mặc định"
             className={cx(
-              "w-[150px] rounded-full border border-solid bg-white px-4 py-[10px] text-[13px] font-semibold text-vehicsim-ink",
+              "w-[150px] rounded-full border border-solid bg-vehicsim-surface px-4 py-[10px] text-[13px] font-semibold text-vehicsim-ink",
               decelOk ? "border-vehicsim-line-strong" : "border-vehicsim-danger",
             )}
           />
@@ -349,7 +349,7 @@ function FilePick({
   return (
     <label
       className={cx(
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-solid border-vehicsim-line-strong bg-white px-5 py-3 text-[13px] font-semibold text-vehicsim-ink transition",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-5 py-3 text-[13px] font-semibold text-vehicsim-ink transition",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-vehicsim-soft",
       )}
       title={disabled ? READ_ONLY_NOTE : undefined}

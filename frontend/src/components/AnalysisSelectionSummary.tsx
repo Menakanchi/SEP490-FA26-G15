@@ -18,7 +18,7 @@ export function ObjectiveSummary({value}: {value: ObjectiveAggregate}) {
 export function AnalysisSelectionSummary({dataset,returnTo}: {dataset: AnalysisSelection;returnTo?:string}) {
  const [requestedPage,setPage]=useState(1);
  const pages=Math.max(1,Math.ceil(dataset.runs.length/20)),page=Math.min(requestedPage,pages);
- return <section className="rounded-[20px] border border-vehicsim-line bg-white p-5 space-y-4">
+ return <section className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5 space-y-4">
    <h2 className="font-bold">Tập đã chốt #{dataset.id} · {dataset.scenario.name}</h2>
    <p className="text-[12px] text-vehicsim-muted">Baseline {dataset.baseline.label} · xe #{dataset.reference.vehicle_id} · {dataset.reference.simulator} · dt {dataset.reference.dt} s</p>
    <p className="text-[12px]">Hợp đồng {dataset.evaluation.version} · {dataset.optimization_run_ids.length} run tối ưu · {dataset.validation_run_ids.length} run xác minh</p>

@@ -1,15 +1,16 @@
 "use client";
 
 import React, { useCallback } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { Card, ErrorNote, PillButton, Tag, fmt } from "@/components/VehicSimUi";
+import { Card, CardTitle, ErrorNote, PillButton, Tag, fmt } from "@/components/VehicSimUi";
 import { splitDescription, timeAgo } from "@/components/project/journey";
 import { JourneyTimeline, NextStepCard } from "@/components/project/ProjectHome";
 import { useJourney, useProjectItem, useProjectJourney } from "@/components/project/ProjectJourneyContext";
-import { ProjectAvatar, ProjectMenu, useProjectActions, type ProjectAction } from "@/components/project/ProjectUi";
+import { ProjectMenu, useProjectActions, type ProjectAction } from "@/components/project/ProjectUi";
 
 function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -43,20 +44,11 @@ export default function ViewProjectDetailPage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Project của tôi", href: "/projects" }, { label: project?.name ?? "…" }]}
-      title={
-        project ? (
-          <span className="flex items-center gap-4">
-            <ProjectAvatar id={project.id} name={project.name} size="lg" />
-            {project.name}
-          </span>
-        ) : (
-          "Project"
-        )
-      }
+      title={project?.name ?? "Dự án"}
       badges={
         project && (
           <>
-            <Tag tone={active ? "ok" : "neutral"}>{active ? "Đang hoạt động" : "Lưu trữ"}</Tag>
+            {!active && <Tag>Lưu trữ</Tag>}
             {opened && <Tag tone="info">Đang mở</Tag>}
           </>
         )
@@ -96,16 +88,30 @@ export default function ViewProjectDetailPage() {
       )}
 
       {project && journey ? (
-        <>
-          {workable && <NextStepCard journey={journey} opened={opened} onGo={go} />}
-          <div className="flex w-full flex-col items-stretch gap-5 xl:flex-row xl:items-start">
-            <JourneyTimeline
-              journey={journey}
-              onGo={go}
-              disabled={!isExperiencer ? "Chỉ xem: tài khoản không còn là Experiencer" : active ? undefined : "Bỏ lưu trữ để mở các bước"}
-            />
-            <Card className="flex w-full shrink-0 flex-col gap-2 p-6 xl:w-[300px] 2xl:w-[340px]">
-              <h2 className="text-[17px] font-bold text-vehicsim-ink">Thông tin</h2>
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <Card className="flex flex-col gap-4 p-5">
+              <CardTitle aside={<Link href={`/projects/${id}/results`} className="text-right text-[13px] font-semibold text-vehicsim-primary hover:underline">Xem kết quả</Link>}>
+                Kết quả bản cơ sở
+              </CardTitle>
+              {journey.counts.baseline_completed > 0 ? (
+                <dl className="grid grid-cols-2 gap-4 border-t border-vehicsim-line pt-4 sm:grid-cols-4">
+                  {[
+                    { label: "An toàn", value: journey.counts.safe },
+                    { label: "Suýt va chạm", value: journey.counts.near_misses },
+                    { label: "Va chạm", value: journey.counts.collisions },
+                    { label: "Phanh oan", value: journey.counts.false_activations },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex flex-col gap-1">
+                      <dt className="text-[13px] text-vehicsim-muted">{label}</dt>
+                      <dd className="text-2xl font-bold tabular-nums">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : <p className="text-sm text-vehicsim-muted">Chưa có lượt chạy bản cơ sở hoàn thành.</p>}
+            </Card>
+            <Card className="flex w-full flex-col gap-2 p-5">
+              <CardTitle>Thông tin dự án</CardTitle>
               <div className="flex flex-col">
                 <InfoRow label="Phương tiện">{project.vehicle_name ?? "—"}</InfoRow>
                 <InfoRow label="Cấu hình AEB gốc">{journey.baseline_label ?? project.baseline_label ?? "—"}</InfoRow>
@@ -114,13 +120,22 @@ export default function ViewProjectDetailPage() {
               </div>
               {brief.note && (
                 <div className="flex flex-col gap-1 pt-2">
-                  <span className="text-[14px] text-vehicsim-muted">Ghi chú</span>
-                  <p className="whitespace-pre-line text-[14px] leading-[1.55] text-vehicsim-ink">{brief.note}</p>
+                  <span className="text-sm text-vehicsim-muted">Ghi chú</span>
+                  <p className="whitespace-pre-line text-sm leading-relaxed text-vehicsim-ink">{brief.note}</p>
                 </div>
               )}
             </Card>
           </div>
-        </>
+          <div className="flex min-w-0 flex-col gap-4">
+            <JourneyTimeline
+              journey={journey}
+              onGo={go}
+              showNextAction={workable}
+              disabled={!isExperiencer ? "Chỉ xem: tài khoản không còn là Experiencer" : active ? undefined : "Bỏ lưu trữ để mở các bước"}
+            />
+            {workable && <NextStepCard journey={journey} opened={opened} onGo={go} />}
+          </div>
+        </div>
       ) : (
         !error && (
           <div className="flex justify-center py-16">

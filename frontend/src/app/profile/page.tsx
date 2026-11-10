@@ -1,414 +1,182 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import {
-  User as UserIcon,
-  KeyRound,
-  Upload,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  Shield,
-  Check,
-  Camera,
-  ArrowLeft,
-} from "lucide-react";
-import { AuthGate } from "@/components/AuthGate";
-import { PageHeader } from "@/components/PageHeader";
-import { useAuth } from "@/context/AuthContext";
+import { ArrowLeft, Upload } from "lucide-react";
 import { AvatarCropModal } from "@/components/AvatarCropModal";
+import { inputClass, labelClass } from "@/components/auth/AuthCard";
+import { VehicSimPage } from "@/components/VehicSimPage";
+import { Card, CardTitle, ErrorNote, PillButton, ROLE_LABELS, initials } from "@/components/VehicSimUi";
+import { useAuth } from "@/context/AuthContext";
 
 const MIN_PASSWORD_LENGTH = 8;
+type Feedback = { tone: "ok" | "error"; text: string };
 
-export default function ProfilePage() {
-  return (
-    <AuthGate>
-      <ProfileContent />
-    </AuthGate>
-  );
+function FormFeedback({ feedback }: { feedback: Feedback | null }) {
+  if (!feedback) return null;
+  if (feedback.tone === "error") return <ErrorNote message={feedback.text} />;
+  return <p role="status" className="rounded-lg bg-vehicsim-ok-bg px-3 py-2.5 text-sm text-vehicsim-ok">{feedback.text}</p>;
 }
 
-function ProfileContent() {
+export default function ProfilePage() {
   const router = useRouter();
   const { user, updateProfile, changePassword } = useAuth();
-
-  // Profile Form State
+  const fileInput = useRef<HTMLInputElement>(null);
   const [fullName, setFullName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
-
-  // Avatar Cropper State
-  const [selectedImageForCrop, setSelectedImageForCrop] = useState<string | null>(null);
-  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
-
-  // Password Form State
+  const [profileFeedback, setProfileFeedback] = useState<Feedback | null>(null);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
-
-  // Toast / Status Message
-  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [passwordFeedback, setPasswordFeedback] = useState<Feedback | null>(null);
 
   useEffect(() => {
-    if (user) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync form state from user context
-      setFullName(user.full_name || user.name || "");
-      setAvatarUrl(user.avatar_url || "");
-    }
+    if (!user) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp thông tin tài khoản vào biểu mẫu chỉnh sửa
+    setFullName(user.full_name || user.name || "");
+    setAvatarUrl(user.avatar_url || "");
   }, [user]);
 
   if (!user) return null;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  function handleFileUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file) return;
-
     if (!file.type.startsWith("image/")) {
-      setToast({ type: "error", msg: "Vui lòng chọn file hình ảnh hợp lệ (.jpg, .png, .webp)" });
+      setProfileFeedback({ tone: "error", text: "Vui lòng chọn tệp hình ảnh hợp lệ." });
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        setSelectedImageForCrop(result);
-        setIsCropModalOpen(true);
-      }
+    reader.onload = () => {
+      if (typeof reader.result === "string") setImageToCrop(reader.result);
     };
+    reader.onerror = () => setProfileFeedback({ tone: "error", text: "Không đọc được ảnh. Hãy thử chọn ảnh khác." });
     reader.readAsDataURL(file);
-    e.target.value = "";
-  };
+  }
 
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (!fullName.trim()) {
-      setToast({ type: "error", msg: "Họ và tên không được để trống" });
+      setProfileFeedback({ tone: "error", text: "Họ và tên không được để trống." });
       return;
     }
-
     setProfileSaving(true);
-    setToast(null);
+    setProfileFeedback(null);
     try {
       await updateProfile(fullName, avatarUrl || undefined);
-      setToast({ type: "success", msg: "Cập nhật thông tin cá nhân thành công!" });
+      setProfileFeedback({ tone: "ok", text: "Đã lưu thông tin cá nhân." });
     } catch (err) {
-      setToast({
-        type: "error",
-        msg: err instanceof Error ? err.message : "Đã xảy ra lỗi khi cập nhật profile.",
-      });
+      setProfileFeedback({ tone: "error", text: err instanceof Error ? err.message : "Không lưu được thông tin cá nhân." });
     } finally {
       setProfileSaving(false);
     }
-  };
+  }
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setToast(null);
-
-    if (!oldPassword) {
-      setToast({ type: "error", msg: "Vui lòng nhập mật khẩu hiện tại" });
+  async function savePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!oldPassword || newPassword.length < MIN_PASSWORD_LENGTH || newPassword !== confirmPassword) {
+      const text = !oldPassword ? "Vui lòng nhập mật khẩu hiện tại."
+        : newPassword.length < MIN_PASSWORD_LENGTH ? `Mật khẩu mới phải có ít nhất ${MIN_PASSWORD_LENGTH} ký tự.`
+        : "Mật khẩu xác nhận không khớp với mật khẩu mới.";
+      setPasswordFeedback({ tone: "error", text });
       return;
     }
-    if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
-      setToast({ type: "error", msg: `Mật khẩu mới phải có độ dài ít nhất ${MIN_PASSWORD_LENGTH} ký tự` });
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setToast({ type: "error", msg: "Mật khẩu xác nhận không khớp với mật khẩu mới" });
-      return;
-    }
-
     setPasswordSaving(true);
+    setPasswordFeedback(null);
     try {
-      // Backend cấp phiên mới; các thiết bị khác đang đăng nhập bị đăng xuất.
       await changePassword(oldPassword, newPassword);
-      setToast({ type: "success", msg: "Đổi mật khẩu thành công! Các thiết bị khác đã bị đăng xuất." });
+      setPasswordFeedback({ tone: "ok", text: "Đã đổi mật khẩu và đăng xuất các phiên khác." });
       setOldPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (err) {
-      setToast({
-        type: "error",
-        msg: err instanceof Error ? err.message : "Mật khẩu hiện tại không chính xác.",
-      });
+      setPasswordFeedback({ tone: "error", text: err instanceof Error ? err.message : "Không đổi được mật khẩu." });
     } finally {
       setPasswordSaving(false);
     }
-  };
-
-  const displayName = user.full_name || user.name || user.username;
-  const initial = displayName.charAt(0).toUpperCase();
+  }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 px-8 py-8 font-sans text-slate-900 dark:text-slate-100">
-      {/* Toast Notification */}
-      {toast && (
-        <div
-          className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-sm font-medium transition-all duration-300 ${
-            toast.type === "success"
-              ? "bg-green-600 text-white shadow-green-500/20 font-bold"
-              : "bg-red-600 text-white shadow-red-500/20 font-bold"
-          }`}
-        >
-          {toast.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-          <span>{toast.msg}</span>
-          <button
-            type="button"
-            onClick={() => setToast(null)}
-            className="ml-2 text-white/80 hover:text-white"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Header Glass Box */}
-      <div className="bg-white/70 dark:bg-slate-900/80 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 shadow-2xl rounded-[32px] p-6 sm:p-7 transition-all">
-        <PageHeader
-          icon={UserIcon}
-          title="Quản lý Tài khoản Cá nhân"
-          subtitle="Cập nhật thông tin hồ sơ người dùng và bảo mật mật khẩu tài khoản hệ thống"
-          badge="User Profile"
-          actions={
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="text-xs px-4 py-2.5 rounded-2xl flex items-center gap-2 border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 font-extrabold transition cursor-pointer shadow-xs backdrop-blur-md"
-            >
-              <ArrowLeft className="w-4 h-4 text-blue-600 dark:text-cyan-400" />
-              <span>Quay lại</span>
-            </button>
-          }
-        />
-      </div>
-
-      {/* Main Grid: Left Section (Profile Details) + Right Section (Change Password) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Section: Personal Info (7 cols) */}
-        <div className="lg:col-span-7 bg-white/75 dark:bg-slate-900/85 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] p-6 sm:p-8 shadow-2xl space-y-6">
-          <div className="border-b border-slate-200/60 dark:border-slate-800/80 pb-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-cyan-400 flex items-center justify-center font-bold">
-              <UserIcon className="w-5 h-5" />
+    <VehicSimPage
+      crumbs={[{ label: "Hồ sơ cá nhân" }]}
+      title="Hồ sơ cá nhân"
+      subtitle="Quản lý thông tin hiển thị và mật khẩu tài khoản."
+      showContext={false}
+      actions={<PillButton onClick={() => router.back()}><ArrowLeft aria-hidden className="size-4" /> Quay lại</PillButton>}
+    >
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <Card className="flex flex-col gap-5 p-4 sm:p-5">
+          <CardTitle>Thông tin cá nhân</CardTitle>
+          <form onSubmit={saveProfile} className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-4 border-b border-vehicsim-line pb-4">
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- ảnh đại diện là dữ liệu lưu trong trình duyệt
+                <img src={avatarUrl} alt="Ảnh đại diện" className="size-16 shrink-0 rounded-full object-cover" />
+              ) : (
+                <span aria-hidden className="grid size-16 shrink-0 place-items-center rounded-full bg-vehicsim-primary-bg text-lg font-bold text-vehicsim-primary">
+                  {initials(user.full_name || user.name || user.username)}
+                </span>
+              )}
+              <div className="flex min-w-0 flex-1 basis-[180px] flex-col items-start gap-2">
+                <p className="text-sm font-semibold">Ảnh đại diện</p>
+                <p className="text-xs text-vehicsim-muted">Ảnh đại diện được lưu trên trình duyệt này.</p>
+                <input ref={fileInput} type="file" accept="image/*" className="hidden" aria-label="Chọn ảnh đại diện" onChange={handleFileUpload} />
+                <PillButton onClick={() => fileInput.current?.click()}><Upload aria-hidden className="size-4" /> Chọn ảnh</PillButton>
+              </div>
             </div>
             <div>
-              <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
-                Thông tin cá nhân
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Tùy chỉnh ảnh đại diện và tên hiển thị người dùng
-              </p>
+              <label htmlFor="profile-name" className={labelClass}>Họ và tên</label>
+              <input id="profile-name" type="text" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputClass} required />
             </div>
-          </div>
-
-          <form onSubmit={handleSaveProfile} className="space-y-6">
-            {/* Avatar Preview & Presets */}
-            <div className="flex flex-col sm:flex-row items-center gap-5 p-5 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/60">
-              <div className="relative group shrink-0">
-                {avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={avatarUrl}
-                    alt={displayName}
-                    className="w-20 h-20 rounded-full object-cover border-2 border-blue-600 dark:border-cyan-400 shadow-md"
-                  />
-                ) : (
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-2xl font-black flex items-center justify-center border-2 border-blue-400 shadow-md">
-                    {initial}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute inset-0 rounded-full bg-slate-950/40 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition cursor-pointer"
-                  title="Tải ảnh mới"
-                >
-                  <Camera className="w-6 h-6" />
-                </button>
-              </div>
-
-              <div className="space-y-2.5 flex-1 w-full text-center sm:text-left">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                  Ảnh đại diện (Avatar)
-                </label>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Tải file ảnh đại diện từ máy tính cá nhân. Ảnh chỉ lưu trên trình duyệt này.
-                </p>
-
-                <div className="pt-1">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-extrabold flex items-center justify-center gap-2 transition cursor-pointer shrink-0 border border-slate-200 dark:border-slate-700 shadow-xs"
-                  >
-                    <Upload className="w-4 h-4 text-blue-600 dark:text-cyan-400" />
-                    <span>Tải ảnh từ máy (.png, .jpg, .webp)</span>
-                  </button>
-                </div>
-              </div>
+            <div>
+              <label htmlFor="profile-email" className={labelClass}>Email đăng nhập</label>
+              <input id="profile-email" type="email" autoComplete="username" value={user.email} readOnly className={inputClass + " read-only:bg-vehicsim-soft"} />
             </div>
-
-            {/* Inputs: Full Name & Read-only fields */}
-            <div className="space-y-4 pt-4 border-t border-slate-200/60 dark:border-slate-800/80">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Họ và tên (Full Name) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                  placeholder="Ví dụ: Nguyễn Văn A"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400">
-                    Email đăng nhập
-                  </label>
-                  <input
-                    type="email"
-                    value={user.email}
-                    readOnly
-                    className="w-full px-4 py-2.5 bg-slate-100/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-mono font-bold text-slate-500 cursor-not-allowed"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-xs">
-                <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-bold">
-                  <Shield className="w-4 h-4 text-blue-600 dark:text-cyan-400" />
-                  <span>Vai trò phân quyền hệ thống:</span>
-                </div>
-                <span className="px-3 py-1 bg-blue-600 text-white font-extrabold rounded-full uppercase text-[10px] tracking-wider">
-                  {user.role}
-                </span>
-              </div>
-            </div>
-
-            {/* Save Button */}
-            <div className="flex justify-end pt-3 border-t border-slate-200/60 dark:border-slate-800/80">
-              <button
-                type="submit"
-                disabled={profileSaving}
-                className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-2xl shadow-md shadow-blue-600/20 flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
-              >
-                {profileSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                <span>{profileSaving ? "Đang lưu..." : "Lưu thay đổi"}</span>
-              </button>
+            <dl className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+              <dt className="text-vehicsim-muted">Vai trò</dt>
+              <dd className="font-semibold">{ROLE_LABELS[user.role] ?? user.role}</dd>
+            </dl>
+            <FormFeedback feedback={profileFeedback} />
+            <div className="flex justify-end border-t border-vehicsim-line pt-4">
+              <PillButton type="submit" variant="dark" disabled={profileSaving}>{profileSaving ? "Đang lưu…" : "Lưu thay đổi"}</PillButton>
             </div>
           </form>
-        </div>
-
-        {/* Right Section: Change Password (5 cols) */}
-        <div className="lg:col-span-5 bg-white/75 dark:bg-slate-900/85 backdrop-blur-xl border border-white/40 dark:border-slate-800/60 rounded-[32px] p-6 sm:p-8 shadow-2xl space-y-6 flex flex-col justify-between">
-          <div className="space-y-6">
-            <div className="border-b border-slate-200/60 dark:border-slate-800/80 pb-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
-                <KeyRound className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
-                  Đổi mật khẩu
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Cập nhật mật khẩu mới bảo vệ tài khoản
-                </p>
-              </div>
+        </Card>
+        <Card className="flex flex-col gap-5 p-4 sm:p-5">
+          <CardTitle>Đổi mật khẩu</CardTitle>
+          <form onSubmit={savePassword} className="flex flex-col gap-4">
+            <div>
+              <label htmlFor="profile-password-current" className={labelClass}>Mật khẩu hiện tại</label>
+              <input id="profile-password-current" type="password" autoComplete="current-password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} className={inputClass} required />
             </div>
-
-            <form onSubmit={handleChangePassword} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Mật khẩu hiện tại <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="password"
-                  value={oldPassword}
-                  onChange={(e) => setOldPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu đang sử dụng"
-                  className="w-full px-4 py-2.5 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Mật khẩu mới <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  maxLength={72}
-                  placeholder={`Ít nhất ${MIN_PASSWORD_LENGTH} ký tự`}
-                  className="w-full px-4 py-2.5 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Xác nhận mật khẩu mới <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Nhập lại mật khẩu mới"
-                  className="w-full px-4 py-2.5 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                  required
-                />
-              </div>
-
-              <div className="pt-4 border-t border-slate-200/60 dark:border-slate-800/80 flex justify-end">
-                <button
-                  type="submit"
-                  disabled={passwordSaving}
-                  className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-2xl shadow-md shadow-blue-600/20 flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
-                >
-                  {passwordSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
-                  <span>{passwordSaving ? "Đang cập nhật..." : "Đổi mật khẩu"}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/30 border border-slate-200/60 dark:border-slate-800/60 text-[11px] text-slate-500 dark:text-slate-400 space-y-1.5">
-            <span className="font-bold text-slate-700 dark:text-slate-300 block">Lưu ý bảo mật:</span>
-            <p className="leading-relaxed">
-              Mật khẩu được băm bằng PBKDF2-HMAC-SHA256 trước khi lưu. Đổi mật khẩu sẽ đăng xuất mọi thiết bị khác đang dùng tài khoản này.
-            </p>
-          </div>
-        </div>
+            <div>
+              <label htmlFor="profile-password-new" className={labelClass}>Mật khẩu mới</label>
+              <input id="profile-password-new" type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} maxLength={72} aria-describedby="profile-password-rule" className={inputClass} required />
+              <p id="profile-password-rule" className="mt-1.5 text-xs text-vehicsim-muted">Ít nhất {MIN_PASSWORD_LENGTH} ký tự.</p>
+            </div>
+            <div>
+              <label htmlFor="profile-password-confirm" className={labelClass}>Xác nhận mật khẩu mới</label>
+              <input id="profile-password-confirm" type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputClass} required />
+            </div>
+            <p className="text-xs leading-relaxed text-vehicsim-muted">Khi đổi mật khẩu, các phiên đăng nhập khác của tài khoản sẽ kết thúc.</p>
+            <FormFeedback feedback={passwordFeedback} />
+            <div className="flex justify-end border-t border-vehicsim-line pt-4">
+              <PillButton type="submit" variant="dark" disabled={passwordSaving}>{passwordSaving ? "Đang cập nhật…" : "Đổi mật khẩu"}</PillButton>
+            </div>
+          </form>
+        </Card>
       </div>
-
-      {/* Avatar Crop Modal */}
-      <AvatarCropModal
-        isOpen={isCropModalOpen}
-        imageSrc={selectedImageForCrop}
-        onClose={() => {
-          setIsCropModalOpen(false);
-          setSelectedImageForCrop(null);
-        }}
-        onCropConfirm={(croppedDataUrl) => {
-          setAvatarUrl(croppedDataUrl);
-          setToast({ type: "success", msg: "Đã cắt và chỉnh sửa ảnh đại diện thành công!" });
-        }}
-      />
-    </div>
+      {imageToCrop && (
+        <AvatarCropModal imageSrc={imageToCrop} onClose={() => setImageToCrop(null)} onCropConfirm={(cropped) => {
+          setAvatarUrl(cropped);
+          setProfileFeedback({ tone: "ok", text: "Đã cắt ảnh. Chọn Lưu thay đổi để cập nhật ảnh đại diện." });
+        }} />
+      )}
+    </VehicSimPage>
   );
 }

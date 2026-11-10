@@ -49,7 +49,7 @@ class WorkspaceReportServiceTest {
         workspaceRepo = mock(WorkspaceRepository.class);
         reports = mock(WorkspaceReportRepository.class);
         notifications = mock(NotificationService.class);
-        service = new WorkspaceReportService(new WorkspaceService(workspaceRepo, notifications), reports, notifications);
+        service = new WorkspaceReportService(new WorkspaceService(workspaceRepo, notifications, mock(WorkspaceChatHub.class)), reports, notifications);
         when(workspaceRepo.find(WS)).thenReturn(workspace("ACTIVE"));
         when(reports.find(WS, REPORT)).thenReturn(report("SUBMITTED"));
         when(reports.decide(anyLong(), anyString(), anyLong(), any(), any())).thenReturn(true);

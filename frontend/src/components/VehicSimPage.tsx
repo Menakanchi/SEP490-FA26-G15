@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { ChevronRight } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { FlowBar } from "@/components/FlowBar";
 import { JourneyBar, TeamJourneyBar } from "@/components/project/ProjectShell";
-import { NotificationBell } from "@/components/NotificationBell";
 import { useAuth } from "@/context/AuthContext";
 
 export type Crumb = { label: string; href?: string };
@@ -19,74 +18,46 @@ interface VehicSimPageProps {
   actions?: React.ReactNode;
   /** Bước của vòng MVP mà màn này thuộc về (xem components/vehicsimFlow.ts). */
   step?: number | number[];
+  showContext?: boolean;
   children: React.ReactNode;
 }
 
-function ContextChip({ label, value }: { label: string; value?: string | null }) {
+function ContextField({ label, value }: { label: string; value: string }) {
   return (
-    <span className="flex max-w-full min-w-0 items-center gap-[6px] whitespace-nowrap rounded-full border border-solid border-vehicsim-line bg-white px-3 py-[7px] text-[12px]">
-      <span className="shrink-0 font-medium text-vehicsim-faint">{label}</span>
-      <span className="truncate font-semibold text-vehicsim-ink" title={value ?? undefined}>{value ?? "—"}</span>
-    </span>
+    <div className="min-w-0 border-l border-vehicsim-line-strong pl-3 text-xs">
+      <dt className="text-vehicsim-muted">{label}</dt>
+      <dd className="mt-1 break-words font-semibold text-vehicsim-ink">{value}</dd>
+    </div>
   );
 }
 
-/** Khung một trang VehicSim: thanh trên (breadcrumb + chip ngữ cảnh + tìm kiếm) và tiêu đề trang. */
-export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, children }: VehicSimPageProps) {
+/** Khung nội dung trang và ngữ cảnh kiểm thử. */
+export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, showContext = true, children }: VehicSimPageProps) {
   const { ctx, error, isExperiencer, canResetProject, selectProject } = useVehicSimContext();
   const { user } = useAuth();
   const reviewer = user?.roleCode === "REVIEWER";
-  const router = useRouter();
-  const [search, setSearch] = useState("");
-
-  const onSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const run = search.trim().replace(/^#/, "");
-    if (/^\d+$/.test(run)) router.push(`/analysis/failures/${run}`);
-  };
+  const baseline = ctx?.system.baseline;
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-6 px-4 pb-10 pt-[22px] sm:px-6 xl:px-9">
-      <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
-        <nav className="flex min-w-0 flex-wrap items-center gap-2 break-words text-[13px]">
+    <div className="mx-auto flex w-full min-w-0 max-w-[1680px] flex-1 flex-col gap-5 px-4 pb-10 pt-5 sm:px-6 xl:px-8">
+      <div className="border-b border-vehicsim-line pb-3 print:hidden">
+        <nav aria-label="Đường dẫn" className="flex min-w-0 flex-wrap items-center gap-2 break-words text-[13px]">
           {crumbs.map((c, i) => {
             const last = i === crumbs.length - 1;
             return (
               <React.Fragment key={c.label}>
-                {i > 0 && <span className="text-vehicsim-faint">/</span>}
+                {i > 0 && <ChevronRight aria-hidden className="size-3.5 shrink-0 text-vehicsim-faint" />}
                 {c.href && !last ? (
                   <Link href={c.href} className="font-medium text-vehicsim-faint hover:text-vehicsim-ink">
                     {c.label}
                   </Link>
                 ) : (
-                  <span className={last ? "font-semibold text-vehicsim-ink" : "font-medium text-vehicsim-faint"}>{c.label}</span>
+                  <span aria-current={last ? "page" : undefined} className={last ? "font-semibold text-vehicsim-ink" : "font-medium text-vehicsim-faint"}>{c.label}</span>
                 )}
               </React.Fragment>
             );
           })}
         </nav>
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {isExperiencer ? (
-            <ContextChip label="Project" value={ctx?.project.name} />
-          ) : (
-            <ContextChip label="Không gian" value={ctx?.workspace?.name} />
-          )}
-          <ContextChip label="Phương tiện" value={ctx?.vehicle?.name} />
-          <ContextChip
-            label="Hệ thống"
-            value={ctx ? `${ctx.system.name} ${ctx.system.baseline?.label ?? ""}`.trim() : undefined}
-          />
-          <form onSubmit={onSearch}>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Tìm lượt chạy, vd. #1023"
-              aria-label="Tìm theo mã lượt chạy, ví dụ #1023"
-              className="w-[200px] rounded-full border border-solid border-vehicsim-line bg-white px-[14px] py-2 text-[12px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
-            />
-          </form>
-          <NotificationBell />
-        </div>
       </div>
 
       {error && (
@@ -107,14 +78,20 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, c
         : step !== undefined && <FlowBar active={Array.isArray(step) ? step : [step]} />}
 
       <div className="vehicsim-page-heading flex flex-wrap items-end justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-[10px]">
+        <div className="flex min-w-0 flex-1 basis-[300px] flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="min-w-0 break-words text-[30px] font-extrabold leading-[1.1] tracking-[-1.2px] text-vehicsim-ink sm:text-[40px]">{title}</h1>
+            <h1 className="min-w-0 break-words text-[28px] font-bold leading-[1.2] tracking-[-0.025em] text-vehicsim-ink sm:text-[34px]">{title}</h1>
             {badges}
           </div>
           {subtitle && <p className="max-w-[640px] text-[15px] leading-[1.5] text-vehicsim-muted">{subtitle}</p>}
         </div>
-        {actions && <div className="vehicsim-page-actions flex min-w-0 flex-wrap items-center gap-[10px]">{actions}</div>}
+        {showContext && (ctx?.vehicle || baseline) && (
+          <dl className="flex min-w-0 flex-wrap items-start gap-x-4 gap-y-2">
+            {ctx?.vehicle && <ContextField label="Phương tiện" value={ctx.vehicle.name} />}
+            {baseline && <ContextField label="Bản cơ sở" value={`${ctx?.system.name ?? "AEB"} ${baseline.label}`} />}
+          </dl>
+        )}
+        {actions && <div className="vehicsim-page-actions flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
 
       {children}
