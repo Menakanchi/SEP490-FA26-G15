@@ -126,9 +126,9 @@ function ProjectSummary({ project }: { project: ProjectItem }) {
     { label: "kiểm thử", value: project.regression_count },
   ];
   return (
-    <section aria-label="Tóm tắt project" className="flex flex-wrap items-center gap-x-8 gap-y-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+    <section aria-label="Tóm tắt project" className="flex flex-wrap items-center gap-x-8 gap-y-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
       <div className="flex min-w-0 flex-1 items-center gap-4">
-        <ProjectAvatar id={project.id} name={project.name} size="lg" />
+        <ProjectAvatar name={project.name} size="lg" />
         <div className="flex min-w-0 flex-col gap-[6px]">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span title={project.name} className="line-clamp-2 break-words text-[18px] font-bold leading-[1.3] text-vehicsim-ink">

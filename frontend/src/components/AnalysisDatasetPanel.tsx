@@ -6,7 +6,7 @@ import { viSummary } from "@/components/vehicsimI18n";
 
 export function AnalysisDatasetPanel({ dataset }: { dataset: AnalysisDataset }) {
   return (
-    <section className="flex flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+    <section className="flex flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
       <h2 className="text-[16px] font-bold text-vehicsim-ink">
         {dataset.id ? `Tập đã chốt #${dataset.id}` : "Xem trước tập baseline"} · {dataset.scenario.name}
       </h2>

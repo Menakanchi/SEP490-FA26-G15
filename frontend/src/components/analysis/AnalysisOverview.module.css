@@ -1,6 +1,6 @@
 .overview { display: grid; gap: 20px; min-width: 0; }
 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.kpi { min-width: 0; padding: 18px 20px; border: 1px solid var(--color-vehicsim-line); border-top: 3px solid var(--color-vehicsim-line-strong); border-radius: 14px; background: white; }
+.kpi { min-width: 0; padding: 18px 20px; border: 1px solid var(--color-vehicsim-line); border-top: 3px solid var(--color-vehicsim-line-strong); border-radius: 14px; background: var(--color-vehicsim-surface); }
 .kpi[data-tone=safe] { border-top-color: var(--color-vehicsim-ok); }
 .kpi[data-tone=danger] { border-top-color: var(--color-vehicsim-danger); }
 .kpi[data-tone=warn] { border-top-color: var(--color-vehicsim-warn); }

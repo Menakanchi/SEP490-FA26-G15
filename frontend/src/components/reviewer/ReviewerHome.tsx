@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@/context/AuthContext";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { NextActionCard } from "@/components/project/ProjectHome";
@@ -48,8 +47,7 @@ function ago(iso: string | null | undefined, now: number): string {
  * so sánh từng cặp run của khuyến nghị đầu hàng và các quyết định gần đây. Chỉ đọc API có sẵn; quyết định vẫn làm ở màn duyệt.
  */
 export function ReviewerHome() {
-  const { user } = useAuth();
-  const { canDecide, canRunRegression } = useVehicSimContext();
+  const { ctx, canDecide, canRunRegression } = useVehicSimContext();
   const [recs, setRecs] = useState<RecommendationItem[] | null>(null);
   const [regressions, setRegressions] = useState<RegressionList | null>(null);
   const [history, setHistory] = useState<DecisionHistory | null>(null);
@@ -89,14 +87,12 @@ export function ReviewerHome() {
   const rejected = recent.filter((d) => d.decision === "REJECT").length;
   const blocked = (recs ?? []).filter((r) => r.status === "BLOCKED").length;
   const openTasks = (work?.tasks ?? []).filter((t) => t.task.status !== "DONE");
-  const firstName = (user?.full_name || user?.name || "").trim().split(/\s+/).pop();
 
   return (
     <VehicSimPage
       crumbs={[{ label: "Tổng quan" }]}
-      title={firstName ? `Chào ${firstName}` : "Tổng quan"}
-      badges={<Tag tone="info">Người duyệt</Tag>}
-      subtitle="Đọc kết quả, chạy kiểm thử hồi quy để kiểm tra và chấp nhận hoặc từ chối khuyến nghị. Mỗi quyết định cần lý do và xác nhận."
+      title={ctx?.project.name ?? "Tổng quan kiểm chứng"}
+      subtitle="Hàng đợi khuyến nghị và lịch sử quyết định của dự án."
       actions={
         <>
           <PillButton href={canRunRegression ? "/validation/regression/new" : undefined} disabled={!canRunRegression}>Chạy kiểm thử hồi quy</PillButton>
@@ -106,20 +102,7 @@ export function ReviewerHome() {
     >
       <ErrorNote message={error ?? (historyError ? "Không tải được lịch sử quyết định; số liệu chấp nhận và từ chối chưa có." : null)} />
 
-      {recs && (
-        <NextActionCard
-          eyebrow={canDecide ? "Gợi ý tiếp theo · kiểm chứng" : "Kiểm chứng · chỉ xem"}
-          title={focus ? `Khuyến nghị ${focus.code}` : "Theo dõi kết quả kiểm chứng"}
-          detail={focus ? `${focus.baseline} → ${focus.candidate} · ${focus.regression_code}` : "Hàng đợi đang trống. Mở danh sách để xem các khuyến nghị của project."}
-          action={next && canDecide
-            ? { label: "Duyệt khuyến nghị tiếp theo", href: `/validation/recommendations/${next.id}/review` }
-            : focus
-              ? { label: "Xem khuyến nghị", href: `/validation/recommendations/${focus.id}` }
-              : { label: "Tất cả khuyến nghị", href: "/validation/recommendations" }}
-        />
-      )}
-
-      <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
           label="Chờ duyệt"
           value={recs ? pending.length : error ? "—" : "…"}
@@ -199,6 +182,15 @@ export function ReviewerHome() {
         </div>
 
         <div className="flex w-full shrink-0 flex-col gap-4 xl:w-[300px] 2xl:w-[360px]">
+          {focus && (
+            <NextActionCard
+              title={`Khuyến nghị ${focus.code}`}
+              detail={`${focus.baseline} → ${focus.candidate} · ${focus.regression_code}`}
+              action={next && canDecide
+                ? { label: "Duyệt khuyến nghị tiếp theo", href: `/validation/recommendations/${next.id}/review` }
+                : { label: "Xem khuyến nghị", href: `/validation/recommendations/${focus.id}` }}
+            />
+          )}
           <Card className="flex flex-col gap-3 p-5">
             <CardTitle
               aside={
@@ -283,10 +275,6 @@ export function ReviewerHome() {
           </Card>
         </div>
       </div>
-
-      <p className="text-[12px] leading-[1.6] text-vehicsim-faint">
-        Người duyệt ra quyết định dựa trên kết quả mô phỏng.
-      </p>
     </VehicSimPage>
   );
 }
@@ -307,14 +295,14 @@ function PairComparison({ rec }: { rec: RecommendationItem }) {
       <CardTitle aside={<Tag>Chỉ xem hồi quy</Tag>}>So sánh từng cặp run — {rec.code}</CardTitle>
       {counts ? (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-4 border-y border-vehicsim-line py-4 lg:grid-cols-4">
             {cells.map((c) => (
-              <div key={c.label} className="flex flex-col gap-1 rounded-[14px] bg-vehicsim-soft px-4 py-3">
-                <span className="text-[12px] font-medium text-vehicsim-muted">{c.label}</span>
-                <span className={cx("text-[28px] font-extrabold tracking-[-0.5px]", c.cls)}>{c.value}</span>
+              <div key={c.label} className="flex flex-col gap-1">
+                <dt className="text-xs font-medium text-vehicsim-muted">{c.label}</dt>
+                <dd className={cx("text-2xl font-bold tabular-nums", c.cls)}>{c.value}</dd>
               </div>
             ))}
-          </div>
+          </dl>
           <p className="text-[12px] leading-[1.6] text-vehicsim-faint">
             {counts.scenarios} cặp run cùng biến thể và cùng seed. Sửa được ca A mà làm hỏng ca B thì không tự chấp nhận: đọc từng cặp ở{" "}
             <Link href={`/validation/regression/${rec.id}`} className="font-semibold underline">

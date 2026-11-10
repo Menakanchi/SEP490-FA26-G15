@@ -66,7 +66,7 @@ export function PairObjectivesTable({ pairs, baselineLabel, candidateLabel }: { 
   const withData = pairs.filter((p) => OBJECTIVES.some((o) => objectiveValue(p, "baseline", o.key) !== undefined));
   if (!withData.length) return null;
   return (
-    <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
+    <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
       <div className="flex flex-col gap-1 px-5 py-4">
         <h2 className="text-[15px] font-bold text-vehicsim-ink">Ba mục tiêu theo từng cặp</h2>
         <p className="text-[12px] leading-[1.5] text-vehicsim-muted">

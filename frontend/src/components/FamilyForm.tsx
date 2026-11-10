@@ -109,7 +109,7 @@ export function FamilyForm({
   const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((x) => x !== value) : [...list, value]);
 
   return (
-    <section className="flex flex-col gap-5 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+    <section className="flex flex-col gap-5 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
       <div className="flex items-center justify-between">
         <h2 className="text-[17px] font-bold text-vehicsim-ink">{title}</h2>
         <span className={cx("rounded-full px-3 py-[6px] text-[12px] font-semibold", count > MAX_VARIANTS ? "bg-vehicsim-danger-bg text-vehicsim-danger" : "bg-vehicsim-soft text-vehicsim-ink")}>
@@ -240,7 +240,7 @@ function ChipGroup<T extends string | boolean>({
               onClick={() => onToggle(o.value)}
               className={cx(
                 "rounded-full border border-solid px-3 py-[7px] text-[12px] font-semibold",
-                on ? "border-vehicsim-ink bg-vehicsim-ink text-white" : "border-vehicsim-line-strong bg-white text-vehicsim-muted hover:bg-vehicsim-soft",
+                on ? "border-vehicsim-primary bg-vehicsim-primary text-white" : "border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-muted hover:bg-vehicsim-soft",
               )}
             >
               {o.label}

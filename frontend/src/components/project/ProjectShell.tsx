@@ -67,7 +67,7 @@ export function Welcome() {
   return (
     <div className="flex min-w-0 flex-1 justify-center px-9 py-12">
       <div className="flex w-full max-w-[960px] flex-col gap-8">
-        <section className="flex flex-col gap-6 rounded-[28px] border border-solid border-vehicsim-line bg-white p-8 shadow-vehicsim-card">
+        <section className="flex flex-col gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-8">
           <RoadScene className="w-full" />
           <div className="flex flex-col gap-3">
             <h1 className="text-[36px] font-extrabold leading-[1.15] tracking-[-1px] text-vehicsim-ink">Thử phanh khẩn cấp AEB trong mô phỏng</h1>
@@ -78,7 +78,7 @@ export function Welcome() {
           <div className="flex flex-wrap items-center gap-4">
             <Link
               href="/projects/new"
-              className="flex items-center gap-2 rounded-full bg-vehicsim-ink px-6 py-[14px] text-[15px] font-semibold text-white hover:bg-black/80"
+              className="flex items-center gap-2 rounded-lg bg-vehicsim-primary px-6 py-[14px] text-[15px] font-semibold text-white hover:bg-vehicsim-primary-hover"
             >
               Tạo project đầu tiên
             </Link>
@@ -90,7 +90,7 @@ export function Welcome() {
 
         <ol className="grid grid-cols-4 gap-4">
           {STAGES.map((s) => (
-            <li key={s.title} className="flex flex-col gap-2 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5">
+            <li key={s.title} className="flex flex-col gap-2 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
               <span className="text-[13px] font-bold text-vehicsim-decision">{s.n || "Bắt đầu"}</span>
               <span className="text-[16px] font-bold text-vehicsim-ink">{s.title}</span>
               <span className="text-[14px] leading-[1.5] text-vehicsim-muted">{s.detail}</span>
@@ -116,10 +116,10 @@ const OTHER_ROLE_PATHS = [
 function OtherRolePage({ title, detail, href, cta }: { title: string; detail: string; href: string; cta: string }) {
   return (
     <div className="flex flex-1 items-center justify-center p-9">
-      <div className="flex max-w-[520px] flex-col items-start gap-4 rounded-[24px] border border-solid border-vehicsim-line bg-white p-8 shadow-vehicsim-card">
+      <div className="flex max-w-[520px] flex-col items-start gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-8">
         <h1 className="text-[22px] font-bold text-vehicsim-ink">{title}</h1>
         <p className="text-[15px] leading-[1.55] text-vehicsim-muted">{detail}</p>
-        <Link href={href} className="flex items-center gap-2 rounded-full bg-vehicsim-ink px-5 py-3 text-[14px] font-semibold text-white hover:bg-black/80">
+        <Link href={href} className="flex items-center gap-2 rounded-lg bg-vehicsim-primary px-5 py-3 text-[14px] font-semibold text-white hover:bg-vehicsim-primary-hover">
           {cta}
         </Link>
       </div>
@@ -166,7 +166,7 @@ export function ProjectGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <main key={open ? "open" : (ctx?.project.id ?? "none")} className="flex min-w-0 flex-1">
+    <main id="vehicsim-content" tabIndex={-1} key={open ? "open" : (ctx?.project.id ?? "none")} className="flex min-w-0 flex-1">
       {otherRole ? (
         <OtherRolePage
           title={otherRole.title}
@@ -216,7 +216,7 @@ export function JourneyBar() {
       ) : next && (
         <Link
           href={next.href}
-          className="flex shrink-0 items-center gap-2 rounded-full bg-vehicsim-ink px-4 py-[10px] text-[13px] font-semibold text-white hover:bg-black/80"
+          className="flex shrink-0 items-center gap-2 rounded-lg bg-vehicsim-primary px-4 py-[10px] text-[13px] font-semibold text-white hover:bg-vehicsim-primary-hover"
         >
           Tiếp: {next.cta}
         </Link>
@@ -256,7 +256,7 @@ function JourneyStrip({ name, home, steps, children }: {
   return (
     <nav
       aria-label="Hành trình project"
-      className="flex w-full min-w-0 flex-wrap items-center gap-2 rounded-[18px] border border-solid border-vehicsim-line bg-white p-2 shadow-vehicsim-card sm:px-4 print:hidden"
+      className="flex w-full min-w-0 flex-wrap items-center gap-2 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-2 sm:px-4 print:hidden"
     >
       <Link href={home} title={name} className="max-w-[200px] shrink-0 truncate px-2 text-[13px] font-bold text-vehicsim-ink hover:underline">
         {name}
@@ -330,12 +330,12 @@ export function ProjectSwitcher() {
       {open && (
         <div
           role="menu"
-          className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 flex flex-col gap-[2px] rounded-[14px] border border-solid border-vehicsim-line bg-white p-2 shadow-vehicsim-card"
+          className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 flex flex-col gap-[2px] rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface p-2 shadow-vehicsim-card"
         >
           {items === null && <span className="px-3 py-2 text-[13px] text-vehicsim-muted">Đang tải…</span>}
           {items?.map((p) => (
             <button key={p.id} type="button" role="menuitem" onClick={() => choose(p.id)} className={itemCls}>
-              <ProjectAvatar id={p.id} name={p.name} size="sm" />
+              <ProjectAvatar name={p.name} size="sm" />
               <span className="min-w-0 flex-1 truncate font-semibold text-vehicsim-ink">{p.name}</span>
               {p.id === current?.id && <Check aria-label="Đang mở" className="size-4 text-vehicsim-ok" />}
             </button>

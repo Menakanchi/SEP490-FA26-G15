@@ -4,9 +4,9 @@
 .analysis-workspace :focus-visible { outline: 2px solid var(--color-vehicsim-decision); }
 .analysis-nav { display: flex; gap: 4px; border-bottom: 1px solid var(--color-vehicsim-line-strong); overflow-x: auto; }
 .analysis-nav a { display: flex; align-items: center; gap: 8px; white-space: nowrap; padding: 13px 18px; font-size: 13px; font-weight: 600; color: var(--color-vehicsim-muted); border-bottom: 3px solid transparent; }
-.analysis-nav a[aria-current=page] { color: var(--color-vehicsim-decision); border-color: var(--color-vehicsim-decision); }
+.analysis-nav a[aria-current=page] { color: var(--color-vehicsim-primary); border-color: var(--color-vehicsim-primary); }
 .analysis-nav a span { border-radius: 5px; background: var(--color-vehicsim-decision-bg); padding: 1px 6px; font-size: 11px; }
-.analysis-panel { min-width: 0; border: 1px solid var(--color-vehicsim-line); background: white; border-radius: 16px; padding: 20px; }
+.analysis-panel { min-width: 0; border: 1px solid var(--color-vehicsim-line); background: var(--color-vehicsim-surface); border-radius: 12px; padding: 20px; }
 .analysis-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
 .analysis-panel h2, .analysis-panel h3 { font-weight: 700; }
 .analysis-panel h2 { font-size: 16px; }
@@ -14,8 +14,8 @@
 .analysis-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .analysis-workspace label { font-size: 12px; }
 .analysis-filters label { display: flex; flex-direction: column; gap: 6px; color: var(--color-vehicsim-muted); }
-.analysis-workspace select, .analysis-workspace input:not([type=range]):not([type=checkbox]) { min-width: 0; max-width: 100%; border: 1px solid var(--color-vehicsim-line-strong); border-radius: 8px; background: white; padding: 9px 10px; color: var(--color-vehicsim-ink); font-size: 12px; }
-.analysis-button { border: 1px solid var(--color-vehicsim-line-strong); border-radius: 8px; background: white; padding: 8px 12px; font-size: 12px; font-weight: 600; }
+.analysis-workspace select, .analysis-workspace input:not([type=range]):not([type=checkbox]) { min-width: 0; max-width: 100%; border: 1px solid var(--color-vehicsim-line-strong); border-radius: 8px; background: var(--color-vehicsim-surface); padding: 9px 10px; color: var(--color-vehicsim-ink); font-size: 12px; }
+.analysis-button { border: 1px solid var(--color-vehicsim-line-strong); border-radius: 8px; background: var(--color-vehicsim-surface); padding: 8px 12px; font-size: 12px; font-weight: 600; }
 .analysis-button:disabled { opacity: .45; cursor: not-allowed; }
 .analysis-state { display: flex; min-height: 160px; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 28px; font-size: 13px; color: var(--color-vehicsim-muted); }
 .analysis-table-wrap { max-width: 100%; overflow-x: auto; }
@@ -24,9 +24,9 @@
 .analysis-table td { padding: 14px 12px; border-bottom: 1px solid var(--color-vehicsim-line); vertical-align: top; }
 .analysis-table tbody tr:hover { background: var(--color-vehicsim-row); }
 .analysis-table td small { display: block; color: var(--color-vehicsim-muted); margin-top: 4px; }
-.analysis-table a { color: var(--color-vehicsim-decision); font-weight: 600; }
+.analysis-table a { color: var(--color-vehicsim-primary); font-weight: 600; }
 .analysis-table .numeric { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.analysis-selection-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 18px; border: 1px solid var(--color-vehicsim-decision); border-radius: 12px; background: var(--color-vehicsim-decision-bg); font-size: 13px; }
+.analysis-selection-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 18px; border: 1px solid var(--color-vehicsim-primary); border-radius: 12px; background: var(--color-vehicsim-primary-bg); font-size: 13px; }
 @media (max-width: 1400px) {
  .analysis-workspace > div { padding-inline: 24px; }
  .analysis-workspace > div > div:first-child { flex-wrap: wrap; }

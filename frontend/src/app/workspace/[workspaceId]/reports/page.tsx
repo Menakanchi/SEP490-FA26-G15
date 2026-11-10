@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
+import { Modal } from "@/components/project/ProjectUi";
 import { EmptyState, ErrorNote, FilterSelect, PillButton, StatCard, Tag, cx, fmt } from "@/components/VehicSimUi";
 import { WORKSPACE_ROLES, WORKSPACE_MANAGER_ROLES } from "@/components/workspaceAccess";
 import { useAuth } from "@/context/AuthContext";
@@ -166,7 +167,7 @@ export default function WorkspaceReportsPage() {
               {notice}
             </div>
           )}
-          <div className="flex w-full items-stretch gap-4">
+          <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-3">
             <StatCard
               label="Chờ duyệt"
               value={reports ? count("SUBMITTED") : "…"}
@@ -178,7 +179,7 @@ export default function WorkspaceReportsPage() {
             <StatCard label="Từ chối" value={reports ? count("REJECTED") : "…"} tone="danger" />
           </div>
 
-          <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
+          <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
             <div className="flex items-center gap-2 border-b border-solid border-vehicsim-line px-5 py-4">
               <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{reports ? `${visible.length} báo cáo` : "…"}</span>
               <FilterSelect<ReportStatus>
@@ -199,8 +200,8 @@ export default function WorkspaceReportsPage() {
                 className={cx(
                   "rounded-full px-3 py-[5px] text-[12px] font-semibold border border-solid transition-colors",
                   onlyMine
-                    ? "bg-vehicsim-ink text-white border-vehicsim-ink"
-                    : "bg-white text-vehicsim-ink border-vehicsim-line hover:bg-vehicsim-soft"
+                    ? "bg-vehicsim-primary text-white border-vehicsim-primary"
+                    : "bg-vehicsim-surface text-vehicsim-ink border-vehicsim-line hover:bg-vehicsim-soft"
                 )}
               >
                 {onlyMine ? "✓ Báo cáo của tôi" : "Báo cáo của tôi"}
@@ -233,7 +234,7 @@ export default function WorkspaceReportsPage() {
 
                   {expanded && (
                     <div className="mt-3 flex flex-col gap-3">
-                      <p className="whitespace-pre-wrap rounded-[14px] border border-solid border-vehicsim-line bg-white p-4 text-[13px] leading-[1.6] text-vehicsim-ink">
+                      <p className="whitespace-pre-wrap rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface p-4 text-[13px] leading-[1.6] text-vehicsim-ink">
                         {r.content}
                       </p>
                       {r.attachment_url && (
@@ -264,7 +265,7 @@ export default function WorkspaceReportsPage() {
                               rows={2}
                               aria-label={`Nhận xét cho báo cáo ${r.title}`}
                               placeholder="Nhận xét (bắt buộc khi từ chối)"
-                              className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-white px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                              className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                             />
                             <div className="flex items-center gap-2">
                               <PillButton variant="dark" disabled={busy !== null} onClick={() => decide(r, "APPROVED")}>
@@ -288,10 +289,8 @@ export default function WorkspaceReportsPage() {
           <p className="text-[12px] text-vehicsim-faint">Kỹ sư và Người duyệt có thể gửi báo cáo công việc gắn với task / project tại màn này.</p>
 
           {submitting && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-              <div className="w-full max-w-[560px] rounded-[20px] bg-white p-6 shadow-2xl border border-solid border-vehicsim-line">
+            <Modal title="Nộp báo cáo công việc" onClose={() => setSubmitting(false)} busy={submittingLoading}>
                 <form onSubmit={handleSubmitReport} className="flex flex-col gap-4">
-                  <h3 className="text-[16px] font-bold text-vehicsim-ink">Nộp báo cáo công việc mới</h3>
                   
                   <label className="flex flex-col gap-1">
                     <span className="text-[12px] font-semibold text-vehicsim-muted">Tiêu đề báo cáo *</span>
@@ -301,7 +300,7 @@ export default function WorkspaceReportsPage() {
                       maxLength={255}
                       required
                       placeholder="VD: Kết quả chạy baseline và phân tích va chạm họ PX2"
-                      className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-white px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                      className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                     />
                   </label>
 
@@ -318,7 +317,7 @@ export default function WorkspaceReportsPage() {
                             if (matched?.project?.id) setRepProjectId(matched.project.id);
                           }
                         }}
-                        className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-white px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                        className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                       >
                         <option value="">— Không gắn task —</option>
                         {tasks.map((t) => (
@@ -335,7 +334,7 @@ export default function WorkspaceReportsPage() {
                         value={repProjectId ?? ""}
                         onChange={(e) => setRepProjectId(e.target.value ? Number(e.target.value) : null)}
                         required
-                        className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-white px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                        className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                       >
                         <option value="" disabled>— Chọn project —</option>
                         {(detail?.projects ?? []).map((p) => (
@@ -356,7 +355,7 @@ export default function WorkspaceReportsPage() {
                       required
                       rows={5}
                       placeholder="Mô tả công việc đã hoàn thành, bằng chứng số liệu, nguyên nhân thất bại..."
-                      className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-white px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                      className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                     />
                   </label>
 
@@ -367,12 +366,12 @@ export default function WorkspaceReportsPage() {
                       onChange={(e) => setRepAttachment(e.target.value)}
                       maxLength={1024}
                       placeholder="https://..."
-                      className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-white px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                      className="w-full rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                     />
                   </label>
 
                   <div className="flex items-center justify-end gap-3 pt-3 border-t border-solid border-vehicsim-line">
-                    <PillButton type="button" variant="light" onClick={() => setSubmitting(false)}>
+                    <PillButton type="button" variant="light" onClick={() => setSubmitting(false)} disabled={submittingLoading}>
                       Huỷ
                     </PillButton>
                     <PillButton type="submit" variant="dark" disabled={submittingLoading || !repTitle.trim() || !repContent.trim() || !repProjectId}>
@@ -380,8 +379,7 @@ export default function WorkspaceReportsPage() {
                     </PillButton>
                   </div>
                 </form>
-              </div>
-            </div>
+            </Modal>
           )}
         </>
       )}

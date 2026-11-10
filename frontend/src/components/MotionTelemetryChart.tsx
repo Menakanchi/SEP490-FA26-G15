@@ -56,12 +56,12 @@ export function MotionTelemetryChart({ points, markers, cursor, selectedField, o
   if (line.length) segments.push(line);
   const nearest = hoverTime === null ? null : points.reduce<MotionTelemetryPoint | null>((best, point) => (!Number.isFinite(point.t) || point.t < 0) ? best : !best || Math.abs(point.t-hoverTime) < Math.abs(best.t-hoverTime) ? point : best, null);
   return (
-    <section className="flex flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+    <section className="flex flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-[16px] font-bold text-vehicsim-ink">Chuyển động và nguồn dữ liệu</h2>
         <label className="text-[12px] text-vehicsim-muted">
           Tín hiệu
-          <select aria-label="Tín hiệu" className="ml-2 rounded-lg border border-vehicsim-line bg-white p-2" value={field} onChange={(e) => { const next = e.target.value as MotionSignal; if (onFieldChange) onFieldChange(next); else setField(next); }}>
+          <select aria-label="Tín hiệu" className="ml-2 rounded-lg border border-vehicsim-line bg-vehicsim-surface p-2" value={field} onChange={(e) => { const next = e.target.value as MotionSignal; if (onFieldChange) onFieldChange(next); else setField(next); }}>
             {MOTION_SIGNALS.map((s) => <option key={s.key} value={s.key}>{s.label} ({s.unit})</option>)}
           </select>
         </label>

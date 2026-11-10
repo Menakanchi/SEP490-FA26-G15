@@ -37,8 +37,8 @@ export function ScenarioCategoryPicker({ value = "CP_CROSSING" }: { value?: stri
               className={cx(
                 "flex items-center gap-2 rounded-full border border-solid px-3 py-[7px] text-[12px] font-semibold",
                 on
-                  ? "border-vehicsim-ink bg-vehicsim-ink text-white"
-                  : "border-vehicsim-line-strong bg-white text-vehicsim-muted",
+                  ? "border-vehicsim-primary bg-vehicsim-primary text-white"
+                  : "border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-muted",
                 !c.supported && "cursor-not-allowed border-dashed opacity-50",
               )}
             >

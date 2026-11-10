@@ -4,9 +4,9 @@
 .identity dd { margin-top: 5px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 .source { border-left: 3px solid var(--color-vehicsim-decision); padding: 10px 14px; border-radius: 5px; background: var(--color-vehicsim-soft); font-size: 12px; line-height: 1.7; color: var(--color-vehicsim-muted); }
 .source[data-carla=true] { border-color: var(--color-vehicsim-warn); }
-.tabs { display: flex; gap: 6px; padding: 5px; overflow-x: auto; border: 1px solid var(--color-vehicsim-line); border-radius: 12px; background: white; }
+.tabs { display: flex; gap: 6px; padding: 5px; overflow-x: auto; border: 1px solid var(--color-vehicsim-line); border-radius: 12px; background: var(--color-vehicsim-surface); }
 .tabs button { padding: 11px 16px; border-radius: 8px; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--color-vehicsim-muted); }
-.tabs button[aria-selected=true] { color: var(--color-vehicsim-decision); background: var(--color-vehicsim-decision-bg); }
+.tabs button[aria-selected=true] { color: var(--color-vehicsim-primary); background: var(--color-vehicsim-primary-bg); }
 .timeline { display: flex; flex-direction: column; gap: 12px; }
 .timelineHeader { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 12px; }
 .timeline input { width: 100%; accent-color: var(--color-vehicsim-decision); }
@@ -18,7 +18,7 @@
 .fact small { color: var(--color-vehicsim-muted); font-size: 11px; }
 .columns { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr); align-items: start; gap: 18px; }
 .secondary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.secondary .fact { background: white; padding: 12px; }
+.secondary .fact { background: var(--color-vehicsim-surface); padding: 12px; }
 .secondary .fact dd { font-size: 15px; }
 .rows { display: grid; gap: 0; }
 .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--color-vehicsim-line); font-size: 12px; }

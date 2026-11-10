@@ -140,7 +140,9 @@ export default function WorkspaceDetailPage() {
     try {
       await vehicsimApi.addWorkspaceMember(id, c.user_id, role);
       setNotice(`Đã thêm ${c.full_name} vào workspace với vai trò ${MEMBER_ROLE[role].label}.`);
-      setCandidates((list) => (list ?? []).filter((x) => x.user_id !== c.user_id));
+      // Xong một người thì trả khung tìm về trạng thái ban đầu, để khỏi còn email cũ kèm dòng "không có tài khoản nào".
+      setQuery("");
+      setCandidates(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thêm được thành viên");
@@ -365,7 +367,7 @@ export default function WorkspaceDetailPage() {
                     maxLength={150}
                     required
                     autoFocus
-                    className="rounded-full border border-solid border-vehicsim-line bg-white px-4 py-2 text-[13px] font-normal text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                    className="rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2 text-[13px] font-normal text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-[12px] font-semibold text-vehicsim-muted">
@@ -376,7 +378,7 @@ export default function WorkspaceDetailPage() {
                     maxLength={10000}
                     rows={3}
                     placeholder="Mục tiêu, phạm vi kiểm thử của workspace…"
-                    className="rounded-[14px] border border-solid border-vehicsim-line bg-white px-4 py-2 text-[13px] font-normal text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                    className="rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2 text-[13px] font-normal text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                   />
                 </label>
                 <p className="text-[12px] text-vehicsim-faint">
@@ -398,7 +400,7 @@ export default function WorkspaceDetailPage() {
             mà người đó nhìn thấy.
           </div>
 
-          <div className="flex w-full items-stretch gap-4">
+          <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
             <StatCard label="Thành viên" value={members ? members.length : "…"} />
             <StatCard label="Kỹ sư" value={members ? count("ENGINEER") : "…"} tone="info" note="tạo project, chạy mô phỏng" />
             <StatCard label="Người duyệt" value={members ? count("REVIEWER") : "…"} tone="warn" note="Accept / Reject khuyến nghị" />
@@ -444,7 +446,7 @@ export default function WorkspaceDetailPage() {
                     inputMode="email"
                     placeholder="Nhập đúng email đầy đủ, ví dụ ten@example.com"
                     aria-label="Email của người dùng cần thêm"
-                    className="w-[360px] rounded-full border border-solid border-vehicsim-line bg-white px-[14px] py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                    className="min-w-0 flex-1 rounded-lg border border-vehicsim-line-strong bg-vehicsim-surface px-3.5 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                   />
                   <PillButton type="submit" disabled={searching}>
                     {searching ? "Đang tìm…" : "Tìm"}
@@ -459,7 +461,7 @@ export default function WorkspaceDetailPage() {
                   </p>
                 )}
                 {candidates && candidates.length > 0 && (
-                  <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line bg-white">
+                  <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface">
                     {candidates.map((c) => (
                       <div key={c.user_id} className="flex h-[52px] items-center border-b border-solid border-vehicsim-line px-4 last:border-b-0">
                         <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
@@ -471,7 +473,7 @@ export default function WorkspaceDetailPage() {
                           value={picked[c.user_id] ?? ""}
                           onChange={(e) => setPicked((p) => ({ ...p, [c.user_id]: e.target.value as WorkspaceMemberRole }))}
                           aria-label={`Vai trò cấp cho ${c.full_name}`}
-                          className="mx-3 w-[150px] rounded-full border border-solid border-vehicsim-line bg-white px-3 py-2 text-[13px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                          className="mx-3 w-[150px] rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                         >
                           <option value="" disabled>
                             Chọn vai trò…
@@ -607,7 +609,7 @@ export default function WorkspaceDetailPage() {
                     type="button"
                     onClick={loadOlder}
                     disabled={loadingOlder}
-                    className="self-center rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-decision hover:bg-white disabled:opacity-50"
+                    className="self-center rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-decision hover:bg-vehicsim-surface disabled:opacity-50"
                   >
                     {loadingOlder ? "Đang tải…" : "Xem tin cũ hơn"}
                   </button>
@@ -628,7 +630,7 @@ export default function WorkspaceDetailPage() {
                           "flex flex-col rounded-[12px] p-3 max-w-[85%]",
                           isMe
                             ? "self-end bg-vehicsim-decision/10 border border-vehicsim-decision/30 text-vehicsim-ink"
-                            : "self-start bg-white border border-vehicsim-line text-vehicsim-ink"
+                            : "self-start bg-vehicsim-surface border border-vehicsim-line text-vehicsim-ink"
                         )}
                       >
                         <div className="flex items-center gap-2 text-[11px] text-vehicsim-muted font-medium mb-1">
@@ -649,7 +651,7 @@ export default function WorkspaceDetailPage() {
                     onChange={(e) => setChatText(e.target.value)}
                     maxLength={2000}
                     placeholder="Nhập nội dung trao đổi kỹ thuật (kịch bản, kết quả CARLA, tối ưu AEB...)..."
-                    className="flex-1 rounded-full border border-solid border-vehicsim-line bg-white px-4 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                    className="flex-1 rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
                   />
                   <PillButton type="submit" variant="dark" disabled={sendingChat || !chatText.trim()}>
                     {sendingChat ? "Đang gửi…" : "Gửi"}

@@ -3,7 +3,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { Card, CardTitle, EmptyState, ErrorNote, Pagination, PillButton, StatCard, Tag, cx, fmt } from "@/components/VehicSimUi";
+import { Card, CardTitle, EmptyState, ErrorNote, Pagination, PillButton, StatCard, Tag, cx, fmt, TableScroll } from "@/components/VehicSimUi";
 import { MEMBER_ROLES } from "@/components/workspaceAccess";
 import { useAuth } from "@/context/AuthContext";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -30,7 +30,7 @@ const REPORT_STATUS: Record<ReportStatus, { label: string; tone: "warn" | "ok" |
 };
 
 const inputCls =
-  "w-full rounded-[12px] border border-solid border-vehicsim-line bg-white px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong disabled:bg-vehicsim-soft";
+  "w-full rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong disabled:bg-vehicsim-soft";
 
 /** "2026-10-30" → "30/10/2026" (cột DATE, không đổi múi giờ). */
 function dateLabel(iso: string | null): string {
@@ -212,7 +212,7 @@ function MyWorkContent() {
             </div>
           )}
 
-          <div className="flex w-full items-stretch gap-4">
+          <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
             <StatCard label="Đang mở" value={work ? open.length : "…"} note="task chưa hoàn thành" />
             <StatCard
               label="Quá hạn"
@@ -312,14 +312,6 @@ function MyWorkContent() {
             <div className="px-5 pb-3 pt-5">
               <CardTitle>{work ? `${tasks.length} task được giao` : "Task được giao"}</CardTitle>
             </div>
-            <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-              <span className="min-w-0 flex-1">Task</span>
-              <span className="w-[100px]">Ưu tiên</span>
-              <span className="w-[100px]">Hạn</span>
-              <span className="w-[160px]">Trạng thái</span>
-              <span className="w-[130px]">Tiến độ</span>
-              <span className="w-[170px] text-right pr-2">Thao tác</span>
-            </div>
             {work && tasks.length === 0 && (
               <EmptyState title={work.projects.length ? "Chưa có task nào được giao cho bạn" : "Bạn chưa là thành viên workspace nào"}>
                 {work.projects.length
@@ -327,82 +319,94 @@ function MyWorkContent() {
                   : "Quản lý workspace thêm bạn vào workspace và cấp vai trò; sau đó task và project của workspace hiện ở đây."}
               </EmptyState>
             )}
-            {shownTasks.map((t) => {
-              const d = draftOf(t);
-              const done = t.task.status === "DONE";
-              const editable = !done && t.workspace.status === "ACTIVE" && (!t.task.project || work?.projects.some((p) => p.id === t.task.project?.id));
-              const changed = editable && (d.status !== t.task.status || d.progress !== t.task.progress_pct);
-              return (
-                <div key={t.task.id} className="flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2 last:border-b-0">
-                  <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
-                    <span className={cx("truncate text-[13px] font-bold", done ? "text-vehicsim-faint line-through" : "text-vehicsim-ink")}>
-                      {t.task.title}
-                    </span>
-                    <span className="truncate text-[12px] text-vehicsim-faint">
-                      {t.workspace.name}
-                      {t.task.project ? ` · ${t.task.project.name}` : " · chưa gắn project"}
-                      {t.task.description ? ` · ${t.task.description}` : ""}
-                    </span>
-                  </span>
-                  <span className="w-[100px]">
-                    <Tag tone={PRIORITY[t.task.priority].tone}>{PRIORITY[t.task.priority].label}</Tag>
-                  </span>
-                  <span className={cx("w-[100px] text-[13px]", t.task.overdue ? "font-semibold text-vehicsim-danger" : "text-vehicsim-muted")}>
-                    {dateLabel(t.task.due_date)}
-                  </span>
-                  <span className="w-[160px] pr-3">
-                    {editable ? (
-                      <select
-                        aria-label={`Trạng thái của ${t.task.title}`}
-                        className={inputCls}
-                        value={d.status}
-                        onChange={(e) => setTaskDraft(t, { status: e.target.value as MemberTaskStatus })}
-                      >
-                        {MEMBER_STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {STATUS[s].label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <Tag tone={STATUS[t.task.status].tone}>{STATUS[t.task.status].label}</Tag>
-                    )}
-                  </span>
-                  <span className="flex w-[130px] items-center gap-2 pr-3">
-                    {editable ? (
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={5}
-                        aria-label={`Tiến độ của ${t.task.title}`}
-                        className={cx(inputCls, "w-[72px]")}
-                        value={d.progress}
-                        onChange={(e) => setTaskDraft(t, { progress: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
-                      />
-                    ) : (
-                      <span className="text-[13px] font-semibold text-vehicsim-ink">{t.task.progress_pct}</span>
-                    )}
-                    <span className="text-[12px] text-vehicsim-faint">%</span>
-                  </span>
-                  <span className="flex w-[170px] justify-end gap-2">
-                    {changed && (
-                      <PillButton variant="dark" className="px-4 py-2 text-[12px]" disabled={savingTask !== null} onClick={() => saveTask(t)}>
-                        {savingTask === t.task.id ? "Đang lưu…" : "Lưu"}
-                      </PillButton>
-                    )}
-                    <PillButton
-                      className="px-4 py-2 text-[12px]"
-                      disabled={!work?.projects.some((p) => p.id === t.task.project?.id)}
-                      title={!t.task.project ? "Task chưa gắn project; nộp báo cáo theo project ở nút Nộp báo cáo" : undefined}
-                      onClick={() => openReportFor(t)}
-                    >
-                      Báo cáo
-                    </PillButton>
-                  </span>
+            {shownTasks.length > 0 && (
+              <TableScroll label="Bảng nhiệm vụ được giao" minWidth={860}>
+                <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
+                  <span className="min-w-0 flex-1">Task</span>
+                  <span className="w-[100px]">Ưu tiên</span>
+                  <span className="w-[100px]">Hạn</span>
+                  <span className="w-[160px]">Trạng thái</span>
+                  <span className="w-[130px]">Tiến độ</span>
+                  <span className="w-[170px] text-right pr-2">Thao tác</span>
                 </div>
-              );
-            })}
+                {shownTasks.map((t) => {
+                  const d = draftOf(t);
+                  const done = t.task.status === "DONE";
+                  const editable = !done && t.workspace.status === "ACTIVE" && (!t.task.project || work?.projects.some((p) => p.id === t.task.project?.id));
+                  const changed = editable && (d.status !== t.task.status || d.progress !== t.task.progress_pct);
+                  return (
+                    <div key={t.task.id} className="flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2 last:border-b-0">
+                      <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
+                        <span className={cx("truncate text-[13px] font-bold", done ? "text-vehicsim-faint line-through" : "text-vehicsim-ink")}>
+                          {t.task.title}
+                        </span>
+                        <span className="truncate text-[12px] text-vehicsim-faint">
+                          {t.workspace.name}
+                          {t.task.project ? ` · ${t.task.project.name}` : " · chưa gắn project"}
+                          {t.task.description ? ` · ${t.task.description}` : ""}
+                        </span>
+                      </span>
+                      <span className="w-[100px]">
+                        <Tag tone={PRIORITY[t.task.priority].tone}>{PRIORITY[t.task.priority].label}</Tag>
+                      </span>
+                      <span className={cx("w-[100px] text-[13px]", t.task.overdue ? "font-semibold text-vehicsim-danger" : "text-vehicsim-muted")}>
+                        {dateLabel(t.task.due_date)}
+                      </span>
+                      <span className="w-[160px] pr-3">
+                        {editable ? (
+                          <select
+                            aria-label={`Trạng thái của ${t.task.title}`}
+                            className={inputCls}
+                            value={d.status}
+                            onChange={(e) => setTaskDraft(t, { status: e.target.value as MemberTaskStatus })}
+                          >
+                            {MEMBER_STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {STATUS[s].label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <Tag tone={STATUS[t.task.status].tone}>{STATUS[t.task.status].label}</Tag>
+                        )}
+                      </span>
+                      <span className="flex w-[130px] items-center gap-2 pr-3">
+                        {editable ? (
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={5}
+                            aria-label={`Tiến độ của ${t.task.title}`}
+                            className={cx(inputCls, "w-[72px]")}
+                            value={d.progress}
+                            onChange={(e) => setTaskDraft(t, { progress: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+                          />
+                        ) : (
+                          <span className="text-[13px] font-semibold text-vehicsim-ink">{t.task.progress_pct}</span>
+                        )}
+                        <span className="text-[12px] text-vehicsim-faint">%</span>
+                      </span>
+                      <span className="flex w-[170px] justify-end gap-2">
+                        {changed && (
+                          <PillButton variant="dark" className="px-4 py-2 text-[12px]" disabled={savingTask !== null} onClick={() => saveTask(t)}>
+                            {savingTask === t.task.id ? "Đang lưu…" : "Lưu"}
+                          </PillButton>
+                        )}
+                        <PillButton
+                          className="px-4 py-2 text-[12px]"
+                          disabled={!work?.projects.some((p) => p.id === t.task.project?.id)}
+                          title={!t.task.project ? "Task chưa gắn project; nộp báo cáo theo project ở nút Nộp báo cáo" : undefined}
+                          onClick={() => openReportFor(t)}
+                        >
+                          Báo cáo
+                        </PillButton>
+                      </span>
+                    </div>
+                  );
+                })}
+              </TableScroll>
+            )}
             {taskTotal > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-t border-solid border-vehicsim-line">
                 <span className="text-[12px] text-vehicsim-muted">
