@@ -129,7 +129,7 @@ export default function StartScenarioPage() {
                 onClick={() => setCondition(o.key)}
                 className={cx(
                   "rounded-full px-4 py-2 text-[13px] font-semibold",
-                  condition === o.key ? "bg-vehicsim-ink text-white" : "border border-solid border-vehicsim-line-strong text-vehicsim-ink hover:bg-vehicsim-soft",
+                  condition === o.key ? "bg-vehicsim-primary text-white" : "border border-solid border-vehicsim-line-strong text-vehicsim-ink hover:bg-vehicsim-soft",
                 )}
               >
                 {o.label}

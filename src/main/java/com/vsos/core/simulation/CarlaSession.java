@@ -461,12 +461,23 @@ public final class CarlaSession {
         return doc;
     }
 
+    /**
+     * Giảm tốc xe làm được ({@code a_avail}), dùng cho phần ngoại suy quãng dừng và cho chuỗi nguyên nhân: min(MAX_DECELERATION, giới hạn xe, μ·g).
+     * Từ định dạng hiện hành (11/11/2026) giới hạn xe trên CARLA là giảm tốc phanh 100% đo được ({@code fullBrakeDecel}, cùng số controller dùng đổi ra
+     * bàn đạp và cùng số {@code RunService.carlaData} dùng ngoại suy telemetry), không phải {@code max_brake_decel_mps2} giả định của bộ động học.
+     * File định dạng cũ giữ cách tính cũ để chạy lại ra đúng kết quả đã lưu.
+     */
+    static double decelAvailable(Bundle.RunSpec spec, Xosc.Profile profile, double fullBrakeDecel) {
+        double nominal = Math.min(Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), spec.roadFriction() * Simulator.G);
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) ? Math.min(nominal, fullBrakeDecel) : nominal;
+    }
+
     /** Ghi {@code result.json}. Gọi lại sau khi đã kết thúc, hoặc khi chưa có khung nào, là không làm gì (như {@code _finish} của bản Python). */
     public void finish(String reason) {
         if (endReason != null || frames.isEmpty()) {
             return;
         }
-        double decelAvailable = Math.min(Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), spec.roadFriction() * Simulator.G);
+        double decelAvailable = decelAvailable(spec, profile, fullBrakeDecel);
         SimulationOutcome outcome;
         if (leadVehicle()) {
             double halfSum = spec.vehicle().widthM() / 2 + targetWidth / 2;

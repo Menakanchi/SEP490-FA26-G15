@@ -18,7 +18,7 @@ class AdminServiceTest {
     AdminRepository repo=mock(AdminRepository.class);
     NotificationService notifications=mock(NotificationService.class);
     LegacyAwarePasswordEncoder passwords=new LegacyAwarePasswordEncoder();
-    AdminService service=new AdminService(repo,passwords,notifications);
+    AdminService service=new AdminService(repo,passwords,notifications,org.mockito.Mockito.mock(com.vsos.backend.service.workspace.WorkspaceChatHub.class));
     static Row user(String role, boolean active) {
         return new Row(Map.of("id",2L,"email","user@example.com","role",role,"is_active",active));
     }

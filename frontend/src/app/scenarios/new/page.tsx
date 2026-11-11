@@ -113,7 +113,7 @@ export default function DescribeScenarioPage() {
     >
       <ErrorNote message={error} />
 
-      <section className="flex flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+      <section className="flex flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-[17px] font-bold text-vehicsim-ink">1 · Mô tả tình huống</h2>
           <span className="text-[12px] text-vehicsim-faint">
@@ -125,7 +125,7 @@ export default function DescribeScenarioPage() {
           onChange={(e) => setText(e.target.value.slice(0, MAX_TEXT))}
           rows={4}
           placeholder="vd. Xe chạy 60 km/h ban đêm trời mưa, một người đi bộ lao ra từ lề phải khi xe còn cách 25 m"
-          className="rounded-[14px] border border-solid border-vehicsim-line-strong px-4 py-3 text-[15px] leading-[1.55] text-vehicsim-ink placeholder:text-vehicsim-faint focus:border-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line"
+          className="rounded-[14px] border border-solid border-vehicsim-line-strong px-4 py-3 text-[15px] leading-[1.55] text-vehicsim-ink placeholder:text-vehicsim-faint focus:border-vehicsim-primary focus:outline-none focus:ring-2 focus:ring-vehicsim-line"
         />
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[12px] font-medium text-vehicsim-faint">Ví dụ:</span>
@@ -134,14 +134,14 @@ export default function DescribeScenarioPage() {
               key={ex}
               type="button"
               onClick={() => setText(ex)}
-              className="max-w-[420px] truncate rounded-full border border-solid border-vehicsim-line bg-vehicsim-soft px-3 py-[6px] text-left text-[12px] text-vehicsim-muted hover:bg-vehicsim-line"
+              className="max-w-full truncate rounded-lg border border-solid border-vehicsim-line bg-vehicsim-soft px-3 py-[6px] text-left text-[12px] text-vehicsim-muted hover:bg-vehicsim-line sm:max-w-[420px]"
               title={ex}
             >
               {ex}
             </button>
           ))}
         </div>
-        <div className="flex items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-4">
           <p className="text-[12px] leading-[1.5] text-vehicsim-muted">
             Chạy được: người đi bộ băng ngang và xe phía trước đứng yên / chạy chậm / phanh gấp (bộ động học và CARLA). Chưa lưu gì cho tới khi bạn bấm
             “Tạo họ kịch bản” ở bước 2.
@@ -158,8 +158,8 @@ export default function DescribeScenarioPage() {
       </section>
 
       {result && ir && (
-        <div className="flex w-full items-start gap-4">
-          <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+        <div className="flex w-full flex-col gap-4 xl:flex-row xl:items-start">
+          <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-[17px] font-bold text-vehicsim-ink">
                 Scenario IR · {result.title}
@@ -182,7 +182,7 @@ export default function DescribeScenarioPage() {
                       step={n.step}
                       value={ir[n.key] === undefined || Number.isNaN(ir[n.key]) ? "" : ir[n.key]}
                       onChange={(e) => edit(n.key, e.target.value === "" ? Number.NaN : Number(e.target.value))}
-                      className="h-9 w-[110px] rounded-[10px] border border-solid border-vehicsim-line-strong px-3 text-right text-[14px] font-semibold text-vehicsim-ink focus:border-vehicsim-ink focus:outline-none"
+                      className="h-9 w-[110px] rounded-[10px] border border-solid border-vehicsim-line-strong px-3 text-right text-[14px] font-semibold text-vehicsim-ink focus:border-vehicsim-primary focus:outline-none"
                     />
                     <span className="w-10 text-[12px] text-vehicsim-muted">{f?.unit}</span>
                   </IrRow>
@@ -229,7 +229,7 @@ export default function DescribeScenarioPage() {
             )}
           </section>
 
-          <aside className="flex w-[330px] shrink-0 flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+          <aside className="flex w-full shrink-0 flex-col xl:w-[330px] gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
             <span className="text-[11px] font-semibold uppercase tracking-[0.6px] text-vehicsim-faint">Scenario IR (JSON)</span>
             <pre className="overflow-x-auto rounded-[12px] bg-vehicsim-ink px-4 py-3 font-mono text-[12px] leading-[1.6] text-white">
               {JSON.stringify(ir, null, 2)}
@@ -263,7 +263,7 @@ export default function DescribeScenarioPage() {
       {created && (
         <section
           role="status"
-          className="flex flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-ok/30 bg-vehicsim-ok-bg p-6 shadow-vehicsim-card"
+          className="flex flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-ok/30 bg-vehicsim-ok-bg p-6"
         >
           <div className="flex flex-col gap-1">
             <h2 className="text-[17px] font-bold text-vehicsim-ok">Đã tạo họ kịch bản {created.code}</h2>
@@ -413,7 +413,7 @@ function Select<T extends string>({ value, options, onChange }: { value: T; opti
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as T)}
-      className="h-9 w-[160px] rounded-[10px] border border-solid border-vehicsim-line-strong bg-white px-3 text-[14px] font-medium text-vehicsim-ink focus:border-vehicsim-ink focus:outline-none"
+      className="h-9 w-[160px] rounded-[10px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-medium text-vehicsim-ink focus:border-vehicsim-primary focus:outline-none"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
@@ -432,7 +432,7 @@ function Segmented({ value, options, onChange }: { value: string; options: { val
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className={cx("rounded-full px-3 py-[6px] text-[12px] font-semibold", o.value === value ? "bg-vehicsim-ink text-white" : "text-vehicsim-muted")}
+          className={cx("rounded-lg px-3 py-[6px] text-[12px] font-semibold", o.value === value ? "bg-vehicsim-primary text-white" : "text-vehicsim-muted")}
         >
           {o.label}
         </button>

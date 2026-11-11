@@ -84,8 +84,9 @@ class WorkspaceSecurityTest {
         return List.of(
                 request(HttpMethod.GET, BASE),
                 request(HttpMethod.GET, BASE + "/1"),
+                updateInfo("{\"name\":\"Nhóm AEB\",\"description\":\"Thử phanh\"}"),
                 request(HttpMethod.GET, BASE + "/1/members"),
-                request(HttpMethod.GET, BASE + "/1/member-candidates?q=a"),
+                request(HttpMethod.GET, BASE + "/1/member-candidates?q=a@b.co"),
                 addMember(),
                 request(HttpMethod.DELETE, BASE + "/1/members/2"),
                 request(HttpMethod.GET, BASE + "/1/tasks?status=TODO"),
@@ -94,6 +95,10 @@ class WorkspaceSecurityTest {
                 request(HttpMethod.DELETE, BASE + "/1/tasks/3"),
                 request(HttpMethod.GET, BASE + "/1/reports?status=SUBMITTED"),
                 decideReport("{\"decision\":\"APPROVED\"}"));
+    }
+
+    private static MockHttpServletRequestBuilder updateInfo(String body) {
+        return request(HttpMethod.PUT, BASE + "/1").contentType(MediaType.APPLICATION_JSON).content(body);
     }
 
     private static MockHttpServletRequestBuilder decideReport(String body) {
@@ -148,6 +153,23 @@ class WorkspaceSecurityTest {
         when(otp.hitRateLimit(eq("vs_workspace_member"), any(), anyInt())).thenReturn(true);
         assertThat(statusOf(addMember(), RoleCode.MANAGER)).isEqualTo(429);
         assertThat(statusOf(request(HttpMethod.DELETE, BASE + "/1/members/2"), RoleCode.MANAGER)).isEqualTo(429);
+    }
+
+    @Test
+    void memberSearchHonoursItsOwnQuota() throws Exception {
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/1/member-candidates?q=a@b.co"), RoleCode.MANAGER)).isBetween(200, 299);
+        when(otp.hitRateLimit(eq("vs_workspace_member_search"), any(), anyInt())).thenReturn(true);
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/1/member-candidates?q=a@b.co"), RoleCode.MANAGER)).isEqualTo(429);
+    }
+
+    @Test
+    void workspaceInfoBodyIsValidatedAndHonoursWriteQuota() throws Exception {
+        for (String body : List.of("{}", "{\"name\":\"   \"}", "{\"name\":\"" + "x".repeat(151) + "\"}",
+                "{\"name\":\"x\",\"description\":\"" + "x".repeat(10001) + "\"}")) {
+            assertThat(statusOf(updateInfo(body), RoleCode.MANAGER)).as(body.length() > 80 ? body.substring(0, 80) : body).isEqualTo(400);
+        }
+        when(otp.hitRateLimit(eq("vs_workspace_update"), any(), anyInt())).thenReturn(true);
+        assertThat(statusOf(updateInfo("{\"name\":\"Nhóm AEB\"}"), RoleCode.MANAGER)).isEqualTo(429);
     }
 
     @Test

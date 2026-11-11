@@ -234,6 +234,41 @@ public final class XoscExport {
         return entities;
     }
 
+    /*
+     * Thời tiết theo preset của CARLA 0.9.16 (WeatherParameters.cpp). ScenarioRunner 0.9.16 (openscenario_parser.py:486-502) đọc:
+     * sun_altitude = degrees(elevation), cloudiness = 100 − 100·Sun.intensity, precipitation = wetness = 100·Precipitation.intensity;
+     * thuộc tính cloudState không được đọc. Trước 11/11/2026 Sun.intensity luôn là 1 (mây = 0) nên CLOUDY hiển thị giống CLEAR.
+     * Preset: ClearNoon mây 5, CloudyNoon 60, MidRainyNoon 60 / mưa 60, HardRainNoon 100 / 100; mặt trời Noon 45°, Sunset 15°, Night −90°.
+     * CARLA không có preset sương mù: FOG lấy mây như CloudyNoon (chọn của nhóm). Thời tiết chỉ đổi hình ảnh camera, không vào lõi AEB.
+     */
+
+    /** {@code Sun.intensity} = 1 − cloudiness/100 của preset ứng với thời tiết. */
+    static double sunIntensity(String weather) {
+        return switch (weather) {
+            case "CLEAR" -> 0.95;
+            case "HEAVY_RAIN" -> 0.0;
+            default -> 0.4; // CLOUDY, RAIN, FOG
+        };
+    }
+
+    /** {@code Precipitation.intensity} = precipitation/100 của preset; 0 = khô. */
+    static double rainIntensity(String weather) {
+        return switch (weather) {
+            case "RAIN" -> 0.6;
+            case "HEAVY_RAIN" -> 1.0;
+            default -> 0.0;
+        };
+    }
+
+    /** Độ cao mặt trời (rad) của preset Noon / Sunset / Night. */
+    static double sunElevationRad(String timeOfDay) {
+        return Math.toRadians(switch (timeOfDay) {
+            case "DAY" -> 45.0;
+            case "DUSK" -> 15.0;
+            default -> -90.0;
+        });
+    }
+
     /** Init: môi trường + ego (vị trí, controller AEB, tốc độ đầu). Trả về {@code Actions} để thêm Private của mục tiêu. */
     private static El initActions(El storyboard, String weatherName, String timeOfDay, double roadFriction, VehicleSpec vehicle, double egoSpeedKmh) {
         El actions = node(node(storyboard, "Init"), "Actions");
@@ -243,17 +278,12 @@ public final class XoscExport {
             case "DUSK" -> 18;
             default -> 0;
         };
-        double elevation = switch (timeOfDay) {
-            case "DAY" -> 1.05;
-            case "DUSK" -> 0.07;
-            default -> -0.7;
-        };
         node(environment, "TimeOfDay", "animation", "false", "dateTime", String.format("2026-10-18T%02d:00:00", hour));
         El weather = node(environment, "Weather", "cloudState", weatherName.equals("CLEAR") ? "free" : "overcast");
-        node(weather, "Sun", "intensity", "1", "azimuth", "0", "elevation", number(elevation));
+        node(weather, "Sun", "intensity", number(sunIntensity(weatherName)), "azimuth", "0", "elevation", number(sunElevationRad(timeOfDay)));
         node(weather, "Fog", "visualRange", weatherName.equals("FOG") ? "30" : "100000");
-        String rain = weatherName.equals("RAIN") ? "0.5" : weatherName.equals("HEAVY_RAIN") ? "1" : "0";
-        node(weather, "Precipitation", "precipitationType", rain.equals("0") ? "dry" : "rain", "intensity", rain);
+        double rain = rainIntensity(weatherName);
+        node(weather, "Precipitation", "precipitationType", rain == 0 ? "dry" : "rain", "intensity", rain == 0 ? "0" : number(rain));
         node(environment, "RoadCondition", "frictionScaleFactor", number(roadFriction));
         El heroInit = node(actions, "Private", "entityRef", "hero");
         position(node(node(heroInit, "PrivateAction"), "TeleportAction"), -vehicle.lengthM() / 2, 0);

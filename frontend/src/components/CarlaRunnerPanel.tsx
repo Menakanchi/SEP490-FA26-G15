@@ -112,7 +112,7 @@ export function CarlaRunnerPanel() {
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <select aria-label="Họ kịch bản chạy CARLA" value={familyId} onChange={e => setFamily(e.target.value)}
-          className="min-w-[220px] rounded-full border border-vehicsim-line bg-white px-4 py-3 text-[13px]">
+          className="min-w-[220px] rounded-full border border-vehicsim-line bg-vehicsim-surface px-4 py-3 text-[13px]">
           {!ctx?.families.length && <option value="">{ctx === null ? "Đang tải họ kịch bản…" : "Chưa có họ kịch bản"}</option>}
           {ctx?.families.map(f => <option key={f.id} value={f.id}>{f.code} · {f.name}</option>)}
         </select>

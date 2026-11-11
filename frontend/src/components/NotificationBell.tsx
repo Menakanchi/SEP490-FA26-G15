@@ -105,7 +105,7 @@ export function NotificationBell() {
         onClick={toggle}
         aria-label={unread ? `Thông báo: ${unread} chưa đọc` : "Thông báo"}
         aria-expanded={open}
-        className="relative flex size-8 items-center justify-center rounded-full border border-solid border-vehicsim-line bg-white shadow-sm hover:bg-vehicsim-soft transition"
+        className="relative flex size-11 items-center justify-center rounded-lg border border-vehicsim-line bg-vehicsim-surface transition-colors hover:bg-vehicsim-soft"
       >
         <svg aria-hidden width={16} height={16} viewBox="0 0 16 16" fill="none" className="text-vehicsim-muted">
           <path
@@ -127,7 +127,7 @@ export function NotificationBell() {
         <div
           role="dialog"
           aria-label="Thông báo"
-          className="absolute right-0 top-[42px] z-50 flex w-[380px] flex-col overflow-hidden rounded-[18px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card"
+          className="fixed inset-x-4 top-16 z-50 flex flex-col overflow-hidden rounded-xl border border-vehicsim-line bg-vehicsim-surface shadow-vehicsim-card sm:absolute sm:inset-x-auto sm:right-0 sm:top-[calc(100%+8px)] sm:w-[360px]"
         >
           <div className="flex items-center justify-between border-b border-solid border-vehicsim-line px-4 py-3">
             <span className="text-[14px] font-bold text-vehicsim-ink">Thông báo{unread ? ` · ${unread} chưa đọc` : ""}</span>

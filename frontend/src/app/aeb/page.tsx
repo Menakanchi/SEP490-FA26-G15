@@ -122,7 +122,7 @@ export default function AebConfigPage() {
               Chuẩn bị tối ưu AEB trên toàn bộ biến thể của họ kịch bản <strong>{targetFamily.code} · {targetFamily.name}</strong>.
             </span>
           </div>
-          <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-vehicsim-decision shadow-sm">
+          <span className="rounded-full bg-vehicsim-surface px-2.5 py-1 text-[11px] font-bold text-vehicsim-decision shadow-sm">
             Tối ưu toàn kịch bản
           </span>
         </div>
@@ -146,7 +146,7 @@ export default function AebConfigPage() {
           className={cx(
             "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
             activeTab === "mobo"
-              ? "border-b-2 border-vehicsim-ink bg-white text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
+              ? "border-b-2 border-vehicsim-primary bg-vehicsim-surface text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
               : "text-vehicsim-muted hover:text-vehicsim-ink",
           )}
         >
@@ -162,7 +162,7 @@ export default function AebConfigPage() {
           className={cx(
             "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
             activeTab === "manual"
-              ? "border-b-2 border-vehicsim-ink bg-white text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
+              ? "border-b-2 border-vehicsim-primary bg-vehicsim-surface text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
               : "text-vehicsim-muted hover:text-vehicsim-ink",
           )}
         >
@@ -175,7 +175,7 @@ export default function AebConfigPage() {
           className={cx(
             "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
             activeTab === "versions"
-              ? "border-b-2 border-vehicsim-ink bg-white text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
+              ? "border-b-2 border-vehicsim-primary bg-vehicsim-surface text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
               : "text-vehicsim-muted hover:text-vehicsim-ink",
           )}
         >
@@ -214,7 +214,7 @@ export default function AebConfigPage() {
               }}
             />
           ) : (
-            <div className="rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 text-[13px] text-vehicsim-muted shadow-vehicsim-card">
+            <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 text-[13px] text-vehicsim-muted">
               Bạn chỉ có quyền xem hoặc dữ liệu tham số đang được tải.
             </div>
           )}
@@ -223,7 +223,7 @@ export default function AebConfigPage() {
 
       {/* Tab 3: Danh sách tất cả phiên bản AEB */}
       {activeTab === "versions" && (
-        <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
+        <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
           <div className="flex items-center px-5 py-4">
             <span className="text-[15px] font-bold text-vehicsim-ink">{versions ? `${versions.length} phiên bản` : "…"}</span>
           </div>
@@ -281,7 +281,7 @@ export default function AebConfigPage() {
                       {v.status === "CANDIDATE" && canWrite && (
                         <Link
                           href={`/validation/regression/new?candidate=${v.id}`}
-                          className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
+                          className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
                         >
                           Kiểm thử hồi quy
                         </Link>
@@ -476,7 +476,7 @@ function MoboOptimizationSection({
       )}
 
       {/* Form khởi tạo đợt tối ưu mới */}
-      <section className="flex flex-col gap-5 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+      <section className="flex flex-col gap-5 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-[17px] font-bold text-vehicsim-ink">Khởi tạo đợt tối ưu hoá AEB (MOBO)</h2>
@@ -496,7 +496,7 @@ function MoboOptimizationSection({
               <select
                 value={scenarioId}
                 onChange={(e) => setScenarioId(e.target.value ? Number(e.target.value) : "")}
-                className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong bg-white px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
               >
                 {(ctx?.families ?? []).length === 0 && <option value="">Chưa có kịch bản</option>}
                 {(ctx?.families ?? []).map((f) => (
@@ -549,16 +549,16 @@ function MoboOptimizationSection({
                 Không gian tham số tìm kiếm (Search Space)
               </span>
               <div className="grid grid-cols-2 gap-2 text-[12px]">
-                <div className="rounded-[10px] bg-white p-2 border border-solid border-vehicsim-line">
+                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
                   <span className="font-semibold text-vehicsim-ink">TTC_THRESHOLD:</span> 0.5s – 3.5s
                 </div>
-                <div className="rounded-[10px] bg-white p-2 border border-solid border-vehicsim-line">
+                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
                   <span className="font-semibold text-vehicsim-ink">ACTIVATION_DELAY:</span> 0.05s – 0.45s
                 </div>
-                <div className="rounded-[10px] bg-white p-2 border border-solid border-vehicsim-line">
+                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
                   <span className="font-semibold text-vehicsim-ink">BUILDUP_RATE:</span> 5.0 – 20.0 m/s³
                 </div>
-                <div className="rounded-[10px] bg-white p-2 border border-solid border-vehicsim-line">
+                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
                   <span className="font-semibold text-vehicsim-ink">MAX_DECELERATION:</span> 5.0 – 10.0 m/s²
                 </div>
               </div>
@@ -569,15 +569,15 @@ function MoboOptimizationSection({
                 3 Mục tiêu tối ưu hoá đồng thời (Cực tiểu hoá)
               </span>
               <div className="grid grid-cols-3 gap-2 text-[12px]">
-                <div className="rounded-[10px] bg-white p-2 border border-solid border-vehicsim-line">
+                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
                   <span className="font-semibold text-vehicsim-ink block">Độ êm ái:</span>
                   RMS Jerk (m/s³)
                 </div>
-                <div className="rounded-[10px] bg-white p-2 border border-solid border-vehicsim-line">
+                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
                   <span className="font-semibold text-vehicsim-ink block">Giảm chấn:</span>
                   Tốc độ va chạm (m/s)
                 </div>
-                <div className="rounded-[10px] bg-white p-2 border border-solid border-vehicsim-line">
+                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
                   <span className="font-semibold text-vehicsim-ink block">Hiệu năng:</span>
                   Quãng phanh dừng (m)
                 </div>
@@ -597,7 +597,7 @@ function MoboOptimizationSection({
       </section>
 
       {/* Lịch sử các đợt chạy MOBO */}
-      <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
+      <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
         <div className="flex items-center justify-between px-5 py-4">
           <span className="text-[15px] font-bold text-vehicsim-ink">
             {runs ? `${runs.length} đợt tối ưu hoá` : "Đang tải danh sách đợt tối ưu…"}
@@ -675,8 +675,8 @@ function MoboOptimizationSection({
                 <span className={cx(
                   "inline-flex h-8 items-center justify-center rounded-full px-3 text-[12px] font-bold transition shadow-sm",
                   isSelected
-                    ? "bg-vehicsim-ink text-white"
-                    : "border border-solid border-vehicsim-line-strong bg-white text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white"
+                    ? "bg-vehicsim-primary text-white"
+                    : "border border-solid border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white"
                 )}>
                   {isSelected ? "Đang xem" : "Chi tiết"}
                 </span>
@@ -688,7 +688,7 @@ function MoboOptimizationSection({
 
       {/* Chi tiết đợt chạy đang chọn */}
       {activeRun && (
-        <section className="flex flex-col gap-6 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+        <section className="flex flex-col gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
           <div className="flex flex-col gap-2 border-b border-solid border-vehicsim-line pb-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -718,7 +718,7 @@ function MoboOptimizationSection({
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-vehicsim-soft">
                 <div
-                  className="h-full bg-vehicsim-ink transition-all duration-300"
+                  className="h-full bg-vehicsim-primary transition-all duration-300"
                   style={{
                     width: `${Math.min(100, (activeRun.completed_trials / (activeRun.max_trials || 1)) * 100)}%`,
                   }}
@@ -756,7 +756,7 @@ function MoboOptimizationSection({
                     <th className="px-4 py-3 text-right">Hành động</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-solid divide-vehicsim-line bg-white">
+                <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
                   {paretoTrials?.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-6 text-center text-vehicsim-muted">
@@ -789,7 +789,7 @@ function MoboOptimizationSection({
                             type="button"
                             disabled={selectingTrialId !== null || !canWrite}
                             onClick={() => handleSelectCandidate(t.id)}
-                            className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-ink px-4 text-[12px] font-bold text-white transition hover:bg-black/80 disabled:opacity-40 shadow-sm"
+                            className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-4 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40"
                           >
                             {selectingTrialId === t.id ? "Đang chọn…" : "Chọn ứng viên"}
                           </button>
@@ -819,7 +819,7 @@ function MoboOptimizationSection({
                     <th className="px-3 py-2 text-right">Biên Pareto</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-solid divide-vehicsim-line bg-white">
+                <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
                   {trials?.map((t) => (
                     <tr key={t.id} className={cx(t.is_pareto_optimal && "bg-vehicsim-ok-bg/30")}>
                       <td className="px-3 py-2 font-mono font-bold text-vehicsim-ink">{t.trial_number}</td>
@@ -925,7 +925,7 @@ function CandidateForm({
   };
 
   return (
-    <section className="flex flex-col gap-5 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+    <section className="flex flex-col gap-5 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
       <div className="flex items-center justify-between">
         <h2 className="text-[17px] font-bold text-vehicsim-ink">Cấu hình ứng viên mới</h2>
         <span className="rounded-full bg-vehicsim-soft px-3 py-[6px] text-[12px] font-semibold text-vehicsim-ink">
@@ -942,7 +942,7 @@ function CandidateForm({
               setParentId(Number(e.target.value));
               setValues({});
             }}
-            className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong bg-white px-[14px] text-[14px] text-vehicsim-ink"
+            className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-[14px] text-[14px] text-vehicsim-ink"
           >
             {parents.map((v) => (
               <option key={v.id} value={v.id}>

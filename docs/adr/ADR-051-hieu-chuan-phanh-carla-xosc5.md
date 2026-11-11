@@ -60,6 +60,17 @@ CCRb — ca nhạy nhất với mức phanh — giờ lệch bộ động học 
 - Còn lại của TD-17: dừng tức thì dưới ~6 m/s, ma sát lốp / mưa chưa giới hạn lực phanh, mức phanh còn đổi theo tốc độ (10,6 → 8,9 m/s²
   từ 40 → 70 km/h), 4 xe khác chưa hiệu chuẩn.
 
+## Bổ sung 11/11/2026 (chờ tác giả ADR xác nhận gộp vào v5)
+
+v5 chưa lên `main`, nên hai thay đổi CARLA của [exec plan 11/11](../exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md) được gộp vào
+cùng định danh để chỉ phải chạy lại baseline một lần. Nếu đã có run `-xosc5` cần giữ thì tách hai thay đổi này sang v6.
+
+5. **Thời tiết theo preset CARLA:** `Sun.intensity` / `elevation` và `Precipitation.intensity` lấy theo ClearNoon, CloudyNoon, MidRainyNoon,
+   HardRainNoon, ClearSunset, ClearNight. Trước đó mây luôn bằng 0 nên CLOUDY giống CLEAR. Câu "v5 ghi XML giống v4 trừ `vs_format`" ở
+   quyết định 3 không còn đúng cho khối `<Weather>`.
+6. **`decel_available` trên CARLA** = min(MAX_DECELERATION, `max_brake_decel_mps2`, μ·g, phanh 100% đo được). e-tron đã hiệu chuẩn không đổi
+   số (MAX_DECELERATION 8 < 9,13); xe chưa hiệu chuẩn (Tesla 3,56) hết bị tính như xe phanh được 8. File v4 trở về trước giữ cách tính cũ.
+
 Kiểm thử: `XoscExportTest` (khứ hồi mô-men phanh, từ chối `wheels` theo bánh / trường khác, đọc v3/v4 với identity riêng), `XoscReadParityTest`
 (fixture Python đổi `vs_format`, ca `export 5` có `wheels` bị từ chối), `CarlaSessionLogicTest` (mô-men không tới bánh → `forced_ok` false),
 `CarlaWebTest` (bundle có `wheels` chỉ khi xe có mô-men; identity `-xosc5`), `worker/tests/test_measure_brake.py`.

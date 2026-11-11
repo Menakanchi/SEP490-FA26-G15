@@ -66,10 +66,10 @@ export function ScenarioCategoryPicker({
               className={cx(
                 "flex items-center gap-2 rounded-full border border-solid px-3 py-[7px] text-[12px] font-semibold",
                 on
-                  ? "border-vehicsim-ink bg-vehicsim-ink text-white"
+                  ? "border-vehicsim-primary bg-vehicsim-primary text-white"
                   : supported
-                    ? "border-vehicsim-line-strong bg-white text-vehicsim-muted hover:bg-vehicsim-soft"
-                    : "cursor-not-allowed border-vehicsim-line bg-vehicsim-soft text-vehicsim-faint",
+                    ? "border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-muted hover:bg-vehicsim-soft"
+                    : "cursor-not-allowed border-dashed border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-muted opacity-50",
               )}
             >
               {c.label}

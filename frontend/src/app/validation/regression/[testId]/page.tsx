@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { ErrorNote, OutcomeBadge, PillButton, StatusBadge, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
+import { ErrorNote, OutcomeBadge, PillButton, StatusBadge, Tag, cx, fmt, paramValue, TableScroll } from "@/components/VehicSimUi";
 import { vi, viSummary } from "@/components/vehicsimI18n";
 import { CandidateSourceTag, CarlaCaveat, PairObjectivesTable } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -141,16 +141,16 @@ export default function RegressionResultsPage() {
             </div>
           )}
 
-          <div className="flex w-full items-center gap-4">
+          <div className="flex w-full flex-col items-stretch gap-3 lg:flex-row lg:items-center">
             <VersionCard title={`AEB ${d.baseline.label}`} tag="Cơ sở" params={cardParams} side="baseline" />
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-solid border-vehicsim-line bg-white text-[15px] font-bold text-vehicsim-ink">
+            <span className="hidden size-10 shrink-0 items-center justify-center rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface text-[15px] font-bold text-vehicsim-ink lg:flex">
               →
             </span>
             <VersionCard title={`AEB ${d.candidate.label}`} tag="Ứng viên" params={cardParams} side="candidate" dark />
           </div>
 
           {running && (
-            <section className="flex flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+            <section className="flex flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
               <div className="flex items-center justify-between text-[14px] font-semibold text-vehicsim-ink">
                 <span>Đang chạy các cặp mô phỏng…</span>
                 <span>
@@ -169,7 +169,7 @@ export default function RegressionResultsPage() {
 
           {counts && s?.rates && (
             <>
-              <div className="flex w-full items-stretch gap-4">
+              <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-5">
                 <Kpi label="Kịch bản" value={counts.scenarios} note={`${d.family} · cùng seed`} />
                 <Kpi label="Được sửa" value={counts.fixed} tone="text-vehicsim-ok" note="va chạm/suýt va chạm → an toàn hơn" />
                 <Kpi label="Xấu đi" value={counts.regressed} tone={counts.regressed ? "text-vehicsim-danger" : "text-vehicsim-ink"} note="kết quả hoặc verdict tệ hơn" />
@@ -186,9 +186,9 @@ export default function RegressionResultsPage() {
                 />
               </div>
 
-              <div className="flex w-full items-stretch gap-4">
+              <div className="flex w-full flex-col gap-4 xl:flex-row">
                 {s.transitions && <Transitions transitions={s.transitions} baseline={d.baseline.label} candidate={d.candidate.label} />}
-                <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+                <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-bold text-vehicsim-ink">Theo họ kịch bản</h2>
                     <span className="text-[11px] font-medium text-vehicsim-faint">◂ xấu đi · được sửa ▸</span>
@@ -240,10 +240,10 @@ export default function RegressionResultsPage() {
                 </section>
               </div>
 
-              <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
-                <div className="flex items-center justify-between px-5 py-4">
+              <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
                   <h2 className="text-[17px] font-bold text-vehicsim-ink">Khác biệt theo kịch bản</h2>
-                  <div className="flex gap-1 rounded-full bg-vehicsim-soft p-1">
+                  <div className="flex flex-wrap gap-1 rounded-lg bg-vehicsim-soft p-1">
                     {(
                       [
                         ["regressed", `Xấu đi (${counts.regressed})`],
@@ -259,27 +259,31 @@ export default function RegressionResultsPage() {
                           setTab(key);
                           setShown(20);
                         }}
-                        className={cx("rounded-full px-[14px] py-[7px] text-[12px] font-semibold", tab === key ? "bg-vehicsim-ink text-white" : "text-vehicsim-muted")}
+                        className={cx("rounded-lg px-[14px] py-[7px] text-[12px] font-semibold", tab === key ? "bg-vehicsim-primary text-white" : "text-vehicsim-muted")}
                       >
                         {label}
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-                  <span className="min-w-0 flex-1">Kịch bản</span>
-                  <span className="w-[150px]">Họ kịch bản</span>
-                  <span className="w-[120px]">{d.baseline.label}</span>
-                  <span className="w-6" />
-                  <span className="w-[120px]">{d.candidate.label}</span>
-                  <span className="w-[96px]">Δ TTC min</span>
-                  <span className="w-[90px]">Va chạm ở</span>
-                  <span className="w-[100px]" />
-                </div>
                 {visible.length === 0 && <p className="px-5 py-8 text-center text-[13px] text-vehicsim-muted">Không có kịch bản nào trong nhóm này.</p>}
-                {visible.slice(0, shown).map((p) => (
-                  <DiffRow key={p.variant_id} p={p} />
-                ))}
+                {visible.length > 0 && (
+                  <TableScroll label="Bảng khác biệt theo kịch bản" minWidth={900}>
+                    <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
+                      <span className="min-w-0 flex-1">Kịch bản</span>
+                      <span className="w-[150px]">Họ kịch bản</span>
+                      <span className="w-[120px]">{d.baseline.label}</span>
+                      <span className="w-6" />
+                      <span className="w-[120px]">{d.candidate.label}</span>
+                      <span className="w-[96px]">Δ TTC min</span>
+                      <span className="w-[90px]">Va chạm ở</span>
+                      <span className="w-[100px]" />
+                    </div>
+                    {visible.slice(0, shown).map((p) => (
+                      <DiffRow key={p.variant_id} p={p} />
+                    ))}
+                  </TableScroll>
+                )}
                 <div className="flex items-center justify-between px-5 py-4 text-[12px] text-vehicsim-faint">
                   <span>
                     Hiển thị {Math.min(shown, visible.length)} / {visible.length} kịch bản
@@ -318,7 +322,7 @@ function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failed
             Tiêu chí trượt: {failedCriteria.join("; ") || "—"}. Ứng viên không đạt kiểm thử hồi quy không thể được chấp nhận.
           </p>
         </div>
-        <Tag tone="danger" className="border border-solid border-vehicsim-danger/40 bg-white px-3 py-[6px] text-[12px]">
+        <Tag tone="danger" className="border border-solid border-vehicsim-danger/40 bg-vehicsim-surface px-3 py-[6px] text-[12px]">
           {conclusion ? "Không đạt" : "Khuyến nghị bị chặn"}
         </Tag>
       </div>
@@ -360,8 +364,8 @@ function VersionCard({ title, tag, params, side, dark }: { title: string; tag: s
   return (
     <section
       className={cx(
-        "flex min-w-0 flex-1 flex-col gap-3 rounded-[20px] bg-white p-5",
-        dark ? "border-2 border-solid border-vehicsim-ink" : "border border-solid border-vehicsim-line shadow-vehicsim-card",
+        "flex min-w-0 flex-1 flex-col gap-3 rounded-xl bg-vehicsim-surface p-5",
+        dark ? "border-2 border-solid border-vehicsim-primary" : "border border-solid border-vehicsim-line",
       )}
     >
       <div className="flex items-center justify-between">
@@ -385,7 +389,7 @@ function VersionCard({ title, tag, params, side, dark }: { title: string; tag: s
 
 function Kpi({ label, value, note, tone = "text-vehicsim-ink", small }: { label: string; value: React.ReactNode; note: string; tone?: string; small?: boolean }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+    <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
       <span className="text-[13px] font-medium text-vehicsim-muted">{label}</span>
       <span className={cx("whitespace-nowrap font-extrabold tracking-[-0.6px]", small ? "text-[22px] leading-[40px]" : "text-[34px]", tone)}>{value}</span>
       <span className="text-[12px] text-vehicsim-faint">{note}</span>
@@ -403,7 +407,7 @@ function Transitions({
   candidate: string;
 }) {
   return (
-    <section className="flex w-[430px] shrink-0 flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+    <section className="flex w-full shrink-0 flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 xl:w-[430px]">
       <h2 className="text-[17px] font-bold text-vehicsim-ink">Chuyển đổi kết quả</h2>
       <p className="text-[12px] text-vehicsim-faint">
         Hàng: cơ sở {baseline} · Cột: ứng viên {candidate}
@@ -477,7 +481,7 @@ function DiffRow({ p }: { p: Pair }) {
       <span className="flex w-[100px] justify-end">
         <Link
           href={`/analysis/failures/${p.candidate_run_id}/playback`}
-          className="rounded-full border border-solid border-vehicsim-line-strong bg-white px-3 py-[6px] text-[12px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft"
+          className="rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-[6px] text-[12px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft"
         >
           ▶ So sánh
         </Link>

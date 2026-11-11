@@ -1,15 +1,15 @@
 .scope {
-  --admin-ink: #1e293b;
-  --admin-text: #334155;
-  --admin-secondary: #475569;
-  --admin-muted: #64748b;
-  --admin-line: #e2e8f0;
-  --admin-input-line: #dce3ee;
-  --admin-surface: #fff;
-  --admin-soft: #f8fafc;
-  --admin-hover: #f1f5f9;
-  --admin-focus: #2563eb;
-  --admin-primary: #111827;
-  --admin-danger: #b91c1c;
-  --admin-control-radius: 9px;
+  --admin-ink: var(--color-vehicsim-ink);
+  --admin-text: var(--color-vehicsim-ink);
+  --admin-secondary: var(--color-vehicsim-muted);
+  --admin-muted: var(--color-vehicsim-faint);
+  --admin-line: var(--color-vehicsim-line);
+  --admin-input-line: var(--color-vehicsim-line-strong);
+  --admin-surface: var(--color-vehicsim-surface);
+  --admin-soft: var(--color-vehicsim-row);
+  --admin-hover: var(--color-vehicsim-soft);
+  --admin-focus: var(--color-vehicsim-primary);
+  --admin-primary: var(--color-vehicsim-primary);
+  --admin-danger: var(--color-vehicsim-danger);
+  --admin-control-radius: 8px;
 }

@@ -53,7 +53,7 @@ export default function DecisionHistoryPage() {
       subtitle="Từng lần quyết định kèm người duyệt và lý do được lưu riêng. Chấp nhận hoặc từ chối là quyết định cuối; yêu cầu thêm kiểm thử giữ khuyến nghị mở. Dữ liệu cũ chỉ giữ được quyết định gần nhất trước khi có lịch sử."
     >
       <ErrorNote message={error} />
-      <div className="flex w-full items-stretch gap-4">
+      <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard label="Tổng quyết định" value={history ? all.length : "…"} note="đã ghi" />
         <StatCard
           label="Chấp nhận"
@@ -82,7 +82,7 @@ export default function DecisionHistoryPage() {
               setPage(1);
             }}
             placeholder="Tìm mã, phiên bản, người duyệt, lý do…"
-            className="ml-auto w-[280px] rounded-full border border-solid border-vehicsim-line bg-white px-4 py-[7px] text-[12px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+            className="ml-auto w-[280px] rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-[7px] text-[12px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
           />
         </div>
         <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">

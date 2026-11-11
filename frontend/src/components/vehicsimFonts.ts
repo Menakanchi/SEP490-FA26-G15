@@ -1,4 +1,8 @@
-import { Plus_Jakarta_Sans } from "next/font/google";
+import localFont from "next/font/local";
 
 /** Font của bộ Figma VehicSim — dùng cho khu VehicSim và các màn đăng nhập / đăng ký. */
-export const jakarta = Plus_Jakarta_Sans({ subsets: ["latin", "vietnamese"], weight: ["400", "500", "600", "700", "800"] });
+export const jakarta = localFont({
+  src: "../app/fonts/PlusJakartaSans.ttf",
+  weight: "200 800",
+  display: "swap",
+});

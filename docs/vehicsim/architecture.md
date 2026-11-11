@@ -364,6 +364,16 @@ và Manager của workspace xem: danh sách `/workspaces/{id}/tasks|reports` l�
 quản lý, thêm / bớt thành viên, giao / sửa / xoá task, duyệt báo cáo chỉ MANAGER được gán (`requireMemberManager`).
 `EngineerWorkspaceController` giữ `/my-workspaces`, `/my-tasks`, `/my-reports`, chi tiết task / báo cáo và chat; cập nhật tiến độ và
 nộp báo cáo chỉ còn ở `/my/...` bên dưới (route `PATCH|PUT /tasks/{id}/status`, `POST /reports` trùng đã gỡ).
+Sửa workspace (06/11/2026): `PUT /workspaces/{id}` cho Manager được gán đổi tên / mô tả workspace ACTIVE (tên unique, hạn mức
+`workspace_update`); đổi Manager / lưu trữ vẫn ở `/admin/workspaces`. Chat `GET /workspaces/{id}/messages` trả `limit` tin mới nhất,
+`?after=<id>` chỉ trả tin sau id đó, `?before=<id>` trả `limit` tin ngay trước id đó (nút "Xem tin cũ hơn"; không gửi cả hai). Chat realtime: `GET /workspaces/{id}/messages/stream` (Server-Sent Events, cùng quyền với đọc tin)
+gửi `ready` khi nối và `message` cho mỗi tin, đẩy sau khi transaction commit (`WorkspaceChatHub`). Frontend mở bằng `fetch` để
+token đi qua header `Authorization` (`apiEventStream`), mỗi lần nối lại tải bù bằng `?after=`. Kênh tự đóng sau 10 phút để kiểm lại
+quyền (client nối lại ngay, tin vẫn ở DB); bớt thành viên, đổi Manager, khoá / đổi role tài khoản đóng kênh ngay; tối đa 5 kênh mỗi tài khoản, heartbeat 25 giây.
+`SecurityConfig` cho qua lượt `DispatcherType.ASYNC` (bộ lọc JWT không chạy lại ở lượt này). Hub nằm trong bộ nhớ một tiến trình (TD-55).
+Tìm người để thêm (08/11/2026): `GET /workspaces/{id}/member-candidates?q=` chỉ trả tài khoản EXPERIENCER đang hoạt động, chưa ở
+workspace, có email trùng khớp hoàn toàn với `q` (không phân biệt hoa thường). `q` trống, không giống email hoặc chỉ khớp một phần thì
+trả `[]`: Manager không liệt kê hay dò được danh sách người tự đăng ký. Hạn mức riêng `workspace_member_search`.
 
 `/my-work`: `GET /api/v1/vehicsim/my/work`, `PUT /my/tasks/{id}/progress`,
 `POST /my/reports` (hai route sau cùng prefix `/api/v1/vehicsim`). Chỉ người được giao cập nhật tiến độ;

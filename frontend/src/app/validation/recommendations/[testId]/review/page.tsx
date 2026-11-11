@@ -173,8 +173,8 @@ export default function ReviewPage() {
         : "Chỉ Người duyệt (REVIEWER) được ra quyết định; người làm không tự duyệt việc của mình."} />}
       <CarlaCaveat caveat={r.simulator_caveat} />
 
-      <div className="flex w-full items-start gap-4">
-        <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+      <div className="flex w-full flex-col gap-4 xl:flex-row xl:items-start">
+        <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
           <h2 className="text-[17px] font-bold text-vehicsim-ink">Danh sách kiểm tra khi duyệt</h2>
           <div className="flex flex-col gap-3">
             {checklist.map((item, i) => (
@@ -198,7 +198,7 @@ export default function ReviewPage() {
                   onClick={() => setDecision(o.key)}
                   className={cx(
                     "flex min-w-0 flex-1 flex-col items-start gap-2 rounded-[16px] border-2 border-solid px-4 py-4 text-left transition disabled:cursor-not-allowed disabled:opacity-45",
-                    active ? o.tone : "border-vehicsim-line bg-white text-vehicsim-ink hover:bg-vehicsim-soft",
+                    active ? o.tone : "border-vehicsim-line bg-vehicsim-surface text-vehicsim-ink hover:bg-vehicsim-soft",
                   )}
                 >
                   <span className="flex items-center gap-2 text-[16px] font-bold">
@@ -250,8 +250,8 @@ export default function ReviewPage() {
           </p>
         </section>
 
-        <div className="flex w-[330px] shrink-0 flex-col gap-4">
-          <section className="flex flex-col gap-1 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+        <div className="flex w-full shrink-0 flex-col xl:w-[330px] gap-4">
+          <section className="flex flex-col gap-1 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
             <h2 className="mb-2 text-[17px] font-bold text-vehicsim-ink">Tóm tắt {r.recommendation_code}</h2>
             {r.changed_parameters.map((p) => (
               <SummaryRow key={p.code} label={p.name} value={`${paramValue(p.baseline, p.unit)} → ${paramValue(p.candidate, p.unit)}`} cls="text-vehicsim-decision" />
@@ -274,7 +274,7 @@ export default function ReviewPage() {
             <SummaryRow label="Độ bền vững" value="CHƯA CHẠY" cls="text-vehicsim-faint" />
           </section>
 
-          <section className="flex flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+          <section className="flex flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
             <h2 className="text-[17px] font-bold text-vehicsim-ink">Ký duyệt</h2>
             <div className="flex items-center gap-3">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-vehicsim-avatar text-[12px] font-bold text-vehicsim-decision">

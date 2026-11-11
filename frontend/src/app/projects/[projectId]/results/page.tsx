@@ -195,7 +195,7 @@ export default function ProjectResultsPage() {
             aria-label="Họ kịch bản"
             value={scenarioId}
             onChange={(e) => setPicked(Number(e.target.value))}
-            className="h-10 rounded-full border border-solid border-vehicsim-line-strong bg-white px-4 text-[14px] font-semibold text-vehicsim-ink"
+            className="h-10 rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-4 text-[14px] font-semibold text-vehicsim-ink"
           >
             {families.map((f) => (
               <option key={f.id} value={f.id}>

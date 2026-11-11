@@ -17,8 +17,8 @@
 .table th:first-child, .table td:first-child { left: 0; border-right: 1px solid var(--color-vehicsim-line); }
 .table th:last-child, .table td:last-child { right: 0; border-left: 1px solid var(--color-vehicsim-line); }
 .table th:first-child, .table th:last-child { background: var(--color-vehicsim-soft); }
-.table td:first-child, .table td:last-child { background: white; }
-.table tr[data-selected=true] td { background: var(--color-vehicsim-decision-bg); }
+.table td:first-child, .table td:last-child { background: var(--color-vehicsim-surface); }
+.table tr[data-selected=true] td { background: var(--color-vehicsim-primary-bg); }
 .table tbody tr:hover td, .table tbody tr:focus-within td { background: var(--color-vehicsim-row); }
 .identity { min-width: 190px; max-width: 250px; overflow-wrap: anywhere; }
 .seed { display: inline-block; margin-top: 8px; border-radius: 4px; padding: 2px 6px; background: var(--color-vehicsim-soft); color: var(--color-vehicsim-muted); font-size: 11px; font-variant-numeric: tabular-nums; }

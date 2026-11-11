@@ -235,6 +235,37 @@ class XoscExportTest {
         assertThatThrownBy(() -> Xosc.profile(xml)).isInstanceOf(Bundle.BundleError.class);
     }
 
+    /**
+     * Thời tiết theo preset CARLA 0.9.16 (11/11/2026): áp đúng cách ScenarioRunner 0.9.16 đọc (cloudiness = 100 − 100·Sun.intensity,
+     * precipitation = 100·Precipitation.intensity, sun_altitude = degrees(elevation)) thì ra mây / mưa / độ cao mặt trời của preset.
+     * Trước đây Sun.intensity luôn là 1 nên CLOUDY hiển thị giống hệt CLEAR.
+     */
+    @ParameterizedTest
+    @CsvSource({
+            "CLEAR, DAY, 5, 0, 45", "CLOUDY, DAY, 60, 0, 45", "RAIN, DAY, 60, 60, 45", "HEAVY_RAIN, DAY, 100, 100, 45",
+            "FOG, DUSK, 60, 0, 15", "CLEAR, NIGHT, 5, 0, -90"})
+    void weatherFollowsTheCarlaPresetsAsScenarioRunnerReadsThem(String weather, String time, double cloudiness, double precipitation,
+                                                                double sunAltitudeDeg) throws Exception {
+        Document doc = dom(XoscExport.export(Bundle.readSpec(ir("weather", weather, "time_of_day", time))));
+        Element sun = (Element) nodes(doc, "//Weather/Sun").item(0);
+        Element rain = (Element) nodes(doc, "//Weather/Precipitation").item(0);
+        assertThat(100 - 100 * Double.parseDouble(sun.getAttribute("intensity"))).as("cloudiness").isCloseTo(cloudiness, org.assertj.core.api.Assertions.within(1e-9));
+        assertThat(Math.toDegrees(Double.parseDouble(sun.getAttribute("elevation")))).as("sun_altitude").isCloseTo(sunAltitudeDeg,
+                org.assertj.core.api.Assertions.within(1e-9));
+        assertThat(100 * Double.parseDouble(rain.getAttribute("intensity"))).as("precipitation").isCloseTo(precipitation,
+                org.assertj.core.api.Assertions.within(1e-9));
+        assertThat(rain.getAttribute("precipitationType")).isEqualTo(precipitation > 0 ? "rain" : "dry");
+    }
+
+    @Test
+    void cloudyNoLongerLooksLikeClear() throws Exception {
+        String clear = nodes(dom(XoscExport.export(Bundle.readSpec(ir("weather", "CLEAR", "time_of_day", "DAY")))), "//Weather/Sun").item(0)
+                .getAttributes().getNamedItem("intensity").getNodeValue();
+        String cloudy = nodes(dom(XoscExport.export(Bundle.readSpec(ir("weather", "CLOUDY", "time_of_day", "DAY")))), "//Weather/Sun").item(0)
+                .getAttributes().getNamedItem("intensity").getNodeValue();
+        assertThat(cloudy).isNotEqualTo(clear);
+    }
+
     @Test
     void unrelatedOrOldGeometryXoscIsRejectedInsteadOfRunningAsXosc2() {
         assertThatThrownBy(() -> Xosc.read("<OpenSCENARIO><ParameterDeclarations /></OpenSCENARIO>")).isInstanceOf(Bundle.BundleError.class).hasMessageContaining("vs_format");

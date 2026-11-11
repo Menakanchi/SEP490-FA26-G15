@@ -26,6 +26,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.http.MediaType;
+import jakarta.servlet.http.HttpServletResponse;
 
 import java.util.List;
 
@@ -87,8 +90,22 @@ public class EngineerWorkspaceController {
     @GetMapping("/workspaces/{workspaceId}/messages")
     public List<ChatMessage> listMessages(@PathVariable long workspaceId,
                                           @RequestParam(name = "limit", defaultValue = "50") int limit,
+                                          @RequestParam(name = "after", required = false) Long after,
+                                          @RequestParam(name = "before", required = false) Long before,
                                           @AuthenticationPrincipal UserDetails user) {
-        return workspaces.listMessages(VehicSimAccess.requireWorkspaceRole(user), workspaceId, limit);
+        return workspaces.listMessages(VehicSimAccess.requireWorkspaceRole(user), workspaceId, limit, after, before);
+    }
+
+    @Operation(summary = "FE-03 — Kênh chat realtime (Server-Sent Events): sự kiện `ready` khi nối, `message` mỗi tin mới; "
+            + "kênh tự đóng sau 10 phút để client nối lại (kiểm lại quyền)")
+    @GetMapping(path = "/workspaces/{workspaceId}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamMessages(@PathVariable long workspaceId, @AuthenticationPrincipal UserDetails user,
+                                     HttpServletResponse response) {
+        SseEmitter stream = workspaces.openChatStream(VehicSimAccess.requireWorkspaceRole(user), workspaceId);
+        // Proxy (nginx) không gom đệm, để tin tới ngay.
+        response.setHeader("X-Accel-Buffering", "no");
+        response.setHeader("Cache-Control", "no-store");
+        return stream;
     }
 
     @Operation(summary = "FE-03 — Gửi tin nhắn trao đổi trong workspace (thành viên hoặc Manager của workspace)")

@@ -3,7 +3,7 @@
  * Mọi request đi qua `apiRequest`, nên tự mang `Authorization: Bearer`.
  */
 
-import { apiBlob, apiDownload, apiRequest } from "@/services/api";
+import { apiBlob, apiDownload, apiEventStream, apiRequest } from "@/services/api";
 import type {
   AebVersion,
   AnalysisDataset,
@@ -56,6 +56,7 @@ import type {
   WorkspaceTask,
   WorkspaceTaskRequest,
   SendChatMessageRequest,
+  UpdateWorkspaceRequest,
   WorkspaceChatMessage,
 } from "@/types/vehicsim";
 
@@ -238,6 +239,9 @@ export const vehicsimApi = {
       `/vehicsim/workspaces/${id}/members/${userId}`,
       { method: "DELETE" },
     ),
+  /** Manager được gán sửa tên và mô tả workspace; đổi Manager / lưu trữ ở Quản trị. */
+  updateWorkspaceInfo: (id: number, body: UpdateWorkspaceRequest) =>
+    apiRequest<WorkspaceSummary>(`/vehicsim/workspaces/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   /** Task của workspace; `assignee_id = 0` là chưa giao ai. */
   workspaceTasks: (id: number, filters: { status?: string; assignee_id?: number } = {}) =>
     apiRequest<WorkspaceTask[]>(`/vehicsim/workspaces/${id}/tasks${query(filters)}`),
@@ -264,8 +268,26 @@ export const vehicsimApi = {
   myReports: (filters: { status?: string; project_id?: number } = {}) =>
     apiRequest<WorkspaceReport[]>(`/vehicsim/my-reports${query(filters)}`),
   getReport: (reportId: number) => apiRequest<WorkspaceReport>(`/vehicsim/reports/${reportId}`),
-  workspaceMessages: (workspaceId: number, limit = 50) =>
-    apiRequest<WorkspaceChatMessage[]>(`/vehicsim/workspaces/${workspaceId}/messages${query({ limit })}`),
+  /** Không mốc: `limit` tin mới nhất; `after`: tin gửi sau tin đó (tải bù khi nối lại); `before`: tin ngay trước tin đó (xem tin cũ). */
+  workspaceMessages: (workspaceId: number, limit = 50, after?: number, before?: number) =>
+    apiRequest<WorkspaceChatMessage[]>(`/vehicsim/workspaces/${workspaceId}/messages${query({ limit, after, before })}`),
+  /**
+   * Kênh chat realtime (SSE): `onReady` khi đã nối (lúc này nên tải bù tin bị lỡ), `onMessage` cho mỗi tin mới.
+   * Promise kết thúc khi server đóng kênh (hết hạn 10 phút) — nơi gọi tự nối lại.
+   */
+  streamWorkspaceMessages: (
+    workspaceId: number,
+    handlers: { onReady: () => void; onMessage: (message: WorkspaceChatMessage) => void },
+    signal: AbortSignal,
+  ) =>
+    apiEventStream(
+      `/vehicsim/workspaces/${workspaceId}/messages/stream`,
+      (event, data) => {
+        if (event === "ready") handlers.onReady();
+        else if (event === "message") handlers.onMessage(JSON.parse(data) as WorkspaceChatMessage);
+      },
+      signal,
+    ),
   sendWorkspaceMessage: (workspaceId: number, body: SendChatMessageRequest) =>
     apiRequest<WorkspaceChatMessage>(`/vehicsim/workspaces/${workspaceId}/messages`, {
       method: "POST",
