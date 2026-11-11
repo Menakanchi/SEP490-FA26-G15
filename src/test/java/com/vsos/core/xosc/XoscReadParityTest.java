@@ -68,7 +68,7 @@ class XoscReadParityTest {
 
     /**
      * {@code export_xosc} của Python (v3) và {@link XoscExport#export} của Java (v5) ghi cùng từng byte cho ca băng ngang, trừ
-     * {@code vs_format}. Ca dừng ở lề đổi có chủ đích ở v4 (TD-47: waypoint cuối + event StopAtCurb) nên so với
+     * {@code vs_format} và hai thẻ thời tiết theo preset CARLA (11/11/2026, xem {@link #withoutWeather}). Ca dừng ở lề đổi có chủ đích ở v4 (TD-47: waypoint cuối + event StopAtCurb) nên so với
      * {@code xosc_v4_stops_at_curb.json}, sinh từ bộ xuất Java ngày 23/10/2026 sau khi kiểm trên CARLA thật.
      */
     @SuppressWarnings("unchecked")
@@ -106,12 +106,20 @@ class XoscReadParityTest {
             } else {
                 expected = ((String) e.get("xml")).replace(Xosc.V3_FORMAT, Xosc.FORMAT);
             }
-            assertThat(XoscExport.export(spec)).as(name).isEqualTo(expected);
+            assertThat(withoutWeather(XoscExport.export(spec))).as(name).isEqualTo(withoutWeather(expected));
             exported++;
         }
         assertThat(exported).isGreaterThan(15);
         assertThat(curb).as("mọi ca dừng ở lề trong fixture Java đều được dùng").isEqualTo(curbV4.size()).isPositive();
         assertThat(rejectedWheels).as("fixture có ca mang physics.wheels để kiểm việc từ chối").isEqualTo(1);
+    }
+
+    /**
+     * Che hai thẻ thời tiết đổi có chủ đích ngày 11/11/2026 (Sun.intensity / elevation và Precipitation.intensity theo preset CARLA, xem
+     * {@code XoscExport.sunIntensity}); giá trị mới kiểm riêng ở {@code XoscExportTest}. Mọi byte còn lại vẫn phải trùng bản Python.
+     */
+    private static String withoutWeather(String xml) {
+        return xml.replaceAll("<Sun [^>]*/>", "<Sun />").replaceAll("<Precipitation [^>]*/>", "<Precipitation />");
     }
 
     @Test
