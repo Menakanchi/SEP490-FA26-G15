@@ -7,6 +7,11 @@ import java.util.Map;
 public record CrossingCase(
         double egoSpeedKmh, double triggerDistanceM, double pedestrianSpeedMps, boolean stopsAtCurb, String weather, String timeOfDay, Double friction) {
 
+    /**
+     * Ma sát dự phòng khi bundle / {@code .xosc} không ghi {@code friction} (dòng DB cũ để trống, CLI, fixture parity). Run trên web luôn mang ma
+     * sát đã lưu của biến thể (bảng {@code Vs.WEATHER_FRICTION} của backend, RAIN 0,65 từ 11/11/2026). Bảng này cố ý giữ RAIN 0,70: đổi nó là đổi
+     * kết quả bộ động học của bundle cũ (fixture parity Python, định danh {@code vehicsim-kinematic-1.0}).
+     */
     public static final Map<String, Double> WEATHER_FRICTION = Map.of("CLEAR", 1.0, "CLOUDY", 1.0, "FOG", 1.0, "RAIN", 0.70, "HEAVY_RAIN", 0.55);
 
     /** Ma sát mặt đường: giá trị cho sẵn, hoặc suy từ thời tiết. */
