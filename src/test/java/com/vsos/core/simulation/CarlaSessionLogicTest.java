@@ -174,6 +174,23 @@ class CarlaSessionLogicTest {
         assertThat(rows(bad).get(0)).containsEntry("delta", -300.0).containsEntry("ok", false);
     }
 
+    @Test
+    void physicsCheckFlagsACalibratedBrakeTorqueThatDidNotReachEveryWheel() {
+        // ADR-051: XoscExport từng bỏ lặng lẽ physics.wheels nên CARLA giữ 1000 N·m; mỗi bánh phải có đúng mô-men đã yêu cầu.
+        Map<String, Object> carla = Map.of("physics", Map.of("mass", 2100.0, "wheels", Map.of("max_brake_torque", 2400.0)));
+        VehicleSpec vehicle = new VehicleSpec(4.75, 1.93, 9.5);
+        List<Map<String, Object>> calibrated = List.of(Map.of("max_brake_torque", 2400.0), Map.of("max_brake_torque", 2400.0),
+                Map.of("max_brake_torque", 2400.0), Map.of("max_brake_torque", 2400.0));
+        Map<String, Object> ok = CarlaSession.physicsCheck(carla, vehicle, Map.of("mass", 2100.0, "wheels", calibrated));
+        assertThat(ok.get("forced_ok")).isEqualTo(true);
+        assertThat(rows(ok)).extracting(r -> r.get("field")).contains("wheel_0_max_brake_torque", "wheel_3_max_brake_torque");
+
+        List<Map<String, Object>> stock = List.of(Map.of("max_brake_torque", 1000.0), Map.of("max_brake_torque", 1000.0),
+                Map.of("max_brake_torque", 1000.0), Map.of("max_brake_torque", 1000.0));
+        Map<String, Object> bad = CarlaSession.physicsCheck(carla, vehicle, Map.of("mass", 2100.0, "wheels", stock));
+        assertThat(bad.get("forced_ok")).isEqualTo(false);
+    }
+
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> rows(Map<String, Object> check) {
         return (List<Map<String, Object>>) check.get("fields");
