@@ -64,3 +64,9 @@
   .footerHint { flex-basis: 100%; }
   .reviewTable th, .reviewTable td { padding: var(--admin-space-2); font-size: var(--admin-font-caption); }
 }
+/* Let the whole dialog scroll when its fixed header/footer leave no room for fields. */
+@media (max-height: 480px) {
+  .dialog { overflow-y: auto; overscroll-behavior: contain; }
+  .shell { max-height: none; }
+  .body { overflow-y: visible; }
+}

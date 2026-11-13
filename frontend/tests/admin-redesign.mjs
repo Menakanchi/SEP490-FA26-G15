@@ -10,6 +10,7 @@ const output = path.resolve(root, process.env.ADMIN_UI_OUTPUT || "data/admin-bat
 await fs.mkdir(output, { recursive: true });
 const base = process.env.ADMIN_UI_URL || "http://localhost:3100";
 const viewports = [[1920,1080],[1366,768],[768,1024],[390,844]];
+const shortViewports = [[320,256],[667,375],[1280,480]];
 const sections = [["users","Tài khoản"],["workspaces","Workspace"],["tech-references","Tài liệu kỹ thuật"]];
 const actor = { id:999999,email:"admin-ui@example.invalid",full_name:"Quản trị UI Fixture",role:"ADMIN" };
 const stamp = "2026-11-04T08:00:00";
@@ -61,6 +62,32 @@ try {
   };
   const overflow=async()=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,"No document horizontal overflow");
   const shot=async name=>{await page.screenshot({path:path.join(output,`${name}.png`),fullPage:false});screenshots.push(`${name}.png`);};
+
+  // Locator visibility alone misses controls clipped by an overflowing dialog/body.
+  const tabToVisible=async(target,name)=>{
+    await target.waitFor();
+    for(let i=0;i<40&&!await target.evaluate(el=>el===document.activeElement);i++)await page.keyboard.press("Tab");
+    assert.equal(await target.evaluate(el=>el===document.activeElement),true,"Keyboard reaches "+name);
+    const visibility=await target.evaluate(el=>{
+      const r=el.getBoundingClientRect(),d=el.closest("dialog").getBoundingClientRect();
+      const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+      const clippedBy=[];
+      for(let parent=el.parentElement;parent;parent=parent.parentElement){
+        const style=getComputedStyle(parent),p=parent.getBoundingClientRect();
+        const top=p.top+parent.clientTop,left=p.left+parent.clientLeft;
+        if((/auto|scroll|hidden|clip/.test(style.overflowY)&&(r.top<top-1||r.bottom>top+parent.clientHeight+1))||
+           (/auto|scroll|hidden|clip/.test(style.overflowX)&&(r.left<left-1||r.right>left+parent.clientWidth+1)))clippedBy.push(parent.tagName+"."+parent.className);
+        if(parent.tagName==="DIALOG")break;
+      }
+      return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,
+        inViewport:r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth,
+        inDialog:r.top>=d.top&&r.bottom<=d.bottom&&r.left>=d.left&&r.right<=d.right,
+        hitTarget:hit===el||el.contains(hit),clippedBy,outline:getComputedStyle(el).outlineWidth};
+    });
+    await shot(name);
+    assert(visibility.inViewport&&visibility.inDialog&&visibility.hitTarget&&!visibility.clippedBy.length,name+" is visible and not clipped: "+JSON.stringify(visibility));
+    assert.equal(visibility.outline,"3px",name+" retains keyboard focus visibility");
+  };
 
   // Exercise the actual login form against an intercepted response, never production credentials.
   await page.goto(base+"/login");
@@ -115,7 +142,47 @@ try {
     assert.equal(await dialog.locator("h2").evaluate(el=>getComputedStyle(el).fontSize),"20px","List typography must not override modal titles");
     assert.equal(await dialog.evaluate(el=>getComputedStyle(el).getPropertyValue("--admin-control-height").trim()),"44px","Native dialog inherits mobile foundations");
 
-    await page.keyboard.press("Escape");await dialog.waitFor({state:"hidden"});
+    // Reach actual fields/actions at low heights, including review/discard and focus wrap.
+    const first=dialog.getByLabel(resource==="users"?"Email *":resource==="workspaces"?"Tên workspace *":"Mã *",{exact:true});
+    if(resource==="users"){
+      for(const [label,value] of [["Email *","short-viewport@example.invalid"],["Họ *","Nguyễn"],["Tên *","Kiểm thử"],["Mật khẩu ban đầu *","Fixture-only-123"]])await dialog.getByLabel(label,{exact:true}).fill(value);
+    }else if(resource==="workspaces"){
+      await first.fill("Workspace kiểm thử viewport thấp");
+      await dialog.getByRole("radio").check();
+    }else{
+      await first.fill("SHORT-VIEWPORT");
+      await dialog.getByLabel("Tên *",{exact:true}).fill("Tài liệu kiểm thử viewport thấp");
+    }
+    for(const [width,height] of shortViewports){
+      await page.setViewportSize({width,height});await overflow();
+      const prefix=resource+"-short-"+width+"x"+height;
+      await dialog.evaluate(el=>{el.scrollTop=0;});
+      const bounds=await dialog.boundingBox();
+      await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
+      await page.mouse.wheel(0,300);
+      await page.waitForFunction(()=>document.querySelector("dialog[open]").scrollTop>0);
+      await dialog.getByRole("button",{name:"Đóng biểu mẫu",exact:true}).focus();
+      await tabToVisible(first,prefix+"-field");
+      await tabToVisible(dialog.getByRole("button",{name:"Tạo mới",exact:true}),prefix+"-submit");
+      await page.keyboard.press("Tab");
+      assert.equal(await dialog.getByRole("button",{name:"Đóng biểu mẫu",exact:true}).evaluate(el=>el===document.activeElement),true,"Tab stays within dialog");
+      await page.keyboard.press("Shift+Tab");
+      await tabToVisible(dialog.getByRole("button",{name:"Tạo mới",exact:true}),prefix+"-wrap");
+      await page.keyboard.press("Enter");
+      await tabToVisible(dialog.getByRole("button",{name:"Xác nhận tạo",exact:true}),prefix+"-review");
+      assert.equal(writes.length,0,"Review never sends a mutation");
+      await page.keyboard.press("Escape");
+      await first.waitFor();
+      await page.keyboard.press("Escape");
+      await tabToVisible(dialog.getByRole("button",{name:"Bỏ thay đổi",exact:true}),prefix+"-discard");
+      await page.keyboard.press("Escape");
+      assert.notEqual(await first.inputValue(),"","Escape from discard keeps draft");
+    }
+    await page.keyboard.press("Escape");
+    await tabToVisible(dialog.getByRole("button",{name:"Bỏ thay đổi",exact:true}),resource+"-short-discard-final");
+    await page.keyboard.press("Enter");await dialog.waitFor({state:"hidden"});
+    assert.equal(await frame.getByRole("button",{name:"Thêm mới",exact:true}).evaluate(el=>el===document.activeElement),true,"Discard returns focus to opener");
+    await page.setViewportSize({width:390,height:844});
   }
   assert.equal(writes.length,0);
 
@@ -142,6 +209,7 @@ try {
   assert.equal(requests.filter(r=>r.path==="/vehicsim/admin/users").at(-1).query.page_size,"20");
 
   // PUT confirmation is still required; a rejected fixture save keeps editor values and shows no success.
+  await page.setViewportSize({width:320,height:256});
   await frame.getByRole("button",{name:/^Chỉnh sửa tài khoản /}).first().click();
   const editor=page.getByRole("dialog",{name:"Chỉnh sửa · Tài khoản",exact:true});await editor.waitFor();
   await editor.getByLabel("Tên *",{exact:true}).fill("Giữ dữ liệu nhập");
@@ -153,8 +221,11 @@ try {
   assert.equal(writes.length,1);assert.equal(writes[0].method,"PUT");
   assert.equal(writes[0].body.first_name,"Giữ dữ liệu nhập");
   assert.equal(await frame.getByText("Đã lưu thành công.",{exact:true}).count(),0);
+  await tabToVisible(editor.getByLabel("Tên *",{exact:true}),"users-short-error-field");
+  await tabToVisible(editor.getByRole("button",{name:"Lưu thay đổi",exact:true}),"users-short-error-submit");
   await editor.getByRole("button",{name:"Hủy",exact:true}).click();
   await editor.getByRole("button",{name:"Bỏ thay đổi",exact:true}).click();
+  await page.setViewportSize({width:390,height:844});
 
   // Frame/navigation must remain usable independently of each resource's loading/data/error states.
   for(const [resource,title] of sections){
@@ -203,6 +274,6 @@ try {
   await page.getByRole("button",{name:"Đăng xuất",exact:true}).filter({visible:true}).click();await page.waitForURL(base+"/login");
   assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);
   assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);
-  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports,screenshots,checks:["fixture login and legacy /admin entry both lead to /admin/users","three routes, unique h1, breadcrumbs, metadata, active nav","shared typography/control dimensions, visible focus, dialog token inheritance","desktop/tablet/mobile and no document overflow","native menu keyboard/Escape/client navigation/history","skip link focus and notification popup bounds","existing editor open/cancel, PUT confirmation/error preserves values","server search/pagination remains connected","loading/empty/503/403/retry","profile exit restores global shell","four non-Admin roles denied on all resources without Admin API reads","expired token, unauthenticated redirect, mobile logout"],adminWrites:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
+  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports,shortViewports,screenshots,checks:["fixture login and legacy /admin entry both lead to /admin/users","three routes, unique h1, breadcrumbs, metadata, active nav","shared typography/control dimensions, visible focus, dialog token inheritance","desktop/tablet/mobile and no document overflow","native menu keyboard/Escape/client navigation/history","three editors at short heights: unclipped fields/actions, Tab wrap, review/discard/Escape/draft/return focus; rejected PUT remains usable","skip link focus and notification popup bounds","existing editor open/cancel, PUT confirmation/error preserves values","server search/pagination remains connected","loading/empty/503/403/retry","profile exit restores global shell","four non-Admin roles denied on all resources without Admin API reads","expired token, unauthenticated redirect, mobile logout"],adminWrites:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
   console.log(`PASS Admin batch 1: ${screenshots.length} screenshots; browser HTTP fixtures only. Live backend/auth/DB/Figma NOT verified.`);
 } finally {await browser.close();}
