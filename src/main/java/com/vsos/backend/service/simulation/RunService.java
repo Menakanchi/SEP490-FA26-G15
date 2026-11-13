@@ -741,7 +741,7 @@ public class RunService {
 
     public Path carlaFile(long projectId, long runId, String name) {
         Row run = db.first("SELECT id FROM simulation_runs WHERE id = ? AND project_id = ? AND simulator_type = 'CARLA'", runId, projectId);
-        if (run == null || !(List.of("frames.csv", "collisions.json").contains(name) || name.matches("[0-9]{8}\\.png"))) {
+        if (run == null || !(List.of("frames.csv", "collisions.json", "ground_truth.csv").contains(name) || name.matches("[0-9]{8}\\.png"))) {
             throw new NotFoundException("CARLA artifact");
         }
         Path path = runDir(runId).resolve("sensors").resolve(name.endsWith(".png") ? "camera/" + name : name);

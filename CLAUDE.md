@@ -165,7 +165,7 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
   bộ động học: `java -cp target/classes com.vsos.core.bridge.BridgeMain kinematic <file>` (cần `mvnw compile`).
 - File tải xuống `scenario.xosc` được giữ nguyên; wrapper tạo `scenario.runtime.xosc` để gắn đường dẫn controller local.
   Một run còn có `result.json`, `scenario_runner.log`, `follow_hero.log` và thư mục sensor.
-- Xem CSV/ảnh trong `sensors/frames.csv`, `collisions.json`, `summary.json`, `camera/*.png`
+- Xem CSV/ảnh trong `sensors/frames.csv`, `ground_truth.csv`, `collisions.json`, `summary.json`, `camera/*.png`
   (recorder có thể đặt trong thư mục con theo lượt). Không ghi camera thì không có RGB/video để hiển thị.
 - Mô phỏng hoàn tất và AEB không đạt là hai trạng thái khác nhau. Worker có thể thoát 0 dù phát hiện va chạm.
   Trong tiêu chí ScenarioRunner, `CollisionTest = FAILURE` báo có va chạm, không tự có nghĩa tiến trình bị crash.

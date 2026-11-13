@@ -43,7 +43,8 @@ Wrapper kiểm client/server cùng phiên bản, chỉ gắn đường dẫn con
 tải xuống không bị sửa. Module controller phải đi cùng repo; controller mặc định của ScenarioRunner không phải AEB của dự án.
 
 File kết quả nội bộ vẫn là `result.json` để Java kiểm metadata và lưu cùng một luật chấm. Thư mục mỗi run có:
-`scenario.xosc`, `scenario.runtime.xosc`, `result.json`, log ScenarioRunner, `sensors/frames.csv`, `collisions.json` và
+`scenario.xosc`, `scenario.runtime.xosc`, `result.json`, log ScenarioRunner, `sensors/frames.csv`, `collisions.json`,
+`sensors/ground_truth.csv` (vector vị trí/vận tốc/gia tốc world của ego và mục tiêu mỗi tick; tải qua `carla-files`) và
 `sensors/camera/*.png`, cùng `core/vsos-core.jar` (bản lõi Java chụp lúc bắt đầu run; `lifecycle.json` ghi SHA-256 của nó, nên `mvnw clean`
 giữa run không làm hỏng run). Không có livestream/video giả: nếu không ghi camera thì giao diện nói rõ không có ảnh.
 

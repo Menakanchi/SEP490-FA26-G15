@@ -15,6 +15,7 @@ dữ liệu ở `data/` (ngoài git).
 | 4. Đọc lại physics | Xong: `physics_applied` (21/10) + `physics_check` so yêu cầu ↔ thực áp (22/10) | mục 4 |
 | 5. AEB tắt | **Chưa code** — đề xuất, chờ định nghĩa chỉ số (mục 5) | — |
 | 6. Thí nghiệm 4 xe (PDF §10.1) | Xong: `worker/vehicle_study.py`, 14 test; chạy CARLA thật 22/10 trên 4 xe + e-tron, cả ba phép đổi physics đúng chiều | mục 6 |
+| 7. Ground truth vector (kế hoạch 20/10 §5.2) | Xong 13/11: `sensors/ground_truth.csv` + vận tốc va chạm tương đối trước tiếp xúc trong `collisions.json` | mục 7 |
 | TD-34 tắt backend giữa run | Xong: ghi cờ dừng trước, chờ `STOP_GRACE_S` rồi mới giết; xoá TD-34 | `CarlaWebTest.shuttingDownMidRunAsksTheWorkerToCleanUpBeforeKillingIt` |
 | Report 7 (use case, sơ đồ, test case) | Bản nháp xong; các ô "điền khi nghiệm thu" cần chạy tay | [report7-man-chay-baseline.md](../../vehicsim/report7-man-chay-baseline.md) |
 
@@ -175,3 +176,27 @@ Nhận xét:
 - Giảm tốc khác nhau nhiều giữa các xe (1,77–6,01 m/s²) và đều thấp hơn mức xe thật phanh hết lực (~8–9 m/s²): số CARLA vẫn chỉ để quan sát/đối chiếu (TD-17).
   e-tron 4,08 m/s² ở khối lượng mặc định 2370 kg, khớp chiều với 4,67 m/s² đo ở mục 2 khi ép 2100 kg.
 - Truck có dải đo giảm tốc dài nhất (3,7 s), SUV/Van ngắn nhất (~1,0 s, vẫn trên ngưỡng 0,5 s).
+
+## 7. Ground truth vector cho ego và mục tiêu (13/11/2026)
+
+Kế hoạch 20/10 §5.2 yêu cầu ghi vector vị trí, vận tốc, gia tốc của ego **và** target kèm hệ tọa độ, đơn vị, frame/timestamp và chất lượng dữ liệu.
+Trước đó `result.json` chỉ có vết một chiều (`ego_x`, `ego_v`, `ego_a`, `ped_x`, `ped_y`, `ped_vy`) và `frames.csv` chỉ có tốc độ ego.
+
+Thay đổi: `sensor_recorder.py` ghi thêm `sensors/ground_truth.csv`, mỗi tick một dòng cho ego và mỗi người đi bộ/xe khác, lấy từ `ActorSnapshot` của
+`wait_for_tick()` (không thêm `tick()`, không thêm RPC mỗi khung; danh sách mục tiêu lấy lại mỗi 0,5 s). Cột: `frame, sim_time_s, actor_id, role, type_id`,
+`x/y/z_m, yaw_deg, vx/vy/vz_ms, ax/ay/az_ms2, speed_ms, a_along_v_ms2` (`dot(a, v)/|v|`, để trống khi |v| < 0,1 m/s). `collisions.json` thêm `other_actor_id`
+và `gt_frame_before, ego_speed_before_ms, other_speed_before_ms, relative_speed_before_ms`: frame cuối **trước** frame va chạm, độ lớn hiệu hai vector vận tốc;
+thiếu dữ liệu thì không ghi (không thành 0). `summary.json` thêm `ground_truth`: số frame, frame hụt, bước thời gian thực, actor, hệ tọa độ/đơn vị và số dòng có
+gia tốc phi vật lý. API `GET /runs/{id}/carla-files/ground_truth.csv` và nút **Tải ground truth** ở bảng CARLA. Không đổi `result.json`, lõi AEB hay luật chấm,
+nên không đổi identity (`-xosc5`). Test: `test_sensor_recorder.py` (5 test mới), `CarlaWebTest.artifactNamesCannotEscapeTheRunDirectory`.
+
+CARLA 0.9.16 thật, Town04, `.xosc` v5 xuất lại từ `data/radar-cases-20261022/c1`, `c2` (`data/gt-check-20261113/`):
+
+| Ca | Kết thúc | Frame GT | Bước (s) | Hụt | Gia tốc phi vật lý | Va chạm: `impact_speed_mps` (ego) | Tương đối trước tiếp xúc |
+|---|---|---|---|---|---|---|---|
+| c2 60 km/h, 15 m (2 lần) | `COLLISION` | 262 | 0,01 / 0,01 | 0 | 1 dòng ở 0,00 s | 16,625 | 16,958 (ego 16,671, người 3,0) — trùng cả 2 lần |
+| c1 40 km/h, 25 m | `EGO_STOPPED`, quãng dừng 11,594 m | 397 | 0,01 / 0,01 | 0 | 1 dòng ở 0,00 s | — | — |
+
+- Dòng phi vật lý duy nhất là frame đầu: ego −1664 m/s² do ScenarioRunner dịch xe lúc khởi tạo. CSV giữ số thô; dùng gia tốc GT phải bỏ khung này.
+- `impulse_ns` của va chạm với người đi bộ là 0,0 ở cả hai lần (CARLA không báo xung lực cho walker); không dùng cột này làm độ nặng va chạm.
+- Objective "vận tốc va chạm" hiện vẫn là tốc độ ego (CP_CROSSING). Số tương đối mới chỉ là dữ liệu; chọn dùng số nào là việc của thành viên 3 (§5.3).

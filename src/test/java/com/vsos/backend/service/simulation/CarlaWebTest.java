@@ -162,6 +162,9 @@ class CarlaWebTest {
         Files.createDirectories(image.getParent());
         Files.write(image, new byte[]{1, 2, 3});
         assertThat(runs.carlaFile(1, 42, "00000001.png")).isEqualTo(image);
+        Path groundTruth = directory.resolve("runs/42/sensors/ground_truth.csv");
+        Files.writeString(groundTruth, "frame,sim_time_s\n");
+        assertThat(runs.carlaFile(1, 42, "ground_truth.csv")).isEqualTo(groundTruth);
         when(db.first(anyString(), any(Object[].class))).thenReturn(null);
         assertThatThrownBy(() -> runs.carlaFile(2, 42, "00000001.png")).isInstanceOf(Vs.NotFoundException.class);
     }

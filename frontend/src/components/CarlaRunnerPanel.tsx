@@ -176,6 +176,7 @@ export function CarlaRunnerPanel() {
         <div className="flex gap-3">
           <PillButton onClick={() => void vehicsimApi.downloadCarlaFile(data.run_id, "frames.csv").catch(e => setError(e.message))}>Tải frames.csv</PillButton>
           <PillButton onClick={() => void vehicsimApi.downloadCarlaFile(data.run_id, "collisions.json").catch(e => setError(e.message))}>Tải va chạm</PillButton>
+          <PillButton onClick={() => void vehicsimApi.downloadCarlaFile(data.run_id, "ground_truth.csv").catch(e => setError(e.message))}>Tải ground truth</PillButton>
         </div>
         {image && <Image src={image} alt={`Ảnh camera CARLA ${runCode(data.run_id)}`} width={800} height={450} unoptimized className="w-full rounded-[16px]" />}
         {data.camera_frames.length > 1 && <label className="text-[12px] text-vehicsim-muted">Ảnh {frame + 1} / {data.camera_frames.length}
