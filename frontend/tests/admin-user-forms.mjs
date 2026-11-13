@@ -176,7 +176,7 @@ try{
  // Wrong target and late detail responses cannot open another user's form or replace an Add draft.
  detailMode="mismatch";await frame.getByRole("button",{name:"Chỉnh sửa tài khoản "+users[2].email,exact:true}).click();await frame.getByRole("alert").filter({hasText:"không khớp"}).waitFor();assert.equal(await dialog().count(),0);
  detailMode="slow";await frame.getByRole("button",{name:"Chỉnh sửa tài khoản "+users[2].email,exact:true}).click();assert.equal(await frame.getByRole("button",{name:"Thêm mới",exact:true}).isDisabled(),true);
- await frame.getByLabel("Vai trò",{exact:true}).selectOption("REVIEWER");await frame.getByRole("button",{name:"Bỏ lọc vai trò",exact:true}).waitFor();await ready();
+ await frame.getByLabel("Vai trò",{exact:true}).selectOption("REVIEWER");await frame.getByRole("button",{name:"Bỏ lọc vai trò: Người duyệt",exact:true}).waitFor();await ready();
  const late=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith("/users/102"));release("detail");await late;assert.equal(await dialog().count(),0);detailMode="normal";
  await page.goto(base+"/admin/users");await ready();await page.setViewportSize({width:1366,height:768});await open(actor.email);
  assert.equal(await dialog().getByLabel("Vai trò *",{exact:true}).isDisabled(),true);assert.equal(await dialog().getByLabel("Tài khoản đang hoạt động",{exact:true}).isDisabled(),true);

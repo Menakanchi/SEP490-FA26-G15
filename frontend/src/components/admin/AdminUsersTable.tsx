@@ -102,8 +102,8 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
       </div>
       {filtered && <div className={styles.chips} aria-label="Bộ lọc đang áp dụng">
         {query.q && <button onClick={() => change({ q: "", page: 1 })} aria-label={`Bỏ tìm kiếm: ${query.q}`}>Tìm: {query.q}<X size={13} aria-hidden="true" /></button>}
-        {query.role && <button onClick={() => change({ role: "", page: 1 })} aria-label="Bỏ lọc vai trò">{USER_ROLES[query.role]}<X size={13} aria-hidden="true" /></button>}
-        {query.status && <button onClick={() => change({ status: "", page: 1 })} aria-label="Bỏ lọc trạng thái">{USER_STATUSES[query.status]}<X size={13} aria-hidden="true" /></button>}
+        {query.role && <button onClick={() => change({ role: "", page: 1 })} aria-label={`Bỏ lọc vai trò: ${USER_ROLES[query.role]}`}>{USER_ROLES[query.role]}<X size={13} aria-hidden="true" /></button>}
+        {query.status && <button onClick={() => change({ status: "", page: 1 })} aria-label={`Bỏ lọc trạng thái: ${USER_STATUSES[query.status]}`}>{USER_STATUSES[query.status]}<X size={13} aria-hidden="true" /></button>}
         <button onClick={reset} className={styles.reset}>Xóa bộ lọc</button>
       </div>}
     </section>
@@ -116,13 +116,14 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
         <div className={styles.tableRegion + " " + userStyles.table} role="region" aria-label="Bảng tài khoản, cuộn ngang" tabIndex={0}>
           <table><caption className={styles.srOnly}>Danh sách tài khoản theo bộ lọc hiện tại</caption><thead><tr><th scope="col">Tài khoản</th><th scope="col">Vai trò</th><th scope="col">Trạng thái</th><th scope="col" className={styles.actions}>Thao tác</th></tr></thead><tbody>
             {data.items.map(row => {
-              const name = String(row.full_name || row.email || `Tài khoản #${row.id}`), email = String(row.email ?? "—");
+              const email = typeof row.email === "string" ? row.email.trim() : "";
+              const name = (typeof row.full_name === "string" ? row.full_name.trim() : "") || email || `Tài khoản #${row.id}`;
               const enabled = row.is_active === true || row.is_active === 1, disabled = row.is_active === false || row.is_active === 0;
               return <tr key={row.id}>
-                <th scope="row"><div className={styles.identity}><span className={styles.avatar} aria-hidden="true">{initials(name)}</span><span><span className={styles.name}>{name}{String(row.id) === user?.id && <small className={styles.you}>Bạn</small>}</span><span className={styles.email}>{email}</span></span></div></th>
+                <th scope="row"><div className={styles.identity}><span className={styles.avatar} aria-hidden="true">{initials(name)}</span><span><span className={styles.name}>{name}{String(row.id) === user?.id && <small className={styles.you}>Bạn</small>}</span><span className={styles.email}>{email || "—"}</span></span></div></th>
                 <td><span className={styles.role}>{USER_ROLES[String(row.role)] ?? String(row.role ?? "Chưa rõ")}</span></td>
                 <td><span className={`${styles.status} ${enabled ? styles.active : styles.inactive}`}>{enabled ? "Đang hoạt động" : disabled ? "Đã khóa" : "Chưa rõ"}</span></td>
-                <td className={styles.actions}><button className={styles.button} aria-label={`Chỉnh sửa tài khoản ${email}`} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); void edit(row.id); }}>{openingId === row.id ? "Đang mở…" : "Chỉnh sửa"}</button></td>
+                <td className={styles.actions}><button className={styles.button} aria-label={`Chỉnh sửa tài khoản ${email || `#${row.id}`}`} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); void edit(row.id); }}>{openingId === row.id ? "Đang mở…" : "Chỉnh sửa"}</button></td>
               </tr>;
             })}
           </tbody></table>

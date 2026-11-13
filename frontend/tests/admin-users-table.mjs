@@ -8,9 +8,15 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
 const output=path.resolve(root,process.env.ADMIN_UI_OUTPUT||"data/admin-batch3-ui");await fs.mkdir(output,{recursive:true});
 const base=process.env.ADMIN_UI_URL||"http://localhost:3100";
 const roles=["ADMIN","MANAGER","ENGINEER","REVIEWER","EXPERIENCER"];
+const incompleteUsers=[
+  {id:901,full_name:null,email:null,role:null,is_active:null},
+  {id:902,full_name:"   ",email:"  ",role:null,is_active:null},
+  {id:903,full_name:" ",email:"fallback@example.invalid",role:"ENGINEER",is_active:1},
+];
 const actor={id:999999,email:"self-admin@example.invalid",full_name:"Admin Fixture",role:"ADMIN"};
 const users=Array.from({length:61},(_,i)=>({id:i===0?actor.id:i===3?888888:100+i,email:i===0?actor.email:`fixture-${String(i).padStart(3,"0")}@example.invalid`,last_name:"Nguyễn",middle_name:"Fixture",first_name:String(i),full_name:i===0?actor.full_name:i===3?"Nguyễn Fixture với họ tên rất dài để kiểm tra bảng tài khoản trên màn hình nhỏ":`Nguyễn Fixture ${i}`,role:roles[i%5],is_active:i===0||i%3!==0,created_date:i===60?null:"2026-11-04T08:30:00"}));
 users[3].email="very-long-email-for-responsive-table-and-row-action-identification@example.invalid";
+users[3].full_name+=" "+"X".repeat(120);
 let role="ADMIN",mode="normal",detailMode="normal",saveMode="reject",delaySearch=null;
 const requests=[],writes=[],errors=[],unexpected=[],pending=[],screenshots=[];
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
@@ -42,11 +48,12 @@ try{
       if(mode==="network")return route.abort("failed");
       if(mode==="malformed")return reply({...response,total:null});
       if(mode==="empty")return reply({items:[],total:0,page:number,page_size:size});
+      if(mode==="incomplete")return reply({items:incompleteUsers,total:3,page:number,page_size:size});
       return reply(response);
     }
     const detail=p.match(/^\/vehicsim\/admin\/users\/(\d+)$/);
     if(detail){
-      const row=users.find(user=>user.id===Number(detail[1]));
+      const row=users.find(user=>user.id===Number(detail[1]))??incompleteUsers.find(user=>user.id===Number(detail[1]));
       if(req.method()==="PUT"){
         writes.push({path:p,method:req.method(),body:req.postDataJSON()});
         if(saveMode==="reject")return reply({detail:"Fixture: lưu thất bại, giữ dữ liệu nhập"},409);
@@ -80,7 +87,7 @@ try{
       if(!region)return false;
       const cells=[...region.querySelectorAll("tbody tr th")];
       const labels=[...frame.querySelectorAll("button[aria-label]")].map(button=>button.getAttribute("aria-label"));
-      const scopeMatches=labels.includes("Bỏ tìm kiếm: "+expected.q)===!!expected.q&&labels.includes("Bỏ lọc vai trò")===!!expected.role&&labels.includes("Bỏ lọc trạng thái")===!!expected.status;
+      const scopeMatches=labels.includes("Bỏ tìm kiếm: "+expected.q)===!!expected.q&&labels.some(label=>label.startsWith("Bỏ lọc vai trò"))===!!expected.role&&labels.some(label=>label.startsWith("Bỏ lọc trạng thái"))===!!expected.status;
       const text=expected.total.toLocaleString("vi-VN")+" kết quả · Trang "+expected.page+"/"+Math.max(1,Math.ceil(expected.total/expected.size));
       return scopeMatches&&frame.textContent.includes(text)&&cells.length===expected.emails.length&&cells.every((cell,i)=>cell.textContent.includes(expected.emails[i]));
     },{q,role:wantedRole,status,emails,total:matching.length,page:pageNumber,size});
@@ -100,13 +107,37 @@ try{
   assert.equal(await frame.getByRole("columnheader",{name:"Tài khoản",exact:true}).count(),1);
   assert.equal(await region().getByRole("columnheader").count(),4);
   assert.equal(await region().getByRole("columnheader",{name:"Ngày tạo",exact:true}).count(),0);
-  for(const [width,height] of [[1920,1080],[1366,768],[768,1024],[390,844]]){
+  for(const [width,height] of [[1920,1080],[1366,768],[768,1024],[390,844],[320,568]]){
     await page.setViewportSize({width,height});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     await shot(`users-${width}`);
   }
   await region().focus();await page.keyboard.press("ArrowRight");await page.waitForFunction(()=>document.querySelector('[aria-label="Bảng tài khoản, cuộn ngang"]').scrollLeft>0);
-  const sticky=await rowButtons().first().boundingBox();assert.ok(sticky.x>=0&&sticky.x+sticky.width<=390);
+  const sticky=await rowButtons().first().boundingBox();assert.ok(sticky.x>=0&&sticky.x+sticky.width<=320);
+  assert.equal(await region().evaluate(el=>getComputedStyle(el).outlineWidth),"3px");
+  await rowButtons().first().focus();
+  assert.equal(await rowButtons().first().evaluate(el=>getComputedStyle(el).outlineWidth),"3px");
   await page.setViewportSize({width:1366,height:768});
+
+  mode="empty";await page.goto(base+"/admin/users");
+  await frame.getByRole("heading",{name:"Chưa có tài khoản",exact:true}).waitFor();
+  assert.equal(await rowButtons().count(),0);await shot("empty-unfiltered");
+  mode="incomplete";await page.reload();await region().locator("tbody tr").first().waitFor();
+  for(const [width,height] of [[1366,768],[768,1024],[320,568]]){
+    await page.setViewportSize({width,height});await shot("incomplete-"+width);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    const rows=region().locator("tbody tr");assert.equal(await rows.count(),3);
+    assert.match(await rows.nth(0).getByRole("rowheader").innerText(),/Tài khoản #901/);
+    assert.match(await rows.nth(1).getByRole("rowheader").innerText(),/Tài khoản #902/,"Whitespace-only identity uses the ID fallback");
+    assert.match(await rows.nth(2).getByRole("rowheader").innerText(),/fallback@example.invalid/,"Missing full name falls back to available email");
+    assert.equal(await rows.nth(0).getByText("Chưa rõ",{exact:true}).count(),2,"Missing role/status are not invented");
+    assert.deepEqual(await rowButtons().evaluateAll(buttons=>buttons.map(button=>button.getAttribute("aria-label"))),["Chỉnh sửa tài khoản #901","Chỉnh sửa tài khoản #902","Chỉnh sửa tài khoản fallback@example.invalid"],"Missing emails keep distinct action names");
+  }
+  await frame.getByRole("button",{name:"Chỉnh sửa tài khoản #901",exact:true}).click();
+  await frame.getByRole("alert").filter({hasText:"không khớp hoặc không đầy đủ"}).waitFor();
+  assert.equal(requests.at(-1).path,"/vehicsim/admin/users/901");
+  assert.equal(await page.getByRole("dialog").count(),0,"Incomplete detail still cannot open an unsafe editor");
+  assert.equal(writes.length,0);
+  mode="normal";await page.setViewportSize({width:1366,height:768});await goto("");
 
   const initial=readCount();await frame.getByLabel("Từ khóa tìm kiếm",{exact:true}).fill("  Fixture  ");assert.equal(readCount(),initial);assert.equal(query().q,undefined);
   await frame.getByRole("button",{name:"Tìm",exact:true}).click();await ready();assert.equal(query().q,"Fixture");
@@ -118,17 +149,30 @@ try{
   await frame.getByLabel("Vai trò",{exact:true}).selectOption("ENGINEER");await ready();assert.equal(query().page,undefined);
   await frame.getByLabel("Trạng thái",{exact:true}).selectOption("ACTIVE");await ready();
   assert.equal(lastRead().query.role,"ENGINEER");assert.equal(lastRead().query.status,"ACTIVE");
+  assert.equal(await frame.getByRole("button",{name:/^Bỏ lọc vai trò/}).getAttribute("aria-label"),"Bỏ lọc vai trò: Kỹ sư","Role chip name includes its visible value");
+  assert.equal(await frame.getByRole("button",{name:/^Bỏ lọc trạng thái/}).getAttribute("aria-label"),"Bỏ lọc trạng thái: Đang hoạt động","Status chip name includes its visible value");
   assert.equal(await region().locator("tbody tr").count(),users.filter(row=>row.role==="ENGINEER"&&row.is_active).length);
   assert.equal(await region().getByText("Đã khóa",{exact:true}).count(),0);
   const scoped=page.url();await page.reload();await ready();assert.equal(page.url(),scoped);
   assert.equal(await frame.getByLabel("Từ khóa tìm kiếm",{exact:true}).inputValue(),"Fixture");
   await page.getByRole("navigation",{name:"Quản trị hệ thống",exact:true}).filter({visible:true}).getByRole("link",{name:/^Workspace/}).click();await frame.getByRole("region",{name:"Bảng workspace, cuộn ngang",exact:true}).waitFor();
   await page.goBack();await ready();assert.equal(page.url(),scoped);
-  await frame.getByRole("button",{name:"Bỏ lọc vai trò",exact:true}).click();await ready();assert.equal(query().role,undefined);
+  const roleChip=frame.getByRole("button",{name:"Bỏ lọc vai trò: Kỹ sư",exact:true});
+  await roleChip.focus();assert.equal(await roleChip.evaluate(el=>getComputedStyle(el).outlineWidth),"3px");
+  await page.keyboard.press("Enter");await ready();assert.equal(query().role,undefined);
   await page.goBack();await ready();assert.equal(query().role,"ENGINEER");await page.goForward();await ready();assert.equal(query().role,undefined);
+  await frame.getByRole("button",{name:"Bỏ lọc trạng thái: Đang hoạt động",exact:true}).focus();
+  await page.keyboard.press("Enter");await ready();assert.equal(query().status,undefined);assert.equal(query().q,"Fixture");
   await frame.getByRole("button",{name:"Xóa bộ lọc",exact:true}).first().click();await ready();assert.deepEqual(query(),{sort:"name",page_size:"10"});
   await frame.getByLabel("Số dòng mỗi trang",{exact:true}).selectOption("50");await ready();assert.equal(await rowButtons().count(),50);
   await frame.getByLabel("Số dòng mỗi trang",{exact:true}).selectOption("100");await ready();assert.equal(await rowButtons().count(),61);
+
+  for(const [role,status,roleLabel,statusLabel] of [["ADMIN","ACTIVE","Quản trị viên","Đang hoạt động"],["MANAGER","INACTIVE","Quản lý","Đã khóa"],["ENGINEER","ACTIVE","Kỹ sư","Đang hoạt động"],["REVIEWER","INACTIVE","Người duyệt","Đã khóa"],["EXPERIENCER","ACTIVE","Người trải nghiệm","Đang hoạt động"]]){
+    await goto("?q=Fixture&role="+role+"&status="+status);
+    const chips=[frame.getByRole("button",{name:"Bỏ lọc vai trò: "+roleLabel,exact:true}),frame.getByRole("button",{name:"Bỏ lọc trạng thái: "+statusLabel,exact:true})];
+    for(const chip of chips)assert((await chip.getAttribute("aria-label")).includes((await chip.innerText()).trim()),"Accessible chip name contains the visible label");
+    await shot("chips-"+role.toLowerCase()+"-"+status.toLowerCase());
+  }
 
   await goto("?q=%20Fixture%20&status=ROOT&role=constructor&sort=hack&page=-7&page_size=999");
   assert.deepEqual(query(),{q:"Fixture"});assert.equal(lastRead().query.page,"1");assert.equal(lastRead().query.page_size,"20");
@@ -159,6 +203,9 @@ try{
   const editButton=()=>frame.getByRole("button",{name:`Chỉnh sửa tài khoản ${target.email}`,exact:true});
   detailMode="error";await editButton().click();await frame.getByRole("alert").filter({hasText:"không mở được"}).waitFor();assert.equal(await rowButtons().count(),8);
   detailMode="slow";await editButton().click();assert.equal(await rowButtons().first().isDisabled(),true);
+  assert.equal(await frame.getByRole("button",{name:"Thêm mới",exact:true}).isDisabled(),true);
+  assert.equal(await editButton().innerText(),"Đang mở…");
+  assert.equal(await page.getByRole("dialog").count(),0,"Pending detail is not shown as an opened editor");
   const detailResponse=page.waitForResponse(r=>new URL(r.url()).pathname.endsWith(`/users/${target.id}`));detailMode="normal";release("detail");await detailResponse;
   const dialog=page.getByRole("dialog",{name:"Chỉnh sửa · Tài khoản",exact:true});await dialog.waitFor();
   assert.equal(await dialog.getByLabel("Email *",{exact:true}).inputValue(),target.email);
@@ -187,6 +234,6 @@ try{
   role="ADMIN";mode="expired";await page.goto(base+"/admin/users");await page.waitForURL(base+"/login");assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);
   const before=readCount();await page.goto(base+"/admin/users");await page.waitForURL(base+"/login");assert.equal(readCount(),before);
   assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);
-  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["fixture login; actual server search/filter/email sort/page sizes and row counts","URL reload/sidebar return/Back/Forward/chip reset/normalization/page clamp","four essential columns; four responsive widths; named scroll region keyboard and sticky actions","success focus and target identity even when the saved account leaves an active filter","old response error ignored; loading/empty/503/403/network/malformed/retry with no stale actions","detail loading/error/target identity; unchanged Editor cancel/confirmation/error preservation/server success","self role/status guard; four forbidden roles and 401/guest","only two deliberate fixture PUTs; no real writes"],liveBackendVerified:false,figmaVerified:false},null,2));
+  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["fixture login; actual server search/filter/email sort/page sizes and row counts","URL reload/sidebar return/Back/Forward/chip reset/normalization/page clamp","four essential columns; five responsive widths including 320px; named scroll region keyboard/focus and sticky actions","all five roles and both status chip names include visible values; keyboard removal retains other query values/history","null/whitespace identity fallbacks, unique ID actions; incomplete detail still rejected without mutation; unfiltered empty state","success focus and target identity even when the saved account leaves an active filter","old response error ignored; loading/empty/503/403/network/malformed/retry with no stale actions","detail loading/error/target identity; unchanged Editor cancel/confirmation/error preservation/server success","self role/status guard; four forbidden roles and 401/guest","only two deliberate fixture PUTs; no real writes"],liveBackendVerified:false,figmaVerified:false},null,2));
   console.log(`PASS users table: ${screenshots.length} screenshots; browser HTTP fixtures only. Live backend/auth/DB/Figma NOT verified.`);
 }finally{for(const item of pending)item.resolve();await browser.close();}
