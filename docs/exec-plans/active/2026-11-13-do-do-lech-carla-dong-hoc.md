@@ -6,7 +6,7 @@ phanh 100% đo được 9,13 m/s²). **Liên quan:** [kế hoạch công thức 
 (TuDM) — bước 1 của kế hoạch đó (mưa trên CARLA) trùng nhóm W dưới đây: chạy chung một lần, số liệu dùng cho cả hai; quyết định D2 (kẹp bàn
 đạp ở μ·g hay mưa chỉ là hình ảnh) chốt sau khi có nhóm W.
 
-**Bổ trợ không AEB:** [carla-ped-bench](../../vehicsim/carla-ped-bench/README.md) — công cụ chạy ngoài (repo riêng) đo độ lệch của chính CARLA
+**Bổ trợ không AEB:** [carla-ped-bench](../../vehicsim/carla-ped-bench/README.md) — công cụ chạy ngoài (repo riêng [phutro](https://github.com/Menakanchi/phutro)) đo độ lệch của chính CARLA
 (phanh, người đi bộ) so với mô hình lý tưởng bằng lệnh phanh cố định; dữ liệu đưa về [ket-qua/](../../vehicsim/carla-ped-bench/ket-qua/).
 
 ## Vì sao

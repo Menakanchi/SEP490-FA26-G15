@@ -4,8 +4,8 @@
 **Nguồn ca:** [kế hoạch đo độ lệch người đi bộ](../../exec-plans/active/2026-11-13-do-do-lech-carla-dong-hoc.md) (commit `a139b20`),
 chuyển sang dạng **không có AEB (open-loop)**.
 
-**Bố trí:** thư mục này (trong repo VehicSim) giữ **tài liệu và dữ liệu** thu về từ CARLA ([ket-qua/](ket-qua/)). **Code chạy** nằm ở một repo
-riêng, `carla-ped-bench` — tách khỏi VehicSim để không đụng code, test và CI của project.
+**Bố trí:** thư mục này (trong repo VehicSim) giữ **tài liệu và dữ liệu** thu về từ CARLA ([ket-qua/](ket-qua/)). **Code chạy** nằm ở repo riêng
+[phutro](https://github.com/Menakanchi/phutro) (có bản chép tài liệu này: `THIET-KE.md`) — tách khỏi VehicSim để không đụng code, test và CI của project.
 
 ## 1. Mục tiêu và phạm vi
 
@@ -175,11 +175,12 @@ Kèm mỗi run một thư mục `runs/<ngày-giờ>/<id>/` (`frames.csv`, `run.j
 vài MB một lần chạy; vượt 10 MB thì chỉ đưa Excel + `run.json`, `frames.csv` để ở repo code / ổ riêng và ghi đường dẫn. Đây là bộ dữ liệu
 bằng chứng có chọn lọc, khác thư mục `data/` (artifact chạy web, không commit).
 
-## 9. Cấu trúc code và cách dùng (repo `carla-ped-bench`)
+## 9. Cấu trúc code và cách dùng (repo [phutro](https://github.com/Menakanchi/phutro))
 
 ```
 carla-ped-bench/
-├─ README.md            cách cài / chạy; trỏ về tài liệu này trong repo VehicSim
+├─ README.md            cách cài / chạy
+├─ THIET-KE.md          bản chép tài liệu này (bản gốc ở đây; sửa ở đây rồi chép sang)
 ├─ bench.py             lệnh chính
 ├─ cases.yaml           danh sách ca (mục 4), sửa tay được
 ├─ config.yaml          host / port, đường dẫn CarlaUE4.exe, xe, t_d, J, a_100, hành lang

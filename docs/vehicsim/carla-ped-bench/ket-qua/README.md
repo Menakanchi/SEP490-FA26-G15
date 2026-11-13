@@ -1,6 +1,6 @@
 # Kết quả carla-ped-bench
 
-Dữ liệu thu từ CARLA bằng công cụ `carla-ped-bench` (repo riêng), theo [thiết kế](../README.md). Chưa có lần chạy nào.
+Dữ liệu thu từ CARLA bằng công cụ `carla-ped-bench` (repo riêng [phutro](https://github.com/Menakanchi/phutro)), theo [thiết kế](../README.md). Chưa có lần chạy nào.
 
 Mỗi lần chạy một thư mục `<YYYY-MM-DD_HHMM>/`, do lệnh `--publish` của công cụ tạo:
 
