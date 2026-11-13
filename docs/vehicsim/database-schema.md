@@ -1,4 +1,4 @@
-# Từ điển dữ liệu VehicSim (MySQL, 29 bảng)
+# Từ điển dữ liệu VehicSim (MySQL, 30 bảng)
 
 Tài liệu giải thích **từng bảng, từng cột** của database VehicSim: nghĩa nghiệp vụ, ràng buộc, ai
 ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệu nhóm 06/10/2026).
@@ -11,6 +11,7 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
   (`project_members`), loại lỗi `NEAR_MISS` và 2 loại thông báo mới: [ADR-037](../adr/ADR-037-thanh-vien-project-near-miss.md).
   Bỏ phiên bản xe, Admin tạo workspace, báo cáo theo project (còn 29 bảng):
   [ADR-038](../adr/ADR-038-bo-phien-ban-xe-admin-tao-workspace.md).
+- **01/11/2026:** nhánh đề xuất migration 013 thêm `recommendation_decisions` (30 bảng), lưu từng lần quyết định của Reviewer; [ADR-047](../adr/ADR-047-lich-su-quyet-dinh-reviewer.md) đang Proposed, chưa áp DB dev.
 - **DB tạo từ bản cũ hơn:** chạy các file trong `database/mysql/migrations/` theo thứ tự (§10).
 - **Máy kiểm:** `test_schema_doc_covers_every_table_and_column` bắt buộc mọi bảng và cột trong file SQL
   có mặt ở đây. Bảng cột ở §6 được sinh từ file SQL ngày 07/10/2026; về sau đổi cột thì sửa tay §6.
@@ -22,10 +23,10 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 
 | | Số lượng |
 |---|---|
-| Bảng | 29 |
-| Cột | 378 |
-| Khoá ngoại | 80 (nhiều khoá ghép) |
-| CHECK | 27 |
+| Bảng | 30 |
+| Cột | 397 |
+| Khoá ngoại | 82 (nhiều khoá ghép) |
+| CHECK | 30 |
 | Engine / charset | InnoDB · `utf8mb4` / `utf8mb4_0900_ai_ci` · MySQL ≥ 8.0.16 (cần CHECK) |
 
 | # | Nhóm | Bảng | Code đang dùng |
@@ -114,7 +115,7 @@ CHECK `purpose = X ⇔ cột liên kết có giá trị`, cộng FK ghép với 
 ### 3.4 Danh tính bộ mô phỏng (`simulator_version`)
 
 `simulation_runs.simulator_version` ghi **chính xác** bộ mô phỏng: `vehicsim-kinematic-1.0` (bộ động học,
-đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc4` (run cũ còn `-xosc1/2/3`; `carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
+đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc5` (run cũ còn `-xosc1/2/3/4`; `carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
 `client.get_server_version()`). `simulator_type` (KINEMATIC / CARLA) chỉ để lọc; CHECK ép hai cột khớp.
 Vì `simulator_version` nằm trong `fk_sr_baseline`, MySQL **không cho** ghép động học với CARLA, hay
 CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](../adr/ADR-027-bo-mo-phong-cam-duoc-hop-dong-json.md)).
@@ -223,6 +224,8 @@ erDiagram
     regression_tests |o--o{ simulation_runs : pairs
     regression_tests ||--o{ regression_test_items : items
     regression_tests ||--o| engineering_recommendations : recommendation
+    engineering_recommendations ||--o{ recommendation_decisions : decisions
+    users ||--o{ recommendation_decisions : reviewer
     analysis_results |o--o{ simulation_runs : robustness
 ```
 
@@ -237,7 +240,7 @@ erDiagram
 | 3. Phân tích lỗi | Ca lỗi, phát lại | `views.py` (chỉ đọc) | — đọc `failures`, `root_causes`, `simulation_runs.telemetry_json` |
 | 4. Candidate | Cấu hình AEB | `aeb.py` | `aeb_versions` (CANDIDATE), `aeb_parameter_values` (kiểm `[min, max]`) |
 | 5. Regression | Kiểm định | `regression.py` + `runs.py` | `regression_tests` (chốt xe + bộ mô phỏng), `simulation_runs` (REGRESSION); khi chốt: `regression_test_items`, `engineering_recommendations` |
-| 6. Quyết định (chỉ REVIEWER) | Khuyến nghị → Review | `regression.decide` | `engineering_recommendations`; Accept: baseline cũ `ARCHIVED`, candidate `BASELINE`; Reject: candidate `REJECTED` |
+| 6. Quyết định (chỉ REVIEWER) | Khuyến nghị → Review | `regression.decide` | `engineering_recommendations`; Accept: baseline cũ `ARCHIVED`, candidate `BASELINE`; Reject: candidate `REJECTED`. Project cá nhân: chủ project tự chọn (`ProjectService.adopt`, ADR-046), cùng cách đổi trạng thái `aeb_versions`; không ghi `engineering_recommendations` (`ck_er_no_self_review`), lý do nối vào `aeb_versions.notes` |
 
 ## 6. Từ điển từng bảng
 
@@ -302,7 +305,7 @@ Chưa có API Admin tạo workspace / gán Manager.
 
 #### `workspace_members` — FE-03
 
-Engineer / Reviewer thuộc workspace nào, do Manager thêm. **Code dùng:** `WorkspaceService` thêm / bớt (ADR-045: chỉ thêm tài khoản tự đăng ký EXPERIENCER đang hoạt động, Manager / Admin chọn role ENGINEER / REVIEWER và `users.role_id` đổi theo; bớt khỏi workspace cuối cùng thì role đã cấp trả về EXPERIENCER; workspace ARCHIVED không đổi; chủ project trong workspace chưa bớt được). Thành viên chưa lọc dữ liệu người đó thấy (TD-30).
+Engineer / Reviewer thuộc workspace nào, do Manager thêm. **Code dùng:** `WorkspaceService` thêm / bớt (ADR-045: chỉ thêm tài khoản tự đăng ký EXPERIENCER đang hoạt động, Manager / Admin chọn role ENGINEER / REVIEWER và `users.role_id` đổi theo; bớt khỏi workspace cuối cùng thì role đã cấp trả về EXPERIENCER; workspace ARCHIVED không đổi; chủ project trong workspace chưa bớt được). Riêng Reviewer đã lọc dữ liệu kỹ thuật theo membership này (ADR-048); role khác còn TD-30.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -345,7 +348,7 @@ Thông báo cho từng người. **Code dùng:** `NotificationService` (chuông 
 
 #### `workspace_tasks` — FE-03-07, FE-13
 
-Task Manager giao cho Engineer / Reviewer. **Code dùng:** `WorkspaceTaskService` (màn `/workspace/{id}/tasks`): chỉ giao cho thành viên đang hoạt động, project phải thuộc workspace và ACTIVE, hạn mới không ở quá khứ, `DONE` thì `progress_pct = 100`; task có báo cáo không xoá (FK `fk_tr_task` CASCADE sẽ xoá báo cáo) và không đổi `project_id` (FK ghép chặn); bớt thành viên thì task chưa DONE của họ về `assigned_to_user_id = NULL`. Người được giao chưa tự cập nhật tiến độ.
+Task Manager giao cho Engineer / Reviewer. **Code dùng:** `WorkspaceTaskService` (màn `/workspace/{id}/tasks`): chỉ giao cho thành viên đang hoạt động, project phải thuộc workspace và ACTIVE, hạn mới không ở quá khứ, `DONE` thì `progress_pct = 100`; task có báo cáo không xoá (FK `fk_tr_task` CASCADE sẽ xoá báo cáo) và không đổi `project_id` (FK ghép chặn); bớt thành viên thì task chưa DONE của họ về `assigned_to_user_id = NULL`. `MemberWorkService` cho người được giao cập nhật TODO/IN_PROGRESS/REVIEW qua `/api/v1/vehicsim/my/tasks/{id}/progress`; DONE do Manager xác nhận. Workspace/project lưu trữ khóa cập nhật ở service và câu UPDATE có điều kiện.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -886,6 +889,23 @@ Khuyến nghị kỹ thuật từ một regression; Reviewer quyết định. Kh
 
 CHECK: `ck_er_decision`, `ck_er_no_self_review`.
 
+#### `recommendation_decisions` — Lịch sử Reviewer (migration 013)
+
+Mỗi lần Accept / Reject / Request more tests ghi thêm một dòng, cùng transaction với cập nhật khuyến nghị và baseline/candidate. Không có API sửa/xóa lịch sử. `engineering_recommendations` vẫn giữ quyết định mới nhất cho các màn chi tiết. Tên người duyệt được chụp lại để đổi tên tài khoản không làm đổi metadata của sự kiện.
+
+| Cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `id` | BIGINT UNSIGNED | PK, ID sự kiện; phân biệt nhiều quyết định trên cùng khuyến nghị |
+| `recommendation_id` | BIGINT UNSIGNED | FK engineering_recommendations, RESTRICT |
+| `decision` | ENUM | ACCEPT / REJECT / REQUEST_MORE_TESTS |
+| `reviewed_by_user_id` | BIGINT UNSIGNED | FK users, danh tính người duyệt ổn định |
+| `reviewer_name` | VARCHAR(255) | Tên chụp lúc quyết định; snapshot cũ là tên lúc migration |
+| `reviewed_at` | DATETIME | Thời điểm quyết định UTC; cùng thời điểm sắp theo id |
+| `reason` | TEXT NULL | Lý do; bắt buộc với sự kiện REVIEW mới |
+| `review_conditions` | TEXT NULL | Điều kiện / việc cần làm tiếp |
+| `confirmed` | BOOLEAN NULL | TRUE cho REVIEW mới; NULL cho snapshot cũ vì DB cũ không lưu xác nhận |
+| `source` | ENUM | REVIEW / LEGACY_SNAPSHOT |
+
 ### 6.9 Tri thức kỹ thuật
 
 #### `tech_references` — tri thức
@@ -996,3 +1016,16 @@ Tập baseline chỉ lấy scenario_versions.source = GENERATED; bản gốc ch�
 - Migration 012 dừng nếu có tên trùng, không xóa/đổi dữ liệu cũ. Kiểm SHOW CREATE TABLE khi tiếp tục sau lỗi vì MySQL DDL auto-commit.
 - API Admin chỉ ghi name/description/manager_id của workspace; không có cấu hình chung trong schema. Manager được chọn phải MANAGER đang hoạt động, thông báo WORKSPACE_ASSIGNED cùng transaction.
 - Chặn đổi role/khóa khi còn quản lý workspace kể cả ARCHIVED; chặn đổi role khi còn workspace membership/project sở hữu/task mở. Không tự di chuyển dữ liệu để đổi quyền.
+
+## Vận hành migration 013
+
+Migration `013_2026-11-01_reviewer-decision-history.sql` bổ sung bảng (29 → 30), backfill idempotent quyết định gần nhất còn trong DB. Không thể khôi phục những lần đã bị ghi đè. Người dùng chọn giữ bảng trên nhánh để nhóm duyệt sau; ADR-047 vẫn Proposed. Chỉ triển khai sau khi được duyệt: dừng backend, sao lưu, chạy migration trước code mới; rollback code giữ bảng; khi nâng lại chạy backfill để giữ lần ghi của code cũ.
+
+Quyền Reviewer: header `X-VehicSim-Project` chọn project trong workspace còn membership; không gửi thì chọn project của mình, ưu tiên ACTIVE. Context trả `reviewer_projects` và `reviewer_can_decide`; project/workspace lưu trữ chỉ đọc. Quyết định kiểm và khóa membership + project/workspace trong transaction. Các role khác vẫn dùng project ACTIVE mặc định (TD-30).
+
+
+## Project của request HTTP
+
+`security/ProjectAccess` là bean request scope: đọc principal/header, resolve project một lần và dùng cùng ID cho kiểm quyền cùng các view/service. `ReviewerScope` chỉ truy vấn project theo membership, không có canSee kiểm lần hai. `Queries.defaultProject` là truy vấn tường minh, không đọc HTTP/security; job nền tiếp tục nhận project ID qua tham số, không gọi ProjectAccess ngoài request.
+
+Context chấp nhận project chưa chọn xe và trả `vehicle=null`. Frontend chờ context, chốt ID trả về rồi mới tải màn; JSON, POST quyết định và tải file dùng cùng header. Đổi mật khẩu giữ project; đăng nhập mới/đăng xuất xóa lựa chọn. Refresh lỗi giữ nguyên lựa chọn, khóa duyệt và báo lỗi; role khác giữ context tốt gần nhất. Nút Chọn lại project chỉ hiện cho Reviewer khi `GET /api/v1/vehicsim/reviewer/projects` còn trả project thuộc membership; route này độc lập lựa chọn đang lỗi. POST quyết định thiếu header project bị 400, tránh dùng mặc định đã đổi giữa các request (ADR-048, UC-62/UC-63).

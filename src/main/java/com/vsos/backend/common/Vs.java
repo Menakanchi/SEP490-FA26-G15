@@ -43,8 +43,14 @@ public final class Vs {
     public static final Map<String, String> WEATHER_LABELS = Map.of(
             "CLEAR", "clear", "CLOUDY", "cloudy", "RAIN", "rain", "HEAVY_RAIN", "heavy rain", "FOG", "fog");
     public static final Map<String, String> TIME_LABELS = Map.of("DAY", "Day", "DUSK", "Dusk", "NIGHT", "Night");
+    /**
+     * Ma sát mặt đường ghi vào {@code scenario_versions.road_friction} khi tạo họ kịch bản — đây là giá trị mọi run trên web dùng (bundle và
+     * {@code .xosc} mang nó tường minh). RAIN 0,65 / HEAVY_RAIN 0,55 theo Bosch (Reif 2014, Bảng 1; nhóm chưa mở sách gốc, xem
+     * {@code nguon-va-kiem-chung-du-lieu.md} A5); đổi 11/11/2026 từ 0,70. Họ đã tạo giữ giá trị đã lưu. Bảng dự phòng của lõi
+     * ({@code CrossingCase.WEATHER_FRICTION}) cố ý giữ 0,70 để bundle cũ không ghi ma sát chạy lại ra đúng kết quả cũ.
+     */
     public static final Map<String, Double> WEATHER_FRICTION = Map.of(
-            "CLEAR", 1.0, "CLOUDY", 1.0, "FOG", 1.0, "RAIN", 0.70, "HEAVY_RAIN", 0.55);
+            "CLEAR", 1.0, "CLOUDY", 1.0, "FOG", 1.0, "RAIN", 0.65, "HEAVY_RAIN", 0.55);
 
     /** UTC dạng naive, như quy ước DATETIME của MySQL ở backend cũ. */
     public static LocalDateTime now() {
@@ -104,6 +110,13 @@ public final class Vs {
         Object speed = ir.get("ego_speed_kmh");
         double kmh = speed instanceof Number n ? n.doubleValue() : 0.0;
         StringBuilder sb = new StringBuilder(time).append(" · ").append(weather).append(" · ").append(fmt0(kmh)).append(" km/h");
+        if (ir.get("category") != null && ir.get("target_speed_kmh") instanceof Number target) {
+            // Xe phía trước (ADR-050): "· CCRB lead 50 km/h at 40 m"
+            sb.append(" · ").append(ir.get("category")).append(" lead ").append(fmt0(target.doubleValue())).append(" km/h");
+            if (ir.get("initial_distance_m") instanceof Number d) {
+                sb.append(" at ").append(fmt0(d.doubleValue())).append(" m");
+            }
+        }
         if (Boolean.TRUE.equals(ir.get("stops_at_curb"))) {
             sb.append(" · stops at curb");
         }

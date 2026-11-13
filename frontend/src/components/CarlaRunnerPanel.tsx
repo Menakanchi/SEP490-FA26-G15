@@ -63,7 +63,7 @@ export function CarlaRunnerPanel() {
     return () => { current = false; if (url) URL.revokeObjectURL(url); };
   }, [data, cameraFrame]);
   const ready = connection?.connected && connection.compatible && connection.scenario_runner;
-  // Backend chỉ cấu hình profile .xosc hiện hành cho run mới (hiện -xosc4); không gắn số phiên bản ở đây để đổi profile không khoá nút.
+  // Backend chỉ cấu hình profile .xosc hiện hành cho run mới (hiện -xosc5); không gắn số phiên bản ở đây để đổi profile không khoá nút.
   const xoscProfile = /-xosc\d+$/.test(connection?.simulator ?? "");
   const familyId = family || String(ctx?.families[0]?.id ?? "");
 
@@ -112,7 +112,7 @@ export function CarlaRunnerPanel() {
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <select aria-label="Họ kịch bản chạy CARLA" value={familyId} onChange={e => setFamily(e.target.value)}
-          className="min-w-[220px] rounded-full border border-vehicsim-line bg-white px-4 py-3 text-[13px]">
+          className="min-w-[220px] rounded-full border border-vehicsim-line bg-vehicsim-surface px-4 py-3 text-[13px]">
           {!ctx?.families.length && <option value="">{ctx === null ? "Đang tải họ kịch bản…" : "Chưa có họ kịch bản"}</option>}
           {ctx?.families.map(f => <option key={f.id} value={f.id}>{f.code} · {f.name}</option>)}
         </select>
@@ -127,7 +127,7 @@ export function CarlaRunnerPanel() {
           </PillButton>
         )}
         {familyDone && (
-          <PillButton href={`/analysis/failures?scenario_id=${familyId}`}>Tiếp tục: Phân tích kết quả →</PillButton>
+          <PillButton href={`/analysis/failures?scenario_id=${familyId}`}>Tiếp tục: Phân tích kết quả</PillButton>
         )}
       </div>
       {connection?.simulator && (

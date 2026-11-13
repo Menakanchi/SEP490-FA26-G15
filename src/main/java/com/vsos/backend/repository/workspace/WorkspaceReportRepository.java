@@ -54,6 +54,12 @@ public class WorkspaceReportRepository {
         return db.list(sql.toString(), args.toArray()).stream().map(WorkspaceReportRepository::toItem).toList();
     }
 
+    /** Báo cáo người này đã nộp ở mọi workspace: chờ duyệt trước, rồi mới nhất trước. */
+    public List<ReportItem> listSubmittedBy(long userId) {
+        return db.list(SELECT + " WHERE r.submitted_by_user_id = ? ORDER BY r.status <> 'SUBMITTED', r.created_date DESC, r.id DESC", userId)
+                .stream().map(WorkspaceReportRepository::toItem).toList();
+    }
+
     /** Báo cáo thuộc workspace, hoặc null. */
     public ReportItem find(long workspaceId, long reportId) {
         Row row = db.first(SELECT + " WHERE p.workspace_id = ? AND r.id = ?", workspaceId, reportId);
@@ -80,5 +86,43 @@ public class WorkspaceReportRepository {
                 r.str("report_title"), r.str("report_content"), r.str("attachment_url"), r.str("status"),
                 r.isNull("reviewer_id") ? null : new UserRef(r.lng("reviewer_id"), r.str("reviewer_name"), r.str("reviewer_email")),
                 r.ts("reviewed_at"), r.str("review_note"), r.ts("created_date"));
+    }
+    /** Nộp báo cáo công việc mới. */
+    public long insert(long projectId, Long taskId, long submitterId, String title, String content, String attachmentUrl) {
+        return db.insert("""
+                INSERT INTO task_reports (project_id, task_id, submitted_by_user_id, report_title, report_content, attachment_url, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'SUBMITTED')
+                """, projectId, taskId, submitterId, title, content, attachmentUrl);
+    }
+
+    /** Workspace chứa báo cáo (qua project), hoặc null. */
+    public Long workspaceOf(long reportId) {
+        Object id = db.scalar("SELECT p.workspace_id FROM task_reports r JOIN projects p ON p.id = r.project_id WHERE r.id = ?", reportId);
+        return id == null ? null : ((Number) id).longValue();
+    }
+
+    /** Báo cáo theo id. */
+    public ReportItem findById(long reportId) {
+        Row row = db.first(SELECT + " WHERE r.id = ?", reportId);
+        return row == null ? null : toItem(row);
+    }
+
+    /** Báo cáo người dùng này đã nộp, chỉ trong workspace người đó còn là thành viên. */
+    public List<ReportItem> listForSubmitter(long submitterId, String status, Long projectId) {
+        StringBuilder sql = new StringBuilder(SELECT).append("""
+                 WHERE r.submitted_by_user_id = ?
+                   AND EXISTS (SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = p.workspace_id AND wm.user_id = r.submitted_by_user_id)
+                """);
+        List<Object> args = new ArrayList<>(List.of(submitterId));
+        if (status != null) {
+            sql.append(" AND r.status = ?");
+            args.add(status);
+        }
+        if (projectId != null) {
+            sql.append(" AND r.project_id = ?");
+            args.add(projectId);
+        }
+        sql.append(" ORDER BY r.status <> 'SUBMITTED', r.created_date DESC, r.id DESC");
+        return db.list(sql.toString(), args.toArray()).stream().map(WorkspaceReportRepository::toItem).toList();
     }
 }

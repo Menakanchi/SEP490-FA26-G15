@@ -10,6 +10,7 @@ import {
   getStoredToken,
   postLogin,
   postRegister,
+  setSelectedProjectId,
   storeToken,
   updateMyProfile,
   verifyRegistration,
@@ -79,8 +80,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const applySession = useCallback((session: SessionResponse): User => {
-    storeToken(session.access_token);
+  const applySession = useCallback((session: SessionResponse, preserveProject = false): User => {
+    storeToken(session.access_token, preserveProject);
     const nextUser = toUser(session.user);
     setToken(session.access_token);
     setUser(nextUser);
@@ -89,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearSession = useCallback(() => {
     storeToken(null);
+    setSelectedProjectId(null);
     setToken(null);
     setUser(null);
   }, []);
@@ -123,25 +125,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Backend từ chối token giữa phiên (hết hạn, đã đổi mật khẩu ở máy khác): bỏ phiên, shell tự chuyển về /login.
   useEffect(() => onSessionExpired(clearSession), [clearSession]);
 
-  const login = useCallback(
-    async (email: string, password: string) => applySession(await postLogin(email.trim(), password)),
+  const startSession = useCallback(
+    (session: Parameters<typeof applySession>[0]) => {
+      setSelectedProjectId(null);
+      return applySession(session);
+    },
     [applySession],
   );
 
+  const login = useCallback(
+    async (email: string, password: string) => startSession(await postLogin(email.trim(), password)),
+    [startSession],
+  );
+
   const register = useCallback(
-    async (payload: RegisterPayload) => applySession(await postRegister({ ...payload, email: payload.email.trim() })),
-    [applySession],
+    async (payload: RegisterPayload) => startSession(await postRegister({ ...payload, email: payload.email.trim() })),
+    [startSession],
   );
 
   const registerWithCode = useCallback(
     async (payload: { email: string; code: string; full_name: string; password: string }) =>
-      applySession(await verifyRegistration({ ...payload, email: payload.email.trim() })),
-    [applySession],
+      startSession(await verifyRegistration({ ...payload, email: payload.email.trim() })),
+    [startSession],
   );
 
   const changePassword = useCallback(
     async (oldPassword: string, newPassword: string) => {
-      applySession(await changeMyPassword(oldPassword, newPassword));
+      applySession(await changeMyPassword(oldPassword, newPassword), true);
     },
     [applySession],
   );
@@ -185,6 +195,8 @@ export function useAuth(): AuthContextType {
 
 /** Trang đích sau khi đăng nhập, theo role. */
 export function homeFor(role: Role): string {
+  // EXPERIENCER bắt đầu từ danh sách project cá nhân; ADMIN vào màn quản trị; role khác vào dashboard.
+  if (role === "experience") return "/projects";
   if (role === "admin") return "/admin/users";
   return "/";
 }

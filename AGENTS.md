@@ -13,7 +13,7 @@ chỉ từ tên màn hình, bảng DB hoặc tài liệu kế hoạch.
 
 VehicSim / VSOS (SEP490-FA26-G15) hỗ trợ kỹ sư kiểm thử, hiệu chỉnh AEB/FCW:
 tạo tình huống giả lập phanh, phân tích lỗi, tạo candidate và kiểm chứng bằng regression.
-Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (29 bảng) + Redis + adapter CARLA Python**.
+Stack hiện tại: **Spring Boot Java 21 + Next.js 16 + MySQL (30 bảng, ADR-047 Proposed) + Redis + adapter CARLA Python**.
 Java xử lý REST/nghiệp vụ/DB và lõi AEB, mô phỏng, chấm điểm (`com.vsos.core`, ADR-042);
 Python `worker/` chỉ gọi API CARLA và nói chuyện với lõi Java qua cầu nối stdio `vsos-bridge/1`.
 Backend FastAPI và Scenario Forge đã gỡ; không khôi phục kiến trúc cũ khi làm tính năng mới.
@@ -22,8 +22,8 @@ Luồng mục tiêu 5 màn: **Thiết kế kịch bản → Baseline → Phân t
 Code đã có mô tả, sinh biến thể, baseline, phân tích, candidate thủ công và regression;
 **MOBO/Pareto/Sensitivity/Robustness chưa triển khai** (TD-39, TD-06).
 CARLA web đã có `.xosc` + ScenarioRunner 0.9.16, RGB/sensor; **chưa có API/nút hủy** (TD-37).
-Schema có 7 category nhưng mô phỏng/xuất `.xosc` hiện chỉ hỗ trợ `CP_CROSSING` (TD-42).
-Perception CARLA dùng ground truth; vật lý phanh chưa hiệu chuẩn (TD-01, TD-17).
+Schema có 7 category; bộ động học và `.xosc`/CARLA chạy `CP_CROSSING` và CCRs/CCRm/CCRb (ADR-050); còn 3 nhóm (TD-42).
+Perception CARLA dùng ground truth (TD-01); phanh CARLA đã hiệu chuẩn mô-men cho e-tron, `.xosc` v5 / `-xosc5` (ADR-051), còn lệch ở tốc độ thấp và ma sát (TD-17).
 Hướng đi ngang đã sửa ở xosc2; người "dừng ở lề" đứng lại ở lề từ xosc4 (23/10/2026, kiểm CARLA thật).
 
 ## Năm phần bàn giao theo chức năng
@@ -95,13 +95,15 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
 1. Mọi lời gọi LLM qua `LlmService`; bộ sinh `.xosc` offline, không dùng LLM.
 2. Java, kể cả lõi `com.vsos.core`, không import `carla`; lời gọi API CARLA chỉ ở adapter trong `worker/`.
 3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập. Mỗi tài khoản một role:
-   ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ đọc; chỉ REVIEWER Accept/Reject.
-   Cách ly project/workspace chưa hoàn thiện (TD-30); không giả định mọi người có dữ liệu riêng.
+   ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ đọc; REVIEWER được chạy regression và Accept/Reject theo [ADR-049](docs/adr/ADR-049-reviewer-chay-regression-de-kiem-tra.md).
+   Header `X-VehicSim-Project` chọn project (`ProjectAccess`): EXPERIENCER trong project cá nhân (`ProjectScope`), Reviewer trong project
+   thuộc workspace mình là thành viên (`ReviewerScope`); role khác vẫn chung project nhóm (TD-30).
 4. Cùng biến thể + seed phải tái lập được; candidate chạy đúng seed baseline.
    So sánh phải cùng xe, biến thể và phiên bản simulator.
    Không đổi tham số kịch bản và tham số AEB cùng lúc trong một lần so sánh.
 5. Không tự Accept; test FAILED không Accept; quyết định cần lý do và xác nhận.
    Baseline đã đổi thì không Accept kết quả test cũ. Pareto không đồng nghĩa regression PASSED.
+   Project cá nhân không có Reviewer: chủ project tự chọn baseline theo đúng các điều kiện này (ADR-046, Proposed).
 6. Chỉ 4 tham số AEB chỉnh được theo ADR-040; seed Java/SQL khớp `AebParams`.
    Ba mục tiêu: RMS jerk, vận tốc va chạm, quãng phanh dừng; thống nhất ràng buộc tối ưu/regression.
 7. Không lộ email tồn tại; OTP hash, dùng một lần; mật khẩu tối đa 72 byte BCrypt.

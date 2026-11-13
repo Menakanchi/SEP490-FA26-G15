@@ -7,13 +7,13 @@
 .source[data-carla=true] { border-color: var(--color-vehicsim-warn); }
 .sceneHeader { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: center; }
 .layers { display: flex; flex-wrap: wrap; gap: 6px; }
-.layers button, .rates button { padding: 7px 10px; border-radius: 7px; font-size: 11px; border: 1px solid var(--color-vehicsim-line-strong); background: white; }
-.layers button[aria-pressed=true], .rates button[aria-pressed=true] { border-color: var(--color-vehicsim-decision); background: var(--color-vehicsim-decision-bg); color: var(--color-vehicsim-decision); }
+.layers button, .rates button { padding: 7px 10px; border-radius: 7px; font-size: 11px; border: 1px solid var(--color-vehicsim-line-strong); background: var(--color-vehicsim-surface); }
+.layers button[aria-pressed=true], .rates button[aria-pressed=true] { border-color: var(--color-vehicsim-primary); background: var(--color-vehicsim-primary-bg); color: var(--color-vehicsim-primary); }
 .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11px; color: var(--color-vehicsim-muted); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { display: inline-block; width: 14px; height: 3px; }
 .controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
-.play { width: 42px; height: 42px; border-radius: 50%; background: var(--color-vehicsim-ink); color: white; flex-shrink: 0; }
+.play { width: 42px; height: 42px; border-radius: 50%; background: var(--color-vehicsim-primary); color: white; flex-shrink: 0; }
 .play:disabled { opacity: .4; cursor: not-allowed; }
 .rates { display: flex; gap: 4px; margin-left: auto; }
 .time { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 12px; }
@@ -37,7 +37,7 @@
 .event i { width: 7px; height: 7px; border-radius: 50%; }
 .event time { font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .event span { overflow-wrap: anywhere; color: var(--color-vehicsim-muted); }
-.event[aria-current=step] { background: var(--color-vehicsim-decision-bg); border-color: var(--color-vehicsim-decision); }
+.event[aria-current=step] { background: var(--color-vehicsim-primary-bg); border-color: var(--color-vehicsim-primary); }
 .event:disabled { cursor: not-allowed; }
 .eventsHeading { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
 .eventsHeading span { font-size: 11px; color: var(--color-vehicsim-muted); }

@@ -26,7 +26,8 @@ try{
   if(p==="/auth/login")return reply({access_token:"user-form-fixture-only",token_type:"bearer",expires_in:3600,user:{...actor,role}});
   if(p==="/auth/me")return reply({...actor,role});
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
-  if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[]});
+  if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
+  if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
   const target=p.match(/^\/vehicsim\/admin\/users(?:\/(\d+))?$/);
   if(target){
    if(req.method()==="GET"){
@@ -90,7 +91,7 @@ try{
   ["ADMIN","Quản trị tài khoản","Không duyệt khuyến nghị hoặc thêm/bớt thành viên workspace"],
   ["MANAGER","Quản lý thành viên","Chỉ đọc phần kỹ thuật"],
   ["ENGINEER","chạy regression","Không duyệt khuyến nghị"],
-  ["REVIEWER","chấp nhận/từ chối khuyến nghị","Không chạy mô phỏng hoặc tạo candidate"],
+  ["REVIEWER","chạy regression để kiểm tra","Không tạo kịch bản hoặc candidate"],
   ["EXPERIENCER","Tài khoản tự đăng ký","Không duyệt khuyến nghị"]
  ]){
   await dialog().getByLabel("Vai trò *",{exact:true}).selectOption(code);
@@ -185,7 +186,7 @@ try{
  revoked=false;
  for(const nextRole of ["MANAGER","ENGINEER","REVIEWER","EXPERIENCER"]){
   role=nextRole;await page.evaluate(()=>localStorage.setItem("vehicsim_access_token","role-fixture-only"));await page.goto(base+"/admin/users");
-  const before=writes.length;await page.getByRole("heading",{name:"Quyền Hạn Không Đủ",exact:true}).waitFor();assert.equal(await dialog().count(),0);assert.equal(writes.length,before);
+  const before=writes.length;await page.getByRole("heading",{name:"Trang này yêu cầu quyền truy cập",exact:true}).waitFor();assert.equal(await dialog().count(),0);assert.equal(writes.length,before);
   await page.evaluate(()=>localStorage.removeItem("vehicsim_access_token"));await page.goto(base+"/login");
  }
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);

@@ -7,13 +7,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Mã hiển thị (RT-xxx, REC-xxx) và cách đổi trạng thái lưu trong DB sang trạng thái giao diện của màn 5. Hàm thuần, không đụng DB. */
 public final class RegressionCodes {
 
-    private RegressionCodes() {
-    }
-
-    /** Quyết định Reviewer gửi lên API. */
     public static final List<String> DECISIONS = List.of("ACCEPT", "REJECT", "REQUEST_MORE_TESTS");
 
     private static final Map<String, String> DECISION_OF = Map.of(
@@ -23,6 +18,9 @@ public final class RegressionCodes {
     private static final Map<String, String> REVIEW_LABELS = Map.of(
             "PENDING", "Awaiting review", "ACCEPT", "Accepted", "REJECT", "Rejected", "REQUEST_MORE_TESTS", "More tests requested");
 
+    private RegressionCodes() {
+    }
+
     public static String testCode(long testId) {
         return String.format(Locale.ROOT, "RT-%03d", testId);
     }
@@ -31,7 +29,6 @@ public final class RegressionCodes {
         return String.format(Locale.ROOT, "REC-%03d", testId);
     }
 
-    /** PENDING / RUNNING / PASSED / FAILED / ERROR — trạng thái mà giao diện dùng (REGRESSED gộp vào FAILED; run hỏng = ERROR). */
     public static String displayStatus(RegressionTestRow test) {
         String exec = test.executionStatus();
         if ("COMPLETED".equals(exec)) {
@@ -43,25 +40,18 @@ public final class RegressionCodes {
         return exec;
     }
 
-    /** PENDING / ACCEPT / REJECT / REQUEST_MORE_TESTS — chưa có khuyến nghị thì PENDING. */
     public static String displayDecision(RecommendationRow recommendation) {
         return recommendation == null ? "PENDING" : decisionOf(recommendation.status());
     }
 
-    /** Trạng thái lưu trong {@code engineering_recommendations.status} -> quyết định hiển thị. */
     public static String decisionOf(String recommendationStatus) {
         return DECISION_OF.get(recommendationStatus);
     }
 
-    /** Quyết định của Reviewer -> trạng thái lưu. */
     public static String statusOfDecision(String decision) {
         return STATUS_OF_DECISION.get(decision);
     }
 
-    /**
-     * Trạng thái khuyến nghị trên màn danh sách / chi tiết: Reviewer đã quyết định thì hiện quyết định đó (kể cả khi test trượt — vd.
-     * đã Reject); chưa ai quyết định mà test trượt thì BLOCKED; còn lại PENDING.
-     */
     public static String recommendationStatus(RegressionTestRow test, RecommendationRow recommendation) {
         String decision = displayDecision(recommendation);
         if (!"PENDING".equals(decision)) {
@@ -70,7 +60,6 @@ public final class RegressionCodes {
         return "FAILED".equals(displayStatus(test)) ? "BLOCKED" : decision;
     }
 
-    /** Nhãn tiếng Anh của trạng thái khuyến nghị (frontend dịch qua vehicsimI18n). */
     public static String recommendationStatusLabel(String recommendationStatus, String decision) {
         return "BLOCKED".equals(recommendationStatus) ? "Blocked" : REVIEW_LABELS.get(decision);
     }

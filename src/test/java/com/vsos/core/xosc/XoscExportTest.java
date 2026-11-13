@@ -173,17 +173,49 @@ class XoscExportTest {
     }
 
     @Test
-    void v3FileStillReadsWithItsOwnIdentity() {
+    void v3AndV4FilesStillReadWithTheirOwnIdentity() {
         Bundle.RunSpec spec = Bundle.readSpec(ir());
-        String v3 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.PREVIOUS_FORMAT);
+        String v4 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.PREVIOUS_FORMAT);
+        assertThat(Xosc.profile(v4)).isEqualTo(new Xosc.Profile("-xosc4", 0.01, 0.05));
+        assertThat(Xosc.read(v4)).isEqualTo(spec);
+        String v3 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V3_FORMAT);
         assertThat(Xosc.profile(v3)).isEqualTo(new Xosc.Profile("-xosc3", 0.01, 0.05));
         assertThat(Xosc.read(v3)).isEqualTo(spec);
+    }
+
+    /** Bundle một xe CARLA với {@code physics.wheels} cho trước. */
+    private static Map<String, Object> withWheels(Object wheels) {
+        Map<String, Object> physics = new LinkedHashMap<>(Map.of("mass", 2100.0));
+        if (wheels != null) {
+            physics.put("wheels", wheels);
+        }
+        Map<String, Object> carla = Map.of("blueprint", "vehicle.audi.etron", "physics", physics, "full_brake_decel_mps2", 9.5);
+        return Map.of("variant", ir(), "vehicle", Map.of("length_m", 4.75, "width_m", 1.93, "max_brake_decel_mps2", 9.5, "carla", carla), "seed", 7);
+    }
+
+    /** ADR-051: mô-men phanh đã hiệu chuẩn đi qua .xosc và đọc lại đúng; xe chưa hiệu chuẩn không có tham số này. */
+    @Test
+    void calibratedBrakeTorqueRoundTripsThroughXosc() {
+        Bundle.RunSpec spec = Bundle.readSpec(withWheels(Map.of("max_brake_torque", 2400.0)));
+        String xml = XoscExport.export(spec);
+        assertThat(xml).contains("name=\"vs_physics_wheel_max_brake_torque\" parameterType=\"string\" value=\"2400.0\"");
+        assertThat(Xosc.read(xml)).isEqualTo(spec);
+        assertThat(XoscExport.export(Bundle.readSpec(withWheels(null)))).doesNotContain("max_brake_torque");
+    }
+
+    @Test
+    void perWheelOrOtherWheelFieldsAreRejectedInsteadOfDropped() {
+        Map<String, Object> wheel = Map.of("max_brake_torque", 2400.0);
+        for (Object wheels : List.of(List.of(wheel, wheel, wheel, wheel), Map.of("max_brake_torque", 2400.0, "tire_friction", 3.5))) {
+            Bundle.RunSpec spec = Bundle.readSpec(withWheels(wheels));
+            assertThatThrownBy(() -> XoscExport.export(spec)).isInstanceOf(Bundle.BundleError.class).hasMessageContaining("max_brake_torque");
+        }
     }
 
     @Test
     void currentProfileIs100HzWithSensorPeriodPerception() {
         Xosc.Profile p = Xosc.profile(XoscExport.export(Bundle.readSpec(ir())));
-        assertThat(p).isEqualTo(new Xosc.Profile("-xosc4", 0.01, 0.05));
+        assertThat(p).isEqualTo(new Xosc.Profile("-xosc5", 0.01, 0.05));
     }
 
     @Test
@@ -201,6 +233,37 @@ class XoscExportTest {
                 .replace("name=\"vs_fixed_delta_seconds\" parameterType=\"string\" value=\"0.01\"", "name=\"vs_fixed_delta_seconds\" parameterType=\"string\" value=\"" + step + "\"")
                 .replace("name=\"vs_perception_period_s\" parameterType=\"string\" value=\"0.05\"", "name=\"vs_perception_period_s\" parameterType=\"string\" value=\"" + period + "\"");
         assertThatThrownBy(() -> Xosc.profile(xml)).isInstanceOf(Bundle.BundleError.class);
+    }
+
+    /**
+     * Thời tiết theo preset CARLA 0.9.16 (11/11/2026): áp đúng cách ScenarioRunner 0.9.16 đọc (cloudiness = 100 − 100·Sun.intensity,
+     * precipitation = 100·Precipitation.intensity, sun_altitude = degrees(elevation)) thì ra mây / mưa / độ cao mặt trời của preset.
+     * Trước đây Sun.intensity luôn là 1 nên CLOUDY hiển thị giống hệt CLEAR.
+     */
+    @ParameterizedTest
+    @CsvSource({
+            "CLEAR, DAY, 5, 0, 45", "CLOUDY, DAY, 60, 0, 45", "RAIN, DAY, 60, 60, 45", "HEAVY_RAIN, DAY, 100, 100, 45",
+            "FOG, DUSK, 60, 0, 15", "CLEAR, NIGHT, 5, 0, -90"})
+    void weatherFollowsTheCarlaPresetsAsScenarioRunnerReadsThem(String weather, String time, double cloudiness, double precipitation,
+                                                                double sunAltitudeDeg) throws Exception {
+        Document doc = dom(XoscExport.export(Bundle.readSpec(ir("weather", weather, "time_of_day", time))));
+        Element sun = (Element) nodes(doc, "//Weather/Sun").item(0);
+        Element rain = (Element) nodes(doc, "//Weather/Precipitation").item(0);
+        assertThat(100 - 100 * Double.parseDouble(sun.getAttribute("intensity"))).as("cloudiness").isCloseTo(cloudiness, org.assertj.core.api.Assertions.within(1e-9));
+        assertThat(Math.toDegrees(Double.parseDouble(sun.getAttribute("elevation")))).as("sun_altitude").isCloseTo(sunAltitudeDeg,
+                org.assertj.core.api.Assertions.within(1e-9));
+        assertThat(100 * Double.parseDouble(rain.getAttribute("intensity"))).as("precipitation").isCloseTo(precipitation,
+                org.assertj.core.api.Assertions.within(1e-9));
+        assertThat(rain.getAttribute("precipitationType")).isEqualTo(precipitation > 0 ? "rain" : "dry");
+    }
+
+    @Test
+    void cloudyNoLongerLooksLikeClear() throws Exception {
+        String clear = nodes(dom(XoscExport.export(Bundle.readSpec(ir("weather", "CLEAR", "time_of_day", "DAY")))), "//Weather/Sun").item(0)
+                .getAttributes().getNamedItem("intensity").getNodeValue();
+        String cloudy = nodes(dom(XoscExport.export(Bundle.readSpec(ir("weather", "CLOUDY", "time_of_day", "DAY")))), "//Weather/Sun").item(0)
+                .getAttributes().getNamedItem("intensity").getNodeValue();
+        assertThat(cloudy).isNotEqualTo(clear);
     }
 
     @Test

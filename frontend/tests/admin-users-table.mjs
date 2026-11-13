@@ -24,7 +24,8 @@ try{
     if(p==="/auth/login")return reply({access_token:"users-table-fixture-only",token_type:"bearer",expires_in:3600,user:{...actor,role}});
     if(p==="/auth/me")return reply({...actor,role});
     if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
-    if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[]});
+    if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
+  if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
     if(p==="/vehicsim/admin/users"&&req.method()==="GET"){
       const size=Number(url.searchParams.get("page_size")||20),number=Number(url.searchParams.get("page")||1),q=url.searchParams.get("q")||"";
       let rows=users.filter(user=>!q||`${user.full_name} ${user.email}`.toLowerCase().includes(q.toLowerCase()));
@@ -181,7 +182,7 @@ try{
   assert.equal(await dialog.getByRole("combobox",{name:/^Vai trò/}).isDisabled(),true);assert.equal(await dialog.getByLabel("Tài khoản đang hoạt động",{exact:true}).isDisabled(),true);await page.keyboard.press("Escape");
 
   for(const nextRole of roles.filter(value=>value!=="ADMIN")){
-    role=nextRole;const before=readCount();await page.goto(base+"/admin/users?q=Fixture&page=2");await page.getByRole("heading",{name:"Quyền Hạn Không Đủ",exact:true}).waitFor();assert.equal(readCount(),before);
+    role=nextRole;const before=readCount();await page.goto(base+"/admin/users?q=Fixture&page=2");await page.getByRole("heading",{name:"Trang này yêu cầu quyền truy cập",exact:true}).waitFor();assert.equal(readCount(),before);
   }
   role="ADMIN";mode="expired";await page.goto(base+"/admin/users");await page.waitForURL(base+"/login");assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);
   const before=readCount();await page.goto(base+"/admin/users");await page.waitForURL(base+"/login");assert.equal(readCount(),before);

@@ -16,12 +16,12 @@ XOSC_FIXTURE = WORKER.parent / "src" / "test" / "resources" / "parity" / "xosc.j
 
 @pytest.fixture
 def xosc(tmp_path: Path) -> Path:
-    """Một file .xosc profile hiện tại (``vehicsim.xosc/v4``) do bộ xuất sinh ra.
+    """Một file .xosc profile hiện tại (``vehicsim.xosc/v5``) do bộ xuất sinh ra.
 
-    ``export 0`` là ca băng ngang: v4 chỉ khác v3 của fixture Python ở ``vs_format`` (TD-47 chỉ đổi ca dừng ở lề).
+    ``export 0`` là ca băng ngang: v5 chỉ khác v3 của fixture Python ở ``vs_format`` (TD-47 chỉ đổi ca dừng ở lề; ADR-051 chỉ thêm tham số khi xe đã hiệu chuẩn).
     """
     entries = json.loads(XOSC_FIXTURE.read_text(encoding="utf-8"))
     path = tmp_path / "scenario.xosc"
     xml = next(e["xml"] for e in entries if e["name"] == "export 0")
-    path.write_text(xml.replace("vehicsim.xosc/v3", "vehicsim.xosc/v4"), encoding="utf-8")
+    path.write_text(xml.replace("vehicsim.xosc/v3", "vehicsim.xosc/v5"), encoding="utf-8")
     return path

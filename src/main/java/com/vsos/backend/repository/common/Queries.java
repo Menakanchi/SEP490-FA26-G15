@@ -21,15 +21,6 @@ public class Queries {
         this.db = db;
     }
 
-    /** MVP chỉ có một project ACTIVE mặc định (TD-30: chưa lọc theo workspace). */
-    public Row currentProject() {
-        Row project = db.first("SELECT * FROM projects WHERE status = 'ACTIVE' ORDER BY id LIMIT 1");
-        if (project == null) {
-            throw new NotFoundException("project — ADMIN gọi POST /api/v1/vehicsim/bootstrap để tạo project mặc định");
-        }
-        return project;
-    }
-
     public List<Row> versions(long projectId, boolean newestFirst) {
         return db.list("SELECT * FROM aeb_versions WHERE project_id = ? ORDER BY version_no " + (newestFirst ? "DESC" : "ASC"), projectId);
     }

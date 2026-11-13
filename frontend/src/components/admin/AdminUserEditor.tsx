@@ -15,7 +15,7 @@ const roleHelp: Record<string, string> = {
   ADMIN: "Quản trị tài khoản, workspace và tài liệu kỹ thuật; được tạo/chạy quy trình kỹ thuật. Không duyệt khuyến nghị hoặc thêm/bớt thành viên workspace.",
   MANAGER: "Quản lý thành viên và công việc trong workspace được giao. Chỉ đọc phần kỹ thuật; không chạy mô phỏng hoặc duyệt khuyến nghị.",
   ENGINEER: "Tạo kịch bản, chạy mô phỏng, tạo candidate và chạy regression theo hạn mức hệ thống. Không duyệt khuyến nghị.",
-  REVIEWER: "Xem kết quả và chấp nhận/từ chối khuyến nghị. Không chạy mô phỏng hoặc tạo candidate.",
+  REVIEWER: "Xem kết quả, chạy regression để kiểm tra và chấp nhận/từ chối khuyến nghị trong project được cấp quyền. Không tạo kịch bản hoặc candidate.",
   EXPERIENCER: "Tài khoản tự đăng ký được tạo kịch bản, chạy mô phỏng, tạo candidate và chạy regression theo hạn mức. Không duyệt khuyến nghị.",
 };
 const textFields = [

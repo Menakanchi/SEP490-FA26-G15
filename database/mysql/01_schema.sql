@@ -1,8 +1,9 @@
 -- =====================================================================
--- VehicSim — MySQL 8.4 schema (29 bảng) — bản chuẩn hóa Scope luận văn & Đồ án tốt nghiệp
+-- VehicSim — MySQL 8.4 schema (30 bảng) — bản chuẩn hóa Scope luận văn & Đồ án tốt nghiệp
+-- Bảng lịch sử thứ 30 thuộc ADR-047 Proposed (migration 013).
 -- Phạm vi kỹ thuật: 4 tham số AEB + 3 mục tiêu MOBO + 7 Category kịch bản Euro NCAP
 -- Từ điển dữ liệu (nghĩa từng cột, ai ghi, JSON): docs/vehicsim/database-schema.md
--- DB đã tạo từ bản cũ hơn: chạy các file trong database/mysql/migrations/ theo thứ tự (mới nhất: 007)
+-- DB đã tạo từ bản cũ hơn: chạy các file trong database/mysql/migrations/ theo thứ tự (mới nhất: 013)
 -- Backend: Java Spring Boot 3 (Java 17/21) + Spring Data JPA / Redis · Simulator: CARLA 0.9.16 + bộ động học
 -- Charset: utf8mb4 / utf8mb4_0900_ai_ci · Yêu cầu MySQL >= 8.0.16 (CHECK có hiệu lực)
 --
@@ -744,7 +745,7 @@ CREATE TABLE root_causes (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 8. PHÂN TÍCH, KẾT QUẢ REGRESSION, KHUYẾN NGHỊ (FE-10, FE-11, FE-12)  — 3 bảng
+-- 8. PHÂN TÍCH, KẾT QUẢ REGRESSION, KHUYẾN NGHỊ (FE-10, FE-11, FE-12)  — 3 bảng (gồm lịch sử Reviewer đề xuất)
 -- ---------------------------------------------------------------------
 CREATE TABLE analysis_results (
   id                       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -815,6 +816,26 @@ CREATE TABLE engineering_recommendations (
   CONSTRAINT ck_er_no_self_review CHECK (reviewed_by_user_id IS NULL OR reviewed_by_user_id <> created_by_user_id)
 ) ENGINE=InnoDB;
 
+-- Lịch sử Reviewer — đề xuất ADR-047, chờ nhóm chốt.
+CREATE TABLE recommendation_decisions (
+  id                   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  recommendation_id    BIGINT UNSIGNED NOT NULL,
+  decision             ENUM('ACCEPT','REJECT','REQUEST_MORE_TESTS') NOT NULL,
+  reviewed_by_user_id   BIGINT UNSIGNED NOT NULL,
+  reviewer_name        VARCHAR(255) NOT NULL COMMENT 'Tên hiển thị chụp lúc quyết định hoặc lúc backfill',
+  reviewed_at          DATETIME NOT NULL,
+  reason               TEXT NULL,
+  review_conditions    TEXT NULL,
+  confirmed            BOOLEAN NULL COMMENT 'NULL = dữ liệu cũ không lưu bằng chứng xác nhận',
+  source               ENUM('REVIEW','LEGACY_SNAPSHOT') NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_rd_recommendation_time (recommendation_id, reviewed_at, id),
+  KEY idx_rd_reviewer (reviewed_by_user_id),
+  CONSTRAINT fk_rd_recommendation FOREIGN KEY (recommendation_id) REFERENCES engineering_recommendations(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_rd_reviewer FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT ck_rd_evidence CHECK (source = 'LEGACY_SNAPSHOT' OR (confirmed IS NOT NULL AND confirmed = TRUE AND reason IS NOT NULL AND CHAR_LENGTH(TRIM(reason)) > 0))
+) ENGINE=InnoDB;
+
 -- ---------------------------------------------------------------------
 -- 9. TRI THỨC KỸ THUẬT (Admin quản lý)  — 1 bảng
 -- Hằng số, định nghĩa, tiêu chuẩn / quy chuẩn dùng làm căn cứ cho mô hình và báo cáo.
@@ -864,10 +885,12 @@ INSERT INTO aeb_parameters (code, name, category, unit, description, min_value, 
   ('MAX_DECELERATION',        'Max Deceleration',        'VEHICLE_DYNAMICS', 'm/s2', 'Giới hạn giảm tốc tối đa mà bộ AEB được yêu cầu', 3.00,  10.00,   8.00,  3),
   ('BRAKE_BUILDUP_RATE',      'Brake Build-up Rate',      'CONTROL',          'm/s3', 'Tốc độ tăng lực phanh (build-up rate), tối đa 20 = JERK_LIMIT cố định của lõi AEB',  5.00,  20.00,  20.00,  4);
 
--- Thông số xe Audi e-tron mặc định trong CARLA:
+-- Thông số xe Audi e-tron mặc định trong CARLA. Mô-men phanh 1800 N·m và phanh 100% 9,13 m/s²: hiệu chuẩn 08/11/2026
+-- (ADR-051, migration 014) để CARLA phanh hết cỡ gần đúng max_brake_decel_mps2.
 INSERT INTO carla_vehicle_models (carla_blueprint_id, display_name, length_m, width_m, height_m,
-                                  mass_kg, tire_friction, wheelbase_m, max_speed_mps, max_brake_decel_mps2) VALUES
-  ('vehicle.audi.etron', 'Audi e-tron', 4.750, 1.930, 1.670, 2100.00, 1.00, 2.950, 50.00, 9.50);
+                                  mass_kg, tire_friction, max_brake_torque_nm, wheelbase_m, max_speed_mps, max_brake_decel_mps2,
+                                  carla_full_brake_decel_mps2) VALUES
+  ('vehicle.audi.etron', 'Audi e-tron', 4.750, 1.930, 1.670, 2100.00, 1.00, 1800.00, 2.950, 50.00, 9.50, 9.13);
 
 -- 4 mẫu xe CARLA 0.9.16 (migration 011): physics mặc định đọc bằng worker/vehicle_catalog.py, phanh 100% đo bằng worker/vehicle_study.py.
 -- max_brake_decel_mps2 = 9,5 như e-tron (giới hạn của bộ động học, TD-17); xe tải chỉ để xem (is_supported = FALSE).

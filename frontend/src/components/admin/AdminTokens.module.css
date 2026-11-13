@@ -1,29 +1,31 @@
 .scope {
-  /* Scoped foundations: inherited by Admin content, including native dialogs. */
-  --admin-ink: #1e293b;
-  --admin-text: #334155;
-  --admin-secondary: #475569;
-  --admin-muted: #64748b;
-  --admin-line: #e2e8f0;
-  --admin-input-line: #7c8ba1;
-  --admin-surface: #fff;
-  --admin-canvas: #f7f9fc;
-  --admin-soft: #f8fafc;
-  --admin-hover: #f1f5f9;
-  --admin-focus: #2563eb;
-  --admin-primary: #111827;
-  --admin-accent: #1e40af;
-  --admin-accent-bg: #eff6ff;
-  --admin-accent-line: #bfdbfe;
-  --admin-success: #166534;
-  --admin-success-bg: #f0fdf4;
+  /* chuvv layout foundations with the shared VehicSim palette, including native dialogs. */
+  --admin-ink: var(--color-vehicsim-ink);
+  --admin-text: var(--color-vehicsim-ink);
+  --admin-secondary: var(--color-vehicsim-muted);
+  --admin-muted: var(--color-vehicsim-faint);
+  --admin-line: var(--color-vehicsim-line);
+  /* Use the theme's darker neutral to retain visible form control boundaries. */
+  --admin-input-line: var(--color-vehicsim-faint);
+  --admin-surface: var(--color-vehicsim-surface);
+  --admin-canvas: var(--color-vehicsim-bg);
+  --admin-soft: var(--color-vehicsim-row);
+  --admin-hover: var(--color-vehicsim-soft);
+  --admin-focus: var(--color-vehicsim-primary);
+  --admin-primary: var(--color-vehicsim-primary);
+  --admin-primary-hover: var(--color-vehicsim-primary-hover);
+  --admin-accent: var(--color-vehicsim-primary);
+  --admin-accent-bg: var(--color-vehicsim-primary-bg);
+  --admin-accent-line: var(--color-vehicsim-line-strong);
+  --admin-success: var(--color-vehicsim-ok);
+  --admin-success-bg: var(--color-vehicsim-ok-bg);
   --admin-success-line: #bbf7d0;
-  --admin-danger: #b91c1c;
+  --admin-danger: var(--color-vehicsim-danger);
   --admin-danger-hover: #991b1b;
-  --admin-danger-bg: #fef2f2;
+  --admin-danger-bg: var(--color-vehicsim-danger-bg);
   --admin-danger-line: #fecaca;
-  --admin-warning: #92400e;
-  --admin-warning-bg: #fffbeb;
+  --admin-warning: var(--color-vehicsim-warn);
+  --admin-warning-bg: var(--color-vehicsim-warn-bg);
   --admin-warning-line: #fde68a;
   --admin-font-caption: 12px;
   --admin-font-control: 13px;

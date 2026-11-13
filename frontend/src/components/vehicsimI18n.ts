@@ -52,6 +52,9 @@ export function viSummary(summary?: string | null): string {
     .split(" · ")
     .map((part, i) => {
       if (part === "stops at curb") return "dừng ở lề";
+      // Xe phía trước (ADR-050): "CCRB lead 50 km/h at 40 m"
+      const lead = part.match(/^(CCRS|CCRM|CCRB) lead (\d+(?:\.\d+)?) km\/h(?: at (\d+(?:\.\d+)?) m)?$/);
+      if (lead) return `${lead[1]} · xe trước ${lead[2]} km/h${lead[3] ? ` cách ${lead[3]} m` : ""}`;
       if (TIME[part]) return TIME[part];
       if (WEATHER[part]) return i === 0 ? WEATHER[part] : WEATHER[part].toLowerCase();
       return part;
@@ -80,6 +83,33 @@ const RULES: Rule[] = [
   // --- evaluation.py: tiêu đề -------------------------------------------------------
   [re(String.raw`AEB braked for a pedestrian who stopped at the curb\.`), () => "AEB phanh dù người đi bộ đã dừng ở lề đường."],
   [re(String.raw`AEB handled the crossing safely\.`), () => "AEB xử lý an toàn tình huống người đi bộ băng ngang."],
+  // --- nhóm xe phía trước CCRs/CCRm/CCRb (ADR-050) ----------------------------------------
+  [re(String.raw`AEB handled the lead vehicle safely\.`), () => "AEB xử lý an toàn tình huống xe phía trước."],
+  [re(String.raw`AEB braked for a vehicle that stayed outside the ego path\.`), () => "AEB phanh dù xe phía trước nằm ngoài làn đi của xe."],
+  [re(String.raw`Every stage met its spec, yet the lead vehicle was reached\.`), () => "Mọi khâu đạt chuẩn nhưng xe vẫn chạm xe phía trước."],
+  [re(String.raw`The lead vehicle was detected too late for AEB to stop\.`), () => "Phát hiện xe phía trước quá muộn để AEB dừng kịp."],
+  [re(String.raw`The lead vehicle was detected in time, but AEB activated ${N} s too late\.`), (m) => `Phát hiện xe phía trước kịp thời nhưng AEB kích hoạt muộn ${m[1]} s.`],
+  [re(String.raw`The lead vehicle was detected in time, but the TTC threshold left too little room to stop\.`), () => "Phát hiện xe phía trước kịp thời nhưng ngưỡng TTC để lại quá ít thời gian để dừng."],
+  [
+    re(String.raw`Lead vehicle never passed the detection threshold ${N} \((.+), (\w+)\)\.`),
+    (m) => `Xe phía trước chưa lần nào vượt ngưỡng phát hiện ${m[1]} (${viWeather(m[2]).toLowerCase()}, ${viTime(m[3]).toLowerCase()}).`,
+  ],
+  [
+    re(String.raw`Lead vehicle first detected at t ${N} s \(${N} m\), ${N} s after AEB should have fired\.`),
+    (m) => `Phát hiện xe phía trước lần đầu lúc t = ${m[1]} s (cách ${m[2]} m), trễ ${m[3]} s so với lúc AEB lẽ ra phải kích hoạt.`,
+  ],
+  [re(String.raw`Lead vehicle detected at t ${N} s \(${N} m\) with latency 0\.1 s\.`), (m) => `Phát hiện xe phía trước lúc t = ${m[1]} s (cách ${m[2]} m), độ trễ 0.1 s.`],
+  [re(String.raw`Lead vehicle detected at t ${N} s\.`), (m) => `Phát hiện xe phía trước lúc t = ${m[1]} s.`],
+  [
+    re(String.raw`Lead vehicle entered the path at TTC ${N} s, inside the ${N} s stopping envelope; only an earlier path prediction could have fired in time\.`),
+    (m) => `Xe phía trước vào quỹ đạo xe ở TTC ${m[1]} s, đã nằm trong vùng ${m[2]} s cần để dừng; chỉ dự đoán quỹ đạo sớm hơn mới kích hoạt kịp.`,
+  ],
+  [re(String.raw`Lead vehicle detected and tracked correctly\.`), () => "Phát hiện và bám theo xe phía trước đúng."],
+  [
+    re(String.raw`AEB braked at TTC ${N} s for a vehicle whose edge stayed outside the ego path; the safety corridor reached into the neighbouring lane\.`),
+    (m) => `AEB phanh ở TTC ${m[1]} s dù mép xe phía trước nằm ngoài làn đi của xe; hành lang an toàn với sang làn bên.`,
+  ],
+  [re(String.raw`Lead vehicle brakes · ${N} m/s²`), (m) => `Xe phía trước phanh · ${m[1]} m/s²`],
   [re(String.raw`Every stage met its spec, yet the pedestrian was reached\.`), () => "Mọi khâu đạt chuẩn nhưng xe vẫn chạm người đi bộ."],
   [re(String.raw`AEB stopped in time, but with less margin than the near-miss limit\.`), () => "AEB dừng kịp nhưng biên an toàn thấp hơn ngưỡng suýt va chạm."],
   [re(String.raw`The pedestrian was detected too late for AEB to stop\.`), () => "Phát hiện người đi bộ quá muộn để AEB dừng kịp."],

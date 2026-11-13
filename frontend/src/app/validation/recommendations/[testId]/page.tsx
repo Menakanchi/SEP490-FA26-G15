@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { ErrorNote, PillButton, RECOMMENDATION_STATUS, RecommendationBadge, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
+import { ErrorNote, PillButton, RECOMMENDATION_STATUS, RecommendationBadge, TableScroll, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
 import { CandidateSourceTag, CarlaCaveat, PairObjectivesTable } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -53,7 +53,7 @@ export default function RecommendationPage() {
               title={!canDecide ? "Chỉ Người duyệt (REVIEWER) được ra quyết định" : final ? "Đã có quyết định cuối" : undefined}
               className="print:hidden"
             >
-              Duyệt quyết định →
+              Duyệt quyết định
             </PillButton>
           </>
         )
@@ -70,31 +70,33 @@ export default function RecommendationPage() {
         </div>
       )}
       {r && !running && effect && (
-        <div className="flex w-full items-start gap-4">
-          <section className="flex min-w-0 flex-1 flex-col gap-5 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+        <div className="flex w-full flex-col gap-4 xl:flex-row xl:items-start">
+          <section className="flex min-w-0 flex-1 flex-col gap-5 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-4 sm:p-6">
             <h2 className="text-[17px] font-bold text-vehicsim-ink">Thay đổi được khuyến nghị</h2>
             <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line">
-              <div className="flex h-10 items-center bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
-                <span className="min-w-0 flex-1">Tham số</span>
-                <span className="w-[110px]">Hiện tại</span>
-                <span className="w-[110px]">Ứng viên</span>
-                <span className="w-[100px]">Thay đổi</span>
-              </div>
-              {r.changed_parameters.length === 0 && <p className="px-5 py-4 text-[13px] text-vehicsim-muted">Ứng viên không đổi tham số nào.</p>}
-              {r.changed_parameters.map((p) => (
-                <div key={p.code} className="flex h-[48px] items-center border-t border-solid border-vehicsim-line px-5 text-[14px]">
-                  <span className="min-w-0 flex-1 font-medium text-vehicsim-ink">{p.name}</span>
-                  <span className="w-[110px] text-vehicsim-ink">{paramValue(p.baseline, p.unit)}</span>
-                  <span className="w-[110px] font-semibold text-vehicsim-decision">{paramValue(p.candidate, p.unit)}</span>
-                  <span className="w-[100px]">
-                    <Tag tone="info">{delta(p)}</Tag>
-                  </span>
+              <TableScroll label="Bảng thay đổi tham số" minWidth={500}>
+                <div className="flex h-10 items-center bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
+                  <span className="min-w-0 flex-1">Tham số</span>
+                  <span className="w-[110px]">Hiện tại</span>
+                  <span className="w-[110px]">Ứng viên</span>
+                  <span className="w-[100px]">Thay đổi</span>
                 </div>
-              ))}
+                {r.changed_parameters.length === 0 && <p className="px-5 py-4 text-[13px] text-vehicsim-muted">Ứng viên không đổi tham số nào.</p>}
+                {r.changed_parameters.map((p) => (
+                  <div key={p.code} className="flex h-[48px] items-center border-t border-solid border-vehicsim-line px-5 text-[14px]">
+                    <span className="min-w-0 flex-1 font-medium text-vehicsim-ink">{p.name}</span>
+                    <span className="w-[110px] text-vehicsim-ink">{paramValue(p.baseline, p.unit)}</span>
+                    <span className="w-[110px] font-semibold text-vehicsim-decision">{paramValue(p.candidate, p.unit)}</span>
+                    <span className="w-[100px]">
+                      <Tag tone="info">{delta(p)}</Tag>
+                    </span>
+                  </div>
+                ))}
+              </TableScroll>
             </div>
 
             <h2 className="text-[17px] font-bold text-vehicsim-ink">Tác động dự kiến</h2>
-            <div className="flex gap-3">
+            <div className="grid gap-3 min-[420px]:grid-cols-2 2xl:grid-cols-4">
               <Effect label="Tỉ lệ va chạm" pair={effect.collision_rate} unit="%" lowerIsBetter />
               <Effect label="Phanh nhầm" pair={effect.false_activation} unit="%" lowerIsBetter />
               <Effect label="Trung vị TTC nhỏ nhất" pair={effect.median_min_ttc} unit=" s" />
@@ -133,13 +135,13 @@ export default function RecommendationPage() {
 
             <p className="flex gap-3 rounded-[14px] bg-vehicsim-soft px-4 py-3 text-[12px] leading-[1.6] text-vehicsim-muted">
               <span className="mt-[6px] size-[6px] shrink-0 rounded-full bg-vehicsim-faint" />
-              Khuyến nghị kỹ thuật dựa trên mô phỏng động học. Không chứng nhận an toàn xe và không thay thế kiểm thử vật lý.
-              Cần kỹ sư duyệt trước khi phiên bản hệ thống mới trở thành bản cơ sở.
+              Khuyến nghị kỹ thuật dựa trên mô phỏng. Không chứng nhận an toàn xe và không thay thế kiểm thử vật lý.
+              Cần Người duyệt (Reviewer) duyệt trước khi phiên bản hệ thống mới trở thành bản cơ sở.
             </p>
           </section>
 
-          <div className="flex w-[330px] shrink-0 flex-col gap-4">
-            <section className="flex flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+          <div className="flex w-full shrink-0 flex-col xl:w-[330px] gap-4">
+            <section className="flex flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
               <h2 className="text-[17px] font-bold text-vehicsim-ink">Bằng chứng</h2>
               <div className="flex items-center justify-between text-[13px]">
                 <span className="font-medium text-vehicsim-muted">Độ tin cậy</span>
@@ -185,7 +187,7 @@ export default function RecommendationPage() {
               })}
             </section>
 
-            <section className="flex flex-col gap-1 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+            <section className="flex flex-col gap-1 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
               <h2 className="mb-2 text-[17px] font-bold text-vehicsim-ink">Duyệt</h2>
               <Row label="Người yêu cầu" value={r.review.requested_by ?? "—"} />
               <Row label="Quyết định" value={RECOMMENDATION_STATUS[r.recommendation_status].label} />
@@ -197,7 +199,7 @@ export default function RecommendationPage() {
                 <p className="pt-2 text-[12px] text-vehicsim-muted">
                   {r.recommendation_status === "BLOCKED"
                     ? "Kiểm thử hồi quy không đạt — ứng viên chỉ có thể bị từ chối hoặc trả lại để kiểm thử thêm."
-                    : "Đang chờ kỹ sư quyết định."}
+                    : "Đang chờ Người duyệt (Reviewer) quyết định."}
                 </p>
               )}
             </section>

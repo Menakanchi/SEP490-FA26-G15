@@ -28,8 +28,8 @@ import com.vsos.backend.service.notification.NotificationService;
  * project được (FK ghép {@code task_reports(task_id, project_id)} chặn). Giữ nguyên giá trị cũ thì không bị kiểm lại — task gắn project
  * nay đã lưu trữ hoặc đã quá hạn vẫn sửa được các trường khác. Workspace ARCHIVED chỉ xem.
  * <p>
- * Giao (hoặc đổi người nhận) thì báo {@code TASK_ASSIGNED} cho người nhận. Chưa làm: người được giao tự cập nhật tiến độ (UC của
- * Engineer / Reviewer).
+ * Giao (hoặc đổi người nhận) thì báo {@code TASK_ASSIGNED} cho người nhận. Người được giao tự cập nhật tiến độ (trừ DONE) ở
+ * {@link MemberWorkService}.
  */
 @Service
 public class WorkspaceTaskService {
@@ -53,14 +53,17 @@ public class WorkspaceTaskService {
         this.notifications = notifications;
     }
 
-    /** M7: task của workspace, lọc tuỳ chọn theo trạng thái và người nhận ({@code assigneeId = 0} = chưa giao ai). */
-    public List<TaskItem> list(long userId, String role, long workspaceId, String status, Long assigneeId) {
-        workspaces.requireAccessible(userId, role, workspaceId);
+    /**
+     * M7: task của workspace, lọc tuỳ chọn theo trạng thái và người nhận ({@code assigneeId = 0} = chưa giao ai). Manager của workspace
+     * thấy mọi task; thành viên chỉ thấy task giao cho chính mình (bỏ qua bộ lọc người nhận).
+     */
+    public List<TaskItem> list(long userId, long workspaceId, String status, Long assigneeId) {
+        WorkspaceSummary ws = workspaces.requireMemberOrManager(userId, workspaceId);
         String s = blankToNull(status);
         if (s != null && !STATUSES.contains(s)) {
             throw new InvalidRequestException("Trạng thái phải thuộc " + STATUSES);
         }
-        return tasks.list(workspaceId, s, assigneeId);
+        return tasks.list(workspaceId, s, WorkspaceService.isManagerOf(ws, userId) ? assigneeId : Long.valueOf(userId));
     }
 
     /** M6: giao task mới. */
@@ -191,5 +194,28 @@ public class WorkspaceTaskService {
 
     private record Fields(String title, String description, String priority, String status, int progress, Long assigneeId,
                           Long projectId, LocalDate dueDate) {
+    }
+    /** Chi tiết một task: chỉ người được giao (còn là thành viên) và Manager của workspace; người khác nhận 404. */
+    public TaskItem getTask(long userId, long taskId) {
+        Long workspaceId = tasks.workspaceOf(taskId);
+        TaskItem t = workspaceId == null ? null : tasks.find(workspaceId, taskId);
+        if (t == null) {
+            throw new NotFoundException("task");
+        }
+        WorkspaceSummary ws = workspaces.requireMemberOrManager(userId, workspaceId);
+        boolean assignee = t.assignee() != null && t.assignee().id() == userId;
+        if (!assignee && !WorkspaceService.isManagerOf(ws, userId)) {
+            throw new NotFoundException("task");
+        }
+        return t;
+    }
+
+    /** Danh sách task được giao cho người dùng hiện tại (FE-03, FE-14). */
+    public List<TaskItem> listMyTasks(long userId, String status, Long projectId) {
+        String s = blankToNull(status);
+        if (s != null && !STATUSES.contains(s)) {
+            throw new InvalidRequestException("Trạng thái phải thuộc " + STATUSES);
+        }
+        return tasks.listForAssignee(userId, s, projectId);
     }
 }

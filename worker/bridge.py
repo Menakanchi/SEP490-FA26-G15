@@ -25,6 +25,7 @@ import os
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 import zipfile
 from pathlib import Path
@@ -44,7 +45,13 @@ class BridgeError(RuntimeError):
 
 
 def java_command() -> list[str]:
-    java = os.environ.get("VEHICSIM_JAVA") or shutil.which("java")
+    java = os.environ.get("VEHICSIM_JAVA")
+    if not java and "JAVA_HOME" in os.environ:
+        candidate = Path(os.environ["JAVA_HOME"]) / "bin" / ("java.exe" if sys.platform == "win32" else "java")
+        if candidate.is_file():
+            java = str(candidate)
+    if not java:
+        java = shutil.which("java")
     if not java:
         raise BridgeError("không tìm thấy Java: cài JDK 21 hoặc đặt VEHICSIM_JAVA")
     classpath = os.environ.get("VEHICSIM_CORE_CLASSPATH") or str(ROOT / "target" / "classes")

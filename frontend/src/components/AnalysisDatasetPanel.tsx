@@ -6,7 +6,7 @@ import { viSummary } from "@/components/vehicsimI18n";
 
 export function AnalysisDatasetPanel({ dataset }: { dataset: AnalysisDataset }) {
   return (
-    <section className="flex flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+    <section className="flex flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
       <h2 className="text-[16px] font-bold text-vehicsim-ink">
         {dataset.id ? `Tập đã chốt #${dataset.id}` : "Xem trước tập baseline"} · {dataset.scenario.name}
       </h2>
@@ -29,7 +29,7 @@ export function AnalysisDatasetPanel({ dataset }: { dataset: AnalysisDataset }) 
       <div className="max-h-72 overflow-auto rounded-[12px] border border-solid border-vehicsim-line">
         <table className="w-full min-w-[720px] text-left text-[11px]">
           <caption className="sr-only">Biến thể, run, seed và chỉ số baseline</caption>
-          <thead className="sticky top-0 bg-vehicsim-soft text-vehicsim-muted">
+          <thead className="sticky top-0 border-b border-solid border-vehicsim-line bg-vehicsim-soft text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
             <tr>{["Biến thể / run", "Seed", "Kết quả", "RMS jerk (m/s³)", "Va chạm (m/s)", "Quãng phanh (m)"].map((label) => <th key={label} scope="col" className="px-3 py-2">{label}</th>)}</tr>
           </thead>
           <tbody>

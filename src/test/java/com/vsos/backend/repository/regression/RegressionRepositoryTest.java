@@ -73,6 +73,7 @@ class RegressionRepositoryTest {
 
     @Test
     void reviewerDecisionsLockTheTestTheRecommendationAndBothVersions() {
+        repo.lockReviewAccess(1L, 9L);
         repo.lockTest(1L, 30L);
         repo.lockRecommendation(30L);
         repo.lockVersionStatuses(10L, 11L);
@@ -80,6 +81,17 @@ class RegressionRepositoryTest {
         verify(db).first(contains("FROM regression_tests WHERE id = ? AND project_id = ? FOR UPDATE"), eq(30L), eq(1L));
         verify(db).first(contains("FROM engineering_recommendations WHERE regression_test_id = ? FOR UPDATE"), eq(30L));
         verify(db).list(contains("FROM aeb_versions WHERE id IN (?, ?) FOR UPDATE"), eq(10L), eq(11L));
+        verify(db).first(contains("FOR SHARE"), eq(1L), eq(9L));
+    }
+
+    @Test
+    void everyDecisionAppendsAnEventAndHistoryReadsEventsInsteadOfTheLatestState() {
+        repo.saveReview(77L, "MORE_TESTS_REQUESTED", "REQUEST_MORE_TESTS", 9L, "thêm ca", null);
+        repo.saveReview(77L, "ACCEPTED", "ACCEPT", 12L, "đủ bằng chứng", "điều kiện");
+        verify(db).insert(contains("INSERT INTO recommendation_decisions"), eq(77L), eq("REQUEST_MORE_TESTS"), any(), eq("thêm ca"), eq(null), eq(9L));
+        verify(db).insert(contains("INSERT INTO recommendation_decisions"), eq(77L), eq("ACCEPT"), any(), eq("đủ bằng chứng"), eq("điều kiện"), eq(12L));
+        repo.decidedRecommendations(1L);
+        verify(db).list(contains("FROM recommendation_decisions d"), eq(1L));
     }
 
     // ------------------------------------------------------------------ ghép cặp

@@ -21,5 +21,10 @@ Các file `*.json` / `kinematic.json.gz` ở đây là kết quả của lõi **
   bộ xuất Java chỉ khác Python ở `vs_format`; ba ca `stops_at_curb` (`export 2`, `5`, `16`) đổi hình học + thêm event `StopAtCurb`, nên
   `XoscReadParityTest` so chúng với `xosc_v4_stops_at_curb.json` — file này **sinh từ bộ xuất Java**, không phải từ Python. Sinh lại bằng
   cách chạy `XoscExport.export` trên đúng `bundle` / `seed_override` / `aeb_override` của các ca đó (đọc spec như `XoscReadParityTest`).
+- **Ngoại lệ có chủ đích (08/11/2026, ADR-051, `vehicsim.xosc/v5`):** test thay `vs_format` của cả hai fixture thành v5 trước khi so.
+  `export 5` mang `physics.wheels = {tire_friction, max_brake_torque}`: Python bỏ lặng lẽ, v5 chỉ mang được `{max_brake_torque}` nên
+  từ chối ca này — test khẳng định việc từ chối thay vì so từng byte.
+- **Ngoại lệ có chủ đích (11/11/2026, thời tiết theo preset CARLA):** `XoscReadParityTest` che `<Sun>` và `<Precipitation>` ở cả hai phía
+  trước khi so; giá trị mới kiểm ở `XoscExportTest.weatherFollowsTheCarlaPresetsAsScenarioRunnerReadsThem`.
 - Hash golden của lưới 1296 ca bộ động học và kết quả đối chiếu rộng (`-Dvsos.parity.full=...`) ghi ở
   [exec plan 21/10](../../../../docs/exec-plans/active/2026-10-21-port-loi-aeb-sang-java.md#nhật-ký-bằng-chứng).

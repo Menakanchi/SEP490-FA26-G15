@@ -56,11 +56,93 @@ export interface ParameterDef {
   default_value: number;
 }
 
+export type ProjectStatus = "ACTIVE" | "ARCHIVED";
+
+export interface ProjectItem {
+  id: number;
+  name: string;
+  description: string | null;
+  status: ProjectStatus;
+  vehicle_id: number | null;
+  vehicle_name: string | null;
+  baseline_label: string | null;
+  family_count: number;
+  run_count: number;
+  regression_count: number;
+  has_running_work: boolean;
+  created_date: string;
+  updated_at: string;
+  journey: ProjectJourney;
+}
+
+export interface ProjectList {
+  items: ProjectItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  active_count: number;
+  archived_count: number;
+}
+
+export interface ProjectRequest {
+  name?: string;
+  description?: string;
+  carla_vehicle_model_id?: number;
+}
+
+export interface VehicleOption {
+  id: number;
+  name: string;
+  is_default: boolean;
+  length_m: number | null;
+  width_m: number | null;
+  mass_kg: number | null;
+  max_brake_decel_mps2: number | null;
+}
+
+/** Hành trình 5 bước của một project cá nhân (`GET /projects/{id}/journey`, khớp `ProjectDtos.ProjectJourney`). */
+export type JourneyStepKey = "SCENARIO" | "BASELINE" | "RESULTS" | "IMPROVE" | "VERIFY";
+export type JourneyStatus = "TODO" | "RUNNING" | "DONE" | "FAILED";
+
+export interface JourneyCounts {
+  families: number;
+  variants: number;
+  baseline_completed: number;
+  baseline_running: number;
+  baseline_failed: number;
+  families_baseline_done: number;
+  families_baseline_pending: number;
+  safe: number;
+  near_misses: number;
+  collisions: number;
+  false_activations: number;
+  datasets: number;
+  candidates: number;
+  optimizations: number;
+  optimizations_running: number;
+  regressions_running: number;
+  regressions_completed: number;
+  last_regression_id: number | null;
+  last_verdict: "PENDING" | "PASSED" | "REGRESSED" | "FAILED" | null;
+}
+
+export interface ProjectJourney {
+  project_id: number;
+  round: number;
+  baseline_label: string | null;
+  steps: { key: JourneyStepKey; status: JourneyStatus }[];
+  next: JourneyStepKey | null;
+  counts: JourneyCounts;
+  last_activity_at: string | null;
+}
+
 export interface VehicSimContextData {
+  reviewer_projects: { id: number; name: string; workspace_name: string; can_decide: boolean }[];
+  reviewer_can_decide: boolean;
   project: { id: number; name: string };
   workspace: { id: number; name: string } | null;
   vehicle: { id: number; name: string } | null;
-  /** Bộ mô phỏng run MỚI sẽ dùng, vd. `vehicsim-kinematic-1.0` hoặc `carla-0.9.16-xosc4`. */
+  /** Bộ mô phỏng run MỚI sẽ dùng, vd. `vehicsim-kinematic-1.0` hoặc `carla-0.9.16-xosc5`. */
   simulator: string;
   system: { id: number; name: string; baseline: VersionBrief | null };
   versions: VersionBrief[];
@@ -68,11 +150,25 @@ export interface VehicSimContextData {
   parameters: ParameterDef[];
 }
 
+/** 7 nhóm kịch bản Euro NCAP (`scenarios.category`). */
+export type ScenarioCategory = "CCRS" | "CCRM" | "CCRB" | "CP_CROSSING" | "CPLA" | "TURNING" | "CUT_IN";
+/** Nhóm "xe phía trước cùng làn" chạy trên bộ động học (ADR-050). */
+export const LEAD_CATEGORIES: ScenarioCategory[] = ["CCRS", "CCRM", "CCRB"];
+
+/** `GET /scenario-categories` — `ScenarioRules.catalog()`: category nào đã có bộ mô phỏng. */
+export interface ScenarioCategoryInfo {
+  code: ScenarioCategory;
+  target_types: string[];
+  supported: boolean;
+  simulators: ("KINEMATIC" | "CARLA")[];
+}
+
 export interface FamilyItem {
   id: number;
   code: string;
   name: string;
   description: string | null;
+  category?: ScenarioCategory;
   variants: number;
   parameter_space: Record<string, (number | boolean | string)[]>;
   runs: Record<string, number>;
@@ -135,10 +231,16 @@ export interface FamilyVersion {
 export interface FamilyRequest {
   name: string;
   description?: string;
+  /** Trống = CP_CROSSING. Nhóm xe phía trước dùng các trục target/initial/decel/overlap thay cho trục người đi bộ. */
+  category?: ScenarioCategory;
   ego_speeds_kmh: number[];
-  trigger_distances_m: number[];
-  pedestrian_speeds_mps: number[];
-  stops_at_curb: boolean[];
+  trigger_distances_m?: number[];
+  pedestrian_speeds_mps?: number[];
+  stops_at_curb?: boolean[];
+  target_speeds_kmh?: number[];
+  initial_distances_m?: number[];
+  target_decels_mps2?: number[];
+  lateral_overlaps_pct?: number[];
   weathers: Weather[];
   times_of_day: TimeOfDay[];
   run_baseline: boolean;
@@ -146,16 +248,32 @@ export interface FamilyRequest {
   origin?: { natural_language_input: string; llm_model?: string | null; described?: Record<string, unknown> };
 }
 
-export type DescribeKey = "ego_speed_kmh" | "trigger_distance_m" | "pedestrian_speed_mps" | "stops_at_curb" | "weather" | "time_of_day";
+export type DescribeKey =
+  | "ego_speed_kmh"
+  | "trigger_distance_m"
+  | "pedestrian_speed_mps"
+  | "stops_at_curb"
+  | "target_speed_kmh"
+  | "initial_distance_m"
+  | "target_decel_mps2"
+  | "lateral_overlap_pct"
+  | "weather"
+  | "time_of_day";
 /** Nguồn gốc giá trị: câu nói rõ / suy từ từ ngữ / giá trị mặc định / người dùng sửa tay. */
 export type FieldOrigin = "stated" | "inferred" | "assumed" | "edited";
 
 export interface DescribedIr {
   motif: string;
+  /** Có ở nhóm xe phía trước; IR người đi bộ không mang khóa này. */
+  category?: ScenarioCategory;
   ego_speed_kmh: number;
-  trigger_distance_m: number;
-  pedestrian_speed_mps: number;
-  stops_at_curb: boolean;
+  trigger_distance_m?: number;
+  pedestrian_speed_mps?: number;
+  stops_at_curb?: boolean;
+  target_speed_kmh?: number;
+  initial_distance_m?: number;
+  target_decel_mps2?: number;
+  lateral_overlap_pct?: number;
   weather: Weather;
   time_of_day: TimeOfDay;
 }
@@ -163,6 +281,7 @@ export interface DescribedIr {
 /** `POST /api/v1/vehicsim/scenarios/describe` — `DescribeService` (Java). */
 export interface DescribeResult {
   motif: string;
+  category?: ScenarioCategory;
   source: "llm" | "rules";
   model: string | null;
   llm_error: string | null;
@@ -641,6 +760,9 @@ export interface RecommendationDetail extends RegressionDetail {
 /** ``GET /vehicsim/decisions`` — quyết định của Reviewer (mới nhất trước) và chuỗi baseline của project. */
 export interface DecisionHistory {
   decisions: {
+    id: number;
+    reviewed_by_user_id: number;
+    source: "REVIEW" | "LEGACY_SNAPSHOT";
     recommendation_code: string;
     regression_code: string;
     test_id: number;
@@ -809,6 +931,16 @@ export interface WorkspaceReport {
   title: string; content: string; attachment_url: string | null; status: ReportStatus;
   reviewed_by: WorkspaceUserRef | null; reviewed_at: string | null; review_note: string | null; created_date: string;
 }
+// "Nhiệm vụ & báo cáo" phía thành viên (Engineer / Reviewer): GET /my/work, PUT /my/tasks/{id}/progress, POST /my/reports.
+export interface WorkspaceRef { id: number; name: string; status: WorkspaceStatus }
+export interface MyTask { workspace: WorkspaceRef; task: WorkspaceTask }
+export interface MyProject { id: number; name: string; workspace: WorkspaceRef }
+export interface MyWork { tasks: MyTask[]; reports: WorkspaceReport[]; projects: MyProject[] }
+/** Người được giao tự đặt TODO / IN_PROGRESS / REVIEW; DONE do Manager xác nhận. */
+export type MemberTaskStatus = Exclude<TaskStatus, "DONE">;
+export interface ReportSubmitRequest {
+  project_id: number; task_id: number | null; title: string; content: string; attachment_url: string | null;
+}
 export interface NotificationItem {
   id: number; type: string; title: string; content: string; reference_type: string | null; reference_id: number | null;
   workspace_id: number | null; workspace_name: string | null; is_read: boolean; created_date: string;
@@ -838,4 +970,24 @@ export interface VehicleDetail extends VehicleSummary {
   };
   sensors: VehicleSensor[];
   usage: VehicleUsage[];
+}
+
+// FE-03: chat workspace
+export interface WorkspaceChatMessage {
+  id: number;
+  workspace_id: number;
+  sender: WorkspaceUserRef;
+  message_text: string;
+  created_date: string;
+  edited_at: string | null;
+}
+
+export interface SendChatMessageRequest {
+  message: string;
+}
+
+/** `PUT /workspaces/{id}`: tên (≤ 150 ký tự, không trùng) và mô tả (≤ 10000 ký tự, trống = xoá). */
+export interface UpdateWorkspaceRequest {
+  name: string;
+  description: string | null;
 }

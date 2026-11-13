@@ -56,7 +56,7 @@ class WorkspaceTaskServiceTest {
         members = mock(WorkspaceRepository.class);
         tasks = mock(WorkspaceTaskRepository.class);
         notifications = mock(NotificationService.class);
-        workspaces = new WorkspaceService(members, notifications);
+        workspaces = new WorkspaceService(members, notifications, mock(WorkspaceChatHub.class));
         service = new WorkspaceTaskService(workspaces, members, tasks, notifications);
         when(members.find(WS)).thenReturn(workspace("ACTIVE"));
         when(members.isMember(WS, ENGINEER)).thenReturn(true);
@@ -152,18 +152,18 @@ class WorkspaceTaskServiceTest {
                 new TaskRequest("x", null, "CRITICAL", null, null, null, null, null))).hasMessageContaining("ưu tiên");
         assertThatThrownBy(() -> service.create(MANAGER, "MANAGER", WS, req("BLOCKED", null, null, null, null)))
                 .hasMessageContaining("Trạng thái");
-        assertThatThrownBy(() -> service.list(MANAGER, "MANAGER", WS, "BLOCKED", null)).hasMessageContaining("Trạng thái");
+        assertThatThrownBy(() -> service.list(MANAGER, WS, "BLOCKED", null)).hasMessageContaining("Trạng thái");
     }
 
     @Test
     void anotherManagersWorkspaceIsNotFoundAndArchivedIsReadOnly() {
         assertThatThrownBy(() -> service.create(6L, "MANAGER", WS, req(null, null, null, null, null))).isInstanceOf(NotFoundException.class);
-        assertThatThrownBy(() -> service.list(6L, "MANAGER", WS, null, null)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.list(6L, WS, null, null)).isInstanceOf(NotFoundException.class);
 
         when(members.find(WS)).thenReturn(workspace("ARCHIVED"));
         assertThatThrownBy(() -> service.create(MANAGER, "MANAGER", WS, req(null, null, null, null, null))).hasMessageContaining("lưu trữ");
         assertThatThrownBy(() -> service.delete(MANAGER, "MANAGER", WS, TASK)).hasMessageContaining("lưu trữ");
-        service.list(MANAGER, "MANAGER", WS, null, null);
+        service.list(MANAGER, WS, null, null);
         verify(tasks).list(WS, null, null);
     }
 
@@ -217,10 +217,25 @@ class WorkspaceTaskServiceTest {
     }
 
     @Test
-    void listPassesFiltersThrough() {
-        service.list(MANAGER, "MANAGER", WS, "TODO", 0L);
+    void managerFiltersFreelyWhileMembersOnlySeeTheirOwnTasks() {
+        service.list(MANAGER, WS, "TODO", 0L);
         verify(tasks).list(WS, "TODO", 0L);
-        assertThat(service.list(1L, "ADMIN", WS, " ", ENGINEER)).isEmpty();
+        when(members.isMember(WS, ENGINEER)).thenReturn(true);
+        assertThat(service.list(ENGINEER, WS, " ", 0L)).isEmpty();
         verify(tasks).list(WS, null, ENGINEER);
+        assertThatThrownBy(() -> service.list(1L, WS, null, null)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void taskDetailIsOnlyForTheAssigneeAndTheWorkspaceManager() {
+        when(tasks.workspaceOf(TASK)).thenReturn(WS);
+        when(tasks.find(WS, TASK)).thenReturn(existing(ENGINEER, null, null, 0));
+        when(members.isMember(WS, ENGINEER)).thenReturn(true);
+        when(members.isMember(WS, 21L)).thenReturn(true);
+        assertThat(service.getTask(ENGINEER, TASK).id()).isEqualTo(TASK);
+        assertThat(service.getTask(MANAGER, TASK).id()).isEqualTo(TASK);
+        assertThatThrownBy(() -> service.getTask(21L, TASK)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.getTask(1L, TASK)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.getTask(ENGINEER, 99L)).isInstanceOf(NotFoundException.class);
     }
 }

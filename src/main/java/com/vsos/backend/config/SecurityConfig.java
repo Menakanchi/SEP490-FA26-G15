@@ -2,6 +2,7 @@ package com.vsos.backend.config;
 
 import com.vsos.backend.security.JwtAuthenticationFilter;
 import com.vsos.backend.security.LegacyAwarePasswordEncoder;
+import com.vsos.backend.security.ProjectScope;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -56,6 +57,9 @@ public class SecurityConfig {
                         .authenticationEntryPoint((req, res, e) -> writeJson(res, 401, "Chưa đăng nhập hoặc phiên đăng nhập đã hết hạn"))
                         .accessDeniedHandler((req, res, e) -> writeJson(res, 403, "Bạn không có quyền thực hiện thao tác này")))
                 .authorizeHttpRequests(auth -> auth
+                        // Lượt ASYNC chỉ tiếp tục request đã qua kiểm quyền ở lượt REQUEST (kênh chat SSE kết thúc / hết hạn);
+                        // bộ lọc JWT không chạy lại ở lượt này nên không được chặn nó thành 401/403 trên response đã gửi dở.
+                        .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/api/v1/vehicsim/admin/**").hasRole("ADMIN")
                         // Phải đứng trước /api/v1/auth/** (permitAll) để hai route này đòi đăng nhập.
                         .requestMatchers("/api/v1/auth/me", "/api/v1/auth/password/change").authenticated()
@@ -106,7 +110,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(allowedOrigins.stream().map(String::trim).filter(o -> !o.isEmpty()).toList());
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", ProjectScope.HEADER));
         // Token đi bằng header Authorization, không bằng cookie nên không cần cho phép credentials.
         configuration.setAllowCredentials(false);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

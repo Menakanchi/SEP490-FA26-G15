@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Thành phần giao diện VehicSim dùng chung, dựng theo Figma FE-12/13/14.
+ * Thành phần giao diện VehicSim dùng chung.
  * Màu lấy từ token `--color-vehicsim-*` trong globals.css.
  */
 
@@ -19,7 +19,7 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
 
 export function Card({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <section className={cx("rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card", className)}>
+    <section className={cx("rounded-xl border border-vehicsim-line bg-vehicsim-surface", className)}>
       {children}
     </section>
   );
@@ -30,6 +30,14 @@ export function CardTitle({ children, aside }: { children: React.ReactNode; asid
     <div className="flex items-center justify-between gap-3">
       <h2 className="text-[17px] font-bold text-vehicsim-ink">{children}</h2>
       {aside}
+    </div>
+  );
+}
+
+export function TableScroll({ label, minWidth, children }: { label: string; minWidth: number; children: React.ReactNode }) {
+  return (
+    <div role="region" aria-label={label} tabIndex={0} className="min-w-0 overflow-x-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-vehicsim-primary">
+      <div style={{ minWidth }}>{children}</div>
     </div>
   );
 }
@@ -48,10 +56,14 @@ export function StatCard({
   valueClass?: string;
 }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-[10px] self-stretch rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 drop-shadow-[0px_4px_8px_rgba(18,20,26,0.05)]">
+    <div className="flex min-w-0 flex-1 flex-col gap-1.5 self-stretch rounded-xl border border-vehicsim-line bg-vehicsim-surface p-4">
       <span className="text-[13px] font-medium text-vehicsim-muted">{label}</span>
-      <span className={cx("text-[34px] font-extrabold tracking-[-0.68px] text-vehicsim-ink", valueClass)}>{value}</span>
-      {note !== undefined && note !== null && <Tag tone={tone}>{note}</Tag>}
+      <span className={cx("text-[28px] font-bold leading-tight tabular-nums text-vehicsim-ink", valueClass)}>{value}</span>
+      {note !== undefined && note !== null && (
+        <span className={cx("text-xs", tone === "danger" ? "text-vehicsim-danger" : tone === "warn" ? "text-vehicsim-warn" : "text-vehicsim-muted")}>
+          {note}
+        </span>
+      )}
     </div>
   );
 }
@@ -62,7 +74,7 @@ const TONES = {
   ok: "bg-vehicsim-ok-bg text-vehicsim-ok",
   info: "bg-vehicsim-decision-bg text-vehicsim-decision",
   neutral: "bg-vehicsim-soft text-vehicsim-muted",
-  dark: "bg-vehicsim-ink text-white",
+  dark: "bg-vehicsim-primary text-white",
 } as const;
 
 export function Tag({
@@ -186,10 +198,10 @@ type ButtonProps = {
 
 export function PillButton({ variant = "light", href, children, className, ...rest }: ButtonProps) {
   const cls = cx(
-    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-5 py-3 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
+    "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-center text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-primary disabled:cursor-not-allowed disabled:opacity-50",
     variant === "dark"
-      ? "bg-vehicsim-ink text-white hover:bg-black/80"
-      : "border border-solid border-vehicsim-line-strong bg-white text-vehicsim-ink hover:bg-vehicsim-soft",
+      ? "bg-vehicsim-primary text-white hover:bg-vehicsim-primary-hover"
+      : "border border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-ink hover:bg-vehicsim-soft",
     className,
   );
   if (href) {
@@ -218,7 +230,7 @@ export function FilterSelect<T extends string>({
   onChange: (value: T | "") => void;
 }) {
   return (
-    <label className="relative inline-flex items-center rounded-full border border-solid border-vehicsim-line bg-white px-3 py-[6px] text-[12px] font-medium text-vehicsim-ink hover:bg-vehicsim-soft">
+    <label className="relative inline-flex items-center rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-[6px] text-[12px] font-medium text-vehicsim-ink hover:bg-vehicsim-soft">
       <span>
         {label}: {options.find((o) => o.value === value)?.label ?? "Tất cả"} ▾
       </span>
@@ -249,7 +261,7 @@ export function Checkbox({ checked, onChange, label }: { checked: boolean; onCha
       onClick={() => onChange(!checked)}
       className={cx(
         "flex size-4 shrink-0 items-center justify-center rounded-[4px] text-[10px] font-bold text-white",
-        checked ? "bg-vehicsim-ink" : "border border-solid border-vehicsim-check bg-white",
+        checked ? "bg-vehicsim-primary" : "border border-solid border-vehicsim-check bg-vehicsim-surface",
       )}
     >
       {checked ? "✓" : ""}
@@ -268,19 +280,20 @@ export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChang
       onClick={() => onChange(!on)}
       className={cx(
         "relative h-[22px] w-[38px] shrink-0 rounded-full transition disabled:cursor-not-allowed",
-        on ? "bg-vehicsim-ink" : "bg-vehicsim-line-strong",
+        on ? "bg-vehicsim-primary" : "bg-vehicsim-line-strong",
       )}
     >
-      <span className={cx("absolute top-[3px] size-4 rounded-full bg-white transition-all", on ? "left-[19px]" : "left-[3px]")} />
+      <span className={cx("absolute top-[3px] size-4 rounded-full bg-vehicsim-surface transition-all", on ? "left-[19px]" : "left-[3px]")} />
     </button>
   );
 }
 
-export function EmptyState({ title, children }: { title: string; children?: React.ReactNode }) {
+export function EmptyState({ title, children, action }: { title: string; children?: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
       <p className="text-[15px] font-bold text-vehicsim-ink">{title}</p>
-      {children && <div className="max-w-[460px] text-[13px] text-vehicsim-muted">{children}</div>}
+      {children && <div className="max-w-[460px] text-[13px] leading-[1.5] text-vehicsim-muted">{children}</div>}
+      {action && <div className="mt-1 flex flex-wrap items-center justify-center gap-2">{action}</div>}
     </div>
   );
 }
@@ -299,27 +312,34 @@ export function Pagination({ page, pages, onPage }: { page: number; pages: numbe
   const nums = new Set<number>([1, pages, page - 1, page, page + 1].filter((n) => n >= 1 && n <= pages));
   const sorted = [...nums].sort((a, b) => a - b);
   const btn = "flex size-8 items-center justify-center rounded-[16px] text-[12px] font-semibold";
+  const idle = "border border-solid border-vehicsim-line bg-vehicsim-surface text-vehicsim-ink hover:bg-vehicsim-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-vehicsim-surface";
   return (
-    <div className="flex items-center gap-[6px]">
-      <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)} className={cx(btn, "border border-solid border-vehicsim-line bg-white text-vehicsim-ink disabled:opacity-40")}>
-        ‹
+    <nav aria-label="Phân trang" className="flex items-center gap-[6px]">
+      <button type="button" aria-label="Trang trước" disabled={page <= 1} onClick={() => onPage(page - 1)} className={cx(btn, idle)}>
+        <span aria-hidden>‹</span>
       </button>
       {sorted.map((n, i) => (
         <React.Fragment key={n}>
-          {i > 0 && n - sorted[i - 1] > 1 && <span className={cx(btn, "border border-solid border-vehicsim-line bg-white text-vehicsim-ink")}>…</span>}
+          {i > 0 && n - sorted[i - 1] > 1 && (
+            <span aria-hidden className={cx(btn, "text-vehicsim-muted")}>
+              …
+            </span>
+          )}
           <button
             type="button"
+            aria-label={`Trang ${n}`}
+            aria-current={n === page ? "page" : undefined}
             onClick={() => onPage(n)}
-            className={cx(btn, n === page ? "bg-vehicsim-ink text-white" : "border border-solid border-vehicsim-line bg-white text-vehicsim-ink")}
+            className={cx(btn, "tabular-nums", n === page ? "bg-vehicsim-primary text-white" : idle)}
           >
             {n}
           </button>
         </React.Fragment>
       ))}
-      <button type="button" disabled={page >= pages} onClick={() => onPage(page + 1)} className={cx(btn, "border border-solid border-vehicsim-line bg-white text-vehicsim-ink disabled:opacity-40")}>
-        ›
+      <button type="button" aria-label="Trang sau" disabled={page >= pages} onClick={() => onPage(page + 1)} className={cx(btn, idle)}>
+        <span aria-hidden>›</span>
       </button>
-    </div>
+    </nav>
   );
 }
 

@@ -45,13 +45,15 @@ class WorkspaceServiceTest {
 
     private WorkspaceRepository repo;
     private NotificationService notifications;
+    private WorkspaceChatHub chat;
     private WorkspaceService service;
 
     @BeforeEach
     void setUp() {
         repo = mock(WorkspaceRepository.class);
         notifications = mock(NotificationService.class);
-        service = new WorkspaceService(repo, notifications);
+        chat = mock(WorkspaceChatHub.class);
+        service = new WorkspaceService(repo, notifications, chat);
         when(repo.find(WS)).thenReturn(workspace("ACTIVE"));
     }
 
@@ -78,8 +80,8 @@ class WorkspaceServiceTest {
 
     @Test
     void anotherManagersWorkspaceLooksLikeItDoesNotExist() {
-        assertThatThrownBy(() -> service.detail(OTHER_MANAGER, "MANAGER", WS)).isInstanceOf(NotFoundException.class);
-        assertThatThrownBy(() -> service.members(OTHER_MANAGER, "MANAGER", WS)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.detail(OTHER_MANAGER, WS)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.members(OTHER_MANAGER, WS)).isInstanceOf(NotFoundException.class);
         assertThatThrownBy(() -> service.addMember(OTHER_MANAGER, "MANAGER", WS, ENGINEER, "ENGINEER")).isInstanceOf(NotFoundException.class);
         assertThatThrownBy(() -> service.removeMember(OTHER_MANAGER, "MANAGER", WS, ENGINEER)).isInstanceOf(NotFoundException.class);
         verify(repo, never()).addMember(anyLong(), anyLong(), anyLong(), any());
@@ -89,21 +91,96 @@ class WorkspaceServiceTest {
 
     @Test
     void missingWorkspaceIsNotFound() {
-        assertThatThrownBy(() -> service.detail(MANAGER, "MANAGER", 99L)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.detail(MANAGER, 99L)).isInstanceOf(NotFoundException.class);
     }
 
     @Test
-    void ownerAndAdminCanReadTheWorkspace() {
-        assertThat(service.detail(MANAGER, "MANAGER", WS).workspace().id()).isEqualTo(WS);
-        assertThat(service.detail(1L, "ADMIN", WS).workspace().id()).isEqualTo(WS);
+    void managerAndMembersReadTheWorkspaceButOutsidersDoNot() {
+        when(repo.isMember(WS, ENGINEER)).thenReturn(true);
+        assertThat(service.detail(MANAGER, WS).workspace().id()).isEqualTo(WS);
+        assertThat(service.detail(ENGINEER, WS).workspace().id()).isEqualTo(WS);
+        assertThat(service.members(ENGINEER, WS)).isEmpty();
+        assertThatThrownBy(() -> service.detail(1L, WS)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.members(1L, WS)).isInstanceOf(NotFoundException.class);
         verify(repo, times(2)).projectsOf(WS);
     }
 
+    // ------------------------------------------------------------------ M2: sửa thông tin, chat
+
     @Test
-    void candidateSearchIsCappedAndBounded() {
-        service.candidates(MANAGER, "MANAGER", WS, "eng");
-        verify(repo).candidatesFor(WS, "eng", WorkspaceService.CANDIDATE_LIMIT);
-        assertThatThrownBy(() -> service.candidates(MANAGER, "MANAGER", WS, "x".repeat(101))).isInstanceOf(InvalidRequestException.class);
+    void theAssignedManagerRenamesTheWorkspaceWithTrimmedValues() {
+        service.updateInfo(MANAGER, "MANAGER", WS, "  AEB đêm mưa  ", "   ");
+        verify(repo).updateInfo(WS, "AEB đêm mưa", null);
+        verify(repo, times(2)).find(WS);
+    }
+
+    @Test
+    void workspaceInfoCannotBeChangedByOthersWhenArchivedOrToADuplicateName() {
+        assertThatThrownBy(() -> service.updateInfo(OTHER_MANAGER, "MANAGER", WS, "Mới", null)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.updateInfo(ENGINEER, "MANAGER", WS, "Mới", null)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.updateInfo(MANAGER, "MANAGER", 99L, "Mới", null)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.updateInfo(MANAGER, "MANAGER", WS, " ", null)).isInstanceOf(InvalidRequestException.class);
+        assertThatThrownBy(() -> service.updateInfo(MANAGER, "MANAGER", WS, "x".repeat(151), null))
+                .isInstanceOf(InvalidRequestException.class);
+        when(repo.nameTaken("Trùng", WS)).thenReturn(true);
+        assertThatThrownBy(() -> service.updateInfo(MANAGER, "MANAGER", WS, "Trùng", null)).hasMessageContaining("đã được sử dụng");
+        when(repo.find(WS)).thenReturn(workspace("ARCHIVED"));
+        assertThatThrownBy(() -> service.updateInfo(MANAGER, "MANAGER", WS, "Mới", null)).hasMessageContaining("lưu trữ");
+        verify(repo, never()).updateInfo(anyLong(), any(), any());
+    }
+
+    @Test
+    void realtimeChatOpensOnlyForTheManagerAndMembersAndSentMessagesArePushed() {
+        when(repo.isMember(WS, ENGINEER)).thenReturn(true);
+        when(repo.insertMessage(WS, ENGINEER, "Đã chạy xong baseline")).thenReturn(77L);
+
+        service.openChatStream(ENGINEER, WS);
+        service.openChatStream(MANAGER, WS);
+        verify(chat).subscribe(WS, ENGINEER);
+        verify(chat).subscribe(WS, MANAGER);
+        assertThatThrownBy(() -> service.openChatStream(1L, WS)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.openChatStream(ENGINEER, 99L)).isInstanceOf(NotFoundException.class);
+        verify(chat, never()).subscribe(anyLong(), eq(1L));
+
+        service.sendMessage(ENGINEER, WS, "  Đã chạy xong baseline ");
+        verify(chat).publish(org.mockito.ArgumentMatchers.argThat(m -> m.id() == 77L && m.workspaceId() == WS
+                && "Đã chạy xong baseline".equals(m.messageText())));
+        assertThatThrownBy(() -> service.sendMessage(ENGINEER, WS, " ")).isInstanceOf(InvalidRequestException.class);
+        verify(chat, times(1)).publish(any());
+    }
+
+    @Test
+    void chatReturnsTheLatestPageOrOnlyNewerMessagesAndHidesOtherWorkspaces() {
+        when(repo.isMember(WS, ENGINEER)).thenReturn(true);
+        service.listMessages(ENGINEER, WS, 50, null, null);
+        verify(repo).listMessages(WS, 50, null, null);
+        service.listMessages(MANAGER, WS, 1000, 42L, null);
+        verify(repo).listMessages(WS, 200, 42L, null);
+        service.listMessages(ENGINEER, WS, 50, null, 42L);
+        verify(repo).listMessages(WS, 50, null, 42L);
+        assertThatThrownBy(() -> service.listMessages(ENGINEER, WS, 50, -1L, null)).isInstanceOf(InvalidRequestException.class);
+        assertThatThrownBy(() -> service.listMessages(ENGINEER, WS, 50, null, 0L)).isInstanceOf(InvalidRequestException.class);
+        assertThatThrownBy(() -> service.listMessages(ENGINEER, WS, 50, 10L, 42L)).hasMessageContaining("một mốc");
+        assertThatThrownBy(() -> service.listMessages(1L, WS, 50, null, 42L)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.sendMessage(1L, WS, "xin chào")).isInstanceOf(NotFoundException.class);
+        verify(repo, never()).insertMessage(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void candidateSearchOnlyAnswersAnExactEmailAndNeverListsUsers() {
+        service.candidates(MANAGER, "MANAGER", WS, "  eng@example.com ");
+        verify(repo).candidateByEmail(WS, "eng@example.com");
+
+        // Trống, chỉ khoảng trắng, tên người hoặc một phần email: rỗng và không chạm DB.
+        for (String q : new String[] {null, "", "   ", "eng", "Nguyễn Văn A", "@example.com", "eng@"}) {
+            org.mockito.Mockito.clearInvocations(repo);
+            assertThat(service.candidates(MANAGER, "MANAGER", WS, q)).as("q=" + q).isEmpty();
+            verify(repo, never()).candidateByEmail(anyLong(), any());
+        }
+        assertThatThrownBy(() -> service.candidates(MANAGER, "MANAGER", WS, "x".repeat(250) + "@e.com"))
+                .isInstanceOf(InvalidRequestException.class);
+        // Manager của workspace khác vẫn 404, kể cả với email đúng.
+        assertThatThrownBy(() -> service.candidates(1L, "MANAGER", WS, "eng@example.com")).isInstanceOf(NotFoundException.class);
     }
 
     // ------------------------------------------------------------------ M4: thêm
@@ -173,7 +250,7 @@ class WorkspaceServiceTest {
         assertThatThrownBy(() -> service.addMember(MANAGER, "MANAGER", WS, ENGINEER, "ENGINEER")).hasMessageContaining("lưu trữ");
         assertThatThrownBy(() -> service.removeMember(MANAGER, "MANAGER", WS, ENGINEER)).hasMessageContaining("lưu trữ");
         // Vẫn xem được workspace đã lưu trữ.
-        assertThat(service.members(MANAGER, "MANAGER", WS)).isEmpty();
+        assertThat(service.members(MANAGER, WS)).isEmpty();
     }
 
     // ------------------------------------------------------------------ M5: bớt
@@ -192,6 +269,7 @@ class WorkspaceServiceTest {
         assertThat(result.roleReverted()).as("role do Admin cấp (granted_role NULL) giữ nguyên").isFalse();
         verify(repo).unassignOpenTasks(WS, ENGINEER);
         verify(repo).removeMember(WS, ENGINEER);
+        verify(chat).disconnect(WS, ENGINEER);
         verify(repo, never()).setRole(anyLong(), anyString());
         verify(notifications).notify(eq(ENGINEER), eq(MANAGER),
                 eq(WS), eq("SYSTEM"), anyString(),

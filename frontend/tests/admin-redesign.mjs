@@ -28,7 +28,8 @@ try {
     requests.push({path:p,method:req.method(),query:Object.fromEntries(url.searchParams)});
     if(p==="/auth/login")return reply({access_token:"admin-browser-fixture-token",token_type:"bearer",expires_in:3600,user:{...actor,role}});
     if(p==="/auth/me")return reply({...actor,role});
-    if(p==="/vehicsim/context")return reply({project:{id:999999,name:"UI Fixture"},workspace:null,vehicle:{id:1,name:"Audi e-tron"},system:{id:1,name:"AEB",baseline:null},versions:[],families:[],parameters:[]});
+    if(p==="/vehicsim/context")return reply({project:{id:999999,name:"UI Fixture"},workspace:null,vehicle:{id:1,name:"Audi e-tron"},system:{id:1,name:"AEB",baseline:null},versions:[],families:[],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
+    if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
     if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
     if(p.startsWith("/vehicsim/admin/")){
       if(req.method()!=="GET"){
@@ -86,6 +87,8 @@ try {
       const nav=visibleNav();assert.equal(await nav.count(),1);
       const add=frame.getByRole("button",{name:"Thêm mới",exact:true});
       assert.equal(await add.evaluate(el=>getComputedStyle(el).fontSize),"13px");
+      assert.equal(await add.evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(49, 87, 68)","Admin actions use the shared theme while retaining chuvv sizing");
+      assert.equal(await frame.evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(245, 243, 237)","Admin canvas follows DESIGN.md");
       assert(await add.evaluate(el=>el.getBoundingClientRect().height)>=(width<640?44:40),"Shared control height");
       assert.equal(await frame.locator("h2").first().evaluate(el=>getComputedStyle(el).fontSize),"16px");
       await nav.locator('[aria-current="page"]').focus();
@@ -174,17 +177,18 @@ try {
   await page.getByRole("button",{name:/Lưu/}).first().waitFor();
   assert.equal(await frame.count(),0);assert.equal(await page.getByRole("complementary",{name:"Khu vực quản trị"}).count(),0);
   await page.setViewportSize({width:1366,height:768});
-  assert.equal(await page.locator("aside").evaluate(el=>Math.round(el.getBoundingClientRect().width)),248);
+  assert.equal(await page.locator("#vehicsim-navigation").evaluate(el=>Math.round(el.getBoundingClientRect().width)),232);
 
   // Each non-Admin role is denied before mounting the Admin data fetching component.
   for(const nextRole of ["MANAGER","ENGINEER","REVIEWER","EXPERIENCER"]){
     role=nextRole;
     for(const [resource] of sections){
       const before=requests.filter(r=>r.path.startsWith("/vehicsim/admin/")).length;
-      await page.goto(base+`/admin/${resource}`);await page.getByRole("heading",{name:"Quyền Hạn Không Đủ",exact:true}).waitFor();
+      await page.goto(base+`/admin/${resource}`);await page.getByRole("heading",{name:"Trang này yêu cầu quyền truy cập",exact:true}).waitFor();
       assert.equal(await frame.count(),0);assert.equal(await page.getByRole("navigation",{name:"Quản trị hệ thống",exact:true}).count(),0);
       assert.equal(await page.locator("aside").isVisible(),true,"Denied non-Admin keeps the existing global navigation");
       assert.equal(requests.filter(r=>r.path.startsWith("/vehicsim/admin/")).length,before);
+      if(nextRole==="ENGINEER"||nextRole==="REVIEWER")assert.equal(await page.getByRole("navigation",{name:"Điều hướng VehicSim",exact:true}).getByRole("link",{name:"Nhiệm vụ & báo cáo",exact:true}).getAttribute("href"),"/my-work");
     }
   }
   role="ADMIN";

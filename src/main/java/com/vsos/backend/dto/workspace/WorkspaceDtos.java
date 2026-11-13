@@ -20,6 +20,15 @@ public final class WorkspaceDtos {
     private WorkspaceDtos() {
     }
 
+    /**
+     * {@code PUT /workspaces/{id}}: Manager được gán sửa tên và mô tả workspace. Đổi Manager hoặc trạng thái vẫn ở Quản trị
+     * ({@code /admin/workspaces}); độ dài khớp cột {@code workspaces.name} (150) và giới hạn mô tả của màn Admin.
+     */
+    public record UpdateWorkspaceRequest(
+            @NotBlank(message = "Tên workspace không được để trống") @Size(max = 150, message = "Tên workspace tối đa 150 ký tự") String name,
+            @Size(max = 10000, message = "Mô tả tối đa 10000 ký tự") String description) {
+    }
+
     /** {@code POST /workspaces/{id}/members}: thêm một tài khoản EXPERIENCER và cấp role ENGINEER / REVIEWER cho người đó (ADR-045). */
     public record AddMemberRequest(
             @JsonProperty("user_id") @NotNull Long userId,
@@ -152,5 +161,53 @@ public final class WorkspaceDtos {
     public record ReportDecisionRequest(
             @NotBlank(message = "Chọn APPROVED hoặc REJECTED") String decision,
             @Size(max = 4000, message = "Nhận xét tối đa 4000 ký tự") String note) {
+    }
+    /** Tin nhắn trao đổi kỹ thuật trong workspace (FE-03 chat). */
+    public record ChatMessage(
+            long id,
+            @JsonProperty("workspace_id") long workspaceId,
+            UserRef sender,
+            @JsonProperty("message_text") String messageText,
+            @JsonProperty("created_date") LocalDateTime createdDate,
+            @JsonProperty("edited_at") LocalDateTime editedAt) {
+    }
+
+    /** Gửi tin nhắn mới vào kênh workspace. */
+    public record SendChatMessageRequest(
+            @NotBlank(message = "Nội dung tin nhắn không được để trống") @Size(max = 2000, message = "Nội dung tối đa 2000 ký tự") String message) {
+    }
+
+    // ------------------------------------------------------------------ phía thành viên (UC-21, UC-64, UC-66, UC-68)
+
+    /** Workspace rút gọn gắn với task / project của thành viên. */
+    public record WorkspaceRef(long id, String name, String status) {
+    }
+
+    /** Task được giao cho tôi, kèm workspace chứa nó. */
+    public record MyTaskItem(WorkspaceRef workspace, TaskItem task) {
+    }
+
+    /** Project ACTIVE trong workspace ACTIVE mà tôi là thành viên: nơi nộp được báo cáo. */
+    public record MyProject(long id, String name, WorkspaceRef workspace) {
+    }
+
+    /** {@code GET /my/work}: task được giao, báo cáo đã nộp và project nộp được báo cáo của người đang đăng nhập. */
+    public record MyWork(List<MyTaskItem> tasks, List<ReportItem> reports, List<MyProject> projects) {
+    }
+
+    /** {@code PUT /my/tasks/{taskId}/progress}: người được giao cập nhật trạng thái (trừ DONE — Manager xác nhận) và tiến độ. */
+    public record TaskProgressRequest(
+            @NotBlank(message = "Chọn trạng thái task") String status,
+            @JsonProperty("progress_pct") @NotNull(message = "Nhập tiến độ") @Min(value = 0, message = "Tiến độ từ 0 đến 100")
+            @Max(value = 100, message = "Tiến độ từ 0 đến 100") Integer progressPct) {
+    }
+
+    /** {@code POST /my/reports}: nộp báo cáo công việc cho một project; gắn task (của tôi, cùng project) nếu có. */
+    public record ReportSubmitRequest(
+            @JsonProperty("project_id") @NotNull(message = "Chọn project") Long projectId,
+            @JsonProperty("task_id") Long taskId,
+            @NotBlank(message = "Tiêu đề báo cáo không được để trống") @Size(max = 255, message = "Tiêu đề tối đa 255 ký tự") String title,
+            @NotBlank(message = "Nội dung báo cáo không được để trống") @Size(max = 10000, message = "Nội dung tối đa 10000 ký tự") String content,
+            @JsonProperty("attachment_url") @Size(max = 1024, message = "Đường dẫn đính kèm tối đa 1024 ký tự") String attachmentUrl) {
     }
 }

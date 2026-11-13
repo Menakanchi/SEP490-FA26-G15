@@ -12,13 +12,15 @@ import com.vsos.backend.common.Json;
 import com.vsos.backend.common.Vs;
 import com.vsos.backend.repository.common.Db;
 import com.vsos.backend.repository.common.Queries;
+import com.vsos.backend.security.ProjectAccess;
 import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.service.scenario.FamilyService;
 
 class AnalysisSnapshotTest {
+    private final ProjectAccess projects = mock(ProjectAccess.class);
     private final Db db = mock(Db.class);
     private final Queries queries = mock(Queries.class);
-    private final AnalysisViewService views = spy(new AnalysisViewService(db, queries, mock(FamilyService.class)));
+    private final AnalysisViewService views = spy(new AnalysisViewService(db, queries, mock(FamilyService.class), projects));
 
     @Test
     void freezesReviewedDataAndPreservesSafeAndNotRunRows() {
@@ -27,7 +29,7 @@ class AnalysisSnapshotTest {
                         Json.obj("run_id", 11L, "seed", 48011L, "status", "COMPLETED", "outcome", "SAFE"),
                         Json.obj("run_id", null, "seed", null, "status", "NOT_RUN")));
         doReturn(snapshot).when(views).analysisDataset(8L);
-        when(queries.currentProject()).thenReturn(new Row(Json.obj("id", 1L)));
+        when(projects.currentProject()).thenReturn(new Row(Json.obj("id", 1L)));
         when(db.insert(startsWith("INSERT INTO analysis_results "), any(Object[].class))).thenReturn(99L);
         Map<String, Object> result = views.freezeAnalysisDataset(8L, "token", 7L);
         assertThat(result).containsEntry("id", 99L).containsEntry("variants", snapshot.get("variants"));
@@ -45,7 +47,7 @@ class AnalysisSnapshotTest {
 
     @Test
     void savedSnapshotSurvivesBaselineChangeWithoutSelectingNewRuns() {
-        when(queries.currentProject()).thenReturn(new Row(Json.obj("id", 1L)));
+        when(projects.currentProject()).thenReturn(new Row(Json.obj("id", 1L)));
         when(queries.baselineVersion(1L)).thenReturn(new Row(Json.obj("id", 9L)));
         Map<String, Object> original = Json.obj("baseline", Json.obj("id", 4L),
                 "variants", List.of(Json.obj("run_id", 101L, "seed", 48011L)));
@@ -60,7 +62,7 @@ class AnalysisSnapshotTest {
 
     @Test
     void datasetOutsideCurrentProjectIsNotFound() {
-        when(queries.currentProject()).thenReturn(new Row(Json.obj("id", 2L)));
+        when(projects.currentProject()).thenReturn(new Row(Json.obj("id", 2L)));
         assertThatThrownBy(() -> views.savedAnalysisDataset(99L)).isInstanceOf(Vs.NotFoundException.class);
         verify(db).first(startsWith("SELECT id, aeb_version_id, summary_json"), eq(99L), eq(2L));
     }

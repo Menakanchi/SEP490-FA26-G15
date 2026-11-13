@@ -14,7 +14,10 @@ import com.vsos.core.common.Py;
 import com.vsos.core.evaluation.Evaluation;
 import com.vsos.core.simulation.CarlaSession;
 import com.vsos.core.simulation.CrossingCase;
+import com.vsos.core.simulation.LeadVehicleCase;
+import com.vsos.core.simulation.LeadVehicleSimulator;
 import com.vsos.core.simulation.SimulationOutcome;
+import com.vsos.core.simulation.Simulator;
 import com.vsos.core.simulation.VehicleSpec;
 
 /**
@@ -71,9 +74,51 @@ public final class Bundle {
         }
     }
 
-    /** Đủ để chạy một lần, ở bất kỳ bộ mô phỏng nào. */
+    /**
+     * Đủ để chạy một lần, ở bất kỳ bộ mô phỏng nào. Đúng một trong hai: {@code caseSpec} (người đi bộ băng ngang) hoặc {@code leadCase}
+     * (xe phía trước CCRs/CCRm/CCRb, ADR-050 — hiện chỉ bộ động học chạy được).
+     */
     public record RunSpec(CrossingCase caseSpec, AebParams params, VehicleSpec vehicle, long seed, Object aebLabel, Object vehicleName, Map<String, Object> source,
-                          Map<String, Object> vehicleCarla) {
+                          Map<String, Object> vehicleCarla, LeadVehicleCase leadCase) {
+
+        public RunSpec(CrossingCase caseSpec, AebParams params, VehicleSpec vehicle, long seed, Object aebLabel, Object vehicleName, Map<String, Object> source,
+                       Map<String, Object> vehicleCarla) {
+            this(caseSpec, params, vehicle, seed, aebLabel, vehicleName, source, vehicleCarla, null);
+        }
+
+        public String weather() {
+            return leadCase != null ? leadCase.weather() : caseSpec.weather();
+        }
+
+        public String timeOfDay() {
+            return leadCase != null ? leadCase.timeOfDay() : caseSpec.timeOfDay();
+        }
+
+        public double roadFriction() {
+            return leadCase != null ? leadCase.roadFriction() : caseSpec.roadFriction();
+        }
+
+        /** Category Euro NCAP của biến thể. */
+        public String category() {
+            return leadCase != null ? leadCase.category() : CROSSING_CATEGORY;
+        }
+
+        /** Bộ xuất .xosc / runner CARLA hiện chỉ biết người đi bộ: chặn sớm với thông báo rõ thay vì lỗi null. */
+        public CrossingCase requireCrossing(String what) {
+            if (leadCase != null) {
+                throw new BundleError(what + " chưa hỗ trợ category " + leadCase.category() + " (ADR-050: nhóm xe phía trước mới chạy trên bộ động học)");
+            }
+            return caseSpec;
+        }
+    }
+
+    public static final String CROSSING_CATEGORY = "CP_CROSSING";
+
+    /** Chạy biến thể trên bộ động học, chọn đúng "thế giới" theo category. */
+    public static SimulationOutcome simulateKinematic(RunSpec spec) {
+        return spec.leadCase() != null
+                ? LeadVehicleSimulator.simulate(spec.leadCase(), spec.params(), spec.seed(), spec.vehicle())
+                : Simulator.simulate(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle());
     }
 
     /** {@code "0.9.16"} hoặc {@code "0.9.16-12-gabc"} ({@code client.get_server_version()}) → {@code "carla-0.9.16"}. */
@@ -86,6 +131,11 @@ public final class Bundle {
 
     public static Map<String, Object> makeBundle(RunSpec spec) {
         Map<String, Object> variant = new LinkedHashMap<>();
+        if (spec.leadCase() != null) {
+            variant.putAll(spec.leadCase().asDict());
+            variant.remove("road_friction");
+            return wrap(spec, variant);
+        }
         variant.put("ego_speed_kmh", spec.caseSpec().egoSpeedKmh());
         variant.put("trigger_distance_m", spec.caseSpec().triggerDistanceM());
         variant.put("pedestrian_speed_mps", spec.caseSpec().pedestrianSpeedMps());
@@ -93,6 +143,10 @@ public final class Bundle {
         variant.put("weather", spec.caseSpec().weather());
         variant.put("time_of_day", spec.caseSpec().timeOfDay());
         variant.put("friction", spec.caseSpec().friction());
+        return wrap(spec, variant);
+    }
+
+    private static Map<String, Object> wrap(RunSpec spec, Map<String, Object> variant) {
         Map<String, Object> aeb = new LinkedHashMap<>();
         aeb.put("label", spec.aebLabel());
         aeb.put("params", spec.params().asCodes());
@@ -131,7 +185,13 @@ public final class Bundle {
                 : doc.get("ir") instanceof Map ? (Map<String, Object>) doc.get("ir") : doc;
 
         List<String> errors = new ArrayList<>();
-        CrossingCase caseSpec = readCase(variant, errors);
+        Object category = variant.get("category");
+        boolean lead = category != null && LeadVehicleCase.CATEGORIES.contains(category.toString());
+        if (category != null && !lead && !CROSSING_CATEGORY.equals(category)) {
+            errors.add("category " + Py.repr(category) + " chưa có bộ mô phỏng (hỗ trợ: " + CROSSING_CATEGORY + ", " + LeadVehicleCase.CATEGORIES + ")");
+        }
+        CrossingCase caseSpec = lead ? null : readCase(variant, errors);
+        LeadVehicleCase leadCase = lead ? readLeadCase(category.toString(), variant, errors) : null;
         Object aebDoc = aebOverride != null ? aebOverride : doc.get("aeb");
         Object[] aeb = readAeb(aebDoc, errors);
         Object vehicleDoc = doc.get("vehicle");
@@ -151,7 +211,7 @@ public final class Bundle {
         }
         Object source = doc.get("source");
         return new RunSpec(caseSpec, (AebParams) aeb[0], (VehicleSpec) vehicle[0], seed, aeb[1], vehicle[1],
-                truthy(source) && source instanceof Map ? (Map<String, Object>) source : new LinkedHashMap<>(), vehicleCarla);
+                truthy(source) && source instanceof Map ? (Map<String, Object>) source : new LinkedHashMap<>(), vehicleCarla, leadCase);
     }
 
     /** Python {@code bool(x)}: None, False, 0, "", [], {} là sai. */
@@ -221,6 +281,58 @@ public final class Bundle {
         }
         return new CrossingCase(values.get("ego_speed_kmh"), values.get("trigger_distance_m"), values.get("pedestrian_speed_mps"), truthy(stops),
                 WEATHERS.contains(weather) ? (String) weather : "CLEAR", TIMES.contains(timeOfDay) ? (String) timeOfDay : "DAY", friction);
+    }
+
+    /** Khoảng nhận của nhóm xe phía trước — khớp {@code LeadFamilySpec.validate}. */
+    public static final Map<String, double[]> LEAD_BOUNDS = Map.of(
+            "ego_speed_kmh", new double[] {10.0, 130.0},
+            "target_speed_kmh", new double[] {0.0, 120.0},
+            "initial_distance_m", new double[] {2.0, 200.0},
+            "target_decel_mps2", new double[] {-10.0, -0.5},
+            "lateral_overlap_pct", new double[] {-100.0, 100.0});
+
+    private static LeadVehicleCase readLeadCase(String category, Map<String, Object> variant, List<String> errors) {
+        boolean braking = LeadVehicleCase.CCRB.equals(category);
+        Map<String, Double> values = new LinkedHashMap<>();
+        for (String key : List.of("ego_speed_kmh", "target_speed_kmh", "initial_distance_m", "target_decel_mps2", "lateral_overlap_pct")) {
+            if (key.equals("target_decel_mps2") && !braking) {
+                values.put(key, null); // chỉ CCRb có xe trước phanh
+                continue;
+            }
+            Double value = number(variant, key, errors, !key.equals("lateral_overlap_pct"));
+            double[] b = LEAD_BOUNDS.get(key);
+            if (value != null && !(b[0] <= value && value <= b[1])) {
+                errors.add(key + " = " + Py.g(value) + " ngoài khoảng [" + Py.g(b[0]) + ", " + Py.g(b[1]) + "]");
+            }
+            values.put(key, value);
+        }
+        double ego = values.get("ego_speed_kmh") == null ? 10.0 : values.get("ego_speed_kmh");
+        double target = values.get("target_speed_kmh") == null ? 0.0 : values.get("target_speed_kmh");
+        if (LeadVehicleCase.CCRS.equals(category) && target != 0.0) {
+            errors.add("CCRS: target_speed_kmh phải = 0 (xe phía trước đứng yên)");
+        }
+        if (LeadVehicleCase.CCRM.equals(category) && target >= ego) {
+            errors.add("CCRM: xe ego phải nhanh hơn xe phía trước (ego " + Py.g(ego) + " km/h, xe trước " + Py.g(target) + " km/h)");
+        }
+        if (braking && target <= 0) {
+            errors.add("CCRB: xe phía trước phải đang chạy (target_speed_kmh > 0) rồi mới phanh");
+        }
+        Object weather = truthy(variant.get("weather")) ? variant.get("weather") : "CLEAR";
+        if (!WEATHERS.contains(weather)) {
+            errors.add("weather phải thuộc " + Py.repr(WEATHERS) + ", nhận " + Py.repr(weather));
+        }
+        Object timeOfDay = truthy(variant.get("time_of_day")) ? variant.get("time_of_day") : "DAY";
+        if (!TIMES.contains(timeOfDay)) {
+            errors.add("time_of_day phải thuộc " + Py.repr(TIMES) + ", nhận " + Py.repr(timeOfDay));
+        }
+        Double friction = number(variant, "friction", errors, false);
+        if (friction != null && !(0.1 <= friction && friction <= 1.2)) {
+            errors.add("friction = " + Py.g(friction) + " ngoài khoảng [0.1, 1.2]");
+        }
+        Double distance = values.get("initial_distance_m");
+        return new LeadVehicleCase(category, ego, target, distance == null ? 2.0 : distance, values.get("target_decel_mps2"),
+                values.get("lateral_overlap_pct"), WEATHERS.contains(weather) ? (String) weather : "CLEAR",
+                TIMES.contains(timeOfDay) ? (String) timeOfDay : "DAY", friction);
     }
 
     /** {@code {"label", "params": {...}}}, một bundle khác, hoặc dict phẳng {@code {"TTC_THRESHOLD": 1.5}} → {params, label}. */

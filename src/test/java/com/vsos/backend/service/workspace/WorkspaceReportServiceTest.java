@@ -12,7 +12,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -47,7 +49,7 @@ class WorkspaceReportServiceTest {
         workspaceRepo = mock(WorkspaceRepository.class);
         reports = mock(WorkspaceReportRepository.class);
         notifications = mock(NotificationService.class);
-        service = new WorkspaceReportService(new WorkspaceService(workspaceRepo, notifications), reports, notifications);
+        service = new WorkspaceReportService(new WorkspaceService(workspaceRepo, notifications, mock(WorkspaceChatHub.class)), reports, notifications);
         when(workspaceRepo.find(WS)).thenReturn(workspace("ACTIVE"));
         when(reports.find(WS, REPORT)).thenReturn(report("SUBMITTED"));
         when(reports.decide(anyLong(), anyString(), anyLong(), any(), any())).thenReturn(true);
@@ -112,19 +114,43 @@ class WorkspaceReportServiceTest {
 
     @Test
     void anotherManagersWorkspaceIsNotFoundAndArchivedIsReadOnly() {
-        assertThatThrownBy(() -> service.list(6L, "MANAGER", WS, null, null)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.list(6L, WS, null, null)).isInstanceOf(NotFoundException.class);
         assertThatThrownBy(() -> service.decide(6L, "MANAGER", WS, REPORT, "APPROVED", null)).isInstanceOf(NotFoundException.class);
 
         when(workspaceRepo.find(WS)).thenReturn(workspace("ARCHIVED"));
         assertThatThrownBy(() -> service.decide(MANAGER, "MANAGER", WS, REPORT, "APPROVED", null)).hasMessageContaining("lưu trữ");
-        service.list(MANAGER, "MANAGER", WS, null, null);
+        service.list(MANAGER, WS, null, null);
         verify(reports).list(WS, null, null);
     }
 
     @Test
     void listValidatesAndPassesFilters() {
-        service.list(1L, "ADMIN", WS, "SUBMITTED", 2L);
+        service.list(MANAGER, WS, "SUBMITTED", 2L);
         verify(reports).list(WS, "SUBMITTED", 2L);
-        assertThatThrownBy(() -> service.list(MANAGER, "MANAGER", WS, "DRAFT", null)).hasMessageContaining("Trạng thái");
+        assertThatThrownBy(() -> service.list(MANAGER, WS, "DRAFT", null)).hasMessageContaining("Trạng thái");
+    }
+
+    @Test
+    void membersOnlySeeTheirOwnReportsAndOutsidersSeeNothing() {
+        when(reports.list(WS, null, null)).thenReturn(List.of(report("SUBMITTED")));
+        when(workspaceRepo.isMember(WS, 20L)).thenReturn(true);
+        when(workspaceRepo.isMember(WS, 21L)).thenReturn(true);
+        assertThat(service.list(MANAGER, WS, null, null)).hasSize(1);
+        assertThat(service.list(20L, WS, null, null)).hasSize(1);
+        assertThat(service.list(21L, WS, null, null)).isEmpty();
+        assertThatThrownBy(() -> service.list(1L, WS, null, null)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void reportDetailIsOnlyForTheSubmitterAndTheReceivingManager() {
+        when(reports.workspaceOf(REPORT)).thenReturn(WS);
+        when(reports.findById(REPORT)).thenReturn(report("SUBMITTED"));
+        when(workspaceRepo.isMember(WS, 20L)).thenReturn(true);
+        when(workspaceRepo.isMember(WS, 21L)).thenReturn(true);
+        assertThat(service.getReport(20L, REPORT).id()).isEqualTo(REPORT);
+        assertThat(service.getReport(MANAGER, REPORT).id()).isEqualTo(REPORT);
+        assertThatThrownBy(() -> service.getReport(21L, REPORT)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.getReport(1L, REPORT)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.getReport(20L, 99L)).isInstanceOf(NotFoundException.class);
     }
 }

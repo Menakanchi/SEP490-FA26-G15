@@ -67,8 +67,8 @@ class XoscReadParityTest {
     }
 
     /**
-     * {@code export_xosc} của Python (v3) và {@link XoscExport#export} của Java (v4) ghi cùng từng byte cho ca băng ngang, trừ
-     * {@code vs_format}. Ca dừng ở lề đổi có chủ đích ở v4 (TD-47: waypoint cuối + event StopAtCurb) nên so với
+     * {@code export_xosc} của Python (v3) và {@link XoscExport#export} của Java (v5) ghi cùng từng byte cho ca băng ngang, trừ
+     * {@code vs_format} và hai thẻ thời tiết theo preset CARLA (11/11/2026, xem {@link #withoutWeather}). Ca dừng ở lề đổi có chủ đích ở v4 (TD-47: waypoint cuối + event StopAtCurb) nên so với
      * {@code xosc_v4_stops_at_curb.json}, sinh từ bộ xuất Java ngày 23/10/2026 sau khi kiểm trên CARLA thật.
      */
     @SuppressWarnings("unchecked")
@@ -81,6 +81,7 @@ class XoscReadParityTest {
         }
         int exported = 0;
         int curb = 0;
+        int rejectedWheels = 0;
         for (Map<String, Object> e : entries) {
             String name = (String) e.get("name");
             if (!name.startsWith("export ")) {
@@ -88,19 +89,37 @@ class XoscReadParityTest {
             }
             Long seedOverride = e.get("seed_override") == null ? null : ((Number) e.get("seed_override")).longValue();
             Bundle.RunSpec spec = Bundle.readSpec(e.get("bundle"), (Map<String, Object>) e.get("aeb_override"), seedOverride);
+            Object physics = spec.vehicleCarla().get("physics");
+            if (physics instanceof Map<?, ?> p && p.get("wheels") != null) {
+                // Bản Python bỏ lặng lẽ physics.wheels (CARLA chạy xe khác xe đã yêu cầu). v5 (ADR-051) chỉ mang {max_brake_torque}, còn lại từ chối.
+                assertThatThrownBy(() -> XoscExport.export(spec)).as(name).isInstanceOf(Bundle.BundleError.class);
+                rejectedWheels++;
+                curb += curbV4.containsKey(name) ? 1 : 0;
+                continue;
+            }
             String expected;
             if (spec.caseSpec().stopsAtCurb()) {
                 expected = curbV4.get(name);
                 assertThat(expected).as(name + " có trong xosc_v4_stops_at_curb.json").isNotNull();
+                expected = expected.replace(Xosc.PREVIOUS_FORMAT, Xosc.FORMAT);  // v5 chỉ đổi vs_format với xe chưa hiệu chuẩn (ADR-051)
                 curb++;
             } else {
-                expected = ((String) e.get("xml")).replace(Xosc.PREVIOUS_FORMAT, Xosc.FORMAT);
+                expected = ((String) e.get("xml")).replace(Xosc.V3_FORMAT, Xosc.FORMAT);
             }
-            assertThat(XoscExport.export(spec)).as(name).isEqualTo(expected);
+            assertThat(withoutWeather(XoscExport.export(spec))).as(name).isEqualTo(withoutWeather(expected));
             exported++;
         }
         assertThat(exported).isGreaterThan(15);
         assertThat(curb).as("mọi ca dừng ở lề trong fixture Java đều được dùng").isEqualTo(curbV4.size()).isPositive();
+        assertThat(rejectedWheels).as("fixture có ca mang physics.wheels để kiểm việc từ chối").isEqualTo(1);
+    }
+
+    /**
+     * Che hai thẻ thời tiết đổi có chủ đích ngày 11/11/2026 (Sun.intensity / elevation và Precipitation.intensity theo preset CARLA, xem
+     * {@code XoscExport.sunIntensity}); giá trị mới kiểm riêng ở {@code XoscExportTest}. Mọi byte còn lại vẫn phải trùng bản Python.
+     */
+    private static String withoutWeather(String xml) {
+        return xml.replaceAll("<Sun [^>]*/>", "<Sun />").replaceAll("<Precipitation [^>]*/>", "<Precipitation />");
     }
 
     @Test

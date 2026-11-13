@@ -48,10 +48,10 @@ public class BootstrapService {
             db.batchInsert("INSERT INTO aeb_parameters (code, name, category, unit, min_value, max_value, default_value, sort_order) VALUES (?,?,?,?,?,?,?,?)", rows);
         }
         if (db.first("SELECT id FROM carla_vehicle_models LIMIT 1") == null) {
-            // Thông số vật lý cố định, không phiên bản (ADR-038); giữ đúng giá trị MVP để run cũ tái lập được.
+            // Thông số vật lý cố định, không phiên bản (ADR-038); khớp seed của 01_schema.sql, kể cả hiệu chuẩn phanh CARLA (ADR-051).
             db.insert("INSERT INTO carla_vehicle_models (carla_blueprint_id, display_name, length_m, width_m, height_m, mass_kg, tire_friction, "
-                    + "wheelbase_m, max_speed_mps, max_brake_decel_mps2) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                    DEFAULT_BLUEPRINT, "Audi e-tron", 4.75, 1.93, 1.67, 2100, 1.0, 2.95, 50, 9.5);
+                    + "max_brake_torque_nm, wheelbase_m, max_speed_mps, max_brake_decel_mps2, carla_full_brake_decel_mps2) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    DEFAULT_BLUEPRINT, "Audi e-tron", 4.75, 1.93, 1.67, 2100, 1.0, 1800, 2.95, 50, 9.5, 9.13);
         }
     }
 
@@ -59,7 +59,7 @@ public class BootstrapService {
     public Map<String, Object> ensureDefaultProject(long ownerUserId) {
         LocalDateTime ts = Vs.now();
         seedCatalogsIfMissing();
-        Row existing = db.first("SELECT id FROM projects ORDER BY id LIMIT 1");
+        Row existing = db.first("SELECT id FROM projects WHERE workspace_id IS NOT NULL ORDER BY id LIMIT 1");
         if (existing != null) {
             return Json.obj("project_id", existing.lng("id"), "created", false);
         }

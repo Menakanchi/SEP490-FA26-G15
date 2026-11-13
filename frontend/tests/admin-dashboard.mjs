@@ -26,7 +26,8 @@ try{
   if(p==="/auth/login")return reply({access_token:"admin-entry-fixture-only",token_type:"bearer",expires_in:3600,user:{...actor,role}});
   if(p==="/auth/me")return reply({...actor,role});
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
-  if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[]});
+  if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
+  if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
   if(p.startsWith("/vehicsim/admin/")){
    if(req.method()!=="GET"){writes.push(p);return reply({detail:"No writes allowed in entry regression"},405);}
    const resource=p.slice("/vehicsim/admin/".length);
@@ -115,7 +116,7 @@ try{
  for(const otherRole of ["MANAGER","ENGINEER","REVIEWER","EXPERIENCER"]){
   role=otherRole;const count=reads.length;await page.goto(base+"/admin");
   // AuthGate may suppress the streamed redirect child for a denied role.
-  await page.getByRole("heading",{name:"Quyền Hạn Không Đủ",exact:true}).waitFor();
+  await page.getByRole("heading",{name:"Trang này yêu cầu quyền truy cập",exact:true}).waitFor();
   assert.equal(await frame.count(),0);assert.equal(reads.length,count);
  }
  role="ADMIN";mode="expired";await page.goto(base+"/admin");await page.waitForURL(base+"/login");

@@ -3,12 +3,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, PillButton, StatCard, Tag, cx } from "@/components/VehicSimUi";
-import { WORKSPACE_ROLES } from "@/components/workspaceAccess";
+import { Modal } from "@/components/project/ProjectUi";
+import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, PillButton, StatCard, Tag, cx, TableScroll } from "@/components/VehicSimUi";
+import { WORKSPACE_ROLES, WORKSPACE_MANAGER_ROLES } from "@/components/workspaceAccess";
 import { useAuth } from "@/context/AuthContext";
 import { vehicsimApi } from "@/services/vehicsim";
 import type {
   TaskPriority,
+  MemberTaskStatus,
   TaskStatus,
   WorkspaceDetail,
   WorkspaceMember,
@@ -29,6 +31,8 @@ const PRIORITY: Record<TaskPriority, { label: string; tone: "neutral" | "info" |
   URGENT: { label: "Khẩn", tone: "danger" },
 };
 const STATUSES = Object.keys(STATUS) as TaskStatus[];
+/** Người được giao tự đặt các trạng thái này; DONE do Manager xác nhận. */
+const MEMBER_STATUSES = STATUSES.filter((s): s is MemberTaskStatus => s !== "DONE");
 const PRIORITIES = Object.keys(PRIORITY) as TaskPriority[];
 
 /** Ngày hôm nay theo giờ máy, dạng yyyy-MM-dd cho ô chọn ngày. */
@@ -69,7 +73,7 @@ function toRequest(t: WorkspaceTask): WorkspaceTaskRequest {
 }
 
 const inputCls =
-  "w-full rounded-[12px] border border-solid border-vehicsim-line bg-white px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong disabled:bg-vehicsim-soft";
+  "w-full rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-2 text-[13px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong disabled:bg-vehicsim-soft";
 
 function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
@@ -86,6 +90,13 @@ export default function WorkspaceTasksPage() {
   const id = Number(workspaceId);
   const { user } = useAuth();
   const allowed = WORKSPACE_ROLES.includes(user?.roleCode ?? "");
+  const isManagerOrAdmin = WORKSPACE_MANAGER_ROLES.includes(user?.roleCode ?? "");
+
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [statusModalTask, setStatusModalTask] = useState<WorkspaceTask | null>(null);
+  const [modalStatus, setModalStatus] = useState<TaskStatus>("IN_PROGRESS");
+  const [modalProgress, setModalProgress] = useState<number>(0);
+  const [modalSaving, setModalSaving] = useState(false);
 
   const [detail, setDetail] = useState<WorkspaceDetail | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
@@ -128,9 +139,10 @@ export default function WorkspaceTasksPage() {
       (tasks ?? []).filter(
         (t) =>
           (!status || t.status === status) &&
+          (!onlyMine || t.assignee?.id === user?.id) &&
           (!assignee || (assignee === "0" ? t.assignee === null : String(t.assignee?.id) === assignee)),
       ),
-    [tasks, status, assignee],
+    [tasks, status, assignee, onlyMine, user?.id],
   );
   const open = (tasks ?? []).filter((t) => t.status !== "DONE");
   const editingTask = typeof editing === "number" ? (tasks ?? []).find((t) => t.id === editing) : undefined;
@@ -172,16 +184,56 @@ export default function WorkspaceTasksPage() {
   };
 
   const quickStatus = async (t: WorkspaceTask, next: TaskStatus) => {
+    if (t.status === next) return;
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      await vehicsimApi.updateWorkspaceTask(id, t.id, { ...toRequest(t), status: next });
+      const nextProgress = next === "DONE" ? 100 : t.progress_pct;
+      if (isManagerOrAdmin) {
+        const body = { ...toRequest(t), status: next, progress_pct: nextProgress };
+        await vehicsimApi.updateWorkspaceTask(id, t.id, body);
+      } else {
+        await vehicsimApi.updateMyTaskProgress(t.id, next as MemberTaskStatus, nextProgress);
+      }
+      setNotice(`Đã đổi trạng thái task #${t.id} thành “${STATUS[next].label}”.`);
       await loadTasks();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không đổi được trạng thái");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleOpenStatusModal = (t: WorkspaceTask) => {
+    setStatusModalTask(t);
+    setModalStatus(t.status);
+    setModalProgress(t.progress_pct);
+  };
+
+  const saveProgressModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!statusModalTask) return;
+    setModalSaving(true);
+    setError(null);
+    try {
+      const p = modalStatus === "DONE" ? 100 : modalProgress;
+      if (isManagerOrAdmin) {
+        await vehicsimApi.updateWorkspaceTask(id, statusModalTask.id, {
+          ...toRequest(statusModalTask),
+          status: modalStatus,
+          progress_pct: p,
+        });
+      } else {
+        await vehicsimApi.updateMyTaskProgress(statusModalTask.id, modalStatus as MemberTaskStatus, p);
+      }
+      setNotice(`Đã cập nhật tiến độ task #${statusModalTask.id} (${p}%, ${STATUS[modalStatus].label}).`);
+      setStatusModalTask(null);
+      await loadTasks();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không cập nhật được tiến độ");
+    } finally {
+      setModalSaving(false);
     }
   };
 
@@ -218,7 +270,7 @@ export default function WorkspaceTasksPage() {
       badges={ws && !active && <Tag tone="neutral">Workspace đã lưu trữ — chỉ xem</Tag>}
       subtitle={allowed ? "Giao việc cho Kỹ sư và Người duyệt trong workspace, theo dõi trạng thái, tiến độ và hạn." : undefined}
       actions={
-        allowed && active && editing === null ? (
+        allowed && active && editing === null && isManagerOrAdmin ? (
           <PillButton variant="dark" onClick={startNew}>
             + Giao task
           </PillButton>
@@ -236,7 +288,7 @@ export default function WorkspaceTasksPage() {
             </div>
           )}
 
-          <div className="flex w-full items-stretch gap-4">
+          <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
             <StatCard label="Đang mở" value={tasks ? open.length : "…"} note="chưa hoàn thành" />
             <StatCard
               label="Quá hạn"
@@ -341,7 +393,7 @@ export default function WorkspaceTasksPage() {
                       value={form.status === "DONE" ? 100 : form.progress_pct}
                       disabled={form.status === "DONE"}
                       onChange={(e) => set("progress_pct", Number(e.target.value))}
-                      className="mt-2 accent-vehicsim-ink"
+                      className="mt-2 accent-vehicsim-primary"
                       aria-label="Tiến độ"
                     />
                   </Field>
@@ -361,7 +413,7 @@ export default function WorkspaceTasksPage() {
             </Card>
           )}
 
-          <section className="overflow-hidden rounded-[20px] border border-solid border-vehicsim-line bg-white shadow-vehicsim-card">
+          <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
             <div className="flex items-center gap-2 px-5 py-4">
               <span className="mr-2 text-[15px] font-bold text-vehicsim-ink">{tasks ? `${visible.length} task` : "…"}</span>
               <FilterSelect<TaskStatus>
@@ -376,106 +428,178 @@ export default function WorkspaceTasksPage() {
                 options={[{ value: "0", label: "Chưa giao" }, ...members.map((m) => ({ value: String(m.user_id), label: m.full_name }))]}
                 onChange={setAssignee}
               />
-            </div>
-            <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[11px] font-semibold uppercase text-vehicsim-faint">
-              <span className="min-w-0 flex-1">Task</span>
-              <span className="w-[170px]">Người nhận</span>
-              <span className="w-[100px]">Ưu tiên</span>
-              <span className="w-[150px]">Trạng thái</span>
-              <span className="w-[130px]">Tiến độ</span>
-              <span className="w-[100px]">Hạn</span>
-              <span className="w-[110px]" />
+              <button
+                type="button"
+                onClick={() => setOnlyMine((v) => !v)}
+                className={cx(
+                  "rounded-full px-3 py-[5px] text-[12px] font-semibold border border-solid transition-colors",
+                  onlyMine
+                    ? "bg-vehicsim-primary text-white border-vehicsim-primary"
+                    : "bg-vehicsim-surface text-vehicsim-ink border-vehicsim-line hover:bg-vehicsim-soft"
+                )}
+              >
+                {onlyMine ? "✓ Task của tôi" : "Task của tôi"}
+              </button>
             </div>
             {tasks && visible.length === 0 && (
               <EmptyState title={tasks.length ? "Không có task nào khớp bộ lọc" : "Chưa có task"}>
                 {active && !tasks.length ? "Bấm “Giao task” để giao việc đầu tiên cho thành viên." : undefined}
               </EmptyState>
             )}
-            {visible.map((t) => (
-              <div
-                key={t.id}
-                className={cx(
-                  "flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2 last:border-b-0",
-                  editing === t.id && "bg-vehicsim-row",
-                )}
-              >
-                <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
-                  <span className={cx("truncate text-[13px] font-bold", t.status === "DONE" ? "text-vehicsim-faint line-through" : "text-vehicsim-ink")}>
-                    {t.title}
-                  </span>
-                  <span className="truncate text-[12px] text-vehicsim-faint">
-                    {t.project ? `${t.project.name} · ` : ""}
-                    {t.description || "Không có mô tả"}
-                    {t.report_count ? ` · ${t.report_count} báo cáo` : ""}
-                  </span>
-                </span>
-                <span className="w-[170px] truncate pr-3 text-[13px] text-vehicsim-muted">
-                  {t.assignee?.full_name ?? <span className="italic text-vehicsim-faint">Chưa giao</span>}
-                </span>
-                <span className="w-[100px]">
-                  <Tag tone={PRIORITY[t.priority].tone}>{PRIORITY[t.priority].label}</Tag>
-                </span>
-                <span className="w-[150px] pr-3">
-                  {active ? (
-                    <select
-                      aria-label={`Trạng thái của ${t.title}`}
-                      value={t.status}
-                      disabled={busy}
-                      onChange={(e) => quickStatus(t, e.target.value as TaskStatus)}
-                      className="w-full cursor-pointer rounded-full border border-solid border-vehicsim-line bg-white px-3 py-[5px] text-[12px] font-semibold text-vehicsim-ink disabled:opacity-50"
-                    >
-                      {STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {STATUS[s].label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <Tag tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Tag>
-                  )}
-                </span>
-                <span className="flex w-[130px] items-center gap-2 pr-3">
-                  <span className="h-[6px] flex-1 overflow-hidden rounded-full bg-vehicsim-line">
-                    <span
-                      className={cx("block h-full rounded-full", t.status === "DONE" ? "bg-vehicsim-ok" : "bg-vehicsim-ink")}
-                      style={{ width: `${t.progress_pct}%` }}
-                    />
-                  </span>
-                  <span className="w-[34px] text-right text-[12px] font-semibold text-vehicsim-ink">{t.progress_pct}%</span>
-                </span>
-                <span className={cx("w-[100px] text-[13px]", t.overdue ? "font-semibold text-vehicsim-danger" : "text-vehicsim-faint")}>
-                  {dateLabel(t.due_date)}
-                  {t.overdue && <span className="block text-[11px]">quá hạn</span>}
-                </span>
-                <span className="flex w-[110px] justify-end gap-1">
-                  {active && (
-                    <>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => startEdit(t)}
-                        className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-decision hover:bg-vehicsim-soft disabled:opacity-40"
-                      >
-                        Sửa
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy || t.report_count > 0}
-                        title={t.report_count > 0 ? "Task đã có báo cáo, không xoá được" : undefined}
-                        onClick={() => remove(t)}
-                        className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-danger hover:bg-vehicsim-danger-bg disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Xoá
-                      </button>
-                    </>
-                  )}
-                </span>
-              </div>
-            ))}
+            {visible.length > 0 && (
+              <TableScroll label="Bảng nhiệm vụ" minWidth={960}>
+                <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
+                  <span className="min-w-0 flex-1">Task</span>
+                  <span className="w-[170px]">Người nhận</span>
+                  <span className="w-[100px]">Ưu tiên</span>
+                  <span className="w-[150px]">Trạng thái</span>
+                  <span className="w-[130px]">Tiến độ</span>
+                  <span className="w-[100px]">Hạn</span>
+                  <span className="w-[110px]" />
+                </div>
+                {visible.map((t) => (
+                  <div
+                    key={t.id}
+                    className={cx(
+                      "flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2 last:border-b-0",
+                      editing === t.id && "bg-vehicsim-row",
+                    )}
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
+                      <span className={cx("truncate text-[13px] font-bold", t.status === "DONE" ? "text-vehicsim-faint line-through" : "text-vehicsim-ink")}>
+                        {t.title}
+                      </span>
+                      <span className="truncate text-[12px] text-vehicsim-faint">
+                        {t.project ? `${t.project.name} · ` : ""}
+                        {t.description || "Không có mô tả"}
+                        {t.report_count ? ` · ${t.report_count} báo cáo` : ""}
+                      </span>
+                    </span>
+                    <span className="w-[170px] truncate pr-3 text-[13px] text-vehicsim-muted">
+                      {t.assignee?.full_name ?? <span className="italic text-vehicsim-faint">Chưa giao</span>}
+                    </span>
+                    <span className="w-[100px]">
+                      <Tag tone={PRIORITY[t.priority].tone}>{PRIORITY[t.priority].label}</Tag>
+                    </span>
+                    <span className="w-[150px] pr-3">
+                      {active && (isManagerOrAdmin || t.status !== "DONE") ? (
+                        <select
+                          aria-label={`Trạng thái của ${t.title}`}
+                          value={t.status}
+                          disabled={busy}
+                          onChange={(e) => quickStatus(t, e.target.value as TaskStatus)}
+                          className="w-full cursor-pointer rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-[5px] text-[12px] font-semibold text-vehicsim-ink disabled:opacity-50"
+                        >
+                          {(isManagerOrAdmin ? STATUSES : MEMBER_STATUSES).map((s) => (
+                            <option key={s} value={s}>
+                              {STATUS[s].label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Tag tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Tag>
+                      )}
+                    </span>
+                    <span className="flex w-[130px] items-center gap-2 pr-3">
+                      <span className="h-[6px] flex-1 overflow-hidden rounded-full bg-vehicsim-line">
+                        <span
+                          className={cx("block h-full rounded-full", t.status === "DONE" ? "bg-vehicsim-ok" : "bg-vehicsim-primary")}
+                          style={{ width: `${t.progress_pct}%` }}
+                        />
+                      </span>
+                      <span className="w-[34px] text-right text-[12px] font-semibold text-vehicsim-ink">{t.progress_pct}%</span>
+                    </span>
+                    <span className={cx("w-[100px] text-[13px]", t.overdue ? "font-semibold text-vehicsim-danger" : "text-vehicsim-faint")}>
+                      {dateLabel(t.due_date)}
+                      {t.overdue && <span className="block text-[11px]">quá hạn</span>}
+                    </span>
+                    <span className="flex w-[110px] justify-end gap-1">
+                      {active && (
+                        isManagerOrAdmin ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => startEdit(t)}
+                              className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-decision hover:bg-vehicsim-soft disabled:opacity-40"
+                            >
+                              Sửa
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy || t.report_count > 0}
+                              title={t.report_count > 0 ? "Task đã có báo cáo, không xoá được" : undefined}
+                              onClick={() => remove(t)}
+                              className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-danger hover:bg-vehicsim-danger-bg disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Xoá
+                            </button>
+                          </>
+                        ) : t.assignee?.id === user?.id ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => handleOpenStatusModal(t)}
+                            className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-decision hover:bg-vehicsim-soft disabled:opacity-40"
+                          >
+                            Tiến độ
+                          </button>
+                        ) : null
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </TableScroll>
+            )}
           </section>
           <p className="text-[12px] text-vehicsim-faint">
-            Người được giao chưa tự cập nhật tiến độ trên màn của họ; Quản lý cập nhật tại đây.
+            Kỹ sư và người được giao có thể chọn trạng thái và cập nhật tiến độ task của mình.
           </p>
+
+          {statusModalTask && (
+            <Modal title={`Cập nhật tiến độ task #${statusModalTask.id}`} onClose={() => setStatusModalTask(null)} busy={modalSaving}>
+                <form onSubmit={saveProgressModal} className="flex flex-col gap-4">
+                  <p className="text-[13px] text-vehicsim-muted font-medium">{statusModalTask.title}</p>
+                  
+                  <Field label="Trạng thái">
+                    <select
+                      value={modalStatus}
+                      onChange={(e) => {
+                        const s = e.target.value as TaskStatus;
+                        setModalStatus(s);
+                        if (s === "DONE") setModalProgress(100);
+                      }}
+                      className={inputCls}
+                    >
+                      {(isManagerOrAdmin ? STATUSES : MEMBER_STATUSES).map((s) => (
+                        <option key={s} value={s}>{STATUS[s].label}</option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label={`Tiến độ hoàn thành: ${modalProgress}%`}>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={modalProgress}
+                      disabled={modalStatus === "DONE"}
+                      onChange={(e) => setModalProgress(Number(e.target.value))}
+                      className="w-full cursor-pointer accent-vehicsim-primary"
+                    />
+                  </Field>
+
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-solid border-vehicsim-line">
+                    <PillButton type="button" variant="light" onClick={() => setStatusModalTask(null)} disabled={modalSaving}>
+                      Huỷ
+                    </PillButton>
+                    <PillButton type="submit" variant="dark" disabled={modalSaving}>
+                      {modalSaving ? "Đang lưu…" : "Cập nhật"}
+                    </PillButton>
+                  </div>
+                </form>
+            </Modal>
+          )}
         </>
       )}
     </VehicSimPage>

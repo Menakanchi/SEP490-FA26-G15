@@ -1,13 +1,23 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ChevronDown, ChevronRight, FolderOpen, House, LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { ROLE_LABELS, initials } from "@/components/VehicSimUi";
-import { WORKSPACE_ROLES } from "@/components/workspaceAccess";
+import { useVehicSimContext } from "@/components/VehicSimContext";
+import { cx } from "@/components/VehicSimUi";
+import { MEMBER_ROLES, WORKSPACE_ROLES } from "@/components/workspaceAccess";
+import { JOURNEY_STEPS, stepSummary, statusOf } from "@/components/project/journey";
+import { useJourney } from "@/components/project/ProjectJourneyContext";
+import { ProjectSwitcher } from "@/components/project/ProjectShell";
+import { PROJECT_CONTEXT_CLASS, ProjectIdentity, StepStatusIcon } from "@/components/project/ProjectUi";
+import { teamJourneyLinks } from "@/components/vehicsimFlow";
+import { vehicsimApi } from "@/services/vehicsim";
+import type { JourneyStepKey } from "@/types/vehicsim";
 
 /**
- * Sidebar VehicSim theo Figma "VehicSim — FE-12/13/14 UI (Trung)".
+ * Điều hướng theo project và vai trò của tài khoản.
  * Mục chưa có trong đợt MVP hiển thị mờ, không bấm được, có chú thích lý do.
  */
 
@@ -24,6 +34,8 @@ type Group = {
   note?: string;
   /** Chỉ hiện với các mã role này (bỏ trống = mọi role). */
   roles?: string[];
+  hint?: string;
+  active?: boolean;
 };
 
 const svgIcon = (src: string) => (
@@ -61,6 +73,13 @@ const peopleIcon = (
   </svg>
 );
 
+const taskIcon = (
+  <svg aria-hidden width={18} height={18} viewBox="0 0 18 18" fill="none" className="block size-[18px] text-vehicsim-muted">
+    <rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" strokeWidth="1.6" />
+    <path d="M6 9.2l2 2 4-4.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 const SOON = "Chưa có trong đợt MVP";
 
 const GROUPS: Group[] = [
@@ -72,7 +91,7 @@ const GROUPS: Group[] = [
     icon: svgIcon("/vehicsim/icon-route.svg"),
     prefix: "/scenarios",
     children: [
-      { label: "Họ kịch bản", href: "/scenarios" },
+      { label: "Danh sách họ kịch bản", href: "/scenarios" },
       // FE-06: câu mô tả → LLM → Scenario IR (dùng lại hạ tầng LLM của Generator cũ).
       { label: "Sinh từ mô tả", href: "/scenarios/new" },
     ],
@@ -101,6 +120,7 @@ const GROUPS: Group[] = [
     children: [
       { label: "Kiểm thử hồi quy", href: "/validation/regression" },
       { label: "Khuyến nghị", href: "/validation/recommendations" },
+      { label: "Lịch sử quyết định", href: "/validation/decisions" },
       { label: "Kho tri thức", note: SOON },
     ],
   },
@@ -112,93 +132,238 @@ const GROUPS: Group[] = [
     prefix: "/workspace",
     roles: WORKSPACE_ROLES,
   },
+  {
+    key: "my-work",
+    label: "Nhiệm vụ & báo cáo",
+    icon: taskIcon,
+    href: "/my-work",
+    prefix: "/my-work",
+    roles: MEMBER_ROLES,
+  },
   { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), prefix: "/admin", roles: ["ADMIN"], children: [{ label: "Tài khoản", href: "/admin/users" }, { label: "Workspace", href: "/admin/workspaces" }, { label: "Tài liệu kỹ thuật", href: "/admin/tech-references" }] },
 ];
 
-export function VehicSimSidebar({ hideOnMobile = false }: { hideOnMobile?: boolean }) {
+const lucideIcon = (Icon: typeof House) => <Icon aria-hidden className="size-[18px] text-vehicsim-muted" />;
+
+function matches(href: string | undefined, pathname: string, search: URLSearchParams): boolean {
+  if (!href) return false;
+  const [path, query] = href.split("?");
+  if (pathname !== path && !pathname.startsWith(`${path}/`)) return false;
+  return !query || [...new URLSearchParams(query)].every(([key, value]) => search.get(key) === value);
+}
+
+function NavGroups({ groups }: { groups: Group[] }) {
   const pathname = usePathname();
+  const search = useSearchParams();
+  const best = groups
+    .flatMap((g) => g.children ?? [])
+    .filter((c) => matches(c.href, pathname, search))
+    .sort((x, y) => (y.href?.length ?? 0) - (x.href?.length ?? 0))[0];
+
+  return (
+    <nav aria-label="Điều hướng VehicSim" className="flex flex-col gap-0.5">
+      {groups.map((g) => {
+        const here = g.active ?? (!!g.prefix && (g.exact ? pathname === g.prefix : pathname.startsWith(g.prefix)));
+        const expanded = here || (!!best && !!g.children?.includes(best));
+        const header = (
+          <span
+            className={`flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 ${expanded ? "bg-vehicsim-primary-bg" : ""} ${
+              g.note ? "opacity-55" : "hover:bg-vehicsim-soft"
+            }`}
+          >
+            {g.icon}
+            {g.hint ? (
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className={`text-[14px] ${expanded ? "font-bold" : "font-semibold"} text-vehicsim-ink`}>{g.label}</span>
+                <span className="truncate text-[12px] text-vehicsim-muted">{g.hint}</span>
+              </span>
+            ) : (
+              <span className={`flex-1 text-[13px] ${expanded ? "font-bold text-vehicsim-primary" : "font-medium text-vehicsim-ink"}`}>
+                {g.label}
+              </span>
+            )}
+            {g.children && (
+              expanded
+                ? <ChevronDown aria-hidden className="size-3.5 shrink-0 text-vehicsim-primary" />
+                : <ChevronRight aria-hidden className="size-3.5 shrink-0 text-vehicsim-faint" />
+            )}
+          </span>
+        );
+        const target = g.href ?? g.children?.find((c) => c.href)?.href;
+        return (
+          <div key={g.key} className="flex flex-col gap-[2px]">
+            {(g.key === "SCENARIO" || (g.key === "vehicles" && groups.some((item) => item.key === "SCENARIO"))) && (
+              <p className="mt-2 border-t border-vehicsim-line px-2.5 pb-0.5 pt-2.5 text-xs font-semibold text-vehicsim-muted">
+                {g.key === "SCENARIO" ? "Quy trình kiểm thử" : "Quản lý dự án"}
+              </p>
+            )}
+            {g.note ? (
+              <span title={g.note} className="cursor-not-allowed">
+                {header}
+              </span>
+            ) : target ? (
+              <Link href={target} aria-current={here ? "page" : undefined}>
+                {header}
+              </Link>
+            ) : (
+              <span className="cursor-not-allowed">{header}</span>
+            )}
+            {expanded && g.children && (
+              <div className="flex pb-1 pl-5 pt-[2px]">
+                <div className="flex min-w-0 flex-1 flex-col gap-[2px] border-l-[1.5px] border-solid border-vehicsim-line pl-[10px]">
+                  {g.children.map((c) => {
+                    const active = best === c;
+                    const cls = `flex w-full items-center rounded-md px-3 py-2 text-[13px] ${
+                      active ? "bg-vehicsim-primary-bg font-semibold text-vehicsim-primary" : "font-medium text-vehicsim-muted"
+                    }`;
+                    return c.href ? (
+                      <Link key={c.label} href={c.href} aria-current={active ? "page" : undefined} className={`${cls} ${active ? "" : "hover:bg-vehicsim-soft"}`}>
+                        {c.label}
+                      </Link>
+                    ) : (
+                      <span key={c.label} title={c.note} className={`${cls} cursor-not-allowed opacity-55`}>
+                        {c.label}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+function TeamNav({ role }: { role: string }) {
+  const [personal, setPersonal] = useState(0);
+
+  useEffect(() => {
+    vehicsimApi
+      .projects()
+      .then((list) => setPersonal(list.active_count + list.archived_count))
+      .catch(() => setPersonal(0));
+  }, []);
+
+  const groups = GROUPS.filter((g) => !g.roles || g.roles.includes(role));
+  const reviewer = role === "REVIEWER";
+  const team = reviewer || role === "ENGINEER";
+  const stepLinks = teamJourneyLinks(reviewer);
+  const steps: Group[] = JOURNEY_STEPS.map(({ key, n, title }) => ({
+    key,
+    label: title,
+    icon: <StepStatusIcon status="TODO" n={n} size="sm" />,
+    children: stepLinks[key],
+  }));
+  const navigation = team ? [
+    ...groups.filter((g) => g.key === "dashboard"),
+    ...steps,
+    ...groups.filter((g) => ["vehicles", "workspace", "my-work"].includes(g.key)),
+  ] : groups;
+  const personalGroup: Group = { key: "personal", label: `Project cá nhân (${personal})`, icon: lucideIcon(FolderOpen), href: "/projects", prefix: "/projects" };
+  return <NavGroups groups={personal > 0 ? [...navigation, personalGroup] : navigation} />;
+}
+
+function TeamProjectContext({ reviewer }: { reviewer: boolean }) {
+  const { ctx, selectProject } = useVehicSimContext();
+  if (!ctx) return null;
+
+  return (
+    <div className={cx(PROJECT_CONTEXT_CLASS, "flex flex-col gap-2")}>
+      <div className="flex items-center gap-3">
+        <ProjectIdentity project={ctx.project} label="Project đang mở" fallback="Chưa có project" />
+      </div>
+      {reviewer && ctx.reviewer_projects.length > 1 && (
+        <select
+          aria-label="Project đang xem"
+          value={ctx.project.id}
+          className="w-full rounded-lg border border-vehicsim-line-strong bg-vehicsim-surface px-2 py-2 text-[12px]"
+          onChange={(event) => selectProject(Number(event.target.value))}
+        >
+          {ctx.reviewer_projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.workspace_name} · {project.name}{project.can_decide ? "" : " (chỉ xem)"}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+function ExperiencerNav() {
+  const pathname = usePathname();
+  const { ctx } = useVehicSimContext();
+  const { journey } = useJourney();
+  const id = ctx?.project.id ?? null;
+  const common: Group[] = [
+    { key: "vehicles", label: "Phương tiện", icon: svgIcon("/vehicsim/icon-car.svg"), href: "/vehicles", prefix: "/vehicles" },
+    { key: "projects", label: "Project của tôi", icon: lucideIcon(FolderOpen), href: "/projects", active: pathname === "/projects" || pathname === "/projects/new" },
+  ];
+  if (id === null) return <NavGroups groups={common} />;
+
+  const home = `/projects/${id}`;
+  const last = journey?.counts.last_regression_id ?? null;
+  const step = (key: JourneyStepKey, n: number, label: string, children: Child[], active?: boolean): Group => ({
+    key,
+    label,
+    active,
+    icon: journey ? <StepStatusIcon status={statusOf(journey, key)} n={n} current={journey.next === key} size="sm" /> : null,
+    hint: journey ? stepSummary(key, journey) : undefined,
+    children,
+  });
+  const groups: Group[] = [
+    { key: "home", label: "Trang chủ project", icon: lucideIcon(House), href: home, active: pathname === home },
+    step("SCENARIO", 1, "Thiết kế kịch bản", [
+      { label: "Kịch bản mẫu", href: `${home}/start` },
+      { label: "Sinh từ mô tả", href: "/scenarios/new" },
+      { label: "Nhập tham số", href: "/scenarios?new=1" },
+    ]),
+    step("BASELINE", 2, "Chạy baseline", [
+      { label: "Họ kịch bản & chạy baseline", href: "/scenarios" },
+      { label: "Dữ liệu CARLA", href: "/analysis/carla" },
+    ]),
+    step("RESULTS", 3, "Xem kết quả", [
+      { label: "Tóm tắt kết quả", href: `${home}/results` },
+      { label: "Phân tích chi tiết", href: "/analysis/failures" },
+    ]),
+    step("IMPROVE", 4, "Cải tiến AEB", [
+      { label: "Chọn cách cải tiến", href: `${home}/improve` },
+      { label: "Tối ưu tự động (MOBO)", href: "/aeb" },
+      { label: "Chỉnh tay", href: "/aeb?tab=manual" },
+      { label: "Phiên bản AEB", href: "/aeb?tab=versions" },
+    ]),
+    step("VERIFY", 5, "Kiểm chứng", [
+      { label: "Kiểm thử hồi quy", href: "/validation/regression" },
+      { label: "Tạo kiểm thử", href: "/validation/regression/new" },
+      ...(last === null ? [] : [{ label: "Kết luận vòng", href: `${home}/rounds/${last}` }]),
+    ], pathname.startsWith(`${home}/rounds/`) || undefined),
+    ...common,
+    { key: "settings", label: "Cài đặt project", icon: lucideIcon(Settings), href: `${home}/settings`, active: pathname === `${home}/settings` },
+  ];
+  return <NavGroups groups={groups} />;
+}
+
+export function VehicSimSidebar() {
   const router = useRouter();
   const { user, logout } = useAuth();
 
   return (
-    <aside className={`${hideOnMobile ? "hidden md:flex" : "flex"} sticky top-0 print:hidden h-screen w-[248px] shrink-0 flex-col gap-[22px] overflow-y-auto border-r border-solid border-vehicsim-line bg-white px-4 py-6`}>
-      <Link href="/" className="flex items-center gap-[10px] px-2">
-        {/* eslint-disable-next-line @next/next/no-img-element -- logo SVG từ Figma */}
-        <img alt="" src="/vehicsim/logo.svg" width={28} height={28} className="size-7" />
-        <span className="text-[19px] font-extrabold tracking-[-0.38px] text-vehicsim-ink">VehicSim</span>
-      </Link>
+    <aside className="flex flex-col gap-4 px-4 py-5 lg:sticky lg:top-0 lg:max-h-dvh lg:overflow-y-auto">
+      {user?.roleCode === "EXPERIENCER" ? (
+        <>
+          <ProjectSwitcher />
+          <ExperiencerNav />
+        </>
+      ) : (
+        <>
+          {(user?.roleCode === "ENGINEER" || user?.roleCode === "REVIEWER") && <TeamProjectContext reviewer={user.roleCode === "REVIEWER"} />}
+          <TeamNav role={user?.roleCode ?? ""} />
+        </>
+      )}
 
-      <nav className="flex flex-col gap-[2px]">
-        {GROUPS.filter((g) => !g.roles || g.roles.includes(user?.roleCode ?? "")).map((g) => {
-          const open = !!g.prefix && (g.exact ? pathname === g.prefix : pathname.startsWith(g.prefix));
-          const header = (
-            <span
-              className={`flex w-full items-center gap-3 rounded-[12px] px-3 py-[9px] ${open ? "bg-vehicsim-bg" : ""} ${
-                g.note ? "opacity-55" : "hover:bg-vehicsim-soft"
-              }`}
-            >
-              {g.icon}
-              <span className={`flex-1 text-[14px] ${open ? "font-bold text-vehicsim-ink" : "font-medium text-vehicsim-muted"}`}>
-                {g.label}
-              </span>
-              {(g.children || g.href || g.note) && (
-                <span aria-hidden="true" className={`font-semibold ${open ? "text-[13px] text-vehicsim-ink" : "text-[16px] text-vehicsim-faint"}`}>
-                  {open ? "▾" : "›"}
-                </span>
-              )}
-            </span>
-          );
-          const target = g.href ?? g.children?.find((c) => c.href)?.href;
-          return (
-            <div key={g.key} className="flex flex-col gap-[2px]">
-              {g.note || !target ? (
-                <span title={g.note} className="cursor-not-allowed">
-                  {header}
-                </span>
-              ) : (
-                <Link href={target}>{header}</Link>
-              )}
-              {open && g.children && (
-                <div className="flex pb-1 pl-5 pt-[2px]">
-                  <div className="flex flex-1 flex-col gap-[2px] border-l-[1.5px] border-solid border-vehicsim-line pl-[10px]">
-                    {g.children.map((c, _i, all) => {
-                      // Mục con khớp dài nhất mới sáng: /scenarios/new không làm sáng /scenarios.
-                      const matches = (href?: string) => !!href && (pathname === href || pathname.startsWith(`${href}/`));
-                      const best = all.filter((x) => matches(x.href)).sort((x, y) => (y.href?.length ?? 0) - (x.href?.length ?? 0))[0];
-                      const active = best === c;
-                      const cls = `flex w-full items-center rounded-full px-3 py-2 text-[13px] ${
-                        active ? "bg-vehicsim-ink font-semibold text-white" : "font-medium text-vehicsim-muted"
-                      }`;
-                      return c.href ? (
-                        <Link key={c.label} href={c.href} className={`${cls} ${active ? "" : "hover:bg-vehicsim-soft"}`}>
-                          {c.label}
-                        </Link>
-                      ) : (
-                        <span key={c.label} title={c.note} className={`${cls} cursor-not-allowed opacity-55`}>
-                          {c.label}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </nav>
-
-      <div className="flex-1" />
-
-      <div className="flex items-center gap-[10px] rounded-[16px] bg-vehicsim-soft p-3">
-        <Link href="/profile" title="Hồ sơ cá nhân" className="flex min-w-0 flex-1 items-center gap-[10px] rounded-[12px] hover:opacity-80">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-[16px] bg-vehicsim-avatar text-[12px] font-bold text-vehicsim-decision">
-            {initials(user?.full_name || user?.name || "U")}
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-            <span className="truncate text-[13px] font-semibold text-vehicsim-ink">{user?.full_name || user?.name}</span>
-            <span className="truncate text-[12px] text-vehicsim-faint">{ROLE_LABELS[user?.role ?? ""] ?? user?.role}</span>
-          </span>
-        </Link>
+      <div className="border-t border-vehicsim-line pt-2">
         <button
           type="button"
           title="Đăng xuất"
@@ -207,9 +372,10 @@ export function VehicSimSidebar({ hideOnMobile = false }: { hideOnMobile?: boole
             logout();
             router.push("/login");
           }}
-          className="shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold text-vehicsim-faint hover:bg-white hover:text-vehicsim-ink"
+          className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-medium text-vehicsim-muted hover:bg-vehicsim-soft hover:text-vehicsim-ink"
         >
-          ⎋
+          <LogOut aria-hidden className="size-4" />
+          Đăng xuất
         </button>
       </div>
     </aside>

@@ -24,6 +24,28 @@ class CarlaSessionLogicTest {
 
     private static final double SPEED = 11.0;
 
+    private static com.vsos.core.bridge.Bundle.RunSpec crossing(String weather) {
+        return new com.vsos.core.bridge.Bundle.RunSpec(new CrossingCase(40, 25, 1.5, false, weather, "DAY", null), AebParams.DEFAULT,
+                VehicleSpec.DEFAULT, 1L, null, null, Map.of(), Map.of());
+    }
+
+    /**
+     * a_avail trên CARLA (sổ tay công thức 24b, 31): từ định dạng hiện hành, giới hạn xe là giảm tốc phanh 100% đo được, không phải
+     * {@code max_brake_decel_mps2} 9,5 giả định của bộ động học. File định dạng cũ giữ cách tính cũ để chạy lại ra đúng kết quả đã lưu.
+     */
+    @Test
+    void decelAvailableUsesTheMeasuredFullBrakeOnTheCurrentFormatOnly() {
+        com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile previous = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
+        // Xe chưa hiệu chuẩn (phanh 100% ~3,56 m/s², Tesla Model 3): trước đây vẫn tính như xe phanh được 8.
+        assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), current, 3.56)).isEqualTo(3.56);
+        assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), previous, 3.56)).isEqualTo(8.0);
+        // e-tron đã hiệu chuẩn (ADR-051, 9,13): MAX_DECELERATION 8 vẫn là giới hạn chặt nhất, số không đổi.
+        assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), current, 9.13)).isEqualTo(8.0);
+        // Mưa: μ·g vẫn là giới hạn khi nhỏ hơn mức xe phanh được.
+        assertThat(CarlaSession.decelAvailable(crossing("RAIN"), current, 9.13)).isCloseTo(0.70 * Simulator.G, within(1e-9));
+    }
+
     private static AebStack stack(double dt, Double period) {
         return new AebStack(AebParams.DEFAULT, 7, "RAIN", "NIGHT", 4.9, 8.0, new ArrayList<>(), dt, period);
     }
@@ -172,6 +194,23 @@ class CarlaSessionLogicTest {
         assertThat(bad.get("forced_ok")).isEqualTo(false);
         assertThat(bad.get("dimensions_ok")).isEqualTo(true); // thiếu số đọc lại: ghi dòng nhưng không coi là lệch
         assertThat(rows(bad).get(0)).containsEntry("delta", -300.0).containsEntry("ok", false);
+    }
+
+    @Test
+    void physicsCheckFlagsACalibratedBrakeTorqueThatDidNotReachEveryWheel() {
+        // ADR-051: XoscExport từng bỏ lặng lẽ physics.wheels nên CARLA giữ 1000 N·m; mỗi bánh phải có đúng mô-men đã yêu cầu.
+        Map<String, Object> carla = Map.of("physics", Map.of("mass", 2100.0, "wheels", Map.of("max_brake_torque", 2400.0)));
+        VehicleSpec vehicle = new VehicleSpec(4.75, 1.93, 9.5);
+        List<Map<String, Object>> calibrated = List.of(Map.of("max_brake_torque", 2400.0), Map.of("max_brake_torque", 2400.0),
+                Map.of("max_brake_torque", 2400.0), Map.of("max_brake_torque", 2400.0));
+        Map<String, Object> ok = CarlaSession.physicsCheck(carla, vehicle, Map.of("mass", 2100.0, "wheels", calibrated));
+        assertThat(ok.get("forced_ok")).isEqualTo(true);
+        assertThat(rows(ok)).extracting(r -> r.get("field")).contains("wheel_0_max_brake_torque", "wheel_3_max_brake_torque");
+
+        List<Map<String, Object>> stock = List.of(Map.of("max_brake_torque", 1000.0), Map.of("max_brake_torque", 1000.0),
+                Map.of("max_brake_torque", 1000.0), Map.of("max_brake_torque", 1000.0));
+        Map<String, Object> bad = CarlaSession.physicsCheck(carla, vehicle, Map.of("mass", 2100.0, "wheels", stock));
+        assertThat(bad.get("forced_ok")).isEqualTo(false);
     }
 
     @SuppressWarnings("unchecked")

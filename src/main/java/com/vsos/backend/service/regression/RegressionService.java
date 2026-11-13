@@ -1,5 +1,8 @@
 package com.vsos.backend.service.regression;
 
+import com.vsos.backend.common.Vs;
+import com.vsos.backend.common.Vs.InvalidRequestException;
+import com.vsos.backend.common.Vs.NotFoundException;
 import com.vsos.backend.dto.regression.RegressionRecords.CandidateRun;
 import com.vsos.backend.dto.regression.RegressionRecords.RecommendationRow;
 import com.vsos.backend.dto.regression.RegressionRecords.RegressionTestRow;
@@ -12,13 +15,11 @@ import com.vsos.backend.dto.regression.RegressionResponses.RegressionPreviewResp
 import com.vsos.backend.dto.regression.RegressionResponses.RegressionSummary;
 import com.vsos.backend.exception.regression.RegressionExceptions.InvalidCandidateException;
 import com.vsos.backend.exception.regression.RegressionExceptions.InvalidScenarioSetException;
-import com.vsos.backend.repository.regression.RegressionRepository;
-import com.vsos.backend.service.scenario.FamilyService;
 import com.vsos.backend.repository.common.Queries;
 import com.vsos.backend.repository.common.Row;
+import com.vsos.backend.repository.regression.RegressionRepository;
+import com.vsos.backend.service.scenario.FamilyService;
 import com.vsos.backend.service.simulation.RunService;
-import com.vsos.backend.common.Vs;
-import com.vsos.backend.common.Vs.NotFoundException;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,17 +32,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/**
- * Regression test (FE-14, màn 5): tạo test, xem trước bộ kịch bản, ghép cặp run và chốt kết quả khi run xong.
- * <p>
- * Luồng: {@link #createTest} chốt một xe và một bộ mô phỏng, tạo run baseline còn thiếu và run REGRESSION chạy candidate với đúng seed
- * của run baseline (cơ chế chạy của {@code RunService}); mỗi run xong gọi {@link #tryFinalize} — đủ cặp thì ghi từng cặp, số ca
- * sửa được / xấu đi, verdict và tạo khuyến nghị. Quyết định của Reviewer ở {@link ReviewDecisionService}; SQL ở {@link RegressionRepository}.
- */
 @Service
 public class RegressionService {
 
-    /** Giữ tên cũ mà ADR-044 / CLAUDE.md nhắc tới; giá trị nằm ở {@link RegressionCriteria}. */
     public static final double DEFAULT_FALSE_ACTIVATION_MAX_PTS = RegressionCriteria.DEFAULT_FALSE_ACTIVATION_MAX_PTS;
 
     private final RegressionRepository repo;
@@ -58,78 +51,10 @@ public class RegressionService {
         this.tx = tx;
     }
 
-    public RecommendationRow recommendationFor(long testId) {
-        return repo.findRecommendation(testId);
-    }
-
-    // ------------------------------------------------------------------ chọn bộ kịch bản
-
-    /** Run baseline mới nhất của mỗi biến thể, chỉ của bộ mô phỏng đang cấu hình và xe đang dùng (xem repository). */
-    private Map<Long, Row> latestBaselineRuns(Row baseline, List<Long> variantIds) {
-        return repo.latestBaselineRuns(baseline.lng("id"), variantIds, runs.configuredSimulator(),
-                queries.activeVehicle(baseline.lng("project_id")).lng("id"));
-    }
-
-    /** Biến thể mà run baseline mới nhất (đã COMPLETED) có ghi nhận lỗi — "old critical". */
-    public Set<Long> criticalVariantIds(Row baseline, List<Long> variantIds) {
-        return failedVariantIds(latestBaselineRuns(baseline, variantIds));
-    }
-
-    private Set<Long> failedVariantIds(Map<Long, Row> baselineRuns) {
-        List<Long> completed = baselineRuns.values().stream().filter(r -> "COMPLETED".equals(r.str("status"))).map(r -> r.lng("id")).toList();
-        return repo.variantsWithFailures(completed);
-    }
-
-    /**
-     * Tập chọn tay: id phải thuộc bộ biến thể hiện tại của họ; bỏ id trùng; giữ thứ tự của họ (version_no) để báo cáo ổn định.
-     * Không chặn tập thiếu ca an toàn — màn tạo test cảnh báo; số ca an toàn được ghi vào {@code scenario_set.safe_count} của test.
-     */
-    private static List<Row> selectVariants(List<Row> variants, List<Long> variantIds) {
-        if (variantIds.isEmpty()) {
-            throw new InvalidScenarioSetException("tập biến thể chọn tay đang rỗng");
-        }
-        Set<Long> wanted = new LinkedHashSet<>(variantIds);
-        Set<Long> known = new LinkedHashSet<>(variants.stream().map(v -> v.lng("id")).toList());
-        List<Long> unknown = wanted.stream().filter(id -> !known.contains(id)).toList();
-        if (!unknown.isEmpty()) {
-            throw new InvalidScenarioSetException("biến thể không thuộc bộ biến thể hiện tại của họ kịch bản: " + unknown);
-        }
-        return variants.stream().filter(v -> wanted.contains(v.lng("id"))).toList();
-    }
-
-    /** Ca "trước đây an toàn": đã có run baseline COMPLETED và baseline không ghi nhận lỗi — dùng để phát hiện phanh oan / xấu đi. */
-    private static long safeCount(List<Long> ids, Map<Long, Row> baselineRuns, Set<Long> critical) {
-        return ids.stream().filter(id -> baselineRuns.containsKey(id) && "COMPLETED".equals(baselineRuns.get(id).str("status"))
-                && !critical.contains(id)).count();
-    }
-
-    private Row requireBaseline(long projectId) {
-        Row baseline = queries.baselineVersion(projectId);
-        if (baseline == null) {
-            throw new InvalidCandidateException("project chưa có baseline");
-        }
-        return baseline;
-    }
-
-    private Row requireScenario(long projectId, long scenarioId) {
-        Row scenario = repo.findScenario(projectId, scenarioId);
-        if (scenario == null) {
-            throw new NotFoundException("scenario family");
-        }
-        return scenario;
-    }
-
-    // ------------------------------------------------------------------ xem trước
-
-    /** Số liệu khung "Run summary" của màn tạo test — cùng cách chọn bộ kịch bản với {@link #createTest}. */
     public RegressionPreviewResponse preview(long projectId, long scenarioId) {
         return preview(projectId, scenarioId, null, false);
     }
 
-    /**
-     * Như {@link #preview(long, long)}, thêm phần tập chọn tay: {@code variantIds} khác null thì trả số biến thể / ca lỗi cũ / ca an toàn
-     * của đúng tập đó (cùng luật kiểm với {@link #createTest}); {@code includeVariants} thì trả danh sách biến thể để màn tạo test chọn.
-     */
     public RegressionPreviewResponse preview(long projectId, long scenarioId, List<Long> variantIds, boolean includeVariants) {
         Row baseline = requireBaseline(projectId);
         Row scenario = requireScenario(projectId, scenarioId);
@@ -160,7 +85,6 @@ public class RegressionService {
                         v.lng("id"),
                         Vs.variantLabel(scenario.str("code"), v.lng("version_no")),
                         Vs.variantSummary(v.json("scenario_ir_json")),
-                        // null = chưa có run baseline cùng bộ mô phỏng + xe (sẽ được chạy thêm khi tạo test).
                         res == null ? null : res.outcome(),
                         res == null ? null : res.falseActivation(),
                         run != null,
@@ -168,12 +92,20 @@ public class RegressionService {
                         critical.contains(v.lng("id"))));
             }
         }
-        // Biến thể đã có run baseline thì dùng lại, chỉ phần còn thiếu phải chạy thêm.
         return new RegressionPreviewResponse(scenarioId, scenario.str("name"), Vs.versionLabel(baseline), runs.configuredSimulator(),
                 variants.size(), critical.size(), baselineRuns.size(), selectedCount, selectedCritical, selectedSafe, selectedExisting, list);
     }
 
-    // ------------------------------------------------------------------ tạo test
+    @Transactional
+    public long createTestAsReviewer(long projectId, long userId, long candidateVersionId, long scenarioId, boolean includeOldCritical,
+                                     boolean includeAllVariants, Map<String, Map<String, Object>> criteria, String name, List<Long> variantIds) {
+        Row scope = repo.lockReviewAccess(projectId, userId);
+        if (scope == null) throw new NotFoundException("project");
+        if (!"ACTIVE".equals(scope.str("project_status")) || !"ACTIVE".equals(scope.str("workspace_status"))) {
+            throw new InvalidRequestException("Project hoặc workspace đã lưu trữ, chỉ được xem lịch sử");
+        }
+        return createTest(projectId, userId, candidateVersionId, scenarioId, includeOldCritical, includeAllVariants, criteria, name, variantIds);
+    }
 
     @Transactional
     public long createTest(long projectId, long userId, long candidateVersionId, long scenarioId, boolean includeOldCritical,
@@ -181,10 +113,6 @@ public class RegressionService {
         return createTest(projectId, userId, candidateVersionId, scenarioId, includeOldCritical, includeAllVariants, criteria, name, null);
     }
 
-    /**
-     * {@code variantIds} khác null: chạy đúng tập biến thể chọn tay (vd. tập xác minh do phần phân tích chốt) thay cho hai lựa chọn
-     * "ca lỗi cũ" / "toàn bộ biến thể"; null giữ nguyên cách chọn cũ.
-     */
     @Transactional
     public long createTest(long projectId, long userId, long candidateVersionId, long scenarioId, boolean includeOldCritical,
                            boolean includeAllVariants, Map<String, Map<String, Object>> criteria, String name, List<Long> variantIds) {
@@ -232,13 +160,10 @@ public class RegressionService {
                 testId, baselineRuns);
         List<Long> all = new ArrayList<>(newBaselineIds);
         all.addAll(candidateIds);
-        runs.dispatch(all); // đẩy sau commit
+        runs.dispatch(all);
         return testId;
     }
 
-    // ------------------------------------------------------------------ chốt kết quả
-
-    /** Mỗi run xong thì xét các regression test liên quan: chính test của nó, hoặc test dùng nó làm baseline. */
     @EventListener
     public void onRunFinished(RunService.RunFinished event) {
         Row run = repo.findRun(event.runId());
@@ -253,17 +178,6 @@ public class RegressionService {
         }
     }
 
-    /** Mọi run của test (candidate + baseline được ghép). */
-    private static List<Long> pairedRunIds(List<CandidateRun> candidateRuns) {
-        List<Long> ids = new ArrayList<>(candidateRuns.stream().map(CandidateRun::id).toList());
-        candidateRuns.forEach(r -> ids.add(r.baselineRunId()));
-        return ids;
-    }
-
-    /**
-     * Đủ cặp thì chốt test: còn run chờ / chạy thì thôi; có run không COMPLETED (hỏng, bị dừng) thì test FAILED, không verdict và
-     * không khuyến nghị; còn lại tính verdict, ghi từng cặp và tạo khuyến nghị — trong một transaction.
-     */
     public void tryFinalize(long testId) {
         tx.executeWithoutResult(status -> {
             RegressionTestRow test = repo.findTest(testId);
@@ -285,27 +199,13 @@ public class RegressionService {
             String verdict = RegressionSummarizer.verdict(summary);
             Counts counts = summary.counts();
             if (!repo.markCompleted(testId, verdict, counts.scenarios(), counts.fixed(), counts.regressed())) {
-                return; // worker khác đã chốt test này
+                return;
             }
             repo.insertItems(testId, summary.pairs());
             createRecommendation(test, verdict, counts);
         });
     }
 
-    /** Một khuyến nghị cho mỗi regression đã chạy xong — chỉ project thuộc workspace (ADR-035). */
-    private void createRecommendation(RegressionTestRow test, String verdict, Counts counts) {
-        if (!repo.projectInWorkspace(test.projectId())) {
-            return;
-        }
-        Map<Long, Row> versions = repo.versionsById(test.baselineVersionId(), test.candidateVersionId());
-        String content = "Candidate " + Vs.versionLabel(versions.get(test.candidateVersionId())) + " vs baseline "
-                + Vs.versionLabel(versions.get(test.baselineVersionId())) + ": " + counts.fixed() + " fixed, "
-                + counts.regressed() + " regressed of " + counts.scenarios() + " scenarios.";
-        String confidence = RegressionCriteria.confidence("PASSED".equals(verdict), counts.regressed(), counts.scenarios()).toUpperCase();
-        repo.insertRecommendation(test.projectId(), test.id(), test.candidateVersionId(), content, confidence, test.createdBy());
-    }
-
-    /** Bảng tổng hợp của một test đã chốt (tính lại từ run); test hỏng trả {@code error}; chưa xong thì rỗng. */
     public RegressionSummary summary(RegressionTestRow test) {
         if ("FAILED".equals(test.executionStatus())) {
             return RegressionSummary.failed("một số lần chạy mô phỏng hỏng — xem simulation_runs");
@@ -317,12 +217,6 @@ public class RegressionService {
         return summarize(test, candidateRuns, repo.runResults(pairedRunIds(candidateRuns)));
     }
 
-    private RegressionSummary summarize(RegressionTestRow test, List<CandidateRun> candidateRuns, Map<Long, RunResult> results) {
-        Map<Long, Row> versions = repo.scenarioVersions(candidateRuns.stream().map(CandidateRun::scenarioVersionId).toList());
-        return RegressionSummarizer.summarize(test.criteria(), repo.findScenario(test.scenarioId()), versions, candidateRuns, results);
-    }
-
-    /** Bốn tham số AEB của baseline và candidate. */
     public List<ParameterDiff> parameterDiff(long baselineVersionId, long candidateVersionId) {
         Map<String, Double> base = queries.aebValues(baselineVersionId);
         Map<String, Double> cand = queries.aebValues(candidateVersionId);
@@ -333,5 +227,80 @@ public class RegressionService {
                     !Objects.equals(base.get(code), cand.get(code))));
         }
         return out;
+    }
+
+    public Set<Long> criticalVariantIds(Row baseline, List<Long> variantIds) {
+        return failedVariantIds(latestBaselineRuns(baseline, variantIds));
+    }
+
+    public RecommendationRow recommendationFor(long testId) {
+        return repo.findRecommendation(testId);
+    }
+
+    private Map<Long, Row> latestBaselineRuns(Row baseline, List<Long> variantIds) {
+        return repo.latestBaselineRuns(baseline.lng("id"), variantIds, runs.configuredSimulator(),
+                queries.activeVehicle(baseline.lng("project_id")).lng("id"));
+    }
+
+    private Set<Long> failedVariantIds(Map<Long, Row> baselineRuns) {
+        List<Long> completed = baselineRuns.values().stream().filter(r -> "COMPLETED".equals(r.str("status"))).map(r -> r.lng("id")).toList();
+        return repo.variantsWithFailures(completed);
+    }
+
+    private static List<Row> selectVariants(List<Row> variants, List<Long> variantIds) {
+        if (variantIds.isEmpty()) {
+            throw new InvalidScenarioSetException("tập biến thể chọn tay đang rỗng");
+        }
+        Set<Long> wanted = new LinkedHashSet<>(variantIds);
+        Set<Long> known = new LinkedHashSet<>(variants.stream().map(v -> v.lng("id")).toList());
+        List<Long> unknown = wanted.stream().filter(id -> !known.contains(id)).toList();
+        if (!unknown.isEmpty()) {
+            throw new InvalidScenarioSetException("biến thể không thuộc bộ biến thể hiện tại của họ kịch bản: " + unknown);
+        }
+        return variants.stream().filter(v -> wanted.contains(v.lng("id"))).toList();
+    }
+
+    private static long safeCount(List<Long> ids, Map<Long, Row> baselineRuns, Set<Long> critical) {
+        return ids.stream().filter(id -> baselineRuns.containsKey(id) && "COMPLETED".equals(baselineRuns.get(id).str("status"))
+                && !critical.contains(id)).count();
+    }
+
+    private Row requireBaseline(long projectId) {
+        Row baseline = queries.baselineVersion(projectId);
+        if (baseline == null) {
+            throw new InvalidCandidateException("project chưa có baseline");
+        }
+        return baseline;
+    }
+
+    private Row requireScenario(long projectId, long scenarioId) {
+        Row scenario = repo.findScenario(projectId, scenarioId);
+        if (scenario == null) {
+            throw new NotFoundException("scenario family");
+        }
+        return scenario;
+    }
+
+    private static List<Long> pairedRunIds(List<CandidateRun> candidateRuns) {
+        List<Long> ids = new ArrayList<>(candidateRuns.stream().map(CandidateRun::id).toList());
+        candidateRuns.forEach(r -> ids.add(r.baselineRunId()));
+        return ids;
+    }
+
+    private RegressionSummary summarize(RegressionTestRow test, List<CandidateRun> candidateRuns, Map<Long, RunResult> results) {
+        Map<Long, Row> versions = repo.scenarioVersions(candidateRuns.stream().map(CandidateRun::scenarioVersionId).toList());
+        return RegressionSummarizer.summarize(test.criteria(), repo.findScenario(test.scenarioId()), versions, candidateRuns, results);
+    }
+
+    private void createRecommendation(RegressionTestRow test, String verdict, Counts counts) {
+        if (!repo.projectInWorkspace(test.projectId())) {
+            return;
+        }
+        Map<Long, Row> versions = repo.versionsById(test.baselineVersionId(), test.candidateVersionId());
+        String content = "Candidate " + Vs.versionLabel(versions.get(test.candidateVersionId())) + " vs baseline "
+                + Vs.versionLabel(versions.get(test.baselineVersionId())) + ": " + counts.fixed() + " fixed, "
+                + counts.regressed() + " regressed of " + counts.scenarios() + " scenarios.";
+        String confidence = RegressionCriteria.confidence("PASSED".equals(verdict), counts.regressed(), counts.scenarios()).toUpperCase();
+        repo.insertRecommendation(test.projectId(), test.id(), test.candidateVersionId(), content, confidence, test.createdBy());
     }
 }

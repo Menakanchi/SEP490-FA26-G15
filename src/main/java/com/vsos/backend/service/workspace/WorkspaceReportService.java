@@ -14,14 +14,14 @@ import java.util.List;
 import com.vsos.backend.service.notification.NotificationService;
 
 /**
- * Manager xem và duyệt báo cáo công việc theo project trong workspace mình quản lý (M8, M9 — ADR-038). Quyền MANAGER / ADMIN kiểm ở
- * controller; "đúng workspace của mình" qua {@link WorkspaceService#requireAccessible}.
+ * Báo cáo công việc theo project trong workspace (M8, M9 — ADR-038). Manager của workspace xem mọi báo cáo và duyệt; thành viên chỉ xem
+ * báo cáo mình nộp ({@link WorkspaceService#requireMemberOrManager}). Role kiểm ở controller.
  * <p>
  * Luật: chỉ báo cáo còn SUBMITTED mới duyệt được, quyết định là cuối (không duyệt lại); từ chối phải có nhận xét để người nộp biết sửa gì;
  * hai người duyệt cùng lúc thì người sau nhận lỗi thay vì ghi đè. Workspace ARCHIVED chỉ xem.
  * <p>
- * Duyệt xong thì báo cho người nộp ({@link NotificationService}). Chưa làm: Engineer / Reviewer nộp báo cáo (UC của họ) và thông báo
- * {@code REPORT_SUBMITTED} cho Manager.
+ * Duyệt xong thì báo cho người nộp ({@link NotificationService}). Engineer / Reviewer nộp báo cáo (kèm thông báo {@code REPORT_SUBMITTED}
+ * cho Manager) ở {@link MemberWorkService}.
  */
 @Service
 public class WorkspaceReportService {
@@ -39,14 +39,18 @@ public class WorkspaceReportService {
         this.notifications = notifications;
     }
 
-    /** M8: báo cáo của các project trong workspace, lọc tuỳ chọn theo trạng thái và project. */
-    public List<ReportItem> list(long userId, String role, long workspaceId, String status, Long projectId) {
-        workspaces.requireAccessible(userId, role, workspaceId);
+    /**
+     * M8: báo cáo của các project trong workspace, lọc tuỳ chọn theo trạng thái và project. Manager của workspace (người nhận) thấy mọi
+     * báo cáo; thành viên chỉ thấy báo cáo mình nộp.
+     */
+    public List<ReportItem> list(long userId, long workspaceId, String status, Long projectId) {
+        WorkspaceSummary ws = workspaces.requireMemberOrManager(userId, workspaceId);
         String s = status == null || status.isBlank() ? null : status.trim();
         if (s != null && !STATUSES.contains(s)) {
             throw new InvalidRequestException("Trạng thái phải thuộc " + STATUSES);
         }
-        return reports.list(workspaceId, s, projectId);
+        List<ReportItem> all = reports.list(workspaceId, s, projectId);
+        return WorkspaceService.isManagerOf(ws, userId) ? all : all.stream().filter(r -> r.submittedBy().id() == userId).toList();
     }
 
     /** M9: duyệt (APPROVED) hoặc từ chối (REJECTED, bắt buộc nhận xét) một báo cáo đang chờ. */
@@ -80,5 +84,28 @@ public class WorkspaceReportService {
                 "Báo cáo “" + current.title() + "” " + (approved ? "đã được duyệt" : "bị từ chối"),
                 "Project " + current.project().name() + (n == null ? "." : ". Nhận xét: " + n), "REPORT", reportId);
         return reports.find(workspaceId, reportId);
+    }
+
+    /** Chi tiết một báo cáo: chỉ người nộp (còn là thành viên) và Manager nhận báo cáo; người khác nhận 404. */
+    public ReportItem getReport(long userId, long reportId) {
+        Long workspaceId = reports.workspaceOf(reportId);
+        ReportItem r = workspaceId == null ? null : reports.findById(reportId);
+        if (r == null) {
+            throw new NotFoundException("báo cáo");
+        }
+        WorkspaceSummary ws = workspaces.requireMemberOrManager(userId, workspaceId);
+        if (r.submittedBy().id() != userId && !WorkspaceService.isManagerOf(ws, userId)) {
+            throw new NotFoundException("báo cáo");
+        }
+        return r;
+    }
+
+    /** Danh sách báo cáo do người dùng này nộp (FE-14). */
+    public List<ReportItem> listMyReports(long userId, String status, Long projectId) {
+        String s = status == null || status.isBlank() ? null : status.trim();
+        if (s != null && !STATUSES.contains(s)) {
+            throw new InvalidRequestException("Trạng thái phải thuộc " + STATUSES);
+        }
+        return reports.listForSubmitter(userId, s, projectId);
     }
 }

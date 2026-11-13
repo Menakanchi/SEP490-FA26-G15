@@ -31,19 +31,25 @@ import com.vsos.core.common.Py;
 public final class Xosc {
 
     /**
-     * v4 (23/10/2026, TD-47): như v3 nhưng ca "dừng ở lề" có event {@code StopAtCurb} nên người đi bộ đứng lại ở lề thay vì bước vào
-     * làn ego. Ca băng ngang ghi XML giống v3 trừ {@code vs_format}; đổi identity vì kết quả CARLA của ca dừng ở lề đổi.
+     * v5 (08/11/2026, ADR-051, TD-17): như v4 nhưng xe đã hiệu chuẩn mang {@code vs_physics_wheel_max_brake_torque} (mô-men phanh mọi bánh) nên
+     * CARLA phanh hết cỡ gần đúng {@code max_brake_decel_mps2} của xe. Xe chưa hiệu chuẩn ghi XML giống v4 trừ {@code vs_format}; đổi identity vì
+     * kết quả CARLA của xe đã hiệu chuẩn đổi, regression không được ghép run phanh cũ với run phanh mới.
      */
-    public static final String FORMAT = "vehicsim.xosc/v4";
-    public static final String SIMULATOR_SUFFIX = "-xosc4";
+    public static final String FORMAT = "vehicsim.xosc/v5";
+    public static final String SIMULATOR_SUFFIX = "-xosc5";
     /** Bước mô phỏng 0,01 s (100 Hz, kế hoạch 20/10 D3, từ v3); perception/quyết định AEB vẫn theo chu kỳ cảm biến 0,05 s. */
     public static final double STEP_S = 0.01;
     /**
-     * v3 chỉ còn để chạy lại bằng chứng cũ ngoài web: cùng bước 0,01 s nhưng người "dừng ở lề" đi tiếp vào làn (TD-47). Backend không
-     * tạo / chạy lại run bằng profile này và không ghép với v4.
+     * v4 (23/10/2026, TD-47) chỉ còn để chạy lại bằng chứng cũ ngoài web: cùng bước 0,01 s, ca "dừng ở lề" như v5, nhưng không ép mô-men phanh nên
+     * CARLA phanh hết cỡ chỉ ~4 m/s² (TD-17). Backend không tạo / chạy lại run bằng profile này và không ghép với v5.
      */
-    public static final String PREVIOUS_FORMAT = "vehicsim.xosc/v3";
-    public static final String PREVIOUS_SIMULATOR_SUFFIX = "-xosc3";
+    public static final String PREVIOUS_FORMAT = "vehicsim.xosc/v4";
+    public static final String PREVIOUS_SIMULATOR_SUFFIX = "-xosc4";
+    /** v3: như v4 nhưng người "dừng ở lề" đi tiếp vào làn (TD-47); chỉ còn để chạy lại bằng chứng cũ ngoài web. */
+    public static final String V3_FORMAT = "vehicsim.xosc/v3";
+    public static final String V3_SIMULATOR_SUFFIX = "-xosc3";
+    /** Tham số (bỏ tiền tố {@code vs_}) mang mô-men phanh mọi bánh của xe đã hiệu chuẩn (v5). */
+    public static final String WHEEL_BRAKE_TORQUE = "physics_wheel_max_brake_torque";
     public static final double PERCEPTION_PERIOD_S = 0.05;
     /** v2 (20 Hz) chỉ còn để chạy lại bằng chứng cũ ngoài web; backend không tạo run mới bằng profile này và không ghép với v3. */
     public static final String LEGACY_FORMAT = "vehicsim.xosc/v2";
@@ -163,16 +169,29 @@ public final class Xosc {
         if ("vehicsim.xosc/v1".equals(format)) {
             throw new Bundle.BundleError("File .xosc v1 có hướng đi bộ cũ; cần xuất lại từ web để chạy người đi bộ băng ngang đường");
         }
-        if (!FORMAT.equals(format) && !PREVIOUS_FORMAT.equals(format) && !LEGACY_FORMAT.equals(format)) {
+        if (!FORMAT.equals(format) && !PREVIOUS_FORMAT.equals(format) && !V3_FORMAT.equals(format) && !LEGACY_FORMAT.equals(format)) {
             throw new Bundle.BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)");
         }
         try {
             Map<String, Object> variant = new LinkedHashMap<>();
-            for (String key : List.of("ego_speed_kmh", "trigger_distance_m", "pedestrian_speed_mps")) {
-                variant.put(key, num(values, key));
+            if (values.containsKey("category")) {
+                // Xe phía trước (ADR-050): trường rỗng = không đặt (decel ngoài CCRb, overlap mặc định 100).
+                variant.put("category", values.get("category"));
+                for (String key : List.of("ego_speed_kmh", "target_speed_kmh", "initial_distance_m")) {
+                    variant.put(key, num(values, key));
+                }
+                for (String key : List.of("target_decel_mps2", "lateral_overlap_pct")) {
+                    variant.put(key, need(values, key).isEmpty() ? null : (Object) num(values, key));
+                }
+            } else {
+                for (String key : List.of("ego_speed_kmh", "trigger_distance_m", "pedestrian_speed_mps")) {
+                    variant.put(key, num(values, key));
+                }
             }
             variant.put("friction", need(values, "friction").isEmpty() ? null : (Object) num(values, "friction"));
-            variant.put("stops_at_curb", need(values, "stops_at_curb").equals("true"));
+            if (!values.containsKey("category")) {
+                variant.put("stops_at_curb", need(values, "stops_at_curb").equals("true"));
+            }
             variant.put("weather", need(values, "weather"));
             variant.put("time_of_day", need(values, "time_of_day"));
 
@@ -190,6 +209,11 @@ public final class Xosc {
             }
             if (!center.isEmpty()) {
                 physics.put("center_of_mass", center);
+            }
+            if (values.containsKey(WHEEL_BRAKE_TORQUE)) {  // v5, xe đã hiệu chuẩn (ADR-051): một giá trị cho mọi bánh
+                Map<String, Object> wheels = new LinkedHashMap<>();
+                wheels.put("max_brake_torque", num(values, WHEEL_BRAKE_TORQUE));
+                physics.put("wheels", wheels);
             }
             Map<String, Object> source = new LinkedHashMap<>();
             for (String key : SOURCE_KEYS) {
@@ -255,8 +279,10 @@ public final class Xosc {
         if (LEGACY_FORMAT.equals(values.get("format"))) {
             return new Profile(LEGACY_SIMULATOR_SUFFIX, LEGACY_STEP_S, LEGACY_STEP_S);
         }
-        String suffix = FORMAT.equals(values.get("format")) ? SIMULATOR_SUFFIX
-                : PREVIOUS_FORMAT.equals(values.get("format")) ? PREVIOUS_SIMULATOR_SUFFIX : null;
+        String format = values.get("format");
+        String suffix = FORMAT.equals(format) ? SIMULATOR_SUFFIX
+                : PREVIOUS_FORMAT.equals(format) ? PREVIOUS_SIMULATOR_SUFFIX
+                : V3_FORMAT.equals(format) ? V3_SIMULATOR_SUFFIX : null;
         if (suffix == null) {
             throw new Bundle.BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)");
         }

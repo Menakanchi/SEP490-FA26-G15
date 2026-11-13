@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { ArrowRight, SlidersHorizontal } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
@@ -10,7 +10,6 @@ import { viSummary } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { RegressionPreview } from "@/types/vehicsim";
 
-/** Khớp `defaultCriteria` / `CRITERIA_LABELS` trong RegressionService.java. */
 const CRITERIA = [
   { key: "no_new_collision", label: "Không kịch bản an toàn nào được chuyển thành va chạm", required: true },
   { key: "collision_rate_not_increase", label: "Tỉ lệ va chạm không được tăng", required: false },
@@ -35,12 +34,11 @@ export default function NewRegressionPage() {
 function NewRegressionForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const { ctx, canWrite } = useVehicSimContext();
+  const { ctx, canWrite, canRunRegression, isExperiencer } = useVehicSimContext();
   const [candidateId, setCandidateId] = useState<number | null>(null);
   const [scenarioId, setScenarioId] = useState<number | null>(null);
   const [oldCritical, setOldCritical] = useState(true);
   const [allVariants, setAllVariants] = useState(true);
-  // Tập chọn tay (vd. tập xác minh do màn Phân tích chốt, truyền qua ?variants=): thay cho hai lựa chọn trên.
   const [custom, setCustom] = useState(false);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [criteria, setCriteria] = useState<CriterionState>(initialCriteria);
@@ -52,8 +50,9 @@ function NewRegressionForm() {
   const candidates = useMemo(() => (ctx?.versions ?? []).filter((v) => v.status === "CANDIDATE"), [ctx]);
   const candidate = candidates.find((v) => v.id === candidateId) ?? null;
   const familyName = ctx?.families.find((f) => f.id === scenarioId)?.name ?? "—";
+  const createCandidateHref = isExperiencer && ctx ? `/projects/${ctx.project.id}/improve` : "/aeb";
+  const noCandidate = !!ctx && candidates.length === 0;
 
-  // Chọn sẵn candidate (từ ?candidate= của trang AEB), họ kịch bản (?scenario=, mặc định họ đầu tiên) và tập chọn tay (?variants=).
   useEffect(() => {
     if (!ctx) return;
     const wanted = Number(params.get("candidate"));
@@ -75,7 +74,6 @@ function NewRegressionForm() {
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được số liệu bộ kịch bản"));
   }, [scenarioId]);
 
-  // Chỉ giữ id thuộc họ đang chọn (id lạ từ URL hoặc của họ cũ bị bỏ, backend cũng từ chối id ngoài họ).
   const pickedVariants = useMemo(() => (preview?.variants ?? []).filter((v) => picked.has(v.id)), [preview, picked]);
   const pickedSafe = pickedVariants.filter((v) => v.safe).length;
   const scenarios = !preview
@@ -95,7 +93,7 @@ function NewRegressionForm() {
         ? Math.max(0, preview.variant_count - preview.baseline_runs_existing)
         : 0;
   const simulations = scenarios + extraBaseline;
-  const ready = canWrite && !!candidate && !!baseline && scenarioId !== null && scenarios > 0 && !submitting;
+  const ready = canRunRegression && !!candidate && !!baseline && scenarioId !== null && scenarios > 0 && !submitting;
 
   const submit = async () => {
     if (!ready || !candidate || scenarioId === null) return;
@@ -125,18 +123,24 @@ function NewRegressionForm() {
       step={5}
       crumbs={[{ label: "Kiểm định" }, { label: "Kiểm thử hồi quy", href: "/validation/regression" }, { label: "Kiểm thử mới" }]}
       title="Tạo kiểm thử hồi quy"
-      subtitle="Chạy lại các kịch bản nguy hiểm cũ và các biến thể trên cả hai phiên bản trước khi ứng viên được khuyến nghị."
+      subtitle={`Chạy lại các kịch bản nguy hiểm cũ và các biến thể trên cả hai phiên bản trước khi ứng viên được ${isExperiencer ? "dùng làm baseline" : "khuyến nghị"}.`}
       actions={
         <>
           <PillButton href="/validation/regression">Huỷ</PillButton>
-          <PillButton variant="dark" onClick={submit} disabled={!ready} title={canWrite ? undefined : "Tài khoản người xem chỉ có quyền xem"}>
+          <PillButton
+            variant="dark"
+            onClick={submit}
+            disabled={!ready}
+            title={!canRunRegression ? "Project hiện tại không cho phép chạy kiểm thử hồi quy" : noCandidate ? "Cần tạo ứng viên trước" : undefined}
+          >
             {submitting ? "Đang khởi chạy…" : "Chạy kiểm thử hồi quy"}
           </PillButton>
         </>
       }
     >
       <ErrorNote message={error} />
-      <div className="flex w-full items-start gap-4">
+      <p className="text-[12px] text-vehicsim-muted">Người tạo kiểm thử không tự duyệt khuyến nghị của kiểm thử đó.</p>
+      <div className="flex w-full flex-col gap-4 xl:flex-row xl:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <FormCard title="Phiên bản">
             <div className="flex items-end gap-3">
@@ -150,7 +154,8 @@ function NewRegressionForm() {
                 <select
                   value={candidateId ?? ""}
                   onChange={(e) => setCandidateId(e.target.value ? Number(e.target.value) : null)}
-                  className="h-[42px] w-full rounded-[12px] border border-solid border-vehicsim-line-strong bg-white px-[14px] text-[14px] font-medium text-vehicsim-ink"
+                  disabled={noCandidate}
+                  className="h-[42px] w-full rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-[14px] text-[14px] font-medium text-vehicsim-ink"
                 >
                   {candidates.length === 0 && <option value="">Chưa có phiên bản ứng viên</option>}
                   {candidates.map((v) => (
@@ -162,14 +167,24 @@ function NewRegressionForm() {
                 </select>
               </Field>
             </div>
-            {ctx && candidates.length === 0 && (
-              <p className="text-[12px] text-vehicsim-muted">
-                Chưa có phiên bản ứng viên. Tạo một cấu hình ứng viên ở{" "}
-                <Link href="/aeb" className="font-semibold text-vehicsim-ink underline">
-                  AEB
-                </Link>{" "}
-                trước.
-              </p>
+            {noCandidate && (
+              <div className="flex flex-wrap items-center gap-4 rounded-[14px] border border-dashed border-vehicsim-line-strong bg-vehicsim-soft p-4">
+                <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-vehicsim-surface text-vehicsim-ink">
+                  <SlidersHorizontal className="size-5" />
+                </span>
+                <div className="flex min-w-0 flex-1 basis-[240px] flex-col gap-1">
+                  <span className="text-[14px] font-semibold text-vehicsim-ink">Chưa có ứng viên để kiểm thử</span>
+                  <span className="text-[13px] leading-[1.5] text-vehicsim-muted">
+                    Kiểm thử hồi quy so một ứng viên với {baseline ? `AEB ${baseline.label}` : "bản cơ sở"}. Tạo ứng viên bằng cách chỉnh 4 tham số AEB,
+                    rồi quay lại đây để chạy.
+                  </span>
+                </div>
+                {canWrite && (
+                  <PillButton variant="dark" href={createCandidateHref}>
+                    Tạo ứng viên mới <ArrowRight aria-hidden className="size-4" />
+                  </PillButton>
+                )}
+              </div>
             )}
           </FormCard>
 
@@ -185,7 +200,7 @@ function NewRegressionForm() {
                   setPicked(new Set());
                   setScenarioId(e.target.value ? Number(e.target.value) : null);
                 }}
-                className="h-[42px] w-full rounded-[12px] border border-solid border-vehicsim-line-strong bg-white px-[14px] text-[14px] font-medium text-vehicsim-ink"
+                className="h-[42px] w-full rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-[14px] text-[14px] font-medium text-vehicsim-ink"
               >
                 {(ctx?.families ?? []).length === 0 && <option value="">Chưa có họ kịch bản</option>}
                 {ctx?.families.map((f) => (
@@ -261,7 +276,7 @@ function NewRegressionForm() {
                     <span className={cx("flex-1 text-[14px] font-medium", state.enabled ? "text-vehicsim-ink" : "text-vehicsim-faint")}>{c.label}</span>
                     {c.required && <Tag tone="danger">Bắt buộc</Tag>}
                     {"unit" in c && (
-                      <label className="flex h-9 w-[96px] items-center gap-1 rounded-[10px] border border-solid border-vehicsim-line-strong px-3">
+                      <label className="flex h-9 w-[124px] items-center gap-1 rounded-[10px] border border-solid border-vehicsim-line-strong px-3">
                         <input
                           type="number"
                           step={c.step}
@@ -276,7 +291,7 @@ function NewRegressionForm() {
                           }
                           className="w-full min-w-0 bg-transparent text-[13px] font-semibold text-vehicsim-ink focus:outline-none disabled:text-vehicsim-faint"
                         />
-                        <span className="text-[12px] font-medium text-vehicsim-muted">{c.unit}</span>
+                        <span className="whitespace-nowrap text-[12px] font-medium text-vehicsim-muted">{c.unit}</span>
                       </label>
                     )}
                   </div>
@@ -286,7 +301,7 @@ function NewRegressionForm() {
           </FormCard>
         </div>
 
-        <aside className="flex w-[330px] shrink-0 flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+        <aside className="flex w-full shrink-0 flex-col xl:w-[330px] gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
           <span className="text-[11px] font-semibold uppercase tracking-[0.6px] text-vehicsim-faint">Tóm tắt lượt chạy</span>
           <SummaryRow label="Phiên bản" value={baseline && candidate ? `${baseline.label} → ${candidate.label}` : "—"} />
           <SummaryRow label="Kịch bản" value={String(scenarios)} />
@@ -306,7 +321,7 @@ function NewRegressionForm() {
               <span className="font-bold">{scenarios}</span>
             </div>
             <div className="h-[5px] w-full rounded-[3px] bg-vehicsim-line">
-              <div className="h-[5px] rounded-[3px] bg-vehicsim-ink" style={{ width: scenarios ? "100%" : "0%" }} />
+              <div className="h-[5px] rounded-[3px] bg-vehicsim-primary" style={{ width: scenarios ? "100%" : "0%" }} />
             </div>
             {preview && (
               <div className="flex items-center justify-between text-[12px] text-vehicsim-muted">
@@ -317,7 +332,7 @@ function NewRegressionForm() {
           </div>
           <p className="mt-2 flex gap-2 rounded-[12px] bg-vehicsim-decision-bg px-4 py-3 text-[12px] leading-[1.5] text-vehicsim-muted">
             <span className="mt-[6px] size-[6px] shrink-0 rounded-full bg-vehicsim-decision" />
-            Ứng viên trượt một tiêu chí bắt buộc sẽ tự động bị chặn khỏi khuyến nghị. Bản cơ sở và ứng viên luôn chạy mỗi biến thể với
+            Ứng viên trượt một tiêu chí bắt buộc sẽ tự động {isExperiencer ? "không dùng làm baseline được" : "bị chặn khỏi khuyến nghị"}. Bản cơ sở và ứng viên luôn chạy mỗi biến thể với
             cùng một seed ngẫu nhiên.
           </p>
         </aside>
@@ -328,7 +343,7 @@ function NewRegressionForm() {
 
 function FormCard({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="flex w-full flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+    <section className="flex w-full flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-[17px] font-bold text-vehicsim-ink">{title}</h2>
         {aside}
@@ -370,7 +385,7 @@ function SetOption({
     <div
       className={cx(
         "flex items-center gap-3 rounded-[14px] border border-solid px-4 py-3",
-        checked ? "border-vehicsim-ink" : "border-vehicsim-line",
+        checked ? "border-vehicsim-primary" : "border-vehicsim-line",
         disabled && "opacity-50",
       )}
       title={disabled ? (disabledHint ?? "Chưa có trong MVP") : undefined}
@@ -395,7 +410,6 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Nhãn bộ mô phỏng của test sắp tạo; regression luôn chạy cùng bộ mô phỏng với run baseline được ghép. */
 function simulatorLabel(simulator?: string): string {
   if (!simulator) return "—";
   return simulator.startsWith("carla-") ? `CARLA (${simulator}) · chưa hiệu chuẩn phanh` : `Động học (${simulator})`;

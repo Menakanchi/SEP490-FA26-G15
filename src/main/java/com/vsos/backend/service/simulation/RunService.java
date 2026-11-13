@@ -2,10 +2,10 @@ package com.vsos.backend.service.simulation;
 
 import com.vsos.backend.common.audit.AuditLog;
 import com.vsos.core.bridge.Bundle;
+import com.vsos.core.simulation.LeadVehicleCase;
 import com.vsos.core.simulation.CarlaSession;
 import com.vsos.core.evaluation.Evaluation;
 import com.vsos.core.simulation.SimulationOutcome;
-import com.vsos.core.simulation.Simulator;
 import com.vsos.core.xosc.Xosc;
 import com.vsos.core.xosc.XoscExport;
 import com.vsos.backend.common.Vs.InvalidRequestException;
@@ -199,8 +199,8 @@ public class RunService {
 
     /** ``fixed_delta_seconds`` của run: bước mô phỏng theo identity simulator. */
     static double stepFor(String simulator) {
-        return simulator != null && (simulator.endsWith(XOSC_SUFFIX) || simulator.endsWith(Xosc.PREVIOUS_SIMULATOR_SUFFIX))
-                ? CARLA_XOSC_STEP_S : DT;
+        return simulator != null && (simulator.endsWith(XOSC_SUFFIX) || simulator.endsWith(Xosc.PREVIOUS_SIMULATOR_SUFFIX)
+                || simulator.endsWith(Xosc.V3_SIMULATOR_SUFFIX)) ? CARLA_XOSC_STEP_S : DT;
     }
 
     static String simulatorType(String simulator) {
@@ -250,6 +250,11 @@ public class RunService {
                 newRunSimulator = newRunSimulator != null ? newRunSimulator : simulatorForNewRuns();
                 simulator = newRunSimulator;
                 seed = requestedSeed == null ? seedFor(variant.lng("id")) : requestedSeed;
+            }
+            Object category = variant.json("scenario_ir_json").get("category");
+            if (isCarla(simulator) && category != null && LeadVehicleCase.CATEGORIES.contains(category.toString())) {
+                // ADR-050: xe phía trước phải nằm trọn trong đoạn road 40 của Town04; kiểm bằng chính bộ xuất .xosc trước khi xếp hàng.
+                xosc(Json.obj("variant", variantForBundle(variant.json("scenario_ir_json"), null), "seed", 0));
             }
             long runId = db.insert(
                     "INSERT INTO simulation_runs (project_id, scenario_id, scenario_version_id, carla_vehicle_model_id, aeb_version_id, "
@@ -326,8 +331,10 @@ public class RunService {
         try {
             Row run = db.first("SELECT * FROM simulation_runs WHERE id = ?", runId);
             String profile = run.str("simulator_version");
-            if (isCarla(profile) && (profile.endsWith("-xosc1") || profile.endsWith("-xosc2") || profile.endsWith(Xosc.PREVIOUS_SIMULATOR_SUFFIX))) {
-                // xosc2 là bước 0,05 s; xosc3 có người "dừng ở lề" đi vào làn (TD-47): không chạy lại bằng bộ xuất mới, không ghép với xosc4.
+            if (isCarla(profile) && (profile.endsWith("-xosc1") || profile.endsWith("-xosc2") || profile.endsWith(Xosc.V3_SIMULATOR_SUFFIX)
+                    || profile.endsWith(Xosc.PREVIOUS_SIMULATOR_SUFFIX))) {
+                // xosc2 là bước 0,05 s; xosc3 có người "dừng ở lề" đi vào làn (TD-47); xosc4 chưa ép mô-men phanh (ADR-051):
+                // không chạy lại bằng bộ xuất mới, không ghép với xosc5.
                 throw new SimulatorException("run CARLA dùng " + profile.substring(profile.lastIndexOf('-') + 1)
                         + " đã cũ; tạo lượt chạy mới để dùng profile " + XOSC_SUFFIX);
             }
@@ -383,14 +390,7 @@ public class RunService {
         Map<String, Object> params = new LinkedHashMap<>();
         AEB_DEFAULTS.forEach((code, def) -> params.put(code, codes.getOrDefault(code, def)));
 
-        Map<String, Object> variant = Json.obj(
-                "ego_speed_kmh", ((Number) ir.get("ego_speed_kmh")).doubleValue(),
-                "trigger_distance_m", ((Number) ir.get("trigger_distance_m")).doubleValue(),
-                "pedestrian_speed_mps", ((Number) ir.get("pedestrian_speed_mps")).doubleValue(),
-                "stops_at_curb", Boolean.TRUE.equals(ir.get("stops_at_curb")),
-                "weather", ir.getOrDefault("weather", "CLEAR"),
-                "time_of_day", ir.getOrDefault("time_of_day", "DAY"),
-                "friction", friction == null ? null : ((Number) friction).doubleValue());
+        Map<String, Object> variant = variantForBundle(ir, friction);
 
         Map<String, Object> vehicleDoc = Json.obj(
                 "name", vehicle.str("display_name") != null && !vehicle.str("display_name").isEmpty()
@@ -418,6 +418,34 @@ public class RunService {
     }
 
     /**
+     * Phần {@code variant} của bundle từ cấu hình run. Biến thể người đi bộ giữ nguyên dạng cũ (không thêm khóa nào, bundle cũ tái lập y hệt);
+     * biến thể xe phía trước (ADR-050) mang {@code category} và các trường của nó.
+     */
+    static Map<String, Object> variantForBundle(Map<String, Object> ir, Object friction) {
+        Object category = ir.get("category");
+        if (category != null && LeadVehicleCase.CATEGORIES.contains(category.toString())) {
+            return Json.obj(
+                    "category", category.toString(),
+                    "ego_speed_kmh", ((Number) ir.get("ego_speed_kmh")).doubleValue(),
+                    "target_speed_kmh", ((Number) ir.get("target_speed_kmh")).doubleValue(),
+                    "initial_distance_m", ((Number) ir.get("initial_distance_m")).doubleValue(),
+                    "target_decel_mps2", ir.get("target_decel_mps2") instanceof Number n ? n.doubleValue() : null,
+                    "lateral_overlap_pct", ir.get("lateral_overlap_pct") instanceof Number n ? n.doubleValue() : null,
+                    "weather", ir.getOrDefault("weather", "CLEAR"),
+                    "time_of_day", ir.getOrDefault("time_of_day", "DAY"),
+                    "friction", friction == null ? null : ((Number) friction).doubleValue());
+        }
+        return Json.obj(
+                "ego_speed_kmh", ((Number) ir.get("ego_speed_kmh")).doubleValue(),
+                "trigger_distance_m", ((Number) ir.get("trigger_distance_m")).doubleValue(),
+                "pedestrian_speed_mps", ((Number) ir.get("pedestrian_speed_mps")).doubleValue(),
+                "stops_at_curb", Boolean.TRUE.equals(ir.get("stops_at_curb")),
+                "weather", ir.getOrDefault("weather", "CLEAR"),
+                "time_of_day", ir.getOrDefault("time_of_day", "DAY"),
+                "friction", friction == null ? null : ((Number) friction).doubleValue());
+    }
+
+    /**
      * Phần thông số xe mà runner CARLA ép vào blueprint. Khối lượng luôn ép; hệ số cản và trọng tâm khi có. Ma sát lốp /
      * mô-men phanh chưa gửi vì đo trên CARLA 0.9.16 thấy đổi chúng không đổi quãng phanh (TD-17).
      */
@@ -429,6 +457,9 @@ public class RunService {
         if (row.dbl("center_of_mass_x_m") != null) {
             physics.put("center_of_mass", Json.obj("x", row.dbl("center_of_mass_x_m"), "y", row.dbl("center_of_mass_y_m"),
                     "z", row.dbl("center_of_mass_z_m")));
+        }
+        if (row.dbl("max_brake_torque_nm") != null) {  // hiệu chuẩn phanh CARLA (ADR-051, TD-17); trống = mô-men mặc định của blueprint
+            physics.put("wheels", Json.obj("max_brake_torque", row.dbl("max_brake_torque_nm")));
         }
         Map<String, Object> dimensions = Json.obj("height_m", row.dbl("height_m"));
         if (row.dbl("wheelbase_m") != null) {
@@ -447,7 +478,7 @@ public class RunService {
         return Path.of(System.getProperty("user.dir"));
     }
 
-    Path runDir(long runId) {
+    public Path runDir(long runId) {
         Path root = Path.of(props.dataRoot());
         if (!root.isAbsolute()) {
             root = repoRoot().resolve(root);
@@ -487,7 +518,7 @@ public class RunService {
         } catch (Bundle.BundleError e) {
             throw new SimulatorException("Không đọc được đầu vào: " + e.getMessage());
         }
-        SimulationOutcome outcome = Simulator.simulate(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle());
+        SimulationOutcome outcome = Bundle.simulateKinematic(spec);
         Map<String, Object> document = Bundle.resultDocument(spec, outcome, KINEMATIC_SIMULATOR, null,
                 Evaluation.evaluate(outcome, spec.params()).toDocument());
         document.put("engine", Bundle.ENGINE);

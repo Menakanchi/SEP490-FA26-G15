@@ -8,17 +8,10 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Dữ liệu trả về của các màn regression / khuyến nghị / quyết định (màn 5). Tên trường camelCase trong Java, ra JSON snake_case
- * ({@code @JsonNaming}) đúng như payload cũ để {@code frontend/src/types/vehicsim.ts} không phải đổi. Giá trị null vẫn được ghi
- * (khoá có mặt, giá trị null) trừ những chỗ ghi rõ {@code NON_NULL}: khoá đó vắng mặt hẳn khi không có dữ liệu, như trước.
- */
 public final class RegressionResponses {
 
     private RegressionResponses() {
     }
-
-    // ------------------------------------------------------------------ dùng chung
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record VersionRef(long id, String label, String status) {
@@ -28,29 +21,22 @@ public final class RegressionResponses {
     public record Progress(long done, long total) {
     }
 
-    /** Một tham số AEB trước / sau; {@code category} là nhóm lỗi tham số này xử lý. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ParameterDiff(String code, String name, String unit, String category, Double baseline, Double candidate, boolean changed) {
     }
 
-    /** Thẻ tham số chính ở đầu màn chi tiết (không có {@code category}). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record KeyParameter(String code, String name, String unit, Double baseline, Double candidate, boolean changed) {
     }
 
-    /** Candidate tạo thủ công hay từ một chiến dịch tối ưu; các trường chiến dịch null khi chưa có dữ liệu tối ưu. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record CandidateSource(String type, Long optimizationRunId, String campaignName, Long trialId, Integer trialNumber) {
     }
 
-    /** Có khi test chạy trên CARLA: phanh chưa hiệu chuẩn, số chỉ để quan sát / đối chiếu (TD-17). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record SimulatorCaveat(boolean carla, boolean calibrated) {
     }
 
-    // ------------------------------------------------------------------ kết quả so sánh baseline – candidate
-
-    /** Một cặp run cùng biến thể + seed; ba mục tiêu ADR-040 đọc thẳng từ cột worker đã ghi (null = không phanh / không va chạm). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record PairResult(
             long variantId,
@@ -76,7 +62,6 @@ public final class RegressionResponses {
             Double candidateStoppingDistanceM) {
     }
 
-    /** Kết quả một tiêu chí; {@code enabled} / {@code required} / {@code threshold} lấy nguyên từ tiêu chí đã lưu của test. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record CriterionResult(String key, String label, Object enabled, Object required, Object threshold, Object actual, boolean passed) {
     }
@@ -98,10 +83,6 @@ public final class RegressionResponses {
     public record FamilyResult(long scenarioId, String name, int scenarios, int fixed, int regressed, Double medianTtcDelta) {
     }
 
-    /**
-     * Bảng tổng hợp của một test, tính lại từ run. Test chưa xong: mọi trường null nên ra {@code {}}; test có run hỏng: chỉ có
-     * {@code error}. NON_NULL chỉ áp ở cấp này — bên trong (vd. {@code median_min_ttc.delta}) null vẫn được ghi.
-     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RegressionSummary(
@@ -120,8 +101,6 @@ public final class RegressionResponses {
             return new RegressionSummary(null, null, null, null, null, null, null, message);
         }
     }
-
-    // ------------------------------------------------------------------ màn danh sách / chi tiết regression
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RegressionListItem(
@@ -153,7 +132,6 @@ public final class RegressionResponses {
     public record RegressionListResponse(RegressionKpis kpis, List<RegressionListItem> items) {
     }
 
-    /** {@code pass_criteria} là JSON đã lưu của test, trả nguyên văn (test cũ có thể khác dạng). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RegressionDetailResponse(
             long id,
@@ -182,14 +160,11 @@ public final class RegressionResponses {
     public record CreateRegressionResponse(long id, String code) {
     }
 
-    // ------------------------------------------------------------------ xem trước khi tạo test
-
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record PreviewVariant(long id, String label, String summary, String baselineOutcome, Boolean baselineFalseActivation,
                                  boolean hasBaselineRun, boolean safe, boolean oldCritical) {
     }
 
-    /** Các trường {@code selected_*} chỉ có khi gửi {@code variant_ids}; {@code variants} chỉ có khi {@code include_variants=true}. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RegressionPreviewResponse(
@@ -207,14 +182,11 @@ public final class RegressionResponses {
             List<PreviewVariant> variants) {
     }
 
-    // ------------------------------------------------------------------ khuyến nghị
-
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RecommendationListItem(long id, String code, String regressionCode, String baseline, String candidate, String status,
                                          Rates rates, Counts counts, String createdAt) {
     }
 
-    /** Mỗi danh sách là cặp [baseline, candidate]; phần tử null khi test chưa có số. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ExpectedEffect(List<Double> collisionRate, List<Double> falseActivation, List<Double> medianMinTtc, Integer fixed,
                                  long regressed) {
@@ -228,7 +200,6 @@ public final class RegressionResponses {
     public record ReviewInfo(String decision, String reviewedBy, String reviewedAt, String note, String conditions, String requestedBy) {
     }
 
-    /** Toàn bộ trường của chi tiết regression (cùng cấp JSON, không lồng) cộng phần khuyến nghị. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RecommendationDetailResponse(
             @JsonUnwrapped RegressionDetailResponse detail,
@@ -241,8 +212,6 @@ public final class RegressionResponses {
             List<Evidence> evidence,
             ReviewInfo review) {
     }
-
-    // ------------------------------------------------------------------ gói xuất
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ExportVehicle(String carlaBlueprintId, String displayName, Double massKg, Double maxBrakeDecelMps2) {
@@ -260,7 +229,6 @@ public final class RegressionResponses {
     public record ExportCandidate(long id, String label, CandidateSource source) {
     }
 
-    /** Manifest tái lập: bộ mô phỏng, xe, bước thời gian, tập kịch bản, phiên bản; {@code code_version} null khi build chưa ghi commit. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ExportManifest(
             String schema,
@@ -323,14 +291,12 @@ public final class RegressionResponses {
             ExportDecision decision) {
     }
 
-    // ------------------------------------------------------------------ lịch sử quyết định / chuỗi baseline
-
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record DecisionItem(String recommendationCode, String regressionCode, long testId, String baseline, String candidate,
-                               String decision, String reviewedBy, String reviewedAt, String reason, String conditions) {
+                               String decision, String reviewedBy, String reviewedAt, String reason, String conditions,
+                               long id, long reviewedByUserId, String source) {
     }
 
-    /** {@code promoted_by} null = baseline khởi tạo của project, không do quyết định Accept nào nâng. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record BaselineItem(long id, long versionNo, String label, String status, String promotedBy, String promotedAt,
                                String regressionCode, String reason) {

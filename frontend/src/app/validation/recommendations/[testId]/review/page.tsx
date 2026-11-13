@@ -17,7 +17,7 @@ export default function ReviewPage() {
   const { testId } = useParams<{ testId: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const { refresh, canDecide } = useVehicSimContext();
+  const { ctx, refresh, canDecide } = useVehicSimContext();
   const [r, setR] = useState<RecommendationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checks, setChecks] = useState<boolean[]>([false, false, false, false, false]);
@@ -48,7 +48,6 @@ export default function ReviewPage() {
   const rates = r.summary.rates;
   const final = r.review.decision === "ACCEPT" || r.review.decision === "REJECT";
   const running = r.status === "RUNNING" || r.status === "PENDING";
-  // Khớp các chặn trong regression.decide: chỉ Accept khi test PASSED, baseline còn hiện hành, candidate chưa được quyết.
   const acceptBlock =
     r.status !== "PASSED"
       ? "Kiểm thử hồi quy không đạt — ứng viên làm xấu đi kịch bản không bao giờ được chấp nhận"
@@ -90,7 +89,6 @@ export default function ReviewPage() {
       )}
     </>,
     <>Tôi hiểu rằng bằng chứng độ bền vững, Pareto và độ nhạy chưa được chạy cho ứng viên này</>,
-    // Chỉ khi regression chạy trên CARLA: Reviewer phải xác nhận đã đọc cảnh báo (backend không chặn, vẫn cho Accept — TD-17).
     ...(r.simulator_caveat?.carla && !r.simulator_caveat.calibrated
       ? [<>Tôi hiểu rằng số CARLA chưa hiệu chuẩn phanh, chỉ để quan sát và đối chiếu, không phải chứng nhận an toàn</>]
       : []),
@@ -170,11 +168,13 @@ export default function ReviewPage() {
     >
       <ErrorNote message={error} />
       {final && <ErrorNote message={`Khuyến nghị này đã có quyết định cuối (${RECOMMENDATION_STATUS[r.recommendation_status].label}).`} />}
-      {!canDecide && <ErrorNote message="Chỉ Người duyệt (REVIEWER) được ra quyết định; người làm không tự duyệt việc của mình." />}
+      {!canDecide && <ErrorNote message={user?.roleCode === "REVIEWER"
+        ? ctx?.reviewer_can_decide === false ? "Project hoặc workspace đã lưu trữ, chỉ được xem lịch sử." : "Đang kiểm tra quyền của project."
+        : "Chỉ Người duyệt (REVIEWER) được ra quyết định; người làm không tự duyệt việc của mình."} />}
       <CarlaCaveat caveat={r.simulator_caveat} />
 
-      <div className="flex w-full items-start gap-4">
-        <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-[20px] border border-solid border-vehicsim-line bg-white p-6 shadow-vehicsim-card">
+      <div className="flex w-full flex-col gap-4 xl:flex-row xl:items-start">
+        <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
           <h2 className="text-[17px] font-bold text-vehicsim-ink">Danh sách kiểm tra khi duyệt</h2>
           <div className="flex flex-col gap-3">
             {checklist.map((item, i) => (
@@ -198,7 +198,7 @@ export default function ReviewPage() {
                   onClick={() => setDecision(o.key)}
                   className={cx(
                     "flex min-w-0 flex-1 flex-col items-start gap-2 rounded-[16px] border-2 border-solid px-4 py-4 text-left transition disabled:cursor-not-allowed disabled:opacity-45",
-                    active ? o.tone : "border-vehicsim-line bg-white text-vehicsim-ink hover:bg-vehicsim-soft",
+                    active ? o.tone : "border-vehicsim-line bg-vehicsim-surface text-vehicsim-ink hover:bg-vehicsim-soft",
                   )}
                 >
                   <span className="flex items-center gap-2 text-[16px] font-bold">
@@ -250,8 +250,8 @@ export default function ReviewPage() {
           </p>
         </section>
 
-        <div className="flex w-[330px] shrink-0 flex-col gap-4">
-          <section className="flex flex-col gap-1 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+        <div className="flex w-full shrink-0 flex-col xl:w-[330px] gap-4">
+          <section className="flex flex-col gap-1 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
             <h2 className="mb-2 text-[17px] font-bold text-vehicsim-ink">Tóm tắt {r.recommendation_code}</h2>
             {r.changed_parameters.map((p) => (
               <SummaryRow key={p.code} label={p.name} value={`${paramValue(p.baseline, p.unit)} → ${paramValue(p.candidate, p.unit)}`} cls="text-vehicsim-decision" />
@@ -274,7 +274,7 @@ export default function ReviewPage() {
             <SummaryRow label="Độ bền vững" value="CHƯA CHẠY" cls="text-vehicsim-faint" />
           </section>
 
-          <section className="flex flex-col gap-3 rounded-[20px] border border-solid border-vehicsim-line bg-white p-5 shadow-vehicsim-card">
+          <section className="flex flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
             <h2 className="text-[17px] font-bold text-vehicsim-ink">Ký duyệt</h2>
             <div className="flex items-center gap-3">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-vehicsim-avatar text-[12px] font-bold text-vehicsim-decision">

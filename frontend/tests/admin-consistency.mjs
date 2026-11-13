@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../.."),output=path.join(root,"data/admin-batch8-ui");
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../.."),output=path.resolve(root,process.env.ADMIN_UI_OUTPUT||"data/admin-batch8-ui");
 await fs.mkdir(output,{recursive:true});
 const base=process.env.ADMIN_UI_URL||"http://localhost:3100",stamp="2026-11-04T08:30:00";
 const actor={id:999999,email:"admin-consistency@example.invalid",full_name:"Admin Fixture",last_name:"Admin",first_name:"Fixture",role:"ADMIN",is_active:true};
@@ -22,7 +22,8 @@ try{
   requests.push({method:req.method(),path:p,query:Object.fromEntries(url.searchParams)});
   if(p==="/auth/login")return reply({access_token:"admin-consistency-fixture-only",token_type:"bearer",expires_in:3600,user:{...actor,role}});
   if(p==="/auth/me")return reply({...actor,role});
-  if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[]});
+  if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
+  if(p==="/vehicsim/context")return reply({project:{id:1,name:"Fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:null},versions:[],families:[],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
   if(p==="/vehicsim/admin/users")return reply({items:[{...actor,role:url.searchParams.get("role")||"ADMIN"}],total:1,page:1,page_size:Number(url.searchParams.get("page_size")||20)});
   if(p==="/vehicsim/admin/workspaces")return reply({items:[],total:0,page:1,page_size:Number(url.searchParams.get("page_size")||20)});
@@ -83,7 +84,7 @@ try{
  const discard=async()=>{await dialog().getByRole("button",{name:"Hủy",exact:true}).click();await dialog().getByRole("button",{name:"Bỏ thay đổi",exact:true}).click();await dialog().waitFor({state:"hidden"});};
  await page.goto(base+"/login");await page.getByLabel("Email",{exact:true}).fill(actor.email);await page.getByLabel("Mật khẩu",{exact:true}).fill("Fixture-browser-only-12");await page.getByRole("button",{name:"Đăng nhập",exact:true}).click();await page.waitForURL(base+"/admin/users");await goto("");
  assert.equal(await region().locator("tbody tr").count(),20);assert.equal(await region().getByText(exact,{exact:true}).count()>0,true);
- assert.equal(await frame.evaluate(element=>getComputedStyle(element).getPropertyValue("--admin-focus").trim()),"#2563eb");
+ const focusTheme=await frame.evaluate(element=>{const css=getComputedStyle(element);return {admin:css.getPropertyValue("--admin-focus").trim(),shared:css.getPropertyValue("--color-vehicsim-primary").trim()};});assert.notEqual(focusTheme.shared,"");assert.equal(focusTheme.admin,focusTheme.shared,"Admin focus follows the shared theme");
  for(const [width,height] of [[1920,1080],[1366,768],[768,1024],[390,844]]){await page.setViewportSize({width,height});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await shot("references-"+width);}
  await region().focus();await page.keyboard.press("ArrowRight");await page.waitForFunction(()=>document.querySelector('[aria-label="Bảng tài liệu kỹ thuật, cuộn ngang"]').scrollLeft>0);
  const bounds=await region().getByRole("button").first().boundingBox();assert.ok(bounds.x>=0&&bounds.x+bounds.width<=390);await page.setViewportSize({width:1366,height:768});
@@ -124,7 +125,7 @@ try{
  saveMode="success";const scoped=page.url();await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await dialog().waitFor({state:"hidden"});await ready();assert.equal(page.url(),scoped);assert.equal(writes.at(-1).method,"PUT");assert.equal(writes.at(-1).body.ref_value,null);assert.equal(target.is_active,false);assert.equal(await frame.getByRole("button",{name:"Chỉnh sửa tài liệu "+target.ref_code,exact:true}).count(),0);
  await goto("");await page.setViewportSize({width:1366,height:768});detailMode="mismatch";await frame.getByRole("button",{name:"Chỉnh sửa tài liệu "+target.ref_code,exact:true}).click();await frame.getByRole("alert").filter({hasText:"không khớp"}).waitFor();assert.equal(await dialog().count(),0);
  detailMode="slow";await frame.getByRole("button",{name:"Chỉnh sửa tài liệu "+target.ref_code,exact:true}).click();assert.equal(await frame.getByRole("button",{name:"Thêm mới",exact:true}).isDisabled(),true);await frame.getByLabel("Loại",{exact:true}).selectOption("THEORY");await ready();const detail=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith("/tech-references/"+target.id));release("detail");await detail;assert.equal(await dialog().count(),0);
- for(const nextRole of ["MANAGER","ENGINEER","REVIEWER","EXPERIENCER"]){role=nextRole;const before=readCount();await page.goto(base+"/admin/tech-references");await page.getByRole("heading",{name:"Quyền Hạn Không Đủ",exact:true}).waitFor();assert.equal(readCount(),before);}
+ for(const nextRole of ["MANAGER","ENGINEER","REVIEWER","EXPERIENCER"]){role=nextRole;const before=readCount();await page.goto(base+"/admin/tech-references");await page.getByRole("heading",{name:"Trang này yêu cầu quyền truy cập",exact:true}).waitFor();assert.equal(readCount(),before);}
  role="ADMIN";mode="expired";await page.goto(base+"/admin/tech-references");await page.waitForURL(base+"/login");assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);const before=readCount();await page.goto(base+"/admin/tech-references");await page.waitForURL(base+"/login");assert.equal(readCount(),before);
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["shared scoped tokens; desktop/tablet/mobile and named scroll/sticky actions","server q/type/status/name sort/page sizes; canonical URL/page clamp/reload/Back/Forward across three resource scopes","no stale rows/actions on error/malformed/retry; late errors/detail ignored","all 14 fields retained, normalized 15-key payload; exact 18+12 decimal string, zero, scientific review and non-CONSTANT null","URL/year/required/numeric validation; create/update review and on/off consequence","dirty Escape/keep/discard, Tab/ShiftTab/focus return, busy Escape and ref double-submit lock","409/400/403/429/network preserve fields; only server success refetches same query and removes filtered row","four denied roles, 401/guest; no real API writes"],fixtureWriteCount:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));

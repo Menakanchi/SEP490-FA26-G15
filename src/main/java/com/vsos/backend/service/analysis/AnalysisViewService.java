@@ -2,6 +2,7 @@ package com.vsos.backend.service.analysis;
 
 import com.vsos.backend.common.Vs.NotFoundException;
 import org.springframework.stereotype.Service;
+import com.vsos.backend.security.ProjectAccess;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
@@ -41,11 +42,13 @@ public class AnalysisViewService {
 
     private final Db db;
     private final Queries queries;
+    private final ProjectAccess projects;
     private final FamilyService families;
 
-    public AnalysisViewService(Db db, Queries queries, FamilyService families) {
+    public AnalysisViewService(Db db, Queries queries, FamilyService families, ProjectAccess projects) {
         this.db = db;
         this.queries = queries;
+        this.projects = projects;
         this.families = families;
     }
 
@@ -133,7 +136,7 @@ public class AnalysisViewService {
 
     public Map<String, Object> failureList(Long scenarioId, String failureClass, String outcome, String weather, Long aebVersionId,
                                            Integer days, int page, int pageSize) {
-        Row project = queries.currentProject();
+        Row project = projects.currentProject();
         long projectId = project.lng("id");
 
         // Phạm vi: project + phiên bản AEB + số ngày. KPI và danh sách họ đếm trên phạm vi này, còn bộ lọc của bảng thì không.
@@ -324,7 +327,7 @@ public class AnalysisViewService {
     /** {@code baseVersionId}: bản gốc của họ cần xem (null = bản mới nhất); chỉ lấy biến thể của bản đó, không trộn bản cũ / mới. */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Map<String, Object> analysisDataset(long scenarioId, Long baseVersionId) {
-        Row project = queries.currentProject();
+        Row project = projects.currentProject();
         long projectId = project.lng("id");
         Row scenario = db.first("SELECT * FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, projectId);
         if (scenario == null) {
@@ -442,7 +445,7 @@ public class AnalysisViewService {
         if (!java.util.Objects.equals(previewToken, snapshot.get("preview_token"))) {
             throw new Vs.InvalidRequestException("Baseline data changed; refresh the analysis dataset before saving");
         }
-        long projectId = queries.currentProject().lng("id");
+        long projectId = projects.currentProject().lng("id");
         long baselineId = ((Number) Json.asMap(snapshot.get("baseline")).get("id")).longValue();
         long id = db.insert("INSERT INTO analysis_results "
                         + "(project_id, analysis_type, method, scenario_id, aeb_version_id, title, config_json, summary_json, status, created_by_user_id) "
@@ -460,7 +463,7 @@ public class AnalysisViewService {
     /** Load stored run IDs/seeds/metrics, never rebuild them from the current baseline. */
     @Transactional(readOnly = true)
     public Map<String, Object> savedAnalysisDataset(long datasetId) {
-        long projectId = queries.currentProject().lng("id");
+        long projectId = projects.currentProject().lng("id");
         Row saved = db.first("SELECT id, aeb_version_id, summary_json, created_date FROM analysis_results "
                 + "WHERE id = ? AND project_id = ? AND analysis_type = 'BASELINE_DATASET' AND status = 'COMPLETED'",
                 datasetId, projectId);
@@ -475,7 +478,7 @@ public class AnalysisViewService {
     }
 
     public Map<String, Object> failureDetail(long runId) {
-        Row project = queries.currentProject();
+        Row project = projects.currentProject();
         RunBundle b = runBundle(project.lng("id"), runId);
         Map<String, Double> params = queries.aebValues(b.run().getLong("aeb_version_id"));
         List<Row> catalog = queries.parameterCatalog();
@@ -546,6 +549,11 @@ public class AnalysisViewService {
                 "trigger_distance_m", ir.get("trigger_distance_m"),
                 "pedestrian_speed_mps", ir.get("pedestrian_speed_mps"),
                 "stops_at_curb", ir.get("stops_at_curb"),
+                "category", ir.getOrDefault("category", "CP_CROSSING"),
+                "target_speed_kmh", ir.get("target_speed_kmh"),
+                "initial_distance_m", ir.get("initial_distance_m"),
+                "target_decel_mps2", ir.get("target_decel_mps2"),
+                "lateral_overlap_pct", ir.get("lateral_overlap_pct"),
                 "weather", Vs.WEATHER_LABELS.getOrDefault(weather == null ? "" : weather.toString(), weather == null ? null : weather.toString()),
                 "time_of_day", Vs.TIME_LABELS.getOrDefault(tod == null ? "" : tod.toString(), tod == null ? null : tod.toString()),
                 "road_friction", caseDoc.get("road_friction")));
@@ -571,8 +579,14 @@ public class AnalysisViewService {
             Map<String, Object> f = Json.asMap(frames.get(i));
             path.add(Json.obj("t", f.get("t"), "x", f.get("ego_x"), "ped_y", f.get("ped_y")));
         }
+        Object category = Json.asMap(raw.get("case")).get("category");
+        boolean lead = category != null && com.vsos.core.simulation.LeadVehicleCase.CATEGORIES.contains(category.toString());
         return Json.obj(
                 "crossing_x", raw.get("crossing_x"),
+                // ADR-050: mục tiêu là xe phía trước thì ped_x/ped_y của khung là đuôi/tim xe mục tiêu, kích thước cố định.
+                "target_kind", lead ? "LEAD_VEHICLE" : "PEDESTRIAN",
+                "target_length_m", lead ? com.vsos.core.simulation.LeadVehicleCase.TARGET_LENGTH_M : null,
+                "target_width_m", lead ? com.vsos.core.simulation.LeadVehicleCase.TARGET_WIDTH_M : null,
                 "lane_width_m", Vs.LANE_WIDTH_M,
                 "vehicle_length_m", vehicle.dbl("length_m"),
                 "vehicle_width_m", vehicle.dbl("width_m"),
@@ -632,7 +646,7 @@ public class AnalysisViewService {
     }
 
     public Map<String, Object> playback(long runId) {
-        Row project = queries.currentProject();
+        Row project = projects.currentProject();
         RunBundle b = runBundle(project.lng("id"), runId);
         List<Map<String, Object>> related = relatedRuns(b.run());
         Map<String, Object> raw = b.raw();

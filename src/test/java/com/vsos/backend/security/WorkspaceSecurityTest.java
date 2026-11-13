@@ -33,18 +33,19 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import com.vsos.backend.config.VehicSimProperties;
-import com.vsos.backend.service.system.SystemViewService;
+
 
 /**
- * Quyền của màn quản lý workspace qua bộ lọc bảo mật thật: chưa đăng nhập 401; chỉ MANAGER / ADMIN vào được, ENGINEER / REVIEWER /
- * EXPERIENCER bị 403 ở mọi route; thêm / bớt thành viên chịu hạn mức ghi. Service giả — không cần MySQL / Redis.
+ * Quyền của workspace qua bộ lọc bảo mật thật: chưa đăng nhập 401; xem workspace / thành viên / task / báo cáo cho MANAGER, ENGINEER,
+ * REVIEWER (từng bản ghi lọc ở service); danh sách workspace quản lý, quản lý thành viên, giao / sửa / xoá task, duyệt báo cáo chỉ
+ * MANAGER; ADMIN / EXPERIENCER bị 403 ở mọi route; ghi chịu hạn mức. Service giả — không cần MySQL / Redis.
  */
 @WebMvcTest(WorkspaceController.class)
 @Import({SecurityConfig.class, VehicSimAccess.class})
 class WorkspaceSecurityTest {
 
     private static final String BASE = "/api/v1/vehicsim/workspaces";
-    private static final Set<RoleCode> MANAGERS = Set.of(RoleCode.MANAGER, RoleCode.ADMIN);
+    private static final Set<RoleCode> WORKSPACE_ROLES = Set.of(RoleCode.MANAGER, RoleCode.ENGINEER, RoleCode.REVIEWER);
 
     @TestConfiguration
     static class PropsConfig {
@@ -64,7 +65,7 @@ class WorkspaceSecurityTest {
     @MockitoBean
     private WorkspaceReportService reports;
     @MockitoBean
-    private SystemViewService views;
+    private ProjectAccess projects;
     @MockitoBean
     private OtpService otp;
     @MockitoBean
@@ -83,8 +84,9 @@ class WorkspaceSecurityTest {
         return List.of(
                 request(HttpMethod.GET, BASE),
                 request(HttpMethod.GET, BASE + "/1"),
+                updateInfo("{\"name\":\"Nhóm AEB\",\"description\":\"Thử phanh\"}"),
                 request(HttpMethod.GET, BASE + "/1/members"),
-                request(HttpMethod.GET, BASE + "/1/member-candidates?q=a"),
+                request(HttpMethod.GET, BASE + "/1/member-candidates?q=a@b.co"),
                 addMember(),
                 request(HttpMethod.DELETE, BASE + "/1/members/2"),
                 request(HttpMethod.GET, BASE + "/1/tasks?status=TODO"),
@@ -93,6 +95,10 @@ class WorkspaceSecurityTest {
                 request(HttpMethod.DELETE, BASE + "/1/tasks/3"),
                 request(HttpMethod.GET, BASE + "/1/reports?status=SUBMITTED"),
                 decideReport("{\"decision\":\"APPROVED\"}"));
+    }
+
+    private static MockHttpServletRequestBuilder updateInfo(String body) {
+        return request(HttpMethod.PUT, BASE + "/1").contentType(MediaType.APPLICATION_JSON).content(body);
     }
 
     private static MockHttpServletRequestBuilder decideReport(String body) {
@@ -121,16 +127,17 @@ class WorkspaceSecurityTest {
     }
 
     @Test
-    void onlyManagersAndAdminsCanManageWorkspaces() throws Exception {
+    void membersReadTheirWorkspaceButOnlyTheManagerManagesIt() throws Exception {
         for (RoleCode code : RoleCode.values()) {
             for (MockHttpServletRequestBuilder route : routes()) {
+                var built = route.buildRequest(new org.springframework.mock.web.MockServletContext());
+                boolean memberRead = "GET".equals(built.getMethod()) && built.getRequestURI().matches(BASE + "/1(/members|/tasks|/reports)?");
+                boolean allowed = memberRead ? WORKSPACE_ROLES.contains(code) : code == RoleCode.MANAGER;
                 int status = statusOf(route, code);
-                boolean memberWrite = route.buildRequest(new org.springframework.mock.web.MockServletContext()).getMethod().matches("POST|DELETE")
-                        && route.buildRequest(new org.springframework.mock.web.MockServletContext()).getRequestURI().contains("/members");
-                if (MANAGERS.contains(code) && !(code == RoleCode.ADMIN && memberWrite)) {
-                    assertThat(status).as("%s được vào", code).isBetween(200, 299);
+                if (allowed) {
+                    assertThat(status).as("%s %s được vào", code, built.getRequestURI()).isBetween(200, 299);
                 } else {
-                    assertThat(status).as("%s bị chặn", code).isEqualTo(403);
+                    assertThat(status).as("%s %s bị chặn", code, built.getRequestURI()).isEqualTo(403);
                 }
             }
         }
@@ -146,6 +153,23 @@ class WorkspaceSecurityTest {
         when(otp.hitRateLimit(eq("vs_workspace_member"), any(), anyInt())).thenReturn(true);
         assertThat(statusOf(addMember(), RoleCode.MANAGER)).isEqualTo(429);
         assertThat(statusOf(request(HttpMethod.DELETE, BASE + "/1/members/2"), RoleCode.MANAGER)).isEqualTo(429);
+    }
+
+    @Test
+    void memberSearchHonoursItsOwnQuota() throws Exception {
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/1/member-candidates?q=a@b.co"), RoleCode.MANAGER)).isBetween(200, 299);
+        when(otp.hitRateLimit(eq("vs_workspace_member_search"), any(), anyInt())).thenReturn(true);
+        assertThat(statusOf(request(HttpMethod.GET, BASE + "/1/member-candidates?q=a@b.co"), RoleCode.MANAGER)).isEqualTo(429);
+    }
+
+    @Test
+    void workspaceInfoBodyIsValidatedAndHonoursWriteQuota() throws Exception {
+        for (String body : List.of("{}", "{\"name\":\"   \"}", "{\"name\":\"" + "x".repeat(151) + "\"}",
+                "{\"name\":\"x\",\"description\":\"" + "x".repeat(10001) + "\"}")) {
+            assertThat(statusOf(updateInfo(body), RoleCode.MANAGER)).as(body.length() > 80 ? body.substring(0, 80) : body).isEqualTo(400);
+        }
+        when(otp.hitRateLimit(eq("vs_workspace_update"), any(), anyInt())).thenReturn(true);
+        assertThat(statusOf(updateInfo("{\"name\":\"Nhóm AEB\"}"), RoleCode.MANAGER)).isEqualTo(429);
     }
 
     @Test

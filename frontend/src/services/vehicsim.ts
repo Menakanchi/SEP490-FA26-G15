@@ -3,7 +3,7 @@
  * Mọi request đi qua `apiRequest`, nên tự mang `Authorization: Bearer`.
  */
 
-import { apiBlob, apiDownload, apiRequest } from "@/services/api";
+import { apiBlob, apiDownload, apiEventStream, apiRequest } from "@/services/api";
 import type {
   AebVersion,
   AnalysisDataset,
@@ -16,25 +16,36 @@ import type {
   FailureFilters,
   FailureList,
   FamilyItem,
+  ScenarioCategoryInfo,
   FamilyRequest,
   FamilyVariantList,
   FamilyVersion,
+  MemberTaskStatus,
+  MyTask,
+  MyWork,
   NotificationList,
   OptimizationRun,
   RiskLabel,
   OptimizationSelectionResult,
   OptimizationTrial,
   Playback,
+  ProjectItem,
+  ProjectJourney,
+  ProjectList,
+  ProjectRequest,
+  ProjectStatus,
   RecommendationDetail,
   RecommendationItem,
   RegressionDetail,
   RegressionList,
   RegressionPreview,
   RegressionRequest,
+  ReportSubmitRequest,
   ReviewDecision,
   TelemetrySummary,
   VehicSimContextData,
   VehicleDetail,
+  VehicleOption,
   VehicleSummary,
   WorkspaceDetail,
   WorkspaceMember,
@@ -44,6 +55,9 @@ import type {
   WorkspaceSummary,
   WorkspaceTask,
   WorkspaceTaskRequest,
+  SendChatMessageRequest,
+  UpdateWorkspaceRequest,
+  WorkspaceChatMessage,
 } from "@/types/vehicsim";
 
 function query(params: object): string {
@@ -63,6 +77,26 @@ export const vehicsimApi = {
     apiRequest<import("@/types/vehicsim").AnalysisSelection>("/vehicsim/analysis/selections",{method:"POST",body:JSON.stringify(body)}),
   analysisHandoff: (id: number) => apiRequest<import("@/types/vehicsim").AnalysisSelection>(`/vehicsim/analysis/datasets/${id}/handoff`),
   context: () => apiRequest<VehicSimContextData>("/vehicsim/context"),
+  reviewerProjects: () => apiRequest<VehicSimContextData["reviewer_projects"]>("/vehicsim/reviewer/projects"),
+
+  projects: (params: { status?: ProjectStatus; q?: string; page?: number; pageSize?: number } = {}) =>
+    apiRequest<ProjectList>(`/vehicsim/projects${query({ status: params.status, q: params.q || undefined, page: params.page, page_size: params.pageSize })}`),
+  project: (id: number) => apiRequest<ProjectItem>(`/vehicsim/projects/${id}`),
+  projectJourney: (id: number) => apiRequest<ProjectJourney>(`/vehicsim/projects/${id}/journey`),
+  projectVehicles: () => apiRequest<VehicleOption[]>("/vehicsim/projects/vehicle-options"),
+  createProject: (body: ProjectRequest) =>
+    apiRequest<ProjectItem>("/vehicsim/projects", { method: "POST", body: JSON.stringify(body) }),
+  updateProject: (id: number, body: ProjectRequest) =>
+    apiRequest<ProjectItem>(`/vehicsim/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  archiveProject: (id: number) => apiRequest<ProjectItem>(`/vehicsim/projects/${id}/archive`, { method: "POST" }),
+  unarchiveProject: (id: number) => apiRequest<ProjectItem>(`/vehicsim/projects/${id}/unarchive`, { method: "POST" }),
+  deleteProject: (id: number, confirmName: string) =>
+    apiRequest<void>(`/vehicsim/projects/${id}`, { method: "DELETE", body: JSON.stringify({ confirm_name: confirmName }) }),
+  adoptCandidate: (id: number, testId: number, reason: string) =>
+    apiRequest<ProjectJourney>(`/vehicsim/projects/${id}/regressions/${testId}/adopt`, {
+      method: "POST",
+      body: JSON.stringify({ reason, confirmed: true }),
+    }),
 
   // Phương tiện: danh mục mẫu xe CARLA, chỉ đọc
   vehicles: () => apiRequest<VehicleSummary[]>("/vehicsim/vehicles"),
@@ -72,6 +106,8 @@ export const vehicsimApi = {
     apiRequest<DescribeResult>("/vehicsim/scenarios/describe", { method: "POST", body: JSON.stringify({ text }) }),
 
   families: () => apiRequest<FamilyItem[]>("/vehicsim/families"),
+  /** Danh mục category và category nào đã chạy được (ADR-050). */
+  scenarioCategories: () => apiRequest<ScenarioCategoryInfo[]>("/vehicsim/scenario-categories"),
   createFamily: (body: FamilyRequest) =>
     apiRequest<{ scenario_id: number; code: string; variants: number; queued_runs?: number }>("/vehicsim/families", {
       method: "POST",
@@ -203,6 +239,9 @@ export const vehicsimApi = {
       `/vehicsim/workspaces/${id}/members/${userId}`,
       { method: "DELETE" },
     ),
+  /** Manager được gán sửa tên và mô tả workspace; đổi Manager / lưu trữ ở Quản trị. */
+  updateWorkspaceInfo: (id: number, body: UpdateWorkspaceRequest) =>
+    apiRequest<WorkspaceSummary>(`/vehicsim/workspaces/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   /** Task của workspace; `assignee_id = 0` là chưa giao ai. */
   workspaceTasks: (id: number, filters: { status?: string; assignee_id?: number } = {}) =>
     apiRequest<WorkspaceTask[]>(`/vehicsim/workspaces/${id}/tasks${query(filters)}`),
@@ -220,6 +259,49 @@ export const vehicsimApi = {
       method: "POST",
       body: JSON.stringify({ decision, note }),
     }),
+
+  // Kỹ sư: task, báo cáo, trao đổi kỹ thuật (FE-03, FE-14)
+  myWorkspaces: () => apiRequest<WorkspaceSummary[]>("/vehicsim/my-workspaces"),
+  myTasks: (filters: { status?: string; project_id?: number } = {}) =>
+    apiRequest<WorkspaceTask[]>(`/vehicsim/my-tasks${query(filters)}`),
+  getTask: (taskId: number) => apiRequest<WorkspaceTask>(`/vehicsim/tasks/${taskId}`),
+  myReports: (filters: { status?: string; project_id?: number } = {}) =>
+    apiRequest<WorkspaceReport[]>(`/vehicsim/my-reports${query(filters)}`),
+  getReport: (reportId: number) => apiRequest<WorkspaceReport>(`/vehicsim/reports/${reportId}`),
+  /** Không mốc: `limit` tin mới nhất; `after`: tin gửi sau tin đó (tải bù khi nối lại); `before`: tin ngay trước tin đó (xem tin cũ). */
+  workspaceMessages: (workspaceId: number, limit = 50, after?: number, before?: number) =>
+    apiRequest<WorkspaceChatMessage[]>(`/vehicsim/workspaces/${workspaceId}/messages${query({ limit, after, before })}`),
+  /**
+   * Kênh chat realtime (SSE): `onReady` khi đã nối (lúc này nên tải bù tin bị lỡ), `onMessage` cho mỗi tin mới.
+   * Promise kết thúc khi server đóng kênh (hết hạn 10 phút) — nơi gọi tự nối lại.
+   */
+  streamWorkspaceMessages: (
+    workspaceId: number,
+    handlers: { onReady: () => void; onMessage: (message: WorkspaceChatMessage) => void },
+    signal: AbortSignal,
+  ) =>
+    apiEventStream(
+      `/vehicsim/workspaces/${workspaceId}/messages/stream`,
+      (event, data) => {
+        if (event === "ready") handlers.onReady();
+        else if (event === "message") handlers.onMessage(JSON.parse(data) as WorkspaceChatMessage);
+      },
+      signal,
+    ),
+  sendWorkspaceMessage: (workspaceId: number, body: SendChatMessageRequest) =>
+    apiRequest<WorkspaceChatMessage>(`/vehicsim/workspaces/${workspaceId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  // Nhiệm vụ & báo cáo của thành viên (Engineer / Reviewer)
+  myWork: () => apiRequest<MyWork>("/vehicsim/my/work"),
+  updateMyTaskProgress: (taskId: number, status: MemberTaskStatus, progressPct: number) =>
+    apiRequest<MyTask>(`/vehicsim/my/tasks/${taskId}/progress`, {
+      method: "PUT",
+      body: JSON.stringify({ status, progress_pct: progressPct }),
+    }),
+  submitMyReport: (body: ReportSubmitRequest) =>
+    apiRequest<WorkspaceReport>("/vehicsim/my/reports", { method: "POST", body: JSON.stringify(body) }),
 
   // Thông báo của người đang đăng nhập (M10)
   notifications: (unreadOnly = false, limit = 20) =>
