@@ -223,7 +223,7 @@ public class RegressionRepository {
         args.add(simulatorVersion);
         args.add(vehicleModelId);
         for (Row r : db.list("SELECT " + RUN_LIGHT_COLUMNS + " FROM simulation_runs WHERE aeb_version_id = ? AND scenario_version_id IN ("
-                + Db.placeholders(variantIds.size()) + ") AND purpose IN ('BASELINE','EVALUATION') AND status NOT IN ('FAILED','STOPPED') "
+                + Db.placeholders(variantIds.size()) + ") AND purpose IN ('BASELINE','EVALUATION') AND status NOT IN ('FAILED','STOPPED') AND aeb_mode = 'ON' "
                 + "AND simulator_version = ? AND carla_vehicle_model_id = ? ORDER BY id", args.toArray())) {
             out.put(r.lng("scenario_version_id"), r);
         }

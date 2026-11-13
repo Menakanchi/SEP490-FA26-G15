@@ -9,7 +9,20 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 > [hướng dẫn cập nhật](docs/vehicsim/huong-dan-cap-nhat-sau-doi-ten-goi.md) và tra mục 7 của
 > [quy tắc đặt tên](docs/vehicsim/quy-tac-dat-ten.md) để đổi `package`/`import`.
 
+> **Bắt buộc sau khi pull (13/11/2026, [ADR-052](docs/adr/ADR-052-chot-chi-so-va-che-do-aeb-tat-13-11.md), [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md)):**
+> định danh run đổi — bộ động học `vehicsim-kinematic-1.1`, CARLA `.xosc` v6 / `-xosc6`. (1) DB đã có: chạy
+> [migration 015](database/mysql/migrations/015_2026-11-13_che-do-aeb-tat.sql) (cột `simulation_runs.aeb_mode`). (2) **Chạy lại baseline**
+> (động học và CARLA) bằng định danh mới; run cũ giữ số, không ghép với run mới, run PENDING định danh cũ bị từ chối. (3) Đọc mục 1 dưới đây.
+
 ## 1. Hiểu đúng trạng thái bàn giao
+
+- **Đang làm (13/11/2026, phần 2 "Chạy baseline" + hợp đồng chỉ số):** đã chốt và triển khai —
+  AEB của ca người đi bộ trên CARLA dùng **radar** (bộ bám nhiều mục tiêu, ADR-043; xe phía trước vẫn ground truth);
+  `impact_speed_mps` = **vận tốc va chạm tương đối** (tốc độ ego ở `ego_impact_speed_mps`); `rms_jerk_mps3` trên CARLA lọc **Euro NCAP**
+  12-pole phaseless 10 Hz từ **T_AEB** (bộ động học 20 Hz không lọc được, giữ số chưa lọc); baseline đo **cả AEB tắt** (`aeb_mode = OFF`,
+  không bao giờ làm baseline regression/tối ưu); **một ngưỡng phanh oan 5 điểm %** cho regression và tối ưu.
+  Mỗi run CARLA có `sensors/ground_truth.csv` (vector vị trí/vận tốc/gia tốc ego + mục tiêu). Còn mở: dung sai chạy lặp `-xosc6`
+  ([exec plan thành viên 2](docs/exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md) mục 3b), baseline nhóm chạy lại.
 
 - Backend hiện tại là Spring Boot Java 21; frontend Next.js; AEB/mô phỏng/chấm điểm ở lõi Java `com.vsos.core` (ADR-042);
   Python `worker/` chỉ còn adapter CARLA (ScenarioRunner, sensor, áp bàn đạp).
@@ -24,12 +37,10 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 - [Kế hoạch sửa theo PDF ngày 20/10](docs/vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md) chốt 5 quyết định
   (D1–D5: trial MOBO chấm bằng CARLA, gia tốc có hướng, 100 Hz + lọc 10 Hz, Engineer chọn/Reviewer duyệt, giữ ca an toàn).
   Chỗ nào khác bản phân chia thì theo kế hoạch này; đây là việc cần làm, không phải tính năng đã có.
-- Phần tối ưu và regression cần chốt chung cấu hình tiêu chí: ADR-040 mô tả phanh oan tăng ≤ 5 điểm %,
-  `RegressionService` hiện mặc định 0,5 điểm % và bắt buộc không va chạm mới (TD-48).
-  Không tự đổi ngưỡng khi nhận bàn giao; candidate thuộc Pareto vẫn cần kiểm thử xác minh.
-  Cập nhật 20/10/2026: test regression mới mặc định 5 điểm % (hằng `RegressionCriteria.DEFAULT_FALSE_ACTIVATION_MAX_PTS`, `RegressionService` giữ tên cũ làm bí danh;
-  [ADR-044](docs/adr/ADR-044-nguong-phanh-oan-regression-5-diem.md)). ADR này mới ở trạng thái **Proposed**: cần Người 4 (tối ưu) và nhóm xác nhận trước khi coi là quyết định chung.
-  Test đã tạo giữ ngưỡng đã lưu, nên "0,5 điểm %" ở trên là trước thay đổi này.
+- Ngưỡng phanh oan đã thống nhất (13/11/2026, [ADR-044](docs/adr/ADR-044-nguong-phanh-oan-regression-5-diem.md) Accepted): một hằng
+  `RegressionCriteria.DEFAULT_FALSE_ACTIVATION_MAX_PTS` = 5 điểm %, cùng phép so cho regression và ràng buộc tối ưu. Regression còn bắt buộc
+  không va chạm mới, nên candidate thuộc Pareto vẫn cần kiểm thử xác minh. Test regression đã tạo giữ ngưỡng đã lưu (có test cũ 0,5 điểm %).
+  Không tự đổi ngưỡng khi nhận bàn giao.
 
 ## 2. Dựng máy Windows lần đầu
 

@@ -115,10 +115,16 @@ class CarlaWebTest {
 
     @Test
     void queuedOldXoscRunFailsBeforeBuildingBundleOrLaunchingWorker() {
-        for (String old : List.of("xosc1", "xosc2", "xosc3")) {
+        for (String old : List.of("xosc1", "xosc2", "xosc3", "xosc4", "xosc5")) {
             reset(db);
             queuedRunWithProfileFailsBeforeLaunchingWorker("carla-0.9.16-" + old, old);
         }
+    }
+
+    /** Bộ động học 1.0 (impact_speed_mps = tốc độ ego) đã đổi sang 1.1 (vận tốc tương đối, 13/11/2026): run 1.0 còn chờ báo rõ, không chạy bằng định nghĩa mới. */
+    @Test
+    void queuedLegacyKinematicRunFailsInsteadOfRunningUnderTheNewDefinition() {
+        queuedRunWithProfileFailsBeforeLaunchingWorker(com.vsos.core.bridge.Bundle.LEGACY_KINEMATIC_SIMULATOR, "vehicsim-kinematic-1.0");
     }
 
     /** ADR-042 gỡ runner JSON trực tiếp (run_variant.py): run cũ của profile đó báo rõ thay vì đưa bundle JSON cho run_xosc.py. */

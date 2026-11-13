@@ -1,7 +1,8 @@
 # ADR-043 — Perception AEB trên CARLA lấy từ radar, chạy bóng trước khi thay ground truth
 
 **Trạng thái:** Proposed 22/10/2026 (TrungDQ, phần 2 "Chạy baseline"; kế hoạch 20/10 việc 1, quyết định D1/D2).
-**Cập nhật 13/11/2026:** giai đoạn 2 đã triển khai ở `.xosc` v6 / `-xosc6` (mục "Giai đoạn 2 — triển khai 13/11" cuối file); chờ nhóm duyệt ngưỡng.
+**Cập nhật 13/11/2026:** ✅ **Accepted** (TrungDQ chốt). Giai đoạn 2 đã triển khai ở `.xosc` v6 / `-xosc6` (mục "Giai đoạn 2 — triển khai 13/11" cuối
+file). Tiêu chí "phát hiện ≤ 0,3 s sau khi người bắt đầu đi" **thay** bằng tiêu chí theo quyết định AEB (mục "Tiêu chí chốt 13/11").
 **Liên quan:** [ADR-042](ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (một AEB, ở Java), TD-01, kế hoạch
 [20/10](../vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md) mục 5.2.
 
@@ -101,3 +102,20 @@ trễ đó — nhóm cần chốt lại tiêu chí theo quyết định AEB thay
 
 Giới hạn: radar CARLA không chịu thời tiết; một radar, bám người đi bộ băng ngang; vật đứng yên trong làn không được báo; tập kiểm 6 ca, một xe, một seed.
 Run `-xosc5` cũ giữ nguyên, không ghép với `-xosc6`; baseline CARLA cần chạy lại bằng `-xosc6` nếu muốn so.
+
+### Tiêu chí chốt 13/11/2026 (thay tiêu chí "phát hiện ≤ 0,3 s")
+
+Thời điểm phát hiện của radar Doppler bị chặn dưới bởi vật lý (người đứng yên/vừa bước không có phần dư Doppler), nên không dùng làm tiêu chí. Perception radar
+đạt khi, trên tập ca CARLA thật đã chốt (hiện 6 ca `data/radar-cases-20261022`, xuất lại theo profile hiện hành):
+
+1. **Không track bám nhầm** (`frames_far_from_target = 0`) trên mọi ca, đặc biệt ca an toàn; ca an toàn không phanh.
+2. **Sai số ngang trung bình ≤ 0,3 m** khi đã phát hiện.
+3. **Quyết định AEB theo radar không muộn hơn đường ground truth quá 0,1 s** (`aeb_decision_t` so với `ground_truth_aeb_decision_t` trong
+   `perception_radar`); ca ground truth không quyết định thì radar không được tạo quyết định ở ca an toàn.
+4. Thời điểm phát hiện vẫn ghi lại để phân tích, không chặn.
+
+Đối chiếu 13/11 (bảng trên): 1–3 đạt ở 6/6 ca (radar trùng hoặc sớm hơn ground truth). Kiểm lại cả bốn mục khi đổi bộ bám, profile hoặc tập ca.
+
+**Sau ADR-052 (13/11/2026):** từ `-xosc6` `impact_speed_mps` là vận tốc va chạm tương đối và RMS jerk lọc Euro NCAP. Bảng giai đoạn 2 ở trên ghi vận tốc
+va chạm theo định nghĩa cũ (tốc độ ego); chạy lại cùng 6 ca bằng v6 hiện hành (`data/v6-final-20261113`): c2 16,915 m/s (ego 16,627), c5 11,965 m/s (ego
+11,565); quyết định AEB và 0 khung bám nhầm không đổi ở cả 6 ca.

@@ -543,7 +543,7 @@ public class OptimizationService {
 
 
 
-                                "false_activation_increase_pts", Map.of("max", 5.0))));
+                                "false_activation_increase_pts", Map.of("max", com.vsos.backend.service.regression.RegressionCriteria.DEFAULT_FALSE_ACTIVATION_MAX_PTS))));
 
 
 
@@ -1139,7 +1139,7 @@ public class OptimizationService {
 
 
 
-                "SELECT * FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND aeb_version_id = ? AND status = 'COMPLETED'",
+                "SELECT * FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND aeb_version_id = ? AND status = 'COMPLETED' AND aeb_mode = 'ON'",
 
 
 
@@ -1617,7 +1617,8 @@ public class OptimizationService {
 
 
 
-        // Ràng buộc: Tỷ lệ va chạm không vượt baseline, phanh oan không tăng quá 5 điểm %
+        // Ràng buộc: Tỷ lệ va chạm không vượt baseline, phanh oan không tăng quá RegressionCriteria.DEFAULT_FALSE_ACTIVATION_MAX_PTS (5 điểm %) —
+        // cùng một hằng và cùng phép so (≤ ngưỡng + 1e-9) với regression (ADR-044, TD-48; chốt 13/11/2026).
 
 
 
@@ -1625,7 +1626,7 @@ public class OptimizationService {
 
 
 
-                || (falseActivationRate - baselineStats.falseActivationRatePct() > 5.01);
+                || (falseActivationRate - baselineStats.falseActivationRatePct() > com.vsos.backend.service.regression.RegressionCriteria.DEFAULT_FALSE_ACTIVATION_MAX_PTS + 1e-9);
 
 
 

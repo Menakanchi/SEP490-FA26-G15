@@ -143,9 +143,9 @@ public class ProjectRepository {
         return db.list("""
                 SELECT r.scenario_version_id, r.status, r.collision_occurred, r.min_ttc_s, r.min_distance_m, r.is_false_positive
                   FROM simulation_runs r
-                 WHERE r.project_id = ? AND r.purpose = 'BASELINE' AND r.aeb_version_id = ? AND r.simulator_version = ?
+                 WHERE r.project_id = ? AND r.purpose = 'BASELINE' AND r.aeb_mode = 'ON' AND r.aeb_version_id = ? AND r.simulator_version = ?
                    AND r.id = (SELECT MAX(x.id) FROM simulation_runs x
-                                WHERE x.project_id = r.project_id AND x.purpose = 'BASELINE' AND x.aeb_version_id = r.aeb_version_id
+                                WHERE x.project_id = r.project_id AND x.purpose = 'BASELINE' AND x.aeb_mode = 'ON' AND x.aeb_version_id = r.aeb_version_id
                                   AND x.simulator_version = r.simulator_version AND x.scenario_version_id = r.scenario_version_id)
                 """, projectId, baselineVersionId, simulatorVersion);
     }

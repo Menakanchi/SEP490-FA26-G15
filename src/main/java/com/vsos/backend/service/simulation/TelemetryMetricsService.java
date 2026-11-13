@@ -205,7 +205,8 @@ public class TelemetryMetricsService {
 
         // 3 mục tiêu MOBO (ADR-040)
         Double rmsJerk = calculateRmsJerk(frames, firstBrakeTime, tHit);
-        Double impactSpeed = calculateImpactSpeed(frames, collisions);
+        // Mục tiêu 2 là vận tốc va chạm tương đối (chốt 13/11/2026, cùng định nghĩa với lõi: bộ động học 1.1, CARLA v6).
+        Double impactSpeed = calculateRelativeImpactSpeed(frames, collisions);
         Double stoppingDistance = calculateStoppingDistance(frames, firstBrakeTime, tHit, decelAvailable);
 
         int colCount = collisions != null ? collisions.size() : 0;
@@ -296,7 +297,7 @@ public class TelemetryMetricsService {
     }
 
     /**
-     * Mục tiêu 2: tốc độ ego lúc va chạm (``impact_speed_mps``). Lấy từ sự kiện va chạm nếu có, không thì từ khung cuối
+     * Tốc độ ego lúc va chạm (số phụ; mục tiêu 2 là vận tốc tương đối từ 13/11/2026). Lấy từ sự kiện va chạm nếu có, không thì từ khung cuối
      * trước va chạm (khung sau đó tốc độ đã bị cú đâm làm đổi). NULL nếu không va chạm — khi gộp theo họ tính 0.
      */
     public Double calculateImpactSpeed(List<TelemetryFrame> frames, List<CollisionEvent> collisions) {
@@ -320,7 +321,7 @@ public class TelemetryMetricsService {
     }
 
     /**
-     * Số đo phụ: vận tốc va chạm tương đối \( |v_{ego}(t_c) - v_{target}(t_c)| \) (ISO 22733-1:2022).
+     * Mục tiêu 2 (``impact_speed_mps``, chốt 13/11/2026): vận tốc va chạm tương đối \( |v_{ego}(t_c) - v_{target}(t_c)| \) (ISO 22733-1:2022).
      */
     public Double calculateRelativeImpactSpeed(List<TelemetryFrame> frames, List<CollisionEvent> collisions) {
         if (collisions == null || collisions.isEmpty()) {
@@ -455,7 +456,9 @@ public class TelemetryMetricsService {
             Object actor = c.get("other_actor");
             list.add(new CollisionEvent(t.doubleValue(), actor == null ? null : String.valueOf(actor),
                     number(c.get("impact_speed_ego_ms")), number(c.get("impact_speed_target_ms")),
-                    number(c.get("relative_impact_speed_ms")), number(c.get("peak_accel_ms2"))));
+                    // sensor_recorder.py ghi relative_speed_before_ms: độ lớn hiệu hai vector vận tốc ground truth ở frame ngay trước tiếp xúc.
+                    number(c.get("relative_impact_speed_ms") != null ? c.get("relative_impact_speed_ms") : c.get("relative_speed_before_ms")),
+                    number(c.get("peak_accel_ms2"))));
         }
         list.sort(java.util.Comparator.comparingDouble(CollisionEvent::simTimeS));
         return list;

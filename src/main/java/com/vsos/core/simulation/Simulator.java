@@ -79,11 +79,23 @@ public final class Simulator {
         }
     }
 
+    /** Định nghĩa cũ (bộ động học 1.0, CARLA ≤ v5): {@code impact_speed_mps} là tốc độ ego lúc va chạm. Giữ để chạy lại ra đúng kết quả đã lưu. */
     public static SimulationOutcome buildOutcome(CrossingCase c, AebParams params, VehicleSpec vehicle, AebStack stack, MotionStats stats, List<Frame> frames,
                                                  List<Map<String, Object>> events, String endReason, double crossingX, double decelAvailable, double dt) {
+        return buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, crossingX, decelAvailable, dt, null);
+    }
+
+    /**
+     * @param impactRelative vận tốc va chạm tương đối (m/s, độ lớn hiệu hai vector vận tốc lúc tiếp xúc) — định nghĩa hiện hành (chốt 13/11/2026, bộ động
+     *                       học 1.1, CARLA v6): {@code impact_speed_mps} là số này, tốc độ ego ghi ở {@code ego_impact_speed_mps}. {@code null} = định
+     *                       nghĩa cũ (tốc độ ego, không có khoá {@code ego_impact_speed_mps}). Không va chạm thì bỏ qua.
+     */
+    public static SimulationOutcome buildOutcome(CrossingCase c, AebParams params, VehicleSpec vehicle, AebStack stack, MotionStats stats, List<Frame> frames,
+                                                 List<Map<String, Object>> events, String endReason, double crossingX, double decelAvailable, double dt,
+                                                 Double impactRelative) {
         Map<String, Object> metrics = summaryMetrics(frames, endReason.equals("COLLISION"), crossingX, vehicle, stack.firstDetectionT(), stack.fcwT(),
                 stack.decisionT(), stack.brakeOnsetT(), stats.maxA, stats.decelFrames > 0 ? stats.decelSum / stats.decelFrames : null, stats.maxJerk,
-                c.egoSpeedKmh() / 3.6, decelAvailable, dt);
+                c.egoSpeedKmh() / 3.6, decelAvailable, dt, impactRelative);
         return new SimulationOutcome(endReason, frames.isEmpty() ? 0.0 : Py.round(frames.get(frames.size() - 1).t(), 3), frames, events, metrics,
                 Py.round(crossingX, 3), params.asDict(), c.asDict());
     }
@@ -92,7 +104,21 @@ public final class Simulator {
         return simulate(c, params, seed, VehicleSpec.DEFAULT);
     }
 
+    /** Bộ động học hiện hành ({@code vehicsim-kinematic-1.1}): {@code impact_speed_mps} là vận tốc va chạm tương đối. */
     public static SimulationOutcome simulate(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle) {
+        return simulate(c, params, seed, vehicle, true);
+    }
+
+    /**
+     * @param relativeImpact {@code false} = định nghĩa của bộ động học 1.0 / bản Python ({@code impact_speed_mps} = tốc độ ego) — chỉ để so parity với
+     *                       fixture cũ; mọi số khác của run giống hệt ở hai chế độ.
+     */
+    public static SimulationOutcome simulate(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle, boolean relativeImpact) {
+        return simulate(c, params, seed, vehicle, relativeImpact, false);
+    }
+
+    /** @param aebOff AEB tắt ({@link AebMode}): AEB vẫn quyết định để ghi lại nhưng không phanh. */
+    public static SimulationOutcome simulate(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle, boolean relativeImpact, boolean aebOff) {
         double v0 = c.egoSpeedKmh() / 3.6;
         double halfW = vehicle.widthM() / 2;
 
@@ -112,6 +138,7 @@ public final class Simulator {
         MotionStats stats = new MotionStats(AebStack.DT);
         double frictionLimit = c.roadFriction() * G;
         String endReason = "TIMEOUT";
+        double impactRelative = 0.0;
 
         double t = 0.0;
         while (t <= MAX_DURATION_S + 1e-9) {
@@ -142,7 +169,7 @@ public final class Simulator {
 
             // ---- AEB cần kiểm thử: perception -> decision -> control ---------------
             AebTick tick = stack.step(t, gap, pedY, pedVy, egoV);
-            egoA = Math.min(tick.decelCmd(), frictionLimit); // mặt đường chặn mức phanh ở μ·g
+            egoA = aebOff ? 0.0 : Math.min(tick.decelCmd(), frictionLimit); // mặt đường chặn mức phanh ở μ·g; AEB tắt thì không phanh
 
             // ---- Dynamics ----------------------------------------------------------
             if (egoV > 0) {
@@ -161,6 +188,8 @@ public final class Simulator {
             if (hitsX && Math.abs(pedY) <= halfW + PEDESTRIAN_RADIUS_M) {
                 endReason = "COLLISION";
                 AebStack.Events.record(events, t, "collision", "Collision · " + Py.fixed(egoV * 3.6, 1) + " km/h", "impact_speed_mps", Py.round(egoV, 3));
+                // Người đi bộ đi ngang (vuông góc trục xe), ego đi dọc: |v_ego − v_ped| = hypot(v_ego, v_ped).
+                impactRelative = Math.hypot(egoV, pedVy);
                 break;
             }
             if (egoV <= 0.0 && stack.decisionT() != null) {
@@ -175,8 +204,13 @@ public final class Simulator {
             t += AebStack.DT;
         }
 
-        return buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, crossingX,
-                Math.min(Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()), frictionLimit), AebStack.DT);
+        SimulationOutcome outcome = buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, crossingX,
+                Math.min(Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()), frictionLimit), AebStack.DT,
+                relativeImpact ? Double.valueOf(impactRelative) : null);
+        if (aebOff) {
+            AebMode.markOff(outcome);
+        }
+        return outcome;
     }
 
     /** Chỉ số khung đầu tiên mà phanh đã tác dụng; {@code -1} nếu AEB không phanh. */
@@ -232,7 +266,7 @@ public final class Simulator {
 
     static Map<String, Object> summaryMetrics(List<Frame> frames, boolean collision, double crossingX, VehicleSpec vehicle, Double firstDetectionT,
                                               Double fcwT, Double decisionT, Double brakeOnsetT, double maxA, Double meanA, double maxJerk, double v0,
-                                              double decelTarget, double dt) {
+                                              double decelTarget, double dt, Double impactRelative) {
         double halfW = vehicle.widthM() / 2;
         double minDistance = Double.POSITIVE_INFINITY;
         Double minTtc = null;
@@ -259,7 +293,8 @@ public final class Simulator {
         }
         double lastV = frames.isEmpty() ? v0 : frames.get(frames.size() - 1).egoV();
         double lastX = frames.isEmpty() ? 0.0 : frames.get(frames.size() - 1).egoX();
-        Double impactSpeed = collision ? lastV : null;
+        Double egoImpactSpeed = collision ? lastV : null;
+        Double impactSpeed = impactRelative == null ? egoImpactSpeed : collision ? impactRelative : null;
 
         Double detectionDistance = null;
         if (firstDetectionT != null) {
@@ -272,6 +307,9 @@ public final class Simulator {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("collision", collision);
         m.put("impact_speed_mps", impactSpeed == null ? null : Py.round(impactSpeed, 3));
+        if (impactRelative != null) { // định nghĩa hiện hành: impact_speed_mps là vận tốc tương đối, tốc độ ego ghi riêng
+            m.put("ego_impact_speed_mps", egoImpactSpeed == null ? null : Py.round(egoImpactSpeed, 3));
+        }
         m.put("min_distance_m", Double.isFinite(minDistance) ? Py.round(minDistance, 3) : null);
         m.put("min_ttc_s", minTtc == null ? null : Py.round(minTtc, 3));
         m.put("pedestrian_entered_path", pedEverInPath);

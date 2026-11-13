@@ -39,7 +39,7 @@ public class AnalysisService {
             + "JOIN scenario_versions sv ON sv.id = r.scenario_version_id "
             + "LEFT JOIN failures f ON f.simulation_run_id = r.id "
             + "LEFT JOIN root_causes pc ON pc.failure_id = f.id AND pc.is_primary = 1 "
-            + "WHERE r.project_id = ? AND r.purpose = 'BASELINE' AND sv.source = 'GENERATED' ";
+            + "WHERE r.project_id = ? AND r.purpose = 'BASELINE' AND sv.source = 'GENERATED' AND r.aeb_mode = 'ON' ";
     public record Filters(Long scenarioId, Long variantId, Long aebVersionId, Long vehicleId,
                           String simulator, String weather, String timeOfDay, String status, String failureClass) {}
     private static void condition(StringBuilder sql, List<Object> args, String column, Object value) {

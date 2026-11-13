@@ -21,7 +21,18 @@ public final class LeadVehicleSimulator {
     private LeadVehicleSimulator() {
     }
 
+    /** Bộ động học hiện hành ({@code vehicsim-kinematic-1.1}): {@code impact_speed_mps} là vận tốc va chạm tương đối. */
     public static SimulationOutcome simulate(LeadVehicleCase c, AebParams params, long seed, VehicleSpec vehicle) {
+        return simulate(c, params, seed, vehicle, true);
+    }
+
+    /** @param relativeImpact {@code false} = định nghĩa của bộ động học 1.0 ({@code impact_speed_mps} = tốc độ ego); mọi số khác giống hệt. */
+    public static SimulationOutcome simulate(LeadVehicleCase c, AebParams params, long seed, VehicleSpec vehicle, boolean relativeImpact) {
+        return simulate(c, params, seed, vehicle, relativeImpact, false);
+    }
+
+    /** @param aebOff AEB tắt ({@link AebMode}): AEB vẫn quyết định để ghi lại nhưng không phanh. */
+    public static SimulationOutcome simulate(LeadVehicleCase c, AebParams params, long seed, VehicleSpec vehicle, boolean relativeImpact, boolean aebOff) {
         double egoV = c.egoSpeedKmh() / 3.6;
         double v0 = egoV;
         double targetV = c.targetSpeedKmh() / 3.6;
@@ -60,7 +71,7 @@ public final class LeadVehicleSimulator {
 
             // ---- AEB cần kiểm thử ---------------------------------------------------
             AebTick tick = stack.stepTarget(t, gap, targetY, 0.0, egoV, targetV, LeadVehicleCase.TARGET_WIDTH_M / 2);
-            egoA = Math.min(tick.decelCmd(), frictionLimit);
+            egoA = aebOff ? 0.0 : Math.min(tick.decelCmd(), frictionLimit); // AEB tắt thì không phanh
 
             // ---- Dynamics ------------------------------------------------------------
             if (egoV > 0) {
@@ -97,8 +108,12 @@ public final class LeadVehicleSimulator {
         }
 
         double decelAvailable = Math.min(Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()), frictionLimit);
-        return buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, targetY, LeadVehicleCase.TARGET_LENGTH_M, halfSum, v0,
-                decelAvailable, impactRelative, AebStack.DT);
+        SimulationOutcome outcome = buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, targetY, LeadVehicleCase.TARGET_LENGTH_M,
+                halfSum, v0, decelAvailable, impactRelative, AebStack.DT, relativeImpact);
+        if (aebOff) {
+            AebMode.markOff(outcome);
+        }
+        return outcome;
     }
 
     /**
@@ -108,15 +123,26 @@ public final class LeadVehicleSimulator {
     public static SimulationOutcome buildOutcome(LeadVehicleCase c, AebParams params, VehicleSpec vehicle, AebStack stack, Simulator.MotionStats stats,
                                                  List<Frame> frames, List<Map<String, Object>> events, String endReason, double targetY, double targetLength,
                                                  double halfSum, double v0, double decelAvailable, double impactRelative, double dt) {
+        return buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, targetY, targetLength, halfSum, v0, decelAvailable, impactRelative,
+                dt, false);
+    }
+
+    /**
+     * @param relativeImpact định nghĩa hiện hành (chốt 13/11/2026, bộ động học 1.1, CARLA v6): {@code impact_speed_mps} là vận tốc va chạm tương đối,
+     *                       tốc độ ego ghi ở {@code ego_impact_speed_mps}; {@code false} = định nghĩa cũ (tốc độ ego) để chạy lại ra đúng kết quả đã lưu
+     */
+    public static SimulationOutcome buildOutcome(LeadVehicleCase c, AebParams params, VehicleSpec vehicle, AebStack stack, Simulator.MotionStats stats,
+                                                 List<Frame> frames, List<Map<String, Object>> events, String endReason, double targetY, double targetLength,
+                                                 double halfSum, double v0, double decelAvailable, double impactRelative, double dt, boolean relativeImpact) {
         Map<String, Object> metrics = summaryMetrics(frames, endReason.equals("COLLISION"), targetY, targetLength, halfSum, vehicle, stack, stats, v0,
-                decelAvailable, impactRelative, dt);
+                decelAvailable, impactRelative, dt, relativeImpact);
         return new SimulationOutcome(endReason, frames.isEmpty() ? 0.0 : Py.round(frames.get(frames.size() - 1).t(), 3), frames, events, metrics,
                 Py.round(c.initialDistanceM(), 3), params.asDict(), c.asDict());
     }
 
     private static Map<String, Object> summaryMetrics(List<Frame> frames, boolean collision, double targetY, double targetLength, double halfSum,
                                                       VehicleSpec vehicle, AebStack stack, Simulator.MotionStats stats, double v0, double decelTarget,
-                                                      double impactRelative, double dt) {
+                                                      double impactRelative, double dt, boolean relativeImpact) {
         double minDistance = Double.POSITIVE_INFINITY;
         Double minTtc = null;
         Double gtInPathT = null;
@@ -163,8 +189,11 @@ public final class LeadVehicleSimulator {
 
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("collision", collision);
-        m.put("impact_speed_mps", collision ? Py.round(lastV, 3) : null);
+        m.put("impact_speed_mps", collision ? Py.round(relativeImpact ? impactRelative : lastV, 3) : null);
         m.put("relative_impact_speed_mps", collision ? Py.round(impactRelative, 3) : null);
+        if (relativeImpact) { // định nghĩa hiện hành: impact_speed_mps là vận tốc tương đối, tốc độ ego ghi riêng
+            m.put("ego_impact_speed_mps", collision ? Py.round(lastV, 3) : null);
+        }
         m.put("min_distance_m", Double.isFinite(minDistance) ? Py.round(minDistance, 3) : null);
         m.put("min_ttc_s", minTtc == null ? null : Py.round(minTtc, 3));
         m.put("target_entered_path", gtInPathT != null);

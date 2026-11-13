@@ -28,6 +28,10 @@ METRICS = (
     ("stopping_distance_m", ("metrics", "stopping_distance_m")),
     ("rms_jerk_mps3", ("metrics", "rms_jerk_mps3")),
     ("impact_speed_mps", ("metrics", "impact_speed_mps")),
+    # Từ .xosc v6 (13/11/2026): impact_speed_mps là vận tốc tương đối, rms_jerk_mps3 lọc Euro NCAP từ T_AEB; số cũ để đối chiếu.
+    ("ego_impact_speed_mps", ("metrics", "ego_impact_speed_mps")),
+    ("rms_jerk_raw_mps3", ("metrics", "rms_jerk_raw_mps3")),
+    ("t_aeb_s", ("metrics", "t_aeb_s")),
     ("radar_shadow_aeb_decision_t", ("shadow", "aeb_decision_t")),
     ("radar_shadow_first_detection_t", ("shadow", "first_detection_t")),
 )

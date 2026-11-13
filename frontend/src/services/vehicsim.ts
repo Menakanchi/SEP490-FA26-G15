@@ -132,10 +132,11 @@ export const vehicsimApi = {
   /** Hủy mọi run đang chờ/đang chạy của họ (run của regression/tối ưu không bị đụng). */
   cancelFamily: (scenarioId: number) =>
     apiRequest<{ scenario_id: number; stopped: number; stopping: number }>(`/vehicsim/families/${scenarioId}/cancel`, { method: "POST" }),
-  runFamily: (scenarioId: number, aebVersionId?: number) =>
+  /** ``withAebOff``: thêm một lượt AEB tắt cho mỗi biến thể — mốc tham chiếu "không có AEB" của baseline, không bao giờ làm baseline regression/tối ưu. */
+  runFamily: (scenarioId: number, aebVersionId?: number, withAebOff = false) =>
     apiRequest<{ queued_runs: number }>(`/vehicsim/families/${scenarioId}/run`, {
       method: "POST",
-      body: JSON.stringify({ aeb_version_id: aebVersionId ?? null }),
+      body: JSON.stringify({ aeb_version_id: aebVersionId ?? null, with_aeb_off: withAebOff }),
     }),
 
   aebVersions: () => apiRequest<AebVersion[]>("/vehicsim/aeb/versions"),

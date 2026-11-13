@@ -11,9 +11,9 @@ dữ liệu ở `data/` (ngoài git).
 |---|---|---|
 | 1. Perception từ radar | Giai đoạn 1 (chạy bóng) xong 22/10. **Giai đoạn 2 xong 13/11:** tìm ra nguyên nhân track giả c6, bộ bám nhiều mục tiêu, AEB thật của ca người đi bộ dùng radar ở `.xosc` v6 / `-xosc6`; 6 ca CARLA thật. Tiêu chí "phát hiện ≤ 0,3 s" chưa đạt (0,39–0,74 s), chờ nhóm chốt lại | mục 1, 1b, 1c |
 | 2. Hiệu chuẩn phanh | Có công cụ + số đo e-tron; **chưa ghi DB** (chờ quyết định) | mục 2 |
-| 3. Chạy lặp, dung sai | Có công cụ; n=5 trên ca dừng, ca va chạm, ca an toàn; **đề xuất dung sai** chờ thành viên 3, 5 chốt | mục 3 |
+| 3. Chạy lặp, dung sai | **Chốt 13/11** trên `-xosc6`: sự kiện trùng tuyệt đối; khoảng cách/quãng dừng ±0,2 m; vận tốc va chạm ±0,05 m/s; RMS jerk ±max(0,4; 3%). Chưa nối vào `RegressionSummarizer` | mục 3, 3b |
 | 4. Đọc lại physics | Xong: `physics_applied` (21/10) + `physics_check` so yêu cầu ↔ thực áp (22/10) | mục 4 |
-| 5. AEB tắt | **Chưa code** — đề xuất, chờ định nghĩa chỉ số (mục 5) | — |
+| 5. AEB tắt | **Xong 13/11** (ADR-052): `aeb_mode = OFF` ở lõi, bundle, `.xosc`, DB (migration 015), web (`with_aeb_off`, ô chọn ở `/scenarios`); run OFF bị loại khỏi baseline regression/tối ưu/phân tích; kiểm CARLA thật | mục 5, 3b |
 | 6. Thí nghiệm 4 xe (PDF §10.1) | Xong: `worker/vehicle_study.py`, 14 test; chạy CARLA thật 22/10 trên 4 xe + e-tron, cả ba phép đổi physics đúng chiều | mục 6 |
 | 7. Ground truth vector (kế hoạch 20/10 §5.2) | Xong 13/11: `sensors/ground_truth.csv` + vận tốc va chạm tương đối trước tiếp xúc trong `collisions.json` | mục 7 |
 | TD-34 tắt backend giữa run | Xong: ghi cờ dừng trước, chờ `STOP_GRACE_S` rồi mới giết; xoá TD-34 | `CarlaWebTest.shuttingDownMidRunAsksTheWorkerToCleanUpBeforeKillingIt` |
@@ -216,3 +216,27 @@ Chi tiết và bảng đầy đủ ở [ADR-043](../../adr/ADR-043-perception-tu
 - **Còn mở:** tiêu chí phát hiện ≤ 0,3 s không đạt — chờ thành viên 3, 5 chốt tiêu chí theo quyết định AEB; dung sai chạy lặp mục 3 đo ở `-xosc3`, cần đo lại ở
   `-xosc6`; baseline CARLA cần chạy lại bằng `-xosc6`. v6 cũng gói luôn thay đổi thời tiết/`decel_available` 11/11 (exec plan 11/11, điểm D1) vào
   identity mới.
+
+## 3b. Dung sai chạy lặp trên `-xosc6` — chốt 13/11/2026
+
+CARLA 0.9.16 thật, e-tron, seed 48846, `.xosc` v6 (radar, vận tốc va chạm tương đối, RMS jerk lọc Euro NCAP từ T_AEB — ADR-043, ADR-052), mỗi ca 5 lần
+(`worker/repeat_xosc.py`, `data/v6-final-20261113/repeat-*`):
+
+| Chỉ số | c1 40 km/h, 25 m (dừng) | c5 50 km/h, 20 m, mưa đêm (va chạm) | c6 an toàn |
+|---|---|---|---|
+| FCW / quyết định / phanh / T_AEB / kết thúc | 2,05 / 2,25 / 2,50 / 2,52 / `EGO_STOPPED` ×5 | 2,05 / 2,05 / 2,30 / 2,38 / `COLLISION` ×5 | không phanh, `TARGET_CLEARED` ×5 |
+| Khoảng cách nhỏ nhất (m) | 2,609 ± 0,040 (khoảng 0,091) | 0 | 14,135 ± 0 |
+| Quãng dừng (m) | 11,432 ± 0,055 (0,124) | 23,190 ± 0,032 (0,077) | — |
+| Vận tốc va chạm tương đối (m/s) | — | 11,971 ± 0,011 (0,026); ego 11,571 | — |
+| RMS jerk lọc Euro NCAP (m/s³) | 20,791 ± 0,038 (0,2%) | 10,579 ± 0,112 (1,1%) | — |
+| RMS jerk chưa lọc (m/s³) | 41,383 ± 0,927 (2,2%) | 20,180 ± 0,722 (3,6%, khoảng 8%) | — |
+
+Bộ lọc Euro NCAP giảm dao động RMS jerk 3–10 lần so với số chưa lọc. **Dung sai chốt** (≈ 3 sd lớn nhất đã đo, làm tròn lên; chỉ áp cho CARLA
+`-xosc6`, e-tron): sự kiện rời rạc (phát hiện/FCW/quyết định/phanh/T_AEB, lý do kết thúc, có/không va chạm) **trùng tuyệt đối**; khoảng cách nhỏ nhất và
+quãng dừng **±0,2 m**; vận tốc va chạm **±0,05 m/s**; RMS jerk **±max(0,4 m/s³; 3%)**. Ngoài dung sai mới tính là cải thiện/xấu đi. Chưa nối vào
+so sánh của `RegressionSummarizer` (thành viên 5); xe khác cần đo lại trước khi dùng.
+
+**AEB tắt trên CARLA thật** (`out-c1-…-AEBOFF`): xe giữ tốc độ ~11,18 m/s tới hết run, không phanh (`brake_onset_t` trống), khoảng cách nhỏ nhất 0,80 m,
+`TARGET_CLEARED` — ở ca c1 người đi bộ qua khỏi làn trước khi xe tới, nên AEB (quyết định 2,25 s, dừng cách 2,6 m) phanh ở ca mà không có AEB cũng
+không va chạm. Ca c2 (60 km/h, 15 m): AEB quyết định 2,35 s nhưng va chạm 2,61 s trước khi gia tốc xuống −1 m/s², nên không có T_AEB và RMS jerk trống
+(không áp dụng), vận tốc va chạm tương đối 16,915 m/s (ego 16,627).

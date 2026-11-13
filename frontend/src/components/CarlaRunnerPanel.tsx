@@ -169,7 +169,7 @@ export function CarlaRunnerPanel() {
         <h3 className="text-[14px] font-semibold text-vehicsim-ink">Cảm biến lượt {runCode(data.run_id)}</h3>
         <div className="grid gap-3 md:grid-cols-3">
           <StatCard label="RMS jerk lúc phanh" value={data.summary.rms_jerk_mps3?.toFixed(2) ?? "—"} note="m/s³" tone="info" />
-          <StatCard label="Tốc độ lúc va chạm" value={data.summary.impact_speed_mps?.toFixed(2) ?? "—"}
+          <StatCard label="Vận tốc va chạm tương đối" value={data.summary.impact_speed_mps?.toFixed(2) ?? "—"}
             note={data.summary.collisions ? "m/s" : "Không ghi nhận va chạm"} tone={data.summary.collisions ? "danger" : "info"} />
           <StatCard label="Quãng phanh ước tính" value={data.summary.stopping_distance_m?.toFixed(2) ?? "—"} note="m · phanh CARLA chưa hiệu chuẩn" tone="info" />
         </div>

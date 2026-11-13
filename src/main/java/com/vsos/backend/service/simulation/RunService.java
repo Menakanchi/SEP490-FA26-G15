@@ -62,7 +62,7 @@ import com.vsos.backend.service.scenario.FamilyService;
 @Service
 public class RunService {
 
-    public static final String KINEMATIC_SIMULATOR = "vehicsim-kinematic-1.0";
+    public static final String KINEMATIC_SIMULATOR = com.vsos.core.bridge.Bundle.KINEMATIC_SIMULATOR;
     public static final String VARIANT_FORMAT = "vehicsim.variant/v1";
     public static final String RESULT_FORMAT = "vehicsim.result/v1";
     public static final double DT = 0.05;
@@ -221,17 +221,19 @@ public class RunService {
      */
     public List<Long> createRuns(long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long aebVersionId,
                                  long userId, String purpose, Long regressionTestId, Map<Long, Row> baselineRuns) {
-        return createRuns(projectId, scenarioId, variants, vehicleModelId, aebVersionId, userId, purpose, regressionTestId, null, baselineRuns, null, null);
+        return createRuns(projectId, scenarioId, variants, vehicleModelId, aebVersionId, userId, purpose, regressionTestId, null, baselineRuns, null, null,
+                com.vsos.core.simulation.AebMode.ON);
     }
 
     public List<Long> createOptimizationRuns(long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long aebVersionId,
                                              long userId, long optimizationTrialId, Map<Long, Row> baselineRuns) {
-        return createRuns(projectId, scenarioId, variants, vehicleModelId, aebVersionId, userId, "OPTIMIZATION", null, optimizationTrialId, baselineRuns, null, null);
+        return createRuns(projectId, scenarioId, variants, vehicleModelId, aebVersionId, userId, "OPTIMIZATION", null, optimizationTrialId, baselineRuns, null, null,
+                com.vsos.core.simulation.AebMode.ON);
     }
 
     private List<Long> createRuns(long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long aebVersionId,
                                   long userId, String purpose, Long regressionTestId, Long optimizationTrialId, Map<Long, Row> baselineRuns,
-                                  String requestedSimulator, Long requestedSeed) {
+                                  String requestedSimulator, Long requestedSeed, String aebMode) {
         checkActiveRunQuota(userId, variants.size());
         LocalDateTime ts = Vs.now();
         List<Long> ids = new ArrayList<>();
@@ -259,10 +261,11 @@ public class RunService {
             long runId = db.insert(
                     "INSERT INTO simulation_runs (project_id, scenario_id, scenario_version_id, carla_vehicle_model_id, aeb_version_id, "
                             + "simulator_type, simulator_version, fixed_delta_seconds, max_duration_s, regression_test_id, baseline_run_id, "
-                            + "optimization_trial_id, purpose, random_seed, status, run_config_json, created_by_user_id, queued_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            + "optimization_trial_id, purpose, random_seed, status, run_config_json, created_by_user_id, queued_at, aeb_mode) "
+                            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     projectId, scenarioId, variant.lng("id"), vehicleModelId, aebVersionId, simulatorType(simulator), simulator, stepFor(simulator),
                     MAX_DURATION_S, regressionTestId, baseline == null ? null : baseline.lng("id"), optimizationTrialId, purpose, seed, "PENDING",
-                    variant.json("scenario_ir_json"), userId, ts);
+                    variant.json("scenario_ir_json"), userId, ts, aebMode);
             ids.add(runId);
         }
         return ids;
@@ -338,6 +341,11 @@ public class RunService {
                 throw new SimulatorException("run CARLA dùng " + profile.substring(profile.lastIndexOf('-') + 1)
                         + " đã cũ; tạo lượt chạy mới để dùng profile " + XOSC_SUFFIX);
             }
+            if (!isCarla(profile) && !KINEMATIC_SIMULATOR.equals(profile)) {
+                // vehicsim-kinematic-1.0: impact_speed_mps là tốc độ ego; 1.1 đổi sang vận tốc tương đối (13/11/2026). Không chạy lại run cũ bằng
+                // định nghĩa mới dưới định danh cũ, không ghép với 1.1.
+                throw new SimulatorException("run động học dùng " + profile + " đã cũ; tạo lượt chạy mới để dùng " + KINEMATIC_SIMULATOR);
+            }
             if (isCarla(profile) && !profile.endsWith(XOSC_SUFFIX)) {
                 // Runner CARLA trực tiếp nhận bundle JSON (run_variant.py) đã gỡ ở ADR-042: run_xosc.py từ chối JSON, nên báo rõ trước khi gọi worker.
                 throw new SimulatorException("run CARLA dùng runner JSON trực tiếp (" + profile + ") đã gỡ ở ADR-042; tạo lượt chạy mới để dùng profile "
@@ -408,13 +416,17 @@ public class RunService {
                 "carla_vehicle_model_id", run.lng("carla_vehicle_model_id"),
                 "simulator", run.str("simulator_version"));
 
-        return Json.obj(
+        Map<String, Object> bundle = Json.obj(
                 "format", VARIANT_FORMAT,
                 "variant", variant,
                 "aeb", Json.obj("label", version == null ? null : version.str("label"), "params", params),
                 "vehicle", vehicleDoc,
                 "seed", run.lng("random_seed"),
                 "source", source);
+        if (com.vsos.core.simulation.AebMode.OFF.equals(run.str(com.vsos.core.simulation.AebMode.KEY))) {
+            bundle.put(com.vsos.core.simulation.AebMode.KEY, com.vsos.core.simulation.AebMode.OFF); // run ON giữ bundle như cũ
+        }
+        return bundle;
     }
 
     /**
@@ -664,7 +676,9 @@ public class RunService {
         }
         Row variant = new Row(Json.obj("id", source.lng("scenario_version_id"), "scenario_ir_json", Json.write(source.json("run_config_json"))));
         List<Long> ids = createRuns(projectId, source.lng("scenario_id"), List.of(variant), source.lng("carla_vehicle_model_id"),
-                source.lng("aeb_version_id"), userId, "EVALUATION", null, null, null, carlaSimulator(props.carlaVersion()) + XOSC_SUFFIX, source.lng("random_seed"));
+                source.lng("aeb_version_id"), userId, "EVALUATION", null, null, null, carlaSimulator(props.carlaVersion()) + XOSC_SUFFIX, source.lng("random_seed"),
+                com.vsos.core.simulation.AebMode.OFF.equals(source.str(com.vsos.core.simulation.AebMode.KEY))
+                        ? com.vsos.core.simulation.AebMode.OFF : com.vsos.core.simulation.AebMode.ON); // chạy lại đúng chế độ AEB của run gốc
         dispatch(ids);
         return ids.getFirst();
     }
@@ -1148,6 +1162,15 @@ public class RunService {
     /** Chạy mọi biến thể của bộ biến thể hiện hành bằng AEB version (mặc định: baseline) trên xe đang dùng. */
     @Transactional
     public List<Long> runFamily(long projectId, long scenarioId, long userId, Long aebVersionId) {
+        return runFamily(projectId, scenarioId, userId, aebVersionId, false);
+    }
+
+    /**
+     * @param withAebOff thêm một lượt AEB tắt cho mỗi biến thể (cùng seed, cùng bộ mô phỏng) — mốc tham chiếu "không có AEB" của baseline (chốt
+     *                   13/11/2026). Run OFF không bao giờ là baseline của regression/tối ưu.
+     */
+    @Transactional
+    public List<Long> runFamily(long projectId, long scenarioId, long userId, Long aebVersionId, boolean withAebOff) {
         Row scenario = db.first("SELECT * FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, projectId);
         if (scenario == null) {
             throw new NotFoundException("scenario family");
@@ -1159,8 +1182,13 @@ public class RunService {
             throw new NotFoundException("AEB version");
         }
         List<Row> variants = families.variantsOf(families.latestBaseVersionId(scenarioId));
-        List<Long> ids = createRuns(projectId, scenarioId, variants, queries.activeVehicle(projectId).lng("id"), version.lng("id"), userId,
-                "BASELINE".equals(version.str("status")) ? "BASELINE" : "EVALUATION", null, null);
+        long vehicleId = queries.activeVehicle(projectId).lng("id");
+        String purpose = "BASELINE".equals(version.str("status")) ? "BASELINE" : "EVALUATION";
+        List<Long> ids = new ArrayList<>(createRuns(projectId, scenarioId, variants, vehicleId, version.lng("id"), userId, purpose, null, null));
+        if (withAebOff) {
+            ids.addAll(createRuns(projectId, scenarioId, variants, vehicleId, version.lng("id"), userId, purpose, null, null, null, null, null,
+                    com.vsos.core.simulation.AebMode.OFF));
+        }
         dispatch(ids);
         return ids;
     }

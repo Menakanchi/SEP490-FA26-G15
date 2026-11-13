@@ -114,11 +114,14 @@ CHECK `purpose = X ⇔ cột liên kết có giá trị`, cộng FK ghép với 
 
 ### 3.4 Danh tính bộ mô phỏng (`simulator_version`)
 
-`simulation_runs.simulator_version` ghi **chính xác** bộ mô phỏng: `vehicsim-kinematic-1.0` (bộ động học,
-đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc6` (run cũ còn `-xosc1/2/3/4/5`; `carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
+`simulation_runs.simulator_version` ghi **chính xác** bộ mô phỏng: `vehicsim-kinematic-1.1` (bộ động học từ 13/11/2026:
+`impact_speed_mps` là vận tốc va chạm tương đối; run cũ `1.0` là tốc độ ego; đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc6` (run cũ còn `-xosc1/2/3/4/5`; `carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
 `client.get_server_version()`). `simulator_type` (KINEMATIC / CARLA) chỉ để lọc; CHECK ép hai cột khớp.
 Vì `simulator_version` nằm trong `fk_sr_baseline`, MySQL **không cho** ghép động học với CARLA, hay
 CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](../adr/ADR-027-bo-mo-phong-cam-duoc-hop-dong-json.md)).
+
+`simulation_runs.aeb_mode` (`ON` | `OFF`, migration 015, 13/11/2026): run `OFF` chạy cùng kịch bản với AEB tắt — perception/quyết định vẫn
+ghi lại nhưng không phanh — làm mốc tham chiếu cho baseline. Regression và tối ưu chỉ lấy run `ON` làm baseline.
 
 ### 3.5 Khớp với CARLA 0.9.16
 
@@ -690,6 +693,7 @@ Một lần chạy một biến thể × xe × AEB version × seed × bộ mô p
 | `scenario_version_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; UQ `uq_sr_pair`; FK → `scenario_versions(scenario_id,id)`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)` | Biến thể được chạy. |
 | `carla_vehicle_model_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; FK → `carla_vehicle_models`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)` | Xe đã chạy (danh mục chung). Run REGRESSION phải cùng xe với run baseline và với regression test. |
 | `aeb_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `aeb_versions(project_id,id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)`; FK → `optimization_trials(id,candidate_aeb_version_id)`; FK → `analysis_results(project_id,id,aeb_version_id)` | AEB version — cùng project (FK ghép). |
+| `aeb_mode` | ENUM | ✓ | `ON` |  | Chế độ AEB của run (migration 015, 13/11/2026): `OFF` = AEB tắt — perception/quyết định vẫn ghi lại nhưng không phanh; mốc tham chiếu của baseline, không bao giờ là baseline regression/tối ưu. Giá trị: 'ON', 'OFF'. |
 | `simulator_type` | ENUM | ✓ |  |  | `KINEMATIC` / `CARLA` — nhóm để lọc; khớp `simulator_version` (`ck_sr_simulator`). Giá trị: 'KINEMATIC', 'CARLA'. |
 | `simulator_version` | VARCHAR(30) | ✓ |  | UQ `uq_sr_replay`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)` | Danh tính bộ mô phỏng: vehicsim-kinematic-1.0 | carla-0.9.16; đổi logic động học thì đổi tên |
 | `map_name` | VARCHAR(100) |  |  |  | Map CARLA thực nạp (world.get_map().name); NULL với động học |

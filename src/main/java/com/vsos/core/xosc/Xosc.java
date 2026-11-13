@@ -271,6 +271,9 @@ public final class Xosc {
             doc.put("source", source);
             doc.put("aeb", aeb);
             doc.put("vehicle", vehicle);
+            if (values.containsKey(com.vsos.core.simulation.AebMode.KEY)) {
+                doc.put(com.vsos.core.simulation.AebMode.KEY, values.get(com.vsos.core.simulation.AebMode.KEY));
+            }
             return Bundle.readSpec(doc);
         } catch (MissingKey | NumberFormatException | Bundle.BundleError e) { // BundleError là ValueError của Python: bị bọc như bản gốc
             throw new Bundle.BundleError("Metadata .xosc không hợp lệ: " + e.getMessage());

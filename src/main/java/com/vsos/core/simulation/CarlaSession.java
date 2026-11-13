@@ -99,6 +99,11 @@ public final class CarlaSession {
         return spec.leadCase() == null && Xosc.SIMULATOR_SUFFIX.equals(profile.suffix());
     }
 
+    /** File định dạng hiện hành (v6): dùng các định nghĩa chỉ số chốt 13/11/2026; file cũ giữ định nghĩa của nó. */
+    private boolean currentFormat() {
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix());
+    }
+
     /** Mục tiêu là xe phía trước (CCRs/CCRm/CCRb)? */
     public boolean leadVehicle() {
         return spec.leadCase() != null;
@@ -302,7 +307,7 @@ public final class CarlaSession {
                 measuredStep(shadow, t, gap, egoV, egoY, radarEstimate(t, gap, egoV, pedAlong + gap, pedY - egoY, pedVy, egoY, radar));
             }
         }
-        if (tick.decelCmd() > 0) {
+        if (tick.decelCmd() > 0 && !spec.aebOff()) { // AEB tắt: AEB vẫn quyết định để ghi lại, không phanh
             braking = true;
         }
         double pedal = braking ? DecelMeter.brakePedal(tick.decelCmd(), decel, fullBrakeDecel) : 0.0;
@@ -317,6 +322,8 @@ public final class CarlaSession {
         String finished = null;
         if (overlap || walkerCollision) {
             AebStack.Events.record(events, t, "collision", "Collision · " + Py.fixed(egoV * 3.6, 1) + " km/h", "impact_speed_mps", Py.round(egoV, 3));
+            // |v_ego − v_ped| theo vector thật trong khung giao cắt (người có thể có thành phần dọc), ngay tick phát hiện tiếp xúc.
+            impactRelative = Math.hypot(egoV - frame.velocityAlong(pedVel[0], pedVel[1]), pedVy);
             finished = "COLLISION";
         } else if (egoV <= 0.05 && stack.decisionT() != null) {
             AebStack.Events.record(events, t, "stopped", "Ego stopped", "gap_m", Py.round(gap, 2));
@@ -329,7 +336,8 @@ public final class CarlaSession {
         if (finished != null) {
             finish(finished);
         }
-        return new Tick(false, braking, tick.decelCmd(), pedal, finished);
+        // AEB tắt: báo adapter không có lệnh phanh, để xe giữ tốc độ như không có AEB (adapter thôi giữ tốc độ khi decel_cmd > 0).
+        return new Tick(false, braking, spec.aebOff() ? 0.0 : tick.decelCmd(), pedal, finished);
     }
 
     /**
@@ -361,7 +369,7 @@ public final class CarlaSession {
         double closing = egoV - targetV;
         double decel = meter.update(egoV, braking);
         AebTick tick = stack.stepTarget(t, gap, targetY, 0.0, egoV, targetV, targetWidth / 2);
-        if (tick.decelCmd() > 0) {
+        if (tick.decelCmd() > 0 && !spec.aebOff()) { // AEB tắt: AEB vẫn quyết định để ghi lại, không phanh
             braking = true;
         }
         double pedal = braking ? DecelMeter.brakePedal(tick.decelCmd(), decel, fullBrakeDecel) : 0.0;
@@ -388,7 +396,8 @@ public final class CarlaSession {
         if (finished != null) {
             finish(finished);
         }
-        return new Tick(false, braking, tick.decelCmd(), pedal, finished);
+        // AEB tắt: báo adapter không có lệnh phanh, để xe giữ tốc độ như không có AEB (adapter thôi giữ tốc độ khi decel_cmd > 0).
+        return new Tick(false, braking, spec.aebOff() ? 0.0 : tick.decelCmd(), pedal, finished);
     }
 
     /**
@@ -552,10 +561,12 @@ public final class CarlaSession {
             double halfSum = spec.vehicle().widthM() / 2 + targetWidth / 2;
             outcome = LeadVehicleSimulator.buildOutcome(spec.leadCase(), spec.params(), spec.vehicle(), stack, stats, frames, events, reason,
                     lastTargetY == null ? 0.0 : lastTargetY, targetLength, halfSum, spec.leadCase().egoSpeedKmh() / 3.6, decelAvailable, impactRelative,
-                    stepS); // như người đi bộ: tốc độ đầu theo kịch bản (khung đầu CARLA ego còn đứng yên)
+                    stepS, currentFormat()); // như người đi bộ: tốc độ đầu theo kịch bản (khung đầu CARLA ego còn đứng yên)
         } else {
             CrossingCase c = spec.requireCrossing("Runner CARLA");
-            outcome = Simulator.buildOutcome(c, spec.params(), spec.vehicle(), stack, stats, frames, events, reason, c.crossingX(), decelAvailable, stepS);
+            // v6: impact_speed_mps là vận tốc va chạm tương đối (chốt 13/11/2026); file ≤ v5 giữ tốc độ ego để chạy lại ra đúng kết quả đã lưu.
+            outcome = Simulator.buildOutcome(c, spec.params(), spec.vehicle(), stack, stats, frames, events, reason, c.crossingX(), decelAvailable, stepS,
+                    currentFormat() ? Double.valueOf(impactRelative) : null);
         }
         List<Double> egoA = new ArrayList<>(frames.size());
         List<Double> times = new ArrayList<>(frames.size());
@@ -563,16 +574,32 @@ public final class CarlaSession {
             egoA.add(f.egoA());
             times.add(f.t());
         }
-        int start = Simulator.brakePhaseStart(frames, stack.brakeOnsetT());
-        // Thực nghiệm (D3, kế hoạch 20/10): cùng tín hiệu ego_a của rms_jerk_mps3 nhưng lọc Butterworth 10 Hz trước khi đạo hàm. Không thay objective chính
-        // thức. Chỉ tính được khi bước < 0,05 s.
-        Double filtered = start >= 0 && stepS < 0.05 ? Filters.filteredRmsJerk(egoA, start, stepS, (Double) Filters.SPEC.get("cutoff_hz")) : null;
-
         Map<String, Object> jerk = new LinkedHashMap<>();
-        jerk.put("status", "EXPERIMENTAL");
-        jerk.put("filter", Filters.SPEC);
-        jerk.put("signal", "ego_a");
-        jerk.put("rms_jerk_mps3", filtered == null ? null : Py.round(filtered, 3));
+        if (currentFormat() && stepS < 0.05) {
+            // v6 (chốt 13/11/2026): rms_jerk_mps3 chính thức = RMS jerk của ego_a đã lọc theo Euro NCAP AEB/LSS VRU v4.5.1 (12-pole phaseless 10 Hz),
+            // cửa sổ từ T_AEB (mục 2) tới hết run. Số chưa lọc giữ ở rms_jerk_raw_mps3 để đối chiếu.
+            List<Double> smooth = Filters.butterworthZeroPhase(egoA, stepS, Filters.EURO_NCAP_CUTOFF_HZ, Filters.EURO_NCAP_ORDER_PER_PASS);
+            int tAeb = Filters.tAebIndex(smooth);
+            Double rms = Filters.rmsJerk(smooth, tAeb, stepS);
+            Map<String, Object> m = outcome.metrics();
+            m.put("rms_jerk_raw_mps3", m.get("rms_jerk_mps3"));
+            m.put("rms_jerk_mps3", rms == null ? null : Py.round(rms, 3));
+            m.put("t_aeb_s", tAeb < 0 ? null : times.get(tAeb));
+            jerk.put("status", "OFFICIAL");
+            jerk.put("filter", Filters.EURO_NCAP_SPEC);
+            jerk.put("signal", "ego_a");
+            jerk.put("window", "T_AEB to end of run");
+            jerk.put("t_aeb_s", tAeb < 0 ? null : times.get(tAeb));
+            jerk.put("rms_jerk_mps3", rms == null ? null : Py.round(rms, 3));
+        } else {
+            int start = Simulator.brakePhaseStart(frames, stack.brakeOnsetT());
+            // File ≤ v5 — thực nghiệm D3 (kế hoạch 20/10): Butterworth bậc 2 một chiều 10 Hz, không thay objective. Giữ để chạy lại ra đúng kết quả.
+            Double filtered = start >= 0 && stepS < 0.05 ? Filters.filteredRmsJerk(egoA, start, stepS, (Double) Filters.SPEC.get("cutoff_hz")) : null;
+            jerk.put("status", "EXPERIMENTAL");
+            jerk.put("filter", Filters.SPEC);
+            jerk.put("signal", "ego_a");
+            jerk.put("rms_jerk_mps3", filtered == null ? null : Py.round(filtered, 3));
+        }
         Map<String, Object> measured = null;
         if (times.size() > 1) {
             double min = Double.POSITIVE_INFINITY;
@@ -628,6 +655,9 @@ public final class CarlaSession {
             carla.put(radarPerception ? "perception_radar" : "perception_shadow", radarDocument());
         }
         outcome.caseDoc().put("carla", carla);
+        if (spec.aebOff()) {
+            AebMode.markOff(outcome);
+        }
 
         Map<String, Object> result = Bundle.resultDocument(spec, outcome, simulatorVersion, null, Evaluation.evaluate(outcome, spec.params()).toDocument());
         result.put("engine", Bundle.ENGINE);

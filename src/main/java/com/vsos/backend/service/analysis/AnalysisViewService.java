@@ -343,7 +343,7 @@ public class AnalysisViewService {
         Row reference = db.first(
                 "SELECT carla_vehicle_model_id, simulator_version, COUNT(*) AS completed_runs "
                         + "FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND aeb_version_id = ? "
-                        + "AND purpose = 'BASELINE' AND status = 'COMPLETED' "
+                        + "AND purpose = 'BASELINE' AND status = 'COMPLETED' AND aeb_mode = 'ON' "
                         + "AND scenario_version_id IN (SELECT id FROM scenario_versions WHERE parent_version_id = ?) "
                         + "GROUP BY carla_vehicle_model_id, simulator_version ORDER BY completed_runs DESC, carla_vehicle_model_id, simulator_version LIMIT 1",
                 projectId, scenarioId, baseline.lng("id"), baseId);
@@ -359,7 +359,7 @@ public class AnalysisViewService {
                                 + "rms_jerk_mps3, impact_speed_mps, stopping_distance_m, min_distance_m, min_ttc_s, "
                                 + "max_deceleration_mps2, mean_deceleration_mps2, aeb_activation_time_s "
                                 + "FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND scenario_version_id = ? "
-                                + "AND aeb_version_id = ? AND purpose = 'BASELINE' AND status = 'COMPLETED' "
+                                + "AND aeb_version_id = ? AND purpose = 'BASELINE' AND status = 'COMPLETED' AND aeb_mode = 'ON' "
                                 + "AND carla_vehicle_model_id = ? AND simulator_version = ? "
                                 + "ORDER BY id DESC LIMIT 1",
                         projectId, scenarioId, variant.lng("id"), baseline.lng("id"), vehicleId, simulator);
