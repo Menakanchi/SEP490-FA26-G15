@@ -15,10 +15,12 @@ type Result = { key: string; data?: AdminPageData; error?: string };
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Không thực hiện được thao tác. Hãy thử lại.";
 
 function SearchForm({ value, onSearch }: { value: string; onSearch: (q: string) => void }) {
-  const [draft, setDraft] = useState(value);
-  return <form className={styles.search} onSubmit={event => { event.preventDefault(); onSearch(draft.trim()); }}>
+  const [search, setSearch] = useState({ applied: value, draft: value });
+  // Sync URL/history changes without remounting the input or overwriting an unapplied draft on refresh.
+  if (search.applied !== value) setSearch({ applied: value, draft: value });
+  return <form className={styles.search} onSubmit={event => { event.preventDefault(); onSearch(search.draft.trim()); }}>
     <label htmlFor="admin-users-search">Tìm kiếm</label>
-    <div><span className={styles.searchInput}><Search size={16} aria-hidden="true" /><input id="admin-users-search" aria-label="Từ khóa tìm kiếm" type="search" maxLength={100} value={draft} onChange={event => setDraft(event.target.value)} placeholder="Tên hoặc email" /></span><button type="submit" className={styles.button}>Tìm</button></div>
+    <div><span className={styles.searchInput}><Search size={16} aria-hidden="true" /><input id="admin-users-search" aria-label="Từ khóa tìm kiếm" type="search" maxLength={100} value={search.draft} onChange={event => setSearch({ applied: value, draft: event.target.value })} placeholder="Tên hoặc email" /></span><button type="submit" className={styles.button}>Tìm</button></div>
   </form>;
 }
 
@@ -76,6 +78,9 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
     setActionError(""); setNotice("");
   }
   function reset() { change({ q: "", role: "", status: "", page: 1 }); }
+  function search(q: string) {
+    if (q !== readUserQuery(new URLSearchParams(window.location.search)).q) change({ q, page: 1 });
+  }
   async function edit(id: number) {
     setOpeningId(id); setActionError(""); setNotice("");
     const sequence = ++detailSequence.current, scope = request;
@@ -95,7 +100,7 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
     <section aria-labelledby="admin-users-list-title" className={styles.filters}>
       <div className={styles.listHeader}><div><h2 id="admin-users-list-title">Danh sách tài khoản</h2><p>Tra cứu người dùng theo tên, email, vai trò và trạng thái.</p></div><button className={styles.primary} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); setEditor(null); setNotice(""); setActionError(""); }}><Plus size={16} aria-hidden="true" />Thêm mới</button></div>
       <div className={styles.toolbar}>
-        <SearchForm key={query.q} value={query.q} onSearch={q => change({ q, page: 1 })} />
+        <SearchForm value={query.q} onSearch={search} />
         <label><span id="admin-users-status-label">Trạng thái</span><select aria-labelledby="admin-users-status-label" value={query.status} onChange={event => change({ status: event.target.value, page: 1 })}><option value="">Tất cả trạng thái</option>{Object.entries(USER_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label><span id="admin-users-role-label">Vai trò</span><select aria-labelledby="admin-users-role-label" value={query.role} onChange={event => change({ role: event.target.value, page: 1 })}><option value="">Tất cả vai trò</option>{Object.entries(USER_ROLES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label><span id="admin-users-sort-label">Sắp xếp</span><select aria-labelledby="admin-users-sort-label" value={query.sort} onChange={event => change({ sort: event.target.value, page: 1 })}>{Object.entries(USER_SORTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
