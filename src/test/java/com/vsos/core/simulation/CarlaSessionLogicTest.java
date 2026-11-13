@@ -44,6 +44,22 @@ class CarlaSessionLogicTest {
         assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), current, 9.13)).isEqualTo(8.0);
         // Mưa: μ·g vẫn là giới hạn khi nhỏ hơn mức xe phanh được.
         assertThat(CarlaSession.decelAvailable(crossing("RAIN"), current, 9.13)).isCloseTo(0.70 * Simulator.G, within(1e-9));
+        // v6 chỉ đổi nguồn perception (ADR-043): v5 giữ cách tính phanh đo được như đã lưu.
+        com.vsos.core.xosc.Xosc.Profile v5 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V5_SIMULATOR_SUFFIX, 0.01, 0.05);
+        assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), v5, 3.56)).isEqualTo(3.56);
+    }
+
+    /** ADR-043 giai đoạn 2: chỉ profile hiện hành (v6) với người đi bộ đưa radar vào AEB thật; v5 và xe phía trước vẫn dùng ground truth. */
+    @Test
+    void radarDrivesTheAebOnlyForPedestriansOnTheCurrentProfile() {
+        com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v5 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V5_SIMULATOR_SUFFIX, 0.01, 0.05);
+        assertThat(CarlaSession.radarPerception(crossing("CLEAR"), current)).isTrue();
+        assertThat(CarlaSession.radarPerception(crossing("CLEAR"), v5)).isFalse();
+        LeadVehicleCase lead = new LeadVehicleCase(LeadVehicleCase.CCRS, 50.0, 0.0, 40.0, null, 100.0, "CLEAR", "DAY", null);
+        com.vsos.core.bridge.Bundle.RunSpec leadSpec = new com.vsos.core.bridge.Bundle.RunSpec(null, AebParams.DEFAULT, VehicleSpec.DEFAULT, 1L, null, null,
+                Map.of(), Map.of(), lead);
+        assertThat(CarlaSession.radarPerception(leadSpec, current)).as("bộ bám chặn vật tĩnh: không dùng cho xe phía trước đứng yên").isFalse();
     }
 
     private static AebStack stack(double dt, Double period) {

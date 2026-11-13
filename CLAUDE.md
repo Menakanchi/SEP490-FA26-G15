@@ -155,11 +155,13 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 - Đường web hiện tại: bộ xuất Java (`XoscExport`) → `.xosc` → `run_xosc.py` → ScenarioRunner → `vehicsim_aeb_control.py`
   (chỉ đọc trạng thái CARLA, áp bàn đạp) → cầu nối `vsos-bridge/1` → cùng `AebStack` và luật chấm của lõi Java.
   Mỗi run chụp lõi thành `core/vsos-core.jar` riêng, nên `mvnw clean` giữa run không làm hỏng run đó.
-- Artifact hiện tại là `vehicsim.xosc/v5`, profile `carla-0.9.16-xosc5` (bước 0,01 s; v4 = v3 + người "dừng ở lề" đứng lại, TD-47;
+- Artifact hiện tại là `vehicsim.xosc/v6`, profile `carla-0.9.16-xosc6` (bước 0,01 s; v4 = v3 + người "dừng ở lề" đứng lại, TD-47;
   v5 = v4 + mô-men phanh đã hiệu chuẩn `vs_physics_wheel_max_brake_torque`, ADR-051; từ 11/11 thêm thời tiết theo preset CARLA và
-  `decel_available` theo phanh 100% đo được, [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md)). File v1 phải xuất lại từ web; không ghép baseline
-  `-xosc1`, `-xosc2` (20 Hz), `-xosc3` (người dừng ở lề đi vào làn), `-xosc4` (phanh CARLA chưa hiệu chuẩn), runner trực tiếp `carla-0.9.16`
-  và `-xosc5`. Backend không chạy lại run `-xosc1`…`-xosc4`; `run_xosc.py` vẫn chạy file v2/v3/v4 ngoài web.
+  `decel_available` theo phanh 100% đo được, [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md);
+  v6 = v5 + AEB của ca người đi bộ nhận perception từ radar, [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md)). File v1 phải xuất lại
+  từ web; không ghép baseline `-xosc1`, `-xosc2` (20 Hz), `-xosc3` (người dừng ở lề đi vào làn), `-xosc4` (phanh CARLA chưa hiệu chuẩn),
+  `-xosc5` (AEB dùng ground truth), runner trực tiếp `carla-0.9.16` và `-xosc6`. Backend không chạy lại run `-xosc1`…`-xosc5`;
+  `run_xosc.py` vẫn chạy file v2…v5 ngoài web.
 - `.xosc` là đầu vào mô phỏng. JSON vẫn là hợp đồng nội bộ/result; không đổi đuôi JSON thành XML hoặc bỏ metadata seed/source.
   Runner CARLA trực tiếp nhận bundle JSON (`run_variant.py`) đã gỡ ở ADR-042; `run_xosc.py` từ chối `.json`. Chạy lại bundle bằng
   bộ động học: `java -cp target/classes com.vsos.core.bridge.BridgeMain kinematic <file>` (cần `mvnw compile`).

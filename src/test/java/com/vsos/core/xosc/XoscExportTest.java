@@ -215,7 +215,7 @@ class XoscExportTest {
     @Test
     void currentProfileIs100HzWithSensorPeriodPerception() {
         Xosc.Profile p = Xosc.profile(XoscExport.export(Bundle.readSpec(ir())));
-        assertThat(p).isEqualTo(new Xosc.Profile("-xosc5", 0.01, 0.05));
+        assertThat(p).isEqualTo(new Xosc.Profile("-xosc6", 0.01, 0.05));
     }
 
     @Test

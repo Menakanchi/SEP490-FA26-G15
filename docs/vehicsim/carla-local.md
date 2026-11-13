@@ -54,17 +54,18 @@ Vô hại, không phải dấu hiệu run hỏng.
 
 ## Hợp đồng và giới hạn
 
-- Profile hiện tại ghi `carla-0.9.16-xosc5` (định dạng `vehicsim.xosc/v5`, bước **0,01 s = 100 Hz**, mô-men phanh đã hiệu chuẩn — ADR-051),
-  khác runner trực tiếp `carla-0.9.16`, bản v4 `-xosc4` (phanh CARLA chưa hiệu chuẩn, ~4,6 m/s² — TD-17), bản v3 `-xosc3` (người "dừng ở lề"
+- Profile hiện tại ghi `carla-0.9.16-xosc6` (định dạng `vehicsim.xosc/v6`, bước **0,01 s = 100 Hz**, mô-men phanh đã hiệu chuẩn — ADR-051,
+  AEB của ca người đi bộ nhận perception từ radar 90° gắn mũi xe, ground truth chạy bóng — ADR-043; `result.json` ghi `case.carla.perception_source`
+  và `perception_radar`), khác bản v5 `-xosc5` (AEB dùng ground truth), runner trực tiếp `carla-0.9.16`, bản v4 `-xosc4` (phanh CARLA chưa hiệu chuẩn, ~4,6 m/s² — TD-17), bản v3 `-xosc3` (người "dừng ở lề"
   đi tiếp vào làn — TD-47), bản 20 Hz `-xosc2` và bản quỹ đạo lỗi `-xosc1`; regression không ghép các profile. File v1 cần xuất lại từ web.
-  Backend không còn chạy lại run `-xosc1`…`-xosc4` (báo FAILED, tạo lượt mới); `run_xosc.py` vẫn chạy được file v2 (20 Hz) / v3 / v4 ngoài
+  Backend không còn chạy lại run `-xosc1`…`-xosc5` (báo FAILED, tạo lượt mới); `run_xosc.py` vẫn chạy được file v2 (20 Hz) / v3 / v4 / v5 ngoài
   web để tái lập bằng chứng cũ, kèm identity của nó.
 - Hiệu chuẩn phanh (ADR-051): xe có `carla_vehicle_models.max_brake_torque_nm` được ép mô-men đó cho mọi bánh; e-tron 1800 N·m cho phanh
   100% ~9,5 m/s² ở 40–70 km/h. Đo xe khác bằng `worker/measure_brake.py --mass <kg> --brake-torque <N·m> --pedals 0.5 0.85 1.0`.
   Dưới ~6 m/s CARLA vẫn dừng gần như tức thì và ma sát lốp không giới hạn lực phanh (TD-17 còn mở phần này).
 - Bước thời gian nằm trong file `.xosc` (`vs_fixed_delta_seconds`, `vs_perception_period_s`); `run_xosc.py` truyền
   `--frameRate 100` cho ScenarioRunner, controller/recorder/`DecelMeter` dùng cùng bước và `result.json` ghi
-  `case.carla.measured_step_s` đo từ timestamp khung thật. `simulation_runs.fixed_delta_seconds` = 0,0100 cho xosc3, xosc4 và xosc5.
+  `case.carla.measured_step_s` đo từ timestamp khung thật. `simulation_runs.fixed_delta_seconds` = 0,0100 cho xosc3…xosc6.
 - Perception và quyết định AEB vẫn chạy theo chu kỳ cảm biến **0,05 s**; chỉ lệnh phanh, đo và ghi dữ liệu theo 0,01 s. Nhiễu
   và bộ lọc của perception rút theo từng lần cảm biến nên đổi bước không đổi thống kê của AEB; bộ động học giữ nguyên 20 Hz.
 - RMS jerk (`Δa/dt`) ở 100 Hz **không so sánh được** với số 20 Hz. `case.carla.jerk_filtered` là số lọc Butterworth 10 Hz **bậc 2 một chiều (causal)** thực
@@ -83,9 +84,12 @@ API: `GET /runs/{id}/xosc`, `POST /scenarios/xosc`, `POST /runs/{id}/carla`, `GE
 
 ### Radar chạy bóng, chạy lặp và đo phanh (22/10)
 
-- Mỗi run gắn thêm radar 90°/80 m ở mũi xe; `RadarTracker` (Java) bám người đi bộ và một `AebStack` bóng quyết định theo radar. `result.json` có
-  `case.carla.perception_shadow` (thời điểm phát hiện/FCW/quyết định theo radar so với ground truth, sai số vị trí/vận tốc). **AEB thật vẫn dùng ground truth**
-  (ADR-043 giai đoạn 1); quyết định và mọi chỉ số đã lưu không đổi.
+- Mỗi run gắn thêm radar 90°/80 m ở mũi xe; `RadarTracker` (Java) bám người đi bộ. File ≤ v5: một `AebStack` bóng quyết định theo radar, `result.json`
+  có `case.carla.perception_shadow`, **AEB thật dùng ground truth** (ADR-043 giai đoạn 1). Từ v6 (13/11/2026) đảo lại: AEB thật của ca người đi bộ quyết định
+  theo radar, ground truth chạy bóng, `result.json` có `perception_source = radar` và `perception_radar` (thời điểm phát hiện/FCW/quyết định của hai đường,
+  sai số vị trí/vận tốc so với ground truth). Bộ bám nhiều mục tiêu, bù tốc độ radar từ cảnh tĩnh và chỉ báo vật chuyển động so với mặt đất (ADR-043).
+- Chẩn đoán bộ bám: `VSOS_RADAR_DUMP=1` khi chạy `run_xosc.py` ghi `radar_dump.jsonl` (điểm radar thô + ground truth mỗi tick, ~2–11 MB/run) để phát
+  lại `RadarTracker` ngoài CARLA; mặc định tắt, không đổi kết quả.
 - Xuất `.xosc` offline từ IR/bundle để đo nhiều ca không cần backend: `java -cp target/classes com.vsos.core.bridge.BridgeMain export <ir.json> <ra.xosc>`
   (cùng `XoscExport` của web; file này không gắn run trong DB nên không dùng để nộp kết quả).
 - `case.carla.physics_check`: so thông số xe yêu cầu với số CARLA đọc lại; trường ép được phải khớp (`forced_ok`), kích thước mesh chỉ báo lệch > 0,05 m

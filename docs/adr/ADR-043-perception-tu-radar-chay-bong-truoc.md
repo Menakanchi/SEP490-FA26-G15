@@ -1,6 +1,7 @@
 # ADR-043 — Perception AEB trên CARLA lấy từ radar, chạy bóng trước khi thay ground truth
 
 **Trạng thái:** Proposed 22/10/2026 (TrungDQ, phần 2 "Chạy baseline"; kế hoạch 20/10 việc 1, quyết định D1/D2).
+**Cập nhật 13/11/2026:** giai đoạn 2 đã triển khai ở `.xosc` v6 / `-xosc6` (mục "Giai đoạn 2 — triển khai 13/11" cuối file); chờ nhóm duyệt ngưỡng.
 **Liên quan:** [ADR-042](ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (một AEB, ở Java), TD-01, kế hoạch
 [20/10](../vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md) mục 5.2.
 
@@ -36,7 +37,8 @@ Radar CARLA trả mỗi điểm: `depth`, `azimuth`, `altitude`, `velocity` (v�
 - **Giai đoạn 2: đổi đầu vào.** Chỉ khi số đo chạy bóng trên CARLA thật đạt ngưỡng nhóm chốt (đề xuất của thành viên 2: phát hiện ≤ 0,3 s sau khi
   người bắt đầu chuyển động — radar Doppler không thấy người đứng yên nên không so với mốc 0 s của mô hình tổng hợp; sai số ngang trung bình ≤ 0,3 m;
   không track giả trên ca an toàn; ghi rõ những ca quyết định bóng khác ground truth): `AebStack` nhận đầu vào từ `RadarTracker`, `result.json` ghi
-  `perception_source = radar`, profile lên **`-xosc4`** (`RunService.XOSC_SUFFIX`, `Xosc.SIMULATOR_SUFFIX`, `CarlaRunnerPanel`, `CarlaWebTest`).
+  `perception_source = radar`, profile lên định danh mới (viết 22/10 là `-xosc4`; số này đã dùng cho TD-47 và `-xosc5` cho ADR-051, nên thực tế là
+  **`-xosc6`**, xem cuối file).
   Bộ động học không đổi (vẫn mô hình tổng hợp, `vehicsim-kinematic-1.0`).
 
 ## Hệ quả
@@ -51,3 +53,51 @@ Radar CARLA trả mỗi điểm: `depth`, `azimuth`, `altitude`, `velocity` (v�
 - Đo 22/10 (exec plan 22/10 mục 1b): ca an toàn 20 km/h có track giả trên vật lề đường (~28 m trước, 5,6 m bên phải) từ 0,58 s; luật "bỏ track tĩnh" không
   sửa được và làm hỏng ca khác nên đã gỡ. Giai đoạn 2 chờ chẩn đoán điểm thô và/hoặc bám nhiều mục tiêu.
 - Bộ động học và CARLA dùng hai perception khác nhau sau giai đoạn 2: đúng với luật 9 (không ghép kết quả hai bộ), nhưng báo cáo phải ghi rõ.
+
+## Giai đoạn 2 — triển khai 13/11/2026 (`.xosc` v6, `-xosc6`)
+
+### Nguyên nhân track giả ở ca an toàn c6 (đo bằng điểm radar thô)
+
+Ghi điểm radar thô mỗi tick (`VSOS_RADAR_DUMP=1` → `radar_dump.jsonl`) trên 6 ca CARLA thật (`data/radar-mtt-20261113/dump-*`). Phần dư Doppler của **mọi**
+điểm có độ lệch chuẩn 0,34 m/s và 89% vượt ngưỡng 0,25 ở c6, dù trung bình ≈ 0: lỗi không nằm ở một vật lề đường. Tốc độ ego của CARLA dao động răng cưa từng
+tick và lệch pha với lần đo radar (trung bình thì `egoV` khớp quãng dịch chuyển thật 5,543 m/s; từng tick radar thấy 5,36 khi `egoV` báo 5,75), nên bù theo
+`egoV` của tick làm mọi điểm lệch cùng một lượng. Trừ trung vị Doppler của cùng lần đo thì độ lệch chuẩn trong tick còn 0,05 m/s và chỉ 0,3% điểm vượt ngưỡng.
+Bộ bám một mục tiêu còn khuếch đại lỗi: vật tĩnh trả điểm mỗi tick nên track không bao giờ mất và che người đi bộ.
+
+### Thay đổi
+
+- **Tốc độ radar từ cảnh tĩnh** (`RadarTracker.sensorSpeed`): trung vị `−v_r/(cos az·cos alt)` của lần đo (≥ 10 điểm gần trục), thay `egoV` khi tính phần dư —
+  cách radar ô tô ước lượng chuyển động của chính nó. Ngưỡng mở track hạ 0,25 → 0,15 m/s (3σ của nhiễu trong tick đã đo).
+- **Nhiều mục tiêu, chặn vật tĩnh:** mọi track được giữ (track tĩnh "hút" điểm của vật đó nên không mở lại); chỉ báo track **chuyển động so với mặt đất**:
+  thành phần ngang từ hồi quy vị trí, thành phần dọc từ Doppler (tâm cụm điểm trên thân người dao động dọc 0,1–0,17 m; Doppler của người đi bộ khớp vận
+  tốc thật trong 0,03 m/s). Điều kiện: ≥ 0,3 m/s (dưới tốc độ người đi bộ nhỏ nhất 0,5 m/s của kịch bản), ≥ 4σ, ≥ 15 mẫu, đạt liên tục 0,1 s; thôi báo sau
+  0,3 s đứng yên. Báo track chuyển động gần nhất phía trước.
+- **v6:** với người đi bộ, `AebStack` thật nhận ước lượng radar (`stepMeasured`), ground truth chạy bóng; `result.json` ghi `case.carla.perception_source` và
+  `perception_radar` (`status = PRIMARY`). Thiếu radar là lỗi bridge, không chạy "mù". File ≤ v5 giữ nguyên hành vi và `result.json` (`perception_shadow`).
+  Xe phía trước (ADR-050) vẫn dùng ground truth: bộ bám chặn vật tĩnh nên không thấy xe đứng yên (CCRs).
+- Trạng thái của chính ego (`egoV`, độ lệch ngang `egoY` để quy về khung giao cắt) vẫn lấy từ CARLA — tương ứng odometry/định vị của xe thật, không phải
+  perception mục tiêu. Khi không phát hiện, khoảng cách ground truth không đi vào quyết định (`AebStack.decide` chỉ dùng khoảng cách khi `detected`).
+
+### Bằng chứng
+
+Hằng số chọn trên dữ liệu thô 6 ca và một hàng rào tổng hợp khắc nghiệt (lệch Doppler chung ±0,35 m/s, 40 điểm/tick); cấu hình 3σ/10 mẫu báo nhầm hàng rào ở
+6/20 seed, cấu hình chọn 0/100. Phát lại 6 ca: không track bám nhầm, tối đa 1 track. CARLA 0.9.16 thật, Town04, e-tron, seed 48846, v6 xuất lại từ
+`data/radar-cases-20261022/c*.json` (`data/radar-v6-20261113/`), so với cùng ca ở v5 (`data/radar-mtt-20261113/shadow-*`):
+
+| Ca | v6 (radar): kết thúc / quyết định / chỉ số | v5 (ground truth) | Ghi chú |
+|---|---|---|---|
+| c1 40 km/h, 25 m | dừng / 2,25 s / quãng dừng 11,413 m | dừng / 2,25 / 11,421 | trùng (trong dao động chạy lặp) |
+| c2 60 km/h, 15 m | va chạm 16,627 m/s / 2,35 s | va chạm 16,625 / không quyết định | radar quyết định nhưng quá muộn để giảm va chạm |
+| c3 50 km/h, 25 m, dừng ở lề | qua / 2,10 s / khoảng cách nhỏ nhất 0,99 m | qua / 2,10 / 0,99 | trùng |
+| c4 30 km/h, 35 m | dừng / 4,25 s / 5,692 m | dừng / 4,25 / 5,690 | trùng |
+| c5 50 km/h, 20 m, mưa đêm | va chạm 11,577 m/s / 2,05 s | va chạm 12,252 / 2,20 | radar sớm hơn: perception tổng hợp giảm theo thời tiết, radar CARLA **không** mô phỏng mưa |
+| c6 20 km/h, 50 m, an toàn | qua, không phanh, 0 khung bám nhầm | qua, không phanh | track giả 22/10 đã hết |
+
+Đối chiếu tiêu chí đề xuất ở mục Quyết định: không track giả trên ca an toàn — **đạt**; sai số ngang trung bình 0,03–0,09 m (≤ 0,3) — **đạt**; quyết định khác
+ground truth — ghi ở bảng (không ca nào muộn hơn); phát hiện ≤ 0,3 s sau khi người bắt đầu đi — **không đạt**: 0,39–0,74 s. Phần lớn là vật lý Doppler:
+người đi bộ CARLA tăng tốc từ 0 (~4,4 m/s²) và ở xa đi gần vuông góc với tia, phần dư chỉ vượt ngưỡng ở 1,64–1,97 s; từ lúc mở track tới lúc báo thêm
+~0,25 s để chứng minh chuyển động. Vì AEB còn chờ TTC xuống ngưỡng nên trễ này chưa làm muộn quyết định ở 6 ca, nhưng ca người xuất hiện sát xe sẽ chịu
+trễ đó — nhóm cần chốt lại tiêu chí theo quyết định AEB thay vì thời điểm phát hiện.
+
+Giới hạn: radar CARLA không chịu thời tiết; một radar, bám người đi bộ băng ngang; vật đứng yên trong làn không được báo; tập kiểm 6 ca, một xe, một seed.
+Run `-xosc5` cũ giữ nguyên, không ghép với `-xosc6`; baseline CARLA cần chạy lại bằng `-xosc6` nếu muốn so.

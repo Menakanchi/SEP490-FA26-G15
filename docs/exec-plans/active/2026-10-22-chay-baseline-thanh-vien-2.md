@@ -9,7 +9,7 @@ dữ liệu ở `data/` (ngoài git).
 
 | Việc | Trạng thái | Bằng chứng |
 |---|---|---|
-| 1. Perception từ radar | **Giai đoạn 1 (chạy bóng) xong, đo 6 ca; vận tốc hồi quy cửa sổ. Giai đoạn 2 bị chặn: track giả ở ca an toàn c6** | mục 1, 1b |
+| 1. Perception từ radar | Giai đoạn 1 (chạy bóng) xong 22/10. **Giai đoạn 2 xong 13/11:** tìm ra nguyên nhân track giả c6, bộ bám nhiều mục tiêu, AEB thật của ca người đi bộ dùng radar ở `.xosc` v6 / `-xosc6`; 6 ca CARLA thật. Tiêu chí "phát hiện ≤ 0,3 s" chưa đạt (0,39–0,74 s), chờ nhóm chốt lại | mục 1, 1b, 1c |
 | 2. Hiệu chuẩn phanh | Có công cụ + số đo e-tron; **chưa ghi DB** (chờ quyết định) | mục 2 |
 | 3. Chạy lặp, dung sai | Có công cụ; n=5 trên ca dừng, ca va chạm, ca an toàn; **đề xuất dung sai** chờ thành viên 3, 5 chốt | mục 3 |
 | 4. Đọc lại physics | Xong: `physics_applied` (21/10) + `physics_check` so yêu cầu ↔ thực áp (22/10) | mục 4 |
@@ -24,7 +24,7 @@ dữ liệu ở `data/` (ngoài git).
 Thay đổi: `com.vsos.core.aeb.RadarTracker` (bộ bám, chỉ JDK); `AebStack.stepMeasured` (perception đo được, dùng chung code quyết định/điều khiển — tách hàm
 không đổi phép tính nào của đường ground truth, `KinematicParityTest` xanh); `CarlaSession` chạy một `AebStack` bóng nạp từ radar và ghi
 `case.carla.perception_shadow`; cầu nối nhận `radar` mỗi `step`, `open` trả thuộc tính radar (một nguồn); adapter gắn radar 90°/80 m/40 000 điểm/s ở mũi xe
-và chỉ chuyển điểm thô. Test: `RadarTrackerTest` (5), `BridgeProtocolTest.radarShadowIsMeasuredButNeverChangesTheRealRun` (kết quả thật trùng từng trường
+và chỉ chuyển điểm thô. Test: `RadarTrackerTest` (5), `BridgeProtocolTest.onV5RadarShadowIsMeasuredButNeverChangesTheRealRun` (kết quả thật trùng từng trường
 khi có/không radar), `test_radar_points_of_the_latest_measurement_are_forwarded_raw`.
 
 | Chỉ số (CARLA thật) | Ground truth | Radar bóng α=0,5 / β=0,2 (mặc định) | Radar bóng α=0,2 / β=α²/(2−α) |
@@ -200,3 +200,19 @@ CARLA 0.9.16 thật, Town04, `.xosc` v5 xuất lại từ `data/radar-cases-2026
 - Dòng phi vật lý duy nhất là frame đầu: ego −1664 m/s² do ScenarioRunner dịch xe lúc khởi tạo. CSV giữ số thô; dùng gia tốc GT phải bỏ khung này.
 - `impulse_ns` của va chạm với người đi bộ là 0,0 ở cả hai lần (CARLA không báo xung lực cho walker); không dùng cột này làm độ nặng va chạm.
 - Objective "vận tốc va chạm" hiện vẫn là tốc độ ego (CP_CROSSING). Số tương đối mới chỉ là dữ liệu; chọn dùng số nào là việc của thành viên 3 (§5.3).
+
+## 1c. Giai đoạn 2 perception radar (13/11/2026)
+
+Chi tiết và bảng đầy đủ ở [ADR-043](../../adr/ADR-043-perception-tu-radar-chay-bong-truoc.md) mục "Giai đoạn 2". Tóm tắt:
+
+- **Nguyên nhân track giả c6:** không phải vật lề đường lạ mà là cách bù tốc độ. Tốc độ ego CARLA răng cưa từng tick, lệch pha lần đo radar ⇒ phần dư Doppler
+  của **mọi** điểm lệch chung ±0,35 m/s (89% điểm vượt ngưỡng ở c6). Bù bằng tốc độ radar ước lượng từ cảnh tĩnh của cùng lần đo: còn 0,3%.
+- **Bộ bám mới:** nhiều mục tiêu, giữ track tĩnh để "hút" điểm, chỉ báo track chuyển động so với mặt đất (ngang từ vị trí, dọc từ Doppler; ≥ 4σ, ≥ 15 mẫu,
+  đạt liên tục 0,1 s). Hàng rào tổng hợp khắc nghiệt: 0/100 seed báo nhầm (3σ/10 mẫu: 6/20).
+- **Chẩn đoán:** `VSOS_RADAR_DUMP=1` ghi `radar_dump.jsonl` (điểm thô + ground truth mỗi tick) để phát lại bộ bám ngoài CARLA; dữ liệu 6 ca ở
+  `data/radar-mtt-20261113/dump-*`.
+- **v6 trên CARLA thật** (`data/radar-v6-20261113/`): 6/6 ca chạy xong, 0 khung bám nhầm. Quyết định AEB trùng ground truth ở c1, c3, c4; sớm hơn ở c5
+  (va chạm 11,58 thay vì 12,25 m/s — radar CARLA không chịu mưa); c2 có quyết định (2,35 s) mà ground truth không có, vẫn va chạm; c6 không phanh.
+- **Còn mở:** tiêu chí phát hiện ≤ 0,3 s không đạt — chờ thành viên 3, 5 chốt tiêu chí theo quyết định AEB; dung sai chạy lặp mục 3 đo ở `-xosc3`, cần đo lại ở
+  `-xosc6`; baseline CARLA cần chạy lại bằng `-xosc6`. v6 cũng gói luôn thay đổi thời tiết/`decel_available` 11/11 (exec plan 11/11, điểm D1) vào
+  identity mới.
