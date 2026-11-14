@@ -46,6 +46,21 @@ class CarlaSessionLogicTest {
         assertThat(CarlaSession.decelAvailable(crossing("RAIN"), current, 9.13)).isCloseTo(0.70 * Simulator.G, within(1e-9));
     }
 
+    /**
+     * D2/R1: CARLA không giảm bám đường theo thời tiết (đo 14/11/2026: mưa vẫn phanh 7,8–9,3 m/s²), nên lệnh giảm tốc đưa ra bàn đạp bị kẹp ở μ·g.
+     * Đường khô không đổi gì; file định dạng cũ giữ lệnh gốc để chạy lại ra đúng kết quả đã lưu.
+     */
+    @Test
+    void pedalCommandIsCappedAtRoadFrictionOnTheCurrentFormatOnly() {
+        com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile previous = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
+        assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("CLEAR"), current)).isEqualTo(8.0);
+        assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("RAIN"), current)).isCloseTo(0.70 * Simulator.G, within(1e-9));
+        assertThat(CarlaSession.frictionLimitedCommand(5.0, crossing("RAIN"), current)).isEqualTo(5.0);
+        assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("HEAVY_RAIN"), current)).isCloseTo(0.55 * Simulator.G, within(1e-9));
+        assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("RAIN"), previous)).isEqualTo(8.0);
+    }
+
     private static AebStack stack(double dt, Double period) {
         return new AebStack(AebParams.DEFAULT, 7, "RAIN", "NIGHT", 4.9, 8.0, new ArrayList<>(), dt, period);
     }

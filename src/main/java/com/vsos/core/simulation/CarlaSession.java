@@ -65,6 +65,8 @@ public final class CarlaSession {
     private Map<String, Object> carlaInfo = Map.of();
     private boolean pedStarted;
     private boolean braking;
+    /** Số tick lệnh giảm tốc AEB bị kẹp ở μ·g trước khi đổi ra bàn đạp ({@link #frictionLimitedCommand}). */
+    private int commandCapped;
     private String endReason;
     private Path resultPath;
 
@@ -280,7 +282,7 @@ public final class CarlaSession {
         if (tick.decelCmd() > 0) {
             braking = true;
         }
-        double pedal = braking ? DecelMeter.brakePedal(tick.decelCmd(), decel, fullBrakeDecel) : 0.0;
+        double pedal = braking ? DecelMeter.brakePedal(commandForPedal(tick.decelCmd()), decel, fullBrakeDecel) : 0.0;
         stats.add(decel);
         CrossingCase c = spec.requireCrossing("Runner CARLA");
         frames.add(Simulator.makeFrame(t, c.crossingX() - gap, egoV, decel, c.crossingX(), pedY, pedVy, tick,
@@ -345,7 +347,7 @@ public final class CarlaSession {
         if (tick.decelCmd() > 0) {
             braking = true;
         }
-        double pedal = braking ? DecelMeter.brakePedal(tick.decelCmd(), decel, fullBrakeDecel) : 0.0;
+        double pedal = braking ? DecelMeter.brakePedal(commandForPedal(tick.decelCmd()), decel, fullBrakeDecel) : 0.0;
         stats.add(decel);
         Double ttcGt = inPath && gap > 0 && closing > 0.1 ? gap / closing : null;
         frames.add(Simulator.makeFrame(t, egoFront - egoFront0, egoV, decel, targetRear - egoFront0, targetY, 0.0, tick, ttcGt, stack));
@@ -462,6 +464,27 @@ public final class CarlaSession {
     }
 
     /**
+     * Lệnh giảm tốc đưa ra bàn đạp CARLA, kẹp ở μ·g của mặt đường (quyết định D2/R1 của kế hoạch công thức CP_CROSSING, 15/11/2026).
+     * CARLA không giảm bám đường theo thời tiết: đo 14/11/2026 (carla-ped-bench, nhóm G5) xe vẫn phanh 7,8–9,3 m/s² khi trời mưa
+     * (μ 0,65 → giới hạn 6,4 m/s²) nên dừng sớm hơn xe thật 3,7–5,3 m. Kẹp lệnh ở adapter để xe CARLA không phanh vượt giới hạn lốp;
+     * AEB vẫn tính và ghi lệnh gốc của nó. Chỉ áp cho file định dạng hiện hành: file cũ chạy lại ra đúng kết quả đã lưu.
+     */
+    static double frictionLimitedCommand(double decelCmd, Bundle.RunSpec spec, Xosc.Profile profile) {
+        if (!Xosc.SIMULATOR_SUFFIX.equals(profile.suffix())) {
+            return decelCmd;
+        }
+        return Math.min(decelCmd, spec.roadFriction() * Simulator.G);
+    }
+
+    private double commandForPedal(double decelCmd) {
+        double limited = frictionLimitedCommand(decelCmd, spec, profile);
+        if (limited < decelCmd) {
+            commandCapped++;
+        }
+        return limited;
+    }
+
+    /**
      * Giảm tốc xe làm được ({@code a_avail}), dùng cho phần ngoại suy quãng dừng và cho chuỗi nguyên nhân: min(MAX_DECELERATION, giới hạn xe, μ·g).
      * Từ định dạng hiện hành (11/11/2026) giới hạn xe trên CARLA là giảm tốc phanh 100% đo được ({@code fullBrakeDecel}, cùng số controller dùng đổi ra
      * bàn đạp và cùng số {@code RunService.carlaData} dùng ngoại suy telemetry), không phải {@code max_brake_decel_mps2} giả định của bộ động học.
@@ -544,6 +567,7 @@ public final class CarlaSession {
         }
         carla.put("runner", "ScenarioRunner");
         carla.put("decel_clamped_frames", meter.clamped());
+        carla.put("decel_cmd_capped_frames", commandCapped);
         // Bước cấu hình và bước đo được từ timestamp khung thật: không coi cấu hình là đã đạt tốc độ này.
         carla.put("fixed_delta_seconds", stepS);
         carla.put("perception_period_s", profile.perceptionPeriodS());

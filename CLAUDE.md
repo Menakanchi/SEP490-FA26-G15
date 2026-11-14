@@ -157,7 +157,7 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
   Mỗi run chụp lõi thành `core/vsos-core.jar` riêng, nên `mvnw clean` giữa run không làm hỏng run đó.
 - Artifact hiện tại là `vehicsim.xosc/v5`, profile `carla-0.9.16-xosc5` (bước 0,01 s; v4 = v3 + người "dừng ở lề" đứng lại, TD-47;
   v5 = v4 + mô-men phanh đã hiệu chuẩn `vs_physics_wheel_max_brake_torque`, ADR-051; từ 11/11 thêm thời tiết theo preset CARLA và
-  `decel_available` theo phanh 100% đo được, [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md)). File v1 phải xuất lại từ web; không ghép baseline
+  `decel_available` theo phanh 100% đo được, từ 15/11 lệnh giảm tốc ra bàn đạp kẹp ở μ·g, [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md)). File v1 phải xuất lại từ web; không ghép baseline
   `-xosc1`, `-xosc2` (20 Hz), `-xosc3` (người dừng ở lề đi vào làn), `-xosc4` (phanh CARLA chưa hiệu chuẩn), runner trực tiếp `carla-0.9.16`
   và `-xosc5`. Backend không chạy lại run `-xosc1`…`-xosc4`; `run_xosc.py` vẫn chạy file v2/v3/v4 ngoài web.
 - `.xosc` là đầu vào mô phỏng. JSON vẫn là hợp đồng nội bộ/result; không đổi đuôi JSON thành XML hoặc bỏ metadata seed/source.

@@ -1,6 +1,6 @@
 # Đo độ lệch CARLA so với bộ động học — ca người đi bộ băng ngang (13/11/2026)
 
-**Trạng thái:** kế hoạch — chưa chạy. **Phạm vi:** chỉ `CP_CROSSING` (người đi bộ băng ngang); CCRs / CCRm / CCRb để sau.
+**Trạng thái:** đã đo bằng công cụ open-loop carla-ped-bench (14/11/2026, 56 run) — kết luận ở mục "Kết quả đo 14/11/2026"; các ca closed-loop có AEB dưới đây chưa chạy. **Phạm vi:** chỉ `CP_CROSSING` (người đi bộ băng ngang); CCRs / CCRm / CCRb để sau.
 **Nền:** `main` sau `58e11ff` (`.xosc` v5 / `-xosc5`, [ADR-051](../../adr/ADR-051-hieu-chuan-phanh-carla-xosc5.md): e-tron 1800 N·m,
 phanh 100% đo được 9,13 m/s²). **Liên quan:** [kế hoạch công thức CP_CROSSING trên CARLA](2026-11-11-cong-thuc-cp-crossing-carla.md)
 (TuDM) — bước 1 của kế hoạch đó (mưa trên CARLA) trùng nhóm W dưới đây: chạy chung một lần, số liệu dùng cho cả hai; quyết định D2 (kẹp bàn
@@ -24,6 +24,22 @@ AEB theo một sai lệch của bộ mô phỏng. Kiểm chứng ADR-051 mới c
 
 **Kết quả của kế hoạch là số liệu để quyết định, không đổi AEB.** Bù (nếu cần) bằng tham số AEB áp dụng như nhau cho mọi bộ mô phỏng — không
 thêm nhánh riêng cho CARLA vào `AebStack` (ADR-042).
+
+## Kết quả đo 14/11/2026
+
+Đo bằng [carla-ped-bench](../../vehicsim/carla-ped-bench/README.md) (lệnh phanh cố định, không AEB; [dữ liệu và tóm tắt](../../vehicsim/carla-ped-bench/ket-qua/2026-11-14_1758/README.md);
+[cơ sở lý thuyết](../../vehicsim/carla-ped-bench/co-so-ly-thuyet.md)). 56/56 run hợp lệ; chạy lặp giống hệt (CARLA đồng bộ là tất định) và trùng từng số giữa hai máy.
+
+| Nguồn lệch | Đo được | Kết luận |
+|---|---|---|
+| Phanh, pha phanh đều | η = 1,28 / 1,01 / 0,98 / 0,97 ở 40 / 50 / 60 / 70 km/h (mức đích 8 m/s²) | Khớp mô hình từ 50 km/h |
+| Phanh, vùng tốc độ thấp | Dưới 6 m/s dừng gấp 23–25 m/s²; Δ quãng dừng −1,72 ± 0,42 m (20–70 km/h) | **CARLA lạc quan ~1,7 m trên đường khô** (TD-17) |
+| Ma sát mặt đường | Mưa vẫn phanh 7,8–9,3 m/s² (mô hình kẹp 6,4 / 5,4), dừng sớm 3,7–5,3 m | Không dùng được cho đường ướt khi chưa có mô hình ma sát → **đã kẹp lệnh ở μ·g** (D2/R1, kế hoạch 11/11) |
+| Người đi bộ tăng tốc dần | Đạt 90% tốc độ sau 0,61 s; vào hành lang muộn hơn 0,34 s ở mọi tốc độ | Lệch của mô hình "đạt ngay"; CARLA gần người thật hơn — không bù |
+| Dừng ở lề | Nhô vào làn 0,05–0,18 m (1,0–3,0 m/s) | Ghi nhận; tăng theo tốc độ người |
+
+Không có độ lệch nào cần bù trong AEB (ΔTTC đều âm: CARLA phanh mạnh hơn giả định). Khi đọc số CARLA cho ca người đi bộ: trừ phần lạc quan ~1,7 m
+ở cuối pha phanh trên đường khô.
 
 ## Thiết lập chung (mọi ca)
 
@@ -220,8 +236,9 @@ Loại (ghi lý do, không đưa vào bảng) khi: `physics_check.forced_ok` = f
 
 | Bước | Việc | Trạng thái |
 |---|---|---|
-| 0 | Chốt danh sách ca (tài liệu này) | Xong — chờ duyệt |
+| 0 | Chốt danh sách ca (tài liệu này) | Xong |
+| 0b | Đo open-loop bằng carla-ped-bench (thay nhóm BR, V, S, T, C, W, R ở dạng không AEB) | **Xong 14/11/2026** — mục Kết quả đo |
 | 1 | Bổ sung `decel_cmd` và TTC dự đoán vào `outcome.frames` (mục 4) | Chưa làm |
 | 2 | Script sinh bundle + chạy lô + `summary.csv` | Chưa làm |
 | 3 | Chạy BR, rồi V / S / T / C / N, rồi W (chung với TuDM bước 1), rồi R | Chưa làm (cần máy CARLA) |
-| 4 | Phân tích, cập nhật TD-17 và đề xuất tham số AEB cho người đi bộ | Chưa làm |
+| 4 | Phân tích, cập nhật TD-17 | **Xong 15/11/2026** (TD-17; kẹp μ·g ở adapter). Đề xuất tham số AEB: không cần bù — thuộc phần tối ưu AEB |
