@@ -150,7 +150,7 @@ Dải dao động của 3 lần là ngưỡng nhiễu: độ lệch nhỏ hơn d
 
 | Đường dẫn | Trường | Dùng để |
 |---|---|---|
-| `simulator`, `seed`, `format` | `carla-0.9.16-xosc5`, seed | Kiểm đúng profile / seed |
+| `simulator`, `seed`, `format` | `carla-0.9.16-xosc6`, seed | Kiểm đúng profile / seed |
 | `outcome.end_reason`, `outcome.duration_s` | EGO_STOPPED / COLLISION / TIMEOUT | Kết quả |
 | `outcome.metrics` | `collision`, `impact_speed_mps`, `min_distance_m`, `min_ttc_s` | Kết quả cuối |
 | `outcome.metrics` | `pedestrian_entered_path`, `gt_in_path_t`, `first_detection_t`, `first_detection_distance_m` | Lúc người thành nguy hiểm — so với bộ động học để đo ảnh hưởng tăng tốc dần |

@@ -31,20 +31,22 @@ import com.vsos.core.common.Py;
 public final class Xosc {
 
     /**
-     * v5 (08/11/2026, ADR-051, TD-17): như v4 nhưng xe đã hiệu chuẩn mang {@code vs_physics_wheel_max_brake_torque} (mô-men phanh mọi bánh) nên
-     * CARLA phanh hết cỡ gần đúng {@code max_brake_decel_mps2} của xe. Xe chưa hiệu chuẩn ghi XML giống v4 trừ {@code vs_format}; đổi identity vì
-     * kết quả CARLA của xe đã hiệu chuẩn đổi, regression không được ghép run phanh cũ với run phanh mới.
+     * v6 (15/11/2026, ADR-052): như v5 nhưng controller CARLA kẹp lệnh giảm tốc AEB ở μ·g trước khi đổi ra bàn đạp (CARLA không giảm bám đường
+     * theo thời tiết). File giống v5 trừ {@code vs_format}; đổi identity vì kết quả CARLA của ca đường ướt đổi.
      */
-    public static final String FORMAT = "vehicsim.xosc/v5";
-    public static final String SIMULATOR_SUFFIX = "-xosc5";
+    public static final String FORMAT = "vehicsim.xosc/v6";
+    public static final String SIMULATOR_SUFFIX = "-xosc6";
     /** Bước mô phỏng 0,01 s (100 Hz, kế hoạch 20/10 D3, từ v3); perception/quyết định AEB vẫn theo chu kỳ cảm biến 0,05 s. */
     public static final double STEP_S = 0.01;
     /**
-     * v4 (23/10/2026, TD-47) chỉ còn để chạy lại bằng chứng cũ ngoài web: cùng bước 0,01 s, ca "dừng ở lề" như v5, nhưng không ép mô-men phanh nên
-     * CARLA phanh hết cỡ chỉ ~4 m/s² (TD-17). Backend không tạo / chạy lại run bằng profile này và không ghép với v5.
+     * v5 (08/11/2026, ADR-051): mô-men phanh đã hiệu chuẩn; từ 11/11 thời tiết theo preset CARLA và a_avail theo phanh 100% đo được. Lệnh giảm
+     * tốc ra bàn đạp chưa kẹp ở μ·g. Backend không tạo / chạy lại run bằng profile này và không ghép với v6.
      */
-    public static final String PREVIOUS_FORMAT = "vehicsim.xosc/v4";
-    public static final String PREVIOUS_SIMULATOR_SUFFIX = "-xosc4";
+    public static final String PREVIOUS_FORMAT = "vehicsim.xosc/v5";
+    public static final String PREVIOUS_SIMULATOR_SUFFIX = "-xosc5";
+    /** v4 (23/10/2026, TD-47): như v5 nhưng không ép mô-men phanh (CARLA phanh hết cỡ ~4 m/s², TD-17); chỉ còn để chạy lại bằng chứng cũ ngoài web. */
+    public static final String V4_FORMAT = "vehicsim.xosc/v4";
+    public static final String V4_SIMULATOR_SUFFIX = "-xosc4";
     /** v3: như v4 nhưng người "dừng ở lề" đi tiếp vào làn (TD-47); chỉ còn để chạy lại bằng chứng cũ ngoài web. */
     public static final String V3_FORMAT = "vehicsim.xosc/v3";
     public static final String V3_SIMULATOR_SUFFIX = "-xosc3";
@@ -169,7 +171,8 @@ public final class Xosc {
         if ("vehicsim.xosc/v1".equals(format)) {
             throw new Bundle.BundleError("File .xosc v1 có hướng đi bộ cũ; cần xuất lại từ web để chạy người đi bộ băng ngang đường");
         }
-        if (!FORMAT.equals(format) && !PREVIOUS_FORMAT.equals(format) && !V3_FORMAT.equals(format) && !LEGACY_FORMAT.equals(format)) {
+        if (!FORMAT.equals(format) && !PREVIOUS_FORMAT.equals(format) && !V4_FORMAT.equals(format) && !V3_FORMAT.equals(format)
+                && !LEGACY_FORMAT.equals(format)) {
             throw new Bundle.BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)");
         }
         try {
@@ -282,6 +285,7 @@ public final class Xosc {
         String format = values.get("format");
         String suffix = FORMAT.equals(format) ? SIMULATOR_SUFFIX
                 : PREVIOUS_FORMAT.equals(format) ? PREVIOUS_SIMULATOR_SUFFIX
+                : V4_FORMAT.equals(format) ? V4_SIMULATOR_SUFFIX
                 : V3_FORMAT.equals(format) ? V3_SIMULATOR_SUFFIX : null;
         if (suffix == null) {
             throw new Bundle.BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)");

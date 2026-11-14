@@ -24,6 +24,8 @@ Các file `*.json` / `kinematic.json.gz` ở đây là kết quả của lõi **
 - **Ngoại lệ có chủ đích (08/11/2026, ADR-051, `vehicsim.xosc/v5`):** test thay `vs_format` của cả hai fixture thành v5 trước khi so.
   `export 5` mang `physics.wheels = {tire_friction, max_brake_torque}`: Python bỏ lặng lẽ, v5 chỉ mang được `{max_brake_torque}` nên
   từ chối ca này — test khẳng định việc từ chối thay vì so từng byte.
+- **15/11/2026, ADR-052, `vehicsim.xosc/v6`:** chỉ đổi `vs_format` (v6 = v5 + kẹp lệnh phanh ở μ·g ở adapter, không đổi XML); test thay
+  `vs_format` của fixture thành định dạng hiện hành như trên.
 - **Ngoại lệ có chủ đích (11/11/2026, thời tiết theo preset CARLA):** `XoscReadParityTest` che `<Sun>` và `<Precipitation>` ở cả hai phía
   trước khi so; giá trị mới kiểm ở `XoscExportTest.weatherFollowsTheCarlaPresetsAsScenarioRunnerReadsThem`.
 - Hash golden của lưới 1296 ca bộ động học và kết quả đối chiếu rộng (`-Dvsos.parity.full=...`) ghi ở

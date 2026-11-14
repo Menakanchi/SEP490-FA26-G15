@@ -101,7 +101,7 @@ class XoscReadParityTest {
             if (spec.caseSpec().stopsAtCurb()) {
                 expected = curbV4.get(name);
                 assertThat(expected).as(name + " có trong xosc_v4_stops_at_curb.json").isNotNull();
-                expected = expected.replace(Xosc.PREVIOUS_FORMAT, Xosc.FORMAT);  // v5 chỉ đổi vs_format với xe chưa hiệu chuẩn (ADR-051)
+                expected = expected.replace(Xosc.V4_FORMAT, Xosc.FORMAT);  // v5/v6 chỉ đổi vs_format với xe chưa hiệu chuẩn (ADR-051, ADR-052)
                 curb++;
             } else {
                 expected = ((String) e.get("xml")).replace(Xosc.V3_FORMAT, Xosc.FORMAT);

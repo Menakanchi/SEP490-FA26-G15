@@ -467,7 +467,7 @@ public final class CarlaSession {
      * Lệnh giảm tốc đưa ra bàn đạp CARLA, kẹp ở μ·g của mặt đường (quyết định D2/R1 của kế hoạch công thức CP_CROSSING, 15/11/2026).
      * CARLA không giảm bám đường theo thời tiết: đo 14/11/2026 (carla-ped-bench, nhóm G5) xe vẫn phanh 7,8–9,3 m/s² khi trời mưa
      * (μ 0,65 → giới hạn 6,4 m/s²) nên dừng sớm hơn xe thật 3,7–5,3 m. Kẹp lệnh ở adapter để xe CARLA không phanh vượt giới hạn lốp;
-     * AEB vẫn tính và ghi lệnh gốc của nó. Chỉ áp cho file định dạng hiện hành: file cũ chạy lại ra đúng kết quả đã lưu.
+     * AEB vẫn tính và ghi lệnh gốc của nó. Chỉ áp cho file v6 (ADR-052): file cũ, kể cả v5, chạy lại ra đúng kết quả đã lưu.
      */
     static double frictionLimitedCommand(double decelCmd, Bundle.RunSpec spec, Xosc.Profile profile) {
         if (!Xosc.SIMULATOR_SUFFIX.equals(profile.suffix())) {
@@ -492,7 +492,9 @@ public final class CarlaSession {
      */
     static double decelAvailable(Bundle.RunSpec spec, Xosc.Profile profile, double fullBrakeDecel) {
         double nominal = Math.min(Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), spec.roadFriction() * Simulator.G);
-        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) ? Math.min(nominal, fullBrakeDecel) : nominal;
+        // Từ v5 (11/11/2026): v5 và v6 dùng phanh 100% đo được; file cũ hơn giữ cách tính cũ.
+        boolean measured = Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.PREVIOUS_SIMULATOR_SUFFIX.equals(profile.suffix());
+        return measured ? Math.min(nominal, fullBrakeDecel) : nominal;
     }
 
     /** Ghi {@code result.json}. Gọi lại sau khi đã kết thúc, hoặc khi chưa có khung nào, là không làm gì (như {@code _finish} của bản Python). */

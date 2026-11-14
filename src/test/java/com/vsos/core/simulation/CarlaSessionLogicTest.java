@@ -36,7 +36,9 @@ class CarlaSessionLogicTest {
     @Test
     void decelAvailableUsesTheMeasuredFullBrakeOnTheCurrentFormatOnly() {
         com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
-        com.vsos.core.xosc.Xosc.Profile previous = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile previous = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V4_SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v5 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
+        assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), v5, 3.56)).isEqualTo(3.56); // v5 giữ cách tính từ 11/11
         // Xe chưa hiệu chuẩn (phanh 100% ~3,56 m/s², Tesla Model 3): trước đây vẫn tính như xe phanh được 8.
         assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), current, 3.56)).isEqualTo(3.56);
         assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), previous, 3.56)).isEqualTo(8.0);
@@ -51,7 +53,7 @@ class CarlaSessionLogicTest {
      * Đường khô không đổi gì; file định dạng cũ giữ lệnh gốc để chạy lại ra đúng kết quả đã lưu.
      */
     @Test
-    void pedalCommandIsCappedAtRoadFrictionOnTheCurrentFormatOnly() {
+    void pedalCommandIsCappedAtRoadFrictionFromV6Only() {
         com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
         com.vsos.core.xosc.Xosc.Profile previous = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
         assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("CLEAR"), current)).isEqualTo(8.0);

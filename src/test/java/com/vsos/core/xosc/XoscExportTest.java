@@ -173,9 +173,12 @@ class XoscExportTest {
     }
 
     @Test
-    void v3AndV4FilesStillReadWithTheirOwnIdentity() {
+    void v3V4AndV5FilesStillReadWithTheirOwnIdentity() {
         Bundle.RunSpec spec = Bundle.readSpec(ir());
-        String v4 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.PREVIOUS_FORMAT);
+        String v5 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.PREVIOUS_FORMAT);
+        assertThat(Xosc.profile(v5)).isEqualTo(new Xosc.Profile("-xosc5", 0.01, 0.05));
+        assertThat(Xosc.read(v5)).isEqualTo(spec);
+        String v4 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V4_FORMAT);
         assertThat(Xosc.profile(v4)).isEqualTo(new Xosc.Profile("-xosc4", 0.01, 0.05));
         assertThat(Xosc.read(v4)).isEqualTo(spec);
         String v3 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V3_FORMAT);
@@ -215,7 +218,7 @@ class XoscExportTest {
     @Test
     void currentProfileIs100HzWithSensorPeriodPerception() {
         Xosc.Profile p = Xosc.profile(XoscExport.export(Bundle.readSpec(ir())));
-        assertThat(p).isEqualTo(new Xosc.Profile("-xosc5", 0.01, 0.05));
+        assertThat(p).isEqualTo(new Xosc.Profile("-xosc6", 0.01, 0.05));
     }
 
     @Test

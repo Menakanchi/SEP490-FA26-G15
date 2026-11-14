@@ -200,7 +200,7 @@ public class RunService {
     /** ``fixed_delta_seconds`` của run: bước mô phỏng theo identity simulator. */
     static double stepFor(String simulator) {
         return simulator != null && (simulator.endsWith(XOSC_SUFFIX) || simulator.endsWith(Xosc.PREVIOUS_SIMULATOR_SUFFIX)
-                || simulator.endsWith(Xosc.V3_SIMULATOR_SUFFIX)) ? CARLA_XOSC_STEP_S : DT;
+                || simulator.endsWith(Xosc.V4_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V3_SIMULATOR_SUFFIX)) ? CARLA_XOSC_STEP_S : DT;
     }
 
     static String simulatorType(String simulator) {
@@ -332,9 +332,9 @@ public class RunService {
             Row run = db.first("SELECT * FROM simulation_runs WHERE id = ?", runId);
             String profile = run.str("simulator_version");
             if (isCarla(profile) && (profile.endsWith("-xosc1") || profile.endsWith("-xosc2") || profile.endsWith(Xosc.V3_SIMULATOR_SUFFIX)
-                    || profile.endsWith(Xosc.PREVIOUS_SIMULATOR_SUFFIX))) {
-                // xosc2 là bước 0,05 s; xosc3 có người "dừng ở lề" đi vào làn (TD-47); xosc4 chưa ép mô-men phanh (ADR-051):
-                // không chạy lại bằng bộ xuất mới, không ghép với xosc5.
+                    || profile.endsWith(Xosc.V4_SIMULATOR_SUFFIX) || profile.endsWith(Xosc.PREVIOUS_SIMULATOR_SUFFIX))) {
+                // xosc2 là bước 0,05 s; xosc3 có người "dừng ở lề" đi vào làn (TD-47); xosc4 chưa ép mô-men phanh (ADR-051);
+                // xosc5 chưa kẹp lệnh ở μ·g (ADR-052): không chạy lại bằng bộ xuất mới, không ghép với xosc6.
                 throw new SimulatorException("run CARLA dùng " + profile.substring(profile.lastIndexOf('-') + 1)
                         + " đã cũ; tạo lượt chạy mới để dùng profile " + XOSC_SUFFIX);
             }

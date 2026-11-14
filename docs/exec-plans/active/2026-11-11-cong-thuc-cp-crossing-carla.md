@@ -28,12 +28,12 @@ khoảng tham số) và phần phân tích kết quả / lỗi (`Evaluation`, c�
 | 1b | μ RAIN 0,65 (`Vs.WEATHER_FRICTION`); bảng dự phòng `CrossingCase` giữ 0,70 | **Xong** |
 | 2 | Thời tiết theo preset CARLA (`XoscExport.sunIntensity`, `rainIntensity`, `sunElevationRad`) | **Xong**; preset chưa kiểm trên máy CARLA |
 | 3 | $a_{avail}$ trên CARLA = min(MAX_DECEL, xe DB, μ·g, phanh 100% đo được), chỉ file định dạng hiện hành (`CarlaSession.decelAvailable`) | **Xong** |
-| 4 | Mưa trên CARLA theo D2: `CarlaSession.frictionLimitedCommand` kẹp lệnh giảm tốc ở μ·g trước khi đổi ra bàn đạp (chỉ định dạng hiện hành), `case.carla.decel_cmd_capped_frames` đếm tick bị kẹp | **Xong 15/11** — CARLA thật, người đi bộ 40 km/h, RAIN μ 0,65: bàn đạp tối đa 0,96 → 0,80, quãng dừng 7,13 → 8,37 m, 77 tick kẹp; CLEAR: 0 tick kẹp |
+| 4 | Mưa trên CARLA theo D2: `CarlaSession.frictionLimitedCommand` kẹp lệnh giảm tốc ở μ·g trước khi đổi ra bàn đạp (chỉ `.xosc` v6 / `-xosc6`, [ADR-052](../../adr/ADR-052-xosc6-kep-lenh-phanh-theo-ma-sat.md)), `case.carla.decel_cmd_capped_frames` đếm tick bị kẹp | **Xong 15/11** — CARLA thật, người đi bộ 40 km/h, RAIN μ 0,65: bàn đạp tối đa 0,96 → 0,80, quãng dừng 7,13 → 8,37 m, 77 tick kẹp; CLEAR: 0 tick kẹp |
 | 5 | Hành lang theo bề rộng xe (D4) | Chờ |
 | 6 | Cấu hình mặc định (D5) | Chờ |
 | 7 | Gate + nghiệm thu CARLA thật | Gate xong cho bước 1b–3; CARLA chưa |
 | 8 | Tài liệu repo (ADR-051 bổ sung, CLAUDE.md, sổ kiểm chứng, sổ tay `.md`) | Một phần (mục Kiểm chứng) |
-| 9 | Chạy lại baseline CARLA bằng `-xosc5` (sau migration 014 trên từng máy) | Chưa làm |
+| 9 | Chạy lại baseline CARLA bằng `-xosc6` (sau migration 014 trên từng máy) | Chưa làm |
 
 ## Bàn giao (ngoài phạm vi)
 
