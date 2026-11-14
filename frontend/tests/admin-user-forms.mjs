@@ -1,5 +1,6 @@
 /** Batch 4 forms: browser-only HTTP fixtures, no live auth/backend/DB/Figma. */
 import { chromium } from "playwright";
+import { browserOptions, captureScreenshot } from "./admin-test-utils.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -16,7 +17,7 @@ const users=[
 ];
 let role="ADMIN",saveMode="reject",detailMode="normal",revoked=false;
 const writes=[],reads=[],pending=[],errors=[],unexpected=[],screenshots=[];
-const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
+const browser=await chromium.launch(browserOptions());
 try{
  const context=await browser.newContext({viewport:{width:1366,height:768}});
  await context.route("**/api/v1/**",async route=>{
@@ -71,7 +72,7 @@ try{
  const ready=()=>frame.getByRole("region",{name:"Bảng tài khoản, cuộn ngang",exact:true}).waitFor();
  const open=async email=>{await frame.getByRole("button",{name:"Chỉnh sửa tài khoản "+email,exact:true}).click();await dialog().waitFor();};
  const add=async()=>{await frame.getByRole("button",{name:"Thêm mới",exact:true}).click();await dialog().waitFor();};
- const shot=async name=>{await page.screenshot({path:path.join(output,name+".png"),fullPage:false});screenshots.push(name+".png");};
+ const shot=async name=>{await captureScreenshot(page,{path:path.join(output,name+".png"),fullPage:false},screenshots);};
  const release=kind=>{const item=pending.find(item=>item.kind===kind);assert.ok(item);pending.splice(pending.indexOf(item),1);item.resolve();};
  const fillCreate=async(password="Fixture-123")=>{
   await dialog().getByLabel("Email *",{exact:true}).fill("  NEW-FORM@EXAMPLE.INVALID  ");

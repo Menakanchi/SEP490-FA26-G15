@@ -1,5 +1,6 @@
 /** Admin layout regression with browser-only HTTP fixtures; no live auth/backend/DB/Figma. */
 import { chromium } from "playwright";
+import { browserOptions, captureScreenshot } from "./admin-test-utils.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -20,7 +21,8 @@ const reference = {id:401,ref_code:"UI-REF-001",ref_name:"Hằng số kiểm th�
 let role="ADMIN",mode="normal";
 const requests=[],writes=[],unexpected=[],errors=[],screenshots=[];
 const backgroundIssues=[];
-const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
+const pendingLists=[];
+const browser=await chromium.launch(browserOptions());
 try {
   const context=await browser.newContext({viewport:{width:1366,height:768}});
   await context.route("**/api/v1/**",async route=>{
@@ -46,7 +48,7 @@ try {
       if(mode==="expired")return reply({detail:"Fixture: phiên đã hết hạn"},401);
       if(mode==="forbidden")return reply({detail:"Fixture: không có quyền"},403);
       if(mode==="error")return reply({detail:"Fixture: không tải được dữ liệu"},503);
-      if(mode==="slow")await new Promise(resolve=>setTimeout(resolve,1200));
+      if(mode==="slow")await new Promise(resolve=>pendingLists.push(resolve));
       const page=Number(url.searchParams.get("page")||1);
       if(resource==="users"&&url.searchParams.get("role")==="MANAGER")return reply({items:[{...user,id:workspace.manager_id,full_name:workspace.manager_name,email:workspace.manager_email,role:"MANAGER"}],total:1,page,page_size:20});
       const items=mode==="empty"?[]:resource==="users"?Array.from({length:4},(_,i)=>({...row,id:row.id+i+(page-1)*20,full_name:i===1?"Tên tài khoản dài để kiểm tra bố cục và khoảng cách trong bảng":row.full_name,email:i===1?"email-very-long-for-layout-checks-ui-fixture-only@example.invalid":row.email})):resource==="workspaces"?[row,{...row,id:202,name:"Workspace lưu trữ",status:"ARCHIVED"}]:[row,{...row,id:402,ref_code:"UI-REF-002",ref_name:"Tiêu chuẩn kiểm thử",ref_type:"STANDARD",ref_value:null,is_active:false}];
@@ -62,7 +64,7 @@ try {
     await frame.getByRole("table").waitFor();
   };
   const overflow=async()=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,"No document horizontal overflow");
-  const shot=async name=>{await page.screenshot({path:path.join(output,`${name}.png`),fullPage:false});screenshots.push(`${name}.png`);};
+  const shot=async name=>{await captureScreenshot(page,{path:path.join(output,`${name}.png`),fullPage:false},screenshots);};
 
   // Locator visibility alone misses controls clipped by an overflowing dialog/body.
   const tabToVisible=async(target,name)=>{
@@ -145,6 +147,9 @@ try {
     if(resource==="workspaces")await dialog.getByRole("radiogroup",{name:"Kết quả tìm Manager",exact:true}).waitFor();
     assert.equal(await dialog.getAttribute("aria-modal"),"true");
     assert.equal(await dialog.evaluate(el=>el.contains(document.activeElement)),true,"Initial focus stays inside native modal");
+    assert.equal(await dialog.evaluate(el=>el.matches(":modal")),true,"Open dialog uses native modality, not only aria-modal");
+    await frame.getByRole("button",{name:"Thêm mới",exact:true}).evaluate(el=>el.focus());
+    assert.equal(await dialog.evaluate(el=>el.contains(document.activeElement)),true,"Native inert background cannot receive programmatic focus");
     const openedY=await page.evaluate(()=>scrollY);
     assert.equal(await frame.locator("h1").evaluate(el=>el.getBoundingClientRect().x),beforeModal.headingX,"Opening does not shift background horizontally");
     assert.equal(await frame.locator("h1").evaluate(el=>el.getBoundingClientRect().width),beforeModal.headingWidth,"Opening retains background content width");
@@ -281,6 +286,11 @@ try {
       else if(state==="empty")await frame.getByText(resource==="users"?"Chưa có tài khoản":resource==="workspaces"?"Chưa có workspace":"Chưa có tài liệu kỹ thuật",{exact:true}).waitFor();
       else await frame.getByRole("alert").filter({hasText:state==="error"?(resource==="tech-references"?"Máy chủ chưa thể tải tài liệu. Hãy thử lại sau.":"Fixture: không tải được"):"Fixture: không có quyền"}).waitFor();
       assert.equal(await frame.getByRole("link",{name:"Hồ sơ / Mật khẩu",exact:true}).isVisible(),true);
+      if(state==="slow"){
+        mode="normal";
+        assert.equal(pendingLists.length,1,"Loading request is explicitly held until asserted");
+        pendingLists.shift()();await ready(title);
+      }
       if(state==="error"){
         mode="normal";await frame.getByRole("button",{name:"Thử lại",exact:true}).click();await ready(title);
       }
@@ -325,4 +335,4 @@ try {
   assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);
   await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",viewports,shortViewports,screenshots,checks:["fixture login and legacy /admin entry both lead to /admin/users","three routes, unique h1, breadcrumbs, metadata, active nav","shared typography/control dimensions, visible focus, dialog token inheritance","desktop/tablet/mobile and no document overflow","native menu keyboard/Escape/client navigation/history","three editors at short heights: unclipped fields/actions, Tab wrap, review/discard/Escape/draft/return focus; rejected PUT remains usable","skip link focus and notification popup bounds","existing editor open/cancel, PUT confirmation/error preserves values","server search/pagination remains connected","loading/empty/503/403/retry","profile exit restores global shell","four non-Admin roles denied on all resources without Admin API reads","expired token, unauthenticated redirect, mobile logout"],adminWrites:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
   console.log(`PASS Admin batch 1: ${screenshots.length} screenshots; browser HTTP fixtures only. Live backend/auth/DB/Figma NOT verified.`);
-} finally {await browser.close();}
+} finally {for(const release of pendingLists)release();await browser.close();}

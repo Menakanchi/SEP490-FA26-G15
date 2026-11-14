@@ -1,5 +1,6 @@
 /** Batch 8: HTTP fixtures only. No live backend/auth/DB/CARLA/Figma. */
 import { chromium } from "playwright";
+import { browserOptions, captureScreenshot } from "./admin-test-utils.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -12,7 +13,7 @@ const kinds=["CONSTANT","PRINCIPLE","THEORY","DEFINITION","UNIT","STANDARD"],exa
 const records=Array.from({length:61},(_,i)=>({id:i===0?888888:400+i,ref_code:"REF-"+String(i).padStart(3,"0"),ref_name:i===0?"Tài liệu với tên dài để kiểm tra bảng và hộp thoại trên màn hình nhỏ":"Tài liệu "+String(i).padStart(3,"0"),ref_type:kinds[i%6],ref_value:i%6===0?exact:null,unit:"m/s²",description:i===0?"Mô tả ban đầu":null,source_type:"Journal",source_title:"Nguồn fixture",author:"Author",organization:"Organization",publication_year:2026,page:"1–5",url:"https://example.invalid/source",doi:"10.0000/fixture",is_active:i%3!==1,updated_at:i===60?null:stamp}));
 let role="ADMIN",mode="normal",detailMode="normal",saveMode="reject",delaySearch=null;
 const requests=[],writes=[],pending=[],errors=[],unexpected=[],screenshots=[],issues=[];
-const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
+const browser=await chromium.launch(browserOptions());
 try{
  const context=await browser.newContext({viewport:{width:1366,height:768}});
  await context.route("**/api/v1/**",async route=>{
@@ -71,7 +72,7 @@ try{
  const frame=page.locator("[data-admin-frame]"),region=()=>frame.getByRole("region",{name:"Bảng tài liệu kỹ thuật, cuộn ngang",exact:true}),dialog=()=>page.getByRole("dialog",{name:/^(Thêm mới|Chỉnh sửa) · Tài liệu kỹ thuật$/});
  const readCount=()=>requests.filter(item=>item.path==="/vehicsim/admin/tech-references"&&item.method==="GET").length;
  const query=()=>Object.fromEntries(new URL(page.url()).searchParams),release=kind=>{const item=pending.find(item=>item.kind===kind);assert.ok(item);pending.splice(pending.indexOf(item),1);item.resolve();};
- const shot=async name=>{await page.screenshot({path:path.join(output,name+".png"),fullPage:false});screenshots.push(name+".png");};
+ const shot=async name=>{await captureScreenshot(page,{path:path.join(output,name+".png"),fullPage:false},screenshots);};
  const ready=async()=>{
   const params=new URL(page.url()).searchParams,q=(params.get("q")||"").trim().slice(0,100),kind=kinds.includes(params.get("role"))?params.get("role"):"",status=["ACTIVE","INACTIVE"].includes(params.get("status"))?params.get("status"):"",sort=["newest","oldest","name"].includes(params.get("sort"))?params.get("sort"):"newest",size=[10,20,50,100].includes(Number(params.get("page_size")))?Number(params.get("page_size")):20;
   const rows=mode==="empty"?[]:records.filter(item=>(!q||(item.ref_code+" "+item.ref_name).toLowerCase().includes(q.toLowerCase()))&&(!kind||item.ref_type===kind)&&(!status||item.is_active===(status==="ACTIVE")));
@@ -80,7 +81,7 @@ try{
   await page.waitForFunction(expected=>{
    const frame=document.querySelector("[data-admin-frame]"),region=frame?.querySelector('[aria-label="Bảng tài liệu kỹ thuật, cuộn ngang"]');if(!region)return false;
    const cells=[...region.querySelectorAll("tbody tr th")],labels=[...frame.querySelectorAll("button[aria-label]")].map(button=>button.getAttribute("aria-label"));
-   return labels.includes("Bỏ tìm kiếm: "+expected.q)===!!expected.q&&labels.some(label=>label.startsWith("Bỏ lọc loại"))===!!expected.kind&&labels.some(label=>label.startsWith("Bỏ lọc trạng thái"))===!!expected.status&&frame.textContent.includes(expected.total.toLocaleString("vi-VN")+" kết quả · Trang "+expected.page+"/"+Math.max(1,Math.ceil(expected.total/expected.size)))&&cells.length===expected.ids.length&&cells.every((cell,i)=>cell.textContent.includes("ID #"+expected.ids[i]));
+   return labels.includes("Bỏ tìm kiếm: "+expected.q)===!!expected.q&&labels.some(label=>label.startsWith("Bỏ lọc loại"))===!!expected.kind&&labels.some(label=>label.startsWith("Bỏ lọc trạng thái"))===!!expected.status&&frame.textContent.includes(expected.total.toLocaleString("vi-VN")+" kết quả · Trang "+expected.page+"/"+Math.max(1,Math.ceil(expected.total/expected.size)))&&cells.length===expected.ids.length&&cells.every((cell,i)=>cell.lastElementChild?.textContent.endsWith(' · ID #'+expected.ids[i]));
   },{q,kind,status,total:rows.length,page:number,size,ids:rows.slice((number-1)*size,number*size).map(item=>item.id)});
  };
  const goto=async search=>{await page.goto(base+"/admin/tech-references"+search);await ready();};

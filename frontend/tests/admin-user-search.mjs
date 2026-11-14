@@ -1,5 +1,6 @@
 /** Phase 4 user search: actual browser with HTTP fixtures; no live backend/auth/DB/Figma. */
 import { chromium } from "playwright";
+import { browserOptions, captureScreenshot } from "./admin-test-utils.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -19,7 +20,7 @@ users[3].email="very-long-email-for-responsive-table-and-row-action-identificati
 users[3].full_name+=" "+"X".repeat(120);
 let role="ADMIN",mode="normal",detailMode="normal",saveMode="reject",delaySearch=null;
 const requests=[],writes=[],errors=[],unexpected=[],pending=[],screenshots=[];
-const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
+const browser=await chromium.launch(browserOptions());
 try{
   const context=await browser.newContext({viewport:{width:1366,height:768}});
   await context.route("**/api/v1/**",async route=>{
@@ -96,7 +97,7 @@ try{
     },{q,role:wantedRole,status,emails,total:matching.length,page:pageNumber,size});
   };
   const goto=async search=>{await page.goto(base+"/admin/users"+search);await ready();};
-  const shot=async name=>{await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:path.join(output,`${name}.png`),fullPage:true});screenshots.push(`${name}.png`);};
+  const shot=async name=>{await page.evaluate(()=>window.scrollTo(0,0));await captureScreenshot(page,{path:path.join(output,`${name}.png`),fullPage:true},screenshots);};
   const release=kind=>{const item=pending.find(item=>item.kind===kind);assert.ok(item);pending.splice(pending.indexOf(item),1);item.resolve();};
   const query=()=>Object.fromEntries(new URL(page.url()).searchParams);
 

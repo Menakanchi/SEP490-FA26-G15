@@ -2,6 +2,7 @@
  * Kept at the previous dashboard harness path so existing QA commands remain valid.
  */
 import { chromium } from "playwright";
+import { browserOptions, captureScreenshot } from "./admin-test-utils.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -16,7 +17,7 @@ const resources=["users","workspaces","tech-references"];
 const viewports=[[1920,1080],[1366,768],[768,1024],[390,844]];
 let role="ADMIN",mode="normal";
 const reads=[],writes=[],unexpected=[],errors=[],pending=[],screenshots=[];
-const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
+const browser=await chromium.launch(browserOptions());
 try{
  const context=await browser.newContext({viewport:{width:1366,height:768}});
  await context.route("**/api/v1/**",async route=>{
@@ -57,7 +58,7 @@ try{
   await page.waitForFunction(expected=>document.title===expected,title+" | Quản trị VehicSim");
  };
  const entry=async()=>{await page.goto(base+"/admin");await page.waitForURL(base+"/admin/users");};
- const shot=async name=>{await page.screenshot({path:path.join(output,name+".png"),fullPage:false});screenshots.push(name+".png");};
+ const shot=async name=>{await captureScreenshot(page,{path:path.join(output,name+".png"),fullPage:false},screenshots);};
  const release=()=>{assert(pending.length>0);pending.shift()();};
  // Exercise the real login form with an intercepted session, without auto-restoring expired tokens.
  await page.goto(base+"/login");

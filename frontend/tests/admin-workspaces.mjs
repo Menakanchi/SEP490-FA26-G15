@@ -1,5 +1,6 @@
 /** Batch 5: production browser + HTTP fixtures only; no live auth/backend/database/Figma. */
 import { chromium } from "playwright";
+import { browserOptions, captureScreenshot } from "./admin-test-utils.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -13,7 +14,7 @@ const workspaces=Array.from({length:61},(_,i)=>({id:i===0?888888:2000+i,name:i==
 let role="ADMIN",mode="normal",managerMode="normal",detailMode="normal",saveMode="reject",delaySearch=null,delayManager=null;
 const requests=[],writes=[],pending=[],errors=[],unexpected=[],screenshots=[];
 const searchIssues=[];
-const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
+const browser=await chromium.launch(browserOptions());
 try{
  const context=await browser.newContext({viewport:{width:1366,height:768}});
  await context.route("**/api/v1/**",async route=>{
@@ -88,7 +89,7 @@ try{
  const managerReads=()=>requests.filter(item=>item.path==="/vehicsim/admin/users"&&item.query.role==="MANAGER").length;
  const query=()=>Object.fromEntries(new URL(page.url()).searchParams);
  const release=kind=>{const item=pending.find(item=>item.kind===kind);assert.ok(item,"pending "+kind);pending.splice(pending.indexOf(item),1);item.resolve();};
- const shot=async name=>{await page.screenshot({path:path.join(output,name+".png"),fullPage:false});screenshots.push(name+".png");};
+ const shot=async name=>{await captureScreenshot(page,{path:path.join(output,name+".png"),fullPage:false},screenshots);};
  const ready=async()=>{
   const params=new URL(page.url()).searchParams,q=(params.get("q")||"").trim().slice(0,100),status=["ACTIVE","ARCHIVED"].includes(params.get("status"))?params.get("status"):"",sort=["newest","oldest","name"].includes(params.get("sort"))?params.get("sort"):"newest";
   const size=[10,20,50,100].includes(Number(params.get("page_size")))?Number(params.get("page_size")):20;
@@ -99,7 +100,7 @@ try{
    const frame=document.querySelector("[data-admin-frame]"),region=frame?.querySelector('[aria-label="Bảng workspace, cuộn ngang"]');
    if(!region)return false;
    const cells=[...region.querySelectorAll("tbody tr th")],labels=[...frame.querySelectorAll("button[aria-label]")].map(button=>button.getAttribute("aria-label"));
-   return labels.includes("Bỏ tìm kiếm: "+expected.q)===!!expected.q&&labels.some(label=>label.startsWith("Bỏ lọc trạng thái"))===!!expected.status&&frame.textContent.includes(expected.total.toLocaleString("vi-VN")+" kết quả · Trang "+expected.page+"/"+Math.max(1,Math.ceil(expected.total/expected.size)))&&cells.length===expected.ids.length&&cells.every((cell,i)=>cell.textContent.includes("ID #"+expected.ids[i]));
+   return labels.includes("Bỏ tìm kiếm: "+expected.q)===!!expected.q&&labels.some(label=>label.startsWith("Bỏ lọc trạng thái"))===!!expected.status&&frame.textContent.includes(expected.total.toLocaleString("vi-VN")+" kết quả · Trang "+expected.page+"/"+Math.max(1,Math.ceil(expected.total/expected.size)))&&cells.length===expected.ids.length&&cells.every((cell,i)=>cell.querySelector('small')?.textContent === 'ID #'+expected.ids[i]);
   },{q,status,total:rows.length,page:num,size,ids:rows.slice((num-1)*size,num*size).map(item=>item.id)});
  };
  const goto=async search=>{await page.goto(base+"/admin/workspaces"+search);await ready();};
