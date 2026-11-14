@@ -4,6 +4,7 @@
 14/11/2026 (13 run: G1 20–30 km/h, 1 ca mỗi nhóm G2–G4), chờ chạy đủ 56 run trên máy chạy CARLA. **Ngày:** 14/11/2026.
 **Nguồn ca:** [kế hoạch đo độ lệch người đi bộ](../../exec-plans/active/2026-11-13-do-do-lech-carla-dong-hoc.md) (commit `a139b20`),
 chuyển sang dạng **không có AEB (open-loop)**.
+**Cơ sở lý thuyết:** công thức và nguồn (UNECE R13, Euro NCAP, Kudarauskas 2007, Greibe 2007…) ở [co-so-ly-thuyet.md](co-so-ly-thuyet.md).
 
 **Bố trí:** thư mục này (trong repo VehicSim) giữ **tài liệu và dữ liệu** thu về từ CARLA ([ket-qua/](ket-qua/)). **Code chạy** nằm ở repo riêng
 [phutro](https://github.com/Menakanchi/phutro) (có bản chép tài liệu này: `THIET-KE.md`) — tách khỏi VehicSim để không đụng code, test và CI của project.
