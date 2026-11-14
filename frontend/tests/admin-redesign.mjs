@@ -9,7 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const output = path.resolve(root, process.env.ADMIN_UI_OUTPUT || "data/admin-batch1-ui");
 await fs.mkdir(output, { recursive: true });
 const base = process.env.ADMIN_UI_URL || "http://localhost:3100";
-const viewports = [[1920,1080],[1366,768],[768,1024],[390,844]];
+const viewports = [[1920,1080],[1440,900],[1366,768],[1024,768],[768,1024],[390,844],[375,812]];
 const shortViewports = [[320,256],[667,375],[1280,480]];
 const sections = [["users","Tài khoản"],["workspaces","Workspace"],["tech-references","Tài liệu kỹ thuật"]];
 const actor = { id:999999,email:"admin-ui@example.invalid",full_name:"Quản trị UI Fixture",role:"ADMIN" };
@@ -19,6 +19,7 @@ const workspace = {id:201,name:"Workspace kiểm thử giao diện",description:
 const reference = {id:401,ref_code:"UI-REF-001",ref_name:"Hằng số kiểm thử giao diện",ref_type:"CONSTANT",ref_value:"123456789012345678.123456789012",unit:"m/s²",is_active:true,updated_at:stamp};
 let role="ADMIN",mode="normal";
 const requests=[],writes=[],unexpected=[],errors=[],screenshots=[];
+const backgroundIssues=[];
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
 try {
   const context=await browser.newContext({viewport:{width:1366,height:768}});
@@ -135,8 +136,40 @@ try {
       await shot(`${resource}-${width}`);
     }
     // Existing Add/Editor remains reachable and Escape does not send mutations.
+    const tableRegion=frame.getByRole("region",{name:/^Bảng /});
+    await tableRegion.evaluate(el=>{el.scrollLeft=80;});
+    await page.evaluate(()=>window.scrollTo({top:0,behavior:"instant"}));
+    const beforeModal=await page.evaluate(()=>({y:scrollY,overflow:document.documentElement.style.overflow,padding:document.documentElement.style.paddingRight,gutter:document.documentElement.style.scrollbarGutter,headingX:document.getElementById("admin-page-title").getBoundingClientRect().x,headingWidth:document.getElementById("admin-page-title").getBoundingClientRect().width}));
     await frame.getByRole("button",{name:"Thêm mới",exact:true}).click();
     const dialog=page.getByRole("dialog",{name:`Thêm mới · ${title}`,exact:true});await dialog.waitFor();
+    if(resource==="workspaces")await dialog.getByRole("radiogroup",{name:"Kết quả tìm Manager",exact:true}).waitFor();
+    assert.equal(await dialog.getAttribute("aria-modal"),"true");
+    assert.equal(await dialog.evaluate(el=>el.contains(document.activeElement)),true,"Initial focus stays inside native modal");
+    const openedY=await page.evaluate(()=>scrollY);
+    assert.equal(await frame.locator("h1").evaluate(el=>el.getBoundingClientRect().x),beforeModal.headingX,"Opening does not shift background horizontally");
+    assert.equal(await frame.locator("h1").evaluate(el=>el.getBoundingClientRect().width),beforeModal.headingWidth,"Opening retains background content width");
+    if(openedY!==beforeModal.y)backgroundIssues.push({resource,kind:"open-scroll",before:beforeModal.y,after:openedY});
+    await page.mouse.move(2,2);await page.mouse.wheel(0,400);await page.waitForTimeout(200);
+    const wheelY=await page.evaluate(()=>scrollY);
+    if(wheelY!==beforeModal.y)backgroundIssues.push({resource,kind:"backdrop-scroll",before:beforeModal.y,after:wheelY});
+    await shot(resource+"-modal-background-scroll");
+    await page.evaluate(y=>window.scrollTo({top:y,behavior:"instant"}),beforeModal.y);
+    await page.keyboard.press("Escape");await dialog.waitFor({state:"hidden"});
+    assert.equal(await page.evaluate(()=>scrollY),beforeModal.y,"Closing restores background scroll position");
+    assert.equal(await tableRegion.evaluate(el=>el.scrollLeft),80,"Closing retains horizontal table position");
+    assert.equal(await page.evaluate(()=>document.documentElement.style.overflow),beforeModal.overflow);
+    assert.equal(await page.evaluate(()=>document.documentElement.style.paddingRight),beforeModal.padding);
+    assert.equal(await page.evaluate(()=>document.documentElement.style.scrollbarGutter),beforeModal.gutter);
+    const opener=frame.getByRole("button",{name:"Thêm mới",exact:true});
+    assert.equal(await opener.evaluate(el=>el===document.activeElement),true,"Closing returns focus to opener");
+    if(resource==="users"){
+      const prior=await page.evaluate(()=>["overflow","padding-right","scrollbar-gutter"].map(name=>[name,document.documentElement.style.getPropertyValue(name),document.documentElement.style.getPropertyPriority(name)]));
+      await page.evaluate(()=>{const root=document.documentElement;root.style.setProperty("overflow","hidden","important");root.style.setProperty("padding-right","7px","important");root.style.setProperty("scrollbar-gutter","stable");});
+      await opener.click();await dialog.waitFor();await page.keyboard.press("Escape");await dialog.waitFor({state:"hidden"});
+      assert.deepEqual(await page.evaluate(()=>[document.documentElement.style.overflow,document.documentElement.style.getPropertyPriority("overflow"),document.documentElement.style.paddingRight,document.documentElement.style.getPropertyPriority("padding-right"),document.documentElement.style.scrollbarGutter]),["hidden","important","7px","important","stable"],"Closing Admin preserves a pre-existing outer scroll lock and styles");
+      await page.evaluate(previous=>{for(const [name,value,priority] of previous)document.documentElement.style.setProperty(name,value,priority);},prior);
+    }
+    await opener.focus();await page.keyboard.press("Enter");await dialog.waitFor();
     if(resource==="workspaces")await dialog.getByRole("radiogroup",{name:"Kết quả tìm Manager",exact:true}).waitFor();
     assert.equal(await dialog.locator("input").first().evaluate(el=>getComputedStyle(el).fontSize),"14px");
     assert.equal(await dialog.locator("h2").evaluate(el=>getComputedStyle(el).fontSize),"20px","List typography must not override modal titles");
@@ -144,6 +177,14 @@ try {
 
     // Reach actual fields/actions at low heights, including review/discard and focus wrap.
     const first=dialog.getByLabel(resource==="users"?"Email *":resource==="workspaces"?"Tên workspace *":"Mã *",{exact:true});
+    for(const [width,height] of viewports.filter(([width])=>![1920,1366].includes(width))){
+      await page.setViewportSize({width,height});await overflow();
+      const bounds=await dialog.boundingBox();
+      assert(bounds.x>=0&&bounds.y>=0&&bounds.x+bounds.width<=width&&bounds.y+bounds.height<=height,"Modal fits viewport at "+width);
+      assert.equal(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth),true,"Modal has no horizontal overflow at "+width);
+      assert.equal(await dialog.evaluate(el=>["aria-labelledby","aria-describedby"].every(name=>el.getAttribute(name)?.split(/\s+/).every(id=>document.getElementById(id)))),true,"Modal title and description reference existing elements");
+      await tabToVisible(first,resource+"-modal-"+width);
+    }
     if(resource==="users"){
       for(const [label,value] of [["Email *","short-viewport@example.invalid"],["Họ *","Nguyễn"],["Tên *","Kiểm thử"],["Mật khẩu ban đầu *","Fixture-only-123"]])await dialog.getByLabel(label,{exact:true}).fill(value);
     }else if(resource==="workspaces"){
@@ -185,6 +226,8 @@ try {
     await page.setViewportSize({width:390,height:844});
   }
   assert.equal(writes.length,0);
+  await fs.writeFile(path.join(output,"modal-scroll-observations.json"),JSON.stringify({backgroundIssues},null,2));
+  assert.deepEqual(backgroundIssues,[],"Native Admin dialogs must prevent opening/backdrop scroll from moving the background");
 
   // Client navigation + history on both desktop and mobile, with one active Admin route.
   await page.setViewportSize({width:1366,height:768});
@@ -212,6 +255,7 @@ try {
   await page.setViewportSize({width:320,height:256});
   await frame.getByRole("button",{name:/^Chỉnh sửa tài khoản /}).first().click();
   const editor=page.getByRole("dialog",{name:"Chỉnh sửa · Tài khoản",exact:true});await editor.waitFor();
+  const editorScroll=await page.evaluate(()=>scrollY);assert(editorScroll>0,"Edit opens from a scrolled table");
   await editor.getByLabel("Tên *",{exact:true}).fill("Giữ dữ liệu nhập");
   await editor.getByRole("button",{name:"Lưu thay đổi",exact:true}).click();
   assert.equal(writes.length,0);
@@ -225,6 +269,7 @@ try {
   await tabToVisible(editor.getByRole("button",{name:"Lưu thay đổi",exact:true}),"users-short-error-submit");
   await editor.getByRole("button",{name:"Hủy",exact:true}).click();
   await editor.getByRole("button",{name:"Bỏ thay đổi",exact:true}).click();
+  assert.equal(await page.evaluate(()=>scrollY),editorScroll,"Cancel after a failed save restores the scrolled table position");
   await page.setViewportSize({width:390,height:844});
 
   // Frame/navigation must remain usable independently of each resource's loading/data/error states.
@@ -244,9 +289,13 @@ try {
   mode="normal";
 
   // Leaving Admin restores the existing global shell; no Admin styling/container persists.
-  await frame.getByRole("link",{name:"Hồ sơ / Mật khẩu",exact:true}).click();await page.waitForURL(base+"/profile");
+  const unlockedStyles=await page.evaluate(()=>["overflow","padding-right","scrollbar-gutter"].map(name=>[document.documentElement.style.getPropertyValue(name),document.documentElement.style.getPropertyPriority(name)]));
+  await frame.getByRole("button",{name:"Thêm mới",exact:true}).click();await page.locator("dialog[open]").waitFor();
+  await frame.getByRole("link",{name:"Hồ sơ / Mật khẩu",exact:true}).evaluate(link=>link.click());await page.waitForURL(base+"/profile");
   await page.getByRole("button",{name:/Lưu/}).first().waitFor();
   assert.equal(await frame.count(),0);assert.equal(await page.getByRole("complementary",{name:"Khu vực quản trị"}).count(),0);
+  assert.equal(await page.locator("dialog[open]").count(),0);
+  assert.deepEqual(await page.evaluate(()=>["overflow","padding-right","scrollbar-gutter"].map(name=>[document.documentElement.style.getPropertyValue(name),document.documentElement.style.getPropertyPriority(name)])),unlockedStyles,"Unmount restores original root styles");
   await page.setViewportSize({width:1366,height:768});
   assert.equal(await page.locator("#vehicsim-navigation").evaluate(el=>Math.round(el.getBoundingClientRect().width)),232);
 
