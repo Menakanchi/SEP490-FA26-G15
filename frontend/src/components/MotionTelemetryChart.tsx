@@ -1,5 +1,7 @@
 "use client";
 
+import { formatMetric } from "./analysis/analysisMetricFormat";
+
 import { useState } from "react";
 import type { MotionTelemetryPoint } from "@/types/vehicsim";
 import type { ChartMarker } from "@/components/TelemetryChart";
@@ -11,7 +13,7 @@ export const MOTION_SIGNALS: { key: MotionSignal; label: string; unit: string; s
   { key: "ego_accel_mps2", label: "Gia tốc ego", unit: "m/s²", source: "Gia tốc đã lưu trong kết quả run; có thể do lõi dẫn xuất, không mặc định là IMU thô." },
   { key: "ego_speed_mps", label: "Vận tốc ego", unit: "m/s", source: "Ground truth trong kết quả run." },
   { key: "ego_x_m", label: "Vị trí ego X", unit: "m", source: "Tọa độ X theo hệ mô phỏng của run." },
-  { key: "target_y_m", label: "Vị trí target Y", unit: "m", source: "Ground truth người đi bộ theo trục Y của run." },
+  { key: "target_y_m", label: "Vị trí target Y", unit: "m", source: "Ground truth mục tiêu theo trục Y trong hệ mô phỏng của run." },
   { key: "target_vy_mps", label: "Vận tốc target Y", unit: "m/s", source: "Thành phần vận tốc có hướng theo trục Y; không phải độ lớn vận tốc." },
   { key: "perceived_y_m", label: "Vị trí nhận thức Y", unit: "m", source: "Giá trị perceived_y do lõi ghi; không mặc định là đo từ sensor thật." },
   { key: "ttc_perceived_s", label: "TTC nhận thức", unit: "s", source: "TTC perception đã lưu; thiếu dữ liệu được để trống." },
@@ -77,7 +79,7 @@ export function MotionTelemetryChart({ points, markers, cursor, selectedField, o
             const t = tMin + (tMax - tMin) * i / 4;
             return <g key={i}>
               <line x1={62} x2={680} y1={y(value)} y2={y(value)} stroke="var(--color-vehicsim-line)" />
-              <text x={55} y={y(value) + 4} textAnchor="end" fontSize={11} fill="var(--color-vehicsim-muted)">{value.toFixed(2)}</text>
+              <text x={55} y={y(value) + 4} textAnchor="end" fontSize={11} fill="var(--color-vehicsim-muted)">{formatMetric(value)}</text>
               <text x={x(t)} y={258} textAnchor="middle" fontSize={11} fill="var(--color-vehicsim-muted)">{t.toFixed(2)} s</text>
             </g>;
           })}
@@ -92,7 +94,7 @@ export function MotionTelemetryChart({ points, markers, cursor, selectedField, o
           <text x={62} y={18} fontSize={11} fill="var(--color-vehicsim-muted)">{signal.unit}</text>
         </svg>
       )}
-      <p className="text-[12px] tabular-nums text-vehicsim-muted" aria-live="off">{nearest ? `t = ${nearest.t.toFixed(2)} s · ${signal.label}: ${nearest[field] != null && Number.isFinite(nearest[field]) ? nearest[field]!.toFixed(3) + " " + signal.unit : "Không có số đo tại khung này"}` : "Di chuột trên biểu đồ để đọc số đo của khung đã ghi."}</p>
+      <p className="text-[12px] tabular-nums text-vehicsim-muted" aria-live="off">{nearest ? `t = ${nearest.t.toFixed(2)} s · ${signal.label}: ${nearest[field] != null && Number.isFinite(nearest[field]) ? formatMetric(nearest[field], signal.unit === "m/s³" ? 3 : 2) + " " + signal.unit : "Không có số đo tại khung này"}` : "Di chuột trên biểu đồ để đọc số đo của khung đã ghi."}</p>
       <div className="flex flex-wrap gap-3 text-[11px] text-vehicsim-muted">
         {markers.map((m, i) => <span key={`${m.label}-${i}`} style={{ color: m.color }}>{m.label}: {m.t.toFixed(2)} s</span>)}
       </div>

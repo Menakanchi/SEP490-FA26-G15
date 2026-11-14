@@ -136,7 +136,7 @@ export default function PlaybackPage() {
       <section className={`analysis-panel ${styles.stack}`} aria-label="Nguồn dữ liệu playback">
         <dl className={styles.meta}><div><dt>Biến thể / seed</dt><dd>{pb.variant} · seed {pb.seed}</dd></div><div><dt>Cấu hình AEB</dt><dd>{pb.config}</dd></div><div><dt>Phương tiện</dt><dd>{pb.vehicle}</dd></div><div><dt>Khung / sự kiện hợp lệ</dt><dd>{frames.length} khung · {events.length} sự kiện</dd></div></dl>
         <p className={styles.source} data-carla={pb.simulator?.startsWith("carla")}>Cảnh dựng từ tọa độ API, không phải video cảm biến. Sự kiện và số đo dùng kết quả đã ghi; gia tốc/jerk có thể do lõi xử lý, không mặc định là IMU thô.
-          {pb.simulator?.startsWith("carla") && " CARLA chưa hiệu chuẩn phanh; số liệu phục vụ quan sát/đối chiếu."}</p>
+          {pb.simulator?.startsWith("carla") && " Hiệu chuẩn CARLA phụ thuộc xe/profile; API chưa xác nhận calibration từng run; số liệu phục vụ quan sát/đối chiếu."}</p>
         {pb.evaluation_valid === false && <p role="status" className="analysis-caption">Dữ liệu run chưa đủ điều kiện để kết luận AEB. Playback chỉ hiển thị dữ liệu đã ghi.</p>}
         {!view.durationValid && <p role="status">Thời lượng từ API không hợp lệ. Chưa thể phát lại.</p>}
         {view.durationValid && !frames.length && <p role="status">Không có frame telemetry hợp lệ để phát lại.</p>}

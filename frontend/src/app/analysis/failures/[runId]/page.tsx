@@ -92,7 +92,7 @@ export default function FailureDetailPage() {
       </dl>
       <div className={styles.source} data-carla={inspection.simulator?.startsWith("carla")}>
         Chỉ số và tín hiệu do backend cung cấp từ kết quả run đã lưu. Không mặc định đây là dữ liệu sensor thô.
-        {inspection.simulator?.startsWith("carla") && " CARLA chưa hiệu chuẩn phanh; số liệu chỉ phục vụ quan sát/đối chiếu, không dùng làm bằng chứng regression."}
+        {inspection.simulator?.startsWith("carla") && " Hiệu chuẩn CARLA phụ thuộc xe/profile; API chưa xác nhận calibration từng run; số liệu chỉ phục vụ quan sát/đối chiếu, không dùng làm bằng chứng regression."}
       </div>
       {d?.evaluation_valid === false && <p role="status" className="analysis-caption">Run chưa có kết quả AEB hợp lệ; không dùng các số hiện có để kết luận an toàn.</p>}
     </section>}

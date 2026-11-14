@@ -11,10 +11,11 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { Card, CardTitle, ErrorNote, PillButton, StatCard, Tag, cx, fmt, runCode } from "@/components/VehicSimUi";
+import { Card, CardTitle, ErrorNote, PillButton, StatCard, Tag, cx, runCode } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { TelemetrySummary } from "@/types/vehicsim";
+import { formatMeasurement, formatObjective, speedKmh } from "@/components/analysis/analysisMetricFormat";
 import { CarlaRunnerPanel } from "@/components/CarlaRunnerPanel";
 
 const RESULT_FORMAT = "vehicsim.result/v1";
@@ -39,7 +40,7 @@ export default function CarlaDataPage() {
       <div className="flex items-start gap-[10px] rounded-[16px] bg-vehicsim-warn-bg px-4 py-3 text-[13px] text-vehicsim-ink">
         <span className="font-bold text-vehicsim-warn">!</span>
         <p>
-          Phanh xe trong CARLA chưa được hiệu chuẩn (TD-17), nên số đo ở đây chỉ để quan sát và đối chiếu, không dùng làm
+          Hiệu chuẩn phanh CARLA phụ thuộc xe và profile; CSV chưa xác nhận calibration của run. Số đo chỉ để quan sát và đối chiếu, không dùng làm
           bằng chứng regression. Kết quả CARLA không bao giờ được ghép với kết quả bộ động học.
         </p>
       </div>
@@ -288,44 +289,44 @@ function TelemetryCard({ canWrite }: { canWrite: boolean }) {
 }
 
 function SummaryView({ s }: { s: TelemetrySummary }) {
-  const n = (v: number | null, unit: string, digits = 2) => (v === null ? "—" : `${v.toFixed(digits)} ${unit}`);
+  const n = (v: unknown, unit: string) => formatMeasurement(v, unit, undefined, true);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex w-full flex-col gap-4 md:flex-row">
         <StatCard
           label="RMS jerk lúc phanh"
-          value={s.rms_jerk_mps3 === null ? "—" : s.rms_jerk_mps3.toFixed(2)}
-          note={s.rms_jerk_mps3 === null ? "Không phanh" : "m/s³ · càng thấp càng êm"}
+          value={formatObjective(s.rms_jerk_mps3)}
+          note="m/s³ · SENSOR_RECOMPUTED, pha phanh trước va chạm; — = không có dữ liệu hợp lệ"
           tone="info"
         />
         <StatCard
           label="Tốc độ ego lúc va chạm"
-          value={s.impact_speed_mps === null ? "0" : s.impact_speed_mps.toFixed(2)}
+          value={s.collisions > 0 ? formatObjective(s.impact_speed_mps) : "—"}
           valueClass={s.collisions > 0 ? "text-vehicsim-danger" : undefined}
-          note={s.impact_speed_mps === null ? "Không va chạm · tính là 0" : `m/s · ${fmt.kmh(s.impact_speed_mps * 3.6)}`}
+          note={s.collisions > 0 ? `m/s · ${n(speedKmh(s.impact_speed_mps), "km/h")} · khung trước va chạm` : s.collisions === 0 ? "Không ghi nhận va chạm · không áp dụng" : "Không có dữ liệu hợp lệ"}
           tone={s.collisions > 0 ? "danger" : "ok"}
         />
         <StatCard
           label="Quãng đường phanh"
-          value={s.stopping_distance_m === null ? "—" : s.stopping_distance_m.toFixed(2)}
-          note={s.stopping_distance_m === null ? "Không phanh" : "m · từ lúc phanh tới khi dừng"}
+          value={formatObjective(s.stopping_distance_m)}
+          note="m · có thể gồm phần ngoại suy khi xe chưa dừng; — = không có dữ liệu hợp lệ"
           tone="info"
         />
       </div>
       <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
-        <Row label="Số khung · thời lượng" value={`${s.total_frames} · ${fmt.s(s.duration_s)}`} />
-        <Row label="Phanh lần đầu" value={s.first_brake_time_s === null ? "Không phanh" : `t ${fmt.s(s.first_brake_time_s, 2)}`} />
-        <Row label="TTC radar nhỏ nhất" value={fmt.s(s.radar_min_ttc_s, 2)} />
-        <Row label="Khoảng cách vật cản nhỏ nhất" value={fmt.m(s.obstacle_min_distance_m, 2)} />
+        <Row label="Số khung · thời lượng" value={`${s.total_frames} · ${n(s.duration_s, "s")}`} />
+        <Row label="Pedal > 0,05 lần đầu (CSV)" value={s.first_brake_time_s == null ? "Không có dữ liệu" : `t ${n(s.first_brake_time_s, "s")}`} />
+        <Row label="TTC radar nhỏ nhất" value={n(s.radar_min_ttc_s, "s")} />
+        <Row label="Khoảng cách vật cản nhỏ nhất" value={n(s.obstacle_min_distance_m, "m")} />
         <Row label="Giảm tốc lớn nhất · trung bình" value={`${n(s.max_deceleration_ms2, "m/s²")} · ${n(s.mean_deceleration_ms2, "m/s²")}`} />
         <Row label="|Jerk| lớn nhất" value={n(s.max_abs_jerk_mps3, "m/s³")} />
         <Row
           label="Va chạm"
-          value={s.collisions === 0 ? "Không" : `${s.collisions} lần · đầu tiên t ${fmt.s(s.first_collision_time_s, 2)}`}
+          value={s.collisions === 0 ? "Không" : `${s.collisions} lần · đầu tiên t ${n(s.first_collision_time_s, "s")}`}
           danger={s.collisions > 0}
         />
-        <Row label="Tốc độ va chạm tương đối (ISO 22733)" value={n(s.relative_impact_speed_mps, "m/s")} />
-        <Row label="Gia tốc đỉnh lúc đâm" value={n(s.impact_peak_accel_ms2, "m/s²")} />
+        <Row label="Tốc độ va chạm tương đối (sensor)" value={s.collisions > 0 ? n(s.relative_impact_speed_mps, "m/s") : "—"} />
+        <Row label="Gia tốc đỉnh lúc đâm" value={s.collisions > 0 ? n(s.impact_peak_accel_ms2, "m/s²") : "—"} />
       </div>
     </div>
   );

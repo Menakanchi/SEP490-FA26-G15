@@ -1,4 +1,4 @@
-import type { AnalysisDashboardData, AnalysisRun, ObjectiveValue } from "@/types/vehicsim";
+import type { AnalysisDashboardData, AnalysisRun } from "@/types/vehicsim";
 
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 export const overviewCount = (value: unknown, total = Number.MAX_SAFE_INTEGER): number | null =>
@@ -28,23 +28,9 @@ export function overviewGroup(value: unknown): value is Group {
     && positiveId(value.baseline_id) && positiveId(value.vehicle_id) && record(value.objectives);
 }
 
-export function overviewMetric(value: unknown): string {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "—";
-  // Do not turn a recorded positive value into a displayed zero through rounding.
-  return value > 0 && value < 0.001 ? value.toExponential(2) : value.toFixed(3);
-}
+export { formatObjective as overviewMetric, objectiveState as overviewObjective } from "./analysisMetricFormat";
 
 export const overviewVersion = (value: unknown) => typeof value === "string" && value.trim() ? value : "—";
-
-export function overviewObjective(value: ObjectiveValue | undefined, unit: string) {
-  const samples = overviewCount(value?.samples), missing = overviewCount(value?.missing);
-  const notApplicable = overviewCount(value?.notApplicable);
-  const valid = value?.status === "VALID" && value.unit === unit && samples !== null && samples > 0
-    && missing === 0 && notApplicable !== null && overviewMetric(value.value) !== "—";
-  return { valid, samples, missing, notApplicable,
-    label: valid ? "Đủ số đo để tổng hợp" : value?.status === "NOT_APPLICABLE" && value.value === null
-      && samples === 0 && missing === 0 && notApplicable !== null ? "Không áp dụng" : "Chưa đủ dữ liệu hợp lệ" };
-}
 
 export function overviewPercentage(value: number | null, total: number): string | null {
   if (value === null || total <= 0) return null;

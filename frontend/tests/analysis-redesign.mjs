@@ -176,7 +176,7 @@ try {
  const rowIds=()=>explorerRows.evaluateAll(rows=>rows.map(r=>Number(r.dataset.runId)));
  await page.waitForFunction(()=>document.querySelectorAll("tr[data-run-id]").length===6);
  assert.deepEqual(await rowIds(),[1004,1002,1005,1001,1003,1000]);
- assert.equal((await explorer.locator('tr[data-run-id="1001"] td.numeric').first().innerText()).trim(),"0.00");
+ assert.equal((await explorer.locator('tr[data-run-id="1001"] td.numeric').first().innerText()).trim(),"0.000");
  assert.equal((await explorer.locator('tr[data-run-id="1000"] td.numeric').first().innerText()).trim(),"—");
  assert(await page.getByLabel("Tập của run 1000",{exact:true}).isDisabled());
  assert.equal(await explorer.getByRole("link",{name:"Playback run 1000",exact:true}).count(),0);
@@ -327,7 +327,7 @@ try {
  await page.goto(playbackUrl);await page.getByRole("slider",{name:"Thời gian playback",exact:true}).waitFor();
  await page.getByText(/Nguồn API: carla-0.9.16-xosc4/).waitFor();
  const fact=label=>page.getByText(label,{exact:true}).locator("..");
- assert.match(await fact("Khoảng cách tới vạch băng qua").innerText(),/777\.7 m/);
+ assert.match(await fact("Khoảng cách tới vạch băng qua").innerText(),/777\.70 m/);
  assert.match(await fact("Gia tốc ego đã ghi").innerText(),/1\.25 m\/s²/);
  assert.equal(await page.getByText("ĐÃ DỪNG",{exact:true}).count(),0,"Zero speed must not invent a stopped event");
  assert.equal(await page.getByText("Vùng TTC",{exact:true}).count(),0);
@@ -465,12 +465,13 @@ try {
  const savedSummary=page.getByRole("region",{name:"Kết quả và chỉ số run",exact:true});
  const valueIn=(scope,label)=>scope.locator(`[aria-label="${label}"] dd`);
  await savedSummary.waitFor();
- assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.78 m/s³");
- assert.equal((await valueIn(savedSummary,"Tốc độ va chạm").innerText()).trim(),"0.00 m/s");
+ assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.777 m/s³");
+ // This sentinel is SAFE: a stale impact=0 is not a collision measurement.
+ assert.equal((await valueIn(savedSummary,"Tốc độ va chạm").innerText()).trim(),"—");
  assert.equal((await valueIn(savedSummary,"Quãng phanh").innerText()).trim(),"—");
  const identity=page.getByRole("region",{name:"Danh tính và nguồn dữ liệu run",exact:true});
  assert.match(await identity.innerText(),/carla-0.9.16-xosc4[\s\S]*dt 0.01/);
- assert.match(await identity.innerText(),/chưa hiệu chuẩn/);
+ assert.match(await identity.innerText(),/Hiệu chuẩn CARLA phụ thuộc xe\/profile/);
  assert.equal(await page.getByRole("tabpanel").count(),1,"Only the selected panel is exposed");
  const inspectionRequests=()=>requests.filter(url=>/\/analysis\/runs\/\d+$/.test(url.pathname)).length;
  const beforeExploration=inspectionRequests();
@@ -506,7 +507,7 @@ try {
   await page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true}).click();await savedSummary.waitFor();
   await page.screenshot({path:path.join(output,`detail-recorded-summary-${width}.png`),fullPage:true});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Detail summary overflow ${width}`);
-  assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.78 m/s³","Signal exploration must not recompute objective RMS jerk");
+  assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.777 m/s³","Signal exploration must not recompute objective RMS jerk");
   await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).click();await readouts.waitFor();
  }
  await page.goto(detailUrl+"&section=telemetry&t=0.75&signal=ttc_perceived_s");await readouts.waitFor();
@@ -517,7 +518,7 @@ try {
  assert.match(await page.getByLabel("Số đo tín hiệu đang chọn",{exact:true}).innerText(),/— s/);
  await page.getByLabel("Tín hiệu",{exact:true}).selectOption("ttc_gt_s");
  await page.waitForURL(url=>url.searchParams.get("signal")==="ttc_gt_s");
- assert.match(await page.getByLabel("Số đo tín hiệu đang chọn",{exact:true}).innerText(),/42.000 s/);
+ assert.match(await page.getByLabel("Số đo tín hiệu đang chọn",{exact:true}).innerText(),/42.00 s/);
  await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).focus();
  await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).press("End");
  await page.getByRole("heading",{name:"Bằng chứng và giới hạn nhận định",exact:true}).waitFor();
@@ -531,7 +532,7 @@ try {
  assert.equal((await valueIn(readouts,"Gia tốc ego tại khung").innerText()).trim(),"—");
  await page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true}).click();await savedSummary.waitFor();
  await page.getByText("Không đủ tọa độ hoặc kích thước xe tại khung này để dựng cảnh.",{exact:true}).waitFor();
- assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.78 m/s³");
+ assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.777 m/s³");
  // Repeated/decreasing timestamps break paths instead of connecting them backwards.
  inspectionOverride={...inspectionOverride,detail:{...sentinelDetail,
   telemetry:[{t:0,ttc:7,speed_kmh:0},{t:1,ttc:null,speed_kmh:null},{t:2,ttc:8,speed_kmh:1},{t:1,ttc:6,speed_kmh:2},{t:3,ttc:5,speed_kmh:3}],
@@ -682,7 +683,7 @@ try {
  assert.equal(await primaryCause.locator("h3").innerText(),"Quyết định");assert.match(await primaryCause.innerText(),/0\.00/);
  const perceptionEvidence=page.getByRole("article",{name:"Khâu Nhận thức",exact:true});
  const decisionEvidence=page.getByRole("article",{name:"Khâu Quyết định",exact:true});
- assert.match(await perceptionEvidence.innerText(),/FIXTURE_CAUSE_ZERO/);assert.match(await perceptionEvidence.innerText(),/0\.000 s/);
+ assert.match(await perceptionEvidence.innerText(),/FIXTURE_CAUSE_ZERO/);assert.match(await perceptionEvidence.innerText(),/0\.00 s/);
  assert.match(await perceptionEvidence.innerText(),/Ngưỡng TTC/);assert.equal(await perceptionEvidence.locator("input,select").count(),0);
  assert.match(await page.getByRole("article",{name:"Khâu Điều khiển",exact:true}).innerText(),/Chưa có kết luận/);
  assert.match(await page.getByRole("article",{name:"Khâu Động lực học",exact:true}).innerText(),/Chưa có số đo để đối chiếu/);

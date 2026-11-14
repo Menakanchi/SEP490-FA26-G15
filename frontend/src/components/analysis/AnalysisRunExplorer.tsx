@@ -2,8 +2,9 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { AnalysisBadge, AnalysisLoading, AnalysisPager, AnalysisTableRegion, analysisLabel, metric } from "@/components/analysisUi";
+import { AnalysisBadge, AnalysisLoading, AnalysisPager, AnalysisTableRegion, analysisLabel } from "@/components/analysisUi";
 import type { AnalysisDashboardData, AnalysisRun } from "@/types/vehicsim";
+import { formatObjective, formatRunImpact } from "./analysisMetricFormat";
 import styles from "./AnalysisRunExplorer.module.css";
 
 type Props = {
@@ -95,7 +96,7 @@ export function AnalysisRunExplorer({ data, loading, hasError, page, size, searc
               <small>{run.trace_available ? "Có telemetry" : "Thiếu telemetry"}{run.failure_class ? ` · ${analysisLabel(run.failure_class)}` : ""}</small>
               {run.error && <small className={styles.error} title={run.error}>{run.error}</small>}
             </td>
-            <td className="numeric">{metric(run.metrics.rms_jerk_mps3)}</td><td className="numeric">{metric(run.metrics.impact_speed_mps)}</td><td className="numeric">{metric(run.metrics.stopping_distance_m)}</td>
+            <td className="numeric">{formatObjective(run.metrics.rms_jerk_mps3)}</td><td className="numeric">{formatRunImpact(run.metrics.impact_speed_mps, run)}</td><td className="numeric">{formatObjective(run.metrics.stopping_distance_m)}</td>
             <td>{renderSelection(run)}</td>
             <td><div className={styles.actions}><Link href={href(run.run_id)} aria-label={`Chi tiết run ${run.run_id}`}>Chi tiết →</Link>
               {run.trace_available ? <Link href={href(run.run_id, true)} aria-label={`Playback run ${run.run_id}`}>Playback ↗</Link> : <span title="API chưa có telemetry để phát lại">Chưa có playback</span>}

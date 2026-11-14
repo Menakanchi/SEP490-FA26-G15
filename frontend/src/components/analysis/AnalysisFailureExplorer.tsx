@@ -6,6 +6,7 @@ import { vi, viSummary } from "@/components/vehicsimI18n";
 import { runCode } from "@/components/VehicSimUi";
 import type { FailureFilters, FailureList } from "@/types/vehicsim";
 import { FAILURE_FILTER_KEYS, FAILURE_OUTCOMES, FAILURE_STAGES, FAILURE_WEATHERS, validCount } from "./analysisFailurePresentation";
+import { formatMetric } from "./analysisMetricFormat";
 import styles from "./AnalysisFailureExplorer.module.css";
 
 type Props = {
@@ -76,7 +77,7 @@ export function AnalysisFailureExplorer({ data, loading, hasError, filters, page
             <td className={styles.identity}><Link href={href(item.run_id, "evidence")}>{runCode(item.run_id)} · {item.variant}</Link><small>{item.family}</small><small>{viSummary(item.summary)}</small></td>
             <td><div className={styles.badges}><AnalysisBadge value={item.outcome} />{item.failure_class ? <AnalysisBadge value={item.failure_class} /> : <small>Chưa có khâu nhận định</small>}</div></td>
             <td className={styles.cause}><p>{item.root_cause ? vi(item.root_cause) : "API chưa có mô tả nhận định."}</p><small>Điểm luật: {metric(item.confidence)}</small>{item.cause_code && <details><summary>Mã nguyên nhân</summary><code>{item.cause_code}</code></details>}</td>
-            <td className="numeric">{metric(item.impact_kmh, 1)}</td><td className="numeric">{metric(item.min_ttc_s)}</td>
+            <td className="numeric">{item.outcome === "COLLISION" ? formatMetric(item.impact_kmh, 1, true) : "—"}</td><td className="numeric">{formatMetric(item.min_ttc_s, 2, true)}</td>
             <td className={styles.context}>{item.config || "—"}<small>{analysisLabel(item.weather ?? null)} · {analysisLabel(item.time_of_day ?? null)}</small></td>
             <td><div className={styles.actions}><Link href={href(item.run_id, "evidence")} aria-label={`Bằng chứng run ${item.run_id}`}>Nguyên nhân →</Link><Link href={href(item.run_id, "telemetry")} aria-label={`Telemetry run ${item.run_id}`}>Telemetry →</Link><Link href={href(item.run_id, "playback")} aria-label={`Playback run ${item.run_id}`}>Playback ↗</Link></div></td>
           </tr>)}</tbody>

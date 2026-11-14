@@ -3,10 +3,11 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { AnalysisSelectionSummary } from "@/components/AnalysisSelectionSummary";
-import { AnalysisBadge, AnalysisLoading, AnalysisPager, AnalysisTableRegion, eligible, metric } from "@/components/analysisUi";
+import { AnalysisBadge, AnalysisLoading, AnalysisPager, AnalysisTableRegion, eligible } from "@/components/analysisUi";
 import { ErrorNote, PillButton } from "@/components/VehicSimUi";
 import type { AnalysisRun, AnalysisSelection } from "@/types/vehicsim";
 import { sourceIdentity, type ChosenRun, type SelectionCheck, type SelectionRole } from "./analysisSelectionData";
+import { formatObjective, formatRunImpact } from "./analysisMetricFormat";
 import styles from "./AnalysisDatasetPreparation.module.css";
 
 type Props = {
@@ -79,7 +80,7 @@ function DraftGroup({ role, items, query, returnTo, editable, renderSelection, o
       <caption className="sr-only">{name}, seed, nguồn và số đo đã lưu</caption><thead><tr><th scope="col">Run / biến thể / nguồn</th><th scope="col">Kết quả / bằng chứng</th><th scope="col">Tập / thao tác</th></tr></thead>
       <tbody>{matches.slice((page - 1) * size, page * size).map(({run}) => <tr key={run.run_id} data-draft-run={run.run_id}>
         <td><Link href={`/analysis/failures/${run.run_id}?returnTo=${encodeURIComponent(returnTo)}`} aria-label={`Chi tiết run đã chọn ${run.run_id}`}>#{run.run_id} · {run.variant}</Link><small>{run.family} · seed {run.seed}</small><small>Baseline #{run.baseline_id} · xe #{run.vehicle_id}</small><small>{run.simulator} · dt {run.dt} s</small></td>
-        <td><AnalysisBadge value={run.outcome} /><small>{eligible(run) ? "Hoàn tất · có telemetry" : "Cần xem lại điều kiện của run"}</small><details><summary>Số đo đã lưu</summary><dl className={styles.metrics}><div><dt>RMS jerk (m/s³)</dt><dd>{metric(run.metrics.rms_jerk_mps3, 3)}</dd></div><div><dt>Va chạm (m/s)</dt><dd>{metric(run.metrics.impact_speed_mps, 3)}</dd></div><div><dt>Quãng phanh (m)</dt><dd>{metric(run.metrics.stopping_distance_m, 3)}</dd></div></dl></details></td>
+        <td><AnalysisBadge value={run.outcome} /><small>{eligible(run) ? "Hoàn tất · có telemetry" : "Cần xem lại điều kiện của run"}</small><details><summary>Số đo đã lưu</summary><dl className={styles.metrics}><div><dt>RMS jerk (m/s³)</dt><dd>{formatObjective(run.metrics.rms_jerk_mps3)}</dd></div><div><dt>Va chạm (m/s)</dt><dd>{formatRunImpact(run.metrics.impact_speed_mps, run)}</dd></div><div><dt>Quãng phanh (m)</dt><dd>{formatObjective(run.metrics.stopping_distance_m)}</dd></div></dl></details></td>
         <td><div className={styles.rowActions}>{renderSelection(run)}<button className="analysis-button" disabled={!editable} aria-label={`Bỏ run ${run.run_id} khỏi bản nháp`} onClick={() => onRemove(run)}>Bỏ run</button></div></td>
       </tr>)}</tbody>
     </table></AnalysisTableRegion> : <div className="analysis-state">{items.length ? "Không có run khớp từ khóa trong tập này." : "Chưa chọn run cho tập này."}</div>}

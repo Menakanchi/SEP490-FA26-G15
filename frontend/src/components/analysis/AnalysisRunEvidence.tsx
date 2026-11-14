@@ -7,6 +7,7 @@ import { vi } from "@/components/vehicsimI18n";
 import type { ChainStage, FailureDetail } from "@/types/vehicsim";
 import { finite, recordedRange } from "./analysisRunData";
 import { EVIDENCE_FIELDS, PARAMETER_NAMES } from "./analysisFailurePresentation";
+import { formatMeasurement } from "./analysisMetricFormat";
 import styles from "./AnalysisRunEvidence.module.css";
 
 type Evidence = NonNullable<FailureDetail["stage_evidence"]>[number];
@@ -34,7 +35,7 @@ export function AnalysisRunEvidence({ detail: d, returnTo, playbackAvailable }: 
       {groups.map((group, index) => <div key={`${group.stage}-${index}`}>
         {!Object.values(group.values).some(finite) && <p className="analysis-caption">Chưa có số đo để đối chiếu.</p>}
         <dl className={styles.facts}>{Object.entries(group.values).map(([key, value]) => <div key={key}>
-          <dt>{EVIDENCE_FIELDS[key]?.label ?? key}</dt><dd>{metric(value, 3)}{finite(value) && EVIDENCE_FIELDS[key]?.unit ? ` ${EVIDENCE_FIELDS[key].unit}` : ""}</dd>
+          <dt>{EVIDENCE_FIELDS[key]?.label ?? key}</dt><dd>{formatMeasurement(value, EVIDENCE_FIELDS[key]?.unit ?? "", undefined, true)}</dd>
         </div>)}</dl>
       </div>)}
       {finite(time) && <div className={styles.links}>
@@ -49,9 +50,9 @@ export function AnalysisRunEvidence({ detail: d, returnTo, playbackAvailable }: 
       <p className="analysis-caption">Chuỗi nguyên nhân là giả thuyết theo luật đánh giá, không chứng minh quan hệ nhân quả. Điểm confidence là điểm của luật, không phải xác suất đã hiệu chuẩn.</p>
       <div className={styles.primary} aria-label="Nhận định chính từ backend">
         <div><span className="analysis-caption">Khâu chính do API trả về</span><h3>{d.failure_class ? analysisLabel(d.failure_class) : "Chưa có khâu chính từ backend."}</h3><p>{primary?.summary ? vi(primary.summary) : "Chưa có mô tả nhận định chính để đối chiếu."}</p></div>
-        <dl className={styles.meta}><div><dt>Điểm luật của nhận định chính</dt><dd>{metric(d.chain_confidence)}</dd></div><div><dt>Phiên bản luật</dt><dd>{d.evaluation_version || "—"}</dd></div></dl>
+        <dl className={styles.meta}><div><dt>Điểm luật của nhận định chính</dt><dd>{metric(d.chain_confidence)}</dd></div><div><dt>Phiên bản tổng hợp</dt><dd>{d.evaluation_version || "—"}</dd></div></dl>
       </div>
-      <p className="analysis-caption">Các khâu bên dưới giữ thứ tự từ API. Mỗi nhận định đi kèm số đo của chính khâu đó; — nghĩa là chưa có dữ liệu hợp lệ.</p>
+      <p className="analysis-caption">Onset và trễ phanh là mốc controller, chưa xác định thời điểm xe thực sự giảm tốc. Phiên bản tổng hợp không phải phiên bản luật chấm. Các khâu bên dưới giữ thứ tự từ API. Mỗi nhận định đi kèm số đo của chính khâu đó; — nghĩa là chưa có dữ liệu hợp lệ.</p>
     </section>
     <section className={styles.stack} aria-label="Chuỗi nhận định và số đo">
       <h2>Chuỗi nhận định nguyên nhân</h2>

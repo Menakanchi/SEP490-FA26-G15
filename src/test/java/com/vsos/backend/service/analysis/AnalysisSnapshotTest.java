@@ -78,4 +78,19 @@ class AnalysisSnapshotTest {
                 .containsEntry("ttc_perceived_s", null).containsEntry("ttc_gt_s", 1.2);
         assertThat(points.get(1)).containsEntry("ego_accel_mps2", null);
     }
+
+    @Test
+    void projectedJerkUsesActualIntervalsAndDoesNotBridgeMissingOrDuplicateSamples() {
+        List<Map<String, Object>> points = AnalysisViewService.motionTelemetry(List.of(
+                Json.obj("t", 0.0, "ego_a", 0.0),
+                Json.obj("t", 0.1, "ego_a", -1.0),
+                Json.obj("t", 0.3, "ego_a", -2.0),
+                Json.obj("t", 0.3, "ego_a", -2.0),
+                Json.obj("t", 0.4, "ego_a", null),
+                Json.obj("t", 0.6, "ego_a", -3.0)));
+        assertThat(points.get(0)).containsEntry("jerk_mps3", null);
+        assertThat(points.get(1)).containsEntry("ego_accel_mps2", -1.0).containsEntry("jerk_mps3", -10.0);
+        assertThat((Double) points.get(2).get("jerk_mps3")).isCloseTo(-5.0, org.assertj.core.api.Assertions.within(1e-10));
+        assertThat(points.subList(3, 6)).allSatisfy(point -> assertThat(point).containsEntry("jerk_mps3", null));
+    }
 }
