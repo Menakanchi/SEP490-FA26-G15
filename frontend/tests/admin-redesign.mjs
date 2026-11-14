@@ -279,7 +279,7 @@ try {
       await frame.getByRole("heading",{level:1,name:title,exact:true}).waitFor();
       if(state==="slow")await frame.getByRole("status").filter({hasText:"Đang tải dữ liệu"}).waitFor();
       else if(state==="empty")await frame.getByText(resource==="users"?"Chưa có tài khoản":resource==="workspaces"?"Chưa có workspace":"Chưa có tài liệu kỹ thuật",{exact:true}).waitFor();
-      else await frame.getByRole("alert").filter({hasText:state==="error"?"Fixture: không tải được":"Fixture: không có quyền"}).waitFor();
+      else await frame.getByRole("alert").filter({hasText:state==="error"?(resource==="tech-references"?"Máy chủ chưa thể tải tài liệu. Hãy thử lại sau.":"Fixture: không tải được"):"Fixture: không có quyền"}).waitFor();
       assert.equal(await frame.getByRole("link",{name:"Hồ sơ / Mật khẩu",exact:true}).isVisible(),true);
       if(state==="error"){
         mode="normal";await frame.getByRole("button",{name:"Thử lại",exact:true}).click();await ready(title);

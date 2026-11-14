@@ -4,19 +4,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, RefreshCw, Search, BookOpen, X } from "lucide-react";
 import { adminApi, type AdminPageData, type AdminRow } from "@/services/admin";
-import { readReferenceQuery, referenceListUrl, referenceQueryParams, REFERENCE_PAGE_SIZES, REFERENCE_KINDS, REFERENCE_SORTS, REFERENCE_STATUSES, type ReferenceListQuery } from "./adminReferences";
+import { readReferenceQuery, referenceErrorMessage, referenceListUrl, referenceQueryParams, REFERENCE_PAGE_SIZES, REFERENCE_KINDS, REFERENCE_SORTS, REFERENCE_STATUSES, type ReferenceListQuery } from "./adminReferences";
 import styles from "./AdminTable.module.css";
 import { AdminReferenceEditor } from "./AdminReferenceEditor";
 import { workspaceDate } from "./adminWorkspacesQuery";
+import reference from "./AdminReferences.module.css";
 
 type Result = { key: string; data?: AdminPageData; error?: string };
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Không thực hiện được thao tác. Hãy thử lại.";
 
 function SearchForm({ value, onSearch }: { value: string; onSearch: (q: string) => void }) {
-  const [draft, setDraft] = useState(value);
-  return <form className={styles.search} onSubmit={event => { event.preventDefault(); onSearch(draft.trim()); }}>
+  const [search, setSearch] = useState({ applied: value, draft: value });
+  // URL/history changes replace the applied query; refreshing it preserves the local draft and input.
+  if (search.applied !== value) setSearch({ applied: value, draft: value });
+  return <form className={styles.search} onSubmit={event => { event.preventDefault(); onSearch(search.draft.trim()); }}>
     <label htmlFor="admin-references-search">Tìm kiếm</label>
-    <div><span className={styles.searchInput}><Search size={16} aria-hidden="true" /><input id="admin-references-search" aria-label="Từ khóa tìm kiếm" type="search" maxLength={100} value={draft} onChange={event => setDraft(event.target.value)} placeholder="Tên hoặc mã" /></span><button type="submit" className={styles.button}>Tìm</button></div>
+    <div><span className={styles.searchInput}><Search size={16} aria-hidden="true" /><input id="admin-references-search" aria-label="Từ khóa tìm kiếm" type="search" maxLength={100} value={search.draft} onChange={event => setSearch({ applied: value, draft: event.target.value })} placeholder="Tên hoặc mã" /></span><button type="submit" className={styles.button}>Tìm</button></div>
   </form>;
 }
 
@@ -33,11 +35,20 @@ export function AdminReferencesTable() {
   const [openingId, setOpeningId] = useState<number | null>(null);
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
+  const noticeRef = useRef<HTMLParagraphElement>(null), noticeFocusPending = useRef(false);
   const key = `${request}|${revision}`;
   const current = result.key === key ? result : null;
   const loading = !current, data = current?.data;
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / query.page_size));
   const filtered = !!(query.q || query.role || query.status);
+
+  useEffect(() => {
+    if (notice && !loading && noticeFocusPending.current) {
+      noticeFocusPending.current = false;
+      noticeRef.current?.focus({ preventScroll: true });
+      noticeRef.current?.scrollIntoView({ block: "center", behavior: "instant" });
+    }
+  }, [notice, loading]);
 
   useEffect(() => {
     if (window.location.pathname === "/admin/tech-references" && raw !== canonical && new URLSearchParams(window.location.search).toString() === raw) {
@@ -58,7 +69,7 @@ export function AdminReferencesTable() {
         return;
       }
       setResult({ key, data: response });
-    }).catch(error => { if (isCurrent()) setResult({ key, error: errorMessage(error) }); });
+    }).catch(error => { if (isCurrent()) setResult({ key, error: referenceErrorMessage(error, "load") }); });
     return () => { live = false; };
   }, [request, key]);
 
@@ -69,6 +80,9 @@ export function AdminReferencesTable() {
     setActionError(""); setNotice("");
   }
   function reset() { change({ q: "", role: "", status: "", page: 1 }); }
+  function search(q: string) {
+    if (q !== readReferenceQuery(new URLSearchParams(window.location.search)).q) change({ q, page: 1 });
+  }
   async function edit(id: number) {
     setOpeningId(id); setActionError(""); setNotice("");
     const sequence = ++detailSequence.current, scope = request;
@@ -79,29 +93,29 @@ export function AdminReferencesTable() {
       if (!detail || detail.id !== id || typeof detail.ref_code !== "string" || typeof detail.ref_name !== "string" || !Object.hasOwn(REFERENCE_KINDS, String(detail.ref_type)) || (detail.ref_value != null && typeof detail.ref_value !== "string") || ![true, false, 0, 1].includes(detail.is_active as boolean | number)) throw new Error("Thông tin tài liệu kỹ thuật không khớp hoặc không đầy đủ. Hãy tải lại danh sách.");
       setEditor(detail);
     }
-    catch (error) { if (current()) setActionError(errorMessage(error)); }
+    catch (error) { if (current()) setActionError(referenceErrorMessage(error, "load")); }
     finally { if (sequence === detailSequence.current) setOpeningId(null); }
   }
-  function saved() { setEditor(undefined); setNotice("Đã lưu thành công."); setRevision(value => value + 1); }
+  function saved(label: string) { noticeFocusPending.current = true; setEditor(undefined); setNotice(label); setRevision(value => value + 1); }
 
   return <div className={styles.list}>
     <section aria-labelledby="admin-references-list-title" className={styles.filters}>
       <div className={styles.listHeader}><div><h2 id="admin-references-list-title">Danh sách tài liệu kỹ thuật</h2><p>Tra cứu mã, tên, loại và trạng thái của tài liệu tham khảo.</p></div><button className={styles.primary} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); setEditor(null); setNotice(""); setActionError(""); }}><Plus size={16} aria-hidden="true" />Thêm mới</button></div>
       <div className={styles.toolbar}>
-        <SearchForm key={query.q} value={query.q} onSearch={q => change({ q, page: 1 })} />
+        <SearchForm value={query.q} onSearch={search} />
         <label><span id="admin-references-status-label">Trạng thái</span><select aria-labelledby="admin-references-status-label" value={query.status} onChange={event => change({ status: event.target.value, page: 1 })}><option value="">Tất cả trạng thái</option>{Object.entries(REFERENCE_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label><span id="admin-references-role-label">Loại</span><select aria-labelledby="admin-references-role-label" value={query.role} onChange={event => change({ role: event.target.value, page: 1 })}><option value="">Tất cả loại</option>{Object.entries(REFERENCE_KINDS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label><span id="admin-references-sort-label">Sắp xếp</span><select aria-labelledby="admin-references-sort-label" value={query.sort} onChange={event => change({ sort: event.target.value, page: 1 })}>{Object.entries(REFERENCE_SORTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       </div>
       {filtered && <div className={styles.chips} aria-label="Bộ lọc đang áp dụng">
         {query.q && <button onClick={() => change({ q: "", page: 1 })} aria-label={`Bỏ tìm kiếm: ${query.q}`}>Tìm: {query.q}<X size={13} aria-hidden="true" /></button>}
-        {query.role && <button onClick={() => change({ role: "", page: 1 })} aria-label="Bỏ lọc loại">{REFERENCE_KINDS[query.role]}<X size={13} aria-hidden="true" /></button>}
-        {query.status && <button onClick={() => change({ status: "", page: 1 })} aria-label="Bỏ lọc trạng thái">{REFERENCE_STATUSES[query.status]}<X size={13} aria-hidden="true" /></button>}
+        {query.role && <button onClick={() => change({ role: "", page: 1 })} aria-label={"Bỏ lọc loại: " + REFERENCE_KINDS[query.role]}>{REFERENCE_KINDS[query.role]}<X size={13} aria-hidden="true" /></button>}
+        {query.status && <button onClick={() => change({ status: "", page: 1 })} aria-label={"Bỏ lọc trạng thái: " + REFERENCE_STATUSES[query.status]}>{REFERENCE_STATUSES[query.status]}<X size={13} aria-hidden="true" /></button>}
         <button onClick={reset} className={styles.reset}>Xóa bộ lọc</button>
       </div>}
     </section>
     {actionError && <p role="alert" className={styles.error}>{actionError}</p>}
-    {notice && <p role="status" className={styles.success}>{notice}</p>}
+    {notice && <p id="admin-reference-notice" ref={noticeRef} tabIndex={-1} role="status" className={styles.success + " " + reference.feedback}><strong>Đã lưu tài liệu thành công.</strong><span>Tài liệu: {notice}</span>{loading ? <span>Đang tải lại danh sách…</span> : current?.error ? <span>Đã lưu dữ liệu nhưng chưa tải lại được danh sách. Hãy dùng nút Thử lại bên dưới.</span> : filtered && <span>Bộ lọc được giữ nguyên; tài liệu không còn khớp sẽ không xuất hiện trong kết quả.</span>}</p>}
     <section aria-labelledby="admin-references-results-title" className={styles.results}>
       <div className={styles.resultsHeader}><h2 id="admin-references-results-title">Kết quả tra cứu</h2><button className={styles.button} disabled={loading} onClick={() => { setActionError(""); setRevision(value => value + 1); }}><RefreshCw size={14} aria-hidden="true" />Làm mới danh sách</button></div>
       {loading ? <p role="status" className={styles.state}>Đang tải dữ liệu tài liệu kỹ thuật…</p> : current?.error ? <div role="alert" className={styles.error}><p>{current.error}</p><button className={styles.button} onClick={() => setRevision(value => value + 1)}>Thử lại</button></div> : data && <>

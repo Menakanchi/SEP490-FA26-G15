@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { BookOpen, Link as LinkIcon, X } from "lucide-react";
 import { adminApi, type AdminRow } from "@/services/admin";
-import { referenceFields, REFERENCE_KINDS } from "./adminReferences";
+import { referenceErrorMessage, referenceFields, REFERENCE_KINDS } from "./adminReferences";
 import { workspaceDate } from "./adminWorkspacesQuery";
 import { useAdminDialog } from "./useAdminDialog";
 import styles from "./AdminEditor.module.css";
@@ -21,7 +21,7 @@ function bodyOf(values: Values, enabled: boolean): Body {
   return body;
 }
 function display(value: Body[string]) { return value == null || value === "" ? "—" : String(value); }
-export function AdminReferenceEditor({ row, returnFocusTo, onCancel, onSaved }: { row: AdminRow | null; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: () => void }) {
+export function AdminReferenceEditor({ row, returnFocusTo, onCancel, onSaved }: { row: AdminRow | null; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: (label: string) => void }) {
   const [initial] = useState(() => valuesOf(row)), [values, setValues] = useState(initial);
   const initialEnabled = row ? row.is_active === true || row.is_active === 1 : true;
   const [enabled, setEnabled] = useState(initialEnabled), [phase, setPhase] = useState<Phase>("form");
@@ -63,8 +63,8 @@ export function AdminReferenceEditor({ row, returnFocusTo, onCancel, onSaved }: 
   async function save() {
     if (saveLock.current || !pending) return;
     saveLock.current = true; setBusy(true); setError("");
-    try { await adminApi.save("tech-references", row?.id ?? null, pending); onSaved(); }
-    catch (error) { setError(error instanceof Error ? error.message : "Không thực hiện được thao tác. Hãy thử lại."); setPending(null); setPhase("form"); }
+    try { await adminApi.save("tech-references", row?.id ?? null, pending); onSaved(String(pending.ref_code) + " · " + String(pending.ref_name)); }
+    catch (error) { setError(referenceErrorMessage(error, "save")); setPending(null); setPhase("form"); }
     finally { saveLock.current = false; setBusy(false); }
   }
   function renderFields(keys: string[]) {

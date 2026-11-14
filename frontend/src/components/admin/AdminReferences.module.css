@@ -1,3 +1,5 @@
 .fields.fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
 .textarea { width: 100%; padding: var(--admin-space-3); border: 1px solid var(--admin-input-line); border-radius: var(--admin-control-radius); color: var(--admin-text); font-size: var(--admin-font-body); line-height: 1.8; resize: vertical; }
+.feedback strong, .feedback span { display: block; }
+.feedback:focus { outline: 3px solid var(--admin-focus); outline-offset: 3px; }
 @media (max-width: 639px) { .fields.fields { grid-template-columns: 1fr; } }
