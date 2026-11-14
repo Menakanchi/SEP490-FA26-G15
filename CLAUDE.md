@@ -14,6 +14,29 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 > [migration 015](database/mysql/migrations/015_2026-11-13_che-do-aeb-tat.sql) (cột `simulation_runs.aeb_mode`). (2) **Chạy lại baseline**
 > (động học và CARLA) bằng định danh mới; run cũ giữ số, không ghép với run mới, run PENDING định danh cũ bị từ chối. (3) Đọc mục 1 dưới đây.
 
+## Bắt buộc: đọc tài liệu trước khi làm (thành viên và AI agent)
+
+Trước khi sửa code, chạy CARLA hoặc viết script, **mở và đọc hết** các tài liệu ứng với việc trong bảng dưới — không làm theo trí nhớ,
+tóm tắt cũ hay số trong một tài liệu đơn lẻ. Ba luật đọc:
+
+1. **Khối "Cập nhật <ngày>" mới hơn phần thân.** Exec plan/ADR có khối cập nhật (ví dụ "Cập nhật 14/11/2026" trong kế hoạch đo độ lệch CARLA)
+   thì đọc khối đó trước; khi mâu thuẫn, làm theo khối cập nhật mới nhất, không theo bảng/định danh cũ ở phần thân.
+2. **Định danh cũ là dấu hiệu tài liệu lỗi thời:** gặp `-xosc5` trở xuống, `vehicsim-kinematic-1.0`, `perception_shadow` (cho ca người đi bộ),
+   `impact_speed_mps` hiểu là tốc độ ego → đối chiếu [ADR-052](docs/adr/ADR-052-chot-chi-so-va-che-do-aeb-tat-13-11.md) và code hiện tại trước khi dùng.
+3. **Ghi lại đã đọc gì:** câu trả lời bàn giao / mô tả PR liệt kê tài liệu đã đọc và chỗ nào tài liệu khác code. Tài liệu sai thì sửa tài liệu
+   (hoặc thêm khối cập nhật nếu là kế hoạch của người khác), không lặng lẽ làm khác.
+
+| Việc | Phải đọc trước |
+|---|---|
+| Mọi việc CARLA (`.xosc`, worker, adapter, sensor) | Mục 5–7 file này, [carla-local.md](docs/vehicsim/carla-local.md), [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md), [ADR-052](docs/adr/ADR-052-chot-chi-so-va-che-do-aeb-tat-13-11.md) |
+| Đo độ lệch CARLA so với bộ động học (người đi bộ) | [kế hoạch đo độ lệch](docs/exec-plans/active/2026-11-13-do-do-lech-carla-dong-hoc.md) (khối cập nhật 14/11 trước), [carla-ped-bench](docs/vehicsim/carla-ped-bench/README.md) |
+| Chạy baseline, dung sai chạy lặp | [exec plan thành viên 2](docs/exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md) mục 1c, 3b |
+| Thời tiết, ma sát, `decel_available` | [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md), [ADR-051](docs/adr/ADR-051-hieu-chuan-phanh-carla-xosc5.md) |
+| Chỉ số, phân tích lỗi, dataset | [hợp đồng chỉ số](docs/vehicsim/analysis-metrics-contract.md), [ADR-052](docs/adr/ADR-052-chot-chi-so-va-che-do-aeb-tat-13-11.md) |
+| Tối ưu AEB, regression, phê duyệt | [ADR-040](docs/adr/ADR-040-rut-scope-4-tham-so-aeb-7-category.md), [ADR-044](docs/adr/ADR-044-nguong-phanh-oan-regression-5-diem.md), [ADR-052](docs/adr/ADR-052-chot-chi-so-va-che-do-aeb-tat-13-11.md), [kế hoạch 20/10](docs/vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md) |
+| Schema, migration | [database-schema.md](docs/vehicsim/database-schema.md), [01_schema.sql](database/mysql/01_schema.sql), mục 3 file này |
+| Việc khác | [ADR index](docs/adr/README.md) và [exec plan đang làm](docs/exec-plans/active/) cùng chủ đề; [nợ kỹ thuật](docs/exec-plans/tech-debt-tracker.md) |
+
 ## 1. Hiểu đúng trạng thái bàn giao
 
 - **Đang làm (13/11/2026, phần 2 "Chạy baseline" + hợp đồng chỉ số):** đã chốt và triển khai —
