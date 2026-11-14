@@ -48,6 +48,9 @@ try{
    const body=req.postDataJSON(),behavior=saveMode;writes.push({method:req.method(),path:p,body});
    if(behavior==="slow")await new Promise(resolve=>pending.push({kind:"save",resolve}));
    if(behavior==="network")return route.abort("failed");
+   if(behavior==="server")return reply({detail:"java.sql.SQLException: sensitive-fixture-only diagnostic"},500);
+   if(behavior==="server-html")return route.fulfill({status:502,contentType:"text/html",body:"<html><body>sensitive-fixture-only proxy diagnostic</body></html>"});
+   if(behavior==="malformed-save")return route.fulfill({status:200,contentType:"application/json",body:"sensitive-fixture-only invalid JSON"});
    if(behavior==="reject")return reply({detail:"Fixture: email đã được sử dụng"},409);
    if(behavior==="dependency")return reply({detail:"Chuyển toàn bộ workspace sang Manager khác trước khi đổi vai trò hoặc khóa tài khoản này"},400);
    if(behavior==="forbidden")return reply({detail:"Fixture: không có quyền lưu"},403);
@@ -81,6 +84,13 @@ try{
  const discard=async()=>{await dialog().getByRole("button",{name:"Hủy",exact:true}).click();await dialog().getByRole("button",{name:"Bỏ thay đổi",exact:true}).click();await dialog().waitFor({state:"hidden"});};
 
  await page.goto(base+"/login");await page.getByLabel("Email",{exact:true}).fill(actor.email);await page.getByLabel("Mật khẩu",{exact:true}).fill("Fixture-browser-only-12");await page.getByRole("button",{name:"Đăng nhập",exact:true}).click();await ready();
+ for(const action of ["Hủy","Đóng biểu mẫu","Escape"]){
+  await add();assert.equal(await dialog().getByRole("alert").count(),0,"Pristine form has no validation errors");
+  if(action==="Hủy"){await page.mouse.click(5,5);assert.equal(await dialog().isVisible(),true,"Backdrop does not discard a form through an unsupported close path");}
+  if(action==="Escape")await page.keyboard.press("Escape");else await dialog().getByRole("button",{name:action,exact:true}).click();
+  await dialog().waitFor({state:"hidden"});assert.equal(writes.length,0);
+  assert.equal(await frame.getByRole("button",{name:"Thêm mới",exact:true}).evaluate(el=>el===document.activeElement),true);
+ }
  await add();
  assert.equal(await dialog().getByLabel("Email *",{exact:true}).evaluate(el=>el===document.activeElement),true);
  assert.equal(await dialog().getByLabel("Vai trò *",{exact:true}).inputValue(),"MANAGER");
@@ -110,6 +120,25 @@ try{
  await dialog().getByRole("button",{name:"Tạo mới",exact:true}).click();
  assert.equal(writes.length,0);assert.equal(await dialog().getByLabel("Email *",{exact:true}).getAttribute("aria-invalid"),"true");
  await dialog().getByRole("alert").filter({hasText:"Vui lòng kiểm tra"}).waitFor();await shot("validation-390");
+ assert.equal(await dialog().getByLabel("Email *",{exact:true}).evaluate(el=>el===document.activeElement),true);
+ await fillCreate();await dialog().getByLabel("Email *",{exact:true}).fill("invalid-email");
+ await dialog().getByRole("button",{name:"Tạo mới",exact:true}).click();
+ const emailField=dialog().getByLabel("Email *",{exact:true});
+ assert.equal(await emailField.getAttribute("aria-invalid"),"true");
+ assert.equal(await emailField.evaluate(el=>document.getElementById(el.getAttribute("aria-describedby")).textContent),"Email không đúng định dạng.");
+ assert.equal(await emailField.evaluate(el=>el===document.activeElement),true);assert.equal(writes.length,0);
+ await emailField.fill("valid-form@example.invalid");assert.equal(await emailField.getAttribute("aria-invalid"),"false");
+ await dialog().getByLabel("Họ *",{exact:true}).fill("   ");await dialog().getByRole("button",{name:"Tạo mới",exact:true}).click();
+ await dialog().getByText("Vui lòng nhập họ.",{exact:true}).waitFor();
+ assert.equal(await dialog().getByLabel("Họ *",{exact:true}).evaluate(el=>el===document.activeElement),true);assert.equal(writes.length,0);
+ assert.equal(await emailField.getAttribute("maxlength"),"255");
+ for(const label of ["Họ *","Tên đệm","Tên *"]){
+  const field=dialog().getByLabel(label,{exact:true});assert.equal(await field.getAttribute("maxlength"),"80");
+  await field.fill("X".repeat(81));assert.equal((await field.inputValue()).length,80,"Native field cap matches the backend length limit");
+ }
+ await dialog().getByRole("button",{name:"Tạo mới",exact:true}).click();
+ await dialog().getByRole("heading",{name:"Xác nhận tạo tài khoản",exact:true}).waitFor();assert.equal(writes.length,0);
+ await page.keyboard.press("Escape");
  await fillCreate("á".repeat(37));await dialog().getByRole("button",{name:"Tạo mới",exact:true}).click();
  await dialog().getByText("Mật khẩu phải ít nhất 8 ký tự và tối đa 72 byte UTF-8.",{exact:true}).waitFor();assert.equal(writes.length,0);
  const password="á".repeat(36);await dialog().getByLabel("Mật khẩu ban đầu *",{exact:true}).fill(password);
@@ -165,10 +194,28 @@ try{
  await shot("role-lock-review-1366");await page.setViewportSize({width:390,height:844});await shot("role-lock-review-390");
  saveMode="dependency";await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await dialog().getByRole("alert").filter({hasText:"Chuyển toàn bộ workspace"}).waitFor();
  assert.equal(await dialog().getByLabel("Vai trò *",{exact:true}).inputValue(),"REVIEWER");assert.equal(await dialog().getByLabel("Tài khoản đang hoạt động",{exact:true}).isChecked(),false);assert.equal(users[1].is_active,true);
- for(const behavior of ["forbidden","quota","network"]){
+ // A list refetch cannot replace the dirty editor with the unchanged server row.
+ const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith("/admin/users")&&response.request().method()==="GET");
+ await frame.getByRole("button",{name:"Làm mới danh sách",exact:true}).evaluate(button=>button.click());await (await refreshed).finished();
+ await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ assert.equal(await dialog().getByLabel("Vai trò *",{exact:true}).inputValue(),"REVIEWER");
+ assert.equal(await dialog().getByLabel("Tài khoản đang hoạt động",{exact:true}).isChecked(),false);
+ assert.equal(await dialog().getByRole("alert").evaluate(el=>el===document.activeElement),true);
+ const unsafeMessages=[];
+ for(const [behavior,expected] of [["forbidden","Fixture: không có quyền lưu"],["quota","Fixture: thao tác quá nhiều, thử lại sau"],["network","Không thể kết nối đến máy chủ. Kiểm tra kết nối mạng rồi thử lại. Dữ liệu nhập được giữ lại."],["server","Máy chủ chưa thể lưu tài khoản. Hãy thử lại sau. Dữ liệu nhập được giữ lại."],["server-html","Máy chủ chưa thể lưu tài khoản. Hãy thử lại sau. Dữ liệu nhập được giữ lại."],["malformed-save","Không thể xác nhận kết quả lưu. Hãy tải lại danh sách để kiểm tra trước khi thử lại."]]){
   saveMode=behavior;await confirmEdit();await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await dialog().getByRole("alert").waitFor();
   assert.equal(await dialog().getByLabel("Vai trò *",{exact:true}).inputValue(),"REVIEWER");assert.equal(users[1].role,"ENGINEER");
+  assert.equal(await dialog().getByLabel("Tài khoản đang hoạt động",{exact:true}).isChecked(),false);
+  assert.equal(await dialog().getByLabel("Email *",{exact:true}).inputValue(),users[1].email);
+  assert.equal(await dialog().getByRole("button",{name:"Lưu thay đổi",exact:true}).isEnabled(),true,"Failure releases the submit lock for recovery");
+  assert.equal(await dialog().getByRole("alert").evaluate(el=>el===document.activeElement),true);
+  const actual=await dialog().getByRole("alert").innerText();
+  if(actual!==expected)unsafeMessages.push({behavior,actual,expected});
+  assert.equal(await frame.getByRole("status").filter({hasText:"Đã lưu thành công."}).count(),0);
+  await shot("save-error-"+behavior+"-390");
  }
+ await fs.writeFile(path.join(output,"save-error-observations.json"),JSON.stringify({unsafeMessages},null,2));
+ assert.deepEqual(unsafeMessages,[],"Save errors distinguish business, network, server and unreadable-response failures without raw diagnostics");
  saveMode="success";await confirmEdit();const beforeSave=writes.length;await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await dialog().waitFor({state:"hidden"});await ready();
  assert.equal(writes.length,beforeSave+1);assert.equal(users[1].role,"REVIEWER");assert.equal(users[1].is_active,false);assert.equal(Object.hasOwn(writes.at(-1).body,"password"),false);
  await open(users[1].email);await dialog().getByLabel("Tài khoản đang hoạt động",{exact:true}).check();await confirmEdit();await dialog().getByText("Tài khoản có thể đăng nhập lại. Các phiên đã thu hồi không được khôi phục.",{exact:true}).waitFor();await dialog().getByRole("button",{name:"Quay lại",exact:true}).click();await discard();
@@ -190,6 +237,6 @@ try{
   await page.evaluate(()=>localStorage.removeItem("vehicsim_access_token"));await page.goto(base+"/login");
  }
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["fixture login, create fields/defaults/inline validation/UTF8 72-byte boundary","password visibility; review redacts password; exact normalized create payload","dirty Escape/cancel keep/discard and focus return; native modal Tab trap","explicit target and before-after; name-only vs role/lock/unlock/self-email consequences","five role explanations, system scope, unchanged options/no permission APIs, create/edit review and locked account semantics","ref double-submit lock and busy close/Escape prevention","409/400 dependency/403/429/network error retains fields; only server success closes and refetches","no password on update; self role/status disabled; expired self-email session","mismatched/stale detail rejected; Add disabled while opening","four non-Admin roles cannot open form; no real API writes"],fixtureWriteCount:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["fixture login, create fields/defaults/inline validation/UTF8 72-byte boundary","pristine Cancel/X/Escape returns focus with no warning; backdrop does not close","invalid email/whitespace/first-invalid focus/described error; backend 255/80 caps and exact 80-character names accepted","password visibility; review redacts password; exact normalized create payload","dirty Escape/cancel keep/discard and focus return; native modal Tab trap","explicit target and before-after; name-only vs role/lock/unlock/self-email consequences","five role explanations, system scope, unchanged options/no permission APIs, create/edit review and locked account semantics","ref double-submit lock and busy close/Escape prevention","409/400 dependency/403/429 business errors preserved; network/500/502 HTML/malformed JSON safely explained with focused alert, draft and retry controls preserved; no fake success","no password on update; self role/status disabled; expired self-email session","mismatched/stale detail rejected; Add disabled while opening","four non-Admin roles cannot open form; no real API writes"],fixtureWriteCount:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
  console.log("PASS user forms: "+screenshots.length+" screenshots; browser HTTP fixtures only. Live backend/auth/DB/Figma NOT verified.");
 }finally{for(const item of pending)item.resolve();await browser.close();}

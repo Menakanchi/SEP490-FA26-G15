@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Eye, EyeOff, ShieldCheck, UserRound, X } from "lucide-react";
 import { adminApi, type AdminRow } from "@/services/admin";
+import { ApiError } from "@/services/api";
 import { USER_ROLES } from "./adminUsersQuery";
 import styles from "./AdminEditor.module.css";
 import { useAdminDialog } from "./useAdminDialog";
@@ -34,6 +35,14 @@ function createdDate(row: AdminRow) {
   const value = row.created_date;
   const date = typeof value === "string" || typeof value === "number" ? new Date(value) : null;
   return date && !Number.isNaN(date.getTime()) ? date.toLocaleString("vi-VN") : "—";
+}
+function saveErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status >= 500) return "Máy chủ chưa thể lưu tài khoản. Hãy thử lại sau. Dữ liệu nhập được giữ lại.";
+    return error.message;
+  }
+  if (error instanceof TypeError) return "Không thể kết nối đến máy chủ. Kiểm tra kết nối mạng rồi thử lại. Dữ liệu nhập được giữ lại.";
+  return "Không thể xác nhận kết quả lưu. Hãy tải lại danh sách để kiểm tra trước khi thử lại.";
 }
 
 export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved }: { row: AdminRow | null; actorId?: string; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: (email: string) => void }) {
@@ -107,7 +116,7 @@ export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved
     if (saveLock.current || !pending) return;
     saveLock.current = true; setBusy(true); setError("");
     try { await adminApi.save("users", row?.id ?? null, pending); onSaved(pending.email); }
-    catch (err) { setError(err instanceof Error ? err.message : "Không thực hiện được thao tác. Hãy thử lại."); setPending(null); setPhase("form"); }
+    catch (err) { setError(saveErrorMessage(err)); setPending(null); setPhase("form"); }
     finally { saveLock.current = false; setBusy(false); }
   }
 
