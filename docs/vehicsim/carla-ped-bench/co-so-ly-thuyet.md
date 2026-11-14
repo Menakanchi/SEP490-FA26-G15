@@ -1,7 +1,6 @@
 # Cơ sở lý thuyết đo độ lệch CARLA — công thức và nguồn
 
 **Ngày:** 14/11/2026. **Đi kèm:** [thiết kế carla-ped-bench](README.md), code ở repo [phutro](https://github.com/Menakanchi/phutro).
-Bản soạn đầu nằm trên Claude Docs; file này là bản giữ trong repo.
 
 ## Mục đích
 
