@@ -9,6 +9,7 @@ import com.vsos.backend.dto.project.ProjectDtos.ProjectItem;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectJourney;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectList;
 import com.vsos.backend.dto.project.ProjectDtos.ProjectRequest;
+import com.vsos.backend.dto.project.ProjectDtos.VehicleOption;
 import com.vsos.backend.dto.regression.RegressionRecords.RegressionTestRow;
 import com.vsos.backend.exception.project.ProjectError;
 import com.vsos.backend.exception.project.ProjectException;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -422,5 +424,93 @@ class ProjectServiceTest {
         assertError(() -> service.adopt(OWNER, PROJECT, TEST, adopt()), ProjectError.PROJECT_ARCHIVED,
                 "Project “Thử AEB” đang lưu trữ. Bỏ lưu trữ để mở lại.");
         verify(regressions, never()).archiveVersion(anyLong());
+    }
+
+    // ------------------------------------------------------------------ sửa project và các nhánh còn lại
+
+    @Test
+    void anUpdateKeepsEveryFieldThatIsNotSent() {
+        given(project("ACTIVE", "description", "Mô tả cũ", "run_count", 3));
+
+        service.update(OWNER, PROJECT, new ProjectRequest(null, null, null));
+
+        verify(projects).update(eq(PROJECT), eq("Thử AEB"), eq("Mô tả cũ"), eq(VEHICLE), any());
+        verify(projects, never()).existingName(anyLong(), anyString(), anyLong());
+        verify(projects, never()).supportedVehicle(any());
+    }
+
+    @Test
+    void renamingIgnoresTheProjectItselfAndABlankDescriptionClearsIt() {
+        given(project("ACTIVE", "description", "Mô tả cũ"));
+
+        service.update(OWNER, PROJECT, new ProjectRequest("  Thử AEB  ", "   ", null));
+
+        verify(projects).existingName(OWNER, "Thử AEB", PROJECT);
+        verify(projects).update(eq(PROJECT), eq("Thử AEB"), isNull(), eq(VEHICLE), any());
+    }
+
+    @Test
+    void someoneElsesProjectCannotBeEdited() {
+        given(project("ACTIVE", "created_by_user_id", 8L));
+
+        assertError(() -> service.update(OWNER, PROJECT, new ProjectRequest("Lấy", null, null)), ProjectError.PROJECT_NOT_YOURS,
+                "Project #21 không phải project cá nhân của bạn.");
+        assertError(() -> service.archive(OWNER, PROJECT), ProjectError.PROJECT_NOT_YOURS, "Project #21 không phải project cá nhân của bạn.");
+        assertError(() -> service.delete(OWNER, PROJECT, "Thử AEB"), ProjectError.PROJECT_NOT_YOURS,
+                "Project #21 không phải project cá nhân của bạn.");
+        verify(projects, never()).update(anyLong(), any(), any(), any(), any());
+        verify(projects, never()).setStatus(anyLong(), anyString(), any());
+        verify(projects, never()).delete(anyLong());
+    }
+
+    @Test
+    void nameAndDescriptionLengthsCountCharactersNotUtf16Units() {
+        when(projects.insert(anyString(), any(), anyLong(), anyLong(), any())).thenReturn(PROJECT);
+        given(project("ACTIVE"));
+        String car = "🚗";
+
+        service.create(OWNER, new ProjectRequest(car.repeat(ProjectService.NAME_MAX), car.repeat(ProjectService.DESCRIPTION_MAX), null));
+
+        verify(projects).insert(eq(car.repeat(ProjectService.NAME_MAX)), eq(car.repeat(ProjectService.DESCRIPTION_MAX)), eq(OWNER), eq(VEHICLE), any());
+        assertError(() -> service.create(OWNER, new ProjectRequest(car.repeat(ProjectService.NAME_MAX + 1), null, null)),
+                ProjectError.NAME_TOO_LONG, "Tên project tối đa 150 ký tự (đang có 151).");
+    }
+
+    @Test
+    void vehicleOptionsComeFromTheSupportedCatalog() {
+        Map<String, Object> audi = new HashMap<>(Map.of("id", 1L, "name", "Audi e-tron", "is_default", 1L,
+                "length_m", new BigDecimal("4.90"), "mass_kg", new BigDecimal("2490.0"), "max_brake_decel_mps2", 9.0));
+        audi.put("width_m", null);
+        Map<String, Object> tesla = new HashMap<>(Map.of("id", 2L, "name", "Tesla Model 3", "is_default", 0L));
+        when(projects.supportedVehicles()).thenReturn(List.of(new Row(audi), new Row(tesla)));
+
+        assertThat(service.vehicles()).containsExactly(
+                new VehicleOption(1L, "Audi e-tron", true, 4.9, null, 2490.0, 9.0),
+                new VehicleOption(2L, "Tesla Model 3", false, null, null, null, null));
+    }
+
+    @Test
+    void aProjectWithoutABaselineStillShowsRoundOneAtTheScenarioStep() {
+        when(projects.row(PROJECT)).thenReturn(project("ACTIVE"));
+        when(projects.journeySummary(PROJECT)).thenReturn(summary("baseline_id", null, "baseline_label", null, "rounds", 0L));
+
+        ProjectJourney journey = service.journey(OWNER, PROJECT);
+
+        assertThat(journey.round()).isEqualTo(1);
+        assertThat(journey.baselineLabel()).isNull();
+        assertThat(journey.next()).isEqualTo(JourneyStepKey.SCENARIO);
+        verify(projects, never()).latestBaselineRuns(anyLong(), anyLong(), anyString());
+    }
+
+    @Test
+    void pausedRunsCountAsRunningAndStoppedRunsAsFailed() {
+        JourneyCounts counts = ProjectService.count(summary("families", 1L), Map.of(1L, 1L, 2L, 1L, 3L, 1L),
+                List.of(run(1, "PAUSED", false, null, false), run(2, "STOPPED", false, null, false), run(3, "PENDING", false, null, false)));
+
+        assertThat(counts.baselineRunning()).isEqualTo(2);
+        assertThat(counts.baselineFailed()).isEqualTo(1);
+        assertThat(counts.baselineCompleted()).isZero();
+        assertThat(counts.familiesBaselinePending()).isEqualTo(1);
+        assertThat(statuses(counts)).containsEntry(JourneyStepKey.BASELINE, RUNNING);
     }
 }
