@@ -1,4 +1,19 @@
 .overview { display: grid; gap: 20px; min-width: 0; }
+.loading { min-height: 340px; align-content: start; }
+.scope { color: var(--color-vehicsim-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.objectives { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.objectives > div { min-width: 0; display: grid; align-content: start; gap: 4px; font-size: 12px; color: var(--color-vehicsim-muted); }
+.objectives strong { color: var(--color-vehicsim-ink); font-size: 18px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.objectives small { font-size: 11px; line-height: 1.6; }
+.runRegion { margin-top: 16px; }
+.runTable { width: 100%; min-width: 740px; text-align: left; font-size: 12px; }
+.runTable th { padding: 10px 12px; background: var(--color-vehicsim-soft); }
+.runTable td { padding: 12px; border-top: 1px solid var(--color-vehicsim-line); vertical-align: top; }
+.runTable td:first-child { width: 40%; max-width: 340px; overflow-wrap: anywhere; }
+.runTable td > span, .runTable td > small { display: block; margin-top: 4px; color: var(--color-vehicsim-muted); }
+.runTable td[data-impact] { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.runActions { display: flex; flex-direction: column; align-items: start; gap: 6px; }
+.runActions a { color: var(--color-vehicsim-decision); text-decoration: underline; padding-block: 4px; }
 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .kpi { min-width: 0; padding: 18px 20px; border: 1px solid var(--color-vehicsim-line); border-top: 3px solid var(--color-vehicsim-line-strong); border-radius: 14px; background: var(--color-vehicsim-surface); }
 .kpi[data-tone=safe] { border-top-color: var(--color-vehicsim-ok); }
@@ -39,4 +54,5 @@
 .identity { margin-top: 3px; font-size: 10px; color: var(--color-vehicsim-muted); font-family: var(--font-mono); overflow-wrap: anywhere; }
 @media (max-width: 1100px) { .distributions { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 1050px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 767px) { .objectives { grid-template-columns: minmax(0, 1fr); } .runActions a { min-height: 40px; display: inline-flex; align-items: center; } }
 @media (max-width: 700px) { .metrics { grid-template-columns: minmax(0, 1fr); } .barRow { grid-template-columns: 100px minmax(0, 1fr) 66px; gap: 8px; } .configuration { display: block; margin-left: 0; margin-top: 6px; } }

@@ -287,6 +287,7 @@ try {
    await page.getByLabel("Trạng thái",{exact:true}).selectOption("RUNNING");
    await page.getByText("Chưa có run baseline phù hợp.",{exact:true}).waitFor();
    await page.goto(selectedUrl);await page.getByLabel(`Tập của run ${run.run_id}`,{exact:true}).waitFor();
+   await page.waitForFunction(id=>document.querySelector(`select[aria-label="Tập của run ${id}"]`)?.disabled===false,run.run_id);
    assert.equal(await page.getByLabel(`Tập của run ${run.run_id}`,{exact:true}).inputValue(),"OPTIMIZATION");
   }
  }
@@ -843,20 +844,20 @@ try {
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Batch 8 ${name} page overflow ${width}`);
    const mainBounds=await page.locator(".analysis-workspace").evaluate(node=>node.getBoundingClientRect().width);
    assert(mainBounds>=Math.min(width>=768?width-248:width,600)-1,`Analysis content gets usable width for ${name} at ${width}`);
-   assert.equal(await page.locator(".analysis-mobile-menu > summary:visible").count(),width<768?1:0);
+   assert.equal(await page.getByRole("button",{name:"Menu",exact:true}).isVisible(),width<1024,`Shared menu visibility for ${name} at ${width}`);
    await page.evaluate(()=>window.scrollTo({top:0,left:0,behavior:"instant"}));
    await page.screenshot({path:path.join(output,`batch8-${name}-${width}.png`),fullPage:true});
   }
  }
  // Mobile navigation remains available, is keyboard operable and closes after navigation/Escape.
  await page.goto(base+"/analysis/failures?scenario_id=1");await page.getByRole("heading",{name:"Phân tích baseline",exact:true}).waitFor();
- const mobileMenu=page.locator(".analysis-mobile-menu"),menuToggle=mobileMenu.locator(":scope > summary");
+ const mobileMenu=page.locator("#vehicsim-navigation"),menuToggle=page.getByRole("button",{name:"Menu",exact:true});
  await menuToggle.focus();await page.keyboard.press("Enter");await mobileMenu.getByRole("link",{name:"Phương tiện",exact:true}).waitFor();
  assert.equal(await page.getByRole("button",{name:"Đăng xuất",exact:true}).count(),1);
  await page.screenshot({path:path.join(output,"batch8-mobile-menu-open.png"),fullPage:true});
- await page.keyboard.press("Escape");assert.equal(await mobileMenu.getAttribute("open"),null);assert(await menuToggle.evaluate(node=>node===document.activeElement));
+ await page.keyboard.press("Escape");assert.equal(await menuToggle.getAttribute("aria-expanded"),"false");assert(await menuToggle.evaluate(node=>node===document.activeElement));assert.equal(await mobileMenu.isVisible(),false);
  await page.keyboard.press("Space");await mobileMenu.getByRole("link",{name:"Kết quả & phân tích",exact:true}).click();
- await page.waitForURL(base+"/analysis/failures");assert.equal(await mobileMenu.getAttribute("open"),null);
+ await page.waitForURL(base+"/analysis/failures");assert.equal(await menuToggle.getAttribute("aria-expanded"),"false");assert.equal(await mobileMenu.isVisible(),false);
  // Focused shared scroll regions can be scrolled using the keyboard, including saved snapshot.
  await page.goto(snapshotUrl);await page.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();
  for(const label of ["Phân trang tập tối ưu","Phân trang tập xác minh"])assert.equal(await page.getByRole("navigation",{name:label,exact:true}).count(),1);
