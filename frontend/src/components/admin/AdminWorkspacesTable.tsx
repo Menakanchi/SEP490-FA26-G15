@@ -11,9 +11,11 @@ import workspace from "./AdminWorkspaces.module.css";
 
 const message = (error: unknown) => error instanceof Error ? error.message : "Không thực hiện được thao tác. Hãy thử lại.";
 function SearchForm({ value, onSearch }: { value: string; onSearch: (q: string) => void }) {
-  const [draft, setDraft] = useState(value);
-  return <form className={styles.search} onSubmit={event => { event.preventDefault(); onSearch(draft.trim()); }}>
-    <label htmlFor="admin-workspaces-search">Tìm kiếm</label><div><span className={styles.searchInput}><Search size={16} aria-hidden="true" /><input id="admin-workspaces-search" aria-label="Từ khóa tìm kiếm" type="search" maxLength={100} value={draft} onChange={event => setDraft(event.target.value)} placeholder="Tên workspace, tên hoặc email Manager" /></span><button type="submit" className={styles.button}>Tìm</button></div>
+  const [search, setSearch] = useState({ applied: value, draft: value });
+  // Sync history changes without remounting the input or replacing an unapplied draft on refresh.
+  if (search.applied !== value) setSearch({ applied: value, draft: value });
+  return <form className={styles.search} onSubmit={event => { event.preventDefault(); onSearch(search.draft.trim()); }}>
+    <label htmlFor="admin-workspaces-search">Tìm kiếm</label><div><span className={styles.searchInput}><Search size={16} aria-hidden="true" /><input id="admin-workspaces-search" aria-label="Từ khóa tìm kiếm" type="search" maxLength={100} value={search.draft} onChange={event => setSearch({ applied: value, draft: event.target.value })} placeholder="Tên workspace, tên hoặc email Manager" /></span><button type="submit" className={styles.button}>Tìm</button></div>
   </form>;
 }
 export function AdminWorkspacesTable() {
@@ -62,6 +64,9 @@ export function AdminWorkspacesTable() {
     setActionError(""); setNotice("");
   }
   function reset() { change({ q: "", status: "", page: 1 }); }
+  function search(q: string) {
+    if (q !== readWorkspaceQuery(new URLSearchParams(window.location.search)).q) change({ q, page: 1 });
+  }
   async function edit(id: number) {
     const token = ++sequence.current, scope = request;
     const isCurrent = () => token === sequence.current && window.location.pathname === "/admin/workspaces" && workspaceQueryParams(readWorkspaceQuery(new URLSearchParams(window.location.search)), true).toString() === scope;
@@ -79,11 +84,11 @@ export function AdminWorkspacesTable() {
     <section aria-labelledby="admin-workspaces-list-title" className={styles.filters}>
       <div className={styles.listHeader}><div><h2 id="admin-workspaces-list-title">Danh sách workspace</h2><p>Tra cứu workspace và Manager phụ trách. Workspace đã lưu trữ chỉ được xem.</p></div><button className={styles.primary} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); setEditor(null); setActionError(""); setNotice(""); }}><Plus size={16} aria-hidden="true" />Thêm mới</button></div>
       <div className={styles.toolbar + " " + workspace.toolbar}>
-        <SearchForm key={query.q} value={query.q} onSearch={q => change({ q, page: 1 })} />
+        <SearchForm value={query.q} onSearch={search} />
         <label><span id="admin-workspaces-status-label">Trạng thái</span><select aria-labelledby="admin-workspaces-status-label" value={query.status} onChange={event => change({ status: event.target.value, page: 1 })}><option value="">Tất cả trạng thái</option>{Object.entries(WORKSPACE_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label><span id="admin-workspaces-sort-label">Sắp xếp</span><select aria-labelledby="admin-workspaces-sort-label" value={query.sort} onChange={event => change({ sort: event.target.value, page: 1 })}>{Object.entries(WORKSPACE_SORTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       </div>
-      {filtered && <div className={styles.chips} aria-label="Bộ lọc đang áp dụng">{query.q && <button onClick={() => change({ q: "", page: 1 })} aria-label={"Bỏ tìm kiếm: " + query.q}>Tìm: {query.q}<X size={13} aria-hidden="true" /></button>}{query.status && <button onClick={() => change({ status: "", page: 1 })} aria-label="Bỏ lọc trạng thái">{WORKSPACE_STATUSES[query.status]}<X size={13} aria-hidden="true" /></button>}<button className={styles.reset} onClick={reset}>Xóa bộ lọc</button></div>}
+      {filtered && <div className={styles.chips} aria-label="Bộ lọc đang áp dụng">{query.q && <button onClick={() => change({ q: "", page: 1 })} aria-label={"Bỏ tìm kiếm: " + query.q}>Tìm: {query.q}<X size={13} aria-hidden="true" /></button>}{query.status && <button onClick={() => change({ status: "", page: 1 })} aria-label={"Bỏ lọc trạng thái: " + WORKSPACE_STATUSES[query.status]}>{WORKSPACE_STATUSES[query.status]}<X size={13} aria-hidden="true" /></button>}<button className={styles.reset} onClick={reset}>Xóa bộ lọc</button></div>}
     </section>
     {actionError && <p role="alert" className={styles.error}>{actionError}</p>}{notice && <p ref={noticeRef} tabIndex={-1} role="status" className={styles.success + " " + workspace.feedback}><strong>Đã lưu workspace thành công.</strong><span>Workspace: {notice}</span>{filtered && <span>Bộ lọc được giữ nguyên; workspace không còn khớp sẽ không xuất hiện trong kết quả.</span>}</p>}
     <section aria-labelledby="admin-workspaces-results-title" className={styles.results}>

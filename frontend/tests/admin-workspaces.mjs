@@ -12,6 +12,7 @@ const managers=Array.from({length:121},(_,i)=>({id:1000+i,full_name:"Manager "+S
 const workspaces=Array.from({length:61},(_,i)=>({id:i===0?888888:2000+i,name:i===0?"Workspace với tên rất dài để kiểm tra bố cục trên màn hình nhỏ và thao tác quản trị":"Lab "+String(i).padStart(3,"0"),description:i===0?"Mô tả kiểm thử, không có dữ liệu thật.":null,manager_id:managers[i].id,manager_name:managers[i].full_name,manager_email:managers[i].email,member_count:i+2,project_count:i%7,status:i%4===1?"ARCHIVED":"ACTIVE",created_date:i===60?null:stamp,updated_at:stamp}));
 let role="ADMIN",mode="normal",managerMode="normal",detailMode="normal",saveMode="reject",delaySearch=null,delayManager=null;
 const requests=[],writes=[],pending=[],errors=[],unexpected=[],screenshots=[];
+const searchIssues=[];
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"});
 try{
  const context=await browser.newContext({viewport:{width:1366,height:768}});
@@ -98,7 +99,7 @@ try{
    const frame=document.querySelector("[data-admin-frame]"),region=frame?.querySelector('[aria-label="Bảng workspace, cuộn ngang"]');
    if(!region)return false;
    const cells=[...region.querySelectorAll("tbody tr th")],labels=[...frame.querySelectorAll("button[aria-label]")].map(button=>button.getAttribute("aria-label"));
-   return labels.includes("Bỏ tìm kiếm: "+expected.q)===!!expected.q&&labels.includes("Bỏ lọc trạng thái")===!!expected.status&&frame.textContent.includes(expected.total.toLocaleString("vi-VN")+" kết quả · Trang "+expected.page+"/"+Math.max(1,Math.ceil(expected.total/expected.size)))&&cells.length===expected.ids.length&&cells.every((cell,i)=>cell.textContent.includes("ID #"+expected.ids[i]));
+   return labels.includes("Bỏ tìm kiếm: "+expected.q)===!!expected.q&&labels.some(label=>label.startsWith("Bỏ lọc trạng thái"))===!!expected.status&&frame.textContent.includes(expected.total.toLocaleString("vi-VN")+" kết quả · Trang "+expected.page+"/"+Math.max(1,Math.ceil(expected.total/expected.size)))&&cells.length===expected.ids.length&&cells.every((cell,i)=>cell.textContent.includes("ID #"+expected.ids[i]));
   },{q,status,total:rows.length,page:num,size,ids:rows.slice((num-1)*size,num*size).map(item=>item.id)});
  };
  const goto=async search=>{await page.goto(base+"/admin/workspaces"+search);await ready();};
@@ -116,12 +117,39 @@ try{
  assert.deepEqual(await region().getByRole("columnheader").allTextContents(),["Workspace","Manager phụ trách","Thành viên / Project","Trạng thái","Thao tác"]);
  const firstRow=region().locator("tbody tr").first(),firstId=Number((await firstRow.getByRole("rowheader").innerText()).match(/ID #(\d+)/)[1]),firstWorkspace=workspaces.find(item=>item.id===firstId);
  await firstRow.getByRole("cell").filter({hasText:firstWorkspace.member_count+" thành viên"}).filter({hasText:firstWorkspace.project_count+" project"}).waitFor();
- for(const [width,height] of [[1920,1080],[1366,768],[768,1024],[390,844]]){
+ for(const [width,height] of [[1920,1080],[1440,900],[1366,768],[1024,768],[768,1024],[375,812],[390,844]]){
   await page.setViewportSize({width,height});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await shot("list-"+width);
  }
  await region().focus();await page.keyboard.press("ArrowRight");await page.waitForFunction(()=>document.querySelector('[aria-label="Bảng workspace, cuộn ngang"]').scrollLeft>0);
  const action=await region().getByRole("button").first().boundingBox();assert.ok(action.x>=0&&action.x+action.width<=390);
  await page.setViewportSize({width:1366,height:768});
+ await goto("?q=Lab&status=ACTIVE&sort=name&page=3&page_size=10");
+ const sameQueryReads=readCount(),sameQueryUrl=page.url();
+ const input=frame.getByLabel("Từ khóa tìm kiếm",{exact:true});
+ await input.fill("  Lab  ");await input.press("Enter");await ready();
+ if(page.url()!==sameQueryUrl)searchIssues.push({kind:"same-query-page",expected:sameQueryUrl,actual:page.url()});
+ if(readCount()!==sameQueryReads)searchIssues.push({kind:"same-query-request",before:sameQueryReads,after:readCount()});
+ await input.evaluate(el=>{window.workspaceSearchInput=el;});
+ await input.fill("manager-000@example.invalid");await input.press("Enter");await ready();
+ if(!await input.evaluate(el=>el===window.workspaceSearchInput))searchIssues.push({kind:"input-remounted"});
+ if(!await input.evaluate(el=>el===document.activeElement))searchIssues.push({kind:"enter-lost-focus",active:await page.evaluate(()=>document.activeElement.tagName)});
+ assert.equal(query().page,undefined);assert.equal(query().status,"ACTIVE");assert.equal(query().sort,"name");assert.equal(query().page_size,"10");
+ await shot("search-enter-focus");
+ await input.fill("Chưa gửi tìm kiếm");const draftReads=readCount();await input.press("ArrowLeft");
+ const caret=await input.evaluate(el=>el.selectionStart);
+ assert.equal(readCount(),draftReads,"Typing never searches without submit");
+ await frame.getByRole("button",{name:"Làm mới danh sách",exact:true}).click();await ready();
+ assert.equal(await input.inputValue(),"Chưa gửi tìm kiếm");assert.equal(await input.evaluate(el=>el.selectionStart),caret);
+ await page.goBack();await ready();assert.equal(await input.inputValue(),"Lab");
+ await page.goForward();await ready();assert.equal(await input.inputValue(),"manager-000@example.invalid");
+ for(const [status,label] of [["ACTIVE","Hoạt động"],["ARCHIVED","Đã lưu trữ"]]){
+  await frame.getByLabel("Trạng thái",{exact:true}).selectOption(status);await ready();
+  const chip=frame.getByRole("button",{name:/^Bỏ lọc trạng thái/});
+  if(await chip.getAttribute("aria-label")!=="Bỏ lọc trạng thái: "+label)searchIssues.push({kind:"status-chip-name",status,actual:await chip.getAttribute("aria-label")});
+  await chip.focus();await page.keyboard.press("Enter");await ready();
+  assert.equal(query().status,undefined);assert.equal(query().q,"manager-000@example.invalid");assert.equal(query().sort,"name");assert.equal(query().page_size,"10");
+ }
+ await goto("");
  const reads=readCount();await frame.getByLabel("Từ khóa tìm kiếm",{exact:true}).fill("  Lab  ");assert.equal(readCount(),reads);assert.equal(query().q,undefined);
  await frame.getByRole("button",{name:"Tìm",exact:true}).click();await ready();assert.equal(query().q,"Lab");
  await frame.getByRole("button",{name:"Sau",exact:true}).click();await ready();assert.equal(query().page,"2");
@@ -131,7 +159,7 @@ try{
  const scope=page.url();await page.reload();await ready();assert.equal(page.url(),scope);
  await page.getByRole("navigation",{name:"Quản trị hệ thống",exact:true}).filter({visible:true}).getByRole("link",{name:/^Tài khoản/}).click();await frame.getByRole("region",{name:"Bảng tài khoản, cuộn ngang",exact:true}).waitFor();
  await page.goBack();await ready();assert.equal(page.url(),scope);
- await frame.getByRole("button",{name:"Bỏ lọc trạng thái",exact:true}).click();await ready();await page.goBack();await ready();assert.equal(query().status,"ARCHIVED");await page.goForward();await ready();assert.equal(query().status,undefined);
+ await frame.getByRole("button",{name:/^Bỏ lọc trạng thái/}).click();await ready();await page.goBack();await ready();assert.equal(query().status,"ARCHIVED");await page.goForward();await ready();assert.equal(query().status,undefined);
  await frame.getByRole("button",{name:"Xóa bộ lọc",exact:true}).click();await ready();assert.deepEqual(query(),{sort:"name",page_size:"10"});
  for(const size of ["50","100"]){await frame.getByLabel("Số dòng mỗi trang",{exact:true}).selectOption(size);await ready();assert.equal(await region().locator("tbody tr").count(),Math.min(61,Number(size)));}
  await search("manager-060@example.invalid");assert.equal(await region().locator("tbody tr").count(),1);
@@ -173,7 +201,15 @@ try{
  await searchManager("not-present");await managersReady(0);await dialog().getByRole("status").filter({hasText:"Không có Manager phù hợp"}).waitFor();assert.equal(await dialog().getByLabel("Manager đang chọn",{exact:true}).innerText(),selected);
  await searchManager("120");await managersReady(1);await dialog().getByRole("radio").check();await review();await dialog().getByLabel("Ảnh hưởng khi giao Manager",{exact:true}).filter({hasText:"sẽ nhận thông báo"}).waitFor();await dialog().getByText("Thành viên và project hiện có được giữ nguyên khi giao lại Manager.",{exact:true}).waitFor();const reviewText=await dialog().getByRole("region",{name:"Nội dung xác nhận workspace",exact:true}).innerText();assert.ok(reviewText.includes("manager-000@")&&reviewText.includes("manager-120@"));await shot("reassign-review-1366");await page.setViewportSize({width:390,height:844});await shot("reassign-review-390");
  for(const behavior of ["manager","archived","forbidden","quota","network"]){saveMode=behavior;await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await dialog().getByRole("alert").waitFor();assert.equal(target.manager_id,1000);await dialog().getByLabel("Manager đang chọn",{exact:true}).filter({hasText:"manager-120@"}).waitFor();await review();}
- saveMode="success";const beforeSave=writes.length,scoped=page.url();await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await dialog().waitFor({state:"hidden"});await ready();assert.equal(page.url(),scoped);assert.equal(await region().locator("tbody tr").count(),0);await frame.getByText("Không có dữ liệu phù hợp.",{exact:true}).waitFor();assert.equal(writes.length,beforeSave+1);assert.equal(target.manager_id,1120);assert.equal(writes.at(-1).method,"PUT");assert.deepEqual(Object.keys(writes.at(-1).body).sort(),["description","manager_id","name"]);assert.equal(target.member_count,2);assert.equal(target.project_count,0);
+ saveMode="success";mode="error";const beforeSave=writes.length,scoped=page.url();
+ await dialog().getByRole("button",{name:"Xác nhận lưu",exact:true}).click();await dialog().waitFor({state:"hidden"});
+ await frame.getByRole("alert").filter({hasText:"Fixture: không tải được workspace"}).waitFor();
+ assert.equal(target.manager_id,1120,"Save committed even though required list refresh failed");
+ assert.equal(writes.length,beforeSave+1);assert.equal(page.url(),scoped);
+ assert.equal(await region().count(),0,"Failed post-save refresh never presents old rows as synchronized");
+ assert.equal(await frame.getByText("Không có dữ liệu phù hợp.",{exact:true}).count(),0,"Refresh error is not empty data");
+ await shot("saved-refresh-error-390");
+ mode="normal";await frame.getByRole("button",{name:"Thử lại",exact:true}).click();await ready();assert.equal(page.url(),scoped);assert.equal(await region().locator("tbody tr").count(),0);await frame.getByText("Không có dữ liệu phù hợp.",{exact:true}).waitFor();assert.equal(writes.length,beforeSave+1);assert.equal(target.manager_id,1120);assert.equal(writes.at(-1).method,"PUT");assert.deepEqual(Object.keys(writes.at(-1).body).sort(),["description","manager_id","name"]);assert.equal(target.member_count,2);assert.equal(target.project_count,0);
  await savedNotice().getByText("Workspace: "+target.name,{exact:true}).waitFor();
  await savedNotice().getByText("Bộ lọc được giữ nguyên; workspace không còn khớp sẽ không xuất hiện trong kết quả.",{exact:true}).waitFor();
  assert.equal(await savedNotice().evaluate(element=>element===document.activeElement),true);
@@ -186,6 +222,8 @@ try{
  for(const nextRole of ["MANAGER","ENGINEER","REVIEWER","EXPERIENCER"]){role=nextRole;const before=readCount();await page.goto(base+"/admin/workspaces");await page.getByRole("heading",{name:"Trang này yêu cầu quyền truy cập",exact:true}).waitFor();assert.equal(readCount(),before);}
  role="ADMIN";mode="expired";await page.goto(base+"/admin/workspaces");await page.waitForURL(base+"/login");assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);const beforeGuest=readCount();await page.goto(base+"/admin/workspaces");await page.waitForURL(base+"/login");assert.equal(readCount(),beforeGuest);
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["actual server workspace/Manager name/email search, status, name sort, page sizes, URL/reload/Back/Forward and clamp","five task-focused columns preserve actual member/project counts; dates remain in details","four viewport bounds, scroll region keyboard/sticky actions","targeted create/reassign feedback and stable focus, unchanged filter after row disappears","list loading/empty/503/403/network/malformed/retry and stale error isolation","archived read-only details, no Manager fetch or mutation","create validation/trim/null shape/review/409 preservation and Manager beyond first 100","dirty Escape/keep/discard, focus return, Tab trap, busy Escape/ref double-submit lock","Manager paging/search/selection outside results; loading/error/empty/malformed and stale isolation","reassignment before/after; notifications only create/Manager change; no membership/project mutation","server invalid Manager/archive/403/429/network retain draft; confirmed success/refetch full PUT","wrong/late detail rejected; Add disabled; nonAdmin roles denied; 401/guest"],fixtureWriteCount:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
+ await fs.writeFile(path.join(output,"search-observations.json"),JSON.stringify({searchIssues},null,2));
+ assert.deepEqual(searchIssues,[],"Workspace search preserves focus/page and status chips include their visible labels");
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",screenshots,checks:["search Enter preserves DOM/focus; same normalized query keeps page with no GET; refresh retains draft/caret; history sync; ACTIVE/ARCHIVED chip names and keyboard removal","confirmed save with failed mandatory refresh shows error without stale rows/empty; retry preserves filter and never repeats PUT","actual server workspace/Manager name/email search, status, name sort, page sizes, URL/reload/Back/Forward and clamp","five task-focused columns preserve actual member/project counts; dates remain in details","seven viewport bounds including 375/390/768/1024/1440, scroll region keyboard/sticky actions","targeted create/reassign feedback and stable focus, unchanged filter after row disappears","list loading/empty/503/403/network/malformed/retry and stale error isolation","archived read-only details, no Manager fetch or mutation","create validation/trim/null shape/review/409 preservation and Manager beyond first 100","dirty Escape/keep/discard, focus return, Tab trap, busy Escape/ref double-submit lock","Manager paging/search/selection outside results; loading/error/empty/malformed and stale isolation","reassignment before/after; notifications only create/Manager change; no membership/project mutation","server invalid Manager/archive/403/429/network retain draft; confirmed success/refetch full PUT","wrong/late detail rejected; Add disabled; nonAdmin roles denied; 401/guest"],fixtureWriteCount:writes.length,liveBackendVerified:false,figmaVerified:false},null,2));
  console.log("PASS workspace batch 5: "+screenshots.length+" screenshots; browser HTTP fixtures only. Live backend/auth/DB/Figma NOT verified.");
 }finally{for(const item of pending)item.resolve();await browser.close();}
