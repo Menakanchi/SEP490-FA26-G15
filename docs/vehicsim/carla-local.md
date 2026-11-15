@@ -52,6 +52,20 @@ giữa run không làm hỏng run). Không có livestream/video giả: nếu kh�
 lỗi của ScenarioRunner 0.9.16 (`ScenarioManager.cleanup` đã xoá ego qua `CarlaDataProvider.cleanup`, rồi `ScenarioRunner._cleanup` xoá lần nữa).
 Vô hại, không phải dấu hiệu run hỏng.
 
+### Xem số trực tiếp trong cửa sổ CARLA (HUD, dev, 15/11/2026)
+
+`dev-carla.ps1 -Hud` bật server có cửa sổ 1280×720 (server đã chạy ẩn thì hiện lại cửa sổ) và thêm `--hud` vào lệnh chạy của backend;
+ngoài web dùng `run_xosc.py <file>.xosc --camera --hud`. `follow_hero.py` vẽ cạnh xe: tốc độ, gia tốc dọc thân xe, bàn đạp ga/phanh
+(phanh do controller AEB áp), thời gian từ lúc thấy ego, khoảng cách **tâm-tâm** tới người đi bộ/xe gần nhất.
+
+- Chỉ là số vật lý đọc từ CARLA. TTC, quyết định AEB và chỉ số chấm điểm ở lõi Java; muốn xem thì dùng **Phát lại** sau run.
+- Trước khi AEB can thiệp, ego được giữ tốc độ bằng `enable_constant_velocity` nên `ga 0.00` là bình thường.
+  Gia tốc HUD (`get_acceleration`) khác cột `imu_accel_x_ms2`: IMU đo lực riêng, gồm cả trọng lực trên đường dốc.
+- Chữ `draw_string` không vào ảnh camera RGB (kiểm 15/11). `draw_point`/`draw_box`/`draw_line` thì **có**, nên đừng thêm hình debug
+  vào HUD: sẽ làm bẩn `sensors/camera`.
+- HUD đổi số 5 lần/giây (giờ thật). Vẽ mỗi tick làm hai bản chữ chồng lệch nhau ("50.0" đọc thành "60.0") hoặc nháy mất, vì lệnh vẽ
+  đua với tick của ScenarioRunner. Đo trên run 2365 chạy lại: 30/30 khung có đúng một bản chữ, số khớp `frames.csv`.
+
 ## Hợp đồng và giới hạn
 
 - Profile hiện tại ghi `carla-0.9.16-xosc6` (định dạng `vehicsim.xosc/v6`, bước **0,01 s = 100 Hz**, mô-men phanh đã hiệu chuẩn — ADR-051,

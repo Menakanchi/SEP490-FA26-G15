@@ -195,8 +195,10 @@ def run(args: argparse.Namespace) -> int:
                "--trafficManagerPort", "8005", "--json", "--outputDir", str(out)]
     try:
         with (out / "follow_hero.log").open("w", encoding="utf-8") as camera_log, (out / "scenario_runner.log").open("w", encoding="utf-8") as log:
-            follower = subprocess.Popen([sys.executable, str(WORKER / "follow_hero.py"), "--host", args.host,
-                                         "--port", str(args.port), "--view", "chase"], env=env, stdout=camera_log, stderr=subprocess.STDOUT)
+            follow = [sys.executable, str(WORKER / "follow_hero.py"), "--host", args.host, "--port", str(args.port), "--view", "chase"]
+            if args.hud:
+                follow.append("--hud")
+            follower = subprocess.Popen(follow, env=env, stdout=camera_log, stderr=subprocess.STDOUT)
             proc = subprocess.Popen(command, cwd=args.sr_root, env=env, stdout=log, stderr=subprocess.STDOUT)
             code = wait_for_exit(proc, args.timeout, out / STOP_FLAG)
         criteria = []
@@ -241,6 +243,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sr-root", type=Path, default=Path(os.environ.get("SR_ROOT", str(Path.home() / "scenario_runner"))))
     parser.add_argument("--timeout", type=float, default=240.0)
     parser.add_argument("--camera", action="store_true")
+    parser.add_argument("--hud", action="store_true", help="dev: follow_hero vẽ tốc độ/bàn đạp cạnh xe trong cửa sổ CARLA")
     parser.add_argument("--fast", action="store_true", help="tương thích hợp đồng worker; ScenarioRunner dùng sync tick")
     parser.add_argument("--status", action="store_true")
     args = parser.parse_args(argv)
