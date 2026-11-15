@@ -33,13 +33,13 @@ thêm nhánh riêng cho CARLA vào `AebStack` (ADR-042).
 | Nguồn lệch | Đo được | Kết luận |
 |---|---|---|
 | Phanh, pha phanh đều | η = 1,28 / 1,01 / 0,98 / 0,97 ở 40 / 50 / 60 / 70 km/h (mức đích 8 m/s²) | Khớp mô hình từ 50 km/h |
-| Phanh, vùng tốc độ thấp | Dưới 6 m/s dừng gấp 23–25 m/s²; Δ quãng dừng −1,72 ± 0,42 m (20–70 km/h) | **CARLA lạc quan ~1,7 m trên đường khô** (TD-17) |
+| Phanh, vùng tốc độ thấp | Dưới 6 m/s dừng gấp 23–25 m/s² ở mọi mức bàn đạp; Δ quãng dừng −1,72 ± 0,42 m (20–70 km/h) | CARLA lạc quan ~1,7 m → **đã thay bằng adapter đặt tốc độ** ([ADR-053](../../adr/ADR-053-xosc7-dieu-khien-toc-do-vung-thap.md), `-xosc7`): Δ quãng dừng so với bộ động học còn +0,3 m |
 | Ma sát mặt đường | Mưa vẫn phanh 7,8–9,3 m/s² (mô hình kẹp 6,4 / 5,4), dừng sớm 3,7–5,3 m | Không dùng được cho đường ướt khi chưa có mô hình ma sát → **đã kẹp lệnh ở μ·g** (D2/R1, kế hoạch 11/11) |
 | Người đi bộ tăng tốc dần | Đạt 90% tốc độ sau 0,61 s; vào hành lang muộn hơn 0,34 s ở mọi tốc độ | Lệch của mô hình "đạt ngay"; CARLA gần người thật hơn — không bù |
 | Dừng ở lề | Nhô vào làn 0,05–0,18 m (1,0–3,0 m/s) | Ghi nhận; tăng theo tốc độ người |
 
-Không có độ lệch nào cần bù trong AEB (ΔTTC đều âm: CARLA phanh mạnh hơn giả định). Khi đọc số CARLA cho ca người đi bộ: trừ phần lạc quan ~1,7 m
-ở cuối pha phanh trên đường khô.
+Không có độ lệch nào cần bù trong AEB (ΔTTC đều âm: CARLA phanh mạnh hơn giả định). Hai chỗ lệch của CARLA đã sửa ở adapter: ma sát (ADR-052)
+và cú dừng gấp dưới 6 m/s (ADR-053); run `-xosc7` không cần trừ phần lạc quan ~1,7 m nữa.
 
 ## Thiết lập chung (mọi ca)
 
@@ -150,7 +150,7 @@ Dải dao động của 3 lần là ngưỡng nhiễu: độ lệch nhỏ hơn d
 
 | Đường dẫn | Trường | Dùng để |
 |---|---|---|
-| `simulator`, `seed`, `format` | `carla-0.9.16-xosc6`, seed | Kiểm đúng profile / seed |
+| `simulator`, `seed`, `format` | `carla-0.9.16-xosc7`, seed | Kiểm đúng profile / seed |
 | `outcome.end_reason`, `outcome.duration_s` | EGO_STOPPED / COLLISION / TIMEOUT | Kết quả |
 | `outcome.metrics` | `collision`, `impact_speed_mps`, `min_distance_m`, `min_ttc_s` | Kết quả cuối |
 | `outcome.metrics` | `pedestrian_entered_path`, `gt_in_path_t`, `first_detection_t`, `first_detection_distance_m` | Lúc người thành nguy hiểm — so với bộ động học để đo ảnh hưởng tăng tốc dần |

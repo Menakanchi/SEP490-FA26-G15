@@ -55,12 +55,39 @@ class CarlaSessionLogicTest {
     @Test
     void pedalCommandIsCappedAtRoadFrictionFromV6Only() {
         com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
-        com.vsos.core.xosc.Xosc.Profile previous = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v6 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v5 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V5_SIMULATOR_SUFFIX, 0.01, 0.05);
         assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("CLEAR"), current)).isEqualTo(8.0);
         assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("RAIN"), current)).isCloseTo(0.70 * Simulator.G, within(1e-9));
         assertThat(CarlaSession.frictionLimitedCommand(5.0, crossing("RAIN"), current)).isEqualTo(5.0);
         assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("HEAVY_RAIN"), current)).isCloseTo(0.55 * Simulator.G, within(1e-9));
-        assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("RAIN"), previous)).isEqualTo(8.0);
+        assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("RAIN"), v6)).isCloseTo(0.70 * Simulator.G, within(1e-9));
+        assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("RAIN"), v5)).isEqualTo(8.0);
+    }
+
+    /**
+     * ADR-053: dưới 6 m/s CARLA dừng gần như tức thì (~24 m/s² ở mọi mức bàn đạp, đo 14/11/2026). Từ v7 lõi trả tốc độ cần đặt, giảm đều theo lệnh
+     * giảm tốc AEB đã kẹp μ·g — như mô hình lý tưởng; v6 trở về trước không có vùng này.
+     */
+    @Test
+    void lowSpeedPhaseFollowsTheCommandedDecelerationFromV7Only() {
+        com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v6 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
+        assertThat(CarlaSession.lowSpeedOverrideApplies(current)).isTrue();
+        assertThat(CarlaSession.lowSpeedOverrideApplies(v6)).isFalse();
+        assertThat(CarlaSession.LOW_SPEED_OVERRIDE_MPS).isEqualTo(6.0);
+        // Đường khô, lệnh 8 m/s²: mỗi tick 0,01 s giảm 0,08 m/s; từ 6 m/s tới dừng mất 0,75 s như mô hình (6 / 8).
+        double v = 6.0;
+        int ticks = 0;
+        while (v > 0.0) {
+            v = CarlaSession.nextLowSpeed(v, 8.0, 0.01, crossing("CLEAR"), current);
+            ticks++;
+        }
+        assertThat(ticks).isBetween(75, 76);
+        // Mưa: mức giảm bị kẹp ở μ·g; lệnh âm / bằng 0 thì giữ tốc độ; không bao giờ âm.
+        assertThat(CarlaSession.nextLowSpeed(5.0, 8.0, 0.01, crossing("RAIN"), current)).isCloseTo(5.0 - 0.70 * Simulator.G * 0.01, within(1e-12));
+        assertThat(CarlaSession.nextLowSpeed(5.0, 0.0, 0.01, crossing("CLEAR"), current)).isEqualTo(5.0);
+        assertThat(CarlaSession.nextLowSpeed(0.01, 8.0, 0.01, crossing("CLEAR"), current)).isEqualTo(0.0);
     }
 
     private static AebStack stack(double dt, Double period) {

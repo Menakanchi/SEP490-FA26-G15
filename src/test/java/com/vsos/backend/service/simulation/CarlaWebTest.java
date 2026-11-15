@@ -56,7 +56,7 @@ class CarlaWebTest {
 
     @Test
     void xoscProfileHasADifferentIdentityFromDirectCarla() {
-        assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16-xosc6");
+        assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16-xosc7");
         when(props.simulator()).thenReturn("carla");
         assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16");
     }
@@ -65,8 +65,8 @@ class CarlaWebTest {
     void carlaReplayKeepsOriginalVariantVehicleAebAndSeedWithoutCrossSimulatorBaselineLink() {
         assertThat(runs.runOnCarla(1, 42, 7)).isEqualTo(70);
         var call = mockingDetails(db).getInvocations().stream().filter(i -> i.getMethod().getName().equals("insert")).findFirst().orElseThrow();
-        assertThat(java.util.Arrays.asList(call.getArguments()).subList(1, 8)).containsExactly(1L, 3L, 4L, 5L, 6L, "CARLA", "carla-0.9.16-xosc6");
-        assertThat(call.getArguments()[8]).isEqualTo(0.01); // xosc6 chạy ở 100 Hz, ghi đúng vào fixed_delta_seconds
+        assertThat(java.util.Arrays.asList(call.getArguments()).subList(1, 8)).containsExactly(1L, 3L, 4L, 5L, 6L, "CARLA", "carla-0.9.16-xosc7");
+        assertThat(call.getArguments()[8]).isEqualTo(0.01); // xosc7 chạy ở 100 Hz, ghi đúng vào fixed_delta_seconds
         assertThat(call.getArguments()[11]).isNull(); // baseline_run_id chỉ dành cho cặp cùng simulator
         assertThat(call.getArguments()[12]).isNull(); // optimization_trial_id: replay không thuộc trial tối ưu nào
         assertThat(call.getArguments()[14]).isEqualTo(123456L);
@@ -97,6 +97,7 @@ class CarlaWebTest {
 
     @Test
     void stepFollowsTheSimulatorIdentity() {
+        assertThat(RunService.stepFor("carla-0.9.16-xosc7")).isEqualTo(0.01);
         assertThat(RunService.stepFor("carla-0.9.16-xosc6")).isEqualTo(0.01);
         assertThat(RunService.stepFor("carla-0.9.16-xosc5")).isEqualTo(0.01);
         assertThat(RunService.stepFor("carla-0.9.16-xosc4")).isEqualTo(0.01);
@@ -133,7 +134,7 @@ class CarlaWebTest {
         when(props.simulator()).thenReturn("carla");
         assertThatThrownBy(runs::simulatorForNewRuns).isInstanceOf(Vs.InvalidRequestException.class).hasMessageContaining("carla-xosc");
         when(props.simulator()).thenReturn("carla-xosc");
-        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc6");
+        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc7");
     }
 
     private void queuedRunWithProfileFailsBeforeLaunchingWorker(String profile, String expectedReason) {

@@ -67,6 +67,9 @@ public final class CarlaSession {
     private boolean braking;
     /** Số tick lệnh giảm tốc AEB bị kẹp ở μ·g trước khi đổi ra bàn đạp ({@link #frictionLimitedCommand}). */
     private int commandCapped;
+    /** Tốc độ adapter đang đặt cho xe ở vùng tốc độ thấp (null = chưa vào vùng này), và số tick đã đặt (ADR-053). */
+    private Double overrideSpeed;
+    private int lowSpeedOverride;
     private String endReason;
     private Path resultPath;
 
@@ -244,7 +247,11 @@ public final class CarlaSession {
     }
 
     /** Kết quả của một tick: {@code skip} = cùng tick đã xử lý; {@code finished} = lý do kết thúc nếu run vừa kết thúc ở tick này. */
-    public record Tick(boolean skip, boolean braking, double decelCmd, double pedal, String finished) {
+    /**
+     * Một tick của cầu nối. {@code overrideSpeed} khác null = adapter đặt tốc độ xe (m/s) thay cho bàn đạp ở vùng tốc độ thấp (ADR-053);
+     * 0 = đã dừng, giữ phanh.
+     */
+    public record Tick(boolean skip, boolean braking, double decelCmd, double pedal, String finished, Double overrideSpeed) {
     }
 
     public Tick step(double t, double[] egoLoc, double[] egoForward, double[] egoVel, double[] pedLoc, double[] pedVel, boolean walkerCollision) {
@@ -264,7 +271,7 @@ public final class CarlaSession {
             throw new IllegalStateException("run đã kết thúc: " + endReason);
         }
         if (!frames.isEmpty() && t <= frames.get(frames.size() - 1).t()) {
-            return new Tick(true, braking, 0.0, 0.0, null);
+            return new Tick(true, braking, 0.0, 0.0, null, null);
         }
         if (leadVehicle()) {
             return leadStep(t, egoLoc, egoForward, egoVel, pedLoc, pedVel, walkerCollision);
@@ -312,7 +319,7 @@ public final class CarlaSession {
         if (finished != null) {
             finish(finished);
         }
-        return new Tick(false, braking, tick.decelCmd(), pedal, finished);
+        return new Tick(false, braking, tick.decelCmd(), pedal, finished, lowSpeedSpeed(egoV, tick.decelCmd(), finished));
     }
 
     /**
@@ -371,7 +378,7 @@ public final class CarlaSession {
         if (finished != null) {
             finish(finished);
         }
-        return new Tick(false, braking, tick.decelCmd(), pedal, finished);
+        return new Tick(false, braking, tick.decelCmd(), pedal, finished, lowSpeedSpeed(egoV, tick.decelCmd(), finished));
     }
 
     /**
@@ -467,13 +474,44 @@ public final class CarlaSession {
      * Lệnh giảm tốc đưa ra bàn đạp CARLA, kẹp ở μ·g của mặt đường (quyết định D2/R1 của kế hoạch công thức CP_CROSSING, 15/11/2026).
      * CARLA không giảm bám đường theo thời tiết: đo 14/11/2026 (carla-ped-bench, nhóm G5) xe vẫn phanh 7,8–9,3 m/s² khi trời mưa
      * (μ 0,65 → giới hạn 6,4 m/s²) nên dừng sớm hơn xe thật 3,7–5,3 m. Kẹp lệnh ở adapter để xe CARLA không phanh vượt giới hạn lốp;
-     * AEB vẫn tính và ghi lệnh gốc của nó. Chỉ áp cho file v6 (ADR-052): file cũ, kể cả v5, chạy lại ra đúng kết quả đã lưu.
+     * AEB vẫn tính và ghi lệnh gốc của nó. Áp cho file v6 trở đi (ADR-052): file cũ, kể cả v5, chạy lại ra đúng kết quả đã lưu.
      */
     static double frictionLimitedCommand(double decelCmd, Bundle.RunSpec spec, Xosc.Profile profile) {
-        if (!Xosc.SIMULATOR_SUFFIX.equals(profile.suffix())) {
+        if (!Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) && !Xosc.PREVIOUS_SIMULATOR_SUFFIX.equals(profile.suffix())) {
             return decelCmd;
         }
         return Math.min(decelCmd, spec.roadFriction() * Simulator.G);
+    }
+
+    /** Dưới tốc độ này CARLA dừng gần như tức thì (~24 m/s², mọi mức bàn đạp — đo 14/11/2026, carla-ped-bench G1). */
+    static final double LOW_SPEED_OVERRIDE_MPS = 6.0;
+
+    /** Vùng tốc độ thấp do adapter điều khiển chỉ có từ v7 (ADR-053): file cũ chạy lại ra đúng kết quả đã lưu. */
+    static boolean lowSpeedOverrideApplies(Xosc.Profile profile) {
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix());
+    }
+
+    /**
+     * Tốc độ đặt cho tick kế ở vùng tốc độ thấp: giảm đều theo lệnh giảm tốc AEB đã kẹp μ·g, như mô hình lý tưởng, thay cho cú dừng gấp của CARLA.
+     * {@code current} = tốc độ đang đặt (tick đầu: tốc độ đo được lúc xuống dưới ngưỡng, để tốc độ liên tục).
+     */
+    static double nextLowSpeed(double current, double decelCmd, double stepS, Bundle.RunSpec spec, Xosc.Profile profile) {
+        return Math.max(0.0, current - frictionLimitedCommand(Math.max(0.0, decelCmd), spec, profile) * stepS);
+    }
+
+    private Double lowSpeedSpeed(double egoV, double decelCmd, String finished) {
+        if (!braking || finished != null || !lowSpeedOverrideApplies(profile)) {
+            return null;
+        }
+        if (overrideSpeed == null) {
+            if (egoV >= LOW_SPEED_OVERRIDE_MPS) {
+                return null;
+            }
+            overrideSpeed = egoV;
+        }
+        overrideSpeed = nextLowSpeed(overrideSpeed, decelCmd, stepS, spec, profile);
+        lowSpeedOverride++;
+        return overrideSpeed;
     }
 
     private double commandForPedal(double decelCmd) {
@@ -492,8 +530,9 @@ public final class CarlaSession {
      */
     static double decelAvailable(Bundle.RunSpec spec, Xosc.Profile profile, double fullBrakeDecel) {
         double nominal = Math.min(Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), spec.roadFriction() * Simulator.G);
-        // Từ v5 (11/11/2026): v5 và v6 dùng phanh 100% đo được; file cũ hơn giữ cách tính cũ.
-        boolean measured = Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.PREVIOUS_SIMULATOR_SUFFIX.equals(profile.suffix());
+        // Từ v5 (11/11/2026): v5, v6, v7 dùng phanh 100% đo được; file cũ hơn giữ cách tính cũ.
+        boolean measured = Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.PREVIOUS_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V5_SIMULATOR_SUFFIX.equals(profile.suffix());
         return measured ? Math.min(nominal, fullBrakeDecel) : nominal;
     }
 
@@ -570,6 +609,7 @@ public final class CarlaSession {
         carla.put("runner", "ScenarioRunner");
         carla.put("decel_clamped_frames", meter.clamped());
         carla.put("decel_cmd_capped_frames", commandCapped);
+        carla.put("low_speed_override_frames", lowSpeedOverride);
         // Bước cấu hình và bước đo được từ timestamp khung thật: không coi cấu hình là đã đạt tốc độ này.
         carla.put("fixed_delta_seconds", stepS);
         carla.put("perception_period_s", profile.perceptionPeriodS());
