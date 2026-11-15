@@ -4,6 +4,7 @@ import Link from "next/link";
 import { TelemetryChart, type ChartMarker } from "@/components/TelemetryChart";
 import { MotionTelemetryChart, MOTION_SIGNALS, type MotionSignal } from "@/components/MotionTelemetryChart";
 import { formatMetric } from "./analysisMetricFormat";
+import { recordedChain } from "./analysisClassificationData";
 import { vi } from "@/components/vehicsimI18n";
 import type { FailureDetail } from "@/types/vehicsim";
 import { RunFact } from "./AnalysisRunSummary";
@@ -37,7 +38,7 @@ export function AnalysisRunTelemetry({ detail: d, markers, cursor, signal, onSig
   const motion = recordedAt(d.motion_telemetry ?? [], cursor);
   const telemetry = recordedAt(d.telemetry, cursor);
   const selected = MOTION_SIGNALS.find(item => item.key === signal)!;
-  const note = d.chain.find(stage => !stage.passed)?.summary;
+  const note = recordedChain(d.chain).find(stage => stage.passed === false)?.summary;
   return <div className={styles.stack}>
     <section className={`analysis-panel ${styles.stack}`} aria-label="Số đo tại thời gian đang xem">
       <div><h2>Số đo tại khung đã ghi</h2><p className="analysis-caption">Telemetry: {telemetry ? `${telemetry.t.toFixed(2)} s` : "—"} · Chuyển động: {motion ? `${motion.t.toFixed(2)} s` : "—"}. Hai nguồn đọc riêng theo timestamp của API.</p></div>

@@ -364,7 +364,7 @@ try {
  const pbValue=label=>pbFacts.getByText(label,{exact:true}).locator("..");
  assert.equal(await page.getByRole("slider").count(),1,"Playback exposes a single named native timeline");
  assert.match(await pbFacts.innerText(),/Khung 0.50 s · cursor 0.75 s/);
- assert.match(await pbValue("Khoảng cách tới vạch băng qua").innerText(),/777.7 m/);
+ assert.match(await pbValue("Khoảng cách tới vạch băng qua").innerText(),/777\.70 m/);
  assert.match(await pbValue("Gia tốc ego đã ghi").innerText(),/-1.25 m\/s²/);
  assert.match(await pbValue("TTC nhận thức").innerText(),/—/);
  assert.match(await pbValue("TTC ground truth").innerText(),/42.00 s/);
@@ -586,7 +586,8 @@ try {
  await page.waitForURL(u=>u.searchParams.get("f_page")===String(originalFailures.pages));await failureRows.first().waitFor();
  for(const invalid of ["Infinity","1.5","-1"]){await page.goto(failureUrl+`&f_page=${invalid}`);await failureRows.first().waitFor();assert.equal(requests.filter(u=>u.pathname.endsWith("/failures")).at(-1).searchParams.get("page"),"1");}
  const failureBoundary=structuredClone(originalFailures.items.slice(0,2));
- Object.assign(failureBoundary[0],{failure_class:null,confidence:0,cause_code:"FIXTURE_ZERO",root_cause:"Nhận định bằng không từ API",impact_kmh:0,min_ttc_s:0});
+ // A valid zero impact measurement belongs to a collision, never a non-collision aggregate.
+ Object.assign(failureBoundary[0],{outcome:"COLLISION",failure_type:"COLLISION",failure_class:null,confidence:0,cause_code:"FIXTURE_ZERO",root_cause:"Nhận định bằng không từ API",impact_kmh:0,min_ttc_s:0});
  Object.assign(failureBoundary[1],{root_cause:"",confidence:null,cause_code:null,impact_kmh:null,min_ttc_s:null});
  failureOverride={...originalFailures,items:failureBoundary,total:250,pages:25,kpis:{total:250,this_week:0,collisions:200,near_misses:40,false_braking:10,by_class:{PERCEPTION:0,DECISION:220,CONTROL:undefined,VEHICLE_DYNAMICS:10}}};
  await page.goto(failureUrl);await failureKpi.getByText("250",{exact:true}).waitFor();

@@ -11,6 +11,7 @@ import { MOTION_SIGNALS, type MotionSignal } from "@/components/MotionTelemetryC
 import { AnalysisRunSummary } from "@/components/analysis/AnalysisRunSummary";
 import { AnalysisRunTimeline, AnalysisRunTelemetry } from "@/components/analysis/AnalysisRunTelemetry";
 import { AnalysisRunEvidence } from "@/components/analysis/AnalysisRunEvidence";
+import { classificationPresentation } from "@/components/analysis/analysisClassificationData";
 import { finite, recordedRange, runMarkers } from "@/components/analysis/analysisRunData";
 import styles from "@/components/analysis/AnalysisRunDetail.module.css";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -68,7 +69,7 @@ export default function FailureDetailPage() {
   return <VehicSimPage step={4} title={validId === null ? "Lượt chạy không hợp lệ" : `Lượt chạy ${runCode(validId)}`}
     crumbs={[{ label: "Phân tích" }, { label: "Danh sách phân tích", href: returnTo }, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}` }]}
     subtitle={inspection ? `${inspection.family} · ${inspection.variant} · seed ${inspection.seed}` : "Chi tiết và telemetry từ kết quả run đã lưu."}
-    badges={inspection && <><AnalysisBadge value={inspection.status} />{d && d.evaluation_valid !== false && <AnalysisBadge value={d.outcome} />}{d?.failure_class && <AnalysisBadge value={d.failure_class} />}</>}
+    badges={inspection && <><AnalysisBadge value={inspection.status} />{d && classificationPresentation(d).trusted && <AnalysisBadge value={d.outcome} />}</>}
     actions={<>
       <PillButton disabled={!inspection} title="Xuất OpenSCENARIO cùng biến thể, AEB, xe và seed của lượt này"
         onClick={() => { setActionError(null); void vehicsimApi.downloadRunXosc(Number(runId)).catch(err => setActionError({ id: runId, message: analysisError(err) })); }}>Tải .xosc</PillButton>

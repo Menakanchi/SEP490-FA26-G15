@@ -8,6 +8,8 @@ import { vi, viSummary, viTime, viWeather } from "@/components/vehicsimI18n";
 import type { FailureDetail } from "@/types/vehicsim";
 import { finite, recordedAt } from "./analysisRunData";
 import { formatMeasurement, formatMetric, formatRunImpact } from "./analysisMetricFormat";
+import { classificationPresentation, recordedChain } from "./analysisClassificationData";
+import { AnalysisClassification } from "./AnalysisClassification";
 import styles from "./AnalysisRunDetail.module.css";
 
 const PARAMS = ["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "MAX_DECELERATION", "BRAKE_BUILDUP_RATE"];
@@ -21,7 +23,8 @@ const objective = (value: unknown, unit: string) => formatMeasurement(value, uni
 export function AnalysisRunSummary({ detail: d, cursor, returnTo }: { detail: FailureDetail; cursor: number; returnTo: string }) {
   const m = d.metrics;
   const impact = formatRunImpact(m.impact_speed_mps, d);
-  const implicated = new Set(d.chain.filter(stage => !stage.passed && stage.parameter_code).map(stage => stage.parameter_code));
+  const classification = classificationPresentation(d);
+  const implicated = new Set(recordedChain(d.chain).filter(stage => classification.trusted && stage.passed === false && stage.parameter_code).map(stage => stage.parameter_code));
   const byCode = new Map(d.configuration.map(param => [param.code, param]));
   const configuration = [...PARAMS, ...[...implicated].filter((code): code is string => code != null && !PARAMS.includes(code))]
     .map(code => byCode.get(code)).filter((param): param is NonNullable<typeof param> => Boolean(param));
@@ -39,7 +42,9 @@ export function AnalysisRunSummary({ detail: d, cursor, returnTo }: { detail: Fa
   const activation = path.find(point => point.t === m.aeb_activation_t);
   return <div className={styles.stack}>
     <section className={`analysis-panel ${styles.stack}`} aria-label="Kết quả và chỉ số run">
-      <div><p className="analysis-caption">KẾT QUẢ ĐÃ GHI</p><h2 className={styles.headline}>{d.evaluation_valid === false ? "Run chưa đủ điều kiện để kết luận kết quả AEB." : vi(d.headline)}</h2><p className="analysis-caption">{viSummary(d.summary)}</p></div>
+      <div><p className="analysis-caption">NHẬN ĐỊNH ĐÃ LƯU TỪ BACKEND</p><h2 className={styles.headline}>{classification.trusted ? vi(d.headline) || "API chưa có mô tả nhận định" : "Run chưa đủ điều kiện để kết luận kết quả AEB."}</h2><p className="analysis-caption">{viSummary(d.summary)}</p></div>
+      <AnalysisClassification detail={d} />
+      <h3>Chỉ số quan sát từ kết quả run</h3>
       <div className={styles.objectives}>
         <RunFact label="RMS jerk" value={objective(m.rms_jerk_mps3, "m/s³")} note="RMS trong pha từ onset lệnh tới hết run; giá trị đã lưu, không tính lại từ biểu đồ" />
         <RunFact label="Tốc độ va chạm" value={impact === "—" ? impact : `${impact} m/s`} note="Tốc độ ego khi va chạm; không phải tốc độ tương đối. Không va chạm: không áp dụng" />

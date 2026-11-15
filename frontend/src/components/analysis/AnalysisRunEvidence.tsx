@@ -8,6 +8,8 @@ import type { ChainStage, FailureDetail } from "@/types/vehicsim";
 import { finite, recordedRange } from "./analysisRunData";
 import { EVIDENCE_FIELDS, PARAMETER_NAMES } from "./analysisFailurePresentation";
 import { formatMeasurement } from "./analysisMetricFormat";
+import { classificationPresentation, recordedChain } from "./analysisClassificationData";
+import { AnalysisClassification } from "./AnalysisClassification";
 import styles from "./AnalysisRunEvidence.module.css";
 
 type Evidence = NonNullable<FailureDetail["stage_evidence"]>[number];
@@ -17,9 +19,11 @@ type Props = { detail: FailureDetail; returnTo: string; playbackAvailable: boole
 export function AnalysisRunEvidence({ detail: d, returnTo, playbackAvailable }: Props) {
   const params = useSearchParams();
   const range = recordedRange(d);
-  const primary = d.chain.find(stage => stage.stage === d.failure_class);
+  const chain = recordedChain(d.chain);
+  const classification = classificationPresentation(d);
+  const primary = chain.find(stage => stage.stage === d.failure_class && stage.passed === false);
   const evidence = d.stage_evidence ?? [];
-  const unmatched = evidence.filter(group => !d.chain.some(stage => stage.stage === group.stage));
+  const unmatched = evidence.filter(group => !chain.some(stage => stage.stage === group.stage));
   const href = (time: number, playback: boolean) => {
     const next = new URLSearchParams(params.toString());
     next.set("t", String(time)); next.set("returnTo", returnTo);
@@ -47,17 +51,18 @@ export function AnalysisRunEvidence({ detail: d, returnTo, playbackAvailable }: 
   return <div className={styles.stack}>
     <section className={`analysis-panel ${styles.stack}`}>
       <h2>Bằng chứng và giới hạn nhận định</h2>
+      <AnalysisClassification detail={d} />
       <p className="analysis-caption">Chuỗi nguyên nhân là giả thuyết theo luật đánh giá, không chứng minh quan hệ nhân quả. Điểm confidence là điểm của luật, không phải xác suất đã hiệu chuẩn.</p>
       <div className={styles.primary} aria-label="Nhận định chính từ backend">
-        <div><span className="analysis-caption">Khâu chính do API trả về</span><h3>{d.failure_class ? analysisLabel(d.failure_class) : "Chưa có khâu chính từ backend."}</h3><p>{primary?.summary ? vi(primary.summary) : "Chưa có mô tả nhận định chính để đối chiếu."}</p></div>
+        <div><span className="analysis-caption">Khâu nghi ngờ đã lưu từ API · chưa xác nhận nguyên nhân</span><h3>{d.failure_class ? analysisLabel(d.failure_class) : "Chưa có khâu chính từ backend."}</h3><p>{primary?.summary ? vi(primary.summary) : "Chưa có mô tả nhận định chính để đối chiếu."}</p></div>
         <dl className={styles.meta}><div><dt>Điểm luật của nhận định chính</dt><dd>{metric(d.chain_confidence)}</dd></div><div><dt>Phiên bản tổng hợp</dt><dd>{d.evaluation_version || "—"}</dd></div></dl>
       </div>
       <p className="analysis-caption">Onset và trễ phanh là mốc controller, chưa xác định thời điểm xe thực sự giảm tốc. Phiên bản tổng hợp không phải phiên bản luật chấm. Các khâu bên dưới giữ thứ tự từ API. Mỗi nhận định đi kèm số đo của chính khâu đó; — nghĩa là chưa có dữ liệu hợp lệ.</p>
     </section>
     <section className={styles.stack} aria-label="Chuỗi nhận định và số đo">
       <h2>Chuỗi nhận định nguyên nhân</h2>
-      {!d.chain.length && <div className="analysis-state">Run không có chuỗi nhận định để hiển thị. Xem kết quả và dữ liệu nguồn trước khi kết luận.</div>}
-      <div className={styles.grid}>{d.chain.map((stage, index) => <StageCard key={`${stage.stage}-${index}`} stage={stage} index={index + 1} primary={d.failure_class === stage.stage} configuration={d.configuration}>
+      {!chain.length && <div className="analysis-state">Run không có chuỗi nhận định để hiển thị. Xem kết quả và dữ liệu nguồn trước khi kết luận.</div>}
+      <div className={styles.grid}>{chain.map((stage, index) => <StageCard key={`${stage.stage}-${index}`} stage={stage} index={index + 1} primary={d.failure_class === stage.stage} trusted={classification.trusted} configuration={d.configuration}>
         {measurements(evidence.filter(group => group.stage === stage.stage), stage.stage)}
       </StageCard>)}</div>
     </section>
@@ -65,10 +70,10 @@ export function AnalysisRunEvidence({ detail: d, returnTo, playbackAvailable }: 
   </div>;
 }
 
-function StageCard({ stage, index, primary, configuration, children }: { stage: ChainStage; index: number; primary: boolean; configuration: FailureDetail["configuration"]; children: React.ReactNode }) {
+function StageCard({ stage, index, primary, trusted, configuration, children }: { stage: ChainStage; index: number; primary: boolean; trusted: boolean; configuration: FailureDetail["configuration"]; children: React.ReactNode }) {
   const parameter = configuration.find(param => param.code === stage.parameter_code);
   return <article className={`${styles.card} ${primary ? styles.selected : ""}`} aria-label={`Khâu ${analysisLabel(stage.stage)}`}>
-    <header className={styles.header}><h3><span className={styles.number}>{index}</span>{analysisLabel(stage.stage)}</h3><span className={stage.passed === false ? styles.failed : stage.passed === true ? styles.passed : styles.unknown}>{stage.passed === true ? "Đạt theo luật" : stage.passed === false ? "Không đạt theo luật" : "Chưa có kết luận"}</span></header>
+    <header className={styles.header}><h3><span className={styles.number}>{index}</span>{analysisLabel(stage.stage)}</h3><span className={trusted && stage.passed === false ? styles.failed : trusted && stage.passed === true ? styles.passed : styles.unknown}>{!trusted ? "Chưa có kết luận hợp lệ" : stage.passed === true ? "Đạt theo luật" : stage.passed === false ? "Không đạt theo luật" : "Chưa có kết luận"}</span></header>
     {primary && <strong className={styles.primaryLabel}>Khâu chính từ backend</strong>}
     <p>{stage.summary ? vi(stage.summary) : "API chưa có mô tả nhận định."}</p>
     <dl className={styles.facts}>
