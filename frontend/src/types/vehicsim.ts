@@ -498,6 +498,8 @@ export interface FailureDetail extends RunHeader {
   chain_confidence: number | null;
   configuration: { code: string; name: string; unit: string; value: number | undefined }[];
   environment: {
+    /** Existing AnalysisViewService metadata; optional for archived/older responses. */
+    category?: string | null;
     ego_speed_kmh: number;
     trigger_distance_m: number;
     pedestrian_speed_mps: number;

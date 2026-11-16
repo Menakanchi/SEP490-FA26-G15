@@ -5,11 +5,14 @@ import { ScenarioMap } from "@/components/ScenarioMap";
 import { runCode } from "@/components/VehicSimUi";
 import { analysisLabel } from "@/components/analysisUi";
 import { vi, viSummary, viTime, viWeather } from "@/components/vehicsimI18n";
-import type { FailureDetail } from "@/types/vehicsim";
+import type { ReactNode } from "react";
+import type { AnalysisRun, FailureDetail } from "@/types/vehicsim";
 import { finite, recordedAt } from "./analysisRunData";
 import { formatMeasurement, formatMetric, formatRunImpact } from "./analysisMetricFormat";
 import { classificationPresentation, recordedChain } from "./analysisClassificationData";
 import { AnalysisClassification } from "./AnalysisClassification";
+import { AnalysisMetricExplanation } from "./AnalysisMetricExplanation";
+import type { ExplanationMetric } from "./analysisMetricExplanationData";
 import styles from "./AnalysisRunDetail.module.css";
 
 const PARAMS = ["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "MAX_DECELERATION", "BRAKE_BUILDUP_RATE"];
@@ -20,9 +23,10 @@ const PARAM_NAMES: Record<string, string> = {
 const measured = (value: unknown, unit: string) => formatMeasurement(value, unit, undefined, true);
 const objective = (value: unknown, unit: string) => formatMeasurement(value, unit, 3, true);
 
-export function AnalysisRunSummary({ detail: d, cursor, returnTo }: { detail: FailureDetail; cursor: number; returnTo: string }) {
+export function AnalysisRunSummary({ detail: d, run, cursor, returnTo }: { detail: FailureDetail; run: AnalysisRun | null; cursor: number; returnTo: string }) {
   const m = d.metrics;
   const impact = formatRunImpact(m.impact_speed_mps, d);
+  const explain = (kind: ExplanationMetric) => <AnalysisMetricExplanation kind={kind} detail={d} run={run} returnTo={returnTo} />;
   const classification = classificationPresentation(d);
   const implicated = new Set(recordedChain(d.chain).filter(stage => classification.trusted && stage.passed === false && stage.parameter_code).map(stage => stage.parameter_code));
   const byCode = new Map(d.configuration.map(param => [param.code, param]));
@@ -46,16 +50,16 @@ export function AnalysisRunSummary({ detail: d, cursor, returnTo }: { detail: Fa
       <AnalysisClassification detail={d} />
       <h3>Chỉ số quan sát từ kết quả run</h3>
       <div className={styles.objectives}>
-        <RunFact label="RMS jerk" value={objective(m.rms_jerk_mps3, "m/s³")} note="RMS trong pha từ onset lệnh tới hết run; giá trị đã lưu, không tính lại từ biểu đồ" />
-        <RunFact label="Tốc độ va chạm" value={impact === "—" ? impact : `${impact} m/s`} note="Tốc độ ego khi va chạm; không phải tốc độ tương đối. Không va chạm: không áp dụng" />
-        <RunFact label="Quãng phanh" value={objective(m.stopping_distance_m, "m")} note="Có thể gồm phần ngoại suy v²/(2a khả dụng) nếu run kết thúc khi xe còn chạy" />
+        <RunFact label="RMS jerk" value={objective(m.rms_jerk_mps3, "m/s³")} note="RMS trong pha từ onset lệnh tới hết run; giá trị đã lưu, không tính lại từ biểu đồ" explanation={explain("rms")} />
+        <RunFact label="Tốc độ va chạm" value={impact === "—" ? impact : `${impact} m/s`} note="Tốc độ ego khi va chạm; không phải tốc độ tương đối. Không va chạm: không áp dụng" explanation={explain("impact")} />
+        <RunFact label="Quãng phanh" value={objective(m.stopping_distance_m, "m")} note="Có thể gồm phần ngoại suy v²/(2a khả dụng) nếu run kết thúc khi xe còn chạy" explanation={explain("stopping")} />
       </div>
       <div className={styles.secondary}>
-        <RunFact label="TTC nhỏ nhất" value={measured(m.min_ttc_s, "s")} note="TTC GT mô phỏng; — khi không xác định. Va chạm được lưu là 0" />
-        <RunFact label="Khoảng cách nhỏ nhất" value={measured(m.min_distance_m, "m")} note="Độ hở hình học nhỏ nhất; khác cự ly tới vạch và radar range" />
-        <RunFact label="Giảm tốc cực đại" value={measured(m.max_deceleration_mps2, "m/s²")} note="Độ lớn dương; CARLA dùng tín hiệu đã làm mượt và kẹp, không phải IMU thô" />
+        <RunFact label="TTC nhỏ nhất" value={measured(m.min_ttc_s, "s")} note="TTC GT mô phỏng; — khi không xác định. Va chạm được lưu là 0" explanation={explain("ttc")} />
+        <RunFact label="Khoảng cách nhỏ nhất" value={measured(m.min_distance_m, "m")} note="Độ hở hình học nhỏ nhất; khác cự ly tới vạch và radar range" explanation={explain("separation")} />
+        <RunFact label="Giảm tốc cực đại" value={measured(m.max_deceleration_mps2, "m/s²")} note="Độ lớn dương; CARLA dùng tín hiệu đã làm mượt và kẹp, không phải IMU thô" explanation={explain("deceleration")} />
         <RunFact label="Phát hiện lần đầu" value={measured(m.first_detection_t, "s")} note={`Cự ly: ${measured(m.first_detection_distance_m, "m")}`} />
-        <RunFact label="Quyết định AEB" value={measured(m.aeb_activation_t, "s")} note={`TTC: ${measured(m.aeb_activation_ttc_s, "s")}`} />
+        <RunFact label="Quyết định AEB" value={measured(m.aeb_activation_t, "s")} note={`TTC: ${measured(m.aeb_activation_ttc_s, "s")}`} explanation={explain("timeline")} />
         <RunFact label="Nguồn chỉ số" value={m.metric_source === "SIMULATOR_RESULT" ? "Kết quả run đã lưu" : "Chưa xác định"} note={d.evaluation_version ? `Tổng hợp: ${d.evaluation_version}; chưa xác định phiên bản luật chấm` : "API chưa có phiên bản tổng hợp"} />
       </div>
     </section>
@@ -94,8 +98,8 @@ export function AnalysisRunSummary({ detail: d, cursor, returnTo }: { detail: Fa
   </div>;
 }
 
-export function RunFact({ label, value, note }: { label: string; value: string; note?: string }) {
-  return <div className={styles.fact} aria-label={label}><dl><dt>{label}</dt><dd>{value}</dd></dl>{note && <small>{note}</small>}</div>;
+export function RunFact({ label, value, note, explanation }: { label: string; value: string; note?: string; explanation?: ReactNode }) {
+  return <div className={styles.fact} aria-label={label}><dl><dt>{label}</dt><dd>{value}</dd></dl>{note && <small>{note}</small>}{explanation}</div>;
 }
 
 function ConfigRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {

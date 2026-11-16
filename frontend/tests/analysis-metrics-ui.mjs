@@ -62,6 +62,8 @@ try {
       vehicle: { id: 2, name: "Fixture car" }, system: { id: 1, name: "AEB", baseline: { id: 7, label: "v7" } },
       versions: [{ id: 7, label: "v7", status: "BASELINE" }], families: [{ id: 42, name: "Metric fixture", code: "CP" }], parameters: [], reviewer_projects: [] });
     if (p === "/vehicsim/notifications") return reply({ items: [], unread_count: 0 });
+    // Login briefly visits Home, whose regression feed is an object, not an array.
+    if (p === "/vehicsim/regression") return reply({ items: [], kpis: { total: 0, passed: 0, failed: 0, running: 0 } });
     if (p === "/vehicsim/analysis/runs") return reply({ total: 1, page: 1, page_size: 20, counts: { SAFE: 0, COLLISION: 1 },
       items: [run], evaluation_version: version, objective_groups: [{ identity: "metric-fixture", simulator: run.simulator,
         baseline_id: 7, vehicle_id: 2, objectives, carla_observational_only: true }] });

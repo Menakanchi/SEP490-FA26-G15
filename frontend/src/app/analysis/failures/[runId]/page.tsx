@@ -109,7 +109,7 @@ export default function FailureDetailPage() {
           tabIndex={section === key ? 0 : -1} onKeyDown={event => moveTab(event, index)} onClick={() => update({ section: key })}>{label}</button>)}</div>
       <AnalysisRunTimeline detail={d} cursor={cursor} onSeek={time => update({ t: time })} playbackHref={canPlayback ? playbackHref : null} />
       <div id="run-panel-summary" role="tabpanel" aria-labelledby="run-tab-summary" tabIndex={0} hidden={section !== "summary"}>
-        <AnalysisRunSummary detail={d} cursor={cursor} returnTo={returnTo} />
+        <AnalysisRunSummary detail={d} run={inspection ?? null} cursor={cursor} returnTo={returnTo} />
       </div>
       <div id="run-panel-telemetry" role="tabpanel" aria-labelledby="run-tab-telemetry" tabIndex={0} hidden={section !== "telemetry"}>
         <AnalysisRunTelemetry detail={d} markers={markers} cursor={cursor} signal={signal} onSignal={signal => update({ signal })} />

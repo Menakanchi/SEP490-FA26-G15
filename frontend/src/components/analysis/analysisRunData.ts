@@ -23,8 +23,8 @@ export function runMarkers(detail: FailureDetail): ChartMarker[] {
   };
   add(detail.metrics.first_detection_t, "Phát hiện", "perception");
   add(detail.metrics.fcw_t, "Cảnh báo FCW", "warn");
-  add(detail.metrics.aeb_activation_t, "AEB kích hoạt", "decision");
-  add(detail.metrics.brake_onset_t, "Phanh có hiệu lực", "control");
+  add(detail.metrics.aeb_activation_t, "Quyết định AEB", "decision");
+  add(detail.metrics.brake_onset_t, "Bắt đầu lệnh phanh", "control");
   const below = detail.events.find(event => event.kind === "ttc_below");
   const collision = detail.events.find(event => event.kind === "collision");
   const stopped = detail.events.find(event => event.kind === "stopped");
