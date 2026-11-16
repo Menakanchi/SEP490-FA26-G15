@@ -13,6 +13,9 @@
 .timeline a { color: var(--color-vehicsim-decision); font-weight: 600; }
 .stack .headline { font-size: 21px; line-height: 1.4; font-weight: 700; max-width: 900px; }
 .objectives { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.observed { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.observed .fact { background:var(--color-vehicsim-surface); padding:12px; }
+.observed .fact dd { font-size:15px; }
 .fact { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--color-vehicsim-line); border-radius: 12px; background: var(--color-vehicsim-soft); padding: 16px; }
 .fact:has(> details[data-metric-explanation][open]) { grid-column: 1 / -1; }
 .fact dd { margin-top: 6px; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -42,7 +45,7 @@
  .identity, .currentValues { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 700px) {
- .objectives, .secondary { grid-template-columns: minmax(0, 1fr); }
+ .objectives, .secondary, .observed { grid-template-columns: minmax(0, 1fr); }
  .fact dd { font-size: 20px; }
  .tabs button { padding: 10px; }
 }

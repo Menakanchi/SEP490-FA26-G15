@@ -115,7 +115,7 @@ export function metricExplanation(kind: ExplanationMetric, detail: FailureDetail
     }
     for (const event of detail.events.filter(e => ["collision", "stopped"].includes(e.kind) && Number.isFinite(e.t) && e.t >= 0)) add(event.kind === "collision" ? "Sự kiện va chạm" : "Sự kiện dừng", event.t, "s", `events[kind=${event.kind}].t`);
     add("Trễ kích hoạt cấu hình", config("BRAKE_ACTIVATION_DELAY"), "s", "configuration[code=BRAKE_ACTIVATION_DELAY].value");
-    add("Trễ lệnh đã lưu", detail.stage_evidence?.find(e => e.stage === "CONTROL")?.values.response_time_s, "s", "stage_evidence[stage=CONTROL].values.response_time_s");
+    add("Trễ lệnh đã lưu", Array.isArray(detail.stage_evidence) ? detail.stage_evidence.find(e => e?.stage === "CONTROL" && e.values)?.values?.response_time_s : null, "s", "stage_evidence[stage=CONTROL].values.response_time_s");
   }
   const rawValue = detail.metrics[content.field as keyof FailureDetail["metrics"]];
   const value = kind === "impact" ? formatRunImpact(rawValue, detail) : formatMeasurement(rawValue, content.unit, kind === "rms" || kind === "stopping" ? 3 : undefined, true);

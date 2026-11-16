@@ -49,7 +49,12 @@ export default function FailureDetailPage() {
     if (validId === null) return;
     let active = true;
     vehicsimApi.analysisInspection(validId)
-      .then(data => { if (active) setResult({ key: requestKey, data, error: null }); })
+      .then(data => {
+        if (data.run?.run_id !== validId || (data.detail != null && data.detail.run_id !== validId)) {
+          throw new Error("Dữ liệu trả về không khớp lượt chạy đang mở.");
+        }
+        if (active) setResult({ key: requestKey, data, error: null });
+      })
       .catch(err => { if (active) setResult({ key: requestKey, data: null, error: analysisError(err) }); });
     return () => { active = false; };
   }, [runId, validId, requestKey]);
@@ -86,11 +91,14 @@ export default function FailureDetailPage() {
     {loading && <AnalysisLoading />}
     {inspection && <section className={`analysis-panel ${styles.stack}`} aria-label="Danh tính và nguồn dữ liệu run">
       <dl className={styles.identity}>
+        <div><dt>Run / kịch bản / biến thể</dt><dd>#{inspection.run_id} / #{inspection.scenario_id} / #{inspection.scenario_version_id}</dd></div>
+        <div><dt>Nhóm tình huống từ API</dt><dd>{d?.environment?.category || "Chưa có category"}</dd></div>
         <div><dt>Simulator / bước thời gian</dt><dd>{inspection.simulator || "Chưa có danh tính simulator"} · dt {inspection.dt ?? "—"} s</dd></div>
         <div><dt>Baseline / cấu hình</dt><dd>#{inspection.baseline_id} · {d?.config ?? "—"}</dd></div>
         <div><dt>Phương tiện</dt><dd>#{inspection.vehicle_id} · {d?.vehicle ?? "—"}</dd></div>
         <div><dt>Thời điểm chạy</dt><dd>{fmt.date(d?.date ?? inspection.created_at)}</dd></div>
       </dl>
+      {d?.environment?.category && !["CP_CROSSING", "CCRS", "CCRM", "CCRB"].includes(d.environment.category) && <p className="analysis-caption">Nhóm tình huống này chưa được hỗ trợ bởi bộ mô phỏng hiện hành. Không dùng các số đã lưu để tự suy ra phân loại hoặc nguyên nhân.</p>}
       <div className={styles.source} data-carla={inspection.simulator?.startsWith("carla")}>
         Chỉ số và tín hiệu do backend cung cấp từ kết quả run đã lưu. Không mặc định đây là dữ liệu sensor thô.
         {inspection.simulator?.startsWith("carla") && " Hiệu chuẩn CARLA phụ thuộc xe/profile; API chưa xác nhận calibration từng run; số liệu chỉ phục vụ quan sát/đối chiếu, không dùng làm bằng chứng regression."}

@@ -135,7 +135,7 @@ try {
     // A recorded command and no collision do not create false braking.
     detail = { ...original, outcome: "SAFE", verdict: "PASS", failure_type: null, failure_class: null, chain: [], chain_confidence: null };
     await page.goto(base + detailUrl); await state().waitFor();
-    assert.match(await state().innerText(), /Không ghi nhận lỗi theo luật hiện hành/); assert.doesNotMatch(await state().innerText(), /Phanh oan theo luật/);
+    assert.match(await state().innerText(), /API chưa có phân loại lỗi/); assert.match(await state().innerText(), /Đạt theo luật hiện hành \(PASS\)/); assert.doesNotMatch(await state().innerText(), /Phanh oan theo luật/);
     detail = { ...original, failure_class: null, chain: [], chain_confidence: null };
     await page.goto(base + detailUrl); await state().waitFor();
     assert.match(await state().innerText(), /Va chạm được ghi nhận/);

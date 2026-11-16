@@ -18,14 +18,17 @@ test("collision and metrics never generate missed or ineffective braking", () =>
   assert.equal(view.classification, "API chưa có phân loại lỗi");
   assert.equal(view.evaluation, "Không đạt theo luật hiện hành (FAIL)");
 });
-test("no failure record with PASS is qualified by rule validity and explicit null", () => {
-  assert.equal(classificationPresentation({ ...evaluated, verdict: "PASS", failure_type: null }).classification, "Không ghi nhận lỗi theo luật hiện hành");
+test("null classification stays unavailable even when evaluation is valid PASS", () => {
+  const view = classificationPresentation({ ...evaluated, verdict: "PASS", failure_type: null });
+  assert.equal(view.classification, "API chưa có phân loại lỗi");
+  assert.equal(view.evaluation, "Đạt theo luật hiện hành (PASS)");
+  assert.equal(view.trusted, true);
   assert.equal(classificationPresentation({ ...evaluated, verdict: "PASS", failure_type: undefined }).classification, "API chưa có phân loại lỗi");
   assert.equal(classificationPresentation({ ...evaluated, verdict: "PASS", failure_type: null, evaluation_valid: false }).trusted, false);
 });
 test("a recorded command with no collision never generates false braking", () => {
   const view = classificationPresentation({ ...evaluated, verdict: "PASS", failure_type: null, outcome: "SAFE", metrics: { aeb_activation_t: 0 } });
-  assert.equal(view.classification, "Không ghi nhận lỗi theo luật hiện hành");
+  assert.equal(view.classification, "API chưa có phân loại lỗi");
   assert.doesNotMatch(view.classification, /Phanh oan/);
 });
 test("missing/false validity and missing verdict cannot publish pass/fail conclusions", () => {

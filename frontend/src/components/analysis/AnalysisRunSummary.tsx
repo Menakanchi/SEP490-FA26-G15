@@ -46,6 +46,11 @@ export function AnalysisRunSummary({ detail: d, run, cursor, returnTo }: { detai
   const activation = path.find(point => point.t === m.aeb_activation_t);
   return <div className={styles.stack}>
     <section className={`analysis-panel ${styles.stack}`} aria-label="Kết quả và chỉ số run">
+      <h2>Kết quả quan sát đã lưu</h2>
+      <div className={styles.observed}>
+        <RunFact label="Va chạm theo outcome" value={d.outcome === "COLLISION" ? "Có ghi nhận va chạm" : ["SAFE", "NEAR_MISS", "FALSE_BRAKING"].includes(d.outcome) ? "Không ghi nhận va chạm trong outcome" : "Chưa có outcome hợp lệ"} note="Nguồn: outcome từ backend; không suy ra bỏ sót phanh hoặc hiệu quả phanh" />
+        <RunFact label="Bắt đầu lệnh phanh" value={finite(m.brake_onset_t) && m.brake_onset_t >= 0 ? formatMeasurement(m.brake_onset_t, "s", 3) : "Chưa có mốc lệnh hợp lệ"} note="Nguồn: metrics.brake_onset_t; chưa phải thời điểm phanh thực sự tác dụng" />
+      </div>
       <div><p className="analysis-caption">NHẬN ĐỊNH ĐÃ LƯU TỪ BACKEND</p><h2 className={styles.headline}>{classification.trusted ? vi(d.headline) || "API chưa có mô tả nhận định" : "Run chưa đủ điều kiện để kết luận kết quả AEB."}</h2><p className="analysis-caption">{viSummary(d.summary)}</p></div>
       <AnalysisClassification detail={d} />
       <h3>Chỉ số quan sát từ kết quả run</h3>

@@ -23,7 +23,6 @@ export function classificationPresentation(data: { status?: unknown; evaluation_
     : verdict === "PASS" ? "Đạt theo luật hiện hành (PASS)" : "Không đạt theo luật hiện hành (FAIL)";
   const classification = typeof data.failure_type === "string" && data.failure_type.trim()
     ? failureTypeLabel(data.failure_type)
-    : trusted && verdict === "PASS" && data.failure_type === null ? "Không ghi nhận lỗi theo luật hiện hành"
     : "API chưa có phân loại lỗi";
   return { trusted, evaluation, classification };
 }

@@ -685,13 +685,14 @@ try {
  assert.equal(await primaryCause.locator("h3").innerText(),"Quyết định");assert.match(await primaryCause.innerText(),/0\.00/);
  const perceptionEvidence=page.getByRole("article",{name:"Khâu Nhận thức",exact:true});
  const decisionEvidence=page.getByRole("article",{name:"Khâu Quyết định",exact:true});
- assert.match(await perceptionEvidence.innerText(),/FIXTURE_CAUSE_ZERO/);assert.match(await perceptionEvidence.innerText(),/0\.00 s/);
+ assert.match(await perceptionEvidence.innerText(),/FIXTURE_CAUSE_ZERO/);assert.match(await perceptionEvidence.innerText(),/0\.000 s/);
  assert.match(await perceptionEvidence.innerText(),/Ngưỡng TTC/);assert.equal(await perceptionEvidence.locator("input,select").count(),0);
  assert.match(await page.getByRole("article",{name:"Khâu Điều khiển",exact:true}).innerText(),/Chưa có kết luận/);
  assert.match(await page.getByRole("article",{name:"Khâu Động lực học",exact:true}).innerText(),/Chưa có số đo để đối chiếu/);
  assert.equal(await decisionEvidence.getByRole("link").count(),0,"Out-of-range stage time cannot seek to a different recorded sample");
- await page.getByRole("region",{name:"Số đo chưa có nhận định",exact:true}).getByText("opaque_metric",{exact:true}).waitFor();
- const evidenceLink=perceptionEvidence.getByRole("link",{name:"Xem telemetry khâu Nhận thức tại 0.00 s",exact:true});
+ await page.getByRole("region",{name:"Số đo chưa có nhận định",exact:true}).getByRole("term").filter({hasText:/^opaque_metric/}).waitFor();
+ assert.match(await page.locator('[data-evidence-source="stage_evidence[3].values.opaque_metric"]').innerText(),/7\.000/);
+ const evidenceLink=perceptionEvidence.getByRole("link",{name:"Xem telemetry khâu Nhận thức tại 0.000 s",exact:true});
  const evidenceTarget=new URL(await evidenceLink.getAttribute("href"),base);
  assert.equal(evidenceTarget.searchParams.get("t"),"0");assert.equal(evidenceTarget.searchParams.get("signal"),"speed");assert.equal(evidenceTarget.searchParams.get("returnTo"),evidenceReturn);
  for(const [width,height] of [[1920,1080],[1366,768],[1024,768]]){await page.setViewportSize({width,height});await page.screenshot({path:path.join(output,`evidence-${width}.png`),fullPage:true});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Evidence overflow ${width}`);}
@@ -700,7 +701,7 @@ try {
  assert.equal(new URL(page.url()).searchParams.get("t"),"0");
  assert.equal(requests.filter(u=>u.pathname.endsWith(`/analysis/runs/${id}`)).length,beforeEvidenceSeek,"Evidence seek uses the same loaded run");
  await page.getByRole("tab",{name:"Nguyên nhân & bằng chứng",exact:true}).click();
- await perceptionEvidence.getByRole("link",{name:"Playback khâu Nhận thức tại 0.00 s",exact:true}).click();
+ await perceptionEvidence.getByRole("link",{name:"Playback khâu Nhận thức tại 0.000 s",exact:true}).click();
  await page.waitForURL(u=>u.pathname.endsWith("/playback"));assert.equal(new URL(page.url()).searchParams.get("returnTo"),evidenceReturn);assert.equal(new URL(page.url()).searchParams.get("t"),"0");
  inspectionOverride={run:{...runs.find(r=>r.run_id===id),trace_available:false},detail:detailOverride};
  await page.goto(evidenceUrl);await perceptionEvidence.waitFor();assert.equal(await perceptionEvidence.getByRole("link",{name:/^Playback khâu/}).count(),0);
@@ -708,7 +709,8 @@ try {
  detailOverride={...detailOverride,failure_class:null,chain:[],chain_confidence:null};
  await page.goto(evidenceUrl);await primaryCause.getByText("Chưa có khâu chính từ backend.",{exact:true}).waitFor();
  assert.equal(await page.getByRole("region",{name:"Chuỗi nhận định và số đo",exact:true}).getByRole("article").count(),0);
- await page.getByRole("region",{name:"Số đo chưa có nhận định",exact:true}).getByText("opaque_metric",{exact:true}).waitFor();
+ await page.getByRole("region",{name:"Số đo chưa có nhận định",exact:true}).getByRole("term").filter({hasText:/^opaque_metric/}).waitFor();
+ assert.match(await page.locator('[data-evidence-source="stage_evidence[3].values.opaque_metric"]').innerText(),/7\.000/);
  detailOverride=null;
  // Batch 7: draft metadata and immutable snapshot are separate, with recoverable server checks.
  const draftKey=`vehicsim.analysis.selection.v1:${user.id}:${context.project.id}`;

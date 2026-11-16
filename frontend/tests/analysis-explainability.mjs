@@ -67,3 +67,11 @@ test("source mapping distinguishes simulator model from real-world measurements 
   assert.equal(metricExplanation("rms", { ...original, simulator: "vehicsim-kinematic-1.0" }, { ...run, dt: 0.05 }).engine, "Động học Java");
   assert.deepEqual(original, snapshot);
 });
+
+test("partial evidence group does not hide other metric explanations or invent command delay", () => {
+  const detail = {...original,stage_evidence:[null,{stage:"CONTROL",values:null}]};
+  const view = metricExplanation("timeline", detail, run);
+  assert(view);
+  assert.equal(view.inputs.find(input => input.label === "Trễ lệnh đã lưu").value, "—");
+  assert.match(JSON.stringify(view.inputs), /Quyết định AEB/);
+});

@@ -5,14 +5,15 @@ import { useSearchParams } from "next/navigation";
 import { analysisLabel, metric } from "@/components/analysisUi";
 import { vi } from "@/components/vehicsimI18n";
 import type { ChainStage, FailureDetail } from "@/types/vehicsim";
-import { finite, recordedRange } from "./analysisRunData";
-import { EVIDENCE_FIELDS, PARAMETER_NAMES } from "./analysisFailurePresentation";
-import { formatMeasurement } from "./analysisMetricFormat";
+import { finite, recordedRange, runMarkers } from "./analysisRunData";
+import { PARAMETER_NAMES } from "./analysisFailurePresentation";
+import { formatMeasurement, formatMetric } from "./analysisMetricFormat";
 import { classificationPresentation, recordedChain } from "./analysisClassificationData";
 import { AnalysisClassification } from "./AnalysisClassification";
+import { evidenceGroups, evidenceCanSeek, evidenceHref } from "./analysisEvidenceData";
 import styles from "./AnalysisRunEvidence.module.css";
 
-type Evidence = NonNullable<FailureDetail["stage_evidence"]>[number];
+type Evidence = ReturnType<typeof evidenceGroups>[number];
 type Props = { detail: FailureDetail; returnTo: string; playbackAvailable: boolean };
 
 /** Present stored rules and measurements together without assigning a new cause. */
@@ -22,33 +23,46 @@ export function AnalysisRunEvidence({ detail: d, returnTo, playbackAvailable }: 
   const chain = recordedChain(d.chain);
   const classification = classificationPresentation(d);
   const primary = chain.find(stage => stage.stage === d.failure_class && stage.passed === false);
-  const evidence = d.stage_evidence ?? [];
+  const evidence = evidenceGroups(d.stage_evidence);
   const unmatched = evidence.filter(group => !chain.some(stage => stage.stage === group.stage));
-  const href = (time: number, playback: boolean) => {
-    const next = new URLSearchParams(params.toString());
-    next.set("t", String(time)); next.set("returnTo", returnTo);
-    if (playback) next.delete("section"); else next.set("section", "telemetry");
-    return `/analysis/failures/${d.run_id}${playback ? "/playback" : ""}?${next}`;
-  };
-  const measurements = (groups: Evidence[], stage: string) => {
-    const time = groups.flatMap(group => Object.entries(group.values))
-      .find(([key, value]) => EVIDENCE_FIELDS[key]?.time && finite(value) && range && value >= range.min && value <= range.max)?.[1];
-    return <div className={styles.measurements}>
-      <h4>Số đo từ kết quả đã lưu</h4>
-      {!groups.length && <p className="analysis-caption">Chưa có số đo cho khâu này.</p>}
-      {groups.map((group, index) => <div key={`${group.stage}-${index}`}>
-        {!Object.values(group.values).some(finite) && <p className="analysis-caption">Chưa có số đo để đối chiếu.</p>}
-        <dl className={styles.facts}>{Object.entries(group.values).map(([key, value]) => <div key={key}>
-          <dt>{EVIDENCE_FIELDS[key]?.label ?? key}</dt><dd>{formatMeasurement(value, EVIDENCE_FIELDS[key]?.unit ?? "", undefined, true)}</dd>
-        </div>)}</dl>
-      </div>)}
-      {finite(time) && <div className={styles.links}>
-        <Link href={href(time, false)} aria-label={`Xem telemetry khâu ${analysisLabel(stage)} tại ${time.toFixed(2)} s`}>Telemetry tại {time.toFixed(2)} s →</Link>
-        {playbackAvailable && <Link href={href(time, true)} aria-label={`Playback khâu ${analysisLabel(stage)} tại ${time.toFixed(2)} s`}>Playback tại {time.toFixed(2)} s ↗</Link>}
-      </div>}
-    </div>;
-  };
-  return <div className={styles.stack}>
+  const markers = runMarkers(d);
+  const href = (time: number, playback: boolean) => evidenceHref(d.run_id, time, params.toString(), returnTo, playback);
+  const links = (time: number, stage: string) => <div className={styles.links}>
+    <Link href={href(time, false)} aria-label={`Xem telemetry khâu ${analysisLabel(stage)} tại ${formatMetric(time, 3)} s`}>Telemetry tại {formatMetric(time, 3)} s →</Link>
+    {playbackAvailable && <Link href={href(time, true)} aria-label={`Playback khâu ${analysisLabel(stage)} tại ${formatMetric(time, 3)} s`}>Playback tại {formatMetric(time, 3)} s ↗</Link>}
+  </div>;
+  const measurements = (groups: Evidence[], stage: string) => <div className={styles.measurements}>
+    <h4>Số đo từ kết quả đã lưu</h4>
+    {!groups.length && <p className="analysis-caption">Chưa có số đo cho khâu này.</p>}
+    {groups.map(group => <div key={group.index}>
+      {!group.rows.some(row => row.value !== null) && <p className="analysis-caption">Chưa có số đo để đối chiếu.</p>}
+      <dl className={styles.facts}>{group.rows.map(row => <div key={row.key} data-evidence-source={row.source}>
+        <dt>{row.label}<small>{row.kind}</small></dt>
+        <dd>{formatMeasurement(row.value, row.unit, 3)}
+          <small>Nguồn: <code>{row.source}</code></small>
+          <small>Giá trị nguồn: {finite(row.raw) ? String(row.raw) : "—"}{finite(row.raw) && row.unit ? ` ${row.unit}` : ""}</small>
+          {row.value === null && <small>Chưa có giá trị hợp lệ; không thay bằng 0.</small>}
+          {evidenceCanSeek(row.time, range) ? links(row.time, stage)
+            : row.time !== null && <small>{range ? "Mốc ngoài vùng telemetry; không tạo liên kết thời gian." : "Không có vùng telemetry để đối chiếu mốc này."}</small>}
+        </dd>
+      </div>)}</dl>
+    </div>)}
+  </div>;
+  return <div className={styles.stack} data-evidence-run={d.run_id}>
+    <section className={`analysis-panel ${styles.stack}`} aria-label="Dữ liệu và mốc đã ghi">
+      <h2>Dữ liệu và mốc đã ghi</h2>
+      <p className="analysis-caption">Run #{d.run_id} · thời gian mô phỏng (s). Mốc controller và sự kiện được lưu riêng với chỉ số đã tính và nhận định theo luật bên dưới.</p>
+      <p className="analysis-caption">Bắt đầu lệnh phanh không phải thời điểm phanh thực sự tác dụng. API chưa có mốc hazard onset, brake applied hay onset giảm tốc được xác minh; không tạo các mốc này từ TTC hoặc gia tốc. Camera/CSV có đồng hồ riêng, chưa được ghép thời gian tại đây.</p>
+      {!markers.length && <p className="analysis-caption">API chưa có timestamp hợp lệ cho các mốc được hỗ trợ; không suy ra sự kiện từ giá trị thiếu.</p>}
+      <ol className={styles.events}>{markers.map((marker, index) => <li key={`${marker.source}-${index}`} data-evidence-marker={marker.source}>
+        <div><strong>{marker.label}</strong><small>{marker.source?.startsWith("metrics.") ? "Mốc controller đã lưu" : marker.source === "events[kind=ttc_below].t" ? "Sự kiện dẫn xuất từ so sánh TTC (backend)" : "Sự kiện mô phỏng đã lưu"} · <code>{marker.source}</code></small></div>
+        <div><span>{formatMetric(marker.t, 3)} s</span><small>Giá trị nguồn: {String(marker.t)} s</small>
+          {evidenceCanSeek(marker.t, range) ? <div className={styles.links}><Link href={href(marker.t, false)} aria-label={`Xem mốc ${marker.label} trong telemetry tại ${formatMetric(marker.t, 3)} s`}>Xem telemetry →</Link></div>
+            : <small>{range ? "Mốc ngoài vùng telemetry." : "Không có vùng telemetry."} Chưa thể đối chiếu theo thời gian.</small>}
+        </div>
+      </li>)}</ol>
+      <p className="analysis-caption">Các chỉ số tổng hợp như giảm tốc cực đại không có timestamp riêng trong API. Không gán thời điểm của mốc lệnh cho cực trị. Nguồn mô phỏng không phải dữ liệu đo xe thật.</p>
+    </section>
     <section className={`analysis-panel ${styles.stack}`}>
       <h2>Bằng chứng và giới hạn nhận định</h2>
       <AnalysisClassification detail={d} />
