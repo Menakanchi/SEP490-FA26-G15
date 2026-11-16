@@ -9,8 +9,9 @@ import styles from "./AnalysisPlayback.module.css";
 
 const measured = formatMeasurement;
 
-export function PlaybackScene({ playback: pb, frame, time, path, aebX, detectionX, events, layers, onToggle }: {
+export function PlaybackScene({ playback: pb, frame, time, path, trajectoryComplete, aebX, detectionX, events, layers, onToggle }: {
   playback: Playback; frame: Frame | null; time: number; path: { t: number; x: number; ped_y: number }[];
+  trajectoryComplete: boolean;
   aebX: number | null; detectionX: number | null; events: SimEvent[]; layers: Set<PlaybackLayer>; onToggle: (layer: PlaybackLayer) => void;
 }) {
   const canDraw = frame && finite(frame.ego_x) && finite(frame.ped_y) && finite(pb.crossing_x)
@@ -19,19 +20,20 @@ export function PlaybackScene({ playback: pb, frame, time, path, aebX, detection
     <div className={styles.sceneHeader}><div><h2>Nhìn từ trên</h2><p className="analysis-caption">{frame ? `Khung đã ghi: ${frame.t.toFixed(2)} s` : "Chưa có khung tại mốc này"}</p></div>
       <div className={styles.layers} aria-label="Lớp hiển thị">{PLAYBACK_LAYERS.map(layer => <button key={layer} type="button" aria-pressed={layers.has(layer)} onClick={() => onToggle(layer)}>{layer}</button>)}</div>
     </div>
-    {canDraw ? <ScenarioMap height={360} crossingX={pb.crossing_x} vehicleLengthM={pb.vehicle_length_m} vehicleWidthM={pb.vehicle_width_m}
+    <div className={styles.sceneViewport}>{canDraw ? <ScenarioMap height={360} crossingX={pb.crossing_x} vehicleLengthM={pb.vehicle_length_m} vehicleWidthM={pb.vehicle_width_m}
       path={path} pedY={path.map(point => point.ped_y)} egoX={frame.ego_x} pedYNow={frame.ped_y}
       perceivedY={finite(frame.perceived_y) ? frame.perceived_y : null} aebX={aebX} detectionX={detectionX}
       collision={events.some(event => event.kind === "collision" && time >= event.t)}
-      showGroundTruth={layers.has("GT mô phỏng")} showPerception={layers.has("Nhận thức")} showTrajectories={layers.has("Quỹ đạo")}
+      showGroundTruth={layers.has("GT mô phỏng")} showPerception={layers.has("Nhận thức")} showTrajectories={layers.has("Quỹ đạo") && trajectoryComplete}
       egoLabelAbove groundTruthColor="var(--color-vehicsim-ok)" perceptionColor="var(--color-vehicsim-perception)"
       egoLabel={`Xe ${pb.vehicle} · ${measured(speedKmh(frame.ego_v), "km/h")}`}
       labels={[
         ...(layers.has("Nhận thức") && frame.detected && finite(frame.confidence) ? [{ x: pb.crossing_x - 4, y: 68, text: `Nhận thức · tin cậy ${frame.confidence.toFixed(2)}`, color: "var(--color-vehicsim-perception)" }] : []),
         ...(layers.has("GT mô phỏng") && finite(frame.ped_vy) ? [{ x: pb.crossing_x + 1, y: 196, text: `GT vY · ${formatMeasurement(frame.ped_vy, "", 2)} m/s`, color: "var(--color-vehicsim-ok)" }] : []),
-      ]} /> : <div className="analysis-state">{frame ? "Khung này chưa đủ tọa độ hoặc kích thước xe để dựng cảnh." : "Chưa có khung đã ghi tại hoặc trước thời gian đang xem."}</div>}
+      ]} /> : <div className="analysis-state">{frame ? "Khung này chưa đủ tọa độ hoặc kích thước xe để dựng cảnh." : "Chưa có khung đã ghi tại hoặc trước thời gian đang xem."}</div>}</div>
     <div className={styles.legend}><span><i style={{ background: "var(--color-vehicsim-ok)" }} />GT mô phỏng</span><span><i style={{ background: "var(--color-vehicsim-perception)" }} />Nhận thức</span><span><i style={{ background: "var(--color-vehicsim-decision)" }} />Quỹ đạo xe</span></div>
-    <p className="analysis-caption">Cảnh từ tọa độ đã ghi. Camera/RGB và LiDAR chưa được đồng bộ trong màn phát lại này.</p>
+    {!trajectoryComplete && <p className="analysis-caption" data-playback-path-quality>Không nối quỹ đạo khi thiếu tọa độ hoặc trace có timestamp không hợp lệ/trùng/lùi. Khung có tọa độ hợp lệ vẫn xem được.</p>}
+    <p className="analysis-caption">Cảnh từ tọa độ đã ghi; đường nối chỉ dẫn giữa các mẫu, không nội suy khung. Camera/RGB và LiDAR chưa được đồng bộ trong màn phát lại này.</p>
   </section>;
 }
 
