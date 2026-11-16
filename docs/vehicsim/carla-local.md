@@ -54,8 +54,10 @@ Vô hại, không phải dấu hiệu run hỏng.
 
 ### Xem số trực tiếp trong cửa sổ CARLA (HUD, dev, 15/11/2026)
 
-`dev-carla.ps1 -Hud` bật server có cửa sổ 1280×720 (server đã chạy ẩn thì hiện lại cửa sổ) và thêm `--hud` vào lệnh chạy của backend;
-ngoài web dùng `run_xosc.py <file>.xosc --camera --hud`. `follow_hero.py` vẽ cạnh xe: tốc độ, gia tốc dọc thân xe, bàn đạp ga/phanh
+**Bật mặc định từ 16/11/2026.** `dev-carla.ps1` bật server có cửa sổ 1280×720 (server đã chạy ẩn thì hiện lại cửa sổ) và thêm `--hud`
+vào lệnh chạy của backend; `run_xosc.py` ngoài web cũng vẽ HUD mặc định. Tắt: `dev-carla.ps1 -RestartBackend -NoHud` (server mới chạy ẩn
+800×600, như trước 15/11) hoặc `run_xosc.py ... --no-hud`. Backend cũ giữ lệnh cũ cho tới khi chạy lại với `-RestartBackend`.
+`follow_hero.py` vẽ cạnh xe: tốc độ, gia tốc dọc thân xe, bàn đạp ga/phanh
 (phanh do controller AEB áp), thời gian từ lúc thấy ego, khoảng cách **tâm-tâm** tới người đi bộ/xe gần nhất.
 
 - Chỉ là số vật lý đọc từ CARLA. TTC, quyết định AEB và chỉ số chấm điểm ở lõi Java; muốn xem thì dùng **Phát lại** sau run.

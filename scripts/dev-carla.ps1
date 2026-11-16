@@ -2,9 +2,12 @@ param(
     [string]$CarlaRoot = 'C:\Carla_package',
     [string]$ScenarioRunnerRoot = (Join-Path $env:USERPROFILE 'scenario_runner'),
     [switch]$RestartBackend,
-    # Dev: hien cua so CARLA va ve toc do/ban dap canh xe (follow_hero --hud). Chu chi o cua so server, khong vao anh camera.
+    # Mac dinh hien cua so CARLA va ve toc do/ban dap canh xe (follow_hero --hud). Chu chi o cua so server, khong vao anh camera.
+    # -NoHud: chay an, khong ve (vd. batch dai). -Hud giu lai cho lenh cu, khong con tac dung.
+    [switch]$NoHud,
     [switch]$Hud
 )
+$Hud = -not $NoHud
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $repoRoot 'worker\.venv-carla\Scripts\python.exe'
@@ -23,7 +26,7 @@ $env:VEHICSIM_SIMULATOR = 'carla-xosc'
 $env:VEHICSIM_CARLA_VERSION = '0.9.16'
 $env:SIMULATION_TIMEOUT_S = '300'
 $runner = @($python, (Join-Path $repoRoot 'worker\run_xosc.py'), '--camera')
-if ($Hud) { $runner += '--hud' }
+$runner += $(if ($Hud) { '--hud' } else { '--no-hud' })
 $env:VEHICSIM_CARLA_COMMAND = ConvertTo-Json -Compress -InputObject $runner
 if (-not (Get-NetTCPConnection -LocalPort 2000 -State Listen -ErrorAction SilentlyContinue)) {
     $server = Join-Path $CarlaRoot 'CarlaUE4.exe'
@@ -32,7 +35,7 @@ if (-not (Get-NetTCPConnection -LocalPort 2000 -State Listen -ErrorAction Silent
     $resolution = if ($Hud) { @('-ResX=1280','-ResY=720') } else { @('-ResX=800','-ResY=600') }
     Start-Process -FilePath $server -ArgumentList (@('/Game/Carla/Maps/Town04','-windowed') + $resolution + '-quality-level=Low') -WorkingDirectory $CarlaRoot -WindowStyle $window
 } elseif ($Hud) {
-    # Server da bat an (lan chay truoc khong co -Hud): hien lai cua so thay vi khoi dong lai CARLA.
+    # Server da bat an (lan chay truoc co -NoHud): hien lai cua so thay vi khoi dong lai CARLA.
     Add-Type -Namespace VehicSim -Name Win32 -MemberDefinition @'
 public delegate bool EnumProc(System.IntPtr h, System.IntPtr p);
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, System.IntPtr p);
