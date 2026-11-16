@@ -57,16 +57,20 @@ Vô hại, không phải dấu hiệu run hỏng.
 **Bật mặc định từ 16/11/2026.** `dev-carla.ps1` bật server có cửa sổ 1280×720 (server đã chạy ẩn thì hiện lại cửa sổ) và thêm `--hud`
 vào lệnh chạy của backend; `run_xosc.py` ngoài web cũng vẽ HUD mặc định. Tắt: `dev-carla.ps1 -RestartBackend -NoHud` (server mới chạy ẩn
 800×600, như trước 15/11) hoặc `run_xosc.py ... --no-hud`. Backend cũ giữ lệnh cũ cho tới khi chạy lại với `-RestartBackend`.
-`follow_hero.py` vẽ cạnh xe: tốc độ, gia tốc dọc thân xe, bàn đạp ga/phanh
-(phanh do controller AEB áp), thời gian từ lúc thấy ego, khoảng cách **tâm-tâm** tới người đi bộ/xe gần nhất.
+`follow_hero.py` hiện một ô số ở **góc trên trái bên trong cửa sổ CarlaUE4**: tốc độ, gia tốc dọc thân xe, bàn đạp ga/phanh
+(phanh do controller AEB áp, dòng chuyển đỏ), thời gian từ lúc thấy ego, khoảng cách **tâm-tâm** tới người đi bộ/xe gần nhất.
 
+- Số đọc từ snapshot của **từng tick** (`wait_for_tick`, không tick), nên khớp khung xe đang hiện. Mô phỏng có render chạy chậm hơn giờ thật
+  (~0,2–0,3×), số cũng đổi theo nhịp đó.
+- Ô số là cửa sổ Tk **thuộc về** cửa sổ CARLA (owner, kiểm 16/11): đi theo cửa sổ, bị cửa sổ khác che và ẩn cùng CARLA, không nổi riêng trên
+  màn hình. Không thấy cửa sổ CARLA (chạy ẩn, thu nhỏ, Linux) thì ô số không hiện. Tiêu đề thật là `"CarlaUE4  "` (có dấu cách cuối) nên
+  phải so tiền tố, `FindWindow("CarlaUE4")` không thấy. Ô số không thuộc world nên không thể vào ảnh `sensors/camera`.
 - Chỉ là số vật lý đọc từ CARLA. TTC, quyết định AEB và chỉ số chấm điểm ở lõi Java; muốn xem thì dùng **Phát lại** sau run.
-- Trước khi AEB can thiệp, ego được giữ tốc độ bằng `enable_constant_velocity` nên `ga 0.00` là bình thường.
+- Trước khi AEB can thiệp, ego được giữ tốc độ bằng `enable_constant_velocity` nên `Ga 0.00` là bình thường.
   Gia tốc HUD (`get_acceleration`) khác cột `imu_accel_x_ms2`: IMU đo lực riêng, gồm cả trọng lực trên đường dốc.
-- Chữ `draw_string` không vào ảnh camera RGB (kiểm 15/11). `draw_point`/`draw_box`/`draw_line` thì **có**, nên đừng thêm hình debug
-  vào HUD: sẽ làm bẩn `sensors/camera`.
-- HUD đổi số 5 lần/giây (giờ thật). Vẽ mỗi tick làm hai bản chữ chồng lệch nhau ("50.0" đọc thành "60.0") hoặc nháy mất, vì lệnh vẽ
-  đua với tick của ScenarioRunner. Đo trên run 2365 chạy lại: 30/30 khung có đúng một bản chữ, số khớp `frames.csv`.
+- Bản 15/11 vẽ chữ bằng `world.debug.draw_string` cạnh xe và đã bỏ: CARLA chỉ vẽ ở toạ độ 3D (không ghim được góc màn hình), lệnh vẽ đua với
+  tick của ScenarioRunner nên khung có hai bản số chồng lệch nhau. Nếu sau này cần vẽ trong world: `draw_string` không vào ảnh camera RGB,
+  còn `draw_point`/`draw_box`/`draw_line` **có** (kiểm 15/11) — sẽ làm bẩn `sensors/camera`.
 
 ## Hợp đồng và giới hạn
 
