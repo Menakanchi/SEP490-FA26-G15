@@ -18,18 +18,18 @@ export function recordedRange(detail: FailureDetail) {
 
 export function runMarkers(detail: FailureDetail): ChartMarker[] {
   const markers: ChartMarker[] = [];
-  const add = (t: unknown, label: string, color: string) => {
-    if (finite(t) && t >= 0) markers.push({ t, label, color: `var(--color-vehicsim-${color})` });
+  const add = (t: unknown, label: string, color: string, source: string) => {
+    if (finite(t) && t >= 0) markers.push({ t, label, source, color: `var(--color-vehicsim-${color})` });
   };
-  add(detail.metrics.first_detection_t, "Phát hiện", "perception");
-  add(detail.metrics.fcw_t, "Cảnh báo FCW", "warn");
-  add(detail.metrics.aeb_activation_t, "Quyết định AEB", "decision");
-  add(detail.metrics.brake_onset_t, "Bắt đầu lệnh phanh", "control");
+  add(detail.metrics.first_detection_t, "Phát hiện", "perception", "metrics.first_detection_t");
+  add(detail.metrics.fcw_t, "Cảnh báo FCW", "warn", "metrics.fcw_t");
+  add(detail.metrics.aeb_activation_t, "Quyết định AEB", "decision", "metrics.aeb_activation_t");
+  add(detail.metrics.brake_onset_t, "Bắt đầu lệnh phanh", "control", "metrics.brake_onset_t");
   const below = detail.events.find(event => event.kind === "ttc_below");
   const collision = detail.events.find(event => event.kind === "collision");
   const stopped = detail.events.find(event => event.kind === "stopped");
-  add(below?.t, "Mốc TTC từ backend", "warn");
-  add(collision?.t, "Va chạm", "danger");
-  add(stopped?.t, "Dừng", "ok");
+  add(below?.t, "Mốc TTC từ backend", "warn", "events[kind=ttc_below].t");
+  add(collision?.t, "Va chạm", "danger", "events[kind=collision].t");
+  add(stopped?.t, "Dừng", "ok", "events[kind=stopped].t");
   return markers.sort((a, b) => a.t - b.t);
 }

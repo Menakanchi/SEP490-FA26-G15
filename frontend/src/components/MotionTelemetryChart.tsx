@@ -1,10 +1,12 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { formatMetric } from "./analysis/analysisMetricFormat";
-
-import { useState } from "react";
+import { chartEnd, finiteTime, nearestChartSample, prepareChartSeries } from "./analysis/telemetryChartData";
+import { RecordedSeries, ChartQuality, ChartMarkerLegend, chartX, pointerTime, visibleChartMarkers, markerTitle } from "./analysis/TelemetryChartParts";
+import styles from "./analysis/TelemetryChart.module.css";
 import type { MotionTelemetryPoint } from "@/types/vehicsim";
-import type { ChartMarker } from "@/components/TelemetryChart";
+import type { ChartMarker } from "./TelemetryChart";
 
 export type MotionSignal = "ego_x_m"|"ego_speed_mps"|"ego_accel_mps2"|"target_y_m"|"target_vy_mps"|"perceived_y_m"|"ttc_perceived_s"|"ttc_gt_s"|"jerk_mps3"|"crossing_distance_m";
 export const MOTION_SIGNALS: { key: MotionSignal; label: string; unit: string; source: string }[] = [
@@ -20,84 +22,69 @@ export const MOTION_SIGNALS: { key: MotionSignal; label: string; unit: string; s
   { key: "ttc_gt_s", label: "TTC ground truth", unit: "s", source: "TTC ground truth đã lưu; không thay thế TTC nhận thức bị thiếu." },
 ];
 
-export function MotionTelemetryChart({ points, markers, cursor, selectedField, onFieldChange }: {
+
+export function MotionTelemetryChart({ points, markers, cursor, selectedField, onFieldChange, timeEnd, nominalStep, hoverTime, onHoverTime }: {
   points: MotionTelemetryPoint[]; markers: ChartMarker[]; cursor?: number;
   selectedField?: MotionSignal; onFieldChange?: (field: MotionSignal) => void;
+  timeEnd?: number; nominalStep?: number; hoverTime?: number | null; onHoverTime?: (time: number | null) => void;
 }) {
-  const [hoverTime, setHoverTime] = useState<number | null>(null);
+  const [localHover, setLocalHover] = useState<number | null>(null);
   const [localField, setField] = useState<MotionSignal>("ego_accel_mps2");
   const field = selectedField ?? localField;
-  const signal = MOTION_SIGNALS.find((s) => s.key === field)!;
-  const values = points.filter(p => Number.isFinite(p.t) && p.t >= 0).map((p) => p[field]).filter((v): v is number => v != null && Number.isFinite(v));
-  const times = points.map((p) => p.t).filter(t => Number.isFinite(t) && t >= 0);
-  const tMin = 0;
-  const tMax = times.length ? times.reduce((max, t) => Math.max(max, t), tMin + 0.01) : 1;
-  const low = values.length ? values.reduce((min, value) => Math.min(min, value), 0) : 0;
-  const high = values.length ? values.reduce((max, value) => Math.max(max, value), 0) : 1;
-  const padding = Math.max((high - low) * 0.1, 0.1);
-  const yMin = low - padding, yMax = high + padding;
-  const x = (t: number) => 62 + (t - tMin) / (tMax - tMin) * 618;
-  const y = (v: number) => 235 - (v - yMin) / (yMax - yMin) * 205;
-  const segments: string[][] = [];
-  let line: string[] = [];
-  let previousT: number | null = null;
-  for (const point of points) {
-    const value = point[field];
-    if (value == null || !Number.isFinite(value) || !Number.isFinite(point.t) || point.t < 0) {
-      if (line.length) segments.push(line);
-      line = []; previousT = null;
-      continue;
-    }
-    if (previousT !== null && point.t <= previousT) {
-      if (line.length) segments.push(line);
-      line = [];
-    }
-    line.push(`${x(point.t)},${y(value)}`);
-    previousT = point.t;
-  }
-  if (line.length) segments.push(line);
-  const nearest = hoverTime === null ? null : points.reduce<MotionTelemetryPoint | null>((best, point) => (!Number.isFinite(point.t) || point.t < 0) ? best : !best || Math.abs(point.t-hoverTime) < Math.abs(best.t-hoverTime) ? point : best, null);
+  const signal = MOTION_SIGNALS.find(s => s.key === field)!;
+  const nonNegative = ["ego_speed_mps", "ttc_perceived_s", "ttc_gt_s", "crossing_distance_m"].includes(field);
+  const end = useMemo(() => chartEnd(points, timeEnd), [points, timeEnd]);
+  const limit = finiteTime(timeEnd) ? timeEnd : end;
+  const data = useMemo(() => prepareChartSeries(points, p => p[field], limit, nominalStep, nonNegative), [points, field, limit, nominalStep, nonNegative]);
+  const padding = Math.max((data.high - data.low) * 0.1, 0.1), yMin = data.low - padding, yMax = data.high + padding;
+  const x = (t: number) => chartX(t, end), y = (v: number) => 235 - (v - yMin) / (yMax - yMin) * 205;
+  const activeHover = onHoverTime ? hoverTime : localHover;
+  const time = activeHover ?? cursor;
+  const nearest = nearestChartSample(data.samples, time);
+  const changeHover = onHoverTime ?? setLocalHover;
+  const visibleMarkers = visibleChartMarkers(markers, limit);
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <section className="flex min-w-0 flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <h2 className="text-[16px] font-bold text-vehicsim-ink">Chuyển động và nguồn dữ liệu</h2>
-        <label className="text-[12px] text-vehicsim-muted">
+        <label className="flex min-w-0 flex-wrap items-center gap-2 text-[12px] text-vehicsim-muted">
           Tín hiệu
-          <select aria-label="Tín hiệu" className="ml-2 rounded-lg border border-vehicsim-line bg-vehicsim-surface p-2" value={field} onChange={(e) => { const next = e.target.value as MotionSignal; if (onFieldChange) onFieldChange(next); else setField(next); }}>
-            {MOTION_SIGNALS.map((s) => <option key={s.key} value={s.key}>{s.label} ({s.unit})</option>)}
+          <select aria-label="Tín hiệu" className={`${styles.select} rounded-lg border border-vehicsim-line bg-vehicsim-surface p-2`} value={field}
+            onChange={e => { const next = e.target.value as MotionSignal; if (onFieldChange) onFieldChange(next); else setField(next); }}>
+            {MOTION_SIGNALS.map(s => <option key={s.key} value={s.key}>{s.label} ({s.unit})</option>)}
           </select>
         </label>
       </div>
-      <p className="text-[12px] text-vehicsim-muted">{signal.source}</p>
-      {!values.length ? <p className="py-8 text-center text-[13px] text-vehicsim-muted">Run chưa có dữ liệu cho tín hiệu này.</p> : (
-        <svg viewBox="0 0 706 270" className="h-64 w-full" role="img"
-          onPointerLeave={()=>setHoverTime(null)}
-          onPointerMove={event=>{const svg=event.currentTarget,matrix=svg.getScreenCTM();if(!matrix)return;const point=svg.createSVGPoint();point.x=event.clientX;point.y=event.clientY;const local=point.matrixTransform(matrix.inverse());setHoverTime(tMin+Math.max(0,Math.min(1,(local.x-62)/618))*(tMax-tMin));}} aria-label={`${signal.label} (${signal.unit}) theo thời gian (s)`}>
+      <p className={styles.note}>{signal.source}</p>
+      {!data.count ? <p className="py-8 text-center text-[13px] text-vehicsim-muted">Run chưa có dữ liệu cho tín hiệu này.</p> : (
+        <div className={styles.scroll} role="region" aria-label="Vùng cuộn biểu đồ chuyển động" tabIndex={0}>
+        <svg viewBox="0 0 706 270" className={styles.svg} role="img"
+          onPointerLeave={() => changeHover(null)} onPointerMove={e => changeHover(pointerTime(e, limit))}
+          aria-label={`${signal.label} (${signal.unit}) theo thời gian (s)`}>
           <title>{signal.label} ({signal.unit}) theo thời gian</title>
           {Array.from({ length: 5 }, (_, i) => {
-            const value = yMin + (yMax - yMin) * i / 4;
-            const t = tMin + (tMax - tMin) * i / 4;
+            const value = yMin + (yMax - yMin) * i / 4, t = end * i / 4;
             return <g key={i}>
-              <line x1={62} x2={680} y1={y(value)} y2={y(value)} stroke="var(--color-vehicsim-line)" />
+              <line x1={62} x2={644} y1={y(value)} y2={y(value)} stroke="var(--color-vehicsim-line)" />
               <text x={55} y={y(value) + 4} textAnchor="end" fontSize={11} fill="var(--color-vehicsim-muted)">{formatMetric(value)}</text>
-              <text x={x(t)} y={258} textAnchor="middle" fontSize={11} fill="var(--color-vehicsim-muted)">{t.toFixed(2)} s</text>
+              <text x={x(t)} y={258} textAnchor="middle" fontSize={11} fill="var(--color-vehicsim-muted)">{formatMetric(t, 3)} s</text>
             </g>;
           })}
-          {markers.filter((m) => Number.isFinite(m.t) && m.t >= tMin && m.t <= tMax).map((m, i) => (
-            <line key={`${m.label}-${i}`} x1={x(m.t)} x2={x(m.t)} y1={30} y2={235} stroke={m.color} strokeDasharray="4 3"><title>{m.label} · {m.t} s</title></line>
-          ))}
-          {cursor !== undefined && Number.isFinite(cursor) && cursor >= tMin && cursor <= tMax && <line x1={x(cursor)} x2={x(cursor)} y1={30} y2={235} stroke="var(--color-vehicsim-ink)" strokeWidth={2}><title>Thời gian đang xem: {cursor} s</title></line>}
-          {segments.map((segment, i) => segment.length === 1
-            ? <circle key={i} cx={Number(segment[0].split(",")[0])} cy={Number(segment[0].split(",")[1])} r={3} fill="var(--color-vehicsim-decision)" />
-            : <polyline key={i} points={segment.join(" ")} fill="none" stroke="var(--color-vehicsim-decision)" strokeWidth={2} />)}
-          {nearest && <line x1={x(nearest.t)} x2={x(nearest.t)} y1={30} y2={235} stroke="var(--color-vehicsim-muted)" strokeDasharray="2 2" />}
+          {visibleMarkers.map((m, i) => <line key={i} x1={x(m.t)} x2={x(m.t)} y1={30} y2={235} stroke={m.color} strokeDasharray="4 3"><title>{markerTitle(m)}</title></line>)}
+          {finiteTime(cursor) && cursor <= end && <line data-chart-cursor x1={x(cursor)} x2={x(cursor)} y1={30} y2={235} stroke="var(--color-vehicsim-ink)" strokeWidth={2}><title>Thời gian đang xem: {cursor} s</title></line>}
+          <RecordedSeries data={data} end={end} min={yMin} max={yMax} top={30} bottom={235} signal={field} color="var(--color-vehicsim-decision)" />
+          {finiteTime(activeHover) && activeHover <= end && <line data-chart-hover x1={x(activeHover)} x2={x(activeHover)} y1={30} y2={235} stroke="var(--color-vehicsim-muted)" strokeDasharray="2 2" />}
           <text x={62} y={18} fontSize={11} fill="var(--color-vehicsim-muted)">{signal.unit}</text>
-        </svg>
+        </svg></div>
       )}
-      <p className="text-[12px] tabular-nums text-vehicsim-muted" aria-live="off">{nearest ? `t = ${nearest.t.toFixed(2)} s · ${signal.label}: ${nearest[field] != null && Number.isFinite(nearest[field]) ? formatMetric(nearest[field], signal.unit === "m/s³" ? 3 : 2) + " " + signal.unit : "Không có số đo tại khung này"}` : "Di chuột trên biểu đồ để đọc số đo của khung đã ghi."}</p>
-      <div className="flex flex-wrap gap-3 text-[11px] text-vehicsim-muted">
-        {markers.map((m, i) => <span key={`${m.label}-${i}`} style={{ color: m.color }}>{m.label}: {m.t.toFixed(2)} s</span>)}
-      </div>
+      <p className={styles.note} data-chart-readout aria-live="off">
+        Mốc xem {formatMetric(time, 3)} s · Mẫu gần nhất theo timestamp (hòa chọn mốc trước, không nội suy):
+        {nearest ? ` t = ${formatMetric(nearest.t, 3)} s · ${signal.label}: ${formatMetric(nearest.value, signal.unit === "m/s³" ? 3 : 2, nonNegative)} ${signal.unit}` : " Chưa có mẫu trong khoảng đã ghi của nguồn."}
+        {" "}Nguồn motion_telemetry.{field}. — = không có số đo hợp lệ tại mẫu.
+      </p>
+      <p className={styles.note}>Dùng thanh thời gian phía trên bằng phím mũi tên/Home/End hoặc chạm để xem mẫu. Di chuột để so timestamp; cuộn ngang vùng biểu đồ trên màn hẹp.</p>
+      <ChartQuality data={data} />
+      <ChartMarkerLegend markers={visibleMarkers} />
     </section>
   );
 }

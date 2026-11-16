@@ -112,7 +112,7 @@ export default function FailureDetailPage() {
         <AnalysisRunSummary detail={d} run={inspection ?? null} cursor={cursor} returnTo={returnTo} />
       </div>
       <div id="run-panel-telemetry" role="tabpanel" aria-labelledby="run-tab-telemetry" tabIndex={0} hidden={section !== "telemetry"}>
-        <AnalysisRunTelemetry detail={d} markers={markers} cursor={cursor} signal={signal} onSignal={signal => update({ signal })} />
+        <AnalysisRunTelemetry key={d.run_id} nominalStep={inspection?.run_id === d.run_id ? inspection.dt : undefined} detail={d} markers={markers} cursor={cursor} signal={signal} onSignal={signal => update({ signal })} />
       </div>
       <div id="run-panel-evidence" role="tabpanel" aria-labelledby="run-tab-evidence" tabIndex={0} hidden={section !== "evidence"}>
         <AnalysisRunEvidence detail={d} returnTo={returnTo} playbackAvailable={canPlayback} />

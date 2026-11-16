@@ -342,11 +342,11 @@ try {
  detailOverride={...apiDetail,simulator:"carla-0.9.16-xosc4",events:[],telemetry:apiDetail.telemetry.map(p=>({...p,ttc:0.1})),chain:[{stage:"DECISION",passed:false,summary:"Bằng chứng do backend cung cấp",parameter_code:null,cause_code:null,confidence:0.5}]};
  await page.goto(base+`/analysis/failures/${id}?section=telemetry`);
  await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
- assert.equal(await page.getByText("Mốc TTC từ backend",{exact:true}).count(),0);
+ assert.equal(await page.getByLabel("Mốc đã ghi trên biểu đồ",{exact:true}).first().getByText("Mốc TTC từ backend",{exact:false}).count(),0);
  assert.equal(await page.getByRole("tabpanel",{name:"Telemetry & chỉ số",exact:true}).getByText(/Trễ kích hoạt/).count(),0);
  await page.getByRole("tabpanel",{name:"Telemetry & chỉ số",exact:true}).getByText("Bằng chứng do backend cung cấp",{exact:false}).waitFor();
  detailOverride={...detailOverride,events:[{t:0.75,kind:"ttc_below",label:"Mốc TTC do API ghi"}]};
- await page.reload();await page.getByText("Mốc TTC từ backend",{exact:true}).waitFor();
+ await page.reload();await page.getByLabel("Mốc đã ghi trên biểu đồ",{exact:true}).first().getByText("Mốc TTC từ backend",{exact:false}).waitFor();
  playbackOverride=null;detailOverride=null;
  // Batch 5: playback controls, recorded frames/events, paused URL and source boundaries.
  const pbReturn="/analysis/failures?view=runs&scenario_id=1&page=2&page_size=10&q=CP&sort=impact";
@@ -486,11 +486,12 @@ try {
  assert.equal((await valueIn(readouts,"Khoảng cách tới vạch tại khung").innerText()).trim(),"777.70");
  assert.match(await page.getByLabel("Số đo tín hiệu đang chọn",{exact:true}).innerText(),/500.000 m\/s³/);
  const combined=page.getByRole("img",{name:"TTC nhận thức (s) và tốc độ xe (km/h) theo thời gian (s)",exact:true});
- assert.equal(await combined.locator('circle[data-signal="ttc"]').count(),1,"A single recorded sample remains visible before a gap");
- assert.equal(await combined.locator('polyline[data-signal="ttc"]').count(),1,"Missing TTC splits the series");
- assert.equal(Number(await combined.locator('circle[data-signal="ttc"]').getAttribute("cy")),34);
- const afterGap=await combined.locator('polyline[data-signal="ttc"]').getAttribute("points");
- assert(Number(afterGap.split(" ")[0].split(",")[1])>34,"TTC 8 is below TTC 12; values are not clamped to 5 s");
+ assert.equal(await combined.locator('circle[data-signal="ttc"]').count(),4,"Finite samples separated by 0.5 s exceed this run's dt=0.01 display continuity limit");
+ assert.equal(await combined.locator('polyline[data-signal="ttc"]').count(),0,"Missing/long gaps must not be connected");
+ assert.equal(Number(await combined.locator('circle[data-signal="ttc"]').first().getAttribute("cy")),34);
+ assert(Number(await combined.locator('circle[data-signal="ttc"]').nth(1).getAttribute("cy"))>34,"TTC 8 is below TTC 12; no clamp to 5 s");
+ assert.equal(await combined.locator('circle[data-signal="speed_kmh"]').count(),3,"Negative ego speed is unavailable, not plotted or clamped to zero");
+ assert.match(await page.locator("[data-chart-quality]").nth(1).innerText(),/1 số đo ngoài hợp đồng/);
  const timeSlider=page.getByRole("slider",{name:"Thời gian phân tích",exact:true});
  await timeSlider.focus();await timeSlider.press("End");
  await page.waitForURL(url=>url.searchParams.get("t")==="2");
@@ -539,10 +540,10 @@ try {
   motion_telemetry:[0,0.5,1,0.75,2].map((t,i)=>({...sentinelDetail.motion_telemetry[i],t,ego_accel_mps2:[1.25,null,-2,3,0][i]}))}};
  await page.goto(detailUrl+"&section=telemetry&t=999");await combined.waitFor();
  assert.equal(Number(await timeSlider.inputValue()),3);
- assert.equal(await combined.locator('[data-signal="ttc"]').count(),3);
+ assert.equal(await combined.locator('[data-signal="ttc"]').count(),4);
  const motionGapChart=page.getByRole("img",{name:"Gia tốc ego (m/s²) theo thời gian (s)",exact:true});
- assert.equal(await motionGapChart.locator("circle").count(),2);
- assert.equal(await motionGapChart.locator("polyline").count(),1,"Motion chart also splits missing and decreasing timestamps");
+ assert.equal(await motionGapChart.locator("circle").count(),4);
+ assert.equal(await motionGapChart.locator("polyline").count(),0,"Motion chart splits missing/decreasing timestamps and long finite gaps");
  assert.equal((await valueIn(readouts,"Gia tốc ego tại khung").innerText()).trim(),"0.00");
  inspectionOverride={run:{...baseRun,status:"RUNNING",trace_available:false,outcome:"NOT_FINISHED"},detail:null};
  await page.goto(detailUrl);await page.getByRole("region",{name:"Run chưa có kết quả phân tích",exact:true}).waitFor();

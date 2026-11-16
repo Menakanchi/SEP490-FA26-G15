@@ -156,7 +156,7 @@ export default function PlaybackPage() {
           <PlaybackEvents entries={view.entries} activeEvent={activeEvent} enabled={enabled} ignored={view.invalidEvents} onSeek={seek} />
         </div>
       </div>
-      <MotionTelemetryChart points={pb.motion_telemetry ?? []} markers={events.map(event => ({ t: event.t, label: eventName(event), color: eventColor(event) }))} cursor={t}
+      <MotionTelemetryChart key={pb.run_id} timeEnd={duration} points={pb.motion_telemetry ?? []} markers={events.map(event => ({ t: event.t, label: eventName(event), color: eventColor(event), source: `events[kind=${event.kind}].t` }))} cursor={t}
         selectedField={signal} onFieldChange={signal => replaceQuery({ signal })} />
     </>}
   </VehicSimPage>;
