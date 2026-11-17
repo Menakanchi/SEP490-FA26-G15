@@ -1,9 +1,15 @@
 # Kiến trúc — VehicSim MVP
 
-Tài liệu kiến trúc của **VehicSim**: vòng khép kín AEB trên *một* motif (người đi
-bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà repo dựng lên từ đó —
-đã gỡ ngày 04/10/2026; chỉ giữ bộ sinh OpenSCENARIO ở `src/services/openscenario/`
-([ADR-032](../adr/ADR-032-go-scenario-forge-giu-bo-sinh-openscenario.md)).
+Tài liệu kiến trúc của **VehicSim**: vòng khép kín AEB, ban đầu người đi bộ băng ngang;
+code hiện tại hỗ trợ CP_CROSSING và CCRS/CCRM/CCRB (ADR-050).
+Scenario Forge đã gỡ ngày 04/10/2026 (ADR-032); bộ xuất OpenSCENARIO hiện ở
+`src/main/java/com/vsos/core/xosc/XoscExport.java` (ADR-042).
+
+> Đối chiếu Admin/Analysis ngày 17/11/2026: [technical handover](admin-analysis-handover.md)
+> và [Final QA](../exec-plans/completed/2026-11-17-admin-analysis-phase-20-handover.md).
+> Các bảng tên Python/Forge bên dưới là lịch sử; không phải API đang tồn tại.
+> Admin chỉ có ba trang quản trị, không có Overview riêng. Reviewer theo membership workspace;
+> Engineer vẫn dùng project nhóm chung (TD-30), không tuyên bố cách ly mọi workspace.
 
 > Nguồn sự thật: schema DB là [`database/mysql/01_schema.sql`](../../database/mysql/01_schema.sql)
 > (code Java đọc/ghi bằng SQL thuần, không có bản mirror); lý do quyết định là ADR-023 →
@@ -32,8 +38,8 @@ bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà 
 |---|---|---|---|---|
 | 1. Mô tả kịch bản | Câu tiếng Việt → xem/sửa Scenario IR | `/scenarios/new` | `POST /scenarios/describe` | `describe.py` |
 | 2. Sinh biến thể | Lưới tham số → họ kịch bản | `/scenarios/new`, `/scenarios` | `POST /families` | `family.py` |
-| 3. Chạy baseline | Xem xe/AEB/bộ mô phỏng sẽ dùng → chạy mọi biến thể với AEB baseline → theo dõi, hủy → "Tiếp tục: Phân tích kết quả" (mang `scenario_id`) | `/scenarios`, `/analysis/carla` | `GET /context` (`simulator`), `POST /families/{id}/run`, `POST /families/{id}/cancel`, `POST /runs/{id}/cancel` | `runs.py` + Celery |
-| 4. Phân tích lỗi | Danh sách lỗi → chi tiết/nguyên nhân → playback → tải JSON chạy lại trên CARLA | `/analysis/failures/**` | `GET /failures`, `/runs/{id}`, `/runs/{id}/playback`, `/runs/{id}/bundle` | `evaluation.py`, `views.py`, `worker/run_variant.py` |
+| 3. Chạy baseline | Xem xe/AEB/bộ mô phỏng → chạy biến thể → theo dõi → Phân tích (mang `scenario_id`); chưa có API hủy (TD-37) | `/scenarios`, `/analysis/carla` | `GET /context`, `POST /families/{id}/run` | `RunService`, thread pool Java |
+| 4. Phân tích lỗi | Danh sách → detail/evidence → playback; JSON động học hoặc `.xosc` CARLA | `/analysis/failures/**` | `GET /failures`, `/analysis/runs`, `/analysis/runs/{id}`, `/runs/{id}/playback`, `/runs/{id}/bundle`, `/runs/{id}/xosc` | `AnalysisService`, `AnalysisViewService`, `Evaluation` |
 | 5. Cấu hình mới & chạy lại | Tạo candidate AEB → regression cùng seed | `/aeb`, `/validation/regression/new` | `POST /aeb/versions`, `GET /regression/preview`, `POST /regression` | `aeb.py`, `regression.py` |
 | 6. So sánh & quyết định | Kết quả regression → khuyến nghị → **Reviewer** Accept/Reject/Request more tests | `/validation/**` | `GET /regression/{id}`, `/recommendations/{id}`, `POST /recommendations/{id}/decision` | `regression.py`, `views.py` |
 
@@ -148,8 +154,8 @@ JSON**, dùng **cùng `AebStack`**, ghi **cùng `result.json`**, được chấm
 | Cảnh | Không có hình | Town04 road 40/lane -4 từ `.xosc`, camera bám xe (`--camera`) |
 | Dùng khi | Dev, test tự động, batch nhanh, dự phòng khi demo | Xem tận mắt, quay video, đối chiếu |
 
-Chạy tay một JSON tải từ web (nút **"Tải JSON chạy CARLA"** ở màn Chi tiết lỗi /
-Phát lại, hoặc Scenario IR ở màn Sinh từ mô tả):
+Chạy tay bundle JSON bằng bộ động học; CARLA nhận `.xosc` từ đúng run.
+Không chuyển JSON thành đầu vào CARLA bằng cách đổi đuôi file:
 
 ```bash
 java -cp target/classes com.vsos.core.bridge.BridgeMain kinematic vehicsim-run-42.json   # khớp kết quả trên web (cần mvnw compile)
@@ -162,7 +168,7 @@ AEB FAIL), `2` = đầu vào sai (JSON sai in đủ mọi lỗi; `run_xosc.py` t
 
 Chạy cả batch trên CARLA: đặt `VEHICSIM_SIMULATOR=carla-xosc` và `VEHICSIM_CARLA_COMMAND` trên
 máy có server CARLA (`scripts\dev-carla.ps1 -RestartBackend` tự đặt). Chế độ `carla` (runner JSON trực tiếp) đã gỡ: backend từ chối tạo run mới
-và báo lỗi run cũ chưa chạy của profile đó trước khi gọi worker. Hủy/quá giờ: backend ghi `stop.requested`, `run_xosc.py` dừng ScenarioRunner
+và báo lỗi run cũ chưa chạy của profile đó trước khi gọi worker. Khi backend dừng/quá giờ: backend ghi `stop.requested`, `run_xosc.py` dừng ScenarioRunner
 và dọn world, quá `STOP_GRACE_S` (15 s) mới giết cả cây; bị giết cứng thì lần chạy sau tự xoá actor sót lại. Run regression luôn chép bộ mô phỏng của run baseline; đổi cấu
 hình sang CARLA thì regression tự dựng baseline CARLA mới, không ghép với baseline động học.
 
@@ -248,9 +254,9 @@ horizon 1,5 s + brake delay 0,05 s (13 sửa được, 0 xấu đi).
 Chỉ hỗ trợ motif người đi bộ băng ngang (kể cả ca dừng ở lề); mô tả khác trả 400.
 Giới hạn 30 lượt / 15 phút / người (Redis) vì app public và mỗi lượt tốn tiền.
 
-## Bộ sinh OpenSCENARIO (`src/services/openscenario/`)
+## Bộ sinh OpenSCENARIO (Java `core/xosc/`)
 
-**Đang dùng cho VehicSim (ADR-041, ADR-042):** `core/XoscExport` (Java; bản Python cũ đã gỡ) sinh XML OpenSCENARIO 1.0 từ IR hoặc bundle,
+**Đang dùng cho VehicSim (ADR-041, ADR-042, ADR-050):** `core/xosc/XoscExport` (Java; bản Python cũ đã gỡ) sinh XML OpenSCENARIO 1.0 từ IR hoặc bundle,
 không cần CARLA/LLM. CP_CROSSING có ego/người đi bộ, thời tiết, trigger khoảng cách, polyline băng đường và
 ParameterDeclarations cho seed/AEB/xe/source. `run_xosc.py` gọi ScenarioRunner v0.9.16 bằng file này; adapter
 `vehicsim_aeb_control.py` chỉ đọc trạng thái CARLA và gửi cho lõi Java qua cầu nối, không có bản AEB thứ hai. XML dùng
@@ -263,7 +269,7 @@ round-trip metadata, trigger khoảng cách, dải biên và bộ sinh offline. 
 0.9.15; `try_convert_spec` trả `(xosc, None)` hoặc `(None, ValidationIssue)` thay vì ném lỗi. Code
 thuần, tất định (cùng spec → cùng byte, kiểm bằng 6 file mẫu trong `tests/test_openscenario/goldens/`
 và XSD OpenSCENARIO 1.0), không gọi LLM. Đầu vào `ScenarioSpec` theo taxonomy Forge (cut-in, sudden brake, …)
-không được đưa lại vào API hiện tại; không giả lập sáu category chưa hỗ trợ (TD-42).
+không được đưa lại vào API hiện tại. CPLA/TURNING/CUT_IN chưa triển khai (TD-42).
 
 ## Tập baseline bàn giao từ màn phân tích (22/10/2026)
 
@@ -410,7 +416,7 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Adapter CARLA áp góc lái của chính tick đó (không dùng `get_control()` của tick trước) và phanh/ga do lõi Java quyết định | `test_brake_override_keeps_this_ticks_steering` |
 | Mọi tham số AEB được simulator dùng; seed Java khớp SQL; AEB có đúng 4 tham số chỉnh được | `AebParameterSeedTest#everySeededParameterIsUsedByTheSimulator`, `AebParameterSeedTest#javaParameterSeedMatchesSqlSeed`, `SimulatorBehaviorTest#aebHasExactlyTheFourTunableParameters` |
 | Mọi route `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi được, MANAGER chỉ đọc | `VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
-| Chỉ REVIEWER quyết định recommendation; REVIEWER không chạy mô phỏng; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |
+| Chỉ REVIEWER quyết định recommendation; được chạy regression theo ADR-049, không chạy baseline độc lập; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#reviewerCanRunRegressionWithoutGainingScenarioOrCandidateWrites`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |
 | EXPERIENCER chỉ mở project `ACTIVE` của chính mình (project người khác, project nhóm, project lưu trữ bị chặn); role khác bỏ qua header, giữ project nhóm | `ProjectScopeTest#theHeaderMustPointToAnActiveProjectOfTheExperiencer`, `ProjectScopeTest#otherRolesKeepTheTeamProjectAndIgnoreTheHeader` |
 | API project cá nhân cần đăng nhập; quản lý / làm việc chỉ EXPERIENCER, chủ project đã đổi role chỉ đọc; ghi qua hạn mức; lỗi mang tên lỗi và câu tiếng Việt | `ProjectSecurityTest#onlyExperiencersManageAndWorkInPersonalProjects`, `ProjectSecurityTest#ownersWhoChangedRoleStillReadTheirPersonalProjects`, `ProjectSecurityTest#writesHonourTheQuotaButReadsDoNot`, `ProjectSecurityTest#projectErrorsCarryTheirNameAndVietnameseDetail` |
 | Project cá nhân: chỉ chủ project chọn ứng viên làm baseline, chỉ khi test PASSED, baseline chưa đổi, ứng viên chưa quyết định, có lý do và xác nhận (ADR-046) | `ProjectServiceTest#aPassedCandidateBecomesTheBaselineWithTheReasonKept`, `ProjectServiceTest#adoptingNeedsAReasonAConfirmationAndAFinishedPassedTest`, `ProjectServiceTest#anOutdatedTestOrADecidedCandidateCannotChangeTheBaseline` |
