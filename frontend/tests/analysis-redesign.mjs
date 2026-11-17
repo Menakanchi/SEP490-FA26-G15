@@ -1,3 +1,4 @@
+import { prepareAnalysisArtifacts } from "./helpers/analysis-artifacts.mjs";
 /**
  * UI regression using recorded parity fixtures and browser-only API interception.
  * This does NOT verify a live backend, authentication, database, CARLA, or Figma.
@@ -12,7 +13,7 @@ import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
 const fixtures=JSON.parse(gunzipSync(await fs.readFile(path.join(root,"src/test/resources/parity/kinematic.json.gz"))));
-const output=path.join(root,"data/analysis-batch8-ui");await fs.mkdir(output,{recursive:true});
+const output = await prepareAnalysisArtifacts(path.join(root,"data/analysis-batch8-ui"));
 const version="adr040-stored-aggregation/1";
 const cases=fixtures.filter(c=>c.evaluation.outcome!=="TIMEOUT").slice(0,45);
 const runs=cases.map((c,i)=>({revision:`fixture-${i}`,run_id:1000+i,scenario_id:1,scenario_version_id:100+i,version_no:i+1,family:"CP Crossing · Fixture kiểm thử UI",variant:`CP-${String(i+1).padStart(3,"0")}`,seed:c.seed,baseline_id:1,vehicle_id:1,simulator:"vehicsim-kinematic-1.0",dt:0.05,status:"COMPLETED",outcome:c.evaluation.aeb_result.false_activation?"FALSE_BRAKING":c.evaluation.outcome,weather:c.case.weather,time_of_day:c.case.time_of_day,failure_class:c.evaluation.chain.find(s=>!s.passed)?.stage??null,error:null,end_reason:c.outcome.end_reason,trace_available:true,created_at:"2026-11-03T08:00:00",metrics:{rms_jerk_mps3:c.outcome.metrics.rms_jerk_mps3,impact_speed_mps:c.outcome.metrics.impact_speed_mps,stopping_distance_m:c.outcome.metrics.stopping_distance_m}}));

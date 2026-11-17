@@ -1,3 +1,4 @@
+import { prepareAnalysisArtifacts } from "./helpers/analysis-artifacts.mjs";
 /** Overview contract/browser regression. API fixtures only; no live backend or simulator. */
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -6,9 +7,9 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const output = path.join(root, "data/analysis-phase12-2026-11-14", process.env.OVERVIEW_BASELINE === "1" ? "before" : "after");
-await fs.mkdir(output, { recursive: true });
-await fs.rm(path.join(output, "result.json"), { force: true });
+const output = await prepareAnalysisArtifacts(path.join(root, "data/analysis-phase12-2026-11-14", process.env.OVERVIEW_BASELINE === "1" ? "before" : "after"));
+
+
 const base = process.env.ANALYSIS_UI_URL || "http://127.0.0.1:3124";
 const viewports = [[375, 812], [390, 844], [768, 1024], [1024, 768], [1440, 900]];
 const actor = { id: 999912, email: "overview@example.invalid", full_name: "Overview fixture", role: "ENGINEER" };

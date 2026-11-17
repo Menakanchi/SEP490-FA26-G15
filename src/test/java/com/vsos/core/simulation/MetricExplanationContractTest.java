@@ -6,6 +6,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Numerical anchors for the canonical method described by Analysis; no production formula changes. */
 class MetricExplanationContractTest {
+    @Test
+    void crossingTtcIsUnavailableAtZeroGapZeroSpeedOrOutsideThePath() {
+        assertThat(Simulator.groundTruthTtc(10, 0, 5, VehicleSpec.DEFAULT)).isEqualTo(2.0);
+        for (double gap : new double[] {0, -1}) {
+            assertThat(Simulator.groundTruthTtc(gap, 0, 5, VehicleSpec.DEFAULT)).isNull();
+        }
+        for (double speed : new double[] {0, 0.1, -1}) {
+            assertThat(Simulator.groundTruthTtc(10, 0, speed, VehicleSpec.DEFAULT)).isNull();
+        }
+        assertThat(Simulator.groundTruthTtc(10, 2, 5, VehicleSpec.DEFAULT)).isNull();
+    }
+
     private static Frame frame(double t, double x, double v, double a) {
         return new Frame(t, x, v, a, 30, 0, 0, true, 1, 0.0, 1.0, 1.0, true, true);
     }

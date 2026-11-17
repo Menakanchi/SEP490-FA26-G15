@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:admin": "node tests/run-admin.mjs"
+    "test:admin": "node tests/run-admin.mjs",
+    "test:analysis": "node tests/run-analysis.mjs"
   },
   "dependencies": {
     "@alloc/quick-lru": "^5.2.0",

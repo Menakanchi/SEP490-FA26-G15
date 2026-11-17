@@ -11,6 +11,7 @@ import { PlaybackScene, PlaybackFacts } from "@/components/analysis/AnalysisPlay
 import { PlaybackTimeline, PlaybackEvents } from "@/components/analysis/AnalysisPlaybackTimeline";
 import { PLAYBACK_LAYERS, eventName, eventColor, playbackPresentation, type PlaybackLayer } from "@/components/analysis/playbackPresentation";
 import { finite } from "@/components/analysis/analysisRunData";
+import { classificationPresentation } from "@/components/analysis/analysisClassificationData";
 import { initialPlaybackClock, playbackClockReducer, playbackIndexAt } from "@/components/analysis/playbackClockData";
 import styles from "@/components/analysis/AnalysisPlayback.module.css";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -57,6 +58,7 @@ export default function PlaybackPage() {
     let active = true;
     vehicsimApi.playback(validId).then(data => {
       if (!active) return;
+      if (data?.run_id !== validId) throw new Error("Dữ liệu trả về không khớp lượt chạy đang mở.");
       const prepared = playbackPresentation(data);
       const query = new URLSearchParams(window.location.search);
       const rawTime = query.get("t"), requested = rawTime === null ? Number.NaN : Number(rawTime);
@@ -134,9 +136,10 @@ export default function PlaybackPage() {
   const related = pb?.related_runs?.find(run => run.config !== pb.config);
   const detailHref = `/analysis/failures/${runId}?section=telemetry&t=${t}&signal=${signal}&${returnQuery}`;
   const enabled = Boolean(view?.durationValid && frames.length);
+  const evaluated = pb ? classificationPresentation(pb).trusted : false;
   return <VehicSimPage step={4} title={validId === null ? "Lượt chạy không hợp lệ" : `Phát lại · Lượt chạy ${runCode(validId)}`}
     crumbs={[{ label: "Phân tích" }, { label: "Danh sách phân tích", href: returnTo }, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}`, href: detailHref }, { label: "Phát lại" }]}
-    badges={pb && <><AnalysisBadge value={pb.status} />{pb.evaluation_valid !== false && <AnalysisBadge value={pb.outcome} />}{pb.failure_class && <AnalysisBadge value={pb.failure_class} />}</>}
+    badges={pb && <><AnalysisBadge value={pb.status} />{evaluated && <AnalysisBadge value={pb.outcome} />}{evaluated && pb.failure_class && <AnalysisBadge value={pb.failure_class} />}</>}
     subtitle={pb ? `Nguồn API: ${pb.simulator ?? "Chưa có danh tính simulator"}. Phát lại khung đã ghi.` : "Đang đọc dữ liệu phát lại từ API."}
     actions={<>
       <PillButton disabled={!pb} title="Xuất OpenSCENARIO cùng cấu hình và seed của lượt này" onClick={() => {
@@ -153,7 +156,7 @@ export default function PlaybackPage() {
         <dl className={styles.meta}><div><dt>Biến thể / seed</dt><dd>{pb.variant} · seed {pb.seed}</dd></div><div><dt>Cấu hình AEB</dt><dd>{pb.config}</dd></div><div><dt>Phương tiện</dt><dd>{pb.vehicle}</dd></div><div><dt>Khung / sự kiện hợp lệ</dt><dd>{frames.length} khung · {events.length} sự kiện</dd></div></dl>
         <p className={styles.source} data-carla={pb.simulator?.startsWith("carla")}>Cảnh dựng từ tọa độ API, không phải video cảm biến. Sự kiện và số đo dùng kết quả đã ghi; gia tốc/jerk có thể do lõi xử lý, không mặc định là IMU thô.
           {pb.simulator?.startsWith("carla") && " Hiệu chuẩn CARLA phụ thuộc xe/profile; API chưa xác nhận calibration từng run; số liệu phục vụ quan sát/đối chiếu."}</p>
-        {pb.evaluation_valid === false && <p role="status" className="analysis-caption">Dữ liệu run chưa đủ điều kiện để kết luận AEB. Playback chỉ hiển thị dữ liệu đã ghi.</p>}
+        {!evaluated && <p role="status" className="analysis-caption">Dữ liệu run chưa đủ điều kiện để kết luận AEB. Playback chỉ hiển thị dữ liệu đã ghi.</p>}
         {!view.durationValid && <p role="status">Thời lượng từ API không hợp lệ. Chưa thể phát lại.</p>}
         {view.durationValid && !frames.length && <p role="status">Không có frame telemetry hợp lệ để phát lại.</p>}
         {view.invalidFrames > 0 && <p className="analysis-caption">{view.invalidFrames} khung có timestamp không hợp lệ hoặc nằm ngoài khoảng phát.</p>}

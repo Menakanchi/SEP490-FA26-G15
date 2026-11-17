@@ -1,3 +1,4 @@
+import { prepareAnalysisArtifacts } from "./helpers/analysis-artifacts.mjs";
 /** Metric explainability regression: browser HTTP fixtures, no live backend/CARLA. */
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -7,9 +8,9 @@ import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const baseline = process.env.EXPLAINABILITY_BASELINE === "1";
-const output = path.join(root, "data/analysis-phase15-2026-11-15", baseline ? "before" : "after");
-await fs.mkdir(output, { recursive: true });
-await fs.rm(path.join(output, "result.json"), { force: true });
+const output = await prepareAnalysisArtifacts(path.join(root, "data/analysis-phase15-2026-11-15", baseline ? "before" : "after"));
+
+
 const base = process.env.ANALYSIS_UI_URL || "http://127.0.0.1:3127";
 const actor = { id: 999915, email: "explainability@example.invalid", full_name: "Metric fixture", role: "ENGINEER" };
 const version = "adr040-stored-aggregation/1";

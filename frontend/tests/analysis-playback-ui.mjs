@@ -1,3 +1,4 @@
+import { prepareAnalysisArtifacts } from "./helpers/analysis-artifacts.mjs";
 /** Playback state/time regression: browser HTTP fixtures, no live backend/CARLA. */
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -7,9 +8,9 @@ import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const baseline = process.env.PLAYBACK_BASELINE === "1";
-const output = path.join(root, "data/analysis-phase17-2026-11-16", baseline ? "before" : "after");
-await fs.mkdir(output, { recursive: true });
-await fs.rm(path.join(output, "result.json"), { force: true });
+const output = await prepareAnalysisArtifacts(path.join(root, "data/analysis-phase17-2026-11-16", baseline ? "before" : "after"));
+
+
 const base = process.env.ANALYSIS_UI_URL || "http://127.0.0.1:3129";
 const actor = { id: 999915, email: "explainability@example.invalid", full_name: "Metric fixture", role: "ENGINEER" };
 const version = "adr040-stored-aggregation/1";
@@ -237,5 +238,5 @@ try {
     await page.goBack();await controls.waitFor();assert(await play().isVisible());
   }
   assert.deepEqual(errors,[]);assert.deepEqual(writes,[]);
-  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({baseline,screenshots,performanceResults,errors,writes},null,2));
+  await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:baseline?"BASELINE":"PASS",kind:"BROWSER_FIXTURE_ONLY",baseline,screenshots,performanceResults,errors,writes},null,2));
 } finally {await browser.close();}
