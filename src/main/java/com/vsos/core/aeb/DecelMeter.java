@@ -55,7 +55,18 @@ public final class DecelMeter {
         if (decelCmd <= 0) {
             return 0.0;
         }
-        double pedal = decelCmd / fullBrakeDecel + 0.05 * (decelCmd - measuredDecel);
+        return brakePedalFrom(decelCmd / fullBrakeDecel, decelCmd, measuredDecel);
+    }
+
+    /**
+     * Như {@link #brakePedal} nhưng feed-forward lấy từ bảng hiệu chuẩn bàn đạp của xe ({@code CarlaPedalMap}, ADR-054) thay cho giả định tuyến tính;
+     * phần bù 0,05 × sai số giữ nguyên.
+     */
+    public static double brakePedalFrom(double feedForwardPedal, double decelCmd, double measuredDecel) {
+        if (decelCmd <= 0) {
+            return 0.0;
+        }
+        double pedal = feedForwardPedal + 0.05 * (decelCmd - measuredDecel);
         return Math.max(0.0, Math.min(1.0, pedal));
     }
 }

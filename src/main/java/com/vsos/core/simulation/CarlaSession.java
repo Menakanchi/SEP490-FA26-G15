@@ -70,6 +70,9 @@ public final class CarlaSession {
     /** Tốc độ adapter đang đặt cho xe ở vùng tốc độ thấp (null = chưa vào vùng này), và số tick đã đặt (ADR-053). */
     private Double overrideSpeed;
     private int lowSpeedOverride;
+    /** Bảng bàn đạp đo được của xe (ADR-054); null = giả định tuyến tính. Số tick đã đổi lệnh qua bảng. */
+    private final CarlaPedalMap pedalMap;
+    private int pedalMapped;
     private String endReason;
     private Path resultPath;
 
@@ -79,6 +82,7 @@ public final class CarlaSession {
         this.simulatorVersion = simulatorVersion;
         this.outDir = outDir;
         this.fullBrakeDecel = fullBrakeDecel;
+        this.pedalMap = pedalMapFor(profile, spec.vehicleCarla(), fullBrakeDecel);
         this.stepS = profile.stepS();
         this.stack = newStack(spec, events, stepS, profile.perceptionPeriodS());
         this.shadow = newStack(spec, shadowEvents, stepS, profile.perceptionPeriodS());
@@ -289,7 +293,7 @@ public final class CarlaSession {
         if (tick.decelCmd() > 0) {
             braking = true;
         }
-        double pedal = braking ? DecelMeter.brakePedal(commandForPedal(tick.decelCmd()), decel, fullBrakeDecel) : 0.0;
+        double pedal = braking ? pedalFor(commandForPedal(tick.decelCmd()), decel, egoV) : 0.0;
         stats.add(decel);
         CrossingCase c = spec.requireCrossing("Runner CARLA");
         frames.add(Simulator.makeFrame(t, c.crossingX() - gap, egoV, decel, c.crossingX(), pedY, pedVy, tick,
@@ -354,7 +358,7 @@ public final class CarlaSession {
         if (tick.decelCmd() > 0) {
             braking = true;
         }
-        double pedal = braking ? DecelMeter.brakePedal(commandForPedal(tick.decelCmd()), decel, fullBrakeDecel) : 0.0;
+        double pedal = braking ? pedalFor(commandForPedal(tick.decelCmd()), decel, egoV) : 0.0;
         stats.add(decel);
         Double ttcGt = inPath && gap > 0 && closing > 0.1 ? gap / closing : null;
         frames.add(Simulator.makeFrame(t, egoFront - egoFront0, egoV, decel, targetRear - egoFront0, targetY, 0.0, tick, ttcGt, stack));
@@ -477,7 +481,8 @@ public final class CarlaSession {
      * AEB vẫn tính và ghi lệnh gốc của nó. Áp cho file v6 trở đi (ADR-052): file cũ, kể cả v5, chạy lại ra đúng kết quả đã lưu.
      */
     static double frictionLimitedCommand(double decelCmd, Bundle.RunSpec spec, Xosc.Profile profile) {
-        if (!Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) && !Xosc.PREVIOUS_SIMULATOR_SUFFIX.equals(profile.suffix())) {
+        if (!Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) && !Xosc.PREVIOUS_SIMULATOR_SUFFIX.equals(profile.suffix())
+                && !Xosc.V6_SIMULATOR_SUFFIX.equals(profile.suffix())) {
             return decelCmd;
         }
         return Math.min(decelCmd, spec.roadFriction() * Simulator.G);
@@ -486,9 +491,9 @@ public final class CarlaSession {
     /** Dưới tốc độ này CARLA dừng gần như tức thì (~24 m/s², mọi mức bàn đạp — đo 14/11/2026, carla-ped-bench G1). */
     static final double LOW_SPEED_OVERRIDE_MPS = 6.0;
 
-    /** Vùng tốc độ thấp do adapter điều khiển chỉ có từ v7 (ADR-053): file cũ chạy lại ra đúng kết quả đã lưu. */
+    /** Vùng tốc độ thấp do adapter điều khiển có từ v7 (ADR-053): file cũ chạy lại ra đúng kết quả đã lưu. */
     static boolean lowSpeedOverrideApplies(Xosc.Profile profile) {
-        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix());
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.PREVIOUS_SIMULATOR_SUFFIX.equals(profile.suffix());
     }
 
     /**
@@ -514,6 +519,25 @@ public final class CarlaSession {
         return overrideSpeed;
     }
 
+    /**
+     * Bàn đạp cho lệnh giảm tốc (đã kẹp μ·g). Từ v8 (ADR-054), xe có bảng hiệu chuẩn bàn đạp ({@link CarlaPedalMap}) dùng bảng làm feed-forward;
+     * xe chưa hiệu chuẩn và file cũ giữ giả định tuyến tính {@code a / fullBrakeDecel}. Phần bù theo sai số đo được giữ nguyên.
+     */
+    private double pedalFor(double decelCmd, double measuredDecel, double egoV) {
+        if (pedalMap == null) {
+            return DecelMeter.brakePedal(decelCmd, measuredDecel, fullBrakeDecel);
+        }
+        if (decelCmd > 0) {
+            pedalMapped++;
+        }
+        return DecelMeter.brakePedalFrom(pedalMap.feedForward(decelCmd, egoV), decelCmd, measuredDecel);
+    }
+
+    /** Bảng bàn đạp dùng cho run: chỉ từ v8 và chỉ khi xe khớp đúng cấu hình đã đo ({@link CarlaPedalMap#forVehicle}). */
+    static CarlaPedalMap pedalMapFor(Xosc.Profile profile, Map<String, Object> vehicleCarla, double fullBrakeDecel) {
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) ? CarlaPedalMap.forVehicle(vehicleCarla, fullBrakeDecel) : null;
+    }
+
     private double commandForPedal(double decelCmd) {
         double limited = frictionLimitedCommand(decelCmd, spec, profile);
         if (limited < decelCmd) {
@@ -530,9 +554,9 @@ public final class CarlaSession {
      */
     static double decelAvailable(Bundle.RunSpec spec, Xosc.Profile profile, double fullBrakeDecel) {
         double nominal = Math.min(Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), spec.roadFriction() * Simulator.G);
-        // Từ v5 (11/11/2026): v5, v6, v7 dùng phanh 100% đo được; file cũ hơn giữ cách tính cũ.
+        // Từ v5 (11/11/2026): v5 trở đi dùng phanh 100% đo được; file cũ hơn giữ cách tính cũ.
         boolean measured = Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.PREVIOUS_SIMULATOR_SUFFIX.equals(profile.suffix())
-                || Xosc.V5_SIMULATOR_SUFFIX.equals(profile.suffix());
+                || Xosc.V6_SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V5_SIMULATOR_SUFFIX.equals(profile.suffix());
         return measured ? Math.min(nominal, fullBrakeDecel) : nominal;
     }
 
@@ -610,6 +634,10 @@ public final class CarlaSession {
         carla.put("decel_clamped_frames", meter.clamped());
         carla.put("decel_cmd_capped_frames", commandCapped);
         carla.put("low_speed_override_frames", lowSpeedOverride);
+        if (pedalMap != null) {  // chỉ khi có bảng: result của xe chưa hiệu chuẩn giữ nguyên các khóa cũ
+            carla.put("pedal_map", pedalMap.id());
+            carla.put("pedal_map_frames", pedalMapped);
+        }
         // Bước cấu hình và bước đo được từ timestamp khung thật: không coi cấu hình là đã đạt tốc độ này.
         carla.put("fixed_delta_seconds", stepS);
         carla.put("perception_period_s", profile.perceptionPeriodS());
