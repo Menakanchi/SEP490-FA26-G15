@@ -122,6 +122,24 @@ class CarlaSessionLogicTest {
         assertThat(map.feedForward(-1.0, 15.0)).isZero();
         assertThat(map.feedForward(20.0, 15.0)).isEqualTo(1.0);
         assertThat(DecelMeter.brakePedalFrom(map.feedForward(4.0, 15.0), 4.0, 4.0)).isEqualTo(map.feedForward(4.0, 15.0));
+        // Bảng theo tốc độ (bước 2): đúng điểm đo thì trả đúng bàn đạp đã dùng khi đo; giữa hai hàng tốc độ thì nội suy.
+        assertThat(map.feedForward(5.608, 60 / 3.6)).isCloseTo(0.6572, within(1e-9));
+        assertThat(map.feedForward(2.547, 50 / 3.6)).isCloseTo(0.3286, within(1e-9));
+        double mid = map.feedForward(5.0, 57.5 / 3.6);
+        assertThat(mid).isBetween(Math.min(map.feedForward(5.0, 55 / 3.6), map.feedForward(5.0, 60 / 3.6)) - 1e-12,
+                Math.max(map.feedForward(5.0, 55 / 3.6), map.feedForward(5.0, 60 / 3.6)) + 1e-12);
+        // Ngoài 30–100 km/h dùng hàng gần nhất.
+        assertThat(map.feedForward(3.0, 20 / 3.6)).isEqualTo(map.feedForward(3.0, 30 / 3.6));
+        assertThat(map.feedForward(3.0, 130 / 3.6)).isEqualTo(map.feedForward(3.0, 100 / 3.6));
+        // Tăng đơn điệu theo lệnh ở mọi tốc độ; lệnh nhỏ hơn điểm đo nhỏ nhất vẫn lớn hơn vùng chết.
+        for (double kmh = 20; kmh <= 110; kmh += 2.5) {
+            double prev = 0.0;
+            for (double a = 0.1; a <= 12.0; a += 0.1) {
+                double pedal = map.feedForward(a, kmh / 3.6);
+                assertThat(pedal).as("%.1f km/h, %.1f m/s²", kmh, a).isGreaterThanOrEqualTo(prev).isBetween(CarlaPedalMap.ETRON_DEADZONE_PEDAL, 1.0);
+                prev = pedal;
+            }
+        }
         // Hàm cũ không đổi: tuyến tính + bù 0,05 × sai số.
         assertThat(DecelMeter.brakePedal(4.0, 3.0, 8.0)).isCloseTo(0.5 + 0.05, within(1e-12));
     }
