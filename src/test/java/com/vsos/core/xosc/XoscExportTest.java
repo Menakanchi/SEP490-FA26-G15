@@ -121,6 +121,10 @@ class XoscExportTest {
         assertThat(nodes(doc, "/OpenSCENARIO/Entities/ScenarioObject[@name='pedestrian']/Pedestrian").getLength()).isEqualTo(1);
         String event = "//Event[@name='StartCrossing']";
         assertThat(nodes(doc, event + "/StartTrigger//DistanceCondition").getLength()).isEqualTo(1);
+        // v8 (ADR-054): người đi bộ CARLA khởi hành sớm hơn quãng xe đi trong 0,34 s (tăng tốc dần, đo 16/11/2026); 40 km/h, kích hoạt 25 m, xe dài 4,75 m.
+        Element distance = (Element) nodes(doc, event + "/StartTrigger//DistanceCondition").item(0);
+        assertThat(Double.parseDouble(distance.getAttribute("value"))).isCloseTo(25 + 4.75 / 2 + 40 / 3.6 * 0.34, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(XoscExport.CARLA_WALKER_START_LEAD_S).isEqualTo(0.34);
         assertThat(nodes(doc, event + "/StartTrigger//SimulationTimeCondition").getLength()).isZero();
         assertThat(nodes(doc, event + "//FollowTrajectoryAction/Trajectory/Shape/Polyline/Vertex").getLength()).isEqualTo(2);
     }
@@ -165,7 +169,10 @@ class XoscExportTest {
         assertThat(nodes(doc, "//Action[@name='CrossRoad']").getLength()).as("tên action được tham chiếu phải có thật").isEqualTo(1);
     }
 
-    /** Golden {@code cp-crossing.xosc} (ca băng ngang) chỉ đổi {@code vs_format} v3 → v4 nên {@link #xmlMatchesTheSchemaCheckedGolden} giữ XML cũ. */
+    /**
+     * Golden {@code cp-crossing.xosc} (ca băng ngang) đổi {@code vs_format} theo định dạng hiện hành; từ v8 thêm giá trị {@code DistanceCondition}
+     * khởi hành sớm của người đi bộ (ADR-054).
+     */
     @Test
     void crossingCasesHaveNoStopEvent() throws Exception {
         String xml = XoscExport.export(Bundle.readSpec(ir("stops_at_curb", false)));

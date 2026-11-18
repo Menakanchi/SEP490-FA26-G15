@@ -34,6 +34,13 @@ public final class XoscExport {
      * 0,04 / 0,10 / 0,21 m), nên điểm dừng lùi lại đúng đoạn đó.
      */
     static final double CARLA_WALKER_STOP_LAG_S = 0.07;
+    /**
+     * Người đi bộ CARLA 0.9.16 tăng tốc dần: đạt 90% tốc độ sau 0,61 s và vào hành lang muộn hơn bộ động học (đạt tốc độ ngay) đúng 0,340 ± 0,003 s
+     * ở mọi tốc độ 0,5–6 m/s (carla-ped-bench đợt 3, nhóm D5, 16/11/2026) — như tăng tốc đều trong ~0,68 s. Từ v8 (ADR-054) người đi bộ khởi hành
+     * sớm hơn đúng khoảng xe đi trong 0,34 s, để thời điểm người vào hành lang trên CARLA khớp bộ động học. Tham số {@code trigger_distance_m}
+     * trong file vẫn là khoảng kích hoạt của biến thể (bộ động học), chỉ {@code DistanceCondition} đổi.
+     */
+    static final double CARLA_WALKER_START_LEAD_S = 0.34;
 
     private XoscExport() {
     }
@@ -88,9 +95,14 @@ public final class XoscExport {
                 delay == 0 ? "0" : number(delay), "conditionEdge", "rising");
         El byEntity = node(condition, "ByEntityCondition");
         node(node(byEntity, "TriggeringEntities", "triggeringEntitiesRule", "any"), "EntityRef", "entityRef", "hero");
-        El distance = node(node(byEntity, "EntityCondition"), "DistanceCondition", "value", number(c.triggerDistanceM() + vehicle.lengthM() / 2),
+        El distance = node(node(byEntity, "EntityCondition"), "DistanceCondition", "value", number(walkerTriggerDistance(c, vehicle)),
                 "freespace", "false", "alongRoute", "false", "rule", "lessThan");
         position(distance, c.crossingX(), 0);
+    }
+
+    /** Giá trị {@code DistanceCondition} (tâm xe tới điểm băng ngang, m): khoảng kích hoạt + nửa xe + quãng xe đi trong 0,34 s khởi động của người. */
+    static double walkerTriggerDistance(CrossingCase c, VehicleSpec vehicle) {
+        return c.triggerDistanceM() + vehicle.lengthM() / 2 + c.egoSpeedKmh() / 3.6 * CARLA_WALKER_START_LEAD_S;
     }
 
     private static String valueText(Object value) {

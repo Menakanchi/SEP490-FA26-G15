@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import com.vsos.core.bridge.Bundle;
+import com.vsos.core.common.Py;
 import com.vsos.core.common.PyCompatTest;
 import com.vsos.core.simulation.KinematicParityTest;
 
@@ -106,12 +107,23 @@ class XoscReadParityTest {
             } else {
                 expected = ((String) e.get("xml")).replace(Xosc.V3_FORMAT, Xosc.FORMAT);
             }
+            expected = withWalkerStartLead(expected, spec, name);
             assertThat(withoutWeather(XoscExport.export(spec))).as(name).isEqualTo(withoutWeather(expected));
             exported++;
         }
         assertThat(exported).isGreaterThan(15);
         assertThat(curb).as("mọi ca dừng ở lề trong fixture Java đều được dùng").isEqualTo(curbV4.size()).isPositive();
         assertThat(rejectedWheels).as("fixture có ca mang physics.wheels để kiểm việc từ chối").isEqualTo(1);
+    }
+
+    /**
+     * v8 (ADR-054): người đi bộ CARLA khởi hành sớm hơn quãng xe đi trong {@code CARLA_WALKER_START_LEAD_S}; chỉ giá trị {@code DistanceCondition}
+     * đổi. Thay đúng giá trị cũ (khoảng kích hoạt + nửa xe) bằng giá trị mới rồi so mọi byte còn lại như trước.
+     */
+    private static String withWalkerStartLead(String expected, Bundle.RunSpec spec, String name) {
+        String old = "DistanceCondition value=\"" + Py.reprFloat(spec.caseSpec().triggerDistanceM() + spec.vehicle().lengthM() / 2) + "\"";
+        assertThat(expected).as(name + " có DistanceCondition cũ").contains(old);
+        return expected.replace(old, "DistanceCondition value=\"" + Py.reprFloat(XoscExport.walkerTriggerDistance(spec.caseSpec(), spec.vehicle())) + "\"");
     }
 
     /**
