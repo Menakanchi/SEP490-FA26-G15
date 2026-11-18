@@ -155,11 +155,11 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 - Đường web hiện tại: bộ xuất Java (`XoscExport`) → `.xosc` → `run_xosc.py` → ScenarioRunner → `vehicsim_aeb_control.py`
   (chỉ đọc trạng thái CARLA, áp bàn đạp) → cầu nối `vsos-bridge/1` → cùng `AebStack` và luật chấm của lõi Java.
   Mỗi run chụp lõi thành `core/vsos-core.jar` riêng, nên `mvnw clean` giữa run không làm hỏng run đó.
-- Artifact hiện tại là `vehicsim.xosc/v7`, profile `carla-0.9.16-xosc7` (bước 0,01 s; v4 = v3 + người "dừng ở lề" đứng lại, TD-47;
+- Artifact hiện tại là `vehicsim.xosc/v8`, profile `carla-0.9.16-xosc8` (bước 0,01 s; v4 = v3 + người "dừng ở lề" đứng lại, TD-47;
   v5 = v4 + mô-men phanh đã hiệu chuẩn `vs_physics_wheel_max_brake_torque`, ADR-051; từ 11/11 thêm thời tiết theo preset CARLA và
-  `decel_available` theo phanh 100% đo được, [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md); v6 = v5 + lệnh giảm tốc ra bàn đạp kẹp ở μ·g, ADR-052; v7 = v6 + dưới 6 m/s adapter đặt tốc độ thay cú dừng gấp, ADR-053). File v1 phải xuất lại từ web; không ghép baseline
-  `-xosc1`, `-xosc2` (20 Hz), `-xosc3` (người dừng ở lề đi vào làn), `-xosc4` (phanh CARLA chưa hiệu chuẩn), `-xosc5` (chưa kẹp μ·g), `-xosc6` (còn cú dừng gấp),
-  runner trực tiếp `carla-0.9.16` và `-xosc7`. Backend không chạy lại run `-xosc1`…`-xosc6`; `run_xosc.py` vẫn chạy file v2…v6 ngoài web.
+  `decel_available` theo phanh 100% đo được, [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md); v6 = v5 + lệnh giảm tốc ra bàn đạp kẹp ở μ·g, ADR-052; v7 = v6 + dưới 6 m/s adapter đặt tốc độ thay cú dừng gấp, ADR-053; v8 = v7 + bảng bàn đạp e-tron theo tốc độ, người đi bộ khởi hành sớm v × 0,34 s, trượt dừng lề 0,056 s, ADR-054). File v1 phải xuất lại từ web; không ghép baseline
+  `-xosc1`, `-xosc2` (20 Hz), `-xosc3` (người dừng ở lề đi vào làn), `-xosc4` (phanh CARLA chưa hiệu chuẩn), `-xosc5` (chưa kẹp μ·g), `-xosc6` (còn cú dừng gấp), `-xosc7` (bàn đạp tuyến tính),
+  runner trực tiếp `carla-0.9.16` và `-xosc8`. Backend không chạy lại run `-xosc1`…`-xosc7`; `run_xosc.py` vẫn chạy file v2…v7 ngoài web.
 - `.xosc` là đầu vào mô phỏng. JSON vẫn là hợp đồng nội bộ/result; không đổi đuôi JSON thành XML hoặc bỏ metadata seed/source.
   Runner CARLA trực tiếp nhận bundle JSON (`run_variant.py`) đã gỡ ở ADR-042; `run_xosc.py` từ chối `.json`. Chạy lại bundle bằng
   bộ động học: `java -cp target/classes com.vsos.core.bridge.BridgeMain kinematic <file>` (cần `mvnw compile`).
@@ -182,10 +182,10 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 2. **Phạm vi map:** bộ xuất hiện dùng Town04 road 40/lane -4 và lấy cao độ theo map.
    Không thay bằng WorldPosition phẳng hay đổi road/map mà chưa kiểm hình học, cao độ và dải tham số.
 3. **Dừng ở lề (sửa ở xosc4):** PedestrianControl bỏ waypoint khi còn cách < 1,0 m rồi đi tiếp theo hướng cũ. Bộ xuất đặt
-   waypoint cuối quá lề đúng 1,0 m trừ v × 0,07 s (quãng trượt đo được), và event `StopAtCurb` đặt tốc độ 0 khi action `CrossRoad`
+   waypoint cuối quá lề đúng 1,0 m trừ v × 0,056 s (quãng trượt đo được; v4–v7 là 0,07 s, ADR-054), và event `StopAtCurb` đặt tốc độ 0 khi action `CrossRoad`
    kết thúc (`StoryboardElementStateCondition`). Đừng thay bằng `delay` của Condition (ScenarioRunner tính delay từ lúc bắt đầu kiểm,
    không phải từ lúc điều kiện đúng) hay `ReachPositionCondition` (khoảng cách 3D, lệch độ cao tâm người đi bộ ~0,9 m).
-4. **Phanh CARLA (TD-17):** đã hiệu chuẩn mô-men (ADR-051), kẹp μ·g (ADR-052) và thay cú dừng gấp dưới 6 m/s (ADR-053); perception vẫn từ
+4. **Phanh CARLA (TD-17):** đã hiệu chuẩn mô-men (ADR-051), kẹp μ·g (ADR-052), thay cú dừng gấp dưới 6 m/s (ADR-053) và bảng bàn đạp e-tron (ADR-054); perception vẫn từ
    ground truth (TD-01). Số CARLA dùng quan sát/đối chiếu, không sửa số để khớp và chưa đưa vào báo cáo như chứng nhận an toàn.
 5. **Sensor khởi tạo/va chạm:** 0,5 giây đầu có xung do đặt lại vị trí/tốc độ; sau va chạm IMU đo xung lực đâm.
    CSV vẫn giữ các khung khởi tạo/sau va chạm nhưng đã lọc số phi lý; jerk IMU được làm mượt 0,1 giây.

@@ -53,8 +53,8 @@ Vô hại, không phải dấu hiệu run hỏng.
 
 ## Hợp đồng và giới hạn
 
-- Profile hiện tại ghi `carla-0.9.16-xosc7` (định dạng `vehicsim.xosc/v7`, bước **0,01 s = 100 Hz**, mô-men phanh đã hiệu chuẩn — ADR-051,
-  lệnh giảm tốc ra bàn đạp kẹp ở μ·g — ADR-052, dưới 6 m/s adapter đặt tốc độ thay cú dừng gấp — ADR-053), khác runner trực tiếp
+- Profile hiện tại ghi `carla-0.9.16-xosc8` (định dạng `vehicsim.xosc/v8`, bước **0,01 s = 100 Hz**, mô-men phanh đã hiệu chuẩn — ADR-051,
+  lệnh giảm tốc ra bàn đạp kẹp ở μ·g — ADR-052, dưới 6 m/s adapter đặt tốc độ thay cú dừng gấp — ADR-053, bảng bàn đạp e-tron và người đi bộ khởi hành sớm — ADR-054), khác runner trực tiếp
   `carla-0.9.16`, bản v6 `-xosc6` (còn cú dừng gấp), bản v5 `-xosc5` (chưa kẹp μ·g), bản v4 `-xosc4` (phanh CARLA chưa hiệu chuẩn, ~4,6 m/s² — TD-17), bản v3 `-xosc3` (người "dừng ở lề"
   đi tiếp vào làn — TD-47), bản 20 Hz `-xosc2` và bản quỹ đạo lỗi `-xosc1`; regression không ghép các profile. File v1 cần xuất lại từ web.
   Backend không còn chạy lại run `-xosc1`…`-xosc6` (báo FAILED, tạo lượt mới); `run_xosc.py` vẫn chạy được file v2 (20 Hz) … v6 ngoài
@@ -64,7 +64,7 @@ Vô hại, không phải dấu hiệu run hỏng.
   Dưới ~6 m/s CARLA vẫn dừng gần như tức thì và ma sát lốp không giới hạn lực phanh (TD-17 còn mở phần này).
 - Bước thời gian nằm trong file `.xosc` (`vs_fixed_delta_seconds`, `vs_perception_period_s`); `run_xosc.py` truyền
   `--frameRate 100` cho ScenarioRunner, controller/recorder/`DecelMeter` dùng cùng bước và `result.json` ghi
-  `case.carla.measured_step_s` đo từ timestamp khung thật. `simulation_runs.fixed_delta_seconds` = 0,0100 cho xosc3 … xosc7.
+  `case.carla.measured_step_s` đo từ timestamp khung thật. `simulation_runs.fixed_delta_seconds` = 0,0100 cho xosc3 … xosc8.
 - Perception và quyết định AEB vẫn chạy theo chu kỳ cảm biến **0,05 s**; chỉ lệnh phanh, đo và ghi dữ liệu theo 0,01 s. Nhiễu
   và bộ lọc của perception rút theo từng lần cảm biến nên đổi bước không đổi thống kê của AEB; bộ động học giữ nguyên 20 Hz.
 - RMS jerk (`Δa/dt`) ở 100 Hz **không so sánh được** với số 20 Hz. `case.carla.jerk_filtered` là số lọc Butterworth 10 Hz **bậc 2 một chiều (causal)** thực

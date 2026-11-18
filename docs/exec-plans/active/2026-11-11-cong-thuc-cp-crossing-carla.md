@@ -33,7 +33,7 @@ khoảng tham số) và phần phân tích kết quả / lỗi (`Evaluation`, c�
 | 6 | Cấu hình mặc định (D5) | Chờ |
 | 7 | Gate + nghiệm thu CARLA thật | Gate xong cho bước 1b–3; CARLA chưa |
 | 8 | Tài liệu repo (ADR-051 bổ sung, CLAUDE.md, sổ kiểm chứng, sổ tay `.md`) | Một phần (mục Kiểm chứng) |
-| 9 | Chạy lại baseline CARLA bằng `-xosc7` (sau migration 014 trên từng máy; v7 = v6 + vùng tốc độ thấp, [ADR-053](../../adr/ADR-053-xosc7-dieu-khien-toc-do-vung-thap.md)) | Chưa làm |
+| 9 | Chạy lại baseline CARLA bằng `-xosc8` (sau migration 014 trên từng máy; v7 = v6 + vùng tốc độ thấp, [ADR-053](../../adr/ADR-053-xosc7-dieu-khien-toc-do-vung-thap.md); v8 = v7 + bảng bàn đạp e-tron, người đi bộ khởi hành sớm, [ADR-054](../../adr/ADR-054-xosc8-hieu-chuan-ban-dap-va-nguoi-di-bo.md)) | Chưa làm |
 
 ## Bàn giao (ngoài phạm vi)
 

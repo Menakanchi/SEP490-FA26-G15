@@ -242,3 +242,4 @@ Loại (ghi lý do, không đưa vào bảng) khi: `physics_check.forced_ok` = f
 | 2 | Script sinh bundle + chạy lô + `summary.csv` | Chưa làm |
 | 3 | Chạy BR, rồi V / S / T / C / N, rồi W (chung với TuDM bước 1), rồi R | Chưa làm (cần máy CARLA) |
 | 4 | Phân tích, cập nhật TD-17 | **Xong 15/11/2026** (TD-17; kẹp μ·g ở adapter). Đề xuất tham số AEB: không cần bù — thuộc phần tối ưu AEB |
+| 5 | Đo đợt 3 (500 run open-loop, 16/11/2026) và hiệu chỉnh adapter theo số đo | **Code xong 19/11/2026** — [ADR-054](../../adr/ADR-054-xosc8-hieu-chuan-ban-dap-va-nguoi-di-bo.md) (`-xosc8`): bảng bàn đạp e-tron theo tốc độ, người đi bộ khởi hành sớm v × 0,34 s, trượt dừng lề 0,056 s. Chưa chạy CARLA thật qua web |

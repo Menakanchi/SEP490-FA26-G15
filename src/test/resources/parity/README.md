@@ -27,6 +27,9 @@ Các file `*.json` / `kinematic.json.gz` ở đây là kết quả của lõi **
 - **15/11/2026, ADR-052, `vehicsim.xosc/v6`:** chỉ đổi `vs_format` (v6 = v5 + kẹp lệnh phanh ở μ·g ở adapter, không đổi XML); test thay
   `vs_format` của fixture thành định dạng hiện hành như trên.
 - **15/11/2026, ADR-053, `vehicsim.xosc/v7`:** chỉ đổi `vs_format` (v7 = v6 + adapter đặt tốc độ dưới 6 m/s, không đổi XML).
+- **Ngoại lệ có chủ đích (19/11/2026, ADR-054, `vehicsim.xosc/v8`):** ngoài `vs_format`, `XoscReadParityTest` thay đúng giá trị
+  `DistanceCondition` cũ (khoảng kích hoạt + nửa xe) bằng giá trị mới (+ quãng xe đi trong 0,34 s) và, với ca dừng ở lề, thời điểm + offset
+  waypoint cuối tính theo hệ số trượt 0,07 → 0,056 s, rồi so mọi byte còn lại.
 - **Ngoại lệ có chủ đích (11/11/2026, thời tiết theo preset CARLA):** `XoscReadParityTest` che `<Sun>` và `<Precipitation>` ở cả hai phía
   trước khi so; giá trị mới kiểm ở `XoscExportTest.weatherFollowsTheCarlaPresetsAsScenarioRunnerReadsThem`.
 - Hash golden của lưới 1296 ca bộ động học và kết quả đối chiếu rộng (`-Dvsos.parity.full=...`) ghi ở

@@ -65,6 +65,7 @@ giữ lại). VehicSim: ADR-023 trở đi.
 | [ADR-051](ADR-051-hieu-chuan-phanh-carla-xosc5.md) | Hiệu chuẩn phanh CARLA: mô-men phanh của xe đi qua `.xosc` v5 (e-tron 1800 N·m → phanh 100% ~9,5 m/s²); identity `-xosc5` tách run phanh cũ | ✅ **Accepted 8/11** — chủ dự án duyệt; giải phần lớn TD-17 |
 | [ADR-052](ADR-052-xosc6-kep-lenh-phanh-theo-ma-sat.md) | `.xosc` v6 / `-xosc6`: lệnh giảm tốc ra bàn đạp CARLA kẹp ở μ·g (CARLA không giảm bám theo thời tiết; mưa 40 km/h: quãng dừng 7,13 → 8,37 m) | ✅ **Accepted 15/11** — chủ dự án chốt; bổ sung ADR-051, D2 của kế hoạch 11/11 |
 | [ADR-053](ADR-053-xosc7-dieu-khien-toc-do-vung-thap.md) | `.xosc` v7 / `-xosc7`: dưới 6 m/s adapter đặt tốc độ xe theo lệnh giảm tốc AEB (đã kẹp μ·g) thay cho cú dừng gấp ~24 m/s² của CARLA; Δ quãng dừng −1,3 → +0,3 m | ✅ **Accepted 15/11** — chủ dự án chốt; bổ sung ADR-052, đóng phần dừng gấp của TD-17 |
+| [ADR-054](ADR-054-xosc8-hieu-chuan-ban-dap-va-nguoi-di-bo.md) | `.xosc` v8 / `-xosc8`: bảng bàn đạp e-tron theo tốc độ (RMS 0,07 m/s²), người đi bộ CARLA khởi hành sớm v × 0,34 s, hệ số trượt dừng lề 0,056 s — theo carla-ped-bench đợt 3 | 📝 **Proposed 19/11** — chờ chạy CARLA thật qua web |
 
 ## Luật
 
