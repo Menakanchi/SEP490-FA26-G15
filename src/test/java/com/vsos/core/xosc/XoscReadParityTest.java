@@ -123,7 +123,34 @@ class XoscReadParityTest {
     private static String withWalkerStartLead(String expected, Bundle.RunSpec spec, String name) {
         String old = "DistanceCondition value=\"" + Py.reprFloat(spec.caseSpec().triggerDistanceM() + spec.vehicle().lengthM() / 2) + "\"";
         assertThat(expected).as(name + " có DistanceCondition cũ").contains(old);
-        return expected.replace(old, "DistanceCondition value=\"" + Py.reprFloat(XoscExport.walkerTriggerDistance(spec.caseSpec(), spec.vehicle())) + "\"");
+        expected = expected.replace(old, "DistanceCondition value=\"" + Py.reprFloat(XoscExport.walkerTriggerDistance(spec.caseSpec(), spec.vehicle())) + "\"");
+        if (spec.caseSpec().stopsAtCurb()) {
+            // v8: hệ số trượt dừng lề 0,07 → 0,056 s đổi offset và thời điểm của waypoint cuối.
+            expected = withCurbFinish(expected, spec, name, V7_WALKER_STOP_LAG_S, XoscExport.CARLA_WALKER_STOP_LAG_S);
+        }
+        return expected;
+    }
+
+    /** Hệ số trượt dừng lề của fixture {@code xosc_v4_stops_at_curb.json} (v4–v7). */
+    private static final double V7_WALKER_STOP_LAG_S = 0.07;
+
+    private static String withCurbFinish(String expected, Bundle.RunSpec spec, String name, double oldLag, double newLag) {
+        for (boolean offset : new boolean[] {false, true}) {
+            String old = curbFinish(spec, oldLag, offset);
+            assertThat(expected).as(name + " có waypoint dừng lề cũ").containsOnlyOnce(old);
+            expected = expected.replace(old, curbFinish(spec, newLag, offset));
+        }
+        return expected;
+    }
+
+    /** Thời điểm hoặc offset của waypoint cuối ca dừng lề, đúng cách {@code XoscExport.crossingStory} ghi. */
+    private static String curbFinish(Bundle.RunSpec spec, double lag, boolean offset) {
+        double v = spec.caseSpec().pedestrianSpeedMps();
+        double finishY = com.vsos.core.simulation.Simulator.CURB_STOP_Y_M + XoscExport.SR_WALKER_ARRIVAL_RADIUS_M - v * lag;
+        if (offset) {
+            return "offset=\"" + Py.reprFloat(0.0 - finishY) + "\"";
+        }
+        return "<Vertex time=\"" + Py.reprFloat(Math.abs(finishY - com.vsos.core.simulation.Simulator.PEDESTRIAN_START_Y_M) / v) + "\">";
     }
 
     /**

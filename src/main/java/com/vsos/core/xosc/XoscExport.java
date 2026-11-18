@@ -30,10 +30,12 @@ public final class XoscExport {
     /** {@code PedestrianControl.run_step} (ScenarioRunner 0.9.16) bỏ waypoint khi còn cách dưới 1,0 m theo mặt phẳng ngang. */
     static final double SR_WALKER_ARRIVAL_RADIUS_M = 1.0;
     /**
-     * Người đi bộ trên CARLA 0.9.16 còn đi thêm khoảng v × 0,07 s sau khi bị đặt tốc độ 0 (đo 23/10/2026: 0,8 / 1,5 / 3 m/s trượt
-     * 0,04 / 0,10 / 0,21 m), nên điểm dừng lùi lại đúng đoạn đó.
+     * Người đi bộ trên CARLA 0.9.16 còn đi thêm một đoạn tỉ lệ với tốc độ sau khi bị đặt tốc độ 0, nên điểm dừng lùi lại đúng đoạn đó.
+     * Đo 23/10/2026 (3 tốc độ, qua ScenarioRunner): 0,8 / 1,5 / 3 m/s trượt 0,04 / 0,10 / 0,21 m → 0,07 s (v4–v7). Đo lại 16/11/2026
+     * (carla-ped-bench D5, 12 tốc độ 0,5–6 m/s, đặt tốc độ 0 bằng WalkerControl): nhô = 0,0564 · v, độ lệch chuẩn phần dư 0,006 m → 0,056 s từ v8
+     * (ADR-054). Hai lần đo dùng hai cách dừng khác nhau; cần một lần chạy CARLA thật qua web để xác nhận số mới.
      */
-    static final double CARLA_WALKER_STOP_LAG_S = 0.07;
+    static final double CARLA_WALKER_STOP_LAG_S = 0.056;
     /**
      * Người đi bộ CARLA 0.9.16 tăng tốc dần: đạt 90% tốc độ sau 0,61 s và vào hành lang muộn hơn bộ động học (đạt tốc độ ngay) đúng 0,340 ± 0,003 s
      * ở mọi tốc độ 0,5–6 m/s (carla-ped-bench đợt 3, nhóm D5, 16/11/2026) — như tăng tốc đều trong ~0,68 s. Từ v8 (ADR-054) người đi bộ khởi hành
