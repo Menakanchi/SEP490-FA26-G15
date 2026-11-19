@@ -10,19 +10,19 @@ Thành viên 4 chịu trách nhiệm chính về module tối ưu hóa đa mục
 * Trích xuất tập nghiệm Pareto Front và đề xuất ứng viên tối ưu (Candidate) cho Thành viên 5 kiểm chứng hồi quy (Regression).
 
 ```text
-[Dataset v2 từ Người 3]
+[Dataset kịch bản & Baseline từ Người 3]
          ↓
 [MoboEngine: Khởi tạo Initial Design] (Random sampling + Deduplication)
          ↓
-[Chạy kịch bản mô phỏng CARLA / Kinematic]
+[Chạy kịch bản mô phỏng CARLA (OpenSCENARIO 1.0)]
          ↓
-[Đo đạc 3 hàm mục tiêu & Đánh giá]
+[Đo đạc 3 hàm mục tiêu qua cảm biến CARLA]
          ↓
 [Cập nhật 3 Gaussian Processes + qEHVI Monte Carlo]
          ↓
 [Mặt cong Pareto Front & Ứng viên Candidate]
          ↓
-[Bàn giao cho Người 5 phê duyệt]
+[Bàn giao cho Người 5 phê duyệt hồi quy]
 ```
 
 ## 2. Giao thức tương tác giữa các module
