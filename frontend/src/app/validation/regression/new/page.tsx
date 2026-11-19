@@ -13,6 +13,7 @@ import type { RegressionPreview } from "@/types/vehicsim";
 const CRITERIA = [
   { key: "no_new_collision", label: "Không kịch bản an toàn nào được chuyển thành va chạm", required: true },
   { key: "collision_rate_not_increase", label: "Tỉ lệ va chạm không được tăng", required: false },
+  // Phải bằng RegressionCriteria.DEFAULT_FALSE_ACTIVATION_MAX_PTS (backend): một ngưỡng chung cho regression và tối ưu (ADR-044).
   { key: "false_activation_increase_max_pts", label: "Tỉ lệ phanh nhầm tăng tối đa", required: false, value: 5, unit: "điểm %", step: 0.5 },
   { key: "median_min_ttc_change_min_s", label: "Trung vị TTC nhỏ nhất thay đổi ít nhất", required: false, value: -0.1, unit: "s", step: 0.05 },
   { key: "identical_seeds", label: "Dùng cùng seed ngẫu nhiên cho cả hai phiên bản", required: true },

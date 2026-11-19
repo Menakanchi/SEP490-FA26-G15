@@ -37,8 +37,10 @@ class CarlaSessionLogicTest {
     void decelAvailableUsesTheMeasuredFullBrakeOnTheCurrentFormatOnly() {
         com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
         com.vsos.core.xosc.Xosc.Profile previous = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V4_SIMULATOR_SUFFIX, 0.01, 0.05);
-        com.vsos.core.xosc.Xosc.Profile v5 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
-        assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), v5, 3.56)).isEqualTo(3.56); // v5 giữ cách tính từ 11/11
+        com.vsos.core.xosc.Xosc.Profile v7 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V7_SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v8 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V8_SIMULATOR_SUFFIX, 0.01, 0.05);
+        assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), v7, 3.56)).isEqualTo(3.56); // v5 trở đi giữ cách tính từ 11/11
+        assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), v8, 3.56)).isEqualTo(3.56);
         // Xe chưa hiệu chuẩn (phanh 100% ~3,56 m/s², Tesla Model 3): trước đây vẫn tính như xe phanh được 8.
         assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), current, 3.56)).isEqualTo(3.56);
         assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), previous, 3.56)).isEqualTo(8.0);
@@ -46,6 +48,24 @@ class CarlaSessionLogicTest {
         assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), current, 9.13)).isEqualTo(8.0);
         // Mưa: μ·g vẫn là giới hạn khi nhỏ hơn mức xe phanh được.
         assertThat(CarlaSession.decelAvailable(crossing("RAIN"), current, 9.13)).isCloseTo(0.70 * Simulator.G, within(1e-9));
+        // v9 chỉ đổi nguồn perception (ADR-043): v5 giữ cách tính phanh đo được như đã lưu.
+        com.vsos.core.xosc.Xosc.Profile v5 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V5_SIMULATOR_SUFFIX, 0.01, 0.05);
+        assertThat(CarlaSession.decelAvailable(crossing("CLEAR"), v5, 3.56)).isEqualTo(3.56);
+    }
+
+    /** ADR-043 giai đoạn 2: chỉ profile hiện hành (v9) với người đi bộ đưa radar vào AEB thật; v8 trở xuống và xe phía trước vẫn dùng ground truth. */
+    @Test
+    void radarDrivesTheAebOnlyForPedestriansOnTheCurrentProfile() {
+        com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v5 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V5_SIMULATOR_SUFFIX, 0.01, 0.05);
+        assertThat(CarlaSession.radarPerception(crossing("CLEAR"), current)).isTrue();
+        assertThat(CarlaSession.radarPerception(crossing("CLEAR"), v5)).isFalse();
+        assertThat(CarlaSession.radarPerception(crossing("CLEAR"),
+                new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V8_SIMULATOR_SUFFIX, 0.01, 0.05))).isFalse();
+        LeadVehicleCase lead = new LeadVehicleCase(LeadVehicleCase.CCRS, 50.0, 0.0, 40.0, null, 100.0, "CLEAR", "DAY", null);
+        com.vsos.core.bridge.Bundle.RunSpec leadSpec = new com.vsos.core.bridge.Bundle.RunSpec(null, AebParams.DEFAULT, VehicleSpec.DEFAULT, 1L, null, null,
+                Map.of(), Map.of(), lead);
+        assertThat(CarlaSession.radarPerception(leadSpec, current)).as("bộ bám chặn vật tĩnh: không dùng cho xe phía trước đứng yên").isFalse();
     }
 
     /**
@@ -56,12 +76,14 @@ class CarlaSessionLogicTest {
     void pedalCommandIsCappedAtRoadFrictionFromV6Only() {
         com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
         com.vsos.core.xosc.Xosc.Profile v6 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V6_SIMULATOR_SUFFIX, 0.01, 0.05);
-        com.vsos.core.xosc.Xosc.Profile v7 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v7 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V7_SIMULATOR_SUFFIX, 0.01, 0.05);
         com.vsos.core.xosc.Xosc.Profile v5 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V5_SIMULATOR_SUFFIX, 0.01, 0.05);
         assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("CLEAR"), current)).isEqualTo(8.0);
         assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("RAIN"), current)).isCloseTo(0.70 * Simulator.G, within(1e-9));
         assertThat(CarlaSession.frictionLimitedCommand(5.0, crossing("RAIN"), current)).isEqualTo(5.0);
         assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("HEAVY_RAIN"), current)).isCloseTo(0.55 * Simulator.G, within(1e-9));
+        assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("RAIN"),
+                new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V8_SIMULATOR_SUFFIX, 0.01, 0.05))).isCloseTo(0.70 * Simulator.G, within(1e-9));
         assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("RAIN"), v6)).isCloseTo(0.70 * Simulator.G, within(1e-9));
         assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("RAIN"), v7)).isCloseTo(0.70 * Simulator.G, within(1e-9));
         assertThat(CarlaSession.frictionLimitedCommand(8.0, crossing("RAIN"), v5)).isEqualTo(8.0);
@@ -75,9 +97,10 @@ class CarlaSessionLogicTest {
     void lowSpeedPhaseFollowsTheCommandedDecelerationFromV7Only() {
         com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
         com.vsos.core.xosc.Xosc.Profile v6 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V6_SIMULATOR_SUFFIX, 0.01, 0.05);
-        com.vsos.core.xosc.Xosc.Profile v7 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v7 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V7_SIMULATOR_SUFFIX, 0.01, 0.05);
         assertThat(CarlaSession.lowSpeedOverrideApplies(current)).isTrue();
         assertThat(CarlaSession.lowSpeedOverrideApplies(v7)).isTrue();
+        assertThat(CarlaSession.lowSpeedOverrideApplies(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V8_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
         assertThat(CarlaSession.lowSpeedOverrideApplies(v6)).isFalse();
         assertThat(CarlaSession.LOW_SPEED_OVERRIDE_MPS).isEqualTo(6.0);
         // Đường khô, lệnh 8 m/s²: mỗi tick 0,01 s giảm 0,08 m/s; từ 6 m/s tới dừng mất 0,75 s như mô hình (6 / 8).
@@ -107,9 +130,11 @@ class CarlaSessionLogicTest {
     @Test
     void pedalMapAppliesToTheMeasuredEtronFromV8Only() {
         com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
-        com.vsos.core.xosc.Xosc.Profile v7 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.PREVIOUS_SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v7 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V7_SIMULATOR_SUFFIX, 0.01, 0.05);
         assertThat(CarlaSession.pedalMapFor(current, etron(1800.0), 9.13)).isNotNull();
         assertThat(CarlaSession.pedalMapFor(v7, etron(1800.0), 9.13)).isNull();
+        assertThat(CarlaSession.pedalMapFor(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V8_SIMULATOR_SUFFIX, 0.01, 0.05), etron(1800.0), 9.13))
+                .as("v8 giữ bảng bàn đạp").isNotNull();
         assertThat(CarlaSession.pedalMapFor(current, etron(1500.0), 9.13)).as("mô-men khác chưa đo").isNull();
         assertThat(CarlaSession.pedalMapFor(current, etron(1800.0), 9.5)).as("phanh 100% khác").isNull();
         assertThat(CarlaSession.pedalMapFor(current, Map.of("blueprint", "vehicle.tesla.model3"), 3.56)).isNull();

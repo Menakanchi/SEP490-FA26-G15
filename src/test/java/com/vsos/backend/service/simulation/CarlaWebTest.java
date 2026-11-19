@@ -56,7 +56,7 @@ class CarlaWebTest {
 
     @Test
     void xoscProfileHasADifferentIdentityFromDirectCarla() {
-        assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16-xosc8");
+        assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16-xosc9");
         when(props.simulator()).thenReturn("carla");
         assertThat(runs.configuredSimulator()).isEqualTo("carla-0.9.16");
     }
@@ -65,8 +65,8 @@ class CarlaWebTest {
     void carlaReplayKeepsOriginalVariantVehicleAebAndSeedWithoutCrossSimulatorBaselineLink() {
         assertThat(runs.runOnCarla(1, 42, 7)).isEqualTo(70);
         var call = mockingDetails(db).getInvocations().stream().filter(i -> i.getMethod().getName().equals("insert")).findFirst().orElseThrow();
-        assertThat(java.util.Arrays.asList(call.getArguments()).subList(1, 8)).containsExactly(1L, 3L, 4L, 5L, 6L, "CARLA", "carla-0.9.16-xosc8");
-        assertThat(call.getArguments()[8]).isEqualTo(0.01); // xosc8 chạy ở 100 Hz, ghi đúng vào fixed_delta_seconds
+        assertThat(java.util.Arrays.asList(call.getArguments()).subList(1, 8)).containsExactly(1L, 3L, 4L, 5L, 6L, "CARLA", "carla-0.9.16-xosc9");
+        assertThat(call.getArguments()[8]).isEqualTo(0.01); // xosc9 chạy ở 100 Hz, ghi đúng vào fixed_delta_seconds
         assertThat(call.getArguments()[11]).isNull(); // baseline_run_id chỉ dành cho cặp cùng simulator
         assertThat(call.getArguments()[12]).isNull(); // optimization_trial_id: replay không thuộc trial tối ưu nào
         assertThat(call.getArguments()[14]).isEqualTo(123456L);
@@ -97,6 +97,7 @@ class CarlaWebTest {
 
     @Test
     void stepFollowsTheSimulatorIdentity() {
+        assertThat(RunService.stepFor("carla-0.9.16-xosc9")).isEqualTo(0.01);
         assertThat(RunService.stepFor("carla-0.9.16-xosc8")).isEqualTo(0.01);
         assertThat(RunService.stepFor("carla-0.9.16-xosc7")).isEqualTo(0.01);
         assertThat(RunService.stepFor("carla-0.9.16-xosc6")).isEqualTo(0.01);
@@ -118,10 +119,16 @@ class CarlaWebTest {
 
     @Test
     void queuedOldXoscRunFailsBeforeBuildingBundleOrLaunchingWorker() {
-        for (String old : List.of("xosc1", "xosc2", "xosc3")) {
+        for (String old : List.of("xosc1", "xosc2", "xosc3", "xosc4", "xosc5")) {
             reset(db);
             queuedRunWithProfileFailsBeforeLaunchingWorker("carla-0.9.16-" + old, old);
         }
+    }
+
+    /** Bộ động học 1.0 (impact_speed_mps = tốc độ ego) đã đổi sang 1.1 (vận tốc tương đối, 13/11/2026): run 1.0 còn chờ báo rõ, không chạy bằng định nghĩa mới. */
+    @Test
+    void queuedLegacyKinematicRunFailsInsteadOfRunningUnderTheNewDefinition() {
+        queuedRunWithProfileFailsBeforeLaunchingWorker(com.vsos.core.bridge.Bundle.LEGACY_KINEMATIC_SIMULATOR, "vehicsim-kinematic-1.0");
     }
 
     /** ADR-042 gỡ runner JSON trực tiếp (run_variant.py): run cũ của profile đó báo rõ thay vì đưa bundle JSON cho run_xosc.py. */
@@ -135,7 +142,7 @@ class CarlaWebTest {
         when(props.simulator()).thenReturn("carla");
         assertThatThrownBy(runs::simulatorForNewRuns).isInstanceOf(Vs.InvalidRequestException.class).hasMessageContaining("carla-xosc");
         when(props.simulator()).thenReturn("carla-xosc");
-        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc8");
+        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc9");
     }
 
     private void queuedRunWithProfileFailsBeforeLaunchingWorker(String profile, String expectedReason) {
@@ -165,6 +172,9 @@ class CarlaWebTest {
         Files.createDirectories(image.getParent());
         Files.write(image, new byte[]{1, 2, 3});
         assertThat(runs.carlaFile(1, 42, "00000001.png")).isEqualTo(image);
+        Path groundTruth = directory.resolve("runs/42/sensors/ground_truth.csv");
+        Files.writeString(groundTruth, "frame,sim_time_s\n");
+        assertThat(runs.carlaFile(1, 42, "ground_truth.csv")).isEqualTo(groundTruth);
         when(db.first(anyString(), any(Object[].class))).thenReturn(null);
         assertThatThrownBy(() -> runs.carlaFile(2, 42, "00000001.png")).isInstanceOf(Vs.NotFoundException.class);
     }

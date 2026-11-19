@@ -31,19 +31,25 @@ import com.vsos.core.common.Py;
 public final class Xosc {
 
     /**
-     * v8 (19/11/2026, ADR-054): như v7 nhưng xe đã hiệu chuẩn bàn đạp (e-tron) đổi lệnh giảm tốc ra bàn đạp theo bảng đo được thay cho giả định
-     * tuyến tính. Đổi identity vì quãng dừng trên CARLA đổi ở mọi ca có phanh.
+     * v9 (ADR-055, ADR-043 giai đoạn 2): như v8 nhưng AEB của ca người đi bộ trên CARLA nhận perception từ radar ({@code RadarTracker}) thay vì ground
+     * truth, nên kết quả đổi ở mọi ca người đi bộ. Xe phía trước (ADR-050) vẫn dùng ground truth.
      */
-    public static final String FORMAT = "vehicsim.xosc/v8";
-    public static final String SIMULATOR_SUFFIX = "-xosc8";
+    public static final String FORMAT = "vehicsim.xosc/v9";
+    public static final String SIMULATOR_SUFFIX = "-xosc9";
+    /**
+     * v8 (19/11/2026, ADR-054): như v7 nhưng xe đã hiệu chuẩn bàn đạp (e-tron) đổi lệnh giảm tốc ra bàn đạp theo bảng đo được thay cho giả định
+     * tuyến tính; AEB còn dùng ground truth. Backend không tạo / chạy lại run bằng profile này và không ghép với v9.
+     */
+    public static final String V8_FORMAT = "vehicsim.xosc/v8";
+    public static final String V8_SIMULATOR_SUFFIX = "-xosc8";
     /** Bước mô phỏng 0,01 s (100 Hz, kế hoạch 20/10 D3, từ v3); perception/quyết định AEB vẫn theo chu kỳ cảm biến 0,05 s. */
     public static final double STEP_S = 0.01;
     /**
      * v7 (15/11/2026, ADR-053): như v6 nhưng dưới 6 m/s adapter đặt tốc độ xe theo mức giảm tốc AEB (đã kẹp μ·g) thay cho cú dừng gấp ~24 m/s²;
-     * bàn đạp còn giả định tuyến tính. Backend không tạo / chạy lại run bằng profile này và không ghép với v8.
+     * bàn đạp còn giả định tuyến tính. Backend không tạo / chạy lại run bằng profile này và không ghép với v9.
      */
-    public static final String PREVIOUS_FORMAT = "vehicsim.xosc/v7";
-    public static final String PREVIOUS_SIMULATOR_SUFFIX = "-xosc7";
+    public static final String V7_FORMAT = "vehicsim.xosc/v7";
+    public static final String V7_SIMULATOR_SUFFIX = "-xosc7";
     /** v6 (15/11/2026, ADR-052): lệnh giảm tốc ra bàn đạp kẹp ở μ·g, cú dừng gấp dưới 6 m/s của CARLA còn nguyên. */
     public static final String V6_FORMAT = "vehicsim.xosc/v6";
     public static final String V6_SIMULATOR_SUFFIX = "-xosc6";
@@ -177,8 +183,8 @@ public final class Xosc {
         if ("vehicsim.xosc/v1".equals(format)) {
             throw new Bundle.BundleError("File .xosc v1 có hướng đi bộ cũ; cần xuất lại từ web để chạy người đi bộ băng ngang đường");
         }
-        if (!FORMAT.equals(format) && !PREVIOUS_FORMAT.equals(format) && !V6_FORMAT.equals(format) && !V5_FORMAT.equals(format) && !V4_FORMAT.equals(format)
-                && !V3_FORMAT.equals(format)
+        if (!FORMAT.equals(format) && !V8_FORMAT.equals(format) && !V7_FORMAT.equals(format) && !V6_FORMAT.equals(format) && !V5_FORMAT.equals(format)
+                && !V4_FORMAT.equals(format) && !V3_FORMAT.equals(format)
                 && !LEGACY_FORMAT.equals(format)) {
             throw new Bundle.BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)");
         }
@@ -274,6 +280,9 @@ public final class Xosc {
             doc.put("source", source);
             doc.put("aeb", aeb);
             doc.put("vehicle", vehicle);
+            if (values.containsKey(com.vsos.core.simulation.AebMode.KEY)) {
+                doc.put(com.vsos.core.simulation.AebMode.KEY, values.get(com.vsos.core.simulation.AebMode.KEY));
+            }
             return Bundle.readSpec(doc);
         } catch (MissingKey | NumberFormatException | Bundle.BundleError e) { // BundleError là ValueError của Python: bị bọc như bản gốc
             throw new Bundle.BundleError("Metadata .xosc không hợp lệ: " + e.getMessage());
@@ -291,7 +300,8 @@ public final class Xosc {
         }
         String format = values.get("format");
         String suffix = FORMAT.equals(format) ? SIMULATOR_SUFFIX
-                : PREVIOUS_FORMAT.equals(format) ? PREVIOUS_SIMULATOR_SUFFIX
+                : V8_FORMAT.equals(format) ? V8_SIMULATOR_SUFFIX
+                : V7_FORMAT.equals(format) ? V7_SIMULATOR_SUFFIX
                 : V6_FORMAT.equals(format) ? V6_SIMULATOR_SUFFIX
                 : V5_FORMAT.equals(format) ? V5_SIMULATOR_SUFFIX
                 : V4_FORMAT.equals(format) ? V4_SIMULATOR_SUFFIX

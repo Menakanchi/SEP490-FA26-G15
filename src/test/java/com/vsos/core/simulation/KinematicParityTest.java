@@ -49,6 +49,50 @@ public class KinematicParityTest {
         assertThat(diffs).as("%d sai khác so với lõi Python (hiện tối đa 25 dòng đầu)", diffs.size()).isEmpty();
     }
 
+    /**
+     * Ngoại lệ có chủ đích (13/11/2026, bộ động học 1.1): {@code impact_speed_mps} thành vận tốc va chạm tương đối hypot(v_ego, v_ped), tốc độ ego chuyển
+     * sang {@code ego_impact_speed_mps}. Mọi trường khác của outcome giống hệt định nghĩa 1.0 trên toàn bộ fixture.
+     */
+    @Test
+    void currentDefinitionOnlyChangesTheImpactSpeedKeys() throws IOException {
+        int collisions = 0;
+        for (Map<String, Object> c : cases()) {
+            Map<String, Object> cs = map(c.get("case"));
+            Map<String, Double> codes = new HashMap<>();
+            map(c.get("params")).forEach((k, v) -> codes.put(k, ((Number) v).doubleValue()));
+            Map<String, Object> vh = map(c.get("vehicle"));
+            CrossingCase crossing = new CrossingCase(num(cs, "ego_speed_kmh"), num(cs, "trigger_distance_m"), num(cs, "pedestrian_speed_mps"),
+                    (Boolean) cs.get("stops_at_curb"), (String) cs.get("weather"), (String) cs.get("time_of_day"),
+                    cs.get("friction") == null ? null : num(cs, "friction"));
+            VehicleSpec vehicle = new VehicleSpec(num(vh, "length_m"), num(vh, "width_m"), num(vh, "max_brake_decel_mps2"));
+            long seed = ((Number) c.get("seed")).longValue();
+            AebParams params = AebParams.fromCodes(codes);
+            Map<String, Object> legacy = Simulator.simulate(crossing, params, seed, vehicle, false).asDict();
+            Map<String, Object> current = Simulator.simulate(crossing, params, seed, vehicle).asDict();
+            Map<String, Object> lm = new java.util.LinkedHashMap<>(map(legacy.get("metrics")));
+            Map<String, Object> cm = new java.util.LinkedHashMap<>(map(current.get("metrics")));
+            Object ego = cm.remove("ego_impact_speed_mps");
+            assertThat(ego).isEqualTo(lm.get("impact_speed_mps"));
+            Object relative = cm.remove("impact_speed_mps");
+            lm.remove("impact_speed_mps");
+            assertThat(cm).isEqualTo(lm);
+            if (ego != null) {
+                collisions++;
+                java.util.List<?> frames = (java.util.List<?>) current.get("frames");
+                Map<String, Object> last = map(frames.get(frames.size() - 1));
+                double expected = Math.hypot(((Number) last.get("ego_v")).doubleValue(), ((Number) last.get("ped_vy")).doubleValue());
+                assertThat(((Number) relative).doubleValue()).isCloseTo(expected, org.assertj.core.api.Assertions.within(0.002))
+                        .isGreaterThanOrEqualTo(((Number) ego).doubleValue());
+            } else {
+                assertThat(relative).isNull();
+            }
+            legacy.remove("metrics");
+            current.remove("metrics");
+            assertThat(current).isEqualTo(legacy);
+        }
+        assertThat(collisions).as("fixture có ca va chạm để kiểm").isGreaterThan(10);
+    }
+
 
     /** Chạy lại một ca bằng lõi Java và ghi mọi trường lệch so với kết quả Python vào {@code diffs}. */
     public static void checkCase(Map<String, Object> c, String name, List<String> diffs) throws IOException {
@@ -64,7 +108,9 @@ public class KinematicParityTest {
         AebParams params = AebParams.fromCodes(codes);
         VehicleSpec vehicle = new VehicleSpec(num(vh, "length_m"), num(vh, "width_m"), num(vh, "max_brake_decel_mps2"));
 
-        SimulationOutcome actual = Simulator.simulate(crossing, params, seed, vehicle);
+        // Fixture sinh bằng lõi Python = định nghĩa bộ động học 1.0 (impact_speed_mps là tốc độ ego). Chế độ hiện hành 1.1 chỉ khác ở hai khoá vận tốc
+        // va chạm — kiểm riêng ở currentDefinitionOnlyChangesTheImpactSpeedKeys.
+        SimulationOutcome actual = Simulator.simulate(crossing, params, seed, vehicle, false);
         String label = name + " " + cs + " seed=" + seed;
         compare(label + " outcome", map(c.get("outcome")), roundTrip(actual.asDict()), diffs);
         compare(label + " evaluation", map(c.get("evaluation")), roundTrip(Evaluation.evaluate(actual, params).toDocument()), diffs);

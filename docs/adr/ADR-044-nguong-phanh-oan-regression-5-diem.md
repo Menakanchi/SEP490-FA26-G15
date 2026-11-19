@@ -1,6 +1,7 @@
 # ADR-044 — Ngưỡng phanh oan mặc định của regression: 5 điểm %
 
-**Trạng thái:** Proposed 20/10/2026
+**Trạng thái:** ✅ Accepted 13/11/2026 (TrungDQ chốt; Proposed 20/10/2026). Một ngưỡng 5 điểm % dùng chung cho regression và ràng buộc tối ưu:
+`RegressionCriteria.DEFAULT_FALSE_ACTIVATION_MAX_PTS`, cùng phép so `tăng ≤ ngưỡng + 1e-9` (`OptimizationService` trước đây ghi cứng `> 5.01`).
 **Phạm vi:** `RegressionService.defaultCriteria`, form `/validation/regression/new`; bổ sung ADR-025 mục 3, thực hiện lời hứa "cùng cổng regression" của ADR-040 §7.
 
 ## Bối cảnh

@@ -32,8 +32,13 @@ public final class Bundle {
     public static final String VARIANT_FORMAT = "vehicsim.variant/v1";
     public static final String RESULT_FORMAT = "vehicsim.result/v1";
 
-    /** Danh tính bộ mô phỏng, ghi vào {@code simulation_runs.simulator_version}. Regression chỉ ghép hai run cùng giá trị này. */
-    public static final String KINEMATIC_SIMULATOR = "vehicsim-kinematic-1.0";
+    /**
+     * Danh tính bộ mô phỏng, ghi vào {@code simulation_runs.simulator_version}. Regression chỉ ghép hai run cùng giá trị này. 1.1 (13/11/2026):
+     * {@code impact_speed_mps} là vận tốc va chạm tương đối, tốc độ ego ở {@code ego_impact_speed_mps}; mọi số khác giống 1.0.
+     */
+    public static final String KINEMATIC_SIMULATOR = "vehicsim-kinematic-1.1";
+    /** 1.0: {@code impact_speed_mps} là tốc độ ego (định nghĩa của bản Python). Backend không chạy lại run 1.0 và không ghép với 1.1. */
+    public static final String LEGACY_KINEMATIC_SIMULATOR = "vehicsim-kinematic-1.0";
 
     /**
      * Phiên bản cài đặt lõi, ghi vào {@code result.json} (khóa {@code engine}) để phân biệt run do lõi Java với run do lõi Python cũ kể cả khi
@@ -79,11 +84,21 @@ public final class Bundle {
      * (xe phía trước CCRs/CCRm/CCRb, ADR-050 — hiện chỉ bộ động học chạy được).
      */
     public record RunSpec(CrossingCase caseSpec, AebParams params, VehicleSpec vehicle, long seed, Object aebLabel, Object vehicleName, Map<String, Object> source,
-                          Map<String, Object> vehicleCarla, LeadVehicleCase leadCase) {
+                          Map<String, Object> vehicleCarla, LeadVehicleCase leadCase, boolean aebOff) {
 
         public RunSpec(CrossingCase caseSpec, AebParams params, VehicleSpec vehicle, long seed, Object aebLabel, Object vehicleName, Map<String, Object> source,
                        Map<String, Object> vehicleCarla) {
-            this(caseSpec, params, vehicle, seed, aebLabel, vehicleName, source, vehicleCarla, null);
+            this(caseSpec, params, vehicle, seed, aebLabel, vehicleName, source, vehicleCarla, null, false);
+        }
+
+        public RunSpec(CrossingCase caseSpec, AebParams params, VehicleSpec vehicle, long seed, Object aebLabel, Object vehicleName, Map<String, Object> source,
+                       Map<String, Object> vehicleCarla, LeadVehicleCase leadCase) {
+            this(caseSpec, params, vehicle, seed, aebLabel, vehicleName, source, vehicleCarla, leadCase, false);
+        }
+
+        /** Cùng spec, AEB tắt ({@link com.vsos.core.simulation.AebMode}). */
+        public RunSpec withAebOff() {
+            return new RunSpec(caseSpec, params, vehicle, seed, aebLabel, vehicleName, source, vehicleCarla, leadCase, true);
         }
 
         public String weather() {
@@ -117,8 +132,8 @@ public final class Bundle {
     /** Chạy biến thể trên bộ động học, chọn đúng "thế giới" theo category. */
     public static SimulationOutcome simulateKinematic(RunSpec spec) {
         return spec.leadCase() != null
-                ? LeadVehicleSimulator.simulate(spec.leadCase(), spec.params(), spec.seed(), spec.vehicle())
-                : Simulator.simulate(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle());
+                ? LeadVehicleSimulator.simulate(spec.leadCase(), spec.params(), spec.seed(), spec.vehicle(), true, spec.aebOff())
+                : Simulator.simulate(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle(), true, spec.aebOff());
     }
 
     /** {@code "0.9.16"} hoặc {@code "0.9.16-12-gabc"} ({@code client.get_server_version()}) → {@code "carla-0.9.16"}. */
@@ -163,6 +178,9 @@ public final class Bundle {
         doc.put("vehicle", vehicle);
         doc.put("seed", spec.seed());
         doc.put("source", spec.source() == null ? Map.of() : spec.source());
+        if (spec.aebOff()) { // chỉ ghi khi AEB tắt: bundle AEB bật giữ nguyên từng byte
+            doc.put(com.vsos.core.simulation.AebMode.KEY, com.vsos.core.simulation.AebMode.OFF);
+        }
         return doc;
     }
 
@@ -206,12 +224,18 @@ public final class Bundle {
         } else {
             seed = ((Number) runSeed).longValue();
         }
+        boolean aebOff = false;
+        try {
+            aebOff = com.vsos.core.simulation.AebMode.isOff(doc.get(com.vsos.core.simulation.AebMode.KEY));
+        } catch (IllegalArgumentException e) {
+            errors.add(e.getMessage());
+        }
         if (!errors.isEmpty()) {
             throw new BundleError(String.join("; ", errors));
         }
         Object source = doc.get("source");
         return new RunSpec(caseSpec, (AebParams) aeb[0], (VehicleSpec) vehicle[0], seed, aeb[1], vehicle[1],
-                truthy(source) && source instanceof Map ? (Map<String, Object>) source : new LinkedHashMap<>(), vehicleCarla, leadCase);
+                truthy(source) && source instanceof Map ? (Map<String, Object>) source : new LinkedHashMap<>(), vehicleCarla, leadCase, aebOff);
     }
 
     /** Python {@code bool(x)}: None, False, 0, "", [], {} là sai. */

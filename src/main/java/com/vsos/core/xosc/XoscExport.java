@@ -137,6 +137,9 @@ public final class XoscExport {
         values.put("time_of_day", c.timeOfDay());
         values.put("friction", c.friction() == null ? "" : c.friction());
         vehicleAndSource(values, spec);
+        if (spec.aebOff()) { // chỉ ghi khi AEB tắt: XML của run AEB bật giữ nguyên từng byte
+            values.put(com.vsos.core.simulation.AebMode.KEY, com.vsos.core.simulation.AebMode.OFF);
+        }
 
         declare(declarations, values);
         El entities = header(root, values, vehicle);
@@ -405,6 +408,9 @@ public final class XoscExport {
         values.put("time_of_day", c.timeOfDay());
         values.put("friction", c.friction() == null ? "" : c.friction());
         vehicleAndSource(values, spec);
+        if (spec.aebOff()) { // chỉ ghi khi AEB tắt: XML của run AEB bật giữ nguyên từng byte
+            values.put(com.vsos.core.simulation.AebMode.KEY, com.vsos.core.simulation.AebMode.OFF);
+        }
         declare(declarations, values);
         El entities = header(root, values, vehicle);
         El lead = node(node(entities, "ScenarioObject", "name", "lead"), "Vehicle", "name", LEAD_BLUEPRINT, "vehicleCategory", "car");

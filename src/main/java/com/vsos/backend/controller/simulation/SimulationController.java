@@ -51,7 +51,8 @@ public class SimulationController {
     private final TelemetryMetricsService telemetryService;
     private final VehicSimAccess access;
 
-    public record RunFamilyRequest(@JsonProperty("aeb_version_id") Long aebVersionId) {
+    /** {@code with_aeb_off}: thêm một lượt AEB tắt cho mỗi biến thể (mốc tham chiếu của baseline, chốt 13/11/2026); mặc định không. */
+    public record RunFamilyRequest(@JsonProperty("aeb_version_id") Long aebVersionId, @JsonProperty("with_aeb_off") Boolean withAebOff) {
     }
 
     @Operation(summary = "Chạy mọi biến thể của họ bằng một AEB version (mặc định: baseline)")
@@ -60,7 +61,8 @@ public class SimulationController {
                                                          @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "run");
-        List<Long> ids = runs.runFamily(access.projectId(), scenarioId, uid, body == null ? null : body.aebVersionId());
+        List<Long> ids = runs.runFamily(access.projectId(), scenarioId, uid, body == null ? null : body.aebVersionId(),
+                body != null && Boolean.TRUE.equals(body.withAebOff()));
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("queued_runs", ids.size()));
     }
 

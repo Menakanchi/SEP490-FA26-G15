@@ -46,13 +46,13 @@ class KinematicCliTest {
         Bundle.ResultDoc result = Bundle.readResult(doc);
         // backend Java lưu thẳng khối chấm điểm này, không chấm lại
         assertThat(((Map<?, ?>) doc.get("evaluation")).keySet().stream().map(String::valueOf).toList()).contains("outcome", "verdict", "headline", "aeb_result", "failure", "chain");
-        assertThat(result.simulator()).isEqualTo("vehicsim-kinematic-1.0");
+        assertThat(result.simulator()).isEqualTo(Bundle.KINEMATIC_SIMULATOR);
         assertThat(result.artifacts()).isEmpty();
         assertThat(doc.get("engine")).isEqualTo(Bundle.ENGINE);
         SimulationOutcome expected = Simulator.simulate(CASE, PARAMS, 48_123L, VehicleSpec.DEFAULT);
         assertThat(MiniJson.write(result.outcome().asDict())).isEqualTo(MiniJson.write(expected.asDict()));
         String summary = stdout.toString(StandardCharsets.UTF_8);
-        assertThat(summary).contains("Bộ mô phỏng : vehicsim-kinematic-1.0").contains("60 km/h, kích hoạt 25 m, người đi bộ 3 m/s, RAIN/NIGHT, seed 48123")
+        assertThat(summary).contains("Bộ mô phỏng : " + Bundle.KINEMATIC_SIMULATOR).contains("60 km/h, kích hoạt 25 m, người đi bộ 3 m/s, RAIN/NIGHT, seed 48123")
                 .contains("AEB         : v1.1 · TTC 1.8 s").contains("Đã ghi      :");
     }
 

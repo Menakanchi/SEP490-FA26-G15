@@ -22,6 +22,8 @@ export default function ScenarioFamiliesPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [busy, setBusy] = useState<number | "create" | null>(null);
+  // Baseline đo cả AEB hiện tại lẫn AEB tắt (chốt 13/11/2026): lượt AEB tắt là mốc tham chiếu, không làm baseline regression/tối ưu.
+  const [withAebOff, setWithAebOff] = useState(true);
   // Họ vừa được bàn giao từ màn thiết kế (?family=<id>) hoặc vừa tạo bằng form: tô sáng và cuộn tới dòng của nó.
   const [focusId, setFocusId] = useState<number | null>(null);
   // Sửa họ = tạo bản gốc mới (task 4): họ đang sửa, lịch sử bản đã tải, bản cũ đang xem của từng họ (chỉ xem).
@@ -74,8 +76,8 @@ export default function ScenarioFamiliesPage() {
     setBusy(f.id);
     setError(null);
     try {
-      const res = await vehicsimApi.runFamily(f.id);
-      setNotice(`${f.code}: đã xếp ${res.queued_runs} lượt chạy cơ sở.`);
+      const res = await vehicsimApi.runFamily(f.id, undefined, withAebOff);
+      setNotice(`${f.code}: đã xếp ${res.queued_runs} lượt chạy cơ sở${withAebOff ? " (một nửa là lượt AEB tắt để đối chiếu)" : ""}.`);
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không chạy được cơ sở");
@@ -175,6 +177,10 @@ export default function ScenarioFamiliesPage() {
       }
     >
       <ErrorNote message={error} />
+      <label className="flex items-center gap-2 text-[13px] text-vehicsim-muted">
+        <input type="checkbox" checked={withAebOff} onChange={(e) => setWithAebOff(e.target.checked)} disabled={!canWrite} />
+        Khi chạy cơ sở, chạy thêm mỗi biến thể một lượt AEB tắt (mốc đối chiếu &quot;không có AEB&quot;, không dùng làm cơ sở kiểm chứng)
+      </label>
       {notice && <p className="rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">{notice}</p>}
       {focused && !notice && (
         <p className="rounded-[16px] bg-vehicsim-decision-bg px-4 py-3 text-[13px] text-vehicsim-decision">

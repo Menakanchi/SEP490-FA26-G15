@@ -159,7 +159,10 @@ def prepare_runtime(source: Path, target: Path, out: Path, simulator: str) -> No
 
 def run_carla_session(args: argparse.Namespace, info: dict, out: Path, core: dict) -> int:
     """Chế độ CARLA Dev Runner khi chưa kết nối được CARLA server (macOS hoặc dev local).
-    
+
+    Giới hạn: từ v9 AEB của ca người đi bộ cần điểm radar mỗi tick (ADR-043), mà chế độ này không có radar, nên ca người đi bộ chạy v9 báo lỗi rõ ràng;
+    ca xe phía trước vẫn chạy được.
+
     Tái hiện chuẩn xác kịch bản OpenSCENARIO bằng lõi CarlaSession của dự án (ADR-042).
     """
     result_file = out / "result.json"
@@ -282,8 +285,10 @@ def run(args: argparse.Namespace) -> int:
                "--trafficManagerPort", "8005", "--json", "--outputDir", str(out)]
     try:
         with (out / "follow_hero.log").open("w", encoding="utf-8") as camera_log, (out / "scenario_runner.log").open("w", encoding="utf-8") as log:
-            follower = subprocess.Popen([sys.executable, str(WORKER / "follow_hero.py"), "--host", args.host,
-                                         "--port", str(args.port), "--view", "chase"], env=env, stdout=camera_log, stderr=subprocess.STDOUT)
+            follow = [sys.executable, str(WORKER / "follow_hero.py"), "--host", args.host, "--port", str(args.port), "--view", "chase"]
+            if args.hud:
+                follow.append("--hud")
+            follower = subprocess.Popen(follow, env=env, stdout=camera_log, stderr=subprocess.STDOUT)
             proc = subprocess.Popen(command, cwd=args.sr_root, env=env, stdout=log, stderr=subprocess.STDOUT)
             code = wait_for_exit(proc, args.timeout, out / STOP_FLAG)
         criteria = []
@@ -328,6 +333,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sr-root", type=Path, default=Path(os.environ.get("SR_ROOT", str(Path.home() / "scenario_runner"))))
     parser.add_argument("--timeout", type=float, default=240.0)
     parser.add_argument("--camera", action="store_true")
+    parser.add_argument("--hud", action=argparse.BooleanOptionalAction, default=True,
+                        help="follow_hero vẽ tốc độ/bàn đạp cạnh xe trong cửa sổ CARLA (mặc định bật; --no-hud để tắt)")
     parser.add_argument("--fast", action="store_true", help="tương thích hợp đồng worker; ScenarioRunner dùng sync tick")
     parser.add_argument("--status", action="store_true")
     args = parser.parse_args(argv)

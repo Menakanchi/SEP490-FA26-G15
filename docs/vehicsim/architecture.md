@@ -113,8 +113,8 @@ Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  S
 `VEHICSIM_RUN_MODE=inline` chạy `executeRun` ngay trong request (dùng cho test); mặc định `async` (thread pool).
 CARLA luôn 1 luồng (một server CARLA chỉ chạy một lượt một lúc); khóa trong backend cũng bảo vệ nút chạy lại CARLA
 khi cấu hình mặc định là động học. Profile `carla-xosc` sinh `scenario.xosc` trước khi gọi `run_xosc.py`; chỉ giữ
-bundle JSON làm metadata nội bộ. Identity `carla-0.9.16-xosc8` (bước 0,01 s, người "dừng ở lề" đứng lại, mô-men phanh đã hiệu chuẩn — ADR-051, lệnh phanh kẹp ở μ·g — ADR-052, dưới 6 m/s adapter đặt tốc độ — ADR-053, bảng bàn đạp e-tron và người đi bộ khởi hành sớm — ADR-054) tách bản `-xosc7` (bàn đạp tuyến tính), `-xosc6` (còn cú dừng gấp), `-xosc5` (chưa kẹp μ·g), `-xosc4` (phanh CARLA chưa hiệu chuẩn), `-xosc3` (dừng ở lề đi vào làn), bản 20 Hz `-xosc2`, bản sửa quỹ đạo ngang khỏi `-xosc1` và runner trực tiếp cũ.
-Run `-xosc1`…`-xosc7` chưa chạy bị từ chối thay vì âm thầm chạy bằng profile mới. Mỗi người có hạn mức ghi và số run đang chờ + chạy
+bundle JSON làm metadata nội bộ. Identity `carla-0.9.16-xosc9` (bước 0,01 s, người "dừng ở lề" đứng lại, mô-men phanh đã hiệu chuẩn — ADR-051, lệnh phanh kẹp ở μ·g — ADR-052, dưới 6 m/s adapter đặt tốc độ — ADR-053, bảng bàn đạp e-tron và người đi bộ khởi hành sớm — ADR-054, AEB của ca người đi bộ nhận perception từ radar — ADR-043/ADR-055) tách bản `-xosc8` (AEB dùng ground truth), `-xosc7` (bàn đạp tuyến tính), `-xosc6` (còn cú dừng gấp), `-xosc5` (chưa kẹp μ·g), `-xosc4` (phanh CARLA chưa hiệu chuẩn), `-xosc3` (dừng ở lề đi vào làn), bản 20 Hz `-xosc2`, bản sửa quỹ đạo ngang khỏi `-xosc1` và runner trực tiếp cũ.
+Run `-xosc1`…`-xosc8` chưa chạy bị từ chối thay vì âm thầm chạy bằng profile mới. Mỗi người có hạn mức ghi và số run đang chờ + chạy
 (`VEHICSIM_WRITES_PER_WINDOW`, `VEHICSIM_MAX_ACTIVE_RUNS_PER_USER`) vì app mở đăng ký công khai.
 
 ## Bản đồ module (`src/services/vehicsim/`)
@@ -150,7 +150,7 @@ JSON**, dùng **cùng `AebStack`**, ghi **cùng `result.json`**, được chấm
 |---|---|---|
 | Chạy ở đâu | Máy nào cũng được, < 1 s/run | Máy có server CARLA (venv worker, `carla` khớp phiên bản server) |
 | Vật lý | Điểm khối, giảm tốc tức thì theo lệnh, μ·g | Xe/lốp/va chạm của CARLA; người đi bộ tăng tốc dần |
-| Perception | Mô hình tổng hợp trên ground truth | Như bên trái (chưa đọc camera/LiDAR) |
+| Perception | Mô hình tổng hợp trên ground truth | Người đi bộ: radar 90° + `RadarTracker` từ v9 (ADR-043); xe phía trước: như bên trái. Chưa đọc camera/LiDAR |
 | Cảnh | Không có hình | Town04 road 40/lane -4 từ `.xosc`, camera bám xe (`--camera`) |
 | Dùng khi | Dev, test tự động, batch nhanh, dự phòng khi demo | Xem tận mắt, quay video, đối chiếu |
 
@@ -411,7 +411,8 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Thông số vật lý xe lấy từ DB được áp vào xe CARLA; trường lạ hay số bánh sai bị từ chối (bảng đối chiếu `vehicle_check` của runner trực tiếp đã gỡ cùng `run_variant.py`) | `test_apply_physics_overrides_sets_scalars_com_and_wheels`, `test_apply_physics_overrides_refuses_unknown_fields_and_wheel_count_mismatch` |
 | Giảm tốc phanh 100% đo được của xe (`carla_full_brake_decel_mps2`) đi từ DB qua bundle và `.xosc` tới controller; chưa đo thì 4,6 m/s² và XML giữ nguyên | `XoscExportTest#measuredFullBrakeDecelTravelsFromBundleToTheCarlaController`, `XoscExportTest#implausibleFullBrakeDecelIsRejected` |
 | Cầu nối CARLA không bịa kết quả: lỗi/đứt ống là run lỗi; Java thoát khi stdin đóng; mỗi run dùng jar lõi chụp riêng nên `mvnw clean` giữa run vô hại | `BridgeProtocolTest#theProcessExitsWhenStdinClosesAndWritesNoResult`, `test_a_dead_java_process_is_an_error_not_a_default`, `test_a_run_keeps_working_after_target_classes_disappears` |
-| Perception radar chạy bóng (ADR-043 giai đoạn 1) không đổi run thật: có/không radar thì khung, sự kiện, chỉ số trùng từng trường; vật tĩnh/mặt đường không thành track | `BridgeProtocolTest#radarShadowIsMeasuredButNeverChangesTheRealRun`, `RadarTrackerTest#staticClutterAndRoadReturnsNeverStartATrack` |
+| File ≤ v8: perception radar chạy bóng (ADR-043 giai đoạn 1) không đổi run thật: có/không radar thì khung, sự kiện, chỉ số trùng từng trường; vật tĩnh/mặt đường không thành track | `BridgeProtocolTest#onV5RadarShadowIsMeasuredButNeverChangesTheRealRun`, `RadarTrackerTest#staticClutterAndRoadReturnsNeverStartATrack` |
+| v9 (ADR-043 giai đoạn 2): AEB thật của ca người đi bộ trên CARLA nhận perception từ radar, ground truth chạy bóng để so; thiếu radar là lỗi, không "không thấy gì"; vật tĩnh (kể cả lệch Doppler chung của cả lần đo) không bao giờ được báo; xe phía trước vẫn dùng ground truth | `BridgeProtocolTest#onV6TheRadarDrivesTheRealAebAndGroundTruthIsTheShadow`, `BridgeProtocolTest#onV6APedestrianRunWithoutRadarIsRejectedNotSilentlyBlind`, `RadarTrackerTest#aStaticRoadsideObjectWithTheCommonDopplerOffsetIsNeverReported`, `RadarTrackerTest#aFenceAlongTheRoadIsNeverReported`, `CarlaSessionLogicTest#radarDrivesTheAebOnlyForPedestriansOnTheCurrentProfile` |
 | Tắt backend giữa run CARLA: ghi cờ dừng trước để worker tự dọn world, quá hạn mới giết | `CarlaWebTest#shuttingDownMidRunAsksTheWorkerToCleanUpBeforeKillingIt` |
 | Adapter CARLA áp góc lái của chính tick đó (không dùng `get_control()` của tick trước) và phanh/ga do lõi Java quyết định | `test_brake_override_keeps_this_ticks_steering` |
 | Mọi tham số AEB được simulator dùng; seed Java khớp SQL; AEB có đúng 4 tham số chỉnh được | `AebParameterSeedTest#everySeededParameterIsUsedByTheSimulator`, `AebParameterSeedTest#javaParameterSeedMatchesSqlSeed`, `SimulatorBehaviorTest#aebHasExactlyTheFourTunableParameters` |

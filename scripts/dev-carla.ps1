@@ -1,8 +1,13 @@
 param(
     [string]$CarlaRoot = 'C:\Carla_package',
     [string]$ScenarioRunnerRoot = (Join-Path $env:USERPROFILE 'scenario_runner'),
-    [switch]$RestartBackend
+    [switch]$RestartBackend,
+    # Mac dinh hien cua so CARLA va ve toc do/ban dap canh xe (follow_hero --hud). Chu chi o cua so server, khong vao anh camera.
+    # -NoHud: chay an, khong ve (vd. batch dai). -Hud giu lai cho lenh cu, khong con tac dung.
+    [switch]$NoHud,
+    [switch]$Hud
 )
+$Hud = -not $NoHud
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $repoRoot 'worker\.venv-carla\Scripts\python.exe'
@@ -20,11 +25,34 @@ $env:VEHICSIM_WORKER_PYTHON = $python
 $env:VEHICSIM_SIMULATOR = 'carla-xosc'
 $env:VEHICSIM_CARLA_VERSION = '0.9.16'
 $env:SIMULATION_TIMEOUT_S = '300'
-$env:VEHICSIM_CARLA_COMMAND = ConvertTo-Json -Compress -InputObject @($python, (Join-Path $repoRoot 'worker\run_xosc.py'), '--camera')
+$runner = @($python, (Join-Path $repoRoot 'worker\run_xosc.py'), '--camera')
+$runner += $(if ($Hud) { '--hud' } else { '--no-hud' })
+$env:VEHICSIM_CARLA_COMMAND = ConvertTo-Json -Compress -InputObject $runner
 if (-not (Get-NetTCPConnection -LocalPort 2000 -State Listen -ErrorAction SilentlyContinue)) {
     $server = Join-Path $CarlaRoot 'CarlaUE4.exe'
     if (-not (Test-Path -LiteralPath $server)) { throw "CARLA server not found at $server" }
-    Start-Process -FilePath $server -ArgumentList '/Game/Carla/Maps/Town04','-windowed','-ResX=800','-ResY=600','-quality-level=Low' -WorkingDirectory $CarlaRoot -WindowStyle Hidden
+    $window = if ($Hud) { 'Normal' } else { 'Hidden' }
+    $resolution = if ($Hud) { @('-ResX=1280','-ResY=720') } else { @('-ResX=800','-ResY=600') }
+    Start-Process -FilePath $server -ArgumentList (@('/Game/Carla/Maps/Town04','-windowed') + $resolution + '-quality-level=Low') -WorkingDirectory $CarlaRoot -WindowStyle $window
+} elseif ($Hud) {
+    # Server da bat an (lan chay truoc co -NoHud): hien lai cua so thay vi khoi dong lai CARLA.
+    Add-Type -Namespace VehicSim -Name Win32 -MemberDefinition @'
+public delegate bool EnumProc(System.IntPtr h, System.IntPtr p);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, System.IntPtr p);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint pid);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int GetWindowTextLength(System.IntPtr h);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int cmd);
+'@
+    $ids = @(Get-Process -Name 'CarlaUE4*' -ErrorAction SilentlyContinue | ForEach-Object Id)
+    $shown = 0
+    [void][VehicSim.Win32]::EnumWindows({ param($h, $p)
+        $windowPid = [uint32]0
+        [void][VehicSim.Win32]::GetWindowThreadProcessId($h, [ref]$windowPid)
+        if ($ids -contains [int]$windowPid -and [VehicSim.Win32]::GetWindowTextLength($h) -gt 0) {
+            [void][VehicSim.Win32]::ShowWindow($h, 5); $script:shown++
+        }
+        $true }, [IntPtr]::Zero)
+    if ($shown -eq 0) { Write-Warning 'CARLA is running but its window was not found; restart CARLA to see the HUD.' }
 }
 $listener = Get-NetTCPConnection -LocalPort 8001 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($listener) {

@@ -24,7 +24,8 @@ public class ReviewDecisionService {
 
     @Transactional
     public void decide(long projectId, long testId, long userId, String decision, String reason, String conditions, boolean confirmed) {
-        if (!RegressionCodes.DECISIONS.contains(decision)) {
+        // List.of(...).contains(null) ném NullPointerException: kiểm null trước để trả lỗi nghiệp vụ (DEF-RV-01).
+        if (decision == null || !RegressionCodes.DECISIONS.contains(decision)) {
             throw new DecisionNotAllowedException("decision phải thuộc " + RegressionCodes.DECISIONS);
         }
         if (reason == null || reason.isBlank()) {
