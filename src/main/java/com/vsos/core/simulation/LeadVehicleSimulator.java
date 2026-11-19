@@ -128,7 +128,7 @@ public final class LeadVehicleSimulator {
     }
 
     /**
-     * @param relativeImpact định nghĩa hiện hành (chốt 13/11/2026, bộ động học 1.1, CARLA v6): {@code impact_speed_mps} là vận tốc va chạm tương đối,
+     * @param relativeImpact định nghĩa hiện hành (chốt 13/11/2026, bộ động học 1.1, CARLA v9): {@code impact_speed_mps} là vận tốc va chạm tương đối,
      *                       tốc độ ego ghi ở {@code ego_impact_speed_mps}; {@code false} = định nghĩa cũ (tốc độ ego) để chạy lại ra đúng kết quả đã lưu
      */
     public static SimulationOutcome buildOutcome(LeadVehicleCase c, AebParams params, VehicleSpec vehicle, AebStack stack, Simulator.MotionStats stats,

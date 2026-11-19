@@ -1,15 +1,56 @@
 .scope {
+  /* chuvv layout foundations with the shared VehicSim palette, including native dialogs. */
   --admin-ink: var(--color-vehicsim-ink);
   --admin-text: var(--color-vehicsim-ink);
   --admin-secondary: var(--color-vehicsim-muted);
   --admin-muted: var(--color-vehicsim-faint);
   --admin-line: var(--color-vehicsim-line);
-  --admin-input-line: var(--color-vehicsim-line-strong);
+  /* Use the theme's darker neutral to retain visible form control boundaries. */
+  --admin-input-line: var(--color-vehicsim-faint);
   --admin-surface: var(--color-vehicsim-surface);
+  --admin-canvas: var(--color-vehicsim-bg);
   --admin-soft: var(--color-vehicsim-row);
   --admin-hover: var(--color-vehicsim-soft);
   --admin-focus: var(--color-vehicsim-primary);
   --admin-primary: var(--color-vehicsim-primary);
+  --admin-primary-hover: var(--color-vehicsim-primary-hover);
+  --admin-accent: var(--color-vehicsim-primary);
+  --admin-accent-bg: var(--color-vehicsim-primary-bg);
+  --admin-accent-line: var(--color-vehicsim-line-strong);
+  --admin-success: var(--color-vehicsim-ok);
+  --admin-success-bg: var(--color-vehicsim-ok-bg);
+  --admin-success-line: #bbf7d0;
   --admin-danger: var(--color-vehicsim-danger);
-  --admin-control-radius: 8px;
+  --admin-danger-hover: #991b1b;
+  --admin-danger-bg: var(--color-vehicsim-danger-bg);
+  --admin-danger-line: #fecaca;
+  --admin-warning: var(--color-vehicsim-warn);
+  --admin-warning-bg: var(--color-vehicsim-warn-bg);
+  --admin-warning-line: #fde68a;
+  --admin-font-caption: 12px;
+  --admin-font-control: 13px;
+  --admin-font-body: 14px;
+  --admin-font-section: 16px;
+  --admin-font-dialog-title: 20px;
+  --admin-font-page-title: clamp(24px, 2.2vw, 30px);
+  --admin-space-1: 4px;
+  --admin-space-2: 8px;
+  --admin-space-3: 12px;
+  --admin-space-4: 16px;
+  --admin-space-5: 20px;
+  --admin-space-6: 24px;
+  --admin-space-8: 32px;
+  --admin-radius-small: 6px;
+  --admin-control-radius: 10px;
+  --admin-panel-radius: 16px;
+  --admin-control-height: 40px;
+  --admin-sidebar-width: 248px;
+  --admin-content-width: 1480px;
+  --admin-disabled-opacity: .55;
+  color: var(--admin-ink);
+  font-size: var(--admin-font-body);
+  line-height: 1.6;
+}
+@media (max-width: 639px) {
+  .scope { --admin-control-height: 44px; }
 }

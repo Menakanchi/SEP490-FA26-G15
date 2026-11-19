@@ -1,5 +1,7 @@
 # Phần 2 "Chạy baseline": việc của thành viên 2 theo kế hoạch 20/10 (22/10/2026)
 
+> **Đổi tên định danh (19/11/2026, khi gộp `main`):** trong tài liệu này `.xosc` v6 / `-xosc6` = bản **radar** (AEB của ca người đi bộ nhận perception từ radar). `main` đã dùng v6–v8 cho ADR-052…054 (kẹp μ·g, tốc độ vùng thấp, bảng bàn đạp), nên bản radar thành **v9 / `-xosc9`** (xây trên v8) và ADR chốt chỉ số 13/11 thành [ADR-055](../../adr/ADR-055-chot-chi-so-va-che-do-aeb-tat-13-11.md). Số liệu và đường dẫn `data/*-v6-*` bên dưới là bằng chứng đo ở nhánh trước khi gộp, giữ nguyên.
+
 **Trạng thái:** đang làm. Phạm vi: [kế hoạch 20/10](../../vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md) §6 "Thành viên 2" và
 [phân chia 5 thành viên](../../vehicsim/phan-chia-cong-viec-5-thanh-vien.md) §4. Quyết định perception: [ADR-043](../../adr/ADR-043-perception-tu-radar-chay-bong-truoc.md) (Proposed).
 Tất cả số đo trên CARLA 0.9.16 thật (Town04, file `data/hz100-20261020/scenario.xosc`: 40 km/h, kích hoạt 25 m, người đi bộ 3 m/s, seed 48846, AEB mặc định);

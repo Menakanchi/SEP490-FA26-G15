@@ -9,8 +9,8 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 > [hướng dẫn cập nhật](docs/vehicsim/huong-dan-cap-nhat-sau-doi-ten-goi.md) và tra mục 7 của
 > [quy tắc đặt tên](docs/vehicsim/quy-tac-dat-ten.md) để đổi `package`/`import`.
 
-> **Bắt buộc sau khi pull (13/11/2026, [ADR-052](docs/adr/ADR-052-chot-chi-so-va-che-do-aeb-tat-13-11.md), [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md)):**
-> định danh run đổi — bộ động học `vehicsim-kinematic-1.1`, CARLA `.xosc` v6 / `-xosc6`. (1) DB đã có: chạy
+> **Bắt buộc sau khi pull (13/11/2026, [ADR-055](docs/adr/ADR-055-chot-chi-so-va-che-do-aeb-tat-13-11.md), [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md)):**
+> định danh run đổi — bộ động học `vehicsim-kinematic-1.1`, CARLA `.xosc` v9 / `-xosc9`. (1) DB đã có: chạy
 > [migration 015](database/mysql/migrations/015_2026-11-13_che-do-aeb-tat.sql) (cột `simulation_runs.aeb_mode`). (2) **Chạy lại baseline**
 > (động học và CARLA) bằng định danh mới; run cũ giữ số, không ghép với run mới, run PENDING định danh cũ bị từ chối. (3) Đọc mục 1 dưới đây.
 
@@ -21,19 +21,19 @@ tóm tắt cũ hay số trong một tài liệu đơn lẻ. Ba luật đọc:
 
 1. **Khối "Cập nhật <ngày>" mới hơn phần thân.** Exec plan/ADR có khối cập nhật (ví dụ "Cập nhật 14/11/2026" trong kế hoạch đo độ lệch CARLA)
    thì đọc khối đó trước; khi mâu thuẫn, làm theo khối cập nhật mới nhất, không theo bảng/định danh cũ ở phần thân.
-2. **Định danh cũ là dấu hiệu tài liệu lỗi thời:** gặp `-xosc5` trở xuống, `vehicsim-kinematic-1.0`, `perception_shadow` (cho ca người đi bộ),
-   `impact_speed_mps` hiểu là tốc độ ego → đối chiếu [ADR-052](docs/adr/ADR-052-chot-chi-so-va-che-do-aeb-tat-13-11.md) và code hiện tại trước khi dùng.
+2. **Định danh cũ là dấu hiệu tài liệu lỗi thời:** gặp `-xosc8` trở xuống, `vehicsim-kinematic-1.0`, `perception_shadow` (cho ca người đi bộ),
+   `impact_speed_mps` hiểu là tốc độ ego → đối chiếu [ADR-055](docs/adr/ADR-055-chot-chi-so-va-che-do-aeb-tat-13-11.md) và code hiện tại trước khi dùng.
 3. **Ghi lại đã đọc gì:** câu trả lời bàn giao / mô tả PR liệt kê tài liệu đã đọc và chỗ nào tài liệu khác code. Tài liệu sai thì sửa tài liệu
    (hoặc thêm khối cập nhật nếu là kế hoạch của người khác), không lặng lẽ làm khác.
 
 | Việc | Phải đọc trước |
 |---|---|
-| Mọi việc CARLA (`.xosc`, worker, adapter, sensor) | Mục 5–7 file này, [carla-local.md](docs/vehicsim/carla-local.md), [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md), [ADR-052](docs/adr/ADR-052-chot-chi-so-va-che-do-aeb-tat-13-11.md) |
+| Mọi việc CARLA (`.xosc`, worker, adapter, sensor) | Mục 5–7 file này, [carla-local.md](docs/vehicsim/carla-local.md), [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md), [ADR-055](docs/adr/ADR-055-chot-chi-so-va-che-do-aeb-tat-13-11.md) |
 | Đo độ lệch CARLA so với bộ động học (người đi bộ) | [kế hoạch đo độ lệch](docs/exec-plans/active/2026-11-13-do-do-lech-carla-dong-hoc.md) (khối cập nhật 14/11 trước), [carla-ped-bench](docs/vehicsim/carla-ped-bench/README.md) |
 | Chạy baseline, dung sai chạy lặp | [exec plan thành viên 2](docs/exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md) mục 1c, 3b |
 | Thời tiết, ma sát, `decel_available` | [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md), [ADR-051](docs/adr/ADR-051-hieu-chuan-phanh-carla-xosc5.md) |
-| Chỉ số, phân tích lỗi, dataset | [hợp đồng chỉ số](docs/vehicsim/analysis-metrics-contract.md), [ADR-052](docs/adr/ADR-052-chot-chi-so-va-che-do-aeb-tat-13-11.md) |
-| Tối ưu AEB, regression, phê duyệt | [ADR-040](docs/adr/ADR-040-rut-scope-4-tham-so-aeb-7-category.md), [ADR-044](docs/adr/ADR-044-nguong-phanh-oan-regression-5-diem.md), [ADR-052](docs/adr/ADR-052-chot-chi-so-va-che-do-aeb-tat-13-11.md), [kế hoạch 20/10](docs/vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md) |
+| Chỉ số, phân tích lỗi, dataset | [hợp đồng chỉ số](docs/vehicsim/analysis-metrics-contract.md), [ADR-055](docs/adr/ADR-055-chot-chi-so-va-che-do-aeb-tat-13-11.md) |
+| Tối ưu AEB, regression, phê duyệt | [ADR-040](docs/adr/ADR-040-rut-scope-4-tham-so-aeb-7-category.md), [ADR-044](docs/adr/ADR-044-nguong-phanh-oan-regression-5-diem.md), [ADR-055](docs/adr/ADR-055-chot-chi-so-va-che-do-aeb-tat-13-11.md), [kế hoạch 20/10](docs/vehicsim/ke-hoach-sua-theo-pdf-va-quyet-dinh-2026-10-20.md) |
 | Schema, migration | [database-schema.md](docs/vehicsim/database-schema.md), [01_schema.sql](database/mysql/01_schema.sql), mục 3 file này |
 | Việc khác | [ADR index](docs/adr/README.md) và [exec plan đang làm](docs/exec-plans/active/) cùng chủ đề; [nợ kỹ thuật](docs/exec-plans/tech-debt-tracker.md) |
 
@@ -44,7 +44,7 @@ tóm tắt cũ hay số trong một tài liệu đơn lẻ. Ba luật đọc:
   `impact_speed_mps` = **vận tốc va chạm tương đối** (tốc độ ego ở `ego_impact_speed_mps`); `rms_jerk_mps3` trên CARLA lọc **Euro NCAP**
   12-pole phaseless 10 Hz từ **T_AEB** (bộ động học 20 Hz không lọc được, giữ số chưa lọc); baseline đo **cả AEB tắt** (`aeb_mode = OFF`,
   không bao giờ làm baseline regression/tối ưu); **một ngưỡng phanh oan 5 điểm %** cho regression và tối ưu.
-  Mỗi run CARLA có `sensors/ground_truth.csv` (vector vị trí/vận tốc/gia tốc ego + mục tiêu). Còn mở: dung sai chạy lặp `-xosc6`
+  Mỗi run CARLA có `sensors/ground_truth.csv` (vector vị trí/vận tốc/gia tốc ego + mục tiêu). Còn mở: dung sai chạy lặp `-xosc9`
   ([exec plan thành viên 2](docs/exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md) mục 3b), baseline nhóm chạy lại.
 
 - Backend hiện tại là Spring Boot Java 21; frontend Next.js; AEB/mô phỏng/chấm điểm ở lõi Java `com.vsos.core` (ADR-042);
@@ -189,13 +189,11 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 - Đường web hiện tại: bộ xuất Java (`XoscExport`) → `.xosc` → `run_xosc.py` → ScenarioRunner → `vehicsim_aeb_control.py`
   (chỉ đọc trạng thái CARLA, áp bàn đạp) → cầu nối `vsos-bridge/1` → cùng `AebStack` và luật chấm của lõi Java.
   Mỗi run chụp lõi thành `core/vsos-core.jar` riêng, nên `mvnw clean` giữa run không làm hỏng run đó.
-- Artifact hiện tại là `vehicsim.xosc/v6`, profile `carla-0.9.16-xosc6` (bước 0,01 s; v4 = v3 + người "dừng ở lề" đứng lại, TD-47;
+- Artifact hiện tại là `vehicsim.xosc/v9`, profile `carla-0.9.16-xosc9` (bước 0,01 s; v4 = v3 + người "dừng ở lề" đứng lại, TD-47;
   v5 = v4 + mô-men phanh đã hiệu chuẩn `vs_physics_wheel_max_brake_torque`, ADR-051; từ 11/11 thêm thời tiết theo preset CARLA và
-  `decel_available` theo phanh 100% đo được, [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md);
-  v6 = v5 + AEB của ca người đi bộ nhận perception từ radar, [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md)). File v1 phải xuất lại
-  từ web; không ghép baseline `-xosc1`, `-xosc2` (20 Hz), `-xosc3` (người dừng ở lề đi vào làn), `-xosc4` (phanh CARLA chưa hiệu chuẩn),
-  `-xosc5` (AEB dùng ground truth), runner trực tiếp `carla-0.9.16` và `-xosc6`. Backend không chạy lại run `-xosc1`…`-xosc5`;
-  `run_xosc.py` vẫn chạy file v2…v5 ngoài web.
+  `decel_available` theo phanh 100% đo được, [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md); v6 = v5 + lệnh giảm tốc ra bàn đạp kẹp ở μ·g, ADR-052; v7 = v6 + dưới 6 m/s adapter đặt tốc độ thay cú dừng gấp, ADR-053; v8 = v7 + bảng bàn đạp e-tron theo tốc độ, người đi bộ khởi hành sớm v × 0,34 s, trượt dừng lề 0,056 s, ADR-054; v9 = v8 + AEB của ca người đi bộ nhận perception từ radar, [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md) và ADR-055). File v1 phải xuất lại từ web; không ghép baseline
+  `-xosc1`, `-xosc2` (20 Hz), `-xosc3` (người dừng ở lề đi vào làn), `-xosc4` (phanh CARLA chưa hiệu chuẩn), `-xosc5` (chưa kẹp μ·g), `-xosc6` (còn cú dừng gấp), `-xosc7` (bàn đạp tuyến tính), `-xosc8` (AEB dùng ground truth),
+  runner trực tiếp `carla-0.9.16` và `-xosc9`. Backend không chạy lại run `-xosc1`…`-xosc8`; `run_xosc.py` vẫn chạy file v2…v8 ngoài web.
 - `.xosc` là đầu vào mô phỏng. JSON vẫn là hợp đồng nội bộ/result; không đổi đuôi JSON thành XML hoặc bỏ metadata seed/source.
   Runner CARLA trực tiếp nhận bundle JSON (`run_variant.py`) đã gỡ ở ADR-042; `run_xosc.py` từ chối `.json`. Chạy lại bundle bằng
   bộ động học: `java -cp target/classes com.vsos.core.bridge.BridgeMain kinematic <file>` (cần `mvnw compile`).
@@ -218,11 +216,11 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 2. **Phạm vi map:** bộ xuất hiện dùng Town04 road 40/lane -4 và lấy cao độ theo map.
    Không thay bằng WorldPosition phẳng hay đổi road/map mà chưa kiểm hình học, cao độ và dải tham số.
 3. **Dừng ở lề (sửa ở xosc4):** PedestrianControl bỏ waypoint khi còn cách < 1,0 m rồi đi tiếp theo hướng cũ. Bộ xuất đặt
-   waypoint cuối quá lề đúng 1,0 m trừ v × 0,07 s (quãng trượt đo được), và event `StopAtCurb` đặt tốc độ 0 khi action `CrossRoad`
+   waypoint cuối quá lề đúng 1,0 m trừ v × 0,056 s (quãng trượt đo được; v4–v7 là 0,07 s, ADR-054), và event `StopAtCurb` đặt tốc độ 0 khi action `CrossRoad`
    kết thúc (`StoryboardElementStateCondition`). Đừng thay bằng `delay` của Condition (ScenarioRunner tính delay từ lúc bắt đầu kiểm,
    không phải từ lúc điều kiện đúng) hay `ReachPositionCondition` (khoảng cách 3D, lệch độ cao tâm người đi bộ ~0,9 m).
-4. **Phanh chưa hiệu chuẩn (TD-17):** CARLA có động lực học khác bộ động học. Số CARLA dùng quan sát/đối chiếu,
-   không sửa số để khớp và không đưa vào báo cáo như bằng chứng regression hoặc chứng nhận an toàn.
+4. **Phanh CARLA (TD-17):** đã hiệu chuẩn mô-men (ADR-051), kẹp μ·g (ADR-052), thay cú dừng gấp dưới 6 m/s (ADR-053) và bảng bàn đạp e-tron (ADR-054); perception của ca người đi bộ từ radar từ v9 (ADR-043, ADR-055),
+   xe phía trước vẫn từ ground truth (TD-01). Số CARLA dùng quan sát/đối chiếu, không sửa số để khớp và chưa đưa vào báo cáo như chứng nhận an toàn.
 5. **Sensor khởi tạo/va chạm:** 0,5 giây đầu có xung do đặt lại vị trí/tốc độ; sau va chạm IMU đo xung lực đâm.
    CSV vẫn giữ các khung khởi tạo/sau va chạm nhưng đã lọc số phi lý; jerk IMU được làm mượt 0,1 giây.
    Summary và `TelemetryMetricsService` loại các đoạn đó khi tính chỉ số phanh; không lấy đỉnh thô làm chỉ số phanh.

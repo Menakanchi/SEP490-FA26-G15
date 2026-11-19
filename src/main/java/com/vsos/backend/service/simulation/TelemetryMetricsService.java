@@ -205,7 +205,7 @@ public class TelemetryMetricsService {
 
         // 3 mục tiêu MOBO (ADR-040)
         Double rmsJerk = calculateRmsJerk(frames, firstBrakeTime, tHit);
-        // Mục tiêu 2 là vận tốc va chạm tương đối (chốt 13/11/2026, cùng định nghĩa với lõi: bộ động học 1.1, CARLA v6).
+        // Mục tiêu 2 là vận tốc va chạm tương đối (chốt 13/11/2026, cùng định nghĩa với lõi: bộ động học 1.1, CARLA v9).
         Double impactSpeed = calculateRelativeImpactSpeed(frames, collisions);
         Double stoppingDistance = calculateStoppingDistance(frames, firstBrakeTime, tHit, decelAvailable);
 

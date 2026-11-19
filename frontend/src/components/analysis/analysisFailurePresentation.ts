@@ -12,8 +12,8 @@ export const EVIDENCE_FIELDS: Record<string, { label: string; unit: string; time
   first_detection_distance_m: { label: "Cự ly phát hiện", unit: "m" },
   decision_t: { label: "Quyết định AEB", unit: "s", time: true },
   decision_ttc_s: { label: "TTC tại quyết định", unit: "s" },
-  brake_onset_t: { label: "Phanh có hiệu lực", unit: "s", time: true },
-  response_time_s: { label: "Trễ phanh", unit: "s" },
+  brake_onset_t: { label: "Bắt đầu lệnh phanh", unit: "s", time: true },
+  response_time_s: { label: "Trễ lệnh phanh", unit: "s" },
   max_deceleration_mps2: { label: "Giảm tốc cực đại", unit: "m/s²" },
   road_friction: { label: "Hệ số ma sát", unit: "" },
 };

@@ -142,7 +142,7 @@ export interface VehicSimContextData {
   project: { id: number; name: string };
   workspace: { id: number; name: string } | null;
   vehicle: { id: number; name: string } | null;
-  /** Bộ mô phỏng run MỚI sẽ dùng, vd. `vehicsim-kinematic-1.0` hoặc `carla-0.9.16-xosc6`. */
+  /** Bộ mô phỏng run MỚI sẽ dùng, vd. `vehicsim-kinematic-1.1` hoặc `carla-0.9.16-xosc9`. */
   simulator: string;
   system: { id: number; name: string; baseline: VersionBrief | null };
   versions: VersionBrief[];
@@ -498,6 +498,8 @@ export interface FailureDetail extends RunHeader {
   chain_confidence: number | null;
   configuration: { code: string; name: string; unit: string; value: number | undefined }[];
   environment: {
+    /** Existing AnalysisViewService metadata; optional for archived/older responses. */
+    category?: string | null;
     ego_speed_kmh: number;
     trigger_distance_m: number;
     pedestrian_speed_mps: number;

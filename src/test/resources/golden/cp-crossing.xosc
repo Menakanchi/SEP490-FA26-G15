@@ -2,7 +2,7 @@
 <OpenSCENARIO>
   <FileHeader revMajor="1" revMinor="0" date="2026-10-18T00:00:00" description="VehicSim CP_CROSSING" author="VehicSim" />
   <ParameterDeclarations>
-    <ParameterDeclaration name="vs_format" parameterType="string" value="vehicsim.xosc/v6" />
+    <ParameterDeclaration name="vs_format" parameterType="string" value="vehicsim.xosc/v9" />
     <ParameterDeclaration name="vs_fixed_delta_seconds" parameterType="string" value="0.01" />
     <ParameterDeclaration name="vs_perception_period_s" parameterType="string" value="0.05" />
     <ParameterDeclaration name="vs_seed" parameterType="string" value="0" />
@@ -195,7 +195,7 @@
                         <EntityRef entityRef="hero" />
                       </TriggeringEntities>
                       <EntityCondition>
-                        <DistanceCondition value="27.375" freespace="false" alongRoute="false" rule="lessThan">
+                        <DistanceCondition value="31.15277777777778" freespace="false" alongRoute="false" rule="lessThan">
                           <Position>
                             <LanePosition roadId="40" laneId="-4" s="61.666666666666664" offset="0.0" />
                           </Position>

@@ -9,13 +9,13 @@ Code dùng chung: [AnalysisMetrics](../../src/main/java/com/vsos/core/evaluation
 | Nguồn | Pha/công thức hiện có | Cách sử dụng |
 |---|---|---|
 | SIMULATOR_RESULT / động học | Simulator.brakePhaseMetrics: từ brake_onset_t tới hết frames; jerk = Δa/dt, RMS = sqrt(mean(jerk²)); bước cũ 0,05 s, không thêm lọc | Dùng giá trị đã lưu; nguồn canonical cho snapshot. |
-| SIMULATOR_RESULT / CARLA | Cùng lõi Java, profile simulator xác định; có dao động vật lý và gia tốc kẹp theo mô hình | Chỉ gộp cùng simulator identity/dt/xe/AEB; nhãn quan sát, chưa hiệu chuẩn phanh. |
+| SIMULATOR_RESULT / CARLA | Cùng lõi Java, profile simulator xác định; có dao động vật lý và gia tốc kẹp theo mô hình | Chỉ gộp cùng simulator identity/dt/xe/AEB; nhãn quan sát. E-tron xosc5 có hiệu chuẩn mô-men theo ADR-051; TD-17 còn mở, không tương đương xác minh vật lý ngoài đời. |
 | SENSOR_RECOMPUTED / TelemetryMetricsService | Warmup 0,5 s; brake >0,05; cắt trước collision; ưu tiên imu_jerk_ms3, nếu thiếu dùng Δa/Δt | Đây là phép đo khác; không ghi đè objective đã lưu hoặc gộp vào SIMULATOR_RESULT. |
 
-**Cập nhật 13/11/2026 ([ADR-052](../adr/ADR-052-chot-chi-so-va-che-do-aeb-tat-13-11.md)) — áp cho định danh mới, run cũ giữ số:**
-- Impact (`impact_speed_mps`) là **vận tốc va chạm tương đối** (độ lớn hiệu hai vector, m/s) từ bộ động học `vehicsim-kinematic-1.1` và CARLA `-xosc6`;
-  tốc độ ego ở `ego_impact_speed_mps`. Run `1.0` / `≤ -xosc5`: impact legacy là tốc độ ego — không gộp hai định nghĩa (khác simulator identity).
-- RMS jerk CARLA `-xosc6`: gia tốc lọc Euro NCAP (Butterworth 12-pole phaseless 10 Hz), cửa sổ từ T_AEB; số chưa lọc ở `rms_jerk_raw_mps3`.
+**Cập nhật 13/11/2026 ([ADR-055](../adr/ADR-055-chot-chi-so-va-che-do-aeb-tat-13-11.md)) — áp cho định danh mới, run cũ giữ số:**
+- Impact (`impact_speed_mps`) là **vận tốc va chạm tương đối** (độ lớn hiệu hai vector, m/s) từ bộ động học `vehicsim-kinematic-1.1` và CARLA `-xosc9`;
+  tốc độ ego ở `ego_impact_speed_mps`. Run `1.0` / `≤ -xosc8`: impact legacy là tốc độ ego — không gộp hai định nghĩa (khác simulator identity).
+- RMS jerk CARLA `-xosc9`: gia tốc lọc Euro NCAP (Butterworth 12-pole phaseless 10 Hz), cửa sổ từ T_AEB; số chưa lọc ở `rms_jerk_raw_mps3`.
   Bộ động học (bước 0,05 s) giữ công thức chưa lọc từ `brake_onset_t`.
 - Run `aeb_mode = OFF` không vào tập phân tích/tối ưu/regression (chỉ số pha phanh NULL, chỉ để đối chiếu).
 

@@ -79,7 +79,7 @@ public final class Simulator {
         }
     }
 
-    /** Định nghĩa cũ (bộ động học 1.0, CARLA ≤ v5): {@code impact_speed_mps} là tốc độ ego lúc va chạm. Giữ để chạy lại ra đúng kết quả đã lưu. */
+    /** Định nghĩa cũ (bộ động học 1.0, CARLA ≤ v8): {@code impact_speed_mps} là tốc độ ego lúc va chạm. Giữ để chạy lại ra đúng kết quả đã lưu. */
     public static SimulationOutcome buildOutcome(CrossingCase c, AebParams params, VehicleSpec vehicle, AebStack stack, MotionStats stats, List<Frame> frames,
                                                  List<Map<String, Object>> events, String endReason, double crossingX, double decelAvailable, double dt) {
         return buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, crossingX, decelAvailable, dt, null);
@@ -87,7 +87,7 @@ public final class Simulator {
 
     /**
      * @param impactRelative vận tốc va chạm tương đối (m/s, độ lớn hiệu hai vector vận tốc lúc tiếp xúc) — định nghĩa hiện hành (chốt 13/11/2026, bộ động
-     *                       học 1.1, CARLA v6): {@code impact_speed_mps} là số này, tốc độ ego ghi ở {@code ego_impact_speed_mps}. {@code null} = định
+     *                       học 1.1, CARLA v9): {@code impact_speed_mps} là số này, tốc độ ego ghi ở {@code ego_impact_speed_mps}. {@code null} = định
      *                       nghĩa cũ (tốc độ ego, không có khoá {@code ego_impact_speed_mps}). Không va chạm thì bỏ qua.
      */
     public static SimulationOutcome buildOutcome(CrossingCase c, AebParams params, VehicleSpec vehicle, AebStack stack, MotionStats stats, List<Frame> frames,

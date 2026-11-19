@@ -27,9 +27,9 @@ Code đã có mô tả, sinh biến thể, baseline, phân tích, candidate th�
 **MOBO/Pareto/Sensitivity/Robustness chưa triển khai** (TD-39, TD-06).
 CARLA web đã có `.xosc` + ScenarioRunner 0.9.16, RGB/sensor; **chưa có API/nút hủy** (TD-37).
 Schema có 7 category; bộ động học và `.xosc`/CARLA chạy `CP_CROSSING` và CCRs/CCRm/CCRb (ADR-050); còn 3 nhóm (TD-42).
-AEB của ca người đi bộ trên CARLA nhận perception từ radar từ `.xosc` v6 / `-xosc6` (ADR-043); xe phía trước vẫn dùng ground truth (TD-01).
-Chỉ số chốt 13/11 (ADR-052): vận tốc va chạm tương đối (động học `1.1`), RMS jerk CARLA lọc Euro NCAP từ T_AEB, run `aeb_mode = OFF` chỉ để đối chiếu.
-Phanh CARLA đã hiệu chuẩn mô-men cho e-tron từ v5 (ADR-051), còn lệch ở tốc độ thấp và ma sát (TD-17).
+AEB của ca người đi bộ trên CARLA nhận perception từ radar từ `.xosc` v9 / `-xosc9` (ADR-043, ADR-055); xe phía trước vẫn dùng ground truth (TD-01).
+Chỉ số chốt 13/11 (ADR-055): vận tốc va chạm tương đối (động học `1.1`), RMS jerk CARLA lọc Euro NCAP từ T_AEB, run `aeb_mode = OFF` chỉ để đối chiếu.
+Phanh CARLA đã hiệu chuẩn mô-men cho e-tron (ADR-051), kẹp ở μ·g khi đường ướt (ADR-052) và thay cú dừng gấp dưới 6 m/s (ADR-053); v8 thêm bảng bàn đạp e-tron và bù người đi bộ khởi động chậm (ADR-054, Proposed); còn lệch (TD-17).
 Hướng đi ngang đã sửa ở xosc2; người "dừng ở lề" đứng lại ở lề từ xosc4 (23/10/2026, kiểm CARLA thật).
 
 ## Năm phần bàn giao theo chức năng

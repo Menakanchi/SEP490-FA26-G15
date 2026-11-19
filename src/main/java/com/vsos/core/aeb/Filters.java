@@ -10,7 +10,7 @@ import com.vsos.core.common.Py;
  * Bộ lọc gia tốc 10 Hz trước khi tính jerk (kế hoạch 20/10, D3) — port 1:1 từ {@code worker/vehicsim_core/filters.py} (ADR-042).
  *
  * <p>{@link #butterworthLowpass2}/{@link #filteredRmsJerk}/{@link #SPEC}: bản thử D3 (Butterworth bậc 2 một chiều, có trễ pha), không theo Euro NCAP;
- * chỉ còn cho file CARLA ≤ v5 chạy lại ra đúng kết quả đã lưu. Từ CARLA v6 (13/11/2026) {@code rms_jerk_mps3} dùng bộ lọc đúng Euro NCAP AEB/LSS VRU
+ * chỉ còn cho file CARLA ≤ v8 chạy lại ra đúng kết quả đã lưu. Từ CARLA v9 (ADR-055, chốt 13/11/2026) {@code rms_jerk_mps3} dùng bộ lọc đúng Euro NCAP AEB/LSS VRU
  * v4.5.1 mục 4.4.1.2 ({@link #butterworthZeroPhase}, {@link #EURO_NCAP_SPEC}) với cửa sổ từ T_AEB ({@link #tAebIndex}).</p>
  */
 public final class Filters {
@@ -63,7 +63,7 @@ public final class Filters {
         return out;
     }
 
-    // ---- Euro NCAP AEB/LSS VRU Test Protocol v4.5.1 (chốt 13/11/2026, CARLA v6) ------------------------------------------------------------
+    // ---- Euro NCAP AEB/LSS VRU Test Protocol v4.5.1 (chốt 13/11/2026, CARLA v9) ------------------------------------------------------------
 
     /** Bậc của mỗi lượt: "12-pole phaseless" theo quy ước SAE J211 = bộ lọc 6 cực chạy xuôi rồi ngược (6 × 2 = 12 cực, pha bằng 0). */
     public static final int EURO_NCAP_ORDER_PER_PASS = 6;
@@ -72,7 +72,7 @@ public final class Filters {
     public static final double T_AEB_LOW_MPS2 = -1.0;
     public static final double T_AEB_HIGH_MPS2 = -0.3;
 
-    /** Đặc tả bộ lọc Euro NCAP ghi kèm kết quả v6. */
+    /** Đặc tả bộ lọc Euro NCAP ghi kèm kết quả v9. */
     public static final Map<String, Object> EURO_NCAP_SPEC = euroNcapSpec();
 
     private static Map<String, Object> euroNcapSpec() {

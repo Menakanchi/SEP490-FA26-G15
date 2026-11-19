@@ -1,5 +1,7 @@
 # ADR-043 — Perception AEB trên CARLA lấy từ radar, chạy bóng trước khi thay ground truth
 
+> **Đổi tên định danh (19/11/2026, khi gộp `main`):** trong tài liệu này `.xosc` v6 / `-xosc6` = bản **radar** (AEB của ca người đi bộ nhận perception từ radar). `main` đã dùng v6–v8 cho ADR-052…054 (kẹp μ·g, tốc độ vùng thấp, bảng bàn đạp), nên bản radar thành **v9 / `-xosc9`** (xây trên v8) và ADR chốt chỉ số 13/11 thành [ADR-055](ADR-055-chot-chi-so-va-che-do-aeb-tat-13-11.md). Số liệu và đường dẫn `data/*-v6-*` bên dưới là bằng chứng đo ở nhánh trước khi gộp, giữ nguyên.
+
 **Trạng thái:** Proposed 22/10/2026 (TrungDQ, phần 2 "Chạy baseline"; kế hoạch 20/10 việc 1, quyết định D1/D2).
 **Cập nhật 13/11/2026:** ✅ **Accepted** (TrungDQ chốt). Giai đoạn 2 đã triển khai ở `.xosc` v6 / `-xosc6` (mục "Giai đoạn 2 — triển khai 13/11" cuối
 file). Tiêu chí "phát hiện ≤ 0,3 s sau khi người bắt đầu đi" **thay** bằng tiêu chí theo quyết định AEB (mục "Tiêu chí chốt 13/11").

@@ -121,6 +121,10 @@ class XoscExportTest {
         assertThat(nodes(doc, "/OpenSCENARIO/Entities/ScenarioObject[@name='pedestrian']/Pedestrian").getLength()).isEqualTo(1);
         String event = "//Event[@name='StartCrossing']";
         assertThat(nodes(doc, event + "/StartTrigger//DistanceCondition").getLength()).isEqualTo(1);
+        // v8 (ADR-054): người đi bộ CARLA khởi hành sớm hơn quãng xe đi trong 0,34 s (tăng tốc dần, đo 16/11/2026); 40 km/h, kích hoạt 25 m, xe dài 4,75 m.
+        Element distance = (Element) nodes(doc, event + "/StartTrigger//DistanceCondition").item(0);
+        assertThat(Double.parseDouble(distance.getAttribute("value"))).isCloseTo(25 + 4.75 / 2 + 40 / 3.6 * 0.34, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(XoscExport.CARLA_WALKER_START_LEAD_S).isEqualTo(0.34);
         assertThat(nodes(doc, event + "/StartTrigger//SimulationTimeCondition").getLength()).isZero();
         assertThat(nodes(doc, event + "//FollowTrajectoryAction/Trajectory/Shape/Polyline/Vertex").getLength()).isEqualTo(2);
     }
@@ -165,7 +169,10 @@ class XoscExportTest {
         assertThat(nodes(doc, "//Action[@name='CrossRoad']").getLength()).as("tên action được tham chiếu phải có thật").isEqualTo(1);
     }
 
-    /** Golden {@code cp-crossing.xosc} (ca băng ngang) chỉ đổi {@code vs_format} v3 → v4 nên {@link #xmlMatchesTheSchemaCheckedGolden} giữ XML cũ. */
+    /**
+     * Golden {@code cp-crossing.xosc} (ca băng ngang) đổi {@code vs_format} theo định dạng hiện hành; từ v8 thêm giá trị {@code DistanceCondition}
+     * khởi hành sớm của người đi bộ (ADR-054).
+     */
     @Test
     void crossingCasesHaveNoStopEvent() throws Exception {
         String xml = XoscExport.export(Bundle.readSpec(ir("stops_at_curb", false)));
@@ -173,9 +180,21 @@ class XoscExportTest {
     }
 
     @Test
-    void v3AndV4FilesStillReadWithTheirOwnIdentity() {
+    void olderFormatsStillReadWithTheirOwnIdentity() {
         Bundle.RunSpec spec = Bundle.readSpec(ir());
-        String v4 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.PREVIOUS_FORMAT);
+        String v8 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V8_FORMAT);
+        assertThat(Xosc.profile(v8)).isEqualTo(new Xosc.Profile("-xosc8", 0.01, 0.05));
+        assertThat(Xosc.read(v8)).isEqualTo(spec);
+        String v7 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V7_FORMAT);
+        assertThat(Xosc.profile(v7)).isEqualTo(new Xosc.Profile("-xosc7", 0.01, 0.05));
+        assertThat(Xosc.read(v7)).isEqualTo(spec);
+        String v6 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V6_FORMAT);
+        assertThat(Xosc.profile(v6)).isEqualTo(new Xosc.Profile("-xosc6", 0.01, 0.05));
+        assertThat(Xosc.read(v6)).isEqualTo(spec);
+        String v5 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V5_FORMAT);
+        assertThat(Xosc.profile(v5)).isEqualTo(new Xosc.Profile("-xosc5", 0.01, 0.05));
+        assertThat(Xosc.read(v5)).isEqualTo(spec);
+        String v4 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V4_FORMAT);
         assertThat(Xosc.profile(v4)).isEqualTo(new Xosc.Profile("-xosc4", 0.01, 0.05));
         assertThat(Xosc.read(v4)).isEqualTo(spec);
         String v3 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V3_FORMAT);
@@ -215,7 +234,7 @@ class XoscExportTest {
     @Test
     void currentProfileIs100HzWithSensorPeriodPerception() {
         Xosc.Profile p = Xosc.profile(XoscExport.export(Bundle.readSpec(ir())));
-        assertThat(p).isEqualTo(new Xosc.Profile("-xosc6", 0.01, 0.05));
+        assertThat(p).isEqualTo(new Xosc.Profile("-xosc9", 0.01, 0.05));
     }
 
     @Test

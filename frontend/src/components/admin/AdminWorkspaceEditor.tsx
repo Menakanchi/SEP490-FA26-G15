@@ -13,7 +13,7 @@ type Manager = { id: number; name: string; email: string };
 type Phase = "form" | "review" | "discard";
 const message = (error: unknown) => error instanceof Error ? error.message : "Không thực hiện được thao tác. Hãy thử lại.";
 function managerLabel(manager: Manager | null) { return manager ? manager.name + " · " + manager.email + " · ID #" + manager.id : "Chưa chọn Manager"; }
-export function AdminWorkspaceEditor({ row, returnFocusTo, onCancel, onSaved }: { row: AdminRow | null; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: () => void }) {
+export function AdminWorkspaceEditor({ row, returnFocusTo, onCancel, onSaved }: { row: AdminRow | null; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: (name: string) => void }) {
   const readOnly = row?.status === "ARCHIVED";
   const [initial] = useState<Body>(() => ({ name: String(row?.name ?? "").trim(), description: String(row?.description ?? "").trim() || null, manager_id: Number(row?.manager_id ?? 0) }));
   const [initialManager] = useState<Manager | null>(() => row ? { id: Number(row.manager_id), name: String(row.manager_name || "Manager #" + row.manager_id), email: String(row.manager_email ?? "—") } : null);
@@ -85,7 +85,7 @@ export function AdminWorkspaceEditor({ row, returnFocusTo, onCancel, onSaved }: 
   async function save() {
     if (saveLock.current || readOnly || !pending) return;
     saveLock.current = true; setBusy(true); setError("");
-    try { await adminApi.save("workspaces", row?.id ?? null, pending); onSaved(); }
+    try { await adminApi.save("workspaces", row?.id ?? null, pending); onSaved(pending.name); }
     catch (error) { setError(message(error)); setPending(null); setPhase("form"); }
     finally { saveLock.current = false; setBusy(false); }
   }
@@ -98,7 +98,7 @@ export function AdminWorkspaceEditor({ row, returnFocusTo, onCancel, onSaved }: 
         {phase === "discard" ? <section><h3>Bỏ thay đổi chưa lưu?</h3><p className={styles.description}>Dữ liệu đang nhập cho workspace {row?.name || name || "mới"} sẽ bị bỏ khỏi biểu mẫu.</p></section> : phase === "review" ? <section>
           <h3>{row ? "Xác nhận thay đổi workspace" : "Xác nhận tạo workspace"}</h3><p className={styles.description}>{row ? "Kiểm tra thay đổi cho " + row.name + " trước khi lưu." : "Workspace " + after.name + " sẽ được tạo ở trạng thái hoạt động."}</p>
           <div className={styles.reviewTable} role="region" aria-label="Nội dung xác nhận workspace" tabIndex={0}><table><thead><tr><th scope="col">Thông tin</th>{row && <th scope="col">Hiện tại</th>}<th scope="col">Sau khi {row ? "lưu" : "tạo"}</th></tr></thead><tbody>{changes.map(change => <tr key={change.label}><th scope="row">{change.label}</th>{row && <td>{change.before || "—"}</td>}<td>{change.after || "—"}</td></tr>)}</tbody></table></div>
-          {!row || managerChanged ? <div className={styles.impact} aria-label="Ảnh hưởng khi giao Manager"><strong>Giao Manager phụ trách</strong><p>{managerLabel(selected)} sẽ nhận thông báo được giao quản lý workspace sau khi lưu thành công.</p><p>Hệ thống kiểm tra lại tài khoản phải còn vai trò MANAGER và đang hoạt động khi lưu.</p></div> : <p className={styles.note}>Manager phụ trách giữ nguyên; thay đổi tên hoặc mô tả không gửi thông báo giao workspace.</p>}
+          {!row || managerChanged ? <div className={styles.impact} aria-label="Ảnh hưởng khi giao Manager"><strong>Giao Manager phụ trách</strong><p>{managerLabel(selected)} sẽ nhận thông báo được giao quản lý workspace sau khi lưu thành công.</p><p>Hệ thống kiểm tra lại tài khoản phải còn vai trò MANAGER và đang hoạt động khi lưu.</p>{managerChanged && <p>Thành viên và project hiện có được giữ nguyên khi giao lại Manager.</p>}</div> : <p className={styles.note}>Manager phụ trách giữ nguyên; thay đổi tên hoặc mô tả không gửi thông báo giao workspace.</p>}
         </section> : <>
           {row && <dl className={styles.summary} aria-label="Thông tin workspace hiện tại"><div><dt>Trạng thái</dt><dd>{WORKSPACE_STATUSES[String(row.status)]}</dd></div><div><dt>Thành viên</dt><dd>{workspaceCount(row.member_count)}</dd></div><div><dt>Project</dt><dd>{workspaceCount(row.project_count)}</dd></div></dl>}
           {readOnly ? <><p className={styles.note}>Workspace đã lưu trữ, chỉ được xem thông tin.</p><dl className={workspace.details}><dt>Manager phụ trách</dt><dd>{managerLabel(initialManager)}</dd><dt>Mô tả</dt><dd>{initial.description || "Chưa có mô tả."}</dd><dt>Ngày tạo</dt><dd>{workspaceDate(row?.created_date ?? null)}</dd><dt>Cập nhật</dt><dd>{workspaceDate(row?.updated_at ?? null)}</dd></dl></> : <form id="admin-workspace-form" noValidate onSubmit={prepare}>
