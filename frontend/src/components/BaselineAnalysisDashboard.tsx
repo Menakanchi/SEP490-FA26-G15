@@ -212,7 +212,7 @@ export function BaselineAnalysisDashboard() {
       </div></details>
       <p className="analysis-caption">Thống kê và danh sách dùng cùng bộ lọc. Đổi bộ lọc giữ nguyên tập đã chọn.</p>
     </section>}
-    {view === "overview" && <AnalysisOverview data={data} loading={loading} hasError={Boolean(error)} onOpenRuns={() => update({ view: "runs" })} onFilterSimulator={simulator => update({ simulator }, true)} />}
+    {view === "overview" && <AnalysisOverview data={data} loading={loading} hasError={Boolean(error)} onOpenRuns={() => update({ view: "runs" })} onFilterSimulator={simulator => update({ simulator }, true)} returnTo={returnTo} scope={activeFilters.map(filter => filter.label)} />}
     {view === "dataset" && <AnalysisDatasetPreparation selection={selection} checks={checks} ready={draftReady} canWrite={canWrite} canSave={canSave}
       operation={operation} operationError={mutationError} errorKind={operationError?.kind ?? null}
       snapshotId={savedId} hasSnapshot={rawDatasetId !== null} snapshot={saved} snapshotLoading={snapshotLoading} snapshotError={snapshotError}

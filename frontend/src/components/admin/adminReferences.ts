@@ -1,3 +1,5 @@
+import { ApiError } from "@/services/api";
+
 export const REFERENCE_KINDS: Record<string, string> = { PRINCIPLE: "Nguyên lý", THEORY: "Lý thuyết", CONSTANT: "Hằng số", DEFINITION: "Định nghĩa", UNIT: "Đơn vị", STANDARD: "Tiêu chuẩn" };
 export const REFERENCE_STATUSES: Record<string, string> = { ACTIVE: "Đang bật", INACTIVE: "Đã tắt" };
 export const REFERENCE_SORTS: Record<string, string> = { newest: "Mới nhất", oldest: "Cũ nhất", name: "Tên tài liệu A–Z" };
@@ -48,3 +50,16 @@ export const referenceFields = [
   { key: "url", label: "Đường dẫn nguồn", max: 1024 },
   { key: "doi", label: "DOI", max: 255 },
 ] as const;
+
+export function referenceErrorMessage(error: unknown, operation: "load" | "save"): string {
+  if (error instanceof ApiError) {
+    if (error.status < 500) return error.message;
+    return operation === "save"
+      ? "Máy chủ chưa thể xác nhận kết quả lưu tài liệu. Hãy tải lại danh sách để kiểm tra trước khi thử lại. Dữ liệu nhập được giữ lại."
+      : "Máy chủ chưa thể tải tài liệu. Hãy thử lại sau.";
+  }
+  if (error instanceof TypeError) return "Không thể kết nối đến máy chủ. Kiểm tra kết nối mạng rồi thử lại." + (operation === "save" ? " Dữ liệu nhập được giữ lại." : "");
+  if (operation === "save") return "Không thể xác nhận kết quả lưu. Hãy tải lại danh sách để kiểm tra trước khi thử lại. Dữ liệu nhập được giữ lại.";
+  if (error instanceof SyntaxError) return "Phản hồi tài liệu không hợp lệ. Hãy thử tải lại.";
+  return error instanceof Error ? error.message : "Không thể tải tài liệu. Hãy thử lại.";
+}

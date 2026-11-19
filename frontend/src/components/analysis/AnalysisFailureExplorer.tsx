@@ -6,6 +6,8 @@ import { vi, viSummary } from "@/components/vehicsimI18n";
 import { runCode } from "@/components/VehicSimUi";
 import type { FailureFilters, FailureList } from "@/types/vehicsim";
 import { FAILURE_FILTER_KEYS, FAILURE_OUTCOMES, FAILURE_STAGES, FAILURE_WEATHERS, validCount } from "./analysisFailurePresentation";
+import { formatMetric } from "./analysisMetricFormat";
+import { failureTypeLabel } from "./analysisClassificationData";
 import styles from "./AnalysisFailureExplorer.module.css";
 
 type Props = {
@@ -71,17 +73,17 @@ export function AnalysisFailureExplorer({ data, loading, hasError, filters, page
         <div className={styles.summary}><p role="status">Hiển thị <strong>{rows.length}</strong> / {data.items.length} ca trong trang · <strong>{count(data.total)}</strong> ca khớp bộ lọc</p><span className="analysis-caption">Mới nhất trước · —: chưa có số đo</span></div>
         {rows.length > 0 ? <AnalysisTableRegion className={styles.tableWrap} label="Bảng ca lỗi, cuộn ngang để xem thêm"><table className={`analysis-table ${styles.table}`}>
           <caption className="sr-only">Ca lỗi, nhận định chính, điểm luật và bằng chứng từ API</caption>
-          <thead><tr>{["Run / biến thể", "Kết quả / khâu chính", "Nhận định theo luật", "Va chạm (km/h)", "TTC min (s)", "Cấu hình / điều kiện", "Bằng chứng"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
+          <thead><tr>{["Run / biến thể", "Kết quả / phân loại đã lưu", "Giả thuyết theo luật", "Va chạm (km/h)", "TTC min (s)", "Cấu hình / điều kiện", "Bằng chứng"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
           <tbody>{rows.map((item, index) => <tr key={`${item.failure_id ?? item.run_id}-${index}`} data-failure-run={item.run_id}>
             <td className={styles.identity}><Link href={href(item.run_id, "evidence")}>{runCode(item.run_id)} · {item.variant}</Link><small>{item.family}</small><small>{viSummary(item.summary)}</small></td>
-            <td><div className={styles.badges}><AnalysisBadge value={item.outcome} />{item.failure_class ? <AnalysisBadge value={item.failure_class} /> : <small>Chưa có khâu nhận định</small>}</div></td>
-            <td className={styles.cause}><p>{item.root_cause ? vi(item.root_cause) : "API chưa có mô tả nhận định."}</p><small>Điểm luật: {metric(item.confidence)}</small>{item.cause_code && <details><summary>Mã nguyên nhân</summary><code>{item.cause_code}</code></details>}</td>
-            <td className="numeric">{metric(item.impact_kmh, 1)}</td><td className="numeric">{metric(item.min_ttc_s)}</td>
+            <td><div className={styles.badges}><span className="analysis-caption">Nhãn kết quả API</span><AnalysisBadge value={item.outcome} /><strong>{failureTypeLabel(item.failure_type)}</strong>{item.failure_type && <small>Mã: {item.failure_type}</small>}{item.failure_class ? <span>Khâu được luật nhắc tới: {analysisLabel(item.failure_class)}</span> : <small>Chưa có khâu nhận định</small>}</div></td>
+            <td className={styles.cause}><p>{item.root_cause ? vi(item.root_cause) : "API chưa có mô tả nhận định."}</p><small>{item.cause_code ? "Giả thuyết nguyên nhân, chưa xác nhận độc lập" : "Chưa có giả thuyết nguyên nhân riêng; mô tả có thể là mô tả lỗi"}</small><small>Điểm luật: {metric(item.confidence)}</small>{item.cause_code && <details><summary>Mã nguyên nhân</summary><code>{item.cause_code}</code></details>}</td>
+            <td className="numeric">{item.outcome === "COLLISION" ? formatMetric(item.impact_kmh, 1, true) : "—"}</td><td className="numeric">{formatMetric(item.min_ttc_s, 2, true)}</td>
             <td className={styles.context}>{item.config || "—"}<small>{analysisLabel(item.weather ?? null)} · {analysisLabel(item.time_of_day ?? null)}</small></td>
-            <td><div className={styles.actions}><Link href={href(item.run_id, "evidence")} aria-label={`Bằng chứng run ${item.run_id}`}>Nguyên nhân →</Link><Link href={href(item.run_id, "telemetry")} aria-label={`Telemetry run ${item.run_id}`}>Telemetry →</Link><Link href={href(item.run_id, "playback")} aria-label={`Playback run ${item.run_id}`}>Playback ↗</Link></div></td>
+            <td><div className={styles.actions}><Link href={href(item.run_id, "evidence")} aria-label={`Bằng chứng run ${item.run_id}`}>Bằng chứng →</Link><Link href={href(item.run_id, "telemetry")} aria-label={`Telemetry run ${item.run_id}`}>Telemetry →</Link><Link href={href(item.run_id, "playback")} aria-label={`Playback run ${item.run_id}`}>Playback ↗</Link></div></td>
           </tr>)}</tbody>
         </table></AnalysisTableRegion> : <div className="analysis-state"><strong>{data.total === 0 ? "Không có ca lỗi nào với bộ lọc này." : "Không có kết quả tìm trong trang ca lỗi."}</strong><p>{data.total === 0 ? "Thử mở rộng bộ lọc hoặc xem ca an toàn trong mục Lượt chạy." : "Thử từ khóa khác hoặc chuyển trang."}</p>{search && <button className="analysis-button" onClick={() => onUpdate({ f_q: "" }, false)}>Hiện toàn bộ trang ca lỗi</button>}</div>}
-        {rows.length > 0 && <p className="analysis-caption">Cuộn ngang để xem thêm nhận định và chỉ số. Điểm luật không phải xác suất đã hiệu chuẩn.</p>}
+        <p className="analysis-caption">Danh sách chỉ gồm lỗi đã được lưu, không bao phủ mọi run thiếu dữ liệu. Không có ca lỗi khớp bộ lọc không chứng minh an toàn. API danh sách chưa cung cấp verdict, tình trạng telemetry hoặc tính hợp lệ đánh giá; mở chi tiết để kiểm tra. Điểm luật không phải xác suất đã hiệu chuẩn.</p>
         <AnalysisPager page={page} size={size} total={data.total} onPage={value => onUpdate({ f_page: value }, false)} onSize={value => onUpdate({ f_size: value })} />
       </>}
     </section>

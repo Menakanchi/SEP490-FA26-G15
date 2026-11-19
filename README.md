@@ -9,7 +9,7 @@ chạm phía trước). Vòng khép kín của MVP:
 
 > Mô tả bằng tiếng Việt → Scenario IR → sinh biến thể → mô phỏng baseline → phân tích lỗi
 > (Perception / Decision / Control / Dynamics) → AEB candidate → regression cùng seed →
-> **kỹ sư Accept/Reject**
+> **Reviewer Accept/Reject** (project cá nhân có luồng chọn baseline riêng, ADR-046)
 
 Mô phỏng chạy bằng bộ động học tất định hoặc CARLA. Web xuất OpenSCENARIO `.xosc` và chạy ScenarioRunner 0.9.16
 qua controller dùng chung lõi AEB; JSON vẫn là giao tiếp nội bộ để lưu kết quả và giữ seed/source.
@@ -17,7 +17,7 @@ Khuyến nghị dựa trên mô phỏng — không thay thế kiểm thử vật
 
 ## Chạy local
 
-Cần: Docker Desktop, JDK 21, Python ≥ 3.10 (worker mô phỏng), Node.js 20+.
+Cần: Docker Desktop, JDK 21, Python ≥ 3.10 (adapter CARLA), Node.js 22 (khớp CI).
 
 ```bash
 cp .env.example .env          # điền khoá LLM, SMTP; JWT_SECRET bắt buộc ở production
@@ -63,9 +63,12 @@ make check                                   # = ba cổng của CI: Java, worke
 ./mvnw clean test                            # backend (không cần Docker)
 python -m pytest worker/tests -q             # adapter CARLA (cần mvnw compile cho test cầu nối)
 cd frontend && npm run lint && npx tsc --noEmit && npx next build
+npm run test:analysis                         # unit/contract offline; tiếp tục trong frontend
 ```
 
 Test Java và worker không cần Docker, CARLA hay khoá LLM; test Java dùng máy chủ giả thay cho LLM thật.
+Admin và Analysis browser regression cần app production riêng và browser đã cài;
+xem [hướng dẫn kiểm thử](frontend/tests/README.md). HTTP fixtures không phải full E2E.
 `tests/` giữ đặc tả/golden của converter Forge cũ và XSD. Bộ sinh CP_CROSSING mới được kiểm trong `XoscExportTest`
 và `OpenScenarioSchemaTest` (Java), đều chạy trong CI.
 
@@ -80,11 +83,12 @@ src/main/java/com/vsos/                  quy tắc gói: docs/vehicsim/quy-tac-d
                                            cầu nối (bridge/), MOBO (mobo/) — chỉ dùng JDK; ADR-042
 worker/                run_xosc.py, vehicsim_aeb_control.py, sensor_recorder.py — adapter CARLA, không chứa logic AEB
 frontend/              Next.js 16 — app/ (Tổng quan, kịch bản, AEB, phân tích, kiểm định, hồ sơ)
-database/mysql/        01_schema.sql (29 bảng) + migrations/
+database/mysql/        01_schema.sql (30 bảng trong file hiện tại) + migrations/
 docs/                  vehicsim/ (kiến trúc, từ điển dữ liệu), adr/, exec-plans/
 ```
 
-Bộ sinh `.xosc` CP_CROSSING chạy ở worker, chỉ dùng thư viện chuẩn; mã converter Forge cũ vẫn chỉ để đối chiếu trong lịch sử git.
+Bộ sinh `.xosc` nằm ở Java `core/xosc/XoscExport`, chạy offline bằng JDK;
+worker gọi ScenarioRunner/CARLA. Hỗ trợ CP_CROSSING và CCRS/CCRM/CCRB (ADR-050).
 
 ## Tài liệu
 
@@ -92,6 +96,8 @@ Bộ sinh `.xosc` CP_CROSSING chạy ở worker, chỉ dùng thư viện chuẩn
 - [Kiến trúc VehicSim](docs/vehicsim/architecture.md) · [Từ điển dữ liệu](docs/vehicsim/database-schema.md)
 - [ADR](docs/adr/README.md) · [Việc đã làm](docs/exec-plans/completed/) · [Nợ kỹ thuật](docs/exec-plans/tech-debt-tracker.md)
 - [CLAUDE.md](CLAUDE.md) — bẫy khi chạy CARLA / ScenarioRunner thật
+- [Bàn giao Admin / Analysis](docs/vehicsim/admin-analysis-handover.md) — code/API, chỉ số, tests và giới hạn
+- [Final QA Phase 20](docs/exec-plans/completed/2026-11-17-admin-analysis-phase-20-handover.md) — phase matrix, kết quả thực thi và readiness
 
 Repo dựng lên từ Scenario Forge (dự án AI20K RAV-03); phần Forge đã gỡ ngày 04/10/2026 (ADR-032),
 lịch sử còn trong git.

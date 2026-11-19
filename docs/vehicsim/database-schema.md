@@ -32,14 +32,14 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 | # | Nhóm | Bảng | Code đang dùng |
 |---|---|---|---|
 | 1 | Tài khoản | `roles`, `users` | Có |
-| 2 | Workspace, cộng tác, task | `workspaces`, `workspace_members`, `workspace_messages`, `notifications`, `workspace_tasks`, `task_reports` | `workspaces` (seed) |
+| 2 | Workspace, cộng tác, task | `workspaces`, `workspace_members`, `workspace_messages`, `notifications`, `workspace_tasks`, `task_reports` | Có: Admin workspace, Manager membership/task/report, chat và notifications |
 | 3 | Project & xe | `projects`, `project_members`, `carla_vehicle_models`, `sensors` | Có, trừ `project_members`, `sensors` |
 | 4 | AEB | `aeb_parameters`, `aeb_versions`, `aeb_parameter_values` | Có |
 | 5 | Kịch bản | `scenarios`, `scenario_versions` | Có |
 | 6 | Tối ưu & regression | `optimization_runs`, `optimization_trials`, `regression_tests` | `regression_tests` |
 | 7 | Mô phỏng, đánh giá, lỗi | `simulation_runs`, `simulation_artifacts`, `collision_events`, `failures`, `root_causes` | Có |
 | 8 | Phân tích, kết quả regression, khuyến nghị | `analysis_results`, `regression_test_items`, `engineering_recommendations` | Có; analysis_results mới dùng BASELINE_DATASET |
-| 9 | Tri thức kỹ thuật | `tech_references` | Chưa |
+| 9 | Tri thức kỹ thuật | `tech_references` | Có: Admin list/detail/create/update, bật/tắt |
 
 Bảng chưa có code là thiết kế trước theo FE (0 dòng); màn hình / API đến ở các demo sau.
 
@@ -910,7 +910,10 @@ Mỗi lần Accept / Reject / Request more tests ghi thêm một dòng, cùng tr
 
 #### `tech_references` — tri thức
 
-Hằng số, định nghĩa, tiêu chuẩn làm căn cứ cho mô hình và báo cáo (Admin quản lý). Chưa có code.
+Hằng số, định nghĩa, tiêu chuẩn làm căn cứ cho mô hình và báo cáo (Admin quản lý).
+Đã có `AdminController` / `AdminService` / `AdminRepository` và màn `/admin/tech-references`:
+list/detail/create/update, metadata nguồn, lọc/tìm/phân trang và bật/tắt; không có DELETE.
+API giữ `ref_value` dạng chuỗi DECIMAL để không làm mất độ chính xác.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -967,13 +970,18 @@ Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critica
 
 ## 9. Lệch và khoảng trống đã biết
 
-- **Một project:** MVP vẫn chạy trên project ACTIVE đầu tiên, chưa lọc theo workspace / thành viên, chưa có API
-  `project_members` (TD-30).
-- **Bảng chưa có code:** cộng tác (`workspace_*`, `notifications`), `sensors`, tối ưu, các loại phân tích thuật toán trong `analysis_results`,
-  `tech_references` — có schema, chưa có API / màn.
-- **Phanh CARLA chưa hiệu chuẩn (TD-17):** `tire_friction`, `max_brake_torque_nm`, `road_friction` chưa vào vật lý
-  CARLA. `carla_full_brake_decel_mps2` (từ 21/10) đi theo bundle `vehicle.carla.full_brake_decel_mps2` → `.xosc` `vs_full_brake_decel_mps2`
-  → controller; còn NULL (chưa đo) thì controller dùng 4,6 m/s².
+- **Project scope:** ADMIN/ENGINEER/MANAGER vẫn dùng project nhóm ACTIVE đầu tiên (TD-30);
+  EXPERIENCER theo project cá nhân/owner, REVIEWER theo membership workspace và header project (ADR-048/049).
+  Chưa có API quản trị `project_members`; không tuyên bố cách ly mọi workspace cho Engineer.
+- **Trạng thái code cần đối chiếu theo module:** `tech_references` đã có API/màn Admin như §6.9;
+  cộng tác có `WorkspaceController`, notifications và chat (không còn chỉ là schema).
+  `sensors` chưa có luồng quản trị riêng; không suy ra triển khai thuật toán từ bảng tối ưu hoặc `analysis_results`.
+  [Bàn giao ngày 17/11](admin-analysis-handover.md) ghi phạm vi Admin/Analysis đã kiểm;
+  các mô tả tối ưu/cộng tác lịch sử khác trong tài liệu này cần đối chiếu code trước khi nhận việc.
+- **Phanh CARLA còn giới hạn (TD-17):** ADR-051 đã nối `max_brake_torque_nm` qua bundle/`.xosc` v5
+  vào physics bánh xe và hiệu chuẩn e-tron; `carla_full_brake_decel_mps2` đi qua `vs_full_brake_decel_mps2`
+  tới controller (chưa đo dùng fallback 4,6 m/s²). Low-speed/friction và các xe khác vẫn chưa đủ calibration;
+  không đồng nhất ma sát CARLA với μ đã xác minh ngoài đời. Không thay dữ liệu run cũ.
 - **Quyết định không lưu riêng cho test hỏng:** regression `FAILED` (có run hỏng) không có khuyến nghị nên
   không Accept / Reject được — chạy lại test.
 - **Biên tham số chỉ service kiểm:** `param_value` trong `[min_value, max_value]`, đủ 4 tham số mỗi version,

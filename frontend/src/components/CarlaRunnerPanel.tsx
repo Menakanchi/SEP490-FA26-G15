@@ -9,6 +9,8 @@ import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { CarlaData, CarlaRun, CarlaStatus } from "@/types/vehicsim";
 
+import { formatObjective } from "./analysis/analysisMetricFormat";
+
 const statusLabel = { PENDING: "Đang chờ", RUNNING: "Đang chạy", COMPLETED: "Hoàn thành", FAILED: "Lỗi thực thi", STOPPED: "Đã hủy" };
 
 export function CarlaRunnerPanel() {
@@ -168,10 +170,10 @@ export function CarlaRunnerPanel() {
       {data && <>
         <h3 className="text-[14px] font-semibold text-vehicsim-ink">Cảm biến lượt {runCode(data.run_id)}</h3>
         <div className="grid gap-3 md:grid-cols-3">
-          <StatCard label="RMS jerk lúc phanh" value={data.summary.rms_jerk_mps3?.toFixed(2) ?? "—"} note="m/s³" tone="info" />
-          <StatCard label="Tốc độ lúc va chạm" value={data.summary.impact_speed_mps?.toFixed(2) ?? "—"}
+          <StatCard label="RMS jerk lúc phanh" value={formatObjective(data.summary.rms_jerk_mps3)} note="m/s³ · SENSOR_RECOMPUTED; không ghi đè objective đã lưu" tone="info" />
+          <StatCard label="Tốc độ ego lúc va chạm" value={data.summary.collisions > 0 ? formatObjective(data.summary.impact_speed_mps) : "—"}
             note={data.summary.collisions ? "m/s" : "Không ghi nhận va chạm"} tone={data.summary.collisions ? "danger" : "info"} />
-          <StatCard label="Quãng phanh ước tính" value={data.summary.stopping_distance_m?.toFixed(2) ?? "—"} note="m · phanh CARLA chưa hiệu chuẩn" tone="info" />
+          <StatCard label="Quãng phanh ước tính" value={formatObjective(data.summary.stopping_distance_m)} note="m · có thể gồm ngoại suy; hiệu chuẩn phụ thuộc xe/profile" tone="info" />
         </div>
         <div className="flex gap-3">
           <PillButton onClick={() => void vehicsimApi.downloadCarlaFile(data.run_id, "frames.csv").catch(e => setError(e.message))}>Tải frames.csv</PillButton>

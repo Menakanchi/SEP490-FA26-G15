@@ -11,6 +11,7 @@ import { MOTION_SIGNALS, type MotionSignal } from "@/components/MotionTelemetryC
 import { AnalysisRunSummary } from "@/components/analysis/AnalysisRunSummary";
 import { AnalysisRunTimeline, AnalysisRunTelemetry } from "@/components/analysis/AnalysisRunTelemetry";
 import { AnalysisRunEvidence } from "@/components/analysis/AnalysisRunEvidence";
+import { classificationPresentation } from "@/components/analysis/analysisClassificationData";
 import { finite, recordedRange, runMarkers } from "@/components/analysis/analysisRunData";
 import styles from "@/components/analysis/AnalysisRunDetail.module.css";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -48,7 +49,12 @@ export default function FailureDetailPage() {
     if (validId === null) return;
     let active = true;
     vehicsimApi.analysisInspection(validId)
-      .then(data => { if (active) setResult({ key: requestKey, data, error: null }); })
+      .then(data => {
+        if (data.run?.run_id !== validId || (data.detail != null && data.detail.run_id !== validId)) {
+          throw new Error("Dữ liệu trả về không khớp lượt chạy đang mở.");
+        }
+        if (active) setResult({ key: requestKey, data, error: null });
+      })
       .catch(err => { if (active) setResult({ key: requestKey, data: null, error: analysisError(err) }); });
     return () => { active = false; };
   }, [runId, validId, requestKey]);
@@ -68,7 +74,7 @@ export default function FailureDetailPage() {
   return <VehicSimPage step={4} title={validId === null ? "Lượt chạy không hợp lệ" : `Lượt chạy ${runCode(validId)}`}
     crumbs={[{ label: "Phân tích" }, { label: "Danh sách phân tích", href: returnTo }, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}` }]}
     subtitle={inspection ? `${inspection.family} · ${inspection.variant} · seed ${inspection.seed}` : "Chi tiết và telemetry từ kết quả run đã lưu."}
-    badges={inspection && <><AnalysisBadge value={inspection.status} />{d && d.evaluation_valid !== false && <AnalysisBadge value={d.outcome} />}{d?.failure_class && <AnalysisBadge value={d.failure_class} />}</>}
+    badges={inspection && <><AnalysisBadge value={inspection.status} />{d && classificationPresentation(d).trusted && <AnalysisBadge value={d.outcome} />}</>}
     actions={<>
       <PillButton disabled={!inspection} title="Xuất OpenSCENARIO cùng biến thể, AEB, xe và seed của lượt này"
         onClick={() => { setActionError(null); void vehicsimApi.downloadRunXosc(Number(runId)).catch(err => setActionError({ id: runId, message: analysisError(err) })); }}>Tải .xosc</PillButton>
@@ -85,14 +91,17 @@ export default function FailureDetailPage() {
     {loading && <AnalysisLoading />}
     {inspection && <section className={`analysis-panel ${styles.stack}`} aria-label="Danh tính và nguồn dữ liệu run">
       <dl className={styles.identity}>
+        <div><dt>Run / kịch bản / biến thể</dt><dd>#{inspection.run_id} / #{inspection.scenario_id} / #{inspection.scenario_version_id}</dd></div>
+        <div><dt>Nhóm tình huống từ API</dt><dd>{d?.environment?.category || "Chưa có category"}</dd></div>
         <div><dt>Simulator / bước thời gian</dt><dd>{inspection.simulator || "Chưa có danh tính simulator"} · dt {inspection.dt ?? "—"} s</dd></div>
         <div><dt>Baseline / cấu hình</dt><dd>#{inspection.baseline_id} · {d?.config ?? "—"}</dd></div>
         <div><dt>Phương tiện</dt><dd>#{inspection.vehicle_id} · {d?.vehicle ?? "—"}</dd></div>
         <div><dt>Thời điểm chạy</dt><dd>{fmt.date(d?.date ?? inspection.created_at)}</dd></div>
       </dl>
+      {d?.environment?.category && !["CP_CROSSING", "CCRS", "CCRM", "CCRB"].includes(d.environment.category) && <p className="analysis-caption">Nhóm tình huống này chưa được hỗ trợ bởi bộ mô phỏng hiện hành. Không dùng các số đã lưu để tự suy ra phân loại hoặc nguyên nhân.</p>}
       <div className={styles.source} data-carla={inspection.simulator?.startsWith("carla")}>
         Chỉ số và tín hiệu do backend cung cấp từ kết quả run đã lưu. Không mặc định đây là dữ liệu sensor thô.
-        {inspection.simulator?.startsWith("carla") && " CARLA chưa hiệu chuẩn phanh; số liệu chỉ phục vụ quan sát/đối chiếu, không dùng làm bằng chứng regression."}
+        {inspection.simulator?.startsWith("carla") && " Hiệu chuẩn CARLA phụ thuộc xe/profile; API chưa xác nhận calibration từng run; số liệu chỉ phục vụ quan sát/đối chiếu, không dùng làm bằng chứng regression."}
       </div>
       {d?.evaluation_valid === false && <p role="status" className="analysis-caption">Run chưa có kết quả AEB hợp lệ; không dùng các số hiện có để kết luận an toàn.</p>}
     </section>}
@@ -108,10 +117,10 @@ export default function FailureDetailPage() {
           tabIndex={section === key ? 0 : -1} onKeyDown={event => moveTab(event, index)} onClick={() => update({ section: key })}>{label}</button>)}</div>
       <AnalysisRunTimeline detail={d} cursor={cursor} onSeek={time => update({ t: time })} playbackHref={canPlayback ? playbackHref : null} />
       <div id="run-panel-summary" role="tabpanel" aria-labelledby="run-tab-summary" tabIndex={0} hidden={section !== "summary"}>
-        <AnalysisRunSummary detail={d} cursor={cursor} returnTo={returnTo} />
+        <AnalysisRunSummary detail={d} run={inspection ?? null} cursor={cursor} returnTo={returnTo} />
       </div>
       <div id="run-panel-telemetry" role="tabpanel" aria-labelledby="run-tab-telemetry" tabIndex={0} hidden={section !== "telemetry"}>
-        <AnalysisRunTelemetry detail={d} markers={markers} cursor={cursor} signal={signal} onSignal={signal => update({ signal })} />
+        <AnalysisRunTelemetry key={d.run_id} nominalStep={inspection?.run_id === d.run_id ? inspection.dt : undefined} detail={d} markers={markers} cursor={cursor} signal={signal} onSignal={signal => update({ signal })} />
       </div>
       <div id="run-panel-evidence" role="tabpanel" aria-labelledby="run-tab-evidence" tabIndex={0} hidden={section !== "evidence"}>
         <AnalysisRunEvidence detail={d} returnTo={returnTo} playbackAvailable={canPlayback} />

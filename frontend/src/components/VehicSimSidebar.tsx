@@ -140,7 +140,7 @@ const GROUPS: Group[] = [
     prefix: "/my-work",
     roles: MEMBER_ROLES,
   },
-  { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), prefix: "/admin", roles: ["ADMIN"], children: [{ label: "Tổng quan quản trị", href: "/admin" }, { label: "Tài khoản", href: "/admin/users" }, { label: "Workspace", href: "/admin/workspaces" }, { label: "Tài liệu kỹ thuật", href: "/admin/tech-references" }] },
+  { key: "admin", label: "Quản trị", icon: svgIcon("/vehicsim/icon-sliders.svg"), prefix: "/admin", roles: ["ADMIN"], children: [{ label: "Tài khoản", href: "/admin/users" }, { label: "Workspace", href: "/admin/workspaces" }, { label: "Tài liệu kỹ thuật", href: "/admin/tech-references" }] },
 ];
 
 const lucideIcon = (Icon: typeof House) => <Icon aria-hidden className="size-[18px] text-vehicsim-muted" />;

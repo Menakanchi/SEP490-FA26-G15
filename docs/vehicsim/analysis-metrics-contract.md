@@ -9,7 +9,7 @@ Code dùng chung: [AnalysisMetrics](../../src/main/java/com/vsos/core/evaluation
 | Nguồn | Pha/công thức hiện có | Cách sử dụng |
 |---|---|---|
 | SIMULATOR_RESULT / động học | Simulator.brakePhaseMetrics: từ brake_onset_t tới hết frames; jerk = Δa/dt, RMS = sqrt(mean(jerk²)); bước cũ 0,05 s, không thêm lọc | Dùng giá trị đã lưu; nguồn canonical cho snapshot. |
-| SIMULATOR_RESULT / CARLA | Cùng lõi Java, profile simulator xác định; có dao động vật lý và gia tốc kẹp theo mô hình | Chỉ gộp cùng simulator identity/dt/xe/AEB; nhãn quan sát, chưa hiệu chuẩn phanh. |
+| SIMULATOR_RESULT / CARLA | Cùng lõi Java, profile simulator xác định; có dao động vật lý và gia tốc kẹp theo mô hình | Chỉ gộp cùng simulator identity/dt/xe/AEB; nhãn quan sát. E-tron xosc5 có hiệu chuẩn mô-men theo ADR-051; TD-17 còn mở, không tương đương xác minh vật lý ngoài đời. |
 | SENSOR_RECOMPUTED / TelemetryMetricsService | Warmup 0,5 s; brake >0,05; cắt trước collision; ưu tiên imu_jerk_ms3, nếu thiếu dùng Δa/Δt | Đây là phép đo khác; không ghi đè objective đã lưu hoặc gộp vào SIMULATOR_RESULT. |
 
 Impact legacy là tốc độ ego tại va chạm, đơn vị m/s, không phải vận tốc tương đối vector.

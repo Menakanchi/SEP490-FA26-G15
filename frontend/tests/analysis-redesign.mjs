@@ -1,3 +1,4 @@
+import { prepareAnalysisArtifacts } from "./helpers/analysis-artifacts.mjs";
 /**
  * UI regression using recorded parity fixtures and browser-only API interception.
  * This does NOT verify a live backend, authentication, database, CARLA, or Figma.
@@ -12,7 +13,7 @@ import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
 const fixtures=JSON.parse(gunzipSync(await fs.readFile(path.join(root,"src/test/resources/parity/kinematic.json.gz"))));
-const output=path.join(root,"data/analysis-batch8-ui");await fs.mkdir(output,{recursive:true});
+const output = await prepareAnalysisArtifacts(path.join(root,"data/analysis-batch8-ui"));
 const version="adr040-stored-aggregation/1";
 const cases=fixtures.filter(c=>c.evaluation.outcome!=="TIMEOUT").slice(0,45);
 const runs=cases.map((c,i)=>({revision:`fixture-${i}`,run_id:1000+i,scenario_id:1,scenario_version_id:100+i,version_no:i+1,family:"CP Crossing · Fixture kiểm thử UI",variant:`CP-${String(i+1).padStart(3,"0")}`,seed:c.seed,baseline_id:1,vehicle_id:1,simulator:"vehicsim-kinematic-1.0",dt:0.05,status:"COMPLETED",outcome:c.evaluation.aeb_result.false_activation?"FALSE_BRAKING":c.evaluation.outcome,weather:c.case.weather,time_of_day:c.case.time_of_day,failure_class:c.evaluation.chain.find(s=>!s.passed)?.stage??null,error:null,end_reason:c.outcome.end_reason,trace_available:true,created_at:"2026-11-03T08:00:00",metrics:{rms_jerk_mps3:c.outcome.metrics.rms_jerk_mps3,impact_speed_mps:c.outcome.metrics.impact_speed_mps,stopping_distance_m:c.outcome.metrics.stopping_distance_m}}));
@@ -176,7 +177,7 @@ try {
  const rowIds=()=>explorerRows.evaluateAll(rows=>rows.map(r=>Number(r.dataset.runId)));
  await page.waitForFunction(()=>document.querySelectorAll("tr[data-run-id]").length===6);
  assert.deepEqual(await rowIds(),[1004,1002,1005,1001,1003,1000]);
- assert.equal((await explorer.locator('tr[data-run-id="1001"] td.numeric').first().innerText()).trim(),"0.00");
+ assert.equal((await explorer.locator('tr[data-run-id="1001"] td.numeric').first().innerText()).trim(),"0.000");
  assert.equal((await explorer.locator('tr[data-run-id="1000"] td.numeric').first().innerText()).trim(),"—");
  assert(await page.getByLabel("Tập của run 1000",{exact:true}).isDisabled());
  assert.equal(await explorer.getByRole("link",{name:"Playback run 1000",exact:true}).count(),0);
@@ -287,6 +288,7 @@ try {
    await page.getByLabel("Trạng thái",{exact:true}).selectOption("RUNNING");
    await page.getByText("Chưa có run baseline phù hợp.",{exact:true}).waitFor();
    await page.goto(selectedUrl);await page.getByLabel(`Tập của run ${run.run_id}`,{exact:true}).waitFor();
+   await page.waitForFunction(id=>document.querySelector(`select[aria-label="Tập của run ${id}"]`)?.disabled===false,run.run_id);
    assert.equal(await page.getByLabel(`Tập của run ${run.run_id}`,{exact:true}).inputValue(),"OPTIMIZATION");
   }
  }
@@ -326,7 +328,7 @@ try {
  await page.goto(playbackUrl);await page.getByRole("slider",{name:"Thời gian playback",exact:true}).waitFor();
  await page.getByText(/Nguồn API: carla-0.9.16-xosc4/).waitFor();
  const fact=label=>page.getByText(label,{exact:true}).locator("..");
- assert.match(await fact("Khoảng cách tới vạch băng qua").innerText(),/777\.7 m/);
+ assert.match(await fact("Khoảng cách tới vạch băng qua").innerText(),/777\.70 m/);
  assert.match(await fact("Gia tốc ego đã ghi").innerText(),/1\.25 m\/s²/);
  assert.equal(await page.getByText("ĐÃ DỪNG",{exact:true}).count(),0,"Zero speed must not invent a stopped event");
  assert.equal(await page.getByText("Vùng TTC",{exact:true}).count(),0);
@@ -341,11 +343,11 @@ try {
  detailOverride={...apiDetail,simulator:"carla-0.9.16-xosc4",events:[],telemetry:apiDetail.telemetry.map(p=>({...p,ttc:0.1})),chain:[{stage:"DECISION",passed:false,summary:"Bằng chứng do backend cung cấp",parameter_code:null,cause_code:null,confidence:0.5}]};
  await page.goto(base+`/analysis/failures/${id}?section=telemetry`);
  await page.getByRole("heading",{name:"Dữ liệu đo",exact:true}).waitFor();
- assert.equal(await page.getByText("Mốc TTC từ backend",{exact:true}).count(),0);
+ assert.equal(await page.getByLabel("Mốc đã ghi trên biểu đồ",{exact:true}).first().getByText("Mốc TTC từ backend",{exact:false}).count(),0);
  assert.equal(await page.getByRole("tabpanel",{name:"Telemetry & chỉ số",exact:true}).getByText(/Trễ kích hoạt/).count(),0);
  await page.getByRole("tabpanel",{name:"Telemetry & chỉ số",exact:true}).getByText("Bằng chứng do backend cung cấp",{exact:false}).waitFor();
  detailOverride={...detailOverride,events:[{t:0.75,kind:"ttc_below",label:"Mốc TTC do API ghi"}]};
- await page.reload();await page.getByText("Mốc TTC từ backend",{exact:true}).waitFor();
+ await page.reload();await page.getByLabel("Mốc đã ghi trên biểu đồ",{exact:true}).first().getByText("Mốc TTC từ backend",{exact:false}).waitFor();
  playbackOverride=null;detailOverride=null;
  // Batch 5: playback controls, recorded frames/events, paused URL and source boundaries.
  const pbReturn="/analysis/failures?view=runs&scenario_id=1&page=2&page_size=10&q=CP&sort=impact";
@@ -363,7 +365,7 @@ try {
  const pbValue=label=>pbFacts.getByText(label,{exact:true}).locator("..");
  assert.equal(await page.getByRole("slider").count(),1,"Playback exposes a single named native timeline");
  assert.match(await pbFacts.innerText(),/Khung 0.50 s · cursor 0.75 s/);
- assert.match(await pbValue("Khoảng cách tới vạch băng qua").innerText(),/777.7 m/);
+ assert.match(await pbValue("Khoảng cách tới vạch băng qua").innerText(),/777\.70 m/);
  assert.match(await pbValue("Gia tốc ego đã ghi").innerText(),/-1.25 m\/s²/);
  assert.match(await pbValue("TTC nhận thức").innerText(),/—/);
  assert.match(await pbValue("TTC ground truth").innerText(),/42.00 s/);
@@ -373,15 +375,15 @@ try {
  await pbScene.getByText(/Camera\/RGB và LiDAR chưa được đồng bộ/).waitFor();
  const playbackRequests=()=>requests.filter(url=>/\/runs\/\d+\/playback$/.test(url.pathname)).length;
  const beforePlaybackActions=playbackRequests();
- await log.getByRole("button",{name:/Nhãn trùng · 0.50 s/}).click();await page.waitForURL(url=>url.searchParams.get("t")==="0.5");
+ await log.getByRole("button",{name:/Nhãn trùng · 0.500 s/}).click();await page.waitForURL(url=>url.searchParams.get("t")==="0.5");
  assert.equal(await log.locator('[aria-current="step"]').count(),1);
- assert.match(await log.locator('[aria-current="step"]').getAttribute("aria-label"),/0.50 s/);
- await log.getByRole("button",{name:/Nhãn trùng · 1.50 s/}).click();await page.waitForURL(url=>url.searchParams.get("t")==="1.5");
+ assert.match(await log.locator('[aria-current="step"]').getAttribute("aria-label"),/0.500 s/);
+ await log.getByRole("button",{name:/Nhãn trùng · 1.500 s/}).click();await page.waitForURL(url=>url.searchParams.get("t")==="1.5");
  assert.equal(await log.locator('[aria-current="step"]').count(),1,"Repeated labels must not highlight multiple records");
- assert.match(await log.locator('[aria-current="step"]').getAttribute("aria-label"),/1.50 s/);
+ assert.match(await log.locator('[aria-current="step"]').getAttribute("aria-label"),/1.500 s/);
  await player.getByRole("button",{name:"‹ Sự kiện trước",exact:true}).click();await page.waitForURL(url=>url.searchParams.get("t")==="1");
  await player.getByRole("button",{name:"Sự kiện sau ›",exact:true}).click();await page.waitForURL(url=>url.searchParams.get("t")==="1.5");
- const grouped=player.getByRole("button",{name:/^Mốc 0.50 s:/});
+ const grouped=player.getByRole("button",{name:/^Mốc 0.500 s:/});
  assert.match(await grouped.getAttribute("aria-label"),/Nhãn trùng; Cảnh báo đã ghi/);
  await grouped.click();await page.waitForURL(url=>url.searchParams.get("t")==="0.5");
  assert.equal(Number(await slider.inputValue()),0.5,"Marker click seeks the recorded time without parent-track bubbling");
@@ -464,12 +466,13 @@ try {
  const savedSummary=page.getByRole("region",{name:"Kết quả và chỉ số run",exact:true});
  const valueIn=(scope,label)=>scope.locator(`[aria-label="${label}"] dd`);
  await savedSummary.waitFor();
- assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.78 m/s³");
- assert.equal((await valueIn(savedSummary,"Tốc độ va chạm").innerText()).trim(),"0.00 m/s");
+ assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.777 m/s³");
+ // This sentinel is SAFE: a stale impact=0 is not a collision measurement.
+ assert.equal((await valueIn(savedSummary,"Tốc độ va chạm").innerText()).trim(),"—");
  assert.equal((await valueIn(savedSummary,"Quãng phanh").innerText()).trim(),"—");
  const identity=page.getByRole("region",{name:"Danh tính và nguồn dữ liệu run",exact:true});
  assert.match(await identity.innerText(),/carla-0.9.16-xosc4[\s\S]*dt 0.01/);
- assert.match(await identity.innerText(),/chưa hiệu chuẩn/);
+ assert.match(await identity.innerText(),/Hiệu chuẩn CARLA phụ thuộc xe\/profile/);
  assert.equal(await page.getByRole("tabpanel").count(),1,"Only the selected panel is exposed");
  const inspectionRequests=()=>requests.filter(url=>/\/analysis\/runs\/\d+$/.test(url.pathname)).length;
  const beforeExploration=inspectionRequests();
@@ -484,11 +487,12 @@ try {
  assert.equal((await valueIn(readouts,"Khoảng cách tới vạch tại khung").innerText()).trim(),"777.70");
  assert.match(await page.getByLabel("Số đo tín hiệu đang chọn",{exact:true}).innerText(),/500.000 m\/s³/);
  const combined=page.getByRole("img",{name:"TTC nhận thức (s) và tốc độ xe (km/h) theo thời gian (s)",exact:true});
- assert.equal(await combined.locator('circle[data-signal="ttc"]').count(),1,"A single recorded sample remains visible before a gap");
- assert.equal(await combined.locator('polyline[data-signal="ttc"]').count(),1,"Missing TTC splits the series");
- assert.equal(Number(await combined.locator('circle[data-signal="ttc"]').getAttribute("cy")),34);
- const afterGap=await combined.locator('polyline[data-signal="ttc"]').getAttribute("points");
- assert(Number(afterGap.split(" ")[0].split(",")[1])>34,"TTC 8 is below TTC 12; values are not clamped to 5 s");
+ assert.equal(await combined.locator('circle[data-signal="ttc"]').count(),4,"Finite samples separated by 0.5 s exceed this run's dt=0.01 display continuity limit");
+ assert.equal(await combined.locator('polyline[data-signal="ttc"]').count(),0,"Missing/long gaps must not be connected");
+ assert.equal(Number(await combined.locator('circle[data-signal="ttc"]').first().getAttribute("cy")),34);
+ assert(Number(await combined.locator('circle[data-signal="ttc"]').nth(1).getAttribute("cy"))>34,"TTC 8 is below TTC 12; no clamp to 5 s");
+ assert.equal(await combined.locator('circle[data-signal="speed_kmh"]').count(),3,"Negative ego speed is unavailable, not plotted or clamped to zero");
+ assert.match(await page.locator("[data-chart-quality]").nth(1).innerText(),/1 số đo ngoài hợp đồng/);
  const timeSlider=page.getByRole("slider",{name:"Thời gian phân tích",exact:true});
  await timeSlider.focus();await timeSlider.press("End");
  await page.waitForURL(url=>url.searchParams.get("t")==="2");
@@ -505,7 +509,7 @@ try {
   await page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true}).click();await savedSummary.waitFor();
   await page.screenshot({path:path.join(output,`detail-recorded-summary-${width}.png`),fullPage:true});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Detail summary overflow ${width}`);
-  assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.78 m/s³","Signal exploration must not recompute objective RMS jerk");
+  assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.777 m/s³","Signal exploration must not recompute objective RMS jerk");
   await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).click();await readouts.waitFor();
  }
  await page.goto(detailUrl+"&section=telemetry&t=0.75&signal=ttc_perceived_s");await readouts.waitFor();
@@ -516,7 +520,7 @@ try {
  assert.match(await page.getByLabel("Số đo tín hiệu đang chọn",{exact:true}).innerText(),/— s/);
  await page.getByLabel("Tín hiệu",{exact:true}).selectOption("ttc_gt_s");
  await page.waitForURL(url=>url.searchParams.get("signal")==="ttc_gt_s");
- assert.match(await page.getByLabel("Số đo tín hiệu đang chọn",{exact:true}).innerText(),/42.000 s/);
+ assert.match(await page.getByLabel("Số đo tín hiệu đang chọn",{exact:true}).innerText(),/42.00 s/);
  await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).focus();
  await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).press("End");
  await page.getByRole("heading",{name:"Bằng chứng và giới hạn nhận định",exact:true}).waitFor();
@@ -530,17 +534,17 @@ try {
  assert.equal((await valueIn(readouts,"Gia tốc ego tại khung").innerText()).trim(),"—");
  await page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true}).click();await savedSummary.waitFor();
  await page.getByText("Không đủ tọa độ hoặc kích thước xe tại khung này để dựng cảnh.",{exact:true}).waitFor();
- assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.78 m/s³");
+ assert.equal((await valueIn(savedSummary,"RMS jerk").innerText()).trim(),"77.777 m/s³");
  // Repeated/decreasing timestamps break paths instead of connecting them backwards.
  inspectionOverride={...inspectionOverride,detail:{...sentinelDetail,
   telemetry:[{t:0,ttc:7,speed_kmh:0},{t:1,ttc:null,speed_kmh:null},{t:2,ttc:8,speed_kmh:1},{t:1,ttc:6,speed_kmh:2},{t:3,ttc:5,speed_kmh:3}],
   motion_telemetry:[0,0.5,1,0.75,2].map((t,i)=>({...sentinelDetail.motion_telemetry[i],t,ego_accel_mps2:[1.25,null,-2,3,0][i]}))}};
  await page.goto(detailUrl+"&section=telemetry&t=999");await combined.waitFor();
  assert.equal(Number(await timeSlider.inputValue()),3);
- assert.equal(await combined.locator('[data-signal="ttc"]').count(),3);
+ assert.equal(await combined.locator('[data-signal="ttc"]').count(),4);
  const motionGapChart=page.getByRole("img",{name:"Gia tốc ego (m/s²) theo thời gian (s)",exact:true});
- assert.equal(await motionGapChart.locator("circle").count(),2);
- assert.equal(await motionGapChart.locator("polyline").count(),1,"Motion chart also splits missing and decreasing timestamps");
+ assert.equal(await motionGapChart.locator("circle").count(),4);
+ assert.equal(await motionGapChart.locator("polyline").count(),0,"Motion chart splits missing/decreasing timestamps and long finite gaps");
  assert.equal((await valueIn(readouts,"Gia tốc ego tại khung").innerText()).trim(),"0.00");
  inspectionOverride={run:{...baseRun,status:"RUNNING",trace_available:false,outcome:"NOT_FINISHED"},detail:null};
  await page.goto(detailUrl);await page.getByRole("region",{name:"Run chưa có kết quả phân tích",exact:true}).waitFor();
@@ -584,7 +588,8 @@ try {
  await page.waitForURL(u=>u.searchParams.get("f_page")===String(originalFailures.pages));await failureRows.first().waitFor();
  for(const invalid of ["Infinity","1.5","-1"]){await page.goto(failureUrl+`&f_page=${invalid}`);await failureRows.first().waitFor();assert.equal(requests.filter(u=>u.pathname.endsWith("/failures")).at(-1).searchParams.get("page"),"1");}
  const failureBoundary=structuredClone(originalFailures.items.slice(0,2));
- Object.assign(failureBoundary[0],{failure_class:null,confidence:0,cause_code:"FIXTURE_ZERO",root_cause:"Nhận định bằng không từ API",impact_kmh:0,min_ttc_s:0});
+ // A valid zero impact measurement belongs to a collision, never a non-collision aggregate.
+ Object.assign(failureBoundary[0],{outcome:"COLLISION",failure_type:"COLLISION",failure_class:null,confidence:0,cause_code:"FIXTURE_ZERO",root_cause:"Nhận định bằng không từ API",impact_kmh:0,min_ttc_s:0});
  Object.assign(failureBoundary[1],{root_cause:"",confidence:null,cause_code:null,impact_kmh:null,min_ttc_s:null});
  failureOverride={...originalFailures,items:failureBoundary,total:250,pages:25,kpis:{total:250,this_week:0,collisions:200,near_misses:40,false_braking:10,by_class:{PERCEPTION:0,DECISION:220,CONTROL:undefined,VEHICLE_DYNAMICS:10}}};
  await page.goto(failureUrl);await failureKpi.getByText("250",{exact:true}).waitFor();
@@ -686,8 +691,9 @@ try {
  assert.match(await page.getByRole("article",{name:"Khâu Điều khiển",exact:true}).innerText(),/Chưa có kết luận/);
  assert.match(await page.getByRole("article",{name:"Khâu Động lực học",exact:true}).innerText(),/Chưa có số đo để đối chiếu/);
  assert.equal(await decisionEvidence.getByRole("link").count(),0,"Out-of-range stage time cannot seek to a different recorded sample");
- await page.getByRole("region",{name:"Số đo chưa có nhận định",exact:true}).getByText("opaque_metric",{exact:true}).waitFor();
- const evidenceLink=perceptionEvidence.getByRole("link",{name:"Xem telemetry khâu Nhận thức tại 0.00 s",exact:true});
+ await page.getByRole("region",{name:"Số đo chưa có nhận định",exact:true}).getByRole("term").filter({hasText:/^opaque_metric/}).waitFor();
+ assert.match(await page.locator('[data-evidence-source="stage_evidence[3].values.opaque_metric"]').innerText(),/7\.000/);
+ const evidenceLink=perceptionEvidence.getByRole("link",{name:"Xem telemetry khâu Nhận thức tại 0.000 s",exact:true});
  const evidenceTarget=new URL(await evidenceLink.getAttribute("href"),base);
  assert.equal(evidenceTarget.searchParams.get("t"),"0");assert.equal(evidenceTarget.searchParams.get("signal"),"speed");assert.equal(evidenceTarget.searchParams.get("returnTo"),evidenceReturn);
  for(const [width,height] of [[1920,1080],[1366,768],[1024,768]]){await page.setViewportSize({width,height});await page.screenshot({path:path.join(output,`evidence-${width}.png`),fullPage:true});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Evidence overflow ${width}`);}
@@ -696,7 +702,7 @@ try {
  assert.equal(new URL(page.url()).searchParams.get("t"),"0");
  assert.equal(requests.filter(u=>u.pathname.endsWith(`/analysis/runs/${id}`)).length,beforeEvidenceSeek,"Evidence seek uses the same loaded run");
  await page.getByRole("tab",{name:"Nguyên nhân & bằng chứng",exact:true}).click();
- await perceptionEvidence.getByRole("link",{name:"Playback khâu Nhận thức tại 0.00 s",exact:true}).click();
+ await perceptionEvidence.getByRole("link",{name:"Playback khâu Nhận thức tại 0.000 s",exact:true}).click();
  await page.waitForURL(u=>u.pathname.endsWith("/playback"));assert.equal(new URL(page.url()).searchParams.get("returnTo"),evidenceReturn);assert.equal(new URL(page.url()).searchParams.get("t"),"0");
  inspectionOverride={run:{...runs.find(r=>r.run_id===id),trace_available:false},detail:detailOverride};
  await page.goto(evidenceUrl);await perceptionEvidence.waitFor();assert.equal(await perceptionEvidence.getByRole("link",{name:/^Playback khâu/}).count(),0);
@@ -704,7 +710,8 @@ try {
  detailOverride={...detailOverride,failure_class:null,chain:[],chain_confidence:null};
  await page.goto(evidenceUrl);await primaryCause.getByText("Chưa có khâu chính từ backend.",{exact:true}).waitFor();
  assert.equal(await page.getByRole("region",{name:"Chuỗi nhận định và số đo",exact:true}).getByRole("article").count(),0);
- await page.getByRole("region",{name:"Số đo chưa có nhận định",exact:true}).getByText("opaque_metric",{exact:true}).waitFor();
+ await page.getByRole("region",{name:"Số đo chưa có nhận định",exact:true}).getByRole("term").filter({hasText:/^opaque_metric/}).waitFor();
+ assert.match(await page.locator('[data-evidence-source="stage_evidence[3].values.opaque_metric"]').innerText(),/7\.000/);
  detailOverride=null;
  // Batch 7: draft metadata and immutable snapshot are separate, with recoverable server checks.
  const draftKey=`vehicsim.analysis.selection.v1:${user.id}:${context.project.id}`;
@@ -843,20 +850,20 @@ try {
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Batch 8 ${name} page overflow ${width}`);
    const mainBounds=await page.locator(".analysis-workspace").evaluate(node=>node.getBoundingClientRect().width);
    assert(mainBounds>=Math.min(width>=768?width-248:width,600)-1,`Analysis content gets usable width for ${name} at ${width}`);
-   assert.equal(await page.locator(".analysis-mobile-menu > summary:visible").count(),width<768?1:0);
+   assert.equal(await page.getByRole("button",{name:"Menu",exact:true}).isVisible(),width<1024,`Shared menu visibility for ${name} at ${width}`);
    await page.evaluate(()=>window.scrollTo({top:0,left:0,behavior:"instant"}));
    await page.screenshot({path:path.join(output,`batch8-${name}-${width}.png`),fullPage:true});
   }
  }
  // Mobile navigation remains available, is keyboard operable and closes after navigation/Escape.
  await page.goto(base+"/analysis/failures?scenario_id=1");await page.getByRole("heading",{name:"Phân tích baseline",exact:true}).waitFor();
- const mobileMenu=page.locator(".analysis-mobile-menu"),menuToggle=mobileMenu.locator(":scope > summary");
+ const mobileMenu=page.locator("#vehicsim-navigation"),menuToggle=page.getByRole("button",{name:"Menu",exact:true});
  await menuToggle.focus();await page.keyboard.press("Enter");await mobileMenu.getByRole("link",{name:"Phương tiện",exact:true}).waitFor();
  assert.equal(await page.getByRole("button",{name:"Đăng xuất",exact:true}).count(),1);
  await page.screenshot({path:path.join(output,"batch8-mobile-menu-open.png"),fullPage:true});
- await page.keyboard.press("Escape");assert.equal(await mobileMenu.getAttribute("open"),null);assert(await menuToggle.evaluate(node=>node===document.activeElement));
+ await page.keyboard.press("Escape");assert.equal(await menuToggle.getAttribute("aria-expanded"),"false");assert(await menuToggle.evaluate(node=>node===document.activeElement));assert.equal(await mobileMenu.isVisible(),false);
  await page.keyboard.press("Space");await mobileMenu.getByRole("link",{name:"Kết quả & phân tích",exact:true}).click();
- await page.waitForURL(base+"/analysis/failures");assert.equal(await mobileMenu.getAttribute("open"),null);
+ await page.waitForURL(base+"/analysis/failures");assert.equal(await menuToggle.getAttribute("aria-expanded"),"false");assert.equal(await mobileMenu.isVisible(),false);
  // Focused shared scroll regions can be scrolled using the keyboard, including saved snapshot.
  await page.goto(snapshotUrl);await page.getByRole("heading",{name:/Tập đã chốt #9001/}).waitFor();
  for(const label of ["Phân trang tập tối ưu","Phân trang tập xác minh"])assert.equal(await page.getByRole("navigation",{name:label,exact:true}).count(),1);
