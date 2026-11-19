@@ -23,8 +23,11 @@
   * *Cận dưới 5.0 m/s²*: Ngưỡng tối thiểu của Euro NCAP để được công nhận là phanh khẩn cấp (dưới mức này chỉ là phanh tiện nghi).
   * *Cận trên 10.0 m/s²*: Giới hạn ma sát định luật Coulomb giữa lốp cao su và đường nhựa khô ($\mu \cdot g \approx 0.9 \times 9.81 \approx 9\text{ m/s}^2$). Không thể phanh vượt quá $10\text{ m/s}^2$ do trượt lết.
 
-## 3. Tiêu chuẩn Quốc tế Đối chiếu
+## 3. Tiêu chuẩn Quốc tế Đối chiếu (International Standards)
 
-* **Euro NCAP**: *AEB VRU Systems Test Protocol* (Version 4.2).
-* **ISO 22733-2:2023**: *Test method for evaluating AEB performance: Car-to-vulnerable road user*.
-* **UNECE Regulation 152 (R152)**: *Uniform provisions concerning AEB for M1/N1 vehicles*.
+* **Euro NCAP**: *Assessment Protocol — Vulnerable Road User (VRU) Systems*, Version 4.2 (November 2023). (Quy chuẩn kích hoạt phanh AEB, kịch bản Car-to-Pedestrian Nearside/Farside Adult/Child CPNA/CPFA/CPNC).
+* **ISO 22733-2:2023**: *Road vehicles — Test method for evaluating the performance of autonomous emergency braking systems — Part 2: Car-to-pedestrian*. (Tiêu chuẩn quốc tế về phương pháp đo kiểm quãng đường phanh, độ giảm tốc và vận tốc va chạm).
+* **UNECE Regulation 152 (R152)**: *Uniform provisions concerning the approval of motor vehicles with regard to the Advanced Emergency Braking Systems (AEBS) for M1 and N1 vehicles*, Revision 2 (2022). (Ràng buộc pháp lý về ngưỡng tốc độ kích hoạt tối thiểu và khả năng giảm tốc bắt buộc).
+* **ISO 2631-1:1997**: *Mechanical vibration and shock — Evaluation of human exposure to whole-body vibration — Part 1: General requirements*. (Cơ sở giới hạn RMS Jerk và độ giật để chống chấn thương cổ hành khách).
+* **ISO 26262-1:2018**: *Road vehicles — Functional safety*. (Cơ sở định mức trễ điều khiển $0.45\text{ s}$ cho hệ thống phanh an toàn tính mạng ASIL-D).
+
