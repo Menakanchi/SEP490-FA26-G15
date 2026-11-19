@@ -73,9 +73,9 @@ app:
 
 # Vòng MVP VehicSim: mô phỏng chạy ở worker/ (Python) qua bundle JSON -> result.json. Tên biến giữ như backend cũ.
 vehicsim:
-  simulator: ${VEHICSIM_SIMULATOR:kinematic}          # kinematic | carla | carla-xosc (CARLA cần VEHICSIM_CARLA_COMMAND)
-  carla-command: ${VEHICSIM_CARLA_COMMAND:}           # JSON list, vd. ["python","worker/run_xosc.py","--camera"]
-  carla-version: ${VEHICSIM_CARLA_VERSION:0.9.15}
+  simulator: ${VEHICSIM_SIMULATOR:carla-xosc}         # kinematic | carla | carla-xosc (CARLA cần VEHICSIM_CARLA_COMMAND)
+  carla-command: ${VEHICSIM_CARLA_COMMAND:["python3","worker/run_xosc.py"]}          # JSON list, vd. ["python3","worker/run_xosc.py"]
+  carla-version: ${VEHICSIM_CARLA_VERSION:0.9.16}
   data-root: ${VEHICSIM_DATA_ROOT:./data/vehicsim}
   run-mode: ${VEHICSIM_RUN_MODE:async}                # async | inline
   simulation-timeout-s: ${SIMULATION_TIMEOUT_S:120}
