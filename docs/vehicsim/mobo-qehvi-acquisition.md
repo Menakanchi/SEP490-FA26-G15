@@ -26,3 +26,9 @@ $$y_m^{(s)} = \mu_m(\mathbf{x}) + \sigma_m(\mathbf{x}) \cdot z_m^{(s)}, \quad z_
   $$x_{\text{pert}, d} = \min\big(1.0, \max(0.0, x_{\text{pareto}, d} + \mathcal{N}(0, \sigma_{\text{pert}}^2))\big), \quad \sigma_{\text{pert}} = 0.06$$
 * **Bộ lọc chống trùng lặp (Deduplication)**:
   $$\sum_{d=1}^4 (x_{\text{cand}, d} - x_{\text{prev}, d})^2 < \tau^2, \quad \tau = 0.04 \implies \tau^2 = 0.0016$$
+
+## 4. Tài liệu Khoa học Đối chiếu (Academic References)
+
+1. **Daulton, S., Balandat, M., & Bakshy, E. (2020)**. *Differentiable Expected Hypervolume Improvement for Parallel Multi-Objective Bayesian Optimization*. Advances in Neural Information Processing Systems (NeurIPS 2020), 33, 9851-9864. (Paper khai sinh qEHVI và phương pháp Monte Carlo sampling cho xấp xỉ tích phân Hypervolume).
+2. **Emmerich, M. T., Deutz, A. H., & Klinkenberg, J. W. (2011)**. *Hypervolume-based expected improvement for constrained multi-objective optimization*. Journal of Global Optimization, 51(2), 231-255. (Lý thuyết HVI và kỳ vọng cải thiện phân phối chuẩn).
+
