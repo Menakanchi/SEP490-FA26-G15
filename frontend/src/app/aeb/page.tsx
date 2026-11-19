@@ -587,7 +587,7 @@ function MoboOptimizationSection({
 
           <div className="flex items-center justify-between border-t border-solid border-vehicsim-line pt-4">
             <span className="text-[12px] text-vehicsim-faint">
-              Mỗi trial sẽ tự động chạy bộ mô phỏng động học để chấm điểm 3 hàm mục tiêu và cập nhật biên Pareto.
+              Mỗi trial sẽ tự động khởi chạy kịch bản OpenSCENARIO trên bộ mô phỏng CARLA để thu thập dữ liệu cảm biến và cập nhật biên Pareto.
             </span>
             <PillButton variant="dark" type="submit" disabled={submitting || !canWrite || !scenarioId}>
               {submitting ? "Đang khởi tạo…" : "Bắt đầu tối ưu MOBO"}
