@@ -61,6 +61,7 @@ class VehicsimAebControl(NpcVehicleControl):
         self.started_at = None
         self.initialized = False
         self.cruising = False
+        self.speed_override = False  # lõi Java đang đặt tốc độ xe ở vùng tốc độ thấp (ADR-053)
         self.finished = False
         self.collision_types: list[str] = []
         self.sensor = None
@@ -103,6 +104,9 @@ class VehicsimAebControl(NpcVehicleControl):
         if not self._actor or not self._actor.is_alive:
             return
         if self.finished:
+            if self.speed_override:
+                self._actor.disable_constant_velocity()
+                self.speed_override = False
             self._actor.apply_control(carla.VehicleControl(brake=1.0))
             return
         if not self.initialized and not self._initialize():
@@ -134,6 +138,18 @@ class VehicsimAebControl(NpcVehicleControl):
         control = self._planned
         control.throttle = 0.0
         control.brake = reply["pedal"] if reply["braking"] else 0.0
+        # Vùng tốc độ thấp (ADR-053): lõi Java trả tốc độ cần đặt thay cho bàn đạp; worker chỉ thực thi.
+        speed = reply.get("override_speed")
+        if speed is not None:
+            if speed > 0.0:
+                self._actor.enable_constant_velocity(carla.Vector3D(speed, 0.0, 0.0))
+                self.speed_override = True
+                control.brake = 0.0
+            else:
+                if self.speed_override:
+                    self._actor.disable_constant_velocity()
+                    self.speed_override = False
+                control.brake = 1.0
         if not reply["braking"] and not self.cruising and self._target_speed > 0:
             self._actor.enable_constant_velocity(carla.Vector3D(self._target_speed, 0.0, 0.0))
             self.cruising = True

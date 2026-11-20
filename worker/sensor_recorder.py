@@ -32,7 +32,12 @@ synchronous của ScenarioRunner — cùng cơ chế với ``follow_hero.py``.
     python worker/sensor_recorder.py --out out/sensors --camera --once
 
 Mỗi lượt chạy ra một thư mục ``<out>/<YYYYmmdd-HHMMSS>/`` gồm ``frames.csv`` (một dòng
-mỗi tick), ``collisions.json``, ``summary.json`` và ``camera/*.png`` nếu bật camera.
+mỗi tick), ``ground_truth.csv`` (một dòng mỗi tick × actor), ``collisions.json``, ``summary.json``
+và ``camera/*.png`` nếu bật camera.
+
+``ground_truth.csv`` là trạng thái thật **trong mô phỏng** của ego và mọi người đi bộ/xe khác (kế hoạch
+20/10 §5.2): vector vị trí, vận tốc, gia tốc trong hệ tọa độ world của CARLA, kèm frame/timestamp.
+File chỉ để chấm và đối chiếu; không đi vào lõi AEB, không đổi ``result.json`` nên không đổi identity run.
 """
 
 from __future__ import annotations
@@ -91,6 +96,133 @@ FRAME_COLUMNS = [
     "obstacle_distance_m",
     "obstacle_actor",
 ]
+
+GT_COLUMNS = [
+    "frame",
+    "sim_time_s",
+    "actor_id",
+    "role",
+    "type_id",
+    "x_m",
+    "y_m",
+    "z_m",
+    "yaw_deg",
+    "vx_ms",
+    "vy_ms",
+    "vz_ms",
+    "ax_ms2",
+    "ay_ms2",
+    "az_ms2",
+    "speed_ms",
+    "a_along_v_ms2",
+]
+
+GT_COORDINATES = {
+    "frame": "CARLA world",
+    "handedness": "left-handed (x, y mặt đất; z hướng lên)",
+    "yaw": "độ, quanh trục z",
+    "units": {"position": "m", "velocity": "m/s", "acceleration": "m/s^2", "time": "s"},
+    "source": "ActorSnapshot của world.wait_for_tick() — ground truth, không phải số đo cảm biến",
+}
+
+GT_TARGET_FILTERS = ("walker.pedestrian.*", "vehicle.*")
+GT_REFRESH_TARGETS_S = 0.5
+"""Danh sách mục tiêu lấy lại mỗi 0,5 s: ScenarioRunner có thể spawn người đi bộ/xe sau ego."""
+
+MIN_SPEED_FOR_DIRECTION_MS = 0.1
+"""Dưới tốc độ này hướng chuyển động không xác định: ``a_along_v_ms2`` để trống, không chia cho 0."""
+
+
+def _vec(v) -> tuple[float, float, float]:  # noqa: ANN001 — carla.Vector3D hoặc giả lập
+    return (v.x, v.y, v.z)
+
+
+def _norm(v: tuple[float, float, float]) -> float:
+    return math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
+
+
+def accel_along_velocity(velocity: tuple[float, float, float], accel: tuple[float, float, float]) -> float | None:
+    """``a_t = dot(a, v) / |v|``: dương là nhanh dần, âm là chậm dần (kế hoạch 20/10 §5.2). Gần đứng yên thì ``None``."""
+    speed = _norm(velocity)
+    if speed < MIN_SPEED_FOR_DIRECTION_MS:
+        return None
+    return sum(a * v for a, v in zip(accel, velocity)) / speed
+
+
+def gt_row(frame: int, actor_id: int, role: str, type_id: str, actor) -> dict:  # noqa: ANN001 — carla.ActorSnapshot
+    """Một dòng ``ground_truth.csv`` từ snapshot của một actor ở một frame."""
+    tf = actor.get_transform()
+    vel, acc = _vec(actor.get_velocity()), _vec(actor.get_acceleration())
+    along = accel_along_velocity(vel, acc)
+    return {
+        "frame": frame,
+        "actor_id": actor_id,
+        "role": role,
+        "type_id": type_id,
+        "x_m": round(tf.location.x, 3),
+        "y_m": round(tf.location.y, 3),
+        "z_m": round(tf.location.z, 3),
+        "yaw_deg": round(tf.rotation.yaw, 3),
+        "vx_ms": round(vel[0], 3),
+        "vy_ms": round(vel[1], 3),
+        "vz_ms": round(vel[2], 3),
+        "ax_ms2": round(acc[0], 3),
+        "ay_ms2": round(acc[1], 3),
+        "az_ms2": round(acc[2], 3),
+        "speed_ms": round(_norm(vel), 3),
+        "a_along_v_ms2": None if along is None else round(along, 3),
+    }
+
+
+def impact_from_ground_truth(collision: dict, gt_rows: list[dict]) -> dict:
+    """Tốc độ ngay **trước** va chạm từ ground truth: frame cuối < frame va chạm có cả ego và actor bị đâm.
+
+    Không dùng frame va chạm hay sau đó: lúc ấy vận tốc đã chịu xung lực (kế hoạch 20/10 §5.2). Vận tốc tương đối là
+    độ lớn hiệu hai vector — đúng cho cả băng ngang, khác với hiệu hai tốc độ vô hướng. Thiếu dữ liệu thì trả ``{}``,
+    không bịa số 0.
+    """
+    other_id, hit_frame = collision.get("other_actor_id"), collision.get("frame")
+    if other_id is None or hit_frame is None:
+        return {}
+    by_frame: dict[int, dict[str, dict]] = {}
+    for r in gt_rows:
+        if r["frame"] < hit_frame:
+            by_frame.setdefault(r["frame"], {})["ego" if r["role"] == "ego" else r["actor_id"]] = r
+    for frame in sorted(by_frame, reverse=True):
+        ego, other = by_frame[frame].get("ego"), by_frame[frame].get(other_id)
+        if ego is None or other is None:
+            continue
+        rel = (ego["vx_ms"] - other["vx_ms"], ego["vy_ms"] - other["vy_ms"], ego["vz_ms"] - other["vz_ms"])
+        return {
+            "gt_frame_before": frame,
+            "ego_speed_before_ms": ego["speed_ms"],
+            "other_speed_before_ms": other["speed_ms"],
+            "relative_speed_before_ms": round(_norm(rel), 3),
+        }
+    return {}
+
+
+def summarise_ground_truth(gt_rows: list[dict]) -> dict:
+    """Chất lượng ``ground_truth.csv``: số frame, bước thời gian thực, frame bị hụt, actor nào có mặt bao lâu."""
+    times = sorted({(r["frame"], r["sim_time_s"]) for r in gt_rows})
+    frames = [f for f, _ in times]
+    steps = [round(b[1] - a[1], 4) for a, b in zip(times, times[1:])]
+    actors: dict[int, dict] = {}
+    for r in gt_rows:
+        a = actors.setdefault(r["actor_id"], {"actor_id": r["actor_id"], "role": r["role"], "type_id": r["type_id"], "rows": 0})
+        a["rows"] += 1
+    # Gia tốc phi vật lý: ScenarioRunner dịch xe lúc khởi tạo (đo 13/11/2026: ego −1664 m/s² ở frame đầu) và xung lực va chạm.
+    # CSV giữ số thô; ai dùng gia tốc ground truth phải bỏ các khung này, giống SUMMARY_WARMUP_S của frames.csv.
+    implausible = [r for r in gt_rows if any(abs(r.get(k) or 0.0) > MAX_PLAUSIBLE_ACCEL_MS2 for k in ("ax_ms2", "ay_ms2", "az_ms2"))]
+    return {
+        "frames": len(frames),
+        "missing_frames": (frames[-1] - frames[0] + 1 - len(frames)) if frames else 0,
+        "implausible_accel_rows": len(implausible),
+        "implausible_accel_last_t": max((r["sim_time_s"] for r in implausible), default=None),
+        "step_s": {"min": min(steps), "max": max(steps), "mean": round(sum(steps) / len(steps), 4)} if steps else None,
+        "actors": sorted(actors.values(), key=lambda a: (a["role"] != "ego", a["actor_id"])),
+        "coordinates": GT_COORDINATES,
+    }
 
 
 def nearest_radar_target(detections) -> dict | None:  # noqa: ANN001 — carla.RadarMeasurement hoặc list giả lập
@@ -164,6 +296,7 @@ class SensorRecorder:
         self._lock = threading.Lock()
         self._sensors: list = []
         self._gt: dict[int, dict] = {}
+        self._gt_actors: list[dict] = []
         self._radar: dict[int, dict] = {}
         self._obstacle: dict[int, dict] = {}
         self._imu: dict[int, float] = {}
@@ -255,18 +388,44 @@ class SensorRecorder:
         sensor.listen(callback)
         self._sensors.append(sensor)
 
+    @staticmethod
+    def _find_targets(world, ego_id: int) -> dict[int, str]:  # noqa: ANN001
+        actors = world.get_actors()
+        found: dict[int, str] = {}
+        for pattern in GT_TARGET_FILTERS:
+            for actor in actors.filter(pattern):
+                if actor.id != ego_id:
+                    found[actor.id] = actor.type_id
+        return found
+
     def _record(self, world, ego) -> None:  # noqa: ANN001
+        targets: dict[int, str] = {}
+        refreshed_at: float | None = None
         while not self._stop.is_set():
             try:
                 snapshot = world.wait_for_tick(5.0)
             except RuntimeError:
                 break  # world ngừng tick: ScenarioRunner đã dừng
-            if snapshot.find(ego.id) is None:
+            ego_snap = snapshot.find(ego.id)
+            if ego_snap is None:
                 break  # ego đã bị huỷ — lượt chạy kết thúc
+            now = snapshot.timestamp.elapsed_seconds
+            if refreshed_at is None or now - refreshed_at >= GT_REFRESH_TARGETS_S:
+                try:
+                    targets = self._find_targets(world, ego.id)
+                except RuntimeError:
+                    pass  # giữ danh sách cũ; ground truth không được làm hỏng lượt chạy
+                refreshed_at = now
             v = ego.get_velocity()
             control = ego.get_control()
+            gt = [gt_row(snapshot.frame, ego.id, "ego", ego.type_id, ego_snap)]
+            for actor_id, type_id in targets.items():
+                snap = snapshot.find(actor_id)
+                if snap is not None:
+                    gt.append(gt_row(snapshot.frame, actor_id, "target", type_id, snap))
             with self._lock:
-                self._frame_time[snapshot.frame] = snapshot.timestamp.elapsed_seconds
+                self._frame_time[snapshot.frame] = now
+                self._gt_actors.extend(gt)
                 self._gt[snapshot.frame] = {
                     "ego_speed_ms": round(math.sqrt(v.x**2 + v.y**2 + v.z**2), 3),
                     "throttle": round(control.throttle, 3),
@@ -312,6 +471,7 @@ class SensorRecorder:
                     "frame": event.frame,
                     "sim_time_s": round(event.timestamp, 3),
                     "other_actor": event.other_actor.type_id if event.other_actor else None,
+                    "other_actor_id": event.other_actor.id if event.other_actor else None,
                     "impulse_ns": round(math.sqrt(impulse.x**2 + impulse.y**2 + impulse.z**2), 1),
                 }
             )
@@ -348,20 +508,37 @@ class SensorRecorder:
                 rows.append(row)
             return rows
 
+    def ground_truth_rows(self, t0: float) -> list[dict]:
+        """Dòng ``ground_truth.csv`` theo thứ tự frame, thời gian tính từ cùng mốc ``t0`` với ``frames.csv``."""
+        with self._lock:
+            out = []
+            for r in self._gt_actors:
+                row = dict(r)
+                row["sim_time_s"] = round(self._frame_time.get(r["frame"], t0) - t0, 3)
+                out.append(row)
+            return out
+
     def _write(self) -> None:
         rows = self.rows()
         if not rows:
             return
         t0 = self._frame_time.get(rows[0]["frame"], 0.0)
+        gt_rows = self.ground_truth_rows(t0)
         for c in self._collisions:
             c["sim_time_s"] = round(c["sim_time_s"] - t0, 3)
+            c.update(impact_from_ground_truth(c, gt_rows))
         self.out_dir.mkdir(parents=True, exist_ok=True)
         with (self.out_dir / "frames.csv").open("w", newline="", encoding="utf-8") as fh:
             writer = csv.DictWriter(fh, fieldnames=FRAME_COLUMNS, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(rows)
+        with (self.out_dir / "ground_truth.csv").open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=GT_COLUMNS, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(gt_rows)
         (self.out_dir / "collisions.json").write_text(json.dumps(self._collisions, indent=1), encoding="utf-8")
         self.summary = summarise(rows, self._collisions)
+        self.summary["ground_truth"] = summarise_ground_truth(gt_rows)
         if self.error:
             self.summary["error"] = self.error
         (self.out_dir / "summary.json").write_text(json.dumps(self.summary, indent=1), encoding="utf-8")

@@ -1,6 +1,6 @@
 # Đo độ lệch CARLA so với bộ động học — ca người đi bộ băng ngang (13/11/2026)
 
-**Trạng thái:** kế hoạch — chưa chạy. **Phạm vi:** chỉ `CP_CROSSING` (người đi bộ băng ngang); CCRs / CCRm / CCRb để sau.
+**Trạng thái:** đã đo bằng công cụ open-loop carla-ped-bench (14/11/2026, 56 run) — kết luận ở mục "Kết quả đo 14/11/2026"; các ca closed-loop có AEB dưới đây chưa chạy. **Phạm vi:** chỉ `CP_CROSSING` (người đi bộ băng ngang); CCRs / CCRm / CCRb để sau.
 **Nền:** `main` sau `58e11ff` (`.xosc` v5 / `-xosc5`, [ADR-051](../../adr/ADR-051-hieu-chuan-phanh-carla-xosc5.md): e-tron 1800 N·m,
 phanh 100% đo được 9,13 m/s²). **Liên quan:** [kế hoạch công thức CP_CROSSING trên CARLA](2026-11-11-cong-thuc-cp-crossing-carla.md)
 (TuDM) — bước 1 của kế hoạch đó (mưa trên CARLA) trùng nhóm W dưới đây: chạy chung một lần, số liệu dùng cho cả hai; quyết định D2 (kẹp bàn
@@ -8,6 +8,28 @@ phanh 100% đo được 9,13 m/s²). **Liên quan:** [kế hoạch công thức 
 
 **Bổ trợ không AEB:** [carla-ped-bench](../../vehicsim/carla-ped-bench/README.md) — công cụ chạy ngoài (repo riêng [phutro](https://github.com/Menakanchi/phutro)) đo độ lệch của chính CARLA
 (phanh, người đi bộ) so với mô hình lý tưởng bằng lệnh phanh cố định; dữ liệu đưa về [ket-qua/](../../vehicsim/carla-ped-bench/ket-qua/).
+
+> **Cập nhật 14/11/2026 (TrungDQ) — nền đã đổi sau khi kế hoạch được viết.** Kế hoạch dựa trên `.xosc` v5; từ `d651636`
+> ([ADR-043](../../adr/ADR-043-perception-tu-radar-chay-bong-truoc.md) pha 2, [ADR-055](../../adr/ADR-055-chot-chi-so-va-che-do-aeb-tat-13-11.md))
+> `BridgeMain export` chỉ xuất **v9** (`carla-0.9.16-xosc9`, bản radar; ở nhánh trước khi gộp `main` gọi là v6) và `BridgeMain kinematic` chạy **`vehicsim-kinematic-1.1`**. Khác biệt ảnh hưởng kế hoạch:
+>
+> 1. **Thêm nguồn lệch thứ năm — perception.** Ca người đi bộ trên CARLA v6 quyết định AEB từ **radar**, bộ động học vẫn ground truth.
+>    `Δt quyết định` vì vậy gộp cả trễ radar; tách bằng `outcome.case.carla.perception_radar`: `aeb_decision_t` (radar, điều khiển AEB) và
+>    `ground_truth_aeb_decision_t` (ngăn xếp ground truth chạy bóng trên cùng run). Lệch phanh/quỹ đạo = `ground_truth_aeb_decision_t` (CARLA) − động học;
+>    lệch perception = `aeb_decision_t` − `ground_truth_aeb_decision_t`.
+> 2. **`perception_shadow` → `perception_radar`** (status PRIMARY); `simulator` = `carla-0.9.16-xosc6`.
+> 3. **`impact_speed_mps` là vận tốc va chạm tương đối** ở cả hai bên (băng ngang: `hypot(v_ego, v_ped)`); tốc độ ego ở `ego_impact_speed_mps`.
+>    Δv so được giữa CARLA v6 và động học 1.1, không so với số v5/1.0.
+> 4. **`rms_jerk_mps3` trên CARLA v6 đã lọc Euro NCAP** (Butterworth 12-pole phaseless 10 Hz, từ `t_aeb_s`); bộ động học (bước 0,05 s) không lọc.
+>    So jerk giữa hai bộ mô phỏng dùng `rms_jerk_raw_mps3` của CARLA, và vẫn chỉ để quan sát (bất biến 9).
+> 5. **N-01:** radar CARLA không phụ thuộc ánh sáng nên vẫn kỳ vọng trùng V-03 trong dải nhiễu R — nhưng lý do là radar, không còn là ground truth.
+> 6. **Dải nhiễu R:** dung sai chạy lặp `-xosc6` đã đo (exec plan thành viên 2 mục 3b): sự kiện rời rạc trùng tuyệt đối, khoảng cách ±0,2 m,
+>    vận tốc va chạm ±0,05 m/s, RMS jerk ±max(0,4 m/s³; 3%). Nhóm R vẫn chạy để kiểm lại trên đúng các ca này.
+> 7. **"Không AEB" trong project:** run `aeb_mode = OFF` (bundle `aeb_mode: "OFF"` → `.xosc` `vs_aeb_mode=OFF`) chạy cùng cảnh, AEB vẫn quyết định
+>    nhưng không phanh — dùng để đo người đi bộ/quỹ đạo không lẫn phanh; khác bench phutro ở chỗ không có lệnh phanh cố định.
+>
+> **Khuyến nghị: chạy trên v6** (nền mà tối ưu/regression sẽ dùng). Nếu muốn giữ nguyên số v5 để so với ca kiểm chứng ADR-051 thì phải sinh
+> `.xosc` và chạy bộ động học từ checkout `58e11ff` (`run_xosc.py` hiện tại vẫn chạy file v5), và không trộn hai nền trong cùng `summary.csv`.
 
 ## Vì sao
 
@@ -24,6 +46,22 @@ AEB theo một sai lệch của bộ mô phỏng. Kiểm chứng ADR-051 mới c
 
 **Kết quả của kế hoạch là số liệu để quyết định, không đổi AEB.** Bù (nếu cần) bằng tham số AEB áp dụng như nhau cho mọi bộ mô phỏng — không
 thêm nhánh riêng cho CARLA vào `AebStack` (ADR-042).
+
+## Kết quả đo 14/11/2026
+
+Đo bằng [carla-ped-bench](../../vehicsim/carla-ped-bench/README.md) (lệnh phanh cố định, không AEB; [dữ liệu và tóm tắt](../../vehicsim/carla-ped-bench/ket-qua/2026-11-14_1758/README.md);
+[cơ sở lý thuyết](../../vehicsim/carla-ped-bench/co-so-ly-thuyet.md)). 56/56 run hợp lệ; chạy lặp giống hệt (CARLA đồng bộ là tất định) và trùng từng số giữa hai máy.
+
+| Nguồn lệch | Đo được | Kết luận |
+|---|---|---|
+| Phanh, pha phanh đều | η = 1,28 / 1,01 / 0,98 / 0,97 ở 40 / 50 / 60 / 70 km/h (mức đích 8 m/s²) | Khớp mô hình từ 50 km/h |
+| Phanh, vùng tốc độ thấp | Dưới 6 m/s dừng gấp 23–25 m/s² ở mọi mức bàn đạp; Δ quãng dừng −1,72 ± 0,42 m (20–70 km/h) | CARLA lạc quan ~1,7 m → **đã thay bằng adapter đặt tốc độ** ([ADR-053](../../adr/ADR-053-xosc7-dieu-khien-toc-do-vung-thap.md), `-xosc7`): Δ quãng dừng so với bộ động học còn +0,3 m |
+| Ma sát mặt đường | Mưa vẫn phanh 7,8–9,3 m/s² (mô hình kẹp 6,4 / 5,4), dừng sớm 3,7–5,3 m | Không dùng được cho đường ướt khi chưa có mô hình ma sát → **đã kẹp lệnh ở μ·g** (D2/R1, kế hoạch 11/11) |
+| Người đi bộ tăng tốc dần | Đạt 90% tốc độ sau 0,61 s; vào hành lang muộn hơn 0,34 s ở mọi tốc độ | Lệch của mô hình "đạt ngay"; CARLA gần người thật hơn — không bù |
+| Dừng ở lề | Nhô vào làn 0,05–0,18 m (1,0–3,0 m/s) | Ghi nhận; tăng theo tốc độ người |
+
+Không có độ lệch nào cần bù trong AEB (ΔTTC đều âm: CARLA phanh mạnh hơn giả định). Hai chỗ lệch của CARLA đã sửa ở adapter: ma sát (ADR-052)
+và cú dừng gấp dưới 6 m/s (ADR-053); run `-xosc7` không cần trừ phần lạc quan ~1,7 m nữa.
 
 ## Thiết lập chung (mọi ca)
 
@@ -114,7 +152,7 @@ Dự kiến bộ động học kẹp giảm tốc ở 6,4 / 5,4 m/s², CARLA kh�
 
 | ID | Ca | Kỳ vọng |
 |---|---|---|
-| N-01 | V-03 với NIGHT | Perception CARLA lấy ground truth (TD-01) nên kết quả phải trùng V-03; khác là dấu hiệu lỗi dựng cảnh |
+| N-01 | V-03 với NIGHT | Perception CARLA lấy ground truth (TD-01) nên kết quả phải trùng V-03; khác là dấu hiệu lỗi dựng cảnh (v6: perception là radar, xem cập nhật 14/11 mục 5) |
 
 ### R — Độ lặp lại (chỉ CARLA)
 
@@ -134,7 +172,7 @@ Dải dao động của 3 lần là ngưỡng nhiễu: độ lệch nhỏ hơn d
 
 | Đường dẫn | Trường | Dùng để |
 |---|---|---|
-| `simulator`, `seed`, `format` | `carla-0.9.16-xosc5`, seed | Kiểm đúng profile / seed |
+| `simulator`, `seed`, `format` | `carla-0.9.16-xosc7` (v9: `-xosc9`), seed | Kiểm đúng profile / seed |
 | `outcome.end_reason`, `outcome.duration_s` | EGO_STOPPED / COLLISION / TIMEOUT | Kết quả |
 | `outcome.metrics` | `collision`, `impact_speed_mps`, `min_distance_m`, `min_ttc_s` | Kết quả cuối |
 | `outcome.metrics` | `pedestrian_entered_path`, `gt_in_path_t`, `first_detection_t`, `first_detection_distance_m` | Lúc người thành nguy hiểm — so với bộ động học để đo ảnh hưởng tăng tốc dần |
@@ -145,7 +183,7 @@ Dải dao động của 3 lần là ngưỡng nhiễu: độ lệch nhỏ hơn d
 | `outcome.crossing_x`, `outcome.case` | vạch băng qua; tham số ca, `friction`, `road_friction` | Khớp ca với bundle |
 | `outcome.case.carla` | `physics_check.forced_ok`, `physics_applied.wheels[].max_brake_torque`, `full_brake_decel` | **Điều kiện hợp lệ:** mô-men 1800 tới mọi bánh |
 | `outcome.case.carla` | `measured_step_s`, `decel_clamped_frames`, `jerk_filtered` | **Điều kiện hợp lệ:** bước 0,01 s, không kẹp |
-| `outcome.case.carla.perception_shadow` | `first_detection_t`, `aeb_decision_t` so với `ground_truth_*`, `frames_detected_in_view`, `mean_abs_err_forward_m`, `max_abs_err_forward_m` | Radar chạy bóng (ADR-043): chỉ quan sát, không điều khiển AEB |
+| `outcome.case.carla.perception_shadow` | `first_detection_t`, `aeb_decision_t` so với `ground_truth_*`, `frames_detected_in_view`, `mean_abs_err_forward_m`, `max_abs_err_forward_m` | Radar chạy bóng (ADR-043): chỉ quan sát, không điều khiển AEB. **v6:** `perception_radar`, radar điều khiển AEB, có `ground_truth_aeb_decision_t` |
 | `evaluation` | `outcome`, `verdict`, `failure.failure_type`, `failure.severity`, `chain[]` (nguyên nhân, kể cả `SIDE_ENTRY_NOT_PREDICTED` của TD-18) | So nhãn lỗi hai bên |
 
 ### 2. Mỗi khung — `outcome.frames[]` (đã có, 100 Hz)
@@ -180,7 +218,7 @@ Không có hai trường này vẫn chạy được: η ước lượng từ `br
 | $a_{dải}$ | Hồi quy tuyến tính `ego_v` theo `t` trên dải từ `brake_onset_t`, 0,95·v₀ xuống 6 m/s | Bỏ đoạn dừng tức thì; tính cho cả hai bộ mô phỏng |
 | η | $a_{dải}$ / `MAX_DECELERATION` (hoặc trung bình `decel_cmd` khi có) | Tỷ lệ thực đạt / yêu cầu |
 | Δ vào đường đi | `gt_in_path_t` (CARLA) − (động học) | Lệch do người đi bộ tăng tốc dần, tách khỏi lệch phanh |
-| Δt quyết định | `aeb_decision_t` (CARLA) − (động học) | Lệch do perception / quỹ đạo |
+| Δt quyết định | `aeb_decision_t` (CARLA) − (động học) | Lệch do perception / quỹ đạo (v6: tách theo cập nhật 14/11 mục 1) |
 | Δd | `min_distance_m` (CARLA) − (động học) | Dương = CARLA an toàn hơn |
 | Δv | `impact_speed_mps` (CARLA) − (động học), quy ra km/h | Chỉ ca có va chạm |
 | ΔTTC cần bù | $\frac{v}{2}\left(\frac{1}{a_{dải}} - \frac{1}{a_{giả\,định}}\right)$, v = tốc độ lúc bắt đầu phanh | Thời gian phải phanh sớm thêm nếu muốn bù phần lệch phanh |
@@ -220,8 +258,10 @@ Loại (ghi lý do, không đưa vào bảng) khi: `physics_check.forced_ok` = f
 
 | Bước | Việc | Trạng thái |
 |---|---|---|
-| 0 | Chốt danh sách ca (tài liệu này) | Xong — chờ duyệt |
+| 0 | Chốt danh sách ca (tài liệu này) | Xong |
+| 0b | Đo open-loop bằng carla-ped-bench (thay nhóm BR, V, S, T, C, W, R ở dạng không AEB) | **Xong 14/11/2026** — mục Kết quả đo |
 | 1 | Bổ sung `decel_cmd` và TTC dự đoán vào `outcome.frames` (mục 4) | Chưa làm |
 | 2 | Script sinh bundle + chạy lô + `summary.csv` | Chưa làm |
 | 3 | Chạy BR, rồi V / S / T / C / N, rồi W (chung với TuDM bước 1), rồi R | Chưa làm (cần máy CARLA) |
-| 4 | Phân tích, cập nhật TD-17 và đề xuất tham số AEB cho người đi bộ | Chưa làm |
+| 4 | Phân tích, cập nhật TD-17 | **Xong 15/11/2026** (TD-17; kẹp μ·g ở adapter). Đề xuất tham số AEB: không cần bù — thuộc phần tối ưu AEB |
+| 5 | Đo đợt 3 (500 run open-loop, 16/11/2026) và hiệu chỉnh adapter theo số đo | **Code xong 19/11/2026** — [ADR-054](../../adr/ADR-054-xosc8-hieu-chuan-ban-dap-va-nguoi-di-bo.md) (`-xosc8`): bảng bàn đạp e-tron theo tốc độ, người đi bộ khởi hành sớm v × 0,34 s, trượt dừng lề 0,056 s. Chưa chạy CARLA thật qua web |

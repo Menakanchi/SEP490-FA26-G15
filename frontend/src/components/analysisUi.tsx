@@ -18,7 +18,7 @@ export const ANALYSIS_LABELS: Record<string, string> = {
   PENDING: "Đang chờ", RUNNING: "Đang chạy", PAUSED: "Tạm dừng", COMPLETED: "Hoàn tất", FAILED: "Lỗi kỹ thuật", STOPPED: "Đã hủy",
 };
 export const analysisLabel = (value: string | null) => value ? ANALYSIS_LABELS[value] ?? vi(value) : "—";
-export const metric = (value: number | null | undefined, digits = 2) => value != null && Number.isFinite(value) ? value.toFixed(digits) : "—";
+export { formatMetric as metric } from "./analysis/analysisMetricFormat";
 export const eligible = (run: AnalysisRun) => run.status === "COMPLETED" && run.trace_available && !["TIMEOUT", "ERROR", "INCOMPLETE"].includes(run.outcome);
 export function analysisError(error: unknown) {
   if (error instanceof ApiError && error.status === 403) return "Bạn không có quyền thực hiện thao tác này. Liên hệ người quản lý để kiểm tra quyền truy cập.";

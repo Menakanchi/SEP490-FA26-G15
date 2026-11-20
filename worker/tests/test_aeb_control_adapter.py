@@ -111,7 +111,7 @@ def adapter(monkeypatch: pytest.MonkeyPatch):  # noqa: ANN201
 def test_brake_override_keeps_this_ticks_steering(adapter, tmp_path) -> None:  # noqa: ANN001
     module, clock = adapter
     ego = FakeVehicle()
-    ctrl = module.VehicsimAebControl(ego, {"out_dir": str(tmp_path), "xosc_file": "x.xosc", "simulator_version": "carla-0.9.16-xosc5"})
+    ctrl = module.VehicsimAebControl(ego, {"out_dir": str(tmp_path), "xosc_file": "x.xosc", "simulator_version": "carla-0.9.16-xosc9"})
     # Bỏ qua _initialize (cần world CARLA): đặt sẵn trạng thái sau khi đã thấy người đi bộ.
     ctrl.initialized, ctrl.started_at = True, 0.0
     ctrl.walker = SimpleNamespace(get_location=lambda: SimpleNamespace(x=20.0, y=-3.6), get_velocity=lambda: SimpleNamespace(x=0.0, y=1.0))
@@ -128,7 +128,7 @@ def test_brake_override_keeps_this_ticks_steering(adapter, tmp_path) -> None:  #
 
 def test_radar_points_of_the_latest_measurement_are_forwarded_raw(adapter, tmp_path) -> None:  # noqa: ANN001
     module, clock = adapter
-    ctrl = module.VehicsimAebControl(FakeVehicle(), {"out_dir": str(tmp_path), "xosc_file": "x.xosc", "simulator_version": "carla-0.9.16-xosc5"})
+    ctrl = module.VehicsimAebControl(FakeVehicle(), {"out_dir": str(tmp_path), "xosc_file": "x.xosc", "simulator_version": "carla-0.9.16-xosc9"})
     ctrl.initialized, ctrl.started_at = True, 0.0
     ctrl.walker = SimpleNamespace(get_location=lambda: SimpleNamespace(x=20.0, y=-3.6), get_velocity=lambda: SimpleNamespace(x=0.0, y=1.0))
     ctrl.radar = object()  # đã gắn cảm biến; điểm đến qua callback
@@ -138,3 +138,37 @@ def test_radar_points_of_the_latest_measurement_are_forwarded_raw(adapter, tmp_p
     clock.t = 0.02
     ctrl.run_step()
     assert [s["radar"] for s in ctrl.bridge.steps] == [[], [[22.5, -0.15, 0.03, -10.6]]]
+
+
+class SpeedVehicle(FakeVehicle):
+    def __init__(self) -> None:
+        super().__init__()
+        self.velocity_calls: list = []
+
+    def enable_constant_velocity(self, v) -> None:  # noqa: ANN001
+        self.velocity_calls.append(("enable", v))
+
+    def disable_constant_velocity(self) -> None:
+        self.velocity_calls.append(("disable",))
+
+
+def test_low_speed_override_sets_speed_then_holds_the_brake(adapter, tmp_path) -> None:  # noqa: ANN001
+    """ADR-053: lõi Java trả ``override_speed`` ở vùng tốc độ thấp; worker chỉ đặt tốc độ, rồi giữ phanh khi tốc độ về 0."""
+    module, clock = adapter
+    ego = SpeedVehicle()
+    ctrl = module.VehicsimAebControl(ego, {"out_dir": str(tmp_path), "xosc_file": "x.xosc", "simulator_version": "carla-0.9.16-xosc9"})
+    ctrl.initialized, ctrl.started_at = True, 0.0
+    ctrl.walker = SimpleNamespace(get_location=lambda: SimpleNamespace(x=20.0, y=-3.6), get_velocity=lambda: SimpleNamespace(x=0.0, y=1.0))
+    replies = iter([5.92, 5.84, 0.0])
+    base = {"skip": False, "decel_cmd": 8.0, "braking": True, "pedal": 0.9, "finished": None}
+    ctrl.bridge.request = lambda op, timeout=10.0, **f: {**base, "override_speed": next(replies)}
+
+    final_brakes = []
+    for tick in (1, 2, 3):
+        clock.t = tick * 0.01
+        ctrl.run_step()
+        final_brakes.append(ego.applied[-1].brake)  # lệnh cuối của tick (planner cũng apply_control một lần trước đó)
+        ego.tick()
+    assert ego.velocity_calls == [("enable", (5.92, 0.0, 0.0)), ("enable", (5.84, 0.0, 0.0)), ("disable",)]
+    assert final_brakes == [0.0, 0.0, 1.0], "đang đặt tốc độ thì nhả bàn đạp; về 0 thì phanh giữ xe"
+    assert ctrl.speed_override is False

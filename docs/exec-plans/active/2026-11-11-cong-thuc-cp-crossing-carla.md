@@ -12,8 +12,8 @@ khoảng tham số) và phần phân tích kết quả / lỗi (`Evaluation`, c�
 
 | # | Câu hỏi | Đề xuất | Trạng thái |
 |---|---|---|---|
-| D1 | Đổi thời tiết + $a_{avail}$ gộp vào `.xosc` v5 (ADR-051) hay lên v6 | Gộp v5 nếu chưa có run `-xosc5` nào ngoài kiểm chứng ADR-051 | **Chờ tác giả ADR-051.** Code hiện gộp vào v5; v5 chưa lên `main` |
-| D2 | Mưa trên CARLA: R1 kẹp lệnh bàn đạp ở μ·g / R2 mưa chỉ là hình ảnh | R1 | Chờ đo (bước 1) |
+| D1 | Đổi thời tiết + $a_{avail}$ gộp vào `.xosc` v5 (ADR-051) hay lên v6 | Gộp v5 nếu chưa có run `-xosc5` nào ngoài kiểm chứng ADR-051 | **Chốt 11/11** — tác giả ADR-051 gộp vào v5; `fix/carla-brake-calibration` và `TuDM` lên `main` liền nhau (`425f64d`, `58e11ff`) trước run `-xosc5` nào |
+| D2 | Mưa trên CARLA: R1 kẹp lệnh bàn đạp ở μ·g / R2 mưa chỉ là hình ảnh | R1 | **Chốt 15/11** — đo 14/11 (carla-ped-bench G5): mưa vẫn phanh 7,8–9,3 m/s² → R1 (bước 4) |
 | D3 | RMS jerk: phía run chỉ đo, không đổi định nghĩa | Có | Đề xuất |
 | D4 | Hành lang theo bề rộng xe, chỉ áp cho CARLA | Có | Chờ |
 | D5 | Đổi mặc định `VEHICSIM_SIMULATOR` chỉ trong `.env.example` | Có | Chờ |
@@ -24,16 +24,16 @@ khoảng tham số) và phần phân tích kết quả / lỗi (`Evaluation`, c�
 | Bước | Việc | Trạng thái |
 |---|---|---|
 | 0 | Nền: gộp ADR-051 vào `TuDM` (`541fa1d`, không xung đột) | Xong; chưa push |
-| 1 | Đo CARLA trước khi đổi hành vi mưa: e-tron 40 / 60 km/h × CLEAR / RAIN / HEAVY_RAIN; ghi `max_deceleration_mps2`, `decel_clamped_frames`, `rms_jerk_mps3`, `jerk_filtered`, `physics_applied.wheels[].tire_friction`, giảm tốc IMU; kiểm preset `carla.WeatherParameters` | Chưa làm (cần máy CARLA) |
+| 1 | Đo CARLA trước khi đổi hành vi mưa: e-tron 40 / 60 km/h × CLEAR / RAIN / HEAVY_RAIN; ghi `max_deceleration_mps2`, `decel_clamped_frames`, `rms_jerk_mps3`, `jerk_filtered`, `physics_applied.wheels[].tire_friction`, giảm tốc IMU; kiểm preset `carla.WeatherParameters` | **Xong 14/11** bằng [carla-ped-bench](../../vehicsim/carla-ped-bench/ket-qua/2026-11-14_1758/README.md) nhóm G5 (40 / 60 km/h × RAIN / HEAVY_RAIN / ma sát lốp × 0,65) |
 | 1b | μ RAIN 0,65 (`Vs.WEATHER_FRICTION`); bảng dự phòng `CrossingCase` giữ 0,70 | **Xong** |
 | 2 | Thời tiết theo preset CARLA (`XoscExport.sunIntensity`, `rainIntensity`, `sunElevationRad`) | **Xong**; preset chưa kiểm trên máy CARLA |
 | 3 | $a_{avail}$ trên CARLA = min(MAX_DECEL, xe DB, μ·g, phanh 100% đo được), chỉ file định dạng hiện hành (`CarlaSession.decelAvailable`) | **Xong** |
-| 4 | Mưa trên CARLA theo D2 | Chờ bước 1 |
+| 4 | Mưa trên CARLA theo D2: `CarlaSession.frictionLimitedCommand` kẹp lệnh giảm tốc ở μ·g trước khi đổi ra bàn đạp (chỉ `.xosc` v6 / `-xosc6`, [ADR-052](../../adr/ADR-052-xosc6-kep-lenh-phanh-theo-ma-sat.md)), `case.carla.decel_cmd_capped_frames` đếm tick bị kẹp | **Xong 15/11** — CARLA thật, người đi bộ 40 km/h, RAIN μ 0,65: bàn đạp tối đa 0,96 → 0,80, quãng dừng 7,13 → 8,37 m, 77 tick kẹp; CLEAR: 0 tick kẹp |
 | 5 | Hành lang theo bề rộng xe (D4) | Chờ |
 | 6 | Cấu hình mặc định (D5) | Chờ |
 | 7 | Gate + nghiệm thu CARLA thật | Gate xong cho bước 1b–3; CARLA chưa |
 | 8 | Tài liệu repo (ADR-051 bổ sung, CLAUDE.md, sổ kiểm chứng, sổ tay `.md`) | Một phần (mục Kiểm chứng) |
-| 9 | Chạy lại baseline CARLA bằng `-xosc5` (sau migration 014 trên từng máy) | Chưa làm |
+| 9 | Chạy lại baseline CARLA bằng `-xosc8` (sau migration 014 trên từng máy; v7 = v6 + vùng tốc độ thấp, [ADR-053](../../adr/ADR-053-xosc7-dieu-khien-toc-do-vung-thap.md); v8 = v7 + bảng bàn đạp e-tron, người đi bộ khởi hành sớm, [ADR-054](../../adr/ADR-054-xosc8-hieu-chuan-ban-dap-va-nguoi-di-bo.md)) | Chưa làm |
 
 ## Bàn giao (ngoài phạm vi)
 

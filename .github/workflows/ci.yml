@@ -3,7 +3,7 @@ name: CI
 # Ba cổng độc lập, giống hệt `make check` / scripts/pre_push_check.sh:
 #   backend  — Spring Boot (Java 21): ./mvnw clean test
 #   worker   — adapter CARLA Python (ADR-042; lõi AEB đã ở Java): biên dịch lõi rồi pytest + ruff
-#   frontend — Next.js: eslint, tsc, next build, npm audit (chỉ dependencies chạy thật)
+#   frontend — Next.js: eslint, tsc, Analysis unit/contract, next build, npm audit (chỉ dependencies chạy thật)
 # Test Java và worker không cần MySQL / Redis / CARLA / khoá LLM.
 on:
   push:
@@ -65,6 +65,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npx tsc --noEmit
+      - name: Analysis unit and shared API contract regression
+        run: npm run test:analysis
       - run: npx next build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8001

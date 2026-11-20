@@ -9,6 +9,10 @@ import java.util.Map;
 
 public final class RegressionCriteria {
 
+    /**
+     * Ngưỡng duy nhất cho "tỉ lệ phanh oan tăng tối đa" (điểm %), dùng chung cho regression và ràng buộc tối ưu ({@code OptimizationService}); so theo
+     * {@code tăng ≤ ngưỡng + 1e-9}. Chốt 5 điểm % ngày 13/11/2026 (ADR-044, TD-48). Mặc định của form tạo regression ở frontend phải bằng số này.
+     */
     public static final double DEFAULT_FALSE_ACTIVATION_MAX_PTS = 5.0;
     public static final double DEFAULT_MEDIAN_TTC_CHANGE_MIN_S = -0.1;
 

@@ -1,9 +1,15 @@
 # Kiến trúc — VehicSim MVP
 
-Tài liệu kiến trúc của **VehicSim**: vòng khép kín AEB trên *một* motif (người đi
-bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà repo dựng lên từ đó —
-đã gỡ ngày 04/10/2026; chỉ giữ bộ sinh OpenSCENARIO ở `src/services/openscenario/`
-([ADR-032](../adr/ADR-032-go-scenario-forge-giu-bo-sinh-openscenario.md)).
+Tài liệu kiến trúc của **VehicSim**: vòng khép kín AEB, ban đầu người đi bộ băng ngang;
+code hiện tại hỗ trợ CP_CROSSING và CCRS/CCRM/CCRB (ADR-050).
+Scenario Forge đã gỡ ngày 04/10/2026 (ADR-032); bộ xuất OpenSCENARIO hiện ở
+`src/main/java/com/vsos/core/xosc/XoscExport.java` (ADR-042).
+
+> Đối chiếu Admin/Analysis ngày 17/11/2026: [technical handover](admin-analysis-handover.md)
+> và [Final QA](../exec-plans/completed/2026-11-17-admin-analysis-phase-20-handover.md).
+> Các bảng tên Python/Forge bên dưới là lịch sử; không phải API đang tồn tại.
+> Admin chỉ có ba trang quản trị, không có Overview riêng. Reviewer theo membership workspace;
+> Engineer vẫn dùng project nhóm chung (TD-30), không tuyên bố cách ly mọi workspace.
 
 > Nguồn sự thật: schema DB là [`database/mysql/01_schema.sql`](../../database/mysql/01_schema.sql)
 > (code Java đọc/ghi bằng SQL thuần, không có bản mirror); lý do quyết định là ADR-023 →
@@ -32,8 +38,8 @@ bộ băng ngang, kiểu Euro NCAP CPNA). Scenario Forge — dự án gốc mà 
 |---|---|---|---|---|
 | 1. Mô tả kịch bản | Câu tiếng Việt → xem/sửa Scenario IR | `/scenarios/new` | `POST /scenarios/describe` | `describe.py` |
 | 2. Sinh biến thể | Lưới tham số → họ kịch bản | `/scenarios/new`, `/scenarios` | `POST /families` | `family.py` |
-| 3. Chạy baseline | Xem xe/AEB/bộ mô phỏng sẽ dùng → chạy mọi biến thể với AEB baseline → theo dõi, hủy → "Tiếp tục: Phân tích kết quả" (mang `scenario_id`) | `/scenarios`, `/analysis/carla` | `GET /context` (`simulator`), `POST /families/{id}/run`, `POST /families/{id}/cancel`, `POST /runs/{id}/cancel` | `runs.py` + Celery |
-| 4. Phân tích lỗi | Danh sách lỗi → chi tiết/nguyên nhân → playback → tải JSON chạy lại trên CARLA | `/analysis/failures/**` | `GET /failures`, `/runs/{id}`, `/runs/{id}/playback`, `/runs/{id}/bundle` | `evaluation.py`, `views.py`, `worker/run_variant.py` |
+| 3. Chạy baseline | Xem xe/AEB/bộ mô phỏng → chạy biến thể → theo dõi → Phân tích (mang `scenario_id`); chưa có API hủy (TD-37) | `/scenarios`, `/analysis/carla` | `GET /context`, `POST /families/{id}/run` | `RunService`, thread pool Java |
+| 4. Phân tích lỗi | Danh sách → detail/evidence → playback; JSON động học hoặc `.xosc` CARLA | `/analysis/failures/**` | `GET /failures`, `/analysis/runs`, `/analysis/runs/{id}`, `/runs/{id}/playback`, `/runs/{id}/bundle`, `/runs/{id}/xosc` | `AnalysisService`, `AnalysisViewService`, `Evaluation` |
 | 5. Cấu hình mới & chạy lại | Tạo candidate AEB → regression cùng seed | `/aeb`, `/validation/regression/new` | `POST /aeb/versions`, `GET /regression/preview`, `POST /regression` | `aeb.py`, `regression.py` |
 | 6. So sánh & quyết định | Kết quả regression → khuyến nghị → **Reviewer** Accept/Reject/Request more tests | `/validation/**` | `GET /regression/{id}`, `/recommendations/{id}`, `POST /recommendations/{id}/decision` | `regression.py`, `views.py` |
 
@@ -107,8 +113,8 @@ Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  S
 `VEHICSIM_RUN_MODE=inline` chạy `executeRun` ngay trong request (dùng cho test); mặc định `async` (thread pool).
 CARLA luôn 1 luồng (một server CARLA chỉ chạy một lượt một lúc); khóa trong backend cũng bảo vệ nút chạy lại CARLA
 khi cấu hình mặc định là động học. Profile `carla-xosc` sinh `scenario.xosc` trước khi gọi `run_xosc.py`; chỉ giữ
-bundle JSON làm metadata nội bộ. Identity `carla-0.9.16-xosc5` (bước 0,01 s, người "dừng ở lề" đứng lại, mô-men phanh đã hiệu chuẩn — ADR-051) tách bản `-xosc4` (phanh CARLA chưa hiệu chuẩn), `-xosc3` (dừng ở lề đi vào làn), bản 20 Hz `-xosc2`, bản sửa quỹ đạo ngang khỏi `-xosc1` và runner trực tiếp cũ.
-Run `-xosc1`…`-xosc4` chưa chạy bị từ chối thay vì âm thầm chạy bằng profile mới. Mỗi người có hạn mức ghi và số run đang chờ + chạy
+bundle JSON làm metadata nội bộ. Identity `carla-0.9.16-xosc9` (bước 0,01 s, người "dừng ở lề" đứng lại, mô-men phanh đã hiệu chuẩn — ADR-051, lệnh phanh kẹp ở μ·g — ADR-052, dưới 6 m/s adapter đặt tốc độ — ADR-053, bảng bàn đạp e-tron và người đi bộ khởi hành sớm — ADR-054, AEB của ca người đi bộ nhận perception từ radar — ADR-043/ADR-055) tách bản `-xosc8` (AEB dùng ground truth), `-xosc7` (bàn đạp tuyến tính), `-xosc6` (còn cú dừng gấp), `-xosc5` (chưa kẹp μ·g), `-xosc4` (phanh CARLA chưa hiệu chuẩn), `-xosc3` (dừng ở lề đi vào làn), bản 20 Hz `-xosc2`, bản sửa quỹ đạo ngang khỏi `-xosc1` và runner trực tiếp cũ.
+Run `-xosc1`…`-xosc8` chưa chạy bị từ chối thay vì âm thầm chạy bằng profile mới. Mỗi người có hạn mức ghi và số run đang chờ + chạy
 (`VEHICSIM_WRITES_PER_WINDOW`, `VEHICSIM_MAX_ACTIVE_RUNS_PER_USER`) vì app mở đăng ký công khai.
 
 ## Bản đồ module (`src/services/vehicsim/`)
@@ -144,12 +150,12 @@ JSON**, dùng **cùng `AebStack`**, ghi **cùng `result.json`**, được chấm
 |---|---|---|
 | Chạy ở đâu | Máy nào cũng được, < 1 s/run | Máy có server CARLA (venv worker, `carla` khớp phiên bản server) |
 | Vật lý | Điểm khối, giảm tốc tức thì theo lệnh, μ·g | Xe/lốp/va chạm của CARLA; người đi bộ tăng tốc dần |
-| Perception | Mô hình tổng hợp trên ground truth | Như bên trái (chưa đọc camera/LiDAR) |
+| Perception | Mô hình tổng hợp trên ground truth | Người đi bộ: radar 90° + `RadarTracker` từ v9 (ADR-043); xe phía trước: như bên trái. Chưa đọc camera/LiDAR |
 | Cảnh | Không có hình | Town04 road 40/lane -4 từ `.xosc`, camera bám xe (`--camera`) |
 | Dùng khi | Dev, test tự động, batch nhanh, dự phòng khi demo | Xem tận mắt, quay video, đối chiếu |
 
-Chạy tay một JSON tải từ web (nút **"Tải JSON chạy CARLA"** ở màn Chi tiết lỗi /
-Phát lại, hoặc Scenario IR ở màn Sinh từ mô tả):
+Chạy tay bundle JSON bằng bộ động học; CARLA nhận `.xosc` từ đúng run.
+Không chuyển JSON thành đầu vào CARLA bằng cách đổi đuôi file:
 
 ```bash
 java -cp target/classes com.vsos.core.bridge.BridgeMain kinematic vehicsim-run-42.json   # khớp kết quả trên web (cần mvnw compile)
@@ -162,7 +168,7 @@ AEB FAIL), `2` = đầu vào sai (JSON sai in đủ mọi lỗi; `run_xosc.py` t
 
 Chạy cả batch trên CARLA: đặt `VEHICSIM_SIMULATOR=carla-xosc` và `VEHICSIM_CARLA_COMMAND` trên
 máy có server CARLA (`scripts\dev-carla.ps1 -RestartBackend` tự đặt). Chế độ `carla` (runner JSON trực tiếp) đã gỡ: backend từ chối tạo run mới
-và báo lỗi run cũ chưa chạy của profile đó trước khi gọi worker. Hủy/quá giờ: backend ghi `stop.requested`, `run_xosc.py` dừng ScenarioRunner
+và báo lỗi run cũ chưa chạy của profile đó trước khi gọi worker. Khi backend dừng/quá giờ: backend ghi `stop.requested`, `run_xosc.py` dừng ScenarioRunner
 và dọn world, quá `STOP_GRACE_S` (15 s) mới giết cả cây; bị giết cứng thì lần chạy sau tự xoá actor sót lại. Run regression luôn chép bộ mô phỏng của run baseline; đổi cấu
 hình sang CARLA thì regression tự dựng baseline CARLA mới, không ghép với baseline động học.
 
@@ -248,9 +254,9 @@ horizon 1,5 s + brake delay 0,05 s (13 sửa được, 0 xấu đi).
 Chỉ hỗ trợ motif người đi bộ băng ngang (kể cả ca dừng ở lề); mô tả khác trả 400.
 Giới hạn 30 lượt / 15 phút / người (Redis) vì app public và mỗi lượt tốn tiền.
 
-## Bộ sinh OpenSCENARIO (`src/services/openscenario/`)
+## Bộ sinh OpenSCENARIO (Java `core/xosc/`)
 
-**Đang dùng cho VehicSim (ADR-041, ADR-042):** `core/XoscExport` (Java; bản Python cũ đã gỡ) sinh XML OpenSCENARIO 1.0 từ IR hoặc bundle,
+**Đang dùng cho VehicSim (ADR-041, ADR-042, ADR-050):** `core/xosc/XoscExport` (Java; bản Python cũ đã gỡ) sinh XML OpenSCENARIO 1.0 từ IR hoặc bundle,
 không cần CARLA/LLM. CP_CROSSING có ego/người đi bộ, thời tiết, trigger khoảng cách, polyline băng đường và
 ParameterDeclarations cho seed/AEB/xe/source. `run_xosc.py` gọi ScenarioRunner v0.9.16 bằng file này; adapter
 `vehicsim_aeb_control.py` chỉ đọc trạng thái CARLA và gửi cho lõi Java qua cầu nối, không có bản AEB thứ hai. XML dùng
@@ -263,7 +269,7 @@ round-trip metadata, trigger khoảng cách, dải biên và bộ sinh offline. 
 0.9.15; `try_convert_spec` trả `(xosc, None)` hoặc `(None, ValidationIssue)` thay vì ném lỗi. Code
 thuần, tất định (cùng spec → cùng byte, kiểm bằng 6 file mẫu trong `tests/test_openscenario/goldens/`
 và XSD OpenSCENARIO 1.0), không gọi LLM. Đầu vào `ScenarioSpec` theo taxonomy Forge (cut-in, sudden brake, …)
-không được đưa lại vào API hiện tại; không giả lập sáu category chưa hỗ trợ (TD-42).
+không được đưa lại vào API hiện tại. CPLA/TURNING/CUT_IN chưa triển khai (TD-42).
 
 ## Tập baseline bàn giao từ màn phân tích (22/10/2026)
 
@@ -405,12 +411,13 @@ còn đúng nhưng test cũ (Python, backend FastAPI) đã ngưng và chưa vi�
 | Thông số vật lý xe lấy từ DB được áp vào xe CARLA; trường lạ hay số bánh sai bị từ chối (bảng đối chiếu `vehicle_check` của runner trực tiếp đã gỡ cùng `run_variant.py`) | `test_apply_physics_overrides_sets_scalars_com_and_wheels`, `test_apply_physics_overrides_refuses_unknown_fields_and_wheel_count_mismatch` |
 | Giảm tốc phanh 100% đo được của xe (`carla_full_brake_decel_mps2`) đi từ DB qua bundle và `.xosc` tới controller; chưa đo thì 4,6 m/s² và XML giữ nguyên | `XoscExportTest#measuredFullBrakeDecelTravelsFromBundleToTheCarlaController`, `XoscExportTest#implausibleFullBrakeDecelIsRejected` |
 | Cầu nối CARLA không bịa kết quả: lỗi/đứt ống là run lỗi; Java thoát khi stdin đóng; mỗi run dùng jar lõi chụp riêng nên `mvnw clean` giữa run vô hại | `BridgeProtocolTest#theProcessExitsWhenStdinClosesAndWritesNoResult`, `test_a_dead_java_process_is_an_error_not_a_default`, `test_a_run_keeps_working_after_target_classes_disappears` |
-| Perception radar chạy bóng (ADR-043 giai đoạn 1) không đổi run thật: có/không radar thì khung, sự kiện, chỉ số trùng từng trường; vật tĩnh/mặt đường không thành track | `BridgeProtocolTest#radarShadowIsMeasuredButNeverChangesTheRealRun`, `RadarTrackerTest#staticClutterAndRoadReturnsNeverStartATrack` |
+| File ≤ v8: perception radar chạy bóng (ADR-043 giai đoạn 1) không đổi run thật: có/không radar thì khung, sự kiện, chỉ số trùng từng trường; vật tĩnh/mặt đường không thành track | `BridgeProtocolTest#onV5RadarShadowIsMeasuredButNeverChangesTheRealRun`, `RadarTrackerTest#staticClutterAndRoadReturnsNeverStartATrack` |
+| v9 (ADR-043 giai đoạn 2): AEB thật của ca người đi bộ trên CARLA nhận perception từ radar, ground truth chạy bóng để so; thiếu radar là lỗi, không "không thấy gì"; vật tĩnh (kể cả lệch Doppler chung của cả lần đo) không bao giờ được báo; xe phía trước vẫn dùng ground truth | `BridgeProtocolTest#onV6TheRadarDrivesTheRealAebAndGroundTruthIsTheShadow`, `BridgeProtocolTest#onV6APedestrianRunWithoutRadarIsRejectedNotSilentlyBlind`, `RadarTrackerTest#aStaticRoadsideObjectWithTheCommonDopplerOffsetIsNeverReported`, `RadarTrackerTest#aFenceAlongTheRoadIsNeverReported`, `CarlaSessionLogicTest#radarDrivesTheAebOnlyForPedestriansOnTheCurrentProfile` |
 | Tắt backend giữa run CARLA: ghi cờ dừng trước để worker tự dọn world, quá hạn mới giết | `CarlaWebTest#shuttingDownMidRunAsksTheWorkerToCleanUpBeforeKillingIt` |
 | Adapter CARLA áp góc lái của chính tick đó (không dùng `get_control()` của tick trước) và phanh/ga do lõi Java quyết định | `test_brake_override_keeps_this_ticks_steering` |
 | Mọi tham số AEB được simulator dùng; seed Java khớp SQL; AEB có đúng 4 tham số chỉnh được | `AebParameterSeedTest#everySeededParameterIsUsedByTheSimulator`, `AebParameterSeedTest#javaParameterSeedMatchesSqlSeed`, `SimulatorBehaviorTest#aebHasExactlyTheFourTunableParameters` |
 | Mọi route `/api/v1/vehicsim/*` cần đăng nhập; ENGINEER / EXPERIENCER / ADMIN ghi được, MANAGER chỉ đọc | `VehicSimSecurityTest#everyVehicsimRouteRequiresLogin`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite` |
-| Chỉ REVIEWER quyết định recommendation; REVIEWER không chạy mô phỏng; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#everyRoleCanReadButOnlyWriteRolesCanWrite`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |
+| Chỉ REVIEWER quyết định recommendation; được chạy regression theo ADR-049, không chạy baseline độc lập; chỉ ADMIN khởi tạo dữ liệu | `VehicSimSecurityTest#onlyReviewerCanAcceptOrReject`, `VehicSimSecurityTest#reviewerCanRunRegressionWithoutGainingScenarioOrCandidateWrites`, `VehicSimSecurityTest#onlyAdminCanBootstrap` |
 | EXPERIENCER chỉ mở project `ACTIVE` của chính mình (project người khác, project nhóm, project lưu trữ bị chặn); role khác bỏ qua header, giữ project nhóm | `ProjectScopeTest#theHeaderMustPointToAnActiveProjectOfTheExperiencer`, `ProjectScopeTest#otherRolesKeepTheTeamProjectAndIgnoreTheHeader` |
 | API project cá nhân cần đăng nhập; quản lý / làm việc chỉ EXPERIENCER, chủ project đã đổi role chỉ đọc; ghi qua hạn mức; lỗi mang tên lỗi và câu tiếng Việt | `ProjectSecurityTest#onlyExperiencersManageAndWorkInPersonalProjects`, `ProjectSecurityTest#ownersWhoChangedRoleStillReadTheirPersonalProjects`, `ProjectSecurityTest#writesHonourTheQuotaButReadsDoNot`, `ProjectSecurityTest#projectErrorsCarryTheirNameAndVietnameseDetail` |
 | Project cá nhân: chỉ chủ project chọn ứng viên làm baseline, chỉ khi test PASSED, baseline chưa đổi, ứng viên chưa quyết định, có lý do và xác nhận (ADR-046) | `ProjectServiceTest#aPassedCandidateBecomesTheBaselineWithTheReasonKept`, `ProjectServiceTest#adoptingNeedsAReasonAConfirmationAndAFinishedPassedTest`, `ProjectServiceTest#anOutdatedTestOrADecidedCandidateCannotChangeTheBaseline` |

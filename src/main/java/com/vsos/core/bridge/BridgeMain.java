@@ -29,7 +29,7 @@ import java.util.Map;
  *   <li>{@code init} {@code {ego:{fwd,right}, walker:[x,y], front_offset, carla:{map,blueprint}}} → đặt gốc khung tọa độ. Xe phía trước (ADR-050,
  *   {@code open} trả {@code target.kind = "vehicle"}): {@code walker} là vị trí actor {@code lead}, thêm {@code target_size:[dài,rộng]} và
  *   {@code target_center_offset} (tâm bbox lệch trước gốc actor).</li>
- *   <li>{@code step} {@code {t, ego:{loc,fwd,vel}, ped:{loc,vel}, walker_hit}} → {@code {skip, braking, decel_cmd, pedal, finished, result}}. Xe phía trước:
+ *   <li>{@code step} {@code {t, ego:{loc,fwd,vel}, ped:{loc,vel}, walker_hit}} → {@code {skip, braking, decel_cmd, pedal, override_speed, finished, result}}. Xe phía trước:
  *   {@code ped} là trạng thái actor {@code lead}, va chạm với xe báo qua {@code target_hit}.</li>
  *   <li>{@code finish} {@code {reason}} → ghi {@code result.json} nếu chưa ghi. {@code quit} → thoát.</li>
  * </ul>
@@ -165,6 +165,7 @@ public final class BridgeMain {
                                 vec(ped.get("loc")), vec(ped.get("vel")),
                                 Boolean.TRUE.equals(request.get("walker_hit")) || Boolean.TRUE.equals(request.get("target_hit")), radar(request.get("radar")));
                         reply = map("ok", true, "skip", tick.skip(), "braking", tick.braking(), "decel_cmd", tick.decelCmd(), "pedal", tick.pedal(),
+                                "override_speed", tick.overrideSpeed(),
                                 "finished", tick.finished(), "result", tick.finished() != null ? session.resultPath().toString() : null);
                     }
                     case "finish" -> {

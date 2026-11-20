@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Eye, EyeOff, ShieldCheck, UserRound, X } from "lucide-react";
 import { adminApi, type AdminRow } from "@/services/admin";
+import { ApiError } from "@/services/api";
 import { USER_ROLES } from "./adminUsersQuery";
 import styles from "./AdminEditor.module.css";
 import { useAdminDialog } from "./useAdminDialog";
@@ -12,11 +13,11 @@ type UserBody = Omit<Values, "middle_name" | "password"> & { middle_name: string
 type Phase = "form" | "review" | "discard";
 const roles = ["MANAGER", "ENGINEER", "REVIEWER", "EXPERIENCER", "ADMIN"];
 const roleHelp: Record<string, string> = {
-  ADMIN: "Quản trị tài khoản, workspace và tài liệu kỹ thuật. Quyền duyệt khuyến nghị vẫn thuộc Reviewer.",
-  MANAGER: "Quản lý workspace được giao và công việc cộng tác.",
-  ENGINEER: "Thực hiện quy trình kỹ thuật và kiểm thử AEB theo quyền hệ thống.",
-  REVIEWER: "Xem kết quả và duyệt khuyến nghị theo quyền Reviewer.",
-  EXPERIENCER: "Vai trò tài khoản tự đăng ký, thao tác kỹ thuật theo hạn mức hệ thống.",
+  ADMIN: "Quản trị tài khoản, workspace và tài liệu kỹ thuật; được tạo/chạy quy trình kỹ thuật. Không duyệt khuyến nghị hoặc thêm/bớt thành viên workspace.",
+  MANAGER: "Quản lý thành viên và công việc trong workspace được giao. Chỉ đọc phần kỹ thuật; không chạy mô phỏng hoặc duyệt khuyến nghị.",
+  ENGINEER: "Tạo kịch bản, chạy mô phỏng, tạo candidate và chạy regression theo hạn mức hệ thống. Không duyệt khuyến nghị.",
+  REVIEWER: "Xem kết quả, chạy regression để kiểm tra và chấp nhận/từ chối khuyến nghị trong project được cấp quyền. Không tạo kịch bản hoặc candidate.",
+  EXPERIENCER: "Tài khoản tự đăng ký được tạo kịch bản, chạy mô phỏng, tạo candidate và chạy regression theo hạn mức. Không duyệt khuyến nghị.",
 };
 const textFields = [
   { key: "email", label: "Email", max: 255, required: true, type: "email" },
@@ -35,8 +36,16 @@ function createdDate(row: AdminRow) {
   const date = typeof value === "string" || typeof value === "number" ? new Date(value) : null;
   return date && !Number.isNaN(date.getTime()) ? date.toLocaleString("vi-VN") : "—";
 }
+function saveErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status >= 500) return "Máy chủ chưa thể lưu tài khoản. Hãy thử lại sau. Dữ liệu nhập được giữ lại.";
+    return error.message;
+  }
+  if (error instanceof TypeError) return "Không thể kết nối đến máy chủ. Kiểm tra kết nối mạng rồi thử lại. Dữ liệu nhập được giữ lại.";
+  return "Không thể xác nhận kết quả lưu. Hãy tải lại danh sách để kiểm tra trước khi thử lại.";
+}
 
-export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved }: { row: AdminRow | null; actorId?: string; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: () => void }) {
+export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved }: { row: AdminRow | null; actorId?: string; returnFocusTo?: HTMLElement | null; onCancel: () => void; onSaved: (email: string) => void }) {
   const [initial] = useState(() => fromRow(row));
   const [values, setValues] = useState(initial);
   const [phase, setPhase] = useState<Phase>("form");
@@ -106,8 +115,8 @@ export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved
   async function save() {
     if (saveLock.current || !pending) return;
     saveLock.current = true; setBusy(true); setError("");
-    try { await adminApi.save("users", row?.id ?? null, pending); onSaved(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Không thực hiện được thao tác. Hãy thử lại."); setPending(null); setPhase("form"); }
+    try { await adminApi.save("users", row?.id ?? null, pending); onSaved(pending.email); }
+    catch (err) { setError(saveErrorMessage(err)); setPending(null); setPhase("form"); }
     finally { saveLock.current = false; setBusy(false); }
   }
 
@@ -120,10 +129,11 @@ export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved
           <h3 id="admin-user-review-title">{row ? "Xác nhận thay đổi" : "Xác nhận tạo tài khoản"}</h3><p className={styles.description}>{row ? `Kiểm tra thay đổi cho ${row.email} trước khi lưu.` : `Tài khoản ${after.email} sẽ được tạo với vai trò ${USER_ROLES[after.role]}.`}</p>
           <div className={styles.reviewTable} role="region" aria-label="Nội dung xác nhận tài khoản" tabIndex={0}><table><thead><tr><th scope="col">Thông tin</th>{row && <th scope="col">Hiện tại</th>}<th scope="col">Sau khi {row ? "lưu" : "tạo"}</th></tr></thead><tbody>{changes.map(change => <tr key={change.label}><th scope="row">{change.label}</th>{row && <td>{change.before || "—"}</td>}<td>{change.after || "—"}</td></tr>)}</tbody></table></div>
           {!row && <p className={styles.note}>Mật khẩu ban đầu đã được nhập và không hiển thị trong bước xác nhận.</p>}
+          {(!row || roleChanged) && <section className={styles.note} aria-labelledby="admin-user-role-review-title"><strong id="admin-user-role-review-title">Quyền của vai trò {USER_ROLES[after.role]}</strong><p>{roleHelp[after.role]}</p>{!after.is_active && <p>Các quyền này chỉ sử dụng được khi tài khoản ở trạng thái hoạt động.</p>}</section>}
           {emailChanged || roleChanged || statusChanged ? <div className={styles.impact} aria-label="Ảnh hưởng của thay đổi"><strong>Ảnh hưởng sau khi lưu</strong><ul>
             <li>{self && emailChanged ? "Phiên hiện tại của bạn sẽ hết hiệu lực. Hãy đăng nhập lại bằng email mới." : "Các phiên đăng nhập cũ của tài khoản sẽ hết hiệu lực."}</li>
             {statusChanged && <li>{after.is_active ? "Tài khoản có thể đăng nhập lại. Các phiên đã thu hồi không được khôi phục." : "Tài khoản sẽ không thể đăng nhập sau khi bị khóa."}</li>}
-            {roleChanged && <li>Vai trò mới được áp dụng theo quyền hệ thống.</li>}
+            {roleChanged && <li>Vai trò mới có hiệu lực ở cấp hệ thống, không chỉ trong một workspace.</li>}
             {(roleChanged || !after.is_active) && <li>Nếu tài khoản còn quản lý workspace, cần giao workspace cho Manager khác trước khi đổi vai trò hoặc khóa. Các phụ thuộc khác được kiểm tra khi lưu.</li>}
           </ul></div> : row && <p className={styles.note}>Chỉ cập nhật thông tin họ tên; email, vai trò và trạng thái giữ nguyên.</p>}
         </section> : <>
@@ -134,7 +144,7 @@ export function AdminUserEditor({ row, actorId, returnFocusTo, onCancel, onSaved
               {textFields.map((field, index) => <div key={field.key} className={field.key === "email" ? styles.wide : undefined}><label htmlFor={`admin-user-${field.key}`}>{field.label}{field.required ? " *" : ""}</label><input ref={index === 0 ? firstRef : undefined} id={`admin-user-${field.key}`} name={field.key} type={field.type} value={values[field.key]} required={field.required} maxLength={field.max} autoComplete="off" aria-invalid={!!errors[field.key]} aria-describedby={errors[field.key] ? `admin-user-${field.key}-error` : undefined} onChange={event => update(field.key, event.target.value)} />{errors[field.key] && <p id={`admin-user-${field.key}-error`} className={styles.fieldError}>{errors[field.key]}</p>}</div>)}
               {!row && <div className={styles.wide}><label htmlFor="admin-user-password">Mật khẩu ban đầu *</label><div className={styles.password}><input id="admin-user-password" name="password" type={showPassword ? "text" : "password"} value={values.password} required minLength={8} maxLength={72} autoComplete="new-password" aria-invalid={!!errors.password} aria-describedby="admin-user-password-help admin-user-password-error" onChange={event => update("password", event.target.value)} /><button type="button" aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}</button></div><p id="admin-user-password-help" className={styles.hint}>Ít nhất 8 ký tự, tối đa 72 byte UTF-8 · Đã nhập {passwordBytes}/72 byte.</p><p id="admin-user-password-error" className={styles.fieldError}>{errors.password}</p></div>}
             </div></fieldset>
-            <fieldset disabled={busy} className={styles.fieldset}><legend><ShieldCheck size={16} aria-hidden="true" />Vai trò và trạng thái</legend><label htmlFor="admin-user-role">Vai trò *</label><select id="admin-user-role" name="role" value={values.role} disabled={self} required aria-invalid={!!errors.role} aria-describedby="admin-user-role-help admin-user-role-error" onChange={event => update("role", event.target.value)}>{roles.map(role => <option key={role} value={role}>{USER_ROLES[role]}</option>)}</select><p id="admin-user-role-help" className={styles.hint}>{self ? "Bạn không thể tự đổi vai trò hoặc khóa tài khoản của mình." : roleHelp[values.role]}</p><p id="admin-user-role-error" className={styles.fieldError}>{errors.role}</p>
+            <fieldset disabled={busy} className={styles.fieldset}><legend><ShieldCheck size={16} aria-hidden="true" />Vai trò và trạng thái</legend><label htmlFor="admin-user-role">Vai trò *</label><select id="admin-user-role" name="role" value={values.role} disabled={self} required aria-invalid={!!errors.role} aria-describedby="admin-user-role-help admin-user-role-error" onChange={event => update("role", event.target.value)}>{roles.map(role => <option key={role} value={role}>{USER_ROLES[role]}</option>)}</select><p id="admin-user-role-help" className={styles.hint} aria-live="polite">Mỗi tài khoản có một vai trò hệ thống. {roleHelp[values.role]}{self && <> Bạn không thể tự đổi vai trò hoặc khóa tài khoản của mình.</>}</p><p id="admin-user-role-error" className={styles.fieldError}>{errors.role}</p>
               <label className={styles.status}><input type="checkbox" aria-labelledby="admin-user-active-label" checked={values.is_active} disabled={self || !row} onChange={event => update("is_active", event.target.checked)} /><span><strong id="admin-user-active-label">Tài khoản đang hoạt động</strong><small>{values.is_active ? "Cho phép đăng nhập theo quyền được cấp." : "Tài khoản sẽ bị khóa sau khi xác nhận lưu."}</small></span></label>
               {!row && <p className={styles.hint}>Tài khoản mới được tạo ở trạng thái hoạt động.</p>}
             </fieldset>

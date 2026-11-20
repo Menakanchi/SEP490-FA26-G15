@@ -32,14 +32,14 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 | # | Nhóm | Bảng | Code đang dùng |
 |---|---|---|---|
 | 1 | Tài khoản | `roles`, `users` | Có |
-| 2 | Workspace, cộng tác, task | `workspaces`, `workspace_members`, `workspace_messages`, `notifications`, `workspace_tasks`, `task_reports` | `workspaces` (seed) |
+| 2 | Workspace, cộng tác, task | `workspaces`, `workspace_members`, `workspace_messages`, `notifications`, `workspace_tasks`, `task_reports` | Có: Admin workspace, Manager membership/task/report, chat và notifications |
 | 3 | Project & xe | `projects`, `project_members`, `carla_vehicle_models`, `sensors` | Có, trừ `project_members`, `sensors` |
 | 4 | AEB | `aeb_parameters`, `aeb_versions`, `aeb_parameter_values` | Có |
 | 5 | Kịch bản | `scenarios`, `scenario_versions` | Có |
 | 6 | Tối ưu & regression | `optimization_runs`, `optimization_trials`, `regression_tests` | `regression_tests` |
 | 7 | Mô phỏng, đánh giá, lỗi | `simulation_runs`, `simulation_artifacts`, `collision_events`, `failures`, `root_causes` | Có |
 | 8 | Phân tích, kết quả regression, khuyến nghị | `analysis_results`, `regression_test_items`, `engineering_recommendations` | Có; analysis_results mới dùng BASELINE_DATASET |
-| 9 | Tri thức kỹ thuật | `tech_references` | Chưa |
+| 9 | Tri thức kỹ thuật | `tech_references` | Có: Admin list/detail/create/update, bật/tắt |
 
 Bảng chưa có code là thiết kế trước theo FE (0 dòng); màn hình / API đến ở các demo sau.
 
@@ -114,11 +114,14 @@ CHECK `purpose = X ⇔ cột liên kết có giá trị`, cộng FK ghép với 
 
 ### 3.4 Danh tính bộ mô phỏng (`simulator_version`)
 
-`simulation_runs.simulator_version` ghi **chính xác** bộ mô phỏng: `vehicsim-kinematic-1.0` (bộ động học,
-đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc5` (run cũ còn `-xosc1/2/3/4`; `carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
+`simulation_runs.simulator_version` ghi **chính xác** bộ mô phỏng: `vehicsim-kinematic-1.1` (bộ động học từ 13/11/2026:
+`impact_speed_mps` là vận tốc va chạm tương đối; run cũ `1.0` là tốc độ ego; đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc9` (run cũ còn `-xosc1/2/3/4/5/6/7/8`; `carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
 `client.get_server_version()`). `simulator_type` (KINEMATIC / CARLA) chỉ để lọc; CHECK ép hai cột khớp.
 Vì `simulator_version` nằm trong `fk_sr_baseline`, MySQL **không cho** ghép động học với CARLA, hay
 CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](../adr/ADR-027-bo-mo-phong-cam-duoc-hop-dong-json.md)).
+
+`simulation_runs.aeb_mode` (`ON` | `OFF`, migration 015, 13/11/2026): run `OFF` chạy cùng kịch bản với AEB tắt — perception/quyết định vẫn
+ghi lại nhưng không phanh — làm mốc tham chiếu cho baseline. Regression và tối ưu chỉ lấy run `ON` làm baseline.
 
 ### 3.5 Khớp với CARLA 0.9.16
 
@@ -690,6 +693,7 @@ Một lần chạy một biến thể × xe × AEB version × seed × bộ mô p
 | `scenario_version_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; UQ `uq_sr_pair`; FK → `scenario_versions(scenario_id,id)`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)` | Biến thể được chạy. |
 | `carla_vehicle_model_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; FK → `carla_vehicle_models`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)` | Xe đã chạy (danh mục chung). Run REGRESSION phải cùng xe với run baseline và với regression test. |
 | `aeb_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `aeb_versions(project_id,id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)`; FK → `optimization_trials(id,candidate_aeb_version_id)`; FK → `analysis_results(project_id,id,aeb_version_id)` | AEB version — cùng project (FK ghép). |
+| `aeb_mode` | ENUM | ✓ | `ON` |  | Chế độ AEB của run (migration 015, 13/11/2026): `OFF` = AEB tắt — perception/quyết định vẫn ghi lại nhưng không phanh; mốc tham chiếu của baseline, không bao giờ là baseline regression/tối ưu. Giá trị: 'ON', 'OFF'. |
 | `simulator_type` | ENUM | ✓ |  |  | `KINEMATIC` / `CARLA` — nhóm để lọc; khớp `simulator_version` (`ck_sr_simulator`). Giá trị: 'KINEMATIC', 'CARLA'. |
 | `simulator_version` | VARCHAR(30) | ✓ |  | UQ `uq_sr_replay`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)` | Danh tính bộ mô phỏng: vehicsim-kinematic-1.0 | carla-0.9.16; đổi logic động học thì đổi tên |
 | `map_name` | VARCHAR(100) |  |  |  | Map CARLA thực nạp (world.get_map().name); NULL với động học |
@@ -910,7 +914,10 @@ Mỗi lần Accept / Reject / Request more tests ghi thêm một dòng, cùng tr
 
 #### `tech_references` — tri thức
 
-Hằng số, định nghĩa, tiêu chuẩn làm căn cứ cho mô hình và báo cáo (Admin quản lý). Chưa có code.
+Hằng số, định nghĩa, tiêu chuẩn làm căn cứ cho mô hình và báo cáo (Admin quản lý).
+Đã có `AdminController` / `AdminService` / `AdminRepository` và màn `/admin/tech-references`:
+list/detail/create/update, metadata nguồn, lọc/tìm/phân trang và bật/tắt; không có DELETE.
+API giữ `ref_value` dạng chuỗi DECIMAL để không làm mất độ chính xác.
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
@@ -967,13 +974,18 @@ Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critica
 
 ## 9. Lệch và khoảng trống đã biết
 
-- **Một project:** MVP vẫn chạy trên project ACTIVE đầu tiên, chưa lọc theo workspace / thành viên, chưa có API
-  `project_members` (TD-30).
-- **Bảng chưa có code:** cộng tác (`workspace_*`, `notifications`), `sensors`, tối ưu, các loại phân tích thuật toán trong `analysis_results`,
-  `tech_references` — có schema, chưa có API / màn.
-- **Phanh CARLA chưa hiệu chuẩn (TD-17):** `tire_friction`, `max_brake_torque_nm`, `road_friction` chưa vào vật lý
-  CARLA. `carla_full_brake_decel_mps2` (từ 21/10) đi theo bundle `vehicle.carla.full_brake_decel_mps2` → `.xosc` `vs_full_brake_decel_mps2`
-  → controller; còn NULL (chưa đo) thì controller dùng 4,6 m/s².
+- **Project scope:** ADMIN/ENGINEER/MANAGER vẫn dùng project nhóm ACTIVE đầu tiên (TD-30);
+  EXPERIENCER theo project cá nhân/owner, REVIEWER theo membership workspace và header project (ADR-048/049).
+  Chưa có API quản trị `project_members`; không tuyên bố cách ly mọi workspace cho Engineer.
+- **Trạng thái code cần đối chiếu theo module:** `tech_references` đã có API/màn Admin như §6.9;
+  cộng tác có `WorkspaceController`, notifications và chat (không còn chỉ là schema).
+  `sensors` chưa có luồng quản trị riêng; không suy ra triển khai thuật toán từ bảng tối ưu hoặc `analysis_results`.
+  [Bàn giao ngày 17/11](admin-analysis-handover.md) ghi phạm vi Admin/Analysis đã kiểm;
+  các mô tả tối ưu/cộng tác lịch sử khác trong tài liệu này cần đối chiếu code trước khi nhận việc.
+- **Phanh CARLA còn giới hạn (TD-17):** ADR-051 đã nối `max_brake_torque_nm` qua bundle/`.xosc` v5
+  vào physics bánh xe và hiệu chuẩn e-tron; `carla_full_brake_decel_mps2` đi qua `vs_full_brake_decel_mps2`
+  tới controller (chưa đo dùng fallback 4,6 m/s²). Low-speed/friction và các xe khác vẫn chưa đủ calibration;
+  không đồng nhất ma sát CARLA với μ đã xác minh ngoài đời. Không thay dữ liệu run cũ.
 - **Quyết định không lưu riêng cho test hỏng:** regression `FAILED` (có run hỏng) không có khuyến nghị nên
   không Accept / Reject được — chạy lại test.
 - **Biên tham số chỉ service kiểm:** `param_value` trong `[min_value, max_value]`, đủ 4 tham số mỗi version,

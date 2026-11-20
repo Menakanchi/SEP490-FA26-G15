@@ -58,6 +58,28 @@ class LeadVehicleSimulatorTest {
     }
 
     @Test
+    void equalSpeedAndRecedingTargetsHaveNoTtcOrImpactMeasurement() {
+        for (double targetSpeed : new double[] {50.0, 60.0}) {
+            SimulationOutcome out = run(ccr("CCRM", 50, targetSpeed, 30, null, null), AebParams.DEFAULT);
+            assertThat(out.frames()).allSatisfy(frame -> {
+                assertThat(frame.ttcGt()).isNull();
+                assertThat(frame.ttc()).isNull();
+            });
+            assertThat(out.metrics().get("min_ttc_s")).isNull();
+            assertThat(out.metrics().get("impact_speed_mps")).isNull();
+            assertThat(out.metrics().get("braking_latency_s")).isNull();
+        }
+    }
+
+    @Test
+    void nonIntersectingLaneHasNoGroundTruthTtc() {
+        SimulationOutcome out = run(ccr("CCRS", 50, 0, 40, null, -100.0), AebParams.DEFAULT);
+        assertThat(out.frames()).allSatisfy(frame -> assertThat(frame.ttcGt()).isNull());
+        assertThat(out.metrics().get("min_ttc_s")).isNull();
+        assertThat(out.metrics().get("braking_latency_s")).isNull();
+    }
+
+    @Test
     void lateTriggerAtHighSpeedHitsTheLeadVehicleAndBlamesTheLeadVehicleNotAPedestrian() {
         AebParams late = new AebParams(0.4, 0.15, 8.0, 20.0);
         SimulationOutcome out = run(ccr("CCRS", 80, 0, 40, null, null), late);
