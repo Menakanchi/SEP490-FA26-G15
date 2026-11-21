@@ -93,6 +93,8 @@ export default function ReviewPage() {
       ? [<>Tôi hiểu rằng số CARLA chưa hiệu chuẩn phanh, chỉ để quan sát và đối chiếu, không phải chứng nhận an toàn</>]
       : []),
   ];
+  // Không có quyền quyết định hoặc đã có quyết định cuối: khoá cả form, không chỉ nút gửi.
+  const locked = final || !canDecide;
   const ready =
     canDecide && !final && !running && !!decision && checks.slice(0, checklist.length).every(Boolean) && reason.trim().length > 0 && confirmed && !submitting &&
     !(decision === "ACCEPT" && acceptBlock) && !(decision === "REJECT" && rejectBlock);
@@ -179,7 +181,7 @@ export default function ReviewPage() {
           <div className="flex flex-col gap-3">
             {checklist.map((item, i) => (
               <label key={i} className="flex items-center gap-3 text-[14px] text-vehicsim-ink">
-                <Checkbox checked={checks[i]} label={`Mục kiểm tra ${i + 1}`} onChange={(v) => setChecks((prev) => prev.map((c, j) => (j === i ? v : c)))} />
+                <Checkbox checked={checks[i]} label={`Mục kiểm tra ${i + 1}`} disabled={locked} onChange={(v) => setChecks((prev) => prev.map((c, j) => (j === i ? v : c)))} />
                 <span>{item}</span>
               </label>
             ))}
@@ -193,7 +195,7 @@ export default function ReviewPage() {
                 <button
                   key={o.key}
                   type="button"
-                  disabled={!!o.block || final}
+                  disabled={!!o.block || locked}
                   title={o.block ?? undefined}
                   onClick={() => setDecision(o.key)}
                   className={cx(
@@ -223,6 +225,7 @@ export default function ReviewPage() {
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
+              disabled={locked}
               maxLength={4000}
               rows={3}
               placeholder={
@@ -230,7 +233,7 @@ export default function ReviewPage() {
                   ? `vd. Sửa được ${counts?.fixed ?? 0} kịch bản, ${counts?.regressed ?? 0} ca xấu đi; phanh nhầm ${fmt.pct(rates.false_activation_baseline_pct)} → ${fmt.pct(rates.false_activation_candidate_pct)}…`
                   : "Vì sao chọn quyết định này?"
               }
-              className="rounded-[14px] border border-solid border-vehicsim-line-strong px-4 py-3 text-[14px] leading-[1.5] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+              className="rounded-[14px] border border-solid border-vehicsim-line-strong px-4 py-3 text-[14px] leading-[1.5] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong disabled:cursor-not-allowed disabled:bg-vehicsim-soft disabled:opacity-60"
             />
           </label>
           <label className="flex flex-col gap-[6px]">
@@ -238,10 +241,11 @@ export default function ReviewPage() {
             <textarea
               value={conditions}
               onChange={(e) => setConditions(e.target.value)}
+              disabled={locked}
               maxLength={4000}
               rows={2}
               placeholder="vd. Kiểm định lại trong mưa và ban đêm trước bản phát hành tới."
-              className="rounded-[14px] border border-solid border-vehicsim-line-strong px-4 py-3 text-[14px] leading-[1.5] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+              className="rounded-[14px] border border-solid border-vehicsim-line-strong px-4 py-3 text-[14px] leading-[1.5] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong disabled:cursor-not-allowed disabled:bg-vehicsim-soft disabled:opacity-60"
             />
           </label>
           <p className="flex gap-3 rounded-[14px] bg-vehicsim-decision-bg px-4 py-3 text-[12px] leading-[1.5] text-vehicsim-muted">
@@ -288,7 +292,7 @@ export default function ReviewPage() {
               </span>
             </div>
             <label className="flex items-center gap-3">
-              <Toggle on={confirmed} onChange={setConfirmed} label="Xác nhận" disabled={final} />
+              <Toggle on={confirmed} onChange={setConfirmed} label="Xác nhận" disabled={locked} />
               <span className="text-[12px] leading-[1.4] text-vehicsim-muted">Tôi xác nhận quyết định này dựa trên bằng chứng mô phỏng ở trên.</span>
             </label>
           </section>
