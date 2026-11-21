@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useId, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Archive, ArchiveRestore, Check, Ellipsis, Loader2, Settings, Trash2, TriangleAlert, X } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
@@ -287,13 +288,28 @@ const COPY: Record<ProjectAction, { title: string; body: string; confirm: string
 
 const RUN = { archive: vehicsimApi.archiveProject, unarchive: vehicsimApi.unarchiveProject };
 
-export function useProjectActions(onDone: (kind: ProjectAction) => void | Promise<void>) {
+/**
+ * Thông báo mang sang trang kế tiếp khi trang hiện tại không còn (xoá project ở trang chi tiết / cài đặt rồi về "Project của tôi").
+ * Trang nhận đọc ở lần render đầu và xoá sau khi gắn, để chỉ hiện một lần.
+ */
+let carriedNotice: string | null = null;
+
+export function useProjectActions(
+  onDone: (kind: ProjectAction) => void | Promise<void>,
+  options?: { /** Trang không còn sau khi xoá: chuyển tới đây và hiện "Đã xoá" ở trang đó; `onDone` không được gọi cho thao tác xoá. */ leaveAfterDelete?: string },
+) {
+  const router = useRouter();
   const { ctx, openProject } = useVehicSimContext();
   const [action, setAction] = useState<{ kind: ProjectAction; project: ProjectItem } | null>(null);
   const [confirmName, setConfirmName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(() => carriedNotice);
+  const leaveAfterDelete = options?.leaveAfterDelete;
+
+  useEffect(() => {
+    carriedNotice = null;
+  }, []);
 
   const start = (kind: ProjectAction, project: ProjectItem) => {
     setAction({ kind, project });
@@ -311,8 +327,14 @@ export function useProjectActions(onDone: (kind: ProjectAction) => void | Promis
       if (kind === "delete") await vehicsimApi.deleteProject(project.id, confirmName);
       else await RUN[kind](project.id);
       setAction(null);
-      setNotice(`${COPY[kind].done} “${project.name}”.`);
+      const text = `${COPY[kind].done} “${project.name}”.`;
       if (project.id === ctx?.project.id && kind !== "unarchive") openProject(null);
+      if (kind === "delete" && leaveAfterDelete) {
+        carriedNotice = text;
+        router.push(leaveAfterDelete);
+        return;
+      }
+      setNotice(text);
       await onDone(kind);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Thao tác không thành công");
