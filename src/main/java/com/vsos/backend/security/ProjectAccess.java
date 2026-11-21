@@ -75,10 +75,14 @@ public class ProjectAccess {
         return selected;
     }
 
-    /** Không duyệt bằng project mặc định có thể đã đổi kể từ lúc client tải màn. */
-    public long explicitProjectId() {
+    /**
+     * Không thao tác bằng project mặc định có thể đã đổi kể từ lúc client tải màn.
+     *
+     * @param action việc đang làm, ghép vào câu báo lỗi (vd. "tạo kiểm thử hồi quy", "quyết định")
+     */
+    public long explicitProjectId(String action) {
         if (request.getHeader(PROJECT_HEADER) == null) {
-            throw new InvalidRequestException("Cần chọn project trước khi quyết định; hãy tải lại trang");
+            throw new InvalidRequestException("Cần chọn project trước khi " + action + "; hãy tải lại trang");
         }
         return currentProject().lng("id");
     }

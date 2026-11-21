@@ -33,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -147,7 +148,7 @@ class VehicSimSecurityTest {
         when(runs.runFamily(anyLong(), anyLong(), anyLong(), any())).thenReturn(List.of());
         when(projects.hasProject()).thenReturn(true);
         when(projects.currentProject()).thenReturn(new com.vsos.backend.repository.common.Row(Map.of("id", 1L)));
-        when(projects.explicitProjectId()).thenReturn(1L);
+        when(projects.explicitProjectId(anyString())).thenReturn(1L);
     }
 
     // ---- các thao tác mẫu, mỗi cái kèm đúng một kiểu quyền
@@ -292,7 +293,7 @@ class VehicSimSecurityTest {
     @Test
     void reviewerCanRunRegressionWithoutGainingScenarioOrCandidateWrites() throws Exception {
         stubServices();
-        when(projects.explicitProjectId()).thenReturn(42L);
+        when(projects.explicitProjectId(anyString())).thenReturn(42L);
         assertThat(statusOf(createRegression().header(ProjectAccess.PROJECT_HEADER, "42"), RoleCode.REVIEWER)).isEqualTo(201);
         verify(regression).createTestAsReviewer(eq(42L), eq(7L), eq(2L), eq(1L), eq(true), eq(true), any(), any(), any());
         verify(regression, never()).createTest(anyLong(), anyLong(), anyLong(), anyLong(), anyBoolean(), anyBoolean(), any(), any(), any());
@@ -306,7 +307,7 @@ class VehicSimSecurityTest {
         stubServices();
         when(otp.hitRateLimit(eq("vs_regression"), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(true);
         assertThat(statusOf(createRegression(), RoleCode.REVIEWER)).isEqualTo(429);
-        when(projects.explicitProjectId()).thenThrow(new com.vsos.backend.common.Vs.InvalidRequestException("Cần chọn project"));
+        when(projects.explicitProjectId(anyString())).thenThrow(new com.vsos.backend.common.Vs.InvalidRequestException("Cần chọn project"));
         assertThat(statusOf(createRegression(), RoleCode.REVIEWER)).isEqualTo(400);
         verify(regression, never()).createTestAsReviewer(anyLong(), anyLong(), anyLong(), anyLong(), anyBoolean(), anyBoolean(), any(), any(), any());
     }

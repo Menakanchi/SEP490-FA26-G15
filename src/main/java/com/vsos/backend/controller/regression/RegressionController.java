@@ -90,7 +90,7 @@ public class RegressionController {
         long uid = VehicSimAccess.requireRegressionRunner(user);
         boolean reviewer = "REVIEWER".equals(VehicSimAccess.roleOf(user));
         if (reviewer) requireVisible();
-        long projectId = reviewer ? projects.explicitProjectId() : access.projectId();
+        long projectId = reviewer ? projects.explicitProjectId("tạo kiểm thử hồi quy") : access.projectId();
         access.limitWrites(uid, "regression");
 
         boolean includeOldCritical = body.includeOldCritical() == null || body.includeOldCritical();
@@ -165,7 +165,7 @@ public class RegressionController {
         if (!RegressionCodes.DECISIONS.contains(body.decision())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "decision phải thuộc [ACCEPT, REJECT, REQUEST_MORE_TESTS]");
         }
-        decisions.decide(projects.explicitProjectId(), testId, uid, body.decision(), body.reason(), body.conditions(), body.confirmed());
+        decisions.decide(projects.explicitProjectId("quyết định"), testId, uid, body.decision(), body.reason(), body.conditions(), body.confirmed());
         return views.recommendationDetail(testId);
     }
 
