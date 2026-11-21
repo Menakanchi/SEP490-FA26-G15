@@ -248,6 +248,8 @@ export function Term({ children, tip }: { children: React.ReactNode; tip: string
 
 export function OpenProjectCard({ project, purpose }: { project: ProjectItem; purpose: string }) {
   const { openProject } = useVehicSimContext();
+  // Project lưu trữ không mở được; trang đã báo "đang lưu trữ", không mời mở thêm.
+  if (project.status === "ARCHIVED") return null;
   return (
     <Card className="flex items-center justify-between gap-4 p-5">
       <p className="text-[14px] text-vehicsim-muted">
