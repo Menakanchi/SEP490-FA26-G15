@@ -11,6 +11,9 @@ import { Modal, OpenProjectCard, TERMS, Term } from "@/components/project/Projec
 import { vehicsimApi } from "@/services/vehicsim";
 import type { RegressionDetail } from "@/types/vehicsim";
 
+/** Cùng giới hạn `ProjectService.REASON_MAX`; đếm theo code point như backend (emoji tính một ký tự). */
+const REASON_MAX = 2000;
+
 function AdoptDialog({ detail, projectId, onClose }: { detail: RegressionDetail; projectId: number; onClose: () => void }) {
   const router = useRouter();
   const { refresh } = useJourney();
@@ -18,9 +21,12 @@ function AdoptDialog({ detail, projectId, onClose }: { detail: RegressionDetail;
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reasonLength = [...reason.trim()].length;
+  const reasonTooLong = reasonLength > REASON_MAX;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (reasonTooLong) return;
     setBusy(true);
     setError(null);
     try {
@@ -40,15 +46,25 @@ function AdoptDialog({ detail, projectId, onClose }: { detail: RegressionDetail;
           {detail.baseline.label} thôi là <Term tip={TERMS.baseline}>baseline</Term>. Vòng sau so sánh mọi ứng viên mới với {detail.candidate.label}; các bước ② – ⑤ bắt đầu lại.
         </p>
         <label className="flex flex-col gap-[6px] text-[14px] font-semibold text-vehicsim-ink">
-          Lý do
+          <span className="flex items-baseline justify-between gap-3">
+            Lý do
+            <span className={cx("text-[13px] font-normal tabular-nums", reasonTooLong ? "text-vehicsim-danger" : "text-vehicsim-muted")}>
+              {reasonLength} / {REASON_MAX}
+            </span>
+          </span>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={3}
             autoFocus
+            aria-invalid={reasonTooLong || undefined}
             placeholder="vd. Sửa 6 ca va chạm, không ca nào xấu đi, phanh oan tăng trong giới hạn"
-            className="rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] py-3 text-[14px] font-normal leading-[1.55] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+            className={cx(
+              "rounded-[12px] border border-solid px-[14px] py-3 text-[14px] font-normal leading-[1.55] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong",
+              reasonTooLong ? "border-vehicsim-danger" : "border-vehicsim-line-strong",
+            )}
           />
+          {reasonTooLong && <span className="text-[13px] font-normal text-vehicsim-danger">Lý do tối đa {REASON_MAX} ký tự.</span>}
         </label>
         <label className="flex items-start gap-3 text-[14px] leading-[1.5] text-vehicsim-ink">
           <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-1 size-4" />
@@ -59,7 +75,7 @@ function AdoptDialog({ detail, projectId, onClose }: { detail: RegressionDetail;
           <PillButton onClick={onClose} disabled={busy}>
             Huỷ
           </PillButton>
-          <PillButton type="submit" variant="dark" disabled={busy || !reason.trim() || !confirmed}>
+          <PillButton type="submit" variant="dark" disabled={busy || !reason.trim() || reasonTooLong || !confirmed}>
             {busy ? "Đang đổi…" : "Dùng làm baseline"}
           </PillButton>
         </div>

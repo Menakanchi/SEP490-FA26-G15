@@ -398,6 +398,10 @@ class ProjectServiceTest {
 
         assertError(() -> service.adopt(OWNER, PROJECT, TEST, new AdoptRequest(" ", true)), ProjectError.REASON_REQUIRED,
                 "Ghi lý do chọn ứng viên này làm baseline.");
+        assertError(() -> service.adopt(OWNER, PROJECT, TEST, new AdoptRequest("a".repeat(70_000), true)), ProjectError.REASON_TOO_LONG,
+                "Lý do tối đa 2000 ký tự (đang có 70000).");
+        assertError(() -> service.adopt(OWNER, PROJECT, TEST, new AdoptRequest("🚗".repeat(2001), true)), ProjectError.REASON_TOO_LONG,
+                "Lý do tối đa 2000 ký tự (đang có 2001).");
         assertError(() -> service.adopt(OWNER, PROJECT, TEST, new AdoptRequest("Đạt", null)), ProjectError.CONFIRM_REQUIRED,
                 "Xác nhận bạn đã xem kết quả kiểm chứng trước khi đổi baseline.");
         assertError(() -> service.adopt(OWNER, PROJECT, 404L, adopt()), ProjectError.TEST_NOT_FOUND,

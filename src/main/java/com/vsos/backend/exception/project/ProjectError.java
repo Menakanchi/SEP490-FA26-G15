@@ -29,6 +29,7 @@ public enum ProjectError {
     VEHICLE_LOCKED(CONFLICT, "Project đã có %d lượt chạy bằng %s nên không đổi được xe. Tạo project mới để thử xe khác."),
     CONFIRM_NAME_MISMATCH(BAD_REQUEST, "Gõ đúng “%s” để xác nhận xoá vĩnh viễn."),
     REASON_REQUIRED(BAD_REQUEST, "Ghi lý do chọn ứng viên này làm baseline."),
+    REASON_TOO_LONG(BAD_REQUEST, "Lý do tối đa %d ký tự (đang có %d)."),
     CONFIRM_REQUIRED(BAD_REQUEST, "Xác nhận bạn đã xem kết quả kiểm chứng trước khi đổi baseline."),
     TEST_NOT_FOUND(NOT_FOUND, "Không tìm thấy lần kiểm chứng #%s trong project này."),
     TEST_NOT_FINISHED(CONFLICT, "Lần kiểm chứng #%s chưa chạy xong."),

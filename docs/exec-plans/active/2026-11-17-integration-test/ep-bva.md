@@ -305,7 +305,8 @@ mỗi dòng trỏ tới mã test case.
 |---|---|---|---|---|---|
 | Độ dài `reason` sau khi cắt | min = 1 | 0 (`"   "`) | I | `REASON_REQUIRED` | PJ-14 (web: nút khoá) |
 | | | 1 (`" x "`) | V | Ghi chú kết thúc bằng ": x" | PJ-20 |
-| | max = giới hạn cột TEXT (65 535 byte) | 70 000 ký tự ASCII (vượt) | I | Mong muốn 400; ghi nhận thực tế | PJ-21 (Fail, #23) |
+| | max = 2 000 ký tự (`ProjectService.REASON_MAX`, code point; trước 21/11/2026 chỉ có giới hạn cột TEXT 65 535 byte) | 2 000 (trên biên) | V | Đổi baseline | — |
+| | | 2 001 / 70 000 ký tự (vượt) | I | 400 `REASON_TOO_LONG`, baseline không đổi | PJ-21 (sửa issue #4) |
 | `round` | — | 1 → 2 sau Adopt | V | `round` tăng 1 | PJ-15 |
 
 ### 5.3 Bảng quyết định cho Adopt

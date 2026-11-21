@@ -111,6 +111,7 @@ Thân lỗi: `{"code": "NAME_DUPLICATE", "detail": "Bạn đã có project tên 
 | `VEHICLE_LOCKED` | 409 | Đổi xe khi đã có lượt chạy | Ô Xe bị khoá kèm lý do |
 | `CONFIRM_NAME_MISMATCH` | 400 | Xoá vĩnh viễn gõ sai tên | Nút xoá bị khoá tới khi gõ đúng |
 | `REASON_REQUIRED`, `CONFIRM_REQUIRED` | 400 | Chọn baseline thiếu lý do / chưa xác nhận | Nút trong hộp thoại bị khoá tới khi đủ |
+| `REASON_TOO_LONG` | 400 | Lý do chọn baseline quá 2.000 ký tự (đếm theo code point) | Bộ đếm dưới ô Lý do, nút bị khoá |
 | `TEST_NOT_FOUND` | 404 | Lần kiểm chứng không thuộc project | Hiện câu lỗi |
 | `TEST_NOT_FINISHED`, `TEST_NOT_PASSED` | 409 | Kiểm chứng chưa xong / không đạt | Không hiện nút chọn baseline |
 | `CANDIDATE_ALREADY_DECIDED`, `BASELINE_CHANGED` | 409 | Ứng viên đã thành baseline / baseline đổi sau lần kiểm chứng | Màn kết luận nói rõ lý do |
