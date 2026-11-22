@@ -128,6 +128,12 @@ export function CarlaRunnerPanel() {
             Hủy {familyActive} lượt của họ
           </PillButton>
         )}
+        {familyRuns.length > 0 && (
+          <PillButton onClick={() => { setError(null); void vehicsimApi.downloadFamilyXosc(Number(familyId)).catch(e => setError(vi(e.message))); }}
+            title="Tải .zip chứa một .xosc cho mỗi lượt chạy của họ này">
+            Tải tất cả .xosc của họ
+          </PillButton>
+        )}
         {familyDone && (
           <PillButton href={`/analysis/failures?scenario_id=${familyId}`}>Tiếp tục: Phân tích kết quả</PillButton>
         )}

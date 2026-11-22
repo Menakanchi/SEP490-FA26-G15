@@ -347,8 +347,10 @@ class VehicSimSecurityTest {
         stubServices();
         when(simulationViews.runVariantBundle(anyLong())).thenReturn(Map.of());
         when(runs.exportXosc(any())).thenReturn("<OpenSCENARIO />");
+        when(simulationViews.familyXoscZip(anyLong())).thenReturn(new byte[] {'P', 'K'});
         for (RoleCode code : RoleCode.values()) {
             assertThat(statusOf(request(HttpMethod.GET, BASE + "/runs/1/xosc"), code)).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/families/1/xosc.zip"), code)).as("%s tải zip .xosc của họ", code).isEqualTo(200);
             assertThat(statusOf(request(HttpMethod.GET, BASE + "/carla/status"), code)).isEqualTo(200);
         }
         for (RoleCode code : RoleCode.values()) {

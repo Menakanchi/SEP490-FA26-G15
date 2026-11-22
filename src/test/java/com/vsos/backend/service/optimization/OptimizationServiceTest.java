@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import com.vsos.backend.config.VehicSimProperties;
@@ -128,6 +129,66 @@ class OptimizationServiceTest {
 
         verify(regressionService).createTest(
                 eq(projectId), eq(userId), eq(88L), eq(50L), eq(true), eq(true), any(), anyString());
+    }
+
+    private static Row optimizationRun(String simulator) {
+        Map<String, Object> run = new LinkedHashMap<>();
+        run.put("id", 7L);
+        run.put("project_id", 1L);
+        run.put("scenario_id", 50L);
+        run.put("base_aeb_version_id", 10L);
+        run.put("carla_vehicle_model_id", 3L);
+        run.put("created_by_user_id", 5L);
+        run.put("max_trials", 4L);
+        run.put("n_initial_points", 3);
+        run.put("status", "PENDING");
+        run.put("simulator_version", simulator);
+        return new Row(run);
+    }
+
+    @Test
+    void executeOptimization_refusesToRunOnADifferentSimulatorThanItWasCreatedFor() {
+        when(db.first(contains("SELECT * FROM optimization_runs WHERE id = ?"), eq(7L))).thenReturn(optimizationRun("vehicsim-kinematic-1.1"));
+        when(runService.configuredSimulator()).thenReturn("carla-0.9.16-xosc10");
+
+        service.executeOptimization(7L);
+
+        // Không ghép động học với CARLA: không dựng baseline, không chạy trial nào.
+        verify(db).update(contains("status = 'FAILED'"), contains("vehicsim-kinematic-1.1"), any(), eq(7L));
+        verify(runService, never()).createRuns(anyLong(), anyLong(), any(), anyLong(), anyLong(), anyLong(), anyString(), any(), any());
+        verify(runService, never()).createOptimizationRuns(anyLong(), anyLong(), any(), anyLong(), anyLong(), anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void executeOptimization_stopsWhenTheBaselineRunFailedInsteadOfScoringAgainstIt() {
+        when(db.first(contains("SELECT * FROM optimization_runs WHERE id = ?"), eq(7L))).thenReturn(optimizationRun("carla-0.9.16-xosc10"));
+        when(runService.configuredSimulator()).thenReturn("carla-0.9.16-xosc10");
+        when(familyService.latestBaseVersionId(50L)).thenReturn(11L);
+        when(familyService.variantsOf(11L)).thenReturn(java.util.List.of(new Row(Map.of("id", 5L))));
+        when(db.list(contains("FROM simulation_runs WHERE project_id = ?"), any())).thenReturn(java.util.List.of());
+        when(runService.createRuns(anyLong(), anyLong(), any(), anyLong(), anyLong(), anyLong(), anyString(), any(), any()))
+                .thenReturn(java.util.List.of(70L));
+        when(db.first(contains("SELECT * FROM simulation_runs WHERE id = ?"), eq(70L)))
+                .thenReturn(new Row(Map.of("id", 70L, "scenario_version_id", 5L, "status", "FAILED", "error_message", "CARLA server unreachable")));
+
+        service.executeOptimization(7L);
+
+        verify(db).update(contains("status = 'FAILED'"), contains("Run baseline 70"), any(), eq(7L));
+        verify(runService, never()).createOptimizationRuns(anyLong(), anyLong(), any(), anyLong(), anyLong(), anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void baselineLookupIsLimitedToTheOptimizationSimulatorAndVehicle() {
+        when(db.first(contains("SELECT * FROM optimization_runs WHERE id = ?"), eq(7L))).thenReturn(optimizationRun("carla-0.9.16-xosc10"));
+        when(runService.configuredSimulator()).thenReturn("carla-0.9.16-xosc10");
+        when(familyService.latestBaseVersionId(50L)).thenReturn(11L);
+        when(familyService.variantsOf(11L)).thenReturn(java.util.List.of(new Row(Map.of("id", 5L))));
+
+        service.executeOptimization(7L);
+
+        // Baseline động học hoặc -xosc9 cũ của cùng họ không được dùng làm chuẩn cho trial CARLA -xosc10.
+        verify(db).list(org.mockito.ArgumentMatchers.argThat((String sql) -> sql.contains("simulator_version = ?")
+                && sql.contains("carla_vehicle_model_id = ?") && sql.contains("ORDER BY id")), eq(1L), eq(50L), eq(10L), eq("carla-0.9.16-xosc10"), eq(3L));
     }
 
     @Test

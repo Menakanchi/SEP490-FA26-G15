@@ -183,7 +183,7 @@ public class RunService {
         return Json.parseList(raw).stream().map(String::valueOf).toList();
     }
 
-    String simulatorForNewRuns() {
+    public String simulatorForNewRuns() {
         if ("carla".equals(props.simulator())) {
             throw new InvalidRequestException("VEHICSIM_SIMULATOR=carla (runner JSON trực tiếp) đã gỡ ở ADR-042: dùng carla-xosc (scripts/dev-carla.ps1)");
         }

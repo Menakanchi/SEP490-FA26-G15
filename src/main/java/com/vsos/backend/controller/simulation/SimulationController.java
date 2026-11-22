@@ -83,6 +83,14 @@ public class SimulationController {
                 .body(runs.exportXosc(views.runVariantBundle(runId)).getBytes(StandardCharsets.UTF_8));
     }
 
+    @Operation(summary = "Tải .zip chứa OpenSCENARIO 1.0 của mọi run baseline thuộc họ kịch bản")
+    @GetMapping("/families/{scenarioId}/xosc.zip")
+    public ResponseEntity<byte[]> getFamilyXoscZip(@PathVariable long scenarioId) throws IOException {
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/zip"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"vehicsim-family-" + scenarioId + "-xosc.zip\"")
+                .body(views.familyXoscZip(scenarioId));
+    }
+
     @Operation(summary = "Chạy lại đúng biến thể/AEB/xe/seed trên CARLA qua ScenarioRunner")
     @PostMapping("/runs/{runId}/carla")
     public ResponseEntity<Map<String, Object>> runOnCarla(@PathVariable long runId, @AuthenticationPrincipal UserDetails user) {
