@@ -33,4 +33,22 @@ tác dụng, mô hình 6,0 / 8,0 (đạt 8 m/s² ở 0,35 s). Sau đó CARLA vư
 bảng bàn đạp đẩy bàn đạp lên cao — nên quãng dừng cuối cùng ngắn hơn bộ động học 0,5–0,7 m. Không phải bù quá; cần tách ảnh hưởng của cửa sổ đo giảm tốc
 0,1 s và xem lại khâu bù trước khi chỉnh `RAMP_LEAD_S`.
 
-**Khoảng cách nhỏ nhất tới người** ở c1 / c7 trên CARLA lớn hơn bộ động học ~1,7–1,8 m, trong khi quãng dừng chỉ chênh 0,5–0,7 m — cần kiểm cách tính hai bên.
+## Phân tích chênh vị trí dừng (c1, 22/11/2026)
+
+CARLA dừng cách vạch băng qua 5,62 m, bộ động học 4,00 m (Δ 1,62 m; khoảng cách nhỏ nhất 5,35 / 3,70 m, cùng công thức `Simulator.summaryMetrics`).
+Lúc AEB quyết định (2,25 s) hai bên ở **cùng vị trí** (x = 24,999 m). Δ 1,62 m tách được thành:
+
+| Phần | Δ | Nguyên nhân | Ở đâu |
+|---|---|---|---|
+| Bộ động học bắt đầu phanh muộn 0,05 s | 0,55 m | `AebStack.control` so `t >= decisionT + 0,15 + 0,10` với `t` cộng dồn 0,05 s kiểu double: 2,4999999999999990 < 2,5 nên phanh ở 2,55 s thay vì 2,50 s. CARLA (bước 0,01 s, thời gian lấy từ timestamp) phanh đúng 2,50 s | Lõi bộ động học / AEB (bản Python cũng vậy) |
+| Phanh trên CARLA mạnh hơn | 1,06 m | Quãng phanh thật từ lúc phanh: CARLA 8,28 m, bộ động học 9,34 m. CARLA tăng lực chậm (7,6 m/s² ở 0,5 s) rồi **vượt ≥ 9,81 m/s²** (ngưỡng đo μ·g) ở ~40 km/h | Adapter CARLA: khâu bù 0,05 × (lệnh − đo) với giảm tốc đo trễ (cửa sổ 0,1 s) + bù pha tăng lực (ADR-056) + hàng 40 km/h của bảng bàn đạp |
+
+Ngoài ra **chỉ số `stopping_distance_m` của bộ động học lệch một bước**: khung ghi vị trí xe *sau* khi đã tiến thêm v·0,05 s (`Simulator`: `egoFront +=` trước
+`frames.add`), nên quãng phanh báo 8,78 m trong khi quãng thật 9,34 m (ở 40 km/h lệch 0,56 m). So `stopping_distance_m` giữa CARLA và bộ động học vì vậy
+thấy −0,53 m thay vì −1,06 m thật. Đây là định nghĩa giữ từ bản Python (ghi trong `brakePhaseMetrics`).
+
+Ca mưa c7 không vọt (lệnh và ngưỡng đo cùng kẹp ở μ·g = 6,87 m/s²).
+
+**Việc tiếp:** (1) cần nhật ký bàn đạp của một run c1 (`sensors/frames.csv`) để tách phần của khâu bù, bù pha tăng lực và bảng bàn đạp trước khi sửa adapter;
+(2) sửa thời điểm phanh và chỉ số quãng dừng của bộ động học đổi kết quả mọi run động học (phải lên `vehicsim-kinematic-1.3`, cập nhật fixture parity) —
+ghi vào TD-17, chưa sửa.
