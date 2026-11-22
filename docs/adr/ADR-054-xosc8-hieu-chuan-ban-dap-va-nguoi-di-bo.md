@@ -34,6 +34,8 @@ Kết quả ở nhánh `phutro` của repo công cụ, `runs/2026-11-16_2229/ket
 
 ## Còn phải kiểm
 
+Cách chạy và bộ ca: [exec plan 22/11](../exec-plans/active/2026-11-22-kiem-xosc9-carla-that.md) (`worker/verify_cases.py`, profile `-xosc9`).
+
 - Chạy CARLA thật qua web vài ca người đi bộ (khô, mưa, dừng ở lề) với `-xosc8` so với bộ động học cùng bundle, như bảng kiểm chứng của
   ADR-053. Số dự kiến là ước tính từ dữ liệu vòng hở, chưa phải đo vòng kín với AEB.
 - **Hệ số trượt 0,056 s yếu nhất:** đo 23/10 qua ScenarioRunner (đúng đường web) cho 0,07 s; đo 16/11 dùng `WalkerControl` của công cụ đo,

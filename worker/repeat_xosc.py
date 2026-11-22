@@ -32,8 +32,11 @@ METRICS = (
     ("ego_impact_speed_mps", ("metrics", "ego_impact_speed_mps")),
     ("rms_jerk_raw_mps3", ("metrics", "rms_jerk_raw_mps3")),
     ("t_aeb_s", ("metrics", "t_aeb_s")),
-    ("radar_shadow_aeb_decision_t", ("shadow", "aeb_decision_t")),
-    ("radar_shadow_first_detection_t", ("shadow", "first_detection_t")),
+    # Khối radar của result: v9 ghi perception_radar (radar điều khiển AEB thật, ADR-043/055), ≤ v8 ghi perception_shadow (radar chạy bóng).
+    # Khoá first_detection_t / aeb_decision_t luôn là của đường radar; ground_truth_* là của đường ground truth.
+    ("radar_first_detection_t", ("radar", "first_detection_t")),
+    ("radar_aeb_decision_t", ("radar", "aeb_decision_t")),
+    ("ground_truth_aeb_decision_t", ("radar", "ground_truth_aeb_decision_t")),
 )
 
 
@@ -43,8 +46,9 @@ def extract(result: dict) -> dict:
     first_event: dict[str, float] = {}
     for event in outcome["events"]:
         first_event.setdefault(event["kind"], event["t"])
+    carla = outcome.get("case", {}).get("carla", {})
     sources = {"events": first_event, "metrics": outcome["metrics"],
-               "shadow": outcome.get("case", {}).get("carla", {}).get("perception_shadow") or {}}
+               "radar": carla.get("perception_radar") or carla.get("perception_shadow") or {}}
     row = {name: sources[group].get(key) for name, (group, key) in METRICS}
     row["end_reason"] = outcome["end_reason"]
     return row

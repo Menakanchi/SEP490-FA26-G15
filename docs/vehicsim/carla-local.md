@@ -116,6 +116,8 @@ API: `GET /runs/{id}/xosc`, `POST /scenarios/xosc`, `POST /runs/{id}/carla`, `GE
 - `case.carla.physics_check`: so thông số xe yêu cầu với số CARLA đọc lại; trường ép được phải khớp (`forced_ok`), kích thước mesh chỉ báo lệch > 0,05 m
   (`dimensions_ok`). Không chặn run.
 - Chạy lặp: `worker\.venv-carla\Scripts\python.exe worker\repeat_xosc.py <file>.xosc --runs 5 --out data\repeat-…` → `repeat_summary.json`.
+- Kiểm profile hiện hành trên bộ ca người đi bộ, so với bộ động học: `worker\.venv-carla\Scripts\python.exe worker\verify_cases.py --out data\kiem-xosc9`
+  (cần `mvnw compile`; [exec plan 22/11](../exec-plans/active/2026-11-22-kiem-xosc9-carla-that.md)).
 - Đo phanh 100% của một xe: `worker\.venv-carla\Scripts\python.exe worker\measure_brake.py --blueprint vehicle.audi.etron --mass 2100 --out data\brake-…`
   (tự tick, chỉ chạy khi server rảnh). Chỉ ghi file đo, không ghi DB. Số đo và quyết định ở
   [exec plan 22/10](../exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md).
