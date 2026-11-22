@@ -29,4 +29,21 @@ phản ứng. Ví dụ 30 km/h, kích hoạt 15 m, người 1,0 m/s, xe rộng 2
   cần xem lại theo từng xe.
 - `KinematicParityTest#currentDefinitionOnlyChangesTheImpactSpeedKeys` chỉ còn khẳng định "chỉ đổi khóa vận tốc va chạm" với xe rộng 1,93 m.
 
+## Cập nhật 23/11/2026 — phanh oan theo xe (bộ động học 1.3, TTC 1,5 s)
+
+Lưới 2 100 ca mỗi xe (20–60 km/h × kích hoạt 10–60 m × người 0,8–3 m/s × khô / mưa × 3 seed, một nửa người băng qua, một nửa dừng ở lề). Phanh oan = AEB
+quyết định phanh nhưng người không vào đường đi của xe (đường đi theo bề rộng thật):
+
+| Xe (bề rộng) | Phanh oan — hành lang 1,93 m | — hành lang theo xe | Thay đổi | Riêng ca dừng ở lề | Bỏ sót |
+|---|---|---|---|---|---|
+| e-tron (1,93 m) | 11,3 % | 11,3 % | 0 | 21,4 → 21,4 % | 0 → 0 |
+| Model 3 (2,16 m) | 11,1 % | 13,4 % | **+2,3 điểm %** | 21,4 → 25,6 % (+4,2) | 0 → 0 |
+| Patrol (2,15 m) | 11,1 % | 13,3 % | **+2,2 điểm %** | 21,4 → 25,5 % (+4,1) | 0 → 0 |
+| Sprinter (1,99 m) | 11,3 % | 11,9 % | +0,6 điểm % | 21,4 → 22,5 % (+1,1) | 0 → 0 |
+| HGV (2,89 m, `is_supported = FALSE`) | 10,7 % | 22,7 % | +12,0 điểm % | 21,4 → 45,3 % | **33 → 0** |
+
+4 xe dùng được tăng tối đa 2,3 điểm % (ngưỡng regression 5 điểm %, ADR-044); riêng ca dừng ở lề tăng tới 4,2 điểm % ở xe rộng 2,15–2,16 m. Phanh oan ở ca
+dừng ở lề vốn cao (21 % kể cả e-tron) do AEB dự đoán quỹ đạo người 2 s — điểm nên xem ở phần tối ưu AEB. HGV: hành lang 1,93 m bỏ sót 33 ca người vào đường đi
+của xe; hành lang theo xe hết bỏ sót nhưng phanh oan gấp đôi.
+
 Kiểm thử: `AebCorridorTest`, `KinematicParityTest`, `CarlaWebTest`, `BridgeProtocolTest`, `XoscExportTest`.
