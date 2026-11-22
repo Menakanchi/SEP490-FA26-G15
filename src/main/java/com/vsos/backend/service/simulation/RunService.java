@@ -199,7 +199,7 @@ public class RunService {
 
     /** ``fixed_delta_seconds`` của run: bước mô phỏng theo identity simulator. */
     static double stepFor(String simulator) {
-        return simulator != null && (simulator.endsWith(XOSC_SUFFIX) || simulator.endsWith(Xosc.V9_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V8_SIMULATOR_SUFFIX)
+        return simulator != null && (simulator.endsWith(XOSC_SUFFIX) || simulator.endsWith(Xosc.V10_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V9_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V8_SIMULATOR_SUFFIX)
                 || simulator.endsWith(Xosc.V7_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V6_SIMULATOR_SUFFIX)
                 || simulator.endsWith(Xosc.V5_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V4_SIMULATOR_SUFFIX)
                 || simulator.endsWith(Xosc.V3_SIMULATOR_SUFFIX)) ? CARLA_XOSC_STEP_S : DT;
@@ -339,17 +339,17 @@ public class RunService {
             if (isCarla(profile) && (profile.endsWith("-xosc1") || profile.endsWith("-xosc2") || profile.endsWith(Xosc.V3_SIMULATOR_SUFFIX)
                     || profile.endsWith(Xosc.V4_SIMULATOR_SUFFIX) || profile.endsWith(Xosc.V5_SIMULATOR_SUFFIX) || profile.endsWith(Xosc.V6_SIMULATOR_SUFFIX)
                     || profile.endsWith(Xosc.V7_SIMULATOR_SUFFIX) || profile.endsWith(Xosc.V8_SIMULATOR_SUFFIX)
-                    || profile.endsWith(Xosc.V9_SIMULATOR_SUFFIX))) {
+                    || profile.endsWith(Xosc.V9_SIMULATOR_SUFFIX) || profile.endsWith(Xosc.V10_SIMULATOR_SUFFIX))) {
                 // xosc2 là bước 0,05 s; xosc3 có người "dừng ở lề" đi vào làn (TD-47); xosc4 chưa ép mô-men phanh (ADR-051);
                 // xosc5 chưa kẹp lệnh ở μ·g (ADR-052); xosc6 còn cú dừng gấp dưới 6 m/s (ADR-053); xosc7 bàn đạp còn tuyến tính (ADR-054);
-                // xosc8 AEB còn dùng ground truth cho người đi bộ (ADR-043 giai đoạn 2, ADR-055); xosc9 chưa bù pha tăng lực (ADR-056):
-                // không chạy lại bằng bộ xuất mới, không ghép với xosc10.
+                // xosc8 AEB còn dùng ground truth cho người đi bộ (ADR-043 giai đoạn 2, ADR-055); xosc9 chưa bù pha tăng lực (ADR-056); xosc10 hành lang AEB
+                // 1,93 m cho mọi xe (ADR-057): không chạy lại bằng bộ xuất mới, không ghép với xosc11.
                 throw new SimulatorException("run CARLA dùng " + profile.substring(profile.lastIndexOf('-') + 1)
                         + " đã cũ; tạo lượt chạy mới để dùng profile " + XOSC_SUFFIX);
             }
             if (!isCarla(profile) && !KINEMATIC_SIMULATOR.equals(profile)) {
-                // vehicsim-kinematic-1.0: impact_speed_mps là tốc độ ego; 1.1 đổi sang vận tốc tương đối (13/11/2026). Không chạy lại run cũ bằng
-                // định nghĩa mới dưới định danh cũ, không ghép với 1.1.
+                // vehicsim-kinematic-1.0: impact_speed_mps là tốc độ ego; 1.1 đổi sang vận tốc tương đối (13/11/2026); 1.2 hành lang AEB theo bề rộng xe
+                // (ADR-057). Không chạy lại run cũ bằng định nghĩa mới dưới định danh cũ, không ghép với 1.2.
                 throw new SimulatorException("run động học dùng " + profile + " đã cũ; tạo lượt chạy mới để dùng " + KINEMATIC_SIMULATOR);
             }
             if (isCarla(profile) && !profile.endsWith(XOSC_SUFFIX)) {

@@ -21,12 +21,12 @@ public final class LeadVehicleSimulator {
     private LeadVehicleSimulator() {
     }
 
-    /** Bộ động học hiện hành ({@code vehicsim-kinematic-1.1}): {@code impact_speed_mps} là vận tốc va chạm tương đối. */
+    /** Bộ động học hiện hành ({@code vehicsim-kinematic-1.2}): {@code impact_speed_mps} là vận tốc va chạm tương đối. */
     public static SimulationOutcome simulate(LeadVehicleCase c, AebParams params, long seed, VehicleSpec vehicle) {
         return simulate(c, params, seed, vehicle, true);
     }
 
-    /** @param relativeImpact {@code false} = định nghĩa của bộ động học 1.0 ({@code impact_speed_mps} = tốc độ ego); mọi số khác giống hệt. */
+    /** @param relativeImpact {@code false} = bộ động học 1.0 ({@code impact_speed_mps} = tốc độ ego, hành lang AEB 1,93 m); xe rộng 1,93 m: số khác giống hệt. */
     public static SimulationOutcome simulate(LeadVehicleCase c, AebParams params, long seed, VehicleSpec vehicle, boolean relativeImpact) {
         return simulate(c, params, seed, vehicle, relativeImpact, false);
     }
@@ -47,7 +47,7 @@ public final class LeadVehicleSimulator {
         boolean targetBraking = false;
         List<Frame> frames = new ArrayList<>();
         List<Map<String, Object>> events = new ArrayList<>();
-        AebStack stack = new AebStack(params, seed, c.weather(), c.timeOfDay(), vehicle.lengthM(),
+        AebStack stack = new AebStack(params, seed, c.weather(), c.timeOfDay(), vehicle.lengthM(), Simulator.corridorWidth(vehicle, relativeImpact),
                 Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()), events, AebStack.DT, null);
         Simulator.MotionStats stats = new Simulator.MotionStats(AebStack.DT);
         double frictionLimit = c.roadFriction() * Simulator.G;

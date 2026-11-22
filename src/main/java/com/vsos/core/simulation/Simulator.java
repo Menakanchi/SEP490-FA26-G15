@@ -38,8 +38,22 @@ public final class Simulator {
     /** AEB cho một lần chạy — cùng cách dựng ở mọi bộ mô phỏng. */
     public static AebStack newAebStack(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle, List<Map<String, Object>> events, double dt,
                                        Double perceptionPeriodS) {
-        return new AebStack(params, seed, c.weather(), c.timeOfDay(), vehicle.lengthM(), Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()),
-                events, dt, perceptionPeriodS);
+        return newAebStack(c, params, seed, vehicle, events, dt, perceptionPeriodS, true);
+    }
+
+    /**
+     * @param vehicleCorridor {@code true} = hành lang AEB theo bề rộng của xe chạy (bộ động học 1.2, {@code .xosc} v11, ADR-057); {@code false} = 1,93 m
+     *                        cho mọi xe như bản Python (fixture parity) và profile cũ.
+     */
+    public static AebStack newAebStack(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle, List<Map<String, Object>> events, double dt,
+                                       Double perceptionPeriodS, boolean vehicleCorridor) {
+        return new AebStack(params, seed, c.weather(), c.timeOfDay(), vehicle.lengthM(), corridorWidth(vehicle, vehicleCorridor),
+                Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()), events, dt, perceptionPeriodS);
+    }
+
+    /** Bề rộng xe đưa vào hành lang AEB: xe thật (ADR-057) hoặc 1,93 m của bản cũ. */
+    public static double corridorWidth(VehicleSpec vehicle, boolean vehicleCorridor) {
+        return vehicleCorridor ? vehicle.widthM() : AebParams.LEGACY_CORRIDOR_VEHICLE_WIDTH_M;
     }
 
     /** TTC "mắt thần": chỉ có khi người đi bộ đang thật sự nằm trên đường đi của xe. */
@@ -104,14 +118,14 @@ public final class Simulator {
         return simulate(c, params, seed, VehicleSpec.DEFAULT);
     }
 
-    /** Bộ động học hiện hành ({@code vehicsim-kinematic-1.1}): {@code impact_speed_mps} là vận tốc va chạm tương đối. */
+    /** Bộ động học hiện hành ({@code vehicsim-kinematic-1.2}): {@code impact_speed_mps} là vận tốc va chạm tương đối, hành lang AEB theo bề rộng xe. */
     public static SimulationOutcome simulate(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle) {
         return simulate(c, params, seed, vehicle, true);
     }
 
     /**
-     * @param relativeImpact {@code false} = định nghĩa của bộ động học 1.0 / bản Python ({@code impact_speed_mps} = tốc độ ego) — chỉ để so parity với
-     *                       fixture cũ; mọi số khác của run giống hệt ở hai chế độ.
+     * @param relativeImpact {@code false} = bộ động học 1.0 / bản Python ({@code impact_speed_mps} = tốc độ ego, hành lang AEB 1,93 m cho mọi xe) — chỉ để
+     *                       so parity với fixture cũ. Với xe rộng 1,93 m (e-tron) mọi số khác giống hệt ở hai chế độ.
      */
     public static SimulationOutcome simulate(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle, boolean relativeImpact) {
         return simulate(c, params, seed, vehicle, relativeImpact, false);
@@ -134,7 +148,8 @@ public final class Simulator {
 
         List<Frame> frames = new ArrayList<>();
         List<Map<String, Object>> events = new ArrayList<>();
-        AebStack stack = newAebStack(c, params, seed, vehicle, events, AebStack.DT, null);
+        // Hành lang theo xe (1.2) đi cùng định nghĩa hiện hành; relativeImpact = false là đường so fixture Python (1.0), giữ 1,93 m.
+        AebStack stack = newAebStack(c, params, seed, vehicle, events, AebStack.DT, null, relativeImpact);
         MotionStats stats = new MotionStats(AebStack.DT);
         double frictionLimit = c.roadFriction() * G;
         String endReason = "TIMEOUT";

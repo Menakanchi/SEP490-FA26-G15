@@ -59,6 +59,8 @@ public final class AebStack {
     // Mục tiêu có vận tốc dọc / bề ngang (xe phía trước, ADR-050). Người đi bộ: cả hai = 0 → phép tính y hệt bản cũ.
     private double targetVx;
     private double targetHalfWidth;
+    /** Nửa bề ngang hành lang "trong đường đi" ({@link AebParams#corridorHalfWidth}). */
+    private final double corridorHalfWidth;
 
     private record View(boolean detected, double confidence, Double perceivedY, Double ttc) {
     }
@@ -69,6 +71,13 @@ public final class AebStack {
      */
     public AebStack(AebParams params, long seed, String weather, String timeOfDay, double vehicleLengthM, double decelLimit,
                     List<Map<String, Object>> events, double dt, Double perceptionPeriodS) {
+        this(params, seed, weather, timeOfDay, vehicleLengthM, AebParams.LEGACY_CORRIDOR_VEHICLE_WIDTH_M, decelLimit, events, dt, perceptionPeriodS);
+    }
+
+    /** @param corridorVehicleWidthM bề rộng xe dùng cho hành lang AEB (ADR-057): bề rộng thật của xe, hoặc 1,93 ở bộ mô phỏng / profile cũ. */
+    public AebStack(AebParams params, long seed, String weather, String timeOfDay, double vehicleLengthM, double corridorVehicleWidthM,
+                    double decelLimit, List<Map<String, Object>> events, double dt, Double perceptionPeriodS) {
+        this.corridorHalfWidth = AebParams.corridorHalfWidth(corridorVehicleWidthM);
         this.params = params;
         this.rng = new PyRandom(seed);
         this.vehicleLengthM = vehicleLengthM;
@@ -211,8 +220,8 @@ public final class AebStack {
             ttcPerceived = gap / closing;
             double lookahead = Math.min(ttcPerceived, PREDICTION_HORIZON_S);
             double predictedY = perceivedY + perceivedVyFiltered * lookahead;
-            boolean inPredictedPath = Math.abs(predictedY) - targetHalfWidth <= p.corridorHalfWidth()
-                    || Math.abs(perceivedY) - targetHalfWidth <= p.corridorHalfWidth();
+            boolean inPredictedPath = Math.abs(predictedY) - targetHalfWidth <= corridorHalfWidth
+                    || Math.abs(perceivedY) - targetHalfWidth <= corridorHalfWidth;
             if (inPredictedPath) {
                 if (fcwT == null && ttcPerceived <= p.ttcThreshold() + FCW_LEAD_S) {
                     fcwT = t;

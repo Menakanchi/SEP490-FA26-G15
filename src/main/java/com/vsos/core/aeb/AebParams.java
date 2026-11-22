@@ -44,9 +44,15 @@ public record AebParams(double ttcThreshold, double brakeActivationDelay, double
         return out;
     }
 
-    /** Nửa bề ngang hành lang AEB coi là "trong đường đi": nửa xe + ¼ khoảng đệm (¼ chứ không phải ½, xem bản Python). */
-    public double corridorHalfWidth() {
-        return 0.5 * 1.93 + 0.25 * AebStack.SAFETY_DISTANCE_MARGIN_M;
+    /** Bề rộng xe bản Python / bộ động học ≤ 1.1 dùng cho hành lang AEB với mọi xe (e-tron); chỉ còn để so fixture và chạy lại profile cũ. */
+    public static final double LEGACY_CORRIDOR_VEHICLE_WIDTH_M = 1.93;
+
+    /**
+     * Nửa bề ngang hành lang AEB coi là "trong đường đi": nửa bề rộng xe + ¼ khoảng đệm (¼ chứ không phải ½, xem bản Python). Từ bộ động học 1.2 /
+     * {@code .xosc} v11 (ADR-057) dùng bề rộng của chính xe chạy; trước đó luôn {@link #LEGACY_CORRIDOR_VEHICLE_WIDTH_M}.
+     */
+    public static double corridorHalfWidth(double vehicleWidthM) {
+        return 0.5 * vehicleWidthM + 0.25 * AebStack.SAFETY_DISTANCE_MARGIN_M;
     }
 
     /** Tốc độ tăng giảm tốc thực tế: chậm hơn trong hai giới hạn build-up và jerk. */

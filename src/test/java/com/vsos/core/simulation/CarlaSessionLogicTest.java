@@ -63,6 +63,7 @@ class CarlaSessionLogicTest {
         assertThat(CarlaSession.radarPerception(crossing("CLEAR"),
                 new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V8_SIMULATOR_SUFFIX, 0.01, 0.05))).isFalse();
         assertThat(CarlaSession.radarPerception(crossing("CLEAR"), new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V9_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
+        assertThat(CarlaSession.radarPerception(crossing("CLEAR"), new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V10_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
         LeadVehicleCase lead = new LeadVehicleCase(LeadVehicleCase.CCRS, 50.0, 0.0, 40.0, null, 100.0, "CLEAR", "DAY", null);
         com.vsos.core.bridge.Bundle.RunSpec leadSpec = new com.vsos.core.bridge.Bundle.RunSpec(null, AebParams.DEFAULT, VehicleSpec.DEFAULT, 1L, null, null,
                 Map.of(), Map.of(), lead);
@@ -126,6 +127,7 @@ class CarlaSessionLogicTest {
     void rampLeadOnlyWhileTheCommandRisesFromV10() {
         com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
         assertThat(CarlaSession.rampLeadApplies(current)).isTrue();
+        assertThat(CarlaSession.rampLeadApplies(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V10_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
         assertThat(CarlaSession.rampLeadApplies(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V9_SIMULATOR_SUFFIX, 0.01, 0.05))).isFalse();
         assertThat(CarlaSession.RAMP_LEAD_S).isEqualTo(0.055);
         // Lệnh AEB tăng 20 m/s³ (0,2 m/s² mỗi tick 0,01 s): cộng thêm 0,055 × 20 = 1,1 m/s².
