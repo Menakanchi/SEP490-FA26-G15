@@ -1,6 +1,7 @@
 # ADR-057 — Hành lang AEB theo bề rộng của xe chạy (bộ động học 1.2, `.xosc` v11)
 
-**Trạng thái:** Proposed 22/11/2026. Unit test đã chạy; chưa chạy CARLA thật. Cần thành viên phụ trách lõi AEB và phần tối ưu xác nhận.
+**Trạng thái:** ✅ Accepted 22/11/2026 — chủ dự án chốt, không chờ thành viên phụ trách lõi AEB / tối ưu. Unit test đã chạy; chưa chạy CARLA thật
+(gộp vào lần kiểm của [exec plan 22/11](../exec-plans/active/2026-11-22-kiem-carla-that-nguoi-di-bo.md)).
 **Liên quan:** ADR-040 (4 tham số AEB), ADR-042 (lõi Java), ADR-055 (bộ động học 1.1); migration 017 (giới hạn phanh theo xe).
 
 ## Bối cảnh
