@@ -1,6 +1,6 @@
 # ADR-058 — Phanh đúng mốc, quãng dừng đúng bước và bàn đạp thuần feed-forward (bộ động học 1.3, `.xosc` v12)
 
-**Trạng thái:** Accepted 22/11/2026 — chủ dự án chốt. Unit test đã chạy; phần adapter CARLA chưa chạy CARLA thật.
+**Trạng thái:** ✅ Accepted 22/11/2026 — chủ dự án chốt; kiểm CARLA thật `-xosc13` 23/11 ([kết quả](../vehicsim/carla-ped-bench/ket-qua/kiem-v13-2026-11-23_0008/README.md)): e-tron phanh tác dụng 2,50 s ở cả hai bên, quãng dừng lệch 0,00–0,03 m.
 **Liên quan:** ADR-054 (bảng bàn đạp), ADR-056 (bù pha tăng lực), ADR-057 (hành lang theo xe); kết quả kiểm
 [`-xosc11`](../vehicsim/carla-ped-bench/ket-qua/kiem-xosc11-2026-11-22_2318/README.md).
 

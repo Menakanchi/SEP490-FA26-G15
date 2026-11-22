@@ -1,6 +1,6 @@
 # ADR-060 — Ngưỡng adapter đặt tốc độ theo xe và bàn đạp; khôi phục khâu bù (`.xosc` v13)
 
-**Trạng thái:** Accepted 22/11/2026 — chủ dự án chốt. Unit test đã chạy; chưa chạy CARLA thật.
+**Trạng thái:** ✅ Accepted 22/11/2026 — chủ dự án chốt; kiểm CARLA thật `-xosc13` 23/11 ([kết quả](../vehicsim/carla-ped-bench/ket-qua/kiem-v13-2026-11-23_0008/README.md)): e-tron c1 / c7 hết vọt giảm tốc, vị trí dừng lệch ≤ 0,03 m (trước 1,6–1,8 m).
 **Liên quan:** sửa ADR-053 (ngưỡng 6 m/s), đính chính ADR-058 (bỏ khâu bù); cùng định danh v13 với ADR-059.
 
 ## Bối cảnh

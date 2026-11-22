@@ -1,7 +1,6 @@
 # ADR-056 — `.xosc` v10 / `-xosc10`: bù pha tăng lực phanh của e-tron trên CARLA
 
-**Trạng thái:** Proposed 22/11/2026. Unit test đã chạy; chưa chạy CARLA thật (gộp vào lần kiểm của
-[exec plan 22/11](../exec-plans/active/2026-11-22-kiem-carla-that-nguoi-di-bo.md)).
+**Trạng thái:** ✅ Accepted 23/11/2026 — kiểm CARLA thật `-xosc13` ([kết quả](../vehicsim/carla-ped-bench/ket-qua/kiem-v13-2026-11-23_0008/README.md)): e-tron và Model 3 (có bù) quãng dừng lệch bộ động học ≤ 0,11 m; Patrol / Sprinter (chưa bật) +0,5 đến +1,0 m.
 **Liên quan:** bổ sung [ADR-054](ADR-054-xosc8-hieu-chuan-ban-dap-va-nguoi-di-bo.md) (bảng bàn đạp e-tron); TD-17.
 
 ## Bối cảnh

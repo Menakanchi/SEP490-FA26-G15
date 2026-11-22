@@ -1,6 +1,6 @@
 # ADR-059 — `.xosc` v13: bảng bàn đạp theo tốc độ cho Model 3, Patrol, Sprinter
 
-**Trạng thái:** Accepted 22/11/2026 — chủ dự án chốt. Unit test đã chạy; chưa chạy CARLA thật với 3 xe.
+**Trạng thái:** ✅ Accepted 22/11/2026 — chủ dự án chốt. Kiểm CARLA thật `-xosc13` 23/11 ([kết quả](../vehicsim/carla-ped-bench/ket-qua/kiem-v13-2026-11-23_0008/README.md)): Model 3 đạt (+0,11 / +0,06 m); Patrol / Sprinter còn +0,5 đến +1,0 m do tăng lực chậm — mục 2 (không bật bù pha tăng lực) sai một phần.
 **Liên quan:** ADR-054 (bảng bàn đạp e-tron), ADR-056 (bù pha tăng lực), ADR-058 (bàn đạp thuần feed-forward); migration 016 (mô-men 3 xe).
 
 ## Bối cảnh
