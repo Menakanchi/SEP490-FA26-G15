@@ -11,7 +11,7 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 
 > **Bắt buộc sau khi pull (22/11/2026, [ADR-057](docs/adr/ADR-057-hanh-lang-aeb-theo-be-rong-xe.md), [ADR-058](docs/adr/ADR-058-thoi-diem-phanh-va-ban-dap-feed-forward.md), migration 016–017):**
 > hành lang AEB theo bề rộng xe, phanh đúng mốc, bảng bàn đạp 3 xe ([ADR-059](docs/adr/ADR-059-ban-dap-theo-toc-do-3-xe.md)), ngưỡng đặt tốc độ theo bàn đạp ([ADR-060](docs/adr/ADR-060-nguong-dat-toc-do-theo-ban-dap.md)) → bộ động học `vehicsim-kinematic-1.3`, CARLA `.xosc` v13 / `-xosc13`. DB đã có: chạy [migration 016](database/mysql/migrations/016_2026-11-22_hieu-chuan-phanh-3-xe.sql)
-> và [017](database/mysql/migrations/017_2026-11-22_gioi-han-phanh-theo-xe.sql) (phanh theo xe). **Chạy lại baseline** bằng định danh mới.
+> [017](database/mysql/migrations/017_2026-11-22_gioi-han-phanh-theo-xe.sql) (phanh theo xe) và [018](database/mysql/migrations/018_2026-11-23_ttc-mac-dinh-1-5.sql) (TTC mặc định 1,5 s). **Chạy lại baseline** bằng định danh mới.
 
 > **Bắt buộc sau khi pull (13/11/2026, [ADR-055](docs/adr/ADR-055-chot-chi-so-va-che-do-aeb-tat-13-11.md), [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md)):**
 > định danh run đổi — bộ động học `vehicsim-kinematic-1.1`, CARLA `.xosc` v9 / `-xosc9`. (1) DB đã có: chạy

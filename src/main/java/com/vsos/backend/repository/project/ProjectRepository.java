@@ -162,7 +162,7 @@ public class ProjectRepository {
                 """, projectId, ownerId, now);
         db.update("""
                 INSERT INTO aeb_parameter_values (aeb_version_id, parameter_id, param_value)
-                SELECT ?, id, IF(code = 'TTC_THRESHOLD', 1.5, default_value) FROM aeb_parameters
+                SELECT ?, id, IF(code = 'TTC_THRESHOLD', 1.5, default_value) FROM aeb_parameters  -- TTC 1,5 s kể cả DB chưa chạy migration 018
                 """, versionId);
         return projectId;
     }

@@ -27,11 +27,12 @@ public class BootstrapService {
      * Chỉ 4 tham số chỉnh được (ADR-040); sáu tham số còn lại của lõi AEB là hằng số trong worker, không nằm ở DB.
      */
     private static final List<Object[]> AEB_PARAMETER_SEED = List.of(
-            new Object[]{"TTC_THRESHOLD", "TTC Threshold", "DECISION", "s", 0.50, 4.0, 1.8, 1},
+            new Object[]{"TTC_THRESHOLD", "TTC Threshold", "DECISION", "s", 0.50, 4.0, 1.5, 1},
             new Object[]{"BRAKE_ACTIVATION_DELAY", "Brake Activation Delay", "CONTROL", "s", 0.0, 0.5, 0.15, 2},
             new Object[]{"MAX_DECELERATION", "Max Deceleration", "VEHICLE_DYNAMICS", "m/s2", 3.0, 10.0, 8.0, 3},
             new Object[]{"BRAKE_BUILDUP_RATE", "Brake Build-up Rate", "CONTROL", "m/s3", 5.0, 20.0, 20.0, 4});
 
+    /** Baseline v1.0 luôn TTC 1,5 s (chốt 23/11/2026, migration 018): giữ ghi đè để DB chưa chạy migration 018 (danh mục còn 1,8) vẫn ra 1,5. */
     private static final Map<String, Double> BASELINE_OVERRIDES = Map.of("TTC_THRESHOLD", 1.5);
     private static final String DEFAULT_BLUEPRINT = "vehicle.audi.etron";
 

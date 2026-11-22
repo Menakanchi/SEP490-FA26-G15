@@ -1,0 +1,14 @@
+-- =====================================================================
+-- Migration 018 — 23/11/2026: mặc định danh mục TTC_THRESHOLD 1,80 → 1,50 s cho khớp baseline v1.0 (vốn đã ghi đè 1,5 ở BootstrapService và
+-- ProjectRepository) và lõi (AebParams.DEFAULT). Không đổi số bảng, không đổi cột, không đổi aeb_parameter_values của phiên bản nào.
+--
+-- Lý do chọn 1,5 (phân tích 23/11/2026, bộ động học 1.3, lưới 720 ca băng qua + 720 ca dừng ở lề × 4 xe): 1,8 giảm va chạm 1,6–1,9 điểm % nhưng tăng
+--   phanh oan 10–12 điểm %, vượt ngưỡng 5 điểm % của regression (ADR-044); tài liệu tham số (Maschke 2024, Lai 2024) đặt phanh mạnh ở TTC ≤ ~1,5–1,6 s.
+--   Mọi baseline hiện có đều 1,5. Phần tối ưu vẫn dò TTC trong dải min/max.
+-- Ảnh hưởng: chỉ số "mặc định" hiển thị ở màn AEB / hệ thống và giá trị dự phòng khi phiên bản cha thiếu tham số. Không run nào đổi kết quả.
+-- DB tạo mới từ 01_schema.sql hiện tại thì KHÔNG cần chạy file này.
+--
+-- Chạy một lần (giữ dữ liệu):
+--   docker compose exec -T mysql sh -c 'mysql --default-character-set=utf8mb4 -uroot -p"$MYSQL_ROOT_PASSWORD" vehicsim' --     < database/mysql/migrations/018_2026-11-23_ttc-mac-dinh-1-5.sql
+-- =====================================================================
+UPDATE aeb_parameters SET default_value = 1.50 WHERE code = 'TTC_THRESHOLD';
