@@ -50,5 +50,5 @@ thấy −0,53 m thay vì −1,06 m thật. Đây là định nghĩa giữ từ 
 Ca mưa c7 không vọt (lệnh và ngưỡng đo cùng kẹp ở μ·g = 6,87 m/s²).
 
 **Việc tiếp:** (1) cần nhật ký bàn đạp của một run c1 (`sensors/frames.csv`) để tách phần của khâu bù, bù pha tăng lực và bảng bàn đạp trước khi sửa adapter;
-(2) sửa thời điểm phanh và chỉ số quãng dừng của bộ động học đổi kết quả mọi run động học (phải lên `vehicsim-kinematic-1.3`, cập nhật fixture parity) —
-ghi vào TD-17, chưa sửa.
+(2) sửa thời điểm phanh và chỉ số quãng dừng của bộ động học. **Cập nhật 22/11:** cả hai đã sửa ở
+[ADR-058](../../../../adr/ADR-058-thoi-diem-phanh-va-ban-dap-feed-forward.md) (bộ động học 1.3, `-xosc12`), kèm bỏ khâu bù khi có bảng bàn đạp; chờ kiểm CARLA thật.

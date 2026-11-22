@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.within;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import com.vsos.core.aeb.AebParams;
+import com.vsos.core.aeb.AebStack;
 import com.vsos.core.xosc.Xosc;
 
 /**
@@ -29,14 +30,34 @@ class AebCorridorTest {
         assertThat(Simulator.corridorWidth(HGV, false)).isEqualTo(1.93);
     }
 
+    /** Xe rộng 1,93 m: hành lang không đổi, nên phần nhận diện / quyết định giống hệt bản cũ (thời điểm phanh đổi vì ADR-058, kiểm ở test khác). */
     @Test
-    void anEtronWideVehicleRunsExactlyAsBefore() {
+    void anEtronWideVehicleDecidesExactlyAsBefore() {
         CrossingCase c = new CrossingCase(40, 25, 1.5, false, "CLEAR", "DAY", null);
         Map<String, Object> current = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, true).metrics();
         Map<String, Object> legacy = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, false).metrics();
-        for (String key : new String[] {"aeb_decision_t", "fcw_t", "brake_onset_t", "min_distance_m", "stopping_distance_m"}) {
+        for (String key : new String[] {"first_detection_t", "fcw_t", "aeb_decision_t", "gt_in_path_t"}) {
             assertThat(current.get(key)).as(key).isEqualTo(legacy.get(key));
         }
+    }
+
+    /**
+     * ADR-058: ở bước 0,05 s, quyết định 2,25 s + trễ 0,25 s phải phanh ở 2,50 s (bản cũ cộng dồn số thực ra 2,4999999999999990 nên phanh ở 2,55 s); quãng
+     * phanh tính từ vị trí đầu bước phanh tác dụng.
+     */
+    @Test
+    void brakesExactlyAtDecisionPlusDelayAndMeasuresTheWholeBrakingDistance() {
+        CrossingCase c = new CrossingCase(40, 25, 1.5, false, "CLEAR", "DAY", null);
+        SimulationOutcome current = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, true);
+        SimulationOutcome legacy = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, false);
+        double decision = ((Number) current.metrics().get("aeb_decision_t")).doubleValue();
+        assertThat(((Number) current.metrics().get("brake_onset_t")).doubleValue()).isCloseTo(decision + 0.25, within(1e-9));
+        assertThat(((Number) legacy.metrics().get("brake_onset_t")).doubleValue()).isCloseTo(decision + 0.30, within(1e-9));
+        double onset = ((Number) current.metrics().get("brake_onset_t")).doubleValue();
+        Frame first = current.frames().stream().filter(f -> f.t() >= onset - 1e-9).findFirst().orElseThrow();
+        Frame last = current.frames().get(current.frames().size() - 1);
+        assertThat(((Number) current.metrics().get("stopping_distance_m")).doubleValue())
+                .isCloseTo(last.egoX() - (first.egoX() - first.egoV() * AebStack.DT), within(1e-3));
     }
 
     /**
@@ -57,6 +78,10 @@ class AebCorridorTest {
     @Test
     void carlaUsesTheVehicleCorridorFromV11Only() {
         assertThat(CarlaSession.vehicleCorridorApplies(new Xosc.Profile(Xosc.SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
+        assertThat(CarlaSession.vehicleCorridorApplies(new Xosc.Profile(Xosc.V11_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
         assertThat(CarlaSession.vehicleCorridorApplies(new Xosc.Profile(Xosc.V10_SIMULATOR_SUFFIX, 0.01, 0.05))).isFalse();
+        // ADR-058: phanh đúng mốc và bỏ khâu bù khi có bảng bàn đạp chỉ từ v12.
+        assertThat(CarlaSession.v12Control(new Xosc.Profile(Xosc.SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
+        assertThat(CarlaSession.v12Control(new Xosc.Profile(Xosc.V11_SIMULATOR_SUFFIX, 0.01, 0.05))).isFalse();
     }
 }

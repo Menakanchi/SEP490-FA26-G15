@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.zip.GZIPInputStream;
 import org.junit.jupiter.api.Test;
 import com.vsos.core.aeb.AebParams;
+import com.vsos.core.aeb.AebStack;
 import com.vsos.core.evaluation.Evaluation;
 
 /**
@@ -77,11 +78,17 @@ public class KinematicParityTest {
             Map<String, Object> current = Simulator.simulate(crossing, params, seed, vehicle).asDict();
             Map<String, Object> lm = new java.util.LinkedHashMap<>(map(legacy.get("metrics")));
             Map<String, Object> cm = new java.util.LinkedHashMap<>(map(current.get("metrics")));
+            // Nhận diện / quyết định không đổi; từ 1.3 (ADR-058) phanh tác dụng sớm hơn tối đa một bước và quãng dừng tính từ đầu bước, nên các số sau phanh
+            // được phép khác.
+            for (String key : new String[] {"first_detection_t", "fcw_t", "aeb_decision_t", "gt_in_path_t", "ego_initial_speed_mps"}) {
+                assertThat(cm.get(key)).as(key).isEqualTo(lm.get(key));
+            }
+            if (lm.get("brake_onset_t") != null) {
+                double diff = ((Number) lm.get("brake_onset_t")).doubleValue() - ((Number) cm.get("brake_onset_t")).doubleValue();
+                assertThat(diff).isBetween(-1e-9, AebStack.DT + 1e-9);
+            }
             Object ego = cm.remove("ego_impact_speed_mps");
-            assertThat(ego).isEqualTo(lm.get("impact_speed_mps"));
             Object relative = cm.remove("impact_speed_mps");
-            lm.remove("impact_speed_mps");
-            assertThat(cm).isEqualTo(lm);
             if (ego != null) {
                 collisions++;
                 java.util.List<?> frames = (java.util.List<?>) current.get("frames");
@@ -92,9 +99,6 @@ public class KinematicParityTest {
             } else {
                 assertThat(relative).isNull();
             }
-            legacy.remove("metrics");
-            current.remove("metrics");
-            assertThat(current).isEqualTo(legacy);
         }
         assertThat(collisions).as("fixture có ca va chạm để kiểm").isGreaterThan(10);
         assertThat(otherWidths).as("fixture có ca xe rộng khác 1,93 m (bỏ qua ở đây)").isPositive();

@@ -33,10 +33,12 @@ public final class Bundle {
     public static final String RESULT_FORMAT = "vehicsim.result/v1";
 
     /**
-     * Danh tính bộ mô phỏng, ghi vào {@code simulation_runs.simulator_version}. Regression chỉ ghép hai run cùng giá trị này. 1.2 (22/11/2026,
-     * ADR-057): hành lang AEB theo bề rộng của xe chạy thay cho 1,93 m cố định; xe rộng 1,93 m (e-tron) ra số giống 1.1.
+     * Danh tính bộ mô phỏng, ghi vào {@code simulation_runs.simulator_version}. Regression chỉ ghép hai run cùng giá trị này. 1.3 (22/11/2026,
+     * ADR-058): phanh tác dụng đúng mốc quyết định + trễ (không trễ một bước do cộng dồn số thực) và {@code stopping_distance_m} tính từ vị trí đầu bước.
      */
-    public static final String KINEMATIC_SIMULATOR = "vehicsim-kinematic-1.2";
+    public static final String KINEMATIC_SIMULATOR = "vehicsim-kinematic-1.3";
+    /** 1.2 (22/11/2026, ADR-057): hành lang AEB theo bề rộng xe; phanh trễ một bước 0,05 s, quãng dừng lệch một bước. Không chạy lại, không ghép với 1.3. */
+    public static final String V12_KINEMATIC_SIMULATOR = "vehicsim-kinematic-1.2";
     /** 1.1 (13/11/2026): {@code impact_speed_mps} là vận tốc va chạm tương đối; hành lang AEB 1,93 m cho mọi xe. Backend không chạy lại, không ghép với 1.2. */
     public static final String PREVIOUS_KINEMATIC_SIMULATOR = "vehicsim-kinematic-1.1";
     /** 1.0: {@code impact_speed_mps} là tốc độ ego (định nghĩa của bản Python). Backend không chạy lại run 1.0 và không ghép với 1.1. */

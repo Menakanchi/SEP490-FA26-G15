@@ -182,6 +182,9 @@ class XoscExportTest {
     @Test
     void olderFormatsStillReadWithTheirOwnIdentity() {
         Bundle.RunSpec spec = Bundle.readSpec(ir());
+        String v11 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V11_FORMAT);
+        assertThat(Xosc.profile(v11)).isEqualTo(new Xosc.Profile("-xosc11", 0.01, 0.05));
+        assertThat(Xosc.read(v11)).isEqualTo(spec);
         String v10 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V10_FORMAT);
         assertThat(Xosc.profile(v10)).isEqualTo(new Xosc.Profile("-xosc10", 0.01, 0.05));
         assertThat(Xosc.read(v10)).isEqualTo(spec);
@@ -240,7 +243,7 @@ class XoscExportTest {
     @Test
     void currentProfileIs100HzWithSensorPeriodPerception() {
         Xosc.Profile p = Xosc.profile(XoscExport.export(Bundle.readSpec(ir())));
-        assertThat(p).isEqualTo(new Xosc.Profile("-xosc11", 0.01, 0.05));
+        assertThat(p).isEqualTo(new Xosc.Profile("-xosc12", 0.01, 0.05));
     }
 
     @Test

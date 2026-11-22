@@ -48,7 +48,7 @@ public final class LeadVehicleSimulator {
         List<Frame> frames = new ArrayList<>();
         List<Map<String, Object>> events = new ArrayList<>();
         AebStack stack = new AebStack(params, seed, c.weather(), c.timeOfDay(), vehicle.lengthM(), Simulator.corridorWidth(vehicle, relativeImpact),
-                Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()), events, AebStack.DT, null);
+                relativeImpact, Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()), events, AebStack.DT, null);
         Simulator.MotionStats stats = new Simulator.MotionStats(AebStack.DT);
         double frictionLimit = c.roadFriction() * Simulator.G;
         String endReason = "TIMEOUT";
@@ -109,7 +109,7 @@ public final class LeadVehicleSimulator {
 
         double decelAvailable = Math.min(Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()), frictionLimit);
         SimulationOutcome outcome = buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, targetY, LeadVehicleCase.TARGET_LENGTH_M,
-                halfSum, v0, decelAvailable, impactRelative, AebStack.DT, relativeImpact);
+                halfSum, v0, decelAvailable, impactRelative, AebStack.DT, relativeImpact, relativeImpact);
         if (aebOff) {
             AebMode.markOff(outcome);
         }
@@ -134,15 +134,24 @@ public final class LeadVehicleSimulator {
     public static SimulationOutcome buildOutcome(LeadVehicleCase c, AebParams params, VehicleSpec vehicle, AebStack stack, Simulator.MotionStats stats,
                                                  List<Frame> frames, List<Map<String, Object>> events, String endReason, double targetY, double targetLength,
                                                  double halfSum, double v0, double decelAvailable, double impactRelative, double dt, boolean relativeImpact) {
+        return buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, targetY, targetLength, halfSum, v0, decelAvailable, impactRelative,
+                dt, relativeImpact, false);
+    }
+
+    /** @param positionAfterStep như {@link Simulator#buildOutcome}: bộ động học 1.3 tính quãng phanh từ vị trí đầu bước (ADR-058); CARLA {@code false}. */
+    public static SimulationOutcome buildOutcome(LeadVehicleCase c, AebParams params, VehicleSpec vehicle, AebStack stack, Simulator.MotionStats stats,
+                                                 List<Frame> frames, List<Map<String, Object>> events, String endReason, double targetY, double targetLength,
+                                                 double halfSum, double v0, double decelAvailable, double impactRelative, double dt, boolean relativeImpact,
+                                                 boolean positionAfterStep) {
         Map<String, Object> metrics = summaryMetrics(frames, endReason.equals("COLLISION"), targetY, targetLength, halfSum, vehicle, stack, stats, v0,
-                decelAvailable, impactRelative, dt, relativeImpact);
+                decelAvailable, impactRelative, dt, relativeImpact, positionAfterStep);
         return new SimulationOutcome(endReason, frames.isEmpty() ? 0.0 : Py.round(frames.get(frames.size() - 1).t(), 3), frames, events, metrics,
                 Py.round(c.initialDistanceM(), 3), params.asDict(), c.asDict());
     }
 
     private static Map<String, Object> summaryMetrics(List<Frame> frames, boolean collision, double targetY, double targetLength, double halfSum,
                                                       VehicleSpec vehicle, AebStack stack, Simulator.MotionStats stats, double v0, double decelTarget,
-                                                      double impactRelative, double dt, boolean relativeImpact) {
+                                                      double impactRelative, double dt, boolean relativeImpact, boolean positionAfterStep) {
         double minDistance = Double.POSITIVE_INFINITY;
         Double minTtc = null;
         Double gtInPathT = null;
@@ -185,7 +194,7 @@ public final class LeadVehicleSimulator {
                 }
             }
         }
-        Double[] phase = Simulator.brakePhaseMetrics(frames, stack.brakeOnsetT(), Py.round(decelTarget, 3), dt);
+        Double[] phase = Simulator.brakePhaseMetrics(frames, stack.brakeOnsetT(), Py.round(decelTarget, 3), dt, positionAfterStep);
 
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("collision", collision);
