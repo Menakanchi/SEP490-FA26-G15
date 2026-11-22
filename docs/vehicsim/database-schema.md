@@ -436,7 +436,9 @@ Danh mục xe: blueprint CARLA + kích thước + **thông số vật lý cố �
 mặc định CARLA 0.9.16 đọc bằng `worker/vehicle_catalog.py`, `carla_full_brake_decel_mps2` đo bằng `worker/vehicle_study.py`,
 `max_brake_decel_mps2` = 9,5 như e-tron; xe tải `is_supported = FALSE` (chỉ để xem). Migration 016 (22/11/2026) hiệu chuẩn mô-men phanh và
 `carla_full_brake_decel_mps2` của Model 3 (1750 N·m, 9,87), Patrol (2250 N·m, 9,90), Sprinter (2250 N·m, 8,91) theo carla-ped-bench đợt 2;
-run CARLA của 3 xe tạo trước đó dùng mô-men cũ, không ghép với run mới. **Code dùng:**
+run CARLA của 3 xe tạo trước đó dùng mô-men cũ, không ghép với run mới. Migration 017 (22/11/2026) đặt `max_brake_decel_mps2` theo từng
+xe thay cho 9,5 chung: Model 3 9,1, Patrol 8,8, Sprinter 8,5 (quãng phanh đo công khai), HGV 5,0 (FMVSS 121); e-tron giữ 9,5. Bộ động học / AEB
+dùng min(`MAX_DECELERATION`, giới hạn xe, μ·g), nên với `MAX_DECELERATION` mặc định 8 chỉ HGV đổi kết quả. **Code dùng:**
 `Queries.vehicleById`, `RunService.carlaVehicle` (→ khối `vehicle.carla` của bundle), `VehicleCatalogService` (màn
 "Phương tiện", chỉ đọc).
 
