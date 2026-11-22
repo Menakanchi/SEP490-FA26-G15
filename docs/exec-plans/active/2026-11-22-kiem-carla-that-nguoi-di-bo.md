@@ -1,4 +1,4 @@
-# Kiểm profile CARLA hiện hành (`-xosc10`) trên CARLA thật — ca người đi bộ (22/11/2026)
+# Kiểm profile CARLA hiện hành (`-xosc11`) trên CARLA thật — ca người đi bộ (22/11/2026)
 
 **Mục tiêu:** chạy CARLA thật một lần với profile hiện hành `-xosc10` (radar + kẹp μ·g + đặt tốc độ dưới 6 m/s + bảng bàn đạp e-tron + người đi
 bộ khởi hành sớm + trượt dừng lề 0,056 s + bù pha tăng lực, ADR-056), so với bộ động học cùng bundle và với số CARLA thật 13/11. Đây là phần "Còn phải kiểm" của
@@ -23,7 +23,7 @@ ADR-043 (file gốc `data/radar-cases-20261022` không có trong repo); c7 = c1 
 
 ```powershell
 git fetch origin
-git checkout fix/carla-bu-pha-tang-luc
+git checkout main
 .\mvnw.cmd -B compile                       # target/classes cho bộ xuất và bộ động học
 # Bật CarlaUE4.exe (Town04), tắt web VehicSim và mọi runner khác đang dùng CARLA
 worker\.venv-carla\Scripts\python.exe worker\run_xosc.py --status
@@ -51,5 +51,5 @@ worker\.venv-carla\Scripts\python.exe worker\verify_cases.py --out data\kiem-car
 |---|---|---|
 | 1 | Bộ ca, `verify_cases.py`, sửa `repeat_xosc.py` đọc `perception_radar` của v9 | Xong 22/11 (nhánh `test/kiem-xosc9-carla-that`) |
 | 1b | Bù pha tăng lực (ADR-056, `-xosc10`); kiểm cùng lần chạy này | Xong 22/11 (nhánh `fix/carla-bu-pha-tang-luc`) |
-| 2 | Chạy trên CARLA thật, gửi `data\kiem-carla` | Chưa làm |
-| 3 | Ghi kết quả vào đây; ADR-054 Proposed → Accepted hoặc sửa (hệ số trượt) | Chưa làm |
+| 2 | Chạy trên CARLA thật (`-xosc11`, 21 run) | **Xong 22/11** — [kết quả](../../vehicsim/carla-ped-bench/ket-qua/kiem-xosc11-2026-11-22_2318/README.md) |
+| 3 | Ghi kết quả; ADR-054 Proposed → Accepted hoặc sửa (hệ số trượt) | **Xong 22/11** — ADR-054 Accepted (giữ 0,056 s); ADR-056 giữ Proposed (pha tăng lực còn chậm rồi vọt ≥ 9,81 m/s²) |

@@ -23,6 +23,10 @@ và 0,064 ± 0,009 s ở mức 5–7 (n = 22). Độ trễ này nằm sau bàn �
 
 ## Còn phải kiểm
 
+**Cập nhật 22/11/2026 — kiểm CARLA thật `-xosc11`** ([kết quả](../vehicsim/carla-ped-bench/ket-qua/kiem-xosc11-2026-11-22_2318/README.md)): phần bù có chạy
+(`ramp_lead_frames` 35–40) nhưng giảm tốc đo được vẫn tăng chậm hơn mô hình (7,6 so với 8,0 m/s² ở 0,5 s), rồi vượt ≥ 9,81 m/s² ở ~40 km/h, quãng dừng ngắn hơn
+bộ động học 0,5–0,7 m. Không bù quá; chưa chốt — cần tách ảnh hưởng cửa sổ đo 0,1 s và khâu bù 0,05 × sai số trước khi chỉnh `RAMP_LEAD_S`.
+
 - CARLA thật: ca c1 / c4 / c7 của bộ kiểm 22/11 — thời điểm đạt lực và quãng dừng so với bộ động học; `ramp_lead_frames` > 0. Nếu quãng dừng ngắn
   hơn bộ động học (bù quá) thì giảm `RAMP_LEAD_S`.
 - Ở mức thấp (3–5 m/s²) độ trễ đo được lớn hơn nhiều (~2 s) do vùng chết bàn đạp; phần đó do bảng bàn đạp xử lý, không do hằng số này.
