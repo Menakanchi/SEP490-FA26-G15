@@ -684,7 +684,7 @@ public final class CarlaSession {
         }
         double feedForwardCmd = decelCmd;
         if (rampLeadApplies(profile) && pedalMap.rampLead(Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix()))) {  // v13: chỉ xe đã đo độ trễ đạt lực (ADR-059)
-            feedForwardCmd = rampLeadCommand(decelCmd, previousPedalCmd, stepS);
+            feedForwardCmd = rampLeadCommand(decelCmd, previousPedalCmd, stepS, pedalMap.rampLeadSeconds(Xosc.SIMULATOR_SUFFIX.equals(profile.suffix())));
             if (feedForwardCmd > decelCmd) {
                 rampLead++;
             }
@@ -715,10 +715,15 @@ public final class CarlaSession {
      * vẫn so với lệnh gốc.
      */
     static double rampLeadCommand(double decelCmd, double previousCmd, double stepS) {
+        return rampLeadCommand(decelCmd, previousCmd, stepS, RAMP_LEAD_S);
+    }
+
+    /** Như trên với thời gian bù {@code leadS} riêng theo xe (ADR-063, từ v15). */
+    static double rampLeadCommand(double decelCmd, double previousCmd, double stepS, double leadS) {
         if (decelCmd <= 0) {
             return decelCmd;
         }
-        return decelCmd + RAMP_LEAD_S * Math.max(0.0, (decelCmd - previousCmd) / stepS);
+        return decelCmd + leadS * Math.max(0.0, (decelCmd - previousCmd) / stepS);
     }
 
     /** Bảng bàn đạp dùng cho run: chỉ từ v8 và chỉ khi xe khớp đúng cấu hình đã đo ({@link CarlaPedalMap#forVehicle}). */
@@ -860,6 +865,9 @@ public final class CarlaSession {
             carla.put("pedal_map_frames", pedalMapped);
             if (rampLeadApplies(profile) && pedalMap.rampLead(Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix()))) {
                 carla.put("ramp_lead_frames", rampLead);
+                if (Xosc.SIMULATOR_SUFFIX.equals(profile.suffix())) {  // v15: thời gian bù riêng theo xe (ADR-063)
+                    carla.put("ramp_lead_s", pedalMap.rampLeadSeconds(true));
+                }
             }
         }
         // Bước cấu hình và bước đo được từ timestamp khung thật: không coi cấu hình là đã đạt tốc độ này.

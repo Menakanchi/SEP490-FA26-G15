@@ -32,7 +32,7 @@ public final class Xosc {
 
     /**
      * v15 (23/11/2026, ADR-062): như v14 nhưng bỏ khởi hành sớm của người đi bộ ({@code DistanceCondition} = khoảng kích hoạt + nửa xe) vì bộ động học 1.4 đã
-     * cho người tăng tốc dần như CARLA. Đi cùng {@code vehicsim-kinematic-1.4}.
+     * cho người tăng tốc dần như CARLA; bù pha tăng lực riêng Patrol 0,11 s / Sprinter 0,17 s (ADR-063). Đi cùng {@code vehicsim-kinematic-1.4}.
      */
     public static final String FORMAT = "vehicsim.xosc/v15";
     public static final String SIMULATOR_SUFFIX = "-xosc15";

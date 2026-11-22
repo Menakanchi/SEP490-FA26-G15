@@ -168,6 +168,12 @@ class CarlaSessionLogicTest {
         assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).rampLead(true)).isTrue();
         assertThat(CarlaSession.pedalMapFor(current, sprinter, 8.91).rampLead(true)).isTrue();
         assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).rampLead(false)).isFalse();
+        // ADR-063: từ v15 thời gian bù riêng — Patrol 0,11 s, Sprinter 0,17 s; e-tron / Model 3 và file v14 giữ 0,055 s.
+        assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).rampLeadSeconds(true)).isEqualTo(0.11);
+        assertThat(CarlaSession.pedalMapFor(current, sprinter, 8.91).rampLeadSeconds(true)).isEqualTo(0.17);
+        assertThat(CarlaSession.pedalMapFor(current, sprinter, 8.91).rampLeadSeconds(false)).isEqualTo(0.055);
+        assertThat(CarlaSession.pedalMapFor(current, model3, 9.87).rampLeadSeconds(true)).isEqualTo(0.055);
+        assertThat(CarlaSession.rampLeadCommand(4.2, 4.0, 0.01, 0.17)).isCloseTo(4.2 + 3.4, within(1e-9));
         assertThat(CarlaSession.pedalMapFor(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V13_SIMULATOR_SUFFIX, 0.01, 0.05), patrol, 9.90)).as("v13 có bảng 3 xe").isNotNull();
         for (Map<String, Object> vehicle : List.of(model3, patrol, sprinter)) {
             double full = ((Number) vehicle.get("full_brake_decel_mps2")).doubleValue();

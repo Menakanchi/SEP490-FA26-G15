@@ -1,6 +1,7 @@
 # ADR-061 — `.xosc` v14: bù pha tăng lực cho Patrol và Sprinter
 
 **Trạng thái:** Accepted 23/11/2026 — chủ dự án chốt. Unit test đã chạy; chưa chạy CARLA thật.
+**Cập nhật 23/11/2026:** kiểm `-xosc14` còn dài hơn bộ động học 0,23–0,69 m → từ v15 thời gian bù riêng Patrol 0,11 s / Sprinter 0,17 s ([ADR-063](ADR-063-bu-pha-tang-luc-rieng-theo-xe.md)).
 **Liên quan:** ADR-056 (bù pha tăng lực), ADR-059 (bảng bàn đạp 3 xe — sửa mục 2), ADR-060.
 
 ## Bối cảnh
