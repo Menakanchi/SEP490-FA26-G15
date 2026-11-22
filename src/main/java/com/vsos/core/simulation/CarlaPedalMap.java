@@ -98,15 +98,29 @@ public final class CarlaPedalMap {
      * có phanh 100% đổi mạnh theo tốc độ (bảng đã tính), không đo được độ trễ riêng nên không bật. {@code fromV13}: chỉ dùng từ {@code .xosc} v13.
      */
     record Calibration(String id, String blueprint, double torqueNm, double fullBrakeDecel, double deadzonePedal, double[] speedsKmh, double[][][] points,
-                       boolean rampLead, boolean fromV13) {
+                       boolean rampLead, boolean fromV13, double[][] stopOnset) {
     }
+
+    /**
+     * Tốc độ (m/s) mà CARLA bắt đầu "dừng gấp" (giảm tốc &gt; 12 m/s² ở mọi mức bàn đạp, TD-17) theo bàn đạp đang đạp: {bàn đạp, tốc độ}. Đo từ khung hình
+     * carla-ped-bench (lấy tốc độ lớn nhất trong các tốc độ đầu đã đo, để chuyển sang đặt tốc độ sớm hơn chứ không muộn hơn): e-tron đợt 3 D1 (40–80 km/h),
+     * Model 3 / Patrol / Sprinter đợt 4 P1 (50 / 70 km/h). Kiểm CARLA thật 22/11/2026: với ngưỡng cố định 6 m/s (ADR-053), e-tron bàn đạp 0,83–0,94 đã dừng gấp
+     * 18,8 m/s² từ ~8 m/s (ADR-060).
+     */
+    static final double[][] ETRON_STOP_ONSET = {{0.438, 6.59}, {0.657, 7.59}, {0.876, 8.32}, {0.986, 8.56}, {1.0, 8.56}};
+    static final double[][] MODEL3_STOP_ONSET = {{0.405, 6.34}, {0.608, 7.19}, {0.810, 7.85}, {1.0, 7.92}};
+    static final double[][] PATROL_STOP_ONSET = {{0.404, 7.59}, {0.606, 8.92}, {0.808, 9.90}, {1.0, 10.39}};
+    static final double[][] SPRINTER_STOP_ONSET = {{0.449, 7.26}, {0.673, 8.56}, {0.898, 9.39}, {1.0, 9.62}};
+    /** Ngưỡng tối thiểu (ADR-053) và biên cộng thêm trước điểm dừng gấp đo được. */
+    static final double MIN_OVERRIDE_MPS = 6.0;
+    static final double OVERRIDE_MARGIN_MPS = 0.3;
 
     static final List<Calibration> CALIBRATIONS = List.of(
             new Calibration("etron-1800nm-2026-11-16", ETRON_BLUEPRINT, ETRON_BRAKE_TORQUE_NM, ETRON_FULL_BRAKE_DECEL, ETRON_DEADZONE_PEDAL, ETRON_SPEEDS_KMH,
-                    ETRON_POINTS, true, false),
-            new Calibration("model3-1750nm-2026-11-22", "vehicle.tesla.model3", 1750.0, 9.87, 0.0496, MODEL3_SPEEDS_KMH, MODEL3_POINTS, true, true),
-            new Calibration("patrol-2250nm-2026-11-22", "vehicle.nissan.patrol_2021", 2250.0, 9.9, 0.0991, PATROL_SPEEDS_KMH, PATROL_POINTS, false, true),
-            new Calibration("sprinter-2250nm-2026-11-22", "vehicle.mercedes.sprinter", 2250.0, 8.91, 0.0792, SPRINTER_SPEEDS_KMH, SPRINTER_POINTS, false, true));
+                    ETRON_POINTS, true, false, ETRON_STOP_ONSET),
+            new Calibration("model3-1750nm-2026-11-22", "vehicle.tesla.model3", 1750.0, 9.87, 0.0496, MODEL3_SPEEDS_KMH, MODEL3_POINTS, true, true, MODEL3_STOP_ONSET),
+            new Calibration("patrol-2250nm-2026-11-22", "vehicle.nissan.patrol_2021", 2250.0, 9.9, 0.0991, PATROL_SPEEDS_KMH, PATROL_POINTS, false, true, PATROL_STOP_ONSET),
+            new Calibration("sprinter-2250nm-2026-11-22", "vehicle.mercedes.sprinter", 2250.0, 8.91, 0.0792, SPRINTER_SPEEDS_KMH, SPRINTER_POINTS, false, true, SPRINTER_STOP_ONSET));
 
     private final Calibration calibration;
 
@@ -117,6 +131,22 @@ public final class CarlaPedalMap {
     /** Tên bảng ghi vào {@code result.json} để biết run dùng hiệu chuẩn nào. */
     public String id() {
         return calibration.id();
+    }
+
+    /**
+     * Tốc độ (m/s) để adapter chuyển sang đặt tốc độ ở bàn đạp {@code pedal} (ADR-060): điểm dừng gấp đo được nội suy theo bàn đạp, cộng biên 0,3 m/s,
+     * không dưới 6 m/s. Bàn đạp nhỏ hơn điểm đo đầu tiên dùng điểm đầu.
+     */
+    public double overrideSpeed(double pedal) {
+        double[][] onset = calibration.stopOnset();
+        double v = onset[0][1];
+        for (int i = 1; i < onset.length; i++) {
+            if (pedal >= onset[i - 1][0]) {
+                double w = Math.min(1.0, (pedal - onset[i - 1][0]) / (onset[i][0] - onset[i - 1][0]));
+                v = onset[i - 1][1] + (onset[i][1] - onset[i - 1][1]) * w;
+            }
+        }
+        return Math.max(MIN_OVERRIDE_MPS, v + OVERRIDE_MARGIN_MPS);
     }
 
     /** Bật bù pha tăng lực (ADR-056) cho xe này. */

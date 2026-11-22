@@ -71,6 +71,7 @@ giữ lại). VehicSim: ADR-023 trở đi.
 | [ADR-057](ADR-057-hanh-lang-aeb-theo-be-rong-xe.md) | Hành lang AEB theo bề rộng của xe chạy thay cho 1,93 m cố định; bộ động học `1.2`, `.xosc` v11 / `-xosc11` | ✅ **Accepted 22/11** — chủ dự án chốt |
 | [ADR-058](ADR-058-thoi-diem-phanh-va-ban-dap-feed-forward.md) | Phanh đúng mốc (bỏ trễ 0,05 s do cộng dồn số thực), quãng dừng động học đúng bước, bàn đạp thuần feed-forward khi có bảng; bộ động học `1.3`, `.xosc` v12 / `-xosc12` | ✅ **Accepted 22/11** — chủ dự án chốt |
 | [ADR-059](ADR-059-ban-dap-theo-toc-do-3-xe.md) | `.xosc` v13 / `-xosc13`: bảng bàn đạp theo tốc độ cho Model 3 / Patrol / Sprinter (đợt 4, RMS 0,05–0,20 m/s²); bù pha tăng lực cho Model 3 | ✅ **Accepted 22/11** — chủ dự án chốt |
+| [ADR-060](ADR-060-nguong-dat-toc-do-theo-ban-dap.md) | `.xosc` v13: adapter đặt tốc độ từ điểm dừng gấp đo được theo xe và bàn đạp (e-tron phanh mạnh ~8,6 m/s thay vì 6); khôi phục khâu bù (đính chính ADR-058) | ✅ **Accepted 22/11** — chủ dự án chốt |
 
 ## Luật
 

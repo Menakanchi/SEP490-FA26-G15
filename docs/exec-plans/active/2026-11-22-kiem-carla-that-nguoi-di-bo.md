@@ -53,4 +53,4 @@ worker\.venv-carla\Scripts\python.exe worker\verify_cases.py --out data\kiem-car
 | 1b | Bù pha tăng lực (ADR-056, `-xosc10`); kiểm cùng lần chạy này | Xong 22/11 (nhánh `fix/carla-bu-pha-tang-luc`) |
 | 2 | Chạy trên CARLA thật (`-xosc11`, 21 run) | **Xong 22/11** — [kết quả](../../vehicsim/carla-ped-bench/ket-qua/kiem-xosc11-2026-11-22_2318/README.md) |
 | 3 | Ghi kết quả; ADR-054 Proposed → Accepted hoặc sửa (hệ số trượt) | **Xong 22/11** — ADR-054 Accepted (giữ 0,056 s); ADR-056 giữ Proposed (pha tăng lực còn chậm rồi vọt ≥ 9,81 m/s²) |
-| 4 | Kiểm lại trên `-xosc13`: e-tron (`worker/cases/pedestrian-v9`, ADR-058 bỏ khâu bù, phanh đúng mốc) và 3 xe (`worker/cases/pedestrian-xe`, 9 ca, bảng bàn đạp ADR-059, hành lang theo xe ADR-057) | Chưa làm — cần máy CARLA |
+| 4 | Kiểm lại trên `-xosc13`: e-tron (`worker/cases/pedestrian-v9`, phanh đúng mốc ADR-058, ngưỡng đặt tốc độ theo bàn đạp ADR-060) và 3 xe (`worker/cases/pedestrian-xe`, 9 ca, bảng bàn đạp ADR-059, hành lang theo xe ADR-057) | Chưa làm — cần máy CARLA |

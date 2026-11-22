@@ -178,6 +178,29 @@ class CarlaSessionLogicTest {
         }
     }
 
+    /**
+     * ADR-060: CARLA bắt đầu dừng gấp ở tốc độ phụ thuộc bàn đạp (e-tron bàn đạp 0,876 → 8,32 m/s), nên từ v13 adapter chuyển sang đặt tốc độ ở điểm đó + 0,3
+     * m/s, không dưới 6 m/s. Khâu bù theo giảm tốc đo chỉ bị bỏ ở v12.
+     */
+    @Test
+    void lowSpeedOverrideStartsBeforeTheMeasuredAbruptStop() {
+        com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
+        CarlaPedalMap etron = CarlaSession.pedalMapFor(current, etron(1800.0), 9.13);
+        assertThat(etron.overrideSpeed(0.876)).isCloseTo(8.32 + 0.3, within(1e-9));
+        assertThat(etron.overrideSpeed(1.0)).isCloseTo(8.56 + 0.3, within(1e-9));
+        assertThat(etron.overrideSpeed(0.1)).as("bàn đạp nhỏ hơn điểm đo đầu: dùng điểm đầu").isCloseTo(6.59 + 0.3, within(1e-9));
+        CarlaPedalMap patrol = CarlaSession.pedalMapFor(current, carlaVehicle("vehicle.nissan.patrol_2021", 2250.0, 9.90), 9.90);
+        assertThat(patrol.overrideSpeed(1.0)).isCloseTo(10.39 + 0.3, within(1e-9));
+        double prev = 0.0;
+        for (double p = 0.0; p <= 1.0; p += 0.01) {
+            double v = etron.overrideSpeed(p);
+            assertThat(v).isGreaterThanOrEqualTo(Math.max(6.0, prev - 1e-12));
+            prev = v;
+        }
+        assertThat(CarlaSession.pureFeedForward(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V12_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
+        assertThat(CarlaSession.pureFeedForward(current)).isFalse();
+    }
+
     /** Xe CARLA như bộ xuất ghi cho e-tron đã hiệu chuẩn (ADR-051): blueprint + mô-men phanh mọi bánh. */
     private static Map<String, Object> etron(double torque) {
         return Map.of("blueprint", "vehicle.audi.etron", "physics", Map.of("mass", 2100.0, "wheels", Map.of("max_brake_torque", torque)),

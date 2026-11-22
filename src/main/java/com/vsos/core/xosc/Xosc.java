@@ -31,8 +31,9 @@ import com.vsos.core.common.Py;
 public final class Xosc {
 
     /**
-     * v13 (22/11/2026, ADR-059): như v12 nhưng Model 3 / Patrol / Sprinter đã hiệu chuẩn (migration 016) có bảng bàn đạp theo tốc độ như e-tron. File
-     * giống v12 trừ {@code vs_format}; e-tron và xe chưa có bảng ra số giống v12.
+     * v13 (22/11/2026, ADR-059, ADR-060): như v12 nhưng Model 3 / Patrol / Sprinter đã hiệu chuẩn (migration 016) có bảng bàn đạp theo tốc độ như e-tron;
+     * xe có bảng chuyển sang đặt tốc độ từ điểm dừng gấp đo được theo bàn đạp (thay 6 m/s) và khôi phục khâu bù theo giảm tốc đo. File giống v12 trừ
+     * {@code vs_format}.
      */
     public static final String FORMAT = "vehicsim.xosc/v13";
     public static final String SIMULATOR_SUFFIX = "-xosc13";

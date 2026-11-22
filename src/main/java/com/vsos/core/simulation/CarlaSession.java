@@ -387,7 +387,7 @@ public final class CarlaSession {
         if (spec.aebOff()) {
             return new Tick(false, braking, 0.0, pedal, finished, null);
         }
-        return new Tick(false, braking, decelCmd, pedal, finished, lowSpeedSpeed(egoV, decelCmd, finished));
+        return new Tick(false, braking, decelCmd, pedal, finished, lowSpeedSpeed(egoV, decelCmd, pedal, finished));
     }
 
     /**
@@ -608,6 +608,22 @@ public final class CarlaSession {
     /** Dưới tốc độ này CARLA dừng gần như tức thì (~24 m/s², mọi mức bàn đạp — đo 14/11/2026, carla-ped-bench G1). */
     static final double LOW_SPEED_OVERRIDE_MPS = 6.0;
 
+    /**
+     * Tốc độ chuyển sang đặt tốc độ: từ v13 (ADR-060) xe có bảng bàn đạp dùng điểm dừng gấp đo được theo bàn đạp đang đạp (e-tron bàn đạp 0,88 → ~8,6 m/s);
+     * xe khác và file cũ giữ 6 m/s (ADR-053).
+     */
+    double overrideThreshold(double pedal) {
+        return pedalMap != null && Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) ? pedalMap.overrideSpeed(pedal) : LOW_SPEED_OVERRIDE_MPS;
+    }
+
+    /**
+     * v12 (ADR-058) đổi lệnh ra bàn đạp thuần feed-forward khi có bảng. Kiểm CARLA thật 22/11/2026 với nhật ký bàn đạp cho thấy khâu bù không gây vọt
+     * giảm tốc (nguyên nhân là dừng gấp từ ~8 m/s, ADR-060) nên v13 khôi phục khâu bù; chỉ còn v12 bỏ khâu bù.
+     */
+    static boolean pureFeedForward(Xosc.Profile profile) {
+        return Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix());
+    }
+
     /** Vùng tốc độ thấp do adapter điều khiển có từ v7 (ADR-053): file cũ chạy lại ra đúng kết quả đã lưu. */
     static boolean lowSpeedOverrideApplies(Xosc.Profile profile) {
         return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
@@ -626,12 +642,12 @@ public final class CarlaSession {
         return Math.max(0.0, current - frictionLimitedCommand(Math.max(0.0, decelCmd), spec, profile) * stepS);
     }
 
-    private Double lowSpeedSpeed(double egoV, double decelCmd, String finished) {
+    private Double lowSpeedSpeed(double egoV, double decelCmd, double pedal, String finished) {
         if (!braking || finished != null || !lowSpeedOverrideApplies(profile)) {
             return null;
         }
         if (overrideSpeed == null) {
-            if (egoV >= LOW_SPEED_OVERRIDE_MPS) {
+            if (egoV >= overrideThreshold(pedal)) {
                 return null;
             }
             overrideSpeed = egoV;
@@ -660,8 +676,8 @@ public final class CarlaSession {
             }
             previousPedalCmd = decelCmd;
         }
-        // v12: bảng bàn đạp là số đo vòng hở — không cộng khâu bù theo giảm tốc đo (đo trễ 0,1 s làm bàn đạp vượt, ADR-058).
-        return DecelMeter.brakePedalFrom(pedalMap.feedForward(feedForwardCmd, egoV), decelCmd, v12Control(profile) ? decelCmd : measuredDecel);
+        // Chỉ v12 bỏ khâu bù theo giảm tốc đo (ADR-058); v13 khôi phục vì khâu bù không gây vọt giảm tốc (ADR-060).
+        return DecelMeter.brakePedalFrom(pedalMap.feedForward(feedForwardCmd, egoV), decelCmd, pureFeedForward(profile) ? decelCmd : measuredDecel);
     }
 
     /**

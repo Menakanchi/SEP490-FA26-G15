@@ -52,3 +52,10 @@ Ca mưa c7 không vọt (lệnh và ngưỡng đo cùng kẹp ở μ·g = 6,87 m
 **Việc tiếp:** (1) cần nhật ký bàn đạp của một run c1 (`sensors/frames.csv`) để tách phần của khâu bù, bù pha tăng lực và bảng bàn đạp trước khi sửa adapter;
 (2) sửa thời điểm phanh và chỉ số quãng dừng của bộ động học. **Cập nhật 22/11:** cả hai đã sửa ở
 [ADR-058](../../../../adr/ADR-058-thoi-diem-phanh-va-ban-dap-feed-forward.md) (bộ động học 1.3, `-xosc12`), kèm bỏ khâu bù khi có bảng bàn đạp; chờ kiểm CARLA thật.
+
+## Nhật ký bàn đạp c1 run-01 (cập nhật 22/11/2026)
+
+`sensors/frames.csv` (repo phutro commit `2f4c08c`): giảm tốc tăng đều tới ~8 m/s² khi tốc độ còn 8,1 m/s; sau đó **18,8 m/s² từ ~8 m/s xuống 5,3 m/s** trong khi
+bàn đạp đứng ở 0,833 (khâu bù kéo bàn đạp xuống); dưới 6 m/s adapter đặt tốc độ, giảm đều 7,8 m/s². Phần "CARLA phanh mạnh hơn 1,06 m" ở trên là **cú dừng gấp
+bắt đầu sớm hơn ngưỡng 6 m/s**, không phải khâu bù — đã sửa ở [ADR-060](../../../../adr/ADR-060-nguong-dat-toc-do-theo-ban-dap.md) (v13).
+

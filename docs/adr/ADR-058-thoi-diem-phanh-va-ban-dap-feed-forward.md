@@ -4,6 +4,10 @@
 **Liên quan:** ADR-054 (bảng bàn đạp), ADR-056 (bù pha tăng lực), ADR-057 (hành lang theo xe); kết quả kiểm
 [`-xosc11`](../vehicsim/carla-ped-bench/ket-qua/kiem-xosc11-2026-11-22_2318/README.md).
 
+> **Đính chính 22/11/2026 ([ADR-060](ADR-060-nguong-dat-toc-do-theo-ban-dap.md)):** nhật ký bàn đạp c1 cho thấy giảm tốc vọt (18,8 m/s²) là do CARLA dừng gấp từ
+> ~8 m/s khi bàn đạp lớn, không phải do khâu bù — khâu bù lúc đó kéo bàn đạp xuống. Mục 3 (bỏ khâu bù) chỉ còn ở v12; v13 khôi phục khâu bù và nâng ngưỡng đặt tốc
+> độ theo bàn đạp. Mục 1, 2 (phanh đúng mốc, quãng dừng đúng bước) giữ nguyên.
+
 ## Bối cảnh
 
 Kiểm CARLA thật `-xosc11` (22/11/2026, ca c1): CARLA dừng cách vạch 5,62 m, bộ động học 4,00 m. Lúc AEB quyết định hai bên cùng vị trí; Δ 1,62 m gồm:
