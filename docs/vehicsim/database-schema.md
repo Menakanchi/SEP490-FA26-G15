@@ -434,7 +434,9 @@ Danh mục xe: blueprint CARLA + kích thước + **thông số vật lý cố �
 (cỡ VF8; CARLA không có VinFast) với thông số của xe MVP cũ — chưa đo lại trên CARLA (TD-17). Migration 011 thêm
 `vehicle.tesla.model3`, `vehicle.nissan.patrol_2021`, `vehicle.mercedes.sprinter`, `vehicle.carlamotors.european_hgv`: physics
 mặc định CARLA 0.9.16 đọc bằng `worker/vehicle_catalog.py`, `carla_full_brake_decel_mps2` đo bằng `worker/vehicle_study.py`,
-`max_brake_decel_mps2` = 9,5 như e-tron; xe tải `is_supported = FALSE` (chỉ để xem). **Code dùng:**
+`max_brake_decel_mps2` = 9,5 như e-tron; xe tải `is_supported = FALSE` (chỉ để xem). Migration 016 (22/11/2026) hiệu chuẩn mô-men phanh và
+`carla_full_brake_decel_mps2` của Model 3 (1750 N·m, 9,87), Patrol (2250 N·m, 9,90), Sprinter (2250 N·m, 8,91) theo carla-ped-bench đợt 2;
+run CARLA của 3 xe tạo trước đó dùng mô-men cũ, không ghép với run mới. **Code dùng:**
 `Queries.vehicleById`, `RunService.carlaVehicle` (→ khối `vehicle.carla` của bundle), `VehicleCatalogService` (màn
 "Phương tiện", chỉ đọc).
 
