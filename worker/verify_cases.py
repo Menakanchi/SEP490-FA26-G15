@@ -1,7 +1,7 @@
 """Kiểm profile CARLA hiện hành trên một bộ ca người đi bộ: xuất .xosc, chạy lặp trên CARLA, chạy bộ động học cùng bundle, so ba phía.
 
     mvnw compile                                   # cần target/classes cho bộ xuất và bộ động học
-    worker/.venv-carla/Scripts/python worker/verify_cases.py --out data/kiem-xosc9 [--runs 3] [--only c1,c5] [--skip-carla]
+    worker/.venv-carla/Scripts/python worker/verify_cases.py --out data/kiem-carla [--runs 3] [--only c1,c5] [--skip-carla]
 
 Mặc định dùng bộ ca ``worker/cases/pedestrian-v9`` (c1–c6 của ADR-043 + c7 = c1 trời mưa). Mỗi ca:
 

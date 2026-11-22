@@ -1,8 +1,8 @@
-# Kiểm `-xosc9` trên CARLA thật — ca người đi bộ (22/11/2026)
+# Kiểm profile CARLA hiện hành (`-xosc10`) trên CARLA thật — ca người đi bộ (22/11/2026)
 
-**Mục tiêu:** chạy CARLA thật một lần với profile hiện hành `-xosc9` (radar + kẹp μ·g + đặt tốc độ dưới 6 m/s + bảng bàn đạp e-tron + người đi
-bộ khởi hành sớm + trượt dừng lề 0,056 s), so với bộ động học cùng bundle và với số CARLA thật 13/11. Đây là phần "Còn phải kiểm" của
-[ADR-054](../../adr/ADR-054-xosc8-hieu-chuan-ban-dap-va-nguoi-di-bo.md); các bản sửa v7–v8 và radar (ADR-043) mới chạy thật riêng lẻ, chưa chạy chung.
+**Mục tiêu:** chạy CARLA thật một lần với profile hiện hành `-xosc10` (radar + kẹp μ·g + đặt tốc độ dưới 6 m/s + bảng bàn đạp e-tron + người đi
+bộ khởi hành sớm + trượt dừng lề 0,056 s + bù pha tăng lực, ADR-056), so với bộ động học cùng bundle và với số CARLA thật 13/11. Đây là phần "Còn phải kiểm" của
+[ADR-054](../../adr/ADR-054-xosc8-hieu-chuan-ban-dap-va-nguoi-di-bo.md) và [ADR-056](../../adr/ADR-056-xosc10-bu-pha-tang-luc-phanh.md); các bản sửa v7–v8 và radar (ADR-043) mới chạy thật riêng lẻ, chưa chạy chung.
 
 ## Bộ ca
 
@@ -23,23 +23,23 @@ ADR-043 (file gốc `data/radar-cases-20261022` không có trong repo); c7 = c1 
 
 ```powershell
 git fetch origin
-git checkout test/kiem-xosc9-carla-that
+git checkout fix/carla-bu-pha-tang-luc
 .\mvnw.cmd -B compile                       # target/classes cho bộ xuất và bộ động học
 # Bật CarlaUE4.exe (Town04), tắt web VehicSim và mọi runner khác đang dùng CARLA
 worker\.venv-carla\Scripts\python.exe worker\run_xosc.py --status
-worker\.venv-carla\Scripts\python.exe worker\verify_cases.py --out data\kiem-xosc9 --skip-carla   # kiểm trước, không cần CARLA (~10 s)
-worker\.venv-carla\Scripts\python.exe worker\verify_cases.py --out data\kiem-xosc9 --runs 3      # 7 ca × 3 lần, khoảng 15–25 phút
+worker\.venv-carla\Scripts\python.exe worker\verify_cases.py --out data\kiem-carla --skip-carla   # kiểm trước, không cần CARLA (~10 s)
+worker\.venv-carla\Scripts\python.exe worker\verify_cases.py --out data\kiem-carla --runs 3      # 7 ca × 3 lần, khoảng 15–25 phút
 ```
 
 - Bị dừng giữa chừng: chạy lại phần còn thiếu bằng `--only c5,c6,c7` vào cùng `--out`.
-- Gửi lại: nén cả thư mục `data\kiem-xosc9` (có `so-sanh.md`, `so-sanh.json`, `<ca>/carla/run-NN/result.json`). `data/` không commit vào repo.
+- Gửi lại: nén cả thư mục `data\kiem-carla` (có `so-sanh.md`, `so-sanh.json`, `<ca>/carla/run-NN/result.json`). `data/` không commit vào repo.
 
 ## Đọc kết quả
 
 | Kiểm | Đạt khi |
 |---|---|
 | Chạy lặp | Sự kiện trùng tuyệt đối; khoảng cách / quãng dừng ±0,2 m; vận tốc va chạm ±0,05 m/s (dung sai chốt 13/11) |
-| Phanh (c1, c4, c7) so với bộ động học | Quãng dừng lệch ≤ ~1 m (trước v7: −1,3 đến −2,0 m). `case.carla.pedal_map` = `etron-1800nm-2026-11-16`, `low_speed_override_frames` > 0 |
+| Phanh (c1, c4, c7) so với bộ động học | Quãng dừng lệch ≤ ~1 m (trước v7: −1,3 đến −2,0 m). `case.carla.pedal_map` = `etron-1800nm-2026-11-16`, `low_speed_override_frames` > 0, `ramp_lead_frames` > 0. Quãng dừng ngắn hơn bộ động học → bù pha tăng lực quá tay, giảm `RAMP_LEAD_S` |
 | Mưa (c5, c7) | `decel_cmd_capped_frames` > 0; quãng dừng c7 dài hơn c1 |
 | Người đi bộ | Thời điểm người vào hành lang gần bộ động học (trước: muộn 0,34 s); c2, c4 có thể đổi kết quả so với 13/11 vì người tới sớm hơn |
 | Dừng ở lề (c3) | Người không nhô vào làn: khoảng cách nhỏ nhất > 0, không phanh oan vì người bước vào làn. Nhô vào làn → trả hệ số trượt về 0,07 s (commit `495032e`) |
@@ -50,5 +50,6 @@ worker\.venv-carla\Scripts\python.exe worker\verify_cases.py --out data\kiem-xos
 | Bước | Việc | Trạng thái |
 |---|---|---|
 | 1 | Bộ ca, `verify_cases.py`, sửa `repeat_xosc.py` đọc `perception_radar` của v9 | Xong 22/11 (nhánh `test/kiem-xosc9-carla-that`) |
-| 2 | Chạy trên CARLA thật, gửi `data\kiem-xosc9` | Chưa làm |
+| 1b | Bù pha tăng lực (ADR-056, `-xosc10`); kiểm cùng lần chạy này | Xong 22/11 (nhánh `fix/carla-bu-pha-tang-luc`) |
+| 2 | Chạy trên CARLA thật, gửi `data\kiem-carla` | Chưa làm |
 | 3 | Ghi kết quả vào đây; ADR-054 Proposed → Accepted hoặc sửa (hệ số trượt) | Chưa làm |

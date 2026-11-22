@@ -62,6 +62,7 @@ class CarlaSessionLogicTest {
         assertThat(CarlaSession.radarPerception(crossing("CLEAR"), v5)).isFalse();
         assertThat(CarlaSession.radarPerception(crossing("CLEAR"),
                 new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V8_SIMULATOR_SUFFIX, 0.01, 0.05))).isFalse();
+        assertThat(CarlaSession.radarPerception(crossing("CLEAR"), new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V9_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
         LeadVehicleCase lead = new LeadVehicleCase(LeadVehicleCase.CCRS, 50.0, 0.0, 40.0, null, 100.0, "CLEAR", "DAY", null);
         com.vsos.core.bridge.Bundle.RunSpec leadSpec = new com.vsos.core.bridge.Bundle.RunSpec(null, AebParams.DEFAULT, VehicleSpec.DEFAULT, 1L, null, null,
                 Map.of(), Map.of(), lead);
@@ -115,6 +116,25 @@ class CarlaSessionLogicTest {
         assertThat(CarlaSession.nextLowSpeed(5.0, 8.0, 0.01, crossing("RAIN"), current)).isCloseTo(5.0 - 0.70 * Simulator.G * 0.01, within(1e-12));
         assertThat(CarlaSession.nextLowSpeed(5.0, 0.0, 0.01, crossing("CLEAR"), current)).isEqualTo(5.0);
         assertThat(CarlaSession.nextLowSpeed(0.01, 8.0, 0.01, crossing("CLEAR"), current)).isEqualTo(0.0);
+    }
+
+    /**
+     * ADR-056: CARLA đạt lực phanh muộn hơn bàn đạp ~0,05 s (đo 16/11/2026). Từ v10, trong lúc lệnh giảm tốc đang tăng, feed-forward bàn đạp lấy theo
+     * lệnh của 0,055 s sau; lệnh giữ nguyên hoặc giảm thì không cộng gì. v9 trở về trước không có phần này.
+     */
+    @Test
+    void rampLeadOnlyWhileTheCommandRisesFromV10() {
+        com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
+        assertThat(CarlaSession.rampLeadApplies(current)).isTrue();
+        assertThat(CarlaSession.rampLeadApplies(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V9_SIMULATOR_SUFFIX, 0.01, 0.05))).isFalse();
+        assertThat(CarlaSession.RAMP_LEAD_S).isEqualTo(0.055);
+        // Lệnh AEB tăng 20 m/s³ (0,2 m/s² mỗi tick 0,01 s): cộng thêm 0,055 × 20 = 1,1 m/s².
+        assertThat(CarlaSession.rampLeadCommand(4.2, 4.0, 0.01)).isCloseTo(4.2 + 1.1, within(1e-9));
+        assertThat(CarlaSession.rampLeadCommand(8.0, 8.0, 0.01)).as("hết pha tăng lực").isEqualTo(8.0);
+        assertThat(CarlaSession.rampLeadCommand(5.0, 6.0, 0.01)).as("lệnh giảm").isEqualTo(5.0);
+        assertThat(CarlaSession.rampLeadCommand(0.0, 0.0, 0.01)).isZero();
+        // Tick đầu khi phanh: lệnh từ 0 lên 0,2.
+        assertThat(CarlaSession.rampLeadCommand(0.2, 0.0, 0.01)).isCloseTo(0.2 + 1.1, within(1e-9));
     }
 
     /** Xe CARLA như bộ xuất ghi cho e-tron đã hiệu chuẩn (ADR-051): blueprint + mô-men phanh mọi bánh. */

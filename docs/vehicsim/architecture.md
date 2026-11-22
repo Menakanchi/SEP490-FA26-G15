@@ -113,8 +113,8 @@ Next.js (/, /scenarios, /aeb, /analysis/*, /validation/*)  ──JWT──▶  S
 `VEHICSIM_RUN_MODE=inline` chạy `executeRun` ngay trong request (dùng cho test); mặc định `async` (thread pool).
 CARLA luôn 1 luồng (một server CARLA chỉ chạy một lượt một lúc); khóa trong backend cũng bảo vệ nút chạy lại CARLA
 khi cấu hình mặc định là động học. Profile `carla-xosc` sinh `scenario.xosc` trước khi gọi `run_xosc.py`; chỉ giữ
-bundle JSON làm metadata nội bộ. Identity `carla-0.9.16-xosc9` (bước 0,01 s, người "dừng ở lề" đứng lại, mô-men phanh đã hiệu chuẩn — ADR-051, lệnh phanh kẹp ở μ·g — ADR-052, dưới 6 m/s adapter đặt tốc độ — ADR-053, bảng bàn đạp e-tron và người đi bộ khởi hành sớm — ADR-054, AEB của ca người đi bộ nhận perception từ radar — ADR-043/ADR-055) tách bản `-xosc8` (AEB dùng ground truth), `-xosc7` (bàn đạp tuyến tính), `-xosc6` (còn cú dừng gấp), `-xosc5` (chưa kẹp μ·g), `-xosc4` (phanh CARLA chưa hiệu chuẩn), `-xosc3` (dừng ở lề đi vào làn), bản 20 Hz `-xosc2`, bản sửa quỹ đạo ngang khỏi `-xosc1` và runner trực tiếp cũ.
-Run `-xosc1`…`-xosc8` chưa chạy bị từ chối thay vì âm thầm chạy bằng profile mới. Mỗi người có hạn mức ghi và số run đang chờ + chạy
+bundle JSON làm metadata nội bộ. Identity `carla-0.9.16-xosc10` (bước 0,01 s, người "dừng ở lề" đứng lại, mô-men phanh đã hiệu chuẩn — ADR-051, lệnh phanh kẹp ở μ·g — ADR-052, dưới 6 m/s adapter đặt tốc độ — ADR-053, bảng bàn đạp e-tron và người đi bộ khởi hành sớm — ADR-054, AEB của ca người đi bộ nhận perception từ radar — ADR-043/ADR-055, bù pha tăng lực phanh — ADR-056) tách bản `-xosc9` (chưa bù pha tăng lực), `-xosc8` (AEB dùng ground truth), `-xosc7` (bàn đạp tuyến tính), `-xosc6` (còn cú dừng gấp), `-xosc5` (chưa kẹp μ·g), `-xosc4` (phanh CARLA chưa hiệu chuẩn), `-xosc3` (dừng ở lề đi vào làn), bản 20 Hz `-xosc2`, bản sửa quỹ đạo ngang khỏi `-xosc1` và runner trực tiếp cũ.
+Run `-xosc1`…`-xosc9` chưa chạy bị từ chối thay vì âm thầm chạy bằng profile mới. Mỗi người có hạn mức ghi và số run đang chờ + chạy
 (`VEHICSIM_WRITES_PER_WINDOW`, `VEHICSIM_MAX_ACTIVE_RUNS_PER_USER`) vì app mở đăng ký công khai.
 
 ## Bản đồ module (`src/services/vehicsim/`)

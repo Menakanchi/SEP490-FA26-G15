@@ -189,11 +189,11 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 - Đường web hiện tại: bộ xuất Java (`XoscExport`) → `.xosc` → `run_xosc.py` → ScenarioRunner → `vehicsim_aeb_control.py`
   (chỉ đọc trạng thái CARLA, áp bàn đạp) → cầu nối `vsos-bridge/1` → cùng `AebStack` và luật chấm của lõi Java.
   Mỗi run chụp lõi thành `core/vsos-core.jar` riêng, nên `mvnw clean` giữa run không làm hỏng run đó.
-- Artifact hiện tại là `vehicsim.xosc/v9`, profile `carla-0.9.16-xosc9` (bước 0,01 s; v4 = v3 + người "dừng ở lề" đứng lại, TD-47;
+- Artifact hiện tại là `vehicsim.xosc/v10`, profile `carla-0.9.16-xosc10` (bước 0,01 s; v4 = v3 + người "dừng ở lề" đứng lại, TD-47;
   v5 = v4 + mô-men phanh đã hiệu chuẩn `vs_physics_wheel_max_brake_torque`, ADR-051; từ 11/11 thêm thời tiết theo preset CARLA và
-  `decel_available` theo phanh 100% đo được, [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md); v6 = v5 + lệnh giảm tốc ra bàn đạp kẹp ở μ·g, ADR-052; v7 = v6 + dưới 6 m/s adapter đặt tốc độ thay cú dừng gấp, ADR-053; v8 = v7 + bảng bàn đạp e-tron theo tốc độ, người đi bộ khởi hành sớm v × 0,34 s, trượt dừng lề 0,056 s, ADR-054; v9 = v8 + AEB của ca người đi bộ nhận perception từ radar, [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md) và ADR-055). File v1 phải xuất lại từ web; không ghép baseline
+  `decel_available` theo phanh 100% đo được, [exec plan 11/11](docs/exec-plans/active/2026-11-11-cong-thuc-cp-crossing-carla.md); v6 = v5 + lệnh giảm tốc ra bàn đạp kẹp ở μ·g, ADR-052; v7 = v6 + dưới 6 m/s adapter đặt tốc độ thay cú dừng gấp, ADR-053; v8 = v7 + bảng bàn đạp e-tron theo tốc độ, người đi bộ khởi hành sớm v × 0,34 s, trượt dừng lề 0,056 s, ADR-054; v9 = v8 + AEB của ca người đi bộ nhận perception từ radar, [ADR-043](docs/adr/ADR-043-perception-tu-radar-chay-bong-truoc.md) và ADR-055; v10 = v9 + bù pha tăng lực phanh e-tron, [ADR-056](docs/adr/ADR-056-xosc10-bu-pha-tang-luc-phanh.md)). File v1 phải xuất lại từ web; không ghép baseline
   `-xosc1`, `-xosc2` (20 Hz), `-xosc3` (người dừng ở lề đi vào làn), `-xosc4` (phanh CARLA chưa hiệu chuẩn), `-xosc5` (chưa kẹp μ·g), `-xosc6` (còn cú dừng gấp), `-xosc7` (bàn đạp tuyến tính), `-xosc8` (AEB dùng ground truth),
-  runner trực tiếp `carla-0.9.16` và `-xosc9`. Backend không chạy lại run `-xosc1`…`-xosc8`; `run_xosc.py` vẫn chạy file v2…v8 ngoài web.
+  runner trực tiếp `carla-0.9.16` và `-xosc10` (`-xosc9`: chưa bù pha tăng lực). Backend không chạy lại run `-xosc1`…`-xosc9`; `run_xosc.py` vẫn chạy file v2…v9 ngoài web.
 - `.xosc` là đầu vào mô phỏng. JSON vẫn là hợp đồng nội bộ/result; không đổi đuôi JSON thành XML hoặc bỏ metadata seed/source.
   Runner CARLA trực tiếp nhận bundle JSON (`run_variant.py`) đã gỡ ở ADR-042; `run_xosc.py` từ chối `.json`. Chạy lại bundle bằng
   bộ động học: `java -cp target/classes com.vsos.core.bridge.BridgeMain kinematic <file>` (cần `mvnw compile`).
