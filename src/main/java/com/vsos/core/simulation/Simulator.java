@@ -28,6 +28,12 @@ public final class Simulator {
     public static final double PEDESTRIAN_START_Y_M = -3.6; // trên vỉa hè, cách mép làn ego 1,85 m
     public static final double CURB_STOP_Y_M = -2.25; // người "dừng ở lề" đứng lại ngay trước mép đường
     public static final double CURB_SLOWDOWN_M = 0.8; // đoạn chậm dần trước khi dừng
+    /**
+     * Người đi bộ tăng tốc đều từ đứng yên tới tốc độ biến thể trong thời gian này (bộ động học 1.4, ADR-062). Đo trên CARLA 0.9.16 (carla-ped-bench đợt 3,
+     * D5, 0,5–6 m/s): đạt 90 % tốc độ sau 0,610 s ở mọi tốc độ → 0,61 / 0,9; tương đương trễ T/2 = 0,34 s về vị trí, khớp lệch 0,340 ± 0,003 s đã đo. Người
+     * thật cũng không đạt tốc độ ngay (cơ sở lý thuyết carla-ped-bench). Bộ động học ≤ 1.3 và fixture Python: người đạt tốc độ ngay.
+     */
+    public static final double PEDESTRIAN_ACCEL_TIME_S = 0.678;
     public static final double LEAD_TIME_S = 1.5; // ego bắt đầu cách điểm kích hoạt 1,5 s để có đoạn đường tiếp cận
     public static final double NEAR_MISS_TTC_S = 1.0;
     public static final double NEAR_MISS_DISTANCE_M = 0.5;
@@ -161,6 +167,8 @@ public final class Simulator {
         double pedY = PEDESTRIAN_START_Y_M;
         double pedVy = 0.0;
         boolean pedStarted = false;
+        double pedStartT = 0.0;
+        boolean pedestrianRamp = relativeImpact; // 1.4 (ADR-062): người tăng tốc dần; đường so fixture Python (1.0) giữ đạt tốc độ ngay
 
         List<Frame> frames = new ArrayList<>();
         List<Map<String, Object>> events = new ArrayList<>();
@@ -178,14 +186,19 @@ public final class Simulator {
             // ---- Ground truth người đi bộ -----------------------------------------
             if (!pedStarted && gap <= c.triggerDistanceM()) {
                 pedStarted = true;
+                pedStartT = t;
                 pedVy = c.pedestrianSpeedMps();
                 AebStack.Events.record(events, t, "gt_start", "Pedestrian starts crossing");
             }
             if (pedStarted) {
+                if (pedestrianRamp && t - pedStartT < PEDESTRIAN_ACCEL_TIME_S && !(c.stopsAtCurb() && pedY >= CURB_STOP_Y_M)) {
+                    // ADR-062: tăng tốc đều trong PEDESTRIAN_ACCEL_TIME_S (bước đầu đã đi được một bước để không đứng yên một khung).
+                    pedVy = c.pedestrianSpeedMps() * Math.min(1.0, (t - pedStartT + AebStack.DT) / PEDESTRIAN_ACCEL_TIME_S);
+                }
                 if (c.stopsAtCurb() && pedVy > 0) {
                     // Người định dừng thì chậm dần trong 0,8 m cuối, không khựng lại tức thì.
                     double remaining = CURB_STOP_Y_M - pedY;
-                    pedVy = c.pedestrianSpeedMps() * Math.max(0.15, Math.min(1.0, remaining / CURB_SLOWDOWN_M));
+                    pedVy = Math.min(pedVy, c.pedestrianSpeedMps() * Math.max(0.15, Math.min(1.0, remaining / CURB_SLOWDOWN_M)));
                 }
                 pedY += pedVy * AebStack.DT;
                 if (c.stopsAtCurb() && pedY >= CURB_STOP_Y_M) {

@@ -80,12 +80,13 @@ public class KinematicParityTest {
             Map<String, Object> cm = new java.util.LinkedHashMap<>(map(current.get("metrics")));
             // Nhận diện / quyết định không đổi; từ 1.3 (ADR-058) phanh tác dụng sớm hơn tối đa một bước và quãng dừng tính từ đầu bước, nên các số sau phanh
             // được phép khác.
-            for (String key : new String[] {"first_detection_t", "fcw_t", "aeb_decision_t", "gt_in_path_t", "ego_initial_speed_mps"}) {
-                assertThat(cm.get(key)).as(key).isEqualTo(lm.get(key));
-            }
-            if (lm.get("brake_onset_t") != null) {
-                double diff = ((Number) lm.get("brake_onset_t")).doubleValue() - ((Number) cm.get("brake_onset_t")).doubleValue();
-                assertThat(diff).isBetween(-1e-9, AebStack.DT + 1e-9);
+            // Từ 1.4 (ADR-062) người tăng tốc dần nên quyết định / phanh cũng được phép khác; chỉ còn tốc độ đầu của xe phải trùng.
+            assertThat(cm.get("ego_initial_speed_mps")).isEqualTo(lm.get("ego_initial_speed_mps"));
+            if (cm.get("brake_onset_t") != null && cm.get("aeb_decision_t") != null) {
+                double latency = ((Number) cm.get("brake_onset_t")).doubleValue() - ((Number) cm.get("aeb_decision_t")).doubleValue();
+                // Phanh tác dụng ở bước đầu tiên không sớm hơn quyết định + trễ (ADR-058): trễ thực nằm trong [trễ, trễ + một bước).
+                double delay = params.brakeActivationDelay() + AebStack.ACTUATOR_RESPONSE_TIME_S;
+                assertThat(latency).as("phanh đúng mốc (ADR-058)").isBetween(delay - 1e-9, delay + AebStack.DT - 1e-9);
             }
             Object ego = cm.remove("ego_impact_speed_mps");
             Object relative = cm.remove("impact_speed_mps");

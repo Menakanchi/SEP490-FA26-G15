@@ -30,15 +30,26 @@ class AebCorridorTest {
         assertThat(Simulator.corridorWidth(HGV, false)).isEqualTo(1.93);
     }
 
-    /** Xe rộng 1,93 m: hành lang không đổi, nên phần nhận diện / quyết định giống hệt bản cũ (thời điểm phanh đổi vì ADR-058, kiểm ở test khác). */
+    /**
+     * ADR-062: người đi bộ tăng tốc đều trong 0,678 s (bộ động học 1.4) thay vì đạt tốc độ ngay (fixture Python), nên vào đường đi muộn hơn ~0,34 s và AEB
+     * không quyết định sớm hơn bản cũ.
+     */
     @Test
-    void anEtronWideVehicleDecidesExactlyAsBefore() {
+    void pedestrianAcceleratesOverTheMeasuredRampTime() {
         CrossingCase c = new CrossingCase(40, 25, 1.5, false, "CLEAR", "DAY", null);
-        Map<String, Object> current = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, true).metrics();
-        Map<String, Object> legacy = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, false).metrics();
-        for (String key : new String[] {"first_detection_t", "fcw_t", "aeb_decision_t", "gt_in_path_t"}) {
-            assertThat(current.get(key)).as(key).isEqualTo(legacy.get(key));
-        }
+        SimulationOutcome current = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, true);
+        SimulationOutcome legacy = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, false);
+        double start = current.events().stream().filter(e -> "gt_start".equals(e.get("kind"))).mapToDouble(e -> ((Number) e.get("t")).doubleValue())
+                .findFirst().orElseThrow();
+        Frame early = current.frames().stream().filter(f -> f.t() >= start + 0.10 - 1e-9).findFirst().orElseThrow();
+        Frame late = current.frames().stream().filter(f -> f.t() >= start + 0.80 - 1e-9).findFirst().orElseThrow();
+        assertThat(early.pedVy()).isCloseTo(1.5 * 0.15 / Simulator.PEDESTRIAN_ACCEL_TIME_S, within(1e-3)); // khung làm tròn 3 chữ số
+        assertThat(late.pedVy()).isEqualTo(1.5);
+        double inPathCurrent = ((Number) current.metrics().get("gt_in_path_t")).doubleValue();
+        double inPathLegacy = ((Number) legacy.metrics().get("gt_in_path_t")).doubleValue();
+        assertThat(inPathCurrent - inPathLegacy).isBetween(0.25, 0.45);
+        assertThat(((Number) current.metrics().get("aeb_decision_t")).doubleValue())
+                .isGreaterThanOrEqualTo(((Number) legacy.metrics().get("aeb_decision_t")).doubleValue());
     }
 
     /**
@@ -51,8 +62,9 @@ class AebCorridorTest {
         SimulationOutcome current = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, true);
         SimulationOutcome legacy = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, false);
         double decision = ((Number) current.metrics().get("aeb_decision_t")).doubleValue();
+        double legacyDecision = ((Number) legacy.metrics().get("aeb_decision_t")).doubleValue();
         assertThat(((Number) current.metrics().get("brake_onset_t")).doubleValue()).isCloseTo(decision + 0.25, within(1e-9));
-        assertThat(((Number) legacy.metrics().get("brake_onset_t")).doubleValue()).isCloseTo(decision + 0.30, within(1e-9));
+        assertThat(((Number) legacy.metrics().get("brake_onset_t")).doubleValue()).isCloseTo(legacyDecision + 0.30, within(1e-9));
         double onset = ((Number) current.metrics().get("brake_onset_t")).doubleValue();
         Frame first = current.frames().stream().filter(f -> f.t() >= onset - 1e-9).findFirst().orElseThrow();
         Frame last = current.frames().get(current.frames().size() - 1);
@@ -61,17 +73,17 @@ class AebCorridorTest {
     }
 
     /**
-     * 30 km/h, kích hoạt 15 m, người 1,0 m/s: với hành lang 1,93 m AEB không ra quyết định và xe rộng 2,89 m đâm phải người; hành lang theo bề rộng
-     * thật thấy người ở trong đường đi, quyết định ở 1,95 s và dừng kịp.
+     * 30 km/h, kích hoạt 20 m, người 0,8 m/s: với hành lang 1,93 m AEB không ra quyết định và xe rộng 2,89 m đâm phải người; hành lang theo bề rộng
+     * thật thấy người ở trong đường đi, quyết định ở 2,75 s và dừng kịp (bộ động học 1.4: người tăng tốc dần, ADR-062).
      */
     @Test
     void aWiderVehicleSeesThePedestrianInItsPathAndStops() {
-        CrossingCase c = new CrossingCase(30, 15, 1.0, false, "CLEAR", "DAY", null);
+        CrossingCase c = new CrossingCase(30, 20, 0.8, false, "CLEAR", "DAY", null);
         Map<String, Object> legacy = Simulator.simulate(c, AebParams.DEFAULT, SEED, WIDE, false).metrics();
         Map<String, Object> current = Simulator.simulate(c, AebParams.DEFAULT, SEED, WIDE, true).metrics();
         assertThat(legacy.get("aeb_decision_t")).as("hành lang 1,93 m: không quyết định").isNull();
         assertThat(legacy.get("collision")).isEqualTo(true);
-        assertThat(((Number) current.get("aeb_decision_t")).doubleValue()).isCloseTo(1.95, within(1e-9));
+        assertThat(((Number) current.get("aeb_decision_t")).doubleValue()).isCloseTo(2.75, within(1e-9));
         assertThat(current.get("collision")).isEqualTo(false);
     }
 
