@@ -139,6 +139,45 @@ class CarlaSessionLogicTest {
         assertThat(CarlaSession.rampLeadCommand(0.2, 0.0, 0.01)).isCloseTo(0.2 + 1.1, within(1e-9));
     }
 
+    /** Xe CARLA như bộ xuất ghi cho một xe đã hiệu chuẩn mô-men. */
+    private static Map<String, Object> carlaVehicle(String blueprint, double torque, double fullBrake) {
+        return Map.of("blueprint", blueprint, "physics", Map.of("mass", 2000.0, "wheels", Map.of("max_brake_torque", torque)), "full_brake_decel_mps2", fullBrake);
+    }
+
+    /**
+     * ADR-059: Model 3 1750 N·m / Patrol 2250 N·m / Sprinter 2250 N·m có bảng bàn đạp theo tốc độ (đợt 4) từ v13; v12 trở về trước giữ tuyến tính. Bù pha
+     * tăng lực chỉ cho xe đã đo được độ trễ (e-tron, Model 3).
+     */
+    @Test
+    void calibratedVehiclesGetTheirOwnPedalMapFromV13Only() {
+        com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v12 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V12_SIMULATOR_SUFFIX, 0.01, 0.05);
+        Map<String, Object> model3 = carlaVehicle("vehicle.tesla.model3", 1750.0, 9.87);
+        Map<String, Object> patrol = carlaVehicle("vehicle.nissan.patrol_2021", 2250.0, 9.90);
+        Map<String, Object> sprinter = carlaVehicle("vehicle.mercedes.sprinter", 2250.0, 8.91);
+        assertThat(CarlaSession.pedalMapFor(current, model3, 9.87).id()).isEqualTo("model3-1750nm-2026-11-22");
+        assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).id()).isEqualTo("patrol-2250nm-2026-11-22");
+        assertThat(CarlaSession.pedalMapFor(current, sprinter, 8.91).id()).isEqualTo("sprinter-2250nm-2026-11-22");
+        assertThat(CarlaSession.pedalMapFor(v12, model3, 9.87)).as("v12 chưa có bảng 3 xe").isNull();
+        assertThat(CarlaSession.pedalMapFor(v12, etron(1800.0), 9.13)).as("e-tron có bảng từ v8").isNotNull();
+        assertThat(CarlaSession.pedalMapFor(current, carlaVehicle("vehicle.tesla.model3", 700.0, 3.56), 3.56)).as("mô-men mặc định chưa đo").isNull();
+        assertThat(CarlaSession.pedalMapFor(current, model3, 9.87).rampLead()).isTrue();
+        assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).rampLead()).isFalse();
+        assertThat(CarlaSession.pedalMapFor(current, sprinter, 8.91).rampLead()).isFalse();
+        for (Map<String, Object> vehicle : List.of(model3, patrol, sprinter)) {
+            double full = ((Number) vehicle.get("full_brake_decel_mps2")).doubleValue();
+            CarlaPedalMap map = CarlaSession.pedalMapFor(current, vehicle, full);
+            for (double kmh = 20; kmh <= 110; kmh += 2.5) {
+                double prev = 0.0;
+                for (double a = 0.1; a <= 12.0; a += 0.1) {
+                    double pedal = map.feedForward(a, kmh / 3.6);
+                    assertThat(pedal).as("%s %.1f km/h, %.1f m/s²", map.id(), kmh, a).isGreaterThanOrEqualTo(prev).isBetween(0.0, 1.0);
+                    prev = pedal;
+                }
+            }
+        }
+    }
+
     /** Xe CARLA như bộ xuất ghi cho e-tron đã hiệu chuẩn (ADR-051): blueprint + mô-men phanh mọi bánh. */
     private static Map<String, Object> etron(double torque) {
         return Map.of("blueprint", "vehicle.audi.etron", "physics", Map.of("mass", 2100.0, "wheels", Map.of("max_brake_torque", torque)),

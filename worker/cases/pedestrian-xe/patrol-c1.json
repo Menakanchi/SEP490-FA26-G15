@@ -1,0 +1,39 @@
+{
+ "format": "vehicsim.variant/v1",
+ "seed": 48846,
+ "variant": {
+  "ego_speed_kmh": 40.0,
+  "trigger_distance_m": 25.0,
+  "pedestrian_speed_mps": 1.5,
+  "stops_at_curb": false,
+  "weather": "CLEAR",
+  "time_of_day": "DAY",
+  "friction": null
+ },
+ "vehicle": {
+  "name": "Nissan Patrol 2021",
+  "length_m": 5.566,
+  "width_m": 2.15,
+  "max_brake_decel_mps2": 8.8,
+  "carla": {
+   "blueprint": "vehicle.nissan.patrol_2021",
+   "physics": {
+    "mass": 2355.0,
+    "drag_coefficient": 0.3,
+    "center_of_mass": {
+     "x": 0.6,
+     "y": 0.0,
+     "z": -0.5
+    },
+    "wheels": {
+     "max_brake_torque": 2250.0
+    }
+   },
+   "dimensions": {
+    "height_m": 2.045,
+    "wheelbase_m": 3.276
+   },
+   "full_brake_decel_mps2": 9.9
+  }
+ }
+}

@@ -41,3 +41,14 @@ def test_without_carla_the_table_still_lists_kinematic_numbers(tmp_path: Path) -
     xosc = tmp_path / "s.xosc"
     xosc.write_text('<ParameterDeclaration name="vs_format" parameterType="string" value="vehicsim.xosc/v9" />', encoding="utf-8")
     assert verify_cases.xosc_format(xosc) == "vehicsim.xosc/v9"
+
+
+def test_vehicle_cases_match_the_calibrated_pedal_maps() -> None:
+    """Bộ ca 3 xe (ADR-059): mô-men / phanh 100% đúng như migration 016, để adapter chọn đúng bảng bàn đạp."""
+    expected = {"vehicle.tesla.model3": (1750.0, 9.87), "vehicle.nissan.patrol_2021": (2250.0, 9.90), "vehicle.mercedes.sprinter": (2250.0, 8.91)}
+    bundles = sorted((verify_cases.WORKER / "cases" / "pedestrian-xe").glob("*.json"))
+    assert len(bundles) == 9
+    for bundle in bundles:
+        carla = json.loads(bundle.read_text(encoding="utf-8"))["vehicle"]["carla"]
+        torque, full = expected[carla["blueprint"]]
+        assert carla["physics"]["wheels"]["max_brake_torque"] == torque and carla["full_brake_decel_mps2"] == full

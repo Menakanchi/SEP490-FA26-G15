@@ -82,6 +82,8 @@ class AebCorridorTest {
         assertThat(CarlaSession.vehicleCorridorApplies(new Xosc.Profile(Xosc.V10_SIMULATOR_SUFFIX, 0.01, 0.05))).isFalse();
         // ADR-058: phanh đúng mốc và bỏ khâu bù khi có bảng bàn đạp chỉ từ v12.
         assertThat(CarlaSession.v12Control(new Xosc.Profile(Xosc.SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
+        assertThat(CarlaSession.v12Control(new Xosc.Profile(Xosc.V12_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
         assertThat(CarlaSession.v12Control(new Xosc.Profile(Xosc.V11_SIMULATOR_SUFFIX, 0.01, 0.05))).isFalse();
+        assertThat(CarlaSession.vehicleCorridorApplies(new Xosc.Profile(Xosc.V12_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
     }
 }

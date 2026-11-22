@@ -7,6 +7,7 @@ Dữ liệu thu từ CARLA bằng công cụ `carla-ped-bench` (repo riêng [phu
 | [2026-11-14_1758](2026-11-14_1758/README.md) | 1 | 56 / 56 | e-tron: phanh theo tốc độ × mức, người đi bộ, xe + người, mưa, lặp |
 | [2026-11-16_2229](2026-11-16_2229/README.md) | 3 | 498 / 500 | Quét dày: bảng bàn đạp e-tron, 4 xe ở physics mặc định, ma sát lốp, xe + người, người đi bộ, tải, thời tiết → ADR-054 |
 | [2026-11-20_2217](2026-11-20_2217/README.md) | 2 | 205 / 205 | Quét mô-men 4 xe → migration 016; edge case; mưa trên 4 xe |
+| [2026-11-22_2239](2026-11-22_2239/README.md) | 4 | 331 / 331 | Bảng bàn đạp theo tốc độ cho Model 3 / Patrol / Sprinter đã hiệu chuẩn → ADR-059 |
 | [kiem-xosc11-2026-11-22_2318](kiem-xosc11-2026-11-22_2318/README.md) | Kiểm VehicSim | 21 / 21 | AEB thật (radar) trên `-xosc11` so với bộ động học 1.2, 7 ca × 3 lần → ADR-054 Accepted |
 
 Mỗi lần chạy một thư mục `<YYYY-MM-DD_HHMM>/`, do lệnh `--publish` của công cụ tạo:
