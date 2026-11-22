@@ -98,7 +98,7 @@ public final class CarlaPedalMap {
      * có phanh 100% đổi mạnh theo tốc độ (bảng đã tính), không đo được độ trễ riêng nên không bật. {@code fromV13}: chỉ dùng từ {@code .xosc} v13.
      */
     record Calibration(String id, String blueprint, double torqueNm, double fullBrakeDecel, double deadzonePedal, double[] speedsKmh, double[][][] points,
-                       boolean rampLead, boolean fromV13, double[][] stopOnset) {
+                       boolean rampLead, boolean fromV13, double[][] stopOnset, boolean rampLeadFromV14) {
     }
 
     /**
@@ -117,10 +117,10 @@ public final class CarlaPedalMap {
 
     static final List<Calibration> CALIBRATIONS = List.of(
             new Calibration("etron-1800nm-2026-11-16", ETRON_BLUEPRINT, ETRON_BRAKE_TORQUE_NM, ETRON_FULL_BRAKE_DECEL, ETRON_DEADZONE_PEDAL, ETRON_SPEEDS_KMH,
-                    ETRON_POINTS, true, false, ETRON_STOP_ONSET),
-            new Calibration("model3-1750nm-2026-11-22", "vehicle.tesla.model3", 1750.0, 9.87, 0.0496, MODEL3_SPEEDS_KMH, MODEL3_POINTS, true, true, MODEL3_STOP_ONSET),
-            new Calibration("patrol-2250nm-2026-11-22", "vehicle.nissan.patrol_2021", 2250.0, 9.9, 0.0991, PATROL_SPEEDS_KMH, PATROL_POINTS, false, true, PATROL_STOP_ONSET),
-            new Calibration("sprinter-2250nm-2026-11-22", "vehicle.mercedes.sprinter", 2250.0, 8.91, 0.0792, SPRINTER_SPEEDS_KMH, SPRINTER_POINTS, false, true, SPRINTER_STOP_ONSET));
+                    ETRON_POINTS, true, false, ETRON_STOP_ONSET, false),
+            new Calibration("model3-1750nm-2026-11-22", "vehicle.tesla.model3", 1750.0, 9.87, 0.0496, MODEL3_SPEEDS_KMH, MODEL3_POINTS, true, true, MODEL3_STOP_ONSET, false),
+            new Calibration("patrol-2250nm-2026-11-22", "vehicle.nissan.patrol_2021", 2250.0, 9.9, 0.0991, PATROL_SPEEDS_KMH, PATROL_POINTS, false, true, PATROL_STOP_ONSET, true),
+            new Calibration("sprinter-2250nm-2026-11-22", "vehicle.mercedes.sprinter", 2250.0, 8.91, 0.0792, SPRINTER_SPEEDS_KMH, SPRINTER_POINTS, false, true, SPRINTER_STOP_ONSET, true));
 
     private final Calibration calibration;
 
@@ -149,9 +149,17 @@ public final class CarlaPedalMap {
         return Math.max(MIN_OVERRIDE_MPS, v + OVERRIDE_MARGIN_MPS);
     }
 
-    /** Bật bù pha tăng lực (ADR-056) cho xe này. */
+    /** Bật bù pha tăng lực (ADR-056) cho xe này ở profile ≤ v13 (e-tron, Model 3). */
     public boolean rampLead() {
         return calibration.rampLead();
+    }
+
+    /**
+     * Bật bù pha tăng lực cho xe này. {@code v14} = profile từ v14 (ADR-061): thêm Patrol / Sprinter — kiểm CARLA thật `-xosc13` cho thấy hai xe tăng lực chậm
+     * hơn mô hình (Sprinter 6,4 m/s² sau 0,4 s, mô hình 8,0), quãng dừng dài hơn 0,5–1,0 m.
+     */
+    public boolean rampLead(boolean v14) {
+        return calibration.rampLead() || (v14 && calibration.rampLeadFromV14());
     }
 
     /**

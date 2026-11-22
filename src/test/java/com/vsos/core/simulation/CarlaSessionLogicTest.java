@@ -162,8 +162,13 @@ class CarlaSessionLogicTest {
         assertThat(CarlaSession.pedalMapFor(v12, etron(1800.0), 9.13)).as("e-tron có bảng từ v8").isNotNull();
         assertThat(CarlaSession.pedalMapFor(current, carlaVehicle("vehicle.tesla.model3", 700.0, 3.56), 3.56)).as("mô-men mặc định chưa đo").isNull();
         assertThat(CarlaSession.pedalMapFor(current, model3, 9.87).rampLead()).isTrue();
-        assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).rampLead()).isFalse();
-        assertThat(CarlaSession.pedalMapFor(current, sprinter, 8.91).rampLead()).isFalse();
+        assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).rampLead()).as("≤ v13").isFalse();
+        assertThat(CarlaSession.pedalMapFor(current, sprinter, 8.91).rampLead()).as("≤ v13").isFalse();
+        // ADR-061: từ v14 Patrol / Sprinter cũng bù pha tăng lực; v13 vẫn có bảng 3 xe nhưng chưa bù.
+        assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).rampLead(true)).isTrue();
+        assertThat(CarlaSession.pedalMapFor(current, sprinter, 8.91).rampLead(true)).isTrue();
+        assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).rampLead(false)).isFalse();
+        assertThat(CarlaSession.pedalMapFor(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V13_SIMULATOR_SUFFIX, 0.01, 0.05), patrol, 9.90)).as("v13 có bảng 3 xe").isNotNull();
         for (Map<String, Object> vehicle : List.of(model3, patrol, sprinter)) {
             double full = ((Number) vehicle.get("full_brake_decel_mps2")).doubleValue();
             CarlaPedalMap map = CarlaSession.pedalMapFor(current, vehicle, full);

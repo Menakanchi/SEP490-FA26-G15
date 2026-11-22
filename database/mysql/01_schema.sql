@@ -588,7 +588,7 @@ CREATE TABLE simulation_runs (
   aeb_version_id             BIGINT UNSIGNED NOT NULL,
   aeb_mode                   ENUM('ON','OFF') NOT NULL DEFAULT 'ON' COMMENT 'OFF: AEB tắt, mốc tham chiếu của baseline; không bao giờ là baseline regression/tối ưu',
   simulator_type             ENUM('KINEMATIC','CARLA') NOT NULL,
-  simulator_version          VARCHAR(30) NOT NULL COMMENT 'Danh tính bộ mô phỏng: vehicsim-kinematic-1.3 | carla-0.9.16-xosc13',
+  simulator_version          VARCHAR(30) NOT NULL COMMENT 'Danh tính bộ mô phỏng: vehicsim-kinematic-1.3 | carla-0.9.16-xosc14',
   map_name                   VARCHAR(100) NULL COMMENT 'Map CARLA thực nạp (world.get_map().name); NULL với động học',
   fixed_delta_seconds        DECIMAL(6,4) NOT NULL DEFAULT 0.0500 COMMENT 'Bước mô phỏng (synchronous_mode)',
   max_duration_s             DECIMAL(8,2) NULL COMMENT 'Hết giờ mô phỏng thì end_reason = TIMEOUT',
