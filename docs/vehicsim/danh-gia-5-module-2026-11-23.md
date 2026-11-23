@@ -1,4 +1,4 @@
-    # Đánh giá 5 module so với bản phân chia công việc (23/11/2026)
+# Đánh giá 5 module so với bản phân chia công việc (23/11/2026)
 
 Đối chiếu tiêu chí nghiệm thu và mục "Chức năng giao diện" trong [phân chia 5 thành viên](phan-chia-cong-viec-5-thanh-vien.md)
 với code trên `main` tại commit `c9d6f32`.
