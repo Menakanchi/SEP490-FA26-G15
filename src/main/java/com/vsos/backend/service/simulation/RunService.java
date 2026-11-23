@@ -239,6 +239,8 @@ public class RunService {
             Thread.currentThread().interrupt();
             return false;
         }
+    }
+
     public boolean isCarlaConfigured() {
         return isCarla(configuredSimulator()) && !carlaCommand().isEmpty();
     }
