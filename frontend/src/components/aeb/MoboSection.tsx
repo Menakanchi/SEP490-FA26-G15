@@ -443,10 +443,10 @@ export function MoboSection({
                 <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                   <tr className="h-12">
                     <th className="px-4 py-3">Trial #</th>
-                    <th className="px-4 py-3">TTC (s)</th>
-                    <th className="px-4 py-3">Delay (s)</th>
-                    <th className="px-4 py-3">Buildup (m/s³)</th>
-                    <th className="px-4 py-3">Decel (m/s²)</th>
+                    <th className="px-4 py-3">TTC Threshold (s)</th>
+                    <th className="px-4 py-3">Brake Activation Delay (s)</th>
+                    <th className="px-4 py-3">Brake Build-up Rate (m/s³)</th>
+                    <th className="px-4 py-3">Max Deceleration (m/s²)</th>
                     <th className="px-4 py-3 text-vehicsim-decision">RMS Jerk (m/s³)</th>
                     <th className="px-4 py-3 text-vehicsim-danger">Tốc độ va chạm</th>
                     <th className="px-4 py-3 text-vehicsim-ink">Quãng phanh (m)</th>

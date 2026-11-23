@@ -418,10 +418,10 @@ export default function AebMoboStudioPage() {
                     <tr className="h-12">
                       <th className="w-12 px-3 py-3.5 text-center font-bold">STT</th>
                       <th className="px-4 py-3.5">Trial #</th>
-                      <th className="px-4 py-3.5">TTC (s)</th>
-                      <th className="px-4 py-3.5">Trễ phanh (s)</th>
-                      <th className="px-4 py-3.5">Tăng áp (m/s³)</th>
-                      <th className="px-4 py-3.5">Gia tốc (m/s²)</th>
+                      <th className="px-4 py-3.5">TTC Threshold (s)</th>
+                      <th className="px-4 py-3.5">Brake Activation Delay (s)</th>
+                      <th className="px-4 py-3.5">Brake Build-up Rate (m/s³)</th>
+                      <th className="px-4 py-3.5">Max Deceleration (m/s²)</th>
                       <th className="px-4 py-3.5 text-emerald-300">RMS Jerk</th>
                       <th className="px-4 py-3.5 text-rose-300">Tốc độ va chạm</th>
                       <th className="px-4 py-3.5 text-slate-200">Quãng phanh</th>

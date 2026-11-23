@@ -196,10 +196,10 @@ export default function AebHubPage() {
                   <tr className="h-12">
                     <th className="w-12 px-3 py-3.5 text-center">STT</th>
                     <th className="px-5 py-3.5">Ứng viên</th>
-                    <th className="px-4 py-3.5">TTC (s)</th>
-                    <th className="px-4 py-3.5">Trễ phanh (s)</th>
-                    <th className="px-4 py-3.5">Tăng áp (m/s³)</th>
-                    <th className="px-4 py-3.5">Gia tốc (m/s²)</th>
+                    <th className="px-4 py-3.5">TTC Threshold (s)</th>
+                    <th className="px-4 py-3.5">Brake Activation Delay (s)</th>
+                    <th className="px-4 py-3.5">Brake Build-up Rate (m/s³)</th>
+                    <th className="px-4 py-3.5">Max Deceleration (m/s²)</th>
                     <th className="px-4 py-3.5">Thời gian tạo</th>
                     <th className="px-5 py-3.5 text-right">Hành động tiếp theo</th>
                   </tr>

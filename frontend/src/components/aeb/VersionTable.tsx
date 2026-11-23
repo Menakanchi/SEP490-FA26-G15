@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { Pagination, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import type { AebVersion, ParameterDef } from "@/types/vehicsim";
-import { KEY_PARAMS, STATUS_LABEL, STATUS_TONE, changedNote } from "./aebTypes";
+import { KEY_PARAMS, PARAM_NAMES, STATUS_LABEL, STATUS_TONE, changedNote } from "./aebTypes";
 
 export function VersionTable({
   versions,
@@ -47,7 +47,7 @@ export function VersionTable({
           <span className="w-[125px] shrink-0 pr-3">Trạng thái</span>
           {KEY_PARAMS.map((code) => (
             <span key={code} className="w-[120px] shrink-0 truncate pr-2">
-              {catalog.get(code)?.name ?? code}
+              {PARAM_NAMES[code] ?? catalog.get(code)?.name ?? code}
             </span>
           ))}
           <span className="w-[215px] shrink-0 pr-3">Ghi chú</span>

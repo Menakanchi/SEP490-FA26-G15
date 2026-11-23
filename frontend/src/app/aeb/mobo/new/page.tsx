@@ -217,20 +217,20 @@ export default function AebMoboNewPage() {
               </span>
               <div className="grid grid-cols-2 gap-3 text-[13px]">
                 <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
-                  <span className="block font-bold text-vehicsim-ink">TTC_THRESHOLD</span>
-                  <span className="text-[12px] text-vehicsim-muted">0.5s – 3.5s (Thời gian tới va chạm)</span>
+                  <span className="block font-bold text-vehicsim-ink">TTC Threshold</span>
+                  <span className="text-[12px] text-vehicsim-muted">0.5 – 4.0 s</span>
                 </div>
                 <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
-                  <span className="block font-bold text-vehicsim-ink">ACTIVATION_DELAY</span>
-                  <span className="text-[12px] text-vehicsim-muted">0.05s – 0.45s (Trễ kích hoạt phanh)</span>
+                  <span className="block font-bold text-vehicsim-ink">Brake Activation Delay</span>
+                  <span className="text-[12px] text-vehicsim-muted">0.0 – 0.5 s</span>
                 </div>
                 <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
-                  <span className="block font-bold text-vehicsim-ink">BUILDUP_RATE</span>
-                  <span className="text-[12px] text-vehicsim-muted">5.0 – 20.0 m/s³ (Tốc độ tăng áp suất)</span>
+                  <span className="block font-bold text-vehicsim-ink">Brake Build-up Rate</span>
+                  <span className="text-[12px] text-vehicsim-muted">5.0 – 20.0 m/s³</span>
                 </div>
                 <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
-                  <span className="block font-bold text-vehicsim-ink">MAX_DECELERATION</span>
-                  <span className="text-[12px] text-vehicsim-muted">5.0 – 10.0 m/s² (Gia tốc phanh cực đại)</span>
+                  <span className="block font-bold text-vehicsim-ink">Max Deceleration</span>
+                  <span className="text-[12px] text-vehicsim-muted">3.0 – 10.0 m/s²</span>
                 </div>
               </div>
             </div>

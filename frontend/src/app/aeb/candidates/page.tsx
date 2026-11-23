@@ -7,7 +7,7 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
-import { KEY_PARAMS } from "@/components/aeb/aebTypes";
+import { KEY_PARAMS, PARAM_NAMES } from "@/components/aeb/aebTypes";
 
 export default function AebCandidatesPage() {
   const { ctx, canWrite } = useVehicSimContext();
@@ -76,7 +76,7 @@ export default function AebCandidatesPage() {
                   <th className="px-5 py-3.5">Nguồn gốc</th>
                   {KEY_PARAMS.map((code) => (
                     <th key={code} className="px-4 py-3.5">
-                      {catalog.get(code)?.name ?? code}
+                      {PARAM_NAMES[code] ?? catalog.get(code)?.name ?? code}
                     </th>
                   ))}
                   <th className="px-5 py-3.5">Ngày tạo</th>
