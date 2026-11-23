@@ -160,8 +160,17 @@ export function finishedWork(before: ProjectJourney | null, after: ProjectJourne
 
 const PROJECT_PAGES: Record<string, JourneyStepKey> = { start: "SCENARIO", results: "RESULTS", improve: "IMPROVE", rounds: "VERIFY" };
 
+/**
+ * Chi tiết / phát lại một run mở từ trang kiểm chứng (`returnTo=/validation/regression/<id>`) vẫn thuộc bước ⑤:
+ * người dùng đang xem bằng chứng cho lần kiểm chứng, không quay lại bước ③.
+ */
+export function isVerifyEvidence(pathname: string, returnTo: string | null): boolean {
+  return pathname.startsWith("/analysis/failures/") && !!returnTo && /^\/validation\/regression\/\d+$/.test(returnTo);
+}
+
 /** Bước của đường dẫn hiện tại, khớp dài nhất thắng (/scenarios/new thuộc bước 1, /scenarios thuộc bước 2). */
-export function stepOfPath(pathname: string, projectId: number | null): JourneyStepKey | null {
+export function stepOfPath(pathname: string, projectId: number | null, returnTo: string | null = null): JourneyStepKey | null {
+  if (isVerifyEvidence(pathname, returnTo)) return "VERIFY";
   if (projectId !== null && pathname.startsWith(`/projects/${projectId}/`)) return PROJECT_PAGES[pathname.split("/")[3]] ?? null;
   let best: { key: JourneyStepKey; length: number } | null = null;
   for (const step of JOURNEY_STEPS) {

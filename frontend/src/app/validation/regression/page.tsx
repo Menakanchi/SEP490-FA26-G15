@@ -64,7 +64,7 @@ export default function RegressionListPage() {
   return (
     <VehicSimPage
       step={6}
-      crumbs={[{ label: "Kiểm định" }, { label: "Kiểm thử hồi quy" }]}
+      crumbs={[{ label: "Kiểm chứng" }, { label: "Kiểm thử hồi quy" }]}
       title="Kiểm thử hồi quy"
       subtitle={
         isExperiencer
@@ -97,7 +97,7 @@ export default function RegressionListPage() {
           tone="ok"
           note={`${passedRegressions} ca xấu đi`}
         />
-        <StatCard label="Không đạt" value={data?.kpis.failed ?? "…"} valueClass="text-vehicsim-danger" tone="danger" note="ứng viên bị chặn" />
+        <StatCard label="Không đạt" value={data?.kpis.failed ?? "…"} valueClass="text-vehicsim-danger" tone="danger" note={isExperiencer ? "không dùng làm baseline được" : "ứng viên bị chặn"} />
         <StatCard
           label="Đang chạy"
           value={data?.kpis.running ?? "…"}
@@ -116,8 +116,10 @@ export default function RegressionListPage() {
             options={(Object.keys(REGRESSION_STATUS) as RegressionStatus[]).map((s) => ({ value: s, label: REGRESSION_STATUS[s].label }))}
             onChange={filtered(setStatus)}
           />
-          <FilterSelect<string> label="Bản cơ sở" value={baseline} options={uniq((data?.items ?? []).map((i) => i.baseline))} onChange={filtered(setBaseline)} />
-          <FilterSelect<string> label="Người tạo" value={author} options={uniq((data?.items ?? []).map((i) => i.created_by))} onChange={filtered(setAuthor)} />
+          <FilterSelect<string> label={isExperiencer ? "Baseline" : "Bản cơ sở"} value={baseline} options={uniq((data?.items ?? []).map((i) => i.baseline))} onChange={filtered(setBaseline)} />
+          {!isExperiencer && (
+            <FilterSelect<string> label="Người tạo" value={author} options={uniq((data?.items ?? []).map((i) => i.created_by))} onChange={filtered(setAuthor)} />
+          )}
         </div>
 
 
@@ -147,7 +149,7 @@ export default function RegressionListPage() {
               <span className="w-[98px]">Kịch bản</span>
               <span className="w-[116px]">Trạng thái</span>
               <span className="w-[136px]">Sửa / Xấu đi</span>
-              <span className="w-[106px]">Người tạo</span>
+              {!isExperiencer && <span className="w-[106px]">Người tạo</span>}
               <span className="w-[96px]">Ngày</span>
               <span className="w-[180px] text-right pr-2">Thao tác</span>
             </div>
@@ -189,7 +191,7 @@ export default function RegressionListPage() {
                       </>
                     )}
                   </span>
-                  <span className="w-[106px] truncate text-[13px] text-vehicsim-ink">{i.created_by ?? "—"}</span>
+                  {!isExperiencer && <span className="w-[106px] truncate text-[13px] text-vehicsim-ink">{i.created_by ?? "—"}</span>}
                   <span className="w-[96px] text-[13px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
                   <span className="flex w-[180px] items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                     <Link
@@ -198,7 +200,7 @@ export default function RegressionListPage() {
                     >
                       Chi tiết
                     </Link>
-                    {i.status === "PASSED" && (
+                    {(i.status === "PASSED" || i.status === "FAILED") && (
                       <Link
                         href={conclusion(i.id)}
                         className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-decision px-3 text-[12px] font-bold text-white hover:bg-vehicsim-decision/90 transition shadow-sm"

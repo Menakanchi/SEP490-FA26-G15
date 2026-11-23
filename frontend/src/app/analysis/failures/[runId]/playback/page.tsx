@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { MotionTelemetryChart, MOTION_SIGNALS, type MotionSignal } from "@/components/MotionTelemetryChart";
 import { ErrorNote, PillButton, runCode } from "@/components/VehicSimUi";
-import { AnalysisBadge, AnalysisLoading, analysisError, analysisReturn, analysisRunId } from "@/components/analysisUi";
+import { AnalysisBadge, AnalysisLoading, analysisError, analysisOrigin, analysisReturn, analysisRunId } from "@/components/analysisUi";
 import { PlaybackScene, PlaybackFacts } from "@/components/analysis/AnalysisPlaybackScene";
 import { PlaybackTimeline, PlaybackEvents } from "@/components/analysis/AnalysisPlaybackTimeline";
 import { PLAYBACK_LAYERS, eventName, eventColor, playbackPresentation, type PlaybackLayer } from "@/components/analysis/playbackPresentation";
@@ -18,6 +18,15 @@ import { vehicsimApi } from "@/services/vehicsim";
 import type { Frame, MotionTelemetryPoint, Playback, SimEvent } from "@/types/vehicsim";
 
 const NO_FRAMES: Frame[] = [], NO_EVENTS: SimEvent[] = [];
+
+/** Run để mở so sánh: đúng run cùng cặp khi trang kiểm chứng truyền `compare`, nếu không thì run khác cấu hình cùng biến thể. */
+function relatedRun(pb: Playback | null, compareId: number | null): { related: Playback["related_runs"][number] | undefined; paired: boolean } {
+  if (!pb) return { related: undefined, paired: false };
+  if (compareId === null) return { related: pb.related_runs?.find(run => run.config !== pb.config), paired: false };
+  const run = pb.related_runs?.find(item => item.run_id === compareId);
+  return { related: run, paired: Boolean(run) };
+}
+const compareQuery = (compareId: number | null) => (compareId === null ? "" : `&compare=${compareId}`);
 type Result = { key: string; data: Playback | null; view: ReturnType<typeof playbackPresentation> | null; error: string | null };
 
 export default function PlaybackPage() {
@@ -26,6 +35,9 @@ export default function PlaybackPage() {
   const params = useSearchParams();
   const returnTo = analysisReturn(params.get("returnTo"));
   const returnQuery = `returnTo=${encodeURIComponent(returnTo)}`;
+  const origin = analysisOrigin(returnTo);
+  /** Run cùng cặp kiểm chứng (cùng biến thể, seed, xe, simulator) do trang kiểm chứng truyền sang. */
+  const compareId = analysisRunId(params.get("compare") ?? "");
   const signal = (MOTION_SIGNALS.some(item => item.key === params.get("signal")) ? params.get("signal") : "ego_accel_mps2") as MotionSignal;
   const [refresh, setRefresh] = useState(0);
   const requestKey = `${runId}:${refresh}`;
@@ -101,7 +113,7 @@ export default function PlaybackPage() {
   const seek = useCallback((time: number) => {
     if (!finite(time)) return;
     dispatch({ type: "seek", key: requestKey, time });
-  }, [requestKey]);
+  }, [requestKey, dispatch]);
   const jump = useCallback((dir: 1 | -1) => {
     const times = events.map(event => event.t);
     const target = dir > 0 ? times.find(time => time > t) : [...times].reverse().find(time => time < t);
@@ -133,12 +145,12 @@ export default function PlaybackPage() {
   const motion = frame ? motionIndex.get(frame.t) ?? undefined : undefined;
   const chartMarkers = useMemo(() => events.map(event => ({ t: event.t, label: eventName(event), color: eventColor(event),
     source: `events[kind=${event.kind}].t` })), [events]);
-  const related = pb?.related_runs?.find(run => run.config !== pb.config);
-  const detailHref = `/analysis/failures/${runId}?section=telemetry&t=${t}&signal=${signal}&${returnQuery}`;
+  const { related, paired } = relatedRun(pb, compareId);
+  const detailHref = `/analysis/failures/${runId}?section=telemetry&t=${t}&signal=${signal}&${returnQuery}${compareQuery(compareId)}`;
   const enabled = Boolean(view?.durationValid && frames.length);
   const evaluated = pb ? classificationPresentation(pb).trusted : false;
   return <VehicSimPage step={4} title={validId === null ? "Lượt chạy không hợp lệ" : `Phát lại · Lượt chạy ${runCode(validId)}`}
-    crumbs={[{ label: "Phân tích" }, { label: "Danh sách phân tích", href: returnTo }, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}`, href: detailHref }, { label: "Phát lại" }]}
+    crumbs={[...origin.crumbs, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}`, href: detailHref }, { label: "Phát lại" }]}
     badges={pb && <><AnalysisBadge value={pb.status} />{evaluated && <AnalysisBadge value={pb.outcome} />}{evaluated && pb.failure_class && <AnalysisBadge value={pb.failure_class} />}</>}
     subtitle={pb ? `Nguồn API: ${pb.simulator ?? "Chưa có danh tính simulator"}. Phát lại khung đã ghi.` : "Đang đọc dữ liệu phát lại từ API."}
     actions={<>
@@ -147,7 +159,7 @@ export default function PlaybackPage() {
       }}>Tải .xosc</PillButton>
       {pb && <PillButton variant="dark" href={detailHref}>Xem phân tích run</PillButton>}
     </>}>
-    <div><Link className="text-[13px] font-semibold text-vehicsim-decision" href={returnTo}>← Về danh sách đang xem</Link></div>
+    <div><Link className="text-[13px] font-semibold text-vehicsim-decision" href={returnTo}>{origin.back}</Link></div>
     <ErrorNote message={error ?? (actionError?.id === runId ? actionError.message : null)} />
     {error && <div><button className="analysis-button" onClick={() => setRefresh(value => value + 1)}>Thử tải lại</button></div>}
     {loading && <AnalysisLoading />}
@@ -164,7 +176,9 @@ export default function PlaybackPage() {
           Chất lượng timestamp: {view.duplicateFrames} khung trùng, {view.backwardFrames} mốc lùi. Lookup sắp theo thời gian, giữ nguyên giá trị gốc;
           cùng timestamp chọn bản ghi sau cùng. Projection trùng timestamp không được gắn như số đo duy nhất.
         </p>}
-        {related && <div><PillButton href={`/analysis/failures/${related.run_id}/playback?${returnQuery}`}>Mở run liên quan · AEB {related.config}</PillButton><p className="analysis-caption mt-2">API xác nhận cùng biến thể. Cần đối chiếu seed, xe và simulator trước khi so sánh.</p></div>}
+        {related && (paired
+          ? <div><PillButton href={`/analysis/failures/${related.run_id}/playback?${returnQuery}&compare=${runId}`}>Mở run cùng cặp · AEB {related.config}</PillButton><p className="analysis-caption mt-2">Cặp của lần kiểm chứng: cùng biến thể, seed, xe và simulator.</p></div>
+          : <div><PillButton href={`/analysis/failures/${related.run_id}/playback?${returnQuery}`}>Mở run liên quan · AEB {related.config}</PillButton><p className="analysis-caption mt-2">API xác nhận cùng biến thể. Cần đối chiếu seed, xe và simulator trước khi so sánh.</p></div>)}
       </section>
       <div className={styles.layout}>
         <div className={styles.stack}>

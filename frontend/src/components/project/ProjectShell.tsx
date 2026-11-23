@@ -192,7 +192,7 @@ export function JourneyBar() {
   const search = useSearchParams();
   const { ctx } = useVehicSimContext();
   const { journey } = useJourney();
-  const here = pathname === "/scenarios" && search.get("new") === "1" ? "SCENARIO" : stepOfPath(pathname, ctx?.project.id ?? null);
+  const here = pathname === "/scenarios" && search.get("new") === "1" ? "SCENARIO" : stepOfPath(pathname, ctx?.project.id ?? null, search.get("returnTo"));
   if (!ctx || (here === null && OPEN_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)))) return null;
 
   const next = journey ? nextAction(journey) : null;
@@ -231,7 +231,7 @@ export function TeamJourneyBar({ reviewer }: { reviewer: boolean }) {
   const search = useSearchParams();
   const here = (reviewer && pathname.startsWith("/scenarios/")) || (pathname === "/scenarios" && (reviewer || search.get("new") === "1"))
     ? "SCENARIO"
-    : stepOfPath(pathname, null);
+    : stepOfPath(pathname, null, search.get("returnTo"));
   if (!ctx || !here) return null;
 
   const links = teamJourneyLinks(reviewer);

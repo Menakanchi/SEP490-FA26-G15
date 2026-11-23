@@ -38,7 +38,7 @@ export default function ReviewPage() {
 
   if (!r) {
     return (
-      <VehicSimPage step={6} crumbs={[{ label: "Kiểm định" }, { label: "Khuyến nghị", href: "/validation/recommendations" }, { label: "Duyệt" }]} title="Duyệt">
+      <VehicSimPage step={6} crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Khuyến nghị", href: "/validation/recommendations" }, { label: "Duyệt" }]} title="Duyệt">
         <ErrorNote message={error} />
       </VehicSimPage>
     );
@@ -152,7 +152,7 @@ export default function ReviewPage() {
     <VehicSimPage
       step={6}
       crumbs={[
-        { label: "Kiểm định" },
+        { label: "Kiểm chứng", href: "/validation/regression" },
         { label: "Khuyến nghị", href: "/validation/recommendations" },
         { label: r.recommendation_code, href: `/validation/recommendations/${r.id}` },
         { label: "Duyệt" },
@@ -230,7 +230,7 @@ export default function ReviewPage() {
               rows={3}
               placeholder={
                 rates
-                  ? `vd. Sửa được ${counts?.fixed ?? 0} kịch bản, ${counts?.regressed ?? 0} ca xấu đi; phanh nhầm ${fmt.pct(rates.false_activation_baseline_pct)} → ${fmt.pct(rates.false_activation_candidate_pct)}…`
+                  ? `vd. Sửa được ${counts?.fixed ?? 0} kịch bản, ${counts?.regressed ?? 0} ca xấu đi; phanh oan ${fmt.pct(rates.false_activation_baseline_pct)} → ${fmt.pct(rates.false_activation_candidate_pct)}…`
                   : "Vì sao chọn quyết định này?"
               }
               className="rounded-[14px] border border-solid border-vehicsim-line-strong px-4 py-3 text-[14px] leading-[1.5] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong disabled:cursor-not-allowed disabled:bg-vehicsim-soft disabled:opacity-60"
@@ -268,7 +268,7 @@ export default function ReviewPage() {
                   cls={rates.collision_candidate_pct <= rates.collision_baseline_pct ? "text-vehicsim-ok" : "text-vehicsim-danger"}
                 />
                 <SummaryRow
-                  label="Phanh nhầm"
+                  label="Phanh oan"
                   value={`${fmt.pct(rates.false_activation_baseline_pct)} → ${fmt.pct(rates.false_activation_candidate_pct)}`}
                   cls={rates.false_activation_candidate_pct <= rates.false_activation_baseline_pct ? "text-vehicsim-ok" : "text-vehicsim-warn"}
                 />

@@ -20,7 +20,7 @@ const GOAL_PRESETS = [
   { label: "Người đi bộ băng ngang", goal: "AEB có phanh kịp khi người đi bộ bất ngờ băng ngang trước xe không?" },
   { label: "Ban đêm", goal: "AEB có phanh kịp khi người đi bộ băng ngang vào ban đêm không?" },
   { label: "Đường ướt", goal: "AEB có dừng kịp trước người đi bộ khi mặt đường ướt không?" },
-  { label: "Phanh oan", goal: "AEB có phanh nhầm khi người đi bộ dừng lại ở lề đường không?" },
+  { label: "Phanh oan", goal: "AEB có phanh oan khi người đi bộ dừng lại ở lề đường không?" },
 ];
 
 const WIZARD_STEPS = ["Thông tin", "Phương tiện", "Xác nhận"] as const;

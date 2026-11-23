@@ -59,6 +59,22 @@ export function AnalysisPager({ page, size, total, loading, label = "Phân trang
     </div>
   </nav>;
 }
+/** Trang kết quả kiểm chứng (bước ⑤) được phép làm nơi quay về; chỉ đúng mẫu nội bộ, không nhận link ra ngoài. */
+const VERIFY_RETURN = /^\/validation\/regression\/(\d{1,12})$/;
+
 export function analysisReturn(value: string | null) {
+  if (value && VERIFY_RETURN.test(value)) return value;
   return value?.startsWith("/analysis/failures?") ? value : "/analysis/failures?view=runs";
+}
+
+/** Nơi quay về của trang chi tiết run / phát lại: màn Phân tích (mặc định) hoặc trang kiểm chứng đã mở link. */
+export function analysisOrigin(returnTo: string): { back: string; crumbs: { label: string; href?: string }[]; testId: number | null } {
+  const match = VERIFY_RETURN.exec(returnTo);
+  if (!match) return { back: "← Về danh sách đang xem", crumbs: [{ label: "Phân tích" }, { label: "Danh sách phân tích", href: returnTo }], testId: null };
+  const code = `RT-${match[1].padStart(3, "0")}`;
+  return {
+    back: `← Về kiểm chứng ${code}`,
+    crumbs: [{ label: "Kiểm chứng", href: "/validation/regression" }, { label: code, href: returnTo }],
+    testId: Number(match[1]),
+  };
 }

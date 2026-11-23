@@ -106,7 +106,7 @@ export function Tag({
 const OUTCOME_STYLE: Record<Outcome, { label: string; cls: string; dot: string }> = {
   COLLISION: { label: "Va chạm", cls: "bg-vehicsim-danger-bg text-vehicsim-danger", dot: "/vehicsim/dot-collision.svg" },
   NEAR_MISS: { label: "Suýt va chạm", cls: "bg-vehicsim-warn-bg text-vehicsim-warn", dot: "/vehicsim/dot-nearmiss.svg" },
-  FALSE_BRAKING: { label: "Phanh nhầm", cls: "bg-vehicsim-control-bg text-vehicsim-control", dot: "/vehicsim/dot-control.svg" },
+  FALSE_BRAKING: { label: "Phanh oan", cls: "bg-vehicsim-control-bg text-vehicsim-control", dot: "/vehicsim/dot-control.svg" },
   SAFE: { label: "An toàn", cls: "bg-vehicsim-ok-bg text-vehicsim-ok", dot: "" },
 };
 

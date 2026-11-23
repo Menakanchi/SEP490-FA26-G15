@@ -185,7 +185,7 @@ const RULES: Rule[] = [
   // --- views.py: đánh đổi, bằng chứng, nhãn duyệt ---------------------------------------
   [
     re(String.raw`False activation rises from ${N}% to ${N}% \(pedestrians who stop at the curb\)\.`),
-    (m) => `Tỉ lệ phanh nhầm tăng từ ${m[1]}% lên ${m[2]}% (người đi bộ dừng ở lề).`,
+    (m) => `Tỉ lệ phanh oan tăng từ ${m[1]}% lên ${m[2]}% (người đi bộ dừng ở lề).`,
   ],
   [re(String.raw`(\d+) scenario\(s\) get worse than on the baseline\.`), (m) => `${m[1]} kịch bản xấu đi so với bản cơ sở.`],
   [
@@ -211,7 +211,7 @@ const RULES: Rule[] = [
   // --- regression.py: tiêu chí -------------------------------------------------------
   [re("No previously safe scenario may collide"), () => "Không kịch bản an toàn nào được chuyển thành va chạm"],
   [re("Collision rate must not increase"), () => "Tỉ lệ va chạm không được tăng"],
-  [re("False activation increase ≤"), () => "Tỉ lệ phanh nhầm tăng tối đa"],
+  [re("False activation increase ≤"), () => "Tỉ lệ phanh oan tăng tối đa"],
   [re("Median min TTC change ≥"), () => "Trung vị TTC nhỏ nhất thay đổi ít nhất"],
   [re("Use identical random seeds for both versions"), () => "Dùng cùng seed ngẫu nhiên cho cả hai phiên bản"],
   [re("enforced"), () => "đã áp dụng"],

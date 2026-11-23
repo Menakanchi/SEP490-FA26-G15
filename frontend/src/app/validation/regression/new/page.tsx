@@ -14,7 +14,7 @@ const CRITERIA = [
   { key: "no_new_collision", label: "Không kịch bản an toàn nào được chuyển thành va chạm", required: true },
   { key: "collision_rate_not_increase", label: "Tỉ lệ va chạm không được tăng", required: false },
   // Phải bằng RegressionCriteria.DEFAULT_FALSE_ACTIVATION_MAX_PTS (backend): một ngưỡng chung cho regression và tối ưu (ADR-044).
-  { key: "false_activation_increase_max_pts", label: "Tỉ lệ phanh nhầm tăng tối đa", required: false, value: 5, unit: "điểm %", step: 0.5 },
+  { key: "false_activation_increase_max_pts", label: "Tỉ lệ phanh oan tăng tối đa", required: false, value: 5, unit: "điểm %", step: 0.5 },
   { key: "median_min_ttc_change_min_s", label: "Trung vị TTC nhỏ nhất thay đổi ít nhất", required: false, value: -0.1, unit: "s", step: 0.05 },
   { key: "identical_seeds", label: "Dùng cùng seed ngẫu nhiên cho cả hai phiên bản", required: true },
 ] as const;
@@ -122,7 +122,7 @@ function NewRegressionForm() {
   return (
     <VehicSimPage
       step={5}
-      crumbs={[{ label: "Kiểm định" }, { label: "Kiểm thử hồi quy", href: "/validation/regression" }, { label: "Kiểm thử mới" }]}
+      crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Kiểm thử hồi quy", href: "/validation/regression" }, { label: "Kiểm thử mới" }]}
       title="Tạo kiểm thử hồi quy"
       subtitle={`Chạy lại các kịch bản nguy hiểm cũ và các biến thể trên cả hai phiên bản trước khi ứng viên được ${isExperiencer ? "dùng làm baseline" : "khuyến nghị"}.`}
       actions={
@@ -140,7 +140,7 @@ function NewRegressionForm() {
       }
     >
       <ErrorNote message={error} />
-      <p className="text-[12px] text-vehicsim-muted">Người tạo kiểm thử không tự duyệt khuyến nghị của kiểm thử đó.</p>
+      {!isExperiencer && <p className="text-[12px] text-vehicsim-muted">Người tạo kiểm thử không tự duyệt khuyến nghị của kiểm thử đó.</p>}
       <div className="flex w-full flex-col gap-4 xl:flex-row xl:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <FormCard title="Phiên bản">
@@ -253,13 +253,15 @@ function NewRegressionForm() {
                 Nên thêm vài biến thể an toàn.
               </p>
             )}
-            <SetOption
-              checked={false}
-              disabled
-              title="Kịch bản mới sinh"
-              detail="Vùng rủi ro cao theo active learning — có khi phần Tối ưu hoá (FE-13) hoàn thành"
-              tag="Bộ sinh kịch bản"
-            />
+            {!isExperiencer && (
+              <SetOption
+                checked={false}
+                disabled
+                title="Kịch bản mới sinh"
+                detail="Vùng rủi ro cao theo active learning — có khi phần Tối ưu hoá (FE-13) hoàn thành"
+                tag="Bộ sinh kịch bản"
+              />
+            )}
           </FormCard>
 
           <FormCard title="Tiêu chí đạt">
@@ -457,7 +459,7 @@ function VariantPicker({
               <span className="truncate text-[12px] text-vehicsim-faint">{viSummary(v.summary)}</span>
             </span>
             {v.baseline_outcome ? (
-              <OutcomeBadge outcome={v.baseline_outcome === "SAFE" && v.baseline_false_activation ? "FALSE_BRAKING" : v.baseline_outcome} size="sm" />
+              <OutcomeBadge outcome={v.baseline_false_activation ? "FALSE_BRAKING" : v.baseline_outcome} size="sm" />
             ) : (
               <span className="text-[12px] text-vehicsim-faint">{v.has_baseline_run ? "cơ sở đang chạy" : "chưa chạy cơ sở"}</span>
             )}
