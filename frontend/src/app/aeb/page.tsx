@@ -148,18 +148,18 @@ export default function AebHubPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-[14.5px] font-bold text-vehicsim-ink">
-                    Tối ưu tự động bằng AI (MOBO)
+                    Tối ưu tự động (MOBO)
                   </h3>
                   <span className="rounded-full bg-vehicsim-decision-bg px-2 py-0.5 text-[10.5px] font-bold text-vehicsim-decision">
                     Khuyên dùng
                   </span>
                 </div>
                 <PillButton href="/aeb/mobo" variant="dark" className="shrink-0 py-1.5 px-3.5 text-[12px] font-bold">
-                  Studio MOBO <ArrowRight className="size-3.5" />
+                  Tối ưu với MOBO <ArrowRight className="size-3.5" />
                 </PillButton>
               </div>
               <p className="text-[12.5px] text-vehicsim-muted leading-relaxed">
-                Thuật toán Bayesian qEHVI tự động khám phá không gian 4 tham số để tìm biên Pareto tối ưu đồng thời 3 mục tiêu trên.
+                Hệ thống tự động tìm và đề xuất các bộ tham số tốt nhất giúp cân bằng cả 3 mục tiêu trên.
               </p>
             </div>
           </Card>
@@ -176,7 +176,7 @@ export default function AebHubPage() {
                 </PillButton>
               </div>
               <p className="text-[12.5px] text-vehicsim-muted leading-relaxed">
-                Chỉnh 4 tham số AEB dựa trên tri thức chuyên gia hoặc phân tích nguyên nhân lỗi.
+                Tự điều chỉnh từng tham số phanh theo kinh nghiệm hoặc kết quả phân tích lỗi của bạn.
               </p>
             </div>
           </Card>
