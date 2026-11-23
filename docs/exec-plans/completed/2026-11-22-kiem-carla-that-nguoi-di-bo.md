@@ -1,5 +1,7 @@
 # Kiểm profile CARLA hiện hành (`-xosc11`) trên CARLA thật — ca người đi bộ (22/11/2026)
 
+> **Hoàn thành 23/11/2026:** cả 6 bước đã xong. Kết quả cuối ở [kiểm `-xosc15`](../../vehicsim/carla-ped-bench/ket-qua/kiem-v15-2026-11-23_0057/README.md): phanh 4 xe lệch quãng dừng ≤ 0,27 m, ca dừng lề hai bên cùng phanh (ADR-062, ADR-063 Accepted). Còn mở ngoài phạm vi kế hoạch: radar quyết định sớm hơn ground truth (TD-01).
+
 **Mục tiêu:** chạy CARLA thật một lần với profile hiện hành `-xosc10` (radar + kẹp μ·g + đặt tốc độ dưới 6 m/s + bảng bàn đạp e-tron + người đi
 bộ khởi hành sớm + trượt dừng lề 0,056 s + bù pha tăng lực, ADR-056), so với bộ động học cùng bundle và với số CARLA thật 13/11. Đây là phần "Còn phải kiểm" của
 [ADR-054](../../adr/ADR-054-xosc8-hieu-chuan-ban-dap-va-nguoi-di-bo.md) và [ADR-056](../../adr/ADR-056-xosc10-bu-pha-tang-luc-phanh.md); các bản sửa v7–v8 và radar (ADR-043) mới chạy thật riêng lẻ, chưa chạy chung.

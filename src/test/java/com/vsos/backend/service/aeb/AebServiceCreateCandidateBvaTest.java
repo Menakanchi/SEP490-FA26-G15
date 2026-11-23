@@ -40,8 +40,8 @@ import static org.mockito.Mockito.when;
  *       from the parent in at least one value.</li>
  *   <li>label / notes / source are stripped; blank label becomes "v&lt;n&gt;", blank notes null, blank source MANUAL,
  *       source is upper-cased. version_no = MAX(version_no) + 1 (1 for the first version).</li>
- *   <li>UTCID33 and UTCID34 record defects: the test asserts the current behaviour so the suite stays green; the sheet marks
- *       them F against the expected confirmation (DEF-AEB-01, DEF-AEB-02).</li>
+ *   <li>UTCID33 and UTCID34 cover the defects DEF-AEB-01 (null value threw NullPointerException) and DEF-AEB-02 (NaN was stored); both are
+ *       fixed since 23/11/2026 and the cases now expect InvalidRequestException.</li>
  * </ul>
  */
 class AebServiceCreateCandidateBvaTest {
@@ -313,19 +313,17 @@ class AebServiceCreateCandidateBvaTest {
     }
 
     @Test
-    @DisplayName("UTCID33 A: null value -> NullPointerException today; expected InvalidRequestException (DEF-AEB-01)")
+    @DisplayName("UTCID33 A: null value is rejected with InvalidRequestException (DEF-AEB-01 fixed)")
     void utcid33() {
         Map<String, Double> values = new HashMap<>();
         values.put(TTC, null);
-        assertThatThrownBy(() -> create(values, null, null)).isInstanceOf(NullPointerException.class);
-        assertNothingWritten();
+        assertRejected(values, "TTC_THRESHOLD thiếu giá trị");
     }
 
     @Test
-    @DisplayName("UTCID34 A: NaN passes the range check and is stored today; expected InvalidRequestException (DEF-AEB-02)")
+    @DisplayName("UTCID34 A: NaN is rejected with InvalidRequestException and nothing is stored (DEF-AEB-02 fixed)")
     void utcid34() {
-        assertThat(create(Map.of(TTC, Double.NaN), null, null)).isEqualTo(NEW_VERSION);
-        assertValues(Double.NaN, 0.15, 8.0, 20.0);
+        assertRejected(Map.of(TTC, Double.NaN), "TTC_THRESHOLD = NaN không phải là số");
     }
 
     @Test
@@ -376,7 +374,7 @@ class AebServiceCreateCandidateBvaTest {
             stored.put((Long) r[1], (Double) r[2]);
         }
         assertThat(stored).hasSize(4);
-        assertThat(stored.get(1L)).isEqualTo(Double.valueOf(ttc)); // Double.equals: NaN equals NaN (UTCID34)
+        assertThat(stored.get(1L)).isEqualTo(ttc);
         assertThat(stored.get(2L)).isEqualTo(delay);
         assertThat(stored.get(3L)).isEqualTo(decel);
         assertThat(stored.get(4L)).isEqualTo(buildup);

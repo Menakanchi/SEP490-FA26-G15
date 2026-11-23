@@ -4,7 +4,7 @@
 |---|---|
 | Profile | `carla-0.9.16-xosc11` (`vehicsim.xosc/v11`), VehicSim `main` `4792bff` |
 | Bộ ca | `worker/cases/pedestrian-v9` (c1–c7, e-tron 1800 N·m, seed 48846), mỗi ca 3 lần; so với bộ động học `vehicsim-kinematic-1.2` cùng bundle |
-| Lệnh | `worker/verify_cases.py --out data/kiem-carla --runs 3` ([exec plan 22/11](../../../../exec-plans/active/2026-11-22-kiem-carla-that-nguoi-di-bo.md)) |
+| Lệnh | `worker/verify_cases.py --out data/kiem-carla --runs 3` ([exec plan 22/11](../../../../exec-plans/completed/2026-11-22-kiem-carla-that-nguoi-di-bo.md)) |
 | Run | 21 / 21, `failures` rỗng |
 | Dữ liệu từng run (`result.json`) | repo phutro, nhánh `phutro`, `runs/kiem-xosc11-2026-11-22_2318/` (commit `01fa482`) |
 

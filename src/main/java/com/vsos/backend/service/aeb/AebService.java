@@ -54,6 +54,13 @@ public class AebService {
         }
         for (Map.Entry<String, Double> e : values.entrySet()) {
             Row p = catalog.get(e.getKey());
+            // DEF-AEB-01 / DEF-AEB-02: null từng ném NullPointerException, NaN lọt qua phép so khoảng (mọi phép so với NaN đều false) và được lưu.
+            if (e.getValue() == null) {
+                throw new InvalidRequestException(e.getKey() + " thiếu giá trị");
+            }
+            if (e.getValue().isNaN()) {
+                throw new InvalidRequestException(e.getKey() + " = NaN không phải là số");
+            }
             double lo = p.dbl("min_value");
             double hi = p.dbl("max_value");
             if (e.getValue() < lo || e.getValue() > hi) {
