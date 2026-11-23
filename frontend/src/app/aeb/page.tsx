@@ -46,9 +46,6 @@ export default function AebHubPage() {
             <h2 className="text-[15px] font-bold text-vehicsim-ink">
               Bản cơ sở hiện hành (Baseline)
             </h2>
-            <span className="hidden text-[12.5px] text-vehicsim-muted sm:inline">
-              — Mốc tham chiếu chuẩn dùng để đối chiếu khi đánh giá ứng viên
-            </span>
           </div>
           {baseline && (
             <div className="flex items-center gap-2">
@@ -85,15 +82,10 @@ export default function AebHubPage() {
 
             {/* 3 Mục tiêu tối ưu cần cải thiện so với bản cơ sở */}
             <div className="flex flex-col gap-2.5 border-t border-solid border-vehicsim-line/80 pt-4 mt-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Target className="size-4 text-slate-700" />
-                  <span className="text-[13px] font-bold text-slate-900">
-                    3 mục tiêu tối ưu cần cải thiện so với bản cơ sở:
-                  </span>
-                </div>
-                <span className="text-[11.5px] text-slate-500">
-                  Mục tiêu đánh giá đa chiều cho thuật toán MOBO và kiểm định hồi quy
+              <div className="flex items-center gap-2">
+                <Target className="size-4 text-slate-700" />
+                <span className="text-[13px] font-bold text-slate-900">
+                  3 mục tiêu tối ưu cần cải thiện so với bản cơ sở:
                 </span>
               </div>
 
@@ -216,9 +208,6 @@ export default function AebHubPage() {
           <div>
             <p className="text-[13.5px] text-vehicsim-ink font-medium">
               Hiện có <strong className="font-bold text-vehicsim-decision">{candidates.length} ứng viên</strong> đang chờ kiểm định hồi quy (trên tổng số {versions?.length ?? 0} phiên bản đã lưu).
-            </p>
-            <p className="text-[12px] text-vehicsim-muted mt-0.5">
-              Đưa các ứng viên tiềm năng sang Bước 5 để kiểm chứng hồi quy độc lập trước khi Reviewer phê duyệt.
             </p>
           </div>
           <div className="flex items-center gap-2.5">
