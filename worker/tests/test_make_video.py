@@ -51,6 +51,7 @@ def test_make_video_builds_atomically_and_cleans_temp_files(tmp_path: Path) -> N
     command = calls[0]
     assert command[0] == "ffmpeg" and "libx264" in command and "+faststart" in command
     assert "fps=10," in command[command.index("-vf") + 1]
+    assert command[command.index("-crf") + 1] == str(make_video.VIDEO_CRF) and int(make_video.VIDEO_CRF) <= 18  # video nét, không nén mạnh
 
 
 def test_make_video_returns_none_without_frames_or_ffmpeg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

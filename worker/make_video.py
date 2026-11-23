@@ -18,6 +18,7 @@ from pathlib import Path
 VIDEO_NAME = "video.mp4"
 FRAME_NAME = re.compile(r"^[0-9]{8}\.png$")
 FFMPEG_TIMEOUT_S = 120.0
+VIDEO_CRF = 17  # libx264: càng nhỏ càng nét (18 ≈ gần như không mất chi tiết nhìn thấy được; trước đây 23 làm video mờ)
 
 
 def find_ffmpeg() -> str | None:
@@ -70,7 +71,7 @@ def make_video(camera_dir: Path, out_path: Path, interval_s: float, *, ffmpeg: s
     listing.write_text(concat_list(frames, interval_s), encoding="utf-8")
     command = [exe, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing),
                "-vf", f"fps={fps},scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
-               "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-movflags", "+faststart", str(partial)]
+               "-c:v", "libx264", "-preset", "medium", "-crf", str(VIDEO_CRF), "-movflags", "+faststart", str(partial)]
     try:
         done = runner(command, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT_S, check=False)
         if done.returncode != 0 or not partial.is_file() or partial.stat().st_size == 0:

@@ -194,7 +194,7 @@ export function CarlaRunnerPanel() {
           <PillButton onClick={() => void vehicsimApi.downloadCarlaFile(data.run_id, "ground_truth.csv").catch(e => setError(e.message))}>Tải ground truth</PillButton>
         </div>
         {data.has_video && <CarlaRunVideo key={data.run_id} runId={data.run_id} onError={setError} />}
-        {image && <Image src={image} alt={`Ảnh camera CARLA ${runCode(data.run_id)}`} width={800} height={450} unoptimized className="w-full rounded-[16px]" />}
+        {image && <Image src={image} alt={`Ảnh camera CARLA ${runCode(data.run_id)}`} width={1280} height={720} unoptimized className="w-full rounded-[16px]" />}
         {data.camera_frames.length > 1 && <label className="text-[12px] text-vehicsim-muted">Ảnh {frame + 1} / {data.camera_frames.length}
           <input aria-label="Khung camera CARLA" type="range" min={0} max={data.camera_frames.length - 1} value={frame}
             onChange={e => setFrame(Number(e.target.value))} className="w-full" />

@@ -53,7 +53,9 @@ giữa run không làm hỏng run). Không có livestream/video giả: nếu kh�
 máy đã setup trước đó chạy `worker\.venv-carla\Scripts\python.exe -m pip install imageio-ffmpeg`). Video chỉ là phần xem lại: thiếu ffmpeg hoặc ffmpeg lỗi
 chỉ in cảnh báo, run vẫn hoàn thành và vẫn xem được ảnh từng khung; `result.json` không đổi nên không đổi định danh run. Backend lưu artifact `VIDEO_MP4`
 và phát qua `GET /api/v1/vehicsim/runs/{id}/carla-video` (hỗ trợ Range để tua, kiểm quyền theo project). Run chạy trước khi có tính năng, hoặc nộp từ máy khác
-qua `carla-result`, không có video. Ảnh PNG dày hơn trước (10 thay vì 4 ảnh/giây) nên mỗi run chiếm thêm đĩa.
+qua `carla-result`, không có video. Ảnh camera 1280×720, 10 ảnh/giây, tắt motion blur, đặt sát đầu xe và cao hơn nóc theo bounding box của từng xe (`camera_mount` trong `sensor_recorder.py`; camera cũ cố định
+x = 1,5, z = 1,4 nên xe cao như Patrol/Sprinter bị kính chắn gió, táp-lô che); video nén H.264 CRF 17. Nên mỗi run chiếm thêm đĩa: khoảng 50–70 MB ảnh PNG và 5 MB video
+(trước đây ảnh 800×450, 4 ảnh/giây, khoảng 20 MB). Không đổi `result.json`, chỉ số hay định danh run.
 
 `scenario_runner.log` có dòng `ERROR: failed to destroy actor <id> : … not found` ngay sau `Destroying ego vehicle <id>` ở mọi run:
 lỗi của ScenarioRunner 0.9.16 (`ScenarioManager.cleanup` đã xoá ego qua `CarlaDataProvider.cleanup`, rồi `ScenarioRunner._cleanup` xoá lần nữa).
