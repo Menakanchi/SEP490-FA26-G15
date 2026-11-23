@@ -130,89 +130,102 @@ export function VersionTable({
       </div>
 
       <div className="overflow-x-auto">
-        <div className="flex min-h-[52px] min-w-[1320px] items-center border-b border-solid border-slate-700 bg-slate-800 px-5 py-2 text-[12px] font-black uppercase tracking-wider text-white">
-          <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
-          <span className="w-[140px] shrink-0 pr-3">Phiên bản</span>
-          <span className="w-[120px] shrink-0 pr-3">Trạng thái</span>
-          {KEY_PARAMS.map((code) => (
-            <span key={code} className="w-[135px] shrink-0 leading-snug pr-3 whitespace-normal break-words">
-              {PARAM_NAMES[code] ?? catalog.get(code)?.name ?? code}
-            </span>
-          ))}
-          <span className="w-[200px] shrink-0 pr-3">Ghi chú</span>
-          <span className="w-[95px] shrink-0">Ngày tạo</span>
-          <span className="w-[260px] shrink-0 pr-2 text-right">Thao tác</span>
-        </div>
-
-        {shownVersions.length === 0 ? (
-          <div className="p-8 text-center text-[13px] text-vehicsim-muted">
-            Không tìm thấy phiên bản nào phù hợp với bộ lọc.
-          </div>
-        ) : (
-          shownVersions.map((v, idx) => (
-            <div
-              key={v.id}
-              className={cx(
-                "flex min-h-[56px] min-w-[1320px] items-center border-b border-solid border-vehicsim-line px-5 py-2 hover:bg-vehicsim-row transition-colors",
-                v.status === "BASELINE" && "bg-vehicsim-row/60 font-semibold",
-              )}
-            >
-              <span className="w-[45px] shrink-0 pr-2 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
-                {vOffset + idx + 1}
-              </span>
-              <span className="flex w-[140px] shrink-0 flex-col pr-3">
-                <span className="text-[13px] font-bold text-vehicsim-ink">AEB {v.label}</span>
-                <span className="text-[11px] text-vehicsim-faint">{changedNote(v, baseline)}</span>
-              </span>
-              <span className="w-[120px] shrink-0 pr-3">
-                <Tag tone={STATUS_TONE[v.status]}>{STATUS_LABEL[v.status]}</Tag>
-              </span>
-              {KEY_PARAMS.map((code) => {
-                const differs = baseline && v.id !== baseline.id && v.parameters[code] !== baseline.parameters[code];
-                return (
-                  <span
-                    key={code}
-                    className={cx("w-[135px] shrink-0 pr-3 text-[13px]", differs ? "font-bold text-vehicsim-decision" : "text-vehicsim-ink")}
-                  >
-                    {paramValue(v.parameters[code], catalog.get(code)?.unit ?? "")}
-                  </span>
-                );
-              })}
-              <span className="w-[200px] shrink-0 truncate pr-3 text-[12px] text-vehicsim-muted" title={v.notes ?? ""}>
-                {v.notes ?? "—"}
-              </span>
-              <span className="w-[95px] shrink-0 text-[12px] text-vehicsim-faint">{fmt.date(v.created_at)}</span>
-              <span className="flex w-[260px] shrink-0 items-center justify-end gap-2 pr-2" onClick={(e) => e.stopPropagation()}>
-                {v.status === "CANDIDATE" && (
-                  <>
-                    {baseline && (
-                      <Link
-                        href={`/aeb/compare?a=${baseline.id}&b=${v.id}`}
-                        className="inline-flex h-7 items-center justify-center rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-2.5 text-[11.5px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition"
+        <table className="w-full min-w-[1180px] border-collapse text-left text-[13px]">
+          <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12px] font-black uppercase tracking-wider text-white">
+            <tr className="min-h-[50px]">
+              <th className="w-12 px-3 py-3.5 text-center font-bold">STT</th>
+              <th className="px-4 py-3.5 min-w-[140px]">Phiên bản</th>
+              <th className="px-3 py-3.5 min-w-[110px]">Trạng thái</th>
+              {KEY_PARAMS.map((code) => (
+                <th key={code} className="px-3.5 py-3.5 min-w-[125px] leading-snug whitespace-normal">
+                  {PARAM_NAMES[code] ?? catalog.get(code)?.name ?? code}
+                </th>
+              ))}
+              <th className="px-4 py-3.5 min-w-[160px]">Ghi chú</th>
+              <th className="px-3 py-3.5 whitespace-nowrap min-w-[95px]">Ngày tạo</th>
+              <th className="px-4 py-3.5 text-right whitespace-nowrap min-w-[240px]">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
+            {shownVersions.length === 0 ? (
+              <tr>
+                <td colSpan={10} className="p-8 text-center text-[13px] text-vehicsim-muted">
+                  Không tìm thấy phiên bản nào phù hợp với bộ lọc.
+                </td>
+              </tr>
+            ) : (
+              shownVersions.map((v, idx) => (
+                <tr
+                  key={v.id}
+                  className={cx(
+                    "hover:bg-vehicsim-row transition-colors",
+                    v.status === "BASELINE" && "bg-vehicsim-row/60 font-semibold",
+                  )}
+                >
+                  <td className="px-3 py-3.5 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
+                    {vOffset + idx + 1}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="flex flex-col">
+                      <span className="text-[13px] font-bold text-vehicsim-ink">AEB {v.label}</span>
+                      <span className="text-[11px] text-vehicsim-faint">{changedNote(v, baseline)}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3.5">
+                    <Tag tone={STATUS_TONE[v.status]}>{STATUS_LABEL[v.status]}</Tag>
+                  </td>
+                  {KEY_PARAMS.map((code) => {
+                    const differs = baseline && v.id !== baseline.id && v.parameters[code] !== baseline.parameters[code];
+                    return (
+                      <td
+                        key={code}
+                        className={cx("px-3.5 py-3.5 text-[13px]", differs ? "font-bold text-vehicsim-decision" : "text-vehicsim-ink")}
                       >
-                        So với Baseline
-                      </Link>
-                    )}
-                    {canWrite && (
-                      <Link
-                        href={`/validation/regression/new?candidate=${v.id}`}
-                        className="inline-flex h-7 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 text-[11.5px] font-bold text-white hover:bg-emerald-700 transition shadow-sm"
-                      >
-                        <span>Hồi quy (B5)</span>
-                        <ArrowRight className="size-3" />
-                      </Link>
-                    )}
-                  </>
-                )}
-                {v.status === "BASELINE" && (
-                  <span className="rounded-md bg-emerald-500/15 px-2.5 py-1 text-[11.5px] font-bold text-emerald-700 dark:text-emerald-300">
-                    Bản cơ sở mốc
-                  </span>
-                )}
-              </span>
-            </div>
-          ))
-        )}
+                        {paramValue(v.parameters[code], catalog.get(code)?.unit ?? "")}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-3.5 text-[12px] text-vehicsim-muted max-w-[200px] truncate" title={v.notes ?? ""}>
+                    {v.notes ?? "—"}
+                  </td>
+                  <td className="px-3 py-3.5 text-[12px] text-vehicsim-faint whitespace-nowrap">
+                    {fmt.date(v.created_at)}
+                  </td>
+                  <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-2">
+                      {v.status === "CANDIDATE" && (
+                        <>
+                          {baseline && (
+                            <Link
+                              href={`/aeb/compare?a=${baseline.id}&b=${v.id}`}
+                              className="inline-flex h-7 items-center justify-center rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-2.5 text-[11.5px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition whitespace-nowrap"
+                            >
+                              So với Baseline
+                            </Link>
+                          )}
+                          {canWrite && (
+                            <Link
+                              href={`/validation/regression/new?candidate=${v.id}`}
+                              className="inline-flex h-7 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 text-[11.5px] font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
+                            >
+                              <span>Hồi quy (B5)</span>
+                              <ArrowRight className="size-3" />
+                            </Link>
+                          )}
+                        </>
+                      )}
+                      {v.status === "BASELINE" && (
+                        <span className="rounded-md bg-emerald-500/15 px-2.5 py-1 text-[11.5px] font-bold text-emerald-700 dark:text-emerald-300">
+                          Bản cơ sở mốc
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {vTotal > 0 && (
