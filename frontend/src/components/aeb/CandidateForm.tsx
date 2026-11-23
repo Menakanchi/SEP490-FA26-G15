@@ -170,16 +170,6 @@ export function CandidateForm({
                               : "border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-ink focus:ring-vehicsim-line-strong",
                           )}
                         />
-                        {isChanged && (
-                          <button
-                            type="button"
-                            title="Đặt lại về giá trị gốc của bản cơ sở"
-                            onClick={() => setValues((prev) => ({ ...prev, [p.code]: String(parent.parameters[p.code] ?? p.default_value) }))}
-                            className="rounded-lg p-1.5 text-vehicsim-faint hover:bg-vehicsim-line hover:text-vehicsim-ink text-[12px] font-bold"
-                          >
-                            ↺
-                          </button>
-                        )}
                       </div>
                     </div>
                     {isInvalid && (
