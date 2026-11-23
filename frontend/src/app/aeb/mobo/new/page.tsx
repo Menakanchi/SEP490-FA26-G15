@@ -66,10 +66,11 @@ export default function AebMoboNewPage() {
       step={4}
       crumbs={[
         { label: "Cải tiến AEB", href: "/aeb" },
-        { label: "Tối ưu MOBO", href: "/aeb/mobo" },
+        { label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo" },
         { label: "Khởi tạo đợt mới" },
       ]}
-      title="Khởi tạo đợt tối ưu hoá AEB (MOBO)"
+      title="Khởi tạo đợt tối ưu hoá Bayesian mới"
+      subtitle="Thiết lập kịch bản và số vòng thử nghiệm để thuật toán qEHVI tự động khám phá không gian tham số."
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/mobo" variant="light">
@@ -173,8 +174,8 @@ export default function AebMoboNewPage() {
                 )}
               >
                 <div className="flex w-full items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-[14px] font-black text-vehicsim-ink">
-                    ⚡ Mô phỏng Động học (Kinematic)
+                  <span className="text-[14px] font-black text-vehicsim-ink">
+                    Mô phỏng Động học (Kinematic)
                   </span>
                   <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
                     Siêu tốc (~30s)
@@ -196,8 +197,8 @@ export default function AebMoboNewPage() {
                 )}
               >
                 <div className="flex w-full items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-[14px] font-black text-vehicsim-ink">
-                    🚗 Mô phỏng CARLA 3D (OpenSCENARIO)
+                  <span className="text-[14px] font-black text-vehicsim-ink">
+                    Mô phỏng CARLA 3D (OpenSCENARIO)
                   </span>
                   <span className="rounded-full bg-sky-500/15 px-2.5 py-0.5 text-[11px] font-bold text-sky-700 dark:text-sky-300">
                     Chính xác cao
@@ -208,7 +209,7 @@ export default function AebMoboNewPage() {
                 </p>
                 {carlaStatus && !carlaStatus.connected && (
                   <span className="mt-1 text-[11.5px] font-semibold text-amber-600 dark:text-amber-400">
-                    ⚠️ CARLA chưa kết nối (bật máy chủ với scripts/dev-carla.ps1)
+                    CARLA chưa kết nối (bật máy chủ với scripts/dev-carla.ps1)
                   </span>
                 )}
               </button>

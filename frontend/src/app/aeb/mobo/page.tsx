@@ -5,12 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   CheckCircle2,
-  ChevronUp,
   Clock,
   ListFilter,
-  Play,
   Plus,
-  Sparkles,
   TrendingUp,
 } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
@@ -25,13 +22,13 @@ import {
   fmt,
 } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { CarlaStatus, OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
+import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
 import { AebNav } from "@/components/aeb/AebNav";
 
 export default function AebMoboStudioPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { ctx, canWrite, refresh } = useVehicSimContext();
+  const { canWrite, refresh } = useVehicSimContext();
 
   const queryRunId = Number(searchParams.get("run_id"));
   const queryTab = searchParams.get("tab");
@@ -61,23 +58,12 @@ export default function AebMoboStudioPage() {
   const [allTrials, setAllTrials] = useState<OptimizationTrial[] | null>(null);
   const [trialsFilter, setTrialsFilter] = useState<"ALL" | "PARETO" | "FEASIBLE">("ALL");
 
-  // Inline New Run Form
-  const [showNewForm, setShowNewForm] = useState<boolean>(queryNew || hasQueryScenario);
-  const [selectedScenarioId, setSelectedScenarioId] = useState<number | "">(
-    hasQueryScenario ? queryScenarioId : ""
-  );
-
-  const scenarioId = selectedScenarioId !== "" ? selectedScenarioId : ctx?.families?.[0]?.id ?? "";
-  const [runName, setRunName] = useState("");
-  const [maxTrials, setMaxTrials] = useState(10);
-  const [nInitialPoints, setNInitialPoints] = useState(3);
-  const [simulatorType, setSimulatorType] = useState<"KINEMATIC" | "CARLA">("KINEMATIC");
-  const [carlaStatus, setCarlaStatus] = useState<CarlaStatus | null>(null);
-  const [submittingRun, setSubmittingRun] = useState(false);
-
+  // Tự động chuyển sang màn khởi tạo riêng nếu có tham số ?new=1
   useEffect(() => {
-    vehicsimApi.carlaStatus().then(setCarlaStatus).catch(() => {});
-  }, []);
+    if (queryNew) {
+      router.replace(`/aeb/mobo/new${hasQueryScenario ? `?scenario_id=${queryScenarioId}` : ""}`);
+    }
+  }, [queryNew, hasQueryScenario, queryScenarioId, router]);
 
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,35 +115,6 @@ export default function AebMoboStudioPage() {
     }, 2500);
     return () => clearInterval(interval);
   }, [activeRun, loadRuns]);
-
-  // Xử lý tạo run mới inline
-  const handleStartRun = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!scenarioId) {
-      setError("Vui lòng chọn kịch bản kiểm thử");
-      return;
-    }
-    setSubmittingRun(true);
-    setError(null);
-    try {
-      const res = await vehicsimApi.createOptimization({
-        scenario_id: Number(scenarioId),
-        name: runName.trim() || undefined,
-        max_trials: Number(maxTrials),
-        n_initial_points: Number(nInitialPoints),
-        simulator_type: simulatorType,
-      });
-      setShowNewForm(false);
-      setRunName("");
-      loadRuns();
-      setSelectedRunId(res.id);
-      setActiveTab("pareto");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Khởi tạo đợt tối ưu thất bại");
-    } finally {
-      setSubmittingRun(false);
-    }
-  };
 
   // Dừng run
   const handleCancelRun = async (runId: number) => {
@@ -244,183 +201,19 @@ export default function AebMoboStudioPage() {
       subtitle="Thuật toán Bayes MOBO cân bằng giữa an toàn phanh (tốc độ va chạm, quãng phanh) và độ êm dịu (RMS Jerk)."
       actions={
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowNewForm((prev) => !prev)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-full bg-vehicsim-primary px-4 text-[13px] font-bold text-white shadow-sm transition hover:bg-vehicsim-primary-hover"
+          <PillButton
+            href={`/aeb/mobo/new${hasQueryScenario ? `?scenario_id=${queryScenarioId}` : ""}`}
+            variant="dark"
+            className="inline-flex items-center gap-1.5 text-[13px]"
           >
-            {showNewForm ? <ChevronUp className="size-4" /> : <Plus className="size-4" />}
-            <span>{showNewForm ? "Đóng form tạo" : "+ Khởi tạo đợt mới"}</span>
-          </button>
+            <Plus className="size-4" />
+            <span>Khởi tạo đợt mới</span>
+          </PillButton>
         </div>
       }
     >
       <ErrorNote message={error} />
       <AebNav active="mobo" />
-
-      {/* FORM KHỞI TẠO ĐỢT MỚI (INLINE COLLAPSIBLE) */}
-      {showNewForm && (
-        <section className="animate-in fade-in slide-in-from-top-3 duration-200 flex flex-col gap-5 rounded-2xl border-2 border-dashed border-vehicsim-primary/50 bg-vehicsim-surface p-6 shadow-md">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-vehicsim-decision-bg text-vehicsim-decision">
-                <Sparkles className="size-5" />
-              </div>
-              <div>
-                <h2 className="text-[16px] font-bold text-vehicsim-ink">
-                  Khởi tạo đợt tối ưu hoá Bayesian mới
-                </h2>
-                <p className="text-[12px] text-vehicsim-muted">
-                  Thiết lập kịch bản và số vòng thử nghiệm để thuật toán qEHVI tự động khám phá không gian tham số.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowNewForm(false)}
-              className="text-[13px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink"
-            >
-              Huỷ bỏ
-            </button>
-          </div>
-
-          <form onSubmit={handleStartRun} className="flex flex-col gap-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[12.5px] font-bold text-vehicsim-ink">Tên đợt tối ưu</span>
-                <input
-                  type="text"
-                  placeholder="Vd: MOBO Đợt 2 - Cải thiện TTC"
-                  value={runName}
-                  onChange={(e) => setRunName(e.target.value)}
-                  className="h-10 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-soft px-3 text-[13px] text-vehicsim-ink focus:border-vehicsim-primary focus:outline-none"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[12.5px] font-bold text-vehicsim-ink">Họ kịch bản áp dụng *</span>
-                <select
-                  value={scenarioId}
-                  onChange={(e) => setSelectedScenarioId(Number(e.target.value))}
-                  required
-                  className="h-10 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-soft px-3 text-[13px] font-medium text-vehicsim-ink focus:border-vehicsim-primary focus:outline-none"
-                >
-                  {(ctx?.families ?? []).map((f) => (
-                    <option key={f.id} value={f.id}>
-                      #{f.id} · {f.name} ({f.code})
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[12.5px] font-bold text-vehicsim-ink">Số trials tối đa</span>
-                <input
-                  type="number"
-                  min={4}
-                  max={50}
-                  value={maxTrials}
-                  onChange={(e) => setMaxTrials(Number(e.target.value))}
-                  className="h-10 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-soft px-3 text-[13px] text-vehicsim-ink focus:border-vehicsim-primary focus:outline-none"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[12.5px] font-bold text-vehicsim-ink">Điểm ngẫu nhiên ban đầu</span>
-                <input
-                  type="number"
-                  min={2}
-                  max={10}
-                  value={nInitialPoints}
-                  onChange={(e) => setNInitialPoints(Number(e.target.value))}
-                  className="h-10 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-soft px-3 text-[13px] text-vehicsim-ink focus:border-vehicsim-primary focus:outline-none"
-                />
-              </label>
-            </div>
-
-            {/* CHỌN BỘ MÔ PHỎNG */}
-            <div className="flex flex-col gap-2 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-soft/60 p-4">
-              <span className="text-[12.5px] font-bold text-vehicsim-ink">Môi trường mô phỏng (Simulator) *</span>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setSimulatorType("KINEMATIC")}
-                  className={cx(
-                    "flex flex-col items-start gap-1 rounded-xl border-2 p-3.5 text-left transition",
-                    simulatorType === "KINEMATIC"
-                      ? "border-vehicsim-primary bg-vehicsim-surface shadow-xs"
-                      : "border-transparent bg-vehicsim-surface/70 hover:bg-vehicsim-surface text-vehicsim-muted hover:text-vehicsim-ink"
-                  )}
-                >
-                  <div className="flex w-full items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-[13.5px] font-black text-vehicsim-ink">
-                      ⚡ Mô phỏng Động học (Kinematic)
-                    </span>
-                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700 dark:text-emerald-300">
-                      Siêu tốc (~30s)
-                    </span>
-                  </div>
-                  <p className="text-[12px] leading-relaxed text-vehicsim-muted">
-                    Tính toán vật lý đa luồng trên CPU. Phù hợp để khám phá nhanh không gian tham số và chạy nhiều trials.
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSimulatorType("CARLA")}
-                  className={cx(
-                    "flex flex-col items-start gap-1 rounded-xl border-2 p-3.5 text-left transition",
-                    simulatorType === "CARLA"
-                      ? "border-vehicsim-primary bg-vehicsim-surface shadow-xs"
-                      : "border-transparent bg-vehicsim-surface/70 hover:bg-vehicsim-surface text-vehicsim-muted hover:text-vehicsim-ink"
-                  )}
-                >
-                  <div className="flex w-full items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-[13.5px] font-black text-vehicsim-ink">
-                      🚗 Mô phỏng CARLA 3D (OpenSCENARIO)
-                    </span>
-                    <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10.5px] font-bold text-sky-700 dark:text-sky-300">
-                      Chính xác cao
-                    </span>
-                  </div>
-                  <p className="text-[12px] leading-relaxed text-vehicsim-muted">
-                    Chạy trên Unreal Engine 3D với cảm biến radar và ma sát lốp thực. Cần mở CARLA server trước.
-                  </p>
-                  {carlaStatus && !carlaStatus.connected && (
-                    <span className="mt-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                      ⚠️ CARLA chưa kết nối (bật máy chủ với scripts/dev-carla.ps1)
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 border-t border-solid border-vehicsim-line pt-4">
-              <button
-                type="button"
-                onClick={() => setShowNewForm(false)}
-                className="h-9 rounded-xl px-4 text-[13px] font-bold text-vehicsim-muted hover:text-vehicsim-ink"
-              >
-                Đóng
-              </button>
-              <button
-                type="submit"
-                disabled={submittingRun || !canWrite}
-                className="inline-flex h-9 items-center gap-2 rounded-xl bg-vehicsim-primary px-5 text-[13px] font-bold text-white shadow-sm transition hover:bg-vehicsim-primary-hover disabled:opacity-50"
-              >
-                <Play className="size-4 fill-current" />
-                <span>
-                  {submittingRun
-                    ? "Đang khởi tạo…"
-                    : simulatorType === "CARLA"
-                    ? "Bắt đầu tối ưu trên CARLA 3D"
-                    : "Bắt đầu tối ưu nhanh (Kinematic)"}
-                </span>
-              </button>
-            </div>
-          </form>
-        </section>
-      )}
 
       {/* BANNER THÀNH CÔNG KHI CHỌN CANDIDATE */}
       {createdCandidate && (
@@ -532,7 +325,7 @@ export default function AebMoboStudioPage() {
               </div>
               <div className="flex flex-wrap items-center gap-3 text-vehicsim-muted">
                 <span className="inline-flex items-center gap-1 rounded-full bg-vehicsim-soft px-2.5 py-0.5 text-[11px] font-bold text-vehicsim-ink border border-vehicsim-line">
-                  {activeRun.simulator_version?.startsWith("carla-") ? "🚗 CARLA 3D" : "⚡ Kinematic"}
+                  {activeRun.simulator_version?.startsWith("carla-") ? "CARLA 3D" : "Kinematic"}
                 </span>
                 <span>·</span>
                 <span>
@@ -850,7 +643,7 @@ export default function AebMoboStudioPage() {
                         <td className="px-5 py-4 font-bold text-vehicsim-ink">{r.name}</td>
                         <td className="px-5 py-4">
                           <span className="inline-flex items-center gap-1 rounded-full bg-vehicsim-soft px-2.5 py-0.5 text-[11px] font-bold text-vehicsim-ink border border-vehicsim-line">
-                            {r.simulator_version?.startsWith("carla-") ? "🚗 CARLA 3D" : "⚡ Kinematic"}
+                            {r.simulator_version?.startsWith("carla-") ? "CARLA 3D" : "Kinematic"}
                           </span>
                         </td>
                         <td className="px-5 py-4">
