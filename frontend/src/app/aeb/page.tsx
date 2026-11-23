@@ -7,7 +7,6 @@ import {
   BarChart3,
   ShieldCheck,
   Sliders,
-  Sparkles,
 } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
@@ -50,14 +49,6 @@ export default function AebHubPage() {
     <VehicSimPage
       step={4}
       crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Tổng quan" }]}
-      actions={
-        <div className="flex items-center gap-2">
-          <PillButton href="/aeb/mobo" variant="dark">
-            <Sparkles className="size-4 shrink-0" />
-            Vào Studio MOBO
-          </PillButton>
-        </div>
-      }
     >
       <ErrorNote message={error} />
 
