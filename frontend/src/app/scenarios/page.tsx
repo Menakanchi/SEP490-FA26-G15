@@ -230,7 +230,7 @@ export default function ScenarioFamiliesPage() {
           {(focused.runs.PENDING ?? 0) + (focused.runs.RUNNING ?? 0) > 0
             ? "các lượt chạy cơ sở đang chạy — số liệu tự cập nhật bên dưới."
             : (focused.runs.COMPLETED ?? 0) > 0
-              ? "đã có kết quả chạy cơ sở — bấm “Tiếp tục: Phân tích kết quả”."
+              ? "đã có kết quả chạy cơ sở — bấm “Phân tích” ở dòng được tô sáng."
               : "chưa chạy cơ sở — bấm “Chạy cơ sở” ở dòng được tô sáng."}
         </p>
       )}
@@ -407,10 +407,25 @@ export default function ScenarioFamiliesPage() {
                         title="Bấm để xem và hủy từng lượt đang chờ / đang chạy"
                         className="cursor-pointer text-left font-semibold text-vehicsim-decision hover:underline"
                       >
-                        {pending} đang chờ / đang chạy…
+                        {waitingRunsLines(f.runs).map((line) => (
+                          <span key={line} className="block">
+                            {line}
+                          </span>
+                        ))}
                       </button>
                     )}
-                    {(shown.runs.FAILED ?? 0) > 0 && <span className="text-vehicsim-danger">{shown.runs.FAILED} lỗi</span>}
+                    {(shown.runs.FAILED ?? 0) > 0 &&
+                      (old ? (
+                        <span className="text-vehicsim-danger">{shown.runs.FAILED} lỗi</span>
+                      ) : (
+                        <Link
+                          href={`/analysis/failures?view=runs&scenario_id=${f.id}&status=FAILED`}
+                          title="Xem lý do lỗi của từng lượt chạy cơ sở"
+                          className="text-vehicsim-danger hover:underline"
+                        >
+                          {shown.runs.FAILED} lỗi · xem lý do
+                        </Link>
+                      ))}
                     {(shown.runs.STOPPED ?? 0) > 0 && <span>{shown.runs.STOPPED} đã hủy</span>}
                   </span>
                   <span className="flex w-[110px] flex-col">
@@ -672,6 +687,13 @@ function ActiveRuns({
       )}
     </div>
   );
+}
+
+/** Tách lượt đang chạy khỏi lượt đang chờ (PENDING/QUEUED, PAUSED), mỗi loại một dòng để cột hẹp không cắt chữ. */
+function waitingRunsLines(runs: Record<string, number>): string[] {
+  const running = runs.RUNNING ?? 0;
+  const waiting = (runs.PENDING ?? runs.QUEUED ?? 0) + (runs.PAUSED ?? 0);
+  return [running > 0 ? `${running} đang chạy` : "", waiting > 0 ? `${waiting} đang chờ` : ""].filter(Boolean);
 }
 
 function without<T>(map: Record<number, T>, key: number): Record<number, T> {
