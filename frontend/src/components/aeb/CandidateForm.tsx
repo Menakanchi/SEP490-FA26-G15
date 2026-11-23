@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { CLASS_STYLE, ErrorNote, PillButton, cx, paramValue } from "@/components/VehicSimUi";
+import { CLASS_STYLE, ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion, ParameterDef } from "@/types/vehicsim";
 import { CATEGORY_ORDER, STATUS_LABEL } from "./aebTypes";
@@ -145,10 +145,7 @@ export function CandidateForm({
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="text-[13.5px] font-bold text-vehicsim-ink">{p.name}</span>
                         <span className="text-[11.5px] text-vehicsim-muted">
-                          Phạm vi: <strong className="text-vehicsim-ink">{p.min_value} – {p.max_value}</strong> {p.unit === "ratio" ? "" : p.unit} · hiện tại{" "}
-                          <span className="font-semibold text-slate-700 dark:text-slate-300">
-                            {paramValue(parent.parameters[p.code], p.unit)}
-                          </span>
+                          Phạm vi: <strong className="text-vehicsim-ink">{p.min_value} – {p.max_value}</strong> {p.unit === "ratio" ? "" : p.unit}
                         </span>
                       </span>
                       <div className="flex items-center gap-1.5 shrink-0">
