@@ -1,6 +1,6 @@
 # ADR-062 — Bộ động học 1.4 / `.xosc` v15: người đi bộ tăng tốc dần, bỏ khởi hành sớm
 
-**Trạng thái:** Proposed 23/11/2026 — kiểm CARLA thật `-xosc15` ([kết quả](../vehicsim/carla-ped-bench/ket-qua/kiem-v15-2026-11-23_0057/README.md)): tăng tốc khớp; ca dừng lề cần thêm mục 2 (đã sửa, không phải chạy lại CARLA).
+**Trạng thái:** ✅ Accepted 23/11/2026 — chủ dự án chốt; kiểm CARLA thật `-xosc15` ([kết quả](../vehicsim/carla-ped-bench/ket-qua/kiem-v15-2026-11-23_0057/README.md)): tăng tốc khớp; ca dừng lề cần thêm mục 2 (đã sửa, không phải chạy lại CARLA).
 **Liên quan:** sửa mục "người đi bộ khởi hành sớm" của [ADR-054](ADR-054-xosc8-hieu-chuan-ban-dap-va-nguoi-di-bo.md); TD-17.
 
 ## Bối cảnh

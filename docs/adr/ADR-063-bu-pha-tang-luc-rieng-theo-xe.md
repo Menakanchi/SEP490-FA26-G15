@@ -1,6 +1,6 @@
 # ADR-063 — `.xosc` v15: bù pha tăng lực riêng cho Patrol (0,11 s) và Sprinter (0,17 s)
 
-**Trạng thái:** Proposed 23/11/2026 — kiểm CARLA thật `-xosc15` đạt ([kết quả](../vehicsim/carla-ped-bench/ket-qua/kiem-v15-2026-11-23_0057/README.md)): Patrol +0,08 / +0,17 m, Sprinter +0,03 / +0,27 m (c1 / c7).
+**Trạng thái:** ✅ Accepted 23/11/2026 — chủ dự án chốt; kiểm CARLA thật `-xosc15` đạt ([kết quả](../vehicsim/carla-ped-bench/ket-qua/kiem-v15-2026-11-23_0057/README.md)): Patrol +0,08 / +0,17 m, Sprinter +0,03 / +0,27 m (c1 / c7).
 **Liên quan:** sửa mục 1 của [ADR-061](ADR-061-bu-pha-tang-luc-patrol-sprinter.md); [ADR-056](ADR-056-xosc10-bu-pha-tang-luc-phanh.md); đi cùng [ADR-062](ADR-062-nguoi-di-bo-tang-toc-dan.md) trong v15; TD-17.
 
 ## Bối cảnh
