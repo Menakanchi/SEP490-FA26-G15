@@ -354,7 +354,8 @@ và `ProjectService` (`codePointCount`) đếm ký tự. Emoji/ký tự ngoài B
 thành viên workspace. Cần chốt: kiểm cột/phiên bản schema lúc khởi động (log cảnh báo) hoặc bảng phiên bản migration.
 
 **Quan sát nhỏ, chưa thành issue:** với ENG1/MGR1/ADMIN1 trang `/review` hiện câu chặn quyền và khoá "Gửi quyết định" nhưng các ô vẫn nhập được
-(RV-16 → RV-18); câu "Người tạo kiểm thử không tự duyệt khuyến nghị…" vẫn hiện cho Experiencer dù project cá nhân không có khuyến nghị;
+(RV-16 → RV-18); câu "Người tạo kiểm thử không tự duyệt khuyến nghị…" vẫn hiện cho Experiencer dù project cá nhân không có khuyến nghị
+(đã ẩn với Experiencer ngày 23/11/2026);
 trang kết quả regression mở tab "Mọi thay đổi (0)" nên không có link phát lại khi không ca nào đổi (RR-21 phải mở tab "Tất cả");
 trang vòng của project đang lưu trữ hiện thêm câu "Bạn đang mở project khác…" dù người dùng không mở project nào khác (PJ-19).
 

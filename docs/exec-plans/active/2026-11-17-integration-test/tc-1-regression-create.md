@@ -363,7 +363,7 @@ Quy tắc nghiệp vụ được kiểm (`RegressionService`, `RegressionCriteri
 - **Post conditions:** 1 test mới, 1 run REGRESSION.
 - **Expected Result:**
   - "Bản cơ sở (cũ)" = v1.0, "Ứng viên (mới)" = IT-C-GOOD3; "Bộ mô phỏng" = `<SIM>`; số "Lượt chạy cơ sở dùng lại" = 1.
-  - "Tiêu chí đạt": "Không kịch bản an toàn nào được chuyển thành va chạm" và "Dùng cùng seed…" có nhãn "Bắt buộc"; "Tỉ lệ phanh nhầm tăng tối đa" = 5 điểm %; "Trung vị TTC…" = −0,1 s.
+  - "Tiêu chí đạt": "Không kịch bản an toàn nào được chuyển thành va chạm" và "Dùng cùng seed…" có nhãn "Bắt buộc"; "Tỉ lệ phanh oan tăng tối đa" = 5 điểm % (đổi từ "phanh nhầm" ngày 23/11/2026 cho khớp màn Phân tích); "Trung vị TTC…" = −0,1 s.
   - Sau khi tạo, trình duyệt chuyển tới `/validation/regression/<id>` với trạng thái đang chạy. Chụp màn hình bước 3 và 4.
 
 ---

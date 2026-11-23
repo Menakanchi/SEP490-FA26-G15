@@ -224,7 +224,7 @@ Quy tắc nghiệp vụ được kiểm (`RegressionService.tryFinalize`, `Regre
 - **Test Steps:** 1. Mở `/validation/regression/<T-A>`. 2. Mở `/validation/regression/<T-B>`. 3. Bấm nút xuất JSON, CSV; bấm link phát lại một cặp.
 - **Test Data:** `<T-A>`, `<T-B>`.
 - **Post conditions:** Không đổi dữ liệu.
-- **Expected Result:** T-A: nhãn đạt, không có banner lỗi, đủ 4 thẻ tham số. T-B: nhãn không đạt, banner ca xấu đi, cặp `regressed` được đánh dấu. Nút xuất tải đúng file; link phát lại mở `/analysis/failures/<run>/playback`. Chụp màn hình.
+- **Expected Result:** T-A: nhãn đạt, không có banner lỗi, đủ 4 thẻ tham số. T-B: nhãn không đạt, banner ca xấu đi, cặp `regressed` được đánh dấu. Nút xuất tải đúng file; link phát lại mở `/analysis/failures/<run>/playback` kèm `returnTo=/validation/regression/<id>` và `compare=<run baseline cùng cặp>`; nút quay về ghi "← Về kiểm chứng RT-…" và đưa về đúng trang kiểm chứng, trang phát lại có "Mở run cùng cặp" (cập nhật 23/11/2026). Chụp màn hình.
 
 ### RR-23 — Khởi động lại backend khi test đang chạy (tuỳ chọn, theo Q8) [N]
 - **Description:** Kiểm tra test vẫn chốt được kết quả sau khi backend khởi động lại giữa chừng.
