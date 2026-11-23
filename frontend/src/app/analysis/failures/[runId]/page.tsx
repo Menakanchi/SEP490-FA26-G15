@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { ErrorNote, PillButton, fmt, runCode } from "@/components/VehicSimUi";
-import { AnalysisBadge, AnalysisLoading, analysisError, analysisLabel, analysisReturn, analysisRunId } from "@/components/analysisUi";
+import { AnalysisBadge, AnalysisLoading, analysisError, analysisLabel, analysisOrigin, analysisReturn, analysisRunId } from "@/components/analysisUi";
 import { MOTION_SIGNALS, type MotionSignal } from "@/components/MotionTelemetryChart";
 import { AnalysisRunSummary } from "@/components/analysis/AnalysisRunSummary";
 import { AnalysisRunTimeline, AnalysisRunTelemetry } from "@/components/analysis/AnalysisRunTelemetry";
@@ -38,11 +38,13 @@ export default function FailureDetailPage() {
   const section = SECTIONS.some(([key]) => key === params.get("section")) ? params.get("section")! : "summary";
   const signal = (MOTION_SIGNALS.some(item => item.key === params.get("signal")) ? params.get("signal") : "ego_accel_mps2") as MotionSignal;
   const returnTo = analysisReturn(params.get("returnTo"));
+  const origin = analysisOrigin(returnTo);
+  const compareId = analysisRunId(params.get("compare") ?? "");
   const range = d ? recordedRange(d) : null;
   const requestedTime = Number(params.get("t"));
   const cursor = range ? Math.max(range.min, Math.min(range.max, finite(requestedTime) && requestedTime >= 0 ? requestedTime : range.min)) : 0;
   const canPlayback = Boolean(inspection?.trace_available && inspection.status === "COMPLETED");
-  const playbackHref = `/analysis/failures/${runId}/playback?t=${cursor}&signal=${signal}&returnTo=${encodeURIComponent(returnTo)}`;
+  const playbackHref = `/analysis/failures/${runId}/playback?t=${cursor}&signal=${signal}&returnTo=${encodeURIComponent(returnTo)}${compareId === null ? "" : `&compare=${compareId}`}`;
   const markers = d ? runMarkers(d) : [];
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export default function FailureDetailPage() {
     document.getElementById(`run-tab-${SECTIONS[next][0]}`)?.focus();
   }
   return <VehicSimPage step={4} title={validId === null ? "Lượt chạy không hợp lệ" : `Lượt chạy ${runCode(validId)}`}
-    crumbs={[{ label: "Phân tích" }, { label: "Danh sách phân tích", href: returnTo }, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}` }]}
+    crumbs={[...origin.crumbs, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}` }]}
     subtitle={inspection ? `${inspection.family} · ${inspection.variant} · seed ${inspection.seed}` : "Chi tiết và telemetry từ kết quả run đã lưu."}
     badges={inspection && <><AnalysisBadge value={inspection.status} />{d && classificationPresentation(d).trusted && <AnalysisBadge value={d.outcome} />}</>}
     actions={<>
@@ -85,7 +87,7 @@ export default function FailureDetailPage() {
       }}>{running ? "Đang xếp hàng…" : "Chạy trên CARLA"}</PillButton>
       {canPlayback ? <PillButton variant="dark" href={playbackHref}>▶ Phát lại</PillButton> : <PillButton variant="dark" disabled title="Run cần hoàn tất và có telemetry">▶ Phát lại</PillButton>}
     </>}>
-    <div><Link className="text-[13px] font-semibold text-vehicsim-decision" href={returnTo}>← Về danh sách đang xem</Link></div>
+    <div><Link className="text-[13px] font-semibold text-vehicsim-decision" href={returnTo}>{origin.back}</Link></div>
     <ErrorNote message={error ?? (actionError?.id === runId ? actionError.message : null)} />
     {error && <div><button className="analysis-button" onClick={() => setRefresh(value => value + 1)}>Thử tải lại</button></div>}
     {loading && <AnalysisLoading />}
