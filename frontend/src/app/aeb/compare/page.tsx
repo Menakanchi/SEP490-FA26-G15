@@ -91,7 +91,7 @@ export default function AebComparePage() {
       <Card className="flex flex-col gap-5 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-4">
           <div>
-            <h2 className="text-[16px] font-bold text-vehicsim-ink">Chọn 2 phiên bản để đối đầu</h2>
+            <h2 className="text-[16px] font-bold text-vehicsim-ink">Chọn 2 phiên bản để so sánh</h2>
           </div>
           <button
             type="button"
