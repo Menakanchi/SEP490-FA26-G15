@@ -173,15 +173,15 @@ export default function AebComparePage() {
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-left text-[13px]">
-              <thead className="bg-vehicsim-soft text-[13.5px] font-extrabold uppercase tracking-wide text-slate-800 dark:text-slate-100">
+              <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                 <tr className="h-12">
-                  <th className="px-5 py-3">Tham số</th>
-                  <th className="px-5 py-3">Tầng điều khiển</th>
-                  <th className="px-5 py-3 text-center">Bản A ({versionA.label})</th>
-                  <th className="px-5 py-3 text-center">Bản B ({versionB.label})</th>
-                  <th className="px-5 py-3 text-center">Chênh lệch tuyệt đối (Δ)</th>
-                  <th className="px-5 py-3 text-center">Mức thay đổi (%)</th>
-                  <th className="px-5 py-3">Đánh giá kỹ thuật</th>
+                  <th className="px-5 py-3.5">Tham số</th>
+                  <th className="px-5 py-3.5">Tầng điều khiển</th>
+                  <th className="px-5 py-3.5 text-center">Bản A ({versionA.label})</th>
+                  <th className="px-5 py-3.5 text-center">Bản B ({versionB.label})</th>
+                  <th className="px-5 py-3.5 text-center">Chênh lệch tuyệt đối (Δ)</th>
+                  <th className="px-5 py-3.5 text-center">Mức thay đổi (%)</th>
+                  <th className="px-5 py-3.5">Đánh giá kỹ thuật</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
