@@ -7,7 +7,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { Loader2, Menu, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { VehicSimContextProvider } from "@/components/VehicSimContext";
-import { AdminSidebar } from "@/components/admin/AdminShell";
 import { NotificationBell } from "@/components/NotificationBell";
 import { VehicSimSidebar } from "@/components/VehicSimSidebar";
 import { ProjectGate } from "@/components/project/ProjectShell";
@@ -46,7 +45,6 @@ function WorkspaceFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [openMenuPath, setOpenMenuPath] = useState<string | null>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
-  const admin = pathname.startsWith("/admin") && role === "admin";
   const analysis = pathname === "/analysis/failures" || pathname.startsWith("/analysis/failures/");
   const menuOpen = openMenuPath === pathname;
   const name = user?.full_name || user?.name || "";
@@ -61,54 +59,50 @@ function WorkspaceFrame({ children }: { children: React.ReactNode }) {
 
   return (
     <div data-analysis-shell={analysis || undefined} className={`${jakarta.className} vehicsim-shell flex min-h-dvh w-full flex-col bg-vehicsim-bg text-vehicsim-ink`}>
-      {!admin && (
-        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-800 bg-[#0f141c] text-white px-4 py-2 sm:px-6 lg:pl-0 lg:pr-8 print:hidden shadow-sm">
-          <a href="#vehicsim-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-slate-900 focus:p-3 text-white">
-            Đến nội dung chính
-          </a>
-          <Link href="/" className="inline-flex min-h-11 shrink-0 items-center gap-2.5 font-bold lg:w-[272px] lg:px-6">
-            <Image src="/vehicsim/logo.svg" alt="" width={26} height={26} />
-            <span className="text-[18px] font-black tracking-tight text-white">VehicSim</span>
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-800 bg-[#0f141c] text-white px-4 py-2 sm:px-6 lg:pl-0 lg:pr-8 print:hidden shadow-sm">
+        <a href="#vehicsim-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-slate-900 focus:p-3 text-white">
+          Đến nội dung chính
+        </a>
+        <Link href="/" className="inline-flex min-h-11 shrink-0 items-center gap-2.5 font-bold lg:w-[272px] lg:px-6">
+          <Image src="/vehicsim/logo.svg" alt="" width={26} height={26} />
+          <span className="text-[18px] font-black tracking-tight text-white">VehicSim</span>
+        </Link>
+        <div className="ml-auto flex items-center gap-2">
+          <NotificationBell />
+          <Link href="/profile" aria-label="Hồ sơ cá nhân" title={name} className="flex min-h-10 min-w-10 items-center justify-center gap-2 rounded-lg px-2 text-white hover:bg-white/10 transition-colors sm:px-2.5">
+            {user?.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element -- ảnh đại diện người dùng
+              <img
+                src={user.avatar_url}
+                alt=""
+                className="size-7 shrink-0 rounded-full object-cover ring-1 ring-white/30"
+              />
+            ) : (
+              <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full bg-emerald-500/20 text-[11px] font-bold text-emerald-400 ring-1 ring-emerald-400/40">{initials(name)}</span>
+            )}
+            <span className="hidden text-[13px] font-bold text-slate-200 sm:block">
+              {roleLabel ? `${roleLabel} ${name}` : name}
+            </span>
           </Link>
-          <div className="ml-auto flex items-center gap-2">
-            <NotificationBell />
-            <Link href="/profile" aria-label="Hồ sơ cá nhân" title={name} className="flex min-h-10 min-w-10 items-center justify-center gap-2 rounded-lg px-2 text-white hover:bg-white/10 transition-colors sm:px-2.5">
-              {user?.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element -- ảnh đại diện người dùng
-                <img
-                  src={user.avatar_url}
-                  alt=""
-                  className="size-7 shrink-0 rounded-full object-cover ring-1 ring-white/30"
-                />
-              ) : (
-                <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full bg-emerald-500/20 text-[11px] font-bold text-emerald-400 ring-1 ring-emerald-400/40">{initials(name)}</span>
-              )}
-              <span className="hidden text-[13px] font-bold text-slate-200 sm:block">
-                {roleLabel ? `${roleLabel} ${name}` : name}
-              </span>
-            </Link>
-            <button type="button" ref={menuButton} onKeyDown={onMenuKeyDown}
-              aria-expanded={menuOpen} aria-controls="vehicsim-navigation"
-              onClick={() => setOpenMenuPath(menuOpen ? null : pathname)}
-              className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-[13px] font-semibold text-slate-200 hover:bg-slate-800 lg:hidden">
-              {menuOpen ? <X aria-hidden className="size-4" /> : <Menu aria-hidden className="size-4" />}
-              Menu
-            </button>
-          </div>
-        </header>
-      )}
+          <button type="button" ref={menuButton} onKeyDown={onMenuKeyDown}
+            aria-expanded={menuOpen} aria-controls="vehicsim-navigation"
+            onClick={() => setOpenMenuPath(menuOpen ? null : pathname)}
+            className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-[13px] font-semibold text-slate-200 hover:bg-slate-800 lg:hidden">
+            {menuOpen ? <X aria-hidden className="size-4" /> : <Menu aria-hidden className="size-4" />}
+            Menu
+          </button>
+        </div>
+      </header>
       <div className="flex min-w-0 flex-1 flex-col lg:flex-row">
-        {admin ? <AdminSidebar /> : (
-          <div id="vehicsim-navigation"
-            className={`${menuOpen ? "block" : "hidden"} shrink-0 border-b border-slate-800 bg-[#0f141c] text-white lg:block lg:w-[272px] lg:border-r lg:border-slate-800 lg:border-b-0 print:hidden`}
-            onKeyDown={onMenuKeyDown}
-            onClick={(event) => {
-              if (menuOpen && (event.target as Element).closest("a")) setOpenMenuPath(null);
-            }}
-          >
-            <VehicSimSidebar />
-          </div>
-        )}
+        <div id="vehicsim-navigation"
+          className={`${menuOpen ? "block" : "hidden"} shrink-0 border-b border-slate-800 bg-[#0f141c] text-white lg:block lg:w-[272px] lg:border-r lg:border-slate-800 lg:border-b-0 print:hidden`}
+          onKeyDown={onMenuKeyDown}
+          onClick={(event) => {
+            if (menuOpen && (event.target as Element).closest("a")) setOpenMenuPath(null);
+          }}
+        >
+          <VehicSimSidebar />
+        </div>
         <ProjectGate>{children}</ProjectGate>
       </div>
     </div>
