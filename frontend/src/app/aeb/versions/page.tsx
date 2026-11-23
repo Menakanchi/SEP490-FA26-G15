@@ -26,7 +26,7 @@ export default function AebVersionsPage() {
   return (
     <VehicSimPage
       step={4}
-      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Thư viện phiên bản" }]}
+      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Danh sách phiên bản" }]}
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/compare" variant="light">

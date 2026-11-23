@@ -233,7 +233,7 @@ export default function AebHubPage() {
               variant="dark"
               className="py-2 px-4 text-[12.5px] font-bold"
             >
-              <span>Vào Thư viện phiên bản ({versions?.length ?? 0})</span>
+              <span>Xem danh sách phiên bản ({versions?.length ?? 0})</span>
               <ArrowRight className="size-4" />
             </PillButton>
           </div>

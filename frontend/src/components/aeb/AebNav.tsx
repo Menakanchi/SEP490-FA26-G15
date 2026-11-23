@@ -46,7 +46,7 @@ const TABS: {
   { key: "hub", label: "Tổng quan cải tiến", href: "/aeb", icon: <Layers className="size-4" /> },
   { key: "mobo", label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo", badge: "AI qEHVI", icon: <BarChart3 className="size-4" /> },
   { key: "manual", label: "Chỉnh tay tham số", href: "/aeb/manual", icon: <Sliders className="size-4" /> },
-  { key: "versions", label: "Thư viện phiên bản", href: "/aeb/versions", icon: <CheckSquare className="size-4" /> },
+  { key: "versions", label: "Danh sách phiên bản", href: "/aeb/versions", icon: <CheckSquare className="size-4" /> },
   { key: "compare", label: "So sánh 2 phiên bản", href: "/aeb/compare", icon: <GitCompare className="size-4" /> },
 ];
 

@@ -122,7 +122,7 @@ const GROUPS: Group[] = [
       { label: "Tổng quan cải tiến", href: "/aeb" },
       { label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo" },
       { label: "Chỉnh tay tham số", href: "/aeb/manual" },
-      { label: "Thư viện phiên bản", href: "/aeb/versions", matchPaths: ["/aeb/candidates"] },
+      { label: "Danh sách phiên bản", href: "/aeb/versions", matchPaths: ["/aeb/candidates"] },
       { label: "So sánh 2 phiên bản", href: "/aeb/compare" },
     ],
   },
@@ -587,7 +587,7 @@ function ExperiencerNav() {
           { label: "Tổng quan cải tiến", href: "/aeb" },
           { label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo" },
           { label: "Chỉnh tay tham số", href: "/aeb/manual" },
-          { label: "Thư viện phiên bản", href: "/aeb/versions", matchPaths: ["/aeb/candidates"] },
+          { label: "Danh sách phiên bản", href: "/aeb/versions", matchPaths: ["/aeb/candidates"] },
           { label: "So sánh 2 phiên bản", href: "/aeb/compare" },
         ]),
         step(
