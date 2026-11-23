@@ -498,8 +498,8 @@ export default function AebMoboStudioPage() {
                       className={cx(
                         "rounded-lg px-2.5 py-1 text-[12px] font-semibold transition border border-solid",
                         trialsFilter === mode
-                          ? "bg-slate-900 border-slate-900 text-white shadow-xs dark:bg-slate-100 dark:border-slate-100 dark:text-slate-900"
-                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-950 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
+                          ? "bg-slate-900 border-slate-900 text-white shadow-xs"
+                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                       )}
                     >
                       {mode === "ALL" ? "Tất cả" : mode === "PARETO" ? "Chỉ Pareto" : "Chỉ hợp lệ"}
