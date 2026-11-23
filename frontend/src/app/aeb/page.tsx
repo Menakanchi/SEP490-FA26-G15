@@ -87,58 +87,58 @@ export default function AebHubPage() {
             <div className="flex flex-col gap-2.5 border-t border-solid border-vehicsim-line/80 pt-4 mt-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <Target className="size-4 text-emerald-600" />
-                  <span className="text-[13px] font-bold text-vehicsim-ink">
+                  <Target className="size-4 text-slate-700" />
+                  <span className="text-[13px] font-bold text-slate-900">
                     3 mục tiêu tối ưu cần cải thiện so với bản cơ sở:
                   </span>
                 </div>
-                <span className="text-[11.5px] text-vehicsim-faint">
+                <span className="text-[11.5px] text-slate-500">
                   Mục tiêu đánh giá đa chiều cho thuật toán MOBO và kiểm định hồi quy
                 </span>
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {/* Mục tiêu 1 */}
-                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-emerald-200/70 bg-emerald-50/50 p-3.5 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-                  <div className="flex items-center gap-1.5">
-                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white">
+                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-slate-200 bg-slate-50/80 p-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-bold text-white">
                       1
                     </span>
-                    <span className="text-[13px] font-bold text-emerald-900 dark:text-emerald-300">
+                    <span className="text-[13px] font-bold text-slate-900">
                       Giảm rung giật (RMS Jerk)
                     </span>
                   </div>
-                  <p className="text-[12px] leading-relaxed text-slate-600 dark:text-slate-400">
+                  <p className="text-[12px] leading-relaxed text-slate-600">
                     Hạn chế giật đột ngột khi phanh gấp, nâng cao độ êm ái và an toàn cho hành khách trên xe.
                   </p>
                 </div>
 
                 {/* Mục tiêu 2 */}
-                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-rose-200/70 bg-rose-50/50 p-3.5 dark:border-rose-900/40 dark:bg-rose-950/20">
-                  <div className="flex items-center gap-1.5">
-                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-rose-600 text-[11px] font-bold text-white">
+                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-slate-200 bg-slate-50/80 p-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-bold text-white">
                       2
                     </span>
-                    <span className="text-[13px] font-bold text-rose-900 dark:text-rose-300">
+                    <span className="text-[13px] font-bold text-slate-900">
                       Giảm tốc độ va chạm
                     </span>
                   </div>
-                  <p className="text-[12px] leading-relaxed text-slate-600 dark:text-slate-400">
+                  <p className="text-[12px] leading-relaxed text-slate-600">
                     Triệt tiêu hoặc giảm tối đa vận tốc còn lại khi va chạm, ưu tiên cứu mạng người đi bộ.
                   </p>
                 </div>
 
                 {/* Mục tiêu 3 */}
-                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-sky-200/70 bg-sky-50/50 p-3.5 dark:border-sky-900/40 dark:bg-sky-950/20">
-                  <div className="flex items-center gap-1.5">
-                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-sky-600 text-[11px] font-bold text-white">
+                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-slate-200 bg-slate-50/80 p-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-bold text-white">
                       3
                     </span>
-                    <span className="text-[13px] font-bold text-sky-900 dark:text-sky-300">
+                    <span className="text-[13px] font-bold text-slate-900">
                       Giảm quãng phanh dừng
                     </span>
                   </div>
-                  <p className="text-[12px] leading-relaxed text-slate-600 dark:text-slate-400">
+                  <p className="text-[12px] leading-relaxed text-slate-600">
                     Rút ngắn quãng đường xe cần dừng hẳn, giữ khoảng cách an toàn tối đa với chướng ngại vật.
                   </p>
                 </div>
