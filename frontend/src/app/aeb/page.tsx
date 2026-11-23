@@ -68,7 +68,7 @@ export default function AebHubPage() {
                     key={code}
                     className="flex flex-col gap-1 rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-soft p-3.5"
                   >
-                    <span className="text-[12px] font-semibold text-vehicsim-muted">{def?.name ?? code}</span>
+                    <span className="text-[12.5px] font-bold text-slate-800">{def?.name ?? code}</span>
                     <span className="text-[18px] font-black text-vehicsim-ink">
                       {paramValue(baseline.parameters[code], def?.unit ?? "")}
                     </span>
