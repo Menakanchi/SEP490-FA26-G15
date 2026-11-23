@@ -32,6 +32,7 @@ export function CarlaRunnerPanel() {
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const detailRef = useRef<HTMLDivElement>(null);
   const loadRuns = useCallback(() => vehicsimApi.carlaRuns().then(rows => { setRuns(rows); return rows; }), []);
   const checkConnection = useCallback(() => vehicsimApi.carlaStatus().then(setConnection), []);
@@ -96,6 +97,37 @@ export function CarlaRunnerPanel() {
     finally { setBusy(false); }
   };
 
+  // Chỉ kết quả baseline đã kết thúc và không thuộc regression mới xoá được (backend kiểm lại; mốc của regression bị từ chối ở đó).
+  const deletable = (run: CarlaRun) => canWrite && run.purpose === "BASELINE" && !run.regression_test_id
+    && (run.status === "COMPLETED" || run.status === "FAILED" || run.status === "STOPPED");
+  const familyDeletable = familyRuns.filter(deletable).length;
+
+  const removeRun = async (run: CarlaRun) => {
+    if (!window.confirm(`Xóa kết quả lượt ${runCode(run.id)}? Số đo, video và file cảm biến của lượt này bị xóa vĩnh viễn, không khôi phục được.`)) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      await vehicsimApi.deleteRun(run.id);
+      if (selected === run.id) { setSelected(null); setData(null); setImage(null); }
+      setNotice(`Đã xóa kết quả lượt ${runCode(run.id)}.`);
+      await loadRuns();
+    } catch (e) { setError(e instanceof Error ? vi(e.message) : "Không xóa được kết quả"); }
+    finally { setBusy(false); }
+  };
+
+  const removeFamilyResults = async () => {
+    if (!window.confirm(`Xóa kết quả baseline của ${familyDeletable} lượt đã kết thúc trong họ này? Số đo, video và file cảm biến bị xóa vĩnh viễn. `
+      + "Lượt đang chờ/đang chạy và lượt đang là mốc của kiểm thử hồi quy được giữ lại.")) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const r = await vehicsimApi.deleteFamilyBaseline(Number(familyId));
+      if (selected !== null && familyRuns.some(run => run.id === selected) && r.deleted > 0) { setSelected(null); setData(null); setImage(null); }
+      const kept = [r.skipped_active ? `${r.skipped_active} lượt đang chờ/chạy` : "", r.skipped_in_use ? `${r.skipped_in_use} lượt là mốc của hồi quy` : ""].filter(Boolean);
+      setNotice(`Đã xóa ${r.deleted} lượt.${kept.length ? ` Giữ lại ${kept.join(", ")}.` : ""}`);
+      await loadRuns();
+    } catch (e) { setError(e instanceof Error ? vi(e.message) : "Không xóa được kết quả"); }
+    finally { setBusy(false); }
+  };
+
   const cancel = async (runId: number) => {
     setCancelling(prev => new Set(prev).add(runId)); setError(null);
     try {
@@ -136,6 +168,12 @@ export function CarlaRunnerPanel() {
             Tải tất cả .xosc của họ
           </PillButton>
         )}
+        {familyDeletable > 0 && (
+          <PillButton className="text-vehicsim-danger" disabled={busy} onClick={() => void removeFamilyResults()}
+            title="Xóa số đo, video và file cảm biến của mọi lượt baseline đã kết thúc trong họ này">
+            Xóa kết quả baseline của họ ({familyDeletable})
+          </PillButton>
+        )}
         {familyDone && (
           <PillButton href={`/analysis/failures?scenario_id=${familyId}`}>Tiếp tục: Phân tích kết quả</PillButton>
         )}
@@ -151,6 +189,7 @@ export function CarlaRunnerPanel() {
       {connection?.configured && !xoscProfile && <p className="text-[12px] text-vehicsim-warn">Hệ thống chưa chọn chế độ OpenSCENARIO cho các lượt chạy mới.</p>}
       {connection?.connected && connection.compatible === false && <ErrorNote message="Phiên bản Python client và CARLA server chưa khớp." />}
       <ErrorNote message={error} />
+      {notice && <p role="status" className="text-[13px] text-vehicsim-ink">{notice}</p>}
       <div className="max-h-[420px] divide-y divide-vehicsim-line overflow-y-auto rounded-[16px] border border-vehicsim-line">
         {runs === null && <p className="p-4 text-[13px] text-vehicsim-muted">Đang tải lượt chạy…</p>}
         {runs?.length === 0 && <p className="p-4 text-[13px] text-vehicsim-muted">Chưa có lượt CARLA. Tạo họ kịch bản rồi chạy để có kết quả thực.</p>}
@@ -158,6 +197,7 @@ export function CarlaRunnerPanel() {
           <div key={run.id} className="flex flex-wrap items-center justify-between gap-3 p-3 text-[13px]">
             <span className="font-semibold">{runCode(run.id)}</span>
             <Tag tone={run.status === "FAILED" ? "danger" : run.status === "COMPLETED" ? "ok" : "neutral"}>{statusLabel[run.status]}</Tag>
+            {run.aeb_mode === "OFF" && <Tag tone="neutral">AEB tắt</Tag>}
             <span className="flex gap-3">
               <button className="font-semibold text-vehicsim-decision" onClick={() => void vehicsimApi.downloadRunXosc(run.id).catch(e => setError(e.message))}>Tải .xosc</button>
               <button className="font-semibold text-vehicsim-decision" disabled={run.status !== "COMPLETED"}
@@ -167,6 +207,10 @@ export function CarlaRunnerPanel() {
                   requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
                 }}>Xem cảm biến</button>
               {run.status === "COMPLETED" && <Link href={`/analysis/failures/${run.id}/playback`}>Phát lại</Link>}
+              {deletable(run) && (
+                <button className="font-semibold text-vehicsim-danger" disabled={busy} aria-label={`Xóa kết quả lượt ${runCode(run.id)}`}
+                  onClick={() => void removeRun(run)}>Xóa</button>
+              )}
               {(run.status === "PENDING" || run.status === "RUNNING") && (
                 <button className="font-semibold text-vehicsim-danger" disabled={!canWrite || cancelling.has(run.id)}
                   aria-label={`Hủy lượt chạy ${runCode(run.id)}`} onClick={() => void cancel(run.id)}>

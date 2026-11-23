@@ -19,6 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -109,6 +110,22 @@ public class SimulationController {
         access.limitWrites(uid, "run_cancel");
         String status = runs.cancelRun(access.projectId(), runId, uid);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("run_id", runId, "status", status));
+    }
+
+    @Operation(summary = "Xoá kết quả một run baseline đã kết thúc (dòng DB + file ảnh/video/CSV); từ chối run đang chạy, run của regression/tối ưu hoặc mốc của regression")
+    @DeleteMapping("/runs/{runId}")
+    public Map<String, Object> deleteRun(@PathVariable long runId, @AuthenticationPrincipal UserDetails user) {
+        long uid = VehicSimAccess.requireEngineer(user);
+        access.limitWrites(uid, "run_delete");
+        return runs.deleteBaselineRun(access.projectId(), runId, uid);
+    }
+
+    @Operation(summary = "Xoá mọi kết quả baseline đã kết thúc của một họ kịch bản (giữ run đang chờ/chạy và run đang là mốc của regression)")
+    @DeleteMapping("/families/{scenarioId}/baseline-runs")
+    public Map<String, Object> deleteFamilyBaselineRuns(@PathVariable long scenarioId, @AuthenticationPrincipal UserDetails user) {
+        long uid = VehicSimAccess.requireEngineer(user);
+        access.limitWrites(uid, "run_delete");
+        return runs.deleteFamilyBaselineRuns(access.projectId(), scenarioId, uid);
     }
 
     @Operation(summary = "Hủy mọi run đang chờ/đang chạy của một họ kịch bản (bỏ qua run của regression/tối ưu)")

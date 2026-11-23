@@ -27,6 +27,10 @@ export interface CarlaRun {
   aeb_version_id: number;
   simulator_version: string;
   error_message: string | null;
+  /** Chỉ run `BASELINE` không thuộc regression mới xoá được kết quả. */
+  purpose?: "BASELINE" | "EVALUATION" | "OPTIMIZATION" | "REGRESSION" | "ROBUSTNESS";
+  aeb_mode?: "ON" | "OFF";
+  regression_test_id?: number | null;
 }
 
 /** Run đang chờ / đang chạy của một họ (GET /families/{id}/runs/active); run của regression/tối ưu chỉ dừng theo cả test / đợt. */

@@ -724,7 +724,7 @@ public class RunService {
     }
 
     public List<Map<String, Object>> carlaRuns(long projectId) {
-        return db.list("SELECT id, status, scenario_id, aeb_version_id, simulator_version, error_message, queued_at FROM simulation_runs "
+        return db.list("SELECT id, status, scenario_id, aeb_version_id, simulator_version, aeb_mode, purpose, regression_test_id, error_message, queued_at FROM simulation_runs "
                 + "WHERE project_id = ? AND simulator_type = 'CARLA' ORDER BY id DESC LIMIT 30", projectId).stream().map(Row::asMap).toList();
     }
 
@@ -844,6 +844,86 @@ public class RunService {
             }
         }
         return Json.obj("scenario_id", scenarioId, "stopped", stopped, "stopping", stopping);
+    }
+
+    /** Trạng thái đã kết thúc: chỉ run ở trạng thái này mới xoá được; run đang chờ / đang chạy phải hủy trước. */
+    private static final Set<String> FINISHED_STATUSES = Set.of("COMPLETED", "FAILED", "STOPPED");
+
+    /**
+     * Xoá kết quả của một run baseline: dòng {@code simulation_runs} (kèm {@code collision_events}, {@code failures}, {@code root_causes}, {@code simulation_artifacts}
+     * theo ON DELETE CASCADE) rồi cả thư mục file của run (ảnh/video/CSV/{@code result.json}). Chỉ run {@code BASELINE} không thuộc regression/tối ưu, đã kết thúc,
+     * và không phải mốc đối chiếu của một regression test (regression chạy lại đúng biến thể của run này nên cần giữ nó để so sánh).
+     */
+    public Map<String, Object> deleteBaselineRun(long projectId, long runId, long userId) {
+        Row run = db.first("SELECT id, status, purpose, regression_test_id, optimization_trial_id FROM simulation_runs WHERE id = ? AND project_id = ?",
+                runId, projectId);
+        if (run == null) {
+            throw new NotFoundException("simulation run");
+        }
+        if (!"BASELINE".equals(run.str("purpose")) || !run.isNull("regression_test_id") || !run.isNull("optimization_trial_id")) {
+            throw new InvalidRequestException("Only baseline run results can be deleted");
+        }
+        if (!FINISHED_STATUSES.contains(run.str("status"))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Run is " + run.str("status") + "; cancel it before deleting its result");
+        }
+        if (!deleteFinishedBaselineRun(projectId, runId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This run is the reference of a regression test and cannot be deleted");
+        }
+        deleteRunFolder(runId);
+        AuditLog.event("run.delete", "success", "user_id", userId, "run_id", runId, "previous_status", run.str("status"));
+        return Json.obj("run_id", runId, "deleted", true);
+    }
+
+    /**
+     * Xoá mọi kết quả baseline đã kết thúc của một họ kịch bản bằng đúng luật của {@link #deleteBaselineRun}. Run đang chờ / đang chạy và run đang là mốc của
+     * regression được giữ lại và đếm riêng, để người dùng biết còn gì chưa xoá.
+     */
+    public Map<String, Object> deleteFamilyBaselineRuns(long projectId, long scenarioId, long userId) {
+        if (db.first("SELECT id FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, projectId) == null) {
+            throw new NotFoundException("scenario family");
+        }
+        int deleted = 0;
+        int inUse = 0;
+        int active = 0;
+        for (Row r : db.list("SELECT id, status FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND purpose = 'BASELINE' "
+                + "AND regression_test_id IS NULL AND optimization_trial_id IS NULL ORDER BY id", projectId, scenarioId)) {
+            if (!FINISHED_STATUSES.contains(r.str("status"))) {
+                active++;
+            } else if (deleteFinishedBaselineRun(projectId, r.lng("id"))) {
+                deleteRunFolder(r.lng("id"));
+                deleted++;
+            } else {
+                inUse++;
+            }
+        }
+        AuditLog.event("family.baseline_runs.delete", "success", "user_id", userId, "scenario_id", scenarioId, "deleted", deleted, "kept_in_use", inUse, "kept_active", active);
+        return Json.obj("scenario_id", scenarioId, "deleted", deleted, "skipped_in_use", inUse, "skipped_active", active);
+    }
+
+    /** Xoá dòng run baseline đã kết thúc trong một transaction; {@code false} khi một regression còn tham chiếu nó (hoặc run vừa đổi trạng thái). */
+    private boolean deleteFinishedBaselineRun(long projectId, long runId) {
+        try {
+            Boolean done = tx.execute(status -> {
+                Object referenced = db.scalar("SELECT (SELECT COUNT(*) FROM simulation_runs WHERE baseline_run_id = ?) "
+                        + "+ (SELECT COUNT(*) FROM regression_test_items WHERE baseline_run_id = ?)", runId, runId);
+                if (referenced instanceof Number n && n.longValue() > 0) {
+                    return false;
+                }
+                return db.update("DELETE FROM simulation_runs WHERE id = ? AND project_id = ? AND status IN ('COMPLETED','FAILED','STOPPED') "
+                        + "AND purpose = 'BASELINE' AND regression_test_id IS NULL AND optimization_trial_id IS NULL", runId, projectId) > 0;
+            });
+            return Boolean.TRUE.equals(done);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            return false; // khoá ngoại RESTRICT là chốt chặn cuối: có bảng khác đang tham chiếu run này
+        }
+    }
+
+    private void deleteRunFolder(long runId) {
+        try {
+            org.springframework.util.FileSystemUtils.deleteRecursively(runDir(runId));
+        } catch (IOException e) {
+            log.warn("Không xoá được thư mục run {}: {}", runId, e.getMessage());
+        }
     }
 
     /** Trường biến thể hiện cho người dùng nhận ra run trong danh sách run đang chạy (ca người đi bộ). */
