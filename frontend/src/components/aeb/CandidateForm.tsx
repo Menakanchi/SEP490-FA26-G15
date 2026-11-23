@@ -1,11 +1,17 @@
 "use client";
 
 import React, { useState } from "react";
-import { useVehicSimContext } from "@/components/VehicSimContext";
 import { CLASS_STYLE, ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion, ParameterDef } from "@/types/vehicsim";
-import { CATEGORY_ORDER, STATUS_LABEL } from "./aebTypes";
+import { KEY_PARAMS, STATUS_LABEL } from "./aebTypes";
+
+const PARAM_DESC: Record<string, string> = {
+  TTC_THRESHOLD: "Thời gian chạm trán dự tính để phát lệnh phanh khẩn cấp",
+  BRAKE_ACTIVATION_DELAY: "Thời gian trễ từ khi phát tín hiệu đến khi cơ cấu phanh tác động",
+  BRAKE_BUILDUP_RATE: "Tốc độ gia tăng áp lực phanh đạt tới mức hãm tối đa",
+  MAX_DECELERATION: "Gia tốc giảm tốc tối đa mà xe có thể tạo ra khi phanh gấp",
+};
 
 function stepFor(p: ParameterDef): string {
   if (p.code === "BRAKE_ACTIVATION_DELAY") return "0.01";
@@ -29,7 +35,6 @@ export function CandidateForm({
   parameters: ParameterDef[];
   onCreated: (id: number, label: string) => void;
 }) {
-  const { isExperiencer } = useVehicSimContext();
   const parents = versions.filter((v) => v.status !== "REJECTED");
   const [parentId, setParentId] = useState<number>(() => (versions.find((v) => v.status === "BASELINE") ?? versions[0]).id);
   const parent = versions.find((v) => v.id === parentId) ?? versions[0];
@@ -47,6 +52,12 @@ export function CandidateForm({
   const invalid = parameters.filter((p) => {
     const n = parseVal(current(p));
     return current(p).trim() === "" || Number.isNaN(n) || n < p.min_value || n > p.max_value;
+  });
+
+  const orderedParameters = [...parameters].sort((a, b) => {
+    const ia = KEY_PARAMS.indexOf(a.code as typeof KEY_PARAMS[number]);
+    const ib = KEY_PARAMS.indexOf(b.code as typeof KEY_PARAMS[number]);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
 
   const handleInputChange = (p: ParameterDef, raw: string) => {
@@ -67,7 +78,6 @@ export function CandidateForm({
     } else if (n > p.max_value) {
       setValues((prev) => ({ ...prev, [p.code]: String(p.max_value) }));
     } else {
-      // Giữ số sạch (nếu người dùng gõ dấu phẩy thì chuẩn hóa)
       setValues((prev) => ({ ...prev, [p.code]: String(n) }));
     }
   };
@@ -95,17 +105,22 @@ export function CandidateForm({
   };
 
   return (
-    <section className="flex flex-col gap-5 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-[17px] font-bold text-vehicsim-ink">Cấu hình ứng viên mới</h2>
-        <span className="rounded-full bg-vehicsim-soft px-3 py-[6px] text-[12px] font-semibold text-vehicsim-ink">
+    <section className="flex flex-col gap-6 rounded-2xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-4">
+        <div>
+          <h2 className="text-[18px] font-black text-vehicsim-ink">Cấu hình ứng viên mới</h2>
+        </div>
+        <span className="rounded-full bg-vehicsim-soft px-3 py-1 text-[12.5px] font-bold text-vehicsim-ink">
           {changed.length} tham số đã đổi
         </span>
       </div>
+
       <ErrorNote message={error} />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <label className="flex flex-col gap-[6px]">
-          <span className="text-[13px] font-medium text-vehicsim-muted">Dựa trên</span>
+
+      {/* 3 trường cấu hình cơ sở */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <label className="flex flex-col gap-2">
+          <span className="text-[14px] font-bold text-vehicsim-ink">Dựa trên</span>
           <select
             aria-label="Chọn phiên bản gốc"
             value={parentId}
@@ -113,7 +128,7 @@ export function CandidateForm({
               setParentId(Number(e.target.value));
               setValues({});
             }}
-            className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-[14px] text-[14px] text-vehicsim-ink"
+            className="h-11 rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3.5 text-[14.5px] font-semibold text-vehicsim-ink focus:border-vehicsim-primary focus:outline-none focus:ring-2 focus:ring-vehicsim-primary/20"
           >
             {parents.map((v) => (
               <option key={v.id} value={v.id}>
@@ -122,102 +137,147 @@ export function CandidateForm({
             ))}
           </select>
         </label>
-        <Input label="Nhãn (không bắt buộc, mặc định v{n})" value={label} onChange={setLabel} placeholder="vd. v1.1" />
-        <Input label="Ghi chú (không bắt buộc)" value={notes} onChange={setNotes} placeholder="vd. phanh sớm hơn khi người đi bộ lao ra" />
+
+        <label className="flex flex-col gap-2">
+          <span className="text-[14px] font-bold text-vehicsim-ink">
+            Nhãn <span className="font-normal text-[13px] text-vehicsim-muted">(không bắt buộc, mặc định v&#123;n&#125;)</span>
+          </span>
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="vd. v1.1"
+            className="h-11 rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3.5 text-[14.5px] font-medium text-vehicsim-ink placeholder:text-vehicsim-faint focus:border-vehicsim-primary focus:outline-none focus:ring-2 focus:ring-vehicsim-primary/20"
+          />
+        </label>
+
+        <label className="flex flex-col gap-2">
+          <span className="text-[14px] font-bold text-vehicsim-ink">
+            Ghi chú <span className="font-normal text-[13px] text-vehicsim-muted">(không bắt buộc)</span>
+          </span>
+          <input
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="vd. phanh sớm hơn khi người đi bộ lao ra"
+            className="h-11 rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3.5 text-[14.5px] font-medium text-vehicsim-ink placeholder:text-vehicsim-faint focus:border-vehicsim-primary focus:outline-none focus:ring-2 focus:ring-vehicsim-primary/20"
+          />
+        </label>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {CATEGORY_ORDER.map((cat) => {
-          const params = parameters.filter((p) => p.category === cat);
-          if (!params.length) return null;
+      {/* Lưới 4 tham số AEB: 2x2 cân đối, chữ lớn, rõ ràng */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {orderedParameters.map((p) => {
+          const isChanged = changed.includes(p);
+          const isInvalid = invalid.includes(p);
+          const numVal = parseVal(current(p));
+          const cat = p.category;
+          const catStyle = CLASS_STYLE[cat] ?? { label: cat, cls: "bg-slate-100 text-slate-800" };
+          const baseVal = parent.parameters[p.code];
+
           return (
-            <div key={cat} className="flex flex-col gap-3 rounded-[16px] border border-solid border-vehicsim-line p-4">
-              <span className={cx("w-fit rounded-full px-[10px] py-[4px] text-[11px] font-semibold", CLASS_STYLE[cat].cls)}>
-                {CLASS_STYLE[cat].label}
-              </span>
-              {params.map((p) => {
-                const isChanged = changed.includes(p);
-                const isInvalid = invalid.includes(p);
-                const numVal = parseVal(current(p));
-                return (
-                  <div key={p.code} className="flex flex-col gap-1 rounded-xl bg-vehicsim-soft/50 p-2.5">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="text-[13.5px] font-bold text-vehicsim-ink">{p.name}</span>
-                        <span className="text-[11.5px] text-vehicsim-muted">
-                          Phạm vi: <strong className="text-vehicsim-ink">{p.min_value} – {p.max_value}</strong> {p.unit === "ratio" ? "" : p.unit}
-                        </span>
-                      </span>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <input
-                          type="number"
-                          min={p.min_value}
-                          max={p.max_value}
-                          step={stepFor(p)}
-                          value={current(p)}
-                          aria-label={p.name}
-                          onChange={(e) => handleInputChange(p, e.target.value)}
-                          onBlur={() => handleBlur(p)}
-                          className={cx(
-                            "h-9 w-[110px] rounded-[10px] border border-solid px-3 text-right text-[13.5px] font-bold focus:outline-none focus:ring-2",
-                            isInvalid
-                              ? "border-vehicsim-danger bg-red-50 text-vehicsim-danger focus:ring-red-400"
-                              : isChanged
-                              ? "border-vehicsim-decision bg-vehicsim-decision-bg text-vehicsim-decision focus:ring-vehicsim-decision"
-                              : "border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-ink focus:ring-vehicsim-line-strong",
-                          )}
-                        />
-                      </div>
-                    </div>
-                    {isInvalid && (
-                      <span className="text-[11px] font-semibold text-vehicsim-danger">
-                        {current(p).trim() === "" || Number.isNaN(numVal)
-                          ? "Vui lòng nhập giá trị số hợp lệ"
-                          : `Giá trị phải nằm trong khoảng ${p.min_value} đến ${p.max_value} ${p.unit === "ratio" ? "" : p.unit}`}
-                      </span>
+            <div
+              key={p.code}
+              className={cx(
+                "flex flex-col justify-between gap-4 rounded-2xl border border-solid p-5 transition shadow-2xs",
+                isChanged
+                  ? "border-vehicsim-decision/60 bg-vehicsim-decision-bg/30"
+                  : "border-vehicsim-line bg-vehicsim-surface hover:border-vehicsim-line-strong"
+              )}
+            >
+              {/* Header card: Nhóm phân loại + Trạng thái đổi */}
+              <div className="flex items-center justify-between gap-2">
+                <span className={cx("rounded-full px-2.5 py-0.5 text-[11.5px] font-bold", catStyle.cls)}>
+                  {catStyle.label}
+                </span>
+                {isChanged ? (
+                  <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11.5px] font-bold text-emerald-700 dark:text-emerald-400">
+                    Đã đổi (gốc: {baseVal})
+                  </span>
+                ) : (
+                  <span className="text-[12px] font-medium text-vehicsim-faint">
+                    Gốc: {baseVal} {p.unit === "ratio" ? "" : p.unit}
+                  </span>
+                )}
+              </div>
+
+              {/* Thông tin tham số & Giải thích */}
+              <div>
+                <h3 className="text-[16px] font-black text-vehicsim-ink">
+                  {p.name}
+                </h3>
+                {PARAM_DESC[p.code] && (
+                  <p className="mt-1 text-[12.5px] font-medium leading-relaxed text-vehicsim-muted">
+                    {PARAM_DESC[p.code]}
+                  </p>
+                )}
+              </div>
+
+              {/* Dải giá trị và Ô nhập liệu */}
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line/70 pt-3">
+                <div className="flex flex-col text-[13px] text-vehicsim-muted">
+                  <span>Phạm vi:</span>
+                  <span className="text-[14px] font-black text-vehicsim-ink">
+                    {p.min_value} – {p.max_value} {p.unit === "ratio" ? "" : p.unit}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={p.min_value}
+                    max={p.max_value}
+                    step={stepFor(p)}
+                    value={current(p)}
+                    aria-label={p.name}
+                    onChange={(e) => handleInputChange(p, e.target.value)}
+                    onBlur={() => handleBlur(p)}
+                    className={cx(
+                      "h-11 w-32 rounded-xl border border-solid px-3.5 text-right text-[17px] font-black tracking-tight focus:outline-none focus:ring-2",
+                      isInvalid
+                        ? "border-vehicsim-danger bg-red-50 dark:bg-red-950/30 text-vehicsim-danger focus:ring-red-400"
+                        : isChanged
+                        ? "border-vehicsim-decision bg-vehicsim-surface text-vehicsim-decision focus:ring-vehicsim-decision"
+                        : "border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-ink focus:border-vehicsim-primary focus:ring-vehicsim-primary/20",
                     )}
-                  </div>
-                );
-              })}
+                  />
+                  <span className="w-10 text-[13.5px] font-bold text-vehicsim-muted">
+                    {p.unit === "ratio" ? "" : p.unit}
+                  </span>
+                </div>
+              </div>
+
+              {/* Cảnh báo lỗi phạm vi */}
+              {isInvalid && (
+                <div className="rounded-lg bg-red-500/10 px-3 py-1.5 text-[12px] font-semibold text-vehicsim-danger">
+                  {current(p).trim() === "" || Number.isNaN(numVal)
+                    ? "Vui lòng nhập giá trị số hợp lệ"
+                    : `Giá trị phải nằm trong khoảng ${p.min_value} đến ${p.max_value} ${p.unit === "ratio" ? "" : p.unit}`}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      <div className="flex items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-4">
-        <p className="text-[12px] text-vehicsim-muted">
-          {isExperiencer
-            ? "Ứng viên mới chưa ảnh hưởng bản cơ sở cho tới khi qua kiểm thử hồi quy và bạn chọn dùng nó làm baseline."
-            : "Ứng viên mới chưa ảnh hưởng bản cơ sở cho tới khi qua kiểm thử hồi quy và được kỹ sư chấp nhận."}
-        </p>
-        <PillButton variant="dark" onClick={submit} disabled={busy || changed.length === 0 || invalid.length > 0}>
-          {busy ? "Đang tạo…" : "Tạo ứng viên"}
+      {/* Footer bar: Tóm tắt & Nút Tạo ứng viên */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-5">
+        <span className="text-[13px] font-medium text-vehicsim-muted">
+          {changed.length > 0 ? (
+            <>
+              Đang chỉnh sửa <strong className="font-bold text-vehicsim-ink">{changed.length}</strong> tham số so với AEB {parent.label}.
+            </>
+          ) : (
+            <>Chưa có tham số nào thay đổi so với bản gốc.</>
+          )}
+        </span>
+        <PillButton
+          variant="dark"
+          className="px-6 py-2.5 text-[14px] font-bold"
+          onClick={submit}
+          disabled={busy || changed.length === 0 || invalid.length > 0}
+        >
+          {busy ? "Đang tạo ứng viên…" : "Tạo ứng viên"}
         </PillButton>
       </div>
     </section>
-  );
-}
-
-function Input({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label className="flex flex-col gap-[6px]">
-      <span className="text-[13px] font-medium text-vehicsim-muted">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
-      />
-    </label>
   );
 }
