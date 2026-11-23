@@ -239,6 +239,9 @@ function NavGroups({ groups }: { groups: Group[] }) {
 
 function TeamNav({ role }: { role: string }) {
   const [personal, setPersonal] = useState(0);
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const verifyEvidence = isVerifyEvidence(pathname, search.get("returnTo"));
 
   useEffect(() => {
     vehicsimApi
@@ -256,6 +259,8 @@ function TeamNav({ role }: { role: string }) {
     label: title,
     icon: <StepStatusIcon status="TODO" n={n} size="sm" />,
     children: stepLinks[key],
+    // Cùng luật với thanh bước (stepOfPath): bằng chứng mở từ trang kiểm chứng thuộc bước ⑤.
+    active: verifyEvidence ? key === "VERIFY" : undefined,
   }));
   const navigation = team ? [
     ...groups.filter((g) => g.key === "dashboard"),

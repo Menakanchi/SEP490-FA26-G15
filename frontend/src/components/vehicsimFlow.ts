@@ -15,6 +15,7 @@ export function teamJourneyLinks(reviewer: boolean): Record<JourneyStepKey, { la
     IMPROVE: [{ label: "Phiên bản AEB", href: "/aeb" }],
     VERIFY: [
       { label: "Kiểm thử hồi quy", href: "/validation/regression" },
+      { label: "Tạo kiểm thử", href: "/validation/regression/new" },
       { label: "Khuyến nghị", href: "/validation/recommendations" },
       { label: "Lịch sử quyết định", href: "/validation/decisions" },
     ],
