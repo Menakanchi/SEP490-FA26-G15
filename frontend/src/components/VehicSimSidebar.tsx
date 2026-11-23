@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { cx } from "@/components/VehicSimUi";
 import { MEMBER_ROLES, WORKSPACE_ROLES } from "@/components/workspaceAccess";
-import { JOURNEY_STEPS, stepSummary, statusOf } from "@/components/project/journey";
+import { JOURNEY_STEPS, isVerifyEvidence, stepSummary, statusOf } from "@/components/project/journey";
 import { useJourney } from "@/components/project/ProjectJourneyContext";
 import { ProjectSwitcher } from "@/components/project/ProjectShell";
 import { PROJECT_CONTEXT_CLASS, ProjectIdentity, StepStatusIcon } from "@/components/project/ProjectUi";
@@ -164,7 +164,8 @@ function NavGroups({ groups }: { groups: Group[] }) {
     <nav aria-label="Điều hướng VehicSim" className="flex flex-col gap-0.5">
       {groups.map((g) => {
         const here = g.active ?? (!!g.prefix && (g.exact ? pathname === g.prefix : pathname.startsWith(g.prefix)));
-        const expanded = here || (!!best && !!g.children?.includes(best));
+        // `active: false` tường minh (vd. bằng chứng mở từ bước ⑤) không để nhóm khác mở theo đường dẫn con.
+        const expanded = g.active === false ? false : here || (!!best && !!g.children?.includes(best));
         const header = (
           <span
             className={`flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 ${expanded ? "bg-vehicsim-primary-bg" : ""} ${
@@ -294,6 +295,8 @@ function TeamProjectContext({ reviewer }: { reviewer: boolean }) {
 
 function ExperiencerNav() {
   const pathname = usePathname();
+  const search = useSearchParams();
+  const verifyEvidence = isVerifyEvidence(pathname, search.get("returnTo"));
   const { ctx } = useVehicSimContext();
   const { journey } = useJourney();
   const id = ctx?.project.id ?? null;
@@ -327,7 +330,7 @@ function ExperiencerNav() {
     step("RESULTS", 3, "Xem kết quả", [
       { label: "Tóm tắt kết quả", href: `${home}/results` },
       { label: "Phân tích chi tiết", href: "/analysis/failures" },
-    ]),
+    ], verifyEvidence ? false : undefined),
     step("IMPROVE", 4, "Cải tiến AEB", [
       { label: "Chọn cách cải tiến", href: `${home}/improve` },
       { label: "Tối ưu tự động (MOBO)", href: "/aeb" },
@@ -338,7 +341,7 @@ function ExperiencerNav() {
       { label: "Kiểm thử hồi quy", href: "/validation/regression" },
       { label: "Tạo kiểm thử", href: "/validation/regression/new" },
       ...(last === null ? [] : [{ label: "Kết luận vòng", href: `${home}/rounds/${last}` }]),
-    ], pathname.startsWith(`${home}/rounds/`) || undefined),
+    ], pathname.startsWith(`${home}/rounds/`) || verifyEvidence || undefined),
     ...common,
     { key: "settings", label: "Cài đặt project", icon: lucideIcon(Settings), href: `${home}/settings`, active: pathname === `${home}/settings` },
   ];
