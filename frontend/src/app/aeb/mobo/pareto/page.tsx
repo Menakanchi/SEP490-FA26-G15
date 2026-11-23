@@ -8,6 +8,7 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { EmptyState, ErrorNote, Pagination, PillButton } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
+import { VehicSimSelect } from "@/components/VehicSimSelect";
 
 export default function AebMoboParetoPage() {
   const router = useRouter();
@@ -124,22 +125,20 @@ export default function AebMoboParetoPage() {
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
         <div className="flex items-center gap-3">
           <label className="text-[13px] font-bold text-vehicsim-ink">Chọn đợt tối ưu hoá:</label>
-          <select
+          <VehicSimSelect
             aria-label="Chọn đợt tối ưu hoá"
-            value={selectedRunId ?? ""}
-            onChange={(e) => {
-              const newId = Number(e.target.value);
+            value={selectedRunId}
+            onChange={(newId) => {
               setSelectedRunId(newId);
               router.replace(`/aeb/mobo/pareto?run_id=${newId}`);
             }}
-            className="h-10 rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-bold text-vehicsim-ink"
-          >
-            {(runs ?? []).map((r) => (
-              <option key={r.id} value={r.id}>
-                Run #{r.id} · {r.name} ({r.pareto_count} nghiệm Pareto)
-              </option>
-            ))}
-          </select>
+            options={(runs ?? []).map((r) => ({
+              value: r.id,
+              label: `Run #${r.id} · ${r.name}`,
+              sublabel: `${r.pareto_count} nghiệm Pareto`,
+            }))}
+            className="w-auto min-w-[320px] max-w-md"
+          />
         </div>
 
         {activeRun && (

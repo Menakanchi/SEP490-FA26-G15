@@ -8,6 +8,7 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, ErrorNote, PillButton, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
+import { VehicSimSelect } from "@/components/VehicSimSelect";
 import { KEY_PARAMS, STATUS_LABEL, STATUS_TONE } from "@/components/aeb/aebTypes";
 
 export default function AebComparePage() {
@@ -111,18 +112,16 @@ export default function AebComparePage() {
               </span>
               {versionA && <Tag tone={STATUS_TONE[versionA.status]}>{STATUS_LABEL[versionA.status]}</Tag>}
             </div>
-            <select
+            <VehicSimSelect
               aria-label="Chọn Phiên bản Mốc chuẩn (A)"
-              value={idA ?? ""}
-              onChange={(e) => pickA(Number(e.target.value))}
-              className="h-10 rounded-[10px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-bold text-vehicsim-ink"
-            >
-              {(versions ?? []).map((v) => (
-                <option key={v.id} value={v.id}>
-                  AEB {v.label} · {STATUS_LABEL[v.status]} ({v.source === "OPTIMIZATION" ? "MOBO" : "Thủ công"})
-                </option>
-              ))}
-            </select>
+              value={idA}
+              onChange={(newVal) => pickA(Number(newVal))}
+              options={(versions ?? []).map((v) => ({
+                value: v.id,
+                label: `AEB ${v.label}`,
+                sublabel: `${STATUS_LABEL[v.status]} (${v.source === "OPTIMIZATION" ? "MOBO" : "Thủ công"})`,
+              }))}
+            />
             {versionA && (
               <p className="text-[12px] text-vehicsim-muted">
                 {versionA.notes ? `Ghi chú: ${versionA.notes}` : "Không có ghi chú"} · Tạo ngày {fmt.date(versionA.created_at)}
@@ -138,18 +137,16 @@ export default function AebComparePage() {
               </span>
               {versionB && <Tag tone={STATUS_TONE[versionB.status]}>{STATUS_LABEL[versionB.status]}</Tag>}
             </div>
-            <select
+            <VehicSimSelect
               aria-label="Chọn Phiên bản So sánh (B)"
-              value={idB ?? ""}
-              onChange={(e) => pickB(Number(e.target.value))}
-              className="h-10 rounded-[10px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-bold text-vehicsim-ink"
-            >
-              {(versions ?? []).map((v) => (
-                <option key={v.id} value={v.id}>
-                  AEB {v.label} · {STATUS_LABEL[v.status]} ({v.source === "OPTIMIZATION" ? "MOBO" : "Thủ công"})
-                </option>
-              ))}
-            </select>
+              value={idB}
+              onChange={(newVal) => pickB(Number(newVal))}
+              options={(versions ?? []).map((v) => ({
+                value: v.id,
+                label: `AEB ${v.label}`,
+                sublabel: `${STATUS_LABEL[v.status]} (${v.source === "OPTIMIZATION" ? "MOBO" : "Thủ công"})`,
+              }))}
+            />
             {versionB && (
               <p className="text-[12px] text-vehicsim-muted">
                 {versionB.notes ? `Ghi chú: ${versionB.notes}` : "Không có ghi chú"} · Tạo ngày {fmt.date(versionB.created_at)}

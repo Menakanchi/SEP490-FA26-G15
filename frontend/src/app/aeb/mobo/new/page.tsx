@@ -8,6 +8,7 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { CarlaStatus } from "@/types/vehicsim";
+import { VehicSimSelect } from "@/components/VehicSimSelect";
 
 export default function AebMoboNewPage() {
   const router = useRouter();
@@ -98,22 +99,21 @@ export default function AebMoboNewPage() {
 
         <form onSubmit={handleStartOptimization} className="flex flex-col gap-6">
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
-            <label className="flex flex-col gap-2">
-              <span className="text-[13px] font-bold text-vehicsim-ink">Kịch bản kiểm thử</span>
-              <select
+            <div className="flex flex-col gap-2">
+              <label htmlFor="select-scenario" className="text-[13px] font-bold text-vehicsim-ink">Kịch bản kiểm thử</label>
+              <VehicSimSelect
+                id="select-scenario"
                 aria-label="Kịch bản kiểm thử"
                 value={scenarioId}
-                onChange={(e) => setSelectedScenarioId(e.target.value ? Number(e.target.value) : "")}
-                className="h-[44px] rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3.5 text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-primary"
-              >
-                {(ctx?.families ?? []).length === 0 && <option value="">Chưa có kịch bản</option>}
-                {(ctx?.families ?? []).map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.code} · {f.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                onChange={(val) => setSelectedScenarioId(val ? Number(val) : "")}
+                options={(ctx?.families ?? []).map((f) => ({
+                  value: f.id,
+                  label: `${f.code} · ${f.name}`,
+                }))}
+                placeholder="Chọn kịch bản…"
+                buttonClassName="h-[44px]"
+              />
+            </div>
 
             <label className="flex flex-col gap-2">
               <span className="text-[13px] font-bold text-vehicsim-ink">Tên đợt chạy</span>

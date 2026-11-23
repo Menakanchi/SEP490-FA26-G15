@@ -7,6 +7,7 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
+import { VehicSimSelect } from "@/components/VehicSimSelect";
 
 export default function AebMoboTrialsPage() {
   const router = useRouter();
@@ -82,22 +83,20 @@ export default function AebMoboTrialsPage() {
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <label className="text-[13px] font-bold text-vehicsim-ink">Đợt chạy:</label>
-            <select
+            <VehicSimSelect
               aria-label="Chọn đợt tối ưu hoá"
-              value={selectedRunId ?? ""}
-              onChange={(e) => {
-                const newId = Number(e.target.value);
+              value={selectedRunId}
+              onChange={(newId) => {
                 setSelectedRunId(newId);
                 router.replace(`/aeb/mobo/trials?run_id=${newId}`);
               }}
-              className="h-10 rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-bold text-vehicsim-ink"
-            >
-              {(runs ?? []).map((r) => (
-                <option key={r.id} value={r.id}>
-                  Run #{r.id} · {r.name} ({r.completed_trials} trials)
-                </option>
-              ))}
-            </select>
+              options={(runs ?? []).map((r) => ({
+                value: r.id,
+                label: `Run #${r.id} · ${r.name}`,
+                sublabel: `${r.completed_trials} trials`,
+              }))}
+              className="w-auto min-w-[320px] max-w-md"
+            />
           </div>
 
           <div className="flex items-center rounded-lg border border-solid border-vehicsim-line p-1 bg-vehicsim-soft">

@@ -7,7 +7,7 @@ import { Pencil, Play, X } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { FamilyForm } from "@/components/FamilyForm";
-import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx, fmt, simulatorLabel, TableScroll } from "@/components/VehicSimUi";
+import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx, fmt, simulatorLabel, TableScroll, VehicSimSelect } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { ActiveFamilyRun, FamilyItem, FamilyVariantList, FamilyVersion, RiskLabel, TimeOfDay, Weather } from "@/types/vehicsim";
@@ -558,17 +558,19 @@ function VariantLabels({
                     {v.manual ? " · sửa tay" : ""}
                   </Tag>
                 </span>
-                <select
+                <VehicSimSelect
+                  aria-label={`Nhãn biến thể #${index + 1}`}
                   value={v.manual ? v.risk_label : "AUTO"}
                   disabled={!canWrite || busy !== null}
-                  onChange={(e) => onChange(v.scenario_version_id, e.target.value as RiskLabel | "AUTO")}
-                  aria-label={`Nhãn biến thể #${index + 1}`}
-                  className="w-[170px] rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-[5px] text-[12px] text-vehicsim-ink disabled:opacity-50"
-                >
-                  <option value="AUTO">Tự suy ({RISK[v.auto_label].label.toLowerCase()})</option>
-                  <option value="DANGEROUS">Nguy hiểm</option>
-                  <option value="SAFE">An toàn</option>
-                </select>
+                  onChange={(val) => onChange(v.scenario_version_id, val as RiskLabel | "AUTO")}
+                  options={[
+                    { value: "AUTO", label: `Tự suy (${RISK[v.auto_label].label.toLowerCase()})` },
+                    { value: "DANGEROUS", label: "Nguy hiểm" },
+                    { value: "SAFE", label: "An toàn" },
+                  ]}
+                  buttonClassName="h-8 rounded-full px-2.5 text-[12px]"
+                  className="w-[170px]"
+                />
               </div>
             );
           })}

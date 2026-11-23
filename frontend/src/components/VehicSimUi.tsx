@@ -8,6 +8,7 @@
 import React from "react";
 import Link from "next/link";
 import type { FailureClass, Outcome, OutcomeKey, RecommendationStatus, RegressionStatus } from "@/types/vehicsim";
+import { VehicSimSelect, type SelectOption } from "./VehicSimSelect";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -230,25 +231,20 @@ export function FilterSelect<T extends string>({
   options: { value: T; label: string }[];
   onChange: (value: T | "") => void;
 }) {
+  const allOptions: SelectOption<T | "">[] = [
+    { value: "", label: `${label}: Tất cả` },
+    ...options.map((o) => ({ value: o.value, label: `${label}: ${o.label}` })),
+  ];
+
   return (
-    <label className="relative inline-flex items-center rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-[6px] text-[12px] font-medium text-vehicsim-ink hover:bg-vehicsim-soft">
-      <span>
-        {label}: {options.find((o) => o.value === value)?.label ?? "Tất cả"} ▾
-      </span>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value as T | "")}
-        className="absolute inset-0 cursor-pointer opacity-0"
-      >
-        <option value="">Tất cả</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <VehicSimSelect
+      aria-label={label}
+      value={value}
+      onChange={(v) => onChange(v as T | "")}
+      options={allOptions}
+      buttonClassName="h-8 rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-3 text-[12px] font-medium text-vehicsim-ink hover:bg-vehicsim-soft"
+      className="w-auto min-w-[140px]"
+    />
   );
 }
 
@@ -394,3 +390,6 @@ export function paramValue(value: number | undefined, unit: string): string {
   const u = unit === "ratio" ? "" : unit === "m/s2" ? " m/s²" : unit === "m/s3" ? " m/s³" : ` ${unit}`;
   return `${fmt.num(value)}${u}`;
 }
+
+export { VehicSimSelect } from "./VehicSimSelect";
+export type { SelectOption } from "./VehicSimSelect";

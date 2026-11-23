@@ -23,6 +23,7 @@ import {
 } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
+import { VehicSimSelect } from "@/components/VehicSimSelect";
 
 export default function AebMoboStudioPage() {
   const router = useRouter();
@@ -247,22 +248,20 @@ export default function AebMoboStudioPage() {
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-solid border-vehicsim-line pb-4">
           <div className="flex flex-wrap items-center gap-3">
             <label className="text-[13px] font-bold text-vehicsim-ink">Đợt tối ưu hoá:</label>
-            <select
+            <VehicSimSelect
               aria-label="Chọn đợt tối ưu hoá"
-              value={selectedRunId ?? ""}
-              onChange={(e) => {
-                const newId = Number(e.target.value);
+              value={selectedRunId}
+              onChange={(newId) => {
                 setSelectedRunId(newId);
                 router.replace(`/aeb/mobo?run_id=${newId}`);
               }}
-              className="h-10 min-w-[260px] rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[13.5px] font-bold text-vehicsim-ink shadow-xs"
-            >
-              {(runs ?? []).map((r) => (
-                <option key={r.id} value={r.id}>
-                  Run #{r.id} · {r.name} ({r.pareto_count} nghiệm Pareto) — {r.status}
-                </option>
-              ))}
-            </select>
+              options={(runs ?? []).map((r) => ({
+                value: r.id,
+                label: `Run #${r.id} · ${r.name}`,
+                sublabel: `${r.pareto_count} nghiệm Pareto — ${r.status}`,
+              }))}
+              className="w-auto min-w-[320px] max-w-md"
+            />
           </div>
 
           {activeRun && (

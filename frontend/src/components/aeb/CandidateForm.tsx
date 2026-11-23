@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { CLASS_STYLE, ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion, ParameterDef } from "@/types/vehicsim";
+import { VehicSimSelect } from "@/components/VehicSimSelect";
 import { KEY_PARAMS, STATUS_LABEL } from "./aebTypes";
 
 function stepFor(p: ParameterDef): string {
@@ -110,24 +111,26 @@ export function CandidateForm({
 
       {/* 3 trường cấu hình cơ sở */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-bold text-vehicsim-ink">Dựa trên</span>
-          <select
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="select-parent-aeb" className="text-[13px] font-bold text-vehicsim-ink">
+            Dựa trên
+          </label>
+          <VehicSimSelect
+            id="select-parent-aeb"
             aria-label="Chọn phiên bản gốc"
             value={parentId}
-            onChange={(e) => {
-              setParentId(Number(e.target.value));
+            onChange={(newVal) => {
+              setParentId(Number(newVal));
               setValues({});
             }}
-            className="h-9 rounded-lg border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[13.5px] font-semibold text-vehicsim-ink focus:border-vehicsim-primary focus:outline-none focus:ring-2 focus:ring-vehicsim-primary/20"
-          >
-            {parents.map((v) => (
-              <option key={v.id} value={v.id}>
-                AEB {v.label} · {STATUS_LABEL[v.status]}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={parents.map((v) => ({
+              value: v.id,
+              label: `AEB ${v.label}`,
+              sublabel: STATUS_LABEL[v.status],
+            }))}
+            buttonClassName="h-9 rounded-lg"
+          />
+        </div>
 
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-bold text-vehicsim-ink">
