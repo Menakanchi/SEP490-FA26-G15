@@ -43,6 +43,11 @@ public final class XoscExport {
      * trong file vẫn là khoảng kích hoạt của biến thể (bộ động học), chỉ {@code DistanceCondition} đổi.
      */
     static final double CARLA_WALKER_START_LEAD_S = 0.34;
+    /**
+     * Từ v15 (ADR-062) bộ động học 1.4 cũng cho người tăng tốc dần như CARLA, nên bỏ khởi hành sớm: {@code DistanceCondition} = khoảng kích hoạt + nửa xe như
+     * trước v8. {@link #CARLA_WALKER_START_LEAD_S} chỉ còn mô tả file v8–v14 đã xuất.
+     */
+    static final double CURRENT_WALKER_START_LEAD_S = 0.0;
 
     private XoscExport() {
     }
@@ -104,7 +109,7 @@ public final class XoscExport {
 
     /** Giá trị {@code DistanceCondition} (tâm xe tới điểm băng ngang, m): khoảng kích hoạt + nửa xe + quãng xe đi trong 0,34 s khởi động của người. */
     static double walkerTriggerDistance(CrossingCase c, VehicleSpec vehicle) {
-        return c.triggerDistanceM() + vehicle.lengthM() / 2 + c.egoSpeedKmh() / 3.6 * CARLA_WALKER_START_LEAD_S;
+        return c.triggerDistanceM() + vehicle.lengthM() / 2 + c.egoSpeedKmh() / 3.6 * CURRENT_WALKER_START_LEAD_S;
     }
 
     private static String valueText(Object value) {

@@ -73,7 +73,7 @@ class SimulatorBehaviorTest {
     @Test
     void nightHeavyRainPerceptionFailureHasNoTunableParameterToBlame() {
         // Ngưỡng phát hiện là hằng số của lõi (ADR-040): khâu Perception hỏng thì không có tham số AEB nào để chỉnh.
-        Evaluation.Result ev = Evaluation.evaluate(Simulator.simulate(c(50, 30, 1.5, false, "HEAVY_RAIN", "NIGHT"), AebParams.DEFAULT, 5), AebParams.DEFAULT);
+        Evaluation.Result ev = Evaluation.evaluate(Simulator.simulate(c(20, 5, 1.5, false, "HEAVY_RAIN", "NIGHT"), AebParams.DEFAULT, 3), AebParams.DEFAULT);
         assertThat(ev.primaryStage()).isNotNull();
         assertThat(ev.primaryStage().stage()).isEqualTo("PERCEPTION");
         assertThat(ev.primaryStage().parameterCode()).isNull();
@@ -83,7 +83,7 @@ class SimulatorBehaviorTest {
     @ValueSource(doubles = {20.0, 35.0, 50.0, 100.0})
     void buildUpRateAboveTheJerkCapChangesNothing(double buildUp) {
         // Biên mới [5, 20] (migration 008): trên 20 tốc độ tăng lực phanh bị chặn ở JERK_LIMIT nên run cũ (mặc định 50) ≡ 20.
-        CrossingCase c = c(60, 25, 1.5);
+        CrossingCase c = c(50, 20, 3.0);
         SimulationOutcome a = Simulator.simulate(c, new AebParams(1.5, 0.15, 8.0, 20.0), 3);
         SimulationOutcome b = Simulator.simulate(c, new AebParams(1.5, 0.15, 8.0, buildUp), 3);
         assertThat(b.frames()).isEqualTo(a.frames());
@@ -92,7 +92,8 @@ class SimulatorBehaviorTest {
 
     @Test
     void buildUpRateBelowTheCapDoesChangeTheBraking() {
-        CrossingCase c = c(60, 25, 1.5);
+        // Từ bộ động học 1.4 (ADR-062) người tăng tốc dần: ca 60 km/h / 25 m cũ không còn phanh, dùng 50 km/h / 20 m / 3 m/s.
+        CrossingCase c = c(50, 20, 3.0);
         SimulationOutcome soft = Simulator.simulate(c, new AebParams(1.5, 0.15, 8.0, 5.0), 3);
         SimulationOutcome hard = Simulator.simulate(c, new AebParams(1.5, 0.15, 8.0, 20.0), 3);
         assertThat(metric(soft, "max_jerk_mps3")).isLessThan(metric(hard, "max_jerk_mps3"));
@@ -101,7 +102,7 @@ class SimulatorBehaviorTest {
     @Test
     void brakePhaseObjectivesAreDefinedWheneverTheAebBrakedEvenInACollision() {
         // ADR-040: RMS jerk và quãng phanh dừng chỉ NULL khi không phanh; ca va chạm có giá trị (không bị bỏ khỏi trung bình).
-        SimulationOutcome hit = Simulator.simulate(c(60, 25, 1.5), ttc(0.8), 3);
+        SimulationOutcome hit = Simulator.simulate(c(50, 20, 3.0), ttc(0.8), 3);
         assertThat(hit.metrics().get("collision")).isEqualTo(true);
         assertThat(hit.metrics().get("brake_onset_t")).isNotNull();
         assertThat(metric(hit, "rms_jerk_mps3")).isGreaterThan(0);
@@ -158,7 +159,7 @@ class SimulatorBehaviorTest {
     void pedestrianWalkingIntoTheSideIsACollisionNeverFalseBraking(String weather) {
         // Người bước vào hông xe sau khi đầu xe qua vạch: không có ttc_gt, nhưng vẫn là va chạm. Trước 01/10/2026 ca "aeb-fired" bị chấm FALSE_BRAKING
         // và ca "aeb-silent" bị đổ cho ngưỡng TTC — lộ ra khi chạy cùng biến thể trên CARLA.
-        SimulationOutcome out = Simulator.simulate(c(50, 20, 1.5, false, weather, "DAY"), AebParams.DEFAULT, 48_001);
+        SimulationOutcome out = Simulator.simulate(c(30, 15, 1.5, false, weather, "DAY"), AebParams.DEFAULT, 48_005);
         assertThat(out.metrics().get("collision")).isEqualTo(true);
         assertThat(out.metrics().get("pedestrian_entered_path")).isEqualTo(false);
         assertThat(out.metrics().get("aeb_decision_t") != null).isEqualTo(weather.equals("HEAVY_RAIN"));
@@ -180,7 +181,7 @@ class SimulatorBehaviorTest {
         int newFalse = 0;
         int i = 0;
         for (double speed : new double[] {40, 50, 60, 70}) {
-            for (double dist : new double[] {20, 30, 40}) {
+            for (double dist : new double[] {30, 40, 50}) { // 1.4 (ADR-062): người tới muộn hơn ~0,34 s nên dời lưới khoảng kích hoạt
                 for (double ped : new double[] {1.5, 3.0}) {
                     for (boolean stop : new boolean[] {false, true}) {
                         CrossingCase c = c(speed, dist, ped, stop, "CLEAR", "DAY");
@@ -204,7 +205,7 @@ class SimulatorBehaviorTest {
     @Test
     void thinMarginWithEveryStagePassingIsANearMissFailure() {
         // UC-50: suýt va chạm mà không khâu nào sai vẫn hiện trong danh sách lỗi, loại NEAR_MISS.
-        Evaluation.Result ev = Evaluation.evaluate(Simulator.simulate(c(30, 10, 3.0), ttc(1.5), 104), ttc(1.5));
+        Evaluation.Result ev = Evaluation.evaluate(Simulator.simulate(c(20, 10, 1.5), ttc(1.5), 100), ttc(1.5));
         assertThat(ev.outcome()).isEqualTo(Evaluation.OUTCOME_NEAR_MISS);
         assertThat(ev.primaryStage()).isNull();
         assertThat(ev.failure()).containsEntry("failure_type", "NEAR_MISS").containsEntry("severity", "LOW");

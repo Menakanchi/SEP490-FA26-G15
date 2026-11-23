@@ -121,10 +121,10 @@ class XoscExportTest {
         assertThat(nodes(doc, "/OpenSCENARIO/Entities/ScenarioObject[@name='pedestrian']/Pedestrian").getLength()).isEqualTo(1);
         String event = "//Event[@name='StartCrossing']";
         assertThat(nodes(doc, event + "/StartTrigger//DistanceCondition").getLength()).isEqualTo(1);
-        // v8 (ADR-054): người đi bộ CARLA khởi hành sớm hơn quãng xe đi trong 0,34 s (tăng tốc dần, đo 16/11/2026); 40 km/h, kích hoạt 25 m, xe dài 4,75 m.
+        // v15 (ADR-062): bỏ khởi hành sớm của v8–v14 vì bộ động học 1.4 cũng cho người tăng tốc dần; 40 km/h, kích hoạt 25 m, xe dài 4,75 m.
         Element distance = (Element) nodes(doc, event + "/StartTrigger//DistanceCondition").item(0);
-        assertThat(Double.parseDouble(distance.getAttribute("value"))).isCloseTo(25 + 4.75 / 2 + 40 / 3.6 * 0.34, org.assertj.core.data.Offset.offset(1e-9));
-        assertThat(XoscExport.CARLA_WALKER_START_LEAD_S).isEqualTo(0.34);
+        assertThat(Double.parseDouble(distance.getAttribute("value"))).isCloseTo(25 + 4.75 / 2, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(XoscExport.CURRENT_WALKER_START_LEAD_S).isZero();
         assertThat(nodes(doc, event + "/StartTrigger//SimulationTimeCondition").getLength()).isZero();
         assertThat(nodes(doc, event + "//FollowTrajectoryAction/Trajectory/Shape/Polyline/Vertex").getLength()).isEqualTo(2);
     }
@@ -182,6 +182,9 @@ class XoscExportTest {
     @Test
     void olderFormatsStillReadWithTheirOwnIdentity() {
         Bundle.RunSpec spec = Bundle.readSpec(ir());
+        String v14 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V14_FORMAT);
+        assertThat(Xosc.profile(v14)).isEqualTo(new Xosc.Profile("-xosc14", 0.01, 0.05));
+        assertThat(Xosc.read(v14)).isEqualTo(spec);
         String v13 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V13_FORMAT);
         assertThat(Xosc.profile(v13)).isEqualTo(new Xosc.Profile("-xosc13", 0.01, 0.05));
         assertThat(Xosc.read(v13)).isEqualTo(spec);
@@ -249,7 +252,7 @@ class XoscExportTest {
     @Test
     void currentProfileIs100HzWithSensorPeriodPerception() {
         Xosc.Profile p = Xosc.profile(XoscExport.export(Bundle.readSpec(ir())));
-        assertThat(p).isEqualTo(new Xosc.Profile("-xosc14", 0.01, 0.05));
+        assertThat(p).isEqualTo(new Xosc.Profile("-xosc15", 0.01, 0.05));
     }
 
     @Test
