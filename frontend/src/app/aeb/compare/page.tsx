@@ -74,7 +74,7 @@ export default function AebComparePage() {
   return (
     <VehicSimPage
       step={4}
-      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "So sánh đối đầu" }]}
+      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "So sánh 2 phiên bản" }]}
       actions={
         <div className="flex items-center gap-2">
           {versionB?.status === "CANDIDATE" && canWrite && (
