@@ -51,7 +51,7 @@ class CarlaWebTest {
         tx = mock(TransactionTemplate.class);
         executor = mock(TaskExecutor.class);
         runs = new RunService(db, mock(Queries.class), props, executor, mock(ApplicationEventPublisher.class),
-                tx, mock(FamilyService.class));
+                tx, mock(FamilyService.class)).useCommandProbe(executable -> true);
     }
 
     @Test
@@ -149,6 +149,37 @@ class CarlaWebTest {
         assertThatThrownBy(runs::simulatorForNewRuns).isInstanceOf(Vs.InvalidRequestException.class).hasMessageContaining("carla-xosc");
         when(props.simulator()).thenReturn("carla-xosc");
         assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc15");
+    }
+
+    @Test
+    void carlaRunsAreRefusedWhenTheRunnerCommandDoesNotStart() {
+        // Windows: "python3" là file giả trong WindowsApps — có trên PATH nhưng thoát mã 9009; trước đây mọi run xếp hàng rồi FAILED.
+        java.util.List<String> probed = new java.util.ArrayList<>();
+        runs.useCommandProbe(executable -> { probed.add(executable); return false; });
+
+        assertThatThrownBy(runs::simulatorForNewRuns).isInstanceOf(Vs.InvalidRequestException.class)
+                .hasMessageContaining("\"python\"").hasMessageContaining("VEHICSIM_SIMULATOR=kinematic");
+        // Lần lỗi không được nhớ: cài Python xong là chạy được, không cần khởi động lại backend.
+        assertThatThrownBy(runs::simulatorForNewRuns).isInstanceOf(Vs.InvalidRequestException.class);
+        assertThat(probed).containsExactly("python", "python");
+    }
+
+    @Test
+    void aWorkingRunnerCommandIsProbedOnlyOnce() {
+        java.util.List<String> probed = new java.util.ArrayList<>();
+        runs.useCommandProbe(executable -> { probed.add(executable); return true; });
+
+        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc15");
+        assertThat(runs.simulatorForNewRuns()).isEqualTo("carla-0.9.16-xosc15");
+        assertThat(probed).containsExactly("python");
+    }
+
+    @Test
+    void kinematicRunsNeverProbeTheCarlaCommand() {
+        when(props.simulator()).thenReturn("kinematic");
+        runs.useCommandProbe(executable -> { throw new AssertionError("không được thử lệnh CARLA khi chạy bộ động học"); });
+
+        assertThat(runs.simulatorForNewRuns()).isEqualTo(RunService.KINEMATIC_SIMULATOR);
     }
 
     private void queuedRunWithProfileFailsBeforeLaunchingWorker(String profile, String expectedReason) {

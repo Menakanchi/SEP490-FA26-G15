@@ -82,7 +82,7 @@ class RegressionPairingTest {
             return 100L + inserts.size();
         });
         return new RunService(db, mock(Queries.class), props, mock(TaskExecutor.class), mock(ApplicationEventPublisher.class),
-                mock(TransactionTemplate.class), mock(FamilyService.class));
+                mock(TransactionTemplate.class), mock(FamilyService.class)).useCommandProbe(executable -> true);
     }
 
     private static List<Row> variant(long id) {

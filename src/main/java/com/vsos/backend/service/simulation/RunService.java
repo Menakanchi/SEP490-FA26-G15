@@ -37,6 +37,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import com.vsos.backend.common.Json;
@@ -190,7 +191,54 @@ public class RunService {
         if (isCarla(configuredSimulator()) && carlaCommand().isEmpty()) {
             throw new InvalidRequestException("VEHICSIM_SIMULATOR=carla nhưng chưa đặt VEHICSIM_CARLA_COMMAND");
         }
+        if (isCarla(configuredSimulator())) {
+            requireRunnableCarlaCommand();
+        }
         return configuredSimulator();
+    }
+
+    /** Lệnh CARLA đã chạy được một lần trên máy này; chỉ nhớ lần đạt để máy vừa cài Python không phải khởi động lại backend. */
+    private final Set<String> runnableCommands = ConcurrentHashMap.newKeySet();
+    private volatile Predicate<String> commandProbe = RunService::exitsCleanlyWithVersionFlag;
+
+    /** Test thay bước thử lệnh bằng hàm giả để không chạy tiến trình thật. */
+    public RunService useCommandProbe(Predicate<String> probe) {
+        this.commandProbe = probe;
+        return this;
+    }
+
+    /**
+     * Từ chối xếp run CARLA khi lệnh runner không chạy được, thay vì để mọi run lỗi sau khi xếp hàng.
+     * Mặc định {@code carla-xosc} dùng {@code python3}; trên Windows đó thường là file giả trong WindowsApps:
+     * có trên PATH nhưng thoát mã 9009 ("Python was not found").
+     */
+    private void requireRunnableCarlaCommand() {
+        String executable = carlaCommand().getFirst();
+        if (runnableCommands.contains(executable)) {
+            return;
+        }
+        if (!commandProbe.test(executable)) {
+            throw new InvalidRequestException("Không chạy được lệnh CARLA \"" + executable + "\" (VEHICSIM_CARLA_COMMAND). "
+                    + "Bật CARLA bằng scripts/dev-carla.ps1 -RestartBackend, hoặc đặt VEHICSIM_SIMULATOR=kinematic trong .env để chạy bộ động học");
+        }
+        runnableCommands.add(executable);
+    }
+
+    private static boolean exitsCleanlyWithVersionFlag(String executable) {
+        try {
+            Process process = new ProcessBuilder(executable, "--version").redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+            if (!process.waitFor(15, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                return false;
+            }
+            return process.exitValue() == 0;
+        } catch (IOException e) {
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     public static boolean isCarla(String simulator) {
@@ -684,6 +732,7 @@ public class RunService {
         if (!"carla-xosc".equals(props.simulator()) || carlaCommand().isEmpty()) {
             throw new InvalidRequestException("Chưa chọn chế độ OpenSCENARIO/CARLA local; chạy scripts/dev-carla.ps1 -RestartBackend trước");
         }
+        requireRunnableCarlaCommand();
         Row variant = new Row(Json.obj("id", source.lng("scenario_version_id"), "scenario_ir_json", Json.write(source.json("run_config_json"))));
         List<Long> ids = createRuns(projectId, source.lng("scenario_id"), List.of(variant), source.lng("carla_vehicle_model_id"),
                 source.lng("aeb_version_id"), userId, "EVALUATION", null, null, null, carlaSimulator(props.carlaVersion()) + XOSC_SUFFIX, source.lng("random_seed"),
