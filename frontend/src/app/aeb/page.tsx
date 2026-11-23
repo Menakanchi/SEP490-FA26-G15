@@ -106,58 +106,55 @@ export default function AebHubPage() {
       </section>
 
       {/* BƯỚC 4.2: CHỌN PHƯƠNG THỨC TẠO ỨNG VIÊN */}
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-2.5">
         <div className="flex items-center gap-2">
-          <span className="flex size-6 items-center justify-center rounded-full bg-vehicsim-primary text-xs font-bold text-white">
-            2
-          </span>
-          <h2 className="text-[16px] font-bold text-vehicsim-ink">
-            Bước 4.2 · Chọn phương pháp cải tiến tham số
+          <h2 className="text-[15px] font-bold text-vehicsim-ink">
+            Phương pháp cải tiến tham số
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {/* Card 1: MOBO */}
-          <Card className="flex flex-col justify-between gap-5 p-6 border-2 border-vehicsim-primary/30 hover:border-vehicsim-primary hover:shadow-md transition">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="flex size-11 items-center justify-center rounded-xl bg-vehicsim-decision-bg text-vehicsim-decision">
-                  <BarChart3 className="size-6" />
-                </div>
-                <span className="rounded-full bg-vehicsim-decision-bg px-2.5 py-1 text-[11px] font-extrabold text-vehicsim-decision">
-                  Khuyên dùng cho Kỹ sư
-                </span>
+          <Card className="flex items-center justify-between gap-4 p-4 border border-solid border-vehicsim-line hover:border-vehicsim-primary/50 transition">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-vehicsim-decision-bg text-vehicsim-decision">
+                <BarChart3 className="size-5" />
               </div>
-              <div>
-                <h3 className="text-[17px] font-extrabold text-vehicsim-ink">
-                  Tối ưu tự động bằng AI (MOBO / qEHVI)
-                </h3>
+              <div className="flex flex-col min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-[14.5px] font-bold text-vehicsim-ink">
+                    Tối ưu tự động bằng AI (MOBO)
+                  </h3>
+                  <span className="rounded-full bg-vehicsim-decision-bg px-2 py-0.5 text-[10.5px] font-bold text-vehicsim-decision">
+                    Khuyên dùng
+                  </span>
+                </div>
               </div>
             </div>
-            <PillButton href="/aeb/mobo" variant="dark" className="w-fit py-2 px-4 text-[13px]">
-              Vào Studio Tối ưu MOBO <ArrowRight className="size-4" />
+            <PillButton href="/aeb/mobo" variant="dark" className="shrink-0 py-1.5 px-3.5 text-[12.5px]">
+              Vào Studio MOBO <ArrowRight className="size-3.5" />
             </PillButton>
           </Card>
 
           {/* Card 2: Manual Tuning */}
-          <Card className="flex flex-col justify-between gap-5 p-6 hover:shadow-md transition">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="flex size-11 items-center justify-center rounded-xl bg-vehicsim-soft text-vehicsim-ink">
-                  <Sliders className="size-6" />
-                </div>
-                <span className="rounded-full bg-vehicsim-soft px-2.5 py-1 text-[11px] font-semibold text-vehicsim-muted">
-                  Can thiệp thủ công
-                </span>
+          <Card className="flex items-center justify-between gap-4 p-4 border border-solid border-vehicsim-line hover:border-vehicsim-primary/50 transition">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-vehicsim-soft text-vehicsim-ink">
+                <Sliders className="size-5" />
               </div>
-              <div>
-                <h3 className="text-[17px] font-extrabold text-vehicsim-ink">
-                  Hiệu chỉnh tham số thủ công
-                </h3>
+              <div className="flex flex-col min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-[14.5px] font-bold text-vehicsim-ink">
+                    Hiệu chỉnh tham số thủ công
+                  </h3>
+                  <span className="rounded-full bg-vehicsim-soft px-2 py-0.5 text-[10.5px] font-semibold text-vehicsim-muted">
+                    Chỉnh tay
+                  </span>
+                </div>
               </div>
             </div>
-            <PillButton href="/aeb/manual" variant="light" className="w-fit py-2 px-4 text-[13px]">
-              Vào màn hình chỉnh tay <ArrowRight className="size-4" />
+            <PillButton href="/aeb/manual" variant="light" className="shrink-0 py-1.5 px-3.5 text-[12.5px]">
+              Chỉnh tay <ArrowRight className="size-3.5" />
             </PillButton>
           </Card>
         </div>
