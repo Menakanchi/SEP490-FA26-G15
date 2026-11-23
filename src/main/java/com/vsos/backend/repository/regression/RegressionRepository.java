@@ -81,6 +81,15 @@ public class RegressionRepository {
                 """, Vs.now(), testId) == 1;
     }
 
+    /** Hủy test đang chạy (TD-37): chỉ đổi khi còn PENDING/RUNNING trong đúng project, nên không đè kết quả đã chốt. */
+    public boolean markCancelled(long projectId, long testId) {
+        return db.update("""
+                UPDATE regression_tests
+                   SET execution_status = 'CANCELLED', finished_at = ?
+                 WHERE id = ? AND project_id = ? AND execution_status IN ('PENDING','RUNNING')
+                """, Vs.now(), testId, projectId) == 1;
+    }
+
     public boolean markCompleted(long testId, String verdict, int scenarios, int fixed, int regressed) {
         return db.update("""
                 UPDATE regression_tests

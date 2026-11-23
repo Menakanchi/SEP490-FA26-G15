@@ -104,6 +104,17 @@ public class RegressionController {
         return ResponseEntity.status(HttpStatus.CREATED).body(new CreateRegressionResponse(id, RegressionCodes.testCode(id)));
     }
 
+    @Operation(summary = "Hủy regression test đang chạy: test sang CANCELLED (không verdict, không Accept), dừng run ứng viên của test")
+    @PostMapping("/regression/{testId}/cancel")
+    public ResponseEntity<Map<String, Object>> cancelRegression(@PathVariable long testId, @AuthenticationPrincipal UserDetails user) {
+        long uid = VehicSimAccess.requireRegressionRunner(user);
+        boolean reviewer = "REVIEWER".equals(VehicSimAccess.roleOf(user));
+        if (reviewer) requireVisible();
+        long projectId = reviewer ? projects.explicitProjectId("hủy kiểm thử hồi quy") : access.projectId();
+        access.limitWrites(uid, "regression_cancel");
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(regression.cancelTest(projectId, testId, uid));
+    }
+
     @Operation(summary = "Chi tiết một regression test")
     @GetMapping("/regression/{testId}")
     public RegressionDetailResponse getRegression(@PathVariable long testId, @AuthenticationPrincipal UserDetails user) {

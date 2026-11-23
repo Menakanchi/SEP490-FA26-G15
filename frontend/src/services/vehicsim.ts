@@ -223,6 +223,9 @@ export const vehicsimApi = {
     search_space?: Record<string, [number, number]>;
     objective_config?: Record<string, unknown>;
   }) => apiRequest<{ id: number; status: string }>("/vehicsim/optimizations", { method: "POST", body: JSON.stringify(body) }),
+  /** Hủy cả regression test đang chạy: test sang "Đã hủy" (không kết luận, không Accept), dừng các run ứng viên của test. */
+  cancelRegression: (testId: number) =>
+    apiRequest<{ test_id: number; status: "CANCELLED"; stopped: number; stopping: number }>(`/vehicsim/regression/${testId}/cancel`, { method: "POST" }),
   cancelOptimization: (id: number) =>
     apiRequest<{ id: number; status: string }>(`/vehicsim/optimizations/${id}/cancel`, { method: "POST" }),
   selectOptimizationCandidate: (runId: number, trialId: number) =>

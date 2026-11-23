@@ -386,6 +386,22 @@ class CarlaWebTest {
     }
 
     @Test
+    void cancellingARegressionStopsOnlyItsOwnActiveRunsPendingFirst() {
+        stubCancelLookup("PENDING", 5L);
+        when(db.update(anyString(), any(Object[].class))).thenReturn(1);
+        when(db.list(anyString(), any(Object[].class))).thenReturn(List.of(new Row(Json.obj("id", 41L, "status", "PENDING")),
+                new Row(Json.obj("id", 42L, "status", "PENDING"))));
+
+        Map<String, Object> reply = runs.cancelRegressionRuns(1, 5, 7);
+
+        assertThat(reply).containsEntry("stopped", 2).containsEntry("stopping", 0);
+        // Chỉ run gắn regression_test_id của test (run baseline bổ sung chạy tiếp), trong đúng project; run chờ trước run đang chạy.
+        verify(db).list(argThat((String sql) -> sql.contains("project_id = ? AND regression_test_id = ?") && sql.contains("status IN ('PENDING','RUNNING')")
+                && sql.contains("ORDER BY (status = 'RUNNING')")), eq(1L), eq(5L));
+        verify(db, times(2)).update(startsWith("UPDATE simulation_runs SET status = 'STOPPED'"), any(Object[].class));
+    }
+
+    @Test
     void activeRunsOfAFamilyOfAnotherProjectIsNotFound() {
         when(db.first(startsWith("SELECT id FROM scenarios"), any(Object[].class))).thenReturn(null);
         assertThatThrownBy(() -> runs.activeFamilyRuns(2, 3)).isInstanceOf(Vs.NotFoundException.class);

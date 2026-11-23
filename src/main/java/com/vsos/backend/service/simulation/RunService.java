@@ -709,7 +709,35 @@ public class RunService {
         if (!run.isNull("regression_test_id") || !run.isNull("optimization_trial_id")) {
             throw new InvalidRequestException("This run belongs to a regression test or optimization and cannot be cancelled on its own");
         }
-        String status = run.str("status");
+        return stopActiveRun(runId, run.str("status"), userId);
+    }
+
+    /**
+     * Dừng các run đang chờ / đang chạy của một regression test khi cả test bị hủy ({@code RegressionService#cancelTest}). Chỉ gọi sau khi test đã
+     * sang CANCELLED, để {@code tryFinalize} không chốt test từ các run còn lại. Run baseline bổ sung (không gắn {@code regression_test_id}) chạy tiếp.
+     *
+     * @return số run {@code stopped} và {@code stopping}
+     */
+    public Map<String, Object> cancelRegressionRuns(long projectId, long testId, long userId) {
+        int stopped = 0;
+        int stopping = 0;
+        for (Row r : db.list("SELECT id, status FROM simulation_runs WHERE project_id = ? AND regression_test_id = ? AND status IN ('PENDING','RUNNING') "
+                + "ORDER BY (status = 'RUNNING'), id", projectId, testId)) {
+            try {
+                if ("STOPPED".equals(stopActiveRun(r.lng("id"), r.str("status"), userId))) {
+                    stopped++;
+                } else {
+                    stopping++;
+                }
+            } catch (InvalidRequestException e) {
+                // run vừa chạy xong giữa lúc liệt kê và lúc hủy
+            }
+        }
+        return Json.obj("stopped", stopped, "stopping", stopping);
+    }
+
+    private String stopActiveRun(long runId, String currentStatus, long userId) {
+        String status = currentStatus;
         if ("PENDING".equals(status)) {
             Integer changed = tx.execute(s -> db.update(
                     "UPDATE simulation_runs SET status = 'STOPPED', error_message = ?, ended_at = ? WHERE id = ? AND status = 'PENDING'",

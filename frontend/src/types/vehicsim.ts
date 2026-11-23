@@ -5,7 +5,7 @@
 
 export type FailureClass = "PERCEPTION" | "DECISION" | "CONTROL" | "VEHICLE_DYNAMICS";
 export type Outcome = "COLLISION" | "NEAR_MISS" | "SAFE" | "FALSE_BRAKING";
-export type RegressionStatus = "PENDING" | "RUNNING" | "PASSED" | "FAILED" | "ERROR";
+export type RegressionStatus = "PENDING" | "RUNNING" | "PASSED" | "FAILED" | "ERROR" | "CANCELLED";
 export type ReviewDecision = "PENDING" | "ACCEPT" | "REJECT" | "REQUEST_MORE_TESTS";
 export type Weather = "CLEAR" | "CLOUDY" | "RAIN" | "HEAVY_RAIN" | "FOG";
 export type TimeOfDay = "DAY" | "DUSK" | "NIGHT";
