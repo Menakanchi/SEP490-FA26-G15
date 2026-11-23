@@ -131,9 +131,12 @@ public final class Evaluation {
         // Va chạm luôn là có mối nguy — kể cả khi người đi bộ bước vào HÔNG xe sau khi mũi xe đã qua vạch.
         boolean hazard = b(m, "pedestrian_entered_path") || b(m, "target_entered_path") || b(m, "collision");
         Target who = target(outcome);
-        boolean falseActivation = triggered && !hazard;
+        // AEB tắt: AEB chỉ "quyết định để ghi lại" (aeb_decision_t), không phanh. Phanh oan / không phanh / phanh trễ / nguyên nhân khâu AEB đều
+        // vô nghĩa — không chấm lỗi AEB cho một run không có AEB; chỉ chấm kết quả va chạm làm mốc đối chiếu.
+        boolean aebOff = com.vsos.core.simulation.AebMode.OFF.equals(outcome.caseDoc() == null ? null : outcome.caseDoc().get(com.vsos.core.simulation.AebMode.KEY));
+        boolean falseActivation = !aebOff && triggered && !hazard;
         Double idealT = idealTriggerT(outcome, params);
-        boolean missedActivation = hazard && idealT != null && !triggered;
+        boolean missedActivation = !aebOff && hazard && idealT != null && !triggered;
 
         String verdict = kind.equals(OUTCOME_COLLISION) || falseActivation || missedActivation ? "FAIL" : "PASS";
         Map<String, Object> aeb = new LinkedHashMap<>();
@@ -153,6 +156,18 @@ public final class Evaluation {
         aeb.put("rms_jerk_mps3", m.get("rms_jerk_mps3"));
         aeb.put("stopping_distance_m", m.get("stopping_distance_m"));
         aeb.put("verdict", verdict);
+
+        if (aebOff) {
+            aeb.put(com.vsos.core.simulation.AebMode.KEY, com.vsos.core.simulation.AebMode.OFF);
+            // AEB không tác động nên không "kích hoạt"; lúc AEB lẽ ra quyết định vẫn nằm ở metrics.aeb_decision_t và khoá dưới đây.
+            aeb.put("aeb_triggered", false);
+            aeb.put("aeb_trigger_time_s", null);
+            aeb.put("aeb_would_trigger_time_s", m.get("aeb_decision_t"));
+            String headline = kind.equals(OUTCOME_COLLISION) ? "AEB off (reference run): the ego hit the " + who.low() + " with no braking."
+                    : kind.equals(OUTCOME_NEAR_MISS) ? "AEB off (reference run): the ego passed the " + who.low() + " with a thin margin."
+                    : "AEB off (reference run): the ego passed the " + who.low() + " safely without braking.";
+            return new Result(kind, verdict, aeb, null, List.of(), headline);
+        }
 
         if (falseActivation) {
             List<StageVerdict> chain = falseActivationChain(outcome, params);
