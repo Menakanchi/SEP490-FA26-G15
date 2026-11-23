@@ -331,11 +331,6 @@ function NewRegressionForm() {
               </div>
             )}
           </div>
-          <p className="mt-2 flex gap-2 rounded-[12px] bg-vehicsim-decision-bg px-4 py-3 text-[12px] leading-[1.5] text-vehicsim-muted">
-            <span className="mt-[6px] size-[6px] shrink-0 rounded-full bg-vehicsim-decision" />
-            Ứng viên trượt một tiêu chí bắt buộc sẽ tự động {isExperiencer ? "không dùng làm baseline được" : "bị chặn khỏi khuyến nghị"}. Bản cơ sở và ứng viên luôn chạy mỗi biến thể với
-            cùng một seed ngẫu nhiên.
-          </p>
         </aside>
       </div>
     </VehicSimPage>

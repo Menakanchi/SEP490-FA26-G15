@@ -530,11 +530,11 @@ function VariantLabels({
 
   return (
     <div className="border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 py-4">
-      <p className="mb-3 text-[12px] leading-[1.5] text-vehicsim-muted">
-        Nhãn tập thử dùng để chọn dữ liệu cho tối ưu và regression (giữ đủ ca an toàn để đo phanh oan); không đổi cách chấm kết quả
-        của lượt chạy. Mặc định tự suy: người đi bộ <b>dừng ở lề</b> → an toàn, <b>băng qua làn</b> → nguy hiểm.
-        {list && !list.current && <> Đang xem bản cũ v{list.version}.</>}
-      </p>
+      {list && !list.current && (
+        <p className="mb-3 text-[12px] leading-[1.5] text-vehicsim-muted">
+          Đang xem bản cũ v{list.version}.
+        </p>
+      )}
       {!list ? (
         <p className="text-[12px] text-vehicsim-faint">Đang tải biến thể…</p>
       ) : (
@@ -607,11 +607,7 @@ function ActiveRuns({
 }) {
   return (
     <div className="border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 py-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <p className="text-[12px] leading-[1.5] text-vehicsim-muted">
-          Hủy lượt <b>đang chờ</b> thì dừng ngay; lượt <b>đang chạy</b> sẽ chuyển sang &quot;đang dừng&quot; trong lúc worker dọn CARLA. Lượt thuộc
-          regression hoặc tối ưu chỉ dừng được theo cả lượt kiểm thử / đợt tối ưu.
-        </p>
+      <div className="mb-3 flex items-center justify-end">
         <button type="button" onClick={onClose} className="shrink-0 text-[12px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink">
           Đóng
         </button>

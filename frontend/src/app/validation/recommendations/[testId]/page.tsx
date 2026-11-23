@@ -132,12 +132,6 @@ export default function RecommendationPage() {
             ) : (
               <p className="text-[14px] text-vehicsim-muted">Không phát hiện đánh đổi nào trên bộ kịch bản này.</p>
             )}
-
-            <p className="flex gap-3 rounded-[14px] bg-vehicsim-soft px-4 py-3 text-[12px] leading-[1.6] text-vehicsim-muted">
-              <span className="mt-[6px] size-[6px] shrink-0 rounded-full bg-vehicsim-faint" />
-              Khuyến nghị kỹ thuật dựa trên mô phỏng. Không chứng nhận an toàn xe và không thay thế kiểm thử vật lý.
-              Cần Người duyệt (Reviewer) duyệt trước khi phiên bản hệ thống mới trở thành bản cơ sở.
-            </p>
           </section>
 
           <div className="flex w-full shrink-0 flex-col xl:w-[330px] gap-4">

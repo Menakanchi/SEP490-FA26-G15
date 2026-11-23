@@ -35,13 +35,6 @@ export default function CarlaDataPage() {
     <VehicSimPage
       crumbs={[{ label: "Phân tích" }, { label: "Dữ liệu CARLA" }]}
     >
-      <div className="flex items-start gap-[10px] rounded-[16px] bg-vehicsim-warn-bg px-4 py-3 text-[13px] text-vehicsim-ink">
-        <span className="font-bold text-vehicsim-warn">!</span>
-        <p>
-          Hiệu chuẩn phanh CARLA phụ thuộc xe và profile; CSV chưa xác nhận calibration của run. Số đo chỉ để quan sát và đối chiếu, không dùng làm
-          bằng chứng regression. Kết quả CARLA không bao giờ được ghép với kết quả bộ động học.
-        </p>
-      </div>
       <CarlaRunnerPanel />
       <SubmitResultCard canWrite={canWrite} />
       <TelemetryCard canWrite={canWrite} />

@@ -73,13 +73,10 @@ export default function AebHubPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-[17px] font-bold text-vehicsim-ink">
-                  Bước 4.1 · Bản cơ sở hiện hành: AEB {baseline?.label ?? "..."}
+                  Bản cơ sở hiện hành: AEB {baseline?.label ?? "..."}
                 </h2>
                 <Tag tone="ok">Mốc chuẩn (Baseline)</Tag>
               </div>
-              <p className="text-[12px] text-vehicsim-muted">
-                Bộ tham số tiêu chuẩn của xe đang kiểm thử. Mọi ứng viên mới sẽ được so sánh đối đầu trực tiếp với bộ này.
-              </p>
             </div>
           </div>
           <PillButton href="/aeb/manual" variant="light" className="text-[12.5px]">
@@ -137,9 +134,6 @@ export default function AebHubPage() {
                 <h3 className="text-[17px] font-extrabold text-vehicsim-ink">
                   Tối ưu tự động bằng AI (MOBO / qEHVI)
                 </h3>
-                <p className="mt-1 text-[13px] leading-[1.5] text-vehicsim-muted">
-                  Sử dụng mô hình Gaussian Process và hàm thu thập qEHVI tự động chạy mô phỏng trên CARLA để tìm biên Pareto cân bằng tối ưu giữa RMS Jerk, tốc độ va chạm và quãng phanh.
-                </p>
               </div>
             </div>
             <PillButton href="/aeb/mobo" variant="dark" className="w-fit py-2 px-4 text-[13px]">
@@ -162,9 +156,6 @@ export default function AebHubPage() {
                 <h3 className="text-[17px] font-extrabold text-vehicsim-ink">
                   Hiệu chỉnh tham số thủ công
                 </h3>
-                <p className="mt-1 text-[13px] leading-[1.5] text-vehicsim-muted">
-                  Dành cho kỹ sư tự vi chỉnh 4 thanh trượt (TTC, trễ phanh, gia tốc cực đại, tốc độ tăng áp) dựa trên trực giác kỹ thuật và kinh nghiệm từ ca lỗi phân tích ở Bước 3.
-                </p>
               </div>
             </div>
             <PillButton href="/aeb/manual" variant="light" className="w-fit py-2 px-4 text-[13px]">

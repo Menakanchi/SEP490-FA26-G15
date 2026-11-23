@@ -219,7 +219,6 @@ export default function RegressionListPage() {
               {items.length ? `${offset + 1}–${offset + shown.length}` : "0"} trong {items.length} kiểm thử
               {data && items.length !== data.items.length && ` (lọc từ ${data.items.length})`}
             </span>
-            {" · "}Kiểm thử chạy ngay khi được tạo nên không sửa hay xoá được sau đó.
           </p>
           {pages > 1 && <Pagination page={current} pages={pages} onPage={setPage} />}
         </div>

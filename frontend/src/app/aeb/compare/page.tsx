@@ -93,9 +93,6 @@ export default function AebComparePage() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-4">
           <div>
             <h2 className="text-[16px] font-bold text-vehicsim-ink">Chọn 2 phiên bản để đối đầu</h2>
-            <p className="text-[13px] text-vehicsim-muted">
-              So sánh bộ chuẩn (Baseline) với một ứng viên (Candidate) vừa được sinh ra.
-            </p>
           </div>
           <button
             type="button"

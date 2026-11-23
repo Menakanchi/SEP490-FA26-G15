@@ -402,9 +402,6 @@ export default function AebMoboStudioPage() {
                 <h3 className="text-[15px] font-bold text-vehicsim-ink">
                   Biên Pareto Frontier ({paretoTrials?.length ?? 0} phương án tối ưu)
                 </h3>
-                <p className="text-[12px] text-vehicsim-muted">
-                  Các bộ tham số không bị thống trị trên cả 3 tiêu chí: RMS Jerk, tốc độ va chạm và quãng phanh. Bấm &quot;Chọn làm ứng viên&quot; để đối chiếu ở Bước 5.
-                </p>
               </div>
             </div>
 

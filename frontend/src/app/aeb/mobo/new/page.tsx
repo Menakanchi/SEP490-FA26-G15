@@ -91,9 +91,6 @@ export default function AebMoboNewPage() {
               <h2 className="text-[17px] font-bold text-vehicsim-ink">
                 Cấu hình tham số đợt chạy MOBO
               </h2>
-              <p className="text-[12px] text-vehicsim-muted">
-                Thuật toán Bayesian đa mục tiêu sử dụng mô hình thay thế Gaussian Process và hàm thu thập qEHVI.
-              </p>
             </div>
           </div>
           <span className="rounded-full bg-vehicsim-soft px-3 py-1 text-[12px] font-bold text-vehicsim-ink">
