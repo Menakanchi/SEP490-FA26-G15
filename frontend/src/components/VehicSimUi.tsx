@@ -242,8 +242,8 @@ export function FilterSelect<T extends string>({
       value={value}
       onChange={(v) => onChange(v as T | "")}
       options={allOptions}
-      buttonClassName="h-8 rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-3 text-[12px] font-medium text-vehicsim-ink hover:bg-vehicsim-soft"
-      className="w-auto min-w-[140px]"
+      buttonClassName="h-8.5 rounded-full border border-solid border-slate-300 bg-white px-3.5 text-[12.5px] font-semibold text-slate-700 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-950 shadow-2xs transition-colors"
+      className="w-auto min-w-[145px]"
     />
   );
 }
