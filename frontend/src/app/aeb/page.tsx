@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowRight,
   BarChart3,
+  CheckSquare,
   ShieldCheck,
   Sliders,
 } from "lucide-react";
@@ -12,12 +13,8 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import {
   Card,
-  EmptyState,
   ErrorNote,
-  Pagination,
   PillButton,
-  Tag,
-  fmt,
   paramValue,
 } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -40,11 +37,6 @@ export default function AebHubPage() {
   const candidates = versions?.filter((v) => v.status === "CANDIDATE") ?? [];
   const catalog = new Map((ctx?.parameters ?? []).map((p) => [p.code, p]));
 
-  const [candidatePage, setCandidatePage] = useState(1);
-  const CANDIDATE_PAGE_SIZE = 8;
-  const candidatePages = Math.max(1, Math.ceil(candidates.length / CANDIDATE_PAGE_SIZE));
-  const pagedCandidates = candidates.slice((candidatePage - 1) * CANDIDATE_PAGE_SIZE, candidatePage * CANDIDATE_PAGE_SIZE);
-
   return (
     <VehicSimPage
       step={4}
@@ -61,16 +53,26 @@ export default function AebHubPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
+                <span className="flex size-5 items-center justify-center rounded-full bg-vehicsim-primary text-[11px] font-bold text-white">
+                  1
+                </span>
                 <h2 className="text-[17px] font-bold text-vehicsim-ink">
-                  Bản cơ sở hiện hành: AEB {baseline?.label ?? "..."}
+                  Bước 4.1 · Bản cơ sở hiện hành (Baseline)
                 </h2>
-                <Tag tone="ok">Mốc chuẩn (Baseline)</Tag>
               </div>
+              <p className="text-[13px] text-vehicsim-muted mt-0.5">
+                Mốc tham chiếu chuẩn dùng để đối chiếu khi đánh giá ứng viên
+              </p>
             </div>
           </div>
-          <PillButton href="/aeb/manual" variant="light" className="text-[12.5px]">
-            Chỉnh sửa bộ này
-          </PillButton>
+          {baseline && (
+            <div className="flex items-center gap-2">
+              <span className="rounded-lg bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                AEB {baseline.label}
+              </span>
+              <span className="text-xs text-vehicsim-muted font-mono">ID: #{baseline.id}</span>
+            </div>
+          )}
         </div>
 
         {baseline && (
@@ -99,8 +101,11 @@ export default function AebHubPage() {
       {/* BƯỚC 4.2: CHỌN PHƯƠNG THỨC TẠO ỨNG VIÊN */}
       <section className="flex flex-col gap-2.5">
         <div className="flex items-center gap-2">
+          <span className="flex size-5 items-center justify-center rounded-full bg-vehicsim-primary text-[11px] font-bold text-white">
+            2
+          </span>
           <h2 className="text-[15px] font-bold text-vehicsim-ink">
-            Phương pháp cải tiến tham số
+            Bước 4.2 · Phương pháp cải tiến tham số
           </h2>
         </div>
 
@@ -120,28 +125,29 @@ export default function AebHubPage() {
                     Khuyên dùng
                   </span>
                 </div>
+                <p className="text-[12.5px] text-vehicsim-muted mt-0.5 truncate">
+                  Thuật toán Bayesian qEHVI tìm biên Pareto tối ưu 3 mục tiêu.
+                </p>
               </div>
             </div>
             <PillButton href="/aeb/mobo" variant="dark" className="shrink-0 py-1.5 px-3.5 text-[12.5px]">
-              Vào Studio MOBO <ArrowRight className="size-3.5" />
+              Studio MOBO <ArrowRight className="size-3.5" />
             </PillButton>
           </Card>
 
-          {/* Card 2: Manual Tuning */}
+          {/* Card 2: Chỉnh tay */}
           <Card className="flex items-center justify-between gap-4 p-4 border border-solid border-vehicsim-line hover:border-vehicsim-primary/50 transition">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-vehicsim-soft text-vehicsim-ink">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                 <Sliders className="size-5" />
               </div>
               <div className="flex flex-col min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-[14.5px] font-bold text-vehicsim-ink">
-                    Hiệu chỉnh tham số thủ công
-                  </h3>
-                  <span className="rounded-full bg-vehicsim-soft px-2 py-0.5 text-[10.5px] font-semibold text-vehicsim-muted">
-                    Chỉnh tay
-                  </span>
-                </div>
+                <h3 className="text-[14.5px] font-bold text-vehicsim-ink">
+                  Hiệu chỉnh tham số thủ công
+                </h3>
+                <p className="text-[12.5px] text-vehicsim-muted mt-0.5 truncate">
+                  Chỉnh 4 tham số AEB dựa trên tri thức chuyên gia.
+                </p>
               </div>
             </div>
             <PillButton href="/aeb/manual" variant="light" className="shrink-0 py-1.5 px-3.5 text-[12.5px]">
@@ -151,98 +157,43 @@ export default function AebHubPage() {
         </div>
       </section>
 
-      {/* BƯỚC 4.3: DANH SÁCH ỨNG VIÊN ĐANG CHỜ KIỂM CHỨNG */}
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="flex size-6 items-center justify-center rounded-full bg-vehicsim-primary text-xs font-bold text-white">
-              3
-            </span>
-            <h2 className="text-[16px] font-bold text-vehicsim-ink">
-              Bước 4.3 · Ứng viên AEB đang chờ kiểm định hồi quy ({candidates.length})
-            </h2>
+      {/* BƯỚC 4.3: QUẢN LÝ ỨNG VIÊN & KIỂM THỬ HỒI QUY */}
+      <section className="flex flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-vehicsim-primary/10 text-vehicsim-primary">
+              <CheckSquare className="size-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="flex size-5 items-center justify-center rounded-full bg-vehicsim-primary text-[11px] font-bold text-white">
+                  3
+                </span>
+                <h2 className="text-[17px] font-bold text-vehicsim-ink">
+                  Bước 4.3 · Quản lý ứng viên & Kiểm định hồi quy
+                </h2>
+              </div>
+              <p className="text-[13px] text-vehicsim-muted mt-0.5">
+                Hiện có <strong className="text-vehicsim-ink font-bold">{candidates.length} ứng viên</strong> đang chờ kiểm định (trên tổng số {versions?.length ?? 0} phiên bản đã lưu).
+              </p>
+            </div>
           </div>
-          <Link
-            href="/aeb/versions"
-            className="text-[12.5px] font-bold text-vehicsim-primary hover:underline"
-          >
-            Tra cứu tất cả các phiên bản & lịch sử →
-          </Link>
-        </div>
-
-        <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
-          {candidates.length === 0 ? (
-            <div className="p-8">
-              <EmptyState title="Chưa có ứng viên nào đang chờ kiểm định">
-                Hãy sử dụng <strong>Tối ưu tự động MOBO</strong> hoặc <strong>Chỉnh tay tham số</strong> ở Bước 4.2 để tạo ứng viên đầu tiên.
-              </EmptyState>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] text-left text-[13px]">
-                <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
-                  <tr className="h-12">
-                    <th className="w-12 px-3 py-3.5 text-center">STT</th>
-                    <th className="px-5 py-3.5">Ứng viên</th>
-                    <th className="px-4 py-3.5">TTC Threshold (s)</th>
-                    <th className="px-4 py-3.5">Brake Activation Delay (s)</th>
-                    <th className="px-4 py-3.5">Brake Build-up Rate (m/s³)</th>
-                    <th className="px-4 py-3.5">Max Deceleration (m/s²)</th>
-                    <th className="px-4 py-3.5">Thời gian tạo</th>
-                    <th className="px-5 py-3.5 text-right">Hành động tiếp theo</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
-                  {pagedCandidates.map((c, idx) => (
-                    <tr key={c.id} className="hover:bg-vehicsim-row transition-colors">
-                      <td className="w-12 px-3 py-4 text-center font-mono text-[12px] font-bold text-vehicsim-faint tabular-nums">
-                        {(candidatePage - 1) * CANDIDATE_PAGE_SIZE + idx + 1}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-vehicsim-ink">{c.label}</span>
-                          <span className="text-[11px] text-vehicsim-muted font-mono">ID: #{c.id}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 font-mono font-medium">{c.parameters?.TTC_THRESHOLD ?? "—"}</td>
-                      <td className="px-4 py-4 font-mono font-medium">{c.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
-                      <td className="px-4 py-4 font-mono font-medium">{c.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
-                      <td className="px-4 py-4 font-mono font-medium">{c.parameters?.MAX_DECELERATION ?? "—"}</td>
-                      <td className="px-4 py-4 text-[12px] text-vehicsim-muted">{fmt.date(c.created_at)}</td>
-                      <td className="px-5 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {baseline && (
-                            <Link
-                              href={`/aeb/compare?a=${baseline.id}&b=${c.id}`}
-                              className="rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition"
-                            >
-                              So sánh với Baseline
-                            </Link>
-                          )}
-                          <PillButton
-                            href={`/validation/regression/new?candidate=${c.id}`}
-                            variant="dark"
-                            className="text-[12px] py-1.5 px-3.5"
-                          >
-                            <span>Kiểm thử hồi quy (Bước 5)</span>
-                            <ArrowRight className="size-3.5" />
-                          </PillButton>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {candidatePages > 1 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
-              <span className="text-[12px] font-medium text-vehicsim-muted">
-                Hiển thị {(candidatePage - 1) * CANDIDATE_PAGE_SIZE + 1}–{Math.min(candidatePage * CANDIDATE_PAGE_SIZE, candidates.length)} trên {candidates.length} ứng viên
-              </span>
-              <Pagination page={candidatePage} pages={candidatePages} onPage={setCandidatePage} />
-            </div>
-          )}
+          <div className="flex items-center gap-2.5">
+            <Link
+              href="/aeb/compare"
+              className="rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2 text-[13px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition shadow-sm"
+            >
+              So sánh 2 phiên bản
+            </Link>
+            <PillButton
+              href="/aeb/versions"
+              variant="dark"
+              className="py-2 px-4 text-[13px] font-bold"
+            >
+              <span>Vào Thư viện phiên bản ({versions?.length ?? 0})</span>
+              <ArrowRight className="size-4" />
+            </PillButton>
+          </div>
         </div>
       </section>
     </VehicSimPage>
