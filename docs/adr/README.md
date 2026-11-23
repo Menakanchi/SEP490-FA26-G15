@@ -73,8 +73,8 @@ giữ lại). VehicSim: ADR-023 trở đi.
 | [ADR-059](ADR-059-ban-dap-theo-toc-do-3-xe.md) | `.xosc` v13 / `-xosc13`: bảng bàn đạp theo tốc độ cho Model 3 / Patrol / Sprinter (đợt 4, RMS 0,05–0,20 m/s²); bù pha tăng lực cho Model 3 | ✅ **Accepted 22/11** — chủ dự án chốt |
 | [ADR-060](ADR-060-nguong-dat-toc-do-theo-ban-dap.md) | `.xosc` v13: adapter đặt tốc độ từ điểm dừng gấp đo được theo xe và bàn đạp (e-tron phanh mạnh ~8,6 m/s thay vì 6); khôi phục khâu bù (đính chính ADR-058) | ✅ **Accepted 22/11** — chủ dự án chốt |
 | [ADR-061](ADR-061-bu-pha-tang-luc-patrol-sprinter.md) | `.xosc` v14 / `-xosc14`: bù pha tăng lực cho Patrol / Sprinter (kiểm `-xosc13`: quãng dừng dài hơn 0,5–1,0 m do tăng lực chậm) | ✅ **Accepted 23/11** — chủ dự án chốt |
-| [ADR-062](ADR-062-nguoi-di-bo-tang-toc-dan.md) | Bộ động học 1.4 / `.xosc` v15 / `-xosc15`: người đi bộ tăng tốc dần trong 0,678 s, bỏ khởi hành sớm của ADR-054 (kiểm `-xosc13`: ca dừng lề quyết định lệch 0,1 s) | 📝 **Proposed 23/11** — chờ kiểm CARLA thật |
-| [ADR-063](ADR-063-bu-pha-tang-luc-rieng-theo-xe.md) | `.xosc` v15: bù pha tăng lực riêng Patrol 0,11 s / Sprinter 0,17 s (kiểm `-xosc14`: còn dài hơn 0,23–0,69 m) | 📝 **Proposed 23/11** — chờ kiểm CARLA thật |
+| [ADR-062](ADR-062-nguoi-di-bo-tang-toc-dan.md) | Bộ động học 1.4 / `.xosc` v15 / `-xosc15`: người đi bộ tăng tốc dần trong 0,678 s, bỏ khởi hành sớm của ADR-054 (kiểm `-xosc13`: ca dừng lề quyết định lệch 0,1 s); 1.4 bỏ chậm dần trước lề | 📝 **Proposed 23/11** — kiểm `-xosc15` khớp |
+| [ADR-063](ADR-063-bu-pha-tang-luc-rieng-theo-xe.md) | `.xosc` v15: bù pha tăng lực riêng Patrol 0,11 s / Sprinter 0,17 s (kiểm `-xosc14`: còn dài hơn 0,23–0,69 m) | 📝 **Proposed 23/11** — kiểm `-xosc15` đạt (≤ 0,27 m) |
 
 ## Luật
 

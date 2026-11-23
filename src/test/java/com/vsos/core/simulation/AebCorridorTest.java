@@ -34,6 +34,23 @@ class AebCorridorTest {
      * ADR-062: người đi bộ tăng tốc đều trong 0,678 s (bộ động học 1.4) thay vì đạt tốc độ ngay (fixture Python), nên vào đường đi muộn hơn ~0,34 s và AEB
      * không quyết định sớm hơn bản cũ.
      */
+    /**
+     * ADR-062, kiểm -xosc15: người CARLA "dừng ở lề" giữ đủ tốc độ tới lề rồi dừng, nên từ 1.4 bộ động học bỏ đoạn chậm dần 0,8 m. Ca c3 (50 km/h, e-tron):
+     * AEB quyết định ở 2,75 s như ground truth chạy bóng trên CARLA; định nghĩa cũ (chậm dần) vẫn giữ cho fixture.
+     */
+    @Test
+    void curbStoppingPedestrianKeepsFullSpeedUntilTheCurb() {
+        CrossingCase c = new CrossingCase(50, 25, 1.5, true, "CLEAR", "DAY", null);
+        SimulationOutcome current = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, true);
+        double maxBeforeStop = current.frames().stream().filter(f -> f.pedY() < Simulator.CURB_STOP_Y_M - 0.2).mapToDouble(Frame::pedVy).max().orElseThrow();
+        double lastMoving = current.frames().stream().filter(f -> f.pedVy() > 0).reduce((a, b) -> b).orElseThrow().pedVy();
+        assertThat(maxBeforeStop).isEqualTo(1.5);
+        assertThat(lastMoving).as("không chậm dần trước lề").isEqualTo(1.5);
+        assertThat(((Number) current.metrics().get("aeb_decision_t")).doubleValue()).isCloseTo(2.75, within(1e-9));
+        SimulationOutcome legacy = Simulator.simulate(c, AebParams.DEFAULT, SEED, ETRON, false);
+        assertThat(legacy.frames().stream().filter(f -> f.pedVy() > 0).reduce((a, b) -> b).orElseThrow().pedVy()).isLessThan(1.5);
+    }
+
     @Test
     void pedestrianAcceleratesOverTheMeasuredRampTime() {
         CrossingCase c = new CrossingCase(40, 25, 1.5, false, "CLEAR", "DAY", null);

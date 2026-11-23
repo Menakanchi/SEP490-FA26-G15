@@ -195,8 +195,9 @@ public final class Simulator {
                     // ADR-062: tăng tốc đều trong PEDESTRIAN_ACCEL_TIME_S (bước đầu đã đi được một bước để không đứng yên một khung).
                     pedVy = c.pedestrianSpeedMps() * Math.min(1.0, (t - pedStartT + AebStack.DT) / PEDESTRIAN_ACCEL_TIME_S);
                 }
-                if (c.stopsAtCurb() && pedVy > 0) {
-                    // Người định dừng thì chậm dần trong 0,8 m cuối, không khựng lại tức thì.
+                if (c.stopsAtCurb() && pedVy > 0 && !pedestrianRamp) {
+                    // Định nghĩa ≤ 1.3 / fixture Python: người định dừng thì chậm dần trong 0,8 m cuối. Từ 1.4 (ADR-062) người đi đủ tốc độ tới lề rồi dừng
+                    // như CARLA (kiểm -xosc15: người CARLA giữ 1,5 m/s tới lề, dừng trong ~0,1 s).
                     double remaining = CURB_STOP_Y_M - pedY;
                     pedVy = Math.min(pedVy, c.pedestrianSpeedMps() * Math.max(0.15, Math.min(1.0, remaining / CURB_SLOWDOWN_M)));
                 }
