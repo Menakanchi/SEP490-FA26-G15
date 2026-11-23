@@ -188,18 +188,17 @@ export default function AebHubPage() {
           <div className="flex items-center gap-2.5">
             <Link
               href="/aeb/compare"
-              className="rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2 text-[12.5px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition shadow-sm"
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-solid border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-800 hover:bg-slate-100 hover:text-slate-900 transition shadow-xs whitespace-nowrap"
             >
               So sánh 2 phiên bản
             </Link>
-            <PillButton
+            <Link
               href="/aeb/versions"
-              variant="dark"
-              className="py-2 px-4 text-[12.5px] font-bold"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-vehicsim-primary px-4 text-[13px] font-bold text-white hover:bg-vehicsim-primary-hover transition shadow-xs whitespace-nowrap"
             >
               <span>Xem danh sách phiên bản ({versions?.length ?? 0})</span>
               <ArrowRight className="size-4" />
-            </PillButton>
+            </Link>
           </div>
         </div>
       </section>
