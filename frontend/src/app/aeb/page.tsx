@@ -143,23 +143,9 @@ export default function AebHubPage() {
                   Chỉnh tay <ArrowRight className="size-3.5" />
                 </PillButton>
               </div>
-              <p className="text-[12.5px] text-vehicsim-muted">
-                Can thiệp trực tiếp 4 tham số AEB dựa trên phân tích nguyên nhân lỗi và tri thức kỹ sư:
+              <p className="text-[12.5px] text-vehicsim-muted leading-relaxed">
+                Chỉnh 4 tham số AEB dựa trên tri thức chuyên gia hoặc phân tích nguyên nhân lỗi.
               </p>
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[11px] font-medium text-vehicsim-muted">
-                  TTC Threshold
-                </span>
-                <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[11px] font-medium text-vehicsim-muted">
-                  Brake Activation Delay
-                </span>
-                <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[11px] font-medium text-vehicsim-muted">
-                  Max Deceleration
-                </span>
-                <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[11px] font-medium text-vehicsim-muted">
-                  Brake Build-up Rate
-                </span>
-              </div>
             </div>
           </Card>
         </div>
