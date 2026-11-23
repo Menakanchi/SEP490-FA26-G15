@@ -84,7 +84,7 @@ export default function RegressionResultsPage() {
   return (
     <VehicSimPage
       step={6}
-      crumbs={[{ label: "Kiểm định" }, { label: "Kiểm thử hồi quy", href: "/validation/regression" }, { label: d?.code ?? "…" }]}
+      crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Kiểm thử hồi quy", href: "/validation/regression" }, { label: d?.code ?? "…" }]}
       title={d?.code ?? "Kiểm thử hồi quy"}
       badges={
         d && (

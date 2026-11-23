@@ -33,7 +33,7 @@ export default function RecommendationPage() {
   return (
     <VehicSimPage
       step={6}
-      crumbs={[{ label: "Kiểm định" }, { label: "Khuyến nghị", href: "/validation/recommendations" }, { label: r?.recommendation_code ?? "…" }]}
+      crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Khuyến nghị", href: "/validation/recommendations" }, { label: r?.recommendation_code ?? "…" }]}
       title={r?.recommendation_code ?? "Khuyến nghị"}
       badges={r && <RecommendationBadge status={r.recommendation_status} className="px-3 py-[6px] text-[13px]" />}
       subtitle={

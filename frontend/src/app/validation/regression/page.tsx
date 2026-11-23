@@ -64,7 +64,7 @@ export default function RegressionListPage() {
   return (
     <VehicSimPage
       step={6}
-      crumbs={[{ label: "Kiểm định" }, { label: "Kiểm thử hồi quy" }]}
+      crumbs={[{ label: "Kiểm chứng" }, { label: "Kiểm thử hồi quy" }]}
       title="Kiểm thử hồi quy"
       subtitle={
         isExperiencer

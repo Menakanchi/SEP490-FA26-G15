@@ -38,7 +38,7 @@ export default function ReviewPage() {
 
   if (!r) {
     return (
-      <VehicSimPage step={6} crumbs={[{ label: "Kiểm định" }, { label: "Khuyến nghị", href: "/validation/recommendations" }, { label: "Duyệt" }]} title="Duyệt">
+      <VehicSimPage step={6} crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Khuyến nghị", href: "/validation/recommendations" }, { label: "Duyệt" }]} title="Duyệt">
         <ErrorNote message={error} />
       </VehicSimPage>
     );
@@ -152,7 +152,7 @@ export default function ReviewPage() {
     <VehicSimPage
       step={6}
       crumbs={[
-        { label: "Kiểm định" },
+        { label: "Kiểm chứng", href: "/validation/regression" },
         { label: "Khuyến nghị", href: "/validation/recommendations" },
         { label: r.recommendation_code, href: `/validation/recommendations/${r.id}` },
         { label: "Duyệt" },

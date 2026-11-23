@@ -48,7 +48,7 @@ export default function DecisionHistoryPage() {
 
   return (
     <VehicSimPage
-      crumbs={[{ label: "Kiểm định" }, { label: "Lịch sử quyết định" }]}
+      crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Lịch sử quyết định" }]}
       title="Lịch sử quyết định"
       subtitle="Từng lần quyết định kèm người duyệt và lý do được lưu riêng. Chấp nhận hoặc từ chối là quyết định cuối; yêu cầu thêm kiểm thử giữ khuyến nghị mở. Dữ liệu cũ chỉ giữ được quyết định gần nhất trước khi có lịch sử."
     >

@@ -36,7 +36,7 @@ export default function RecommendationsPage() {
   return (
     <VehicSimPage
       step={6}
-      crumbs={[{ label: "Kiểm định" }, { label: "Khuyến nghị" }]}
+      crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Khuyến nghị" }]}
       title="Khuyến nghị"
       subtitle="Mỗi kiểm thử hồi quy chạy xong trở thành một khuyến nghị kỹ thuật. Chỉ Người duyệt (Reviewer) mới được chấp nhận — không gì được áp dụng tự động."
     >
