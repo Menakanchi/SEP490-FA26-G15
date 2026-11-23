@@ -6,7 +6,6 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
-import { AebNav } from "@/components/aeb/AebNav";
 import { VersionTable } from "@/components/aeb/VersionTable";
 
 export default function AebVersionsPage() {
@@ -40,7 +39,6 @@ export default function AebVersionsPage() {
       }
     >
       <ErrorNote message={error} />
-      <AebNav active="versions" />
 
       <VersionTable
         versions={versions}

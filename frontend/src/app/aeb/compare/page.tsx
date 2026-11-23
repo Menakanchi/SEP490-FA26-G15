@@ -8,7 +8,6 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, ErrorNote, PillButton, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
-import { AebNav } from "@/components/aeb/AebNav";
 import { KEY_PARAMS, STATUS_LABEL, STATUS_TONE } from "@/components/aeb/aebTypes";
 
 export default function AebComparePage() {
@@ -86,7 +85,6 @@ export default function AebComparePage() {
       }
     >
       <ErrorNote message={error} />
-      <AebNav active="compare" />
 
       {/* Selector chọn 2 phiên bản */}
       <Card className="flex flex-col gap-5 p-5">

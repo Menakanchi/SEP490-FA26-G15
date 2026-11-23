@@ -23,7 +23,6 @@ import {
 } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
-import { AebNav } from "@/components/aeb/AebNav";
 import { KEY_PARAMS } from "@/components/aeb/aebTypes";
 
 export default function AebHubPage() {
@@ -61,7 +60,6 @@ export default function AebHubPage() {
       }
     >
       <ErrorNote message={error} />
-      <AebNav active="hub" />
 
       {/* BƯỚC 4.1: BẢN CƠ SỞ HIỆN HÀNH (BASELINE) */}
       <section className="flex flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-sm">

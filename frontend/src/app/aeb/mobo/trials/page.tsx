@@ -7,7 +7,6 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
-import { AebNav } from "@/components/aeb/AebNav";
 
 export default function AebMoboTrialsPage() {
   const router = useRouter();
@@ -77,7 +76,6 @@ export default function AebMoboTrialsPage() {
       }
     >
       <ErrorNote message={error} />
-      <AebNav active="mobo_trials" />
 
       {/* Bộ chọn đợt chạy và Bộ lọc */}
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">

@@ -8,7 +8,6 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { CarlaStatus } from "@/types/vehicsim";
-import { AebNav } from "@/components/aeb/AebNav";
 
 export default function AebMoboNewPage() {
   const router = useRouter();
@@ -79,7 +78,6 @@ export default function AebMoboNewPage() {
       }
     >
       <ErrorNote message={error} />
-      <AebNav active="mobo_new" />
 
       <section className="flex flex-col gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-4">

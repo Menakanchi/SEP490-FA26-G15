@@ -23,7 +23,6 @@ import {
 } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
-import { AebNav } from "@/components/aeb/AebNav";
 
 export default function AebMoboStudioPage() {
   const router = useRouter();
@@ -211,7 +210,6 @@ export default function AebMoboStudioPage() {
       }
     >
       <ErrorNote message={error} />
-      <AebNav active="mobo" />
 
       {/* BANNER THÀNH CÔNG KHI CHỌN CANDIDATE */}
       {createdCandidate && (

@@ -7,7 +7,6 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
-import { AebNav } from "@/components/aeb/AebNav";
 import { KEY_PARAMS } from "@/components/aeb/aebTypes";
 
 export default function AebCandidatesPage() {
@@ -47,7 +46,6 @@ export default function AebCandidatesPage() {
       }
     >
       <ErrorNote message={error} />
-      <AebNav active="candidates" />
 
       <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">

@@ -8,7 +8,6 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { EmptyState, ErrorNote, Pagination, PillButton } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
-import { AebNav } from "@/components/aeb/AebNav";
 
 export default function AebMoboParetoPage() {
   const router = useRouter();
@@ -92,7 +91,6 @@ export default function AebMoboParetoPage() {
       }
     >
       <ErrorNote message={error} />
-      <AebNav active="mobo_pareto" />
 
       {createdCandidate && (
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-vehicsim-ok-bg p-4 text-[13px] text-vehicsim-ok shadow-sm">
