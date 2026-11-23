@@ -25,12 +25,14 @@ type DiffTab = "regressed" | "fixed" | "changes" | "all";
 
 export default function RegressionResultsPage() {
   const { testId } = useParams<{ testId: string }>();
-  const { refresh, ctx, isExperiencer } = useVehicSimContext();
+  const { refresh, ctx, isExperiencer, canRunRegression } = useVehicSimContext();
   const conclusion = isExperiencer && ctx ? `/projects/${ctx.project.id}/rounds/${testId}` : null;
   const [d, setD] = useState<RegressionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<DiffTab>("changes");
   const [shown, setShown] = useState(20);
+  const [cancelling, setCancelling] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(() => {
     vehicsimApi.regression(Number(testId))
@@ -51,6 +53,22 @@ export default function RegressionResultsPage() {
     const id = setInterval(load, POLL_MS);
     return () => clearInterval(id);
   }, [running, load]);
+
+  const cancelTest = async () => {
+    if (!d || !window.confirm(`Hủy ${d.code}? Các lượt đang chờ dừng ngay, lượt đang chạy dừng sau khi worker dọn xong. Lần kiểm chứng này sẽ không có kết luận.`)) return;
+    setCancelling(true);
+    setError(null);
+    try {
+      const res = await vehicsimApi.cancelRegression(d.id);
+      setNotice(`Đã hủy ${d.code}: dừng ${res.stopped} lượt đang chờ${res.stopping ? `, đang dừng ${res.stopping} lượt đang chạy` : ""}.`);
+      load();
+      void refresh();
+    } catch (err) {
+      setError(err instanceof Error ? vi(err.message) : "Không hủy được kiểm thử hồi quy");
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const exportPackage = (format: "json" | "csv") => {
     vehicsimApi.exportRegression(Number(testId), format).catch((err) => setError(err instanceof Error ? err.message : "Không tải được gói kết quả"));
@@ -113,6 +131,11 @@ export default function RegressionResultsPage() {
                 <PillButton onClick={() => exportPackage("csv")}>Tải CSV</PillButton>
               </>
             ) : null}
+            {running && canRunRegression && (
+              <PillButton className="text-vehicsim-danger" onClick={() => void cancelTest()} disabled={cancelling}>
+                {cancelling ? "Đang hủy…" : "Hủy kiểm thử"}
+              </PillButton>
+            )}
             <PillButton
               href={firstInteresting ? pairRunHref(firstInteresting.candidate_run_id, firstInteresting.baseline_run_id, d.id, "playback") : undefined}
               disabled={!firstInteresting}
@@ -121,8 +144,8 @@ export default function RegressionResultsPage() {
             </PillButton>
             <PillButton
               variant="dark"
-              href={running ? undefined : (conclusion ?? `/validation/recommendations/${d.id}`)}
-              disabled={running}
+              href={running || d.status === "CANCELLED" ? undefined : (conclusion ?? `/validation/recommendations/${d.id}`)}
+              disabled={running || d.status === "CANCELLED"}
             >
               {conclusion ? "Xem kết luận" : "Mở khuyến nghị"}
             </PillButton>
@@ -131,6 +154,7 @@ export default function RegressionResultsPage() {
       }
     >
       <ErrorNote message={error} />
+      {notice && <p className="text-[13px] font-semibold text-vehicsim-ok">{notice}</p>}
       {d && (
         <>
           <Banner d={d} failedCriteria={failedCriteria.map((c) => vi(c.label))} conclusion={conclusion} />
@@ -356,6 +380,13 @@ function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failed
           </PillButton>
         )}
       </div>
+    );
+  }
+  if (d.status === "CANCELLED") {
+    return (
+      <p className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-soft px-5 py-4 text-[13px] text-vehicsim-muted">
+        Lần kiểm chứng này đã bị hủy nên không có kết luận và không thể duyệt. Tạo lần kiểm chứng mới nếu cần đánh giá lại ứng viên.
+      </p>
     );
   }
   if (d.status === "ERROR") {

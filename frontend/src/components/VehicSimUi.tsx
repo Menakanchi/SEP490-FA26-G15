@@ -154,6 +154,7 @@ export const REGRESSION_STATUS: Record<RegressionStatus, { label: string; cls: s
   PASSED: { label: "Đạt", cls: "bg-vehicsim-ok-bg text-vehicsim-ok" },
   FAILED: { label: "Không đạt", cls: "bg-vehicsim-danger-bg text-vehicsim-danger" },
   ERROR: { label: "Lỗi", cls: "bg-vehicsim-warn-bg text-vehicsim-warn" },
+  CANCELLED: { label: "Đã hủy", cls: "bg-vehicsim-soft text-vehicsim-muted" },
 };
 
 export function StatusBadge({ status, suffix }: { status: RegressionStatus; suffix?: string }) {

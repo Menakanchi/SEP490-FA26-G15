@@ -207,7 +207,8 @@ const RULES: Rule[] = [
   [re("Cancelled by user"), () => "Đã hủy theo yêu cầu"],
   [re(String.raw`Run is already (\w+); nothing to cancel`), (m) => `Lượt chạy đã ở trạng thái ${m[1]}, không còn gì để hủy`],
   [re("This run belongs to a regression test or optimization and cannot be cancelled on its own"),
-    () => "Lượt chạy thuộc kiểm thử hồi quy hoặc tối ưu nên chưa hủy riêng lẻ được"],
+    () => "Lượt chạy thuộc kiểm thử hồi quy hoặc tối ưu: hủy cả lần kiểm thử / đợt tối ưu thay vì từng lượt"],
+  [re(String.raw`Regression test is already (\w+); nothing to cancel`), (m) => `Kiểm thử hồi quy đã ở trạng thái ${m[1]}, không còn gì để hủy`],
   // --- regression.py: tiêu chí -------------------------------------------------------
   [re("No previously safe scenario may collide"), () => "Không kịch bản an toàn nào được chuyển thành va chạm"],
   [re("Collision rate must not increase"), () => "Tỉ lệ va chạm không được tăng"],

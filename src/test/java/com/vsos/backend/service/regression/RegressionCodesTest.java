@@ -52,5 +52,6 @@ class RegressionCodesTest {
         assertThat(RegressionCodes.displayStatus(test("COMPLETED", "REGRESSED"))).isEqualTo("FAILED");
         assertThat(RegressionCodes.displayStatus(test("FAILED", "PENDING"))).isEqualTo("ERROR");
         assertThat(RegressionCodes.displayStatus(test("RUNNING", "PENDING"))).isEqualTo("RUNNING");
+        assertThat(RegressionCodes.displayStatus(test("CANCELLED", "PENDING"))).as("người dùng hủy, không phải lỗi").isEqualTo("CANCELLED");
     }
 }

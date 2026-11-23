@@ -128,7 +128,7 @@ export default function ProjectRoundPage() {
       {d && !finished && (
         <Card className="flex items-center justify-between gap-4 p-5">
           <p className="text-[14px] text-vehicsim-muted">
-            {d.status === "ERROR" ? "Lần kiểm chứng gặp lỗi khi chạy, chưa có kết luận." : `Đang kiểm chứng ${d.progress.done}/${d.progress.total} cặp tình huống.`}
+            {d.status === "ERROR" ? "Lần kiểm chứng gặp lỗi khi chạy, chưa có kết luận." : d.status === "CANCELLED" ? "Lần kiểm chứng đã bị hủy, không có kết luận." : `Đang kiểm chứng ${d.progress.done}/${d.progress.total} cặp tình huống.`}
           </p>
           <PillButton href={`/validation/regression/${d.id}`}>Xem chi tiết</PillButton>
         </Card>

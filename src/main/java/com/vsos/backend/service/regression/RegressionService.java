@@ -1,6 +1,7 @@
 package com.vsos.backend.service.regression;
 
 import com.vsos.backend.common.Vs;
+import com.vsos.backend.common.audit.AuditLog;
 import com.vsos.backend.common.Vs.InvalidRequestException;
 import com.vsos.backend.common.Vs.NotFoundException;
 import com.vsos.backend.dto.regression.RegressionRecords.CandidateRun;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -162,6 +164,28 @@ public class RegressionService {
         all.addAll(candidateIds);
         runs.dispatch(all);
         return testId;
+    }
+
+    /**
+     * Hủy cả regression test đang chạy (TD-37). Đổi test sang CANCELLED trước để {@link #tryFinalize} không chốt kết quả từ các run còn lại, rồi
+     * dừng run ứng viên của test. Test đã hủy không có verdict / khuyến nghị nên không Accept được; run baseline bổ sung vẫn chạy để dùng lại.
+     *
+     * @return {@code test_id}, {@code status = CANCELLED}, số run {@code stopped} / {@code stopping}
+     */
+    public Map<String, Object> cancelTest(long projectId, long testId, long userId) {
+        Boolean changed = tx.execute(status -> repo.markCancelled(projectId, testId));
+        if (!Boolean.TRUE.equals(changed)) {
+            RegressionTestRow test = tx.execute(status -> repo.lockTest(projectId, testId));
+            if (test == null) {
+                throw new NotFoundException("regression test");
+            }
+            throw new InvalidRequestException("Regression test is already " + test.executionStatus() + "; nothing to cancel");
+        }
+        AuditLog.event("regression.cancel", "success", "user_id", userId, "test_id", testId);
+        Map<String, Object> reply = new LinkedHashMap<>(runs.cancelRegressionRuns(projectId, testId, userId));
+        reply.put("test_id", testId);
+        reply.put("status", "CANCELLED");
+        return reply;
     }
 
     @EventListener

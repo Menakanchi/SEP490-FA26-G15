@@ -34,8 +34,12 @@ public final class RegressionCodes {
         if ("COMPLETED".equals(exec)) {
             return "PASSED".equals(test.verdict()) ? "PASSED" : "FAILED";
         }
-        if ("FAILED".equals(exec) || "CANCELLED".equals(exec)) {
+        if ("FAILED".equals(exec)) {
             return "ERROR";
+        }
+        // Người dùng hủy (TD-37): không phải lỗi chạy, hiện riêng là "Đã hủy".
+        if ("CANCELLED".equals(exec)) {
+            return "CANCELLED";
         }
         return exec;
     }
