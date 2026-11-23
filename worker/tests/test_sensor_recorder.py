@@ -19,11 +19,11 @@ def _ego(length_half: float, height_half: float) -> SimpleNamespace:
     return SimpleNamespace(bounding_box=box)
 
 
-def test_review_camera_sits_at_the_front_above_the_roof_of_each_vehicle() -> None:
+def test_review_camera_follows_from_behind_and_above_each_vehicle() -> None:
     low = sensor_recorder.camera_mount(_ego(2.4, 0.72))  # xe thấp (sedan)
-    tall = sensor_recorder.camera_mount(_ego(2.5, 1.0))  # xe cao (SUV / van)
-    assert low[0] == 2.4 - sensor_recorder.CAMERA_FRONT_INSET_M and tall[0] == 2.5 - sensor_recorder.CAMERA_FRONT_INSET_M
-    assert low[1] == 2 * 0.72 + sensor_recorder.CAMERA_ABOVE_ROOF_M and tall[1] > low[1]  # cao hơn nóc, không nằm trong cabin
+    tall = sensor_recorder.camera_mount(_ego(2.9, 1.3))  # xe cao và dài (van)
+    assert low[0] == -2.4 - sensor_recorder.CAMERA_BACK_M and tall[0] == -2.9 - sensor_recorder.CAMERA_BACK_M  # sau đuôi xe, xe dài thì lùi xa hơn
+    assert low[1] == 2 * 0.72 + sensor_recorder.CAMERA_ABOVE_ROOF_M and tall[1] > low[1]  # cao hơn nóc từng xe
     assert sensor_recorder.camera_mount(SimpleNamespace()) == sensor_recorder.CAMERA_FALLBACK_M
 
 

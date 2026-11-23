@@ -16,3 +16,4 @@ psutil
 matplotlib
 pygame==2.6.1
 imageio-ffmpeg>=0.5,<1  # kèm ffmpeg (libx264) để make_video.py ghép ảnh camera thành video.mp4
+pillow>=10.1  # make_video.py vẽ tốc độ/phanh lên hình (ImageFont.load_default(size=...) cần >= 10.1)

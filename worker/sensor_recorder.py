@@ -81,12 +81,12 @@ CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FOV_DEG = 1280, 720, 90
 """Ảnh camera chỉ để xem lại (video.mp4, thanh chọn khung), không đi vào lõi AEB. 1280×720: ảnh 800×450 bị phóng to trên web nên nhìn mờ. Mỗi ảnh PNG
 khoảng 1,5 MB (800×450 là 0,6 MB)."""
 
-CAMERA_FRONT_INSET_M, CAMERA_ABOVE_ROOF_M, CAMERA_PITCH_DEG = 0.4, 0.35, -6.0
-"""Vị trí camera theo kích thước xe ego (bounding box): sát đầu xe (lùi vào ``CAMERA_FRONT_INSET_M``) và cao hơn nóc ``CAMERA_ABOVE_ROOF_M``, chúi nhẹ xuống
-để thấy mặt đường và người đi bộ lúc băng qua. Trước đây cố định x = 1,5, z = 1,4: với xe cao (Patrol, Sprinter) camera nằm trong cabin và bị kính chắn gió, táp-lô che.
-``CAMERA_FALLBACK_M`` (x, z) chỉ dùng khi không đọc được bounding box."""
+CAMERA_BACK_M, CAMERA_ABOVE_ROOF_M, CAMERA_PITCH_DEG = 5.5, 1.6, -11.0
+"""Camera góc nhìn thứ ba của video xem lại: phía sau xe ``CAMERA_BACK_M`` tính từ đuôi, cao hơn nóc ``CAMERA_ABOVE_ROOF_M``, chúi xuống để thấy cả xe, mặt
+đường và người đi bộ lúc băng qua. Vị trí tính theo bounding box nên đúng cho cả xe thấp (Model 3) lẫn xe cao (Patrol, Sprinter). Trước 23/11 là camera trong xe
+(x = 1,5, z = 1,4); với xe cao nó nằm trong cabin và bị kính chắn gió, táp-lô che. ``CAMERA_FALLBACK_M`` (x, z) chỉ dùng khi không đọc được bounding box."""
 
-CAMERA_FALLBACK_M = (1.8, 2.3)
+CAMERA_FALLBACK_M = (-8.0, 3.6)
 
 CAMERA_EVERY_N_FRAMES = 2 # 2 × 0,05 s = 0,1 s → 10 ảnh/giây, đủ mượt để ghép video.mp4 (make_video.py); trước 13/11 là 5 (4 ảnh/giây)
 CAMERA_REF_STEP_S = 0.05  # bước mô phỏng mà hằng số trên được hiệu chỉnh; bước nhỏ hơn thì lưu ảnh theo cùng khoảng thời gian
@@ -295,10 +295,10 @@ def summarise(rows: list[dict], collisions: list[dict]) -> dict:
 
 
 def camera_mount(ego) -> tuple[float, float]:  # noqa: ANN001 — carla.Vehicle
-    """Vị trí (x tới trước, z lên) của camera xem lại, trong khung xe ego: sát đầu xe và cao hơn nóc theo bounding box của chính xe đó."""
+    """Vị trí (x tới trước, z lên) của camera xem lại, trong khung xe ego: sau đuôi xe và cao hơn nóc, theo bounding box của chính xe đó."""
     try:
         box = ego.bounding_box
-        return (box.location.x + box.extent.x - CAMERA_FRONT_INSET_M, box.location.z + box.extent.z + CAMERA_ABOVE_ROOF_M)
+        return (box.location.x - box.extent.x - CAMERA_BACK_M, box.location.z + box.extent.z + CAMERA_ABOVE_ROOF_M)
     except Exception:  # noqa: BLE001 — actor giả / không có bounding box
         return CAMERA_FALLBACK_M
 

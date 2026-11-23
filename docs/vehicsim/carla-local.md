@@ -25,7 +25,7 @@ Các dịch vụ app do script CARLA khởi động chạy nền; mở `http://l
 1. Đăng nhập bằng ADMIN, ENGINEER hoặc EXPERIENCER; MANAGER/REVIEWER vẫn xem được nhưng không khởi chạy.
 2. Tạo một họ nhỏ ở **Kịch bản**, hoặc chọn họ đã có. Mỗi biến thể là một run CARLA, chạy lần lượt trên một server.
 3. Vào **Phân tích → Dữ liệu CARLA**; kiểm tra kết nối, chọn họ rồi bấm **Chạy trên CARLA**.
-4. Chờ trạng thái **Hoàn thành**, bấm **Xem cảm biến**: 3 số đo, **video xem lại** (có nút tải .mp4), ảnh RGB có thanh chọn khung, tải CSV/JSON va chạm.
+4. Chờ trạng thái **Hoàn thành**, bấm **Xem cảm biến**: 3 số đo, **video xem lại** góc nhìn thứ ba có tốc độ xe (nút tải .mp4), tải CSV/JSON va chạm.
 5. **Phát lại** dùng dữ liệu AEB/ground truth cùng định dạng với vòng MVP. **Tải .xosc** lấy XML của đúng run.
 6. Từ chi tiết một run cũ, **Chạy trên CARLA** tạo run mới giữ đúng biến thể, xe, AEB và seed; không ghi đè kết quả cũ.
 
@@ -53,9 +53,12 @@ giữa run không làm hỏng run). Không có livestream/video giả: nếu kh�
 máy đã setup trước đó chạy `worker\.venv-carla\Scripts\python.exe -m pip install imageio-ffmpeg`). Video chỉ là phần xem lại: thiếu ffmpeg hoặc ffmpeg lỗi
 chỉ in cảnh báo, run vẫn hoàn thành và vẫn xem được ảnh từng khung; `result.json` không đổi nên không đổi định danh run. Backend lưu artifact `VIDEO_MP4`
 và phát qua `GET /api/v1/vehicsim/runs/{id}/carla-video` (hỗ trợ Range để tua, kiểm quyền theo project). Run chạy trước khi có tính năng, hoặc nộp từ máy khác
-qua `carla-result`, không có video. Ảnh camera 1280×720, 10 ảnh/giây, tắt motion blur, đặt sát đầu xe và cao hơn nóc theo bounding box của từng xe (`camera_mount` trong `sensor_recorder.py`; camera cũ cố định
-x = 1,5, z = 1,4 nên xe cao như Patrol/Sprinter bị kính chắn gió, táp-lô che); video nén H.264 CRF 17. Nên mỗi run chiếm thêm đĩa: khoảng 50–70 MB ảnh PNG và 5 MB video
-(trước đây ảnh 800×450, 4 ảnh/giây, khoảng 20 MB). Không đổi `result.json`, chỉ số hay định danh run.
+qua `carla-result`, không có video. Camera là **góc nhìn thứ ba**: sau đuôi xe 5,5 m và cao hơn nóc 1,6 m theo bounding box của từng xe, chúi xuống 11°
+(`camera_mount` trong `sensor_recorder.py`; camera cũ trong xe cố định x = 1,5, z = 1,4 nên xe cao như Patrol/Sprinter bị kính chắn gió, táp-lô che). Ảnh 1280×720, 10 ảnh/giây,
+tắt motion blur; video H.264 CRF 17. `make_video.py` **vẽ lên hình** tốc độ (km/h), thanh phanh (đỏ khi đang phanh) và thời gian mô phỏng, lấy từ `sensors/frames.csv`
+theo số frame CARLA nên khớp đúng khung ảnh (cần Pillow; thiếu thì video không có chữ). Chữ chỉ nằm trong video; ảnh PNG gốc không bị vẽ. Ghép video xong thì **xoá `sensors/camera`**
+(mỗi run đỡ khoảng 70 MB; chỉ giữ ảnh khi không ghép được video, hoặc khi chạy `run_xosc.py --keep-frames`), nên thanh chọn khung ảnh trên web chỉ hiện với run không có video.
+Mỗi run chiếm khoảng 5 MB video. Không đổi `result.json`, chỉ số hay định danh run.
 
 `scenario_runner.log` có dòng `ERROR: failed to destroy actor <id> : … not found` ngay sau `Destroying ego vehicle <id>` ở mọi run:
 lỗi của ScenarioRunner 0.9.16 (`ScenarioManager.cleanup` đã xoá ego qua `CarlaDataProvider.cleanup`, rồi `ScenarioRunner._cleanup` xoá lần nữa).

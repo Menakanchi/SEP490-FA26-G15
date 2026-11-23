@@ -75,6 +75,61 @@ def test_ffmpeg_failure_raises_and_leaves_no_partial_video(tmp_path: Path) -> No
     assert sorted(p.name for p in tmp_path.iterdir()) == ["sensors"]
 
 
+def _telemetry_csv(run: Path, frames: list[int]) -> None:
+    sensors = run / "sensors"
+    sensors.mkdir(parents=True, exist_ok=True)
+    lines = ["frame,sim_time_s,ego_speed_ms,throttle,brake"] + [f"{n},{i * 0.1:.1f},{10.0 + i},0,{0.5 if i else 0}" for i, n in enumerate(frames)]
+    (sensors / "frames.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_load_telemetry_maps_frame_to_time_speed_kmh_and_brake(tmp_path: Path) -> None:
+    _telemetry_csv(tmp_path, [100, 110])
+    (tmp_path / "sensors" / "frames.csv").write_text(
+        (tmp_path / "sensors" / "frames.csv").read_text(encoding="utf-8") + "bad,row,x,y,z\n", encoding="utf-8")  # hàng hỏng bị bỏ qua
+    data = make_video.load_telemetry(tmp_path / "sensors" / "frames.csv")
+    assert data[100] == (0.0, 36.0, 0.0) and data[110] == pytest.approx((0.1, 39.6, 0.5))
+    assert make_video.load_telemetry(tmp_path / "none.csv") == {}
+
+
+def test_overlay_draws_speed_on_a_copy_without_touching_the_source(tmp_path: Path) -> None:
+    pil = pytest.importorskip("PIL.Image")
+    camera = tmp_path / "sensors" / "camera"
+    camera.mkdir(parents=True)
+    pil.new("RGB", (1280, 720), (30, 90, 160)).save(camera / "00000100.png")
+    _telemetry_csv(tmp_path, [100])
+    frames = make_video.frame_files(camera)
+    work = tmp_path / "sensors" / make_video.OVERLAY_DIR
+    assert make_video.draw_overlays(frames, make_video.load_telemetry(tmp_path / "sensors" / "frames.csv"), work) is True
+    with pil.open(camera / "00000100.png") as original, pil.open(work / "00000100.png") as drawn:
+        assert original.getpixel((60, 640)) == (30, 90, 160)  # ảnh gốc giữ nguyên
+        assert drawn.size == (1280, 720) and drawn.tobytes() != original.tobytes()  # bản vẽ có bảng số liệu
+    assert make_video.draw_overlays(frames, {}, tmp_path / "x") is False  # không có số liệu thì dùng ảnh gốc
+
+
+def test_frames_are_dropped_only_after_the_video_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    camera = _frames(tmp_path, [1, 11])
+    monkeypatch.setattr(make_video, "draw_overlays", lambda *a, **k: False)
+
+    def fake_make(source, out_path, interval_s, **kwargs):  # noqa: ANN001, ANN202
+        out_path.write_bytes(b"mp4")
+        return out_path
+
+    monkeypatch.setattr(make_video, "make_video", fake_make)
+    assert make_video.build_run_video(tmp_path, 0.1, keep_frames=True) == tmp_path / make_video.VIDEO_NAME
+    assert camera.is_dir()  # --keep-frames giữ ảnh
+    assert make_video.build_run_video(tmp_path, 0.1) == tmp_path / make_video.VIDEO_NAME
+    assert not camera.exists()  # mặc định ảnh được xoá sau khi ghép xong
+    assert sorted(p.name for p in (tmp_path / "sensors").iterdir()) == []  # và không để lại thư mục tạm
+
+
+def test_frames_are_kept_when_the_video_cannot_be_built(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    camera = _frames(tmp_path, [1, 11])
+    monkeypatch.setattr(make_video, "draw_overlays", lambda *a, **k: False)
+    monkeypatch.setattr(make_video, "make_video", lambda *a, **k: None)  # không có ffmpeg
+    assert make_video.build_run_video(tmp_path, 0.1) is None
+    assert len(list(camera.iterdir())) == 2  # không có video thì ảnh là thứ duy nhất để xem
+
+
 def test_build_run_video_never_breaks_the_run_and_drops_a_stale_video(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
                                                                       capsys: pytest.CaptureFixture[str]) -> None:
     _frames(tmp_path, [1, 11])

@@ -199,7 +199,7 @@ export function CarlaRunnerPanel() {
           <input aria-label="Khung camera CARLA" type="range" min={0} max={data.camera_frames.length - 1} value={frame}
             onChange={e => setFrame(Number(e.target.value))} className="w-full" />
         </label>}
-        {!data.camera_frames.length && <p className="text-[12px] text-vehicsim-muted">Lượt này không ghi ảnh RGB.</p>}
+        {!data.camera_frames.length && !data.has_video && <p className="text-[12px] text-vehicsim-muted">Lượt này không ghi camera (không có video và không có ảnh RGB).</p>}
         {data.camera_frames.length > 0 && !data.has_video && <p className="text-[12px] text-vehicsim-muted">Lượt này chưa có video (chỉ có ảnh từng khung). Máy chạy CARLA cần cài ffmpeg: <code>pip install imageio-ffmpeg</code>.</p>}
       </>}
       </div>
