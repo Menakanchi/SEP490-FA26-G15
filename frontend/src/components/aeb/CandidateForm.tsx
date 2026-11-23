@@ -7,6 +7,19 @@ import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion, ParameterDef } from "@/types/vehicsim";
 import { CATEGORY_ORDER, STATUS_LABEL } from "./aebTypes";
 
+function stepFor(p: ParameterDef): string {
+  if (p.code === "BRAKE_ACTIVATION_DELAY") return "0.01";
+  if (p.code === "TTC_THRESHOLD") return "0.05";
+  if (p.code === "MAX_DECELERATION") return "0.1";
+  if (p.code === "BRAKE_BUILDUP_RATE") return "0.5";
+  return p.unit === "s" ? "0.05" : "0.1";
+}
+
+function parseVal(str: string): number {
+  const s = String(str).replace(",", ".").trim();
+  return s === "" ? NaN : Number(s);
+}
+
 export function CandidateForm({
   versions,
   parameters,
@@ -27,11 +40,37 @@ export function CandidateForm({
   const [error, setError] = useState<string | null>(null);
 
   const current = (p: ParameterDef) => values[p.code] ?? String(parent.parameters[p.code] ?? p.default_value);
-  const changed = parameters.filter((p) => Number(current(p)) !== parent.parameters[p.code]);
+  const changed = parameters.filter((p) => {
+    const n = parseVal(current(p));
+    return !Number.isNaN(n) && n !== parent.parameters[p.code];
+  });
   const invalid = parameters.filter((p) => {
-    const n = Number(current(p));
+    const n = parseVal(current(p));
     return current(p).trim() === "" || Number.isNaN(n) || n < p.min_value || n > p.max_value;
   });
+
+  const handleInputChange = (p: ParameterDef, raw: string) => {
+    setValues((prev) => ({ ...prev, [p.code]: raw }));
+  };
+
+  const handleBlur = (p: ParameterDef) => {
+    const raw = current(p).trim();
+    if (raw === "") {
+      setValues((prev) => ({ ...prev, [p.code]: String(parent.parameters[p.code] ?? p.default_value) }));
+      return;
+    }
+    const n = parseVal(raw);
+    if (Number.isNaN(n)) {
+      setValues((prev) => ({ ...prev, [p.code]: String(parent.parameters[p.code] ?? p.default_value) }));
+    } else if (n < p.min_value) {
+      setValues((prev) => ({ ...prev, [p.code]: String(p.min_value) }));
+    } else if (n > p.max_value) {
+      setValues((prev) => ({ ...prev, [p.code]: String(p.max_value) }));
+    } else {
+      // Giữ số sạch (nếu người dùng gõ dấu phẩy thì chuẩn hóa)
+      setValues((prev) => ({ ...prev, [p.code]: String(n) }));
+    }
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -41,7 +80,7 @@ export function CandidateForm({
         parent_version_id: parent.id,
         label: label.trim() || undefined,
         notes: notes.trim() || undefined,
-        values: Object.fromEntries(changed.map((p) => [p.code, Number(current(p))])),
+        values: Object.fromEntries(changed.map((p) => [p.code, parseVal(current(p))])),
       });
       const fresh = await vehicsimApi.aebVersions();
       setValues({});
@@ -92,37 +131,64 @@ export function CandidateForm({
           const params = parameters.filter((p) => p.category === cat);
           if (!params.length) return null;
           return (
-            <div key={cat} className="flex flex-col gap-2 rounded-[16px] border border-solid border-vehicsim-line p-4">
+            <div key={cat} className="flex flex-col gap-3 rounded-[16px] border border-solid border-vehicsim-line p-4">
               <span className={cx("w-fit rounded-full px-[10px] py-[4px] text-[11px] font-semibold", CLASS_STYLE[cat].cls)}>
                 {CLASS_STYLE[cat].label}
               </span>
               {params.map((p) => {
                 const isChanged = changed.includes(p);
                 const isInvalid = invalid.includes(p);
+                const numVal = parseVal(current(p));
                 return (
-                  <div key={p.code} className="flex items-center gap-3">
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="text-[13px] font-medium text-vehicsim-ink">{p.name}</span>
-                      <span className="text-[11px] text-vehicsim-faint">
-                        {p.min_value}–{p.max_value} {p.unit === "ratio" ? "" : p.unit} · hiện tại{" "}
-                        {paramValue(parent.parameters[p.code], p.unit)}
+                  <div key={p.code} className="flex flex-col gap-1 rounded-xl bg-vehicsim-soft/50 p-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="text-[13.5px] font-bold text-vehicsim-ink">{p.name}</span>
+                        <span className="text-[11.5px] text-vehicsim-muted">
+                          Phạm vi: <strong className="text-vehicsim-ink">{p.min_value} – {p.max_value}</strong> {p.unit === "ratio" ? "" : p.unit} · hiện tại{" "}
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">
+                            {paramValue(parent.parameters[p.code], p.unit)}
+                          </span>
+                        </span>
                       </span>
-                    </span>
-                    <input
-                      type="number"
-                      step="any"
-                      value={current(p)}
-                      aria-label={p.name}
-                      onChange={(e) => setValues((prev) => ({ ...prev, [p.code]: e.target.value }))}
-                      className={cx(
-                        "h-9 w-[110px] rounded-[10px] border border-solid px-3 text-right text-[13px] font-semibold focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong",
-                        isInvalid
-                          ? "border-vehicsim-danger text-vehicsim-danger"
-                          : isChanged
-                          ? "border-vehicsim-decision bg-vehicsim-decision-bg text-vehicsim-decision"
-                          : "border-vehicsim-line-strong text-vehicsim-ink",
-                      )}
-                    />
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <input
+                          type="number"
+                          min={p.min_value}
+                          max={p.max_value}
+                          step={stepFor(p)}
+                          value={current(p)}
+                          aria-label={p.name}
+                          onChange={(e) => handleInputChange(p, e.target.value)}
+                          onBlur={() => handleBlur(p)}
+                          className={cx(
+                            "h-9 w-[110px] rounded-[10px] border border-solid px-3 text-right text-[13.5px] font-bold focus:outline-none focus:ring-2",
+                            isInvalid
+                              ? "border-vehicsim-danger bg-red-50 text-vehicsim-danger focus:ring-red-400"
+                              : isChanged
+                              ? "border-vehicsim-decision bg-vehicsim-decision-bg text-vehicsim-decision focus:ring-vehicsim-decision"
+                              : "border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-ink focus:ring-vehicsim-line-strong",
+                          )}
+                        />
+                        {isChanged && (
+                          <button
+                            type="button"
+                            title="Đặt lại về giá trị gốc của bản cơ sở"
+                            onClick={() => setValues((prev) => ({ ...prev, [p.code]: String(parent.parameters[p.code] ?? p.default_value) }))}
+                            className="rounded-lg p-1.5 text-vehicsim-faint hover:bg-vehicsim-line hover:text-vehicsim-ink text-[12px] font-bold"
+                          >
+                            ↺
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {isInvalid && (
+                      <span className="text-[11px] font-semibold text-vehicsim-danger">
+                        {current(p).trim() === "" || Number.isNaN(numVal)
+                          ? "Vui lòng nhập giá trị số hợp lệ"
+                          : `Giá trị phải nằm trong khoảng ${p.min_value} đến ${p.max_value} ${p.unit === "ratio" ? "" : p.unit}`}
+                      </span>
+                    )}
                   </div>
                 );
               })}
