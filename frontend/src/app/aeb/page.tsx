@@ -56,13 +56,13 @@ export default function AebHubPage() {
                 return (
                   <div
                     key={code}
-                    className="flex flex-col gap-1 rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-soft p-3.5"
+                    className="flex flex-col gap-1 rounded-xl border border-solid border-slate-200 bg-white p-3.5 shadow-xs"
                   >
                     <span className="text-[12.5px] font-bold text-slate-800">{def?.name ?? code}</span>
-                    <span className="text-[18px] font-black text-vehicsim-ink">
+                    <span className="text-[18px] font-black text-slate-900">
                       {paramValue(baseline.parameters[code], def?.unit ?? "")}
                     </span>
-                    <span className="text-[11px] text-vehicsim-faint">
+                    <span className="text-[11.5px] text-slate-500">
                       Phạm vi: {def?.min_value} – {def?.max_value} {def?.unit}
                     </span>
                   </div>
