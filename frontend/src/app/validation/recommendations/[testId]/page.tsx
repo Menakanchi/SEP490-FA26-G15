@@ -98,7 +98,7 @@ export default function RecommendationPage() {
             <h2 className="text-[17px] font-bold text-vehicsim-ink">Tác động dự kiến</h2>
             <div className="grid gap-3 min-[420px]:grid-cols-2 2xl:grid-cols-4">
               <Effect label="Tỉ lệ va chạm" pair={effect.collision_rate} unit="%" lowerIsBetter />
-              <Effect label="Phanh nhầm" pair={effect.false_activation} unit="%" lowerIsBetter />
+              <Effect label="Phanh oan" pair={effect.false_activation} unit="%" lowerIsBetter />
               <Effect label="Trung vị TTC nhỏ nhất" pair={effect.median_min_ttc} unit=" s" />
               <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-[14px] bg-vehicsim-soft px-4 py-3">
                 <span className="text-[12px] font-medium text-vehicsim-faint">Kịch bản được sửa / xấu đi</span>
@@ -207,7 +207,7 @@ export default function RecommendationPage() {
         </div>
       )}
       {r && !running && r.summary.pairs && (
-        <PairObjectivesTable pairs={r.summary.pairs} baselineLabel={r.baseline.label} candidateLabel={r.candidate.label} />
+        <PairObjectivesTable pairs={r.summary.pairs} baselineLabel={r.baseline.label} candidateLabel={r.candidate.label} testId={Number(testId)} />
       )}
     </VehicSimPage>
   );

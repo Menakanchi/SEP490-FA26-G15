@@ -7,7 +7,7 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, OutcomeBadge, PillButton, StatusBadge, Tag, cx, fmt, paramValue, TableScroll } from "@/components/VehicSimUi";
 import { vi, viSummary } from "@/components/vehicsimI18n";
-import { CandidateSourceTag, CarlaCaveat, PairObjectivesTable } from "@/components/RegressionNotes";
+import { CandidateSourceTag, CarlaCaveat, PairObjectivesTable, pairRunHref } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OutcomeKey, Pair, ParamDiff, RegressionDetail } from "@/types/vehicsim";
 
@@ -102,7 +102,7 @@ export default function RegressionResultsPage() {
       }
       subtitle={
         d &&
-        `AEB ${d.baseline.label} (cơ sở) → ${d.candidate.label} (ứng viên) · ${d.family} · ${d.pass_criteria.scenario_set.variant_count} kịch bản${d.pass_criteria.scenario_set.mode === "custom" ? " chọn tay" : ""} · cùng seed · chạy ${fmt.date(d.created_at)}${d.created_by ? ` bởi ${d.created_by}` : ""}`
+        `AEB ${d.baseline.label} (${isExperiencer ? "baseline" : "cơ sở"}) → ${d.candidate.label} (ứng viên) · ${d.family} · ${d.pass_criteria.scenario_set.variant_count} kịch bản${d.pass_criteria.scenario_set.mode === "custom" ? " chọn tay" : ""} · cùng seed · chạy ${fmt.date(d.created_at)}${d.created_by && !isExperiencer ? ` bởi ${d.created_by}` : ""}`
       }
       actions={
         d && (
@@ -114,7 +114,7 @@ export default function RegressionResultsPage() {
               </>
             ) : null}
             <PillButton
-              href={firstInteresting ? `/analysis/failures/${firstInteresting.candidate_run_id}/playback` : undefined}
+              href={firstInteresting ? pairRunHref(firstInteresting.candidate_run_id, firstInteresting.baseline_run_id, d.id, "playback") : undefined}
               disabled={!firstInteresting}
             >
               ▶ Phát lại để so sánh
@@ -142,7 +142,7 @@ export default function RegressionResultsPage() {
           )}
 
           <div className="flex w-full flex-col items-stretch gap-3 lg:flex-row lg:items-center">
-            <VersionCard title={`AEB ${d.baseline.label}`} tag="Cơ sở" params={cardParams} side="baseline" />
+            <VersionCard title={`AEB ${d.baseline.label}`} tag={isExperiencer ? "Baseline" : "Cơ sở"} params={cardParams} side="baseline" />
             <span className="hidden size-10 shrink-0 items-center justify-center rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface text-[15px] font-bold text-vehicsim-ink lg:flex">
               →
             </span>
@@ -179,7 +179,7 @@ export default function RegressionResultsPage() {
                   value={`${s.rates.collision_baseline_pct.toFixed(1)}% → ${s.rates.collision_candidate_pct.toFixed(1)}%`}
                   small
                   tone={s.rates.collision_candidate_pct <= s.rates.collision_baseline_pct ? "text-vehicsim-ok" : "text-vehicsim-danger"}
-                  note={`${fmt.signed(s.rates.collision_candidate_pct - s.rates.collision_baseline_pct, 1)} điểm % · phanh nhầm ${fmt.signed(
+                  note={`${fmt.signed(s.rates.collision_candidate_pct - s.rates.collision_baseline_pct, 1)} điểm % · phanh oan ${fmt.signed(
                     s.rates.false_activation_candidate_pct - s.rates.false_activation_baseline_pct,
                     1,
                   )} điểm %`}
@@ -187,13 +187,15 @@ export default function RegressionResultsPage() {
               </div>
 
               <div className="flex w-full flex-col gap-4 xl:flex-row">
-                {s.transitions && <Transitions transitions={s.transitions} baseline={d.baseline.label} candidate={d.candidate.label} />}
+                {s.transitions && <Transitions transitions={s.transitions} baseline={d.baseline.label} candidate={d.candidate.label} baselineTerm={isExperiencer ? "baseline" : "cơ sở"} />}
                 <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-[17px] font-bold text-vehicsim-ink">Theo họ kịch bản</h2>
-                    <span className="text-[11px] font-medium text-vehicsim-faint">◂ xấu đi · được sửa ▸</span>
-                  </div>
-                  {(s.families ?? []).map((f) => {
+                  {!isExperiencer && (
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-[17px] font-bold text-vehicsim-ink">Theo họ kịch bản</h2>
+                      <span className="text-[11px] font-medium text-vehicsim-faint">◂ xấu đi · được sửa ▸</span>
+                    </div>
+                  )}
+                  {!isExperiencer && (s.families ?? []).map((f) => {
                     const max = Math.max(1, f.scenarios);
                     return (
                       <div key={f.scenario_id} className="flex items-center gap-3 border-b border-solid border-vehicsim-line pb-3">
@@ -216,8 +218,8 @@ export default function RegressionResultsPage() {
                       </div>
                     );
                   })}
-                  <div className="mt-auto flex flex-col gap-2">
-                    <span className="text-[13px] font-semibold text-vehicsim-ink">Tiêu chí đạt</span>
+                  <div className={cx("flex flex-col gap-2", !isExperiencer && "mt-auto")}>
+                    <span className={cx("font-semibold text-vehicsim-ink", isExperiencer ? "text-[17px] font-bold" : "text-[13px]")}>Tiêu chí đạt</span>
                     {(s.criteria ?? []).map((c) => (
                       <div key={c.key} className="flex items-center gap-2 text-[12px]">
                         <span
@@ -271,16 +273,15 @@ export default function RegressionResultsPage() {
                   <TableScroll label="Bảng khác biệt theo kịch bản" minWidth={900}>
                     <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
                       <span className="min-w-0 flex-1">Kịch bản</span>
-                      <span className="w-[150px]">Họ kịch bản</span>
+                      {!isExperiencer && <span className="w-[150px]">Họ kịch bản</span>}
                       <span className="w-[120px]">{d.baseline.label}</span>
                       <span className="w-6" />
                       <span className="w-[120px]">{d.candidate.label}</span>
                       <span className="w-[96px]">Δ TTC min</span>
-                      <span className="w-[90px]">Va chạm ở</span>
                       <span className="w-[100px]" />
                     </div>
                     {visible.slice(0, shown).map((p) => (
-                      <DiffRow key={p.variant_id} p={p} />
+                      <DiffRow key={p.variant_id} p={p} testId={d.id} showFamily={!isExperiencer} />
                     ))}
                   </TableScroll>
                 )}
@@ -296,7 +297,7 @@ export default function RegressionResultsPage() {
                 </div>
               </section>
 
-              <PairObjectivesTable pairs={pairs} baselineLabel={d.baseline.label} candidateLabel={d.candidate.label} />
+              <PairObjectivesTable pairs={pairs} baselineLabel={d.baseline.label} candidateLabel={d.candidate.label} testId={d.id} simple={isExperiencer} />
             </>
           )}
 
@@ -314,12 +315,13 @@ function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failed
       <div className="flex items-center gap-4 rounded-[20px] border border-solid border-vehicsim-danger/30 bg-vehicsim-fail-card px-5 py-4">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-vehicsim-danger text-[18px] font-bold text-white">!</span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="text-[17px] font-bold text-vehicsim-ink">Không đủ điều kiện để chấp nhận</p>
+          <p className="text-[17px] font-bold text-vehicsim-ink">{conclusion ? "Chưa dùng làm baseline được" : "Không đủ điều kiện để chấp nhận"}</p>
           <p className="text-[13px] leading-[1.5] text-vehicsim-muted">
             {counts?.regressed
               ? `${d.candidate.label} sửa được ${counts.fixed} kịch bản nhưng làm ${counts.regressed} kịch bản từng đạt bị xấu đi.`
               : `${d.candidate.label} sửa được ${counts?.fixed ?? 0} kịch bản, không làm kịch bản nào xấu đi nhưng chưa đạt đủ tiêu chí.`}{" "}
-            Tiêu chí trượt: {failedCriteria.join("; ") || "—"}. Ứng viên không đạt kiểm thử hồi quy không thể được chấp nhận.
+            Tiêu chí trượt: {failedCriteria.join("; ") || "—"}.{" "}
+            {conclusion ? "Ứng viên không đạt kiểm chứng không dùng làm baseline được." : "Ứng viên không đạt kiểm thử hồi quy không thể được chấp nhận."}
           </p>
         </div>
         <Tag tone="danger" className="border border-solid border-vehicsim-danger/40 bg-vehicsim-surface px-3 py-[6px] text-[12px]">
@@ -355,7 +357,7 @@ function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failed
     );
   }
   if (d.status === "ERROR") {
-    return <ErrorNote message="Kiểm thử hồi quy gặp lỗi khi chạy — xem log worker và chạy lại." />;
+    return <ErrorNote message={conclusion ? "Lần kiểm chứng gặp lỗi khi chạy mô phỏng — tạo lại lần kiểm chứng cho ứng viên này." : "Kiểm thử hồi quy gặp lỗi khi chạy — xem log worker và chạy lại."} />;
   }
   return null;
 }
@@ -401,16 +403,18 @@ function Transitions({
   transitions,
   baseline,
   candidate,
+  baselineTerm,
 }: {
   transitions: Record<OutcomeKey, Record<OutcomeKey, number>>;
   baseline: string;
   candidate: string;
+  baselineTerm: string;
 }) {
   return (
     <section className="flex w-full shrink-0 flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 xl:w-[430px]">
       <h2 className="text-[17px] font-bold text-vehicsim-ink">Chuyển đổi kết quả</h2>
       <p className="text-[12px] text-vehicsim-faint">
-        Hàng: cơ sở {baseline} · Cột: ứng viên {candidate}
+        Hàng: {baselineTerm} {baseline} · Cột: ứng viên {candidate}
       </p>
       <div className="grid grid-cols-[90px_repeat(3,1fr)] gap-2">
         <span />
@@ -451,15 +455,15 @@ function Transitions({
   );
 }
 
-function DiffRow({ p }: { p: Pair }) {
+function DiffRow({ p, testId, showFamily }: { p: Pair; testId: number; showFamily: boolean }) {
   const regressed = p.change === "regressed";
   return (
     <div className={cx("flex h-[56px] items-center border-b border-solid border-vehicsim-line px-5", regressed && "bg-vehicsim-fail-card")}>
-      <Link href={`/analysis/failures/${p.candidate_run_id}`} className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3 hover:underline">
+      <Link href={pairRunHref(p.candidate_run_id, p.baseline_run_id, testId, "summary")} className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3 hover:underline">
         <span className="text-[13px] font-bold text-vehicsim-ink">{p.label}</span>
         <span className="truncate text-[12px] text-vehicsim-faint">{viSummary(p.summary)}</span>
       </Link>
-      <span className="w-[150px] truncate text-[13px] text-vehicsim-ink">{p.family}</span>
+      {showFamily && <span className="w-[150px] truncate text-[13px] text-vehicsim-ink">{p.family}</span>}
       <span className="w-[120px]">
         <PairOutcome outcome={p.baseline_outcome} falseActivation={p.baseline_false_activation} />
       </span>
@@ -475,12 +479,9 @@ function DiffRow({ p }: { p: Pair }) {
       >
         {fmt.signed(p.min_ttc_delta_s, 1, " s")}
       </span>
-      <span className={cx("w-[90px] text-[13px]", p.candidate_impact_kmh ? "font-semibold text-vehicsim-danger" : "text-vehicsim-faint")}>
-        {p.candidate_impact_kmh ? fmt.kmh(p.candidate_impact_kmh) : "—"}
-      </span>
       <span className="flex w-[100px] justify-end">
         <Link
-          href={`/analysis/failures/${p.candidate_run_id}/playback`}
+          href={pairRunHref(p.candidate_run_id, p.baseline_run_id, testId, "playback")}
           className="rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-[6px] text-[12px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft"
         >
           ▶ So sánh
@@ -491,7 +492,8 @@ function DiffRow({ p }: { p: Pair }) {
 }
 
 function PairOutcome({ outcome, falseActivation }: { outcome: OutcomeKey; falseActivation: boolean }) {
-  return <OutcomeBadge outcome={outcome === "SAFE" && falseActivation ? "FALSE_BRAKING" : outcome} size="sm" />;
+  // Cùng luật với màn Phân tích (AnalysisViewService.outcomeOf): run phanh oan luôn hiện là phanh oan.
+  return <OutcomeBadge outcome={falseActivation ? "FALSE_BRAKING" : outcome} size="sm" />;
 }
 
 function Legend({ cls, label }: { cls: string; label: string }) {

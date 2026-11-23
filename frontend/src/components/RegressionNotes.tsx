@@ -30,6 +30,18 @@ export function CandidateSourceTag({ source }: { source?: CandidateSource | null
   return <Tag tone={source?.type === "OPTIMIZATION" ? "info" : "neutral"}>{text}</Tag>;
 }
 
+/** Nơi quay về khi mở bằng chứng từ trang kiểm chứng (trang Phân tích nhận đúng mẫu này, xem `analysisReturn`). */
+export const regressionReturn = (testId: number) => `/validation/regression/${testId}`;
+
+/**
+ * Link tới trang chi tiết / phát lại của màn Phân tích cho một run trong cặp: kèm `returnTo` để quay về đúng lần kiểm chứng
+ * và `compare` là run còn lại của cặp (cùng biến thể, seed, xe, simulator) để mở đúng run so sánh.
+ */
+export function pairRunHref(runId: number, pairedRunId: number, testId: number, section: "summary" | "telemetry" | "evidence" | "playback"): string {
+  const query = new URLSearchParams({ ...(section === "playback" ? {} : { section }), returnTo: regressionReturn(testId), compare: String(pairedRunId) });
+  return `/analysis/failures/${runId}${section === "playback" ? "/playback" : ""}?${query}`;
+}
+
 type ObjectiveKey = "rms_jerk_mps3" | "impact_speed_mps" | "stopping_distance_m";
 
 const OBJECTIVES: { key: ObjectiveKey; label: string; unit: string; none: string }[] = [
@@ -61,7 +73,11 @@ function ObjectiveCell({ p, objective }: { p: Pair; objective: (typeof OBJECTIVE
   );
 }
 
-export function PairObjectivesTable({ pairs, baselineLabel, candidateLabel }: { pairs: Pair[]; baselineLabel: string; candidateLabel: string }) {
+export function PairObjectivesTable({ pairs, baselineLabel, candidateLabel, testId, simple = false }: {
+  pairs: Pair[]; baselineLabel: string; candidateLabel: string; testId: number;
+  /** EXP (project cá nhân): bỏ ghi chú kỹ thuật nội bộ của nhóm. */
+  simple?: boolean;
+}) {
   const [shown, setShown] = React.useState(10);
   const withData = pairs.filter((p) => OBJECTIVES.some((o) => objectiveValue(p, "baseline", o.key) !== undefined));
   if (!withData.length) return null;
@@ -71,7 +87,7 @@ export function PairObjectivesTable({ pairs, baselineLabel, candidateLabel }: { 
         <h2 className="text-[15px] font-bold text-vehicsim-ink">Ba mục tiêu theo từng cặp</h2>
         <p className="text-[12px] leading-[1.5] text-vehicsim-muted">
           {baselineLabel} → {candidateLabel}, càng nhỏ càng tốt. Chỉ để tham khảo — không thuộc tiêu chí đạt/không đạt. Quãng phanh ca va chạm là
-          ước lượng (ADR-040). Chưa có trung bình theo tập: chờ bộ chỉ số chung.
+          ước lượng{simple ? "." : " (ADR-040). Chưa có trung bình theo tập: chờ bộ chỉ số chung."}
         </p>
       </div>
       <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
@@ -84,7 +100,7 @@ export function PairObjectivesTable({ pairs, baselineLabel, candidateLabel }: { 
       </div>
       {withData.slice(0, shown).map((p) => (
         <div key={p.variant_id} className="flex h-[44px] items-center border-b border-solid border-vehicsim-line px-5">
-          <Link href={`/analysis/failures/${p.candidate_run_id}`} className="min-w-0 flex-1 truncate text-[13px] font-bold text-vehicsim-ink hover:underline">
+          <Link href={pairRunHref(p.candidate_run_id, p.baseline_run_id, testId, "summary")} className="min-w-0 flex-1 truncate text-[13px] font-bold text-vehicsim-ink hover:underline">
             {p.label}
           </Link>
           {OBJECTIVES.map((o) => (
