@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ShieldCheck, Target } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import {
@@ -38,15 +38,13 @@ export default function AebHubPage() {
     >
       <ErrorNote message={error} />
 
-      {/* BƯỚC 4.1: BẢN CƠ SỞ HIỆN HÀNH (BASELINE) */}
+      {/* THÔNG TIN BẢN CƠ SỞ HIỆN HÀNH (BASELINE) */}
       <section className="flex flex-col gap-2.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-vehicsim-primary text-[11px] font-bold text-white">
-              1
-            </span>
+            <ShieldCheck className="size-5 text-emerald-600" />
             <h2 className="text-[15px] font-bold text-vehicsim-ink">
-              Bước 4.1 · Bản cơ sở hiện hành (Baseline)
+              Bản cơ sở hiện hành (Baseline)
             </h2>
             <span className="hidden text-[12.5px] text-vehicsim-muted sm:inline">
               — Mốc tham chiếu chuẩn dùng để đối chiếu khi đánh giá ứng viên
@@ -64,6 +62,7 @@ export default function AebHubPage() {
 
         {baseline && (
           <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
+            {/* 4 tham số AEB của xe cũ */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {KEY_PARAMS.map((code) => {
                 const def = catalog.get(code);
@@ -83,18 +82,80 @@ export default function AebHubPage() {
                 );
               })}
             </div>
+
+            {/* 3 Mục tiêu tối ưu cần cải thiện so với bản cơ sở */}
+            <div className="flex flex-col gap-2.5 border-t border-solid border-vehicsim-line/80 pt-4 mt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Target className="size-4 text-emerald-600" />
+                  <span className="text-[13px] font-bold text-vehicsim-ink">
+                    3 mục tiêu tối ưu cần cải thiện so với bản cơ sở:
+                  </span>
+                </div>
+                <span className="text-[11.5px] text-vehicsim-faint">
+                  Mục tiêu đánh giá đa chiều cho thuật toán MOBO và kiểm định hồi quy
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {/* Mục tiêu 1 */}
+                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-emerald-200/70 bg-emerald-50/50 p-3.5 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                  <div className="flex items-center gap-1.5">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white">
+                      1
+                    </span>
+                    <span className="text-[13px] font-bold text-emerald-900 dark:text-emerald-300">
+                      Giảm rung giật (RMS Jerk)
+                    </span>
+                  </div>
+                  <p className="text-[12px] leading-relaxed text-slate-600 dark:text-slate-400">
+                    Hạn chế giật đột ngột khi phanh gấp, nâng cao độ êm ái và an toàn cho hành khách trên xe.
+                  </p>
+                </div>
+
+                {/* Mục tiêu 2 */}
+                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-rose-200/70 bg-rose-50/50 p-3.5 dark:border-rose-900/40 dark:bg-rose-950/20">
+                  <div className="flex items-center gap-1.5">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-rose-600 text-[11px] font-bold text-white">
+                      2
+                    </span>
+                    <span className="text-[13px] font-bold text-rose-900 dark:text-rose-300">
+                      Giảm tốc độ va chạm
+                    </span>
+                  </div>
+                  <p className="text-[12px] leading-relaxed text-slate-600 dark:text-slate-400">
+                    Triệt tiêu hoặc giảm tối đa vận tốc còn lại khi va chạm, ưu tiên cứu mạng người đi bộ.
+                  </p>
+                </div>
+
+                {/* Mục tiêu 3 */}
+                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-sky-200/70 bg-sky-50/50 p-3.5 dark:border-sky-900/40 dark:bg-sky-950/20">
+                  <div className="flex items-center gap-1.5">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-sky-600 text-[11px] font-bold text-white">
+                      3
+                    </span>
+                    <span className="text-[13px] font-bold text-sky-900 dark:text-sky-300">
+                      Giảm quãng phanh dừng
+                    </span>
+                  </div>
+                  <p className="text-[12px] leading-relaxed text-slate-600 dark:text-slate-400">
+                    Rút ngắn quãng đường xe cần dừng hẳn, giữ khoảng cách an toàn tối đa với chướng ngại vật.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </section>
 
-      {/* BƯỚC 4.2: PHƯƠNG PHÁP CẢI TIẾN THAM SỐ */}
+      {/* BƯỚC 4.1: PHƯƠNG PHÁP CẢI TIẾN THAM SỐ */}
       <section className="flex flex-col gap-2.5">
         <div className="flex items-center gap-2">
           <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-vehicsim-primary text-[11px] font-bold text-white">
-            2
+            1
           </span>
           <h2 className="text-[15px] font-bold text-vehicsim-ink">
-            Bước 4.2 · Phương pháp cải tiến tham số
+            Bước 4.1 · Phương pháp cải tiến tham số
           </h2>
         </div>
 
@@ -115,20 +176,9 @@ export default function AebHubPage() {
                   Studio MOBO <ArrowRight className="size-3.5" />
                 </PillButton>
               </div>
-              <p className="text-[12.5px] text-vehicsim-muted">
-                Thuật toán Bayesian qEHVI tìm biên Pareto cân bằng đồng thời 3 mục tiêu:
+              <p className="text-[12.5px] text-vehicsim-muted leading-relaxed">
+                Thuật toán Bayesian qEHVI tự động khám phá không gian 4 tham số để tìm biên Pareto tối ưu đồng thời 3 mục tiêu trên.
               </p>
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-1 text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
-                  ① Giảm rung giật (RMS Jerk)
-                </span>
-                <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-1 text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
-                  ② Giảm tốc độ va chạm
-                </span>
-                <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-1 text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
-                  ③ Giảm quãng phanh dừng
-                </span>
-              </div>
             </div>
           </Card>
 
@@ -151,14 +201,14 @@ export default function AebHubPage() {
         </div>
       </section>
 
-      {/* BƯỚC 4.3: QUẢN LÝ ỨNG VIÊN & KIỂM THỬ HỒI QUY */}
+      {/* BƯỚC 4.2: QUẢN LÝ ỨNG VIÊN & KIỂM ĐỊNH HỒI QUY */}
       <section className="flex flex-col gap-2.5">
         <div className="flex items-center gap-2">
           <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-vehicsim-primary text-[11px] font-bold text-white">
-            3
+            2
           </span>
           <h2 className="text-[15px] font-bold text-vehicsim-ink">
-            Bước 4.3 · Quản lý ứng viên & Kiểm định hồi quy
+            Bước 4.2 · Quản lý ứng viên & Kiểm định hồi quy
           </h2>
         </div>
 
