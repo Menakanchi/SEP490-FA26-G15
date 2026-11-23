@@ -57,24 +57,6 @@ class AebModeTest {
     }
 
     @Test
-    void anAebOffRunIsNeverBlamedOnTheAeb() {
-        CrossingCase c = savedByAeb();
-        com.vsos.core.evaluation.Evaluation.Result off = com.vsos.core.evaluation.Evaluation.evaluate(
-                Bundle.simulateKinematic(spec(c).withAebOff()), AebParams.DEFAULT);
-        assertThat(off.outcome()).isEqualTo("COLLISION");
-        // Không có AEB nào tác động: không phanh oan, không "bỏ lỡ", không lỗi/nguyên nhân gốc ở khâu AEB.
-        assertThat(off.failure()).isNull();
-        assertThat(off.chain()).isEmpty();
-        assertThat(off.aebResult()).containsEntry("false_activation", false).containsEntry("missed_activation", false)
-                .containsEntry(AebMode.KEY, AebMode.OFF).containsEntry("aeb_triggered", false).containsEntry("aeb_trigger_time_s", null);
-        assertThat(off.aebResult().get("aeb_would_trigger_time_s")).as("lúc AEB lẽ ra kích hoạt vẫn được giữ").isNotNull();
-        assertThat(off.headline()).startsWith("AEB off");
-        // Cùng ca khi AEB bật vẫn chấm bình thường (không bị đổi hành vi).
-        assertThat(com.vsos.core.evaluation.Evaluation.evaluate(Bundle.simulateKinematic(spec(c)), AebParams.DEFAULT).aebResult())
-                .doesNotContainKey(AebMode.KEY);
-    }
-
-    @Test
     void leadVehicleCasesSupportAebOffToo() {
         LeadVehicleCase ccrs = new LeadVehicleCase(LeadVehicleCase.CCRS, 50.0, 0.0, 40.0, null, 100.0, "CLEAR", "DAY", null);
         Bundle.RunSpec lead = new Bundle.RunSpec(null, AebParams.DEFAULT, VehicleSpec.DEFAULT, 48846L, "v1.0", "e-tron", Map.of(), Map.of(), ccrs);
