@@ -1,0 +1,33 @@
+{
+ "format": "vehicsim.variant/v1",
+ "seed": 48846,
+ "variant": {
+  "ego_speed_kmh": 40.0,
+  "trigger_distance_m": 25.0,
+  "pedestrian_speed_mps": 1.5,
+  "stops_at_curb": false,
+  "weather": "RAIN",
+  "time_of_day": "DAY",
+  "friction": null
+ },
+ "vehicle": {
+  "name": "Audi e-tron",
+  "length_m": 4.75,
+  "width_m": 1.93,
+  "max_brake_decel_mps2": 9.5,
+  "carla": {
+   "blueprint": "vehicle.audi.etron",
+   "physics": {
+    "mass": 2100.0,
+    "wheels": {
+     "max_brake_torque": 1800.0
+    }
+   },
+   "dimensions": {
+    "height_m": 1.67,
+    "wheelbase_m": 2.95
+   },
+   "full_brake_decel_mps2": 9.13
+  }
+ }
+}

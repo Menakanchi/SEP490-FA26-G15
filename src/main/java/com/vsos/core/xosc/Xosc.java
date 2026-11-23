@@ -31,11 +31,42 @@ import com.vsos.core.common.Py;
 public final class Xosc {
 
     /**
-     * v9 (ADR-055, ADR-043 giai đoạn 2): như v8 nhưng AEB của ca người đi bộ trên CARLA nhận perception từ radar ({@code RadarTracker}) thay vì ground
-     * truth, nên kết quả đổi ở mọi ca người đi bộ. Xe phía trước (ADR-050) vẫn dùng ground truth.
+     * v14 (23/11/2026, ADR-061): như v13 nhưng Patrol / Sprinter cũng được bù pha tăng lực (ADR-056). File giống v13 trừ {@code vs_format}; e-tron, Model 3
+     * và xe chưa có bảng ra số giống v13.
      */
-    public static final String FORMAT = "vehicsim.xosc/v9";
-    public static final String SIMULATOR_SUFFIX = "-xosc9";
+    public static final String FORMAT = "vehicsim.xosc/v14";
+    public static final String SIMULATOR_SUFFIX = "-xosc14";
+    /**
+     * v13 (22/11/2026, ADR-059, ADR-060): như v12 nhưng Model 3 / Patrol / Sprinter đã hiệu chuẩn (migration 016) có bảng bàn đạp theo tốc độ như e-tron;
+     * xe có bảng chuyển sang đặt tốc độ từ điểm dừng gấp đo được theo bàn đạp (thay 6 m/s) và khôi phục khâu bù theo giảm tốc đo. File giống v12 trừ
+     * {@code vs_format}.
+     */
+    public static final String V13_FORMAT = "vehicsim.xosc/v13";
+    public static final String V13_SIMULATOR_SUFFIX = "-xosc13";
+    /**
+     * v12 (22/11/2026, ADR-058): như v11 nhưng phanh tác dụng đúng mốc (không trễ do cộng dồn số thực) và xe có bảng bàn đạp đổi lệnh ra bàn đạp thuần
+     * feed-forward (bỏ khâu bù 0,05 × sai số, nguyên nhân làm giảm tốc vọt ≥ 9,81 m/s² ở ~40 km/h). File giống v11 trừ {@code vs_format}.
+     */
+    public static final String V12_FORMAT = "vehicsim.xosc/v12";
+    public static final String V12_SIMULATOR_SUFFIX = "-xosc12";
+    /**
+     * v11 (22/11/2026, ADR-057): như v10 nhưng hành lang AEB "trong đường đi" theo bề rộng của xe chạy thay cho 1,93 m cố định (e-tron). File giống
+     * v10 trừ {@code vs_format}; xe rộng 1,93 m ra số giống v10.
+     */
+    public static final String V11_FORMAT = "vehicsim.xosc/v11";
+    public static final String V11_SIMULATOR_SUFFIX = "-xosc11";
+    /**
+     * v10 (22/11/2026, ADR-056): như v9 nhưng xe đã hiệu chuẩn bàn đạp (e-tron) được bù pha tăng lực: trong lúc lệnh giảm tốc đang tăng, bàn đạp lấy
+     * theo lệnh của {@code CarlaSession.RAMP_LEAD_S} giây sau, vì CARLA đạt lực phanh muộn hơn bàn đạp ~0,05 s. Hành lang AEB còn 1,93 m cho mọi xe.
+     */
+    public static final String V10_FORMAT = "vehicsim.xosc/v10";
+    public static final String V10_SIMULATOR_SUFFIX = "-xosc10";
+    /**
+     * v9 (ADR-055, ADR-043 giai đoạn 2): như v8 nhưng AEB của ca người đi bộ trên CARLA nhận perception từ radar ({@code RadarTracker}) thay vì ground
+     * truth. Xe phía trước (ADR-050) vẫn dùng ground truth. Chưa bù pha tăng lực. Backend không tạo / chạy lại run bằng profile này, không ghép với v10.
+     */
+    public static final String V9_FORMAT = "vehicsim.xosc/v9";
+    public static final String V9_SIMULATOR_SUFFIX = "-xosc9";
     /**
      * v8 (19/11/2026, ADR-054): như v7 nhưng xe đã hiệu chuẩn bàn đạp (e-tron) đổi lệnh giảm tốc ra bàn đạp theo bảng đo được thay cho giả định
      * tuyến tính; AEB còn dùng ground truth. Backend không tạo / chạy lại run bằng profile này và không ghép với v9.
@@ -183,7 +214,7 @@ public final class Xosc {
         if ("vehicsim.xosc/v1".equals(format)) {
             throw new Bundle.BundleError("File .xosc v1 có hướng đi bộ cũ; cần xuất lại từ web để chạy người đi bộ băng ngang đường");
         }
-        if (!FORMAT.equals(format) && !V8_FORMAT.equals(format) && !V7_FORMAT.equals(format) && !V6_FORMAT.equals(format) && !V5_FORMAT.equals(format)
+        if (!FORMAT.equals(format) && !V13_FORMAT.equals(format) && !V12_FORMAT.equals(format) && !V11_FORMAT.equals(format) && !V10_FORMAT.equals(format) && !V9_FORMAT.equals(format) && !V8_FORMAT.equals(format) && !V7_FORMAT.equals(format) && !V6_FORMAT.equals(format) && !V5_FORMAT.equals(format)
                 && !V4_FORMAT.equals(format) && !V3_FORMAT.equals(format)
                 && !LEGACY_FORMAT.equals(format)) {
             throw new Bundle.BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)");
@@ -300,6 +331,11 @@ public final class Xosc {
         }
         String format = values.get("format");
         String suffix = FORMAT.equals(format) ? SIMULATOR_SUFFIX
+                : V13_FORMAT.equals(format) ? V13_SIMULATOR_SUFFIX
+                : V12_FORMAT.equals(format) ? V12_SIMULATOR_SUFFIX
+                : V11_FORMAT.equals(format) ? V11_SIMULATOR_SUFFIX
+                : V10_FORMAT.equals(format) ? V10_SIMULATOR_SUFFIX
+                : V9_FORMAT.equals(format) ? V9_SIMULATOR_SUFFIX
                 : V8_FORMAT.equals(format) ? V8_SIMULATOR_SUFFIX
                 : V7_FORMAT.equals(format) ? V7_SIMULATOR_SUFFIX
                 : V6_FORMAT.equals(format) ? V6_SIMULATOR_SUFFIX

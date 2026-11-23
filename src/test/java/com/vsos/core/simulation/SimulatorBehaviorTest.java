@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import com.vsos.core.aeb.AebParams;
+import com.vsos.core.aeb.AebStack;
 import com.vsos.core.evaluation.Evaluation;
 
 /**
@@ -124,7 +125,9 @@ class SimulatorBehaviorTest {
         SimulationOutcome out = Simulator.simulate(c(30, 30, 1.5), p, 7);
         assertThat(out.endReason()).isEqualTo("EGO_STOPPED");
         double onset = metric(out, "brake_onset_t");
-        double start = out.frames().stream().filter(f -> f.t() >= onset - 1e-9).findFirst().orElseThrow().egoX();
+        // Từ bộ động học 1.3 (ADR-058): khung ghi vị trí sau khi đã tiến v·dt, quãng phanh tính từ vị trí đầu bước phanh tác dụng.
+        Frame first = out.frames().stream().filter(f -> f.t() >= onset - 1e-9).findFirst().orElseThrow();
+        double start = first.egoX() - first.egoV() * AebStack.DT;
         assertThat(metric(out, "stopping_distance_m")).isCloseTo(out.frames().get(out.frames().size() - 1).egoX() - start, within(1e-3));
         assertThat(Evaluation.evaluate(out, p).aebResult().get("rms_jerk_mps3")).isEqualTo(out.metrics().get("rms_jerk_mps3"));
     }

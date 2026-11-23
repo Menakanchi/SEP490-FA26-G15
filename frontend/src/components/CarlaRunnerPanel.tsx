@@ -65,7 +65,7 @@ export function CarlaRunnerPanel() {
     return () => { current = false; if (url) URL.revokeObjectURL(url); };
   }, [data, cameraFrame]);
   const ready = connection?.connected && connection.compatible && connection.scenario_runner;
-  // Backend chỉ cấu hình profile .xosc hiện hành cho run mới (hiện -xosc9); không gắn số phiên bản ở đây để đổi profile không khoá nút.
+  // Backend chỉ cấu hình profile .xosc hiện hành cho run mới (hiện -xosc14); không gắn số phiên bản ở đây để đổi profile không khoá nút.
   const xoscProfile = /-xosc\d+$/.test(connection?.simulator ?? "");
   const familyId = family || String(ctx?.families[0]?.id ?? "");
 
@@ -126,6 +126,12 @@ export function CarlaRunnerPanel() {
           <PillButton className="text-vehicsim-danger" disabled={!canWrite || busy} onClick={() => void cancelFamily()}
             title="Hủy mọi lượt đang chờ/đang chạy của họ này">
             Hủy {familyActive} lượt của họ
+          </PillButton>
+        )}
+        {familyRuns.length > 0 && (
+          <PillButton onClick={() => { setError(null); void vehicsimApi.downloadFamilyXosc(Number(familyId)).catch(e => setError(vi(e.message))); }}
+            title="Tải .zip chứa một .xosc cho mỗi lượt chạy của họ này">
+            Tải tất cả .xosc của họ
           </PillButton>
         )}
         {familyDone && (

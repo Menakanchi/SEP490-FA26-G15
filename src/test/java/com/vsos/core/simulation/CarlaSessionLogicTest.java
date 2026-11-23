@@ -62,6 +62,8 @@ class CarlaSessionLogicTest {
         assertThat(CarlaSession.radarPerception(crossing("CLEAR"), v5)).isFalse();
         assertThat(CarlaSession.radarPerception(crossing("CLEAR"),
                 new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V8_SIMULATOR_SUFFIX, 0.01, 0.05))).isFalse();
+        assertThat(CarlaSession.radarPerception(crossing("CLEAR"), new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V9_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
+        assertThat(CarlaSession.radarPerception(crossing("CLEAR"), new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V10_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
         LeadVehicleCase lead = new LeadVehicleCase(LeadVehicleCase.CCRS, 50.0, 0.0, 40.0, null, 100.0, "CLEAR", "DAY", null);
         com.vsos.core.bridge.Bundle.RunSpec leadSpec = new com.vsos.core.bridge.Bundle.RunSpec(null, AebParams.DEFAULT, VehicleSpec.DEFAULT, 1L, null, null,
                 Map.of(), Map.of(), lead);
@@ -115,6 +117,93 @@ class CarlaSessionLogicTest {
         assertThat(CarlaSession.nextLowSpeed(5.0, 8.0, 0.01, crossing("RAIN"), current)).isCloseTo(5.0 - 0.70 * Simulator.G * 0.01, within(1e-12));
         assertThat(CarlaSession.nextLowSpeed(5.0, 0.0, 0.01, crossing("CLEAR"), current)).isEqualTo(5.0);
         assertThat(CarlaSession.nextLowSpeed(0.01, 8.0, 0.01, crossing("CLEAR"), current)).isEqualTo(0.0);
+    }
+
+    /**
+     * ADR-056: CARLA đạt lực phanh muộn hơn bàn đạp ~0,05 s (đo 16/11/2026). Từ v10, trong lúc lệnh giảm tốc đang tăng, feed-forward bàn đạp lấy theo
+     * lệnh của 0,055 s sau; lệnh giữ nguyên hoặc giảm thì không cộng gì. v9 trở về trước không có phần này.
+     */
+    @Test
+    void rampLeadOnlyWhileTheCommandRisesFromV10() {
+        com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
+        assertThat(CarlaSession.rampLeadApplies(current)).isTrue();
+        assertThat(CarlaSession.rampLeadApplies(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V10_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
+        assertThat(CarlaSession.rampLeadApplies(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V9_SIMULATOR_SUFFIX, 0.01, 0.05))).isFalse();
+        assertThat(CarlaSession.RAMP_LEAD_S).isEqualTo(0.055);
+        // Lệnh AEB tăng 20 m/s³ (0,2 m/s² mỗi tick 0,01 s): cộng thêm 0,055 × 20 = 1,1 m/s².
+        assertThat(CarlaSession.rampLeadCommand(4.2, 4.0, 0.01)).isCloseTo(4.2 + 1.1, within(1e-9));
+        assertThat(CarlaSession.rampLeadCommand(8.0, 8.0, 0.01)).as("hết pha tăng lực").isEqualTo(8.0);
+        assertThat(CarlaSession.rampLeadCommand(5.0, 6.0, 0.01)).as("lệnh giảm").isEqualTo(5.0);
+        assertThat(CarlaSession.rampLeadCommand(0.0, 0.0, 0.01)).isZero();
+        // Tick đầu khi phanh: lệnh từ 0 lên 0,2.
+        assertThat(CarlaSession.rampLeadCommand(0.2, 0.0, 0.01)).isCloseTo(0.2 + 1.1, within(1e-9));
+    }
+
+    /** Xe CARLA như bộ xuất ghi cho một xe đã hiệu chuẩn mô-men. */
+    private static Map<String, Object> carlaVehicle(String blueprint, double torque, double fullBrake) {
+        return Map.of("blueprint", blueprint, "physics", Map.of("mass", 2000.0, "wheels", Map.of("max_brake_torque", torque)), "full_brake_decel_mps2", fullBrake);
+    }
+
+    /**
+     * ADR-059: Model 3 1750 N·m / Patrol 2250 N·m / Sprinter 2250 N·m có bảng bàn đạp theo tốc độ (đợt 4) từ v13; v12 trở về trước giữ tuyến tính. Bù pha
+     * tăng lực chỉ cho xe đã đo được độ trễ (e-tron, Model 3).
+     */
+    @Test
+    void calibratedVehiclesGetTheirOwnPedalMapFromV13Only() {
+        com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
+        com.vsos.core.xosc.Xosc.Profile v12 = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V12_SIMULATOR_SUFFIX, 0.01, 0.05);
+        Map<String, Object> model3 = carlaVehicle("vehicle.tesla.model3", 1750.0, 9.87);
+        Map<String, Object> patrol = carlaVehicle("vehicle.nissan.patrol_2021", 2250.0, 9.90);
+        Map<String, Object> sprinter = carlaVehicle("vehicle.mercedes.sprinter", 2250.0, 8.91);
+        assertThat(CarlaSession.pedalMapFor(current, model3, 9.87).id()).isEqualTo("model3-1750nm-2026-11-22");
+        assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).id()).isEqualTo("patrol-2250nm-2026-11-22");
+        assertThat(CarlaSession.pedalMapFor(current, sprinter, 8.91).id()).isEqualTo("sprinter-2250nm-2026-11-22");
+        assertThat(CarlaSession.pedalMapFor(v12, model3, 9.87)).as("v12 chưa có bảng 3 xe").isNull();
+        assertThat(CarlaSession.pedalMapFor(v12, etron(1800.0), 9.13)).as("e-tron có bảng từ v8").isNotNull();
+        assertThat(CarlaSession.pedalMapFor(current, carlaVehicle("vehicle.tesla.model3", 700.0, 3.56), 3.56)).as("mô-men mặc định chưa đo").isNull();
+        assertThat(CarlaSession.pedalMapFor(current, model3, 9.87).rampLead()).isTrue();
+        assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).rampLead()).as("≤ v13").isFalse();
+        assertThat(CarlaSession.pedalMapFor(current, sprinter, 8.91).rampLead()).as("≤ v13").isFalse();
+        // ADR-061: từ v14 Patrol / Sprinter cũng bù pha tăng lực; v13 vẫn có bảng 3 xe nhưng chưa bù.
+        assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).rampLead(true)).isTrue();
+        assertThat(CarlaSession.pedalMapFor(current, sprinter, 8.91).rampLead(true)).isTrue();
+        assertThat(CarlaSession.pedalMapFor(current, patrol, 9.90).rampLead(false)).isFalse();
+        assertThat(CarlaSession.pedalMapFor(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V13_SIMULATOR_SUFFIX, 0.01, 0.05), patrol, 9.90)).as("v13 có bảng 3 xe").isNotNull();
+        for (Map<String, Object> vehicle : List.of(model3, patrol, sprinter)) {
+            double full = ((Number) vehicle.get("full_brake_decel_mps2")).doubleValue();
+            CarlaPedalMap map = CarlaSession.pedalMapFor(current, vehicle, full);
+            for (double kmh = 20; kmh <= 110; kmh += 2.5) {
+                double prev = 0.0;
+                for (double a = 0.1; a <= 12.0; a += 0.1) {
+                    double pedal = map.feedForward(a, kmh / 3.6);
+                    assertThat(pedal).as("%s %.1f km/h, %.1f m/s²", map.id(), kmh, a).isGreaterThanOrEqualTo(prev).isBetween(0.0, 1.0);
+                    prev = pedal;
+                }
+            }
+        }
+    }
+
+    /**
+     * ADR-060: CARLA bắt đầu dừng gấp ở tốc độ phụ thuộc bàn đạp (e-tron bàn đạp 0,876 → 8,32 m/s), nên từ v13 adapter chuyển sang đặt tốc độ ở điểm đó + 0,3
+     * m/s, không dưới 6 m/s. Khâu bù theo giảm tốc đo chỉ bị bỏ ở v12.
+     */
+    @Test
+    void lowSpeedOverrideStartsBeforeTheMeasuredAbruptStop() {
+        com.vsos.core.xosc.Xosc.Profile current = new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.SIMULATOR_SUFFIX, 0.01, 0.05);
+        CarlaPedalMap etron = CarlaSession.pedalMapFor(current, etron(1800.0), 9.13);
+        assertThat(etron.overrideSpeed(0.876)).isCloseTo(8.32 + 0.3, within(1e-9));
+        assertThat(etron.overrideSpeed(1.0)).isCloseTo(8.56 + 0.3, within(1e-9));
+        assertThat(etron.overrideSpeed(0.1)).as("bàn đạp nhỏ hơn điểm đo đầu: dùng điểm đầu").isCloseTo(6.59 + 0.3, within(1e-9));
+        CarlaPedalMap patrol = CarlaSession.pedalMapFor(current, carlaVehicle("vehicle.nissan.patrol_2021", 2250.0, 9.90), 9.90);
+        assertThat(patrol.overrideSpeed(1.0)).isCloseTo(10.39 + 0.3, within(1e-9));
+        double prev = 0.0;
+        for (double p = 0.0; p <= 1.0; p += 0.01) {
+            double v = etron.overrideSpeed(p);
+            assertThat(v).isGreaterThanOrEqualTo(Math.max(6.0, prev - 1e-12));
+            prev = v;
+        }
+        assertThat(CarlaSession.pureFeedForward(new com.vsos.core.xosc.Xosc.Profile(com.vsos.core.xosc.Xosc.V12_SIMULATOR_SUFFIX, 0.01, 0.05))).isTrue();
+        assertThat(CarlaSession.pureFeedForward(current)).isFalse();
     }
 
     /** Xe CARLA như bộ xuất ghi cho e-tron đã hiệu chuẩn (ADR-051): blueprint + mô-men phanh mọi bánh. */

@@ -75,6 +75,9 @@ public final class CarlaSession {
     /** Bảng bàn đạp đo được của xe (ADR-054); null = giả định tuyến tính. Số tick đã đổi lệnh qua bảng. */
     private final CarlaPedalMap pedalMap;
     private int pedalMapped;
+    /** Lệnh (đã kẹp μ·g) của tick trước cho bù pha tăng lực (ADR-056), và số tick đã cộng thêm. */
+    private double previousPedalCmd;
+    private int rampLead;
     private String endReason;
     private Path resultPath;
 
@@ -86,8 +89,8 @@ public final class CarlaSession {
         this.fullBrakeDecel = fullBrakeDecel;
         this.pedalMap = pedalMapFor(profile, spec.vehicleCarla(), fullBrakeDecel);
         this.stepS = profile.stepS();
-        this.stack = newStack(spec, events, stepS, profile.perceptionPeriodS());
-        this.shadow = newStack(spec, shadowEvents, stepS, profile.perceptionPeriodS());
+        this.stack = newStack(spec, profile, events, stepS, profile.perceptionPeriodS());
+        this.shadow = newStack(spec, profile, shadowEvents, stepS, profile.perceptionPeriodS());
         this.radarPerception = radarPerception(spec, profile);
         this.stats = new Simulator.MotionStats(stepS);
         // Cửa sổ đo giảm tốc giữ nguyên 0,1 s (2 tick ở 20 Hz): đúng một chu kỳ răng cưa tốc độ CARLA đã đo.
@@ -95,22 +98,50 @@ public final class CarlaSession {
     }
 
     /** Cùng cách dựng AEB như {@link Simulator#newAebStack}, đọc thời tiết / giờ từ spec để dùng được cho cả nhóm xe phía trước. */
-    private static AebStack newStack(Bundle.RunSpec spec, List<Map<String, Object>> events, double stepS, Double perceptionPeriodS) {
+    private static AebStack newStack(Bundle.RunSpec spec, Xosc.Profile profile, List<Map<String, Object>> events, double stepS, Double perceptionPeriodS) {
+        boolean vehicleCorridor = vehicleCorridorApplies(profile);
+        boolean exactTiming = v12Control(profile);
         if (spec.leadCase() == null) {
-            return Simulator.newAebStack(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle(), events, stepS, perceptionPeriodS);
+            return Simulator.newAebStack(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle(), events, stepS, perceptionPeriodS, vehicleCorridor,
+                    exactTiming);
         }
         return new AebStack(spec.params(), spec.seed(), spec.weather(), spec.timeOfDay(), spec.vehicle().lengthM(),
+                Simulator.corridorWidth(spec.vehicle(), vehicleCorridor), exactTiming,
                 Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), events, stepS, perceptionPeriodS);
     }
 
-    /** AEB thật nhận perception từ radar: profile hiện hành (v9) và mục tiêu là người đi bộ. Xe phía trước và file ≤ v8 vẫn dùng ground truth. */
-    static boolean radarPerception(Bundle.RunSpec spec, Xosc.Profile profile) {
-        return spec.leadCase() == null && Xosc.SIMULATOR_SUFFIX.equals(profile.suffix());
+    /** Hành lang AEB theo bề rộng của xe chạy có từ v11 (ADR-057); file cũ dùng 1,93 m cho mọi xe để chạy lại ra đúng kết quả đã lưu. */
+    static boolean vehicleCorridorApplies(Xosc.Profile profile) {
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix());
     }
 
-    /** File định dạng hiện hành (v9): dùng các định nghĩa chỉ số chốt 13/11/2026 (ADR-055); file cũ giữ định nghĩa của nó. */
+    /**
+     * Từ v12 (ADR-058): phanh tác dụng đúng mốc quyết định + trễ, và xe có bảng bàn đạp đổi lệnh ra bàn đạp thuần feed-forward (bảng đo vòng hở; khâu
+     * bù 0,05 × sai số theo giảm tốc đo trễ 0,1 s cộng dồn với bảng làm giảm tốc vọt ≥ 9,81 m/s², kiểm 22/11/2026). File cũ giữ hành vi cũ.
+     */
+    static boolean v12Control(Xosc.Profile profile) {
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix());
+    }
+
+    /** AEB thật nhận perception từ radar: từ v9 và mục tiêu là người đi bộ. Xe phía trước và file ≤ v8 vẫn dùng ground truth. */
+    static boolean radarPerception(Bundle.RunSpec spec, Xosc.Profile profile) {
+        return spec.leadCase() == null && (Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V10_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V9_SIMULATOR_SUFFIX.equals(profile.suffix()));
+    }
+
+    /** Từ v9: dùng các định nghĩa chỉ số chốt 13/11/2026 (ADR-055); file cũ giữ định nghĩa của nó. */
     private boolean currentFormat() {
-        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix());
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V10_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V9_SIMULATOR_SUFFIX.equals(profile.suffix());
     }
 
     /** Mục tiêu là xe phía trước (CCRs/CCRm/CCRb)? */
@@ -360,7 +391,7 @@ public final class CarlaSession {
         if (spec.aebOff()) {
             return new Tick(false, braking, 0.0, pedal, finished, null);
         }
-        return new Tick(false, braking, decelCmd, pedal, finished, lowSpeedSpeed(egoV, decelCmd, finished));
+        return new Tick(false, braking, decelCmd, pedal, finished, lowSpeedSpeed(egoV, decelCmd, pedal, finished));
     }
 
     /**
@@ -567,7 +598,12 @@ public final class CarlaSession {
      * AEB vẫn tính và ghi lệnh gốc của nó. Áp cho file v6 trở đi (ADR-052): file cũ, kể cả v5, chạy lại ra đúng kết quả đã lưu.
      */
     static double frictionLimitedCommand(double decelCmd, Bundle.RunSpec spec, Xosc.Profile profile) {
-        if (!Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) && !Xosc.V8_SIMULATOR_SUFFIX.equals(profile.suffix())
+        if (!Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) && !Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
+                && !Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
+                && !Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
+                && !Xosc.V10_SIMULATOR_SUFFIX.equals(profile.suffix())
+                && !Xosc.V9_SIMULATOR_SUFFIX.equals(profile.suffix())
+                && !Xosc.V8_SIMULATOR_SUFFIX.equals(profile.suffix())
                 && !Xosc.V7_SIMULATOR_SUFFIX.equals(profile.suffix()) && !Xosc.V6_SIMULATOR_SUFFIX.equals(profile.suffix())) {
             return decelCmd;
         }
@@ -577,9 +613,31 @@ public final class CarlaSession {
     /** Dưới tốc độ này CARLA dừng gần như tức thì (~24 m/s², mọi mức bàn đạp — đo 14/11/2026, carla-ped-bench G1). */
     static final double LOW_SPEED_OVERRIDE_MPS = 6.0;
 
+    /**
+     * Tốc độ chuyển sang đặt tốc độ: từ v13 (ADR-060) xe có bảng bàn đạp dùng điểm dừng gấp đo được theo bàn đạp đang đạp (e-tron bàn đạp 0,88 → ~8,6 m/s);
+     * xe khác và file cũ giữ 6 m/s (ADR-053).
+     */
+    double overrideThreshold(double pedal) {
+        return pedalMap != null && (Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix()))
+                ? pedalMap.overrideSpeed(pedal) : LOW_SPEED_OVERRIDE_MPS;
+    }
+
+    /**
+     * v12 (ADR-058) đổi lệnh ra bàn đạp thuần feed-forward khi có bảng. Kiểm CARLA thật 22/11/2026 với nhật ký bàn đạp cho thấy khâu bù không gây vọt
+     * giảm tốc (nguyên nhân là dừng gấp từ ~8 m/s, ADR-060) nên v13 khôi phục khâu bù; chỉ còn v12 bỏ khâu bù.
+     */
+    static boolean pureFeedForward(Xosc.Profile profile) {
+        return Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix());
+    }
+
     /** Vùng tốc độ thấp do adapter điều khiển có từ v7 (ADR-053): file cũ chạy lại ra đúng kết quả đã lưu. */
     static boolean lowSpeedOverrideApplies(Xosc.Profile profile) {
-        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V8_SIMULATOR_SUFFIX.equals(profile.suffix())
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V10_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V9_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V8_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V7_SIMULATOR_SUFFIX.equals(profile.suffix());
     }
 
@@ -591,12 +649,12 @@ public final class CarlaSession {
         return Math.max(0.0, current - frictionLimitedCommand(Math.max(0.0, decelCmd), spec, profile) * stepS);
     }
 
-    private Double lowSpeedSpeed(double egoV, double decelCmd, String finished) {
+    private Double lowSpeedSpeed(double egoV, double decelCmd, double pedal, String finished) {
         if (!braking || finished != null || !lowSpeedOverrideApplies(profile)) {
             return null;
         }
         if (overrideSpeed == null) {
-            if (egoV >= LOW_SPEED_OVERRIDE_MPS) {
+            if (egoV >= overrideThreshold(pedal)) {
                 return null;
             }
             overrideSpeed = egoV;
@@ -617,13 +675,54 @@ public final class CarlaSession {
         if (decelCmd > 0) {
             pedalMapped++;
         }
-        return DecelMeter.brakePedalFrom(pedalMap.feedForward(decelCmd, egoV), decelCmd, measuredDecel);
+        double feedForwardCmd = decelCmd;
+        if (rampLeadApplies(profile) && pedalMap.rampLead(Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()))) {  // v13: chỉ xe đã đo độ trễ đạt lực (ADR-059)
+            feedForwardCmd = rampLeadCommand(decelCmd, previousPedalCmd, stepS);
+            if (feedForwardCmd > decelCmd) {
+                rampLead++;
+            }
+            previousPedalCmd = decelCmd;
+        }
+        // Chỉ v12 bỏ khâu bù theo giảm tốc đo (ADR-058); v13 khôi phục vì khâu bù không gây vọt giảm tốc (ADR-060).
+        return DecelMeter.brakePedalFrom(pedalMap.feedForward(feedForwardCmd, egoV), decelCmd, pureFeedForward(profile) ? decelCmd : measuredDecel);
     }
 
-    /** Bảng bàn đạp dùng cho run: chỉ từ v8 (v8, v9) và chỉ khi xe khớp đúng cấu hình đã đo ({@link CarlaPedalMap#forVehicle}). */
+    /**
+     * CARLA đạt lực phanh muộn hơn bàn đạp: carla-ped-bench đợt 3 (D1, e-tron, 16/11/2026) đạt 90% lực chậm hơn mô hình 0,049 ± 0,004 s ở mức 7–9 m/s²
+     * và 0,064 ± 0,009 s ở mức 5–7 (≥ 50 km/h). Từ v10 (ADR-056) bàn đạp lấy theo lệnh của 0,055 s sau trong lúc lệnh đang tăng.
+     */
+    static final double RAMP_LEAD_S = 0.055;
+
+    /** Bù pha tăng lực có từ v10 và chỉ cùng bảng bàn đạp đã đo (xe chưa hiệu chuẩn chưa đo độ trễ). */
+    static boolean rampLeadApplies(Xosc.Profile profile) {
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V10_SIMULATOR_SUFFIX.equals(profile.suffix());
+    }
+
+    /**
+     * Lệnh đưa vào feed-forward bàn đạp: {@code a + RAMP_LEAD_S · max(0, da/dt)}, đạo hàm theo tick trước. Lệnh AEB tăng mượt theo {@code decelRampRate}
+     * (≤ 20 m/s³) nên phần cộng thêm ≤ 1,1 m/s² và về 0 ngay khi lệnh thôi tăng; lệnh giảm hoặc giữ nguyên thì không cộng. Phần bù theo sai số đo
+     * vẫn so với lệnh gốc.
+     */
+    static double rampLeadCommand(double decelCmd, double previousCmd, double stepS) {
+        if (decelCmd <= 0) {
+            return decelCmd;
+        }
+        return decelCmd + RAMP_LEAD_S * Math.max(0.0, (decelCmd - previousCmd) / stepS);
+    }
+
+    /** Bảng bàn đạp dùng cho run: chỉ từ v8 và chỉ khi xe khớp đúng cấu hình đã đo ({@link CarlaPedalMap#forVehicle}). */
     static CarlaPedalMap pedalMapFor(Xosc.Profile profile, Map<String, Object> vehicleCarla, double fullBrakeDecel) {
-        boolean measuredPedals = Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V8_SIMULATOR_SUFFIX.equals(profile.suffix());
-        return measuredPedals ? CarlaPedalMap.forVehicle(vehicleCarla, fullBrakeDecel) : null;
+        boolean measuredPedals = Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V10_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V9_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V8_SIMULATOR_SUFFIX.equals(profile.suffix());
+        return measuredPedals ? CarlaPedalMap.forVehicle(vehicleCarla, fullBrakeDecel, Xosc.SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())) : null;
     }
 
     private double commandForPedal(double decelCmd) {
@@ -643,7 +742,12 @@ public final class CarlaSession {
     static double decelAvailable(Bundle.RunSpec spec, Xosc.Profile profile, double fullBrakeDecel) {
         double nominal = Math.min(Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), spec.roadFriction() * Simulator.G);
         // Từ v5 (11/11/2026): v5 trở đi dùng phanh 100% đo được; file cũ hơn giữ cách tính cũ.
-        boolean measured = Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V8_SIMULATOR_SUFFIX.equals(profile.suffix())
+        boolean measured = Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V10_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V9_SIMULATOR_SUFFIX.equals(profile.suffix())
+                || Xosc.V8_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V7_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V6_SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V5_SIMULATOR_SUFFIX.equals(profile.suffix());
         return measured ? Math.min(nominal, fullBrakeDecel) : nominal;
@@ -744,13 +848,16 @@ public final class CarlaSession {
         if (pedalMap != null) {  // chỉ khi có bảng: result của xe chưa hiệu chuẩn giữ nguyên các khóa cũ
             carla.put("pedal_map", pedalMap.id());
             carla.put("pedal_map_frames", pedalMapped);
+            if (rampLeadApplies(profile) && pedalMap.rampLead(Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()))) {
+                carla.put("ramp_lead_frames", rampLead);
+            }
         }
         // Bước cấu hình và bước đo được từ timestamp khung thật: không coi cấu hình là đã đạt tốc độ này.
         carla.put("fixed_delta_seconds", stepS);
         carla.put("perception_period_s", profile.perceptionPeriodS());
         carla.put("jerk_filtered", jerk);
         carla.put("measured_step_s", measured);
-        if (Xosc.SIMULATOR_SUFFIX.equals(profile.suffix())) {
+        if (currentFormat()) {
             // Nguồn perception của AEB thật từ v9: radar (người đi bộ) hay ground truth (xe phía trước). File ≤ v8 không có khoá này (ground truth),
             // để chạy lại ra đúng result.json đã lưu.
             carla.put("perception_source", radarPerception ? "radar" : "ground_truth");

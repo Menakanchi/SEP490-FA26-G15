@@ -1,0 +1,39 @@
+{
+ "format": "vehicsim.variant/v1",
+ "seed": 48846,
+ "variant": {
+  "ego_speed_kmh": 40.0,
+  "trigger_distance_m": 25.0,
+  "pedestrian_speed_mps": 1.5,
+  "stops_at_curb": false,
+  "weather": "RAIN",
+  "time_of_day": "DAY",
+  "friction": null
+ },
+ "vehicle": {
+  "name": "Mercedes Sprinter",
+  "length_m": 5.915,
+  "width_m": 1.988,
+  "max_brake_decel_mps2": 8.5,
+  "carla": {
+   "blueprint": "vehicle.mercedes.sprinter",
+   "physics": {
+    "mass": 3000.0,
+    "drag_coefficient": 0.5,
+    "center_of_mass": {
+     "x": 0.6,
+     "y": 0.0,
+     "z": -0.8
+    },
+    "wheels": {
+     "max_brake_torque": 2250.0
+    }
+   },
+   "dimensions": {
+    "height_m": 2.561,
+    "wheelbase_m": 3.658
+   },
+   "full_brake_decel_mps2": 8.91
+  }
+ }
+}

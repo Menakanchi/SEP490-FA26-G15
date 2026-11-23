@@ -13,7 +13,7 @@ Code dùng chung: [AnalysisMetrics](../../src/main/java/com/vsos/core/evaluation
 | SENSOR_RECOMPUTED / TelemetryMetricsService | Warmup 0,5 s; brake >0,05; cắt trước collision; ưu tiên imu_jerk_ms3, nếu thiếu dùng Δa/Δt | Đây là phép đo khác; không ghi đè objective đã lưu hoặc gộp vào SIMULATOR_RESULT. |
 
 **Cập nhật 13/11/2026 ([ADR-055](../adr/ADR-055-chot-chi-so-va-che-do-aeb-tat-13-11.md)) — áp cho định danh mới, run cũ giữ số:**
-- Impact (`impact_speed_mps`) là **vận tốc va chạm tương đối** (độ lớn hiệu hai vector, m/s) từ bộ động học `vehicsim-kinematic-1.1` và CARLA `-xosc9`;
+- Impact (`impact_speed_mps`) là **vận tốc va chạm tương đối** (độ lớn hiệu hai vector, m/s) từ bộ động học `vehicsim-kinematic-1.1`/`1.2` và CARLA `-xosc9` trở đi (1.2 / `-xosc11`: hành lang AEB theo bề rộng xe, ADR-057; 1.3 / `-xosc12`: phanh đúng mốc, `stopping_distance_m` động học tính từ đầu bước phanh, ADR-058);
   tốc độ ego ở `ego_impact_speed_mps`. Run `1.0` / `≤ -xosc8`: impact legacy là tốc độ ego — không gộp hai định nghĩa (khác simulator identity).
 - RMS jerk CARLA `-xosc9`: gia tốc lọc Euro NCAP (Butterworth 12-pole phaseless 10 Hz), cửa sổ từ T_AEB; số chưa lọc ở `rms_jerk_raw_mps3`.
   Bộ động học (bước 0,05 s) giữ công thức chưa lọc từ `brake_onset_t`.

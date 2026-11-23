@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.zip.GZIPInputStream;
 import org.junit.jupiter.api.Test;
 import com.vsos.core.aeb.AebParams;
+import com.vsos.core.aeb.AebStack;
 import com.vsos.core.evaluation.Evaluation;
 
 /**
@@ -51,11 +52,13 @@ public class KinematicParityTest {
 
     /**
      * Ngoại lệ có chủ đích (13/11/2026, bộ động học 1.1): {@code impact_speed_mps} thành vận tốc va chạm tương đối hypot(v_ego, v_ped), tốc độ ego chuyển
-     * sang {@code ego_impact_speed_mps}. Mọi trường khác của outcome giống hệt định nghĩa 1.0 trên toàn bộ fixture.
+     * sang {@code ego_impact_speed_mps}. Từ 1.2 (22/11/2026, ADR-057) hành lang AEB theo bề rộng của xe chạy: với xe rộng 1,93 m (e-tron) mọi trường khác
+     * của outcome vẫn giống hệt định nghĩa 1.0; ca của fixture có xe rộng khác được phép khác (kiểm riêng ở {@code AebCorridorTest}).
      */
     @Test
     void currentDefinitionOnlyChangesTheImpactSpeedKeys() throws IOException {
         int collisions = 0;
+        int otherWidths = 0;
         for (Map<String, Object> c : cases()) {
             Map<String, Object> cs = map(c.get("case"));
             Map<String, Double> codes = new HashMap<>();
@@ -65,17 +68,27 @@ public class KinematicParityTest {
                     (Boolean) cs.get("stops_at_curb"), (String) cs.get("weather"), (String) cs.get("time_of_day"),
                     cs.get("friction") == null ? null : num(cs, "friction"));
             VehicleSpec vehicle = new VehicleSpec(num(vh, "length_m"), num(vh, "width_m"), num(vh, "max_brake_decel_mps2"));
+            if (vehicle.widthM() != AebParams.LEGACY_CORRIDOR_VEHICLE_WIDTH_M) {
+                otherWidths++;
+                continue;
+            }
             long seed = ((Number) c.get("seed")).longValue();
             AebParams params = AebParams.fromCodes(codes);
             Map<String, Object> legacy = Simulator.simulate(crossing, params, seed, vehicle, false).asDict();
             Map<String, Object> current = Simulator.simulate(crossing, params, seed, vehicle).asDict();
             Map<String, Object> lm = new java.util.LinkedHashMap<>(map(legacy.get("metrics")));
             Map<String, Object> cm = new java.util.LinkedHashMap<>(map(current.get("metrics")));
+            // Nhận diện / quyết định không đổi; từ 1.3 (ADR-058) phanh tác dụng sớm hơn tối đa một bước và quãng dừng tính từ đầu bước, nên các số sau phanh
+            // được phép khác.
+            for (String key : new String[] {"first_detection_t", "fcw_t", "aeb_decision_t", "gt_in_path_t", "ego_initial_speed_mps"}) {
+                assertThat(cm.get(key)).as(key).isEqualTo(lm.get(key));
+            }
+            if (lm.get("brake_onset_t") != null) {
+                double diff = ((Number) lm.get("brake_onset_t")).doubleValue() - ((Number) cm.get("brake_onset_t")).doubleValue();
+                assertThat(diff).isBetween(-1e-9, AebStack.DT + 1e-9);
+            }
             Object ego = cm.remove("ego_impact_speed_mps");
-            assertThat(ego).isEqualTo(lm.get("impact_speed_mps"));
             Object relative = cm.remove("impact_speed_mps");
-            lm.remove("impact_speed_mps");
-            assertThat(cm).isEqualTo(lm);
             if (ego != null) {
                 collisions++;
                 java.util.List<?> frames = (java.util.List<?>) current.get("frames");
@@ -86,11 +99,9 @@ public class KinematicParityTest {
             } else {
                 assertThat(relative).isNull();
             }
-            legacy.remove("metrics");
-            current.remove("metrics");
-            assertThat(current).isEqualTo(legacy);
         }
         assertThat(collisions).as("fixture có ca va chạm để kiểm").isGreaterThan(10);
+        assertThat(otherWidths).as("fixture có ca xe rộng khác 1,93 m (bỏ qua ở đây)").isPositive();
     }
 
 

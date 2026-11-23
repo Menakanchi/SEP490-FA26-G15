@@ -74,10 +74,10 @@ vào lệnh chạy của backend; `run_xosc.py` ngoài web cũng vẽ HUD mặc 
 
 ## Hợp đồng và giới hạn
 
-- Profile hiện tại ghi `carla-0.9.16-xosc9` (định dạng `vehicsim.xosc/v9`, bước **0,01 s = 100 Hz**, mô-men phanh đã hiệu chuẩn — ADR-051,
-  lệnh giảm tốc ra bàn đạp kẹp ở μ·g — ADR-052, dưới 6 m/s adapter đặt tốc độ thay cú dừng gấp — ADR-053, bảng bàn đạp e-tron và người đi bộ khởi hành sớm — ADR-054, AEB của ca người đi bộ nhận perception từ radar 90° gắn mũi xe, ground truth chạy bóng — ADR-043/ADR-055; `result.json` ghi
+- Profile hiện tại ghi `carla-0.9.16-xosc14` (định dạng `vehicsim.xosc/v14`, bước **0,01 s = 100 Hz**, mô-men phanh đã hiệu chuẩn — ADR-051,
+  lệnh giảm tốc ra bàn đạp kẹp ở μ·g — ADR-052, dưới 6 m/s adapter đặt tốc độ thay cú dừng gấp — ADR-053, bảng bàn đạp e-tron và người đi bộ khởi hành sớm — ADR-054, AEB của ca người đi bộ nhận perception từ radar 90° gắn mũi xe, ground truth chạy bóng — ADR-043/ADR-055, bù pha tăng lực phanh e-tron — ADR-056, hành lang AEB theo bề rộng xe — ADR-057, phanh đúng mốc và bàn đạp thuần feed-forward — ADR-058, bảng bàn đạp Model 3 / Patrol / Sprinter — ADR-059, ngưỡng đặt tốc độ theo bàn đạp — ADR-060, bù pha tăng lực Patrol / Sprinter — ADR-061; `result.json` ghi
   `case.carla.perception_source` và `perception_radar`), khác runner trực tiếp
-  `carla-0.9.16`, bản v8 `-xosc8` (AEB dùng ground truth), bản v7 `-xosc7` (bàn đạp tuyến tính), bản v6 `-xosc6` (còn cú dừng gấp), bản v5 `-xosc5` (chưa kẹp μ·g), bản v4 `-xosc4` (phanh CARLA chưa hiệu chuẩn, ~4,6 m/s² — TD-17), bản v3 `-xosc3` (người "dừng ở lề"
+  `carla-0.9.16`, bản v13 `-xosc13` (Patrol / Sprinter chưa bù pha tăng lực), bản v12 `-xosc12` (3 xe bàn đạp tuyến tính), bản v11 `-xosc11` (phanh trễ một bước, còn khâu bù), bản v10 `-xosc10` (hành lang AEB 1,93 m), bản v9 `-xosc9` (chưa bù pha tăng lực), bản v8 `-xosc8` (AEB dùng ground truth), bản v7 `-xosc7` (bàn đạp tuyến tính), bản v6 `-xosc6` (còn cú dừng gấp), bản v5 `-xosc5` (chưa kẹp μ·g), bản v4 `-xosc4` (phanh CARLA chưa hiệu chuẩn, ~4,6 m/s² — TD-17), bản v3 `-xosc3` (người "dừng ở lề"
   đi tiếp vào làn — TD-47), bản 20 Hz `-xosc2` và bản quỹ đạo lỗi `-xosc1`; regression không ghép các profile. File v1 cần xuất lại từ web.
   Backend không còn chạy lại run `-xosc1`…`-xosc8` (báo FAILED, tạo lượt mới); `run_xosc.py` vẫn chạy được file v2 (20 Hz) … v8 ngoài
   web để tái lập bằng chứng cũ, kèm identity của nó.
@@ -86,7 +86,7 @@ vào lệnh chạy của backend; `run_xosc.py` ngoài web cũng vẽ HUD mặc 
   Dưới ~6 m/s CARLA vẫn dừng gần như tức thì và ma sát lốp không giới hạn lực phanh (TD-17 còn mở phần này).
 - Bước thời gian nằm trong file `.xosc` (`vs_fixed_delta_seconds`, `vs_perception_period_s`); `run_xosc.py` truyền
   `--frameRate 100` cho ScenarioRunner, controller/recorder/`DecelMeter` dùng cùng bước và `result.json` ghi
-  `case.carla.measured_step_s` đo từ timestamp khung thật. `simulation_runs.fixed_delta_seconds` = 0,0100 cho xosc3 … xosc9.
+  `case.carla.measured_step_s` đo từ timestamp khung thật. `simulation_runs.fixed_delta_seconds` = 0,0100 cho xosc3 … xosc14.
 - Perception và quyết định AEB vẫn chạy theo chu kỳ cảm biến **0,05 s**; chỉ lệnh phanh, đo và ghi dữ liệu theo 0,01 s. Nhiễu
   và bộ lọc của perception rút theo từng lần cảm biến nên đổi bước không đổi thống kê của AEB; bộ động học giữ nguyên 20 Hz.
 - RMS jerk (`Δa/dt`) ở 100 Hz **không so sánh được** với số 20 Hz. `case.carla.jerk_filtered` là số lọc Butterworth 10 Hz **bậc 2 một chiều (causal)** thực
@@ -116,6 +116,8 @@ API: `GET /runs/{id}/xosc`, `POST /scenarios/xosc`, `POST /runs/{id}/carla`, `GE
 - `case.carla.physics_check`: so thông số xe yêu cầu với số CARLA đọc lại; trường ép được phải khớp (`forced_ok`), kích thước mesh chỉ báo lệch > 0,05 m
   (`dimensions_ok`). Không chặn run.
 - Chạy lặp: `worker\.venv-carla\Scripts\python.exe worker\repeat_xosc.py <file>.xosc --runs 5 --out data\repeat-…` → `repeat_summary.json`.
+- Kiểm profile hiện hành trên bộ ca người đi bộ, so với bộ động học: `worker\.venv-carla\Scripts\python.exe worker\verify_cases.py --out data\kiem-carla`
+  (cần `mvnw compile`; [exec plan 22/11](../exec-plans/active/2026-11-22-kiem-carla-that-nguoi-di-bo.md)).
 - Đo phanh 100% của một xe: `worker\.venv-carla\Scripts\python.exe worker\measure_brake.py --blueprint vehicle.audi.etron --mass 2100 --out data\brake-…`
   (tự tick, chỉ chạy khi server rảnh). Chỉ ghi file đo, không ghi DB. Số đo và quyết định ở
   [exec plan 22/10](../exec-plans/active/2026-10-22-chay-baseline-thanh-vien-2.md).

@@ -38,8 +38,28 @@ public final class Simulator {
     /** AEB cho một lần chạy — cùng cách dựng ở mọi bộ mô phỏng. */
     public static AebStack newAebStack(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle, List<Map<String, Object>> events, double dt,
                                        Double perceptionPeriodS) {
-        return new AebStack(params, seed, c.weather(), c.timeOfDay(), vehicle.lengthM(), Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()),
-                events, dt, perceptionPeriodS);
+        return newAebStack(c, params, seed, vehicle, events, dt, perceptionPeriodS, true);
+    }
+
+    /**
+     * @param vehicleCorridor {@code true} = hành lang AEB theo bề rộng của xe chạy (bộ động học 1.2, {@code .xosc} v11, ADR-057); {@code false} = 1,93 m
+     *                        cho mọi xe như bản Python (fixture parity) và profile cũ.
+     */
+    public static AebStack newAebStack(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle, List<Map<String, Object>> events, double dt,
+                                       Double perceptionPeriodS, boolean vehicleCorridor) {
+        return newAebStack(c, params, seed, vehicle, events, dt, perceptionPeriodS, vehicleCorridor, false);
+    }
+
+    /** @param exactTiming mốc phanh tác dụng không trễ do cộng dồn số thực (bộ động học 1.3, {@code .xosc} v12, ADR-058). */
+    public static AebStack newAebStack(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle, List<Map<String, Object>> events, double dt,
+                                       Double perceptionPeriodS, boolean vehicleCorridor, boolean exactTiming) {
+        return new AebStack(params, seed, c.weather(), c.timeOfDay(), vehicle.lengthM(), corridorWidth(vehicle, vehicleCorridor), exactTiming,
+                Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()), events, dt, perceptionPeriodS);
+    }
+
+    /** Bề rộng xe đưa vào hành lang AEB: xe thật (ADR-057) hoặc 1,93 m của bản cũ. */
+    public static double corridorWidth(VehicleSpec vehicle, boolean vehicleCorridor) {
+        return vehicleCorridor ? vehicle.widthM() : AebParams.LEGACY_CORRIDOR_VEHICLE_WIDTH_M;
     }
 
     /** TTC "mắt thần": chỉ có khi người đi bộ đang thật sự nằm trên đường đi của xe. */
@@ -93,9 +113,19 @@ public final class Simulator {
     public static SimulationOutcome buildOutcome(CrossingCase c, AebParams params, VehicleSpec vehicle, AebStack stack, MotionStats stats, List<Frame> frames,
                                                  List<Map<String, Object>> events, String endReason, double crossingX, double decelAvailable, double dt,
                                                  Double impactRelative) {
+        return buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, crossingX, decelAvailable, dt, impactRelative, false);
+    }
+
+    /**
+     * @param positionAfterStep khung ghi vị trí xe sau khi đã tiến {@code v·dt} của bước đó (bộ động học); từ 1.3 (ADR-058) quãng phanh tính từ vị trí
+     *                          đầu bước phanh tác dụng. CARLA ghi vị trí đo thật nên {@code false}.
+     */
+    public static SimulationOutcome buildOutcome(CrossingCase c, AebParams params, VehicleSpec vehicle, AebStack stack, MotionStats stats, List<Frame> frames,
+                                                 List<Map<String, Object>> events, String endReason, double crossingX, double decelAvailable, double dt,
+                                                 Double impactRelative, boolean positionAfterStep) {
         Map<String, Object> metrics = summaryMetrics(frames, endReason.equals("COLLISION"), crossingX, vehicle, stack.firstDetectionT(), stack.fcwT(),
                 stack.decisionT(), stack.brakeOnsetT(), stats.maxA, stats.decelFrames > 0 ? stats.decelSum / stats.decelFrames : null, stats.maxJerk,
-                c.egoSpeedKmh() / 3.6, decelAvailable, dt, impactRelative);
+                c.egoSpeedKmh() / 3.6, decelAvailable, dt, impactRelative, positionAfterStep);
         return new SimulationOutcome(endReason, frames.isEmpty() ? 0.0 : Py.round(frames.get(frames.size() - 1).t(), 3), frames, events, metrics,
                 Py.round(crossingX, 3), params.asDict(), c.asDict());
     }
@@ -104,14 +134,14 @@ public final class Simulator {
         return simulate(c, params, seed, VehicleSpec.DEFAULT);
     }
 
-    /** Bộ động học hiện hành ({@code vehicsim-kinematic-1.1}): {@code impact_speed_mps} là vận tốc va chạm tương đối. */
+    /** Bộ động học hiện hành ({@code vehicsim-kinematic-1.2}): {@code impact_speed_mps} là vận tốc va chạm tương đối, hành lang AEB theo bề rộng xe. */
     public static SimulationOutcome simulate(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle) {
         return simulate(c, params, seed, vehicle, true);
     }
 
     /**
-     * @param relativeImpact {@code false} = định nghĩa của bộ động học 1.0 / bản Python ({@code impact_speed_mps} = tốc độ ego) — chỉ để so parity với
-     *                       fixture cũ; mọi số khác của run giống hệt ở hai chế độ.
+     * @param relativeImpact {@code false} = bộ động học 1.0 / bản Python ({@code impact_speed_mps} = tốc độ ego, hành lang AEB 1,93 m cho mọi xe) — chỉ để
+     *                       so parity với fixture cũ. Với xe rộng 1,93 m (e-tron) mọi số khác giống hệt ở hai chế độ.
      */
     public static SimulationOutcome simulate(CrossingCase c, AebParams params, long seed, VehicleSpec vehicle, boolean relativeImpact) {
         return simulate(c, params, seed, vehicle, relativeImpact, false);
@@ -134,7 +164,8 @@ public final class Simulator {
 
         List<Frame> frames = new ArrayList<>();
         List<Map<String, Object>> events = new ArrayList<>();
-        AebStack stack = newAebStack(c, params, seed, vehicle, events, AebStack.DT, null);
+        // Hành lang theo xe (1.2) đi cùng định nghĩa hiện hành; relativeImpact = false là đường so fixture Python (1.0), giữ 1,93 m.
+        AebStack stack = newAebStack(c, params, seed, vehicle, events, AebStack.DT, null, relativeImpact, relativeImpact);
         MotionStats stats = new MotionStats(AebStack.DT);
         double frictionLimit = c.roadFriction() * G;
         String endReason = "TIMEOUT";
@@ -206,7 +237,7 @@ public final class Simulator {
 
         SimulationOutcome outcome = buildOutcome(c, params, vehicle, stack, stats, frames, events, endReason, crossingX,
                 Math.min(Math.min(params.maxDeceleration(), vehicle.maxBrakeDecelMps2()), frictionLimit), AebStack.DT,
-                relativeImpact ? Double.valueOf(impactRelative) : null);
+                relativeImpact ? Double.valueOf(impactRelative) : null, relativeImpact);
         if (aebOff) {
             AebMode.markOff(outcome);
         }
@@ -234,6 +265,11 @@ public final class Simulator {
      * @return {rmsJerk, stoppingDistance} hoặc {@code null} cho mỗi phần tử
      */
     public static Double[] brakePhaseMetrics(List<Frame> frames, Double brakeOnsetT, double decelAvailable, double dt) {
+        return brakePhaseMetrics(frames, brakeOnsetT, decelAvailable, dt, false);
+    }
+
+    /** @param positionAfterStep quãng phanh tính từ vị trí đầu bước phanh tác dụng ({@code egoX − egoV·dt}), xem {@link #buildOutcome}. */
+    public static Double[] brakePhaseMetrics(List<Frame> frames, Double brakeOnsetT, double decelAvailable, double dt, boolean positionAfterStep) {
         int start = brakePhaseStart(frames, brakeOnsetT);
         if (start < 0) {
             return new Double[] {null, null};
@@ -249,7 +285,9 @@ public final class Simulator {
         }
         Frame last = frames.get(frames.size() - 1);
         double remaining = decelAvailable > 0 ? last.egoV() * last.egoV() / (2 * decelAvailable) : 0.0;
-        return new Double[] {Py.round(Math.sqrt(total / count), 3), Py.round(last.egoX() - frames.get(start).egoX() + remaining, 3)};
+        Frame first = frames.get(start);
+        double startX = positionAfterStep ? first.egoX() - first.egoV() * dt : first.egoX();
+        return new Double[] {Py.round(Math.sqrt(total / count), 3), Py.round(last.egoX() - startX + remaining, 3)};
     }
 
     private static Double at(List<Frame> frames, Double t, java.util.function.Function<Frame, Double> key) {
@@ -266,7 +304,7 @@ public final class Simulator {
 
     static Map<String, Object> summaryMetrics(List<Frame> frames, boolean collision, double crossingX, VehicleSpec vehicle, Double firstDetectionT,
                                               Double fcwT, Double decisionT, Double brakeOnsetT, double maxA, Double meanA, double maxJerk, double v0,
-                                              double decelTarget, double dt, Double impactRelative) {
+                                              double decelTarget, double dt, Double impactRelative, boolean positionAfterStep) {
         double halfW = vehicle.widthM() / 2;
         double minDistance = Double.POSITIVE_INFINITY;
         Double minTtc = null;
@@ -302,7 +340,7 @@ public final class Simulator {
             detectionDistance = egoX != null ? Py.round(crossingX - egoX, 2) : null;
         }
 
-        Double[] phase = brakePhaseMetrics(frames, brakeOnsetT, Py.round(decelTarget, 3), dt);
+        Double[] phase = brakePhaseMetrics(frames, brakeOnsetT, Py.round(decelTarget, 3), dt, positionAfterStep);
 
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("collision", collision);

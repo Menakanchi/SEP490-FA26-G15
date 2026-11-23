@@ -114,8 +114,8 @@ CHECK `purpose = X ⇔ cột liên kết có giá trị`, cộng FK ghép với 
 
 ### 3.4 Danh tính bộ mô phỏng (`simulator_version`)
 
-`simulation_runs.simulator_version` ghi **chính xác** bộ mô phỏng: `vehicsim-kinematic-1.1` (bộ động học từ 13/11/2026:
-`impact_speed_mps` là vận tốc va chạm tương đối; run cũ `1.0` là tốc độ ego; đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc9` (run cũ còn `-xosc1/2/3/4/5/6/7/8`; `carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
+`simulation_runs.simulator_version` ghi **chính xác** bộ mô phỏng: `vehicsim-kinematic-1.3` (bộ động học từ 22/11/2026: phanh đúng mốc, quãng dừng đúng bước, ADR-058; 1.2 hành lang AEB theo bề rộng xe, ADR-057; 1.1 từ 13/11/2026:
+`impact_speed_mps` là vận tốc va chạm tương đối; run cũ `1.0` là tốc độ ego; đổi logic thì đổi tên — `KINEMATIC_SIMULATOR` trong `Bundle`/`RunService`) hoặc `carla-<x.y.z>-xosc14` (run cũ còn `-xosc1/2/3/4/5/6/7/8/9/10/11/12/13`; `carla-<x.y.z>` trần là runner trực tiếp đã gỡ ở ADR-042; từ
 `client.get_server_version()`). `simulator_type` (KINEMATIC / CARLA) chỉ để lọc; CHECK ép hai cột khớp.
 Vì `simulator_version` nằm trong `fk_sr_baseline`, MySQL **không cho** ghép động học với CARLA, hay
 CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](../adr/ADR-027-bo-mo-phong-cam-duoc-hop-dong-json.md)).
@@ -434,7 +434,11 @@ Danh mục xe: blueprint CARLA + kích thước + **thông số vật lý cố �
 (cỡ VF8; CARLA không có VinFast) với thông số của xe MVP cũ — chưa đo lại trên CARLA (TD-17). Migration 011 thêm
 `vehicle.tesla.model3`, `vehicle.nissan.patrol_2021`, `vehicle.mercedes.sprinter`, `vehicle.carlamotors.european_hgv`: physics
 mặc định CARLA 0.9.16 đọc bằng `worker/vehicle_catalog.py`, `carla_full_brake_decel_mps2` đo bằng `worker/vehicle_study.py`,
-`max_brake_decel_mps2` = 9,5 như e-tron; xe tải `is_supported = FALSE` (chỉ để xem). **Code dùng:**
+`max_brake_decel_mps2` = 9,5 như e-tron; xe tải `is_supported = FALSE` (chỉ để xem). Migration 016 (22/11/2026) hiệu chuẩn mô-men phanh và
+`carla_full_brake_decel_mps2` của Model 3 (1750 N·m, 9,87), Patrol (2250 N·m, 9,90), Sprinter (2250 N·m, 8,91) theo carla-ped-bench đợt 2;
+run CARLA của 3 xe tạo trước đó dùng mô-men cũ, không ghép với run mới. Migration 017 (22/11/2026) đặt `max_brake_decel_mps2` theo từng
+xe = min(phanh xe thật, phanh 100% đo trên CARLA): e-tron 9,13 (CARLA, chưa có số xe thật), Model 3 9,10, Patrol 8,80, Sprinter 8,50 (xe thật),
+HGV 1,77 (CARLA). Bộ động học / AEB dùng min(`MAX_DECELERATION`, giới hạn xe, μ·g), nên với `MAX_DECELERATION` mặc định 8 chỉ HGV đổi kết quả. **Code dùng:**
 `Queries.vehicleById`, `RunService.carlaVehicle` (→ khối `vehicle.carla` của bundle), `VehicleCatalogService` (màn
 "Phương tiện", chỉ đọc).
 

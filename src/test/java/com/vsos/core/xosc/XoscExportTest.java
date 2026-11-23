@@ -182,6 +182,21 @@ class XoscExportTest {
     @Test
     void olderFormatsStillReadWithTheirOwnIdentity() {
         Bundle.RunSpec spec = Bundle.readSpec(ir());
+        String v13 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V13_FORMAT);
+        assertThat(Xosc.profile(v13)).isEqualTo(new Xosc.Profile("-xosc13", 0.01, 0.05));
+        assertThat(Xosc.read(v13)).isEqualTo(spec);
+        String v12 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V12_FORMAT);
+        assertThat(Xosc.profile(v12)).isEqualTo(new Xosc.Profile("-xosc12", 0.01, 0.05));
+        assertThat(Xosc.read(v12)).isEqualTo(spec);
+        String v11 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V11_FORMAT);
+        assertThat(Xosc.profile(v11)).isEqualTo(new Xosc.Profile("-xosc11", 0.01, 0.05));
+        assertThat(Xosc.read(v11)).isEqualTo(spec);
+        String v10 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V10_FORMAT);
+        assertThat(Xosc.profile(v10)).isEqualTo(new Xosc.Profile("-xosc10", 0.01, 0.05));
+        assertThat(Xosc.read(v10)).isEqualTo(spec);
+        String v9 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V9_FORMAT);
+        assertThat(Xosc.profile(v9)).isEqualTo(new Xosc.Profile("-xosc9", 0.01, 0.05));
+        assertThat(Xosc.read(v9)).isEqualTo(spec);
         String v8 = XoscExport.export(spec).replace(Xosc.FORMAT, Xosc.V8_FORMAT);
         assertThat(Xosc.profile(v8)).isEqualTo(new Xosc.Profile("-xosc8", 0.01, 0.05));
         assertThat(Xosc.read(v8)).isEqualTo(spec);
@@ -234,7 +249,7 @@ class XoscExportTest {
     @Test
     void currentProfileIs100HzWithSensorPeriodPerception() {
         Xosc.Profile p = Xosc.profile(XoscExport.export(Bundle.readSpec(ir())));
-        assertThat(p).isEqualTo(new Xosc.Profile("-xosc9", 0.01, 0.05));
+        assertThat(p).isEqualTo(new Xosc.Profile("-xosc14", 0.01, 0.05));
     }
 
     @Test

@@ -161,6 +161,9 @@ export const vehicsimApi = {
   downloadRunBundle: (runId: number) =>
     apiDownload(`/vehicsim/runs/${runId}/bundle`, `vehicsim-run-${runId}.json`),
   downloadRunXosc: (runId: number) => apiDownload(`/vehicsim/runs/${runId}/xosc`, `vehicsim-run-${runId}.xosc`),
+  /** .zip chứa một .xosc cho mỗi run baseline của họ (bỏ run của regression/tối ưu). */
+  downloadFamilyXosc: (scenarioId: number) =>
+    apiDownload(`/vehicsim/families/${scenarioId}/xosc.zip`, `vehicsim-family-${scenarioId}-xosc.zip`),
   downloadScenarioXosc: (ir: unknown) => apiDownload("/vehicsim/scenarios/xosc", "scenario.xosc", { method: "POST", body: JSON.stringify(ir) }),
   runOnCarla: (runId: number) => apiRequest<{ run_id: number }>(`/vehicsim/runs/${runId}/carla`, { method: "POST" }),
   /** Hủy run PENDING (STOPPED ngay) hoặc RUNNING (STOPPING: worker đang dọn CARLA). */

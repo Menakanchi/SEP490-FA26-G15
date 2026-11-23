@@ -220,13 +220,13 @@ là đề xuất của nhóm.
 
 Cột cuối là nhận xét, **chưa sửa code**.
 
-**4 tham số chỉnh được.** Biên lấy từ seed trong `BootstrapService.java` (min / max / mặc định; baseline v1.0 ghi đè
-TTC = 1,5 s). Đổi biên thì sửa cùng lúc `BootstrapService.java`, `01_schema.sql`
+**4 tham số chỉnh được.** Biên lấy từ seed trong `BootstrapService.java` (min / max / mặc định). TTC mặc định 1,5 s = baseline v1.0
+(chốt 23/11/2026: 1,8 giảm va chạm 1,6–1,9 điểm % nhưng tăng phanh oan 10–12 điểm %, vượt ngưỡng 5 điểm % của ADR-044; migration 018). Đổi biên thì sửa cùng lúc `BootstrapService.java`, `01_schema.sql`
 (`test_java_parameter_seed_matches_sql_seed`) và thêm migration đánh số cho DB đang chạy.
 
 | # | Tham số | Code hiện tại | Nghiên cứu | Nhận xét |
 |---|---|---|---|---|
-| 5 | TTC Threshold | 0.5 – 4.0 s, mặc định 1.8, baseline 1.5 | 0.6 – 3.0 s | **Cận trên 4.0 s vượt mức 3 s của UN R131 / EU 347/2012 (xe nặng)**; với xe con chỉ có nguồn thứ cấp (GB/T 39901) |
+| 5 | TTC Threshold | 0.5 – 4.0 s, mặc định và baseline 1.5 (chốt 23/11/2026, migration 018) | 0.6 – 3.0 s | **Cận trên 4.0 s vượt mức 3 s của UN R131 / EU 347/2012 (xe nặng)**; với xe con chỉ có nguồn thứ cấp (GB/T 39901) |
 | 6 | Brake Activation Delay | 0.0 – 0.5 s, mặc định 0.15 | 0.1 – 0.5 s | Cận dưới 0 s phi thực tế |
 | 7 | Max Deceleration | 3 – 10 m/s², mặc định 8 | 3 – 10 m/s² | Khớp |
 | 8 | Brake Build-up Rate | 5 – 20 m/s³, mặc định 20 (migration 008) | 12 (quét 5 – 50) | Chặn ở 20 vì lõi giới hạn tốc độ tăng lực phanh bằng Jerk Limit cố định 20 |

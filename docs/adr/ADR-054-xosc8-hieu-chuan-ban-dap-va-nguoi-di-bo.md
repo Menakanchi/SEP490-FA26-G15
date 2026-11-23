@@ -1,6 +1,6 @@
 # ADR-054 — `.xosc` v8 / `-xosc8`: bảng bàn đạp e-tron theo tốc độ, người đi bộ khởi hành sớm và hệ số trượt dừng lề theo đo 16/11
 
-**Trạng thái:** Proposed 19/11/2026. Unit test đã chạy; chưa chạy CARLA thật qua web (xem "Còn phải kiểm").
+**Trạng thái:** ✅ Accepted 22/11/2026 — kiểm CARLA thật `-xosc11` ([kết quả](../vehicsim/carla-ped-bench/ket-qua/kiem-xosc11-2026-11-22_2318/README.md)): người vào đường đi lệch bộ động học 0,02 s (trước 0,34 s), dừng ở lề nhô vào làn 9 mm, giữ hệ số trượt 0,056 s.
 **Liên quan:** bổ sung [ADR-051](ADR-051-hieu-chuan-phanh-carla-xosc5.md), [ADR-052](ADR-052-xosc6-kep-lenh-phanh-theo-ma-sat.md),
 [ADR-053](ADR-053-xosc7-dieu-khien-toc-do-vung-thap.md); TD-17, TD-47.
 
@@ -33,6 +33,8 @@ Kết quả ở nhánh `phutro` của repo công cụ, `runs/2026-11-16_2229/ket
    từ chối chạy lại `-xosc1`…`-xosc7`, không ghép với `-xosc8`.
 
 ## Còn phải kiểm
+
+Cách chạy và bộ ca: [exec plan 22/11](../exec-plans/active/2026-11-22-kiem-carla-that-nguoi-di-bo.md) (`worker/verify_cases.py`, profile `-xosc9`).
 
 - Chạy CARLA thật qua web vài ca người đi bộ (khô, mưa, dừng ở lề) với `-xosc8` so với bộ động học cùng bundle, như bảng kiểm chứng của
   ADR-053. Số dự kiến là ước tính từ dữ liệu vòng hở, chưa phải đo vòng kín với AEB.

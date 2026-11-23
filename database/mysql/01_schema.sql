@@ -588,7 +588,7 @@ CREATE TABLE simulation_runs (
   aeb_version_id             BIGINT UNSIGNED NOT NULL,
   aeb_mode                   ENUM('ON','OFF') NOT NULL DEFAULT 'ON' COMMENT 'OFF: AEB tắt, mốc tham chiếu của baseline; không bao giờ là baseline regression/tối ưu',
   simulator_type             ENUM('KINEMATIC','CARLA') NOT NULL,
-  simulator_version          VARCHAR(30) NOT NULL COMMENT 'Danh tính bộ mô phỏng: vehicsim-kinematic-1.1 | carla-0.9.16-xosc6',
+  simulator_version          VARCHAR(30) NOT NULL COMMENT 'Danh tính bộ mô phỏng: vehicsim-kinematic-1.3 | carla-0.9.16-xosc14',
   map_name                   VARCHAR(100) NULL COMMENT 'Map CARLA thực nạp (world.get_map().name); NULL với động học',
   fixed_delta_seconds        DECIMAL(6,4) NOT NULL DEFAULT 0.0500 COMMENT 'Bước mô phỏng (synchronous_mode)',
   max_duration_s             DECIMAL(8,2) NULL COMMENT 'Hết giờ mô phỏng thì end_reason = TIMEOUT',
@@ -881,7 +881,7 @@ INSERT INTO roles (code, name, description) VALUES
 
 -- 4 tham số AEB cốt lõi được tối ưu hóa (Scope rút gọn chuẩn hóa theo paper):
 INSERT INTO aeb_parameters (code, name, category, unit, description, min_value, max_value, default_value, sort_order) VALUES
-  ('TTC_THRESHOLD',           'TTC Threshold',           'DECISION',         's',    'Ngưỡng Time-to-Collision kích hoạt phanh AEB',       0.50,   4.00,   1.80,  1),
+  ('TTC_THRESHOLD',           'TTC Threshold',           'DECISION',         's',    'Ngưỡng Time-to-Collision kích hoạt phanh AEB',       0.50,   4.00,   1.50,  1),
   ('BRAKE_ACTIVATION_DELAY',  'Brake Activation Delay',  'CONTROL',          's',    'Độ trễ từ lúc quyết định tới khi phanh tác động',   0.00,   0.50,   0.15,  2),
   ('MAX_DECELERATION',        'Max Deceleration',        'VEHICLE_DYNAMICS', 'm/s2', 'Giới hạn giảm tốc tối đa mà bộ AEB được yêu cầu', 3.00,  10.00,   8.00,  3),
   ('BRAKE_BUILDUP_RATE',      'Brake Build-up Rate',      'CONTROL',          'm/s3', 'Tốc độ tăng lực phanh (build-up rate), tối đa 20 = JERK_LIMIT cố định của lõi AEB',  5.00,  20.00,  20.00,  4);
@@ -891,17 +891,19 @@ INSERT INTO aeb_parameters (code, name, category, unit, description, min_value, 
 INSERT INTO carla_vehicle_models (carla_blueprint_id, display_name, length_m, width_m, height_m,
                                   mass_kg, tire_friction, max_brake_torque_nm, wheelbase_m, max_speed_mps, max_brake_decel_mps2,
                                   carla_full_brake_decel_mps2) VALUES
-  ('vehicle.audi.etron', 'Audi e-tron', 4.750, 1.930, 1.670, 2100.00, 1.00, 1800.00, 2.950, 50.00, 9.50, 9.13);
+  ('vehicle.audi.etron', 'Audi e-tron', 4.750, 1.930, 1.670, 2100.00, 1.00, 1800.00, 2.950, 50.00, 9.13, 9.13);
 
 -- 4 mẫu xe CARLA 0.9.16 (migration 011): physics mặc định đọc bằng worker/vehicle_catalog.py, phanh 100% đo bằng worker/vehicle_study.py.
 -- max_brake_decel_mps2 = 9,5 như e-tron (giới hạn của bộ động học, TD-17); xe tải chỉ để xem (is_supported = FALSE).
+-- Model 3, Patrol, Sprinter: mô-men phanh và phanh 100% hiệu chuẩn 22/11/2026 theo carla-ped-bench đợt 2 (migration 016); xe tải giữ mặc định.
+-- max_brake_decel_mps2 = min(phanh xe thật, phanh 100% đo trên CARLA) của từng xe (migration 017; nguồn ghi trong file migration).
 INSERT INTO carla_vehicle_models (carla_blueprint_id, display_name, length_m, width_m, height_m, num_wheels, mass_kg, drag_coefficient,
                                   center_of_mass_x_m, center_of_mass_y_m, center_of_mass_z_m, tire_friction, max_brake_torque_nm,
                                   wheelbase_m, max_speed_mps, max_brake_decel_mps2, carla_full_brake_decel_mps2, is_supported) VALUES
-  ('vehicle.tesla.model3', 'Tesla Model 3', 4.792, 2.163, 1.488, 4, 1845.00, 0.150, 0.450, 0.000, -0.300, 3.50, 700.00, 3.002, NULL, 9.50, 3.56, TRUE),
-  ('vehicle.nissan.patrol_2021', 'Nissan Patrol 2021', 5.566, 2.150, 2.045, 4, 2355.00, 0.300, 0.600, 0.000, -0.500, 3.50, 1500.00, 3.276, NULL, 9.50, 6.01, TRUE),
-  ('vehicle.mercedes.sprinter', 'Mercedes Sprinter', 5.915, 1.988, 2.561, 4, 3000.00, 0.500, 0.600, 0.000, -0.800, 3.50, 1500.00, 3.658, NULL, 9.50, 5.69, TRUE),
-  ('vehicle.carlamotors.european_hgv', 'CarlaMotors European HGV', 7.936, 2.891, 3.462, 6, 7000.00, 0.300, 0.800, 0.000, -1.200, 3.50, 1500.00, 3.823, NULL, 9.50, 1.77, FALSE);
+  ('vehicle.tesla.model3', 'Tesla Model 3', 4.792, 2.163, 1.488, 4, 1845.00, 0.150, 0.450, 0.000, -0.300, 3.50, 1750.00, 3.002, NULL, 9.10, 9.87, TRUE),
+  ('vehicle.nissan.patrol_2021', 'Nissan Patrol 2021', 5.566, 2.150, 2.045, 4, 2355.00, 0.300, 0.600, 0.000, -0.500, 3.50, 2250.00, 3.276, NULL, 8.80, 9.90, TRUE),
+  ('vehicle.mercedes.sprinter', 'Mercedes Sprinter', 5.915, 1.988, 2.561, 4, 3000.00, 0.500, 0.600, 0.000, -0.800, 3.50, 2250.00, 3.658, NULL, 8.50, 8.91, TRUE),
+  ('vehicle.carlamotors.european_hgv', 'CarlaMotors European HGV', 7.936, 2.891, 3.462, 6, 7000.00, 0.300, 0.800, 0.000, -1.200, 3.50, 1500.00, 3.823, NULL, 1.77, 1.77, FALSE);
 
 -- Tri thức kỹ thuật & tiêu chuẩn Euro NCAP, OpenSCENARIO:
 INSERT INTO tech_references (ref_code, ref_type, ref_name, ref_value, unit, description, source_type, source_title, organization, publication_year) VALUES

@@ -35,6 +35,8 @@ public final class AebStack {
     public static final double SAFETY_DISTANCE_MARGIN_M = 2.0;
     public static final double JERK_LIMIT_MPS3 = 20.0;
     public static final double ACTUATOR_RESPONSE_TIME_S = 0.10;
+    /** Dung sai so thời gian khi {@code exactTiming} (ADR-058). */
+    static final double TIME_EPS_S = 1e-9;
 
     private final AebParams params;
     private final PyRandom rng;
@@ -59,6 +61,10 @@ public final class AebStack {
     // Mục tiêu có vận tốc dọc / bề ngang (xe phía trước, ADR-050). Người đi bộ: cả hai = 0 → phép tính y hệt bản cũ.
     private double targetVx;
     private double targetHalfWidth;
+    /** Nửa bề ngang hành lang "trong đường đi" ({@link AebParams#corridorHalfWidth}). */
+    private final double corridorHalfWidth;
+    /** So mốc phanh tác dụng có dung sai 1e-9 (ADR-058): thời gian cộng dồn kiểu double không làm phanh trễ một bước. */
+    private final boolean exactTiming;
 
     private record View(boolean detected, double confidence, Double perceivedY, Double ttc) {
     }
@@ -69,6 +75,23 @@ public final class AebStack {
      */
     public AebStack(AebParams params, long seed, String weather, String timeOfDay, double vehicleLengthM, double decelLimit,
                     List<Map<String, Object>> events, double dt, Double perceptionPeriodS) {
+        this(params, seed, weather, timeOfDay, vehicleLengthM, AebParams.LEGACY_CORRIDOR_VEHICLE_WIDTH_M, decelLimit, events, dt, perceptionPeriodS);
+    }
+
+    /** @param corridorVehicleWidthM bề rộng xe dùng cho hành lang AEB (ADR-057): bề rộng thật của xe, hoặc 1,93 ở bộ mô phỏng / profile cũ. */
+    public AebStack(AebParams params, long seed, String weather, String timeOfDay, double vehicleLengthM, double corridorVehicleWidthM,
+                    double decelLimit, List<Map<String, Object>> events, double dt, Double perceptionPeriodS) {
+        this(params, seed, weather, timeOfDay, vehicleLengthM, corridorVehicleWidthM, false, decelLimit, events, dt, perceptionPeriodS);
+    }
+
+    /**
+     * @param exactTiming {@code true} (bộ động học 1.3, {@code .xosc} v12, ADR-058): phanh tác dụng đúng ở mốc quyết định + trễ; {@code false}: so số
+     *                    thực trực tiếp như bản Python — ở bước 0,05 s, cộng 45 lần 0,05 cho 2,4999999999999990, nhỏ hơn 2,5, nên phanh trễ một bước.
+     */
+    public AebStack(AebParams params, long seed, String weather, String timeOfDay, double vehicleLengthM, double corridorVehicleWidthM,
+                    boolean exactTiming, double decelLimit, List<Map<String, Object>> events, double dt, Double perceptionPeriodS) {
+        this.exactTiming = exactTiming;
+        this.corridorHalfWidth = AebParams.corridorHalfWidth(corridorVehicleWidthM);
         this.params = params;
         this.rng = new PyRandom(seed);
         this.vehicleLengthM = vehicleLengthM;
@@ -162,7 +185,7 @@ public final class AebStack {
 
     // ---- Control ---------------------------------------------------------------
     private AebTick control(double t) {
-        if (decisionT != null && t >= decisionT + params.brakeActivationDelay() + ACTUATOR_RESPONSE_TIME_S) {
+        if (decisionT != null && t >= decisionT + params.brakeActivationDelay() + ACTUATOR_RESPONSE_TIME_S - (exactTiming ? TIME_EPS_S : 0.0)) {
             if (brakeOnsetT == null) {
                 brakeOnsetT = t;
                 Events.record(events, t, "brake_onset", "Brakes engage");
@@ -211,8 +234,8 @@ public final class AebStack {
             ttcPerceived = gap / closing;
             double lookahead = Math.min(ttcPerceived, PREDICTION_HORIZON_S);
             double predictedY = perceivedY + perceivedVyFiltered * lookahead;
-            boolean inPredictedPath = Math.abs(predictedY) - targetHalfWidth <= p.corridorHalfWidth()
-                    || Math.abs(perceivedY) - targetHalfWidth <= p.corridorHalfWidth();
+            boolean inPredictedPath = Math.abs(predictedY) - targetHalfWidth <= corridorHalfWidth
+                    || Math.abs(perceivedY) - targetHalfWidth <= corridorHalfWidth;
             if (inPredictedPath) {
                 if (fcwT == null && ttcPerceived <= p.ttcThreshold() + FCW_LEAD_S) {
                     fcwT = t;

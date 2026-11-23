@@ -551,7 +551,8 @@ public class OptimizationService {
 
 
 
-        String simVersion = RunService.KINEMATIC_SIMULATOR;
+        // Trial chạy đúng bộ mô phỏng của backend lúc tạo (carla-xosc → CARLA thật, mỗi trial = mọi biến thể chạy tuần tự); ném lỗi sớm nếu CARLA chưa cấu hình.
+        String simVersion = runService.simulatorForNewRuns();
 
 
 
@@ -727,6 +728,13 @@ public class OptimizationService {
 
 
 
+            // 0. Không được đổi bộ mô phỏng giữa lúc tạo và lúc chạy: baseline và trial phải cùng một bộ (không ghép động học với CARLA).
+            String optSimulator = optRun.str("simulator_version");
+            if (!optSimulator.equals(runService.configuredSimulator())) {
+                throw new IllegalStateException("Đợt tối ưu tạo cho " + optSimulator + " nhưng backend đang chạy " + runService.configuredSimulator()
+                        + "; khởi động lại backend đúng chế độ hoặc tạo đợt mới");
+            }
+
             // 1. Tải danh sách biến thể của họ kịch bản
 
 
@@ -763,6 +771,11 @@ public class OptimizationService {
 
 
 
+            for (Row b : baselineRunMap.values()) {
+                if (!"COMPLETED".equals(b.str("status"))) {  // run baseline lỗi (vd. CARLA tắt) sẽ làm ràng buộc va chạm/phanh oan sai
+                    throw new IllegalStateException("Run baseline " + b.lng("id") + " không hoàn thành (" + b.str("status") + "): " + b.str("error_message"));
+                }
+            }
             BaselineStats baselineStats = computeStats(baselineRunMap.values());
 
 
@@ -972,6 +985,13 @@ public class OptimizationService {
 
 
                 for (Long rId : runIds) {
+                    if (cancelledRunIds.contains(runId) || isCancelled(runId)) {  // trial CARLA kéo dài vài phút: dừng giữa các run, không đợi hết trial
+                        db.update("UPDATE simulation_runs SET status = 'STOPPED', error_message = 'Cancelled by user', ended_at = ? "
+                                + "WHERE optimization_trial_id = ? AND status = 'PENDING'", Vs.now(), trialId);
+                        db.update("UPDATE optimization_trials SET status = 'PRUNED', completed_at = ? WHERE id = ?", Vs.now(), trialId);
+                        db.update("UPDATE optimization_runs SET status = 'CANCELLED', finished_at = ? WHERE id = ?", Vs.now(), runId);
+                        return;
+                    }
 
 
 
@@ -992,6 +1012,13 @@ public class OptimizationService {
 
 
                 List<Row> candidateRuns = db.list("SELECT * FROM simulation_runs WHERE id IN (" + Db.placeholders(runIds.size()) + ")", runIds.toArray());
+                for (Row cr : candidateRuns) {
+                    if (!"COMPLETED".equals(cr.str("status"))) {
+                        // Run lỗi không có kết quả: chấm như "không va chạm" sẽ đẩy một trial hỏng lên Pareto. Dừng cả đợt và nói rõ lý do.
+                        db.update("UPDATE optimization_trials SET status = 'FAILED', completed_at = ? WHERE id = ?", Vs.now(), trialId);
+                        throw new IllegalStateException("Trial " + trialNum + ": run " + cr.lng("id") + " không hoàn thành (" + cr.str("status") + "): " + cr.str("error_message"));
+                    }
+                }
 
 
 
@@ -1139,11 +1166,12 @@ public class OptimizationService {
 
 
 
-                "SELECT * FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND aeb_version_id = ? AND status = 'COMPLETED' AND aeb_mode = 'ON'",
+                "SELECT * FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND aeb_version_id = ? AND status = 'COMPLETED' AND aeb_mode = 'ON' "
+                        + "AND simulator_version = ? AND carla_vehicle_model_id = ? ORDER BY id",  // cùng bộ mô phỏng + xe; run mới nhất của biến thể thắng
 
 
 
-                projectId, scenarioId, baseAebVersionId);
+                projectId, scenarioId, baseAebVersionId, runService.configuredSimulator(), vehicleModelId);
 
 
 

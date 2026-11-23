@@ -1,0 +1,39 @@
+{
+ "format": "vehicsim.variant/v1",
+ "seed": 48846,
+ "variant": {
+  "ego_speed_kmh": 50.0,
+  "trigger_distance_m": 25.0,
+  "pedestrian_speed_mps": 1.5,
+  "stops_at_curb": true,
+  "weather": "CLEAR",
+  "time_of_day": "DAY",
+  "friction": null
+ },
+ "vehicle": {
+  "name": "Tesla Model 3",
+  "length_m": 4.792,
+  "width_m": 2.163,
+  "max_brake_decel_mps2": 9.1,
+  "carla": {
+   "blueprint": "vehicle.tesla.model3",
+   "physics": {
+    "mass": 1845.0,
+    "drag_coefficient": 0.15,
+    "center_of_mass": {
+     "x": 0.45,
+     "y": 0.0,
+     "z": -0.3
+    },
+    "wheels": {
+     "max_brake_torque": 1750.0
+    }
+   },
+   "dimensions": {
+    "height_m": 1.488,
+    "wheelbase_m": 3.002
+   },
+   "full_brake_decel_mps2": 9.87
+  }
+ }
+}
