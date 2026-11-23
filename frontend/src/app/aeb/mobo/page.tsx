@@ -243,9 +243,9 @@ export default function AebMoboStudioPage() {
         </section>
       )}
 
-      {/* BỘ CHỌN ĐỢT CHẠY & TIẾN TRÌNH REAL-TIME */}
-      <section className="flex flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-solid border-vehicsim-line pb-4">
+      {/* BỘ CHỌN ĐỢT CHẠY */}
+      <section className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <label className="text-[13px] font-bold text-vehicsim-ink">Đợt tối ưu hoá:</label>
             <VehicSimSelect
@@ -298,51 +298,6 @@ export default function AebMoboStudioPage() {
             </div>
           )}
         </div>
-
-        {/* Thanh tiến trình & chỉ số nhanh */}
-        {activeRun && (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[12.5px]">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-vehicsim-ink">Tiến độ chạy:</span>
-                <span className="font-mono font-bold text-vehicsim-primary">
-                  {activeRun.completed_trials} / {activeRun.max_trials} trials
-                </span>
-                <span className="text-vehicsim-muted">
-                  ({Math.round((activeRun.completed_trials / (activeRun.max_trials || 1)) * 100)}%)
-                </span>
-                {activeRun.status === "RUNNING" && (
-                  <span className="flex items-center gap-1.5 text-vehicsim-decision font-medium">
-                    <span className="size-2 animate-ping rounded-full bg-vehicsim-decision" />
-                    Đang giải thuật qEHVI ({activeRun.simulator_version?.startsWith("carla-") ? "Mô phỏng CARLA 3D" : "Mô phỏng Kinematic"})
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-3 text-vehicsim-muted">
-                <span className="inline-flex items-center gap-1 rounded-full bg-vehicsim-soft px-2.5 py-0.5 text-[11px] font-bold text-vehicsim-ink border border-vehicsim-line">
-                  {activeRun.simulator_version?.startsWith("carla-") ? "CARLA 3D" : "Kinematic"}
-                </span>
-                <span>·</span>
-                <span>
-                  Bắt đầu: <strong>{fmt.date(activeRun.started_at)}</strong>
-                </span>
-                <span>·</span>
-                <span>
-                  Nghiệm Pareto: <strong>{activeRun.pareto_count}</strong>
-                </span>
-              </div>
-            </div>
-
-            <div className="h-2 w-full overflow-hidden rounded-full bg-vehicsim-soft">
-              <div
-                className="h-full bg-vehicsim-primary transition-all duration-300"
-                style={{
-                  width: `${Math.min(100, (activeRun.completed_trials / (activeRun.max_trials || 1)) * 100)}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
       </section>
 
       {/* CỤM TABS CON NỘI BỘ (PARETO / TRIALS / LỊCH SỬ RUNS) */}
