@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { CarlaRunVideo } from "@/components/CarlaRunVideo";
@@ -32,6 +32,7 @@ export function CarlaRunnerPanel() {
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
   const loadRuns = useCallback(() => vehicsimApi.carlaRuns().then(rows => { setRuns(rows); return rows; }), []);
   const checkConnection = useCallback(() => vehicsimApi.carlaStatus().then(setConnection), []);
   useEffect(() => {
@@ -150,7 +151,7 @@ export function CarlaRunnerPanel() {
       {connection?.configured && !xoscProfile && <p className="text-[12px] text-vehicsim-warn">Hệ thống chưa chọn chế độ OpenSCENARIO cho các lượt chạy mới.</p>}
       {connection?.connected && connection.compatible === false && <ErrorNote message="Phiên bản Python client và CARLA server chưa khớp." />}
       <ErrorNote message={error} />
-      <div className="divide-y divide-vehicsim-line rounded-[16px] border border-vehicsim-line">
+      <div className="max-h-[420px] divide-y divide-vehicsim-line overflow-y-auto rounded-[16px] border border-vehicsim-line">
         {runs === null && <p className="p-4 text-[13px] text-vehicsim-muted">Đang tải lượt chạy…</p>}
         {runs?.length === 0 && <p className="p-4 text-[13px] text-vehicsim-muted">Chưa có lượt CARLA. Tạo họ kịch bản rồi chạy để có kết quả thực.</p>}
         {runs?.map(run => (
@@ -160,7 +161,11 @@ export function CarlaRunnerPanel() {
             <span className="flex gap-3">
               <button className="font-semibold text-vehicsim-decision" onClick={() => void vehicsimApi.downloadRunXosc(run.id).catch(e => setError(e.message))}>Tải .xosc</button>
               <button className="font-semibold text-vehicsim-decision" disabled={run.status !== "COMPLETED"}
-                onClick={() => { if (selected !== run.id) { setSelected(run.id); setData(null); setImage(null); setError(null); } }}>Xem cảm biến</button>
+                onClick={() => {
+                  if (selected !== run.id) { setSelected(run.id); setData(null); setImage(null); setError(null); }
+                  // Kết quả nằm dưới danh sách; cuộn tới để bấm xong thấy ngay (danh sách có thể dài hàng chục lượt).
+                  requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+                }}>Xem cảm biến</button>
               {run.status === "COMPLETED" && <Link href={`/analysis/failures/${run.id}/playback`}>Phát lại</Link>}
               {(run.status === "PENDING" || run.status === "RUNNING") && (
                 <button className="font-semibold text-vehicsim-danger" disabled={!canWrite || cancelling.has(run.id)}
@@ -173,6 +178,7 @@ export function CarlaRunnerPanel() {
           </div>
         ))}
       </div>
+      <div ref={detailRef} className="flex scroll-mt-4 flex-col gap-4 empty:hidden">
       {selectedRun?.status === "COMPLETED" && !data && !error && <p className="text-[13px] text-vehicsim-muted">Đang đọc cảm biến {runCode(selectedRun.id)}…</p>}
       {data && <>
         <h3 className="text-[14px] font-semibold text-vehicsim-ink">Cảm biến lượt {runCode(data.run_id)}</h3>
@@ -196,6 +202,7 @@ export function CarlaRunnerPanel() {
         {!data.camera_frames.length && <p className="text-[12px] text-vehicsim-muted">Lượt này không ghi ảnh RGB.</p>}
         {data.camera_frames.length > 0 && !data.has_video && <p className="text-[12px] text-vehicsim-muted">Lượt này chưa có video (chỉ có ảnh từng khung). Máy chạy CARLA cần cài ffmpeg: <code>pip install imageio-ffmpeg</code>.</p>}
       </>}
+      </div>
     </Card>
   );
 }
