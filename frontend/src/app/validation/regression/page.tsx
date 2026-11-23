@@ -65,8 +65,6 @@ export default function RegressionListPage() {
     <VehicSimPage
       step={6}
       crumbs={[{ label: "Kiểm chứng" }, { label: "Kiểm thử hồi quy" }]}
-      title="Xác minh an toàn & Chống suy thoái (Regression)"
-      subtitle="Kiểm chứng độc lập ứng viên AEB trên toàn bộ tập kịch bản so với bản cơ sở để ngăn ngừa hồi quy lỗi."
       actions={
         <PillButton
           variant="dark"

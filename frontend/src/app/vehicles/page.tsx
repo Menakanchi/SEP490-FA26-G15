@@ -36,8 +36,6 @@ export default function VehiclesPage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Phương tiện" }]}
-      title="Danh mục phương tiện & Cấu hình phanh"
-      subtitle="Thông số hình học, khối lượng và đường cong giảm tốc hiệu chuẩn cho mô phỏng CARLA và bộ động học."
     >
       <ErrorNote message={error} />
 

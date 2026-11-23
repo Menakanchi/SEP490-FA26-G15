@@ -108,8 +108,6 @@ export default function ScenarioRunPage() {
     <VehicSimPage
       step={2}
       crumbs={[{ label: "Mô phỏng", href: "/scenarios/run" }, { label: "Chạy baseline" }]}
-      title="Đo lường an toàn phanh bản cơ sở"
-      subtitle="Mô phỏng toàn bộ biến thể kịch bản với cấu hình AEB gốc để phát hiện ca va chạm và đo tỷ lệ phanh oan."
       actions={
         <PillButton href="/scenarios" variant="light">
           ← Danh sách họ kịch bản

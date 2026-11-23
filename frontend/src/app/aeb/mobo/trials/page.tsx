@@ -65,7 +65,6 @@ export default function AebMoboTrialsPage() {
         { label: "Tối ưu MOBO", href: "/aeb/mobo" },
         { label: "Dữ liệu Trials" },
       ]}
-      title="Tra cứu lượt thử nghiệm (Trials)"
       actions={
         <div className="flex items-center gap-2">
           <PillButton href={`/aeb/mobo/pareto${selectedRunId ? `?run_id=${selectedRunId}` : ""}`} variant="dark">

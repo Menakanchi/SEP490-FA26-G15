@@ -80,7 +80,6 @@ export default function AebMoboParetoPage() {
         { label: "Tối ưu MOBO", href: "/aeb/mobo" },
         { label: "Tập nghiệm Pareto" },
       ]}
-      title="Tập nghiệm Pareto tối ưu (Pareto Frontier)"
       actions={
         <div className="flex items-center gap-2">
           <PillButton href={`/aeb/mobo/trials${selectedRunId ? `?run_id=${selectedRunId}` : ""}`} variant="light">

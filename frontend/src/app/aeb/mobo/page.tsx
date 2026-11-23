@@ -197,8 +197,6 @@ export default function AebMoboStudioPage() {
         { label: "Cải tiến AEB", href: "/aeb" },
         { label: "Tối ưu tự động MOBO" },
       ]}
-      title="Tìm kiếm tham số Pareto-optimal"
-      subtitle="Thuật toán Bayes MOBO cân bằng giữa an toàn phanh (tốc độ va chạm, quãng phanh) và độ êm dịu (RMS Jerk)."
       actions={
         <div className="flex items-center gap-2">
           <PillButton

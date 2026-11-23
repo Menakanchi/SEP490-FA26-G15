@@ -69,8 +69,6 @@ export default function AebMoboNewPage() {
         { label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo" },
         { label: "Khởi tạo đợt mới" },
       ]}
-      title="Khởi tạo đợt tối ưu hoá Bayesian mới"
-      subtitle="Thiết lập kịch bản và số vòng thử nghiệm để thuật toán qEHVI tự động khám phá không gian tham số."
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/mobo" variant="light">

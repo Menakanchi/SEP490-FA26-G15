@@ -51,8 +51,6 @@ export default function AebHubPage() {
     <VehicSimPage
       step={4}
       crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Tổng quan" }]}
-      title="Trung tâm cải tiến & Hiệu chuẩn AEB"
-      subtitle="Theo dõi bản cơ sở hiện hành, tìm kiếm bộ tham số mới qua thuật toán Bayes hoặc hiệu chỉnh thủ công."
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/mobo" variant="dark">

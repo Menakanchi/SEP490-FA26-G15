@@ -35,8 +35,6 @@ export default function AebCandidatesPage() {
     <VehicSimPage
       step={4}
       crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Ứng viên chờ duyệt" }]}
-      title="Bộ tham số ứng viên chờ kiểm định"
-      subtitle="Các cấu hình tham số tiềm năng sinh ra từ MOBO hoặc hiệu chỉnh tay, sẵn sàng đưa sang kiểm thử hồi quy."
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/mobo/new" variant="light">

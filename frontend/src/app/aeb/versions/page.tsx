@@ -28,8 +28,6 @@ export default function AebVersionsPage() {
     <VehicSimPage
       step={4}
       crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Thư viện phiên bản" }]}
-      title="Thư viện & Vòng đời phiên bản AEB"
-      subtitle="Quản lý toàn bộ lịch sử bản cơ sở (BASELINE), ứng viên (CANDIDATE) và các bản đã lưu trữ."
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/compare" variant="light">

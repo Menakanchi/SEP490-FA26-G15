@@ -186,12 +186,6 @@ export default function ScenarioFamiliesPage() {
           ? [{ label: "Thiết kế kịch bản", href: "/scenarios" }, { label: "Nhập tham số" }]
           : [{ label: "Thiết kế kịch bản" }, { label: "Danh sách họ kịch bản" }]
       }
-      title={isNew ? "Thiết lập không gian tham số kịch bản" : "Họ kịch bản kiểm thử an toàn"}
-      subtitle={
-        isNew
-          ? "Định nghĩa dải giá trị vận tốc, khoảng cách và điều kiện môi trường để tự động sinh biến thể mô phỏng."
-          : "Quản lý các không gian tham số va chạm và biến thể phục vụ đánh giá hệ thống phanh khẩn cấp."
-      }
       actions={
         isNew ? (
           <>

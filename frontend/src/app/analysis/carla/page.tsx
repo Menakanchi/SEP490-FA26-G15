@@ -34,8 +34,6 @@ export default function CarlaDataPage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Phân tích" }, { label: "Dữ liệu CARLA" }]}
-      title="Mô phỏng 3D & Telemetry CARLA"
-      subtitle="Thực thi kịch bản OpenSCENARIO trên môi trường CARLA và thu thập chuỗi thời gian telemetry cảm biến."
     >
       <div className="flex items-start gap-[10px] rounded-[16px] bg-vehicsim-warn-bg px-4 py-3 text-[13px] text-vehicsim-ink">
         <span className="font-bold text-vehicsim-warn">!</span>

@@ -107,8 +107,6 @@ export default function DescribeScenarioPage() {
     <VehicSimPage
       step={1}
       crumbs={[{ label: "Thiết kế kịch bản", href: "/scenarios" }, { label: "Sinh từ mô tả" }]}
-      title="Khởi tạo kịch bản từ ngôn ngữ tự nhiên"
-      subtitle="Trích xuất thông số giao thông thành Scenario IR và sinh biến thể kiểm thử tự động bằng AI."
       actions={<PillButton href="/scenarios?new=1">Nhập tay</PillButton>}
     >
       <ErrorNote message={error} />

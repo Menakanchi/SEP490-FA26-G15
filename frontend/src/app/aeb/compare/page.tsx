@@ -75,8 +75,6 @@ export default function AebComparePage() {
     <VehicSimPage
       step={4}
       crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "So sánh đối đầu" }]}
-      title="Đối chiếu hiệu năng giữa các phiên bản AEB"
-      subtitle="Phân tích sự khác biệt về tham số điều khiển và kết quả phản ứng phanh giữa 2 cấu hình thuật toán."
       actions={
         <div className="flex items-center gap-2">
           {versionB?.status === "CANDIDATE" && canWrite && (

@@ -28,8 +28,6 @@ export default function AebManualPage() {
     <VehicSimPage
       step={4}
       crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Chỉnh tay" }]}
-      title="Hiệu chỉnh tham số AEB thủ công"
-      subtitle="Điều chỉnh trực tiếp 4 tham số AEB cốt lõi để tạo ứng viên thử nghiệm mới mà không cần chạy tối ưu hóa."
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/mobo" variant="dark">
