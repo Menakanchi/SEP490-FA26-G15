@@ -117,6 +117,12 @@ public class SimulationController {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(runs.cancelFamilyRuns(access.projectId(), scenarioId, uid));
     }
 
+    @Operation(summary = "Các run đang chờ/đang chạy của một họ kịch bản (để hủy từng run; run của regression/tối ưu có cancellable = false)")
+    @GetMapping("/families/{scenarioId}/runs/active")
+    public List<Map<String, Object>> activeFamilyRuns(@PathVariable long scenarioId) {
+        return runs.activeFamilyRuns(access.projectId(), scenarioId);
+    }
+
     @Operation(summary = "Trạng thái CARLA local và ScenarioRunner")
     @GetMapping("/carla/status")
     public Map<String, Object> carlaStatus() {
