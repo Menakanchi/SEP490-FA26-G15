@@ -43,7 +43,18 @@ public final class MoboEngine {
 
     /** Đề xuất cấu hình tiếp theo từ các trial đã chạy; {@code paretoTrialNumbers} là front hiện tại của chúng. */
     public MoboProposal propose(List<MoboTrial> trials) {
-        List<MoboTrial> valid = trials.stream().filter(MoboTrial::valid).toList();
+        List<MoboTrial> valid = trials.stream()
+                .filter(MoboTrial::valid)
+                .filter(t -> {
+                    double[] objs = t.objectives();
+                    for (double o : objs) {
+                        if (Double.isNaN(o) || Double.isInfinite(o)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                })
+                .toList();
         List<Integer> paretoNumbers = Hypervolume.paretoFront(trials).stream().map(MoboTrial::number).sorted().toList();
         List<double[]> evaluated = trials.stream().map(t -> bounds.normalize(t.params())).toList();
 
