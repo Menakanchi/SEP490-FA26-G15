@@ -130,12 +130,12 @@ export function VersionTable({
       </div>
 
       <div className="overflow-x-auto">
-        <div className="flex h-11 min-w-[1260px] items-center border-b border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
+        <div className="flex min-h-[52px] min-w-[1320px] items-center border-b border-solid border-slate-700 bg-slate-800 px-5 py-2 text-[12px] font-black uppercase tracking-wider text-white">
           <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
           <span className="w-[140px] shrink-0 pr-3">Phiên bản</span>
           <span className="w-[120px] shrink-0 pr-3">Trạng thái</span>
           {KEY_PARAMS.map((code) => (
-            <span key={code} className="w-[125px] shrink-0 truncate pr-2">
+            <span key={code} className="w-[135px] shrink-0 leading-snug pr-3 whitespace-normal break-words">
               {PARAM_NAMES[code] ?? catalog.get(code)?.name ?? code}
             </span>
           ))}
@@ -153,7 +153,7 @@ export function VersionTable({
             <div
               key={v.id}
               className={cx(
-                "flex min-h-[56px] min-w-[1260px] items-center border-b border-solid border-vehicsim-line px-5 py-2 hover:bg-vehicsim-row transition-colors",
+                "flex min-h-[56px] min-w-[1320px] items-center border-b border-solid border-vehicsim-line px-5 py-2 hover:bg-vehicsim-row transition-colors",
                 v.status === "BASELINE" && "bg-vehicsim-row/60 font-semibold",
               )}
             >
@@ -172,7 +172,7 @@ export function VersionTable({
                 return (
                   <span
                     key={code}
-                    className={cx("w-[125px] shrink-0 text-[13px]", differs ? "font-bold text-vehicsim-decision" : "text-vehicsim-ink")}
+                    className={cx("w-[135px] shrink-0 pr-3 text-[13px]", differs ? "font-bold text-vehicsim-decision" : "text-vehicsim-ink")}
                   >
                     {paramValue(v.parameters[code], catalog.get(code)?.unit ?? "")}
                   </span>
