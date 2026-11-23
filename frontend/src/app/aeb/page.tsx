@@ -190,7 +190,7 @@ export default function AebHubPage() {
             2
           </span>
           <h2 className="text-[15px] font-bold text-vehicsim-ink">
-            Bước 4.2 · Quản lý ứng viên & Kiểm định hồi quy
+            Bước 4.2 · Quản lý phiên bản & So sánh
           </h2>
         </div>
 
