@@ -55,6 +55,8 @@ export interface CarlaData {
   run_id: number;
   summary: TelemetrySummary;
   camera_frames: string[];
+  /** Run có `video.mp4` ghép sau khi chạy (worker cần `--camera` và ffmpeg). Run cũ không có khoá này. */
+  has_video?: boolean;
 }
 
 export interface VersionBrief {

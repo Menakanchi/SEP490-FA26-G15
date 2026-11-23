@@ -176,6 +176,9 @@ export const vehicsimApi = {
   carlaRuns: () => apiRequest<CarlaRun[]>("/vehicsim/carla/runs"),
   carlaData: (runId: number) => apiRequest<CarlaData>(`/vehicsim/runs/${runId}/carla-data`),
   carlaImage: (runId: number, frame: string) => apiBlob(`/vehicsim/runs/${runId}/carla-files/${frame}`),
+  /** Video mp4 xem lại của run CARLA (404 khi run không có video). */
+  carlaVideo: (runId: number) => apiBlob(`/vehicsim/runs/${runId}/carla-video`),
+  downloadCarlaVideo: (runId: number) => apiDownload(`/vehicsim/runs/${runId}/carla-video`, `vehicsim-run-${runId}.mp4`),
   downloadCarlaFile: (runId: number, name: "frames.csv" | "collisions.json" | "ground_truth.csv") =>
     apiDownload(`/vehicsim/runs/${runId}/carla-files/${name}`, `${runId}-${name}`),
   /** Nộp ``result.json`` của run CARLA chạy ngoài backend (run CARLA đang PENDING/FAILED, regression chưa chốt). */

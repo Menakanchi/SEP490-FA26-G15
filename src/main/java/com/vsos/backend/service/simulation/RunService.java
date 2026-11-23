@@ -74,6 +74,8 @@ public class RunService {
     private static final int STOP_GRACE_S = 15;
     /** File cờ trong thư mục run: worker thấy nó thì tự dọn CARLA rồi thoát (Windows không có SIGTERM mềm cho tiến trình con). */
     static final String STOP_FLAG = "stop.requested";
+    /** Video xem lại do {@code worker/make_video.py} ghép từ ảnh camera; nằm cạnh {@code result.json} của run. */
+    static final String VIDEO_FILE = "video.mp4";
     /** PID + thời điểm khởi động của worker CARLA, để sau khi backend chết còn tìm ra worker mồ côi. */
     static final String PID_FILE = "worker.pid";
     private static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase().contains("win");
@@ -654,6 +656,10 @@ public class RunService {
         }
         artifacts.putAll(Json.asMap(result.get("artifacts")).entrySet().stream()
                 .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), String.valueOf(e.getValue())), Map::putAll));
+        Path video = folder.resolve(VIDEO_FILE); // worker/make_video.py ghép ảnh camera sau run; không ghi vào result.json nên không đổi identity run
+        if (Files.isRegularFile(video)) {
+            artifacts.putIfAbsent("video", video.toString());
+        }
         result.put("artifacts", artifacts);
         return result;
     }
@@ -894,6 +900,16 @@ public class RunService {
         return path;
     }
 
+    /** Video xem lại của run CARLA (một file mp4 do worker ghép từ ảnh camera). Không có thì 404. */
+    public Path carlaVideo(long projectId, long runId) {
+        Row run = db.first("SELECT id FROM simulation_runs WHERE id = ? AND project_id = ? AND simulator_type = 'CARLA'", runId, projectId);
+        Path path = run == null ? null : runDir(runId).resolve(VIDEO_FILE);
+        if (path == null || !Files.isRegularFile(path)) {
+            throw new NotFoundException("CARLA video");
+        }
+        return path;
+    }
+
     public Map<String, Object> carlaData(long projectId, long runId, TelemetryMetricsService telemetry) throws IOException {
         Path csv = carlaFile(projectId, runId, "frames.csv");
         Path collisions = carlaFile(projectId, runId, "collisions.json");
@@ -910,7 +926,7 @@ public class RunService {
                 images = files.map(p -> p.getFileName().toString()).filter(n -> n.matches("[0-9]{8}\\.png")).sorted().toList();
             }
         }
-        return Json.obj("run_id", runId, "summary", summary, "camera_frames", images);
+        return Json.obj("run_id", runId, "summary", summary, "camera_frames", images, "has_video", Files.isRegularFile(runDir(runId).resolve(VIDEO_FILE)));
     }
 
     private static void checkResult(Map<String, Object> result, Row run) {

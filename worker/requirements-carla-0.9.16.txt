@@ -15,3 +15,4 @@ graphviz
 psutil
 matplotlib
 pygame==2.6.1
+imageio-ffmpeg>=0.5,<1  # kèm ffmpeg (libx264) để make_video.py ghép ảnh camera thành video.mp4

@@ -25,7 +25,7 @@ Các dịch vụ app do script CARLA khởi động chạy nền; mở `http://l
 1. Đăng nhập bằng ADMIN, ENGINEER hoặc EXPERIENCER; MANAGER/REVIEWER vẫn xem được nhưng không khởi chạy.
 2. Tạo một họ nhỏ ở **Kịch bản**, hoặc chọn họ đã có. Mỗi biến thể là một run CARLA, chạy lần lượt trên một server.
 3. Vào **Phân tích → Dữ liệu CARLA**; kiểm tra kết nối, chọn họ rồi bấm **Chạy trên CARLA**.
-4. Chờ trạng thái **Hoàn thành**, bấm **Xem cảm biến**: 3 số đo, ảnh RGB có thanh chọn khung, tải CSV/JSON va chạm.
+4. Chờ trạng thái **Hoàn thành**, bấm **Xem cảm biến**: 3 số đo, **video xem lại** (có nút tải .mp4), ảnh RGB có thanh chọn khung, tải CSV/JSON va chạm.
 5. **Phát lại** dùng dữ liệu AEB/ground truth cùng định dạng với vòng MVP. **Tải .xosc** lấy XML của đúng run.
 6. Từ chi tiết một run cũ, **Chạy trên CARLA** tạo run mới giữ đúng biến thể, xe, AEB và seed; không ghi đè kết quả cũ.
 
@@ -47,6 +47,13 @@ File kết quả nội bộ vẫn là `result.json` để Java kiểm metadata v
 `sensors/ground_truth.csv` (vector vị trí/vận tốc/gia tốc world của ego và mục tiêu mỗi tick; tải qua `carla-files`) và
 `sensors/camera/*.png`, cùng `core/vsos-core.jar` (bản lõi Java chụp lúc bắt đầu run; `lifecycle.json` ghi SHA-256 của nó, nên `mvnw clean`
 giữa run không làm hỏng run). Không có livestream/video giả: nếu không ghi camera thì giao diện nói rõ không có ảnh.
+
+**Video xem lại (`video.mp4`, cạnh `result.json`).** Khi chạy với `--camera`, sau khi run thành công `worker/make_video.py` ghép `sensors/camera/*.png`
+(10 ảnh/giây, phát đúng tốc độ thật) thành mp4 H.264 bằng ffmpeg của gói `imageio-ffmpeg` (có trong `requirements-carla-0.9.16.txt`, `setup-carla.ps1` tự cài;
+máy đã setup trước đó chạy `worker\.venv-carla\Scripts\python.exe -m pip install imageio-ffmpeg`). Video chỉ là phần xem lại: thiếu ffmpeg hoặc ffmpeg lỗi
+chỉ in cảnh báo, run vẫn hoàn thành và vẫn xem được ảnh từng khung; `result.json` không đổi nên không đổi định danh run. Backend lưu artifact `VIDEO_MP4`
+và phát qua `GET /api/v1/vehicsim/runs/{id}/carla-video` (hỗ trợ Range để tua, kiểm quyền theo project). Run chạy trước khi có tính năng, hoặc nộp từ máy khác
+qua `carla-result`, không có video. Ảnh PNG dày hơn trước (10 thay vì 4 ảnh/giây) nên mỗi run chiếm thêm đĩa.
 
 `scenario_runner.log` có dòng `ERROR: failed to destroy actor <id> : … not found` ngay sau `Destroying ego vehicle <id>` ở mọi run:
 lỗi của ScenarioRunner 0.9.16 (`ScenarioManager.cleanup` đã xoá ego qua `CarlaDataProvider.cleanup`, rồi `ScenarioRunner._cleanup` xoá lần nữa).

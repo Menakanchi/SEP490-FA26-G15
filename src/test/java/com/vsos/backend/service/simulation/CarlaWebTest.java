@@ -216,6 +216,17 @@ class CarlaWebTest {
         assertThatThrownBy(() -> runs.carlaFile(2, 42, "00000001.png")).isInstanceOf(Vs.NotFoundException.class);
     }
 
+    @Test
+    void theReplayVideoIsServedOnlyForAnExistingRunOfTheProject() throws Exception {
+        assertThatThrownBy(() -> runs.carlaVideo(1, 42)).as("chưa có video").isInstanceOf(Vs.NotFoundException.class);
+        Path video = directory.resolve("runs/42/" + RunService.VIDEO_FILE);
+        Files.createDirectories(video.getParent());
+        Files.write(video, new byte[]{0, 0, 0, 24});
+        assertThat(runs.carlaVideo(1, 42)).isEqualTo(video);
+        when(db.first(anyString(), any(Object[].class))).thenReturn(null);
+        assertThatThrownBy(() -> runs.carlaVideo(2, 42)).as("run của project khác").isInstanceOf(Vs.NotFoundException.class);
+    }
+
     private void stubCancelLookup(String status, Object regressionTestId) {
         var row = new java.util.HashMap<String, Object>(Json.obj("id", 42L, "status", status));
         row.put("regression_test_id", regressionTestId);

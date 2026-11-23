@@ -20,6 +20,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import bridge
+import make_video
 import sensor_recorder
 
 WORKER = Path(__file__).resolve().parent
@@ -270,6 +271,7 @@ def run(args: argparse.Namespace) -> int:
         world = client.load_world(map_name)
     result_file = out / "result.json"
     result_file.unlink(missing_ok=True)
+    (out / make_video.VIDEO_NAME).unlink(missing_ok=True)
     lifecycle = {"destroyed_before": release_world(client), "destroyed_after": None, "stopped": False, "core": core}
     if lifecycle["destroyed_before"]:
         print(f"Dọn lại sau lần chạy bị ngắt: xoá {lifecycle['destroyed_before']} actor cũ.", file=sys.stderr)
@@ -319,6 +321,8 @@ def run(args: argparse.Namespace) -> int:
         if lifecycle["stopped"]:
             result_file.unlink(missing_ok=True)  # run bị dừng không có điểm hợp lệ
         (out / "lifecycle.json").write_text(json.dumps(lifecycle), encoding="utf-8")
+    if args.camera:  # chỉ khi run thành công (lỗi/dừng đã thoát ở trên); ghép video không bao giờ làm hỏng run
+        make_video.build_run_video(out, recorder.camera_interval_s)
     print(f"Đã chạy .xosc bằng ScenarioRunner: {result_file}")
     return 0
 

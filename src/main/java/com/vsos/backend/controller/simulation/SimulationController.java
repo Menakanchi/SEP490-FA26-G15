@@ -11,6 +11,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -147,6 +149,14 @@ public class SimulationController {
         var file = runs.carlaFile(access.projectId(), runId, name);
         String mime = name.endsWith(".png") ? "image/png" : name.endsWith(".csv") ? "text/csv; charset=utf-8" : "application/json";
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(mime)).body(Files.readAllBytes(file));
+    }
+
+    @Operation(summary = "Video mp4 xem lại của run CARLA (có Range để tua); 404 khi run không có video")
+    @GetMapping("/runs/{runId}/carla-video")
+    public ResponseEntity<Resource> carlaVideo(@PathVariable long runId) {
+        var file = runs.carlaVideo(access.projectId(), runId);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("video/mp4")).header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                .body(new FileSystemResource(file));
     }
 
     @Operation(summary = "Nộp result.json của run CARLA chạy ngoài backend (chỉ run CARLA đang PENDING/FAILED, regression chưa chốt)")

@@ -77,7 +77,7 @@ JERK_WINDOW_S = 0.1
 """Jerk lấy đạo hàm gia tốc đã trung bình trên 0,1 s. Đạo hàm thô mỗi tick (~0,015 s)
 khuếch đại nhiễu IMU ±0,16 m/s² lên hàng trăm m/s³ dù xe không phanh."""
 
-CAMERA_EVERY_N_FRAMES = 5
+CAMERA_EVERY_N_FRAMES = 2  # 2 × 0,05 s = 0,1 s → 10 ảnh/giây, đủ mượt để ghép video.mp4 (make_video.py); trước 13/11 là 5 (4 ảnh/giây)
 CAMERA_REF_STEP_S = 0.05  # bước mô phỏng mà hằng số trên được hiệu chỉnh; bước nhỏ hơn thì lưu ảnh theo cùng khoảng thời gian
 
 FRAME_COLUMNS = [
@@ -291,6 +291,7 @@ class SensorRecorder:
         self.out_dir = Path(out_dir)
         self._camera = camera
         self._camera_every = max(1, round(CAMERA_EVERY_N_FRAMES * CAMERA_REF_STEP_S / step_s))
+        self.camera_interval_s = self._camera_every * step_s  # khoảng thời gian giữa hai ảnh đã lưu — make_video.py dùng để đặt nhịp video
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
