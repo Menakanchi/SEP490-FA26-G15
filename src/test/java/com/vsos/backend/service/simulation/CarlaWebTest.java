@@ -360,6 +360,39 @@ class CarlaWebTest {
     }
 
     @Test
+    void activeRunsOfAFamilyListPendingBeforeRunningAndMarkRegressionRunsNotCancellable() {
+        when(db.first(startsWith("SELECT id FROM scenarios"), any(Object[].class))).thenReturn(new Row(Json.obj("id", 3L)));
+        Map<String, Object> config = Json.obj("ego_speed_kmh", 50.0, "trigger_distance_m", 25.0, "pedestrian_speed_mps", 1.5, "stops_at_curb", true,
+                "weather", "CLEAR", "time_of_day", "DAY", "category", "CP_CROSSING");
+        Map<String, Object> pending = new java.util.HashMap<>(Json.obj("id", 41L, "status", "PENDING", "scenario_version_id", 9L,
+                "simulator_version", "vehicsim-kinematic-1.4", "aeb_mode", "ON", "purpose", "BASELINE", "run_config_json", Json.write(config)));
+        pending.put("regression_test_id", null);
+        pending.put("optimization_trial_id", null);
+        Map<String, Object> regression = new java.util.HashMap<>(Json.obj("id", 43L, "status", "RUNNING", "scenario_version_id", 9L,
+                "simulator_version", "vehicsim-kinematic-1.4", "aeb_mode", "ON", "purpose", "REGRESSION", "regression_test_id", 5L));
+        regression.put("optimization_trial_id", null);
+        regression.put("run_config_json", null);
+        when(db.list(anyString(), any(Object[].class))).thenReturn(List.of(new Row(pending), new Row(regression)));
+
+        List<Map<String, Object>> active = runs.activeFamilyRuns(1, 3);
+
+        assertThat(active).extracting(m -> m.get("run_id")).containsExactly(41L, 43L);
+        assertThat(active.get(0)).containsEntry("cancellable", true).containsEntry("blocked_by", null).containsEntry("status", "PENDING");
+        assertThat((Map<String, Object>) active.get(0).get("variant")).containsEntry("ego_speed_kmh", 50.0).containsEntry("stops_at_curb", true)
+                .doesNotContainKey("category");
+        assertThat(active.get(1)).containsEntry("cancellable", false).containsEntry("blocked_by", "REGRESSION");
+        verify(db).list(argThat((String sql) -> sql.contains("project_id = ? AND scenario_id = ?") && sql.contains("status IN ('PENDING','RUNNING')")
+                && sql.contains("ORDER BY (status = 'RUNNING')")), eq(1L), eq(3L));
+    }
+
+    @Test
+    void activeRunsOfAFamilyOfAnotherProjectIsNotFound() {
+        when(db.first(startsWith("SELECT id FROM scenarios"), any(Object[].class))).thenReturn(null);
+        assertThatThrownBy(() -> runs.activeFamilyRuns(2, 3)).isInstanceOf(Vs.NotFoundException.class);
+        verify(db, never()).list(anyString(), any(Object[].class));
+    }
+
+    @Test
     void cancellingAFamilyOfAnotherProjectIsNotFoundAndTouchesNothing() {
         when(db.first(startsWith("SELECT id FROM scenarios"), any(Object[].class))).thenReturn(null);
         assertThatThrownBy(() -> runs.cancelFamilyRuns(2, 3, 7)).isInstanceOf(Vs.NotFoundException.class);

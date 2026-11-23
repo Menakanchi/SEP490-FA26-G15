@@ -29,6 +29,28 @@ export interface CarlaRun {
   error_message: string | null;
 }
 
+/** Run đang chờ / đang chạy của một họ (GET /families/{id}/runs/active); run của regression/tối ưu chỉ dừng theo cả test / đợt. */
+export interface ActiveFamilyRun {
+  run_id: number;
+  status: "PENDING" | "RUNNING";
+  scenario_version_id: number;
+  simulator_version: string;
+  aeb_mode: "ON" | "OFF" | null;
+  purpose: string;
+  queued_at: string | null;
+  started_at: string | null;
+  variant: {
+    ego_speed_kmh?: number;
+    trigger_distance_m?: number;
+    pedestrian_speed_mps?: number;
+    stops_at_curb?: boolean;
+    weather?: string;
+    time_of_day?: string;
+  };
+  cancellable: boolean;
+  blocked_by: "REGRESSION" | "OPTIMIZATION" | null;
+}
+
 export interface CarlaData {
   run_id: number;
   summary: TelemetrySummary;

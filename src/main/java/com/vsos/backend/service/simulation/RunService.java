@@ -763,6 +763,48 @@ public class RunService {
         return Json.obj("scenario_id", scenarioId, "stopped", stopped, "stopping", stopping);
     }
 
+    /** Trường biến thể hiện cho người dùng nhận ra run trong danh sách run đang chạy (ca người đi bộ). */
+    private static final List<String> ACTIVE_RUN_VARIANT_KEYS = List.of("ego_speed_kmh", "trigger_distance_m", "pedestrian_speed_mps", "stops_at_curb",
+            "weather", "time_of_day");
+
+    /**
+     * Run đang chờ / đang chạy của một họ kịch bản, để hủy từng run ở trang Kịch bản (TD-37). Run chờ đứng trước run đang chạy cho khớp thứ tự hủy
+     * của {@link #cancelFamilyRuns}. Run của regression / tối ưu vẫn liệt kê nhưng {@code cancellable = false} kèm {@code blocked_by}, vì
+     * {@link #cancelRun} từ chối chúng (chỉ dừng theo cả test / đợt tối ưu).
+     */
+    public List<Map<String, Object>> activeFamilyRuns(long projectId, long scenarioId) {
+        if (db.first("SELECT id FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, projectId) == null) {
+            throw new NotFoundException("scenario family");
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Row r : db.list("SELECT id, status, scenario_version_id, simulator_version, aeb_mode, purpose, regression_test_id, optimization_trial_id, "
+                + "queued_at, started_at, run_config_json FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND status IN ('PENDING','RUNNING') "
+                + "ORDER BY (status = 'RUNNING'), id", projectId, scenarioId)) {
+            String blockedBy = !r.isNull("regression_test_id") ? "REGRESSION" : !r.isNull("optimization_trial_id") ? "OPTIMIZATION" : null;
+            Map<String, Object> variant = new LinkedHashMap<>();
+            Map<String, Object> config = r.isNull("run_config_json") ? Map.of() : r.json("run_config_json");
+            for (String key : ACTIVE_RUN_VARIANT_KEYS) {
+                if (config.get(key) != null) {
+                    variant.put(key, config.get(key));
+                }
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("run_id", r.lng("id"));
+            item.put("status", r.str("status"));
+            item.put("scenario_version_id", r.lng("scenario_version_id"));
+            item.put("simulator_version", r.str("simulator_version"));
+            item.put("aeb_mode", r.str("aeb_mode"));
+            item.put("purpose", r.str("purpose"));
+            item.put("queued_at", r.get("queued_at"));
+            item.put("started_at", r.get("started_at"));
+            item.put("variant", variant);
+            item.put("cancellable", blockedBy == null);
+            item.put("blocked_by", blockedBy);
+            out.add(item);
+        }
+        return out;
+    }
+
     public Path carlaFile(long projectId, long runId, String name) {
         Row run = db.first("SELECT id FROM simulation_runs WHERE id = ? AND project_id = ? AND simulator_type = 'CARLA'", runId, projectId);
         if (run == null || !(List.of("frames.csv", "collisions.json", "ground_truth.csv").contains(name) || name.matches("[0-9]{8}\\.png"))) {

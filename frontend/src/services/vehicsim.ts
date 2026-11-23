@@ -129,6 +129,9 @@ export const vehicsimApi = {
       `/vehicsim/families/${scenarioId}/variants/${variantId}/risk-label`,
       { method: "PUT", body: JSON.stringify({ label }) },
     ),
+  /** Run đang chờ/đang chạy của họ để hủy từng run (run của regression/tối ưu có cancellable = false). */
+  activeFamilyRuns: (scenarioId: number) =>
+    apiRequest<import("@/types/vehicsim").ActiveFamilyRun[]>(`/vehicsim/families/${scenarioId}/runs/active`),
   /** Hủy mọi run đang chờ/đang chạy của họ (run của regression/tối ưu không bị đụng). */
   cancelFamily: (scenarioId: number) =>
     apiRequest<{ scenario_id: number; stopped: number; stopping: number }>(`/vehicsim/families/${scenarioId}/cancel`, { method: "POST" }),

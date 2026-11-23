@@ -9,7 +9,7 @@ import { FamilyForm } from "@/components/FamilyForm";
 import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx, fmt, simulatorLabel, TableScroll } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { FamilyItem, FamilyVariantList, FamilyVersion, RiskLabel, TimeOfDay, Weather } from "@/types/vehicsim";
+import type { ActiveFamilyRun, FamilyItem, FamilyVariantList, FamilyVersion, RiskLabel, TimeOfDay, Weather } from "@/types/vehicsim";
 
 export default function ScenarioFamiliesPage() {
   const { ctx, refresh, canWrite } = useVehicSimContext();
@@ -34,6 +34,10 @@ export default function ScenarioFamiliesPage() {
   const [openVariants, setOpenVariants] = useState<number | null>(null);
   const [variantList, setVariantList] = useState<FamilyVariantList | null>(null);
   const [labelBusy, setLabelBusy] = useState<number | null>(null);
+  // Danh sách run đang chờ/đang chạy của họ đang mở, để hủy từng run (TD-37).
+  const [openRuns, setOpenRuns] = useState<number | null>(null);
+  const [activeRuns, setActiveRuns] = useState<ActiveFamilyRun[] | null>(null);
+  const [runBusy, setRunBusy] = useState<number | null>(null);
 
   const load = useCallback(() => {
     vehicsimApi.families()
@@ -144,6 +148,44 @@ export default function ScenarioFamiliesPage() {
     setFormOpen(false);
     setEditing(f);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const loadActiveRuns = useCallback((scenarioId: number) => {
+    vehicsimApi.activeFamilyRuns(scenarioId)
+      .then((list) => setActiveRuns(list))
+      .catch((err) => setError(err instanceof Error ? vi(err.message) : "Không tải được lượt chạy đang chờ"));
+  }, []);
+
+  const toggleRuns = (f: FamilyItem) => {
+    if (openRuns === f.id) {
+      setOpenRuns(null);
+      return;
+    }
+    setOpenRuns(f.id);
+    setActiveRuns(null);
+    loadActiveRuns(f.id);
+  };
+
+  // Bảng run đang mở: tải lại cùng nhịp 3 giây với số liệu họ để trạng thái chờ → chạy → xong tự cập nhật.
+  useEffect(() => {
+    if (openRuns === null) return;
+    const id = setInterval(() => loadActiveRuns(openRuns), 3000);
+    return () => clearInterval(id);
+  }, [openRuns, loadActiveRuns]);
+
+  const cancelOneRun = async (f: FamilyItem, run: ActiveFamilyRun, index: number) => {
+    setRunBusy(run.run_id);
+    setError(null);
+    try {
+      const res = await vehicsimApi.cancelRun(run.run_id);
+      setNotice(`${f.code}: ${res.status === "STOPPED" ? "đã hủy" : "đang dừng"} lượt chạy #${index + 1} (mã ${run.run_id}).`);
+      loadActiveRuns(f.id);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? vi(err.message) : "Không hủy được lượt chạy");
+    } finally {
+      setRunBusy(null);
+    }
   };
 
   const cancelFamily = async (f: FamilyItem) => {
@@ -357,7 +399,17 @@ export default function ScenarioFamiliesPage() {
                     <span>
                       <b className="text-vehicsim-ink">{shown.runs.COMPLETED ?? 0}</b> đã xong
                     </span>
-                    {!old && pending > 0 && <span className="font-semibold text-vehicsim-decision">{pending} đang chờ / đang chạy…</span>}
+                    {!old && pending > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => toggleRuns(f)}
+                        aria-expanded={openRuns === f.id}
+                        title="Bấm để xem và hủy từng lượt đang chờ / đang chạy"
+                        className="cursor-pointer text-left font-semibold text-vehicsim-decision hover:underline"
+                      >
+                        {pending} đang chờ / đang chạy…
+                      </button>
+                    )}
                     {(shown.runs.FAILED ?? 0) > 0 && <span className="text-vehicsim-danger">{shown.runs.FAILED} lỗi</span>}
                     {(shown.runs.STOPPED ?? 0) > 0 && <span>{shown.runs.STOPPED} đã hủy</span>}
                   </span>
@@ -439,6 +491,15 @@ export default function ScenarioFamiliesPage() {
                     </button>
                   </div>
                 </div>
+                {openRuns === f.id && !old && (
+                  <ActiveRuns
+                    runs={activeRuns}
+                    canWrite={canWrite}
+                    busy={runBusy}
+                    onCancel={(run, index) => cancelOneRun(f, run, index)}
+                    onClose={() => setOpenRuns(null)}
+                  />
+                )}
                 {openVariants === f.id && (
                   <VariantLabels
                     list={variantList?.scenario_id === f.id ? variantList : null}
@@ -523,6 +584,90 @@ function VariantLabels({
               </select>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const RUN_STATUS: Record<ActiveFamilyRun["status"], { label: string; tone: "warn" | "info" }> = {
+  PENDING: { label: "Đang chờ", tone: "warn" },
+  RUNNING: { label: "Đang chạy", tone: "info" },
+};
+
+/** Lượt đang chờ / đang chạy của họ, mỗi lượt có nút Hủy riêng (run của regression / tối ưu chỉ dừng theo cả test / đợt). */
+function ActiveRuns({
+  runs,
+  canWrite,
+  busy,
+  onCancel,
+  onClose,
+}: {
+  runs: ActiveFamilyRun[] | null;
+  canWrite: boolean;
+  busy: number | null;
+  onCancel: (run: ActiveFamilyRun, index: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 py-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <p className="text-[12px] leading-[1.5] text-vehicsim-muted">
+          Hủy lượt <b>đang chờ</b> thì dừng ngay; lượt <b>đang chạy</b> sẽ chuyển sang &quot;đang dừng&quot; trong lúc worker dọn CARLA. Lượt thuộc
+          regression hoặc tối ưu chỉ dừng được theo cả lượt kiểm thử / đợt tối ưu.
+        </p>
+        <button type="button" onClick={onClose} className="shrink-0 text-[12px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink">
+          Đóng
+        </button>
+      </div>
+      {!runs ? (
+        <p className="text-[12px] text-vehicsim-faint">Đang tải lượt chạy…</p>
+      ) : runs.length === 0 ? (
+        <p className="text-[12px] text-vehicsim-faint">Không còn lượt nào đang chờ hoặc đang chạy.</p>
+      ) : (
+        <div className="max-h-[360px] overflow-y-auto rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface">
+          {runs.map((run, index) => {
+            const v = run.variant;
+            const status = RUN_STATUS[run.status];
+            return (
+              <div
+                key={run.run_id}
+                data-run={run.run_id}
+                className="flex h-[48px] items-center gap-3 border-b border-solid border-vehicsim-line px-4 text-[12px] last:border-b-0"
+              >
+                <span className="w-[60px] font-bold text-vehicsim-ink" title={`Mã lượt chạy: ${run.run_id}`}>#{index + 1}</span>
+                <span className="flex w-[90px] justify-center">
+                  <Tag tone={status.tone} className="px-2 py-[2px] text-[10px]">{status.label}</Tag>
+                </span>
+                <span className="min-w-0 flex-1 truncate text-vehicsim-ink">
+                  {v.ego_speed_kmh != null ? `${v.ego_speed_kmh} km/h · kích hoạt ${v.trigger_distance_m} m · người đi bộ ${v.pedestrian_speed_mps} m/s · ` : ""}
+                  {v.stops_at_curb != null ? (v.stops_at_curb ? "dừng ở lề · " : "băng qua · ") : ""}
+                  {[v.weather, v.time_of_day].filter(Boolean).join(" · ")}
+                  {run.aeb_mode === "OFF" ? " · AEB tắt" : ""}
+                </span>
+                <span className="w-[230px] truncate text-vehicsim-faint" title={run.simulator_version}>{simulatorLabel(run.simulator_version)}</span>
+                <span className="flex w-[110px] justify-end">
+                  {run.cancellable ? (
+                    <button
+                      type="button"
+                      onClick={() => onCancel(run, index)}
+                      disabled={!canWrite || busy !== null}
+                      title={canWrite ? `Hủy lượt chạy #${index + 1}` : "Tài khoản người xem chỉ có quyền xem"}
+                      aria-label={`Hủy lượt chạy #${index + 1}`}
+                      className="inline-flex h-7 items-center justify-center gap-1 rounded-full bg-vehicsim-danger px-3 text-[12px] font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
+                    >
+                      <X className="size-3 shrink-0" />
+                      {busy === run.run_id ? "Hủy…" : "Hủy"}
+                    </button>
+                  ) : (
+                    <span className="text-[11px] text-vehicsim-faint">
+                      {run.blocked_by === "REGRESSION" ? "Thuộc regression" : "Thuộc tối ưu"}
+                    </span>
+                  )}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
