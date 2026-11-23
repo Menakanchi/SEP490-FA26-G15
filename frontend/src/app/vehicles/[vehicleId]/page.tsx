@@ -37,7 +37,7 @@ export default function VehicleDetailPage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Phương tiện", href: "/vehicles" }, { label: v?.name ?? "…" }]}
-      title={v?.name ?? "…"}
+      title={v ? `Cấu hình động lực học ${v.name}` : "Cấu hình phương tiện"}
       badges={
         v && (
           <>
@@ -46,7 +46,13 @@ export default function VehicleDetailPage() {
           </>
         )
       }
-      subtitle={v && <span className="font-mono text-[13px]">{v.carla_blueprint_id}</span>}
+      subtitle={
+        v && (
+          <span className="text-[13.5px] text-vehicsim-muted">
+            Blueprint CARLA: <span className="font-mono font-semibold text-vehicsim-ink">{v.carla_blueprint_id}</span> · Khối lượng {v.mass_kg} kg · Giảm tốc cực đại {v.max_brake_decel_mps2} m/s²
+          </span>
+        )
+      }
     >
       <ErrorNote message={error} />
 
@@ -111,10 +117,6 @@ export default function VehicleDetailPage() {
                 hint="Runner dùng để đổi giảm tốc AEB ra bàn đạp"
               />
             </div>
-            <p className="text-[12px] leading-[1.6] text-vehicsim-faint">
-              CARLA phanh yếu hơn xe thật vì chưa hiệu chuẩn (TD-17): số đo trên CARLA chỉ để quan sát và đối chiếu, không dùng làm bằng
-              chứng regression hay chứng nhận an toàn.
-            </p>
           </Card>
 
           <div className="grid grid-cols-2 gap-4">

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Upload } from "lucide-react";
+import { ArrowLeft, Trash2, Upload } from "lucide-react";
 import { AvatarCropModal } from "@/components/AvatarCropModal";
 import { inputClass, labelClass } from "@/components/auth/AuthCard";
 import { VehicSimPage } from "@/components/VehicSimPage";
@@ -47,7 +47,11 @@ export default function ProfilePage() {
     event.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setProfileFeedback({ tone: "error", text: "Vui lòng chọn tệp hình ảnh hợp lệ." });
+      setProfileFeedback({ tone: "error", text: "Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WebP)." });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setProfileFeedback({ tone: "error", text: "Dung lượng ảnh tối đa là 5 MB. Vui lòng chọn ảnh nhỏ hơn." });
       return;
     }
 
@@ -104,8 +108,8 @@ export default function ProfilePage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Hồ sơ cá nhân" }]}
-      title="Hồ sơ cá nhân"
-      subtitle="Quản lý thông tin hiển thị và mật khẩu tài khoản."
+      title="Thông tin tài khoản & Hồ sơ"
+      subtitle="Quản lý thông tin định danh, ảnh đại diện, vai trò hệ thống và bảo mật mật khẩu."
       showContext={false}
       actions={<PillButton onClick={() => router.back()}><ArrowLeft aria-hidden className="size-4" /> Quay lại</PillButton>}
     >
@@ -116,7 +120,7 @@ export default function ProfilePage() {
             <div className="flex flex-wrap items-center gap-4 border-b border-vehicsim-line pb-4">
               {avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- ảnh đại diện là dữ liệu lưu trong trình duyệt
-                <img src={avatarUrl} alt="Ảnh đại diện" className="size-16 shrink-0 rounded-full object-cover" />
+                <img src={avatarUrl} alt="Ảnh đại diện" className="size-16 shrink-0 rounded-full object-cover ring-2 ring-vehicsim-line" />
               ) : (
                 <span aria-hidden className="grid size-16 shrink-0 place-items-center rounded-full bg-vehicsim-primary-bg text-lg font-bold text-vehicsim-primary">
                   {initials(user.full_name || user.name || user.username)}
@@ -124,9 +128,24 @@ export default function ProfilePage() {
               )}
               <div className="flex min-w-0 flex-1 basis-[180px] flex-col items-start gap-2">
                 <p className="text-sm font-semibold">Ảnh đại diện</p>
-                <p className="text-xs text-vehicsim-muted">Ảnh đại diện được lưu trên trình duyệt này.</p>
+                <p className="text-xs text-vehicsim-muted">Ảnh vuông hoặc tròn, dung lượng tối đa 5 MB.</p>
                 <input ref={fileInput} type="file" accept="image/*" className="hidden" aria-label="Chọn ảnh đại diện" onChange={handleFileUpload} />
-                <PillButton onClick={() => fileInput.current?.click()}><Upload aria-hidden className="size-4" /> Chọn ảnh</PillButton>
+                <div className="flex flex-wrap items-center gap-2">
+                  <PillButton type="button" onClick={() => fileInput.current?.click()}><Upload aria-hidden className="size-4" /> Chọn ảnh</PillButton>
+                  {avatarUrl && (
+                    <PillButton type="button" onClick={async () => {
+                      setAvatarUrl("");
+                      try {
+                        await updateProfile(fullName, undefined);
+                        setProfileFeedback({ tone: "ok", text: "Đã xóa ảnh đại diện." });
+                      } catch {
+                        setProfileFeedback({ tone: "error", text: "Không thể xóa ảnh đại diện." });
+                      }
+                    }} className="text-vehicsim-danger hover:bg-vehicsim-danger-bg">
+                      <Trash2 aria-hidden className="size-4" /> Xóa ảnh
+                    </PillButton>
+                  )}
+                </div>
               </div>
             </div>
             <div>
@@ -172,9 +191,14 @@ export default function ProfilePage() {
         </Card>
       </div>
       {imageToCrop && (
-        <AvatarCropModal imageSrc={imageToCrop} onClose={() => setImageToCrop(null)} onCropConfirm={(cropped) => {
+        <AvatarCropModal imageSrc={imageToCrop} onClose={() => setImageToCrop(null)} onCropConfirm={async (cropped) => {
           setAvatarUrl(cropped);
-          setProfileFeedback({ tone: "ok", text: "Đã cắt ảnh. Chọn Lưu thay đổi để cập nhật ảnh đại diện." });
+          try {
+            await updateProfile(fullName, cropped);
+            setProfileFeedback({ tone: "ok", text: "Đã cập nhật ảnh đại diện thành công." });
+          } catch {
+            setProfileFeedback({ tone: "ok", text: "Đã cắt ảnh. Chọn Lưu thay đổi để hoàn tất." });
+          }
         }} />
       )}
     </VehicSimPage>

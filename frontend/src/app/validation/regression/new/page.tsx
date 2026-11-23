@@ -123,8 +123,8 @@ function NewRegressionForm() {
     <VehicSimPage
       step={5}
       crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Kiểm thử hồi quy", href: "/validation/regression" }, { label: "Kiểm thử mới" }]}
-      title="Tạo kiểm thử hồi quy"
-      subtitle={`Chạy lại các kịch bản nguy hiểm cũ và các biến thể trên cả hai phiên bản trước khi ứng viên được ${isExperiencer ? "dùng làm baseline" : "khuyến nghị"}.`}
+      title="Thiết lập đợt kiểm thử hồi quy"
+      subtitle="Ghép cặp ứng viên với bản cơ sở trên cùng không gian kịch bản và cùng phiên bản bộ mô phỏng."
       actions={
         <>
           <PillButton href="/validation/regression">Huỷ</PillButton>

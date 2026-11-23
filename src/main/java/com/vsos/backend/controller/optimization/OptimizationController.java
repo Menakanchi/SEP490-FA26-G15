@@ -44,7 +44,8 @@ public class OptimizationController {
             @JsonProperty("n_initial_points") Integer nInitialPoints,
             @JsonProperty("name") @Size(max = 150) String name,
             @JsonProperty("search_space") Map<String, Object> searchSpace,
-            @JsonProperty("objective_config") Map<String, Object> objectiveConfig) {
+            @JsonProperty("objective_config") Map<String, Object> objectiveConfig,
+            @JsonProperty("simulator_type") String simulatorType) {
     }
 
     @Operation(summary = "Tạo và bắt đầu Optimization Run bằng MOBO")
@@ -59,7 +60,8 @@ public class OptimizationController {
 
         long runId = optimization.createAndStartRun(
                 access.projectId(), uid, body.scenarioId(), body.baseAebVersionId(),
-                body.maxTrials(), body.nInitialPoints(), searchSpaceJson, objectiveConfigJson, body.name());
+                body.maxTrials(), body.nInitialPoints(), searchSpaceJson, objectiveConfigJson, body.name(),
+                body.simulatorType());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(Json.obj("id", runId, "status", "RUNNING"));
     }

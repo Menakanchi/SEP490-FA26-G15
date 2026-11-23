@@ -65,12 +65,8 @@ export default function RegressionListPage() {
     <VehicSimPage
       step={6}
       crumbs={[{ label: "Kiểm chứng" }, { label: "Kiểm thử hồi quy" }]}
-      title="Kiểm thử hồi quy"
-      subtitle={
-        isExperiencer
-          ? "Mọi ứng viên đều được chạy lại và so với baseline trước khi được dùng làm baseline mới."
-          : "Mọi cấu hình ứng viên đều được chạy lại và so với bản cơ sở trước khi trở thành khuyến nghị."
-      }
+      title="Xác minh an toàn & Chống suy thoái (Regression)"
+      subtitle="Kiểm chứng độc lập ứng viên AEB trên toàn bộ tập kịch bản so với bản cơ sở để ngăn ngừa hồi quy lỗi."
       actions={
         <PillButton
           variant="dark"
@@ -142,47 +138,51 @@ export default function RegressionListPage() {
         )}
 
         {shown.length > 0 && (
-          <TableScroll label="Bảng kiểm thử hồi quy" minWidth={1040}>
-            <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-              <span className="min-w-0 flex-1">Kiểm thử</span>
-              <span className="w-[156px]">Phiên bản</span>
-              <span className="w-[98px]">Kịch bản</span>
-              <span className="w-[116px]">Trạng thái</span>
-              <span className="w-[136px]">Sửa / Xấu đi</span>
-              {!isExperiencer && <span className="w-[106px]">Người tạo</span>}
-              <span className="w-[96px]">Ngày</span>
-              <span className="w-[180px] text-right pr-2">Thao tác</span>
+          <TableScroll label="Bảng kiểm thử hồi quy" minWidth={1000}>
+            <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
+              <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
+              <span className="w-[200px] shrink-0 pr-3">Kiểm thử</span>
+              <span className="w-[135px] shrink-0">Phiên bản</span>
+              <span className="w-[85px] shrink-0">Kịch bản</span>
+              <span className="w-[110px] shrink-0">Trạng thái</span>
+              <span className="w-[115px] shrink-0">Sửa / Xấu đi</span>
+              {!isExperiencer && <span className="w-[100px] shrink-0">Người tạo</span>}
+              <span className="w-[80px] shrink-0">Ngày</span>
+              <span className="w-[130px] shrink-0 text-right pr-2">Thao tác</span>
             </div>
-            {shown.map((i) => {
+            {shown.map((i, idx) => {
               const running = i.status === "RUNNING" || i.status === "PENDING";
               return (
                 <div
                   key={i.id}
                   onClick={() => router.push(`/validation/regression/${i.id}`)}
-                  className={cx("flex h-[58px] cursor-pointer items-center border-b border-solid border-vehicsim-line px-5 hover:bg-vehicsim-row", running && "bg-vehicsim-row")}
+                  className={cx("flex h-[60px] cursor-pointer items-center border-b border-solid border-vehicsim-line px-5 hover:bg-vehicsim-row transition-colors", running && "bg-vehicsim-row")}
                 >
-                  <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
-                    <span className="text-[13px] font-bold text-vehicsim-ink">{i.code}</span>
-                    <span className="truncate text-[12px] text-vehicsim-faint">{i.name}</span>
+                  <span className="w-[45px] shrink-0 pr-2 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
+                    {offset + idx + 1}
                   </span>
-                  <span className="w-[156px] text-[13px] font-semibold text-vehicsim-ink">
+                  <span className="flex w-[200px] shrink-0 flex-col gap-[2px] pr-3">
+                    <span className="text-[13px] font-bold text-vehicsim-ink">{i.code}</span>
+                    <span className="truncate text-[11.5px] text-vehicsim-faint">{i.name}</span>
+                  </span>
+                  <span className="w-[140px] shrink-0 text-[12.5px] font-semibold text-vehicsim-ink">
                     {i.baseline} → {i.candidate}
                   </span>
-                  <span className="w-[98px] text-[13px] text-vehicsim-ink">
-                    {running ? `${i.progress.done} / ${i.progress.total}` : i.scenarios ?? i.progress.total}
+                  <span className="w-[90px] shrink-0 text-[12.5px] text-vehicsim-ink">
+                    {running ? `${i.progress.done}/${i.progress.total}` : i.scenarios ?? i.progress.total}
                   </span>
-                  <span className="w-[116px]">
+                  <span className="w-[115px] shrink-0">
                     <StatusBadge status={i.status} />
                   </span>
-                  <span className="flex w-[136px] items-center gap-[6px]">
+                  <span className="flex w-[120px] shrink-0 items-center gap-[6px]">
                     {i.fixed === null ? (
-                      <span className="text-[13px] text-vehicsim-faint">—</span>
+                      <span className="text-[12.5px] text-vehicsim-faint">—</span>
                     ) : (
                       <>
-                        <span className="rounded-full bg-vehicsim-ok-bg px-2 py-[3px] text-[11px] font-semibold text-vehicsim-ok">+{i.fixed}</span>
+                        <span className="rounded-full bg-vehicsim-ok-bg px-2 py-[2px] text-[10.5px] font-semibold text-vehicsim-ok">+{i.fixed}</span>
                         <span
                           className={cx(
-                            "rounded-full px-2 py-[3px] text-[11px] font-semibold",
+                            "rounded-full px-2 py-[2px] text-[10.5px] font-semibold",
                             i.regressed ? "bg-vehicsim-danger-bg text-vehicsim-danger" : "bg-vehicsim-soft text-vehicsim-muted",
                           )}
                         >
@@ -191,19 +191,19 @@ export default function RegressionListPage() {
                       </>
                     )}
                   </span>
-                  {!isExperiencer && <span className="w-[106px] truncate text-[13px] text-vehicsim-ink">{i.created_by ?? "—"}</span>}
-                  <span className="w-[96px] text-[13px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
-                  <span className="flex w-[180px] items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  {!isExperiencer && <span className="w-[105px] shrink-0 truncate text-[12.5px] text-vehicsim-ink">{i.created_by ?? "—"}</span>}
+                  <span className="w-[85px] shrink-0 text-[12px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
+                  <span className="flex w-[135px] shrink-0 items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                     <Link
                       href={`/validation/regression/${i.id}`}
-                      className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
+                      className="inline-flex h-7 items-center justify-center rounded-md border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-2.5 text-[11.5px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-xs"
                     >
                       Chi tiết
                     </Link>
                     {(i.status === "PASSED" || i.status === "FAILED") && (
                       <Link
                         href={conclusion(i.id)}
-                        className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-decision px-3 text-[12px] font-bold text-white hover:bg-vehicsim-decision/90 transition shadow-sm"
+                        className="inline-flex h-7 items-center justify-center rounded-md bg-vehicsim-decision px-2.5 text-[11.5px] font-bold text-white hover:bg-vehicsim-decision/90 transition shadow-xs"
                       >
                         {isExperiencer ? "Kết luận" : "Khuyến nghị"}
                       </Link>

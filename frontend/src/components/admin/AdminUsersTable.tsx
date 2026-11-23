@@ -124,8 +124,20 @@ export function AdminUsersTable({ renderEditor }: { renderEditor: (props: Editor
               const email = typeof row.email === "string" ? row.email.trim() : "";
               const name = (typeof row.full_name === "string" ? row.full_name.trim() : "") || email || `Tài khoản #${row.id}`;
               const enabled = row.is_active === true || row.is_active === 1, disabled = row.is_active === false || row.is_active === 0;
+              const isSelf = String(row.id) === user?.id;
+              const rowAvatar = isSelf ? user?.avatar_url : (typeof window !== "undefined" ? localStorage.getItem(`vehicsim_avatar_${row.id}`) || undefined : undefined);
               return <tr key={row.id}>
-                <th scope="row"><div className={styles.identity}><span className={styles.avatar} aria-hidden="true">{initials(name)}</span><span><span className={styles.name}>{name}{String(row.id) === user?.id && <small className={styles.you}>Bạn</small>}</span><span className={styles.email}>{email || "—"}</span></span></div></th>
+                <th scope="row">
+                  <div className={styles.identity}>
+                    {rowAvatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- ảnh đại diện tài khoản
+                      <img src={rowAvatar} alt="" className={styles.avatar} style={{ objectFit: "cover" }} />
+                    ) : (
+                      <span className={styles.avatar} aria-hidden="true">{initials(name)}</span>
+                    )}
+                    <span><span className={styles.name}>{name}{isSelf && <small className={styles.you}>Bạn</small>}</span><span className={styles.email}>{email || "—"}</span></span>
+                  </div>
+                </th>
                 <td><span className={styles.role}>{USER_ROLES[String(row.role)] ?? String(row.role ?? "Chưa rõ")}</span></td>
                 <td><span className={`${styles.status} ${enabled ? styles.active : styles.inactive}`}>{enabled ? "Đang hoạt động" : disabled ? "Đã khóa" : "Chưa rõ"}</span></td>
                 <td className={styles.actions}><button className={styles.button} aria-label={`Chỉnh sửa tài khoản ${email || `#${row.id}`}`} disabled={openingId !== null} onClick={event => { setReturnFocusTo(event.currentTarget); void edit(row.id); }}>{openingId === row.id ? "Đang mở…" : "Chỉnh sửa"}</button></td>

@@ -220,6 +220,7 @@ export const vehicsimApi = {
     max_trials?: number;
     n_initial_points?: number;
     name?: string;
+    simulator_type?: "KINEMATIC" | "CARLA";
     search_space?: Record<string, [number, number]>;
     objective_config?: Record<string, unknown>;
   }) => apiRequest<{ id: number; status: string }>("/vehicsim/optimizations", { method: "POST", body: JSON.stringify(body) }),

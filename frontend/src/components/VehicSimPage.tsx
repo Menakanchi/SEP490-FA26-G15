@@ -4,8 +4,6 @@ import React from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { FlowBar } from "@/components/FlowBar";
-import { JourneyBar, TeamJourneyBar } from "@/components/project/ProjectShell";
 import { useAuth } from "@/context/AuthContext";
 
 export type Crumb = { label: string; href?: string };
@@ -22,18 +20,8 @@ interface VehicSimPageProps {
   children: React.ReactNode;
 }
 
-function ContextField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 border-l border-vehicsim-line-strong pl-3 text-xs">
-      <dt className="text-vehicsim-muted">{label}</dt>
-      <dd className="mt-1 break-words font-semibold text-vehicsim-ink">{value}</dd>
-    </div>
-  );
-}
-
-/** Khung nội dung trang và ngữ cảnh kiểm thử. */
-export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, showContext = true, children }: VehicSimPageProps) {
-  const { ctx, error, isExperiencer, canResetProject, selectProject } = useVehicSimContext();
+export function VehicSimPage({ crumbs, title, badges, subtitle, actions, showContext = true, children }: VehicSimPageProps) {
+  const { ctx, error, canResetProject, selectProject } = useVehicSimContext();
   const { user } = useAuth();
   const reviewer = user?.roleCode === "REVIEWER";
   const baseline = ctx?.system.baseline;
@@ -48,11 +36,11 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, s
               <React.Fragment key={c.label}>
                 {i > 0 && <ChevronRight aria-hidden className="size-3.5 shrink-0 text-vehicsim-faint" />}
                 {c.href && !last ? (
-                  <Link href={c.href} className="font-medium text-vehicsim-faint hover:text-vehicsim-ink">
+                  <Link href={c.href} className="font-medium text-slate-500 hover:text-slate-900 transition-colors">
                     {c.label}
                   </Link>
                 ) : (
-                  <span aria-current={last ? "page" : undefined} className={last ? "font-semibold text-vehicsim-ink" : "font-medium text-vehicsim-faint"}>{c.label}</span>
+                  <span aria-current={last ? "page" : undefined} className={last ? "font-bold text-slate-900" : "font-medium text-slate-500"}>{c.label}</span>
                 )}
               </React.Fragment>
             );
@@ -73,24 +61,38 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, step, s
         </p>
       )}
 
-      {isExperiencer ? <JourneyBar /> : reviewer || user?.roleCode === "ENGINEER"
-        ? <TeamJourneyBar reviewer={reviewer} />
-        : step !== undefined && <FlowBar active={Array.isArray(step) ? step : [step]} />}
+      {/* Thanh ngữ cảnh Dự án, Phương tiện & Bản cơ sở thay cho thanh hành trình cũ */}
+      {showContext && (ctx?.vehicle || baseline) && (
+        <div className="flex flex-wrap items-center gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2.5 text-[13px] shadow-xs print:hidden">
+          {ctx?.project && (
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-vehicsim-muted">Dự án:</span>
+              <span className="font-bold text-vehicsim-ink">{ctx.project.name}</span>
+            </div>
+          )}
+          {ctx?.vehicle && (
+            <div className="flex items-center gap-2 border-l border-solid border-vehicsim-line pl-4">
+              <span className="font-medium text-vehicsim-muted">Phương tiện:</span>
+              <span className="font-bold text-vehicsim-ink">{ctx.vehicle.name}</span>
+            </div>
+          )}
+          {baseline && (
+            <div className="flex items-center gap-2 border-l border-solid border-vehicsim-line pl-4">
+              <span className="font-medium text-vehicsim-muted">Bản cơ sở:</span>
+              <span className="font-bold text-vehicsim-primary">{ctx?.system.name ?? "AEB"} {baseline.label}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="vehicsim-page-heading flex flex-wrap items-end justify-between gap-4">
         <div className="flex min-w-0 flex-1 basis-[300px] flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="min-w-0 break-words text-[28px] font-bold leading-[1.2] tracking-[-0.025em] text-vehicsim-ink sm:text-[34px]">{title}</h1>
+            <h1 className="min-w-0 break-words text-[28px] font-black leading-[1.2] tracking-[-0.03em] text-slate-900 sm:text-[34px] lg:text-[36px]">{title}</h1>
             {badges}
           </div>
-          {subtitle && <p className="max-w-[640px] text-[15px] leading-[1.5] text-vehicsim-muted">{subtitle}</p>}
+          {subtitle && <p className="max-w-[720px] text-[14.5px] font-medium leading-relaxed text-slate-600">{subtitle}</p>}
         </div>
-        {showContext && (ctx?.vehicle || baseline) && (
-          <dl className="flex min-w-0 flex-wrap items-start gap-x-4 gap-y-2">
-            {ctx?.vehicle && <ContextField label="Phương tiện" value={ctx.vehicle.name} />}
-            {baseline && <ContextField label="Bản cơ sở" value={`${ctx?.system.name ?? "AEB"} ${baseline.label}`} />}
-          </dl>
-        )}
         {actions && <div className="vehicsim-page-actions flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
 

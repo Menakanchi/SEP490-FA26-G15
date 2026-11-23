@@ -34,7 +34,17 @@ function AdminExitLinks() {
   return <div className={styles.exitLinks}>
     <Link href="/"><ArrowLeft size={16} aria-hidden="true" />Tổng quan VehicSim</Link>
     <div className={styles.account}>
-      <span className={styles.avatar} aria-hidden="true">{initials(user?.full_name || user?.name || "U")}</span>
+      {user?.avatar_url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- ảnh đại diện quản trị viên
+        <img
+          src={user.avatar_url}
+          alt=""
+          className={styles.avatar}
+          style={{ objectFit: "cover" }}
+        />
+      ) : (
+        <span className={styles.avatar} aria-hidden="true">{initials(user?.full_name || user?.name || "U")}</span>
+      )}
       <span className={styles.accountName}><strong>{user?.full_name || user?.name}</strong><small>Quản trị viên</small></span>
       <button type="button" aria-label="Đăng xuất" title="Đăng xuất" onClick={() => { logout(); router.push("/login"); }}>
         <LogOut size={17} aria-hidden="true" />

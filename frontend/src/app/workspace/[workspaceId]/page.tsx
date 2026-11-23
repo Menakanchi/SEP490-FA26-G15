@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { Card, CardTitle, EmptyState, ErrorNote, PillButton, StatCard, Tag, fmt, cx } from "@/components/VehicSimUi";
+import { Card, CardTitle, EmptyState, ErrorNote, Pagination, PillButton, StatCard, TableScroll, Tag, fmt, cx, initials } from "@/components/VehicSimUi";
 import { WORKSPACE_ROLES, WORKSPACE_MANAGER_ROLES } from "@/components/workspaceAccess";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError } from "@/services/api";
@@ -81,6 +81,19 @@ export default function WorkspaceDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
+
+  const [memberPage, setMemberPage] = useState(1);
+  const MEMBER_PAGE_SIZE = 8;
+  const memberTotal = members?.length ?? 0;
+  const memberPages = Math.max(1, Math.ceil(memberTotal / MEMBER_PAGE_SIZE));
+  const pagedMembers = (members ?? []).slice((memberPage - 1) * MEMBER_PAGE_SIZE, memberPage * MEMBER_PAGE_SIZE);
+
+  const [projectPage, setProjectPage] = useState(1);
+  const PROJECT_PAGE_SIZE = 6;
+  const projectList = detail?.projects ?? [];
+  const projectTotal = projectList.length;
+  const projectPages = Math.max(1, Math.ceil(projectTotal / PROJECT_PAGE_SIZE));
+  const pagedProjects = projectList.slice((projectPage - 1) * PROJECT_PAGE_SIZE, projectPage * PROJECT_PAGE_SIZE);
 
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
@@ -330,7 +343,7 @@ export default function WorkspaceDetailPage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Workspace", href: "/workspace" }, { label: ws?.name ?? "…" }]}
-      title={ws?.name ?? "Workspace"}
+      title={ws ? `Không gian làm việc: ${ws.name}` : "Chi tiết Workspace"}
       badges={ws && <Tag tone={active ? "ok" : "neutral"}>{active ? "Hoạt động" : "Đã lưu trữ"}</Tag>}
       subtitle={ws ? `${(ws.description || "Chưa có mô tả").replace(/[.\s]+$/, "")}. Quản lý: ${ws.manager.full_name}.` : undefined}
       actions={
@@ -395,10 +408,6 @@ export default function WorkspaceDetailPage() {
               </form>
             </Card>
           )}
-          <div className="rounded-[16px] border border-solid border-vehicsim-line bg-vehicsim-soft px-4 py-3 text-[12px] text-vehicsim-muted">
-            Ứng dụng hiện vẫn chạy trên một project chung (TD-30): thêm hoặc bớt thành viên được lưu lại nhưng chưa thay đổi dữ liệu
-            mà người đó nhìn thấy.
-          </div>
 
           <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
             <StatCard label="Thành viên" value={members ? members.length : "…"} />
@@ -500,84 +509,125 @@ export default function WorkspaceDetailPage() {
               </div>
             )}
             <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line">
-              <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-4 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-                <span className="min-w-0 flex-1">Người dùng</span>
-                <span className="w-[130px]">Vai trò</span>
-                <span className="w-[90px]">Project</span>
-                <span className="w-[90px]">Task mở</span>
-                <span className="w-[180px]">Thêm bởi</span>
-                <span className="w-[100px]">Ngày vào</span>
-                <span className="w-[90px]" />
-              </div>
-              {members && members.length === 0 && (
-                <EmptyState title="Workspace chưa có thành viên">Bấm “+ Thêm thành viên” để tìm tài khoản và cấp vai trò.</EmptyState>
-              )}
-              {(members ?? []).map((m) => {
-                const owner = m.owned_project_count > 0;
-                return (
-                  <div key={m.user_id} className="flex h-[58px] items-center border-b border-solid border-vehicsim-line px-4 last:border-b-0">
-                    <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
-                      <span className="flex items-center gap-2 truncate text-[13px] font-bold text-vehicsim-ink">
-                        {m.full_name}
-                        {!m.is_active && <Tag tone="danger">Đã khoá</Tag>}
+              <TableScroll label="Bảng thành viên workspace" minWidth={920}>
+                <div className="flex h-11 items-center border-b border-solid border-slate-700 bg-slate-800 px-4 text-[12.5px] font-black uppercase tracking-wider text-white">
+                  <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
+                  <span className="w-[220px] shrink-0 pr-4">Người dùng</span>
+                  <span className="w-[120px] shrink-0">Vai trò</span>
+                  <span className="w-[95px] shrink-0">Project</span>
+                  <span className="w-[85px] shrink-0">Task mở</span>
+                  <span className="w-[170px] shrink-0 pr-3">Thêm bởi</span>
+                  <span className="w-[105px] shrink-0">Ngày vào</span>
+                  <span className="w-[85px] shrink-0 text-right" />
+                </div>
+                {members && members.length === 0 && (
+                  <EmptyState title="Workspace chưa có thành viên">Bấm “+ Thêm thành viên” để tìm tài khoản và cấp vai trò.</EmptyState>
+                )}
+                {pagedMembers.map((m, idx) => {
+                  const owner = m.owned_project_count > 0;
+                  const isSelf = String(m.user_id) === String(user?.id);
+                  const mAvatar = isSelf ? user?.avatar_url : (typeof window !== "undefined" ? localStorage.getItem(`vehicsim_avatar_${m.user_id}`) || undefined : undefined);
+                  return (
+                    <div key={m.user_id} className="flex min-h-[58px] items-center border-b border-solid border-vehicsim-line px-4 py-2 last:border-b-0">
+                      <span className="w-[45px] shrink-0 pr-2 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
+                        {(memberPage - 1) * MEMBER_PAGE_SIZE + idx + 1}
                       </span>
-                      <span className="truncate text-[12px] text-vehicsim-faint">{m.email}</span>
-                    </span>
-                    <span className="w-[130px]">
-                      <RoleTag role={m.role} />
-                    </span>
-                    <span className="w-[90px] text-[13px] text-vehicsim-ink">
-                      {m.project_count}
-                      {owner && <span className="text-vehicsim-faint"> · chủ {m.owned_project_count}</span>}
-                    </span>
-                    <span className="w-[90px] text-[13px] text-vehicsim-ink">{m.open_task_count}</span>
-                    <span className="w-[180px] truncate pr-3 text-[13px] text-vehicsim-muted">{m.added_by?.full_name ?? "—"}</span>
-                    <span className="w-[100px] text-[13px] text-vehicsim-faint">{fmt.date(m.joined_at)}</span>
-                    <span className="flex w-[90px] justify-end">
-                      {isManagerOrAdmin ? (
-                        <button
-                          type="button"
-                          disabled={!active || owner || busy !== null}
-                          title={owner ? "Đang là chủ project trong workspace, chưa bớt được" : !active ? "Workspace đã lưu trữ" : undefined}
-                          onClick={() => remove(m)}
-                          className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-danger hover:bg-vehicsim-danger-bg disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          {busy === m.user_id ? "…" : "Bớt"}
-                        </button>
-                      ) : (
-                        <span className="text-[12px] text-vehicsim-faint">Thành viên</span>
-                      )}
-                    </span>
-                  </div>
-                );
-              })}
+                      <span className="flex w-[220px] shrink-0 items-center gap-2.5 pr-4">
+                        {mAvatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- ảnh đại diện thành viên
+                          <img src={mAvatar} alt="" className="size-8 shrink-0 rounded-full object-cover ring-1 ring-vehicsim-line" />
+                        ) : (
+                          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-vehicsim-primary-bg text-[11px] font-bold text-vehicsim-primary">
+                            {initials(m.full_name)}
+                          </span>
+                        )}
+                        <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
+                          <span className="flex items-center gap-2 truncate text-[13px] font-bold text-vehicsim-ink">
+                            {m.full_name}
+                            {isSelf && <span className="rounded bg-vehicsim-primary-bg px-1.5 py-0.5 text-[10px] font-bold text-vehicsim-primary">Bạn</span>}
+                            {!m.is_active && <Tag tone="danger">Đã khoá</Tag>}
+                          </span>
+                          <span className="truncate text-[12px] text-vehicsim-faint">{m.email}</span>
+                        </span>
+                      </span>
+                      <span className="w-[130px] shrink-0">
+                        <RoleTag role={m.role} />
+                      </span>
+                      <span className="w-[100px] shrink-0 text-[13px] text-vehicsim-ink">
+                        {m.project_count}
+                        {owner && <span className="text-vehicsim-faint"> · chủ {m.owned_project_count}</span>}
+                      </span>
+                      <span className="w-[90px] shrink-0 text-[13px] text-vehicsim-ink">{m.open_task_count}</span>
+                      <span className="w-[180px] shrink-0 truncate pr-3 text-[13px] text-vehicsim-muted">{m.added_by?.full_name ?? "—"}</span>
+                      <span className="w-[110px] shrink-0 text-[13px] text-vehicsim-faint">{fmt.date(m.joined_at)}</span>
+                      <span className="flex w-[90px] shrink-0 justify-end">
+                        {isManagerOrAdmin ? (
+                          <button
+                            type="button"
+                            disabled={!active || owner || busy !== null}
+                            title={owner ? "Đang là chủ project trong workspace, chưa bớt được" : !active ? "Workspace đã lưu trữ" : undefined}
+                            onClick={() => remove(m)}
+                            className="rounded-full px-3 py-[6px] text-[12px] font-semibold text-vehicsim-danger hover:bg-vehicsim-danger-bg disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {busy === m.user_id ? "…" : "Bớt"}
+                          </button>
+                        ) : (
+                          <span className="text-[12px] text-vehicsim-faint">Thành viên</span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </TableScroll>
+              {memberPages > 1 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-4 py-3">
+                  <span className="text-[12px] font-medium text-vehicsim-muted">
+                    Hiển thị {(memberPage - 1) * MEMBER_PAGE_SIZE + 1}–{Math.min(memberPage * MEMBER_PAGE_SIZE, memberTotal)} trên {memberTotal} thành viên
+                  </span>
+                  <Pagination page={memberPage} pages={memberPages} onPage={setMemberPage} />
+                </div>
+              )}
             </div>
           </Card>
 
           <Card className="flex flex-col gap-4 p-5">
             <CardTitle>Project trong workspace</CardTitle>
             <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line">
-              <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-4 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-                <span className="min-w-0 flex-1">Project</span>
-                <span className="w-[200px]">Chủ project</span>
-                <span className="w-[110px]">Thành viên</span>
-                <span className="w-[110px]">Trạng thái</span>
-                <span className="w-[100px]">Ngày tạo</span>
-              </div>
-              {detail && detail.projects.length === 0 && (
-                <EmptyState title="Chưa có project">Kỹ sư trong workspace tự tạo project; Quản lý không tạo project.</EmptyState>
-              )}
-              {(detail?.projects ?? []).map((p) => (
-                <div key={p.id} className="flex h-[52px] items-center border-b border-solid border-vehicsim-line px-4 last:border-b-0">
-                  <span className="min-w-0 flex-1 truncate pr-3 text-[13px] font-bold text-vehicsim-ink">{p.name}</span>
-                  <span className="w-[200px] truncate pr-3 text-[13px] text-vehicsim-muted">{p.owner.full_name}</span>
-                  <span className="w-[110px] text-[13px] text-vehicsim-ink">{p.member_count}</span>
-                  <span className="w-[110px]">
-                    <Tag tone={p.status === "ACTIVE" ? "ok" : "neutral"}>{p.status === "ACTIVE" ? "Hoạt động" : "Đã lưu trữ"}</Tag>
-                  </span>
-                  <span className="w-[100px] text-[13px] text-vehicsim-faint">{fmt.date(p.created_date)}</span>
+              <TableScroll label="Bảng project trong workspace" minWidth={840}>
+                <div className="flex h-11 items-center border-b border-solid border-slate-700 bg-slate-800 px-4 text-[12.5px] font-black uppercase tracking-wider text-white">
+                  <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
+                  <span className="w-[240px] shrink-0 pr-4">Project</span>
+                  <span className="w-[180px] shrink-0 pr-3">Chủ project</span>
+                  <span className="w-[110px] shrink-0">Thành viên</span>
+                  <span className="w-[110px] shrink-0">Trạng thái</span>
+                  <span className="w-[105px] shrink-0">Ngày tạo</span>
                 </div>
-              ))}
+                {detail && detail.projects.length === 0 && (
+                  <EmptyState title="Chưa có project">Kỹ sư trong workspace tự tạo project; Quản lý không tạo project.</EmptyState>
+                )}
+                {pagedProjects.map((p, idx) => (
+                  <div key={p.id} className="flex min-h-[52px] items-center border-b border-solid border-vehicsim-line px-4 py-2 last:border-b-0">
+                    <span className="w-[45px] shrink-0 pr-2 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
+                      {(projectPage - 1) * PROJECT_PAGE_SIZE + idx + 1}
+                    </span>
+                    <span className="w-[240px] shrink-0 truncate pr-4 text-[13px] font-bold text-vehicsim-ink">{p.name}</span>
+                    <span className="w-[200px] shrink-0 truncate pr-3 text-[13px] text-vehicsim-muted">{p.owner.full_name}</span>
+                    <span className="w-[120px] shrink-0 text-[13px] text-vehicsim-ink">{p.member_count}</span>
+                    <span className="w-[120px] shrink-0">
+                      <Tag tone={p.status === "ACTIVE" ? "ok" : "neutral"}>{p.status === "ACTIVE" ? "Hoạt động" : "Đã lưu trữ"}</Tag>
+                    </span>
+                    <span className="w-[110px] shrink-0 text-[13px] text-vehicsim-faint">{fmt.date(p.created_date)}</span>
+                  </div>
+                ))}
+              </TableScroll>
+              {projectPages > 1 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-4 py-3">
+                  <span className="text-[12px] font-medium text-vehicsim-muted">
+                    Hiển thị {(projectPage - 1) * PROJECT_PAGE_SIZE + 1}–{Math.min(projectPage * PROJECT_PAGE_SIZE, projectTotal)} trên {projectTotal} project
+                  </span>
+                  <Pagination page={projectPage} pages={projectPages} onPage={setProjectPage} />
+                </div>
+              )}
             </div>
           </Card>
           <Card className="flex flex-col gap-4 p-5">
@@ -623,22 +673,38 @@ export default function WorkspaceDetailPage() {
                 ) : (
                   messages.map((msg) => {
                     const isMe = String(msg.sender.id) === String(user?.id);
+                    const msgAvatar = isMe ? user?.avatar_url : (typeof window !== "undefined" ? localStorage.getItem(`vehicsim_avatar_${msg.sender.id}`) || undefined : undefined);
                     return (
                       <div
                         key={msg.id}
                         className={cx(
-                          "flex flex-col rounded-[12px] p-3 max-w-[85%]",
-                          isMe
-                            ? "self-end bg-vehicsim-decision/10 border border-vehicsim-decision/30 text-vehicsim-ink"
-                            : "self-start bg-vehicsim-surface border border-vehicsim-line text-vehicsim-ink"
+                          "flex gap-2.5 max-w-[85%]",
+                          isMe ? "self-end flex-row-reverse" : "self-start flex-row"
                         )}
                       >
-                        <div className="flex items-center gap-2 text-[11px] text-vehicsim-muted font-medium mb-1">
-                          <span className="font-bold text-vehicsim-ink">{msg.sender.full_name}</span>
-                          <span>·</span>
-                          <span>{fmt.date(msg.created_date)}</span>
+                        {msgAvatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- ảnh đại diện người chat
+                          <img src={msgAvatar} alt="" className="size-7 shrink-0 rounded-full object-cover ring-1 ring-vehicsim-line-strong mt-0.5" />
+                        ) : (
+                          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-vehicsim-primary-bg text-[10px] font-bold text-vehicsim-primary mt-0.5">
+                            {initials(msg.sender.full_name)}
+                          </span>
+                        )}
+                        <div
+                          className={cx(
+                            "flex flex-col rounded-[12px] p-3",
+                            isMe
+                              ? "bg-vehicsim-decision/10 border border-vehicsim-decision/30 text-vehicsim-ink"
+                              : "bg-vehicsim-surface border border-vehicsim-line text-vehicsim-ink"
+                          )}
+                        >
+                          <div className="flex items-center gap-2 text-[11px] text-vehicsim-muted font-medium mb-1">
+                            <span className="font-bold text-vehicsim-ink">{msg.sender.full_name}</span>
+                            <span>·</span>
+                            <span>{fmt.date(msg.created_date)}</span>
+                          </div>
+                          <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{msg.message_text}</p>
                         </div>
-                        <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{msg.message_text}</p>
                       </div>
                     );
                   })

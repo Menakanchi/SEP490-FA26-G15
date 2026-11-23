@@ -184,12 +184,8 @@ function MyWorkContent() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Nhiệm vụ & báo cáo" }]}
-      title="Nhiệm vụ & báo cáo"
-      subtitle={
-        allowed
-          ? "Task Quản lý workspace giao cho bạn và báo cáo công việc bạn đã nộp. Bạn cập nhật tiến độ; Quản lý xác nhận hoàn thành và duyệt báo cáo."
-          : undefined
-      }
+      title="Theo dõi tiến độ & Báo cáo công việc"
+      subtitle="Tổng hợp các nhiệm vụ phân công, đợt kiểm thử đang xử lý và lịch sử nộp báo cáo trong dự án."
       actions={
         allowed && work && work.projects.length > 0 ? (
           <PillButton variant="dark" onClick={() => (formOpen ? setFormOpen(false) : openReportFor(null))}>
@@ -320,24 +316,28 @@ function MyWorkContent() {
               </EmptyState>
             )}
             {shownTasks.length > 0 && (
-              <TableScroll label="Bảng nhiệm vụ được giao" minWidth={860}>
-                <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-                  <span className="min-w-0 flex-1">Task</span>
-                  <span className="w-[100px]">Ưu tiên</span>
-                  <span className="w-[100px]">Hạn</span>
-                  <span className="w-[160px]">Trạng thái</span>
-                  <span className="w-[130px]">Tiến độ</span>
-                  <span className="w-[170px] text-right pr-2">Thao tác</span>
+              <TableScroll label="Bảng nhiệm vụ được giao" minWidth={970}>
+                <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
+                  <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
+                  <span className="w-[265px] shrink-0 pr-4">Nhiệm vụ & Workspace</span>
+                  <span className="w-[105px] shrink-0">Ưu tiên</span>
+                  <span className="w-[105px] shrink-0">Hạn</span>
+                  <span className="w-[155px] shrink-0">Trạng thái</span>
+                  <span className="w-[135px] shrink-0">Tiến độ</span>
+                  <span className="w-[165px] shrink-0 text-right pr-2">Thao tác</span>
                 </div>
-                {shownTasks.map((t) => {
+                {shownTasks.map((t, idx) => {
                   const d = draftOf(t);
                   const done = t.task.status === "DONE";
                   const editable = !done && t.workspace.status === "ACTIVE" && (!t.task.project || work?.projects.some((p) => p.id === t.task.project?.id));
                   const changed = editable && (d.status !== t.task.status || d.progress !== t.task.progress_pct);
                   return (
-                    <div key={t.task.id} className="flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2 last:border-b-0">
-                      <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
-                        <span className={cx("truncate text-[13px] font-bold", done ? "text-vehicsim-faint line-through" : "text-vehicsim-ink")}>
+                    <div key={t.task.id} className="flex min-h-[64px] items-center border-b border-solid border-vehicsim-line px-5 py-2 hover:bg-vehicsim-row transition-colors last:border-b-0">
+                      <span className="w-[45px] shrink-0 pr-2 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
+                        {taskOffset + idx + 1}
+                      </span>
+                      <span className="flex w-[265px] shrink-0 flex-col gap-[2px] pr-4">
+                        <span className={cx("truncate text-[13.5px] font-bold", done ? "text-vehicsim-faint line-through" : "text-vehicsim-ink")}>
                           {t.task.title}
                         </span>
                         <span className="truncate text-[12px] text-vehicsim-faint">
@@ -346,13 +346,13 @@ function MyWorkContent() {
                           {t.task.description ? ` · ${t.task.description}` : ""}
                         </span>
                       </span>
-                      <span className="w-[100px]">
+                      <span className="w-[110px] shrink-0">
                         <Tag tone={PRIORITY[t.task.priority].tone}>{PRIORITY[t.task.priority].label}</Tag>
                       </span>
-                      <span className={cx("w-[100px] text-[13px]", t.task.overdue ? "font-semibold text-vehicsim-danger" : "text-vehicsim-muted")}>
+                      <span className={cx("w-[110px] shrink-0 text-[13px]", t.task.overdue ? "font-semibold text-vehicsim-danger" : "text-vehicsim-muted")}>
                         {dateLabel(t.task.due_date)}
                       </span>
-                      <span className="w-[160px] pr-3">
+                      <span className="w-[160px] shrink-0 pr-3">
                         {editable ? (
                           <select
                             aria-label={`Trạng thái của ${t.task.title}`}
@@ -370,7 +370,7 @@ function MyWorkContent() {
                           <Tag tone={STATUS[t.task.status].tone}>{STATUS[t.task.status].label}</Tag>
                         )}
                       </span>
-                      <span className="flex w-[130px] items-center gap-2 pr-3">
+                      <span className="flex w-[140px] shrink-0 items-center gap-2 pr-3">
                         {editable ? (
                           <input
                             type="number"
@@ -387,7 +387,7 @@ function MyWorkContent() {
                         )}
                         <span className="text-[12px] text-vehicsim-faint">%</span>
                       </span>
-                      <span className="flex w-[170px] justify-end gap-2">
+                      <span className="flex w-[170px] shrink-0 justify-end gap-2 pr-2">
                         {changed && (
                           <PillButton variant="dark" className="px-4 py-2 text-[12px]" disabled={savingTask !== null} onClick={() => saveTask(t)}>
                             {savingTask === t.task.id ? "Đang lưu…" : "Lưu"}
