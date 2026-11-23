@@ -2,13 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  ArrowRight,
-  BarChart3,
-  CheckSquare,
-  ShieldCheck,
-  Sliders,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import {
@@ -48,9 +42,6 @@ export default function AebHubPage() {
       <section className="flex flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-4">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-              <ShieldCheck className="size-5" />
-            </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="flex size-5 items-center justify-center rounded-full bg-vehicsim-primary text-[11px] font-bold text-white">
@@ -112,23 +103,18 @@ export default function AebHubPage() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {/* Card 1: MOBO */}
           <Card className="flex items-center justify-between gap-4 p-4 border border-solid border-vehicsim-line hover:border-vehicsim-primary/50 transition">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-vehicsim-decision-bg text-vehicsim-decision">
-                <BarChart3 className="size-5" />
+            <div className="flex flex-col min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-[14.5px] font-bold text-vehicsim-ink">
+                  Tối ưu tự động bằng AI (MOBO)
+                </h3>
+                <span className="rounded-full bg-vehicsim-decision-bg px-2 py-0.5 text-[10.5px] font-bold text-vehicsim-decision">
+                  Khuyên dùng
+                </span>
               </div>
-              <div className="flex flex-col min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-[14.5px] font-bold text-vehicsim-ink">
-                    Tối ưu tự động bằng AI (MOBO)
-                  </h3>
-                  <span className="rounded-full bg-vehicsim-decision-bg px-2 py-0.5 text-[10.5px] font-bold text-vehicsim-decision">
-                    Khuyên dùng
-                  </span>
-                </div>
-                <p className="text-[12.5px] text-vehicsim-muted mt-0.5 truncate">
-                  Thuật toán Bayesian qEHVI tìm biên Pareto tối ưu 3 mục tiêu.
-                </p>
-              </div>
+              <p className="text-[12.5px] text-vehicsim-muted mt-0.5 truncate">
+                Thuật toán Bayesian qEHVI tìm biên Pareto tối ưu 3 mục tiêu.
+              </p>
             </div>
             <PillButton href="/aeb/mobo" variant="dark" className="shrink-0 py-1.5 px-3.5 text-[12.5px]">
               Studio MOBO <ArrowRight className="size-3.5" />
@@ -137,18 +123,13 @@ export default function AebHubPage() {
 
           {/* Card 2: Chỉnh tay */}
           <Card className="flex items-center justify-between gap-4 p-4 border border-solid border-vehicsim-line hover:border-vehicsim-primary/50 transition">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                <Sliders className="size-5" />
-              </div>
-              <div className="flex flex-col min-w-0">
-                <h3 className="text-[14.5px] font-bold text-vehicsim-ink">
-                  Hiệu chỉnh tham số thủ công
-                </h3>
-                <p className="text-[12.5px] text-vehicsim-muted mt-0.5 truncate">
-                  Chỉnh 4 tham số AEB dựa trên tri thức chuyên gia.
-                </p>
-              </div>
+            <div className="flex flex-col min-w-0">
+              <h3 className="text-[14.5px] font-bold text-vehicsim-ink">
+                Hiệu chỉnh tham số thủ công
+              </h3>
+              <p className="text-[12.5px] text-vehicsim-muted mt-0.5 truncate">
+                Chỉnh 4 tham số AEB dựa trên tri thức chuyên gia.
+              </p>
             </div>
             <PillButton href="/aeb/manual" variant="light" className="shrink-0 py-1.5 px-3.5 text-[12.5px]">
               Chỉnh tay <ArrowRight className="size-3.5" />
@@ -161,9 +142,6 @@ export default function AebHubPage() {
       <section className="flex flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-vehicsim-primary/10 text-vehicsim-primary">
-              <CheckSquare className="size-5" />
-            </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="flex size-5 items-center justify-center rounded-full bg-vehicsim-primary text-[11px] font-bold text-white">
