@@ -163,7 +163,7 @@ export default function AebMoboNewPage() {
                   "flex flex-col items-start gap-1.5 rounded-xl border-2 p-4 text-left transition",
                   simulatorType === "KINEMATIC"
                     ? "border-vehicsim-primary bg-vehicsim-surface shadow-xs"
-                    : "border-transparent bg-vehicsim-surface/70 hover:bg-vehicsim-surface text-vehicsim-muted hover:text-vehicsim-ink"
+                    : "border-slate-200/60 bg-vehicsim-surface/70 hover:bg-vehicsim-surface text-slate-600 hover:text-slate-900 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400 dark:hover:text-white"
                 )}
               >
                 <div className="flex w-full items-center justify-between">
@@ -186,7 +186,7 @@ export default function AebMoboNewPage() {
                   "flex flex-col items-start gap-1.5 rounded-xl border-2 p-4 text-left transition",
                   simulatorType === "CARLA"
                     ? "border-vehicsim-primary bg-vehicsim-surface shadow-xs"
-                    : "border-transparent bg-vehicsim-surface/70 hover:bg-vehicsim-surface text-vehicsim-muted hover:text-vehicsim-ink"
+                    : "border-slate-200/60 bg-vehicsim-surface/70 hover:bg-vehicsim-surface text-slate-600 hover:text-slate-900 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400 dark:hover:text-white"
                 )}
               >
                 <div className="flex w-full items-center justify-between">

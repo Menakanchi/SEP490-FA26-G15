@@ -66,10 +66,10 @@ export function VersionTable({
               setVersionPage(1);
             }}
             className={cx(
-              "rounded-lg px-3 py-1.5 text-[12.5px] font-bold transition",
+              "rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold transition-all duration-150 border border-solid",
               filterStatus === "ALL"
-                ? "bg-slate-900 text-white shadow-sm"
-                : "bg-vehicsim-soft text-vehicsim-muted hover:bg-slate-200 hover:text-vehicsim-ink dark:hover:bg-slate-800",
+                ? "bg-slate-900 border-slate-900 text-white shadow-xs hover:bg-slate-800 hover:text-white dark:bg-slate-100 dark:border-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-950 hover:border-slate-300 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white dark:hover:border-slate-600",
             )}
           >
             Tất cả ({allCount})
@@ -81,10 +81,10 @@ export function VersionTable({
               setVersionPage(1);
             }}
             className={cx(
-              "rounded-lg px-3 py-1.5 text-[12.5px] font-bold transition",
+              "rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold transition-all duration-150 border border-solid",
               filterStatus === "CANDIDATE"
-                ? "bg-emerald-600 text-white shadow-sm"
-                : "bg-vehicsim-soft text-vehicsim-muted hover:bg-slate-200 hover:text-vehicsim-ink dark:hover:bg-slate-800",
+                ? "bg-emerald-600 border-emerald-600 text-white shadow-xs hover:bg-emerald-700 hover:text-white"
+                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-900 hover:border-emerald-300 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300 dark:hover:border-emerald-700",
             )}
           >
             Ứng viên ({candidateCount})
@@ -96,10 +96,10 @@ export function VersionTable({
               setVersionPage(1);
             }}
             className={cx(
-              "rounded-lg px-3 py-1.5 text-[12.5px] font-bold transition",
+              "rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold transition-all duration-150 border border-solid",
               filterStatus === "BASELINE"
-                ? "bg-slate-800 text-white shadow-sm"
-                : "bg-vehicsim-soft text-vehicsim-muted hover:bg-slate-200 hover:text-vehicsim-ink dark:hover:bg-slate-800",
+                ? "bg-slate-800 border-slate-800 text-white shadow-xs hover:bg-slate-900 hover:text-white dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-950 hover:border-slate-300 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white dark:hover:border-slate-600",
             )}
           >
             Bản cơ sở ({baselineCount})

@@ -99,13 +99,15 @@ export default function AebMoboTrialsPage() {
             />
           </div>
 
-          <div className="flex items-center rounded-lg border border-solid border-vehicsim-line p-1 bg-vehicsim-soft">
+          <div className="flex items-center rounded-lg border border-solid border-slate-200 dark:border-slate-700 p-1 bg-slate-100 dark:bg-slate-800">
             <button
               type="button"
               onClick={() => { setFilterMode("ALL"); setPage(1); }}
               className={cx(
-                "rounded-md px-3 py-1.5 text-[12px] font-bold transition",
-                filterMode === "ALL" ? "bg-vehicsim-surface text-vehicsim-ink shadow-xs" : "text-vehicsim-muted hover:text-vehicsim-ink"
+                "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
+                filterMode === "ALL"
+                  ? "bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
               )}
             >
               Tất cả ({trials?.length ?? 0})
@@ -114,8 +116,10 @@ export default function AebMoboTrialsPage() {
               type="button"
               onClick={() => { setFilterMode("PARETO"); setPage(1); }}
               className={cx(
-                "rounded-md px-3 py-1.5 text-[12px] font-bold transition",
-                filterMode === "PARETO" ? "bg-vehicsim-surface text-vehicsim-ok shadow-xs" : "text-vehicsim-muted hover:text-vehicsim-ink"
+                "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
+                filterMode === "PARETO"
+                  ? "bg-emerald-600 text-white shadow-xs"
+                  : "text-slate-600 hover:text-emerald-800 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-emerald-300 dark:hover:bg-emerald-950/40"
               )}
             >
               Biên Pareto ({trials?.filter((t) => t.is_pareto_optimal).length ?? 0})
@@ -124,8 +128,10 @@ export default function AebMoboTrialsPage() {
               type="button"
               onClick={() => { setFilterMode("FEASIBLE"); setPage(1); }}
               className={cx(
-                "rounded-md px-3 py-1.5 text-[12px] font-bold transition",
-                filterMode === "FEASIBLE" ? "bg-vehicsim-surface text-vehicsim-decision shadow-xs" : "text-vehicsim-muted hover:text-vehicsim-ink"
+                "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
+                filterMode === "FEASIBLE"
+                  ? "bg-slate-800 text-white shadow-xs dark:bg-slate-700 dark:text-white"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
               )}
             >
               Hợp lệ ({trials?.filter((t) => !t.constraint_violated).length ?? 0})

@@ -63,7 +63,7 @@ export function AebNav({ active }: { active: AebTabKey }) {
               "flex items-center gap-2 whitespace-nowrap rounded-t-[12px] px-4 py-2.5 text-[13px] font-bold transition",
               isSelected
                 ? "border-b-2 border-vehicsim-primary bg-vehicsim-surface text-vehicsim-ink shadow-xs"
-                : "text-vehicsim-muted hover:bg-vehicsim-soft hover:text-vehicsim-ink",
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white",
             )}
           >
             {tab.icon}
