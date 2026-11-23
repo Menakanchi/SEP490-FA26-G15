@@ -309,6 +309,7 @@ export default function RegressionResultsPage() {
 }
 
 function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failedCriteria: string[]; conclusion: string | null }) {
+  const { canDecide } = useVehicSimContext();
   const counts = d.summary.counts;
   if (d.status === "FAILED") {
     return (
@@ -332,6 +333,7 @@ function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failed
   }
   if (d.status === "PASSED") {
     const decided = d.review_decision !== "PENDING";
+    const review = !decided && canDecide;
     return (
       <div className="flex items-center gap-4 rounded-[20px] border border-solid border-vehicsim-ok/30 bg-vehicsim-ok-bg px-5 py-4">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-vehicsim-ok text-[16px] font-bold text-white">✓</span>
@@ -349,8 +351,8 @@ function Banner({ d, failedCriteria, conclusion }: { d: RegressionDetail; failed
             Xem kết luận
           </PillButton>
         ) : (
-          <PillButton variant={decided ? "light" : "dark"} href={`/validation/recommendations/${d.id}${decided ? "" : "/review"}`}>
-            {decided ? "Xem quyết định" : "Duyệt ngay"}
+          <PillButton variant={review ? "dark" : "light"} href={`/validation/recommendations/${d.id}${review ? "/review" : ""}`}>
+            {decided ? "Xem quyết định" : review ? "Duyệt ngay" : "Xem khuyến nghị"}
           </PillButton>
         )}
       </div>

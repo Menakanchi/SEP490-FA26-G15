@@ -200,7 +200,7 @@ export default function RegressionListPage() {
                     >
                       Chi tiết
                     </Link>
-                    {i.status === "PASSED" && (
+                    {(i.status === "PASSED" || i.status === "FAILED") && (
                       <Link
                         href={conclusion(i.id)}
                         className="inline-flex h-8 items-center justify-center rounded-full bg-vehicsim-decision px-3 text-[12px] font-bold text-white hover:bg-vehicsim-decision/90 transition shadow-sm"
