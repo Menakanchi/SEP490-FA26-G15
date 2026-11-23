@@ -46,6 +46,8 @@ public class ProjectService {
     public static final int PAGE_SIZE_MAX = 50;
     public static final int NAME_MAX = 150;
     public static final int DESCRIPTION_MAX = 2000;
+    /** Lý do "Dùng làm baseline" được nối vào {@code aeb_versions.notes} (TEXT); giới hạn để không vượt cột. */
+    public static final int REASON_MAX = 2000;
 
     private static final String ACTIVE = "ACTIVE";
     private static final String ARCHIVED = "ARCHIVED";
@@ -158,6 +160,10 @@ public class ProjectService {
         String reason = body.reason() == null ? "" : body.reason().strip();
         if (reason.isEmpty()) {
             throw new ProjectException(REASON_REQUIRED);
+        }
+        int reasonLength = reason.codePointCount(0, reason.length());
+        if (reasonLength > REASON_MAX) {
+            throw new ProjectException(REASON_TOO_LONG, REASON_MAX, reasonLength);
         }
         if (!Boolean.TRUE.equals(body.confirmed())) {
             throw new ProjectException(CONFIRM_REQUIRED);

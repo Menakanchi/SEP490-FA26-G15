@@ -57,7 +57,7 @@ class ReviewerScopeTest {
         when(db.first(contains("AND p.id = ?"), eq(46L), eq(pinned))).thenReturn(archived);
         ProjectAccess nextRequest = request(RoleCode.REVIEWER, String.valueOf(pinned));
         assertThat(nextRequest.currentProject()).isSameAs(archived);
-        assertThat(nextRequest.explicitProjectId()).isEqualTo(2L);
+        assertThat(nextRequest.explicitProjectId("quyết định")).isEqualTo(2L);
         verify(db).first(contains("WHERE m.user_id = ?"), eq(46L));
     }
 
@@ -74,8 +74,10 @@ class ReviewerScopeTest {
 
     @Test
     void decisionsWithoutPinnedProjectAreRefusedBeforeQuerying() {
-        assertThatThrownBy(request(RoleCode.REVIEWER, null)::explicitProjectId)
-                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("chọn project");
+        assertThatThrownBy(() -> request(RoleCode.REVIEWER, null).explicitProjectId("quyết định"))
+                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("chọn project trước khi quyết định");
+        assertThatThrownBy(() -> request(RoleCode.REVIEWER, null).explicitProjectId("tạo kiểm thử hồi quy"))
+                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("chọn project trước khi tạo kiểm thử hồi quy");
         verifyNoInteractions(db);
     }
 

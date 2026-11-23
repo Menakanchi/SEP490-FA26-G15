@@ -40,7 +40,7 @@ class ProjectErrorTest {
     @Test
     void wrongInputIsABadRequest() {
         assertThat(withStatus(HttpStatus.BAD_REQUEST)).containsExactlyInAnyOrder(NAME_REQUIRED, NAME_TOO_LONG, NAME_INVALID,
-                DESCRIPTION_TOO_LONG, VEHICLE_NOT_FOUND, CONFIRM_NAME_MISMATCH, REASON_REQUIRED, CONFIRM_REQUIRED);
+                DESCRIPTION_TOO_LONG, VEHICLE_NOT_FOUND, CONFIRM_NAME_MISMATCH, REASON_REQUIRED, REASON_TOO_LONG, CONFIRM_REQUIRED);
     }
 
     @Test

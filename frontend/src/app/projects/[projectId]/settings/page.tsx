@@ -8,7 +8,7 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton, Tag, cx, fmt } from "@/components/VehicSimUi";
 import { composeDescription, splitDescription } from "@/components/project/journey";
 import { ProjectSettingsForm, SettingsSection, type ProjectValues } from "@/components/project/ProjectForms";
-import { ProjectAvatar, useProjectActions, type ProjectAction } from "@/components/project/ProjectUi";
+import { ProjectAvatar, useProjectActions } from "@/components/project/ProjectUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { ProjectItem, VehicleOption } from "@/types/vehicsim";
 
@@ -29,9 +29,7 @@ export default function ProjectSettingsPage() {
         .catch((err) => setLoadError(err instanceof Error ? err.message : "Không tải được project")),
     [id],
   );
-  const actions = useProjectActions(
-    useCallback((kind: ProjectAction) => (kind === "delete" ? router.push("/projects") : load()), [load, router]),
-  );
+  const actions = useProjectActions(load, { leaveAfterDelete: "/projects" });
 
   useEffect(() => {
     void load();

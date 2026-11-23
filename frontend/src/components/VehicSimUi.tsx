@@ -251,16 +251,17 @@ export function FilterSelect<T extends string>({
   );
 }
 
-export function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
+export function Checkbox({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label?: string; disabled?: boolean }) {
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cx(
-        "flex size-4 shrink-0 items-center justify-center rounded-[4px] text-[10px] font-bold text-white",
+        "flex size-4 shrink-0 items-center justify-center rounded-[4px] text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-45",
         checked ? "bg-vehicsim-primary" : "border border-solid border-vehicsim-check bg-vehicsim-surface",
       )}
     >
@@ -279,7 +280,7 @@ export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChang
       disabled={disabled}
       onClick={() => onChange(!on)}
       className={cx(
-        "relative h-[22px] w-[38px] shrink-0 rounded-full transition disabled:cursor-not-allowed",
+        "relative h-[22px] w-[38px] shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-45",
         on ? "bg-vehicsim-primary" : "bg-vehicsim-line-strong",
       )}
     >

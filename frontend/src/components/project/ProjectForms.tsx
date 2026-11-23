@@ -40,6 +40,15 @@ function length(text: string): number {
   return [...text].length;
 }
 
+/**
+ * Giới hạn như `maxLength` nhưng đếm theo code point (emoji 🚗 là một ký tự, như bộ đếm và backend);
+ * `maxLength` của HTML đếm đơn vị UTF-16 nên emoji tốn 2. Đã đủ thì bỏ ký tự gõ thêm, dán dài thì cắt phần thừa.
+ */
+function clampTo(next: string, previous: string, max: number): string {
+  if (length(next) <= max) return next;
+  return length(previous) >= max ? previous : [...next].slice(0, max).join("");
+}
+
 /** Kiểm tra phía trình duyệt, cùng giới hạn với `ProjectService` (backend vẫn kiểm lại). */
 function validate(values: ProjectValues): { name: string | null; description: string | null } {
   const name = values.name.trim();
@@ -111,9 +120,8 @@ function InfoFields({
           name="name"
           autoComplete="off"
           value={values.name}
-          onChange={(e) => onChange({ name: e.target.value })}
+          onChange={(e) => onChange({ name: clampTo(e.target.value, values.name, NAME_MAX) })}
           onBlur={onNameBlur}
-          maxLength={NAME_MAX}
           autoFocus={autoFocusName}
           placeholder="vd. Thử AEB ban đêm"
           {...invalidProps(nameId, nameError)}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback } from "react";
+import React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -10,7 +10,7 @@ import { Card, CardTitle, ErrorNote, PillButton, Tag, fmt } from "@/components/V
 import { splitDescription, timeAgo } from "@/components/project/journey";
 import { JourneyTimeline, NextStepCard } from "@/components/project/ProjectHome";
 import { useJourney, useProjectItem, useProjectJourney } from "@/components/project/ProjectJourneyContext";
-import { ProjectMenu, useProjectActions, type ProjectAction } from "@/components/project/ProjectUi";
+import { ProjectMenu, useProjectActions } from "@/components/project/ProjectUi";
 
 function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -32,9 +32,7 @@ export default function ViewProjectDetailPage() {
   const own = useProjectJourney(opened ? null : id);
   const journey = opened ? shared.journey : own.journey;
   const journeyError = opened ? shared.error : own.error;
-  const actions = useProjectActions(
-    useCallback((kind: ProjectAction) => (kind === "delete" ? router.push("/projects") : reload()), [reload, router]),
-  );
+  const actions = useProjectActions(reload, { leaveAfterDelete: "/projects" });
 
   const active = project?.status === "ACTIVE";
   const workable = active && isExperiencer;
