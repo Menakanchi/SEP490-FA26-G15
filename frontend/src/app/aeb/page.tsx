@@ -40,21 +40,11 @@ export default function AebHubPage() {
 
       {/* THÔNG TIN BẢN CƠ SỞ HIỆN HÀNH (BASELINE) */}
       <section className="flex flex-col gap-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="size-5 text-emerald-600" />
-            <h2 className="text-[15px] font-bold text-vehicsim-ink">
-              Bản cơ sở hiện hành (Baseline)
-            </h2>
-          </div>
-          {baseline && (
-            <div className="flex items-center gap-2">
-              <span className="rounded-lg bg-emerald-500/10 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                AEB {baseline.label}
-              </span>
-              <span className="text-xs text-vehicsim-muted font-mono">ID: #{baseline.id}</span>
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="size-5 text-emerald-600" />
+          <h2 className="text-[15px] font-bold text-vehicsim-ink">
+            Bản cơ sở hiện hành (Baseline)
+          </h2>
         </div>
 
         {baseline && (
