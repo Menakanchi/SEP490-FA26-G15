@@ -661,7 +661,10 @@ public class RunService {
         }
         Map<String, Object> result = Json.parseMap(Files.readString(resultPath, StandardCharsets.UTF_8));
         checkResult(result, run);
-        RunDatasetWriter.attach(resultPath, result, run, bundle, folder, repoRoot()); // ADR-065: khối dataset cho Failure Analysis, không bao giờ làm run lỗi
+        // ADR-065: khối dataset cho Failure Analysis, không bao giờ làm run lỗi. Dòng aeb_versions chỉ để khai báo trạng thái phiên bản lúc ghi.
+        Row aebVersion = db.first("SELECT id, project_id, version_no, label, status, source, parent_version_id FROM aeb_versions WHERE id = ?",
+                run.lng("aeb_version_id"));
+        RunDatasetWriter.attach(resultPath, result, run, bundle, aebVersion == null ? null : Json.parseMap(Json.write(aebVersion.asMap())), folder, repoRoot());
         Map<String, Object> artifacts = new LinkedHashMap<>();
         artifacts.put("result", resultPath.toString());
         if (input.toString().endsWith(".xosc")) {

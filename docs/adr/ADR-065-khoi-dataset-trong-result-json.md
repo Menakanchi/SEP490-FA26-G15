@@ -23,6 +23,18 @@ Sau khi worker thoát (lúc `sensors/*` đã đủ), `RunService` gọi `RunData
 | `derived` | nhóm C: các cột `d_*` (`RunDataset`) kèm `role = REFERENCE_ONLY`, phiên bản, công thức F02–F17, nguồn đầu vào, `caveats`, `null_reasons` |
 | `status` | mỗi mục: `OK` / `MISSING` / `INVALID` / `CONFLICTING` kèm lý do (ví dụ cờ va chạm khác `collisions.json`, hai nơi chứa objective khác nhau) |
 
+**Cập nhật 24/11/2026 (sau kiểm thử file mẫu run 2499 của đồng đội, mục C02–C08):**
+
+| Mục | Thay đổi |
+|---|---|
+| C08 `objectives` | Mỗi objective có `state`/`reason` riêng: `OK`, `NOT_APPLICABLE` (impact khi không va chạm; RMS jerk và quãng phanh khi `brake_onset_t = null`), `MISSING` (điều kiện áp dụng có mà thiếu số, hoặc không biết điều kiện), `INVALID`, `CONFLICTING`. Bỏ câu "null nghĩa là không áp dụng" áp chung |
+| C05 `time_series.quality` | Mặt nạ dòng `[từ, đến]` cho mỗi bảng: `initialization` (< 0,5 s), `implausible_acceleration` (\|a\| > 50 m/s², cùng hằng với `sensor_recorder.py`), `post_contact` (từ tiếp xúc đầu tiên); trạng thái theo tín hiệu. Dữ liệu thô giữ nguyên. Số dòng phi lý lệch `summary.json` thì `CONFLICTING`. Mục `status.signal_quality` mới, trạng thái `FLAGGED` khi có dòng bị đánh dấu |
+| C04 `time_series.clock` | Đồng hồ máy đọc: `id`, định nghĩa t0, từng luồng (`frames_csv`, `ground_truth_csv`, `core_frames`) với world frame đầu/cuối, t đầu/cuối, bước; `alignment` ghép hai luồng recorder theo world frame id (`OBSERVED`) và lõi với recorder theo thời gian gần nhất (`DECLARED`, lõi không ghi world frame id) |
+| C02 `provenance.embedded_payloads` | SHA-256 của chính dữ liệu đã nhúng (frames, ground truth, collisions, summary) theo quy tắc `spec` (Python `json.dumps(…, ensure_ascii=False)`), bên nhận tính lại được không cần file gốc. Hash file gốc ghi rõ là `DECLARED` |
+| C06 `config.aeb_version` | Dòng `aeb_versions` lúc ghi kết quả: `version_no`, `label`, `status_at_result_time`, `is_project_baseline_at_result_time`, `verification = DECLARED`. Không chứng nhận baseline hay hiệu chuẩn |
+
+Bộ từ vựng trạng thái: `OK` / `MISSING` / `INVALID` / `CONFLICTING` / `FLAGGED` (mục) và thêm `NOT_APPLICABLE` (từng objective). C07 (nhãn `LOW_FRICTION` sai của `Evaluation`) là lỗi luật chấm có từ trước, ghi ở TD-63, không sửa trong khối này. C01 (adapter đọc JSON) và C09 (gộp nhiều run) thuộc phần Phân tích.
+
 Nguyên tắc: không điền giả. Trường chưa thu được là `null` kèm lý do; module phân tích đọc thành `UNKNOWN`. Lỗi khi dựng khối chỉ ghi `status.build = INVALID`, không bao giờ làm run thất bại.
 
 **Nhóm C là số tham khảo.** `RunDataset` (lõi Java, thuần JDK) tính độc lập từ `outcome.frames`, `outcome.metrics` và ground truth theo công thức của dataset; không thay công thức của `Evaluation`/`AnalysisMetrics` (V3), không làm objective, không phải bằng chứng đã xác nhận. Các cột cần nhiều run (`d_impact_speed_reduction_mps` = AEB OFF − ON, thống kê lặp, candidate lỗi `FALSE_BRAKING`…) **không** vào `result.json`; chúng thuộc phần Phân tích (Dataset v2).
