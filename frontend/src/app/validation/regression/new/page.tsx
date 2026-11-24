@@ -253,15 +253,6 @@ function NewRegressionForm() {
                 Nên thêm vài biến thể an toàn.
               </p>
             )}
-            {!isExperiencer && (
-              <SetOption
-                checked={false}
-                disabled
-                title="Kịch bản mới sinh"
-                detail="Vùng rủi ro cao theo active learning — có khi phần Tối ưu hoá (FE-13) hoàn thành"
-                tag="Bộ sinh kịch bản"
-              />
-            )}
           </FormCard>
 
           <FormCard title="Tiêu chí đạt">
