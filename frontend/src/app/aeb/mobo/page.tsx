@@ -275,7 +275,7 @@ export default function AebMoboStudioPage() {
               options={(runs ?? []).map((r) => ({
                 value: r.id,
                 label: `Run #${r.id} · ${r.name}`,
-                sublabel: `${r.pareto_count} nghiệm Pareto — ${r.status}`,
+                sublabel: `${r.pareto_count} phương án tối ưu — ${r.status}`,
               }))}
               className="w-auto min-w-[320px] max-w-md"
             />
@@ -379,7 +379,7 @@ export default function AebMoboStudioPage() {
             )}
           >
             <TrendingUp className="size-4" />
-            <span>Tập nghiệm Pareto Frontier ({paretoTrials?.length ?? 0})</span>
+            <span>Phương án tối ưu ({paretoTrials?.length ?? 0})</span>
           </button>
 
           <button
@@ -397,7 +397,7 @@ export default function AebMoboStudioPage() {
           </button>
         </div>
 
-        {/* TAB: TẬP NGHIỆM PARETO */}
+        {/* TAB: PHƯƠNG ÁN TỐI ƯU */}
         {activeTab === "pareto" && (
           <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
@@ -416,7 +416,7 @@ export default function AebMoboStudioPage() {
                   )}
                 </div>
                 <h3 className="mt-0.5 text-[15px] font-bold text-vehicsim-ink">
-                  Biên Pareto Frontier ({paretoTrials?.length ?? 0} phương án tối ưu)
+                  Danh sách phương án tối ưu ({paretoTrials?.length ?? 0} bộ cấu hình tốt nhất)
                 </h3>
               </div>
               <div className="flex items-center gap-2">
@@ -439,7 +439,7 @@ export default function AebMoboStudioPage() {
 
             {paretoTrials?.length === 0 ? (
               <div className="p-10">
-                <EmptyState title="Chưa có nghiệm Pareto cho đợt chạy này">
+                <EmptyState title="Chưa có phương án tối ưu cho đợt chạy này">
                   {activeRun?.status === "COMPLETED"
                     ? "Đợt chạy đã hoàn thành nhưng tất cả các trial đều vi phạm ràng buộc an toàn (tỉ lệ va chạm cao hơn hoặc phanh oan tăng quá 5% so với bản cơ sở). Bạn có thể xem chi tiết từng trial ở tab 'Nhật ký toàn bộ Trials'."
                     : "Đợt chạy đang trong giai đoạn khởi tạo ban đầu hoặc đang mô phỏng các trial."}
@@ -507,7 +507,7 @@ export default function AebMoboStudioPage() {
             {paretoPages > 1 && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
                 <span className="text-[12px] font-medium text-vehicsim-muted">
-                  Hiển thị {(paretoPage - 1) * PARETO_PAGE_SIZE + 1}–{Math.min(paretoPage * PARETO_PAGE_SIZE, paretoTrials?.length ?? 0)} trên {paretoTrials?.length ?? 0} nghiệm Pareto
+                  Hiển thị {(paretoPage - 1) * PARETO_PAGE_SIZE + 1}–{Math.min(paretoPage * PARETO_PAGE_SIZE, paretoTrials?.length ?? 0)} trên {paretoTrials?.length ?? 0} phương án tối ưu
                 </span>
                 <Pagination page={paretoPage} pages={paretoPages} onPage={setParetoPage} />
               </div>
@@ -557,7 +557,7 @@ export default function AebMoboStudioPage() {
                             : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                         )}
                       >
-                        {mode === "ALL" ? "Tất cả" : mode === "PARETO" ? "Chỉ Pareto" : "Chỉ hợp lệ"}
+                        {mode === "ALL" ? "Tất cả" : mode === "PARETO" ? "Chỉ tối ưu" : "Chỉ hợp lệ"}
                       </button>
                     ))}
                   </div>
@@ -577,7 +577,7 @@ export default function AebMoboStudioPage() {
                   onClick={() => setActiveTab("pareto")}
                   className="rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft transition"
                 >
-                  Tập Pareto ({paretoTrials?.length ?? 0}) →
+                  Phương án tối ưu ({paretoTrials?.length ?? 0}) →
                 </button>
               </div>
             </div>
@@ -599,7 +599,7 @@ export default function AebMoboStudioPage() {
                       <th className="px-4 py-3.5 text-rose-300">Tốc độ va chạm</th>
                       <th className="px-4 py-3.5 text-slate-200">Quãng phanh</th>
                       <th className="px-4 py-3.5 text-center">Ràng buộc</th>
-                      <th className="px-4 py-3.5 text-right">Pareto?</th>
+                      <th className="px-4 py-3.5 text-right">Tối ưu?</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
@@ -640,7 +640,7 @@ export default function AebMoboStudioPage() {
                         <td className="px-4 py-3.5 text-right">
                           {t.is_pareto_optimal ? (
                             <span className="inline-flex items-center rounded-full bg-vehicsim-ok-bg px-2 py-0.5 text-[11px] font-bold text-vehicsim-ok">
-                              ★ Pareto
+                              ★ Tối ưu
                             </span>
                           ) : (
                             <span className="text-[12px] text-vehicsim-faint">—</span>
@@ -682,7 +682,7 @@ export default function AebMoboStudioPage() {
                     <th className="px-5 py-3.5">Bộ mô phỏng</th>
                     <th className="px-5 py-3.5">Trạng thái</th>
                     <th className="px-5 py-3.5">Tiến độ trials</th>
-                    <th className="px-5 py-3.5">Nghiệm Pareto</th>
+                    <th className="px-5 py-3.5">Phương án tối ưu</th>
                     <th className="px-5 py-3.5">Thời gian</th>
                     <th className="px-5 py-3.5 text-center min-w-[240px]">Hành động</th>
                   </tr>
@@ -727,7 +727,7 @@ export default function AebMoboStudioPage() {
                           {r.completed_trials} / {r.max_trials} lượt
                         </td>
                         <td className="px-5 py-4 font-semibold text-vehicsim-ink whitespace-nowrap">
-                          {r.pareto_count} nghiệm
+                          {r.pareto_count} phương án
                         </td>
                         <td className="px-5 py-4 text-[12px] text-vehicsim-muted">{fmt.date(r.started_at)}</td>
                         <td className="px-5 py-4 text-center">
@@ -744,9 +744,9 @@ export default function AebMoboStudioPage() {
                                   ? "bg-vehicsim-primary text-white"
                                   : "border border-solid border-vehicsim-primary/40 bg-vehicsim-primary/5 text-vehicsim-primary hover:bg-vehicsim-primary hover:text-white"
                               )}
-                              title="Xem các phương án tối ưu trên biên Pareto"
+                              title="Xem các phương án tối ưu được tìm ra"
                             >
-                              Xem Pareto
+                              Xem tối ưu
                             </button>
 
                             <button
