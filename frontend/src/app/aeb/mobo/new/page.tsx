@@ -159,7 +159,7 @@ export default function AebMoboNewPage() {
                 <span className="text-[13.5px] font-bold text-vehicsim-ink">
                   Mô phỏng Động học (Kinematic)
                 </span>
-                <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11.5px] font-bold text-emerald-900">
                   Siêu tốc (~30s)
                 </span>
               </button>
@@ -179,12 +179,12 @@ export default function AebMoboNewPage() {
                     Mô phỏng CARLA 3D (OpenSCENARIO)
                   </span>
                   {carlaStatus && !carlaStatus.connected && (
-                    <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                    <span className="text-[11px] font-semibold text-amber-700">
                       (Chưa kết nối)
                     </span>
                   )}
                 </div>
-                <span className="rounded-full bg-sky-500/15 px-2.5 py-0.5 text-[11px] font-bold text-sky-700 dark:text-sky-300 shrink-0">
+                <span className="rounded-md bg-sky-50 border border-sky-200 px-2 py-0.5 text-[11.5px] font-bold text-sky-900 shrink-0">
                   Chính xác cao
                 </span>
               </button>
