@@ -72,30 +72,30 @@ export default function AebHubPage() {
                 3 mục tiêu tối ưu cần cải thiện so với bản cơ sở:
               </span>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div className="flex flex-col gap-1 rounded-lg border border-solid border-vehicsim-line bg-white p-3 shadow-xs">
-                  <span className="text-[13px] font-bold text-vehicsim-ink">
+              <div className="grid grid-cols-1 divide-y sm:divide-y-0 sm:divide-x divide-solid divide-vehicsim-line sm:grid-cols-3">
+                <div className="flex flex-col gap-1 px-4 py-1.5 first:pl-2 last:pr-2">
+                  <span className="text-[13.5px] font-bold text-vehicsim-ink">
                     Giảm rung giật (RMS Jerk)
                   </span>
-                  <p className="text-[12px] leading-relaxed text-vehicsim-muted">
+                  <p className="text-[12.5px] leading-relaxed text-vehicsim-muted">
                     Phanh êm hơn, tránh bị giật người khi xe phanh gấp.
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-1 rounded-lg border border-solid border-vehicsim-line bg-white p-3 shadow-xs">
-                  <span className="text-[13px] font-bold text-vehicsim-ink">
+                <div className="flex flex-col gap-1 px-4 py-1.5 first:pl-2 last:pr-2">
+                  <span className="text-[13.5px] font-bold text-vehicsim-ink">
                     Giảm tốc độ va chạm
                   </span>
-                  <p className="text-[12px] leading-relaxed text-vehicsim-muted">
+                  <p className="text-[12.5px] leading-relaxed text-vehicsim-muted">
                     Hạ tốc độ xuống thấp nhất nếu xảy ra va chạm để hạn chế thương vong.
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-1 rounded-lg border border-solid border-vehicsim-line bg-white p-3 shadow-xs">
-                  <span className="text-[13px] font-bold text-vehicsim-ink">
+                <div className="flex flex-col gap-1 px-4 py-1.5 first:pl-2 last:pr-2">
+                  <span className="text-[13.5px] font-bold text-vehicsim-ink">
                     Giảm quãng phanh dừng
                   </span>
-                  <p className="text-[12px] leading-relaxed text-vehicsim-muted">
+                  <p className="text-[12.5px] leading-relaxed text-vehicsim-muted">
                     Dừng xe nhanh nhất có thể để tránh đâm vào vật cản.
                   </p>
                 </div>
