@@ -19,12 +19,12 @@ const METHODS: Record<ExplanationMetric, Method> = {
   },
   impact: {
     title: "Tốc độ va chạm", field: "impact_speed_mps", unit: "m/s",
-    definition: "Tốc độ ego ở frame cuối của run khi bộ mô phỏng ghi nhận va chạm; không phải tốc độ tương đối với mục tiêu.",
-    formula: "impact_speed_mps = v_ego,last nếu collision; ngược lại null",
-    variables: "v_ego,last: tốc độ ego (m/s) ở frame cuối; collision: cờ va chạm canonical. Hiển thị km/h ở nơi khác dùng m/s × 3,6.",
+    definition: "Vận tốc va chạm tương đối với mục tiêu (độ lớn hiệu hai vector vận tốc) ở frame cuối của run khi bộ mô phỏng ghi nhận va chạm (ADR-055: bộ động học 1.1 trở lên, CARLA -xosc9 trở đi). Run cũ hơn (động học 1.0, CARLA ≤ -xosc8) lưu tốc độ ego.",
+    formula: "impact_speed_mps = |v_ego,last − v_target,last| nếu collision; ngược lại null",
+    variables: "v_ego,last, v_target,last: vector vận tốc ego và mục tiêu (m/s) ở frame cuối; collision: cờ va chạm canonical. Tốc độ ego lúc va chạm nằm riêng ở ego_impact_speed_mps. Hiển thị km/h ở nơi khác dùng m/s × 3,6.",
     conditions: "Chỉ trình bày số đo từng run đã hoàn tất và có outcome COLLISION; không đổi null thành 0.",
     interpretation: "Cho biết tốc độ còn lại khi va chạm, chưa đủ xác định lỗi điều khiển, bỏ sót phanh hoặc khả năng tránh va chạm.",
-    limitations: ["Relative impact của CCR và sensor recomputation là đại lượng/nguồn khác, chưa được chiếu riêng vào metric này.", "Trong aggregate backend, run hợp lệ không va chạm đóng góp 0 là quy ước tổng hợp; đó không phải số đo va chạm từng run."],
+    limitations: ["Sensor recomputation là nguồn khác, chưa được chiếu riêng vào metric này; không gộp số của run định danh cũ (impact = tốc độ ego) với run từ ADR-055.","Trong aggregate backend, run hợp lệ không va chạm đóng góp 0 là quy ước tổng hợp; đó không phải số đo va chạm từng run."],
     method: "Simulator / LeadVehicleSimulator.summaryMetrics",
   },
   stopping: {

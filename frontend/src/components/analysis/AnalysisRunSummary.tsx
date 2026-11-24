@@ -56,7 +56,7 @@ export function AnalysisRunSummary({ detail: d, run, cursor, returnTo }: { detai
       <h3>Chỉ số quan sát từ kết quả run</h3>
       <div className={styles.objectives}>
         <RunFact label="RMS jerk" value={objective(m.rms_jerk_mps3, "m/s³")} note="RMS trong pha từ onset lệnh tới hết run; giá trị đã lưu, không tính lại từ biểu đồ" explanation={explain("rms")} />
-        <RunFact label="Tốc độ va chạm" value={impact === "—" ? impact : `${impact} m/s`} note="Tốc độ ego khi va chạm; không phải tốc độ tương đối. Không va chạm: không áp dụng" explanation={explain("impact")} />
+        <RunFact label="Tốc độ va chạm" value={impact === "—" ? impact : `${impact} m/s`} note="Vận tốc va chạm tương đối với mục tiêu (ADR-055; run định danh cũ lưu tốc độ ego). Không va chạm: không áp dụng" explanation={explain("impact")} />
         <RunFact label="Quãng phanh" value={objective(m.stopping_distance_m, "m")} note="Có thể gồm phần ngoại suy v²/(2a khả dụng) nếu run kết thúc khi xe còn chạy" explanation={explain("stopping")} />
       </div>
       <div className={styles.secondary}>
