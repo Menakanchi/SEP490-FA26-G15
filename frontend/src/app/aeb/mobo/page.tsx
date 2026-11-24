@@ -356,9 +356,6 @@ export default function AebMoboStudioPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-vehicsim-muted">
-                    Chi tiết đợt tối ưu:
-                  </span>
                   <span className="font-mono text-[13px] font-bold text-vehicsim-primary">
                     Run #{activeRun?.id}
                   </span>
@@ -475,9 +472,6 @@ export default function AebMoboStudioPage() {
               <div className="flex flex-wrap items-center gap-4">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-vehicsim-muted">
-                      Chi tiết đợt tối ưu:
-                    </span>
                     <span className="font-mono text-[13px] font-bold text-vehicsim-primary">
                       Run #{activeRun?.id}
                     </span>
