@@ -318,7 +318,7 @@ export default function AebMoboStudioPage() {
             )}
           >
             <Clock className="size-4" />
-            <span>Lịch sử các đợt chạy ({runs?.length ?? 0})</span>
+            <span>Lịch sử đợt chạy ({runs?.length ?? 0})</span>
           </button>
 
           <button
@@ -346,7 +346,7 @@ export default function AebMoboStudioPage() {
             )}
           >
             <ListFilter className="size-4" />
-            <span>Nhật ký toàn bộ Trials ({allTrials?.length ?? 0})</span>
+            <span>Danh sách trials ({allTrials?.length ?? 0})</span>
           </button>
         </div>
 
@@ -355,28 +355,17 @@ export default function AebMoboStudioPage() {
           <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[13px] font-bold text-vehicsim-primary">
-                    Run #{activeRun?.id}
-                  </span>
-                  {activeRun?.name && (
-                    <span className="text-[13px] font-semibold text-vehicsim-ink">
-                      — {activeRun.name}
-                    </span>
-                  )}
-                </div>
-                <h3 className="mt-0.5 text-[15px] font-bold text-vehicsim-ink">
-                  Danh sách phương án tối ưu ({paretoTrials?.length ?? 0} bộ cấu hình tốt nhất)
+                <h3 className="text-[15px] font-bold text-vehicsim-ink">
+                  Phương án tối ưu ({paretoTrials?.length ?? 0})
                 </h3>
               </div>
-
             </div>
 
             {paretoTrials?.length === 0 ? (
               <div className="p-10">
                 <EmptyState title="Chưa có phương án tối ưu cho đợt chạy này">
                   {activeRun?.status === "COMPLETED"
-                    ? "Đợt chạy đã hoàn thành nhưng tất cả các trial đều vi phạm ràng buộc an toàn (tỉ lệ va chạm cao hơn hoặc phanh oan tăng quá 5% so với bản cơ sở). Bạn có thể xem chi tiết từng trial ở tab 'Nhật ký toàn bộ Trials'."
+                    ? "Đợt chạy đã hoàn thành nhưng tất cả các trial đều vi phạm ràng buộc an toàn (tỉ lệ va chạm cao hơn hoặc phanh oan tăng quá 5% so với bản cơ sở). Bạn có thể xem chi tiết từng trial ở tab 'Danh sách trials'."
                     : "Đợt chạy đang trong giai đoạn khởi tạo ban đầu hoặc đang mô phỏng các trial."}
                 </EmptyState>
               </div>
@@ -456,18 +445,8 @@ export default function AebMoboStudioPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
               <div className="flex flex-wrap items-center gap-4">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[13px] font-bold text-vehicsim-primary">
-                      Run #{activeRun?.id}
-                    </span>
-                    {activeRun?.name && (
-                      <span className="text-[13px] font-semibold text-vehicsim-ink">
-                        — {activeRun.name}
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="mt-0.5 text-[15px] font-bold text-vehicsim-ink">
-                    Nhật ký toàn bộ Trials ({filteredTrials.length} / {allTrials?.length ?? 0})
+                  <h3 className="text-[15px] font-bold text-vehicsim-ink">
+                    Danh sách trials ({filteredTrials.length} / {allTrials?.length ?? 0})
                   </h3>
                 </div>
 
@@ -585,7 +564,7 @@ export default function AebMoboStudioPage() {
           <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
               <h3 className="text-[15px] font-bold text-vehicsim-ink">
-                Lịch sử {runs?.length ?? 0} đợt chạy MOBO trong project
+                Lịch sử đợt chạy
               </h3>
             </div>
 
