@@ -71,7 +71,7 @@ export default function AebMoboNewPage() {
       ]}
       actions={
         <div className="flex items-center gap-2">
-          <PillButton href="/aeb/mobo" variant="light">
+          <PillButton href="/aeb/mobo" variant="dark">
             <ArrowLeft className="size-4" />
             Về danh sách đợt chạy
           </PillButton>
