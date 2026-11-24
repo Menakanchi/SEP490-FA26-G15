@@ -51,7 +51,7 @@ export default function AebHubPage() {
                 const unit = def?.unit === "ratio" ? "" : def?.unit === "m/s2" ? "m/s²" : def?.unit === "m/s3" ? "m/s³" : def?.unit;
                 return (
                   <div key={code} className="flex flex-col gap-1 px-4 py-2 first:pl-2 last:pr-2">
-                    <span className="text-[12.5px] font-semibold text-vehicsim-muted">{def?.name ?? code}</span>
+                    <span className="text-[13.5px] font-bold text-vehicsim-ink">{def?.name ?? code}</span>
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-[20px] font-black text-vehicsim-ink">
                         {val !== undefined ? val : "—"}
