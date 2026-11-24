@@ -363,19 +363,19 @@ export default function AebMoboStudioPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[960px] text-left text-[13px]">
-                  <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
+                <table className="w-full min-w-[1080px] text-left text-[13px]">
+                  <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12px] font-black uppercase tracking-wider text-white">
                     <tr className="h-12">
                       <th className="w-12 px-3 py-3.5 text-center font-bold">STT</th>
-                      <th className="px-4 py-3.5">Lượt thử</th>
-                      <th className="px-4 py-3.5">TTC Threshold (s)</th>
-                      <th className="px-4 py-3.5">Brake Activation Delay (s)</th>
-                      <th className="px-4 py-3.5">Brake Build-up Rate (m/s³)</th>
-                      <th className="px-4 py-3.5">Max Deceleration (m/s²)</th>
-                      <th className="px-4 py-3.5 text-emerald-300">RMS Jerk</th>
-                      <th className="px-4 py-3.5 text-rose-300">Tốc độ va chạm</th>
-                      <th className="px-4 py-3.5 text-slate-200">Quãng phanh</th>
-                      <th className="px-4 py-3.5 text-right">Hành động</th>
+                      <th className="px-4 py-3.5 whitespace-nowrap">Lượt thử</th>
+                      <th className="px-4 py-3.5 whitespace-nowrap">TTC Threshold (s)</th>
+                      <th className="px-4 py-3.5 whitespace-nowrap">Brake Activation Delay (s)</th>
+                      <th className="px-4 py-3.5 whitespace-nowrap">Brake Build-up Rate (m/s³)</th>
+                      <th className="px-4 py-3.5 whitespace-nowrap">Max Deceleration (m/s²)</th>
+                      <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">RMS Jerk</th>
+                      <th className="px-4 py-3.5 text-rose-300 whitespace-nowrap">Tốc độ va chạm</th>
+                      <th className="px-4 py-3.5 text-slate-200 whitespace-nowrap">Quãng phanh</th>
+                      <th className="w-[170px] px-4 py-3.5 text-center whitespace-nowrap">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
@@ -384,32 +384,32 @@ export default function AebMoboStudioPage() {
                         <td className="w-12 px-3 py-3.5 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
                           {(paretoPage - 1) * PARETO_PAGE_SIZE + idx + 1}
                         </td>
-                        <td className="px-4 py-3.5 font-mono font-bold text-vehicsim-ink">
+                        <td className="px-4 py-3.5 font-mono font-bold text-vehicsim-ink whitespace-nowrap">
                           #{t.trial_number}
                         </td>
-                        <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.TTC_THRESHOLD ?? "—"}</td>
-                        <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
-                        <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
-                        <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.MAX_DECELERATION ?? "—"}</td>
-                        <td className="px-4 py-3.5 font-bold text-vehicsim-decision">
+                        <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.TTC_THRESHOLD ?? "—"}</td>
+                        <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
+                        <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
+                        <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.MAX_DECELERATION ?? "—"}</td>
+                        <td className="px-4 py-3.5 font-bold text-vehicsim-decision whitespace-nowrap">
                           {t.rms_jerk_mps3 !== null ? `${t.rms_jerk_mps3.toFixed(2)} m/s³` : "—"}
                         </td>
-                        <td className="px-4 py-3.5 font-bold text-vehicsim-danger">
+                        <td className="px-4 py-3.5 font-bold text-vehicsim-danger whitespace-nowrap">
                           {t.impact_speed_mps !== null
                             ? t.impact_speed_mps <= 0.001
                               ? "0.0 km/h (An toàn)"
                               : `${(t.impact_speed_mps * 3.6).toFixed(1)} km/h`
                             : "—"}
                         </td>
-                        <td className="px-4 py-3.5 font-bold text-vehicsim-ink">
+                        <td className="px-4 py-3.5 font-bold text-vehicsim-ink whitespace-nowrap">
                           {t.stopping_distance_m !== null ? `${t.stopping_distance_m.toFixed(2)} m` : "—"}
                         </td>
-                        <td className="px-4 py-3.5 text-right">
+                        <td className="w-[170px] px-4 py-3.5 text-center whitespace-nowrap">
                           <button
                             type="button"
                             disabled={selectingTrialId !== null || !canWrite}
                             onClick={() => handleSelectCandidate(t.id)}
-                            className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-3 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs"
+                            className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-3.5 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs whitespace-nowrap"
                           >
                             {selectingTrialId === t.id ? "Đang lưu…" : "Chọn làm ứng viên"}
                           </button>
@@ -466,18 +466,18 @@ export default function AebMoboStudioPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[960px] text-left text-[13px]">
-                  <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
+                <table className="w-full min-w-[1040px] text-left text-[13px]">
+                  <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12px] font-black uppercase tracking-wider text-white">
                     <tr className="h-12">
                       <th className="w-12 px-3 py-3.5 text-center font-bold">STT</th>
-                      <th className="px-4 py-3.5">Lượt thử</th>
-                      <th className="px-4 py-3.5">Nguồn</th>
-                      <th className="px-4 py-3.5 font-mono">qEHVI</th>
-                      <th className="px-4 py-3.5 text-emerald-300">RMS Jerk</th>
-                      <th className="px-4 py-3.5 text-rose-300">Tốc độ va chạm</th>
-                      <th className="px-4 py-3.5 text-slate-200">Quãng phanh</th>
-                      <th className="px-4 py-3.5 text-center">Ràng buộc</th>
-                      <th className="px-4 py-3.5 text-right">Tối ưu?</th>
+                      <th className="px-4 py-3.5 whitespace-nowrap">Lượt thử</th>
+                      <th className="px-4 py-3.5 whitespace-nowrap">Nguồn</th>
+                      <th className="px-4 py-3.5 font-mono whitespace-nowrap">qEHVI</th>
+                      <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">RMS Jerk</th>
+                      <th className="px-4 py-3.5 text-rose-300 whitespace-nowrap">Tốc độ va chạm</th>
+                      <th className="px-4 py-3.5 text-slate-200 whitespace-nowrap">Quãng phanh</th>
+                      <th className="px-4 py-3.5 text-center whitespace-nowrap">Ràng buộc</th>
+                      <th className="w-[100px] px-4 py-3.5 text-center whitespace-nowrap">Tối ưu?</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
@@ -515,7 +515,7 @@ export default function AebMoboStudioPage() {
                             {t.constraint_violated ? "Vi phạm" : "Hợp lệ"}
                           </Tag>
                         </td>
-                        <td className="px-4 py-3.5 text-right">
+                        <td className="w-[100px] px-4 py-3.5 text-center whitespace-nowrap">
                           {t.is_pareto_optimal ? (
                             <span className="inline-flex items-center rounded-full bg-vehicsim-ok-bg px-2 py-0.5 text-[11px] font-bold text-vehicsim-ok">
                               ★ Tối ưu
