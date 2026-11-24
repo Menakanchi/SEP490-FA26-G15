@@ -562,12 +562,6 @@ export default function AebMoboStudioPage() {
         {/* TAB 3: LỊCH SỬ CÁC ĐỢT CHẠY */}
         {activeTab === "runs" && (
           <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
-              <h3 className="text-[15px] font-bold text-vehicsim-ink">
-                Lịch sử đợt chạy
-              </h3>
-            </div>
-
             <div className="overflow-x-auto">
               <table className="w-full min-w-[960px] text-left text-[13px]">
                 <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
