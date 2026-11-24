@@ -141,54 +141,52 @@ export default function AebMoboNewPage() {
           </div>
 
           {/* CHỌN BỘ MÔ PHỎNG */}
-          <div className="flex flex-col gap-3 rounded-2xl border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-5">
-            <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
+          <div className="flex flex-col gap-2">
+            <span className="text-[13px] font-bold text-vehicsim-ink">
               Chọn môi trường mô phỏng (Simulator) *
             </span>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => setSimulatorType("KINEMATIC")}
                 className={cx(
-                  "flex flex-col items-start gap-1.5 rounded-xl border-2 p-4 text-left transition",
+                  "flex h-[44px] items-center justify-between rounded-xl border px-4 text-left transition",
                   simulatorType === "KINEMATIC"
-                    ? "border-vehicsim-primary bg-vehicsim-surface shadow-xs"
-                    : "border-slate-200/60 bg-vehicsim-surface/70 hover:bg-vehicsim-surface text-slate-600 hover:text-slate-900 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400 dark:hover:text-white"
+                    ? "border-vehicsim-primary bg-vehicsim-primary/5 shadow-xs ring-1 ring-vehicsim-primary"
+                    : "border-vehicsim-line-strong bg-vehicsim-surface hover:bg-vehicsim-soft text-vehicsim-muted hover:text-vehicsim-ink"
                 )}
               >
-                <div className="flex w-full items-center justify-between">
-                  <span className="text-[14px] font-black text-vehicsim-ink">
-                    Mô phỏng Động học (Kinematic)
-                  </span>
-                  <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                    Siêu tốc (~30s)
-                  </span>
-                </div>
+                <span className="text-[13.5px] font-bold text-vehicsim-ink">
+                  Mô phỏng Động học (Kinematic)
+                </span>
+                <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                  Siêu tốc (~30s)
+                </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setSimulatorType("CARLA")}
                 className={cx(
-                  "flex flex-col items-start gap-1.5 rounded-xl border-2 p-4 text-left transition",
+                  "flex h-[44px] items-center justify-between rounded-xl border px-4 text-left transition",
                   simulatorType === "CARLA"
-                    ? "border-vehicsim-primary bg-vehicsim-surface shadow-xs"
-                    : "border-slate-200/60 bg-vehicsim-surface/70 hover:bg-vehicsim-surface text-slate-600 hover:text-slate-900 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400 dark:hover:text-white"
+                    ? "border-vehicsim-primary bg-vehicsim-primary/5 shadow-xs ring-1 ring-vehicsim-primary"
+                    : "border-vehicsim-line-strong bg-vehicsim-surface hover:bg-vehicsim-soft text-vehicsim-muted hover:text-vehicsim-ink"
                 )}
               >
-                <div className="flex w-full items-center justify-between">
-                  <span className="text-[14px] font-black text-vehicsim-ink">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[13.5px] font-bold text-vehicsim-ink truncate">
                     Mô phỏng CARLA 3D (OpenSCENARIO)
                   </span>
-                  <span className="rounded-full bg-sky-500/15 px-2.5 py-0.5 text-[11px] font-bold text-sky-700 dark:text-sky-300">
-                    Chính xác cao
-                  </span>
+                  {carlaStatus && !carlaStatus.connected && (
+                    <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                      (Chưa kết nối)
+                    </span>
+                  )}
                 </div>
-                {carlaStatus && !carlaStatus.connected && (
-                  <span className="mt-1 text-[11.5px] font-semibold text-amber-600 dark:text-amber-400">
-                    CARLA chưa kết nối (bật máy chủ với scripts/dev-carla.ps1)
-                  </span>
-                )}
+                <span className="rounded-full bg-sky-500/15 px-2.5 py-0.5 text-[11px] font-bold text-sky-700 dark:text-sky-300 shrink-0">
+                  Chính xác cao
+                </span>
               </button>
             </div>
           </div>
