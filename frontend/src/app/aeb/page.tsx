@@ -113,23 +113,18 @@ export default function AebHubPage() {
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {/* Card 1: MOBO */}
-          <div className="flex items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-4 hover:border-vehicsim-primary/50 transition">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <h3 className="text-[14px] font-bold text-vehicsim-ink">
-                  Tối ưu tự động (MOBO)
-                </h3>
-                <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11px] font-bold text-emerald-900">
-                  Khuyên dùng
-                </span>
-              </div>
-              <p className="text-[12.5px] text-vehicsim-muted leading-relaxed">
-                Tự động tìm kiếm các bộ tham số tối ưu cân bằng rung giật, va chạm và quãng phanh bằng Bayesian GP.
-              </p>
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-3 hover:border-vehicsim-primary/50 transition">
+            <div className="flex items-center gap-2">
+              <h3 className="text-[14px] font-bold text-vehicsim-ink">
+                Tối ưu tự động (MOBO)
+              </h3>
+              <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11px] font-bold text-emerald-900">
+                Khuyên dùng
+              </span>
             </div>
             <Link
               href="/aeb/mobo"
-              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-vehicsim-primary px-3.5 text-[12.5px] font-bold text-white hover:bg-vehicsim-primary-hover transition"
+              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-vehicsim-primary px-3 text-[12px] font-bold text-white hover:bg-vehicsim-primary-hover transition"
             >
               <span>Bắt đầu</span>
               <ArrowRight className="size-3.5" />
@@ -137,18 +132,13 @@ export default function AebHubPage() {
           </div>
 
           {/* Card 2: Chỉnh tay */}
-          <div className="flex items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-4 hover:border-slate-300 transition">
-            <div className="flex flex-col gap-1">
-              <h3 className="text-[14px] font-bold text-vehicsim-ink">
-                Hiệu chỉnh tham số thủ công
-              </h3>
-              <p className="text-[12.5px] text-vehicsim-muted leading-relaxed">
-                Tự điều chỉnh từng tham số phanh theo kinh nghiệm hoặc kết quả phân tích lỗi.
-              </p>
-            </div>
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-3 hover:border-slate-300 transition">
+            <h3 className="text-[14px] font-bold text-vehicsim-ink">
+              Hiệu chỉnh tham số thủ công
+            </h3>
             <Link
               href="/aeb/manual"
-              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-3.5 text-[12.5px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition"
+              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-3 text-[12px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition"
             >
               <span>Chỉnh tay</span>
               <ArrowRight className="size-3.5" />
