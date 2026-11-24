@@ -178,17 +178,17 @@ export default function AebComparePage() {
 
                   const layerLabel =
                     code === "TTC_THRESHOLD"
-                      ? "Decision (Quyết định)"
+                      ? "Quyết định"
                       : code === "MAX_DECELERATION"
-                      ? "Dynamics (Động lực học)"
-                      : "Control (Điều khiển)";
+                      ? "Động lực học"
+                      : "Điều khiển";
 
                   return (
                     <tr key={code} className={cx(isDiff && "bg-vehicsim-row/40")}>
                       <td className="px-5 py-4 font-bold text-vehicsim-ink">
                         {def?.name ?? code}
                       </td>
-                      <td className="px-5 py-4 text-[12px] text-vehicsim-muted">{layerLabel}</td>
+                      <td className="px-5 py-4 font-bold text-vehicsim-ink">{layerLabel}</td>
                       <td className="px-5 py-4 text-center font-semibold text-vehicsim-ink">
                         {paramValue(valA, def?.unit ?? "")}
                       </td>
