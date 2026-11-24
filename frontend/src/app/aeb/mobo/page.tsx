@@ -23,7 +23,6 @@ import {
 } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
-import { VehicSimSelect } from "@/components/VehicSimSelect";
 
 export default function AebMoboStudioPage() {
   const router = useRouter();
@@ -260,96 +259,50 @@ export default function AebMoboStudioPage() {
         </section>
       )}
 
-      {/* BỘ CHỌN ĐỢT CHẠY */}
-      <section className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="text-[13px] font-bold text-vehicsim-ink">Đợt tối ưu hoá:</label>
-            <VehicSimSelect
-              aria-label="Chọn đợt tối ưu hoá"
-              value={selectedRunId}
-              onChange={(newId) => {
-                setSelectedRunId(newId);
-                router.replace(`/aeb/mobo?run_id=${newId}`);
-              }}
-              options={(runs ?? []).map((r) => ({
-                value: r.id,
-                label: `Run #${r.id} · ${r.name}`,
-                sublabel: `${r.pareto_count} phương án tối ưu — ${r.status}`,
-              }))}
-              className="w-auto min-w-[320px] max-w-md"
+      {/* THANH TIẾN ĐỘ CHỈ KHI CÓ ĐỢT CHẠY ĐANG DIỄN RA */}
+      {activeRun?.status === "RUNNING" && (
+        <section className="rounded-xl border border-solid border-vehicsim-primary/30 bg-vehicsim-primary/5 p-4 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-[12.5px]">
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-vehicsim-primary opacity-75"></span>
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-vehicsim-primary"></span>
+              </span>
+              <span className="font-bold text-vehicsim-primary">
+                Đang chạy đợt tối ưu: Run #{activeRun.id} — {activeRun.name}
+              </span>
+              <span className="font-mono text-vehicsim-muted">
+                ({completedTrialsCount} / {maxTrialsCount} trials · {runProgressPct}%)
+              </span>
+            </div>
+
+            {canWrite && (
+              <button
+                type="button"
+                onClick={() => handleCancelRun(activeRun.id)}
+                disabled={cancelling}
+                className="rounded-lg border border-solid border-vehicsim-danger px-3 py-1 text-[11px] font-bold text-vehicsim-danger hover:bg-vehicsim-danger-bg transition"
+              >
+                {cancelling ? "Đang dừng…" : "Dừng đợt chạy"}
+              </button>
+            )}
+          </div>
+
+          <div
+            role="progressbar"
+            aria-valuenow={runProgressPct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Tiến độ đợt tối ưu: ${runProgressPct}%`}
+            className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
+          >
+            <div
+              className="h-full rounded-full bg-vehicsim-primary transition-all duration-500 ease-out"
+              style={{ width: `${runProgressPct}%` }}
             />
           </div>
-
-          {activeRun && (
-            <div className="flex items-center gap-3">
-              <Tag
-                tone={
-                  activeRun.status === "COMPLETED"
-                    ? "ok"
-                    : activeRun.status === "RUNNING"
-                    ? "info"
-                    : activeRun.status === "FAILED"
-                    ? "danger"
-                    : "neutral"
-                }
-              >
-                {activeRun.status === "RUNNING"
-                  ? "Đang chạy mô phỏng"
-                  : activeRun.status === "COMPLETED"
-                  ? "Hoàn thành"
-                  : activeRun.status === "CANCELLED"
-                  ? "Đã huỷ"
-                  : activeRun.status}
-              </Tag>
-              {activeRun.status === "RUNNING" && canWrite && (
-                <button
-                  type="button"
-                  onClick={() => handleCancelRun(activeRun.id)}
-                  disabled={cancelling}
-                  className="rounded-full border border-solid border-vehicsim-danger px-3 py-1 text-[11px] font-bold text-vehicsim-danger hover:bg-vehicsim-danger-bg transition"
-                >
-                  {cancelling ? "Đang dừng…" : "Dừng đợt chạy"}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* THANH TIẾN ĐỘ CHẠY (CHỈ HIỂN THỊ KHI ĐANG CHẠY MÔ PHỎNG) */}
-        {activeRun?.status === "RUNNING" && (
-          <div className="mt-4 border-t border-solid border-vehicsim-line/60 pt-3.5">
-            <div className="mb-2 flex items-center gap-2.5 text-[12px]">
-              <span className="font-semibold text-vehicsim-ink">Tiến độ chạy:</span>
-              <span className="font-mono font-medium text-vehicsim-muted">
-                {completedTrialsCount} / {maxTrialsCount} trials ({runProgressPct}%)
-              </span>
-              <span className="inline-flex items-center gap-1.5 font-medium text-vehicsim-primary animate-pulse ml-1">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-vehicsim-primary opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-vehicsim-primary"></span>
-                </span>
-                Đang chạy trial #{Math.min(maxTrialsCount, completedTrialsCount + 1)}…
-              </span>
-            </div>
-
-            {/* Thanh tiến độ 1 màu duy nhất */}
-            <div
-              role="progressbar"
-              aria-valuenow={runProgressPct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={`Tiến độ đợt tối ưu: ${runProgressPct}%`}
-              className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
-            >
-              <div
-                className="h-full rounded-full bg-vehicsim-primary transition-all duration-500 ease-out"
-                style={{ width: `${runProgressPct}%` }}
-              />
-            </div>
-          </div>
-        )}
-      </section>
+        </section>
+      )}
 
       {/* CỤM TABS CON NỘI BỘ (PARETO / TRIALS / LỊCH SỬ RUNS) */}
       <section className="flex flex-col gap-4">
