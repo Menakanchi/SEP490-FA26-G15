@@ -143,7 +143,7 @@ export function VersionTable({
               ))}
               <th className="px-4 py-3.5 min-w-[160px]">Ghi chú</th>
               <th className="px-3 py-3.5 whitespace-nowrap min-w-[95px]">Ngày tạo</th>
-              <th className="px-4 py-3.5 text-right whitespace-nowrap min-w-[240px]">Thao tác</th>
+              <th className="px-4 py-3.5 text-center whitespace-nowrap min-w-[270px]">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
@@ -191,14 +191,14 @@ export function VersionTable({
                   <td className="px-3 py-3.5 text-[12px] text-vehicsim-faint whitespace-nowrap">
                     {fmt.date(v.created_at)}
                   </td>
-                  <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
+                  <td className="px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-center gap-2">
                       {v.status === "CANDIDATE" && (
                         <>
                           {baseline && (
                             <Link
                               href={`/aeb/compare?a=${baseline.id}&b=${v.id}`}
-                              className="inline-flex h-7 items-center justify-center rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-2.5 text-[11.5px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition whitespace-nowrap"
+                              className="inline-flex h-8 min-w-[120px] items-center justify-center rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-3 text-[12px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition whitespace-nowrap shadow-xs"
                             >
                               So với Baseline
                             </Link>
@@ -206,16 +206,15 @@ export function VersionTable({
                           {canWrite && (
                             <Link
                               href={`/validation/regression/new?candidate=${v.id}`}
-                              className="inline-flex h-7 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 text-[11.5px] font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
+                              className="inline-flex h-8 min-w-[120px] items-center justify-center rounded-lg bg-vehicsim-primary px-3 text-[12px] font-bold text-white hover:bg-vehicsim-primary-hover transition shadow-xs whitespace-nowrap"
                             >
-                              <span>Hồi quy (B5)</span>
-                              <ArrowRight className="size-3" />
+                              Kiểm thử hồi quy
                             </Link>
                           )}
                         </>
                       )}
                       {v.status === "BASELINE" && (
-                        <span className="rounded-md bg-emerald-500/15 px-2.5 py-1 text-[11.5px] font-bold text-emerald-700 dark:text-emerald-300">
+                        <span className="inline-flex h-8 items-center justify-center rounded-lg bg-emerald-50 border border-emerald-200 px-3 text-[12px] font-bold text-emerald-900 whitespace-nowrap">
                           Bản cơ sở mốc
                         </span>
                       )}
