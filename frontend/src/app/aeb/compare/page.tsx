@@ -151,11 +151,8 @@ export default function AebComparePage() {
       {/* Bảng so sánh 4 tham số chi tiết */}
       {versionA && versionB && (
         <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-solid border-vehicsim-line">
+          <div className="px-5 py-4 border-b border-solid border-vehicsim-line">
             <h3 className="text-[16px] font-bold text-vehicsim-ink">Bảng so sánh 4 tham số điều khiển phanh</h3>
-            <span className="text-[12px] text-vehicsim-muted">
-              So sánh AEB {versionA.label} → AEB {versionB.label}
-            </span>
           </div>
 
           <div className="overflow-x-auto">
