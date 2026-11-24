@@ -369,22 +369,7 @@ export default function AebMoboStudioPage() {
                   Danh sách phương án tối ưu ({paretoTrials?.length ?? 0} bộ cấu hình tốt nhất)
                 </h3>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("runs")}
-                  className="rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink hover:bg-vehicsim-soft transition"
-                >
-                  ← Danh sách các đợt chạy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("trials")}
-                  className="rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft transition"
-                >
-                  Nhật ký {allTrials?.length ?? 0} trials →
-                </button>
-              </div>
+
             </div>
 
             {paretoTrials?.length === 0 ? (
@@ -511,22 +496,7 @@ export default function AebMoboStudioPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("runs")}
-                  className="rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink hover:bg-vehicsim-soft transition"
-                >
-                  ← Danh sách các đợt chạy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("pareto")}
-                  className="rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft transition"
-                >
-                  Phương án tối ưu ({paretoTrials?.length ?? 0}) →
-                </button>
-              </div>
+
             </div>
 
             {filteredTrials.length === 0 ? (
