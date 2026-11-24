@@ -61,7 +61,7 @@ class VehicleCatalogServiceTest {
         Row tesla = vehicle(2, "vehicle.tesla.model3", null, 3.56, true);
         when(db.list(startsWith("SELECT m.*"), any(Object[].class))).thenReturn(List.of(truck, etron, tesla));
 
-        List<Map<String, Object>> out = catalog.list(1);
+        List<Map<String, Object>> out = catalog.list(1L);
 
         assertThat(out).extracting(v -> v.get("id")).containsExactly(1L, 5L, 2L); // xe đang dùng lên đầu, còn lại giữ thứ tự
         assertThat(out.get(0)).containsEntry("in_use", true).containsEntry("carla_full_brake_decel_mps2", null); // chưa đo: null, không phải 0
@@ -79,7 +79,7 @@ class VehicleCatalogServiceTest {
         kinematic.put("last_run_at", null);
         when(db.list(startsWith("SELECT simulator_type"), any(Object[].class))).thenReturn(List.of(new Row(kinematic), new Row(carla)));
 
-        Map<String, Object> out = catalog.detail(1, 2);
+        Map<String, Object> out = catalog.detail(1L, 2);
 
         assertThat(out).containsEntry("in_use", false).containsEntry("run_count", 15L);
         assertThat(out.get("sensors")).isEqualTo(List.of());
@@ -92,13 +92,45 @@ class VehicleCatalogServiceTest {
     @Test
     void unknownVehicleIsNotFound() {
         when(queries.vehicleById(99)).thenThrow(new Vs.NotFoundException("xe"));
-        assertThatThrownBy(() -> catalog.detail(1, 99)).isInstanceOf(Vs.NotFoundException.class);
+        assertThatThrownBy(() -> catalog.detail(1L, 99)).isInstanceOf(Vs.NotFoundException.class);
+    }
+
+    @Test
+    void listWithoutProjectStillReturnsTheWholeCatalog() {
+        Row etron = vehicle(1, "vehicle.audi.etron", "Audi e-tron", null, true);
+        Row tesla = vehicle(2, "vehicle.tesla.model3", "Tesla Model 3", 3.56, true);
+        when(db.list("SELECT m.* FROM carla_vehicle_models m ORDER BY m.id")).thenReturn(List.of(etron, tesla));
+
+        List<Map<String, Object>> out = catalog.list(null);
+
+        assertThat(out).extracting(v -> v.get("id")).containsExactly(1L, 2L);
+        assertThat(out).allSatisfy(v -> assertThat(v).containsEntry("in_use", false).containsEntry("run_count", 0L));
+        org.mockito.Mockito.verify(db, org.mockito.Mockito.never()).scalar(anyString(), any(Object[].class));
+    }
+
+    @Test
+    void detailWithoutProjectKeepsSpecsAndSensorsButHasNoUsage() {
+        when(queries.vehicleById(2)).thenReturn(vehicle(2, "vehicle.tesla.model3", "Tesla Model 3", 3.56, true));
+        Map<String, Object> radar = new HashMap<>(Map.of("id", 9L, "name", "Radar trước", "sensor_type", "RADAR", "carla_blueprint_id", "sensor.other.radar",
+                "location_x_m", new BigDecimal("2.3"), "location_y_m", BigDecimal.ZERO, "location_z_m", new BigDecimal("0.7"), "is_enabled", 1));
+        radar.put("rotation_pitch_deg", BigDecimal.ZERO);
+        radar.put("rotation_yaw_deg", BigDecimal.ZERO);
+        radar.put("rotation_roll_deg", BigDecimal.ZERO);
+        radar.put("attributes_json", null);
+        when(db.list(startsWith("SELECT * FROM sensors"), any(Object[].class))).thenReturn(List.of(new Row(radar)));
+
+        Map<String, Object> out = catalog.detail(null, 2);
+
+        assertThat(out).containsEntry("in_use", false).containsEntry("run_count", 0L).containsEntry("usage", List.of());
+        assertThat((List<?>) out.get("sensors")).hasSize(1);
+        assertThat(out).containsKey("physics");
+        org.mockito.Mockito.verify(db, org.mockito.Mockito.never()).list(startsWith("SELECT simulator_type"), any(Object[].class));
     }
 
     @Test
     void runCountsAreScopedToTheCurrentProject() {
         when(db.list(anyString(), any(Object[].class))).thenReturn(List.of());
-        catalog.list(7);
+        catalog.list(7L);
         org.mockito.Mockito.verify(db).list(startsWith("SELECT m.*, (SELECT COUNT(*) FROM simulation_runs r WHERE r.project_id = ?"), eq(7L));
     }
 }

@@ -440,7 +440,7 @@ run CARLA của 3 xe tạo trước đó dùng mô-men cũ, không ghép với r
 xe = min(phanh xe thật, phanh 100% đo trên CARLA): e-tron 9,13 (CARLA, chưa có số xe thật), Model 3 9,10, Patrol 8,80, Sprinter 8,50 (xe thật),
 HGV 1,77 (CARLA). Bộ động học / AEB dùng min(`MAX_DECELERATION`, giới hạn xe, μ·g), nên với `MAX_DECELERATION` mặc định 8 chỉ HGV đổi kết quả. **Code dùng:**
 `Queries.vehicleById`, `RunService.carlaVehicle` (→ khối `vehicle.carla` của bundle), `VehicleCatalogService` (màn
-"Phương tiện", chỉ đọc).
+"Phương tiện", chỉ đọc; mọi role xem được kể cả khi chưa có project — khi đó `in_use` = false, `run_count` = 0).
 
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|

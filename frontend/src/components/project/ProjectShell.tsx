@@ -106,7 +106,8 @@ export function Welcome() {
   );
 }
 
-const OPEN_PATHS = ["/projects", "/profile", "/admin"];
+// "/vehicles": danh mục xe CARLA là chung cho mọi người (ADR-038), backend trả được cả khi chưa có project.
+const OPEN_PATHS = ["/projects", "/profile", "/admin", "/vehicles"];
 
 const OTHER_ROLE_PATHS = [
   { prefix: "/validation/recommendations", title: "Project cá nhân không có khuyến nghị", detail: "Bạn tự xem kết luận kiểm chứng và tự chọn ứng viên làm baseline ở màn Kết luận vòng." },
