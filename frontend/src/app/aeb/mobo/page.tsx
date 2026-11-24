@@ -366,8 +366,7 @@ export default function AebMoboStudioPage() {
                 <table className="w-full min-w-[1080px] text-left text-[13px]">
                   <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12px] font-black uppercase tracking-wider text-white">
                     <tr className="h-12">
-                      <th className="w-12 px-3 py-3.5 text-center font-bold">STT</th>
-                      <th className="px-4 py-3.5 whitespace-nowrap">Lượt thử</th>
+                      <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
                       <th className="px-4 py-3.5 whitespace-nowrap">TTC Threshold (s)</th>
                       <th className="px-4 py-3.5 whitespace-nowrap">Brake Activation Delay (s)</th>
                       <th className="px-4 py-3.5 whitespace-nowrap">Brake Build-up Rate (m/s³)</th>
@@ -379,12 +378,9 @@ export default function AebMoboStudioPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
-                    {pagedPareto.map((t, idx) => (
+                    {pagedPareto.map((t) => (
                       <tr key={t.id} className="hover:bg-vehicsim-row transition-colors">
-                        <td className="w-12 px-3 py-3.5 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
-                          {(paretoPage - 1) * PARETO_PAGE_SIZE + idx + 1}
-                        </td>
-                        <td className="px-4 py-3.5 font-mono font-bold text-vehicsim-ink whitespace-nowrap">
+                        <td className="pl-5 pr-4 py-3.5 font-mono font-bold text-vehicsim-ink whitespace-nowrap">
                           #{t.trial_number}
                         </td>
                         <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.TTC_THRESHOLD ?? "—"}</td>
@@ -469,8 +465,7 @@ export default function AebMoboStudioPage() {
                 <table className="w-full min-w-[1040px] text-left text-[13px]">
                   <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12px] font-black uppercase tracking-wider text-white">
                     <tr className="h-12">
-                      <th className="w-12 px-3 py-3.5 text-center font-bold">STT</th>
-                      <th className="px-4 py-3.5 whitespace-nowrap">Lượt thử</th>
+                      <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
                       <th className="px-4 py-3.5 whitespace-nowrap">Nguồn</th>
                       <th className="px-4 py-3.5 font-mono whitespace-nowrap">qEHVI</th>
                       <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">RMS Jerk</th>
@@ -481,12 +476,9 @@ export default function AebMoboStudioPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
-                    {pagedTrials.map((t, idx) => (
+                    {pagedTrials.map((t) => (
                       <tr key={t.id} className="hover:bg-vehicsim-row transition-colors">
-                        <td className="w-12 px-3 py-3.5 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
-                          {(trialsPage - 1) * TRIALS_PAGE_SIZE + idx + 1}
-                        </td>
-                        <td className="px-4 py-3.5 font-mono font-bold text-vehicsim-ink">
+                        <td className="pl-5 pr-4 py-3.5 font-mono font-bold text-vehicsim-ink whitespace-nowrap">
                           #{t.trial_number}
                         </td>
                         <td className="px-4 py-3.5">

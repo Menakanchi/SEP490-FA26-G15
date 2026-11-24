@@ -168,8 +168,7 @@ export default function AebMoboTrialsPage() {
             <table className="w-full min-w-[960px] text-left text-[13px]">
               <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                 <tr className="h-12">
-                  <th className="w-12 px-3 py-3.5 text-center">STT</th>
-                  <th className="px-4 py-3.5">Lượt thử</th>
+                  <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
                   <th className="px-4 py-3.5">Nguồn sinh mẫu</th>
                   <th className="px-4 py-3.5 font-mono">Hàm thu thập qEHVI</th>
                   <th className="px-4 py-3.5 text-vehicsim-decision">RMS Jerk (m/s³)</th>
@@ -180,12 +179,9 @@ export default function AebMoboTrialsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
-                {pagedTrials.map((t, idx) => (
+                {pagedTrials.map((t) => (
                   <tr key={t.id} className={cx("hover:bg-vehicsim-row transition-colors", t.is_pareto_optimal && "bg-vehicsim-ok-bg/25")}>
-                    <td className="w-12 px-3 py-4 text-center font-mono text-[12px] font-bold text-vehicsim-faint tabular-nums">
-                      {(page - 1) * PAGE_SIZE + idx + 1}
-                    </td>
-                    <td className="px-4 py-3.5 font-mono font-bold text-vehicsim-ink">{t.trial_number}</td>
+                    <td className="pl-5 pr-4 py-3.5 font-mono font-bold text-vehicsim-ink">#{t.trial_number}</td>
                     <td className="px-4 py-3.5">
                       <Tag tone={t.sampling_source === "INITIAL_DESIGN" ? "neutral" : "info"}>
                         {t.sampling_source === "INITIAL_DESIGN" ? "Khởi tạo Sobol/Random" : "qEHVI Bayes"}
