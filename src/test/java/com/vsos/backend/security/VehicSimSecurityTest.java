@@ -268,6 +268,21 @@ class VehicSimSecurityTest {
         }
     }
 
+    /** Danh mục xe CARLA là chung (ADR-038): chưa có project (Experiencer chưa tạo, DB chưa bootstrap) vẫn mở được màn xe. */
+    @Test
+    void vehicleCatalogOpensWithoutAnyProject() throws Exception {
+        stubServices();
+        when(projects.hasProject()).thenReturn(false);
+        when(vehicles.list(null)).thenReturn(List.of(Map.of("id", 1L)));
+        when(vehicles.detail(null, 1L)).thenReturn(Map.of("id", 1L));
+        for (RoleCode code : RoleCode.values()) {
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles"), code)).as("%s xem danh sách xe khi chưa có project", code).isEqualTo(200);
+            assertThat(statusOf(request(HttpMethod.GET, BASE + "/vehicles/1"), code)).as("%s xem chi tiết xe khi chưa có project", code).isEqualTo(200);
+        }
+        verify(projects, never()).currentProject();
+        verify(vehicles, org.mockito.Mockito.atLeastOnce()).list(null);
+    }
+
     @Test
     void everyRoleCanReadButOnlyWriteRolesCanWrite() throws Exception {
         stubServices();

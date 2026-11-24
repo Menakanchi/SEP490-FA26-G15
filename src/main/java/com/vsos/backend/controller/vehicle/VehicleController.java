@@ -26,15 +26,17 @@ public class VehicleController {
     private final VehicleCatalogService catalog;
     private final VehicSimAccess access;
 
-    @Operation(summary = "Danh sách mẫu xe CARLA, xe project đang dùng đứng đầu")
+    @Operation(summary = "Danh sách mẫu xe CARLA, xe project đang dùng đứng đầu",
+            description = "Không cần project: chưa có project thì vẫn trả đủ danh mục, in_use = false và run_count = 0.")
     @GetMapping
     public List<Map<String, Object>> list() {
-        return catalog.list(access.projectId());
+        return catalog.list(access.projectIdOrNull());
     }
 
-    @Operation(summary = "Chi tiết mẫu xe: thông số vật lý, cảm biến, số run theo bộ mô phỏng")
+    @Operation(summary = "Chi tiết mẫu xe: thông số vật lý, cảm biến, số run theo bộ mô phỏng",
+            description = "Không cần project: chưa có project thì in_use = false, run_count = 0, usage rỗng.")
     @GetMapping("/{vehicleId}")
     public Map<String, Object> detail(@PathVariable long vehicleId) {
-        return catalog.detail(access.projectId(), vehicleId);
+        return catalog.detail(access.projectIdOrNull(), vehicleId);
     }
 }
