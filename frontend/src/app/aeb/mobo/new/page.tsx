@@ -81,15 +81,10 @@ export default function AebMoboNewPage() {
       <ErrorNote message={error} />
 
       <section className="flex flex-col gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-4">
-          <div>
-            <h2 className="text-[17px] font-bold text-vehicsim-ink">
-              Cấu hình tham số đợt chạy MOBO
-            </h2>
-          </div>
-          <span className="rounded-full bg-vehicsim-soft px-3 py-1 text-[12px] font-bold text-vehicsim-ink">
-            4 Tham số · 3 Mục tiêu
-          </span>
+        <div className="border-b border-solid border-vehicsim-line pb-4">
+          <h2 className="text-[17px] font-bold text-vehicsim-ink">
+            Cấu hình tham số đợt chạy MOBO
+          </h2>
         </div>
 
         <form onSubmit={handleStartOptimization} className="flex flex-col gap-6">
