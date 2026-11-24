@@ -78,7 +78,7 @@ export default function AebHubPage() {
                     Giảm rung giật (RMS Jerk)
                   </span>
                   <p className="text-[12px] leading-relaxed text-vehicsim-muted">
-                    Hạn chế giật đột ngột khi phanh gấp, nâng cao độ êm ái và an toàn cho hành khách trên xe.
+                    Phanh êm hơn, tránh bị giật người khi xe phanh gấp.
                   </p>
                 </div>
 
@@ -87,7 +87,7 @@ export default function AebHubPage() {
                     Giảm tốc độ va chạm
                   </span>
                   <p className="text-[12px] leading-relaxed text-vehicsim-muted">
-                    Triệt tiêu hoặc giảm tối đa vận tốc còn lại khi va chạm, ưu tiên cứu mạng người đi bộ.
+                    Hạ tốc độ xuống thấp nhất nếu xảy ra va chạm để hạn chế thương vong.
                   </p>
                 </div>
 
@@ -96,7 +96,7 @@ export default function AebHubPage() {
                     Giảm quãng phanh dừng
                   </span>
                   <p className="text-[12px] leading-relaxed text-vehicsim-muted">
-                    Rút ngắn quãng đường xe cần dừng hẳn, giữ khoảng cách an toàn tối đa với chướng ngại vật.
+                    Dừng xe nhanh nhất có thể để tránh đâm vào vật cản.
                   </p>
                 </div>
               </div>
