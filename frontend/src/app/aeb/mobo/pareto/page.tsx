@@ -27,7 +27,8 @@ export default function AebMoboParetoPage() {
   const PAGE_SIZE = 8;
   const paretoCount = paretoTrials?.length ?? 0;
   const pages = Math.max(1, Math.ceil(paretoCount / PAGE_SIZE));
-  const pagedPareto = paretoTrials?.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const safePage = Math.min(page, pages);
+  const pagedPareto = paretoTrials?.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   useEffect(() => {
     vehicsimApi
@@ -130,6 +131,7 @@ export default function AebMoboParetoPage() {
             value={selectedRunId}
             onChange={(newId) => {
               setSelectedRunId(newId);
+              setPage(1);
               router.replace(`/aeb/mobo/pareto?run_id=${newId}`);
             }}
             options={(runs ?? []).map((r) => ({
@@ -232,9 +234,9 @@ export default function AebMoboParetoPage() {
         {pages > 1 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
             <span className="text-[12px] font-medium text-vehicsim-muted">
-              Hiển thị {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, paretoCount)} trên {paretoCount} phương án Pareto
+              Hiển thị {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, paretoCount)} trên {paretoCount} phương án Pareto
             </span>
-            <Pagination page={page} pages={pages} onPage={setPage} />
+            <Pagination page={safePage} pages={pages} onPage={setPage} />
           </div>
         )}
       </section>

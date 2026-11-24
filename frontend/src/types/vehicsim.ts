@@ -28,6 +28,10 @@ export interface CarlaRun {
   aeb_version_id: number;
   simulator_version: string;
   error_message: string | null;
+  /** Chỉ run `BASELINE` không thuộc regression mới xoá được kết quả. */
+  purpose?: "BASELINE" | "EVALUATION" | "OPTIMIZATION" | "REGRESSION" | "ROBUSTNESS";
+  aeb_mode?: "ON" | "OFF";
+  regression_test_id?: number | null;
 }
 
 /** Run đang chờ / đang chạy của một họ (GET /families/{id}/runs/active); run của regression/tối ưu chỉ dừng theo cả test / đợt. */
@@ -56,6 +60,8 @@ export interface CarlaData {
   run_id: number;
   summary: TelemetrySummary;
   camera_frames: string[];
+  /** Run có `video.mp4` ghép sau khi chạy (worker cần `--camera` và ffmpeg). Run cũ không có khoá này. */
+  has_video?: boolean;
 }
 
 export interface VersionBrief {
@@ -111,6 +117,8 @@ export interface ProjectRequest {
   name?: string;
   description?: string;
   carla_vehicle_model_id?: number;
+  /** Chỉ Kỹ sư gửi (project của workspace, ADR-064); Experiencer bỏ trống. */
+  workspace_id?: number;
 }
 
 export interface VehicleOption {

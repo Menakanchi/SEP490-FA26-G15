@@ -55,7 +55,8 @@ export default function AebMoboTrialsPage() {
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredTrials.length / PAGE_SIZE));
-  const pagedTrials = filteredTrials.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const safePage = Math.min(page, totalPages);
+  const pagedTrials = filteredTrials.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <VehicSimPage
@@ -88,6 +89,7 @@ export default function AebMoboTrialsPage() {
               value={selectedRunId}
               onChange={(newId) => {
                 setSelectedRunId(newId);
+                setPage(1);
                 router.replace(`/aeb/mobo/trials?run_id=${newId}`);
               }}
               options={(runs ?? []).map((r) => ({
@@ -228,9 +230,9 @@ export default function AebMoboTrialsPage() {
         {totalPages > 1 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
             <span className="text-[12px] font-medium text-vehicsim-muted">
-              Hiển thị {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredTrials.length)} trên {filteredTrials.length} lượt thử nghiệm
+              Hiển thị {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredTrials.length)} trên {filteredTrials.length} lượt thử nghiệm
             </span>
-            <Pagination page={page} pages={totalPages} onPage={setPage} />
+            <Pagination page={safePage} pages={totalPages} onPage={setPage} />
           </div>
         )}
       </section>

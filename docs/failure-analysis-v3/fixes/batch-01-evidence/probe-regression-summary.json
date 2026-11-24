@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "id": "FA-001-mode",
+      "passed": true,
+      "evidence": "Unresolved mode blocks functional candidates; positive contact survives"
+    },
+    {
+      "id": "FA-001-event-times",
+      "passed": true,
+      "evidence": "Negative decision/command are invalid, not valid engagement"
+    },
+    {
+      "id": "FA-002-clock",
+      "passed": true,
+      "evidence": "Breakdown withheld; stored canonical 9.35 retained"
+    },
+    {
+      "id": "FA-003-stale",
+      "passed": true,
+      "evidence": "Stale declared before frame cannot reconstruct velocity; independent positive event/scalar survive"
+    },
+    {
+      "id": "FA-003-episode",
+      "passed": true,
+      "evidence": "Event timestamp 50000 does not bind to its recorded world frame"
+    },
+    {
+      "id": "FA-004-multiplicity",
+      "passed": true,
+      "evidence": "Other actor in same tick cannot erase matching target contact"
+    }
+  ],
+  "passed": 6,
+  "failed": 0,
+  "original_probe_sha256": "0056803ae78a44b7efaf461715520f880de46fe7d1e487ca3da38eaf437638e5",
+  "scope": "EXACT_ORIGINAL_AUDIT_PROBE_WITH_NEW_PRODUCTION_CLASSES"
+}

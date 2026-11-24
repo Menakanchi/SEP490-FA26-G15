@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -131,6 +132,8 @@ class VehicSimSecurityTest {
     @MockitoBean
     private TelemetryMetricsService telemetryService;
     @MockitoBean
+    private com.vsos.backend.service.simulation.RunCollectionService runCollections;
+    @MockitoBean
     private VehicleCatalogService vehicles;
     @MockitoBean
     private ProjectAccess projects;
@@ -223,12 +226,12 @@ class VehicSimSecurityTest {
     // ---- luật
 
     @Test
-    void onlyReviewerCanDiscoverProjectsWithoutResolvingTheSelectedProject() throws Exception {
+    void onlyReviewerAndEngineerCanDiscoverTheirWorkspaceProjectsWithoutResolvingTheSelectedProject() throws Exception {
         for (RoleCode code : RoleCode.values()) {
             assertThat(statusOf(request(HttpMethod.GET, BASE + "/reviewer/projects"), code))
-                    .isEqualTo(code == RoleCode.REVIEWER ? 200 : 403);
+                    .isEqualTo(code == RoleCode.REVIEWER || code == RoleCode.ENGINEER ? 200 : 403);
         }
-        verify(views).reviewerProjects();
+        verify(views, times(2)).reviewerProjects();
         verify(projects, never()).currentProject();
     }
 

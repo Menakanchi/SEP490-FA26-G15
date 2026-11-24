@@ -14,8 +14,8 @@ import java.util.List;
 
 /**
  * Project của HTTP request: resolve một lần, dùng chung cho kiểm quyền và đọc dữ liệu. Không dùng trong job nền.
- * Reviewer chọn bằng header {@link ProjectScope#HEADER} trong các workspace mình là thành viên ({@link ReviewerScope});
- * role khác theo {@link ProjectScope} (EXPERIENCER: project cá nhân đang mở; còn lại: project chung, TD-30).
+ * Reviewer và Kỹ sư chọn bằng header {@link ProjectScope#HEADER} trong các workspace mình là thành viên ({@link ReviewerScope}, ADR-064);
+ * role khác theo {@link ProjectScope} (EXPERIENCER: project cá nhân đang mở; ADMIN/MANAGER: project chung, TD-30).
  */
 @Component
 @RequestScope
@@ -42,8 +42,13 @@ public class ProjectAccess {
         return user;
     }
 
+    /** ADR-064: REVIEWER và ENGINEER làm việc trong project của workspace mình là thành viên, không còn một project chung. */
     private boolean reviewer() {
-        return "REVIEWER".equals(VehicSimAccess.roleOf(user()));
+        return isWorkspaceScoped(VehicSimAccess.roleOf(user()));
+    }
+
+    private static boolean isWorkspaceScoped(String role) {
+        return "REVIEWER".equals(role) || "ENGINEER".equals(role);
     }
 
     private Row reviewerProject() {
@@ -89,6 +94,6 @@ public class ProjectAccess {
 
     public List<Row> reviewerProjects() {
         var user = user();
-        return "REVIEWER".equals(VehicSimAccess.roleOf(user)) ? reviewerScope.projects(VehicSimAccess.userId(user)) : List.of();
+        return isWorkspaceScoped(VehicSimAccess.roleOf(user)) ? reviewerScope.projects(VehicSimAccess.userId(user)) : List.of();
     }
 }

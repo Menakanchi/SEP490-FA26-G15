@@ -172,10 +172,20 @@ export const vehicsimApi = {
   /** Hủy run PENDING (STOPPED ngay) hoặc RUNNING (STOPPING: worker đang dọn CARLA). */
   cancelRun: (runId: number) =>
     apiRequest<{ run_id: number; status: "STOPPED" | "STOPPING" }>(`/vehicsim/runs/${runId}/cancel`, { method: "POST" }),
+  /** Xoá kết quả một run baseline đã kết thúc (DB + file). Run đang chạy, run của regression/tối ưu hoặc mốc của regression bị từ chối. */
+  deleteRun: (runId: number) => apiRequest<{ run_id: number; deleted: boolean }>(`/vehicsim/runs/${runId}`, { method: "DELETE" }),
+  /** Xoá mọi kết quả baseline đã kết thúc của họ; giữ lại run đang chờ/chạy và run đang là mốc của regression. */
+  deleteFamilyBaseline: (scenarioId: number, simulatorType?: "CARLA" | "KINEMATIC") =>
+    apiRequest<{ scenario_id: number; deleted: number; skipped_in_use: number; skipped_active: number }>(
+      `/vehicsim/families/${scenarioId}/baseline-runs${simulatorType ? `?simulator_type=${simulatorType}` : ""}`,
+      { method: "DELETE" }),
   carlaStatus: () => apiRequest<CarlaStatus>("/vehicsim/carla/status"),
   carlaRuns: () => apiRequest<CarlaRun[]>("/vehicsim/carla/runs"),
   carlaData: (runId: number) => apiRequest<CarlaData>(`/vehicsim/runs/${runId}/carla-data`),
   carlaImage: (runId: number, frame: string) => apiBlob(`/vehicsim/runs/${runId}/carla-files/${frame}`),
+  /** Video mp4 xem lại của run CARLA (404 khi run không có video). */
+  carlaVideo: (runId: number) => apiBlob(`/vehicsim/runs/${runId}/carla-video`),
+  downloadCarlaVideo: (runId: number) => apiDownload(`/vehicsim/runs/${runId}/carla-video`, `vehicsim-run-${runId}.mp4`),
   downloadCarlaFile: (runId: number, name: "frames.csv" | "collisions.json" | "ground_truth.csv") =>
     apiDownload(`/vehicsim/runs/${runId}/carla-files/${name}`, `${runId}-${name}`),
   /** Nộp ``result.json`` của run CARLA chạy ngoài backend (run CARLA đang PENDING/FAILED, regression chưa chốt). */

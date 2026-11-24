@@ -19,12 +19,12 @@ const METHODS: Record<ExplanationMetric, Method> = {
   },
   impact: {
     title: "Tốc độ va chạm", field: "impact_speed_mps", unit: "m/s",
-    definition: "Tốc độ ego ở frame cuối của run khi bộ mô phỏng ghi nhận va chạm; không phải tốc độ tương đối với mục tiêu.",
-    formula: "impact_speed_mps = v_ego,last nếu collision; ngược lại null",
-    variables: "v_ego,last: tốc độ ego (m/s) ở frame cuối; collision: cờ va chạm canonical. Hiển thị km/h ở nơi khác dùng m/s × 3,6.",
+    definition: "Vận tốc va chạm tương đối với mục tiêu (độ lớn hiệu hai vector vận tốc) ở frame cuối của run khi bộ mô phỏng ghi nhận va chạm (ADR-055: bộ động học 1.1 trở lên, CARLA -xosc9 trở đi). Run cũ hơn (động học 1.0, CARLA ≤ -xosc8) lưu tốc độ ego.",
+    formula: "impact_speed_mps = |v_ego,last − v_target,last| nếu collision; ngược lại null",
+    variables: "v_ego,last, v_target,last: vector vận tốc ego và mục tiêu (m/s) ở frame cuối; collision: cờ va chạm canonical. Tốc độ ego lúc va chạm nằm riêng ở ego_impact_speed_mps. Hiển thị km/h ở nơi khác dùng m/s × 3,6.",
     conditions: "Chỉ trình bày số đo từng run đã hoàn tất và có outcome COLLISION; không đổi null thành 0.",
     interpretation: "Cho biết tốc độ còn lại khi va chạm, chưa đủ xác định lỗi điều khiển, bỏ sót phanh hoặc khả năng tránh va chạm.",
-    limitations: ["Relative impact của CCR và sensor recomputation là đại lượng/nguồn khác, chưa được chiếu riêng vào metric này.", "Trong aggregate backend, run hợp lệ không va chạm đóng góp 0 là quy ước tổng hợp; đó không phải số đo va chạm từng run."],
+    limitations: ["Sensor recomputation là nguồn khác, chưa được chiếu riêng vào metric này; không gộp số của run định danh cũ (impact = tốc độ ego) với run từ ADR-055.","Trong aggregate backend, run hợp lệ không va chạm đóng góp 0 là quy ước tổng hợp; đó không phải số đo va chạm từng run."],
     method: "Simulator / LeadVehicleSimulator.summaryMetrics",
   },
   stopping: {
@@ -34,7 +34,7 @@ const METHODS: Record<ExplanationMetric, Method> = {
     variables: "x_last, x_onset: vị trí mũi ego (m); v_last: tốc độ cuối (m/s); a_available: độ lớn giảm tốc khả dụng (m/s²). Nếu a_available ≤ 0, code dùng phần còn lại bằng 0.",
     conditions: "Không có onset/frame pha phanh thì null. Bắt đầu từ onset lệnh, không bao gồm quãng phản ứng từ quyết định đến onset.",
     interpretation: "Không luôn là quãng dừng đã đo. Phần ngoại suy giả định giảm tốc không đổi; không phải required stopping distance hay khoảng trống còn đủ để tránh va chạm.",
-    limitations: ["Động học dùng min(AEB max, xe max, μg); CARLA xosc5 thêm giới hạn phanh 100% theo cấu hình. File cũ giữ cách tính cũ.", "API Detail chưa trả x_onset và a_available của phép tính; không thay số bằng giảm tốc cực đại đã đo hoặc tham số cấu hình.", "CARLA còn lệch ở tốc độ thấp/ma sát; phần ngoại suy không chứng minh xe thực dừng đúng quãng này."],
+    limitations: ["Động học dùng min(AEB max, xe max, μg); CARLA từ xosc5 thêm giới hạn phanh 100% theo cấu hình. File cũ giữ cách tính cũ.", "API Detail chưa trả x_onset và a_available của phép tính; không thay số bằng giảm tốc cực đại đã đo hoặc tham số cấu hình.", "CARLA còn lệch ở tốc độ thấp/ma sát; phần ngoại suy không chứng minh xe thực dừng đúng quãng này."],
     method: "Simulator.brakePhaseMetrics · observed + extrapolated",
   },
   ttc: {
@@ -79,8 +79,9 @@ export function metricExplanation(kind: ExplanationMetric, detail: FailureDetail
   const content = { ...METHODS[kind] };
   const category = detail.environment.category;
   const cp = category === "CP_CROSSING", lead = ["CCRS", "CCRM", "CCRB"].includes(category ?? "");
-  const engine = detail.simulator === "vehicsim-kinematic-1.0" ? "Động học Java"
-    : /^carla-\d+\.\d+\.\d+-xosc[345]$/.test(detail.simulator ?? "") ? "CARLA qua lõi Java" : "Chưa xác định phương pháp simulator";
+  const sim = detail.simulator ?? "";
+  const engine = /^vehicsim-kinematic-\d+\.\d+$/.test(sim) ? "Động học Java"
+    : /^carla-\d+\.\d+\.\d+-xosc(?:[3-9]|[1-9]\d+)$/.test(sim) ? "CARLA qua lõi Java" : "Chưa xác định phương pháp simulator";
   const known = (cp || lead) && detail.metrics.metric_source === "SIMULATOR_RESULT" && engine !== "Chưa xác định phương pháp simulator";
   const inputs: Input[] = [];
   const add = (label: string, value: unknown, unit: string, field: string) => inputs.push({ label, value: formatMeasurement(value, unit, undefined, true), field });
