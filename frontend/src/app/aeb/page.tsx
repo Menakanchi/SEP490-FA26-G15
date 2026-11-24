@@ -2,15 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ShieldCheck, Target } from "lucide-react";
+import { ArrowRight, ShieldCheck } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import {
-  Card,
-  ErrorNote,
-  PillButton,
-  paramValue,
-} from "@/components/VehicSimUi";
+import { ErrorNote } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
 import { KEY_PARAMS } from "@/components/aeb/aebTypes";
@@ -48,156 +43,107 @@ export default function AebHubPage() {
         </div>
 
         {baseline && (
-          <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
-            {/* 4 tham số AEB của xe cũ */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-4 shadow-xs">
+            <div className="grid grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-solid divide-vehicsim-line sm:grid-cols-4">
               {KEY_PARAMS.map((code) => {
                 const def = catalog.get(code);
+                const val = baseline.parameters[code];
+                const unit = def?.unit === "ratio" ? "" : def?.unit === "m/s2" ? "m/s²" : def?.unit === "m/s3" ? "m/s³" : def?.unit;
                 return (
-                  <div
-                    key={code}
-                    className="flex flex-col gap-1 rounded-xl border border-solid border-slate-200 bg-white p-3.5 shadow-xs"
-                  >
-                    <span className="text-[12.5px] font-bold text-slate-800">{def?.name ?? code}</span>
-                    <span className="text-[18px] font-black text-slate-900">
-                      {paramValue(baseline.parameters[code], def?.unit ?? "")}
-                    </span>
-                    <span className="text-[11.5px] text-slate-500">
-                      Phạm vi: {def?.min_value} – {def?.max_value} {def?.unit}
+                  <div key={code} className="flex flex-col gap-1 px-4 py-2 first:pl-2 last:pr-2">
+                    <span className="text-[12.5px] font-semibold text-vehicsim-muted">{def?.name ?? code}</span>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-[20px] font-black text-vehicsim-ink">
+                        {val !== undefined ? val : "—"}
+                      </span>
+                      {unit && <span className="text-[13px] font-bold text-vehicsim-ink">{unit}</span>}
+                    </div>
+                    <span className="text-[11.5px] text-vehicsim-faint">
+                      Phạm vi: {def?.min_value} – {def?.max_value} {unit}
                     </span>
                   </div>
                 );
               })}
             </div>
-
-            {/* 3 Mục tiêu tối ưu cần cải thiện so với bản cơ sở */}
-            <div className="flex flex-col gap-2.5 border-t border-solid border-vehicsim-line/80 pt-4 mt-4">
-              <div className="flex items-center gap-2">
-                <Target className="size-4 text-slate-700" />
-                <span className="text-[13px] font-bold text-slate-900">
-                  3 mục tiêu tối ưu cần cải thiện so với bản cơ sở:
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {/* Mục tiêu 1 */}
-                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-slate-200 bg-white p-3.5 shadow-xs">
-                  <span className="text-[13px] font-bold text-slate-900">
-                    Giảm rung giật (RMS Jerk)
-                  </span>
-                  <p className="text-[12px] leading-relaxed text-slate-600">
-                    Hạn chế giật đột ngột khi phanh gấp, nâng cao độ êm ái và an toàn cho hành khách trên xe.
-                  </p>
-                </div>
-
-                {/* Mục tiêu 2 */}
-                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-slate-200 bg-white p-3.5 shadow-xs">
-                  <span className="text-[13px] font-bold text-slate-900">
-                    Giảm tốc độ va chạm
-                  </span>
-                  <p className="text-[12px] leading-relaxed text-slate-600">
-                    Triệt tiêu hoặc giảm tối đa vận tốc còn lại khi va chạm, ưu tiên cứu mạng người đi bộ.
-                  </p>
-                </div>
-
-                {/* Mục tiêu 3 */}
-                <div className="flex flex-col gap-1.5 rounded-xl border border-solid border-slate-200 bg-white p-3.5 shadow-xs">
-                  <span className="text-[13px] font-bold text-slate-900">
-                    Giảm quãng phanh dừng
-                  </span>
-                  <p className="text-[12px] leading-relaxed text-slate-600">
-                    Rút ngắn quãng đường xe cần dừng hẳn, giữ khoảng cách an toàn tối đa với chướng ngại vật.
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
         )}
       </section>
 
-      {/* BƯỚC 4.1: PHƯƠNG PHÁP CẢI TIẾN THAM SỐ */}
+      {/* PHƯƠNG PHÁP CẢI TIẾN THAM SỐ */}
       <section className="flex flex-col gap-2.5">
-        <div className="flex items-center gap-2">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-vehicsim-primary text-[11px] font-bold text-white">
-            1
-          </span>
-          <h2 className="text-[15px] font-bold text-vehicsim-ink">
-            Bước 4.1 · Phương pháp cải tiến tham số
-          </h2>
-        </div>
+        <h2 className="text-[15px] font-bold text-vehicsim-ink">
+          Phương pháp cải tiến tham số
+        </h2>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {/* Card 1: MOBO */}
-          <Card className="flex flex-col justify-between gap-3 p-4 border border-solid border-vehicsim-line hover:border-vehicsim-primary/50 transition">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-[14.5px] font-bold text-vehicsim-ink">
-                    Tối ưu tự động (MOBO)
-                  </h3>
-                  <span className="rounded-full bg-vehicsim-decision-bg px-2 py-0.5 text-[10.5px] font-bold text-vehicsim-decision">
-                    Khuyên dùng
-                  </span>
-                </div>
-                <PillButton href="/aeb/mobo" variant="dark" className="shrink-0 py-1.5 px-3.5 text-[12px] font-bold">
-                  Tối ưu với MOBO <ArrowRight className="size-3.5" />
-                </PillButton>
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-4 hover:border-vehicsim-primary/50 transition">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-[14px] font-bold text-vehicsim-ink">
+                  Tối ưu tự động (MOBO)
+                </h3>
+                <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11px] font-bold text-emerald-900">
+                  Khuyên dùng
+                </span>
               </div>
               <p className="text-[12.5px] text-vehicsim-muted leading-relaxed">
-                Hệ thống tự động tìm và đề xuất các bộ tham số tốt nhất giúp cân bằng cả 3 mục tiêu trên.
+                Tự động tìm kiếm các bộ tham số tối ưu cân bằng rung giật, va chạm và quãng phanh bằng Bayesian GP.
               </p>
             </div>
-          </Card>
+            <Link
+              href="/aeb/mobo"
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-vehicsim-primary px-3.5 text-[12.5px] font-bold text-white hover:bg-vehicsim-primary-hover transition"
+            >
+              <span>Bắt đầu</span>
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
 
           {/* Card 2: Chỉnh tay */}
-          <Card className="flex flex-col justify-between gap-3 p-4 border border-solid border-vehicsim-line hover:border-vehicsim-primary/50 transition">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-start justify-between gap-3">
-                <h3 className="text-[14.5px] font-bold text-vehicsim-ink">
-                  Hiệu chỉnh tham số thủ công
-                </h3>
-                <PillButton href="/aeb/manual" variant="light" className="shrink-0 py-1.5 px-3.5 text-[12px] font-bold">
-                  Chỉnh tay <ArrowRight className="size-3.5" />
-                </PillButton>
-              </div>
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-4 hover:border-slate-300 transition">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-[14px] font-bold text-vehicsim-ink">
+                Hiệu chỉnh tham số thủ công
+              </h3>
               <p className="text-[12.5px] text-vehicsim-muted leading-relaxed">
-                Tự điều chỉnh từng tham số phanh theo kinh nghiệm hoặc kết quả phân tích lỗi của bạn.
+                Tự điều chỉnh từng tham số phanh theo kinh nghiệm hoặc kết quả phân tích lỗi.
               </p>
             </div>
-          </Card>
+            <Link
+              href="/aeb/manual"
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-3.5 text-[12.5px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition"
+            >
+              <span>Chỉnh tay</span>
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
         </div>
       </section>
 
-      {/* BƯỚC 4.2: QUẢN LÝ ỨNG VIÊN & KIỂM ĐỊNH HỒI QUY */}
+      {/* QUẢN LÝ PHIÊN BẢN & SO SÁNH */}
       <section className="flex flex-col gap-2.5">
-        <div className="flex items-center gap-2">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-vehicsim-primary text-[11px] font-bold text-white">
-            2
-          </span>
-          <h2 className="text-[15px] font-bold text-vehicsim-ink">
-            Bước 4.2 · Quản lý phiên bản & So sánh
-          </h2>
-        </div>
+        <h2 className="text-[15px] font-bold text-vehicsim-ink">
+          Quản lý phiên bản & So sánh
+        </h2>
 
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
-          <div>
-            <p className="text-[13.5px] text-vehicsim-ink font-medium">
-              Hiện có <strong className="font-bold text-vehicsim-decision">{candidates.length} ứng viên</strong> đang chờ kiểm định hồi quy (trên tổng số {versions?.length ?? 0} phiên bản đã lưu).
-            </p>
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-5 py-4 shadow-xs">
+          <p className="text-[13.5px] text-vehicsim-ink font-medium">
+            Hiện có <strong className="font-bold text-vehicsim-decision">{candidates.length} ứng viên</strong> đang chờ kiểm định hồi quy (trên tổng số {versions?.length ?? 0} phiên bản đã lưu).
+          </p>
           <div className="flex items-center gap-2.5">
             <Link
               href="/aeb/compare"
-              className="inline-flex h-10 items-center justify-center rounded-xl border border-solid border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-800 hover:bg-slate-100 hover:text-slate-900 transition shadow-xs whitespace-nowrap"
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-3.5 text-[12.5px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition shadow-xs whitespace-nowrap"
             >
               So sánh 2 phiên bản
             </Link>
             <Link
               href="/aeb/versions"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-vehicsim-primary px-4 text-[13px] font-bold text-white hover:bg-vehicsim-primary-hover transition shadow-xs whitespace-nowrap"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-vehicsim-primary px-3.5 text-[12.5px] font-bold text-white hover:bg-vehicsim-primary-hover transition shadow-xs whitespace-nowrap"
             >
               <span>Xem danh sách phiên bản ({versions?.length ?? 0})</span>
-              <ArrowRight className="size-4" />
+              <ArrowRight className="size-3.5" />
             </Link>
           </div>
         </div>
