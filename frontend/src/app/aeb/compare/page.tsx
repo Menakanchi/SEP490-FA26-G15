@@ -186,8 +186,7 @@ export default function AebComparePage() {
                   return (
                     <tr key={code} className={cx(isDiff && "bg-vehicsim-row/40")}>
                       <td className="px-5 py-4 font-bold text-vehicsim-ink">
-                        <div>{def?.name ?? code}</div>
-                        <div className="font-mono text-[11px] font-normal text-vehicsim-faint">{code}</div>
+                        {def?.name ?? code}
                       </td>
                       <td className="px-5 py-4 text-[12px] text-vehicsim-muted">{layerLabel}</td>
                       <td className="px-5 py-4 text-center font-semibold text-vehicsim-ink">
