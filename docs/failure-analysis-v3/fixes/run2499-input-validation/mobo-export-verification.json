@@ -1,0 +1,83 @@
+{
+  "output_file": "D:\\Downloads\\mobo_handoff_run2499.json",
+  "bytes": 201120,
+  "sha256": "7c6e0b920248a2df64b34e8bcb7e053a005ceee9af214b27a43ce2dfe26b0190",
+  "content_digest": "79e9bd434ccacdaeb2294643272937752c7dea823401c4b586aaaa7927aa5166",
+  "total": 18,
+  "passed": 18,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "schema",
+      "status": "PASS"
+    },
+    {
+      "name": "one_run_preserved",
+      "status": "PASS"
+    },
+    {
+      "name": "declared_identity_preserved",
+      "status": "PASS"
+    },
+    {
+      "name": "config_preserved",
+      "status": "PASS"
+    },
+    {
+      "name": "recorded_objective_rms_jerk_mps3",
+      "status": "PASS"
+    },
+    {
+      "name": "recorded_objective_impact_speed_mps",
+      "status": "PASS"
+    },
+    {
+      "name": "recorded_objective_stopping_distance_m",
+      "status": "PASS"
+    },
+    {
+      "name": "baseline_unknown",
+      "status": "PASS"
+    },
+    {
+      "name": "no_baseline_score",
+      "status": "PASS"
+    },
+    {
+      "name": "no_hints",
+      "status": "PASS"
+    },
+    {
+      "name": "no_invented_ranges",
+      "status": "PASS"
+    },
+    {
+      "name": "no_frozen_partitions",
+      "status": "PASS"
+    },
+    {
+      "name": "blocked_eligibility",
+      "status": "PASS"
+    },
+    {
+      "name": "compatibility_schema_and_integrity",
+      "status": "PASS"
+    },
+    {
+      "name": "no_compatibility_failure",
+      "status": "PASS"
+    },
+    {
+      "name": "compatibility_dispatch_false",
+      "status": "PASS"
+    },
+    {
+      "name": "input_hash_unchanged",
+      "status": "PASS"
+    },
+    {
+      "name": "output_byte_hash_validated",
+      "status": "PASS"
+    }
+  ]
+}

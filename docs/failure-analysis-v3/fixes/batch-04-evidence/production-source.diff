@@ -1,0 +1,605 @@
+--- /dev/null
++++ src/main/java/com/vsos/core/failureanalysis/ArchiveIndex.java
+@@ -0,0 +1,61 @@
++package com.vsos.core.failureanalysis;
++
++import java.io.*;
++import java.nio.*;
++import java.nio.charset.*;
++import java.nio.file.*;
++import java.util.*;
++import static com.vsos.core.failureanalysis.InputRejectedException.Kind.*;
++
++/** Bounds the central directory BEFORE ZipFile allocates its index. ZIP64,
++ * multi-disk and encrypted inputs are explicitly unsupported, never guessed. */
++final class ArchiveIndex {
++    private ArchiveIndex() {}
++    static void safe(String name) {
++        if(name==null||name.isEmpty()||name.length()>1024||name.startsWith("/")||name.contains("\\")||name.contains(":")||name.chars().anyMatch(c->c<32||c==127))bad("UNSAFE_MEMBER_NAME",Objects.toString(name,"unknown"));
++        String[] parts=name.split("/",-1);
++        for(int i=0;i<parts.length;i++)if((parts[i].isEmpty()&&i!=parts.length-1)||parts[i].equals(".")||parts[i].equals("..")||parts[i].endsWith(".")||parts[i].endsWith(" "))bad("UNSAFE_MEMBER_NAME",name);
++    }
++    static void bad(String reason,String source){throw new InputRejectedException(INVALID_ARTIFACT,reason,source,"Unsafe or unsupported archive structure");}
++    static long u32(byte[] b,int off){return Integer.toUnsignedLong(ByteBuffer.wrap(b,off,4).order(ByteOrder.LITTLE_ENDIAN).getInt());}
++    static int u16(byte[] b,int off){return Short.toUnsignedInt(ByteBuffer.wrap(b,off,2).order(ByteOrder.LITTLE_ENDIAN).getShort());}
++    static Set<String> read(Path file,BoundedInput budget)throws IOException {
++        String source=file.getFileName().toString();long length=Files.size(file);budget.check(length,budget.policy.maxArchiveBytes(),"ARCHIVE_BYTES",source);
++        try(var in=new RandomAccessFile(file.toFile(),"r")) {
++            if(length<22)bad("ZIP_TRUNCATED",source);
++            byte[] tail=new byte[(int)Math.min(length,65557)];in.seek(length-tail.length);in.readFully(tail);int end=-1;
++            for(int i=tail.length-22;i>=0;i--)if(u32(tail,i)==0x06054b50L&&i+22+u16(tail,i+20)==tail.length){end=i;break;}
++            if(end<0)bad("ZIP_END_RECORD_MISSING",source);
++            int entries=u16(tail,end+10);long size=u32(tail,end+12),offset=u32(tail,end+16);
++            if(u16(tail,end+4)!=0||u16(tail,end+6)!=0||u16(tail,end+8)!=entries||entries==65535||size==0xffffffffL||offset==0xffffffffL)bad("ZIP64_OR_MULTIDISK_UNSUPPORTED",source);
++            budget.check(entries,budget.policy.maxMembers(),"ZIP_MEMBER_COUNT",source);
++            if(BoundedInput.checkedAdd(offset,size,source)!=length-tail.length+end)bad("ZIP_DIRECTORY_EXTENT_INVALID",source);
++            // Extra fields/comments are bounded too, before any central-directory allocation by ZipFile.
++            budget.check(size,Math.multiplyExact((long)budget.policy.maxMembers(),2048),"ZIP_DIRECTORY_BYTES",source);
++            budget.retain(BoundedInput.checkedAdd(size*4,(long)entries*256,source),source);
++            in.seek(offset);Set<String> names=new TreeSet<>();Map<String,Boolean> folded=new HashMap<>();long total=0;
++            for(int n=0;n<entries;n++) {
++                byte[] h=new byte[46];in.readFully(h);if(u32(h,0)!=0x02014b50L)bad("ZIP_DIRECTORY_HEADER_INVALID",source);
++                int nameLength=u16(h,28),extra=u16(h,30),comment=u16(h,32);
++                if(nameLength==0||nameLength>1024||extra>1024||comment>1024)bad("ZIP_DIRECTORY_FIELD_LENGTH",source);
++                if((u16(h,8)&1)!=0)bad("ZIP_ENCRYPTION_UNSUPPORTED",source);
++                long packed=u32(h,20),unpacked=u32(h,24),local=u32(h,42);
++                if(packed==0xffffffffL||unpacked==0xffffffffL||local==0xffffffffL)bad("ZIP64_UNSUPPORTED",source);
++                byte[] nameBytes=new byte[nameLength];in.readFully(nameBytes);String name;
++                try{name=StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(nameBytes)).toString();}
++                catch(CharacterCodingException e){bad("ZIP_NAME_UTF8_INVALID",source);return Set.of();}
++                safe(name);String key=(name.endsWith("/")?name.substring(0,name.length()-1):name).toLowerCase(Locale.ROOT);
++                if(!names.add(name)||folded.putIfAbsent(key,name.endsWith("/"))!=null)bad("ZIP_DUPLICATE_OR_COLLIDING_NAME",name);
++                budget.check(unpacked,budget.policy.maxMemberBytes(),"DECLARED_MEMBER_BYTES",name);
++                total=BoundedInput.checkedAdd(total,unpacked,name);budget.check(total,budget.policy.maxTotalBytes(),"DECLARED_CUMULATIVE_BYTES",name);
++                if(unpacked/(double)Math.max(1,packed)>budget.policy.maxCompressionRatio())budget.check(1,0,"DECLARED_COMPRESSION_RATIO",name);
++                if(BoundedInput.checkedAdd(local,BoundedInput.checkedAdd(30,packed,name),name)>offset)bad("ZIP_MEMBER_EXTENT_INVALID",name);
++                in.seek(BoundedInput.checkedAdd(in.getFilePointer(),extra+comment,name));
++                if(in.getFilePointer()>offset+size)bad("ZIP_DIRECTORY_TRUNCATED",name);
++            }
++            if(in.getFilePointer()!=offset+size)bad("ZIP_DIRECTORY_COUNT_MISMATCH",source);
++            for(String path:folded.keySet())for(int i=path.indexOf('/');i>=0;i=path.indexOf('/',i+1))if(Boolean.FALSE.equals(folded.get(path.substring(0,i))))bad("ZIP_FILE_DIRECTORY_COLLISION",path);
++            return names;
++        }catch(EOFException e){throw new InputRejectedException(INCOMPLETE_INPUT,"ZIP_TRUNCATED",source,"Truncated ZIP directory");}
++    }
++}
+--- before/ArtifactCsv.java
++++ src/main/java/com/vsos/core/failureanalysis/ArtifactCsv.java
+@@ -1,46 +1,42 @@
+ package com.vsos.core.failureanalysis;
+ 
+ import java.util.*;
++import static com.vsos.core.failureanalysis.InputRejectedException.Kind.*;
+ 
+-/** RFC4180 fields, including quoted newlines; accepts recorder CRCRLF and UTF-8 BOM. */
++/** Bounded RFC4180 records, quoted newlines, recorder CRCRLF and UTF-8 BOM. */
+ final class ArtifactCsv {
+     private ArtifactCsv() {}
+-    static List<Map<String, Object>> read(String text) {
+-        text = text.replaceFirst("^\uFEFF", "");
+-        List<List<String>> records = new ArrayList<>();
+-        List<String> row = new ArrayList<>();
+-        StringBuilder cell = new StringBuilder();
+-        boolean quoted = false, closed = false;
+-        for (int i = 0; i < text.length(); i++) {
+-            char c = text.charAt(i);
+-            if (quoted) {
+-                if (c == '"') {
+-                    if (i + 1 < text.length() && text.charAt(i + 1) == '"') { cell.append('"'); i++; }
+-                    else { quoted = false; closed = true; }
+-                } else cell.append(c);
+-            } else if (c == '"' && cell.isEmpty() && !closed) quoted = true;
+-            else if (c == ',' || c == '\r' || c == '\n') {
+-                if (c != ',' && row.isEmpty() && cell.isEmpty() && !closed) continue;
+-                row.add(cell.toString()); cell.setLength(0); closed = false;
+-                if (c != ',') { records.add(row); row = new ArrayList<>(); }
+-            } else {
+-                if (closed || c == '"') throw new IllegalArgumentException("Invalid CSV quoting");
+-                cell.append(c);
+-            }
++    static List<Map<String,Object>> read(String text){return read(text,new BoundedInput(InputResourcePolicy.defaults()),"csv-input");}
++    static List<Map<String,Object>> read(String text,BoundedInput budget,String source) {
++        if(text.startsWith("\uFEFF"))text=text.substring(1);
++        budget.check(text.length(),budget.policy.maxMemberBytes(),"CSV_DOCUMENT_CHARS",source);budget.work(text.length(),source);
++        budget.retain(Math.multiplyExact((long)text.length(),8),source);
++        List<Map<String,Object>> out=new ArrayList<>();List<String> header=null,row=new ArrayList<>();StringBuilder cell=new StringBuilder();
++        boolean quoted=false,closed=false;long rowChars=0;
++        for(int i=0;i<=text.length();i++) {
++            char c=i==text.length()?'\n':text.charAt(i);
++            if(i==text.length()&&quoted)throw new InputRejectedException(INCOMPLETE_INPUT,"CSV_QUOTE_TRUNCATED",source,"Unclosed CSV quote");
++            if(i<text.length())budget.check(++rowChars,budget.policy.maxRowChars(),"CSV_ROW_CHARS",source);
++            if(quoted) {
++                if(c=='"'){if(i+1<text.length()&&text.charAt(i+1)=='"'){cell.append('"');i++;budget.check(++rowChars,budget.policy.maxRowChars(),"CSV_ROW_CHARS",source);}else{quoted=false;closed=true;}}
++                else cell.append(c);
++            } else if(c=='"'&&cell.isEmpty()&&!closed)quoted=true;
++            else if(c==','||c=='\r'||c=='\n') {
++                if(c!=','&&row.isEmpty()&&cell.isEmpty()&&!closed){rowChars=0;continue;}
++                budget.check(row.size()+1,budget.policy.maxColumns(),"CSV_COLUMNS",source);row.add(cell.toString());cell.setLength(0);closed=false;
++                if(c!=',') {
++                    if(header==null){header=List.copyOf(row);if(header.stream().anyMatch(String::isEmpty)||new HashSet<>(header).size()!=header.size())throw new InputRejectedException(PARSE_ERROR,"CSV_HEADER_INVALID",source,"CSV header empty/duplicated");}
++                    else {
++                        budget.check(out.size()+1,budget.policy.maxRecords(),"CSV_RECORDS",source);
++                        if(row.size()!=header.size())throw new InputRejectedException(PARSE_ERROR,"CSV_FIELD_COUNT",source,"CSV field count mismatch");
++                        budget.retain(Math.multiplyExact((long)row.size(),128),source);Map<String,Object> item=new LinkedHashMap<>();
++                        for(int j=0;j<header.size();j++)item.put(header.get(j),row.get(j).isEmpty()?null:row.get(j));out.add(item);
++                    }
++                    row=new ArrayList<>();rowChars=0;
++                }
++            } else {if(closed||c=='"')throw new InputRejectedException(PARSE_ERROR,"CSV_QUOTING_INVALID",source,"Invalid CSV quoting");cell.append(c);}
+         }
+-        if (quoted) throw new IllegalArgumentException("Unclosed CSV quote");
+-        if (!row.isEmpty() || !cell.isEmpty() || closed) { row.add(cell.toString()); records.add(row); }
+-        if (records.isEmpty()) throw new IllegalArgumentException("CSV header missing");
+-        List<String> header = records.removeFirst();
+-        if (header.stream().anyMatch(String::isEmpty) || new HashSet<>(header).size() != header.size())
+-            throw new IllegalArgumentException("CSV header empty/duplicated");
+-        List<Map<String, Object>> out = new ArrayList<>();
+-        for (List<String> fields : records) {
+-            if (fields.size() != header.size()) throw new IllegalArgumentException("CSV field count mismatch");
+-            Map<String, Object> item = new LinkedHashMap<>();
+-            for (int i = 0; i < header.size(); i++) item.put(header.get(i), fields.get(i).isEmpty() ? null : fields.get(i));
+-            out.add(item);
+-        }
++        if(header==null)throw new InputRejectedException(INCOMPLETE_INPUT,"CSV_HEADER_MISSING",source,"CSV header missing");
+         return out;
+     }
+ }
+--- before/BaselineBindingResolver.java
++++ src/main/java/com/vsos/core/failureanalysis/BaselineBindingResolver.java
+@@ -22,15 +22,19 @@
+     }
+     /** expectedSha256 must come from the caller's authorized export reference, not from this file. */
+     public static Artifact readSnapshot(Path path, String expectedSha256) throws IOException {
+-        byte[] bytes = Files.readAllBytes(path);
++        BoundedInput input=new BoundedInput(InputResourcePolicy.defaults());
++        byte[] bytes = input.read(path,"baseline_snapshot");
+         String hash = sha256(bytes);
+         List<Issue> issues = new ArrayList<>();
+         Integrity integrity = expectedSha256 == null ? Integrity.UNVERIFIED : hash.equals(expectedSha256) ? Integrity.VERIFIED : Integrity.FAILED;
+         Object data = null;
+         SourceRef ref = new SourceRef("baseline_snapshot", "");
+         if (integrity == Integrity.FAILED) issues.add(new Issue(Status.INVALID, "HASH_MISMATCH", ref, "Baseline snapshot hash differs"));
+-        try { data = MiniJson.parseObject(new String(bytes, java.nio.charset.StandardCharsets.UTF_8)); }
+-        catch (IllegalArgumentException e) { issues.add(new Issue(Status.INVALID, "SCHEMA_PARSE_ERROR", ref, e.getMessage())); }
++        if(integrity!=Integrity.FAILED)try { data = input.parse(bytes,"application/json","baseline_snapshot");
++            if(!(data instanceof Map<?,?>))throw new IllegalArgumentException("JSON object required"); }
++        catch(InputRejectedException e){if(e.kind()==InputRejectedException.Kind.RESOURCE_LIMIT_EXCEEDED)throw e;
++            integrity=Integrity.FAILED;issues.add(new Issue(Status.INVALID,e.kind().name(),ref,e.reason()));}
++        catch (IllegalArgumentException e) { data=null;integrity=Integrity.FAILED;issues.add(new Issue(Status.INVALID, "SCHEMA_PARSE_ERROR", ref, e.getMessage())); }
+         return new Artifact("baseline_snapshot", "external", path.getFileName().toString(), hash, "application/json", integrity, data, issues);
+     }
+ 
+--- /dev/null
++++ src/main/java/com/vsos/core/failureanalysis/BoundedInput.java
+@@ -0,0 +1,107 @@
++package com.vsos.core.failureanalysis;
++
++import com.vsos.core.common.MiniJson;
++import java.io.*;
++import java.nio.*;
++import java.nio.charset.*;
++import java.nio.file.*;
++import java.util.*;
++import static com.vsos.core.failureanalysis.InputRejectedException.Kind.*;
++
++/** Session budgets include failed reads and repeated work. No raw-byte cache. JSON is
++ * buffered under strict bounds; lexical preflight protects the existing MiniJson parser. */
++public final class BoundedInput {
++    private static final java.util.regex.Pattern NUMBER=java.util.regex.Pattern.compile("-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?");
++    public final InputResourcePolicy policy;
++    private long bytes,work,retained;
++    private boolean exhausted;
++    public BoundedInput(InputResourcePolicy policy){this.policy=Objects.requireNonNull(policy);}
++    public static long checkedAdd(long current,long amount,String source) {
++        try {if(current<0||amount<0)throw new ArithmeticException();return Math.addExact(current,amount);}
++        catch(ArithmeticException e){throw limit("SIZE_COUNTER_OVERFLOW",source);}
++    }
++    public static InputRejectedException limit(String reason,String source){return new InputRejectedException(RESOURCE_LIMIT_EXCEEDED,reason,source,"Input resource budget exceeded");}
++    public void check(long amount,long maximum,String reason,String source){if(exhausted||amount>maximum){exhausted=true;throw limit(reason,source);}}
++    public void work(long amount,String source){work=checkedAdd(work,amount,source);check(work,policy.maxWork(),"PARSING_WORK",source);}
++    public void retain(long amount,String source){retained=checkedAdd(retained,amount,source);check(retained,policy.maxRetainedChargeBytes(),"RETAINED_ALLOCATION_CHARGE",source);}
++    public Map<String,Object> counters(){return Evidence.obj("actual_read_bytes",bytes,"parsing_work",work,"retained_allocation_charge_bytes",retained);}
++    public byte[] read(InputStream stream,String source,long compressedBytes) throws IOException {
++        try(var input=stream;var output=new ByteArrayOutputStream(8192)) {
++            if(exhausted)throw limit("SESSION_ALREADY_EXHAUSTED",source);
++            byte[] buffer=new byte[8192];long count=0;
++            for(int n;(n=input.read(buffer))!=-1;) {
++                count=checkedAdd(count,n,source);check(count,policy.maxMemberBytes(),"MEMBER_BYTES",source);
++                bytes=checkedAdd(bytes,n,source);check(bytes,policy.maxTotalBytes(),"CUMULATIVE_ACTUAL_BYTES",source);
++                if(compressedBytes>=0&&count/(double)Math.max(1,compressedBytes)>policy.maxCompressionRatio())check(1,0,"ACTUAL_COMPRESSION_RATIO",source);
++                work(n,source);output.write(buffer,0,n);
++            }
++            return output.toByteArray();
++        }
++    }
++    public byte[] read(Path path,String source)throws IOException {
++        check(Files.size(path),policy.maxMemberBytes(),"MEMBER_BYTES",source);
++        return read(Files.newInputStream(path),source,-1);
++    }
++    public String utf8(byte[] data,String source) {
++        try {String s=StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
++                .decode(ByteBuffer.wrap(data)).toString();return s.startsWith("\uFEFF")?s.substring(1):s;}
++        catch(CharacterCodingException e){throw new InputRejectedException(PARSE_ERROR,"UTF8_INVALID",source,"Malformed UTF-8");}
++    }
++    private static final class Frame {final char kind;boolean key,element=true;long count;final Set<String> keys;
++        Frame(char c){kind=c;key=c=='{';keys=key?new HashSet<>():Set.of();}}
++    /** Structural/token limits and duplicate keys before recursive allocation. MiniJson still owns grammar/semantic parsing. */
++    public Object json(String text,String source) {
++        check(text.length(),policy.maxMemberBytes(),"JSON_DOCUMENT_CHARS",source);work(text.length(),source);
++        retain(Math.multiplyExact((long)text.length(),8),source);
++        Deque<Frame> stack=new ArrayDeque<>();long values=0;
++        for(int i=0;i<text.length();) {
++            char c=text.charAt(i);if(Character.isWhitespace(c)||c==':'){i++;continue;}
++            if(c==',' ){if(!stack.isEmpty()){Frame f=stack.peek();f.key=f.kind=='{';f.element=true;}i++;continue;}
++            if(c=='}'||c==']'){if(stack.isEmpty()||stack.peek().kind!=(c=='}'?'{':'['))throw new InputRejectedException(PARSE_ERROR,"JSON_STRUCTURE_INVALID",source,"Mismatched container");stack.pop();i++;continue;}
++            Frame parent=stack.peek();boolean key=c=='"'&&parent!=null&&parent.kind=='{'&&parent.key;
++            retain(128,source);
++            if(!key){check(++values,policy.maxJsonValues(),"JSON_VALUES",source);if(parent!=null&&parent.kind=='['&&parent.element){check(++parent.count,policy.maxRecords(),"JSON_ARRAY_RECORDS",source);parent.element=false;}}
++            if(c=='{'||c=='['){check(stack.size()+1,policy.maxJsonDepth(),"JSON_DEPTH",source);stack.push(new Frame(c));i++;continue;}
++            if(c=='"') {
++                int start=i++;boolean closed=false;
++                while(i<text.length()) {
++                    char s=text.charAt(i++);if(s=='"'){closed=true;break;}
++                    if(s<32)throw new InputRejectedException(PARSE_ERROR,"JSON_STRING_CONTROL_INVALID",source,"Unescaped control character");
++                    if(s=='\\'&&i<text.length())i++;
++                    check(i-start-1,policy.maxStringChars(),"JSON_STRING_CHARS",source);
++                }
++                if(!closed)throw new InputRejectedException(INCOMPLETE_INPUT,"JSON_STRING_TRUNCATED",source,"Unterminated string");
++                if(key){String decoded;try{decoded=(String)MiniJson.parse(text.substring(start,i));}
++                    catch(IllegalArgumentException e){throw new InputRejectedException(PARSE_ERROR,"JSON_KEY_ESCAPE_INVALID",source,"Invalid key escape");}
++                    if(!parent.keys.add(decoded))throw new InputRejectedException(PARSE_ERROR,"JSON_DUPLICATE_KEY",source,"Duplicate object key");parent.key=false;}
++            } else {
++                int start=i;while(i<text.length()&&!Character.isWhitespace(text.charAt(i))&&",]}:".indexOf(text.charAt(i))<0)i++;
++                if(i==start)throw new InputRejectedException(PARSE_ERROR,"JSON_TOKEN_INVALID",source,"Invalid token");
++                check(i-start,policy.maxTokenChars(),"JSON_TOKEN_CHARS",source);
++                String token=text.substring(start,i);
++                if(c=='-'||Character.isDigit(c)) {
++                    if(!NUMBER.matcher(token).matches())throw new InputRejectedException(PARSE_ERROR,"JSON_NUMBER_INVALID",source,"Invalid number grammar");
++                    if((token.contains(".")||token.contains("e")||token.contains("E"))&&!Double.isFinite(Double.parseDouble(token)))throw new InputRejectedException(PARSE_ERROR,"JSON_NUMBER_NONFINITE",source,"Nonfinite numeric value");
++                }
++            }
++        }
++        if(!stack.isEmpty())throw new InputRejectedException(INCOMPLETE_INPUT,"JSON_CONTAINER_TRUNCATED",source,"Unterminated container");
++        // Includes parser tree, immutable Evidence copy and input characters; accounting model, not exact object layout.
++        try{return MiniJson.parse(text);}catch(IllegalArgumentException e){throw new InputRejectedException(PARSE_ERROR,"SCHEMA_PARSE_ERROR",source,"Malformed JSON grammar");}
++    }
++    public Object parse(byte[] data,String type,String source) {
++        if(type.equals("application/java-archive"))return null;
++        String text=utf8(data,source);
++        if(type.equals("text/csv"))return ArtifactCsv.read(text,this,source);
++        if(type.equals("application/x-ndjson")) {
++            List<Object> out=new ArrayList<>();int start=0;
++            for(int i=0;i<=text.length();i++)if(i==text.length()||text.charAt(i)=='\n'||text.charAt(i)=='\r') {
++                check(i-start,policy.maxRowChars(),"JSONL_ROW_CHARS",source);
++                if(i>start&&!text.substring(start,i).isBlank()){check(out.size()+1,policy.maxRecords(),"JSONL_RECORDS",source);Object row=json(text.substring(start,i),source);
++                    if(!(row instanceof Map<?,?>))throw new InputRejectedException(PARSE_ERROR,"JSONL_OBJECT_REQUIRED",source,"Expected object record");out.add(row);}start=i+1;
++            } else check(i-start+1,policy.maxRowChars(),"JSONL_ROW_CHARS",source);
++            return out;
++        }
++        return json(text,source);
++    }
++}
+--- before/ConsumerSourceInspection.java
++++ src/main/java/com/vsos/core/failureanalysis/ConsumerSourceInspection.java
+@@ -67,7 +67,7 @@
+         Map<String,Artifact> artifacts=new TreeMap<>();Map<String,String> texts=new TreeMap<>();boolean audited=true;
+         for(String name:new TreeSet<>(PATHS.keySet())){
+             String relative="src/main/java/com/vsos/"+PATHS.get(name);Path file=repository.resolve(relative);
+-            byte[] bytes=Files.isRegularFile(file)?Files.readAllBytes(file):null;String hash=bytes==null?null:sha256(bytes);
++            byte[] bytes=Files.isRegularFile(file)?new BoundedInput(InputResourcePolicy.defaults()).read(file,relative):null;String hash=bytes==null?null:sha256(bytes);
+             artifacts.put(name,new Artifact("consumer-source:"+name,"source",relative,hash,"text/x-java-source",bytes==null?Integrity.UNVERIFIED:Integrity.VERIFIED,null,List.of()));
+             texts.put(name,bytes==null?"":new String(bytes,StandardCharsets.UTF_8));audited&=Objects.equals(AUDITED.get(name),hash);
+         }return new Profile(artifacts,texts,audited);
+--- before/HandoffSnapshots.java
++++ src/main/java/com/vsos/core/failureanalysis/HandoffSnapshots.java
+@@ -11,17 +11,23 @@
+ public final class HandoffSnapshots {
+     private HandoffSnapshots() {}
+     public static Artifact read(Path path, String id, String independentlyExpectedSha256) throws IOException {
+-        byte[] bytes=Files.readAllBytes(path);String hash=sha256(bytes);
++        return read(path,id,independentlyExpectedSha256,new BoundedInput(InputResourcePolicy.defaults()));
++    }
++    public static Artifact read(Path path,String id,String independentlyExpectedSha256,BoundedInput budget)throws IOException {
++        byte[] bytes=budget.read(path,id);String hash=sha256(bytes);
+         Integrity integrity=independentlyExpectedSha256==null?Integrity.UNVERIFIED:
+                 hash.equals(independentlyExpectedSha256)?Integrity.VERIFIED:Integrity.FAILED;
+         List<Issue> issues=new ArrayList<>();Object data=null;SourceRef ref=new SourceRef(id,"");
+         if(integrity==Integrity.FAILED)issues.add(new Issue(Status.INVALID,"HASH_MISMATCH",ref,"Offline input hash differs"));
+-        try{data=MiniJson.parseObject(new String(bytes,StandardCharsets.UTF_8));}
+-        catch(IllegalArgumentException e){issues.add(new Issue(Status.INVALID,"SCHEMA_PARSE_ERROR",ref,e.getMessage()));}
++        if(integrity!=Integrity.FAILED)try{data=budget.parse(bytes,"application/json",id);
++            if(!(data instanceof Map<?,?>))throw new InputRejectedException(InputRejectedException.Kind.PARSE_ERROR,"JSON_OBJECT_REQUIRED",id,"Expected object");}
++        catch(InputRejectedException e){if(e.kind()==InputRejectedException.Kind.RESOURCE_LIMIT_EXCEEDED)throw e;
++            data=null;integrity=Integrity.FAILED;issues.add(new Issue(Status.INVALID,e.kind().name(),ref,e.reason()));
++            issues.add(new Issue(Status.INVALID,"SCHEMA_PARSE_ERROR",ref,e.reason()));}
+         return new Artifact(id,"external",path.getFileName().toString(),hash,"application/json",integrity,data,issues);
+     }
+     public static Artifact source(Path path,String id) throws IOException {
+-        byte[] bytes=Files.readAllBytes(path);
++        byte[] bytes=new BoundedInput(InputResourcePolicy.defaults()).read(path,id);
+         return new Artifact(id,"source",path.toString(),sha256(bytes),"text/x-java-source",Integrity.VERIFIED,null,List.of());
+     }
+     static boolean verified(Artifact a,String schema){return a!=null&&a.usable()&&a.integrity()==Integrity.VERIFIED
+--- /dev/null
++++ src/main/java/com/vsos/core/failureanalysis/InputRejectedException.java
+@@ -0,0 +1,21 @@
++package com.vsos.core.failureanalysis;
++
++import java.util.Map;
++import static com.vsos.core.failureanalysis.Evidence.*;
++
++/** Controlled ingestion rejection, never an AEB diagnosis or partial canonical score. */
++public final class InputRejectedException extends IllegalArgumentException {
++    public enum Kind { RESOURCE_LIMIT_EXCEEDED, INVALID_ARTIFACT, INTEGRITY_MISMATCH, PARSE_ERROR, INCOMPLETE_INPUT }
++    private final Kind kind;
++    private final String reason;
++    private final SourceRef source;
++    public InputRejectedException(Kind kind,String reason,String artifact,String detail) {
++        super(com.vsos.core.common.MiniJson.write(obj("category",kind.name(),"reason_code",reason,"source_ref",new SourceRef(artifact,"").json(),
++                "detail",detail.length()>512?detail.substring(0,512):detail)));
++        this.kind=kind;this.reason=reason;this.source=new SourceRef(artifact,"");
++    }
++    public Kind kind(){return kind;}
++    public String reason(){return reason;}
++    public SourceRef source(){return source;}
++    public Map<String,Object> json(){return obj("category",kind.name(),"reason_code",reason,"source_ref",source.json());}
++}
+--- /dev/null
++++ src/main/java/com/vsos/core/failureanalysis/InputResourcePolicy.java
+@@ -0,0 +1,23 @@
++package com.vsos.core.failureanalysis;
++
++/** Finite offline test defaults, not approved production limits. Retained charge is
++ * a conservative allocation model, NOT a measurement or hard bound on JVM heap/RSS.
++ * Limits can only be raised explicitly, and cannot exceed the declared heap envelope. */
++public record InputResourcePolicy(long maxArchiveBytes,long maxMemberBytes,long maxTotalBytes,long maxCompressionRatio,
++                                  int maxMembers,int maxRuns,int maxRecords,int maxRunRecords,int maxRowChars,int maxColumns,
++                                  int maxJsonDepth,int maxStringChars,int maxTokenChars,int maxJsonValues,
++                                  long maxRetainedChargeBytes,long maxWork) {
++    public InputResourcePolicy {
++        if(maxArchiveBytes<=0||maxMemberBytes<=0||maxTotalBytes<=0||maxCompressionRatio<=0||maxMembers<=0||maxRuns<=0||maxRecords<=0||maxRunRecords<=0
++                ||maxRowChars<=0||maxColumns<=0||maxJsonDepth<=0||maxJsonDepth>64||maxStringChars<=0||maxTokenChars<=0||maxJsonValues<=0
++                ||maxRetainedChargeBytes<=0||maxWork<=0||maxMemberBytes>Integer.MAX_VALUE-8L
++                ||maxMemberBytes>Runtime.getRuntime().maxMemory()/16||maxRetainedChargeBytes>Runtime.getRuntime().maxMemory()/2
++                ||(long)maxMembers*2048>Runtime.getRuntime().maxMemory()/4||(long)maxRuns*1024>Runtime.getRuntime().maxMemory()/8)
++            throw new IllegalArgumentException("Finite positive resource limits within heap envelope are required; JSON depth <=64");
++    }
++    public static InputResourcePolicy defaults() {
++        long heap=Runtime.getRuntime().maxMemory();
++        return new InputResourcePolicy(64L<<20,Math.min(8L<<20,heap/64),256L<<20,100,(int)Math.min(4096,heap/8192),256,20000,60000,65536,128,
++                48,262144,256,200000,Math.min(1L<<30,heap/2),256L<<20);
++    }
++}
+--- before/OfflineMoboHandoff.java
++++ src/main/java/com/vsos/core/failureanalysis/OfflineMoboHandoff.java
+@@ -15,11 +15,14 @@
+         if(Files.exists(output)||output.startsWith(reports)||output.equals(raw)||Files.isDirectory(raw)&&output.startsWith(raw))
+             throw new IllegalArgumentException("OUTPUT_OVERLAPS_INPUT_OR_EXISTS");
+         List<MoboHandoffBuilder.MemberInput> members=new ArrayList<>();
++        BoundedInput reportInput=new BoundedInput(InputResourcePolicy.defaults());
+         try(var adapter=new RawArtifactAdapter(raw)){
+             for(String directory:adapter.runDirectories()){
+                 Run run=adapter.read(directory);Path report=reports.resolve(run.runKey()+".json").normalize();
+                 if(!report.startsWith(reports)||!Files.isRegularFile(report))throw new IllegalArgumentException("DIAGNOSTIC_REPORT_MISSING:"+run.runKey());
+-                members.add(new MoboHandoffBuilder.MemberInput(run,MiniJson.parseObject(Files.readString(report))));
++                Artifact loaded=HandoffSnapshots.read(report,run.runKey()+":diagnostic",null,reportInput);
++                if(!loaded.usable())throw new InputRejectedException(InputRejectedException.Kind.INVALID_ARTIFACT,"DIAGNOSTIC_REPORT_INVALID",loaded.id(),"Invalid report input");
++                members.add(new MoboHandoffBuilder.MemberInput(run,HandoffSnapshots.map(loaded.data())));
+             }
+         }
+         List<Artifact> sources=new ArrayList<>();for(String path:List.of("src/main/java/com/vsos/core/evaluation/AnalysisMetrics.java",
+--- before/RawArtifactAdapter.java
++++ src/main/java/com/vsos/core/failureanalysis/RawArtifactAdapter.java
+@@ -18,56 +18,73 @@
+     private final Map<String, Map<String, Object>> manifest = new LinkedHashMap<>();
+     private final List<Issue> indexIssues = new ArrayList<>();
+ 
+-    public RawArtifactAdapter(Path input) throws IOException {
+-        root = input.toAbsolutePath().normalize();
+-        zip = Files.isDirectory(root) ? null : new ZipFile(root.toFile(), StandardCharsets.UTF_8);
+-        if (zip != null) {
+-            var entries = zip.entries();
+-            while (entries.hasMoreElements()) {
+-                String path = entries.nextElement().getName();
+-                safe(path);
+-                if (!paths.add(path)) throw new IOException("Duplicate ZIP entry: " + path);
++    private final BoundedInput budget;
++    private final Map<String,Artifact> cache=new HashMap<>();
++    private final Map<String,Run> runCache=new HashMap<>();
++    private List<String> directories;
++    private boolean closed;
++    public RawArtifactAdapter(Path input)throws IOException {this(input,InputResourcePolicy.defaults());}
++    public RawArtifactAdapter(Path input,InputResourcePolicy policy)throws IOException {
++        root=input.toAbsolutePath().normalize();budget=new BoundedInput(policy);ZipFile opened=null;
++        if(!Files.exists(root))throw new InputRejectedException(InputRejectedException.Kind.INCOMPLETE_INPUT,"INPUT_ROOT_MISSING",root.getFileName().toString(),"Input root is missing");
++        try {
++            if(!Files.isDirectory(root)){paths.addAll(ArchiveIndex.read(root,budget));opened=new ZipFile(root.toFile(),StandardCharsets.UTF_8);}
++            else try(var files=Files.walk(root)) {
++                var iterator=files.iterator();long total=0,visited=0;Set<String> folded=new HashSet<>();
++                while(iterator.hasNext()) {
++                    Path file=iterator.next();budget.check(++visited,policy.maxMembers(),"DIRECTORY_ENTRY_COUNT",root.getFileName().toString());budget.work(1,"directory-index");if(!Files.isRegularFile(file))continue;
++                    String name=root.relativize(file).toString().replace('\\','/');safe(name);
++                    budget.retain(256L+name.length()*4L,name);
++                    if(!folded.add(name.toLowerCase(Locale.ROOT)))ArchiveIndex.bad("DIRECTORY_NAME_COLLISION",name);
++                    budget.check(paths.size()+1,policy.maxMembers(),"MEMBER_COUNT",name);paths.add(name);
++                    long size=Files.size(file);budget.check(size,policy.maxMemberBytes(),"DECLARED_MEMBER_BYTES",name);
++                    total=BoundedInput.checkedAdd(total,size,name);budget.check(total,policy.maxTotalBytes(),"DECLARED_CUMULATIVE_BYTES",name);
++                }
+             }
+-        } else try (var files = Files.walk(root)) {
+-            files.filter(Files::isRegularFile).forEach(p -> paths.add(root.relativize(p).toString().replace('\\', '/')));
+-        }
+-        if (paths.contains("manifest.csv")) {
+-            try {
+-                for (Map<String, Object> row : ArtifactCsv.read(text("manifest.csv"))) {
+-                    String path = Objects.toString(row.get("path_in_zip"), "");
+-                    safe(path);
+-                    if (manifest.putIfAbsent(path, row) != null)
+-                        indexIssues.add(new Issue(Status.CONFLICTING, "DUPLICATE_MANIFEST_IDENTITY",
+-                                new SourceRef("manifest.csv", "path_in_zip=" + path), "Duplicate manifest member"));
+-                }
+-            } catch (IllegalArgumentException e) {
+-                indexIssues.add(new Issue(Status.INVALID, "MANIFEST_SCHEMA_INVALID",
+-                        new SourceRef("manifest.csv", ""), e.getMessage()));
++            zip=opened;
++            if(paths.contains("manifest.csv")) {
++                Artifact index=load("manifest.csv","__INDEX__");
++                if(index.data() instanceof List<?> records)for(Object item:records) {
++                    @SuppressWarnings("unchecked") Map<String,Object> row=(Map<String,Object>)item;
++                    String path=Objects.toString(row.get("path_in_zip"),"");safe(path);
++                    if(manifest.putIfAbsent(path,row)!=null)indexIssues.add(new Issue(Status.CONFLICTING,"DUPLICATE_MANIFEST_IDENTITY",new SourceRef("manifest.csv","path_in_zip="+path),"Duplicate manifest member"));
++                } else indexIssues.addAll(index.issues());
+             }
+-        }
++            if(manifest.containsKey("manifest.csv"))ArchiveIndex.bad("MANIFEST_SELF_REFERENCE_UNSUPPORTED","manifest.csv");
++            directories=discover();budget.check(directories.size(),policy.maxRuns(),"RUN_COUNT",root.getFileName().toString());
++        } catch(IOException|RuntimeException e){if(opened!=null)try{opened.close();}catch(IOException close){e.addSuppressed(close);}throw e;}
+     }
+-
+-    public List<String> runDirectories() {
++    public Map<String,Object> resourceCounters(){return budget.counters();}
++    public List<String> runDirectories() {return directories;}
++    private List<String> discover() {
+         Set<String> dirs = new TreeSet<>();
+         Set<String> candidates = new TreeSet<>(paths); candidates.addAll(manifest.keySet());
+         for (String path : candidates) {
+             Matcher m = RUN.matcher(path);
+-            if (m.matches()) dirs.add(m.group(1) + "/" + m.group(2) + "/rep" + m.group(3) + "_a" + m.group(4));
++            if (m.matches()){dirs.add(m.group(1) + "/" + m.group(2) + "/rep" + m.group(3) + "_a" + m.group(4));budget.check(dirs.size(),budget.policy.maxRuns(),"RUN_COUNT",path);}
+         }
+         return List.copyOf(dirs);
+     }
+ 
+     public Run read(String directory) throws IOException {
++        if(closed)throw new InputRejectedException(InputRejectedException.Kind.INCOMPLETE_INPUT,"INPUT_SESSION_CLOSED",directory,"Reader is closed");
++        budget.check(0,budget.policy.maxWork(),"SESSION_ALREADY_EXHAUSTED",directory);
++        safe(directory);
++        if(runCache.containsKey(directory))return runCache.get(directory);
++        budget.check(runCache.size()+1,budget.policy.maxRuns(),"RUN_COUNT",directory);
+         Matcher m = RUN.matcher(directory + "/result.json");
+         if (!m.matches()) throw new IllegalArgumentException("Unsupported run directory: " + directory);
+         String caseDir = m.group(2);
+         String key = caseDir + "-R" + m.group(3) + ("1".equals(m.group(4)) ? "" : "-A" + m.group(4));
+         String caseKey = caseDir.replaceFirst("-OFF$", "");
+         Map<String, Artifact> artifacts = new LinkedHashMap<>();
++        long records=0;
+         for (String file : List.of("result.json", "sensors/frames.csv", "sensors/ground_truth.csv", "sensors/collisions.json",
+                 "sensors/summary.json", "lifecycle.json", "core/vsos-core.jar")) {
+             String name = file.substring(file.lastIndexOf('/') + 1).replaceFirst("\\.(json|csv|jar)$", "");
+             artifacts.put(name, load(directory + "/" + file, key));
++            Object stream=name.equals("result")?at(artifacts.get(name).data(),"/outcome/frames"):artifacts.get(name).data();
++            if(stream instanceof List<?> list){records=BoundedInput.checkedAdd(records,list.size(),directory);budget.check(records,budget.policy.maxRunRecords(),"RUN_RECORDS",directory);}
+         }
+         artifacts.put("bundle", load(m.group(1) + "/" + caseDir + "/bundle.json", key));
+         artifacts.put("environment", load(m.group(1) + "/environment.json", key));
+@@ -84,7 +101,7 @@
+                     issues.add(new Issue(Status.CONFLICTING, "INCONSISTENT_IDENTITY", ref, pair.getKey() + " disagrees with member path"));
+             }
+         }
+-        return new Run(key, caseKey, directory, artifacts, issues);
++        Run run=new Run(key,caseKey,directory,artifacts,issues);runCache.put(directory,run);return run;
+     }
+ 
+     private Artifact load(String path, String key) throws IOException {
+@@ -95,7 +112,18 @@
+         String uri = zip == null ? path : root.getFileName() + "!/" + path;
+         if (!paths.contains(path)) return new Artifact(path, key, uri, null, type, Integrity.UNVERIFIED, null,
+                 List.of(new Issue(Status.UNKNOWN, "SOURCE_MISSING", ref, path)));
+-        byte[] bytes = bytes(path);
++        if(cache.containsKey(path)) {
++            Artifact cached=cache.get(path);
++            if(key.equals(cached.runKey()))return cached;
++            // Global metadata is copied by Evidence's immutable constructor for each run.
++            reserveCopy(cached.data(),path);
++            return new Artifact(path,key,uri,cached.sha256(),type,cached.integrity(),cached.data(),cached.issues());
++        }
++        byte[] bytes;
++        try{bytes=bytes(path);}catch(IOException e){
++            Artifact failed=new Artifact(path,key,uri,null,type,Integrity.FAILED,null,List.of(new Issue(Status.INVALID,"INTEGRITY_MISMATCH",ref,"Unreadable or truncated member")));
++            cache.put(path,failed);return failed;
++        }
+         String hash = sha256(bytes);
+         List<Issue> issues = new ArrayList<>();
+         Map<String, Object> row = manifest.get(path);
+@@ -106,32 +134,37 @@
+             integrity = Integrity.FAILED;
+             issues.add(new Issue(Status.INVALID, "SIZE_MISMATCH", ref, "Byte length differs from manifest"));
+         }
+-        Object data = null;
+-        try {
+-            String content = new String(bytes, StandardCharsets.UTF_8).replaceFirst("^\uFEFF", "");
+-            if (path.endsWith(".csv")) data = ArtifactCsv.read(content);
+-            else if (path.endsWith(".jsonl")) {
+-                List<Object> lines = new ArrayList<>();
+-                for (String line : content.split("\\R")) if (!line.isBlank()) lines.add(MiniJson.parseObject(line));
+-                data = lines;
+-            } else if (path.endsWith(".json")) data = MiniJson.parse(content);
+-        } catch (IllegalArgumentException e) {
+-            issues.add(new Issue(Status.INVALID, "SCHEMA_PARSE_ERROR", ref, e.getMessage()));
++        Object data=null;
++        if(integrity!=Integrity.FAILED)try{data=budget.parse(bytes,type,path);}
++        catch(InputRejectedException e) {
++            if(e.kind()==InputRejectedException.Kind.RESOURCE_LIMIT_EXCEEDED)throw e;
++            integrity=Integrity.FAILED;
++            issues.add(new Issue(Status.INVALID,e.kind().name(),ref,e.reason()));
++            issues.add(new Issue(Status.INVALID,"SCHEMA_PARSE_ERROR",ref,e.reason()));
+         }
+-        return new Artifact(path, key, uri, hash, type, integrity, data, issues);
++        Artifact loaded=new Artifact(path,key,uri,hash,type,integrity,data,issues);cache.put(path,loaded);return loaded;
+     }
+-
+-    private byte[] bytes(String path) throws IOException {
+-        if (zip != null) try (var in = zip.getInputStream(zip.getEntry(path))) { return in.readAllBytes(); }
+-        Path resolved = root.resolve(path).normalize();
+-        if (!resolved.startsWith(root) || !resolved.toRealPath().startsWith(root.toRealPath()))
+-            throw new IOException("Artifact outside input root");
+-        return Files.readAllBytes(resolved);
++    private void reserveCopy(Object data,String path) {
++        long count=0;Deque<Object> todo=new ArrayDeque<>();if(data!=null)todo.push(data);
++        while(!todo.isEmpty()) {Object item=todo.pop();budget.work(1,path);count=BoundedInput.checkedAdd(count,128,path);
++            if(item instanceof Map<?,?> map){for(Object v:map.values())if(v!=null)todo.push(v);}
++            else if(item instanceof List<?> list){for(Object v:list)if(v!=null)todo.push(v);}
++            else if(item instanceof String str)count=BoundedInput.checkedAdd(count,(long)str.length()*4,path);
++        }
++        budget.retain(count,path);
+     }
+-    private String text(String path) throws IOException { return new String(bytes(path), StandardCharsets.UTF_8); }
+-    private static void safe(String path) throws IOException {
+-        if (path.isEmpty() || path.startsWith("/") || path.contains("\\") || path.contains(":")
+-                || Arrays.asList(path.split("/")).contains("..")) throw new IOException("Unsafe artifact path: " + path);
++    private byte[] bytes(String path)throws IOException {
++        byte[] data;
++        if(zip!=null) {
++            var entry=zip.getEntry(path);data=budget.read(zip.getInputStream(entry),path,entry.getCompressedSize());
++            java.util.zip.CRC32 crc=new java.util.zip.CRC32();crc.update(data);
++            if(data.length!=entry.getSize()||crc.getValue()!=entry.getCrc())throw new IOException("INTEGRITY_MISMATCH: ZIP size/CRC");
++        } else {
++            Path resolved=root.resolve(path).toRealPath();if(!resolved.startsWith(root.toRealPath()))throw new IOException("Artifact outside input root");
++            data=budget.read(resolved,path);
++        }
++        return data;
+     }
+-    @Override public void close() throws IOException { if (zip != null) zip.close(); }
++    private static void safe(String path){ArchiveIndex.safe(path);}
++    @Override public void close()throws IOException {closed=true;cache.clear();runCache.clear();manifest.clear();paths.clear();if(zip!=null)zip.close();}
+ }
+--- before/SearchRangeResolver.java
++++ src/main/java/com/vsos/core/failureanalysis/SearchRangeResolver.java
+@@ -22,7 +22,8 @@
+     /** Reads checked-out catalog code; no copied numeric catalog constants and no DB access. */
+     public static Domains repositorySources(Path repository) throws IOException {
+         Path catalog=repository.resolve("src/main/java/com/vsos/backend/service/system/BootstrapService.java");
+-        byte[] bytes=Files.readAllBytes(catalog);String source=new String(bytes,StandardCharsets.UTF_8);Map<String,Object> intervals=new TreeMap<>();
++        BoundedInput input=new BoundedInput(InputResourcePolicy.defaults());
++        byte[] bytes=input.read(catalog,"catalog-source");String source=input.utf8(bytes,"catalog-source");Map<String,Object> intervals=new TreeMap<>();
+         Pattern row=Pattern.compile("new Object\\[\\]\\{\\\"([A-Z_]+)\\\",\\s*\\\"[^\\\"]+\\\",\\s*\\\"[^\\\"]+\\\",\\s*\\\"[^\\\"]+\\\",\\s*([0-9.]+),\\s*([0-9.]+),");
+         Matcher matcher=row.matcher(source);while(matcher.find())if(BaselineBindingResolver.PARAMETERS.containsKey(matcher.group(1)))
+             intervals.put(matcher.group(1),obj("lower",Double.valueOf(matcher.group(2)),"upper",Double.valueOf(matcher.group(3)),"unit",unit(matcher.group(1))));
+@@ -32,7 +33,7 @@
+         Path engine=repository.resolve("src/main/java/com/vsos/core/mobo/ParameterBounds.java");Map<String,Object> bounds=new TreeMap<>();
+         var defaults=ParameterBounds.defaults();for(String key:BaselineBindingResolver.PARAMETERS.keySet())
+             bounds.put(key,obj("lower",defaults.lower(key),"upper",defaults.upper(key),"unit",unit(key)));
+-        Artifact eng=new Artifact("engine-domain","external",repository.relativize(engine).toString(),sha256(Files.readAllBytes(engine)),"text/x-java-source",Integrity.VERIFIED,
++        Artifact eng=new Artifact("engine-domain","external",repository.relativize(engine).toString(),sha256(input.read(engine,"engine-domain")),"text/x-java-source",Integrity.VERIFIED,
+                 obj("schema","vehicsim.sourced-parameter-domain/v1","scope","LOADED_ENGINE_DEFAULTS","intervals",bounds,
+                         "runtime_source_equivalence","UNKNOWN"),List.of());
+         return new Domains(cat,eng,null,null,List.of());

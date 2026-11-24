@@ -1,0 +1,15 @@
+{
+  "command": [
+    "java",
+    "-Xmx32m",
+    "-cp",
+    "target/classes",
+    "com.vsos.core.failureanalysis.OfflineFailureAnalysis",
+    "docs\\failure-analysis-v3\\final-audit\\evidence\\SYNTHETIC-oversized-input.zip",
+    "docs\\failure-analysis-v3\\fixes\\batch-04-evidence\\red-oversized-output"
+  ],
+  "returncode": 1,
+  "oom": true,
+  "source": "ORIGINAL_UNCHANGED_AUDIT_ARCHIVE",
+  "archive_bytes": 65415
+}

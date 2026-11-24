@@ -1,0 +1,18 @@
+{
+  "scope": "SYNTHETIC_RESOURCE_ATTACK_PROBE_NOT_SIMULATION_DATA",
+  "command": [
+    "java",
+    "-Xmx32m",
+    "-cp",
+    "target/classes",
+    "com.vsos.core.failureanalysis.OfflineFailureAnalysis",
+    "docs\\failure-analysis-v3\\final-audit\\evidence\\SYNTHETIC-oversized-input.zip",
+    "docs\\failure-analysis-v3\\final-audit\\evidence\\oversized-output"
+  ],
+  "compressed_archive_bytes": 65415,
+  "uncompressed_member_bytes": 67108866,
+  "heap_limit": "32 MiB",
+  "returncode": 1,
+  "out_of_memory": true,
+  "no_production_source_modified": true
+}

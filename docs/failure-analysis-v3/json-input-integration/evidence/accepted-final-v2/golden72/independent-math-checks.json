@@ -1,0 +1,231 @@
+{
+  "scope": "EXACT_MODEL_FIXTURES_NOT_MEASUREMENT_UNCERTAINTY",
+  "checks": [
+    {
+      "id": "P02-distance-0",
+      "actual": 12.642291666666667,
+      "expected": 12.642291666666665,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-time-0",
+      "actual": 1.8375,
+      "expected": 1.8375,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-distance-1",
+      "actual": 18.252993827160495,
+      "expected": 18.252993827160495,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-time-1",
+      "actual": 2.1861111111111113,
+      "expected": 2.186111111111111,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-distance-2",
+      "actual": 20.785227299016157,
+      "expected": 20.785227299016157,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-time-2",
+      "actual": 2.587549234711658,
+      "expected": 2.587549234711658,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-distance-3",
+      "actual": 0.4608185106778919,
+      "expected": 0.4608185106778919,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-time-3",
+      "actual": 0.566227766016838,
+      "expected": 0.566227766016838,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-distance-4",
+      "actual": 0.0,
+      "expected": 0.0,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-time-4",
+      "actual": 0.0,
+      "expected": 0.0,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-distance-5",
+      "actual": 0.8266666666666667,
+      "expected": 0.8266666666666668,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-time-5",
+      "actual": 0.65,
+      "expected": 0.6499999999999999,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-distance-6",
+      "actual": 0.8266666601666668,
+      "expected": 0.8266666601666668,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-time-6",
+      "actual": 0.64999999875,
+      "expected": 0.64999999875,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-distance-7",
+      "actual": 0.8266666731666668,
+      "expected": 0.8266666731666666,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P02-time-7",
+      "actual": 0.65000000125,
+      "expected": 0.65000000125,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "P01-friction",
+      "actual": 6.376500000000001,
+      "expected": 6.376500000000001,
+      "absolute_numeric_tolerance": 1e-12,
+      "passed": true
+    },
+    {
+      "id": "I01-crossing-vector",
+      "actual": 10.198039027185569,
+      "expected": 10.198039027185569,
+      "absolute_numeric_tolerance": 1e-12,
+      "passed": true
+    },
+    {
+      "id": "G03-corner-tangent",
+      "actual": true,
+      "expected": true,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "G03-corner-clearance",
+      "actual": 0.0,
+      "expected": 0,
+      "absolute_numeric_tolerance": 1e-12,
+      "passed": true
+    },
+    {
+      "id": "G03-corner-separated",
+      "actual": false,
+      "expected": false,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "G03-euclidean-not-expanded-box",
+      "actual": 0.0656854249492379,
+      "expected": 0.06568542494923812,
+      "absolute_numeric_tolerance": 1e-12,
+      "passed": true
+    },
+    {
+      "id": "G04-full-body-occupancy-enter",
+      "actual": 0.27,
+      "expected": 0.27,
+      "absolute_numeric_tolerance": 1e-12,
+      "passed": true
+    },
+    {
+      "id": "G04-full-body-occupancy-exit",
+      "actual": 0.8300000000000001,
+      "expected": 0.8300000000000001,
+      "absolute_numeric_tolerance": 1e-12,
+      "passed": true
+    },
+    {
+      "id": "G03-rear-body-conflict",
+      "actual": true,
+      "expected": true,
+      "absolute_numeric_tolerance": 1e-08,
+      "passed": true
+    },
+    {
+      "id": "G03-missing-clock",
+      "actual": null,
+      "expected": null,
+      "absolute_numeric_tolerance": null,
+      "passed": true
+    },
+    {
+      "id": "G04-PET-disjoint",
+      "actual": 1.0,
+      "expected": 1,
+      "absolute_numeric_tolerance": 1e-12,
+      "passed": true
+    },
+    {
+      "id": "G04-PET-overlap",
+      "actual": null,
+      "expected": null,
+      "absolute_numeric_tolerance": null,
+      "passed": true
+    },
+    {
+      "id": "P04-margin-boundary",
+      "actual": 0.0,
+      "expected": 0,
+      "absolute_numeric_tolerance": 1e-12,
+      "passed": true
+    },
+    {
+      "id": "P03-inverse-boundary",
+      "actual": 7.999999999999997,
+      "expected": 8,
+      "absolute_numeric_tolerance": 1e-10,
+      "passed": true
+    },
+    {
+      "id": "P03-infeasible-below-boundary",
+      "actual": "NO_FEASIBLE_CAP_IN_DECLARED_DOMAIN",
+      "expected": "NO_FEASIBLE_CAP_IN_DECLARED_DOMAIN",
+      "absolute_numeric_tolerance": null,
+      "passed": true
+    },
+    {
+      "id": "G02-nonclosing-not-safe",
+      "actual": null,
+      "expected": null,
+      "absolute_numeric_tolerance": null,
+      "passed": true
+    }
+  ],
+  "passed": 32,
+  "failed": 0
+}

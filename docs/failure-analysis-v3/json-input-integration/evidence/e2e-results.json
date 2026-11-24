@@ -1,0 +1,359 @@
+{
+  "scope": "PUBLIC_PRODUCTION_CLIS_REAL_EXPORTS_OFFLINE_NO_CONSUMER_EXECUTION",
+  "inputs": [
+    {
+      "input": "D:\\Downloads\\result_run2499_full_dataset.json",
+      "sha256": "e7957e2467628058453a6724fce09c96ce2ab810d70efcc3e92aaf11a1d7bf81",
+      "runs": 1,
+      "report_directory": "docs/failure-analysis-v3/handover/examples/outputs/run2499-v1/diagnostics",
+      "handoff": "docs/failure-analysis-v3/handover/examples/outputs/run2499-v1/handoff.json",
+      "compatibility": "docs/failure-analysis-v3/handover/examples/outputs/run2499-v1/compatibility.json",
+      "status": "PASS"
+    },
+    {
+      "input": "D:\\Downloads\\result_run2499_full_dataset_v2.json",
+      "sha256": "33c935d8a8075edce3400879ebfd6f543b64fe1b380879eef3719c9899945244",
+      "runs": 1,
+      "report_directory": "docs/failure-analysis-v3/handover/examples/outputs/run2499-v2/diagnostics",
+      "handoff": "docs/failure-analysis-v3/handover/examples/outputs/run2499-v2/handoff.json",
+      "compatibility": "docs/failure-analysis-v3/handover/examples/outputs/run2499-v2/compatibility.json",
+      "status": "PASS"
+    },
+    {
+      "input": "D:\\Downloads\\vsos-collections-2026-11-24\\vehicsim-variant-1032-collection.json",
+      "sha256": "6eca4da1435bcfb4706408111016f1a21b0520926e593cbd22ee87f412b86bff",
+      "runs": 2,
+      "report_directory": "docs/failure-analysis-v3/handover/examples/outputs/variant-1032/diagnostics",
+      "handoff": "docs/failure-analysis-v3/handover/examples/outputs/variant-1032/handoff.json",
+      "compatibility": "docs/failure-analysis-v3/handover/examples/outputs/variant-1032/compatibility.json",
+      "status": "PASS"
+    },
+    {
+      "input": "D:\\Downloads\\vsos-collections-2026-11-24\\vehicsim-variant-1033-collection.json",
+      "sha256": "a0986fc7d5fdd3bb83452724591a1d80ce41065754e0636727f2c737c00b8799",
+      "runs": 2,
+      "report_directory": "docs/failure-analysis-v3/handover/examples/outputs/variant-1033/diagnostics",
+      "handoff": "docs/failure-analysis-v3/handover/examples/outputs/variant-1033/handoff.json",
+      "compatibility": "docs/failure-analysis-v3/handover/examples/outputs/variant-1033/compatibility.json",
+      "status": "PASS"
+    },
+    {
+      "input": "D:\\Downloads\\vsos-collections-2026-11-24\\vehicsim-variant-1034-collection.json",
+      "sha256": "ab94207b381f9d8f87dc0ca6382b6aef5b0f92f4a66a41abb953c29b9f1ae1d0",
+      "runs": 2,
+      "report_directory": "docs/failure-analysis-v3/handover/examples/outputs/variant-1034/diagnostics",
+      "handoff": "docs/failure-analysis-v3/handover/examples/outputs/variant-1034/handoff.json",
+      "compatibility": "docs/failure-analysis-v3/handover/examples/outputs/variant-1034/compatibility.json",
+      "status": "PASS"
+    }
+  ],
+  "report_executions": 8,
+  "distinct_run_ids": 6,
+  "golden_reports_identical": 72,
+  "golden_handoff_digest_unchanged": true,
+  "historical_commands": [
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineDiagnosticAnalysis",
+        "D:\\Downloads\\result_run2499_full_dataset.json",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-0-result_run2499_full_dataset\\diagnostics"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-0-result_run2499_full_dataset\\diagnostic-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineMoboHandoff",
+        "D:\\Downloads\\result_run2499_full_dataset.json",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-0-result_run2499_full_dataset\\diagnostics",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-0-result_run2499_full_dataset\\handoff.json",
+        "F:\\CodeVipChu\\SEP490-FA26-G15"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-0-result_run2499_full_dataset\\handoff-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineConsumerCompatibility",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-0-result_run2499_full_dataset\\handoff.json",
+        "f8a433af571cdc5a46f412a459cbc3cd40ffd28294a834ec77101c299552dd35",
+        "F:\\CodeVipChu\\SEP490-FA26-G15",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-0-result_run2499_full_dataset\\compatibility.json"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-0-result_run2499_full_dataset\\compatibility-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineDiagnosticAnalysis",
+        "D:\\Downloads\\result_run2499_full_dataset_v2.json",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-1-result_run2499_full_dataset_v2\\diagnostics"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-1-result_run2499_full_dataset_v2\\diagnostic-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineMoboHandoff",
+        "D:\\Downloads\\result_run2499_full_dataset_v2.json",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-1-result_run2499_full_dataset_v2\\diagnostics",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-1-result_run2499_full_dataset_v2\\handoff.json",
+        "F:\\CodeVipChu\\SEP490-FA26-G15"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-1-result_run2499_full_dataset_v2\\handoff-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineConsumerCompatibility",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-1-result_run2499_full_dataset_v2\\handoff.json",
+        "85802d7813ab859c1fdc19e7176d9bd98e7d9d3c4c2732370d63e59211e95f07",
+        "F:\\CodeVipChu\\SEP490-FA26-G15",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-1-result_run2499_full_dataset_v2\\compatibility.json"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-1-result_run2499_full_dataset_v2\\compatibility-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineDiagnosticAnalysis",
+        "D:\\Downloads\\vsos-collections-2026-11-24\\vehicsim-variant-1032-collection.json",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-2-vehicsim-variant-1032-collection\\diagnostics"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-2-vehicsim-variant-1032-collection\\diagnostic-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineMoboHandoff",
+        "D:\\Downloads\\vsos-collections-2026-11-24\\vehicsim-variant-1032-collection.json",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-2-vehicsim-variant-1032-collection\\diagnostics",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-2-vehicsim-variant-1032-collection\\handoff.json",
+        "F:\\CodeVipChu\\SEP490-FA26-G15"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-2-vehicsim-variant-1032-collection\\handoff-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineConsumerCompatibility",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-2-vehicsim-variant-1032-collection\\handoff.json",
+        "fabb53a94982d6007b4e0d1d6e89f670f748991120e7b41821527bbd20f1c0c3",
+        "F:\\CodeVipChu\\SEP490-FA26-G15",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-2-vehicsim-variant-1032-collection\\compatibility.json"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-2-vehicsim-variant-1032-collection\\compatibility-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineDiagnosticAnalysis",
+        "D:\\Downloads\\vsos-collections-2026-11-24\\vehicsim-variant-1033-collection.json",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-3-vehicsim-variant-1033-collection\\diagnostics"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-3-vehicsim-variant-1033-collection\\diagnostic-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineMoboHandoff",
+        "D:\\Downloads\\vsos-collections-2026-11-24\\vehicsim-variant-1033-collection.json",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-3-vehicsim-variant-1033-collection\\diagnostics",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-3-vehicsim-variant-1033-collection\\handoff.json",
+        "F:\\CodeVipChu\\SEP490-FA26-G15"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-3-vehicsim-variant-1033-collection\\handoff-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineConsumerCompatibility",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-3-vehicsim-variant-1033-collection\\handoff.json",
+        "66ecb098b3d4bfcf8716181a50dcf514630886db5b7aaae7916c87002c8c5357",
+        "F:\\CodeVipChu\\SEP490-FA26-G15",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-3-vehicsim-variant-1033-collection\\compatibility.json"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-3-vehicsim-variant-1033-collection\\compatibility-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineDiagnosticAnalysis",
+        "D:\\Downloads\\vsos-collections-2026-11-24\\vehicsim-variant-1034-collection.json",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-4-vehicsim-variant-1034-collection\\diagnostics"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-4-vehicsim-variant-1034-collection\\diagnostic-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineMoboHandoff",
+        "D:\\Downloads\\vsos-collections-2026-11-24\\vehicsim-variant-1034-collection.json",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-4-vehicsim-variant-1034-collection\\diagnostics",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-4-vehicsim-variant-1034-collection\\handoff.json",
+        "F:\\CodeVipChu\\SEP490-FA26-G15"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-4-vehicsim-variant-1034-collection\\handoff-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineConsumerCompatibility",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-4-vehicsim-variant-1034-collection\\handoff.json",
+        "fad44bb95b77191c13f88a377dc3faf60b5bbda02e2634fe8b3e4de788f9c41e",
+        "F:\\CodeVipChu\\SEP490-FA26-G15",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-4-vehicsim-variant-1034-collection\\compatibility.json"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\input-4-vehicsim-variant-1034-collection\\compatibility-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineDiagnosticAnalysis",
+        "D:\\Downloads\\golden18_raw_artifacts.zip",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\diagnostics"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\diagnostic-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineMoboHandoff",
+        "D:\\Downloads\\golden18_raw_artifacts.zip",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\diagnostics",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\GOLDEN18-audited-handoff.json",
+        "F:\\CodeVipChu\\SEP490-FA26-G15"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\handoff-cli.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "com.vsos.core.failureanalysis.OfflineConsumerCompatibility",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\GOLDEN18-audited-handoff.json",
+        "a990a54115faa9354e14ff7370aff06fbe36b841e174b6174280475859f1c234",
+        "F:\\CodeVipChu\\SEP490-FA26-G15",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\GOLDEN18-audited-compatibility.json"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\compatibility-cli.log"
+    },
+    {
+      "argv": [
+        "javac",
+        "-cp",
+        "target/classes;target/test-classes",
+        "-d",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\probe-classes",
+        "docs/failure-analysis-v3/final-audit/verification/FinalAuditProbe.java"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\probe-compile.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes;target/test-classes;docs\\failure-analysis-v3\\json-input-integration\\evidence\\probe-classes",
+        "com.vsos.core.failureanalysis.FinalAuditProbe",
+        "D:\\Downloads\\golden18_raw_artifacts.zip",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\independent-probes-after.json"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\probe.log"
+    },
+    {
+      "argv": [
+        "python",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\verify_golden_and_physics.py"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\oracle.log"
+    },
+    {
+      "argv": [
+        "java",
+        "-Xmx2g",
+        "-cp",
+        "target/classes",
+        "docs\\failure-analysis-v3\\json-input-integration\\evidence\\VerifyReportDigests.java"
+      ],
+      "exit_code": 0,
+      "log": "docs\\failure-analysis-v3\\json-input-integration\\evidence\\accepted-final-v2\\golden72\\digests.log"
+    }
+  ],
+  "cleanup_note": "Sample locations updated during handover cleanup; original command argv retained as historical execution evidence. Removed Golden72 full replays are in external verified backup; summaries retained under evidence/golden72."
+}
