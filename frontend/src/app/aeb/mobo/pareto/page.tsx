@@ -8,7 +8,7 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { EmptyState, ErrorNote, Pagination, PillButton } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
-import { AebNav } from "@/components/aeb/AebNav";
+import { VehicSimSelect } from "@/components/VehicSimSelect";
 
 export default function AebMoboParetoPage() {
   const router = useRouter();
@@ -59,7 +59,7 @@ export default function AebMoboParetoPage() {
       const res = await vehicsimApi.selectOptimizationCandidate(selectedRunId, trialId);
       setCreatedCandidate({
         id: res.candidate_aeb_version_id,
-        label: `Trial #${trialId}`,
+        label: `Phương án #${trialId}`,
         regressionTestId: res.regression_test_id,
       });
       await refresh();
@@ -80,11 +80,10 @@ export default function AebMoboParetoPage() {
         { label: "Tối ưu MOBO", href: "/aeb/mobo" },
         { label: "Tập nghiệm Pareto" },
       ]}
-      title="Tập nghiệm Pareto tối ưu (Pareto Frontier)"
       actions={
         <div className="flex items-center gap-2">
           <PillButton href={`/aeb/mobo/trials${selectedRunId ? `?run_id=${selectedRunId}` : ""}`} variant="light">
-            Xem toàn bộ Trials
+            Xem toàn bộ lượt thử
           </PillButton>
           <PillButton href="/aeb/candidates" variant="light">
             Xem ứng viên đã chọn
@@ -93,7 +92,6 @@ export default function AebMoboParetoPage() {
       }
     >
       <ErrorNote message={error} />
-      <AebNav active="mobo_pareto" />
 
       {createdCandidate && (
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-vehicsim-ok-bg p-4 text-[13px] text-vehicsim-ok shadow-sm">
@@ -127,22 +125,20 @@ export default function AebMoboParetoPage() {
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
         <div className="flex items-center gap-3">
           <label className="text-[13px] font-bold text-vehicsim-ink">Chọn đợt tối ưu hoá:</label>
-          <select
+          <VehicSimSelect
             aria-label="Chọn đợt tối ưu hoá"
-            value={selectedRunId ?? ""}
-            onChange={(e) => {
-              const newId = Number(e.target.value);
+            value={selectedRunId}
+            onChange={(newId) => {
               setSelectedRunId(newId);
               router.replace(`/aeb/mobo/pareto?run_id=${newId}`);
             }}
-            className="h-10 rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-bold text-vehicsim-ink"
-          >
-            {(runs ?? []).map((r) => (
-              <option key={r.id} value={r.id}>
-                Run #{r.id} · {r.name} ({r.pareto_count} nghiệm Pareto)
-              </option>
-            ))}
-          </select>
+            options={(runs ?? []).map((r) => ({
+              value: r.id,
+              label: `Run #${r.id} · ${r.name}`,
+              sublabel: `${r.pareto_count} nghiệm Pareto`,
+            }))}
+            className="w-auto min-w-[320px] max-w-md"
+          />
         </div>
 
         {activeRun && (
@@ -152,7 +148,7 @@ export default function AebMoboParetoPage() {
             </span>
             <span>·</span>
             <span>
-              Tiến độ: <strong>{activeRun.completed_trials}/{activeRun.max_trials} trials</strong>
+              Tiến độ: <strong>{activeRun.completed_trials}/{activeRun.max_trials} lượt thử</strong>
             </span>
           </div>
         )}
@@ -175,58 +171,54 @@ export default function AebMoboParetoPage() {
         {paretoTrials?.length === 0 ? (
           <div className="p-10">
             <EmptyState title="Chưa có nghiệm Pareto cho đợt chạy này">
-              Đợt chạy đang trong giai đoạn khởi tạo ban đầu hoặc chưa có trial nào hoàn thành.
+              Đợt chạy đang trong giai đoạn khởi tạo ban đầu hoặc chưa có lượt thử nào hoàn thành.
             </EmptyState>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left text-[13px]">
-              <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
+            <table className="w-full min-w-[1080px] text-left text-[13px]">
+              <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12px] font-black uppercase tracking-wider text-white">
                 <tr className="h-12">
-                  <th className="w-12 px-3 py-3.5 text-center">STT</th>
-                  <th className="px-4 py-3.5">Trial #</th>
-                  <th className="px-4 py-3.5">TTC (s)</th>
-                  <th className="px-4 py-3.5">Trễ (s)</th>
-                  <th className="px-4 py-3.5">Tăng áp (m/s³)</th>
-                  <th className="px-4 py-3.5">Gia tốc (m/s²)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-decision">RMS Jerk</th>
-                  <th className="px-4 py-3.5 text-vehicsim-danger">Tốc độ va chạm</th>
-                  <th className="px-4 py-3.5 text-vehicsim-ink">Quãng phanh</th>
-                  <th className="px-4 py-3.5 text-right">Thao tác</th>
+                  <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">TTC Threshold (s)</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Brake Activation Delay (s)</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Brake Build-up Rate (m/s³)</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Max Deceleration (m/s²)</th>
+                  <th className="px-4 py-3.5 text-vehicsim-decision whitespace-nowrap">RMS Jerk</th>
+                  <th className="px-4 py-3.5 text-vehicsim-danger whitespace-nowrap">Tốc độ va chạm</th>
+                  <th className="px-4 py-3.5 text-vehicsim-ink whitespace-nowrap">Quãng phanh</th>
+                  <th className="w-[170px] px-4 py-3.5 text-center whitespace-nowrap">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
-                {pagedPareto?.map((t, idx) => (
+                {pagedPareto?.map((t) => (
                   <tr key={t.id} className="hover:bg-vehicsim-row transition-colors">
-                    <td className="w-12 px-3 py-4 text-center font-mono text-[12px] font-bold text-vehicsim-faint tabular-nums">
-                      {(page - 1) * PAGE_SIZE + idx + 1}
-                    </td>
-                    <td className="px-4 py-3.5 font-mono font-bold text-vehicsim-ink">
+                    <td className="pl-5 pr-4 py-3.5 font-mono font-bold text-vehicsim-ink whitespace-nowrap">
                       #{t.trial_number}
                     </td>
-                    <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.TTC_THRESHOLD ?? "—"}</td>
-                    <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
-                    <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
-                    <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.MAX_DECELERATION ?? "—"}</td>
-                    <td className="px-4 py-3.5 font-bold text-vehicsim-decision">
+                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.TTC_THRESHOLD ?? "—"}</td>
+                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
+                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
+                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.MAX_DECELERATION ?? "—"}</td>
+                    <td className="px-4 py-3.5 font-bold text-vehicsim-decision whitespace-nowrap">
                       {t.rms_jerk_mps3 !== null ? `${t.rms_jerk_mps3.toFixed(2)} m/s³` : "—"}
                     </td>
-                    <td className="px-4 py-3.5 font-bold text-vehicsim-danger">
+                    <td className="px-4 py-3.5 font-bold text-vehicsim-danger whitespace-nowrap">
                       {t.impact_speed_mps !== null
                         ? t.impact_speed_mps <= 0.001
                           ? "0.0 km/h (An toàn)"
                           : `${(t.impact_speed_mps * 3.6).toFixed(1)} km/h`
                         : "—"}
                     </td>
-                    <td className="px-4 py-3.5 font-bold text-vehicsim-ink">
+                    <td className="px-4 py-3.5 font-bold text-vehicsim-ink whitespace-nowrap">
                       {t.stopping_distance_m !== null ? `${t.stopping_distance_m.toFixed(2)} m` : "—"}
                     </td>
-                    <td className="px-4 py-3.5 text-right">
+                    <td className="w-[170px] px-4 py-3.5 text-center whitespace-nowrap">
                       <button
                         type="button"
                         disabled={selectingTrialId !== null || !canWrite}
                         onClick={() => handleSelectCandidate(t.id)}
-                        className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-3 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs"
+                        className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-3.5 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs whitespace-nowrap"
                       >
                         {selectingTrialId === t.id ? "Đang lưu…" : "Chọn làm ứng viên"}
                       </button>

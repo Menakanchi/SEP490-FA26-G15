@@ -61,8 +61,7 @@ export function LegacyFailureCases({ initialScenario, navigation }: { initialSce
     catch (err) { setExportError({ scope: filterKey, message: analysisError(err) }); }
     finally { setExporting(false); }
   }
-  return <VehicSimPage step={3} crumbs={[{ label: "Phân tích" }, { label: "Ca lỗi" }]} title="Tra cứu ca lỗi"
-    subtitle="Đọc nhận định theo luật, đối chiếu số đo và mở bằng chứng của từng lượt chạy."
+  return <VehicSimPage step={3} crumbs={[{ label: "Phân tích" }, { label: "Ca lỗi" }]}
     actions={<PillButton disabled={exporting || loading || !data || Boolean(error)} onClick={() => void exportCsv()}>{exporting ? "Đang xuất…" : "Xuất CSV"}</PillButton>}>
     {navigation}<ErrorNote message={error ?? (exportError?.scope === filterKey ? exportError.message : null)} />
     {error && <div><button className="analysis-button" onClick={() => setRefresh(value => value + 1)}>Thử tải lại</button></div>}

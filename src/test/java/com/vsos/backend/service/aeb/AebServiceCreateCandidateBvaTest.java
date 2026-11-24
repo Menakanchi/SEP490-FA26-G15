@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,12 +62,13 @@ class AebServiceCreateCandidateBvaTest {
     private static final String MUST_DIFFER = "ứng viên phải khác version cha ít nhất một tham số";
 
     private Db db;
+    private Queries queries;
     private AebService service;
 
     @BeforeEach
     void setUp() {
         db = mock(Db.class);
-        Queries queries = mock(Queries.class);
+        queries = mock(Queries.class);
         service = new AebService(db, queries);
         when(db.first(startsWith("SELECT * FROM aeb_versions"), eq(PARENT), eq(PROJECT)))
                 .thenReturn(new Row(Json.obj("id", PARENT, "project_id", PROJECT, "version_no", 3L, "status", "BASELINE")));
@@ -145,7 +147,53 @@ class AebServiceCreateCandidateBvaTest {
         assertVersionRow(1L, "v1", "MANUAL", null);
     }
 
-    // ------------------------------------------------------------------ boundary
+    
+    // ------------------------------------------------------------------ error cases
+
+    @Test
+    @DisplayName("UTCID33 E: missing parent version throws NotFoundException")
+    void utcid33_missingParent() {
+        // parent not found
+        when(db.first(startsWith("SELECT * FROM aeb_versions"), eq(MISSING_PARENT), eq(PROJECT)))
+                .thenReturn(null);
+        assertThatThrownBy(() -> service.createCandidate(PROJECT, USER, MISSING_PARENT, Map.of(TTC, 2.0), "label", null))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("parent AEB version");
+    }
+
+    @Test
+    @DisplayName("UTCID34 E: parentValues null leads to InvalidRequestException")
+    void utcid34_nullParentValues() {
+        // simulate queries returning null for parent values
+        when(queries.aebValues(PARENT)).thenReturn(null);
+        assertThatThrownBy(() -> service.createCandidate(PROJECT, USER, PARENT, Map.of(TTC, 2.0), "label", null))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("parent AEB version missing parameter values");
+    }
+
+    @Test
+    @DisplayName("UTCID35 E: race condition – two candidates created concurrently receive same version_no")
+    void utcid35_raceConditionDuplicateVersionNo() {
+        // keep scalar returning same max version_no (3) for both calls
+        when(db.scalar(startsWith("SELECT MAX(version_no)"), eq(PROJECT))).thenReturn(3L);
+        // mock insert to return two different ids for each call
+        when(db.insert(startsWith("INSERT INTO aeb_versions"), any(Object[].class)))
+                .thenReturn(NEW_VERSION)
+                .thenReturn(NEW_VERSION + 1);
+        // first candidate
+        long v1 = service.createCandidate(PROJECT, USER, PARENT, Map.of(TTC, 2.0), "c1", null);
+        // second candidate (simulating concurrent call)
+        long v2 = service.createCandidate(PROJECT, USER, PARENT, Map.of(TTC, 2.5), "c2", null);
+        assertThat(v1).isNotEqualTo(v2);
+        // capture insert arguments to verify version_no is duplicated
+        ArgumentCaptor<Object[]> captor = ArgumentCaptor.forClass(Object[].class);
+        verify(db, times(2)).insert(startsWith("INSERT INTO aeb_versions"), captor.capture());
+        List<Object[]> allArgs = captor.getAllValues();
+        // both calls should have version_no = 4 (max+1) -> duplicate
+        assertThat(allArgs.get(0)[1]).isEqualTo(4L);
+        assertThat(allArgs.get(1)[1]).isEqualTo(4L);
+    }
+
 
     @Test
     @DisplayName("UTCID09 B: TTC_THRESHOLD = 0.50 (min) is accepted")

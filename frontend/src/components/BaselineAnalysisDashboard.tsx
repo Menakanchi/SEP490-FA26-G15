@@ -7,7 +7,6 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton } from "@/components/VehicSimUi";
 import { AnalysisDatasetPreparation } from "@/components/analysis/AnalysisDatasetPreparation";
-import { analysisListTitle } from "@/components/analysis/analysisRouteTitles";
 import { restoreSelection, selectionChecks, type ChosenRun } from "@/components/analysis/analysisSelectionData";
 import { AnalysisRunExplorer } from "@/components/analysis/AnalysisRunExplorer";
 import { AnalysisOverview } from "@/components/analysis/AnalysisOverview";
@@ -173,14 +172,12 @@ export function BaselineAnalysisDashboard() {
     disabled={!canWrite || busy || !storageKey || draft?.key !== storageKey || !eligible(run)} value={chosen[run.run_id]?.role ?? ""} onChange={e => assign(run, e.target.value)}>
     <option value="">Không chọn</option><option value="OPTIMIZATION">Tối ưu</option><option value="VALIDATION">Xác minh</option>
   </select>;
-  const title = analysisListTitle(view);
   const nav = <AnalysisNav view={view} count={selection.length} />;
   const optimizationFamily = filters.scenario_id === undefined
     ? ctx?.families[0]
     : ctx?.families.find(f => f.id === filters.scenario_id);
   if (view === "failures") return <LegacyFailureCases initialScenario={filters.scenario_id} navigation={nav} />;
-  return <VehicSimPage step={3} title={title} crumbs={[{ label: "Phân tích" }, { label: view === "overview" ? "Tổng quan baseline" : view === "runs" ? "Lượt chạy" : "Tập bàn giao" }]}
-    subtitle={view === "dataset" ? "Rà soát hai tập độc lập, giữ ca an toàn và chốt bằng chứng trước khi bàn giao." : "Từ kết quả mô phỏng đến bằng chứng kỹ thuật và tập dữ liệu cho bước tối ưu AEB."}
+  return <VehicSimPage step={3} crumbs={[{ label: "Phân tích" }, { label: view === "overview" ? "Tổng quan baseline" : view === "runs" ? "Lượt chạy" : "Tập bàn giao" }]}
     actions={view === "dataset" ? (
       <PillButton disabled={!savedId || snapshotLoading || busy} onClick={() => setSnapshotRefresh(value => value + 1)}>Tải lại tập đã chốt</PillButton>
     ) : (
@@ -210,7 +207,6 @@ export function BaselineAnalysisDashboard() {
         {([["weather", "Thời tiết", ["CLEAR", "CLOUDY", "RAIN", "HEAVY_RAIN", "FOG"]], ["time_of_day", "Thời điểm", ["DAY", "DUSK", "NIGHT"]]] as const).map(([key, label, values]) => <label key={key}>{label}<select value={filters[key] ?? ""} onChange={e => update({ [key]: e.target.value }, true)}><option value="">Tất cả</option>{values.map(value => <option key={value} value={value}>{analysisLabel(value)}</option>)}</select></label>)}
         {([["variant_id", "ID biến thể"], ["vehicle_id", "ID xe"], ["simulator", "Phiên bản simulator"]] as const).map(([key, label]) => <label key={key}>{label}<input type={key === "simulator" ? "text" : "number"} min={1} value={filters[key] ?? ""} onChange={e => update({ [key]: e.target.value }, true)} /></label>)}
       </div></details>
-      <p className="analysis-caption">Thống kê và danh sách dùng cùng bộ lọc. Đổi bộ lọc giữ nguyên tập đã chọn.</p>
     </section>}
     {view === "overview" && <AnalysisOverview data={data} loading={loading} hasError={Boolean(error)} onOpenRuns={() => update({ view: "runs" })} onFilterSimulator={simulator => update({ simulator }, true)} returnTo={returnTo} scope={activeFilters.map(filter => filter.label)} />}
     {view === "dataset" && <AnalysisDatasetPreparation selection={selection} checks={checks} ready={draftReady} canWrite={canWrite} canSave={canSave}

@@ -32,8 +32,6 @@ export default function WorkspacesPage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Workspace" }]}
-      title="Không gian làm việc & Đội ngũ (Workspace)"
-      subtitle="Quản lý danh sách các không gian làm việc cộng tác, phân bổ nhân sự và dự án kỹ thuật."
     >
       {!allowed ? (
         <EmptyState title="Bạn chưa có quyền truy cập khu vực workspace. Quản trị viên sử dụng mục Quản trị → Workspace." />

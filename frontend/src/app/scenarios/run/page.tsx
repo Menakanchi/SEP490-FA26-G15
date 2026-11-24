@@ -10,6 +10,7 @@ import { Card, EmptyState, ErrorNote, PillButton, Tag, cx, simulatorLabel } from
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { FamilyItem } from "@/types/vehicsim";
+import { VehicSimSelect } from "@/components/VehicSimSelect";
 
 export default function ScenarioRunPage() {
   const { ctx, refresh, canWrite } = useVehicSimContext();
@@ -108,8 +109,6 @@ export default function ScenarioRunPage() {
     <VehicSimPage
       step={2}
       crumbs={[{ label: "Mô phỏng", href: "/scenarios/run" }, { label: "Chạy baseline" }]}
-      title="Đo lường an toàn phanh bản cơ sở"
-      subtitle="Mô phỏng toàn bộ biến thể kịch bản với cấu hình AEB gốc để phát hiện ca va chạm và đo tỷ lệ phanh oan."
       actions={
         <PillButton href="/scenarios" variant="light">
           ← Danh sách họ kịch bản
@@ -132,18 +131,17 @@ export default function ScenarioRunPage() {
             <p className="text-[13px] text-vehicsim-muted">Chọn kịch bản từ mục Thiết kế kịch bản để chạy thử nghiệm.</p>
           </div>
           {families && families.length > 0 && (
-            <select
+            <VehicSimSelect
               aria-label="Chọn họ kịch bản kiểm thử"
-              value={selectedId ?? ""}
-              onChange={(e) => pickFamily(Number(e.target.value))}
-              className="rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-2 text-[13px] font-bold text-vehicsim-ink shadow-sm"
-            >
-              {families.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.code} · {f.name} (v{f.version} - {f.variants} biến thể)
-                </option>
-              ))}
-            </select>
+              value={selectedId}
+              onChange={(val) => pickFamily(Number(val))}
+              options={families.map((f) => ({
+                value: f.id,
+                label: `${f.code} · ${f.name}`,
+                sublabel: `v${f.version} — ${f.variants} biến thể`,
+              }))}
+              className="w-auto min-w-[300px]"
+            />
           )}
         </div>
 

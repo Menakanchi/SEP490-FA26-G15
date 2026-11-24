@@ -7,8 +7,7 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
-import { AebNav } from "@/components/aeb/AebNav";
-import { KEY_PARAMS } from "@/components/aeb/aebTypes";
+import { KEY_PARAMS, PARAM_NAMES } from "@/components/aeb/aebTypes";
 
 export default function AebCandidatesPage() {
   const { ctx, canWrite } = useVehicSimContext();
@@ -35,8 +34,6 @@ export default function AebCandidatesPage() {
     <VehicSimPage
       step={4}
       crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Ứng viên chờ duyệt" }]}
-      title="Bộ tham số ứng viên chờ kiểm định"
-      subtitle="Các cấu hình tham số tiềm năng sinh ra từ MOBO hoặc hiệu chỉnh tay, sẵn sàng đưa sang kiểm thử hồi quy."
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/mobo/new" variant="light">
@@ -49,7 +46,6 @@ export default function AebCandidatesPage() {
       }
     >
       <ErrorNote message={error} />
-      <AebNav active="candidates" />
 
       <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
@@ -80,7 +76,7 @@ export default function AebCandidatesPage() {
                   <th className="px-5 py-3.5">Nguồn gốc</th>
                   {KEY_PARAMS.map((code) => (
                     <th key={code} className="px-4 py-3.5">
-                      {catalog.get(code)?.name ?? code}
+                      {PARAM_NAMES[code] ?? catalog.get(code)?.name ?? code}
                     </th>
                   ))}
                   <th className="px-5 py-3.5">Ngày tạo</th>

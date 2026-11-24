@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { AXES, FamilyForm, TIMES, WEATHERS, type FamilyInitial } from "@/components/FamilyForm";
-import { ErrorNote, PillButton, Tag, cx } from "@/components/VehicSimUi";
+import { ErrorNote, PillButton, Tag, cx, VehicSimSelect } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import { LEAD_AXES } from "@/components/FamilyForm";
 import { LEAD_CATEGORIES, type DescribeKey, type DescribeResult, type DescribedIr, type FieldOrigin, type TimeOfDay, type Weather } from "@/types/vehicsim";
@@ -107,8 +107,6 @@ export default function DescribeScenarioPage() {
     <VehicSimPage
       step={1}
       crumbs={[{ label: "Thiết kế kịch bản", href: "/scenarios" }, { label: "Sinh từ mô tả" }]}
-      title="Khởi tạo kịch bản từ ngôn ngữ tự nhiên"
-      subtitle="Trích xuất thông số giao thông thành Scenario IR và sinh biến thể kiểm thử tự động bằng AI."
       actions={<PillButton href="/scenarios?new=1">Nhập tay</PillButton>}
     >
       <ErrorNote message={error} />
@@ -410,17 +408,13 @@ function IrRow({ label, origin, error, children }: { label: string; origin?: Fie
 
 function Select<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
   return (
-    <select
+    <VehicSimSelect
       value={value}
-      onChange={(e) => onChange(e.target.value as T)}
-      className="h-9 w-[160px] rounded-[10px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-medium text-vehicsim-ink focus:border-vehicsim-primary focus:outline-none"
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+      onChange={(v) => onChange(v as T)}
+      options={options}
+      buttonClassName="h-9 w-[160px] rounded-[10px]"
+      className="w-[160px]"
+    />
   );
 }
 

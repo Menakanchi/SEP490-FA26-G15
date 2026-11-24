@@ -122,7 +122,8 @@ const GROUPS: Group[] = [
       { label: "Tổng quan cải tiến", href: "/aeb" },
       { label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo" },
       { label: "Chỉnh tay tham số", href: "/aeb/manual" },
-      { label: "Thư viện & So sánh", href: "/aeb/versions", matchPaths: ["/aeb/candidates", "/aeb/compare"] },
+      { label: "Danh sách phiên bản", href: "/aeb/versions", matchPaths: ["/aeb/candidates"] },
+      { label: "Đối chiếu thông số", href: "/aeb/compare" },
     ],
   },
   {
@@ -442,7 +443,8 @@ function TeamNav({ role }: { role: string }) {
   }, []);
 
   const reviewer = role === "REVIEWER";
-  const team = reviewer || role === "ENGINEER";
+  const isAdmin = role === "ADMIN";
+  const team = reviewer || role === "ENGINEER" || isAdmin;
   const stepLinks = teamJourneyLinks(reviewer);
   const steps: Group[] = JOURNEY_STEPS.map(({ key, n, title }) => ({
     key,
@@ -459,6 +461,18 @@ function TeamNav({ role }: { role: string }) {
     icon: lucideIcon(FolderOpen),
     href: "/projects",
     prefix: "/projects",
+  };
+
+  const adminGroup: Group = {
+    key: "admin",
+    label: "Quản trị hệ thống",
+    icon: svgIcon("/vehicsim/icon-sliders.svg"),
+    prefix: "/admin",
+    children: [
+      { label: "Tài khoản", href: "/admin/users" },
+      { label: "Workspace", href: "/admin/workspaces" },
+      { label: "Tài liệu kỹ thuật", href: "/admin/tech-references" },
+    ],
   };
 
   const sections: NavSection[] = team
@@ -485,6 +499,15 @@ function TeamNav({ role }: { role: string }) {
             ...(personal > 0 ? [personalGroup] : []),
           ],
         },
+        ...(isAdmin
+          ? [
+              {
+                id: "admin",
+                title: "Hệ thống & Quản trị",
+                groups: [adminGroup],
+              },
+            ]
+          : []),
       ]
     : [
         {
@@ -595,7 +618,8 @@ function ExperiencerNav() {
           { label: "Tổng quan cải tiến", href: "/aeb" },
           { label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo" },
           { label: "Chỉnh tay tham số", href: "/aeb/manual" },
-          { label: "Thư viện & So sánh", href: "/aeb/versions", matchPaths: ["/aeb/candidates", "/aeb/compare"] },
+          { label: "Danh sách phiên bản", href: "/aeb/versions", matchPaths: ["/aeb/candidates"] },
+          { label: "Đối chiếu thông số", href: "/aeb/compare" },
         ]),
         step(
           "VERIFY",
@@ -636,7 +660,7 @@ export function VehicSimSidebar() {
         </>
       ) : (
         <>
-          {(user?.roleCode === "ENGINEER" || user?.roleCode === "REVIEWER") && (
+          {(user?.roleCode === "ENGINEER" || user?.roleCode === "REVIEWER" || user?.roleCode === "ADMIN") && (
             <TeamProjectContext reviewer={user.roleCode === "REVIEWER"} />
           )}
           <TeamNav role={user?.roleCode ?? ""} />

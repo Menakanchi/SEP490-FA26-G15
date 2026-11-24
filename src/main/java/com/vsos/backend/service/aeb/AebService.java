@@ -43,6 +43,10 @@ public class AebService {
         if (parent == null) {
             throw new NotFoundException("parent AEB version");
         }
+        Map<String, Double> parentValues = queries.aebValues(parent.lng("id"));
+        if (parentValues == null) {
+            throw new InvalidRequestException("parent AEB version missing parameter values");
+        }
         Map<String, Row> catalog = new LinkedHashMap<>();
         for (Row p : db.list("SELECT * FROM aeb_parameters")) {
             catalog.put(p.str("code"), p);
@@ -67,7 +71,7 @@ public class AebService {
                 throw new InvalidRequestException(e.getKey() + " = " + e.getValue() + " ngoài khoảng [" + lo + ", " + hi + "] " + p.str("unit"));
             }
         }
-        Map<String, Double> parentValues = queries.aebValues(parent.lng("id"));
+
         Map<String, Double> merged = new LinkedHashMap<>(parentValues);
         merged.putAll(values);
         if (merged.equals(parentValues)) {

@@ -17,8 +17,10 @@ import styles from "./AnalysisRunDetail.module.css";
 
 const PARAMS = ["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "MAX_DECELERATION", "BRAKE_BUILDUP_RATE"];
 const PARAM_NAMES: Record<string, string> = {
-  TTC_THRESHOLD: "Ngưỡng TTC", BRAKE_ACTIVATION_DELAY: "Trễ kích hoạt phanh",
-  MAX_DECELERATION: "Giảm tốc tối đa", BRAKE_BUILDUP_RATE: "Tốc độ tăng lực phanh",
+  TTC_THRESHOLD: "TTC Threshold",
+  BRAKE_ACTIVATION_DELAY: "Brake Activation Delay",
+  MAX_DECELERATION: "Max Deceleration",
+  BRAKE_BUILDUP_RATE: "Brake Build-up Rate",
 };
 const measured = (value: unknown, unit: string) => formatMeasurement(value, unit, undefined, true);
 const objective = (value: unknown, unit: string) => formatMeasurement(value, unit, 3, true);
