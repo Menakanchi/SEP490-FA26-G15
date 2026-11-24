@@ -144,18 +144,18 @@ export default function AebMoboNewPage() {
           <div className="grid grid-cols-1 gap-3.5 rounded-lg border border-solid border-vehicsim-line bg-vehicsim-soft/60 p-3.5 text-[12.5px] sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <span className="font-bold text-vehicsim-ink">
-                Số điểm khởi tạo ban đầu:
+                Số lượt thử nghiệm (Max Trials):
               </span>
               <p className="text-vehicsim-muted leading-relaxed">
-                Số lượng bộ tham số AEB được lấy mẫu phân bổ đều (Sobol) ở giai đoạn đầu nhằm thăm dò không gian tìm kiếm và làm dữ liệu mồi huấn luyện mô hình Gaussian Process.
+                Tổng số lần xe chạy thử mô phỏng trong cả đợt. Càng nhiều lần thì kết quả càng tối ưu nhưng thời gian chạy sẽ lâu hơn.
               </p>
             </div>
             <div className="flex flex-col gap-1">
               <span className="font-bold text-vehicsim-ink">
-                Số lượt thử nghiệm (Max Trials):
+                Số điểm khởi tạo ban đầu:
               </span>
               <p className="text-vehicsim-muted leading-relaxed">
-                Tổng số lần chạy mô phỏng đánh giá trong toàn bộ đợt tối ưu (bao gồm các điểm khởi tạo ban đầu cộng với các lượt do thuật toán Bayesian tối ưu thích ứng đề xuất tiếp theo).
+                Số lần chạy thử ngẫu nhiên lúc đầu để lấy dữ liệu mồi, sau đó hệ thống sẽ tự động tìm kiếm các bộ tham số tốt nhất ở những lần còn lại.
               </p>
             </div>
           </div>
