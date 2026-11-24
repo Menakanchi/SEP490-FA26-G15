@@ -195,22 +195,17 @@ export default function AebMoboNewPage() {
 
 
 
-          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-5">
-            <span className="text-[12px] text-vehicsim-faint">
-              Mỗi trial sẽ tự động khởi chạy kịch bản OpenSCENARIO trên bộ mô phỏng CARLA để cập nhật biên Pareto.
-            </span>
-            <div className="flex items-center gap-2">
-              <PillButton variant="light" href="/aeb/mobo">
-                Hủy bỏ
-              </PillButton>
-              <PillButton variant="dark" type="submit" disabled={submitting || !canWrite || !scenarioId}>
-                {submitting
-                  ? "Đang khởi tạo…"
-                  : simulatorType === "CARLA"
-                  ? "Bắt đầu tối ưu trên CARLA 3D"
-                  : "Bắt đầu tối ưu nhanh (Kinematic)"}
-              </PillButton>
-            </div>
+          <div className="flex items-center justify-end gap-2 border-t border-solid border-vehicsim-line pt-5">
+            <PillButton variant="light" href="/aeb/mobo">
+              Hủy bỏ
+            </PillButton>
+            <PillButton variant="dark" type="submit" disabled={submitting || !canWrite || !scenarioId}>
+              {submitting
+                ? "Đang khởi tạo…"
+                : simulatorType === "CARLA"
+                ? "Bắt đầu tối ưu trên CARLA 3D"
+                : "Bắt đầu tối ưu nhanh (Kinematic)"}
+            </PillButton>
           </div>
         </form>
       </section>
