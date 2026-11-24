@@ -140,26 +140,6 @@ export default function AebMoboNewPage() {
             </label>
           </div>
 
-          {/* GHI CHÚ GIẢI THÍCH THAM SỐ MOBO */}
-          <div className="grid grid-cols-1 gap-3.5 rounded-lg border border-solid border-vehicsim-line bg-vehicsim-soft/60 p-3.5 text-[12.5px] sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <span className="font-bold text-vehicsim-ink">
-                Số lượt thử nghiệm:
-              </span>
-              <p className="text-vehicsim-muted leading-relaxed">
-                Tổng số lần xe chạy thử mô phỏng trong cả đợt. Càng nhiều lần thì kết quả càng tối ưu nhưng thời gian chạy sẽ lâu hơn.
-              </p>
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="font-bold text-vehicsim-ink">
-                Số điểm khởi tạo ban đầu:
-              </span>
-              <p className="text-vehicsim-muted leading-relaxed">
-                Số lần chạy thử ngẫu nhiên lúc đầu để lấy dữ liệu mồi, sau đó hệ thống sẽ tự động tìm kiếm các bộ tham số tốt nhất ở những lần còn lại.
-              </p>
-            </div>
-          </div>
-
           {/* CHỌN BỘ MÔ PHỎNG */}
           <div className="flex flex-col gap-2">
             <span className="text-[13px] font-bold text-vehicsim-ink">
@@ -209,6 +189,18 @@ export default function AebMoboNewPage() {
                 </span>
               </button>
             </div>
+          </div>
+
+          {/* GHI CHÚ GIẢI THÍCH THAM SỐ MOBO */}
+          <div className="flex flex-col gap-1.5 text-[12.5px] leading-relaxed text-vehicsim-muted">
+            <p>
+              <strong className="font-bold text-vehicsim-ink">Số lượt thử nghiệm:</strong>{" "}
+              Tổng số lần xe chạy thử mô phỏng trong cả đợt. Càng nhiều lần thì kết quả càng tối ưu nhưng thời gian chạy sẽ lâu hơn.
+            </p>
+            <p>
+              <strong className="font-bold text-vehicsim-ink">Số điểm khởi tạo ban đầu:</strong>{" "}
+              Số lần chạy thử ngẫu nhiên lúc đầu để lấy dữ liệu mồi, sau đó hệ thống sẽ tự động tìm kiếm các bộ tham số tốt nhất ở những lần còn lại.
+            </p>
           </div>
 
 
