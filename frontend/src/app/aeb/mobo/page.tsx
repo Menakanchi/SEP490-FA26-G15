@@ -40,9 +40,17 @@ export default function AebMoboStudioPage() {
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [activeRun, setActiveRun] = useState<OptimizationRun | null>(null);
 
-  // Sub-tabs: "pareto" | "trials" | "runs"
-  const [activeTab, setActiveTab] = useState<"pareto" | "trials" | "runs">(
-    queryTab === "trials" ? "trials" : queryTab === "runs" ? "runs" : "pareto"
+  // Sub-tabs: "runs" | "pareto" | "trials"
+  const [activeTab, setActiveTab] = useState<"runs" | "pareto" | "trials">(
+    queryTab === "pareto"
+      ? "pareto"
+      : queryTab === "trials"
+      ? "trials"
+      : queryTab === "runs"
+      ? "runs"
+      : Number.isInteger(queryRunId) && queryRunId > 0
+      ? "pareto"
+      : "runs"
   );
 
   // Pareto data
@@ -347,26 +355,17 @@ export default function AebMoboStudioPage() {
               </div>
             </div>
 
-            {/* Thanh tiến độ */}
+            {/* Thanh tiến độ 1 màu duy nhất */}
             <div
               role="progressbar"
               aria-valuenow={runProgressPct}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-label={`Tiến độ đợt tối ưu: ${runProgressPct}%`}
-              className="h-2.5 w-full overflow-hidden rounded-full bg-vehicsim-line/70 dark:bg-slate-800"
+              className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
             >
               <div
-                className={cx(
-                  "h-full rounded-full transition-all duration-500 ease-out",
-                  activeRun.status === "RUNNING"
-                    ? "bg-gradient-to-r from-blue-500 via-indigo-500 to-vehicsim-primary shadow-sm"
-                    : activeRun.status === "COMPLETED"
-                    ? "bg-vehicsim-ok"
-                    : activeRun.status === "CANCELLED"
-                    ? "bg-amber-500"
-                    : "bg-vehicsim-danger"
-                )}
+                className="h-full rounded-full bg-vehicsim-primary transition-all duration-500 ease-out"
                 style={{ width: `${runProgressPct}%` }}
               />
             </div>
@@ -377,6 +376,20 @@ export default function AebMoboStudioPage() {
       {/* CỤM TABS CON NỘI BỘ (PARETO / TRIALS / LỊCH SỬ RUNS) */}
       <section className="flex flex-col gap-4">
         <div className="flex items-center gap-2 border-b border-solid border-vehicsim-line pb-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("runs")}
+            className={cx(
+              "flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition",
+              activeTab === "runs"
+                ? "bg-vehicsim-primary text-white shadow-xs"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+            )}
+          >
+            <Clock className="size-4" />
+            <span>Lịch sử các đợt chạy ({runs?.length ?? 0})</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab("pareto")}
@@ -404,30 +417,45 @@ export default function AebMoboStudioPage() {
             <ListFilter className="size-4" />
             <span>Nhật ký toàn bộ Trials ({allTrials?.length ?? 0})</span>
           </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("runs")}
-            className={cx(
-              "flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition",
-              activeTab === "runs"
-                ? "bg-vehicsim-primary text-white shadow-xs"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-            )}
-          >
-            <Clock className="size-4" />
-            <span>Lịch sử các đợt chạy ({runs?.length ?? 0})</span>
-          </button>
         </div>
 
-        {/* TAB 1: TẬP NGHIỆM PARETO */}
+        {/* TAB: TẬP NGHIỆM PARETO */}
         {activeTab === "pareto" && (
           <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
               <div>
-                <h3 className="text-[15px] font-bold text-vehicsim-ink">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-vehicsim-muted">
+                    Chi tiết đợt tối ưu:
+                  </span>
+                  <span className="font-mono text-[13px] font-bold text-vehicsim-primary">
+                    Run #{activeRun?.id}
+                  </span>
+                  {activeRun?.name && (
+                    <span className="text-[13px] font-semibold text-vehicsim-ink">
+                      — {activeRun.name}
+                    </span>
+                  )}
+                </div>
+                <h3 className="mt-0.5 text-[15px] font-bold text-vehicsim-ink">
                   Biên Pareto Frontier ({paretoTrials?.length ?? 0} phương án tối ưu)
                 </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("runs")}
+                  className="rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink hover:bg-vehicsim-soft transition"
+                >
+                  ← Danh sách các đợt chạy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("trials")}
+                  className="rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft transition"
+                >
+                  Nhật ký {allTrials?.length ?? 0} trials →
+                </button>
               </div>
             </div>
 
@@ -513,32 +541,67 @@ export default function AebMoboStudioPage() {
         {activeTab === "trials" && (
           <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
-              <div className="flex items-center gap-3">
-                <span className="text-[13px] font-bold text-vehicsim-ink">Bộ lọc trials:</span>
-                <div className="flex items-center gap-1.5">
-                  {(["ALL", "PARETO", "FEASIBLE"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => {
-                        setTrialsFilter(mode);
-                        setTrialsPage(1);
-                      }}
-                      className={cx(
-                        "rounded-lg px-2.5 py-1 text-[12px] font-semibold transition border border-solid",
-                        trialsFilter === mode
-                          ? "bg-slate-900 border-slate-900 text-white shadow-xs"
-                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      )}
-                    >
-                      {mode === "ALL" ? "Tất cả" : mode === "PARETO" ? "Chỉ Pareto" : "Chỉ hợp lệ"}
-                    </button>
-                  ))}
+              <div className="flex flex-wrap items-center gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-vehicsim-muted">
+                      Chi tiết đợt tối ưu:
+                    </span>
+                    <span className="font-mono text-[13px] font-bold text-vehicsim-primary">
+                      Run #{activeRun?.id}
+                    </span>
+                    {activeRun?.name && (
+                      <span className="text-[13px] font-semibold text-vehicsim-ink">
+                        — {activeRun.name}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="mt-0.5 text-[15px] font-bold text-vehicsim-ink">
+                    Nhật ký toàn bộ Trials ({filteredTrials.length} / {allTrials?.length ?? 0})
+                  </h3>
+                </div>
+
+                <div className="flex items-center gap-2 border-l border-solid border-vehicsim-line pl-4">
+                  <span className="text-[12px] font-bold text-vehicsim-ink">Bộ lọc:</span>
+                  <div className="flex items-center gap-1.5">
+                    {(["ALL", "PARETO", "FEASIBLE"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => {
+                          setTrialsFilter(mode);
+                          setTrialsPage(1);
+                        }}
+                        className={cx(
+                          "rounded-lg px-2.5 py-1 text-[12px] font-semibold transition border border-solid",
+                          trialsFilter === mode
+                            ? "bg-slate-900 border-slate-900 text-white shadow-xs"
+                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                        )}
+                      >
+                        {mode === "ALL" ? "Tất cả" : mode === "PARETO" ? "Chỉ Pareto" : "Chỉ hợp lệ"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <span className="text-[12px] text-vehicsim-muted">
-                Hiển thị {filteredTrials.length} / {allTrials?.length ?? 0} trials
-              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("runs")}
+                  className="rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink hover:bg-vehicsim-soft transition"
+                >
+                  ← Danh sách các đợt chạy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("pareto")}
+                  className="rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft transition"
+                >
+                  Tập Pareto ({paretoTrials?.length ?? 0}) →
+                </button>
+              </div>
             </div>
 
             {filteredTrials.length === 0 ? (
@@ -571,8 +634,8 @@ export default function AebMoboStudioPage() {
                           #{t.trial_number}
                         </td>
                         <td className="px-4 py-3.5">
-                          <Tag tone={t.sampling_source === "SOBOL_INIT" ? "neutral" : "info"}>
-                            {t.sampling_source === "SOBOL_INIT" ? "Khởi tạo Sobol" : "Bayesian GP"}
+                          <Tag tone={t.sampling_source === "INITIAL_DESIGN" || t.sampling_source === "SOBOL_INIT" ? "neutral" : "info"}>
+                            {t.sampling_source === "INITIAL_DESIGN" || t.sampling_source === "SOBOL_INIT" ? "Khởi tạo ban đầu" : "Bayesian GP"}
                           </Tag>
                         </td>
                         <td className="px-4 py-3.5 font-mono text-[12px]">
@@ -699,13 +762,14 @@ export default function AebMoboStudioPage() {
                               setActiveTab("pareto");
                             }}
                             className={cx(
-                              "rounded-lg px-3 py-1.5 text-[12px] font-bold transition",
+                              "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12px] font-bold transition shadow-xs",
                               isSelected
                                 ? "bg-vehicsim-primary text-white"
-                                : "bg-vehicsim-soft text-vehicsim-ink hover:bg-vehicsim-line"
+                                : "bg-vehicsim-soft text-vehicsim-ink hover:bg-vehicsim-primary hover:text-white"
                             )}
                           >
-                            {isSelected ? "Đang xem" : "Xem đợt này"}
+                            <span>{isSelected ? "Đang xem chi tiết" : "Xem chi tiết"}</span>
+                            <ArrowRight className="size-3.5" />
                           </button>
                         </td>
                       </tr>
