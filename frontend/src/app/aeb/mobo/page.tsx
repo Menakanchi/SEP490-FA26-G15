@@ -316,43 +316,21 @@ export default function AebMoboStudioPage() {
           )}
         </div>
 
-        {/* THANH TIẾN ĐỘ CHẠY (PROGRESS BAR) */}
-        {activeRun && (
+        {/* THANH TIẾN ĐỘ CHẠY (CHỈ HIỂN THỊ KHI ĐANG CHẠY MÔ PHỎNG) */}
+        {activeRun?.status === "RUNNING" && (
           <div className="mt-4 border-t border-solid border-vehicsim-line/60 pt-3.5">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[12px]">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-vehicsim-ink">Tiến độ chạy:</span>
-                <span className="font-mono font-medium text-vehicsim-muted">
-                  {completedTrialsCount} / {maxTrialsCount} trials ({runProgressPct}%)
+            <div className="mb-2 flex items-center gap-2.5 text-[12px]">
+              <span className="font-semibold text-vehicsim-ink">Tiến độ chạy:</span>
+              <span className="font-mono font-medium text-vehicsim-muted">
+                {completedTrialsCount} / {maxTrialsCount} trials ({runProgressPct}%)
+              </span>
+              <span className="inline-flex items-center gap-1.5 font-medium text-vehicsim-primary animate-pulse ml-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-vehicsim-primary opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-vehicsim-primary"></span>
                 </span>
-                {activeRun.status === "RUNNING" && (
-                  <span className="inline-flex items-center gap-1.5 font-medium text-vehicsim-primary animate-pulse">
-                    <span className="relative flex h-2 w-2">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-vehicsim-primary opacity-75"></span>
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-vehicsim-primary"></span>
-                    </span>
-                    Đang chạy trial #{Math.min(maxTrialsCount, completedTrialsCount + 1)}…
-                  </span>
-                )}
-                {activeRun.status === "COMPLETED" && (
-                  <span className="text-[11px] font-semibold text-vehicsim-ok">
-                    ✓ Hoàn tất toàn bộ {maxTrialsCount} trials
-                  </span>
-                )}
-                {activeRun.status === "CANCELLED" && (
-                  <span className="text-[11px] font-semibold text-amber-500">
-                    ⚠ Đã dừng ở trial #{completedTrialsCount}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                {activeRun.pareto_count > 0 && (
-                  <span className="text-[11px] font-semibold text-vehicsim-ok">
-                    ★ {activeRun.pareto_count} nghiệm Pareto
-                  </span>
-                )}
-                <span className="font-mono font-bold text-vehicsim-ink">{runProgressPct}%</span>
-              </div>
+                Đang chạy trial #{Math.min(maxTrialsCount, completedTrialsCount + 1)}…
+              </span>
             </div>
 
             {/* Thanh tiến độ 1 màu duy nhất */}
