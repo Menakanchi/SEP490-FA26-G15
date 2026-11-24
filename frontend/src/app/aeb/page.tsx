@@ -65,6 +65,42 @@ export default function AebHubPage() {
                 );
               })}
             </div>
+
+            {/* 3 Mục tiêu tối ưu cần cải thiện so với bản cơ sở */}
+            <div className="flex flex-col gap-2.5 border-t border-solid border-vehicsim-line pt-4 mt-3">
+              <span className="text-[13px] font-bold text-vehicsim-ink">
+                3 mục tiêu tối ưu cần cải thiện so với bản cơ sở:
+              </span>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="flex flex-col gap-1 rounded-lg border border-solid border-vehicsim-line bg-white p-3 shadow-xs">
+                  <span className="text-[13px] font-bold text-vehicsim-ink">
+                    Giảm rung giật (RMS Jerk)
+                  </span>
+                  <p className="text-[12px] leading-relaxed text-vehicsim-muted">
+                    Hạn chế giật đột ngột khi phanh gấp, nâng cao độ êm ái và an toàn cho hành khách trên xe.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-1 rounded-lg border border-solid border-vehicsim-line bg-white p-3 shadow-xs">
+                  <span className="text-[13px] font-bold text-vehicsim-ink">
+                    Giảm tốc độ va chạm
+                  </span>
+                  <p className="text-[12px] leading-relaxed text-vehicsim-muted">
+                    Triệt tiêu hoặc giảm tối đa vận tốc còn lại khi va chạm, ưu tiên cứu mạng người đi bộ.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-1 rounded-lg border border-solid border-vehicsim-line bg-white p-3 shadow-xs">
+                  <span className="text-[13px] font-bold text-vehicsim-ink">
+                    Giảm quãng phanh dừng
+                  </span>
+                  <p className="text-[12px] leading-relaxed text-vehicsim-muted">
+                    Rút ngắn quãng đường xe cần dừng hẳn, giữ khoảng cách an toàn tối đa với chướng ngại vật.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </section>
