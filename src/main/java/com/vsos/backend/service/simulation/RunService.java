@@ -310,17 +310,29 @@ public class RunService {
                 // ADR-050: xe phía trước phải nằm trọn trong đoạn road 40 của Town04; kiểm bằng chính bộ xuất .xosc trước khi xếp hàng.
                 xosc(Json.obj("variant", variantForBundle(variant.json("scenario_ir_json"), null), "seed", 0));
             }
+            long repetition = nextRepetition(variant.lng("id"), aebVersionId, aebMode, vehicleModelId, simulator, seed);
             long runId = db.insert(
                     "INSERT INTO simulation_runs (project_id, scenario_id, scenario_version_id, carla_vehicle_model_id, aeb_version_id, "
                             + "simulator_type, simulator_version, fixed_delta_seconds, max_duration_s, regression_test_id, baseline_run_id, "
-                            + "optimization_trial_id, purpose, random_seed, status, run_config_json, created_by_user_id, queued_at, aeb_mode) "
-                            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            + "optimization_trial_id, purpose, random_seed, status, run_config_json, created_by_user_id, queued_at, aeb_mode, repetition) "
+                            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     projectId, scenarioId, variant.lng("id"), vehicleModelId, aebVersionId, simulatorType(simulator), simulator, stepFor(simulator),
                     MAX_DURATION_S, regressionTestId, baseline == null ? null : baseline.lng("id"), optimizationTrialId, purpose, seed, "PENDING",
-                    variant.json("scenario_ir_json"), userId, ts, aebMode);
+                    variant.json("scenario_ir_json"), userId, ts, aebMode, repetition);
             ids.add(runId);
         }
         return ids;
+    }
+
+    /**
+     * Lần lặp thứ mấy của cùng một cấu hình: biến thể + AEB + chế độ ON/OFF + xe + simulator + seed (ADR-065). Run đầu là 1; chạy lại đúng
+     * cấu hình đó (ví dụ để đo dung sai chạy lặp) là 2, 3… Số đếm theo các run đang có, nên xóa run cũ thì số lặp quay về; hai lệnh tạo run
+     * đồng thời có thể cùng nhận một số (không có ràng buộc duy nhất, vì mỗi run đã có {@code run_id} và seed riêng).
+     */
+    private long nextRepetition(long variantId, long aebVersionId, String aebMode, long vehicleModelId, String simulator, long seed) {
+        Object existing = db.scalar("SELECT COUNT(*) FROM simulation_runs WHERE scenario_version_id = ? AND aeb_version_id = ? AND aeb_mode = ? "
+                + "AND carla_vehicle_model_id = ? AND simulator_version = ? AND random_seed = ?", variantId, aebVersionId, aebMode, vehicleModelId, simulator, seed);
+        return (existing instanceof Number n ? n.longValue() : 0L) + 1;
     }
 
     /** Một người không được giữ quá nhiều run đang chờ + đang chạy (app mở đăng ký công khai, hàng đợi dùng chung). */
@@ -378,7 +390,7 @@ public class RunService {
 
     private void runClaimed(long runId) {
         Boolean claimed = tx.execute(status -> db.update(
-                "UPDATE simulation_runs SET status = 'RUNNING', started_at = ?, worker_host = ? WHERE id = ? AND status = 'PENDING'",
+                "UPDATE simulation_runs SET status = 'RUNNING', started_at = ?, worker_host = ?, attempt = attempt + 1 WHERE id = ? AND status = 'PENDING'",
                 Vs.now(), hostName(), runId) > 0);
         if (!Boolean.TRUE.equals(claimed)) {
             return; // đã có luồng khác nhận, đã COMPLETED/STOPPED, hoặc không tồn tại

@@ -115,12 +115,14 @@ final class RunDatasetWriter {
         id.put("purpose", run.str("purpose"));
         id.put("baseline_run_id", run.getLong("baseline_run_id"));
         id.put("simulator", run.str("simulator_version"));
-        id.put("repetition", null);
-        id.put("attempt", null);
+        id.put("repetition", run.getLong("repetition"));
+        id.put("attempt", run.getLong("attempt"));
         Object source = Json.asMap(result.get("source")).get("run_id");
         boolean conflict = source != null && !Objects.equals(String.valueOf(source), String.valueOf(run.lng("id")));
+        boolean unnumbered = run.getLong("repetition") == null || run.getLong("attempt") == null;
         status.put("identity", conflict ? state("CONFLICTING", "source.run_id của result.json khác run đang xử lý")
-                : state("OK", "repetition và attempt là null: backend không lưu lần lặp/lần thử, mỗi lượt là một run_id với seed riêng"));
+                : unnumbered ? state("MISSING", "repetition/attempt: DB chưa chạy migration 019")
+                : state("OK", "repetition = lần lặp của cùng cấu hình; attempt = số lần worker nhận run (2 trở lên: run bị khôi phục)"));
         return id;
     }
 

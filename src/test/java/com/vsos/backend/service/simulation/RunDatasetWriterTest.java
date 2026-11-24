@@ -27,7 +27,8 @@ class RunDatasetWriterTest {
         Map<String, Object> block = RunDatasetWriter.build(run(), bundle(), result(false), folder, "a".repeat(40));
 
         assertThat(map(block, "identity")).containsEntry("run_id", 7L).containsEntry("variant_id", 11L).containsEntry("seed", 49007L)
-                .containsEntry("aeb_mode", "ON").containsEntry("repetition", null);
+                .containsEntry("aeb_mode", "ON").containsEntry("repetition", 2L).containsEntry("attempt", 1L);
+        assertThat(state(block, "identity")).isEqualTo("OK");
         assertThat(map(map(block, "config"), "vehicle")).containsEntry("width_m", 1.8);
         Map<String, Object> objectives = map(block, "objectives");
         assertThat(map(objectives, "impact_speed_mps")).containsEntry("value", 6.067).containsEntry("consistent", true);
@@ -70,6 +71,17 @@ class RunDatasetWriterTest {
     }
 
     @Test
+    void aRunRowWithoutRepetitionOrAttemptIsFlaggedBecauseTheMigrationIsMissing(@TempDir Path folder) throws IOException {
+        Map<String, Object> values = new HashMap<>(run().asMap());
+        values.remove("repetition");
+        values.remove("attempt");
+        Map<String, Object> block = RunDatasetWriter.build(new Row(values), bundle(), result(false), folder, null);
+
+        assertThat(map(block, "identity")).containsEntry("repetition", null).containsEntry("attempt", null);
+        assertThat(state(block, "identity")).isEqualTo("MISSING");
+    }
+
+    @Test
     void disagreementsAreReportedAsConflictingInsteadOfBeingHidden(@TempDir Path folder) throws IOException {
         writeSensors(folder, false); // collisions.json rỗng nhưng result nói có va chạm
         Map<String, Object> block = RunDatasetWriter.build(run(), bundle(), result(true), folder, null);
@@ -106,6 +118,8 @@ class RunDatasetWriterTest {
         v.put("carla_vehicle_model_id", 2L);
         v.put("random_seed", 49007L);
         v.put("aeb_mode", "ON");
+        v.put("repetition", 2L);
+        v.put("attempt", 1L);
         v.put("purpose", "BASELINE");
         v.put("baseline_run_id", null);
         v.put("simulator_version", "carla-0.9.16-xosc15");

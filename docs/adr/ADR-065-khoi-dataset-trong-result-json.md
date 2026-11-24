@@ -13,7 +13,7 @@ Sau khi worker thoát (lúc `sensors/*` đã đủ), `RunService` gọi `RunData
 
 | Mục | Nội dung |
 |---|---|
-| `identity` | `run_id`, `scenario_id`, `scenario_version_id` = `variant_id`, `aeb_version_id`, xe, `seed`, `aeb_mode`, `purpose`, `baseline_run_id`, simulator. `repetition`/`attempt` là `null` (backend không lưu; mỗi lượt là một `run_id` với seed riêng) |
+| `identity` | `run_id`, `scenario_id`, `scenario_version_id` = `variant_id`, `aeb_version_id`, xe, `seed`, `aeb_mode`, `purpose`, `baseline_run_id`, simulator. `repetition` (lần lặp của cùng cấu hình) và `attempt` (số lần worker nhận run), hai cột mới của `simulation_runs` (migration 019) |
 | `config` | bundle thực: `aeb` (4 tham số), `vehicle` (kích thước, phanh, CARLA), `variant` (tốc độ, thời tiết, ma sát…), `road_friction` |
 | `objectives` | `rms_jerk_mps3`, `impact_speed_mps`, `stopping_distance_m`: giá trị ở `outcome.metrics` **và** `evaluation.aeb_result`, cờ `consistent`, nguồn, phiên bản metric (simulator, engine, `AnalysisMetrics.VERSION`), định nghĩa impact, bộ lọc jerk |
 | `provenance` | `git_commit`, phiên bản CARLA (theo định danh simulator), `core_jar_sha256`, `bundle_sha256`, `xosc_sha256`, và `files`: kích thước, SHA-256, số dòng của từng file của run |
@@ -29,12 +29,12 @@ Nguyên tắc: không điền giả. Trường chưa thu được là `null` kè
 
 ## Không đổi
 
-Định danh run (`-xosc15`, `vehicsim-kinematic-1.4`), số liệu, luật chấm, schema DB và migration. Khối chỉ nằm trên đĩa: `persist` vẫn chỉ lưu `outcome`/`evaluation`/artifact vào DB, nên DB không phình. Run đã có trước ADR này không có khối `dataset`; không tái dựng cho run cũ. Kinematic không ghi file nên không có khối. Run CARLA nộp từ máy khác (`submitCarlaResult`) cũng chưa có khối (thiếu `sensors/` ở backend).
+Định danh run (`-xosc15`, `vehicsim-kinematic-1.4`), số liệu và luật chấm. Có **một migration**: [019](../../database/mysql/migrations/019_2026-11-24_lan-lap-va-lan-thu-cua-run.sql) thêm `simulation_runs.repetition` và `attempt` (DB đã có phải chạy trước khi dùng backend mới). Khối chỉ nằm trên đĩa: `persist` vẫn chỉ lưu `outcome`/`evaluation`/artifact vào DB, nên DB không phình. Run đã có trước ADR này không có khối `dataset`; không tái dựng cho run cũ. Kinematic không ghi file nên không có khối. Run CARLA nộp từ máy khác (`submitCarlaResult`) cũng chưa có khối (thiếu `sensors/` ở backend).
 
 ## Hệ quả và giới hạn
 
 - `result.json` tăng khoảng 160 KB mỗi run (chủ yếu `time_series`). `generated_at_utc` đổi mỗi lần dựng: so sánh hai lần chạy phải so `outcome`/`evaluation`, không so cả file.
-- `repetition`/`attempt` chưa có nguồn; muốn có phải thêm vào bước tạo run (việc sau).
+- `repetition` = số run đang có cùng (biến thể, AEB, `aeb_mode`, xe, simulator, seed) + 1, tính lúc tạo run (`RunService.nextRepetition`); xóa run cũ thì số lặp quay về, hai lệnh tạo đồng thời có thể cùng một số (không ràng buộc duy nhất vì mỗi run có `run_id` riêng). `attempt` tăng ở bước `PENDING → RUNNING`: 0 = chưa chạy, 1 = chạy bình thường, 2 trở lên = run bị khôi phục sau khi backend chết. Run cũ được đánh số lại trong migration 019 (`repetition` theo thứ tự id, `attempt` = 1 nếu đã có `started_at`; không biết run cũ từng bị nhặt lại mấy lần).
 - Hằng "0,10 s" trong quãng cần dừng (CT 31b) lấy từ dataset (khớp 18,1812 m của FA-G1-001-R1); cần xác nhận nguồn gốc vật lý của nó trong tài liệu công thức.
 
 ## Kiểm chứng
