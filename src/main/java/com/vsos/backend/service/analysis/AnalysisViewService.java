@@ -247,7 +247,7 @@ public class AnalysisViewService {
     // ------------------------------------------------------------------ 02 · Failure detail + 06 · Playback
 
     /** Run + các dòng liên quan của nó. */
-    private record RunBundle(Row run, Row scenario, Row variant, Row version, Row vehicle, Row failure, Map<String, Object> raw) {
+    record RunBundle(Row run, Row scenario, Row variant, Row version, Row vehicle, Row failure, Map<String, Object> raw) {
     }
 
     private RunBundle runBundle(long projectId, long runId) {
@@ -595,15 +595,17 @@ public class AnalysisViewService {
     }
 
     /** Ca lỗi gần nhất theo tham số kịch bản, trong cùng họ (tối đa {@value #SIMILAR_CANDIDATES} ca mới nhất), ưu tiên cùng nhóm nguyên nhân chính. */
-    private List<Map<String, Object>> similarFailures(long projectId, RunBundle b, int limit) {
+    List<Map<String, Object>> similarFailures(long projectId, RunBundle b, int limit) {
         Map<String, Object> me = b.run().json("run_config_json");
         Object myClass = Json.asList(b.raw().get("chain")).stream().map(Json::asMap)
                 .filter(s -> !Boolean.TRUE.equals(s.get("passed"))).map(s -> s.get("stage")).findFirst().orElse(null);
         record Scored(double distance, Map<String, Object> row) {
         }
         List<Scored> scored = new ArrayList<>();
-        for (Map<String, Object> r : failureRows("r.project_id = ? AND r.scenario_id = ?", SIMILAR_CANDIDATES,
-                projectId, b.run().lng("scenario_id"))) {
+        // Cùng chế độ AEB với run đang xem: lượt AEB tắt (đối chiếu "không có AEB", ADR-055) không phải ca lỗi của bộ AEB nên không so lẫn.
+        String mode = b.run().str("aeb_mode") == null ? "ON" : b.run().str("aeb_mode");
+        for (Map<String, Object> r : failureRows("r.project_id = ? AND r.scenario_id = ? AND r.aeb_mode = ?", SIMILAR_CANDIDATES,
+                projectId, b.run().lng("scenario_id"), mode)) {
             if (r.get("run_id").equals(b.run().lng("id"))) {
                 continue;
             }
@@ -611,6 +613,8 @@ public class AnalysisViewService {
             double distance = Math.abs((num(ir, "ego_speed_kmh") - num(me, "ego_speed_kmh")) / 40)
                     + Math.abs((num(ir, "trigger_distance_m") - num(me, "trigger_distance_m")) / 30)
                     + Math.abs((num(ir, "pedestrian_speed_mps") - num(me, "pedestrian_speed_mps")) / 4)
+                    // Người băng qua và người dừng ở lề là hai tình huống khác hẳn (một bên va chạm, một bên phanh oan): lệch hành vi bị phạt như lệch thời tiết.
+                    + (java.util.Objects.equals(ir.get("stops_at_curb"), me.get("stops_at_curb")) ? 0 : 0.5)
                     + (java.util.Objects.equals(ir.get("weather"), me.get("weather")) ? 0 : 0.5)
                     + (java.util.Objects.equals(ir.get("time_of_day"), me.get("time_of_day")) ? 0 : 0.5)
                     + (java.util.Objects.equals(r.get("failure_class"), myClass) ? 0 : 0.5);
@@ -620,7 +624,7 @@ public class AnalysisViewService {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Scored s : scored.subList(0, Math.min(limit, scored.size()))) {
             out.add(Json.obj("run_id", s.row().get("run_id"), "variant", s.row().get("variant"), "summary", s.row().get("summary"),
-                    "similarity_pct", Math.max(0, Vs.roundToLong(100 * (1 - s.distance() / 3.5)))));
+                    "similarity_pct", Math.max(0, Vs.roundToLong(100 * (1 - s.distance() / 4.0)))));
         }
         return out;
     }
