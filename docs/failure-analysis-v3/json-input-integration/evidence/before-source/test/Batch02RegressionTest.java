@@ -1,0 +1,157 @@
+package com.vsos.core.failureanalysis;
+
+import com.vsos.core.common.MiniJson;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import java.nio.file.*;
+import java.util.*;
+import static com.vsos.core.failureanalysis.Evidence.*;
+import static com.vsos.core.failureanalysis.HandoffSnapshots.*;
+import static org.assertj.core.api.Assertions.*;
+
+/** Contract assertions independent of the validator's implementation. All mutations are synthetic. */
+class Batch02RegressionTest {
+    private static M1CFixture.Cohort fixture;
+    private static ConsumerSourceInspection.Profile source;
+    @BeforeAll static void setup() throws Exception {fixture=M1CFixture.create();source=ConsumerSourceInspection.read(Path.of("."));}
+    private static Map<String,Object> handoff(){return M1CFixture.mutable(M1CFixture.build(fixture));}
+    private static Map<String,Object> check(Map<String,Object> h, boolean bundle){
+        h.put("content_digest",digest(h));
+        return new ConsumerCompatibilityValidator().validate(new ConsumerCompatibilityValidator.Input(M1CFixture.artifact("h",h),source,null,null,bundle?fixture.input():null));
+    }
+    private static List<Object> codes(Map<String,Object> c){return list(c.get("findings")).stream().map(x->at(x,"/code")).toList();}
+    @ParameterizedTest @ValueSource(strings={"status","source_refs","value","unit","clock_id","frame_id","formula_id","assumptions","bounds","reason_codes"})
+    void requiredNestedWrapperKeysCannotDisappear(String key){var h=handoff();M1CFixture.mapMutable(at(h,"/members/0/seed")).remove(key);
+        assertThat(at(check(h,false),"/input_validation/schema")).isEqualTo("INVALID");}
+    @ParameterizedTest @ValueSource(strings={"STATUS_TYPE","STATUS_ENUM","SEED_STRING","SEED_FRACTION","REASON","BASELINE","OBJECTIVE","LINEAGE","QUALITY","ROLE","PARTITION","HINT_REFS","RANGE","REGISTRY","VERSION","SOURCE_REF","DATASET_ID_TYPE","DT_UNIT","HINT_OBJECTIVES"})
+    void nestedSemanticTypesAreValidated(String kind){var h=handoff();switch(kind){
+        case "STATUS_TYPE"->M1CFixture.set(h,"/members/0/seed/status",true);
+        case "STATUS_ENUM"->M1CFixture.set(h,"/members/0/seed/status","CONFIRMED");
+        case "SEED_STRING"->M1CFixture.set(h,"/members/0/seed/value","1");
+        case "SEED_FRACTION"->M1CFixture.set(h,"/members/0/seed/value",1.5);
+        case "REASON"->{M1CFixture.set(h,"/members/0/seed",unknownJson("SYNTHETIC_MISSING"));M1CFixture.set(h,"/members/0/seed/reason_codes",List.of());}
+        case "BASELINE"->M1CFixture.set(h,"/baseline/parameter_values/TTC_THRESHOLD",2.);
+        case "OBJECTIVE"->M1CFixture.set(h,"/canonical_aggregation/optimization/value/rms_jerk_mps3/value","3");
+        case "LINEAGE"->M1CFixture.set(h,"/members/0/metric_provenance/objectives/rms_jerk_mps3/signal",1);
+        case "QUALITY"->M1CFixture.set(h,"/members/0/objective_quality_decisions/rms_jerk_mps3/decision/profile_verified",true);
+        case "ROLE"->M1CFixture.set(h,"/members/0/case_roles",List.of(7));
+        case "PARTITION"->M1CFixture.set(h,"/members/0/partition",false);
+        case "HINT_REFS"->M1CFixture.set(h,"/parameter_hints/0/hypothesis_refs",List.of(7));
+        case "RANGE"->M1CFixture.set(h,"/search_ranges/TTC_THRESHOLD/suggested_range/value/lower","1");
+        case "REGISTRY"->M1CFixture.mapMutable(list(h.get("source_registry")).getFirst()).remove("uri");
+        case "VERSION"->M1CFixture.set(h,"/eligibility_manifest/profile_version","future/99");
+        case "SOURCE_REF"->M1CFixture.set(h,"/members/0/seed/source_refs",List.of(obj("artifact_id",7,"locator",false,"input_ids",List.of(1))));
+        case "DATASET_ID_TYPE"->M1CFixture.set(h,"/dataset/optimization_run_ids",List.of(100,101,102));
+        case "DT_UNIT"->M1CFixture.set(h,"/members/0/dt/unit","ms");
+        case "HINT_OBJECTIVES"->M1CFixture.set(h,"/parameter_hints/0/objective_keys",List.of("rms_jerk_mps3","rms_jerk_mps3","rms_jerk_mps3"));
+        default->throw new AssertionError(kind);
+    } assertThat(at(check(h,false),"/input_validation/schema")).as(kind).isEqualTo("INVALID");}
+    @Test void validSyntheticIsSchemaValidButNotProductionReady(){var c=check(handoff(),true);
+        assertThat(at(c,"/input_validation/schema")).isEqualTo("VERIFIED");assertThat(c.get("dispatch_allowed")).isEqualTo(false);assertThat(c.get("operational_ready")).isEqualTo(false);}
+    @Test void validUnknownBindingAndNullAreNotSchemaErrors(){var h=handoff();M1CFixture.set(h,"/baseline/version_id",unknownJson("OFFLINE_NO_DB_BINDING"));
+        M1CFixture.set(h,"/members/0/seed",unknownJson("OFFLINE_SEED_MISSING"));assertThat(at(check(h,false),"/input_validation/schema")).isEqualTo("VERIFIED");}
+    @Test void integrityIsIndependentOfSchema(){var h=handoff();h.put("content_digest","0".repeat(64));
+        var c=new ConsumerCompatibilityValidator().validate(M1CFixture.artifact("h",h),source);
+        assertThat(at(c,"/input_validation/schema")).isEqualTo("VERIFIED");assertThat(at(c,"/input_validation/integrity")).isEqualTo("INVALID");}
+    @Test void positiveHintDoesNotFabricateHypothesis(){var hint=list(handoff().get("parameter_hints")).getFirst();
+        assertThat(at(hint,"/status")).isEqualTo("SUSPECTED");assertThat(list(at(hint,"/related_candidate_ids"))).containsExactly("synthetic-ineffective");assertThat(list(at(hint,"/hypothesis_refs"))).isEmpty();}
+    @ParameterizedTest @ValueSource(strings={"hypothesis-1","synthetic-ineffective"})
+    void actualHypothesisNamespaceIsIndependent(String id){var m=fixture.input().members().getFirst();var r=M1CFixture.mutable(m.report());
+        M1CFixture.mapMutable(r.get("report")).put("root_cause_hypotheses",List.of(obj("id",id,"status","SUSPECTED")));
+        r.put("content_digest",EvidenceReport.contentDigest(r));Artifact review=M1CFixture.change(m.mechanismReview(),"/report_digest",r.get("content_digest"));
+        var hints=new ParameterHintBuilder().build(r,"OPTIMIZATION",review,fixture.input().mechanismSource());
+        assertThat(at(hints.getFirst(),"/status")).isEqualTo("SUSPECTED");assertThat(list(at(hints.getFirst(),"/hypothesis_refs"))).containsExactly(id);
+        assertThat(new ParameterHintBuilder().build(r,"VALIDATION",review,fixture.input().mechanismSource())).isEmpty();}
+    @ParameterizedTest @ValueSource(strings={"WRONG_TYPE","DANGLING_CANDIDATE","DANGLING_HYPOTHESIS"})
+    void invalidTypedClaimReferencesAreRejected(String kind){var h=handoff();String field=kind.equals("DANGLING_CANDIDATE")?"related_candidate_ids":"hypothesis_refs";
+        M1CFixture.set(h,"/parameter_hints/0/"+field,List.of(kind.equals("WRONG_TYPE")?"synthetic-ineffective":"does-not-exist"));
+        assertThat(codes(check(h,true))).contains("HINT_TYPED_CLAIM_REFERENCE_INVALID");}
+    @Test void absentSourceBodyCannotProveTypedReferences(){assertThat(codes(check(handoff(),false))).contains("HINT_TYPED_CLAIM_PROOF_UNAVAILABLE");}
+    @Test void abstentionUsesOnlyExistingClaims(){var m=fixture.input().members().getFirst();var h=new ParameterHintBuilder().build(m.report(),"OPTIMIZATION",null,null).getFirst();
+        assertThat(h.get("status")).isEqualTo("ABSTAIN");assertThat(list(h.get("hypothesis_refs"))).isEmpty();}
+    @ParameterizedTest @ValueSource(strings={"LOWER_TYPE","INVERTED","KIND","FACTOR","DERIVED_FORMULA","CONDITIONAL_ASSUMPTIONS","NULL_OBSERVED"})
+    void wrapperSemanticsIncludeBoundsAndDerivation(String kind){var h=handoff();String p="/members/0/seed";
+        if(kind.equals("DERIVED_FORMULA")){M1CFixture.set(h,p+"/status","DERIVED");M1CFixture.set(h,p+"/formula_id",null);}
+        else if(kind.equals("CONDITIONAL_ASSUMPTIONS")){M1CFixture.set(h,p+"/status","CONDITIONAL");M1CFixture.set(h,p+"/reason_codes",List.of("SYNTHETIC_ASSUMPTION"));}
+        else if(kind.equals("NULL_OBSERVED"))M1CFixture.set(h,p+"/value",null);
+        else {var b=obj("lower",0.,"upper",2.,"kind","BOUND","coverage_factor",null);switch(kind){
+            case "LOWER_TYPE"->b.put("lower","0");case "INVERTED"->b.put("upper",-1.);case "KIND"->b.put("kind","FIT_SCORE");case "FACTOR"->b.put("coverage_factor",2.);default->throw new AssertionError();}
+            M1CFixture.set(h,p+"/bounds",b);}
+        assertThat(at(check(h,false),"/input_validation/schema")).isEqualTo("INVALID");}
+    @Test void validNamedUncertaintyBoundsRemainStructurallyValid(){var h=handoff();M1CFixture.set(h,"/members/0/seed/bounds",obj("lower",0.,"upper",2.,"kind","BOUND","coverage_factor",null));
+        assertThat(at(check(h,false),"/input_validation/schema")).isEqualTo("VERIFIED");}
+    @ParameterizedTest @ValueSource(longs={-1L,Long.MIN_VALUE,0L})
+    void seedRetainsExistingSignedIntegerDomain(long seed){var h=handoff();M1CFixture.set(h,"/members/0/seed/value",seed);
+        assertThat(at(check(h,false),"/input_validation/schema")).isEqualTo("VERIFIED");}
+    private static Map<String,Object> checkClaims(String hypothesis,boolean corruptBody){
+        var h=handoff();var i=fixture.input();var m=i.members().getFirst();var r=M1CFixture.mutable(m.report());
+        M1CFixture.mapMutable(r.get("report")).put("root_cause_hypotheses",List.of(obj("id",hypothesis,"status","SUSPECTED")));
+        if(hypothesis.equals("wrong-run-identity"))M1CFixture.set(r,"/input/run_key","OTHER-RUN");
+        r.put("content_digest",EvidenceReport.contentDigest(r));String sha=r.get("content_digest").toString();
+        M1CFixture.set(h,"/parameter_hints/0/hypothesis_refs",List.of(hypothesis));
+        for(Object row:list(h.get("source_registry")))if(("report:"+m.run().runKey()).equals(at(row,"/id")))M1CFixture.mapMutable(row).put("sha256",sha);
+        M1CFixture.set(h,"/members/0/diagnostic_report_ref/value",sha);
+        if(corruptBody)r.put("unhashed_mutation",true);
+        var members=new ArrayList<>(i.members());members.set(0,new MoboHandoffBuilder.MemberInput(m.run(),m.evidenceReport(),r,m.baselineBinding(),m.canonicalSample(),m.mechanismReview()));
+        var refs=new MoboHandoffBuilder.Input(members,i.selection(),i.qualityPolicy(),i.domains(),i.mechanismSource(),i.sourceArtifacts());
+        h.put("content_digest",digest(h));return new ConsumerCompatibilityValidator().validate(new ConsumerCompatibilityValidator.Input(M1CFixture.artifact("h",h),source,null,null,refs));
+    }
+    @ParameterizedTest @ValueSource(strings={"actual-hypothesis","synthetic-ineffective"})
+    void consumerChecksEachNamespaceEvenWhenStringsOverlap(String id){assertThat(codes(checkClaims(id,false))).doesNotContain("HINT_TYPED_CLAIM_REFERENCE_INVALID","HINT_TYPED_CLAIM_SOURCE_INVALID","HINT_TYPED_CLAIM_PROOF_UNAVAILABLE");}
+    @Test void typedClaimsNeedUnmodifiedRegisteredSourceBody(){assertThat(codes(checkClaims("actual-hypothesis",true))).contains("HINT_TYPED_CLAIM_SOURCE_INVALID");}
+    @Test void matchingDigestCannotBindAnotherRunsClaimGraph(){assertThat(codes(checkClaims("wrong-run-identity",false))).contains("HINT_TYPED_CLAIM_SOURCE_INVALID");}
+
+    private static Run replace(Run r, Map<String,Object> result){var all=new LinkedHashMap<>(r.artifacts());var a=r.artifact("result");
+        all.put("result",new Artifact(a.id(),r.runKey(),"SYNTHETIC_PROFILE_FIXTURE",sha256(MiniJson.write(result)),a.mediaType(),Integrity.VERIFIED,result,List.of()));
+        return new Run(r.runKey(),r.caseKey(),r.directory(),all,List.of());}
+    static Run kinematic(){var p=com.vsos.core.aeb.AebParams.DEFAULT;
+        var outcome=com.vsos.core.simulation.Simulator.simulate(new com.vsos.core.simulation.CrossingCase(40,30,1.5,false,"CLEAR","DAY",.8),p,42,com.vsos.core.simulation.VehicleSpec.DEFAULT);
+        return replace(fixture.input().members().getFirst().run(),obj("format","vehicsim.result/v1","engine","vsos-core-java/1","simulator","vehicsim-kinematic-1.4","seed",42,"source",obj(),
+                "outcome",outcome.asDict(),"evaluation",com.vsos.core.evaluation.Evaluation.evaluate(outcome,p).toDocument()));}
+    @Test void actualKinematicProducerHasRawCommandWindowAndAfterStepStop(){Run r=kinematic();var d=new DiagnosticReport().analyze(r);var p=new MetricProvenanceResolver().resolve(r);
+        assertThat(at(d,"/report/objectives/rms_jerk_mps3/signal/value")).isEqualTo("ego_a");
+        assertThat(at(d,"/report/objectives/rms_jerk_mps3/filter/value")).isEqualTo("RAW_UNFILTERED");
+        assertThat(at(d,"/report/objectives/rms_jerk_mps3/window/value")).isEqualTo("brake_onset_t to end of run");
+        assertThat(p.fields().get("dt").value()).isEqualTo(.05);assertThat(p.fields().get("dt").status()).isEqualTo(Status.CONDITIONAL);
+        assertThat(MiniJson.write(at(d,"/report/objectives/rms_jerk_mps3/explanation"))).doesNotContain("CARLA","T_AEB");
+        assertThat(at(d,"/report/objectives/stopping_distance_m/decomposition/position_after_step/value")).isEqualTo(true);
+        for(String key:CanonicalObjectiveReader.KEYS)assertThat(at(d,"/report/objectives/"+key+"/canonical_value/value")).isEqualTo(r.get("result","/outcome/metrics/"+key));}
+    @ParameterizedTest @ValueSource(strings={"UNKNOWN_SIM","UNKNOWN_ENGINE","MISSING_SIM","CONFLICTING_METADATA"})
+    void unsupportedOrConflictingProfileCannotDescribeKnownAlgorithm(String kind){Run base=kinematic();var result=M1CFixture.mutable(base.get("result",""));switch(kind){
+        case "UNKNOWN_SIM"->result.put("simulator","vehicsim-kinematic-9.9");
+        case "UNKNOWN_ENGINE"->result.put("engine","vsos-core-java/99");
+        case "MISSING_SIM"->result.remove("simulator");
+        case "CONFLICTING_METADATA"->M1CFixture.mapMutable(at(result,"/outcome/case")).put("carla",obj("fixed_delta_seconds",.01,"jerk_filtered",obj("signal","ego_a","window","T_AEB to end of run")));
+        default->throw new AssertionError(kind);
+    }Run r=replace(base,result);var p=new MetricProvenanceResolver().resolve(r);var lineage=new MetricProvenanceResolver().objectiveLineage(p,"rms_jerk_mps3");
+        assertThat(lineage.get("window").value()).isNull();assertThat(lineage.get("window").reasonCodes()).isNotEmpty();
+        assertThat(p.fields().get("dt").status()).isNotEqualTo(Status.OBSERVED);
+        var d=new DiagnosticReport().analyze(r);assertThat(MiniJson.write(at(d,"/report/objectives/rms_jerk_mps3/explanation"))).contains("UNKNOWN").doesNotContain("Canonical CARLA jerk");}
+    @Test void realCarlaGoldenProfileKeepsMetadataAndBeforeStepConvention()throws Exception{Path zip=Path.of(System.getProperty("golden18.zip","D:/Downloads/golden18_raw_artifacts.zip"));
+        Assumptions.assumeTrue(Files.isRegularFile(zip),"BLOCKED: raw Golden18 missing");try(var adapter=new RawArtifactAdapter(zip)){
+            Run r=null;for(String dir:adapter.runDirectories()){Run found=adapter.read(dir);if(found.runKey().equals("FA-G1-004-R1")){r=found;break;}}
+            assertThat(r).isNotNull();var d=new DiagnosticReport().analyze(r);assertThat(at(d,"/report/objectives/rms_jerk_mps3/window/value")).isEqualTo("T_AEB to end of run");
+            assertThat(MiniJson.write(at(d,"/report/objectives/rms_jerk_mps3/filter/value"))).contains("butterworth","10","6");
+            assertThat(at(d,"/report/objectives/stopping_distance_m/decomposition/position_after_step/value")).isEqualTo(false);
+        }}
+    @Test void commandWithMissingJerkAndNoContactRemainsNull(){Run base=kinematic();var result=M1CFixture.mutable(base.get("result",""));
+        M1CFixture.set(result,"/outcome/metrics/rms_jerk_mps3",null);M1CFixture.set(result,"/outcome/metrics/collision",false);M1CFixture.set(result,"/outcome/metrics/impact_speed_mps",null);
+        var d=new DiagnosticReport().analyze(replace(base,result));assertThat(at(d,"/report/objectives/rms_jerk_mps3/canonical_value/value")).isNull();
+        assertThat(at(d,"/report/objectives/impact_speed_mps/canonical_value/value")).isNull();assertThat(at(d,"/report/objectives/impact_speed_mps/physical_event_impact/value")).isNull();}
+    @ParameterizedTest @ValueSource(strings={"carla-0.9.16-xosc9","carla-0.9.16-xosc10","carla-0.9.16-xosc11","carla-0.9.16-xosc12","carla-0.9.16-xosc13","carla-0.9.16-xosc14","carla-0.9.16-xosc15"})
+    void explicitCurrentFormatSourceBranchesAreConditional(String simulator){Run base=fixture.input().members().getFirst().run();var result=M1CFixture.mutable(base.get("result",""));result.put("simulator",simulator);
+        var p=new MetricProvenanceResolver().resolve(replace(base,result));assertThat(p.fields().get("metric_descriptor").status()).isEqualTo(Status.CONDITIONAL);
+        assertThat(new MetricProvenanceResolver().objectiveLineage(p,"rms_jerk_mps3").get("window").value()).isEqualTo("T_AEB to end of run");}
+    @ParameterizedTest @ValueSource(strings={"OLD_PROFILE","FUTURE_PROFILE","ENGINE","SIGNAL","FILTER","WINDOW","DT","DT_BRANCH","MISSING_FILTER","COPY"})
+    void carlaMetadataCannotOverrideUnsupportedOrConflictingProfile(String kind){Run base=fixture.input().members().getFirst().run();var result=M1CFixture.mutable(base.get("result",""));
+        String p="/outcome/case/carla";switch(kind){
+            case "OLD_PROFILE"->result.put("simulator","carla-0.9.16-xosc8");case "FUTURE_PROFILE"->result.put("simulator","carla-0.9.16-xosc16");case "ENGINE"->result.put("engine","unknown/2");
+            case "SIGNAL"->M1CFixture.set(result,p+"/jerk_filtered/signal","gt_acceleration");case "FILTER"->M1CFixture.set(result,p+"/jerk_filtered/filter/cutoff_hz",20.);
+            case "WINDOW"->M1CFixture.set(result,p+"/jerk_filtered/window","whole run");case "DT"->M1CFixture.set(result,p+"/fixed_delta_seconds",0.);
+            case "DT_BRANCH"->M1CFixture.set(result,p+"/fixed_delta_seconds",.05);case "MISSING_FILTER"->M1CFixture.mapMutable(at(result,p+"/jerk_filtered")).remove("filter");
+            case "COPY"->M1CFixture.set(result,p+"/jerk_filtered/rms_jerk_mps3",999.);default->throw new AssertionError();}
+        Run r=replace(base,result);var resolver=new MetricProvenanceResolver();var line=resolver.objectiveLineage(resolver.resolve(r),"rms_jerk_mps3");
+        assertThat(line.get("signal").status()).isEqualTo(Status.UNKNOWN);assertThat(line.get("window").value()).isNull();
+        var d=new DiagnosticReport().analyze(r);assertThat(MiniJson.write(at(d,"/report/objectives/rms_jerk_mps3/explanation"))).contains("UNKNOWN/UNSUPPORTED");}
+}

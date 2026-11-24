@@ -1,0 +1,402 @@
+{
+  "scope": "ONE_REAL_SAMPLE_METADATA_REPLAY_NOT_PRODUCER_BRANCH_COVERAGE",
+  "total": 69,
+  "passed": 69,
+  "failed": 0,
+  "input_sha256": "33c935d8a8075edce3400879ebfd6f543b64fe1b380879eef3719c9899945244",
+  "payload_hashes": [
+    {
+      "payload": "time_series.frames",
+      "algorithm": "SHA256_PYTHON_JSON_DUMPS_ENSURE_ASCII_FALSE_DEFAULT_SEPARATORS",
+      "actual": "558ffeb5a14184e5c52566fc5e8eae2d256dfb6465a3ef7fc23796855e503a5d",
+      "declared": "558ffeb5a14184e5c52566fc5e8eae2d256dfb6465a3ef7fc23796855e503a5d",
+      "match": true
+    },
+    {
+      "payload": "time_series.ground_truth",
+      "algorithm": "SHA256_PYTHON_JSON_DUMPS_ENSURE_ASCII_FALSE_DEFAULT_SEPARATORS",
+      "actual": "53a8f688a226df2b97cbe3f8d9af5d5c5dd0bfe8f28d21aa0328b5af5ab2c7fe",
+      "declared": "53a8f688a226df2b97cbe3f8d9af5d5c5dd0bfe8f28d21aa0328b5af5ab2c7fe",
+      "match": true
+    },
+    {
+      "payload": "collisions.events",
+      "algorithm": "SHA256_PYTHON_JSON_DUMPS_ENSURE_ASCII_FALSE_DEFAULT_SEPARATORS",
+      "actual": "40331bf86eb24b57f574ab0025352a81a34085ffa4f1faf07281459e7f1db5ec",
+      "declared": "40331bf86eb24b57f574ab0025352a81a34085ffa4f1faf07281459e7f1db5ec",
+      "match": true
+    },
+    {
+      "payload": "sensors.summary",
+      "algorithm": "SHA256_PYTHON_JSON_DUMPS_ENSURE_ASCII_FALSE_DEFAULT_SEPARATORS",
+      "actual": "7bbb72890d71b500c08801db2a0a1de1e2a577b88231eb1ddbc144076ea80a16",
+      "declared": "7bbb72890d71b500c08801db2a0a1de1e2a577b88231eb1ddbc144076ea80a16",
+      "match": true
+    }
+  ],
+  "quality_mask_row_counts": {
+    "frames": {
+      "initialization": 50,
+      "post_contact": 3,
+      "implausible_acceleration": 0
+    },
+    "ground_truth": {
+      "initialization": 100,
+      "post_contact": 2,
+      "implausible_acceleration": 1
+    }
+  },
+  "checks": [
+    {
+      "check": "preserved_semantic:outcome",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "preserved_value_bytes:outcome",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "preserved_semantic:evaluation",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "preserved_value_bytes:evaluation",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "raw_table_unchanged:frames",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "raw_table_unchanged:ground_truth",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "contact_events_unchanged",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "sensor_summary_unchanged",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "derived_unchanged",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "embedded_payload_digest:time_series.frames",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "embedded_payload_digest:time_series.ground_truth",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "embedded_payload_digest:collisions.events",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "embedded_payload_digest:sensors.summary",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "external_hashes_explicitly_declared",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "negative_control_modified_payload_digest_rejected",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "hash_scope_not_identity_proof",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "quality_threshold_source_supported",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "quality_accel_column_spec",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "quality_contact_time",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_bounds_order:frames:initialization",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_bounds_order:frames:post_contact",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_bounds_order:frames:implausible_acceleration",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_initialization_replay:frames",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_post_contact_replay:frames",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_implausible_replay:frames",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "signal_mask_refs:frames:ego_speed_ms",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "signal_mask_refs:frames:throttle,brake,steer",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "signal_mask_refs:frames:imu_accel_x_ms2,imu_jerk_ms3",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "signal_mask_refs:frames:radar_*",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "signal_mask_refs:frames:obstacle_*",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_bounds_order:ground_truth:initialization",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_bounds_order:ground_truth:post_contact",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_bounds_order:ground_truth:implausible_acceleration",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_initialization_replay:ground_truth",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_post_contact_replay:ground_truth",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "mask_implausible_replay:ground_truth",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "signal_mask_refs:ground_truth:x_m,y_m,z_m,yaw_deg",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "signal_mask_refs:ground_truth:vx_ms,vy_ms,vz_ms,speed_ms",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "signal_mask_refs:ground_truth:ax_ms2,ay_ms2,az_ms2,a_along_v_ms2",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "implausible_rows_count",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "quality_flagged",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "structure_vs_signal_quality_separate",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "negative_control_invalid_mask_rejected",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "clock_stream_counts:frames_csv",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "clock_stream_world_frames:frames_csv",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "clock_stream_time_range:frames_csv",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "clock_stream_steps:frames_csv",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "clock_stream_counts:ground_truth_csv",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "clock_stream_world_frames:ground_truth_csv",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "clock_stream_time_range:ground_truth_csv",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "clock_stream_steps:ground_truth_csv",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "core_clock_count_range",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "core_world_frame_unknown_explicit",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "recorder_binding_observed",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "recorder_alignment_counts",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "recorder_alignment_difference",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "core_nearest_time_statistic",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "core_alignment_not_promoted",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "declared_project_version_binding",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "aeb_version_claim_not_verified",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "baseline_label_version_consistent",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "declared_baseline_status_consistent",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "aeb_capture_timestamp",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "objective_state:rms_jerk_mps3",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "objective_state:impact_speed_mps",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "objective_state:stopping_distance_m",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "all_section_states_recognized",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "v2_file_unchanged",
+      "status": "PASS",
+      "detail": null
+    },
+    {
+      "check": "v1_file_unchanged",
+      "status": "PASS",
+      "detail": null
+    }
+  ],
+  "not_tested": [
+    "Producer OFF/noncollision/no-braking/null/missing/invalid/conflicting branches need real exports or producer tests",
+    "Core-to-recorder independent clock binding",
+    "External original file byte hashes",
+    "Current baseline authority/freshness and calibration domain"
+  ]
+}

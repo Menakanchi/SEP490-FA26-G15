@@ -851,6 +851,7 @@ export interface OptimizationRun {
   scenario_id: number;
   name: string;
   algorithm: string;
+  simulator_version?: string;
   status: OptimizationStatus;
   max_trials: number;
   completed_trials: number;

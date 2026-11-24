@@ -1,0 +1,30 @@
+{
+  "protected_files": 498,
+  "unchanged": 498,
+  "changed": [],
+  "missing": [],
+  "tracked_diff_stat": "",
+  "staged_diff_stat": "",
+  "mandatory_reports": 10,
+  "broken_links": [],
+  "diagnostics": 72,
+  "test_logs": {
+    "focused": {
+      "total": 590,
+      "passed": 588,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2,
+      "build": "SUCCESS"
+    },
+    "full": {
+      "total": 1317,
+      "passed": 1312,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 3,
+      "build": "FAILURE"
+    }
+  },
+  "status": "PASS"
+}

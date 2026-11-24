@@ -73,7 +73,7 @@ export default function FailureDetailPage() {
     event.preventDefault(); update({ section: SECTIONS[next][0] });
     document.getElementById(`run-tab-${SECTIONS[next][0]}`)?.focus();
   }
-  return <VehicSimPage step={4} title={validId === null ? "Lượt chạy không hợp lệ" : `Lượt chạy ${runCode(validId)}`}
+  return <VehicSimPage step={origin.testId !== null ? 5 : 3} title={validId === null ? "Lượt chạy không hợp lệ" : `Phân tích chi tiết ${runCode(validId)}`}
     crumbs={[...origin.crumbs, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}` }]}
     subtitle={inspection ? `${inspection.family} · ${inspection.variant} · seed ${inspection.seed}` : "Chi tiết và telemetry từ kết quả run đã lưu."}
     badges={inspection && <><AnalysisBadge value={inspection.status} />{d && classificationPresentation(d).trusted && <AnalysisBadge value={d.outcome} />}</>}

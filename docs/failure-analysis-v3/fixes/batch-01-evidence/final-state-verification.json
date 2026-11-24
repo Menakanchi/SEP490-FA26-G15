@@ -1,0 +1,109 @@
+{
+  "protected_files": 609,
+  "unchanged": 602,
+  "authorized_source_changes": [
+    "src/main/java/com/vsos/core/failureanalysis/AebTimelineBuilder.java",
+    "src/main/java/com/vsos/core/failureanalysis/DiagnosisPolicy.java",
+    "src/main/java/com/vsos/core/failureanalysis/DiagnosticReport.java",
+    "src/main/java/com/vsos/core/failureanalysis/DiagnosticSupport.java",
+    "src/main/java/com/vsos/core/failureanalysis/EvidenceValidator.java",
+    "src/main/java/com/vsos/core/failureanalysis/ImpactAnalyzer.java",
+    "src/main/java/com/vsos/core/failureanalysis/ObjectiveExplainer.java"
+  ],
+  "unauthorized_changes": [],
+  "missing": [],
+  "original_audit_files_unchanged": 111,
+  "original_audit_unchanged": true,
+  "raw_and_eight_contracts_unchanged": true,
+  "tracked_diff_stat": "",
+  "staged_diff_stat": "",
+  "test_results": {
+    "baseline-focused": {
+      "total": 590,
+      "passed": 588,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2,
+      "build": "SUCCESS"
+    },
+    "regression-before-validated": {
+      "total": 37,
+      "passed": 6,
+      "failures": 31,
+      "errors": 0,
+      "skipped": 0,
+      "build": "FAILURE"
+    },
+    "regression-after-final": {
+      "total": 41,
+      "passed": 41,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "build": "SUCCESS"
+    },
+    "focused-after": {
+      "total": 632,
+      "passed": 630,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2,
+      "build": "SUCCESS"
+    },
+    "full-after": {
+      "total": 1359,
+      "passed": 1354,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 3,
+      "build": "FAILURE"
+    },
+    "focused-final": {
+      "total": 633,
+      "passed": 631,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2,
+      "build": "SUCCESS"
+    },
+    "full-final": {
+      "total": 1360,
+      "passed": 1355,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 3,
+      "build": "FAILURE"
+    },
+    "focused-accepted": {
+      "total": 634,
+      "passed": 632,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2,
+      "build": "SUCCESS"
+    },
+    "full-accepted": {
+      "total": 1361,
+      "passed": 1356,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 3,
+      "build": "FAILURE"
+    },
+    "final-regression-in-focused": {
+      "total": 44,
+      "passed": 44,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "full_failure_names": [
+    "OptimizationServiceTest.executeOptimization_refusesToRunOnADifferentSimulatorThanItWasCreatedFor",
+    "OptimizationServiceTest.executeOptimization_stopsWhenTheBaselineRunFailedInsteadOfScoringAgainstIt"
+  ],
+  "report_links_valid": true,
+  "report_git_status_matches": true,
+  "new_test_file": "src/test/java/com/vsos/core/failureanalysis/HighSeverityFindingsRegressionTest.java",
+  "status": "PASS"
+}

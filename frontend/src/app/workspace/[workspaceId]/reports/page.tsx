@@ -142,13 +142,6 @@ export default function WorkspaceReportsPage() {
       ]}
       title="Báo cáo công việc"
       badges={ws && !active && <Tag tone="neutral">Workspace đã lưu trữ — chỉ xem</Tag>}
-      subtitle={
-        allowed
-          ? isManagerOrAdmin
-            ? "Báo cáo thành viên gửi theo từng project. Duyệt hoặc từ chối kèm nhận xét; quyết định là cuối."
-            : "Danh sách báo cáo công việc và kết quả duyệt của Quản lý. Bấm “+ Nộp báo cáo” để gửi báo cáo mới."
-          : undefined
-      }
       actions={
         allowed && active ? (
           <PillButton variant="dark" onClick={() => setSubmitting(true)}>

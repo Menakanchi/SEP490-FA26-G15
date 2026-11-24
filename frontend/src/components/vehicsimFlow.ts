@@ -4,15 +4,21 @@ import type { JourneyStepKey } from "@/types/vehicsim";
 export function teamJourneyLinks(reviewer: boolean): Record<JourneyStepKey, { label: string; href: string }[]> {
   return {
     SCENARIO: reviewer ? [{ label: "Họ kịch bản", href: "/scenarios" }] : [
+      { label: "Danh sách họ kịch bản", href: "/scenarios" },
       { label: "Sinh từ mô tả", href: "/scenarios/new" },
       { label: "Nhập tham số", href: "/scenarios?new=1" },
     ],
     BASELINE: [
-      ...(!reviewer ? [{ label: "Họ kịch bản & chạy baseline", href: "/scenarios" }] : []),
+      ...(!reviewer ? [{ label: "Chạy baseline", href: "/scenarios/run" }] : []),
       { label: "Dữ liệu CARLA", href: "/analysis/carla" },
     ],
     RESULTS: [{ label: "Kết quả & phân tích", href: "/analysis/failures" }],
-    IMPROVE: [{ label: "Phiên bản AEB", href: "/aeb" }],
+    IMPROVE: [
+      { label: "Tổng quan cải tiến", href: "/aeb" },
+      { label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo" },
+      { label: "Chỉnh tay tham số", href: "/aeb/manual" },
+      { label: "Thư viện & So sánh", href: "/aeb/versions" },
+    ],
     VERIFY: [
       { label: "Kiểm thử hồi quy", href: "/validation/regression" },
       { label: "Tạo kiểm thử", href: "/validation/regression/new" },
@@ -60,7 +66,7 @@ export const MVP_STEPS: FlowStep[] = [
     short: "Chạy cơ sở",
     detail: "Chạy mọi biến thể với bản cơ sở AEB qua hàng đợi chạy nền",
     feature: "FE-08 · FE-11",
-    href: "/scenarios",
+    href: "/scenarios/run",
   },
   {
     n: 4,

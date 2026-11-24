@@ -46,8 +46,8 @@ export default function AddProjectPage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Project của tôi", href: "/projects" }, { label: "Tạo project" }]}
-      title="Tạo project"
-      subtitle="Khai báo project này để thử điều gì và dùng xe nào. Tạo xong bạn sẽ thiết kế kịch bản đầu tiên."
+      title="Khởi tạo dự án kiểm thử mới"
+      subtitle="Thiết lập không gian làm việc, đặt tên dự án và chỉ định mẫu xe áp dụng thuật toán AEB."
     >
       <ErrorNote message={loadError} />
       {vehicles ? (

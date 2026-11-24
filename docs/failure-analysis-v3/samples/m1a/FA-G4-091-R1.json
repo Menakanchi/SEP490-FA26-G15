@@ -1,0 +1,1903 @@
+{
+  "schema_version": "vehicsim.failure-analysis/v1",
+  "objective_analysis_schema": "vehicsim.objective-analysis/v1",
+  "design_revision": "V3.1",
+  "implementation_stage": "M1A",
+  "analysis_status": "ANALYZED_PARTIAL",
+  "formula_version": "fa-formula/3.0.0",
+  "policy_version": "fa-diagnosis/1.0.0",
+  "analyzer_build_id": "failure-analysis-m1a/1.0.0",
+  "digest_profile": "fa-report-sorted-json/1",
+  "input": {
+    "run_key": "FA-G4-091-R1",
+    "artifact_run_key": "FA-G4-091-R1",
+    "case_key": "FA-G4-091",
+    "database_run_id": null,
+    "project_id": {
+      "value": null,
+      "status": "UNKNOWN",
+      "unit": null,
+      "clock_id": null,
+      "frame_id": null,
+      "source_refs": [],
+      "formula_id": null,
+      "assumptions": [],
+      "bounds": null,
+      "reason_codes": [
+        "BASELINE_ID_UNCONFIRMED"
+      ]
+    },
+    "scenario_id": {
+      "value": null,
+      "status": "UNKNOWN",
+      "unit": null,
+      "clock_id": null,
+      "frame_id": null,
+      "source_refs": [],
+      "formula_id": null,
+      "assumptions": [],
+      "bounds": null,
+      "reason_codes": [
+        "BASELINE_ID_UNCONFIRMED"
+      ]
+    },
+    "variant_id": {
+      "value": null,
+      "status": "UNKNOWN",
+      "unit": null,
+      "clock_id": null,
+      "frame_id": null,
+      "source_refs": [],
+      "formula_id": null,
+      "assumptions": [],
+      "bounds": null,
+      "reason_codes": [
+        "BASELINE_ID_UNCONFIRMED"
+      ]
+    },
+    "mode": {
+      "value": "ON",
+      "status": "OBSERVED",
+      "unit": null,
+      "clock_id": null,
+      "frame_id": null,
+      "source_refs": [
+        {
+          "artifact_id": "manifest.csv",
+          "locator": "CSV record=545;column=control_type",
+          "input_ids": []
+        }
+      ],
+      "formula_id": null,
+      "assumptions": [],
+      "bounds": null,
+      "reason_codes": []
+    },
+    "seed": {
+      "value": 710091,
+      "status": "OBSERVED",
+      "unit": null,
+      "clock_id": null,
+      "frame_id": null,
+      "source_refs": [
+        {
+          "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+          "locator": "/seed",
+          "input_ids": []
+        }
+      ],
+      "formula_id": null,
+      "assumptions": [],
+      "bounds": null,
+      "reason_codes": []
+    },
+    "parameters": {
+      "activation_delay": {
+        "value": 0.15,
+        "status": "OBSERVED",
+        "unit": "s",
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/params/brake_activation_delay",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "buildup_rate": {
+        "value": 20.0,
+        "status": "OBSERVED",
+        "unit": "m/s³",
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/params/brake_buildup_rate",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "max_deceleration": {
+        "value": 8.0,
+        "status": "OBSERVED",
+        "unit": "m/s²",
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/params/max_deceleration",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "ttc_threshold": {
+        "value": 0.6,
+        "status": "OBSERVED",
+        "unit": "s",
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/params/ttc_threshold",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      }
+    },
+    "simulator": {
+      "value": "carla-0.9.16-xosc15",
+      "status": "OBSERVED",
+      "unit": null,
+      "clock_id": null,
+      "frame_id": null,
+      "source_refs": [
+        {
+          "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+          "locator": "/simulator",
+          "input_ids": []
+        }
+      ],
+      "formula_id": null,
+      "assumptions": [],
+      "bounds": null,
+      "reason_codes": []
+    },
+    "source_commit": {
+      "value": "6985f846d9757285d284e586f6686d676a6159f6",
+      "status": "OBSERVED",
+      "unit": null,
+      "clock_id": null,
+      "frame_id": null,
+      "source_refs": [
+        {
+          "artifact_id": "runs/environment.json",
+          "locator": "/git_commit",
+          "input_ids": []
+        }
+      ],
+      "formula_id": null,
+      "assumptions": [],
+      "bounds": null,
+      "reason_codes": []
+    },
+    "core_sha256": {
+      "value": "34f6ee911ff87e4b96ed70506096fcc49bcb276811fe621d9254da0de200d5b9",
+      "status": "OBSERVED",
+      "unit": null,
+      "clock_id": null,
+      "frame_id": null,
+      "source_refs": [
+        {
+          "artifact_id": "runs/FA-G4-091/rep1_a1/lifecycle.json",
+          "locator": "/core/sha256",
+          "input_ids": []
+        }
+      ],
+      "formula_id": null,
+      "assumptions": [],
+      "bounds": null,
+      "reason_codes": []
+    },
+    "artifacts": [
+      {
+        "id": "runs/FA-G4-091/rep1_a1/result.json",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/runs/FA-G4-091/rep1_a1/result.json",
+        "sha256": "1a18ddbd742116f8d33e4f6b73a5c34f1c15c03913be764b19bed3522d10ba50",
+        "media_type": "application/json",
+        "integrity": "VERIFIED"
+      },
+      {
+        "id": "runs/FA-G4-091/rep1_a1/sensors/frames.csv",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/runs/FA-G4-091/rep1_a1/sensors/frames.csv",
+        "sha256": "2018dd0f2d3b63d9506cbf16e76c93a8e6bb3168921ca34166c30242ebfd00fa",
+        "media_type": "text/csv",
+        "integrity": "VERIFIED"
+      },
+      {
+        "id": "runs/FA-G4-091/rep1_a1/sensors/ground_truth.csv",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/runs/FA-G4-091/rep1_a1/sensors/ground_truth.csv",
+        "sha256": "f9dd28015f2db7fa2cb87fc1fc9561f46bb0e4e1bbfeaba7cfe364ca2031c04e",
+        "media_type": "text/csv",
+        "integrity": "VERIFIED"
+      },
+      {
+        "id": "runs/FA-G4-091/rep1_a1/sensors/collisions.json",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/runs/FA-G4-091/rep1_a1/sensors/collisions.json",
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "media_type": "application/json",
+        "integrity": "VERIFIED"
+      },
+      {
+        "id": "runs/FA-G4-091/rep1_a1/sensors/summary.json",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/runs/FA-G4-091/rep1_a1/sensors/summary.json",
+        "sha256": "6e1a47ce650aee613a09f8eef8e34ff3c2e877be17abfbb291a6278d0cc56f83",
+        "media_type": "application/json",
+        "integrity": "VERIFIED"
+      },
+      {
+        "id": "runs/FA-G4-091/rep1_a1/lifecycle.json",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/runs/FA-G4-091/rep1_a1/lifecycle.json",
+        "sha256": "ce885fd8c10b56e0b3617cee7fe8a04c874518f56975781cb2ed4af34730b5a4",
+        "media_type": "application/json",
+        "integrity": "VERIFIED"
+      },
+      {
+        "id": "runs/FA-G4-091/rep1_a1/core/vsos-core.jar",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/runs/FA-G4-091/rep1_a1/core/vsos-core.jar",
+        "sha256": "34f6ee911ff87e4b96ed70506096fcc49bcb276811fe621d9254da0de200d5b9",
+        "media_type": "application/java-archive",
+        "integrity": "VERIFIED"
+      },
+      {
+        "id": "runs/FA-G4-091/bundle.json",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/runs/FA-G4-091/bundle.json",
+        "sha256": "dc74c5cdef5debb29a8e8da820fa9653b765200af67e48727608ac7ec874916e",
+        "media_type": "application/json",
+        "integrity": "VERIFIED"
+      },
+      {
+        "id": "runs/environment.json",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/runs/environment.json",
+        "sha256": "3e85986803d434d4c4ebff2b7584f47499315df3a71e13f9703b62849206ee43",
+        "media_type": "application/json",
+        "integrity": "VERIFIED"
+      },
+      {
+        "id": "metadata/runs_manifest_subset.jsonl",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/metadata/runs_manifest_subset.jsonl",
+        "sha256": "663acb154e26ab2933e38bf7b738a8c0467db8a92cbba59f3d6a4fdf21033207",
+        "media_type": "application/x-ndjson",
+        "integrity": "VERIFIED"
+      },
+      {
+        "id": "metadata/case_manifest_subset.csv",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/metadata/case_manifest_subset.csv",
+        "sha256": "8265a7d7555599ff7573676e64a2d47c52ee3a1ca974623e601c397fd4f98f64",
+        "media_type": "text/csv",
+        "integrity": "VERIFIED"
+      },
+      {
+        "id": "manifest.csv",
+        "run_key": "FA-G4-091-R1",
+        "uri": "golden18_raw_artifacts.zip!/manifest.csv",
+        "sha256": "0e022a7ba08dbf61e13c9af78e5a12ec126705ca90125864e7809020697e4816",
+        "media_type": "text/csv",
+        "integrity": "UNVERIFIED"
+      }
+    ],
+    "baseline_binding": {
+      "identity_status": "UNKNOWN",
+      "project_id": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "BASELINE_ID_UNCONFIRMED"
+        ]
+      },
+      "database_run_id": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "BASELINE_ID_UNCONFIRMED"
+        ]
+      },
+      "scenario_id": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "BASELINE_ID_UNCONFIRMED"
+        ]
+      },
+      "variant_id": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "BASELINE_ID_UNCONFIRMED"
+        ]
+      },
+      "version_id": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "BASELINE_ID_UNCONFIRMED"
+        ]
+      },
+      "version_no": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "BASELINE_ID_UNCONFIRMED"
+        ]
+      },
+      "label": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "BASELINE_ID_UNCONFIRMED"
+        ]
+      },
+      "current": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "BASELINE_ID_UNCONFIRMED"
+        ]
+      },
+      "confirmed_as_v1": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "BASELINE_ID_UNCONFIRMED"
+        ]
+      },
+      "baseline_score": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "BASELINE_SCORE_UNAVAILABLE"
+        ]
+      },
+      "issues": [
+        {
+          "status": "UNKNOWN",
+          "reason_code": "BASELINE_BINDING_MISSING",
+          "source_ref": {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "",
+            "input_ids": []
+          },
+          "detail": "No verified authorized binding snapshot"
+        }
+      ]
+    },
+    "metric_aggregation_version": "adr040-stored-aggregation/1",
+    "metric_lineage": {
+      "producer": {
+        "value": "vsos-core-java/1",
+        "status": "OBSERVED",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/engine",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "simulator_profile": {
+        "value": "carla-0.9.16-xosc15",
+        "status": "OBSERVED",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/simulator",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "signal": {
+        "value": "ego_a",
+        "status": "OBSERVED",
+        "unit": null,
+        "clock_id": "core",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/case/carla/jerk_filtered/signal",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "filter": {
+        "value": {
+          "type": "butterworth",
+          "standard": "Euro NCAP AEB/LSS VRU Test Protocol v4.5.1, 4.4.1.2 (12-pole phaseless, 10 Hz)",
+          "order_per_pass": 6,
+          "passes": "forward + backward (zero phase)",
+          "cutoff_hz": 10.0,
+          "cutoff_interpretation": "design cutoff of each pass; combined response -6 dB at 10 Hz",
+          "edges": "odd reflection padding, 3 x (order + 1) samples",
+          "t_aeb": "last crossing below -1 m/s2, back to the -0.3 m/s2 crossing (protocol section 2)"
+        },
+        "status": "OBSERVED",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/case/carla/jerk_filtered/filter",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "window": {
+        "value": "T_AEB to end of run",
+        "status": "OBSERVED",
+        "unit": null,
+        "clock_id": "core",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/case/carla/jerk_filtered/window",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "dt": {
+        "value": 0.01,
+        "status": "OBSERVED",
+        "unit": "s",
+        "clock_id": "core",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/case/carla/fixed_delta_seconds",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "t_aeb": {
+        "value": 3.91,
+        "status": "OBSERVED",
+        "unit": "s",
+        "clock_id": "core",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/metrics/t_aeb_s",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "command_onset": {
+        "value": 3.85,
+        "status": "OBSERVED",
+        "unit": "s",
+        "clock_id": "core",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/metrics/brake_onset_t",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "source_revision": {
+        "value": "6985f846d9757285d284e586f6686d676a6159f6",
+        "status": "OBSERVED",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/environment.json",
+            "locator": "/git_commit",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "core_sha256": {
+        "value": "34f6ee911ff87e4b96ed70506096fcc49bcb276811fe621d9254da0de200d5b9",
+        "status": "OBSERVED",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/lifecycle.json",
+            "locator": "/core/sha256",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "runtime_source_equivalence": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "RUNTIME_SOURCE_EQUIVALENCE_UNVERIFIED"
+        ]
+      },
+      "calibration_scope": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "CALIBRATION_VALIDITY_DOMAIN_MISSING"
+        ]
+      },
+      "calibration_name": {
+        "value": "etron-1800nm-2026-11-16",
+        "status": "OBSERVED",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/case/carla/pedal_map",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "impact_basis": {
+        "value": "RELATIVE_SPEED_CORE_COLLISION_TICK",
+        "status": "CONDITIONAL",
+        "unit": null,
+        "clock_id": "core",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/simulator",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [
+          "Runtime behavior agrees with the declared simulator profile and inspected producer source; binary/source equivalence is unverified"
+        ],
+        "bounds": null,
+        "reason_codes": [
+          "PROFILE_SOURCE_MAPPING_CONDITIONAL"
+        ]
+      },
+      "stopping_basis": {
+        "value": "CORE_PROJECTED_DISPLACEMENT_PLUS_MODEL_EXTRAPOLATION",
+        "status": "CONDITIONAL",
+        "unit": null,
+        "clock_id": "core",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/simulator",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [
+          "Runtime behavior agrees with the declared simulator profile and inspected producer source; binary/source equivalence is unverified"
+        ],
+        "bounds": null,
+        "reason_codes": [
+          "PROFILE_SOURCE_MAPPING_CONDITIONAL"
+        ]
+      },
+      "run_metadata_source_revision": {
+        "value": "6985f846d9757285d284e586f6686d676a6159f6",
+        "status": "OBSERVED",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "metadata/runs_manifest_subset.jsonl",
+            "locator": "line=10;json_pointer=/git_commit",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      }
+    },
+    "clocks": [
+      {
+        "id": "core",
+        "to_reference_offset": {
+          "value": null,
+          "status": "UNKNOWN",
+          "unit": "s",
+          "clock_id": null,
+          "frame_id": null,
+          "source_refs": [],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": [
+            "CLOCK_ALIGNMENT_UNKNOWN"
+          ]
+        }
+      },
+      {
+        "id": "recorder",
+        "to_reference_offset": {
+          "value": null,
+          "status": "UNKNOWN",
+          "unit": "s",
+          "clock_id": null,
+          "frame_id": null,
+          "source_refs": [],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": [
+            "CLOCK_ALIGNMENT_UNKNOWN"
+          ]
+        }
+      }
+    ]
+  },
+  "report": {
+    "physical_outcome": {
+      "value": null,
+      "status": "UNKNOWN",
+      "unit": null,
+      "clock_id": null,
+      "frame_id": null,
+      "source_refs": [],
+      "formula_id": null,
+      "assumptions": [],
+      "bounds": null,
+      "reason_codes": [
+        "PHYSICAL_OUTCOME_DEFERRED_M1B"
+      ]
+    },
+    "collision_evidence": {
+      "canonical_collision": {
+        "value": true,
+        "status": "OBSERVED",
+        "unit": null,
+        "clock_id": "core",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/metrics/collision",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "sensor_event_count": {
+        "value": 0,
+        "status": "DERIVED",
+        "unit": null,
+        "clock_id": "recorder",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/sensors/collisions.json",
+            "locator": "",
+            "input_ids": []
+          }
+        ],
+        "formula_id": "m1a-array-cardinality/1",
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "physical_event_impact": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": "m/s",
+        "clock_id": "recorder",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/sensors/collisions.json",
+            "locator": "",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "NO_RECORDED_CONTACT",
+          "CONTACT_ABSENCE_UNCONFIRMED"
+        ]
+      },
+      "absence_coverage": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "CALLBACK_COVERAGE_UNKNOWN"
+        ]
+      }
+    },
+    "objectives": {
+      "rms_jerk_mps3": {
+        "canonical_value": {
+          "value": 22.736,
+          "status": "OBSERVED",
+          "unit": "m/s³",
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/outcome/metrics/rms_jerk_mps3",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "evaluation_copy": {
+          "value": 22.736,
+          "status": "OBSERVED",
+          "unit": "m/s³",
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/evaluation/aeb_result/rms_jerk_mps3",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "copy_agreement": "MATCH",
+        "canonical_applicability": "APPLICABLE",
+        "direction": "MINIMIZE",
+        "metric_source": "SIMULATOR_RESULT",
+        "aggregation_version": "adr040-stored-aggregation/1",
+        "producer_profile": {
+          "value": "carla-0.9.16-xosc15",
+          "status": "OBSERVED",
+          "unit": null,
+          "clock_id": null,
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/simulator",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "input_field_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/metrics/rms_jerk_mps3",
+            "input_ids": []
+          },
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/evaluation/aeb_result/rms_jerk_mps3",
+            "input_ids": []
+          }
+        ],
+        "signal": {
+          "value": "ego_a",
+          "status": "OBSERVED",
+          "unit": null,
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/outcome/case/carla/jerk_filtered/signal",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "filter": {
+          "value": "{\"type\": \"butterworth\", \"standard\": \"Euro NCAP AEB/LSS VRU Test Protocol v4.5.1, 4.4.1.2 (12-pole phaseless, 10 Hz)\", \"order_per_pass\": 6, \"passes\": \"forward + backward (zero phase)\", \"cutoff_hz\": 10.0, \"cutoff_interpretation\": \"design cutoff of each pass; combined response -6 dB at 10 Hz\", \"edges\": \"odd reflection padding, 3 x (order + 1) samples\", \"t_aeb\": \"last crossing below -1 m/s2, back to the -0.3 m/s2 crossing (protocol section 2)\"}",
+          "status": "OBSERVED",
+          "unit": null,
+          "clock_id": null,
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/outcome/case/carla/jerk_filtered/filter",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "window": {
+          "value": "T_AEB to end of run",
+          "status": "OBSERVED",
+          "unit": null,
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/outcome/case/carla/jerk_filtered/window",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "clock_id": "core",
+        "frame_id": null,
+        "physical_event_impact": null,
+        "decomposition": null,
+        "quality": {
+          "canonical_integrity": "PASS",
+          "physical_interpretability": "INSUFFICIENT",
+          "mobo_eligibility": "UNKNOWN",
+          "reason_codes": [
+            "PHYSICAL_INTERPRETATION_DEFERRED_M1B",
+            "COHORT_NOT_FROZEN"
+          ],
+          "capability_refs": [
+            "READ_CANONICAL_OBJECTIVE"
+          ]
+        },
+        "explanation": {
+          "assessment": "DESCRIPTIVE_ONLY",
+          "observed_facts": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/outcome/metrics/rms_jerk_mps3",
+              "input_ids": []
+            }
+          ],
+          "mechanism_notes": [
+            "Stored producer scalar retained without recomputation"
+          ],
+          "hypothesis_refs": [],
+          "limitations": [
+            "Physical interpretation and stopping decomposition require M1B; baseline comparison unavailable"
+          ]
+        },
+        "baseline_comparison": {
+          "baseline_run_id": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_COMPARATOR_MISSING"
+            ]
+          },
+          "baseline_version_id": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_ID_UNCONFIRMED"
+            ]
+          },
+          "pairing_status": "UNKNOWN",
+          "delta": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": "m/s³",
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_SCORE_UNAVAILABLE"
+            ]
+          },
+          "relative_change": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_SCORE_UNAVAILABLE"
+            ]
+          }
+        },
+        "parameter_hint_refs": []
+      },
+      "impact_speed_mps": {
+        "canonical_value": {
+          "value": 10.022,
+          "status": "OBSERVED",
+          "unit": "m/s",
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/outcome/metrics/impact_speed_mps",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "evaluation_copy": {
+          "value": 10.022,
+          "status": "OBSERVED",
+          "unit": "m/s",
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/evaluation/aeb_result/impact_speed_mps",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "copy_agreement": "MATCH",
+        "canonical_applicability": "APPLICABLE",
+        "direction": "MINIMIZE",
+        "metric_source": "SIMULATOR_RESULT",
+        "aggregation_version": "adr040-stored-aggregation/1",
+        "producer_profile": {
+          "value": "carla-0.9.16-xosc15",
+          "status": "OBSERVED",
+          "unit": null,
+          "clock_id": null,
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/simulator",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "input_field_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/metrics/impact_speed_mps",
+            "input_ids": []
+          },
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/evaluation/aeb_result/impact_speed_mps",
+            "input_ids": []
+          }
+        ],
+        "signal": {
+          "value": "CORE_RELATIVE_VELOCITY",
+          "status": "CONDITIONAL",
+          "unit": null,
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/simulator",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [
+            "Runtime behavior agrees with the declared simulator profile and inspected producer source; binary/source equivalence is unverified"
+          ],
+          "bounds": null,
+          "reason_codes": [
+            "PROFILE_SOURCE_MAPPING_CONDITIONAL"
+          ]
+        },
+        "filter": {
+          "value": null,
+          "status": "NOT_APPLICABLE",
+          "unit": null,
+          "clock_id": null,
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/simulator",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": [
+            "FILTER_NOT_APPLICABLE"
+          ]
+        },
+        "window": {
+          "value": "CORE_COLLISION_TICK",
+          "status": "CONDITIONAL",
+          "unit": null,
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/simulator",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [
+            "Runtime behavior agrees with the declared simulator profile and inspected producer source; binary/source equivalence is unverified"
+          ],
+          "bounds": null,
+          "reason_codes": [
+            "PROFILE_SOURCE_MAPPING_CONDITIONAL"
+          ]
+        },
+        "clock_id": "core",
+        "frame_id": null,
+        "physical_event_impact": {
+          "value": null,
+          "status": "UNKNOWN",
+          "unit": "m/s",
+          "clock_id": "recorder",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/sensors/collisions.json",
+              "locator": "",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": [
+            "NO_RECORDED_CONTACT",
+            "CONTACT_ABSENCE_UNCONFIRMED"
+          ]
+        },
+        "decomposition": null,
+        "quality": {
+          "canonical_integrity": "PASS",
+          "physical_interpretability": "INSUFFICIENT",
+          "mobo_eligibility": "UNKNOWN",
+          "reason_codes": [
+            "PHYSICAL_INTERPRETATION_DEFERRED_M1B",
+            "COHORT_NOT_FROZEN"
+          ],
+          "capability_refs": [
+            "READ_CANONICAL_OBJECTIVE"
+          ]
+        },
+        "explanation": {
+          "assessment": "DESCRIPTIVE_ONLY",
+          "observed_facts": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/outcome/metrics/impact_speed_mps",
+              "input_ids": []
+            }
+          ],
+          "mechanism_notes": [
+            "Stored producer scalar retained without recomputation"
+          ],
+          "hypothesis_refs": [],
+          "limitations": [
+            "Physical interpretation and stopping decomposition require M1B; baseline comparison unavailable"
+          ]
+        },
+        "baseline_comparison": {
+          "baseline_run_id": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_COMPARATOR_MISSING"
+            ]
+          },
+          "baseline_version_id": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_ID_UNCONFIRMED"
+            ]
+          },
+          "pairing_status": "UNKNOWN",
+          "delta": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": "m/s",
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_SCORE_UNAVAILABLE"
+            ]
+          },
+          "relative_change": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_SCORE_UNAVAILABLE"
+            ]
+          }
+        },
+        "parameter_hint_refs": []
+      },
+      "stopping_distance_m": {
+        "canonical_value": {
+          "value": 9.608,
+          "status": "OBSERVED",
+          "unit": "m",
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/outcome/metrics/stopping_distance_m",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "evaluation_copy": {
+          "value": 9.608,
+          "status": "OBSERVED",
+          "unit": "m",
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/evaluation/aeb_result/stopping_distance_m",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "copy_agreement": "MATCH",
+        "canonical_applicability": "APPLICABLE",
+        "direction": "MINIMIZE",
+        "metric_source": "SIMULATOR_RESULT",
+        "aggregation_version": "adr040-stored-aggregation/1",
+        "producer_profile": {
+          "value": "carla-0.9.16-xosc15",
+          "status": "OBSERVED",
+          "unit": null,
+          "clock_id": null,
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/simulator",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": []
+        },
+        "input_field_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/metrics/stopping_distance_m",
+            "input_ids": []
+          },
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/evaluation/aeb_result/stopping_distance_m",
+            "input_ids": []
+          }
+        ],
+        "signal": {
+          "value": "CORE_PROJECTED_EGO_X_AND_EXTRAPOLATION_MODEL",
+          "status": "CONDITIONAL",
+          "unit": null,
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/simulator",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [
+            "Runtime behavior agrees with the declared simulator profile and inspected producer source; binary/source equivalence is unverified"
+          ],
+          "bounds": null,
+          "reason_codes": [
+            "PROFILE_SOURCE_MAPPING_CONDITIONAL"
+          ]
+        },
+        "filter": {
+          "value": null,
+          "status": "NOT_APPLICABLE",
+          "unit": null,
+          "clock_id": null,
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/simulator",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [],
+          "bounds": null,
+          "reason_codes": [
+            "FILTER_NOT_APPLICABLE"
+          ]
+        },
+        "window": {
+          "value": "COMMAND_ONSET_TO_TRACE_END_PLUS_MODEL_TAIL",
+          "status": "CONDITIONAL",
+          "unit": null,
+          "clock_id": "core",
+          "frame_id": null,
+          "source_refs": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/simulator",
+              "input_ids": []
+            }
+          ],
+          "formula_id": null,
+          "assumptions": [
+            "Runtime behavior agrees with the declared simulator profile and inspected producer source; binary/source equivalence is unverified"
+          ],
+          "bounds": null,
+          "reason_codes": [
+            "PROFILE_SOURCE_MAPPING_CONDITIONAL"
+          ]
+        },
+        "clock_id": "core",
+        "frame_id": null,
+        "physical_event_impact": null,
+        "decomposition": {
+          "total_as_recorded": {
+            "value": 9.608,
+            "status": "OBSERVED",
+            "unit": "m",
+            "clock_id": "core",
+            "frame_id": null,
+            "source_refs": [
+              {
+                "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+                "locator": "/outcome/metrics/stopping_distance_m",
+                "input_ids": []
+              }
+            ],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": []
+          },
+          "trace_component": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": "m",
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "STOPPING_BREAKDOWN_DEFERRED_M1B"
+            ]
+          },
+          "extrapolated_component": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": "m",
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "STOPPING_BREAKDOWN_DEFERRED_M1B"
+            ]
+          },
+          "start_time": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": "s",
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "STOPPING_BREAKDOWN_DEFERRED_M1B"
+            ]
+          },
+          "end_time": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": "s",
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "STOPPING_BREAKDOWN_DEFERRED_M1B"
+            ]
+          },
+          "start_index": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "STOPPING_BREAKDOWN_DEFERRED_M1B"
+            ]
+          },
+          "position_after_step": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "STOPPING_BREAKDOWN_DEFERRED_M1B"
+            ]
+          },
+          "last_speed": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": "m/s",
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "STOPPING_BREAKDOWN_DEFERRED_M1B"
+            ]
+          },
+          "decel_for_extrapolation": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": "m/s²",
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "STOPPING_BREAKDOWN_DEFERRED_M1B"
+            ]
+          },
+          "measured_physical_distance": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": "m",
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "STOPPING_BREAKDOWN_DEFERRED_M1B"
+            ]
+          },
+          "rounding_rule": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "STOPPING_BREAKDOWN_DEFERRED_M1B"
+            ]
+          },
+          "replay_difference": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": "m",
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "STOPPING_BREAKDOWN_DEFERRED_M1B"
+            ]
+          }
+        },
+        "quality": {
+          "canonical_integrity": "PASS",
+          "physical_interpretability": "INSUFFICIENT",
+          "mobo_eligibility": "UNKNOWN",
+          "reason_codes": [
+            "PHYSICAL_INTERPRETATION_DEFERRED_M1B",
+            "COHORT_NOT_FROZEN"
+          ],
+          "capability_refs": [
+            "READ_CANONICAL_OBJECTIVE"
+          ]
+        },
+        "explanation": {
+          "assessment": "DESCRIPTIVE_ONLY",
+          "observed_facts": [
+            {
+              "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+              "locator": "/outcome/metrics/stopping_distance_m",
+              "input_ids": []
+            }
+          ],
+          "mechanism_notes": [
+            "Stored producer scalar retained without recomputation"
+          ],
+          "hypothesis_refs": [],
+          "limitations": [
+            "Physical interpretation and stopping decomposition require M1B; baseline comparison unavailable"
+          ]
+        },
+        "baseline_comparison": {
+          "baseline_run_id": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_COMPARATOR_MISSING"
+            ]
+          },
+          "baseline_version_id": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_ID_UNCONFIRMED"
+            ]
+          },
+          "pairing_status": "UNKNOWN",
+          "delta": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": "m",
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_SCORE_UNAVAILABLE"
+            ]
+          },
+          "relative_change": {
+            "value": null,
+            "status": "UNKNOWN",
+            "unit": null,
+            "clock_id": null,
+            "frame_id": null,
+            "source_refs": [],
+            "formula_id": null,
+            "assumptions": [],
+            "bounds": null,
+            "reason_codes": [
+              "BASELINE_SCORE_UNAVAILABLE"
+            ]
+          }
+        },
+        "parameter_hint_refs": []
+      }
+    },
+    "aeb_timeline": {
+      "decision": {
+        "value": 3.6,
+        "status": "OBSERVED",
+        "unit": "s",
+        "clock_id": "core",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/metrics/aeb_decision_t",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "command_onset": {
+        "value": 3.85,
+        "status": "OBSERVED",
+        "unit": "s",
+        "clock_id": "core",
+        "frame_id": null,
+        "source_refs": [
+          {
+            "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+            "locator": "/outcome/metrics/brake_onset_t",
+            "input_ids": []
+          }
+        ],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": []
+      },
+      "actual_aeb_consumption": {
+        "value": null,
+        "status": "UNKNOWN",
+        "unit": null,
+        "clock_id": null,
+        "frame_id": null,
+        "source_refs": [],
+        "formula_id": null,
+        "assumptions": [],
+        "bounds": null,
+        "reason_codes": [
+          "COMMAND_WRITER_PROVENANCE_MISSING"
+        ]
+      }
+    },
+    "physical_feasibility": {
+      "value": null,
+      "status": "UNKNOWN",
+      "unit": null,
+      "clock_id": null,
+      "frame_id": null,
+      "source_refs": [],
+      "formula_id": null,
+      "assumptions": [],
+      "bounds": null,
+      "reason_codes": [
+        "PHYSICAL_FEASIBILITY_DEFERRED_M1B"
+      ]
+    },
+    "failure_candidates": [],
+    "root_cause_hypotheses": [],
+    "evidence_sufficiency": {
+      "READ_CANONICAL_OBJECTIVE": "SUFFICIENT",
+      "EXPLAIN_PHYSICAL_MEANING": "INSUFFICIENT",
+      "EXPORT_FOR_MOBO": "INSUFFICIENT"
+    },
+    "inconclusive_reasons": [
+      "M1A_FOUNDATION_ONLY",
+      "DIAGNOSIS_NOT_EXECUTED",
+      "BASELINE_ID_UNCONFIRMED"
+    ],
+    "validation": [
+      {
+        "status": "UNKNOWN",
+        "reason_code": "CLOCK_ALIGNMENT_UNKNOWN",
+        "source_ref": {
+          "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+          "locator": "/outcome/frames",
+          "input_ids": []
+        },
+        "detail": "Core GameTime origin is not bound to recorder world-frame origin; no inferred offset applied"
+      },
+      {
+        "status": "UNKNOWN",
+        "reason_code": "BASELINE_BINDING_MISSING",
+        "source_ref": {
+          "artifact_id": "runs/FA-G4-091/rep1_a1/result.json",
+          "locator": "",
+          "input_ids": []
+        },
+        "detail": "No verified authorized binding snapshot"
+      },
+      {
+        "status": "CONFLICTING",
+        "reason_code": "COLLISION_EVIDENCE_DISAGREEMENT",
+        "source_ref": {
+          "artifact_id": "runs/FA-G4-091/rep1_a1/sensors/collisions.json",
+          "locator": "",
+          "input_ids": []
+        },
+        "detail": "Canonical collision claim differs from sensor event presence; empty events do not prove absence"
+      }
+    ]
+  },
+  "handoff_reference": {
+    "value": null,
+    "status": "UNKNOWN",
+    "unit": null,
+    "clock_id": null,
+    "frame_id": null,
+    "source_refs": [],
+    "formula_id": null,
+    "assumptions": [],
+    "bounds": null,
+    "reason_codes": [
+      "MOBO_HANDOFF_NOT_IMPLEMENTED_M1A"
+    ]
+  },
+  "content_digest": "117f88ac85ba013b1b1ee16d43ec5601aeea9c1c7f658ba1604ddfb3bb9e00bd",
+  "analysis_id": "fb0184fd-b006-456e-9dfa-40efeb96cc6d",
+  "created_at_utc": "2026-11-23T15:36:30.935089300Z"
+}

@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { VehicSimPage } from "@/components/VehicSimPage";
-import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, Pagination, RecommendationBadge, StatCard, fmt } from "@/components/VehicSimUi";
+import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, Pagination, RecommendationBadge, StatCard, TableScroll, fmt } from "@/components/VehicSimUi";
 import { BaselineEntry } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { DecisionHistory, ReviewDecision } from "@/types/vehicsim";
@@ -49,8 +49,8 @@ export default function DecisionHistoryPage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Lịch sử quyết định" }]}
-      title="Lịch sử quyết định"
-      subtitle="Từng lần quyết định kèm người duyệt và lý do được lưu riêng. Chấp nhận hoặc từ chối là quyết định cuối; yêu cầu thêm kiểm thử giữ khuyến nghị mở. Dữ liệu cũ chỉ giữ được quyết định gần nhất trước khi có lịch sử."
+      title="Nhật ký phê duyệt & Ban hành bản cơ sở"
+      subtitle="Theo dõi các quyết định chấp thuận (ACCEPT), từ chối (REJECT) hoặc yêu cầu kiểm thử thêm từ hội đồng đánh giá."
     >
       <ErrorNote message={error} />
       <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
@@ -85,50 +85,56 @@ export default function DecisionHistoryPage() {
             className="ml-auto w-[280px] rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-[7px] text-[12px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
           />
         </div>
-        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-          <span className="w-[110px]">Khuyến nghị</span>
-          <span className="w-[170px]">Phiên bản</span>
-          <span className="w-[190px]">Quyết định</span>
-          <span className="min-w-0 flex-1">Lý do</span>
-          <span className="w-[150px]">Người duyệt</span>
-          <span className="w-[100px]">Ngày</span>
-          <span className="w-[100px] text-right">Thao tác</span>
-        </div>
-        {history && visible.length === 0 && (
-          <EmptyState title={all.length ? "Không có quyết định nào khớp bộ lọc" : "Chưa có quyết định nào"}>
-            Quyết định được ghi khi Người duyệt chấp nhận hoặc từ chối một{" "}
-            <Link href="/validation/recommendations" className="font-semibold underline">
-              khuyến nghị
+        <TableScroll label="Bảng lịch sử quyết định" minWidth={960}>
+          <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
+            <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
+            <span className="w-[115px] shrink-0 pr-3">Khuyến nghị</span>
+            <span className="w-[145px] shrink-0 pr-3">Phiên bản</span>
+            <span className="w-[155px] shrink-0 pr-3">Quyết định</span>
+            <span className="min-w-[190px] flex-1 pr-4">Lý do</span>
+            <span className="w-[135px] shrink-0 pr-3">Người duyệt</span>
+            <span className="w-[80px] shrink-0">Ngày</span>
+            <span className="w-[85px] shrink-0 text-right">Thao tác</span>
+          </div>
+          {history && visible.length === 0 && (
+            <EmptyState title={all.length ? "Không có quyết định nào khớp bộ lọc" : "Chưa có quyết định nào"}>
+              Quyết định được ghi khi Người duyệt chấp nhận hoặc từ chối một{" "}
+              <Link href="/validation/recommendations" className="font-semibold underline">
+                khuyến nghị
+              </Link>
+              .
+            </EmptyState>
+          )}
+          {shown.map((d, idx) => (
+            <Link
+              key={d.id}
+              href={`/validation/recommendations/${d.test_id}`}
+              className="flex min-h-[58px] items-center border-b border-solid border-vehicsim-line px-5 py-2.5 last:border-b-0 hover:bg-vehicsim-row"
+            >
+              <span className="w-[45px] shrink-0 pr-2 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
+                {offset + idx + 1}
+              </span>
+              <span className="flex w-[115px] shrink-0 flex-col gap-[2px] pr-3">
+                <span className="text-[13px] font-bold text-vehicsim-ink">{d.recommendation_code}</span>
+                <span className="text-[11.5px] text-vehicsim-faint">{d.regression_code}</span>
+              </span>
+              <span className="w-[150px] shrink-0 truncate pr-3 text-[12.5px] font-semibold text-vehicsim-ink">
+                {d.baseline} → {d.candidate}
+              </span>
+              <span className="w-[160px] shrink-0 pr-3">
+                <RecommendationBadge status={d.decision} />
+              </span>
+              <span className="flex min-w-[200px] flex-1 flex-col gap-[2px] pr-4">
+                <span className="line-clamp-2 text-[12.5px] text-vehicsim-ink">{d.reason ?? "—"}</span>
+                {d.source === "LEGACY_SNAPSHOT" && <span className="text-[11px] text-vehicsim-faint">Quyết định gần nhất từ dữ liệu cũ</span>}
+                {d.conditions && <span className="truncate text-[11.5px] text-vehicsim-faint">Điều kiện: {d.conditions}</span>}
+              </span>
+              <span className="w-[140px] shrink-0 truncate pr-3 text-[12.5px] text-vehicsim-muted">{d.reviewed_by ?? "—"}</span>
+              <span className="w-[85px] shrink-0 text-[12px] text-vehicsim-faint">{fmt.date(d.reviewed_at)}</span>
+              <span className="w-[90px] shrink-0 text-right text-[12px] font-bold text-vehicsim-decision">Chi tiết</span>
             </Link>
-            .
-          </EmptyState>
-        )}
-        {shown.map((d) => (
-          <Link
-            key={d.id}
-            href={`/validation/recommendations/${d.test_id}`}
-            className="flex min-h-[58px] items-center border-b border-solid border-vehicsim-line px-5 py-2 last:border-b-0 hover:bg-vehicsim-row"
-          >
-            <span className="flex w-[110px] flex-col gap-[2px]">
-              <span className="text-[13px] font-bold text-vehicsim-ink">{d.recommendation_code}</span>
-              <span className="text-[12px] text-vehicsim-faint">{d.regression_code}</span>
-            </span>
-            <span className="w-[170px] truncate pr-3 text-[13px] font-semibold text-vehicsim-ink">
-              {d.baseline} → {d.candidate}
-            </span>
-            <span className="w-[190px]">
-              <RecommendationBadge status={d.decision} />
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
-              <span className="line-clamp-2 text-[13px] text-vehicsim-ink">{d.reason ?? "—"}</span>
-              {d.source === "LEGACY_SNAPSHOT" && <span className="text-[11px] text-vehicsim-faint">Quyết định gần nhất từ dữ liệu cũ</span>}
-              {d.conditions && <span className="truncate text-[12px] text-vehicsim-faint">Điều kiện: {d.conditions}</span>}
-            </span>
-            <span className="w-[150px] truncate text-[13px] text-vehicsim-muted">{d.reviewed_by ?? "—"}</span>
-            <span className="w-[100px] text-[13px] text-vehicsim-faint">{fmt.date(d.reviewed_at)}</span>
-            <span className="w-[100px] text-right text-[12px] font-semibold text-vehicsim-decision">Chi tiết</span>
-          </Link>
-        ))}
+          ))}
+        </TableScroll>
         </div>
         {visible.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">

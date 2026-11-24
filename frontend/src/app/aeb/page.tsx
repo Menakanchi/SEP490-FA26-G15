@@ -1,1038 +1,275 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AnalysisSelectionSummary } from "@/components/AnalysisSelectionSummary";
+import {
+  ArrowRight,
+  BarChart3,
+  ShieldCheck,
+  Sliders,
+  Sparkles,
+} from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import {
-  CLASS_STYLE,
+  Card,
+  EmptyState,
   ErrorNote,
   Pagination,
   PillButton,
   Tag,
-  cx,
   fmt,
   paramValue,
 } from "@/components/VehicSimUi";
-import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
-import type {
-  AebVersion,
-  AnalysisSelection,
-  FailureClass,
-  OptimizationRun,
-  OptimizationTrial,
-  ParameterDef,
-  VersionBrief,
-} from "@/types/vehicsim";
+import type { AebVersion } from "@/types/vehicsim";
+import { AebNav } from "@/components/aeb/AebNav";
+import { KEY_PARAMS } from "@/components/aeb/aebTypes";
 
-const STATUS_TONE: Record<VersionBrief["status"], "dark" | "info" | "ok" | "danger" | "neutral"> = {
-  BASELINE: "dark",
-  CANDIDATE: "info",
-  ACCEPTED: "ok",
-  REJECTED: "danger",
-  ARCHIVED: "neutral",
-};
-const STATUS_LABEL: Record<VersionBrief["status"], string> = {
-  BASELINE: "cơ sở",
-  CANDIDATE: "ứng viên",
-  ACCEPTED: "đã chấp nhận",
-  REJECTED: "đã từ chối",
-  ARCHIVED: "lưu trữ",
-};
-const SOURCE_LABEL: Record<string, string> = { MANUAL: "thủ công", OPTIMIZATION: "tối ưu hoá" };
-
-// 4 tham số AEB chỉnh được theo ADR-040
-const KEY_PARAMS = ["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "MAX_DECELERATION", "BRAKE_BUILDUP_RATE"];
-const CATEGORY_ORDER: FailureClass[] = ["DECISION", "CONTROL", "VEHICLE_DYNAMICS"];
-
-export default function AebConfigPage() {
-  const { ctx, refresh, canWrite } = useVehicSimContext();
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
-  const tabParam = searchParams.get("tab");
-  const activeTab = tabParam === "manual" || tabParam === "versions" ? tabParam : "mobo";
-  const setActiveTab = (tab: "mobo" | "manual" | "versions") => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (tab === "mobo") params.delete("tab");
-    else params.set("tab", tab);
-    const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  };
-  const scenarioId = Number(searchParams.get("scenario_id"));
-  const datasetParam = searchParams.get("dataset_id");
-  const datasetId = Number(datasetParam);
-  const [dataset, setDataset] = useState<AnalysisSelection | null>(null);
-  const [datasetError, setDatasetError] = useState<string | null>(null);
+export default function AebHubPage() {
+  const { ctx } = useVehicSimContext();
   const [versions, setVersions] = useState<AebVersion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ id: number; label: string } | null>(null);
-  const [versionPage, setVersionPage] = useState(1);
 
-  const load = useCallback(() => {
+  useEffect(() => {
     vehicsimApi
       .aebVersions()
       .then(setVersions)
       .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách phiên bản AEB"));
   }, []);
-  useEffect(load, [load]);
-  useEffect(() => {
-    let active = true;
-    const loadDataset = async () => {
-      setDataset(null);
-      setDatasetError(null);
-      if (datasetParam !== null && (!Number.isSafeInteger(datasetId) || datasetId <= 0)) {
-        setDatasetError("Mã tập phân tích không hợp lệ.");
-        return;
-      }
-      if (datasetParam === null && (!Number.isSafeInteger(scenarioId) || scenarioId <= 0)) return;
-      try {
-        const snapshot = datasetParam !== null
-          ? await vehicsimApi.analysisHandoff(datasetId)
-          : null;
-        if (active) setDataset(snapshot);
-      } catch (err) {
-        if (active) setDatasetError(vi(err instanceof Error ? err.message : "Không tải được tập phân tích"));
-      }
-    };
-    void loadDataset();
-    return () => { active = false; };
-  }, [scenarioId, datasetId, datasetParam]);
 
-  const catalog = useMemo(() => new Map((ctx?.parameters ?? []).map((p) => [p.code, p])), [ctx]);
   const baseline = versions?.find((v) => v.status === "BASELINE") ?? null;
-  const targetFamily = ctx?.families?.find((f) => f.id === scenarioId) ?? null;
+  const candidates = versions?.filter((v) => v.status === "CANDIDATE") ?? [];
+  const catalog = new Map((ctx?.parameters ?? []).map((p) => [p.code, p]));
+
+  const [candidatePage, setCandidatePage] = useState(1);
+  const CANDIDATE_PAGE_SIZE = 8;
+  const candidatePages = Math.max(1, Math.ceil(candidates.length / CANDIDATE_PAGE_SIZE));
+  const pagedCandidates = candidates.slice((candidatePage - 1) * CANDIDATE_PAGE_SIZE, candidatePage * CANDIDATE_PAGE_SIZE);
 
   return (
     <VehicSimPage
-      step={5}
-      crumbs={[{ label: "Phanh khẩn cấp" }, { label: "Cấu hình" }]}
-      title="Cấu hình & Tối ưu hoá AEB"
-      subtitle="Hiệu chỉnh 4 tham số AEB: chạy thuật toán tối ưu đa mục tiêu Bayes (MOBO/qEHVI) hoặc điều chỉnh thủ công, sau đó chuyển sang kiểm thử hồi quy."
+      step={4}
+      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Tổng quan" }]}
+      title="Trung tâm cải tiến & Hiệu chuẩn AEB"
+      subtitle="Theo dõi bản cơ sở hiện hành, tìm kiếm bộ tham số mới qua thuật toán Bayes hoặc hiệu chỉnh thủ công."
+      actions={
+        <div className="flex items-center gap-2">
+          <PillButton href="/aeb/mobo" variant="dark">
+            <Sparkles className="size-4 shrink-0" />
+            Vào Studio MOBO
+          </PillButton>
+        </div>
+      }
     >
-      <ErrorNote message={error ?? datasetError} />
-      {targetFamily && (
-        <div className="flex items-center justify-between gap-3 rounded-[16px] border border-solid border-vehicsim-decision/20 bg-vehicsim-decision-bg px-4 py-3 text-[13px] text-vehicsim-decision shadow-sm">
-          <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-vehicsim-decision" />
-            <span>
-              Chuẩn bị tối ưu AEB trên toàn bộ biến thể của họ kịch bản <strong>{targetFamily.code} · {targetFamily.name}</strong>.
-            </span>
-          </div>
-          <span className="rounded-full bg-vehicsim-surface px-2.5 py-1 text-[11px] font-bold text-vehicsim-decision shadow-sm">
-            Tối ưu toàn kịch bản
-          </span>
-        </div>
-      )}
-      {dataset && <AnalysisSelectionSummary dataset={dataset} />}
-      {dataset && <p className="text-[12px] text-vehicsim-muted">Tập phân tích đã chốt được chuyển sang bước này. MOBO hiện chạy trên toàn họ kịch bản.</p>}
-      {created && (
-        <div className="flex items-center justify-between gap-4 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok shadow-sm">
-          <span>Đã tạo ứng viên AEB {created.label}. Bước tiếp theo: chạy kiểm thử hồi quy so với bản cơ sở.</span>
-          <PillButton variant="dark" className="px-4 py-2 text-[12px]" href={`/validation/regression/new?candidate=${created.id}`}>
-            Chạy kiểm thử hồi quy
-          </PillButton>
-        </div>
-      )}
-
-      {/* Điều hướng chuyển chế độ (Tabs) */}
-      <div className="flex items-center gap-2 border-b border-solid border-vehicsim-line pb-1">
-        <button
-          type="button"
-          onClick={() => setActiveTab("mobo")}
-          className={cx(
-            "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
-            activeTab === "mobo"
-              ? "border-b-2 border-vehicsim-primary bg-vehicsim-surface text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
-              : "text-vehicsim-muted hover:text-vehicsim-ink",
-          )}
-        >
-          <span>Tối ưu hoá tự động (MOBO)</span>
-          <span className="rounded-full bg-vehicsim-decision-bg px-2 py-[2px] text-[11px] font-semibold text-vehicsim-decision">
-            qEHVI
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab("manual")}
-          className={cx(
-            "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
-            activeTab === "manual"
-              ? "border-b-2 border-vehicsim-primary bg-vehicsim-surface text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
-              : "text-vehicsim-muted hover:text-vehicsim-ink",
-          )}
-        >
-          <span>Tạo ứng viên thủ công</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab("versions")}
-          className={cx(
-            "flex items-center gap-2 rounded-t-[14px] px-5 py-3 text-[14px] font-bold transition",
-            activeTab === "versions"
-              ? "border-b-2 border-vehicsim-primary bg-vehicsim-surface text-vehicsim-ink shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
-              : "text-vehicsim-muted hover:text-vehicsim-ink",
-          )}
-        >
-          <span>Tất cả phiên bản AEB</span>
-          <span className="rounded-full bg-vehicsim-soft px-2 py-[2px] text-[11px] font-semibold text-vehicsim-muted">
-            {versions ? versions.length : 0}
-          </span>
-        </button>
-      </div>
-
-      {/* Tab 1: Tối ưu hoá đa mục tiêu Bayes (MOBO) */}
-      {activeTab === "mobo" && (
-        <MoboOptimizationSection
-          canWrite={canWrite}
-          baselineId={baseline?.id ?? null}
-          initialScenarioId={Number.isSafeInteger(scenarioId) && scenarioId > 0 ? scenarioId : undefined}
-          onCandidateSelected={async (candId, candLabel) => {
-            setCreated({ id: candId, label: candLabel });
-            load();
-            await refresh();
-          }}
-        />
-      )}
-
-      {/* Tab 2: Tạo ứng viên thủ công */}
-      {activeTab === "manual" && (
-        <>
-          {versions && ctx && canWrite ? (
-            <CandidateForm
-              versions={versions}
-              parameters={ctx.parameters}
-              onCreated={async (id, label) => {
-                setCreated({ id, label });
-                load();
-                await refresh();
-              }}
-            />
-          ) : (
-            <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 text-[13px] text-vehicsim-muted">
-              Bạn chỉ có quyền xem hoặc dữ liệu tham số đang được tải.
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Tab 3: Danh sách tất cả phiên bản AEB */}
-      {activeTab === "versions" && (
-        <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
-          <div className="flex items-center px-5 py-4">
-            <span className="text-[15px] font-bold text-vehicsim-ink">{versions ? `${versions.length} phiên bản` : "…"}</span>
-          </div>
-          <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-            <span className="w-[120px]">Phiên bản</span>
-            <span className="w-[120px]">Trạng thái</span>
-            {KEY_PARAMS.map((code) => (
-              <span key={code} className="w-[120px] truncate pr-2">
-                {catalog.get(code)?.name ?? code}
-              </span>
-            ))}
-            <span className="min-w-0 flex-1">Ghi chú</span>
-            <span className="w-[96px]">Ngày tạo</span>
-            <span className="w-[160px] text-right pr-2">Thao tác</span>
-          </div>
-          {(() => {
-            const vTotal = versions?.length ?? 0;
-            const vPageSize = 8;
-            const vPages = Math.max(1, Math.ceil(vTotal / vPageSize));
-            const vCurrent = Math.min(versionPage, vPages);
-            const vOffset = (vCurrent - 1) * vPageSize;
-            const shownVersions = versions?.slice(vOffset, vOffset + vPageSize) ?? [];
-
-            return (
-              <>
-                {shownVersions.map((v) => (
-                  <div
-                    key={v.id}
-                    className={cx(
-                      "flex min-h-[56px] items-center border-b border-solid border-vehicsim-line px-5 py-2",
-                      v.status === "BASELINE" && "bg-vehicsim-row",
-                    )}
-                  >
-                    <span className="flex w-[120px] flex-col">
-                      <span className="text-[13px] font-bold text-vehicsim-ink">AEB {v.label}</span>
-                      <span className="text-[11px] text-vehicsim-faint">{changedNote(v, baseline)}</span>
-                    </span>
-                    <span className="w-[120px]">
-                      <Tag tone={STATUS_TONE[v.status]}>{STATUS_LABEL[v.status]}</Tag>
-                    </span>
-                    {KEY_PARAMS.map((code) => {
-                      const differs = baseline && v.id !== baseline.id && v.parameters[code] !== baseline.parameters[code];
-                      return (
-                        <span
-                          key={code}
-                          className={cx("w-[120px] text-[13px]", differs ? "font-bold text-vehicsim-decision" : "text-vehicsim-ink")}
-                        >
-                          {paramValue(v.parameters[code], catalog.get(code)?.unit ?? "")}
-                        </span>
-                      );
-                    })}
-                    <span className="min-w-0 flex-1 truncate pr-3 text-[12px] text-vehicsim-muted">{v.notes ?? "—"}</span>
-                    <span className="w-[96px] text-[12px] text-vehicsim-faint">{fmt.date(v.created_at)}</span>
-                    <span className="flex w-[160px] justify-end" onClick={(e) => e.stopPropagation()}>
-                      {v.status === "CANDIDATE" && canWrite && (
-                        <Link
-                          href={`/validation/regression/new?candidate=${v.id}`}
-                          className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-sm"
-                        >
-                          Kiểm thử hồi quy
-                        </Link>
-                      )}
-                    </span>
-                  </div>
-                ))}
-                {vTotal > 0 && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-t border-solid border-vehicsim-line">
-                    <span className="text-[12px] text-vehicsim-muted">
-                      Hiển thị {vOffset + 1}–{Math.min(vOffset + vPageSize, vTotal)} trên {vTotal} phiên bản
-                    </span>
-                    {vPages > 1 && <Pagination page={vCurrent} pages={vPages} onPage={setVersionPage} />}
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </section>
-      )}
-    </VehicSimPage>
-  );
-}
-
-// ===========================================================================
-// Giao diện Tối ưu hoá AEB đa mục tiêu (MOBO Section)
-// ===========================================================================
-
-function MoboOptimizationSection({
-  canWrite,
-  baselineId,
-  initialScenarioId,
-  onCandidateSelected,
-}: {
-  canWrite: boolean;
-  baselineId: number | null;
-  initialScenarioId?: number;
-  onCandidateSelected: (candidateId: number, label: string) => void;
-}) {
-  const { ctx } = useVehicSimContext();
-  const [runs, setRuns] = useState<OptimizationRun[] | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
-  const [activeRun, setActiveRun] = useState<OptimizationRun | null>(null);
-  const [trials, setTrials] = useState<OptimizationTrial[] | null>(null);
-  const [paretoTrials, setParetoTrials] = useState<OptimizationTrial[] | null>(null);
-
-  // Form state
-  const [scenarioId, setScenarioId] = useState<number | "">(initialScenarioId ?? "");
-  const [name, setName] = useState("");
-  const [maxTrials, setMaxTrials] = useState(10);
-  const [nInitialPoints, setNInitialPoints] = useState(3);
-  const [submitting, setSubmitting] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
-  const [selectingTrialId, setSelectingTrialId] = useState<number | null>(null);
-  const [selectionResult, setSelectionResult] = useState<{ regressionTestId: number; trialId: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Chọn mặc định kịch bản đầu tiên hoặc initialScenarioId
-  useEffect(() => {
-    if (!ctx?.families?.length) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- giá trị mặc định khi kịch bản tải xong
-    setScenarioId((cur) => (cur === "" ? (initialScenarioId && ctx.families.some(f => f.id === initialScenarioId) ? initialScenarioId : ctx.families[0].id) : cur));
-  }, [ctx, initialScenarioId]);
-
-  // Tải danh sách đợt tối ưu
-  const loadRuns = useCallback(() => {
-    vehicsimApi
-      .optimizationRuns()
-      .then((data) => {
-        setRuns(data);
-        setSelectedRunId((cur) => cur ?? (data.length > 0 ? data[0].id : null));
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách đợt tối ưu"));
-  }, []);
-
-  useEffect(loadRuns, [loadRuns]);
-
-  // Tải chi tiết và danh sách trials của run đang chọn
-  const loadActiveRunDetails = useCallback((runId: number) => {
-    Promise.all([
-      vehicsimApi.optimizationRun(runId),
-      vehicsimApi.optimizationTrials(runId),
-      vehicsimApi.optimizationPareto(runId),
-    ])
-      .then(([r, allTrials, pTrials]) => {
-        setActiveRun(r);
-        setTrials(allTrials);
-        setParetoTrials(pTrials);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được chi tiết đợt tối ưu"));
-  }, []);
-
-  useEffect(() => {
-    if (selectedRunId !== null) {
-      loadActiveRunDetails(selectedRunId);
-    }
-  }, [selectedRunId, loadActiveRunDetails]);
-
-  // Polling tự động mỗi 2.5 giây khi run đang RUNNING
-  useEffect(() => {
-    if (!activeRun || activeRun.status !== "RUNNING") return;
-    const interval = setInterval(() => {
-      loadActiveRunDetails(activeRun.id);
-      loadRuns();
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [activeRun, loadActiveRunDetails, loadRuns]);
-
-  // Khởi động run mới
-  const handleStartOptimization = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!scenarioId) {
-      setError("Vui lòng chọn kịch bản kiểm thử");
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    setSelectionResult(null);
-    try {
-      const res = await vehicsimApi.createOptimization({
-        scenario_id: Number(scenarioId),
-        base_aeb_version_id: baselineId ?? undefined,
-        name: name.trim() || undefined,
-        max_trials: maxTrials,
-        n_initial_points: nInitialPoints,
-      });
-      setName("");
-      await loadRuns();
-      setSelectedRunId(res.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể khởi động đợt tối ưu");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Huỷ run đang chạy
-  const handleCancelRun = async (runId: number) => {
-    setCancelling(true);
-    try {
-      await vehicsimApi.cancelOptimization(runId);
-      await loadActiveRunDetails(runId);
-      await loadRuns();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể huỷ đợt tối ưu");
-    } finally {
-      setCancelling(false);
-    }
-  };
-
-  // Chọn ứng viên Pareto chuyển sang kiểm thử hồi quy
-  const handleSelectCandidate = async (trialId: number) => {
-    if (!activeRun) return;
-    setSelectingTrialId(trialId);
-    setError(null);
-    try {
-      const res = await vehicsimApi.selectOptimizationCandidate(activeRun.id, trialId);
-      setSelectionResult({
-        regressionTestId: res.regression_test_id,
-        trialId,
-      });
-      onCandidateSelected(res.candidate_aeb_version_id, `Trial #${trialId}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể chọn ứng viên");
-    } finally {
-      setSelectingTrialId(null);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-6">
       <ErrorNote message={error} />
+      <AebNav active="hub" />
 
-      {/* Thông báo chọn ứng viên thành công */}
-      {selectionResult && (
-        <div className="flex items-center justify-between gap-4 rounded-[16px] bg-vehicsim-ok-bg p-4 text-[13px] text-vehicsim-ok shadow-sm">
+      {/* BƯỚC 4.1: BẢN CƠ SỞ HIỆN HÀNH (BASELINE) */}
+      <section className="flex flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-4">
           <div className="flex items-center gap-3">
-            <span className="size-2 rounded-full bg-vehicsim-ok" />
-            <span>
-              Đã tạo ứng viên AEB từ <strong>Trial #{selectionResult.trialId}</strong> và tự động lập bài kiểm thử hồi quy{" "}
-              <strong>#{selectionResult.regressionTestId}</strong>.
-            </span>
+            <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+              <ShieldCheck className="size-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-[17px] font-bold text-vehicsim-ink">
+                  Bước 4.1 · Bản cơ sở hiện hành: AEB {baseline?.label ?? "..."}
+                </h2>
+                <Tag tone="ok">Mốc chuẩn (Baseline)</Tag>
+              </div>
+              <p className="text-[12px] text-vehicsim-muted">
+                Bộ tham số tiêu chuẩn của xe đang kiểm thử. Mọi ứng viên mới sẽ được so sánh đối đầu trực tiếp với bộ này.
+              </p>
+            </div>
           </div>
-          <PillButton
-            variant="dark"
-            className="px-4 py-2 text-[12px]"
-            href={`/validation/regression/${selectionResult.regressionTestId}`}
-          >
-            Mở bài kiểm thử hồi quy
+          <PillButton href="/aeb/manual" variant="light" className="text-[12.5px]">
+            Chỉnh sửa bộ này
           </PillButton>
         </div>
-      )}
 
-      {/* Form khởi tạo đợt tối ưu mới */}
-      <section className="flex flex-col gap-5 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col">
-            <h2 className="text-[17px] font-bold text-vehicsim-ink">Khởi tạo đợt tối ưu hoá AEB (MOBO)</h2>
-            <p className="text-[12px] text-vehicsim-muted">
-              Thuật toán Bayesian đa mục tiêu sử dụng mô hình thay thế Gaussian Process và hàm thu thập qEHVI để dò tìm bộ tham số Pareto tối ưu.
-            </p>
-          </div>
-          <span className="rounded-full bg-vehicsim-soft px-3 py-[6px] text-[12px] font-semibold text-vehicsim-ink">
-            4 Tham số · 3 Mục tiêu
-          </span>
-        </div>
-
-        <form onSubmit={handleStartOptimization} className="flex flex-col gap-5">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <label className="flex flex-col gap-[6px]">
-              <span className="text-[13px] font-medium text-vehicsim-muted">Kịch bản kiểm thử</span>
-              <select
-                value={scenarioId}
-                onChange={(e) => setScenarioId(e.target.value ? Number(e.target.value) : "")}
-                className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
-              >
-                {(ctx?.families ?? []).length === 0 && <option value="">Chưa có kịch bản</option>}
-                {(ctx?.families ?? []).map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.code} · {f.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="flex flex-col gap-[6px]">
-              <span className="text-[13px] font-medium text-vehicsim-muted">Tên đợt chạy</span>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="vd. MOBO CP_CROSSING đợt 1"
-                className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
-              />
-            </label>
-
-            <label className="flex flex-col gap-[6px]">
-              <span className="text-[13px] font-medium text-vehicsim-muted">Số lượt thử nghiệm tối đa</span>
-              <input
-                type="number"
-                min={3}
-                max={50}
-                value={maxTrials}
-                onChange={(e) => setMaxTrials(Number(e.target.value))}
-                className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
-              />
-            </label>
-
-            <label className="flex flex-col gap-[6px]">
-              <span className="text-[13px] font-medium text-vehicsim-muted">Số điểm khởi tạo ban đầu</span>
-              <input
-                type="number"
-                min={2}
-                max={15}
-                value={nInitialPoints}
-                onChange={(e) => setNInitialPoints(Number(e.target.value))}
-                className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
-              />
-            </label>
-          </div>
-
-          {/* Không gian tham số và Mục tiêu thu thập */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="flex flex-col gap-2 rounded-[16px] border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-4">
-              <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
-                Không gian tham số tìm kiếm (Search Space)
-              </span>
-              <div className="grid grid-cols-2 gap-2 text-[12px]">
-                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
-                  <span className="font-semibold text-vehicsim-ink">TTC_THRESHOLD:</span> 0.5s – 3.5s
+        {baseline && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {KEY_PARAMS.map((code) => {
+              const def = catalog.get(code);
+              return (
+                <div
+                  key={code}
+                  className="flex flex-col gap-1 rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-soft p-3.5"
+                >
+                  <span className="text-[12px] font-semibold text-vehicsim-muted">{def?.name ?? code}</span>
+                  <span className="text-[18px] font-black text-vehicsim-ink">
+                    {paramValue(baseline.parameters[code], def?.unit ?? "")}
+                  </span>
+                  <span className="text-[11px] text-vehicsim-faint">
+                    Phạm vi: {def?.min_value} – {def?.max_value} {def?.unit}
+                  </span>
                 </div>
-                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
-                  <span className="font-semibold text-vehicsim-ink">ACTIVATION_DELAY:</span> 0.05s – 0.45s
-                </div>
-                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
-                  <span className="font-semibold text-vehicsim-ink">BUILDUP_RATE:</span> 5.0 – 20.0 m/s³
-                </div>
-                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
-                  <span className="font-semibold text-vehicsim-ink">MAX_DECELERATION:</span> 5.0 – 10.0 m/s²
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2 rounded-[16px] border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-4">
-              <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
-                3 Mục tiêu tối ưu hoá đồng thời (Cực tiểu hoá)
-              </span>
-              <div className="grid grid-cols-3 gap-2 text-[12px]">
-                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
-                  <span className="font-semibold text-vehicsim-ink block">Độ êm ái:</span>
-                  RMS Jerk (m/s³)
-                </div>
-                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
-                  <span className="font-semibold text-vehicsim-ink block">Giảm chấn:</span>
-                  Tốc độ va chạm (m/s)
-                </div>
-                <div className="rounded-[10px] bg-vehicsim-surface p-2 border border-solid border-vehicsim-line">
-                  <span className="font-semibold text-vehicsim-ink block">Hiệu năng:</span>
-                  Quãng phanh dừng (m)
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between border-t border-solid border-vehicsim-line pt-4">
-            <span className="text-[12px] text-vehicsim-faint">
-              Mỗi trial sẽ tự động khởi chạy kịch bản OpenSCENARIO trên bộ mô phỏng CARLA để thu thập dữ liệu cảm biến và cập nhật biên Pareto.
-            </span>
-            <PillButton variant="dark" type="submit" disabled={submitting || !canWrite || !scenarioId}>
-              {submitting ? "Đang khởi tạo…" : "Bắt đầu tối ưu MOBO"}
-            </PillButton>
-          </div>
-        </form>
-      </section>
-
-      {/* Lịch sử các đợt chạy MOBO */}
-      <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
-        <div className="flex items-center justify-between px-5 py-4">
-          <span className="text-[15px] font-bold text-vehicsim-ink">
-            {runs ? `${runs.length} đợt tối ưu hoá` : "Đang tải danh sách đợt tối ưu…"}
-          </span>
-        </div>
-
-        <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-          <span className="w-[80px]">Mã run</span>
-          <span className="w-[220px]">Tên đợt chạy</span>
-          <span className="w-[120px]">Trạng thái</span>
-          <span className="w-[140px]">Tiến độ trials</span>
-          <span className="w-[120px]">Nghiệm Pareto</span>
-          <span className="w-[120px]">Thời gian</span>
-          <span className="min-w-0 flex-1 text-right pr-2">Thao tác</span>
-        </div>
-
-        {runs?.length === 0 && (
-          <div className="p-8 text-center text-[13px] text-vehicsim-muted">
-            Chưa có đợt tối ưu hoá nào. Hãy điền form phía trên và bấm &quot;Bắt đầu tối ưu MOBO&quot;.
+              );
+            })}
           </div>
         )}
-
-        {runs?.map((r) => {
-          const isSelected = r.id === selectedRunId;
-          const isRunning = r.status === "RUNNING";
-          return (
-            <div
-              key={r.id}
-              onClick={() => setSelectedRunId(r.id)}
-              className={cx(
-                "flex min-h-[56px] cursor-pointer items-center border-b border-solid border-vehicsim-line px-5 py-2 transition hover:bg-vehicsim-soft/60",
-                isSelected && "bg-vehicsim-row ring-1 ring-inset ring-vehicsim-line-strong",
-              )}
-            >
-              <span className="w-[80px] font-mono text-[13px] font-bold text-vehicsim-ink">#{r.id}</span>
-              <span className="w-[220px] truncate text-[13px] font-semibold text-vehicsim-ink">{r.name}</span>
-              <span className="w-[120px]">
-                <Tag
-                  tone={
-                    r.status === "COMPLETED"
-                      ? "ok"
-                      : r.status === "RUNNING"
-                      ? "info"
-                      : r.status === "FAILED"
-                      ? "danger"
-                      : "neutral"
-                  }
-                >
-                  {r.status === "RUNNING" ? "Đang chạy" : r.status === "COMPLETED" ? "Hoàn thành" : r.status === "CANCELLED" ? "Đã huỷ" : r.status}
-                </Tag>
-              </span>
-              <span className="w-[140px] text-[13px] font-medium text-vehicsim-ink">
-                {r.completed_trials} / {r.max_trials} lượt
-              </span>
-              <span className="w-[120px]">
-                <span className="inline-flex items-center rounded-full bg-vehicsim-decision-bg px-2.5 py-1 text-[11px] font-bold text-vehicsim-decision">
-                  {r.pareto_count} nghiệm
-                </span>
-              </span>
-              <span className="w-[120px] text-[12px] text-vehicsim-faint">{fmt.date(r.started_at)}</span>
-              <span className="flex min-w-0 flex-1 justify-end items-center gap-2">
-                {isRunning && canWrite && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCancelRun(r.id);
-                    }}
-                    disabled={cancelling}
-                    className="inline-flex h-8 items-center justify-center rounded-full border border-solid border-vehicsim-danger px-3 text-[11px] font-bold text-vehicsim-danger hover:bg-vehicsim-danger-bg transition"
-                  >
-                    Dừng đợt chạy
-                  </button>
-                )}
-                <span className={cx(
-                  "inline-flex h-8 items-center justify-center rounded-full px-3 text-[12px] font-bold transition shadow-sm",
-                  isSelected
-                    ? "bg-vehicsim-primary text-white"
-                    : "border border-solid border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white"
-                )}>
-                  {isSelected ? "Đang xem" : "Chi tiết"}
-                </span>
-              </span>
-            </div>
-          );
-        })}
       </section>
 
-      {/* Chi tiết đợt chạy đang chọn */}
-      {activeRun && (
-        <section className="flex flex-col gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
-          <div className="flex flex-col gap-2 border-b border-solid border-vehicsim-line pb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="font-mono text-[18px] font-extrabold text-vehicsim-ink">Run #{activeRun.id}</span>
-                <h3 className="text-[17px] font-bold text-vehicsim-ink">{activeRun.name}</h3>
-                <Tag tone={activeRun.status === "RUNNING" ? "info" : activeRun.status === "COMPLETED" ? "ok" : "neutral"}>
-                  {activeRun.status}
-                </Tag>
-              </div>
+      {/* BƯỚC 4.2: CHỌN PHƯƠNG THỨC TẠO ỨNG VIÊN */}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <span className="flex size-6 items-center justify-center rounded-full bg-vehicsim-primary text-xs font-bold text-white">
+            2
+          </span>
+          <h2 className="text-[16px] font-bold text-vehicsim-ink">
+            Bước 4.2 · Chọn phương pháp cải tiến tham số
+          </h2>
+        </div>
 
-              {activeRun.status === "RUNNING" && (
-                <div className="flex items-center gap-2 text-[12px] font-semibold text-vehicsim-decision">
-                  <span className="size-2 animate-ping rounded-full bg-vehicsim-decision" />
-                  Đang tiến hành mô phỏng và cập nhật kết quả…
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* Card 1: MOBO */}
+          <Card className="flex flex-col justify-between gap-5 p-6 border-2 border-vehicsim-primary/30 hover:border-vehicsim-primary hover:shadow-md transition">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex size-11 items-center justify-center rounded-xl bg-vehicsim-decision-bg text-vehicsim-decision">
+                  <BarChart3 className="size-6" />
                 </div>
-              )}
-            </div>
-
-            {/* Thanh tiến độ */}
-            <div className="mt-2 flex flex-col gap-1">
-              <div className="flex justify-between text-[12px] text-vehicsim-muted">
-                <span>Tiến độ thử nghiệm</span>
-                <span className="font-bold text-vehicsim-ink">
-                  {activeRun.completed_trials} / {activeRun.max_trials} trials (
-                  {Math.round((activeRun.completed_trials / (activeRun.max_trials || 1)) * 100)}%)
+                <span className="rounded-full bg-vehicsim-decision-bg px-2.5 py-1 text-[11px] font-extrabold text-vehicsim-decision">
+                  Khuyên dùng cho Kỹ sư
                 </span>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-vehicsim-soft">
-                <div
-                  className="h-full bg-vehicsim-primary transition-all duration-300"
-                  style={{
-                    width: `${Math.min(100, (activeRun.completed_trials / (activeRun.max_trials || 1)) * 100)}%`,
-                  }}
-                />
+              <div>
+                <h3 className="text-[17px] font-extrabold text-vehicsim-ink">
+                  Tối ưu tự động bằng AI (MOBO / qEHVI)
+                </h3>
+                <p className="mt-1 text-[13px] leading-[1.5] text-vehicsim-muted">
+                  Sử dụng mô hình Gaussian Process và hàm thu thập qEHVI tự động chạy mô phỏng trên CARLA để tìm biên Pareto cân bằng tối ưu giữa RMS Jerk, tốc độ va chạm và quãng phanh.
+                </p>
               </div>
             </div>
+            <PillButton href="/aeb/mobo" variant="dark" className="w-fit py-2 px-4 text-[13px]">
+              Vào Studio Tối ưu MOBO <ArrowRight className="size-4" />
+            </PillButton>
+          </Card>
+
+          {/* Card 2: Manual Tuning */}
+          <Card className="flex flex-col justify-between gap-5 p-6 hover:shadow-md transition">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex size-11 items-center justify-center rounded-xl bg-vehicsim-soft text-vehicsim-ink">
+                  <Sliders className="size-6" />
+                </div>
+                <span className="rounded-full bg-vehicsim-soft px-2.5 py-1 text-[11px] font-semibold text-vehicsim-muted">
+                  Can thiệp thủ công
+                </span>
+              </div>
+              <div>
+                <h3 className="text-[17px] font-extrabold text-vehicsim-ink">
+                  Hiệu chỉnh tham số thủ công
+                </h3>
+                <p className="mt-1 text-[13px] leading-[1.5] text-vehicsim-muted">
+                  Dành cho kỹ sư tự vi chỉnh 4 thanh trượt (TTC, trễ phanh, gia tốc cực đại, tốc độ tăng áp) dựa trên trực giác kỹ thuật và kinh nghiệm từ ca lỗi phân tích ở Bước 3.
+                </p>
+              </div>
+            </div>
+            <PillButton href="/aeb/manual" variant="light" className="w-fit py-2 px-4 text-[13px]">
+              Vào màn hình chỉnh tay <ArrowRight className="size-4" />
+            </PillButton>
+          </Card>
+        </div>
+      </section>
+
+      {/* BƯỚC 4.3: DANH SÁCH ỨNG VIÊN ĐANG CHỜ KIỂM CHỨNG */}
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="flex size-6 items-center justify-center rounded-full bg-vehicsim-primary text-xs font-bold text-white">
+              3
+            </span>
+            <h2 className="text-[16px] font-bold text-vehicsim-ink">
+              Bước 4.3 · Ứng viên AEB đang chờ kiểm định hồi quy ({candidates.length})
+            </h2>
           </div>
+          <Link
+            href="/aeb/versions"
+            className="text-[12.5px] font-bold text-vehicsim-primary hover:underline"
+          >
+            Tra cứu tất cả các phiên bản & lịch sử →
+          </Link>
+        </div>
 
-          {/* Tập nghiệm Pareto-optimal (Các giải pháp tốt nhất) */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h4 className="text-[15px] font-bold text-vehicsim-ink">Tập nghiệm tối ưu Pareto (Pareto Front)</h4>
-                <span className="rounded-full bg-vehicsim-ok-bg px-2.5 py-0.5 text-[11px] font-bold text-vehicsim-ok">
-                  {paretoTrials?.length ?? 0} phương án không bị thống trị
-                </span>
-              </div>
-              <span className="text-[12px] text-vehicsim-muted">
-                Chọn một ứng viên để đưa sang bước Kiểm thử hồi quy (Regression Test).
-              </span>
+        <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
+          {candidates.length === 0 ? (
+            <div className="p-8">
+              <EmptyState title="Chưa có ứng viên nào đang chờ kiểm định">
+                Hãy sử dụng <strong>Tối ưu tự động MOBO</strong> hoặc <strong>Chỉnh tay tham số</strong> ở Bước 4.2 để tạo ứng viên đầu tiên.
+              </EmptyState>
             </div>
-
-            <div className="overflow-x-auto rounded-[14px] border border-solid border-vehicsim-line">
-              <table className="w-full text-left text-[13px]">
-                <thead className="bg-vehicsim-soft text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-                  <tr>
-                    <th className="px-4 py-3">Trial #</th>
-                    <th className="px-4 py-3">TTC (s)</th>
-                    <th className="px-4 py-3">Delay (s)</th>
-                    <th className="px-4 py-3">Buildup (m/s³)</th>
-                    <th className="px-4 py-3">Decel (m/s²)</th>
-                    <th className="px-4 py-3 text-vehicsim-decision">RMS Jerk (m/s³)</th>
-                    <th className="px-4 py-3 text-vehicsim-danger">Tốc độ va chạm</th>
-                    <th className="px-4 py-3 text-vehicsim-ink">Quãng phanh (m)</th>
-                    <th className="px-4 py-3 text-right">Hành động</th>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[960px] text-left text-[13px]">
+                <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
+                  <tr className="h-12">
+                    <th className="w-12 px-3 py-3.5 text-center">STT</th>
+                    <th className="px-5 py-3.5">Ứng viên</th>
+                    <th className="px-4 py-3.5">TTC (s)</th>
+                    <th className="px-4 py-3.5">Trễ phanh (s)</th>
+                    <th className="px-4 py-3.5">Tăng áp (m/s³)</th>
+                    <th className="px-4 py-3.5">Gia tốc (m/s²)</th>
+                    <th className="px-4 py-3.5">Thời gian tạo</th>
+                    <th className="px-5 py-3.5 text-right">Hành động tiếp theo</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
-                  {paretoTrials?.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="px-4 py-6 text-center text-vehicsim-muted">
-                        Chưa tìm thấy nghiệm Pareto hợp lệ hoặc đang trong giai đoạn khởi tạo ban đầu.
+                  {pagedCandidates.map((c, idx) => (
+                    <tr key={c.id} className="hover:bg-vehicsim-row transition-colors">
+                      <td className="w-12 px-3 py-4 text-center font-mono text-[12px] font-bold text-vehicsim-faint tabular-nums">
+                        {(candidatePage - 1) * CANDIDATE_PAGE_SIZE + idx + 1}
                       </td>
-                    </tr>
-                  ) : (
-                    paretoTrials?.map((t) => (
-                      <tr key={t.id} className="hover:bg-vehicsim-row">
-                        <td className="px-4 py-3 font-mono font-bold text-vehicsim-ink">#{t.trial_number}</td>
-                        <td className="px-4 py-3">{t.parameters?.TTC_THRESHOLD ?? "—"}</td>
-                        <td className="px-4 py-3">{t.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
-                        <td className="px-4 py-3">{t.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
-                        <td className="px-4 py-3">{t.parameters?.MAX_DECELERATION ?? "—"}</td>
-                        <td className="px-4 py-3 font-semibold text-vehicsim-decision">
-                          {t.rms_jerk_mps3 !== null ? `${t.rms_jerk_mps3.toFixed(2)} m/s³` : "—"}
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-vehicsim-danger">
-                          {t.impact_speed_mps !== null
-                            ? t.impact_speed_mps <= 0.001
-                              ? "0.0 km/h (Không va chạm)"
-                              : `${(t.impact_speed_mps * 3.6).toFixed(1)} km/h`
-                            : "—"}
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-vehicsim-ink">
-                          {t.stopping_distance_m !== null ? `${t.stopping_distance_m.toFixed(2)} m` : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            disabled={selectingTrialId !== null || !canWrite}
-                            onClick={() => handleSelectCandidate(t.id)}
-                            className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-4 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40"
+                      <td className="px-5 py-4">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-vehicsim-ink">{c.label}</span>
+                          <span className="text-[11px] text-vehicsim-muted font-mono">ID: #{c.id}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 font-mono font-medium">{c.parameters?.TTC_THRESHOLD ?? "—"}</td>
+                      <td className="px-4 py-4 font-mono font-medium">{c.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
+                      <td className="px-4 py-4 font-mono font-medium">{c.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
+                      <td className="px-4 py-4 font-mono font-medium">{c.parameters?.MAX_DECELERATION ?? "—"}</td>
+                      <td className="px-4 py-4 text-[12px] text-vehicsim-muted">{fmt.date(c.created_at)}</td>
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {baseline && (
+                            <Link
+                              href={`/aeb/compare?a=${baseline.id}&b=${c.id}`}
+                              className="rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition"
+                            >
+                              So sánh với Baseline
+                            </Link>
+                          )}
+                          <PillButton
+                            href={`/validation/regression/new?candidate=${c.id}`}
+                            variant="dark"
+                            className="text-[12px] py-1.5 px-3.5"
                           >
-                            {selectingTrialId === t.id ? "Đang chọn…" : "Chọn ứng viên"}
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Lịch sử tất cả các Trials */}
-          <div className="flex flex-col gap-3 pt-2">
-            <h4 className="text-[15px] font-bold text-vehicsim-ink">Lịch sử toàn bộ {trials?.length ?? 0} Trials</h4>
-            <div className="max-h-[320px] overflow-y-auto rounded-[14px] border border-solid border-vehicsim-line">
-              <table className="w-full text-left text-[12px]">
-                <thead className="sticky top-0 bg-vehicsim-soft text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-                  <tr>
-                    <th className="px-3 py-2">#</th>
-                    <th className="px-3 py-2">Nguồn sinh</th>
-                    <th className="px-3 py-2">qEHVI Acq</th>
-                    <th className="px-3 py-2">RMS Jerk</th>
-                    <th className="px-3 py-2">Va chạm (km/h)</th>
-                    <th className="px-3 py-2">Quãng phanh</th>
-                    <th className="px-3 py-2">Ràng buộc</th>
-                    <th className="px-3 py-2 text-right">Biên Pareto</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
-                  {trials?.map((t) => (
-                    <tr key={t.id} className={cx(t.is_pareto_optimal && "bg-vehicsim-ok-bg/30")}>
-                      <td className="px-3 py-2 font-mono font-bold text-vehicsim-ink">{t.trial_number}</td>
-                      <td className="px-3 py-2">
-                        <Tag tone={t.sampling_source === "INITIAL_DESIGN" ? "neutral" : "info"}>
-                          {t.sampling_source === "INITIAL_DESIGN" ? "Khởi tạo ngẫu nhiên" : "qEHVI Bayes"}
-                        </Tag>
-                      </td>
-                      <td className="px-3 py-2 font-mono text-vehicsim-muted">
-                        {t.acquisition_value !== null ? t.acquisition_value.toFixed(4) : "—"}
-                      </td>
-                      <td className="px-3 py-2">{t.rms_jerk_mps3 !== null ? t.rms_jerk_mps3.toFixed(2) : "—"}</td>
-                      <td className="px-3 py-2">
-                        {t.impact_speed_mps !== null ? (t.impact_speed_mps * 3.6).toFixed(1) : "—"}
-                      </td>
-                      <td className="px-3 py-2">{t.stopping_distance_m !== null ? t.stopping_distance_m.toFixed(1) : "—"}</td>
-                      <td className="px-3 py-2">
-                        {t.constraint_violated ? (
-                          <span className="text-vehicsim-danger font-semibold">Vi phạm</span>
-                        ) : (
-                          <span className="text-vehicsim-ok font-semibold">Hợp lệ</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {t.is_pareto_optimal ? (
-                          <span className="rounded-full bg-vehicsim-ok-bg px-2 py-0.5 text-[10px] font-bold text-vehicsim-ok">
-                            PARETO
-                          </span>
-                        ) : (
-                          <span className="text-vehicsim-faint">—</span>
-                        )}
+                            <span>Kiểm thử hồi quy (Bước 5)</span>
+                            <ArrowRight className="size-3.5" />
+                          </PillButton>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        </section>
-      )}
-    </div>
-  );
-}
-
-// ===========================================================================
-// Form tạo ứng viên AEB thủ công (Manual Candidate Form)
-// ===========================================================================
-
-function changedNote(v: AebVersion, baseline: AebVersion | null): string {
-  if (!baseline || v.id === baseline.id) return SOURCE_LABEL[v.source] ?? v.source;
-  const n = Object.keys({ ...v.parameters, ...baseline.parameters }).filter(
-    (k) => v.parameters[k] !== baseline.parameters[k],
-  ).length;
-  return `${n} tham số khác bản cơ sở`;
-}
-
-function CandidateForm({
-  versions,
-  parameters,
-  onCreated,
-}: {
-  versions: AebVersion[];
-  parameters: ParameterDef[];
-  onCreated: (id: number, label: string) => void;
-}) {
-  const { isExperiencer } = useVehicSimContext();
-  const parents = versions.filter((v) => v.status !== "REJECTED");
-  const [parentId, setParentId] = useState<number>(() => (versions.find((v) => v.status === "BASELINE") ?? versions[0]).id);
-  const parent = versions.find((v) => v.id === parentId) ?? versions[0];
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [label, setLabel] = useState("");
-  const [notes, setNotes] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const current = (p: ParameterDef) => values[p.code] ?? String(parent.parameters[p.code] ?? p.default_value);
-  const changed = parameters.filter((p) => Number(current(p)) !== parent.parameters[p.code]);
-  const invalid = parameters.filter((p) => {
-    const n = Number(current(p));
-    return current(p).trim() === "" || Number.isNaN(n) || n < p.min_value || n > p.max_value;
-  });
-
-  const submit = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await vehicsimApi.createCandidate({
-        parent_version_id: parent.id,
-        label: label.trim() || undefined,
-        notes: notes.trim() || undefined,
-        values: Object.fromEntries(changed.map((p) => [p.code, Number(current(p))])),
-      });
-      const fresh = await vehicsimApi.aebVersions();
-      setValues({});
-      setLabel("");
-      setNotes("");
-      onCreated(res.id, fresh.find((v) => v.id === res.id)?.label ?? "");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không tạo được ứng viên");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="flex flex-col gap-5 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-[17px] font-bold text-vehicsim-ink">Cấu hình ứng viên mới</h2>
-        <span className="rounded-full bg-vehicsim-soft px-3 py-[6px] text-[12px] font-semibold text-vehicsim-ink">
-          {changed.length} tham số đã đổi
-        </span>
-      </div>
-      <ErrorNote message={error} />
-      <div className="grid grid-cols-3 gap-4">
-        <label className="flex flex-col gap-[6px]">
-          <span className="text-[13px] font-medium text-vehicsim-muted">Dựa trên</span>
-          <select
-            value={parentId}
-            onChange={(e) => {
-              setParentId(Number(e.target.value));
-              setValues({});
-            }}
-            className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-[14px] text-[14px] text-vehicsim-ink"
-          >
-            {parents.map((v) => (
-              <option key={v.id} value={v.id}>
-                AEB {v.label} · {STATUS_LABEL[v.status]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Input label="Nhãn (không bắt buộc, mặc định v{n})" value={label} onChange={setLabel} placeholder="vd. v1.1" />
-        <Input label="Ghi chú (không bắt buộc)" value={notes} onChange={setNotes} placeholder="vd. phanh sớm hơn khi người đi bộ lao ra" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        {CATEGORY_ORDER.map((cat) => {
-          const params = parameters.filter((p) => p.category === cat);
-          if (!params.length) return null;
-          return (
-            <div key={cat} className="flex flex-col gap-2 rounded-[16px] border border-solid border-vehicsim-line p-4">
-              <span className={cx("w-fit rounded-full px-[10px] py-[4px] text-[11px] font-semibold", CLASS_STYLE[cat].cls)}>
-                {CLASS_STYLE[cat].label}
+          )}
+          {candidatePages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
+              <span className="text-[12px] font-medium text-vehicsim-muted">
+                Hiển thị {(candidatePage - 1) * CANDIDATE_PAGE_SIZE + 1}–{Math.min(candidatePage * CANDIDATE_PAGE_SIZE, candidates.length)} trên {candidates.length} ứng viên
               </span>
-              {params.map((p) => {
-                const isChanged = changed.includes(p);
-                const isInvalid = invalid.includes(p);
-                return (
-                  <div key={p.code} className="flex items-center gap-3">
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="text-[13px] font-medium text-vehicsim-ink">{p.name}</span>
-                      <span className="text-[11px] text-vehicsim-faint">
-                        {p.min_value}–{p.max_value} {p.unit === "ratio" ? "" : p.unit} · hiện tại{" "}
-                        {paramValue(parent.parameters[p.code], p.unit)}
-                      </span>
-                    </span>
-                    <input
-                      type="number"
-                      step="any"
-                      value={current(p)}
-                      aria-label={p.name}
-                      onChange={(e) => setValues((prev) => ({ ...prev, [p.code]: e.target.value }))}
-                      className={cx(
-                        "h-9 w-[110px] rounded-[10px] border border-solid px-3 text-right text-[13px] font-semibold focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong",
-                        isInvalid
-                          ? "border-vehicsim-danger text-vehicsim-danger"
-                          : isChanged
-                          ? "border-vehicsim-decision bg-vehicsim-decision-bg text-vehicsim-decision"
-                          : "border-vehicsim-line-strong text-vehicsim-ink",
-                      )}
-                    />
-                  </div>
-                );
-              })}
+              <Pagination page={candidatePage} pages={candidatePages} onPage={setCandidatePage} />
             </div>
-          );
-        })}
-      </div>
-
-      <div className="flex items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-4">
-        <p className="text-[12px] text-vehicsim-muted">
-          {isExperiencer
-            ? "Ứng viên mới chưa ảnh hưởng bản cơ sở cho tới khi qua kiểm thử hồi quy và bạn chọn dùng nó làm baseline."
-            : "Ứng viên mới chưa ảnh hưởng bản cơ sở cho tới khi qua kiểm thử hồi quy và được kỹ sư chấp nhận."}
-        </p>
-        <PillButton variant="dark" onClick={submit} disabled={busy || changed.length === 0 || invalid.length > 0}>
-          {busy ? "Đang tạo…" : "Tạo ứng viên"}
-        </PillButton>
-      </div>
-    </section>
-  );
-}
-
-function Input({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label className="flex flex-col gap-[6px]">
-      <span className="text-[13px] font-medium text-vehicsim-muted">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="h-[42px] rounded-[12px] border border-solid border-vehicsim-line-strong px-[14px] text-[14px] text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
-      />
-    </label>
+          )}
+        </div>
+      </section>
+    </VehicSimPage>
   );
 }

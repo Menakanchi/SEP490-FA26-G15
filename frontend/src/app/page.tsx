@@ -90,15 +90,6 @@ function MvpLoopPage() {
     <VehicSimPage
       crumbs={[{ label: "Tổng quan" }]}
       title={engineer ? ctx?.project.name ?? "Tổng quan dự án" : firstName ? `Chào ${firstName}` : "Tổng quan"}
-      subtitle={
-        engineer
-          ? "Kết quả mô phỏng và tiến độ kiểm thử AEB/FCW."
-          : views
-            ? next
-              ? `Vòng MVP trên motif người đi bộ băng ngang. Bước tiếp theo: ${next.step.n} · ${next.step.title}.`
-              : "Vòng MVP đã khép kín. Tạo một cấu hình AEB khác để bắt đầu vòng mới."
-            : "Đang tải trạng thái vòng MVP…"
-      }
       actions={
         engineer ? null : next ? (
           <PillButton variant="dark" href={next.actions[0].href}>

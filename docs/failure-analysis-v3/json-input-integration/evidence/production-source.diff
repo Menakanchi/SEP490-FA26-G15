@@ -1,0 +1,578 @@
+--- before/Evidence.java
++++ src/main/java/com/vsos/core/failureanalysis/Evidence.java
+@@ -46,12 +46,34 @@
+         }
+     }
+     public record Artifact(String id, String runKey, String uri, String sha256, String mediaType,
+-                           Integrity integrity, Object data, List<Issue> issues) {
+-        public Artifact { data = freeze(data); issues = List.copyOf(issues); }
++                           Integrity integrity, Object data, List<Issue> issues, Map<String,Object> provenance) {
++        public Artifact(String id,String runKey,String uri,String sha256,String mediaType,Integrity integrity,Object data,List<Issue> issues){
++            this(id,runKey,uri,sha256,mediaType,integrity,data,issues,Map.of());
++        }
++        @SuppressWarnings("unchecked") public Artifact { data = freeze(data); issues = List.copyOf(issues); provenance=(Map<String,Object>)freeze(provenance); }
+         public boolean usable() { return integrity != Integrity.FAILED && issues.stream().noneMatch(i -> i.status() == Status.INVALID); }
+         public Map<String, Object> json() {
+-            return obj("id", id, "run_key", runKey, "uri", uri, "sha256", sha256,
++            Map<String,Object> out=obj("id", id, "run_key", runKey, "uri", uri, "sha256", sha256,
+                     "media_type", mediaType, "integrity", integrity.name());
++            if(!provenance.isEmpty())out.put("provenance",provenance);return out;
++        }
++        /** Logical normalized paths resolve back to the original JSON, never invented CSV records. */
++        public SourceRef ref(String pointer){
++            if(!provenance.containsKey("json_root_pointer"))return new SourceRef(id,pointer);
++            String root=Objects.toString(provenance.get("json_root_pointer"),"");
++            Object columns=provenance.get("table_columns");
++            if(columns instanceof List<?> names&&!pointer.isEmpty()){
++                String[] parts=pointer.substring(1).split("/",3);
++                if(parts[0].matches("\\d+")){
++                    String row=root+"/rows/"+parts[0];
++                    if(parts.length>1){int column=names.indexOf(parts[1].replace("~1","/").replace("~0","~"));
++                        // Missing column references resolve to the actual schema declaration.
++                        if(column<0)return new SourceRef(id,root+"/columns");
++                        row+="/"+column;if(parts.length>2)row+="/"+parts[2];}
++                    return new SourceRef(id,row);
++                }
++            }
++            return new SourceRef(id,root+pointer);
+         }
+     }
+     public record Run(String runKey, String caseKey, String directory, Map<String, Artifact> artifacts,
+@@ -60,6 +82,7 @@
+         public Artifact artifact(String name) { return artifacts.get(name); }
+         public SourceRef ref(String name, String pointer) {
+             Artifact a = artifact(name);
++            if(a.provenance().containsKey("json_root_pointer"))return a.ref(pointer);
+             String locator = pointer;
+             if (a.mediaType().equals("text/csv") || a.mediaType().equals("application/x-ndjson")) {
+                 String[] parts = pointer.split("/", 3);
+--- before/EvidenceReport.java
++++ src/main/java/com/vsos/core/failureanalysis/EvidenceReport.java
+@@ -50,7 +50,10 @@
+             boolean lineageMissing = objectiveLineage.values().stream().anyMatch(v -> v.status() == Status.UNKNOWN || v.status() == Status.INVALID || v.status() == Status.CONFLICTING)
+                     || provenance.fields().get("producer").value() == null || provenance.fields().get("simulator_profile").value() == null;
+             if (lineageMissing) reasons.add("METRIC_LINEAGE_INCOMPLETE");
+-            String integrity = invalid || copyConflict || applicabilityConflict ? "FAIL" : incomplete || unverified || lineageMissing || identityConflict || !provenance.issues().isEmpty() ? "UNKNOWN" : "PASS";
++            boolean embeddedConflict=JsonInputAdapter.supports(r)&&issues.stream().anyMatch(i->i.code().startsWith("JSON_OBJECTIVE_")&&i.source().locator().startsWith(r.ref("result","/dataset/objectives/"+key).locator())&&(i.status()==Status.INVALID||i.status()==Status.CONFLICTING));
++            embeddedConflict|=JsonInputAdapter.supports(r)&&issues.stream().anyMatch(i->i.code().equals("METRIC_METADATA_CONFLICT")&&i.source().locator().startsWith(r.ref("result","/dataset").locator())&&(i.status()==Status.INVALID||i.status()==Status.CONFLICTING));
++            if(embeddedConflict)reasons.add("EMBEDDED_OBJECTIVE_METADATA_CONFLICT");
++            String integrity = invalid || copyConflict || applicabilityConflict || embeddedConflict ? "FAIL" : incomplete || unverified || lineageMissing || identityConflict || !provenance.issues().isEmpty() ? "UNKNOWN" : "PASS";
+             Map<String, Object> entry = obj("canonical_value", o.canonicalValue().json(), "evaluation_copy", o.evaluationCopy().json(),
+                     "copy_agreement", o.copyAgreement(), "canonical_applicability", o.applicability(), "direction", "MINIMIZE",
+                     "metric_source", "SIMULATOR_RESULT", "aggregation_version", AnalysisMetrics.VERSION,
+@@ -70,6 +73,7 @@
+                             "baseline_version_id", binding.fields().get("version_id").json(), "pairing_status", "UNKNOWN",
+                             "delta", unknown("BASELINE_SCORE_UNAVAILABLE", o.canonicalValue().unit()).json(),
+                             "relative_change", unknown("BASELINE_SCORE_UNAVAILABLE", null).json()), "parameter_hint_refs", List.of());
++            if(JsonInputAdapter.supports(r))entry.put("declared_metadata",obj("value",r.get("result","/dataset/objectives/"+key),"source_ref",r.ref("result","/dataset/objectives/"+key).json(),"authority","PRODUCER_DECLARED_ONLY"));
+             objectiveOutput.put(key, entry);
+         }
+         Map<String, Object> parameters = new TreeMap<>();
+@@ -92,6 +96,10 @@
+                 "metric_aggregation_version", AnalysisMetrics.VERSION, "metric_lineage", lineage,
+                 "clocks", List.of(obj("id", "core", "to_reference_offset", unknown("CLOCK_ALIGNMENT_UNKNOWN", "s").json()),
+                         obj("id", "recorder", "to_reference_offset", unknown("CLOCK_ALIGNMENT_UNKNOWN", "s").json())));
++        if(JsonInputAdapter.supports(r)){
++            input.put("declared_identity",JsonInputAdapter.declaredIdentity(r));
++            input.put("json_source",r.artifact("result").provenance());
++        }
+         List<String> inconclusive = new ArrayList<>(List.of("M1A_FOUNDATION_ONLY", "DIAGNOSIS_NOT_EXECUTED"));
+         if (!List.of("PROJECT_BASELINE_CONFIRMED", "RUN_VERSION_BOUND").contains(binding.identityStatus())) inconclusive.add("BASELINE_ID_UNCONFIRMED");
+         Map<String, Object> report = obj("physical_outcome", unknown("PHYSICAL_OUTCOME_DEFERRED_M1B", null).json(),
+@@ -138,6 +146,13 @@
+     }
+ 
+     public static Value mode(Run r) {
++        if(JsonInputAdapter.supports(r)){
++            Object embedded=r.get("result","/dataset/identity/aeb_mode"),legacy=r.get("result","/outcome/case/aeb_mode");
++            List<SourceRef> refs=List.of(r.ref("result","/dataset/identity/aeb_mode"));
++            if(!List.of("ON","OFF").contains(Objects.toString(embedded,"")))return value(null,Status.INVALID,null,null,refs,"AEB_MODE_INVALID");
++            if(legacy!=null&&!Objects.equals(embedded,legacy))return value(embedded,Status.CONFLICTING,null,null,refs,"AEB_MODE_DISAGREEMENT");
++            return value(embedded,Status.OBSERVED,null,null,refs);
++        }
+         Object explicit = r.get("result", "/outcome/case/aeb_mode");
+         Value mode = r.read("result", "/outcome/case/aeb_mode", null, null);
+         Object rows = r.get("manifest", "");
+--- before/EvidenceValidator.java
++++ src/main/java/com/vsos/core/failureanalysis/EvidenceValidator.java
+@@ -45,7 +45,37 @@
+         add(issues, run, "result", "/outcome/frames", Status.UNKNOWN, "CLOCK_ALIGNMENT_UNKNOWN",
+                 "Core GameTime origin is not bound to recorder world-frame origin; no inferred offset applied");
+         identity(run, issues);
++        if(JsonInputAdapter.supports(run))jsonMetadata(run,issues);
+         return List.copyOf(issues);
++    }
++
++    private void jsonMetadata(Run r,List<Issue> issues){
++        Object aggregation=r.get("result","/dataset/objectives/metric_version/aggregation");
++        if(aggregation!=null&&!com.vsos.core.evaluation.AnalysisMetrics.VERSION.equals(aggregation))
++            add(issues,r,"result","/dataset/objectives/metric_version/aggregation",Status.CONFLICTING,"METRIC_METADATA_CONFLICT","Declared aggregation differs; stored scalar is retained, scoring is unresolved");
++        for(String key:List.of("engine","simulator"))for(String base:List.of("/dataset/provenance/","/dataset/objectives/metric_version/")){
++            Object claim=r.get("result",base+key),original=r.get("result","/"+key);
++            if(claim!=null&&!Objects.equals(claim,original))add(issues,r,"result",base+key,Status.CONFLICTING,"METRIC_METADATA_CONFLICT","Producer/profile copies disagree");
++        }
++        for(String key:CanonicalObjectiveReader.KEYS){
++            String p="/dataset/objectives/"+key;Object copy=r.get("result",p),canonical=r.get("result","/outcome/metrics/"+key),evaluation=r.get("result","/evaluation/aeb_result/"+key);
++            if(copy instanceof Map<?,?> m){
++                if(m.containsKey("consistent")&&!Boolean.TRUE.equals(m.get("consistent")))add(issues,r,"result",p+"/consistent",Status.CONFLICTING,"JSON_OBJECTIVE_CONSISTENCY_NOT_CONFIRMED","Declared copy consistency is not true; stored copies are still compared independently");
++                if(m.containsKey("value")&&!sameNumber(canonical,m.get("value"))||m.containsKey("evaluation_value")&&!sameNumber(evaluation,m.get("evaluation_value")))
++                    add(issues,r,"result",p,Status.CONFLICTING,"JSON_OBJECTIVE_MIRROR_DISAGREEMENT","Embedded objective copy differs; original producer fields retained");
++                Object state=m.get("state");if(state!=null&&!List.of("OK","NOT_APPLICABLE","MISSING","INVALID","CONFLICTING").contains(state))
++                    add(issues,r,"result",p+"/state",Status.INVALID,"JSON_OBJECTIVE_STATE_INVALID","Unknown objective state");
++                if("INVALID".equals(state)||"CONFLICTING".equals(state))add(issues,r,"result",p+"/state","INVALID".equals(state)?Status.INVALID:Status.CONFLICTING,"JSON_OBJECTIVE_PRODUCER_QUALITY_REJECTED","Producer flags this objective; stored scalar remains available for inspection");
++                if(Arrays.asList("NOT_APPLICABLE","MISSING").contains(state)&&m.get("value")!=null||"OK".equals(state)&&m.get("value")==null)
++                    add(issues,r,"result",p,Status.CONFLICTING,"JSON_OBJECTIVE_STATE_VALUE_CONFLICT","State/value disagree; no null coercion");
++                if(Arrays.asList("NOT_APPLICABLE","MISSING","INVALID","CONFLICTING").contains(state)&&!(m.get("reason") instanceof String s&&!s.isBlank()))
++                    add(issues,r,"result",p+"/reason",Status.UNKNOWN,"JSON_OBJECTIVE_NULL_REASON_MISSING","Non-value/conflicting state needs a reason");
++            }
++        }
++        if("FLAGGED".equals(r.get("result","/dataset/status/signal_quality/state")))
++            add(issues,r,"result","/dataset/time_series/quality",Status.UNKNOWN,"SOURCE_SIGNAL_QUALITY_FLAGGED","Raw signal and initialization/contact masks retained; canonical metric is unchanged");
++        Object flag=r.get("result","/dataset/collisions/flag_in_result"),canonical=r.get("result","/outcome/metrics/collision");
++        if(flag!=null&&!Objects.equals(flag,canonical))add(issues,r,"result","/dataset/collisions/flag_in_result",Status.CONFLICTING,"JSON_COLLISION_FLAG_COPY_DISAGREEMENT","Collision flag copies differ; no authority selected");
+     }
+ 
+     private void identity(Run r, List<Issue> issues) {
+@@ -267,7 +297,7 @@
+ 
+     static String decimalId(Object x) { return x != null && x.toString().matches("\\d+") ? x.toString() : null; }
+     static boolean collisionEventInvalid(Run r, List<Issue> issues, int index) {
+-        String loc = "/" + index;
++        String loc = r.ref("collisions","/" + index).locator();
+         return issues.stream().anyMatch(i -> i.source().artifactId().equals(r.artifact("collisions").id())
+                 && (i.source().locator().equals(loc) || i.source().locator().startsWith(loc + "/"))
+                 && i.code().startsWith("COLLISION_EVENT_") && (i.status() == Status.INVALID || i.status() == Status.CONFLICTING));
+--- /dev/null
++++ src/main/java/com/vsos/core/failureanalysis/FailureAnalysisInput.java
+@@ -0,0 +1,36 @@
++package com.vsos.core.failureanalysis;
++
++import java.io.IOException;
++import java.nio.file.*;
++import java.util.*;
++import static com.vsos.core.failureanalysis.Evidence.*;
++
++/** Intake dispatch only; both formats enter the same evidence/diagnosis core. */
++final class FailureAnalysisInput implements AutoCloseable {
++    private final RawArtifactAdapter raw;
++    private final JsonInputAdapter json;
++    FailureAnalysisInput(Path input) throws IOException {
++        boolean isJson=Files.isRegularFile(input)&&input.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json");
++        json=isJson?new JsonInputAdapter(input):null;raw=isJson?null:new RawArtifactAdapter(input);
++    }
++    List<Run> runs() throws IOException {
++        if(json!=null)return json.runs();
++        List<Run> out=new ArrayList<>();for(String directory:raw.runDirectories())out.add(raw.read(directory));return out;
++    }
++    boolean json(){return json!=null;}
++    boolean complete(){return json==null||json.complete();}
++    Map<String,Object> manifest(){return json==null?Map.of():json.manifest();}
++    /** JSON comparators are unique within the declared variant/seed/vehicle/profile tuple.
++     * ImpactAnalyzer still verifies comparability; this lookup grants no causal authority. */
++    static Run comparator(Run on,List<Run> runs) {
++        List<Run> controls=runs.stream().filter(r->"OFF".equals(EvidenceReport.mode(r).value())&&r.caseKey().equals(on.caseKey()))
++            .filter(r->!JsonInputAdapter.supports(on)||sameContext(on,r)).toList();
++        return controls.size()==1?controls.getFirst():null;
++    }
++    private static boolean sameContext(Run a,Run b){
++        for(String field:List.of("seed","simulator","carla_vehicle_model_id","aeb_version_id"))
++            if(a.get("result","/dataset/identity/"+field)==null||!Objects.equals(a.get("result","/dataset/identity/"+field),b.get("result","/dataset/identity/"+field)))return false;
++        return Objects.equals(a.get("result","/outcome/params"),b.get("result","/outcome/params"));
++    }
++    @Override public void close() throws IOException {if(json!=null)json.close();if(raw!=null)raw.close();}
++}
+--- /dev/null
++++ src/main/java/com/vsos/core/failureanalysis/JsonDiagnosticSummary.java
+@@ -0,0 +1,26 @@
++package com.vsos.core.failureanalysis;
++
++import java.util.*;
++import static com.vsos.core.failureanalysis.Evidence.*;
++
++/** Test/review CSV, a projection of stored identity and core output, never a scoring input. */
++final class JsonDiagnosticSummary {
++    private JsonDiagnosticSummary(){}
++    static String csv(List<Run> runs,Map<String,Map<String,Object>> reports){
++        List<List<Object>> rows=new ArrayList<>();
++        rows.add(new ArrayList<>(List.of("run_key","scenario_id","variant_id","seed","aeb_mode","repetition","attempt","ttc_threshold_s","brake_delay_s","max_decel_mps2","brake_ramp_mps3","physical_outcome","failure_candidate_types","candidate_statuses","rms_jerk_mps3","impact_speed_mps","stopping_distance_m","objective_provenance","evidence_quality","root_cause_certainty","missing_evidence_reasons","report_reference")));
++        for(Run r:runs){Map<String,Object> report=reports.get(r.runKey());List<Object> row=new ArrayList<>();row.add(r.runKey());
++            for(String k:List.of("scenario_id","variant_id","seed","aeb_mode","repetition","attempt"))row.add(r.get("result","/dataset/identity/"+k));
++            for(String k:List.of("ttc_threshold","brake_activation_delay","max_deceleration","brake_buildup_rate"))row.add(r.get("result","/outcome/params/"+k));
++            row.add(at(report,"/report/physical_outcome/value"));Object c=at(report,"/report/failure_candidates");
++            row.add(join(c,"type"));row.add(join(c,"status"));
++            for(String k:CanonicalObjectiveReader.KEYS)row.add(r.get("result","/outcome/metrics/"+k));
++            row.add(com.vsos.core.common.MiniJson.write(at(report,"/report/objectives")));
++            row.add(com.vsos.core.common.MiniJson.write(at(report,"/report/evidence_sufficiency")));
++            row.add(at(report,"/report/confirmed_root_cause/status"));row.add(com.vsos.core.common.MiniJson.write(at(report,"/report/inconclusive_reasons")));
++            row.add(r.runKey()+".json");rows.add(row);
++        }
++        StringBuilder out=new StringBuilder();for(List<Object> row:rows){for(int i=0;i<row.size();i++){if(i>0)out.append(',');out.append('"').append(Objects.toString(row.get(i),"").replace("\"","\"\"")).append('"');}out.append('\n');}return out.toString();
++    }
++    private static String join(Object x,String key){return x instanceof List<?> list?String.join("|",list.stream().map(v->Objects.toString(at(v,"/"+key),"UNKNOWN")).toList()):"";}
++}
+--- /dev/null
++++ src/main/java/com/vsos/core/failureanalysis/JsonInputAdapter.java
+@@ -0,0 +1,233 @@
++package com.vsos.core.failureanalysis;
++
++import com.vsos.core.common.MiniJson;
++import java.io.IOException;
++import java.nio.file.*;
++import java.util.*;
++import static com.vsos.core.failureanalysis.Evidence.*;
++import static com.vsos.core.failureanalysis.InputRejectedException.Kind.*;
++
++/** Bounded, read-only ADR065 result/collection intake. No physics or diagnosis here.
++ * Embedded views retain original container hashes and exact original JSON layouts;
++ * a self-declared digest proves consistency, never external source authenticity.
++ */
++public final class JsonInputAdapter implements AutoCloseable {
++    public static final String VERSION="fa-json-input/1";
++    public record Entry(String runKey,String pointer,Run run,List<Issue> issues){
++        public Entry{issues=List.copyOf(issues);}
++        public Map<String,Object> json(){return obj("run_key",runKey,"json_pointer",pointer,"status",run==null?"BLOCKED":"ANALYZABLE",
++            "reason_codes",issues.stream().map(Issue::code).distinct().toList(),"issues",issues.stream().map(Issue::json).toList());}
++    }
++    private final BoundedInput budget;
++    private final String containerId,containerHash,expectedHash,uri;
++    private final Integrity containerIntegrity;
++    private final List<Entry> entries=new ArrayList<>();
++    private final List<Issue> collectionIssues=new ArrayList<>();
++    private final Map<String,Object> root;
++    private boolean closed;
++    public JsonInputAdapter(Path path)throws IOException{this(path,InputResourcePolicy.defaults(),null);}
++    public JsonInputAdapter(Path path,InputResourcePolicy policy,String independentlyExpectedSha256)throws IOException{
++        budget=new BoundedInput(policy);byte[] bytes=budget.read(path,path.toString());containerHash=sha256(bytes);
++        expectedHash=independentlyExpectedSha256;uri=path.toAbsolutePath().normalize().toUri().toString();containerId="json-container:"+containerHash;
++        if(expectedHash!=null&&(!expectedHash.matches("[a-f0-9]{64}")||!expectedHash.equals(containerHash)))
++            throw new InputRejectedException(INTEGRITY_MISMATCH,"CONTAINER_HASH_MISMATCH",containerId,"Independent expected container hash differs");
++        containerIntegrity=expectedHash==null?Integrity.UNVERIFIED:Integrity.VERIFIED;
++        Object parsed=budget.parse(bytes,"application/json",containerId);
++        if(!(parsed instanceof Map<?,?>))throw reject("JSON_OBJECT_REQUIRED","");root=map(parsed);
++        Object format=root.get("format");
++        if("vehicsim.result/v1".equals(format))entries.add(parseEntry(root,"",null,null));
++        else if("vehicsim.run-collection/v1".equals(format))collection();
++        else throw reject("JSON_SCHEMA_UNSUPPORTED","/format");
++    }
++    private InputRejectedException reject(String reason,String pointer){return new InputRejectedException(INVALID_ARTIFACT,reason,containerId,"JSON pointer "+pointer);}
++    private Issue issue(Status status,String code,String pointer,String detail){return new Issue(status,code,new SourceRef(containerId,pointer),detail);}
++    private static Map<String,Object> map(Object x){if(!(x instanceof Map<?,?> m))return Map.of();Map<String,Object> out=new LinkedHashMap<>();m.forEach((k,v)->out.put(k.toString(),v));return out;}
++    private static String id(Object x){return x!=null&&x.toString().matches("[1-9]\\d*")?x.toString():null;}
++    private static boolean sameId(Object a,Object b){return id(a)!=null&&Objects.equals(id(a),id(b));}
++    private static String escape(String x){return x.replace("~","~0").replace("/","~1");}
++    public List<Entry> entries(){if(closed)throw new IllegalStateException("JSON_INPUT_CLOSED");return List.copyOf(entries);}
++    public List<Run> runs(){return entries().stream().map(Entry::run).filter(Objects::nonNull).toList();}
++    public boolean complete(){return !entries.isEmpty()&&entries.stream().allMatch(e->e.run()!=null)&&collectionIssues.isEmpty();}
++    public Map<String,Object> manifest(){return obj("schema_version","vehicsim.failure-analysis-input-manifest/v1","adapter_version",VERSION,
++        "input_format",root.get("format"),"container_sha256_bytes",containerHash,"independently_expected_sha256",expectedHash,
++        "container_integrity",containerIntegrity.name(),"status",complete()?"COMPLETE":"PARTIAL_OR_BLOCKED",
++        "completeness_scope","DELIVERED_MANIFEST_MEMBERS_ONLY_NOT_FROZEN_SCENARIO_COHORT","declared_collection",root.get("collection"),"declared_collection_status",root.get("status"),
++        "expected_members",entries.size(),"analyzable_members",entries.stream().filter(e->e.run()!=null).count(),
++        "members",entries.stream().map(Entry::json).toList(),"issues",collectionIssues.stream().map(Issue::json).toList(),"resource_counters",budget.counters());}
++
++    private void collection(){
++        Object state=at(root,"/status/state");if(state!=null&&!"OK".equals(state))collectionIssues.add(issue(Status.UNKNOWN,"COLLECTION_STATUS_NOT_OK","/status","Producer did not declare a complete readable collection"));
++        if(!(root.get("runs") instanceof List<?> values))throw reject("COLLECTION_RUNS_REQUIRED","/runs");
++        budget.check(values.size(),budget.policy.maxRuns(),"RUN_COUNT",containerId);
++        if(values.isEmpty())collectionIssues.add(issue(Status.UNKNOWN,"COLLECTION_EMPTY","/runs","No run documents"));
++        Map<String,Map<String,Object>> manifests=new LinkedHashMap<>();Set<String> duplicates=new HashSet<>();
++        if(root.get("manifest") instanceof List<?> list){
++            budget.check(list.size(),budget.policy.maxRuns(),"MANIFEST_RUN_COUNT",containerId);
++            for(int i=0;i<list.size();i++){
++                var row=map(list.get(i));String key=id(row.get("run_id"));
++                if(key==null){collectionIssues.add(issue(Status.INVALID,"MANIFEST_RUN_ID_INVALID","/manifest/"+i,"Expected positive run identity"));continue;}
++                if(manifests.putIfAbsent(key,row)!=null){duplicates.add(key);collectionIssues.add(issue(Status.CONFLICTING,"DUPLICATE_RUN_IDENTITY","/manifest/"+i,"Duplicate manifest identity"));}
++            }
++        }else collectionIssues.add(issue(Status.UNKNOWN,"COLLECTION_MANIFEST_MISSING","/manifest","Whole-collection membership cannot be verified"));
++        Map<String,Integer> counts=new HashMap<>();
++        for(Object value:values){String key=id(at(value,"/run_id"));if(key!=null)counts.merge(key,1,Integer::sum);}
++        Set<String> found=new HashSet<>();
++        for(int i=0;i<values.size();i++){
++            Object value=values.get(i);String pointer="/runs/"+i+"/result",key=id(at(value,"/run_id"));
++            if(key!=null)found.add(key);
++            if(key==null||counts.getOrDefault(key,0)>1||duplicates.contains(key)){
++                entries.add(new Entry(key,pointer,null,List.of(issue(Status.INVALID,key==null?"COLLECTION_RUN_ID_MISSING":"DUPLICATE_RUN_IDENTITY",pointer,"No unique member identity"))));continue;
++            }
++            var row=manifests.get(key);
++            if(row==null)collectionIssues.add(issue(Status.UNKNOWN,"RUN_NOT_IN_MANIFEST",pointer,"Run is not covered by the collection manifest"));
++            entries.add(parseEntry(at(value,"/result"),pointer,key,row));
++        }
++        for(String key:manifests.keySet())if(!found.contains(key))entries.add(new Entry(key,"/manifest",null,List.of(issue(Status.UNKNOWN,"MANIFEST_RUN_DOCUMENT_MISSING","/manifest","Expected run "+key+" has no document"))));
++        budget.check(entries.size(),budget.policy.maxRuns(),"EXPECTED_RUN_COUNT",containerId);
++    }
++    private Entry parseEntry(Object document,String prefix,String wrapperId,Map<String,Object> manifest){
++        String key=id(at(document,"/dataset/identity/run_id"));List<Issue> issues=new ArrayList<>();
++        try{
++            if(!(document instanceof Map<?,?>))throw reject("RUN_DOCUMENT_REQUIRED",prefix);
++            if(!"vehicsim.result/v1".equals(at(document,"/format")))throw reject("RESULT_SCHEMA_UNSUPPORTED",prefix+"/format");
++            if(!(at(document,"/dataset") instanceof Map<?,?>))throw reject("DATASET_REQUIRED",prefix+"/dataset");
++            if(!"vehicsim.run-dataset/v1".equals(at(document,"/dataset/format")))throw reject("DATASET_SCHEMA_UNSUPPORTED",prefix+"/dataset/format");
++            if(key==null)throw reject("RUN_IDENTITY_MISSING_OR_INVALID",prefix+"/dataset/identity/run_id");
++            String variant=id(at(document,"/dataset/identity/variant_id"));if(variant==null)throw reject("VARIANT_IDENTITY_MISSING_OR_INVALID",prefix+"/dataset/identity/variant_id");
++            if(wrapperId!=null&&!key.equals(wrapperId))throw reject("INCONSISTENT_IDENTITY",prefix+"/dataset/identity/run_id");
++            for(String field:List.of("run_id","scenario_id","scenario_version_id","aeb_version_id","carla_vehicle_model_id")){
++                Object source=at(document,"/source/"+field),embedded=at(document,"/dataset/identity/"+field);
++                if(source!=null&&embedded!=null&&!sameId(source,embedded))throw reject("INCONSISTENT_IDENTITY",prefix+"/source/"+field);
++            }
++            Object version=at(document,"/dataset/identity/scenario_version_id");if(version!=null&&!sameId(version,variant))throw reject("INCONSISTENT_IDENTITY",prefix+"/dataset/identity/variant_id");
++            for(String field:List.of("seed","simulator"))if(!Objects.equals(at(document,"/"+field),at(document,"/dataset/identity/"+field)))throw reject("INCONSISTENT_IDENTITY",prefix+"/dataset/identity/"+field);
++            Object seed=at(document,"/seed");if(!(seed instanceof Number)||!seed.toString().matches("-?\\d+"))throw reject("SEED_TYPE_INVALID",prefix+"/seed");
++            String mode=Objects.toString(at(document,"/dataset/identity/aeb_mode"),"");if(!List.of("ON","OFF").contains(mode))throw reject("AEB_MODE_INVALID",prefix+"/dataset/identity/aeb_mode");
++            Object oldMode=at(document,"/outcome/case/aeb_mode");if(oldMode!=null&&!mode.equals(oldMode))throw reject("INCONSISTENT_IDENTITY",prefix+"/outcome/case/aeb_mode");
++            for(String sequence:List.of("repetition","attempt"))if(id(at(document,"/dataset/identity/"+sequence))==null)throw reject("RUN_SEQUENCE_INVALID",prefix+"/dataset/identity/"+sequence);
++            long records=0;for(String stream:List.of("/outcome/frames","/dataset/time_series/frames/rows","/dataset/time_series/ground_truth/rows","/dataset/collisions/events"))
++                if(at(document,stream) instanceof List<?> rows)records=BoundedInput.checkedAdd(records,rows.size(),containerId);
++            budget.check(records,budget.policy.maxRunRecords(),"RUN_RECORDS",containerId);
++            if(manifest!=null){
++                Object state=at(manifest,"/document_state/state");if(state!=null&&!"OK".equals(state))throw reject("MANIFEST_DOCUMENT_STATE_NOT_OK",prefix);
++                for(String field:List.of("seed","aeb_mode","repetition","attempt","simulator","purpose","aeb_version_id","carla_vehicle_model_id"))
++                    if(manifest.containsKey(field)&&!Objects.equals(manifest.get(field),at(document,"/dataset/identity/"+field)))throw reject("INCONSISTENT_IDENTITY",prefix+"/dataset/identity/"+field);
++                Object hash=manifest.get("document_sha256");if(!(hash instanceof String s&&s.matches("[a-f0-9]{64}")))throw reject("DOCUMENT_DIGEST_MISSING_OR_INVALID",prefix);
++                if(!digestProfile(at(root,"/rules/document_digest_spec")))throw reject("DOCUMENT_DIGEST_PROFILE_UNSUPPORTED",prefix);
++                if(!hash.equals(digest(document,prefix)))throw new InputRejectedException(INTEGRITY_MISMATCH,"DOCUMENT_DIGEST_MISMATCH",containerId,"JSON pointer "+prefix);
++                for(String field:List.of("end_reason","collision")){
++                    Object stored=at(document,field.equals("collision")?"/outcome/metrics/collision":"/outcome/end_reason");
++                    if(manifest.containsKey(field)&&!Objects.equals(manifest.get(field),stored))throw reject("MANIFEST_RESULT_COPY_DISAGREEMENT",prefix+"/outcome");
++                }
++            }
++            if(wrapperId!=null)for(String field:List.of("project_id","scenario_id","variant_id")){
++                Object collection=at(root,"/collection/"+field);if(collection!=null&&!sameId(collection,at(document,"/dataset/identity/"+field)))throw reject("INCONSISTENT_IDENTITY",prefix+"/dataset/identity/"+field);
++            }
++            Map<String,Artifact> artifacts=new LinkedHashMap<>();
++            Artifact container=new Artifact(containerId,null,uri,containerHash,"application/json",containerIntegrity,null,List.of(),obj("hash_scope","CONTAINER_BYTES","independently_expected_sha256",expectedHash));artifacts.put("json_container",container);
++            List<Issue> resultIssues=new ArrayList<>();
++            for(var parameter:BaselineBindingResolver.PARAMETERS.entrySet()){
++                Object stored=at(document,"/outcome/params/"+parameter.getValue()),copy=at(document,"/dataset/config/aeb/params/"+parameter.getKey());
++                if(stored!=null&&copy!=null&&!sameNumber(stored,copy))resultIssues.add(new Issue(Status.CONFLICTING,"INCONSISTENT_IDENTITY",new SourceRef(containerId+":"+key+":result",prefix+"/dataset/config/aeb/params/"+parameter.getKey()),"Actual parameter copies differ"));
++            }
++            add(artifacts,"result",document,prefix,key,null,document,null,resultIssues);
++            addTable(artifacts,"frames",document,prefix,key);
++            addTable(artifacts,"ground_truth",document,prefix,key);
++            add(artifacts,"collisions",at(document,"/dataset/collisions/events"),prefix+"/dataset/collisions/events",key,"collisions.events",document,"sensors/collisions.json",List.of());
++            add(artifacts,"summary",at(document,"/dataset/sensors/summary"),prefix+"/dataset/sensors/summary",key,"sensors.summary",document,"sensors/summary.json",List.of());
++            add(artifacts,"bundle",at(document,"/dataset/config"),prefix+"/dataset/config",key,null,document,"bundle.json",List.of());
++            for(String name:List.of("lifecycle","vsos-core","environment","metadata","case_manifest","manifest"))
++                artifacts.put(name,new Artifact(containerId+":"+key+":"+name,key,uri,null,"application/json",Integrity.UNVERIFIED,null,
++                    List.of(new Issue(Status.UNKNOWN,"SOURCE_MISSING",new SourceRef(containerId,prefix+"/dataset/provenance"),"Original "+name+" bytes not embedded; no synthetic artifact created"))));
++            Run run=new Run(key,variant,"json/"+variant,artifacts,issues);
++            List<Issue> intake=new ArrayList<>(issues);artifacts.values().forEach(a->intake.addAll(a.issues()));return new Entry(key,prefix,run,intake);
++        }catch(InputRejectedException e){
++            if(e.kind()==RESOURCE_LIMIT_EXCEEDED)throw e;
++            issues.add(issue(Status.INVALID,e.reason(),prefix,e.getMessage()));return new Entry(key==null?wrapperId:key,prefix,null,issues);
++        }
++    }
++    private void addTable(Map<String,Artifact> artifacts,String name,Object document,String prefix,String key){
++        String pointer="/dataset/time_series/"+name;Object raw=at(document,pointer);List<Issue> problems=new ArrayList<>();
++        List<String> columns=new ArrayList<>();List<Map<String,Object>> rows=new ArrayList<>();Object normalized=null;
++        if(raw!=null){
++            boolean valid=at(raw,"/columns") instanceof List<?> && at(raw,"/rows") instanceof List<?>;
++            if(valid){
++                var names=(List<?>)at(raw,"/columns");var values=(List<?>)at(raw,"/rows");
++                budget.check(names.size(),budget.policy.maxColumns(),"EMBEDDED_COLUMNS",containerId);budget.check(values.size(),budget.policy.maxRecords(),"EMBEDDED_RECORDS",containerId);
++                for(Object value:names)if(value instanceof String s&&!s.isBlank()&&!columns.contains(s))columns.add(s);else valid=false;
++                if(columns.isEmpty()||!columns.containsAll(name.equals("frames")?List.of("frame","sim_time_s"):List.of("frame","sim_time_s","actor_id","role")))valid=false;
++                if(valid)for(Object value:values){if(!(value instanceof List<?> cells)||cells.size()!=columns.size()){valid=false;break;}
++                    budget.retain(BoundedInput.checkedAdd(128,columns.size()*128L,containerId),containerId);budget.work(columns.size(),containerId);
++                    Map<String,Object> row=new LinkedHashMap<>();for(int j=0;j<columns.size();j++)row.put(columns.get(j),cells.get(j));rows.add(row);}
++                Object count=at(raw,"/row_count");if(!(count instanceof Number)||!count.toString().equals(Integer.toString(values.size())))valid=false;
++            }
++            if(valid)normalized=rows;else problems.add(new Issue(Status.INVALID,"EMBEDDED_TABLE_INVALID",new SourceRef(containerId,prefix+pointer),"Invalid columns/rows/count; entire table quarantined"));
++        }
++        Object payload=raw instanceof Map<?,?>?obj("columns",at(raw,"/columns"),"rows",at(raw,"/rows")):null;
++        add(artifacts,name,normalized,prefix+pointer,key,"time_series."+name,document,"sensors/"+name+".csv",problems,payload,columns);
++    }
++    private void add(Map<String,Artifact> artifacts,String name,Object data,String pointer,String key,String payloadKey,Object document,String original,List<Issue> issues){
++        add(artifacts,name,data,pointer,key,payloadKey,document,original,issues,data,List.of());
++    }
++    private void add(Map<String,Artifact> artifacts,String name,Object data,String pointer,String key,String payloadKey,Object document,String original,List<Issue> supplied,Object payload,List<String> columns){
++        List<Issue> issues=new ArrayList<>(supplied);Integrity integrity=containerIntegrity;
++        Map<String,Object> provenance=obj("adapter_version",VERSION,"input_format",root.get("format"),"container_id",containerId,"container_sha256_bytes",containerHash,
++            "independently_expected_container_sha256",expectedHash,"hash_scope","CONTAINER_BYTES_NOT_ORIGINAL_EXTERNAL_FILE",
++            "json_root_pointer",pointer,"external_source_integrity","UNVERIFIED","declared_source_file",original==null?null:at(document,"/dataset/provenance/files/"+escape(original)));
++        if(!columns.isEmpty())provenance.put("table_columns",columns);
++        if(name.equals("result")){
++            provenance.put("declared_status",at(document,"/dataset/status"));provenance.put("declared_clock",at(document,"/dataset/time_series/clock"));
++            provenance.put("declared_time_origin",at(document,"/dataset/time_series/time_origin"));
++            provenance.put("declared_units",at(document,"/dataset/time_series/units"));provenance.put("declared_coordinate_system",at(document,"/dataset/time_series/coordinate_system"));
++            provenance.put("declared_producer_provenance",at(document,"/dataset/provenance"));
++            if(root.containsKey("collection"))provenance.put("declared_collection_context",obj("metadata",root.get("collection"),"status",root.get("status"),
++                "source_ref",new SourceRef(containerId,"/collection").json(),"authority","EXPORT_METADATA_ONLY_NOT_FROZEN_SELECTION"));
++            provenance.put("declared_signal_quality",at(document,"/dataset/time_series/quality"));
++            provenance.put("declared_derived_role",at(document,"/dataset/derived/role"));
++        }
++        Object expected=payloadKey==null?null:at(document,"/dataset/provenance/embedded_payloads/"+escape(payloadKey));
++        boolean sourceShape=data==null||switch(name){case "collisions"->data instanceof List<?>;case "summary","bundle","result"->data instanceof Map<?,?>;default->true;};
++        if(!sourceShape){issues.add(new Issue(Status.INVALID,"EMBEDDED_SOURCE_TYPE_INVALID",new SourceRef(containerId,pointer),"Invalid embedded source shape"));data=null;}
++        if(expected!=null&&payload!=null&&digestProfile(at(document,"/dataset/provenance/embedded_payloads/spec"))){
++            String actual=digest(payload,pointer);boolean valid=expected instanceof String s&&s.matches("[a-f0-9]{64}")&&expected.equals(actual);
++            provenance.put("embedded_digest",obj("profile","ADR065_PYTHON_JSON_DUMPS_ENSURE_ASCII_FALSE_DEFAULT_SEPARATORS","declared",expected,"actual",actual,"status",valid?"MATCH":"MISMATCH","authority","SELF_DECLARED_CONSISTENCY_ONLY"));
++            if(!valid){integrity=Integrity.FAILED;issues.add(new Issue(Status.INVALID,"EMBEDDED_PAYLOAD_HASH_MISMATCH",new SourceRef(containerId,pointer),"Embedded payload differs from its declared digest"));data=null;}
++        }else if(expected!=null){
++            provenance.put("embedded_digest",obj("declared",expected,"actual",null,"status","UNKNOWN","authority","SELF_DECLARED_ONLY"));
++            issues.add(new Issue(Status.UNKNOWN,"EMBEDDED_DIGEST_PROFILE_OR_PAYLOAD_MISSING",new SourceRef(containerId,pointer),"Cannot verify this payload digest"));
++        }
++        if(!issues.isEmpty()&&issues.stream().anyMatch(i->i.status()==Status.INVALID)){integrity=Integrity.FAILED;data=null;}
++        if(data==null&&issues.isEmpty())issues.add(new Issue(Status.UNKNOWN,"SOURCE_MISSING",new SourceRef(containerId,pointer),"Embedded evidence is absent/null"));
++        reserve(data,pointer);reserve(provenance,pointer);
++        artifacts.put(name,new Artifact(containerId+":"+key+":"+name,key,uri,containerHash,"application/json",integrity,data,issues,provenance));
++    }
++    /** Reserve immutable copies / encoding before allocating them. Not an exact heap measurement. */
++    private void reserve(Object value,String source){
++        Deque<Object> todo=new ArrayDeque<>();if(value!=null)todo.push(value);long charge=0;
++        while(!todo.isEmpty()){Object x=todo.pop();budget.work(1,source);charge=BoundedInput.checkedAdd(charge,128,source);
++            if(x instanceof Map<?,?> m){for(var e:m.entrySet()){charge=BoundedInput.checkedAdd(charge,e.getKey().toString().length()*4L,source);if(e.getValue()!=null)todo.push(e.getValue());}}
++            else if(x instanceof List<?> list){for(Object item:list)if(item!=null)todo.push(item);}
++            else if(x instanceof String s)charge=BoundedInput.checkedAdd(charge,s.length()*4L,source);
++        }budget.retain(charge,source);
++    }
++    private String digest(Object data,String source){
++        reserve(data,source);Deque<Object> todo=new ArrayDeque<>();if(data!=null)todo.push(data);long upper=4;
++        while(!todo.isEmpty()){Object x=todo.pop();budget.work(1,source);long n=32;
++            if(x instanceof String s)n=BoundedInput.checkedAdd(s.length()*6L,2,source);
++            else if(x instanceof Map<?,?> m){n=2;for(var e:m.entrySet()){n=BoundedInput.checkedAdd(n,e.getKey().toString().length()*6L+8,source);if(e.getValue()!=null)todo.push(e.getValue());else n=BoundedInput.checkedAdd(n,4,source);}}
++            else if(x instanceof List<?> list){n=BoundedInput.checkedAdd(2,list.size()*2L,source);for(Object item:list)if(item!=null)todo.push(item);else n=BoundedInput.checkedAdd(n,4,source);}
++            upper=BoundedInput.checkedAdd(upper,n,source);budget.check(upper,budget.policy.maxMemberBytes(),"DIGEST_SERIALIZATION_UPPER_BOUND",source);
++        }
++        budget.retain(upper*4,source);String text=MiniJson.write(data);budget.check(text.length(),budget.policy.maxMemberBytes(),"DIGEST_DOCUMENT_CHARS",source);
++        budget.work(text.length(),source);return sha256(text);
++    }
++    private static boolean digestProfile(Object spec){return spec instanceof String s&&s.contains("Python json.dumps")&&s.contains("ensure_ascii=False");}
++    public static boolean supports(Run run){return run.artifact("result")!=null&&VERSION.equals(run.artifact("result").provenance().get("adapter_version"));}
++    public static Map<String,Object> declaredIdentity(Run run){
++        Map<String,Object> out=new LinkedHashMap<>();for(String field:List.of("run_id","project_id","scenario_id","variant_id","aeb_version_id","carla_vehicle_model_id","seed","aeb_mode","repetition","attempt","purpose")){
++            Object v=run.get("result","/dataset/identity/"+field);if(v!=null&&field.endsWith("_id"))v=v.toString();
++            out.put(field,v==null?unknown("DECLARED_IDENTITY_MISSING",null).json():value(v,Status.CONDITIONAL,null,null,List.of(run.ref("result","/dataset/identity/"+field)),"PRODUCER_DECLARED_NOT_AUTHORIZED_BINDING").json());
++        }return out;
++    }
++    @Override public void close(){closed=true;entries.clear();collectionIssues.clear();root.clear();}
++}
+--- before/MetricProvenanceResolver.java
++++ src/main/java/com/vsos/core/failureanalysis/MetricProvenanceResolver.java
+@@ -59,6 +59,11 @@
+         f.put("command_onset", r.read("result", "/outcome/metrics/brake_onset_t", "s", "core"));
+         f.put("source_revision", r.read("environment", "/git_commit", null, null));
+         f.put("core_sha256", r.read("lifecycle", "/core/sha256", null, null));
++        if(JsonInputAdapter.supports(r)){
++            f.put("source_revision",r.read("result","/dataset/provenance/git_commit",null,null));
++            f.put("core_sha256",r.read("result","/dataset/provenance/core_jar_sha256",null,null));
++            f.put("source_hash_verification",unknown("DECLARED_SOURCE_FILES_NOT_EXTERNALLY_VERIFIED",null));
++        }
+         f.put("runtime_source_equivalence", unknown("RUNTIME_SOURCE_EQUIVALENCE_UNVERIFIED", null));
+         f.put("calibration_scope", unknown("CALIBRATION_VALIDITY_DOMAIN_MISSING", null));
+         f.put("calibration_name", r.read("result", "/outcome/case/carla/pedal_map", null, null));
+--- before/MoboHandoffBuilder.java
++++ src/main/java/com/vsos/core/failureanalysis/MoboHandoffBuilder.java
+@@ -194,6 +194,17 @@
+                 "canonical_sample",sampleBound?CanonicalAggregation.sampleJson(sample):null,"metric_provenance",sampleArtifact==null?unknownJson("METRIC_PROVENANCE_UNKNOWN"):map(at(sampleArtifact.data(),"/provenance")),
+                 "objective_quality_decisions",decisions,
+                 "eligibility",obj("canonical_read",canonical,"optimization",opt,"validation",val,"objective_status",statuses,"reason_codes",reasons.stream().distinct().toList(),"capability_refs",List.of("READ_CANONICAL_OBJECTIVE")));
++        if(JsonInputAdapter.supports(run)){
++            Map<String,Object> declared=JsonInputAdapter.declaredIdentity(run);json.put("declared_identity",declared);
++            // These are intake declarations, not a project baseline authorization or a GP sample.
++            Map<String,String> fields=Map.of("run_id","run_id","variant_id","variant_id","scenario_id","scenario_id","baseline_aeb_version_id","aeb_version_id");
++            fields.forEach((target,source)->{if(at(json.get(target),"/value")==null)json.put(target,declared.get(source));});
++            Map<String,Object> recorded=new LinkedHashMap<>();var reader=new CanonicalObjectiveReader().read(run);
++            for(String key:CanonicalObjectiveReader.KEYS){var objective=reader.get(key);recorded.put(key,obj("canonical_value",objective.canonicalValue().json(),"evaluation_copy",objective.evaluationCopy().json(),
++                "copy_agreement",objective.copyAgreement(),"declared_metadata",run.get("result","/dataset/objectives/"+key),
++                "declared_metadata_ref",run.ref("result","/dataset/objectives/"+key).json(),"aggregation_version",AnalysisMetrics.VERSION));}
++            json.put("recorded_objectives",recorded);json.put("json_source",run.artifact("result").provenance());
++        }
+         return new Member(json,input,partition,requested,binding,sample,sampleBound,qualityReady,List.copyOf(reasons),row);
+     }
+     public static String configurationDigest(Run r){return digest(obj("case",r.get("result","/outcome/case"),"params",r.get("result","/outcome/params"),
+@@ -268,6 +279,7 @@
+         return true;
+     }
+     private static Object replication(Run r,boolean rep){
++        if(JsonInputAdapter.supports(r))return JsonInputAdapter.declaredIdentity(r).get(rep?"repetition":"attempt");
+         var m=java.util.regex.Pattern.compile("/rep(\\d+)_a(\\d+)$").matcher(r.directory());
+         return m.find()?new Value(Long.valueOf(m.group(rep?1:2)),Status.DERIVED,null,null,List.of(r.ref("result","")),List.of(),"fa-artifact-directory-replication/1").json():unknownJson("REPLICATION_IDENTITY_UNKNOWN");
+     }
+--- before/ObjectiveExplainer.java
++++ src/main/java/com/vsos/core/failureanalysis/ObjectiveExplainer.java
+@@ -90,7 +90,7 @@
+         List<Issue> issues=new EvidenceValidator().validate(r);
+         if(blocked(r,issues,"result")) {
+             List<SourceRef> refs=new ArrayList<>(inputRefs);
+-            issues.stream().filter(i->i.source().artifactId().equals(r.artifact("result").id())&&i.source().locator().startsWith("/outcome/frames"))
++            issues.stream().filter(i->i.source().artifactId().equals(r.artifact("result").id())&&i.source().locator().startsWith(r.ref("result","/outcome/frames").locator()))
+                     .map(Issue::source).forEach(refs::add);
+             stoppingUnavailable(out,fields,Status.INVALID,"STOPPING_TRACE_CLOCK_OR_SOURCE_INVALID",refs);return out;
+         }
+--- before/OfflineDiagnosticAnalysis.java
++++ src/main/java/com/vsos/core/failureanalysis/OfflineDiagnosticAnalysis.java
+@@ -8,27 +8,27 @@
+ public final class OfflineDiagnosticAnalysis {
+     private OfflineDiagnosticAnalysis() {}
+     public static void main(String[] args) throws Exception {
+-        if(args.length<2||args.length>3)throw new IllegalArgumentException("Usage: <raw ZIP/directory> <new output directory> [run_key]");
++        if(args.length<2||args.length>3)throw new IllegalArgumentException("Usage: <JSON/raw ZIP/directory> <new output directory> [run_key]");
+         Path raw=Path.of(args[0]).toRealPath(),out=Path.of(args[1]).toAbsolutePath().normalize(),ancestor=out;
+         while(!Files.exists(ancestor))ancestor=ancestor.getParent();
+         Path resolved=ancestor.toRealPath().resolve(ancestor.relativize(out)).normalize();
+         if(resolved.startsWith(raw)||raw.startsWith(resolved))throw new IllegalArgumentException("Output overlaps raw input");
+-        Map<String,Evidence.Run> controls=new HashMap<>();List<Evidence.Run> selected=new ArrayList<>();
+-        try(var adapter=new RawArtifactAdapter(raw)) {
+-            for(String directory:adapter.runDirectories()) {
+-                var run=adapter.read(directory);
+-                if("OFF".equals(EvidenceReport.mode(run).value())) {
+-                    if(controls.putIfAbsent(run.caseKey(),run)!=null)throw new IllegalArgumentException("Ambiguous OFF comparator; explicit selection required");
+-                }
+-                if(args.length==2||run.runKey().equals(args[2]))selected.add(run);
++        try(var adapter=new FailureAnalysisInput(raw)) {
++            List<Evidence.Run> runs=adapter.runs(),selected=runs.stream().filter(r->args.length==2||r.runKey().equals(args[2])).toList();
++            // Preserve the legacy CLI's explicit rejection of ambiguous controls.
++            if(!adapter.json()){Set<String> keys=new HashSet<>();for(var run:runs)if("OFF".equals(EvidenceReport.mode(run).value())&&!keys.add(run.caseKey()))
++                throw new IllegalArgumentException("Ambiguous OFF comparator; explicit selection required");}
++            if(Files.exists(out)&&adapter.json())throw new IllegalArgumentException("OUTPUT_EXISTS");
++            Files.createDirectories(out);
++            if(adapter.json())Files.writeString(out.resolve("_input_manifest.json"),MiniJson.write(adapter.manifest()),StandardOpenOption.CREATE_NEW);
++            if(selected.isEmpty())throw new IllegalArgumentException("No matching analyzable input runs; inspect input manifest");
++            Map<String,Map<String,Object>> reports=new LinkedHashMap<>();
++            for(var run:selected) {
++                var report=new DiagnosticReport().analyze(run,"ON".equals(EvidenceReport.mode(run).value())?FailureAnalysisInput.comparator(run,runs):null);
++                Files.writeString(out.resolve(run.runKey()+".json"),MiniJson.write(report)+System.lineSeparator(),StandardOpenOption.CREATE_NEW);reports.put(run.runKey(),report);
+             }
++            if(adapter.json())Files.writeString(out.resolve("FUNCTIONAL_TEST_SUMMARY.csv"),JsonDiagnosticSummary.csv(selected,reports),StandardOpenOption.CREATE_NEW);
++            System.out.println("Diagnostic Reports written: "+selected.size()+" input="+(adapter.complete()?"COMPLETE":"PARTIAL_OR_BLOCKED"));
+         }
+-        if(selected.isEmpty())throw new IllegalArgumentException("No matching input runs");
+-        Files.createDirectories(out);
+-        for(var run:selected) {
+-            var report=new DiagnosticReport().analyze(run,"ON".equals(EvidenceReport.mode(run).value())?controls.get(run.caseKey()):null);
+-            Files.writeString(out.resolve(run.runKey()+".json"),MiniJson.write(report)+System.lineSeparator(),StandardOpenOption.CREATE_NEW);
+-        }
+-        System.out.println("M1B Diagnostic Reports written: "+selected.size());
+     }
+ }
+--- before/OfflineFailureAnalysis.java
++++ src/main/java/com/vsos/core/failureanalysis/OfflineFailureAnalysis.java
+@@ -17,9 +17,9 @@
+         if (actualOutput.startsWith(input) || input.startsWith(actualOutput)) throw new IllegalArgumentException("Output overlaps raw input");
+         Files.createDirectories(output);
+         int count = 0;
+-        try (RawArtifactAdapter adapter = new RawArtifactAdapter(input)) {
+-            for (String directory : adapter.runDirectories()) {
+-                Evidence.Run run = adapter.read(directory);
++        try (FailureAnalysisInput adapter = new FailureAnalysisInput(input)) {
++            if(adapter.json())Files.writeString(output.resolve("_input_manifest.json"),MiniJson.write(adapter.manifest()),StandardOpenOption.CREATE_NEW);
++            for (Evidence.Run run : adapter.runs()) {
+                 if (args.length == 3 && !args[2].equals(run.runKey())) continue;
+                 String report = MiniJson.write(new EvidenceReport().analyze(run));
+                 Files.writeString(output.resolve(run.runKey() + ".json"), report + System.lineSeparator(), StandardOpenOption.CREATE_NEW);
+--- before/OfflineMoboHandoff.java
++++ src/main/java/com/vsos/core/failureanalysis/OfflineMoboHandoff.java
+@@ -16,9 +16,10 @@
+             throw new IllegalArgumentException("OUTPUT_OVERLAPS_INPUT_OR_EXISTS");
+         List<MoboHandoffBuilder.MemberInput> members=new ArrayList<>();
+         BoundedInput reportInput=new BoundedInput(InputResourcePolicy.defaults());
+-        try(var adapter=new RawArtifactAdapter(raw)){
+-            for(String directory:adapter.runDirectories()){
+-                Run run=adapter.read(directory);Path report=reports.resolve(run.runKey()+".json").normalize();
++        try(var adapter=new FailureAnalysisInput(raw)){
++            if(!adapter.complete())throw new InputRejectedException(InputRejectedException.Kind.INVALID_ARTIFACT,"INCOMPLETE_INPUT_POPULATION",raw.toString(),"No handoff from an incomplete original population; inspect diagnostic _input_manifest.json");
++            for(Run run:adapter.runs()){
++                Path report=reports.resolve(run.runKey()+".json").normalize();
+                 if(!report.startsWith(reports)||!Files.isRegularFile(report))throw new IllegalArgumentException("DIAGNOSTIC_REPORT_MISSING:"+run.runKey());
+                 Artifact loaded=HandoffSnapshots.read(report,run.runKey()+":diagnostic",null,reportInput);
+                 if(!loaded.usable())throw new InputRejectedException(InputRejectedException.Kind.INVALID_ARTIFACT,"DIAGNOSTIC_REPORT_INVALID",loaded.id(),"Invalid report input");

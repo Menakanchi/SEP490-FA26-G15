@@ -2,6 +2,7 @@
 
 import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Pencil, Play, X } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
@@ -12,20 +13,36 @@ import { vehicsimApi } from "@/services/vehicsim";
 import type { ActiveFamilyRun, FamilyItem, FamilyVariantList, FamilyVersion, RiskLabel, TimeOfDay, Weather } from "@/types/vehicsim";
 
 export default function ScenarioFamiliesPage() {
-  const { ctx, refresh, canWrite } = useVehicSimContext();
+  const { refresh, canWrite } = useVehicSimContext();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const isNew = searchParams.get("new") === "1";
+
   const [items, setItems] = useState<FamilyItem[] | null>(null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 6;
   const totalPages = Math.max(1, Math.ceil((items?.length ?? 0) / PAGE_SIZE));
   const pagedItems = items?.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+
+  const createdCode = searchParams.get("created");
+  const queuedCount = Number(searchParams.get("queued") || 0);
+  const variantsCount = searchParams.get("variants");
+  const [notice, setNotice] = useState<string | null>(() =>
+    createdCode
+      ? `Đã tạo ${createdCode} với ${variantsCount ?? ""} biến thể${queuedCount ? `, đã xếp ${queuedCount} lượt chạy cơ sở` : ""}.`
+      : null,
+  );
+
   const [formOpen, setFormOpen] = useState(false);
   const [busy, setBusy] = useState<number | "create" | null>(null);
-  // Baseline đo cả AEB hiện tại lẫn AEB tắt (chốt 13/11/2026): lượt AEB tắt là mốc tham chiếu, không làm baseline regression/tối ưu.
-  const [withAebOff, setWithAebOff] = useState(true);
+
   // Họ vừa được bàn giao từ màn thiết kế (?family=<id>) hoặc vừa tạo bằng form: tô sáng và cuộn tới dòng của nó.
-  const [focusId, setFocusId] = useState<number | null>(null);
+  const paramFamily = Number(searchParams.get("family"));
+  const [focusId, setFocusId] = useState<number | null>(
+    Number.isInteger(paramFamily) && paramFamily > 0 ? paramFamily : null,
+  );
+
   // Sửa họ = tạo bản gốc mới (task 4): họ đang sửa, lịch sử bản đã tải, bản cũ đang xem của từng họ (chỉ xem).
   const [editing, setEditing] = useState<FamilyItem | null>(null);
   const [versions, setVersions] = useState<Record<number, FamilyVersion[]>>({});
@@ -46,20 +63,6 @@ export default function ScenarioFamiliesPage() {
   }, []);
   useEffect(load, [load]);
 
-  // Bước 1 của vòng MVP (Tổng quan → /scenarios?new=1) mở sẵn form tạo họ kịch bản.
-  useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- đọc query một lần sau khi mount
-    if (q.get("new") === "1") setFormOpen(true);
-    // Vừa tạo họ từ màn "Sinh từ mô tả" (/scenarios/new).
-    if (q.get("created")) {
-      const queued = Number(q.get("queued") || 0);
-      setNotice(`Đã tạo ${q.get("created")} từ mô tả với ${q.get("variants")} biến thể${queued ? `, đã xếp ${queued} lượt chạy cơ sở` : ""}.`);
-    }
-    const family = Number(q.get("family"));
-    if (Number.isInteger(family) && family > 0) setFocusId(family);
-  }, []);
-
   const scrolledRef = useRef(false);
   const focused = focusId ? (items ?? []).find((f) => f.id === focusId) : undefined;
   useEffect(() => {
@@ -75,20 +78,6 @@ export default function ScenarioFamiliesPage() {
     const id = setInterval(load, 3000);
     return () => clearInterval(id);
   }, [active, load]);
-
-  const runBaseline = async (f: FamilyItem) => {
-    setBusy(f.id);
-    setError(null);
-    try {
-      const res = await vehicsimApi.runFamily(f.id, undefined, withAebOff);
-      setNotice(`${f.code}: đã xếp ${res.queued_runs} lượt chạy cơ sở${withAebOff ? " (một nửa là lượt AEB tắt để đối chiếu)" : ""}.`);
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không chạy được cơ sở");
-    } finally {
-      setBusy(null);
-    }
-  };
 
   const pickVersion = async (f: FamilyItem, version: number) => {
     if (version === f.version) {
@@ -147,6 +136,7 @@ export default function ScenarioFamiliesPage() {
   const startEdit = (f: FamilyItem) => {
     setFormOpen(false);
     setEditing(f);
+    setFocusId(f.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -188,53 +178,55 @@ export default function ScenarioFamiliesPage() {
     }
   };
 
-  const cancelFamily = async (f: FamilyItem) => {
-    setBusy(f.id);
-    setError(null);
-    try {
-      const res = await vehicsimApi.cancelFamily(f.id);
-      setNotice(`${f.code}: đã hủy ${res.stopped} lượt đang chờ${res.stopping ? `, đang dừng ${res.stopping} lượt đang chạy` : ""}.`);
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? vi(err.message) : "Không hủy được lượt chạy");
-    } finally {
-      setBusy(null);
-    }
-  };
-
   return (
     <VehicSimPage
-      step={2}
-      crumbs={[{ label: "Kịch bản" }, { label: "Danh sách họ kịch bản" }]}
-      title="Danh sách họ kịch bản"
+      step={1}
+      crumbs={
+        isNew
+          ? [{ label: "Thiết kế kịch bản", href: "/scenarios" }, { label: "Nhập tham số" }]
+          : [{ label: "Thiết kế kịch bản" }, { label: "Danh sách họ kịch bản" }]
+      }
+      title={isNew ? "Thiết lập không gian tham số kịch bản" : "Họ kịch bản kiểm thử an toàn"}
+      subtitle={
+        isNew
+          ? "Định nghĩa dải giá trị vận tốc, khoảng cách và điều kiện môi trường để tự động sinh biến thể mô phỏng."
+          : "Quản lý các không gian tham số va chạm và biến thể phục vụ đánh giá hệ thống phanh khẩn cấp."
+      }
       actions={
-        <>
-          <PillButton onClick={() => setFormOpen((o) => !o)} disabled={!canWrite} title={canWrite ? undefined : "Tài khoản người xem chỉ có quyền xem"}>
-            {formOpen ? "Đóng form" : "+ Nhập tay"}
-          </PillButton>
-          <PillButton variant="dark" href={canWrite ? "/scenarios/new" : undefined} disabled={!canWrite}>
-            Sinh từ mô tả
-          </PillButton>
-        </>
+        isNew ? (
+          <>
+            <PillButton variant="dark" href={canWrite ? "/scenarios/new" : undefined} disabled={!canWrite}>
+              + Sinh từ mô tả (AI)
+            </PillButton>
+            <PillButton variant="light" href="/scenarios">
+              ← Xem danh sách họ kịch bản
+            </PillButton>
+          </>
+        ) : (
+          <>
+            <PillButton variant="dark" href={canWrite ? "/scenarios/new" : undefined} disabled={!canWrite}>
+              + Sinh từ mô tả (AI)
+            </PillButton>
+            <PillButton variant="light" href={canWrite ? "/scenarios?new=1" : undefined} disabled={!canWrite}>
+              + Nhập tham số
+            </PillButton>
+          </>
+        )
       }
     >
       <ErrorNote message={error} />
-      <label className="flex items-center gap-2 text-[13px] text-vehicsim-muted">
-        <input type="checkbox" checked={withAebOff} onChange={(e) => setWithAebOff(e.target.checked)} disabled={!canWrite} />
-        Khi chạy cơ sở, chạy thêm mỗi biến thể một lượt AEB tắt (mốc đối chiếu &quot;không có AEB&quot;, không dùng làm cơ sở kiểm chứng)
-      </label>
       {notice && <p className="rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">{notice}</p>}
-      {focused && !notice && (
+      {!isNew && focused && !notice && (
         <p className="rounded-[16px] bg-vehicsim-decision-bg px-4 py-3 text-[13px] text-vehicsim-decision">
           {focused.code} · {focused.name}:{" "}
           {(focused.runs.PENDING ?? 0) + (focused.runs.RUNNING ?? 0) > 0
             ? "các lượt chạy cơ sở đang chạy — số liệu tự cập nhật bên dưới."
             : (focused.runs.COMPLETED ?? 0) > 0
-              ? "đã có kết quả chạy cơ sở — bấm “Phân tích” ở dòng được tô sáng."
-              : "chưa chạy cơ sở — bấm “Chạy cơ sở” ở dòng được tô sáng."}
+              ? "đã có kết quả chạy cơ sở — bấm “Chạy baseline” hoặc “Phân tích”."
+              : "chưa chạy cơ sở — bấm “Chạy baseline” để thực thi thử nghiệm."}
         </p>
       )}
-      {focusId && items && !focused && (
+      {!isNew && focusId && items && !focused && (
         <ErrorNote message={`Không tìm thấy họ kịch bản #${focusId} trong project hiện tại.`} />
       )}
       {editing && (
@@ -279,7 +271,7 @@ export default function ScenarioFamiliesPage() {
           </button>
         </div>
       )}
-      {formOpen && (
+      {(isNew || formOpen) && (
         <FamilyForm
           busy={busy === "create"}
           onSubmit={async (body) => {
@@ -294,6 +286,7 @@ export default function ScenarioFamiliesPage() {
               setFocusId(res.scenario_id);
               load();
               await refresh();
+              router.push(`/scenarios?family=${res.scenario_id}&created=${res.code}&variants=${res.variants}`);
             } catch (err) {
               setError(err instanceof Error ? err.message : "Không tạo được họ kịch bản");
             } finally {
@@ -303,16 +296,8 @@ export default function ScenarioFamiliesPage() {
         />
       )}
 
-      {ctx && (
-        <p className="flex flex-wrap gap-x-5 gap-y-1 rounded-[16px] border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-3 text-[13px] text-vehicsim-muted">
-          <span className="font-semibold text-vehicsim-ink">Chạy cơ sở sẽ dùng:</span>
-          <span>Xe <b className="text-vehicsim-ink">{ctx.vehicle?.name ?? "—"}</b></span>
-          <span>AEB <b className="text-vehicsim-ink">{ctx.system.baseline?.label ?? "chưa có bản cơ sở"}</b></span>
-          <span>Bộ mô phỏng <b className="text-vehicsim-ink">{simulatorLabel(ctx.simulator)}</b></span>
-        </p>
-      )}
-
-      <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
+      {!isNew && (
+        <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface">
         <div className="flex items-center px-5 py-4">
           <span className="text-[15px] font-bold text-vehicsim-ink">{items ? `${items.length} ${items.length === 1 ? "family" : "families"}` : "…"}</span>
         </div>
@@ -320,17 +305,18 @@ export default function ScenarioFamiliesPage() {
           <EmptyState title="Chưa có họ kịch bản nào">Tạo họ đầu tiên (ví dụ người đi bộ băng ngang) rồi chạy cơ sở để có ca lỗi.</EmptyState>
         )}
         {!!pagedItems?.length && (
-          <TableScroll label="Bảng họ kịch bản" minWidth={1000}>
-            <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-              <span className="min-w-0 flex-1">Họ kịch bản</span>
-              <span className="w-[300px]">Không gian tham số</span>
-              <span className="w-[90px]">Biến thể</span>
-              <span className="w-[150px]">Lượt chạy</span>
-              <span className="w-[110px]">Lỗi trên bản cơ sở</span>
-              <span className="w-[100px]">Ngày tạo</span>
-              <span className="w-[230px] text-center">Thao tác</span>
+          <TableScroll label="Bảng họ kịch bản" minWidth={960}>
+            <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
+              <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
+              <span className="w-[200px] shrink-0 pr-4">Họ kịch bản</span>
+              <span className="min-w-[190px] flex-1 pr-4">Không gian tham số</span>
+              <span className="w-[85px] shrink-0">Biến thể</span>
+              <span className="w-[95px] shrink-0">Lượt chạy</span>
+              <span className="w-[95px] shrink-0">Lỗi baseline</span>
+              <span className="w-[85px] shrink-0">Ngày tạo</span>
+              <span className="w-[215px] shrink-0 text-center">Thao tác</span>
             </div>
-            {pagedItems?.map((f) => {
+            {pagedItems?.map((f, idx) => {
               const pending = (f.runs.PENDING ?? f.runs.QUEUED ?? 0) + (f.runs.RUNNING ?? 0) + (f.runs.PAUSED ?? 0);
               // Đang xem bản cũ: cột tham số / biến thể / lượt chạy lấy của bản đó, chỉ xem.
               const old = viewing[f.id] ? versions[f.id]?.find((v) => v.version === viewing[f.id]) : undefined;
@@ -340,12 +326,15 @@ export default function ScenarioFamiliesPage() {
                 <div
                   id={`family-${f.id}`}
                   className={cx(
-                    "flex min-h-[72px] items-center border-b border-solid border-vehicsim-line px-5 py-3",
+                    "flex min-h-[76px] items-center border-b border-solid border-vehicsim-line px-5 py-3",
                     f.id === focusId && "bg-vehicsim-decision-bg/50 ring-2 ring-inset ring-vehicsim-decision/40",
                   )}
                 >
-                  <span className="flex min-w-0 flex-1 flex-col gap-1 pr-3">
-                    <span className="text-[13px] font-bold text-vehicsim-ink">
+                  <span className="w-[45px] shrink-0 pr-2 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
+                    {(page - 1) * PAGE_SIZE + idx + 1}
+                  </span>
+                  <span className="flex w-[200px] shrink-0 flex-col gap-1 pr-3">
+                    <span className="text-[13.5px] font-bold text-vehicsim-ink">
                       {f.code} <span className="font-semibold">· {f.name}</span>
                     </span>
                     <span className="flex flex-wrap items-center gap-1">
@@ -368,11 +357,11 @@ export default function ScenarioFamiliesPage() {
                       )}
                       {old && <Tag tone="warn" className="px-2 py-[2px] text-[10px]">bản cũ · chỉ xem</Tag>}
                     </span>
-                    {f.description && <p className="text-[12px] leading-[1.5] text-vehicsim-muted break-words" title={f.description}>{f.description}</p>}
+                    {f.description && <p className="text-[11.5px] leading-[1.4] text-vehicsim-muted line-clamp-2" title={f.description}>{f.description}</p>}
                   </span>
-                  <span className="flex w-[300px] flex-wrap gap-1 pr-3">
+                  <span className="flex min-w-[200px] flex-1 flex-wrap gap-1 pr-3">
                     {Object.entries(shown.parameter_space).map(([axis, values]) => (
-                      <Tag key={axis} className="px-2 py-[3px] text-[10px]">
+                      <Tag key={axis} className="px-2 py-[2px] text-[10.5px]">
                         {axisLabel(axis)}: {values.map((v) => (typeof v === "boolean" ? (v ? "dừng" : "băng qua") : String(v))).join(" / ")}
                       </Tag>
                     ))}
@@ -382,22 +371,22 @@ export default function ScenarioFamiliesPage() {
                     onClick={() => toggleVariants(f)}
                     aria-expanded={openVariants === f.id}
                     title="Bấm để xem danh sách biến thể"
-                    className="group flex w-[90px] cursor-pointer flex-col gap-[2px] text-left"
+                    className="group flex w-[85px] shrink-0 cursor-pointer flex-col gap-[2px] text-left"
                   >
                     <span className="text-[13px] font-bold text-vehicsim-ink group-hover:text-vehicsim-decision group-hover:underline">
                       {shown.variants} biến thể
                     </span>
                     {shown.risk_counts && (
-                      <span className="text-[11px] font-normal leading-[1.3] text-vehicsim-muted">
+                      <span className="text-[10.5px] font-normal leading-[1.3] text-vehicsim-muted">
                         <span className="font-semibold text-vehicsim-danger">{shown.risk_counts.DANGEROUS} nguy hiểm</span>
                         <br />
                         <span className="font-semibold text-vehicsim-ok">{shown.risk_counts.SAFE} an toàn</span>
                       </span>
                     )}
                   </button>
-                  <span className="flex w-[150px] flex-col text-[12px] text-vehicsim-muted">
+                  <span className="flex w-[95px] shrink-0 flex-col text-[12px] text-vehicsim-muted">
                     <span>
-                      <b className="text-vehicsim-ink">{shown.runs.COMPLETED ?? 0}</b> đã xong
+                      <b className="text-vehicsim-ink font-bold">{shown.runs.COMPLETED ?? 0}</b> đã xong
                     </span>
                     {!old && pending > 0 && (
                       <button
@@ -405,7 +394,7 @@ export default function ScenarioFamiliesPage() {
                         onClick={() => toggleRuns(f)}
                         aria-expanded={openRuns === f.id}
                         title="Bấm để xem và hủy từng lượt đang chờ / đang chạy"
-                        className="cursor-pointer text-left font-semibold text-vehicsim-decision hover:underline"
+                        className="cursor-pointer text-left font-semibold text-vehicsim-decision hover:underline text-[11px]"
                       >
                         {waitingRunsLines(f.runs).map((line) => (
                           <span key={line} className="block">
@@ -416,62 +405,47 @@ export default function ScenarioFamiliesPage() {
                     )}
                     {(shown.runs.FAILED ?? 0) > 0 &&
                       (old ? (
-                        <span className="text-vehicsim-danger">{shown.runs.FAILED} lỗi</span>
+                        <span className="text-vehicsim-danger font-medium text-[11px]">{shown.runs.FAILED} lỗi</span>
                       ) : (
                         <Link
                           href={`/analysis/failures?view=runs&scenario_id=${f.id}&status=FAILED`}
                           title="Xem lý do lỗi của từng lượt chạy cơ sở"
-                          className="text-vehicsim-danger hover:underline"
+                          className="text-vehicsim-danger hover:underline font-medium text-[11px]"
                         >
                           {shown.runs.FAILED} lỗi · xem lý do
                         </Link>
                       ))}
-                    {(shown.runs.STOPPED ?? 0) > 0 && <span>{shown.runs.STOPPED} đã hủy</span>}
+                    {(shown.runs.STOPPED ?? 0) > 0 && <span className="text-[11px]">{shown.runs.STOPPED} đã hủy</span>}
                   </span>
-                  <span className="flex w-[110px] flex-col">
+                  <span className="flex w-[95px] shrink-0 flex-col">
                     {old ? (
                       <span className="text-[12px] text-vehicsim-faint" title="Lỗi trên bản cơ sở chỉ tính cho bản hiện hành">—</span>
                     ) : (
                       <>
-                        <span className={cx("text-[13px] font-semibold", f.failures ? "text-vehicsim-danger" : "text-vehicsim-faint")}>
+                        <span className={cx("text-[13px] font-bold", f.failures ? "text-vehicsim-danger" : "text-vehicsim-faint")}>
                           {f.failures} / {f.variants}
                         </span>
-                        {f.baseline && <span className="text-[11px] text-vehicsim-faint">AEB {f.baseline}</span>}
+                        {f.baseline && <span className="text-[10.5px] text-vehicsim-faint">AEB {f.baseline}</span>}
                       </>
                     )}
                   </span>
-                  <span className="w-[100px] text-[12px] text-vehicsim-faint">{fmt.date(old ? old.created_at : f.created_at)}</span>
-                  <div className="grid w-[230px] grid-cols-2 gap-1.5">
-                    {pending > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => cancelFamily(f)}
-                        disabled={!canWrite || busy === f.id}
-                        title="Hủy mọi lượt đang chờ/đang chạy của họ này"
-                        className="inline-flex h-8 w-full items-center justify-center gap-1 rounded-full bg-vehicsim-danger px-2 text-[12px] font-bold text-white shadow-sm hover:bg-red-700 transition disabled:opacity-50"
-                      >
-                        <X className="size-3.5 shrink-0" />
-                        <span className="truncate">{busy === f.id ? "Hủy…" : `Hủy ${pending}`}</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => runBaseline(f)}
-                        disabled={!canWrite || busy === f.id}
-                        title="Chạy mọi biến thể với bản cơ sở AEB hiện hành"
-                        className="inline-flex h-8 w-full items-center justify-center gap-1 rounded-lg bg-vehicsim-primary px-2 text-[12px] font-bold text-white hover:bg-vehicsim-primary-hover transition disabled:opacity-50"
-                      >
-                        <Play className="size-3 fill-current shrink-0" />
-                        <span className="truncate">{busy === f.id ? "Đang chạy…" : "Chạy cơ sở"}</span>
-                      </button>
-                    )}
+                  <span className="w-[85px] shrink-0 text-[11.5px] text-vehicsim-faint">{fmt.date(old ? old.created_at : f.created_at)}</span>
+                  <div className="grid w-[215px] shrink-0 grid-cols-2 gap-1.5">
+                    <Link
+                      href={`/scenarios/run?scenario_id=${f.id}`}
+                      title="Chuyển sang màn Chạy baseline với họ kịch bản này"
+                      className="inline-flex h-7 w-full items-center justify-center gap-1 rounded-md bg-vehicsim-primary px-1.5 text-[11.5px] font-bold text-white hover:bg-vehicsim-primary-hover transition shadow-xs"
+                    >
+                      <Play className="size-2.5 fill-current shrink-0" />
+                      <span>Chạy</span>
+                    </Link>
 
                     <Link
                       href={`/analysis/failures?scenario_id=${f.id}`}
                       title="Chuyển sang phân tích kết quả ca lỗi"
-                      className="inline-flex h-8 w-full items-center justify-center rounded-full border border-solid border-vehicsim-decision/40 bg-vehicsim-decision-bg px-2 text-[12px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition"
+                      className="inline-flex h-7 w-full items-center justify-center rounded-md border border-solid border-vehicsim-decision/40 bg-vehicsim-decision-bg px-1.5 text-[11.5px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition"
                     >
-                      <span className="truncate">Phân tích</span>
+                      <span>Phân tích</span>
                     </Link>
 
                     <button
@@ -479,30 +453,24 @@ export default function ScenarioFamiliesPage() {
                       onClick={() => toggleVariants(f)}
                       aria-expanded={openVariants === f.id}
                       className={cx(
-                        "inline-flex h-8 w-full items-center justify-center rounded-full border border-solid px-2 text-[11.5px] font-semibold transition",
+                        "inline-flex h-7 w-full items-center justify-center rounded-md border border-solid px-1.5 text-[11px] font-semibold transition",
                         openVariants === f.id
                           ? "border-vehicsim-primary bg-vehicsim-primary text-white"
                           : "border-vehicsim-line-strong bg-vehicsim-soft text-vehicsim-ink hover:bg-vehicsim-line hover:border-vehicsim-line-strong",
                       )}
                     >
-                      <span className="truncate">{openVariants === f.id ? "Đóng biến thể" : "Xem biến thể"}</span>
+                      <span>{openVariants === f.id ? "Đóng" : "Biến thể"}</span>
                     </button>
 
                     <button
                       type="button"
+                      disabled={busy !== null || !canWrite}
                       onClick={() => startEdit(f)}
-                      disabled={!canWrite || pending > 0 || busy !== null}
-                      title={
-                        !canWrite
-                          ? "Tài khoản người xem chỉ có quyền xem"
-                          : pending > 0
-                            ? "Họ còn lượt chạy đang chờ / đang chạy — đợi xong hoặc hủy rồi mới sửa"
-                            : `Tạo bản v${f.version + 1}; bản v${f.version} và lượt chạy của nó giữ nguyên`
-                      }
-                      className="inline-flex h-8 w-full items-center justify-center gap-1 rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-2 text-[11.5px] font-semibold text-vehicsim-muted hover:border-vehicsim-primary hover:text-vehicsim-ink transition disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Tạo phiên bản mới cho họ kịch bản này"
+                      className="inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-1.5 text-[11px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft disabled:opacity-40"
                     >
-                      <Pencil className="size-3 shrink-0" />
-                      <span className="truncate">Sửa v{f.version + 1}</span>
+                      <Pencil className="size-2.5 shrink-0" />
+                      <span>Sửa v{f.version + 1}</span>
                     </button>
                   </div>
                 </div>
@@ -537,6 +505,7 @@ export default function ScenarioFamiliesPage() {
           </div>
         )}
       </section>
+      )}
     </VehicSimPage>
   );
 }
@@ -558,6 +527,13 @@ function VariantLabels({
   busy: number | null;
   onChange: (variantId: number, label: RiskLabel | "AUTO") => void;
 }) {
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 12;
+  const variants = list?.variants ?? [];
+  const total = variants.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pagedVariants = variants.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   return (
     <div className="border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 py-4">
       <p className="mb-3 text-[12px] leading-[1.5] text-vehicsim-muted">
@@ -568,37 +544,48 @@ function VariantLabels({
       {!list ? (
         <p className="text-[12px] text-vehicsim-faint">Đang tải biến thể…</p>
       ) : (
-        <div className="max-h-[360px] overflow-y-auto rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface">
-          {list.variants.map((v, index) => (
-            <div
-              key={v.scenario_version_id}
-              data-variant={v.scenario_version_id}
-              className="flex h-[44px] items-center border-b border-solid border-vehicsim-line px-4 text-[12px] last:border-b-0"
-            >
-              <span className="w-[60px] font-bold text-vehicsim-ink" title={`Mã lưu trữ: #${v.scenario_version_id}`}>#{index + 1}</span>
-              <span className="min-w-0 flex-1 truncate text-vehicsim-ink">
-                {v.ego_speed_kmh} km/h · kích hoạt {v.trigger_distance_m} m · người đi bộ {v.pedestrian_speed_mps} m/s ·{" "}
-                {v.stops_at_curb ? "dừng ở lề" : "băng qua"} · {v.weather} · {v.time_of_day}
-              </span>
-              <span className="flex w-[110px] justify-center">
-                <Tag tone={RISK[v.risk_label].tone} className="px-2 py-[2px] text-[10px]">
-                  {RISK[v.risk_label].label}
-                  {v.manual ? " · sửa tay" : ""}
-                </Tag>
-              </span>
-              <select
-                value={v.manual ? v.risk_label : "AUTO"}
-                disabled={!canWrite || busy !== null}
-                onChange={(e) => onChange(v.scenario_version_id, e.target.value as RiskLabel | "AUTO")}
-                aria-label={`Nhãn biến thể #${index + 1}`}
-                className="w-[170px] rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-[5px] text-[12px] text-vehicsim-ink disabled:opacity-50"
+        <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface">
+          {pagedVariants.map((v, idx) => {
+            const index = (page - 1) * PAGE_SIZE + idx;
+            return (
+              <div
+                key={v.scenario_version_id}
+                data-variant={v.scenario_version_id}
+                className="flex h-[44px] items-center border-b border-solid border-vehicsim-line px-4 text-[12px] last:border-b-0"
               >
-                <option value="AUTO">Tự suy ({RISK[v.auto_label].label.toLowerCase()})</option>
-                <option value="DANGEROUS">Nguy hiểm</option>
-                <option value="SAFE">An toàn</option>
-              </select>
+                <span className="w-[60px] font-bold text-vehicsim-ink" title={`Mã lưu trữ: #${v.scenario_version_id}`}>#{index + 1}</span>
+                <span className="min-w-0 flex-1 truncate text-vehicsim-ink">
+                  {v.ego_speed_kmh} km/h · kích hoạt {v.trigger_distance_m} m · người đi bộ {v.pedestrian_speed_mps} m/s ·{" "}
+                  {v.stops_at_curb ? "dừng ở lề" : "băng qua"} · {v.weather} · {v.time_of_day}
+                </span>
+                <span className="flex w-[110px] justify-center">
+                  <Tag tone={RISK[v.risk_label].tone} className="px-2 py-[2px] text-[10px]">
+                    {RISK[v.risk_label].label}
+                    {v.manual ? " · sửa tay" : ""}
+                  </Tag>
+                </span>
+                <select
+                  value={v.manual ? v.risk_label : "AUTO"}
+                  disabled={!canWrite || busy !== null}
+                  onChange={(e) => onChange(v.scenario_version_id, e.target.value as RiskLabel | "AUTO")}
+                  aria-label={`Nhãn biến thể #${index + 1}`}
+                  className="w-[170px] rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-[5px] text-[12px] text-vehicsim-ink disabled:opacity-50"
+                >
+                  <option value="AUTO">Tự suy ({RISK[v.auto_label].label.toLowerCase()})</option>
+                  <option value="DANGEROUS">Nguy hiểm</option>
+                  <option value="SAFE">An toàn</option>
+                </select>
+              </div>
+            );
+          })}
+          {pages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-4 py-3">
+              <span className="text-[12px] font-medium text-vehicsim-muted">
+                Hiển thị {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} trên {total} biến thể
+              </span>
+              <Pagination page={page} pages={pages} onPage={setPage} />
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>

@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "dossiers": 26,
+  "plans_not_executed": 124,
+  "objective_links": 78,
+  "canonical_values_changed": 0,
+  "before_after_facts_unchanged": 72,
+  "production_authorities_supplied": 0
+}

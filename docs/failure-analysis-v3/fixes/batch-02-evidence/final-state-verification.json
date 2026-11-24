@@ -1,0 +1,82 @@
+{
+  "status": "PASS",
+  "protected_files": 910,
+  "unchanged": 903,
+  "authorized_source_changes": [
+    "src/main/java/com/vsos/core/failureanalysis/ConsumerCompatibilityValidator.java",
+    "src/main/java/com/vsos/core/failureanalysis/DiagnosticReport.java",
+    "src/main/java/com/vsos/core/failureanalysis/EvidenceReport.java",
+    "src/main/java/com/vsos/core/failureanalysis/MetricProvenanceResolver.java",
+    "src/main/java/com/vsos/core/failureanalysis/MoboHandoffBuilder.java",
+    "src/main/java/com/vsos/core/failureanalysis/ObjectiveExplainer.java",
+    "src/main/java/com/vsos/core/failureanalysis/ParameterHintBuilder.java"
+  ],
+  "new_source_file": "src/main/java/com/vsos/core/failureanalysis/HandoffSchemaValidator.java",
+  "new_test_file": "src/test/java/com/vsos/core/failureanalysis/Batch02RegressionTest.java",
+  "new_source_sha256": "bb8c88800085f1599493df94c9d31fba89a7a13068a06a9bdb32e8c0d3251003",
+  "new_test_sha256": "b410c49dc8edb7d729598380e62e54c1ce7f01e74dd330243480194ed1d97a23",
+  "old_tests_unchanged": true,
+  "unauthorized_changes": [],
+  "missing": [],
+  "original_audit_unchanged": true,
+  "batch01_history_unchanged": true,
+  "eight_contracts_and_raw_unchanged": true,
+  "original_audit_files": 111,
+  "batch01_files": 296,
+  "test_results": {
+    "baseline-focused": {
+      "total": 634,
+      "passed": 632,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2,
+      "build": "SUCCESS"
+    },
+    "red": {
+      "total": 44,
+      "passed": 13,
+      "failures": 31,
+      "errors": 0,
+      "skipped": 0,
+      "build": "FAILURE"
+    },
+    "red-signed-seed": {
+      "total": 3,
+      "passed": 1,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0,
+      "build": "FAILURE"
+    },
+    "green": {
+      "total": 179,
+      "passed": 179,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "build": "SUCCESS"
+    },
+    "focused-accepted-final": {
+      "total": 713,
+      "passed": 711,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2,
+      "build": "SUCCESS"
+    },
+    "full-accepted-final": {
+      "total": 1440,
+      "passed": 1435,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 3,
+      "build": "FAILURE"
+    }
+  },
+  "full_failure_names": [
+    "OptimizationServiceTest.executeOptimization_refusesToRunOnADifferentSimulatorThanItWasCreatedFor",
+    "OptimizationServiceTest.executeOptimization_stopsWhenTheBaselineRunFailedInsteadOfScoringAgainstIt"
+  ],
+  "git_status": "?? docs/exec-plans/completed/2026-11-23-failure-analysis-m1a.md\n?? docs/exec-plans/completed/2026-11-23-failure-analysis-m1b.md\n?? docs/exec-plans/completed/2026-11-23-failure-analysis-m1c.md\n?? docs/exec-plans/completed/2026-11-24-failure-analysis-fixes-batch-02.md\n?? docs/exec-plans/completed/2026-11-24-failure-analysis-high-fixes-batch-01.md\n?? docs/exec-plans/completed/2026-11-24-failure-analysis-m1d.md\n?? docs/failure-analysis-v3/\n?? src/main/java/com/vsos/core/failureanalysis/\n?? src/test/java/com/vsos/core/failureanalysis/\n",
+  "report_links_valid": true
+}

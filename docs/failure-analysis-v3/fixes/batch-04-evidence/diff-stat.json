@@ -1,0 +1,62 @@
+[
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/ArchiveIndex.java",
+    "added": 61,
+    "removed": 0
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/ArtifactCsv.java",
+    "added": 32,
+    "removed": 36
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/BaselineBindingResolver.java",
+    "added": 7,
+    "removed": 3
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/BoundedInput.java",
+    "added": 107,
+    "removed": 0
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/ConsumerSourceInspection.java",
+    "added": 1,
+    "removed": 1
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/HandoffSnapshots.java",
+    "added": 10,
+    "removed": 4
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/InputRejectedException.java",
+    "added": 21,
+    "removed": 0
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/InputResourcePolicy.java",
+    "added": 23,
+    "removed": 0
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/OfflineMoboHandoff.java",
+    "added": 4,
+    "removed": 1
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/RawArtifactAdapter.java",
+    "added": 87,
+    "removed": 54
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/SearchRangeResolver.java",
+    "added": 3,
+    "removed": 2
+  },
+  {
+    "file": "src/test/java/com/vsos/core/failureanalysis/Batch04ResourceTest.java",
+    "added": 121,
+    "removed": 0
+  }
+]
