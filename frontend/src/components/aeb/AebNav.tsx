@@ -47,7 +47,7 @@ const TABS: {
   { key: "mobo", label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo", badge: "AI qEHVI", icon: <BarChart3 className="size-4" /> },
   { key: "manual", label: "Chỉnh tay tham số", href: "/aeb/manual", icon: <Sliders className="size-4" /> },
   { key: "versions", label: "Danh sách phiên bản", href: "/aeb/versions", icon: <CheckSquare className="size-4" /> },
-  { key: "compare", label: "So sánh 2 phiên bản", href: "/aeb/compare", icon: <GitCompare className="size-4" /> },
+  { key: "compare", label: "Đối chiếu thông số", href: "/aeb/compare", icon: <GitCompare className="size-4" /> },
 ];
 
 export function AebNav({ active }: { active: AebTabKey }) {

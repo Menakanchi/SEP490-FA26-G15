@@ -74,7 +74,7 @@ export default function AebComparePage() {
   return (
     <VehicSimPage
       step={4}
-      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "So sánh 2 phiên bản" }]}
+      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Đối chiếu thông số cấu hình" }]}
       actions={
         <div className="flex items-center gap-2">
           {versionB?.status === "CANDIDATE" && canWrite && (
@@ -90,7 +90,7 @@ export default function AebComparePage() {
       {/* Selector chọn 2 phiên bản */}
       <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-5 py-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-solid border-vehicsim-line">
-          <h2 className="text-[15px] font-bold text-vehicsim-ink">So sánh 2 phiên bản AEB</h2>
+          <h2 className="text-[15px] font-bold text-vehicsim-ink">Đối chiếu thông số cấu hình AEB</h2>
           <button
             type="button"
             onClick={swap}
@@ -152,7 +152,7 @@ export default function AebComparePage() {
       {versionA && versionB && (
         <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
           <div className="px-5 py-4 border-b border-solid border-vehicsim-line">
-            <h3 className="text-[16px] font-bold text-vehicsim-ink">Bảng so sánh 4 tham số điều khiển phanh</h3>
+            <h3 className="text-[16px] font-bold text-vehicsim-ink">Bảng đối chiếu 4 tham số cấu hình</h3>
           </div>
 
           <div className="overflow-x-auto">
@@ -165,7 +165,6 @@ export default function AebComparePage() {
                   <th className="px-5 py-3.5 text-center">Bản B ({versionB.label})</th>
                   <th className="px-5 py-3.5 text-center">Chênh lệch tuyệt đối (Δ)</th>
                   <th className="px-5 py-3.5 text-center">Mức thay đổi (%)</th>
-                  <th className="px-5 py-3.5">Đánh giá kỹ thuật</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
@@ -176,17 +175,6 @@ export default function AebComparePage() {
                   const diff = valB !== undefined && valA !== undefined ? valB - valA : 0;
                   const pct = valA && valA !== 0 ? (diff / valA) * 100 : 0;
                   const isDiff = Math.abs(diff) > 0.0001;
-
-                  let note = "Giữ nguyên";
-                  if (code === "TTC_THRESHOLD") {
-                    note = diff > 0 ? "Phanh sớm hơn (ưu tiên tránh đâm)" : diff < 0 ? "Phanh muộn hơn (giảm phanh oan)" : "Giữ nguyên";
-                  } else if (code === "BRAKE_ACTIVATION_DELAY") {
-                    note = diff < 0 ? "Phản ứng nhanh hơn (giảm trễ)" : diff > 0 ? "Tăng độ trễ cảm biến/chấp hành" : "Giữ nguyên";
-                  } else if (code === "MAX_DECELERATION") {
-                    note = diff > 0 ? "Phanh gắt hơn (tăng lực kẹp)" : diff < 0 ? "Phanh nhẹ hơn (êm ái hơn)" : "Giữ nguyên";
-                  } else if (code === "BRAKE_BUILDUP_RATE") {
-                    note = diff > 0 ? "Tăng áp nhanh hơn (tăng jerk)" : diff < 0 ? "Tăng áp từ từ (giảm jerk)" : "Giữ nguyên";
-                  }
 
                   const layerLabel =
                     code === "TTC_THRESHOLD"
@@ -211,7 +199,7 @@ export default function AebComparePage() {
                       <td className="px-5 py-4 text-center">
                         <span
                           className={cx(
-                            "rounded-full px-2.5 py-1 text-[11px] font-bold",
+                            "rounded px-2.5 py-1 text-[11.5px] font-bold font-mono",
                             !isDiff
                               ? "text-vehicsim-faint bg-vehicsim-soft"
                               : diff > 0
@@ -225,14 +213,13 @@ export default function AebComparePage() {
                       <td className="px-5 py-4 text-center">
                         <span
                           className={cx(
-                            "text-[12px] font-bold",
+                            "font-mono text-[12.5px] font-bold",
                             !isDiff ? "text-vehicsim-faint" : diff > 0 ? "text-vehicsim-ok" : "text-vehicsim-danger",
                           )}
                         >
                           {pct > 0 ? `+${pct.toFixed(1)}%` : `${pct.toFixed(1)}%`}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-[12px] font-medium text-vehicsim-ink">{note}</td>
                     </tr>
                   );
                 })}

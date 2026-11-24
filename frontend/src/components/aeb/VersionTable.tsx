@@ -104,7 +104,7 @@ export function VersionTable({
             href="/aeb/compare"
             className="hidden sm:inline-flex h-9 items-center rounded-lg border border-solid border-vehicsim-line px-3 text-[12px] font-bold text-vehicsim-decision hover:bg-vehicsim-soft transition"
           >
-            So sánh 2 phiên bản →
+            Đối chiếu thông số →
           </Link>
         </div>
       </div>

@@ -123,7 +123,7 @@ const GROUPS: Group[] = [
       { label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo" },
       { label: "Chỉnh tay tham số", href: "/aeb/manual" },
       { label: "Danh sách phiên bản", href: "/aeb/versions", matchPaths: ["/aeb/candidates"] },
-      { label: "So sánh 2 phiên bản", href: "/aeb/compare" },
+      { label: "Đối chiếu thông số", href: "/aeb/compare" },
     ],
   },
   {
@@ -610,7 +610,7 @@ function ExperiencerNav() {
           { label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo" },
           { label: "Chỉnh tay tham số", href: "/aeb/manual" },
           { label: "Danh sách phiên bản", href: "/aeb/versions", matchPaths: ["/aeb/candidates"] },
-          { label: "So sánh 2 phiên bản", href: "/aeb/compare" },
+          { label: "Đối chiếu thông số", href: "/aeb/compare" },
         ]),
         step(
           "VERIFY",

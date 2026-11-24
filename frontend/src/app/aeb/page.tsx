@@ -147,10 +147,10 @@ export default function AebHubPage() {
         </div>
       </section>
 
-      {/* QUẢN LÝ PHIÊN BẢN & SO SÁNH */}
+      {/* QUẢN LÝ PHIÊN BẢN & ĐỐI CHIẾU */}
       <section className="flex flex-col gap-2.5">
         <h2 className="text-[15px] font-bold text-vehicsim-ink">
-          Quản lý phiên bản & So sánh
+          Quản lý phiên bản & Đối chiếu
         </h2>
 
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-5 py-4 shadow-xs">
@@ -162,7 +162,7 @@ export default function AebHubPage() {
               href="/aeb/compare"
               className="inline-flex h-9 items-center justify-center rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-3.5 text-[12.5px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition shadow-xs whitespace-nowrap"
             >
-              So sánh 2 phiên bản
+              Đối chiếu thông số
             </Link>
             <Link
               href="/aeb/versions"

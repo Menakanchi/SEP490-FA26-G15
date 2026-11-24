@@ -30,7 +30,7 @@ export default function AebVersionsPage() {
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/compare" variant="light">
-            So sánh 2 phiên bản
+            Đối chiếu thông số
           </PillButton>
           <PillButton href="/aeb/manual" variant="dark">
             + Tạo ứng viên mới
