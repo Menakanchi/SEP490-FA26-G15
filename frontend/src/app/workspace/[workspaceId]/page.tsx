@@ -5,10 +5,11 @@ import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { Card, CardTitle, EmptyState, ErrorNote, PillButton, StatCard, Tag, fmt, cx } from "@/components/VehicSimUi";
 import { WORKSPACE_ROLES, WORKSPACE_MANAGER_ROLES } from "@/components/workspaceAccess";
+import { useVehicSimContext } from "@/components/VehicSimContext";
 import { useAuth } from "@/context/AuthContext";
-import { ApiError } from "@/services/api";
+import { ApiError, selectReviewerProject } from "@/services/api";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { WorkspaceDetail, WorkspaceMember, WorkspaceMemberCandidate, WorkspaceMemberRole, WorkspaceChatMessage } from "@/types/vehicsim";
+import type { VehicleOption, WorkspaceDetail, WorkspaceMember, WorkspaceMemberCandidate, WorkspaceMemberRole, WorkspaceChatMessage } from "@/types/vehicsim";
 
 const MEMBER_ROLE: Record<WorkspaceMemberRole, { label: string; tone: "info" | "warn" }> = {
   ENGINEER: { label: "Kỹ sư", tone: "info" },
@@ -81,6 +82,15 @@ export default function WorkspaceDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
+
+  // ADR-064: Kỹ sư là thành viên tạo project của workspace ngay tại đây.
+  const { refresh: refreshContext } = useVehicSimContext();
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
+  const [vehicles, setVehicles] = useState<VehicleOption[] | null>(null);
+  const [projectVehicle, setProjectVehicle] = useState<number | "">("");
+  const [savingProject, setSavingProject] = useState(false);
 
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
@@ -326,6 +336,53 @@ export default function WorkspaceDetailPage() {
   const ws = detail?.workspace;
   const active = ws?.status === "ACTIVE";
   const count = (role: WorkspaceMemberRole) => (members ?? []).filter((m) => m.role === role).length;
+  const canCreateProject = user?.roleCode === "ENGINEER" && active && (members ?? []).some((m) => String(m.user_id) === String(user?.id));
+
+  const toggleCreatingProject = async () => {
+    if (creatingProject) {
+      setCreatingProject(false);
+      return;
+    }
+    setCreatingProject(true);
+    setError(null);
+    if (vehicles === null) {
+      try {
+        const list = await vehicsimApi.projectVehicles();
+        setVehicles(list);
+        setProjectVehicle(list.find((v) => v.is_default)?.id ?? list[0]?.id ?? "");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Không tải được danh sách xe");
+      }
+    }
+  };
+
+  const createProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = projectName.trim();
+    if (!name || savingProject) return;
+    setSavingProject(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const created = await vehicsimApi.createProject({
+        name,
+        description: projectDescription.trim() || undefined,
+        carla_vehicle_model_id: projectVehicle === "" ? undefined : projectVehicle,
+        workspace_id: id,
+      });
+      // Mở ngay project vừa tạo: các màn Kỹ sư làm việc trong project đang chọn.
+      selectReviewerProject(created.id);
+      setCreatingProject(false);
+      setProjectName("");
+      setProjectDescription("");
+      setNotice(`Đã tạo project “${created.name}” và mở project này. Bắt đầu từ bước ① Thiết kế kịch bản.`);
+      await Promise.all([load(), refreshContext()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không tạo được project");
+    } finally {
+      setSavingProject(false);
+    }
+  };
 
   return (
     <VehicSimPage
@@ -396,8 +453,8 @@ export default function WorkspaceDetailPage() {
             </Card>
           )}
           <div className="rounded-[16px] border border-solid border-vehicsim-line bg-vehicsim-soft px-4 py-3 text-[12px] text-vehicsim-muted">
-            Ứng dụng hiện vẫn chạy trên một project chung (TD-30): thêm hoặc bớt thành viên được lưu lại nhưng chưa thay đổi dữ liệu
-            mà người đó nhìn thấy.
+            Kỹ sư và Người duyệt chỉ làm việc trong project của các workspace mình thuộc về: thêm hoặc bớt thành viên đổi ngay những
+            project mà người đó chọn được.
           </div>
 
           <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
@@ -555,7 +612,70 @@ export default function WorkspaceDetailPage() {
           </Card>
 
           <Card className="flex flex-col gap-4 p-5">
-            <CardTitle>Project trong workspace</CardTitle>
+            <CardTitle
+              aside={
+                canCreateProject ? (
+                  <PillButton variant={creatingProject ? "light" : "dark"} className="px-4 py-2" aria-expanded={creatingProject} onClick={toggleCreatingProject}>
+                    {creatingProject ? "Đóng" : "+ Tạo project"}
+                  </PillButton>
+                ) : undefined
+              }
+            >
+              Project trong workspace
+            </CardTitle>
+            {canCreateProject && creatingProject && (
+              <form onSubmit={createProject} className="flex flex-col gap-3 rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-soft p-4">
+                <label className="flex flex-col gap-1 text-[12px] font-semibold text-vehicsim-muted">
+                  Tên project
+                  <input
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    maxLength={150}
+                    required
+                    autoFocus
+                    placeholder="vd. Thử AEB ban đêm"
+                    className="rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2 text-[13px] font-normal text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-[12px] font-semibold text-vehicsim-muted">
+                  Mô tả (không bắt buộc)
+                  <textarea
+                    value={projectDescription}
+                    onChange={(e) => setProjectDescription(e.target.value)}
+                    maxLength={2000}
+                    rows={3}
+                    placeholder="Câu hỏi project này cần trả lời…"
+                    className="rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2 text-[13px] font-normal text-vehicsim-ink placeholder:text-vehicsim-faint focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-[12px] font-semibold text-vehicsim-muted">
+                  Phương tiện
+                  <select
+                    value={projectVehicle}
+                    onChange={(e) => setProjectVehicle(e.target.value === "" ? "" : Number(e.target.value))}
+                    disabled={!vehicles}
+                    className="rounded-full border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2 text-[13px] font-normal text-vehicsim-ink focus:outline-none focus:ring-2 focus:ring-vehicsim-line-strong"
+                  >
+                    {(vehicles ?? []).map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-[12px] text-vehicsim-faint">
+                  Tên không được trùng project khác trong workspace. Project mới có baseline AEB v1.0; xe chỉ đổi được khi chưa có lượt chạy.
+                </p>
+                <div className="flex items-center gap-2">
+                  <PillButton type="submit" variant="dark" disabled={savingProject || !projectName.trim() || !vehicles}>
+                    {savingProject ? "Đang tạo…" : "Tạo project"}
+                  </PillButton>
+                  <PillButton type="button" disabled={savingProject} onClick={() => setCreatingProject(false)}>
+                    Huỷ
+                  </PillButton>
+                </div>
+              </form>
+            )}
             <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line">
               <div className="flex h-10 items-center border-b border-solid border-vehicsim-line bg-vehicsim-soft px-4 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
                 <span className="min-w-0 flex-1">Project</span>

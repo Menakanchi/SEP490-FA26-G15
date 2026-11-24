@@ -13,6 +13,11 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 @RequiredArgsConstructor
 public enum ProjectError {
     EXPERIENCER_ONLY(FORBIDDEN, "Project cá nhân chỉ dành cho tài khoản Experiencer."),
+    CREATE_ROLE_NOT_ALLOWED(FORBIDDEN, "Chỉ Experiencer (project cá nhân) hoặc Kỹ sư (project của workspace) được tạo project."),
+    WORKSPACE_REQUIRED(BAD_REQUEST, "Kỹ sư chọn workspace khi tạo project."),
+    WORKSPACE_NOT_MEMBER(FORBIDDEN, "Bạn không phải thành viên của workspace #%s đang hoạt động."),
+    PERSONAL_HAS_NO_WORKSPACE(BAD_REQUEST, "Project cá nhân không thuộc workspace."),
+    NAME_DUPLICATE_WORKSPACE(CONFLICT, "Workspace đã có project tên “%s”. Hãy chọn tên khác."),
     NO_PROJECT_OPEN(CONFLICT, "Bạn chưa có project nào đang hoạt động. Tạo hoặc mở một project để tiếp tục."),
     PROJECT_NOT_FOUND(NOT_FOUND, "Không tìm thấy project #%s."),
     PROJECT_NOT_YOURS(FORBIDDEN, "Project #%s không phải project cá nhân của bạn."),

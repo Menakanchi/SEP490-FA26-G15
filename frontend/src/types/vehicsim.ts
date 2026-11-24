@@ -116,6 +116,8 @@ export interface ProjectRequest {
   name?: string;
   description?: string;
   carla_vehicle_model_id?: number;
+  /** Chỉ Kỹ sư gửi (project của workspace, ADR-064); Experiencer bỏ trống. */
+  workspace_id?: number;
 }
 
 export interface VehicleOption {
