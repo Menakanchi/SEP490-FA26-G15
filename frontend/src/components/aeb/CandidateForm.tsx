@@ -182,11 +182,6 @@ export function CandidateForm({
                   <span className={cx("rounded px-1.5 py-0.5 text-[11px] font-semibold shrink-0", catStyle.cls)}>
                     {catStyle.label}
                   </span>
-                  {isChanged && (
-                    <span className="rounded bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800 shrink-0">
-                      Đã đổi
-                    </span>
-                  )}
                 </div>
                 <span className="text-[12px] text-vehicsim-muted">
                   Phạm vi: <strong className="font-semibold text-vehicsim-ink">{p.min_value} – {p.max_value}</strong> {p.unit === "ratio" ? "" : p.unit}
