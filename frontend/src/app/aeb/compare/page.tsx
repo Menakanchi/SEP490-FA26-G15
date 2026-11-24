@@ -74,7 +74,7 @@ export default function AebComparePage() {
   return (
     <VehicSimPage
       step={4}
-      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Đối chiếu thông số cấu hình" }]}
+      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Đối chiếu thông số" }]}
       actions={
         <div className="flex items-center gap-2">
           {versionB?.status === "CANDIDATE" && canWrite && (
@@ -90,7 +90,7 @@ export default function AebComparePage() {
       {/* Selector chọn 2 phiên bản */}
       <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-5 py-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-solid border-vehicsim-line">
-          <h2 className="text-[15px] font-bold text-vehicsim-ink">Đối chiếu thông số cấu hình AEB</h2>
+          <h2 className="text-[15px] font-bold text-vehicsim-ink">Chọn 2 phiên bản để đối chiếu thông số</h2>
           <button
             type="button"
             onClick={swap}
