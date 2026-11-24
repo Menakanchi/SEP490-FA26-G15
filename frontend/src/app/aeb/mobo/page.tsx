@@ -150,7 +150,7 @@ export default function AebMoboStudioPage() {
       const res = await vehicsimApi.selectOptimizationCandidate(selectedRunId, trialId);
       setCreatedCandidate({
         id: res.candidate_aeb_version_id,
-        label: `Trial #${trialId}`,
+        label: `Phương án #${trialId}`,
         regressionTestId: res.regression_test_id,
       });
       await refresh();
@@ -272,7 +272,7 @@ export default function AebMoboStudioPage() {
                 Đang chạy đợt tối ưu: Run #{activeRun.id} — {activeRun.name}
               </span>
               <span className="font-mono text-vehicsim-muted">
-                ({completedTrialsCount} / {maxTrialsCount} trials · {runProgressPct}%)
+                ({completedTrialsCount} / {maxTrialsCount} lượt thử · {runProgressPct}%)
               </span>
             </div>
 
@@ -346,7 +346,7 @@ export default function AebMoboStudioPage() {
             )}
           >
             <ListFilter className="size-4" />
-            <span>Danh sách trials ({allTrials?.length ?? 0})</span>
+            <span>Toàn bộ lượt thử ({allTrials?.length ?? 0})</span>
           </button>
         </div>
 
@@ -357,8 +357,8 @@ export default function AebMoboStudioPage() {
               <div className="p-10">
                 <EmptyState title="Chưa có phương án tối ưu cho đợt chạy này">
                   {activeRun?.status === "COMPLETED"
-                    ? "Đợt chạy đã hoàn thành nhưng tất cả các trial đều vi phạm ràng buộc an toàn (tỉ lệ va chạm cao hơn hoặc phanh oan tăng quá 5% so với bản cơ sở). Bạn có thể xem chi tiết từng trial ở tab 'Danh sách trials'."
-                    : "Đợt chạy đang trong giai đoạn khởi tạo ban đầu hoặc đang mô phỏng các trial."}
+                    ? "Đợt chạy đã hoàn thành nhưng tất cả các lượt thử nghiệm đều vi phạm ràng buộc an toàn (tỉ lệ va chạm cao hơn hoặc phanh oan tăng quá 5% so với bản cơ sở). Bạn có thể xem chi tiết từng lượt ở tab 'Toàn bộ lượt thử'."
+                    : "Đợt chạy đang trong giai đoạn khởi tạo ban đầu hoặc đang mô phỏng các lượt thử nghiệm."}
                 </EmptyState>
               </div>
             ) : (
@@ -367,7 +367,7 @@ export default function AebMoboStudioPage() {
                   <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                     <tr className="h-12">
                       <th className="w-12 px-3 py-3.5 text-center font-bold">STT</th>
-                      <th className="px-4 py-3.5">Trial #</th>
+                      <th className="px-4 py-3.5">Lượt thử</th>
                       <th className="px-4 py-3.5">TTC Threshold (s)</th>
                       <th className="px-4 py-3.5">Brake Activation Delay (s)</th>
                       <th className="px-4 py-3.5">Brake Build-up Rate (m/s³)</th>
@@ -462,7 +462,7 @@ export default function AebMoboStudioPage() {
 
             {filteredTrials.length === 0 ? (
               <div className="p-10">
-                <EmptyState title="Không có trial nào khớp bộ lọc" />
+                <EmptyState title="Không có lượt thử nào khớp bộ lọc" />
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -470,7 +470,7 @@ export default function AebMoboStudioPage() {
                   <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                     <tr className="h-12">
                       <th className="w-12 px-3 py-3.5 text-center font-bold">STT</th>
-                      <th className="px-4 py-3.5">Trial #</th>
+                      <th className="px-4 py-3.5">Lượt thử</th>
                       <th className="px-4 py-3.5">Nguồn</th>
                       <th className="px-4 py-3.5 font-mono">qEHVI</th>
                       <th className="px-4 py-3.5 text-emerald-300">RMS Jerk</th>
@@ -533,7 +533,7 @@ export default function AebMoboStudioPage() {
             {trialsPages > 1 && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
                 <span className="text-[12px] font-medium text-vehicsim-muted">
-                  Hiển thị {(trialsPage - 1) * TRIALS_PAGE_SIZE + 1}–{Math.min(trialsPage * TRIALS_PAGE_SIZE, filteredTrials.length)} trên {filteredTrials.length} trials
+                  Hiển thị {(trialsPage - 1) * TRIALS_PAGE_SIZE + 1}–{Math.min(trialsPage * TRIALS_PAGE_SIZE, filteredTrials.length)} trên {filteredTrials.length} lượt thử
                 </span>
                 <Pagination page={trialsPage} pages={trialsPages} onPage={setTrialsPage} />
               </div>
@@ -553,7 +553,7 @@ export default function AebMoboStudioPage() {
                     <th className="px-5 py-3.5">Tên đợt chạy</th>
                     <th className="px-5 py-3.5">Bộ mô phỏng</th>
                     <th className="px-5 py-3.5">Trạng thái</th>
-                    <th className="px-5 py-3.5">Tiến độ trials</th>
+                    <th className="px-5 py-3.5">Tiến độ thử nghiệm</th>
                     <th className="px-5 py-3.5">Phương án tối ưu</th>
                     <th className="px-5 py-3.5">Thời gian</th>
                     <th className="px-5 py-3.5 text-center min-w-[240px]">Hành động</th>
@@ -628,9 +628,9 @@ export default function AebMoboStudioPage() {
                                 setActiveTab("trials");
                               }}
                               className="min-w-[100px] whitespace-nowrap rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface px-3 py-1.5 text-center text-[12px] font-bold text-vehicsim-ink transition hover:bg-vehicsim-soft hover:border-slate-400 shadow-xs"
-                              title="Xem nhật ký toàn bộ các trial đã chạy"
+                              title="Xem chi tiết toàn bộ các lượt thử nghiệm đã chạy"
                             >
-                              Xem Trials
+                              Xem lượt thử
                             </button>
                           </div>
                         </td>

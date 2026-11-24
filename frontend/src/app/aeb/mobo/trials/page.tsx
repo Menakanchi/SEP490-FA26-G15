@@ -39,7 +39,7 @@ export default function AebMoboTrialsPage() {
       vehicsimApi
         .optimizationTrials(selectedRunId)
         .then(setTrials)
-        .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách trials"));
+        .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách lượt thử"));
     }
   }, [selectedRunId]);
 
@@ -63,7 +63,7 @@ export default function AebMoboTrialsPage() {
       crumbs={[
         { label: "Cải tiến AEB", href: "/aeb" },
         { label: "Tối ưu MOBO", href: "/aeb/mobo" },
-        { label: "Dữ liệu Trials" },
+        { label: "Dữ liệu thử nghiệm" },
       ]}
       actions={
         <div className="flex items-center gap-2">
@@ -93,7 +93,7 @@ export default function AebMoboTrialsPage() {
               options={(runs ?? []).map((r) => ({
                 value: r.id,
                 label: `Run #${r.id} · ${r.name}`,
-                sublabel: `${r.completed_trials} trials`,
+                sublabel: `${r.completed_trials} lượt thử`,
               }))}
               className="w-auto min-w-[320px] max-w-md"
             />
@@ -152,7 +152,7 @@ export default function AebMoboTrialsPage() {
           <div className="flex items-center gap-2">
             <ListFilter className="size-5 text-vehicsim-decision" />
             <h3 className="text-[16px] font-bold text-vehicsim-ink">
-              Dữ liệu thử nghiệm ({filteredTrials.length} trials)
+              Dữ liệu thử nghiệm ({filteredTrials.length} lượt thử)
             </h3>
           </div>
         </div>
@@ -169,7 +169,7 @@ export default function AebMoboTrialsPage() {
               <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                 <tr className="h-12">
                   <th className="w-12 px-3 py-3.5 text-center">STT</th>
-                  <th className="px-4 py-3.5">Trial #</th>
+                  <th className="px-4 py-3.5">Lượt thử</th>
                   <th className="px-4 py-3.5">Nguồn sinh mẫu</th>
                   <th className="px-4 py-3.5 font-mono">Hàm thu thập qEHVI</th>
                   <th className="px-4 py-3.5 text-vehicsim-decision">RMS Jerk (m/s³)</th>

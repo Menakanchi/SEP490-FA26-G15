@@ -140,7 +140,7 @@ export function MoboSection({
         regressionTestId: res.regression_test_id,
         trialId,
       });
-      onCandidateSelected(res.candidate_aeb_version_id, `Trial #${trialId}`);
+      onCandidateSelected(res.candidate_aeb_version_id, `Phương án #${trialId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể chọn ứng viên");
     } finally {
@@ -158,7 +158,7 @@ export function MoboSection({
           <div className="flex items-center gap-3">
             <span className="size-2 rounded-full bg-vehicsim-ok" />
             <span>
-              Đã tạo ứng viên AEB từ <strong>Trial #{selectionResult.trialId}</strong> và tự động lập bài kiểm thử hồi quy{" "}
+              Đã tạo ứng viên AEB từ <strong>Phương án #{selectionResult.trialId}</strong> và tự động lập bài kiểm thử hồi quy{" "}
               <strong>#{selectionResult.regressionTestId}</strong>.
             </span>
           </div>
@@ -284,7 +284,7 @@ export function MoboSection({
 
           <div className="flex items-center justify-between border-t border-solid border-vehicsim-line pt-4">
             <span className="text-[12px] text-vehicsim-faint">
-              Mỗi trial sẽ tự động khởi chạy kịch bản OpenSCENARIO trên bộ mô phỏng CARLA để thu thập dữ liệu cảm biến và cập nhật biên Pareto.
+              Mỗi lượt thử sẽ tự động khởi chạy kịch bản OpenSCENARIO trên bộ mô phỏng CARLA để thu thập dữ liệu cảm biến và cập nhật biên Pareto.
             </span>
             <PillButton variant="dark" type="submit" disabled={submitting || !canWrite || !scenarioId}>
               {submitting ? "Đang khởi tạo…" : "Bắt đầu tối ưu MOBO"}
@@ -305,7 +305,7 @@ export function MoboSection({
           <span className="w-[80px]">Mã run</span>
           <span className="w-[220px]">Tên đợt chạy</span>
           <span className="w-[120px]">Trạng thái</span>
-          <span className="w-[140px]">Tiến độ trials</span>
+          <span className="w-[140px]">Tiến độ thử nghiệm</span>
           <span className="w-[120px]">Nghiệm Pareto</span>
           <span className="w-[120px]">Thời gian</span>
           <span className="min-w-0 flex-1 text-right pr-2">Thao tác</span>
@@ -409,7 +409,7 @@ export function MoboSection({
               <div className="flex justify-between text-[12px] text-vehicsim-muted">
                 <span>Tiến độ thử nghiệm</span>
                 <span className="font-bold text-vehicsim-ink">
-                  {activeRun.completed_trials} / {activeRun.max_trials} trials (
+                  {activeRun.completed_trials} / {activeRun.max_trials} lượt thử (
                   {Math.round((activeRun.completed_trials / (activeRun.max_trials || 1)) * 100)}%)
                 </span>
               </div>
@@ -442,7 +442,7 @@ export function MoboSection({
               <table className="w-full min-w-[960px] text-left text-[13px]">
                 <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                   <tr className="h-12">
-                    <th className="px-4 py-3">Trial #</th>
+                    <th className="px-4 py-3">Lượt thử</th>
                     <th className="px-4 py-3">TTC Threshold (s)</th>
                     <th className="px-4 py-3">Brake Activation Delay (s)</th>
                     <th className="px-4 py-3">Brake Build-up Rate (m/s³)</th>
@@ -501,7 +501,7 @@ export function MoboSection({
 
           {/* Lịch sử tất cả các Trials */}
           <div className="flex flex-col gap-3 pt-2">
-            <h4 className="text-[15px] font-bold text-vehicsim-ink">Lịch sử toàn bộ {trials?.length ?? 0} Trials</h4>
+            <h4 className="text-[15px] font-bold text-vehicsim-ink">Lịch sử toàn bộ {trials?.length ?? 0} lượt thử nghiệm</h4>
             <div className="max-h-[320px] overflow-y-auto rounded-[14px] border border-solid border-vehicsim-line">
               <table className="w-full min-w-[760px] text-left text-[12px]">
                 <thead className="sticky top-0 border-b border-solid border-slate-700 bg-slate-800 text-[12px] font-black uppercase tracking-wider text-white">

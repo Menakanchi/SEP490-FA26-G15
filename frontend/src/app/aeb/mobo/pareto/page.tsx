@@ -59,7 +59,7 @@ export default function AebMoboParetoPage() {
       const res = await vehicsimApi.selectOptimizationCandidate(selectedRunId, trialId);
       setCreatedCandidate({
         id: res.candidate_aeb_version_id,
-        label: `Trial #${trialId}`,
+        label: `Phương án #${trialId}`,
         regressionTestId: res.regression_test_id,
       });
       await refresh();
@@ -83,7 +83,7 @@ export default function AebMoboParetoPage() {
       actions={
         <div className="flex items-center gap-2">
           <PillButton href={`/aeb/mobo/trials${selectedRunId ? `?run_id=${selectedRunId}` : ""}`} variant="light">
-            Xem toàn bộ Trials
+            Xem toàn bộ lượt thử
           </PillButton>
           <PillButton href="/aeb/candidates" variant="light">
             Xem ứng viên đã chọn
@@ -148,7 +148,7 @@ export default function AebMoboParetoPage() {
             </span>
             <span>·</span>
             <span>
-              Tiến độ: <strong>{activeRun.completed_trials}/{activeRun.max_trials} trials</strong>
+              Tiến độ: <strong>{activeRun.completed_trials}/{activeRun.max_trials} lượt thử</strong>
             </span>
           </div>
         )}
@@ -171,7 +171,7 @@ export default function AebMoboParetoPage() {
         {paretoTrials?.length === 0 ? (
           <div className="p-10">
             <EmptyState title="Chưa có nghiệm Pareto cho đợt chạy này">
-              Đợt chạy đang trong giai đoạn khởi tạo ban đầu hoặc chưa có trial nào hoàn thành.
+              Đợt chạy đang trong giai đoạn khởi tạo ban đầu hoặc chưa có lượt thử nào hoàn thành.
             </EmptyState>
           </div>
         ) : (
@@ -180,7 +180,7 @@ export default function AebMoboParetoPage() {
               <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                 <tr className="h-12">
                   <th className="w-12 px-3 py-3.5 text-center">STT</th>
-                  <th className="px-4 py-3.5">Trial #</th>
+                  <th className="px-4 py-3.5">Lượt thử</th>
                   <th className="px-4 py-3.5">TTC Threshold (s)</th>
                   <th className="px-4 py-3.5">Brake Activation Delay (s)</th>
                   <th className="px-4 py-3.5">Brake Build-up Rate (m/s³)</th>

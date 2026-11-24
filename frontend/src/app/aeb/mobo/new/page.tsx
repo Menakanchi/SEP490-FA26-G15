@@ -116,7 +116,7 @@ export default function AebMoboNewPage() {
             </label>
 
             <label className="flex flex-col gap-2">
-              <span className="text-[13px] font-bold text-vehicsim-ink">Số lượt thử nghiệm (Max Trials)</span>
+              <span className="text-[13px] font-bold text-vehicsim-ink">Số lượt thử nghiệm</span>
               <input
                 type="number"
                 min={3}
@@ -144,7 +144,7 @@ export default function AebMoboNewPage() {
           <div className="grid grid-cols-1 gap-3.5 rounded-lg border border-solid border-vehicsim-line bg-vehicsim-soft/60 p-3.5 text-[12.5px] sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <span className="font-bold text-vehicsim-ink">
-                Số lượt thử nghiệm (Max Trials):
+                Số lượt thử nghiệm:
               </span>
               <p className="text-vehicsim-muted leading-relaxed">
                 Tổng số lần xe chạy thử mô phỏng trong cả đợt. Càng nhiều lần thì kết quả càng tối ưu nhưng thời gian chạy sẽ lâu hơn.
