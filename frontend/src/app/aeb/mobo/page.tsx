@@ -353,14 +353,6 @@ export default function AebMoboStudioPage() {
         {/* TAB: PHƯƠNG ÁN TỐI ƯU */}
         {activeTab === "pareto" && (
           <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
-              <div>
-                <h3 className="text-[15px] font-bold text-vehicsim-ink">
-                  Phương án tối ưu ({paretoTrials?.length ?? 0})
-                </h3>
-              </div>
-            </div>
-
             {paretoTrials?.length === 0 ? (
               <div className="p-10">
                 <EmptyState title="Chưa có phương án tối ưu cho đợt chạy này">
@@ -442,40 +434,30 @@ export default function AebMoboStudioPage() {
         {/* TAB 2: TOÀN BỘ TRIALS */}
         {activeTab === "trials" && (
           <div className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-4">
-              <div className="flex flex-wrap items-center gap-4">
-                <div>
-                  <h3 className="text-[15px] font-bold text-vehicsim-ink">
-                    Danh sách trials ({filteredTrials.length} / {allTrials?.length ?? 0})
-                  </h3>
-                </div>
-
-                <div className="flex items-center gap-2 border-l border-solid border-vehicsim-line pl-4">
-                  <span className="text-[12px] font-bold text-vehicsim-ink">Bộ lọc:</span>
-                  <div className="flex items-center gap-1.5">
-                    {(["ALL", "PARETO", "FEASIBLE"] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => {
-                          setTrialsFilter(mode);
-                          setTrialsPage(1);
-                        }}
-                        className={cx(
-                          "rounded-lg px-2.5 py-1 text-[12px] font-semibold transition border border-solid",
-                          trialsFilter === mode
-                            ? "bg-slate-900 border-slate-900 text-white shadow-xs"
-                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                        )}
-                      >
-                        {mode === "ALL" ? "Tất cả" : mode === "PARETO" ? "Chỉ tối ưu" : "Chỉ hợp lệ"}
-                      </button>
-                    ))}
-                  </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line px-5 py-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[12.5px] font-bold text-vehicsim-ink">Bộ lọc:</span>
+                <div className="flex items-center gap-1.5">
+                  {(["ALL", "PARETO", "FEASIBLE"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => {
+                        setTrialsFilter(mode);
+                        setTrialsPage(1);
+                      }}
+                      className={cx(
+                        "rounded-lg px-3 py-1 text-[12px] font-semibold transition border border-solid",
+                        trialsFilter === mode
+                          ? "bg-vehicsim-primary border-vehicsim-primary text-white shadow-xs"
+                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      )}
+                    >
+                      {mode === "ALL" ? "Tất cả" : mode === "PARETO" ? "Chỉ tối ưu" : "Chỉ hợp lệ"}
+                    </button>
+                  ))}
                 </div>
               </div>
-
-
             </div>
 
             {filteredTrials.length === 0 ? (
