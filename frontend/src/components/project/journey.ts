@@ -16,11 +16,11 @@ interface StepDefinition {
 }
 
 export const JOURNEY_STEPS: StepDefinition[] = [
-  { key: "SCENARIO", n: 1, title: "Thiết kế kịch bản", short: "Kịch bản", question: "Tình huống nguy hiểm nào cần thử?", paths: ["/scenarios/new"] },
-  { key: "BASELINE", n: 2, title: "Chạy baseline", short: "Baseline", question: "AEB hiện tại có phanh kịp không?", paths: ["/scenarios", "/analysis/carla"] },
-  { key: "RESULTS", n: 3, title: "Xem kết quả", short: "Kết quả", question: "Ca nào va chạm và vì sao?", paths: ["/analysis"] },
-  { key: "IMPROVE", n: 4, title: "Cải tiến AEB", short: "Cải tiến", question: "Đổi tham số nào để tốt hơn?", paths: ["/aeb"] },
-  { key: "VERIFY", n: 5, title: "Kiểm chứng", short: "Kiểm chứng", question: "Ứng viên có tốt hơn thật không?", paths: ["/validation"] },
+  { key: "SCENARIO", n: 1, title: "Thiết kế kịch bản", short: "Kịch bản", question: "Tình huống nguy hiểm nào cần thử?", paths: ["/scenarios/new", "/scenarios"] },
+  { key: "BASELINE", n: 2, title: "Chạy baseline", short: "Baseline", question: "AEB hiện tại có phanh kịp không?", paths: ["/scenarios/run", "/analysis/carla"] },
+  { key: "RESULTS", n: 3, title: "Xem kết quả", short: "Kết quả", question: "Ca nào va chạm và vì sao?", paths: ["/analysis/failures", "/analysis"] },
+  { key: "IMPROVE", n: 4, title: "Cải tiến AEB", short: "Cải tiến", question: "Đổi tham số nào để tốt hơn?", paths: ["/aeb/mobo/new", "/aeb/mobo/pareto", "/aeb/mobo/trials", "/aeb/mobo", "/aeb/manual", "/aeb/candidates", "/aeb/versions", "/aeb/compare", "/aeb"] },
+  { key: "VERIFY", n: 5, title: "Kiểm chứng", short: "Kiểm chứng", question: "Ứng viên có tốt hơn thật không?", paths: ["/validation/regression", "/validation/recommendations", "/validation/decisions", "/validation"] },
 ];
 
 export const STEP_NUMBER = ["①", "②", "③", "④", "⑤"];
@@ -48,7 +48,7 @@ export function stepHref(key: JourneyStepKey, journey: ProjectJourney): string {
     case "SCENARIO":
       return `${home}/start`;
     case "BASELINE":
-      return "/scenarios";
+      return "/scenarios/run";
     case "RESULTS":
       return `${home}/results`;
     case "IMPROVE":

@@ -34,7 +34,7 @@ export default function RecommendationPage() {
     <VehicSimPage
       step={6}
       crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Khuyến nghị", href: "/validation/recommendations" }, { label: r?.recommendation_code ?? "…" }]}
-      title={r?.recommendation_code ?? "Khuyến nghị"}
+      title={r ? `Chi tiết khuyến nghị ${r.recommendation_code}` : "Chi tiết khuyến nghị"}
       badges={r && <RecommendationBadge status={r.recommendation_status} className="px-3 py-[6px] text-[13px]" />}
       subtitle={
         r &&
@@ -74,20 +74,20 @@ export default function RecommendationPage() {
           <section className="flex min-w-0 flex-1 flex-col gap-5 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-4 sm:p-6">
             <h2 className="text-[17px] font-bold text-vehicsim-ink">Thay đổi được khuyến nghị</h2>
             <div className="overflow-hidden rounded-[14px] border border-solid border-vehicsim-line">
-              <TableScroll label="Bảng thay đổi tham số" minWidth={500}>
-                <div className="flex h-10 items-center bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-                  <span className="min-w-0 flex-1">Tham số</span>
-                  <span className="w-[110px]">Hiện tại</span>
-                  <span className="w-[110px]">Ứng viên</span>
-                  <span className="w-[100px]">Thay đổi</span>
+              <TableScroll label="Bảng thay đổi tham số" minWidth={660}>
+                <div className="flex h-11 items-center bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
+                  <span className="w-[260px] shrink-0 pr-4">Tham số</span>
+                  <span className="w-[130px] shrink-0">Hiện tại</span>
+                  <span className="w-[130px] shrink-0">Ứng viên</span>
+                  <span className="w-[110px] shrink-0 text-right">Thay đổi</span>
                 </div>
                 {r.changed_parameters.length === 0 && <p className="px-5 py-4 text-[13px] text-vehicsim-muted">Ứng viên không đổi tham số nào.</p>}
                 {r.changed_parameters.map((p) => (
-                  <div key={p.code} className="flex h-[48px] items-center border-t border-solid border-vehicsim-line px-5 text-[14px]">
-                    <span className="min-w-0 flex-1 font-medium text-vehicsim-ink">{p.name}</span>
-                    <span className="w-[110px] text-vehicsim-ink">{paramValue(p.baseline, p.unit)}</span>
-                    <span className="w-[110px] font-semibold text-vehicsim-decision">{paramValue(p.candidate, p.unit)}</span>
-                    <span className="w-[100px]">
+                  <div key={p.code} className="flex min-h-[48px] items-center border-t border-solid border-vehicsim-line px-5 py-2 text-[14px]">
+                    <span className="w-[260px] shrink-0 pr-4 font-semibold text-vehicsim-ink">{p.name}</span>
+                    <span className="w-[130px] shrink-0 text-vehicsim-ink">{paramValue(p.baseline, p.unit)}</span>
+                    <span className="w-[130px] shrink-0 font-bold text-vehicsim-decision">{paramValue(p.candidate, p.unit)}</span>
+                    <span className="w-[110px] shrink-0 text-right">
                       <Tag tone="info">{delta(p)}</Tag>
                     </span>
                   </div>

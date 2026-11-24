@@ -32,7 +32,7 @@ export function ProjectAvatar({ name, size = "md" }: { name: string; size?: "sm"
   );
 }
 
-export const PROJECT_CONTEXT_CLASS = "rounded-lg border border-vehicsim-line bg-vehicsim-row px-3 py-2.5";
+export const PROJECT_CONTEXT_CLASS = "rounded-xl border border-slate-800 bg-slate-900/90 px-3 py-2.5 text-slate-200 shadow-xs";
 
 export function ProjectIdentity({ project, label, fallback }: {
   project?: { name: string };
@@ -43,33 +43,33 @@ export function ProjectIdentity({ project, label, fallback }: {
     <>
       {project && <ProjectAvatar name={project.name} />}
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-xs font-medium text-vehicsim-muted">{label}</span>
-        <span className="line-clamp-2 break-words text-[14px] font-bold text-vehicsim-ink" title={project?.name}>{project?.name ?? fallback}</span>
+        <span className="text-[11.5px] font-extrabold tracking-wider text-emerald-400 uppercase">{label}</span>
+        <span className="line-clamp-2 break-words text-[14.5px] font-black text-white" title={project?.name}>{project?.name ?? fallback}</span>
       </span>
     </>
   );
 }
 
 export function StepStatusIcon({ status, n, current, size = "md" }: { status: JourneyStatus; n: number; current?: boolean; size?: "sm" | "md" }) {
-  const box = size === "sm" ? "size-[22px] text-[11px]" : "size-9 text-[14px]";
-  const icon = size === "sm" ? "size-3" : "size-4";
+  const box = size === "sm" ? "size-[24px] text-[12px] font-black" : "size-9 text-[14px]";
+  const icon = size === "sm" ? "size-3.5" : "size-4";
   const label = status === "RUNNING" ? "đang chạy" : status === "FAILED" ? "có lượt chạy lỗi" : current ? "gợi ý làm tiếp" : status === "DONE" ? "đã hoàn thành" : "";
   return (
     <span
       role="img"
       aria-label={`Bước ${n}${label && `: ${label}`}`}
       className={cx(
-        "flex shrink-0 items-center justify-center rounded-full font-bold",
+        "flex shrink-0 items-center justify-center rounded-full font-bold transition-all",
         box,
         status === "RUNNING"
-          ? "bg-vehicsim-decision-bg text-vehicsim-decision"
+          ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/50"
           : status === "FAILED"
-            ? "bg-vehicsim-danger-bg text-vehicsim-danger"
+            ? "bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/50"
             : current
-              ? "bg-vehicsim-primary text-white"
+              ? "bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.5)]"
               : status === "DONE"
-                ? "bg-vehicsim-primary-bg text-vehicsim-primary"
-                : "border border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-ink",
+                ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-400/40"
+                : "border border-slate-600 bg-slate-800 text-slate-100 font-bold",
       )}
     >
       {status === "RUNNING" ? (

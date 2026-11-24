@@ -109,6 +109,12 @@ public class AdminRepository {
             VALUES(?,?,?,?,(SELECT id FROM roles WHERE code=?),?,?)
             """,email,last,middle,first,role,active,hash);
     }
+    public void addMemberToDefaultWorkspace(long userId, String role, long actorId) {
+        db.update("""
+            INSERT IGNORE INTO workspace_members(workspace_id, user_id, added_by_user_id, granted_role)
+            SELECT w.id, ?, ?, ? FROM workspaces w WHERE w.status='ACTIVE' ORDER BY w.id LIMIT 1
+            """, userId, actorId, role);
+    }
     public void updateUser(long id,String email,String last,String middle,String first,String role,boolean active,boolean revoke) {
         db.update("""
             UPDATE users SET email=?,last_name=?,middle_name=?,first_name=?,

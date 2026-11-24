@@ -37,8 +37,8 @@ export default function RecommendationsPage() {
     <VehicSimPage
       step={6}
       crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Khuyến nghị" }]}
-      title="Khuyến nghị"
-      subtitle="Mỗi kiểm thử hồi quy chạy xong trở thành một khuyến nghị kỹ thuật. Chỉ Người duyệt (Reviewer) mới được chấp nhận — không gì được áp dụng tự động."
+      title="Hồ sơ khuyến nghị nâng cấp AEB"
+      subtitle="Tổng hợp các gói ứng viên đã vượt qua kiểm thử hồi quy, sẵn sàng cho Reviewer thẩm định và ban hành."
     >
       <ErrorNote message={error} />
       <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
@@ -71,44 +71,48 @@ export default function RecommendationsPage() {
           </EmptyState>
         )}
         {shown.length > 0 && (
-          <TableScroll label="Bảng khuyến nghị" minWidth={900}>
-            <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-              <span className="min-w-0 flex-1">Khuyến nghị</span>
-              <span className="w-[150px]">Phiên bản</span>
-              <span className="w-[180px]">Trạng thái</span>
-              <span className="w-[170px]">Tỉ lệ va chạm</span>
-              <span className="w-[120px]">Sửa / Xấu đi</span>
-              <span className="w-[100px]">Ngày</span>
-              <span className="w-[100px] text-right">Thao tác</span>
+          <TableScroll label="Bảng khuyến nghị" minWidth={960}>
+            <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
+              <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
+              <span className="w-[200px] shrink-0 pr-3">Khuyến nghị</span>
+              <span className="w-[135px] shrink-0">Phiên bản</span>
+              <span className="w-[155px] shrink-0">Trạng thái</span>
+              <span className="w-[155px] shrink-0">Tỉ lệ va chạm</span>
+              <span className="w-[105px] shrink-0">Sửa / Xấu đi</span>
+              <span className="w-[80px] shrink-0">Ngày</span>
+              <span className="w-[95px] shrink-0 text-right pr-2">Thao tác</span>
             </div>
-            {shown.map((i) => {
+            {shown.map((i, idx) => {
               const rates = "collision_baseline_pct" in i.rates ? i.rates : null;
               const counts = "fixed" in i.counts ? i.counts : null;
               return (
                 <div
                   key={i.id}
                   onClick={() => router.push(`/validation/recommendations/${i.id}`)}
-                  className="flex h-[58px] cursor-pointer items-center border-b border-solid border-vehicsim-line px-5 hover:bg-vehicsim-row"
+                  className="flex h-[60px] cursor-pointer items-center border-b border-solid border-vehicsim-line px-5 hover:bg-vehicsim-row transition-colors"
                 >
-                  <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
-                    <span className="text-[13px] font-bold text-vehicsim-ink">{i.code}</span>
-                    <span className="truncate text-[12px] text-vehicsim-faint">từ kiểm thử hồi quy {i.regression_code}</span>
+                  <span className="w-[45px] shrink-0 pr-2 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
+                    {offset + idx + 1}
                   </span>
-                  <span className="w-[150px] text-[13px] font-semibold text-vehicsim-ink">
+                  <span className="flex w-[200px] shrink-0 flex-col gap-[2px] pr-3">
+                    <span className="text-[13px] font-bold text-vehicsim-ink">{i.code}</span>
+                    <span className="truncate text-[11.5px] text-vehicsim-faint">từ kiểm thử {i.regression_code}</span>
+                  </span>
+                  <span className="w-[140px] shrink-0 text-[12.5px] font-semibold text-vehicsim-ink">
                     {i.baseline} → {i.candidate}
                   </span>
-                  <span className="w-[180px]">
+                  <span className="w-[160px] shrink-0">
                     <RecommendationBadge status={i.status} />
                   </span>
                   <span
                     className={cx(
-                      "w-[170px] text-[13px] font-semibold",
+                      "w-[160px] shrink-0 text-[12.5px] font-semibold",
                       !rates ? "text-vehicsim-faint" : rates.collision_candidate_pct <= rates.collision_baseline_pct ? "text-vehicsim-ok" : "text-vehicsim-danger",
                     )}
                   >
                     {rates ? `${fmt.pct(rates.collision_baseline_pct)} → ${fmt.pct(rates.collision_candidate_pct)}` : "—"}
                   </span>
-                  <span className="w-[120px] text-[13px] font-semibold">
+                  <span className="w-[110px] shrink-0 text-[12.5px] font-semibold">
                     {counts ? (
                       <>
                         <span className="text-vehicsim-ok">+{counts.fixed}</span>
@@ -119,9 +123,12 @@ export default function RecommendationsPage() {
                       "—"
                     )}
                   </span>
-                  <span className="w-[100px] text-[13px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
-                  <span className="flex w-[100px] justify-end" onClick={(event) => event.stopPropagation()}>
-                    <Link href={`/validation/recommendations/${i.id}`} className="text-[12px] font-semibold text-vehicsim-decision hover:underline">
+                  <span className="w-[85px] shrink-0 text-[12px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
+                  <span className="flex w-[100px] shrink-0 justify-end pr-2" onClick={(event) => event.stopPropagation()}>
+                    <Link
+                      href={`/validation/recommendations/${i.id}`}
+                      className="inline-flex h-7 items-center justify-center rounded-md border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-2.5 text-[11.5px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-xs"
+                    >
                       Chi tiết
                     </Link>
                   </span>

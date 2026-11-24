@@ -115,7 +115,7 @@ async function getCroppedImg(
     256,
   );
 
-  return destCanvas.toDataURL("image/png", 0.92);
+  return destCanvas.toDataURL("image/jpeg", 0.88);
 }
 
 function createImage(url: string): Promise<HTMLImageElement> {

@@ -1,10 +1,17 @@
 "use client";
 
+import React, { useState } from "react";
 import Link from "next/link";
+import { Pagination } from "@/components/VehicSimUi";
 import type { AnalysisDataset } from "@/types/vehicsim";
 import { viSummary } from "@/components/vehicsimI18n";
 
 export function AnalysisDatasetPanel({ dataset }: { dataset: AnalysisDataset }) {
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 8;
+  const total = dataset.variants.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pagedVariants = dataset.variants.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
       <h2 className="text-[16px] font-bold text-vehicsim-ink">
@@ -27,13 +34,13 @@ export function AnalysisDatasetPanel({ dataset }: { dataset: AnalysisDataset }) 
         <p className="text-[12px] text-vehicsim-warn">Tập chưa đủ kết quả hợp lệ để đánh giá toàn bộ. Ca thiếu dữ liệu được giữ để theo dõi.</p>
       )}
       <div className="max-h-72 overflow-auto rounded-[12px] border border-solid border-vehicsim-line">
-        <table className="w-full min-w-[720px] text-left text-[11px]">
+        <table className="w-full min-w-[820px] text-left text-[12px]">
           <caption className="sr-only">Biến thể, run, seed và chỉ số baseline</caption>
-          <thead className="sticky top-0 border-b border-solid border-vehicsim-line bg-vehicsim-soft text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-            <tr>{["Biến thể / run", "Seed", "Kết quả", "RMS jerk (m/s³)", "Va chạm (m/s)", "Quãng phanh (m)"].map((label) => <th key={label} scope="col" className="px-3 py-2">{label}</th>)}</tr>
+          <thead className="sticky top-0 border-b border-solid border-slate-700 bg-slate-800 text-[12px] font-black uppercase tracking-wider text-white">
+            <tr className="h-11">{["STT", "Biến thể / run", "Seed", "Kết quả", "RMS jerk (m/s³)", "Va chạm (m/s)", "Quãng phanh (m)"].map((label) => <th key={label} scope="col" className={label === "STT" ? "w-12 px-3 py-2.5 text-center" : "px-3.5 py-2.5"}>{label}</th>)}</tr>
           </thead>
           <tbody>
-            {dataset.variants.map((variant) => {
+            {pagedVariants.map((variant, idx) => {
               const m = variant.metrics;
               const outcome = !m ? "Chưa chạy" : m.classification_status !== "CLASSIFIED" ? "Chưa phân loại"
                 : m.outcome === "COLLISION" ? "Va chạm" : m.outcome === "FALSE_BRAKING" ? "Phanh oan"
@@ -41,6 +48,9 @@ export function AnalysisDatasetPanel({ dataset }: { dataset: AnalysisDataset }) 
                 : m.verdict === "FAIL" ? "Có lỗi" : "An toàn";
               return (
                 <tr key={variant.scenario_version_id} className="border-t border-solid border-vehicsim-line">
+                  <td className="w-12 px-3 py-2 font-mono font-bold text-vehicsim-faint tabular-nums text-center">
+                    {(page - 1) * PAGE_SIZE + idx + 1}
+                  </td>
                   <td className="max-w-72 px-3 py-2" title={viSummary(variant.summary)}>
                     <span>{dataset.scenario.code}-{String(variant.version_no).padStart(3, "0")}</span>
                     {variant.run_id && <Link className="ml-2 text-vehicsim-decision underline" href={`/analysis/failures/${variant.run_id}`}>Run #{variant.run_id}</Link>}
@@ -56,6 +66,14 @@ export function AnalysisDatasetPanel({ dataset }: { dataset: AnalysisDataset }) 
           </tbody>
         </table>
       </div>
+      {pages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line pt-3">
+          <span className="text-[12px] font-medium text-vehicsim-muted">
+            Hiển thị {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} trên {total} biến thể
+          </span>
+          <Pagination page={page} pages={pages} onPage={setPage} />
+        </div>
+      )}
       <p className="text-[11px] text-vehicsim-faint">
         Toàn bộ họ được giữ, gồm ca an toàn. Chỉ số lấy từ run đã lưu; dấu — nghĩa là không có số đo hoặc không áp dụng.
         Quãng phanh hiện có thể gồm phần ngoại suy. Tập tìm tham số và tập xác minh độc lập còn cần được phân chia.

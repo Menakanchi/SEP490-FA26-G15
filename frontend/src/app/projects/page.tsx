@@ -63,12 +63,8 @@ export default function ListProjectPage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Project của tôi" }]}
-      title="Project của tôi"
-      subtitle={
-        isExperiencer
-          ? "Chọn một project để làm tiếp, hoặc tạo project mới. Mỗi project là một câu hỏi thử nghiệm về AEB, đi qua 5 bước từ kịch bản tới kiểm chứng."
-          : "Project cá nhân tạo khi bạn còn là Experiencer. Tài khoản đã đổi role nên chỉ xem được, không mở để làm việc."
-      }
+      title="Quản lý dự án kiểm thử AEB"
+      subtitle="Theo dõi các dự án kiểm thử phanh, phân quyền thành viên và cấu hình xe áp dụng."
       actions={
         isExperiencer && (
           <PillButton variant="dark" href="/projects/new">

@@ -243,6 +243,10 @@ public class RunService {
         }
     }
 
+    public boolean isCarlaConfigured() {
+        return isCarla(configuredSimulator()) && !carlaCommand().isEmpty();
+    }
+
     public static boolean isCarla(String simulator) {
         return simulator != null && simulator.startsWith("carla-");
     }
@@ -274,6 +278,12 @@ public class RunService {
     public List<Long> createRuns(long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long aebVersionId,
                                  long userId, String purpose, Long regressionTestId, Map<Long, Row> baselineRuns) {
         return createRuns(projectId, scenarioId, variants, vehicleModelId, aebVersionId, userId, purpose, regressionTestId, null, baselineRuns, null, null,
+                com.vsos.core.simulation.AebMode.ON);
+    }
+
+    public List<Long> createRuns(long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long aebVersionId,
+                                 long userId, String purpose, Long regressionTestId, Map<Long, Row> baselineRuns, String requestedSimulator) {
+        return createRuns(projectId, scenarioId, variants, vehicleModelId, aebVersionId, userId, purpose, regressionTestId, null, baselineRuns, requestedSimulator, null,
                 com.vsos.core.simulation.AebMode.ON);
     }
 
