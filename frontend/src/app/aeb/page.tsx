@@ -43,8 +43,8 @@ export default function AebHubPage() {
         </div>
 
         {baseline && (
-          <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-4 shadow-xs">
-            <div className="grid grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-solid divide-vehicsim-line sm:grid-cols-4">
+          <div className="rounded-xl border border-solid border-slate-300 dark:border-slate-700 bg-vehicsim-surface p-4 shadow-xs">
+            <div className="grid grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-solid divide-slate-300 dark:divide-slate-700 sm:grid-cols-4">
               {KEY_PARAMS.map((code) => {
                 const def = catalog.get(code);
                 const val = baseline.parameters[code];
@@ -67,12 +67,12 @@ export default function AebHubPage() {
             </div>
 
             {/* 3 Mục tiêu tối ưu cần cải thiện so với bản cơ sở */}
-            <div className="flex flex-col gap-2.5 border-t border-solid border-vehicsim-line pt-4 mt-3">
+            <div className="flex flex-col gap-2.5 border-t border-solid border-slate-300 dark:border-slate-700 pt-4 mt-3">
               <span className="text-[13px] font-bold text-vehicsim-ink">
                 3 mục tiêu tối ưu cần cải thiện so với bản cơ sở:
               </span>
 
-              <div className="grid grid-cols-1 divide-y sm:divide-y-0 sm:divide-x divide-solid divide-vehicsim-line sm:grid-cols-3">
+              <div className="grid grid-cols-1 divide-y sm:divide-y-0 sm:divide-x divide-solid divide-slate-300 dark:divide-slate-700 sm:grid-cols-3">
                 <div className="flex flex-col gap-1 px-4 py-1.5 first:pl-2 last:pr-2">
                   <span className="text-[13.5px] font-bold text-vehicsim-ink">
                     Giảm rung giật (RMS Jerk)
