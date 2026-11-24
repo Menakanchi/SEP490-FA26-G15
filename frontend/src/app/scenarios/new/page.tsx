@@ -106,9 +106,9 @@ export default function DescribeScenarioPage() {
   return (
     <VehicSimPage
       step={1}
-      crumbs={[{ label: "Kịch bản", href: "/scenarios" }, { label: "Sinh từ mô tả" }]}
-      title="Sinh kịch bản từ mô tả"
-      subtitle="Mô tả tình huống bằng tiếng Việt. LLM trích xuất Scenario IR, hệ thống kiểm tra và cho LLM tự sửa tối đa 3 lần, rồi dựng lưới biến thể quanh IR."
+      crumbs={[{ label: "Thiết kế kịch bản", href: "/scenarios" }, { label: "Sinh từ mô tả" }]}
+      title="Khởi tạo kịch bản từ ngôn ngữ tự nhiên"
+      subtitle="Trích xuất thông số giao thông thành Scenario IR và sinh biến thể kiểm thử tự động bằng AI."
       actions={<PillButton href="/scenarios?new=1">Nhập tay</PillButton>}
     >
       <ErrorNote message={error} />

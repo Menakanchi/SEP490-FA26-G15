@@ -150,7 +150,7 @@ export default function ReviewPage() {
 
   return (
     <VehicSimPage
-      step={6}
+      step={5}
       crumbs={[
         { label: "Kiểm chứng", href: "/validation/regression" },
         { label: "Khuyến nghị", href: "/validation/recommendations" },
@@ -158,7 +158,6 @@ export default function ReviewPage() {
         { label: "Duyệt" },
       ]}
       title={`Duyệt · ${r.recommendation_code}`}
-      subtitle="Chấp nhận hoặc từ chối cấu hình AEB được khuyến nghị. Quyết định được ký bằng tài khoản của bạn và lưu cùng kiểm thử hồi quy."
       actions={
         <>
           <PillButton href={`/validation/recommendations/${r.id}`}>Huỷ</PillButton>
@@ -281,9 +280,18 @@ export default function ReviewPage() {
           <section className="flex flex-col gap-3 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5">
             <h2 className="text-[17px] font-bold text-vehicsim-ink">Ký duyệt</h2>
             <div className="flex items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-vehicsim-avatar text-[12px] font-bold text-vehicsim-decision">
-                {initials(user?.full_name || user?.name || "U")}
-              </span>
+              {user?.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element -- ảnh đại diện người duyệt
+                <img
+                  src={user.avatar_url}
+                  alt=""
+                  className="size-9 shrink-0 rounded-full object-cover ring-1 ring-vehicsim-line-strong"
+                />
+              ) : (
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-vehicsim-avatar text-[12px] font-bold text-vehicsim-decision">
+                  {initials(user?.full_name || user?.name || "U")}
+                </span>
+              )}
               <span className="flex flex-col">
                 <span className="text-[14px] font-bold text-vehicsim-ink">{user?.full_name || user?.name}</span>
                 <span className="text-[12px] text-vehicsim-faint">

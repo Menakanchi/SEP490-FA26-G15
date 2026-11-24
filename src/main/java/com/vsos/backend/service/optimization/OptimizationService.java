@@ -336,46 +336,32 @@ public class OptimizationService {
 
 
     @Transactional
-
-
-
     public long createAndStartRun(
-
-
-
             long projectId,
-
-
-
             long userId,
-
-
-
             long scenarioId,
-
-
-
             Long baseAebVersionId,
-
-
-
             Integer maxTrials,
-
-
-
             Integer nInitialPoints,
-
-
-
             String customSearchSpaceJson,
-
-
-
             String customObjectiveConfigJson,
-
-
-
             String name) {
+        return createAndStartRun(projectId, userId, scenarioId, baseAebVersionId, maxTrials, nInitialPoints,
+                customSearchSpaceJson, customObjectiveConfigJson, name, null);
+    }
+
+    @Transactional
+    public long createAndStartRun(
+            long projectId,
+            long userId,
+            long scenarioId,
+            Long baseAebVersionId,
+            Integer maxTrials,
+            Integer nInitialPoints,
+            String customSearchSpaceJson,
+            String customObjectiveConfigJson,
+            String name,
+            String simulatorType) {
 
 
 
@@ -551,8 +537,21 @@ public class OptimizationService {
 
 
 
-        // Trial chạy đúng bộ mô phỏng của backend lúc tạo (carla-xosc → CARLA thật, mỗi trial = mọi biến thể chạy tuần tự); ném lỗi sớm nếu CARLA chưa cấu hình.
-        String simVersion = runService.simulatorForNewRuns();
+        // Simulator: Hỗ trợ chọn KINEMATIC (siêu tốc) hoặc CARLA (3D sensor); mặc định theo cấu hình backend
+        String simVersion;
+        if ("CARLA".equalsIgnoreCase(simulatorType) || (simulatorType != null && simulatorType.startsWith("carla-"))) {
+            if ("carla".equals(props.simulator())) {
+                throw new InvalidRequestException("VEHICSIM_SIMULATOR=carla (runner JSON trực tiếp) đã gỡ ở ADR-042: dùng carla-xosc (scripts/dev-carla.ps1)");
+            }
+            if (!runService.isCarlaConfigured()) {
+                throw new InvalidRequestException("Mô phỏng CARLA chưa sẵn sàng. Hãy khởi động CARLA với scripts/dev-carla.ps1 hoặc chọn Mô phỏng Động học (Kinematic).");
+            }
+            simVersion = runService.configuredSimulator();
+        } else if ("KINEMATIC".equalsIgnoreCase(simulatorType) || (simulatorType != null && simulatorType.startsWith("vehicsim-kinematic"))) {
+            simVersion = RunService.KINEMATIC_SIMULATOR;
+        } else {
+            simVersion = runService.simulatorForNewRuns();
+        }
 
 
 
@@ -730,7 +729,7 @@ public class OptimizationService {
 
             // 0. Không được đổi bộ mô phỏng giữa lúc tạo và lúc chạy: baseline và trial phải cùng một bộ (không ghép động học với CARLA).
             String optSimulator = optRun.str("simulator_version");
-            if (!optSimulator.equals(runService.configuredSimulator())) {
+            if (RunService.isCarla(optSimulator) && !optSimulator.equals(runService.configuredSimulator())) {
                 throw new IllegalStateException("Đợt tối ưu tạo cho " + optSimulator + " nhưng backend đang chạy " + runService.configuredSimulator()
                         + "; khởi động lại backend đúng chế độ hoặc tạo đợt mới");
             }
@@ -767,7 +766,7 @@ public class OptimizationService {
 
 
 
-            Map<Long, Row> baselineRunMap = getOrCreateBaselineRuns(projectId, scenarioId, variants, vehicleModelId, baseAebVersionId, userId);
+            Map<Long, Row> baselineRunMap = getOrCreateBaselineRuns(projectId, scenarioId, variants, vehicleModelId, baseAebVersionId, userId, optSimulator);
 
 
 
@@ -1151,10 +1150,7 @@ public class OptimizationService {
 
 
     private Map<Long, Row> getOrCreateBaselineRuns(
-
-
-
-            long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long baseAebVersionId, long userId) {
+            long projectId, long scenarioId, List<Row> variants, long vehicleModelId, long baseAebVersionId, long userId, String optSimulator) {
 
 
 
@@ -1171,7 +1167,7 @@ public class OptimizationService {
 
 
 
-                projectId, scenarioId, baseAebVersionId, runService.configuredSimulator(), vehicleModelId);
+                projectId, scenarioId, baseAebVersionId, optSimulator, vehicleModelId);
 
 
 
@@ -1232,14 +1228,8 @@ public class OptimizationService {
 
 
             List<Long> newRunIds = runService.createRuns(
-
-
-
                     projectId, scenarioId, missingVariants, vehicleModelId, baseAebVersionId,
-
-
-
-                    userId, "BASELINE", null, null);
+                    userId, "BASELINE", null, null, optSimulator);
 
 
 

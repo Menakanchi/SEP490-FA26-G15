@@ -105,9 +105,9 @@ export function NotificationBell() {
         onClick={toggle}
         aria-label={unread ? `Thông báo: ${unread} chưa đọc` : "Thông báo"}
         aria-expanded={open}
-        className="relative flex size-11 items-center justify-center rounded-lg border border-vehicsim-line bg-vehicsim-surface transition-colors hover:bg-vehicsim-soft"
+        className="relative flex size-10 items-center justify-center rounded-lg border border-slate-700 bg-slate-900/90 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
       >
-        <svg aria-hidden width={16} height={16} viewBox="0 0 16 16" fill="none" className="text-vehicsim-muted">
+        <svg aria-hidden width={16} height={16} viewBox="0 0 16 16" fill="none" className="text-slate-300">
           <path
             d="M8 1.8c-2.3 0-4 1.8-4 4.1v2.4L2.8 10.6h10.4L12 8.3V5.9c0-2.3-1.7-4.1-4-4.1Z"
             stroke="currentColor"
@@ -117,7 +117,7 @@ export function NotificationBell() {
           <path d="M6.3 12.6a1.8 1.8 0 0 0 3.4 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-vehicsim-danger px-1 text-[10px] font-bold text-white">
+          <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white shadow-xs">
             {unread > 99 ? "99+" : unread}
           </span>
         )}

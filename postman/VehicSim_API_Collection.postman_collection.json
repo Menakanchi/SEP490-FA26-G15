@@ -1,0 +1,425 @@
+{
+  "info": {
+    "_postman_id": "vehicsim-api-collection",
+    "name": "VehicSim (VSOS) - API Automated Test Collection",
+    "description": "Automated API Test Collection for VehicSim platform with pre-request scripts, Bearer token propagation, and regression assertions.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "1.1 Login by valid account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () { pm.response.to.have.status(200); });",
+                  "const jsonData = pm.response.json();",
+                  "pm.test(\"Response contains JWT token\", function () {",
+                  "    pm.expect(jsonData).to.have.property(\"token\");",
+                  "});",
+                  "if (jsonData.token) {",
+                  "    pm.environment.set(\"token\", jsonData.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"{{email}}\", \"password\": \"{{password}}\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1.2 Login with invalid password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () { pm.response.to.have.status(401); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"{{email}}\", \"password\": \"WrongPassword999!\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Workspace & Project",
+      "item": [
+        {
+          "name": "2.1 Get all workspaces",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/workspaces",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "workspaces"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.2 Create new workspace",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201 Created or 200 OK\", function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"ADAS Safety Test Workspace\", \"description\": \"Automated testing workspace\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/workspaces",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "workspaces"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Scenario Studio & IR",
+      "item": [
+        {
+          "name": "3.1 Extract IR from Natural Language prompt",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () { pm.response.to.have.status(200); });",
+                  "const data = pm.response.json();",
+                  "pm.test(\"Response contains Scenario IR nodes\", function () {",
+                  "    pm.expect(data).to.have.property(\"scenarioId\");",
+                  "    pm.expect(data).to.have.property(\"entities\");",
+                  "});",
+                  "if (data.scenarioId) { pm.environment.set(\"scenarioId\", data.scenarioId); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"prompt\": \"Xe ph\\u00eda tr\\u01b0\\u1edbc \\u0111\\u1ed9t ng\\u1ed9t phanh g\\u1ea5p khi \\u0111ang ch\\u1ea1y v\\u1edbi v\\u1eadn t\\u1ed1c 60 km/h\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/scenarios/nlp/extract",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scenarios",
+                "nlp",
+                "extract"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.2 Export Scenario as OpenSCENARIO (.xosc)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Content-Type is XML\", function () { pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"xml\"); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/scenarios/{{scenarioId}}/export/xosc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scenarios",
+                "{{scenarioId}}",
+                "export",
+                "xosc"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Simulation Engine",
+      "item": [
+        {
+          "name": "4.1 Submit Kinematic Simulation Job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 202 Accepted\", function () { pm.response.to.have.status(202); });",
+                  "const jsonData = pm.response.json();",
+                  "pm.test(\"Response contains jobId\", function () { pm.expect(jsonData).to.have.property(\"jobId\"); });",
+                  "if (jsonData.jobId) { pm.environment.set(\"activeJobId\", jsonData.jobId); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"scenarioId\": \"{{scenarioId}}\", \"aebProfileId\": \"aeb-profile-euro-ncap\", \"executionMode\": \"KINEMATIC_IN_PROCESS\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/simulations/jobs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "simulations",
+                "jobs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "4.2 Get Simulation Job Status & Telemetry",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () { pm.response.to.have.status(200); });",
+                  "const data = pm.response.json();",
+                  "pm.test(\"Job has valid status\", function () {",
+                  "    pm.expect([\"QUEUED\", \"RUNNING\", \"DONE\"]).to.include(data.status);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/simulations/jobs/{{activeJobId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "simulations",
+                "jobs",
+                "{{activeJobId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Optimization & Regression Decision",
+      "item": [
+        {
+          "name": "5.1 Start MOBO Optimization Job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 202 Accepted or 200 OK\", function () { pm.expect([200, 202]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"scenarioId\": \"{{scenarioId}}\", \"iterations\": 15, \"target\": \"MINIMIZE_COLLISION_AND_JERK\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/optimization/jobs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "optimization",
+                "jobs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "5.2 Submit Reviewer Decision (Accept Profile)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"candidateRunId\": \"run-cand-01\", \"baselineRunId\": \"run-base-01\", \"decision\": \"ACCEPT\", \"reviewNote\": \"Collision rate reduced, approved by QA team\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/regression/decisions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "regression",
+                "decisions"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

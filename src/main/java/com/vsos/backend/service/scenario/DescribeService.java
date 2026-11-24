@@ -98,6 +98,9 @@ public class DescribeService {
             Quy tắc:
             1. Chỉ điền giá trị mà câu mô tả NÓI RÕ hoặc suy ra trực tiếp từ từ ngữ. Không bịa. Trường nào câu không nhắc thì để null.
             2. Đơn vị: tốc độ xe ego theo km/h; tốc độ người đi bộ theo m/s; khoảng cách theo mét. Đổi đơn vị nếu câu dùng đơn vị khác.
+               Khẩu ngữ tiếng Việt & toán đố:
+               - 'm/h' hoặc 'kmh' ngầm hiểu là km/h (không phải miles per hour dặm/giờ, trừ khi ghi rõ 'mph' hoặc 'dặm').
+               - 'cây' = km (cây số). Nếu câu diễn đạt dạng quãng đường chia thời gian (ví dụ: '50 cây trên 30 phút' = 50 km / 0.5 h = 100 km/h), hãy tính đúng vận tốc.
             3. Suy luận định tính được phép, nhưng phải ghi tên trường vào inferred_fields:
                đi bộ/đi chậm ≈ 1.4 m/s, đi nhanh ≈ 2.0 m/s, chạy/lao ra ≈ 3.0 m/s.
                Khoảng cách chỉ lấy khi câu có con số; không suy từ chữ như "đột ngột", "sát đầu xe".

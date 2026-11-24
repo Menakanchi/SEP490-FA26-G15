@@ -64,7 +64,6 @@ export default function ProjectSettingsPage() {
         { label: "Cài đặt" },
       ]}
       title="Cài đặt project"
-      subtitle="Đổi tên, mục tiêu, ghi chú hoặc xe của project. Lưu trữ và xoá nằm ở cuối trang."
     >
       <div className="flex w-full max-w-[1040px] flex-col gap-5">
         <ErrorNote message={loadError} />

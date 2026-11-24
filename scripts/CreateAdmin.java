@@ -167,6 +167,13 @@ public class CreateAdmin {
         Result exists = run(with(base, "SELECT COUNT(*) FROM users WHERE email = '" + lower + "'"));
         List<String> lines = exists.out().strip().lines().toList();
         if (lines.isEmpty() || !lines.get(lines.size() - 1).strip().equals("1")) fail("Không thấy tài khoản " + email + " trong DB.");
+
+        if ("ENGINEER".equals(role) || "REVIEWER".equals(role)) {
+            run(with(base, "INSERT IGNORE INTO workspace_members (workspace_id, user_id, added_by_user_id, granted_role) "
+                    + "SELECT w.id, u.id, w.manager_id, '" + role + "' "
+                    + "FROM users u, workspaces w "
+                    + "WHERE u.email = '" + lower + "' AND w.status = 'ACTIVE' ORDER BY w.id LIMIT 1;"));
+        }
     }
 
     record Result(int code, String out, String err) {}

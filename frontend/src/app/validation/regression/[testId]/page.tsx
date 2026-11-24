@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { ErrorNote, OutcomeBadge, PillButton, StatusBadge, Tag, cx, fmt, paramValue, TableScroll } from "@/components/VehicSimUi";
+import { ErrorNote, OutcomeBadge, Pagination, PillButton, StatusBadge, Tag, cx, fmt, paramValue, TableScroll } from "@/components/VehicSimUi";
 import { vi, viSummary } from "@/components/vehicsimI18n";
 import { CandidateSourceTag, CarlaCaveat, PairObjectivesTable, pairRunHref } from "@/components/RegressionNotes";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -30,7 +30,8 @@ export default function RegressionResultsPage() {
   const [d, setD] = useState<RegressionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<DiffTab>("changes");
-  const [shown, setShown] = useState(20);
+  const [diffPage, setDiffPage] = useState(1);
+  const DIFF_PAGE_SIZE = 15;
   const [cancelling, setCancelling] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -90,6 +91,8 @@ export default function RegressionResultsPage() {
     const order = { regressed: 0, fixed: 1, unchanged: 2 } as const;
     return [...list].sort((a, b) => order[a.change] - order[b.change] || (b.min_ttc_delta_s ?? 0) - (a.min_ttc_delta_s ?? 0));
   }, [pairs, tab]);
+  const diffPages = Math.max(1, Math.ceil(visible.length / DIFF_PAGE_SIZE));
+  const pagedVisible = visible.slice((diffPage - 1) * DIFF_PAGE_SIZE, diffPage * DIFF_PAGE_SIZE);
   const firstInteresting = pairs.find((p) => p.change === "regressed") ?? changed[0];
   const failedCriteria = (s?.criteria ?? []).filter((c) => c.enabled && !c.passed);
   const cardParams = useMemo(() => {
@@ -103,7 +106,7 @@ export default function RegressionResultsPage() {
     <VehicSimPage
       step={6}
       crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Kiểm thử hồi quy", href: "/validation/regression" }, { label: d?.code ?? "…" }]}
-      title={d?.code ?? "Kiểm thử hồi quy"}
+      title={d ? `Báo cáo kiểm thử hồi quy ${d.code}` : "Báo cáo kiểm thử hồi quy"}
       badges={
         d && (
           <StatusBadge
@@ -283,7 +286,7 @@ export default function RegressionResultsPage() {
                         type="button"
                         onClick={() => {
                           setTab(key);
-                          setShown(20);
+                          setDiffPage(1);
                         }}
                         className={cx("rounded-lg px-[14px] py-[7px] text-[12px] font-semibold", tab === key ? "bg-vehicsim-primary text-white" : "text-vehicsim-muted")}
                       >
@@ -294,31 +297,31 @@ export default function RegressionResultsPage() {
                 </div>
                 {visible.length === 0 && <p className="px-5 py-8 text-center text-[13px] text-vehicsim-muted">Không có kịch bản nào trong nhóm này.</p>}
                 {visible.length > 0 && (
-                  <TableScroll label="Bảng khác biệt theo kịch bản" minWidth={900}>
-                    <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-                      <span className="min-w-0 flex-1">Kịch bản</span>
-                      {!isExperiencer && <span className="w-[150px]">Họ kịch bản</span>}
-                      <span className="w-[120px]">{d.baseline.label}</span>
-                      <span className="w-6" />
-                      <span className="w-[120px]">{d.candidate.label}</span>
-                      <span className="w-[96px]">Δ TTC min</span>
-                      <span className="w-[100px]" />
+                  <TableScroll label="Bảng khác biệt theo kịch bản" minWidth={980}>
+                    <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
+                      <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
+                      <span className="w-[245px] shrink-0 pr-4">Kịch bản</span>
+                      {!isExperiencer && <span className="w-[150px] shrink-0 pr-3">Họ kịch bản</span>}
+                      <span className="w-[125px] shrink-0">{d.baseline.label}</span>
+                      <span className="w-6 shrink-0 text-center" />
+                      <span className="w-[125px] shrink-0">{d.candidate.label}</span>
+                      <span className="w-[105px] shrink-0">Δ TTC min</span>
+                      <span className="w-[105px] shrink-0">Va chạm ở</span>
+                      <span className="w-[110px] shrink-0 text-right" />
                     </div>
-                    {visible.slice(0, shown).map((p) => (
-                      <DiffRow key={p.variant_id} p={p} testId={d.id} showFamily={!isExperiencer} />
+                    {pagedVisible.map((p, idx) => (
+                      <DiffRow key={p.variant_id} p={p} index={(diffPage - 1) * DIFF_PAGE_SIZE + idx + 1} testId={d.id} showFamily={!isExperiencer} />
                     ))}
                   </TableScroll>
                 )}
-                <div className="flex items-center justify-between px-5 py-4 text-[12px] text-vehicsim-faint">
-                  <span>
-                    Hiển thị {Math.min(shown, visible.length)} / {visible.length} kịch bản
-                  </span>
-                  {shown < visible.length && (
-                    <button type="button" onClick={() => setShown((n) => n + 40)} className="font-semibold text-vehicsim-ink hover:underline">
-                      Xem thêm
-                    </button>
-                  )}
-                </div>
+                {diffPages > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
+                    <span className="text-[12px] font-medium text-vehicsim-muted">
+                      Hiển thị {(diffPage - 1) * DIFF_PAGE_SIZE + 1}–{Math.min(diffPage * DIFF_PAGE_SIZE, visible.length)} trên {visible.length} kịch bản
+                    </span>
+                    <Pagination page={diffPage} pages={diffPages} onPage={setDiffPage} />
+                  </div>
+                )}
               </section>
 
               <PairObjectivesTable pairs={pairs} baselineLabel={d.baseline.label} candidateLabel={d.candidate.label} testId={d.id} simple={isExperiencer} />
@@ -488,31 +491,37 @@ function Transitions({
   );
 }
 
-function DiffRow({ p, testId, showFamily }: { p: Pair; testId: number; showFamily: boolean }) {
+function DiffRow({ p, index, testId, showFamily }: { p: Pair; index: number; testId: number; showFamily: boolean }) {
   const regressed = p.change === "regressed";
   return (
-    <div className={cx("flex h-[56px] items-center border-b border-solid border-vehicsim-line px-5", regressed && "bg-vehicsim-fail-card")}>
-      <Link href={pairRunHref(p.candidate_run_id, p.baseline_run_id, testId, "summary")} className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3 hover:underline">
+    <div className={cx("flex min-h-[56px] items-center border-b border-solid border-vehicsim-line px-5 py-2", regressed && "bg-vehicsim-fail-card")}>
+      <span className="w-[45px] shrink-0 pr-2 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
+        {index}
+      </span>
+      <Link href={pairRunHref(p.candidate_run_id, p.baseline_run_id, testId, "summary")} className="flex w-[245px] shrink-0 flex-col gap-[2px] pr-4 hover:underline">
         <span className="text-[13px] font-bold text-vehicsim-ink">{p.label}</span>
         <span className="truncate text-[12px] text-vehicsim-faint">{viSummary(p.summary)}</span>
       </Link>
-      {showFamily && <span className="w-[150px] truncate text-[13px] text-vehicsim-ink">{p.family}</span>}
-      <span className="w-[120px]">
+      {showFamily && <span className="w-[150px] shrink-0 truncate pr-3 text-[13px] text-vehicsim-ink">{p.family}</span>}
+      <span className="w-[125px] shrink-0">
         <PairOutcome outcome={p.baseline_outcome} falseActivation={p.baseline_false_activation} />
       </span>
-      <span className="w-6 text-[12px] text-vehicsim-faint">→</span>
-      <span className="w-[120px]">
+      <span className="w-6 shrink-0 text-center text-[12px] text-vehicsim-faint">→</span>
+      <span className="w-[125px] shrink-0">
         <PairOutcome outcome={p.candidate_outcome} falseActivation={p.candidate_false_activation} />
       </span>
       <span
         className={cx(
-          "w-[96px] text-[13px] font-semibold",
+          "w-[105px] shrink-0 text-[13px] font-semibold",
           p.min_ttc_delta_s === null ? "text-vehicsim-faint" : p.min_ttc_delta_s >= 0 ? "text-vehicsim-ok" : "text-vehicsim-danger",
         )}
       >
         {fmt.signed(p.min_ttc_delta_s, 1, " s")}
       </span>
-      <span className="flex w-[100px] justify-end">
+      <span className={cx("w-[105px] shrink-0 text-[13px]", p.candidate_impact_kmh ? "font-semibold text-vehicsim-danger" : "text-vehicsim-faint")}>
+        {p.candidate_impact_kmh ? fmt.kmh(p.candidate_impact_kmh) : "—"}
+      </span>
+      <span className="flex w-[110px] shrink-0 justify-end">
         <Link
           href={pairRunHref(p.candidate_run_id, p.baseline_run_id, testId, "playback")}
           className="rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-[6px] text-[12px] font-semibold text-vehicsim-ink hover:bg-vehicsim-soft"

@@ -48,6 +48,15 @@ html {
   outline-offset: 2px;
 }
 
+/* Ẩn dev indicator và overlay popup của Next.js */
+nextjs-portal,
+[data-nextjs-dev-indicator],
+[data-nextjs-toast],
+div[data-nextjs-data-runtime-error-collapsed-action],
+#__next-build-watcher {
+  display: none !important;
+}
+
 ::selection {
   background: var(--color-vehicsim-primary-bg);
   color: var(--color-vehicsim-ink);

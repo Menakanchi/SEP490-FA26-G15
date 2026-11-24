@@ -44,6 +44,13 @@ các run (`rules.no_cross_run_aggregation`); không niêm phong (`sealed = false
 xuất (`captured_when = COLLECTION_EXPORT`, `dataset_source = BUILT_AT_EXPORT`), không ghi lại vào đĩa, `git_commit = null`, và trạng thái phiên bản
 AEB nằm ở `status_at_export_time` (hai trường `*_at_result_time` là `null` vì không còn biết). Khối ghi lúc chạy mang `captured_when = RESULT_WRITE`.
 
+**C01 (24/11/2026, sau khi gộp nhánh `chuvv`):** `JsonInputAdapter` của module Failure Analysis (`com.vsos.core.failureanalysis`, ChuVV) đọc trực tiếp
+`vehicsim.result/v1` có khối `dataset` và `vehicsim.run-collection/v1`. Thử trên file v2 của run 2499 và hai file gộp (biến thể 1033, 1034):
+`OfflineDiagnosticAnalysis` báo `input=COMPLETE`, sinh báo cáo cho từng run và tự ghép ON với OFF trong file gộp. Container vẫn `UNVERIFIED` (chưa có hash kỳ vọng
+độc lập) và `declared_collection.sealed = false`: đúng như ADR này khai báo, không phải lỗi. Khi gộp đã sửa `ConsumerSourceInspection`: hash nguồn consumer được
+ghim trên byte CRLF của máy Windows nên test lỗi trên mọi checkout LF (CI Linux); nay chuẩn hóa về LF trước khi băm và ghim lại 8 hash (nội dung 8 file đúng
+bằng `baf0892d`).
+
 Bằng chứng xuất thật từ DB dev (project 4, `-xosc15`): biến thể 1032 (ON 2498 không phanh, OFF 2510), 1033 (ON 2499 và OFF 2511 đều va chạm),
 1034 (ON 2500 phanh dừng an toàn, OFF 2512). Ra đủ các nhánh `NOT_APPLICABLE` của C08 từ dữ liệu thật; `MISSING`/`INVALID`/`CONFLICTING` chỉ có
 bằng chứng từ test (`RunDatasetWriterTest`), không dựng dữ liệu giả để minh họa. Chưa có lần lặp ON thứ hai nào trên `-xosc15`: muốn có phải

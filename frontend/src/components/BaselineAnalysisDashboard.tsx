@@ -179,7 +179,7 @@ export function BaselineAnalysisDashboard() {
     ? ctx?.families[0]
     : ctx?.families.find(f => f.id === filters.scenario_id);
   if (view === "failures") return <LegacyFailureCases initialScenario={filters.scenario_id} navigation={nav} />;
-  return <VehicSimPage step={4} title={title} crumbs={[{ label: "Phân tích" }, { label: view === "overview" ? "Tổng quan baseline" : view === "runs" ? "Lượt chạy" : "Tập bàn giao" }]}
+  return <VehicSimPage step={3} title={title} crumbs={[{ label: "Phân tích" }, { label: view === "overview" ? "Tổng quan baseline" : view === "runs" ? "Lượt chạy" : "Tập bàn giao" }]}
     subtitle={view === "dataset" ? "Rà soát hai tập độc lập, giữ ca an toàn và chốt bằng chứng trước khi bàn giao." : "Từ kết quả mô phỏng đến bằng chứng kỹ thuật và tập dữ liệu cho bước tối ưu AEB."}
     actions={view === "dataset" ? (
       <PillButton disabled={!savedId || snapshotLoading || busy} onClick={() => setSnapshotRefresh(value => value + 1)}>Tải lại tập đã chốt</PillButton>
@@ -187,7 +187,7 @@ export function BaselineAnalysisDashboard() {
       <>
         <PillButton disabled={loading} onClick={() => setRefresh(x => x + 1)}>Tải lại kết quả</PillButton>
         {canWrite && optimizationFamily && (
-          <PillButton variant="dark" href={`/aeb?scenario_id=${optimizationFamily.id}&tab=mobo`}>
+          <PillButton variant="dark" href={`/aeb/mobo?scenario_id=${optimizationFamily.id}&new=1`}>
             Tối ưu toàn họ {optimizationFamily.code}
           </PillButton>
         )}

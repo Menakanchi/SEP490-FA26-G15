@@ -149,10 +149,10 @@ export default function PlaybackPage() {
   const detailHref = `/analysis/failures/${runId}?section=telemetry&t=${t}&signal=${signal}&${returnQuery}${compareQuery(compareId)}`;
   const enabled = Boolean(view?.durationValid && frames.length);
   const evaluated = pb ? classificationPresentation(pb).trusted : false;
-  return <VehicSimPage step={4} title={validId === null ? "Lượt chạy không hợp lệ" : `Phát lại · Lượt chạy ${runCode(validId)}`}
+  return <VehicSimPage step={origin.testId !== null ? 5 : 3} title={validId === null ? "Lượt chạy không hợp lệ" : `Mô phỏng phát lại ${runCode(validId)}`}
     crumbs={[...origin.crumbs, { label: validId === null ? "Mã không hợp lệ" : `Lượt chạy ${runCode(validId)}`, href: detailHref }, { label: "Phát lại" }]}
     badges={pb && <><AnalysisBadge value={pb.status} />{evaluated && <AnalysisBadge value={pb.outcome} />}{evaluated && pb.failure_class && <AnalysisBadge value={pb.failure_class} />}</>}
-    subtitle={pb ? `Nguồn API: ${pb.simulator ?? "Chưa có danh tính simulator"}. Phát lại khung đã ghi.` : "Đang đọc dữ liệu phát lại từ API."}
+    subtitle={pb ? `Xem lại diễn biến động học va chạm và phản ứng phanh trên ${pb.simulator ?? "bộ mô phỏng"}.` : "Đang đọc dữ liệu phát lại từ API."}
     actions={<>
       <PillButton disabled={!pb} title="Xuất OpenSCENARIO cùng cấu hình và seed của lượt này" onClick={() => {
         setActionError(null); void vehicsimApi.downloadRunXosc(Number(runId)).catch(err => setActionError({ id: runId, message: analysisError(err) }));

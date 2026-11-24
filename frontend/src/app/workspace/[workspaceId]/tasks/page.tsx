@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { Modal } from "@/components/project/ProjectUi";
-import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, PillButton, StatCard, Tag, cx, TableScroll } from "@/components/VehicSimUi";
+import { Card, CardTitle, EmptyState, ErrorNote, FilterSelect, Pagination, PillButton, StatCard, Tag, cx, TableScroll } from "@/components/VehicSimUi";
 import { WORKSPACE_ROLES, WORKSPACE_MANAGER_ROLES } from "@/components/workspaceAccess";
 import { useAuth } from "@/context/AuthContext";
 import { vehicsimApi } from "@/services/vehicsim";
@@ -144,6 +144,10 @@ export default function WorkspaceTasksPage() {
       ),
     [tasks, status, assignee, onlyMine, user?.id],
   );
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 8;
+  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const pagedTasks = visible.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const open = (tasks ?? []).filter((t) => t.status !== "DONE");
   const editingTask = typeof editing === "number" ? (tasks ?? []).find((t) => t.id === editing) : undefined;
 
@@ -268,7 +272,6 @@ export default function WorkspaceTasksPage() {
       ]}
       title="Task"
       badges={ws && !active && <Tag tone="neutral">Workspace đã lưu trữ — chỉ xem</Tag>}
-      subtitle={allowed ? "Giao việc cho Kỹ sư và Người duyệt trong workspace, theo dõi trạng thái, tiến độ và hạn." : undefined}
       actions={
         allowed && active && editing === null && isManagerOrAdmin ? (
           <PillButton variant="dark" onClick={startNew}>
@@ -420,17 +423,17 @@ export default function WorkspaceTasksPage() {
                 label="Trạng thái"
                 value={status}
                 options={STATUSES.map((s) => ({ value: s, label: STATUS[s].label }))}
-                onChange={setStatus}
+                onChange={(s) => { setStatus(s); setPage(1); }}
               />
               <FilterSelect<string>
                 label="Người nhận"
                 value={assignee}
                 options={[{ value: "0", label: "Chưa giao" }, ...members.map((m) => ({ value: String(m.user_id), label: m.full_name }))]}
-                onChange={setAssignee}
+                onChange={(a) => { setAssignee(a); setPage(1); }}
               />
               <button
                 type="button"
-                onClick={() => setOnlyMine((v) => !v)}
+                onClick={() => { setOnlyMine((v) => !v); setPage(1); }}
                 className={cx(
                   "rounded-full px-3 py-[5px] text-[12px] font-semibold border border-solid transition-colors",
                   onlyMine
@@ -447,17 +450,18 @@ export default function WorkspaceTasksPage() {
               </EmptyState>
             )}
             {visible.length > 0 && (
-              <TableScroll label="Bảng nhiệm vụ" minWidth={960}>
-                <div className="flex h-10 items-center border-y border-solid border-vehicsim-line bg-vehicsim-soft px-5 text-[12px] font-bold uppercase tracking-[0.5px] text-vehicsim-ink">
-                  <span className="min-w-0 flex-1">Task</span>
-                  <span className="w-[170px]">Người nhận</span>
-                  <span className="w-[100px]">Ưu tiên</span>
-                  <span className="w-[150px]">Trạng thái</span>
-                  <span className="w-[130px]">Tiến độ</span>
-                  <span className="w-[100px]">Hạn</span>
-                  <span className="w-[110px]" />
+              <TableScroll label="Bảng nhiệm vụ" minWidth={1080}>
+                <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
+                  <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
+                  <span className="w-[265px] shrink-0 pr-4">Task</span>
+                  <span className="w-[160px] shrink-0 pr-3">Người nhận</span>
+                  <span className="w-[95px] shrink-0">Ưu tiên</span>
+                  <span className="w-[145px] shrink-0 pr-3">Trạng thái</span>
+                  <span className="w-[125px] shrink-0 pr-3">Tiến độ</span>
+                  <span className="w-[95px] shrink-0">Hạn</span>
+                  <span className="w-[110px] shrink-0 text-right" />
                 </div>
-                {visible.map((t) => (
+                {pagedTasks.map((t, idx) => (
                   <div
                     key={t.id}
                     className={cx(
@@ -465,7 +469,10 @@ export default function WorkspaceTasksPage() {
                       editing === t.id && "bg-vehicsim-row",
                     )}
                   >
-                    <span className="flex min-w-0 flex-1 flex-col gap-[2px] pr-3">
+                    <span className="w-[45px] shrink-0 pr-2 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
+                      {(page - 1) * PAGE_SIZE + idx + 1}
+                    </span>
+                    <span className="flex w-[265px] shrink-0 flex-col gap-[2px] pr-4">
                       <span className={cx("truncate text-[13px] font-bold", t.status === "DONE" ? "text-vehicsim-faint line-through" : "text-vehicsim-ink")}>
                         {t.title}
                       </span>
@@ -475,13 +482,13 @@ export default function WorkspaceTasksPage() {
                         {t.report_count ? ` · ${t.report_count} báo cáo` : ""}
                       </span>
                     </span>
-                    <span className="w-[170px] truncate pr-3 text-[13px] text-vehicsim-muted">
+                    <span className="w-[170px] shrink-0 truncate pr-3 text-[13px] text-vehicsim-muted">
                       {t.assignee?.full_name ?? <span className="italic text-vehicsim-faint">Chưa giao</span>}
                     </span>
-                    <span className="w-[100px]">
+                    <span className="w-[100px] shrink-0">
                       <Tag tone={PRIORITY[t.priority].tone}>{PRIORITY[t.priority].label}</Tag>
                     </span>
-                    <span className="w-[150px] pr-3">
+                    <span className="w-[150px] shrink-0 pr-3">
                       {active && (isManagerOrAdmin || t.status !== "DONE") ? (
                         <select
                           aria-label={`Trạng thái của ${t.title}`}
@@ -500,7 +507,7 @@ export default function WorkspaceTasksPage() {
                         <Tag tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Tag>
                       )}
                     </span>
-                    <span className="flex w-[130px] items-center gap-2 pr-3">
+                    <span className="flex w-[130px] shrink-0 items-center gap-2 pr-3">
                       <span className="h-[6px] flex-1 overflow-hidden rounded-full bg-vehicsim-line">
                         <span
                           className={cx("block h-full rounded-full", t.status === "DONE" ? "bg-vehicsim-ok" : "bg-vehicsim-primary")}
@@ -509,11 +516,11 @@ export default function WorkspaceTasksPage() {
                       </span>
                       <span className="w-[34px] text-right text-[12px] font-semibold text-vehicsim-ink">{t.progress_pct}%</span>
                     </span>
-                    <span className={cx("w-[100px] text-[13px]", t.overdue ? "font-semibold text-vehicsim-danger" : "text-vehicsim-faint")}>
+                    <span className={cx("w-[100px] shrink-0 text-[13px]", t.overdue ? "font-semibold text-vehicsim-danger" : "text-vehicsim-faint")}>
                       {dateLabel(t.due_date)}
                       {t.overdue && <span className="block text-[11px]">quá hạn</span>}
                     </span>
-                    <span className="flex w-[110px] justify-end gap-1">
+                    <span className="flex w-[110px] shrink-0 justify-end gap-1">
                       {active && (
                         isManagerOrAdmin ? (
                           <>
@@ -550,6 +557,14 @@ export default function WorkspaceTasksPage() {
                   </div>
                 ))}
               </TableScroll>
+            )}
+            {totalPages > 1 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
+                <span className="text-[12px] font-medium text-vehicsim-muted">
+                  Hiển thị {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, visible.length)} trên {visible.length} nhiệm vụ
+                </span>
+                <Pagination page={page} pages={totalPages} onPage={setPage} />
+              </div>
             )}
           </section>
           <p className="text-[12px] text-vehicsim-faint">

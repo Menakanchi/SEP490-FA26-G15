@@ -29,22 +29,31 @@ public class VehicleCatalogService {
         this.queries = queries;
     }
 
-    /** Mọi mẫu xe, xe project đang dùng trước, rồi theo id. */
-    public List<Map<String, Object>> list(long projectId) {
+    /**
+     * Mọi mẫu xe, xe project đang dùng trước, rồi theo id. Danh mục là chung (ADR-038), nên không có project
+     * ({@code projectId = null}) vẫn trả đủ: không xe nào {@code in_use}, {@code run_count} = 0.
+     */
+    public List<Map<String, Object>> list(Long projectId) {
         Long inUse = projectVehicleId(projectId);
         List<Map<String, Object>> out = new ArrayList<>();
-        for (Row row : db.list("SELECT m.*, (SELECT COUNT(*) FROM simulation_runs r WHERE r.project_id = ? AND r.carla_vehicle_model_id = m.id) "
-                + "AS run_count FROM carla_vehicle_models m ORDER BY m.id", projectId)) {
+        List<Row> rows = projectId == null
+                ? db.list("SELECT m.* FROM carla_vehicle_models m ORDER BY m.id")
+                : db.list("SELECT m.*, (SELECT COUNT(*) FROM simulation_runs r WHERE r.project_id = ? AND r.carla_vehicle_model_id = m.id) "
+                        + "AS run_count FROM carla_vehicle_models m ORDER BY m.id", projectId);
+        for (Row row : rows) {
             Map<String, Object> item = summary(row, inUse);
-            item.put("run_count", row.lng("run_count"));
+            item.put("run_count", projectId == null ? 0L : row.lng("run_count"));
             out.add(item);
         }
         out.sort((a, b) -> Boolean.compare((Boolean) b.get("in_use"), (Boolean) a.get("in_use")));
         return out;
     }
 
-    /** Một mẫu xe: đủ thông số vật lý, cảm biến gắn trên xe, số run theo bộ mô phỏng. */
-    public Map<String, Object> detail(long projectId, long vehicleId) {
+    /**
+     * Một mẫu xe: đủ thông số vật lý, cảm biến gắn trên xe, số run theo bộ mô phỏng. Không có project
+     * ({@code projectId = null}) thì vẫn trả thông số và cảm biến; {@code usage} rỗng, {@code run_count} = 0.
+     */
+    public Map<String, Object> detail(Long projectId, long vehicleId) {
         Row row = queries.vehicleById(vehicleId);
         Map<String, Object> out = summary(row, projectVehicleId(projectId));
         out.put("physics", Json.obj(
@@ -70,9 +79,11 @@ public class VehicleCatalogService {
         out.put("sensors", sensors);
         List<Map<String, Object>> usage = new ArrayList<>();
         long total = 0;
-        for (Row u : db.list("SELECT simulator_type, simulator_version, COUNT(*) AS runs, MAX(queued_at) AS last_run_at FROM simulation_runs "
-                + "WHERE project_id = ? AND carla_vehicle_model_id = ? GROUP BY simulator_type, simulator_version ORDER BY runs DESC, simulator_version",
-                projectId, vehicleId)) {
+        List<Row> usageRows = projectId == null ? List.of()
+                : db.list("SELECT simulator_type, simulator_version, COUNT(*) AS runs, MAX(queued_at) AS last_run_at FROM simulation_runs "
+                        + "WHERE project_id = ? AND carla_vehicle_model_id = ? GROUP BY simulator_type, simulator_version ORDER BY runs DESC, simulator_version",
+                        projectId, vehicleId);
+        for (Row u : usageRows) {
             total += u.lng("runs");
             usage.add(Json.obj("simulator_type", u.str("simulator_type"), "simulator_version", u.str("simulator_version"),
                     "runs", u.lng("runs"), "last_run_at", Vs.iso(u.ts("last_run_at"))));
@@ -82,7 +93,8 @@ public class VehicleCatalogService {
         return out;
     }
 
-    private Long projectVehicleId(long projectId) {
+    private Long projectVehicleId(Long projectId) {
+        if (projectId == null) return null;
         Object id = db.scalar("SELECT carla_vehicle_model_id FROM projects WHERE id = ?", projectId);
         return id == null ? null : ((Number) id).longValue();
     }
