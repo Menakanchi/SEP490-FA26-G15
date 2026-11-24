@@ -88,29 +88,29 @@ export default function AebComparePage() {
       <ErrorNote message={error} />
 
       {/* Selector chọn 2 phiên bản */}
-      <Card className="flex flex-col gap-5 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-4">
-          <div>
-            <h2 className="text-[16px] font-bold text-vehicsim-ink">Chọn 2 phiên bản để so sánh</h2>
-          </div>
+      <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-5 py-4 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-solid border-vehicsim-line">
+          <h2 className="text-[15px] font-bold text-vehicsim-ink">So sánh 2 phiên bản AEB</h2>
           <button
             type="button"
             onClick={swap}
-            className="flex items-center gap-1.5 rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-4 py-2 text-[12px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition shadow-sm"
+            className="flex items-center gap-1.5 rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition"
           >
             <GitCompare className="size-3.5" />
-            Đổi chiều so sánh (Hoán vị)
+            Hoán vị A ⇄ B
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-3">
           {/* Phiên bản A */}
-          <div className="flex flex-col gap-3 rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
-                Phiên bản Mốc chuẩn (A)
-              </span>
-              {versionA && <Tag tone={STATUS_TONE[versionA.status]}>{STATUS_LABEL[versionA.status]}</Tag>}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-[13px]">
+              <span className="font-bold text-vehicsim-ink">Phiên bản Mốc chuẩn (A)</span>
+              {versionA && (
+                <span className="text-[12px] text-vehicsim-muted">
+                  {STATUS_LABEL[versionA.status]} · {fmt.date(versionA.created_at)}
+                </span>
+              )}
             </div>
             <VehicSimSelect
               aria-label="Chọn Phiên bản Mốc chuẩn (A)"
@@ -122,20 +122,17 @@ export default function AebComparePage() {
                 sublabel: `${STATUS_LABEL[v.status]} (${v.source === "OPTIMIZATION" ? "MOBO" : "Thủ công"})`,
               }))}
             />
-            {versionA && (
-              <p className="text-[12px] text-vehicsim-muted">
-                {versionA.notes ? `Ghi chú: ${versionA.notes}` : "Không có ghi chú"} · Tạo ngày {fmt.date(versionA.created_at)}
-              </p>
-            )}
           </div>
 
           {/* Phiên bản B */}
-          <div className="flex flex-col gap-3 rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
-                Phiên bản So sánh (B)
-              </span>
-              {versionB && <Tag tone={STATUS_TONE[versionB.status]}>{STATUS_LABEL[versionB.status]}</Tag>}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-[13px]">
+              <span className="font-bold text-vehicsim-ink">Phiên bản So sánh (B)</span>
+              {versionB && (
+                <span className="text-[12px] text-vehicsim-muted">
+                  {STATUS_LABEL[versionB.status]} · {fmt.date(versionB.created_at)}
+                </span>
+              )}
             </div>
             <VehicSimSelect
               aria-label="Chọn Phiên bản So sánh (B)"
@@ -147,14 +144,9 @@ export default function AebComparePage() {
                 sublabel: `${STATUS_LABEL[v.status]} (${v.source === "OPTIMIZATION" ? "MOBO" : "Thủ công"})`,
               }))}
             />
-            {versionB && (
-              <p className="text-[12px] text-vehicsim-muted">
-                {versionB.notes ? `Ghi chú: ${versionB.notes}` : "Không có ghi chú"} · Tạo ngày {fmt.date(versionB.created_at)}
-              </p>
-            )}
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* Bảng so sánh 4 tham số chi tiết */}
       {versionA && versionB && (
