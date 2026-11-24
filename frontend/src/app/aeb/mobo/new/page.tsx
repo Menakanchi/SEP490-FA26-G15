@@ -198,52 +198,7 @@ export default function AebMoboNewPage() {
             </div>
           </div>
 
-          {/* Không gian tham số và Mục tiêu thu thập */}
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <div className="flex flex-col gap-3 rounded-2xl border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-5">
-              <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
-                Không gian tham số tìm kiếm (Search Space 4 chiều)
-              </span>
-              <div className="grid grid-cols-2 gap-3 text-[13px]">
-                <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
-                  <span className="block font-bold text-vehicsim-ink">TTC Threshold</span>
-                  <span className="text-[12px] text-vehicsim-muted">0.5 – 4.0 s</span>
-                </div>
-                <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
-                  <span className="block font-bold text-vehicsim-ink">Brake Activation Delay</span>
-                  <span className="text-[12px] text-vehicsim-muted">0.0 – 0.5 s</span>
-                </div>
-                <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
-                  <span className="block font-bold text-vehicsim-ink">Brake Build-up Rate</span>
-                  <span className="text-[12px] text-vehicsim-muted">5.0 – 20.0 m/s³</span>
-                </div>
-                <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
-                  <span className="block font-bold text-vehicsim-ink">Max Deceleration</span>
-                  <span className="text-[12px] text-vehicsim-muted">3.0 – 10.0 m/s²</span>
-                </div>
-              </div>
-            </div>
 
-            <div className="flex flex-col gap-3 rounded-2xl border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-5">
-              <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
-                3 Mục tiêu tối ưu hoá đồng thời (Cực tiểu hoá)
-              </span>
-              <div className="grid grid-cols-3 gap-3 text-[13px]">
-                <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
-                  <span className="block font-bold text-vehicsim-decision">1. Độ êm ái</span>
-                  <span className="text-[12px] text-vehicsim-muted">RMS Jerk (m/s³)</span>
-                </div>
-                <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
-                  <span className="block font-bold text-vehicsim-danger">2. Giảm chấn</span>
-                  <span className="text-[12px] text-vehicsim-muted">Tốc độ va chạm (m/s)</span>
-                </div>
-                <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
-                  <span className="block font-bold text-vehicsim-ink">3. Quãng phanh</span>
-                  <span className="text-[12px] text-vehicsim-muted">Khoảng cách dừng (m)</span>
-                </div>
-              </div>
-            </div>
-          </div>
 
           <div className="flex flex-wrap items-center justify-between gap-4 border-t border-solid border-vehicsim-line pt-5">
             <span className="text-[12px] text-vehicsim-faint">
