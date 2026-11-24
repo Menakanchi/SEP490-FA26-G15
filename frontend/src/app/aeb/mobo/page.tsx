@@ -546,7 +546,6 @@ export default function AebMoboStudioPage() {
               <table className="w-full min-w-[960px] text-left text-[13px]">
                 <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                   <tr className="h-12">
-                    <th className="w-12 px-3 py-3.5 text-center font-bold">STT</th>
                     <th className="px-5 py-3.5">Mã run</th>
                     <th className="px-5 py-3.5">Tên đợt chạy</th>
                     <th className="px-5 py-3.5">Bộ mô phỏng</th>
@@ -568,9 +567,6 @@ export default function AebMoboStudioPage() {
                           isSelected && "bg-vehicsim-primary-bg/50"
                         )}
                       >
-                        <td className="w-12 px-3 py-4 text-center text-[12px] font-bold text-vehicsim-faint tabular-nums">
-                          {(runsPage - 1) * RUNS_PAGE_SIZE + idx + 1}
-                        </td>
                         <td className="px-5 py-4 font-mono font-bold text-vehicsim-ink">#{r.id}</td>
                         <td className="px-5 py-4 font-bold text-vehicsim-ink">{r.name}</td>
                         <td className="px-5 py-4">
