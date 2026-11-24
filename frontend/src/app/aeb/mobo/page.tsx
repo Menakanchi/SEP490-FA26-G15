@@ -541,7 +541,7 @@ export default function AebMoboStudioPage() {
             {/* Ghi chú giải thích điểm tiềm năng qEHVI */}
             <div className="border-t border-solid border-vehicsim-line px-5 py-3 text-[12px] leading-relaxed text-vehicsim-muted bg-vehicsim-soft/30">
               <strong className="font-bold text-vehicsim-ink">Điểm tiềm năng (qEHVI):</strong>{" "}
-              Hệ thống tự đánh giá xem bộ tham số này có nhiều cơ hội cho kết quả tốt hơn trước hay không — điểm càng cao càng đáng thử. (Các lượt chạy ngẫu nhiên lúc đầu chưa tính điểm này nên hiện &ldquo;—&rdquo;.)
+              Hệ thống dự đoán xem bộ tham số này có cơ hội cho kết quả tốt hơn các lượt trước hay không, điểm càng cao càng đáng thử. Các lượt chạy ngẫu nhiên lúc đầu không tính điểm này nên sẽ chưa có số.
             </div>
           </div>
         )}
