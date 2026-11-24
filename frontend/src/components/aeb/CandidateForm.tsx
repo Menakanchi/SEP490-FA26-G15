@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { CLASS_STYLE, ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
+import { CLASS_STYLE, ErrorNote, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion, ParameterDef } from "@/types/vehicsim";
 import { VehicSimSelect } from "@/components/VehicSimSelect";
@@ -99,10 +99,10 @@ export function CandidateForm({
   };
 
   return (
-    <section className="flex flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-xs">
+    <section className="flex flex-col gap-4 rounded-lg border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-xs">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-3">
         <h2 className="text-[16px] font-black text-vehicsim-ink">Cấu hình ứng viên mới</h2>
-        <span className="rounded-full bg-vehicsim-soft px-2.5 py-0.5 text-[12px] font-bold text-vehicsim-ink">
+        <span className="rounded-md border border-solid border-vehicsim-line bg-vehicsim-soft px-2 py-0.5 text-[11.5px] font-bold text-vehicsim-ink">
           {changed.length} tham số đã đổi
         </span>
       </div>
@@ -128,7 +128,7 @@ export function CandidateForm({
               label: `AEB ${v.label}`,
               sublabel: STATUS_LABEL[v.status],
             }))}
-            buttonClassName="h-9 rounded-lg"
+            buttonClassName="h-9 rounded-md"
           />
         </div>
 
@@ -140,7 +140,7 @@ export function CandidateForm({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="vd. v1.1"
-            className="h-9 rounded-lg border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[13.5px] font-medium text-vehicsim-ink placeholder:text-vehicsim-faint focus:border-vehicsim-primary focus:outline-none focus:ring-2 focus:ring-vehicsim-primary/20"
+            className="h-9 rounded-md border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[13.5px] font-medium text-vehicsim-ink placeholder:text-vehicsim-faint focus:border-vehicsim-primary focus:outline-none focus:ring-2 focus:ring-vehicsim-primary/20"
           />
         </label>
 
@@ -152,7 +152,7 @@ export function CandidateForm({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="vd. phanh sớm hơn khi người đi bộ lao ra"
-            className="h-9 rounded-lg border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[13.5px] font-medium text-vehicsim-ink placeholder:text-vehicsim-faint focus:border-vehicsim-primary focus:outline-none focus:ring-2 focus:ring-vehicsim-primary/20"
+            className="h-9 rounded-md border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[13.5px] font-medium text-vehicsim-ink placeholder:text-vehicsim-faint focus:border-vehicsim-primary focus:outline-none focus:ring-2 focus:ring-vehicsim-primary/20"
           />
         </label>
       </div>
@@ -170,7 +170,7 @@ export function CandidateForm({
             <div
               key={p.code}
               className={cx(
-                "flex items-center justify-between gap-3 rounded-xl border border-solid p-3.5 transition",
+                "flex items-center justify-between gap-3 rounded-lg border border-solid p-3 transition",
                 isChanged
                   ? "border-vehicsim-decision/50 bg-vehicsim-decision-bg/25"
                   : "border-vehicsim-line bg-vehicsim-surface hover:border-vehicsim-line-strong"
@@ -179,11 +179,11 @@ export function CandidateForm({
               <div className="flex flex-col gap-1 min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[14px] font-bold text-vehicsim-ink truncate">{p.name}</span>
-                  <span className={cx("rounded-full px-2 py-0.5 text-[10.5px] font-bold shrink-0", catStyle.cls)}>
+                  <span className={cx("rounded px-1.5 py-0.5 text-[11px] font-semibold shrink-0", catStyle.cls)}>
                     {catStyle.label}
                   </span>
                   {isChanged && (
-                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700 dark:text-emerald-400 shrink-0">
+                    <span className="rounded bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800 shrink-0">
                       Đã đổi
                     </span>
                   )}
@@ -211,7 +211,7 @@ export function CandidateForm({
                   onChange={(e) => handleInputChange(p, e.target.value)}
                   onBlur={() => handleBlur(p)}
                   className={cx(
-                    "h-9 w-24 rounded-lg border border-solid px-2.5 text-right text-[14.5px] font-black focus:outline-none focus:ring-2",
+                    "h-9 w-24 rounded-md border border-solid px-2.5 text-right text-[14.5px] font-bold focus:outline-none focus:ring-2",
                     isInvalid
                       ? "border-vehicsim-danger bg-red-50 dark:bg-red-950/30 text-vehicsim-danger focus:ring-red-400"
                       : isChanged
@@ -239,14 +239,14 @@ export function CandidateForm({
             Chưa có tham số nào thay đổi so với bản gốc.
           </span>
         )}
-        <PillButton
-          variant="dark"
-          className="px-5 py-2 text-[13px] font-bold"
+        <button
+          type="button"
+          className="inline-flex h-9 items-center justify-center rounded-lg bg-vehicsim-primary px-5 text-[13px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs"
           onClick={submit}
           disabled={busy || changed.length === 0 || invalid.length > 0}
         >
           {busy ? "Đang tạo ứng viên…" : "Tạo ứng viên"}
-        </PillButton>
+        </button>
       </div>
     </section>
   );
