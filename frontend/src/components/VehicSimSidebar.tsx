@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronRight, FolderOpen, House, LogOut, Settings } from "lucide-react";
+import { BookOpen, Building2, ChevronDown, ChevronRight, FolderOpen, House, LogOut, Settings, Users } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { cx } from "@/components/VehicSimUi";
@@ -182,6 +182,13 @@ const GROUPS: Group[] = [
 ];
 
 const lucideIcon = (Icon: typeof House) => <Icon aria-hidden className="size-[18px] shrink-0 text-current" />;
+
+/** ADMIN: 3 trang quản trị đặt thẳng trong mục "Hệ thống & Quản trị", không gói trong dropdown "Quản trị hệ thống". */
+const ADMIN_GROUPS: Group[] = [
+  { key: "admin-users", label: "Tài khoản", icon: lucideIcon(Users), href: "/admin/users", prefix: "/admin/users" },
+  { key: "admin-workspaces", label: "Workspace", icon: lucideIcon(Building2), href: "/admin/workspaces", prefix: "/admin/workspaces" },
+  { key: "admin-tech-references", label: "Tài liệu kỹ thuật", icon: lucideIcon(BookOpen), href: "/admin/tech-references", prefix: "/admin/tech-references" },
+];
 
 /**
  * Tính điểm khớp độ cụ thể của href đối với pathname và search params hiện tại.
@@ -495,7 +502,9 @@ function TeamNav({ role }: { role: string }) {
         {
           id: "workspace",
           title: "Hệ thống & Quản trị",
-          groups: GROUPS.filter((g) => ["workspace", "my-work", "admin"].includes(g.key)),
+          // ADMIN không làm việc trong workspace: bỏ "Workspace nhóm", "Nhiệm vụ & Báo cáo" và dropdown "Quản trị hệ thống",
+          // chỉ còn 3 trang quản trị. Role khác giữ nguyên.
+          groups: role === "ADMIN" ? ADMIN_GROUPS : GROUPS.filter((g) => ["workspace", "my-work", "admin"].includes(g.key)),
         },
       ];
 
