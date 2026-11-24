@@ -63,6 +63,8 @@ export default function DescribeScenarioPage() {
   const [origins, setOrigins] = useState<Partial<Record<DescribeKey, FieldOrigin>>>({});
   const [grid, setGrid] = useState<{ key: number; initial: FamilyInitial } | null>(null);
   const [irDirty, setIrDirty] = useState(false);
+  // IR dùng để dựng lưới lần gần nhất: sửa rồi trả về đúng giá trị này thì không còn "IR đã sửa".
+  const [builtIr, setBuiltIr] = useState<DescribedIr | null>(null);
   // Họ vừa tạo: hiện khung bàn giao sang màn 2 thay vì tự chuyển trang.
   const [created, setCreated] = useState<{ scenario_id: number; code: string; variants: number; queued_runs?: number } | null>(null);
 
@@ -75,6 +77,7 @@ export default function DescribeScenarioPage() {
       setResult(res);
       setSourceText(text.trim());
       setIr(res.ir);
+      setBuiltIr(res.ir);
       setOrigins(nextOrigins);
       setGrid({ key: Date.now(), initial: gridFromIr(res.ir, nextOrigins, res.title, text.trim()) });
       setIrDirty(false);
@@ -86,9 +89,14 @@ export default function DescribeScenarioPage() {
   };
 
   const edit = <K extends keyof DescribedIr>(key: K, value: DescribedIr[K]) => {
-    setIr((prev) => (prev ? { ...prev, [key]: value } : prev));
-    setOrigins((prev) => ({ ...prev, [key]: "edited" }));
-    setIrDirty(true);
+    if (!ir || !result) return;
+    const next = { ...ir, [key]: value };
+    const same = (a: unknown, b: unknown) => Object.is(a, b);
+    // Nhãn nguồn: trả về đúng giá trị LLM/luật trích ra thì khôi phục nhãn gốc thay vì "Đã sửa".
+    const original = result.fields.find((f) => f.key === key)?.origin;
+    setIr(next);
+    setOrigins((prev) => ({ ...prev, [key]: same(value, result.ir[key]) && original ? original : "edited" }));
+    setIrDirty(builtIr ? (Object.keys(next) as (keyof DescribedIr)[]).some((k) => !same(next[k], builtIr[k])) : true);
   };
 
   const lead = !!ir?.category && LEAD_CATEGORIES.includes(ir.category);
@@ -220,6 +228,7 @@ export default function DescribeScenarioPage() {
                   disabled={irErrors.length > 0}
                   onClick={() => {
                     setGrid({ key: Date.now(), initial: gridFromIr(ir, origins, result.title, sourceText) });
+                    setBuiltIr(ir);
                     setIrDirty(false);
                   }}
                 >
