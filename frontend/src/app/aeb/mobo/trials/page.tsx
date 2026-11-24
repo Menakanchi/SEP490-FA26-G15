@@ -169,13 +169,13 @@ export default function AebMoboTrialsPage() {
               <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                 <tr className="h-12">
                   <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
-                  <th className="px-4 py-3.5">Nguồn sinh mẫu</th>
-                  <th className="px-4 py-3.5 font-mono">Hàm thu thập qEHVI</th>
-                  <th className="px-4 py-3.5 text-vehicsim-decision">RMS Jerk (m/s³)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-danger">Va chạm (km/h)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-ink">Quãng phanh (m)</th>
-                  <th className="px-4 py-3.5">Ràng buộc</th>
-                  <th className="px-4 py-3.5 text-right">Biên Pareto</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Nguồn sinh mẫu</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Điểm tiềm năng (qEHVI)</th>
+                  <th className="px-4 py-3.5 text-vehicsim-decision whitespace-nowrap">RMS Jerk (m/s³)</th>
+                  <th className="px-4 py-3.5 text-vehicsim-danger whitespace-nowrap">Va chạm (km/h)</th>
+                  <th className="px-4 py-3.5 text-vehicsim-ink whitespace-nowrap">Quãng phanh (m)</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Ràng buộc</th>
+                  <th className="px-4 py-3.5 text-right whitespace-nowrap">Biên Pareto</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">

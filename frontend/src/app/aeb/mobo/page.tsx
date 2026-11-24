@@ -467,7 +467,7 @@ export default function AebMoboStudioPage() {
                     <tr className="h-12">
                       <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
                       <th className="px-4 py-3.5 whitespace-nowrap">Nguồn</th>
-                      <th className="px-4 py-3.5 font-mono whitespace-nowrap">qEHVI</th>
+                      <th className="px-4 py-3.5 whitespace-nowrap">Điểm tiềm năng (qEHVI)</th>
                       <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">RMS Jerk</th>
                       <th className="px-4 py-3.5 text-rose-300 whitespace-nowrap">Tốc độ va chạm</th>
                       <th className="px-4 py-3.5 text-slate-200 whitespace-nowrap">Quãng phanh</th>
@@ -530,6 +530,12 @@ export default function AebMoboStudioPage() {
                 <Pagination page={trialsPage} pages={trialsPages} onPage={setTrialsPage} />
               </div>
             )}
+
+            {/* Ghi chú giải thích điểm tiềm năng qEHVI */}
+            <div className="border-t border-solid border-vehicsim-line px-5 py-3 text-[12px] leading-relaxed text-vehicsim-muted bg-vehicsim-soft/30">
+              <strong className="font-bold text-vehicsim-ink">Điểm tiềm năng (qEHVI):</strong>{" "}
+              Chỉ số do thuật toán AI tính toán để đo mức độ hứa hẹn của bộ tham số. Điểm càng cao thì phương án càng có khả năng mở rộng tập tối ưu (các lượt khởi tạo ban đầu để lấy mẫu mồi sẽ hiển thị &ldquo;—&rdquo;).
+            </div>
           </div>
         )}
 
