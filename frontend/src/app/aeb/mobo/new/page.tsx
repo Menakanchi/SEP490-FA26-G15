@@ -148,7 +148,7 @@ export default function AebMoboNewPage() {
           {/* CHỌN BỘ MÔ PHỎNG */}
           <div className="flex flex-col gap-3 rounded-2xl border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-5">
             <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
-              Môi trường mô phỏng (Simulator) *
+              Chọn môi trường mô phỏng (Simulator) *
             </span>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <button
