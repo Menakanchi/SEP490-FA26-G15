@@ -748,10 +748,8 @@ export default function AebMoboStudioPage() {
                         <td className="px-5 py-4 font-semibold text-vehicsim-ink">
                           {r.completed_trials} / {r.max_trials} lượt
                         </td>
-                        <td className="px-5 py-4">
-                          <span className="inline-flex items-center rounded-full bg-vehicsim-decision-bg px-2.5 py-0.5 text-[11px] font-bold text-vehicsim-decision">
-                            {r.pareto_count} nghiệm
-                          </span>
+                        <td className="px-5 py-4 font-semibold text-vehicsim-ink whitespace-nowrap">
+                          {r.pareto_count} nghiệm
                         </td>
                         <td className="px-5 py-4 text-[12px] text-vehicsim-muted">{fmt.date(r.started_at)}</td>
                         <td className="px-5 py-4 text-center">
