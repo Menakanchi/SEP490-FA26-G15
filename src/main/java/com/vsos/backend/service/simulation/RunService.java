@@ -905,14 +905,35 @@ public class RunService {
      * regression được giữ lại và đếm riêng, để người dùng biết còn gì chưa xoá.
      */
     public Map<String, Object> deleteFamilyBaselineRuns(long projectId, long scenarioId, long userId) {
+        return deleteFamilyBaselineRuns(projectId, scenarioId, userId, null);
+    }
+
+    /** Như {@link #deleteFamilyBaselineRuns(long, long, long)}, lọc thêm {@code simulator_type} ({@code CARLA}/{@code KINEMATIC}) khi có. */
+    public Map<String, Object> deleteFamilyBaselineRuns(long projectId, long scenarioId, long userId, String simulatorType) {
+        String normalizedType = null;
+        if (simulatorType != null && !simulatorType.isBlank()) {
+            normalizedType = simulatorType.trim().toUpperCase(java.util.Locale.ROOT);
+            if (!"CARLA".equals(normalizedType) && !"KINEMATIC".equals(normalizedType)) {
+                throw new InvalidRequestException("simulator_type phải là CARLA hoặc KINEMATIC");
+            }
+        }
         if (db.first("SELECT id FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, projectId) == null) {
             throw new NotFoundException("scenario family");
         }
         int deleted = 0;
         int inUse = 0;
         int active = 0;
-        for (Row r : db.list("SELECT id, status FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND purpose = 'BASELINE' "
-                + "AND regression_test_id IS NULL AND optimization_trial_id IS NULL ORDER BY id", projectId, scenarioId)) {
+        StringBuilder sql = new StringBuilder("SELECT id, status FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND purpose = 'BASELINE' "
+                + "AND regression_test_id IS NULL AND optimization_trial_id IS NULL");
+        List<Object> args = new ArrayList<>();
+        args.add(projectId);
+        args.add(scenarioId);
+        if (normalizedType != null) {
+            sql.append(" AND simulator_type = ?");
+            args.add(normalizedType);
+        }
+        sql.append(" ORDER BY id");
+        for (Row r : db.list(sql.toString(), args.toArray())) {
             if (!FINISHED_STATUSES.contains(r.str("status"))) {
                 active++;
             } else if (deleteFinishedBaselineRun(projectId, r.lng("id"))) {

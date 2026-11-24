@@ -14,7 +14,7 @@ export function formatMeasurement(value: unknown, unit: string, digits = unit ==
   return text === "—" ? text : `${text}${unit ? ` ${unit}` : ""}`;
 }
 
-/** Canonical per-run impact is ego speed at collision; aggregate zero is a separate contract. */
+/** Canonical per-run impact is relative collision speed (ADR-055; legacy 1.0 / <= -xosc8 used ego speed); aggregate zero is a separate contract. */
 export function formatRunImpact(value: unknown, run: { status: string; outcome: string }, digits = 3): string {
   return run.status === "COMPLETED" && run.outcome === "COLLISION" ? formatMetric(value, digits, true) : "—";
 }

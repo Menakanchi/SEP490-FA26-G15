@@ -139,7 +139,7 @@ public class AnalysisViewService {
         Row project = projects.currentProject();
         long projectId = project.lng("id");
 
-        // Phạm vi: project + phiên bản AEB + số ngày. KPI và danh sách họ đếm trên phạm vi này, còn bộ lọc của bảng thì không.
+        // Phạm vi: mọi bộ lọc bảng áp dụng chung cho KPI, phân bố theo họ và danh sách phân trang.
         StringBuilder scope = new StringBuilder(FAILURE_FROM);
         List<Object> scopeArgs = new ArrayList<>();
         scopeArgs.add(projectId);
@@ -200,35 +200,18 @@ public class AnalysisViewService {
             familyList.add(Json.obj("id", f.lng("scenario_id"), "name", f.str("name"), "failures", (int) count(f, "failures")));
         }
 
-        // Bộ lọc của bảng + phân trang, tất cả ở SQL; chỉ nạp đầy đủ các dòng của trang hiện tại.
-        StringBuilder filtered = new StringBuilder(scope);
-        List<Object> filterArgs = new ArrayList<>(scopeArgs);
-        if (scenarioId != null) {
-            filtered.append(" AND r.scenario_id = ?");
-            filterArgs.add(scenarioId);
-        }
-        if (failureClass != null) {
-            filtered.append(" AND pc.category = ?");
-            filterArgs.add(failureClass);
-        }
-        if (outcome != null) {
-            filtered.append(" AND ").append(OUTCOME_SQL).append(" = ?");
-            filterArgs.add(outcome);
-        }
-        if (weather != null) {
-            filtered.append(" AND ").append(WEATHER_SQL).append(" = ?");
-            filterArgs.add(weather);
-        }
-        long matched = count(db.first("SELECT COUNT(*) AS n " + filtered, filterArgs.toArray()), "n");
+        // Phân trang ở SQL; chỉ nạp đầy đủ các dòng của trang hiện tại.
+        Object[] filterArgs = scopeArgs.toArray();
+        long matched = count(db.first("SELECT COUNT(*) AS n " + scope, filterArgs), "n");
         int size = Math.max(1, pageSize);
         int p = Math.max(1, page);
         List<Map<String, Object>> items = List.of();
         long start = (long) (p - 1) * size;
         if (start < matched) {
-            List<Object> pageArgs = new ArrayList<>(filterArgs);
+            List<Object> pageArgs = new ArrayList<>(scopeArgs);
             pageArgs.add(size);
             pageArgs.add(start);
-            List<Long> ids = db.list("SELECT f.id " + filtered + " ORDER BY r.id DESC, f.id DESC LIMIT ? OFFSET ?", pageArgs.toArray())
+            List<Long> ids = db.list("SELECT f.id " + scope + " ORDER BY r.id DESC, f.id DESC LIMIT ? OFFSET ?", pageArgs.toArray())
                     .stream().map(r -> r.lng("id")).toList();
             if (!ids.isEmpty()) {
                 items = failureRows("f.id IN (" + Db.placeholders(ids.size()) + ")", null, ids.toArray());
@@ -610,11 +593,19 @@ public class AnalysisViewService {
                 continue;
             }
             Map<String, Object> ir = Json.asMap(r.get("parameters"));
-            double distance = Math.abs((num(ir, "ego_speed_kmh") - num(me, "ego_speed_kmh")) / 40)
-                    + Math.abs((num(ir, "trigger_distance_m") - num(me, "trigger_distance_m")) / 30)
-                    + Math.abs((num(ir, "pedestrian_speed_mps") - num(me, "pedestrian_speed_mps")) / 4)
-                    // Người băng qua và người dừng ở lề là hai tình huống khác hẳn (một bên va chạm, một bên phanh oan): lệch hành vi bị phạt như lệch thời tiết.
-                    + (java.util.Objects.equals(ir.get("stops_at_curb"), me.get("stops_at_curb")) ? 0 : 0.5)
+            boolean lead = isLead(me) || isLead(ir);
+            double distance = Math.abs((num(ir, "ego_speed_kmh") - num(me, "ego_speed_kmh")) / 40.0)
+                    + (lead
+                            ? Math.abs((num(ir, "target_speed_kmh") - num(me, "target_speed_kmh")) / 40.0)
+                                    + Math.abs((num(ir, "initial_distance_m") - num(me, "initial_distance_m")) / 40.0)
+                                    + Math.abs((num(ir, "target_decel_mps2") - num(me, "target_decel_mps2")) / 4.0)
+                                    + Math.abs((numOr(ir, "lateral_overlap_pct", 100.0) - numOr(me, "lateral_overlap_pct", 100.0)) / 200.0)
+                                    + (leadInLane(ir) == leadInLane(me) ? 0 : 0.5)
+                                    + (java.util.Objects.equals(ir.get("category"), me.get("category")) ? 0 : 0.5)
+                            : Math.abs((num(ir, "trigger_distance_m") - num(me, "trigger_distance_m")) / 30.0)
+                                    + Math.abs((num(ir, "pedestrian_speed_mps") - num(me, "pedestrian_speed_mps")) / 4.0)
+                                    // Người băng qua và người dừng ở lề là hai tình huống khác hẳn (một bên va chạm, một bên phanh oan): lệch hành vi bị phạt như lệch thời tiết.
+                                    + (java.util.Objects.equals(ir.get("stops_at_curb"), me.get("stops_at_curb")) ? 0 : 0.5))
                     + (java.util.Objects.equals(ir.get("weather"), me.get("weather")) ? 0 : 0.5)
                     + (java.util.Objects.equals(ir.get("time_of_day"), me.get("time_of_day")) ? 0 : 0.5)
                     + (java.util.Objects.equals(r.get("failure_class"), myClass) ? 0 : 0.5);
@@ -629,9 +620,21 @@ public class AnalysisViewService {
         return out;
     }
 
+    private static boolean isLead(Map<String, Object> m) {
+        return FamilyService.isLeadVehicle(m) || FamilyService.LEAD_MOTIF.equals(m.get("motif"));
+    }
+
     private static double num(Map<String, Object> m, String key) {
+        return numOr(m, key, 0.0);
+    }
+
+    private static double numOr(Map<String, Object> m, String key, double fallback) {
         Object v = m.get(key);
-        return v instanceof Number n ? n.doubleValue() : 0.0;
+        return v instanceof Number n ? n.doubleValue() : fallback;
+    }
+
+    private static boolean leadInLane(Map<String, Object> ir) {
+        return numOr(ir, "lateral_overlap_pct", 100.0) > 0;
     }
 
     /** Các lần chạy khác đã xong của CÙNG biến thể — để so sánh giữa các AEB version. */

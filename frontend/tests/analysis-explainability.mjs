@@ -64,7 +64,12 @@ test("timeline only lists recorded finite timestamps; missing markers are not co
 test("source mapping distinguishes simulator model from real-world measurements and leaves API inputs intact", () => {
   const snapshot = structuredClone(original);
   assert.equal(metricExplanation("rms", original, run).engine, "CARLA qua lõi Java");
+  assert.equal(metricExplanation("rms", { ...original, simulator: "carla-0.9.16-xosc15" }, run).engine, "CARLA qua lõi Java");
+  assert.match(metricExplanation("ttc", { ...original, simulator: "carla-0.9.16-xosc15" }, run).formula, /gap \/ v_ego/);
   assert.equal(metricExplanation("rms", { ...original, simulator: "vehicsim-kinematic-1.0" }, { ...run, dt: 0.05 }).engine, "Động học Java");
+  assert.equal(metricExplanation("rms", { ...original, simulator: "vehicsim-kinematic-1.4" }, { ...run, dt: 0.05 }).engine, "Động học Java");
+  assert.match(metricExplanation("ttc", { ...original, simulator: "vehicsim-kinematic-1.4" }, { ...run, dt: 0.05 }).formula, /gap \/ v_ego/);
+  assert.equal(metricExplanation("ttc", { ...original, simulator: "carla-0.9.16-xosc2" }, run).formula, null);
   assert.deepEqual(original, snapshot);
 });
 

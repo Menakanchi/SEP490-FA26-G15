@@ -358,13 +358,27 @@ function gridFromIr(ir: DescribedIr, origins: Partial<Record<DescribeKey, FieldO
       return origins[key] === "assumed" || value === undefined ? [...a.fallback] : around(value, step, a.min, a.max, digits);
     };
     const overlap = ir.lateral_overlap_pct ?? 100;
+    const egoSpeeds = leadPick("ego_speed_kmh", "ego_speeds_kmh", 10, 0, ir.ego_speed_kmh);
+    const minEgo = Math.min(...egoSpeeds);
+    const targetAxis = axis("target_speeds_kmh");
+    const targetRaw = leadPick("target_speed_kmh", "target_speeds_kmh", 5, 0, ir.target_speed_kmh);
+    let targetSpeeds = ir.category === "CCRS" ? [0] : targetRaw;
+    if (ir.category === "CCRM") {
+      targetSpeeds = targetRaw.filter((v) => v < minEgo);
+      if (!targetSpeeds.length) {
+        targetSpeeds = [Math.max(targetAxis.min, Math.min(targetAxis.max, minEgo - 10))];
+      }
+    } else if (ir.category === "CCRB") {
+      targetSpeeds = targetRaw.filter((v) => v > 0);
+      if (!targetSpeeds.length) targetSpeeds = [20];
+    }
     return {
       name: title,
       description: text.slice(0, 2000),
       category: ir.category,
-      ego_speeds_kmh: leadPick("ego_speed_kmh", "ego_speeds_kmh", 10, 0, ir.ego_speed_kmh),
-      // CCRs giữ đúng 0; CCRm lấy ±5 km/h quanh giá trị IR nhưng vẫn chậm hơn ego.
-      target_speeds_kmh: ir.category === "CCRS" ? [0] : leadPick("target_speed_kmh", "target_speeds_kmh", 5, 0, ir.target_speed_kmh),
+      ego_speeds_kmh: egoSpeeds,
+      // CCRs giữ đúng 0; CCRm lấy quanh giá trị IR nhưng kẹp < min(ego); CCRb luôn > 0.
+      target_speeds_kmh: targetSpeeds,
       initial_distances_m: leadPick("initial_distance_m", "initial_distances_m", 10, 0, ir.initial_distance_m),
       target_decels_mps2: ir.category === "CCRB" ? leadPick("target_decel_mps2", "target_decels_mps2", 2, 1, ir.target_decel_mps2) : undefined,
       lateral_overlaps_pct: [...new Set([overlap, -100])],
