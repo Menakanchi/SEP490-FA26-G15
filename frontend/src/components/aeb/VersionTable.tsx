@@ -59,51 +59,31 @@ export function VersionTable({
       {/* THANH BỘ LỌC VÀ TÌM KIẾM */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line bg-vehicsim-surface px-5 py-3.5">
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setFilterStatus("ALL");
-              setVersionPage(1);
-            }}
-            className={cx(
-              "rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold transition-all duration-150 border border-solid",
-              filterStatus === "ALL"
-                ? "bg-slate-900 border-slate-900 text-white shadow-xs"
-                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 hover:border-slate-300",
-            )}
-          >
-            Tất cả ({allCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setFilterStatus("CANDIDATE");
-              setVersionPage(1);
-            }}
-            className={cx(
-              "rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold transition-all duration-150 border border-solid",
-              filterStatus === "CANDIDATE"
-                ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
-                : "bg-white border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300",
-            )}
-          >
-            Ứng viên ({candidateCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setFilterStatus("BASELINE");
-              setVersionPage(1);
-            }}
-            className={cx(
-              "rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold transition-all duration-150 border border-solid",
-              filterStatus === "BASELINE"
-                ? "bg-slate-900 border-slate-900 text-white shadow-xs"
-                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 hover:border-slate-300",
-            )}
-          >
-            Bản cơ sở ({baselineCount})
-          </button>
+          {[
+            { key: "ALL", label: `Tất cả (${allCount})` },
+            { key: "CANDIDATE", label: `Ứng viên (${candidateCount})` },
+            { key: "BASELINE", label: `Bản cơ sở (${baselineCount})` },
+          ].map((tab) => {
+            const active = filterStatus === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => {
+                  setFilterStatus(tab.key);
+                  setVersionPage(1);
+                }}
+                className={cx(
+                  "rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold transition-all duration-150 border border-solid",
+                  active
+                    ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
+                    : "bg-white border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300",
+                )}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex items-center gap-2.5">
