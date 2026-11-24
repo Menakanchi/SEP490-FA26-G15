@@ -34,7 +34,7 @@ const METHODS: Record<ExplanationMetric, Method> = {
     variables: "x_last, x_onset: vị trí mũi ego (m); v_last: tốc độ cuối (m/s); a_available: độ lớn giảm tốc khả dụng (m/s²). Nếu a_available ≤ 0, code dùng phần còn lại bằng 0.",
     conditions: "Không có onset/frame pha phanh thì null. Bắt đầu từ onset lệnh, không bao gồm quãng phản ứng từ quyết định đến onset.",
     interpretation: "Không luôn là quãng dừng đã đo. Phần ngoại suy giả định giảm tốc không đổi; không phải required stopping distance hay khoảng trống còn đủ để tránh va chạm.",
-    limitations: ["Động học dùng min(AEB max, xe max, μg); CARLA xosc5 thêm giới hạn phanh 100% theo cấu hình. File cũ giữ cách tính cũ.", "API Detail chưa trả x_onset và a_available của phép tính; không thay số bằng giảm tốc cực đại đã đo hoặc tham số cấu hình.", "CARLA còn lệch ở tốc độ thấp/ma sát; phần ngoại suy không chứng minh xe thực dừng đúng quãng này."],
+    limitations: ["Động học dùng min(AEB max, xe max, μg); CARLA từ xosc5 thêm giới hạn phanh 100% theo cấu hình. File cũ giữ cách tính cũ.", "API Detail chưa trả x_onset và a_available của phép tính; không thay số bằng giảm tốc cực đại đã đo hoặc tham số cấu hình.", "CARLA còn lệch ở tốc độ thấp/ma sát; phần ngoại suy không chứng minh xe thực dừng đúng quãng này."],
     method: "Simulator.brakePhaseMetrics · observed + extrapolated",
   },
   ttc: {
@@ -79,8 +79,9 @@ export function metricExplanation(kind: ExplanationMetric, detail: FailureDetail
   const content = { ...METHODS[kind] };
   const category = detail.environment.category;
   const cp = category === "CP_CROSSING", lead = ["CCRS", "CCRM", "CCRB"].includes(category ?? "");
-  const engine = detail.simulator === "vehicsim-kinematic-1.0" ? "Động học Java"
-    : /^carla-\d+\.\d+\.\d+-xosc[345]$/.test(detail.simulator ?? "") ? "CARLA qua lõi Java" : "Chưa xác định phương pháp simulator";
+  const sim = detail.simulator ?? "";
+  const engine = /^vehicsim-kinematic-\d+\.\d+$/.test(sim) ? "Động học Java"
+    : /^carla-\d+\.\d+\.\d+-xosc(?:[3-9]|[1-9]\d+)$/.test(sim) ? "CARLA qua lõi Java" : "Chưa xác định phương pháp simulator";
   const known = (cp || lead) && detail.metrics.metric_source === "SIMULATOR_RESULT" && engine !== "Chưa xác định phương pháp simulator";
   const inputs: Input[] = [];
   const add = (label: string, value: unknown, unit: string, field: string) => inputs.push({ label, value: formatMeasurement(value, unit, undefined, true), field });

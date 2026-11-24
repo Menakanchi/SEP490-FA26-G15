@@ -80,4 +80,37 @@ class SimilarFailuresTest {
         assertThat(similar.get(0).get("similarity_pct")).isEqualTo(100L);
         assertThat((Long) similar.get(1).get("similarity_pct")).isLessThan(100L);
     }
+
+    @Test
+    void leadVehicleSimilarityUsesLeadParametersAndLaneAlignment() {
+        Map<String, Object> targetMe = Json.obj("motif", "lead_vehicle", "category", "CCRB", "ego_speed_kmh", 60.0,
+                "target_speed_kmh", 40.0, "initial_distance_m", 20.0, "target_decel_mps2", -6.0, "lateral_overlap_pct", 100.0,
+                "weather", "CLEAR", "time_of_day", "DAY");
+        AnalysisViewService.RunBundle leadBundle = new AnalysisViewService.RunBundle(
+                new Row(Json.obj("id", 1L, "scenario_id", 43L, "aeb_mode", "ON", "run_config_json", Json.write(targetMe))),
+                null, null, null, null, null, Json.obj("chain", List.of()));
+
+        Row exact = new Row(Json.obj("failure_id", 21L, "run_id", 21L, "scenario_id", 43L, "scenario_code", "LR", "scenario_name", "LR",
+                "version_no", 21L, "aeb_version_id", 7L, "aeb_version_no", 1L, "run_config_json", Json.write(targetMe),
+                "collision_occurred", true, "is_false_positive", false, "failure_type", "X", "severity", "HIGH"));
+        Map<String, Object> diffTarget = new java.util.LinkedHashMap<>(targetMe);
+        diffTarget.put("target_speed_kmh", 10.0);
+        diffTarget.put("initial_distance_m", 40.0);
+        Row shifted = new Row(Json.obj("failure_id", 22L, "run_id", 22L, "scenario_id", 43L, "scenario_code", "LR", "scenario_name", "LR",
+                "version_no", 22L, "aeb_version_id", 7L, "aeb_version_no", 1L, "run_config_json", Json.write(diffTarget),
+                "collision_occurred", true, "is_false_positive", false, "failure_type", "X", "severity", "HIGH"));
+        Map<String, Object> adjLane = new java.util.LinkedHashMap<>(targetMe);
+        adjLane.put("lateral_overlap_pct", -100.0);
+        Row adjacent = new Row(Json.obj("failure_id", 23L, "run_id", 23L, "scenario_id", 43L, "scenario_code", "LR", "scenario_name", "LR",
+                "version_no", 23L, "aeb_version_id", 7L, "aeb_version_no", 1L, "run_config_json", Json.write(adjLane),
+                "collision_occurred", false, "is_false_positive", true, "failure_type", "X", "severity", "HIGH"));
+
+        when(db.list(contains("FROM failures f"), any(Object[].class))).thenReturn(List.of(adjacent, shifted, exact));
+
+        var similar = views.similarFailures(1L, leadBundle, 3);
+
+        assertThat(similar).extracting(s -> s.get("run_id")).containsExactly(21L, 22L, 23L);
+        assertThat(similar.get(0).get("similarity_pct")).isEqualTo(100L);
+        assertThat((Long) similar.get(1).get("similarity_pct")).isGreaterThan((Long) similar.get(2).get("similarity_pct"));
+    }
 }
