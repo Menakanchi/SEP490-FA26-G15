@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
@@ -82,15 +82,10 @@ export default function AebMoboNewPage() {
 
       <section className="flex flex-col gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-vehicsim-decision-bg text-vehicsim-decision">
-              <Sparkles className="size-5" />
-            </div>
-            <div>
-              <h2 className="text-[17px] font-bold text-vehicsim-ink">
-                Cấu hình tham số đợt chạy MOBO
-              </h2>
-            </div>
+          <div>
+            <h2 className="text-[17px] font-bold text-vehicsim-ink">
+              Cấu hình tham số đợt chạy MOBO
+            </h2>
           </div>
           <span className="rounded-full bg-vehicsim-soft px-3 py-1 text-[12px] font-bold text-vehicsim-ink">
             4 Tham số · 3 Mục tiêu
