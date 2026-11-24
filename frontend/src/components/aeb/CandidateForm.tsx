@@ -219,8 +219,8 @@ export function CandidateForm({
                       : "border-vehicsim-line-strong bg-vehicsim-surface text-vehicsim-ink focus:border-vehicsim-primary focus:ring-vehicsim-primary/20",
                   )}
                 />
-                <span className="w-9 text-[12.5px] font-bold text-vehicsim-muted">
-                  {p.unit === "ratio" ? "" : p.unit}
+                <span className="min-w-[42px] text-[15px] font-bold text-vehicsim-ink">
+                  {p.unit === "ratio" ? "" : p.unit === "m/s2" ? "m/s²" : p.unit === "m/s3" ? "m/s³" : p.unit}
                 </span>
               </div>
             </div>
