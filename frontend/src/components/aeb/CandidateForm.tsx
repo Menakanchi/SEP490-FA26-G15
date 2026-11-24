@@ -230,15 +230,15 @@ export function CandidateForm({
 
       {/* Footer bar: Tóm tắt & Nút Tạo ứng viên */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line pt-3">
-        <span className="text-[12.5px] font-medium text-vehicsim-muted">
-          {changed.length > 0 ? (
-            <>
-              Đang chỉnh sửa <strong className="font-bold text-vehicsim-ink">{changed.length}</strong> tham số so với AEB {parent.label}.
-            </>
-          ) : (
-            <>Chưa có tham số nào thay đổi so với bản gốc.</>
-          )}
-        </span>
+        {changed.length > 0 ? (
+          <span className="text-[12.5px] font-medium text-vehicsim-muted">
+            Đang chỉnh sửa <strong className="font-bold text-vehicsim-ink">{changed.length}</strong> tham số so với AEB {parent.label}.
+          </span>
+        ) : (
+          <span className="text-[13px] font-semibold text-vehicsim-danger">
+            Chưa có tham số nào thay đổi so với bản gốc.
+          </span>
+        )}
         <PillButton
           variant="dark"
           className="px-5 py-2 text-[13px] font-bold"
