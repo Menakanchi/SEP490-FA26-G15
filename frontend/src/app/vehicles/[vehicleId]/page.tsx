@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { Card, CardTitle, EmptyState, ErrorNote, StatCard, Tag, fmt, simulatorLabel } from "@/components/VehicSimUi";
 import { decel, dimensions, withUnit } from "@/components/vehicleFormat";
+import { VehicleModelViewer } from "@/components/VehicleModelViewer";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { VehicleDetail } from "@/types/vehicsim";
 
@@ -76,6 +77,8 @@ export default function VehicleDetailPage() {
               Mẫu xe này chỉ để xem, chưa dùng cho mô phỏng: giới hạn phanh của bộ động học chưa phù hợp với loại xe này.
             </p>
           )}
+
+          <VehicleModelViewer blueprintId={v.carla_blueprint_id} name={v.name} />
 
           <div className="grid grid-cols-2 gap-4">
             <Card className="flex flex-col gap-3 p-5">
