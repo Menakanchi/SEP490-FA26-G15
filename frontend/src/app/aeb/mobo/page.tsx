@@ -190,6 +190,15 @@ export default function AebMoboStudioPage() {
   }, [runs, runsPage]);
   const runsPages = Math.ceil((runs?.length ?? 0) / RUNS_PAGE_SIZE);
 
+  const completedTrialsCount =
+    activeRun?.completed_trials ??
+    (allTrials && allTrials.length > 0 ? allTrials.length : 0);
+  const maxTrialsCount = activeRun?.max_trials || 10;
+  const runProgressPct =
+    maxTrialsCount > 0
+      ? Math.min(100, Math.round((completedTrialsCount / maxTrialsCount) * 100))
+      : 0;
+
   return (
     <VehicSimPage
       step={4}
@@ -298,6 +307,71 @@ export default function AebMoboStudioPage() {
             </div>
           )}
         </div>
+
+        {/* THANH TIẾN ĐỘ CHẠY (PROGRESS BAR) */}
+        {activeRun && (
+          <div className="mt-4 border-t border-solid border-vehicsim-line/60 pt-3.5">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[12px]">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-vehicsim-ink">Tiến độ chạy:</span>
+                <span className="font-mono font-medium text-vehicsim-muted">
+                  {completedTrialsCount} / {maxTrialsCount} trials ({runProgressPct}%)
+                </span>
+                {activeRun.status === "RUNNING" && (
+                  <span className="inline-flex items-center gap-1.5 font-medium text-vehicsim-primary animate-pulse">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-vehicsim-primary opacity-75"></span>
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-vehicsim-primary"></span>
+                    </span>
+                    Đang chạy trial #{Math.min(maxTrialsCount, completedTrialsCount + 1)}…
+                  </span>
+                )}
+                {activeRun.status === "COMPLETED" && (
+                  <span className="text-[11px] font-semibold text-vehicsim-ok">
+                    ✓ Hoàn tất toàn bộ {maxTrialsCount} trials
+                  </span>
+                )}
+                {activeRun.status === "CANCELLED" && (
+                  <span className="text-[11px] font-semibold text-amber-500">
+                    ⚠ Đã dừng ở trial #{completedTrialsCount}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                {activeRun.pareto_count > 0 && (
+                  <span className="text-[11px] font-semibold text-vehicsim-ok">
+                    ★ {activeRun.pareto_count} nghiệm Pareto
+                  </span>
+                )}
+                <span className="font-mono font-bold text-vehicsim-ink">{runProgressPct}%</span>
+              </div>
+            </div>
+
+            {/* Thanh tiến độ */}
+            <div
+              role="progressbar"
+              aria-valuenow={runProgressPct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`Tiến độ đợt tối ưu: ${runProgressPct}%`}
+              className="h-2.5 w-full overflow-hidden rounded-full bg-vehicsim-line/70 dark:bg-slate-800"
+            >
+              <div
+                className={cx(
+                  "h-full rounded-full transition-all duration-500 ease-out",
+                  activeRun.status === "RUNNING"
+                    ? "bg-gradient-to-r from-blue-500 via-indigo-500 to-vehicsim-primary shadow-sm"
+                    : activeRun.status === "COMPLETED"
+                    ? "bg-vehicsim-ok"
+                    : activeRun.status === "CANCELLED"
+                    ? "bg-amber-500"
+                    : "bg-vehicsim-danger"
+                )}
+                style={{ width: `${runProgressPct}%` }}
+              />
+            </div>
+          </div>
+        )}
       </section>
 
       {/* CỤM TABS CON NỘI BỘ (PARETO / TRIALS / LỊCH SỬ RUNS) */}
