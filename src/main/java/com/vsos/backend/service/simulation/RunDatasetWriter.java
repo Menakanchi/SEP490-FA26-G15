@@ -81,8 +81,18 @@ final class RunDatasetWriter {
         }
     }
 
+    /** Khối dựng lúc worker vừa ghi kết quả (đường chạy run bình thường). */
+    static final String CAPTURE_RESULT_WRITE = "RESULT_WRITE";
+    /** Khối dựng lúc xuất file gộp cho run cũ chưa có khối: trạng thái DB là trạng thái lúc xuất, không phải lúc run. */
+    static final String CAPTURE_COLLECTION_EXPORT = "COLLECTION_EXPORT";
+
     static Map<String, Object> build(Row run, Map<String, Object> bundle, Map<String, Object> aebVersion, Map<String, Object> result, Path folder,
                                      String gitCommit) throws IOException {
+        return build(run, bundle, aebVersion, result, folder, gitCommit, CAPTURE_RESULT_WRITE);
+    }
+
+    static Map<String, Object> build(Row run, Map<String, Object> bundle, Map<String, Object> aebVersion, Map<String, Object> result, Path folder,
+                                     String gitCommit, String capture) throws IOException {
         Map<String, Object> status = new LinkedHashMap<>();
         Map<String, Object> outcome = Json.asMap(result.get("outcome"));
         Map<String, Object> metrics = Json.asMap(outcome.get("metrics"));
@@ -101,8 +111,9 @@ final class RunDatasetWriter {
 
         Map<String, Object> block = new LinkedHashMap<>();
         block.put("format", RunDataset.FORMAT);
+        block.put("captured_when", capture);
         block.put("identity", identity(run, result, status));
-        block.put("config", config(bundle, caseDoc, aebVersion, run, status));
+        block.put("config", config(bundle, caseDoc, aebVersion, run, capture, status));
         block.put("objectives", objectives(result, metrics, carla, xosc, status));
         block.put("provenance", provenance(folder, simulator, parsed ? profile.group(1) : null, result, frames, groundTruth, summary, collisionList,
                 gitCommit, status));
@@ -143,10 +154,10 @@ final class RunDatasetWriter {
     }
 
     private static Map<String, Object> config(Map<String, Object> bundle, Map<String, Object> caseDoc, Map<String, Object> aebVersion, Row run,
-                                              Map<String, Object> status) {
+                                              String capture, Map<String, Object> status) {
         Map<String, Object> cfg = new LinkedHashMap<>();
         cfg.put("aeb", bundle == null ? null : bundle.get("aeb"));
-        cfg.put("aeb_version", aebVersion(aebVersion, run));
+        cfg.put("aeb_version", aebVersion(aebVersion, run, capture));
         cfg.put("vehicle", bundle == null ? null : bundle.get("vehicle"));
         cfg.put("variant", bundle == null ? null : bundle.get("variant"));
         cfg.put("road_friction", caseDoc.get("road_friction"));
@@ -157,25 +168,37 @@ final class RunDatasetWriter {
         if (aebVersion == null) {
             gaps.add("không đọc được dòng aeb_versions của run");
         }
-        status.put("config", gaps.isEmpty() ? state("OK", "aeb_version là trạng thái khai báo từ DB lúc ghi kết quả, không phải chứng nhận baseline/hiệu chuẩn")
+        String when = CAPTURE_RESULT_WRITE.equals(capture) ? "lúc ghi kết quả" : "lúc xuất file gộp (không phải lúc run)";
+        status.put("config", gaps.isEmpty() ? state("OK", "aeb_version là trạng thái khai báo từ DB " + when + ", không phải chứng nhận baseline/hiệu chuẩn")
                 : state("MISSING", String.join("; ", gaps)));
         return cfg;
     }
 
-    /** C06: phiên bản AEB của run và trạng thái của nó trong project lúc ghi kết quả. Khai báo, không xác minh. */
-    private static Map<String, Object> aebVersion(Map<String, Object> version, Row run) {
+    /**
+     * C06: phiên bản AEB của run và trạng thái của nó trong project. Khai báo, không xác minh. Dựng lúc ghi kết quả thì đó là trạng thái lúc
+     * ghi; dựng lúc xuất file gộp (run cũ) thì trạng thái lúc ghi không còn biết được: hai trường {@code *_at_result_time} để null và trạng thái
+     * đọc được nằm ở {@code *_at_export_time}.
+     */
+    private static Map<String, Object> aebVersion(Map<String, Object> version, Row run, String capture) {
         if (version == null) {
             return null;
         }
+        boolean atResult = CAPTURE_RESULT_WRITE.equals(capture);
         Map<String, Object> v = new LinkedHashMap<>();
         v.put("id", version.get("id"));
         v.put("project_id", version.get("project_id"));
         v.put("version_no", version.get("version_no"));
         v.put("label", version.get("label"));
-        v.put("status_at_result_time", version.get("status"));
-        v.put("is_project_baseline_at_result_time", "BASELINE".equals(version.get("status")));
+        v.put("status_at_result_time", atResult ? version.get("status") : null);
+        v.put("is_project_baseline_at_result_time", atResult ? "BASELINE".equals(version.get("status")) : null);
+        if (!atResult) {
+            v.put("status_at_export_time", version.get("status"));
+            v.put("is_project_baseline_at_export_time", "BASELINE".equals(version.get("status")));
+            v.put("note", "khối dựng lúc xuất file gộp: không biết trạng thái phiên bản lúc run ghi kết quả");
+        }
         v.put("source", version.get("source"));
         v.put("parent_version_id", version.get("parent_version_id"));
+        v.put("captured_when", capture);
         v.put("captured_at_utc", Instant.now().toString());
         v.put("verification", "DECLARED");
         v.put("matches_run", Objects.equals(String.valueOf(version.get("id")), String.valueOf(run.getLong("aeb_version_id"))));

@@ -132,6 +132,8 @@ class VehicSimSecurityTest {
     @MockitoBean
     private TelemetryMetricsService telemetryService;
     @MockitoBean
+    private com.vsos.backend.service.simulation.RunCollectionService runCollections;
+    @MockitoBean
     private VehicleCatalogService vehicles;
     @MockitoBean
     private ProjectAccess projects;

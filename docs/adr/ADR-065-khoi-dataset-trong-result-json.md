@@ -33,7 +33,21 @@ Sau khi worker thoát (lúc `sensors/*` đã đủ), `RunService` gọi `RunData
 | C02 `provenance.embedded_payloads` | SHA-256 của chính dữ liệu đã nhúng (frames, ground truth, collisions, summary) theo quy tắc `spec` (Python `json.dumps(…, ensure_ascii=False)`), bên nhận tính lại được không cần file gốc. Hash file gốc ghi rõ là `DECLARED` |
 | C06 `config.aeb_version` | Dòng `aeb_versions` lúc ghi kết quả: `version_no`, `label`, `status_at_result_time`, `is_project_baseline_at_result_time`, `verification = DECLARED`. Không chứng nhận baseline hay hiệu chuẩn |
 
-Bộ từ vựng trạng thái: `OK` / `MISSING` / `INVALID` / `CONFLICTING` / `FLAGGED` (mục) và thêm `NOT_APPLICABLE` (từng objective). C07 (nhãn `LOW_FRICTION` sai của `Evaluation`) là lỗi luật chấm có từ trước, ghi ở TD-63, không sửa trong khối này. C01 (adapter đọc JSON) và C09 (gộp nhiều run) thuộc phần Phân tích.
+Bộ từ vựng trạng thái: `OK` / `MISSING` / `INVALID` / `CONFLICTING` / `FLAGGED` (mục) và thêm `NOT_APPLICABLE` (từng objective). C07 (nhãn `LOW_FRICTION` sai của `Evaluation`) là lỗi luật chấm có từ trước, ghi ở TD-63, không sửa trong khối này. C01 (adapter đọc JSON) thuộc phần Phân tích.
+
+**Cập nhật 24/11/2026 (lần 2, C08 bằng chứng và C09):** `GET /api/v1/vehicsim/variants/{variantId}/collection` (`RunCollectionService`) xuất
+file gộp `vehicsim.run-collection/v1` của một biến thể: mọi run CARLA `COMPLETED` (mọi purpose) trong project đang mở, **mỗi run giữ nguyên
+tài liệu `result.json`** ở `runs[]`, cùng `manifest` (định danh, ON/OFF, `repetition`, `attempt`, `document_state`, `dataset_source`,
+`document_sha256` theo cùng quy tắc digest), `groups` (cùng AEB version + xe + simulator + seed; liệt kê run ON và OFF, `on_off_comparable`,
+ghi chú khi thiếu lần lặp hoặc thiếu OFF), `excluded` (số run động học và run CARLA chưa hoàn tất) và `status`. Không gộp hay trung bình số giữa
+các run (`rules.no_cross_run_aggregation`); không niêm phong (`sealed = false`). Run có trước ADR này chưa có khối `dataset`: khối được dựng lúc
+xuất (`captured_when = COLLECTION_EXPORT`, `dataset_source = BUILT_AT_EXPORT`), không ghi lại vào đĩa, `git_commit = null`, và trạng thái phiên bản
+AEB nằm ở `status_at_export_time` (hai trường `*_at_result_time` là `null` vì không còn biết). Khối ghi lúc chạy mang `captured_when = RESULT_WRITE`.
+
+Bằng chứng xuất thật từ DB dev (project 4, `-xosc15`): biến thể 1032 (ON 2498 không phanh, OFF 2510), 1033 (ON 2499 và OFF 2511 đều va chạm),
+1034 (ON 2500 phanh dừng an toàn, OFF 2512). Ra đủ các nhánh `NOT_APPLICABLE` của C08 từ dữ liệu thật; `MISSING`/`INVALID`/`CONFLICTING` chỉ có
+bằng chứng từ test (`RunDatasetWriterTest`), không dựng dữ liệu giả để minh họa. Chưa có lần lặp ON thứ hai nào trên `-xosc15`: muốn có phải
+chạy thêm CARLA.
 
 Nguyên tắc: không điền giả. Trường chưa thu được là `null` kèm lý do; module phân tích đọc thành `UNKNOWN`. Lỗi khi dựng khối chỉ ghi `status.build = INVALID`, không bao giờ làm run thất bại.
 

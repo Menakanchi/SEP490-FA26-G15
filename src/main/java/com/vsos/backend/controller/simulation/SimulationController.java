@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import com.vsos.backend.common.Json;
 import com.vsos.backend.security.VehicSimAccess;
+import com.vsos.backend.service.simulation.RunCollectionService;
 import com.vsos.backend.service.simulation.RunService;
 import com.vsos.backend.service.simulation.SimulationViewService;
 import com.vsos.backend.service.simulation.TelemetryMetricsService;
@@ -53,6 +54,7 @@ public class SimulationController {
     private final RunService runs;
     private final TelemetryMetricsService telemetryService;
     private final VehicSimAccess access;
+    private final RunCollectionService collections;
 
     /** {@code with_aeb_off}: thêm một lượt AEB tắt cho mỗi biến thể (mốc tham chiếu của baseline, chốt 13/11/2026); mặc định không. */
     public record RunFamilyRequest(@JsonProperty("aeb_version_id") Long aebVersionId, @JsonProperty("with_aeb_off") Boolean withAebOff) {
@@ -92,6 +94,15 @@ public class SimulationController {
         return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/zip"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"vehicsim-family-" + scenarioId + "-xosc.zip\"")
                 .body(views.familyXoscZip(scenarioId));
+    }
+
+    @Operation(summary = "Tải file gộp mọi run CARLA hoàn tất của một biến thể cho Failure Analysis (ADR-065): mỗi run giữ nguyên result.json "
+            + "kèm khối dataset, cùng manifest và nhóm AEB ON/OFF; không gộp số liệu giữa các run")
+    @GetMapping("/variants/{variantId}/collection")
+    public ResponseEntity<byte[]> getVariantCollection(@PathVariable long variantId) throws IOException {
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/json; charset=utf-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"vehicsim-variant-" + variantId + "-collection.json\"")
+                .body(collections.variantCollection(variantId));
     }
 
     @Operation(summary = "Chạy lại đúng biến thể/AEB/xe/seed trên CARLA qua ScenarioRunner")

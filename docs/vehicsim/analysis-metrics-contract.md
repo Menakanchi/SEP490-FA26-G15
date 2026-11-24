@@ -54,6 +54,8 @@ Run CARLA ghi thêm khóa `dataset` cạnh `outcome`/`evaluation`: `identity`, `
 Phân tích đọc `status.<mục>.state` (`OK`/`MISSING`/`INVALID`/`CONFLICTING`/`FLAGGED`) và coi `null` là `UNKNOWN`, không thay bằng 0.
 Objective null đọc theo `objectives.<tên>.state`: chỉ `NOT_APPLICABLE` mới là "không áp dụng"; `MISSING` là thiếu số. Tính chỉ số từ chuỗi thời gian
 thì bỏ các dòng trong `time_series.quality.*.masks` (khởi tạo, gia tốc phi lý, sau va chạm) như `TelemetryMetricsService` đang làm.
+Nhiều run của một biến thể (ON/OFF, lần lặp): `GET /variants/{variantId}/collection` trả `vehicsim.run-collection/v1`, mỗi run giữ nguyên
+`result.json`, so sánh chỉ trong cùng `groups[].key` (AEB version, xe, simulator, seed); phép gộp vẫn thuộc phần Phân tích.
 `derived` (`d_*`, [RunDataset](../../src/main/java/com/vsos/core/evaluation/RunDataset.java)) là số tham khảo `REFERENCE_ONLY`: không thay công thức của lõi,
 không làm objective. Cột cần nhiều run (AEB OFF − ON, thống kê lặp, candidate lỗi) thuộc Dataset v2 bên dưới, không thuộc một `result.json`.
 

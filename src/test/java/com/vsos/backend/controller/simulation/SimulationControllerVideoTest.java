@@ -30,7 +30,8 @@ class SimulationControllerVideoTest {
     private MockMvc mvc(RunService runs) {
         VehicSimAccess access = mock(VehicSimAccess.class);
         when(access.projectId()).thenReturn(1L);
-        return MockMvcBuilders.standaloneSetup(new SimulationController(mock(SimulationViewService.class), runs, mock(TelemetryMetricsService.class), access))
+        return MockMvcBuilders.standaloneSetup(new SimulationController(mock(SimulationViewService.class), runs, mock(TelemetryMetricsService.class), access,
+                mock(com.vsos.backend.service.simulation.RunCollectionService.class)))
                 .build();
     }
 
