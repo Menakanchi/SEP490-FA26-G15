@@ -145,4 +145,19 @@ class RunResultDeleteTest {
         assertThat(active).exists();
         assertThat(referenced).exists();
     }
+
+    @Test
+    void deletingAFamilyBySimulatorTypeFiltersOnlyThatType() throws Exception {
+        Path carlaRun = runFolder(10);
+        when(db.list(org.mockito.ArgumentMatchers.contains("AND simulator_type = ?"),
+                org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq(3L), org.mockito.ArgumentMatchers.eq("CARLA")))
+                .thenReturn(List.of(new Row(Json.obj("id", 10L, "status", "COMPLETED"))));
+
+        Map<String, Object> result = runs.deleteFamilyBaselineRuns(1, 3, 7, "carla");
+
+        assertThat(result).containsEntry("deleted", 1);
+        assertThat(carlaRun).doesNotExist();
+        assertThatThrownBy(() -> runs.deleteFamilyBaselineRuns(1, 3, 7, "INVALID"))
+                .isInstanceOf(Vs.InvalidRequestException.class);
+    }
 }

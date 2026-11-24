@@ -115,11 +115,11 @@ export function CarlaRunnerPanel() {
   };
 
   const removeFamilyResults = async () => {
-    if (!window.confirm(`Xóa kết quả baseline của ${familyDeletable} lượt đã kết thúc trong họ này? Số đo, video và file cảm biến bị xóa vĩnh viễn. `
+    if (!window.confirm(`Xóa kết quả baseline CARLA của ${familyDeletable} lượt đã kết thúc trong họ này? Số đo, video và file cảm biến bị xóa vĩnh viễn. `
       + "Lượt đang chờ/đang chạy và lượt đang là mốc của kiểm thử hồi quy được giữ lại.")) return;
     setBusy(true); setError(null); setNotice(null);
     try {
-      const r = await vehicsimApi.deleteFamilyBaseline(Number(familyId));
+      const r = await vehicsimApi.deleteFamilyBaseline(Number(familyId), "CARLA");
       if (selected !== null && familyRuns.some(run => run.id === selected) && r.deleted > 0) { setSelected(null); setData(null); setImage(null); }
       const kept = [r.skipped_active ? `${r.skipped_active} lượt đang chờ/chạy` : "", r.skipped_in_use ? `${r.skipped_in_use} lượt là mốc của hồi quy` : ""].filter(Boolean);
       setNotice(`Đã xóa ${r.deleted} lượt.${kept.length ? ` Giữ lại ${kept.join(", ")}.` : ""}`);

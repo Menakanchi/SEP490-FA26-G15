@@ -175,9 +175,10 @@ export const vehicsimApi = {
   /** Xoá kết quả một run baseline đã kết thúc (DB + file). Run đang chạy, run của regression/tối ưu hoặc mốc của regression bị từ chối. */
   deleteRun: (runId: number) => apiRequest<{ run_id: number; deleted: boolean }>(`/vehicsim/runs/${runId}`, { method: "DELETE" }),
   /** Xoá mọi kết quả baseline đã kết thúc của họ; giữ lại run đang chờ/chạy và run đang là mốc của regression. */
-  deleteFamilyBaseline: (scenarioId: number) =>
+  deleteFamilyBaseline: (scenarioId: number, simulatorType?: "CARLA" | "KINEMATIC") =>
     apiRequest<{ scenario_id: number; deleted: number; skipped_in_use: number; skipped_active: number }>(
-      `/vehicsim/families/${scenarioId}/baseline-runs`, { method: "DELETE" }),
+      `/vehicsim/families/${scenarioId}/baseline-runs${simulatorType ? `?simulator_type=${simulatorType}` : ""}`,
+      { method: "DELETE" }),
   carlaStatus: () => apiRequest<CarlaStatus>("/vehicsim/carla/status"),
   carlaRuns: () => apiRequest<CarlaRun[]>("/vehicsim/carla/runs"),
   carlaData: (runId: number) => apiRequest<CarlaData>(`/vehicsim/runs/${runId}/carla-data`),

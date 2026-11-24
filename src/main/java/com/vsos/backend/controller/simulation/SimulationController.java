@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
@@ -133,10 +134,13 @@ public class SimulationController {
 
     @Operation(summary = "Xoá mọi kết quả baseline đã kết thúc của một họ kịch bản (giữ run đang chờ/chạy và run đang là mốc của regression)")
     @DeleteMapping("/families/{scenarioId}/baseline-runs")
-    public Map<String, Object> deleteFamilyBaselineRuns(@PathVariable long scenarioId, @AuthenticationPrincipal UserDetails user) {
+    public Map<String, Object> deleteFamilyBaselineRuns(
+            @PathVariable long scenarioId,
+            @RequestParam(name = "simulator_type", required = false) String simulatorType,
+            @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "run_delete");
-        return runs.deleteFamilyBaselineRuns(access.projectId(), scenarioId, uid);
+        return runs.deleteFamilyBaselineRuns(access.projectId(), scenarioId, uid, simulatorType);
     }
 
     @Operation(summary = "Hủy mọi run đang chờ/đang chạy của một họ kịch bản (bỏ qua run của regression/tối ưu)")
