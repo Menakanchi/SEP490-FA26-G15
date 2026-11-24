@@ -649,6 +649,7 @@ public class RunService {
         }
         Map<String, Object> result = Json.parseMap(Files.readString(resultPath, StandardCharsets.UTF_8));
         checkResult(result, run);
+        RunDatasetWriter.attach(resultPath, result, run, bundle, folder, repoRoot()); // ADR-065: khối dataset cho Failure Analysis, không bao giờ làm run lỗi
         Map<String, Object> artifacts = new LinkedHashMap<>();
         artifacts.put("result", resultPath.toString());
         if (input.toString().endsWith(".xosc")) {

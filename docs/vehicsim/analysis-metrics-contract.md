@@ -47,6 +47,14 @@ TTC perception và GT độc lập; thiếu perception không lấy GT thế ch�
 Chuỗi nguyên nhân là giả thuyết theo luật; số confidence không phải xác suất đã hiệu chuẩn.
 UI hiển thị số đo có thật cho từng khâu và lý do không đủ dữ liệu.
 
+## Khối `dataset` của `result.json` ([ADR-065](../adr/ADR-065-khoi-dataset-trong-result-json.md))
+
+Run CARLA ghi thêm khóa `dataset` cạnh `outcome`/`evaluation`: `identity`, `config`, `objectives` (cả `outcome.metrics` lẫn `evaluation.aeb_result`),
+`provenance` (hash từng file), `sensors`, `collisions` (tách khỏi cờ `collision`), `time_series` (nội dung frames và ground truth), `derived`, `status`.
+Phân tích đọc `status.<mục>.state` (`OK`/`MISSING`/`INVALID`/`CONFLICTING`) và coi `null` là `UNKNOWN`, không thay bằng 0.
+`derived` (`d_*`, [RunDataset](../../src/main/java/com/vsos/core/evaluation/RunDataset.java)) là số tham khảo `REFERENCE_ONLY`: không thay công thức của lõi,
+không làm objective. Cột cần nhiều run (AEB OFF − ON, thống kê lặp, candidate lỗi) thuộc Dataset v2 bên dưới, không thuộc một `result.json`.
+
 ## Dataset v2
 
 `analysis_results` / BASELINE_DATASET / IMMUTABLE_SNAPSHOT, JSON `vehicsim.analysis-dataset/v2`.
