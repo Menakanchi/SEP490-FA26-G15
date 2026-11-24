@@ -169,9 +169,6 @@ export default function AebMoboNewPage() {
                     Siêu tốc (~30s)
                   </span>
                 </div>
-                <p className="text-[12.5px] leading-relaxed text-vehicsim-muted">
-                  Tính toán vật lý đa luồng trên CPU. Phù hợp để khám phá nhanh không gian tham số và chạy nhiều trials.
-                </p>
               </button>
 
               <button
@@ -192,9 +189,6 @@ export default function AebMoboNewPage() {
                     Chính xác cao
                   </span>
                 </div>
-                <p className="text-[12.5px] leading-relaxed text-vehicsim-muted">
-                  Chạy trên Unreal Engine 3D với cảm biến radar và ma sát lốp thực. Cần mở CARLA server trước.
-                </p>
                 {carlaStatus && !carlaStatus.connected && (
                   <span className="mt-1 text-[11.5px] font-semibold text-amber-600 dark:text-amber-400">
                     CARLA chưa kết nối (bật máy chủ với scripts/dev-carla.ps1)
