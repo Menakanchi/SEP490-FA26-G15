@@ -989,7 +989,7 @@ Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critica
 - **Trạng thái code cần đối chiếu theo module:** `tech_references` đã có API/màn Admin như §6.9;
   cộng tác có `WorkspaceController`, notifications và chat (không còn chỉ là schema).
   `sensors` chưa có luồng quản trị riêng; không suy ra triển khai thuật toán từ bảng tối ưu hoặc `analysis_results`.
-  [Bàn giao ngày 17/11](admin-analysis-handover.md) ghi phạm vi Admin/Analysis đã kiểm;
+  [Bàn giao ngày 17/11](../failure-analysis-v3/README.md) ghi phạm vi Admin/Analysis đã kiểm;
   các mô tả tối ưu/cộng tác lịch sử khác trong tài liệu này cần đối chiếu code trước khi nhận việc.
 - **Phanh CARLA còn giới hạn (TD-17):** ADR-051 đã nối `max_brake_torque_nm` qua bundle/`.xosc` v5
   vào physics bánh xe và hiệu chuẩn e-tron; `carla_full_brake_decel_mps2` đi qua `vs_full_brake_decel_mps2`
@@ -1134,4 +1134,4 @@ Một output/status resource cho execution; không mang quyền dispatch optimiz
 
 ## BE-R1 verification
 
-Migration 020 ch? ?p tr?n database test ri?ng khi c? b?ng ch?ng ki?m ch?ng; xem b?o c?o backend-integration/08_TEST_REPORT.md.
+Migration 020 ch? ?p tr?n database test ri?ng khi c? b?ng ch?ng ki?m ch?ng; xem b?o c?o docs/failure-analysis-v3/README.md.

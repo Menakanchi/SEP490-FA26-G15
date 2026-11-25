@@ -1484,6 +1484,7 @@ public class RunService {
                 "case", outcome.get("case"),
                 "params", outcome.get("params"),
                 "outcome", ev.get("outcome"),
+                "evaluation_version", ev.get("version"),
                 "headline", ev.get("headline"),
                 "chain", chain);
 

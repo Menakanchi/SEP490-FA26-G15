@@ -10,6 +10,7 @@ import java.util.*;
 import static com.vsos.backend.common.Vs.*;
 import com.vsos.backend.common.Json;
 import com.vsos.backend.common.Vs;
+import com.vsos.backend.common.RunEvidence;
 import com.vsos.backend.repository.common.Db;
 import com.vsos.backend.repository.common.Queries;
 import com.vsos.backend.repository.common.Row;
@@ -46,17 +47,7 @@ public class AnalysisService {
         if (value != null && !value.toString().isBlank()) { sql.append(" AND ").append(column).append(" = ?"); args.add(value); }
     }
     public static AnalysisMetrics.Sample sample(Row row) {
-        Boolean braked = row.get("brake_onset") != null && !"null".equals(row.str("brake_onset")) ? Boolean.TRUE
-                : row.dbl("rms_jerk_mps3") != null || row.dbl("stopping_distance_m") != null ? Boolean.TRUE
-                : Boolean.FALSE.equals(row.boolOrNull("aeb_activated")) ? Boolean.FALSE : null;
-        boolean traceAvailable = row.asMap().containsKey("trace_frames")
-                ? row.getInt("trace_frames") != null && row.getInt("trace_frames") > 0
-                : !Json.asList(row.json("telemetry_json").get("frames")).isEmpty();
-        String qualityStatus = "COMPLETED".equals(row.str("status")) && !traceAvailable ? "INCOMPLETE" : row.str("status");
-        return new AnalysisMetrics.Sample(qualityStatus, row.str("end_reason"),
-                row.boolOrNull("collision_occurred"), row.boolOrNull("is_false_positive"),
-                row.boolOrNull("is_false_negative"), row.str("verdict"), braked,
-                row.dbl("rms_jerk_mps3"), row.dbl("impact_speed_mps"), row.dbl("stopping_distance_m"));
+        return RunEvidence.sample(row);
     }
     static String outcome(Row row) {
         if ("TIMEOUT".equals(row.str("end_reason"))) return "TIMEOUT";
@@ -184,8 +175,8 @@ public class AnalysisService {
             throw new InvalidRequestException("Analysis optimization objectives are incomplete");
         Row first = rows.get(0);
         Map<String,Object> contract = Json.obj("version",AnalysisMetrics.VERSION,"source","SIMULATOR_RESULT",
-                "per_run_definition","ADR040_LEGACY_UNCHANGED","filter","AS_RECORDED",
-                "impact","EGO_SPEED_NOT_RELATIVE","stopping_distance","MAY_INCLUDE_EXTRAPOLATION",
+                "per_run_definition","AS_RECORDED_BY_SIMULATOR_PROFILE","filter","AS_RECORDED",
+                "impact",impactDefinition(first.str("simulator_version")),"stopping_distance","MAY_INCLUDE_EXTRAPOLATION",
                 "identity",identity(first),"carla_observational_only",first.str("simulator_version").startsWith("carla-"));
         Map<String,Object> snapshot = Json.obj("schema","vehicsim.analysis-dataset/v2","evaluation",contract,
                 "scenario",Json.obj("id",body.scenarioId(),"code",first.str("code"),"name",first.str("name"),"category",first.str("category")),
@@ -215,6 +206,17 @@ public class AnalysisService {
                 Json.obj("schema","vehicsim.analysis-dataset/v2","evaluation",contract),snapshot,userId);
         snapshot.put("id",id); snapshot.put("baseline_current",true); snapshot.put("handoff_ready",true);
         return snapshot;
+    }
+
+    static String impactDefinition(String simulator) {
+        if (simulator == null) return "UNKNOWN";
+        if (Set.of("vehicsim-kinematic-1.1","vehicsim-kinematic-1.2","vehicsim-kinematic-1.3","vehicsim-kinematic-1.4",
+                "carla-0.9.16-xosc9","carla-0.9.16-xosc10","carla-0.9.16-xosc11","carla-0.9.16-xosc12",
+                "carla-0.9.16-xosc13","carla-0.9.16-xosc14","carla-0.9.16-xosc15","carla-0.9.16-xosc16").contains(simulator))
+            return "RELATIVE_SPEED_CORE_COLLISION_TICK";
+        if ("vehicsim-kinematic-1.0".equals(simulator) || simulator.matches("carla-0\\.9\\.16-xosc[1-8]"))
+            return "EGO_SPEED_NOT_RELATIVE";
+        return "UNKNOWN";
     }
     static boolean validTrace(Map<String,Object> raw) {
         List<Object> frames = Json.asList(raw.get("frames"));

@@ -75,7 +75,7 @@ public class AnalysisViewService {
             + "JOIN simulation_runs r ON r.id = f.simulation_run_id "
             + "JOIN scenarios s ON s.id = r.scenario_id "
             + "LEFT JOIN (SELECT failure_id, category FROM root_causes WHERE is_primary = 1) pc ON pc.failure_id = f.id "
-            + "WHERE r.project_id = ?";
+            + "WHERE r.project_id = ? AND r.aeb_mode = 'ON'";
 
     private static final int SIMILAR_CANDIDATES = 2000;
 

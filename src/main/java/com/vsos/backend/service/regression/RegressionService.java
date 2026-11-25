@@ -1,6 +1,7 @@
 package com.vsos.backend.service.regression;
 
 import com.vsos.backend.common.Vs;
+import com.vsos.backend.common.Json;
 import com.vsos.backend.common.audit.AuditLog;
 import com.vsos.backend.common.Vs.InvalidRequestException;
 import com.vsos.backend.common.Vs.NotFoundException;
@@ -215,7 +216,7 @@ public class RegressionService {
             if (statuses.stream().anyMatch(s -> s == null || s.equals("PENDING") || s.equals("RUNNING") || s.equals("PAUSED"))) {
                 return;
             }
-            if (statuses.stream().anyMatch(s -> !s.equals("COMPLETED"))) {
+            if (statuses.stream().anyMatch(s -> !s.equals("COMPLETED")) || !evidenceComplete(test, candidateRuns, results)) {
                 repo.markFailed(testId);
                 return;
             }
@@ -309,6 +310,24 @@ public class RegressionService {
         List<Long> ids = new ArrayList<>(candidateRuns.stream().map(CandidateRun::id).toList());
         candidateRuns.forEach(r -> ids.add(r.baselineRunId()));
         return ids;
+    }
+
+    /** Shared by finalization and Accept so historical PASSED labels cannot bypass current evidence checks. */
+    static boolean evidenceComplete(RegressionTestRow test, List<CandidateRun> candidates, Map<Long, RunResult> results) {
+        if (candidates.isEmpty() || candidates.stream().map(CandidateRun::scenarioVersionId).distinct().count() != candidates.size()) {
+            return false;
+        }
+        Set<Long> expected = new LinkedHashSet<>();
+        for (Object id : Json.asList(Json.asMap(test.scenarioSet()).get("variant_ids"))) {
+            if (id instanceof Number n) expected.add(n.longValue());
+        }
+        if (!expected.isEmpty() && !expected.equals(candidates.stream().map(CandidateRun::scenarioVersionId).collect(java.util.stream.Collectors.toSet()))) {
+            return false;
+        }
+        return pairedRunIds(candidates).stream().allMatch(id -> {
+            RunResult result = results.get(id);
+            return result != null && "COMPLETED".equals(result.status()) && result.evidenceComplete();
+        });
     }
 
     private RegressionSummary summarize(RegressionTestRow test, List<CandidateRun> candidateRuns, Map<Long, RunResult> results) {

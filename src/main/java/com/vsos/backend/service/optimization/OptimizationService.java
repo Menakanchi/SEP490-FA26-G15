@@ -87,6 +87,8 @@ import java.util.*;
 
 import java.util.concurrent.ConcurrentHashMap;
 import com.vsos.backend.common.Json;
+import com.vsos.backend.common.RunEvidence;
+import com.vsos.core.evaluation.AnalysisMetrics;
 import com.vsos.backend.common.Vs;
 import com.vsos.backend.config.VehicSimProperties;
 import com.vsos.backend.repository.common.Db;
@@ -505,6 +507,7 @@ public class OptimizationService {
 
 
 
+        searchBounds(Json.parseMap(searchSpace));
         String objectiveConfig = (customObjectiveConfigJson != null && !customObjectiveConfigJson.isBlank())
 
 
@@ -537,6 +540,7 @@ public class OptimizationService {
 
 
 
+        validateObjectiveConfig(Json.parseMap(objectiveConfig));
         // Simulator: Hỗ trợ chọn KINEMATIC (siêu tốc) hoặc CARLA (3D sensor); mặc định theo cấu hình backend
         String simVersion;
         if ("CARLA".equalsIgnoreCase(simulatorType) || (simulatorType != null && simulatorType.startsWith("carla-"))) {
@@ -883,11 +887,10 @@ public class OptimizationService {
 
 
 
-                    double currentTtc = proposedParams.getOrDefault("TTC_THRESHOLD", 1.8);
+                    differentiateFromParent(proposedParams, baseValues, searchBounds(optRun.json("search_space_json")));
 
 
 
-                    proposedParams.put("TTC_THRESHOLD", Math.min(3.5, Math.round((currentTtc + 0.1) * 100.0) / 100.0));
 
 
 
@@ -1021,7 +1024,13 @@ public class OptimizationService {
 
 
 
-                CandidateTrialMetrics metrics = evaluateCandidateRuns(candidateRuns, baselineStats);
+                CandidateTrialMetrics metrics;
+                try {
+                    metrics = evaluateCandidateRuns(candidateRuns, baselineStats);
+                } catch (IllegalStateException incomplete) {
+                    db.update("UPDATE optimization_trials SET status = 'FAILED', completed_at = ? WHERE id = ?", Vs.now(), trialId);
+                    throw incomplete;
+                }
 
 
 
@@ -1349,7 +1358,8 @@ public class OptimizationService {
      * Đề xuất cấu hình AEB tiếp theo bằng lõi MOBO Java ({@link MoboEngine}, qEHVI); không còn tiến trình Python.
      * Kết quả có {@code proposed_params}, {@code sampling_source}, {@code acquisition_value} và {@code pareto_trial_numbers}.
      */
-    private Map<String, Object> proposeCandidate(Row optRun, List<Row> completedTrials, int nInitialPoints) {
+    Map<String, Object> proposeCandidate(Row optRun, List<Row> completedTrials, int nInitialPoints) {
+        ParameterBounds bounds = searchBounds(optRun.json("search_space_json"));
         List<MoboTrial> trials = new ArrayList<>();
         for (Row t : completedTrials) {
             trials.add(new MoboTrial(
@@ -1360,13 +1370,65 @@ public class OptimizationService {
                     t.dbl("stopping_distance_m"),
                     t.bool("constraint_violated")));
         }
-        MoboProposal proposal = new MoboEngine(ParameterBounds.defaults(), nInitialPoints, MOBO_SEED).propose(trials);
+        if (trials.stream().anyMatch(trial -> !bounds.isValid(trial.params()))) {
+            throw new IllegalStateException("Stored trial parameters are outside the campaign search space");
+        }
+        MoboProposal proposal = new MoboEngine(bounds, nInitialPoints, MOBO_SEED).propose(trials);
+        // Sampling rounds to three decimals; keep narrow/non-grid requested endpoints inside their stored bounds.
+        for (String key : ParameterBounds.PARAM_KEYS) {
+            proposal.params().put(key, Math.max(bounds.lower(key), Math.min(bounds.upper(key), proposal.params().get(key))));
+        }
+        if (proposal.params().values().stream().anyMatch(value -> value == null || !Double.isFinite(value)) || !bounds.isValid(proposal.params())) {
+            throw new IllegalStateException("Optimization proposed invalid parameters");
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("proposed_params", proposal.params());
         result.put("sampling_source", proposal.samplingSource());
         result.put("acquisition_value", proposal.acquisitionValue());
         result.put("pareto_trial_numbers", proposal.paretoTrialNumbers());
         return result;
+    }
+
+    static ParameterBounds searchBounds(Map<String, Object> space) {
+        if (space.isEmpty()) return ParameterBounds.defaults(); // Older records without a stored custom range.
+        Map<String,double[]> domain = Map.of("TTC_THRESHOLD",new double[]{.5,4},"BRAKE_ACTIVATION_DELAY",new double[]{0,.5},
+                "BRAKE_BUILDUP_RATE",new double[]{5,20},"MAX_DECELERATION",new double[]{3,10});
+        if (!space.keySet().equals(domain.keySet())) throw new InvalidRequestException("Invalid optimization search space: specify all four AEB parameters");
+        Map<String,double[]> bounds = new LinkedHashMap<>();
+        for (String key : ParameterBounds.PARAM_KEYS) {
+            List<Object> pair = Json.asList(space.get(key));
+            if (pair.size()!=2 || !(pair.get(0) instanceof Number low) || !(pair.get(1) instanceof Number high)
+                    || !Double.isFinite(low.doubleValue()) || !Double.isFinite(high.doubleValue())
+                    || low.doubleValue()>high.doubleValue() || low.doubleValue()<domain.get(key)[0] || high.doubleValue()>domain.get(key)[1]) {
+                throw new InvalidRequestException("Invalid optimization search space: " + key);
+            }
+            bounds.put(key,new double[]{low.doubleValue(),high.doubleValue()});
+        }
+        return new ParameterBounds(bounds);
+    }
+
+    static void differentiateFromParent(Map<String, Double> proposal, Map<String, Double> parent, ParameterBounds bounds) {
+        for (String key : ParameterBounds.PARAM_KEYS) {
+            double value = parent.get(key);
+            double other = Math.min(bounds.upper(key), value + .1);
+            if (Math.abs(other-value)<=1e-4) other = Math.max(bounds.lower(key), value - .1);
+            if (Math.abs(other-value)>1e-4) { proposal.put(key,other); return; }
+        }
+        throw new InvalidRequestException("Optimization search space cannot produce a candidate different from its parent");
+    }
+
+    static void validateObjectiveConfig(Map<String,Object> config) {
+        Map<String,Object> constraints=Json.asMap(config.get("constraints"));
+        Map<String,Object> collision=Json.asMap(constraints.get("collision_rate_pct"));
+        Map<String,Object> falseActivation=Json.asMap(constraints.get("false_activation_increase_pts"));
+        if (!config.keySet().equals(Set.of("objectives","constraints"))
+                || !Json.asList(config.get("objectives")).equals(List.of("RMS_JERK","RELATIVE_IMPACT_SPEED","STOPPING_DISTANCE"))
+                || !constraints.keySet().equals(Set.of("collision_rate_pct","false_activation_increase_pts"))
+                || !collision.equals(Map.of("max","baseline")) || !falseActivation.keySet().equals(Set.of("max"))
+                || !(falseActivation.get("max") instanceof Number n)
+                || n.doubleValue()!=com.vsos.backend.service.regression.RegressionCriteria.DEFAULT_FALSE_ACTIVATION_MAX_PTS) {
+            throw new InvalidRequestException("Unsupported optimization objective configuration: use the three canonical objectives and fixed constraints");
+        }
     }
 
     /** Chỉ giao việc cho executor sau khi transaction tạo run đã commit; nếu không luồng nền có thể không thấy dòng vừa insert và bỏ qua run. */
@@ -1423,19 +1485,14 @@ public class OptimizationService {
 
 
 
-    private CandidateTrialMetrics evaluateCandidateRuns(List<Row> runs, BaselineStats baselineStats) {
-
-
-
-        if (runs.isEmpty()) {
-
-
-
-            return new CandidateTrialMetrics(0.0, 0.0, 0.0, 0.0, 0.0, true);
-
-
-
+    CandidateTrialMetrics evaluateCandidateRuns(List<Row> runs, BaselineStats baselineStats) {
+        if (runs.isEmpty() || runs.stream().anyMatch(r -> !RunEvidence.completeAebOn(r))
+                || !AnalysisMetrics.objectivesAvailable(runs.stream().map(RunEvidence::sample).toList())) {
+            throw new IllegalStateException("Optimization candidate has incomplete run evidence or objectives");
         }
+
+
+
 
 
 
@@ -1495,7 +1552,7 @@ public class OptimizationService {
 
 
 
-            boolean activated = r.bool("aeb_activated");
+            boolean activated = Boolean.TRUE.equals(RunEvidence.sample(r).braked());
 
 
 
@@ -1688,19 +1745,13 @@ public class OptimizationService {
 
 
 
-    private BaselineStats computeStats(Collection<Row> runs) {
-
-
-
-        if (runs.isEmpty()) {
-
-
-
-            return new BaselineStats(0.0, 0.0);
-
-
-
+    BaselineStats computeStats(Collection<Row> runs) {
+        if (runs.isEmpty() || runs.stream().anyMatch(r -> !RunEvidence.completeAebOn(r))) {
+            throw new IllegalStateException("Optimization baseline has incomplete run evidence");
         }
+
+
+
 
 
 

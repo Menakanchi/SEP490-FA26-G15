@@ -1,9 +1,20 @@
 package com.vsos.backend.common;
 
+import java.nio.charset.StandardCharsets;
+
 /** Ô CSV dùng chung cho failures.csv và gói xuất regression. */
 public final class Csv {
 
     private Csv() {
+    }
+
+    /** Excel recognizes Vietnamese UTF-8 reports from their BOM; raw simulation artifacts remain byte-for-byte unchanged. */
+    public static byte[] utf8WithBom(String csv) {
+        int start = 0;
+        while (start < csv.length() && csv.charAt(start) == '\uFEFF') {
+            start++;
+        }
+        return ("\uFEFF" + csv.substring(start)).getBytes(StandardCharsets.UTF_8);
     }
 
     /** Như ``csv.writer`` (QUOTE_MINIMAL): bao dấu nháy khi có dấu phẩy / nháy / xuống dòng; None -> rỗng; bool -> True/False. */

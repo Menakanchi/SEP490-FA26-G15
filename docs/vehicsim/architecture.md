@@ -5,8 +5,8 @@ code hiện tại hỗ trợ CP_CROSSING và CCRS/CCRM/CCRB (ADR-050).
 Scenario Forge đã gỡ ngày 04/10/2026 (ADR-032); bộ xuất OpenSCENARIO hiện ở
 `src/main/java/com/vsos/core/xosc/XoscExport.java` (ADR-042).
 
-> Đối chiếu Admin/Analysis ngày 17/11/2026: [technical handover](admin-analysis-handover.md)
-> và [Final QA](../exec-plans/completed/2026-11-17-admin-analysis-phase-20-handover.md).
+> Hướng dẫn Admin/Analysis đã gộp trong [tài liệu tổng hợp](../failure-analysis-v3/README.md),
+> gồm bản đồ code, hợp đồng dữ liệu, cách kiểm thử và giới hạn hiện hành.
 > Các bảng tên Python/Forge bên dưới là lịch sử; không phải API đang tồn tại.
 > Admin chỉ có ba trang quản trị, không có Overview riêng. Reviewer theo membership workspace;
 > Engineer vẫn dùng project nhóm chung (TD-30), không tuyên bố cách ly mọi workspace.

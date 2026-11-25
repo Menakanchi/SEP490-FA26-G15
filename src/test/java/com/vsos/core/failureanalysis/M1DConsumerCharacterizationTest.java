@@ -16,7 +16,12 @@ class M1DConsumerCharacterizationTest {
     private static ConsumerSourceInspection.Profile source;private static Artifact probe;
     @BeforeAll static void actual()throws Exception{source=ConsumerSourceInspection.read(Path.of("."));probe=M1DConsumerProbe.execute(source);}
     @TestFactory Stream<DynamicTest> oa10ActualHelperCasesHaveCanonicalReferences(){return list(at(probe.data(),"/cases")).stream().map(x->DynamicTest.dynamicTest(str(at(x,"/id")),()->{
-        assertThat(at(x,"/consumer_exception")).isNull();assertThat(at(x,"/consumer_objectives")).isInstanceOf(Map.class);
+        if (Set.of("MATCH_COMPLETE","ACTIVATION_VS_BRAKED","ROUNDING").contains(str(at(x,"/id")))) {
+            assertThat(at(x,"/consumer_exception")).isNull();assertThat(at(x,"/consumer_objectives")).isInstanceOf(Map.class);
+        } else {
+            assertThat(at(x,"/consumer_exception")).isEqualTo(IllegalStateException.class.getName());
+            assertThat(at(x,"/consumer_objectives")).isNull();
+        }
         var samples=list(at(x,"/samples")).stream().map(CanonicalAggregation::readSample).toList();
         assertThat(CanonicalAggregation.aggregate(samples)).isEqualTo(at(x,"/canonical"));
     }));}
@@ -33,10 +38,9 @@ class M1DConsumerCharacterizationTest {
     @Test void existingTrialValidDoesNotGuardNan(){var trial=new MoboTrial(1,Map.of(),Double.NaN,1.,1.,false);assertThat(trial.valid()).isTrue();}
     @Test void existingBoundsValidDoesNotGuardNan(){Map<String,Double> values=new TreeMap<>();for(String code:ParameterBounds.PARAM_KEYS)values.put(code,ParameterBounds.defaults().lower(code));
         values.put("TTC_THRESHOLD",Double.NaN);assertThat(ParameterBounds.defaults().isValid(values)).isTrue();}
-    @Test void hf10SourceBoundMutationCounterexampleIsNotAProposal(){assertThat(source.audited()).isTrue();
-        double parent=1.5,approvedUpper=1.55;double sourceBranchResult=Math.min(3.5,Math.round((parent+.1)*100.)/100.);
-        assertThat(sourceBranchResult).isGreaterThan(approvedUpper);
-        assertThat(source.texts().get("OptimizationService")).contains("Math.min(3.5, Math.round((currentTtc + 0.1) * 100.0) / 100.0)");}
+    @Test void correctedConsumerDoesNotReuseThePreviousRevisionAuditAuthority(){assertThat(source.audited()).isFalse();
+        assertThat(source.texts().get("OptimizationService")).doesNotContain("Math.min(3.5, Math.round((currentTtc + 0.1) * 100.0) / 100.0)")
+                .contains("new MoboEngine(bounds, nInitialPoints, MOBO_SEED)");}
     @Test void allProbeExecutionIsExplicitlySyntheticAndNoDispatch(){assertThat(at(probe.data(),"/evidence_scope")).isEqualTo("SYNTHETIC_TEST_ONLY");
         assertThat(at(probe.data(),"/engine_called")).isEqualTo(false);assertThat(at(probe.data(),"/database_accessed")).isEqualTo(false);assertThat(at(probe.data(),"/campaign_executed")).isEqualTo(false);}
 }

@@ -67,6 +67,9 @@ type Rule = [RegExp, (m: RegExpMatchArray) => string];
 const re = (pattern: string) => new RegExp(`^${pattern}$`);
 
 const RULES: Rule[] = [
+  [re("Invalid optimization search space: .*"), () => "Miền tìm kiếm không hợp lệ. Cần đủ bốn tham số AEB với cận hữu hạn, đúng thứ tự và trong giới hạn cho phép."],
+  [re("Optimization search space cannot produce a candidate different from its parent"), () => "Miền tìm kiếm không tạo được ứng viên khác cấu hình gốc. Hãy điều chỉnh cận tham số."],
+  [re("Unsupported optimization objective configuration: .*"), () => "Đợt tối ưu chỉ hỗ trợ ba mục tiêu chuẩn và các ràng buộc đã chốt."],
   [re("Analysis selection repeats a variant and seed"), () => "Chỉ chọn một run cho mỗi cặp biến thể và seed để tránh đếm lặp."],
   [re("Analysis preview changed; reload source runs"), () => "Dữ liệu đã thay đổi. Hãy tải lại và kiểm tra các run trước khi chốt."],
   [re("Invalid analysis selection"), () => "Lựa chọn tập dữ liệu không hợp lệ."],
@@ -81,6 +84,10 @@ const RULES: Rule[] = [
   [re("Analysis source runs (?:changed or telemetry is missing|are unavailable)"), () => "Run nguồn đã thay đổi hoặc thiếu artifact. Không thể bàn giao tập này."],
   [re("Baseline data changed; refresh the analysis dataset before saving"), () => "Dữ liệu baseline đã thay đổi. Hãy xem lại tập phân tích trước khi lưu."],
   // --- evaluation.py: tiêu đề -------------------------------------------------------
+  [re(String.raw`AEB OFF reference: collision observed\. AEB intervention assessment is not applicable\.`), () => "Lượt đối chứng AEB tắt: có va chạm. Không đánh giá khả năng can thiệp của AEB."],
+  [re(String.raw`AEB OFF reference: near miss observed\. AEB intervention assessment is not applicable\.`), () => "Lượt đối chứng AEB tắt: có tình huống cận va chạm. Không đánh giá khả năng can thiệp của AEB."],
+  [re(String.raw`AEB OFF reference: no collision observed\. AEB intervention assessment is not applicable\.`), () => "Lượt đối chứng AEB tắt: không có va chạm. Không đánh giá khả năng can thiệp của AEB."],
+  [re(String.raw`Available vehicle braking capped deceleration at ${N} m/s² vs ${N} requested\.`), m => `Khả năng phanh của xe giới hạn giảm tốc ở ${m[1]} m/s² so với ${m[2]} m/s² yêu cầu.`],
   [re(String.raw`AEB braked for a pedestrian who stopped at the curb\.`), () => "AEB phanh dù người đi bộ đã dừng ở lề đường."],
   [re(String.raw`AEB handled the crossing safely\.`), () => "AEB xử lý an toàn tình huống người đi bộ băng ngang."],
   // --- nhóm xe phía trước CCRs/CCRm/CCRb (ADR-050) ----------------------------------------

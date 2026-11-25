@@ -14,6 +14,9 @@ import org.mockito.InOrder;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
+import com.vsos.backend.dto.regression.RegressionRecords.CandidateRun;
+import com.vsos.backend.dto.regression.RegressionRecords.RunResult;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -54,6 +57,7 @@ class ReviewDecisionServiceTest {
     private boolean recommendationExists;
     private String recommendationStatus;
     private Map<Long, String> versionStatus;
+    private boolean evidenceComplete;
 
     @BeforeEach
     void setUp() {
@@ -68,6 +72,7 @@ class ReviewDecisionServiceTest {
         recommendationExists = true;
         recommendationStatus = "PENDING_REVIEW";
         versionStatus = new LinkedHashMap<>(Map.of(BASELINE, "BASELINE", CANDIDATE, "CANDIDATE"));
+        evidenceComplete = true;
     }
 
     private void arrange() {
@@ -81,6 +86,10 @@ class ReviewDecisionServiceTest {
                 ? new RecommendationRow(REC_ID, TEST, CANDIDATE, recommendationStatus, CREATOR, null, null, null, null, null)
                 : null);
         when(repo.lockVersionStatuses(BASELINE, CANDIDATE)).thenReturn(versionStatus);
+        when(repo.candidateRuns(TEST)).thenReturn(List.of(new CandidateRun(101, 201, 100)));
+        when(repo.runResults(any())).thenReturn(Map.of(
+                100L, new RunResult(100,"COMPLETED",false,2.0,2.0,null,false,"PASS",null,null,true),
+                101L, new RunResult(101,"COMPLETED",false,2.0,2.0,null,false,"PASS",null,null,evidenceComplete)));
     }
 
     private void decide(long userId, String decision, String reason, String conditions, boolean confirmed) {
@@ -100,6 +109,11 @@ class ReviewDecisionServiceTest {
         verify(repo, never()).promoteToBaseline(anyLong());
         verify(repo, never()).rejectVersion(anyLong());
         verify(repo, never()).saveReview(anyLong(), anyString(), anyString(), anyLong(), any(), any());
+    }
+
+    @Test void historicalPassedLabelCannotBypassIncompleteRunEvidence() {
+        evidenceComplete = false;
+        expectRefused(REVIEWER,"ACCEPT","kiểm tra lại bằng chứng",true,DecisionNotAllowedException.class,"bằng chứng regression");
     }
 
     // ---------- Normal (EP valid classes) ----------

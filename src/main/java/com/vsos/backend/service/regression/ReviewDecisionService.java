@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
+import java.util.ArrayList;
 
 @Service
 public class ReviewDecisionService {
@@ -60,6 +61,15 @@ public class ReviewDecisionService {
         }
         if ("ACCEPT".equals(decision) && !"PASSED".equals(test.verdict())) {
             throw new DecisionNotAllowedException("không thể Accept: ứng viên chưa qua regression test");
+        }
+
+        if ("ACCEPT".equals(decision)) {
+            var candidates = repo.candidateRuns(testId);
+            var ids = new ArrayList<Long>();
+            candidates.forEach(run -> { ids.add(run.id()); ids.add(run.baselineRunId()); });
+            if (!RegressionService.evidenceComplete(test, candidates, repo.runResults(ids))) {
+                throw new DecisionNotAllowedException("không thể Accept: bằng chứng regression thiếu hoặc không hợp lệ — hãy chạy lại kiểm thử");
+            }
         }
 
         Map<Long, String> statusOf = repo.lockVersionStatuses(test.baselineVersionId(), test.candidateVersionId());

@@ -85,7 +85,14 @@ public final class RegressionRecords {
             boolean falseActivation,
             String verdict,
             Double rmsJerkMps3,
-            Double stoppingDistanceM) {
+            Double stoppingDistanceM,
+            boolean evidenceComplete) {
+
+        /** Complete in-memory result for pure comparison callers; JDBC supplies the explicit evidence gate. */
+        public RunResult(long id, String status, boolean collision, Double minTtcS, Double minDistanceM, Double impactSpeedMps,
+                         boolean falseActivation, String verdict, Double rmsJerkMps3, Double stoppingDistanceM) {
+            this(id, status, collision, minTtcS, minDistanceM, impactSpeedMps, falseActivation, verdict, rmsJerkMps3, stoppingDistanceM, true);
+        }
 
         public String outcome() {
             return "COMPLETED".equals(status) ? Vs.classifyOutcome(collision, minTtcS, minDistanceM) : null;
