@@ -11,7 +11,7 @@ export type Crumb = { label: string; href?: string };
 
 interface VehicSimPageProps {
   crumbs: Crumb[];
-  title: React.ReactNode;
+  title?: React.ReactNode;
   badges?: React.ReactNode;
   subtitle?: React.ReactNode;
   actions?: React.ReactNode;
@@ -32,7 +32,7 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, showCon
 
   return (
     <div className="mx-auto flex w-full min-w-0 max-w-[1680px] flex-1 flex-col gap-5 px-4 pb-10 pt-5 sm:px-6 xl:px-8">
-      <div className="border-b border-vehicsim-line pb-3 print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-vehicsim-line pb-3 print:hidden">
         <nav aria-label="Đường dẫn" className="flex min-w-0 flex-wrap items-center gap-2 break-words text-[13px]">
           {crumbs.map((c, i) => {
             const last = i === crumbs.length - 1;
@@ -50,6 +50,9 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, showCon
             );
           })}
         </nav>
+        {actions && !title && (
+          <div className="vehicsim-page-actions flex min-w-0 flex-wrap items-center gap-2">{actions}</div>
+        )}
       </div>
 
       {error && (
@@ -89,16 +92,18 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, showCon
         </div>
       )}
 
-      <div className="vehicsim-page-heading flex flex-wrap items-end justify-between gap-4">
-        <div className="flex min-w-0 flex-1 basis-[300px] flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="min-w-0 break-words text-[28px] font-black leading-[1.2] tracking-[-0.03em] text-slate-900 sm:text-[34px] lg:text-[36px]">{title}</h1>
-            {badges}
+      {(title || subtitle || (actions && title)) && (
+        <div className="vehicsim-page-heading flex flex-wrap items-end justify-between gap-4">
+          <div className="flex min-w-0 flex-1 basis-[300px] flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              {title && <h1 className="min-w-0 break-words text-[28px] font-black leading-[1.2] tracking-[-0.03em] text-slate-900 sm:text-[34px] lg:text-[36px]">{title}</h1>}
+              {badges}
+            </div>
+            {subtitle && <p className="max-w-[720px] text-[14.5px] font-medium leading-relaxed text-slate-600">{subtitle}</p>}
           </div>
-          {subtitle && <p className="max-w-[720px] text-[14.5px] font-medium leading-relaxed text-slate-600">{subtitle}</p>}
+          {actions && <div className="vehicsim-page-actions flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
         </div>
-        {actions && <div className="vehicsim-page-actions flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
-      </div>
+      )}
 
       {children}
     </div>
