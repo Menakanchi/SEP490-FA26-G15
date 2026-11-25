@@ -1,5 +1,11 @@
 # BE-R1 — REST contract cho FE-R4
 
+> **Cập nhật 26/11/2026 (khi gộp vào `main`, commit `f5f6b18`, [ADR-067](../../adr/ADR-067-api-failure-analysis-v3-va-4-bang-fa-json.md)):**
+> dạng lỗi đổi từ `{"error":{"code","module","retryable"}}` sang `{"code","detail","retryable"}` ở cấp ngoài cùng, cùng
+> dạng với `ApiExceptionHandler`. Lỗi chung (404/400 không thuộc module, 403/429 của `VehicSimAccess`) không còn đổi thành
+> `FA_ACCESS_OR_REQUEST_REJECTED` / `FA_INTERNAL_ERROR` mà trả theo luật chung. Kiểu `FAError` và dòng "500 unexpected
+> sanitized FA error" bên dưới là bản trước cập nhật; route và mã lỗi riêng của module giữ nguyên.
+
 Base: `/api/v1/vehicsim/analysis/v3`. Tất cả route cần Bearer authentication và
 project context hiện hành qua `ProjectAccess`/`X-VehicSim-Project`.
 ADMIN/ENGINEER/EXPERIENCER được mutation, qua `requireEngineer` và `limitWrites`.
