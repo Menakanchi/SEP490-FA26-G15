@@ -65,6 +65,8 @@ try {
     if (p === "/vehicsim/context") return reply({ project: { id: actor.id, name: "Classification fixture" }, workspace: { id: 1, name: "Fixture" },
       vehicle: { id: 2, name: "Fixture car" }, system: { id: 1, name: "AEB", baseline: { id: 7, label: "v7" } },
       versions: [{ id: 7, label: "v7", status: "BASELINE" }], families: [{ id: 42, name: "Metric fixture", code: "CP" }], parameters: [], reviewer_projects: [] });
+    if (p === "/vehicsim/analysis/v3/sources") return reply({items:[],limit:20,offset:0}); // FE-R4: empty FA storage is independent of legacy runs.
+    if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
     if (p === "/vehicsim/notifications") return reply({ items: [], unread_count: 0 });
     if (p === "/vehicsim/regression") return reply({ items: [], kpis: { total: 0, passed: 0, failed: 0, running: 0, review_pending: 0 } });
     if (p === "/vehicsim/analysis/runs") return reply({ total: 1, page: 1, page_size: 20, counts: { SAFE: 0, COLLISION: 1 }, items: [run], evaluation_version: version,
@@ -91,7 +93,7 @@ try {
   const listUrl = "/analysis/failures?view=failures&scenario_id=42&f_scenario=42&f_weather=RAIN&f_page=1&f_size=20";
   const detailUrl = "/analysis/failures/101?section=evidence&returnTo=" + encodeURIComponent(listUrl);
   const list = page.getByRole("region", { name: "Danh sách ca lỗi và bằng chứng", exact: true });
-  const state = () => page.getByRole("tabpanel").getByLabel("Đánh giá và phân loại từ backend", { exact: true });
+  const state = () => page.getByRole("region", {name:"Kết quả và chỉ số run",exact:true}).getByLabel("Đánh giá và phân loại từ backend", { exact: true });
   const shot = async name => { await page.screenshot({ path: path.join(output, name + ".png"), fullPage: true }); screenshots.push(name + ".png"); };
   for (const [width, height] of [[375, 812], [768, 1024], [1440, 900]]) {
     await page.setViewportSize({ width, height }); await page.goto(base + listUrl); await list.locator("tbody tr").first().waitFor(); await shot("failures-" + width);
@@ -104,7 +106,7 @@ try {
     await page.reload(); await page.getByRole("article", { name: "Khâu Điều khiển", exact: true }).waitFor(); await shot("invalid-stages");
     await fs.writeFile(path.join(output, "observed.json"), JSON.stringify({ kind: "BASELINE_CAPTURE_ONLY", screenshots, errors }, null, 2));
   } else {
-    assert.match(await state().innerText(), /Không đạt theo luật hiện hành \(FAIL\)/);
+    assert.match(await state().innerText(), /Không đạt theo luật đã lưu \(FAIL\)/);
     assert.match(await state().innerText(), /Va chạm được ghi nhận/);
     assert.doesNotMatch(await state().innerText(), /Bỏ sót phanh theo luật|Phanh không hiệu quả/);
     await page.goto(base + listUrl); await list.locator("tbody tr").first().waitFor();
@@ -136,7 +138,7 @@ try {
     // A recorded command and no collision do not create false braking.
     detail = { ...original, outcome: "SAFE", verdict: "PASS", failure_type: null, failure_class: null, chain: [], chain_confidence: null };
     await page.goto(base + detailUrl); await state().waitFor();
-    assert.match(await state().innerText(), /API chưa có phân loại lỗi/); assert.match(await state().innerText(), /Đạt theo luật hiện hành \(PASS\)/); assert.doesNotMatch(await state().innerText(), /Phanh oan theo luật/);
+    assert.match(await state().innerText(), /API chưa có phân loại lỗi/); assert.match(await state().innerText(), /Đạt theo luật đã lưu \(PASS\)/); assert.doesNotMatch(await state().innerText(), /Phanh oan theo luật/);
     detail = { ...original, failure_class: null, chain: [], chain_confidence: null };
     await page.goto(base + detailUrl); await state().waitFor();
     assert.match(await state().innerText(), /Va chạm được ghi nhận/);

@@ -1,5 +1,20 @@
 # Module3 — kiến trúc và hiện trạng implement
 
+**Database-direct input,25/11/2026:** frontend ưu tiên run/collection lấy từ DB.
+`FailureAnalysisDatabaseRepository` đọc identity/reference; `FailureAnalysisDatabaseAdapter`
+đọc nguyên bytes `result.json`, kiểm tra DB identity rồi gọi BE-R1/core hiện có.
+Không dựng result từ telemetry/config, không thay công thức. Report/handoff tiếp tục
+ở bốn bảng FA BE-R1. Chi tiết:
+[DB_DIRECT_INPUT_IMPLEMENTATION_REPORT](../backend-integration/DB_DIRECT_INPUT_IMPLEMENTATION_REPORT.md).
+
+**Delta25/11/2026 — BE-R1:** JSON-first authenticated REST ở
+`/api/v1/vehicsim/analysis/v3`, bốn bảng FA additive và orchestration gọi core đã có.
+Đọc [implementation/status/blockers](../backend-integration/09_IMPLEMENTATION_REPORT.md)
+và [REST contract](../backend-integration/03_REST_API_CONTRACT.md). Core thêm facade
+RestJsonAnalysis; algorithms/producer/consumer/legacy AnalysisService không sửa.
+Đoạn bàn giao24/11 và số test lịch sử bên dưới không thay trạng thái BE-R1 mới.
+Operational approved context/M2 vẫn BLOCKED; FE-R4 đã có source, migration DB ứng dụng chưa triển khai.
+
 Đây là bản đồ source hiện tại, không phải kế hoạch bắt đầu M1A. Package production
 có41 Java files,23 Java test/fixture files. Trong đợt chuẩn bị bàn giao không sửa
 hoặc xóa Java source/test, không sửa producer/consumer/DB/API/frontend.

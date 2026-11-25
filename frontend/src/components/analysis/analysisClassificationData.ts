@@ -20,7 +20,7 @@ export function classificationPresentation(data: { status?: unknown; evaluation_
     : data.evaluation_valid === false ? "Chưa đủ dữ liệu đánh giá"
     : data.evaluation_valid !== true ? "API chưa xác nhận điều kiện đánh giá"
     : verdict === null ? "API chưa có verdict hợp lệ"
-    : verdict === "PASS" ? "Đạt theo luật hiện hành (PASS)" : "Không đạt theo luật hiện hành (FAIL)";
+    : verdict === "PASS" ? "Đạt theo luật đã lưu (PASS)" : "Không đạt theo luật đã lưu (FAIL)";
   const classification = typeof data.failure_type === "string" && data.failure_type.trim()
     ? failureTypeLabel(data.failure_type)
     : "API chưa có phân loại lỗi";

@@ -19,12 +19,12 @@ const original = { run_id: 101, scenario_id: 42, status: "COMPLETED", outcome: "
 const run = { run_id: 101, dt: 0.01 };
 
 test("TTC method and geometry follow explicit API category, never the scene/name", () => {
-  assert.match(metricExplanation("ttc", original, run).formula, /gap \/ v_ego;/);
-  assert.match(metricExplanation("separation", original, run).formula, /r = 0,30 m/);
+  assert.match(metricExplanation("ttc", original, run).method, /gap \/ v_ego/);
+  assert.match(metricExplanation("separation", original, run).method, /thân xe/);
   for (const category of ["CCRS", "CCRM", "CCRB"]) {
     const d = { ...original, environment: { ...original.environment, category } };
-    assert.match(metricExplanation("ttc", d, run).formula, /v_ego − v_target,x/);
-    assert.match(metricExplanation("separation", d, run).formula, /giữa hai hộp xe/);
+    assert.match(metricExplanation("ttc", d, run).method, /v_ego − v_target,x/);
+    assert.match(metricExplanation("separation", d, run).method, /giữa hai hộp xe/);
   }
 });
 test("unknown/unsupported category, simulator or metric source never receives a guessed formula", () => {
@@ -65,10 +65,10 @@ test("source mapping distinguishes simulator model from real-world measurements 
   const snapshot = structuredClone(original);
   assert.equal(metricExplanation("rms", original, run).engine, "CARLA qua lõi Java");
   assert.equal(metricExplanation("rms", { ...original, simulator: "carla-0.9.16-xosc15" }, run).engine, "CARLA qua lõi Java");
-  assert.match(metricExplanation("ttc", { ...original, simulator: "carla-0.9.16-xosc15" }, run).formula, /gap \/ v_ego/);
+  assert.match(metricExplanation("ttc", { ...original, simulator: "carla-0.9.16-xosc15" }, run).method, /gap \/ v_ego/);
   assert.equal(metricExplanation("rms", { ...original, simulator: "vehicsim-kinematic-1.0" }, { ...run, dt: 0.05 }).engine, "Động học Java");
   assert.equal(metricExplanation("rms", { ...original, simulator: "vehicsim-kinematic-1.4" }, { ...run, dt: 0.05 }).engine, "Động học Java");
-  assert.match(metricExplanation("ttc", { ...original, simulator: "vehicsim-kinematic-1.4" }, { ...run, dt: 0.05 }).formula, /gap \/ v_ego/);
+  assert.match(metricExplanation("ttc", { ...original, simulator: "vehicsim-kinematic-1.4" }, { ...run, dt: 0.05 }).method, /gap \/ v_ego/);
   assert.equal(metricExplanation("ttc", { ...original, simulator: "carla-0.9.16-xosc2" }, run).formula, null);
   assert.deepEqual(original, snapshot);
 });

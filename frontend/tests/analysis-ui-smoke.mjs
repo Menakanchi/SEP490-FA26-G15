@@ -1,3 +1,4 @@
+import { openDisclosure } from "./helpers/analysis-disclosures.mjs";
 /**
  * Real integration UI smoke against backend :8101 and the isolated test database.
  * First run scripts/test_analysis_integration.py and start Next :3100 with API :8101.
@@ -39,22 +40,23 @@ try {
  await page.goto(base+"/scenarios");
  await page.locator(`a[href="/analysis/failures?scenario_id=${evidence.scenario_id}"]`).click();
  await page.waitForURL("**/analysis/failures?scenario_id="+evidence.scenario_id);
- await page.getByRole("heading",{name:"Phân tích baseline",exact:true}).waitFor();
+ await page.getByRole("heading",{name:"Dữ liệu & kết quả",exact:true}).waitFor();
 
  // The moved legacy lookup must retain the family selected on the baseline screen.
  const legacyResponse=page.waitForResponse(r=>r.url().includes("/api/v1/vehicsim/failures?")&&r.status()===200);
- await page.getByRole("navigation",{name:"Chế độ phân tích"}).getByRole("link",{name:"Tra cứu ca lỗi",exact:true}).click();
+ await page.locator('[data-analysis-tool="legacy"] > summary').click();
  assert.equal(new URL((await legacyResponse).url()).searchParams.get("scenario_id"),String(evidence.scenario_id));
  await page.getByRole("heading",{name:"Tra cứu ca lỗi",exact:true}).waitFor();
- await page.getByRole("navigation",{name:"Chế độ phân tích"}).getByRole("link",{name:"Lượt chạy",exact:true}).click();
+ await page.locator('[data-analysis-tool="legacy"] > summary').click();
  await page.getByLabel("Trạng thái",{exact:true}).selectOption("FAILED");
- await page.getByText("Chưa có run baseline phù hợp.",{exact:false}).waitFor();
+ await page.getByText("Chưa có run baseline để hiển thị.",{exact:false}).waitFor();
  await page.getByLabel("Trạng thái",{exact:true}).selectOption("");
  await page.getByRole("table").locator("tbody tr").first().waitFor();
 
  await page.screenshot({path:path.join(output,"01-baseline-dashboard.png"),fullPage:true});
 
  // Gather selections across pages; choices must survive pagination.
+ await page.locator('[data-analysis-tool="dataset"] > summary').click();
  const selections=[
    ...evidence.selection.optimization_run_ids.map(id=>({id,role:"OPTIMIZATION"})),
    ...evidence.selection.validation_run_ids.map(id=>({id,role:"VALIDATION"})),
@@ -62,7 +64,7 @@ try {
  for(const selection of selections) {
    let found=false;
    for(let attempt=0;attempt<4;attempt++){
-     const field=page.getByLabel(`Tập của run ${selection.id}`,{exact:true});
+     const field=page.getByRole("region",{name:"Bảng lượt chạy baseline, cuộn ngang để xem thêm",exact:true}).getByLabel(`Tập của run ${selection.id}`,{exact:true});
      if(await field.count()){await field.selectOption(selection.role);found=true;break;}
      const next=page.getByRole("button",{name:"Trang sau",exact:true});
      if(await next.isDisabled()){
@@ -72,28 +74,30 @@ try {
    }
    assert(found,`Run ${selection.id} was not available in the paginated dashboard`);
  }
- await page.getByRole("navigation",{name:"Chế độ phân tích"}).getByRole("link",{name:/Tập bàn giao/}).click();
+ // Dataset preparation remains expanded while paging the single run table.
  const response=page.waitForResponse(r=>r.url().endsWith("/api/v1/vehicsim/analysis/selections")&&r.request().method()==="POST");
- await page.getByRole("button",{name:"Chốt hai tập dữ liệu",exact:true}).click();
+ await page.getByRole("button",{name:"Chốt tập",exact:true}).click();
  const saved=await (await response).json();
  assert(saved.id>0,saved.detail);
  await page.getByRole("heading",{name:new RegExp(`Tập đã chốt #${saved.id}`)}).waitFor();
- await page.getByRole("button",{name:"Tiếp tục: Tối ưu AEB →",exact:true}).click();
+ await page.getByRole("button",{name:"Kiểm tra trước bàn giao",exact:true}).click();
  await page.waitForURL("**/aeb?dataset_id="+saved.id);
- await page.getByRole("heading",{name:new RegExp(`Tập đã chốt #${saved.id}`)}).waitFor();
+ // Navigation alone does not prove the MOBO consumer uses this dataset.
  assert.deepEqual([...saved.optimization_run_ids].sort((a,b)=>a-b),[...evidence.selection.optimization_run_ids].sort((a,b)=>a-b));
  assert.deepEqual([...saved.validation_run_ids].sort((a,b)=>a-b),[...evidence.selection.validation_run_ids].sort((a,b)=>a-b));
  await page.screenshot({path:path.join(output,"02-aeb-handoff.png"),fullPage:true});
  const runId=evidence.run_ids[0];
  await page.goto(base+`/analysis/failures/${runId}?t=1.25`);
+ await openDisclosure(page,"Điều tra chuyên sâu");
  const slider=page.getByRole("slider",{name:"Thời gian phân tích",exact:true});
  await slider.waitFor();
  assert.equal(Number(await slider.inputValue()),1.25);
  await page.getByRole("button",{name:"Telemetry & chỉ số",exact:true}).click();
  await page.getByLabel("Tín hiệu",{exact:true}).selectOption("jerk_mps3");
  await page.getByRole("img",{name:/Jerk từ gia tốc đã lưu/}).waitFor();
- await page.getByRole("button",{name:"Nguyên nhân & bằng chứng",exact:true}).click();
+ await page.getByRole("button",{name:"Nhận định & bằng chứng",exact:true}).click();
  await page.getByRole("heading",{name:"Bằng chứng và giới hạn nhận định",exact:true}).waitFor();
+ await openDisclosure(page,"Phát lại và tác vụ khác");
  await page.getByRole("button",{name:"Tải .xosc",exact:true}).waitFor();
  await page.getByRole("button",{name:"Chạy trên CARLA",exact:true}).waitFor();
  await page.screenshot({path:path.join(output,"03-detail-jerk-evidence.png"),fullPage:true});

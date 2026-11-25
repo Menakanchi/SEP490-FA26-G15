@@ -1,3 +1,4 @@
+import { openDisclosure } from "./helpers/analysis-disclosures.mjs";
 /** Real Java service golden over HTTP fixtures; defensive identity/metadata probes are explicitly not valid simulator results. */
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -40,6 +41,8 @@ try {
     if(p==="/vehicsim/context") return reply({project:{id:actor.id,name:"Analysis contract QA"},workspace:{id:1,name:"QA fixture"},vehicle:{id:2,name:"Contract vehicle"},
       system:{id:1,name:"AEB",baseline:{id:7,label:"Contract v7"}},versions:[{id:7,label:"Contract v7",status:"BASELINE"}],
       families:[{id:42,code:"CP_CROSSING",name:"Contract CP_CROSSING"}],parameters:[],reviewer_projects:[]});
+    if (p === "/vehicsim/analysis/v3/sources") return reply({items:[],limit:20,offset:0}); // FE-R4: empty FA storage is independent of legacy runs.
+    if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
     if(p==="/vehicsim/notifications") return reply({items:[],unread_count:0});
     if(p==="/vehicsim/regression") return reply({items:[],kpis:{total:0,passed:0,failed:0,running:0}});
     if(p==="/vehicsim/families" || p==="/vehicsim/recommendations") return reply([]);
@@ -92,11 +95,12 @@ try {
     mode="normal";
     // The actual Java payload is exercised at five widths. Metrics/source assertions accompany layout checks.
     for(const width of [375,390,768,1024,1440]) {
-      await page.setViewportSize({width,height:900});await page.goto(detailUrl(101));await identity.waitFor();
+      await page.setViewportSize({width,height:900});await page.goto(detailUrl(101));await identity.waitFor();await openDisclosure(page,"Danh tính và nguồn dữ liệu");
       assert.match(await identity.innerText(),/#101 \/ #42 \/ #301/);
       const impact=page.getByLabel("Tốc độ va chạm",{exact:true});
       assert.match(await impact.innerText(),new RegExp(cases.get(101).inspection.detail.metrics.impact_speed_mps.toFixed(3).replace(".","\\.")+" m/s"));
-      const tab=page.getByRole("tab",{name:"Nguyên nhân & bằng chứng",exact:true});await tab.click();await tab.focus();await page.keyboard.press("Home");await page.keyboard.press("End");
+      await openDisclosure(page,"Điều tra chuyên sâu");
+      const tab=page.getByRole("tab",{name:"Nhận định & bằng chứng",exact:true});await tab.click();await tab.focus();await page.keyboard.press("Home");await page.keyboard.press("End");
       assert.equal(await page.locator('[data-evidence-run="101"]').count(),1);
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Evidence overflow "+width);
     }
@@ -109,7 +113,7 @@ try {
       hold=pendingPath;releaseHold=null;
       const pendingRequest=page.waitForRequest(r=>new URL(r.url()).pathname==="/api/v1"+pendingPath);
       if(playback) await page.getByRole("link",{name:"Mở run liên quan · AEB Contract v8",exact:true}).click();
-      else await page.getByRole("region",{name:"Ca lỗi tương tự",exact:true}).getByRole("link").first().click();
+      else { await openDisclosure(page,"Điều tra chuyên sâu"); await openDisclosure(page,"Ca có cấu hình gần"); await page.getByRole("region",{name:"Ca lỗi tương tự",exact:true}).getByRole("link").first().click(); }
       await pendingRequest;await page.waitForURL(u=>u.pathname.includes("/104"));
       assert.equal(await (playback?source:identity).count(),0,"Previous run facts hidden during client transition");
       const backRequest=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/v1"+(playback?"/vehicsim/runs/101/playback":"/vehicsim/analysis/runs/101"));
@@ -120,6 +124,7 @@ try {
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       assert.equal(new URL(page.url()).pathname,"/analysis/failures/101"+(playback?"/playback":""));
       assert.equal(await page.evaluate(()=>window.__analysisDocument),documentId);
+      if(!playback) await openDisclosure(page,"Danh tính và nguồn dữ liệu");
       assert.match(await (playback?source:identity).innerText(),playback?/Contract v7/:/#101 \/ #42 \/ #301/);
       if(playback) {
         assert.equal(await source.locator("dd").nth(1).innerText(),"Contract v7");

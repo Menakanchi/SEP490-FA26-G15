@@ -1,4 +1,4 @@
-# Từ điển dữ liệu VehicSim (MySQL, 30 bảng)
+# Từ điển dữ liệu VehicSim (MySQL, 34 bảng; BE-R1 migration 020 chưa áp DB)
 
 Tài liệu giải thích **từng bảng, từng cột** của database VehicSim: nghĩa nghiệp vụ, ràng buộc, ai
 ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệu nhóm 06/10/2026).
@@ -23,10 +23,10 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 
 | | Số lượng |
 |---|---|
-| Bảng | 30 |
+| Bảng | 34 (4 bảng BE-R1 chưa áp DB) |
 | Cột | 397 |
 | Khoá ngoại | 82 (nhiều khoá ghép) |
-| CHECK | 30 |
+| CHECK | 37 |
 | Engine / charset | InnoDB · `utf8mb4` / `utf8mb4_0900_ai_ci` · MySQL ≥ 8.0.16 (cần CHECK) |
 
 | # | Nhóm | Bảng | Code đang dùng |
@@ -1050,3 +1050,88 @@ Quyền Reviewer: header `X-VehicSim-Project` chọn project trong workspace cò
 `security/ProjectAccess` là bean request scope: đọc principal/header, resolve project một lần và dùng cùng ID cho kiểm quyền cùng các view/service. `ReviewerScope` chỉ truy vấn project theo membership, không có canSee kiểm lần hai. `Queries.defaultProject` là truy vấn tường minh, không đọc HTTP/security; job nền tiếp tục nhận project ID qua tham số, không gọi ProjectAccess ngoài request.
 
 Context chấp nhận project chưa chọn xe và trả `vehicle=null`. Frontend chờ context, chốt ID trả về rồi mới tải màn; JSON, POST quyết định và tải file dùng cùng header. Đổi mật khẩu giữ project; đăng nhập mới/đăng xuất xóa lựa chọn. Refresh lỗi giữ nguyên lựa chọn, khóa duyệt và báo lỗi; role khác giữ context tốt gần nhất. Nút Chọn lại project chỉ hiện cho Reviewer khi `GET /api/v1/vehicsim/reviewer/projects` còn trả project thuộc membership; route này độc lập lựa chọn đang lỗi. POST quyết định thiếu header project bị 400, tránh dùng mặc định đã đổi giữa các request (ADR-048, UC-62/UC-63).
+
+
+## BE-R1 — kho JSON Failure Analysis (migration 020, chưa áp dụng)
+
+Chỉ INSERT và SELECT qua FailureAnalysisStore. Không cập nhật dữ liệu mô phỏng/đánh giá cũ.
+Payload source tối đa 1 MiB; tài nguyên dẫn xuất 8 MiB, metadata 256 KiB. FK ON DELETE RESTRICT.
+Execution và toàn bộ report/handoff commit trong một transaction; tính toán core nằm ngoài transaction.
+Rollback triển khai: tắt caller V3; giữ bảng/bytes để bảo toàn lịch sử; chỉ drop sau khi đã export và được phê duyệt.
+
+#### `fa_json_sources`
+
+JSON gốc và manifest; UNIQUE(project_id,dedupe_key).
+
+| Cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `id` | CHAR(36) | UUID bất biến của resource. |
+| `project_id` | BIGINT UNSIGNED | Project đã xác thực; FK, luôn nằm trong predicate truy cập. |
+| `source_id` | CHAR(36), nullable chỉ ở source | FK source trong cùng project; NULL cho source. |
+| `execution_id` | CHAR(36), nullable cho source/execution | Report/handoff tham chiếu execution trong cùng project và source. |
+| `dedupe_key` | CHAR/VARCHAR(64) | Nguồn: SHA bytes; execution: SHA toàn bộ determinants; report: execution + ordinal; handoff: execution. |
+| `identity_digest` | CHAR(64), NULL | SHA identity khai báo nếu đủ; dùng phát hiện bản khác bytes, không phải quyền truy cập. |
+| `payload_bytes` | MEDIUMBLOB, handoff có thể NULL | Bytes gốc / report / summary / handoff, không normalize original JSON; NULL handoff khi bị chặn. |
+| `payload_sha256` | CHAR(64), handoff có thể NULL | SHA-256 chính xác payload bytes; độc lập content digest trong JSON. |
+| `metadata_bytes` | MEDIUMBLOB | Envelope JSON UTF-8 bất biến, schema/version/identity/status/time; tối đa 256 KiB. |
+| `metadata_sha256` | CHAR(64) | SHA metadata bytes; GET kiểm tra trước parse. |
+| `created_at` | TIMESTAMP(6) | Thời gian UTC ghi DB (cấu hình timezone DB phải UTC); envelope có created_at_utc ISO instant. |
+
+#### `fa_json_executions`
+
+Một execution cho source + core bytecode + context policy; UNIQUE(project_id,dedupe_key).
+
+| Cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `id` | CHAR(36) | UUID bất biến của resource. |
+| `project_id` | BIGINT UNSIGNED | Project đã xác thực; FK, luôn nằm trong predicate truy cập. |
+| `source_id` | CHAR(36), nullable chỉ ở source | FK source trong cùng project; NULL cho source. |
+| `execution_id` | CHAR(36), nullable cho source/execution | Report/handoff tham chiếu execution trong cùng project và source. |
+| `dedupe_key` | CHAR/VARCHAR(64) | Nguồn: SHA bytes; execution: SHA toàn bộ determinants; report: execution + ordinal; handoff: execution. |
+| `identity_digest` | CHAR(64), NULL | SHA identity khai báo nếu đủ; dùng phát hiện bản khác bytes, không phải quyền truy cập. |
+| `payload_bytes` | MEDIUMBLOB, handoff có thể NULL | Bytes gốc / report / summary / handoff, không normalize original JSON; NULL handoff khi bị chặn. |
+| `payload_sha256` | CHAR(64), handoff có thể NULL | SHA-256 chính xác payload bytes; độc lập content digest trong JSON. |
+| `metadata_bytes` | MEDIUMBLOB | Envelope JSON UTF-8 bất biến, schema/version/identity/status/time; tối đa 256 KiB. |
+| `metadata_sha256` | CHAR(64) | SHA metadata bytes; GET kiểm tra trước parse. |
+| `created_at` | TIMESTAMP(6) | Thời gian UTC ghi DB (cấu hình timezone DB phải UTC); envelope có created_at_utc ISO instant. |
+
+#### `fa_json_reports`
+
+Một report cho member ordinal; không gộp repetition/attempt.
+
+| Cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `id` | CHAR(36) | UUID bất biến của resource. |
+| `project_id` | BIGINT UNSIGNED | Project đã xác thực; FK, luôn nằm trong predicate truy cập. |
+| `source_id` | CHAR(36), nullable chỉ ở source | FK source trong cùng project; NULL cho source. |
+| `execution_id` | CHAR(36), nullable cho source/execution | Report/handoff tham chiếu execution trong cùng project và source. |
+| `dedupe_key` | CHAR/VARCHAR(64) | Nguồn: SHA bytes; execution: SHA toàn bộ determinants; report: execution + ordinal; handoff: execution. |
+| `identity_digest` | CHAR(64), NULL | SHA identity khai báo nếu đủ; dùng phát hiện bản khác bytes, không phải quyền truy cập. |
+| `payload_bytes` | MEDIUMBLOB, handoff có thể NULL | Bytes gốc / report / summary / handoff, không normalize original JSON; NULL handoff khi bị chặn. |
+| `payload_sha256` | CHAR(64), handoff có thể NULL | SHA-256 chính xác payload bytes; độc lập content digest trong JSON. |
+| `metadata_bytes` | MEDIUMBLOB | Envelope JSON UTF-8 bất biến, schema/version/identity/status/time; tối đa 256 KiB. |
+| `metadata_sha256` | CHAR(64) | SHA metadata bytes; GET kiểm tra trước parse. |
+| `created_at` | TIMESTAMP(6) | Thời gian UTC ghi DB (cấu hình timezone DB phải UTC); envelope có created_at_utc ISO instant. |
+
+#### `fa_json_handoffs`
+
+Một output/status resource cho execution; không mang quyền dispatch optimizer.
+
+| Cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `id` | CHAR(36) | UUID bất biến của resource. |
+| `project_id` | BIGINT UNSIGNED | Project đã xác thực; FK, luôn nằm trong predicate truy cập. |
+| `source_id` | CHAR(36), nullable chỉ ở source | FK source trong cùng project; NULL cho source. |
+| `execution_id` | CHAR(36), nullable cho source/execution | Report/handoff tham chiếu execution trong cùng project và source. |
+| `dedupe_key` | CHAR/VARCHAR(64) | Nguồn: SHA bytes; execution: SHA toàn bộ determinants; report: execution + ordinal; handoff: execution. |
+| `identity_digest` | CHAR(64), NULL | SHA identity khai báo nếu đủ; dùng phát hiện bản khác bytes, không phải quyền truy cập. |
+| `payload_bytes` | MEDIUMBLOB, handoff có thể NULL | Bytes gốc / report / summary / handoff, không normalize original JSON; NULL handoff khi bị chặn. |
+| `payload_sha256` | CHAR(64), handoff có thể NULL | SHA-256 chính xác payload bytes; độc lập content digest trong JSON. |
+| `metadata_bytes` | MEDIUMBLOB | Envelope JSON UTF-8 bất biến, schema/version/identity/status/time; tối đa 256 KiB. |
+| `metadata_sha256` | CHAR(64) | SHA metadata bytes; GET kiểm tra trước parse. |
+| `created_at` | TIMESTAMP(6) | Thời gian UTC ghi DB (cấu hình timezone DB phải UTC); envelope có created_at_utc ISO instant. |
+
+
+## BE-R1 verification
+
+Migration 020 ch? ?p tr?n database test ri?ng khi c? b?ng ch?ng ki?m ch?ng; xem b?o c?o backend-integration/08_TEST_REPORT.md.
