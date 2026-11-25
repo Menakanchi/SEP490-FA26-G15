@@ -76,7 +76,10 @@ public class VehicleCatalogService {
                     "attributes", s.json("attributes_json"),
                     "is_enabled", s.bool("is_enabled")));
         }
-        out.put("sensors", sensors);
+        // Bảng sensors trống (chưa có bộ cảm biến tuỳ chỉnh): hiện đúng bộ adapter CARLA gắn lúc chạy thay vì khối trống (VehicleConfig-10).
+        boolean fromDatabase = !sensors.isEmpty();
+        out.put("sensors", fromDatabase ? sensors : CarlaSensorRig.sensors());
+        out.put("sensor_source", fromDatabase ? "DATABASE" : CarlaSensorRig.SOURCE);
         List<Map<String, Object>> usage = new ArrayList<>();
         long total = 0;
         List<Row> usageRows = projectId == null ? List.of()
