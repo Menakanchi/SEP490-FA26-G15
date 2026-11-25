@@ -1,8 +1,0 @@
-?? docs/exec-plans/completed/2026-11-23-failure-analysis-m1a.md
-?? docs/exec-plans/completed/2026-11-23-failure-analysis-m1b.md
-?? docs/exec-plans/completed/2026-11-23-failure-analysis-m1c.md
-?? docs/exec-plans/completed/2026-11-24-failure-analysis-high-fixes-batch-01.md
-?? docs/exec-plans/completed/2026-11-24-failure-analysis-m1d.md
-?? docs/failure-analysis-v3/
-?? src/main/java/com/vsos/core/failureanalysis/
-?? src/test/java/com/vsos/core/failureanalysis/

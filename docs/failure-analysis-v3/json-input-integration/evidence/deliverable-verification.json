@@ -1,9 +1,0 @@
-{
-  "status": "PASS",
-  "deliverables": 7,
-  "local_links_checked": 20,
-  "json_handoffs_schema_integrity_verified": 5,
-  "csv_rows": 8,
-  "distinct_run_ids": 6,
-  "dispatch_allowed": false
-}
