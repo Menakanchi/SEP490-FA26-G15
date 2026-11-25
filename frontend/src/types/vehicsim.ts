@@ -21,12 +21,18 @@ export interface CarlaStatus {
 }
 
 export interface CarlaRun {
+  optimization_trial_id: number | null;
   id: number;
   status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "STOPPED";
   scenario_id: number;
   aeb_version_id: number;
   simulator_version: string;
   error_message: string | null;
+  /** Chỉ run `BASELINE` không thuộc regression, ở trạng thái FAILED/STOPPED, do chính người xoá tạo (ADMIN: mọi người) mới xoá được kết quả. */
+  purpose?: "BASELINE" | "EVALUATION" | "OPTIMIZATION" | "REGRESSION" | "ROBUSTNESS";
+  aeb_mode?: "ON" | "OFF";
+  regression_test_id?: number | null;
+  created_by_user_id?: number | null;
 }
 
 /** Run đang chờ / đang chạy của một họ (GET /families/{id}/runs/active); run của regression/tối ưu chỉ dừng theo cả test / đợt. */
@@ -55,6 +61,8 @@ export interface CarlaData {
   run_id: number;
   summary: TelemetrySummary;
   camera_frames: string[];
+  /** Run có `video.mp4` ghép sau khi chạy (worker cần `--camera` và ffmpeg). Run cũ không có khoá này. */
+  has_video?: boolean;
 }
 
 export interface VersionBrief {
@@ -110,6 +118,8 @@ export interface ProjectRequest {
   name?: string;
   description?: string;
   carla_vehicle_model_id?: number;
+  /** Chỉ Kỹ sư gửi (project của workspace, ADR-064); Experiencer bỏ trống. */
+  workspace_id?: number;
 }
 
 export interface VehicleOption {
@@ -194,6 +204,8 @@ export interface FamilyItem {
   variants: number;
   parameter_space: Record<string, (number | boolean | string)[]>;
   runs: Record<string, number>;
+  /** Baseline của xe, AEB và bộ biến thể hiện hành, theo phiên bản bộ mô phỏng. */
+  baseline_progress?: Record<string, { completed_variants: number; active_runs: number; failed_runs: number }>;
   /** Số biến thể có lỗi ở run baseline mới nhất của `baseline` (không tính run regression). */
   failures: number;
   baseline: string | null;

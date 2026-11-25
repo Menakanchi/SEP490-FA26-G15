@@ -3,16 +3,36 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, CheckCircle2, Play, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, Play, RefreshCw, X } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { Card, EmptyState, ErrorNote, PillButton, Tag, cx, simulatorLabel } from "@/components/VehicSimUi";
+import { useAuth } from "@/context/AuthContext";
+import { Card, EmptyState, ErrorNote, PillButton, cx, simulatorLabel } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { FamilyItem } from "@/types/vehicsim";
 
+const axisLabels: Record<string, string> = {
+  ego_speed_kmh: "Tốc độ xe thử (km/h)",
+  trigger_distance_m: "Khoảng cách kích hoạt (m)",
+  pedestrian_speed_mps: "Tốc độ người đi bộ (m/s)",
+  stops_at_curb: "Hành vi người đi bộ",
+  target_speed_kmh: "Tốc độ xe phía trước (km/h)",
+  initial_distance_m: "Khoảng cách ban đầu (m)",
+  target_decel_mps2: "Giảm tốc xe phía trước (m/s²)",
+  lateral_overlap_pct: "Độ chồng lấn (%)",
+  weather: "Thời tiết",
+  time_of_day: "Thời điểm",
+};
+
+const valueLabels: Record<string, string> = {
+  CLEAR: "Trời quang", CLOUDY: "Nhiều mây", RAIN: "Mưa", HEAVY_RAIN: "Mưa to", FOG: "Sương mù",
+  DAY: "Ban ngày", DUSK: "Chạng vạng", NIGHT: "Ban đêm",
+};
+
 export default function ScenarioRunPage() {
-  const { ctx, refresh, canWrite } = useVehicSimContext();
+  const { ctx, error: contextError, refresh, canWrite } = useVehicSimContext();
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -24,7 +44,8 @@ export default function ScenarioRunPage() {
   const [withAebOff, setWithAebOff] = useState(true);
 
   const paramId = Number(searchParams.get("scenario_id") || searchParams.get("family"));
-  const selectedId = activeId ?? (Number.isInteger(paramId) && paramId > 0 ? paramId : (families?.[0]?.id ?? null));
+  const requestedId = activeId ?? (Number.isInteger(paramId) && paramId > 0 ? paramId : null);
+  const selectedId = families?.some((family) => family.id === requestedId) ? requestedId : (families?.[0]?.id ?? null);
 
   // Tải danh sách họ kịch bản
   const load = useCallback(() => {
@@ -39,11 +60,11 @@ export default function ScenarioRunPage() {
   const selectedFamily = (families ?? []).find((f) => f.id === selectedId) ?? null;
 
   // Tự động làm mới khi có lượt đang chờ / đang chạy
-  const pending = selectedFamily
-    ? (selectedFamily.runs.PENDING ?? selectedFamily.runs.QUEUED ?? 0) +
-      (selectedFamily.runs.RUNNING ?? 0) +
-      (selectedFamily.runs.PAUSED ?? 0)
-    : 0;
+  const progressAvailable = !!ctx?.vehicle && !!ctx.system.baseline && selectedFamily?.baseline_progress != null;
+  const archived = !!ctx && (ctx.workspace != null || user?.roleCode === "ENGINEER") && !ctx.reviewer_can_decide;
+  const canOperate = canWrite && !!ctx && !contextError && !archived;
+  const progress = ctx ? selectedFamily?.baseline_progress?.[ctx.simulator] : undefined;
+  const pending = progress?.active_runs ?? 0;
 
   useEffect(() => {
     if (pending === 0) return;
@@ -79,7 +100,7 @@ export default function ScenarioRunPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await vehicsimApi.cancelFamily(selectedFamily.id);
+      const res = await vehicsimApi.cancelFamily(selectedFamily.id, ctx?.simulator.startsWith("carla-") ? "CARLA" : "KINEMATIC");
       setNotice(
         `${selectedFamily.code}: đã hủy ${res.stopped} lượt đang chờ${
           res.stopping ? `, đang dừng ${res.stopping} lượt đang chạy` : ""
@@ -101,42 +122,43 @@ export default function ScenarioRunPage() {
     router.replace(`/scenarios/run?${params.toString()}`);
   };
 
-  const completed = selectedFamily?.runs.COMPLETED ?? 0;
-  const failed = selectedFamily?.runs.FAILED ?? 0;
+  const completed = progress?.completed_variants ?? 0;
+  const failed = progress?.failed_runs ?? 0;
 
   return (
     <VehicSimPage
       step={2}
       crumbs={[{ label: "Mô phỏng", href: "/scenarios/run" }, { label: "Chạy baseline" }]}
-      title="Đo lường an toàn phanh bản cơ sở"
-      subtitle="Mô phỏng toàn bộ biến thể kịch bản với cấu hình AEB gốc để phát hiện ca va chạm và đo tỷ lệ phanh oan."
+      title="Chạy baseline"
+      subtitle="Chọn họ kịch bản và chạy mô phỏng với cấu hình AEB cơ sở của project."
       actions={
         <PillButton href="/scenarios" variant="light">
-          ← Danh sách họ kịch bản
+          <ArrowLeft aria-hidden className="size-4" /> Danh sách kịch bản
         </PillButton>
       }
     >
       <ErrorNote message={error} />
       {notice && (
-        <div className="flex items-center gap-3 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok shadow-sm">
+        <div role="status" className="flex items-center gap-3 rounded-xl bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok">
           <CheckCircle2 className="size-4 shrink-0 text-vehicsim-ok" />
           <span>{notice}</span>
         </div>
       )}
 
-      {/* 1. Chọn họ kịch bản */}
-      <Card className="flex flex-col gap-4 p-5">
+      <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)]">
+      <div className="flex min-w-0 flex-col gap-5">
+      <Card className="flex min-w-0 flex-col gap-5 p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-3">
           <div>
-            <h2 className="text-[16px] font-bold text-vehicsim-ink">1. Chọn họ kịch bản kiểm thử</h2>
-            <p className="text-[13px] text-vehicsim-muted">Chọn kịch bản từ mục Thiết kế kịch bản để chạy thử nghiệm.</p>
+            <h2 className="text-[17px] font-bold text-vehicsim-ink">Họ kịch bản</h2>
+            <p className="mt-1 text-[13px] text-vehicsim-muted">Chọn họ có các biến thể bạn muốn chạy.</p>
           </div>
           {families && families.length > 0 && (
             <select
               aria-label="Chọn họ kịch bản kiểm thử"
               value={selectedId ?? ""}
               onChange={(e) => pickFamily(Number(e.target.value))}
-              className="rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-2 text-[13px] font-bold text-vehicsim-ink shadow-sm"
+              className="min-h-11 w-full min-w-0 rounded-lg border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-2 text-[13px] font-semibold text-vehicsim-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-primary sm:w-auto sm:max-w-[360px]"
             >
               {families.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -148,11 +170,11 @@ export default function ScenarioRunPage() {
         </div>
 
         {selectedFamily ? (
-          <div className="flex flex-col gap-3 rounded-[12px] bg-vehicsim-soft p-4">
+          <div className="flex min-w-0 flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[15px] font-bold text-vehicsim-ink">
+              <span className="min-w-0 break-words text-[15px] font-bold text-vehicsim-ink">
                 {selectedFamily.code} · {selectedFamily.name}
-                <Tag className="ml-2 px-2 py-0.5 text-[11px]">v{selectedFamily.version}</Tag>
+                <span className="ml-2 text-[12px] font-medium text-vehicsim-muted">v{selectedFamily.version}</span>
               </span>
               <span className="text-[13px] font-semibold text-vehicsim-muted">
                 {selectedFamily.variants} biến thể ({selectedFamily.risk_counts?.DANGEROUS ?? 0} nguy hiểm,{" "}
@@ -162,14 +184,22 @@ export default function ScenarioRunPage() {
             {selectedFamily.description && (
               <p className="text-[13px] leading-[1.5] text-vehicsim-muted">{selectedFamily.description}</p>
             )}
-            <div className="flex flex-wrap gap-1.5 pt-1">
+            <details className="group border-t border-vehicsim-line pt-3">
+              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 text-[13px] font-semibold text-vehicsim-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-primary [&::-webkit-details-marker]:hidden">
+                Xem không gian tham số <ChevronDown aria-hidden className="size-4 transition-transform group-open:rotate-180" />
+              </summary>
+              <dl className="grid gap-x-5 gap-y-3 pb-1 pt-2 sm:grid-cols-2">
               {Object.entries(selectedFamily.parameter_space).map(([axis, values]) => (
-                <Tag key={axis} className="px-2 py-1 text-[11px]">
-                  <strong>{axis}:</strong> {values.map((v) => (typeof v === "boolean" ? (v ? "dừng" : "băng qua") : String(v))).join(" / ")}
-                </Tag>
+                <div key={axis} className="min-w-0 text-[13px]">
+                  <dt className="text-vehicsim-muted">{axisLabels[axis] ?? axis}</dt>
+                  <dd className="mt-0.5 break-words font-semibold text-vehicsim-ink">{values.map((v) => typeof v === "boolean" ? (v ? "Dừng ở lề" : "Băng qua") : valueLabels[String(v)] ?? String(v)).join(" / ")}</dd>
+                </div>
               ))}
-            </div>
+              </dl>
+            </details>
           </div>
+        ) : families === null ? (
+          <p className="text-[13px] text-vehicsim-muted">{error ? "Không thể tải danh sách họ kịch bản." : "Đang tải họ kịch bản…"}</p>
         ) : (
           <EmptyState title="Chưa có họ kịch bản nào">
             Vui lòng vào mục <Link href="/scenarios/new" className="text-vehicsim-primary font-bold underline">Thiết kế kịch bản</Link> để tạo kịch bản trước.
@@ -177,49 +207,54 @@ export default function ScenarioRunPage() {
         )}
       </Card>
 
-      {/* 2. Cấu hình môi trường chạy */}
       {selectedFamily && (
-        <Card className="flex flex-col gap-4 p-5">
-          <h2 className="text-[16px] font-bold text-vehicsim-ink">2. Cấu hình thực thi Baseline</h2>
+        <Card className="flex min-w-0 flex-col gap-4 p-5 sm:p-6">
+          <div>
+            <h2 className="text-[17px] font-bold text-vehicsim-ink">Cấu hình chạy</h2>
+            <p className="mt-1 text-[13px] text-vehicsim-muted">Các lượt mới sử dụng cấu hình hiện tại của project.</p>
+          </div>
           {ctx && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="flex flex-col gap-1 rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
+            <div className="grid grid-cols-1 gap-4 border-y border-vehicsim-line py-4 sm:grid-cols-3">
+              <div className="flex flex-col gap-1">
                 <span className="text-[12px] font-semibold text-vehicsim-muted">Phương tiện thử nghiệm</span>
                 <span className="text-[14px] font-bold text-vehicsim-ink">{ctx.vehicle?.name ?? "—"}</span>
               </div>
-              <div className="flex flex-col gap-1 rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
+              <div className="flex flex-col gap-1">
                 <span className="text-[12px] font-semibold text-vehicsim-muted">Bộ AEB cơ sở</span>
                 <span className="text-[14px] font-bold text-vehicsim-ink">
                   {ctx.system.baseline?.label ?? "chưa có bản cơ sở"}
                 </span>
               </div>
-              <div className="flex flex-col gap-1 rounded-[12px] border border-solid border-vehicsim-line bg-vehicsim-surface p-3">
+              <div className="flex flex-col gap-1">
                 <span className="text-[12px] font-semibold text-vehicsim-muted">Môi trường mô phỏng</span>
                 <span className="text-[14px] font-bold text-vehicsim-ink">{simulatorLabel(ctx.simulator)}</span>
               </div>
             </div>
           )}
 
-          <label className="flex items-center gap-2 pt-1 text-[13px] text-vehicsim-muted">
+          <label className="flex cursor-pointer items-start gap-3 text-[13px] leading-relaxed text-vehicsim-ink">
             <input
               type="checkbox"
               checked={withAebOff}
               onChange={(e) => setWithAebOff(e.target.checked)}
-              disabled={!canWrite || pending > 0}
+              disabled={!canOperate || pending > 0 || busy}
+              className="mt-1 size-4 shrink-0 accent-vehicsim-primary"
             />
-            Khi chạy cơ sở, chạy thêm mỗi biến thể một lượt AEB tắt (mốc đối chiếu &quot;không có AEB&quot;, không dùng làm cơ sở kiểm chứng)
+            <span><span className="font-semibold">Chạy thêm lượt AEB tắt</span><span className="mt-0.5 block text-vehicsim-muted">Thêm một lượt cho mỗi biến thể để đối chiếu; không dùng làm cơ sở kiểm chứng.</span></span>
           </label>
         </Card>
       )}
+      </div>
 
-      {/* 3. Tiến trình & Khởi chạy */}
       {selectedFamily && (
-        <Card className="flex flex-col gap-5 p-5">
+        <Card className="flex min-w-0 flex-col gap-5 p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-[16px] font-bold text-vehicsim-ink">3. Điều khiển & Tiến độ mô phỏng</h2>
-              <p className="text-[13px] text-vehicsim-muted">
-                {pending > 0
+              <h2 className="text-[17px] font-bold text-vehicsim-ink">Tiến độ baseline</h2>
+              <p className="mt-1 text-[13px] leading-relaxed text-vehicsim-muted">
+                {!progressAvailable
+                  ? "Chưa tải được tiến độ cho cấu hình hiện tại."
+                  : pending > 0
                   ? "Hệ thống đang thực thi mô phỏng trong hàng đợi nền..."
                   : completed > 0
                   ? "Đã có kết quả baseline. Bạn có thể xem phân tích hoặc chạy lại nếu cần."
@@ -230,78 +265,68 @@ export default function ScenarioRunPage() {
               <button
                 type="button"
                 onClick={load}
-                className="flex items-center gap-1.5 rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-1.5 text-[12px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink"
+                className="flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-[13px] font-semibold text-vehicsim-primary hover:bg-vehicsim-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-primary"
               >
-                <RefreshCw className={cx("size-3.5", pending > 0 && "animate-spin text-vehicsim-primary")} />
+                <RefreshCw className={cx("size-3.5", pending > 0 && "motion-safe:animate-spin text-vehicsim-primary")} />
                 Làm mới
               </button>
             </div>
           </div>
 
-          {/* Cards tiến trình */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="flex flex-col items-center justify-center rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-soft p-4 text-center">
-              <span className="text-[24px] font-black text-vehicsim-ink">{selectedFamily.variants}</span>
-              <span className="text-[12px] font-semibold text-vehicsim-muted">Tổng biến thể</span>
+          <div className="border-y border-vehicsim-line py-4">
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="text-[13px] font-semibold text-vehicsim-ink">Biến thể hoàn thành</span>
+              <span className="text-[20px] font-bold tabular-nums text-vehicsim-ink">{progressAvailable ? completed : "—"}<span className="text-[14px] font-medium text-vehicsim-muted"> / {selectedFamily.variants}</span></span>
             </div>
-            <div className="flex flex-col items-center justify-center rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-soft p-4 text-center">
-              <span className={cx("text-[24px] font-black", pending > 0 ? "text-vehicsim-decision" : "text-vehicsim-ink")}>
-                {pending}
-              </span>
-              <span className="text-[12px] font-semibold text-vehicsim-muted">Đang chờ / chạy</span>
-            </div>
-            <div className="flex flex-col items-center justify-center rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-soft p-4 text-center">
-              <span className={cx("text-[24px] font-black", completed > 0 ? "text-vehicsim-ok" : "text-vehicsim-ink")}>
-                {completed}
-              </span>
-              <span className="text-[12px] font-semibold text-vehicsim-muted">Đã xong</span>
-            </div>
-            <div className="flex flex-col items-center justify-center rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-soft p-4 text-center">
-              <span className={cx("text-[24px] font-black", failed > 0 ? "text-vehicsim-danger" : "text-vehicsim-ink")}>
-                {failed}
-              </span>
-              <span className="text-[12px] font-semibold text-vehicsim-muted">Lỗi</span>
-            </div>
+            {progressAvailable && selectedFamily.variants > 0 && (
+              <progress aria-label="Biến thể đã hoàn thành" value={completed} max={selectedFamily.variants} className="mt-3 h-2 w-full appearance-none overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-vehicsim-soft [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-vehicsim-primary [&::-moz-progress-bar]:rounded-full [&::-moz-progress-bar]:bg-vehicsim-primary" />
+            )}
+            <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-3 text-[13px]">
+              <div><dt className="text-vehicsim-muted">Lượt chờ / chạy</dt><dd className={cx("mt-1 font-bold tabular-nums", pending > 0 ? "text-vehicsim-decision" : "text-vehicsim-ink")}>{progressAvailable ? pending : "—"}</dd></div>
+              <div><dt className="text-vehicsim-muted">Lượt lỗi</dt><dd className={cx("mt-1 font-bold tabular-nums", failed > 0 ? "text-vehicsim-danger" : "text-vehicsim-ink")}>{progressAvailable ? failed : "—"}</dd></div>
+            </dl>
           </div>
 
-          {/* Nút hành động */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line pt-4">
+          <p className="text-[12px] leading-relaxed text-vehicsim-muted">Theo xe, bản AEB và phiên bản mô phỏng hiện tại. Biến thể hoàn thành được tính một lần với AEB bật; lượt chờ và lỗi bao gồm cả AEB tắt.</p>
+          {archived && <p className="text-[13px] text-vehicsim-muted">Project hoặc workspace đã lưu trữ; bạn chỉ có thể xem lịch sử mô phỏng.</p>}
+          {!canWrite && !archived && <p className="text-[13px] text-vehicsim-muted">Tài khoản của bạn chỉ có quyền xem, không thể khởi chạy hoặc hủy mô phỏng.</p>}
+          {ctx && !ctx.vehicle && <p className="text-[13px] text-vehicsim-muted">Hãy chọn phương tiện cho project trước khi chạy mô phỏng.</p>}
+          {ctx && !ctx.system.baseline && <p className="text-[13px] text-vehicsim-muted">Project cần có cấu hình AEB cơ sở trước khi chạy mô phỏng.</p>}
+          {pending > 0 && canOperate && <p className="text-[13px] text-vehicsim-muted">Hủy sẽ dừng các lượt độc lập đang chờ hoặc chạy của họ trong cùng loại mô phỏng, kể cả các cấu hình cũ.</p>}
+
+          <div className="flex flex-col gap-3 border-t border-solid border-vehicsim-line pt-4">
+            {completed > 0 && (
+              <PillButton href={`/analysis/failures?scenario_id=${selectedFamily.id}`} variant="dark" className="w-full">
+                Xem phân tích kết quả <ArrowRight aria-hidden className="size-4 shrink-0" />
+              </PillButton>
+            )}
             {pending > 0 ? (
               <button
                 type="button"
                 onClick={handleCancel}
-                disabled={!canWrite || busy}
-                className="flex items-center gap-2 rounded-full bg-vehicsim-danger px-6 py-3 text-[14px] font-bold text-white shadow-md hover:bg-red-700 transition disabled:opacity-50"
+                disabled={!canOperate || busy}
+                className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-vehicsim-danger/30 px-4 py-2.5 text-[13px] font-semibold text-vehicsim-danger transition-colors hover:bg-vehicsim-danger-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-danger disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <X className="size-4 shrink-0" />
-                {busy ? "Đang hủy..." : `Hủy ${pending} lượt đang xử lý`}
+                {busy ? "Đang hủy..." : "Hủy lượt đang xử lý"}
               </button>
             ) : (
               <button
                 type="button"
                 onClick={handleRun}
-                disabled={!canWrite || busy}
-                className="flex items-center gap-2 rounded-full bg-vehicsim-primary px-6 py-3 text-[14px] font-bold text-white shadow-md hover:bg-vehicsim-primary-hover transition disabled:opacity-50"
+                disabled={!canOperate || busy || !progressAvailable}
+                className={cx("flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-primary disabled:cursor-not-allowed disabled:opacity-50", completed > 0 ? "border border-vehicsim-line-strong text-vehicsim-ink hover:bg-vehicsim-soft" : "bg-vehicsim-primary text-white hover:bg-vehicsim-primary-hover")}
               >
                 <Play className="size-4 fill-current shrink-0" />
-                {busy ? "Đang khởi chạy..." : completed > 0 ? "▶ Chạy lại toàn bộ Baseline" : "▶ Khởi chạy Baseline"}
+                {busy ? "Đang khởi chạy..." : completed > 0 ? "Chạy lại toàn bộ baseline" : "Khởi chạy baseline"}
               </button>
             )}
 
-            <div className="flex flex-wrap items-center gap-3">
-              <PillButton href="/analysis/carla" variant="light">
-                Dữ liệu CARLA 3D
-              </PillButton>
-              {completed > 0 && (
-                <PillButton href={`/analysis/failures?scenario_id=${selectedFamily.id}`} variant="dark">
-                  Tiếp tục: Phân tích kết quả
-                  <ArrowRight className="size-4 shrink-0" />
-                </PillButton>
-              )}
-            </div>
+            <Link href="/analysis/carla" className="min-h-11 content-center text-center text-[13px] font-semibold text-vehicsim-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-primary">Xem dữ liệu CARLA</Link>
           </div>
         </Card>
       )}
+      </div>
     </VehicSimPage>
   );
 }

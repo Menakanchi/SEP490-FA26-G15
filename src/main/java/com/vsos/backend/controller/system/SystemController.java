@@ -50,10 +50,12 @@ public class SystemController {
         return views.context();
     }
 
-    @Operation(summary = "Project Reviewer còn được xem, kể cả project/workspace lưu trữ")
+    @Operation(summary = "Project Reviewer / Kỹ sư còn được xem theo workspace mình thuộc về, kể cả project/workspace lưu trữ")
     @GetMapping("/reviewer/projects")
     public List<Map<String, Object>> reviewerProjects(@AuthenticationPrincipal UserDetails user) {
-        VehicSimAccess.requireReviewer(user);
+        if (!"ENGINEER".equals(VehicSimAccess.roleOf(user))) {
+            VehicSimAccess.requireReviewer(user);
+        }
         return views.reviewerProjects();
     }
 }

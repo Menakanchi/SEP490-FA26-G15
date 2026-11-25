@@ -55,7 +55,8 @@ export default function AebMoboTrialsPage() {
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredTrials.length / PAGE_SIZE));
-  const pagedTrials = filteredTrials.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const safePage = Math.min(page, totalPages);
+  const pagedTrials = filteredTrials.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <VehicSimPage
@@ -91,6 +92,7 @@ export default function AebMoboTrialsPage() {
               onChange={(e) => {
                 const newId = Number(e.target.value);
                 setSelectedRunId(newId);
+                setPage(1);
                 router.replace(`/aeb/mobo/trials?run_id=${newId}`);
               }}
               className="h-10 rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-bold text-vehicsim-ink"
@@ -181,7 +183,7 @@ export default function AebMoboTrialsPage() {
                 {pagedTrials.map((t, idx) => (
                   <tr key={t.id} className={cx("hover:bg-vehicsim-row transition-colors", t.is_pareto_optimal && "bg-vehicsim-ok-bg/25")}>
                     <td className="w-12 px-3 py-4 text-center font-mono text-[12px] font-bold text-vehicsim-faint tabular-nums">
-                      {(page - 1) * PAGE_SIZE + idx + 1}
+                      {(safePage - 1) * PAGE_SIZE + idx + 1}
                     </td>
                     <td className="px-4 py-3.5 font-mono font-bold text-vehicsim-ink">{t.trial_number}</td>
                     <td className="px-4 py-3.5">
@@ -230,9 +232,9 @@ export default function AebMoboTrialsPage() {
         {totalPages > 1 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
             <span className="text-[12px] font-medium text-vehicsim-muted">
-              Hiển thị {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredTrials.length)} trên {filteredTrials.length} lượt thử nghiệm
+              Hiển thị {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredTrials.length)} trên {filteredTrials.length} lượt thử nghiệm
             </span>
-            <Pagination page={page} pages={totalPages} onPage={setPage} />
+            <Pagination page={safePage} pages={totalPages} onPage={setPage} />
           </div>
         )}
       </section>

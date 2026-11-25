@@ -47,6 +47,18 @@ TTC perception và GT độc lập; thiếu perception không lấy GT thế ch�
 Chuỗi nguyên nhân là giả thuyết theo luật; số confidence không phải xác suất đã hiệu chuẩn.
 UI hiển thị số đo có thật cho từng khâu và lý do không đủ dữ liệu.
 
+## Khối `dataset` của `result.json` ([ADR-065](../adr/ADR-065-khoi-dataset-trong-result-json.md))
+
+Run CARLA ghi thêm khóa `dataset` cạnh `outcome`/`evaluation`: `identity`, `config`, `objectives` (cả `outcome.metrics` lẫn `evaluation.aeb_result`),
+`provenance` (hash từng file), `sensors`, `collisions` (tách khỏi cờ `collision`), `time_series` (nội dung frames và ground truth), `derived`, `status`.
+Phân tích đọc `status.<mục>.state` (`OK`/`MISSING`/`INVALID`/`CONFLICTING`/`FLAGGED`) và coi `null` là `UNKNOWN`, không thay bằng 0.
+Objective null đọc theo `objectives.<tên>.state`: chỉ `NOT_APPLICABLE` mới là "không áp dụng"; `MISSING` là thiếu số. Tính chỉ số từ chuỗi thời gian
+thì bỏ các dòng trong `time_series.quality.*.masks` (khởi tạo, gia tốc phi lý, sau va chạm) như `TelemetryMetricsService` đang làm.
+Nhiều run của một biến thể (ON/OFF, lần lặp): `GET /variants/{variantId}/collection` trả `vehicsim.run-collection/v1`, mỗi run giữ nguyên
+`result.json`, so sánh chỉ trong cùng `groups[].key` (AEB version, xe, simulator, seed); phép gộp vẫn thuộc phần Phân tích.
+`derived` (`d_*`, [RunDataset](../../src/main/java/com/vsos/core/evaluation/RunDataset.java)) là số tham khảo `REFERENCE_ONLY`: không thay công thức của lõi,
+không làm objective. Cột cần nhiều run (AEB OFF − ON, thống kê lặp, candidate lỗi) thuộc Dataset v2 bên dưới, không thuộc một `result.json`.
+
 ## Dataset v2
 
 `analysis_results` / BASELINE_DATASET / IMMUTABLE_SNAPSHOT, JSON `vehicsim.analysis-dataset/v2`.
