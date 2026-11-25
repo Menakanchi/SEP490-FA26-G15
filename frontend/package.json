@@ -12,17 +12,20 @@
   },
   "dependencies": {
     "@alloc/quick-lru": "^5.2.0",
+    "@google/model-viewer": "4.4.0",
     "lucide-react": "^1.28.0",
     "next": "16.4.6",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-easy-crop": "^6.2.3"
+    "react-easy-crop": "^6.2.3",
+    "three": "0.183.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "0.183.1",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
     "playwright": "1.64.1",
