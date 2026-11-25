@@ -772,7 +772,7 @@ public class RunService {
     }
 
     public List<Map<String, Object>> carlaRuns(long projectId) {
-        return db.list("SELECT id, status, scenario_id, aeb_version_id, simulator_version, aeb_mode, purpose, regression_test_id, optimization_trial_id, error_message, queued_at FROM simulation_runs "
+        return db.list("SELECT id, status, scenario_id, aeb_version_id, simulator_version, aeb_mode, purpose, regression_test_id, optimization_trial_id, created_by_user_id, error_message, queued_at FROM simulation_runs "
                 + "WHERE project_id = ? AND simulator_type = 'CARLA' ORDER BY id DESC LIMIT 30", projectId).stream().map(Row::asMap).toList();
     }
 
@@ -948,16 +948,22 @@ public class RunService {
         return Json.obj("scenario_id", scenarioId, "stopped", stopped, "stopping", stopping);
     }
 
-    /** Trạng thái đã kết thúc: chỉ run ở trạng thái này mới xoá được; run đang chờ / đang chạy phải hủy trước. */
-    private static final Set<String> FINISHED_STATUSES = Set.of("COMPLETED", "FAILED", "STOPPED");
+    /**
+     * Chỉ kết quả không dùng được mới xoá được: run lỗi thực thi hoặc đã hủy. Run {@code COMPLETED} là số liệu thật (ca lỗi, KPI, dataset)
+     * nên luôn giữ; run đang chờ / đang chạy phải hủy trước.
+     */
+    private static final Set<String> DELETABLE_STATUSES = Set.of("FAILED", "STOPPED");
+    private static final Set<String> ACTIVE_STATUSES = Set.of("PENDING", "RUNNING", "PAUSED");
 
     /**
      * Xoá kết quả của một run baseline: dòng {@code simulation_runs} (kèm {@code collision_events}, {@code failures}, {@code root_causes}, {@code simulation_artifacts}
-     * theo ON DELETE CASCADE) rồi cả thư mục file của run (ảnh/video/CSV/{@code result.json}). Chỉ run {@code BASELINE} không thuộc regression/tối ưu, đã kết thúc,
-     * và không phải mốc đối chiếu của một regression test (regression chạy lại đúng biến thể của run này nên cần giữ nó để so sánh).
+     * theo ON DELETE CASCADE) rồi cả thư mục file của run (ảnh/video/CSV/{@code result.json}). Chỉ run {@code BASELINE} không thuộc regression/tối ưu,
+     * ở trạng thái {@code FAILED}/{@code STOPPED}, do chính người xoá tạo (ADMIN xoá được run của người khác), và không phải mốc đối chiếu của một regression test.
+     *
+     * @param admin người xoá là ADMIN: bỏ qua điều kiện "run do mình tạo", không bỏ qua điều kiện trạng thái
      */
-    public Map<String, Object> deleteBaselineRun(long projectId, long runId, long userId) {
-        Row run = db.first("SELECT id, status, purpose, regression_test_id, optimization_trial_id FROM simulation_runs WHERE id = ? AND project_id = ?",
+    public Map<String, Object> deleteBaselineRun(long projectId, long runId, long userId, boolean admin) {
+        Row run = db.first("SELECT id, status, purpose, regression_test_id, optimization_trial_id, created_by_user_id FROM simulation_runs WHERE id = ? AND project_id = ?",
                 runId, projectId);
         if (run == null) {
             throw new NotFoundException("simulation run");
@@ -965,10 +971,16 @@ public class RunService {
         if (!"BASELINE".equals(run.str("purpose")) || !run.isNull("regression_test_id") || !run.isNull("optimization_trial_id")) {
             throw new InvalidRequestException("Only baseline run results can be deleted");
         }
-        if (!FINISHED_STATUSES.contains(run.str("status"))) {
+        if (ACTIVE_STATUSES.contains(run.str("status"))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Run is " + run.str("status") + "; cancel it before deleting its result");
         }
-        if (!deleteFinishedBaselineRun(projectId, runId, userId)) {
+        if (!DELETABLE_STATUSES.contains(run.str("status"))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Completed run results are kept; only failed or cancelled runs can be deleted");
+        }
+        if (!admin && !ownedBy(run, userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the user who started this run or an admin can delete its result");
+        }
+        if (!deleteFinishedBaselineRun(projectId, runId, userId, admin)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This run is the reference of a regression test and cannot be deleted");
         }
         deleteRunFolderAfterCommit(runId);
@@ -976,16 +988,15 @@ public class RunService {
         return Json.obj("run_id", runId, "deleted", true);
     }
 
-    /**
-     * Xoá mọi kết quả baseline đã kết thúc của một họ kịch bản bằng đúng luật của {@link #deleteBaselineRun}. Run đang chờ / đang chạy và run đang là mốc của
-     * regression được giữ lại và đếm riêng, để người dùng biết còn gì chưa xoá.
-     */
-    public Map<String, Object> deleteFamilyBaselineRuns(long projectId, long scenarioId, long userId) {
-        return deleteFamilyBaselineRuns(projectId, scenarioId, userId, null);
+    private static boolean ownedBy(Row run, long userId) {
+        return !run.isNull("created_by_user_id") && run.lng("created_by_user_id") == userId;
     }
 
-    /** Như {@link #deleteFamilyBaselineRuns(long, long, long)}, lọc thêm {@code simulator_type} ({@code CARLA}/{@code KINEMATIC}) khi có. */
-    public Map<String, Object> deleteFamilyBaselineRuns(long projectId, long scenarioId, long userId, String simulatorType) {
+    /**
+     * Xoá mọi kết quả baseline xoá được của một họ kịch bản bằng đúng luật của {@link #deleteBaselineRun}, lọc thêm {@code simulator_type}
+     * ({@code CARLA}/{@code KINEMATIC}) khi có. Run bị giữ lại được đếm theo lý do để người dùng biết còn gì chưa xoá.
+     */
+    public Map<String, Object> deleteFamilyBaselineRuns(long projectId, long scenarioId, long userId, boolean admin, String simulatorType) {
         String normalizedType = null;
         if (simulatorType != null && !simulatorType.isBlank()) {
             normalizedType = simulatorType.trim().toUpperCase(java.util.Locale.ROOT);
@@ -999,7 +1010,9 @@ public class RunService {
         int deleted = 0;
         int inUse = 0;
         int active = 0;
-        StringBuilder sql = new StringBuilder("SELECT id, status FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND purpose = 'BASELINE' "
+        int completed = 0;
+        int notOwner = 0;
+        StringBuilder sql = new StringBuilder("SELECT id, status, created_by_user_id FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND purpose = 'BASELINE' "
                 + "AND regression_test_id IS NULL AND optimization_trial_id IS NULL");
         List<Object> args = new ArrayList<>();
         args.add(projectId);
@@ -1010,21 +1023,30 @@ public class RunService {
         }
         sql.append(" ORDER BY id");
         for (Row r : db.list(sql.toString(), args.toArray())) {
-            if (!FINISHED_STATUSES.contains(r.str("status"))) {
+            if (ACTIVE_STATUSES.contains(r.str("status"))) {
                 active++;
-            } else if (deleteFinishedBaselineRun(projectId, r.lng("id"), userId)) {
+            } else if (!DELETABLE_STATUSES.contains(r.str("status"))) {
+                completed++;
+            } else if (!admin && !ownedBy(r, userId)) {
+                notOwner++;
+            } else if (deleteFinishedBaselineRun(projectId, r.lng("id"), userId, admin)) {
                 deleteRunFolderAfterCommit(r.lng("id"));
                 deleted++;
             } else {
                 inUse++;
             }
         }
-        AuditLog.event("family.baseline_runs.delete", "success", "user_id", userId, "scenario_id", scenarioId, "deleted", deleted, "kept_in_use", inUse, "kept_active", active);
-        return Json.obj("scenario_id", scenarioId, "deleted", deleted, "skipped_in_use", inUse, "skipped_active", active);
+        AuditLog.event("family.baseline_runs.delete", "success", "user_id", userId, "scenario_id", scenarioId, "deleted", deleted,
+                "kept_in_use", inUse, "kept_active", active, "kept_completed", completed, "kept_not_owner", notOwner);
+        return Json.obj("scenario_id", scenarioId, "deleted", deleted, "skipped_in_use", inUse, "skipped_active", active,
+                "skipped_completed", completed, "skipped_not_owner", notOwner);
     }
 
-    /** Xoá dòng run baseline đã kết thúc trong một transaction; {@code false} khi một regression còn tham chiếu nó (hoặc run vừa đổi trạng thái). */
-    private boolean deleteFinishedBaselineRun(long projectId, long runId, long userId) {
+    /**
+     * Xoá dòng run baseline xoá được trong một transaction; {@code false} khi một regression còn tham chiếu nó, hoặc run vừa đổi trạng thái /
+     * không còn thuộc người xoá (câu DELETE kiểm lại mọi điều kiện, nên đọc trước rồi xoá sau vẫn an toàn khi có thao tác chen vào).
+     */
+    private boolean deleteFinishedBaselineRun(long projectId, long runId, long userId, boolean admin) {
         try {
             Boolean done = tx.execute(status -> {
                 lockWritableProject(projectId, userId);
@@ -1033,8 +1055,9 @@ public class RunService {
                 if (referenced instanceof Number n && n.longValue() > 0) {
                     return false;
                 }
-                return db.update("DELETE FROM simulation_runs WHERE id = ? AND project_id = ? AND status IN ('COMPLETED','FAILED','STOPPED') "
-                        + "AND purpose = 'BASELINE' AND regression_test_id IS NULL AND optimization_trial_id IS NULL", runId, projectId) > 0;
+                return db.update("DELETE FROM simulation_runs WHERE id = ? AND project_id = ? AND status IN ('FAILED','STOPPED') "
+                        + "AND purpose = 'BASELINE' AND regression_test_id IS NULL AND optimization_trial_id IS NULL "
+                        + "AND (? OR created_by_user_id = ?)", runId, projectId, admin, userId) > 0;
             });
             return Boolean.TRUE.equals(done);
         } catch (org.springframework.dao.DataIntegrityViolationException e) {

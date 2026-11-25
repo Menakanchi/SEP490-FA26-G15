@@ -176,7 +176,7 @@ export const vehicsimApi = {
   deleteRun: (runId: number) => apiRequest<{ run_id: number; deleted: boolean }>(`/vehicsim/runs/${runId}`, { method: "DELETE" }),
   /** Xoá mọi kết quả baseline đã kết thúc của họ; giữ lại run đang chờ/chạy và run đang là mốc của regression. */
   deleteFamilyBaseline: (scenarioId: number, simulatorType?: "CARLA" | "KINEMATIC") =>
-    apiRequest<{ scenario_id: number; deleted: number; skipped_in_use: number; skipped_active: number }>(
+    apiRequest<{ scenario_id: number; deleted: number; skipped_in_use: number; skipped_active: number; skipped_completed: number; skipped_not_owner: number }>(
       `/vehicsim/families/${scenarioId}/baseline-runs${simulatorType ? `?simulator_type=${simulatorType}` : ""}`,
       { method: "DELETE" }),
   carlaStatus: () => apiRequest<CarlaStatus>("/vehicsim/carla/status"),
