@@ -176,7 +176,14 @@ export default function DescribeScenarioPage() {
               <SourceBadge result={result} />
             </div>
             {result.issues.length > 0 && (
-              <ErrorNote message={`LLM chưa tự sửa hết sau ${result.repairs} lần: ${result.issues.join("; ")}. Hãy sửa tay bên dưới.`} />
+              // Từ bộ luật (không có LLM) thì không có vòng tự sửa: chỉ báo giá trị cần chỉnh.
+              <ErrorNote
+                message={
+                  result.source === "llm"
+                    ? `LLM chưa tự sửa hết sau ${result.repairs} lần: ${result.issues.join("; ")}. Hãy sửa tay bên dưới.`
+                    : `Có giá trị cần chỉnh: ${result.issues.join("; ")}. Hãy sửa tay bên dưới trước khi lưu.`
+                }
+              />
             )}
             <div className="flex flex-col">
               {numeric.map((n) => {

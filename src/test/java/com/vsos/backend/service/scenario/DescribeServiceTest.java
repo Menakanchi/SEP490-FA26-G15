@@ -62,6 +62,44 @@ class DescribeServiceTest {
         assertTrue(Json.asList(out.get("assumed")).contains("trigger_distance_m")); // câu không nói -> giả định, không bịa
     }
 
+    /** ScenarioIR-04: không có LLM, giá trị ngoài khoảng trước đây đi qua lặng lẽ ({@code issues = []}). */
+    @Test
+    void rulesFallbackReportsOutOfRangeValues() {
+        DescribeService service = new DescribeService(new LlmService(props("http://localhost:1", "")));
+        Map<String, Object> out = service.describe("Xe chạy 200 km/h, người đi bộ chạy 10 m/s");
+        assertEquals("rules", out.get("source"));
+        List<String> issues = Json.asList(out.get("issues")).stream().map(String::valueOf).toList();
+        assertTrue(issues.stream().anyMatch(i -> i.contains("Tốc độ xe ego = 200 km/h")), issues.toString());
+        assertTrue(issues.stream().anyMatch(i -> i.contains("= 10 m/s")), issues.toString());
+        // Không tự kẹp: giá trị người dùng nói vẫn giữ nguyên để họ tự sửa.
+        assertEquals(200.0, Json.asMap(out.get("ir")).get("ego_speed_kmh"));
+    }
+
+    @Test
+    void rulesFallbackHasNoWarningForAValidSentence() {
+        DescribeService service = new DescribeService(new LlmService(props("http://localhost:1", "")));
+        Map<String, Object> out = service.describe("Xe chạy 50 km/h, người đi bộ băng ngang khi xe còn cách 30 m");
+        assertEquals(List.of(), Json.asList(out.get("issues")));
+    }
+
+    @Test
+    void warnsEarlyWhenTheCarCannotReachTheCrossingInTime() {
+        DescribeService service = new DescribeService(new LlmService(props("http://localhost:1", "")));
+        Map<String, Object> out = service.describe("Xe chạy 10 km/h, người đi bộ băng ngang khi xe còn cách 80 m");
+        List<String> issues = Json.asList(out.get("issues")).stream().map(String::valueOf).toList();
+        assertEquals(1, issues.size(), issues.toString());
+        assertTrue(issues.get(0).startsWith("Xe không tới được điểm băng ngang"), issues.get(0));
+        assertNull(DescribeService.unreachableWarning(Map.of("ego_speed_kmh", 50.0, "trigger_distance_m", 30.0)));
+    }
+
+    @Test
+    void rulesFallbackReportsOutOfRangeLeadVehicleValues() {
+        DescribeService service = new DescribeService(new LlmService(props("http://localhost:1", "")));
+        Map<String, Object> out = service.describe("Xe chạy 200 km/h, xe phía trước đứng yên cách 30 m");
+        List<String> issues = Json.asList(out.get("issues")).stream().map(String::valueOf).toList();
+        assertTrue(issues.stream().anyMatch(i -> i.contains("200 km/h")), out.toString());
+    }
+
     @Test
     void llmPathParsesTheForcedToolCallAndComputesCost() throws IOException {
         AtomicInteger calls = new AtomicInteger();
