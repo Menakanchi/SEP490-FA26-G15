@@ -7,7 +7,7 @@ import { Card, CardTitle, EmptyState, ErrorNote, StatCard, Tag, fmt, simulatorLa
 import { decel, dimensions, withUnit } from "@/components/vehicleFormat";
 import { VehicleModelViewer } from "@/components/VehicleModelViewer";
 import { vehicsimApi } from "@/services/vehicsim";
-import type { VehicleDetail } from "@/types/vehicsim";
+import type { VehicleDetail, VehicleSensor } from "@/types/vehicsim";
 
 /** Một dòng "tên — giá trị" trong khối thông số. */
 function Spec({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
@@ -18,6 +18,32 @@ function Spec({ label, value, hint }: { label: string; value: React.ReactNode; h
       </span>
       <span className="text-right text-[13px] font-semibold text-vehicsim-ink">{value}</span>
     </div>
+  );
+}
+
+/** Một cảm biến: tên + loại, vị trí (tọa độ cố định hoặc quy tắc gắn theo bounding box), mục đích và thuộc tính blueprint. */
+function SensorRow({ sensor: s }: { sensor: VehicleSensor }) {
+  const where = s.location_m
+    ? `(${s.location_m.x.toFixed(2)}, ${s.location_m.y.toFixed(2)}, ${s.location_m.z.toFixed(2)}) m`
+    : s.mount ?? "—";
+  const attributes = Object.entries(s.attributes ?? {});
+  return (
+    <li className="flex flex-col gap-1 border-b border-solid border-vehicsim-line py-3 last:border-b-0">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <span className="flex flex-wrap items-center gap-2 text-[13.5px] font-semibold text-vehicsim-ink">
+          {s.name}
+          <Tag tone="neutral">{s.sensor_type}</Tag>
+          {s.condition && <Tag tone="info">{s.condition}</Tag>}
+          {!s.is_enabled && <Tag tone="warn">Tắt</Tag>}
+        </span>
+        <span className="text-[13px] text-vehicsim-ink sm:text-right">{where}</span>
+      </div>
+      {s.purpose && <p className="text-[12.5px] leading-relaxed text-vehicsim-muted">{s.purpose}</p>}
+      <p className="break-words font-mono text-[11.5px] text-vehicsim-muted">
+        {s.carla_blueprint_id}
+        {attributes.length > 0 && ` · ${attributes.map(([k, value]) => `${k}=${String(value)}`).join(", ")}`}
+      </p>
+    </li>
   );
 }
 
@@ -126,26 +152,27 @@ export default function VehicleDetailPage() {
             </div>
           </Card>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Card className="flex flex-col gap-3 p-5">
-              <CardTitle aside={<Tag>{v.sensors.length}</Tag>}>Cảm biến</CardTitle>
-              {v.sensors.length === 0 ? (
-                <EmptyState title="Chưa cấu hình cảm biến">Mẫu xe này chưa có cảm biến nào trong danh mục.</EmptyState>
-              ) : (
-                <div>
-                  {v.sensors.map((s) => (
-                    <Spec
-                      key={s.id}
-                      label={`${s.name} · ${s.sensor_type}`}
-                      value={`(${s.location_m.x.toFixed(2)}, ${s.location_m.y.toFixed(2)}, ${s.location_m.z.toFixed(2)}) m${s.is_enabled ? "" : " · tắt"}`}
-                      hint={s.carla_blueprint_id}
-                    />
-                  ))}
-                </div>
-              )}
-            </Card>
+          <Card className="flex flex-col gap-3 p-5">
+            <CardTitle aside={<Tag>{v.sensors.length}</Tag>}>Cảm biến</CardTitle>
+            {v.sensor_source === "CARLA_ADAPTER_CODE" && (
+              <p className="text-[12.5px] leading-relaxed text-vehicsim-muted">
+                Bộ cảm biến adapter CARLA gắn lên xe ở mỗi lượt chạy, giống nhau cho mọi mẫu xe. Bộ động học không dùng cảm biến: AEB nhận
+                perception lý tưởng trong 80 m.
+              </p>
+            )}
+            {v.sensors.length === 0 ? (
+              <EmptyState title="Chưa cấu hình cảm biến">Mẫu xe này chưa có cảm biến nào trong danh mục.</EmptyState>
+            ) : (
+              <ul className="flex flex-col">
+                {v.sensors.map((s) => (
+                  <SensorRow key={s.id ?? s.name} sensor={s} />
+                ))}
+              </ul>
+            )}
+          </Card>
 
-            <Card className="flex flex-col gap-3 p-5">
+          <div className="grid grid-cols-2 gap-4">
+            <Card className="col-span-2 flex flex-col gap-3 p-5">
               <CardTitle aside={<Tag>{v.run_count} lượt</Tag>}>Lịch sử sử dụng</CardTitle>
               {v.usage.length === 0 ? (
                 <EmptyState title="Chưa có lượt chạy nào">Project hiện tại chưa chạy mô phỏng với xe này.</EmptyState>
