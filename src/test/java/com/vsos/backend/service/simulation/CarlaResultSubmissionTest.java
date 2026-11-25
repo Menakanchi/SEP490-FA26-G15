@@ -115,15 +115,6 @@ class CarlaResultSubmissionTest {
     }
 
     @Test
-    void archivedProjectCannotImportCarlaResult() {
-        when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
-                new Row(Json.obj("status", "ARCHIVED", "workspace_id", 3L, "workspace_status", "ACTIVE", "user_role", "ENGINEER", "member_id", USER)));
-        assertThatThrownBy(() -> service.submitCarlaResultFromUi(PROJECT, RUN, USER, result(CARLA)))
-                .isInstanceOfSatisfying(ResponseStatusException.class, e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
-        assertNothingWritten();
-    }
-
-    @Test
     void neverWritesCarlaNumbersIntoAKinematicRun() {
         run.put("simulator_version", "vehicsim-kinematic-1.1");
         assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, result(CARLA)))
@@ -159,54 +150,6 @@ class CarlaResultSubmissionTest {
         assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, noEvaluation))
                 .isInstanceOf(InvalidRequestException.class).hasMessageContaining("evaluation");
         assertNothingWritten();
-    }
-
-    @Test
-    void resultModeMustMatchRunBeforeWriting() {
-        for (String mode : List.of("ON", "OFF")) {
-            run.put("aeb_mode", mode);
-            Map<String, Object> payload = result(CARLA);
-            Json.asMap(payload.get("outcome")).put("case", Map.of("aeb_mode", mode.equals("ON") ? "OFF" : "ON"));
-            assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, payload))
-                    .isInstanceOf(InvalidRequestException.class).hasMessageContaining("aeb_mode");
-        }
-        run.put("aeb_mode", "OFF");
-        assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, result(CARLA)))
-                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("aeb_mode");
-        assertNothingWritten();
-    }
-
-    @Test
-    void rejectsMalformedResultModeBeforeWriting() {
-        for (Object mode : new Object[]{null, "off", 1, true, List.of("OFF")}) {
-            Map<String, Object> payload = result(CARLA);
-            Map<String, Object> caseFields = new HashMap<>();
-            caseFields.put("aeb_mode", mode);
-            Json.asMap(payload.get("outcome")).put("case", caseFields);
-            assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, payload))
-                    .isInstanceOf(InvalidRequestException.class).hasMessageContaining("aeb_mode");
-        }
-        Map<String, Object> payload = result(CARLA);
-        Json.asMap(payload.get("outcome")).put("case", "OFF");
-        assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, payload))
-                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("outcome.case");
-        assertNothingWritten();
-    }
-
-    @Test
-    void acceptsMatchingExplicitOffMode() {
-        run.put("aeb_mode", "OFF");
-        Map<String, Object> payload = result(CARLA);
-        Json.asMap(payload.get("outcome")).put("case", Map.of("aeb_mode", "OFF"));
-        assertThat(service.submitCarlaResult(PROJECT, RUN, USER, payload)).containsEntry("status", "COMPLETED");
-    }
-
-    @Test
-    void acceptsMatchingExplicitOnMode() {
-        run.put("aeb_mode", "ON");
-        Map<String, Object> payload = result(CARLA);
-        Json.asMap(payload.get("outcome")).put("case", Map.of("aeb_mode", "ON"));
-        assertThat(service.submitCarlaResult(PROJECT, RUN, USER, payload)).containsEntry("status", "COMPLETED");
     }
 
     @Test

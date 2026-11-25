@@ -587,8 +587,6 @@ CREATE TABLE simulation_runs (
   carla_vehicle_model_id     BIGINT UNSIGNED NOT NULL,
   aeb_version_id             BIGINT UNSIGNED NOT NULL,
   aeb_mode                   ENUM('ON','OFF') NOT NULL DEFAULT 'ON' COMMENT 'OFF: AEB tắt, mốc tham chiếu của baseline; không bao giờ là baseline regression/tối ưu',
-  repetition                 SMALLINT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'Lần lặp thứ mấy của cùng cấu hình (biến thể + AEB + aeb_mode + xe + simulator + seed); tính lúc tạo run (migration 019)',
-  attempt                    SMALLINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Số lần worker nhận run này (tăng khi PENDING -> RUNNING); 0 = chưa chạy, 2 = bị khôi phục sau khi backend chết giữa run (migration 019)',
   simulator_type             ENUM('KINEMATIC','CARLA') NOT NULL,
   simulator_version          VARCHAR(30) NOT NULL COMMENT 'Danh tính bộ mô phỏng: vehicsim-kinematic-1.4 | carla-0.9.16-xosc15',
   map_name                   VARCHAR(100) NULL COMMENT 'Map CARLA thực nạp (world.get_map().name); NULL với động học',

@@ -103,7 +103,7 @@ export function AnalysisOverview({ data, loading, hasError, onOpenRuns, onFilter
           </details>;
         })}</div>
         {groups.length < data.objective_groups.length && <p role="status" className={styles.qualityNote}>Một số nhóm thiếu định danh hoặc chỉ số hợp lệ nên chưa thể hiển thị.</p>}
-        <p className={styles.metricNote}>“—” nghĩa là thiếu số đo hợp lệ hoặc không áp dụng; trạng thái từng chỉ số được ghi riêng. Impact là vận tốc va chạm tương đối với mục tiêu (ADR-055; run định danh cũ lưu tốc độ ego, đã tách nhóm theo simulator); khi tổng hợp, run hợp lệ không va chạm đóng góp 0. Quãng phanh có thể gồm phần ngoại suy, không luôn là quãng dừng đã đo. Phiên bản tổng hợp: {overviewVersion(data.evaluation_version)}; chưa xác định phiên bản luật chấm từng run từ trường này.</p>
+        <p className={styles.metricNote}>“—” nghĩa là thiếu số đo hợp lệ hoặc không áp dụng; trạng thái từng chỉ số được ghi riêng. Impact là tốc độ ego, không phải tốc độ tương đối; khi tổng hợp, run hợp lệ không va chạm đóng góp 0. Quãng phanh có thể gồm phần ngoại suy, không luôn là quãng dừng đã đo. Phiên bản tổng hợp: {overviewVersion(data.evaluation_version)}; chưa xác định phiên bản luật chấm từng run từ trường này.</p>
       </section>
     </>}
   </section>;

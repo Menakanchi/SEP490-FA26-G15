@@ -123,9 +123,6 @@ CARLA 0.9.15 với 0.9.16, hay `vehicsim-kinematic-1.0` với `1.1` ([ADR-027](.
 `simulation_runs.aeb_mode` (`ON` | `OFF`, migration 015, 13/11/2026): run `OFF` chạy cùng kịch bản với AEB tắt — perception/quyết định vẫn
 ghi lại nhưng không phanh — làm mốc tham chiếu cho baseline. Regression và tối ưu chỉ lấy run `ON` làm baseline.
 
-`simulation_runs.repetition` và `simulation_runs.attempt` (migration 019, 24/11/2026, [ADR-065](../adr/ADR-065-khoi-dataset-trong-result-json.md)): lần lặp
-của cùng một cấu hình và số lần worker nhận run; ghi vào `dataset.identity` của `result.json`.
-
 ### 3.5 Khớp với CARLA 0.9.16
 
 | Dữ liệu | Bảng / cột | Phía CARLA |
@@ -701,8 +698,6 @@ Một lần chạy một biến thể × xe × AEB version × seed × bộ mô p
 | `carla_vehicle_model_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_sr_replay`; FK → `carla_vehicle_models`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)` | Xe đã chạy (danh mục chung). Run REGRESSION phải cùng xe với run baseline và với regression test. |
 | `aeb_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `aeb_versions(project_id,id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)`; FK → `optimization_trials(id,candidate_aeb_version_id)`; FK → `analysis_results(project_id,id,aeb_version_id)` | AEB version — cùng project (FK ghép). |
 | `aeb_mode` | ENUM | ✓ | `ON` |  | Chế độ AEB của run (migration 015, 13/11/2026): `OFF` = AEB tắt — perception/quyết định vẫn ghi lại nhưng không phanh; mốc tham chiếu của baseline, không bao giờ là baseline regression/tối ưu. Giá trị: 'ON', 'OFF'. |
-| `repetition` | SMALLINT UNSIGNED | ✓ | `1` |  | Lần lặp thứ mấy của cùng cấu hình (biến thể + AEB + `aeb_mode` + xe + simulator + seed), tính lúc tạo run (migration 019, 24/11/2026, ADR-065). Run đầu là 1. Đếm theo các run đang có nên xóa run cũ thì số lặp quay về; không có ràng buộc duy nhất. |
-| `attempt` | SMALLINT UNSIGNED | ✓ | `0` |  | Số lần worker nhận run (tăng ở bước `PENDING → RUNNING`; migration 019). 0 = chưa chạy; 2 = run bị khôi phục sau khi backend chết giữa chừng. Run cũ: 1 nếu đã có `started_at`. |
 | `simulator_type` | ENUM | ✓ |  |  | `KINEMATIC` / `CARLA` — nhóm để lọc; khớp `simulator_version` (`ck_sr_simulator`). Giá trị: 'KINEMATIC', 'CARLA'. |
 | `simulator_version` | VARCHAR(30) | ✓ |  | UQ `uq_sr_replay`; FK → `simulation_runs(id,scenario_version_id,random_seed,simulator_version,carla_vehicle_model_id)`; FK → `regression_tests(id,candidate_aeb_version_id,carla_vehicle_model_id,simulator_version)` | Danh tính bộ mô phỏng: vehicsim-kinematic-1.0 | carla-0.9.16; đổi logic động học thì đổi tên |
 | `map_name` | VARCHAR(100) |  |  |  | Map CARLA thực nạp (world.get_map().name); NULL với động học |

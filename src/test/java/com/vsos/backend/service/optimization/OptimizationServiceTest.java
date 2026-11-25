@@ -147,17 +147,15 @@ class OptimizationServiceTest {
     }
 
     @Test
-    void executeOptimization_refusesToRunOnADifferentCarlaProfileThanItWasCreatedFor() {
-        // Đợt chọn CARLA lúc tạo (6985f846): backend đã đổi profile CARLA thì không chạy tiếp, vì baseline và trial phải cùng một bộ.
-        // Đợt chọn động học thì không phụ thuộc cấu hình CARLA của backend nên không bị từ chối ở bước này.
-        when(db.first(contains("SELECT * FROM optimization_runs WHERE id = ?"), eq(7L))).thenReturn(optimizationRun("carla-0.9.16-xosc9"));
+    void executeOptimization_refusesToRunOnADifferentSimulatorThanItWasCreatedFor() {
+        when(db.first(contains("SELECT * FROM optimization_runs WHERE id = ?"), eq(7L))).thenReturn(optimizationRun("vehicsim-kinematic-1.1"));
         when(runService.configuredSimulator()).thenReturn("carla-0.9.16-xosc10");
 
         service.executeOptimization(7L);
 
-        // Không ghép hai profile CARLA: không dựng baseline, không chạy trial nào.
-        verify(db).update(contains("status = 'FAILED'"), contains("carla-0.9.16-xosc9"), any(), eq(7L));
-        verify(runService, never()).createRuns(anyLong(), anyLong(), any(), anyLong(), anyLong(), anyLong(), anyString(), any(), any(), any());
+        // Không ghép động học với CARLA: không dựng baseline, không chạy trial nào.
+        verify(db).update(contains("status = 'FAILED'"), contains("vehicsim-kinematic-1.1"), any(), eq(7L));
+        verify(runService, never()).createRuns(anyLong(), anyLong(), any(), anyLong(), anyLong(), anyLong(), anyString(), any(), any());
         verify(runService, never()).createOptimizationRuns(anyLong(), anyLong(), any(), anyLong(), anyLong(), anyLong(), anyLong(), any());
     }
 
@@ -168,7 +166,7 @@ class OptimizationServiceTest {
         when(familyService.latestBaseVersionId(50L)).thenReturn(11L);
         when(familyService.variantsOf(11L)).thenReturn(java.util.List.of(new Row(Map.of("id", 5L))));
         when(db.list(contains("FROM simulation_runs WHERE project_id = ?"), any())).thenReturn(java.util.List.of());
-        when(runService.createRuns(anyLong(), anyLong(), any(), anyLong(), anyLong(), anyLong(), anyString(), any(), any(), eq("carla-0.9.16-xosc10")))
+        when(runService.createRuns(anyLong(), anyLong(), any(), anyLong(), anyLong(), anyLong(), anyString(), any(), any()))
                 .thenReturn(java.util.List.of(70L));
         when(db.first(contains("SELECT * FROM simulation_runs WHERE id = ?"), eq(70L)))
                 .thenReturn(new Row(Map.of("id", 70L, "scenario_version_id", 5L, "status", "FAILED", "error_message", "CARLA server unreachable")));

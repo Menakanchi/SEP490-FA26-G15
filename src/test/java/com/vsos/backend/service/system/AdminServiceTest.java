@@ -68,12 +68,10 @@ class AdminServiceTest {
     @Test void roleAndStatusChangesRevokeSessionsButNameChangesDoNot() {
         service.updateUser(1,2,userRequest(RoleCode.REVIEWER,true));
         verify(repo).updateUser(2,"user@example.com","Nguyen",null,"An","REVIEWER",true,true);
-        verify(repo).addMemberToDefaultWorkspace(2L,"REVIEWER",1L);
         service.updateUser(1,2,userRequest(RoleCode.ENGINEER,false));
         verify(repo).updateUser(2,"user@example.com","Nguyen",null,"An","ENGINEER",false,true);
         service.updateUser(1,2,userRequest(RoleCode.ENGINEER,true));
         verify(repo).updateUser(2,"user@example.com","Nguyen",null,"An","ENGINEER",true,false);
-        verify(repo,times(1)).addMemberToDefaultWorkspace(anyLong(),anyString(),anyLong());
     }
     @Test void workspaceNeedsActiveManagerAndUniqueName() {
         var b=new WorkspaceRequest("Lab",null,2L);

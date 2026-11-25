@@ -82,27 +82,13 @@ class ReviewerScopeTest {
     }
 
     @Test
-    void malformedHeadersAreRejectedAndManagerAndAdminStillUseTheTeamProject() {
+    void malformedHeadersAreRejectedAndOtherRolesStillUseTheTeamProject() {
         for (String value : new String[]{"", "-1", "0", "1 OR 1=1", "99999999999999999999999"}) {
             assertThatThrownBy(request(RoleCode.REVIEWER, value)::currentProject).isInstanceOf(InvalidRequestException.class);
-            assertThatThrownBy(request(RoleCode.ENGINEER, value)::currentProject).isInstanceOf(InvalidRequestException.class);
         }
         verifyNoInteractions(db);
         when(teamProjects.firstActiveTeamProject()).thenReturn(new Row(Json.obj("id", 1L)));
-        assertThat(request(RoleCode.MANAGER, "99").currentProject().lng("id")).isEqualTo(1L);
-        assertThat(request(RoleCode.ADMIN, "99").currentProject().lng("id")).isEqualTo(1L);
-    }
-
-    @Test
-    void engineerWorksInTheProjectsOfItsOwnWorkspacesAndNeverFallsBackToTheTeamProject() {
-        Row own = new Row(Json.obj("id", 7L, "workspace_status", "ACTIVE"));
-        when(db.first(contains("AND p.id = ?"), eq(46L), eq(7L))).thenReturn(own);
-        assertThat(request(RoleCode.ENGINEER, "7").currentProject()).isSameAs(own);
-
-        ProjectAccess outsider = request(RoleCode.ENGINEER, "1");
-        assertThat(outsider.hasProject()).isFalse();
-        assertThatThrownBy(outsider::currentProject).isInstanceOf(NotFoundException.class);
-        verify(teamProjects, never()).firstActiveTeamProject();
+        assertThat(request(RoleCode.ENGINEER, "99").currentProject().lng("id")).isEqualTo(1L);
     }
 
     @Test

@@ -78,15 +78,6 @@ public class VehicSimAccess {
         return userId(user);
     }
 
-    /** ADR-064: Experiencer (project cá nhân) và Kỹ sư (project của workspace) tạo được project; role khác 403. */
-    public static long requireProjectCreator(UserDetails user) {
-        String role = roleOf(user);
-        if (!"EXPERIENCER".equals(role) && !"ENGINEER".equals(role)) {
-            throw new ProjectException(ProjectError.CREATE_ROLE_NOT_ALLOWED);
-        }
-        return userId(user);
-    }
-
     public static long requireExperiencer(UserDetails user) {
         if (!"EXPERIENCER".equals(roleOf(user))) {
             throw new ProjectException(ProjectError.EXPERIENCER_ONLY);

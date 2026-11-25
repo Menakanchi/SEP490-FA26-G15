@@ -520,7 +520,7 @@ function TeamProjectContext({ reviewer }: { reviewer: boolean }) {
       <div className="flex items-center gap-3">
         <ProjectIdentity project={ctx.project} label="Project đang mở" fallback="Chưa có project" />
       </div>
-      {ctx.reviewer_projects.length > 1 && (
+      {reviewer && ctx.reviewer_projects.length > 1 && (
         <select
           aria-label="Project đang xem"
           value={ctx.project.id}
@@ -529,7 +529,7 @@ function TeamProjectContext({ reviewer }: { reviewer: boolean }) {
         >
           {ctx.reviewer_projects.map((project) => (
             <option key={project.id} value={project.id} className="bg-slate-900 text-slate-200">
-              {project.workspace_name} · {project.name}{project.can_decide ? "" : reviewer ? " (chỉ xem)" : " (lưu trữ)"}
+              {project.workspace_name} · {project.name}{project.can_decide ? "" : " (chỉ xem)"}
             </option>
           ))}
         </select>

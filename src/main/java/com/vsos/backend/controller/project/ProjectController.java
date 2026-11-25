@@ -51,17 +51,15 @@ public class ProjectController {
     @Operation(summary = "Xe chọn được khi tạo hoặc sửa project")
     @GetMapping("/vehicle-options")
     public List<VehicleOption> vehicleOptions(@AuthenticationPrincipal UserDetails user) {
-        VehicSimAccess.requireProjectCreator(user);
+        VehicSimAccess.requireExperiencer(user);
         return projects.vehicles();
     }
 
-    @Operation(summary = "Tạo project kèm xe và baseline AEB v1.0: Experiencer tạo project cá nhân, Kỹ sư tạo project của workspace (workspace_id)")
+    @Operation(summary = "Tạo project cá nhân kèm xe và baseline AEB v1.0")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ProjectItem create(@RequestBody ProjectRequest body, @AuthenticationPrincipal UserDetails user) {
-        long userId = VehicSimAccess.requireProjectCreator(user);
-        access.limitWrites(userId, "project");
-        return projects.create(userId, VehicSimAccess.roleOf(user), body);
+        return projects.create(writer(user), body);
     }
 
     @Operation(summary = "Chi tiết project cá nhân")

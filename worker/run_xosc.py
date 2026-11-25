@@ -20,7 +20,6 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import bridge
-import make_video
 import sensor_recorder
 
 WORKER = Path(__file__).resolve().parent
@@ -271,7 +270,6 @@ def run(args: argparse.Namespace) -> int:
         world = client.load_world(map_name)
     result_file = out / "result.json"
     result_file.unlink(missing_ok=True)
-    (out / make_video.VIDEO_NAME).unlink(missing_ok=True)
     lifecycle = {"destroyed_before": release_world(client), "destroyed_after": None, "stopped": False, "core": core}
     if lifecycle["destroyed_before"]:
         print(f"Dọn lại sau lần chạy bị ngắt: xoá {lifecycle['destroyed_before']} actor cũ.", file=sys.stderr)
@@ -321,8 +319,6 @@ def run(args: argparse.Namespace) -> int:
         if lifecycle["stopped"]:
             result_file.unlink(missing_ok=True)  # run bị dừng không có điểm hợp lệ
         (out / "lifecycle.json").write_text(json.dumps(lifecycle), encoding="utf-8")
-    if args.camera:  # chỉ khi run thành công (lỗi/dừng đã thoát ở trên); ghép video không bao giờ làm hỏng run
-        make_video.build_run_video(out, recorder.camera_interval_s, keep_frames=args.keep_frames)
     print(f"Đã chạy .xosc bằng ScenarioRunner: {result_file}")
     return 0
 
@@ -337,7 +333,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sr-root", type=Path, default=Path(os.environ.get("SR_ROOT", str(Path.home() / "scenario_runner"))))
     parser.add_argument("--timeout", type=float, default=240.0)
     parser.add_argument("--camera", action="store_true")
-    parser.add_argument("--keep-frames", action="store_true", help="Giữ ảnh PNG camera sau khi ghép video.mp4 (mặc định xoá để đỡ ~70 MB mỗi run)")
     parser.add_argument("--hud", action=argparse.BooleanOptionalAction, default=True,
                         help="follow_hero vẽ tốc độ/bàn đạp cạnh xe trong cửa sổ CARLA (mặc định bật; --no-hud để tắt)")
     parser.add_argument("--fast", action="store_true", help="tương thích hợp đồng worker; ScenarioRunner dùng sync tick")

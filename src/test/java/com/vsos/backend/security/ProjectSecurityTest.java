@@ -31,7 +31,6 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -90,13 +89,10 @@ class ProjectSecurityTest {
         return List.of(request(HttpMethod.GET, BASE), request(HttpMethod.GET, BASE + "/1"), request(HttpMethod.GET, BASE + "/1/journey"));
     }
 
-    /** ADR-064: Experiencer (project cá nhân) và Kỹ sư (project của workspace) tạo được project. */
-    private static List<MockHttpServletRequestBuilder> creatorRoutes() {
-        return List.of(request(HttpMethod.GET, BASE + "/vehicle-options"), create());
-    }
-
     private static List<MockHttpServletRequestBuilder> experiencerOnly() {
         return List.of(
+                request(HttpMethod.GET, BASE + "/vehicle-options"),
+                create(),
                 json(HttpMethod.POST, "/1/regressions/2/adopt", "{\"reason\":\"Đạt\",\"confirmed\":true}"),
                 json(HttpMethod.PATCH, "/1", "{\"name\":\"Mới\"}"),
                 request(HttpMethod.POST, BASE + "/1/archive"),
@@ -110,7 +106,7 @@ class ProjectSecurityTest {
 
     @Test
     void everyProjectRouteRequiresLogin() throws Exception {
-        for (MockHttpServletRequestBuilder route : List.of(reads(), creatorRoutes(), experiencerOnly()).stream().flatMap(List::stream).toList()) {
+        for (MockHttpServletRequestBuilder route : List.of(reads(), experiencerOnly()).stream().flatMap(List::stream).toList()) {
             assertThat(statusOf(route, null)).isEqualTo(401);
         }
     }
@@ -141,32 +137,6 @@ class ProjectSecurityTest {
     }
 
     @Test
-    void onlyExperiencersAndEngineersCreateProjects() throws Exception {
-        for (RoleCode code : RoleCode.values()) {
-            for (MockHttpServletRequestBuilder route : creatorRoutes()) {
-                if (code == RoleCode.EXPERIENCER || code == RoleCode.ENGINEER) {
-                    assertThat(statusOf(route, code)).isBetween(200, 299);
-                } else {
-                    mvc.perform(route.with(user(as(code))))
-                            .andExpect(status().isForbidden())
-                            .andExpect(jsonPath("$.code").value("CREATE_ROLE_NOT_ALLOWED"));
-                }
-            }
-        }
-    }
-
-    @Test
-    void theCreatorRoleReachesTheServiceTogetherWithTheWorkspaceChoice() throws Exception {
-        mvc.perform(json(HttpMethod.POST, "", "{\"name\":\"Dự án A\",\"workspace_id\":6}").with(user(as(RoleCode.ENGINEER))))
-                .andExpect(status().isCreated());
-        org.mockito.ArgumentCaptor<com.vsos.backend.dto.project.ProjectDtos.ProjectRequest> body =
-                org.mockito.ArgumentCaptor.forClass(com.vsos.backend.dto.project.ProjectDtos.ProjectRequest.class);
-        org.mockito.Mockito.verify(projects).create(eq(7L), eq("ENGINEER"), body.capture());
-        assertThat(body.getValue().workspaceId()).isEqualTo(6L);
-        assertThat(body.getValue().name()).isEqualTo("Dự án A");
-    }
-
-    @Test
     void writesHonourTheQuotaButReadsDoNot() throws Exception {
         assertThat(statusOf(create(), RoleCode.EXPERIENCER)).isEqualTo(201);
         when(otp.hitRateLimit(eq("vs_project"), any(), anyInt())).thenReturn(true);
@@ -177,7 +147,7 @@ class ProjectSecurityTest {
 
     @Test
     void projectErrorsCarryTheirNameAndVietnameseDetail() throws Exception {
-        when(projects.create(anyLong(), anyString(), any())).thenThrow(new ProjectException(ProjectError.NAME_DUPLICATE, "Thử AEB"));
+        when(projects.create(anyLong(), any())).thenThrow(new ProjectException(ProjectError.NAME_DUPLICATE, "Thử AEB"));
 
         mvc.perform(create().with(user(as(RoleCode.EXPERIENCER))))
                 .andExpect(status().isConflict())

@@ -30,15 +30,12 @@ import com.vsos.core.common.Py;
  */
 public final class Xosc {
 
-    /** Current profile: v16 distinguishes the CARLA collision behavior from v15. */
-    public static final String FORMAT = "vehicsim.xosc/v16";
-    public static final String SIMULATOR_SUFFIX = "-xosc16";
     /**
      * v15 (23/11/2026, ADR-062): như v14 nhưng bỏ khởi hành sớm của người đi bộ ({@code DistanceCondition} = khoảng kích hoạt + nửa xe) vì bộ động học 1.4 đã
      * cho người tăng tốc dần như CARLA; bù pha tăng lực riêng Patrol 0,11 s / Sprinter 0,17 s (ADR-063). Đi cùng {@code vehicsim-kinematic-1.4}.
      */
-    public static final String V15_FORMAT = "vehicsim.xosc/v15";
-    public static final String V15_SIMULATOR_SUFFIX = "-xosc15";
+    public static final String FORMAT = "vehicsim.xosc/v15";
+    public static final String SIMULATOR_SUFFIX = "-xosc15";
     /**
      * v14 (23/11/2026, ADR-061): như v13 nhưng Patrol / Sprinter cũng được bù pha tăng lực (ADR-056). File giống v13 trừ {@code vs_format}; e-tron, Model 3
      * và xe chưa có bảng ra số giống v13.
@@ -223,7 +220,7 @@ public final class Xosc {
         if ("vehicsim.xosc/v1".equals(format)) {
             throw new Bundle.BundleError("File .xosc v1 có hướng đi bộ cũ; cần xuất lại từ web để chạy người đi bộ băng ngang đường");
         }
-        if (!FORMAT.equals(format) && !V15_FORMAT.equals(format) && !V14_FORMAT.equals(format) && !V13_FORMAT.equals(format) && !V12_FORMAT.equals(format) && !V11_FORMAT.equals(format) && !V10_FORMAT.equals(format) && !V9_FORMAT.equals(format) && !V8_FORMAT.equals(format) && !V7_FORMAT.equals(format) && !V6_FORMAT.equals(format) && !V5_FORMAT.equals(format)
+        if (!FORMAT.equals(format) && !V14_FORMAT.equals(format) && !V13_FORMAT.equals(format) && !V12_FORMAT.equals(format) && !V11_FORMAT.equals(format) && !V10_FORMAT.equals(format) && !V9_FORMAT.equals(format) && !V8_FORMAT.equals(format) && !V7_FORMAT.equals(format) && !V6_FORMAT.equals(format) && !V5_FORMAT.equals(format)
                 && !V4_FORMAT.equals(format) && !V3_FORMAT.equals(format)
                 && !LEGACY_FORMAT.equals(format)) {
             throw new Bundle.BundleError("Cần file .xosc VehicSim xuất từ web (thiếu vs_format)");
@@ -340,7 +337,6 @@ public final class Xosc {
         }
         String format = values.get("format");
         String suffix = FORMAT.equals(format) ? SIMULATOR_SUFFIX
-                : V15_FORMAT.equals(format) ? V15_SIMULATOR_SUFFIX
                 : V14_FORMAT.equals(format) ? V14_SIMULATOR_SUFFIX
                 : V13_FORMAT.equals(format) ? V13_SIMULATOR_SUFFIX
                 : V12_FORMAT.equals(format) ? V12_SIMULATOR_SUFFIX

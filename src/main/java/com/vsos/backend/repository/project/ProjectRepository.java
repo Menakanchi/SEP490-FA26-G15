@@ -73,20 +73,6 @@ public class ProjectRepository {
         return row == null ? null : row.str("name");
     }
 
-    /** Tên project là duy nhất trong workspace (khác nhau về chữ hoa/thường vẫn là trùng theo collation của cột). */
-    public String existingNameInWorkspace(long workspaceId, String name, long exceptProjectId) {
-        Row row = db.first("SELECT name FROM projects WHERE workspace_id = ? AND name = ? AND id <> ?", workspaceId, name, exceptProjectId);
-        return row == null ? null : row.str("name");
-    }
-
-    /** Thành viên (mọi vai trò) của workspace đang hoạt động: điều kiện để Kỹ sư tạo project trong workspace đó. */
-    public boolean isActiveWorkspaceMember(long userId, long workspaceId) {
-        return db.first("""
-                SELECT 1 AS ok FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
-                 WHERE m.user_id = ? AND m.workspace_id = ? AND w.status = 'ACTIVE'
-                """, userId, workspaceId) != null;
-    }
-
     public Long supportedVehicle(Long vehicleId) {
         Row row = vehicleId == null
                 ? db.first("SELECT id FROM carla_vehicle_models WHERE is_supported = TRUE ORDER BY carla_blueprint_id = ? DESC, id LIMIT 1",
@@ -164,18 +150,12 @@ public class ProjectRepository {
                 """, projectId, baselineVersionId, simulatorVersion);
     }
 
-    /** Project cá nhân của Experiencer (không thuộc workspace). */
-    public long insert(String name, String description, long ownerId, long vehicleId, LocalDateTime now) {
-        return insertInWorkspace(null, name, description, ownerId, vehicleId, now);
-    }
-
-    /** {@code workspaceId == null}: project cá nhân. Cả hai loại đều có baseline AEB v1.0 ngay từ đầu. */
     @Transactional
-    public long insertInWorkspace(Long workspaceId, String name, String description, long ownerId, long vehicleId, LocalDateTime now) {
+    public long insert(String name, String description, long ownerId, long vehicleId, LocalDateTime now) {
         long projectId = db.insert("""
                 INSERT INTO projects (workspace_id, name, description, status, created_by_user_id, carla_vehicle_model_id, created_date, updated_at)
-                VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?)
-                """, workspaceId, name, description, ownerId, vehicleId, now, now);
+                VALUES (NULL, ?, ?, 'ACTIVE', ?, ?, ?, ?)
+                """, name, description, ownerId, vehicleId, now, now);
         long versionId = db.insert("""
                 INSERT INTO aeb_versions (project_id, version_no, label, source, status, notes, created_by_user_id, created_date)
                 VALUES (?, 1, 'v1.0', 'MANUAL', 'BASELINE', 'Initial baseline', ?, ?)

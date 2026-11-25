@@ -63,8 +63,6 @@ export default function DescribeScenarioPage() {
   const [origins, setOrigins] = useState<Partial<Record<DescribeKey, FieldOrigin>>>({});
   const [grid, setGrid] = useState<{ key: number; initial: FamilyInitial } | null>(null);
   const [irDirty, setIrDirty] = useState(false);
-  // IR dùng để dựng lưới lần gần nhất: sửa rồi trả về đúng giá trị này thì không còn "IR đã sửa".
-  const [builtIr, setBuiltIr] = useState<DescribedIr | null>(null);
   // Họ vừa tạo: hiện khung bàn giao sang màn 2 thay vì tự chuyển trang.
   const [created, setCreated] = useState<{ scenario_id: number; code: string; variants: number; queued_runs?: number } | null>(null);
 
@@ -77,7 +75,6 @@ export default function DescribeScenarioPage() {
       setResult(res);
       setSourceText(text.trim());
       setIr(res.ir);
-      setBuiltIr(res.ir);
       setOrigins(nextOrigins);
       setGrid({ key: Date.now(), initial: gridFromIr(res.ir, nextOrigins, res.title, text.trim()) });
       setIrDirty(false);
@@ -89,14 +86,9 @@ export default function DescribeScenarioPage() {
   };
 
   const edit = <K extends keyof DescribedIr>(key: K, value: DescribedIr[K]) => {
-    if (!ir || !result) return;
-    const next = { ...ir, [key]: value };
-    const same = (a: unknown, b: unknown) => Object.is(a, b);
-    // Nhãn nguồn: trả về đúng giá trị LLM/luật trích ra thì khôi phục nhãn gốc thay vì "Đã sửa".
-    const original = result.fields.find((f) => f.key === key)?.origin;
-    setIr(next);
-    setOrigins((prev) => ({ ...prev, [key]: same(value, result.ir[key]) && original ? original : "edited" }));
-    setIrDirty(builtIr ? (Object.keys(next) as (keyof DescribedIr)[]).some((k) => !same(next[k], builtIr[k])) : true);
+    setIr((prev) => (prev ? { ...prev, [key]: value } : prev));
+    setOrigins((prev) => ({ ...prev, [key]: "edited" }));
+    setIrDirty(true);
   };
 
   const lead = !!ir?.category && LEAD_CATEGORIES.includes(ir.category);
@@ -235,7 +227,6 @@ export default function DescribeScenarioPage() {
                   disabled={irErrors.length > 0}
                   onClick={() => {
                     setGrid({ key: Date.now(), initial: gridFromIr(ir, origins, result.title, sourceText) });
-                    setBuiltIr(ir);
                     setIrDirty(false);
                   }}
                 >
@@ -365,27 +356,13 @@ function gridFromIr(ir: DescribedIr, origins: Partial<Record<DescribeKey, FieldO
       return origins[key] === "assumed" || value === undefined ? [...a.fallback] : around(value, step, a.min, a.max, digits);
     };
     const overlap = ir.lateral_overlap_pct ?? 100;
-    const egoSpeeds = leadPick("ego_speed_kmh", "ego_speeds_kmh", 10, 0, ir.ego_speed_kmh);
-    const minEgo = Math.min(...egoSpeeds);
-    const targetAxis = axis("target_speeds_kmh");
-    const targetRaw = leadPick("target_speed_kmh", "target_speeds_kmh", 5, 0, ir.target_speed_kmh);
-    let targetSpeeds = ir.category === "CCRS" ? [0] : targetRaw;
-    if (ir.category === "CCRM") {
-      targetSpeeds = targetRaw.filter((v) => v < minEgo);
-      if (!targetSpeeds.length) {
-        targetSpeeds = [Math.max(targetAxis.min, Math.min(targetAxis.max, minEgo - 10))];
-      }
-    } else if (ir.category === "CCRB") {
-      targetSpeeds = targetRaw.filter((v) => v > 0);
-      if (!targetSpeeds.length) targetSpeeds = [20];
-    }
     return {
       name: title,
       description: text.slice(0, 2000),
       category: ir.category,
-      ego_speeds_kmh: egoSpeeds,
-      // CCRs giữ đúng 0; CCRm lấy quanh giá trị IR nhưng kẹp < min(ego); CCRb luôn > 0.
-      target_speeds_kmh: targetSpeeds,
+      ego_speeds_kmh: leadPick("ego_speed_kmh", "ego_speeds_kmh", 10, 0, ir.ego_speed_kmh),
+      // CCRs giữ đúng 0; CCRm lấy ±5 km/h quanh giá trị IR nhưng vẫn chậm hơn ego.
+      target_speeds_kmh: ir.category === "CCRS" ? [0] : leadPick("target_speed_kmh", "target_speeds_kmh", 5, 0, ir.target_speed_kmh),
       initial_distances_m: leadPick("initial_distance_m", "initial_distances_m", 10, 0, ir.initial_distance_m),
       target_decels_mps2: ir.category === "CCRB" ? leadPick("target_decel_mps2", "target_decels_mps2", 2, 1, ir.target_decel_mps2) : undefined,
       lateral_overlaps_pct: [...new Set([overlap, -100])],

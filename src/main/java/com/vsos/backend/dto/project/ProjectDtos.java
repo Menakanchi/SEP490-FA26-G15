@@ -10,12 +10,7 @@ public final class ProjectDtos {
     private ProjectDtos() {
     }
 
-    /** {@code workspaceId}: chỉ Kỹ sư dùng khi tạo project của workspace (ADR-064); Experiencer để trống (project cá nhân). */
-    public record ProjectRequest(String name, String description, @JsonProperty("carla_vehicle_model_id") Long vehicleId,
-                                 @JsonProperty("workspace_id") Long workspaceId) {
-        public ProjectRequest(String name, String description, Long vehicleId) {
-            this(name, description, vehicleId, null);
-        }
+    public record ProjectRequest(String name, String description, @JsonProperty("carla_vehicle_model_id") Long vehicleId) {
     }
 
     public record DeleteProjectRequest(@JsonProperty("confirm_name") String confirmName) {

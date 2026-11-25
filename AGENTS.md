@@ -102,8 +102,8 @@ chạy `.\mvnw.cmd clean` rồi build lại. Mô phỏng mặc định qua threa
 2. Java, kể cả lõi `com.vsos.core`, không import `carla`; lời gọi API CARLA chỉ ở adapter trong `worker/`.
 3. Mọi route `/api/v1/vehicsim/*` cần đăng nhập. Mỗi tài khoản một role:
    ADMIN/ENGINEER/EXPERIENCER được ghi; MANAGER chỉ đọc; REVIEWER được chạy regression và Accept/Reject theo [ADR-049](docs/adr/ADR-049-reviewer-chay-regression-de-kiem-tra.md).
-   Header `X-VehicSim-Project` chọn project (`ProjectAccess`): EXPERIENCER trong project cá nhân (`ProjectScope`), Reviewer và Kỹ sư trong project
-   của workspace mình thuộc về (`ReviewerScope`, [ADR-064](docs/adr/ADR-064-ky-su-tao-project-cua-workspace.md)); ADMIN/MANAGER chung project nhóm (TD-30).
+   Header `X-VehicSim-Project` chọn project (`ProjectAccess`): EXPERIENCER trong project cá nhân (`ProjectScope`), Reviewer trong project
+   thuộc workspace mình là thành viên (`ReviewerScope`); role khác vẫn chung project nhóm (TD-30).
 4. Cùng biến thể + seed phải tái lập được; candidate chạy đúng seed baseline.
    So sánh phải cùng xe, biến thể và phiên bản simulator.
    Không đổi tham số kịch bản và tham số AEB cùng lúc trong một lần so sánh.

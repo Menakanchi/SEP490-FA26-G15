@@ -66,8 +66,6 @@ public final class CarlaSession {
     private double impactRelative;
     private Map<String, Object> carlaInfo = Map.of();
     private boolean pedStarted;
-    private boolean pedestrianOverlapSeen;
-    private boolean pedestrianCollisionConfirmed;
     private boolean braking;
     /** Số tick lệnh giảm tốc AEB bị kẹp ở μ·g trước khi đổi ra bàn đạp ({@link #frictionLimitedCommand}). */
     private int commandCapped;
@@ -114,7 +112,7 @@ public final class CarlaSession {
 
     /** Hành lang AEB theo bề rộng của xe chạy có từ v11 (ADR-057); file cũ dùng 1,93 m cho mọi xe để chạy lại ra đúng kết quả đã lưu. */
     static boolean vehicleCorridorApplies(Xosc.Profile profile) {
-        return currentOrV15(profile) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix());
@@ -125,14 +123,14 @@ public final class CarlaSession {
      * bù 0,05 × sai số theo giảm tốc đo trễ 0,1 s cộng dồn với bảng làm giảm tốc vọt ≥ 9,81 m/s², kiểm 22/11/2026). File cũ giữ hành vi cũ.
      */
     static boolean v12Control(Xosc.Profile profile) {
-        return currentOrV15(profile) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix());
     }
 
     /** AEB thật nhận perception từ radar: từ v9 và mục tiêu là người đi bộ. Xe phía trước và file ≤ v8 vẫn dùng ground truth. */
     static boolean radarPerception(Bundle.RunSpec spec, Xosc.Profile profile) {
-        return spec.leadCase() == null && (currentOrV15(profile) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
+        return spec.leadCase() == null && (Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
@@ -142,7 +140,7 @@ public final class CarlaSession {
 
     /** Từ v9: dùng các định nghĩa chỉ số chốt 13/11/2026 (ADR-055); file cũ giữ định nghĩa của nó. */
     private boolean currentFormat() {
-        return currentOrV15(profile) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
@@ -366,12 +364,11 @@ public final class CarlaSession {
         frames.add(Simulator.makeFrame(t, c.crossingX() - gap, egoV, decel, c.crossingX(), pedY, pedVy, tick,
                 Simulator.groundTruthTtc(gap, pedY, egoV, spec.vehicle()), stack));
 
-        boolean overlap = pedestrianOverlaps(profile, pedAlong, pedY, -gap, egoY, spec.vehicle().lengthM(), spec.vehicle().widthM());
-        boolean sensorConfirmedCollision = Xosc.SIMULATOR_SUFFIX.equals(profile.suffix());
-        pedestrianOverlapSeen |= overlap;
+        double radius = Simulator.PEDESTRIAN_RADIUS_M;
+        boolean overlap = pedAlong - radius <= -gap && pedAlong + radius >= -gap - spec.vehicle().lengthM()
+                && Math.abs(pedY - egoY) <= spec.vehicle().widthM() / 2 + radius;
         String finished = null;
-        if (walkerCollision || (!sensorConfirmedCollision && overlap)) {
-            pedestrianCollisionConfirmed = walkerCollision;
+        if (overlap || walkerCollision) {
             AebStack.Events.record(events, t, "collision", "Collision · " + Py.fixed(egoV * 3.6, 1) + " km/h", "impact_speed_mps", Py.round(egoV, 3));
             // |v_ego − v_ped| theo vector thật trong khung giao cắt (người có thể có thành phần dọc), ngay tick phát hiện tiếp xúc.
             impactRelative = Math.hypot(egoV - frame.velocityAlong(pedVel[0], pedVel[1]), pedVy);
@@ -388,23 +385,6 @@ public final class CarlaSession {
             finish(finished);
         }
         return commandTick(braking, tick.decelCmd(), pedal, finished, egoV);
-    }
-
-    private static boolean currentOrV15(Xosc.Profile profile) {
-        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V15_SIMULATOR_SUFFIX.equals(profile.suffix());
-    }
-
-    /** Overlap hình học xấp xỉ, không phải xác nhận tiếp xúc từ cảm biến CARLA. */
-    static boolean pedestrianOverlaps(Xosc.Profile profile, double pedAlong, double pedY, double egoFront, double egoY,
-                                      double vehicleLength, double vehicleWidth) {
-        double radius = Simulator.PEDESTRIAN_RADIUS_M;
-        if (!Xosc.SIMULATOR_SUFFIX.equals(profile.suffix())) {
-            return pedAlong - radius <= egoFront && pedAlong + radius >= egoFront - vehicleLength
-                    && Math.abs(pedY - egoY) <= vehicleWidth / 2 + radius;
-        }
-        double longitudinal = Math.max(0.0, Math.max(egoFront - vehicleLength - pedAlong, pedAlong - egoFront));
-        double lateral = Math.max(0.0, Math.abs(pedY - egoY) - vehicleWidth / 2);
-        return longitudinal * longitudinal + lateral * lateral <= radius * radius;
     }
 
     /**
@@ -622,7 +602,7 @@ public final class CarlaSession {
      * AEB vẫn tính và ghi lệnh gốc của nó. Áp cho file v6 trở đi (ADR-052): file cũ, kể cả v5, chạy lại ra đúng kết quả đã lưu.
      */
     static double frictionLimitedCommand(double decelCmd, Bundle.RunSpec spec, Xosc.Profile profile) {
-        if (!currentOrV15(profile) && !Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
+        if (!Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) && !Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
                 && !Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
                 && !Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
                 && !Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
@@ -643,7 +623,7 @@ public final class CarlaSession {
      * xe khác và file cũ giữ 6 m/s (ADR-053).
      */
     double overrideThreshold(double pedal) {
-        return pedalMap != null && (currentOrV15(profile) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
+        return pedalMap != null && (Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix()))
                 ? pedalMap.overrideSpeed(pedal) : LOW_SPEED_OVERRIDE_MPS;
     }
@@ -658,7 +638,7 @@ public final class CarlaSession {
 
     /** Vùng tốc độ thấp do adapter điều khiển có từ v7 (ADR-053): file cũ chạy lại ra đúng kết quả đã lưu. */
     static boolean lowSpeedOverrideApplies(Xosc.Profile profile) {
-        return currentOrV15(profile) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
@@ -703,8 +683,8 @@ public final class CarlaSession {
             pedalMapped++;
         }
         double feedForwardCmd = decelCmd;
-        if (rampLeadApplies(profile) && pedalMap.rampLead(currentOrV15(profile) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix()))) {  // v13: chỉ xe đã đo độ trễ đạt lực (ADR-059)
-            feedForwardCmd = rampLeadCommand(decelCmd, previousPedalCmd, stepS, pedalMap.rampLeadSeconds(currentOrV15(profile)));
+        if (rampLeadApplies(profile) && pedalMap.rampLead(Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix()))) {  // v13: chỉ xe đã đo độ trễ đạt lực (ADR-059)
+            feedForwardCmd = rampLeadCommand(decelCmd, previousPedalCmd, stepS, pedalMap.rampLeadSeconds(Xosc.SIMULATOR_SUFFIX.equals(profile.suffix())));
             if (feedForwardCmd > decelCmd) {
                 rampLead++;
             }
@@ -722,7 +702,7 @@ public final class CarlaSession {
 
     /** Bù pha tăng lực có từ v10 và chỉ cùng bảng bàn đạp đã đo (xe chưa hiệu chuẩn chưa đo độ trễ). */
     static boolean rampLeadApplies(Xosc.Profile profile) {
-        return currentOrV15(profile) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
+        return Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
@@ -748,14 +728,14 @@ public final class CarlaSession {
 
     /** Bảng bàn đạp dùng cho run: chỉ từ v8 và chỉ khi xe khớp đúng cấu hình đã đo ({@link CarlaPedalMap#forVehicle}). */
     static CarlaPedalMap pedalMapFor(Xosc.Profile profile, Map<String, Object> vehicleCarla, double fullBrakeDecel) {
-        boolean measuredPedals = currentOrV15(profile) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
+        boolean measuredPedals = Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V10_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V9_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V8_SIMULATOR_SUFFIX.equals(profile.suffix());
-        return measuredPedals ? CarlaPedalMap.forVehicle(vehicleCarla, fullBrakeDecel, currentOrV15(profile)
+        return measuredPedals ? CarlaPedalMap.forVehicle(vehicleCarla, fullBrakeDecel, Xosc.SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())) : null;
     }
 
@@ -776,7 +756,7 @@ public final class CarlaSession {
     static double decelAvailable(Bundle.RunSpec spec, Xosc.Profile profile, double fullBrakeDecel) {
         double nominal = Math.min(Math.min(spec.params().maxDeceleration(), spec.vehicle().maxBrakeDecelMps2()), spec.roadFriction() * Simulator.G);
         // Từ v5 (11/11/2026): v5 trở đi dùng phanh 100% đo được; file cũ hơn giữ cách tính cũ.
-        boolean measured = currentOrV15(profile) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
+        boolean measured = Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V13_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V12_SIMULATOR_SUFFIX.equals(profile.suffix())
                 || Xosc.V11_SIMULATOR_SUFFIX.equals(profile.suffix())
@@ -792,10 +772,6 @@ public final class CarlaSession {
     public void finish(String reason) {
         if (endReason != null || frames.isEmpty()) {
             return;
-        }
-        if (!leadVehicle() && Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) && !pedestrianCollisionConfirmed
-                && (pedestrianOverlapSeen || "COLLISION".equals(reason))) {
-            throw new IllegalStateException("Không xác nhận được va chạm người đi bộ từ cảm biến CARLA trước khi kết thúc: " + reason);
         }
         double decelAvailable = decelAvailable(spec, profile, fullBrakeDecel);
         SimulationOutcome outcome;
@@ -887,9 +863,9 @@ public final class CarlaSession {
         if (pedalMap != null) {  // chỉ khi có bảng: result của xe chưa hiệu chuẩn giữ nguyên các khóa cũ
             carla.put("pedal_map", pedalMap.id());
             carla.put("pedal_map_frames", pedalMapped);
-            if (rampLeadApplies(profile) && pedalMap.rampLead(currentOrV15(profile) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix()))) {
+            if (rampLeadApplies(profile) && pedalMap.rampLead(Xosc.SIMULATOR_SUFFIX.equals(profile.suffix()) || Xosc.V14_SIMULATOR_SUFFIX.equals(profile.suffix()))) {
                 carla.put("ramp_lead_frames", rampLead);
-                if (currentOrV15(profile)) {  // v15: thời gian bù riêng theo xe (ADR-063)
+                if (Xosc.SIMULATOR_SUFFIX.equals(profile.suffix())) {  // v15: thời gian bù riêng theo xe (ADR-063)
                     carla.put("ramp_lead_s", pedalMap.rampLeadSeconds(true));
                 }
             }

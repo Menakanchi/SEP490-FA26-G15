@@ -82,9 +82,6 @@ public class AdminService {
         boolean revoke=roleChanged || old.bool("is_active")!=b.isActive() || !email.equals(old.str("email"));
         repo.updateUser(id,email,b.lastName().trim(),clean(b.middleName()),b.firstName().trim(),
                 b.role().name(),b.isActive(),revoke);
-        if(roleChanged && Set.of("ENGINEER", "REVIEWER").contains(b.role().name())) {
-            repo.addMemberToDefaultWorkspace(id, b.role().name(), actor);
-        }
         if(revoke) chat.disconnectUser(id);
         audit("user_update",actor,id);
         return detail("users",id);

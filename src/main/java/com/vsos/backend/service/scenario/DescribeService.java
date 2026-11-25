@@ -240,22 +240,6 @@ public class DescribeService {
         if (!unknown.isEmpty()) {
             issues.add("inferred_fields có tên trường không tồn tại: " + unknown);
         }
-        if (lead) {
-            String cat = String.valueOf(ir.get("category"));
-            Double ego = (Double) ir.get("ego_speed_kmh");
-            Double target = (Double) ir.get("target_speed_kmh");
-            Double decel = (Double) ir.get("target_decel_mps2");
-            if (com.vsos.core.simulation.LeadVehicleCase.CCRS.equals(cat) && target != null && target != 0.0) {
-                issues.add("CCRS: xe phía trước đứng yên nên target_speed_kmh phải là 0");
-            } else if (com.vsos.core.simulation.LeadVehicleCase.CCRM.equals(cat) && ego != null && target != null && target >= ego) {
-                issues.add("CCRM: tốc độ xe phía trước (" + FamilyService.g(target) + " km/h) phải nhỏ hơn tốc độ xe ego (" + FamilyService.g(ego) + " km/h)");
-            } else if (com.vsos.core.simulation.LeadVehicleCase.CCRB.equals(cat) && target != null && target <= 0.0) {
-                issues.add("CCRB: xe phía trước phải đang chạy (target_speed_kmh > 0) trước khi phanh");
-            }
-            if (!com.vsos.core.simulation.LeadVehicleCase.CCRB.equals(cat) && decel != null) {
-                issues.add(cat + ": target_decel_mps2 chỉ dùng cho CCRB");
-            }
-        }
         return issues;
     }
 

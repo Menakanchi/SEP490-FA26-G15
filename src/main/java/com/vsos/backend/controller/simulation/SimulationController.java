@@ -11,21 +11,17 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
@@ -35,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import com.vsos.backend.common.Json;
 import com.vsos.backend.security.VehicSimAccess;
-import com.vsos.backend.service.simulation.RunCollectionService;
 import com.vsos.backend.service.simulation.RunService;
 import com.vsos.backend.service.simulation.SimulationViewService;
 import com.vsos.backend.service.simulation.TelemetryMetricsService;
@@ -55,7 +50,6 @@ public class SimulationController {
     private final RunService runs;
     private final TelemetryMetricsService telemetryService;
     private final VehicSimAccess access;
-    private final RunCollectionService collections;
 
     /** {@code with_aeb_off}: thêm một lượt AEB tắt cho mỗi biến thể (mốc tham chiếu của baseline, chốt 13/11/2026); mặc định không. */
     public record RunFamilyRequest(@JsonProperty("aeb_version_id") Long aebVersionId, @JsonProperty("with_aeb_off") Boolean withAebOff) {
@@ -67,7 +61,7 @@ public class SimulationController {
                                                          @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "run");
-        List<Long> ids = runs.runFamilyFromUi(access.projectId(), scenarioId, uid, body == null ? null : body.aebVersionId(),
+        List<Long> ids = runs.runFamily(access.projectId(), scenarioId, uid, body == null ? null : body.aebVersionId(),
                 body != null && Boolean.TRUE.equals(body.withAebOff()));
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("queued_runs", ids.size()));
     }
@@ -97,21 +91,12 @@ public class SimulationController {
                 .body(views.familyXoscZip(scenarioId));
     }
 
-    @Operation(summary = "Tải file gộp mọi run CARLA hoàn tất của một biến thể cho Failure Analysis (ADR-065): mỗi run giữ nguyên result.json "
-            + "kèm khối dataset, cùng manifest và nhóm AEB ON/OFF; không gộp số liệu giữa các run")
-    @GetMapping("/variants/{variantId}/collection")
-    public ResponseEntity<byte[]> getVariantCollection(@PathVariable long variantId) throws IOException {
-        return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/json; charset=utf-8"))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"vehicsim-variant-" + variantId + "-collection.json\"")
-                .body(collections.variantCollection(variantId));
-    }
-
     @Operation(summary = "Chạy lại đúng biến thể/AEB/xe/seed trên CARLA qua ScenarioRunner")
     @PostMapping("/runs/{runId}/carla")
     public ResponseEntity<Map<String, Object>> runOnCarla(@PathVariable long runId, @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "carla_run");
-        long id = runs.runOnCarlaFromUi(access.projectId(), runId, uid);
+        long id = runs.runOnCarla(access.projectId(), runId, uid);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("run_id", id));
     }
 
@@ -124,32 +109,12 @@ public class SimulationController {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("run_id", runId, "status", status));
     }
 
-    @Operation(summary = "Xoá kết quả một run baseline lỗi (FAILED) hoặc đã hủy (STOPPED) do chính mình tạo, ADMIN xoá được của người khác (dòng DB + file ảnh/video/CSV); giữ run COMPLETED, run đang chạy, run của regression/tối ưu và mốc của regression")
-    @DeleteMapping("/runs/{runId}")
-    public Map<String, Object> deleteRun(@PathVariable long runId, @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireEngineer(user);
-        access.limitWrites(uid, "run_delete");
-        return runs.deleteBaselineRun(access.projectId(), runId, uid, "ADMIN".equals(VehicSimAccess.roleOf(user)));
-    }
-
-    @Operation(summary = "Xoá mọi kết quả baseline lỗi hoặc đã hủy của một họ kịch bản theo cùng luật xoá từng run; trả số run giữ lại theo từng lý do")
-    @DeleteMapping("/families/{scenarioId}/baseline-runs")
-    public Map<String, Object> deleteFamilyBaselineRuns(
-            @PathVariable long scenarioId,
-            @RequestParam(name = "simulator_type", required = false) String simulatorType,
-            @AuthenticationPrincipal UserDetails user) {
-        long uid = VehicSimAccess.requireEngineer(user);
-        access.limitWrites(uid, "run_delete");
-        return runs.deleteFamilyBaselineRuns(access.projectId(), scenarioId, uid, "ADMIN".equals(VehicSimAccess.roleOf(user)), simulatorType);
-    }
-
-    @Operation(summary = "Hủy run độc lập đang chờ/đang chạy của họ, có thể lọc theo simulator_type")
+    @Operation(summary = "Hủy mọi run đang chờ/đang chạy của một họ kịch bản (bỏ qua run của regression/tối ưu)")
     @PostMapping("/families/{scenarioId}/cancel")
-    public ResponseEntity<Map<String, Object>> cancelFamilyRuns(@PathVariable long scenarioId,
-            @RequestParam(name = "simulator_type", required = false) String simulatorType, @AuthenticationPrincipal UserDetails user) {
+    public ResponseEntity<Map<String, Object>> cancelFamilyRuns(@PathVariable long scenarioId, @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "run_cancel");
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(runs.cancelFamilyRuns(access.projectId(), scenarioId, uid, simulatorType));
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(runs.cancelFamilyRuns(access.projectId(), scenarioId, uid));
     }
 
     @Operation(summary = "Các run đang chờ/đang chạy của một họ kịch bản (để hủy từng run; run của regression/tối ưu có cancellable = false)")
@@ -184,20 +149,12 @@ public class SimulationController {
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(mime)).body(Files.readAllBytes(file));
     }
 
-    @Operation(summary = "Video mp4 xem lại của run CARLA (có Range để tua); 404 khi run không có video")
-    @GetMapping("/runs/{runId}/carla-video")
-    public ResponseEntity<Resource> carlaVideo(@PathVariable long runId) {
-        var file = runs.carlaVideo(access.projectId(), runId);
-        return ResponseEntity.ok().contentType(MediaType.parseMediaType("video/mp4")).header(HttpHeaders.ACCEPT_RANGES, "bytes")
-                .body(new FileSystemResource(file));
-    }
-
     @Operation(summary = "Nộp result.json của run CARLA chạy ngoài backend (chỉ run CARLA đang PENDING/FAILED, regression chưa chốt)")
     @PostMapping("/runs/{runId}/carla-result")
     public Map<String, Object> submitCarlaResult(@PathVariable long runId, @RequestBody Map<String, Object> body, @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "carla_result");
-        return runs.submitCarlaResultFromUi(access.projectId(), runId, uid, body);
+        return runs.submitCarlaResult(access.projectId(), runId, uid, body);
     }
 
     /**

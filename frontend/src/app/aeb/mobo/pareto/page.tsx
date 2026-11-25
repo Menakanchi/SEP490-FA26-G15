@@ -27,8 +27,7 @@ export default function AebMoboParetoPage() {
   const PAGE_SIZE = 8;
   const paretoCount = paretoTrials?.length ?? 0;
   const pages = Math.max(1, Math.ceil(paretoCount / PAGE_SIZE));
-  const safePage = Math.min(page, pages);
-  const pagedPareto = paretoTrials?.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pagedPareto = paretoTrials?.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   useEffect(() => {
     vehicsimApi
@@ -134,7 +133,6 @@ export default function AebMoboParetoPage() {
             onChange={(e) => {
               const newId = Number(e.target.value);
               setSelectedRunId(newId);
-              setPage(1);
               router.replace(`/aeb/mobo/pareto?run_id=${newId}`);
             }}
             className="h-10 rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-bold text-vehicsim-ink"
@@ -201,7 +199,7 @@ export default function AebMoboParetoPage() {
                 {pagedPareto?.map((t, idx) => (
                   <tr key={t.id} className="hover:bg-vehicsim-row transition-colors">
                     <td className="w-12 px-3 py-4 text-center font-mono text-[12px] font-bold text-vehicsim-faint tabular-nums">
-                      {(safePage - 1) * PAGE_SIZE + idx + 1}
+                      {(page - 1) * PAGE_SIZE + idx + 1}
                     </td>
                     <td className="px-4 py-3.5 font-mono font-bold text-vehicsim-ink">
                       #{t.trial_number}
@@ -242,9 +240,9 @@ export default function AebMoboParetoPage() {
         {pages > 1 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-solid border-vehicsim-line px-5 py-3.5">
             <span className="text-[12px] font-medium text-vehicsim-muted">
-              Hiển thị {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, paretoCount)} trên {paretoCount} phương án Pareto
+              Hiển thị {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, paretoCount)} trên {paretoCount} phương án Pareto
             </span>
-            <Pagination page={safePage} pages={pages} onPage={setPage} />
+            <Pagination page={page} pages={pages} onPage={setPage} />
           </div>
         )}
       </section>

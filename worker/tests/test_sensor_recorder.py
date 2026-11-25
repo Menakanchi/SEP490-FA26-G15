@@ -14,19 +14,6 @@ def _det(depth: float, velocity: float, azimuth_deg: float = 0.0, altitude_deg: 
     )
 
 
-def _ego(length_half: float, height_half: float) -> SimpleNamespace:
-    box = SimpleNamespace(location=SimpleNamespace(x=0.0, z=height_half), extent=SimpleNamespace(x=length_half, z=height_half))
-    return SimpleNamespace(bounding_box=box)
-
-
-def test_review_camera_follows_from_behind_and_above_each_vehicle() -> None:
-    low = sensor_recorder.camera_mount(_ego(2.4, 0.72))  # xe thấp (sedan)
-    tall = sensor_recorder.camera_mount(_ego(2.9, 1.3))  # xe cao và dài (van)
-    assert low[0] == -2.4 - sensor_recorder.CAMERA_BACK_M and tall[0] == -2.9 - sensor_recorder.CAMERA_BACK_M  # sau đuôi xe, xe dài thì lùi xa hơn
-    assert low[1] == 2 * 0.72 + sensor_recorder.CAMERA_ABOVE_ROOF_M and tall[1] > low[1]  # cao hơn nóc từng xe
-    assert sensor_recorder.camera_mount(SimpleNamespace()) == sensor_recorder.CAMERA_FALLBACK_M
-
-
 def test_nearest_target_ahead_gives_ttc() -> None:
     target = sensor_recorder.nearest_radar_target([_det(30.0, -5.0), _det(10.0, -2.5), _det(5.0, -1.0, azimuth_deg=20)])
     assert target == {"radar_depth_m": 10.0, "radar_rel_velocity_ms": -2.5, "radar_ttc_s": 4.0}

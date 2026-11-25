@@ -16,17 +16,9 @@ CORE_CLASSES = bridge.ROOT / "target" / "classes" / "com" / "vsos" / "core" / "b
 needs_core = pytest.mark.skipif(not CORE_CLASSES.is_file(), reason="chưa có lõi Java đã biên dịch (target/classes): chạy mvnw compile")
 
 
-@pytest.fixture(params=(15, 16))
-def versioned_xosc(xosc: Path, request: pytest.FixtureRequest) -> tuple[Path, str]:
-    version = request.param
-    xosc.write_text(xosc.read_text(encoding="utf-8").replace("vehicsim.xosc/v15", f"vehicsim.xosc/v{version}"), encoding="utf-8")
-    return xosc, f"-xosc{version}"
-
-
 @needs_core
-def test_xosc_info_reports_the_time_profile(versioned_xosc: tuple[Path, str]) -> None:
-    xosc, suffix = versioned_xosc
-    assert bridge.xosc_info(xosc) == {"suffix": suffix, "step_s": 0.01, "perception_period_s": 0.05}
+def test_xosc_info_reports_the_time_profile(xosc: Path) -> None:
+    assert bridge.xosc_info(xosc) == {"suffix": "-xosc15", "step_s": 0.01, "perception_period_s": 0.05}
 
 
 @needs_core
@@ -38,13 +30,12 @@ def test_xosc_info_rejects_files_outside_the_contract(tmp_path: Path) -> None:
 
 
 @needs_core
-def test_session_handshake_open_and_clean_shutdown(versioned_xosc: tuple[Path, str], tmp_path: Path) -> None:
-    xosc, suffix = versioned_xosc
+def test_session_handshake_open_and_clean_shutdown(xosc: Path, tmp_path: Path) -> None:
     session = bridge.Bridge(tmp_path / "bridge.log")
     try:
         assert session.core
-        opened = session.request("open", timeout=bridge.OPEN_TIMEOUT_S, xosc=str(xosc), out_dir=str(tmp_path / "out"), simulator_version=f"carla-0.9.16{suffix}")
-        assert opened["profile"] == {"suffix": suffix, "step_s": 0.01, "perception_period_s": 0.05}
+        opened = session.request("open", timeout=bridge.OPEN_TIMEOUT_S, xosc=str(xosc), out_dir=str(tmp_path / "out"), simulator_version="carla-0.9.16-xosc15")
+        assert opened["profile"] == {"suffix": "-xosc15", "step_s": 0.01, "perception_period_s": 0.05}
         assert opened["constants"]["pedestrian_start_y_m"] == -3.6
         with pytest.raises(bridge.BridgeError, match="Java báo lỗi cho step"):
             session.request("step", t=0.0)  # chưa init: lỗi giao thức, không phải kết quả giả
