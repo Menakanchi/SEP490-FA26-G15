@@ -1,6 +1,7 @@
 package com.vsos.backend.service.scenario;
 
 import com.vsos.backend.common.Vs.InvalidRequestException;
+import com.vsos.core.simulation.Simulator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -242,6 +243,25 @@ public class DescribeService {
         return issues;
     }
 
+    /**
+     * Cảnh báo sớm cùng quy tắc với lúc lưu họ ({@link FamilyService.FamilySpec#unreachablePairs()}): xe chạy đều không tới vạch băng ngang
+     * trước khi hết thời gian mô phỏng thì run TIMEOUT vô nghĩa. Không đưa vào vòng LLM tự sửa — không để LLM đổi số người dùng đã nói;
+     * chỉ báo để người dùng tự chỉnh. {@code null} khi tới kịp hoặc tốc độ xe không dùng được.
+     */
+    static String unreachableWarning(Map<String, Object> values) {
+        if (!(values.get("ego_speed_kmh") instanceof Number ego) || !(values.get("trigger_distance_m") instanceof Number dist)
+                || ego.doubleValue() <= 0) {
+            return null;
+        }
+        double arrival = FamilyService.arrivalSeconds(ego.doubleValue(), dist.doubleValue());
+        if (arrival < Simulator.MAX_DURATION_S) {
+            return null;
+        }
+        return "Xe không tới được điểm băng ngang trong " + FamilyService.g(Simulator.MAX_DURATION_S) + " s mô phỏng: "
+                + FamilyService.g(ego.doubleValue()) + " km/h + " + FamilyService.g(dist.doubleValue()) + " m (tới vạch sau "
+                + String.format(java.util.Locale.ROOT, "%.1f", arrival) + " s). Tăng tốc độ xe hoặc giảm khoảng cách kích hoạt.";
+    }
+
     static boolean isLead(Map<String, Object> ir) {
         return ir.get("category") != null && com.vsos.core.simulation.LeadVehicleCase.CATEGORIES.contains(String.valueOf(ir.get("category")));
     }
@@ -436,6 +456,8 @@ public class DescribeService {
             log.warn("describe: LLM không dùng được, lùi về luật: {}", e.getMessage());
             ir = ruleBased(text);
             source = "rules";
+            // Cùng phép kiểm dải với nhánh LLM: giá trị ngoài khoảng không được đi qua lặng lẽ (người dùng sửa tay ở bảng bên dưới).
+            issues = check(ir);
             String msg = String.valueOf(e.getMessage());
             llmError = msg.length() > 300 ? msg.substring(0, 300) : msg;
         }
@@ -471,6 +493,11 @@ public class DescribeService {
             }
             values.put(key, value);
             fields.add(Json.obj("key", key, "label", meta.getValue()[0], "value", value, "unit", meta.getValue()[1], "origin", origin));
+        }
+        String late = unreachableWarning(values);
+        if (late != null) {
+            issues = new ArrayList<>(issues);
+            issues.add(late);
         }
         Map<String, Object> irOut = new LinkedHashMap<>();
         irOut.put("motif", MOTIF);
