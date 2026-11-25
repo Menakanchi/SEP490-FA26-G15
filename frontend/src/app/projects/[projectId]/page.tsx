@@ -89,7 +89,7 @@ export default function ViewProjectDetailPage() {
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           <div className="flex min-w-0 flex-col gap-4">
             <Card className="flex flex-col gap-4 p-5">
-              <CardTitle aside={<Link href={`/projects/${id}/results`} className="text-right text-[13px] font-semibold text-vehicsim-primary hover:underline">Xem kết quả</Link>}>
+              <CardTitle aside={isExperiencer ? <Link href={`/projects/${id}/results`} className="text-right text-[13px] font-semibold text-vehicsim-primary hover:underline">Xem kết quả</Link> : undefined}>
                 Kết quả bản cơ sở
               </CardTitle>
               {journey.counts.baseline_completed > 0 ? (

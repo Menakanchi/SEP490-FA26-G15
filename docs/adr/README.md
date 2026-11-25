@@ -74,6 +74,9 @@ giữ lại). VehicSim: ADR-023 trở đi.
 | [ADR-060](ADR-060-nguong-dat-toc-do-theo-ban-dap.md) | `.xosc` v13: adapter đặt tốc độ từ điểm dừng gấp đo được theo xe và bàn đạp (e-tron phanh mạnh ~8,6 m/s thay vì 6); khôi phục khâu bù (đính chính ADR-058) | ✅ **Accepted 22/11** — chủ dự án chốt |
 | [ADR-061](ADR-061-bu-pha-tang-luc-patrol-sprinter.md) | `.xosc` v14 / `-xosc14`: bù pha tăng lực cho Patrol / Sprinter (kiểm `-xosc13`: quãng dừng dài hơn 0,5–1,0 m do tăng lực chậm) | ✅ **Accepted 23/11** — chủ dự án chốt |
 | [ADR-062](ADR-062-nguoi-di-bo-tang-toc-dan.md) | Bộ động học 1.4 / `.xosc` v15 / `-xosc15`: người đi bộ tăng tốc dần trong 0,678 s, bỏ khởi hành sớm của ADR-054 (kiểm `-xosc13`: ca dừng lề quyết định lệch 0,1 s); 1.4 bỏ chậm dần trước lề | ✅ **Accepted 23/11** — chủ dự án chốt; kiểm `-xosc15` khớp |
+| [ADR-065](ADR-065-khoi-dataset-trong-result-json.md) | `result.json` của run CARLA thêm khối `dataset` (định danh, cấu hình, objective canonical, hash từng file, frames/ground truth, collision evidence, `d_*` tham khảo, trạng thái từng mục) cho Failure Analysis; không đổi định danh run | ✅ **Accepted 24/11** — người dùng chốt; kiểm bằng test và run CARLA thật 2499 |
+| [ADR-066](ADR-066-xac-nhan-va-cham-nguoi-di-bo-carla.md) | `-xosc16` chờ cảm biến CARLA xác nhận va chạm người đi bộ và báo lỗi khi chỉ có chồng lấn chưa xác nhận; giữ bằng chứng `-xosc15` | 🕐 **Proposed 25/11** — đã kiểm CARLA thật |
+| [ADR-064](ADR-064-ky-su-tao-project-cua-workspace.md) | Kỹ sư tạo project của workspace mình là thành viên (`workspace_id`), chọn project theo workspace như Reviewer; ADMIN/MANAGER/REVIEWER không tạo project | ✅ **Accepted 24/11** — người dùng chốt; kiểm bằng test và chạy thật |
 | [ADR-063](ADR-063-bu-pha-tang-luc-rieng-theo-xe.md) | `.xosc` v15: bù pha tăng lực riêng Patrol 0,11 s / Sprinter 0,17 s (kiểm `-xosc14`: còn dài hơn 0,23–0,69 m) | ✅ **Accepted 23/11** — chủ dự án chốt; kiểm `-xosc15` đạt (≤ 0,27 m) |
 
 ## Luật

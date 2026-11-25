@@ -77,7 +77,18 @@ JERK_WINDOW_S = 0.1
 """Jerk lấy đạo hàm gia tốc đã trung bình trên 0,1 s. Đạo hàm thô mỗi tick (~0,015 s)
 khuếch đại nhiễu IMU ±0,16 m/s² lên hàng trăm m/s³ dù xe không phanh."""
 
-CAMERA_EVERY_N_FRAMES = 5
+CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FOV_DEG = 1280, 720, 90
+"""Ảnh camera chỉ để xem lại (video.mp4, thanh chọn khung), không đi vào lõi AEB. 1280×720: ảnh 800×450 bị phóng to trên web nên nhìn mờ. Mỗi ảnh PNG
+khoảng 1,5 MB (800×450 là 0,6 MB)."""
+
+CAMERA_BACK_M, CAMERA_ABOVE_ROOF_M, CAMERA_PITCH_DEG = 5.5, 1.6, -11.0
+"""Camera góc nhìn thứ ba của video xem lại: phía sau xe ``CAMERA_BACK_M`` tính từ đuôi, cao hơn nóc ``CAMERA_ABOVE_ROOF_M``, chúi xuống để thấy cả xe, mặt
+đường và người đi bộ lúc băng qua. Vị trí tính theo bounding box nên đúng cho cả xe thấp (Model 3) lẫn xe cao (Patrol, Sprinter). Trước 23/11 là camera trong xe
+(x = 1,5, z = 1,4); với xe cao nó nằm trong cabin và bị kính chắn gió, táp-lô che. ``CAMERA_FALLBACK_M`` (x, z) chỉ dùng khi không đọc được bounding box."""
+
+CAMERA_FALLBACK_M = (-8.0, 3.6)
+
+CAMERA_EVERY_N_FRAMES = 2 # 2 × 0,05 s = 0,1 s → 10 ảnh/giây, đủ mượt để ghép video.mp4 (make_video.py); trước 13/11 là 5 (4 ảnh/giây)
 CAMERA_REF_STEP_S = 0.05  # bước mô phỏng mà hằng số trên được hiệu chỉnh; bước nhỏ hơn thì lưu ảnh theo cùng khoảng thời gian
 
 FRAME_COLUMNS = [
@@ -283,6 +294,15 @@ def summarise(rows: list[dict], collisions: list[dict]) -> dict:
     }
 
 
+def camera_mount(ego) -> tuple[float, float]:  # noqa: ANN001 — carla.Vehicle
+    """Vị trí (x tới trước, z lên) của camera xem lại, trong khung xe ego: sau đuôi xe và cao hơn nóc, theo bounding box của chính xe đó."""
+    try:
+        box = ego.bounding_box
+        return (box.location.x - box.extent.x - CAMERA_BACK_M, box.location.z + box.extent.z + CAMERA_ABOVE_ROOF_M)
+    except Exception:  # noqa: BLE001 — actor giả / không có bounding box
+        return CAMERA_FALLBACK_M
+
+
 class SensorRecorder:
     """Gắn sensor lên ego trong một thread riêng; ``stop()`` gỡ sensor và ghi file."""
 
@@ -291,6 +311,7 @@ class SensorRecorder:
         self.out_dir = Path(out_dir)
         self._camera = camera
         self._camera_every = max(1, round(CAMERA_EVERY_N_FRAMES * CAMERA_REF_STEP_S / step_s))
+        self.camera_interval_s = self._camera_every * step_s  # khoảng thời gian giữa hai ảnh đã lưu — make_video.py dùng để đặt nhịp video
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -376,10 +397,14 @@ class SensorRecorder:
 
         if self._camera:
             cam_bp = lib.find("sensor.camera.rgb")
-            cam_bp.set_attribute("image_size_x", "800")
-            cam_bp.set_attribute("image_size_y", "450")
-            cam_bp.set_attribute("fov", "90")
-            cam_tf = carla.Transform(carla.Location(x=1.5, z=1.4))
+            cam_bp.set_attribute("image_size_x", str(CAMERA_WIDTH))
+            cam_bp.set_attribute("image_size_y", str(CAMERA_HEIGHT))
+            cam_bp.set_attribute("fov", str(CAMERA_FOV_DEG))
+            # Motion blur mặc định của CARLA làm ảnh nhoè khi xe chạy nhanh; ảnh dùng để xem lại nên tắt.
+            if cam_bp.has_attribute("motion_blur_intensity"):
+                cam_bp.set_attribute("motion_blur_intensity", "0.0")
+            cam_x, cam_z = camera_mount(ego)
+            cam_tf = carla.Transform(carla.Location(x=cam_x, z=cam_z), carla.Rotation(pitch=CAMERA_PITCH_DEG))
             (self.out_dir / "camera").mkdir(parents=True, exist_ok=True)
             self._spawn(world, cam_bp, cam_tf, ego, self._on_camera)
 
