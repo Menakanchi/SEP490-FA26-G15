@@ -124,15 +124,15 @@ public class SimulationController {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("run_id", runId, "status", status));
     }
 
-    @Operation(summary = "Xoá kết quả một run baseline đã kết thúc (dòng DB + file ảnh/video/CSV); từ chối run đang chạy, run của regression/tối ưu hoặc mốc của regression")
+    @Operation(summary = "Xoá kết quả một run baseline lỗi (FAILED) hoặc đã hủy (STOPPED) do chính mình tạo, ADMIN xoá được của người khác (dòng DB + file ảnh/video/CSV); giữ run COMPLETED, run đang chạy, run của regression/tối ưu và mốc của regression")
     @DeleteMapping("/runs/{runId}")
     public Map<String, Object> deleteRun(@PathVariable long runId, @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "run_delete");
-        return runs.deleteBaselineRun(access.projectId(), runId, uid);
+        return runs.deleteBaselineRun(access.projectId(), runId, uid, "ADMIN".equals(VehicSimAccess.roleOf(user)));
     }
 
-    @Operation(summary = "Xoá mọi kết quả baseline đã kết thúc của một họ kịch bản (giữ run đang chờ/chạy và run đang là mốc của regression)")
+    @Operation(summary = "Xoá mọi kết quả baseline lỗi hoặc đã hủy của một họ kịch bản theo cùng luật xoá từng run; trả số run giữ lại theo từng lý do")
     @DeleteMapping("/families/{scenarioId}/baseline-runs")
     public Map<String, Object> deleteFamilyBaselineRuns(
             @PathVariable long scenarioId,
@@ -140,7 +140,7 @@ public class SimulationController {
             @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "run_delete");
-        return runs.deleteFamilyBaselineRuns(access.projectId(), scenarioId, uid, simulatorType);
+        return runs.deleteFamilyBaselineRuns(access.projectId(), scenarioId, uid, "ADMIN".equals(VehicSimAccess.roleOf(user)), simulatorType);
     }
 
     @Operation(summary = "Hủy run độc lập đang chờ/đang chạy của họ, có thể lọc theo simulator_type")

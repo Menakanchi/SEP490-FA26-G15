@@ -31,8 +31,12 @@ import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Xoá kết quả baseline: chỉ run baseline đã kết thúc và không còn là mốc của regression; xoá cả dòng DB lẫn thư mục file. */
+/**
+ * Xoá kết quả baseline: chỉ run baseline lỗi / đã hủy, do chính người xoá tạo (ADMIN xoá được của người khác), không còn là mốc của regression;
+ * xoá cả dòng DB lẫn thư mục file. Run COMPLETED luôn được giữ.
+ */
 class RunResultDeleteTest {
+    private static final long OWNER = 7L;
     private Db db;
     private RunService runs;
     @TempDir Path directory;
@@ -56,6 +60,7 @@ class RunResultDeleteTest {
         Map<String, Object> m = new HashMap<>(Json.obj("id", id, "status", status, "purpose", purpose));
         m.put("regression_test_id", regressionTestId);
         m.put("optimization_trial_id", null);
+        m.put("created_by_user_id", OWNER);
         return new Row(m);
     }
 
@@ -71,11 +76,11 @@ class RunResultDeleteTest {
     }
 
     @Test
-    void aFinishedBaselineRunIsDeletedFromTheDatabaseAndFromDisk() throws Exception {
+    void aFailedBaselineRunIsDeletedFromTheDatabaseAndFromDisk() throws Exception {
         Path folder = runFolder(42);
-        stubRun(run(42, "COMPLETED", "BASELINE", null));
+        stubRun(run(42, "FAILED", "BASELINE", null));
 
-        assertThat(runs.deleteBaselineRun(1, 42, 7)).containsEntry("deleted", true);
+        assertThat(runs.deleteBaselineRun(1, 42, 7, false)).containsEntry("deleted", true);
 
         verify(db).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
         assertThat(folder).doesNotExist();
@@ -84,12 +89,12 @@ class RunResultDeleteTest {
     @Test
     void archivedProjectOrWorkspacePreservesResultAndFiles() throws Exception {
         Path folder = runFolder(42);
-        stubRun(run(42, "COMPLETED", "BASELINE", null));
+        stubRun(run(42, "FAILED", "BASELINE", null));
         for (String[] states : List.of(new String[]{"ARCHIVED", "ACTIVE"}, new String[]{"ACTIVE", "ARCHIVED"})) {
             when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
                     new Row(Json.obj("status", states[0], "workspace_id", 3L, "workspace_status", states[1],
                             "user_role", "ENGINEER", "member_id", 7L)));
-            assertThatThrownBy(() -> runs.deleteBaselineRun(1, 42, 7)).isInstanceOf(ResponseStatusException.class);
+            assertThatThrownBy(() -> runs.deleteBaselineRun(1, 42, 7, false)).isInstanceOf(ResponseStatusException.class);
         }
         verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
         assertThat(folder).exists();
@@ -98,11 +103,11 @@ class RunResultDeleteTest {
     @Test
     void filesAreDeletedOnlyAfterOuterTransactionCommits() throws Exception {
         Path folder = runFolder(42);
-        stubRun(run(42, "COMPLETED", "BASELINE", null));
+        stubRun(run(42, "FAILED", "BASELINE", null));
         org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
         org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(true);
         try {
-            runs.deleteBaselineRun(1, 42, 7);
+            runs.deleteBaselineRun(1, 42, 7, false);
             assertThat(folder).exists();
             org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations().forEach(
                     org.springframework.transaction.support.TransactionSynchronization::afterCommit);
@@ -114,22 +119,22 @@ class RunResultDeleteTest {
 
     @Test
     void personalOwnerMayDeleteButNonMemberEngineerMayNot() {
-        stubRun(run(42, "COMPLETED", "BASELINE", null));
+        stubRun(run(42, "FAILED", "BASELINE", null));
         when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
                 new Row(Json.obj("status", "ACTIVE", "workspace_id", null, "created_by_user_id", 7L, "user_role", "EXPERIENCER")));
-        assertThat(runs.deleteBaselineRun(1, 42, 7)).containsEntry("deleted", true);
+        assertThat(runs.deleteBaselineRun(1, 42, 7, false)).containsEntry("deleted", true);
         when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
                 new Row(Json.obj("status", "ACTIVE", "workspace_id", 3L, "workspace_status", "ACTIVE", "user_role", "ENGINEER")));
-        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 42, 7)).isInstanceOf(Vs.NotFoundException.class);
+        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 42, 7, false)).isInstanceOf(Vs.NotFoundException.class);
     }
 
     @Test
     void adminCannotWriteInAnArchivedWorkspace() throws Exception {
         Path folder = runFolder(42);
-        stubRun(run(42, "COMPLETED", "BASELINE", null));
+        stubRun(run(42, "FAILED", "BASELINE", null));
         when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
                 new Row(Json.obj("status", "ACTIVE", "workspace_id", 3L, "workspace_status", "ARCHIVED", "user_role", "ADMIN")));
-        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 42, 7)).isInstanceOf(ResponseStatusException.class);
+        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 42, 7, false)).isInstanceOf(ResponseStatusException.class);
         verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
         assertThat(folder).exists();
     }
@@ -147,7 +152,7 @@ class RunResultDeleteTest {
     void failedAndStoppedBaselineRunsCanBeDeletedToo() throws Exception {
         for (String status : List.of("FAILED", "STOPPED")) {
             stubRun(run(43, status, "BASELINE", null));
-            assertThat(runs.deleteBaselineRun(1, 43, 7)).containsEntry("deleted", true);
+            assertThat(runs.deleteBaselineRun(1, 43, 7, false)).containsEntry("deleted", true);
         }
     }
 
@@ -155,9 +160,9 @@ class RunResultDeleteTest {
     void runsThatAreNotPlainBaselineResultsAreRefused() throws Exception {
         Path folder = runFolder(44);
         stubRun(run(44, "COMPLETED", "REGRESSION", 9L));
-        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 44, 7)).isInstanceOf(Vs.InvalidRequestException.class);
+        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 44, 7, false)).isInstanceOf(Vs.InvalidRequestException.class);
         stubRun(run(44, "COMPLETED", "BASELINE", 9L)); // chạy trong một regression test
-        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 44, 7)).isInstanceOf(Vs.InvalidRequestException.class);
+        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 44, 7, false)).isInstanceOf(Vs.InvalidRequestException.class);
 
         verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
         assertThat(folder).exists();
@@ -168,7 +173,7 @@ class RunResultDeleteTest {
         Path folder = runFolder(45);
         for (String status : List.of("PENDING", "RUNNING", "PAUSED")) {
             stubRun(run(45, status, "BASELINE", null));
-            assertThatThrownBy(() -> runs.deleteBaselineRun(1, 45, 7)).isInstanceOf(ResponseStatusException.class).hasMessageContaining("cancel it before");
+            assertThatThrownBy(() -> runs.deleteBaselineRun(1, 45, 7, false)).isInstanceOf(ResponseStatusException.class).hasMessageContaining("cancel it before");
         }
         verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
         assertThat(folder).exists();
@@ -177,10 +182,10 @@ class RunResultDeleteTest {
     @Test
     void aRunThatARegressionTestReplaysIsKeptAsItsReference() throws Exception {
         Path folder = runFolder(46);
-        stubRun(run(46, "COMPLETED", "BASELINE", null));
+        stubRun(run(46, "STOPPED", "BASELINE", null));
         when(db.scalar(startsWith("SELECT (SELECT COUNT(*)"), any(Object[].class))).thenReturn(2L);
 
-        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 46, 7)).isInstanceOf(ResponseStatusException.class).hasMessageContaining("reference of a regression");
+        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 46, 7, false)).isInstanceOf(ResponseStatusException.class).hasMessageContaining("reference of a regression");
 
         verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
         assertThat(folder).exists(); // thư mục chỉ bị xoá khi dòng DB đã xoá
@@ -189,25 +194,83 @@ class RunResultDeleteTest {
     @Test
     void aRunOfAnotherProjectIsNotFound() {
         stubRun(null);
-        assertThatThrownBy(() -> runs.deleteBaselineRun(2, 42, 7)).isInstanceOf(Vs.NotFoundException.class);
+        assertThatThrownBy(() -> runs.deleteBaselineRun(2, 42, 7, false)).isInstanceOf(Vs.NotFoundException.class);
     }
 
     @Test
-    void deletingAFamilyKeepsActiveAndReferencedRunsAndCountsThem() throws Exception {
+    void aCompletedRunIsKeptBecauseItIsRealData() throws Exception {
+        Path folder = runFolder(47);
+        stubRun(run(47, "COMPLETED", "BASELINE", null));
+        for (boolean admin : List.of(false, true)) {
+            assertThatThrownBy(() -> runs.deleteBaselineRun(1, 47, 7, admin)).isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("Completed run results are kept");
+        }
+        verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
+        assertThat(folder).exists();
+    }
+
+    @Test
+    void onlyTheCreatorOrAnAdminMayDeleteARun() throws Exception {
+        Path folder = runFolder(48);
+        stubRun(run(48, "FAILED", "BASELINE", null));
+
+        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 48, 8, false)).isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Only the user who started this run");
+        verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
+        assertThat(folder).exists();
+
+        assertThat(runs.deleteBaselineRun(1, 48, 8, true)).containsEntry("deleted", true);
+        assertThat(folder).doesNotExist();
+    }
+
+    @Test
+    void theDeleteStatementRechecksStatusAndOwner() {
+        stubRun(run(49, "FAILED", "BASELINE", null));
+        runs.deleteBaselineRun(1, 49, 7, false);
+        verify(db).update(org.mockito.ArgumentMatchers.contains("status IN ('FAILED','STOPPED')"),
+                org.mockito.ArgumentMatchers.eq(49L), org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(false), org.mockito.ArgumentMatchers.eq(7L));
+    }
+
+    private static Row familyRow(long id, String status, long createdBy) {
+        return new Row(Json.obj("id", id, "status", status, "created_by_user_id", createdBy));
+    }
+
+    @Test
+    void deletingAFamilyKeepsActiveCompletedForeignAndReferencedRunsAndCountsThem() throws Exception {
         Path gone = runFolder(1);
         Path active = runFolder(2);
         Path referenced = runFolder(3);
-        when(db.list(startsWith("SELECT id, status FROM simulation_runs"), any(Object[].class))).thenReturn(List.of(
-                new Row(Json.obj("id", 1L, "status", "COMPLETED")), new Row(Json.obj("id", 2L, "status", "RUNNING")),
-                new Row(Json.obj("id", 3L, "status", "COMPLETED"))));
+        Path completed = runFolder(4);
+        Path foreign = runFolder(5);
+        when(db.list(startsWith("SELECT id, status, created_by_user_id FROM simulation_runs"), any(Object[].class))).thenReturn(List.of(
+                familyRow(1, "FAILED", OWNER), familyRow(2, "RUNNING", OWNER), familyRow(3, "STOPPED", OWNER),
+                familyRow(4, "COMPLETED", OWNER), familyRow(5, "FAILED", 8L)));
         when(db.scalar(startsWith("SELECT (SELECT COUNT(*)"), any(Object[].class))).thenAnswer(call -> (long) (Long) call.getArgument(1) == 3L ? 1L : 0L);
 
-        Map<String, Object> result = runs.deleteFamilyBaselineRuns(1, 3, 7);
+        Map<String, Object> result = runs.deleteFamilyBaselineRuns(1, 3, 7, false, null);
 
-        assertThat(result).containsEntry("deleted", 1).containsEntry("skipped_active", 1).containsEntry("skipped_in_use", 1);
+        assertThat(result).containsEntry("deleted", 1).containsEntry("skipped_active", 1).containsEntry("skipped_in_use", 1)
+                .containsEntry("skipped_completed", 1).containsEntry("skipped_not_owner", 1);
         assertThat(gone).doesNotExist();
         assertThat(active).exists();
         assertThat(referenced).exists();
+        assertThat(completed).exists();
+        assertThat(foreign).exists();
+    }
+
+    @Test
+    void anAdminDeletesFailedRunsOfEveryoneInAFamilyButKeepsCompletedOnes() throws Exception {
+        Path foreign = runFolder(5);
+        Path completed = runFolder(6);
+        when(db.list(startsWith("SELECT id, status, created_by_user_id FROM simulation_runs"), any(Object[].class))).thenReturn(List.of(
+                familyRow(5, "FAILED", 8L), familyRow(6, "COMPLETED", 8L)));
+
+        Map<String, Object> result = runs.deleteFamilyBaselineRuns(1, 3, 7, true, null);
+
+        assertThat(result).containsEntry("deleted", 1).containsEntry("skipped_completed", 1).containsEntry("skipped_not_owner", 0);
+        assertThat(foreign).doesNotExist();
+        assertThat(completed).exists();
     }
 
     @Test
@@ -215,13 +278,13 @@ class RunResultDeleteTest {
         Path carlaRun = runFolder(10);
         when(db.list(org.mockito.ArgumentMatchers.contains("AND simulator_type = ?"),
                 org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq(3L), org.mockito.ArgumentMatchers.eq("CARLA")))
-                .thenReturn(List.of(new Row(Json.obj("id", 10L, "status", "COMPLETED"))));
+                .thenReturn(List.of(familyRow(10, "FAILED", OWNER)));
 
-        Map<String, Object> result = runs.deleteFamilyBaselineRuns(1, 3, 7, "carla");
+        Map<String, Object> result = runs.deleteFamilyBaselineRuns(1, 3, 7, false, "carla");
 
         assertThat(result).containsEntry("deleted", 1);
         assertThat(carlaRun).doesNotExist();
-        assertThatThrownBy(() -> runs.deleteFamilyBaselineRuns(1, 3, 7, "INVALID"))
+        assertThatThrownBy(() -> runs.deleteFamilyBaselineRuns(1, 3, 7, false, "INVALID"))
                 .isInstanceOf(Vs.InvalidRequestException.class);
     }
 }

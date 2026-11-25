@@ -28,11 +28,13 @@ Các dịch vụ app do script CARLA khởi động chạy nền; mở `http://l
 4. Chờ trạng thái **Hoàn thành**, bấm **Xem cảm biến**: 3 số đo, **video xem lại** góc nhìn thứ ba có tốc độ xe (nút tải .mp4), tải CSV/JSON va chạm.
 5. **Phát lại** dùng dữ liệu AEB/ground truth cùng định dạng với vòng MVP. **Tải .xosc** lấy XML của đúng run.
 6. Từ chi tiết một run cũ, **Chạy trên CARLA** tạo run mới giữ đúng biến thể, xe, AEB và seed; không ghi đè kết quả cũ.
-7. **Xóa kết quả baseline:** nút **Xóa** ở từng lượt, hoặc **Xóa kết quả baseline của họ** để xóa mọi lượt đã kết thúc của họ (có hỏi xác nhận, không khôi phục được).
+7. **Xóa kết quả baseline:** nút **Xóa** ở từng lượt, hoặc **Xóa lượt lỗi / đã hủy** để xóa mọi lượt xóa được của họ (có hỏi xác nhận, không khôi phục được).
    API: `DELETE /api/v1/vehicsim/runs/{id}` và `DELETE /api/v1/vehicsim/families/{id}/baseline-runs`. Xóa dòng `simulation_runs` cùng `collision_events`, `failures`,
-   `root_causes`, `simulation_artifacts` (ON DELETE CASCADE) và cả thư mục `data/vehicsim/runs/<id>` (video, CSV, `result.json`). Chỉ xóa được run `BASELINE` đã kết thúc
-   (COMPLETED/FAILED/STOPPED), không thuộc regression/tối ưu; lượt đang chờ/đang chạy phải hủy trước; lượt đang là mốc đối chiếu của một regression test bị từ chối (409) vì
-   regression chạy lại đúng biến thể của nó. Cần quyền ghi (ENGINEER/EXPERIENCER/ADMIN), có ghi audit `run.delete`.
+   `root_causes`, `simulation_artifacts` (ON DELETE CASCADE) và cả thư mục `data/vehicsim/runs/<id>` (video, CSV, `result.json`). Chỉ xóa được run `BASELINE`
+   **FAILED/STOPPED** (lượt COMPLETED là số liệu thật của ca lỗi, KPI và dataset nên luôn giữ, 409), không thuộc regression/tối ưu, và **do chính người xóa tạo**
+   (ADMIN xóa được lượt của người khác; người khác nhận 403). Lượt đang chờ/đang chạy phải hủy trước; lượt đang là mốc đối chiếu của một regression test bị từ chối (409)
+   vì regression chạy lại đúng biến thể của nó. Xóa cả họ trả số lượt giữ lại theo lý do (`skipped_completed`, `skipped_active`, `skipped_in_use`, `skipped_not_owner`).
+   Cần quyền ghi (ENGINEER/EXPERIENCER/ADMIN), có ghi audit `run.delete`.
 
 IR ở màn **Sinh từ mô tả** cũng tải `.xosc` để chạy thử, nhưng chưa gắn run trong DB. Muốn nộp kết quả từ máy khác,
 phải tải `.xosc` của run CARLA PENDING/FAILED để file mang đầy đủ seed/source hợp lệ.

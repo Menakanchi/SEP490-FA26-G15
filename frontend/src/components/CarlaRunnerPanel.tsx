@@ -108,12 +108,15 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
     finally { setBusy(false); }
   };
 
-  // Chỉ kết quả baseline đã kết thúc và không thuộc regression mới xoá được (backend kiểm lại; mốc của regression bị từ chối ở đó).
+  // Chỉ kết quả baseline lỗi / đã hủy, do chính mình tạo (ADMIN: của mọi người) mới xoá được; lượt hoàn thành là số liệu thật nên luôn giữ.
+  // Backend kiểm lại toàn bộ; mốc của regression bị từ chối ở đó.
+  const isAdmin = user?.roleCode === "ADMIN";
   const deletable = (run: CarlaRun) => canEditRuns && run.purpose === "BASELINE" && !run.regression_test_id && !run.optimization_trial_id
-    && (run.status === "COMPLETED" || run.status === "FAILED" || run.status === "STOPPED");
+    && (run.status === "FAILED" || run.status === "STOPPED")
+    && (isAdmin || (user != null && String(run.created_by_user_id) === user.id));
 
   const removeRun = async (run: CarlaRun) => {
-    if (!window.confirm(`Xóa kết quả lượt ${runCode(run.id)}? Số đo, video và file cảm biến của lượt này bị xóa vĩnh viễn, không khôi phục được.`)) return;
+    if (!window.confirm(`Xóa kết quả lượt ${runCode(run.id)} (${statusLabel[run.status]})? Log, ảnh và file cảm biến của lượt này bị xóa vĩnh viễn, không khôi phục được.`)) return;
     setBusy(true); setError(null); setNotice(null);
     try {
       await vehicsimApi.deleteRun(run.id);
@@ -125,13 +128,14 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
   };
 
   const removeFamilyResults = async () => {
-    if (!window.confirm(`Xóa tất cả kết quả baseline CARLA đã kết thúc của họ “${familyName}”, kể cả các lượt không hiển thị trong danh sách? Số đo, video và file cảm biến bị xóa vĩnh viễn. `
-      + "Các lượt đang chờ/chạy, thuộc hồi quy hoặc tối ưu, và các lượt đang được tham chiếu sẽ được giữ lại.")) return;
+    if (!window.confirm(`Xóa các lượt baseline CARLA bị lỗi hoặc đã hủy ${isAdmin ? "" : "do bạn tạo "}của họ “${familyName}”, kể cả các lượt không hiển thị trong danh sách? Log, ảnh và file cảm biến bị xóa vĩnh viễn. `
+      + `Lượt hoàn thành, lượt đang chờ/chạy, lượt thuộc hồi quy hoặc tối ưu, lượt đang được tham chiếu${isAdmin ? "" : " và lượt của người khác"} được giữ lại.`)) return;
     setBusy(true); setError(null); setNotice(null);
     try {
       const r = await vehicsimApi.deleteFamilyBaseline(Number(familyId), "CARLA");
       if (selected !== null && familyRuns.some(run => run.id === selected) && r.deleted > 0) { setSelected(null); setData(null); setImage(null); }
-      const kept = [r.skipped_active ? `${r.skipped_active} lượt đang chờ/chạy` : "", r.skipped_in_use ? `${r.skipped_in_use} lượt là mốc của hồi quy` : ""].filter(Boolean);
+      const kept = [r.skipped_completed ? `${r.skipped_completed} lượt hoàn thành` : "", r.skipped_active ? `${r.skipped_active} lượt đang chờ/chạy` : "",
+        r.skipped_in_use ? `${r.skipped_in_use} lượt là mốc của hồi quy` : "", r.skipped_not_owner ? `${r.skipped_not_owner} lượt của người khác` : ""].filter(Boolean);
       setNotice(`Đã xóa ${r.deleted} lượt.${kept.length ? ` Giữ lại ${kept.join(", ")}.` : ""}`);
       await loadRuns();
     } catch (e) { setError(e instanceof Error ? vi(e.message) : "Không xóa được kết quả"); }
@@ -219,7 +223,7 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
               {familyRuns.length > 0 && <PillButton onClick={() => { setError(null); void vehicsimApi.downloadFamilyXosc(Number(familyId)).catch(e => setError(vi(e.message))); }} title="Tải .zip chứa một .xosc cho mỗi lượt chạy của họ này">Tải tất cả .xosc</PillButton>}
               {familyId && canEditRuns && <>
                 <PillButton className="text-vehicsim-danger" disabled={busy} onClick={() => void cancelFamily()} title="Hủy các lượt CARLA độc lập đang chờ hoặc đang chạy của họ này">Hủy lượt đang chạy</PillButton>
-                <PillButton className="text-vehicsim-danger" disabled={busy} onClick={() => void removeFamilyResults()} title="Xóa kết quả baseline CARLA đã kết thúc của họ này, kể cả các lượt không hiển thị">Xóa kết quả baseline</PillButton>
+                <PillButton className="text-vehicsim-danger" disabled={busy} onClick={() => void removeFamilyResults()} title="Xóa các lượt baseline CARLA bị lỗi hoặc đã hủy của họ này, kể cả các lượt không hiển thị; lượt hoàn thành được giữ">Xóa lượt lỗi / đã hủy</PillButton>
               </>}
             </div>
           </details>
