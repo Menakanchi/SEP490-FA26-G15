@@ -90,3 +90,8 @@ Khi gộp vào `main` (25/11/2026), các file bằng chứng không phải `.md`
 `final-audit/` (khoảng 1.380 file JSON/CSV/log, ~135 MB, có đường dẫn máy cá nhân) được bỏ để repo không phình vĩnh viễn.
 Các báo cáo `.md`, `samples/` (test `M1DGolden18IntegrationTest` dùng) và `handover/` vẫn giữ. Link từ báo cáo tới file bằng
 chứng đã bỏ có thể không còn mở được trên `main`; bản đầy đủ nằm ở nhánh `trungdam`, commit `d0bc9dc`.
+
+Lần gộp thứ hai (26/11/2026, commit "Update failure analysis module" của chuvv) cũng bỏ 119 file bằng chứng không phải `.md`
+(JSON, log, ảnh PNG, ~7,7 MB) trong `frontend-redesign/fe-r*-evidence/`, `backend-integration/evidence/` và
+`backend-integration/db-direct-evidence/`. Giữ các báo cáo `.md` và `backend-integration/evidence/examples/` (test
+`frontend/tests/analysis-v3.mjs` đọc); bản đầy đủ nằm ở nhánh `chuvv`, commit `5f850b7`.

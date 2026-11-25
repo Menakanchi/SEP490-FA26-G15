@@ -4,5 +4,10 @@ package com.vsos.backend.exception.analysis;
 public final class FailureAnalysisException extends RuntimeException {
     public final int status;
     public final String code;
-    public FailureAnalysisException(int status,String code) {super(code);this.status=status;this.code=code;}
+
+    public FailureAnalysisException(int status, String code) {
+        super(code);
+        this.status = status;
+        this.code = code;
+    }
 }

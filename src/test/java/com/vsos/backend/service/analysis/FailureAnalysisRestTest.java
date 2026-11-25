@@ -76,9 +76,11 @@ class FailureAnalysisRestTest {
         when(database.analyze(2,7,2499,false,"a".repeat(64))).thenReturn(Map.of("status","COMPLETED"));
         mvc.perform(post(BASE+"/database/runs/2499/executions?source_sha256="+"a".repeat(64)).header("X-VehicSim-Project","2").with(user(person(RoleCode.ENGINEER)))).andExpect(status().isCreated());
         verify(database).analyze(2,7,2499,false,"a".repeat(64));
-        mvc.perform(post(BASE+"/database/runs/2499/executions").with(user(person(RoleCode.MANAGER)))).andExpect(status().isForbidden());
+        // Lỗi quyền chung do ApiExceptionHandler trả, cùng câu tiếng Việt như mọi route khác (không còn bị đổi thành mã FA_*).
+        mvc.perform(post(BASE+"/database/runs/2499/executions").with(user(person(RoleCode.MANAGER)))).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("ENGINEER")));
         mvc.perform(post(BASE+"/database/collections/1033/executions").with(user(person(RoleCode.ENGINEER))).contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("ANALYSIS_BODY_NOT_ALLOWED"));
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("ANALYSIS_BODY_NOT_ALLOWED"));
     }
     @Test void realHttpRoundTripStoresPerMemberReportsAndBlockedHandoff()throws Exception {
         var source=upload();String sid=json(source).get("id").toString();
@@ -128,25 +130,25 @@ class FailureAnalysisRestTest {
     }
     @Test void malformedLargeHashAndUntrustedContextRequestsAreRejected()throws Exception {
         mvc.perform(get(BASE+"/sources?limit=abc").with(user(person(RoleCode.ENGINEER))))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("FA_REQUEST_ARGUMENT_INVALID"));
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("FA_REQUEST_ARGUMENT_INVALID"));
         mvc.perform(post(BASE+"/sources").with(user(person(RoleCode.ENGINEER))).contentType(MediaType.APPLICATION_JSON).content("{\"format\":\"vehicsim.result/v99\"}"))
-                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.error.code").value("JSON_SCHEMA_UNSUPPORTED"));
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("JSON_SCHEMA_UNSUPPORTED"));
         mvc.perform(post(BASE+"/sources").with(user(person(RoleCode.ENGINEER))).contentType(MediaType.APPLICATION_JSON).content(new byte[FailureAnalysisJson.SOURCE_BYTES+1]))
                 .andExpect(status().isPayloadTooLarge());
         mvc.perform(post(BASE+"/sources").with(user(person(RoleCode.ENGINEER))).contentType(MediaType.APPLICATION_JSON).header("X-Source-SHA256","0".repeat(64)).content("{}"))
-                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.error.code").value("SOURCE_DIGEST_MISMATCH"));
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("SOURCE_DIGEST_MISMATCH"));
         String sid=json(upload()).get("id").toString();
         mvc.perform(post(BASE+"/sources/"+sid+"/executions?context_id=approved-by-client").with(user(person(RoleCode.ENGINEER))))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("APPROVED_CONTEXT_REGISTRY_UNAVAILABLE"));
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("APPROVED_CONTEXT_REGISTRY_UNAVAILABLE"));
         mvc.perform(post(BASE+"/sources/"+sid+"/executions").with(user(person(RoleCode.ENGINEER))).contentType(MediaType.APPLICATION_JSON).content("{\"project_id\":2,\"approved\":true}"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("ANALYSIS_BODY_NOT_ALLOWED"));
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("ANALYSIS_BODY_NOT_ALLOWED"));
     }
     @Test void databaseFailureIsSanitizedAndRetryable()throws Exception {
         store.failWrites=true;
         var result=mvc.perform(post(BASE+"/sources").with(user(person(RoleCode.ENGINEER))).contentType(MediaType.APPLICATION_JSON)
                         .content(FailureAnalysisServiceTest.input("result_run2499_full_dataset.json")))
-                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.error.code").value("FA_STORAGE_UNAVAILABLE"))
-                .andExpect(jsonPath("$.error.retryable").value(true)).andReturn();
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("FA_STORAGE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.retryable").value(true)).andExpect(jsonPath("$.detail").isNotEmpty()).andReturn();
         assertThat(result.getResponse().getContentAsString()).doesNotContain("C:/","private","Exception","stack");assertThat(store.rows).isEmpty();
     }
     @Test void archivedWorkspaceOrProjectAllowsHistoricalReadsButBlocksBothMutations()throws Exception {
@@ -158,9 +160,9 @@ class FailureAnalysisRestTest {
             int before=store.rows.size();
             for(RoleCode role:List.of(RoleCode.ADMIN,RoleCode.ENGINEER,RoleCode.EXPERIENCER)) {
                 mvc.perform(post(BASE+"/sources").with(user(person(role))).contentType(MediaType.APPLICATION_JSON).content("{}"))
-                        .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("FA_PROJECT_OR_WORKSPACE_READ_ONLY"));
+                        .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FA_PROJECT_OR_WORKSPACE_READ_ONLY"));
                 mvc.perform(post(BASE+"/sources/"+sid+"/executions").with(user(person(role))))
-                        .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("FA_PROJECT_OR_WORKSPACE_READ_ONLY"));
+                        .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FA_PROJECT_OR_WORKSPACE_READ_ONLY"));
             }
             for(String path:List.of("/sources/"+sid,"/executions/"+eid,"/handoffs/"+hid))
                 mvc.perform(get(BASE+path).with(user(person(RoleCode.ENGINEER)))).andExpect(status().isOk());
