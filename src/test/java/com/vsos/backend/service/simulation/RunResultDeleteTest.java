@@ -47,6 +47,8 @@ class RunResultDeleteTest {
         when(db.scalar(anyString(), any(Object[].class))).thenReturn(0L); // chưa regression nào tham chiếu
         when(db.update(startsWith("DELETE FROM simulation_runs"), any(Object[].class))).thenReturn(1);
         when(db.first(startsWith("SELECT id FROM scenarios"), any(Object[].class))).thenReturn(new Row(Json.obj("id", 3L)));
+        when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
+                new Row(Json.obj("status", "ACTIVE", "workspace_id", 3L, "workspace_status", "ACTIVE", "user_role", "ENGINEER", "member_id", 7L)));
         runs = new RunService(db, mock(Queries.class), props, mock(TaskExecutor.class), mock(ApplicationEventPublisher.class), tx, mock(FamilyService.class));
     }
 
@@ -77,6 +79,68 @@ class RunResultDeleteTest {
 
         verify(db).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
         assertThat(folder).doesNotExist();
+    }
+
+    @Test
+    void archivedProjectOrWorkspacePreservesResultAndFiles() throws Exception {
+        Path folder = runFolder(42);
+        stubRun(run(42, "COMPLETED", "BASELINE", null));
+        for (String[] states : List.of(new String[]{"ARCHIVED", "ACTIVE"}, new String[]{"ACTIVE", "ARCHIVED"})) {
+            when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
+                    new Row(Json.obj("status", states[0], "workspace_id", 3L, "workspace_status", states[1],
+                            "user_role", "ENGINEER", "member_id", 7L)));
+            assertThatThrownBy(() -> runs.deleteBaselineRun(1, 42, 7)).isInstanceOf(ResponseStatusException.class);
+        }
+        verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
+        assertThat(folder).exists();
+    }
+
+    @Test
+    void filesAreDeletedOnlyAfterOuterTransactionCommits() throws Exception {
+        Path folder = runFolder(42);
+        stubRun(run(42, "COMPLETED", "BASELINE", null));
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            runs.deleteBaselineRun(1, 42, 7);
+            assertThat(folder).exists();
+            org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations().forEach(
+                    org.springframework.transaction.support.TransactionSynchronization::afterCommit);
+            assertThat(folder).doesNotExist();
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clear();
+        }
+    }
+
+    @Test
+    void personalOwnerMayDeleteButNonMemberEngineerMayNot() {
+        stubRun(run(42, "COMPLETED", "BASELINE", null));
+        when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
+                new Row(Json.obj("status", "ACTIVE", "workspace_id", null, "created_by_user_id", 7L, "user_role", "EXPERIENCER")));
+        assertThat(runs.deleteBaselineRun(1, 42, 7)).containsEntry("deleted", true);
+        when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
+                new Row(Json.obj("status", "ACTIVE", "workspace_id", 3L, "workspace_status", "ACTIVE", "user_role", "ENGINEER")));
+        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 42, 7)).isInstanceOf(Vs.NotFoundException.class);
+    }
+
+    @Test
+    void adminCannotWriteInAnArchivedWorkspace() throws Exception {
+        Path folder = runFolder(42);
+        stubRun(run(42, "COMPLETED", "BASELINE", null));
+        when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
+                new Row(Json.obj("status", "ACTIVE", "workspace_id", 3L, "workspace_status", "ARCHIVED", "user_role", "ADMIN")));
+        assertThatThrownBy(() -> runs.deleteBaselineRun(1, 42, 7)).isInstanceOf(ResponseStatusException.class);
+        verify(db, never()).update(startsWith("DELETE FROM simulation_runs"), any(Object[].class));
+        assertThat(folder).exists();
+    }
+
+    @Test
+    void archivedProjectCannotQueueBaselineOrCarlaRuns() {
+        when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
+                new Row(Json.obj("status", "ARCHIVED", "workspace_id", 3L, "workspace_status", "ACTIVE", "user_role", "ENGINEER", "member_id", 7L)));
+        assertThatThrownBy(() -> runs.runFamilyFromUi(1, 3, 7, null, false)).isInstanceOf(ResponseStatusException.class);
+        assertThatThrownBy(() -> runs.runOnCarlaFromUi(1, 42, 7)).isInstanceOf(ResponseStatusException.class);
+        verify(db, never()).insert(anyString(), any(Object[].class));
     }
 
     @Test

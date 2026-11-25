@@ -21,6 +21,7 @@ export interface CarlaStatus {
 }
 
 export interface CarlaRun {
+  optimization_trial_id: number | null;
   id: number;
   status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "STOPPED";
   scenario_id: number;
@@ -202,6 +203,8 @@ export interface FamilyItem {
   variants: number;
   parameter_space: Record<string, (number | boolean | string)[]>;
   runs: Record<string, number>;
+  /** Baseline của xe, AEB và bộ biến thể hiện hành, theo phiên bản bộ mô phỏng. */
+  baseline_progress?: Record<string, { completed_variants: number; active_runs: number; failed_runs: number }>;
   /** Số biến thể có lỗi ở run baseline mới nhất của `baseline` (không tính run regression). */
   failures: number;
   baseline: string | null;
