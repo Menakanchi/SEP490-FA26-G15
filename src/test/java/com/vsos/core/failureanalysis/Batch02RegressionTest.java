@@ -139,14 +139,14 @@ class Batch02RegressionTest {
         M1CFixture.set(result,"/outcome/metrics/rms_jerk_mps3",null);M1CFixture.set(result,"/outcome/metrics/collision",false);M1CFixture.set(result,"/outcome/metrics/impact_speed_mps",null);
         var d=new DiagnosticReport().analyze(replace(base,result));assertThat(at(d,"/report/objectives/rms_jerk_mps3/canonical_value/value")).isNull();
         assertThat(at(d,"/report/objectives/impact_speed_mps/canonical_value/value")).isNull();assertThat(at(d,"/report/objectives/impact_speed_mps/physical_event_impact/value")).isNull();}
-    @ParameterizedTest @ValueSource(strings={"carla-0.9.16-xosc9","carla-0.9.16-xosc10","carla-0.9.16-xosc11","carla-0.9.16-xosc12","carla-0.9.16-xosc13","carla-0.9.16-xosc14","carla-0.9.16-xosc15"})
+    @ParameterizedTest @ValueSource(strings={"carla-0.9.16-xosc9","carla-0.9.16-xosc10","carla-0.9.16-xosc11","carla-0.9.16-xosc12","carla-0.9.16-xosc13","carla-0.9.16-xosc14","carla-0.9.16-xosc15","carla-0.9.16-xosc16"})
     void explicitCurrentFormatSourceBranchesAreConditional(String simulator){Run base=fixture.input().members().getFirst().run();var result=M1CFixture.mutable(base.get("result",""));result.put("simulator",simulator);
         var p=new MetricProvenanceResolver().resolve(replace(base,result));assertThat(p.fields().get("metric_descriptor").status()).isEqualTo(Status.CONDITIONAL);
         assertThat(new MetricProvenanceResolver().objectiveLineage(p,"rms_jerk_mps3").get("window").value()).isEqualTo("T_AEB to end of run");}
     @ParameterizedTest @ValueSource(strings={"OLD_PROFILE","FUTURE_PROFILE","ENGINE","SIGNAL","FILTER","WINDOW","DT","DT_BRANCH","MISSING_FILTER","COPY"})
     void carlaMetadataCannotOverrideUnsupportedOrConflictingProfile(String kind){Run base=fixture.input().members().getFirst().run();var result=M1CFixture.mutable(base.get("result",""));
         String p="/outcome/case/carla";switch(kind){
-            case "OLD_PROFILE"->result.put("simulator","carla-0.9.16-xosc8");case "FUTURE_PROFILE"->result.put("simulator","carla-0.9.16-xosc16");case "ENGINE"->result.put("engine","unknown/2");
+            case "OLD_PROFILE"->result.put("simulator","carla-0.9.16-xosc8");case "FUTURE_PROFILE"->result.put("simulator","carla-0.9.16-xosc17");case "ENGINE"->result.put("engine","unknown/2");
             case "SIGNAL"->M1CFixture.set(result,p+"/jerk_filtered/signal","gt_acceleration");case "FILTER"->M1CFixture.set(result,p+"/jerk_filtered/filter/cutoff_hz",20.);
             case "WINDOW"->M1CFixture.set(result,p+"/jerk_filtered/window","whole run");case "DT"->M1CFixture.set(result,p+"/fixed_delta_seconds",0.);
             case "DT_BRANCH"->M1CFixture.set(result,p+"/fixed_delta_seconds",.05);case "MISSING_FILTER"->M1CFixture.mapMutable(at(result,p+"/jerk_filtered")).remove("filter");

@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { useAuth } from "@/context/AuthContext";
@@ -23,6 +24,9 @@ interface VehicSimPageProps {
 export function VehicSimPage({ crumbs, title, badges, subtitle, actions, showContext = true, children }: VehicSimPageProps) {
   const { ctx, error, canResetProject, selectProject } = useVehicSimContext();
   const { user } = useAuth();
+  const pathname = usePathname();
+  const viewedProjectId = pathname.match(/^\/projects\/(\d+)(?:\/|$)/)?.[1];
+  const showCurrentContext = showContext && (!viewedProjectId || Number(viewedProjectId) === ctx?.project.id);
   const reviewer = user?.roleCode === "REVIEWER";
   const baseline = ctx?.system.baseline;
 
@@ -62,7 +66,7 @@ export function VehicSimPage({ crumbs, title, badges, subtitle, actions, showCon
       )}
 
       {/* Thanh ngữ cảnh Dự án, Phương tiện & Bản cơ sở thay cho thanh hành trình cũ */}
-      {showContext && (ctx?.vehicle || baseline) && (
+      {showCurrentContext && (ctx?.vehicle || baseline) && (
         <div className="flex flex-wrap items-center gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-4 py-2.5 text-[13px] shadow-xs print:hidden">
           {ctx?.project && (
             <div className="flex items-center gap-2">

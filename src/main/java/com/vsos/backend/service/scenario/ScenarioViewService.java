@@ -52,7 +52,7 @@ public class ScenarioViewService {
                     "version", bases.size(), "version_count", bases.size(), "base_version_id", baseId,
                     "variants", variantIds.size(), "risk_counts", FamilyService.riskCounts(variantRows),
                     "parameter_space", Json.asMap(base.json("scenario_ir_json").get("parameter_space")),
-                    "runs", runStats, "failures", failing,
+                    "runs", runStats, "baseline_progress", baselineProgressOf(f.lng("id"), baseId, baseline, project), "failures", failing,
                     "baseline", baseline == null ? null : Vs.versionLabel(baseline),
                     "created_at", Vs.iso(f.ts("created_date"))));
         }
@@ -67,6 +67,28 @@ public class ScenarioViewService {
             runStats.put(r.str("status"), r.lng("n"));
         }
         return runStats;
+    }
+
+    /** Tiến độ baseline của bộ biến thể, xe và bản AEB hiện hành, tách theo danh tính bộ mô phỏng. */
+    private Map<String, Object> baselineProgressOf(long scenarioId, long baseVersionId, Row baseline, Row project) {
+        Map<String, Object> progress = new LinkedHashMap<>();
+        Long vehicleId = project.getLong("carla_vehicle_model_id");
+        if (baseline == null || vehicleId == null) return progress;
+        for (Row r : db.list("""
+                SELECT r.simulator_version,
+                       COUNT(DISTINCT CASE WHEN r.status = 'COMPLETED' AND r.aeb_mode = 'ON' THEN r.scenario_version_id END) AS completed_variants,
+                       SUM(CASE WHEN r.status IN ('PENDING', 'RUNNING') THEN 1 ELSE 0 END) AS active_runs,
+                       SUM(CASE WHEN r.status = 'FAILED' THEN 1 ELSE 0 END) AS failed_runs
+                  FROM simulation_runs r JOIN scenario_versions v ON v.id = r.scenario_version_id
+                 WHERE r.scenario_id = ? AND v.parent_version_id = ? AND r.purpose = 'BASELINE'
+                   AND r.aeb_version_id = ? AND r.carla_vehicle_model_id = ?
+                   AND r.regression_test_id IS NULL AND r.optimization_trial_id IS NULL
+                 GROUP BY r.simulator_version
+                """, scenarioId, baseVersionId, baseline.lng("id"), vehicleId)) {
+            progress.put(r.str("simulator_version"), Json.obj("completed_variants", r.lng("completed_variants"),
+                    "active_runs", r.lng("active_runs"), "failed_runs", r.lng("failed_runs")));
+        }
+        return progress;
     }
 
     /** Lịch sử bản của một họ (task 4): v1, v2… với không gian tham số, số biến thể và lượt chạy của từng bản; bản cuối là hiện hành. */

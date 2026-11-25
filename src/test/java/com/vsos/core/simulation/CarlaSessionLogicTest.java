@@ -9,12 +9,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import com.vsos.core.aeb.AebParams;
 import com.vsos.core.aeb.AebStack;
 import com.vsos.core.aeb.AebTick;
 import com.vsos.core.aeb.DecelMeter;
 import com.vsos.core.common.Py;
+import com.vsos.core.xosc.Xosc;
+import com.vsos.core.xosc.XoscExport;
 
 /**
  * Phần logic mà controller CARLA trước đây giữ ở Python, nay ở lõi Java (ADR-042; chuyển từ {@code test_run_variant.py} và {@code test_step_100hz.py}):
@@ -23,6 +28,85 @@ import com.vsos.core.common.Py;
 class CarlaSessionLogicTest {
 
     private static final double SPEED = 11.0;
+
+    private CarlaSession crossingSession(Path dir, boolean legacy) throws Exception {
+        String xml = XoscExport.export(crossing("CLEAR"));
+        if (legacy) {
+            xml = xml.replace(Xosc.FORMAT, Xosc.V15_FORMAT);
+        }
+        Path file = dir.resolve("scenario.xosc");
+        Files.writeString(file, xml);
+        CarlaSession session = CarlaSession.open(file, dir.resolve("out"), "carla-0.9.16" + (legacy ? Xosc.V15_SIMULATOR_SUFFIX : Xosc.SIMULATOR_SUFFIX), null);
+        session.init(new double[] {1, 0}, new double[] {0, 1}, new double[] {0, 3.6}, 1, Map.of());
+        return session;
+    }
+
+    private CarlaSession.Tick crossingStep(CarlaSession session, double t, double egoX, boolean callback) {
+        return session.step(t, new double[] {egoX, 0}, new double[] {1, 0}, new double[] {10, 0},
+                new double[] {0, 0}, new double[] {0, 1.5}, callback, List.of());
+    }
+
+    @Test
+    void v16OverlapWaitsForTheCollisionSensor(@TempDir Path dir) throws Exception {
+        CarlaSession session = crossingSession(dir, false);
+        assertThat(crossingStep(session, 0, -1, false).finished()).isNull();
+        assertThat(session.finished()).isFalse();
+        assertThat(crossingStep(session, 0.01, -1, true).finished()).isEqualTo("COLLISION");
+        assertThat(session.finished()).isTrue();
+        assertThat(Files.exists(dir.resolve("out/result.json"))).isTrue();
+    }
+
+    @Test
+    void v16OverlapWithoutSensorConfirmationFailsOnTargetCleared(@TempDir Path dir) throws Exception {
+        CarlaSession session = crossingSession(dir, false);
+        assertThat(crossingStep(session, 0, -1, false).finished()).isNull();
+        assertThatThrownBy(() -> crossingStep(session, 0.01, 10, false))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Không xác nhận được va chạm").hasMessageContaining("TARGET_CLEARED");
+        assertThat(Files.exists(dir.resolve("out/result.json"))).isFalse();
+    }
+
+    @Test
+    void v16OverlapWithoutSensorConfirmationFailsOnTimeout(@TempDir Path dir) throws Exception {
+        CarlaSession session = crossingSession(dir, false);
+        assertThat(crossingStep(session, 0, -1, false).finished()).isNull();
+        assertThatThrownBy(() -> crossingStep(session, Simulator.MAX_DURATION_S, -1, false))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Không xác nhận được va chạm").hasMessageContaining("TIMEOUT");
+        // Worker reset cũng gọi finish(TIMEOUT); không được tạo result an toàn sau lỗi.
+        assertThatThrownBy(() -> session.finish("TIMEOUT"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Không xác nhận được va chạm");
+        assertThat(Files.exists(dir.resolve("out/result.json"))).isFalse();
+    }
+
+    @Test
+    void v16WithoutOverlapCanFinishNormally(@TempDir Path dir) throws Exception {
+        CarlaSession session = crossingSession(dir, false);
+        assertThat(crossingStep(session, 0, -10, false).finished()).isNull();
+        assertThat(crossingStep(session, 0.01, 10, false).finished()).isEqualTo("TARGET_CLEARED");
+    }
+
+    @Test
+    void v15StillEndsOnOverlapWithoutSensorConfirmation(@TempDir Path dir) throws Exception {
+        CarlaSession session = crossingSession(dir, true);
+        assertThat(crossingStep(session, 0, -1, false).finished()).isEqualTo("COLLISION");
+    }
+
+    @Test
+    void v16PedestrianCircleDoesNotOverlapAtTheOldSquareCorner() {
+        var v15 = new com.vsos.core.xosc.Xosc.Profile("-xosc15", 0.01, 0.05);
+        var v16 = new com.vsos.core.xosc.Xosc.Profile("-xosc16", 0.01, 0.05);
+        // Approximation of the final frame of run #2569: both axial gaps are < 0.3 m,
+        // but their combined distance to the front corner exceeds the 0.3 m radius.
+        assertThat(CarlaSession.pedestrianOverlaps(v15, 36.667, -1.25, 36.413, 0.0, 4.75, 1.93)).isTrue();
+        assertThat(CarlaSession.pedestrianOverlaps(v16, 36.667, -1.25, 36.413, 0.0, 4.75, 1.93)).isFalse();
+        // Real contact still includes the flat front, side and the rounded corner.
+        assertThat(CarlaSession.pedestrianOverlaps(v16, 10.29, 0, 10, 0, 4.75, 1.93)).isTrue();
+        assertThat(CarlaSession.pedestrianOverlaps(v16, 9, 1.255, 10, 0, 4.75, 1.93)).isTrue();
+        assertThat(CarlaSession.pedestrianOverlaps(v16, 10.18, -1.195, 10, 0, 4.75, 1.93)).isTrue();
+        assertThat(CarlaSession.pedestrianOverlaps(v16, 10.20, -1.195, 10, 0, 4.75, 1.93)).isFalse();
+        // Rear and opposite side are symmetric; a distant pedestrian never overlaps.
+        assertThat(CarlaSession.pedestrianOverlaps(v16, 5.25 - 0.18, 1.195, 10, 0, 4.75, 1.93)).isTrue();
+        assertThat(CarlaSession.pedestrianOverlaps(v16, 10.31, 0, 10, 0, 4.75, 1.93)).isFalse();
+    }
 
     private static com.vsos.core.bridge.Bundle.RunSpec crossing(String weather) {
         return new com.vsos.core.bridge.Bundle.RunSpec(new CrossingCase(40, 25, 1.5, false, weather, "DAY", null), AebParams.DEFAULT,

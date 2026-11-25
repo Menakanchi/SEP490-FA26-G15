@@ -83,6 +83,27 @@ public class RunService {
     private static final java.util.concurrent.locks.ReentrantLock CARLA_LOCK = new java.util.concurrent.locks.ReentrantLock();
     private static final String COLLISION_ACTOR = "walker.pedestrian.0001";
 
+    /** Khoá phạm vi ghi cùng transaction với thao tác để lưu trữ hoặc thu hồi thành viên không chen vào giữa. */
+    private void lockWritableProject(long projectId, long userId) {
+        Row p = db.first("""
+                SELECT p.status, p.workspace_id, p.created_by_user_id, w.status AS workspace_status,
+                       (SELECT r.code FROM roles r WHERE r.id = u.role_id) AS user_role, m.user_id AS member_id
+                  FROM projects p JOIN users u ON u.id = ?
+                  LEFT JOIN workspaces w ON w.id = p.workspace_id
+                  LEFT JOIN workspace_members m ON m.workspace_id = p.workspace_id AND m.user_id = u.id
+                 WHERE p.id = ? FOR UPDATE
+                """, userId, projectId);
+        if (p == null || !("ADMIN".equals(p.str("user_role")) && !p.isNull("workspace_id")
+                || "ENGINEER".equals(p.str("user_role")) && !p.isNull("member_id")
+                || "EXPERIENCER".equals(p.str("user_role")) && p.isNull("workspace_id")
+                   && Long.valueOf(userId).equals(p.getLong("created_by_user_id")))) {
+            throw new NotFoundException("project");
+        }
+        if (!"ACTIVE".equals(p.str("status")) || (!p.isNull("workspace_id") && !"ACTIVE".equals(p.str("workspace_status")))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project hoặc workspace đang lưu trữ, chỉ có thể xem");
+        }
+    }
+
     /**
      * Mã 4 tham số AEB chỉnh được theo thứ tự trường của ``AebParams`` và giá trị mặc định của lõi (khi DB thiếu mã).
      * Sáu tham số còn lại là hằng số trong ``com.vsos.core.aeb.AebStack`` — bundle không mang chúng (ADR-040).
@@ -253,7 +274,7 @@ public class RunService {
 
     /** ``fixed_delta_seconds`` của run: bước mô phỏng theo identity simulator. */
     static double stepFor(String simulator) {
-        return simulator != null && (simulator.endsWith(XOSC_SUFFIX) || simulator.endsWith(Xosc.V14_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V13_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V12_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V11_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V10_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V9_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V8_SIMULATOR_SUFFIX)
+        return simulator != null && (simulator.endsWith(XOSC_SUFFIX) || simulator.endsWith(Xosc.V15_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V14_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V13_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V12_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V11_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V10_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V9_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V8_SIMULATOR_SUFFIX)
                 || simulator.endsWith(Xosc.V7_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V6_SIMULATOR_SUFFIX)
                 || simulator.endsWith(Xosc.V5_SIMULATOR_SUFFIX) || simulator.endsWith(Xosc.V4_SIMULATOR_SUFFIX)
                 || simulator.endsWith(Xosc.V3_SIMULATOR_SUFFIX)) ? CARLA_XOSC_STEP_S : DT;
@@ -413,7 +434,8 @@ public class RunService {
                     || profile.endsWith(Xosc.V7_SIMULATOR_SUFFIX) || profile.endsWith(Xosc.V8_SIMULATOR_SUFFIX)
                     || profile.endsWith(Xosc.V9_SIMULATOR_SUFFIX) || profile.endsWith(Xosc.V10_SIMULATOR_SUFFIX)
                     || profile.endsWith(Xosc.V11_SIMULATOR_SUFFIX) || profile.endsWith(Xosc.V12_SIMULATOR_SUFFIX)
-                    || profile.endsWith(Xosc.V13_SIMULATOR_SUFFIX) || profile.endsWith(Xosc.V14_SIMULATOR_SUFFIX))) {
+                    || profile.endsWith(Xosc.V13_SIMULATOR_SUFFIX) || profile.endsWith(Xosc.V14_SIMULATOR_SUFFIX)
+                    || profile.endsWith(Xosc.V15_SIMULATOR_SUFFIX))) {
                 // xosc2 là bước 0,05 s; xosc3 có người "dừng ở lề" đi vào làn (TD-47); xosc4 chưa ép mô-men phanh (ADR-051);
                 // xosc5 chưa kẹp lệnh ở μ·g (ADR-052); xosc6 còn cú dừng gấp dưới 6 m/s (ADR-053); xosc7 bàn đạp còn tuyến tính (ADR-054);
                 // xosc8 AEB còn dùng ground truth cho người đi bộ (ADR-043 giai đoạn 2, ADR-055); xosc9 chưa bù pha tăng lực (ADR-056); xosc10 hành lang AEB
@@ -750,11 +772,18 @@ public class RunService {
     }
 
     public List<Map<String, Object>> carlaRuns(long projectId) {
-        return db.list("SELECT id, status, scenario_id, aeb_version_id, simulator_version, aeb_mode, purpose, regression_test_id, error_message, queued_at FROM simulation_runs "
+        return db.list("SELECT id, status, scenario_id, aeb_version_id, simulator_version, aeb_mode, purpose, regression_test_id, optimization_trial_id, error_message, queued_at FROM simulation_runs "
                 + "WHERE project_id = ? AND simulator_type = 'CARLA' ORDER BY id DESC LIMIT 30", projectId).stream().map(Row::asMap).toList();
     }
 
     /** Chạy lại đúng biến thể/AEB/xe/seed bằng profile mới; không gắn baseline_run_id khác simulator. */
+    public long runOnCarlaFromUi(long projectId, long sourceId, long userId) {
+        return tx.execute(s -> {
+            lockWritableProject(projectId, userId);
+            return runOnCarla(projectId, sourceId, userId);
+        });
+    }
+
     @Transactional
     public long runOnCarla(long projectId, long sourceId, long userId) {
         Row source = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ?", sourceId, projectId);
@@ -782,6 +811,13 @@ public class RunService {
      * @return {@code STOPPED} (đã hủy) hoặc {@code STOPPING} (đã xin dừng, worker đang dọn)
      */
     public String cancelRun(long projectId, long runId, long userId) {
+        return tx.execute(s -> {
+            lockWritableProject(projectId, userId);
+            return cancelRunInTransaction(projectId, runId, userId);
+        });
+    }
+
+    private String cancelRunInTransaction(long projectId, long runId, long userId) {
         Row run = db.first("SELECT id, status, regression_test_id, optimization_trial_id FROM simulation_runs WHERE id = ? AND project_id = ?",
                 runId, projectId);
         if (run == null) {
@@ -790,7 +826,32 @@ public class RunService {
         if (!run.isNull("regression_test_id") || !run.isNull("optimization_trial_id")) {
             throw new InvalidRequestException("This run belongs to a regression test or optimization and cannot be cancelled on its own");
         }
-        return stopActiveRun(runId, run.str("status"), userId);
+        String status = run.str("status");
+        if ("PENDING".equals(status)) {
+            int changed = db.update("UPDATE simulation_runs SET status = 'STOPPED', error_message = ?, ended_at = ? WHERE id = ? AND status = 'PENDING'",
+                    "Cancelled by user", Vs.now(), runId);
+            if (changed > 0) {
+                AuditLog.event("run.cancel", "success", "user_id", userId, "run_id", runId, "previous_status", status);
+                return "STOPPED";
+            }
+            status = "RUNNING";
+        }
+        if (!"RUNNING".equals(status)) {
+            throw new InvalidRequestException("Run is already " + status + "; nothing to cancel");
+        }
+        boolean orphan = !executing.contains(runId);
+        Runnable signal = orphan ? () -> CompletableFuture.runAsync(() -> cancelOrphan(runId)) : () -> cancelRequested.add(runId);
+        if (TransactionSynchronizationManager.isSynchronizationActive()
+                && TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() { signal.run(); }
+            });
+        } else {
+            signal.run();
+        }
+        AuditLog.event("run.cancel", "success", "user_id", userId, "run_id", runId, "previous_status", status, "orphan", orphan);
+        return "STOPPING";
     }
 
     /**
@@ -851,11 +912,26 @@ public class RunService {
      * @return số run {@code stopped} (đã hủy ngay) và {@code stopping} (đang chạy, đã xin dừng)
      */
     public Map<String, Object> cancelFamilyRuns(long projectId, long scenarioId, long userId) {
+        return cancelFamilyRuns(projectId, scenarioId, userId, null);
+    }
+
+    /** Lọc theo simulator khi được chỉ định; không chỉ định giữ hành vi hủy mọi simulator. */
+    public Map<String, Object> cancelFamilyRuns(long projectId, long scenarioId, long userId, String simulatorType) {
+        String normalizedType = null;
+        if (simulatorType != null && !simulatorType.isBlank()) {
+            normalizedType = simulatorType.trim().toUpperCase(java.util.Locale.ROOT);
+            if (!"CARLA".equals(normalizedType) && !"KINEMATIC".equals(normalizedType)) {
+                throw new InvalidRequestException("simulator_type phải là CARLA hoặc KINEMATIC");
+            }
+        }
         if (db.first("SELECT id FROM scenarios WHERE id = ? AND project_id = ?", scenarioId, projectId) == null) {
             throw new NotFoundException("scenario family");
         }
-        List<Row> active = db.list("SELECT id FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND status IN ('PENDING','RUNNING') "
-                + "AND regression_test_id IS NULL AND optimization_trial_id IS NULL ORDER BY (status = 'RUNNING'), id", projectId, scenarioId);
+        String query = "SELECT id FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND status IN ('PENDING','RUNNING') "
+                + "AND regression_test_id IS NULL AND optimization_trial_id IS NULL"
+                + (normalizedType == null ? "" : " AND simulator_type = ?") + " ORDER BY (status = 'RUNNING'), id";
+        List<Row> active = normalizedType == null ? db.list(query, projectId, scenarioId)
+                : db.list(query, projectId, scenarioId, normalizedType);
         int stopped = 0;
         int stopping = 0;
         for (Row r : active) {
@@ -892,10 +968,10 @@ public class RunService {
         if (!FINISHED_STATUSES.contains(run.str("status"))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Run is " + run.str("status") + "; cancel it before deleting its result");
         }
-        if (!deleteFinishedBaselineRun(projectId, runId)) {
+        if (!deleteFinishedBaselineRun(projectId, runId, userId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This run is the reference of a regression test and cannot be deleted");
         }
-        deleteRunFolder(runId);
+        deleteRunFolderAfterCommit(runId);
         AuditLog.event("run.delete", "success", "user_id", userId, "run_id", runId, "previous_status", run.str("status"));
         return Json.obj("run_id", runId, "deleted", true);
     }
@@ -936,8 +1012,8 @@ public class RunService {
         for (Row r : db.list(sql.toString(), args.toArray())) {
             if (!FINISHED_STATUSES.contains(r.str("status"))) {
                 active++;
-            } else if (deleteFinishedBaselineRun(projectId, r.lng("id"))) {
-                deleteRunFolder(r.lng("id"));
+            } else if (deleteFinishedBaselineRun(projectId, r.lng("id"), userId)) {
+                deleteRunFolderAfterCommit(r.lng("id"));
                 deleted++;
             } else {
                 inUse++;
@@ -948,9 +1024,10 @@ public class RunService {
     }
 
     /** Xoá dòng run baseline đã kết thúc trong một transaction; {@code false} khi một regression còn tham chiếu nó (hoặc run vừa đổi trạng thái). */
-    private boolean deleteFinishedBaselineRun(long projectId, long runId) {
+    private boolean deleteFinishedBaselineRun(long projectId, long runId, long userId) {
         try {
             Boolean done = tx.execute(status -> {
+                lockWritableProject(projectId, userId);
                 Object referenced = db.scalar("SELECT (SELECT COUNT(*) FROM simulation_runs WHERE baseline_run_id = ?) "
                         + "+ (SELECT COUNT(*) FROM regression_test_items WHERE baseline_run_id = ?)", runId, runId);
                 if (referenced instanceof Number n && n.longValue() > 0) {
@@ -962,6 +1039,18 @@ public class RunService {
             return Boolean.TRUE.equals(done);
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
             return false; // khoá ngoại RESTRICT là chốt chặn cuối: có bảng khác đang tham chiếu run này
+        }
+    }
+
+    private void deleteRunFolderAfterCommit(long runId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()
+                && TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() { deleteRunFolder(runId); }
+            });
+        } else {
+            deleteRunFolder(runId);
         }
     }
 
@@ -1065,6 +1154,25 @@ public class RunService {
             if (!outcome.containsKey(key)) {
                 throw new SimulatorException("result.json thiếu outcome." + key);
             }
+        }
+        Object caseDoc = outcome.get("case");
+        if (outcome.containsKey("case") && !(caseDoc instanceof Map)) {
+            throw new SimulatorException("result.json outcome.case không hợp lệ");
+        }
+        Map<String, Object> caseFields = Json.asMap(caseDoc);
+        Object resultMode = caseFields.get("aeb_mode");
+        if (caseFields.containsKey("aeb_mode") && resultMode == null) {
+            throw new SimulatorException("result.json outcome.case.aeb_mode không hợp lệ");
+        }
+        try {
+            boolean expectedOff = com.vsos.core.simulation.AebMode.isOff(run.get("aeb_mode"));
+            boolean actualOff = com.vsos.core.simulation.AebMode.isOff(resultMode);
+            if (expectedOff != actualOff) {
+                throw new SimulatorException("result.json outcome.case.aeb_mode không khớp run (yêu cầu "
+                        + (expectedOff ? "OFF" : "ON") + ")");
+            }
+        } catch (IllegalArgumentException e) {
+            throw new SimulatorException("result.json outcome.case.aeb_mode không hợp lệ");
         }
         if (!(result.get("evaluation") instanceof Map)) {
             throw new SimulatorException("result.json thiếu kết quả chấm (evaluation) — worker quá cũ?");
@@ -1274,7 +1382,16 @@ public class RunService {
      * bỏ — backend không ghi đường dẫn tới file nó không tạo.
      */
     public Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload) {
+        return submitCarlaResult(projectId, runId, userId, resultPayload, false);
+    }
+
+    public Map<String, Object> submitCarlaResultFromUi(long projectId, long runId, long userId, Map<String, Object> resultPayload) {
+        return submitCarlaResult(projectId, runId, userId, resultPayload, true);
+    }
+
+    private Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload, boolean guardProject) {
         Row imported = tx.execute(transaction -> {
+            if (guardProject) lockWritableProject(projectId, userId);
             Row run = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ? FOR UPDATE", runId, projectId);
             if (run == null) {
                 throw new NotFoundException("simulation run");
@@ -1430,6 +1547,13 @@ public class RunService {
     }
 
     // ------------------------------------------------------------------ chạy cả họ
+
+    public List<Long> runFamilyFromUi(long projectId, long scenarioId, long userId, Long aebVersionId, boolean withAebOff) {
+        return tx.execute(s -> {
+            lockWritableProject(projectId, userId);
+            return runFamily(projectId, scenarioId, userId, aebVersionId, withAebOff);
+        });
+    }
 
     /** Chạy mọi biến thể của bộ biến thể hiện hành bằng AEB version (mặc định: baseline) trên xe đang dùng. */
     @Transactional

@@ -18,9 +18,9 @@ final class DiagnosticSupport {
     static Double num(Run r, String artifact, String pointer) { return n(r.get(artifact, pointer)); }
     static boolean positive(Double x) { return x != null && x > 0; }
     static boolean profile(Run r) {
-        return List.of("carla-0.9.16-xosc15", "vehicsim-kinematic-1.4").contains(Objects.toString(r.get("result", "/simulator"), ""));
+        return List.of("carla-0.9.16-xosc15", "carla-0.9.16-xosc16", "vehicsim-kinematic-1.4").contains(Objects.toString(r.get("result", "/simulator"), ""));
     }
-    static boolean carla(Run r) { return "carla-0.9.16-xosc15".equals(r.get("result", "/simulator")); }
+    static boolean carla(Run r) { return List.of("carla-0.9.16-xosc15", "carla-0.9.16-xosc16").contains(Objects.toString(r.get("result", "/simulator"), "")); }
     static boolean modeIs(Run r, String expected) {
         Value mode = EvidenceReport.mode(r);
         return expected.equals(mode.value()) && List.of(Status.OBSERVED, Status.DERIVED, Status.CONDITIONAL).contains(mode.status());

@@ -135,7 +135,7 @@ export default function AebMoboNewPage() {
               <span className="text-[13px] font-bold text-vehicsim-ink">Số lượt thử nghiệm (Max Trials)</span>
               <input
                 type="number"
-                min={3}
+                min={2}
                 max={50}
                 value={maxTrials}
                 onChange={(e) => setMaxTrials(Number(e.target.value))}
