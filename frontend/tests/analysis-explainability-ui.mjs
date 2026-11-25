@@ -1,3 +1,4 @@
+import { openRunContext } from "./helpers/analysis-disclosures.mjs";
 import { prepareAnalysisArtifacts } from "./helpers/analysis-artifacts.mjs";
 /** Metric explainability regression: browser HTTP fixtures, no live backend/CARLA. */
 import assert from "node:assert/strict";
@@ -61,6 +62,8 @@ try {
       vehicle: { id: 2, name: "Fixture car" }, system: { id: 1, name: "AEB", baseline: { id: 7, label: "v7" } },
       versions: [{ id: 7, label: "v7", status: "BASELINE" }], families: [{ id: 42, name: "Metric fixture", code: "CP" }], parameters: [], reviewer_projects: [] });
     if (p === "/vehicsim/regression") return reply({ items: [], kpis: { total: 0, passed: 0, failed: 0, running: 0 } });
+    if (p === "/vehicsim/analysis/v3/sources") return reply({items:[],limit:20,offset:0}); // FE-R4: empty FA storage is independent of legacy runs.
+    if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
     if (p === "/vehicsim/notifications") return reply({ items: [], unread_count: 0 });
     if (p === "/vehicsim/analysis/runs/101") return reply({ run: inspectionRun, detail });
     if (p === "/vehicsim/analysis/runs") return reply({ total: 1, page: 1, page_size: 20, counts: { COLLISION: 1 }, items: [run], evaluation_version: version,
@@ -75,13 +78,14 @@ try {
   const returnTo = "/analysis/failures?view=runs&scenario_id=42&page=2&weather=RAIN&q=kept";
   const url = "/analysis/failures/101?section=summary&signal=jerk_mps3&t=0.5&returnTo=" + encodeURIComponent(returnTo);
   const summary = page.getByRole("region", { name: "Kết quả và chỉ số run", exact: true });
-  const explanation = kind => summary.locator('details[data-metric-explanation="' + kind + '"]');
+  const explanation = kind => page.locator('details[data-metric-explanation="' + kind + '"]');
   const shot = async name => { await page.screenshot({ path: path.join(output, name + ".png"), fullPage: true }); screenshots.push(name + ".png"); };
   for (const [width, height] of [[375, 812], [768, 1024], [1440, 900]]) {
     await page.setViewportSize({ width, height }); await page.goto(base + url); await summary.waitFor(); await shot("summary-" + width);
     if (!baseline) {
       for (const kind of ["rms", "stopping", "ttc", "separation", "deceleration", "timeline", "impact"]) {
-        const disclosure = explanation(kind), control = disclosure.locator("summary");
+        if (!["rms","stopping","impact"].includes(kind)) await openRunContext(page);
+        const disclosure = explanation(kind), control = disclosure.locator(":scope > summary");
         await page.keyboard.press("Tab"); await control.focus(); await control.press("Enter");
         assert.equal(await disclosure.getAttribute("open"), "");
         assert(await control.evaluate(el => el.matches(":focus-visible")));
@@ -92,9 +96,9 @@ try {
     }
   }
   if (!baseline) {
-    const open = async kind => { await explanation(kind).locator("summary").click(); return explanation(kind); };
+    const open = async kind => { if (!["rms","stopping","impact"].includes(kind)) await openRunContext(page); await explanation(kind).locator(":scope > summary").click(); await explanation(kind).locator("[data-metric-technical] > summary").click(); return explanation(kind); };
     let panel = await open("stopping");
-    assert.match(await panel.innerText(), /33\.250 m/); assert.match(await panel.innerText(), /x_last − x_onset/);
+    assert.match(await panel.innerText(), /33\.250 m/); assert.match(await panel.innerText(), /trace component và extrapolated component/);
     assert.match(await panel.innerText(), /API Detail chưa trả x_onset và a_available/);
     assert.match(await panel.innerText(), /#101 \/ #42/); assert.match(await panel.innerText(), /SIMULATOR_RESULT/);
     assert.match(await panel.innerText(), /CARLA qua lõi Java/); assert.match(await panel.innerText(), /chưa cung cấp phiên bản hiệu chuẩn/);
@@ -111,7 +115,7 @@ try {
     detail = { ...original, metrics: { ...original.metrics, min_ttc_s: null, rms_jerk_mps3: null, stopping_distance_m: null, brake_onset_t: null, aeb_activation_t: null } };
     await page.reload(); await summary.waitFor(); panel = await open("rms");
     assert.match(await panel.innerText(), /Không có số đo hợp lệ hoặc không áp dụng/);
-    assert.match(await panel.innerText(), /dt danh định/); await shot("missing-rms");
+    assert.match(await panel.innerText(), /Bước danh định/); await shot("missing-rms");
     panel = await open("timeline"); assert.doesNotMatch(await panel.locator("[data-explanation-inputs]").innerText(), /Bắt đầu lệnh phanh|Quyết định AEB/);
     detail = { ...original, outcome: "SAFE", metrics: { ...original.metrics, impact_speed_mps: 10 } };
     await page.reload(); await summary.waitFor(); panel = await open("impact"); assert.match(await panel.innerText(), /Số đo đã lưu: —/);
@@ -120,14 +124,14 @@ try {
     assert.match(await panel.innerText(), /v_ego − v_target,x/); assert.doesNotMatch(await panel.innerText(), /TTC_GT = gap \/ v_ego;/);
     await shot("ccr-ttc"); panel = await open("separation"); assert.match(await panel.innerText(), /giữa hai hộp xe/);
     for (const patch of [{ environment: { ...original.environment, category: undefined } }, { environment: { ...original.environment, category: "CPLA" } }, { simulator: "unknown" }, { metrics: { ...original.metrics, metric_source: undefined } }]) {
-      detail = { ...original, ...patch }; await page.reload(); await summary.waitFor(); panel = await open("ttc");
-      assert.match(await panel.innerText(), /Chưa xác định công thức phù hợp/); assert.doesNotMatch(await panel.innerText(), /TTC_GT =/);
+      detail = { ...original, ...patch }; inspectionRun = { ...run, simulator: detail.simulator }; await page.reload(); await summary.waitFor(); panel = await open("ttc");
+      assert.match(await panel.innerText(), /Chưa xác minh phương pháp tính từ nguồn dữ liệu này/); assert.doesNotMatch(await panel.innerText(), /TTC_GT =/);
     }
     detail = { ...original, simulator: "vehicsim-kinematic-1.0" }; inspectionRun = { ...run, simulator: detail.simulator, dt: 0.05 };
     await page.reload(); await summary.waitFor(); panel = await open("rms");
     assert.match(await panel.innerText(), /Động học Java/); assert.match(await panel.innerText(), /0\.05 s/); assert.match(await panel.innerText(), /không phải dữ liệu xe thực/);
     assert.deepEqual(errors, []); assert.deepEqual(writes, []);
     await fs.writeFile(path.join(output, "result.json"), JSON.stringify({ status: "PASS", kind: "BROWSER_FIXTURE_ONLY", screenshots, errors, businessWrites: 0, carlaRuntimeVerified: false, liveBackendVerified: false, figmaCompared: false }, null, 2));
-    console.log("PASS: explainability formula/category/source/inputs/missing, native keyboard disclosures, links/context, responsive fixtures");
+    console.log("PASS: explainability unverified-method/category/source/inputs/missing, native keyboard disclosures, links/context, responsive fixtures");
   } else await fs.writeFile(path.join(output, "observed.json"), JSON.stringify({ kind: "BASELINE_CAPTURE_ONLY", screenshots, errors }, null, 2));
 } finally { await browser.close(); }

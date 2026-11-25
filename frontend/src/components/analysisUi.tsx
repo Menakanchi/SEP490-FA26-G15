@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import type { ReactNode } from "react";
-import { useSearchParams } from "next/navigation";
+import { Fragment, useEffect, useRef, type ReactNode } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useVehicSimContext } from "@/components/VehicSimContext";
+import { VehicSimPage } from "@/components/VehicSimPage";
 import { ApiError } from "@/services/api";
 import { vi } from "@/components/vehicsimI18n";
 import type { AnalysisRun } from "@/types/vehicsim";
@@ -20,9 +21,29 @@ export const ANALYSIS_LABELS: Record<string, string> = {
 export const analysisLabel = (value: string | null) => value ? ANALYSIS_LABELS[value] ?? vi(value) : "—";
 export { formatMetric as metric } from "./analysis/analysisMetricFormat";
 export const eligible = (run: AnalysisRun) => run.status === "COMPLETED" && run.trace_available && !["TIMEOUT", "ERROR", "INCOMPLETE"].includes(run.outcome);
+/** Remount only local analysis state when ownership changes; providers/transport stay unchanged. */
+export function AnalysisScope({ children }: { children: ReactNode }) {
+  const { user, isLoading } = useAuth();
+  const { ctx, choosing, error, refresh } = useVehicSimContext();
+  if (user && ctx && !choosing && !error) return <Fragment key={`${user.id}:${ctx.project.id}`}>{children}</Fragment>;
+  return <VehicSimPage title="Dữ liệu & kết quả" crumbs={[{ label: "Phân tích" }, { label: "Dữ liệu & kết quả" }]}>
+    {isLoading ? <AnalysisLoading /> : <section className="analysis-panel analysis-state" role="status">
+      <h2>{!user ? "Cần đăng nhập" : choosing ? "Chưa chọn dự án" : error ? "Chưa tải được ngữ cảnh dự án" : "Đang tải ngữ cảnh dự án"}</h2>
+      <p>{!user ? "Đăng nhập lại để xem dữ liệu của bạn." : choosing ? "Chọn dự án ở khu vực dự án để xem các lượt chạy." : "Chờ ngữ cảnh dự án sẵn sàng; dữ liệu của dự án trước không được hiển thị tại đây."}</p>
+      {user && error && <button className="analysis-button" onClick={() => void refresh()}>Thử tải lại ngữ cảnh</button>}
+    </section>}
+  </VehicSimPage>;
+}
+/** Action errors keep keyboard focus near the affected operation, not at the page header. */
+export function AnalysisActionError({ message, nextAction }: { message: string | null; nextAction: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (message) ref.current?.focus(); }, [message]);
+  return message ? <div ref={ref} tabIndex={-1} role="alert" className="analysis-action-error"><p>{message}</p><p>{nextAction}</p></div> : null;
+}
 export function analysisError(error: unknown) {
   if (error instanceof ApiError && error.status === 403) return "Bạn không có quyền thực hiện thao tác này. Liên hệ người quản lý để kiểm tra quyền truy cập.";
   if (error instanceof ApiError && error.status === 401) return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
+  if (error instanceof ApiError && error.status === 429) return "Đã đạt giới hạn yêu cầu. Chờ rồi chủ động thử lại; thao tác chưa được tự gửi lại.";
   return vi(error instanceof Error ? error.message : "Không tải được dữ liệu. Kiểm tra kết nối và thử lại.");
 }
 export function AnalysisBadge({ value }: { value: string }) {
@@ -31,14 +52,6 @@ export function AnalysisBadge({ value }: { value: string }) {
     : ["FALSE_BRAKING", "NEAR_MISS", "MISSED_BRAKING", "TIMEOUT", "INCOMPLETE"].includes(value) ? "bg-vehicsim-warn-bg text-vehicsim-warn"
     : "bg-vehicsim-soft text-vehicsim-muted";
   return <span className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${tone}`}>{analysisLabel(value)}</span>;
-}
-export const ANALYSIS_VIEWS = [["overview", "Tổng quan"], ["runs", "Lượt chạy"], ["failures", "Tra cứu ca lỗi"], ["dataset", "Tập bàn giao"]] as const;
-export function AnalysisNav({ view, count = 0 }: { view: string; count?: number }) {
-  const params = useSearchParams();
-  return <nav aria-label="Chế độ phân tích" className="analysis-nav">{ANALYSIS_VIEWS.map(([key, label]) => {
-    const next = new URLSearchParams(params.toString()); next.set("view", key);
-    return <Link key={key} href={`/analysis/failures?${next}`} scroll={false} aria-current={view === key ? "page" : undefined}>{label}{key === "dataset" && count > 0 && <span>{count}</span>}</Link>;
-  })}</nav>;
 }
 export function AnalysisLoading() {
   return <div role="status" className="analysis-state"><span aria-hidden="true" className="analysis-loading-spinner inline-block size-5 animate-spin rounded-full border-2 border-vehicsim-line-strong border-t-vehicsim-decision" /><p>Đang tải dữ liệu phân tích…</p></div>;

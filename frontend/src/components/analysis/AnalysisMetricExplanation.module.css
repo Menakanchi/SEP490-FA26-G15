@@ -1,7 +1,7 @@
-.explanation { min-width:0; max-width:100%; margin-top:10px; font-size:12px; font-weight:400; }
+.explanation { min-width:0; max-width:100%; margin-top:4px; font-size:12px; font-weight:400; }
 .explanation summary { cursor:pointer; color:var(--color-vehicsim-decision); width:fit-content; max-width:100%; border-radius:4px; }
 .explanation summary:focus-visible, .links a:focus-visible { outline:2px solid var(--color-vehicsim-primary); outline-offset:3px; }
-.body { display:flex; flex-direction:column; gap:14px; max-width:100ch; padding-top:12px; color:var(--color-vehicsim-ink); font-size:14px; overflow-wrap:anywhere; line-height:1.65; }
+.body { display:flex; flex-direction:column; gap:10px; max-width:100ch; padding-top:12px; color:var(--color-vehicsim-ink); font-size:13px; overflow-wrap:anywhere; line-height:1.65; }
 .body h4 { font-size:14px; font-weight:700; margin-bottom:6px; }
 .body p + p { margin-top:8px; }
 .formula { font-family:monospace; background:var(--color-vehicsim-soft); border-radius:6px; padding:10px; white-space:normal; overflow-wrap:anywhere; }
@@ -14,3 +14,7 @@
 .body li + li { margin-top:6px; }
 .links { display:flex; flex-direction:column; align-items:flex-start; gap:10px; color:var(--color-vehicsim-decision); font-weight:600; }
 .links a:hover { text-decoration:underline; }
+
+.body > details { border-top:1px solid var(--color-vehicsim-line); padding-top:8px; }
+.body > details[open] > summary { margin-bottom:10px; }
+.explanation summary { min-height:32px; display:list-item; padding-block:6px; }

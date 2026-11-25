@@ -1,8 +1,9 @@
 /** Pure URL presentation shared by server metadata and client page headings. */
 export const analysisRunId = (value: string) => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
-export function analysisListTitle(view: unknown) {
-  const value = Array.isArray(view) ? view[0] : view;
-  return value === "runs" ? "Khám phá lượt chạy" : value === "failures" ? "Tra cứu ca lỗi" : value === "dataset" ? "Chuẩn bị tập bàn giao" : "Phân tích baseline";
+export function analysisListTitle(_view: unknown) {
+  // Keep the legacy metadata call signature; all views now share one workspace.
+  void _view;
+  return "Dữ liệu & kết quả";
 }
 export function analysisRunTitle(rawId: string, playback = false) {
   const id = analysisRunId(rawId);

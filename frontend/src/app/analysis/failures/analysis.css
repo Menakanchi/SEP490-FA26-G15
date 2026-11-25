@@ -2,10 +2,6 @@
 .analysis-workspace > div { max-width: 1680px; margin-inline: auto; }
 .analysis-workspace button, .analysis-workspace a, .analysis-workspace input, .analysis-workspace select { outline-offset: 4px; }
 .analysis-workspace :focus-visible { outline: 2px solid var(--color-vehicsim-decision); }
-.analysis-nav { display: flex; gap: 4px; border-bottom: 1px solid var(--color-vehicsim-line-strong); overflow-x: auto; }
-.analysis-nav a { display: flex; align-items: center; gap: 8px; white-space: nowrap; padding: 13px 18px; font-size: 13px; font-weight: 600; color: var(--color-vehicsim-muted); border-bottom: 3px solid transparent; }
-.analysis-nav a[aria-current=page] { color: var(--color-vehicsim-primary); border-color: var(--color-vehicsim-primary); }
-.analysis-nav a span { border-radius: 5px; background: var(--color-vehicsim-decision-bg); padding: 1px 6px; font-size: 11px; }
 .analysis-panel { min-width: 0; border: 1px solid var(--color-vehicsim-line); background: var(--color-vehicsim-surface); border-radius: 12px; padding: 20px; }
 .analysis-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
 .analysis-panel h2, .analysis-panel h3 { font-weight: 700; }
@@ -48,7 +44,7 @@
 .analysis-workspace { overflow-wrap:anywhere; }
 .analysis-workspace :is(button, select, input):disabled { cursor:not-allowed; }
 .analysis-workspace :is(select, input):disabled { opacity:.55; background:var(--color-vehicsim-soft); }
-.analysis-workspace :is(.analysis-nav a, [role=tab], summary, .analysis-table-wrap):focus-visible { outline-offset:-3px; }
+.analysis-workspace :is([role=tab], summary, .analysis-table-wrap):focus-visible { outline-offset:-3px; }
 .analysis-table-wrap { min-width:0; }
 .analysis-workspace [role=tabpanel] { min-width:0; }
 .analysis-workspace .vehicsim-page-heading > div { min-width:0; max-width:100%; }
@@ -60,7 +56,37 @@
 @media (max-width:767px) {
  .analysis-workspace > div > div:first-child > nav { min-width:0; white-space:normal; flex-wrap:wrap; }
  .analysis-workspace > div > div:first-child > div > span { max-width:100%; white-space:normal; flex-wrap:wrap; }
- .analysis-workspace :is(.analysis-button, .analysis-nav a, [role=tab], select, input:not([type=range])) { min-height:40px; }
+ .analysis-workspace :is(.analysis-button, [role=tab], select, input:not([type=range])) { min-height:40px; }
  /* Let the complete table scroll on narrow screens; pinned columns would obscure focused cells. */
  .analysis-workspace .analysis-table :is(th,td):is(:first-child,:last-child) { position:static; }
 }
+/* FE-R1 module-local progressive disclosure; no shared shell changes. */
+.analysis-disclosure { min-width:0; border:1px solid var(--color-vehicsim-line); border-radius:12px; padding:16px 20px; background:var(--color-vehicsim-surface); }
+.analysis-workspace summary { cursor:pointer; font-size:13px; font-weight:600; color:var(--color-vehicsim-decision); min-height:32px; align-content:center; }
+.analysis-disclosure[open] > summary { margin-bottom:16px; }
+.analysis-disclosure > .analysis-caption { margin-block:12px; }
+.analysis-disclosure > .analysis-toolbar { margin-block:16px; }
+.analysis-main-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.analysis-workspace .analysis-button { min-height:44px; }
+#analysis-runs-title { scroll-margin-block:100px; }
+@media(max-width:700px) {
+ .analysis-main-filters { grid-template-columns:1fr; }
+ .analysis-disclosure { padding:14px; }
+ .analysis-workspace summary { min-height:44px; }
+}
+
+/* Keep the data table close to the first viewport without hiding evidence. */
+.analysis-workspace h1 { font-size:30px; line-height:1.2; }
+.analysis-data-filter { display:grid; gap:10px; padding:14px 20px; }
+.analysis-main-filters { grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; align-items:end; }
+.analysis-workspace [data-analysis-overview-details] { padding:8px 14px; }
+.analysis-workspace [data-analysis-overview-details] > summary { min-height:28px; }
+@media(max-width:700px) {
+ .analysis-workspace h1 { font-size:26px; }
+ .analysis-main-filters { grid-template-columns:1fr; }
+ .analysis-data-filter { padding:14px; }
+ .analysis-workspace [data-analysis-overview-details] > summary { min-height:44px; }
+}
+
+.analysis-workspace .analysis-action-error { padding:14px; border:1px solid var(--color-vehicsim-danger); border-radius:10px; background:var(--color-vehicsim-danger-bg); font-size:13px; overflow-wrap:anywhere; }
+.analysis-workspace .analysis-action-error p + p { margin-top:8px; }

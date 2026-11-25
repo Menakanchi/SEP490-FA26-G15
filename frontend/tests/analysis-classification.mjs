@@ -16,12 +16,12 @@ test("labels cover actual Evaluation.failure_type values", () => {
 test("collision and metrics never generate missed or ineffective braking", () => {
   const view = classificationPresentation({ ...evaluated, failure_type: null, outcome: "COLLISION", metrics: { impact_speed_mps: 20 } });
   assert.equal(view.classification, "API chưa có phân loại lỗi");
-  assert.equal(view.evaluation, "Không đạt theo luật hiện hành (FAIL)");
+  assert.equal(view.evaluation, "Không đạt theo luật đã lưu (FAIL)");
 });
 test("null classification stays unavailable even when evaluation is valid PASS", () => {
   const view = classificationPresentation({ ...evaluated, verdict: "PASS", failure_type: null });
   assert.equal(view.classification, "API chưa có phân loại lỗi");
-  assert.equal(view.evaluation, "Đạt theo luật hiện hành (PASS)");
+  assert.equal(view.evaluation, "Đạt theo luật đã lưu (PASS)");
   assert.equal(view.trusted, true);
   assert.equal(classificationPresentation({ ...evaluated, verdict: "PASS", failure_type: undefined }).classification, "API chưa có phân loại lỗi");
   assert.equal(classificationPresentation({ ...evaluated, verdict: "PASS", failure_type: null, evaluation_valid: false }).trusted, false);

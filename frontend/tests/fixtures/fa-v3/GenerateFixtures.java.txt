@@ -1,0 +1,22 @@
+import com.vsos.backend.service.analysis.*;
+import com.vsos.backend.common.analysis.FailureAnalysisJson;
+import com.vsos.backend.repository.analysis.FailureAnalysisStore.Kind;
+import java.nio.file.*;
+import java.util.*;
+import java.io.*;
+public class FeR4Fixtures {
+ public static void main(String[] args)throws Exception {
+  Path inputs=Path.of("docs/failure-analysis-v3/handover/examples/inputs"),out=Path.of("frontend/tests/fixtures/fa-v3");Files.createDirectories(out);
+  for(String name:List.of("collection","standalone","partial","blocked")) {
+   byte[] bytes=Files.readAllBytes(inputs.resolve(name.equals("standalone")?"result_run2499_full_dataset_v2.json":"vsos-collections-2026-11-24/vehicsim-variant-1033-collection.json"));
+   if(name.equals("partial")||name.equals("blocked")){var raw=FailureAnalysisJson.object(bytes);var runs=(List<?>)raw.get("runs");raw.put("runs",name.equals("partial")?List.of(runs.getFirst()):List.of());bytes=FailureAnalysisJson.bytes(raw);}
+   var svc=new FailureAnalysisService(new FailureAnalysisMemoryStore());var source=svc.ingest(1,7,new ByteArrayInputStream(bytes),bytes.length,null);String sid=source.get("id").toString();
+   var e=svc.analyze(1,sid,null);String eid=e.get("id").toString(),hid=e.get("handoff_id").toString();var metas=svc.list(Kind.REPORT,1,eid,20,0);var reports=new LinkedHashMap<String,Object>();var reportBytes=new LinkedHashMap<String,String>();
+   for(var m:metas){byte[] saved=svc.download(Kind.REPORT,1,m.get("id").toString());reportBytes.put(m.get("id").toString(),Base64.getEncoder().encodeToString(saved));}
+   var h=svc.metadata(Kind.HANDOFF,1,hid);var result=new LinkedHashMap<String,Object>();result.put("kind","BROWSER_FIXTURE_ONLY");result.put("provenance","Actual FailureAnalysisService + real core, test-only memory store; not live REST/MySQL. Partial/blocked use explicitly synthetic removal of runs; original input unchanged.");
+   result.put("source",source);result.put("execution",e);result.put("reportsPage",Map.of("items",metas,"limit",20,"offset",0));result.put("reportBytesBase64",reportBytes);result.put("handoff",h);
+   if(h.get("content_digest")!=null)result.put("handoffBase64",Base64.getEncoder().encodeToString(svc.download(Kind.HANDOFF,1,hid)));
+   result.put("sourceBase64",Base64.getEncoder().encodeToString(bytes));Files.write(out.resolve(name+".json"),FailureAnalysisJson.bytes(result));System.out.println(name+": "+e.get("status")+" reports="+metas.size());
+  }
+ }
+}
