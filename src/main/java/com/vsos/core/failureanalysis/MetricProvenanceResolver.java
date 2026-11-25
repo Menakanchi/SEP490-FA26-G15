@@ -29,7 +29,7 @@ public final class MetricProvenanceResolver {
         }
         // These seven literals are selected by CarlaSession.currentFormat(). No older/future vintage is inferred.
         if(!Set.of("carla-0.9.16-xosc9","carla-0.9.16-xosc10","carla-0.9.16-xosc11","carla-0.9.16-xosc12",
-                "carla-0.9.16-xosc13","carla-0.9.16-xosc14","carla-0.9.16-xosc15").contains(Objects.toString(simulator,"")))
+                "carla-0.9.16-xosc13","carla-0.9.16-xosc14","carla-0.9.16-xosc15","carla-0.9.16-xosc16").contains(Objects.toString(simulator,"")))
             return new Descriptor("UNKNOWN",false,"METRIC_PROFILE_UNSUPPORTED_OR_MISSING",null);
         Object dt=r.get("result","/outcome/case/carla/fixed_delta_seconds");
         if(!finiteNonnegative(dt)||((Number)dt).doubleValue()<=0||((Number)dt).doubleValue()>=.05)
@@ -68,7 +68,7 @@ public final class MetricProvenanceResolver {
         f.put("calibration_scope", unknown("CALIBRATION_VALIDITY_DOMAIN_MISSING", null));
         f.put("calibration_name", r.read("result", "/outcome/case/carla/pedal_map", null, null));
         Object profile = f.get("simulator_profile").value();
-        boolean currentCarla = profile instanceof String s && s.matches("carla-0\\.9\\.16-xosc(?:9|1[0-5])");
+        boolean currentCarla = profile instanceof String s && s.matches("carla-0\\.9\\.16-xosc(?:9|1[0-6])");
         f.put("impact_basis", currentCarla ? value("RELATIVE_SPEED_CORE_COLLISION_TICK", Status.CONDITIONAL, null, "core",
                 List.of(r.ref("result", "/simulator")), "PROFILE_SOURCE_MAPPING_CONDITIONAL") : unknown("METRIC_PROFILE_UNKNOWN", null));
         f.put("stopping_basis", currentCarla ? value("CORE_PROJECTED_DISPLACEMENT_PLUS_MODEL_EXTRAPOLATION", Status.CONDITIONAL,

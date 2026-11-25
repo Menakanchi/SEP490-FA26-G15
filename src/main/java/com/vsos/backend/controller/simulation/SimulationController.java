@@ -67,7 +67,7 @@ public class SimulationController {
                                                          @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "run");
-        List<Long> ids = runs.runFamily(access.projectId(), scenarioId, uid, body == null ? null : body.aebVersionId(),
+        List<Long> ids = runs.runFamilyFromUi(access.projectId(), scenarioId, uid, body == null ? null : body.aebVersionId(),
                 body != null && Boolean.TRUE.equals(body.withAebOff()));
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("queued_runs", ids.size()));
     }
@@ -111,7 +111,7 @@ public class SimulationController {
     public ResponseEntity<Map<String, Object>> runOnCarla(@PathVariable long runId, @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "carla_run");
-        long id = runs.runOnCarla(access.projectId(), runId, uid);
+        long id = runs.runOnCarlaFromUi(access.projectId(), runId, uid);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Json.obj("run_id", id));
     }
 
@@ -143,12 +143,13 @@ public class SimulationController {
         return runs.deleteFamilyBaselineRuns(access.projectId(), scenarioId, uid, simulatorType);
     }
 
-    @Operation(summary = "Hủy mọi run đang chờ/đang chạy của một họ kịch bản (bỏ qua run của regression/tối ưu)")
+    @Operation(summary = "Hủy run độc lập đang chờ/đang chạy của họ, có thể lọc theo simulator_type")
     @PostMapping("/families/{scenarioId}/cancel")
-    public ResponseEntity<Map<String, Object>> cancelFamilyRuns(@PathVariable long scenarioId, @AuthenticationPrincipal UserDetails user) {
+    public ResponseEntity<Map<String, Object>> cancelFamilyRuns(@PathVariable long scenarioId,
+            @RequestParam(name = "simulator_type", required = false) String simulatorType, @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "run_cancel");
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(runs.cancelFamilyRuns(access.projectId(), scenarioId, uid));
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(runs.cancelFamilyRuns(access.projectId(), scenarioId, uid, simulatorType));
     }
 
     @Operation(summary = "Các run đang chờ/đang chạy của một họ kịch bản (để hủy từng run; run của regression/tối ưu có cancellable = false)")
@@ -196,7 +197,7 @@ public class SimulationController {
     public Map<String, Object> submitCarlaResult(@PathVariable long runId, @RequestBody Map<String, Object> body, @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "carla_result");
-        return runs.submitCarlaResult(access.projectId(), runId, uid, body);
+        return runs.submitCarlaResultFromUi(access.projectId(), runId, uid, body);
     }
 
     /**

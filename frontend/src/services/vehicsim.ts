@@ -133,8 +133,8 @@ export const vehicsimApi = {
   activeFamilyRuns: (scenarioId: number) =>
     apiRequest<import("@/types/vehicsim").ActiveFamilyRun[]>(`/vehicsim/families/${scenarioId}/runs/active`),
   /** Hủy mọi run đang chờ/đang chạy của họ (run của regression/tối ưu không bị đụng). */
-  cancelFamily: (scenarioId: number) =>
-    apiRequest<{ scenario_id: number; stopped: number; stopping: number }>(`/vehicsim/families/${scenarioId}/cancel`, { method: "POST" }),
+  cancelFamily: (scenarioId: number, simulatorType?: "CARLA" | "KINEMATIC") =>
+    apiRequest<{ scenario_id: number; stopped: number; stopping: number }>(`/vehicsim/families/${scenarioId}/cancel${simulatorType ? `?simulator_type=${simulatorType}` : ""}`, { method: "POST" }),
   /** ``withAebOff``: thêm một lượt AEB tắt cho mỗi biến thể — mốc tham chiếu "không có AEB" của baseline, không bao giờ làm baseline regression/tối ưu. */
   runFamily: (scenarioId: number, aebVersionId?: number, withAebOff = false) =>
     apiRequest<{ queued_runs: number }>(`/vehicsim/families/${scenarioId}/run`, {

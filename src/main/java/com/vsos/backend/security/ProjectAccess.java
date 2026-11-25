@@ -76,7 +76,7 @@ public class ProjectAccess {
     public Row currentProject() {
         if (!reviewer()) return scope.current();
         Row selected = reviewerProject();
-        if (selected == null) throw new NotFoundException("project trong workspace của bạn — cần được Quản lý thêm vào workspace");
+        if (selected == null) throw new NotFoundException("project trong workspace của bạn — hãy kiểm tra workspace và chọn hoặc tạo project phù hợp");
         return selected;
     }
 
