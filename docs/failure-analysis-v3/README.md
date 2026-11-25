@@ -68,3 +68,10 @@ Gói ZIP bàn giao được tuyển chọn chỉ gồm source/test/contract/tổ
 và bằng chứng cuối. Bản lưu đầy đủ trước dọn ở ngoài repository. Xem
 [CLEANUP_AND_PACKAGE.md](handover/CLEANUP_AND_PACKAGE.md) để phân biệt file trong
 gói bàn giao, file dư còn trên workspace và bằng chứng đã lưu.
+
+## Bằng chứng chạy lặp không đưa vào main
+
+Khi gộp vào `main` (25/11/2026), các file bằng chứng không phải `.md` trong `fixes/`, `json-input-integration/` và
+`final-audit/` (khoảng 1.380 file JSON/CSV/log, ~135 MB, có đường dẫn máy cá nhân) được bỏ để repo không phình vĩnh viễn.
+Các báo cáo `.md`, `samples/` (test `M1DGolden18IntegrationTest` dùng) và `handover/` vẫn giữ. Link từ báo cáo tới file bằng
+chứng đã bỏ có thể không còn mở được trên `main`; bản đầy đủ nằm ở nhánh `trungdam`, commit `d0bc9dc`.
