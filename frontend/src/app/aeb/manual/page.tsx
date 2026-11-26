@@ -6,6 +6,7 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
+import { AebNav } from "@/components/aeb/AebNav";
 import { CandidateForm } from "@/components/aeb/CandidateForm";
 
 export default function AebManualPage() {
@@ -27,6 +28,8 @@ export default function AebManualPage() {
     <VehicSimPage
       step={4}
       crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Chỉnh tay" }]}
+      title="Hiệu chỉnh tham số AEB thủ công"
+      subtitle="Điều chỉnh trực tiếp 4 tham số AEB cốt lõi để tạo ứng viên thử nghiệm mới mà không cần chạy tối ưu hóa."
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/mobo" variant="dark">
@@ -36,6 +39,7 @@ export default function AebManualPage() {
       }
     >
       <ErrorNote message={error} />
+      <AebNav active="manual" />
 
       {created && (
         <div className="flex items-center justify-between gap-4 rounded-[16px] bg-vehicsim-ok-bg px-4 py-3 text-[13px] text-vehicsim-ok shadow-sm">

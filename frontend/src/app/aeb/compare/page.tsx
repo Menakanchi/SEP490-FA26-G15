@@ -8,7 +8,7 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { Card, ErrorNote, PillButton, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
-import { VehicSimSelect } from "@/components/VehicSimSelect";
+import { AebNav } from "@/components/aeb/AebNav";
 import { KEY_PARAMS, STATUS_LABEL, STATUS_TONE } from "@/components/aeb/aebTypes";
 
 export default function AebComparePage() {
@@ -74,7 +74,9 @@ export default function AebComparePage() {
   return (
     <VehicSimPage
       step={4}
-      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Đối chiếu thông số" }]}
+      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "So sánh đối đầu" }]}
+      title="Đối chiếu hiệu năng giữa các phiên bản AEB"
+      subtitle="Phân tích sự khác biệt về tham số điều khiển và kết quả phản ứng phanh giữa 2 cấu hình thuật toán."
       actions={
         <div className="flex items-center gap-2">
           {versionB?.status === "CANDIDATE" && canWrite && (
@@ -86,85 +88,105 @@ export default function AebComparePage() {
       }
     >
       <ErrorNote message={error} />
+      <AebNav active="compare" />
 
       {/* Selector chọn 2 phiên bản */}
-      <div className="rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface px-5 py-4 shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-solid border-vehicsim-line">
-          <h2 className="text-[15px] font-bold text-vehicsim-ink">Chọn 2 phiên bản để đối chiếu thông số</h2>
+      <Card className="flex flex-col gap-5 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-solid border-vehicsim-line pb-4">
+          <div>
+            <h2 className="text-[16px] font-bold text-vehicsim-ink">Chọn 2 phiên bản để đối đầu</h2>
+            <p className="text-[13px] text-vehicsim-muted">
+              So sánh bộ chuẩn (Baseline) với một ứng viên (Candidate) vừa được sinh ra.
+            </p>
+          </div>
           <button
             type="button"
             onClick={swap}
-            className="flex items-center gap-1.5 rounded-lg border border-solid border-vehicsim-line px-3 py-1.5 text-[12px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition"
+            className="flex items-center gap-1.5 rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-4 py-2 text-[12px] font-bold text-vehicsim-ink hover:bg-vehicsim-soft transition shadow-sm"
           >
             <GitCompare className="size-3.5" />
-            Hoán vị A ⇄ B
+            Đổi chiều so sánh (Hoán vị)
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* Phiên bản A */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between text-[13px]">
-              <span className="font-bold text-vehicsim-ink">Phiên bản Mốc chuẩn (A)</span>
-              {versionA && (
-                <span className="text-[12px] text-vehicsim-muted">
-                  {STATUS_LABEL[versionA.status]} · {fmt.date(versionA.created_at)}
-                </span>
-              )}
+          <div className="flex flex-col gap-3 rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
+                Phiên bản Mốc chuẩn (A)
+              </span>
+              {versionA && <Tag tone={STATUS_TONE[versionA.status]}>{STATUS_LABEL[versionA.status]}</Tag>}
             </div>
-            <VehicSimSelect
+            <select
               aria-label="Chọn Phiên bản Mốc chuẩn (A)"
-              value={idA}
-              onChange={(newVal) => pickA(Number(newVal))}
-              options={(versions ?? []).map((v) => ({
-                value: v.id,
-                label: `AEB ${v.label}`,
-                sublabel: `${STATUS_LABEL[v.status]} (${v.source === "OPTIMIZATION" ? "MOBO" : "Thủ công"})`,
-              }))}
-            />
+              value={idA ?? ""}
+              onChange={(e) => pickA(Number(e.target.value))}
+              className="h-10 rounded-[10px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-bold text-vehicsim-ink"
+            >
+              {(versions ?? []).map((v) => (
+                <option key={v.id} value={v.id}>
+                  AEB {v.label} · {STATUS_LABEL[v.status]} ({v.source === "OPTIMIZATION" ? "MOBO" : "Thủ công"})
+                </option>
+              ))}
+            </select>
+            {versionA && (
+              <p className="text-[12px] text-vehicsim-muted">
+                {versionA.notes ? `Ghi chú: ${versionA.notes}` : "Không có ghi chú"} · Tạo ngày {fmt.date(versionA.created_at)}
+              </p>
+            )}
           </div>
 
           {/* Phiên bản B */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between text-[13px]">
-              <span className="font-bold text-vehicsim-ink">Phiên bản So sánh (B)</span>
-              {versionB && (
-                <span className="text-[12px] text-vehicsim-muted">
-                  {STATUS_LABEL[versionB.status]} · {fmt.date(versionB.created_at)}
-                </span>
-              )}
+          <div className="flex flex-col gap-3 rounded-[14px] border border-solid border-vehicsim-line bg-vehicsim-soft/50 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-bold uppercase tracking-wider text-vehicsim-muted">
+                Phiên bản So sánh (B)
+              </span>
+              {versionB && <Tag tone={STATUS_TONE[versionB.status]}>{STATUS_LABEL[versionB.status]}</Tag>}
             </div>
-            <VehicSimSelect
+            <select
               aria-label="Chọn Phiên bản So sánh (B)"
-              value={idB}
-              onChange={(newVal) => pickB(Number(newVal))}
-              options={(versions ?? []).map((v) => ({
-                value: v.id,
-                label: `AEB ${v.label}`,
-                sublabel: `${STATUS_LABEL[v.status]} (${v.source === "OPTIMIZATION" ? "MOBO" : "Thủ công"})`,
-              }))}
-            />
+              value={idB ?? ""}
+              onChange={(e) => pickB(Number(e.target.value))}
+              className="h-10 rounded-[10px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-bold text-vehicsim-ink"
+            >
+              {(versions ?? []).map((v) => (
+                <option key={v.id} value={v.id}>
+                  AEB {v.label} · {STATUS_LABEL[v.status]} ({v.source === "OPTIMIZATION" ? "MOBO" : "Thủ công"})
+                </option>
+              ))}
+            </select>
+            {versionB && (
+              <p className="text-[12px] text-vehicsim-muted">
+                {versionB.notes ? `Ghi chú: ${versionB.notes}` : "Không có ghi chú"} · Tạo ngày {fmt.date(versionB.created_at)}
+              </p>
+            )}
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Bảng so sánh 4 tham số chi tiết */}
       {versionA && versionB && (
         <section className="overflow-hidden rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface shadow-sm">
-          <div className="px-5 py-4 border-b border-solid border-vehicsim-line">
-            <h3 className="text-[16px] font-bold text-vehicsim-ink">Bảng đối chiếu 4 tham số cấu hình</h3>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-solid border-vehicsim-line">
+            <h3 className="text-[16px] font-bold text-vehicsim-ink">Bảng so sánh 4 tham số điều khiển phanh</h3>
+            <span className="text-[12px] text-vehicsim-muted">
+              So sánh AEB {versionA.label} → AEB {versionB.label}
+            </span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-left text-[13px]">
-              <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
+              <thead className="bg-vehicsim-soft text-[13.5px] font-extrabold uppercase tracking-wide text-slate-800 dark:text-slate-100">
                 <tr className="h-12">
-                  <th className="px-5 py-3.5">Tham số</th>
-                  <th className="px-5 py-3.5">Tầng điều khiển</th>
-                  <th className="px-5 py-3.5 text-center">Bản A ({versionA.label})</th>
-                  <th className="px-5 py-3.5 text-center">Bản B ({versionB.label})</th>
-                  <th className="px-5 py-3.5 text-center">Chênh lệch tuyệt đối (Δ)</th>
-                  <th className="px-5 py-3.5 text-center">Mức thay đổi (%)</th>
+                  <th className="px-5 py-3">Tham số</th>
+                  <th className="px-5 py-3">Tầng điều khiển</th>
+                  <th className="px-5 py-3 text-center">Bản A ({versionA.label})</th>
+                  <th className="px-5 py-3 text-center">Bản B ({versionB.label})</th>
+                  <th className="px-5 py-3 text-center">Chênh lệch tuyệt đối (Δ)</th>
+                  <th className="px-5 py-3 text-center">Mức thay đổi (%)</th>
+                  <th className="px-5 py-3">Đánh giá kỹ thuật</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
@@ -176,19 +198,31 @@ export default function AebComparePage() {
                   const pct = valA && valA !== 0 ? (diff / valA) * 100 : 0;
                   const isDiff = Math.abs(diff) > 0.0001;
 
+                  let note = "Giữ nguyên";
+                  if (code === "TTC_THRESHOLD") {
+                    note = diff > 0 ? "Phanh sớm hơn (ưu tiên tránh đâm)" : diff < 0 ? "Phanh muộn hơn (giảm phanh oan)" : "Giữ nguyên";
+                  } else if (code === "BRAKE_ACTIVATION_DELAY") {
+                    note = diff < 0 ? "Phản ứng nhanh hơn (giảm trễ)" : diff > 0 ? "Tăng độ trễ cảm biến/chấp hành" : "Giữ nguyên";
+                  } else if (code === "MAX_DECELERATION") {
+                    note = diff > 0 ? "Phanh gắt hơn (tăng lực kẹp)" : diff < 0 ? "Phanh nhẹ hơn (êm ái hơn)" : "Giữ nguyên";
+                  } else if (code === "BRAKE_BUILDUP_RATE") {
+                    note = diff > 0 ? "Tăng áp nhanh hơn (tăng jerk)" : diff < 0 ? "Tăng áp từ từ (giảm jerk)" : "Giữ nguyên";
+                  }
+
                   const layerLabel =
                     code === "TTC_THRESHOLD"
-                      ? "Quyết định"
+                      ? "Decision (Quyết định)"
                       : code === "MAX_DECELERATION"
-                      ? "Động lực học"
-                      : "Điều khiển";
+                      ? "Dynamics (Động lực học)"
+                      : "Control (Điều khiển)";
 
                   return (
                     <tr key={code} className={cx(isDiff && "bg-vehicsim-row/40")}>
                       <td className="px-5 py-4 font-bold text-vehicsim-ink">
-                        {def?.name ?? code}
+                        <div>{def?.name ?? code}</div>
+                        <div className="font-mono text-[11px] font-normal text-vehicsim-faint">{code}</div>
                       </td>
-                      <td className="px-5 py-4 font-bold text-vehicsim-ink">{layerLabel}</td>
+                      <td className="px-5 py-4 text-[12px] text-vehicsim-muted">{layerLabel}</td>
                       <td className="px-5 py-4 text-center font-semibold text-vehicsim-ink">
                         {paramValue(valA, def?.unit ?? "")}
                       </td>
@@ -198,7 +232,7 @@ export default function AebComparePage() {
                       <td className="px-5 py-4 text-center">
                         <span
                           className={cx(
-                            "rounded px-2.5 py-1 text-[11.5px] font-bold font-mono",
+                            "rounded-full px-2.5 py-1 text-[11px] font-bold",
                             !isDiff
                               ? "text-vehicsim-faint bg-vehicsim-soft"
                               : diff > 0
@@ -212,13 +246,14 @@ export default function AebComparePage() {
                       <td className="px-5 py-4 text-center">
                         <span
                           className={cx(
-                            "font-mono text-[12.5px] font-bold",
+                            "text-[12px] font-bold",
                             !isDiff ? "text-vehicsim-faint" : diff > 0 ? "text-vehicsim-ok" : "text-vehicsim-danger",
                           )}
                         >
                           {pct > 0 ? `+${pct.toFixed(1)}%` : `${pct.toFixed(1)}%`}
                         </span>
                       </td>
+                      <td className="px-5 py-4 text-[12px] font-medium text-vehicsim-ink">{note}</td>
                     </tr>
                   );
                 })}

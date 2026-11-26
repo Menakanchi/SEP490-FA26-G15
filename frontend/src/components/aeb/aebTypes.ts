@@ -21,19 +21,8 @@ export const SOURCE_LABEL: Record<string, string> = {
   OPTIMIZATION: "tối ưu hoá",
 };
 
-// 4 tham số AEB chỉnh được theo ADR-040 (giữ nguyên tiếng Anh chuẩn)
+// 4 tham số AEB chỉnh được theo ADR-040
 export const KEY_PARAMS = ["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "MAX_DECELERATION", "BRAKE_BUILDUP_RATE"] as const;
-
-export const PARAM_NAMES: Record<string, string> = {
-  TTC_THRESHOLD: "TTC Threshold",
-  BRAKE_ACTIVATION_DELAY: "Brake Activation Delay",
-  MAX_DECELERATION: "Max Deceleration",
-  BRAKE_BUILDUP_RATE: "Brake Build-up Rate",
-};
-
-export function paramDisplayName(code: string): string {
-  return PARAM_NAMES[code] ?? code;
-}
 
 export const CATEGORY_ORDER: FailureClass[] = ["DECISION", "CONTROL", "VEHICLE_DYNAMICS"];
 

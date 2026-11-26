@@ -28,12 +28,16 @@ function Frame({ children }: { children: React.ReactNode }) {
   return <div className={styles.frame + " " + tokens.scope} data-admin-frame>
     <div className={styles.content}>
       <section id="admin-content" tabIndex={-1} aria-labelledby="admin-page-title" className={styles.page}>
-        <h1 id="admin-page-title" className="sr-only">{section?.title ?? "Quản trị"}</h1>
         <nav aria-label="Đường dẫn" className={styles.breadcrumb}>
           <ol><li><Link href="/admin">Quản trị hệ thống</Link></li>
             {section && <li><ChevronRight size={14} aria-hidden="true" /><span aria-current="page">{section.title}</span></li>}
           </ol>
         </nav>
+        <div className={styles.heading}>
+          <p className={styles.eyebrow}>QUẢN TRỊ HỆ THỐNG</p>
+          <h1 id="admin-page-title">{section?.title ?? "Quản trị"}</h1>
+          {section && <p className={styles.description}>{section.description}</p>}
+        </div>
         {children}
       </section>
     </div>
