@@ -66,6 +66,17 @@ class MoboHandoffBuilderTest {
         Artifact sample=M1CFixture.change(first.canonicalSample(),"/provenance/worker_sha256",null);members.set(0,new MoboHandoffBuilder.MemberInput(first.run(),null,first.diagnosticReport(),first.baselineBinding(),sample,first.mechanismReview()));
         var r=new MoboHandoffBuilder().build(replaceMembers(members));assertThat(at(r,"/baseline_objectives/availability")).isEqualTo("UNKNOWN");
         assertThat(at(r,"/members/0/canonical_sample/jerk")).isEqualTo(2.);assertThat(list(at(r,"/members/0/eligibility/reason_codes"))).contains("METRIC_PROFILE_OR_PROVENANCE_UNKNOWN_CONFLICTING");}
+    @Test void offlineSnapshotCannotSelfDeclareTheDatabaseProfileToSkipItsSourceGates(){
+        var members=new ArrayList<>(fixture.input().members());var first=members.getFirst();
+        Artifact sample=M1CFixture.change(first.canonicalSample(),"/provenance/provenance_scope","PERSISTED_CANONICAL_RESULT");
+        sample=M1CFixture.change(sample,"/provenance/worker_sha256",null);
+        sample=M1CFixture.change(sample,"/provenance/scenario_runner_sha256",null);
+        members.set(0,new MoboHandoffBuilder.MemberInput(first.run(),null,first.diagnosticReport(),first.baselineBinding(),sample,null));
+        var handoff=new MoboHandoffBuilder().build(replaceMembers(members));
+        assertThat(at(handoff,"/baseline_objectives/availability")).isEqualTo("UNKNOWN");
+        assertThat(list(at(handoff,"/members/0/eligibility/reason_codes"))).contains("METRIC_PROFILE_OR_PROVENANCE_UNKNOWN_CONFLICTING");
+        assertThat(at(handoff,"/eligibility_manifest/consumer_dispatch_allowed")).isEqualTo(false);
+    }
     @Test void hf12ProfileConflictBlocksEvenIfPolicyApproves(){var members=new ArrayList<>(fixture.input().members());var first=members.getFirst();
         Artifact sample=M1CFixture.change(first.canonicalSample(),"/provenance/objectives/rms_jerk_mps3/window","FROM_PEDAL");members.set(0,new MoboHandoffBuilder.MemberInput(first.run(),null,first.diagnosticReport(),first.baselineBinding(),sample,null));
         var r=new MoboHandoffBuilder().build(replaceMembers(members));assertThat(list(at(r,"/members/0/eligibility/reason_codes"))).contains("METRIC_PROFILE_OR_PROVENANCE_UNKNOWN_CONFLICTING");}

@@ -49,7 +49,7 @@ class KinematicInProcessTest {
         PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         service = new RunService(mock(Db.class), mock(Queries.class), mock(VehicSimProperties.class), mock(TaskExecutor.class),
-                mock(ApplicationEventPublisher.class), new TransactionTemplate(transactions), mock(FamilyService.class));
+                mock(ApplicationEventPublisher.class), new TransactionTemplate(transactions), mock(FamilyService.class), mock(com.vsos.backend.service.analysis.FailureAnalysisService.class));
         source = new LinkedHashMap<>(Map.of("run_id", RUN, "scenario_id", 7L, "scenario_version_id", 8L, "aeb_version_id", 9L, "carla_vehicle_model_id", 10L));
         run = new Row(new HashMap<>(Map.of("id", RUN, "simulator_version", RunService.KINEMATIC_SIMULATOR, "random_seed", SEED, "scenario_id", 7L,
                 "scenario_version_id", 8L, "aeb_version_id", 9L, "carla_vehicle_model_id", 10L)));

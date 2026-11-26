@@ -242,7 +242,7 @@ function BaselineWorkspace() {
         <div className="analysis-toolbar"><button className="analysis-button" onClick={closeDataset}>Đóng rà soát</button><PillButton disabled={!savedId || snapshotLoading || busy} onClick={() => setSnapshotRefresh(value => value + 1)}>Tải lại tập đã chốt</PillButton>
           {canWrite && optimizationFamily && <PillButton href={`/aeb/mobo?scenario_id=${optimizationFamily.id}&new=1`}>Mở tối ưu toàn họ {optimizationFamily.code}</PillButton>}</div>
         {canWrite && optimizationFamily && <p className="analysis-caption">Tối ưu toàn họ là tác vụ riêng, không sử dụng bản nháp đang chọn tại đây.</p>}
-        <AnalysisDatasetPreparation selection={selection} checks={checks} ready={draftReady} canWrite={canWrite} canSave={canSave}
+        <AnalysisDatasetPreparation project={ctx?.project.id ?? 0} selection={selection} checks={checks} ready={draftReady} canWrite={canWrite} canSave={canSave}
           operation={operation} operationError={mutationError} errorKind={operationError?.kind ?? null}
           snapshotId={savedId} hasSnapshot={rawDatasetId !== null} snapshot={saved} snapshotLoading={snapshotLoading} snapshotError={snapshotError}
           search={params.get("d_q") ?? ""} returnTo={returnTo} renderSelection={roleField}

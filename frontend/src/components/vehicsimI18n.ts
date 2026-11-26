@@ -68,6 +68,17 @@ const re = (pattern: string) => new RegExp(`^${pattern}$`);
 
 const RULES: Rule[] = [
   [re("Analysis dataset ID is required with its digest"), () => "Cần mã dataset và checksum từ bước kiểm tra bàn giao."],
+  [re("Specify either a V3 handoff or a V2 dataset, not both"), () => "Chỉ chọn một nguồn bàn giao: handoff V3 hoặc dataset V2."],
+  [re("V3 approved search space is missing"), () => "Handoff V3 chưa có miền tham số được xác nhận. Quay lại Phân tích lỗi để rà soát."],
+  [re("Campaign search space differs from the V3 approved domain"), () => "Miền tham số của đợt tối ưu khác miền được xác nhận trong handoff V3."],
+  [re("V3 campaign handoff reference is invalid"), () => "Tham chiếu handoff V3 của đợt tối ưu không hợp lệ."],
+  [re("V3 campaign partition or revision changed"), () => "Partition hoặc revision của handoff V3 đã thay đổi. Không thể tiếp tục tối ưu với nguồn này."],
+  [re("V3 holdout variants cannot be used for optimization or GP fitting"), () => "Không được dùng biến thể trong tập xác minh V3 để tối ưu hoặc huấn luyện GP."],
+  [re("V3 handoff ID and SHA-256 digest are required"), () => "Cần mã handoff V3 và checksum SHA-256 từ Phân tích lỗi."],
+  [re("V3 handoff consumer is unavailable"), () => "Dịch vụ tiếp nhận handoff V3 chưa sẵn sàng."],
+  [re("V3 handoff campaign contract is invalid"), () => "Handoff V3 không đáp ứng hợp đồng tạo đợt tối ưu."],
+  [re("Analysis dataset partition is empty or invalid"), () => "Tập tối ưu hoặc tập xác minh trống hoặc không hợp lệ."],
+  [re("Analysis dataset simulation step is missing or invalid"), () => "Dataset thiếu bước thời gian mô phỏng hợp lệ."],
   [re("Analysis dataset checksum changed; reload the handoff"), () => "Checksum dataset đã thay đổi. Hãy kiểm tra lại bàn giao từ Phân tích lỗi."],
   [re("Analysis dataset belongs to another scenario or baseline"), () => "Dataset không thuộc họ kịch bản hoặc baseline đang chọn."],
   [re("Analysis dataset simulator differs from (?:this campaign or current simulator profile|the current simulator profile)"), () => "Simulator của dataset không khớp đợt tối ưu hoặc profile hiện hành. Hãy dùng kết quả baseline cùng simulator."],

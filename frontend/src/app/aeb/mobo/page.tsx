@@ -263,7 +263,11 @@ export default function AebMoboStudioPage() {
     >
       <ErrorNote message={error} />
       {activeRun?.status === "FAILED" && <ErrorNote message={vi(activeRun.error_message) || "Đợt tối ưu đã thất bại. Kiểm tra nguồn dữ liệu và trạng thái mô phỏng trước khi tạo đợt mới."} />}
-      {activeRun?.dataset_id && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-vehicsim-line bg-vehicsim-surface p-4 text-[13px]" aria-label="Nguồn dataset của đợt tối ưu">
+      {activeRun?.handoff_id && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-vehicsim-line bg-vehicsim-surface p-4 text-[13px]" aria-label="Nguồn handoff V3 của đợt tối ưu">
+        <p className="min-w-0 break-all">Handoff V3 {activeRun.handoff_id} · {activeRun.optimization_run_ids?.length ?? "—"} run tối ưu · {activeRun.validation_run_ids?.length ?? "—"} run xác minh độc lập</p>
+        {activeRun.handoff_execution_id && <PillButton href={`/analysis/failures?fa_execution=${encodeURIComponent(activeRun.handoff_execution_id)}`}>Xem phân tích nguồn V3</PillButton>}
+      </section>}
+      {!activeRun?.handoff_id && activeRun?.dataset_id && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-vehicsim-line bg-vehicsim-surface p-4 text-[13px]" aria-label="Nguồn dataset của đợt tối ưu">
         <p>Tập đã chốt #{activeRun.dataset_id} · {activeRun.optimization_run_ids?.length ?? "—"} run tối ưu · {activeRun.validation_run_ids?.length ?? "—"} run xác minh độc lập</p>
         <PillButton href={`/analysis/failures?view=dataset&dataset_id=${activeRun.dataset_id}`}>Xem tập nguồn</PillButton>
       </section>}

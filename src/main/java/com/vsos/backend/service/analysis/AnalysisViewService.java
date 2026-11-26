@@ -448,7 +448,7 @@ public class AnalysisViewService {
     public Map<String, Object> savedAnalysisDataset(long datasetId) {
         long projectId = projects.currentProject().lng("id");
         Row saved = db.first("SELECT id, aeb_version_id, summary_json, created_date FROM analysis_results "
-                + "WHERE id = ? AND project_id = ? AND analysis_type = 'BASELINE_DATASET' AND status = 'COMPLETED'",
+                + "WHERE id = ? AND project_id = ? AND analysis_type = 'BASELINE_DATASET' AND method = 'IMMUTABLE_SNAPSHOT' AND status = 'COMPLETED'",
                 datasetId, projectId);
         if (saved == null) throw new NotFoundException("analysis dataset");
         Map<String, Object> out = new LinkedHashMap<>(saved.json("summary_json"));

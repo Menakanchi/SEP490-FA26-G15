@@ -1,5 +1,5 @@
 import { apiRequest, apiBlob, ApiError } from "./api";
-import { FAError, uuid, source, execution, reportMetadata, handoff, page, diagnostic, errorMessage, type Resource } from "@/components/analysis/failureAnalysisV3Data";
+import { FAError, uuid, source, execution, reportMetadata, handoff, approvedContext, campaignInput, page, diagnostic, errorMessage, type Resource } from "@/components/analysis/failureAnalysisV3Data";
 import { databasePage, databaseInspection, databaseId, type DatabaseKind } from "@/components/analysis/failureAnalysisDatabaseData";
 
 const base = "/vehicsim/analysis/v3";
@@ -18,6 +18,17 @@ async function request<T>(path: string, parse: (body: unknown) => T, options?: R
   }
 }
 export const failureAnalysisV3 = {
+  createContext: (body: { dataset_id: number; dataset_digest: string; confirmed: true; reason: string; canonical_targets_only: true; calibration_not_applicable: true; nonhazard_run_ids: number[]; search_space?: Record<string, [number, number]> }) =>
+    request("/contexts", approvedContext, { method: "POST", body: JSON.stringify(body) }),
+  analyzeContext: (project: number, key: string) => request(`/contexts/${id(key)}/executions`, value => {
+    const result = execution(value, project);
+    if (result.context_id !== key) throw new FAError("CONTEXT_IDENTITY_MISMATCH", "Lần phân tích không khớp context đã xác nhận.");
+    return result;
+  }, { method: "POST" }),
+  campaign: (project: number, key: string, digest: string) => {
+    if (!/^[a-f0-9]{64}$/.test(digest)) throw new FAError("HANDOFF_DIGEST_REQUIRED", "Liên kết cần checksum handoff V3. Mở lại từ Phân tích lỗi.");
+    return request(`/handoffs/${id(key)}/campaign?digest=${digest}`, value => campaignInput(value, project, key, digest));
+  },
   databaseList: (project: number, kind: DatabaseKind, offset = 0) => request(`/database/${kind}?limit=20&offset=${offset}`, v => databasePage(v, project, kind)),
   databaseInspect: async (project: number, kind: DatabaseKind, key: number) => request(`/database/${kind}/${databaseId(key)}`, v => databaseInspection(v, project, kind, key)),
   databaseAnalyze: async (project: number, kind: DatabaseKind, key: number, hash: string) => {

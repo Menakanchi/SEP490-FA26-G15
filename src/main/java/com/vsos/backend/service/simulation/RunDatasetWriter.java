@@ -857,7 +857,7 @@ final class RunDatasetWriter {
         return Math.round(v * 1e6) / 1e6;
     }
 
-    private static String gitCommit(Path repoRoot) {
+    static String gitCommit(Path repoRoot) {
         String cached = cachedGit;
         if (cached != null) {
             return cached.isEmpty() ? null : cached;

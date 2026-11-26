@@ -18,6 +18,13 @@ public final class FailureAnalysisJson {
     public static final int GRAPH_BYTES = 32 << 20;
     public static final int METADATA_BYTES = 256 << 10;
     public static final int MEMBERS = 16;
+    private static final class LoadedCore { private static final String SHA256 = coreFingerprint(); }
+    /** Hash of the loaded class manifest, explicitly distinct from worker JAR bytes. */
+    public static String loadedCoreFingerprint() { return LoadedCore.SHA256; }
+    /** One immutable official result per producer run attempt, independent of uploads and diagnostic executions. */
+    public static String producerResultKey(long project, long run, long attempt) {
+        return Evidence.sha256("module2-result/v1:" + project + ":" + run + ":" + attempt);
+    }
     public static InputResourcePolicy policy(int maxBytes) {
         return new InputResourcePolicy(maxBytes,maxBytes,maxBytes,1,256,MEMBERS,20000,60000,65536,128,
                 48,262144,256,200000,Math.min(128L<<20,Runtime.getRuntime().maxMemory()/2),128L<<20);

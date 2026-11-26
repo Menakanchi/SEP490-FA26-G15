@@ -64,7 +64,8 @@ class AnalysisSnapshotTest {
     void datasetOutsideCurrentProjectIsNotFound() {
         when(projects.currentProject()).thenReturn(new Row(Json.obj("id", 2L)));
         assertThatThrownBy(() -> views.savedAnalysisDataset(99L)).isInstanceOf(Vs.NotFoundException.class);
-        verify(db).first(startsWith("SELECT id, aeb_version_id, summary_json"), eq(99L), eq(2L));
+        verify(db).first(argThat(sql -> sql.startsWith("SELECT id, aeb_version_id, summary_json")
+                && sql.contains("method = 'IMMUTABLE_SNAPSHOT'")), eq(99L), eq(2L));
     }
 
     @Test

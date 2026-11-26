@@ -31,7 +31,46 @@ test("null, zero and every evidence status survive without fallback calculations
  assert.match(d.evidenceText({value:null,status:"UNKNOWN",unit:"m"}),/^Chưa có giá trị/);
  for(const value of [NaN,Infinity])assert.throws(()=>d.evidence({value,status:"OBSERVED",unit:"m"}));
 });
-test("blocked handoff cannot acquire a dispatch action",()=>{assert.equal(d.handoff(h,1).dispatch_allowed,false);assert.throws(()=>d.handoff({...h,dispatch_allowed:true},1));});
+test("only READY with approved context, digest and no blockers can acquire a dispatch action",()=>{
+ assert.equal(d.handoff(h,1).dispatch_allowed,false);
+ assert.throws(()=>d.handoff({...h,dispatch_allowed:true},1));
+ const ready={...h,status:"READY",dispatch_allowed:true,context_id:s.id,content_digest:"a".repeat(64),reason_codes:[]};
+ assert.equal(d.handoff(ready,1),ready);
+ for(const patch of [{status:"DIAGNOSTIC_ONLY"},{dispatch_allowed:false},{context_id:null},{content_digest:null},{content_digest:"bad"},{reason_codes:["QUALITY_MISSING"]}])
+  assert.throws(()=>d.handoff({...ready,...patch},1));
+});
+
+const campaign={schema:"vehicsim.fa-v3-campaign/v1",project_id:1,handoff_id:h.id,handoff_digest:"b".repeat(64),
+ scenario:{id:42,name:"Explicit V3 fixture"},baseline:{id:7,label:"v7"},reference:{vehicle_id:2,simulator:"carla-0.9.16-xosc16",dt:0.01},
+ optimization_run_ids:[2499,2500],validation_run_ids:[2511,2512],search_space:{TTC_THRESHOLD:[0.5,3],BRAKE_ACTIVATION_DELAY:[0,0.5],MAX_DECELERATION:[3,10],BRAKE_BUILDUP_RATE:[5,20]}};
+test("V3 campaign projection pins server source, checksum, disjoint partitions and approved domain",()=>{
+ assert.equal(d.campaignInput(campaign,1,h.id,campaign.handoff_digest),campaign);
+ assert.throws(()=>d.campaignInput(campaign,2,h.id,campaign.handoff_digest));
+ assert.throws(()=>d.campaignInput(campaign,1,s.id,campaign.handoff_digest));
+ assert.throws(()=>d.campaignInput(campaign,1,h.id,"c".repeat(64)));
+ for(const patch of [{schema:"vehicsim.analysis-dataset/v2"},{validation_run_ids:[2499]},{optimization_run_ids:[2499,2499]},{validation_run_ids:[]},{optimization_run_ids:[0]},
+  {reference:{...campaign.reference,simulator:"unknown"}},{search_space:{}},{search_space:{...campaign.search_space,TTC_THRESHOLD:[2,1]}},
+  {search_space:{...campaign.search_space,EXTRA:[0,1]}},{search_space:{...campaign.search_space,TTC_THRESHOLD:[0,Infinity]}}])
+  assert.throws(()=>d.campaignInput({...campaign,...patch},1,h.id,campaign.handoff_digest));
+});
+
+test("context confirmation and bodyless execution use authenticated V3 APIs, no V2 optimizer substitution",async()=>{
+ const original=globalThis.fetch,calls=[];
+ const context={context_id:p.items[0].id,context_digest:"d".repeat(64),source_id:s.id};
+ const body={dataset_id:91,dataset_digest:"e".repeat(64),confirmed:true,reason:"Reviewed recorded canonical targets",canonical_targets_only:true,calibration_not_applicable:true,nonhazard_run_ids:[2500,2512]};
+ try{
+  globalThis.fetch=async(url,options={})=>{
+   calls.push({url:String(url),options});
+   return new Response(JSON.stringify(String(url).endsWith("/contexts")?context:String(url).includes("/campaign?")?campaign:{...e,context_id:context.context_id}));
+  };
+  assert.deepEqual(await api.createContext(body),context);assert.deepEqual(JSON.parse(calls.at(-1).options.body),body);
+  await api.analyzeContext(1,context.context_id);assert.equal(calls.at(-1).options.body,undefined);assert.equal(calls.at(-1).options.method,"POST");
+  await api.campaign(1,h.id,campaign.handoff_digest);assert(calls.at(-1).url.endsWith(`/handoffs/${h.id}/campaign?digest=${campaign.handoff_digest}`));
+  const count=calls.length;assert.throws(()=>api.campaign(1,h.id,"invalid"));assert.equal(calls.length,count,"Missing checksum never performs a request or falls back");
+  globalThis.fetch=async()=>new Response(JSON.stringify({...e,context_id:s.id}));await assert.rejects(()=>api.analyzeContext(1,context.context_id),{code:"CONTEXT_IDENTITY_MISMATCH"});
+  globalThis.fetch=async()=>new Response(JSON.stringify({...context,context_digest:null}));await assert.rejects(()=>api.createContext(body),{code:"MALFORMED_RESOURCE"});
+ }finally{globalThis.fetch=original}
+});
 test("all real service fixture paths preserve members, mode, repetition and report identities",async()=>{
  for(const name of ["collection","standalone","partial","blocked"]){
   const f=JSON.parse(await fs.readFile(new URL(`./fixtures/fa-v3/${name}.json`,import.meta.url),"utf8"));

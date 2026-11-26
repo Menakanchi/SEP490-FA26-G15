@@ -38,7 +38,7 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 | 5 | Kịch bản | `scenarios`, `scenario_versions` | Có |
 | 6 | Tối ưu & regression | `optimization_runs`, `optimization_trials`, `regression_tests` | Có: MOBO/trial/Pareto và regression; campaign nhận dataset FA đã chốt cùng checksum và giữ riêng hai partition |
 | 7 | Mô phỏng, đánh giá, lỗi | `simulation_runs`, `simulation_artifacts`, `collision_events`, `failures`, `root_causes` | Có |
-| 8 | Phân tích, kết quả regression, khuyến nghị | `analysis_results`, `regression_test_items`, `engineering_recommendations` | Có; analysis_results mới dùng BASELINE_DATASET |
+| 8 | Phân tích, kết quả regression, khuyến nghị | `analysis_results`, `regression_test_items`, `engineering_recommendations` | Có; BASELINE_DATASET dùng IMMUTABLE_SNAPSHOT và FA_V3_CONTEXT |
 | 9 | Tri thức kỹ thuật | `tech_references` | Có: Admin list/detail/create/update, bật/tắt |
 
 Bảng chưa có code là thiết kế trước theo FE (0 dòng); màn hình / API đến ở các demo sau.
@@ -146,6 +146,12 @@ của cùng một cấu hình và số lần worker nhận run; ghi vào `datase
 
 - **Không gian tìm kiếm:** `aeb_parameters.min_value/max_value` là biên tuyệt đối; `optimization_runs.search_space_json`
   chọn tập con. Trial nào cũng là một `aeb_versions` đủ 4 tham số chỉnh được, nên đem đi regression như candidate tay.
+- **Handoff V3 (26/11/2026):** `FailureAnalysisHandoffService` đọc `fa_json_handoffs` và context
+  `analysis_results.method=FA_V3_CONTEXT`, kiểm READY, checksum, revision và producer source DB trước khi trả
+  `vehicsim.fa-v3-campaign/v1`. POST campaign nhận handoff_id/handoff_digest, không nhận đồng thời dataset_id/dataset_digest V2.
+  `objective_config_json.handoff_ref` giữ handoff/checksum, partition digest và hai danh sách run; search_space_json
+  đúng miền đã được xác nhận trong catalog ∩ ParameterBounds.defaults. Trial/GP chỉ dùng cohort tối ưu/config/seed đã chốt;
+  holdout dùng verification/regression. Mỗi bước kiểm lại currentness; V3 sai hoặc thiếu không fallback V2 hay miền mặc định.
 - **Mục tiêu (Pareto, ADR-040 §6–7):** `optimization_trials.rms_jerk_mps3`, `impact_speed_mps`, `stopping_distance_m` — ba
   mục tiêu MOBO, cùng cực tiểu; `collision_rate_pct` là chỉ số phụ; `score` cho ParEGO / Chebyshev.
   - *RMS jerk*: trung bình `simulation_runs.rms_jerk_mps3` của các run **có phanh** (RMS của `Δa/dt` trong pha phanh).
@@ -838,6 +844,26 @@ API kiểm revision lúc lưu và digest artifact/config chuẩn hóa MySQL JSON
 Hợp đồng tổng hợp: `adr040-stored-aggregation/1`; không chấm lại số đo lịch sử.
 Chi tiết nguồn/giới hạn: [hợp đồng phân tích](analysis-metrics-contract.md).
 
+**Context review V3 (26/11/2026):** tái sử dụng `analysis_type=BASELINE_DATASET`,
+`method=FA_V3_CONTEXT`, `status=COMPLETED`; không thêm bảng/cột/migration. Đây là
+snapshot review khác với `IMMUTABLE_SNAPSHOT`, không phải dataset V2 để optimizer fallback.
+`config_json` chứa context_id UUID và dedupe_key; `summary_json` chứa schema
+`vehicsim.fa-runtime-context/v1`, context_digest, project/selection ID và digest,
+baseline/params, snapshot catalog/search_space, reviewer_id từ phiên đăng nhập,
+reviewed_at/reason/confirmed, canonical_targets_only/calibration_not_applicable,
+nonhazard_run_ids và member source UUID/SHA/run/attempt/revision. `created_by_user_id`
+ghi người xác nhận. Dedupe do service serialize bằng project row lock; không có
+UNIQUE SQL mới cho các khóa nằm trong JSON. Chỉ INSERT review mới, không ghi đè review cũ.
+
+Routes `/analysis/v3/contexts`, `/{id}`, `/{id}/executions` cung cấp tạo/kiểm/thi hành
+context dưới quyền project hiện có. Review chấp nhận policy tối ưu canonical ADR-040/044/055,
+ca đối chứng đã xem trong cả hai partition và miền bốn tham số hiện hành; không cấp
+calibration, clock transform, yêu cầu vật lý hoặc phê duyệt candidate. Adapter tạo
+quality-policy/domain snapshots có refs tới chính review đã lưu. Execution vẫn đọc
+original result bytes của Module2 trong fa_json_sources và đối chiếu identity/projection;
+không đọc file output hoặc dựng result từ JSON selection. Context/source/domain đổi
+checksum hay revision bị chặn ở lần sử dụng tiếp theo.
+
 
 Gộp các phân tích: độ nhạy (correlation / RF / SHAP), tương tác tham số, kiểm robustness dưới nhiễu, theo dõi active learning. Đầu vào ở `config_json`, đầu ra ở `summary_json`. Các loại phân tích thuật toán này chưa có code; BASELINE_DATASET đã có.
 
@@ -846,7 +872,7 @@ Gộp các phân tích: độ nhạy (correlation / RF / SHAP), tương tác tha
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; UQ `uq_ar_project_id_aeb`; AI | Khoá chính. |
 | `project_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_ar_project_id_aeb`; FK → `scenarios(project_id,id)`; FK → `projects`; FK → `aeb_versions(project_id,id)`; FK → `optimization_runs(project_id,id)` | Project. |
 | `analysis_type` | ENUM | ✓ |  |  | Độ nhạy, tương tác tham số, kiểm robustness, theo dõi active learning. Giá trị: 'SENSITIVITY', 'INTERACTION', 'ROBUSTNESS_VALIDATION', 'ACTIVE_LEARNING_TRACKER', 'BASELINE_DATASET'. |
-| `method` | VARCHAR(50) |  |  |  | CORRELATION, RANDOM_FOREST, SHAP, PERTURBATION… |
+| `method` | VARCHAR(50) |  |  |  | IMMUTABLE_SNAPSHOT, FA_V3_CONTEXT; CORRELATION, RANDOM_FOREST, SHAP, PERTURBATION là các phương pháp dự kiến |
 | `scenario_id` | BIGINT UNSIGNED |  |  | FK → `scenarios(project_id,id)` | Họ kịch bản được phân tích (NULL = cả project) |
 | `aeb_version_id` | BIGINT UNSIGNED |  |  | UQ `uq_ar_project_id_aeb`; FK → `aeb_versions(project_id,id)` | Bắt buộc với ROBUSTNESS_VALIDATION: cấu hình được kiểm |
 | `optimization_run_id` | BIGINT UNSIGNED |  |  | FK → `optimization_runs(project_id,id)` | Bắt buộc với ACTIVE_LEARNING_TRACKER |
@@ -963,7 +989,7 @@ CHECK: `ck_tech_references_value`.
 | `sensors.attributes_json` | (chưa có code) | Attribute blueprint đúng tên CARLA, giá trị chuỗi: `{"image_size_x": "1280", "fov": "90", "sensor_tick": "0.05"}` |
 | `optimization_runs.search_space_json` | (chưa có code) | `{"TTC_THRESHOLD": [1.2, 2.5], "BRAKE_ACTIVATION_DELAY": [0.05, 0.3]}` — chỉ 4 mã của `aeb_parameters`, trong `[min_value, max_value]` |
 | `optimization_runs.objective_config_json` | `OptimizationService` | Ba mục tiêu canonical/ràng buộc cố định; `dataset_ref` giữ ID, digest và run nguồn của hai partition khi tạo từ dataset FA v2. |
-| `analysis_results.config_json` / `summary_json` | AnalysisViewService cho BASELINE_DATASET; các loại khác chưa có | Đầu vào (nhiễu, chỉ số mục tiêu, bộ lọc run) / đầu ra (xếp hạng tham số, ma trận tương tác, phân bố theo nhiễu) |
+| `analysis_results.config_json` / `summary_json` | AnalysisViewService cho IMMUTABLE_SNAPSHOT; FailureAnalysisHandoffService cho FA_V3_CONTEXT | Selection hoặc review V3 bất biến; snapshot/digest/nguồn/miền. Các đầu ra sensitivity/robustness vẫn là thiết kế dự kiến |
 
 Bảng tổng hợp regression (ma trận chuyển trạng thái, tỉ lệ, tiêu chí) **không lưu**: `regression.summary`
 tính lại từ các run đã COMPLETED (run không đổi sau khi xong), số đếm chính lưu ở `regression_tests`,
@@ -1002,7 +1028,7 @@ Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critica
   CHECK không so được bảng khác.
 - **Rút scope AEB (ADR-040):** run của v1.3 dùng tầm dự đoán 1,5 s và biên an toàn 0,5 m (nay là hằng số 2,0 / 2,0) nên
   60 / 192 run đó **không còn tái lập** khi chạy lại từ JSON; kết quả đã lưu không đổi (TD-40).
-- **Tối ưu:** campaign/trial/Pareto đã có code; campaign có `dataset_ref` thực thi đúng partition đã chốt. Sensitivity/Robustness và handoff chẩn đoán V3 vẫn có các cổng riêng, không suy từ schema rằng đã triển khai.
+- **Tối ưu:** campaign/trial/Pareto có pipeline hiện hành. V2 dùng `dataset_ref`; V3 dùng `handoff_ref` từ handoff DB đã kiểm, thực thi partition/domain riêng, không fallback hai nguồn. Nhánh V3 thiếu review/evidence vẫn bị chặn; Sensitivity/Robustness chưa được suy là đã triển khai từ schema.
 
 ## 10. Đổi schema thì làm gì
 
@@ -1073,6 +1099,14 @@ Rollback triển khai: tắt caller V3; giữ bảng/bytes để bảo toàn l�
 
 JSON gốc và manifest; UNIQUE(project_id,dedupe_key).
 
+Cập nhật 26/11/2026: Module2 tái sử dụng bảng này để lưu toàn bộ result.json
+trong cùng transaction ghi kết quả và chuyển run sang COMPLETED. Không đổi schema.
+Nguồn chính thức có dedupe_key = SHA-256(`module2-result/v1:<project>:<run>:<attempt>`),
+metadata.database_input chứa origin MODULE2_RESULT_DATABASE, project_id/run_id/attempt.
+Một attempt chỉ có một nội dung; retry cùng bytes giữ source ID, khác bytes bị từ chối.
+FA chọn đúng khóa producer, kiểm checksum/identity; thiếu nguồn thì chặn, không đọc
+storage_url hay file của run thay DB. Upload và collection giữ khóa dedupe riêng.
+
 | Cột | Kiểu | Ý nghĩa |
 |---|---|---|
 | `id` | CHAR(36) | UUID bất biến của resource. |
@@ -1089,7 +1123,10 @@ JSON gốc và manifest; UNIQUE(project_id,dedupe_key).
 
 #### `fa_json_executions`
 
-Một execution cho source + core bytecode + context policy; UNIQUE(project_id,dedupe_key).
+Một execution cho source + core bytecode + context digest/policy; UNIQUE(project_id,dedupe_key).
+Không context dùng UNKNOWN_DEFAULT_NO_AUTHORITY và không dispatch. Context đã lưu,
+được kiểm lại dùng AUTHENTICATED_CANONICAL_TARGET_REVIEW; retry cùng determinants
+trả cùng execution. Context không biến chẩn đoán vật lý UNKNOWN thành confirmed.
 
 | Cột | Kiểu | Ý nghĩa |
 |---|---|---|
@@ -1125,7 +1162,12 @@ Một report cho member ordinal; không gộp repetition/attempt.
 
 #### `fa_json_handoffs`
 
-Một output/status resource cho execution; không mang quyền dispatch optimizer.
+Một output/status resource cho execution. Nhánh không context/thiếu evidence giữ
+BLOCKED hoặc DIAGNOSTIC_ONLY và dispatch_allowed=false. Nhánh review canonical hợp
+lệ chỉ có READY/dispatch_allowed=true khi builder qua mọi eligibility gate; metadata
+giữ context_id/context_digest và content_digest. Handoff không tự chạy optimizer:
+consumer `/handoffs/{id}/campaign?digest=…` kiểm DB integrity/currentness và replay,
+sau đó POST `/optimizations` mới tạo campaign. Review không thay Reviewer Accept.
 
 | Cột | Kiểu | Ý nghĩa |
 |---|---|---|

@@ -63,6 +63,11 @@ class MainFlowMysqlTest {
     @Autowired PasswordEncoder encoder;
     @Autowired BootstrapService bootstrap;
     @Autowired com.vsos.backend.service.simulation.RunService runService;
+    @Autowired com.vsos.backend.repository.common.Db db;
+    @Autowired com.vsos.backend.repository.common.Queries queries;
+    @Autowired com.vsos.backend.service.analysis.AnalysisService analysis;
+    @Autowired com.vsos.backend.repository.analysis.FailureAnalysisStore faStore;
+    @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
     private long projectId;
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private static final String BASE="/api/v1/vehicsim";
@@ -192,6 +197,15 @@ class MainFlowMysqlTest {
                 .containsExactlyInAnyOrderElementsOf(validation);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM regression_test_items WHERE regression_test_id=?",Integer.class,frozenTest)).isEqualTo(validation.size());
         assertThat(jdbc.queryForObject("SELECT verdict FROM regression_tests WHERE id=?",String.class,frozenTest)).isEqualTo("PASSED");
+        // A design label alone cannot turn a false-braking run into an approved nonhazard control.
+        var oldMembers=new ArrayList<Long>(optimization);oldMembers.addAll(validation);
+        var oldControls=oldMembers.stream().filter(run -> Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT sv.stops_at_curb FROM simulation_runs r JOIN scenario_versions sv ON sv.id=r.scenario_version_id WHERE r.id=?",Boolean.class,run))).toList();
+        assertThat(json("POST",BASE+"/analysis/v3/contexts",engineer,Json.obj("dataset_id",selectionId,
+                "dataset_digest",datasetDigest,"confirmed",true,"canonical_targets_only",true,
+                "calibration_not_applicable",true,"reason","Reject false-braking design controls",
+                "nonhazard_run_ids",oldControls),400)).containsEntry("code","V3_NONHAZARD_REVIEW_CONFLICT");
+        var v3 = exerciseV3(engineer, outsider, baseline);
         // A historical OFF failure must not pollute any aggregate, page, family or CSV export.
         long offRun=jdbc.queryForObject("SELECT MIN(id) FROM simulation_runs WHERE aeb_mode='OFF'",Long.class);
         jdbc.update("INSERT INTO failures(simulation_run_id,failure_type,severity,description) VALUES(?,'COLLISION','HIGH','Legacy OFF fixture')",offRun);
@@ -222,6 +236,7 @@ class MainFlowMysqlTest {
         request("GET",BASE+"/analysis/datasets/"+selectionId+"/handoff",engineer,null,400);
         assertThat(json("GET",BASE+"/analysis/datasets/"+selectionId,engineer,null,200)).containsEntry("baseline_current",false);
         request("POST",BASE+"/optimizations",engineer,campaignRequest,400);
+        request("GET",BASE+"/analysis/v3/handoffs/"+v3.get("handoff_id")+"/campaign?digest="+v3.get("handoff_digest"),engineer,null,409);
         var space=Json.obj("TTC_THRESHOLD",List.of(1.5,1.5),"BRAKE_ACTIVATION_DELAY",List.of(.14,.1498),
                 "BRAKE_BUILDUP_RATE",List.of(20,20),"MAX_DECELERATION",List.of(8,8));
         long campaign=id(json("POST",BASE+"/optimizations",engineer,Json.obj("scenario_id",scenario,
@@ -254,5 +269,192 @@ class MainFlowMysqlTest {
         System.out.println("AUDIT_FROZEN_COHORT_OK: exact optimization source runs and 4 validation source runs, distinct-seed same-variant pairs, later baseline repetitions excluded, duplicate select reused, stale/checksum/scope gates retained");
         System.out.println("AUDIT_MOBO_OK: one real kinematic trial, requested narrow bounds and three recorded objectives");
         System.out.println("AUDIT_STARTUP_RECOVERY_OK: interrupted/cancelled parents never redispatch their children; stored metrics retained");
+    }
+
+    /** No fixture targets are inserted: all source documents and candidate metrics here
+     * originate in the real Java simulator used above. This is integration, not CARLA. */
+    private Map<String,Object> exerciseV3(String engineer, String outsider, long baseline) throws Exception {
+        // The older V2 fixture deliberately has a false-braking curb case at 40 km/h.
+        // V3 requires reviewed genuine nonhazard controls, so generate an independent
+        // family and retain the real 70 km/h curb control beside the 40 km/h hazard.
+        long scenario=id(json("POST",BASE+"/families",engineer,Json.obj("name","V3 recorded-target integration",
+                "ego_speeds_kmh",List.of(40,70),"trigger_distances_m",List.of(30),"pedestrian_speeds_mps",List.of(1.5),
+                "stops_at_curb",List.of(false,true),"weathers",List.of("CLEAR","RAIN"),"times_of_day",List.of("DAY"),"run_baseline",false),201),"scenario_id");
+        json("POST",BASE+"/families/"+scenario+"/run",engineer,Json.obj("with_aeb_off",false),202);awaitRuns();
+        var dashboard=json("GET",BASE+"/analysis/runs?scenario_id="+scenario,engineer,null,200);
+        var optimization=new ArrayList<Long>();var validation=new ArrayList<Long>();var revisions=new LinkedHashMap<String,String>();
+        for(Object value:Json.asList(dashboard.get("items"))) {
+            var item=Json.asMap(value);long run=id(item,"run_id");
+            var design=new com.vsos.backend.repository.common.Row(jdbc.queryForMap("SELECT sv.* FROM simulation_runs r JOIN scenario_versions sv ON sv.id=r.scenario_version_id WHERE r.id=?",run));
+            boolean control=design.bool("stops_at_curb");double speed=design.dbl("ego_speed_kmh");
+            if(speed==40&&!control||speed==70&&control) {
+                ("CLEAR".equals(design.str("weather"))?optimization:validation).add(run);
+                revisions.put(Long.toString(run),item.get("revision").toString());
+            }
+        }
+        assertThat(optimization).hasSize(2);assertThat(validation).hasSize(2);
+        long selection=id(json("POST",BASE+"/analysis/selections",engineer,Json.obj("scenario_id",scenario,"baseline_id",baseline,
+                "optimization_run_ids",optimization,"validation_run_ids",validation,"run_revisions",revisions),200),"id");
+        String digest=json("GET",BASE+"/analysis/datasets/"+selection+"/handoff",engineer,null,200).get("dataset_digest").toString();
+        List<Long> all = new ArrayList<>(optimization); all.addAll(validation);
+        List<Long> nonhazard = new ArrayList<>();
+        for (long run : all) {
+            var saved = jdbc.queryForMap("SELECT id,attempt,collision_occurred,is_false_positive,is_false_negative FROM simulation_runs WHERE id=?",run);
+            String producerKey = com.vsos.backend.common.analysis.FailureAnalysisJson.producerResultKey(projectId,run,((Number)saved.get("attempt")).longValue());
+            var stored = jdbc.queryForMap("SELECT id,payload_bytes,payload_sha256 FROM fa_json_sources WHERE project_id=? AND dedupe_key=?",projectId,producerKey);
+            byte[] raw = (byte[]) stored.get("payload_bytes");
+            assertThat(com.vsos.core.failureanalysis.Evidence.sha256(raw)).isEqualTo(stored.get("payload_sha256"));
+            var source = Json.parseMap(new String(raw,StandardCharsets.UTF_8));
+            assertThat(id(Json.asMap(source.get("source")),"run_id")).isEqualTo(run);
+            assertThat(source).containsEntry("simulator","vehicsim-kinematic-1.4");
+            assertThat(request("GET",BASE+"/analysis/v3/sources/"+stored.get("id")+"/download",engineer,null,200).body()).isEqualTo(raw);
+            Boolean collision=jdbc.queryForObject("SELECT collision_occurred FROM simulation_runs WHERE id=?",Boolean.class,run);
+            Boolean falsePositive=jdbc.queryForObject("SELECT is_false_positive FROM simulation_runs WHERE id=?",Boolean.class,run);
+            Boolean falseNegative=jdbc.queryForObject("SELECT is_false_negative FROM simulation_runs WHERE id=?",Boolean.class,run);
+            if(Boolean.FALSE.equals(collision)&&Boolean.FALSE.equals(falsePositive)&&Boolean.FALSE.equals(falseNegative)) {
+                // Review the actual design/control case, rather than declaring every no-collision run nonhazard.
+                Boolean curb=jdbc.queryForObject("SELECT sv.stops_at_curb FROM simulation_runs r JOIN scenario_versions sv ON sv.id=r.scenario_version_id WHERE r.id=?",Boolean.class,run);
+                if(Boolean.TRUE.equals(curb)) nonhazard.add(run);
+            }
+        }
+        assertThat(nonhazard.stream().anyMatch(optimization::contains)).isTrue();
+        assertThat(nonhazard.stream().anyMatch(validation::contains)).isTrue();
+        var space=Json.obj("TTC_THRESHOLD",List.of(1.5,1.5001),"BRAKE_ACTIVATION_DELAY",List.of(.14,.1498),
+                "BRAKE_BUILDUP_RATE",List.of(19.9999,20),"MAX_DECELERATION",List.of(7.9999,8));
+        var review=Json.obj("dataset_id",selection,"dataset_digest",digest,"confirmed",true,
+                "reason","Authenticated isolated review of actual recorded canonical objectives, safe design controls and frozen holdout; no physical safety certification",
+                "canonical_targets_only",true,"calibration_not_applicable",true,"nonhazard_run_ids",nonhazard,"search_space",space);
+        var invalid=new LinkedHashMap<>(review);invalid.put("confirmed",false);
+        request("POST",BASE+"/analysis/v3/contexts",engineer,invalid,400);
+        invalid=new LinkedHashMap<>(review);invalid.put("canonical_targets_only",false);
+        request("POST",BASE+"/analysis/v3/contexts",engineer,invalid,400);
+        invalid=new LinkedHashMap<>(review);invalid.put("calibration_not_applicable",false);
+        request("POST",BASE+"/analysis/v3/contexts",engineer,invalid,400);
+        invalid=new LinkedHashMap<>(review);invalid.put("search_space",Map.of());
+        request("POST",BASE+"/analysis/v3/contexts",engineer,invalid,400);
+        invalid=new LinkedHashMap<>(review);invalid.put("dataset_digest","0".repeat(64));
+        request("POST",BASE+"/analysis/v3/contexts",engineer,invalid,409);
+        var context=json("POST",BASE+"/analysis/v3/contexts",engineer,review,201);
+        String contextId=context.get("context_id").toString();
+        assertThat(json("POST",BASE+"/analysis/v3/contexts",engineer,review,201).get("context_id")).isEqualTo(contextId);
+        long contextRow=jdbc.queryForObject("SELECT id FROM analysis_results WHERE project_id=? AND method='FA_V3_CONTEXT' "
+                +"AND JSON_UNQUOTE(JSON_EXTRACT(config_json,'$.context_id'))=?",Long.class,projectId,contextId);
+        request("GET",BASE+"/analysis/datasets/"+contextRow,engineer,null,404);
+        request("GET",BASE+"/analysis/v3/contexts/"+contextId,outsider,null,404);
+        assertThat(json("GET",BASE+"/analysis/v3/contexts/"+contextId,engineer,null,200).get("context_digest"))
+                .isEqualTo(context.get("context_digest"));
+        request("POST",BASE+"/analysis/v3/sources/"+context.get("source_id")+"/executions?context_id="+UUID.randomUUID(),engineer,null,404);
+        var execution=json("POST",BASE+"/analysis/v3/contexts/"+contextId+"/executions",engineer,null,201);
+        var retry=json("POST",BASE+"/analysis/v3/contexts/"+contextId+"/executions",engineer,null,201);
+        assertThat(retry.get("id")).isEqualTo(execution.get("id"));
+        assertThat(retry.get("handoff_id")).isEqualTo(execution.get("handoff_id"));
+        String handoffId=execution.get("handoff_id").toString();
+        var handoff=json("GET",BASE+"/analysis/v3/handoffs/"+handoffId,engineer,null,200);
+        assertThat(handoff).containsEntry("status","READY").containsEntry("dispatch_allowed",true);
+        String handoffDigest=handoff.get("content_digest").toString();
+        var document=json("GET",BASE+"/analysis/v3/handoffs/"+handoffId+"/download",engineer,null,200);
+        assertThat(document.get("schema_version")).isEqualTo("vehicsim.failure-analysis-mobo-handoff/v1");
+        assertThat(Json.asMap(document.get("baseline_objectives"))).containsEntry("availability","KNOWN");
+        assertThat(Json.asMap(document.get("runtime_consumer"))).containsEntry("context_id",contextId)
+                .containsEntry("campaign_contract","vehicsim.fa-v3-campaign/v1");
+        var unsupported=new LinkedHashMap<>(document);unsupported.put("schema_version","unsupported-contract");
+        assertThat(com.vsos.backend.service.analysis.FailureAnalysisHandoffService.readiness(unsupported))
+                .contains("V3_HANDOFF_CONTRACT_UNSUPPORTED");
+        var projection=json("GET",BASE+"/analysis/v3/handoffs/"+handoffId+"/campaign?digest="+handoffDigest,engineer,null,200);
+        assertThat(projection.get("schema")).isEqualTo("vehicsim.fa-v3-campaign/v1");
+        assertThat(Json.asList(projection.get("optimization_run_ids")).stream().map(x->((Number)x).longValue()).toList())
+                .containsExactlyInAnyOrderElementsOf(optimization);
+        assertThat(Json.asList(projection.get("validation_run_ids")).stream().map(x->((Number)x).longValue()).toList())
+                .containsExactlyInAnyOrderElementsOf(validation);
+        var freshHandoffs=new com.vsos.backend.service.analysis.FailureAnalysisHandoffService(db,queries,analysis,faStore,transactions);
+        assertThat(freshHandoffs.context(projectId,contextId).get("context_digest")).isEqualTo(context.get("context_digest"));
+        var loadedProjection=freshHandoffs.campaign(projectId,handoffId,handoffDigest);
+        assertThat(loadedProjection.get("dataset_digest")).isEqualTo(projection.get("dataset_digest"));
+        assertThat(com.vsos.backend.service.analysis.AnalysisService.datasetDigest(loadedProjection))
+                .isEqualTo(com.vsos.backend.service.analysis.AnalysisService.datasetDigest(projection));
+        var beans=new org.springframework.beans.factory.support.StaticListableBeanFactory(Map.of("handoffs",freshHandoffs));
+        var freshAnalysis=new com.vsos.backend.service.analysis.FailureAnalysisService(faStore,
+                beans.getBeanProvider(com.vsos.backend.service.analysis.FailureAnalysisHandoffService.class));
+        var loadedExecution=freshAnalysis.executeContext(projectId,id(Json.asMap(context.get("review")),"reviewer_id"),contextId);
+        assertThat(loadedExecution.get("id")).isEqualTo(execution.get("id"));
+        assertThat(loadedExecution.get("handoff_id")).isEqualTo(handoffId);
+        System.out.println("AUDIT_V3_RELOAD_OK: fresh service instances reload the same approved DB context, source, handoff and projection; execution retry keeps IDs. Not a full process restart");
+        request("GET",BASE+"/analysis/v3/handoffs/"+handoffId+"/campaign?digest="+"0".repeat(64),engineer,null,409);
+        request("GET",BASE+"/analysis/v3/handoffs/"+handoffId+"/campaign?digest="+handoffDigest,outsider,null,404);
+        Object catalogMax=jdbc.queryForMap("SELECT max_value FROM aeb_parameters WHERE code='TTC_THRESHOLD'").get("max_value");
+        jdbc.update("UPDATE aeb_parameters SET max_value=max_value+0.1 WHERE code='TTC_THRESHOLD'");
+        try { assertThat(json("GET",BASE+"/analysis/v3/contexts/"+contextId,engineer,null,409))
+                .containsEntry("code","V3_CATALOG_REVISION_CHANGED"); }
+        finally { jdbc.update("UPDATE aeb_parameters SET max_value=? WHERE code='TTC_THRESHOLD'",catalogMax); }
+        // Alter/restore only this disposable DB. The persisted review must detect stale source revision/bytes.
+        long first=optimization.get(0);
+        jdbc.update("UPDATE simulation_runs SET random_seed=random_seed+1 WHERE id=?",first);
+        try { request("GET",BASE+"/analysis/v3/contexts/"+contextId,engineer,null,409); }
+        finally { jdbc.update("UPDATE simulation_runs SET random_seed=random_seed-1 WHERE id=?",first); }
+        jdbc.update("UPDATE simulation_runs SET attempt=attempt+1 WHERE id=?",first);
+        try { request("GET",BASE+"/analysis/v3/contexts/"+contextId,engineer,null,409); }
+        finally { jdbc.update("UPDATE simulation_runs SET attempt=attempt-1 WHERE id=?",first); }
+        String frozenConfig=jdbc.queryForObject("SELECT run_config_json FROM simulation_runs WHERE id=?",String.class,first);
+        jdbc.update("UPDATE simulation_runs SET run_config_json=JSON_SET(run_config_json,'$.ego_speed_kmh',123) WHERE id=?",first);
+        try { request("GET",BASE+"/analysis/v3/contexts/"+contextId,engineer,null,409); }
+        finally { jdbc.update("UPDATE simulation_runs SET run_config_json=? WHERE id=?",frozenConfig,first); }
+        Double frozenStep=jdbc.queryForObject("SELECT fixed_delta_seconds FROM simulation_runs WHERE id=?",Double.class,first);
+        jdbc.update("UPDATE simulation_runs SET fixed_delta_seconds=0.02 WHERE id=?",first);
+        try { request("GET",BASE+"/analysis/v3/contexts/"+contextId,engineer,null,409); }
+        finally { jdbc.update("UPDATE simulation_runs SET fixed_delta_seconds=? WHERE id=?",frozenStep,first); }
+        long variant=jdbc.queryForObject("SELECT scenario_version_id FROM simulation_runs WHERE id=?",Long.class,first);
+        Object friction=jdbc.queryForMap("SELECT road_friction FROM scenario_versions WHERE id=?",variant).get("road_friction");
+        jdbc.update("UPDATE scenario_versions SET road_friction=? WHERE id=?",friction==null?.61:((Number)friction).doubleValue()==.61?.62:.61,variant);
+        try {
+            assertThat(json("GET",BASE+"/analysis/v3/contexts/"+contextId,engineer,null,409))
+                    .containsEntry("code","V3_SOURCE_FRICTION_CHANGED");
+            assertThat(json("POST",BASE+"/optimizations",engineer,Json.obj("scenario_id",scenario,"handoff_id",handoffId,
+                    "handoff_digest",handoffDigest,"simulator_type","KINEMATIC"),409))
+                    .containsEntry("code","V3_SOURCE_FRICTION_CHANGED").containsEntry("retryable",false);
+        } finally { jdbc.update("UPDATE scenario_versions SET road_friction=? WHERE id=?",friction,variant); }
+        var stored=jdbc.queryForMap("SELECT id,payload_bytes FROM fa_json_sources WHERE project_id=? AND dedupe_key=?",projectId,
+                com.vsos.backend.common.analysis.FailureAnalysisJson.producerResultKey(projectId,first,
+                        jdbc.queryForObject("SELECT attempt FROM simulation_runs WHERE id=?",Long.class,first)));
+        byte[] original=(byte[])stored.get("payload_bytes");
+        byte[] corrupted=Arrays.copyOf(original,original.length+1);corrupted[corrupted.length-1]=' ';
+        jdbc.update("UPDATE fa_json_sources SET payload_bytes=? WHERE id=?",corrupted,stored.get("id"));
+        try { request("GET",BASE+"/analysis/v3/contexts/"+contextId,engineer,null,409); }
+        finally { jdbc.update("UPDATE fa_json_sources SET payload_bytes=? WHERE id=?",original,stored.get("id")); }
+        var campaignRequest=Json.obj("scenario_id",scenario,"base_aeb_version_id",baseline,"max_trials",2,"n_initial_points",1,
+                "simulator_type","KINEMATIC","handoff_id",handoffId,"handoff_digest",handoffDigest);
+        long campaign=id(json("POST",BASE+"/optimizations",engineer,campaignRequest,201),"id");
+        assertThat(jdbc.queryForObject("SELECT status FROM optimization_runs WHERE id=?",String.class,campaign)).isEqualTo("COMPLETED");
+        var config=Json.parseMap(jdbc.queryForObject("SELECT objective_config_json FROM optimization_runs WHERE id=?",String.class,campaign));
+        assertThat(config).containsKey("handoff_ref").doesNotContainKey("dataset_ref");
+        assertThat(Json.asMap(config.get("handoff_ref"))).containsEntry("handoff_id",handoffId).containsEntry("handoff_digest",handoffDigest);
+        assertThat(jdbc.queryForList("SELECT sampling_source FROM optimization_trials WHERE optimization_run_id=? ORDER BY trial_number",String.class,campaign))
+                .containsExactly("INITIAL_DESIGN","ACQUISITION");
+        assertThat(jdbc.queryForObject("SELECT acquisition_value FROM optimization_trials WHERE optimization_run_id=? AND trial_number=2",Double.class,campaign))
+                .isNotNull().isFinite().isGreaterThanOrEqualTo(0);
+        var trials=jdbc.queryForList("SELECT id FROM optimization_trials WHERE optimization_run_id=? ORDER BY trial_number",Long.class,campaign);
+        assertThat(trials).hasSize(2);
+        for(long trial:trials) {
+            var sources=jdbc.queryForList("SELECT baseline_run_id FROM simulation_runs WHERE optimization_trial_id=?",Long.class,trial);
+            assertThat(sources).containsExactlyInAnyOrderElementsOf(optimization).doesNotContainAnyElementsOf(validation);
+            var samples=jdbc.queryForList("SELECT * FROM simulation_runs WHERE optimization_trial_id=? ORDER BY id",trial)
+                    .stream().map(com.vsos.backend.repository.common.Row::new).map(com.vsos.backend.common.RunEvidence::sample).toList();
+            var aggregate=com.vsos.core.evaluation.AnalysisMetrics.aggregate(samples);
+            for(String key:List.of("rms_jerk_mps3","impact_speed_mps","stopping_distance_m")) {
+                Double actual=jdbc.queryForObject("SELECT "+key+" FROM optimization_trials WHERE id=?",Double.class,trial);
+                assertThat(actual).isCloseTo(((com.vsos.core.evaluation.AnalysisMetrics.Objective)aggregate.get(key)).value(),within(1e-10));
+            }
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM simulation_runs c JOIN simulation_runs b ON b.id=c.baseline_run_id "
+                +"JOIN optimization_trials t ON t.id=c.optimization_trial_id WHERE t.optimization_run_id=? "
+                +"AND (c.random_seed<>b.random_seed OR c.scenario_version_id<>b.scenario_version_id OR c.simulator_version<>b.simulator_version)",Integer.class,campaign)).isZero();
+        long best=jdbc.queryForObject("SELECT id FROM optimization_trials WHERE optimization_run_id=? AND is_pareto_optimal=1 AND constraint_violated=0 ORDER BY trial_number LIMIT 1",Long.class,campaign);
+        var verification=json("POST",BASE+"/optimizations/"+campaign+"/select/"+best,engineer,null,200);
+        long test=id(verification,"regression_test_id");awaitRuns();
+        assertThat(jdbc.queryForList("SELECT baseline_run_id FROM simulation_runs WHERE regression_test_id=?",Long.class,test))
+                .containsExactlyInAnyOrderElementsOf(validation).doesNotContainAnyElementsOf(optimization);
+        assertThat(jdbc.queryForObject("SELECT verdict FROM regression_tests WHERE id=?",String.class,test)).isEqualTo("PASSED");
+        assertThat(id(json("POST",BASE+"/optimizations/"+campaign+"/select/"+best,engineer,null,200),"regression_test_id")).isEqualTo(test);
+        System.out.println("AUDIT_V3_MAIN_FLOW_OK: producer DB bytes -> authenticated V3 context/policy/domain -> persisted V3 handoff -> 2 actual Java trials -> GP ACQUISITION -> frozen holdout regression; no V2 fallback and NOT CARLA");
+        return Json.obj("handoff_id",handoffId,"handoff_digest",handoffDigest,"context_id",contextId,"campaign_id",campaign);
     }
 }

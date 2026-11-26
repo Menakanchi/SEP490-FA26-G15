@@ -34,7 +34,7 @@ class RunStartupRecoveryTest {
         var properties = mock(VehicSimProperties.class);
         when(properties.dataRoot()).thenReturn(directory.toString());
         runs = new RunService(db, mock(Queries.class), properties, executor, mock(ApplicationEventPublisher.class),
-                new TransactionTemplate(mock(PlatformTransactionManager.class)), mock(FamilyService.class));
+                new TransactionTemplate(mock(PlatformTransactionManager.class)), mock(FamilyService.class), mock(com.vsos.backend.service.analysis.FailureAnalysisService.class));
     }
 
     @Test
