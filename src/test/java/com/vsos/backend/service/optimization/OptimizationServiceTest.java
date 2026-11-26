@@ -79,6 +79,15 @@ class OptimizationServiceTest {
     }
 
     @Test
+    void runDetailsPreserveSimulatorIdentity() {
+        when(db.scalar(contains("SELECT COUNT(*) FROM optimization_trials"), anyLong())).thenReturn(0L);
+        for (String profile : List.of("carla-0.9.16-xosc16", "vehicsim-kinematic-1.4")) {
+            when(db.first(contains("SELECT * FROM optimization_runs WHERE id = ? AND project_id = ?"), eq(7L), eq(1L)))
+                    .thenReturn(optimizationRun(profile));
+            assertThat(service.getRun(1L,7L)).containsEntry("simulator_version",profile);
+        }
+    }
+    @Test
     void createAndStartRun_throwsNotFoundWhenScenarioMissing() {
         when(db.first(contains("SELECT * FROM projects"), eq(1L)))
                 .thenReturn(new Row(Map.of("id", 1L, "name", "Project Alpha")));

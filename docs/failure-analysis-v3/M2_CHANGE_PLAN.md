@@ -1,5 +1,19 @@
 # M2 change plan — proposed integration, NOT IMPLEMENTED
 
+> **Cập nhật 26/11/2026 — đối chiếu code sau merge:** Các mô tả source trong
+> bảng dưới là ảnh chụp lịch sử, không còn phản ánh toàn bộ `OptimizationService`.
+> Luồng **dataset FA V2** hiện đã nhận `dataset_id` và `dataset_digest`, kiểm tra
+> lại snapshot và danh tính run, chạy các seed của tập tối ưu, chuyển tập xác minh
+> sang regression, đồng thời dùng và kiểm tra khoảng tìm kiếm đã lưu. Xem
+> [hợp đồng chỉ số](../vehicsim/analysis-metrics-contract.md) và code hiện hành
+> để biết điều kiện chi tiết; không coi test mock là nghiệm thu runtime.
+>
+> Đây vẫn **chưa phải consumer handoff chẩn đoán FA V3**: nguồn ngữ cảnh được
+> duyệt, chính sách chất lượng và miền tham số có thẩm quyền cùng adapter V3 còn
+> thiếu. Không suy ra các phê duyệt này từ dataset V2; `dispatch_allowed=false`
+> theo [ADR-067](../adr/ADR-067-api-failure-analysis-v3-va-4-bang-fa-json.md)
+> vẫn phải được tôn trọng.
+
 M1D chỉ kiểm chứng offline. Tài liệu này không cấp quyền sửa source/DB/API, chạy
 campaign hoặc bắt đầu M2. Consumer tại source profile `baf0892d-consumer-contract/1`
 vẫn NOT_DIRECTLY_CONSUMABLE. Không thay GP/qEHVI/Pareto, AEB/controller, simulator,

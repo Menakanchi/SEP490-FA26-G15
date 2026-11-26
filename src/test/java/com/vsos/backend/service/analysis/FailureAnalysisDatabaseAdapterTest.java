@@ -64,6 +64,73 @@ class FailureAnalysisDatabaseAdapterTest {
         when(repo.members(4,1033)).thenReturn(Collections.nCopies(17,row));
         assertThatThrownBy(()->adapter.inspect(4,1033,true)).hasMessage("DB_COLLECTION_MEMBER_LIMIT_NO_TRUNCATION");
     }
+    @Test void databaseCollectionOverOneMiBPreservesEveryOriginalAndUploadLimit()throws Exception {
+        var members = new ArrayList<Row>();
+        var documents = new ArrayList<byte[]>();
+        for (long runId = 2499; runId < 2503; runId++) {
+            var doc = FailureAnalysisJson.object(raw);
+            ((Map<String,Object>)doc.get("source")).put("run_id",runId);
+            ((Map<String,Object>)at(doc,"/dataset/identity")).put("run_id",runId);
+            byte[] bytes = FailureAnalysisJson.bytes(doc);
+            Path file = runs.runDir(runId).resolve("result.json");
+            Files.createDirectories(file.getParent());
+            Files.write(file,bytes);
+            members.add(identity(bytes));
+            documents.add(bytes);
+        }
+        when(repo.members(4,1033)).thenReturn(members);
+        var inspection = adapter.inspect(4,1033,true);
+        assertThat(inspection.get("can_analyze")).isEqualTo(true);
+        var execution = adapter.analyze(4,7,1033,true,inspection.get("source_sha256").toString());
+        assertThat(execution).containsEntry("expected",4L).containsEntry("analyzed",4L);
+        byte[] saved = service.download(Kind.SOURCE,4,execution.get("source_id").toString());
+        assertThat(saved.length).isGreaterThan(FailureAnalysisJson.SOURCE_BYTES)
+                .isLessThanOrEqualTo(FailureAnalysisJson.DB_COLLECTION_BYTES);
+        String text = new String(saved,java.nio.charset.StandardCharsets.UTF_8);
+        for (byte[] bytes : documents) assertThat(text).contains(new String(bytes,java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(service.metadata(Kind.HANDOFF,4,execution.get("handoff_id").toString())).containsEntry("dispatch_allowed",false);
+        assertThatThrownBy(()->service.ingest(4,7,new java.io.ByteArrayInputStream(saved),saved.length,null))
+                .hasMessage("SOURCE_BYTES_EXCEEDED");
+    }
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="fa.real.collection",matches="true")
+    void realCarlaCollectionCanBeAnalyzedWithoutDroppingMembers()throws Exception {
+        String[] paths=System.getProperty("fa.real.paths","").split(",");
+        assertThat(paths).hasSize(4);
+        var members=new ArrayList<Row>();
+        var originals=new ArrayList<byte[]>();
+        long project=0,variant=0,scenario=0;
+        for(String path:paths) {
+            byte[] bytes=Files.readAllBytes(Path.of(path));
+            var doc=FailureAnalysisJson.object(bytes);
+            long runId=((Number)at(doc,"/dataset/identity/run_id")).longValue();
+            long currentProject=((Number)at(doc,"/dataset/identity/project_id")).longValue();
+            long currentVariant=((Number)at(doc,"/dataset/identity/scenario_version_id")).longValue();
+            long currentScenario=((Number)at(doc,"/dataset/identity/scenario_id")).longValue();
+            if(members.isEmpty()) {project=currentProject;variant=currentVariant;scenario=currentScenario;}
+            assertThat(currentProject).isEqualTo(project);
+            assertThat(currentVariant).isEqualTo(variant);
+            assertThat(currentScenario).isEqualTo(scenario);
+            Path file=runs.runDir(runId).resolve("result.json");
+            Files.createDirectories(file.getParent());Files.write(file,bytes);
+            originals.add(bytes);members.add(identity(bytes));
+        }
+        when(repo.variant(project,variant)).thenReturn(new Row(Map.of("id",variant,"scenario_id",scenario,"version_no",1L)));
+        when(repo.members(project,variant)).thenReturn(members);
+        var inspection=adapter.inspect(project,variant,true);
+        assertThat(inspection.get("can_analyze")).isEqualTo(true);
+        var execution=adapter.analyze(project,7,variant,true,inspection.get("source_sha256").toString());
+        assertThat(execution).containsEntry("expected",4L).containsEntry("analyzed",4L);
+        byte[] saved=service.download(Kind.SOURCE,project,execution.get("source_id").toString());
+        assertThat(saved.length).isGreaterThan(FailureAnalysisJson.SOURCE_BYTES).isLessThanOrEqualTo(FailureAnalysisJson.DB_COLLECTION_BYTES);
+        String text=new String(saved,java.nio.charset.StandardCharsets.UTF_8);
+        for(byte[] bytes:originals) assertThat(text).contains(new String(bytes,java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(service.metadata(Kind.HANDOFF,project,execution.get("handoff_id").toString())).containsEntry("dispatch_allowed",false);
+    }
+    @Test void databaseCollectionOverTwoMiBIsRejectedWithoutTruncation() {
+        when(repo.members(4,1033)).thenReturn(Collections.nCopies(8,row));
+        assertThatThrownBy(()->adapter.inspect(4,1033,true)).hasMessage("DB_COLLECTION_BYTE_LIMIT_NO_TRUNCATION");
+    }
     @Test void collectionWrappingKeepsRawDocumentLexicalBytesAndDigest()throws Exception {
         byte[] original=("\n  "+new String(raw,java.nio.charset.StandardCharsets.UTF_8)+"\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);Files.write(runs.runDir(2499).resolve("result.json"),original);
         var e=adapter.analyze(4,7,1033,true,null);assertThat(e.get("analyzed")).isEqualTo(1L);

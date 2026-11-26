@@ -247,14 +247,14 @@ còn giữ acquisition provenance. Không có API delete; xóa baseline/run khô
 xóa bản phân tích đã capture. Partial cohort có thể chỉ có BLOCKED handoff metadata;
 không tạo payload/digest giả, download chưa có trả409.
 
-Nguồn≤1MiB, file gộp≤16members; report/execution/handoff≤8MiB, metadata≤256KiB,
+Upload và từng result≤1MiB; collection dựng từ artifact DB≤2MiB, file gộp≤16members; report/execution/handoff≤8MiB, metadata≤256KiB,
 cả lượt≤32MiB. Tối đa2compute và2DB readers mỗi tiến trình, chưa phân quota theo
 người dùng/cluster. Cohort quá16 bị reject cả bộ, không truncate.
 
 DB mới theo [01_schema.sql](../../database/mysql/01_schema.sql). DB cũ: backup và
 review [migration019](../../database/mysql/migrations/019_2026-11-24_lan-lap-va-lan-thu-cua-run.sql)
 rồi [020](../../database/mysql/migrations/020_2026-11-25_failure_analysis_json.sql)
-theo CLAUDE/ADR-067; dọn docs không áp migration. First analysis cần original
+và [024](../../database/mysql/migrations/024_2026-11-26_fa-db-collection-2mib.sql) theo ADR-068. First analysis cần original
 artifact volume ngoài DB; source/report đã capture lưu riêng trong FA tables.
 
 ## Module2 và Module4
