@@ -273,8 +273,9 @@ export function CarlaRunnerPanel({ tab, onViewRuns }: { tab: "run" | "history" |
         </div>
         <ErrorNote message={sensorError} />
       {!data && !sensorError && <p role="status" className="text-[13px] text-vehicsim-muted">Đang đọc dữ liệu cảm biến…</p>}
+      {selected !== null && (data?.has_video || (!data && sensorError)) &&
+        <CarlaRunVideo key={selected} runId={selected} onError={setSensorError} />}
       {data && data.run_id === selected && <>
-        {data.has_video && <CarlaRunVideo key={data.run_id} runId={data.run_id} onError={setSensorError} />}
         {image && <Image src={image} alt={`Ảnh camera CARLA ${runCode(data.run_id)}`} width={1280} height={720} unoptimized className="w-full rounded-xl" />}
         {data.camera_frames.length > 1 && <label className="text-[12px] text-vehicsim-muted">Ảnh {frame + 1} / {data.camera_frames.length}
           <input aria-label="Khung camera CARLA" type="range" min={0} max={data.camera_frames.length - 1} value={frame}

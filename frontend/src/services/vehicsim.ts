@@ -185,6 +185,7 @@ export const vehicsimApi = {
   carlaImage: (runId: number, frame: string) => apiBlob(`/vehicsim/runs/${runId}/carla-files/${frame}`),
   /** Video mp4 xem lại của run CARLA (404 khi run không có video). */
   carlaVideo: (runId: number) => apiBlob(`/vehicsim/runs/${runId}/carla-video`),
+  carlaVideoUrl: (runId: number, download = false) => apiRequest<{ url: string | null }>(`/vehicsim/runs/${runId}/carla-video-url${download ? "?download=true" : ""}`),
   downloadCarlaVideo: (runId: number) => apiDownload(`/vehicsim/runs/${runId}/carla-video`, `vehicsim-run-${runId}.mp4`),
   downloadCarlaFile: (runId: number, name: "frames.csv" | "collisions.json" | "ground_truth.csv") =>
     apiDownload(`/vehicsim/runs/${runId}/carla-files/${name}`, `${runId}-${name}`),

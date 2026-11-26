@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,9 +51,12 @@ public class RunCollectionService {
         if (variant == null) {
             throw new NotFoundException("scenario variant");
         }
-        List<Row> rows = db.list("SELECT * FROM simulation_runs WHERE project_id = ? AND scenario_version_id = ? AND simulator_type = 'CARLA' "
-                + "AND status = 'COMPLETED' ORDER BY aeb_version_id, carla_vehicle_model_id, simulator_version, random_seed, aeb_mode, repetition, id",
-                projectId, variantId);
+        // Sort compact IDs first; sorting full rows may exhaust MySQL's sort buffer on telemetry JSON.
+        List<Row> rows = db.list("SELECT r.*, ranked.collection_order FROM simulation_runs r JOIN ("
+                + "SELECT id, ROW_NUMBER() OVER (ORDER BY aeb_version_id, carla_vehicle_model_id, simulator_version, random_seed, aeb_mode, repetition, id) "
+                + "AS collection_order FROM simulation_runs WHERE project_id = ? AND scenario_version_id = ? AND simulator_type = 'CARLA' "
+                + "AND status = 'COMPLETED') ranked ON ranked.id = r.id", projectId, variantId).stream()
+                .sorted(Comparator.comparingLong(r -> r.lng("collection_order"))).toList();
         if (rows.isEmpty()) {
             throw new InvalidRequestException("Biến thể này chưa có run CARLA hoàn tất để xuất");
         }

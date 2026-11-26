@@ -223,7 +223,24 @@ class OptimizationServiceTest {
 
         // Baseline động học hoặc -xosc9 cũ của cùng họ không được dùng làm chuẩn cho trial CARLA -xosc10.
         verify(db).list(org.mockito.ArgumentMatchers.argThat((String sql) -> sql.contains("simulator_version = ?")
-                && sql.contains("carla_vehicle_model_id = ?") && sql.contains("ORDER BY id")), eq(1L), eq(50L), eq(10L), eq("carla-0.9.16-xosc10"), eq(3L));
+                && sql.contains("carla_vehicle_model_id = ?") && !sql.contains("ORDER BY")), eq(1L), eq(50L), eq(10L), eq("carla-0.9.16-xosc10"), eq(3L));
+    }
+
+    @Test
+    void baselineLookupUsesNewestRunPerSelectedVariantEvenWhenDatabaseReturnsRowsOutOfOrder() {
+        Row newest = new Row(Map.of("id", 72L, "scenario_version_id", 5L));
+        Row oldest = new Row(Map.of("id", 70L, "scenario_version_id", 5L));
+        Row otherVariant = new Row(Map.of("id", 73L, "scenario_version_id", 6L));
+        when(db.list(contains("FROM simulation_runs WHERE project_id = ? AND scenario_id = ?"),
+                eq(1L), eq(50L), eq(10L), eq("carla-0.9.16-xosc10"), eq(3L)))
+                .thenReturn(List.of(newest, otherVariant, oldest));
+
+        Map<Long, Row> selected = org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "getOrCreateBaselineRuns",
+                1L, 50L, List.of(new Row(Map.of("id", 5L))), 3L, 10L, 9L, "carla-0.9.16-xosc10");
+
+        assertThat(selected).containsOnlyKeys(5L);
+        assertThat(selected.get(5L).lng("id")).isEqualTo(72L);
+        verify(runService, never()).createRuns(anyLong(), anyLong(), any(), anyLong(), anyLong(), anyLong(), anyString(), any(), any(), any());
     }
 
     @Test

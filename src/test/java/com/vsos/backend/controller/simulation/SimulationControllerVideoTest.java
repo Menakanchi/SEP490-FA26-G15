@@ -64,4 +64,14 @@ class SimulationControllerVideoTest {
         assertThatThrownBy(() -> mvc.perform(get("/api/v1/vehicsim/runs/7/carla-video")))
                 .hasCauseInstanceOf(Vs.NotFoundException.class);
     }
+
+    @Test
+    void signedUrlResponseIsNotCacheableAndCarriesCurrentProject() throws Exception {
+        RunService runs = mock(RunService.class);
+        when(runs.carlaVideoUrl(1L, 42L, false)).thenReturn("https://example.test/video?signature=temporary");
+        mvc(runs).perform(get("/api/v1/vehicsim/runs/42/carla-video-url"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(content().json("{\"url\":\"https://example.test/video?signature=temporary\"}"));
+    }
 }
