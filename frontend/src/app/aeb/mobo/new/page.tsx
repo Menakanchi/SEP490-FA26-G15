@@ -9,17 +9,28 @@ import { ErrorNote, PillButton, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { CarlaStatus } from "@/types/vehicsim";
 import { VehicSimSelect } from "@/components/VehicSimSelect";
+import { readSavedSelection, type SavedSelection } from "@/components/analysis/analysisSnapshotData";
+import { vi } from "@/components/vehicsimI18n";
 
 export default function AebMoboNewPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { ctx, canWrite } = useVehicSimContext();
+  const rawDatasetId = searchParams.get("dataset_id");
+  const datasetId = rawDatasetId && /^\d+$/.test(rawDatasetId) && Number.isSafeInteger(Number(rawDatasetId)) && Number(rawDatasetId) > 0 ? Number(rawDatasetId) : null;
+  const datasetLinked = rawDatasetId !== null;
+  const [datasetRevision, setDatasetRevision] = useState(0);
+  const datasetKey = `${ctx?.project.id}:${ctx?.system.baseline?.id}:${rawDatasetId}:${datasetRevision}`;
+  const [datasetResult, setDatasetResult] = useState<{ key: string; data: SavedSelection | null; error: string | null } | null>(null);
+  const dataset = datasetResult?.key === datasetKey ? datasetResult.data : null;
+  const datasetError = datasetLinked && !datasetId ? "Mã tập phân tích không hợp lệ. Mở lại tập đã chốt từ Phân tích lỗi."
+    : datasetResult?.key === datasetKey ? datasetResult.error : null;
 
   const scenarioIdParam = Number(searchParams.get("scenario_id") || searchParams.get("family"));
   const initialScenarioId = Number.isSafeInteger(scenarioIdParam) && scenarioIdParam > 0 ? scenarioIdParam : undefined;
 
   const [selectedScenarioId, setSelectedScenarioId] = useState<number | "">(initialScenarioId ?? "");
-  const scenarioId =
+  const scenarioId = datasetLinked ? dataset?.scenario.id ?? "" :
     selectedScenarioId !== ""
       ? selectedScenarioId
       : initialScenarioId && ctx?.families?.some((f) => f.id === initialScenarioId)
@@ -29,7 +40,8 @@ export default function AebMoboNewPage() {
   const [name, setName] = useState("");
   const [maxTrials, setMaxTrials] = useState(10);
   const [nInitialPoints, setNInitialPoints] = useState(3);
-  const [simulatorType, setSimulatorType] = useState<"KINEMATIC" | "CARLA">("KINEMATIC");
+  const [selectedSimulator, setSimulatorType] = useState<"KINEMATIC" | "CARLA">("KINEMATIC");
+  const simulatorType = dataset ? dataset.reference.simulator.startsWith("carla-") ? "CARLA" : "KINEMATIC" : selectedSimulator;
   const [carlaStatus, setCarlaStatus] = useState<CarlaStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const submissionLock = useRef(false);
@@ -39,9 +51,29 @@ export default function AebMoboNewPage() {
     vehicsimApi.carlaStatus().then(setCarlaStatus).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!datasetId || !ctx) return;
+    let active = true;
+    vehicsimApi.analysisHandoff(datasetId).then(value => {
+      const snapshot = readSavedSelection(value, datasetId);
+      if (snapshot.baseline_current !== true || snapshot.handoff_ready !== true
+          || snapshot.baseline.id !== ctx.system.baseline?.id
+          || typeof snapshot.dataset_digest !== "string" || !/^[a-f0-9]{64}$/.test(snapshot.dataset_digest)
+          || typeof snapshot.reference.simulator !== "string"
+          || !(snapshot.reference.simulator.startsWith("carla-") || snapshot.reference.simulator.startsWith("vehicsim-kinematic-")))
+        throw new Error("Dataset chưa đủ điều kiện bàn giao hoặc baseline đã thay đổi. Quay lại Phân tích lỗi để kiểm tra nguồn.");
+      if (active) setDatasetResult({ key: datasetKey, data: snapshot, error: null });
+    }).catch(err => { if (active) setDatasetResult({ key: datasetKey, data: null, error: err instanceof Error ? vi(err.message) : "Không kiểm tra được dataset đã chốt." }); });
+    return () => { active = false; };
+  }, [datasetId, datasetKey, ctx]);
+
   const handleStartOptimization = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canWrite || submissionLock.current) return;
+    if (datasetLinked && !dataset) {
+      setError("Cần kiểm tra thành công dataset đã chốt trước khi tạo đợt tối ưu.");
+      return;
+    }
     if (!scenarioId || !ctx?.families.some(family => family.id === scenarioId)) {
       setError("Vui lòng chọn kịch bản kiểm thử");
       return;
@@ -61,10 +93,11 @@ export default function AebMoboNewPage() {
         max_trials: Number(maxTrials),
         n_initial_points: Number(nInitialPoints),
         simulator_type: simulatorType,
+        ...(dataset ? { dataset_id: dataset.id, dataset_digest: dataset.dataset_digest, base_aeb_version_id: dataset.baseline.id } : {}),
       });
       router.push(`/aeb/mobo?run_id=${res.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Khởi tạo đợt tối ưu thất bại");
+      setError(err instanceof Error ? vi(err.message) : "Khởi tạo đợt tối ưu thất bại");
       setSubmitting(false);
       submissionLock.current = false;
     }
@@ -88,6 +121,12 @@ export default function AebMoboNewPage() {
       }
     >
       <ErrorNote message={error} />
+      {datasetLinked && <section className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5" aria-label="Dataset Failure Analysis">
+        {dataset ? <><h2 className="font-bold">Tập đã chốt #{dataset.id} · {dataset.scenario.name}</h2><p className="mt-2 text-[13px] text-vehicsim-muted">Baseline {dataset.baseline.label} · xe #{dataset.reference.vehicle_id} · {dataset.reference.simulator} · dt {dataset.reference.dt} s</p><p className="mt-2 text-[13px]">{dataset.optimization_run_ids.length} run tối ưu · {dataset.validation_run_ids.length} run xác minh độc lập. Đợt chạy giữ đúng run, seed và checksum của tập đã chốt.</p></>
+          : datasetError ? <><ErrorNote message={datasetError} />{datasetId && <PillButton onClick={() => setDatasetRevision(value => value + 1)}>Kiểm tra lại dataset</PillButton>}</>
+          : <p role="status">Đang kiểm tra nguồn và checksum dataset…</p>}
+        <div className="mt-3"><PillButton href={`/analysis/failures?view=dataset${datasetId ? `&dataset_id=${datasetId}` : ""}`}>Về tập phân tích</PillButton></div>
+      </section>}
 
       <section className="flex flex-col gap-6 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-6 shadow-sm">
         <div className="border-b border-solid border-vehicsim-line pb-4">
@@ -104,6 +143,7 @@ export default function AebMoboNewPage() {
                 id="select-scenario"
                 aria-label="Kịch bản kiểm thử"
                 value={scenarioId}
+                disabled={datasetLinked}
                 onChange={(val) => setSelectedScenarioId(val ? Number(val) : "")}
                 options={(ctx?.families ?? []).map((f) => ({
                   value: f.id,
@@ -158,6 +198,7 @@ export default function AebMoboNewPage() {
               <button
                 type="button"
                 onClick={() => setSimulatorType("KINEMATIC")}
+                disabled={datasetLinked}
                 className={cx(
                   "flex h-[44px] items-center justify-between rounded-xl border px-4 text-left transition",
                   simulatorType === "KINEMATIC"
@@ -176,6 +217,7 @@ export default function AebMoboNewPage() {
               <button
                 type="button"
                 onClick={() => setSimulatorType("CARLA")}
+                disabled={datasetLinked}
                 className={cx(
                   "flex h-[44px] items-center justify-between rounded-xl border px-4 text-left transition",
                   simulatorType === "CARLA"
@@ -204,7 +246,7 @@ export default function AebMoboNewPage() {
           <div className="flex flex-col gap-1.5 text-[12.5px] leading-relaxed text-vehicsim-muted">
             <p>
               <strong className="font-bold text-vehicsim-ink">Số lượt thử nghiệm:</strong>{" "}
-              Tổng số lần xe chạy thử mô phỏng trong cả đợt. Càng nhiều lần thì kết quả càng tối ưu nhưng thời gian chạy sẽ lâu hơn.
+              Số bộ tham số AEB được đánh giá trong đợt. Mỗi lượt thử chạy trên toàn bộ tập tối ưu; tăng ngân sách cần thêm thời gian và không bảo đảm tìm được ứng viên tốt hơn.
             </p>
             <p>
               <strong className="font-bold text-vehicsim-ink">Số điểm khởi tạo ban đầu:</strong>{" "}
@@ -218,7 +260,7 @@ export default function AebMoboNewPage() {
             <PillButton variant="light" href="/aeb/mobo">
               Hủy bỏ
             </PillButton>
-            <PillButton variant="dark" type="submit" disabled={submitting || !canWrite || !scenarioId}>
+            <PillButton variant="dark" type="submit" disabled={submitting || !canWrite || !scenarioId || (datasetLinked && !dataset)}>
               {submitting
                 ? "Đang khởi tạo…"
                 : simulatorType === "CARLA"

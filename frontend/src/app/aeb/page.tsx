@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
@@ -12,6 +13,8 @@ import { KEY_PARAMS } from "@/components/aeb/aebTypes";
 
 export default function AebHubPage() {
   const { ctx } = useVehicSimContext();
+  const datasetId = useSearchParams().get("dataset_id");
+  const optimizerHref = datasetId !== null ? `/aeb/mobo/new?dataset_id=${encodeURIComponent(datasetId)}` : "/aeb/mobo";
   const [versions, setVersions] = useState<AebVersion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -123,7 +126,7 @@ export default function AebHubPage() {
               </span>
             </div>
             <Link
-              href="/aeb/mobo"
+              href={optimizerHref}
               className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-vehicsim-primary px-3 text-[12px] font-bold text-white hover:bg-vehicsim-primary-hover transition"
             >
               <span>Bắt đầu</span>

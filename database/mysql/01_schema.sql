@@ -564,7 +564,7 @@ CREATE TABLE regression_test_items (
   is_regression       BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Baseline đạt mà candidate trượt',
   notes               TEXT NULL,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_rti_test_variant (regression_test_id, scenario_version_id),
+  UNIQUE KEY uq_rti_test_baseline (regression_test_id, baseline_run_id),
   UNIQUE KEY uq_rti_candidate (candidate_run_id),
   KEY idx_rti_pair (candidate_run_id, baseline_run_id, regression_test_id, scenario_version_id),
   KEY idx_rti_variant (scenario_version_id),

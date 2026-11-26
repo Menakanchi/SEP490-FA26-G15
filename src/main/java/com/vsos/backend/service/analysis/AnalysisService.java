@@ -235,6 +235,8 @@ public class AnalysisService {
     }
 
     static boolean sameValue(Object a, Object b) {
+        if (a instanceof Record) a = Json.parseMap(Json.write(a));
+        if (b instanceof Record) b = Json.parseMap(Json.write(b));
         if (a instanceof Number x && b instanceof Number y)
             return new java.math.BigDecimal(x.toString()).compareTo(new java.math.BigDecimal(y.toString())) == 0;
         if (a instanceof Map<?,?> x && b instanceof Map<?,?> y)
@@ -244,6 +246,7 @@ public class AnalysisService {
         return Objects.equals(a,b);
     }
     private static Object canonical(Object value) {
+        if (value instanceof Record) return canonical(Json.parseMap(Json.write(value)));
         if (value instanceof Map<?,?> map) {
             Map<String,Object> sorted = new TreeMap<>();
             map.forEach((key,item)->sorted.put(String.valueOf(key),canonical(item)));
@@ -262,13 +265,43 @@ public class AnalysisService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Map<String,Object> handoff(long datasetId) {
-        Map<String,Object> saved = views.savedAnalysisDataset(datasetId);
+        return validateHandoff(views.savedAnalysisDataset(datasetId), projects.currentProject().lng("id"));
+    }
+
+    /** Background campaigns have no request project context; always bind their saved selection explicitly. */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Map<String,Object> handoff(long projectId, long datasetId) {
+        Row row = db.first("SELECT id, aeb_version_id, summary_json FROM analysis_results "
+                        + "WHERE id = ? AND project_id = ? AND analysis_type = 'BASELINE_DATASET' "
+                        + "AND method = 'IMMUTABLE_SNAPSHOT' AND status = 'COMPLETED'", datasetId, projectId);
+        if (row == null) throw new NotFoundException("analysis dataset");
+        Map<String,Object> saved = new LinkedHashMap<>(row.json("summary_json"));
+        Row baseline = queries.baselineVersion(projectId);
+        saved.put("id", datasetId);
+        saved.put("baseline_current", baseline != null && baseline.lng("id") == row.lng("aeb_version_id"));
+        return validateHandoff(saved, projectId);
+    }
+
+    /** Hash persisted business content only, independently of timestamps and request-derived readiness flags. */
+    public static String datasetDigest(Map<String,Object> saved) {
+        Map<String,Object> content = new LinkedHashMap<>(saved);
+        List.of("id", "created_at", "baseline_current", "handoff_ready", "dataset_digest").forEach(content::remove);
+        return digest(content);
+    }
+
+    private Map<String,Object> validateHandoff(Map<String,Object> saved, long projectId) {
         if (!"vehicsim.analysis-dataset/v2".equals(saved.get("schema")))
             throw new InvalidRequestException("Legacy analysis dataset requires a new selection");
         if (!Boolean.TRUE.equals(saved.get("baseline_current"))) throw new InvalidRequestException("Analysis baseline changed");
         List<Long> ids = Json.asList(saved.get("runs")).stream().map(Json::asMap)
                 .map(row -> ((Number)row.get("run_id")).longValue()).toList();
-        List<Row> current = selected(ids,projects.currentProject().lng("id"));
+        List<Long> optimization = ids(Json.asList(saved.get("optimization_run_ids")).stream().map(id -> ((Number)id).longValue()).toList());
+        List<Long> validation = ids(Json.asList(saved.get("validation_run_ids")).stream().map(id -> ((Number)id).longValue()).toList());
+        List<Long> partitionIds = new ArrayList<>(optimization); partitionIds.addAll(validation);
+        if (new HashSet<>(partitionIds).size() != partitionIds.size() || ids.size() != partitionIds.size()
+                || !new HashSet<>(ids).equals(new HashSet<>(partitionIds)))
+            throw new InvalidRequestException("Analysis dataset partitions changed");
+        List<Row> current = selected(ids,projectId);
         if (current.size() != ids.size()) throw new InvalidRequestException("Analysis source runs are unavailable");
         for (Row row : current) {
             Map<String,Object> recorded = Json.asList(saved.get("runs")).stream().map(Json::asMap)
@@ -277,14 +310,31 @@ public class AnalysisService {
                     || !sameValue(item(row), recorded))
                 throw new InvalidRequestException("Analysis source runs changed or telemetry is missing");
         }
+        List<Row> opt = current.stream().filter(row -> optimization.contains(row.lng("id"))).toList();
+        List<Row> val = current.stream().filter(row -> validation.contains(row.lng("id"))).toList();
+        checkSet(opt); checkSet(val);
+        Set<Long> optVariants = opt.stream().map(row -> row.lng("scenario_version_id")).collect(java.util.stream.Collectors.toSet());
+        if (val.stream().anyMatch(row -> optVariants.contains(row.lng("scenario_version_id")))
+                || current.stream().map(AnalysisService::identity).distinct().count() != 1
+                || current.stream().map(row -> row.lng("scenario_version_id")+"|"+row.getLong("random_seed")).distinct().count() != current.size()
+                || !AnalysisMetrics.objectivesAvailable(opt.stream().map(AnalysisService::sample).toList())
+                || !AnalysisMetrics.evidenceComplete(val.stream().map(AnalysisService::sample).toList())
+                || !sameValue(saved.get("optimization_objectives"),AnalysisMetrics.aggregate(opt.stream().map(AnalysisService::sample).toList()))
+                || !sameValue(saved.get("validation_objectives"),AnalysisMetrics.aggregate(val.stream().map(AnalysisService::sample).toList())))
+            throw new InvalidRequestException("Analysis dataset partitions or objectives changed");
+        List<Object> manifests = Json.asList(saved.get("manifests"));
+        if (manifests.size() != ids.size() || !manifests.stream().map(Json::asMap).map(m -> ((Number)m.get("run_id")).longValue())
+                .collect(java.util.stream.Collectors.toSet()).equals(new HashSet<>(ids)))
+            throw new InvalidRequestException("Analysis dataset manifests are incomplete");
         for (Object value : Json.asList(saved.get("manifests"))) {
             Map<String,Object> manifest = Json.asMap(value);
             Row source = db.first("SELECT telemetry_json, run_config_json FROM simulation_runs WHERE id = ? AND project_id = ?",
-                    ((Number)manifest.get("run_id")).longValue(), projects.currentProject().lng("id"));
+                    ((Number)manifest.get("run_id")).longValue(), projectId);
             if (source == null || !Objects.equals(manifest.get("artifact_digest"),digest(source.json("telemetry_json")))
                     || !Objects.equals(manifest.get("config_digest"),digest(source.json("run_config_json"))))
                 throw new InvalidRequestException("Analysis source runs changed or telemetry is missing");
         }
+        saved.put("dataset_digest",datasetDigest(saved));
         saved.put("handoff_ready",true); return saved;
     }
 }

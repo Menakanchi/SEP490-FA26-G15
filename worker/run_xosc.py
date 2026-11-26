@@ -200,6 +200,8 @@ def run(args: argparse.Namespace) -> int:
                "--host", args.host, "--port", str(args.port), "--timeout", "120", "--sync", "--frameRate", str(round(1 / step_s)),
                "--trafficManagerPort", "8005", "--json", "--outputDir", str(out)]
     try:
+        # Retry/restart may reuse this directory. Previous criteria cannot prove that this attempt finished.
+        previous_json = {path: path.stat() for path in out.glob("*.json")}
         with (out / "follow_hero.log").open("w", encoding="utf-8") as camera_log, (out / "scenario_runner.log").open("w", encoding="utf-8") as log:
             follow = [sys.executable, str(WORKER / "follow_hero.py"), "--host", args.host, "--port", str(args.port), "--view", "chase"]
             if args.hud:
@@ -209,8 +211,10 @@ def run(args: argparse.Namespace) -> int:
             code = wait_for_exit(proc, args.timeout, out / STOP_FLAG)
         criteria = []
         for path in out.glob("*.json"):
+            if path in previous_json and path.stat() == previous_json[path]:
+                continue
             doc = json.loads(path.read_text(encoding="utf-8"))
-            if "criteria" in doc:
+            if isinstance(doc, dict) and "criteria" in doc:
                 criteria.append(doc)
         if code != 0 or not criteria or not result_file.is_file():
             result_file.unlink(missing_ok=True)

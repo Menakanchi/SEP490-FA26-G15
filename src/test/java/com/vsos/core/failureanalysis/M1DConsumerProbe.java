@@ -18,7 +18,7 @@ final class M1DConsumerProbe {
     }
     static Row change(Row original,String key,Object value){Map<String,Object> m=new LinkedHashMap<>(original.asMap());m.put(key,value);return new Row(m);}
     static Artifact execute(ConsumerSourceInspection.Profile profile)throws Exception{
-        var service=new OptimizationService(null,null,null,null,null,null,null,null);
+        var service=new OptimizationService(null,null,null,null,null,null,null,null,null);
         Method helper=OptimizationService.class.getDeclaredMethod("evaluateCandidateRuns",List.class,OptimizationService.BaselineStats.class);helper.setAccessible(true);
         Map<String,List<Row>> inputs=new LinkedHashMap<>();
         inputs.put("MATCH_COMPLETE",List.of(row(true,2.,6.,10.,true),row(true,4.,null,20.,false),row(false,null,null,null,false)));

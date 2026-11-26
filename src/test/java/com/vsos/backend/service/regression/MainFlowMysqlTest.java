@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={
         "spring.config.import=optional:file:./target/logic-audit-no-env.properties",
         "vehicsim.simulator=kinematic","vehicsim.run-mode=inline","vehicsim.recover-on-startup=false",
-        "vehicsim.data-root=./target/logic-audit-main-flow","spring.data.redis.host=127.0.0.1",
+        "vehicsim.data-root=./target/e2e-flow-audit/main-flow","spring.data.redis.host=127.0.0.1",
         "spring.data.redis.port=16379","app.env=development","app.auth.login-attempts-per-ip=100"})
 class MainFlowMysqlTest {
     @DynamicPropertySource static void isolatedDatabase(DynamicPropertyRegistry properties) throws Exception {
@@ -42,6 +42,18 @@ class MainFlowMysqlTest {
                 .replace("CREATE DATABASE IF NOT EXISTS vehicsim ","CREATE DATABASE IF NOT EXISTS vsos_logic_audit_test ")
                 .replace("USE vehicsim;","USE vsos_logic_audit_test;");
         try(var connection=ds.getConnection()) { ScriptUtils.executeSqlScript(connection,new ByteArrayResource(ddl.getBytes(StandardCharsets.UTF_8))); }
+        // Verify fresh schema and an upgrade from the former one-variant index on a disposable DB only.
+        assertThat(jdbc.queryForList("SELECT column_name FROM information_schema.statistics WHERE table_schema=DATABASE() "
+                + "AND table_name='regression_test_items' AND index_name='uq_rti_test_baseline' ORDER BY seq_in_index",String.class))
+                .containsExactly("regression_test_id","baseline_run_id");
+        jdbc.execute("ALTER TABLE regression_test_items ADD UNIQUE KEY uq_rti_test_variant (regression_test_id,scenario_version_id), DROP INDEX uq_rti_test_baseline");
+        try(var connection=ds.getConnection()) {
+            ScriptUtils.executeSqlScript(connection,new ByteArrayResource(Files.readAllBytes(
+                    Path.of("database/mysql/migrations/023_2026-11-26_regression-frozen-seeds.sql"))));
+        }
+        assertThat(jdbc.queryForList("SELECT column_name FROM information_schema.statistics WHERE table_schema=DATABASE() "
+                + "AND table_name='regression_test_items' AND index_name='uq_rti_test_baseline' ORDER BY seq_in_index",String.class))
+                .containsExactly("regression_test_id","baseline_run_id");
         properties.add("spring.datasource.url",()->url);
         properties.add("spring.datasource.username",()->"root");
         properties.add("spring.datasource.password",()->password);
@@ -115,10 +127,18 @@ class MainFlowMysqlTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM failures f JOIN simulation_runs r ON r.id=f.simulation_run_id WHERE r.aeb_mode='OFF'",Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM collision_events c JOIN simulation_runs r ON r.id=c.simulation_run_id WHERE r.aeb_mode='OFF'",Integer.class)).isPositive();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM simulation_runs WHERE aeb_mode='OFF' AND (aeb_activated=1 OR is_false_positive=1 OR is_false_negative=1)",Integer.class)).isZero();
+        // Seed fixture setup only: all results below are produced by the real Java simulator, never inserted.
+        var variants=jdbc.queryForList("SELECT id,scenario_ir_json FROM scenario_versions WHERE scenario_id=? AND source='GENERATED'",scenario)
+                .stream().map(com.vsos.backend.repository.common.Row::new).toList();
+        long vehicle=jdbc.queryForObject("SELECT carla_vehicle_model_id FROM simulation_runs WHERE project_id=? LIMIT 1",Long.class,projectId);
+        var secondSeeds=runService.createRuns(projectId,scenario,variants,vehicle,baseline,engineerId,"BASELINE",null,null);
+        for(long runId:secondSeeds) jdbc.update("UPDATE simulation_runs SET random_seed=random_seed+100000 WHERE id=? AND status='PENDING'",runId);
+        runService.dispatch(secondSeeds);
+        awaitRuns();
         var dataset=json("GET",BASE+"/analysis/dataset?scenario_id="+scenario,engineer,null,200);
         assertThat(Json.asList(dataset.get("variants"))).hasSize(4);
         var dashboard=json("GET",BASE+"/analysis/runs?scenario_id="+scenario,engineer,null,200);
-        assertThat(id(dashboard,"total")).isEqualTo(4);
+        assertThat(id(dashboard,"total")).isEqualTo(8);
         var optimization=new ArrayList<Long>();var validation=new ArrayList<Long>();var revisions=new LinkedHashMap<String,String>();
         for(Object value:Json.asList(dashboard.get("items"))) {
             var item=Json.asMap(value);long runId=id(item,"run_id");
@@ -130,7 +150,48 @@ class MainFlowMysqlTest {
                 "optimization_run_ids",optimization,"validation_run_ids",validation,"run_revisions",revisions),200);
         long selectionId=id(selection,"id");
         assertThat(Json.asMap(selection.get("evaluation"))).containsEntry("impact","RELATIVE_SPEED_CORE_COLLISION_TICK");
-        assertThat(json("GET",BASE+"/analysis/datasets/"+selectionId+"/handoff",engineer,null,200)).containsEntry("handoff_ready",true);
+        var handoff=json("GET",BASE+"/analysis/datasets/"+selectionId+"/handoff",engineer,null,200);
+        assertThat(handoff).containsEntry("handoff_ready",true);
+        String datasetDigest=handoff.get("dataset_digest").toString();
+        assertThat(datasetDigest).matches("[a-f0-9]{64}");
+        // A later baseline repetition must never replace the exact source IDs already sealed by FA.
+        json("POST",BASE+"/families/"+scenario+"/run",engineer,Json.obj("with_aeb_off",false),202);
+        awaitRuns();
+        var frozenSpace=Json.obj("TTC_THRESHOLD",List.of(1.5,1.5),"BRAKE_ACTIVATION_DELAY",List.of(.14,.1498),
+                "BRAKE_BUILDUP_RATE",List.of(20,20),"MAX_DECELERATION",List.of(8,8));
+        var campaignRequest=Json.obj("scenario_id",scenario,"base_aeb_version_id",baseline,"max_trials",2,"n_initial_points",1,
+                "search_space",frozenSpace,"simulator_type","KINEMATIC","dataset_id",selectionId,"dataset_digest",datasetDigest);
+        var tampered=new LinkedHashMap<>(campaignRequest);tampered.put("dataset_digest","0".repeat(64));
+        request("POST",BASE+"/optimizations",engineer,tampered,400);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM optimization_runs",Integer.class)).isZero();
+        request("POST",BASE+"/optimizations",outsider,campaignRequest,404);
+        long frozenCampaign=id(json("POST",BASE+"/optimizations",engineer,campaignRequest,201),"id");
+        assertThat(jdbc.queryForObject("SELECT status FROM optimization_runs WHERE id=?",String.class,frozenCampaign)).isEqualTo("COMPLETED");
+        var frozenTrials=jdbc.queryForList("SELECT id FROM optimization_trials WHERE optimization_run_id=? AND status='COMPLETED' ORDER BY trial_number",Long.class,frozenCampaign);
+        assertThat(frozenTrials).hasSize(2);
+        assertThat(jdbc.queryForList("SELECT sampling_source FROM optimization_trials WHERE optimization_run_id=? ORDER BY trial_number",String.class,frozenCampaign))
+                .containsExactly("INITIAL_DESIGN","ACQUISITION");
+        assertThat(jdbc.queryForObject("SELECT acquisition_value FROM optimization_trials WHERE optimization_run_id=? AND trial_number=2",Double.class,frozenCampaign))
+                .isNotNull().isFinite().isGreaterThanOrEqualTo(0);
+        var sourceVariants=jdbc.queryForList("SELECT scenario_version_id FROM simulation_runs WHERE id IN ("+String.join(",",optimization.stream().map(String::valueOf).toList())+")",Long.class);
+        for(long trialId:frozenTrials) {
+            var trialSources=jdbc.queryForList("SELECT baseline_run_id FROM simulation_runs WHERE optimization_trial_id=?",Long.class,trialId);
+            assertThat(trialSources).containsExactlyInAnyOrderElementsOf(optimization);
+            assertThat(jdbc.queryForList("SELECT scenario_version_id FROM simulation_runs WHERE optimization_trial_id=?",Long.class,trialId))
+                    .containsExactlyInAnyOrderElementsOf(sourceVariants);
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM simulation_runs c JOIN simulation_runs b ON b.id=c.baseline_run_id "
+                + "JOIN optimization_trials t ON t.id=c.optimization_trial_id WHERE t.optimization_run_id=? AND "
+                + "(c.random_seed<>b.random_seed OR c.simulator_version<>b.simulator_version OR c.carla_vehicle_model_id<>b.carla_vehicle_model_id)",Integer.class,frozenCampaign)).isZero();
+        long paretoTrial=jdbc.queryForObject("SELECT id FROM optimization_trials WHERE optimization_run_id=? AND is_pareto_optimal=1 AND constraint_violated=0 ORDER BY trial_number LIMIT 1",Long.class,frozenCampaign);
+        var verified=json("POST",BASE+"/optimizations/"+frozenCampaign+"/select/"+paretoTrial,engineer,null,200);
+        long frozenTest=id(verified,"regression_test_id"),frozenCandidate=id(verified,"candidate_aeb_version_id");
+        awaitRuns();
+        assertThat(id(json("POST",BASE+"/optimizations/"+frozenCampaign+"/select/"+paretoTrial,engineer,null,200),"regression_test_id")).isEqualTo(frozenTest);
+        assertThat(jdbc.queryForList("SELECT baseline_run_id FROM simulation_runs WHERE regression_test_id=?",Long.class,frozenTest))
+                .containsExactlyInAnyOrderElementsOf(validation);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM regression_test_items WHERE regression_test_id=?",Integer.class,frozenTest)).isEqualTo(validation.size());
+        assertThat(jdbc.queryForObject("SELECT verdict FROM regression_tests WHERE id=?",String.class,frozenTest)).isEqualTo("PASSED");
         // A historical OFF failure must not pollute any aggregate, page, family or CSV export.
         long offRun=jdbc.queryForObject("SELECT MIN(id) FROM simulation_runs WHERE aeb_mode='OFF'",Long.class);
         jdbc.update("INSERT INTO failures(simulation_run_id,failure_type,severity,description) VALUES(?,'COLLISION','HIGH','Legacy OFF fixture')",offRun);
@@ -154,16 +215,17 @@ class MainFlowMysqlTest {
         var regressionCsv=request("GET",BASE+"/regression/"+test+"/export.csv",reviewer,null,200).body();
         assertThat(regressionCsv).startsWith((byte)0xef,(byte)0xbb,(byte)0xbf);
         var decision=Json.obj("decision","ACCEPT","reason","Isolated HTTP audit with matching seeds and complete evidence","confirmed",true);
-        request("POST",BASE+"/recommendations/"+test+"/decision",engineer,decision,403);
-        json("POST",BASE+"/recommendations/"+test+"/decision",reviewer,decision,200);
-        assertThat(jdbc.queryForObject("SELECT status FROM aeb_versions WHERE id=?",String.class,candidate)).isEqualTo("BASELINE");
+        request("POST",BASE+"/recommendations/"+frozenTest+"/decision",engineer,decision,403);
+        json("POST",BASE+"/recommendations/"+frozenTest+"/decision",reviewer,decision,200);
+        assertThat(jdbc.queryForObject("SELECT status FROM aeb_versions WHERE id=?",String.class,frozenCandidate)).isEqualTo("BASELINE");
         assertThat(jdbc.queryForObject("SELECT status FROM aeb_versions WHERE id=?",String.class,baseline)).isEqualTo("ARCHIVED");
         request("GET",BASE+"/analysis/datasets/"+selectionId+"/handoff",engineer,null,400);
         assertThat(json("GET",BASE+"/analysis/datasets/"+selectionId,engineer,null,200)).containsEntry("baseline_current",false);
+        request("POST",BASE+"/optimizations",engineer,campaignRequest,400);
         var space=Json.obj("TTC_THRESHOLD",List.of(1.5,1.5),"BRAKE_ACTIVATION_DELAY",List.of(.14,.1498),
                 "BRAKE_BUILDUP_RATE",List.of(20,20),"MAX_DECELERATION",List.of(8,8));
         long campaign=id(json("POST",BASE+"/optimizations",engineer,Json.obj("scenario_id",scenario,
-                "base_aeb_version_id",candidate,"max_trials",1,"n_initial_points",1,"search_space",space,"simulator_type","KINEMATIC"),201),"id");
+                "base_aeb_version_id",frozenCandidate,"max_trials",1,"n_initial_points",1,"search_space",space,"simulator_type","KINEMATIC"),201),"id");
         assertThat(jdbc.queryForObject("SELECT status FROM optimization_runs WHERE id=?",String.class,campaign)).isEqualTo("COMPLETED");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM optimization_trials WHERE optimization_run_id=? AND status='COMPLETED' AND rms_jerk_mps3 IS NOT NULL AND impact_speed_mps IS NOT NULL AND stopping_distance_m IS NOT NULL",Integer.class,campaign)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT v.param_value FROM optimization_trials t JOIN aeb_parameter_values v ON v.aeb_version_id=t.candidate_aeb_version_id JOIN aeb_parameters p ON p.id=v.parameter_id WHERE t.optimization_run_id=? AND p.code='BRAKE_ACTIVATION_DELAY'",Double.class,campaign)).isBetween(.14,.1498);
@@ -188,7 +250,8 @@ class MainFlowMysqlTest {
         assertThat(runService.recoverUnfinished()).isZero();
         assertThat(jdbc.queryForObject("SELECT status FROM optimization_trials WHERE id=?",String.class,trial)).isEqualTo("PRUNED");
         assertThat(jdbc.queryForObject("SELECT status FROM simulation_runs WHERE id=?",String.class,optimizationChild)).isEqualTo("STOPPED");
-        System.out.println("AUDIT_MAIN_FLOW_OK: 4 variants, 8 baseline ON/OFF, 4 paired regression runs, Reviewer Accept; real HTTP/MySQL/Redis, kinematic only");
+        System.out.println("AUDIT_MAIN_FLOW_OK: 4 variants, ON/OFF and multiple real seeds, sealed FA -> 2 MOBO trials -> frozen validation -> Reviewer Accept; actual HTTP/MySQL/Redis and Java kinematics only, NOT CARLA");
+        System.out.println("AUDIT_FROZEN_COHORT_OK: exact optimization source runs and 4 validation source runs, distinct-seed same-variant pairs, later baseline repetitions excluded, duplicate select reused, stale/checksum/scope gates retained");
         System.out.println("AUDIT_MOBO_OK: one real kinematic trial, requested narrow bounds and three recorded objectives");
         System.out.println("AUDIT_STARTUP_RECOVERY_OK: interrupted/cancelled parents never redispatch their children; stored metrics retained");
     }

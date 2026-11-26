@@ -2,6 +2,7 @@ package com.vsos.backend.service.simulation;
 
 import com.vsos.backend.common.audit.AuditLog;
 import com.vsos.core.bridge.Bundle;
+import com.vsos.core.aeb.AebParams;
 import com.vsos.core.simulation.LeadVehicleCase;
 import com.vsos.core.simulation.CarlaSession;
 import com.vsos.core.evaluation.Evaluation;
@@ -640,6 +641,7 @@ public class RunService {
         document.put("engine", Bundle.ENGINE);
         Map<String, Object> result = Json.parseMap(Json.write(document)); // cùng kiểu dữ liệu như khi đọc result.json từ worker
         checkResult(result, run);
+        checkResultParameters(result, spec.params().asCodes());
         return result;
     }
 
@@ -693,6 +695,7 @@ public class RunService {
         }
         Map<String, Object> result = Json.parseMap(Files.readString(resultPath, StandardCharsets.UTF_8));
         checkResult(result, run);
+        checkResultParameters(result, Json.asMap(Json.asMap(bundle.get("aeb")).get("params")));
         // ADR-065: khối dataset cho Failure Analysis, không bao giờ làm run lỗi. Dòng aeb_versions chỉ để khai báo trạng thái phiên bản lúc ghi.
         Row aebVersion = db.first("SELECT id, project_id, version_no, label, status, source, parent_version_id FROM aeb_versions WHERE id = ?",
                 run.lng("aeb_version_id"));
@@ -1225,6 +1228,19 @@ public class RunService {
         throw new SimulatorException("result.json " + field + " không khớp run (yêu cầu " + expected + ")");
     }
 
+    /** IDs alone cannot prove that the worker actually used the requested AEB parameters. */
+    private static void checkResultParameters(Map<String, Object> result, Map<String, ?> expected) {
+        Map<String, Object> actual = Json.asMap(Json.asMap(result.get("outcome")).get("params"));
+        for (String code : AebParams.CODES) {
+            String key = code.toLowerCase(java.util.Locale.ROOT);
+            if (!(expected.get(code) instanceof Number requested) || !Double.isFinite(requested.doubleValue())
+                    || !(actual.get(key) instanceof Number recorded) || !Double.isFinite(recorded.doubleValue())
+                    || Double.compare(requested.doubleValue(), recorded.doubleValue()) != 0) {
+                throw new SimulatorException("result.json outcome.params." + key + " không khớp cấu hình AEB của run");
+            }
+        }
+    }
+
     private static void recordWorker(Path folder, Process proc) {
         try {
             long started = proc.toHandle().info().startInstant().map(java.time.Instant::toEpochMilli).orElse(0L);
@@ -1441,6 +1457,7 @@ public class RunService {
             result.remove("artifacts");
             try {
                 checkResult(result, run);
+                checkResultParameters(result, queries.aebValues(run.lng("aeb_version_id")));
             } catch (SimulatorException e) {
                 throw new InvalidRequestException(e.getMessage());
             }

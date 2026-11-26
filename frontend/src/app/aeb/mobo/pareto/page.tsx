@@ -11,6 +11,7 @@ import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
 import { VehicSimSelect } from "@/components/VehicSimSelect";
 import { formatMeasurement, speedKmh } from "@/components/analysis/analysisMetricFormat";
 import { isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
+import { vi } from "@/components/vehicsimI18n";
 
 export default function AebMoboParetoPage() {
   const router = useRouter();
@@ -77,7 +78,7 @@ export default function AebMoboParetoPage() {
       });
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể chọn làm ứng viên");
+      setError(err instanceof Error ? vi(err.message) : "Không thể chọn làm ứng viên");
     } finally {
       selectionLock.current = false;
       setSelectingTrialId(null);
@@ -124,12 +125,12 @@ export default function AebMoboParetoPage() {
               variant="dark"
               href={
                 createdCandidate.regressionTestId
-                  ? `/validation/regression`
+                  ? `/validation/regression/${createdCandidate.regressionTestId}`
                   : `/validation/regression/new?candidate=${createdCandidate.id}`
               }
               className="text-[12px] py-1.5"
             >
-              {createdCandidate.regressionTestId ? "Đến bảng Kiểm thử hồi quy →" : "Kiểm thử hồi quy ngay"}
+              {createdCandidate.regressionTestId ? "Xem kiểm thử hồi quy →" : "Kiểm thử hồi quy ngay"}
             </PillButton>
           </div>
         </div>

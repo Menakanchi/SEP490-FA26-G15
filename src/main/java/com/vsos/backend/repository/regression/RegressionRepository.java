@@ -62,7 +62,7 @@ public class RegressionRepository {
     }
 
     public long insertTest(long projectId, long scenarioId, long baselineVersionId, long candidateVersionId, long vehicleModelId,
-                           String simulatorVersion, String name, Map<String, Map<String, Object>> criteria, ScenarioSet scenarioSet,
+                           String simulatorVersion, String name, Map<String, Map<String, Object>> criteria, Object scenarioSet,
                            int totalScenarios, long userId) {
         return db.insert("""
                         INSERT INTO regression_tests

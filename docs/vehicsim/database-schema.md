@@ -36,7 +36,7 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 | 3 | Project & xe | `projects`, `project_members`, `carla_vehicle_models`, `sensors` | Có, trừ `project_members`, `sensors` |
 | 4 | AEB | `aeb_parameters`, `aeb_versions`, `aeb_parameter_values` | Có |
 | 5 | Kịch bản | `scenarios`, `scenario_versions` | Có |
-| 6 | Tối ưu & regression | `optimization_runs`, `optimization_trials`, `regression_tests` | Có: MOBO/trial/Pareto và regression; handoff FA chưa nối tự động |
+| 6 | Tối ưu & regression | `optimization_runs`, `optimization_trials`, `regression_tests` | Có: MOBO/trial/Pareto và regression; campaign nhận dataset FA đã chốt cùng checksum và giữ riêng hai partition |
 | 7 | Mô phỏng, đánh giá, lỗi | `simulation_runs`, `simulation_artifacts`, `collision_events`, `failures`, `root_causes` | Có |
 | 8 | Phân tích, kết quả regression, khuyến nghị | `analysis_results`, `regression_test_items`, `engineering_recommendations` | Có; analysis_results mới dùng BASELINE_DATASET |
 | 9 | Tri thức kỹ thuật | `tech_references` | Có: Admin list/detail/create/update, bật/tắt |
@@ -620,7 +620,7 @@ Một lần tối ưu tham số AEB trên cả họ, cố định xe và bộ m�
 | `acquisition_function` | ENUM |  |  |  | Hàm thu nhận đa mục tiêu, chỉ với MOBO: Expected Hypervolume Improvement (EHVI / qEHVI), ParEGO, MESMO, USEMO. Giá trị: 'EHVI', 'qEHVI', 'MESMO', 'USEMO', 'PAREGO'. |
 | `n_initial_points` | INT UNSIGNED |  |  |  | Số điểm khởi tạo trước khi hàm thu nhận chọn điểm |
 | `search_space_json` | JSON | ✓ |  |  | Không gian tìm kiếm 4 tham số AEB: TTC_THRESHOLD, BRAKE_ACTIVATION_DELAY, MAX_DECELERATION, BRAKE_BUILDUP_RATE (con của [min_value, max_value]) |
-| `objective_config_json` | JSON | ✓ |  |  | Cấu hình 3 mục tiêu: Braking Comfort (RMS Jerk), Collision Mitigation (Impact Speed), Stopping Performance (Stopping Distance), kèm ràng buộc; mặc định `{"constraints": {"collision_rate_pct": {"max": "baseline"}, "false_activation_increase_pts": {"max": 5}}}` — trial vi phạm bị loại khỏi mặt Pareto |
+| `objective_config_json` | JSON | ✓ |  |  | Cấu hình ba mục tiêu canonical và ràng buộc ADR-044; campaign từ FA lưu thêm `dataset_ref` (ID, checksum, hai danh sách run nguồn) để không chọn lại dữ liệu lúc thực thi. Trial vi phạm bị loại khỏi Pareto. |
 | `max_trials` | INT UNSIGNED | ✓ |  |  | Ngân sách số trial (kế hoạch rủi ro: 50–100 run). |
 | `random_seed` | BIGINT UNSIGNED |  |  |  | Seed của bộ tối ưu (tái lập chuỗi điểm thử). |
 | `status` | ENUM | ✓ | `'PENDING'` |  | Trạng thái chạy. Giá trị: 'PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'. |
@@ -868,9 +868,9 @@ Kết quả từng kịch bản của một regression. **Code dùng:** `regress
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; AI | Khoá chính. |
-| `regression_test_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rti_test_variant`; FK → `regression_tests`; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Regression test. |
-| `scenario_version_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rti_test_variant`; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Biến thể; mỗi biến thể một dòng trong một test. |
-| `baseline_run_id` | BIGINT UNSIGNED | ✓ |  | FK → `simulation_runs`; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Run baseline của cặp. |
+| `regression_test_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rti_test_baseline`; FK → `regression_tests`; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Regression test. |
+| `scenario_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Biến thể; có thể có nhiều seed trong partition FA đã chốt. |
+| `baseline_run_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rti_test_baseline`; FK → `simulation_runs`; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Run baseline của cặp; mỗi run nguồn đúng một dòng trong một test. |
 | `candidate_run_id` | BIGINT UNSIGNED | ✓ |  | UQ; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Run candidate của cặp; `fk_rti_pair` ép đúng test + đúng baseline + đúng biến thể. |
 | `baseline_outcome` | ENUM |  |  |  | `SAFE` / `NEAR_MISS` / `COLLISION` của baseline. Giá trị: 'SAFE', 'NEAR_MISS', 'COLLISION'. |
 | `candidate_outcome` | ENUM |  |  |  | Như trên, của candidate. Giá trị: 'SAFE', 'NEAR_MISS', 'COLLISION'. |
@@ -962,7 +962,7 @@ CHECK: `ck_tech_references_value`.
 | `regression_tests.pass_criteria_json` | `regression.create_test` | `{"criteria": {"no_new_collision": {"enabled", "required"}, "false_activation_increase_max_pts": {"enabled", "required", "value"}, …}, "scenario_set": {"old_critical", "all_variants", "old_critical_count", "variant_count"}}` |
 | `sensors.attributes_json` | (chưa có code) | Attribute blueprint đúng tên CARLA, giá trị chuỗi: `{"image_size_x": "1280", "fov": "90", "sensor_tick": "0.05"}` |
 | `optimization_runs.search_space_json` | (chưa có code) | `{"TTC_THRESHOLD": [1.2, 2.5], "BRAKE_ACTIVATION_DELAY": [0.05, 0.3]}` — chỉ 4 mã của `aeb_parameters`, trong `[min_value, max_value]` |
-| `optimization_runs.objective_config_json` | (chưa có code) | Mục tiêu + trọng số / ràng buộc, vd `{"objectives": ["rms_jerk", "impact_speed", "stopping_distance"], "constraints": {"collision_rate_pct": {"max": 5}}}` |
+| `optimization_runs.objective_config_json` | `OptimizationService` | Ba mục tiêu canonical/ràng buộc cố định; `dataset_ref` giữ ID, digest và run nguồn của hai partition khi tạo từ dataset FA v2. |
 | `analysis_results.config_json` / `summary_json` | AnalysisViewService cho BASELINE_DATASET; các loại khác chưa có | Đầu vào (nhiễu, chỉ số mục tiêu, bộ lọc run) / đầu ra (xếp hạng tham số, ma trận tương tác, phân bố theo nhiễu) |
 
 Bảng tổng hợp regression (ma trận chuyển trạng thái, tỉ lệ, tiêu chí) **không lưu**: `regression.summary`
@@ -1002,7 +1002,7 @@ Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critica
   CHECK không so được bảng khác.
 - **Rút scope AEB (ADR-040):** run của v1.3 dùng tầm dự đoán 1,5 s và biên an toàn 0,5 m (nay là hằng số 2,0 / 2,0) nên
   60 / 192 run đó **không còn tái lập** khi chạy lại từ JSON; kết quả đã lưu không đổi (TD-40).
-- **Bảng tối ưu còn rỗng:** `optimization_runs`, `optimization_trials` và các loại phân tích thuật toán có schema nhưng chưa có code (TD-39); BASELINE_DATASET đã được lưu trong analysis_results.
+- **Tối ưu:** campaign/trial/Pareto đã có code; campaign có `dataset_ref` thực thi đúng partition đã chốt. Sensitivity/Robustness và handoff chẩn đoán V3 vẫn có các cổng riêng, không suy từ schema rằng đã triển khai.
 
 ## 10. Đổi schema thì làm gì
 
@@ -1030,8 +1030,9 @@ Cùng một PR (luật mềm ở `AGENTS.md`):
 | `020_2026-11-25_failure_analysis_json.sql` | Thêm bốn bảng `fa_json_*` |
 | `021_2026-11-24_chuan-hoa-url-tech-references.sql` | Cập nhật URL/DOI tham khảo |
 | `022_2026-11-24_bo-sung-4-tham-so-aeb-tech-references.sql` | Bổ sung tài liệu và mô tả bốn tham số AEB |
+| `023_2026-11-26_regression-frozen-seeds.sql` | UNIQUE kết quả regression theo test + run baseline, giữ nhiều seed của một biến thể trong partition FA; không sửa/xóa kết quả cũ |
 
-Hai nhánh có migration trùng số **019 và 020**. Xác định bằng **tên file đầy đủ**, không bỏ một file vì số đã có. DB đang ở mốc 018 cần cả sáu file 019–022 ở trên; DB mới từ schema hiện tại đã chứa chúng. Không tự chạy lại migration ALTER TABLE trên DB đã nâng. Kiểm chứng MySQL 8.4 cô lập ngày 26/11/2026 cho thấy tạo mới và nâng từ schema cũ có cùng 445 cột, 86 FK, 37 CHECK, 48 UNIQUE và 44 mã tham khảo.
+Hai nhánh có migration trùng số **019 và 020**. Xác định bằng **tên file đầy đủ**, không bỏ một file vì số đã có. DB đang ở mốc 018 cần cả sáu file 019–022 ở trên và 023 trước verification từ dataset nhiều seed; DB mới từ schema hiện tại đã chứa chúng. Không tự chạy lại migration ALTER TABLE trên DB đã nâng. Migration 023 chỉ đổi thành phần của một UNIQUE, giữ 445 cột, 86 FK, 37 CHECK và 48 UNIQUE; chưa tự áp vào DB nhóm.
 
 Luôn sao lưu trước (`mysqldump --single-transaction`), không `docker compose down -v` trên máy người khác.
 

@@ -25,6 +25,7 @@ import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
 import { formatMetric, formatMeasurement, speedKmh } from "@/components/analysis/analysisMetricFormat";
 import { hasCompleteTrialEvidence, isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
+import { vi } from "@/components/vehicsimI18n";
 
 export default function AebMoboStudioPage() {
   const router = useRouter();
@@ -36,6 +37,9 @@ export default function AebMoboStudioPage() {
   const queryNew = searchParams.get("new") === "1";
   const queryScenarioId = Number(searchParams.get("scenario_id"));
   const hasQueryScenario = Number.isInteger(queryScenarioId) && queryScenarioId > 0;
+  const datasetId = searchParams.get("dataset_id");
+  const newCampaignHref = datasetId !== null ? `/aeb/mobo/new?dataset_id=${encodeURIComponent(datasetId)}`
+    : `/aeb/mobo/new${hasQueryScenario ? `?scenario_id=${queryScenarioId}` : ""}`;
 
   const [runs, setRuns] = useState<OptimizationRun[] | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
@@ -86,9 +90,9 @@ export default function AebMoboStudioPage() {
   // Tự động chuyển sang màn khởi tạo riêng nếu có tham số ?new=1
   useEffect(() => {
     if (queryNew) {
-      router.replace(`/aeb/mobo/new${hasQueryScenario ? `?scenario_id=${queryScenarioId}` : ""}`);
+      router.replace(newCampaignHref);
     }
-  }, [queryNew, hasQueryScenario, queryScenarioId, router]);
+  }, [queryNew, newCampaignHref, router]);
 
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -182,7 +186,7 @@ export default function AebMoboStudioPage() {
       });
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể chọn làm ứng viên");
+      setError(err instanceof Error ? vi(err.message) : "Không thể chọn làm ứng viên");
     } finally {
       setSelectingTrialId(null);
       selectionLock.current = false;
@@ -247,7 +251,7 @@ export default function AebMoboStudioPage() {
       actions={
         <div className="flex items-center gap-2">
           <PillButton
-            href={`/aeb/mobo/new${hasQueryScenario ? `?scenario_id=${queryScenarioId}` : ""}`}
+            href={newCampaignHref}
             variant="dark"
             className="inline-flex items-center gap-1.5 text-[13px]"
           >
@@ -258,6 +262,11 @@ export default function AebMoboStudioPage() {
       }
     >
       <ErrorNote message={error} />
+      {activeRun?.status === "FAILED" && <ErrorNote message={vi(activeRun.error_message) || "Đợt tối ưu đã thất bại. Kiểm tra nguồn dữ liệu và trạng thái mô phỏng trước khi tạo đợt mới."} />}
+      {activeRun?.dataset_id && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-vehicsim-line bg-vehicsim-surface p-4 text-[13px]" aria-label="Nguồn dataset của đợt tối ưu">
+        <p>Tập đã chốt #{activeRun.dataset_id} · {activeRun.optimization_run_ids?.length ?? "—"} run tối ưu · {activeRun.validation_run_ids?.length ?? "—"} run xác minh độc lập</p>
+        <PillButton href={`/analysis/failures?view=dataset&dataset_id=${activeRun.dataset_id}`}>Xem tập nguồn</PillButton>
+      </section>}
 
       {/* BANNER THÀNH CÔNG KHI CHỌN CANDIDATE */}
       {createdCandidate && (
@@ -278,7 +287,7 @@ export default function AebMoboStudioPage() {
               variant="dark"
               href={
                 createdCandidate.regressionTestId
-                  ? `/validation/regression`
+                  ? `/validation/regression/${createdCandidate.regressionTestId}`
                   : `/validation/regression/new?candidate=${createdCandidate.id}`
               }
               className="py-1.5 px-4 text-[12.5px] shadow-sm"
@@ -389,6 +398,8 @@ export default function AebMoboStudioPage() {
                 <EmptyState title="Chưa có phương án tối ưu cho đợt chạy này">
                   {activeRun?.status === "COMPLETED"
                     ? "Đợt chạy đã hoàn thành nhưng chưa có phương án Pareto đủ số đo hợp lệ và thỏa ràng buộc. Xem trạng thái và số đo ở tab 'Toàn bộ lượt thử'."
+                    : activeRun?.status === "FAILED" || activeRun?.status === "CANCELLED"
+                    ? "Đợt tối ưu đã dừng. Chưa có phương án đủ điều kiện để chọn làm ứng viên."
                     : "Đợt chạy đang trong giai đoạn khởi tạo ban đầu hoặc đang mô phỏng các lượt thử nghiệm."}
                 </EmptyState>
               </div>

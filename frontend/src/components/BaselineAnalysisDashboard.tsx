@@ -168,7 +168,7 @@ function BaselineWorkspace() {
   }
   function openOptimizer() {
     if (saved && saved.baseline_current === true && handoffCheck?.key === snapshotKey && !operationLock.current)
-      router.push(`/aeb?dataset_id=${saved.id}`);
+      router.push(`/aeb/mobo/new?dataset_id=${saved.id}`);
   }
   function clearDraft() {
     if (!canWrite || busy || !draftReady) return;

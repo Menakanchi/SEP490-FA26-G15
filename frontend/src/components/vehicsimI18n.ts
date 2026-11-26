@@ -67,6 +67,20 @@ type Rule = [RegExp, (m: RegExpMatchArray) => string];
 const re = (pattern: string) => new RegExp(`^${pattern}$`);
 
 const RULES: Rule[] = [
+  [re("Analysis dataset ID is required with its digest"), () => "Cần mã dataset và checksum từ bước kiểm tra bàn giao."],
+  [re("Analysis dataset checksum changed; reload the handoff"), () => "Checksum dataset đã thay đổi. Hãy kiểm tra lại bàn giao từ Phân tích lỗi."],
+  [re("Analysis dataset belongs to another scenario or baseline"), () => "Dataset không thuộc họ kịch bản hoặc baseline đang chọn."],
+  [re("Analysis dataset simulator differs from (?:this campaign or current simulator profile|the current simulator profile)"), () => "Simulator của dataset không khớp đợt tối ưu hoặc profile hiện hành. Hãy dùng kết quả baseline cùng simulator."],
+  [re("Analysis campaign dataset reference is invalid"), () => "Tham chiếu dataset của đợt tối ưu không hợp lệ. Hãy kiểm tra lại tập đã chốt."],
+  [re("Analysis campaign dataset identity or checksum changed"), () => "Định danh hoặc checksum dataset đã thay đổi. Không thể tiếp tục đợt tối ưu với nguồn này."],
+  [re("Analysis dataset scenario version is unavailable"), () => "Phiên bản kịch bản trong dataset không còn truy cập được."],
+  [re("Analysis dataset source runs are incomplete or changed"), () => "Run nguồn của dataset bị thiếu hoặc đã thay đổi. Hãy kiểm tra lại nguồn trước khi tối ưu."],
+  [re("Optimization candidate differs from its frozen run identity"), () => "Ứng viên không khớp định danh run đã chốt; chưa thể dùng làm bằng chứng tối ưu."],
+  [re("Optimization candidate is missing frozen source runs"), () => "Ứng viên thiếu run thuộc tập đã chốt; chưa thể đánh giá tối ưu."],
+  [re("Optimization trial evidence changed before GP fitting"), () => "Bằng chứng lượt thử đã thay đổi trước khi huấn luyện mô hình tối ưu. Đợt chạy đã dừng để tránh dùng sai dữ liệu."],
+  [re("Analysis dataset partitions(?: or objectives)? changed"), () => "Tập tối ưu, tập xác minh hoặc chỉ số trong dataset đã thay đổi. Hãy kiểm tra lại bàn giao."],
+  [re("Analysis dataset manifests are incomplete"), () => "Dataset thiếu thông tin truy vết artifact; chưa thể bàn giao tối ưu."],
+  [re("Analysis baseline parameter values changed or source parameters are incomplete"), () => "Tham số baseline đã thay đổi hoặc run nguồn thiếu tham số. Hãy kiểm tra lại baseline và chốt tập phù hợp."],
   [re("Optimization baseline is missing selected variant runs"), () => "Baseline chưa có đủ lượt chạy cho các biến thể đã chọn. Hãy chạy đủ baseline trước khi tối ưu."],
   [re("Optimization candidate is missing selected variant runs"), () => "Ứng viên chưa có đủ lượt chạy cho các biến thể đã chọn. Không thể đánh giá kết quả tối ưu."],
   [re("Invalid optimization search space: .*"), () => "Miền tìm kiếm không hợp lệ. Cần đủ bốn tham số AEB với cận hữu hạn, đúng thứ tự và trong giới hạn cho phép."],

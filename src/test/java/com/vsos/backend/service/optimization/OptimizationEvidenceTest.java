@@ -9,7 +9,7 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
 class OptimizationEvidenceTest {
-    private final OptimizationService service=new OptimizationService(null,null,null,null,null,null,null,null);
+    private final OptimizationService service=new OptimizationService(null,null,null,null,null,null,null,null,null);
     private final OptimizationService.BaselineStats baseline=new OptimizationService.BaselineStats(50,0);
     private Map<String,Object> run(boolean braked,boolean collision,Double jerk,Double impact,Double stopping) {
         return Json.obj("status","COMPLETED","end_reason","TARGET_CLEARED","aeb_mode","ON","verdict",collision?"FAIL":"PASS",

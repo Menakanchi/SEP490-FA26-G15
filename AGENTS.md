@@ -24,7 +24,7 @@ Backend FastAPI và Scenario Forge đã gỡ; không khôi phục kiến trúc c
 
 Luồng mục tiêu 5 màn: **Thiết kế kịch bản → Baseline → Phân tích → Tối ưu AEB → Regression/Reviewer**.
 Code đã có mô tả, sinh biến thể, baseline, phân tích, candidate thủ công, MOBO/Pareto và regression;
-Sensitivity/Robustness và nối snapshot FA vào campaign còn thiếu (TD-39, TD-06).
+Campaign đã nhận snapshot/partition FA v2; Sensitivity/Robustness và consumer handoff chẩn đoán V3 còn thiếu (TD-39, TD-06).
 CARLA web đã có `.xosc` + ScenarioRunner 0.9.16, RGB/sensor và API hủy run/họ/regression/campaign; còn cần kiểm vòng đời CARLA thật (TD-37).
 Schema có 7 category; bộ động học và `.xosc`/CARLA chạy `CP_CROSSING` và CCRs/CCRm/CCRb (ADR-050); còn 3 nhóm (TD-42).
 AEB của ca người đi bộ trên CARLA nhận perception từ radar từ `.xosc` v9 (ADR-043, ADR-055; hiện hành v16 / `-xosc16`, xác nhận va chạm cảm biến ADR-066; các thay đổi v15: bù pha tăng lực ADR-056/061/063, hành lang theo xe ADR-057, phanh đúng mốc ADR-058, bàn đạp 3 xe ADR-059, người tăng tốc dần ADR-062; động học `1.4`); xe phía trước vẫn dùng ground truth (TD-01).
@@ -43,7 +43,7 @@ Chi tiết chức năng và nghiệm thu: [phân chia 5 thành viên](docs/vehic
 | 1. Thiết kế kịch bản | `/scenarios/new` | `DescribeService`, `FamilyService`, `ScenarioRules`, `LlmService` | Họ kịch bản + biến thể hợp lệ |
 | 2. Chạy baseline | `/scenarios`, `/analysis/carla` | `RunService`, `core/xosc/XoscExport`; `worker/run_xosc.py`, `sensor_recorder.py` | Run + seed + xe/AEB/simulator + kết quả/artifact |
 | 3. Phân tích lỗi | `/analysis/failures/**` | `AnalysisService`, `AnalysisViewService`, `core/evaluation/AnalysisMetrics` | Dataset v2: tập tối ưu/xác minh + baseline/seed + chỉ số/nguyên nhân |
-| 4. Tối ưu AEB | `/aeb`, `/aeb/mobo/**` | `AebService`, `OptimizationService`, `core/mobo/MoboEngine` | Candidate + campaign/trial + mục tiêu/ràng buộc; FA snapshot chưa nối vào campaign |
+| 4. Tối ưu AEB | `/aeb`, `/aeb/mobo/**` | `AebService`, `OptimizationService`, `core/mobo/MoboEngine` | Candidate + campaign/trial; dataset FA v2 + checksum giữ đúng tập tối ưu/xác minh |
 | 5. Regression và phê duyệt | `/validation/**` | `RegressionController`, `RegressionService`, `ReviewDecisionService`, `RegressionRepository` | Kết quả xác minh + quyết định; baseline mới nếu Accept |
 
 Code ở [src/main/java/com/vsos/backend/](src/main/java/com/vsos/backend/), chia `<tầng>/<chức năng>` theo

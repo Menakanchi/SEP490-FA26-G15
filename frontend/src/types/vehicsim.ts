@@ -866,6 +866,10 @@ export interface OptimizationRun {
   error_message: string | null;
   search_space?: Record<string, [number, number]>;
   objective_config?: Record<string, unknown>;
+  dataset_id?: number | null;
+  dataset_digest?: string | null;
+  optimization_run_ids?: number[];
+  validation_run_ids?: number[];
 }
 
 export interface OptimizationTrial {
@@ -922,6 +926,8 @@ export interface AnalysisDashboardData {
 }
 export interface AnalysisSelection {
   schema: "vehicsim.analysis-dataset/v2"; id: number; baseline_current: boolean; handoff_ready: boolean;
+  /** Server-issued digest returned by the current handoff validation. */
+  dataset_digest?: string;
   scenario: {id: number; code: string; name: string; category: string};
   baseline: {id: number; label: string};
   reference: {vehicle_id: number; simulator: string; dt: number};
