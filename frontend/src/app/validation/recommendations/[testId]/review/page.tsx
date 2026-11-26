@@ -94,9 +94,10 @@ export default function ReviewPage() {
       : []),
   ];
   // Không có quyền quyết định hoặc đã có quyết định cuối: khoá cả form, không chỉ nút gửi.
-  const locked = final || !canDecide;
+  const superseded = r.recommendation_status === "SUPERSEDED";
+  const locked = final || superseded || !canDecide;
   const ready =
-    canDecide && !final && !running && !!decision && checks.slice(0, checklist.length).every(Boolean) && reason.trim().length > 0 && confirmed && !submitting &&
+    canDecide && !final && !superseded && !running && !!decision && checks.slice(0, checklist.length).every(Boolean) && reason.trim().length > 0 && confirmed && !submitting &&
     !(decision === "ACCEPT" && acceptBlock) && !(decision === "REJECT" && rejectBlock);
 
   const submit = async () => {
@@ -169,6 +170,7 @@ export default function ReviewPage() {
     >
       <ErrorNote message={error} />
       {final && <ErrorNote message={`Khuyến nghị này đã có quyết định cuối (${RECOMMENDATION_STATUS[r.recommendation_status].label}).`} />}
+      {superseded && <ErrorNote message="Khuyến nghị hết hiệu lực: ứng viên này đã được quyết định ở một kiểm thử hồi quy khác." />}
       {!canDecide && <ErrorNote message={user?.roleCode === "REVIEWER"
         ? ctx?.reviewer_can_decide === false ? "Project hoặc workspace đã lưu trữ, chỉ được xem lịch sử." : "Đang kiểm tra quyền của project."
         : "Chỉ Người duyệt (REVIEWER) được ra quyết định; người làm không tự duyệt việc của mình."} />}

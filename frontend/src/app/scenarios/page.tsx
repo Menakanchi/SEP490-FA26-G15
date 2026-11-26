@@ -388,6 +388,9 @@ export default function ScenarioFamiliesPage() {
                     <span>
                       <b className="text-vehicsim-ink font-bold">{shown.runs.COMPLETED ?? 0}</b> đã xong
                     </span>
+                    <span className="text-[10.5px] text-vehicsim-faint" title="Gồm lượt baseline, lượt AEB tắt, lượt của tối ưu MOBO và kiểm thử hồi quy">
+                      mọi mục đích
+                    </span>
                     {!old && pending > 0 && (
                       <button
                         type="button"
@@ -422,9 +425,16 @@ export default function ScenarioFamiliesPage() {
                       <span className="text-[12px] text-vehicsim-faint" title="Lỗi trên bản cơ sở chỉ tính cho bản hiện hành">—</span>
                     ) : (
                       <>
-                        <span className={cx("text-[13px] font-bold", f.failures ? "text-vehicsim-danger" : "text-vehicsim-faint")}>
-                          {f.failures} / {f.variants}
-                        </span>
+                        {baselineRan(f) ? (
+                          <span className={cx("text-[13px] font-bold", f.failures ? "text-vehicsim-danger" : "text-vehicsim-faint")}>
+                            {f.failures} / {f.variants}
+                          </span>
+                        ) : (
+                          // Chưa biến thể nào chạy xong với bản cơ sở hiện hành: "0 / N" sẽ bị đọc thành "chạy rồi, không lỗi".
+                          <span className="text-[12px] font-semibold text-vehicsim-faint" title="Chưa có lượt baseline hoàn tất với bản cơ sở hiện hành">
+                            Chưa chạy
+                          </span>
+                        )}
                         {f.baseline && <span className="text-[10.5px] text-vehicsim-faint">AEB {f.baseline}</span>}
                       </>
                     )}
@@ -677,6 +687,11 @@ function ActiveRuns({
 }
 
 /** Tách lượt đang chạy khỏi lượt đang chờ (PENDING/QUEUED, PAUSED), mỗi loại một dòng để cột hẹp không cắt chữ. */
+/** Đã có biến thể chạy xong với bản cơ sở hiện hành (mọi bộ mô phỏng) chưa; backend chỉ đếm lượt baseline AEB bật của xe đang dùng. */
+function baselineRan(f: FamilyItem): boolean {
+  return Object.values(f.baseline_progress ?? {}).some((p) => p.completed_variants > 0);
+}
+
 function waitingRunsLines(runs: Record<string, number>): string[] {
   const running = runs.RUNNING ?? 0;
   const waiting = (runs.PENDING ?? runs.QUEUED ?? 0) + (runs.PAUSED ?? 0);

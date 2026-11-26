@@ -211,14 +211,14 @@ public class RegressionRepository {
 
     public CandidateSource candidateSource(long versionId) {
         Row r = db.first("""
-                SELECT v.source, t.id AS trial_id, t.trial_number, t.optimization_run_id, o.name AS campaign_name
+                SELECT v.source, t.id AS trial_id, t.trial_number, t.optimization_run_id, t.is_pareto_optimal, o.name AS campaign_name
                   FROM aeb_versions v
                   LEFT JOIN optimization_trials t ON t.candidate_aeb_version_id = v.id
                   LEFT JOIN optimization_runs o ON o.id = t.optimization_run_id
                  WHERE v.id = ?
                 """, versionId);
         return r == null ? null : new CandidateSource(r.str("source"), r.getLong("optimization_run_id"), r.str("campaign_name"),
-                r.getLong("trial_id"), r.getInt("trial_number"));
+                r.getLong("trial_id"), r.getInt("trial_number"), r.isNull("trial_id") ? null : r.boolOrNull("is_pareto_optimal"));
     }
 
     public Map<Long, Row> latestBaselineRuns(long baselineVersionId, List<Long> variantIds, String simulatorVersion, long vehicleModelId) {

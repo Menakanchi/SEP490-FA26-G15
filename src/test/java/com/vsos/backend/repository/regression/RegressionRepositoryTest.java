@@ -177,11 +177,11 @@ class RegressionRepositoryTest {
     @Test
     void anOptimizationCandidateShowsItsCampaignAndTrial() {
         when(db.first(contains("optimization_trials"), any(Object[].class))).thenReturn(
-                row("source", "OPTIMIZATION", "optimization_run_id", 4L, "campaign_name", "Chiến dịch A", "trial_id", 9L, "trial_number", 7));
+                row("source", "OPTIMIZATION", "optimization_run_id", 4L, "campaign_name", "Chiến dịch A", "trial_id", 9L, "trial_number", 7, "is_pareto_optimal", true));
 
         CandidateSource source = repo.candidateSource(11L);
 
-        assertThat(source).isEqualTo(new CandidateSource("OPTIMIZATION", 4L, "Chiến dịch A", 9L, 7));
+        assertThat(source).isEqualTo(new CandidateSource("OPTIMIZATION", 4L, "Chiến dịch A", 9L, 7, true));
     }
 
     @Test

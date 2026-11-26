@@ -1,5 +1,6 @@
 "use client";
 
+import { TrialSelectAction, useTrialSelections } from "@/components/aeb/TrialSelectAction";
 import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, TrendingUp } from "lucide-react";
@@ -18,6 +19,7 @@ export default function AebMoboParetoPage() {
   const [runs, setRuns] = useState<OptimizationRun[] | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [paretoTrials, setParetoTrials] = useState<OptimizationTrial[] | null>(null);
+  const trialSelections = useTrialSelections(paretoTrials);
   const [selectingTrialId, setSelectingTrialId] = useState<number | null>(null);
   const [createdCandidate, setCreatedCandidate] = useState<{ id: number; label: string; regressionTestId?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -224,14 +226,7 @@ export default function AebMoboParetoPage() {
                       {t.stopping_distance_m !== null ? `${t.stopping_distance_m.toFixed(2)} m` : "—"}
                     </td>
                     <td className="px-4 py-3.5 text-right">
-                      <button
-                        type="button"
-                        disabled={selectingTrialId !== null || !canWrite}
-                        onClick={() => handleSelectCandidate(t.id)}
-                        className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-3 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs"
-                      >
-                        {selectingTrialId === t.id ? "Đang lưu…" : "Chọn làm ứng viên"}
-                      </button>
+                      <TrialSelectAction trial={t} selections={trialSelections} selecting={selectingTrialId} canWrite={canWrite} onSelect={handleSelectCandidate} />
                     </td>
                   </tr>
                 ))}
