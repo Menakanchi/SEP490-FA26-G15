@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={
         "spring.config.import=optional:file:./target/logic-audit-no-env.properties",
         "vehicsim.simulator=kinematic","vehicsim.run-mode=inline","vehicsim.recover-on-startup=false",
-        "vehicsim.data-root=./target/e2e-flow-audit/main-flow","spring.data.redis.host=127.0.0.1",
+        "vehicsim.data-root=${VSOS_AUDIT_DATA_ROOT:./target/e2e-flow-audit/main-flow}","spring.data.redis.host=127.0.0.1",
         "spring.data.redis.port=16379","app.env=development","app.auth.login-attempts-per-ip=100"})
 class MainFlowMysqlTest {
     @DynamicPropertySource static void isolatedDatabase(DynamicPropertyRegistry properties) throws Exception {

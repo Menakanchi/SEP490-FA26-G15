@@ -80,6 +80,7 @@ try {
  const saved=await (await response).json();
  assert(saved.id>0,saved.detail);
  await page.getByRole("heading",{name:new RegExp(`Tập đã chốt #${saved.id}`)}).waitFor();
+ await page.locator("summary").filter({hasText:"Bàn giao theo quy trình trước"}).click();
  await page.getByRole("button",{name:"Kiểm tra trước bàn giao",exact:true}).click();
  await page.waitForURL("**/aeb?dataset_id="+saved.id);
  // Navigation alone does not prove the MOBO consumer uses this dataset.

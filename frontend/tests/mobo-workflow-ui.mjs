@@ -50,6 +50,7 @@ try {
   if(req.method()==="OPTIONS")return route.fulfill({status:204});
   if(p==="/auth/me")return reply(user);
   if(p==="/vehicsim/notifications")return reply({items:[],unread_count:0});
+  if(p==="/vehicsim/regression"&&req.method()==="GET")return reply({items:[],kpis:{total:0,passed:0,failed:0,running:0}});
   if(p==="/vehicsim/projects")return reply({items:[],total:0,page:1,page_size:20,active_count:0,archived_count:0});
   if(p==="/vehicsim/context")return reply({project:{id:1,name:"MOBO fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:{id:10,label:"Baseline"}},versions:[],families:[{id:5,code:"CP",name:"FA frozen fixture"}],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
   if(p==="/vehicsim/carla/status")return reply({connected:false});
@@ -165,9 +166,9 @@ try {
  const confirmV3=review.getByRole("button",{name:"Xác nhận và phân tích V3",exact:true});assert(await confirmV3.isDisabled());
  await review.getByLabel("Lý do xác nhận bàn giao V3",{exact:true}).fill("Reviewed stored canonical targets and independent safe controls");
  await review.getByRole("checkbox",{name:/Đã rà soát ca đối chứng #12/}).check();
- await review.getByRole("checkbox",{name:/Chỉ tối ưu ba chỉ số canonical/}).check();
- await review.getByRole("checkbox",{name:/Calibration vật lý không áp dụng/}).check();
- await review.getByRole("checkbox",{name:/Tôi xác nhận lựa chọn run/}).check();
+ await review.getByRole("checkbox",{name:/Chỉ tối ưu ba chỉ số đã lưu/}).check();
+ await review.getByRole("checkbox",{name:/Hiệu chuẩn vật lý không áp dụng/}).check();
+ await review.getByRole("checkbox",{name:/Tôi đã rà soát lựa chọn, hai tập độc lập/}).check();
  assert(await confirmV3.isDisabled(),"Both partitions need an explicitly reviewed control");assert.equal(contextWrites.length,0);
  await review.getByRole("checkbox",{name:/Đã rà soát ca đối chứng #14/}).check();
  for(const width of [1366,390,320]){await page.setViewportSize({width,height:844});await noOverflow();if(width!==390)await page.screenshot({path:path.join(output,"v3-context-"+width+".png"),fullPage:true});}
@@ -175,8 +176,8 @@ try {
  assert.equal(contextWrites.length,1);assert.equal(contextExecutions.length,1);assert.equal(contextExecutions[0],null);
  assert.deepEqual(contextWrites[0],{dataset_id:91,dataset_digest:digest,reason:"Reviewed stored canonical targets and independent safe controls",confirmed:true,canonical_targets_only:true,calibration_not_applicable:true,nonhazard_run_ids:[12,14]});
  assert.equal(await review.getByRole("link",{name:"Mở MOBO từ handoff V3 →",exact:true}).count(),0);
- executionStatus=200;handoffReady=false;await review.getByRole("button",{name:"Thử lại phân tích với context đã lưu",exact:true}).click();await review.getByText("Handoff V3: BLOCKED",{exact:true}).waitFor();
- assert.match(await review.innerText(),/QUALITY_POLICY_REVIEW_REQUIRED/);assert.equal(contextWrites.length,1);
+ executionStatus=200;handoffReady=false;await review.getByRole("button",{name:"Thử lại phân tích với context đã lưu",exact:true}).click();await review.getByText("Chưa đủ điều kiện tối ưu",{exact:true}).waitFor();
+ assert.match(await review.innerText(),/Hãy kiểm tra lại dữ liệu và điều kiện bàn giao/);assert.equal(contextWrites.length,1);
  assert.equal(await review.getByRole("link",{name:"Mở MOBO từ handoff V3 →",exact:true}).count(),0,"Blocked V3 never exposes a V2 optimizer substitute");
  handoffReady=true;await review.getByRole("button",{name:"Thử lại phân tích với context đã lưu",exact:true}).click();
  const v3Link=review.getByRole("link",{name:"Mở MOBO từ handoff V3 →",exact:true});await v3Link.waitFor();
