@@ -23,11 +23,11 @@ Python `worker/` chỉ gọi API CARLA và nói chuyện với lõi Java qua c�
 Backend FastAPI và Scenario Forge đã gỡ; không khôi phục kiến trúc cũ khi làm tính năng mới.
 
 Luồng mục tiêu 5 màn: **Thiết kế kịch bản → Baseline → Phân tích → Tối ưu AEB → Regression/Reviewer**.
-Code đã có mô tả, sinh biến thể, baseline, phân tích, candidate thủ công và regression;
-**MOBO/Pareto/Sensitivity/Robustness chưa triển khai** (TD-39, TD-06).
-CARLA web đã có `.xosc` + ScenarioRunner 0.9.16, RGB/sensor; **chưa có API/nút hủy** (TD-37).
+Code đã có mô tả, sinh biến thể, baseline, phân tích, candidate thủ công, MOBO/Pareto và regression;
+Campaign đã nhận snapshot/partition FA v2; Sensitivity/Robustness và consumer handoff chẩn đoán V3 còn thiếu (TD-39, TD-06).
+CARLA web đã có `.xosc` + ScenarioRunner 0.9.16, RGB/sensor và API hủy run/họ/regression/campaign; còn cần kiểm vòng đời CARLA thật (TD-37).
 Schema có 7 category; bộ động học và `.xosc`/CARLA chạy `CP_CROSSING` và CCRs/CCRm/CCRb (ADR-050); còn 3 nhóm (TD-42).
-AEB của ca người đi bộ trên CARLA nhận perception từ radar từ `.xosc` v9 (ADR-043, ADR-055; hiện hành v15 / `-xosc15`: + bù pha tăng lực ADR-056/061, + hành lang theo xe ADR-057, + phanh đúng mốc ADR-058, + bàn đạp 3 xe ADR-059, + người tăng tốc dần ADR-062; động học `1.4`); xe phía trước vẫn dùng ground truth (TD-01).
+AEB của ca người đi bộ trên CARLA nhận perception từ radar từ `.xosc` v9 (ADR-043, ADR-055; hiện hành v16 / `-xosc16`, xác nhận va chạm cảm biến ADR-066; các thay đổi v15: bù pha tăng lực ADR-056/061/063, hành lang theo xe ADR-057, phanh đúng mốc ADR-058, bàn đạp 3 xe ADR-059, người tăng tốc dần ADR-062; động học `1.4`); xe phía trước vẫn dùng ground truth (TD-01).
 Chỉ số chốt 13/11 (ADR-055): vận tốc va chạm tương đối (động học `1.1`), RMS jerk CARLA lọc Euro NCAP từ T_AEB, run `aeb_mode = OFF` chỉ để đối chiếu.
 Phanh CARLA đã hiệu chuẩn mô-men cho e-tron (ADR-051), kẹp ở μ·g khi đường ướt (ADR-052) và thay cú dừng gấp dưới 6 m/s (ADR-053); v8 thêm bảng bàn đạp e-tron và bù người đi bộ khởi động chậm (ADR-054, Accepted 22/11); còn lệch (TD-17).
 Hướng đi ngang đã sửa ở xosc2; người "dừng ở lề" đứng lại ở lề từ xosc4 (23/10/2026, kiểm CARLA thật).
@@ -43,7 +43,7 @@ Chi tiết chức năng và nghiệm thu: [phân chia 5 thành viên](docs/vehic
 | 1. Thiết kế kịch bản | `/scenarios/new` | `DescribeService`, `FamilyService`, `ScenarioRules`, `LlmService` | Họ kịch bản + biến thể hợp lệ |
 | 2. Chạy baseline | `/scenarios`, `/analysis/carla` | `RunService`, `core/xosc/XoscExport`; `worker/run_xosc.py`, `sensor_recorder.py` | Run + seed + xe/AEB/simulator + kết quả/artifact |
 | 3. Phân tích lỗi | `/analysis/failures/**` | `AnalysisService`, `AnalysisViewService`, `core/evaluation/AnalysisMetrics` | Dataset v2: tập tối ưu/xác minh + baseline/seed + chỉ số/nguyên nhân |
-| 4. Tối ưu AEB | `/aeb` | `AebService` hiện chỉ tạo candidate thủ công; service/worker tối ưu cần bổ sung | Candidate + campaign/trial + mục tiêu/ràng buộc |
+| 4. Tối ưu AEB | `/aeb`, `/aeb/mobo/**` | `AebService`, `OptimizationService`, `core/mobo/MoboEngine` | Candidate + campaign/trial; dataset FA v2 + checksum giữ đúng tập tối ưu/xác minh |
 | 5. Regression và phê duyệt | `/validation/**` | `RegressionController`, `RegressionService`, `ReviewDecisionService`, `RegressionRepository` | Kết quả xác minh + quyết định; baseline mới nếu Accept |
 
 Code ở [src/main/java/com/vsos/backend/](src/main/java/com/vsos/backend/), chia `<tầng>/<chức năng>` theo

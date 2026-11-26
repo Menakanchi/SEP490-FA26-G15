@@ -9,6 +9,7 @@ import { Checkbox, ErrorNote, OutcomeBadge, PillButton, Tag, Toggle, cx } from "
 import { viSummary } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { RegressionPreview } from "@/types/vehicsim";
+import { VehicSimSelect } from "@/components/VehicSimSelect";
 
 const CRITERIA = [
   { key: "no_new_collision", label: "Không kịch bản an toàn nào được chuyển thành va chạm", required: true },
@@ -123,8 +124,6 @@ function NewRegressionForm() {
     <VehicSimPage
       step={5}
       crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Kiểm thử hồi quy", href: "/validation/regression" }, { label: "Kiểm thử mới" }]}
-      title="Thiết lập đợt kiểm thử hồi quy"
-      subtitle="Ghép cặp ứng viên với bản cơ sở trên cùng không gian kịch bản và cùng phiên bản bộ mô phỏng."
       actions={
         <>
           <PillButton href="/validation/regression">Huỷ</PillButton>
@@ -152,20 +151,19 @@ function NewRegressionForm() {
               </Field>
               <span className="mb-[3px] flex size-9 shrink-0 items-center justify-center rounded-full bg-vehicsim-soft text-[14px] font-bold text-vehicsim-ink">→</span>
               <Field label="Ứng viên (mới)">
-                <select
-                  value={candidateId ?? ""}
-                  onChange={(e) => setCandidateId(e.target.value ? Number(e.target.value) : null)}
+                <VehicSimSelect
+                  aria-label="Chọn ứng viên (mới)"
+                  value={candidateId}
+                  onChange={(val) => setCandidateId(val ? Number(val) : null)}
                   disabled={noCandidate}
-                  className="h-[42px] w-full rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-[14px] text-[14px] font-medium text-vehicsim-ink"
-                >
-                  {candidates.length === 0 && <option value="">Chưa có phiên bản ứng viên</option>}
-                  {candidates.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      AEB {v.label}
-                      {v.notes ? ` · ${v.notes}` : ""}
-                    </option>
-                  ))}
-                </select>
+                  options={candidates.map((v) => ({
+                    value: v.id,
+                    label: `AEB ${v.label}`,
+                    sublabel: v.notes ? v.notes : undefined,
+                  }))}
+                  placeholder={noCandidate ? "Chưa có ứng viên" : "Chọn ứng viên…"}
+                  buttonClassName="h-[42px]"
+                />
               </Field>
             </div>
             {noCandidate && (
@@ -194,22 +192,21 @@ function NewRegressionForm() {
             aside={<span className="rounded-full bg-vehicsim-soft px-[10px] py-[5px] text-[12px] font-semibold text-vehicsim-ink">{scenarios} kịch bản</span>}
           >
             <Field label="Họ kịch bản">
-              <select
-                value={scenarioId ?? ""}
-                onChange={(e) => {
+              <VehicSimSelect
+                aria-label="Chọn họ kịch bản"
+                value={scenarioId}
+                onChange={(val) => {
                   setPreview(null);
                   setPicked(new Set());
-                  setScenarioId(e.target.value ? Number(e.target.value) : null);
+                  setScenarioId(val ? Number(val) : null);
                 }}
-                className="h-[42px] w-full rounded-[12px] border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-[14px] text-[14px] font-medium text-vehicsim-ink"
-              >
-                {(ctx?.families ?? []).length === 0 && <option value="">Chưa có họ kịch bản</option>}
-                {ctx?.families.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.code} · {f.name}
-                  </option>
-                ))}
-              </select>
+                options={(ctx?.families ?? []).map((f) => ({
+                  value: f.id,
+                  label: `${f.code} · ${f.name}`,
+                }))}
+                placeholder="Chọn họ kịch bản…"
+                buttonClassName="h-[42px]"
+              />
             </Field>
             <SetOption
               checked={oldCritical && !custom}
@@ -333,11 +330,6 @@ function NewRegressionForm() {
               </div>
             )}
           </div>
-          <p className="mt-2 flex gap-2 rounded-[12px] bg-vehicsim-decision-bg px-4 py-3 text-[12px] leading-[1.5] text-vehicsim-muted">
-            <span className="mt-[6px] size-[6px] shrink-0 rounded-full bg-vehicsim-decision" />
-            Ứng viên trượt một tiêu chí bắt buộc sẽ tự động {isExperiencer ? "không dùng làm baseline được" : "bị chặn khỏi khuyến nghị"}. Bản cơ sở và ứng viên luôn chạy mỗi biến thể với
-            cùng một seed ngẫu nhiên.
-          </p>
         </aside>
       </div>
     </VehicSimPage>

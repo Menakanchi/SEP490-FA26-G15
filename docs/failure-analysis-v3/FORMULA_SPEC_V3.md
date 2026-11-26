@@ -185,7 +185,7 @@ Mỗi dòng xác định công thức chuẩn chính xác ở phần2; units/con
 | V2-F01 CORRECT | Q01 rates with explicit claim-specific denominator [fraction] |72 run,31 recorded events,12 mismatch | Do not count unknown as safe; not false-brake rate6/54 without eligibility. DiagnosticRateCalculator.aggregate |
 | V2-F02 CORRECT | Q01 supported failure / functionally evaluable [fraction] | No confirmed Golden18 functional ground truth | Denominator0→UNKNOWN; not100% evaluator labels. DiagnosticRateCalculator.aggregate |
 | V2-F03 KEEP | Q01 rate per bin + n,unknown and clustered reps [fraction] |18cases/54ON/18OFF only Audi/CP_CROSSING | 125 wet group sample tiny, no reliability/causal claim. DiagnosticRateCalculator.group |
- 
+
 ## 4. Disposition đầy đủ Excel F01–F23
 
 | XLS ID / disposition | Công thức chuẩn và phạm vi chính xác | Input dataset; missing và đơn vị | Golden example; causal limit; future method |

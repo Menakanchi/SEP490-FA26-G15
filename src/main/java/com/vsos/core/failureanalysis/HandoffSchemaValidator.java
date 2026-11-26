@@ -100,9 +100,24 @@ final class HandoffSchemaValidator {
         for(String k:List.of("failure_evidence_refs","objective_evidence_refs"))refs(p+"/"+k);
         sample(p+"/canonical_sample");String q=p+"/metric_provenance";
         if(!missingUnion(q)){
-            for(String k:List.of("aggregation_version","metric_source","simulator","producer","vehicle_id","core_source_commit","scenario_runner_version"))string(q+"/"+k,false);
+            boolean database="PERSISTED_CANONICAL_RESULT".equals(get(q+"/provenance_scope"));
+            for(String k:List.of("aggregation_version","metric_source","simulator","producer","vehicle_id","core_source_commit"))string(q+"/"+k,false);
             exact(q+"/aggregation_version","adr040-stored-aggregation/1");exact(q+"/metric_source","SIMULATOR_RESULT");number(q+"/dt",true,false,false);
-            for(String k:List.of("core_jar_sha256","worker_sha256","scenario_runner_sha256"))if(!hash(get(q+"/"+k)))bad(q+"/"+k,"Required SHA256");
+            string(q+"/scenario_runner_version",database);
+            if(database){
+                // A DB canonical profile records real producer hashes; it cannot invent CARLA sidecars.
+                for(String k:List.of("core_jar_sha256","core_bytecode_sha256","worker_sha256","scenario_runner_sha256"))
+                    if(get(q+"/"+k)!=null&&!hash(get(q+"/"+k)))bad(q+"/"+k,"Expected SHA256 or explicit unavailable null");
+                if(!hash(get(q+"/core_jar_sha256"))&&!hash(get(q+"/core_bytecode_sha256")))bad(q,"Loaded producer binary hash required");
+                for(String k:List.of("canonical_targets_only","calibration_not_applicable"))
+                    if(!Boolean.TRUE.equals(get(q+"/"+k)))bad(q+"/"+k,"Explicit canonical-only review required");
+                refs(q+"/canonical_review_refs");
+                String source=q+"/database_source";if(object(source)){
+                    string(source+"/source_id",false);for(String k:List.of("project_id","run_id","attempt"))
+                        if(!id(get(source+"/"+k)))bad(source+"/"+k,"Required database identity");
+                    if(!hash(get(source+"/source_sha256")))bad(source+"/source_sha256","Required producer source SHA256");
+                }
+            }else for(String k:List.of("core_jar_sha256","worker_sha256","scenario_runner_sha256"))if(!hash(get(q+"/"+k)))bad(q+"/"+k,"Required SHA256");
             refs(q+"/source_refs");sourceHashes(q+"/metric_source_hashes");object(q+"/objectives");
             for(String key:CanonicalObjectiveReader.KEYS){String d=q+"/objectives/"+key;if(object(d)){for(String k:List.of("signal","filter","window"))string(d+"/"+k,false);refs(d+"/source_refs");}}
         }
@@ -121,7 +136,7 @@ final class HandoffSchemaValidator {
     private void validate(){
         // Envelope versions and integrity profile are additionally checked by the consumer validator.
         string("/content_digest",false);exact("/digest_profile","fa-handoff-sorted-json/1");
-        String p="/dataset";if(object(p)){ev(p+"/snapshot_schema",Type.TEXT);if(get(p+"/snapshot_schema/value")!=null)exact(p+"/snapshot_schema/value","vehicsim.analysis-dataset/v2");
+        String p="/dataset";if(object(p)){ev(p+"/snapshot_schema",Type.TEXT);if(get(p+"/snapshot_schema/value")!=null)choice(p+"/snapshot_schema/value",Set.of("vehicsim.analysis-dataset/v2","vehicsim.fa-v3-sealed-dataset/v1"),false);
             for(String k:List.of("snapshot_id","project_id","scenario_id"))ev(p+"/"+k,Type.ID);
             for(String k:List.of("snapshot_digest","cohort_digest"))ev(p+"/"+k,Type.HASH);
             ev(p+"/baseline_current",Type.BOOLEAN);choice(p+"/selection_status",Set.of("FROZEN","UNFROZEN","INVALID","UNKNOWN"),false);exact(p+"/digest_profile","fa-handoff-sorted-json/1");

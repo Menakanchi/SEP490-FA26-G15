@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   BarChart3,
   CheckSquare,
+  GitCompare,
   Layers,
   Sliders,
 } from "lucide-react";
@@ -21,7 +22,7 @@ export type AebTabKey =
   | "versions"
   | "compare";
 
-type CoreTabKey = "hub" | "mobo" | "manual" | "versions";
+type CoreTabKey = "hub" | "mobo" | "manual" | "versions" | "compare";
 
 const TAB_MAPPING: Record<AebTabKey, CoreTabKey> = {
   hub: "hub",
@@ -32,7 +33,7 @@ const TAB_MAPPING: Record<AebTabKey, CoreTabKey> = {
   manual: "manual",
   candidates: "versions",
   versions: "versions",
-  compare: "versions",
+  compare: "compare",
 };
 
 const TABS: {
@@ -45,7 +46,8 @@ const TABS: {
   { key: "hub", label: "Tổng quan cải tiến", href: "/aeb", icon: <Layers className="size-4" /> },
   { key: "mobo", label: "Tối ưu tự động (MOBO)", href: "/aeb/mobo", badge: "AI qEHVI", icon: <BarChart3 className="size-4" /> },
   { key: "manual", label: "Chỉnh tay tham số", href: "/aeb/manual", icon: <Sliders className="size-4" /> },
-  { key: "versions", label: "Thư viện & So sánh", href: "/aeb/versions", icon: <CheckSquare className="size-4" /> },
+  { key: "versions", label: "Danh sách phiên bản", href: "/aeb/versions", icon: <CheckSquare className="size-4" /> },
+  { key: "compare", label: "Đối chiếu thông số", href: "/aeb/compare", icon: <GitCompare className="size-4" /> },
 ];
 
 export function AebNav({ active }: { active: AebTabKey }) {
@@ -63,7 +65,7 @@ export function AebNav({ active }: { active: AebTabKey }) {
               "flex items-center gap-2 whitespace-nowrap rounded-t-[12px] px-4 py-2.5 text-[13px] font-bold transition",
               isSelected
                 ? "border-b-2 border-vehicsim-primary bg-vehicsim-surface text-vehicsim-ink shadow-xs"
-                : "text-vehicsim-muted hover:bg-vehicsim-soft hover:text-vehicsim-ink",
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white",
             )}
           >
             {tab.icon}

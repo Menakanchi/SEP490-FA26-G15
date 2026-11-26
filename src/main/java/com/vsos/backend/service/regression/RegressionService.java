@@ -1,6 +1,8 @@
 package com.vsos.backend.service.regression;
 
 import com.vsos.backend.common.Vs;
+import com.vsos.backend.common.Json;
+import com.vsos.backend.common.RunEvidence;
 import com.vsos.backend.common.audit.AuditLog;
 import com.vsos.backend.common.Vs.InvalidRequestException;
 import com.vsos.backend.common.Vs.NotFoundException;
@@ -149,7 +151,7 @@ public class RegressionService {
         ScenarioSet scenarioSet = new ScenarioSet(
                 variantIds != null ? "custom" : includeAllVariants ? "all_variants" : "old_critical",
                 variantIds == null && includeOldCritical, variantIds == null && includeAllVariants,
-                critical.size(), selected.size(), variantIds == null ? null : selectedIds, safeCount(selectedIds, baselineRuns, critical));
+                critical.size(), selected.size(), selectedIds, safeCount(selectedIds, baselineRuns, critical));
         long testId = repo.insertTest(projectId, scenarioId, baseline.lng("id"), candidate.lng("id"), vehicle.lng("id"), runs.configuredSimulator(),
                 testName, merged, scenarioSet, selected.size(), userId);
 
@@ -163,6 +165,48 @@ public class RegressionService {
         List<Long> all = new ArrayList<>(newBaselineIds);
         all.addAll(candidateIds);
         runs.dispatch(all);
+        return testId;
+    }
+
+    /** Preserve the FA holdout exactly; never replace it with latest runs or the current family generation. */
+    @Transactional
+    public long createFrozenTest(long projectId, long userId, long candidateVersionId, long scenarioId,
+                                 long baselineVersionId, long vehicleModelId, String simulator,
+                                 List<Row> variants, List<Row> baselineSources, Map<String,Object> dataset, String name) {
+        Row baseline = requireBaseline(projectId);
+        if (baseline.lng("id") != baselineVersionId) throw new InvalidRequestException("Analysis baseline changed");
+        Row candidate = repo.findVersion(projectId, candidateVersionId);
+        if (candidate == null || !"CANDIDATE".equals(candidate.str("status")))
+            throw new InvalidCandidateException("chỉ version ở trạng thái CANDIDATE mới đem đi regression được");
+        requireScenario(projectId, scenarioId);
+        queries.vehicleById(vehicleModelId);
+        if (RunService.isCarla(simulator) && !Objects.equals(simulator, runs.configuredSimulator())
+                || !RunService.isCarla(simulator) && !RunService.KINEMATIC_SIMULATOR.equals(simulator))
+            throw new InvalidRequestException("Analysis dataset simulator differs from the current simulator profile");
+        if (variants.isEmpty() || variants.size() != baselineSources.size()
+                || baselineSources.stream().map(r -> r.lng("id")).distinct().count() != baselineSources.size()
+                || baselineSources.stream().map(r -> r.lng("scenario_version_id")+"|"+r.lng("random_seed")).distinct().count() != baselineSources.size())
+            throw new InvalidScenarioSetException("tập xác minh đã chốt không hợp lệ");
+        for (int i = 0; i < variants.size(); i++) {
+            Row source = baselineSources.get(i);
+            if (!RunEvidence.completeAebOn(source) || source.lng("project_id") != projectId
+                    || source.lng("scenario_id") != scenarioId || source.lng("aeb_version_id") != baselineVersionId
+                    || source.lng("carla_vehicle_model_id") != vehicleModelId || !Objects.equals(source.str("simulator_version"), simulator)
+                    || variants.get(i).lng("id") != source.lng("scenario_version_id"))
+                throw new InvalidScenarioSetException("run xác minh khác định danh đã chốt");
+        }
+        Map<String,Object> selection = Json.obj("mode", "frozen_validation", "variant_count", baselineSources.size(),
+                "variant_ids", variants.stream().map(v -> v.lng("id")).distinct().toList(),
+                "baseline_run_ids", baselineSources.stream().map(r -> r.lng("id")).toList(), "dataset_ref", dataset);
+        long testId = repo.insertTest(projectId, scenarioId, baselineVersionId, candidateVersionId, vehicleModelId, simulator,
+                name, RegressionCriteria.merge(null), selection, baselineSources.size(), userId);
+        List<Long> candidateIds = new ArrayList<>();
+        for (int i = 0; i < variants.size(); i++) {
+            Row source = baselineSources.get(i);
+            candidateIds.addAll(runs.createRuns(projectId, scenarioId, List.of(variants.get(i)), vehicleModelId, candidateVersionId,
+                    userId, "REGRESSION", testId, Map.of(source.lng("scenario_version_id"), source)));
+        }
+        runs.dispatch(candidateIds);
         return testId;
     }
 
@@ -212,10 +256,14 @@ public class RegressionService {
             List<Long> ids = pairedRunIds(candidateRuns);
             Map<Long, RunResult> results = repo.runResults(ids);
             List<String> statuses = ids.stream().map(i -> results.containsKey(i) ? results.get(i).status() : null).toList();
-            if (statuses.stream().anyMatch(s -> s == null || s.equals("PENDING") || s.equals("RUNNING") || s.equals("PAUSED"))) {
+            if (statuses.stream().anyMatch(Objects::isNull)) {
+                repo.markFailed(testId);
                 return;
             }
-            if (statuses.stream().anyMatch(s -> !s.equals("COMPLETED"))) {
+            if (statuses.stream().anyMatch(s -> s.equals("PENDING") || s.equals("RUNNING") || s.equals("PAUSED"))) {
+                return;
+            }
+            if (statuses.stream().anyMatch(s -> !s.equals("COMPLETED")) || !evidenceComplete(test, candidateRuns, results)) {
                 repo.markFailed(testId);
                 return;
             }
@@ -309,6 +357,38 @@ public class RegressionService {
         List<Long> ids = new ArrayList<>(candidateRuns.stream().map(CandidateRun::id).toList());
         candidateRuns.forEach(r -> ids.add(r.baselineRunId()));
         return ids;
+    }
+
+    /** Shared by finalization and Accept so historical PASSED labels cannot bypass current evidence checks. */
+    public static boolean evidenceComplete(RegressionTestRow test, List<CandidateRun> candidates, Map<Long, RunResult> results) {
+        Map<String,Object> selection = Json.asMap(test.scenarioSet());
+        boolean frozen = "frozen_validation".equals(selection.get("mode"));
+        if (candidates.isEmpty() || candidates.stream().map(CandidateRun::id).distinct().count() != candidates.size()
+                || candidates.stream().map(CandidateRun::baselineRunId).distinct().count() != candidates.size()
+                || !frozen && candidates.stream().map(CandidateRun::scenarioVersionId).distinct().count() != candidates.size()) {
+            return false;
+        }
+        Set<Long> expected = new LinkedHashSet<>();
+        Object count = Json.asMap(test.scenarioSet()).get("variant_count");
+        if (count instanceof Number n && n.longValue() != candidates.size()) {
+            return false;
+        }
+        for (Object id : Json.asList(Json.asMap(test.scenarioSet()).get("variant_ids"))) {
+            if (id instanceof Number n) expected.add(n.longValue());
+        }
+        if (!expected.isEmpty() && !expected.equals(candidates.stream().map(CandidateRun::scenarioVersionId).collect(java.util.stream.Collectors.toSet()))) {
+            return false;
+        }
+        if (frozen) {
+            Set<Long> expectedSources = Json.asList(selection.get("baseline_run_ids")).stream()
+                    .map(id -> ((Number)id).longValue()).collect(java.util.stream.Collectors.toSet());
+            if (expectedSources.size() != candidates.size() || !expectedSources.equals(candidates.stream()
+                    .map(CandidateRun::baselineRunId).collect(java.util.stream.Collectors.toSet()))) return false;
+        }
+        return pairedRunIds(candidates).stream().allMatch(id -> {
+            RunResult result = results.get(id);
+            return result != null && "COMPLETED".equals(result.status()) && result.evidenceComplete();
+        });
     }
 
     private RegressionSummary summarize(RegressionTestRow test, List<CandidateRun> candidateRuns, Map<Long, RunResult> results) {

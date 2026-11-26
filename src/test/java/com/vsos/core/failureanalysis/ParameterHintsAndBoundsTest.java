@@ -13,7 +13,7 @@ class ParameterHintsAndBoundsTest {
     @BeforeEach void fixture() throws Exception{fixture=M1CFixture.create();}
     @Test void hf07ReadsActualCatalogAndLoadedEngineByKey() throws Exception{
         var r=new SearchRangeResolver().resolve(SearchRangeResolver.repositorySources(Path.of(".")),null);
-        assertThat(at(r,"/TTC_THRESHOLD/catalog_domain/value/upper")).isEqualTo(3.5); // ADR-068: seed khớp miền MOBO
+        assertThat(at(r,"/TTC_THRESHOLD/catalog_domain/value/upper")).isEqualTo(3.5); // ADR-069: seed khớp miền MOBO
         assertThat(at(r,"/TTC_THRESHOLD/engine_domain/value/upper")).isEqualTo(3.5);
         assertThat(at(r,"/MAX_DECELERATION/engine_domain/value/lower")).isEqualTo(5.);
         for(Object range:r.values()){assertThat(at(range,"/suggested_range/status")).isEqualTo("UNKNOWN");assertThat(at(range,"/consumer_enforcement")).isEqualTo("NOT_SUPPORTED");}

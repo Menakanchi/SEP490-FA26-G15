@@ -9,6 +9,7 @@ import com.vsos.core.aeb.AebParams;
 import com.vsos.core.aeb.AebStack;
 import com.vsos.core.common.Py;
 import com.vsos.core.simulation.Frame;
+import com.vsos.core.simulation.AebMode;
 import com.vsos.core.simulation.SimulationOutcome;
 import com.vsos.core.simulation.Simulator;
 
@@ -20,6 +21,9 @@ import com.vsos.core.simulation.Simulator;
  * là tham số AEB *chỉnh được* nghi ngờ (ADR-040); nguyên nhân ở hằng số cố định của lõi thì để {@code null}.</p>
  */
 public final class Evaluation {
+
+    /** Version of grading rules, independent of unchanged simulator physics and metric definitions. */
+    public static final String VERSION = "vehicsim.evaluation/v2";
 
     public static final double TIMING_TOLERANCE_S = 0.15; // chậm hơn thời điểm lý tưởng quá mức này mới tính là trễ
     public static final double CONTROL_LOSS_LIMIT_S = 0.50; // trễ + actuator + nửa đoạn tăng lực phanh tối đa chấp nhận
@@ -46,7 +50,13 @@ public final class Evaluation {
         }
     }
 
-    public record Result(String outcome, String verdict, Map<String, Object> aebResult, Map<String, Object> failure, List<StageVerdict> chain, String headline) {
+    public record Result(String outcome, String verdict, Map<String, Object> aebResult, Map<String, Object> failure, List<StageVerdict> chain,
+                         String headline, String version) {
+
+        private Result(String outcome, String verdict, Map<String, Object> aebResult, Map<String, Object> failure,
+                       List<StageVerdict> chain, String headline) {
+            this(outcome, verdict, aebResult, failure, chain, headline, null);
+        }
 
         /** Khâu đầu tiên hỏng trong chuỗi nguyên nhân (nguyên nhân chính); {@code null} nếu mọi khâu đạt. */
         public StageVerdict primaryStage() {
@@ -56,6 +66,9 @@ public final class Evaluation {
         /** {@code evaluation.to_document}: để {@code result.json} mang kết quả chấm sang backend mà không phải chấm lại. */
         public Map<String, Object> toDocument() {
             Map<String, Object> doc = new LinkedHashMap<>();
+            if (version != null) {
+                doc.put("version", version);
+            }
             doc.put("outcome", outcome);
             doc.put("verdict", verdict);
             doc.put("headline", headline);
@@ -125,15 +138,31 @@ public final class Evaluation {
     }
 
     public static Result evaluate(SimulationOutcome outcome, AebParams params) {
+        if (outcome.endReason() == null || List.of("TIMEOUT", "ERROR").contains(outcome.endReason())
+                || outcome.metrics() == null || !(outcome.metrics().get("collision") instanceof Boolean)
+                || outcome.frames() == null || outcome.frames().isEmpty() || outcome.caseDoc() == null) {
+            throw new IllegalArgumentException("Cannot evaluate incomplete simulation evidence (missing trace, classification or valid end reason)");
+        }
+        Result result = evaluateRules(outcome, params, false);
+        return new Result(result.outcome(), result.verdict(), result.aebResult(), result.failure(), result.chain(), result.headline(), VERSION);
+    }
+
+    /** Historical Python fixture/replay only. Never use this entry point for new runs. */
+    public static Result evaluateLegacy(SimulationOutcome outcome, AebParams params) {
+        return evaluateRules(outcome, params, true);
+    }
+
+    private static Result evaluateRules(SimulationOutcome outcome, AebParams params, boolean legacy) {
         Map<String, Object> m = outcome.metrics();
         String kind = classifyOutcome(m);
-        boolean triggered = m.get("aeb_decision_t") != null;
+        boolean off = !legacy && AebMode.isOff(outcome.caseDoc().get(AebMode.KEY));
+        boolean triggered = !off && m.get("aeb_decision_t") != null;
         // Va chạm luôn là có mối nguy — kể cả khi người đi bộ bước vào HÔNG xe sau khi mũi xe đã qua vạch.
         boolean hazard = b(m, "pedestrian_entered_path") || b(m, "target_entered_path") || b(m, "collision");
         Target who = target(outcome);
         boolean falseActivation = triggered && !hazard;
         Double idealT = idealTriggerT(outcome, params);
-        boolean missedActivation = hazard && idealT != null && !triggered;
+        boolean missedActivation = !off && !triggered && (legacy ? hazard && idealT != null : (b(m, "collision") || hazard && idealT != null));
 
         String verdict = kind.equals(OUTCOME_COLLISION) || falseActivation || missedActivation ? "FAIL" : "PASS";
         Map<String, Object> aeb = new LinkedHashMap<>();
@@ -143,7 +172,7 @@ public final class Evaluation {
         aeb.put("min_ttc_s", m.get("min_ttc_s"));
         aeb.put("min_distance_m", m.get("min_distance_m"));
         aeb.put("aeb_triggered", triggered);
-        aeb.put("aeb_trigger_time_s", m.get("aeb_decision_t"));
+        aeb.put("aeb_trigger_time_s", off ? null : m.get("aeb_decision_t"));
         aeb.put("braking_latency_s", m.get("braking_latency_s"));
         aeb.put("false_activation", falseActivation);
         aeb.put("missed_activation", missedActivation);
@@ -153,6 +182,12 @@ public final class Evaluation {
         aeb.put("rms_jerk_mps3", m.get("rms_jerk_mps3"));
         aeb.put("stopping_distance_m", m.get("stopping_distance_m"));
         aeb.put("verdict", verdict);
+
+        if (off) {
+            return new Result(kind, verdict, aeb, null, List.of(), "AEB OFF reference: "
+                    + (OUTCOME_COLLISION.equals(kind) ? "collision observed." : OUTCOME_NEAR_MISS.equals(kind) ? "near miss observed." : "no collision observed.")
+                    + " AEB intervention assessment is not applicable.");
+        }
 
         if (falseActivation) {
             List<StageVerdict> chain = falseActivationChain(outcome, params);
@@ -169,7 +204,7 @@ public final class Evaluation {
             return new Result(kind, verdict, aeb, null, List.of(), who.vehicle() ? "AEB handled the lead vehicle safely." : "AEB handled the crossing safely.");
         }
 
-        List<StageVerdict> chain = hazardChain(outcome, params, idealT);
+        List<StageVerdict> chain = hazardChain(outcome, params, idealT, legacy);
         double impactKmh = orZero(d(m, "impact_speed_mps")) * 3.6;
         String failureType;
         String severity;
@@ -210,7 +245,7 @@ public final class Evaluation {
         return new Result(kind, verdict, aeb, failure, chain, headline(chain, m, idealT, who));
     }
 
-    private static List<StageVerdict> hazardChain(SimulationOutcome outcome, AebParams params, Double idealT) {
+    private static List<StageVerdict> hazardChain(SimulationOutcome outcome, AebParams params, Double idealT, boolean legacy) {
         Map<String, Object> m = outcome.metrics();
         Map<String, Object> c = outcome.caseDoc();
         double v0 = d(m, "ego_initial_speed_mps");
@@ -288,7 +323,10 @@ public final class Evaluation {
         // -- Dynamics ------------------------------------------------------------------
         double friction = ((Number) c.get("road_friction")).doubleValue();
         StageVerdict dynamics;
-        if (aEff < aNom - 0.05) {
+        if (!legacy && aEff < Math.min(aNom, friction * Simulator.G) - 0.05) {
+            dynamics = StageVerdict.fail("VEHICLE_DYNAMICS", "Available vehicle braking capped deceleration at " + Py.fixed(aEff, 1)
+                    + " m/s² vs " + Py.fixed(aNom, 1) + " requested.", "VEHICLE_BRAKE_LIMIT", null, 0.85);
+        } else if (aEff < aNom - 0.05) {
             dynamics = StageVerdict.fail("VEHICLE_DYNAMICS", "Road friction μ " + Py.fixed(friction, 2) + " capped deceleration at " + Py.fixed(aEff, 1)
                     + " m/s² vs " + Py.fixed(aNom, 1) + " requested.", "LOW_FRICTION", "MAX_DECELERATION", 0.85);
         } else {

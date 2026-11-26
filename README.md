@@ -96,8 +96,7 @@ worker gọi ScenarioRunner/CARLA. Hỗ trợ CP_CROSSING và CCRS/CCRM/CCRB (AD
 - [Kiến trúc VehicSim](docs/vehicsim/architecture.md) · [Từ điển dữ liệu](docs/vehicsim/database-schema.md)
 - [ADR](docs/adr/README.md) · [Việc đã làm](docs/exec-plans/completed/) · [Nợ kỹ thuật](docs/exec-plans/tech-debt-tracker.md)
 - [CLAUDE.md](CLAUDE.md) — bẫy khi chạy CARLA / ScenarioRunner thật
-- [Bàn giao Admin / Analysis](docs/vehicsim/admin-analysis-handover.md) — code/API, chỉ số, tests và giới hạn
-- [Final QA Phase 20](docs/exec-plans/completed/2026-11-17-admin-analysis-phase-20-handover.md) — phase matrix, kết quả thực thi và readiness
+- [Tổng hợp Admin / Phân tích lỗi](docs/failure-analysis-v3/README.md) — code/API, dữ liệu, cách chạy/test và giới hạn
 
 Repo dựng lên từ Scenario Forge (dự án AI20K RAV-03); phần Forge đã gỡ ngày 04/10/2026 (ADR-032),
 lịch sử còn trong git.
