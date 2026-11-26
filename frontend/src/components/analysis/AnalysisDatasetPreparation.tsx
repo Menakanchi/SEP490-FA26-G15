@@ -37,7 +37,7 @@ export function AnalysisDatasetPreparation(p: Props) {
           const chosen = p.selection.filter(item => item.role === role), safe = chosen.filter(({run}) => run.outcome === "SAFE").length;
           return <article key={role} aria-label={`Thống kê bản nháp ${role === "OPTIMIZATION" ? "tối ưu" : "xác minh"}`}><h3>{role === "OPTIMIZATION" ? "Tập tối ưu" : "Tập xác minh độc lập"}</h3><strong>{chosen.length}<small> run đã chọn</small></strong><p>{safe} ca an toàn · {chosen.length - safe} kết quả khác</p></article>;
         })}</div>
-        <p className="analysis-caption">{p.selection.length} run trong bản nháp · {identities.size} nhóm họ/baseline/xe/simulator/dt. Đổi bộ lọc danh sách giữ nguyên lựa chọn; bản nháp có thể khác snapshot đang mở bên dưới.</p>
+        <details className={styles.details}><summary>Thông tin lựa chọn</summary><p className="analysis-caption">{p.selection.length} run trong bản nháp · {identities.size} nhóm họ/baseline/xe/simulator/dt. Đổi bộ lọc không làm mất lựa chọn; bản nháp có thể khác tập đã chốt bên dưới.</p></details>
         {p.selection.length === 0 ? <div className="analysis-state"><strong>Chưa có run trong bản nháp.</strong><p>Mở Lượt chạy, chọn Tối ưu hoặc Xác minh cho từng run. Giữ ca an toàn trong cả hai tập.</p><button className="analysis-button" onClick={p.onOpenRuns}>Chọn run từ baseline →</button></div> : <div className={styles.search}><label>Tìm trong bản nháp<input type="search" aria-label="Tìm trong bản nháp" placeholder="Mã run, biến thể, họ hoặc seed…" value={p.search} onChange={event => p.onSearch(event.target.value)} /></label>{p.search && <button className="analysis-button" onClick={() => p.onSearch("")}>Xóa tìm kiếm bản nháp</button>}</div>}
       </>}
     </section>
@@ -60,15 +60,18 @@ export function AnalysisDatasetPreparation(p: Props) {
     <section className={`analysis-panel ${styles.stack}`} aria-label="Snapshot và bàn giao">
       <div><h2>Tập đã chốt và bàn giao</h2><p className="analysis-caption">Snapshot bất biến được mở từ liên kết hoặc sau khi chốt. Chỉnh bản nháp không đổi snapshot đang xem.</p></div>
       {p.snapshotLoading ? <AnalysisLoading /> : p.snapshotError ? <><ErrorNote message={p.snapshotError} /><div><button className="analysis-button" disabled={!p.snapshotId} onClick={p.onRetrySnapshot}>Thử tải lại tập đã chốt</button></div></> : p.snapshot ? <>
-        <div className={styles.savedStatus} role="status"><strong>Đã lưu snapshot #{p.snapshot.id}</strong><span>{p.snapshot.baseline_current === true ? "Snapshot đã lưu; baseline hiện hành theo lần tải này. Nguồn được kiểm tra riêng ở bước bên dưới." : "Snapshot lưu trữ: baseline đã đổi hoặc chưa được xác nhận. Chỉ đọc; rà lại nguồn và chốt tập mới nếu cần bàn giao."}</span></div>
-        <AnalysisSelectionSummary key={p.snapshot.id} dataset={p.snapshot} returnTo={p.returnTo} />
+        <div className={styles.savedStatus} role="status"><strong>Đã lưu tập</strong><span>{p.snapshot.baseline_current === true ? "Baseline hiện hành. Hãy rà soát dữ liệu trước khi phân tích." : "Baseline đã đổi hoặc chưa được xác nhận. Hãy rà lại nguồn và chốt tập mới để bàn giao."}</span></div>
+        <div className={styles.snapshotSummary}><h2>Tập đã chốt #{p.snapshot.id} · {p.snapshot.scenario.name}</h2><p className="analysis-caption">{p.snapshot.optimization_run_ids.length} run tối ưu · {p.snapshot.validation_run_ids.length} run xác minh</p>
+          {p.snapshot.evaluation.carla_observational_only && <p className="text-vehicsim-warn text-[12px]">Kết quả CARLA chỉ dùng để quan sát và đối chiếu, chưa xác nhận hiệu chuẩn hay an toàn thực địa.</p>}
+          <details className={styles.details}><summary>Xem danh sách run và thông tin kỹ thuật</summary><AnalysisSelectionSummary key={p.snapshot.id} dataset={p.snapshot} returnTo={p.returnTo} /></details>
+        </div>
         <V3Review key={`${p.project}:${p.snapshot.id}:${p.snapshot.baseline_current}:${p.snapshot.dataset_digest}`} project={p.project} snapshot={p.snapshot} canWrite={p.canWrite} disabled={busy} />
-        <div className={styles.handoff}><div><h3>Kiểm tra trước bàn giao</h3><p className="analysis-caption">Máy chủ kiểm tra lại run, baseline và artifact. Màn khởi tạo MOBO nhận đúng dataset này: tập tối ưu dùng tìm tham số, tập xác minh độc lập dùng kiểm thử ứng viên.</p></div>
+        <div className={styles.handoff}><div><h3>Bàn giao tập theo quy trình trước</h3><p className="analysis-caption">Kiểm tra tập đã chốt và mở tối ưu theo quy trình dataset hiện có.</p></div>
           <PillButton variant="dark" disabled={busy || p.snapshot.baseline_current !== true} onClick={p.onCheckHandoff}>{p.operation === "handoff" ? "Đang kiểm tra bàn giao…" : "Kiểm tra trước bàn giao"}</PillButton>
         </div>
         {p.checkedAt && <div className={styles.savedStatus} role="status" data-handoff-checked><strong>Đã kiểm tra snapshot #{p.snapshot.id} lúc {p.checkedAt}</strong><span>Màn MOBO kiểm tra lại nguồn và checksum trước khi tạo đợt chạy. Bước này chưa khởi chạy tối ưu hoặc xác nhận ứng viên đạt kiểm chứng.</span><PillButton onClick={p.onOpenOptimizer} disabled={busy || p.snapshot.baseline_current !== true}>Mở module tối ưu →</PillButton></div>}
         {p.errorKind === "handoff" && <AnalysisActionError message={p.operationError} nextAction="Snapshot vẫn được giữ để đọc. Tải lại tập đã chốt và đối chiếu nguồn/baseline trước khi kiểm tra lại; chưa chuyển sang module tối ưu." />}
-      </> : !p.hasSnapshot && <div className="analysis-state">Chưa mở tập đã chốt. Chọn đủ hai tập và chốt để nhận dataset ID.</div>}
+      </> : !p.hasSnapshot && <div className="analysis-state">Chưa có tập đã chốt. Hãy chọn đủ hai tập rồi nhấn Chốt tập.</div>}
     </section>
   </div>;
 }
@@ -85,6 +88,11 @@ function V3Review({ project, snapshot, canWrite, disabled }: { project: number; 
   const bothPartitions = [snapshot.optimization_run_ids, snapshot.validation_run_ids].every(ids => ids.some(id => controls.includes(id)));
   const writable = project > 0 && canWrite && snapshot.baseline_current === true && !disabled;
   const canAnalyze = writable && !busy && reason.trim().length >= 3 && reason.trim().length <= 2000 && canonical && calibration && confirmed && bothPartitions;
+  const missing = [
+    !bothPartitions && "rà soát ít nhất một ca đối chứng trong mỗi tập",
+    (reason.trim().length < 3 || reason.trim().length > 2000) && "nhập lý do xác nhận (3–2000 ký tự)",
+    !(canonical && calibration && confirmed) && "hoàn thành ba xác nhận",
+  ].filter(Boolean);
   const analyze = async () => {
     if (!canAnalyze || lock.current) return;
     lock.current = true; setBusy(true); setError(null); setResult(null);
@@ -114,26 +122,27 @@ function V3Review({ project, snapshot, canWrite, disabled }: { project: number; 
   };
   const reset = () => { if (!busy) { setContext(null); setResult(null); setError(null); setConfirmed(false); } };
   return <section className={styles.stack} aria-label="Rà soát bàn giao V3">
-    <div><h3>Phân tích V3 và bàn giao tối ưu</h3><p className="analysis-caption">Rà soát hai tập đã chốt để phân tích dữ liệu kết quả chính thức trong database. Bàn giao V3 giữ riêng checksum, miền tham số và nguồn run; không chuyển ngầm sang dataset V2 khi bị chặn.</p></div>
+    <div><h3>Phân tích và bàn giao V3</h3><p className="analysis-caption">Rà soát dữ liệu đã chốt để phân tích và chuyển kết quả sang tối ưu.</p></div>
     <fieldset className={styles.stack} disabled={!writable || busy || Boolean(context)}>
       <legend className="sr-only">Xác nhận phạm vi phân tích V3</legend>
       <div className={styles.groups}>{(["OPTIMIZATION", "VALIDATION"] as const).map(role => {
         const ids = role === "OPTIMIZATION" ? snapshot.optimization_run_ids : snapshot.validation_run_ids;
         return <fieldset key={role} className={styles.stack}><legend>{role === "OPTIMIZATION" ? "Ca đối chứng an toàn — tập tối ưu" : "Ca đối chứng an toàn — tập xác minh"}</legend>
-          <p className="analysis-caption">Chỉ đánh dấu run đã xem bằng chứng và xác nhận không có nguy cơ trong phạm vi đã ghi; nhãn SAFE chưa tự cấp phê duyệt.</p>
+          <p className="analysis-caption">Xem bằng chứng và chọn ít nhất một ca đã xác nhận không có nguy cơ. Nhãn SAFE không thay cho việc rà soát.</p>
           {safe.filter(run => ids.includes(run.run_id)).map(run => <label key={run.run_id} className="flex items-start gap-2 text-[13px]"><input type="checkbox" checked={controls.includes(run.run_id)} onChange={e => setControls(old => e.target.checked ? [...old, run.run_id] : old.filter(id => id !== run.run_id))} /><span>Đã rà soát ca đối chứng #{run.run_id} · {run.variant} · seed {run.seed}</span><Link href={`/analysis/failures/${run.run_id}`} target="_blank" rel="noopener noreferrer">Xem run</Link></label>)}
           {!safe.some(run => ids.includes(run.run_id)) && <p role="status">Chưa có ca SAFE trong tập này để rà soát.</p>}
         </fieldset>;
       })}</div>
       <label className={styles.stack}>Lý do xác nhận bàn giao V3<textarea aria-label="Lý do xác nhận bàn giao V3" minLength={3} maxLength={2000} rows={3} value={reason} onChange={e => setReason(e.target.value)} /></label>
-      <label className="flex items-start gap-2 text-[13px]"><input type="checkbox" checked={canonical} onChange={e => setCanonical(e.target.checked)} /><span>Chỉ tối ưu ba chỉ số canonical đã lưu theo ADR-040/055; giữ ràng buộc va chạm và phanh oan hiện hành.</span></label>
-      <label className="flex items-start gap-2 text-[13px]"><input type="checkbox" checked={calibration} onChange={e => setCalibration(e.target.checked)} /><span>Calibration vật lý không áp dụng cho phạm vi tối ưu chỉ số đã lưu này. Tôi không xác nhận calibration, nguyên nhân vật lý hoặc an toàn thực địa.</span></label>
-      <label className="flex items-start gap-2 text-[13px]"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /><span>Tôi xác nhận lựa chọn run, hai tập độc lập và các ca đối chứng đã đánh dấu; chấp nhận miền MOBO hiện hành trong giới hạn của bộ tối ưu và danh mục tham số. Tôi sẽ xem các khoảng cụ thể trước khi khởi chạy. Xác nhận này không thay quyết định Reviewer cho candidate.</span></label>
+      <label className="flex items-start gap-2 text-[13px]"><input type="checkbox" checked={canonical} onChange={e => setCanonical(e.target.checked)} /><span>Chỉ tối ưu ba chỉ số canonical đã lưu; giữ ràng buộc va chạm và phanh oan hiện hành.</span></label>
+      <label className="flex items-start gap-2 text-[13px]"><input type="checkbox" checked={calibration} onChange={e => setCalibration(e.target.checked)} /><span>Calibration vật lý không áp dụng trong phạm vi này. Tôi không xác nhận hiệu chuẩn, nguyên nhân vật lý hay an toàn thực địa.</span></label>
+      <label className="flex items-start gap-2 text-[13px]"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /><span>Tôi xác nhận lựa chọn run, hai tập độc lập và các ca đối chứng; chấp nhận miền MOBO hiện hành trong giới hạn bộ tối ưu và danh mục tham số. Tôi sẽ xem các khoảng cụ thể trước khi chạy. Xác nhận này không thay quyết định Reviewer cho candidate.</span></label>
     </fieldset>
+    {writable && !busy && !context && missing.length > 0 && <p className="analysis-caption">Để tiếp tục: {missing.join("; ")}.</p>}
     <div className={styles.handoff}><PillButton variant="dark" disabled={!canAnalyze} onClick={() => void analyze()}>{busy ? "Đang phân tích và lưu bàn giao V3…" : context ? "Thử lại phân tích với context đã lưu" : "Xác nhận và phân tích V3"}</PillButton>{context && <button className="analysis-button" disabled={busy || !writable} onClick={reset}>Rà soát lại xác nhận</button>}</div>
     {!canWrite && <p className="analysis-caption">Tạo context và phân tích yêu cầu quyền ghi.</p>}
     <ErrorNote message={error} />
-    {context && <p className={`analysis-caption ${styles.revision}`}>Context đã lưu: {context.context_id}. Thử lại dùng đúng context này; không tự cấp xác nhận mới.</p>}
+    {context && <details className={styles.details}><summary>Thông tin xác nhận đã lưu</summary><p className={`analysis-caption ${styles.revision}`}>Context: {context.context_id}. Thử lại sẽ dùng xác nhận này.</p></details>}
     {result && <div className={styles.savedStatus} role="status"><strong>Handoff V3: {result.handoff.status}</strong><span>{result.handoff.dispatch_allowed ? "Đã đủ điều kiện mở form MOBO; backend tiếp tục kiểm tra lại nguồn trước mỗi bước." : `Bị chặn: ${result.handoff.reason_codes.join(", ") || "Chưa đủ điều kiện bàn giao"}.`}</span>
       <PillButton href={`/analysis/failures?fa_execution=${result.execution.id}`}>Xem phân tích V3</PillButton>
       {result.handoff.dispatch_allowed && result.handoff.content_digest && <PillButton href={`/aeb/mobo/new?handoff_id=${result.handoff.id}&handoff_digest=${result.handoff.content_digest}`}>Mở MOBO từ handoff V3 →</PillButton>}
@@ -154,7 +163,7 @@ function DraftGroup({ role, items, query, returnTo, editable, renderSelection, o
     {matches.length > 0 ? <AnalysisTableRegion className={styles.tableWrap} label={`Bảng ${name.toLocaleLowerCase("vi")}, cuộn ngang`}><table className={`analysis-table ${styles.table}`}>
       <caption className="sr-only">{name}, seed, nguồn và số đo đã lưu</caption><thead><tr><th scope="col">Run / biến thể / nguồn</th><th scope="col">Kết quả / bằng chứng</th><th scope="col">Tập / thao tác</th></tr></thead>
       <tbody>{matches.slice((page - 1) * size, page * size).map(({run}) => <tr key={run.run_id} data-draft-run={run.run_id}>
-        <td><Link href={`/analysis/failures/${run.run_id}?returnTo=${encodeURIComponent(returnTo)}`} aria-label={`Chi tiết run đã chọn ${run.run_id}`}>#{run.run_id} · {run.variant}</Link><small>{run.family} · seed {run.seed}</small><small>Baseline #{run.baseline_id} · xe #{run.vehicle_id}</small><small>{run.simulator} · dt {run.dt} s</small><details><summary>Revision và điều kiện chọn</summary><small className={styles.revision}>Revision nguồn: {run.revision || "Chưa có revision"}</small><small>Thực thi: {run.status} · telemetry: {run.trace_available === true ? "Có" : run.trace_available === false ? "Không có" : "Chưa xác định"}</small><small>Điều kiện từ metadata: {eligible(run) ? "Có thể gửi máy chủ kiểm tra" : "Cần rà lại run"}. Máy chủ quyết định điều kiện sử dụng.</small></details></td>
+        <td><Link href={`/analysis/failures/${run.run_id}?returnTo=${encodeURIComponent(returnTo)}`} aria-label={`Chi tiết run đã chọn ${run.run_id}`}>#{run.run_id} · {run.variant}</Link><small>{run.family}</small><details><summary>Thông tin nguồn</summary><small>Seed {run.seed} · Baseline #{run.baseline_id} · xe #{run.vehicle_id}</small><small>{run.simulator} · dt {run.dt} s</small><small className={styles.revision}>Revision nguồn: {run.revision || "Chưa có revision"}</small><small>Thực thi: {run.status} · telemetry: {run.trace_available === true ? "Có" : run.trace_available === false ? "Không có" : "Chưa xác định"}</small><small>Điều kiện từ metadata: {eligible(run) ? "Có thể gửi máy chủ kiểm tra" : "Cần rà lại run"}. Máy chủ quyết định điều kiện sử dụng.</small></details></td>
         <td><AnalysisBadge value={run.outcome} /><small>Kết quả theo luật đã lưu</small><small>{eligible(run) ? "Hoàn tất · có telemetry" : "Cần xem lại điều kiện của run"}</small><details><summary>Số đo đã lưu</summary><p className="analysis-caption">Dấu —: thiếu hoặc không áp dụng; API chưa phân biệt đủ. Có scalar chưa xác nhận đủ điều kiện chốt.</p><dl className={styles.metrics}><div><dt>RMS jerk (m/s³)</dt><dd>{formatObjective(run.metrics.rms_jerk_mps3)}</dd></div><div><dt>Va chạm (m/s)</dt><dd>{formatRunImpact(run.metrics.impact_speed_mps, run)}</dd></div><div><dt>Quãng phanh (m)</dt><dd>{formatObjective(run.metrics.stopping_distance_m)}</dd></div></dl></details></td>
         <td><div className={styles.rowActions}>{renderSelection(run)}<button className="analysis-button" disabled={!editable} aria-label={`Bỏ run ${run.run_id} khỏi bản nháp`} onClick={() => onRemove(run)}>Bỏ run</button></div></td>
       </tr>)}</tbody>
