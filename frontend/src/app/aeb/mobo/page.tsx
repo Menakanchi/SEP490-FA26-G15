@@ -252,7 +252,7 @@ export default function AebMoboStudioPage() {
             className="inline-flex h-9 items-center gap-1.5 rounded-full bg-vehicsim-primary px-4 text-[13px] font-bold text-white shadow-sm transition hover:bg-vehicsim-primary-hover"
           >
             {showNewForm ? <ChevronUp className="size-4" /> : <Plus className="size-4" />}
-            <span>{showNewForm ? "Đóng form tạo" : "+ Khởi tạo đợt mới"}</span>
+            <span>{showNewForm ? "Đóng form tạo" : "Khởi tạo đợt mới"}</span>
           </button>
         </div>
       }
@@ -458,7 +458,7 @@ export default function AebMoboStudioPage() {
       {/* BỘ CHỌN ĐỢT CHẠY & TIẾN TRÌNH REAL-TIME */}
       <section className="flex flex-col gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-solid border-vehicsim-line pb-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-3 sm:w-auto">
             <label className="text-[13px] font-bold text-vehicsim-ink">Đợt tối ưu hoá:</label>
             <select
               aria-label="Chọn đợt tối ưu hoá"
@@ -468,7 +468,7 @@ export default function AebMoboStudioPage() {
                 setSelectedRunId(newId);
                 router.replace(`/aeb/mobo?run_id=${newId}`);
               }}
-              className="h-10 min-w-[260px] rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[13.5px] font-bold text-vehicsim-ink shadow-xs"
+              className="h-10 w-full min-w-0 max-w-full truncate rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[13.5px] font-bold text-vehicsim-ink shadow-xs sm:w-auto sm:min-w-[260px]"
             >
               {(runs ?? []).map((r) => (
                 <option key={r.id} value={r.id}>
@@ -657,7 +657,7 @@ export default function AebMoboStudioPage() {
                         <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
                         <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
                         <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.MAX_DECELERATION ?? "—"}</td>
-                        <td className="px-4 py-3.5 font-bold text-vehicsim-decision">
+                        <td className="whitespace-nowrap px-4 py-3.5 font-bold text-vehicsim-decision">
                           {t.rms_jerk_mps3 !== null ? `${t.rms_jerk_mps3.toFixed(2)} m/s³` : "—"}
                         </td>
                         <td className="px-4 py-3.5 font-bold text-vehicsim-danger">
@@ -759,7 +759,7 @@ export default function AebMoboStudioPage() {
                         <td className="px-4 py-3.5 font-mono text-[12px]">
                           {t.acquisition_value !== null ? t.acquisition_value.toFixed(4) : "—"}
                         </td>
-                        <td className="px-4 py-3.5 font-semibold text-vehicsim-decision">
+                        <td className="whitespace-nowrap px-4 py-3.5 font-semibold text-vehicsim-decision">
                           {t.rms_jerk_mps3 !== null ? `${t.rms_jerk_mps3.toFixed(2)} m/s³` : "—"}
                         </td>
                         <td className="px-4 py-3.5 font-semibold text-vehicsim-danger">

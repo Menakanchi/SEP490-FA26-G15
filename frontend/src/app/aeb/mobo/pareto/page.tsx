@@ -193,9 +193,9 @@ export default function AebMoboParetoPage() {
                   <th className="px-4 py-3.5">Trễ (s)</th>
                   <th className="px-4 py-3.5">Tăng áp (m/s³)</th>
                   <th className="px-4 py-3.5">Gia tốc (m/s²)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-decision">RMS Jerk</th>
-                  <th className="px-4 py-3.5 text-vehicsim-danger">Tốc độ va chạm</th>
-                  <th className="px-4 py-3.5 text-vehicsim-ink">Quãng phanh</th>
+                  <th className="px-4 py-3.5 text-emerald-300">RMS Jerk</th>
+                  <th className="px-4 py-3.5 text-rose-300">Tốc độ va chạm</th>
+                  <th className="px-4 py-3.5 text-slate-200">Quãng phanh</th>
                   <th className="px-4 py-3.5 text-right">Thao tác</th>
                 </tr>
               </thead>
@@ -212,7 +212,7 @@ export default function AebMoboParetoPage() {
                     <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
                     <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
                     <td className="px-4 py-3.5 font-mono font-medium">{t.parameters?.MAX_DECELERATION ?? "—"}</td>
-                    <td className="px-4 py-3.5 font-bold text-vehicsim-decision">
+                    <td className="whitespace-nowrap px-4 py-3.5 font-bold text-vehicsim-decision">
                       {t.rms_jerk_mps3 !== null ? `${t.rms_jerk_mps3.toFixed(2)} m/s³` : "—"}
                     </td>
                     <td className="px-4 py-3.5 font-bold text-vehicsim-danger">

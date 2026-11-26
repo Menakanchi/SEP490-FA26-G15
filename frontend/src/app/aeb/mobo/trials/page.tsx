@@ -172,9 +172,9 @@ export default function AebMoboTrialsPage() {
                   <th className="px-4 py-3.5">Trial #</th>
                   <th className="px-4 py-3.5">Nguồn sinh mẫu</th>
                   <th className="px-4 py-3.5 font-mono">Hàm thu thập qEHVI</th>
-                  <th className="px-4 py-3.5 text-vehicsim-decision">RMS Jerk (m/s³)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-danger">Va chạm (km/h)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-ink">Quãng phanh (m)</th>
+                  <th className="px-4 py-3.5 text-emerald-300">RMS Jerk (m/s³)</th>
+                  <th className="px-4 py-3.5 text-rose-300">Va chạm (km/h)</th>
+                  <th className="px-4 py-3.5 text-slate-200">Quãng phanh (m)</th>
                   <th className="px-4 py-3.5">Ràng buộc</th>
                   <th className="px-4 py-3.5 text-right">Biên Pareto</th>
                 </tr>
