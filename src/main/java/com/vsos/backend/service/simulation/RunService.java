@@ -2,6 +2,7 @@ package com.vsos.backend.service.simulation;
 
 import com.vsos.backend.common.audit.AuditLog;
 import com.vsos.core.bridge.Bundle;
+import com.vsos.core.aeb.AebParams;
 import com.vsos.core.simulation.LeadVehicleCase;
 import com.vsos.core.simulation.CarlaSession;
 import com.vsos.core.evaluation.Evaluation;
@@ -640,6 +641,7 @@ public class RunService {
         document.put("engine", Bundle.ENGINE);
         Map<String, Object> result = Json.parseMap(Json.write(document)); // cùng kiểu dữ liệu như khi đọc result.json từ worker
         checkResult(result, run);
+        checkResultParameters(result, spec.params().asCodes());
         return result;
     }
 
@@ -693,6 +695,7 @@ public class RunService {
         }
         Map<String, Object> result = Json.parseMap(Files.readString(resultPath, StandardCharsets.UTF_8));
         checkResult(result, run);
+        checkResultParameters(result, Json.asMap(Json.asMap(bundle.get("aeb")).get("params")));
         // ADR-065: khối dataset cho Failure Analysis, không bao giờ làm run lỗi. Dòng aeb_versions chỉ để khai báo trạng thái phiên bản lúc ghi.
         Row aebVersion = db.first("SELECT id, project_id, version_no, label, status, source, parent_version_id FROM aeb_versions WHERE id = ?",
                 run.lng("aeb_version_id"));
@@ -1225,6 +1228,19 @@ public class RunService {
         throw new SimulatorException("result.json " + field + " không khớp run (yêu cầu " + expected + ")");
     }
 
+    /** IDs alone cannot prove that the worker actually used the requested AEB parameters. */
+    private static void checkResultParameters(Map<String, Object> result, Map<String, ?> expected) {
+        Map<String, Object> actual = Json.asMap(Json.asMap(result.get("outcome")).get("params"));
+        for (String code : AebParams.CODES) {
+            String key = code.toLowerCase(java.util.Locale.ROOT);
+            if (!(expected.get(code) instanceof Number requested) || !Double.isFinite(requested.doubleValue())
+                    || !(actual.get(key) instanceof Number recorded) || !Double.isFinite(recorded.doubleValue())
+                    || Double.compare(requested.doubleValue(), recorded.doubleValue()) != 0) {
+                throw new SimulatorException("result.json outcome.params." + key + " không khớp cấu hình AEB của run");
+            }
+        }
+    }
+
     private static void recordWorker(Path folder, Process proc) {
         try {
             long started = proc.toHandle().info().startInstant().map(java.time.Instant::toEpochMilli).orElse(0L);
@@ -1441,6 +1457,7 @@ public class RunService {
             result.remove("artifacts");
             try {
                 checkResult(result, run);
+                checkResultParameters(result, queries.aebValues(run.lng("aeb_version_id")));
             } catch (SimulatorException e) {
                 throw new InvalidRequestException(e.getMessage());
             }
@@ -1484,6 +1501,7 @@ public class RunService {
                 "case", outcome.get("case"),
                 "params", outcome.get("params"),
                 "outcome", ev.get("outcome"),
+                "evaluation_version", ev.get("version"),
                 "headline", ev.get("headline"),
                 "chain", chain);
 
@@ -1614,6 +1632,10 @@ public class RunService {
 
     /** Nhặt lại run bỏ dở sau khi backend khởi động lại (hàng đợi trong bộ nhớ không sống qua restart). */
     public int recoverUnfinished() {
+        // Capture the interrupted campaigns before cleaning workers; newly submitted campaigns are not startup leftovers.
+        List<Long> interruptedCampaignIds = db.list("SELECT id FROM optimization_runs WHERE status IN ('PENDING','RUNNING')")
+                .stream().map(row -> row.lng("id")).toList();
+        List<Long> cleanedOrphans = new ArrayList<>();
         // Chỉ gọi lúc khởi động: không luồng nào của JVM này đang giữ run, nên mọi run RUNNING đều mồ côi (backend chết giữa run).
         // Worker mồ côi có thể còn sống (Windows không giết tiến trình con khi cha chết): dừng nó trước khi chạy lại để hai
         // runner không tranh quyền tick của một server CARLA. Không nhận result.json mồ côi: không xác minh được worker đã
@@ -1627,12 +1649,55 @@ public class RunService {
                 stopOrphan(id);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                break;
+                return 0; // Never dispatch another run while an orphan worker may still own CARLA.
             }
+            cleanedOrphans.add(id);
+        }
+        recoverInterruptedCampaignsAndCancelledTests(interruptedCampaignIds);
+        for (long id : cleanedOrphans) {
+            // Aborted parent work is already STOPPED, retaining its original start time; only resumable runs are requeued.
             db.update("UPDATE simulation_runs SET status = 'PENDING', started_at = NULL WHERE id = ? AND status = 'RUNNING'", id);
         }
-        List<Long> ids = db.list("SELECT id FROM simulation_runs WHERE status = 'PENDING' ORDER BY id").stream().map(r -> r.lng("id")).toList();
+        List<Long> ids = db.list("""
+                SELECT id FROM simulation_runs WHERE status = 'PENDING'
+                  AND NOT EXISTS (SELECT 1 FROM optimization_trials t JOIN optimization_runs o ON o.id = t.optimization_run_id
+                                   WHERE t.id = simulation_runs.optimization_trial_id AND o.status IN ('FAILED','CANCELLED'))
+                  AND NOT EXISTS (SELECT 1 FROM regression_tests t
+                                   WHERE t.id = simulation_runs.regression_test_id AND t.execution_status = 'CANCELLED')
+                ORDER BY id
+                """).stream().map(r -> r.lng("id")).toList();
         dispatch(ids);
         return ids.size();
+    }
+
+    /** No optimizer snapshot can safely resume a campaign after restart; preserve its completed evidence and close unfinished work. */
+    private void recoverInterruptedCampaignsAndCancelledTests(List<Long> interruptedCampaignIds) {
+        tx.executeWithoutResult(status -> {
+            LocalDateTime now = Vs.now();
+            if (!interruptedCampaignIds.isEmpty()) {
+                List<Object> args = new ArrayList<>();
+                args.add("Backend khởi động lại khi chiến dịch tối ưu chưa hoàn tất; không tự tiếp tục vì chưa có snapshot phục hồi. Hãy tạo chiến dịch mới.");
+                args.add(now);
+                args.addAll(interruptedCampaignIds);
+                db.update("UPDATE optimization_runs SET status = 'FAILED', error_message = ?, finished_at = ? WHERE status IN ('PENDING','RUNNING') AND id IN ("
+                        + Db.placeholders(interruptedCampaignIds.size()) + ")", args.toArray());
+            }
+            db.update("""
+                    UPDATE optimization_trials t JOIN optimization_runs o ON o.id = t.optimization_run_id
+                       SET t.status = CASE WHEN o.status = 'CANCELLED' THEN 'PRUNED' ELSE 'FAILED' END, t.completed_at = ?
+                     WHERE o.status IN ('FAILED','CANCELLED') AND t.status IN ('PENDING','RUNNING')
+                    """, now);
+            db.update("""
+                    UPDATE simulation_runs r JOIN optimization_trials t ON t.id = r.optimization_trial_id
+                         JOIN optimization_runs o ON o.id = t.optimization_run_id
+                       SET r.status = 'STOPPED', r.error_message = ?, r.ended_at = ?
+                     WHERE o.status IN ('FAILED','CANCELLED') AND r.status IN ('PENDING','RUNNING')
+                    """, "Chiến dịch tối ưu đã dừng hoặc bị gián đoạn; không chạy lại run khi khởi động backend.", now);
+            db.update("""
+                    UPDATE simulation_runs r JOIN regression_tests t ON t.id = r.regression_test_id
+                       SET r.status = 'STOPPED', r.error_message = ?, r.ended_at = ?
+                     WHERE t.execution_status = 'CANCELLED' AND r.status IN ('PENDING','RUNNING')
+                    """, "Regression test đã hủy; không chạy lại run khi khởi động backend.", now);
+        });
     }
 }

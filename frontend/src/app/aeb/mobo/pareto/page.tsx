@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, TrendingUp } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
@@ -9,6 +9,9 @@ import { EmptyState, ErrorNote, Pagination, PillButton } from "@/components/Vehi
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
 import { VehicSimSelect } from "@/components/VehicSimSelect";
+import { formatMeasurement, speedKmh } from "@/components/analysis/analysisMetricFormat";
+import { isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
+import { vi } from "@/components/vehicsimI18n";
 
 export default function AebMoboParetoPage() {
   const router = useRouter();
@@ -17,9 +20,12 @@ export default function AebMoboParetoPage() {
 
   const [runs, setRuns] = useState<OptimizationRun[] | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
-  const [paretoTrials, setParetoTrials] = useState<OptimizationTrial[] | null>(null);
+  const [paretoResult, setParetoResult] = useState<{ runId: number; items: OptimizationTrial[] } | null>(null);
+  const paretoTrials = paretoResult?.runId === selectedRunId ? paretoResult.items.filter(isFeasibleTrial) : null;
+  const selectionLock = useRef(false);
   const [selectingTrialId, setSelectingTrialId] = useState<number | null>(null);
-  const [createdCandidate, setCreatedCandidate] = useState<{ id: number; label: string; regressionTestId?: number } | null>(null);
+  const [candidateResult, setCandidateResult] = useState<{ runId: number; id: number; label: string; regressionTestId?: number } | null>(null);
+  const createdCandidate = candidateResult?.runId === selectedRunId ? candidateResult : null;
   const [error, setError] = useState<string | null>(null);
 
   const queryRunId = Number(searchParams.get("run_id"));
@@ -31,42 +37,50 @@ export default function AebMoboParetoPage() {
   const pagedPareto = paretoTrials?.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   useEffect(() => {
+    let active = true;
     vehicsimApi
       .optimizationRuns()
       .then((data) => {
+        if (!active) return;
         setRuns(data);
         if (data.length > 0) {
           const matched = Number.isInteger(queryRunId) && data.some((r) => r.id === queryRunId);
           setSelectedRunId(matched ? queryRunId : data[0].id);
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách đợt tối ưu"));
+      .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Không tải được danh sách đợt tối ưu"); });
+    return () => { active = false; };
   }, [queryRunId]);
 
   useEffect(() => {
+    let active = true;
     if (selectedRunId !== null) {
       vehicsimApi
         .optimizationPareto(selectedRunId)
-        .then(setParetoTrials)
-        .catch((err) => setError(err instanceof Error ? err.message : "Không tải được tập nghiệm Pareto"));
+        .then(items => { if (active) { setParetoResult({ runId: selectedRunId, items }); setError(null); } })
+        .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Không tải được tập nghiệm Pareto"); });
     }
+    return () => { active = false; };
   }, [selectedRunId]);
 
   const handleSelectCandidate = async (trialId: number) => {
-    if (!selectedRunId) return;
+    if (!selectedRunId || !canWrite || selectionLock.current || !paretoTrials?.some(t => t.id === trialId && isFeasibleTrial(t))) return;
+    selectionLock.current = true;
     setSelectingTrialId(trialId);
     setError(null);
     try {
       const res = await vehicsimApi.selectOptimizationCandidate(selectedRunId, trialId);
-      setCreatedCandidate({
+      setCandidateResult({
+        runId: selectedRunId,
         id: res.candidate_aeb_version_id,
         label: `Phương án #${trialId}`,
         regressionTestId: res.regression_test_id,
       });
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể chọn làm ứng viên");
+      setError(err instanceof Error ? vi(err.message) : "Không thể chọn làm ứng viên");
     } finally {
+      selectionLock.current = false;
       setSelectingTrialId(null);
     }
   };
@@ -111,12 +125,12 @@ export default function AebMoboParetoPage() {
               variant="dark"
               href={
                 createdCandidate.regressionTestId
-                  ? `/validation/regression`
+                  ? `/validation/regression/${createdCandidate.regressionTestId}`
                   : `/validation/regression/new?candidate=${createdCandidate.id}`
               }
               className="text-[12px] py-1.5"
             >
-              {createdCandidate.regressionTestId ? "Đến bảng Kiểm thử hồi quy →" : "Kiểm thử hồi quy ngay"}
+              {createdCandidate.regressionTestId ? "Xem kiểm thử hồi quy →" : "Kiểm thử hồi quy ngay"}
             </PillButton>
           </div>
         </div>
@@ -124,13 +138,15 @@ export default function AebMoboParetoPage() {
 
       {/* Bộ chọn đợt chạy MOBO */}
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
           <label className="text-[13px] font-bold text-vehicsim-ink">Chọn đợt tối ưu hoá:</label>
           <VehicSimSelect
             aria-label="Chọn đợt tối ưu hoá"
             value={selectedRunId}
             onChange={(newId) => {
               setSelectedRunId(newId);
+              setCandidateResult(null);
+              setError(null);
               setPage(1);
               router.replace(`/aeb/mobo/pareto?run_id=${newId}`);
             }}
@@ -139,7 +155,8 @@ export default function AebMoboParetoPage() {
               label: `Run #${r.id} · ${r.name}`,
               sublabel: `${r.pareto_count} nghiệm Pareto`,
             }))}
-            className="w-auto min-w-[320px] max-w-md"
+            className="min-w-0 max-w-md"
+            disabled={selectingTrialId !== null || runs?.length === 0}
           />
         </div>
 
@@ -170,64 +187,53 @@ export default function AebMoboParetoPage() {
           </span>
         </div>
 
-        {paretoTrials?.length === 0 ? (
+        {runs?.length === 0 ? <div className="p-10"><EmptyState title="Chưa có đợt tối ưu">Tạo đợt tối ưu để xem các phương án Pareto.</EmptyState></div> : paretoTrials === null ? <p role="status" className="p-5 text-[13px] text-vehicsim-muted">{error ? "Chưa tải được nghiệm Pareto." : "Đang tải nghiệm Pareto…"}</p> : paretoTrials.length === 0 ? (
           <div className="p-10">
             <EmptyState title="Chưa có nghiệm Pareto cho đợt chạy này">
-              Đợt chạy đang trong giai đoạn khởi tạo ban đầu hoặc chưa có lượt thử nào hoàn thành.
+              Chưa có phương án hoàn tất với đủ số đo hợp lệ và thỏa ràng buộc.
             </EmptyState>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-[13px]">
-              <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[11.5px] font-black uppercase tracking-wider leading-snug text-white">
+            <table className="w-full min-w-[1080px] text-left text-[13px]">
+              <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12px] font-black uppercase tracking-wider text-white">
                 <tr className="h-12">
-                  <th className="pl-4 pr-3 py-3 whitespace-nowrap">Lượt thử</th>
-                  <th className="px-3 py-3">TTC Threshold (s)</th>
-                  <th className="px-3 py-3">Brake Activation Delay (s)</th>
-                  <th className="px-3 py-3">Brake Build-up Rate (m/s³)</th>
-                  <th className="px-3 py-3">Max Deceleration (m/s²)</th>
-                  <th className="px-3 py-3 text-emerald-300">RMS Jerk</th>
-                  <th className="px-3 py-3 text-rose-300">Tốc độ va chạm</th>
-                  <th className="px-3 py-3 text-slate-200">Quãng phanh</th>
-                  <th className="pl-3 pr-4 py-3 text-center whitespace-nowrap">Thao tác</th>
+                  <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">TTC Threshold (s)</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Brake Activation Delay (s)</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Brake Build-up Rate (m/s³)</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Max Deceleration (m/s²)</th>
+                  <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">RMS Jerk</th>
+                  <th className="px-4 py-3.5 text-rose-300 whitespace-nowrap">Tốc độ va chạm</th>
+                  <th className="px-4 py-3.5 text-slate-200 whitespace-nowrap">Quãng phanh</th>
+                  <th className="w-[170px] px-4 py-3.5 text-center whitespace-nowrap">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
                 {pagedPareto?.map((t) => (
                   <tr key={t.id} className="hover:bg-vehicsim-row transition-colors">
-                    <td className="pl-4 pr-3 py-3.5 font-mono font-bold text-vehicsim-ink whitespace-nowrap">
+                    <td className="pl-5 pr-4 py-3.5 font-mono font-bold text-vehicsim-ink whitespace-nowrap">
                       #{t.trial_number}
                     </td>
-                    <td className="px-3 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.TTC_THRESHOLD ?? "—"}</td>
-                    <td className="px-3 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
-                    <td className="px-3 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
-                    <td className="px-3 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.MAX_DECELERATION ?? "—"}</td>
-                    <td className="px-3 py-3.5 font-bold text-vehicsim-decision whitespace-nowrap">
-                      {t.rms_jerk_mps3 !== null ? `${t.rms_jerk_mps3.toFixed(2)} m/s³` : "—"}
+                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.TTC_THRESHOLD ?? "—"}</td>
+                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.BRAKE_ACTIVATION_DELAY ?? "—"}</td>
+                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.BRAKE_BUILDUP_RATE ?? "—"}</td>
+                    <td className="px-4 py-3.5 font-mono font-medium whitespace-nowrap">{t.parameters?.MAX_DECELERATION ?? "—"}</td>
+                    <td className="px-4 py-3.5 font-bold text-vehicsim-decision whitespace-nowrap">
+                      {formatMeasurement(t.rms_jerk_mps3, "m/s³", 3, true)}
                     </td>
-                    <td className="px-3 py-3.5 font-bold text-vehicsim-danger leading-tight">
-                      {t.impact_speed_mps !== null ? (
-                        t.impact_speed_mps <= 0.001 ? (
-                          <span>
-                            <span className="whitespace-nowrap">0.0 km/h</span>{" "}
-                            <span className="inline-block text-[11px] font-semibold">(An toàn)</span>
-                          </span>
-                        ) : (
-                          <span className="whitespace-nowrap">{`${(t.impact_speed_mps * 3.6).toFixed(1)} km/h`}</span>
-                        )
-                      ) : (
-                        "—"
-                      )}
+                    <td className="px-4 py-3.5 font-bold text-vehicsim-danger whitespace-nowrap">
+                      {formatMeasurement(speedKmh(t.impact_speed_mps), "km/h")}
                     </td>
-                    <td className="px-3 py-3.5 font-bold text-vehicsim-ink whitespace-nowrap">
-                      {t.stopping_distance_m !== null ? `${t.stopping_distance_m.toFixed(2)} m` : "—"}
+                    <td className="px-4 py-3.5 font-bold text-vehicsim-ink whitespace-nowrap">
+                      {formatMeasurement(t.stopping_distance_m, "m", 2, true)}
                     </td>
-                    <td className="pl-3 pr-4 py-3.5 text-center whitespace-nowrap">
+                    <td className="w-[170px] px-4 py-3.5 text-center whitespace-nowrap">
                       <button
                         type="button"
-                        disabled={selectingTrialId !== null || !canWrite}
+                        disabled={selectingTrialId !== null || !canWrite || !isFeasibleTrial(t)}
                         onClick={() => handleSelectCandidate(t.id)}
-                        className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-3 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs whitespace-nowrap"
+                        className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-3.5 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs whitespace-nowrap"
                       >
                         {selectingTrialId === t.id ? "Đang lưu…" : "Chọn làm ứng viên"}
                       </button>

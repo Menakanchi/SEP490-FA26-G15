@@ -8,8 +8,10 @@ import com.vsos.core.evaluation.AnalysisMetrics;
 import com.vsos.core.evaluation.RunDataset;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -75,9 +77,24 @@ final class RunDatasetWriter {
         try {
             Map<String, Object> onDisk = MiniJson.parseObject(Files.readString(resultPath, StandardCharsets.UTF_8));
             onDisk.put("dataset", block);
-            Files.writeString(resultPath, MiniJson.write(onDisk), StandardCharsets.UTF_8);
+            writeAtomically(resultPath, MiniJson.write(onDisk));
         } catch (IOException | RuntimeException e) {
             log.warn("Không ghi được khối dataset vào {}: {}", resultPath, e.toString());
+        }
+    }
+
+    /** Keep the producer result intact if writing its optional dataset fails midway. */
+    static void writeAtomically(Path resultPath, String content) throws IOException {
+        Path temporary = Files.createTempFile(resultPath.toAbsolutePath().getParent(), "result-dataset-", ".tmp");
+        try {
+            Files.writeString(temporary, content, StandardCharsets.UTF_8);
+            try {
+                Files.move(temporary, resultPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temporary, resultPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
         }
     }
 

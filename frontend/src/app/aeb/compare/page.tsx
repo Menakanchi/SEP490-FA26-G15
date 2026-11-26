@@ -5,11 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, GitCompare, Sparkles } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
-import { Card, ErrorNote, PillButton, Tag, cx, fmt, paramValue } from "@/components/VehicSimUi";
+import { ErrorNote, PillButton, cx, fmt, paramValue } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
 import { VehicSimSelect } from "@/components/VehicSimSelect";
-import { KEY_PARAMS, STATUS_LABEL, STATUS_TONE } from "@/components/aeb/aebTypes";
+import { KEY_PARAMS, STATUS_LABEL } from "@/components/aeb/aebTypes";
 
 export default function AebComparePage() {
   const { ctx, canWrite } = useVehicSimContext();

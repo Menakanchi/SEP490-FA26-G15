@@ -14,16 +14,22 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Reproduces integration findings; characterization PASS does not mean the legacy bug is fixed. */
 class FailureAnalysisIntegrationFindingsTest {
-    @Test void legacyFreezeStillMislabelsCurrentCarlaImpactProvenance()throws Exception {
+    @Test void newFreezeDescribesCurrentCarlaRelativeImpactWithoutChangingStoredValues()throws Exception {
         var legacy=new AnalysisServiceTest();legacy.setup();
         legacy.rows=legacy.rows.stream().map(r->{var m=new LinkedHashMap<>(r.asMap());m.put("simulator_version","carla-0.9.16-xosc15");return new Row(m);}).toList();
         when(legacy.db.list(startsWith(AnalysisService.SELECT),any(Object[].class))).thenReturn(legacy.rows);
         var snapshot=legacy.service.freeze(legacy.selection(),7L);
-        assertThat(at(snapshot,"/evaluation/impact")).isEqualTo("EGO_SPEED_NOT_RELATIVE");
+        assertThat(at(snapshot,"/evaluation/impact")).isEqualTo("RELATIVE_SPEED_CORE_COLLISION_TICK");
         var input=new RestJsonAnalysis().parse(FailureAnalysisServiceTest.input("result_run2499_full_dataset.json"),InputResourcePolicy.defaults());
         var provenance=new MetricProvenanceResolver().resolve(input.runs().getFirst());
         assertThat(provenance.fields().get("impact_basis").value()).isEqualTo("RELATIVE_SPEED_CORE_COLLISION_TICK");
-        // FOLLOW_UP: AnalysisService is expressly outside the permitted production edits.
+        assertThat(at(snapshot,"/evaluation/impact")).isEqualTo(provenance.fields().get("impact_basis").value());
+    }
+    @Test void legacyAndUnknownMetricProfilesAreNotRelabeledAsRelative() {
+        assertThat(AnalysisService.impactDefinition("vehicsim-kinematic-1.0")).isEqualTo("EGO_SPEED_NOT_RELATIVE");
+        assertThat(AnalysisService.impactDefinition("carla-0.9.16-xosc8")).isEqualTo("EGO_SPEED_NOT_RELATIVE");
+        assertThat(AnalysisService.impactDefinition("vehicsim-kinematic-1.4")).isEqualTo("RELATIVE_SPEED_CORE_COLLISION_TICK");
+        assertThat(AnalysisService.impactDefinition("carla-0.9.16-xosc999")).isEqualTo("UNKNOWN");
     }
     @Test void sharedWorkspaceResolverReturnsArchivedProjectForHistoricalReads() {
         Db db=mock(Db.class);Row archived=new Row(obj("id",99L,"status","ACTIVE","workspace_id",9L,"workspace_status","ARCHIVED"));

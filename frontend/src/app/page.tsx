@@ -164,11 +164,6 @@ function MvpLoopPage() {
           </div>
         </>
       )}
-
-      <p className="text-[12px] leading-[1.6] text-vehicsim-faint">
-        Bộ mô phỏng động học hoặc CARLA qua OpenSCENARIO (.xosc) · mỗi biến thể chạy với seed cố định nên bản cơ sở và ứng viên so được
-        từng cặp. Người duyệt ra quyết định dựa trên kết quả mô phỏng.
-      </p>
     </VehicSimPage>
   );
 }

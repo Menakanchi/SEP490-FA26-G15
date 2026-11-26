@@ -43,6 +43,7 @@ import com.vsos.backend.repository.common.Db;
 import com.vsos.backend.repository.common.Queries;
 import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.service.scenario.FamilyService;
+import com.vsos.core.aeb.AebParams;
 
 /**
  * ``POST /runs/{id}/carla-result`` không được làm hỏng dữ liệu: không ghi số CARLA vào run động học (luật cứng 9), không
@@ -68,7 +69,9 @@ class CarlaResultSubmissionTest {
         events = mock(ApplicationEventPublisher.class);
         transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
-        service = new RunService(db, mock(Queries.class), mock(VehicSimProperties.class), mock(TaskExecutor.class), events,
+        Queries queries = mock(Queries.class);
+        when(queries.aebValues(9L)).thenReturn(AebParams.DEFAULT.asCodes());
+        service = new RunService(db, queries, mock(VehicSimProperties.class), mock(TaskExecutor.class), events,
                 new TransactionTemplate(transactions), mock(FamilyService.class));
         run = new HashMap<>(Map.of("id", RUN, "project_id", PROJECT, "status", "FAILED", "simulator_version", CARLA,
                 "fixed_delta_seconds", 0.05, "random_seed", 48042L, "scenario_id", 7L,
@@ -85,6 +88,7 @@ class CarlaResultSubmissionTest {
         outcome.put("metrics", Map.of("collision", false));
         outcome.put("end_reason", "STOPPED");
         outcome.put("duration_s", 6.0);
+        outcome.put("params", AebParams.DEFAULT.asDict());
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("format", RunService.RESULT_FORMAT);
         result.put("simulator", simulator);
@@ -210,6 +214,24 @@ class CarlaResultSubmissionTest {
     }
 
     @Test
+    void matchingIdsCannotHideMissingOrDifferentActualAebParameters() {
+        for (String code : AebParams.CODES) {
+            String key = code.toLowerCase(java.util.Locale.ROOT);
+            for (Object wrong : new Object[]{null, 99.0, "1.5", Double.NaN, Double.POSITIVE_INFINITY}) {
+                Map<String, Object> payload = result(CARLA);
+                Json.asMap(Json.asMap(payload.get("outcome")).get("params")).put(key, wrong);
+                assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, payload))
+                        .isInstanceOf(InvalidRequestException.class).hasMessageContaining("outcome.params." + key);
+            }
+        }
+        Map<String, Object> missing = result(CARLA);
+        Json.asMap(missing.get("outcome")).remove("params");
+        assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, missing))
+                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("outcome.params");
+        assertNothingWritten();
+    }
+
+    @Test
     void rejectsMissingWrongOrNonIntegerSeedBeforeWriting() {
         for (Object seed : new Object[]{null, 999L, 48042.5, "48042"}) {
             Map<String, Object> payload = result(CARLA);
@@ -276,7 +298,9 @@ class CarlaResultSubmissionTest {
             template.executeWithoutResult(status -> assertThat(status.isNewTransaction()).isTrue());
             return null;
         }).when(events).publishEvent(any(Object.class));
-        var target = new RunService(db, mock(Queries.class), mock(VehicSimProperties.class), mock(TaskExecutor.class),
+        Queries queries = mock(Queries.class);
+        when(queries.aebValues(9L)).thenReturn(AebParams.DEFAULT.asCodes());
+        var target = new RunService(db, queries, mock(VehicSimProperties.class), mock(TaskExecutor.class),
                 events, template, mock(FamilyService.class));
         var proxy = new ProxyFactory(target);
         proxy.addAdvice(new TransactionInterceptor(manager, new AnnotationTransactionAttributeSource()));

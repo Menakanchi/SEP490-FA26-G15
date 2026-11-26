@@ -109,7 +109,7 @@ try {
       const body = { ...saved, id: Number(snapshot[1]), baseline_current: snapshotCurrent, handoff_ready: undefined };
       if (snapshot[2]) {
         if ([400, 403, 409, 503].includes(checkMode)) return reply({ detail: "Fixture source revision or baseline rejected" }, checkMode);
-        return reply({ ...body, handoff_ready: checkMode !== "notready", ...(checkMode === "mismatch" ? { optimization_run_ids: saved.validation_run_ids, validation_run_ids: saved.optimization_run_ids } : {}) });
+        return reply({ ...body, dataset_digest: "d".repeat(64), handoff_ready: checkMode !== "notready", ...(checkMode === "mismatch" ? { optimization_run_ids: saved.validation_run_ids, validation_run_ids: saved.optimization_run_ids } : {}) });
       }
       return reply(body);
     }
@@ -207,7 +207,7 @@ try {
   for (const failure of [409, 403, "notready", "mismatch"]) {
     checkMode = failure; await check().click(); await dataset.locator(".analysis-action-error").waitFor(); assert.equal(await open().count(), 0);
   }
-  checkMode = "normal"; await check().click(); await open().waitFor(); await open().click(); await page.waitForURL(u => u.pathname === "/aeb" && u.searchParams.get("dataset_id") === "9201");
+  checkMode = "normal"; await check().click(); await open().waitFor(); await open().click(); await page.waitForURL(u => u.pathname === "/aeb/mobo/new" && u.searchParams.get("dataset_id") === "9201");
   await page.goBack(); await snapshotPanel.getByRole("heading", { name: /Tập đã chốt #9201/ }).waitFor(); assert.equal(await open().count(), 0);
   snapshotCurrent = false; await dataset.getByRole("button", { name: "Tải lại tập đã chốt", exact: true }).click(); await snapshotPanel.getByText(/Snapshot lưu trữ:/).waitFor(); assert(await check().isDisabled()); await capture("snapshot-stale-read-only"); snapshotCurrent = true;
   checks.push("draft close/reopen/focus, reassign, revisions, 400/409/429/500/403 retention, no retry/double POST, immutable saved ID, explicit check/open, stale/reload revoke readiness");

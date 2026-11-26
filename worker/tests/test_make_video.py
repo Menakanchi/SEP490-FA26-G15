@@ -41,6 +41,13 @@ def test_concat_list_gives_each_frame_its_interval_and_repeats_the_last(tmp_path
     assert lines[4] == lines[2]  # ffmpeg bỏ duration của mục cuối: lặp lại để ảnh cuối vẫn đủ thời gian
 
 
+def test_missing_camera_frames_keep_elapsed_simulation_time(tmp_path: Path) -> None:
+    camera = _frames(tmp_path, [100, 130, 140])
+    lines = make_video.concat_list(make_video.frame_files(camera), 0.1, frame_step_s=0.01).splitlines()
+    assert lines[1] == "duration 0.300000"  # two missed callbacks must not speed up the recording
+    assert lines[3] == "duration 0.100000" and lines[5] == "duration 0.100000"
+
+
 def test_make_video_builds_atomically_and_cleans_temp_files(tmp_path: Path) -> None:
     _frames(tmp_path, [1, 11, 21])
     calls: list = []
@@ -89,6 +96,12 @@ def test_load_telemetry_maps_frame_to_time_speed_kmh_and_brake(tmp_path: Path) -
     data = make_video.load_telemetry(tmp_path / "sensors" / "frames.csv")
     assert data[100] == (0.0, 36.0, 0.0) and data[110] == pytest.approx((0.1, 39.6, 0.5))
     assert make_video.load_telemetry(tmp_path / "none.csv") == {}
+
+
+def test_load_telemetry_skips_non_finite_samples_instead_of_displaying_numbers(tmp_path: Path) -> None:
+    telemetry = tmp_path / "frames.csv"
+    telemetry.write_text("frame,sim_time_s,ego_speed_ms,brake\n1,NaN,10,0\n2,0,Infinity,0\n3,0,10,NaN\n4,0.2,10,0.5\n", encoding="utf-8")
+    assert make_video.load_telemetry(telemetry) == {4: (0.2, 36.0, 0.5)}
 
 
 def test_overlay_draws_speed_on_a_copy_without_touching_the_source(tmp_path: Path) -> None:
@@ -142,3 +155,52 @@ def test_build_run_video_never_breaks_the_run_and_drops_a_stale_video(tmp_path: 
     assert make_video.build_run_video(tmp_path, 0.1) is None  # lỗi chỉ thành cảnh báo
     assert not (tmp_path / make_video.VIDEO_NAME).exists()  # video của lần chạy trước không đứng cạnh kết quả mới
     assert "Không tạo được video.mp4" in capsys.readouterr().err
+
+
+def test_missing_telemetry_keeps_original_frame_instead_of_drawing_zeroes(tmp_path: Path) -> None:
+    pil = pytest.importorskip("PIL.Image")
+    camera = tmp_path / "camera"
+    camera.mkdir()
+    for frame in (100, 110):
+        pil.new("RGB", (1280, 720), (30, 90, 160)).save(camera / f"{frame:08d}.png")
+    work = tmp_path / "work"
+    assert make_video.draw_overlays(make_video.frame_files(camera), {100: (0.0, 36.0, 0.0)}, work)
+    assert (work / "00000110.png").read_bytes() == (camera / "00000110.png").read_bytes()
+
+
+def test_overlay_workspace_from_interrupted_attempt_is_not_reused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _frames(tmp_path, [100])
+    work = tmp_path / "sensors" / make_video.OVERLAY_DIR
+    work.mkdir()
+    (work / "00000001.png").write_bytes(b"previous attempt")
+
+    def overlay(frames, _telemetry, output):  # noqa: ANN001, ANN202
+        output.mkdir(exist_ok=True)
+        for frame in frames:
+            (output / frame.name).write_bytes(b"current attempt")
+        return True
+
+    def video(source, output, _interval, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+        assert [frame.name for frame in make_video.frame_files(source)] == ["00000100.png"]
+        output.write_bytes(b"mp4")
+        return output
+
+    monkeypatch.setattr(make_video, "draw_overlays", overlay)
+    monkeypatch.setattr(make_video, "make_video", video)
+    assert make_video.build_run_video(tmp_path, 0.1) == tmp_path / make_video.VIDEO_NAME
+
+
+def test_unremovable_stale_video_is_nonfatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    camera = _frames(tmp_path, [100])
+    output = tmp_path / make_video.VIDEO_NAME
+    output.write_bytes(b"stale")
+    unlink = Path.unlink
+
+    def locked(path, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        if path == output:
+            raise PermissionError("video in use")
+        return unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", locked)
+    assert make_video.build_run_video(tmp_path, 0.1) is None
+    assert camera.is_dir()

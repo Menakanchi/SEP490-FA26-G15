@@ -226,6 +226,8 @@ export const vehicsimApi = {
   optimizationPareto: (id: number) => apiRequest<OptimizationTrial[]>(`/vehicsim/optimizations/${id}/pareto`),
   createOptimization: (body: {
     scenario_id: number;
+    dataset_id?: number;
+    dataset_digest?: string;
     base_aeb_version_id?: number;
     max_trials?: number;
     n_initial_points?: number;

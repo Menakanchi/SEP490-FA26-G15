@@ -49,7 +49,7 @@ const METHODS: Record<ExplanationMetric, Method> = {
   }
 };
 // Identifiers are source references, not proof of engine revision or runtime equivalence.
-const CARLA_REFERENCE = new Set(Array.from({ length: 7 }, (_, i) => `carla-0.9.16-xosc${i + 9}`));
+const CARLA_REFERENCE = new Set(Array.from({ length: 8 }, (_, i) => `carla-0.9.16-xosc${i + 9}`));
 export const UNVERIFIED_METHOD = "Chưa xác minh phương pháp tính từ nguồn dữ liệu này";
 
 export function metricExplanation(kind: ExplanationMetric, detail: FailureDetail, run: AnalysisRun | null) {

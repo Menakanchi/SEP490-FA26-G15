@@ -75,7 +75,7 @@ public class AnalysisViewService {
             + "JOIN simulation_runs r ON r.id = f.simulation_run_id "
             + "JOIN scenarios s ON s.id = r.scenario_id "
             + "LEFT JOIN (SELECT failure_id, category FROM root_causes WHERE is_primary = 1) pc ON pc.failure_id = f.id "
-            + "WHERE r.project_id = ?";
+            + "WHERE r.project_id = ? AND r.aeb_mode = 'ON'";
 
     private static final int SIMILAR_CANDIDATES = 2000;
 
@@ -587,8 +587,11 @@ public class AnalysisViewService {
         List<Scored> scored = new ArrayList<>();
         // Cùng chế độ AEB với run đang xem: lượt AEB tắt (đối chiếu "không có AEB", ADR-055) không phải ca lỗi của bộ AEB nên không so lẫn.
         String mode = b.run().str("aeb_mode") == null ? "ON" : b.run().str("aeb_mode");
-        for (Map<String, Object> r : failureRows("r.project_id = ? AND r.scenario_id = ? AND r.aeb_mode = ?", SIMILAR_CANDIDATES,
-                projectId, b.run().lng("scenario_id"), mode)) {
+        // Similarity is meaningful only within the same physical/evaluation cohort (ADR-055).
+        for (Map<String, Object> r : failureRows("r.project_id = ? AND r.scenario_id = ? AND r.aeb_mode = ?"
+                + " AND r.aeb_version_id = ? AND r.carla_vehicle_model_id = ? AND r.simulator_version = ? AND r.fixed_delta_seconds = ?", SIMILAR_CANDIDATES,
+                projectId, b.run().lng("scenario_id"), mode, b.run().lng("aeb_version_id"), b.run().lng("carla_vehicle_model_id"),
+                b.run().str("simulator_version"), b.run().dbl("fixed_delta_seconds"))) {
             if (r.get("run_id").equals(b.run().lng("id"))) {
                 continue;
             }

@@ -1,4 +1,4 @@
-# Từ điển dữ liệu VehicSim (MySQL, 34 bảng; BE-R1 migration 020 chưa áp DB)
+# Từ điển dữ liệu VehicSim (MySQL, 34 bảng)
 
 Tài liệu giải thích **từng bảng, từng cột** của database VehicSim: nghĩa nghiệp vụ, ràng buộc, ai
 ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệu nhóm 06/10/2026).
@@ -23,9 +23,9 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 
 | | Số lượng |
 |---|---|
-| Bảng | 34 (4 bảng BE-R1 chưa áp DB) |
-| Cột | 397 |
-| Khoá ngoại | 82 (nhiều khoá ghép) |
+| Bảng | 34 (schema source; DB đang dùng cần kiểm migration riêng) |
+| Cột | 445 |
+| Khoá ngoại | 86 (nhiều khoá ghép) |
 | CHECK | 37 |
 | Engine / charset | InnoDB · `utf8mb4` / `utf8mb4_0900_ai_ci` · MySQL ≥ 8.0.16 (cần CHECK) |
 
@@ -36,7 +36,7 @@ ghi/đọc, và bảng nào phục vụ chức năng nào (13 FE theo tài liệ
 | 3 | Project & xe | `projects`, `project_members`, `carla_vehicle_models`, `sensors` | Có, trừ `project_members`, `sensors` |
 | 4 | AEB | `aeb_parameters`, `aeb_versions`, `aeb_parameter_values` | Có |
 | 5 | Kịch bản | `scenarios`, `scenario_versions` | Có |
-| 6 | Tối ưu & regression | `optimization_runs`, `optimization_trials`, `regression_tests` | `regression_tests` |
+| 6 | Tối ưu & regression | `optimization_runs`, `optimization_trials`, `regression_tests` | Có: MOBO/trial/Pareto và regression; campaign nhận dataset FA đã chốt cùng checksum và giữ riêng hai partition |
 | 7 | Mô phỏng, đánh giá, lỗi | `simulation_runs`, `simulation_artifacts`, `collision_events`, `failures`, `root_causes` | Có |
 | 8 | Phân tích, kết quả regression, khuyến nghị | `analysis_results`, `regression_test_items`, `engineering_recommendations` | Có; analysis_results mới dùng BASELINE_DATASET |
 | 9 | Tri thức kỹ thuật | `tech_references` | Có: Admin list/detail/create/update, bật/tắt |
@@ -50,7 +50,7 @@ Bảng chưa có code là thiết kế trước theo FE (0 dòng); màn hình / 
 | ADMIN | Quản trị user / role, tạo workspace và gán Manager (ADR-038), quản lý `tech_references` |
 | MANAGER | Quản lý workspace được Admin gán: xem mọi thành viên, thêm tài khoản Experiencer và cấp role Engineer / Reviewer cho người đó (ADR-045), giao task, duyệt báo cáo của các project. Không làm kỹ thuật, không tạo project, không duyệt khuyến nghị |
 | ENGINEER | Toàn bộ quy trình kỹ thuật trong project của workspace (xe, kịch bản, mô phỏng, tối ưu, regression) |
-| REVIEWER | Xem kết quả, Accept / Reject khuyến nghị — quyết định cuối, không cần Manager (ADR-037). Không chạy mô phỏng |
+| REVIEWER | Xem kết quả, chạy regression trong workspace mình và Accept / Reject khuyến nghị (ADR-049); không chạy baseline kỹ thuật |
 | EXPERIENCER | Người tự đăng ký: project cá nhân, chạy tới tối ưu + regression; **không có** khuyến nghị / duyệt. Được thêm vào workspace thì thành Engineer / Reviewer, rời workspace cuối cùng thì trở lại Experiencer (ADR-045) |
 
 Quyền xem thành viên (kiểm ở API, ADR-038): Manager xem mọi thành viên workspace mình quản lý; trong project chỉ
@@ -620,7 +620,7 @@ Một lần tối ưu tham số AEB trên cả họ, cố định xe và bộ m�
 | `acquisition_function` | ENUM |  |  |  | Hàm thu nhận đa mục tiêu, chỉ với MOBO: Expected Hypervolume Improvement (EHVI / qEHVI), ParEGO, MESMO, USEMO. Giá trị: 'EHVI', 'qEHVI', 'MESMO', 'USEMO', 'PAREGO'. |
 | `n_initial_points` | INT UNSIGNED |  |  |  | Số điểm khởi tạo trước khi hàm thu nhận chọn điểm |
 | `search_space_json` | JSON | ✓ |  |  | Không gian tìm kiếm 4 tham số AEB: TTC_THRESHOLD, BRAKE_ACTIVATION_DELAY, MAX_DECELERATION, BRAKE_BUILDUP_RATE (con của [min_value, max_value]) |
-| `objective_config_json` | JSON | ✓ |  |  | Cấu hình 3 mục tiêu: Braking Comfort (RMS Jerk), Collision Mitigation (Impact Speed), Stopping Performance (Stopping Distance), kèm ràng buộc; mặc định `{"constraints": {"collision_rate_pct": {"max": "baseline"}, "false_activation_increase_pts": {"max": 5}}}` — trial vi phạm bị loại khỏi mặt Pareto |
+| `objective_config_json` | JSON | ✓ |  |  | Cấu hình ba mục tiêu canonical và ràng buộc ADR-044; campaign từ FA lưu thêm `dataset_ref` (ID, checksum, hai danh sách run nguồn) để không chọn lại dữ liệu lúc thực thi. Trial vi phạm bị loại khỏi Pareto. |
 | `max_trials` | INT UNSIGNED | ✓ |  |  | Ngân sách số trial (kế hoạch rủi ro: 50–100 run). |
 | `random_seed` | BIGINT UNSIGNED |  |  |  | Seed của bộ tối ưu (tái lập chuỗi điểm thử). |
 | `status` | ENUM | ✓ | `'PENDING'` |  | Trạng thái chạy. Giá trị: 'PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'. |
@@ -868,9 +868,9 @@ Kết quả từng kịch bản của một regression. **Code dùng:** `regress
 | Cột | Kiểu | Bắt buộc | Mặc định | Khoá | Nghĩa |
 |---|---|---|---|---|---|
 | `id` | BIGINT UNSIGNED | ✓ |  | PK; AI | Khoá chính. |
-| `regression_test_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rti_test_variant`; FK → `regression_tests`; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Regression test. |
-| `scenario_version_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rti_test_variant`; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Biến thể; mỗi biến thể một dòng trong một test. |
-| `baseline_run_id` | BIGINT UNSIGNED | ✓ |  | FK → `simulation_runs`; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Run baseline của cặp. |
+| `regression_test_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rti_test_baseline`; FK → `regression_tests`; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Regression test. |
+| `scenario_version_id` | BIGINT UNSIGNED | ✓ |  | FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Biến thể; có thể có nhiều seed trong partition FA đã chốt. |
+| `baseline_run_id` | BIGINT UNSIGNED | ✓ |  | UQ `uq_rti_test_baseline`; FK → `simulation_runs`; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Run baseline của cặp; mỗi run nguồn đúng một dòng trong một test. |
 | `candidate_run_id` | BIGINT UNSIGNED | ✓ |  | UQ; FK → `simulation_runs(id,baseline_run_id,regression_test_id,scenario_version_id)` | Run candidate của cặp; `fk_rti_pair` ép đúng test + đúng baseline + đúng biến thể. |
 | `baseline_outcome` | ENUM |  |  |  | `SAFE` / `NEAR_MISS` / `COLLISION` của baseline. Giá trị: 'SAFE', 'NEAR_MISS', 'COLLISION'. |
 | `candidate_outcome` | ENUM |  |  |  | Như trên, của candidate. Giá trị: 'SAFE', 'NEAR_MISS', 'COLLISION'. |
@@ -962,7 +962,7 @@ CHECK: `ck_tech_references_value`.
 | `regression_tests.pass_criteria_json` | `regression.create_test` | `{"criteria": {"no_new_collision": {"enabled", "required"}, "false_activation_increase_max_pts": {"enabled", "required", "value"}, …}, "scenario_set": {"old_critical", "all_variants", "old_critical_count", "variant_count"}}` |
 | `sensors.attributes_json` | (chưa có code) | Attribute blueprint đúng tên CARLA, giá trị chuỗi: `{"image_size_x": "1280", "fov": "90", "sensor_tick": "0.05"}` |
 | `optimization_runs.search_space_json` | (chưa có code) | `{"TTC_THRESHOLD": [1.2, 2.5], "BRAKE_ACTIVATION_DELAY": [0.05, 0.3]}` — chỉ 4 mã của `aeb_parameters`, trong `[min_value, max_value]` |
-| `optimization_runs.objective_config_json` | (chưa có code) | Mục tiêu + trọng số / ràng buộc, vd `{"objectives": ["rms_jerk", "impact_speed", "stopping_distance"], "constraints": {"collision_rate_pct": {"max": 5}}}` |
+| `optimization_runs.objective_config_json` | `OptimizationService` | Ba mục tiêu canonical/ràng buộc cố định; `dataset_ref` giữ ID, digest và run nguồn của hai partition khi tạo từ dataset FA v2. |
 | `analysis_results.config_json` / `summary_json` | AnalysisViewService cho BASELINE_DATASET; các loại khác chưa có | Đầu vào (nhiễu, chỉ số mục tiêu, bộ lọc run) / đầu ra (xếp hạng tham số, ma trận tương tác, phân bố theo nhiễu) |
 
 Bảng tổng hợp regression (ma trận chuyển trạng thái, tỉ lệ, tiêu chí) **không lưu**: `regression.summary`
@@ -989,7 +989,7 @@ Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critica
 - **Trạng thái code cần đối chiếu theo module:** `tech_references` đã có API/màn Admin như §6.9;
   cộng tác có `WorkspaceController`, notifications và chat (không còn chỉ là schema).
   `sensors` chưa có luồng quản trị riêng; không suy ra triển khai thuật toán từ bảng tối ưu hoặc `analysis_results`.
-  [Bàn giao ngày 17/11](admin-analysis-handover.md) ghi phạm vi Admin/Analysis đã kiểm;
+  [Bàn giao ngày 17/11](../failure-analysis-v3/README.md) ghi phạm vi Admin/Analysis đã kiểm;
   các mô tả tối ưu/cộng tác lịch sử khác trong tài liệu này cần đối chiếu code trước khi nhận việc.
 - **Phanh CARLA còn giới hạn (TD-17):** ADR-051 đã nối `max_brake_torque_nm` qua bundle/`.xosc` v5
   vào physics bánh xe và hiệu chuẩn e-tron; `carla_full_brake_decel_mps2` đi qua `vs_full_brake_decel_mps2`
@@ -1002,7 +1002,7 @@ Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critica
   CHECK không so được bảng khác.
 - **Rút scope AEB (ADR-040):** run của v1.3 dùng tầm dự đoán 1,5 s và biên an toàn 0,5 m (nay là hằng số 2,0 / 2,0) nên
   60 / 192 run đó **không còn tái lập** khi chạy lại từ JSON; kết quả đã lưu không đổi (TD-40).
-- **Bảng tối ưu còn rỗng:** `optimization_runs`, `optimization_trials` và các loại phân tích thuật toán có schema nhưng chưa có code (TD-39); BASELINE_DATASET đã được lưu trong analysis_results.
+- **Tối ưu:** campaign/trial/Pareto đã có code; campaign có `dataset_ref` thực thi đúng partition đã chốt. Sensitivity/Robustness và handoff chẩn đoán V3 vẫn có các cổng riêng, không suy từ schema rằng đã triển khai.
 
 ## 10. Đổi schema thì làm gì
 
@@ -1024,6 +1024,15 @@ Cùng một PR (luật mềm ở `AGENTS.md`):
 | `007_2026-10-15_rut-scope-4-tham-so-aeb-7-category.sql` | Rút scope: 4 tham số AEB, 3 mục tiêu MOBO, 7 category kịch bản (ADR-040), vẫn 29 bảng |
 | `008_2026-10-15_buildup-5-20-va-dinh-nghia-muc-tieu.sql` | `BRAKE_BUILDUP_RATE` biên [5, 20]; tính lại `rms_jerk_mps3` / `stopping_distance_m` cho run cũ (ADR-040 §6–7) |
 | `011_2026-10-26_them-mau-xe-carla.sql` | `ck_cvm_wheels` nhận 6 bánh; thêm 4 mẫu xe CARLA (Model 3, Patrol, Sprinter, xe tải chỉ để xem), không sửa e-tron |
+| `019_2026-11-24_bo-sung-tech-references-toan-dien.sql` | Bổ sung nội dung tham khảo; độc lập migration 019 về run |
+| `019_2026-11-24_lan-lap-va-lan-thu-cua-run.sql` | Thêm `repetition` / `attempt`; cần trước backend hiện tại |
+| `020_2026-11-24_bo-sung-tech-references-chuyen-sau.sql` | Thêm kiến thức chuyên sâu; độc lập migration 020 về FA |
+| `020_2026-11-25_failure_analysis_json.sql` | Thêm bốn bảng `fa_json_*` |
+| `021_2026-11-24_chuan-hoa-url-tech-references.sql` | Cập nhật URL/DOI tham khảo |
+| `022_2026-11-24_bo-sung-4-tham-so-aeb-tech-references.sql` | Bổ sung tài liệu và mô tả bốn tham số AEB |
+| `023_2026-11-26_regression-frozen-seeds.sql` | UNIQUE kết quả regression theo test + run baseline, giữ nhiều seed của một biến thể trong partition FA; không sửa/xóa kết quả cũ |
+
+Hai nhánh có migration trùng số **019 và 020**. Xác định bằng **tên file đầy đủ**, không bỏ một file vì số đã có. DB đang ở mốc 018 cần cả sáu file 019–022 ở trên và 023 trước verification từ dataset nhiều seed; DB mới từ schema hiện tại đã chứa chúng. Không tự chạy lại migration ALTER TABLE trên DB đã nâng. Migration 023 chỉ đổi thành phần của một UNIQUE, giữ 445 cột, 86 FK, 37 CHECK và 48 UNIQUE; chưa tự áp vào DB nhóm.
 
 Luôn sao lưu trước (`mysqldump --single-transaction`), không `docker compose down -v` trên máy người khác.
 
@@ -1052,7 +1061,7 @@ Quyền Reviewer: header `X-VehicSim-Project` chọn project trong workspace cò
 Context chấp nhận project chưa chọn xe và trả `vehicle=null`. Frontend chờ context, chốt ID trả về rồi mới tải màn; JSON, POST quyết định và tải file dùng cùng header. Đổi mật khẩu giữ project; đăng nhập mới/đăng xuất xóa lựa chọn. Refresh lỗi giữ nguyên lựa chọn, khóa duyệt và báo lỗi; role khác giữ context tốt gần nhất. Nút Chọn lại project chỉ hiện cho Reviewer khi `GET /api/v1/vehicsim/reviewer/projects` còn trả project thuộc membership; route này độc lập lựa chọn đang lỗi. POST quyết định thiếu header project bị 400, tránh dùng mặc định đã đổi giữa các request (ADR-048, UC-62/UC-63).
 
 
-## BE-R1 — kho JSON Failure Analysis (migration 020, chưa áp dụng)
+## BE-R1 — kho JSON Failure Analysis (migration 020 ngày 25/11)
 
 Chỉ INSERT và SELECT qua FailureAnalysisStore. Không cập nhật dữ liệu mô phỏng/đánh giá cũ.
 Payload source tối đa 1 MiB; tài nguyên dẫn xuất 8 MiB, metadata 256 KiB. FK ON DELETE RESTRICT.
@@ -1134,4 +1143,4 @@ Một output/status resource cho execution; không mang quyền dispatch optimiz
 
 ## BE-R1 verification
 
-Migration 020 ch? ?p tr?n database test ri?ng khi c? b?ng ch?ng ki?m ch?ng; xem b?o c?o backend-integration/08_TEST_REPORT.md.
+Migration 020 ngày 25/11 đã được kiểm trên database MySQL cô lập; chưa suy ra trạng thái DB đang dùng của nhóm. Hợp đồng nằm ở [hướng dẫn Failure Analysis](../failure-analysis-v3/README.md), kết quả ở [báo cáo kiểm chứng](../LOGIC_AUDIT_REPORT.md).

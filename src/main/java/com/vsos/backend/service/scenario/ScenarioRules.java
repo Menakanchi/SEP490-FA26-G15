@@ -28,6 +28,7 @@ public final class ScenarioRules {
     public static final String VEHICLE = "VEHICLE";
     public static final String PEDESTRIAN = "PEDESTRIAN";
 
+    /** Danh sách 7 nhóm kịch bản kiểm thử theo tiêu chuẩn an toàn Euro NCAP. */
     public static final List<String> CATEGORIES = List.of(CCRS, CCRM, CCRB, CP_CROSSING, CPLA, TURNING, CUT_IN);
 
     /** Category đã có bộ mô phỏng động học (ADR-050). Nhóm còn lại mới có trong schema (TD-42). */

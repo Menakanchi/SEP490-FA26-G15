@@ -125,7 +125,7 @@ public class KinematicParityTest {
         SimulationOutcome actual = Simulator.simulate(crossing, params, seed, vehicle, false);
         String label = name + " " + cs + " seed=" + seed;
         compare(label + " outcome", map(c.get("outcome")), roundTrip(actual.asDict()), diffs);
-        compare(label + " evaluation", map(c.get("evaluation")), roundTrip(Evaluation.evaluate(actual, params).toDocument()), diffs);
+        compare(label + " legacy evaluation", map(c.get("evaluation")), roundTrip(Evaluation.evaluateLegacy(actual, params).toDocument()), diffs);
     }
 
     private static double num(Map<String, Object> m, String key) {

@@ -45,7 +45,9 @@ public class OptimizationController {
             @JsonProperty("name") @Size(max = 150) String name,
             @JsonProperty("search_space") Map<String, Object> searchSpace,
             @JsonProperty("objective_config") Map<String, Object> objectiveConfig,
-            @JsonProperty("simulator_type") String simulatorType) {
+            @JsonProperty("simulator_type") String simulatorType,
+            @JsonProperty("dataset_id") Long datasetId,
+            @JsonProperty("dataset_digest") @Size(max = 64) String datasetDigest) {
     }
 
     @Operation(summary = "Tạo và bắt đầu Optimization Run bằng MOBO")
@@ -61,9 +63,9 @@ public class OptimizationController {
         long runId = optimization.createAndStartRun(
                 access.projectId(), uid, body.scenarioId(), body.baseAebVersionId(),
                 body.maxTrials(), body.nInitialPoints(), searchSpaceJson, objectiveConfigJson, body.name(),
-                body.simulatorType());
+                body.simulatorType(), body.datasetId(), body.datasetDigest());
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(Json.obj("id", runId, "status", "RUNNING"));
+        return ResponseEntity.status(HttpStatus.CREATED).body(optimization.getRun(access.projectId(), runId));
     }
 
     @Operation(summary = "Danh sách Optimization Runs")

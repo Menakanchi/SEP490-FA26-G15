@@ -11,6 +11,7 @@ import { Card, EmptyState, ErrorNote, PillButton, cx, simulatorLabel } from "@/c
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { FamilyItem } from "@/types/vehicsim";
+import { VehicSimSelect } from "@/components/VehicSimSelect";
 
 const axisLabels: Record<string, string> = {
   ego_speed_kmh: "Tốc độ xe thử (km/h)",
@@ -129,8 +130,6 @@ export default function ScenarioRunPage() {
     <VehicSimPage
       step={2}
       crumbs={[{ label: "Mô phỏng", href: "/scenarios/run" }, { label: "Chạy baseline" }]}
-      title="Chạy baseline"
-      subtitle="Chọn họ kịch bản và chạy mô phỏng với cấu hình AEB cơ sở của project."
       actions={
         <PillButton href="/scenarios" variant="light">
           <ArrowLeft aria-hidden className="size-4" /> Danh sách kịch bản
@@ -154,18 +153,17 @@ export default function ScenarioRunPage() {
             <p className="mt-1 text-[13px] text-vehicsim-muted">Chọn họ có các biến thể bạn muốn chạy.</p>
           </div>
           {families && families.length > 0 && (
-            <select
+            <VehicSimSelect
               aria-label="Chọn họ kịch bản kiểm thử"
-              value={selectedId ?? ""}
-              onChange={(e) => pickFamily(Number(e.target.value))}
-              className="min-h-11 w-full min-w-0 rounded-lg border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-2 text-[13px] font-semibold text-vehicsim-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vehicsim-primary sm:w-auto sm:max-w-[360px]"
-            >
-              {families.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.code} · {f.name} (v{f.version} - {f.variants} biến thể)
-                </option>
-              ))}
-            </select>
+              value={selectedId}
+              onChange={(val) => pickFamily(Number(val))}
+              options={families.map((f) => ({
+                value: f.id,
+                label: `${f.code} · ${f.name}`,
+                sublabel: `v${f.version} — ${f.variants} biến thể`,
+              }))}
+              className="w-auto min-w-[300px]"
+            />
           )}
         </div>
 

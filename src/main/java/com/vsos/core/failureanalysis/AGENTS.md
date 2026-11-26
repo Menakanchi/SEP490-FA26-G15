@@ -1,7 +1,7 @@
 # Failure Analysis package
 
-Read docs/failure-analysis-v3/README.md and handover/ARCHITECTURE_AND_STATUS.md.
-Producer and consumer integration guides are in that handover directory.
+Read docs/failure-analysis-v3/README.md for the source map, input/REST contracts,
+producer/consumer boundaries, run commands and open integration work.
 
 This package contains the actual read-only evidence/physics/diagnosis/handoff
 implementation. Historical before-source copies/probes are not production code.
