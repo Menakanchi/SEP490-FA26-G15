@@ -209,7 +209,7 @@ try {
   }
   checkMode = "normal"; await check().click(); await open().waitFor(); await open().click(); await page.waitForURL(u => u.pathname === "/aeb/mobo/new" && u.searchParams.get("dataset_id") === "9201");
   await page.goBack(); await snapshotPanel.getByRole("heading", { name: /Tập đã chốt #9201/ }).waitFor(); assert.equal(await open().count(), 0);
-  snapshotCurrent = false; await dataset.getByRole("button", { name: "Tải lại tập đã chốt", exact: true }).click(); await snapshotPanel.getByText(/Snapshot lưu trữ:/).waitFor(); assert(await check().isDisabled()); await capture("snapshot-stale-read-only"); snapshotCurrent = true;
+  snapshotCurrent = false; await dataset.getByRole("button", { name: "Tải lại tập đã chốt", exact: true }).click(); await snapshotPanel.getByText(/Baseline đã đổi hoặc chưa được xác nhận/).waitFor(); assert(await check().isDisabled()); await capture("snapshot-stale-read-only"); snapshotCurrent = true;
   checks.push("draft close/reopen/focus, reassign, revisions, 400/409/429/500/403 retention, no retry/double POST, immutable saved ID, explicit check/open, stale/reload revoke readiness");
 
   const id = safe[0].run_id, returnTo = "/validation/regression/77", query = `?section=telemetry&t=1.25&signal=jerk_mps3&compare=${safe[1].run_id}&returnTo=${encodeURIComponent(returnTo)}`;
@@ -250,7 +250,8 @@ try {
   for (const width of [320, 375, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 }); assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await table.focus(); await page.keyboard.press("ArrowRight");
-    if (width < 1000) await page.waitForFunction(() => document.querySelector('[aria-label="Bảng lượt chạy baseline, cuộn ngang để xem thêm"]').scrollLeft > 0);
+    if (await table.evaluate(node => node.scrollWidth > node.clientWidth + 1))
+      await page.waitForFunction(() => document.querySelector('[aria-label="Bảng lượt chạy baseline, cuộn ngang để xem thêm"]').scrollLeft > 0);
     for (let n = 0; n < 8; n++) { await page.keyboard.press("Tab"); if (/Chi tiết run/.test(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") || ""))) break; }
     assert(await page.evaluate(() => /Chi tiết run/.test(document.activeElement?.getAttribute("aria-label") || "")));
     assert(await page.evaluate(() => document.activeElement?.matches(":focus-visible")));
