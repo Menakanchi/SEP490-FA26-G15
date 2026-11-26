@@ -140,7 +140,7 @@ export default function AebHubPage() {
                   Tối ưu tự động bằng AI (MOBO / qEHVI)
                 </h3>
                 <p className="mt-1 text-[13px] leading-[1.5] text-vehicsim-muted">
-                  Sử dụng mô hình Gaussian Process và hàm thu thập qEHVI tự động chạy mô phỏng trên CARLA để tìm biên Pareto cân bằng tối ưu giữa RMS Jerk, tốc độ va chạm và quãng phanh.
+                  Sử dụng mô hình Gaussian Process và hàm thu thập qEHVI tự động chạy mô phỏng để tìm biên Pareto cân bằng tối ưu giữa RMS Jerk, tốc độ va chạm và quãng phanh.
                 </p>
               </div>
             </div>
