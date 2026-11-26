@@ -2,6 +2,8 @@ package com.vsos.backend.service.simulation;
 
 import com.vsos.backend.common.audit.AuditLog;
 import com.vsos.core.bridge.Bundle;
+import com.vsos.core.aeb.AebParams;
+import com.vsos.backend.service.analysis.FailureAnalysisService;
 import com.vsos.core.simulation.LeadVehicleCase;
 import com.vsos.core.simulation.CarlaSession;
 import com.vsos.core.evaluation.Evaluation;
@@ -170,9 +172,11 @@ public class RunService {
     private final ApplicationEventPublisher events;
     private final TransactionTemplate tx;
     private final FamilyService families;
+    private final FailureAnalysisService resultStore;
+    private static final String ORIGINAL_RESULT_BYTES = "__module2_original_result_bytes";
 
     public RunService(Db db, Queries queries, VehicSimProperties props, @Qualifier("simulationExecutor") TaskExecutor simulationExecutor,
-                      ApplicationEventPublisher events, TransactionTemplate tx, FamilyService families) {
+                      ApplicationEventPublisher events, TransactionTemplate tx, FamilyService families, FailureAnalysisService resultStore) {
         this.db = db;
         this.queries = queries;
         this.props = props;
@@ -180,6 +184,7 @@ public class RunService {
         this.events = events;
         this.tx = tx;
         this.families = families;
+        this.resultStore = resultStore;
     }
 
     // ------------------------------------------------------------------ bộ mô phỏng cấu hình
@@ -537,7 +542,7 @@ public class RunService {
      * Phần {@code variant} của bundle từ cấu hình run. Biến thể người đi bộ giữ nguyên dạng cũ (không thêm khóa nào, bundle cũ tái lập y hệt);
      * biến thể xe phía trước (ADR-050) mang {@code category} và các trường của nó.
      */
-    static Map<String, Object> variantForBundle(Map<String, Object> ir, Object friction) {
+    public static Map<String, Object> variantForBundle(Map<String, Object> ir, Object friction) {
         Object category = ir.get("category");
         if (category != null && LeadVehicleCase.CATEGORIES.contains(category.toString())) {
             return Json.obj(
@@ -617,7 +622,18 @@ public class RunService {
                 CARLA_LOCK.unlock();
             }
         }
-        return runKinematic(run, bundle);
+        Map<String,Object> result=runKinematic(run,bundle);
+        // Preserve genuine Java simulator results through the same DB handoff as CARLA;
+        // no CARLA telemetry or physical attestations are generated for this profile.
+        Path temporary=Files.createTempDirectory("vsos-kinematic-producer-");
+        try {
+            Row version=db.first("SELECT id, project_id, version_no, label, status, source, parent_version_id FROM aeb_versions WHERE id=?",run.lng("aeb_version_id"));
+            Map<String,Object> dataset=RunDatasetWriter.build(run,bundle,version==null?null:Json.parseMap(Json.write(version.asMap())),result,temporary,RunDatasetWriter.gitCommit(repoRoot()));
+            Json.asMap(dataset.get("provenance")).put("core_bytecode_sha256",com.vsos.backend.common.analysis.FailureAnalysisJson.loadedCoreFingerprint());
+            result.put("dataset",dataset);
+            result.put(ORIGINAL_RESULT_BYTES,Json.write(result).getBytes(StandardCharsets.UTF_8));
+            return result;
+        } finally {Files.deleteIfExists(temporary);}
     }
 
     /**
@@ -640,6 +656,7 @@ public class RunService {
         document.put("engine", Bundle.ENGINE);
         Map<String, Object> result = Json.parseMap(Json.write(document)); // cùng kiểu dữ liệu như khi đọc result.json từ worker
         checkResult(result, run);
+        checkResultParameters(result, spec.params().asCodes());
         return result;
     }
 
@@ -693,10 +710,13 @@ public class RunService {
         }
         Map<String, Object> result = Json.parseMap(Files.readString(resultPath, StandardCharsets.UTF_8));
         checkResult(result, run);
+        checkResultParameters(result, Json.asMap(Json.asMap(bundle.get("aeb")).get("params")));
         // ADR-065: khối dataset cho Failure Analysis, không bao giờ làm run lỗi. Dòng aeb_versions chỉ để khai báo trạng thái phiên bản lúc ghi.
         Row aebVersion = db.first("SELECT id, project_id, version_no, label, status, source, parent_version_id FROM aeb_versions WHERE id = ?",
                 run.lng("aeb_version_id"));
         RunDatasetWriter.attach(resultPath, result, run, bundle, aebVersion == null ? null : Json.parseMap(Json.write(aebVersion.asMap())), folder, repoRoot());
+        // Capture the final producer document verbatim before adding backend-only artifact paths.
+        result.put(ORIGINAL_RESULT_BYTES, Files.readAllBytes(resultPath));
         Map<String, Object> artifacts = new LinkedHashMap<>();
         artifacts.put("result", resultPath.toString());
         if (input.toString().endsWith(".xosc")) {
@@ -1225,6 +1245,19 @@ public class RunService {
         throw new SimulatorException("result.json " + field + " không khớp run (yêu cầu " + expected + ")");
     }
 
+    /** IDs alone cannot prove that the worker actually used the requested AEB parameters. */
+    private static void checkResultParameters(Map<String, Object> result, Map<String, ?> expected) {
+        Map<String, Object> actual = Json.asMap(Json.asMap(result.get("outcome")).get("params"));
+        for (String code : AebParams.CODES) {
+            String key = code.toLowerCase(java.util.Locale.ROOT);
+            if (!(expected.get(code) instanceof Number requested) || !Double.isFinite(requested.doubleValue())
+                    || !(actual.get(key) instanceof Number recorded) || !Double.isFinite(recorded.doubleValue())
+                    || Double.compare(requested.doubleValue(), recorded.doubleValue()) != 0) {
+                throw new SimulatorException("result.json outcome.params." + key + " không khớp cấu hình AEB của run");
+            }
+        }
+    }
+
     private static void recordWorker(Path folder, Process proc) {
         try {
             long started = proc.toHandle().info().startInstant().map(java.time.Instant::toEpochMilli).orElse(0L);
@@ -1405,14 +1438,25 @@ public class RunService {
      * bỏ — backend không ghi đường dẫn tới file nó không tạo.
      */
     public Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload) {
-        return submitCarlaResult(projectId, runId, userId, resultPayload, false);
+        return submitCarlaResult(projectId, runId, userId, resultPayload, false, null);
     }
 
     public Map<String, Object> submitCarlaResultFromUi(long projectId, long runId, long userId, Map<String, Object> resultPayload) {
-        return submitCarlaResult(projectId, runId, userId, resultPayload, true);
+        return submitCarlaResult(projectId, runId, userId, resultPayload, true, null);
     }
 
-    private Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload, boolean guardProject) {
+    /** Preserve the complete external producer document, including lexical bytes, without trusting artifact paths. */
+    public Map<String, Object> submitCarlaResultBytesFromUi(long projectId, long runId, long userId, byte[] raw) {
+        if (raw == null || raw.length == 0) throw new InvalidRequestException("thiếu result.json");
+        if (raw.length > com.vsos.backend.common.analysis.FailureAnalysisJson.SOURCE_BYTES)
+            throw new InvalidRequestException("result.json vượt giới hạn dung lượng");
+        Map<String,Object> payload;
+        try { payload = Json.parseMap(new String(raw, StandardCharsets.UTF_8)); }
+        catch (RuntimeException e) { throw new InvalidRequestException("result.json sai cấu trúc"); }
+        return submitCarlaResult(projectId, runId, userId, payload, true, raw.clone());
+    }
+
+    private Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload, boolean guardProject, byte[] originalBytes) {
         Row imported = tx.execute(transaction -> {
             if (guardProject) lockWritableProject(projectId, userId);
             Row run = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ? FOR UPDATE", runId, projectId);
@@ -1438,9 +1482,13 @@ public class RunService {
                 throw new InvalidRequestException("thiếu result.json");
             }
             Map<String, Object> result = new LinkedHashMap<>(resultPayload);
+            result.remove(ORIGINAL_RESULT_BYTES);
+            byte[] original = originalBytes == null ? Json.write(result).getBytes(StandardCharsets.UTF_8) : originalBytes;
             result.remove("artifacts");
+            result.put(ORIGINAL_RESULT_BYTES, original);
             try {
                 checkResult(result, run);
+                checkResultParameters(result, queries.aebValues(run.lng("aeb_version_id")));
             } catch (SimulatorException e) {
                 throw new InvalidRequestException(e.getMessage());
             }
@@ -1484,8 +1532,20 @@ public class RunService {
                 "case", outcome.get("case"),
                 "params", outcome.get("params"),
                 "outcome", ev.get("outcome"),
+                "evaluation_version", ev.get("version"),
                 "headline", ev.get("headline"),
                 "chain", chain);
+
+        {
+            if (!(result.get(ORIGINAL_RESULT_BYTES) instanceof byte[] original))
+                throw new SimulatorException("Thiếu nội dung result.json gốc để lưu database; run chưa được hoàn tất");
+            try {
+                // saveSource joins this transaction: failed storage rolls back metrics and COMPLETED together.
+                resultStore.persistProducerResult(run, original);
+            } catch (IOException e) {
+                throw new SimulatorException("Không lưu được nội dung result.json vào database");
+            }
+        }
 
         if (Boolean.TRUE.equals(metrics.get("collision"))) {
             Map<String, Object> collision = Json.asList(outcome.get("events")).stream()
@@ -1614,6 +1674,10 @@ public class RunService {
 
     /** Nhặt lại run bỏ dở sau khi backend khởi động lại (hàng đợi trong bộ nhớ không sống qua restart). */
     public int recoverUnfinished() {
+        // Capture the interrupted campaigns before cleaning workers; newly submitted campaigns are not startup leftovers.
+        List<Long> interruptedCampaignIds = db.list("SELECT id FROM optimization_runs WHERE status IN ('PENDING','RUNNING')")
+                .stream().map(row -> row.lng("id")).toList();
+        List<Long> cleanedOrphans = new ArrayList<>();
         // Chỉ gọi lúc khởi động: không luồng nào của JVM này đang giữ run, nên mọi run RUNNING đều mồ côi (backend chết giữa run).
         // Worker mồ côi có thể còn sống (Windows không giết tiến trình con khi cha chết): dừng nó trước khi chạy lại để hai
         // runner không tranh quyền tick của một server CARLA. Không nhận result.json mồ côi: không xác minh được worker đã
@@ -1627,12 +1691,55 @@ public class RunService {
                 stopOrphan(id);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                break;
+                return 0; // Never dispatch another run while an orphan worker may still own CARLA.
             }
+            cleanedOrphans.add(id);
+        }
+        recoverInterruptedCampaignsAndCancelledTests(interruptedCampaignIds);
+        for (long id : cleanedOrphans) {
+            // Aborted parent work is already STOPPED, retaining its original start time; only resumable runs are requeued.
             db.update("UPDATE simulation_runs SET status = 'PENDING', started_at = NULL WHERE id = ? AND status = 'RUNNING'", id);
         }
-        List<Long> ids = db.list("SELECT id FROM simulation_runs WHERE status = 'PENDING' ORDER BY id").stream().map(r -> r.lng("id")).toList();
+        List<Long> ids = db.list("""
+                SELECT id FROM simulation_runs WHERE status = 'PENDING'
+                  AND NOT EXISTS (SELECT 1 FROM optimization_trials t JOIN optimization_runs o ON o.id = t.optimization_run_id
+                                   WHERE t.id = simulation_runs.optimization_trial_id AND o.status IN ('FAILED','CANCELLED'))
+                  AND NOT EXISTS (SELECT 1 FROM regression_tests t
+                                   WHERE t.id = simulation_runs.regression_test_id AND t.execution_status = 'CANCELLED')
+                ORDER BY id
+                """).stream().map(r -> r.lng("id")).toList();
         dispatch(ids);
         return ids.size();
+    }
+
+    /** No optimizer snapshot can safely resume a campaign after restart; preserve its completed evidence and close unfinished work. */
+    private void recoverInterruptedCampaignsAndCancelledTests(List<Long> interruptedCampaignIds) {
+        tx.executeWithoutResult(status -> {
+            LocalDateTime now = Vs.now();
+            if (!interruptedCampaignIds.isEmpty()) {
+                List<Object> args = new ArrayList<>();
+                args.add("Backend khởi động lại khi chiến dịch tối ưu chưa hoàn tất; không tự tiếp tục vì chưa có snapshot phục hồi. Hãy tạo chiến dịch mới.");
+                args.add(now);
+                args.addAll(interruptedCampaignIds);
+                db.update("UPDATE optimization_runs SET status = 'FAILED', error_message = ?, finished_at = ? WHERE status IN ('PENDING','RUNNING') AND id IN ("
+                        + Db.placeholders(interruptedCampaignIds.size()) + ")", args.toArray());
+            }
+            db.update("""
+                    UPDATE optimization_trials t JOIN optimization_runs o ON o.id = t.optimization_run_id
+                       SET t.status = CASE WHEN o.status = 'CANCELLED' THEN 'PRUNED' ELSE 'FAILED' END, t.completed_at = ?
+                     WHERE o.status IN ('FAILED','CANCELLED') AND t.status IN ('PENDING','RUNNING')
+                    """, now);
+            db.update("""
+                    UPDATE simulation_runs r JOIN optimization_trials t ON t.id = r.optimization_trial_id
+                         JOIN optimization_runs o ON o.id = t.optimization_run_id
+                       SET r.status = 'STOPPED', r.error_message = ?, r.ended_at = ?
+                     WHERE o.status IN ('FAILED','CANCELLED') AND r.status IN ('PENDING','RUNNING')
+                    """, "Chiến dịch tối ưu đã dừng hoặc bị gián đoạn; không chạy lại run khi khởi động backend.", now);
+            db.update("""
+                    UPDATE simulation_runs r JOIN regression_tests t ON t.id = r.regression_test_id
+                       SET r.status = 'STOPPED', r.error_message = ?, r.ended_at = ?
+                     WHERE t.execution_status = 'CANCELLED' AND r.status IN ('PENDING','RUNNING')
+                    """, "Regression test đã hủy; không chạy lại run khi khởi động backend.", now);
+        });
     }
 }

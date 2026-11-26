@@ -19,6 +19,7 @@ import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.repository.project.ProjectRepository;
 import com.vsos.backend.repository.regression.RegressionRepository;
 import com.vsos.backend.service.regression.RegressionCodes;
+import com.vsos.backend.service.regression.RegressionService;
 import com.vsos.backend.service.simulation.RunService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -220,6 +221,11 @@ public class ProjectService {
         }
         if (!"BASELINE".equals(statusOf.get(baselineId))) {
             throw new ProjectException(BASELINE_CHANGED, baseline);
+        }
+        var candidates = regressions.candidateRuns(testId);
+        var runIds = candidates.stream().flatMap(run -> java.util.stream.Stream.of(run.id(), run.baselineRunId())).toList();
+        if (!RegressionService.evidenceComplete(test, candidates, regressions.runResults(runIds))) {
+            throw new ProjectException(TEST_EVIDENCE_INCOMPLETE);
         }
         regressions.archiveVersion(baselineId);
         regressions.promoteToBaseline(candidateId);

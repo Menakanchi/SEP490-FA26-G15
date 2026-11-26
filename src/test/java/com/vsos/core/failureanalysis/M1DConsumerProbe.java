@@ -13,12 +13,12 @@ import static com.vsos.core.failureanalysis.Evidence.*;
 final class M1DConsumerProbe {
     private M1DConsumerProbe(){}
     static Row row(Boolean activated,Double jerk,Double impact,Double stop,Boolean collision){
-        return new Row(obj("status","COMPLETED","end_reason","TARGET_CLEARED","collision_occurred",collision,"is_false_positive",false,"is_false_negative",false,
+        return new Row(obj("status","COMPLETED","end_reason","TARGET_CLEARED","aeb_mode","ON","collision_occurred",collision,"is_false_positive",false,"is_false_negative",false,
                 "verdict","PASS","aeb_activated",activated,"rms_jerk_mps3",jerk,"impact_speed_mps",impact,"stopping_distance_m",stop,"trace_frames",2));
     }
     static Row change(Row original,String key,Object value){Map<String,Object> m=new LinkedHashMap<>(original.asMap());m.put(key,value);return new Row(m);}
     static Artifact execute(ConsumerSourceInspection.Profile profile)throws Exception{
-        var service=new OptimizationService(null,null,null,null,null,null,null,null);
+        var service=new OptimizationService(null,null,null,null,null,null,null,null,null);
         Method helper=OptimizationService.class.getDeclaredMethod("evaluateCandidateRuns",List.class,OptimizationService.BaselineStats.class);helper.setAccessible(true);
         Map<String,List<Row>> inputs=new LinkedHashMap<>();
         inputs.put("MATCH_COMPLETE",List.of(row(true,2.,6.,10.,true),row(true,4.,null,20.,false),row(false,null,null,null,false)));

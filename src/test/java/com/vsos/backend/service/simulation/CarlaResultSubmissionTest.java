@@ -36,6 +36,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import com.vsos.backend.common.Json;
 import com.vsos.backend.config.VehicSimProperties;
@@ -43,6 +44,7 @@ import com.vsos.backend.repository.common.Db;
 import com.vsos.backend.repository.common.Queries;
 import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.service.scenario.FamilyService;
+import com.vsos.core.aeb.AebParams;
 
 /**
  * ``POST /runs/{id}/carla-result`` không được làm hỏng dữ liệu: không ghi số CARLA vào run động học (luật cứng 9), không
@@ -61,6 +63,7 @@ class CarlaResultSubmissionTest {
     private PlatformTransactionManager transactions;
     private RunService service;
     private Map<String, Object> run;
+    private com.vsos.backend.service.analysis.FailureAnalysisService resultStore;
 
     @BeforeEach
     void setUp() {
@@ -68,8 +71,11 @@ class CarlaResultSubmissionTest {
         events = mock(ApplicationEventPublisher.class);
         transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
-        service = new RunService(db, mock(Queries.class), mock(VehicSimProperties.class), mock(TaskExecutor.class), events,
-                new TransactionTemplate(transactions), mock(FamilyService.class));
+        Queries queries = mock(Queries.class);
+        when(queries.aebValues(9L)).thenReturn(AebParams.DEFAULT.asCodes());
+        resultStore=mock(com.vsos.backend.service.analysis.FailureAnalysisService.class);
+        service = new RunService(db, queries, mock(VehicSimProperties.class), mock(TaskExecutor.class), events,
+                new TransactionTemplate(transactions), mock(FamilyService.class), resultStore);
         run = new HashMap<>(Map.of("id", RUN, "project_id", PROJECT, "status", "FAILED", "simulator_version", CARLA,
                 "fixed_delta_seconds", 0.05, "random_seed", 48042L, "scenario_id", 7L,
                 "scenario_version_id", 8L, "aeb_version_id", 9L, "carla_vehicle_model_id", 10L));
@@ -85,6 +91,7 @@ class CarlaResultSubmissionTest {
         outcome.put("metrics", Map.of("collision", false));
         outcome.put("end_reason", "STOPPED");
         outcome.put("duration_s", 6.0);
+        outcome.put("params", AebParams.DEFAULT.asDict());
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("format", RunService.RESULT_FORMAT);
         result.put("simulator", simulator);
@@ -210,6 +217,24 @@ class CarlaResultSubmissionTest {
     }
 
     @Test
+    void matchingIdsCannotHideMissingOrDifferentActualAebParameters() {
+        for (String code : AebParams.CODES) {
+            String key = code.toLowerCase(java.util.Locale.ROOT);
+            for (Object wrong : new Object[]{null, 99.0, "1.5", Double.NaN, Double.POSITIVE_INFINITY}) {
+                Map<String, Object> payload = result(CARLA);
+                Json.asMap(Json.asMap(payload.get("outcome")).get("params")).put(key, wrong);
+                assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, payload))
+                        .isInstanceOf(InvalidRequestException.class).hasMessageContaining("outcome.params." + key);
+            }
+        }
+        Map<String, Object> missing = result(CARLA);
+        Json.asMap(missing.get("outcome")).remove("params");
+        assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, missing))
+                .isInstanceOf(InvalidRequestException.class).hasMessageContaining("outcome.params");
+        assertNothingWritten();
+    }
+
+    @Test
     void rejectsMissingWrongOrNonIntegerSeedBeforeWriting() {
         for (Object seed : new Object[]{null, 999L, 48042.5, "48042"}) {
             Map<String, Object> payload = result(CARLA);
@@ -248,6 +273,41 @@ class CarlaResultSubmissionTest {
         order.verify(events).publishEvent(new RunService.RunFinished(RUN));
     }
 
+    @Test void fullProducerDocumentIsPersistedBeforeCompletionAndCommit()throws Exception {
+        var payload=result(CARLA);
+        payload.put("producer_extension",Map.of("unprojected_evidence","giữ nguyên dữ liệu bổ sung"));
+        service.submitCarlaResult(PROJECT,RUN,USER,payload);
+        var original=org.mockito.ArgumentCaptor.forClass(byte[].class);
+        var order=inOrder(resultStore,db,transactions,events);
+        order.verify(resultStore).persistProducerResult(any(Row.class),original.capture());
+        assertThat(new String(original.getValue(),java.nio.charset.StandardCharsets.UTF_8)).isEqualTo(Json.write(payload));
+        order.verify(db).update(startsWith("UPDATE simulation_runs SET status"),any(Object[].class));
+        order.verify(transactions).commit(any());
+        order.verify(events).publishEvent(new RunService.RunFinished(RUN));
+    }
+
+    @Test void failedOfficialPersistenceCannotCompleteOrNotifyDownstream()throws Exception {
+        doThrow(new org.springframework.dao.DataAccessResourceFailureException("isolated storage failure"))
+                .when(resultStore).persistProducerResult(any(Row.class),any(byte[].class));
+        assertThatThrownBy(()->service.submitCarlaResult(PROJECT,RUN,USER,result(CARLA)))
+                .isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class);
+        verify(transactions).rollback(any());
+        verify(transactions,never()).commit(any());
+        verify(db,never()).update(startsWith("UPDATE simulation_runs SET status"),any(Object[].class));
+        verifyNoInteractions(events);
+    }
+
+    @Test void externalResultRetainsExactBytesWithoutFollowingArtifactPaths()throws Exception {
+        when(db.first(startsWith("SELECT p.status"),any(Object[].class))).thenReturn(new Row(Json.obj(
+                "status","ACTIVE","workspace_id",3L,"workspace_status","ACTIVE","user_role","ENGINEER","member_id",USER)));
+        byte[] bytes=(" \n"+Json.write(result(CARLA))+"\n ").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        service.submitCarlaResultBytesFromUi(PROJECT,RUN,USER,bytes);
+        var captured=org.mockito.ArgumentCaptor.forClass(byte[].class);
+        verify(resultStore).persistProducerResult(any(Row.class),captured.capture());
+        assertThat(captured.getValue()).isEqualTo(bytes);
+        verify(db,never()).insert(startsWith("INSERT INTO simulation_artifacts"),any(Object[].class));
+    }
+
     @Test
     void springListenerStartsAFreshTransactionAfterUploadCompletes() {
         // Lifecycle transaction/proxy thật; Db giả nên không cần MySQL hoặc ghi dữ liệu demo.
@@ -276,8 +336,10 @@ class CarlaResultSubmissionTest {
             template.executeWithoutResult(status -> assertThat(status.isNewTransaction()).isTrue());
             return null;
         }).when(events).publishEvent(any(Object.class));
-        var target = new RunService(db, mock(Queries.class), mock(VehicSimProperties.class), mock(TaskExecutor.class),
-                events, template, mock(FamilyService.class));
+        Queries queries = mock(Queries.class);
+        when(queries.aebValues(9L)).thenReturn(AebParams.DEFAULT.asCodes());
+        var target = new RunService(db, queries, mock(VehicSimProperties.class), mock(TaskExecutor.class),
+                events, template, mock(FamilyService.class), mock(com.vsos.backend.service.analysis.FailureAnalysisService.class));
         var proxy = new ProxyFactory(target);
         proxy.addAdvice(new TransactionInterceptor(manager, new AnnotationTransactionAttributeSource()));
 

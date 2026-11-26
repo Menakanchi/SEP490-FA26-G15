@@ -81,6 +81,7 @@ class AnalysisServiceTest {
         Map<String,Object> handed=service.handoff(99);
         assertThat(handed.get("runs")).isEqualTo(saved.get("runs"));
         assertThat(handed).containsEntry("handoff_ready",true);
+        assertThat(handed.get("dataset_digest")).isEqualTo(AnalysisService.datasetDigest(saved));
     }
     @Test void staleBaselineBlocksHandoffEvenWhenTheArchiveRemainsReadable() {
         when(views.savedAnalysisDataset(99)).thenReturn(Json.obj("schema","vehicsim.analysis-dataset/v2","baseline_current",false));
@@ -125,5 +126,37 @@ class AnalysisServiceTest {
         assertThat(AnalysisService.validTrace(trace())).isTrue();
         assertThat(AnalysisService.validTrace(Json.obj("frames",List.of(Map.of("t",0))))).isFalse();
         assertThat(AnalysisService.sample(new Row(Json.obj("status","COMPLETED"))).braked()).isNull();
+    }
+    @Test void backgroundHandoffIsProjectScopedAndChecksumIgnoresOnlyDerivedMetadata() {
+        var saved=service.freeze(selection(),7);
+        when(db.first(startsWith("SELECT id, aeb_version_id, summary_json"),eq(99L),eq(1L)))
+                .thenReturn(new Row(Json.obj("id",99L,"aeb_version_id",4L,"summary_json",Json.write(saved))));
+        when(db.first(startsWith("SELECT telemetry_json, run_config_json"),any(Object[].class)))
+                .thenReturn(new Row(Json.obj("telemetry_json",Json.write(trace()),"run_config_json","{}")));
+        reset(projects);
+        var handed=service.handoff(1L,99L);
+        verifyNoInteractions(projects);
+        var derived=new LinkedHashMap<>(handed);derived.put("created_at","later");derived.put("baseline_current",false);
+        assertThat(AnalysisService.datasetDigest(derived)).isEqualTo(handed.get("dataset_digest"));
+        derived.put("optimization_run_ids",List.of(2L,1L));
+        assertThat(AnalysisService.datasetDigest(derived)).isNotEqualTo(handed.get("dataset_digest"));
+        assertThatThrownBy(()->service.handoff(2L,99L)).hasMessageContaining("analysis dataset");
+    }
+    @Test void handoffRejectsMissingManifestAndOverlappingPartitions() {
+        var saved=service.freeze(selection(),7);
+        saved.put("manifests",List.of());
+        when(views.savedAnalysisDataset(99)).thenReturn(saved);
+        assertThatThrownBy(()->service.handoff(99)).hasMessageContaining("manifests");
+        saved.put("validation_run_ids",List.of(2L,4L));
+        assertThatThrownBy(()->service.handoff(99)).hasMessageContaining("partitions");
+    }
+    @Test void storedObjectiveRecordsRemainEqualAfterSqlJsonRoundTrip() {
+        var saved=service.freeze(selection(),7);
+        var reloaded=Json.parseMap(Json.write(saved));
+        assertThat(AnalysisService.datasetDigest(reloaded)).isEqualTo(AnalysisService.datasetDigest(saved));
+        when(views.savedAnalysisDataset(99)).thenReturn(reloaded);
+        when(db.first(startsWith("SELECT telemetry_json, run_config_json"),any(Object[].class)))
+                .thenReturn(new Row(Json.obj("telemetry_json",Json.write(trace()),"run_config_json","{}")));
+        assertThat(service.handoff(99)).containsEntry("handoff_ready",true);
     }
 }

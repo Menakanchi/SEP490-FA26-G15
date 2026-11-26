@@ -59,7 +59,7 @@ class BundleParityTest {
             // Fixture Python = bộ động học 1.0 (impact_speed_mps là tốc độ ego); 1.1 chỉ khác hai khoá vận tốc va chạm (KinematicParityTest).
             SimulationOutcome outcome = Simulator.simulate(spec.caseSpec(), spec.params(), spec.seed(), spec.vehicle(), false);
             Map<String, Object> result = Bundle.resultDocument(spec, outcome, Bundle.LEGACY_KINEMATIC_SIMULATOR, null,
-                    Evaluation.evaluate(outcome, spec.params()).toDocument());
+                    Evaluation.evaluateLegacy(outcome, spec.params()).toDocument());
             diffs.clear();
             KinematicParityTest.compare(label + " result", (Map<String, Object>) e.get("result"), roundTrip(result), diffs);
             assertThat(diffs).as(label).isEmpty();

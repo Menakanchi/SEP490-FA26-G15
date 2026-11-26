@@ -1,0 +1,26 @@
+{
+  "status": "PASS",
+  "reports_with_identical_input_report_and_content_digest": 72,
+  "handoff_content_digest_unchanged": true,
+  "all_math_policy_context_and_dossier_source_unchanged": true,
+  "protected_paths": 1845,
+  "unchanged": 1838,
+  "changed_existing": [
+    "src/main/java/com/vsos/core/failureanalysis/ArtifactCsv.java",
+    "src/main/java/com/vsos/core/failureanalysis/BaselineBindingResolver.java",
+    "src/main/java/com/vsos/core/failureanalysis/ConsumerSourceInspection.java",
+    "src/main/java/com/vsos/core/failureanalysis/HandoffSnapshots.java",
+    "src/main/java/com/vsos/core/failureanalysis/OfflineMoboHandoff.java",
+    "src/main/java/com/vsos/core/failureanalysis/RawArtifactAdapter.java",
+    "src/main/java/com/vsos/core/failureanalysis/SearchRangeResolver.java"
+  ],
+  "new_production": [
+    "ArchiveIndex.java",
+    "BoundedInput.java",
+    "InputRejectedException.java",
+    "InputResourcePolicy.java"
+  ],
+  "old_tests_unchanged": true,
+  "contracts_raw_history_unchanged": true,
+  "outside_scope_modifications": 0
+}

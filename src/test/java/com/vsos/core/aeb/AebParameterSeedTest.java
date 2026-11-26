@@ -67,10 +67,11 @@ class AebParameterSeedTest {
     @Test
     void javaParameterSeedMatchesSqlSeed() throws IOException {
         // BootstrapService seed phải khớp SEED DATA trong 01_schema.sql.
-        String sql = read(SQL_SCHEMA);
+        String sql = read(SQL_SCHEMA).replace("\r\n", "\n");
         String block = sql.substring(sql.indexOf("INSERT INTO aeb_parameters"));
-        block = block.substring(0, block.indexOf(';'));
-        Matcher m = Pattern.compile("\\('(\\w+)',\\s*'[^']*',\\s*'(\\w+)',\\s*'[^']*',\\s*'[^']*',\\s*([\\d.]+),\\s*([\\d.]+),\\s*([\\d.]+),\\s*(\\d+)\\)").matcher(block);
+        // Descriptions may contain semicolons; the INSERT ends at the row's line terminator.
+        block = block.substring(0, block.indexOf(";\n"));
+        Matcher m = Pattern.compile("\\('(\\w+)',\\s*'[^']*',\\s*'(\\w+)',\\s*'[^']*',\\s*([\\d.]+),\\s*([\\d.]+),\\s*([\\d.]+),\\s*'(?:[^']|'')*',\\s*(\\d+)\\)").matcher(block);
         Map<String, String> fromSql = new LinkedHashMap<>();
         while (m.find()) {
             fromSql.put(m.group(1), m.group(2) + "|" + Double.parseDouble(m.group(3)) + "|" + Double.parseDouble(m.group(4)) + "|" + Double.parseDouble(m.group(5)) + "|" + m.group(6));

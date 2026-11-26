@@ -3,9 +3,12 @@ package com.vsos.backend.service.analysis;
 import com.vsos.backend.repository.analysis.FailureAnalysisStore;
 import com.vsos.backend.repository.analysis.FailureAnalysisStore.*;
 import com.vsos.backend.common.analysis.FailureAnalysisJson;
+import com.vsos.backend.repository.common.Row;
 import com.vsos.backend.exception.analysis.FailureAnalysisException;
 import com.vsos.core.failureanalysis.*;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.io.*;
 import java.time.Instant;
 import java.util.*;
@@ -14,8 +17,8 @@ import static com.vsos.core.failureanalysis.Evidence.*;
 import static com.vsos.backend.common.analysis.FailureAnalysisJson.*;
 
 /**
- * JSON-first synchronous application boundary. No legacy projection, DB baseline lookup,
- * producer trust promotion, optimizer call or recomputation on reads.
+ * JSON-first synchronous application boundary. Approved runtime contexts bind original
+ * DB producer bytes to a reviewed selection; unbound intake remains diagnostic only.
  */
 @Service
 public class FailureAnalysisService {
@@ -23,17 +26,39 @@ public class FailureAnalysisService {
     private static final String UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
     private final FailureAnalysisStore store;
+    private final ObjectProvider<FailureAnalysisHandoffService> handoffs;
     private final RestJsonAnalysis core = new RestJsonAnalysis();
     private final Semaphore slots = new Semaphore(2);
     private final String coreVersion = VERSION + ":" + RestJsonAnalysis.VERSION + ":" + coreFingerprint() + ":"
             + sha256(policy(RESOURCE_BYTES).toString() + ":" + System.getProperty("java.runtime.version"));
 
     public FailureAnalysisService(FailureAnalysisStore store) {
-        this.store = store;
+        this(store,null);
     }
+    @Autowired
+    public FailureAnalysisService(FailureAnalysisStore store,ObjectProvider<FailureAnalysisHandoffService> handoffs) {
+        this.store=store;this.handoffs=handoffs;
+    }
+    private FailureAnalysisHandoffService handoffs() {
+        if(handoffs==null) throw new FailureAnalysisException(409,"APPROVED_CONTEXT_REGISTRY_UNAVAILABLE");
+        return handoffs.getObject();
+    }
+    public Map<String,Object> createContext(long project,long user,FailureAnalysisHandoffService.Review review) throws IOException {
+        Map<String,Object> context=handoffs().createContext(project,user,review);
+        var approved=handoffs().approved(project,context.get("context_id").toString());
+        Map<String,Object> source=ingestDatabase(project,user,approved.sourceBytes(),approved.acquisition());
+        context.put("source_id",source.get("id"));return context;
+    }
+    public Map<String,Object> context(long project,String id) throws IOException {return handoffs().context(project,id);}
+    public Map<String,Object> executeContext(long project,long user,String id) throws IOException {
+        var approved=handoffs().approved(project,id);
+        var source=ingestDatabase(project,user,approved.sourceBytes(),approved.acquisition());
+        return analyze(project,source.get("id").toString(),id);
+    }
+    public Map<String,Object> campaign(long project,String id,String digest) {return handoffs().campaign(project,id,digest);}
 
     public Map<String, Object> ingest(long project, long user, InputStream stream, long length, String expectedSha) throws IOException {
-        return ingest(project, user, stream, length, expectedSha, null);
+        return ingest(project, user, stream, length, expectedSha, null, SOURCE_BYTES);
     }
 
     public void requireDatabaseWrite(long project) {
@@ -41,13 +66,43 @@ public class FailureAnalysisService {
     }
 
     public Map<String, Object> ingestDatabase(long project, long user, byte[] raw, Map<String, Object> provenance) throws IOException {
-        return ingest(project, user, new ByteArrayInputStream(raw), raw.length, null, provenance);
+        int maxBytes = "COLLECTION".equals(provenance.get("selection_kind")) ? DB_COLLECTION_BYTES : SOURCE_BYTES;
+        return ingest(project, user, new ByteArrayInputStream(raw), raw.length, null, provenance, maxBytes);
+    }
+
+    /** Module 2 calls this inside the same transaction that commits the completed simulation result. */
+    public Map<String,Object> persistProducerResult(Row run, byte[] raw) throws IOException {
+        long project = run.lng("project_id"), id = run.lng("id"), attempt = run.lng("attempt");
+        var provenance = obj("origin", "MODULE2_RESULT_DATABASE", "selection_kind", "RUN", "selection_id", id,
+                "project_id", project, "run_id", id, "attempt", attempt, "original_result_bytes_preserved", true);
+        return ingest(project, run.lng("created_by_user_id"), new ByteArrayInputStream(raw), raw.length, null,
+                provenance, SOURCE_BYTES, producerResultKey(project, id, attempt));
+    }
+
+    /** The numeric run's current committed attempt is the only official input; never searches disk or uploaded peers. */
+    public Resource producerResult(Row run) {
+        long project = run.lng("project_id"), id = run.lng("id"), attempt = run.lng("attempt");
+        Resource source = store.byKey(Kind.SOURCE, project, producerResultKey(project, id, attempt));
+        if (source == null) return null;
+        verify(source);
+        Map<String,Object> provenance = com.vsos.backend.common.Json.asMap(source.meta().get("database_input"));
+        if (!"MODULE2_RESULT_DATABASE".equals(provenance.get("origin"))
+                || !Long.toString(id).equals(Objects.toString(provenance.get("run_id")))
+                || !Long.toString(project).equals(Objects.toString(provenance.get("project_id")))
+                || !Long.toString(attempt).equals(Objects.toString(provenance.get("attempt"))))
+            throw new FailureAnalysisException(409, "DB_PRODUCER_RESULT_REVISION_MISMATCH");
+        return source;
     }
 
     private Map<String, Object> ingest(long project, long user, InputStream stream, long length, String expectedSha,
-                                       Map<String, Object> acquisition) throws IOException {
+                                       Map<String, Object> acquisition, int maxBytes) throws IOException {
+        return ingest(project, user, stream, length, expectedSha, acquisition, maxBytes, null);
+    }
+
+    private Map<String, Object> ingest(long project, long user, InputStream stream, long length, String expectedSha,
+                                       Map<String, Object> acquisition, int maxBytes, String producerKey) throws IOException {
         store.requireWritableProject(project);
-        if (length > SOURCE_BYTES) {
+        if (length > maxBytes) {
             throw new FailureAnalysisException(413, "SOURCE_BYTES_EXCEEDED");
         }
         if (expectedSha != null && !expectedSha.matches("[a-f0-9]{64}")) {
@@ -55,15 +110,18 @@ public class FailureAnalysisService {
         }
         acquire();
         try {
-            byte[] bytes = new BoundedInput(policy(SOURCE_BYTES)).read(stream, "request-body", -1);
+            byte[] bytes = new BoundedInput(policy(maxBytes)).read(stream, "request-body", -1);
             String digest = sha256(bytes);
             if (expectedSha != null && !digest.equals(expectedSha)) {
                 throw new FailureAnalysisException(422, "SOURCE_DIGEST_MISMATCH");
             }
-            String key = acquisition == null ? digest : sha256("fa-db-source/1:" + digest + ":" + EvidenceReport.contentDigest(acquisition));
+            String key = producerKey != null ? producerKey : acquisition == null ? digest
+                    : sha256("fa-db-source/1:" + digest + ":" + EvidenceReport.contentDigest(acquisition));
             Resource existing = store.byKey(Kind.SOURCE, project, key);
             if (existing != null) {
                 verify(existing);
+                if (producerKey != null && !digest.equals(existing.byteDigest()))
+                    throw new FailureAnalysisException(409, "DB_PRODUCER_RESULT_REVISION_CONFLICT");
                 return sourceView(existing);
             }
             var parsed = core.parse(bytes, policy(RESOURCE_BYTES));
@@ -88,6 +146,8 @@ public class FailureAnalysisService {
                 meta.put("database_input", acquisition);
             }
             Resource saved = store.saveSource(resource(Kind.SOURCE, project, null, null, key, identity, bytes, meta));
+            if (producerKey != null && !digest.equals(saved.byteDigest()))
+                throw new FailureAnalysisException(409, "DB_PRODUCER_RESULT_REVISION_CONFLICT");
             return sourceView(saved);
         } finally {
             slots.release();
@@ -140,11 +200,14 @@ public class FailureAnalysisService {
 
     public Map<String, Object> analyze(long project, String sourceId, String contextId) throws IOException {
         store.requireWritableProject(project);
-        if (contextId != null) {
-            throw new FailureAnalysisException(409, "APPROVED_CONTEXT_REGISTRY_UNAVAILABLE");
-        }
+        var approved=contextId==null?null:handoffs().approved(project,contextId);
+        String contextDigest=approved==null?CONTEXT_DIGEST:approved.digest();
         Resource source = required(Kind.SOURCE, project, sourceId);
-        String key = sha256(source.id() + ":" + source.byteDigest() + ":" + coreVersion + ":" + CONTEXT_DIGEST);
+        if(approved!=null&&!sha256(approved.sourceBytes()).equals(source.byteDigest()))
+            throw new FailureAnalysisException(409,"V3_CONTEXT_SOURCE_SCOPE_MISMATCH");
+        // A changed runtime mapping must produce a new execution rather than retrying an obsolete handoff.
+        String runtimeVersion=approved==null?coreVersion:coreVersion+":"+FailureAnalysisHandoffAdapter.VERSION;
+        String key = sha256(source.id() + ":" + source.byteDigest() + ":" + runtimeVersion + ":" + contextDigest);
         Resource previous = store.byKey(Kind.EXECUTION, project, key);
         if (previous != null) {
             verify(previous);
@@ -153,6 +216,16 @@ public class FailureAnalysisService {
         acquire();
         try {
             var parsed = core.parse(source.body(), policy(RESOURCE_BYTES));
+            if(approved!=null){
+                Map<String,Run> originals=new HashMap<>();for(var input:approved.inputs())for(var run:input.runs())originals.put(run.runKey(),run);
+                List<JsonInputAdapter.Entry> entries=new ArrayList<>();
+                for(var entry:parsed.entries()){
+                    Run original=originals.get(entry.runKey());
+                    if(original==null) throw new FailureAnalysisException(409,"V3_CONTEXT_MEMBER_MISMATCH");
+                    entries.add(new JsonInputAdapter.Entry(entry.runKey(),entry.pointer(),original,entry.issues()));
+                }
+                parsed=new RestJsonAnalysis.Parsed(parsed.manifest(),entries);
+            }
             String executionId = UUID.randomUUID().toString();
             List<Resource> children = new ArrayList<>();
             List<Object> accounting = new ArrayList<>();
@@ -174,13 +247,14 @@ public class FailureAnalysisService {
                     }
                 } else {
                     try {
-                        Map<String, Object> report = core.diagnose(entry.run(), parsed);
+                        Map<String, Object> report = approved==null?core.diagnose(entry.run(), parsed)
+                                :core.diagnose(entry.run(),parsed,approved.adapter().context(entry.run()));
                         Resource saved = resource(Kind.REPORT, project, source.id(), executionId, executionId + ":" + index, null, bytes(report),
                                 obj("member_index", index, "run_key", entry.runKey(), "run_identity", JsonInputAdapter.declaredIdentity(entry.run()),
                                         "report_schema", report.get("schema_version"), "content_digest", report.get("content_digest"),
                                         "status", "GENERATED", "evidence_sufficiency", at(report, "/report/evidence_sufficiency"),
-                                        "core_version", coreVersion, "context_id", null, "context_digest", CONTEXT_DIGEST,
-                                        "source_sha256", source.byteDigest()));
+                                        "core_version", coreVersion, "context_id", contextId, "context_digest", contextDigest,
+                                        "source_sha256", approved==null?source.byteDigest():entry.run().artifact("result").sha256()));
                         generatedBytes += saved.body().length + saved.metadata().length;
                         if (generatedBytes > GRAPH_BYTES) {
                             throw new FailureAnalysisException(413, "OUTPUT_GRAPH_LIMIT");
@@ -207,14 +281,20 @@ public class FailureAnalysisService {
             }
             Map<String, Object> handoff = null;
             Map<String, Object> compatibility = null;
-            List<String> handoffReasons = new ArrayList<>(List.of("APPROVED_CONTEXT_AND_COHORT_UNAVAILABLE", "CONSUMER_NOT_INTEGRATED"));
+            List<String> handoffReasons = approved==null?new ArrayList<>(List.of("APPROVED_CONTEXT_AND_COHORT_UNAVAILABLE", "CONSUMER_NOT_INTEGRATED")):new ArrayList<>();
             if (parsed.complete() && analyzed == parsed.entries().size() && analyzed > 0) {
                 try {
-                    handoff = core.diagnosticHandoff(parsed, members);
+                    handoff = approved==null?core.diagnosticHandoff(parsed, members):approved.adapter().handoff(members);
                     Artifact artifact = new Artifact("stored-handoff", "external", "urn:vehicsim:fa:handoff", sha256(bytes(handoff)),
                             "application/json", Integrity.VERIFIED, handoff, List.of());
-                    compatibility = new ConsumerCompatibilityValidator().validate(new ConsumerCompatibilityValidator.Input(artifact,
+                    if(approved==null) compatibility = new ConsumerCompatibilityValidator().validate(new ConsumerCompatibilityValidator.Input(artifact,
                             RestJsonAnalysis.unavailableConsumerProfile(), null, null, null));
+                    else {
+                        handoffReasons.addAll(FailureAnalysisHandoffService.readiness(handoff));
+                        compatibility=obj("adapter_version","fa-runtime-v3-campaign/1","status",handoffReasons.isEmpty()?"VALIDATED":"BLOCKED",
+                                "context_id",contextId,"context_digest",contextDigest,"training_contract","CANONICAL_CANDIDATE_TRIALS_ON_SEALED_OPTIMIZATION_COHORT",
+                                "holdout_policy","FROZEN_VALIDATION_ONLY","reason_codes",List.copyOf(handoffReasons));
+                    }
                 } catch (RuntimeException e) {
                     handoffReasons.add(handoff == null ? "HANDOFF_BUILD_FAILED" : "COMPATIBILITY_VALIDATION_UNAVAILABLE");
                 }
@@ -223,19 +303,19 @@ public class FailureAnalysisService {
             }
             Resource handoffResource = resource(Kind.HANDOFF, project, source.id(), executionId, executionId, null,
                     handoff == null ? null : bytes(handoff),
-                    obj("status", handoff == null ? "BLOCKED" : "DIAGNOSTIC_ONLY",
+                    obj("status", handoff == null ? "BLOCKED" : approved!=null&&handoffReasons.isEmpty()?"READY":"DIAGNOSTIC_ONLY",
                             "handoff_schema", handoff == null ? null : handoff.get("schema_version"),
-                            "content_digest", handoff == null ? null : handoff.get("content_digest"), "dispatch_allowed", false,
+                            "content_digest", handoff == null ? null : handoff.get("content_digest"), "dispatch_allowed", approved!=null&&handoff!=null&&handoffReasons.isEmpty(),
                             "reason_codes", handoffReasons, "consumer_compatibility", compatibility,
-                            "core_version", coreVersion, "context_id", null, "context_digest", CONTEXT_DIGEST, "source_sha256", source.byteDigest()));
+                            "core_version", coreVersion, "context_id", contextId, "context_digest", contextDigest, "source_sha256", source.byteDigest()));
             children.add(handoffResource);
             String status = parsed.complete() && failed == 0 ? "COMPLETED" : analyzed > 0 ? "PARTIAL" : "BLOCKED";
             Map<String, Object> summary = obj("status", status, "source_sha256", source.byteDigest(), "core_version", coreVersion,
-                    "context_id", null, "context_digest", CONTEXT_DIGEST, "context_policy", "UNKNOWN_DEFAULT_NO_AUTHORITY",
+                    "context_id", contextId, "context_digest", contextDigest, "context_policy", approved==null?"UNKNOWN_DEFAULT_NO_AUTHORITY":"AUTHENTICATED_CANONICAL_TARGET_REVIEW",
                     "expected", parsed.entries().size(), "accepted", parsed.runs().size(), "analyzed", analyzed, "blocked", blocked,
                     "failed", failed, "missing", missing, "missing_is_subset_of_blocked", true, "members", accounting,
                     "input_manifest", parsed.manifest(), "handoff_id", handoffResource.id(), "runtime_ms", (System.nanoTime() - start) / 1_000_000,
-                    "completeness_scope", "DELIVERED_MANIFEST_ONLY_NOT_FROZEN_SCENARIO_COHORT");
+                    "completeness_scope", approved==null?"DELIVERED_MANIFEST_ONLY_NOT_FROZEN_SCENARIO_COHORT":"FROZEN_REVIEWED_SELECTION_NOT_ENTIRE_SCENARIO_POPULATION");
             Resource execution = resourceWithId(Kind.EXECUTION, executionId, project, source.id(), null, key, null, bytes(summary), summary);
             long total = execution.body().length + execution.metadata().length;
             for (Resource r : children) {
@@ -272,7 +352,11 @@ public class FailureAnalysisService {
             if (!Set.of("vehicsim.result/v1", "vehicsim.run-collection/v1").contains(meta.get("source_schema"))) {
                 throw new FailureAnalysisException(409, "STORED_SOURCE_VERSION_UNSUPPORTED");
             }
-            if (r.body().length > SOURCE_BYTES || !r.byteDigest().equals(meta.get("source_sha256"))) {
+            boolean dbCollection = "vehicsim.run-collection/v1".equals(meta.get("source_schema"))
+                    && Set.of("DATABASE_ARTIFACT_STORAGE", "MODULE2_RESULT_DATABASE").contains(Objects.toString(at(meta, "/database_input/origin"), ""))
+                    && "COLLECTION".equals(at(meta, "/database_input/selection_kind"));
+            int maxBytes = dbCollection ? DB_COLLECTION_BYTES : SOURCE_BYTES;
+            if (r.body().length > maxBytes || !r.byteDigest().equals(meta.get("source_sha256"))) {
                 throw new FailureAnalysisException(409, "STORED_SOURCE_IDENTITY_MISMATCH");
             }
         } else if (r.kind() == Kind.REPORT || r.kind() == Kind.HANDOFF) {

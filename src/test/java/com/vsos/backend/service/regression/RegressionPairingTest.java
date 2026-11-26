@@ -82,7 +82,7 @@ class RegressionPairingTest {
             return 100L + inserts.size();
         });
         return new RunService(db, mock(Queries.class), props, mock(TaskExecutor.class), mock(ApplicationEventPublisher.class),
-                mock(TransactionTemplate.class), mock(FamilyService.class)).useCommandProbe(executable -> true);
+                mock(TransactionTemplate.class), mock(FamilyService.class), mock(com.vsos.backend.service.analysis.FailureAnalysisService.class)).useCommandProbe(executable -> true);
     }
 
     private static List<Row> variant(long id) {
@@ -397,7 +397,7 @@ class RegressionPairingTest {
         ScenarioSet scenarioSet = storedScenarioSet(inserts.get(0));
         assertThat(scenarioSet.mode()).isEqualTo("old_critical");
         assertThat(scenarioSet.variantCount()).isEqualTo(1);
-        assertThat(scenarioSet.variantIds()).isNull();
+        assertThat(scenarioSet.variantIds()).containsExactly(101L);
     }
 
     @Test

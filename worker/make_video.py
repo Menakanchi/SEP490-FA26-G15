@@ -10,6 +10,7 @@ ffmpeg lấy từ gói ``imageio-ffmpeg`` (đã kèm file thực thi, có libx26
 from __future__ import annotations
 
 import csv
+import math
 import re
 import shutil
 import subprocess
@@ -49,7 +50,9 @@ def load_telemetry(frames_csv: Path) -> dict[int, tuple[float, float, float]]:
     with frames_csv.open(newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
             try:
-                out[int(row["frame"])] = (float(row["sim_time_s"]), float(row["ego_speed_ms"]) * 3.6, min(1.0, max(0.0, float(row["brake"]))))
+                time_s, speed_kmh, brake = float(row["sim_time_s"]), float(row["ego_speed_ms"]) * 3.6, float(row["brake"])
+                if all(math.isfinite(value) for value in (time_s, speed_kmh, brake)):
+                    out[int(row["frame"])] = (time_s, speed_kmh, min(1.0, max(0.0, brake)))
             except (KeyError, TypeError, ValueError):
                 continue
     return out
@@ -89,13 +92,19 @@ def draw_overlays(frames: list[Path], telemetry: dict[int, tuple[float, float, f
         return False
     out_dir.mkdir(parents=True, exist_ok=True)
     for path in frames:
-        t_s, speed_kmh, brake = telemetry.get(int(path.stem), (0.0, 0.0, 0.0))
+        sample = telemetry.get(int(path.stem))
+        if sample is None:
+            # A camera callback may arrive without a matching sensor sample. Preserve the image;
+            # displaying zero speed/brake/time would invent evidence of a stopped vehicle.
+            shutil.copyfile(path, out_dir / path.name)
+            continue
+        t_s, speed_kmh, brake = sample
         with Image.open(path) as image:
             draw_overlay(image, speed_kmh, brake, t_s).save(out_dir / path.name, compress_level=1)
     return True
 
 
-def concat_list(frames: list[Path], interval_s: float) -> str:
+def concat_list(frames: list[Path], interval_s: float, *, frame_step_s: float | None = None) -> str:
     """Danh sách cho demuxer ``concat`` của ffmpeg. Số frame trong tên file không liên tục (recorder lưu mỗi N frame) nên không dùng mẫu ``%08d``.
 
     Mỗi ảnh giữ ``interval_s`` giây; ảnh cuối lặp lại một dòng vì ffmpeg bỏ qua ``duration`` của mục cuối.
@@ -104,14 +113,17 @@ def concat_list(frames: list[Path], interval_s: float) -> str:
         return "file '" + path.resolve().as_posix().replace("'", "'\\''") + "'"
 
     lines: list[str] = []
-    for path in frames:
-        lines += [entry(path), f"duration {interval_s:.6f}"]
+    for index, path in enumerate(frames):
+        duration = interval_s
+        if frame_step_s is not None and index + 1 < len(frames):
+            duration = (int(frames[index + 1].stem) - int(path.stem)) * frame_step_s
+        lines += [entry(path), f"duration {duration:.6f}"]
     lines.append(entry(frames[-1]))
     return "\n".join(lines) + "\n"
 
 
 def make_video(camera_dir: Path, out_path: Path, interval_s: float, *, ffmpeg: str | None = None,
-               runner: Callable[..., subprocess.CompletedProcess] = subprocess.run) -> Path | None:
+               runner: Callable[..., subprocess.CompletedProcess] = subprocess.run, frame_step_s: float | None = None) -> Path | None:
     """Ghép ``camera_dir/*.png`` thành mp4 H.264. Trả đường dẫn video, hoặc ``None`` khi không có ảnh / không có ffmpeg.
 
     ffmpeg lỗi thì ném ``RuntimeError`` kèm đuôi stderr. File được ghi tạm rồi đổi tên, nên không bao giờ để lại mp4 dở dang.
@@ -125,7 +137,7 @@ def make_video(camera_dir: Path, out_path: Path, interval_s: float, *, ffmpeg: s
     fps = max(1, round(1.0 / interval_s))
     listing = out_path.with_name(out_path.stem + ".concat.txt")
     partial = out_path.with_name(out_path.stem + ".partial.mp4")
-    listing.write_text(concat_list(frames, interval_s), encoding="utf-8")
+    listing.write_text(concat_list(frames, interval_s, frame_step_s=frame_step_s), encoding="utf-8")
     command = [exe, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing),
                "-vf", f"fps={fps},scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
                "-c:v", "libx264", "-preset", "medium", "-crf", str(VIDEO_CRF), "-movflags", "+faststart", str(partial)]
@@ -140,24 +152,26 @@ def make_video(camera_dir: Path, out_path: Path, interval_s: float, *, ffmpeg: s
     return out_path
 
 
-def build_run_video(run_dir: Path, interval_s: float, *, keep_frames: bool = False) -> Path | None:
+def build_run_video(run_dir: Path, interval_s: float, *, keep_frames: bool = False, frame_step_s: float | None = None) -> Path | None:
     """Tạo ``<run_dir>/video.mp4`` từ ``<run_dir>/sensors/camera`` (có vẽ số liệu từ ``sensors/frames.csv``).
 
     Không bao giờ làm hỏng run: lỗi chỉ thành cảnh báo trên stderr và ảnh PNG được giữ lại. Ghép xong thì xoá ``sensors/camera`` (video đã thay ảnh, mỗi run
     đỡ khoảng 70 MB) trừ khi ``keep_frames``.
     """
     out_path = run_dir / VIDEO_NAME
-    out_path.unlink(missing_ok=True)  # không để video của lần chạy trước đứng cạnh kết quả mới
     camera_dir = run_dir / "sensors" / "camera"
     work = run_dir / "sensors" / OVERLAY_DIR
     try:
+        out_path.unlink(missing_ok=True)  # không để video của lần chạy trước đứng cạnh kết quả mới
         source = camera_dir
         try:
+            if work.exists():
+                shutil.rmtree(work)  # an interrupted attempt must not contribute old frames
             if draw_overlays(frame_files(camera_dir), load_telemetry(run_dir / "sensors" / "frames.csv"), work):
                 source = work
         except Exception as exc:  # noqa: BLE001 — chữ trên hình chỉ là phụ, không có thì dùng ảnh gốc
             print(f"[video] Không vẽ được số liệu lên hình, dùng ảnh gốc: {exc}", file=sys.stderr)
-        video = make_video(source, out_path, interval_s)
+        video = make_video(source, out_path, interval_s, frame_step_s=frame_step_s)
     except Exception as exc:  # noqa: BLE001 — video chỉ là phần xem lại
         print(f"[video] Không tạo được {VIDEO_NAME}: {exc}", file=sys.stderr)
         return None

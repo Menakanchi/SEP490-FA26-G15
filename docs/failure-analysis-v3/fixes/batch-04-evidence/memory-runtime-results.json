@@ -1,0 +1,63 @@
+{
+  "before-2g": {
+    "command": [
+      "java",
+      "-Xmx2g",
+      "-cp",
+      "docs/failure-analysis-v3/fixes/batch-04-evidence/before-classes;target/classes;docs/failure-analysis-v3/fixes/batch-04-evidence/probe-classes",
+      "IngestionProbe",
+      "D:/Downloads/golden18_raw_artifacts.zip"
+    ],
+    "returncode": 0,
+    "heap": "2g",
+    "measurement": {
+      "runs": 72,
+      "heap_pool_peaks_sum_bytes": 515375104,
+      "resource_counters": {
+        "counters": "NOT_AVAILABLE_BEFORE_FIX"
+      },
+      "elapsed_ms": 5801,
+      "scope": "INGEST_ALL_RUNS_RETAINED; SUM_OF_POOL_PEAKS_NOT_CONCURRENT_RSS",
+      "heap_used_bytes": 381157376
+    }
+  },
+  "after-512m": {
+    "command": [
+      "java",
+      "-Xmx512m",
+      "-cp",
+      "target/classes;docs/failure-analysis-v3/fixes/batch-04-evidence/probe-classes",
+      "IngestionProbe",
+      "D:/Downloads/golden18_raw_artifacts.zip"
+    ],
+    "returncode": 1,
+    "heap": "512m",
+    "controlled_capacity_rejection": true
+  },
+  "after-2g": {
+    "command": [
+      "java",
+      "-Xmx2g",
+      "-cp",
+      "target/classes;docs/failure-analysis-v3/fixes/batch-04-evidence/probe-classes",
+      "IngestionProbe",
+      "D:/Downloads/golden18_raw_artifacts.zip"
+    ],
+    "returncode": 0,
+    "heap": "2g",
+    "measurement": {
+      "heap_used_bytes": 353370112,
+      "scope": "INGEST_ALL_RUNS_RETAINED; SUM_OF_POOL_PEAKS_NOT_CONCURRENT_RSS",
+      "elapsed_ms": 4226,
+      "resource_counters": {
+        "counters": {
+          "actual_read_bytes": 29507254,
+          "parsing_work": 48897682,
+          "retained_allocation_charge_bytes": 693322980
+        }
+      },
+      "heap_pool_peaks_sum_bytes": 445644800,
+      "runs": 72
+    }
+  }
+}

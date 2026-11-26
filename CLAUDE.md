@@ -12,7 +12,7 @@ kiểm tra luồng và xử lý những bẫy vận hành đã gặp; dùng chun
 > **Bắt buộc sau khi pull (26/11/2026, [ADR-065](docs/adr/ADR-065-khoi-dataset-trong-result-json.md), [ADR-067](docs/adr/ADR-067-api-failure-analysis-v3-va-4-bang-fa-json.md)):**
 > DB đã có dữ liệu: sao lưu rồi chạy [migration 019](database/mysql/migrations/019_2026-11-24_lan-lap-va-lan-thu-cua-run.sql) (cột `repetition`, `attempt`)
 > và [020](database/mysql/migrations/020_2026-11-25_failure_analysis_json.sql) (4 bảng `fa_json_*`, lên 34 bảng) theo thứ tự; thiếu 019 thì backend lỗi khi tạo run.
-> Tiếp đó [021](database/mysql/migrations/021_2026-11-26_pham-vi-tham-so-aeb-theo-mobo.sql): phạm vi 4 tham số AEB theo miền MOBO ([ADR-068](docs/adr/ADR-068-pham-vi-tham-so-aeb-theo-mien-mobo.md)).
+> Tiếp đó [025](database/mysql/migrations/025_2026-11-26_pham-vi-tham-so-aeb-theo-mobo.sql): phạm vi 4 tham số AEB theo miền MOBO ([ADR-069](docs/adr/ADR-069-pham-vi-tham-so-aeb-theo-mien-mobo.md)).
 > Môi trường CARLA chạy lại `setup-carla.ps1` (thêm `imageio-ffmpeg`, `pillow` cho video xem lại).
 
 > **Bắt buộc sau khi pull (22/11/2026, [ADR-057](docs/adr/ADR-057-hanh-lang-aeb-theo-be-rong-xe.md), [ADR-058](docs/adr/ADR-058-thoi-diem-phanh-va-ban-dap-feed-forward.md), migration 016–017):**
@@ -63,7 +63,7 @@ tóm tắt cũ hay số trong một tài liệu đơn lẻ. Ba luật đọc:
 - Đã có: mô tả → sinh biến thể → baseline → phân tích lỗi → candidate chỉnh tay → regression → Reviewer quyết định.
 - Đã có: xuất `.xosc` và chạy ScenarioRunner/CARLA 0.9.16 từ web, ghi kết quả và ảnh/cảm biến theo từng run.
 - Mục tiêu bàn giao 5 màn: thiết kế → chạy baseline → phân tích → **tối ưu AEB** → kiểm thử/phê duyệt.
-  Vòng MOBO tự đề xuất/thử tham số và Pareto chưa được triển khai; có bảng DB/chỉ số không có nghĩa đã có thuật toán.
+  Đã có `OptimizationService` / `MoboEngine`, vòng trial và Pareto; request campaign nhận dataset FA v2 + checksum, giữ partition tối ưu/xác minh. DB cũ cần migration 023 cho validation nhiều seed. Sensitivity/Robustness và consumer handoff chẩn đoán V3 chưa hoàn chỉnh.
 - Phạm vi, điểm nối và nghiệm thu của từng phần nằm trong
   [phân chia 5 thành viên](docs/vehicsim/phan-chia-cong-viec-5-thanh-vien.md).
   Tên người, deadline và tiến độ theo GitHub Issues/Project; không ghi tiến độ cá nhân vào file này.
@@ -238,7 +238,7 @@ Chi tiết thao tác và API ở [CARLA local](docs/vehicsim/carla-local.md).
 6. **Vòng tick:** ScenarioRunner giữ quyền tick; recorder dùng `wait_for_tick()`;
    spectator chỉ đọc trạng thái/cập nhật camera, không gọi `tick()`.
    `run_xosc.py` tự chạy camera bám xe và dùng Traffic Manager `8005`; đừng tạo thêm tiến trình giành quyền tick.
-7. **Hủy và phục hồi (TD-37):** chưa có API/nút hủy hoàn chỉnh dù schema có STOPPED.
+7. **Hủy và phục hồi (TD-37):** đã có API hủy run/họ/regression/campaign; hủy vật lý và phục hồi vẫn cần kiểm CARLA thật. Campaign đã kết thúc giữ nguyên trạng thái khi nhận yêu cầu hủy muộn.
    Khi khởi động, backend nhặt PENDING và RUNNING quá hai lần timeout mô phỏng; đóng cửa sổ không đồng nghĩa hủy batch.
    `VEHICSIM_RECOVER_ON_STARTUP=false` chỉ chặn nhặt lại lúc khởi động, không hủy hàng đợi đang chạy.
    Không chỉ UPDATE trạng thái khi worker còn sống vì nó có thể ghi đè. Việc khôi phục thủ công cần dừng dispatch,

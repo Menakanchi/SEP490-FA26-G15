@@ -327,6 +327,14 @@ class SensorRecorder:
         self.summary: dict | None = None
 
     def start(self) -> None:
+        # Retrying a failed run reuses its output directory. A recorder that receives no rows
+        # writes no output, so remove prior measurements before attempting the new connection.
+        for name in ("frames.csv", "ground_truth.csv", "collisions.json", "summary.json"):
+            (self.out_dir / name).unlink(missing_ok=True)
+        # Clear only generated camera frames, even when this attempt has no camera.
+        for path in (self.out_dir / "camera").glob("*.png"):
+            if len(path.stem) == 8 and path.stem.isascii() and path.stem.isdigit() and path.is_file():
+                path.unlink()
         self._thread = threading.Thread(target=self._run, name="sensors", daemon=True)
         self._thread.start()
 

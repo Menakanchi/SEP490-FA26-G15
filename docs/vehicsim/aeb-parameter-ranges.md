@@ -220,7 +220,7 @@ là đề xuất của nhóm.
 
 Cột cuối là nhận xét, **chưa sửa code**.
 
-> **Cập nhật 26/11/2026 ([ADR-068](../adr/ADR-068-pham-vi-tham-so-aeb-theo-mien-mobo.md), migration 021):** phạm vi trong DB lấy theo miền tìm của MOBO:
+> **Cập nhật 26/11/2026 ([ADR-069](../adr/ADR-069-pham-vi-tham-so-aeb-theo-mien-mobo.md), migration 025):** phạm vi trong DB lấy theo miền tìm của MOBO:
 > TTC 0,5 – 3,5 s, trễ 0,05 – 0,45 s, giảm tốc 5 – 10 m/s² (build-up giữ 5 – 20). Cột "Code hiện tại" dưới đây đã cập nhật theo.
 
 **4 tham số chỉnh được.** Biên lấy từ seed trong `BootstrapService.java` (min / max / mặc định). TTC mặc định 1,5 s = baseline v1.0
@@ -229,9 +229,9 @@ Cột cuối là nhận xét, **chưa sửa code**.
 
 | # | Tham số | Code hiện tại | Nghiên cứu | Nhận xét |
 |---|---|---|---|---|
-| 5 | TTC Threshold | 0.5 – 3.5 s (ADR-068), mặc định và baseline 1.5 (chốt 23/11/2026, migration 018) | 0.6 – 3.0 s | **Cận trên 3.5 s vẫn vượt mức 3 s của UN R131 / EU 347/2012 (xe nặng)**; với xe con chỉ có nguồn thứ cấp (GB/T 39901) |
-| 6 | Brake Activation Delay | 0.05 – 0.45 s (ADR-068), mặc định 0.15 | 0.1 – 0.5 s | Cận dưới 0,05 s vẫn thấp hơn nghiên cứu |
-| 7 | Max Deceleration | 5 – 10 m/s² (ADR-068), mặc định 8 | 3 – 10 m/s² | Hẹp hơn nghiên cứu ở cận dưới |
+| 5 | TTC Threshold | 0.5 – 3.5 s (ADR-069), mặc định và baseline 1.5 (chốt 23/11/2026, migration 018) | 0.6 – 3.0 s | **Cận trên 3.5 s vẫn vượt mức 3 s của UN R131 / EU 347/2012 (xe nặng)**; với xe con chỉ có nguồn thứ cấp (GB/T 39901) |
+| 6 | Brake Activation Delay | 0.05 – 0.45 s (ADR-069), mặc định 0.15 | 0.1 – 0.5 s | Cận dưới 0,05 s vẫn thấp hơn nghiên cứu |
+| 7 | Max Deceleration | 5 – 10 m/s² (ADR-069), mặc định 8 | 3 – 10 m/s² | Hẹp hơn nghiên cứu ở cận dưới |
 | 8 | Brake Build-up Rate | 5 – 20 m/s³, mặc định 20 (migration 008) | 12 (quét 5 – 50) | Chặn ở 20 vì lõi giới hạn tốc độ tăng lực phanh bằng Jerk Limit cố định 20 |
 
 **6 hằng số.** Giá trị trong `src/main/java/com/vsos/core/aeb/AebStack.java`. Đổi một hằng số làm kết quả động học đổi, nên phải

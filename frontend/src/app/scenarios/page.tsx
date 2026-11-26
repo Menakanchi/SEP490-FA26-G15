@@ -7,7 +7,7 @@ import { Pencil, Play, X } from "lucide-react";
 import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { FamilyForm } from "@/components/FamilyForm";
-import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx, fmt, simulatorLabel, TableScroll } from "@/components/VehicSimUi";
+import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx, fmt, simulatorLabel, TableScroll, VehicSimSelect } from "@/components/VehicSimUi";
 import { vi } from "@/components/vehicsimI18n";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { ActiveFamilyRun, FamilyItem, FamilyVariantList, FamilyVersion, RiskLabel, TimeOfDay, Weather } from "@/types/vehicsim";
@@ -185,12 +185,6 @@ export default function ScenarioFamiliesPage() {
         isNew
           ? [{ label: "Thiết kế kịch bản", href: "/scenarios" }, { label: "Nhập tham số" }]
           : [{ label: "Thiết kế kịch bản" }, { label: "Danh sách họ kịch bản" }]
-      }
-      title={isNew ? "Thiết lập không gian tham số kịch bản" : "Họ kịch bản kiểm thử an toàn"}
-      subtitle={
-        isNew
-          ? "Định nghĩa dải giá trị vận tốc, khoảng cách và điều kiện môi trường để tự động sinh biến thể mô phỏng."
-          : "Quản lý các không gian tham số va chạm và biến thể phục vụ đánh giá hệ thống phanh khẩn cấp."
       }
       actions={
         isNew ? (
@@ -546,11 +540,11 @@ function VariantLabels({
 
   return (
     <div className="border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 py-4">
-      <p className="mb-3 text-[12px] leading-[1.5] text-vehicsim-muted">
-        Nhãn tập thử dùng để chọn dữ liệu cho tối ưu và regression (giữ đủ ca an toàn để đo phanh oan); không đổi cách chấm kết quả
-        của lượt chạy. Mặc định tự suy: người đi bộ <b>dừng ở lề</b> → an toàn, <b>băng qua làn</b> → nguy hiểm.
-        {list && !list.current && <> Đang xem bản cũ v{list.version}.</>}
-      </p>
+      {list && !list.current && (
+        <p className="mb-3 text-[12px] leading-[1.5] text-vehicsim-muted">
+          Đang xem bản cũ v{list.version}.
+        </p>
+      )}
       {!list ? (
         <p className="text-[12px] text-vehicsim-faint">Đang tải biến thể…</p>
       ) : (
@@ -574,17 +568,19 @@ function VariantLabels({
                     {v.manual ? " · sửa tay" : ""}
                   </Tag>
                 </span>
-                <select
+                <VehicSimSelect
+                  aria-label={`Nhãn biến thể #${index + 1}`}
                   value={v.manual ? v.risk_label : "AUTO"}
                   disabled={!canWrite || busy !== null}
-                  onChange={(e) => onChange(v.scenario_version_id, e.target.value as RiskLabel | "AUTO")}
-                  aria-label={`Nhãn biến thể #${index + 1}`}
-                  className="w-[170px] rounded-full border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 py-[5px] text-[12px] text-vehicsim-ink disabled:opacity-50"
-                >
-                  <option value="AUTO">Tự suy ({RISK[v.auto_label].label.toLowerCase()})</option>
-                  <option value="DANGEROUS">Nguy hiểm</option>
-                  <option value="SAFE">An toàn</option>
-                </select>
+                  onChange={(val) => onChange(v.scenario_version_id, val as RiskLabel | "AUTO")}
+                  options={[
+                    { value: "AUTO", label: `Tự suy (${RISK[v.auto_label].label.toLowerCase()})` },
+                    { value: "DANGEROUS", label: "Nguy hiểm" },
+                    { value: "SAFE", label: "An toàn" },
+                  ]}
+                  buttonClassName="h-8 rounded-full px-2.5 text-[12px]"
+                  className="w-[170px]"
+                />
               </div>
             );
           })}
@@ -623,11 +619,7 @@ function ActiveRuns({
 }) {
   return (
     <div className="border-b border-solid border-vehicsim-line bg-vehicsim-soft px-5 py-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <p className="text-[12px] leading-[1.5] text-vehicsim-muted">
-          Hủy lượt <b>đang chờ</b> thì dừng ngay; lượt <b>đang chạy</b> sẽ chuyển sang &quot;đang dừng&quot; trong lúc worker dọn CARLA. Lượt thuộc
-          regression hoặc tối ưu chỉ dừng được theo cả lượt kiểm thử / đợt tối ưu.
-        </p>
+      <div className="mb-3 flex items-center justify-end">
         <button type="button" onClick={onClose} className="shrink-0 text-[12px] font-semibold text-vehicsim-muted hover:text-vehicsim-ink">
           Đóng
         </button>

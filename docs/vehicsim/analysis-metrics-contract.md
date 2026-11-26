@@ -78,8 +78,14 @@ Không sửa migration 009 đã có; JSON v2 không cần cột/bảng mới.
 - GET /analysis/datasets/{id}/handoff kiểm baseline hiện tại, run và hash artifact/config;
   chặn v1, run đổi hoặc thiếu artifact. Không tự chạy MOBO/candidate.
 - v1 vẫn đọc được để truy xuất, nhưng phải chốt lại hai tập trước khi bàn giao.
-- Thành viên 4 dùng optimization_run_ids, thành viên 5 dùng validation_run_ids và cùng hợp đồng.
-  Việc nối RegressionService/optimizer thực thi theo dataset thuộc phần 4/5, chưa được triển khai ở phần 3.
+- Campaign nhận `dataset_id` + `dataset_digest` từ handoff đã kiểm; `objective_config_json.dataset_ref`
+  giữ hai danh sách run nguồn. Mỗi trial chỉ chạy `optimization_run_ids`, cùng variant/seed/config/xe/simulator;
+  GP nhận ba aggregate canonical từ các trial đã hoàn tất, không dùng nhãn nguyên nhân lỗi làm target.
+- Chọn candidate tạo verification theo đúng `validation_run_ids`, không chọn lại baseline hoặc generation mới.
+  Nhiều seed của cùng biến thể được giữ thành nhiều cặp run; database cũ cần migration 023 trước khi dùng.
+  Handoff/checksum/source được kiểm lại khi tạo campaign, từng trial và trước verification; stale bị chặn.
+- Đây là adapter cho dataset v2. Handoff chẩn đoán V3 `fa_json_handoffs` vẫn có policy/authority riêng;
+  không được dùng `dispatch_allowed = false` như lệnh thực thi campaign.
 - Cấu hình ràng buộc campaign/regression vẫn cần chốt TD-48; dataset không đồng nghĩa trial khả thi,
   regression PASSED hoặc đủ bằng chứng phê duyệt.
 
@@ -91,3 +97,6 @@ Không sửa migration 009 đã có; JSON v2 không cần cột/bảng mới.
 - POST /analysis/selections: scenario_id, baseline_id, optimization_run_ids,
   validation_run_ids, run_revisions. Quyền ghi và limitWrites.
 - GET /analysis/datasets/{id}/handoff: xác nhận tập có thể bàn giao hiện tại.
+- POST /optimizations: thêm `dataset_id`, `dataset_digest`; scenario/baseline/simulator phải khớp snapshot.
+- POST /optimizations/{id}/select/{trialId}: trả `regression_test_id` của verification đúng partition;
+  retry tái sử dụng cùng verification đang chạy/đã hoàn tất, không lấy test tùy ý cùng candidate.

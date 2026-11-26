@@ -1,0 +1,82 @@
+{
+  "baseline-focused": {
+    "total": 713,
+    "passed": 711,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 2,
+    "build": "SUCCESS"
+  },
+  "red-dossiers": {
+    "total": 5,
+    "passed": 0,
+    "failures": 5,
+    "errors": 0,
+    "skipped": 0,
+    "build": "FAILURE"
+  },
+  "context-first-run": {
+    "total": 55,
+    "passed": 55,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "build": "SUCCESS"
+  },
+  "context-hardening": {
+    "total": 74,
+    "passed": 73,
+    "failures": 0,
+    "errors": 1,
+    "skipped": 0,
+    "build": "FAILURE"
+  },
+  "focused-clean": {
+    "total": 787,
+    "passed": 785,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 2,
+    "build": "SUCCESS"
+  },
+  "focused-final": {
+    "total": 0,
+    "passed": 0,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "build": "FAILURE"
+  },
+  "focused-accepted-final": {
+    "total": 790,
+    "passed": 788,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 2,
+    "build": "SUCCESS"
+  },
+  "focused-sealed": {
+    "total": 791,
+    "passed": 789,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 2,
+    "build": "SUCCESS"
+  },
+  "focused-final-context-guards": {
+    "total": 793,
+    "passed": 791,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 2,
+    "build": "SUCCESS"
+  },
+  "full-final": {
+    "total": 1520,
+    "passed": 1515,
+    "failures": 2,
+    "errors": 0,
+    "skipped": 3,
+    "build": "FAILURE"
+  }
+}

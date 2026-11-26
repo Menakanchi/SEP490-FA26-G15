@@ -136,6 +136,7 @@ try {
     await shot("playback");
     // Exercise the actual CSV form and response mapper; the endpoint is intercepted.
     await page.goto(base + "/analysis/carla");
+    await page.getByRole("tab", { name: "Đánh giá cảm biến", exact: true }).click();
     await page.locator('input[type="file"][accept*=".csv"]').setInputFiles({ name: "fixture.csv", mimeType: "text/csv", buffer: Buffer.from("sim_time_s,ego_speed_ms\n0.5,10\n0.6,9\n") });
     await page.getByRole("button", { name: "Tính số đo", exact: true }).click();
     await page.getByText("Tốc độ ego lúc va chạm", { exact: true }).waitFor();

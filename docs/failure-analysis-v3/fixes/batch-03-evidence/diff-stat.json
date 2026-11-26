@@ -1,0 +1,37 @@
+[
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/AnalysisContext.java",
+    "added": 24,
+    "removed": 0
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/AnalysisContextValidator.java",
+    "added": 279,
+    "removed": 0
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/DiagnosticReport.java",
+    "added": 47,
+    "removed": 19
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/HypothesisInvestigator.java",
+    "added": 175,
+    "removed": 0
+  },
+  {
+    "file": "src/main/java/com/vsos/core/failureanalysis/ObjectiveExplainer.java",
+    "added": 16,
+    "removed": 2
+  },
+  {
+    "file": "src/test/java/com/vsos/core/failureanalysis/Batch03ContextTest.java",
+    "added": 213,
+    "removed": 0
+  },
+  {
+    "file": "src/test/java/com/vsos/core/failureanalysis/Batch03DossierRegressionTest.java",
+    "added": 53,
+    "removed": 0
+  }
+]

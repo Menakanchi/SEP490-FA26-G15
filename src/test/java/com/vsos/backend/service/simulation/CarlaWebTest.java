@@ -53,7 +53,7 @@ class CarlaWebTest {
         tx = mock(TransactionTemplate.class);
         executor = mock(TaskExecutor.class);
         runs = new RunService(db, mock(Queries.class), props, executor, mock(ApplicationEventPublisher.class),
-                tx, mock(FamilyService.class)).useCommandProbe(executable -> true);
+                tx, mock(FamilyService.class), mock(com.vsos.backend.service.analysis.FailureAnalysisService.class)).useCommandProbe(executable -> true);
     }
 
     @Test

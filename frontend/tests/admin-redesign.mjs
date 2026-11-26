@@ -58,7 +58,7 @@ try {
   });
   const page=await context.newPage();page.setDefaultTimeout(15000);page.on("pageerror",err=>errors.push(err.message));
   const frame=page.locator("[data-admin-frame]");
-  const visibleNav=()=>page.getByRole("navigation",{name:"Quản trị hệ thống",exact:true}).filter({visible:true});
+  const visibleNav=()=>page.getByRole("navigation",{name:"Điều hướng VehicSim",exact:true}).filter({visible:true});
   const ready=async title=>{
     await frame.getByRole("heading",{level:1,name:title,exact:true}).waitFor();
     await frame.getByRole("table").waitFor();
@@ -107,33 +107,33 @@ try {
     assert.equal(await page.getByRole("navigation",{name:"Đường dẫn"}).locator('[aria-current="page"]').innerText(),title);
     for(const [width,height] of viewports){
       await page.setViewportSize({width,height});await overflow();
-      if(width>=1100){
-        assert.equal(await page.getByRole("complementary",{name:"Khu vực quản trị"}).isVisible(),true);
-        assert.equal(await page.locator("details").isVisible(),false);
+      if(width>=1024){
+        assert.equal(await page.locator("#vehicsim-navigation").isVisible(),true);
+        assert.equal(await page.getByRole("button",{name:"Menu",exact:true}).isVisible(),false);
       }else{
-        assert.equal(await page.getByRole("complementary",{name:"Khu vực quản trị"}).isVisible(),false);
-        await page.locator("summary").focus();await page.keyboard.press("Enter");
+        assert.equal(await page.locator("#vehicsim-navigation").isVisible(),false);
+        await page.getByRole("button",{name:"Menu",exact:true}).focus();await page.keyboard.press("Enter");
       }
       const nav=visibleNav();assert.equal(await nav.count(),1);
       const add=frame.getByRole("button",{name:"Thêm mới",exact:true});
       assert.equal(await add.evaluate(el=>getComputedStyle(el).fontSize),"13px");
       assert.equal(await add.evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(49, 87, 68)","Admin actions use the shared theme while retaining chuvv sizing");
-      assert.equal(await frame.evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(245, 243, 237)","Admin canvas follows DESIGN.md");
+      assert.equal(await page.locator(".vehicsim-shell").evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(245, 243, 237)","Admin canvas follows DESIGN.md");
       assert(await add.evaluate(el=>el.getBoundingClientRect().height)>=(width<640?44:40),"Shared control height");
       assert.equal(await frame.locator("h2").first().evaluate(el=>getComputedStyle(el).fontSize),"16px");
       await nav.locator('[aria-current="page"]').focus();
-      assert.equal(await nav.locator('[aria-current="page"]').evaluate(el=>getComputedStyle(el).outlineWidth),"3px","Visible keyboard focus");
+      assert(await nav.locator('[aria-current="page"]').evaluate(el=>parseFloat(getComputedStyle(el).outlineWidth)>0),"Visible keyboard focus");
 
-      assert.equal(await nav.getByRole("link").count(),3);
-      assert.equal(await nav.locator('[aria-current="page"]').innerText(),`${title}\n${resource==="users"?"Người dùng và vai trò":resource==="workspaces"?"Không gian và người quản lý":"Danh mục và nguồn tham khảo"}`);
-      assert.equal(await page.getByRole("link",{name:"Tổng quan VehicSim",exact:true}).filter({visible:true}).count(),1);
+      assert.equal(await nav.locator('a[href^="/admin/"]').count(),3);
+      assert.equal(await nav.locator('[aria-current="page"]').innerText(),title);
+      assert.equal(await page.locator("header").getByRole("link",{name:"VehicSim",exact:true}).filter({visible:true}).count(),1);
       assert.equal(await page.getByRole("button",{name:"Đăng xuất",exact:true}).filter({visible:true}).count(),1);
       assert.equal(await page.getByRole("link",{name:"Workspace cộng tác",exact:true}).count(),0);
-      if(width<1100){
+      if(width<1024){
         await shot(`${resource}-${width}-menu`);
         await nav.getByRole("link").first().focus();await page.keyboard.press("Escape");
-        assert.equal(await page.locator("details").getAttribute("open"),null);
-        assert.equal(await page.locator("summary").evaluate(el=>el===document.activeElement),true);
+        assert.equal(await page.getByRole("button",{name:"Menu",exact:true}).getAttribute("aria-expanded"),"false");
+        assert.equal(await page.getByRole("button",{name:"Menu",exact:true}).evaluate(el=>el===document.activeElement),true);
       }
       await shot(`${resource}-${width}`);
     }
@@ -141,7 +141,8 @@ try {
     const tableRegion=frame.getByRole("region",{name:/^Bảng /});
     await tableRegion.evaluate(el=>{el.scrollLeft=80;});
     await page.evaluate(()=>window.scrollTo({top:0,behavior:"instant"}));
-    const beforeModal=await page.evaluate(()=>({y:scrollY,overflow:document.documentElement.style.overflow,padding:document.documentElement.style.paddingRight,gutter:document.documentElement.style.scrollbarGutter,headingX:document.getElementById("admin-page-title").getBoundingClientRect().x,headingWidth:document.getElementById("admin-page-title").getBoundingClientRect().width}));
+    await frame.getByRole("button",{name:"Thêm mới",exact:true}).scrollIntoViewIfNeeded();
+    const beforeModal=await page.evaluate(()=>({y:scrollY,overflow:document.documentElement.style.overflow,padding:document.documentElement.style.paddingRight,gutter:document.documentElement.style.scrollbarGutter,headingX:document.querySelector("[data-admin-frame] h1").getBoundingClientRect().x,headingWidth:document.querySelector("[data-admin-frame] h1").getBoundingClientRect().width}));
     await frame.getByRole("button",{name:"Thêm mới",exact:true}).click();
     const dialog=page.getByRole("dialog",{name:`Thêm mới · ${title}`,exact:true});await dialog.waitFor();
     if(resource==="workspaces")await dialog.getByRole("radiogroup",{name:"Kết quả tìm Manager",exact:true}).waitFor();
@@ -237,13 +238,13 @@ try {
   // Client navigation + history on both desktop and mobile, with one active Admin route.
   await page.setViewportSize({width:1366,height:768});
   await visibleNav().getByRole("link",{name:/^Tài khoản/}).click();await ready("Tài khoản");
-  await visibleNav().getByRole("link",{name:/^Workspace/}).click();await ready("Workspace");
+  await visibleNav().getByRole("link",{name:/^Workspace$/}).click();await ready("Workspace");
   await page.goBack();await ready("Tài khoản");
   await page.setViewportSize({width:768,height:1024});
-  await page.locator("summary").click();await visibleNav().getByRole("link",{name:/^Tài liệu kỹ thuật/}).click();await ready("Tài liệu kỹ thuật");
-  assert.equal(await page.locator("details").getAttribute("open"),null);
-  await frame.getByRole("link",{name:"Đến nội dung quản trị",exact:true}).focus();await page.keyboard.press("Enter");
-  assert.equal(await page.locator("#admin-content").evaluate(el=>el===document.activeElement),true);
+  await page.getByRole("button",{name:"Menu",exact:true}).click();await visibleNav().getByRole("link",{name:/^Tài liệu kỹ thuật/}).click();await ready("Tài liệu kỹ thuật");
+  assert.equal(await page.getByRole("button",{name:"Menu",exact:true}).getAttribute("aria-expanded"),"false");
+  await page.getByRole("link",{name:"Đến nội dung chính",exact:true}).focus();await page.keyboard.press("Enter");
+  assert.equal(await page.locator("#vehicsim-content").evaluate(el=>el===document.activeElement),true);
 
   // Notifications fit a narrow viewport and stay accessible through the shared header.
   await page.setViewportSize({width:390,height:844});await page.getByRole("button",{name:"Thông báo",exact:true}).click();
@@ -285,7 +286,7 @@ try {
       if(state==="slow")await frame.getByRole("status").filter({hasText:"Đang tải dữ liệu"}).waitFor();
       else if(state==="empty")await frame.getByText(resource==="users"?"Chưa có tài khoản":resource==="workspaces"?"Chưa có workspace":"Chưa có tài liệu kỹ thuật",{exact:true}).waitFor();
       else await frame.getByRole("alert").filter({hasText:state==="error"?(resource==="tech-references"?"Máy chủ chưa thể tải tài liệu. Hãy thử lại sau.":"Fixture: không tải được"):"Fixture: không có quyền"}).waitFor();
-      assert.equal(await frame.getByRole("link",{name:"Hồ sơ / Mật khẩu",exact:true}).isVisible(),true);
+      assert.equal(await page.getByRole("link",{name:"Hồ sơ cá nhân",exact:true}).isVisible(),true);
       if(state==="slow"){
         mode="normal";
         assert.equal(pendingLists.length,1,"Loading request is explicitly held until asserted");
@@ -301,13 +302,13 @@ try {
   // Leaving Admin restores the existing global shell; no Admin styling/container persists.
   const unlockedStyles=await page.evaluate(()=>["overflow","padding-right","scrollbar-gutter"].map(name=>[document.documentElement.style.getPropertyValue(name),document.documentElement.style.getPropertyPriority(name)]));
   await frame.getByRole("button",{name:"Thêm mới",exact:true}).click();await page.locator("dialog[open]").waitFor();
-  await frame.getByRole("link",{name:"Hồ sơ / Mật khẩu",exact:true}).evaluate(link=>link.click());await page.waitForURL(base+"/profile");
+  await page.getByRole("link",{name:"Hồ sơ cá nhân",exact:true}).evaluate(link=>link.click());await page.waitForURL(base+"/profile");
   await page.getByRole("button",{name:/Lưu/}).first().waitFor();
-  assert.equal(await frame.count(),0);assert.equal(await page.getByRole("complementary",{name:"Khu vực quản trị"}).count(),0);
+  assert.equal(await frame.count(),0);assert.equal(await page.locator("#vehicsim-navigation").count(),1);
   assert.equal(await page.locator("dialog[open]").count(),0);
   assert.deepEqual(await page.evaluate(()=>["overflow","padding-right","scrollbar-gutter"].map(name=>[document.documentElement.style.getPropertyValue(name),document.documentElement.style.getPropertyPriority(name)])),unlockedStyles,"Unmount restores original root styles");
   await page.setViewportSize({width:1366,height:768});
-  assert.equal(await page.locator("#vehicsim-navigation").evaluate(el=>Math.round(el.getBoundingClientRect().width)),232);
+  assert.equal(await page.locator("#vehicsim-navigation").evaluate(el=>Math.round(el.getBoundingClientRect().width)),272);
 
   // Each non-Admin role is denied before mounting the Admin data fetching component.
   for(const nextRole of ["MANAGER","ENGINEER","REVIEWER","EXPERIENCER"]){
@@ -318,7 +319,7 @@ try {
       assert.equal(await frame.count(),0);assert.equal(await page.getByRole("navigation",{name:"Quản trị hệ thống",exact:true}).count(),0);
       assert.equal(await page.locator("aside").isVisible(),true,"Denied non-Admin keeps the existing global navigation");
       assert.equal(requests.filter(r=>r.path.startsWith("/vehicsim/admin/")).length,before);
-      if(nextRole==="ENGINEER"||nextRole==="REVIEWER")assert.equal(await page.getByRole("navigation",{name:"Điều hướng VehicSim",exact:true}).getByRole("link",{name:"Nhiệm vụ & báo cáo",exact:true}).getAttribute("href"),"/my-work");
+      if(nextRole==="ENGINEER"||nextRole==="REVIEWER")assert.equal(await page.getByRole("navigation",{name:"Điều hướng VehicSim",exact:true}).getByRole("link",{name:"Nhiệm vụ & Báo cáo",exact:true}).getAttribute("href"),"/my-work");
     }
   }
   role="ADMIN";
@@ -329,7 +330,7 @@ try {
   // Log in again and verify the mobile menu can end the session through existing logout behavior.
   await page.getByLabel("Email",{exact:true}).fill(actor.email);await page.getByLabel("Mật khẩu",{exact:true}).fill("Browser-fixture-only-12");
   await page.getByRole("button",{name:"Đăng nhập",exact:true}).click();await ready("Tài khoản");
-  await page.setViewportSize({width:768,height:1024});await page.locator("summary").click();
+  await page.setViewportSize({width:768,height:1024});await page.getByRole("button",{name:"Menu",exact:true}).click();
   await page.getByRole("button",{name:"Đăng xuất",exact:true}).filter({visible:true}).click();await page.waitForURL(base+"/login");
   assert.equal(await page.evaluate(()=>localStorage.getItem("vehicsim_access_token")),null);
   assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);

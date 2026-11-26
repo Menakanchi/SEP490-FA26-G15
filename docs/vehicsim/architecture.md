@@ -5,11 +5,13 @@ code hiện tại hỗ trợ CP_CROSSING và CCRS/CCRM/CCRB (ADR-050).
 Scenario Forge đã gỡ ngày 04/10/2026 (ADR-032); bộ xuất OpenSCENARIO hiện ở
 `src/main/java/com/vsos/core/xosc/XoscExport.java` (ADR-042).
 
-> Đối chiếu Admin/Analysis ngày 17/11/2026: [technical handover](admin-analysis-handover.md)
-> và [Final QA](../exec-plans/completed/2026-11-17-admin-analysis-phase-20-handover.md).
+> Hướng dẫn Admin/Analysis đã gộp trong [tài liệu tổng hợp](../failure-analysis-v3/README.md),
+> gồm bản đồ code, hợp đồng dữ liệu, cách kiểm thử và giới hạn hiện hành.
 > Các bảng tên Python/Forge bên dưới là lịch sử; không phải API đang tồn tại.
 > Admin chỉ có ba trang quản trị, không có Overview riêng. Reviewer theo membership workspace;
-> Engineer vẫn dùng project nhóm chung (TD-30), không tuyên bố cách ly mọi workspace.
+> Engineer và Reviewer theo membership workspace (ADR-064); ADMIN/MANAGER còn dùng project nhóm mặc định (TD-30).
+
+> **Cập nhật 26/11/2026 sau merge:** đã có `OptimizationService` / `core/mobo/MoboEngine`, trial/Pareto và API hủy run/họ/regression/campaign. Snapshot FA chưa được nối vào campaign; Sensitivity/Robustness còn mở. Profile CARLA hiện tại là `carla-0.9.16-xosc16` (ADR-066), động học `1.4`; các định danh v15 ở phần lịch sử bên dưới không dùng cho run mới. Worker trả lỗi khi CARLA không sẵn sàng. Xem [báo cáo kiểm chứng](../LOGIC_AUDIT_REPORT.md).
 
 > Nguồn sự thật: schema DB là [`database/mysql/01_schema.sql`](../../database/mysql/01_schema.sql)
 > (code Java đọc/ghi bằng SQL thuần, không có bản mirror); lý do quyết định là ADR-023 →
@@ -38,7 +40,7 @@ Scenario Forge đã gỡ ngày 04/10/2026 (ADR-032); bộ xuất OpenSCENARIO hi
 |---|---|---|---|---|
 | 1. Mô tả kịch bản | Câu tiếng Việt → xem/sửa Scenario IR | `/scenarios/new` | `POST /scenarios/describe` | `describe.py` |
 | 2. Sinh biến thể | Lưới tham số → họ kịch bản | `/scenarios/new`, `/scenarios` | `POST /families` | `family.py` |
-| 3. Chạy baseline | Xem xe/AEB/bộ mô phỏng → chạy biến thể → theo dõi → Phân tích (mang `scenario_id`); chưa có API hủy (TD-37) | `/scenarios`, `/analysis/carla` | `GET /context`, `POST /families/{id}/run` | `RunService`, thread pool Java |
+| 3. Chạy baseline | Xem xe/AEB/bộ mô phỏng → chạy biến thể → theo dõi/hủy → Phân tích (mang `scenario_id`) | `/scenarios`, `/analysis/carla` | `GET /context`, `POST /families/{id}/run`, `POST /runs/{id}/cancel`, `POST /families/{id}/cancel` | `RunService`, thread pool Java |
 | 4. Phân tích lỗi | Danh sách → detail/evidence → playback; JSON động học hoặc `.xosc` CARLA | `/analysis/failures/**` | `GET /failures`, `/analysis/runs`, `/analysis/runs/{id}`, `/runs/{id}/playback`, `/runs/{id}/bundle`, `/runs/{id}/xosc` | `AnalysisService`, `AnalysisViewService`, `Evaluation` |
 | 5. Cấu hình mới & chạy lại | Tạo candidate AEB → regression cùng seed | `/aeb`, `/validation/regression/new` | `POST /aeb/versions`, `GET /regression/preview`, `POST /regression` | `aeb.py`, `regression.py` |
 | 6. So sánh & quyết định | Kết quả regression → khuyến nghị → **Reviewer** Accept/Reject/Request more tests | `/validation/**` | `GET /regression/{id}`, `/recommendations/{id}`, `POST /recommendations/{id}/decision` | `regression.py`, `views.py` |

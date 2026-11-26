@@ -108,8 +108,6 @@ export default function ProfilePage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Hồ sơ cá nhân" }]}
-      title="Thông tin tài khoản & Hồ sơ"
-      subtitle="Quản lý thông tin định danh, ảnh đại diện, vai trò hệ thống và bảo mật mật khẩu."
       showContext={false}
       actions={<PillButton onClick={() => router.back()}><ArrowLeft aria-hidden className="size-4" /> Quay lại</PillButton>}
     >

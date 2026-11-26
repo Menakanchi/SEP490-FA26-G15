@@ -158,7 +158,7 @@ try{
  await frame.getByLabel("Số dòng mỗi trang",{exact:true}).selectOption("10");await ready();assert.equal(await region().locator("tbody tr").count(),10);
  await frame.getByLabel("Trạng thái",{exact:true}).selectOption("ARCHIVED");await ready();assert.equal(await region().getByText("Hoạt động",{exact:true}).count(),0);
  const scope=page.url();await page.reload();await ready();assert.equal(page.url(),scope);
- await page.getByRole("navigation",{name:"Quản trị hệ thống",exact:true}).filter({visible:true}).getByRole("link",{name:/^Tài khoản/}).click();await frame.getByRole("region",{name:"Bảng tài khoản, cuộn ngang",exact:true}).waitFor();
+ await page.getByRole("navigation",{name:"Điều hướng VehicSim",exact:true}).filter({visible:true}).getByRole("link",{name:/^Tài khoản/}).click();await frame.getByRole("region",{name:"Bảng tài khoản, cuộn ngang",exact:true}).waitFor();
  await page.goBack();await ready();assert.equal(page.url(),scope);
  await frame.getByRole("button",{name:/^Bỏ lọc trạng thái/}).click();await ready();await page.goBack();await ready();assert.equal(query().status,"ARCHIVED");await page.goForward();await ready();assert.equal(query().status,undefined);
  await frame.getByRole("button",{name:"Xóa bộ lọc",exact:true}).click();await ready();assert.deepEqual(query(),{sort:"name",page_size:"10"});

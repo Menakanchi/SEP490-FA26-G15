@@ -2,13 +2,107 @@
 
 from __future__ import annotations
 
+import json
 import os
 import signal
+import subprocess
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from xml.etree import ElementTree as ET
 
 import pytest
 import run_xosc
+
+
+@pytest.mark.parametrize("state", [
+    {"connected": False, "scenario_runner": True},
+    {"connected": True, "compatible": False, "scenario_runner": True},
+    {"connected": True, "compatible": True, "scenario_runner": False},
+])
+def test_unavailable_carla_never_creates_synthetic_carla_results(
+    state: dict, xosc: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "run"
+    monkeypatch.setattr(run_xosc.bridge, "snapshot_core", lambda _: {"jar": "vsos-core.jar"})
+    monkeypatch.setattr(run_xosc.bridge, "xosc_info", lambda _: {"suffix": "-xosc16", "step_s": 0.01})
+    monkeypatch.setattr(run_xosc, "probe", lambda *_: state)
+    monkeypatch.setattr(run_xosc.bridge, "Bridge", lambda *_: pytest.fail("Synthetic frames must not acquire a CARLA identity"))
+    monkeypatch.setenv("VEHICSIM_CORE_CLASSPATH", "before-test")
+    args = SimpleNamespace(out=out, xosc=xosc, host="127.0.0.1", port=2000, sr_root=tmp_path)
+    with pytest.raises(RuntimeError, match="CARLA chưa sẵn sàng"):
+        run_xosc.run(args)
+    assert not (out / "result.json").exists()
+    assert not (out / "lifecycle.json").exists()
+
+
+@pytest.mark.parametrize("failure", [subprocess.TimeoutExpired("scenario_runner", 1), RuntimeError("process failed")])
+def test_failed_scenario_drops_result_written_before_process_failure(
+    failure: Exception, xosc: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "run"
+    monkeypatch.setattr(run_xosc.bridge, "snapshot_core", lambda _: {"jar": "vsos-core.jar"})
+    monkeypatch.setattr(run_xosc.bridge, "xosc_info", lambda _: {"suffix": "-xosc16", "step_s": 0.01})
+    monkeypatch.setattr(run_xosc, "probe", lambda *_: {"connected": True, "compatible": True, "scenario_runner": True, "version": "0.9.16"})
+    monkeypatch.setenv("VEHICSIM_CORE_CLASSPATH", "before-test")
+    world = SimpleNamespace(get_map=lambda: SimpleNamespace(name="Town04"))
+    client = SimpleNamespace(set_timeout=lambda _: None, get_world=lambda: world)
+    monkeypatch.setitem(sys.modules, "carla", SimpleNamespace(Client=lambda *_: client))
+    monkeypatch.setattr(run_xosc, "release_world", lambda _: 0)
+    recorder = SimpleNamespace(start=lambda: None, stop=lambda: None)
+    monkeypatch.setattr(run_xosc.sensor_recorder, "SensorRecorder", lambda *_, **__: recorder)
+    monkeypatch.setattr(run_xosc.subprocess, "Popen", lambda *_, **__: SimpleNamespace(poll=lambda: 0))
+
+    def failed_wait(*_):
+        (out / "result.json").write_text('{"partial": true}', encoding="utf-8")
+        raise failure
+
+    monkeypatch.setattr(run_xosc, "wait_for_exit", failed_wait)
+    args = SimpleNamespace(out=out, xosc=xosc, host="127.0.0.1", port=2000, sr_root=tmp_path, camera=False, hud=False, timeout=1)
+    with pytest.raises(type(failure)):
+        run_xosc.run(args)
+    assert not (out / "result.json").exists()
+    assert (out / "lifecycle.json").exists()
+
+
+@pytest.mark.parametrize("current_criteria", [False, True])
+def test_retry_only_accepts_criteria_written_by_the_current_attempt(
+    current_criteria: bool, xosc: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "run"
+    out.mkdir()
+    old_criteria = out / "previous-criteria.json"
+    old_criteria.write_text('{"criteria": [{"name": "CollisionTest"}]}', encoding="utf-8")
+    # An unrelated old artifact must not break a new run either.
+    (out / "old-partial.json").write_text('{"incomplete":', encoding="utf-8")
+    monkeypatch.setattr(run_xosc.bridge, "snapshot_core", lambda _: {"jar": "vsos-core.jar"})
+    monkeypatch.setattr(run_xosc.bridge, "xosc_info", lambda _: {"suffix": "-xosc16", "step_s": 0.01})
+    monkeypatch.setattr(run_xosc, "probe", lambda *_: {"connected": True, "compatible": True, "scenario_runner": True, "version": "0.9.16"})
+    monkeypatch.setenv("VEHICSIM_CORE_CLASSPATH", "before-test")
+    world = SimpleNamespace(get_map=lambda: SimpleNamespace(name="Town04"))
+    client = SimpleNamespace(set_timeout=lambda _: None, get_world=lambda: world)
+    monkeypatch.setitem(sys.modules, "carla", SimpleNamespace(Client=lambda *_: client))
+    monkeypatch.setattr(run_xosc, "release_world", lambda _: 0)
+    monkeypatch.setattr(run_xosc.sensor_recorder, "SensorRecorder", lambda *_, **__: SimpleNamespace(start=lambda: None, stop=lambda: None))
+    monkeypatch.setattr(run_xosc.subprocess, "Popen", lambda *_, **__: SimpleNamespace(poll=lambda: 0))
+
+    def completed_wait(*_):
+        (out / "result.json").write_text('{"format": "vehicsim.result/v1"}', encoding="utf-8")
+        if current_criteria:
+            (out / "current-criteria.json").write_text('{"criteria": [{"name": "CollisionTest", "test_status": "FAILURE"}]}', encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(run_xosc, "wait_for_exit", completed_wait)
+    args = SimpleNamespace(out=out, xosc=xosc, host="127.0.0.1", port=2000, sr_root=tmp_path, camera=False, hud=False, timeout=1)
+    if current_criteria:
+        assert run_xosc.run(args) == 0  # CollisionTest FAILURE is an AEB result, not a process failure.
+        assert (out / "result.json").exists()
+    else:
+        with pytest.raises(RuntimeError, match="thiếu kết quả"):
+            run_xosc.run(args)
+        assert not (out / "result.json").exists()
+    assert old_criteria.exists()
+    assert json.loads((out / "lifecycle.json").read_text(encoding="utf-8"))["destroyed_after"] == 0
 
 
 def test_carla_simulator_name_ignores_build_suffix() -> None:

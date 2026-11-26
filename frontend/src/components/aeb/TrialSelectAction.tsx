@@ -42,12 +42,14 @@ export function useTrialSelections(trials: unknown): TrialSelections {
  * Ô thao tác của một trial Pareto. Trial đã được chọn (đã có kiểm thử hồi quy), đã thành bản cơ sở hoặc đã bị từ chối thì hiện trạng thái
  * và liên kết tới kiểm thử thay vì mời "Chọn làm ứng viên" lần nữa (chọn lại chỉ tạo thêm một kiểm thử trùng).
  */
-export function TrialSelectAction({ trial, selections, selecting, canWrite, onSelect }: {
+export function TrialSelectAction({ trial, selections, selecting, canWrite, onSelect, disabled = false }: {
   trial: OptimizationTrial;
   selections: TrialSelections;
   selecting: number | null;
   canWrite: boolean;
   onSelect: (trialId: number) => void;
+  /** Điều kiện riêng của trang (ví dụ trial vi phạm ràng buộc thì không cho chọn). */
+  disabled?: boolean;
 }) {
   const status = selections.versionStatus[trial.candidate_aeb_version_id];
   const test = selections.latestTest[trial.candidate_aeb_version_id] ?? null;
@@ -76,7 +78,7 @@ export function TrialSelectAction({ trial, selections, selecting, canWrite, onSe
   return (
     <button
       type="button"
-      disabled={selecting !== null || !canWrite}
+      disabled={selecting !== null || !canWrite || disabled}
       onClick={() => onSelect(trial.id)}
       className="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-lg bg-vehicsim-primary px-3 text-[12px] font-bold text-white shadow-xs transition hover:bg-vehicsim-primary-hover disabled:opacity-40"
     >

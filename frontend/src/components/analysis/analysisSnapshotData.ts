@@ -33,8 +33,8 @@ export function readSavedSelection(value: unknown, expectedId?: number): SavedSe
 export function sameSavedSelection(a: SavedSelection, b: SavedSelection): boolean {
   const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable)
     : object(value) ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
-  const payload = ({ baseline_current: _current, handoff_ready: _ready, created_at: _date, ...rest }: SavedSelection & { created_at?: unknown }) => {
-    void _current; void _ready; void _date;
+  const payload = ({ baseline_current: _current, handoff_ready: _ready, dataset_digest: _digest, created_at: _date, ...rest }: SavedSelection & { created_at?: unknown }) => {
+    void _current; void _ready; void _digest; void _date;
     return stable(rest);
   };
   return JSON.stringify(payload(a)) === JSON.stringify(payload(b));

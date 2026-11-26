@@ -194,10 +194,10 @@ public class SimulationController {
 
     @Operation(summary = "Nộp result.json của run CARLA chạy ngoài backend (chỉ run CARLA đang PENDING/FAILED, regression chưa chốt)")
     @PostMapping("/runs/{runId}/carla-result")
-    public Map<String, Object> submitCarlaResult(@PathVariable long runId, @RequestBody Map<String, Object> body, @AuthenticationPrincipal UserDetails user) {
+    public Map<String, Object> submitCarlaResult(@PathVariable long runId, @RequestBody byte[] body, @AuthenticationPrincipal UserDetails user) {
         long uid = VehicSimAccess.requireEngineer(user);
         access.limitWrites(uid, "carla_result");
-        return runs.submitCarlaResultFromUi(access.projectId(), runId, uid, body);
+        return runs.submitCarlaResultBytesFromUi(access.projectId(), runId, uid, body);
     }
 
     /**

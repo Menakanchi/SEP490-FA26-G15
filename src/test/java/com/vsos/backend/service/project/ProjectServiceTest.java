@@ -373,6 +373,20 @@ class ProjectServiceTest {
         when(regressions.lockVersionStatuses(BASELINE, CANDIDATE)).thenReturn(Map.of(BASELINE, baselineStatus, CANDIDATE, candidateStatus));
         when(regressions.versionsById(BASELINE, CANDIDATE)).thenReturn(Map.of(
                 BASELINE, new Row(Map.of("label", "v1.0", "version_no", 1)), CANDIDATE, new Row(Map.of("label", "v2", "version_no", 2))));
+        when(regressions.candidateRuns(TEST)).thenReturn(List.of(new com.vsos.backend.dto.regression.RegressionRecords.CandidateRun(102, 10, 101)));
+        when(regressions.runResults(any())).thenReturn(Map.of(
+                101L, new com.vsos.backend.dto.regression.RegressionRecords.RunResult(101, "COMPLETED", false, 3.0, 4.0, null, false, "PASS", null, null, true),
+                102L, new com.vsos.backend.dto.regression.RegressionRecords.RunResult(102, "COMPLETED", false, 3.0, 4.0, null, false, "PASS", null, null, true)));
+    }
+
+    @Test
+    void personalBaselineAdoptionRechecksEvidenceInsteadOfTrustingHistoricalPassedLabel() {
+        givenAdoptable("COMPLETED", "PASSED", "BASELINE", "CANDIDATE");
+        when(regressions.runResults(any())).thenReturn(Map.of());
+        assertError(() -> service.adopt(OWNER, PROJECT, TEST, adopt()), ProjectError.TEST_EVIDENCE_INCOMPLETE,
+                "Bằng chứng kiểm chứng thiếu hoặc không hợp lệ. Hãy chạy lại kiểm chứng trước khi đổi baseline.");
+        verify(regressions, never()).archiveVersion(anyLong());
+        verify(regressions, never()).promoteToBaseline(anyLong());
     }
 
     private static AdoptRequest adopt() {
