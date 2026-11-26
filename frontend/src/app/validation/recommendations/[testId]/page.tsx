@@ -28,6 +28,8 @@ export default function RecommendationPage() {
 
   const running = r?.status === "RUNNING" || r?.status === "PENDING";
   const final = r?.review.decision === "ACCEPT" || r?.review.decision === "REJECT";
+  // Candidate đã được quyết định ở kiểm thử khác: backend từ chối mọi Accept / Reject của khuyến nghị này.
+  const superseded = r?.recommendation_status === "SUPERSEDED";
   const effect = r?.expected_effect;
 
   return (
@@ -48,9 +50,10 @@ export default function RecommendationPage() {
             </PillButton>
             <PillButton
               variant="dark"
-              href={!final && !running && canDecide ? `/validation/recommendations/${r.id}/review` : undefined}
-              disabled={final || running || !canDecide}
-              title={!canDecide ? "Chỉ Người duyệt (REVIEWER) được ra quyết định" : final ? "Đã có quyết định cuối" : undefined}
+              href={!final && !superseded && !running && canDecide ? `/validation/recommendations/${r.id}/review` : undefined}
+              disabled={final || superseded || running || !canDecide}
+              title={!canDecide ? "Chỉ Người duyệt (REVIEWER) được ra quyết định" : final ? "Đã có quyết định cuối"
+                : superseded ? "Ứng viên này đã được quyết định ở một kiểm thử hồi quy khác" : undefined}
               className="print:hidden"
             >
               Duyệt quyết định
@@ -193,7 +196,11 @@ export default function RecommendationPage() {
                 <p className="pt-2 text-[12px] text-vehicsim-muted">
                   {r.recommendation_status === "BLOCKED"
                     ? "Kiểm thử hồi quy không đạt — ứng viên chỉ có thể bị từ chối hoặc trả lại để kiểm thử thêm."
-                    : "Đang chờ Người duyệt (Reviewer) quyết định."}
+                    : r.recommendation_status === "SUPERSEDED"
+                      ? "Hết hiệu lực: ứng viên này đã được quyết định ở một kiểm thử hồi quy khác, không cần duyệt khuyến nghị này nữa."
+                      : r.recommendation_status === "BASELINE_CHANGED"
+                        ? "Bản cơ sở đã đổi kể từ khi chạy kiểm thử: không chấp nhận được nữa, hãy chạy lại kiểm thử hồi quy với bản cơ sở hiện hành."
+                        : "Đang chờ Người duyệt (Reviewer) quyết định."}
                 </p>
               )}
             </section>

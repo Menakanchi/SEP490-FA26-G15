@@ -1,5 +1,6 @@
 "use client";
 
+import { TrialSelectAction, useTrialSelections } from "@/components/aeb/TrialSelectAction";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -72,6 +73,8 @@ export default function AebMoboStudioPage() {
 
   // Pareto data
   const [paretoResult, setParetoResult] = useState<{ id: number; data: OptimizationTrial[] } | null>(null);
+  // Tải lại trạng thái "đã chọn" khi danh sách Pareto được tải lại (sau khi chọn ứng viên).
+  const trialSelections = useTrialSelections(paretoResult);
   const paretoTrials = useMemo(() => paretoResult?.id === selectedRunId ? paretoResult.data.filter(isFeasibleTrial) : null, [paretoResult, selectedRunId]);
   const [selectingTrialId, setSelectingTrialId] = useState<number | null>(null);
   const [candidateResult, setCandidateResult] = useState<{
@@ -443,14 +446,7 @@ export default function AebMoboStudioPage() {
                           {formatMeasurement(t.stopping_distance_m, "m", 2, true)}
                         </td>
                         <td className="w-[170px] px-4 py-3.5 text-center whitespace-nowrap">
-                          <button
-                            type="button"
-                            disabled={selectingTrialId !== null || !canWrite || !isFeasibleTrial(t)}
-                            onClick={() => handleSelectCandidate(t.id)}
-                            className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-3.5 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs whitespace-nowrap"
-                          >
-                            {selectingTrialId === t.id ? "Đang lưu…" : "Chọn làm ứng viên"}
-                          </button>
+                          <TrialSelectAction trial={t} selections={trialSelections} selecting={selectingTrialId} canWrite={canWrite} onSelect={handleSelectCandidate} disabled={!isFeasibleTrial(t)} />
                         </td>
                       </tr>
                     ))}

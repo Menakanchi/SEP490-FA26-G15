@@ -64,7 +64,33 @@ public final class RegressionCodes {
         return "FAILED".equals(displayStatus(test)) ? "BLOCKED" : decision;
     }
 
+    /**
+     * Như {@link #recommendationStatus(RegressionTestRow, RecommendationRow)}, thêm trạng thái của phiên bản AEB lúc xem: khuyến nghị còn chờ
+     * nhưng candidate đã được quyết định ở regression khác là {@code SUPERSEDED} (không duyệt được nữa); baseline của test đã đổi mà candidate
+     * còn chờ là {@code BASELINE_CHANGED} (không Accept được, vẫn Reject / yêu cầu thêm kiểm thử được). Cùng điều kiện với
+     * {@code ReviewDecisionService}, để giao diện không còn đếm các khuyến nghị này là "chờ duyệt".
+     */
+    public static String recommendationStatus(RegressionTestRow test, RecommendationRow recommendation, String baselineVersionStatus,
+                                              String candidateVersionStatus) {
+        String status = recommendationStatus(test, recommendation);
+        if (!"PENDING".equals(status) && !"BLOCKED".equals(status)) {
+            return status;
+        }
+        if (candidateVersionStatus != null && !"CANDIDATE".equals(candidateVersionStatus)) {
+            return "SUPERSEDED";
+        }
+        if (baselineVersionStatus != null && !"BASELINE".equals(baselineVersionStatus)) {
+            return "BASELINE_CHANGED";
+        }
+        return status;
+    }
+
     public static String recommendationStatusLabel(String recommendationStatus, String decision) {
-        return "BLOCKED".equals(recommendationStatus) ? "Blocked" : REVIEW_LABELS.get(decision);
+        return switch (recommendationStatus) {
+            case "BLOCKED" -> "Blocked";
+            case "SUPERSEDED" -> "Superseded";
+            case "BASELINE_CHANGED" -> "Baseline changed";
+            default -> REVIEW_LABELS.get(decision);
+        };
     }
 }

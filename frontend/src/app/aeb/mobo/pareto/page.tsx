@@ -1,5 +1,6 @@
 "use client";
 
+import { TrialSelectAction, useTrialSelections } from "@/components/aeb/TrialSelectAction";
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, TrendingUp } from "lucide-react";
@@ -21,6 +22,8 @@ export default function AebMoboParetoPage() {
   const [runs, setRuns] = useState<OptimizationRun[] | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [paretoResult, setParetoResult] = useState<{ runId: number; items: OptimizationTrial[] } | null>(null);
+  // Tải lại trạng thái "đã chọn" khi danh sách Pareto được tải lại (sau khi chọn ứng viên).
+  const trialSelections = useTrialSelections(paretoResult);
   const paretoTrials = paretoResult?.runId === selectedRunId ? paretoResult.items.filter(isFeasibleTrial) : null;
   const selectionLock = useRef(false);
   const [selectingTrialId, setSelectingTrialId] = useState<number | null>(null);
@@ -229,14 +232,7 @@ export default function AebMoboParetoPage() {
                       {formatMeasurement(t.stopping_distance_m, "m", 2, true)}
                     </td>
                     <td className="w-[170px] px-4 py-3.5 text-center whitespace-nowrap">
-                      <button
-                        type="button"
-                        disabled={selectingTrialId !== null || !canWrite || !isFeasibleTrial(t)}
-                        onClick={() => handleSelectCandidate(t.id)}
-                        className="inline-flex h-8 items-center justify-center rounded-lg bg-vehicsim-primary px-3.5 text-[12px] font-bold text-white transition hover:bg-vehicsim-primary-hover disabled:opacity-40 shadow-xs whitespace-nowrap"
-                      >
-                        {selectingTrialId === t.id ? "Đang lưu…" : "Chọn làm ứng viên"}
-                      </button>
+                      <TrialSelectAction trial={t} selections={trialSelections} selecting={selectingTrialId} canWrite={canWrite} onSelect={handleSelectCandidate} disabled={!isFeasibleTrial(t)} />
                     </td>
                   </tr>
                 ))}

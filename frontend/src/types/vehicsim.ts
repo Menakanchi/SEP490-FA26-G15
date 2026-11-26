@@ -756,7 +756,8 @@ export interface RegressionRequest {
   variant_ids?: number[];
 }
 
-export type RecommendationStatus = ReviewDecision | "BLOCKED";
+/** `SUPERSEDED`: candidate đã được quyết định ở kiểm thử khác; `BASELINE_CHANGED`: bản cơ sở của kiểm thử đã đổi (không Accept được). */
+export type RecommendationStatus = ReviewDecision | "BLOCKED" | "SUPERSEDED" | "BASELINE_CHANGED";
 
 export interface RecommendationItem {
   id: number;

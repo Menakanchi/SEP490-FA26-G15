@@ -299,14 +299,14 @@ export default function ScenarioFamiliesPage() {
           <EmptyState title="Chưa có họ kịch bản nào">Tạo họ đầu tiên (ví dụ người đi bộ băng ngang) rồi chạy cơ sở để có ca lỗi.</EmptyState>
         )}
         {!!pagedItems?.length && (
-          <TableScroll label="Bảng họ kịch bản" minWidth={960}>
+          <TableScroll label="Bảng họ kịch bản" minWidth={985}>
             <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
               <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
               <span className="w-[200px] shrink-0 pr-4">Họ kịch bản</span>
               <span className="min-w-[190px] flex-1 pr-4">Không gian tham số</span>
               <span className="w-[85px] shrink-0">Biến thể</span>
               <span className="w-[95px] shrink-0">Lượt chạy</span>
-              <span className="w-[95px] shrink-0">Lỗi baseline</span>
+              <span className="w-[120px] shrink-0 pr-2">Lỗi baseline</span>
               <span className="w-[85px] shrink-0">Ngày tạo</span>
               <span className="w-[215px] shrink-0 text-center">Thao tác</span>
             </div>
@@ -382,6 +382,9 @@ export default function ScenarioFamiliesPage() {
                     <span>
                       <b className="text-vehicsim-ink font-bold">{shown.runs.COMPLETED ?? 0}</b> đã xong
                     </span>
+                    <span className="text-[10.5px] text-vehicsim-faint" title="Gồm lượt baseline, lượt AEB tắt, lượt của tối ưu MOBO và kiểm thử hồi quy">
+                      mọi mục đích
+                    </span>
                     {!old && pending > 0 && (
                       <button
                         type="button"
@@ -411,14 +414,21 @@ export default function ScenarioFamiliesPage() {
                       ))}
                     {(shown.runs.STOPPED ?? 0) > 0 && <span className="text-[11px]">{shown.runs.STOPPED} đã hủy</span>}
                   </span>
-                  <span className="flex w-[95px] shrink-0 flex-col">
+                  <span className="flex w-[120px] shrink-0 flex-col pr-2">
                     {old ? (
                       <span className="text-[12px] text-vehicsim-faint" title="Lỗi trên bản cơ sở chỉ tính cho bản hiện hành">—</span>
                     ) : (
                       <>
-                        <span className={cx("text-[13px] font-bold", f.failures ? "text-vehicsim-danger" : "text-vehicsim-faint")}>
-                          {f.failures} / {f.variants}
-                        </span>
+                        {baselineRan(f) ? (
+                          <span className={cx("text-[13px] font-bold", f.failures ? "text-vehicsim-danger" : "text-vehicsim-faint")}>
+                            {f.failures} / {f.variants}
+                          </span>
+                        ) : (
+                          // Chưa biến thể nào chạy xong với bản cơ sở hiện hành: "0 / N" sẽ bị đọc thành "chạy rồi, không lỗi".
+                          <span className="text-[12px] font-semibold text-vehicsim-faint" title="Chưa có lượt baseline hoàn tất với bản cơ sở hiện hành">
+                            Chưa chạy
+                          </span>
+                        )}
                         {f.baseline && <span className="text-[10.5px] text-vehicsim-faint">AEB {f.baseline}</span>}
                       </>
                     )}
@@ -669,6 +679,11 @@ function ActiveRuns({
 }
 
 /** Tách lượt đang chạy khỏi lượt đang chờ (PENDING/QUEUED, PAUSED), mỗi loại một dòng để cột hẹp không cắt chữ. */
+/** Đã có biến thể chạy xong với bản cơ sở hiện hành (mọi bộ mô phỏng) chưa; backend chỉ đếm lượt baseline AEB bật của xe đang dùng. */
+function baselineRan(f: FamilyItem): boolean {
+  return Object.values(f.baseline_progress ?? {}).some((p) => p.completed_variants > 0);
+}
+
 function waitingRunsLines(runs: Record<string, number>): string[] {
   const running = runs.RUNNING ?? 0;
   const waiting = (runs.PENDING ?? runs.QUEUED ?? 0) + (runs.PAUSED ?? 0);
