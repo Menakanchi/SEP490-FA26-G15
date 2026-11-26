@@ -16,6 +16,7 @@ import org.springframework.jdbc.datasource.init.ScriptUtils;
 import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.*;
 import static org.mockito.Mockito.*;
 import static org.assertj.core.api.Assertions.*;
 import static com.vsos.core.failureanalysis.Evidence.*;
@@ -180,6 +181,65 @@ class FailureAnalysisDatabaseMysqlTest {
                 .isEqualTo(com.vsos.backend.common.Json.write(input).getBytes(StandardCharsets.UTF_8));
         assertThat(jdbc.queryForObject("SELECT status FROM simulation_runs WHERE id=9002",String.class)).isEqualTo("COMPLETED");
         verify(events).publishEvent(new RunService.RunFinished(9002));
+    }
+    @Test @Order(11) void concurrentRunCompletionsDoNotCompeteForInteractiveAnalysisCapacity()throws Exception {
+        // Both interactive slots stay occupied until every producer transaction has completed.
+        // Historical fixture bytes are rewritten only for the isolated test identities; this is
+        // a DB/concurrency test, not evidence that a new CARLA simulation was executed.
+        byte[] raw=originals.get(2499L);
+        var entered=new CountDownLatch(2);var release=new CountDownLatch(1);
+        class HeldInput extends java.io.ByteArrayInputStream {
+            boolean held;
+            HeldInput(){super(raw);}
+            @Override public synchronized int read(byte[] b,int offset,int length) {
+                if(!held){held=true;entered.countDown();try {
+                    if(!release.await(30,TimeUnit.SECONDS)) throw new IllegalStateException("test timeout");
+                } catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}
+                return super.read(b,offset,length);
+            }
+        }
+        var inputs=new LinkedHashMap<Long,Map<String,Object>>();
+        for(long id=9003;id<=9006;id++) {
+            long repetition=id-8999;
+            jdbc.update("INSERT INTO simulation_runs(id,project_id,scenario_id,scenario_version_id,carla_vehicle_model_id,aeb_version_id,aeb_mode,repetition,attempt,simulator_type,simulator_version,purpose,status,random_seed,created_by_user_id) "
+                    +"SELECT ?,project_id,scenario_id,scenario_version_id,carla_vehicle_model_id,aeb_version_id,aeb_mode,?,attempt,simulator_type,simulator_version,purpose,'FAILED',random_seed,created_by_user_id FROM simulation_runs WHERE id=2499",id,repetition);
+            var input=com.vsos.backend.common.Json.parseMap(new String(raw,StandardCharsets.UTF_8));
+            ((Map<String,Object>)input.get("source")).put("run_id",id);
+            var identity=(Map<String,Object>)at(input,"/dataset/identity");identity.put("run_id",id);identity.put("repetition",repetition);
+            inputs.put(id,input);
+        }
+        var params=(Map<String,Object>)at(inputs.get(9003L),"/outcome/params");
+        var queries=mock(com.vsos.backend.repository.common.Queries.class);
+        when(queries.aebValues(33L)).thenReturn(Map.of("TTC_THRESHOLD",((Number)params.get("ttc_threshold")).doubleValue(),
+                "BRAKE_ACTIVATION_DELAY",((Number)params.get("brake_activation_delay")).doubleValue(),
+                "MAX_DECELERATION",((Number)params.get("max_deceleration")).doubleValue(),
+                "BRAKE_BUILDUP_RATE",((Number)params.get("brake_buildup_rate")).doubleValue()));
+        var events=mock(org.springframework.context.ApplicationEventPublisher.class);
+        var runs=new RunService(new Db(jdbc),queries,mock(com.vsos.backend.config.VehicSimProperties.class),
+                mock(org.springframework.core.task.TaskExecutor.class),events,
+                new org.springframework.transaction.support.TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource())),
+                mock(com.vsos.backend.service.scenario.FamilyService.class),service);
+        try(var pool=Executors.newFixedThreadPool(6)) {
+            var interactive1=pool.submit(()->service.ingest(4,7,new HeldInput(),raw.length,null));
+            var interactive2=pool.submit(()->service.ingest(4,7,new HeldInput(),raw.length,null));
+            try {
+                assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();
+                var start=new CountDownLatch(1);var completions=new ArrayList<Future<Map<String,Object>>>();
+                for(var input:inputs.entrySet()) completions.add(pool.submit(()->{
+                    if(!start.await(10,TimeUnit.SECONDS))throw new IllegalStateException("test start timeout");
+                    return runs.submitCarlaResult(4,input.getKey(),7,input.getValue());
+                }));
+                start.countDown();
+                for(var completion:completions)assertThat(completion.get(25,TimeUnit.SECONDS)).containsEntry("status","COMPLETED");
+                for(var input:inputs.entrySet()) {
+                    var run=new com.vsos.backend.repository.common.Row(jdbc.queryForMap("SELECT * FROM simulation_runs WHERE id=?",input.getKey()));
+                    assertThat(run.str("status")).isEqualTo("COMPLETED");
+                    assertThat(service.producerResult(run).body()).isEqualTo(com.vsos.backend.common.Json.write(input.getValue()).getBytes(StandardCharsets.UTF_8));
+                    verify(events).publishEvent(new RunService.RunFinished(input.getKey()));
+                }
+            } finally {release.countDown();}
+            interactive1.get(25,TimeUnit.SECONDS);interactive2.get(25,TimeUnit.SECONDS);
+        }
     }
     @AfterAll void originalInputsUntouched()throws Exception {for(var e:originals.entrySet())assertThat(Files.readAllBytes(storage.runDir(e.getKey()).resolve("result.json"))).isEqualTo(e.getValue());}
     void assertReportValues(Map<String,Object> e) {

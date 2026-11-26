@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -35,6 +36,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -356,6 +358,33 @@ class CarlaResultSubmissionTest {
         assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, result(CARLA)))
                 .isInstanceOf(IllegalStateException.class).hasMessage("write failed");
         verify(transactions).rollback(any());
+        verify(events, never()).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void retriesWholeResultTransactionAfterLockConflictAndNotifiesOnce() throws Exception {
+        when(resultStore.persistProducerResult(any(Row.class), any(byte[].class)))
+                .thenThrow(new CannotAcquireLockException("deadlock"))
+                .thenReturn(null);
+
+        assertThat(service.submitCarlaResult(PROJECT, RUN, USER, result(CARLA)))
+                .containsEntry("status", "COMPLETED");
+        verify(transactions, times(2)).getTransaction(any());
+        verify(transactions).rollback(any());
+        verify(transactions).commit(any());
+        verify(resultStore, times(2)).persistProducerResult(any(Row.class), any(byte[].class));
+        verify(events).publishEvent(new RunService.RunFinished(RUN));
+    }
+
+    @Test
+    void repeatedLockConflictsStopWithoutNotifyingRegression() throws Exception {
+        when(resultStore.persistProducerResult(any(Row.class), any(byte[].class)))
+                .thenThrow(new CannotAcquireLockException("deadlock"));
+
+        assertThatThrownBy(() -> service.submitCarlaResult(PROJECT, RUN, USER, result(CARLA)))
+                .isInstanceOf(CannotAcquireLockException.class);
+        verify(transactions, times(4)).rollback(any());
+        verify(transactions, never()).commit(any());
         verify(events, never()).publishEvent(any(Object.class));
     }
 

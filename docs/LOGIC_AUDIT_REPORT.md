@@ -1,5 +1,26 @@
 # Kiểm chứng Failure Analysis V3 → MOBO — 26/11/2026
 
+## Sửa lỗi capacity khi hoàn tất run — 26/11/2026
+
+- **Đã sửa nguyên nhân được báo:** producer nội bộ lưu `result.json` không còn
+  cạnh tranh hai suất xử lý dành cho API Failure Analysis. API vẫn giữ giới hạn;
+  source và trạng thái COMPLETED vẫn được lưu cùng transaction.
+- Thử đồng thời bằng MySQL cô lập còn phát hiện deadlock khi nộp nhiều kết quả qua
+  API tương thích. RunService thử lại transaction sau xung đột khóa tối đa bốn lần,
+  không chạy lại mô phỏng; chỉ phát sự kiện sau khi lưu thành công.
+- **Kiểm chứng:** 88 ca chạy, 87 PASS, 1 SKIP (external collection), không lỗi.
+  Bao gồm 16 producer khi cả hai suất FA đang bận; bốn lượt nộp đồng thời với MySQL;
+  bốn lượt worker simulator động học hoàn tất đồng thời khi hai suất FA đang bận,
+  kiểm nguyên bytes trong DB và tiếp tục luồng FA/regression. Chưa chạy lại baseline
+  40 lượt, RT-003 hay CARLA thật trên môi trường nhóm.
+- **Giới hạn còn lại:** lỗi lưu DB kéo dài hoặc lỗi dữ liệu vẫn rollback và có thể
+  làm run FAILED. Chưa có staging bền và cơ chế khôi phục result sau restart để
+  tách trạng thái mô phỏng khỏi trạng thái lưu; không đánh dấu COMPLETED khi thiếu
+  source DB. Các run đã FAILED trước bản sửa chưa được tự phục hồi.
+- Source sửa: `FailureAnalysisService.java`, `RunService.java`; mở rộng các test
+  `FailureAnalysisServiceTest`, `FailureAnalysisDatabaseMysqlTest`, `MainFlowMysqlTest`,
+  `CarlaResultSubmissionTest`. Không thay DB nhóm, không commit/push.
+
 **Bốn blocker đã được triển khai và kiểm chứng tích hợp với HTTP/JWT, MySQL 8.4,
 Redis 7.4 và simulator Java `vehicsim-kinematic-1.4`.** Luồng DB → FA V3 → handoff
 DB → campaign → GP → candidate → regression đã chạy thật trong môi trường cô lập.

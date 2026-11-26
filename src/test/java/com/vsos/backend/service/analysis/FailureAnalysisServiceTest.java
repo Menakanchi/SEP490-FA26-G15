@@ -3,6 +3,7 @@ package com.vsos.backend.service.analysis;
 import com.vsos.backend.common.analysis.FailureAnalysisJson;
 
 import com.vsos.backend.repository.analysis.FailureAnalysisStore.*;
+import com.vsos.backend.repository.common.Row;
 import com.vsos.core.common.MiniJson;
 import com.vsos.core.failureanalysis.*;
 import org.junit.jupiter.api.*;
@@ -145,16 +146,28 @@ class FailureAnalysisServiceTest {
             Held(){super(raw);}
             boolean held;
             @Override public synchronized int read(byte[] b,int off,int len){
-                if(!held){held=true;entered.countDown();try{if(!release.await(10,TimeUnit.SECONDS))throw new IllegalStateException("test timeout");}
+                if(!held){held=true;entered.countDown();try{if(!release.await(30,TimeUnit.SECONDS))throw new IllegalStateException("test timeout");}
                     catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}
                 return super.read(b,off,len);
             }
         }
-        try(var pool=Executors.newFixedThreadPool(2)) {
+        try(var pool=Executors.newFixedThreadPool(10)) {
             var a=pool.submit(()->service.ingest(1,7,new Held(),raw.length,null));
             var b=pool.submit(()->service.ingest(1,7,new Held(),raw.length,null));
             try {
                 assertThat(entered.await(5,TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(()->service.ingest(1,7,new ByteArrayInputStream(raw),raw.length,null)).hasMessage("FA_PROCESSING_CAPACITY_REACHED");
+                List<Future<Map<String,Object>>> producers=new ArrayList<>();
+                for(int i=1;i<=16;i++) {
+                    long id=i;
+                    producers.add(pool.submit(()->service.persistProducerResult(new Row(Map.of(
+                            "project_id",1L,"id",id,"attempt",1L,"created_by_user_id",7L)),raw)));
+                }
+                for(var producer:producers) {
+                    var saved=producer.get(20,TimeUnit.SECONDS);
+                    assertThat(service.download(Kind.SOURCE,1,saved.get("id").toString())).isEqualTo(raw);
+                }
+                // Producer completions must not accidentally release interactive permits.
                 assertThatThrownBy(()->service.ingest(1,7,new ByteArrayInputStream(raw),raw.length,null)).hasMessage("FA_PROCESSING_CAPACITY_REACHED");
             } finally {release.countDown();}
             assertThat(a.get(20,TimeUnit.SECONDS).get("id")).isEqualTo(b.get(20,TimeUnit.SECONDS).get("id"));
