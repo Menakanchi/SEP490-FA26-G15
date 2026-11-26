@@ -13,6 +13,7 @@ public final class FailureAnalysisJson {
     private FailureAnalysisJson() {}
     public static final String VERSION = "fa-rest-persistence/1";
     public static final int SOURCE_BYTES = 1 << 20;
+    public static final int DB_COLLECTION_BYTES = 2 << 20;
     public static final int RESOURCE_BYTES = 8 << 20;
     public static final int GRAPH_BYTES = 32 << 20;
     public static final int METADATA_BYTES = 256 << 10;

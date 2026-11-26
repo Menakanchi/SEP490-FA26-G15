@@ -33,7 +33,7 @@ public class FailureAnalysisService {
     }
 
     public Map<String, Object> ingest(long project, long user, InputStream stream, long length, String expectedSha) throws IOException {
-        return ingest(project, user, stream, length, expectedSha, null);
+        return ingest(project, user, stream, length, expectedSha, null, SOURCE_BYTES);
     }
 
     public void requireDatabaseWrite(long project) {
@@ -41,13 +41,14 @@ public class FailureAnalysisService {
     }
 
     public Map<String, Object> ingestDatabase(long project, long user, byte[] raw, Map<String, Object> provenance) throws IOException {
-        return ingest(project, user, new ByteArrayInputStream(raw), raw.length, null, provenance);
+        int maxBytes = "COLLECTION".equals(provenance.get("selection_kind")) ? DB_COLLECTION_BYTES : SOURCE_BYTES;
+        return ingest(project, user, new ByteArrayInputStream(raw), raw.length, null, provenance, maxBytes);
     }
 
     private Map<String, Object> ingest(long project, long user, InputStream stream, long length, String expectedSha,
-                                       Map<String, Object> acquisition) throws IOException {
+                                       Map<String, Object> acquisition, int maxBytes) throws IOException {
         store.requireWritableProject(project);
-        if (length > SOURCE_BYTES) {
+        if (length > maxBytes) {
             throw new FailureAnalysisException(413, "SOURCE_BYTES_EXCEEDED");
         }
         if (expectedSha != null && !expectedSha.matches("[a-f0-9]{64}")) {
@@ -55,7 +56,7 @@ public class FailureAnalysisService {
         }
         acquire();
         try {
-            byte[] bytes = new BoundedInput(policy(SOURCE_BYTES)).read(stream, "request-body", -1);
+            byte[] bytes = new BoundedInput(policy(maxBytes)).read(stream, "request-body", -1);
             String digest = sha256(bytes);
             if (expectedSha != null && !digest.equals(expectedSha)) {
                 throw new FailureAnalysisException(422, "SOURCE_DIGEST_MISMATCH");
@@ -272,7 +273,11 @@ public class FailureAnalysisService {
             if (!Set.of("vehicsim.result/v1", "vehicsim.run-collection/v1").contains(meta.get("source_schema"))) {
                 throw new FailureAnalysisException(409, "STORED_SOURCE_VERSION_UNSUPPORTED");
             }
-            if (r.body().length > SOURCE_BYTES || !r.byteDigest().equals(meta.get("source_sha256"))) {
+            boolean dbCollection = "vehicsim.run-collection/v1".equals(meta.get("source_schema"))
+                    && "DATABASE_ARTIFACT_STORAGE".equals(at(meta, "/database_input/origin"))
+                    && "COLLECTION".equals(at(meta, "/database_input/selection_kind"));
+            int maxBytes = dbCollection ? DB_COLLECTION_BYTES : SOURCE_BYTES;
+            if (r.body().length > maxBytes || !r.byteDigest().equals(meta.get("source_sha256"))) {
                 throw new FailureAnalysisException(409, "STORED_SOURCE_IDENTITY_MISMATCH");
             }
         } else if (r.kind() == Kind.REPORT || r.kind() == Kind.HANDOFF) {

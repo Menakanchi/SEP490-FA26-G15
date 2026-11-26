@@ -1031,6 +1031,7 @@ Cùng một PR (luật mềm ở `AGENTS.md`):
 | `021_2026-11-24_chuan-hoa-url-tech-references.sql` | Cập nhật URL/DOI tham khảo |
 | `022_2026-11-24_bo-sung-4-tham-so-aeb-tech-references.sql` | Bổ sung tài liệu và mô tả bốn tham số AEB |
 | `023_2026-11-26_regression-frozen-seeds.sql` | UNIQUE kết quả regression theo test + run baseline, giữ nhiều seed của một biến thể trong partition FA; không sửa/xóa kết quả cũ |
+| `024_2026-11-26_fa-db-collection-2mib.sql` | Tăng CHECK lưu nguồn FA lên 2 MiB cho collection DB; hạn mức upload/từng run giữ 1 MiB |
 
 Hai nhánh có migration trùng số **019 và 020**. Xác định bằng **tên file đầy đủ**, không bỏ một file vì số đã có. DB đang ở mốc 018 cần cả sáu file 019–022 ở trên và 023 trước verification từ dataset nhiều seed; DB mới từ schema hiện tại đã chứa chúng. Không tự chạy lại migration ALTER TABLE trên DB đã nâng. Migration 023 chỉ đổi thành phần của một UNIQUE, giữ 445 cột, 86 FK, 37 CHECK và 48 UNIQUE; chưa tự áp vào DB nhóm.
 
@@ -1064,7 +1065,7 @@ Context chấp nhận project chưa chọn xe và trả `vehicle=null`. Frontend
 ## BE-R1 — kho JSON Failure Analysis (migration 020 ngày 25/11)
 
 Chỉ INSERT và SELECT qua FailureAnalysisStore. Không cập nhật dữ liệu mô phỏng/đánh giá cũ.
-Payload source tối đa 1 MiB; tài nguyên dẫn xuất 8 MiB, metadata 256 KiB. FK ON DELETE RESTRICT.
+Payload source tối đa 2 MiB cho collection dựng từ DB; upload và từng result tối đa 1 MiB. Tài nguyên dẫn xuất 8 MiB, metadata 256 KiB. FK ON DELETE RESTRICT.
 Execution và toàn bộ report/handoff commit trong một transaction; tính toán core nằm ngoài transaction.
 Rollback triển khai: tắt caller V3; giữ bảng/bytes để bảo toàn lịch sử; chỉ drop sau khi đã export và được phê duyệt.
 

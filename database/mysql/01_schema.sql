@@ -978,7 +978,7 @@ CREATE TABLE fa_json_sources (
   KEY ix_fa_source_identity (project_id,identity_digest),
   KEY ix_fa_source_list (project_id,created_at,id),
   CONSTRAINT fk_fa_source_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT,
-  CONSTRAINT ck_fa_source_bytes CHECK (OCTET_LENGTH(payload_bytes) <= 1048576 AND OCTET_LENGTH(metadata_bytes) <= 262144),
+  CONSTRAINT ck_fa_source_bytes CHECK (OCTET_LENGTH(payload_bytes) <= 2097152 AND OCTET_LENGTH(metadata_bytes) <= 262144),
   CONSTRAINT ck_fa_source_parent CHECK (source_id IS NULL AND execution_id IS NULL)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

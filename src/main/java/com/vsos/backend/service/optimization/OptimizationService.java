@@ -898,8 +898,8 @@ public class OptimizationService {
 
                 if (frozen != null) {
                     for (Row trial : completedTrials) {
-                        List<Row> evidence = db.list("SELECT * FROM simulation_runs WHERE project_id = ? AND optimization_trial_id = ? ORDER BY id",
-                                projectId, trial.lng("id"));
+                        List<Row> evidence = db.list("SELECT * FROM simulation_runs WHERE project_id = ? AND optimization_trial_id = ?",
+                                projectId, trial.lng("id")).stream().sorted(Comparator.comparingLong(r -> r.lng("id"))).toList();
                         validateFrozenCandidateRuns(evidence, frozen.optimization(), trial.lng("candidate_aeb_version_id"), trial.lng("id"));
                         CandidateTrialMetrics recorded = evaluateCandidateRuns(evidence, baselineStats);
                         if (!Objects.equals(recorded.rmsJerk(), trial.dbl("rms_jerk_mps3"))
@@ -2223,6 +2223,7 @@ public class OptimizationService {
 
 
         res.put("algorithm", r.str("algorithm"));
+        res.put("simulator_version", r.str("simulator_version"));
 
 
 

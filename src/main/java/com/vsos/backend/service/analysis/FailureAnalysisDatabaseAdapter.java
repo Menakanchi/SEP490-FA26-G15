@@ -148,7 +148,7 @@ public class FailureAnalysisDatabaseAdapter {
                 if (collection) {
                     var prefix = ("{\"run_id\":" + row.lng("id") + ",\"result\":").getBytes(StandardCharsets.UTF_8);
                     retainedBytes += prefix.length + doc.bytes().length + 2;
-                    if (retainedBytes > SOURCE_BYTES) {
+                    if (retainedBytes > DB_COLLECTION_BYTES) {
                         throw new FailureAnalysisException(413, "DB_COLLECTION_BYTE_LIMIT_NO_TRUNCATION");
                     }
                     var entry = new ByteArrayOutputStream();
@@ -186,13 +186,13 @@ public class FailureAnalysisDatabaseAdapter {
             if (i > 0) {
                 output.write(',');
             }
-            if (output.size() + docs.get(i).length > SOURCE_BYTES) {
+            if (output.size() + docs.get(i).length > DB_COLLECTION_BYTES) {
                 throw new FailureAnalysisException(413, "DB_COLLECTION_BYTE_LIMIT_NO_TRUNCATION");
             }
             output.write(docs.get(i));
         }
         output.write(ENVELOPE_END);
-        if (output.size() > SOURCE_BYTES) {
+        if (output.size() > DB_COLLECTION_BYTES) {
             throw new FailureAnalysisException(413, "DB_COLLECTION_BYTE_LIMIT_NO_TRUNCATION");
         }
         // A second metadata read rejects concurrent membership/identity changes, without writing Module 2.
