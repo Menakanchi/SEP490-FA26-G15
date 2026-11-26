@@ -36,3 +36,5 @@
 @media(max-width:1600px) { .groups { grid-template-columns:1fr; } }
 @media(max-width:1000px) { .validation { grid-template-columns:1fr; } .steps { gap:6px; } .steps li { font-size:11px; padding:10px; } }
 @media(max-width:700px) { .counts, .steps { grid-template-columns:1fr; } }
+
+.revision { overflow-wrap:anywhere; white-space:normal; }

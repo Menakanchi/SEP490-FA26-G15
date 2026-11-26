@@ -319,20 +319,29 @@ public class AuthService {
      * Một từ duy nhất thì coi là tên (họ để trống).
      *
      * @return {họ, tên đệm hoặc null, tên}
+     * @throws ResponseStatusException 400 khi họ, tên đệm hoặc tên dài quá {@value #NAME_PART_MAX} ký tự (độ rộng cột);
+     *         báo lỗi thay vì cắt bớt để không lưu thiếu tên mà người dùng không biết (UserManagement-10)
      */
     static String[] splitFullName(String fullName) {
         String[] parts = fullName.trim().split("\\s+");
         if (parts.length == 1) {
-            return new String[]{"", null, cut(parts[0])};
+            return new String[]{"", null, fit(parts[0], "Tên")};
         }
         String middle = parts.length > 2
                 ? String.join(" ", java.util.Arrays.copyOfRange(parts, 1, parts.length - 1))
                 : null;
-        return new String[]{cut(parts[0]), middle == null || middle.isEmpty() ? null : cut(middle), cut(parts[parts.length - 1])};
+        return new String[]{fit(parts[0], "Họ"), middle == null || middle.isEmpty() ? null : fit(middle, "Tên đệm"),
+                fit(parts[parts.length - 1], "Tên")};
     }
 
-    /** Cột họ/đệm/tên rộng 80 ký tự. */
-    private static String cut(String s) {
-        return s.length() > 80 ? s.substring(0, 80) : s;
+    /** Cột {@code last_name}/{@code middle_name}/{@code first_name} rộng 80 ký tự. */
+    static final int NAME_PART_MAX = 80;
+
+    private static String fit(String part, String label) {
+        if (part.length() > NAME_PART_MAX) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    label + " tối đa " + NAME_PART_MAX + " ký tự (đang có " + part.length() + "). Hãy rút gọn rồi lưu lại.");
+        }
+        return part;
     }
 }

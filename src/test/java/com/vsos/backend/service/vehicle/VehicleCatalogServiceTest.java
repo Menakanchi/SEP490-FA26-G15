@@ -82,7 +82,9 @@ class VehicleCatalogServiceTest {
         Map<String, Object> out = catalog.detail(1L, 2);
 
         assertThat(out).containsEntry("in_use", false).containsEntry("run_count", 15L);
-        assertThat(out.get("sensors")).isEqualTo(List.of());
+        // VehicleConfig-10: bảng sensors trống thì trả bộ cảm biến adapter CARLA gắn lúc chạy, không còn danh sách rỗng.
+        assertThat(out).containsEntry("sensor_source", "CARLA_ADAPTER_CODE");
+        assertThat((List<?>) out.get("sensors")).hasSize(6);
         @SuppressWarnings("unchecked") Map<String, Object> physics = (Map<String, Object>) out.get("physics");
         assertThat(physics).containsEntry("center_of_mass_m", null).containsEntry("max_speed_mps", null);
         @SuppressWarnings("unchecked") List<Map<String, Object>> usage = (List<Map<String, Object>>) out.get("usage");
@@ -123,6 +125,7 @@ class VehicleCatalogServiceTest {
 
         assertThat(out).containsEntry("in_use", false).containsEntry("run_count", 0L).containsEntry("usage", List.of());
         assertThat((List<?>) out.get("sensors")).hasSize(1);
+        assertThat(out).containsEntry("sensor_source", "DATABASE");
         assertThat(out).containsKey("physics");
         org.mockito.Mockito.verify(db, org.mockito.Mockito.never()).list(startsWith("SELECT simulator_type"), any(Object[].class));
     }

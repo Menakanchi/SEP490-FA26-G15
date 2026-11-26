@@ -62,6 +62,8 @@ try {
       vehicle: { id: 2, name: "Fixture car" }, system: { id: 1, name: "AEB", baseline: { id: 7, label: "v7" } },
       versions: [{ id: 7, label: "v7", status: "BASELINE" }], families: [{ id: 42, name: "Metric fixture", code: "CP" }], parameters: [], reviewer_projects: [] });
     if (p === "/vehicsim/regression") return reply({ items: [], kpis: { total: 0, passed: 0, failed: 0, running: 0 } });
+    if (p === "/vehicsim/analysis/v3/sources") return reply({items:[],limit:20,offset:0}); // FE-R4: empty FA storage is independent of legacy runs.
+    if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
     if (p === "/vehicsim/notifications") return reply({ items: [], unread_count: 0 });
     if (p === "/vehicsim/runs/101/playback") return reply(playback);
     if (p === "/vehicsim/analysis/runs/101") return reply({ run: inspectionRun, detail });
@@ -103,7 +105,8 @@ try {
       assert.equal(await combined.locator("polyline[data-signal=ttc]").count(),0,"Null TTC has no series");
       assert.equal(await combined.locator("polyline[data-signal=speed_kmh]").getAttribute("stroke-dasharray"),"6 3");
       assert.equal(await combined.locator("[data-chart-cursor]").getAttribute("x1"),await motion.locator("[data-chart-cursor]").getAttribute("x1"));
-      await slider.focus(); await slider.press("End"); await page.waitForURL(u=>u.searchParams.get("t")==="0.5");
+      await page.mouse.move(0,0); await slider.focus(); await slider.press("End"); await page.waitForURL(u=>u.searchParams.get("t")==="0.5");
+      await page.waitForFunction(()=>[...document.querySelectorAll("[data-chart-readout]")].at(-1)?.textContent.includes("t = 0.500 s"));
       assert.match(await page.locator("[data-chart-readout]").last().innerText(),/t = 0\.500 s/);
       assert.equal(new URL(page.url()).searchParams.get("returnTo"),returnTo);
     }
@@ -117,6 +120,7 @@ try {
     assert.match(await page.locator("[data-chart-quality]").nth(1).innerText(),/1 số đo ngoài hợp đồng/);
     await slider.focus(); await slider.press("End"); await page.waitForURL(u=>u.searchParams.get("t")==="2");
     assert.equal(await combined.locator("[data-chart-cursor]").getAttribute("x1"),await motion.locator("[data-chart-cursor]").getAttribute("x1"));
+    await page.waitForFunction(()=>[...document.querySelectorAll("[data-chart-readout]")].at(-1)?.textContent.includes("Chưa có mẫu trong khoảng đã ghi"));
     assert.match(await page.locator("[data-chart-readout]").last().innerText(),/Chưa có mẫu trong khoảng đã ghi/,"Shorter source cannot extrapolate");
     await combined.scrollIntoViewIfNeeded();
     const box=await combined.boundingBox();
@@ -160,6 +164,7 @@ try {
     const playbackSlider=page.getByRole("slider",{name:"Thời gian playback",exact:true});
     await playbackSlider.focus(); await playbackSlider.press("End");
     await page.waitForFunction(()=>new URL(location.href).searchParams.get("t")==="0.5");
+    await page.waitForFunction(()=>Number([...document.querySelectorAll("[data-chart-cursor]")].at(-1)?.getAttribute("x1"))===644);
     assert.equal(Number(await motion.locator("[data-chart-cursor]").getAttribute("x1")),644);
     await shot("playback-missing-dt");
     for(const count of [200,2000,20000]) {

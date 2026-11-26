@@ -1,3 +1,4 @@
+import { openRunContext, openOverview } from "./helpers/analysis-disclosures.mjs";
 import { prepareAnalysisArtifacts } from "./helpers/analysis-artifacts.mjs";
 /** Metric rendering regression: browser HTTP fixtures, no live backend/CARLA. */
 import assert from "node:assert/strict";
@@ -62,6 +63,8 @@ try {
     if (p === "/vehicsim/context") return reply({ project: { id: 999913, name: "Metric fixture" }, workspace: { id: 1, name: "Fixture" },
       vehicle: { id: 2, name: "Fixture car" }, system: { id: 1, name: "AEB", baseline: { id: 7, label: "v7" } },
       versions: [{ id: 7, label: "v7", status: "BASELINE" }], families: [{ id: 42, name: "Metric fixture", code: "CP" }], parameters: [], reviewer_projects: [] });
+    if (p === "/vehicsim/analysis/v3/sources") return reply({items:[],limit:20,offset:0}); // FE-R4: empty FA storage is independent of legacy runs.
+    if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
     if (p === "/vehicsim/notifications") return reply({ items: [], unread_count: 0 });
     // Login briefly visits Home, whose regression feed is an object, not an array.
     if (p === "/vehicsim/regression") return reply({ items: [], kpis: { total: 0, passed: 0, failed: 0, running: 0 } });
@@ -92,20 +95,22 @@ try {
     await page.goto(base + "/analysis/failures/101?section=evidence"); await page.getByRole("heading", { name: "Bằng chứng và giới hạn nhận định" }).waitFor(); await shot("evidence");
     await fs.writeFile(path.join(output, "observed.json"), JSON.stringify({ kind: "BASELINE_CAPTURE_ONLY", screenshots, errors }, null, 2));
   } else {
-    const fact = label => summary().locator('[aria-label="' + label + '"]').locator("dd");
+    const fact = label => page.locator('[aria-label="' + label + '"]').locator("dd");
     assert.equal(await fact("RMS jerk").innerText(), "2.123 m/s³");
     assert.equal(await fact("Tốc độ va chạm").innerText(), "10.000 m/s");
     assert.equal(await fact("Quãng phanh").innerText(), "4.00e-4 m");
+    await openRunContext(page);
     assert.equal(await fact("TTC nhỏ nhất").innerText(), "0.00 s");
     await page.goto(base + "/analysis/failures?scenario_id=42&view=overview");
     const aggregate = page.getByRole("region", { name: "Chỉ số tổng hợp của nhóm 1", exact: true });
-    await aggregate.waitFor();
+    await openOverview(page); await aggregate.waitFor();
     for (const text of ["2.123 m/s³", "10.000 m/s", "4.00e-4 m"]) assert((await aggregate.innerText()).includes(text));
     detail = { ...detail, outcome: "SAFE", metrics: { ...detail.metrics, impact_speed_mps: 10, rms_jerk_mps3: 0, stopping_distance_m: null, max_deceleration_mps2: -2 } };
     await page.goto(base + "/analysis/failures/101?section=summary"); await summary().waitFor();
     assert.equal(await fact("Tốc độ va chạm").innerText(), "—", "No collision must not display stale impact");
     assert.equal(await fact("RMS jerk").innerText(), "0.000 m/s³");
     assert.equal(await fact("Quãng phanh").innerText(), "—");
+    await openRunContext(page);
     assert.equal(await fact("Giảm tốc cực đại").innerText(), "—", "Do not abs a negative magnitude");
     await shot("missing-noncollision");
     await page.goto(base + "/analysis/failures/101?section=telemetry&t=0");

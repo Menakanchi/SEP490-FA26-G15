@@ -18,7 +18,7 @@ export function AnalysisMetricExplanation({ kind, detail, run, returnTo }: {
     if (section === "telemetry") {
       next.delete("t"); // API has no timestamp of scalar min/impact/RMS; never invent one.
       const time = kind === "timeline" ? detail.metrics.aeb_activation_t
-        : kind === "rms" || kind === "stopping" ? detail.metrics.brake_onset_t : null;
+        : kind === "stopping" ? detail.metrics.brake_onset_t : null;
       const range = recordedRange(detail);
       if (finite(time) && range && time >= range.min && time <= range.max) next.set("t", String(time));
     }
@@ -29,18 +29,18 @@ export function AnalysisMetricExplanation({ kind, detail, run, returnTo }: {
     <div className={styles.body}>
       <p><strong>{data.title}</strong> · {data.definition}</p>
       <p>Số đo đã lưu: <strong>{data.value}</strong>{data.value === "—" && " · Không có số đo hợp lệ hoặc không áp dụng; API chưa phân biệt mọi nguyên nhân thiếu dữ liệu."}</p>
-      <div><h4>Phương pháp và điều kiện</h4>
-        <p>Đối chiếu code hiện tại: {data.method}. API chưa có phiên bản công thức của run để xác nhận phép tính lịch sử.</p>
-        {data.formula ? <><p className={styles.formula}>{data.formula}</p><p>{data.variables}</p></> : <p>Chưa xác định công thức phù hợp cho nguồn/category này.</p>}
-        <p>{data.conditions}</p>
-      </div>
+      <p role="note"><strong>{data.profileStatus}</strong>. Giá trị được giữ theo response; trạng thái này không chứng minh số đo sai.</p>
+      <p>{data.interpretation}</p>
+      <details data-metric-technical><summary>Nguồn, đầu vào và giới hạn</summary>
+      <p>Tham khảo theo source: {data.method}</p>
+      <p>{data.conditions}</p>
       <div><h4>Dữ liệu API đang có</h4>
         {data.inputs.length ? <ul className={styles.inputs} data-explanation-inputs>{data.inputs.map((input, index) => <li key={`${input.field}-${index}`}>
           <span>{input.label}<code>{input.field}</code></span><strong>{input.value}</strong>
         </li>)}</ul> : <p>API chưa trả đủ đầu vào của phép tính; không hiển thị ví dụ thay số.</p>}
         <p>Giao diện giữ giá trị đã lưu, không tính lại metric từ các số đã làm tròn hoặc dữ liệu minh họa.</p>
       </div>
-      <div><h4>Ý nghĩa và giới hạn</h4><p>{data.interpretation}</p><ul>{data.limitations.map(text => <li key={text}>{text}</li>)}</ul></div>
+      <div><h4>Giới hạn</h4><ul>{data.limitations.map(text => <li key={text}>{text}</li>)}</ul></div>
       <div><h4>Nguồn của run đang xem</h4>
         <ul className={styles.source}>
           <li><span>Run / scenario</span><strong>#{detail.run_id} / #{detail.scenario_id}</strong></li>
@@ -51,6 +51,7 @@ export function AnalysisMetricExplanation({ kind, detail, run, returnTo }: {
         </ul>
         <p>Đây là kết quả mô phỏng, không phải dữ liệu xe thực đã xác minh. Số liệu riêng lẻ không xác nhận nguyên nhân lỗi.</p>
       </div>
+      </details>
       <div className={styles.links}><Link href={link("telemetry")}>Xem telemetry run #{detail.run_id}</Link><Link href={link("evidence")}>Xem bằng chứng run #{detail.run_id}</Link></div>
     </div>
   </details>;
