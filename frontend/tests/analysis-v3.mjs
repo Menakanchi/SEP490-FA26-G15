@@ -7,6 +7,42 @@ const api=(await loadProduction("services/failureAnalysisV3.ts")).failureAnalysi
 const shared=await loadProduction("services/api.ts");
 const read=async name=>JSON.parse(await fs.readFile(new URL(`./fixtures/fa-v3/http-${name}.json`,import.meta.url),"utf8"));
 const [s,e,p,r,h]=await Promise.all(["source","execution","reports","report","handoff-status"].map(read));
+test("presentation giữ riêng va chạm, dấu hiệu AEB và mức chắc chắn",()=>{
+ const base=structuredClone(r.report), evidence=(value,status="OBSERVED",unit=null)=>({value,status,unit});
+ const view=(patch)=>d.diagnosticPresentation({...base,...patch});
+ const candidate=(type,status="SUSPECTED")=>({type,status});
+ const noFailure=view({failure_candidates:[],functional_assessment:evidence("NO_SUPPORTED_FAILURE","DERIVED")});
+ assert.match(noFailure.conclusion,/Chưa phát hiện lỗi/);
+ for(const [type,label] of [["NO_BRAKING","không phanh"],["INEFFECTIVE_BRAKING","phanh không hiệu quả"],["FALSE_BRAKING","phanh không cần thiết"]]) {
+  assert.match(view({failure_candidates:[candidate(type)]}).conclusion,new RegExp(`Nghi ngờ ${label}`));
+  assert(!view({failure_candidates:[candidate(type,"SUPPORTED")]}).conclusion.startsWith("Nghi ngờ"));
+ }
+ assert.match(view({failure_candidates:[],functional_assessment:evidence("INCONCLUSIVE","CONDITIONAL")}).conclusion,/Chưa đủ/);
+ const crash=view({failure_candidates:[],functional_assessment:evidence("INCONCLUSIVE"),physical_outcome:evidence("COLLISION")});
+ assert.match(crash.outcomeText,/Có va chạm/);assert.match(crash.conclusion,/Chưa đủ/);
+ const noCrash=view({physical_outcome:evidence("SAFE"),failure_candidates:[candidate("FALSE_BRAKING")]});
+ assert.match(noCrash.outcomeText,/Không ghi nhận/);assert.match(noCrash.conclusion,/Nghi ngờ phanh không cần thiết/);
+ const many=view({failure_candidates:[candidate("NO_BRAKING"),candidate("INEFFECTIVE_BRAKING")]});
+ assert.equal(many.candidates.length,2);assert.match(many.conclusion,/nhiều dấu hiệu/);
+ assert.match(view({failure_candidates:[candidate("UNKNOWN_NEW_TYPE")]}).conclusion,/Chưa đủ/);
+ assert.match(view({physical_outcome:evidence("COLLISION","UNKNOWN")}).outcomeText,/Chưa xác định/);
+});
+test("presentation không bịa dự đoán hoặc biến null và dữ liệu không hợp lệ thành số",()=>{
+ const base=structuredClone(r.report), ev=(value,status="OBSERVED",unit="s")=>({value,status,unit});
+ const actual={...base,physical_outcome:ev("COLLISION","OBSERVED",null),impact_analysis:{contact_time:ev(3.92)},aeb_timeline:{detection:ev(2.35),command_onset:ev(null,"UNKNOWN")}};
+ let view=d.diagnosticPresentation(actual);
+ assert(view.metrics.some(x=>x.label==="Va chạm thực tế"));assert(!view.metrics.some(x=>/dự kiến/i.test(x.label)));assert(!view.metrics.some(x=>x.label==="Lệnh phanh AEB"));
+ const future={...actual,physical_outcome:ev(null,"UNKNOWN",null),impact_analysis:{contact_time:ev(null,"UNKNOWN")},prediction:{time:ev(4)}};
+ view=d.diagnosticPresentation(future);assert(!view.metrics.some(x=>/va chạm/i.test(x.label)));
+ const objectives=structuredClone(base.objectives);objectives.stopping_distance_m.canonical_value=ev(0,"INVALID","m");
+ view=d.diagnosticPresentation({...actual,objectives,aeb_timeline:{detection:ev(0,"OBSERVED"),command_onset:ev(0,"UNKNOWN")}});
+ assert(view.metrics.some(x=>x.label==="Phát hiện mục tiêu"&&x.data.value===0));
+ assert(!view.metrics.some(x=>x.label==="Lệnh phanh AEB"||x.label==="Quãng đường dừng"));
+ view=d.diagnosticPresentation({...actual,observed_behavior:ev("OFF_HYPOTHETICAL_ONLY","OBSERVED",null),aeb_timeline:{hypothetical:true,detection:ev(1),command_onset:ev(2)}});
+ assert(!view.metrics.some(x=>["Phát hiện mục tiêu","Lệnh phanh AEB"].includes(x.label)),"hypothetical AEB OFF events are not actual events");
+ objectives.stopping_distance_m.canonical_applicability="NOT_APPLICABLE";objectives.stopping_distance_m.canonical_value=ev(10,"OBSERVED","m");
+ assert(!d.diagnosticPresentation({...actual,objectives}).metrics.some(x=>x.label==="Quãng đường dừng"));
+});
 test("actual BE-R1 resource pages, IDs, scope and accounting round trip unchanged",()=>{
  assert.equal(d.source(s,1),s);assert.equal(d.execution(e,1),e);assert.equal(d.page(p,v=>d.reportMetadata(v,1)).items[0],p.items[0]);assert.equal(d.handoff(h,1),h);
  assert.throws(()=>d.source(s,2));assert.throws(()=>d.resource({...s,id:"2499"},"SOURCE",1));

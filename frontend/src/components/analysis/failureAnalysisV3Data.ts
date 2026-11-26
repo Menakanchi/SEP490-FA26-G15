@@ -20,6 +20,40 @@ export class FAError extends Error {
   constructor(public readonly code: string, message: string, public readonly status?: number) { super(message); }
 }
 export const object = (v: unknown): RecordValue => v !== null && typeof v === "object" && !Array.isArray(v) ? v as RecordValue : {};
+
+/** Presentation only: symptoms, outcome and root cause remain independent claims. */
+export function diagnosticPresentation(report: RecordValue) {
+  const outcome = object(report.physical_outcome), behavior = object(report.observed_behavior);
+  const assessment = object(report.functional_assessment);
+  const usable = (e: RecordValue) => ["OBSERVED", "DERIVED", "CONDITIONAL"].includes(String(e.status));
+  const outcomeLabels: Record<string, string> = { COLLISION: "Có va chạm", NEAR_MISS: "Suýt va chạm", SAFE: "Không ghi nhận va chạm" };
+  const behaviorLabels: Record<string, string> = { AEB_COMMAND_ENGAGED: "Đã ghi nhận lệnh phanh", AEB_DECISION_PENDING: "Đã có quyết định, chưa ghi nhận lệnh phanh", NO_RECORDED_AEB_COMMAND: "Chưa ghi nhận lệnh phanh", COMMAND_ENGAGEMENT_UNRESOLVED: "Chưa xác định được lệnh phanh", OFF_HYPOTHETICAL_ONLY: "AEB tắt" };
+  const names: Record<string, string> = { NO_BRAKING: "Không phanh", INEFFECTIVE_BRAKING: "Phanh không hiệu quả", FALSE_BRAKING: "Phanh không cần thiết" };
+  const candidates = (Array.isArray(report.failure_candidates) ? report.failure_candidates : []).map(object)
+    .filter(c => names[String(c.type)] && ["SUSPECTED", "SUPPORTED"].includes(String(c.status)))
+    .map(c => ({ label: names[String(c.type)], supported: c.status === "SUPPORTED" }));
+  const hasUnknownCandidates = Array.isArray(report.failure_candidates) && report.failure_candidates.length > candidates.length;
+  const conclusion = candidates.length > 1 ? "Có nhiều dấu hiệu cần kiểm tra"
+    : candidates.length === 1 ? (candidates[0].supported ? candidates[0].label : `Nghi ngờ ${candidates[0].label.toLocaleLowerCase("vi")}`)
+    : hasUnknownCandidates ? "Chưa đủ dữ liệu kết luận"
+    : assessment.value === "NO_SUPPORTED_FAILURE" && usable(assessment) ? "Chưa phát hiện lỗi có đủ bằng chứng"
+    : assessment.value === "NOT_APPLICABLE" || behavior.value === "OFF_HYPOTHETICAL_ONLY" ? "Không đánh giá lỗi khi AEB tắt" : "Chưa đủ dữ liệu kết luận";
+  const outcomeText = usable(outcome) ? (outcomeLabels[String(outcome.value)] ?? "Chưa xác định va chạm") + (outcome.status === "CONDITIONAL" ? " (cần xác minh)" : "") : "Chưa xác định va chạm";
+  const behaviorText = usable(behavior) ? (behaviorLabels[String(behavior.value)] ?? "Chưa xác định hoạt động AEB") + (behavior.status === "CONDITIONAL" ? " (cần xác minh)" : "") : "Chưa xác định hoạt động AEB";
+  const number = (v: unknown, unit: string) => { const e = object(v); return usable(e) && e.unit === unit && typeof e.value === "number" && Number.isFinite(e.value) && e.value >= 0 ? { value: e.value, conditional: e.status === "CONDITIONAL" } : null; };
+  const timeline = object(report.aeb_timeline), impact = object(report.impact_analysis), objectives = object(report.objectives);
+  const recorded = timeline.hypothetical !== true && behavior.value !== "OFF_HYPOTHETICAL_ONLY";
+  const objective = (key: string, unit: string) => { const metric = object(objectives[key]); return metric.canonical_applicability === "APPLICABLE" ? number(metric.canonical_value, unit) : null; };
+  const metrics = [
+    { label: "Phát hiện mục tiêu", data: recorded ? number(timeline.detection, "s") : null, unit: "s" },
+    { label: "Lệnh phanh AEB", data: recorded ? number(timeline.command_onset, "s") : null, unit: "s" },
+    ...(outcome.value === "COLLISION" && usable(outcome) ? [{ label: "Va chạm thực tế", data: number(impact.contact_time, "s"), unit: "s" }, { label: "Tốc độ va chạm tương đối", data: objective("impact_speed_mps", "m/s"), unit: "m/s" }] : []),
+    { label: "Quãng đường dừng", data: objective("stopping_distance_m", "m"), unit: "m" },
+  ].filter((entry): entry is { label: string; data: { value: number; conditional: boolean }; unit: string } => entry.data !== null);
+  const contactClock = object(impact.contact_time).clock_id, coreClock = object(timeline.command_onset).clock_id ?? object(timeline.detection).clock_id;
+  const differentClocks = metrics.some(m => m.label === "Va chạm thực tế") && metrics.some(m => m.label === "Lệnh phanh AEB" || m.label === "Phát hiện mục tiêu") && (!contactClock || !coreClock || contactClock !== coreClock);
+  return { conclusion, outcomeText, behaviorText, candidates, hasUnknownCandidates, metrics, differentClocks };
+}
 export const uuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const invalid = (what: string): never => { throw new FAError("MALFORMED_RESOURCE", `Dữ liệu ${what} không đúng hợp đồng; chưa thể hiển thị kết luận.`); };
 const integer = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;

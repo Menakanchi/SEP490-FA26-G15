@@ -314,14 +314,29 @@ public class AnalysisService {
         List<Row> val = current.stream().filter(row -> validation.contains(row.lng("id"))).toList();
         checkSet(opt); checkSet(val);
         Set<Long> optVariants = opt.stream().map(row -> row.lng("scenario_version_id")).collect(java.util.stream.Collectors.toSet());
-        if (val.stream().anyMatch(row -> optVariants.contains(row.lng("scenario_version_id")))
-                || current.stream().map(AnalysisService::identity).distinct().count() != 1
-                || current.stream().map(row -> row.lng("scenario_version_id")+"|"+row.getLong("random_seed")).distinct().count() != current.size()
-                || !AnalysisMetrics.objectivesAvailable(opt.stream().map(AnalysisService::sample).toList())
-                || !AnalysisMetrics.evidenceComplete(val.stream().map(AnalysisService::sample).toList())
-                || !sameValue(saved.get("optimization_objectives"),AnalysisMetrics.aggregate(opt.stream().map(AnalysisService::sample).toList()))
-                || !sameValue(saved.get("validation_objectives"),AnalysisMetrics.aggregate(val.stream().map(AnalysisService::sample).toList())))
-            throw new InvalidRequestException("Analysis dataset partitions or objectives changed");
+        if (val.stream().anyMatch(row -> optVariants.contains(row.lng("scenario_version_id"))))
+            throw new InvalidRequestException("Analysis dataset partitions contain the same variant");
+        if (current.stream().map(AnalysisService::identity).distinct().count() != 1)
+            throw new InvalidRequestException("Analysis dataset mixes vehicle or simulator identities");
+        if (current.stream().map(row -> row.lng("scenario_version_id")+"|"+row.getLong("random_seed")).distinct().count() != current.size())
+            throw new InvalidRequestException("Analysis dataset repeats a variant and seed");
+        if (!AnalysisMetrics.objectivesAvailable(opt.stream().map(AnalysisService::sample).toList()))
+            throw new InvalidRequestException("Analysis optimization objectives are incomplete");
+        if (!AnalysisMetrics.evidenceComplete(val.stream().map(AnalysisService::sample).toList()))
+            throw new InvalidRequestException("Analysis validation evidence is incomplete");
+        // MySQL's JSON parser can round a serialized double by one ULP. Compare the
+        // recomputed objectives after the same JSON conversion as summary_json,
+        // without relaxing the source revision or artifact integrity checks.
+        Map<String,Object> recomputed = Json.obj(
+                "optimization", AnalysisMetrics.aggregate(opt.stream().map(AnalysisService::sample).toList()),
+                "validation", AnalysisMetrics.aggregate(val.stream().map(AnalysisService::sample).toList()));
+        Object normalizedJson = db.scalar("SELECT CAST(? AS JSON)", Json.write(recomputed));
+        if (normalizedJson == null) throw new IllegalStateException("Could not normalize analysis objectives as MySQL JSON");
+        Map<String,Object> normalized = Json.parseMap(normalizedJson.toString());
+        if (!sameValue(saved.get("optimization_objectives"), normalized.get("optimization")))
+            throw new InvalidRequestException("Analysis optimization objectives changed");
+        if (!sameValue(saved.get("validation_objectives"), normalized.get("validation")))
+            throw new InvalidRequestException("Analysis validation objectives changed");
         List<Object> manifests = Json.asList(saved.get("manifests"));
         if (manifests.size() != ids.size() || !manifests.stream().map(Json::asMap).map(m -> ((Number)m.get("run_id")).longValue())
                 .collect(java.util.stream.Collectors.toSet()).equals(new HashSet<>(ids)))
