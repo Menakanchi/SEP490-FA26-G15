@@ -1431,11 +1431,12 @@ public class OptimizationService {
 
 
                 "SELECT * FROM simulation_runs WHERE project_id = ? AND scenario_id = ? AND aeb_version_id = ? AND status = 'COMPLETED' AND aeb_mode = 'ON' "
-                        + "AND simulator_version = ? AND carla_vehicle_model_id = ? ORDER BY id",  // cùng bộ mô phỏng + xe; run mới nhất của biến thể thắng
+                        + "AND simulator_version = ? AND carla_vehicle_model_id = ?",  // cùng bộ mô phỏng + xe; run mới nhất của biến thể thắng
 
 
 
-                projectId, scenarioId, baseAebVersionId, optSimulator, vehicleModelId);
+                projectId, scenarioId, baseAebVersionId, optSimulator, vehicleModelId).stream()
+                .sorted(Comparator.comparingLong(r -> r.lng("id"))).toList();
 
 
 

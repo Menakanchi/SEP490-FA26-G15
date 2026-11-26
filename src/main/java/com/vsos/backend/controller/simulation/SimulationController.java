@@ -192,6 +192,14 @@ public class SimulationController {
                 .body(new FileSystemResource(file));
     }
 
+    @Operation(summary = "URL có thời hạn để xem video CARLA; null khi video lưu local")
+    @GetMapping("/runs/{runId}/carla-video-url")
+    public ResponseEntity<Map<String, Object>> carlaVideoUrl(@PathVariable long runId,
+                                                             @RequestParam(defaultValue = "false") boolean download) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(Json.obj("url", runs.carlaVideoUrl(access.projectId(), runId, download)));
+    }
+
     @Operation(summary = "Nộp result.json của run CARLA chạy ngoài backend (chỉ run CARLA đang PENDING/FAILED, regression chưa chốt)")
     @PostMapping("/runs/{runId}/carla-result")
     public Map<String, Object> submitCarlaResult(@PathVariable long runId, @RequestBody byte[] body, @AuthenticationPrincipal UserDetails user) {

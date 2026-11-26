@@ -14,6 +14,7 @@ import com.vsos.backend.common.Vs.InvalidRequestException;
 import com.vsos.backend.common.Vs.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpStatus;
@@ -174,6 +175,12 @@ public class RunService {
     private final FamilyService families;
     private final FailureAnalysisService resultStore;
     private static final String ORIGINAL_RESULT_BYTES = "__module2_original_result_bytes";
+    private CarlaVideoStorage videoStorage;
+
+    @Autowired
+    void setVideoStorage(CarlaVideoStorage videoStorage) {
+        this.videoStorage = videoStorage;
+    }
 
     public RunService(Db db, Queries queries, VehicSimProperties props, @Qualifier("simulationExecutor") TaskExecutor simulationExecutor,
                       ApplicationEventPublisher events, TransactionTemplate tx, FamilyService families, FailureAnalysisService resultStore) {
@@ -462,7 +469,10 @@ public class RunService {
             }
             Map<String, Object> bundle = bundleForRun(run);
             Map<String, Object> result = runWorker(run, bundle);
-            tx.executeWithoutResult(status -> persist(run, result));
+            tx.executeWithoutResult(status -> {
+                persist(run, result);
+                removeUploadedVideoAfterCommit(runId, result);
+            });
         } catch (InterruptedException e) {
             // Tắt app giữa chừng: trả run về PENDING để lần khởi động sau nhặt lại, thay vì ghi FAILED.
             Thread.currentThread().interrupt();
@@ -726,10 +736,43 @@ public class RunService {
                 .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), String.valueOf(e.getValue())), Map::putAll));
         Path video = folder.resolve(VIDEO_FILE); // worker/make_video.py ghép ảnh camera sau run; không ghi vào result.json nên không đổi identity run
         if (Files.isRegularFile(video)) {
-            artifacts.putIfAbsent("video", video.toString());
+            artifacts.put("video", storeVideo(run.lng("id"), video));
         }
         result.put("artifacts", artifacts);
         return result;
+    }
+
+    String storeVideo(long runId, Path video) {
+        if (videoStorage != null && videoStorage.enabled()) {
+            try {
+                return videoStorage.upload(runId, video);
+            } catch (RuntimeException e) {
+                // Không làm mất kết quả mô phỏng hay xóa bản local khi object storage tạm lỗi.
+                log.error("Không tải được video CARLA của run {} lên object storage; giữ bản local", runId, e);
+            }
+        }
+        return video.toString();
+    }
+
+    /** Giữ bản local khi upload hoặc transaction thất bại; chỉ xóa sau khi metadata đã commit. */
+    void removeUploadedVideoAfterCommit(long runId, Map<String, Object> result) {
+        Object location = Json.asMap(result.get("artifacts")).get("video");
+        if (!(location instanceof String remote) || videoStorage == null || !videoStorage.matches(runId, remote)
+                || !TransactionSynchronizationManager.isSynchronizationActive()
+                || !TransactionSynchronizationManager.isActualTransactionActive()) {
+            return;
+        }
+        Path video = runDir(runId).resolve(VIDEO_FILE);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    Files.deleteIfExists(video);
+                } catch (IOException | SecurityException e) {
+                    log.warn("Không xóa được video local của run {} sau khi lưu lên object storage", runId, e);
+                }
+            }
+        });
     }
 
     /** XML là artifact thực thi/tải xuống; bundle chỉ là giao tiếp nội bộ. Sinh trong tiến trình bằng lõi Java (ADR-042), cùng từng byte với bản Python cũ. */
@@ -1169,6 +1212,18 @@ public class RunService {
         return path;
     }
 
+    /** URL ngắn hạn chỉ được cấp sau khi run thuộc project hiện tại; null giữ tương thích video local. */
+    public String carlaVideoUrl(long projectId, long runId, boolean download) {
+        Row run = db.first("SELECT id FROM simulation_runs WHERE id = ? AND project_id = ? AND simulator_type = 'CARLA'", runId, projectId);
+        if (run == null) throw new NotFoundException("CARLA video");
+        Row artifact = db.first("SELECT storage_url FROM simulation_artifacts WHERE simulation_run_id = ? AND artifact_type = 'VIDEO_MP4' ORDER BY id DESC LIMIT 1", runId);
+        if (artifact != null && videoStorage != null && videoStorage.matches(runId, artifact.str("storage_url"))) {
+            return videoStorage.viewingUrl(runId, download);
+        }
+        if (!Files.isRegularFile(runDir(runId).resolve(VIDEO_FILE))) throw new NotFoundException("CARLA video");
+        return null;
+    }
+
     public Map<String, Object> carlaData(long projectId, long runId, TelemetryMetricsService telemetry) throws IOException {
         Path csv = carlaFile(projectId, runId, "frames.csv");
         Path collisions = carlaFile(projectId, runId, "collisions.json");
@@ -1185,7 +1240,12 @@ public class RunService {
                 images = files.map(p -> p.getFileName().toString()).filter(n -> n.matches("[0-9]{8}\\.png")).sorted().toList();
             }
         }
-        return Json.obj("run_id", runId, "summary", summary, "camera_frames", images, "has_video", Files.isRegularFile(runDir(runId).resolve(VIDEO_FILE)));
+        boolean hasVideo = Files.isRegularFile(runDir(runId).resolve(VIDEO_FILE));
+        if (!hasVideo && videoStorage != null && videoStorage.enabled()) {
+            Row artifact = db.first("SELECT storage_url FROM simulation_artifacts WHERE simulation_run_id = ? AND artifact_type = 'VIDEO_MP4' ORDER BY id DESC LIMIT 1", runId);
+            hasVideo = artifact != null && videoStorage.matches(runId, artifact.str("storage_url"));
+        }
+        return Json.obj("run_id", runId, "summary", summary, "camera_frames", images, "has_video", hasVideo);
     }
 
     private static void checkResult(Map<String, Object> result, Row run) {
@@ -1591,7 +1651,9 @@ public class RunService {
         }
 
         for (Map.Entry<String, Object> artifact : Json.asMap(result.get("artifacts")).entrySet()) {
-            Path file = Path.of(String.valueOf(artifact.getValue()));
+            String location = String.valueOf(artifact.getValue());
+            Path file = "video".equals(artifact.getKey()) && location.startsWith("s3://")
+                    ? runDir(runId).resolve(VIDEO_FILE) : Path.of(location);
             String type = "result".equals(artifact.getKey()) ? "RESULT_FILE" : "video".equals(artifact.getKey()) ? "VIDEO_MP4" : "LOG";
             String mime = "result".equals(artifact.getKey()) ? "application/json" : "video".equals(artifact.getKey()) ? "video/mp4" : null;
             Long size = null;
@@ -1601,7 +1663,7 @@ public class RunService {
                 // kích thước chỉ để hiển thị
             }
             db.insert("INSERT INTO simulation_artifacts (simulation_run_id, artifact_type, file_name, storage_url, mime_type, file_size_bytes, created_date) VALUES (?,?,?,?,?,?,?)",
-                    runId, type, file.getFileName().toString(), file.toString(), mime, size, ts);
+                    runId, type, file.getFileName().toString(), location, mime, size, ts);
         }
 
         Map<String, Object> carlaCase = Json.asMap(Json.asMap(outcome.get("case")).get("carla"));

@@ -77,6 +77,11 @@ vehicsim:
   carla-command: ${VEHICSIM_CARLA_COMMAND:["python3","worker/run_xosc.py"]}          # JSON list, vd. ["python3","worker/run_xosc.py"]
   carla-version: ${VEHICSIM_CARLA_VERSION:0.9.16}
   data-root: ${VEHICSIM_DATA_ROOT:./data/vehicsim}
+  video-storage:
+    bucket: ${VEHICSIM_VIDEO_BUCKET:}
+    region: ${VEHICSIM_VIDEO_REGION:us-east-1}
+    endpoint: ${VEHICSIM_VIDEO_ENDPOINT:}
+    path-style: ${VEHICSIM_VIDEO_PATH_STYLE:false}
   run-mode: ${VEHICSIM_RUN_MODE:async}                # async | inline
   simulation-timeout-s: ${SIMULATION_TIMEOUT_S:120}
   run-concurrency: ${VEHICSIM_RUN_CONCURRENCY:4}

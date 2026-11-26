@@ -96,7 +96,10 @@ public class AnalysisService {
         condition(sql,args,"JSON_UNQUOTE(JSON_EXTRACT(r.run_config_json, '$.time_of_day'))",filters.timeOfDay());
         condition(sql,args,"r.status",filters.status());
         condition(sql,args,"pc.category",filters.failureClass());
-        List<Row> rows = db.list(sql + " ORDER BY r.id DESC", args.toArray());
+        // Sort projected rows in Java: MySQL filesort can exhaust its buffer when
+        // the projection includes JSON-derived fields from large CARLA telemetry.
+        List<Row> rows = db.list(sql.toString(), args.toArray()).stream()
+                .sorted(Comparator.comparingLong((Row row) -> row.lng("id")).reversed()).toList();
         Map<String, Long> counts = new LinkedHashMap<>();
         for (String key : List.of("SAFE","COLLISION","FALSE_BRAKING","NEAR_MISS","MISSED_BRAKING","OTHER_FAILURE",
                 "ERROR","CANCELLED","TIMEOUT","INCOMPLETE","NOT_FINISHED")) counts.put(key,0L);
@@ -115,7 +118,8 @@ public class AnalysisService {
     private List<Row> selected(List<Long> ids, long projectId) {
         if (ids.isEmpty()) return List.of();
         List<Object> args = new ArrayList<>(List.of(projectId)); args.addAll(ids);
-        return db.list(SELECT + " AND r.id IN (" + Db.placeholders(ids.size()) + ") ORDER BY r.id", args.toArray());
+        return db.list(SELECT + " AND r.id IN (" + Db.placeholders(ids.size()) + ")", args.toArray()).stream()
+                .sorted(Comparator.comparingLong(row -> row.lng("id"))).toList();
     }
     @Transactional(readOnly = true)
     public Map<String,Object> inspection(long runId) {
@@ -189,7 +193,8 @@ public class AnalysisService {
         // Preserve actual scenario/run/vehicle/AEB snapshots as well as their IDs.
         List<Object> args = new ArrayList<>(List.of(projectId)); args.addAll(all);
         List<Row> manifests = db.list("SELECT id, run_config_json, telemetry_json FROM simulation_runs WHERE project_id = ? AND id IN ("
-                + Db.placeholders(all.size()) + ") ORDER BY id",args.toArray());
+                + Db.placeholders(all.size()) + ")",args.toArray()).stream()
+                .sorted(Comparator.comparingLong(row -> row.lng("id"))).toList();
         if (manifests.size() != rows.size() || manifests.stream().anyMatch(row -> !validTrace(row.json("telemetry_json"))))
             throw new InvalidRequestException("Analysis selection contains invalid runs or missing telemetry");
         snapshot.put("manifests",manifests.stream().map(row -> {

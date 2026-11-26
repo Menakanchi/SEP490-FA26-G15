@@ -230,6 +230,63 @@ class CarlaWebTest {
         assertThatThrownBy(() -> runs.carlaVideo(2, 42)).as("run của project khác").isInstanceOf(Vs.NotFoundException.class);
     }
 
+    @Test
+    void videoLinkRequiresProjectAndOnlySignsTheExpectedRunObject() throws Exception {
+        CarlaVideoStorage storage = mock(CarlaVideoStorage.class);
+        runs.setVideoStorage(storage);
+        when(db.first(startsWith("SELECT storage_url FROM simulation_artifacts"), any(Object[].class)))
+                .thenReturn(new Row(Json.obj("storage_url", "s3://private/runs/42/video.mp4")));
+        when(storage.matches(42, "s3://private/runs/42/video.mp4")).thenReturn(true);
+        when(storage.viewingUrl(42, false)).thenReturn("https://storage.example/signed");
+        assertThat(runs.carlaVideoUrl(1, 42, false)).isEqualTo("https://storage.example/signed");
+        when(db.first(startsWith("SELECT id FROM simulation_runs WHERE id"), any(Object[].class))).thenReturn(null);
+        assertThatThrownBy(() -> runs.carlaVideoUrl(2, 42, false)).isInstanceOf(Vs.NotFoundException.class);
+        verify(storage, times(1)).viewingUrl(42, false);
+    }
+
+    @Test
+    void localVideoLinkFallsBackWithoutSigningUnknownObject() throws Exception {
+        CarlaVideoStorage storage = mock(CarlaVideoStorage.class);
+        runs.setVideoStorage(storage);
+        when(db.first(startsWith("SELECT storage_url FROM simulation_artifacts"), any(Object[].class)))
+                .thenReturn(new Row(Json.obj("storage_url", "s3://another-bucket/runs/42/video.mp4")));
+        Path video = directory.resolve("runs/42/video.mp4");
+        Files.createDirectories(video.getParent());
+        Files.write(video, new byte[]{1});
+        assertThat(runs.carlaVideoUrl(1, 42, false)).isNull();
+        verify(storage, never()).viewingUrl(anyLong(), anyBoolean());
+    }
+
+    @Test
+    void failedUploadPreservesTheLocalVideoAndResultLocation() throws Exception {
+        CarlaVideoStorage storage = mock(CarlaVideoStorage.class);
+        runs.setVideoStorage(storage);
+        when(storage.enabled()).thenReturn(true);
+        Path video = directory.resolve("video.mp4");
+        Files.write(video, new byte[]{1, 2});
+        when(storage.upload(42, video)).thenThrow(new IllegalStateException("storage unavailable"));
+        assertThat(runs.storeVideo(42, video)).isEqualTo(video.toString());
+        assertThat(Files.readAllBytes(video)).containsExactly(1, 2);
+    }
+
+    @Test
+    void sensorDataStillShowsCloudVideoAfterLocalVideoIsRemoved() throws Exception {
+        CarlaVideoStorage storage = mock(CarlaVideoStorage.class);
+        runs.setVideoStorage(storage);
+        when(storage.enabled()).thenReturn(true);
+        String location = "s3://private/runs/42/video.mp4";
+        when(storage.matches(42, location)).thenReturn(true);
+        when(storage.viewingUrl(42, false)).thenReturn("https://storage.example/signed");
+        when(db.first(startsWith("SELECT storage_url FROM simulation_artifacts"), any(Object[].class)))
+                .thenReturn(new Row(Json.obj("storage_url", location)));
+        Path sensors = directory.resolve("runs/42/sensors");
+        Files.createDirectories(sensors);
+        Files.writeString(sensors.resolve("frames.csv"), "t,speed\n");
+        Files.writeString(sensors.resolve("collisions.json"), "[]");
+        assertThat(runs.carlaData(1, 42, mock(TelemetryMetricsService.class))).containsEntry("has_video", true);
+        assertThat(runs.carlaVideoUrl(1, 42, false)).isEqualTo("https://storage.example/signed");
+    }
+
     private void stubCancelLookup(String status, Object regressionTestId) {
         var row = new java.util.HashMap<String, Object>(Json.obj("id", 42L, "status", status));
         row.put("regression_test_id", regressionTestId);

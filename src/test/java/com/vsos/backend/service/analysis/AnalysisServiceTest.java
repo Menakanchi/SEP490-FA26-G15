@@ -107,6 +107,25 @@ class AnalysisServiceTest {
         assertThat(Json.asMap(result.get("counts"))).containsEntry("SAFE",4L);
         verify(db).list(contains("r.scenario_version_id = ?"),eq(1L),eq(8L),eq(11L),eq(4L),eq("RAIN"),eq("COMPLETED"));
     }
+    @Test void dashboardOrdersRunsBeforePagingRegardlessOfDatabaseOrder() {
+        when(db.list(startsWith(AnalysisService.SELECT),any(Object[].class)))
+                .thenReturn(List.of(rows.get(1), rows.get(3), rows.get(0), rows.get(2)));
+        var result=service.dashboard(new AnalysisService.Filters(null,null,null,null,null,null,null,null,null),2,2);
+        assertThat(Json.asList(result.get("items")).stream().map(Json::asMap).map(item -> item.get("run_id")))
+                .containsExactly(2L,1L);
+    }
+    @Test void snapshotKeepsRunAndManifestOrderRegardlessOfDatabaseOrder() {
+        when(db.list(startsWith(AnalysisService.SELECT),any(Object[].class)))
+                .thenReturn(List.of(rows.get(2), rows.get(0), rows.get(3), rows.get(1)));
+        when(db.list(startsWith("SELECT id, run_config_json"),any(Object[].class))).thenReturn(
+                List.of(rows.get(3), rows.get(1), rows.get(0), rows.get(2)).stream().map(row ->
+                        new Row(Json.obj("id",row.lng("id"),"run_config_json","{}","telemetry_json",Json.write(trace())))).toList());
+        var saved=service.freeze(selection(),7L);
+        assertThat(Json.asList(saved.get("runs")).stream().map(Json::asMap).map(item -> item.get("run_id")))
+                .containsExactly(1L,2L,3L,4L);
+        assertThat(Json.asList(saved.get("manifests")).stream().map(Json::asMap).map(item -> item.get("run_id")))
+                .containsExactly(1L,2L,3L,4L);
+    }
     @Test void missingTraceAndMissingBrakingMetricsNeverCountAsSafe() {
         Map<String,Object> missing=new LinkedHashMap<>(rows.get(0).asMap());missing.put("trace_frames",0);
         assertThat(AnalysisService.outcome(new Row(missing))).isEqualTo("INCOMPLETE");

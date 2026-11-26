@@ -58,8 +58,9 @@ class RunCollectionServiceTest {
         writeRun(2499L, true);
         writeRun(2511L, true);
         // 2600: ON lần lặp 2, file kết quả đã mất trên đĩa
-        when(db.list(startsWith("SELECT * FROM simulation_runs"), any(Object[].class)))
-                .thenReturn(List.of(run(2499L, "ON", 1L), run(2511L, "OFF", 1L), run(2600L, "ON", 2L)));
+        when(db.list(startsWith("SELECT r.*, ranked.collection_order"), any(Object[].class)))
+                .thenReturn(List.of(ranked(run(2600L, "ON", 2L), 3), ranked(run(2499L, "ON", 1L), 1),
+                        ranked(run(2511L, "OFF", 1L), 2)));
 
         Map<String, Object> doc = MiniJson.parseObject(new String(service.variantCollection(VARIANT), StandardCharsets.UTF_8));
 
@@ -97,7 +98,8 @@ class RunCollectionServiceTest {
         Map<String, Object> written = MiniJson.parseObject(Files.readString(resultPath, StandardCharsets.UTF_8));
         written.put("dataset", Json.obj("format", "vehicsim.run-dataset/v1", "captured_when", "RESULT_WRITE"));
         Files.writeString(resultPath, MiniJson.write(written), StandardCharsets.UTF_8);
-        when(db.list(startsWith("SELECT * FROM simulation_runs"), any(Object[].class))).thenReturn(List.of(run(2499L, "ON", 1L)));
+        when(db.list(startsWith("SELECT r.*, ranked.collection_order"), any(Object[].class)))
+                .thenReturn(List.of(ranked(run(2499L, "ON", 1L), 1)));
 
         Map<String, Object> doc = MiniJson.parseObject(new String(service.variantCollection(VARIANT), StandardCharsets.UTF_8));
 
@@ -145,6 +147,12 @@ class RunCollectionServiceTest {
         Map<String, Object> v = new HashMap<>(row.asMap());
         v.put("random_seed", seed);
         return new Row(v);
+    }
+
+    private static Row ranked(Row row, long rank) {
+        Map<String, Object> values = new HashMap<>(row.asMap());
+        values.put("collection_order", rank);
+        return new Row(values);
     }
 
     private void writeRun(long id, boolean collided) throws IOException {
