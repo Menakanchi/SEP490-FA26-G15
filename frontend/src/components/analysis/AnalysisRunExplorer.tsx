@@ -86,7 +86,7 @@ export function AnalysisRunExplorer({ data, loading, hasError, page, size, searc
             {selecting && <th scope="col">Tập dữ liệu</th>}<th scope="col">Thao tác</th>
           </tr></thead>
           <tbody>{rows.map(run => <tr key={run.run_id} data-run-id={run.run_id} data-selected={isSelected(run)}>
-            <td className={styles.identity}><Link href={href(run.run_id)}>#{run.run_id} · {run.variant}</Link><small>{run.family}</small></td>
+            <td className={styles.identity}><Link href={href(run.run_id)}>#{run.run_id} · {run.variant}</Link><small>{run.family}</small>{run.aeb_mode === "OFF" && <small>AEB tắt · lượt đối chứng</small>}</td>
 
             <td className={styles.result}><div className={styles.badges}><div><span className={styles.badgeLabel}>Chạy</span><AnalysisBadge value={run.status} /></div><div><span className={styles.badgeLabel}>Theo luật</span><AnalysisBadge value={run.outcome} /></div></div>
               {run.failure_class && <small>{analysisLabel(run.failure_class)}</small>}

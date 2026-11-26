@@ -907,6 +907,7 @@ export interface OptimizationSelectionResult {
 }
 
 export interface AnalysisRun {
+  aeb_mode?: "ON" | "OFF";
   revision: string; run_id: number; scenario_id: number; scenario_version_id: number; version_no: number;
   family: string; variant: string; seed: number; baseline_id: number; vehicle_id: number;
   simulator: string; dt: number; status: string; outcome: string; weather: string | null;

@@ -30,7 +30,7 @@ const v3Execution={resource_schema:"vehicsim.fa-rest-resource/v1",resource_kind:
 let empty=false,delayFirst=false,holdSelection=false;
 const user={id:77,email:"mobo@example.invalid",full_name:"MOBO Fixture",role:"ENGINEER",is_active:true};
 const runs=[1,2].map(id=>({id,name:"Campaign "+id,scenario_id:5,status:"COMPLETED",completed_trials:4,max_trials:4,pareto_count:1}));
-const row={id:101,trial_number:1,status:"COMPLETED",sampling_source:"INITIAL_DESIGN",constraint_violated:false,is_pareto_optimal:true,acquisition_value:null,rms_jerk_mps3:0.0001,impact_speed_mps:0.0001,stopping_distance_m:1,parameters:{TTC_THRESHOLD:1.5,BRAKE_ACTIVATION_DELAY:0.1,BRAKE_BUILDUP_RATE:10,MAX_DECELERATION:8}};
+const row={id:101,trial_number:1,status:"COMPLETED",sampling_source:"INITIAL_DESIGN",constraint_violated:false,is_pareto_optimal:true,acquisition_value:null,rms_jerk_mps3:0.0001,impact_speed_mps:0.0001,stopping_distance_m:1,parameters:{TTC_THRESHOLD:1.5123456789123,BRAKE_ACTIVATION_DELAY:0.1234567891234,BRAKE_BUILDUP_RATE:10.123456789123,MAX_DECELERATION:8.123456789123}};
 const source=await fs.readFile(new URL("../src/components/aeb/optimizationEvidence.ts",import.meta.url),"utf8");
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
 const {hasCompleteTrialEvidence,isFeasibleTrial}=await import("data:text/javascript;base64,"+Buffer.from(compiled).toString("base64"));
@@ -101,10 +101,11 @@ try {
  await page.goto(base+"/aeb/mobo/trials?run_id=1");
  await page.getByRole("button",{name:"Hợp lệ (1)",exact:true}).waitFor();
  await readableHeaders();
+ assert.equal(await page.getByRole("columnheader",{name:"Va chạm (m/s)",exact:true}).count(),1);
  assert.equal(await page.getByRole("cell",{name:"Chưa đánh giá",exact:true}).count(),3,"Completed without a stopping metric remains unassessed");
  assert.equal(await page.getByRole("cell",{name:"Thỏa mãn",exact:true}).count(),1);
  await page.getByRole("button",{name:"Hợp lệ (1)",exact:true}).click();assert.equal(await page.locator("tbody tr").count(),1);
- assert.match(await page.locator("tbody").innerText(),/3\.60e-4/);
+ assert.match(await page.locator("tbody").innerText(),/1\.00e-4/);
  for(const width of [1366,768,390,320]){await page.setViewportSize({width,height:844});await noOverflow();await page.screenshot({path:path.join(output,"trials-"+width+".png")});}
  // A slower response from a previous campaign must never replace the selected campaign.
  delayFirst=true;await page.goto(base+"/aeb/mobo/trials?run_id=1");
@@ -115,10 +116,16 @@ try {
  await page.waitForResponse(response=>response.url().endsWith("/optimizations/1/trials"));
  assert.equal(await page.getByRole("cell",{name:"#101",exact:true}).count(),0);
  await page.goto(base+"/aeb/mobo/pareto?run_id=1");await page.getByRole("button",{name:"Chọn làm ứng viên",exact:true}).waitFor();
+ assert.equal(await page.getByRole("columnheader",{name:"Ngưỡng TTC (s)",exact:true}).count(),1);
+ assert.equal(await page.getByRole("cell",{name:"1.512",exact:true}).count(),1);
+ assert.equal(await page.getByRole("cell",{name:"1.512",exact:true}).getAttribute("title"),"1.5123456789123");
  assert.equal(await page.getByRole("button",{name:"Chọn làm ứng viên",exact:true}).count(),1,"Incomplete historical Pareto rows are not eligible candidates");
  await readableHeaders();
  assert.equal(await page.getByText(/\(An toàn\)|Tránh va chạm/).count(),0);
- assert.match(await page.locator("tbody").innerText(),/3\.60e-4 km\/h/);
+ assert.match(await page.locator("tbody").innerText(),/1\.00e-4 m\/s/);
+ await page.setViewportSize({width:1440,height:844});
+ assert(await page.locator("table").evaluate(table => table.scrollWidth <= table.parentElement.clientWidth + 1), "Pareto table fits its container at 1440 px");
+ assert(await page.getByRole("button",{name:"Chọn làm ứng viên",exact:true}).evaluate(button => button.getBoundingClientRect().right <= button.closest(".overflow-x-auto").getBoundingClientRect().right), "Pareto action is visible at 1440 px");
  for(const width of [1366,768,390,320]){await page.setViewportSize({width,height:844});await noOverflow();await page.screenshot({path:path.join(output,"pareto-"+width+".png")});}
  holdSelection=true;
  await page.getByRole("button",{name:"Chọn làm ứng viên",exact:true}).evaluate(button=>{button.click();button.click();});
@@ -131,8 +138,12 @@ try {
  await page.goto(base+"/aeb/mobo?run_id=1&tab=trials");await page.getByRole("cell",{name:"#101",exact:true}).waitFor();
  assert.equal(await page.getByText("Chưa đánh giá",{exact:true}).count(),3);
  await page.getByRole("button",{name:"Chỉ hợp lệ",exact:true}).click();assert.equal(await page.locator("tbody tr").count(),1);
- assert.match(await page.locator("tbody").innerText(),/3\.60e-4 km\/h/);
+ assert.match(await page.locator("tbody").innerText(),/1\.00e-4 m\/s/);
  for(const width of [1366,768,390,320]){await page.setViewportSize({width,height:844});await noOverflow();await page.screenshot({path:path.join(output,"studio-"+width+".png")});}
+ await page.setViewportSize({width:1440,height:844});
+ await page.goto(base+"/aeb/mobo?run_id=1&tab=pareto");await page.getByRole("button",{name:"Chọn làm ứng viên",exact:true}).waitFor();
+ assert(await page.locator("table").evaluate(table => table.scrollWidth <= table.parentElement.clientWidth + 1), "Studio Pareto table fits at 1440 px");
+ assert(await page.getByRole("button",{name:"Chọn làm ứng viên",exact:true}).evaluate(button => button.getBoundingClientRect().right <= button.closest(".overflow-x-auto").getBoundingClientRect().right), "Studio Pareto action is visible at 1440 px");
  delayFirst=true;await page.goto(base+"/aeb/mobo?run_id=1&tab=runs");
  await page.getByRole("button",{name:"Xem tối ưu",exact:true}).nth(1).click();await page.getByRole("cell",{name:"#201",exact:true}).waitFor();
  assert(pending.length>0);delayFirst=false;const old=page.waitForResponse(response=>response.url().endsWith("/optimizations/1/pareto"));for(const release of pending.splice(0))release();await old;

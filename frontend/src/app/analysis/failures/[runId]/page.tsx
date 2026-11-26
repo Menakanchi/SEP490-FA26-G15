@@ -37,11 +37,12 @@ function Content() {
   const inspection = result?.key === requestKey ? result.data : null;
   const error = id === null ? "Mã lượt chạy không hợp lệ." : result?.key === requestKey ? result.error : null;
   const d = inspection?.detail, run = inspection?.run;
+  const isReference = run?.aeb_mode === "OFF";
   const state = d ? classificationPresentation(d) : null;
   const disagreements = d ? legacyDisagreements(d) : [];
-  const conclusion = !state?.trusted ? "Chưa đủ dữ liệu kết luận" : disagreements.length ? "Kết quả cần đối chiếu" : d?.verdict === "PASS" ? "Chưa phát hiện lỗi theo đánh giá đã lưu" : "Có dấu hiệu cần kiểm tra";
+  const conclusion = isReference ? "Lượt đối chứng AEB tắt" : !state?.trusted ? "Chưa đủ dữ liệu kết luận" : disagreements.length ? "Kết quả cần đối chiếu" : d?.verdict === "PASS" ? "Chưa phát hiện lỗi theo đánh giá đã lưu" : "Có dấu hiệu cần kiểm tra";
   const collision = d?.outcome === "COLLISION" ? "Có ghi nhận va chạm" : d?.outcome === "SAFE" || d?.outcome === "NEAR_MISS" ? "Không ghi nhận va chạm theo kết quả đã lưu" : "Chưa xác định va chạm";
-  const activation = d ? formatMeasurement(d.metrics.aeb_activation_t, "s", 2, true) : "—";
+  const activation = d && !isReference ? formatMeasurement(d.metrics.aeb_activation_t, "s", 2, true) : "—";
   const impact = d?.evaluation_valid === true ? formatRunImpact(d.metrics.impact_speed_mps, d) : "—";
   const stopping = d?.evaluation_valid === true && d.status === "COMPLETED" ? formatMeasurement(d.metrics.stopping_distance_m, "m", 2, true) : "—";
   const contact = d?.outcome === "COLLISION" ? d.events.find(event => event.kind === "collision" && typeof event.t === "number" && Number.isFinite(event.t) && event.t >= 0) : undefined;
@@ -53,8 +54,9 @@ function Content() {
     {d && <div className={styles.stack}>
       <section className={`analysis-panel ${styles.stack}`} aria-label="Kết luận phân tích">
         <p>{run?.family} · {run?.variant}</p><h2>{conclusion}</h2><p>{collision}.</p>
-        {state?.trusted && d.failure_type && <p>Phân loại đã lưu: {state.classification}.</p>}
-        {disagreements.length > 0 && <p role="status">Các thông tin đã lưu chưa thống nhất; chưa thể đưa ra kết luận chắc chắn.</p>}
+        {!isReference && state?.trusted && d.failure_type && <p>Phân loại đã lưu: {state.classification}.</p>}
+        {!isReference && disagreements.length > 0 && <p role="status">Các thông tin đã lưu chưa thống nhất; chưa thể đưa ra kết luận chắc chắn.</p>}
+        {isReference && <p>Lượt này chỉ dùng để đối chiếu, không tham gia đánh giá hoặc bàn giao tối ưu AEB.</p>}
         <p className="analysis-caption">Va chạm và lỗi AEB là hai kết quả khác nhau.</p>
       </section>
       {(activation !== "—" || impact !== "—" || stopping !== "—" || contact) && <section className={`analysis-panel ${styles.stack}`} aria-label="Thông tin quan trọng"><h2>Thông tin quan trọng</h2><dl className={styles.rows}>

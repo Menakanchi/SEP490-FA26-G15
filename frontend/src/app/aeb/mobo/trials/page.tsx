@@ -8,7 +8,7 @@ import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx } from "@/compon
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
 import { VehicSimSelect } from "@/components/VehicSimSelect";
-import { formatMetric, formatObjective, speedKmh } from "@/components/analysis/analysisMetricFormat";
+import { formatMetric, formatObjective } from "@/components/analysis/analysisMetricFormat";
 import { hasCompleteTrialEvidence, isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
 
 export default function AebMoboTrialsPage() {
@@ -184,7 +184,7 @@ export default function AebMoboTrialsPage() {
                   <th className="px-4 py-3.5 whitespace-nowrap">Nguồn sinh mẫu</th>
                   <th className="px-4 py-3.5 whitespace-nowrap">Điểm tiềm năng (qEHVI)</th>
                   <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">RMS Jerk (m/s³)</th>
-                  <th className="px-4 py-3.5 text-rose-300 whitespace-nowrap">Va chạm (km/h)</th>
+                  <th className="px-4 py-3.5 text-rose-300 whitespace-nowrap">Va chạm (m/s)</th>
                   <th className="px-4 py-3.5 text-slate-200 whitespace-nowrap">Quãng phanh (m)</th>
                   <th className="px-4 py-3.5 whitespace-nowrap">Ràng buộc</th>
                   <th className="px-4 py-3.5 text-right whitespace-nowrap">Biên Pareto</th>
@@ -206,7 +206,7 @@ export default function AebMoboTrialsPage() {
                       {formatObjective(t.rms_jerk_mps3)}
                     </td>
                     <td className="px-4 py-3.5 font-semibold text-vehicsim-danger">
-                      {formatMetric(speedKmh(t.impact_speed_mps), 1, true)}
+                      {formatMetric(t.impact_speed_mps, 3, true)}
                     </td>
                     <td className="px-4 py-3.5 font-semibold text-vehicsim-ink">
                       {formatObjective(t.stopping_distance_m)}

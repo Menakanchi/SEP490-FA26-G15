@@ -103,10 +103,28 @@ class AnalysisServiceTest {
         assertThat(AnalysisService.outcome(new Row(missing))).isEqualTo("INCOMPLETE");
     }
     @Test void kpisAndItemsUseTheSameParameterizedFilters() {
+        when(db.list(argThat(sql -> sql.startsWith("SELECT r.id") && !sql.contains(" AND r.aeb_mode = 'ON'")), any(Object[].class))).thenReturn(rows);
         var result=service.dashboard(new AnalysisService.Filters(8L,11L,4L,null,null,"RAIN",null,"COMPLETED",null),1,30);
         assertThat(result).containsEntry("total",4);
         assertThat(Json.asMap(result.get("counts"))).containsEntry("SAFE",4L);
         verify(db).list(contains("r.scenario_version_id = ?"),eq(1L),eq(8L),eq(11L),eq(4L),eq("RAIN"),eq("COMPLETED"));
+    }
+    @Test void variantIncludesOffReferenceWithoutAddingItToObjectivesOrSelection() {
+        Map<String,Object> off = new LinkedHashMap<>(rows.get(0).asMap());
+        off.put("id", 9L); off.put("aeb_mode", "OFF"); off.put("collision_occurred", true);
+        Row reference = new Row(off);
+        when(db.list(argThat(sql -> sql.startsWith("SELECT r.id") && !sql.contains(" AND r.aeb_mode = 'ON'")), any(Object[].class)))
+                .thenReturn(List.of(rows.get(0), reference));
+        var result = service.dashboard(new AnalysisService.Filters(null,11L,null,null,null,null,null,null,null),1,30);
+        assertThat(result).containsEntry("total",2);
+        assertThat(Json.asMap(result.get("counts"))).containsEntry("SAFE",1L).containsEntry("REFERENCE",1L).containsEntry("COLLISION",0L);
+        var items = Json.asList(result.get("items"));
+        assertThat(Json.asMap(items.get(1))).containsEntry("aeb_mode","OFF").containsEntry("outcome","REFERENCE");
+        var group = Json.asMap(Json.asList(result.get("objective_groups")).get(0));
+        var objectives = Json.asMap(group.get("objectives"));
+        assertThat(((AnalysisMetrics.Objective)objectives.get("impact_speed_mps")).samples()).isEqualTo(1);
+        service.freeze(selection(),7L);
+        verify(db).list(argThat(sql -> sql.contains(" AND r.aeb_mode = 'ON'") && sql.contains("r.id IN")), any(Object[].class));
     }
     @Test void missingTraceAndMissingBrakingMetricsNeverCountAsSafe() {
         Map<String,Object> missing=new LinkedHashMap<>(rows.get(0).asMap());missing.put("trace_frames",0);
