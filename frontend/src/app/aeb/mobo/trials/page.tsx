@@ -8,6 +8,8 @@ import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx } from "@/compon
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
 import { VehicSimSelect } from "@/components/VehicSimSelect";
+import { formatMetric, formatObjective, speedKmh } from "@/components/analysis/analysisMetricFormat";
+import { hasCompleteTrialEvidence, isFeasibleTrial } from "@/components/aeb/optimizationEvidence";
 
 export default function AebMoboTrialsPage() {
   const router = useRouter();
@@ -15,32 +17,38 @@ export default function AebMoboTrialsPage() {
 
   const [runs, setRuns] = useState<OptimizationRun[] | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
-  const [trials, setTrials] = useState<OptimizationTrial[] | null>(null);
+  const [trialResult, setTrialResult] = useState<{ runId: number; items: OptimizationTrial[] } | null>(null);
+  const trials = trialResult?.runId === selectedRunId ? trialResult.items : null;
   const [filterMode, setFilterMode] = useState<"ALL" | "PARETO" | "FEASIBLE">("ALL");
   const [error, setError] = useState<string | null>(null);
 
   const queryRunId = Number(searchParams.get("run_id"));
 
   useEffect(() => {
+    let active = true;
     vehicsimApi
       .optimizationRuns()
       .then((data) => {
+        if (!active) return;
         setRuns(data);
         if (data.length > 0) {
           const matched = Number.isInteger(queryRunId) && data.some((r) => r.id === queryRunId);
           setSelectedRunId(matched ? queryRunId : data[0].id);
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách đợt tối ưu"));
+      .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Không tải được danh sách đợt tối ưu"); });
+    return () => { active = false; };
   }, [queryRunId]);
 
   useEffect(() => {
+    let active = true;
     if (selectedRunId !== null) {
       vehicsimApi
         .optimizationTrials(selectedRunId)
-        .then(setTrials)
-        .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách lượt thử"));
+        .then(items => { if (active) { setTrialResult({ runId: selectedRunId, items }); setError(null); } })
+        .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Không tải được danh sách lượt thử"); });
     }
+    return () => { active = false; };
   }, [selectedRunId]);
 
   const activeRun = runs?.find((r) => r.id === selectedRunId) ?? null;
@@ -49,8 +57,8 @@ export default function AebMoboTrialsPage() {
   const PAGE_SIZE = 12;
 
   const filteredTrials = (trials ?? []).filter((t) => {
-    if (filterMode === "PARETO") return t.is_pareto_optimal;
-    if (filterMode === "FEASIBLE") return !t.constraint_violated;
+    if (filterMode === "PARETO") return t.is_pareto_optimal && isFeasibleTrial(t);
+    if (filterMode === "FEASIBLE") return isFeasibleTrial(t);
     return true;
   });
 
@@ -81,14 +89,15 @@ export default function AebMoboTrialsPage() {
 
       {/* Bộ chọn đợt chạy và Bộ lọc */}
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-4">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             <label className="text-[13px] font-bold text-vehicsim-ink">Đợt chạy:</label>
             <VehicSimSelect
               aria-label="Chọn đợt tối ưu hoá"
               value={selectedRunId}
               onChange={(newId) => {
                 setSelectedRunId(newId);
+                setError(null);
                 setPage(1);
                 router.replace(`/aeb/mobo/trials?run_id=${newId}`);
               }}
@@ -97,7 +106,8 @@ export default function AebMoboTrialsPage() {
                 label: `Run #${r.id} · ${r.name}`,
                 sublabel: `${r.completed_trials} lượt thử`,
               }))}
-              className="w-auto min-w-[320px] max-w-md"
+              className="min-w-0 max-w-md"
+              disabled={runs?.length === 0}
             />
           </div>
 
@@ -124,7 +134,7 @@ export default function AebMoboTrialsPage() {
                   : "text-slate-600 hover:text-emerald-800 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-emerald-300 dark:hover:bg-emerald-950/40"
               )}
             >
-              Biên Pareto ({trials?.filter((t) => t.is_pareto_optimal).length ?? 0})
+              Biên Pareto ({trials?.filter((t) => t.is_pareto_optimal && isFeasibleTrial(t)).length ?? 0})
             </button>
             <button
               type="button"
@@ -136,7 +146,7 @@ export default function AebMoboTrialsPage() {
                   : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
               )}
             >
-              Hợp lệ ({trials?.filter((t) => !t.constraint_violated).length ?? 0})
+              Hợp lệ ({trials?.filter(isFeasibleTrial).length ?? 0})
             </button>
           </div>
         </div>
@@ -159,7 +169,7 @@ export default function AebMoboTrialsPage() {
           </div>
         </div>
 
-        {filteredTrials.length === 0 ? (
+        {runs?.length === 0 ? <div className="p-10"><EmptyState title="Chưa có đợt tối ưu">Tạo đợt tối ưu để xem các lượt thử.</EmptyState></div> : trials === null ? <p role="status" className="p-5 text-[13px] text-vehicsim-muted">{error ? "Chưa tải được lượt thử." : "Đang tải lượt thử…"}</p> : filteredTrials.length === 0 ? (
           <div className="p-10">
             <EmptyState title="Không có lượt thử nghiệm nào khớp bộ lọc">
               Hãy chọn bộ lọc khác hoặc kiểm tra lại tiến độ đợt chạy.
@@ -173,9 +183,9 @@ export default function AebMoboTrialsPage() {
                   <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
                   <th className="px-4 py-3.5 whitespace-nowrap">Nguồn sinh mẫu</th>
                   <th className="px-4 py-3.5 whitespace-nowrap">Điểm tiềm năng (qEHVI)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-decision whitespace-nowrap">RMS Jerk (m/s³)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-danger whitespace-nowrap">Va chạm (km/h)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-ink whitespace-nowrap">Quãng phanh (m)</th>
+                  <th className="px-4 py-3.5 text-emerald-300 whitespace-nowrap">RMS Jerk (m/s³)</th>
+                  <th className="px-4 py-3.5 text-rose-300 whitespace-nowrap">Va chạm (km/h)</th>
+                  <th className="px-4 py-3.5 text-slate-200 whitespace-nowrap">Quãng phanh (m)</th>
                   <th className="px-4 py-3.5 whitespace-nowrap">Ràng buộc</th>
                   <th className="px-4 py-3.5 text-right whitespace-nowrap">Biên Pareto</th>
                 </tr>
@@ -190,30 +200,28 @@ export default function AebMoboTrialsPage() {
                       </Tag>
                     </td>
                     <td className="px-4 py-3.5 font-mono text-[12px] text-vehicsim-muted">
-                      {t.acquisition_value !== null ? t.acquisition_value.toFixed(5) : "—"}
+                      {formatMetric(t.acquisition_value, 5)}
                     </td>
                     <td className="px-4 py-3.5 font-semibold text-vehicsim-decision">
-                      {t.rms_jerk_mps3 !== null ? `${t.rms_jerk_mps3.toFixed(2)}` : "—"}
+                      {formatObjective(t.rms_jerk_mps3)}
                     </td>
                     <td className="px-4 py-3.5 font-semibold text-vehicsim-danger">
-                      {t.impact_speed_mps !== null
-                        ? t.impact_speed_mps <= 0.001
-                          ? "0.0 (Tránh va chạm)"
-                          : (t.impact_speed_mps * 3.6).toFixed(1)
-                        : "—"}
+                      {formatMetric(speedKmh(t.impact_speed_mps), 1, true)}
                     </td>
                     <td className="px-4 py-3.5 font-semibold text-vehicsim-ink">
-                      {t.stopping_distance_m !== null ? `${t.stopping_distance_m.toFixed(2)}` : "—"}
+                      {formatObjective(t.stopping_distance_m)}
                     </td>
                     <td className="px-4 py-3.5">
-                      {t.constraint_violated ? (
+                      {!hasCompleteTrialEvidence(t) ? (
+                        <span className="text-vehicsim-muted">Chưa đánh giá</span>
+                      ) : t.constraint_violated ? (
                         <span className="font-bold text-vehicsim-danger">Vi phạm</span>
                       ) : (
                         <span className="font-bold text-vehicsim-ok">Thỏa mãn</span>
                       )}
                     </td>
                     <td className="px-4 py-3.5 text-right">
-                      {t.is_pareto_optimal ? (
+                      {t.is_pareto_optimal && isFeasibleTrial(t) ? (
                         <span className="rounded-full bg-vehicsim-ok-bg px-2.5 py-0.5 text-[10px] font-bold text-vehicsim-ok">
                           PARETO
                         </span>

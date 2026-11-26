@@ -8,6 +8,24 @@ from types import SimpleNamespace
 import sensor_recorder
 
 
+def test_retry_drops_previous_camera_frames_before_recording(tmp_path, monkeypatch) -> None:
+    camera = tmp_path / "camera"
+    camera.mkdir()
+    (camera / "00000100.png").write_bytes(b"previous attempt")
+    (camera / "notes.txt").write_text("keep")
+    for name in ("frames.csv", "ground_truth.csv", "collisions.json", "summary.json"):
+        (tmp_path / name).write_text("previous attempt")
+    (tmp_path / "notes.txt").write_text("keep")
+    monkeypatch.setattr(sensor_recorder.threading, "Thread", lambda **_: SimpleNamespace(start=lambda: None))
+    recorder = sensor_recorder.SensorRecorder("localhost", 2000, tmp_path, camera=False)
+    recorder.start()
+    assert not (camera / "00000100.png").exists()
+    assert (camera / "notes.txt").read_text() == "keep"
+    recorder._write()  # no samples in this attempt: no old measurements may remain visible
+    assert not any((tmp_path / name).exists() for name in ("frames.csv", "ground_truth.csv", "collisions.json", "summary.json"))
+    assert (tmp_path / "notes.txt").read_text() == "keep"
+
+
 def _det(depth: float, velocity: float, azimuth_deg: float = 0.0, altitude_deg: float = 0.0) -> SimpleNamespace:
     return SimpleNamespace(
         depth=depth, velocity=velocity, azimuth=math.radians(azimuth_deg), altitude=math.radians(altitude_deg)

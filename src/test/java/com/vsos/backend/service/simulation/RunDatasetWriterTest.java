@@ -1,6 +1,7 @@
 package com.vsos.backend.service.simulation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.vsos.backend.repository.common.Row;
 import com.vsos.core.common.MiniJson;
@@ -20,6 +21,21 @@ import org.junit.jupiter.api.io.TempDir;
 class RunDatasetWriterTest {
 
     private static final String GT_HEADER = "frame,sim_time_s,actor_id,role,type_id,x_m,y_m,z_m,yaw_deg,ax_ms2,ay_ms2,az_ms2,speed_ms";
+
+    @Test
+    void atomicResultReplacementCleansItsTemporaryFileOnSuccessAndFailure(@TempDir Path folder) throws IOException {
+        Path resultPath = folder.resolve("result.json");
+        Files.writeString(resultPath, "original");
+        RunDatasetWriter.writeAtomically(resultPath, "replacement");
+        assertThat(Files.readString(resultPath)).isEqualTo("replacement");
+        Path obstructed = Files.createDirectory(folder.resolve("obstructed.json"));
+        Files.writeString(obstructed.resolve("existing-evidence"), "keep");
+        assertThatThrownBy(() -> RunDatasetWriter.writeAtomically(obstructed, "replacement")).isInstanceOf(IOException.class);
+        assertThat(Files.readString(obstructed.resolve("existing-evidence"))).isEqualTo("keep");
+        try (var files = Files.list(folder)) {
+            assertThat(files.map(p -> p.getFileName().toString())).containsExactlyInAnyOrder("result.json", "obstructed.json");
+        }
+    }
 
     @Test
     void blockCarriesIdentityConfigObjectivesProvenanceTimeSeriesAndCollisionEvidence(@TempDir Path folder) throws IOException {

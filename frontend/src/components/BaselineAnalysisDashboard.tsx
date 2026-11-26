@@ -7,7 +7,6 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton } from "@/components/VehicSimUi";
 import { AnalysisDatasetPreparation } from "@/components/analysis/AnalysisDatasetPreparation";
-import { analysisListTitle } from "@/components/analysis/analysisRouteTitles";
 import { restoreSelection, selectionChecks, type ChosenRun } from "@/components/analysis/analysisSelectionData";
 import { AnalysisRunExplorer } from "@/components/analysis/AnalysisRunExplorer";
 import { overviewResponse } from "@/components/analysis/analysisOverviewData";
@@ -169,7 +168,7 @@ function BaselineWorkspace() {
   }
   function openOptimizer() {
     if (saved && saved.baseline_current === true && handoffCheck?.key === snapshotKey && !operationLock.current)
-      router.push(`/aeb?dataset_id=${saved.id}`);
+      router.push(`/aeb/mobo/new?dataset_id=${saved.id}`);
   }
   function clearDraft() {
     if (!canWrite || busy || !draftReady) return;
@@ -197,7 +196,7 @@ function BaselineWorkspace() {
   };
   const closeDataset = () => { update({ view: "runs" }); requestAnimationFrame(() => document.getElementById("analysis-prepare-trigger")?.focus()); };
   const optimizationFamily = ctx?.families.find(f => f.id === filters.scenario_id);
-  return <VehicSimPage step={3} title={analysisListTitle(view)} crumbs={[{ label: "Phân tích" }, { label: "Dữ liệu & kết quả" }]}
+  return <VehicSimPage step={3} crumbs={[{ label: "Phân tích" }, { label: "Dữ liệu & kết quả" }]}
     subtitle="Chọn lượt chạy để xem kết quả đã lưu. Mở các công cụ bổ sung khi cần điều tra hoặc bàn giao."
     actions={<PillButton disabled={loading} onClick={() => setRefresh(x => x + 1)}>Tải lại kết quả</PillButton>}>
     {ctx && <FailureAnalysisV3 project={ctx.project.id} canWrite={canWrite} />}

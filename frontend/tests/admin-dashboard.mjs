@@ -51,7 +51,7 @@ try{
  const page=await context.newPage();page.setDefaultTimeout(15000);
  page.on("pageerror",error=>errors.push(error.message));
  const frame=page.locator("[data-admin-frame]");
- const nav=()=>page.getByRole("navigation",{name:"Quản trị hệ thống",exact:true}).filter({visible:true});
+ const nav=()=>page.getByRole("navigation",{name:"Điều hướng VehicSim",exact:true}).filter({visible:true});
  const ready=async title=>{
   await frame.getByRole("heading",{level:1,name:title,exact:true}).waitFor();
   await frame.getByRole("table").waitFor();
@@ -76,23 +76,25 @@ try{
  for(const [width,height] of viewports){
   await page.setViewportSize({width,height});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  if(width<1100){await page.locator("summary").focus();await page.keyboard.press("Enter");}
-  assert.deepEqual(await nav().getByRole("link").evaluateAll(nodes=>nodes.map(n=>n.getAttribute("href"))),resources.map(r=>"/admin/"+r));
+  if(width<1024){await page.getByRole("button",{name:"Menu",exact:true}).focus();await page.keyboard.press("Enter");}
+  assert.deepEqual(await nav().locator('a[href^="/admin/"]').evaluateAll(nodes=>nodes.map(n=>n.getAttribute("href"))),resources.map(r=>"/admin/"+r));
   assert.equal(await nav().locator('[aria-current="page"]').getAttribute("href"),"/admin/users");
   assert.equal(await page.getByRole("link",{name:/Tổng quan quản trị/}).count(),0);
   await shot("entry-"+width);
-  if(width<1100){await page.keyboard.press("Escape");assert.equal(await page.locator("details").getAttribute("open"),null);}
+  if(width<1024){await nav().getByRole("link",{name:"Tài khoản",exact:true}).focus();await page.keyboard.press("Escape");assert.equal(await page.getByRole("button",{name:"Menu",exact:true}).getAttribute("aria-expanded"),"false");}
  }
  await page.setViewportSize({width:1366,height:768});
- // Brand and breadcrumb use the same legacy entry URL; Back must return to the preceding workflow.
- await nav().getByRole("link",{name:/^Workspace/}).click();await ready("Workspace");
- await page.getByRole("complementary",{name:"Khu vực quản trị"}).getByRole("link",{name:/VehicSim/}).first().click();
+ // Shared brand points home; Admin links, breadcrumb and Back retain resource navigation.
+ await nav().getByRole("link",{name:/^Workspace$/}).click();await ready("Workspace");
+ assert.equal(await page.locator("header").getByRole("link",{name:"VehicSim",exact:true}).getAttribute("href"),"/");
+ await nav().getByRole("link",{name:"Tài khoản",exact:true}).click();
  await page.waitForURL(base+"/admin/users");await ready("Tài khoản");
  await page.goBack();await ready("Workspace");
  await page.getByRole("navigation",{name:"Đường dẫn",exact:true}).getByRole("link",{name:"Quản trị hệ thống",exact:true}).click();
  await page.waitForURL(base+"/admin/users");await ready("Tài khoản");
- await frame.getByRole("link",{name:"Đến nội dung quản trị",exact:true}).focus();await page.keyboard.press("Enter");
- assert(await page.locator("#admin-content").evaluate(el=>el===document.activeElement));
+ await page.getByRole("link",{name:"Đến nội dung chính",exact:true}).focus();await page.keyboard.press("Enter");
+ assert.equal(new URL(page.url()).hash,"","Skip focus does not insert a route history entry");
+ assert(await page.locator("#vehicsim-content").evaluate(el=>el===document.activeElement));
  await nav().getByRole("link",{name:/^Tài liệu kỹ thuật/}).click();await ready("Tài liệu kỹ thuật");
  await page.goBack();await ready("Tài khoản");
  await page.reload();await ready("Tài khoản");
@@ -105,12 +107,12 @@ try{
  mode="empty";await entry();await frame.getByText("Chưa có tài khoản",{exact:true}).waitFor();await shot("entry-empty");
  for(const state of ["error","forbidden","network","malformed"]){
   mode=state;await entry();await frame.getByRole("alert").first().waitFor();await shot("entry-"+state);
-  assert(await frame.getByRole("link",{name:"Hồ sơ / Mật khẩu",exact:true}).isVisible());
+  assert(await page.getByRole("link",{name:"Hồ sơ cá nhân",exact:true}).isVisible());
   mode="normal";await frame.getByRole("button",{name:"Thử lại",exact:true}).click();await ready("Tài khoản");
  }
  // A delayed users response cannot replace a different resource after navigation.
  mode="slow";await entry();await frame.getByRole("status").filter({hasText:"Đang tải dữ liệu"}).waitFor();
- await nav().getByRole("link",{name:/^Workspace/}).click();await ready("Workspace");
+ await nav().getByRole("link",{name:/^Workspace$/}).click();await ready("Workspace");
  const late=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith("/admin/users"));release();await late;
  assert.equal(await frame.getByRole("heading",{level:1}).innerText(),"Workspace");
  mode="normal";

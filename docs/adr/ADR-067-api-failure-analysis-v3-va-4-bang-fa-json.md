@@ -1,7 +1,7 @@
 # ADR-067 — API Failure Analysis v3 và 4 bảng `fa_json_*`
 
 **Trạng thái:** Accepted 26/11/2026 — người dùng duyệt gộp vào `main` (PR #46, commit `4ce6f47` của chuvv và `f5f6b18`). ADR ghi lại quyết định đã có trong code, viết sau khi gộp.
-**Liên quan:** [ADR-065](ADR-065-khoi-dataset-trong-result-json.md) (khối `dataset` trong `result.json`, file gộp theo biến thể), [ADR-042](ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (lõi Java), [ADR-040](ADR-040-rut-scope-4-tham-so-aeb-7-category.md) (tối ưu AEB), [hợp đồng REST của module](../failure-analysis-v3/backend-integration/03_REST_API_CONTRACT.md), [thiết kế lưu trữ](../failure-analysis-v3/backend-integration/02_DATABASE_PERSISTENCE_DESIGN.md).
+**Liên quan:** [ADR-065](ADR-065-khoi-dataset-trong-result-json.md) (khối `dataset` trong `result.json`, file gộp theo biến thể), [ADR-042](ADR-042-loi-aeb-mo-phong-cham-diem-chuyen-sang-java.md) (lõi Java), [ADR-040](ADR-040-rut-scope-4-tham-so-aeb-7-category.md) (tối ưu AEB), [hợp đồng REST của module](../failure-analysis-v3/README.md#api-v3), [thiết kế lưu trữ](../failure-analysis-v3/README.md#persistence).
 
 ## Bối cảnh
 

@@ -32,11 +32,23 @@ class ConsumerCompatibilityValidatorTest {
         assertThat(at(r,"/canonical_metric_parity/handoff_replay/optimization/replayed_aggregate/value/rms_jerk_mps3/value")).isEqualTo(3.);
         assertThat(at(r,"/validation_isolation/suspected_hints")).isEqualTo(1);assertThat(at(r,"/validation_isolation/confirmed_root_cause_required_for_hint")).isEqualTo(false);
         assertThat(at(r,"/validation_isolation/hint_or_range_generation_mode")).isEqualTo("EXISTING_M1C_REPLAY_FOR_CONFORMANCE_ONLY");
-        assertThat(r.get("overall")).isEqualTo("NOT_DIRECTLY_CONSUMABLE");assertThat(r.get("dispatch_allowed")).isEqualTo(false);assertThat(r.get("operational_ready")).isEqualTo(false);
-        assertThat(codes(r)).contains("SYNTHETIC_INPUT_NOT_PRODUCTION","DATASET_CONSUMPTION_MISSING","MULTI_SEED_VARIANT_MAP_LOSS","BASELINE_STATS_OBJECTIVES_MISSING","CUSTOM_BOUNDS_IGNORED","SEALED_VALIDATION_NOT_CONSUMED");
+        assertThat(r.get("overall")).isEqualTo(source.audited()?"NOT_DIRECTLY_CONSUMABLE":"BLOCKED");assertThat(r.get("dispatch_allowed")).isEqualTo(false);assertThat(r.get("operational_ready")).isEqualTo(false);
+        assertThat(codes(r)).contains("SYNTHETIC_INPUT_NOT_PRODUCTION");
+        if(source.audited()) assertThat(codes(r)).contains("DATASET_CONSUMPTION_MISSING","MULTI_SEED_VARIANT_MAP_LOSS","BASELINE_STATS_OBJECTIVES_MISSING","CUSTOM_BOUNDS_IGNORED","SEALED_VALIDATION_NOT_CONSUMED");
+        else assertThat(codes(r)).contains("CONSUMER_SOURCE_CHANGED_OR_MISSING");
         assertThat(list(r.get("schema_mapping"))).hasSizeGreaterThan(45);save("SYNTHETIC_POSITIVE-compatibility.json",r);
     }
-    @Test void oa10ReportsActualHelperDivergenceAndLimitedScalarParity(){var r=validate(handoff);List<Object> cases=list(at(r,"/canonical_metric_parity/consumer_probe/cases"));
+    @Test void oa10ReportsActualHelperDivergenceAndLimitedScalarParity(){var r=validate(handoff);
+        if(!source.audited()) {
+            assertThat(at(r,"/canonical_metric_parity/consumer_probe/status")).isEqualTo("UNKNOWN");
+            assertThat(r.get("dispatch_allowed")).isEqualTo(false);
+            var observed=list(at(probe.data(),"/cases"));assertThat(observed).hasSize(12);
+            Object missing=observed.stream().filter(x->"NULL_COLLISION_IMPACT".equals(at(x,"/id"))).findFirst().orElseThrow();
+            assertThat(at(missing,"/consumer_objectives")).isNull();
+            assertThat(at(missing,"/consumer_exception")).isEqualTo(IllegalStateException.class.getName());
+            return;
+        }
+        List<Object> cases=list(at(r,"/canonical_metric_parity/consumer_probe/cases"));
         assertThat(cases).hasSize(12);assertThat(at(cases.getFirst(),"/comparison")).isEqualTo("SCALAR_MATCH_NOT_GENERAL_CONTRACT_PARITY");
         for(Object x:cases.subList(1,cases.size()))assertThat(at(x,"/comparison")).isEqualTo("DIVERGENT");
         Object missing=cases.stream().filter(x->"NULL_COLLISION_IMPACT".equals(at(x,"/id"))).findFirst().orElseThrow();
@@ -47,7 +59,7 @@ class ConsumerCompatibilityValidatorTest {
     @Test void byteDigestCannotReplaceSemanticDigest(){var h=M1CFixture.mutable(handoff);h.put("content_digest",sha256(MiniJson.write(handoff)));
         assertThat(codes(validate(h))).contains("HANDOFF_CONTENT_DIGEST_MISMATCH");}
     @Test void falseConsumerReadyClaimCannotEnableDispatch(){var h=M1CFixture.mutable(handoff);M1CFixture.set(h,"/consumer_compatibility/overall","READY");
-        var r=validate(rehash(h));assertThat(r.get("dispatch_allowed")).isEqualTo(false);assertThat(codes(r)).contains("DATASET_CONSUMPTION_MISSING");}
+        var r=validate(rehash(h));assertThat(r.get("dispatch_allowed")).isEqualTo(false);assertThat(codes(r)).contains(source.audited()?"DATASET_CONSUMPTION_MISSING":"CONSUMER_SOURCE_CHANGED_OR_MISSING");}
     @Test void canonicalScoreTamperingDetectedAfterRehash(){var h=M1CFixture.mutable(handoff);M1CFixture.set(h,"/canonical_aggregation/optimization/value/rms_jerk_mps3/value",999.);
         assertThat(codes(validate(rehash(h)))).contains("CANONICAL_AGGREGATE_PARITY_FAILED");}
     @Test void missingSampleIsNotDroppedIntoSmallerAggregate(){var h=M1CFixture.mutable(handoff);M1CFixture.set(h,"/members/0/canonical_sample",null);
@@ -70,7 +82,12 @@ class ConsumerCompatibilityValidatorTest {
         assertThat(codes(validate(rehash(h)))).contains("BASELINE_CANONICAL_OBJECTIVES_UNAVAILABLE");}
     @Test void hf10NarrowedBoundsIgnoredAndEqualityMutationRiskDetected(){var h=M1CFixture.mutable(handoff);M1CFixture.set(h,"/search_ranges/TTC_THRESHOLD/suggested_range/value/upper",1.55);
         var r=validate(rehash(h));assertThat(at(r,"/search_bounds_assessment/TTC_THRESHOLD/domain_relation")).isEqualTo("NARROWER_THAN_DEFAULTS");
-        assertThat(at(r,"/search_bounds_assessment/TTC_THRESHOLD/parent_equality_mutation_risk")).isEqualTo(true);assertThat(codes(r)).contains("CUSTOM_BOUNDS_IGNORED","PARENT_EQUALITY_MUTATION_ESCAPES_RANGE");}
+        if(source.audited()) {
+            assertThat(at(r,"/search_bounds_assessment/TTC_THRESHOLD/parent_equality_mutation_risk")).isEqualTo(true);assertThat(codes(r)).contains("CUSTOM_BOUNDS_IGNORED","PARENT_EQUALITY_MUTATION_ESCAPES_RANGE");
+        } else {
+            assertThat(at(r,"/search_bounds_assessment/TTC_THRESHOLD/parent_equality_mutation_risk/status")).isEqualTo("UNKNOWN");
+            assertThat(codes(r)).contains("CONSUMER_SOURCE_CHANGED_OR_MISSING");
+        }}
     @Test void sourceRangeOutsideApprovedDomainRejected(){var h=M1CFixture.mutable(handoff);M1CFixture.set(h,"/search_ranges/MAX_DECELERATION/suggested_range/value/upper",11.);
         assertThat(codes(validate(rehash(h)))).contains("SUGGESTED_RANGE_OUTSIDE_SOURCE");}
     @Test void candidateRangeFixedDimensionRejected(){var h=M1CFixture.mutable(handoff);M1CFixture.set(h,"/search_ranges/TTC_THRESHOLD/suggested_range/value/lower",3.5);

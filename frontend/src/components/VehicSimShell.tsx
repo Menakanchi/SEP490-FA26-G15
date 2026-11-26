@@ -60,7 +60,14 @@ function WorkspaceFrame({ children }: { children: React.ReactNode }) {
   return (
     <div data-analysis-shell={analysis || undefined} className={`${jakarta.className} vehicsim-shell flex min-h-dvh w-full flex-col bg-vehicsim-bg text-vehicsim-ink`}>
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-800 bg-[#0f141c] text-white px-4 py-2 sm:px-6 lg:pl-0 lg:pr-8 print:hidden shadow-sm">
-        <a href="#vehicsim-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-slate-900 focus:p-3 text-white">
+        <a href="#vehicsim-content" onClick={(event) => {
+          const content = document.getElementById("vehicsim-content");
+          if (content) {
+            event.preventDefault();
+            content.focus({ preventScroll: true });
+            content.scrollIntoView({ block: "start" });
+          }
+        }} className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-slate-900 focus:p-3 text-white">
           Đến nội dung chính
         </a>
         <Link href="/" className="inline-flex min-h-11 shrink-0 items-center gap-2.5 font-bold lg:w-[272px] lg:px-6">

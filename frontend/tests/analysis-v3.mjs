@@ -5,7 +5,7 @@ import {loadProduction} from "./helpers/load-production.mjs";
 const d=await loadProduction("components/analysis/failureAnalysisV3Data.ts");
 const api=(await loadProduction("services/failureAnalysisV3.ts")).failureAnalysisV3;
 const shared=await loadProduction("services/api.ts");
-const read=async name=>JSON.parse(await fs.readFile(new URL(`../../docs/failure-analysis-v3/backend-integration/evidence/examples/http-${name}.json`,import.meta.url),"utf8"));
+const read=async name=>JSON.parse(await fs.readFile(new URL(`./fixtures/fa-v3/http-${name}.json`,import.meta.url),"utf8"));
 const [s,e,p,r,h]=await Promise.all(["source","execution","reports","report","handoff-status"].map(read));
 test("actual BE-R1 resource pages, IDs, scope and accounting round trip unchanged",()=>{
  assert.equal(d.source(s,1),s);assert.equal(d.execution(e,1),e);assert.equal(d.page(p,v=>d.reportMetadata(v,1)).items[0],p.items[0]);assert.equal(d.handoff(h,1),h);

@@ -49,8 +49,6 @@ export default function DecisionHistoryPage() {
   return (
     <VehicSimPage
       crumbs={[{ label: "Kiểm chứng", href: "/validation/regression" }, { label: "Lịch sử quyết định" }]}
-      title="Nhật ký phê duyệt & Ban hành bản cơ sở"
-      subtitle="Theo dõi các quyết định chấp thuận (ACCEPT), từ chối (REJECT) hoặc yêu cầu kiểm thử thêm từ hội đồng đánh giá."
     >
       <ErrorNote message={error} />
       <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
