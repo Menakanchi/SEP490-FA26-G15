@@ -65,6 +65,8 @@ export default function RegressionListPage() {
     <VehicSimPage
       step={6}
       crumbs={[{ label: "Kiểm chứng" }, { label: "Kiểm thử hồi quy" }]}
+      title="Xác minh an toàn & Chống suy thoái (Regression)"
+      subtitle="Kiểm chứng độc lập ứng viên AEB trên toàn bộ tập kịch bản so với bản cơ sở để ngăn ngừa hồi quy lỗi."
       actions={
         <PillButton
           variant="dark"
@@ -136,7 +138,7 @@ export default function RegressionListPage() {
         )}
 
         {shown.length > 0 && (
-          <TableScroll label="Bảng kiểm thử hồi quy" minWidth={1100}>
+          <TableScroll label="Bảng kiểm thử hồi quy" minWidth={1000}>
             <div className="flex h-11 items-center border-y border-solid border-slate-700 bg-slate-800 px-5 text-[12.5px] font-black uppercase tracking-wider text-white">
               <span className="w-[45px] shrink-0 pr-2 text-center font-bold">STT</span>
               <span className="w-[200px] shrink-0 pr-3">Kiểm thử</span>
@@ -146,7 +148,7 @@ export default function RegressionListPage() {
               <span className="w-[115px] shrink-0">Sửa / Xấu đi</span>
               {!isExperiencer && <span className="w-[100px] shrink-0">Người tạo</span>}
               <span className="w-[80px] shrink-0">Ngày</span>
-              <span className="w-[195px] shrink-0 text-right pr-2">Thao tác</span>
+              <span className="w-[130px] shrink-0 text-right pr-2">Thao tác</span>
             </div>
             {shown.map((i, idx) => {
               const running = i.status === "RUNNING" || i.status === "PENDING";
@@ -191,17 +193,17 @@ export default function RegressionListPage() {
                   </span>
                   {!isExperiencer && <span className="w-[105px] shrink-0 truncate text-[12.5px] text-vehicsim-ink">{i.created_by ?? "—"}</span>}
                   <span className="w-[85px] shrink-0 text-[12px] text-vehicsim-faint">{fmt.date(i.created_at)}</span>
-                  <span className="flex w-[195px] shrink-0 items-center justify-end gap-2 pr-2" onClick={(e) => e.stopPropagation()}>
+                  <span className="flex w-[135px] shrink-0 items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                     <Link
                       href={`/validation/regression/${i.id}`}
-                      className="inline-flex h-7 items-center justify-center rounded-lg border border-solid border-slate-200 bg-white px-2.5 text-[11.5px] font-bold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition whitespace-nowrap shadow-xs"
+                      className="inline-flex h-7 items-center justify-center rounded-md border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-2.5 text-[11.5px] font-bold text-vehicsim-decision hover:border-vehicsim-decision hover:bg-vehicsim-decision hover:text-white transition shadow-xs"
                     >
                       Chi tiết
                     </Link>
                     {(i.status === "PASSED" || i.status === "FAILED") && (
                       <Link
                         href={conclusion(i.id)}
-                        className="inline-flex h-7 items-center justify-center rounded-lg bg-vehicsim-decision px-2.5 text-[11.5px] font-bold text-white hover:bg-vehicsim-decision/90 transition whitespace-nowrap shadow-xs"
+                        className="inline-flex h-7 items-center justify-center rounded-md bg-vehicsim-decision px-2.5 text-[11.5px] font-bold text-white hover:bg-vehicsim-decision/90 transition shadow-xs"
                       >
                         {isExperiencer ? "Kết luận" : "Khuyến nghị"}
                       </Link>
@@ -219,6 +221,7 @@ export default function RegressionListPage() {
               {items.length ? `${offset + 1}–${offset + shown.length}` : "0"} trong {items.length} kiểm thử
               {data && items.length !== data.items.length && ` (lọc từ ${data.items.length})`}
             </span>
+            {" · "}Kiểm thử chạy ngay khi được tạo nên không sửa hay xoá được sau đó.
           </p>
           {pages > 1 && <Pagination page={current} pages={pages} onPage={setPage} />}
         </div>

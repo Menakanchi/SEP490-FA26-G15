@@ -6,6 +6,7 @@ import { useVehicSimContext } from "@/components/VehicSimContext";
 import { ErrorNote, PillButton } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { AebVersion } from "@/types/vehicsim";
+import { AebNav } from "@/components/aeb/AebNav";
 import { VersionTable } from "@/components/aeb/VersionTable";
 
 export default function AebVersionsPage() {
@@ -26,11 +27,13 @@ export default function AebVersionsPage() {
   return (
     <VehicSimPage
       step={4}
-      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Danh sách phiên bản" }]}
+      crumbs={[{ label: "Cải tiến AEB", href: "/aeb" }, { label: "Thư viện phiên bản" }]}
+      title="Thư viện & Vòng đời phiên bản AEB"
+      subtitle="Quản lý toàn bộ lịch sử bản cơ sở (BASELINE), ứng viên (CANDIDATE) và các bản đã lưu trữ."
       actions={
         <div className="flex items-center gap-2">
           <PillButton href="/aeb/compare" variant="light">
-            Đối chiếu thông số
+            So sánh 2 phiên bản
           </PillButton>
           <PillButton href="/aeb/manual" variant="dark">
             + Tạo ứng viên mới
@@ -39,6 +42,7 @@ export default function AebVersionsPage() {
       }
     >
       <ErrorNote message={error} />
+      <AebNav active="versions" />
 
       <VersionTable
         versions={versions}

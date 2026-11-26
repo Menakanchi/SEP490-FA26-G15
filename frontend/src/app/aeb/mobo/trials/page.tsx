@@ -7,7 +7,7 @@ import { VehicSimPage } from "@/components/VehicSimPage";
 import { EmptyState, ErrorNote, Pagination, PillButton, Tag, cx } from "@/components/VehicSimUi";
 import { vehicsimApi } from "@/services/vehicsim";
 import type { OptimizationRun, OptimizationTrial } from "@/types/vehicsim";
-import { VehicSimSelect } from "@/components/VehicSimSelect";
+import { AebNav } from "@/components/aeb/AebNav";
 
 export default function AebMoboTrialsPage() {
   const router = useRouter();
@@ -39,7 +39,7 @@ export default function AebMoboTrialsPage() {
       vehicsimApi
         .optimizationTrials(selectedRunId)
         .then(setTrials)
-        .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách lượt thử"));
+        .catch((err) => setError(err instanceof Error ? err.message : "Không tải được danh sách trials"));
     }
   }, [selectedRunId]);
 
@@ -64,8 +64,9 @@ export default function AebMoboTrialsPage() {
       crumbs={[
         { label: "Cải tiến AEB", href: "/aeb" },
         { label: "Tối ưu MOBO", href: "/aeb/mobo" },
-        { label: "Dữ liệu thử nghiệm" },
+        { label: "Dữ liệu Trials" },
       ]}
+      title="Tra cứu lượt thử nghiệm (Trials)"
       actions={
         <div className="flex items-center gap-2">
           <PillButton href={`/aeb/mobo/pareto${selectedRunId ? `?run_id=${selectedRunId}` : ""}`} variant="dark">
@@ -78,37 +79,39 @@ export default function AebMoboTrialsPage() {
       }
     >
       <ErrorNote message={error} />
+      <AebNav active="mobo_trials" />
 
       {/* Bộ chọn đợt chạy và Bộ lọc */}
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-solid border-vehicsim-line bg-vehicsim-surface p-5 shadow-sm">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <label className="text-[13px] font-bold text-vehicsim-ink">Đợt chạy:</label>
-            <VehicSimSelect
+            <select
               aria-label="Chọn đợt tối ưu hoá"
-              value={selectedRunId}
-              onChange={(newId) => {
+              value={selectedRunId ?? ""}
+              onChange={(e) => {
+                const newId = Number(e.target.value);
                 setSelectedRunId(newId);
+                setPage(1);
                 router.replace(`/aeb/mobo/trials?run_id=${newId}`);
               }}
-              options={(runs ?? []).map((r) => ({
-                value: r.id,
-                label: `Run #${r.id} · ${r.name}`,
-                sublabel: `${r.completed_trials} lượt thử`,
-              }))}
-              className="w-auto min-w-[320px] max-w-md"
-            />
+              className="h-10 rounded-xl border border-solid border-vehicsim-line-strong bg-vehicsim-surface px-3 text-[14px] font-bold text-vehicsim-ink"
+            >
+              {(runs ?? []).map((r) => (
+                <option key={r.id} value={r.id}>
+                  Run #{r.id} · {r.name} ({r.completed_trials} trials)
+                </option>
+              ))}
+            </select>
           </div>
 
-          <div className="flex items-center rounded-lg border border-solid border-slate-200 dark:border-slate-700 p-1 bg-slate-100 dark:bg-slate-800">
+          <div className="flex items-center rounded-lg border border-solid border-vehicsim-line p-1 bg-vehicsim-soft">
             <button
               type="button"
               onClick={() => { setFilterMode("ALL"); setPage(1); }}
               className={cx(
-                "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
-                filterMode === "ALL"
-                  ? "bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
+                "rounded-md px-3 py-1.5 text-[12px] font-bold transition",
+                filterMode === "ALL" ? "bg-vehicsim-surface text-vehicsim-ink shadow-xs" : "text-vehicsim-muted hover:text-vehicsim-ink"
               )}
             >
               Tất cả ({trials?.length ?? 0})
@@ -117,10 +120,8 @@ export default function AebMoboTrialsPage() {
               type="button"
               onClick={() => { setFilterMode("PARETO"); setPage(1); }}
               className={cx(
-                "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
-                filterMode === "PARETO"
-                  ? "bg-emerald-600 text-white shadow-xs"
-                  : "text-slate-600 hover:text-emerald-800 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-emerald-300 dark:hover:bg-emerald-950/40"
+                "rounded-md px-3 py-1.5 text-[12px] font-bold transition",
+                filterMode === "PARETO" ? "bg-vehicsim-surface text-vehicsim-ok shadow-xs" : "text-vehicsim-muted hover:text-vehicsim-ink"
               )}
             >
               Biên Pareto ({trials?.filter((t) => t.is_pareto_optimal).length ?? 0})
@@ -129,10 +130,8 @@ export default function AebMoboTrialsPage() {
               type="button"
               onClick={() => { setFilterMode("FEASIBLE"); setPage(1); }}
               className={cx(
-                "rounded-md px-3 py-1.5 text-[12px] font-bold transition-all",
-                filterMode === "FEASIBLE"
-                  ? "bg-slate-800 text-white shadow-xs dark:bg-slate-700 dark:text-white"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
+                "rounded-md px-3 py-1.5 text-[12px] font-bold transition",
+                filterMode === "FEASIBLE" ? "bg-vehicsim-surface text-vehicsim-decision shadow-xs" : "text-vehicsim-muted hover:text-vehicsim-ink"
               )}
             >
               Hợp lệ ({trials?.filter((t) => !t.constraint_violated).length ?? 0})
@@ -153,7 +152,7 @@ export default function AebMoboTrialsPage() {
           <div className="flex items-center gap-2">
             <ListFilter className="size-5 text-vehicsim-decision" />
             <h3 className="text-[16px] font-bold text-vehicsim-ink">
-              Dữ liệu thử nghiệm ({filteredTrials.length} lượt thử)
+              Dữ liệu thử nghiệm ({filteredTrials.length} trials)
             </h3>
           </div>
         </div>
@@ -169,20 +168,24 @@ export default function AebMoboTrialsPage() {
             <table className="w-full min-w-[960px] text-left text-[13px]">
               <thead className="border-b border-solid border-slate-700 bg-slate-800 text-[12.5px] font-black uppercase tracking-wider text-white">
                 <tr className="h-12">
-                  <th className="pl-5 pr-4 py-3.5 whitespace-nowrap">Lượt thử</th>
-                  <th className="px-4 py-3.5 whitespace-nowrap">Nguồn sinh mẫu</th>
-                  <th className="px-4 py-3.5 whitespace-nowrap">Điểm tiềm năng (qEHVI)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-decision whitespace-nowrap">RMS Jerk (m/s³)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-danger whitespace-nowrap">Va chạm (km/h)</th>
-                  <th className="px-4 py-3.5 text-vehicsim-ink whitespace-nowrap">Quãng phanh (m)</th>
-                  <th className="px-4 py-3.5 whitespace-nowrap">Ràng buộc</th>
-                  <th className="px-4 py-3.5 text-right whitespace-nowrap">Biên Pareto</th>
+                  <th className="w-12 px-3 py-3.5 text-center">STT</th>
+                  <th className="px-4 py-3.5">Trial #</th>
+                  <th className="px-4 py-3.5">Nguồn sinh mẫu</th>
+                  <th className="px-4 py-3.5 font-mono">Hàm thu thập qEHVI</th>
+                  <th className="px-4 py-3.5 text-vehicsim-decision">RMS Jerk (m/s³)</th>
+                  <th className="px-4 py-3.5 text-vehicsim-danger">Va chạm (km/h)</th>
+                  <th className="px-4 py-3.5 text-vehicsim-ink">Quãng phanh (m)</th>
+                  <th className="px-4 py-3.5">Ràng buộc</th>
+                  <th className="px-4 py-3.5 text-right">Biên Pareto</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-solid divide-vehicsim-line bg-vehicsim-surface">
-                {pagedTrials.map((t) => (
+                {pagedTrials.map((t, idx) => (
                   <tr key={t.id} className={cx("hover:bg-vehicsim-row transition-colors", t.is_pareto_optimal && "bg-vehicsim-ok-bg/25")}>
-                    <td className="pl-5 pr-4 py-3.5 font-mono font-bold text-vehicsim-ink">#{t.trial_number}</td>
+                    <td className="w-12 px-3 py-4 text-center font-mono text-[12px] font-bold text-vehicsim-faint tabular-nums">
+                      {(safePage - 1) * PAGE_SIZE + idx + 1}
+                    </td>
+                    <td className="px-4 py-3.5 font-mono font-bold text-vehicsim-ink">{t.trial_number}</td>
                     <td className="px-4 py-3.5">
                       <Tag tone={t.sampling_source === "INITIAL_DESIGN" ? "neutral" : "info"}>
                         {t.sampling_source === "INITIAL_DESIGN" ? "Khởi tạo Sobol/Random" : "qEHVI Bayes"}
