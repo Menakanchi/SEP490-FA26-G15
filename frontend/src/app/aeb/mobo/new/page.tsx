@@ -11,6 +11,8 @@ import type { CarlaStatus } from "@/types/vehicsim";
 import { VehicSimSelect } from "@/components/VehicSimSelect";
 import { readSavedSelection, type SavedSelection } from "@/components/analysis/analysisSnapshotData";
 import { vi } from "@/components/vehicsimI18n";
+import { failureAnalysisV3 } from "@/services/failureAnalysisV3";
+import { FAError, uuid, type V3CampaignInput } from "@/components/analysis/failureAnalysisV3Data";
 
 export default function AebMoboNewPage() {
   const router = useRouter();
@@ -19,18 +21,30 @@ export default function AebMoboNewPage() {
   const rawDatasetId = searchParams.get("dataset_id");
   const datasetId = rawDatasetId && /^\d+$/.test(rawDatasetId) && Number.isSafeInteger(Number(rawDatasetId)) && Number(rawDatasetId) > 0 ? Number(rawDatasetId) : null;
   const datasetLinked = rawDatasetId !== null;
+  const rawHandoffId = searchParams.get("handoff_id"), handoffDigest = searchParams.get("handoff_digest");
+  const handoffLinked = rawHandoffId !== null || handoffDigest !== null;
+  const linked = datasetLinked || handoffLinked;
+  const handoffId = uuid(rawHandoffId) ? rawHandoffId : null;
+  const sourceConflict = datasetLinked && handoffLinked;
   const [datasetRevision, setDatasetRevision] = useState(0);
   const datasetKey = `${ctx?.project.id}:${ctx?.system.baseline?.id}:${rawDatasetId}:${datasetRevision}`;
   const [datasetResult, setDatasetResult] = useState<{ key: string; data: SavedSelection | null; error: string | null } | null>(null);
   const dataset = datasetResult?.key === datasetKey ? datasetResult.data : null;
   const datasetError = datasetLinked && !datasetId ? "Mã tập phân tích không hợp lệ. Mở lại tập đã chốt từ Phân tích lỗi."
     : datasetResult?.key === datasetKey ? datasetResult.error : null;
+  const handoffKey = `${ctx?.project.id}:${ctx?.system.baseline?.id}:${rawHandoffId}:${handoffDigest}:${datasetRevision}`;
+  const [handoffResult, setHandoffResult] = useState<{ key: string; data: V3CampaignInput | null; error: string | null } | null>(null);
+  const handoff = handoffResult?.key === handoffKey ? handoffResult.data : null;
+  const handoffError = sourceConflict ? "Chỉ chọn một nguồn bàn giao: handoff V3 hoặc dataset V2. Mở lại liên kết từ Phân tích lỗi."
+    : handoffLinked && (!handoffId || !handoffDigest || !/^[a-f0-9]{64}$/.test(handoffDigest)) ? "Liên kết handoff V3 thiếu hoặc sai định danh/checksum. Mở lại từ Phân tích lỗi."
+    : handoffResult?.key === handoffKey ? handoffResult.error : null;
+  const source = !sourceConflict ? handoffLinked ? handoff : dataset : null;
 
   const scenarioIdParam = Number(searchParams.get("scenario_id") || searchParams.get("family"));
   const initialScenarioId = Number.isSafeInteger(scenarioIdParam) && scenarioIdParam > 0 ? scenarioIdParam : undefined;
 
   const [selectedScenarioId, setSelectedScenarioId] = useState<number | "">(initialScenarioId ?? "");
-  const scenarioId = datasetLinked ? dataset?.scenario.id ?? "" :
+  const scenarioId = linked ? source?.scenario.id ?? "" :
     selectedScenarioId !== ""
       ? selectedScenarioId
       : initialScenarioId && ctx?.families?.some((f) => f.id === initialScenarioId)
@@ -41,7 +55,7 @@ export default function AebMoboNewPage() {
   const [maxTrials, setMaxTrials] = useState(10);
   const [nInitialPoints, setNInitialPoints] = useState(3);
   const [selectedSimulator, setSimulatorType] = useState<"KINEMATIC" | "CARLA">("KINEMATIC");
-  const simulatorType = dataset ? dataset.reference.simulator.startsWith("carla-") ? "CARLA" : "KINEMATIC" : selectedSimulator;
+  const simulatorType = source ? source.reference.simulator.startsWith("carla-") ? "CARLA" : "KINEMATIC" : selectedSimulator;
   const [carlaStatus, setCarlaStatus] = useState<CarlaStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const submissionLock = useRef(false);
@@ -52,7 +66,7 @@ export default function AebMoboNewPage() {
   }, []);
 
   useEffect(() => {
-    if (!datasetId || !ctx) return;
+    if (!datasetId || !ctx || handoffLinked) return;
     let active = true;
     vehicsimApi.analysisHandoff(datasetId).then(value => {
       const snapshot = readSavedSelection(value, datasetId);
@@ -65,13 +79,23 @@ export default function AebMoboNewPage() {
       if (active) setDatasetResult({ key: datasetKey, data: snapshot, error: null });
     }).catch(err => { if (active) setDatasetResult({ key: datasetKey, data: null, error: err instanceof Error ? vi(err.message) : "Không kiểm tra được dataset đã chốt." }); });
     return () => { active = false; };
-  }, [datasetId, datasetKey, ctx]);
+  }, [datasetId, datasetKey, ctx, handoffLinked]);
+
+  useEffect(() => {
+    if (!handoffId || !handoffDigest || !/^[a-f0-9]{64}$/.test(handoffDigest) || !ctx || sourceConflict) return;
+    let active = true;
+    failureAnalysisV3.campaign(ctx.project.id, handoffId, handoffDigest).then(value => {
+      if (value.baseline.id !== ctx.system.baseline?.id) throw new Error("Baseline của handoff V3 đã thay đổi. Quay lại Phân tích lỗi để rà soát nguồn.");
+      if (active) setHandoffResult({ key: handoffKey, data: value, error: null });
+    }).catch(err => { if (active) setHandoffResult({ key: handoffKey, data: null, error: err instanceof FAError ? `${err.message} (${err.code})` : err instanceof Error ? vi(err.message) : "Không kiểm tra được handoff V3." }); });
+    return () => { active = false; };
+  }, [handoffId, handoffDigest, handoffKey, ctx, sourceConflict]);
 
   const handleStartOptimization = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canWrite || submissionLock.current) return;
-    if (datasetLinked && !dataset) {
-      setError("Cần kiểm tra thành công dataset đã chốt trước khi tạo đợt tối ưu.");
+    if (linked && !source) {
+      setError(handoffLinked ? "Cần kiểm tra thành công handoff V3 trước khi tạo đợt tối ưu." : "Cần kiểm tra thành công dataset đã chốt trước khi tạo đợt tối ưu.");
       return;
     }
     if (!scenarioId || !ctx?.families.some(family => family.id === scenarioId)) {
@@ -93,7 +117,8 @@ export default function AebMoboNewPage() {
         max_trials: Number(maxTrials),
         n_initial_points: Number(nInitialPoints),
         simulator_type: simulatorType,
-        ...(dataset ? { dataset_id: dataset.id, dataset_digest: dataset.dataset_digest, base_aeb_version_id: dataset.baseline.id } : {}),
+        ...(handoff ? { handoff_id: handoff.handoff_id, handoff_digest: handoff.handoff_digest, base_aeb_version_id: handoff.baseline.id, search_space: handoff.search_space }
+          : dataset ? { dataset_id: dataset.id, dataset_digest: dataset.dataset_digest, base_aeb_version_id: dataset.baseline.id } : {}),
       });
       router.push(`/aeb/mobo?run_id=${res.id}`);
     } catch (err) {
@@ -121,7 +146,13 @@ export default function AebMoboNewPage() {
       }
     >
       <ErrorNote message={error} />
-      {datasetLinked && <section className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5" aria-label="Dataset Failure Analysis">
+      {handoffLinked && <section className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5" aria-label="Handoff Failure Analysis V3">
+        {handoff && !sourceConflict ? <><h2 className="font-bold">Handoff V3 · {handoff.scenario.name}</h2><p className="mt-2 text-[13px] text-vehicsim-muted">Baseline {handoff.baseline.label} · xe #{handoff.reference.vehicle_id} · {handoff.reference.simulator} · dt {handoff.reference.dt} s</p><p className="mt-2 text-[13px]">{handoff.optimization_run_ids.length} run tối ưu · {handoff.validation_run_ids.length} run xác minh độc lập. Campaign và GP sử dụng đúng partition và miền đã xác nhận trong handoff V3.</p><details className="mt-3 text-[12px]"><summary>Nguồn và miền tham số đã xác nhận</summary><p className="mt-2 break-all">Handoff: {handoff.handoff_id} · SHA-256: {handoff.handoff_digest}</p><p className="mt-2">Run tối ưu: {handoff.optimization_run_ids.join(", ")}. Run xác minh: {handoff.validation_run_ids.join(", ")}.</p><dl>{Object.entries(handoff.search_space).map(([code, [low, high]]) => <div key={code} className="mt-2"><dt>{code}</dt><dd>{low}–{high}</dd></div>)}</dl></details></>
+          : handoffError ? <><ErrorNote message={handoffError} />{handoffId && !sourceConflict && <PillButton onClick={() => setDatasetRevision(value => value + 1)}>Kiểm tra lại handoff V3</PillButton>}</>
+          : <p role="status">Đang kiểm tra nguồn và checksum handoff V3…</p>}
+        <div className="mt-3"><PillButton href="/analysis/failures?view=dataset">Về phân tích V3</PillButton></div>
+      </section>}
+      {datasetLinked && !handoffLinked && <section className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5" aria-label="Dataset Failure Analysis">
         {dataset ? <><h2 className="font-bold">Tập đã chốt #{dataset.id} · {dataset.scenario.name}</h2><p className="mt-2 text-[13px] text-vehicsim-muted">Baseline {dataset.baseline.label} · xe #{dataset.reference.vehicle_id} · {dataset.reference.simulator} · dt {dataset.reference.dt} s</p><p className="mt-2 text-[13px]">{dataset.optimization_run_ids.length} run tối ưu · {dataset.validation_run_ids.length} run xác minh độc lập. Đợt chạy giữ đúng run, seed và checksum của tập đã chốt.</p></>
           : datasetError ? <><ErrorNote message={datasetError} />{datasetId && <PillButton onClick={() => setDatasetRevision(value => value + 1)}>Kiểm tra lại dataset</PillButton>}</>
           : <p role="status">Đang kiểm tra nguồn và checksum dataset…</p>}
@@ -143,7 +174,7 @@ export default function AebMoboNewPage() {
                 id="select-scenario"
                 aria-label="Kịch bản kiểm thử"
                 value={scenarioId}
-                disabled={datasetLinked}
+                disabled={linked}
                 onChange={(val) => setSelectedScenarioId(val ? Number(val) : "")}
                 options={(ctx?.families ?? []).map((f) => ({
                   value: f.id,
@@ -198,7 +229,7 @@ export default function AebMoboNewPage() {
               <button
                 type="button"
                 onClick={() => setSimulatorType("KINEMATIC")}
-                disabled={datasetLinked}
+                disabled={linked}
                 className={cx(
                   "flex h-[44px] items-center justify-between rounded-xl border px-4 text-left transition",
                   simulatorType === "KINEMATIC"
@@ -217,7 +248,7 @@ export default function AebMoboNewPage() {
               <button
                 type="button"
                 onClick={() => setSimulatorType("CARLA")}
-                disabled={datasetLinked}
+                disabled={linked}
                 className={cx(
                   "flex h-[44px] items-center justify-between rounded-xl border px-4 text-left transition",
                   simulatorType === "CARLA"
@@ -260,7 +291,7 @@ export default function AebMoboNewPage() {
             <PillButton variant="light" href="/aeb/mobo">
               Hủy bỏ
             </PillButton>
-            <PillButton variant="dark" type="submit" disabled={submitting || !canWrite || !scenarioId || (datasetLinked && !dataset)}>
+            <PillButton variant="dark" type="submit" disabled={submitting || !canWrite || !scenarioId || (linked && !source)}>
               {submitting
                 ? "Đang khởi tạo…"
                 : simulatorType === "CARLA"

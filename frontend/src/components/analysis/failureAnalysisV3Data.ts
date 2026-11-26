@@ -6,7 +6,14 @@ export type Source = Resource & { source_schema: string; status: string; created
 export type Member = RecordValue & { member_index: number; run_key: string | null; status: string; reason_codes: string[]; report_id?: string };
 export type Execution = Resource & { status: string; expected: number; accepted: number; analyzed: number; blocked: number; failed: number; missing: number; members: Member[]; handoff_id: string };
 export type ReportMetadata = Resource & { member_index: number; run_key: string; run_identity: RecordValue; report_schema: string };
-export type HandoffMetadata = Resource & { status: string; dispatch_allowed: false; content_digest: string | null; reason_codes: string[] };
+export type HandoffMetadata = Resource & { status: string; dispatch_allowed: boolean; content_digest: string | null; reason_codes: string[] };
+export type ApprovedContext = { context_id: string; context_digest: string; source_id: string };
+export type V3CampaignInput = {
+  schema: "vehicsim.fa-v3-campaign/v1"; project_id: number; handoff_id: string; handoff_digest: string;
+  scenario: { id: number; name: string; code?: string }; baseline: { id: number; label: string };
+  reference: { vehicle_id: number; simulator: string; dt: number };
+  optimization_run_ids: number[]; validation_run_ids: number[]; search_space: Record<string, [number, number]>;
+};
 export type ResourcePage<T> = { items: T[]; limit: number; offset: number };
 export type DiagnosticReport = RecordValue & { schema_version: string; input: RecordValue & { run_key: string }; report: RecordValue & { physical_outcome: EvidenceValue; observed_behavior: EvidenceValue; objectives: Record<string, RecordValue & { canonical_value: EvidenceValue }> } };
 export class FAError extends Error {
@@ -57,8 +64,38 @@ export function reportMetadata(v: unknown, project: number): ReportMetadata {
 }
 export function handoff(v: unknown, project: number): HandoffMetadata {
   const r = resource(v, "HANDOFF", project);
-  if (r.dispatch_allowed !== false || !["BLOCKED", "DIAGNOSTIC_ONLY"].includes(String(r.status)) || !(r.content_digest === null || typeof r.content_digest === "string") || !Array.isArray(r.reason_codes)) invalid("bàn giao");
+  if (typeof r.dispatch_allowed !== "boolean" || !["BLOCKED", "DIAGNOSTIC_ONLY", "READY"].includes(String(r.status))
+      || r.dispatch_allowed !== (r.status === "READY")
+      || !(r.content_digest === null || typeof r.content_digest === "string" && /^[a-f0-9]{64}$/.test(r.content_digest))
+      || r.dispatch_allowed && (!r.content_digest || !uuid(r.context_id))
+      || !Array.isArray(r.reason_codes) || !r.reason_codes.every(code => typeof code === "string")
+      || r.dispatch_allowed && r.reason_codes.length !== 0) invalid("bàn giao");
   return r as HandoffMetadata;
+}
+export function approvedContext(v: unknown): ApprovedContext {
+  const r = object(v);
+  if (!uuid(r.context_id) || !uuid(r.source_id) || typeof r.context_digest !== "string" || !/^[a-f0-9]{64}$/.test(r.context_digest)) invalid("context đã xác nhận");
+  return r as ApprovedContext;
+}
+/** Validate server projection; never replace missing V3 data with a V2 dataset or default domain. */
+export function campaignInput(v: unknown, project: number, key: string, digest: string): V3CampaignInput {
+  const r = object(v), scenario = object(r.scenario), baseline = object(r.baseline), reference = object(r.reference);
+  const ids = (value: unknown): value is number[] => Array.isArray(value) && value.length > 0 && value.length <= 500 && value.every(x => integer(x) && x > 0);
+  const opt = r.optimization_run_ids, val = r.validation_run_ids, bounds = object(r.search_space);
+  const codes = ["TTC_THRESHOLD", "BRAKE_ACTIVATION_DELAY", "MAX_DECELERATION", "BRAKE_BUILDUP_RATE"];
+  if (r.schema !== "vehicsim.fa-v3-campaign/v1" || r.project_id !== project || !uuid(key) || r.handoff_id !== key
+      || !/^[a-f0-9]{64}$/.test(digest) || r.handoff_digest !== digest
+      || !integer(scenario.id) || scenario.id < 1 || typeof scenario.name !== "string"
+      || !integer(baseline.id) || baseline.id < 1 || typeof baseline.label !== "string"
+      || !integer(reference.vehicle_id) || reference.vehicle_id < 1 || typeof reference.simulator !== "string"
+      || !(reference.simulator.startsWith("carla-") || reference.simulator.startsWith("vehicsim-kinematic-"))
+      || typeof reference.dt !== "number" || !Number.isFinite(reference.dt) || reference.dt <= 0
+      || !ids(opt) || !ids(val) || new Set([...opt, ...val]).size !== opt.length + val.length
+      || Object.keys(bounds).length !== codes.length || !codes.every(code => {
+        const pair = bounds[code];
+        return Array.isArray(pair) && pair.length === 2 && pair.every(x => typeof x === "number" && Number.isFinite(x)) && pair[0] < pair[1];
+      })) invalid("nguồn campaign V3");
+  return r as unknown as V3CampaignInput;
 }
 export function page<T>(v: unknown, parse: (item: unknown) => T): ResourcePage<T> {
   const r = object(v);

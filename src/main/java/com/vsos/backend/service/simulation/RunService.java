@@ -3,6 +3,7 @@ package com.vsos.backend.service.simulation;
 import com.vsos.backend.common.audit.AuditLog;
 import com.vsos.core.bridge.Bundle;
 import com.vsos.core.aeb.AebParams;
+import com.vsos.backend.service.analysis.FailureAnalysisService;
 import com.vsos.core.simulation.LeadVehicleCase;
 import com.vsos.core.simulation.CarlaSession;
 import com.vsos.core.evaluation.Evaluation;
@@ -171,9 +172,11 @@ public class RunService {
     private final ApplicationEventPublisher events;
     private final TransactionTemplate tx;
     private final FamilyService families;
+    private final FailureAnalysisService resultStore;
+    private static final String ORIGINAL_RESULT_BYTES = "__module2_original_result_bytes";
 
     public RunService(Db db, Queries queries, VehicSimProperties props, @Qualifier("simulationExecutor") TaskExecutor simulationExecutor,
-                      ApplicationEventPublisher events, TransactionTemplate tx, FamilyService families) {
+                      ApplicationEventPublisher events, TransactionTemplate tx, FamilyService families, FailureAnalysisService resultStore) {
         this.db = db;
         this.queries = queries;
         this.props = props;
@@ -181,6 +184,7 @@ public class RunService {
         this.events = events;
         this.tx = tx;
         this.families = families;
+        this.resultStore = resultStore;
     }
 
     // ------------------------------------------------------------------ bộ mô phỏng cấu hình
@@ -538,7 +542,7 @@ public class RunService {
      * Phần {@code variant} của bundle từ cấu hình run. Biến thể người đi bộ giữ nguyên dạng cũ (không thêm khóa nào, bundle cũ tái lập y hệt);
      * biến thể xe phía trước (ADR-050) mang {@code category} và các trường của nó.
      */
-    static Map<String, Object> variantForBundle(Map<String, Object> ir, Object friction) {
+    public static Map<String, Object> variantForBundle(Map<String, Object> ir, Object friction) {
         Object category = ir.get("category");
         if (category != null && LeadVehicleCase.CATEGORIES.contains(category.toString())) {
             return Json.obj(
@@ -618,7 +622,18 @@ public class RunService {
                 CARLA_LOCK.unlock();
             }
         }
-        return runKinematic(run, bundle);
+        Map<String,Object> result=runKinematic(run,bundle);
+        // Preserve genuine Java simulator results through the same DB handoff as CARLA;
+        // no CARLA telemetry or physical attestations are generated for this profile.
+        Path temporary=Files.createTempDirectory("vsos-kinematic-producer-");
+        try {
+            Row version=db.first("SELECT id, project_id, version_no, label, status, source, parent_version_id FROM aeb_versions WHERE id=?",run.lng("aeb_version_id"));
+            Map<String,Object> dataset=RunDatasetWriter.build(run,bundle,version==null?null:Json.parseMap(Json.write(version.asMap())),result,temporary,RunDatasetWriter.gitCommit(repoRoot()));
+            Json.asMap(dataset.get("provenance")).put("core_bytecode_sha256",com.vsos.backend.common.analysis.FailureAnalysisJson.loadedCoreFingerprint());
+            result.put("dataset",dataset);
+            result.put(ORIGINAL_RESULT_BYTES,Json.write(result).getBytes(StandardCharsets.UTF_8));
+            return result;
+        } finally {Files.deleteIfExists(temporary);}
     }
 
     /**
@@ -700,6 +715,8 @@ public class RunService {
         Row aebVersion = db.first("SELECT id, project_id, version_no, label, status, source, parent_version_id FROM aeb_versions WHERE id = ?",
                 run.lng("aeb_version_id"));
         RunDatasetWriter.attach(resultPath, result, run, bundle, aebVersion == null ? null : Json.parseMap(Json.write(aebVersion.asMap())), folder, repoRoot());
+        // Capture the final producer document verbatim before adding backend-only artifact paths.
+        result.put(ORIGINAL_RESULT_BYTES, Files.readAllBytes(resultPath));
         Map<String, Object> artifacts = new LinkedHashMap<>();
         artifacts.put("result", resultPath.toString());
         if (input.toString().endsWith(".xosc")) {
@@ -1421,14 +1438,25 @@ public class RunService {
      * bỏ — backend không ghi đường dẫn tới file nó không tạo.
      */
     public Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload) {
-        return submitCarlaResult(projectId, runId, userId, resultPayload, false);
+        return submitCarlaResult(projectId, runId, userId, resultPayload, false, null);
     }
 
     public Map<String, Object> submitCarlaResultFromUi(long projectId, long runId, long userId, Map<String, Object> resultPayload) {
-        return submitCarlaResult(projectId, runId, userId, resultPayload, true);
+        return submitCarlaResult(projectId, runId, userId, resultPayload, true, null);
     }
 
-    private Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload, boolean guardProject) {
+    /** Preserve the complete external producer document, including lexical bytes, without trusting artifact paths. */
+    public Map<String, Object> submitCarlaResultBytesFromUi(long projectId, long runId, long userId, byte[] raw) {
+        if (raw == null || raw.length == 0) throw new InvalidRequestException("thiếu result.json");
+        if (raw.length > com.vsos.backend.common.analysis.FailureAnalysisJson.SOURCE_BYTES)
+            throw new InvalidRequestException("result.json vượt giới hạn dung lượng");
+        Map<String,Object> payload;
+        try { payload = Json.parseMap(new String(raw, StandardCharsets.UTF_8)); }
+        catch (RuntimeException e) { throw new InvalidRequestException("result.json sai cấu trúc"); }
+        return submitCarlaResult(projectId, runId, userId, payload, true, raw.clone());
+    }
+
+    private Map<String, Object> submitCarlaResult(long projectId, long runId, long userId, Map<String, Object> resultPayload, boolean guardProject, byte[] originalBytes) {
         Row imported = tx.execute(transaction -> {
             if (guardProject) lockWritableProject(projectId, userId);
             Row run = db.first("SELECT * FROM simulation_runs WHERE id = ? AND project_id = ? FOR UPDATE", runId, projectId);
@@ -1454,7 +1482,10 @@ public class RunService {
                 throw new InvalidRequestException("thiếu result.json");
             }
             Map<String, Object> result = new LinkedHashMap<>(resultPayload);
+            result.remove(ORIGINAL_RESULT_BYTES);
+            byte[] original = originalBytes == null ? Json.write(result).getBytes(StandardCharsets.UTF_8) : originalBytes;
             result.remove("artifacts");
+            result.put(ORIGINAL_RESULT_BYTES, original);
             try {
                 checkResult(result, run);
                 checkResultParameters(result, queries.aebValues(run.lng("aeb_version_id")));
@@ -1504,6 +1535,17 @@ public class RunService {
                 "evaluation_version", ev.get("version"),
                 "headline", ev.get("headline"),
                 "chain", chain);
+
+        {
+            if (!(result.get(ORIGINAL_RESULT_BYTES) instanceof byte[] original))
+                throw new SimulatorException("Thiếu nội dung result.json gốc để lưu database; run chưa được hoàn tất");
+            try {
+                // saveSource joins this transaction: failed storage rolls back metrics and COMPLETED together.
+                resultStore.persistProducerResult(run, original);
+            } catch (IOException e) {
+                throw new SimulatorException("Không lưu được nội dung result.json vào database");
+            }
+        }
 
         if (Boolean.TRUE.equals(metrics.get("collision"))) {
             Map<String, Object> collision = Json.asList(outcome.get("events")).stream()

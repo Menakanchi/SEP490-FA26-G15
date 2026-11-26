@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
 
 
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
 
 
 
@@ -98,6 +99,7 @@ import com.vsos.backend.service.aeb.AebService;
 import com.vsos.backend.service.scenario.FamilyService;
 import com.vsos.backend.service.simulation.RunService;
 import com.vsos.backend.service.analysis.AnalysisService;
+import com.vsos.backend.service.analysis.FailureAnalysisHandoffService;
 
 
 
@@ -216,6 +218,7 @@ public class OptimizationService {
 
     private final TaskExecutor executor;
     private final AnalysisService analysis;
+    private final FailureAnalysisHandoffService handoffs;
 
 
 
@@ -235,6 +238,13 @@ public class OptimizationService {
 
 
 
+    public OptimizationService(Db db, Queries queries, RunService runService, AebService aebService,
+            RegressionService regressionService, FamilyService familyService, VehicSimProperties props,
+            TaskExecutor executor, AnalysisService analysis) {
+        this(db, queries, runService, aebService, regressionService, familyService, props, executor, analysis, null);
+    }
+
+    @Autowired
     public OptimizationService(
 
 
@@ -268,7 +278,7 @@ public class OptimizationService {
 
 
             @Qualifier("simulationExecutor") TaskExecutor executor,
-            AnalysisService analysis) {
+            AnalysisService analysis, FailureAnalysisHandoffService handoffs) {
 
 
 
@@ -302,6 +312,7 @@ public class OptimizationService {
 
         this.executor = executor;
         this.analysis = analysis;
+        this.handoffs = handoffs;
 
 
 
@@ -376,6 +387,14 @@ public class OptimizationService {
     public long createAndStartRun(long projectId, long userId, long scenarioId, Long baseAebVersionId,
             Integer maxTrials, Integer nInitialPoints, String customSearchSpaceJson, String customObjectiveConfigJson,
             String name, String simulatorType, Long datasetId, String datasetDigest) {
+        return createAndStartRun(projectId, userId, scenarioId, baseAebVersionId, maxTrials, nInitialPoints,
+                customSearchSpaceJson, customObjectiveConfigJson, name, simulatorType, datasetId, datasetDigest, null, null);
+    }
+
+    @Transactional
+    public long createAndStartRun(long projectId, long userId, long scenarioId, Long baseAebVersionId,
+            Integer maxTrials, Integer nInitialPoints, String customSearchSpaceJson, String customObjectiveConfigJson,
+            String name, String simulatorType, Long datasetId, String datasetDigest, String handoffId, String handoffDigest) {
 
 
 
@@ -419,11 +438,15 @@ public class OptimizationService {
 
 
 
-        Map<String,Object> handoff = datasetId == null ? null : analysis.handoff(projectId, datasetId);
+        boolean v3 = handoffId != null || handoffDigest != null;
+        if (v3 && (datasetId != null || datasetDigest != null))
+            throw new InvalidRequestException("Specify either a V3 handoff or a V2 dataset, not both");
+        Map<String,Object> handoff = v3 ? v3Campaign(projectId, handoffId, handoffDigest)
+                : datasetId == null ? null : analysis.handoff(projectId, datasetId);
         if (datasetId == null && datasetDigest != null)
             throw new InvalidRequestException("Analysis dataset ID is required with its digest");
         if (handoff != null) {
-            if (!Objects.equals(datasetDigest, handoff.get("dataset_digest")))
+            if (!v3 && !Objects.equals(datasetDigest, handoff.get("dataset_digest")))
                 throw new InvalidRequestException("Analysis dataset checksum changed; reload the handoff");
             long frozenScenario = ((Number)Json.asMap(handoff.get("scenario")).get("id")).longValue();
             long frozenBaseline = ((Number)Json.asMap(handoff.get("baseline")).get("id")).longValue();
@@ -532,6 +555,15 @@ public class OptimizationService {
 
 
 
+        if (v3) {
+            Map<String,Object> approved = Json.asMap(handoff.get("search_space"));
+            if (approved.isEmpty()) throw new InvalidRequestException("V3 approved search space is missing");
+            searchBounds(approved);
+            if (customSearchSpaceJson != null && !customSearchSpaceJson.isBlank()
+                    && !sameSearchSpace(Json.parseMap(customSearchSpaceJson), approved))
+                throw new InvalidRequestException("Campaign search space differs from the V3 approved domain");
+            searchSpace = Json.write(approved);
+        }
         searchBounds(Json.parseMap(searchSpace));
         String objectiveConfig = (customObjectiveConfigJson != null && !customObjectiveConfigJson.isBlank())
 
@@ -597,7 +629,8 @@ public class OptimizationService {
                     || !(RunService.KINEMATIC_SIMULATOR.equals(simVersion) || runService.configuredSimulator().equals(simVersion)))
                 throw new InvalidRequestException("Analysis dataset simulator differs from this campaign or current simulator profile");
             Map<String,Object> config = new LinkedHashMap<>(Json.parseMap(objectiveConfig));
-            config.put("dataset_ref", Json.obj("dataset_id", datasetId, "dataset_digest", datasetDigest,
+            if (v3) config.put("handoff_ref", v3Reference(handoff));
+            else config.put("dataset_ref", Json.obj("dataset_id", datasetId, "dataset_digest", datasetDigest,
                     "optimization_run_ids", handoff.get("optimization_run_ids"), "validation_run_ids", handoff.get("validation_run_ids")));
             objectiveConfig = Json.write(config);
         }
@@ -1249,11 +1282,25 @@ public class OptimizationService {
     }
 
     private FrozenCohort frozenCohort(Row campaign) {
-        Map<String,Object> reference = Json.asMap(campaign.json("objective_config_json").get("dataset_ref"));
-        if (reference.isEmpty()) return null;
-        if (!(reference.get("dataset_id") instanceof Number id) || !(reference.get("dataset_digest") instanceof String))
-            throw new InvalidRequestException("Analysis campaign dataset reference is invalid");
-        Map<String,Object> saved = analysis.handoff(campaign.lng("project_id"), id.longValue());
+        Map<String,Object> config = campaign.json("objective_config_json");
+        boolean v3 = config.containsKey("handoff_ref");
+        Map<String,Object> reference = Json.asMap(config.get(v3 ? "handoff_ref" : "dataset_ref"));
+        if (!v3 && reference.isEmpty()) return null;
+        Map<String,Object> saved;
+        if (v3) {
+            if (config.containsKey("dataset_ref") || !(reference.get("handoff_id") instanceof String id)
+                    || !(reference.get("handoff_digest") instanceof String digest))
+                throw new InvalidRequestException("V3 campaign handoff reference is invalid");
+            saved = v3Campaign(campaign.lng("project_id"), id, digest);
+            if (!AnalysisService.datasetDigest(reference).equals(AnalysisService.datasetDigest(v3Reference(saved))))
+                throw new InvalidRequestException("V3 campaign partition or revision changed");
+            if (!sameSearchSpace(campaign.json("search_space_json"), Json.asMap(saved.get("search_space"))))
+                throw new InvalidRequestException("Campaign search space differs from the V3 approved domain");
+        } else {
+            if (!(reference.get("dataset_id") instanceof Number id) || !(reference.get("dataset_digest") instanceof String))
+                throw new InvalidRequestException("Analysis campaign dataset reference is invalid");
+            saved = analysis.handoff(campaign.lng("project_id"), id.longValue());
+        }
         Map<String,Object> identity = Json.asMap(saved.get("reference"));
         if (!Objects.equals(reference.get("dataset_digest"), saved.get("dataset_digest"))
                 || ((Number)Json.asMap(saved.get("scenario")).get("id")).longValue() != campaign.lng("scenario_id")
@@ -1263,6 +1310,9 @@ public class OptimizationService {
             throw new InvalidRequestException("Analysis campaign dataset identity or checksum changed");
         List<Row> optimization = frozenRuns(campaign, saved, "optimization_run_ids");
         List<Row> validation = frozenRuns(campaign, saved, "validation_run_ids");
+        if (v3 && optimization.stream().anyMatch(train -> validation.stream().anyMatch(holdout ->
+                train.lng("scenario_version_id") == holdout.lng("scenario_version_id"))))
+            throw new InvalidRequestException("V3 holdout variants cannot be used for optimization or GP fitting");
         Map<Long,Row> versions = new LinkedHashMap<>();
         for (Row source : java.util.stream.Stream.concat(optimization.stream(), validation.stream()).toList()) {
             long variantId = source.lng("scenario_version_id");
@@ -1275,8 +1325,51 @@ public class OptimizationService {
         return new FrozenCohort(saved, optimization, validation, versions);
     }
 
+    private Map<String,Object> v3Campaign(long projectId, String id, String digest) {
+        if (id == null || id.isBlank() || digest == null || !digest.matches("[0-9a-f]{64}"))
+            throw new InvalidRequestException("V3 handoff ID and SHA-256 digest are required");
+        if (handoffs == null) throw new InvalidRequestException("V3 handoff consumer is unavailable");
+        Map<String,Object> saved = handoffs.campaign(projectId, id, digest);
+        if (saved == null || !Objects.equals(saved.get("schema"), "vehicsim.fa-v3-campaign/v1")
+                || !Objects.equals(saved.get("handoff_id"), id) || !Objects.equals(saved.get("handoff_digest"), digest)
+                || !(saved.get("dataset_digest") instanceof String partition) || !partition.matches("[0-9a-f]{64}"))
+            throw new InvalidRequestException("V3 handoff campaign contract is invalid");
+        return saved;
+    }
+
+    private static Map<String,Object> v3Reference(Map<String,Object> saved) {
+        Map<String,Object> reference = Json.obj("schema", "vehicsim.fa-v3-campaign/v1", "handoff_id", saved.get("handoff_id"),
+                "handoff_digest", saved.get("handoff_digest"), "dataset_digest", saved.get("dataset_digest"),
+                "optimization_run_ids", saved.get("optimization_run_ids"), "validation_run_ids", saved.get("validation_run_ids"));
+        if (saved.get("handoff_execution_id") instanceof String execution) reference.put("handoff_execution_id", execution);
+        return reference;
+    }
+
+    /** The regression pipeline preserves the V3 provenance, without resolving a legacy analysis_results dataset. */
+    private static Map<String,Object> cohortReference(Row campaign) {
+        Map<String,Object> config = campaign.json("objective_config_json");
+        if (!config.containsKey("handoff_ref")) return Json.asMap(config.get("dataset_ref"));
+        Map<String,Object> reference = Json.asMap(config.get("handoff_ref"));
+        return Json.obj("handoff_ref", reference, "dataset_digest", reference.get("dataset_digest"));
+    }
+
+    private static boolean sameSearchSpace(Map<String,Object> requested, Map<String,Object> approved) {
+        if (requested.isEmpty() || approved.isEmpty()) return false;
+        ParameterBounds actual = searchBounds(requested), authorized = searchBounds(approved);
+        return ParameterBounds.PARAM_KEYS.stream().allMatch(key ->
+                Double.compare(actual.lower(key), authorized.lower(key)) == 0
+                        && Double.compare(actual.upper(key), authorized.upper(key)) == 0);
+    }
+
     private List<Row> frozenRuns(Row campaign, Map<String,Object> saved, String partition) {
-        List<Long> ids = Json.asList(saved.get(partition)).stream().map(v -> ((Number)v).longValue()).toList();
+        List<Object> members = Json.asList(saved.get(partition));
+        if (members.isEmpty() || members.stream().anyMatch(value -> !(value instanceof Number n) || n.longValue() <= 0)
+                || members.stream().map(value -> ((Number)value).longValue()).distinct().count() != members.size())
+            throw new InvalidRequestException("Analysis dataset partition is empty or invalid");
+        List<Long> ids = members.stream().map(v -> ((Number)v).longValue()).toList();
+        Object frozenStep = Json.asMap(saved.get("reference")).get("dt");
+        if (!(frozenStep instanceof Number step) || !Double.isFinite(step.doubleValue()) || step.doubleValue() <= 0)
+            throw new InvalidRequestException("Analysis dataset simulation step is missing or invalid");
         List<Object> args = new ArrayList<>(List.of(campaign.lng("project_id"))); args.addAll(ids);
         List<Row> rows = db.list("SELECT * FROM simulation_runs WHERE project_id = ? AND id IN (" + Db.placeholders(ids.size()) + ")", args.toArray());
         if (rows.size() != ids.size() || !rows.stream().map(r -> r.lng("id")).collect(java.util.stream.Collectors.toSet()).equals(new HashSet<>(ids))
@@ -1284,6 +1377,7 @@ public class OptimizationService {
                 || r.lng("aeb_version_id") != campaign.lng("base_aeb_version_id")
                 || r.lng("scenario_id") != campaign.lng("scenario_id")
                 || r.lng("carla_vehicle_model_id") != campaign.lng("carla_vehicle_model_id")
+                || r.dbl("fixed_delta_seconds") == null || Double.compare(r.dbl("fixed_delta_seconds"), step.doubleValue()) != 0
                 || !Objects.equals(r.str("simulator_version"), campaign.str("simulator_version"))))
             throw new InvalidRequestException("Analysis dataset source runs are incomplete or changed");
         Map<String,Double> parameters = queries.aebValues(campaign.lng("base_aeb_version_id"));
@@ -2262,6 +2356,8 @@ public class OptimizationService {
         res.put("objective_config", r.json("objective_config_json"));
         Map<String,Object> dataset = Json.asMap(r.json("objective_config_json").get("dataset_ref"));
         if (!dataset.isEmpty()) res.putAll(dataset);
+        Map<String,Object> handoff = Json.asMap(r.json("objective_config_json").get("handoff_ref"));
+        if (!handoff.isEmpty()) res.putAll(handoff);
 
 
 
@@ -2574,7 +2670,11 @@ public class OptimizationService {
                 projectId, candidateVersionId, optRun.lng("base_aeb_version_id"), scenarioId, runId, trialId);
         if (existing != null && frozen != null) {
             Map<String,Object> selection = Json.asMap(existing.json("pass_criteria_json").get("scenario_set"));
-            if (!Objects.equals(Json.asMap(selection.get("dataset_ref")).get("dataset_digest"), frozen.snapshot().get("dataset_digest"))
+            Map<String,Object> selectedReference = Json.asMap(selection.get("dataset_ref"));
+            Map<String,Object> expectedReference = cohortReference(optRun);
+            if (!Objects.equals(selectedReference.get("dataset_digest"), frozen.snapshot().get("dataset_digest"))
+                    || expectedReference.containsKey("handoff_ref") && !AnalysisService.datasetDigest(selectedReference)
+                    .equals(AnalysisService.datasetDigest(expectedReference))
                     || !AnalysisService.datasetDigest(Map.of("ids", Json.asList(selection.get("baseline_run_ids"))))
                     .equals(AnalysisService.datasetDigest(Map.of("ids", frozen.validation().stream().map(r -> r.lng("id")).toList()))))
                 existing = null;
@@ -2584,7 +2684,7 @@ public class OptimizationService {
                 : regressionService.createFrozenTest(projectId, userId, candidateVersionId, scenarioId,
                         optRun.lng("base_aeb_version_id"), optRun.lng("carla_vehicle_model_id"), optRun.str("simulator_version"),
                         frozen.variants(frozen.validation()), frozen.validation(),
-                        Json.asMap(optRun.json("objective_config_json").get("dataset_ref")), testName);
+                        cohortReference(optRun), testName);
         if (existing == null) {
             db.update("UPDATE regression_tests SET pass_criteria_json = JSON_SET(pass_criteria_json, '$.verification_ref', CAST(? AS JSON)) "
                     + "WHERE id = ? AND project_id = ?",

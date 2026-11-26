@@ -35,6 +35,25 @@ public class FailureAnalysisController {
 
     // ---- nguồn đọc thẳng từ DB (run / file gộp theo biến thể)
 
+    @PostMapping("/contexts")
+    public ResponseEntity<Map<String,Object>> createContext(@AuthenticationPrincipal UserDetails user,
+            @RequestBody com.vsos.backend.service.analysis.FailureAnalysisHandoffService.Review body) throws IOException {
+        long uid=writer(user);return ResponseEntity.status(HttpStatus.CREATED).body(service.createContext(project(user),uid,body));
+    }
+    @GetMapping("/contexts/{id}")
+    public Map<String,Object> context(@AuthenticationPrincipal UserDetails user,@PathVariable String id) throws IOException {
+        return service.context(project(user),id);
+    }
+    @PostMapping("/contexts/{id}/executions")
+    public ResponseEntity<Map<String,Object>> executeContext(@AuthenticationPrincipal UserDetails user,@PathVariable String id,HttpServletRequest request) throws IOException {
+        long uid=writer(user);emptyBody(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.executeContext(project(user),uid,id));
+    }
+    @GetMapping("/handoffs/{id}/campaign")
+    public Map<String,Object> campaign(@AuthenticationPrincipal UserDetails user,@PathVariable String id,@RequestParam String digest) {
+        return service.campaign(project(user),id,digest);
+    }
+
     @GetMapping("/database/runs")
     public Map<String, Object> databaseRuns(@AuthenticationPrincipal UserDetails user,
                                             @RequestParam(defaultValue = "20") int limit, @RequestParam(defaultValue = "0") int offset) {

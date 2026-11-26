@@ -12,12 +12,21 @@ await fs.mkdir(output,{recursive:true});
 await fs.rm(path.join(output,"result.json"),{force:true});
 const errors=[],unexpected=[],writes=[],pending=[];
 const campaignWrites=[];
+const contextWrites=[],contextExecutions=[],datasetReads=[];
 let datasetMode="normal",campaignStatus=200,failedCampaign=false;
+let handoffMode="normal",contextStatus=200,executionStatus=200,handoffReady=true,v3Campaign=false;
 const digest="c".repeat(64);
 const dataset={schema:"vehicsim.analysis-dataset/v2",id:91,baseline_current:true,handoff_ready:true,dataset_digest:digest,
  scenario:{id:5,name:"FA frozen fixture",code:"CP",category:"CP_CROSSING"},baseline:{id:10,label:"Baseline"},reference:{vehicle_id:1,simulator:"carla-0.9.16-xosc16",dt:0.01},
- runs:[11,12,13,14].map(run_id=>({run_id,metrics:{}})),optimization_run_ids:[11,12],validation_run_ids:[13,14],
+ runs:[11,12,13,14].map(run_id=>({run_id,scenario_id:5,scenario_version_id:run_id,variant:"V-"+run_id,seed:run_id,baseline_id:10,vehicle_id:1,simulator:"carla-0.9.16-xosc16",dt:0.01,status:"COMPLETED",outcome:run_id%2===0?"SAFE":"COLLISION",revision:"fixture-"+run_id,trace_available:true,metrics:{}})),optimization_run_ids:[11,12],validation_run_ids:[13,14],
  optimization_objectives:{rms_jerk_mps3:{},impact_speed_mps:{},stopping_distance_m:{}},validation_objectives:{rms_jerk_mps3:{},impact_speed_mps:{},stopping_distance_m:{}},evaluation:{version:"adr040-stored-aggregation/1",carla_observational_only:true}};
+const contextId="c0000000-0000-4000-8000-000000000001",sourceId="c0000000-0000-4000-8000-000000000002",executionId="c0000000-0000-4000-8000-000000000003",handoffId="c0000000-0000-4000-8000-000000000004",handoffDigest="e".repeat(64);
+const v3Projection={schema:"vehicsim.fa-v3-campaign/v1",project_id:1,handoff_id:handoffId,handoff_digest:handoffDigest,
+ scenario:dataset.scenario,baseline:dataset.baseline,reference:dataset.reference,optimization_run_ids:[11,12],validation_run_ids:[13,14],
+ search_space:{TTC_THRESHOLD:[0.5,3],BRAKE_ACTIVATION_DELAY:[0,0.5],MAX_DECELERATION:[3,10],BRAKE_BUILDUP_RATE:[5,20]}};
+const v3Execution={resource_schema:"vehicsim.fa-rest-resource/v1",resource_kind:"EXECUTION",id:executionId,project_id:1,source_id:sourceId,execution_id:executionId,context_id:contextId,handoff_id:handoffId,
+ status:"COMPLETED",expected:4,accepted:4,analyzed:4,blocked:0,failed:0,missing:0,missing_is_subset_of_blocked:true,
+ members:[11,12,13,14].map((key,i)=>({member_index:i,run_key:String(key),status:"ANALYZED",reason_codes:[],report_id:`c0000000-0000-4000-8000-00000000001${i}`}))};
 let empty=false,delayFirst=false,holdSelection=false;
 const user={id:77,email:"mobo@example.invalid",full_name:"MOBO Fixture",role:"ENGINEER",is_active:true};
 const runs=[1,2].map(id=>({id,name:"Campaign "+id,scenario_id:5,status:"COMPLETED",completed_trials:4,max_trials:4,pareto_count:1}));
@@ -45,13 +54,26 @@ try {
   if(p==="/vehicsim/context")return reply({project:{id:1,name:"MOBO fixture"},workspace:null,vehicle:{id:1,name:"Fixture"},system:{id:1,baseline:{id:10,label:"Baseline"}},versions:[],families:[{id:5,code:"CP",name:"FA frozen fixture"}],parameters:[],reviewer_projects:[],reviewer_can_decide:false});
   if(p==="/vehicsim/carla/status")return reply({connected:false});
   if(p==="/vehicsim/aeb/versions")return reply([]);
-  if(p==="/vehicsim/analysis/datasets/91/handoff")return datasetMode==="failure"?reply({detail:"Fixture source revision changed"},409):reply({...dataset,baseline_current:datasetMode!=="stale",dataset_digest:datasetMode==="missing-digest"?undefined:digest});
+  if(p==="/vehicsim/analysis/datasets/91/handoff"){datasetReads.push(p);return datasetMode==="failure"?reply({detail:"Fixture source revision changed"},409):reply({...dataset,baseline_current:datasetMode!=="stale",dataset_digest:datasetMode==="missing-digest"?undefined:digest});}
+  if(p==="/vehicsim/analysis/datasets/91")return reply(dataset);
+  if(p==="/vehicsim/analysis/runs")return reply({total:0,page:1,page_size:10,items:[],counts:{},objective_groups:[],evaluation_version:"adr040-stored-aggregation/1"});
+  if(p==="/vehicsim/analysis/v3/sources")return reply({items:[],limit:20,offset:0});
+  if(/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p))return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:1,items:[],limit:20,offset:0});
+  if(p==="/vehicsim/analysis/v3/contexts"&&req.method()==="POST"){
+   contextWrites.push(req.postDataJSON());return contextStatus===200?reply({context_id:contextId,context_digest:"d".repeat(64),source_id:sourceId}):reply({detail:"Fixture context approval unavailable"},contextStatus);
+  }
+  if(p===`/vehicsim/analysis/v3/contexts/${contextId}/executions`){contextExecutions.push(req.postData());return executionStatus===200?reply(v3Execution):reply({detail:"Fixture execution temporarily unavailable"},executionStatus);}
+  if(p===`/vehicsim/analysis/v3/handoffs/${handoffId}`)return reply({resource_schema:"vehicsim.fa-rest-resource/v1",resource_kind:"HANDOFF",id:handoffId,project_id:1,source_id:sourceId,execution_id:executionId,context_id:contextId,status:handoffReady?"READY":"BLOCKED",dispatch_allowed:handoffReady,content_digest:handoffDigest,reason_codes:handoffReady?[]:["QUALITY_POLICY_REVIEW_REQUIRED"]});
+  if(p===`/vehicsim/analysis/v3/handoffs/${handoffId}/campaign`){
+   if(handoffMode==="failure")return reply({detail:"Fixture handoff stale"},409);
+   return reply({...v3Projection,...(handoffMode==="wrong-checksum"?{handoff_digest:"f".repeat(64)}:handoffMode==="wrong-project"?{project_id:2}:handoffMode==="holdout-overlap"?{validation_run_ids:[11,14]}:handoffMode==="domain-missing"?{search_space:{}}:handoffMode==="stale"?{baseline:{id:9,label:"Old baseline"}}:{})});
+  }
   if(p==="/vehicsim/optimizations"){
    if(req.method()==="POST"){campaignWrites.push(req.postDataJSON());return campaignStatus===200?reply({id:1,status:"PENDING"}):reply({detail:"Fixture dataset digest changed"},campaignStatus);}
    return reply(empty?[]:runs);
   }
   const detail=p.match(/^\/vehicsim\/optimizations\/(\d+)$/);
-  if(detail)return reply({...runs.find(run=>run.id===Number(detail[1])),dataset_id:91,dataset_digest:digest,optimization_run_ids:[11,12],validation_run_ids:[13,14],...(failedCampaign?{status:"FAILED",error_message:"Analysis campaign dataset identity or checksum changed"}:{})});
+  if(detail)return reply({...runs.find(run=>run.id===Number(detail[1])),...(v3Campaign?{handoff_id:handoffId,handoff_digest:handoffDigest,handoff_execution_id:executionId}:{dataset_id:91,dataset_digest:digest}),optimization_run_ids:[11,12],validation_run_ids:[13,14],...(failedCampaign?{status:"FAILED",error_message:"Analysis campaign dataset identity or checksum changed"}:{})});
   const match=p.match(/^\/vehicsim\/optimizations\/(\d+)\/(trials|pareto)$/);
   if(match){
    const id=Number(match[1]);
@@ -137,11 +159,46 @@ try {
  datasetMode="normal";await page.getByRole("button",{name:"Kiểm tra lại dataset",exact:true}).click();await page.getByRole("heading",{name:"Tập đã chốt #91 · FA frozen fixture",exact:true}).waitFor();
  await page.goto(base+"/aeb/mobo/new?dataset_id=invalid");await page.getByText("Mã tập phân tích không hợp lệ. Mở lại tập đã chốt từ Phân tích lỗi.",{exact:true}).waitFor();assert(await page.getByRole("button",{name:/Bắt đầu tối ưu/}).isDisabled());assert.equal(campaignWrites.length,2,"Invalid or stale datasets never silently create a different campaign");
  failedCampaign=true;await page.goto(base+"/aeb/mobo?run_id=1");await page.getByText("Định danh hoặc checksum dataset đã thay đổi. Không thể tiếp tục đợt tối ưu với nguồn này.",{exact:true}).waitFor();assert.equal(await page.getByRole("link",{name:"Xem tập nguồn",exact:true}).getAttribute("href"),"/analysis/failures?view=dataset&dataset_id=91");failedCampaign=false;
+ // Explicit human confirmations create a V3 context; a transient execution failure retries the same stored context.
+ await page.goto(base+"/analysis/failures?view=dataset&dataset_id=91");
+ const review=page.getByRole("region",{name:"Rà soát bàn giao V3",exact:true});await review.waitFor();
+ const confirmV3=review.getByRole("button",{name:"Xác nhận và phân tích V3",exact:true});assert(await confirmV3.isDisabled());
+ await review.getByLabel("Lý do xác nhận bàn giao V3",{exact:true}).fill("Reviewed stored canonical targets and independent safe controls");
+ await review.getByRole("checkbox",{name:/Đã rà soát ca đối chứng #12/}).check();
+ await review.getByRole("checkbox",{name:/Chỉ tối ưu ba chỉ số canonical/}).check();
+ await review.getByRole("checkbox",{name:/Calibration vật lý không áp dụng/}).check();
+ await review.getByRole("checkbox",{name:/Tôi xác nhận lựa chọn run/}).check();
+ assert(await confirmV3.isDisabled(),"Both partitions need an explicitly reviewed control");assert.equal(contextWrites.length,0);
+ await review.getByRole("checkbox",{name:/Đã rà soát ca đối chứng #14/}).check();
+ for(const width of [1366,390,320]){await page.setViewportSize({width,height:844});await noOverflow();if(width!==390)await page.screenshot({path:path.join(output,"v3-context-"+width+".png"),fullPage:true});}
+ executionStatus=503;await confirmV3.click();await review.getByText(/HTTP_REASON_UNAVAILABLE/).waitFor();
+ assert.equal(contextWrites.length,1);assert.equal(contextExecutions.length,1);assert.equal(contextExecutions[0],null);
+ assert.deepEqual(contextWrites[0],{dataset_id:91,dataset_digest:digest,reason:"Reviewed stored canonical targets and independent safe controls",confirmed:true,canonical_targets_only:true,calibration_not_applicable:true,nonhazard_run_ids:[12,14]});
+ assert.equal(await review.getByRole("link",{name:"Mở MOBO từ handoff V3 →",exact:true}).count(),0);
+ executionStatus=200;handoffReady=false;await review.getByRole("button",{name:"Thử lại phân tích với context đã lưu",exact:true}).click();await review.getByText("Handoff V3: BLOCKED",{exact:true}).waitFor();
+ assert.match(await review.innerText(),/QUALITY_POLICY_REVIEW_REQUIRED/);assert.equal(contextWrites.length,1);
+ assert.equal(await review.getByRole("link",{name:"Mở MOBO từ handoff V3 →",exact:true}).count(),0,"Blocked V3 never exposes a V2 optimizer substitute");
+ handoffReady=true;await review.getByRole("button",{name:"Thử lại phân tích với context đã lưu",exact:true}).click();
+ const v3Link=review.getByRole("link",{name:"Mở MOBO từ handoff V3 →",exact:true});await v3Link.waitFor();
+ assert.equal(contextWrites.length,1);assert.equal(await v3Link.getAttribute("href"),`/aeb/mobo/new?handoff_id=${handoffId}&handoff_digest=${handoffDigest}`);
+ const beforeV3Reads=datasetReads.length;await v3Link.click();await page.getByRole("heading",{name:"Handoff V3 · FA frozen fixture",exact:true}).waitFor();
+ assert(await page.getByRole("button",{name:"Kịch bản kiểm thử",exact:true}).isDisabled());assert(await page.getByRole("button",{name:/Mô phỏng CARLA 3D/}).isDisabled());
+ assert.equal(await page.locator('input[type="file"]').count(),0);await page.getByText("Nguồn và miền tham số đã xác nhận",{exact:true}).click();await page.getByText("BRAKE_BUILDUP_RATE",{exact:true}).waitFor();
+ await page.screenshot({path:path.join(output,"v3-campaign-320.png"),fullPage:true});
+ v3Campaign=true;await page.getByRole("button",{name:"Bắt đầu tối ưu trên CARLA 3D",exact:true}).click();await page.waitForURL(url=>url.pathname==="/aeb/mobo"&&url.searchParams.get("run_id")==="1");
+ assert.deepEqual(campaignWrites[2],{scenario_id:5,max_trials:10,n_initial_points:3,simulator_type:"CARLA",handoff_id:handoffId,handoff_digest:handoffDigest,base_aeb_version_id:10,search_space:v3Projection.search_space});
+ assert.equal(await page.getByRole("link",{name:"Xem phân tích nguồn V3",exact:true}).getAttribute("href"),`/analysis/failures?fa_execution=${executionId}`);
+ const v3Url=`/aeb/mobo/new?handoff_id=${handoffId}&handoff_digest=${handoffDigest}`;
+ for(const mode of ["failure","wrong-checksum","wrong-project","holdout-overlap","domain-missing","stale"]){handoffMode=mode;await page.goto(base+v3Url);await page.getByRole("button",{name:"Kiểm tra lại handoff V3",exact:true}).waitFor();assert(await page.getByRole("button",{name:/Bắt đầu tối ưu/}).isDisabled());}
+ handoffMode="normal";await page.getByRole("button",{name:"Kiểm tra lại handoff V3",exact:true}).click();await page.getByRole("heading",{name:"Handoff V3 · FA frozen fixture",exact:true}).waitFor();
+ for(const query of [`handoff_id=${handoffId}`,`handoff_id=invalid&handoff_digest=${handoffDigest}`,`handoff_id=${handoffId}&handoff_digest=${handoffDigest}&dataset_id=91`]){await page.goto(base+"/aeb/mobo/new?"+query);await page.getByRole("region",{name:"Handoff Failure Analysis V3",exact:true}).getByRole("alert").waitFor();assert(await page.getByRole("button",{name:/Bắt đầu tối ưu/}).isDisabled());}
+ assert.equal(datasetReads.length,beforeV3Reads,"V3 campaign errors never fetch a V2 dataset as fallback");assert.equal(campaignWrites.length,3,"Invalid V3 requests never create an alternate campaign");
+ v3Campaign=false;
  empty=true;
  for(const route of ["trials","pareto"]){await page.goto(base+"/aeb/mobo/"+route);await page.getByText("Chưa có đợt tối ưu",{exact:true}).waitFor();assert(await page.getByRole("button",{name:"Chọn đợt tối ưu hoá",exact:true}).isDisabled());}
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  await page.goto(base+"/aeb/mobo");await page.getByText("Chưa có đợt tối ưu",{exact:true}).waitFor();
  assert.equal(writes.length,2);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
- await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",checks:["standalone and combined studio completed-only feasibility","tiny impact preserved without safety claim","mobile bounds","late response isolation","single candidate submission","candidate scoped to campaign including in-flight campaign change","exact regression detail navigation","FA dataset scenario/simulator/digest pinned in campaign request","stale/missing digest/source failure block without fallback; explicit retry","persisted campaign failure translated with exact frozen dataset source link","empty campaigns"],liveBackendVerified:false},null,2));
+ await fs.writeFile(path.join(output,"result.json"),JSON.stringify({status:"PASS",kind:"BROWSER_FIXTURE_ONLY",checks:["standalone and combined studio completed-only feasibility","tiny impact preserved without safety claim","mobile bounds","late response isolation","single candidate submission","candidate scoped to campaign including in-flight campaign change","exact regression detail navigation","FA dataset scenario/simulator/digest pinned in campaign request","stale/missing digest/source failure block without fallback; explicit retry","persisted campaign failure translated with exact frozen dataset source link","V3 explicit human context confirmation and reviewed controls in both partitions","V3 execution retry reuses stored context, blocked handoff has no dispatch link","V3 handoff partition and domain pinned in exclusive campaign request","V3 missing/checksum/project/overlap/domain/stale failures never fall back to V2","empty campaigns"],liveBackendVerified:false},null,2));
  console.log("PASS MOBO browser workflow; API fixtures only");
 } finally {for(const release of pending)release();await browser.close();}

@@ -1,6 +1,7 @@
 # Tài liệu tổng hợp Admin và Phân tích lỗi
 
-Cập nhật 26/11/2026, đối chiếu `main` tại `668f1504`. Tài liệu này thay các
+Cập nhật 26/11/2026: phần Admin dựa trên mốc `main` `668f1504`; phần runtime V3
+đối chiếu source triển khai tiếp theo sau audit. Tài liệu này thay các
 audit, blueprint, implementation report và handover theo từng đợt của phần
 Admin/Analysis do chuvv thực hiện. ADR và hợp đồng chỉ số dùng chung vẫn là nguồn
 quyết định; không coi trạng thái trong báo cáo cũ là hiện trạng code.
@@ -13,6 +14,7 @@ quyết định; không coi trạng thái trong báo cáo cũ là hiện trạng
 | Analysis legacy | `/analysis/failures`, `/[runId]`, `/[runId]/playback` | BaselineAnalysisDashboard, AnalysisService, AnalysisViewService và helpers analysis |
 | Analysis V3 | Workspace trên, chọn run/biến thể DB → execution/report UUID | FailureAnalysisV3, FailureAnalysisV3Report, FailureAnalysisDatabasePicker, services/failureAnalysisV3.ts |
 | REST/persistence V3 | `/api/v1/vehicsim/analysis/v3` | FailureAnalysisController, FailureAnalysisService, FailureAnalysisDatabaseAdapter/Repository, FailureAnalysisStore |
+| Context và consumer V3 | Rà soát tập đã chốt → phân tích V3 → `/aeb/mobo/new?handoff_id=…&handoff_digest=…` | FailureAnalysisHandoffService/Adapter, OptimizationService |
 | Core khoa học | JSON/raw artifacts → evidence → diagnostic → handoff → compatibility | `src/main/java/com/vsos/core/failureanalysis/` |
 | Module khác | Producer CARLA, optimizer, regression | Chỉ tham chiếu; tài liệu này không thay hợp đồng hoặc triển khai của các module đó |
 
@@ -99,18 +101,23 @@ không gọi contact count là full-body geometry proof. Timeline/playback dùng
 ## Luồng dữ liệu DB
 
 Luồng chính: chọn completed CARLA run/variant trong project → preflight/hash →
-đọc original result.json → core pipeline → immutable source/execution/report/handoff.
+đọc original result.json đã persist trong DB → core pipeline → immutable source/execution/report/handoff.
 Upload JSON là phương án tương thích nâng cao; refresh mở stored UUID, không reanalysis.
 
-simulation_runs cung cấp identity; simulation_artifacts RESULT_FILE/storage_url là
-reference tới original `RunService.runDir(id)/result.json`. Scalar SQL,
-telemetry_json/run_config_json không đủ để dựng lại original result.
-Nếu thiếu artifact row nhưng canonical file có, provenance ghi rõ fallback.
-Multiple refs, path/symlink escape, missing dataset/schema và DB/document identity
-disagreement bị chặn. Missing member vẫn ở collection manifest, không bỏ thầm.
+**Cập nhật 26/11/2026 theo yêu cầu DB là nguồn chính thức:** Module2 lưu nguyên byte
+result cuối cùng vào `fa_json_sources` trong cùng transaction hoàn tất run. Khóa
+producer là SHA-256 của `module2-result/v1:<project>:<run>:<attempt>`; metadata
+`database_input.origin=MODULE2_RESULT_DATABASE` liên kết project/run/attempt.
+`simulation_runs` cung cấp identity để đối chiếu toàn bộ dataset identity và checksum.
+FA chỉ đọc nguồn producer đúng attempt qua service/repository; không mở artifact/file,
+không dựng lại JSON từ scalar/telemetry, không chọn nguồn upload có cùng identity.
+Thiếu nguồn persist trả `DB_RESULT_NOT_PERSISTED`; run lịch sử chưa lưu nguồn phải
+chạy lại bằng producer mới. Không tự backfill từ đĩa hoặc sửa DB nhóm.
+Thiếu dataset/schema, sai checksum hoặc DB/document identity bị chặn. Missing member
+vẫn ở collection manifest, không bỏ thầm. Artifact paths chỉ phục vụ download/playback.
 
 Collection chụp completed CARLA membership của variant, bọc original member bytes
-theo run-collection/v1 và kiểm lại membership/file metadata khi đọc.
+theo run-collection/v1 và kiểm lại membership/identity khi đọc.
 SHA vừa quan sát không phải producer signature hoặc authorized frozen cohort.
 BOM bị chặn thay vì sửa bytes. Preflight không chạy physics hoặc ghi DB.
 
@@ -147,7 +154,10 @@ quyết định quyền đọc lịch sử; đây không là thay đổi toàn c
 | POST `/sources` | `application/json`, raw result/collection bytes; optional `X-Source-SHA256` lowercase64hex | 201 Source; exact duplicate cũng 201 với cùng ID |
 | GET `/sources/{id}` | UUID | Source + current identity peers |
 | GET `/sources/{id}/download` | UUID | Exact original JSON bytes |
-| POST `/sources/{id}/executions` | **Không body**; optional `context_id` hiện bị chặn | 201 Execution đã commit; retry cùng determinants trả cùng ID |
+| POST `/sources/{id}/executions` | **Không body**; optional `context_id` đã lưu, phải khớp chính xác nguồn | 201 Execution đã commit; thiếu context dùng nhánh chẩn đoán; retry cùng determinants trả cùng ID |
+| POST `/contexts` | dataset_id/dataset_digest, confirmed, reason, canonical_targets_only, calibration_not_applicable, nonhazard_run_ids; optional search_space | 201 context_id/context_digest/source_id và miền đã chốt; không nhận full result JSON |
+| GET `/contexts/{id}` | UUID context trong project | Kiểm lại context/checksum/nguồn hiện hành, trả review và miền tham số |
+| POST `/contexts/{id}/executions` | **Không body** | 201 Execution dùng collection từ original producer bytes trong DB và context đã lưu |
 | GET `/executions` | optional source_id; limit/offset | ResourcePage<Execution> |
 | GET `/executions/{id}` | UUID | Stored Execution metadata |
 | GET `/executions/{id}/reports` | limit/offset | ResourcePage<ReportMetadata> |
@@ -155,10 +165,13 @@ quyết định quyền đọc lịch sử; đây không là thay đổi toàn c
 | GET `/reports/{id}/download` | UUID | Cùng bytes, attachment |
 | GET `/handoffs/{id}` | UUID | Stored HandoffMetadata/status/blockers/compatibility |
 | GET `/handoffs/{id}/download` | UUID | Exact builder JSON; 409 nếu chưa tạo |
+| GET `/handoffs/{id}/campaign` | digest query = content_digest đã nhận | Projection `vehicsim.fa-v3-campaign/v1`; kiểm lại READY, context, nguồn, report và replay handoff |
 
 Downloads đặt application/json, private/no-store và filename do server tạo từ UUID;
 không nhận filename/path/URL của client. Legacy routes và dataset-v2 handoff giữ nguyên.
-GET không chạy lại adapter/core. Không có job/progress/cancel/optimizer endpoint.
+GET tài nguyên đã lưu không chạy lại phân tích. GET context/campaign kiểm currentness;
+campaign projection còn replay builder để phát hiện handoff thay đổi. Không tự tạo
+campaign: thao tác đó vẫn qua POST `/api/v1/vehicsim/optimizations`.
 
 Typed contract (các object evidence sâu giữ đúng schema core, không flatten):
 
@@ -184,8 +197,8 @@ interface Source extends Resource {
 }
 interface Execution extends Resource {
   status: 'COMPLETED'|'PARTIAL'|'BLOCKED'; core_version: string;
-  source_sha256: SHA256; context_id: null; context_digest: SHA256;
-  context_policy: 'UNKNOWN_DEFAULT_NO_AUTHORITY';
+  source_sha256: SHA256; context_id: UUID|null; context_digest: SHA256;
+  context_policy: 'UNKNOWN_DEFAULT_NO_AUTHORITY'|'AUTHENTICATED_CANONICAL_TARGET_REVIEW';
   expected: number; accepted: number; analyzed: number;
   blocked: number; failed: number; missing: number;
   missing_is_subset_of_blocked: true;
@@ -199,14 +212,14 @@ interface ReportMetadata extends Resource {
   member_index:number; run_key:string; run_identity:object;
   report_schema:'vehicsim.failure-analysis/v1'; content_digest:SHA256;
   status:'GENERATED'; evidence_sufficiency:object[];
-  core_version:string; context_id:null; context_digest:SHA256; source_sha256:SHA256;
+  core_version:string; context_id:UUID|null; context_digest:SHA256; source_sha256:SHA256;
 }
 interface HandoffMetadata extends Resource {
-  status:'BLOCKED'|'DIAGNOSTIC_ONLY'; dispatch_allowed:false;
+  status:'BLOCKED'|'DIAGNOSTIC_ONLY'|'READY'; dispatch_allowed:boolean;
   handoff_schema:'vehicsim.failure-analysis-mobo-handoff/v1'|null;
   content_digest:SHA256|null; reason_codes:string[];
   consumer_compatibility:object|null;
-  core_version:string; context_id:null; context_digest:SHA256; source_sha256:SHA256;
+  core_version:string; context_id:UUID|null; context_digest:SHA256; source_sha256:SHA256;
 }
 interface FAError {code:string;detail:string;retryable:boolean}
 ```
@@ -233,10 +246,58 @@ list reports → fetch selected report. Show input/execution completion separate
 from claim sufficiency and handoff readiness. Render objective canonical_value.value
 with unit/status; preserve null, separate contact impact and legacy collision.
 Use source/report UUID download routes for evidence; never open producer file paths.
-Do not submit a baseline/approval/partition form to this API. `context_id` returns
-409 until an independently authorized registry is implemented in a separate task.
-Do not call legacy optimization endpoints to bypass dispatch_allowed=false.
+Source/execution routes không nhận baseline/approval/partition do client tự gắn.
+Review canonical có route `/contexts` riêng, được xác thực và persist phía backend.
+READY/dispatch_allowed=true chỉ khi context hợp lệ và handoff không còn blockers;
+thiếu authority hoặc evidence vẫn BLOCKED/DIAGNOSTIC_ONLY, không gọi optimizer cũ để vượt cổng.
 Frontend đã tích hợp REST; luồng chọn DB là chính, upload/saved-source là lựa chọn nâng cao.
+
+## Context canonical và bàn giao runtime V3
+
+Theo yêu cầu triển khai 26/11/2026, tái sử dụng chính sách ADR-040/044/055 thay vì
+tạo approval vật lý hoặc hệ thống duyệt candidate song song. Người có quyền ghi
+rà soát snapshot đã chốt, nhập lý do 3–2000 ký tự, xác nhận rõ
+`confirmed=true`, `canonical_targets_only=true`, `calibration_not_applicable=true`
+và chọn `nonhazard_run_ids` đã xem evidence trong **cả hai partition**. Không tự
+chọn mọi run SAFE; backend kiểm lại run và không chấp nhận collision/false braking/
+missed activation mâu thuẫn với ca đối chứng. Đây không phải Reviewer Accept.
+
+`FailureAnalysisHandoffService` lưu snapshot review bất biến bằng INSERT trong
+`analysis_results` với `analysis_type=BASELINE_DATASET`, `method=FA_V3_CONTEXT`.
+`config_json` giữ context UUID/dedupe; `summary_json` giữ context digest, reviewer ID
+từ phiên đăng nhập, thời điểm, lý do, selection/digest, baseline/params, catalog/domain
+và từng source UUID/SHA/run/attempt/revision. Không thêm bảng hoặc migration.
+Selection V2 là đầu vào rà soát; kết quả chính thức vẫn lấy từ producer bytes DB,
+không dùng projection V2 thay result. GET/execute/campaign kiểm lại checksum, source,
+baseline, catalog và partition; nguồn đổi thì chặn, không tự backfill hoặc đổi cohort.
+
+Adapter cấp cho builder các snapshot selection, baseline binding, canonical sample,
+`vehicsim.handoff-quality-policy/v1` và hai domain `CATALOG_LIVE`/`CAMPAIGN_APPROVED`
+có refs tới review đã lưu. Quality mapping giữ ba objective canonical, collision
+không tăng, phanh oan tăng tối đa hằng 5 điểm % hiện hành; dữ liệu/profile thiếu vẫn
+bị chặn. Domain chỉ gồm bốn mã AEB, nằm trong giao của catalog DB với
+`ParameterBounds.defaults()`; request chỉ được thu hẹp, không mở rộng. Xác nhận UI
+chấp nhận chính sách miền hiện hành; các khoảng cụ thể hiển thị trước khi tạo campaign.
+Không suy calibration, clock transform, physical requirement hoặc confirmed cause
+từ review canonical này; nhánh chẩn đoán không có context vẫn dùng authority rỗng.
+
+`POST /optimizations` nhận **handoff_id + handoff_digest** ở cấp ngoài cùng, loại trừ
+dataset_id/dataset_digest V2. Consumer đọc `fa_json_handoffs`, kiểm READY/checksum
+và replay, rồi lưu `objective_config_json.handoff_ref`, search_space_json và đúng
+optimization/validation run IDs. Mỗi trial chạy đúng cohort tối ưu/config/seed;
+GP fit ba aggregate canonical của candidate trials đã hoàn tất. Holdout chỉ dành
+verification, không tham gia fitting. Chọn candidate giữ provenance handoff trong
+regression, vẫn cần Reviewer theo chính sách hiện có. Handoff V3 thiếu/sai/cũ bị
+từ chối; không chuyển sang dataset V2 hoặc miền mặc định.
+
+Payload runtime có `runtime_consumer` ràng buộc context và contract campaign. Các
+nhãn `consumer_compatibility`/`consumer_dispatch_allowed=false` của lõi offline vẫn
+giữ phạm vi `OFFLINE_SOURCE_INSPECTION_PROFILE`/`OFFLINE_HANDOFF_ONLY`; chúng không
+cấp quyền chạy. Quyền runtime nằm ở metadata READY sau kiểm gate và được backend
+kiểm lại tại campaign, mỗi trial và verification; không chỉ tin cờ trong JSON.
+
+Các contract trên mô tả implementation; kết quả integration và giới hạn xác minh
+nằm trong [báo cáo audit duy nhất](../LOGIC_AUDIT_REPORT.md), không suy PASS CARLA thật từ code.
 
 ## Persistence
 
@@ -247,15 +308,15 @@ còn giữ acquisition provenance. Không có API delete; xóa baseline/run khô
 xóa bản phân tích đã capture. Partial cohort có thể chỉ có BLOCKED handoff metadata;
 không tạo payload/digest giả, download chưa có trả409.
 
-Upload và từng result≤1MiB; collection dựng từ artifact DB≤2MiB, file gộp≤16members; report/execution/handoff≤8MiB, metadata≤256KiB,
+Upload và từng result≤1MiB; collection dựng từ bytes DB≤2MiB, file gộp≤16members; report/execution/handoff≤8MiB, metadata≤256KiB,
 cả lượt≤32MiB. Tối đa2compute và2DB readers mỗi tiến trình, chưa phân quota theo
 người dùng/cluster. Cohort quá16 bị reject cả bộ, không truncate.
 
 DB mới theo [01_schema.sql](../../database/mysql/01_schema.sql). DB cũ: backup và
 review [migration019](../../database/mysql/migrations/019_2026-11-24_lan-lap-va-lan-thu-cua-run.sql)
 rồi [020](../../database/mysql/migrations/020_2026-11-25_failure_analysis_json.sql)
-và [024](../../database/mysql/migrations/024_2026-11-26_fa-db-collection-2mib.sql) theo ADR-068. First analysis cần original
-artifact volume ngoài DB; source/report đã capture lưu riêng trong FA tables.
+và [024](../../database/mysql/migrations/024_2026-11-26_fa-db-collection-2mib.sql) theo ADR-068. Luồng phân tích chính chỉ cần
+original source đã được Module2 commit trong FA tables, không cần artifact volume.
 
 ## Module2 và Module4
 
@@ -269,7 +330,10 @@ các contract khác nhau. Member identity và recorded objectives không tự c�
 authorized baseline/canonical sample/score/range. Consumer kiểm digest, frozen
 cohort/currentness, exact seed/rep/attempt, bounds và sealed holdout trước khi chạy.
 Không đưa Diagnostic JSON trực tiếp vào MoboEngine hoặc gọi legacy optimizer để
-vượt dispatch=false. [M2_CHANGE_PLAN](M2_CHANGE_PLAN.md) là đề xuất chưa triển khai.
+vượt dispatch=false. Runtime consumer V3 ở `FailureAnalysisHandoffService` và
+`OptimizationService` dùng handoff đã kiểm; adapter V2 vẫn là luồng riêng khi
+người dùng chủ động chọn. [M2_CHANGE_PLAN](M2_CHANGE_PLAN.md) ghi lịch sử kế hoạch,
+không dùng các blocker cũ trong đó để phủ nhận code runtime mới.
 
 ## Mapping đầu vào
 
@@ -399,13 +463,13 @@ frontend/tests/fixtures/fa-v3. Các sample/report chạy lặp khác có thể t
 | Phần | Trạng thái cần giữ |
 |---|---|
 | Producer source/reference — DEP-M2-01 | Missing/old/wrong-identity result cần original bytes/ref thật; không reconstruct từ telemetry |
-| Freshness — DEP-M2-02 | Timestamp/digest không thay authorized export revision/population/currentness |
+| Freshness — DEP-M2-02 | Timestamp/digest riêng lẻ không cấp authority. Runtime canonical context kiểm lại selection/baseline/catalog/member revision; nhánh offline/upload chưa có context không tự được nâng quyền |
 | Legacy impact — FU-M3-01 | Freeze metadata còn có label EGO_SPEED_NOT_RELATIVE cho profile relative; cần vintage/archive policy, không backfill scalar/history |
-| Approved context — FU-M3-02 | Registry baseline/requirements/calibration/quality/frozen variant-disjoint partitions và approved domains chưa nối; context_id409 |
-| M2 consumer | Chưa có executable frozen-cohort/custom-bounds/sealed-validation integration; handoff diagnostic-only/blocked, dispatch=false |
+| Approved context — FU-M3-02 | Đã có runtime review canonical trong FA_V3_CONTEXT, quality/domain và frozen partitions. Physical requirement/calibration/clock authority vẫn tách riêng; thiếu không được giả lập thành approved |
+| MOBO consumer V3 | Đã có implementation handoff DB → projection → campaign/GP/frozen verification. READY phụ thuộc đủ gate; không context vẫn diagnostic-only/blocked. Trạng thái integration thực tế xem báo cáo audit |
 | Scientific authority | Thiếu verified clock/control-writer/full-encounter geometry/calibration domain/P05 certificate thì giữ UNKNOWN, không confirmed root cause |
 | Capacity | Limits là per-process; chưa retention/delete API hay distributed/user compute quotas/SLA |
-| Deployment | Migration và source artifact volume cần kiểm đúng môi trường; không dùng kết quả fixture/offline làm bằng chứng rollout/live E2E |
+| Deployment | Migration và producer-source DB cần kiểm đúng môi trường. Artifact volume còn phục vụ playback/download, không thay nguồn FA. Không dùng fixture/offline làm bằng chứng rollout/live E2E |
 | Legacy/UI | TD-30,53,54,57–62 giữ ở tracker; bản đồ scene/clock/provenance và browser CI còn giới hạn |
 
 FA-001…010 có corrections/regression trong Batch01–04; source/tests giữ lại.
@@ -423,5 +487,5 @@ Câu DESIGN ONLY thuộc mốc thiết kế; hiện trạng implementation đố
 Đã gộp nội dung còn dùng và bỏ các audit/blueprint/implementation reports,
 handover/AI prompts và nhật ký triển khai từng đợt của Admin/Analysis.
 Bản trước dọn có ở Git `668f1504`; bản khôi phục local ở target/docs-consolidate-668f1504.
-ADR, tài liệu module khác và hợp đồng chỉ số chung giữ nguyên nội dung, chỉ sửa
-liên kết khi đích cũ đã được gộp vào tài liệu này.
+Đợt dọn lịch sử giữ ADR/tài liệu module khác; cập nhật runtime hiện tại ở ADR-067
+và database-schema được ghi ngày rõ ràng, không thay công thức hoặc quyết định gốc.

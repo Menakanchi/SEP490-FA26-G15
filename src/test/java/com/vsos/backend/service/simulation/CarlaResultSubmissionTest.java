@@ -36,6 +36,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import com.vsos.backend.common.Json;
 import com.vsos.backend.config.VehicSimProperties;
@@ -62,6 +63,7 @@ class CarlaResultSubmissionTest {
     private PlatformTransactionManager transactions;
     private RunService service;
     private Map<String, Object> run;
+    private com.vsos.backend.service.analysis.FailureAnalysisService resultStore;
 
     @BeforeEach
     void setUp() {
@@ -71,8 +73,9 @@ class CarlaResultSubmissionTest {
         when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         Queries queries = mock(Queries.class);
         when(queries.aebValues(9L)).thenReturn(AebParams.DEFAULT.asCodes());
+        resultStore=mock(com.vsos.backend.service.analysis.FailureAnalysisService.class);
         service = new RunService(db, queries, mock(VehicSimProperties.class), mock(TaskExecutor.class), events,
-                new TransactionTemplate(transactions), mock(FamilyService.class));
+                new TransactionTemplate(transactions), mock(FamilyService.class), resultStore);
         run = new HashMap<>(Map.of("id", RUN, "project_id", PROJECT, "status", "FAILED", "simulator_version", CARLA,
                 "fixed_delta_seconds", 0.05, "random_seed", 48042L, "scenario_id", 7L,
                 "scenario_version_id", 8L, "aeb_version_id", 9L, "carla_vehicle_model_id", 10L));
@@ -270,6 +273,41 @@ class CarlaResultSubmissionTest {
         order.verify(events).publishEvent(new RunService.RunFinished(RUN));
     }
 
+    @Test void fullProducerDocumentIsPersistedBeforeCompletionAndCommit()throws Exception {
+        var payload=result(CARLA);
+        payload.put("producer_extension",Map.of("unprojected_evidence","giữ nguyên dữ liệu bổ sung"));
+        service.submitCarlaResult(PROJECT,RUN,USER,payload);
+        var original=org.mockito.ArgumentCaptor.forClass(byte[].class);
+        var order=inOrder(resultStore,db,transactions,events);
+        order.verify(resultStore).persistProducerResult(any(Row.class),original.capture());
+        assertThat(new String(original.getValue(),java.nio.charset.StandardCharsets.UTF_8)).isEqualTo(Json.write(payload));
+        order.verify(db).update(startsWith("UPDATE simulation_runs SET status"),any(Object[].class));
+        order.verify(transactions).commit(any());
+        order.verify(events).publishEvent(new RunService.RunFinished(RUN));
+    }
+
+    @Test void failedOfficialPersistenceCannotCompleteOrNotifyDownstream()throws Exception {
+        doThrow(new org.springframework.dao.DataAccessResourceFailureException("isolated storage failure"))
+                .when(resultStore).persistProducerResult(any(Row.class),any(byte[].class));
+        assertThatThrownBy(()->service.submitCarlaResult(PROJECT,RUN,USER,result(CARLA)))
+                .isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class);
+        verify(transactions).rollback(any());
+        verify(transactions,never()).commit(any());
+        verify(db,never()).update(startsWith("UPDATE simulation_runs SET status"),any(Object[].class));
+        verifyNoInteractions(events);
+    }
+
+    @Test void externalResultRetainsExactBytesWithoutFollowingArtifactPaths()throws Exception {
+        when(db.first(startsWith("SELECT p.status"),any(Object[].class))).thenReturn(new Row(Json.obj(
+                "status","ACTIVE","workspace_id",3L,"workspace_status","ACTIVE","user_role","ENGINEER","member_id",USER)));
+        byte[] bytes=(" \n"+Json.write(result(CARLA))+"\n ").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        service.submitCarlaResultBytesFromUi(PROJECT,RUN,USER,bytes);
+        var captured=org.mockito.ArgumentCaptor.forClass(byte[].class);
+        verify(resultStore).persistProducerResult(any(Row.class),captured.capture());
+        assertThat(captured.getValue()).isEqualTo(bytes);
+        verify(db,never()).insert(startsWith("INSERT INTO simulation_artifacts"),any(Object[].class));
+    }
+
     @Test
     void springListenerStartsAFreshTransactionAfterUploadCompletes() {
         // Lifecycle transaction/proxy thật; Db giả nên không cần MySQL hoặc ghi dữ liệu demo.
@@ -301,7 +339,7 @@ class CarlaResultSubmissionTest {
         Queries queries = mock(Queries.class);
         when(queries.aebValues(9L)).thenReturn(AebParams.DEFAULT.asCodes());
         var target = new RunService(db, queries, mock(VehicSimProperties.class), mock(TaskExecutor.class),
-                events, template, mock(FamilyService.class));
+                events, template, mock(FamilyService.class), mock(com.vsos.backend.service.analysis.FailureAnalysisService.class));
         var proxy = new ProxyFactory(target);
         proxy.addAdvice(new TransactionInterceptor(manager, new AnnotationTransactionAttributeSource()));
 

@@ -52,6 +52,7 @@ class FailureAnalysisDatabaseMysqlTest {
         originals.put(2499L,FailureAnalysisServiceTest.input("result_run2499_full_dataset_v2.json"));
         var collection=FailureAnalysisJson.object(FailureAnalysisServiceTest.input("vsos-collections-2026-11-24/vehicsim-variant-1033-collection.json"));
         originals.put(2511L,FailureAnalysisJson.bytes(at(collection,"/runs/1/result")));
+        var db=new Db(jdbc);service=new FailureAnalysisService(new FailureAnalysisStore(db,new DataSourceTransactionManager(ds)));
         storage=mock(RunService.class);when(storage.runDir(anyLong())).thenAnswer(a->root.resolve("runs/"+a.getArgument(0)));
         for(var entry:originals.entrySet()) {
             var doc=FailureAnalysisJson.object(entry.getValue());var i=(Map<String,Object>)at(doc,"/dataset/identity");
@@ -60,8 +61,9 @@ class FailureAnalysisDatabaseMysqlTest {
                     at(doc,"/outcome/metrics/rms_jerk_mps3"),at(doc,"/outcome/metrics/impact_speed_mps"),at(doc,"/outcome/metrics/stopping_distance_m"));
             Path file=storage.runDir(entry.getKey()).resolve("result.json");Files.createDirectories(file.getParent());Files.write(file,entry.getValue());
             jdbc.update("INSERT INTO simulation_artifacts(simulation_run_id,artifact_type,file_name,storage_url,mime_type,file_size_bytes) VALUES(?,'RESULT_FILE','result.json',?,'application/json',?)",entry.getKey(),file.toString(),entry.getValue().length);
+            service.persistProducerResult(new com.vsos.backend.repository.common.Row(jdbc.queryForMap("SELECT * FROM simulation_runs WHERE id=?",entry.getKey())),entry.getValue());
         }
-        var db=new Db(jdbc);service=new FailureAnalysisService(new FailureAnalysisStore(db,new DataSourceTransactionManager(ds)));adapter=new FailureAnalysisDatabaseAdapter(new FailureAnalysisDatabaseRepository(db),storage,service);
+        adapter=new FailureAnalysisDatabaseAdapter(new FailureAnalysisDatabaseRepository(db),service);
         Files.createDirectories(Path.of("target/fa-db-direct-evidence"));
         Files.write(Path.of("target/fa-db-direct-evidence/run-list.json"),FailureAnalysisJson.bytes(adapter.list(4,false,20,0)));
         Files.write(Path.of("target/fa-db-direct-evidence/collection-list.json"),FailureAnalysisJson.bytes(adapter.list(4,true,20,0)));
@@ -71,7 +73,8 @@ class FailureAnalysisDatabaseMysqlTest {
         var inspection=adapter.inspect(4,2499,false);assertThat(inspection.get("availability")).isEqualTo("COMPLETE");
         var e=adapter.analyze(4,7,2499,false,inspection.get("source_sha256").toString());
         assertThat(service.download(Kind.SOURCE,4,e.get("source_id").toString())).isEqualTo(originals.get(2499L));assertReportValues(e);
-        String sid=e.get("source_id").toString();assertThat(at(service.metadata(Kind.SOURCE,4,sid),"/database_input/members/0/artifact_id")).isNotNull();
+        String sid=e.get("source_id").toString();assertThat(at(service.metadata(Kind.SOURCE,4,sid),"/database_input/run_id")).isEqualTo(2499L);
+        assertThat(at(service.metadata(Kind.SOURCE,4,sid),"/database_input/origin")).isEqualTo("MODULE2_RESULT_DATABASE");
         var reload=new FailureAnalysisService(new FailureAnalysisStore(new Db(jdbc),new DataSourceTransactionManager(jdbc.getDataSource())));
         for(var meta:reload.list(Kind.REPORT,4,e.get("id").toString(),20,0))assertThat(reload.download(Kind.REPORT,4,meta.get("id").toString())).isEqualTo(service.download(Kind.REPORT,4,meta.get("id").toString()));
         String hid=e.get("handoff_id").toString();assertThat(reload.download(Kind.HANDOFF,4,hid)).isEqualTo(service.download(Kind.HANDOFF,4,hid));
@@ -87,15 +90,15 @@ class FailureAnalysisDatabaseMysqlTest {
         for(var r:reports)assertThat(at(r,"/run_identity/repetition/value")).isEqualTo(1L);
         assertThat(adapter.analyze(4,7,1033,true,null).get("id")).isEqualTo(e.get("id"));writeEvidence("collection",e,inspection);
     }
-    @Test @Order(3) void missingArtifactRetainsMissingMemberAndBlockedHandoffInDatabase()throws Exception {
-        Path off=storage.runDir(2511).resolve("result.json");Files.delete(off);
+    @Test @Order(3) void unpersistedAttemptRetainsMissingMemberAndNeverUsesDiskOrEarlierAttempt()throws Exception {
+        jdbc.update("UPDATE simulation_runs SET attempt=attempt+1 WHERE id=2511");
         try {
-            var inspected=adapter.inspect(4,1033,true);assertThat(at(inspected,"/members/1/issues/0/field")).isEqualTo("result.json");
+            var inspected=adapter.inspect(4,1033,true);assertThat(at(inspected,"/members/1/issues/0/field")).isEqualTo("fa_json_sources");
             Files.write(Path.of("target/fa-db-direct-evidence/missing-run-inspection.json"),FailureAnalysisJson.bytes(adapter.inspect(4,2511,false)));
             var e=adapter.analyze(4,7,1033,true,null);assertThat(((Number)e.get("missing")).intValue()).isEqualTo(1);assertThat(e.get("status")).isEqualTo("PARTIAL");
             var h=service.metadata(Kind.HANDOFF,4,e.get("handoff_id").toString());assertThat(h.get("status")).isEqualTo("BLOCKED");assertThat(h.get("content_digest")).isNull();
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM fa_json_handoffs WHERE id=?",Integer.class,h.get("id"))).isEqualTo(1);writeEvidence("missing-member",e,inspected);
-        } finally {Files.write(off,originals.get(2511L));}
+        } finally {jdbc.update("UPDATE simulation_runs SET attempt=attempt-1 WHERE id=2511");}
     }
     @Test @Order(4) void foreignProjectCannotListSelectReadOrAnalyze()throws Exception {
         assertThat((List<?>)adapter.list(2,false,20,0).get("items")).isEmpty();
@@ -129,6 +132,54 @@ class FailureAnalysisDatabaseMysqlTest {
             mvc.perform(get("/api/v1/vehicsim/analysis/v3/database/collections/1033")).andExpect(status().isNotFound());
             mvc.perform(get("/api/v1/vehicsim/analysis/v3/executions/"+execution)).andExpect(status().isNotFound());
         } finally {SecurityContextHolder.clearContext();}
+    }
+    @Test @Order(8) void persistedBytesRemainTheInputWhenDiskIsMissingOrChanged()throws Exception {
+        Path result=storage.runDir(2499).resolve("result.json");Files.delete(result);
+        try {
+            var execution=adapter.analyze(4,7,2499,false,sha256(originals.get(2499L)));
+            assertThat(service.download(Kind.SOURCE,4,execution.get("source_id").toString())).isEqualTo(originals.get(2499L));
+            Files.writeString(result,"unrelated disk content");
+            assertThat(adapter.inspect(4,2499,false).get("source_sha256")).isEqualTo(sha256(originals.get(2499L)));
+        } finally {Files.write(result,originals.get(2499L));}
+    }
+    @Test @Order(9) void storedProducerByteChecksumIsCheckedBeforeAnalysis()throws Exception {
+        var row=new com.vsos.backend.repository.common.Row(jdbc.queryForMap("SELECT * FROM simulation_runs WHERE id=2499"));
+        String source=service.producerResult(row).id();
+        jdbc.update("UPDATE fa_json_sources SET payload_bytes=? WHERE id=?","{}".getBytes(StandardCharsets.UTF_8),source);
+        try {assertThatThrownBy(()->adapter.inspect(4,2499,false)).hasMessage("STORED_BYTE_DIGEST_MISMATCH");}
+        finally {jdbc.update("UPDATE fa_json_sources SET payload_bytes=? WHERE id=?",originals.get(2499L),source);}
+    }
+    @Test @Order(10) void moduleTwoCommitsFullSourceWithRunOrRollsBothBack()throws Exception {
+        jdbc.update("INSERT INTO simulation_runs(id,project_id,scenario_id,scenario_version_id,carla_vehicle_model_id,aeb_version_id,aeb_mode,repetition,attempt,simulator_type,simulator_version,purpose,status,random_seed,created_by_user_id) "
+                +"SELECT 9002,project_id,scenario_id,scenario_version_id,carla_vehicle_model_id,aeb_version_id,aeb_mode,3,attempt,simulator_type,simulator_version,purpose,'FAILED',random_seed,created_by_user_id FROM simulation_runs WHERE id=2499");
+        var input=com.vsos.backend.common.Json.parseMap(new String(originals.get(2499L),StandardCharsets.UTF_8));
+        ((Map<String,Object>)input.get("source")).put("run_id",9002L);
+        var identity=(Map<String,Object>)at(input,"/dataset/identity");identity.put("run_id",9002L);identity.put("repetition",3L);
+        var queries=mock(com.vsos.backend.repository.common.Queries.class);
+        var params=(Map<String,Object>)at(input,"/outcome/params");
+        when(queries.aebValues(33L)).thenReturn(Map.of("TTC_THRESHOLD",((Number)params.get("ttc_threshold")).doubleValue(),
+                "BRAKE_ACTIVATION_DELAY",((Number)params.get("brake_activation_delay")).doubleValue(),
+                "MAX_DECELERATION",((Number)params.get("max_deceleration")).doubleValue(),
+                "BRAKE_BUILDUP_RATE",((Number)params.get("brake_buildup_rate")).doubleValue()));
+        var events=mock(org.springframework.context.ApplicationEventPublisher.class);
+        var runs=new RunService(new Db(jdbc),queries,mock(com.vsos.backend.config.VehicSimProperties.class),
+                mock(org.springframework.core.task.TaskExecutor.class),events,
+                new org.springframework.transaction.support.TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource())),
+                mock(com.vsos.backend.service.scenario.FamilyService.class),service);
+        int before=jdbc.queryForObject("SELECT COUNT(*) FROM fa_json_sources",Integer.class);
+        jdbc.execute("CREATE TRIGGER audit_reject_completion BEFORE UPDATE ON simulation_runs FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='isolated audit rollback'");
+        try {
+            assertThatThrownBy(()->runs.submitCarlaResult(4,9002,7,input)).isInstanceOf(org.springframework.dao.DataAccessException.class);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM fa_json_sources",Integer.class)).isEqualTo(before);
+            assertThat(jdbc.queryForObject("SELECT status FROM simulation_runs WHERE id=9002",String.class)).isEqualTo("FAILED");
+            verifyNoInteractions(events);
+        } finally {jdbc.execute("DROP TRIGGER audit_reject_completion");}
+        runs.submitCarlaResult(4,9002,7,input);
+        var execution=adapter.analyze(4,7,9002,false,null);
+        assertThat(service.download(Kind.SOURCE,4,execution.get("source_id").toString()))
+                .isEqualTo(com.vsos.backend.common.Json.write(input).getBytes(StandardCharsets.UTF_8));
+        assertThat(jdbc.queryForObject("SELECT status FROM simulation_runs WHERE id=9002",String.class)).isEqualTo("COMPLETED");
+        verify(events).publishEvent(new RunService.RunFinished(9002));
     }
     @AfterAll void originalInputsUntouched()throws Exception {for(var e:originals.entrySet())assertThat(Files.readAllBytes(storage.runDir(e.getKey()).resolve("result.json"))).isEqualTo(e.getValue());}
     void assertReportValues(Map<String,Object> e) {

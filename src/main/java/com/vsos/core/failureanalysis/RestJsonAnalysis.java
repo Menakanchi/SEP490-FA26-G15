@@ -17,12 +17,17 @@ public final class RestJsonAnalysis {
         public boolean complete() { return "COMPLETE".equals(manifest.get("status")); }
     }
     public Parsed parse(byte[] bytes, InputResourcePolicy limits) throws IOException {
+        return parseProducer(bytes, limits, null);
+    }
+    /** The expected hash must be supplied by the server's verified producer record,
+     * never by an uploaded JSON document or a client-provided declaration. */
+    public Parsed parseProducer(byte[] bytes, InputResourcePolicy limits, String independentlyExpectedSha256) throws IOException {
         if (bytes.length > limits.maxMemberBytes()) throw BoundedInput.limit("MEMBER_BYTES", "source");
         Path temporary = Files.createTempFile("fa-json-", ".json");
         try {
             Files.write(temporary, bytes);
             // A transport/storage checksum is NOT an independent producer trust anchor.
-            try (var adapter = new JsonInputAdapter(temporary, limits, null)) {
+            try (var adapter = new JsonInputAdapter(temporary, limits, independentlyExpectedSha256)) {
                 String uri = "urn:vehicsim:failure-analysis:sha256:" + sha256(bytes);
                 List<JsonInputAdapter.Entry> entries = new ArrayList<>();
                 for (var entry : adapter.entries()) {
@@ -41,6 +46,10 @@ public final class RestJsonAnalysis {
     }
     public Map<String,Object> diagnose(Run run, Parsed input) {
         return new DiagnosticReport().analyze(run, FailureAnalysisInput.comparator(run, input.runs()), AnalysisContext.empty());
+    }
+    /** Context is resolved and authenticated by the backend, not discovered in result.json. */
+    public Map<String,Object> diagnose(Run run, Parsed input, AnalysisContext context) {
+        return new DiagnosticReport().analyze(run, FailureAnalysisInput.comparator(run, input.runs()), Objects.requireNonNull(context));
     }
     public Map<String,Object> diagnosticHandoff(Parsed input, List<MoboHandoffBuilder.MemberInput> reports) {
         if (!input.complete() || reports.size() != input.entries().size())

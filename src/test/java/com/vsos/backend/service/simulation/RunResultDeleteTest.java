@@ -53,7 +53,7 @@ class RunResultDeleteTest {
         when(db.first(startsWith("SELECT id FROM scenarios"), any(Object[].class))).thenReturn(new Row(Json.obj("id", 3L)));
         when(db.first(startsWith("SELECT p.status"), any(Object[].class))).thenReturn(
                 new Row(Json.obj("status", "ACTIVE", "workspace_id", 3L, "workspace_status", "ACTIVE", "user_role", "ENGINEER", "member_id", 7L)));
-        runs = new RunService(db, mock(Queries.class), props, mock(TaskExecutor.class), mock(ApplicationEventPublisher.class), tx, mock(FamilyService.class));
+        runs = new RunService(db, mock(Queries.class), props, mock(TaskExecutor.class), mock(ApplicationEventPublisher.class), tx, mock(FamilyService.class), mock(com.vsos.backend.service.analysis.FailureAnalysisService.class));
     }
 
     private Row run(long id, String status, String purpose, Object regressionTestId) {

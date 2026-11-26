@@ -868,6 +868,9 @@ export interface OptimizationRun {
   objective_config?: Record<string, unknown>;
   dataset_id?: number | null;
   dataset_digest?: string | null;
+  handoff_id?: string | null;
+  handoff_digest?: string | null;
+  handoff_execution_id?: string | null;
   optimization_run_ids?: number[];
   validation_run_ids?: number[];
 }

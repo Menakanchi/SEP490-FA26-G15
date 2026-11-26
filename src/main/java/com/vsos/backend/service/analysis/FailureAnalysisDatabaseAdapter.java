@@ -2,17 +2,12 @@ package com.vsos.backend.service.analysis;
 
 import com.vsos.backend.repository.analysis.FailureAnalysisDatabaseRepository;
 import com.vsos.backend.repository.common.Row;
-import com.vsos.backend.service.simulation.RunService;
 import com.vsos.backend.exception.analysis.FailureAnalysisException;
 import com.vsos.core.common.MiniJson;
 import com.vsos.core.failureanalysis.*;
 import org.springframework.stereotype.Service;
 import java.io.*;
-import java.nio.channels.Channels;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 import static com.vsos.core.failureanalysis.Evidence.*;
@@ -28,20 +23,18 @@ public class FailureAnalysisDatabaseAdapter {
             "aeb_version_id", "carla_vehicle_model_id", "seed", "aeb_mode", "repetition", "attempt", "purpose", "simulator");
 
     private final FailureAnalysisDatabaseRepository db;
-    private final RunService runs;
     private final FailureAnalysisService analysis;
     private final Semaphore readers = new Semaphore(2);
 
-    public FailureAnalysisDatabaseAdapter(FailureAnalysisDatabaseRepository db, RunService runs, FailureAnalysisService analysis) {
+    public FailureAnalysisDatabaseAdapter(FailureAnalysisDatabaseRepository db, FailureAnalysisService analysis) {
         this.db = db;
-        this.runs = runs;
         this.analysis = analysis;
     }
 
     private record Document(byte[] bytes, Map<String, Object> json, Map<String, Object> provenance, List<Map<String, Object>> issues) {
     }
 
-    private record Snapshot(byte[] bytes, Map<String, Object> provenance, List<Map<String, Object>> members) {
+    private record Snapshot(byte[] bytes, Map<String, Object> provenance, List<Map<String, Object>> members, String sourceId) {
     }
 
     private void acquire() {
@@ -100,8 +93,9 @@ public class FailureAnalysisDatabaseAdapter {
             if (expected != null && !expected.equals(sha256(s.bytes()))) {
                 throw new FailureAnalysisException(409, "DB_SOURCE_CHANGED_REINSPECT");
             }
-            var source = analysis.ingestDatabase(project, user, s.bytes(), s.provenance());
-            return analysis.analyze(project, source.get("id").toString(), null);
+            String sourceId = s.sourceId() != null ? s.sourceId()
+                    : analysis.ingestDatabase(project, user, s.bytes(), s.provenance()).get("id").toString();
+            return analysis.analyze(project, sourceId, null);
         } finally {
             readers.release();
         }
@@ -128,6 +122,7 @@ public class FailureAnalysisDatabaseAdapter {
         var docs = new ArrayList<byte[]>();
         var origins = new ArrayList<Object>();
         byte[] standalone = null;
+        String standaloneSource = null;
         long retainedBytes = 0;
         for (Row row : selected) {
             Document doc = read(project, row);
@@ -141,6 +136,7 @@ public class FailureAnalysisDatabaseAdapter {
             boolean usable = doc.bytes() != null;
             if (!collection) {
                 standalone = doc.bytes();
+                standaloneSource = Objects.toString(doc.provenance().get("source_id"), null);
             }
             m.put("document_state", obj("state", usable ? "OK" : "MISSING", "reason", usable ? null : "See database_provenance member issues"));
             if (usable) {
@@ -162,11 +158,14 @@ public class FailureAnalysisDatabaseAdapter {
             origins.add(doc.provenance());
             memberInfo.add(obj("run_id", row.lng("id"), "identity", m, "availability", usable ? "READABLE" : "BLOCKED", "issues", doc.issues()));
         }
-        var provenance = obj("adapter_version", "fa-db-source/1", "origin", "DATABASE_ARTIFACT_STORAGE",
+        var provenance = obj("adapter_version", "fa-db-source/2", "origin", "MODULE2_RESULT_DATABASE",
                 "selection_kind", collection ? "COLLECTION" : "RUN", "selection_id", id, "project_id", project, "members", origins,
                 "baseline_authority", "UNKNOWN", "original_result_bytes_preserved", true);
         if (!collection) {
-            return new Snapshot(standalone, provenance, memberInfo);
+            Row current = db.run(project, id);
+            if (current == null || !signature(selected).equals(signature(List.of(current))))
+                throw new FailureAnalysisException(409, "DB_SELECTION_CHANGED_REINSPECT");
+            return new Snapshot(standalone, provenance, memberInfo, standaloneSource);
         }
         boolean complete = docs.size() == selected.size();
         var envelope = obj("format", "vehicsim.run-collection/v1",
@@ -199,59 +198,36 @@ public class FailureAnalysisDatabaseAdapter {
         if (!signature(selected).equals(signature(db.members(project, id)))) {
             throw new FailureAnalysisException(409, "DB_SELECTION_CHANGED_REINSPECT");
         }
-        return new Snapshot(output.toByteArray(), provenance, memberInfo);
+        return new Snapshot(output.toByteArray(), provenance, memberInfo, null);
     }
 
     private static String signature(List<Row> rows) {
-        return MiniJson.write(rows.stream().map(r -> List.of(r.lng("id"), Objects.toString(r.get("random_seed")),
-                Objects.toString(r.get("repetition")), Objects.toString(r.get("attempt")), Objects.toString(r.get("aeb_mode")),
-                Objects.toString(r.get("aeb_version_id")), Objects.toString(r.get("simulator_version")))).toList());
+        return MiniJson.write(rows.stream().map(r -> IDENTITY_FIELDS.stream()
+                .map(f -> Objects.toString(identity(r, f))).toList()).toList());
+    }
+
+    private static Object identity(Row row, String field) {
+        return switch (field) {
+            case "run_id" -> row.get("id");
+            case "variant_id" -> row.get("scenario_version_id");
+            case "seed" -> row.get("random_seed");
+            case "simulator" -> row.get("simulator_version");
+            default -> row.get(field);
+        };
     }
 
     private Document read(long project, Row row) throws IOException {
         long id = row.lng("id");
-        var refs = db.artifacts(project, id);
         var issues = new ArrayList<Map<String, Object>>();
-        Map<String, Object> provenance = obj("run_id", id, "reference_table", "simulation_artifacts", "artifact_type", "RESULT_FILE",
-                "artifact_id", refs.size() == 1 ? refs.getFirst().get("id") : null, "relative_path", "runs/" + id + "/result.json",
-                "byte_sha256", null, "issues", issues);
-        if (refs.size() > 1) {
-            issues.add(problem("DB_RESULT_REFERENCE_AMBIGUOUS", "simulation_artifacts.RESULT_FILE"));
+        Map<String, Object> provenance = obj("run_id", id, "reference_table", "fa_json_sources", "attempt", row.get("attempt"),
+                "source_id", null, "byte_sha256", null, "issues", issues);
+        var stored = analysis.producerResult(row);
+        if (stored == null) {
+            issues.add(problem("DB_RESULT_NOT_PERSISTED", "fa_json_sources"));
             return new Document(null, Map.of(), provenance, issues);
         }
-        Path folder = runs.runDir(id).toAbsolutePath().normalize();
-        Path file = folder.resolve("result.json");
-        if (!refs.isEmpty()) {
-            try {
-                if (!Path.of(refs.getFirst().str("storage_url")).toAbsolutePath().normalize().equals(file)) {
-                    throw new IllegalArgumentException();
-                }
-            } catch (RuntimeException e) {
-                issues.add(problem("DB_RESULT_REFERENCE_OUTSIDE_CANONICAL_STORAGE", "simulation_artifacts.storage_url"));
-                return new Document(null, Map.of(), provenance, issues);
-            }
-        } else {
-            provenance.put("reference_resolution", "CANONICAL_RUN_STORAGE_NO_ARTIFACT_ROW");
-        }
-        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-            issues.add(problem("DB_RESULT_FILE_MISSING", "result.json"));
-            return new Document(null, Map.of(), provenance, issues);
-        }
-        Path root = runs.runDir(0).toAbsolutePath().normalize().getParent().toRealPath();
-        if (Files.isSymbolicLink(folder) || Files.isSymbolicLink(file) || !folder.toRealPath().equals(root.resolve(Long.toString(id)))) {
-            issues.add(problem("DB_RESULT_SYMLINK_OR_STORAGE_ESCAPE", "result.json"));
-            return new Document(null, Map.of(), provenance, issues);
-        }
-        var before = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-        byte[] raw;
-        try (var channel = FileChannel.open(file, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
-            raw = new BoundedInput(policy(SOURCE_BYTES)).read(Channels.newInputStream(channel), "db-result", -1);
-        }
-        var after = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-        if (before.size() != after.size() || !before.lastModifiedTime().equals(after.lastModifiedTime())
-                || !Objects.equals(before.fileKey(), after.fileKey())) {
-            throw new FailureAnalysisException(409, "DB_RESULT_CHANGED_DURING_READ");
-        }
+        byte[] raw = stored.body();
+        provenance.put("source_id", stored.id());
         provenance.put("byte_sha256", sha256(raw));
         provenance.put("size_bytes", raw.length);
         Map<String, Object> json;
@@ -268,13 +244,7 @@ public class FailureAnalysisDatabaseAdapter {
             issues.add(problem("DATASET_REQUIRED", "/dataset"));
         }
         for (String f : IDENTITY_FIELDS) {
-            Object expected = switch (f) {
-                case "run_id" -> id;
-                case "variant_id" -> row.get("scenario_version_id");
-                case "seed" -> row.get("random_seed");
-                case "simulator" -> row.get("simulator_version");
-                default -> row.get(f);
-            };
+            Object expected = identity(row, f);
             Object observed = at(json, "/dataset/identity/" + f);
             if (observed == null || expected == null || !Objects.toString(expected).equals(Objects.toString(observed))) {
                 issues.add(problem(observed == null ? "DB_IDENTITY_FIELD_MISSING" : "DB_IDENTITY_CONFLICT", "/dataset/identity/" + f));
@@ -287,6 +257,6 @@ public class FailureAnalysisDatabaseAdapter {
     }
 
     private static Map<String, Object> problem(String code, String field) {
-        return obj("reason_code", code, "field", field, "required_from", "MODULE_2_ORIGINAL_RESULT_OR_ARTIFACT_REFERENCE");
+        return obj("reason_code", code, "field", field, "required_from", "MODULE2_RESULT_DATABASE");
     }
 }

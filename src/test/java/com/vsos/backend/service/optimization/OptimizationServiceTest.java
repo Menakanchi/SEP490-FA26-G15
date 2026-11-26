@@ -2,9 +2,12 @@ package com.vsos.backend.service.optimization;
 
 import com.vsos.backend.service.regression.RegressionService;
 import com.vsos.backend.service.analysis.AnalysisService;
+import com.vsos.backend.service.analysis.FailureAnalysisHandoffService;
 import com.vsos.backend.common.Vs.NotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.task.SyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
 
@@ -14,6 +17,10 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import com.vsos.backend.common.Json;
 import com.vsos.backend.common.Vs.InvalidRequestException;
+import com.vsos.backend.controller.optimization.OptimizationController;
+import com.vsos.backend.exception.ApiExceptionHandler;
+import com.vsos.backend.exception.analysis.FailureAnalysisException;
+import com.vsos.backend.security.VehicSimAccess;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -51,6 +58,7 @@ class OptimizationServiceTest {
     private TaskExecutor executor;
     private OptimizationService service;
     private AnalysisService analysis;
+    private FailureAnalysisHandoffService handoffs;
 
     @BeforeEach
     void setUp() {
@@ -64,6 +72,7 @@ class OptimizationServiceTest {
         props = mock(VehicSimProperties.class);
         executor = new SyncTaskExecutor();
         analysis = mock(AnalysisService.class);
+        handoffs = mock(FailureAnalysisHandoffService.class);
 
         service = new OptimizationService(
                 db,
@@ -74,7 +83,7 @@ class OptimizationServiceTest {
                 familyService,
                 props,
                 executor,
-                analysis
+                analysis, handoffs
         );
     }
 
@@ -375,8 +384,10 @@ class OptimizationServiceTest {
         return snapshot;
     }
 
-    @Test void frozenCampaignUsesEveryOptimizationSeedAndNeverDispatchesValidationMembers() {
-        service=spy(service);arrangeFrozenCampaign();
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void frozenCampaignUsesEveryOptimizationSeedAndNeverDispatchesValidationMembers(boolean v3) {
+        service=spy(service);
+        if (v3) arrangeV3Campaign(); else arrangeFrozenCampaign();
         when(queries.aebValues(88L)).thenReturn(Map.of("TTC_THRESHOLD",2.0,"BRAKE_ACTIVATION_DELAY",.1,
                 "BRAKE_BUILDUP_RATE",10.0,"MAX_DECELERATION",8.0));
         doReturn(Json.obj("proposed_params",Map.of("TTC_THRESHOLD",2.0,"BRAKE_ACTIVATION_DELAY",.1,
@@ -408,6 +419,10 @@ class OptimizationServiceTest {
         verify(runService,never()).executeRun(1080L);verify(runService,never()).executeRun(1081L);
         verify(db).update(contains("rms_jerk_mps3 = ?"),eq(5.0),eq(0.0),eq(10.0),eq(0.0),any(),eq(false),any(),eq(101L));
         verify(db,never()).update(contains("optimization_runs SET status = 'FAILED'"),any(),any(),eq(7L));
+        if (v3) {
+            verify(analysis, never()).handoff(anyLong(), anyLong());
+            verify(handoffs, org.mockito.Mockito.atLeast(3)).campaign(eq(1L), eq(V3_ID), eq(V3_SHA));
+        }
     }
 
     @Test void staleFrozenChecksumFailsBeforeCreatingCandidateAndClosesUnfinishedTrials() {
@@ -451,5 +466,151 @@ class OptimizationServiceTest {
         assertThat(repeated.get("regression_test_id")).isEqualTo(777L);
         verify(regressionService).createFrozenTest(anyLong(),anyLong(),anyLong(),anyLong(),anyLong(),anyLong(),anyString(),any(),any(),any(),anyString());
         verify(db).update(contains("'$.verification_ref'"),eq(Json.write(Json.obj("optimization_run_id",7L,"trial_id",101L))),eq(777L),eq(1L));
+    }
+
+    private static final String V3_ID = "3786e5f4-300f-4e55-b62f-b23197df0d2d";
+    private static final String V3_SHA = "c".repeat(64);
+
+    private static Map<String,Object> approvedSpace() {
+        return Json.obj("TTC_THRESHOLD", List.of(1.0,2.0), "BRAKE_ACTIVATION_DELAY", List.of(.1,.2),
+                "BRAKE_BUILDUP_RATE", List.of(10.0,20.0), "MAX_DECELERATION", List.of(6.0,8.0));
+    }
+
+    private static Map<String,Object> v3Reference(Map<String,Object> snapshot) {
+        return Json.obj("schema",snapshot.get("schema"),"handoff_id",V3_ID,"handoff_digest",V3_SHA,
+                "dataset_digest",snapshot.get("dataset_digest"),"optimization_run_ids",snapshot.get("optimization_run_ids"),
+                "validation_run_ids",snapshot.get("validation_run_ids"));
+    }
+
+    private Map<String,Object> arrangeV3Campaign() {
+        var snapshot = arrangeFrozenCampaign();
+        snapshot.remove("id");
+        snapshot.put("schema","vehicsim.fa-v3-campaign/v1");
+        snapshot.put("handoff_id",V3_ID);
+        snapshot.put("handoff_digest",V3_SHA);
+        snapshot.put("search_space",approvedSpace());
+        when(handoffs.campaign(1L,V3_ID,V3_SHA)).thenReturn(snapshot);
+        var campaign = new LinkedHashMap<>(optimizationRun(RunService.KINEMATIC_SIMULATOR).asMap());
+        campaign.put("max_trials",1);
+        campaign.put("search_space_json",Json.write(approvedSpace()));
+        campaign.put("objective_config_json",Json.write(Json.obj("handoff_ref",v3Reference(snapshot))));
+        when(db.first(contains("FROM optimization_runs"),eq(7L))).thenReturn(new Row(campaign));
+        return snapshot;
+    }
+
+    private void arrangeCreate() {
+        when(db.first(contains("FROM projects"),eq(1L))).thenReturn(new Row(Json.obj("id",1L)));
+        when(db.first(contains("FROM scenarios"),eq(50L),eq(1L))).thenReturn(new Row(Json.obj("id",50L,"name","Family")));
+        when(db.first(contains("FROM aeb_versions"),eq(10L),eq(1L))).thenReturn(new Row(Json.obj("id",10L)));
+        when(queries.vehicleById(3L)).thenReturn(new Row(Json.obj("id",3L)));
+    }
+
+    @Test void v3CreationPinsApprovedDomainAndLineageWithoutResolvingV2() {
+        var snapshot = arrangeV3Campaign(); arrangeCreate();
+        service.createAndStartRun(1,5,50,null,1,1,null,null,"V3","KINEMATIC",null,null,V3_ID,V3_SHA);
+        var arguments = org.mockito.ArgumentCaptor.forClass(Object[].class);
+        verify(db).insert(contains("INSERT INTO optimization_runs"),arguments.capture());
+        var stored = arguments.getValue();
+        assertThat(Json.parseMap((String)stored[7])).isEqualTo(Json.parseMap(Json.write(approvedSpace())));
+        var config = Json.parseMap((String)stored[8]);
+        assertThat(config).doesNotContainKey("dataset_ref");
+        assertThat(Json.asMap(config.get("handoff_ref"))).isEqualTo(Json.parseMap(Json.write(v3Reference(snapshot))));
+        verify(analysis,never()).handoff(anyLong(),anyLong());
+    }
+
+    @Test void v3MissingAuthorityOrIncompleteReferenceNeverFallsBackToV2() {
+        arrangeV3Campaign(); arrangeCreate();
+        assertThatThrownBy(() -> service.createAndStartRun(1,5,50,null,1,1,null,null,"V3","KINEMATIC",99L,"a".repeat(64),V3_ID,V3_SHA))
+                .hasMessageContaining("either a V3 handoff or a V2 dataset");
+        assertThatThrownBy(() -> service.createAndStartRun(1,5,50,null,1,1,null,null,"V3","KINEMATIC",null,null,V3_ID,null))
+                .hasMessageContaining("SHA-256");
+        when(handoffs.campaign(1L,V3_ID,V3_SHA)).thenThrow(new InvalidRequestException("V3 approved context is missing"));
+        assertThatThrownBy(() -> service.createAndStartRun(1,5,50,null,1,1,null,null,"V3","KINEMATIC",null,null,V3_ID,V3_SHA))
+                .hasMessageContaining("context is missing");
+        verify(analysis,never()).handoff(anyLong(),anyLong());
+        verify(db,never()).insert(contains("INSERT INTO optimization_runs"),any(Object[].class));
+    }
+
+    @Test void v3CannotOverrideApprovedSearchSpaceOrCampaignIdentity() {
+        var snapshot = arrangeV3Campaign(); arrangeCreate();
+        var different = approvedSpace(); different.put("TTC_THRESHOLD",List.of(.5,3.5));
+        assertThatThrownBy(() -> service.createAndStartRun(1,5,50,null,1,1,Json.write(different),null,"V3","KINEMATIC",null,null,V3_ID,V3_SHA))
+                .hasMessageContaining("approved domain");
+        snapshot.put("baseline",Json.obj("id",11L));
+        assertThatThrownBy(() -> service.createAndStartRun(1,5,50,10L,1,1,null,null,"V3","KINEMATIC",null,null,V3_ID,V3_SHA))
+                .hasMessageContaining("another scenario or baseline");
+        verify(db,never()).insert(contains("INSERT INTO optimization_runs"),any(Object[].class));
+    }
+
+    @ParameterizedTest @ValueSource(strings={"partition","domain","digest","contract"})
+    void v3RestartChecksStoredPartitionAndApprovedDomainBeforeAnyCandidate(String changed) {
+        var snapshot = arrangeV3Campaign();
+        String expected;
+        switch (changed) {
+            case "partition" -> { snapshot.put("validation_run_ids",List.of(80L)); expected="partition or revision changed"; }
+            case "domain" -> {
+                var space = approvedSpace(); space.put("TTC_THRESHOLD",List.of(1.1,2.0));
+                snapshot.put("search_space",space); expected="approved domain";
+            }
+            case "digest" -> { snapshot.put("dataset_digest","d".repeat(64)); expected="checksum changed"; }
+            default -> { snapshot.put("schema","vehicsim.analysis-dataset/v2"); expected="contract is invalid"; }
+        }
+        service.executeOptimization(7);
+        verify(db).update(contains("optimization_runs SET status = 'FAILED'"),contains(expected),any(),eq(7L));
+        verify(aebService,never()).createCandidate(anyLong(),anyLong(),anyLong(),any(),any(),any(),any());
+        verify(analysis,never()).handoff(anyLong(),anyLong());
+    }
+
+    @Test void v3HoldoutCannotLeakIntoTrainingEvenIfFacadeReturnsAnOverlappingVariant() {
+        arrangeV3Campaign();
+        when(db.list(contains("FROM simulation_runs WHERE project_id = ? AND id IN"),eq(1L),eq(80L),eq(81L)))
+                .thenReturn(List.of(frozenSource(80,5,201),frozenSource(81,6,202)));
+        service.executeOptimization(7);
+        verify(db).update(contains("optimization_runs SET status = 'FAILED'"),contains("holdout variants"),any(),eq(7L));
+        verify(aebService,never()).createCandidate(anyLong(),anyLong(),anyLong(),any(),any(),any(),any());
+    }
+
+    @Test void v3VerificationPreservesHandoffAndCannotReuseAV2TestWithTheSamePartitionDigest() {
+        var snapshot = arrangeV3Campaign();
+        when(db.first(contains("FROM optimization_trials"),eq(101L),eq(7L),eq(1L))).thenReturn(new Row(Json.obj(
+                "id",101L,"trial_number",1L,"status","COMPLETED","is_pareto_optimal",true,"constraint_violated",false,
+                "candidate_aeb_version_id",88L,"rms_jerk_mps3",1.0,"impact_speed_mps",0.0,"stopping_distance_m",10.0)));
+        var oldSelection = Json.obj("dataset_ref",Json.obj("dataset_id",99L,"dataset_digest",snapshot.get("dataset_digest")),
+                "baseline_run_ids",List.of(80L,81L));
+        when(db.first(contains("$.verification_ref.optimization_run_id"),eq(1L),eq(88L),eq(10L),eq(50L),eq(7L),eq(101L)))
+                .thenReturn(new Row(Json.obj("id",777L,"pass_criteria_json",Json.write(Json.obj("scenario_set",oldSelection)))));
+        when(regressionService.createFrozenTest(anyLong(),anyLong(),anyLong(),anyLong(),anyLong(),anyLong(),anyString(),any(),any(),any(),anyString()))
+                .thenReturn(778L);
+        var result = service.selectCandidateForVerification(1,7,101,5);
+        assertThat(result.get("regression_test_id")).isEqualTo(778L);
+        var lineage = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(regressionService).createFrozenTest(eq(1L),eq(5L),eq(88L),eq(50L),eq(10L),eq(3L),eq(RunService.KINEMATIC_SIMULATOR),
+                org.mockito.ArgumentMatchers.argThat(variants -> variants.stream().allMatch(row -> row.lng("id")==6L)),
+                org.mockito.ArgumentMatchers.argThat(sources -> sources.stream().map(row -> row.lng("id")).toList().equals(List.of(80L,81L))),
+                lineage.capture(),anyString());
+        assertThat(Json.asMap(lineage.getValue().get("handoff_ref"))).isEqualTo(Json.parseMap(Json.write(v3Reference(snapshot))));
+        var currentSelection = Json.obj("dataset_ref",lineage.getValue(),"baseline_run_ids",List.of(80L,81L));
+        when(db.first(contains("$.verification_ref.optimization_run_id"),eq(1L),eq(88L),eq(10L),eq(50L),eq(7L),eq(101L)))
+                .thenReturn(new Row(Json.obj("id",778L,"pass_criteria_json",Json.write(Json.obj("scenario_set",currentSelection)))));
+        assertThat(service.selectCandidateForVerification(1,7,101,5).get("regression_test_id")).isEqualTo(778L);
+        verify(regressionService,org.mockito.Mockito.times(1)).createFrozenTest(anyLong(),anyLong(),anyLong(),anyLong(),anyLong(),anyLong(),anyString(),any(),any(),any(),anyString());
+        verify(analysis,never()).handoff(anyLong(),anyLong());
+    }
+
+    @Test void optimizerHttpPreservesControlledHandoffErrorsAndRetryability() throws Exception {
+        OptimizationService failing = mock(OptimizationService.class);
+        VehicSimAccess access = mock(VehicSimAccess.class);
+        when(access.projectId()).thenReturn(1L);
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new OptimizationController(failing,access))
+                .setControllerAdvice(new ApiExceptionHandler()).build();
+        for (int status : List.of(404,409,503)) {
+            org.mockito.Mockito.doThrow(new FailureAnalysisException(status,"V3_SOURCE_REVISION_CHANGED"))
+                    .when(failing).getRun(1L,7L);
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/vehicsim/optimizations/7"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().is(status))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code").value("V3_SOURCE_REVISION_CHANGED"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.retryable").value(status==503))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.detail").isString());
+        }
     }
 }
