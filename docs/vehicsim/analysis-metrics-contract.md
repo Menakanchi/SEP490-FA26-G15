@@ -93,6 +93,9 @@ Không sửa migration 009 đã có; JSON v2 không cần cột/bảng mới.
 
 - GET /analysis/runs: scenario_id, variant_id, aeb_version_id, vehicle_id, simulator,
   weather, time_of_day, status, failure_class, page, page_size. KPI và items dùng đúng cùng scope.
+  Khi lọc `variant_id`, danh sách gồm cả lượt AEB tắt để đối chứng; lượt này được đánh dấu
+  `aeb_mode: OFF` và không tham gia objective hoặc selection. Các trạng thái hoàn tất được
+  đếm riêng là `REFERENCE`, không phân loại là thành công/thất bại AEB.
 - GET /analysis/runs/{id}: trạng thái run + detail khi hoàn tất; run kỹ thuật không có kết quả AEB giả.
 - POST /analysis/selections: scenario_id, baseline_id, optimization_run_ids,
   validation_run_ids, run_revisions. Quyền ghi và limitWrites.

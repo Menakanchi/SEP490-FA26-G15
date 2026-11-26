@@ -13,14 +13,14 @@ export { analysisRunId } from "./analysis/analysisRouteTitles";
 export const ANALYSIS_LABELS: Record<string, string> = {
   CLEAR: "Trời quang", CLOUDY: "Nhiều mây", RAIN: "Mưa", HEAVY_RAIN: "Mưa lớn", FOG: "Sương mù",
   DAY: "Ban ngày", DUSK: "Chạng vạng", NIGHT: "Ban đêm", PERCEPTION: "Nhận thức", DECISION: "Quyết định",
-  CONTROL: "Điều khiển", VEHICLE_DYNAMICS: "Động lực học", SAFE: "An toàn", COLLISION: "Va chạm",
+  CONTROL: "Điều khiển", VEHICLE_DYNAMICS: "Động lực học", SAFE: "An toàn", COLLISION: "Va chạm", REFERENCE: "Đối chứng AEB tắt",
   FALSE_BRAKING: "Phanh oan", NEAR_MISS: "Suýt va chạm", MISSED_BRAKING: "Bỏ sót phanh", OTHER_FAILURE: "Lỗi AEB khác",
   ERROR: "Lỗi kỹ thuật", CANCELLED: "Đã hủy", TIMEOUT: "Hết giờ", INCOMPLETE: "Thiếu dữ liệu", NOT_FINISHED: "Chưa hoàn tất",
   PENDING: "Đang chờ", RUNNING: "Đang chạy", PAUSED: "Tạm dừng", COMPLETED: "Hoàn tất", FAILED: "Lỗi kỹ thuật", STOPPED: "Đã hủy",
 };
 export const analysisLabel = (value: string | null) => value ? ANALYSIS_LABELS[value] ?? vi(value) : "—";
 export { formatMetric as metric } from "./analysis/analysisMetricFormat";
-export const eligible = (run: AnalysisRun) => run.status === "COMPLETED" && run.trace_available && !["TIMEOUT", "ERROR", "INCOMPLETE"].includes(run.outcome);
+export const eligible = (run: AnalysisRun) => run.aeb_mode !== "OFF" && run.status === "COMPLETED" && run.trace_available && !["TIMEOUT", "ERROR", "INCOMPLETE", "REFERENCE"].includes(run.outcome);
 /** Remount only local analysis state when ownership changes; providers/transport stay unchanged. */
 export function AnalysisScope({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();

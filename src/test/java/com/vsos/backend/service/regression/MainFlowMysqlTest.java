@@ -135,6 +135,20 @@ class MainFlowMysqlTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM failures f JOIN simulation_runs r ON r.id=f.simulation_run_id WHERE r.aeb_mode='OFF'",Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM collision_events c JOIN simulation_runs r ON r.id=c.simulation_run_id WHERE r.aeb_mode='OFF'",Integer.class)).isPositive();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM simulation_runs WHERE aeb_mode='OFF' AND (aeb_activated=1 OR is_false_positive=1 OR is_false_negative=1)",Integer.class)).isZero();
+        long referenceRun=jdbc.queryForObject("SELECT MIN(id) FROM simulation_runs WHERE project_id=? AND aeb_mode='OFF'",Long.class,projectId);
+        long referenceVariant=jdbc.queryForObject("SELECT scenario_version_id FROM simulation_runs WHERE id=?",Long.class,referenceRun);
+        var byVariant=json("GET",BASE+"/analysis/runs?variant_id="+referenceVariant,engineer,null,200);
+        var variantItems=Json.asList(byVariant.get("items")).stream().map(Json::asMap).toList();
+        assertThat(variantItems).hasSize(2);
+        assertThat(variantItems).anySatisfy(item -> {
+            assertThat(id(item,"run_id")).isEqualTo(referenceRun);
+            assertThat(item).containsEntry("aeb_mode","OFF").containsEntry("outcome","REFERENCE");
+        });
+        assertThat(Json.asMap(byVariant.get("counts"))).containsEntry("REFERENCE",1);
+        var referenceInspection=json("GET",BASE+"/analysis/runs/"+referenceRun,engineer,null,200);
+        assertThat(Json.asMap(referenceInspection.get("run"))).containsEntry("aeb_mode","OFF").containsEntry("outcome","REFERENCE");
+        var baselineOnly=json("GET",BASE+"/analysis/runs?scenario_id="+scenario,engineer,null,200);
+        assertThat(Json.asList(baselineOnly.get("items"))).allSatisfy(item -> assertThat(Json.asMap(item)).doesNotContainEntry("aeb_mode","OFF"));
         // Seed fixture setup only: all results below are produced by the real Java simulator, never inserted.
         var variants=jdbc.queryForList("SELECT id,scenario_ir_json FROM scenario_versions WHERE scenario_id=? AND source='GENERATED'",scenario)
                 .stream().map(com.vsos.backend.repository.common.Row::new).toList();
