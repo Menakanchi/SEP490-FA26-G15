@@ -1003,7 +1003,7 @@ Từ 21/10/2026 `pass_criteria_json.scenario_set` có thêm `mode` (`old_critica
 | Bảng | Seed |
 |---|---|
 | `roles` | 5 role (§1.1) |
-| `aeb_parameters` | 4 tham số (`TTC_THRESHOLD` 0,5–4 s, `BRAKE_ACTIVATION_DELAY` 0–0,5 s, `MAX_DECELERATION` 3–10 m/s², `BRAKE_BUILDUP_RATE` **5–20** m/s³ vì lõi chặn ở `JERK_LIMIT` = 20); khớp `BootstrapService.AEB_PARAMETER_SEED` (`test_java_parameter_seed_matches_sql_seed`). Baseline v1.0 dùng mặc định, riêng `TTC_THRESHOLD` = 1,5 s |
+| `aeb_parameters` | 4 tham số (`TTC_THRESHOLD` 0,5–3,5 s, `BRAKE_ACTIVATION_DELAY` 0,05–0,45 s, `MAX_DECELERATION` 5–10 m/s² theo miền MOBO — ADR-069, migration 025; `BRAKE_BUILDUP_RATE` **5–20** m/s³ vì lõi chặn ở `JERK_LIMIT` = 20); khớp `BootstrapService.AEB_PARAMETER_SEED` (`test_java_parameter_seed_matches_sql_seed`). Baseline v1.0 dùng mặc định, riêng `TTC_THRESHOLD` = 1,5 s |
 | `carla_vehicle_models` | `vehicle.audi.etron` 4,75 × 1,93 × 1,67 m |
 | `tech_references` | 7 dòng: `GRAV_ACCEL`, `AIR_DENSITY_STP`, `UNECE_R152`, `EURO_NCAP_AEB_C2C`, `EURO_NCAP_AEB_VRU`, `OPENSCENARIO_1_X`, `ISO_15623_TTC` |
 

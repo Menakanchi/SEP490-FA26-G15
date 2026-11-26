@@ -30,7 +30,9 @@ public final class RegressionResponses {
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record CandidateSource(String type, Long optimizationRunId, String campaignName, Long trialId, Integer trialNumber) {
+    /** {@code paretoOptimal}: trial sinh ra candidate có nằm trên biên Pareto của đợt tối ưu không; {@code null} khi candidate không từ MOBO. */
+    public record CandidateSource(String type, Long optimizationRunId, String campaignName, Long trialId, Integer trialNumber,
+                                  Boolean paretoOptimal) {
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
