@@ -48,7 +48,7 @@ test("collision, valid PASS/null classification, zero and no-brake NULL remain d
   assert.equal(safe.failure_type,null);assert.equal(safe.metrics.impact_speed_mps,null);
   assert.equal(safe.metrics.brake_onset_t,null);assert.equal(safe.metrics.rms_jerk_mps3,null);
   assert.equal(classificationPresentation(safe).classification,"API chưa có phân loại lỗi");
-  assert.equal(classificationPresentation(safe).evaluation,"Đạt theo luật hiện hành (PASS)");
+  assert.equal(classificationPresentation(safe).evaluation,"Đạt theo luật đã lưu (PASS)");
   assert.equal(ccr.environment.category,"CCRS");assert(ccr.metrics.brake_onset_t>0);
 });
 test("stage evidence points to exact API items and only stored absolute timestamps can seek",()=>{

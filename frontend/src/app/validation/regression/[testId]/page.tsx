@@ -16,10 +16,10 @@ const OUTCOMES: OutcomeKey[] = ["SAFE", "NEAR_MISS", "COLLISION"];
 const OUTCOME_LABEL: Record<OutcomeKey, string> = { SAFE: "An toàn", NEAR_MISS: "Suýt va chạm", COLLISION: "Va chạm" };
 const RANK: Record<OutcomeKey, number> = { SAFE: 0, NEAR_MISS: 1, COLLISION: 2 };
 const SHORT_PARAM: Record<string, string> = {
-  TTC_THRESHOLD: "TTC",
-  BRAKE_ACTIVATION_DELAY: "Trễ phanh",
-  MAX_DECELERATION: "Giảm tốc tối đa",
-  BRAKE_BUILDUP_RATE: "Tăng lực phanh",
+  TTC_THRESHOLD: "TTC Threshold",
+  BRAKE_ACTIVATION_DELAY: "Brake Activation Delay",
+  MAX_DECELERATION: "Max Deceleration",
+  BRAKE_BUILDUP_RATE: "Brake Build-up Rate",
 };
 type DiffTab = "regressed" | "fixed" | "changes" | "all";
 

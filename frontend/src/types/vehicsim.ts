@@ -994,10 +994,15 @@ export interface VehicleSummary {
   carla_full_brake_decel_mps2: number | null;
   is_supported: boolean; in_use: boolean; run_count: number;
 }
+/**
+ * Cảm biến của mẫu xe. Bảng `sensors` có dòng thì `sensor_source = "DATABASE"`; không có thì backend trả bộ cảm biến adapter CARLA
+ * gắn lúc chạy (`"CARLA_ADAPTER_CODE"`): `id = null`, cảm biến gắn theo bounding box có `location_m = null` và `mount` ghi quy tắc gắn.
+ */
 export interface VehicleSensor {
-  id: number; name: string; sensor_type: string; carla_blueprint_id: string;
-  location_m: { x: number; y: number; z: number }; rotation_deg: { pitch: number; yaw: number; roll: number };
-  attributes: Record<string, unknown>; is_enabled: boolean;
+  id: number | null; name: string; sensor_type: string; carla_blueprint_id: string;
+  location_m: { x: number; y: number; z: number } | null; rotation_deg: { pitch: number; yaw: number; roll: number };
+  attributes: Record<string, unknown> | null; is_enabled: boolean;
+  mount?: string | null; purpose?: string | null; condition?: string | null;
 }
 export interface VehicleUsage { simulator_type: "KINEMATIC" | "CARLA"; simulator_version: string; runs: number; last_run_at: string | null }
 export interface VehicleDetail extends VehicleSummary {
@@ -1006,6 +1011,7 @@ export interface VehicleDetail extends VehicleSummary {
     tire_friction: number | null; max_brake_torque_nm: number | null; wheelbase_m: number | null; max_speed_mps: number | null;
   };
   sensors: VehicleSensor[];
+  sensor_source?: "DATABASE" | "CARLA_ADAPTER_CODE";
   usage: VehicleUsage[];
 }
 

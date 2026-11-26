@@ -3,7 +3,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { AnalysisBadge, AnalysisTableRegion } from "@/components/analysisUi";
 import { Pagination } from "@/components/VehicSimUi";
-import type { AnalysisSelection, ObjectiveAggregate } from "@/types/vehicsim";
+import type { ObjectiveAggregate } from "@/types/vehicsim";
+import type { SavedSelection } from "./analysis/analysisSnapshotData";
 import { formatObjective, objectiveState } from "./analysis/analysisMetricFormat";
 export function ObjectiveSummary({value}: {value: ObjectiveAggregate}) {
   return <div className="grid gap-4 text-[12px] sm:grid-cols-3">
@@ -18,7 +19,7 @@ export function ObjectiveSummary({value}: {value: ObjectiveAggregate}) {
     })}
   </div>;
 }
-export function AnalysisSelectionSummary({dataset,returnTo}: {dataset: AnalysisSelection;returnTo?:string}) {
+export function AnalysisSelectionSummary({dataset,returnTo}: {dataset: SavedSelection;returnTo?:string}) {
  const [requestedPage,setPage]=useState(1);
  const pages=Math.max(1,Math.ceil(dataset.runs.length/20)),page=Math.min(requestedPage,pages);
  return <section className="rounded-xl border border-vehicsim-line bg-vehicsim-surface p-5 space-y-4">

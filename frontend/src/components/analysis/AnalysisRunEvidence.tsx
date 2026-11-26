@@ -9,7 +9,6 @@ import { finite, recordedRange, runMarkers } from "./analysisRunData";
 import { PARAMETER_NAMES } from "./analysisFailurePresentation";
 import { formatMeasurement, formatMetric } from "./analysisMetricFormat";
 import { classificationPresentation, recordedChain } from "./analysisClassificationData";
-import { AnalysisClassification } from "./AnalysisClassification";
 import { evidenceGroups, evidenceCanSeek, evidenceHref } from "./analysisEvidenceData";
 import styles from "./AnalysisRunEvidence.module.css";
 
@@ -51,27 +50,26 @@ export function AnalysisRunEvidence({ detail: d, returnTo, playbackAvailable }: 
   return <div className={styles.stack} data-evidence-run={d.run_id}>
     <section className={`analysis-panel ${styles.stack}`} aria-label="Dữ liệu và mốc đã ghi">
       <h2>Dữ liệu và mốc đã ghi</h2>
-      <p className="analysis-caption">Run #{d.run_id} · thời gian mô phỏng (s). Mốc controller và sự kiện được lưu riêng với chỉ số đã tính và nhận định theo luật bên dưới.</p>
-      <p className="analysis-caption">Bắt đầu lệnh phanh không phải thời điểm phanh thực sự tác dụng. API chưa có mốc hazard onset, brake applied hay onset giảm tốc được xác minh; không tạo các mốc này từ TTC hoặc gia tốc. Camera/CSV có đồng hồ riêng, chưa được ghép thời gian tại đây.</p>
+      <p className="analysis-caption">Run #{d.run_id} · thời gian mô phỏng (s). Mốc từ metrics và sự kiện được lưu riêng với chỉ số đã tính và nhận định theo luật bên dưới.</p>
+      <p className="analysis-caption">brake_onset_t là mốc do producer ghi; response chưa có writer attribution để đối chiếu pedal thật. Không gán pedal onset thành lệnh AEB hoặc thời điểm phanh thực sự tác dụng. API chưa có mốc hazard onset, brake applied hay onset giảm tốc được xác minh; không tạo các mốc này từ TTC hoặc gia tốc. Camera/CSV có đồng hồ riêng, chưa được ghép thời gian tại đây.</p>
       {!markers.length && <p className="analysis-caption">API chưa có timestamp hợp lệ cho các mốc được hỗ trợ; không suy ra sự kiện từ giá trị thiếu.</p>}
       <ol className={styles.events}>{markers.map((marker, index) => <li key={`${marker.source}-${index}`} data-evidence-marker={marker.source}>
-        <div><strong>{marker.label}</strong><small>{marker.source?.startsWith("metrics.") ? "Mốc controller đã lưu" : marker.source === "events[kind=ttc_below].t" ? "Sự kiện dẫn xuất từ so sánh TTC (backend)" : "Sự kiện mô phỏng đã lưu"} · <code>{marker.source}</code></small></div>
+        <div><strong>{marker.label}</strong><small>{marker.source?.startsWith("metrics.") ? "Trường thời gian trong metrics" : marker.source === "events[kind=ttc_below].t" ? "Sự kiện dẫn xuất từ so sánh TTC (backend)" : "Sự kiện mô phỏng đã lưu"} · <code>{marker.source}</code></small></div>
         <div><span>{formatMetric(marker.t, 3)} s</span><small>Giá trị nguồn: {String(marker.t)} s</small>
           {evidenceCanSeek(marker.t, range) ? <div className={styles.links}><Link href={href(marker.t, false)} aria-label={`Xem mốc ${marker.label} trong telemetry tại ${formatMetric(marker.t, 3)} s`}>Xem telemetry →</Link></div>
             : <small>{range ? "Mốc ngoài vùng telemetry." : "Không có vùng telemetry."} Chưa thể đối chiếu theo thời gian.</small>}
         </div>
       </li>)}</ol>
-      <p className="analysis-caption">Các chỉ số tổng hợp như giảm tốc cực đại không có timestamp riêng trong API. Không gán thời điểm của mốc lệnh cho cực trị. Nguồn mô phỏng không phải dữ liệu đo xe thật.</p>
+      <p className="analysis-caption">Sự kiện collision ở đây do backend chiếu từ events, không phải collisions.json hay xác minh sensor contact độc lập. Các chỉ số tổng hợp như giảm tốc cực đại không có timestamp riêng trong API. Không gán thời điểm của mốc lệnh cho cực trị. Nguồn mô phỏng không phải dữ liệu đo xe thật.</p>
     </section>
     <section className={`analysis-panel ${styles.stack}`}>
       <h2>Bằng chứng và giới hạn nhận định</h2>
-      <AnalysisClassification detail={d} />
       <p className="analysis-caption">Chuỗi nguyên nhân là giả thuyết theo luật đánh giá, không chứng minh quan hệ nhân quả. Điểm confidence là điểm của luật, không phải xác suất đã hiệu chuẩn.</p>
       <div className={styles.primary} aria-label="Nhận định chính từ backend">
         <div><span className="analysis-caption">Khâu nghi ngờ đã lưu từ API · chưa xác nhận nguyên nhân</span><h3>{d.failure_class ? analysisLabel(d.failure_class) : "Chưa có khâu chính từ backend."}</h3><p>{primary?.summary ? vi(primary.summary) : "Chưa có mô tả nhận định chính để đối chiếu."}</p></div>
         <dl className={styles.meta}><div><dt>Điểm luật của nhận định chính</dt><dd>{metric(d.chain_confidence)}</dd></div><div><dt>Phiên bản tổng hợp</dt><dd>{d.evaluation_version || "—"}</dd></div></dl>
       </div>
-      <p className="analysis-caption">Onset và trễ phanh là mốc controller, chưa xác định thời điểm xe thực sự giảm tốc. Phiên bản tổng hợp không phải phiên bản luật chấm. Các khâu bên dưới giữ thứ tự từ API. Mỗi nhận định đi kèm số đo của chính khâu đó; — nghĩa là chưa có dữ liệu hợp lệ.</p>
+      <p className="analysis-caption">Onset và trễ phanh là các trường đã lưu, chưa xác định writer của pedal hoặc thời điểm xe thực sự giảm tốc. Phiên bản tổng hợp không phải phiên bản luật chấm. Các khâu bên dưới giữ thứ tự từ API. Mỗi nhận định đi kèm số đo của chính khâu đó; — nghĩa là chưa có dữ liệu hợp lệ.</p>
     </section>
     <section className={styles.stack} aria-label="Chuỗi nhận định và số đo">
       <h2>Chuỗi nhận định nguyên nhân</h2>

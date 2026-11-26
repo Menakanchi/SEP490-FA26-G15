@@ -1,3 +1,4 @@
+import { openDisclosure, closeInvestigation } from "./helpers/analysis-disclosures.mjs";
 import { prepareAnalysisArtifacts } from "./helpers/analysis-artifacts.mjs";
 /** Run detail/evidence traceability regression: browser HTTP fixtures, no live backend/CARLA. */
 import assert from "node:assert/strict";
@@ -62,6 +63,8 @@ try {
       vehicle: { id: 2, name: "Fixture car" }, system: { id: 1, name: "AEB", baseline: { id: 7, label: "v7" } },
       versions: [{ id: 7, label: "v7", status: "BASELINE" }], families: [{ id: 42, name: "Metric fixture", code: "CP" }], parameters: [], reviewer_projects: [] });
     if (p === "/vehicsim/regression") return reply({ items: [], kpis: { total: 0, passed: 0, failed: 0, running: 0 } });
+    if (p === "/vehicsim/analysis/v3/sources") return reply({items:[],limit:20,offset:0}); // FE-R4: empty FA storage is independent of legacy runs.
+    if (/^\/vehicsim\/analysis\/v3\/database\/(runs|collections)$/.test(p)) return reply({schema_version:"vehicsim.fa-db-input/v1",selection_kind:p.endsWith("collections")?"COLLECTION":"RUN",project_id:Number(route.request().headers()["x-vehicsim-project"]),items:[],limit:20,offset:0}); // Independent database source fixture.
     if (p === "/vehicsim/notifications") return reply({ items: [], unread_count: 0 });
 
     if (/^\/vehicsim\/analysis\/runs\/10[12]$/.test(p)) {
@@ -86,7 +89,7 @@ try {
   const url = "/analysis/failures/101?section=summary&signal=jerk_mps3&t=0.5&returnTo=" + encodeURIComponent(returnTo);
 
   const evidenceUrl = url.replace("section=summary", "section=evidence");
-  const evidence = page.getByRole("tabpanel", {name:"Nguyên nhân & bằng chứng",exact:true});
+  const evidence = page.getByRole("tabpanel", {name:"Nhận định & bằng chứng",exact:true});
   const identity = page.getByRole("region", {name:"Danh tính và nguồn dữ liệu run",exact:true});
   const summary = page.getByRole("region", {name:"Kết quả và chỉ số run",exact:true});
   const shot = async name => {await page.screenshot({path:path.join(output,name+".png"),fullPage:true});screenshots.push(name+".png");};
@@ -96,45 +99,48 @@ try {
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Evidence overflow "+width);
     if (!baseline) {
       const first = evidence.getByRole("link",{name:/^Xem mốc/}).first();
-      await first.focus();assert(await first.evaluate(el=>el.matches(":focus-visible")));
-      await page.getByRole("tab",{name:"Nguyên nhân & bằng chứng",exact:true}).focus();
-      await page.keyboard.press("Home");assert.equal(await page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true}).getAttribute("aria-selected"),"true");
-      await page.keyboard.press("End");assert.equal(await evidence.getAttribute("hidden"),null);
+      await page.keyboard.press("Tab");await first.focus();assert(await first.evaluate(el=>el.matches(":focus-visible")));
+      await page.getByRole("tab",{name:"Nhận định & bằng chứng",exact:true}).focus();
+      await page.keyboard.press("Home");await page.waitForFunction(()=>document.querySelector("#run-tab-telemetry")?.getAttribute("aria-selected")==="true");assert.equal(await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).getAttribute("aria-selected"),"true");
+      await page.keyboard.press("End");await page.waitForFunction(()=>document.querySelector("#run-tab-evidence")?.getAttribute("aria-selected")==="true");assert.equal(await evidence.getAttribute("hidden"),null);
     }
-    await page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true}).click();await summary.waitFor();await shot("summary-"+width);
+    await closeInvestigation(page);await summary.waitFor();await shot("summary-"+width);
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Page overflow "+width);
   }
   if (!baseline) {
     await page.goto(base+url);await summary.waitFor();
     assert.match(await summary.getByLabel("Va chạm theo outcome",{exact:true}).innerText(),/Có ghi nhận va chạm/);
     assert.match(await summary.getByLabel("Tốc độ va chạm",{exact:true}).innerText(),/10\.000 m\/s/);
-    assert.match(await summary.getByLabel("Bắt đầu lệnh phanh",{exact:true}).innerText(),/0\.250 s/);
+    // FE-R3 moves command timing into investigation, preserving its exact source/value.
+    await load();
+    assert.match(await evidence.locator('[data-evidence-marker="metrics.brake_onset_t"]').innerText(),/0\.250 s/);
     detail={...original,metrics:{...original.metrics,impact_speed_mps:null}};
     await page.reload();await summary.waitFor();assert.match(await summary.getByLabel("Tốc độ va chạm",{exact:true}).innerText(),/—/);
     assert.match(await summary.getByLabel("RMS jerk",{exact:true}).innerText(),/2\.123/);
     detail=structuredClone(original);await load();
-    assert.match(await identity.innerText(),/#42/);assert.match(await identity.innerText(),/CP_CROSSING/);
+    await openDisclosure(page,"Danh tính và nguồn dữ liệu"); assert.match(await identity.innerText(),/#42/);assert.match(await identity.innerText(),/CP_CROSSING/);
     assert.match(await identity.innerText(),/carla-0.9.16-xosc5/);
     const recorded = evidence.getByRole("region",{name:"Dữ liệu và mốc đã ghi",exact:true});
     await recorded.waitFor();
     assert.match(await recorded.innerText(),/metrics\.brake_onset_t/);
-    assert.match(await recorded.innerText(),/không phải.*phanh thực sự/i);
+    assert.match(await recorded.innerText(),/Không gán pedal onset thành lệnh AEB hoặc thời điểm phanh thực sự/);
+    assert.match(await recorded.innerText(),/chưa có writer attribution/);
     assert.equal(await recorded.locator("[data-evidence-marker]").count(),4);
     assert.equal(await recorded.locator('[data-evidence-marker*="hazard"],[data-evidence-marker*="applied"]').count(),0);
     const control = evidence.getByRole("article",{name:"Khâu Điều khiển",exact:true});
     assert.match(await control.innerText(),/stage_evidence\[0\]\.values\.brake_onset_t/);
     assert.match(await control.innerText(),/Chỉ số đã tính/);
     let link = control.getByRole("link",{name:/^Playback khâu/});
-    await link.focus();assert(await link.evaluate(el=>el.matches(":focus-visible")));await link.press("Enter");
+    await page.keyboard.press("Tab");await link.focus();assert(await link.evaluate(el=>el.matches(":focus-visible")));await link.press("Enter");
     await page.waitForURL(u=>u.pathname.endsWith("/playback"));
     let u=new URL(page.url());assert.equal(u.searchParams.get("t"),"0.25");assert.equal(u.searchParams.get("signal"),"jerk_mps3");assert.equal(u.searchParams.get("returnTo"),returnTo);
     await load();
-    await page.getByRole("tab",{name:"Nguyên nhân & bằng chứng",exact:true}).focus();
-    await page.keyboard.press("Home");assert.equal(await page.getByRole("tab",{name:"Tổng quan & cấu hình",exact:true}).getAttribute("aria-selected"),"true");
-    await page.keyboard.press("End");assert.equal(await evidence.getAttribute("hidden"),null);
+    await page.getByRole("tab",{name:"Nhận định & bằng chứng",exact:true}).focus();
+    await page.keyboard.press("Home");await page.waitForFunction(()=>document.querySelector("#run-tab-telemetry")?.getAttribute("aria-selected")==="true");assert.equal(await page.getByRole("tab",{name:"Telemetry & chỉ số",exact:true}).getAttribute("aria-selected"),"true");
+    await page.keyboard.press("End");await page.waitForFunction(()=>document.querySelector("#run-tab-evidence")?.getAttribute("aria-selected")==="true");assert.equal(await evidence.getAttribute("hidden"),null);
     detail={...original,verdict:"PASS",outcome:"SAFE",failure_type:null,chain:[],failure_class:null,chain_confidence:null};
-    await load();assert.match(await evidence.innerText(),/API chưa có phân loại lỗi/);assert.match(await evidence.innerText(),/Đạt theo luật hiện hành \(PASS\)/);
-    assert.doesNotMatch(await evidence.innerText(),/Không ghi nhận lỗi theo luật hiện hành/);
+    await load();assert.match(await summary.innerText(),/API chưa có phân loại lỗi/);assert.match(await summary.innerText(),/Đạt theo luật đã lưu \(PASS\)/);
+    assert.doesNotMatch(await evidence.innerText(),/Không ghi nhận lỗi theo luật đã lưu/);
     detail={...original,chain:null,failure_class:null,chain_confidence:null,stage_evidence:[null,{stage:"CONTROL",values:null},{stage:"CONTROL",values:{brake_onset_t:null,response_time_s:0}},{stage:"CUSTOM",values:{signed:-0.0004,decision_t:0.25}}]};
     await load();assert.match(await evidence.innerText(),/Chưa có số đo/);assert.match(await evidence.innerText(),/0\.000 s/);
     assert.match(await evidence.innerText(),/CUSTOM/);assert.match(await evidence.innerText(),/-0\.0004/);
@@ -149,11 +155,11 @@ try {
     assert.match(await evidence.innerText(),/chưa có timestamp hợp lệ|ngoài vùng telemetry|không có vùng telemetry/i);await shot("no-telemetry");
     for (const patch of [{evaluation_valid:false},{evaluation_valid:undefined},{verdict:null},{failure_type:"UNSUPPORTED_NEW_TYPE",chain:[],failure_class:null}]) {
       detail={...original,...patch};await load();
-      if ("evaluation_valid" in patch || patch.verdict===null) assert.match(await evidence.innerText(),/Chưa đủ dữ liệu|chưa xác nhận|chưa có verdict/);
-      if (patch.failure_type) assert.match(await evidence.innerText(),/UNSUPPORTED_NEW_TYPE/);
+      if ("evaluation_valid" in patch || patch.verdict===null) assert.match(await summary.innerText(),/Chưa đủ dữ liệu|chưa xác nhận|chưa có verdict/);
+      if (patch.failure_type) assert.match(await summary.innerText(),/UNSUPPORTED_NEW_TYPE/);
     }
     detail={...original,simulator:null,environment:{...original.environment,category:"CPLA"}};inspectionRun={...run,simulator:null};
-    await load();assert.match(await identity.innerText(),/Chưa có danh tính simulator/);assert.match(await identity.innerText(),/chưa được hỗ trợ/i);await shot("unknown-source-unsupported");
+    await load();await openDisclosure(page,"Danh tính và nguồn dữ liệu");assert.match(await identity.innerText(),/Chưa có danh tính simulator/);assert.match(await identity.innerText(),/chưa được hỗ trợ/i);await shot("unknown-source-unsupported");
     detail=null;inspectionRun={...run,status:"RUNNING",trace_available:false};await page.reload();await page.getByRole("region",{name:"Run chưa có kết quả phân tích",exact:true}).waitFor();
     inspectionRun={...run,status:"FAILED",trace_available:false,error:"Fixture worker failed",end_reason:"FAILED"};await page.reload();await page.getByRole("alert").filter({hasText:"Fixture worker failed"}).waitFor();
     detail=structuredClone(original);inspectionRun=structuredClone(run);

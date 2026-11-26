@@ -49,3 +49,6 @@
  .fact dd { font-size: 20px; }
  .tabs button { padding: 10px; }
 }
+
+.limitations { list-style:disc; padding:12px 0 0 20px; font-size:13px; line-height:1.7; color:var(--color-vehicsim-muted); }
+.limitations li + li { margin-top:6px; }
