@@ -16,10 +16,12 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import java.net.URI;
 import java.net.http.*;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.*;
 
 /** Actual HTTP + JWT + Spring transactions + isolated MySQL/Redis + Java simulator.
@@ -67,6 +69,7 @@ class MainFlowMysqlTest {
     @Autowired com.vsos.backend.repository.common.Queries queries;
     @Autowired com.vsos.backend.service.analysis.AnalysisService analysis;
     @Autowired com.vsos.backend.repository.analysis.FailureAnalysisStore faStore;
+    @Autowired com.vsos.backend.service.analysis.FailureAnalysisService failureAnalysis;
     @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
     private long projectId;
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
@@ -138,7 +141,46 @@ class MainFlowMysqlTest {
         long vehicle=jdbc.queryForObject("SELECT carla_vehicle_model_id FROM simulation_runs WHERE project_id=? LIMIT 1",Long.class,projectId);
         var secondSeeds=runService.createRuns(projectId,scenario,variants,vehicle,baseline,engineerId,"BASELINE",null,null);
         for(long runId:secondSeeds) jdbc.update("UPDATE simulation_runs SET random_seed=random_seed+100000 WHERE id=? AND status='PENDING'",runId);
-        runService.dispatch(secondSeeds);
+        // Exercise the actual worker completion path while both interactive FA slots are held.
+        // The simulator, producer JSON and database transactions are real, but this is not CARLA.
+        var originalRun=new com.vsos.backend.repository.common.Row(jdbc.queryForMap(
+                "SELECT * FROM simulation_runs WHERE project_id=? AND status='COMPLETED' LIMIT 1",projectId));
+        byte[] original=failureAnalysis.producerResult(originalRun).body();
+        var entered=new CountDownLatch(2);var release=new CountDownLatch(1);
+        class HeldInput extends ByteArrayInputStream {
+            boolean held;
+            HeldInput(){super(original);}
+            @Override public synchronized int read(byte[] bytes,int offset,int length) {
+                if(!held){held=true;entered.countDown();try {
+                    if(!release.await(60,TimeUnit.SECONDS))throw new IllegalStateException("test timeout");
+                } catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}
+                return super.read(bytes,offset,length);
+            }
+        }
+        try(var pool=Executors.newFixedThreadPool(secondSeeds.size()+2)) {
+            var first=pool.submit(()->failureAnalysis.ingest(projectId,engineerId,new HeldInput(),original.length,null));
+            var second=pool.submit(()->failureAnalysis.ingest(projectId,engineerId,new HeldInput(),original.length,null));
+            try {
+                assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();
+                var start=new CountDownLatch(1);var workers=new ArrayList<Future<?>>();
+                for(long runId:secondSeeds)workers.add(pool.submit(()->{
+                    if(!start.await(10,TimeUnit.SECONDS))throw new IllegalStateException("test start timeout");
+                    runService.executeRun(runId);return null;
+                }));
+                start.countDown();
+                for(var worker:workers)worker.get(45,TimeUnit.SECONDS);
+                for(long runId:secondSeeds) {
+                    var row=new com.vsos.backend.repository.common.Row(jdbc.queryForMap("SELECT * FROM simulation_runs WHERE id=?",runId));
+                    assertThat(row.str("status")).as("run %s: %s",runId,row.str("error_message")).isEqualTo("COMPLETED");
+                    var source=failureAnalysis.producerResult(row);
+                    assertThat(source).isNotNull();
+                    var producer=Json.parseMap(new String(source.body(),StandardCharsets.UTF_8));
+                    assertThat(((Number)Json.asMap(producer.get("source")).get("run_id")).longValue()).isEqualTo(runId);
+                    assertThat(producer.get("simulator")).isEqualTo(com.vsos.backend.service.simulation.RunService.KINEMATIC_SIMULATOR);
+                }
+            } finally {release.countDown();}
+            first.get(30,TimeUnit.SECONDS);second.get(30,TimeUnit.SECONDS);
+        }
         awaitRuns();
         var dataset=json("GET",BASE+"/analysis/dataset?scenario_id="+scenario,engineer,null,200);
         assertThat(Json.asList(dataset.get("variants"))).hasSize(4);
